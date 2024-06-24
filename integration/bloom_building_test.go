@@ -32,6 +32,7 @@ func TestBloomBuilding(t *testing.T) {
 	const (
 		nSeries        = 10 //1000
 		nLogsPerSeries = 50
+		nBuilders      = 5
 	)
 
 	clu := cluster.New(nil, cluster.SchemaWithTSDB, func(c *cluster.Cluster) {
@@ -95,13 +96,19 @@ func TestBloomBuilding(t *testing.T) {
 		"-bloom-build.planner.min-table-offset=0",
 	)
 	require.NoError(t, clu.Run())
-	tBloomBuilder := clu.AddComponent(
-		"bloom-builder",
-		"-target=bloom-builder",
-		"-bloom-build.enabled=true",
-		"-bloom-build.enable=true",
-		"-bloom-build.builder.planner-address="+tBloomPlanner.GRPCURL(),
-	)
+
+	// Add several builders
+	builders := make([]*cluster.Component, 0, nBuilders)
+	for i := 0; i < nBuilders; i++ {
+		builder := clu.AddComponent(
+			"bloom-builder",
+			"-target=bloom-builder",
+			"-bloom-build.enabled=true",
+			"-bloom-build.enable=true",
+			"-bloom-build.builder.planner-address="+tBloomPlanner.GRPCURL(),
+		)
+		builders = append(builders, builder)
+	}
 	require.NoError(t, clu.Run())
 
 	// Wait for bloom build to finish
@@ -133,9 +140,11 @@ func TestBloomBuilding(t *testing.T) {
 	// Restart bloom planner to trigger bloom build
 	require.NoError(t, tBloomPlanner.Restart())
 
-	// TODO(salvacorts): Implement retry on builder so we don't need to restart it.
-	tBloomBuilder.AddFlags("-bloom-build.builder.planner-address=" + tBloomPlanner.GRPCURL())
-	require.NoError(t, tBloomBuilder.Restart())
+	// TODO(salvacorts): Implement retry on builder so we don't need to restart them.
+	for _, tBloomBuilder := range builders {
+		tBloomBuilder.AddFlags("-bloom-build.builder.planner-address=" + tBloomPlanner.GRPCURL())
+		require.NoError(t, tBloomBuilder.Restart())
+	}
 
 	// Wait for bloom build to finish
 	time.Sleep(5 * time.Second)
