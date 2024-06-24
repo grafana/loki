@@ -45,15 +45,26 @@ func TestMemPool(t *testing.T) {
 		require.Equal(t, 512, cap(res))
 	})
 
-	t.Run("pool returns error when no buffer is available", func(t *testing.T) {
+	t.Run("pool blocks when no buffer is available", func(t *testing.T) {
 		pool := New("test", []Bucket{
 			{Size: 1, Capacity: 64},
 		}, nil)
 		buf1, _ := pool.Get(32)
 		require.Equal(t, 32, len(buf1))
 
+		delay := 20 * time.Millisecond
+		start := time.Now()
+
+		go func(p *MemPool) {
+			time.Sleep(delay)
+			p.Put(make([]byte, 16))
+		}(pool)
+
 		_, err := pool.Get(16)
-		require.ErrorContains(t, err, errSlabExhausted.Error())
+		duration := time.Since(start)
+
+		require.NoError(t, err)
+		require.Greater(t, duration, delay)
 	})
 
 	t.Run("test ring buffer returns same backing array", func(t *testing.T) {
@@ -80,16 +91,17 @@ func TestMemPool(t *testing.T) {
 	})
 
 	t.Run("concurrent access", func(t *testing.T) {
+		numWorkers := 256
+
 		pool := New("test", []Bucket{
-			{Size: 32, Capacity: 2 << 10},
-			{Size: 16, Capacity: 4 << 10},
-			{Size: 8, Capacity: 8 << 10},
-			{Size: 4, Capacity: 16 << 10},
-			{Size: 2, Capacity: 32 << 10},
+			{Size: numWorkers, Capacity: 2 << 10},
+			{Size: numWorkers, Capacity: 4 << 10},
+			{Size: numWorkers, Capacity: 8 << 10},
+			{Size: numWorkers, Capacity: 16 << 10},
+			{Size: numWorkers, Capacity: 32 << 10},
 		}, nil)
 
 		var wg sync.WaitGroup
-		numWorkers := 256
 		n := 10
 
 		for i := 0; i < numWorkers; i++ {
