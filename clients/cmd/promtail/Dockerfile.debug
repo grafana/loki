@@ -1,8 +1,8 @@
 # Directories in this file are referenced from the root of the project not this folder
 # This file is intended to be called from the root like so:
 # docker build -t grafana/promtail -f clients/cmd/promtail/Dockerfile.debug .
-
-FROM grafana/loki-build-image:0.33.2 as build
+ARG BUILD_IMAGE
+FROM ${BUILD_IMAGE} as build
 ARG GOARCH="amd64"
 COPY . /src/loki
 WORKDIR /src/loki
