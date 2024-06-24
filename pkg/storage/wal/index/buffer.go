@@ -86,6 +86,11 @@ func (fw *BufferWriter) Close() error {
 	return nil
 }
 
+func (fw *BufferWriter) Reset() {
+	fw.pos = 0
+	fw.buf.Reset()
+}
+
 func (fw *BufferWriter) Remove() error {
 	return nil
 }

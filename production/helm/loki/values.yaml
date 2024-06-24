@@ -858,6 +858,8 @@ gateway:
   enabled: true
   # -- Number of replicas for the gateway
   replicas: 1
+  # -- Default container port
+  containerPort: 8080
   # -- Enable logging of 2xx and 3xx HTTP requests
   verboseLogging: true
   autoscaling:

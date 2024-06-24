@@ -118,8 +118,6 @@ type PostingsEncoder func(*encoding.Encbuf, []uint32) error
 // Writer implements the IndexWriter interface for the standard
 // serialization format.
 type Writer struct {
-	ctx context.Context
-
 	// For the main index file.
 	f *BufferWriter
 
@@ -197,9 +195,8 @@ func NewTOCFromByteSlice(bs ByteSlice) (*TOC, error) {
 
 // NewWriter returns a new Writer to the given filename. It serializes data in format version 2.
 // It uses the given encoder to encode each postings list.
-func NewWriterWithEncoder(ctx context.Context, encoder PostingsEncoder) (*Writer, error) {
+func NewWriterWithEncoder(encoder PostingsEncoder) (*Writer, error) {
 	iw := &Writer{
-		ctx:   ctx,
 		f:     NewBufferWriter(),
 		fP:    NewBufferWriter(),
 		fPO:   NewBufferWriter(),
@@ -222,8 +219,8 @@ func NewWriterWithEncoder(ctx context.Context, encoder PostingsEncoder) (*Writer
 
 // NewWriter creates a new index writer using the default encoder. See
 // NewWriterWithEncoder.
-func NewWriter(ctx context.Context) (*Writer, error) {
-	return NewWriterWithEncoder(ctx, EncodePostingsRaw)
+func NewWriter() (*Writer, error) {
+	return NewWriterWithEncoder(EncodePostingsRaw)
 }
 
 func (w *Writer) write(bufs ...[]byte) error {
@@ -242,15 +239,36 @@ func (w *Writer) Buffer() ([]byte, io.Closer, error) {
 	return w.f.Buffer()
 }
 
+func (w *Writer) Reset() error {
+	w.f.Reset()
+	w.fP.Reset()
+	w.fPO.Reset()
+	w.buf1.Reset()
+	w.buf2.Reset()
+	w.stage = idxStageNone
+	w.toc = TOC{}
+	w.postingsStart = 0
+	w.numSymbols = 0
+	w.symbols = nil
+	w.symbolFile = nil
+	w.lastSymbol = ""
+	w.symbolCache = make(map[string]symbolCacheEntry, 1<<8)
+	w.labelIndexes = w.labelIndexes[:0]
+	w.labelNames = make(map[string]uint64, 1<<8)
+	w.lastSeries = nil
+	w.lastSeriesRef = 0
+	w.lastChunkRef = 0
+	w.cntPO = 0
+	w.crc32.Reset()
+	if err := w.writeMeta(); err != nil {
+		return err
+	}
+	return nil
+}
+
 // ensureStage handles transitions between write stages and ensures that IndexWriter
 // methods are called in an order valid for the implementation.
 func (w *Writer) ensureStage(s indexWriterStage) error {
-	select {
-	case <-w.ctx.Done():
-		return w.ctx.Err()
-	default:
-	}
-
 	if w.stage == s {
 		return nil
 	}
@@ -691,7 +709,6 @@ func (w *Writer) writePostingsOffsetTable() error {
 	if err := w.fPO.Remove(); err != nil {
 		return err
 	}
-	w.fPO = nil
 
 	err = w.writeLengthAndHash(startPos)
 	if err != nil {
@@ -854,11 +871,7 @@ func (w *Writer) writePostingsToTmpFiles() error {
 				}
 			}
 		}
-		select {
-		case <-w.ctx.Done():
-			return w.ctx.Err()
-		default:
-		}
+
 	}
 	return nil
 }
@@ -936,7 +949,6 @@ func (w *Writer) writePostings() error {
 	if err := w.fP.Remove(); err != nil {
 		return err
 	}
-	w.fP = nil
 	return nil
 }
 

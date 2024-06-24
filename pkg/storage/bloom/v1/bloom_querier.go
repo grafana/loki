@@ -162,6 +162,11 @@ func (it *LazyBloomIter) Err() error {
 	}
 }
 
-func (it *LazyBloomIter) Close() {
-	it.curPage.Relinquish(it.alloc)
+func (it *LazyBloomIter) Reset() {
+	it.err = nil
+	it.curPageIndex = 0
+	if it.curPage != nil {
+		it.curPage.Relinquish(it.alloc)
+	}
+	it.curPage = nil
 }

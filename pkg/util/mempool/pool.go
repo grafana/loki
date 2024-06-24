@@ -20,7 +20,7 @@ var (
 type slab struct {
 	buffer      chan unsafe.Pointer
 	size, count int
-	mtx         sync.Mutex
+	once        sync.Once
 	metrics     *metrics
 	name        string
 }
@@ -49,11 +49,7 @@ func (s *slab) init() {
 
 func (s *slab) get(size int) ([]byte, error) {
 	s.metrics.accesses.WithLabelValues(s.name, opTypeGet).Inc()
-	s.mtx.Lock()
-	if s.buffer == nil {
-		s.init()
-	}
-	defer s.mtx.Unlock()
+	s.once.Do(s.init)
 
 	// wait for available buffer on channel
 	var buf []byte
