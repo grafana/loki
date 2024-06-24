@@ -13,6 +13,7 @@ import "pkg/logqlmodel/stats/stats.proto";
 import "pkg/push/push.proto";
 import "pkg/querier/queryrange/queryrangebase/definitions/definitions.proto";
 import "pkg/querier/queryrange/queryrangebase/queryrange.proto";
+import "pkg/storage/chunk/cache/resultscache/types.proto";
 
 option go_package = "github.com/grafana/loki/v3/pkg/querier/queryrange";
 option (gogoproto.marshaler_all) = true;
@@ -39,6 +40,7 @@ message LokiRequest {
   // If populated, these represent the chunk references that the querier should
   // use to fetch the data, plus any other chunks reported by ingesters.
   logproto.ChunkRefGroup storeChunks = 11 [(gogoproto.jsontag) = "storeChunks"];
+  resultscache.CachingOptions cachingOptions = 12 [(gogoproto.nullable) = false];
 }
 
 message LokiInstantRequest {
@@ -55,6 +57,7 @@ message LokiInstantRequest {
   // If populated, these represent the chunk references that the querier should
   // use to fetch the data, plus any other chunks reported by ingesters.
   logproto.ChunkRefGroup storeChunks = 8 [(gogoproto.jsontag) = "storeChunks"];
+  resultscache.CachingOptions cachingOptions = 9 [(gogoproto.nullable) = false];
 }
 
 message Plan {
@@ -207,6 +210,13 @@ message DetectedLabelsResponse {
     (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
   ];
 }
+message QuerySamplesResponse {
+  logproto.QuerySamplesResponse response = 1 [(gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/logproto.QuerySamplesResponse"];
+  repeated definitions.PrometheusResponseHeader Headers = 2 [
+    (gogoproto.jsontag) = "-",
+    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
+  ];
+}
 
 message QueryResponse {
   google.rpc.Status status = 1;
@@ -223,6 +233,7 @@ message QueryResponse {
     DetectedFieldsResponse detectedFields = 11;
     QueryPatternsResponse patternsResponse = 12;
     DetectedLabelsResponse detectedLabels = 13;
+    QuerySamplesResponse samplesResponse = 14;
   }
 }
 
@@ -238,6 +249,7 @@ message QueryRequest {
     logproto.DetectedFieldsRequest detectedFields = 9;
     logproto.QueryPatternsRequest patternsRequest = 10;
     logproto.DetectedLabelsRequest detectedLabels = 11;
+    logproto.QuerySamplesRequest samplesRequest = 12;
   }
   map<string, string> metadata = 7 [(gogoproto.nullable) = false];
 }

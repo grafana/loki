@@ -119,25 +119,31 @@ func (it *peekingSampleIterator) Error() error {
 	return it.iter.Error()
 }
 
-type sampleIteratorHeap struct {
+type SampleIteratorHeap struct {
 	its []SampleIterator
 }
 
-func (h sampleIteratorHeap) Len() int             { return len(h.its) }
-func (h sampleIteratorHeap) Swap(i, j int)        { h.its[i], h.its[j] = h.its[j], h.its[i] }
-func (h sampleIteratorHeap) Peek() SampleIterator { return h.its[0] }
-func (h *sampleIteratorHeap) Push(x interface{}) {
+func NewSampleIteratorHeap(its []SampleIterator) SampleIteratorHeap {
+	return SampleIteratorHeap{
+		its: its,
+	}
+}
+
+func (h SampleIteratorHeap) Len() int             { return len(h.its) }
+func (h SampleIteratorHeap) Swap(i, j int)        { h.its[i], h.its[j] = h.its[j], h.its[i] }
+func (h SampleIteratorHeap) Peek() SampleIterator { return h.its[0] }
+func (h *SampleIteratorHeap) Push(x interface{}) {
 	h.its = append(h.its, x.(SampleIterator))
 }
 
-func (h *sampleIteratorHeap) Pop() interface{} {
+func (h *SampleIteratorHeap) Pop() interface{} {
 	n := len(h.its)
 	x := h.its[n-1]
 	h.its = h.its[0 : n-1]
 	return x
 }
 
-func (h sampleIteratorHeap) Less(i, j int) bool {
+func (h SampleIteratorHeap) Less(i, j int) bool {
 	s1, s2 := h.its[i].Sample(), h.its[j].Sample()
 	if s1.Timestamp == s2.Timestamp {
 		if h.its[i].StreamHash() == 0 {
@@ -150,7 +156,7 @@ func (h sampleIteratorHeap) Less(i, j int) bool {
 
 // mergeSampleIterator iterates over a heap of iterators by merging samples.
 type mergeSampleIterator struct {
-	heap       *sampleIteratorHeap
+	heap       *SampleIteratorHeap
 	is         []SampleIterator
 	prefetched bool
 	stats      *stats.Context
@@ -170,7 +176,7 @@ type mergeSampleIterator struct {
 // This means using this iterator with a single iterator will result in the same result as the input iterator.
 // If you don't need to deduplicate sample, use `NewSortSampleIterator` instead.
 func NewMergeSampleIterator(ctx context.Context, is []SampleIterator) SampleIterator {
-	h := sampleIteratorHeap{
+	h := SampleIteratorHeap{
 		its: make([]SampleIterator, 0, len(is)),
 	}
 	return &mergeSampleIterator{
@@ -350,7 +356,7 @@ func (i *mergeSampleIterator) Close() error {
 
 // sortSampleIterator iterates over a heap of iterators by sorting samples.
 type sortSampleIterator struct {
-	heap       *sampleIteratorHeap
+	heap       *SampleIteratorHeap
 	is         []SampleIterator
 	prefetched bool
 
@@ -369,7 +375,7 @@ func NewSortSampleIterator(is []SampleIterator) SampleIterator {
 	if len(is) == 1 {
 		return is[0]
 	}
-	h := sampleIteratorHeap{
+	h := SampleIteratorHeap{
 		its: make([]SampleIterator, 0, len(is)),
 	}
 	return &sortSampleIterator{
@@ -378,7 +384,7 @@ func NewSortSampleIterator(is []SampleIterator) SampleIterator {
 	}
 }
 
-// init initialize the underlaying heap
+// init initialize the underlying heap
 func (i *sortSampleIterator) init() {
 	if i.prefetched {
 		return

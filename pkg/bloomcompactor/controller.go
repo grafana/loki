@@ -22,7 +22,7 @@ import (
 
 type SimpleBloomController struct {
 	tsdbStore   TSDBStore
-	bloomStore  bloomshipper.Store
+	bloomStore  bloomshipper.StoreBase
 	chunkLoader ChunkLoader
 	metrics     *Metrics
 	limits      Limits
@@ -32,7 +32,7 @@ type SimpleBloomController struct {
 
 func NewSimpleBloomController(
 	tsdbStore TSDBStore,
-	blockStore bloomshipper.Store,
+	blockStore bloomshipper.StoreBase,
 	chunkLoader ChunkLoader,
 	limits Limits,
 	metrics *Metrics,
@@ -287,7 +287,7 @@ func (s *SimpleBloomController) loadWorkForGap(
 	tenant string,
 	id tsdb.Identifier,
 	gap gapWithBlocks,
-) (v1.Iterator[*v1.Series], v1.CloseableResettableIterator[*v1.SeriesWithBloom], error) {
+) (v1.Iterator[*v1.Series], v1.CloseableResettableIterator[*v1.SeriesWithBlooms], error) {
 	// load a series iterator for the gap
 	seriesItr, err := s.tsdbStore.LoadTSDB(ctx, table, tenant, id, gap.bounds)
 	if err != nil {
@@ -384,6 +384,10 @@ func (s *SimpleBloomController) buildGaps(
 			// to try and accelerate bloom creation
 			level.Debug(logger).Log("msg", "loading series and blocks for gap", "blocks", len(gap.blocks))
 			seriesItr, blocksIter, err := s.loadWorkForGap(ctx, table, tenant, plan.tsdb, gap)
+			if err != nil {
+				level.Error(logger).Log("msg", "failed to get series and blocks", "err", err)
+				return nil, errors.Wrap(err, "failed to get series and blocks")
+			}
 
 			// TODO(owen-d): more elegant error handling than sync.OnceFunc
 			closeBlocksIter := sync.OnceFunc(func() {
@@ -392,11 +396,6 @@ func (s *SimpleBloomController) buildGaps(
 				}
 			})
 			defer closeBlocksIter()
-
-			if err != nil {
-				level.Error(logger).Log("msg", "failed to get series and blocks", "err", err)
-				return nil, errors.Wrap(err, "failed to get series and blocks")
-			}
 
 			// Blocks are built consuming the series iterator. For observability, we wrap the series iterator
 			// with a counter iterator to count the number of times Next() is called on it.
