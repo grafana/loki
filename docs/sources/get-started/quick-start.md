@@ -196,6 +196,8 @@ You can view your logs using the command line interface, [LogCLI](/docs/loki/<LO
    - [Builder mode](https://grafana.com/docs/grafana/latest/datasources/loki/query-editor/#builder-mode), which provides a visual query designer.
    - [Code mode](https://grafana.com/docs/grafana/latest/datasources/loki/query-editor/#code-mode), which provides a feature-rich editor for writing LogQL queries.
 
+   Next we’ll walk through a few simple queries using both the builder and code views.
+
 1. Click **Code** (3) to work in Code mode in the query editor.
 
    Here are some sample queries to get you started using LogQL.
