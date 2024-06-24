@@ -79,6 +79,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/limiter"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 	"github.com/grafana/loki/v3/pkg/util/querylimits"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 	serverutil "github.com/grafana/loki/v3/pkg/util/server"
@@ -754,7 +755,24 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 		level.Warn(logger).Log("msg", "failed to preload blocks cache", "err", err)
 	}
 
-	t.BloomStore, err = bloomshipper.NewBloomStore(t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.ClientMetrics, metasCache, blocksCache, reg, logger)
+	var pageAllocator mempool.Allocator
+
+	// Set global BloomPageAllocator variable
+	switch bsCfg.MemoryManagement.BloomPageAllocationType {
+	case "simple":
+		pageAllocator = &mempool.SimpleHeapAllocator{}
+	case "dynamic":
+		// sync buffer pool for bloom pages
+		// 128KB 256KB 512KB 1MB 2MB 4MB 8MB 16MB 32MB 64MB 128MB
+		pageAllocator = mempool.NewBytePoolAllocator(128<<10, 128<<20, 2)
+	case "fixed":
+		pageAllocator = mempool.New("bloom-page-pool", bsCfg.MemoryManagement.BloomPageMemPoolBuckets, reg)
+	default:
+		// should not happen as the type is validated upfront
+		return nil, fmt.Errorf("failed to create bloom store: invalid allocator type")
+	}
+
+	t.BloomStore, err = bloomshipper.NewBloomStore(t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.ClientMetrics, metasCache, blocksCache, pageAllocator, reg, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bloom store: %w", err)
 	}

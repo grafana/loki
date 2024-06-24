@@ -112,15 +112,16 @@ func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelReques
 		resLength = len(resp.Values)
 	}
 	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
-	log := spanlogger.FromContext(ctx)
-	statResult.Log(level.Debug(log))
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV(statResult.KVList()...)
+	}
 
 	status := 200
 	if err != nil {
 		status, _ = serverutil.ClientHTTPStatusAndError(err)
 	}
 
-	logql.RecordLabelQueryMetrics(ctx, log, *req.Start, *req.End, req.Name, req.Query, strconv.Itoa(status), statResult)
+	logql.RecordLabelQueryMetrics(ctx, util_log.Logger, *req.Start, *req.End, req.Name, req.Query, strconv.Itoa(status), statResult)
 
 	return resp, err
 }
@@ -266,15 +267,16 @@ func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequ
 	}
 
 	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
-	log := spanlogger.FromContext(ctx)
-	statResult.Log(level.Debug(log))
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV(statResult.KVList()...)
+	}
 
 	status := 200
 	if err != nil {
 		status, _ = serverutil.ClientHTTPStatusAndError(err)
 	}
 
-	logql.RecordSeriesQueryMetrics(ctx, log, req.Start, req.End, req.Groups, strconv.Itoa(status), req.GetShards(), statResult)
+	logql.RecordSeriesQueryMetrics(ctx, util_log.Logger, req.Start, req.End, req.Groups, strconv.Itoa(status), req.GetShards(), statResult)
 
 	return resp, statResult, err
 }
@@ -296,15 +298,16 @@ func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQu
 
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 	statResult := statsCtx.Result(time.Since(start), queueTime, 1)
-	log := spanlogger.FromContext(ctx)
-	statResult.Log(level.Debug(log))
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV(statResult.KVList()...)
+	}
 
 	status := 200
 	if err != nil {
 		status, _ = serverutil.ClientHTTPStatusAndError(err)
 	}
 
-	logql.RecordStatsQueryMetrics(ctx, log, req.Start, req.End, req.Query, strconv.Itoa(status), statResult)
+	logql.RecordStatsQueryMetrics(ctx, util_log.Logger, req.Start, req.End, req.Query, strconv.Itoa(status), statResult)
 
 	return resp, err
 }
@@ -327,8 +330,9 @@ func (q *QuerierAPI) IndexShardsHandler(ctx context.Context, req *loghttp.RangeQ
 
 	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
 
-	log := spanlogger.FromContext(ctx)
-	statResult.Log(level.Debug(log))
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV(statResult.KVList()...)
+	}
 
 	status := 200
 	if err != nil {
@@ -336,7 +340,7 @@ func (q *QuerierAPI) IndexShardsHandler(ctx context.Context, req *loghttp.RangeQ
 	}
 
 	logql.RecordShardsQueryMetrics(
-		ctx, log, req.Start, req.End, req.Query, targetBytesPerShard, strconv.Itoa(status), resLength, statResult,
+		ctx, util_log.Logger, req.Start, req.End, req.Query, targetBytesPerShard, strconv.Itoa(status), resLength, statResult,
 	)
 
 	return resp, err
@@ -363,15 +367,16 @@ func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequ
 
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 	statResult := statsCtx.Result(time.Since(start), queueTime, 1)
-	log := spanlogger.FromContext(ctx)
-	statResult.Log(level.Debug(log))
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV(statResult.KVList()...)
+	}
 
 	status := 200
 	if err != nil {
 		status, _ = serverutil.ClientHTTPStatusAndError(err)
 	}
 
-	logql.RecordVolumeQueryMetrics(ctx, log, req.From.Time(), req.Through.Time(), req.GetQuery(), uint32(req.GetLimit()), time.Duration(req.GetStep()), strconv.Itoa(status), statResult)
+	logql.RecordVolumeQueryMetrics(ctx, util_log.Logger, req.From.Time(), req.Through.Time(), req.GetQuery(), uint32(req.GetLimit()), time.Duration(req.GetStep()), strconv.Itoa(status), statResult)
 
 	return resp, nil
 }

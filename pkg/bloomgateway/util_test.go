@@ -432,6 +432,7 @@ func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, 
 		// 		t.Log(i, j, string(keys[i][j]))
 		// 	}
 		// }
+
 		blocks = append(blocks, block)
 		metas = append(metas, meta)
 		blockRefs = append(blockRefs, blockRef)
