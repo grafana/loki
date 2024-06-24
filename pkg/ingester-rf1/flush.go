@@ -11,7 +11,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/ring"
-	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -54,7 +53,7 @@ func (i *Ingester) InitFlushQueues() {
 // Flush triggers a flush of all the chunks and closes the flush queues.
 // Called from the Lifecycler as part of the ingester shutdown.
 func (i *Ingester) Flush() {
-	i.flush(true)
+	i.flush()
 }
 
 // TransferOut implements ring.FlushTransferer
@@ -64,9 +63,8 @@ func (i *Ingester) TransferOut(_ context.Context) error {
 	return ring.ErrTransferDisabled
 }
 
-func (i *Ingester) flush(mayRemoveStreams bool) {
-	i.sweepUsers(true, mayRemoveStreams)
-
+func (i *Ingester) flush() {
+	// TODO: Flush the last chunks
 	// Close the flush queues, to unblock waiting workers.
 	for _, flushQueue := range i.flushQueues {
 		flushQueue.Close()
@@ -79,7 +77,6 @@ func (i *Ingester) flush(mayRemoveStreams bool) {
 // FlushHandler triggers a flush of all in memory chunks.  Mainly used for
 // local testing.
 func (i *Ingester) FlushHandler(w http.ResponseWriter, _ *http.Request) {
-	i.sweepUsers(true, true)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -96,44 +93,6 @@ func (o *flushOp) Key() string {
 
 func (o *flushOp) Priority() int64 {
 	return -int64(o.from)
-}
-
-// sweepUsers periodically schedules series for flushing and garbage collects users with no series
-func (i *Ingester) sweepUsers(immediate, mayRemoveStreams bool) {
-	instances := i.getInstances()
-
-	for _, instance := range instances {
-		i.sweepInstance(instance, immediate, mayRemoveStreams)
-	}
-}
-
-func (i *Ingester) sweepInstance(instance *instance, immediate, mayRemoveStreams bool) {
-	_ = instance.streams.ForEach(func(s *stream) (bool, error) {
-		i.sweepStream(instance, s, immediate)
-		i.removeFlushedChunks(instance, s, mayRemoveStreams)
-		return true, nil
-	})
-}
-
-func (i *Ingester) sweepStream(instance *instance, stream *stream, immediate bool) {
-	stream.chunkMtx.RLock()
-	defer stream.chunkMtx.RUnlock()
-	if len(stream.chunks) == 0 {
-		return
-	}
-
-	lastChunk := stream.chunks[len(stream.chunks)-1]
-	shouldFlush, _ := i.shouldFlushChunk(&lastChunk)
-	if len(stream.chunks) == 1 && !immediate && !shouldFlush {
-		return
-	}
-
-	flushQueueIndex := int(uint64(stream.fp) % uint64(i.cfg.ConcurrentFlushes))
-	firstTime, _ := stream.chunks[0].chunk.Bounds()
-	i.flushQueues[flushQueueIndex].Enqueue(&flushOp{
-		model.TimeFromUnixNano(firstTime.UnixNano()), instance.instanceID,
-		stream.fp, immediate,
-	})
 }
 
 func (i *Ingester) flushLoop(j int) {
@@ -171,129 +130,14 @@ func (i *Ingester) flushOp(l log.Logger, op *flushOp) error {
 
 	b := backoff.New(ctx, i.cfg.FlushOpBackoff)
 	for b.Ongoing() {
-		err := i.flushUserSeries(ctx, op.userID, op.fp, op.immediate)
-		if err == nil {
-			break
-		}
-		level.Error(l).Log("msg", "failed to flush", "retries", b.NumRetries(), "err", err)
+		/*		err := i.flushUserSeries(ctx, op.userID, op.fp, op.immediate)
+				if err == nil {
+					break
+				}*/
+		//level.Error(l).Log("msg", "failed to flush", "retries", b.NumRetries(), "err", err)
 		b.Wait()
 	}
 	return b.Err()
-}
-
-func (i *Ingester) flushUserSeries(ctx context.Context, userID string, fp model.Fingerprint, immediate bool) error {
-	instance, ok := i.getInstanceByID(userID)
-	if !ok {
-		return nil
-	}
-
-	chunks, labels, chunkMtx := i.collectChunksToFlush(instance, fp, immediate)
-	if len(chunks) < 1 {
-		return nil
-	}
-
-	lbs := labels.String()
-	//level.Info(i.logger).Log("msg", "flushing stream", "user", userID, "fp", fp, "immediate", immediate, "num_chunks", len(chunks), "labels", lbs)
-
-	ctx = user.InjectOrgID(ctx, userID)
-	ctx, cancelFunc := context.WithTimeout(ctx, i.cfg.FlushOpTimeout)
-	defer cancelFunc()
-	err := i.flushChunks(ctx, fp, labels, chunks, chunkMtx)
-	if err != nil {
-		return fmt.Errorf("failed to flush chunks: %w, num_chunks: %d, labels: %s", err, len(chunks), lbs)
-	}
-
-	return nil
-}
-
-func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint, immediate bool) ([]*chunkDesc, labels.Labels, *sync.RWMutex) {
-	var stream *stream
-	var ok bool
-	stream, ok = instance.streams.LoadByFP(fp)
-
-	if !ok {
-		return nil, nil, nil
-	}
-
-	stream.chunkMtx.Lock()
-	defer stream.chunkMtx.Unlock()
-
-	var result []*chunkDesc
-	for j := range stream.chunks {
-		shouldFlush, reason := i.shouldFlushChunk(&stream.chunks[j])
-		if immediate || shouldFlush {
-			// Ensure no more writes happen to this chunk.
-			if !stream.chunks[j].closed {
-				stream.chunks[j].closed = true
-			}
-			// Flush this chunk if it hasn't already been successfully flushed.
-			if stream.chunks[j].flushed.IsZero() {
-				if immediate {
-					reason = flushReasonForced
-				}
-				stream.chunks[j].reason = reason
-
-				result = append(result, &stream.chunks[j])
-			}
-		}
-	}
-	return result, stream.labels, &stream.chunkMtx
-}
-
-func (i *Ingester) shouldFlushChunk(chunk *chunkDesc) (bool, string) {
-	// Append should close the chunk when the a new one is added.
-	if chunk.closed {
-		if chunk.synced {
-			return true, flushReasonSynced
-		}
-		return true, flushReasonFull
-	}
-
-	if time.Since(chunk.lastUpdated) > i.cfg.MaxChunkIdle {
-		return true, flushReasonIdle
-	}
-
-	if from, to := chunk.chunk.Bounds(); to.Sub(from) > i.cfg.MaxChunkAge {
-		return true, flushReasonMaxAge
-	}
-
-	return false, ""
-}
-
-func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream, mayRemoveStream bool) {
-	now := time.Now()
-
-	stream.chunkMtx.Lock()
-	defer stream.chunkMtx.Unlock()
-	prevNumChunks := len(stream.chunks)
-	var subtracted int
-	for len(stream.chunks) > 0 {
-		if stream.chunks[0].flushed.IsZero() || now.Sub(stream.chunks[0].flushed) < i.cfg.RetainPeriod {
-			break
-		}
-
-		subtracted += stream.chunks[0].chunk.UncompressedSize()
-		stream.chunks[0].chunk = nil // erase reference so the chunk can be garbage-collected
-		stream.chunks = stream.chunks[1:]
-	}
-	i.metrics.memoryChunks.Sub(float64(prevNumChunks - len(stream.chunks)))
-
-	// Signal how much data has been flushed to lessen any WAL replay pressure.
-	//i.replayController.Sub(int64(subtracted))
-
-	if mayRemoveStream && len(stream.chunks) == 0 {
-		// Unlock first, then lock inside streams' lock to prevent deadlock
-		stream.chunkMtx.Unlock()
-		// Only lock streamsMap when it's needed to remove a stream
-		instance.streams.WithLock(func() {
-			stream.chunkMtx.Lock()
-			// Double check length
-			// TODO: uncomment this
-			//if len(stream.chunks) == 0 {
-			//	instance.removeStream(stream)
-			//}
-		})
-	}
 }
 
 // flushChunks iterates over given chunkDescs, derives chunk.Chunk from them and flush them to the store, one at a time.

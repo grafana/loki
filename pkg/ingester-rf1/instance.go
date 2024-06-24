@@ -92,23 +92,17 @@ type instance struct {
 	customStreamsTracker push.UsageTracker
 }
 
-func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
+func (i *instance) Push(ctx context.Context, req *logproto.PushRequest, flushCtx *flushCtx) error {
 	rateLimitWholeStream := i.limiter.limits.ShardStreams(i.instanceID).Enabled
 
 	var appendErr error
 	for _, reqStream := range req.Streams {
-
 		s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
 			func() (*stream, error) {
 				s, err := i.createStream(ctx, reqStream)
-				// Lock before adding to maps
-				if err == nil {
-					s.chunkMtx.Lock()
-				}
 				return s, err
 			},
 			func(s *stream) error {
-				s.chunkMtx.Lock()
 				return nil
 			},
 		)
@@ -117,8 +111,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			continue
 		}
 
-		_, appendErr = s.Push(ctx, reqStream.Entries, false, rateLimitWholeStream, i.customStreamsTracker)
-		s.chunkMtx.Unlock()
+		_, appendErr = s.Push(ctx, reqStream.Entries, rateLimitWholeStream, i.customStreamsTracker, flushCtx)
 	}
 	return appendErr
 }

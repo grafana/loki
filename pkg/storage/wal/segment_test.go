@@ -131,6 +131,153 @@ func TestWalSegmentWriter_Append(t *testing.T) {
 	}
 }
 
+func BenchmarkConcurrentAppends(t *testing.B) {
+	type appendArgs struct {
+		tenant  string
+		labels  labels.Labels
+		entries []*push.Entry
+	}
+
+	lbls := []labels.Labels{
+		labels.FromStrings("container", "foo", "namespace", "dev"),
+		labels.FromStrings("container", "bar", "namespace", "staging"),
+		labels.FromStrings("container", "bar", "namespace", "prod"),
+	}
+	characters := "abcdefghijklmnopqrstuvwxyz"
+	tenants := []string{}
+	// 676 unique tenants (26^2)
+	for i := 0; i < len(characters); i++ {
+		for j := 0; j < len(characters); j++ {
+			tenants = append(tenants, string(characters[i])+string(characters[j]))
+		}
+	}
+
+	workChan := make(chan *appendArgs)
+	var wg sync.WaitGroup
+	var w *SegmentWriter
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func(i int) {
+			for args := range workChan {
+				w.Append(args.tenant, args.labels.String(), args.labels, args.entries)
+			}
+			wg.Done()
+		}(i)
+	}
+
+	t.ResetTimer()
+	for i := 0; i < t.N; i++ {
+		w, err := NewWalSegmentWriter()
+		require.NoError(t, err)
+
+		for _, lbl := range lbls {
+			for _, r := range tenants {
+				for i := 0; i < 10; i++ {
+					workChan <- &appendArgs{
+						tenant: r,
+						labels: lbl,
+						entries: []*push.Entry{
+							{Timestamp: time.Unix(0, int64(i)), Line: fmt.Sprintf("log line %d", i)},
+						},
+					}
+				}
+			}
+		}
+	}
+	close(workChan)
+	wg.Wait()
+}
+
+func TestConcurrentAppends(t *testing.T) {
+	type appendArgs struct {
+		tenant  string
+		labels  labels.Labels
+		entries []*push.Entry
+	}
+	dst := bytes.NewBuffer(nil)
+
+	w, err := NewWalSegmentWriter()
+	require.NoError(t, err)
+	var wg sync.WaitGroup
+	workChan := make(chan *appendArgs, 100)
+	for i := 0; i < 10000; i++ {
+		wg.Add(1)
+		go func(i int) {
+			for args := range workChan {
+				w.Append(args.tenant, args.labels.String(), args.labels, args.entries)
+			}
+			wg.Done()
+		}(i)
+	}
+
+	lbls := []labels.Labels{
+		labels.FromStrings("container", "foo", "namespace", "dev"),
+		labels.FromStrings("container", "bar", "namespace", "staging"),
+		labels.FromStrings("container", "bar", "namespace", "prod"),
+	}
+	characters := "abcdefghijklmnopqrstuvwxyz"
+	tenants := []string{}
+	// 676 unique tenants (26^2)
+	for i := 0; i < len(characters); i++ {
+		for j := 0; j < len(characters); j++ {
+			tenants = append(tenants, string(characters[i])+string(characters[j]))
+		}
+	}
+
+	for _, r := range tenants {
+		for _, lbl := range lbls {
+			for i := 0; i < 1000; i++ {
+				workChan <- &appendArgs{
+					tenant: r,
+					labels: lbl,
+					entries: []*push.Entry{
+						{Timestamp: time.Unix(0, int64(i)), Line: fmt.Sprintf("log line %d", i)},
+					},
+				}
+			}
+		}
+	}
+	close(workChan)
+	wg.Wait()
+
+	n, err := w.WriteTo(dst)
+	require.NoError(t, err)
+	require.True(t, n > 0)
+
+	r, err := NewReader(dst.Bytes())
+	require.NoError(t, err)
+
+	iter, err := r.Series(context.Background())
+	require.NoError(t, err)
+
+	var expectedSeries, actualSeries []string
+
+	for _, tenant := range tenants {
+		for _, lbl := range lbls {
+			expectedSeries = append(expectedSeries, labels.NewBuilder(lbl).Set(tsdb.TenantLabel, string(tenant)).Labels().String())
+		}
+	}
+
+	for iter.Next() {
+		actualSeries = append(actualSeries, iter.At().String())
+		chk, err := iter.ChunkReader(nil)
+		require.NoError(t, err)
+		// verify all lines
+		var i int
+		for chk.Next() {
+			ts, line := chk.At()
+			require.Equal(t, int64(i), ts)
+			require.Equal(t, fmt.Sprintf("log line %d", i), string(line))
+			i++
+		}
+		require.NoError(t, chk.Err())
+		require.NoError(t, chk.Close())
+		require.Equal(t, 1000, i)
+	}
+	require.NoError(t, iter.Err())
+	require.ElementsMatch(t, expectedSeries, actualSeries)
+}
+
 func TestMultiTenantWrite(t *testing.T) {
 	w, err := NewWalSegmentWriter()
 	require.NoError(t, err)

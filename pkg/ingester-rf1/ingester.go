@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/storage/wal"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 
 	"github.com/go-kit/log"
@@ -187,6 +188,7 @@ type flushCtx struct {
 	lock            *sync.RWMutex
 	flushDone       chan struct{}
 	newCtxAvailable chan struct{}
+	segmentWriter   *wal.SegmentWriter
 }
 
 // Ingester builds chunks for incoming log streams.
@@ -279,6 +281,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 			lock:            &sync.RWMutex{},
 			flushDone:       make(chan struct{}),
 			newCtxAvailable: make(chan struct{}),
+			segmentWriter:   wal.NewWalSegmentWriter(),
 		},
 	}
 	//i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
@@ -546,6 +549,11 @@ func (i *Ingester) loop() {
 		return
 	}
 
+	err := os.Mkdir("tmploki", 0700)
+	if err != nil {
+		panic(err)
+	}
+
 	// Add +/- 20% of flush interval as jitter.
 	// The default flush check period is 30s so max jitter will be 6s.
 	j := i.cfg.FlushCheckPeriod / 5
@@ -558,16 +566,23 @@ func (i *Ingester) loop() {
 			//i.logger.Log("msg", "starting periodic flush")
 			i.flushCtx.lock.Lock() // Stop new chunks being written while we swap destinations - we'll never unlock as this flushctx can no longer be used.
 			currentFlushCtx := i.flushCtx
-			// TODO: To stay in the critical section as shortly as possible, figure out how to close all the old chunks and start new ones before continuing with the flush to storage.
-			i.sweepUsers(true, true)
 			// APIs become unblocked after resetting flushCtx
 			i.flushCtx = &flushCtx{
 				lock:            &sync.RWMutex{},
 				flushDone:       make(chan struct{}),
 				newCtxAvailable: make(chan struct{}),
+				segmentWriter:   wal.NewWalSegmentWriter(),
 			}
 			close(currentFlushCtx.newCtxAvailable) // Broadcast to all waiters that they can now fetch a new flushCtx
-			// TODO: Check flush is complete now...
+			// TODO: Check flush is complete / dispatch to the flush workers to actually do the flush and let them signal
+			f, err := os.Create(path.Join("tmploki/", fmt.Sprintf("flush-%d", time.Now().UnixNano())))
+			if err != nil {
+				panic(err)
+			}
+			_, err = currentFlushCtx.segmentWriter.WriteTo(f)
+			if err != nil {
+				panic(err)
+			}
 			close(currentFlushCtx.flushDone) // Broadcast to all waiters that they can return
 
 		case <-i.loopQuit:
@@ -791,7 +806,7 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 		}
 		currentFlushCtx = i.flushCtx
 	}
-	err = instance.Push(ctx, req)
+	err = instance.Push(ctx, req, currentFlushCtx)
 	currentFlushCtx.lock.RUnlock()
 	select {
 	case <-ctx.Done():
