@@ -1174,8 +1174,6 @@ func minTs(stream *logproto.Stream) model.Time {
 	return model.TimeFromUnixNano(streamMinTs)
 }
 
-var streamTokenGenerator = lokiring.TokenFor
-
 // For each stream, we check if the stream is owned by the ingester or not and increment/decrement the owned stream count.
 func (i *instance) updateOwnedStreams(ingesterRing ring.ReadRing, ingesterID string) error {
 	var descsBuf = make([]ring.InstanceDesc, ingesterRing.ReplicationFactor()+1)
@@ -1185,7 +1183,7 @@ func (i *instance) updateOwnedStreams(ingesterRing ring.ReadRing, ingesterID str
 	i.streams.WithLock(func() {
 		i.ownedStreamsSvc.resetStreamCounts()
 		err = i.streams.ForEach(func(s *stream) (bool, error) {
-			replicationSet, err := ingesterRing.Get(streamTokenGenerator(i.instanceID, s.labelsString), ring.WriteNoExtend, descsBuf, hostsBuf, zoneBuf)
+			replicationSet, err := ingesterRing.Get(lokiring.TokenFor(i.instanceID, s.labelsString), ring.WriteNoExtend, descsBuf, hostsBuf, zoneBuf)
 			if err != nil {
 				return false, fmt.Errorf("error getting replication set for stream %s: %v", s.labelsString, err)
 			}
