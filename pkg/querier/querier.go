@@ -161,6 +161,7 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
 
+	sp := opentracing.SpanFromContext(ctx)
 	iters := []iter.EntryIterator{}
 	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
 		// Make a copy of the request before modifying
@@ -171,9 +172,11 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 		}
 		newParams.Start = ingesterQueryInterval.start
 		newParams.End = ingesterQueryInterval.end
-		level.Debug(spanlogger.FromContext(ctx)).Log(
-			"msg", "querying ingester",
-			"params", newParams)
+		if sp != nil {
+			sp.LogKV(
+				"msg", "querying ingester",
+				"params", newParams)
+		}
 		ingesterIters, err := q.ingesterQuerier.SelectLogs(ctx, newParams)
 		if err != nil {
 			return nil, err
@@ -185,9 +188,11 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
 		params.Start = storeQueryInterval.start
 		params.End = storeQueryInterval.end
-		level.Debug(spanlogger.FromContext(ctx)).Log(
-			"msg", "querying store",
-			"params", params)
+		if sp != nil {
+			sp.LogKV(
+				"msg", "querying store",
+				"params", params)
+		}
 		storeIter, err := q.store.SelectLogs(ctx, params)
 		if err != nil {
 			return nil, err

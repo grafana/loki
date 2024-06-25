@@ -10,6 +10,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/grafana/dskit/concurrency"
+	"github.com/grafana/dskit/multierror"
 
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -88,7 +89,7 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 		// after iteration for performance (alloc reduction).
 		// This is safe to do here because we do not capture
 		// the underlying bloom []byte outside of iteration
-		bloomshipper.WithPool(true),
+		bloomshipper.WithPool(p.store.Allocator()),
 	)
 	duration = time.Since(startBlocks)
 	level.Debug(p.logger).Log("msg", "fetched blocks", "count", len(refs), "duration", duration, "err", err)
@@ -113,13 +114,14 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 }
 
 func (p *processor) processBlocks(ctx context.Context, bqs []*bloomshipper.CloseableBlockQuerier, data []blockWithTasks) error {
-
+	// We opportunistically close blocks during iteration to allow returning memory to the pool, etc,
+	// as soon as possible, but since we exit early on error, we need to ensure we close all blocks.
+	hasClosed := make([]bool, len(bqs))
 	defer func() {
-		for i := range bqs {
-			if bqs[i] == nil {
-				continue
+		for i, bq := range bqs {
+			if bq != nil && !hasClosed[i] {
+				_ = bq.Close()
 			}
-			bqs[i].Close()
 		}
 	}()
 
@@ -136,15 +138,21 @@ func (p *processor) processBlocks(ctx context.Context, bqs []*bloomshipper.Close
 			return errors.Errorf("block and querier bounds differ: %s vs %s", block.ref.Bounds, bq.Bounds)
 		}
 
-		err := p.processBlock(ctx, bq.BlockQuerier, block.tasks)
-		if err != nil {
-			return errors.Wrap(err, "processing block")
-		}
-		return nil
+		var errs multierror.MultiError
+		errs.Add(
+			errors.Wrap(
+				p.processBlock(ctx, bq, block.tasks),
+				"processing block",
+			),
+		)
+		errs.Add(bq.Close())
+		hasClosed[i] = true
+		return errs.Err()
 	})
 }
 
-func (p *processor) processBlock(_ context.Context, blockQuerier *v1.BlockQuerier, tasks []Task) error {
+func (p *processor) processBlock(_ context.Context, bq *bloomshipper.CloseableBlockQuerier, tasks []Task) (err error) {
+	blockQuerier := bq.BlockQuerier
 	schema, err := blockQuerier.Schema()
 	if err != nil {
 		return err

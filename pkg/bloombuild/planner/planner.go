@@ -40,7 +40,7 @@ type Planner struct {
 	schemaCfg config.SchemaConfig
 
 	tsdbStore  common.TSDBStore
-	bloomStore bloomshipper.Store
+	bloomStore bloomshipper.StoreBase
 
 	tasksQueue  *queue.RequestQueue
 	activeUsers *util.ActiveUsersCleanupService
@@ -57,7 +57,7 @@ func New(
 	schemaCfg config.SchemaConfig,
 	storeCfg storage.Config,
 	storageMetrics storage.ClientMetrics,
-	bloomStore bloomshipper.Store,
+	bloomStore bloomshipper.StoreBase,
 	logger log.Logger,
 	r prometheus.Registerer,
 ) (*Planner, error) {
@@ -122,6 +122,8 @@ func (p *Planner) stopping(_ error) error {
 }
 
 func (p *Planner) running(ctx context.Context) error {
+	go p.trackInflightRequests(ctx)
+
 	// run once at beginning
 	if err := p.runOne(ctx); err != nil {
 		level.Error(p.logger).Log("msg", "bloom build iteration failed for the first time", "err", err)
@@ -129,9 +131,6 @@ func (p *Planner) running(ctx context.Context) error {
 
 	planningTicker := time.NewTicker(p.cfg.PlanningInterval)
 	defer planningTicker.Stop()
-
-	inflightTasksTicker := time.NewTicker(250 * time.Millisecond)
-	defer inflightTasksTicker.Stop()
 
 	for {
 		select {
@@ -149,6 +148,19 @@ func (p *Planner) running(ctx context.Context) error {
 			if err := p.runOne(ctx); err != nil {
 				level.Error(p.logger).Log("msg", "bloom build iteration failed", "err", err)
 			}
+		}
+	}
+}
+
+func (p *Planner) trackInflightRequests(ctx context.Context) {
+	inflightTasksTicker := time.NewTicker(250 * time.Millisecond)
+	defer inflightTasksTicker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			// We just return. Error handling and logging is done in the main loop (running method).
+			return
 
 		case <-inflightTasksTicker.C:
 			inflight := p.totalPendingTasks()
@@ -176,6 +188,10 @@ func (p *Planner) runOne(ctx context.Context) error {
 	defer func() {
 		p.metrics.buildCompleted.WithLabelValues(status).Inc()
 		p.metrics.buildTime.WithLabelValues(status).Observe(time.Since(start).Seconds())
+
+		if status == statusSuccess {
+			p.metrics.buildLastSuccess.SetToCurrentTime()
+		}
 	}()
 
 	p.metrics.buildStarted.Inc()
@@ -207,6 +223,7 @@ func (p *Planner) runOne(ctx context.Context) error {
 				level.Error(logger).Log("msg", "error computing tasks", "err", err)
 				continue
 			}
+			level.Debug(logger).Log("msg", "computed tasks", "tasks", len(tasks), "existingMetas", len(existingMetas))
 
 			var tenantTableEnqueuedTasks int
 			resultsCh := make(chan *protos.TaskResult, len(tasks))
@@ -223,6 +240,7 @@ func (p *Planner) runOne(ctx context.Context) error {
 				tenantTableEnqueuedTasks++
 			}
 
+			p.metrics.tenantTasksPlanned.WithLabelValues(tt.tenant).Add(float64(tenantTableEnqueuedTasks))
 			tasksResultForTenantTable[tt] = tenantTableTaskResults{
 				tasksToWait:   tenantTableEnqueuedTasks,
 				originalMetas: existingMetas,
@@ -240,6 +258,11 @@ func (p *Planner) runOne(ctx context.Context) error {
 	//                   Create a pool of workers to process table-tenant tuples.
 	var wg sync.WaitGroup
 	for tt, results := range tasksResultForTenantTable {
+		if results.tasksToWait == 0 {
+			// No tasks enqueued for this tenant-table tuple, skip processing
+			continue
+		}
+
 		wg.Add(1)
 		go func(table config.DayTable, tenant string, results tenantTableTaskResults) {
 			defer wg.Done()
@@ -293,12 +316,15 @@ func (p *Planner) computeTasks(
 
 		// Filter only the metas that overlap in the ownership range
 		metasInBounds := bloomshipper.FilterMetasOverlappingBounds(metas, ownershipRange)
-		level.Debug(logger).Log("msg", "found relevant metas", "metas", len(metasInBounds))
 
 		// Find gaps in the TSDBs for this tenant/table
 		gaps, err := p.findOutdatedGaps(ctx, tenant, table, ownershipRange, metasInBounds, logger)
 		if err != nil {
 			level.Error(logger).Log("msg", "failed to find outdated gaps", "err", err)
+			continue
+		}
+		if len(gaps) == 0 {
+			level.Debug(logger).Log("msg", "no gaps found")
 			continue
 		}
 
@@ -318,7 +344,7 @@ func (p *Planner) processTenantTaskResults(
 	totalTasks int,
 	resultsCh <-chan *protos.TaskResult,
 ) error {
-	logger := log.With(p.logger, table, table.Addr(), "tenant", tenant)
+	logger := log.With(p.logger, "table", table.Addr(), "tenant", tenant)
 	level.Debug(logger).Log("msg", "waiting for all tasks to be completed", "tasks", totalTasks)
 
 	newMetas := make([]bloomshipper.Meta, 0, totalTasks)
@@ -366,8 +392,12 @@ func (p *Planner) processTenantTaskResults(
 
 	combined := append(originalMetas, newMetas...)
 	outdated := outdatedMetas(combined)
-	level.Debug(logger).Log("msg", "found outdated metas", "outdated", len(outdated))
+	if len(outdated) == 0 {
+		level.Debug(logger).Log("msg", "no outdated metas found")
+		return nil
+	}
 
+	level.Debug(logger).Log("msg", "found outdated metas", "outdated", len(outdated))
 	if err := p.deleteOutdatedMetasAndBlocks(ctx, table, tenant, outdated); err != nil {
 		return fmt.Errorf("failed to delete outdated metas: %w", err)
 	}
@@ -481,6 +511,7 @@ func (p *Planner) loadTenantWork(
 			tenant := tenants.At()
 
 			if !p.limits.BloomCreationEnabled(tenant) {
+				level.Debug(p.logger).Log("msg", "bloom creation disabled for tenant", "tenant", tenant)
 				continue
 			}
 
@@ -488,6 +519,12 @@ func (p *Planner) loadTenantWork(
 			bounds := SplitFingerprintKeyspaceByFactor(splitFactor)
 
 			tenantTableWork[table][tenant] = bounds
+
+			// Reset progress tracking metrics for this tenant
+			// NOTE(salvacorts): We will reset them multiple times for the same tenant, for each table, but it's not a big deal.
+			//                   Alternatively, we can use a Counter instead of a Gauge, but I think a Gauge is easier to reason about.
+			p.metrics.tenantTasksPlanned.WithLabelValues(tenant).Set(0)
+			p.metrics.tenantTasksCompleted.WithLabelValues(tenant).Set(0)
 
 			level.Debug(p.logger).Log("msg", "loading work for tenant", "table", table, "tenant", tenant, "splitFactor", splitFactor)
 		}
@@ -711,7 +748,7 @@ func (p *Planner) NotifyBuilderShutdown(
 	req *protos.NotifyBuilderShutdownRequest,
 ) (*protos.NotifyBuilderShutdownResponse, error) {
 	level.Debug(p.logger).Log("msg", "builder shutdown", "builder", req.BuilderID)
-	p.tasksQueue.UnregisterConsumerConnection(req.GetBuilderID())
+	p.tasksQueue.NotifyConsumerShutdown(req.GetBuilderID())
 
 	return &protos.NotifyBuilderShutdownResponse{}, nil
 }
@@ -801,9 +838,10 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 		level.Debug(logger).Log(
 			"msg", "task completed",
 			"duration", time.Since(task.queueTime).Seconds(),
-			"retries", task.timesEnqueued.Load(),
+			"retries", task.timesEnqueued.Load()-1, // -1 because the first enqueue is not a retry
 		)
 		p.removePendingTask(task)
+		p.metrics.tenantTasksCompleted.WithLabelValues(task.Tenant).Inc()
 
 		// Send the result back to the task. The channel is buffered, so this should not block.
 		task.resultsChannel <- result

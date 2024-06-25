@@ -11,9 +11,12 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/google/uuid"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/common"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
@@ -38,7 +41,7 @@ type Builder struct {
 	logger  log.Logger
 
 	tsdbStore   common.TSDBStore
-	bloomStore  bloomshipper.Store
+	bloomStore  bloomshipper.StoreBase
 	chunkLoader ChunkLoader
 
 	client protos.PlannerForBuilderClient
@@ -51,7 +54,7 @@ func New(
 	storeCfg storage.Config,
 	storageMetrics storage.ClientMetrics,
 	fetcherProvider stores.ChunkFetcherProvider,
-	bloomStore bloomshipper.Store,
+	bloomStore bloomshipper.StoreBase,
 	logger log.Logger,
 	r prometheus.Registerer,
 ) (*Builder, error) {
@@ -84,16 +87,25 @@ func (b *Builder) starting(_ context.Context) error {
 }
 
 func (b *Builder) stopping(_ error) error {
+	defer b.metrics.running.Set(0)
+
 	if b.client != nil {
+		// The gRPC server we use from dskit expects the orgID to be injected into the context when auth is enabled
+		// We won't actually use the orgID anywhere in this service, but we need to inject it to satisfy the server.
+		ctx, err := user.InjectIntoGRPCRequest(user.InjectOrgID(context.Background(), "fake"))
+		if err != nil {
+			level.Error(b.logger).Log("msg", "failed to inject orgID into context", "err", err)
+			return nil
+		}
+
 		req := &protos.NotifyBuilderShutdownRequest{
 			BuilderID: b.ID,
 		}
-		if _, err := b.client.NotifyBuilderShutdown(context.Background(), req); err != nil {
+		if _, err := b.client.NotifyBuilderShutdown(ctx, req); err != nil {
 			level.Error(b.logger).Log("msg", "failed to notify planner about builder shutdown", "err", err)
 		}
 	}
 
-	b.metrics.running.Set(0)
 	return nil
 }
 
@@ -110,6 +122,13 @@ func (b *Builder) running(ctx context.Context) error {
 	}
 
 	b.client = protos.NewPlannerForBuilderClient(conn)
+
+	// The gRPC server we use from dskit expects the orgID to be injected into the context when auth is enabled
+	// We won't actually use the orgID anywhere in this service, but we need to inject it to satisfy the server.
+	ctx, err = user.InjectIntoGRPCRequest(user.InjectOrgID(ctx, "fake"))
+	if err != nil {
+		return fmt.Errorf("failed to inject orgID into context: %w", err)
+	}
 
 	c, err := b.client.BuilderLoop(ctx)
 	if err != nil {
@@ -135,7 +154,7 @@ func (b *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 		// will be canceled and the loop will exit.
 		protoTask, err := c.Recv()
 		if err != nil {
-			if errors.Is(c.Context().Err(), context.Canceled) {
+			if status.Code(err) == codes.Canceled {
 				level.Debug(b.logger).Log("msg", "builder loop context canceled")
 				return nil
 			}
