@@ -3,24 +3,22 @@
 # docker build -t grafana/promtail -f clients/cmd/promtail/Dockerfile.debug .
 ARG BUILD_IMAGE=grafana/loki-build-image:0.33.2
 FROM ${BUILD_IMAGE} as build
-ARG GOARCH="amd64"
+
 COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && make BUILD_IN_CONTAINER=false PROMTAIL_JOURNAL_ENABLED=true promtail-debug
 
 
-FROM       alpine:3.18.5
-RUN        apk add --update --no-cache ca-certificates tzdata
+FROM       gcr.io/distroless/base:debug
 COPY       --from=build /src/loki/clients/cmd/promtail/promtail-debug /usr/bin/promtail-debug
 COPY       --from=build /usr/bin/dlv /usr/bin/dlv
 COPY       clients/cmd/promtail/promtail-local-config.yaml /etc/promtail/local-config.yaml
 COPY       clients/cmd/promtail/promtail-docker-config.yaml /etc/promtail/config.yml
+SHELL [ "/busybox/sh", "-c" ]
+RUN ln -s /busybox/sh /bin/sh
 
 # Expose 40000 for delve
 EXPOSE 40000
-
-# Allow delve to run on Alpine based containers.
-RUN apk add --no-cache libc6-compat
 
 # Run delve, ending with -- because we pass params via kubernetes, per the docs:
 #   Pass flags to the program you are debugging using --, for example:`
