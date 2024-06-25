@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/google/uuid"
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
@@ -110,12 +111,38 @@ func (b *Builder) stopping(_ error) error {
 }
 
 func (b *Builder) running(ctx context.Context) error {
+	// Try to re-establish the connection up to 5 times.
+	retries := backoff.New(context.Background(), backoff.Config{
+		MinBackoff: 1 * time.Second,
+		MaxBackoff: 10 * time.Second,
+		MaxRetries: 5,
+	})
+
+	for retries.Ongoing() {
+		err := b.connectAndBuild(ctx)
+		if err == nil {
+			break
+		}
+
+		level.Error(b.logger).Log("msg", "failed to connect and build. Retrying", "err", err)
+		retries.Wait()
+	}
+
+	if err := retries.Err(); err != nil {
+		return fmt.Errorf("failed to connect and build: %w", err)
+	}
+
+	return nil
+}
+
+func (b *Builder) connectAndBuild(
+	ctx context.Context,
+) error {
 	opts, err := b.cfg.GrpcConfig.DialOption(nil, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create grpc dial options: %w", err)
 	}
 
-	// TODO: Wrap hereafter in retry logic
 	conn, err := grpc.DialContext(ctx, b.cfg.PlannerAddress, opts...)
 	if err != nil {
 		return fmt.Errorf("failed to dial bloom planner: %w", err)
