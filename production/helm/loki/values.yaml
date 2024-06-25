@@ -1298,6 +1298,8 @@ singleBinary:
     selector: null
     # -- Annotations for volume claim
     annotations: {}
+    # -- Labels for volume claim
+    labels: {}
 ######################################################################################################################
 #
 # Simple Scalable Deployment (SSD) Mode
@@ -1427,6 +1429,8 @@ write:
     selector: null
     # -- Annotations for volume claim
     annotations: {}
+    # -- Labels for volume claim
+    labels: {}
 # --  Configuration for the read pod(s)
 read:
   # -- Number of replicas for the read
@@ -1536,6 +1540,8 @@ read:
     selector: null
     # -- Annotations for volume claim
     annotations: {}
+    # -- Labels for volume claim
+    labels: {}
 # --  Configuration for the backend pod(s)
 backend:
   # -- Number of replicas for the backend
@@ -1646,6 +1652,8 @@ backend:
     selector: null
     # -- Annotations for volume claim
     annotations: {}
+    # -- Labels for volume claim
+    labels: {}
 ######################################################################################################################
 #
 # Microservices Mode
@@ -2258,6 +2266,8 @@ indexGateway:
     storageClass: null
     # -- Annotations for index gateway PVCs
     annotations: {}
+    # -- Labels for index gateway PVCs
+    labels: {}
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
     whenDeleted: Retain
@@ -2765,6 +2775,8 @@ ruler:
     storageClass: null
     # -- Annotations for ruler PVCs
     annotations: {}
+    # -- Labels for ruler PVCs
+    labels: {}
   # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
   appProtocol:
     grpc: ""

@@ -173,6 +173,10 @@ spec:
         annotations:
           {{- . | toYaml | nindent 10 }}
         {{- end }}
+        {{- with .Values.indexGateway.persistence.labels }}
+        labels:
+          {{- . | toYaml | nindent 10 }}
+        {{- end }}
       spec:
         accessModes:
           - ReadWriteOnce
