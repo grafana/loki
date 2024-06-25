@@ -128,7 +128,7 @@ func (i *Ingester) flushOp(l log.Logger, flushCtx *flushCtx) error {
 		if err == nil {
 			break
 		}
-		//level.Error(l).Log("msg", "failed to flush", "retries", b.NumRetries(), "err", err)
+		level.Error(l).Log("msg", "failed to flush", "retries", b.NumRetries(), "err", err)
 		b.Wait()
 	}
 	return b.Err()

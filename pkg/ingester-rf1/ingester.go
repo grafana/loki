@@ -562,13 +562,6 @@ func (i *Ingester) loop() {
 		return
 	}
 
-	err := os.Mkdir("tmploki", 0700)
-	if err != nil {
-		if !errors.Is(err, os.ErrExist) {
-			panic(err)
-		}
-	}
-
 	// Add +/- 20% of flush interval as jitter.
 	// The default flush check period is 30s so max jitter will be 6s.
 	j := i.cfg.FlushCheckPeriod / 5
@@ -594,9 +587,9 @@ func (i *Ingester) loop() {
 				segmentWriter:   segmentWriter,
 			}
 			close(currentFlushCtx.newCtxAvailable) // Broadcast to all waiters that they can now fetch a new flushCtx. Small chance of a race but if they re-fetch the old one, they'll just check again immediately.
-			// TODO: Check flush is complete / dispatch to the flush workers to actually do the flush and let them signal
+			// Flush the finished context in the background & then notify watching API requests
+			// TODO: use multiple flush queues if required
 			i.flushQueues[0].Enqueue(currentFlushCtx)
-			//close(currentFlushCtx.flushDone) // Broadcast to all waiters that they can return
 
 		case <-i.loopQuit:
 			return
@@ -946,11 +939,6 @@ func (i *Ingester) getChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 	}
 
 	return &resp, nil
-}
-
-// Watch implements grpc_health_v1.HealthCheck.
-func (*Ingester) Check(*grpc_health_v1.HealthCheckRequest, grpc_health_v1.Health_WatchServer) error {
-	return nil
 }
 
 // Watch implements grpc_health_v1.HealthCheck.
