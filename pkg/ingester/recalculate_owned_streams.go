@@ -2,7 +2,6 @@ package ingester
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/go-kit/log"
@@ -61,6 +60,7 @@ func (s *recalculateOwnedStreams) recalculate() {
 			continue
 		}
 
+		level.Info(s.logger).Log("msg", "updating streams ownership", "tenant", instance.instanceID)
 		err := instance.updateOwnedStreams(s.ingestersRing, s.ingesterID)
 		if err != nil {
 			level.Error(s.logger).Log("msg", "failed to re-evaluate streams ownership", "tenant", instance.instanceID, "err", err)
@@ -70,7 +70,10 @@ func (s *recalculateOwnedStreams) recalculate() {
 
 func (s *recalculateOwnedStreams) updateFixedLimitForAll() {
 	for _, instance := range s.instancesSupplier() {
-		instance.ownedStreamsSvc.updateFixedLimit()
+		oldLimit, newLimit := instance.ownedStreamsSvc.updateFixedLimit()
+		if oldLimit != newLimit {
+			level.Info(s.logger).Log("msg", "fixed limit has been updated", "tenant", instance.instanceID, "old", oldLimit, "new", newLimit)
+		}
 	}
 }
 
@@ -84,9 +87,6 @@ func (s *recalculateOwnedStreams) checkRingForChanges() (bool, error) {
 		return false, err
 	}
 
-	//todo remove
-	level.Debug(s.logger).Log("previous ring", fmt.Sprintf("%+v", s.previousRing))
-	level.Debug(s.logger).Log("new ring", fmt.Sprintf("%+v", rs))
 	ringChanged := ring.HasReplicationSetChangedWithoutStateOrAddr(s.previousRing, rs)
 	s.previousRing = rs
 	return ringChanged, nil

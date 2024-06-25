@@ -10,7 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	logg "github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/ring"
@@ -131,7 +130,7 @@ type instance struct {
 	customStreamsTracker push.UsageTracker
 }
 
-func newInstanceWithLogger(
+func newInstance(
 	cfg *Config,
 	periodConfigs []config.PeriodConfig,
 	instanceID string,
@@ -146,14 +145,13 @@ func newInstanceWithLogger(
 	streamRateCalculator *StreamRateCalculator,
 	writeFailures *writefailures.Manager,
 	customStreamsTracker push.UsageTracker,
-	logger logg.Logger,
 ) (*instance, error) {
 	invertedIndex, err := index.NewMultiInvertedIndex(periodConfigs, uint32(cfg.IndexShards))
 	if err != nil {
 		return nil, err
 	}
 	streams := newStreamsMap()
-	ownedStreamsSvc := newOwnedStreamService(instanceID, limiter, logger)
+	ownedStreamsSvc := newOwnedStreamService(instanceID, limiter)
 	c := config.SchemaConfig{Configs: periodConfigs}
 	i := &instance{
 		cfg:        cfg,
@@ -189,25 +187,6 @@ func newInstanceWithLogger(
 	i.mapper = NewFPMapper(i.getLabelsFromFingerprint)
 
 	return i, err
-}
-
-func newInstance(
-	cfg *Config,
-	periodConfigs []config.PeriodConfig,
-	instanceID string,
-	limiter *Limiter,
-	configs *runtime.TenantConfigs,
-	wal WAL,
-	metrics *ingesterMetrics,
-	flushOnShutdownSwitch *OnceSwitch,
-	chunkFilter chunk.RequestChunkFilterer,
-	pipelineWrapper log.PipelineWrapper,
-	extractorWrapper log.SampleExtractorWrapper,
-	streamRateCalculator *StreamRateCalculator,
-	writeFailures *writefailures.Manager,
-	customStreamsTracker push.UsageTracker,
-) (*instance, error) {
-	return newInstanceWithLogger(cfg, periodConfigs, instanceID, limiter, configs, wal, metrics, flushOnShutdownSwitch, chunkFilter, pipelineWrapper, extractorWrapper, streamRateCalculator, writeFailures, customStreamsTracker, util_log.Logger)
 }
 
 // consumeChunk manually adds a chunk that was received during ingester chunk
