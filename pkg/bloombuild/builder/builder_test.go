@@ -94,7 +94,7 @@ func Test_BuilderLoop(t *testing.T) {
 
 	// Wait for at least one task to be processed.
 	require.Eventually(t, func() bool {
-		return server.completedTasks.Load() > 0
+		return server.CompletedTasks() > 0
 	}, 5*time.Second, 100*time.Millisecond)
 
 	// Right after stop it so connection is broken, and builder will retry.
@@ -102,17 +102,17 @@ func Test_BuilderLoop(t *testing.T) {
 
 	// While the server is stopped, the builder should keep retrying to connect but no tasks should be processed.
 	// Note this is just a way to sleep while making sure no tasks are processed.
-	tasksProcessedSoFar := server.completedTasks.Load()
+	tasksProcessedSoFar := server.CompletedTasks()
 	require.Never(t, func() bool {
-		return server.completedTasks.Load() > tasksProcessedSoFar
+		return server.CompletedTasks() > tasksProcessedSoFar
 	}, 5*time.Second, 500*time.Millisecond)
 
 	// Now we start the server so the builder can connect and receive tasks.
 	server.Start()
 
-	require.Eventually(t, func() bool {
-		return int(server.completedTasks.Load()) == len(tasks)
-	}, 5*time.Second, 100*time.Millisecond)
+	require.Eventuallyf(t, func() bool {
+		return server.CompletedTasks() == len(tasks)
+	}, 30*time.Second, 100*time.Millisecond, "expected all tasks to be processed, got %d. Expected %d.", server.CompletedTasks(), len(tasks))
 
 	err = services.StopAndAwaitTerminated(context.Background(), builder)
 	require.NoError(t, err)
@@ -194,6 +194,10 @@ func (f *fakePlannerServer) BuilderLoop(srv protos.PlannerForBuilder_BuilderLoop
 	// No more tasks. Wait until shutdown.
 	<-srv.Context().Done()
 	return nil
+}
+
+func (f *fakePlannerServer) CompletedTasks() int {
+	return int(f.completedTasks.Load())
 }
 
 func (f *fakePlannerServer) NotifyBuilderShutdown(_ context.Context, _ *protos.NotifyBuilderShutdownRequest) (*protos.NotifyBuilderShutdownResponse, error) {

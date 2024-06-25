@@ -112,6 +112,7 @@ func (b *Builder) stopping(_ error) error {
 
 func (b *Builder) running(ctx context.Context) error {
 	// Try to re-establish the connection up to 5 times.
+	// TODO(salvacorts): Make this configurable.
 	retries := backoff.New(context.Background(), backoff.Config{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 10 * time.Second,
@@ -189,6 +190,8 @@ func (b *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 			return fmt.Errorf("failed to receive task from planner: %w", err)
 		}
 
+		logger := log.With(b.logger, "task", protoTask.Task.Id)
+
 		b.metrics.taskStarted.Inc()
 		start := time.Now()
 		status := statusSuccess
@@ -196,7 +199,7 @@ func (b *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 		newMetas, err := b.processTask(c.Context(), protoTask.Task)
 		if err != nil {
 			status = statusFailure
-			level.Error(b.logger).Log("msg", "failed to process task", "err", err)
+			level.Error(logger).Log("msg", "failed to process task", "err", err)
 		}
 
 		b.metrics.taskCompleted.WithLabelValues(status).Inc()
@@ -224,13 +227,30 @@ func (b *Builder) notifyTaskCompletedToPlanner(
 		CreatedMetas: metas,
 	}
 
-	// TODO: Implement retry
-	if err := c.Send(&protos.BuilderToPlanner{
-		BuilderID: b.ID,
-		Result:    *result.ToProtoTaskResult(),
-	}); err != nil {
+	// We have a retry mechanism upper in the stack, but we add another one here
+	// to try our best to avoid losing the task result.
+	retries := backoff.New(context.Background(), backoff.Config{
+		MinBackoff: 1 * time.Second,
+		MaxBackoff: 10 * time.Second,
+		MaxRetries: 5,
+	})
+
+	for retries.Ongoing() {
+		if err := c.Send(&protos.BuilderToPlanner{
+			BuilderID: b.ID,
+			Result:    *result.ToProtoTaskResult(),
+		}); err == nil {
+			break
+		}
+
+		level.Error(b.logger).Log("msg", "failed to acknowledge task completion to planner. Retrying", "err", err)
+		retries.Wait()
+	}
+
+	if err := retries.Err(); err != nil {
 		return fmt.Errorf("failed to acknowledge task completion to planner: %w", err)
 	}
+
 	return nil
 }
 
