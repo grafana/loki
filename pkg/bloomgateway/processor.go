@@ -119,7 +119,7 @@ func (p *processor) processBlocks(ctx context.Context, bqs []*bloomshipper.Close
 	hasClosed := make([]bool, len(bqs))
 	defer func() {
 		for i, bq := range bqs {
-			if !hasClosed[i] {
+			if bq != nil && !hasClosed[i] {
 				_ = bq.Close()
 			}
 		}
