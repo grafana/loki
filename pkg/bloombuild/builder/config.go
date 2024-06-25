@@ -21,9 +21,9 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.PlannerAddress, prefix+".planner-address", "", "Hostname (and port) of the bloom planner")
 	cfg.GrpcConfig.RegisterFlagsWithPrefix(prefix+".grpc", f)
 
-	f.DurationVar(&cfg.BackoffConfig.MinBackoff, "dynamodb.min-backoff", 1*time.Second, "Minimum backoff time")
-	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, "dynamodb.max-backoff", 10*time.Second, "Maximum backoff time")
-	f.IntVar(&cfg.BackoffConfig.MaxRetries, "dynamodb.max-retries", 5, "Maximum number of times to retry an operation")
+	f.DurationVar(&cfg.BackoffConfig.MinBackoff, prefix+".backoff.min-backoff", 1*time.Second, "Minimum backoff time")
+	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, prefix+".backoff.max-backoff", 10*time.Second, "Maximum backoff time")
+	f.IntVar(&cfg.BackoffConfig.MaxRetries, prefix+".backoff.max-retries", 5, "Maximum number of times to retry an operation")
 }
 
 func (cfg *Config) Validate() error {
