@@ -1,10 +1,8 @@
 package ingester_rf1
 
 import (
-	"bytes"
 	"fmt"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -13,15 +11,12 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/net/context"
-
-	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/wal"
 	"github.com/grafana/loki/v3/pkg/util"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -107,140 +102,50 @@ func (i *Ingester) flushLoop(j int) {
 		if o == nil {
 			return
 		}
-		op := o.(*flushOp)
+		op := o.(*flushCtx)
 
-		m := util_log.WithUserID(op.userID, l)
-		err := i.flushOp(m, op)
+		err := i.flushOp(l, op)
 		if err != nil {
-			level.Error(m).Log("msg", "failed to flush", "err", err)
-		}
-
-		// If we're exiting & we failed to flush, put the failed operation
-		// back in the queue at a later point.
-		if op.immediate && err != nil {
-			op.from = op.from.Add(flushBackoff)
+			level.Error(l).Log("msg", "failed to flush", "err", err)
+			// Immediately re-queue another attempt at flushing this segment.
+			// TODO: Add some backoff or something?
 			i.flushQueues[j].Enqueue(op)
+		} else {
+			// Close the channel and trigger all waiting listeners to return
+			// TODO: Figure out how to return an error if we want to?
+			close(op.flushDone)
 		}
 	}
 }
 
-func (i *Ingester) flushOp(l log.Logger, op *flushOp) error {
+func (i *Ingester) flushOp(l log.Logger, flushCtx *flushCtx) error {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
 	b := backoff.New(ctx, i.cfg.FlushOpBackoff)
 	for b.Ongoing() {
-		/*		err := i.flushUserSeries(ctx, op.userID, op.fp, op.immediate)
-				if err == nil {
-					break
-				}*/
+		err := i.flushSegment(ctx, flushCtx.segmentWriter)
+		if err == nil {
+			break
+		}
 		//level.Error(l).Log("msg", "failed to flush", "retries", b.NumRetries(), "err", err)
 		b.Wait()
 	}
 	return b.Err()
 }
 
-// flushChunks iterates over given chunkDescs, derives chunk.Chunk from them and flush them to the store, one at a time.
-//
-// If a chunk fails to be flushed, this operation is reinserted in the queue. Since previously flushed chunks
-// are marked as flushed, they shouldn't be flushed again.
-// It has to close given chunks to have have the head block included.
-func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelPairs labels.Labels, cs []*chunkDesc, chunkMtx sync.Locker) error {
-	userID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return err
-	}
-
-	// NB(owen-d): No longer needed in TSDB (and is removed in that code path)
-	// It's required by historical index stores so we keep it for now.
-	labelsBuilder := labels.NewBuilder(labelPairs)
-	labelsBuilder.Set(nameLabel, logsValue)
-	metric := labelsBuilder.Labels()
-
-	sizePerTenant := i.metrics.chunkSizePerTenant.WithLabelValues(userID)
-	countPerTenant := i.metrics.chunksPerTenant.WithLabelValues(userID)
-
-	for j, c := range cs {
-		if err := i.closeChunk(c, chunkMtx); err != nil {
-			return fmt.Errorf("chunk close for flushing: %w", err)
-		}
-
-		firstTime, lastTime := util.RoundToMilliseconds(c.chunk.Bounds())
-		ch := chunk.NewChunk(
-			userID, fp, metric,
-			chunkenc.NewFacade(c.chunk, i.cfg.BlockSize, i.cfg.TargetChunkSize),
-			firstTime,
-			lastTime,
-		)
-
-		// encodeChunk mutates the chunk so we must pass by reference
-		if err := i.encodeChunk(ctx, &ch, c); err != nil {
-			return err
-		}
-
-		if err := i.flushChunk(ctx, &ch); err != nil {
-			return err
-		}
-
-		reason := func() string {
-			chunkMtx.Lock()
-			defer chunkMtx.Unlock()
-
-			return c.reason
-		}()
-
-		i.reportFlushedChunkStatistics(&ch, c, sizePerTenant, countPerTenant, reason)
-		i.markChunkAsFlushed(cs[j], chunkMtx)
-	}
-
-	return nil
-}
-
-// markChunkAsFlushed mark a chunk to make sure it won't be flushed if this operation fails.
-func (i *Ingester) markChunkAsFlushed(desc *chunkDesc, chunkMtx sync.Locker) {
-	chunkMtx.Lock()
-	defer chunkMtx.Unlock()
-	desc.flushed = time.Now()
-}
-
-// closeChunk closes the given chunk while locking it to ensure that new blocks are cut before flushing.
-//
-// If the chunk isn't closed, data in the head block isn't included.
-func (i *Ingester) closeChunk(desc *chunkDesc, chunkMtx sync.Locker) error {
-	chunkMtx.Lock()
-	defer chunkMtx.Unlock()
-
-	return desc.chunk.Close()
-}
-
-// encodeChunk encodes a chunk.Chunk based on the given chunkDesc.
-//
-// If the encoding is unsuccessful the flush operation is reinserted in the queue which will cause
-// the encoding for a given chunk to be evaluated again.
-func (i *Ingester) encodeChunk(ctx context.Context, ch *chunk.Chunk, desc *chunkDesc) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	start := time.Now()
-	chunkBytesSize := desc.chunk.BytesSize() + 4*1024 // size + 4kB should be enough room for cortex header
-	if err := ch.EncodeTo(bytes.NewBuffer(make([]byte, 0, chunkBytesSize))); err != nil {
-		return fmt.Errorf("chunk encoding: %w", err)
-	}
-	i.metrics.chunkEncodeTime.Observe(time.Since(start).Seconds())
-	return nil
-}
-
 // flushChunk flushes the given chunk to the store.
 //
 // If the flush is successful, metrics for this flush are to be reported.
 // If the flush isn't successful, the operation for this userID is requeued allowing this and all other unflushed
-// chunk to have another opportunity to be flushed.
-func (i *Ingester) flushChunk(ctx context.Context, ch *chunk.Chunk) error {
-	if err := i.store.Put(ctx, []chunk.Chunk{*ch}); err != nil {
+// segments to have another opportunity to be flushed.
+func (i *Ingester) flushSegment(ctx context.Context, ch *wal.SegmentWriter) error {
+	if err := i.store.PutWal(ctx, ch); err != nil {
 		i.metrics.chunksFlushFailures.Inc()
 		return fmt.Errorf("store put chunk: %w", err)
 	}
 	i.metrics.flushedChunksStats.Inc(1)
+	// TODO: report some flush metrics
 	return nil
 }
 

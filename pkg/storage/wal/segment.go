@@ -15,7 +15,6 @@ import (
 	"github.com/prometheus/prometheus/storage"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/wal/chunks"
 	"github.com/grafana/loki/v3/pkg/storage/wal/index"
@@ -29,10 +28,12 @@ var (
 	streamSegmentPool = sync.Pool{
 		New: func() interface{} {
 			return &streamSegment{
+				lock:    &sync.Mutex{},
 				entries: make([]*logproto.Entry, 0, 4096),
 			}
 		},
 	}
+	tenantLabel = "__loki_tenant__"
 )
 
 func init() {
@@ -92,8 +93,8 @@ func (b *SegmentWriter) getOrCreateStream(id streamID, lbls labels.Labels) *stre
 	if ok {
 		return s
 	}
-	if lbls.Get(tsdb.TenantLabel) == "" {
-		lbls = labels.NewBuilder(lbls).Set(tsdb.TenantLabel, id.tenant).Labels()
+	if lbls.Get(tenantLabel) == "" {
+		lbls = labels.NewBuilder(lbls).Set(tenantLabel, id.tenant).Labels()
 	}
 	s = streamSegmentPool.Get().(*streamSegment)
 	s.Reset()

@@ -33,6 +33,7 @@ import (
 	client_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/storage/wal"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/math"
@@ -116,6 +117,10 @@ type dynamoDBStorageClient struct {
 	batchWriteItemRequestFn func(ctx context.Context, input *dynamodb.BatchWriteItemInput) dynamoDBRequest
 
 	metrics *dynamoDBMetrics
+}
+
+func (a dynamoDBStorageClient) PutWal(ctx context.Context, writer *wal.SegmentWriter) error {
+	panic("implement me")
 }
 
 // NewDynamoDBIndexClient makes a new DynamoDB-backed IndexClient.

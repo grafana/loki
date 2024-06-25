@@ -189,6 +189,15 @@ type flushCtx struct {
 	flushDone       chan struct{}
 	newCtxAvailable chan struct{}
 	segmentWriter   *wal.SegmentWriter
+	creationTime    time.Time
+}
+
+func (o *flushCtx) Key() string {
+	return fmt.Sprintf("%d", o.creationTime.UnixNano())
+}
+
+func (o *flushCtx) Priority() int64 {
+	return -int64(o.creationTime.UnixNano())
 }
 
 // Ingester builds chunks for incoming log streams.
@@ -259,6 +268,11 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	targetSizeStats.Set(int64(cfg.TargetChunkSize))
 	metrics := newIngesterMetrics(registerer, metricsNamespace)
 
+	segmentWriter, err := wal.NewWalSegmentWriter()
+	if err != nil {
+		return nil, err
+	}
+
 	i := &Ingester{
 		cfg:             cfg,
 		logger:          logger,
@@ -281,12 +295,11 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 			lock:            &sync.RWMutex{},
 			flushDone:       make(chan struct{}),
 			newCtxAvailable: make(chan struct{}),
-			segmentWriter:   wal.NewWalSegmentWriter(),
+			segmentWriter:   segmentWriter,
 		},
 	}
 	//i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 
-	var err error
 	// TODO: change flush on shutdown
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester-rf1", "ingester-rf1-ring", true, logger, prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", registerer))
 	if err != nil {
@@ -551,7 +564,9 @@ func (i *Ingester) loop() {
 
 	err := os.Mkdir("tmploki", 0700)
 	if err != nil {
-		panic(err)
+		if !errors.Is(err, os.ErrExist) {
+			panic(err)
+		}
 	}
 
 	// Add +/- 20% of flush interval as jitter.
@@ -567,23 +582,21 @@ func (i *Ingester) loop() {
 			i.flushCtx.lock.Lock() // Stop new chunks being written while we swap destinations - we'll never unlock as this flushctx can no longer be used.
 			currentFlushCtx := i.flushCtx
 			// APIs become unblocked after resetting flushCtx
+			segmentWriter, err := wal.NewWalSegmentWriter()
+			if err != nil {
+				// TODO: handle this properly
+				panic(err)
+			}
 			i.flushCtx = &flushCtx{
 				lock:            &sync.RWMutex{},
 				flushDone:       make(chan struct{}),
 				newCtxAvailable: make(chan struct{}),
-				segmentWriter:   wal.NewWalSegmentWriter(),
+				segmentWriter:   segmentWriter,
 			}
-			close(currentFlushCtx.newCtxAvailable) // Broadcast to all waiters that they can now fetch a new flushCtx
+			close(currentFlushCtx.newCtxAvailable) // Broadcast to all waiters that they can now fetch a new flushCtx. Small chance of a race but if they re-fetch the old one, they'll just check again immediately.
 			// TODO: Check flush is complete / dispatch to the flush workers to actually do the flush and let them signal
-			f, err := os.Create(path.Join("tmploki/", fmt.Sprintf("flush-%d", time.Now().UnixNano())))
-			if err != nil {
-				panic(err)
-			}
-			_, err = currentFlushCtx.segmentWriter.WriteTo(f)
-			if err != nil {
-				panic(err)
-			}
-			close(currentFlushCtx.flushDone) // Broadcast to all waiters that they can return
+			i.flushQueues[0].Enqueue(currentFlushCtx)
+			//close(currentFlushCtx.flushDone) // Broadcast to all waiters that they can return
 
 		case <-i.loopQuit:
 			return

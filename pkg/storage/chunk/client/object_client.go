@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/wal"
 )
 
 // ObjectClient is used to store arbitrary data in Object Store (S3/GCS/Azure/...)
@@ -103,6 +104,15 @@ func NewClientWithMaxParallel(store ObjectClient, encoder KeyEncoder, maxParalle
 // Stop shuts down the object store and any underlying clients
 func (o *client) Stop() {
 	o.store.Stop()
+}
+
+func (o *client) PutWal(ctx context.Context, segment *wal.SegmentWriter) error {
+	buffer := bytes.NewBuffer(nil)
+	_, err := segment.WriteTo(buffer)
+	if err != nil {
+		return err
+	}
+	return o.store.PutObject(ctx, "wal-segment-"+time.Now().UTC().Format(time.RFC3339Nano), bytes.NewReader(buffer.Bytes()))
 }
 
 // PutChunks stores the provided chunks in the configured backend. If multiple errors are
