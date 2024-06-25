@@ -4,8 +4,9 @@ COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && make BUILD_IN_CONTAINER=false migrate
 
-FROM alpine:3.18.5
-RUN apk add --update --no-cache ca-certificates
+FROM gcr.io/distroless/base:debug
+
 COPY --from=build /src/loki/cmd/migrate/migrate /usr/bin/migrate
-#ENTRYPOINT [ "/usr/bin/migrate" ]
-CMD tail -f /dev/null
+SHELL [ "/busybox/sh", "-c" ]
+RUN ln -s /busybox/sh /bin/sh
+ENTRYPOINT [ "/busybox/tail", "-f", "/dev/null" ]
