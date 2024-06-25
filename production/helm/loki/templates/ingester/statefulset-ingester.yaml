@@ -88,7 +88,6 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -ingester.availability-zone=zone-default
-            - -ingester.availability-zone=zone-default
             - -target=ingester
             {{- with .Values.ingester.extraArgs }}
             {{- toYaml . | nindent 12 }}
