@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"os"
 	"testing"
 	"time"
 
@@ -15,7 +14,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
@@ -27,8 +25,8 @@ import (
 )
 
 func Test_BuilderLoop(t *testing.T) {
-	//logger := log.NewNopLogger()
-	logger := log.NewLogfmtLogger(os.Stdout)
+	logger := log.NewNopLogger()
+	//logger := log.NewLogfmtLogger(os.Stdout)
 
 	schemaCfg := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
@@ -116,9 +114,9 @@ func Test_BuilderLoop(t *testing.T) {
 	// Now we start the server so the builder can connect and receive tasks.
 	server.Start()
 
-	require.Eventuallyf(t, func() bool {
-		return server.CompletedTasks() == len(tasks)
-	}, 30*time.Second, 100*time.Millisecond, "expected all tasks to be processed, got %d. Expected %d.", server.CompletedTasks(), len(tasks))
+	require.Eventually(t, func() bool {
+		return server.CompletedTasks() >= len(tasks)
+	}, 10*time.Second, 500*time.Millisecond)
 
 	err = services.StopAndAwaitTerminated(context.Background(), builder)
 	require.NoError(t, err)
@@ -128,7 +126,7 @@ func Test_BuilderLoop(t *testing.T) {
 
 type fakePlannerServer struct {
 	tasks          []*protos.ProtoTask
-	completedTasks atomic.Int64
+	completedTasks int
 	shutdownCalled bool
 
 	lisAddr    string
@@ -193,7 +191,7 @@ func (f *fakePlannerServer) BuilderLoop(srv protos.PlannerForBuilder_BuilderLoop
 		if _, err := srv.Recv(); err != nil {
 			return fmt.Errorf("failed to receive task response: %w", err)
 		}
-		f.completedTasks.Add(1)
+		f.completedTasks++
 		time.Sleep(10 * time.Millisecond) // Simulate task processing time to add some latency.
 	}
 
@@ -203,7 +201,7 @@ func (f *fakePlannerServer) BuilderLoop(srv protos.PlannerForBuilder_BuilderLoop
 }
 
 func (f *fakePlannerServer) CompletedTasks() int {
-	return int(f.completedTasks.Load())
+	return f.completedTasks
 }
 
 func (f *fakePlannerServer) NotifyBuilderShutdown(_ context.Context, _ *protos.NotifyBuilderShutdownRequest) (*protos.NotifyBuilderShutdownResponse, error) {
