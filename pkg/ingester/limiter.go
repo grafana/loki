@@ -20,6 +20,8 @@ const (
 // to count members
 type RingCount interface {
 	HealthyInstancesCount() int
+	HealthyInstancesInZoneCount() int
+	ZonesCount() int
 }
 
 type Limits interface {
@@ -84,7 +86,7 @@ func (l *Limiter) GetStreamCountLimit(tenantID string) (calculatedLimit, localLi
 	// We can assume that streams are evenly distributed across ingesters
 	// so we do convert the global limit into a local limit
 	globalLimit = l.limits.MaxGlobalStreamsPerUser(tenantID)
-	adjustedGlobalLimit = l.convertGlobalToLocalLimit(globalLimit)
+	adjustedGlobalLimit = l.convertGlobalToLocalLimit(globalLimit, localLimit)
 
 	// Set the calculated limit to the lesser of the local limit or the new calculated global limit
 	calculatedLimit = l.minNonZero(localLimit, adjustedGlobalLimit)
@@ -105,24 +107,33 @@ func (l *Limiter) minNonZero(first, second int) int {
 	return first
 }
 
-func (l *Limiter) convertGlobalToLocalLimit(globalLimit int) int {
+func (l *Limiter) convertGlobalToLocalLimit(globalLimit, maxStreamsPerUser int) int {
 	if globalLimit == 0 {
 		return 0
 	}
-	// todo: change to healthyInstancesInZoneCount() once
-	// Given we don't need a super accurate count (ie. when the ingesters
-	// topology changes) and we prefer to always be in favor of the tenant,
-	// we can use a per-ingester limit equal to:
-	// (global limit / number of ingesters) * replication factor
-	numIngesters := l.ring.HealthyInstancesCount()
 
-	// May happen because the number of ingesters is asynchronously updated.
-	// If happens, we just temporarily ignore the global limit.
-	if numIngesters > 0 {
-		return int((float64(globalLimit) / float64(numIngesters)) * float64(l.replicationFactor))
+	zonesCount := l.ring.ZonesCount()
+
+	if zonesCount <= 1 {
+		numIngesters := l.ring.HealthyInstancesCount()
+		if numIngesters > 0 {
+			return int((float64(globalLimit) / float64(numIngesters)) * float64(l.replicationFactor))
+		}
+		return 0
 	}
 
-	return 0
+	ingestersInZone := l.ring.HealthyInstancesInZoneCount()
+	if ingestersInZone == 0 {
+		return 0 // Avoid division by zero
+	}
+
+	newLimit := int(float64(globalLimit) * float64(l.replicationFactor) * float64(zonesCount) / float64(ingestersInZone))
+
+	if maxStreamsPerUser > 0 && (newLimit == 0 || maxStreamsPerUser < newLimit) {
+		return maxStreamsPerUser
+	}
+
+	return newLimit
 }
 
 type supplier[T any] func() T

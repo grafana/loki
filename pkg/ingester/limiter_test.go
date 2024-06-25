@@ -214,6 +214,14 @@ func (m *ringCountMock) HealthyInstancesCount() int {
 	return m.count
 }
 
+func (m *ringCountMock) ZonesCount() int {
+	return 1
+}
+
+func (m *ringCountMock) HealthyInstancesInZoneCount() int {
+	return m.count
+}
+
 // Assert some of the weirder (bug?) behavior of golang.org/x/time/rate
 func TestGoLimiter(t *testing.T) {
 	for _, tc := range []struct {
