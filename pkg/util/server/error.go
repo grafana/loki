@@ -48,6 +48,10 @@ func WriteError(err error, w http.ResponseWriter) {
 // ClientHTTPStatusAndError returns error and http status that is "safe" to return to client without
 // exposing any implementation details.
 func ClientHTTPStatusAndError(err error) (int, error) {
+	if err == nil {
+		return http.StatusOK, nil
+	}
+
 	var (
 		queryErr storage_errors.QueryError
 		promErr  promql.ErrStorage
