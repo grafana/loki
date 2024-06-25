@@ -59,17 +59,17 @@ These parameters can be adjusted in the load test:
 
 * The way to run k6
 
-    k6 supports three [execution modes](https://k6.io/docs/get-started/running-k6/#execution-modes) to run a test: local, distributed, and cloud.
+    k6 supports three [execution modes](https://grafana.com/docs/k6/latest/get-started/running-k6/#execution-modes) to run a test: local, distributed, and cloud.
     Whereas running your k6 load test from a single (local
     or remote) machine is easy to set up and fine for smaller Loki clusters,
     the single machine does not load test large Loki installations,
     because it cannot create the data to saturate the write path.
-    For larger tests, consider [these optimizations](https://k6.io/docs/testing-guides/running-large-tests/), or run them in [Grafana Cloud k6](/products/cloud/k6) or a Kubernetes cluster with the [k6 Operator](https://github.com/grafana/k6-operator).
+    For larger tests, consider [these optimizations](https://grafana.com/docs/k6/latest/testing-guides/running-large-tests/), or run them in [Grafana Cloud k6](/products/cloud/k6) or a Kubernetes cluster with the [k6 Operator](https://github.com/grafana/k6-operator).
 
 ## Metrics
 
 The extension collects two metrics that are printed in the
-[end-of-test summary](https://k6.io/docs/results-visualization/end-of-test-summary/) in addition to the built-in metrics.
+[end-of-test summary](https://grafana.com/docs/k6/latest/results-output/end-of-test/) in addition to the built-in metrics.
 
 | name | description |
 | ---- | ----------- |
@@ -80,7 +80,7 @@ The extension collects two metrics that are printed in the
 
 An HTTP request that successfully pushes logs to Loki
 responds with status `204 No Content`.
-The status code should be checked explicitly with a [k6 check](https://k6.io/docs/javascript-api/k6/check-val-sets-tags/).
+The status code should be checked explicitly with a [k6 check](https://grafana.com/docs/k6/latest/javascript-api/k6/check/).
 
 
 ## Javascript example
