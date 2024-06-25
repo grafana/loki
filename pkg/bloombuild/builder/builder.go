@@ -111,14 +111,8 @@ func (b *Builder) stopping(_ error) error {
 }
 
 func (b *Builder) running(ctx context.Context) error {
-	// Try to re-establish the connection up to 5 times.
-	// TODO(salvacorts): Make this configurable.
-	retries := backoff.New(context.Background(), backoff.Config{
-		MinBackoff: 1 * time.Second,
-		MaxBackoff: 10 * time.Second,
-		MaxRetries: 5,
-	})
-
+	// Retry if the connection to the planner is lost.
+	retries := backoff.New(context.Background(), b.cfg.BackoffConfig)
 	for retries.Ongoing() {
 		err := b.connectAndBuild(ctx)
 		if err == nil {
@@ -229,12 +223,7 @@ func (b *Builder) notifyTaskCompletedToPlanner(
 
 	// We have a retry mechanism upper in the stack, but we add another one here
 	// to try our best to avoid losing the task result.
-	retries := backoff.New(context.Background(), backoff.Config{
-		MinBackoff: 1 * time.Second,
-		MaxBackoff: 10 * time.Second,
-		MaxRetries: 5,
-	})
-
+	retries := backoff.New(context.Background(), b.cfg.BackoffConfig)
 	for retries.Ongoing() {
 		if err := c.Send(&protos.BuilderToPlanner{
 			BuilderID: b.ID,

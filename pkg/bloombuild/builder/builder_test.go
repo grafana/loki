@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
@@ -77,6 +78,11 @@ func Test_BuilderLoop(t *testing.T) {
 	limits := fakeLimits{}
 	cfg := Config{
 		PlannerAddress: server.Addr(),
+		BackoffConfig: backoff.Config{
+			MinBackoff: 1 * time.Second,
+			MaxBackoff: 10 * time.Second,
+			MaxRetries: 5,
+		},
 	}
 	flagext.DefaultValues(&cfg.GrpcConfig)
 
