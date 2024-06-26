@@ -99,16 +99,14 @@ func TestBloomBuilding(t *testing.T) {
 	require.NoError(t, clu.Run())
 
 	// Add several builders
-	builders := make([]*cluster.Component, 0, nBuilders)
 	for i := 0; i < nBuilders; i++ {
-		builder := clu.AddComponent(
+		clu.AddComponent(
 			"bloom-builder",
 			"-target=bloom-builder",
 			"-bloom-build.enabled=true",
 			"-bloom-build.enable=true",
 			"-bloom-build.builder.planner-address="+tBloomPlanner.GRPCURL(),
 		)
-		builders = append(builders, builder)
 	}
 	require.NoError(t, clu.Run())
 
