@@ -156,6 +156,35 @@ func TestPartitionTasksByBlock(t *testing.T) {
 		results := partitionTasksByBlock(tasks, bounds)
 		require.Len(t, results, 0)
 	})
+
+	t.Run("overlapping and unsorted block ranges", func(t *testing.T) {
+		bounds := []bloomshipper.BlockRef{
+			mkBlockRef(5, 14),
+			mkBlockRef(0, 9),
+			mkBlockRef(10, 19),
+		}
+
+		tasks := []Task{
+			{
+				series: []*logproto.GroupedChunkRefs{
+					{Fingerprint: 6},
+				},
+			},
+			{
+				series: []*logproto.GroupedChunkRefs{
+					{Fingerprint: 12},
+				},
+			},
+		}
+
+		expected := []blockWithTasks{
+			{ref: bounds[0], tasks: tasks},     // both tasks
+			{ref: bounds[1], tasks: tasks[:1]}, // first task
+			{ref: bounds[2], tasks: tasks[1:]}, // second task
+		}
+		results := partitionTasksByBlock(tasks, bounds)
+		require.Equal(t, expected, results)
+	})
 }
 
 func TestPartitionRequest(t *testing.T) {
