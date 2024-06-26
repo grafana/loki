@@ -7,6 +7,7 @@ import (
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -43,10 +44,14 @@ func (r *LokiStackZoneAwarePodReconciler) Reconcile(ctx context.Context, req ctr
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
-		return ctrl.Result{}, kverrors.Wrap(err, "failed to get pod", "name", req.NamespacedName)
+		return ctrl.Result{}, kverrors.Wrap(err, "failed to get pod", "pod", klog.KRef(req.Namespace, req.Name))
 	}
 
-	err := handlers.AnnotatePodWithAvailabilityZone(ctx, r.Log, r.Client, lokiPod)
+	var (
+		stackName = lokiPod.Annotations["app.kubernetes.io/instance"]
+		ll        = r.Log.WithValues("lokistack", klog.KRef(lokiPod.Namespace, stackName))
+	)
+	err := handlers.AnnotatePodWithAvailabilityZone(ctx, ll, r.Client, lokiPod)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -62,8 +67,9 @@ func (r *LokiStackZoneAwarePodReconciler) SetupWithManager(mgr ctrl.Manager) err
 
 func (r *LokiStackZoneAwarePodReconciler) buildController(bld k8s.Builder) error {
 	return bld.
-		Named("ZoneAwarePod").
+		Named(LokiStackZoneLabelsCtrlName).
 		Watches(&corev1.Pod{}, &handler.EnqueueRequestForObject{}, createOrUpdatePodWithLabelPred).
+		WithLogConstructor(genericLogConstructor(r.Log, LokiStackZoneLabelsCtrlName)).
 		Complete(r)
 }
 

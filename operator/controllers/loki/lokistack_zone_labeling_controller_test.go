@@ -33,6 +33,7 @@ func TestLokiStackZoneAwarePodController_RegisterWatchedResources(t *testing.T) 
 		b := &k8sfakes.FakeBuilder{}
 		b.NamedReturns(b)
 		b.WatchesReturns(b)
+		b.WithLogConstructorReturns(b)
 
 		c := &LokiStackZoneAwarePodReconciler{Client: k}
 		err := c.buildController(b)
@@ -45,4 +46,18 @@ func TestLokiStackZoneAwarePodController_RegisterWatchedResources(t *testing.T) 
 		require.Equal(t, tst.src, src)
 		require.Equal(t, tst.pred, opts[0])
 	}
+}
+
+func TestLokiStackZoneLabelingController_RegistersGenericLogConstructor(t *testing.T) {
+	b := &k8sfakes.FakeBuilder{}
+	k := &k8sfakes.FakeClient{}
+	c := &LokiStackZoneAwarePodReconciler{Client: k, Log: logger}
+
+	b.NamedReturns(b)
+	b.WatchesReturns(b)
+	b.WithLogConstructorReturns(b)
+
+	err := c.buildController(b)
+	require.NoError(t, err)
+	require.Equal(t, 1, b.WithLogConstructorCallCount())
 }
