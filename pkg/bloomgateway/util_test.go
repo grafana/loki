@@ -102,9 +102,14 @@ func TestDaysForRange(t *testing.T) {
 			exp:   []string{"2024-01-24 00:00", "2024-01-25 00:00"},
 		},
 		{
-			desc:  "two consecutive days end zeroed",
+			desc:  "two consecutive days end zeroed trimmed",
 			pairs: [2]string{"2024-01-24 00:00", "2024-01-25 00:00"},
-			exp:   []string{"2024-01-24 00:00", "2024-01-25 00:00"},
+			exp:   []string{"2024-01-24 00:00"},
+		},
+		{
+			desc:  "preserve one day",
+			pairs: [2]string{"2024-01-24 00:00", "2024-01-24 00:00"},
+			exp:   []string{"2024-01-24 00:00"},
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {

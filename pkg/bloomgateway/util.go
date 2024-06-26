@@ -21,6 +21,12 @@ func truncateDay(ts model.Time) model.Time {
 func daysForRange(from, through model.Time) []model.Time {
 	fromDay, throughDay := truncateDay(from), truncateDay(through)
 
+	// Trim the last day if it's the same as the through time,
+	// but preserve at least 1 day
+	if throughDay.Equal(through) && !fromDay.Equal(throughDay) {
+		throughDay = throughDay.Add(-Day)
+	}
+
 	days := make([]model.Time, 0, int(throughDay.Sub(fromDay)/Day)+1)
 	for day := fromDay; !day.After(throughDay); day = day.Add(Day) {
 		days = append(days, day)
