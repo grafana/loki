@@ -3,6 +3,7 @@ package builder
 import (
 	"flag"
 	"fmt"
+
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/grpcclient"
 )

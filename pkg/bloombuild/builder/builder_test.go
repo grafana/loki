@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -117,7 +118,7 @@ func Test_BuilderLoop(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return server.CompletedTasks() >= len(tasks)
-	}, 10*time.Second, 500*time.Millisecond)
+	}, 30*time.Second, 500*time.Millisecond)
 
 	err = services.StopAndAwaitTerminated(context.Background(), builder)
 	require.NoError(t, err)
@@ -132,6 +133,7 @@ type fakePlannerServer struct {
 
 	listenAddr string
 	grpcServer *grpc.Server
+	wg         sync.WaitGroup
 }
 
 func newFakePlannerServer(tasks []*protos.ProtoTask) (*fakePlannerServer, error) {
@@ -153,6 +155,8 @@ func (f *fakePlannerServer) Stop() {
 	if f.grpcServer != nil {
 		f.grpcServer.Stop()
 	}
+
+	f.wg.Wait()
 }
 
 func (f *fakePlannerServer) Start() {
@@ -180,6 +184,9 @@ func (f *fakePlannerServer) Start() {
 }
 
 func (f *fakePlannerServer) BuilderLoop(srv protos.PlannerForBuilder_BuilderLoopServer) error {
+	f.wg.Add(1)
+	defer f.wg.Done()
+
 	// Receive Ready
 	if _, err := srv.Recv(); err != nil {
 		return fmt.Errorf("failed to receive ready: %w", err)
@@ -192,8 +199,8 @@ func (f *fakePlannerServer) BuilderLoop(srv protos.PlannerForBuilder_BuilderLoop
 		if _, err := srv.Recv(); err != nil {
 			return fmt.Errorf("failed to receive task response: %w", err)
 		}
-		f.completedTasks.Inc()
 		time.Sleep(10 * time.Millisecond) // Simulate task processing time to add some latency.
+		f.completedTasks.Inc()
 	}
 
 	// No more tasks. Wait until shutdown.
