@@ -378,17 +378,17 @@ bloom_build:
     [planner_address: <string> | default = ""]
 
     backoff_config:
-      # Minimum backoff time
-      # CLI flag: -bloom-build.builder.backoff.min-backoff
-      [min_period: <duration> | default = 1s]
+      # Minimum delay when backing off.
+      # CLI flag: -bloom-build.builder.backoff.backoff-min-period
+      [min_period: <duration> | default = 100ms]
 
-      # Maximum backoff time
-      # CLI flag: -bloom-build.builder.backoff.max-backoff
+      # Maximum delay when backing off.
+      # CLI flag: -bloom-build.builder.backoff.backoff-max-period
       [max_period: <duration> | default = 10s]
 
-      # Maximum number of times to retry an operation
-      # CLI flag: -bloom-build.builder.backoff.max-retries
-      [max_retries: <int> | default = 5]
+      # Number of times to backoff and retry before failing.
+      # CLI flag: -bloom-build.builder.backoff.backoff-retries
+      [max_retries: <int> | default = 10]
 
 # Experimental: The bloom_gateway block configures the Loki bloom gateway
 # server, responsible for serving queries for filtering chunks based on filter

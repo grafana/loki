@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
@@ -126,10 +127,10 @@ func Test_BuilderLoop(t *testing.T) {
 
 type fakePlannerServer struct {
 	tasks          []*protos.ProtoTask
-	completedTasks int
+	completedTasks atomic.Int64
 	shutdownCalled bool
 
-	lisAddr    string
+	listenAddr string
 	grpcServer *grpc.Server
 }
 
@@ -142,10 +143,10 @@ func newFakePlannerServer(tasks []*protos.ProtoTask) (*fakePlannerServer, error)
 }
 
 func (f *fakePlannerServer) Addr() string {
-	if f.lisAddr == "" {
+	if f.listenAddr == "" {
 		panic("server not started")
 	}
-	return f.lisAddr
+	return f.listenAddr
 }
 
 func (f *fakePlannerServer) Stop() {
@@ -158,16 +159,16 @@ func (f *fakePlannerServer) Start() {
 	f.Stop()
 
 	lisAddr := "localhost:0"
-	if f.lisAddr != "" {
+	if f.listenAddr != "" {
 		// Reuse the same address if the server was stopped and started again.
-		lisAddr = f.lisAddr
+		lisAddr = f.listenAddr
 	}
 
 	lis, err := net.Listen("tcp", lisAddr)
 	if err != nil {
 		panic(err)
 	}
-	f.lisAddr = lis.Addr().String()
+	f.listenAddr = lis.Addr().String()
 
 	f.grpcServer = grpc.NewServer()
 	protos.RegisterPlannerForBuilderServer(f.grpcServer, f)
@@ -191,7 +192,7 @@ func (f *fakePlannerServer) BuilderLoop(srv protos.PlannerForBuilder_BuilderLoop
 		if _, err := srv.Recv(); err != nil {
 			return fmt.Errorf("failed to receive task response: %w", err)
 		}
-		f.completedTasks++
+		f.completedTasks.Inc()
 		time.Sleep(10 * time.Millisecond) // Simulate task processing time to add some latency.
 	}
 
@@ -201,7 +202,7 @@ func (f *fakePlannerServer) BuilderLoop(srv protos.PlannerForBuilder_BuilderLoop
 }
 
 func (f *fakePlannerServer) CompletedTasks() int {
-	return f.completedTasks
+	return int(f.completedTasks.Load())
 }
 
 func (f *fakePlannerServer) NotifyBuilderShutdown(_ context.Context, _ *protos.NotifyBuilderShutdownRequest) (*protos.NotifyBuilderShutdownResponse, error) {

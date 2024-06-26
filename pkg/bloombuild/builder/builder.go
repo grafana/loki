@@ -112,10 +112,10 @@ func (b *Builder) stopping(_ error) error {
 
 func (b *Builder) running(ctx context.Context) error {
 	// Retry if the connection to the planner is lost.
-	retries := backoff.New(context.Background(), b.cfg.BackoffConfig)
+	retries := backoff.New(ctx, b.cfg.BackoffConfig)
 	for retries.Ongoing() {
 		err := b.connectAndBuild(ctx)
-		if err == nil {
+		if err == nil || errors.Is(err, context.Canceled) {
 			break
 		}
 
@@ -124,6 +124,9 @@ func (b *Builder) running(ctx context.Context) error {
 	}
 
 	if err := retries.Err(); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return nil
+		}
 		return fmt.Errorf("failed to connect and build: %w", err)
 	}
 
@@ -172,8 +175,8 @@ func (b *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 	}
 
 	for b.State() == services.Running {
-		// When the planner connection closes or the builder stops, the context
-		// will be canceled and the loop will exit.
+		// When the planner connection closes, an EOF or "planner shutting down" error is returned.
+		// When the builder is shutting down, a gRPC context canceled error is returned.
 		protoTask, err := c.Recv()
 		if err != nil {
 			if status.Code(err) == codes.Canceled {
@@ -223,7 +226,7 @@ func (b *Builder) notifyTaskCompletedToPlanner(
 
 	// We have a retry mechanism upper in the stack, but we add another one here
 	// to try our best to avoid losing the task result.
-	retries := backoff.New(context.Background(), b.cfg.BackoffConfig)
+	retries := backoff.New(c.Context(), b.cfg.BackoffConfig)
 	for retries.Ongoing() {
 		if err := c.Send(&protos.BuilderToPlanner{
 			BuilderID: b.ID,
