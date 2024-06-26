@@ -259,7 +259,7 @@ func TestConcurrentAppends(t *testing.T) {
 
 	for _, tenant := range tenants {
 		for _, lbl := range lbls {
-			expectedSeries = append(expectedSeries, labels.NewBuilder(lbl).Set(tenantLabel, string(tenant)).Labels().String())
+			expectedSeries = append(expectedSeries, labels.NewBuilder(lbl).Set(tenantLabel, tenant).Labels().String())
 		}
 	}
 
@@ -282,7 +282,7 @@ func TestConcurrentAppends(t *testing.T) {
 		require.Equal(t, msgsPerSeries, i)
 	}
 	require.NoError(t, iter.Err())
-	//require.ElementsMatch(t, expectedSeries, actualSeries)
+	require.ElementsMatch(t, expectedSeries, actualSeries)
 	require.Equal(t, msgsGenerated, msgsRead)
 	t.Logf("Generated %d messages between %d tenants", msgsGenerated, len(tenants))
 }

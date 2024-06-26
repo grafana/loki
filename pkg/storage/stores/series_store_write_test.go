@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/wal"
 )
 
 type mockCache struct {
@@ -53,6 +54,10 @@ func (m *mockIndexWriter) IndexChunk(_ context.Context, _, _ model.Time, _ chunk
 
 type mockChunksClient struct {
 	called int
+}
+
+func (m *mockChunksClient) PutWal(_ context.Context, _ *wal.SegmentWriter) error {
+	return nil
 }
 
 func (m *mockChunksClient) PutChunks(_ context.Context, _ []chunk.Chunk) error {
