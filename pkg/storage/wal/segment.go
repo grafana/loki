@@ -10,11 +10,12 @@ import (
 	"sort"
 	"sync"
 
+	"go.uber.org/atomic"
+
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/wal/chunks"
 	"github.com/grafana/loki/v3/pkg/storage/wal/index"
@@ -28,10 +29,12 @@ var (
 	streamSegmentPool = sync.Pool{
 		New: func() interface{} {
 			return &streamSegment{
+				lock:    &sync.Mutex{},
 				entries: make([]*logproto.Entry, 0, 4096),
 			}
 		},
 	}
+	tenantLabel = "__loki_tenant__"
 )
 
 func init() {
@@ -43,13 +46,15 @@ type streamID struct {
 }
 
 type SegmentWriter struct {
-	streams   map[streamID]*streamSegment
-	buf1      encoding.Encbuf
-	inputSize int64
-	idxWriter *index.Writer
+	streams        map[streamID]*streamSegment
+	buf1           encoding.Encbuf
+	inputSize      atomic.Int64
+	idxWriter      *index.Writer
+	consistencyMtx *sync.RWMutex
 }
 
 type streamSegment struct {
+	lock     *sync.Mutex
 	lbls     labels.Labels
 	entries  []*logproto.Entry
 	tenantID string
@@ -67,10 +72,37 @@ func NewWalSegmentWriter() (*SegmentWriter, error) {
 		return nil, err
 	}
 	return &SegmentWriter{
-		streams:   make(map[streamID]*streamSegment, 64),
-		buf1:      encoding.EncWith(make([]byte, 0, 4)),
-		idxWriter: idxWriter,
+		streams:        make(map[streamID]*streamSegment, 64),
+		buf1:           encoding.EncWith(make([]byte, 0, 4)),
+		idxWriter:      idxWriter,
+		inputSize:      atomic.Int64{},
+		consistencyMtx: &sync.RWMutex{},
 	}, nil
+}
+
+func (b *SegmentWriter) getOrCreateStream(id streamID, lbls labels.Labels) *streamSegment {
+	b.consistencyMtx.RLock()
+	s, ok := b.streams[id]
+	b.consistencyMtx.RUnlock()
+	if ok {
+		return s
+	}
+	b.consistencyMtx.Lock()
+	defer b.consistencyMtx.Unlock()
+	// Check another thread has not created it
+	s, ok = b.streams[id]
+	if ok {
+		return s
+	}
+	if lbls.Get(tenantLabel) == "" {
+		lbls = labels.NewBuilder(lbls).Set(tenantLabel, id.tenant).Labels()
+	}
+	s = streamSegmentPool.Get().(*streamSegment)
+	s.Reset()
+	s.lbls = lbls
+	s.tenantID = id.tenant
+	b.streams[id] = s
+	return s
 }
 
 // Labels are passed a string  `{foo="bar",baz="qux"}`  `{foo="foo",baz="foo"}`. labels.Labels => Symbols foo, baz , qux
@@ -79,24 +111,13 @@ func (b *SegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels
 		return
 	}
 	for _, e := range entries {
-		b.inputSize += int64(len(e.Line))
+		b.inputSize.Add(int64(len(e.Line)))
 	}
 	id := streamID{labels: labelsString, tenant: tenantID}
-	s, ok := b.streams[id]
-	if !ok {
-		if lbls.Get(tsdb.TenantLabel) == "" {
-			lbls = labels.NewBuilder(lbls).Set(tsdb.TenantLabel, tenantID).Labels()
-		}
-		s = streamSegmentPool.Get().(*streamSegment)
-		s.Reset()
-		s.lbls = lbls
-		s.tenantID = tenantID
-		s.maxt = entries[len(entries)-1].Timestamp.UnixNano()
-		s.entries = append(s.entries, entries...)
-		b.streams[id] = s
-		return
-	}
+	s := b.getOrCreateStream(id, lbls)
 
+	s.lock.Lock()
+	defer s.lock.Unlock()
 	for i, e := range entries {
 		if e.Timestamp.UnixNano() >= s.maxt {
 			s.entries = append(s.entries, entries[i])
@@ -247,13 +268,13 @@ func (b *SegmentWriter) Reset() {
 	}
 	b.streams = make(map[streamID]*streamSegment, 64)
 	b.buf1.Reset()
-	b.inputSize = 0
+	b.inputSize.Store(0)
 }
 
 // InputSize returns the total size of the input data written to the writer.
 // It doesn't account for timestamps and labels.
 func (b *SegmentWriter) InputSize() int64 {
-	return b.inputSize
+	return b.inputSize.Load()
 }
 
 type SegmentReader struct {

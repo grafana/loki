@@ -1,11 +1,11 @@
-package ingester_rf1
+package ingesterrf1
 
 import (
 	"context"
 	"errors"
 
-	"github.com/go-kit/kit/log/level"
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"

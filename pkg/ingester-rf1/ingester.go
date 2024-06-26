@@ -1,4 +1,4 @@
-package ingester_rf1
+package ingesterrf1
 
 import (
 	"context"
@@ -13,11 +13,14 @@ import (
 	"time"
 
 	ring_client "github.com/grafana/dskit/ring/client"
+	"github.com/opentracing/opentracing-go"
 
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/clientpool"
+	"github.com/grafana/loki/v3/pkg/ingester/index"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/storage/wal"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 
 	"github.com/go-kit/log"
@@ -93,6 +96,8 @@ type Config struct {
 	// Optional wrapper that can be used to modify the behaviour of the ingester
 	Wrapper Wrapper `yaml:"-"`
 
+	IndexShards int `yaml:"index_shards"`
+
 	MaxDroppedStreams int `yaml:"max_dropped_streams"`
 
 	ShutdownMarkerPath string `yaml:"shutdown_marker_path"`
@@ -110,19 +115,20 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ClientConfig.RegisterFlags(f)
 
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester-rf1.concurrent-flushes", 32, "How many flushes can happen concurrently from each stream.")
-	f.DurationVar(&cfg.FlushCheckPeriod, "ingester-rf1.flush-check-period", 30*time.Second, "How often should the ingester see if there are any blocks to flush. The first flush check is delayed by a random time up to 0.8x the flush check period. Additionally, there is +/- 1% jitter added to the interval.")
-	f.DurationVar(&cfg.FlushOpBackoff.MinBackoff, "ingester-rf1.flush-op-backoff-min-period", 10*time.Second, "Minimum backoff period when a flush fails. Each concurrent flush has its own backoff, see `ingester.concurrent-flushes`.")
+	f.DurationVar(&cfg.FlushCheckPeriod, "ingester-rf1.flush-check-period", 500*time.Millisecond, "How often should the ingester see if there are any blocks to flush. The first flush check is delayed by a random time up to 0.8x the flush check period. Additionally, there is +/- 1% jitter added to the interval.")
+	f.DurationVar(&cfg.FlushOpBackoff.MinBackoff, "ingester-rf1.flush-op-backoff-min-period", 100*time.Millisecond, "Minimum backoff period when a flush fails. Each concurrent flush has its own backoff, see `ingester.concurrent-flushes`.")
 	f.DurationVar(&cfg.FlushOpBackoff.MaxBackoff, "ingester-rf1.flush-op-backoff-max-period", time.Minute, "Maximum backoff period when a flush fails. Each concurrent flush has its own backoff, see `ingester.concurrent-flushes`.")
 	f.IntVar(&cfg.FlushOpBackoff.MaxRetries, "ingester-rf1.flush-op-backoff-retries", 10, "Maximum retries for failed flushes.")
 	f.DurationVar(&cfg.FlushOpTimeout, "ingester-rf1.flush-op-timeout", 10*time.Minute, "The timeout for an individual flush. Will be retried up to `flush-op-backoff-retries` times.")
 	f.DurationVar(&cfg.RetainPeriod, "ingester-rf1.chunks-retain-period", 0, "How long chunks should be retained in-memory after they've been flushed.")
-	f.DurationVar(&cfg.MaxChunkIdle, "ingester-rf1.chunks-idle-period", 30*time.Minute, "How long chunks should sit in-memory with no updates before being flushed if they don't hit the max block size. This means that half-empty chunks will still be flushed after a certain period as long as they receive no further activity.")
+	//f.DurationVar(&cfg.MaxChunkIdle, "ingester-rf1.chunks-idle-period", 30*time.Minute, "How long chunks should sit in-memory with no updates before being flushed if they don't hit the max block size. This means that half-empty chunks will still be flushed after a certain period as long as they receive no further activity.")
 	f.IntVar(&cfg.BlockSize, "ingester-rf1.chunks-block-size", 256*1024, "The targeted _uncompressed_ size in bytes of a chunk block When this threshold is exceeded the head block will be cut and compressed inside the chunk.")
 	f.IntVar(&cfg.TargetChunkSize, "ingester-rf1.chunk-target-size", 1572864, "A target _compressed_ size in bytes for chunks. This is a desired size not an exact size, chunks may be slightly bigger or significantly smaller if they get flushed for other reasons (e.g. chunk_idle_period). A value of 0 creates chunks with a fixed 10 blocks, a non zero value will create chunks with a variable number of blocks to meet the target size.") // 1.5 MB
 	f.StringVar(&cfg.ChunkEncoding, "ingester-rf1.chunk-encoding", chunkenc.EncGZIP.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", chunkenc.SupportedEncoding()))
 	f.IntVar(&cfg.MaxReturnedErrors, "ingester-rf1.max-ignored-stream-errors", 10, "The maximum number of errors a stream will report to the user when a push fails. 0 to make unlimited.")
 	f.DurationVar(&cfg.MaxChunkAge, "ingester-rf1.max-chunk-age", 2*time.Hour, "The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this, the current chunk will be flushed to the store and a new chunk created.")
 	f.BoolVar(&cfg.AutoForgetUnhealthy, "ingester-rf1.autoforget-unhealthy", false, "Forget about ingesters having heartbeat timestamps older than `ring.kvstore.heartbeat_timeout`. This is equivalent to clicking on the `/ring` `forget` button in the UI: the ingester is removed from the ring. This is a useful setting when you are sure that an unhealthy node won't return. An example is when not using stateful sets or the equivalent. Use `memberlist.rejoin_interval` > 0 to handle network partition cases when using a memberlist.")
+	f.IntVar(&cfg.IndexShards, "ingester-rf1.index-shards", index.DefaultIndexShards, "Shard factor used in the ingesters for the in process reverse index. This MUST be evenly divisible by ALL schema shard factors or Loki will not start.")
 	f.IntVar(&cfg.MaxDroppedStreams, "ingester-rf1.tailer.max-dropped-streams", 10, "Maximum number of dropped streams to keep in memory during tailing.")
 	f.StringVar(&cfg.ShutdownMarkerPath, "ingester-rf1.shutdown-marker-path", "", "Path where the shutdown marker file is stored. If not set and common.path_prefix is set then common.path_prefix will be used.")
 	f.DurationVar(&cfg.OwnedStreamsCheckInterval, "ingester-rf1.owned-streams-check-interval", 30*time.Second, "Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams.")
@@ -178,6 +184,22 @@ type Interface interface {
 	PrepareShutdown(w http.ResponseWriter, r *http.Request)
 }
 
+type flushCtx struct {
+	lock            *sync.RWMutex
+	flushDone       chan struct{}
+	newCtxAvailable chan struct{}
+	segmentWriter   *wal.SegmentWriter
+	creationTime    time.Time
+}
+
+func (o *flushCtx) Key() string {
+	return fmt.Sprintf("%d", o.creationTime.UnixNano())
+}
+
+func (o *flushCtx) Priority() int64 {
+	return -o.creationTime.UnixNano()
+}
+
 // Ingester builds chunks for incoming log streams.
 type Ingester struct {
 	services.Service
@@ -208,11 +230,10 @@ type Ingester struct {
 	flushQueues     []*util.PriorityQueue
 	flushQueuesDone sync.WaitGroup
 
+	flushCtx *flushCtx
+
 	limiter *Limiter
 
-	// Denotes whether the ingester should flush on shutdown.
-	// Currently only used by the WAL to signal when the disk is full.
-	//flushOnShutdownSwitch *OnceSwitch
 	// Flag for whether stopping the ingester service should also terminate the
 	// loki process.
 	// This is set when calling the shutdown handler.
@@ -227,7 +248,7 @@ type Ingester struct {
 	extractorWrapper lokilog.SampleExtractorWrapper
 	pipelineWrapper  lokilog.PipelineWrapper
 
-	//streamRateCalculator *StreamRateCalculator
+	streamRateCalculator *StreamRateCalculator
 
 	writeLogManager *writefailures.Manager
 
@@ -247,6 +268,11 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	targetSizeStats.Set(int64(cfg.TargetChunkSize))
 	metrics := newIngesterMetrics(registerer, metricsNamespace)
 
+	segmentWriter, err := wal.NewWalSegmentWriter()
+	if err != nil {
+		return nil, err
+	}
+
 	i := &Ingester{
 		cfg:             cfg,
 		logger:          logger,
@@ -260,15 +286,20 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		tailersQuit:     make(chan struct{}),
 		metrics:         metrics,
 		//flushOnShutdownSwitch: &OnceSwitch{},
-		terminateOnShutdown: false,
-		//streamRateCalculator:  NewStreamRateCalculator(),
+		terminateOnShutdown:  false,
+		streamRateCalculator: NewStreamRateCalculator(),
 		writeLogManager:      writefailures.NewManager(logger, registerer, writeFailuresCfg, configs, "ingester_rf1"),
 		customStreamsTracker: customStreamsTracker,
 		readRing:             readRing,
+		flushCtx: &flushCtx{
+			lock:            &sync.RWMutex{},
+			flushDone:       make(chan struct{}),
+			newCtxAvailable: make(chan struct{}),
+			segmentWriter:   segmentWriter,
+		},
 	}
 	//i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 
-	var err error
 	// TODO: change flush on shutdown
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester-rf1", "ingester-rf1-ring", true, logger, prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", registerer))
 	if err != nil {
@@ -540,7 +571,25 @@ func (i *Ingester) loop() {
 	for {
 		select {
 		case <-flushTicker.C:
-			i.sweepUsers(false, true)
+			//i.logger.Log("msg", "starting periodic flush")
+			i.flushCtx.lock.Lock() // Stop new chunks being written while we swap destinations - we'll never unlock as this flushctx can no longer be used.
+			currentFlushCtx := i.flushCtx
+			// APIs become unblocked after resetting flushCtx
+			segmentWriter, err := wal.NewWalSegmentWriter()
+			if err != nil {
+				// TODO: handle this properly
+				panic(err)
+			}
+			i.flushCtx = &flushCtx{
+				lock:            &sync.RWMutex{},
+				flushDone:       make(chan struct{}),
+				newCtxAvailable: make(chan struct{}),
+				segmentWriter:   segmentWriter,
+			}
+			close(currentFlushCtx.newCtxAvailable) // Broadcast to all waiters that they can now fetch a new flushCtx. Small chance of a race but if they re-fetch the old one, they'll just check again immediately.
+			// Flush the finished context in the background & then notify watching API requests
+			// TODO: use multiple flush queues if required
+			i.flushQueues[0].Enqueue(currentFlushCtx)
 
 		case <-i.loopQuit:
 			return
@@ -750,27 +799,47 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 		return &logproto.PushResponse{}, err
 	}
 
-	return &logproto.PushResponse{}, instance.Push(ctx, req)
+	// Fetch a flush context and try to acquire the RLock
+	// The only time the Write Lock is held is when this context is no longer usable and a new one is being created.
+	// In this case, we need to re-read i.flushCtx in order to fetch the new one as soon as it's available.
+	//The newCtxAvailable chan is closed as soon as the new one is available to avoid a busy loop.
+	currentFlushCtx := i.flushCtx
+	for !currentFlushCtx.lock.TryRLock() {
+		select {
+		case <-currentFlushCtx.newCtxAvailable:
+		case <-ctx.Done():
+			return &logproto.PushResponse{}, ctx.Err()
+		}
+		currentFlushCtx = i.flushCtx
+	}
+	err = instance.Push(ctx, req, currentFlushCtx)
+	currentFlushCtx.lock.RUnlock()
+	select {
+	case <-ctx.Done():
+		return &logproto.PushResponse{}, ctx.Err()
+	case <-currentFlushCtx.flushDone:
+		return &logproto.PushResponse{}, err
+	}
 }
 
 // GetStreamRates returns a response containing all streams and their current rate
 // TODO: It might be nice for this to be human readable, eventually: Sort output and return labels, too?
 func (i *Ingester) GetStreamRates(ctx context.Context, _ *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
-	//if sp := opentracing.SpanFromContext(ctx); sp != nil {
-	//	sp.LogKV("event", "ingester started to handle GetStreamRates")
-	//	defer sp.LogKV("event", "ingester finished handling GetStreamRates")
-	//}
-	//
-	//// Set profiling tags
-	//defer pprof.SetGoroutineLabels(ctx)
-	//ctx = pprof.WithLabels(ctx, pprof.Labels("path", "write"))
-	//pprof.SetGoroutineLabels(ctx)
-	//
-	//allRates := i.streamRateCalculator.Rates()
-	//rates := make([]*logproto.StreamRate, len(allRates))
-	//for idx := range allRates {
-	//	rates[idx] = &allRates[idx]
-	//}
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV("event", "ingester started to handle GetStreamRates")
+		defer sp.LogKV("event", "ingester finished handling GetStreamRates")
+	}
+
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "write"))
+	pprof.SetGoroutineLabels(ctx)
+
+	allRates := i.streamRateCalculator.Rates()
+	rates := make([]*logproto.StreamRate, len(allRates))
+	for idx := range allRates {
+		rates[idx] = &allRates[idx]
+	}
 	return &logproto.StreamRatesResponse{StreamRates: nil}, nil
 }
 
@@ -785,7 +854,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 	inst, ok = i.instances[instanceID]
 	if !ok {
 		var err error
-		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.metrics, i.chunkFilter, i.pipelineWrapper, i.extractorWrapper, i.writeLogManager, i.customStreamsTracker)
+		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.metrics, i.chunkFilter, i.pipelineWrapper, i.extractorWrapper, i.streamRateCalculator, i.writeLogManager, i.customStreamsTracker)
 		if err != nil {
 			return nil, err
 		}

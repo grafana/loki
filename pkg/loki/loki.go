@@ -618,6 +618,15 @@ func (t *Loki) readyHandler(sm *services.Manager, shutdownRequested *atomic.Bool
 			}
 		}
 
+		// Ingester RF1 has a special check that makes sure that it was able to register into the ring,
+		// and that all other ring entries are OK too.
+		if t.IngesterRF1 != nil {
+			if err := t.IngesterRF1.CheckReady(r.Context()); err != nil {
+				http.Error(w, "Pattern Ingester not ready: "+err.Error(), http.StatusServiceUnavailable)
+				return
+			}
+		}
+
 		// Query Frontend has a special check that makes sure that a querier is attached before it signals
 		// itself as ready
 		if t.frontend != nil {
@@ -712,6 +721,7 @@ func (t *Loki) setupModuleManager() error {
 		BloomBuilder:             {Server, BloomStore, Analytics, Store},
 		PatternIngester:          {Server, MemberlistKV, Analytics},
 		PatternRingClient:        {Server, MemberlistKV, Analytics},
+		IngesterRF1RingClient:    {Server, MemberlistKV, Analytics},
 		IngesterQuerier:          {Ring},
 		QuerySchedulerRing:       {Overrides, MemberlistKV},
 		IndexGatewayRing:         {Overrides, MemberlistKV},
