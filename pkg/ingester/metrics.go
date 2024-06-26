@@ -65,9 +65,9 @@ type ingesterMetrics struct {
 	// Shutdown marker for ingester scale down
 	shutdownMarker prometheus.Gauge
 
-	flushQueueLength prometheus.Gauge
+	flushQueueLength       prometheus.Gauge
 	duplicateLogBytesTotal *prometheus.CounterVec
-	streamsOwnershipCheck prometheus.Histogram
+	streamsOwnershipCheck  prometheus.Histogram
 }
 
 // setRecoveryBytesInUse bounds the bytes reports to >= 0.
