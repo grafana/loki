@@ -26,7 +26,6 @@ If you want to experiment with Loki, you can run Loki locally using the Docker C
 The Docker Compose configuration runs the following components, each in its own container:
 
 - **flog**: which generates log lines.
-
   [flog](https://github.com/mingrammer/flog) is a log generator for common log formats.
 
 - **Grafana Alloy**: which scrapes the log lines from flog, and pushes them to Loki through the gateway.
