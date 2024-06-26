@@ -377,6 +377,19 @@ bloom_build:
     # CLI flag: -bloom-build.builder.planner-address
     [planner_address: <string> | default = ""]
 
+    backoff_config:
+      # Minimum delay when backing off.
+      # CLI flag: -bloom-build.builder.backoff.backoff-min-period
+      [min_period: <duration> | default = 100ms]
+
+      # Maximum delay when backing off.
+      # CLI flag: -bloom-build.builder.backoff.backoff-max-period
+      [max_period: <duration> | default = 10s]
+
+      # Number of times to backoff and retry before failing.
+      # CLI flag: -bloom-build.builder.backoff.backoff-retries
+      [max_retries: <int> | default = 10]
+
 # Experimental: The bloom_gateway block configures the Loki bloom gateway
 # server, responsible for serving queries for filtering chunks based on filter
 # expressions.
@@ -566,6 +579,9 @@ compactor_grpc_client:
 
 # Configuration for analytics.
 [analytics: <analytics>]
+
+# Configuration for profiling options.
+[profiling: <profiling>]
 
 # Common configuration to be shared between multiple modules. If a more specific
 # configuration is given in other sections, the related configuration within
@@ -3856,6 +3872,24 @@ chunks:
 
 # How many shards will be created. Only used if schema is v10 or greater.
 [row_shards: <int> | default = 16]
+```
+
+### profiling
+
+Configuration for `profiling` options.
+
+```yaml
+# Sets the value for runtime.SetBlockProfilingRate
+# CLI flag: -profiling.block-profile-rate
+[block_profile_rate: <int> | default = 0]
+
+# Sets the value for runtime.SetCPUProfileRate
+# CLI flag: -profiling.cpu-profile-rate
+[cpu_profile_rate: <int> | default = 0]
+
+# Sets the value for runtime.SetMutexProfileFraction
+# CLI flag: -profiling.mutex-profile-fraction
+[mutex_profile_fraction: <int> | default = 0]
 ```
 
 ### querier

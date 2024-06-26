@@ -108,6 +108,7 @@ type Config struct {
 	OperationalConfig runtime.Config       `yaml:"operational_config,omitempty"`
 	Tracing           tracing.Config       `yaml:"tracing"`
 	Analytics         analytics.Config     `yaml:"analytics"`
+	Profiling         ProfilingConfig      `yaml:"profiling,omitempty"`
 
 	LegacyReadTarget bool `yaml:"legacy_read_target,omitempty" doc:"hidden|deprecated"`
 
@@ -179,6 +180,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.QueryScheduler.RegisterFlags(f)
 	c.Analytics.RegisterFlags(f)
 	c.OperationalConfig.RegisterFlags(f)
+	c.Profiling.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {

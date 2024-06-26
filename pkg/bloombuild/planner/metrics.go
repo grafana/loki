@@ -28,9 +28,10 @@ type Metrics struct {
 	taskLost          prometheus.Counter
 	tasksFailed       prometheus.Counter
 
-	buildStarted   prometheus.Counter
-	buildCompleted *prometheus.CounterVec
-	buildTime      *prometheus.HistogramVec
+	buildStarted     prometheus.Counter
+	buildCompleted   *prometheus.CounterVec
+	buildTime        *prometheus.HistogramVec
+	buildLastSuccess prometheus.Gauge
 
 	blocksDeleted prometheus.Counter
 	metasDeleted  prometheus.Counter
@@ -111,6 +112,12 @@ func NewMetrics(
 			Help:      "Time spent during a builds cycle.",
 			Buckets:   prometheus.DefBuckets,
 		}, []string{"status"}),
+		buildLastSuccess: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "build_last_successful_run_timestamp_seconds",
+			Help:      "Unix timestamp of the last successful build cycle.",
+		}),
 
 		blocksDeleted: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,

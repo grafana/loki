@@ -135,7 +135,7 @@ func (m mockIndex) Series(ref storage.SeriesRef, builder *labels.ScratchBuilder,
 
 func TestIndexRW_Create_Open(t *testing.T) {
 	// An empty index must still result in a readable file.
-	iw, err := NewWriter(context.Background())
+	iw, err := NewWriter()
 	require.NoError(t, err)
 	require.NoError(t, iw.Close())
 
@@ -160,7 +160,7 @@ func TestIndexRW_Postings(t *testing.T) {
 			labels: labels.FromStrings("a", "1", "b", strconv.Itoa(i)),
 		})
 	}
-	ir, buf, _ := createReader(ctx, t, input)
+	ir, buf, _ := createReader(t, input)
 
 	p, err := ir.Postings(ctx, "a", "1")
 	require.NoError(t, err)
@@ -271,7 +271,7 @@ func TestPostingsMany(t *testing.T) {
 			labels: labels.FromStrings("i", v, "foo", "bar"),
 		})
 	}
-	ir, _, symbols := createReader(ctx, t, input)
+	ir, _, symbols := createReader(t, input)
 
 	cases := []struct {
 		in []string
@@ -353,7 +353,7 @@ func TestPersistence_index_e2e(t *testing.T) {
 		})
 	}
 
-	ir, _, _ := createReader(ctx, t, input)
+	ir, _, _ := createReader(t, input)
 
 	// Population procedure as done by compaction.
 	var (
@@ -435,7 +435,7 @@ func TestPersistence_index_e2e(t *testing.T) {
 }
 
 func TestWriter_ShouldReturnErrorOnSeriesWithDuplicatedLabelNames(t *testing.T) {
-	w, err := NewWriter(context.Background())
+	w, err := NewWriter()
 	require.NoError(t, err)
 
 	require.NoError(t, w.AddSymbol("__name__"))
@@ -523,7 +523,7 @@ func BenchmarkReader_ShardedPostings(b *testing.B) {
 			labels: labels.FromStrings("const", fmt.Sprintf("%10d", 1), "unique", fmt.Sprintf("%10d", i)),
 		})
 	}
-	ir, _, _ := createReader(ctx, b, input)
+	ir, _, _ := createReader(b, input)
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
@@ -540,7 +540,7 @@ func TestDecoder_Postings_WrongInput(t *testing.T) {
 }
 
 func TestChunksRefOrdering(t *testing.T) {
-	idx, err := NewWriter(context.Background())
+	idx, err := NewWriter()
 	require.NoError(t, err)
 
 	require.NoError(t, idx.AddSymbol("1"))
@@ -558,7 +558,7 @@ func TestChunksRefOrdering(t *testing.T) {
 }
 
 func TestChunksTimeOrdering(t *testing.T) {
-	idx, err := NewWriter(context.Background())
+	idx, err := NewWriter()
 	require.NoError(t, err)
 
 	require.NoError(t, idx.AddSymbol("1"))
@@ -585,10 +585,10 @@ func TestChunksTimeOrdering(t *testing.T) {
 
 // createFileReader creates a temporary index file. It writes the provided input to this file.
 // It returns a Reader for this file, the file's name, and the symbol map.
-func createReader(ctx context.Context, tb testing.TB, input indexWriterSeriesSlice) (*Reader, []byte, map[string]struct{}) {
+func createReader(tb testing.TB, input indexWriterSeriesSlice) (*Reader, []byte, map[string]struct{}) {
 	tb.Helper()
 
-	iw, err := NewWriter(ctx)
+	iw, err := NewWriter()
 	require.NoError(tb, err)
 
 	symbols := map[string]struct{}{}

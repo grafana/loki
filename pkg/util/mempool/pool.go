@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/dustin/go-humanize"
@@ -20,14 +21,14 @@ var (
 type slab struct {
 	buffer      chan unsafe.Pointer
 	size, count int
-	mtx         sync.Mutex
+	once        sync.Once
 	metrics     *metrics
 	name        string
 }
 
 func newSlab(bufferSize, bufferCount int, m *metrics) *slab {
 	name := humanize.Bytes(uint64(bufferSize))
-	m.availableBuffersPerSlab.WithLabelValues(name).Add(0) // initialize metric with value 0
+	m.availableBuffersPerSlab.WithLabelValues(name).Set(0) // initialize metric with value 0
 
 	return &slab{
 		size:    bufferSize,
@@ -44,39 +45,24 @@ func (s *slab) init() {
 		ptr := unsafe.Pointer(unsafe.SliceData(buf))
 		s.buffer <- ptr
 	}
-	s.metrics.availableBuffersPerSlab.WithLabelValues(s.name).Add(float64(s.count))
+	s.metrics.availableBuffersPerSlab.WithLabelValues(s.name).Set(float64(s.count))
 }
 
 func (s *slab) get(size int) ([]byte, error) {
-	s.mtx.Lock()
-	if s.buffer == nil {
-		s.init()
-	}
-	defer s.mtx.Unlock()
+	s.metrics.accesses.WithLabelValues(s.name, opTypeGet).Inc()
+	s.once.Do(s.init)
 
+	waitStart := time.Now()
 	// wait for available buffer on channel
-	var buf []byte
-	select {
-	case ptr := <-s.buffer:
-		buf = unsafe.Slice((*byte)(ptr), s.size)
-	default:
-		s.metrics.errorsCounter.WithLabelValues(s.name, reasonSlabExhausted).Inc()
-		return nil, errSlabExhausted
-	}
-
-	// Taken from https://github.com/ortuman/nuke/blob/main/monotonic_arena.go#L37-L48
-	// This piece of code will be translated into a runtime.memclrNoHeapPointers
-	// invocation by the compiler, which is an assembler optimized implementation.
-	// Architecture specific code can be found at src/runtime/memclr_$GOARCH.s
-	// in Go source (since https://codereview.appspot.com/137880043).
-	for i := range buf {
-		buf[i] = 0
-	}
+	ptr := <-s.buffer
+	buf := unsafe.Slice((*byte)(ptr), s.size)
+	s.metrics.waitDuration.WithLabelValues(s.name).Observe(time.Since(waitStart).Seconds())
 
 	return buf[:size], nil
 }
 
 func (s *slab) put(buf []byte) {
+	s.metrics.accesses.WithLabelValues(s.name, opTypePut).Inc()
 	if s.buffer == nil {
 		panic("slab is not initialized")
 	}
