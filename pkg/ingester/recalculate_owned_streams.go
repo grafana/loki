@@ -77,10 +77,6 @@ func (s *recalculateOwnedStreams) updateFixedLimitForAll() {
 	}
 }
 
-func (s *recalculateOwnedStreams) resetRingState() {
-	s.previousRing = ring.ReplicationSet{}
-}
-
 func (s *recalculateOwnedStreams) checkRingForChanges() (bool, error) {
 	rs, err := s.ingestersRing.GetAllHealthy(ring.WriteNoExtend)
 	if err != nil {

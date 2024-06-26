@@ -1176,6 +1176,10 @@ func minTs(stream *logproto.Stream) model.Time {
 
 // For each stream, we check if the stream is owned by the ingester or not and increment/decrement the owned stream count.
 func (i *instance) updateOwnedStreams(ingesterRing ring.ReadRing, ingesterID string) error {
+	start := time.Now()
+	defer func() {
+		i.metrics.streamsOwnershipCheck.Observe(float64(time.Since(start).Milliseconds()))
+	}()
 	var descsBuf = make([]ring.InstanceDesc, ingesterRing.ReplicationFactor()+1)
 	var hostsBuf = make([]string, ingesterRing.ReplicationFactor()+1)
 	var zoneBuf = make([]string, ingesterRing.ZonesCount()+1)
