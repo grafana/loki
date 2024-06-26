@@ -2,7 +2,6 @@ package bloomgateway
 
 import (
 	"context"
-	"math"
 	"time"
 
 	"github.com/go-kit/log"
@@ -35,21 +34,12 @@ type processor struct {
 	metrics     *workerMetrics
 }
 
-func (p *processor) run(ctx context.Context, tasks []Task) error {
-	return p.runWithBounds(ctx, tasks, v1.MultiFingerprintBounds{{Min: 0, Max: math.MaxUint64}})
-}
-
-func (p *processor) runWithBounds(ctx context.Context, tasks []Task, bounds v1.MultiFingerprintBounds) error {
+func (p *processor) processTasks(ctx context.Context, tasks []Task) error {
 	tenant := tasks[0].tenant
-	level.Info(p.logger).Log(
-		"msg", "process tasks with bounds",
-		"tenant", tenant,
-		"tasks", len(tasks),
-		"bounds", len(bounds),
-	)
+	level.Info(p.logger).Log("msg", "process tasks", "tenant", tenant, "tasks", len(tasks))
 
 	for ts, tasks := range group(tasks, func(t Task) config.DayTime { return t.table }) {
-		err := p.processTasks(ctx, tenant, ts, bounds, tasks)
+		err := p.processTasksForDay(ctx, tenant, ts, tasks)
 		if err != nil {
 			for _, task := range tasks {
 				task.CloseWithError(err)
@@ -63,7 +53,7 @@ func (p *processor) runWithBounds(ctx context.Context, tasks []Task, bounds v1.M
 	return nil
 }
 
-func (p *processor) processTasks(ctx context.Context, tenant string, day config.DayTime, _ v1.MultiFingerprintBounds, tasks []Task) error {
+func (p *processor) processTasksForDay(ctx context.Context, tenant string, day config.DayTime, tasks []Task) error {
 	level.Info(p.logger).Log("msg", "process tasks for day", "tenant", tenant, "tasks", len(tasks), "day", day.String())
 	var duration time.Duration
 
