@@ -66,6 +66,8 @@ type ingesterMetrics struct {
 	shutdownMarker prometheus.Gauge
 
 	flushQueueLength prometheus.Gauge
+
+	duplicateLogBytesTotal *prometheus.CounterVec
 }
 
 // setRecoveryBytesInUse bounds the bytes reports to >= 0.
@@ -293,5 +295,12 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 			Name:      "flush_queue_length",
 			Help:      "The total number of series pending in the flush queue.",
 		}),
+
+		duplicateLogBytesTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: "ingester",
+			Name:      "duplicate_log_bytes_total",
+			Help:      "The total number of bytes that were discarded for duplicate log lines.",
+		}, []string{"tenant"}),
 	}
 }
