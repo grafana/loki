@@ -111,6 +111,7 @@ func (e *nsEntries) ValueAtDimension(_ uint64) int64 {
 	return e.ts
 }
 
+// unorderedHeadBlock will return true if the entry is a duplicate, false otherwise
 func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata labels.Labels) (bool, error) {
 	if hb.format < UnorderedWithStructuredMetadataHeadBlockFmt {
 		// structuredMetadata must be ignored for the previous head block formats

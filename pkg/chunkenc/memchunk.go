@@ -181,6 +181,7 @@ func (hb *headBlock) Reset() {
 
 func (hb *headBlock) Bounds() (int64, int64) { return hb.mint, hb.maxt }
 
+// The headBlock does not check for duplicates, and will always return false
 func (hb *headBlock) Append(ts int64, line string, _ labels.Labels) (bool, error) {
 	if !hb.IsEmpty() && hb.maxt > ts {
 		return false, ErrOutOfOrder
@@ -834,6 +835,7 @@ func (c *MemChunk) Utilization() float64 {
 }
 
 // Append implements Chunk.
+// The MemChunk may return true or false, depending on what the head block returns.
 func (c *MemChunk) Append(entry *logproto.Entry) (bool, error) {
 	entryTimestamp := entry.Timestamp.UnixNano()
 

@@ -36,6 +36,7 @@ func (c *dumbChunk) SpaceFor(_ *logproto.Entry) bool {
 	return len(c.entries) < tmpNumEntries
 }
 
+// The dumbChunk does not check for duplicates, and will always return false
 func (c *dumbChunk) Append(entry *logproto.Entry) (bool, error) {
 	if len(c.entries) == tmpNumEntries {
 		return false, ErrChunkFull
