@@ -10,10 +10,14 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/google/uuid"
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/common"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
@@ -84,32 +88,72 @@ func (b *Builder) starting(_ context.Context) error {
 }
 
 func (b *Builder) stopping(_ error) error {
+	defer b.metrics.running.Set(0)
+
 	if b.client != nil {
+		// The gRPC server we use from dskit expects the orgID to be injected into the context when auth is enabled
+		// We won't actually use the orgID anywhere in this service, but we need to inject it to satisfy the server.
+		ctx, err := user.InjectIntoGRPCRequest(user.InjectOrgID(context.Background(), "fake"))
+		if err != nil {
+			level.Error(b.logger).Log("msg", "failed to inject orgID into context", "err", err)
+			return nil
+		}
+
 		req := &protos.NotifyBuilderShutdownRequest{
 			BuilderID: b.ID,
 		}
-		if _, err := b.client.NotifyBuilderShutdown(context.Background(), req); err != nil {
+		if _, err := b.client.NotifyBuilderShutdown(ctx, req); err != nil {
 			level.Error(b.logger).Log("msg", "failed to notify planner about builder shutdown", "err", err)
 		}
 	}
 
-	b.metrics.running.Set(0)
 	return nil
 }
 
 func (b *Builder) running(ctx context.Context) error {
+	// Retry if the connection to the planner is lost.
+	retries := backoff.New(ctx, b.cfg.BackoffConfig)
+	for retries.Ongoing() {
+		err := b.connectAndBuild(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			break
+		}
+
+		level.Error(b.logger).Log("msg", "failed to connect and build. Retrying", "err", err)
+		retries.Wait()
+	}
+
+	if err := retries.Err(); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return nil
+		}
+		return fmt.Errorf("failed to connect and build: %w", err)
+	}
+
+	return nil
+}
+
+func (b *Builder) connectAndBuild(
+	ctx context.Context,
+) error {
 	opts, err := b.cfg.GrpcConfig.DialOption(nil, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create grpc dial options: %w", err)
 	}
 
-	// TODO: Wrap hereafter in retry logic
 	conn, err := grpc.DialContext(ctx, b.cfg.PlannerAddress, opts...)
 	if err != nil {
 		return fmt.Errorf("failed to dial bloom planner: %w", err)
 	}
 
 	b.client = protos.NewPlannerForBuilderClient(conn)
+
+	// The gRPC server we use from dskit expects the orgID to be injected into the context when auth is enabled
+	// We won't actually use the orgID anywhere in this service, but we need to inject it to satisfy the server.
+	ctx, err = user.InjectIntoGRPCRequest(user.InjectOrgID(ctx, "fake"))
+	if err != nil {
+		return fmt.Errorf("failed to inject orgID into context: %w", err)
+	}
 
 	c, err := b.client.BuilderLoop(ctx)
 	if err != nil {
@@ -131,17 +175,19 @@ func (b *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 	}
 
 	for b.State() == services.Running {
-		// When the planner connection closes or the builder stops, the context
-		// will be canceled and the loop will exit.
+		// When the planner connection closes, an EOF or "planner shutting down" error is returned.
+		// When the builder is shutting down, a gRPC context canceled error is returned.
 		protoTask, err := c.Recv()
 		if err != nil {
-			if errors.Is(c.Context().Err(), context.Canceled) {
+			if status.Code(err) == codes.Canceled {
 				level.Debug(b.logger).Log("msg", "builder loop context canceled")
 				return nil
 			}
 
 			return fmt.Errorf("failed to receive task from planner: %w", err)
 		}
+
+		logger := log.With(b.logger, "task", protoTask.Task.Id)
 
 		b.metrics.taskStarted.Inc()
 		start := time.Now()
@@ -150,7 +196,7 @@ func (b *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 		newMetas, err := b.processTask(c.Context(), protoTask.Task)
 		if err != nil {
 			status = statusFailure
-			level.Error(b.logger).Log("msg", "failed to process task", "err", err)
+			level.Error(logger).Log("msg", "failed to process task", "err", err)
 		}
 
 		b.metrics.taskCompleted.WithLabelValues(status).Inc()
@@ -178,13 +224,25 @@ func (b *Builder) notifyTaskCompletedToPlanner(
 		CreatedMetas: metas,
 	}
 
-	// TODO: Implement retry
-	if err := c.Send(&protos.BuilderToPlanner{
-		BuilderID: b.ID,
-		Result:    *result.ToProtoTaskResult(),
-	}); err != nil {
+	// We have a retry mechanism upper in the stack, but we add another one here
+	// to try our best to avoid losing the task result.
+	retries := backoff.New(c.Context(), b.cfg.BackoffConfig)
+	for retries.Ongoing() {
+		if err := c.Send(&protos.BuilderToPlanner{
+			BuilderID: b.ID,
+			Result:    *result.ToProtoTaskResult(),
+		}); err == nil {
+			break
+		}
+
+		level.Error(b.logger).Log("msg", "failed to acknowledge task completion to planner. Retrying", "err", err)
+		retries.Wait()
+	}
+
+	if err := retries.Err(); err != nil {
 		return fmt.Errorf("failed to acknowledge task completion to planner: %w", err)
 	}
+
 	return nil
 }
 
