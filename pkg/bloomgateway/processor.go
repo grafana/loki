@@ -62,10 +62,10 @@ func (p *processor) processTasksForDay(ctx context.Context, tenant string, day c
 		blocksRefs = append(blocksRefs, task.blocks...)
 	}
 
-	data := partitionTasks(tasks, blocksRefs)
+	tasksByBlock := partitionTasksByBlock(tasks, blocksRefs)
 
-	refs := make([]bloomshipper.BlockRef, 0, len(data))
-	for _, block := range data {
+	refs := make([]bloomshipper.BlockRef, 0, len(tasksByBlock))
+	for _, block := range tasksByBlock {
 		refs = append(refs, block.ref)
 	}
 
@@ -93,7 +93,7 @@ func (p *processor) processTasksForDay(ctx context.Context, tenant string, day c
 	}
 
 	startProcess := time.Now()
-	res := p.processBlocks(ctx, bqs, data)
+	res := p.processBlocks(ctx, bqs, tasksByBlock)
 	duration = time.Since(startProcess)
 
 	for _, t := range tasks {

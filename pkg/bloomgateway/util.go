@@ -48,7 +48,7 @@ type blockWithTasks struct {
 	tasks []Task
 }
 
-func partitionTasks(tasks []Task, blocks []bloomshipper.BlockRef) []blockWithTasks {
+func partitionTasksByBlock(tasks []Task, blocks []bloomshipper.BlockRef) []blockWithTasks {
 	result := make([]blockWithTasks, 0, len(blocks))
 
 	for _, block := range blocks {
