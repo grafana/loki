@@ -24,7 +24,11 @@ type Config struct {
 	MetasCache          cache.Config              `yaml:"metas_cache"`
 	MetasLRUCache       cache.EmbeddedCacheConfig `yaml:"metas_lru_cache"`
 	MemoryManagement    MemoryManagementConfig    `yaml:"memory_management" doc:"hidden"`
-	CacheListOps        bool                      `yaml:"cache_list_ops" doc:"hidden"`
+
+	// This will always be set to true when flags are registered.
+	// In unit tests, you can set this to false as a literal.
+	// In integration tests, you can override this via the flag.
+	CacheListOps bool `yaml:"-"`
 }
 
 func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
