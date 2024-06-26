@@ -262,3 +262,59 @@ func TestGoLimiter(t *testing.T) {
 		})
 	}
 }
+
+type MockRing struct {
+	zonesCount                  int
+	healthyInstancesCount       int
+	healthyInstancesInZoneCount int
+}
+
+func (m *MockRing) ZonesCount() int {
+	return m.zonesCount
+}
+
+func (m *MockRing) HealthyInstancesCount() int {
+	return m.healthyInstancesCount
+}
+
+func (m *MockRing) HealthyInstancesInZoneCount() int {
+	return m.healthyInstancesInZoneCount
+}
+
+func TestConvertGlobalToLocalLimit(t *testing.T) {
+	tests := []struct {
+		name                        string
+		globalLimit                 int
+		zonesCount                  int
+		healthyInstancesCount       int
+		healthyInstancesInZoneCount int
+		replicationFactor           int
+		expectedLocalLimit          int
+	}{
+		{"GlobalLimitZero", 0, 1, 1, 1, 3, 0},
+		{"SingleZoneMultipleIngesters", 100, 1, 10, 10, 3, 10},
+		{"MultipleZones", 200, 2, 0, 10, 3, 40},
+		{"MultipleZonesNoIngesters", 200, 2, 0, 0, 3, 0},
+		{"MultipleZonesNoIngestersInZone", 200, 3, 10, 0, 3, 0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mockRing := &MockRing{
+				zonesCount:                  tc.zonesCount,
+				healthyInstancesCount:       tc.healthyInstancesCount,
+				healthyInstancesInZoneCount: tc.healthyInstancesInZoneCount,
+			}
+
+			limiter := &Limiter{
+				ring:              mockRing,
+				replicationFactor: tc.replicationFactor,
+			}
+
+			localLimit := limiter.convertGlobalToLocalLimit(tc.globalLimit)
+			if localLimit != tc.expectedLocalLimit {
+				t.Errorf("expected %d, got %d", tc.expectedLocalLimit, localLimit)
+			}
+		})
+	}
+}

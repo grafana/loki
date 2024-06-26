@@ -86,7 +86,7 @@ func (l *Limiter) GetStreamCountLimit(tenantID string) (calculatedLimit, localLi
 	// We can assume that streams are evenly distributed across ingesters
 	// so we do convert the global limit into a local limit
 	globalLimit = l.limits.MaxGlobalStreamsPerUser(tenantID)
-	adjustedGlobalLimit = l.convertGlobalToLocalLimit(globalLimit, localLimit)
+	adjustedGlobalLimit = l.convertGlobalToLocalLimit(globalLimit)
 
 	// Set the calculated limit to the lesser of the local limit or the new calculated global limit
 	calculatedLimit = l.minNonZero(localLimit, adjustedGlobalLimit)
@@ -107,33 +107,33 @@ func (l *Limiter) minNonZero(first, second int) int {
 	return first
 }
 
-func (l *Limiter) convertGlobalToLocalLimit(globalLimit, maxStreamsPerUser int) int {
-	if globalLimit == 0 {
+func (l *Limiter) convertGlobalToLocalLimit(globalLimit int) int {
+	if globalLimit == 0 || l.replicationFactor == 0 {
 		return 0
 	}
 
 	zonesCount := l.ring.ZonesCount()
-
 	if zonesCount <= 1 {
-		numIngesters := l.ring.HealthyInstancesCount()
-		if numIngesters > 0 {
-			return int((float64(globalLimit) / float64(numIngesters)) * float64(l.replicationFactor))
-		}
-		return 0
+		return calculateLimitForSingleZone(globalLimit, l)
 	}
 
+	return calculateLimitForMultipleZones(globalLimit, zonesCount, l)
+}
+
+func calculateLimitForSingleZone(globalLimit int, l *Limiter) int {
+	numIngesters := l.ring.HealthyInstancesCount()
+	if numIngesters > 0 {
+		return int((float64(globalLimit) / float64(numIngesters)) * float64(l.replicationFactor))
+	}
+	return 0
+}
+
+func calculateLimitForMultipleZones(globalLimit, zonesCount int, l *Limiter) int {
 	ingestersInZone := l.ring.HealthyInstancesInZoneCount()
-	if ingestersInZone == 0 {
-		return 0 // Avoid division by zero
+	if ingestersInZone > 0 {
+		return int(float64(globalLimit) * float64(l.replicationFactor) * float64(zonesCount) / float64(ingestersInZone))
 	}
-
-	newLimit := int(float64(globalLimit) * float64(l.replicationFactor) * float64(zonesCount) / float64(ingestersInZone))
-
-	if maxStreamsPerUser > 0 && (newLimit == 0 || maxStreamsPerUser < newLimit) {
-		return maxStreamsPerUser
-	}
-
-	return newLimit
+	return 0
 }
 
 type supplier[T any] func() T
