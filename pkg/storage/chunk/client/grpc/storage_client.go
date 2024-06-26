@@ -67,7 +67,7 @@ func (s *StorageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) err
 	return nil
 }
 
-func (s *StorageClient) PutWal(ctx context.Context, wal *wal.SegmentWriter) error {
+func (s *StorageClient) PutWal(_ context.Context, _ *wal.SegmentWriter) error {
 	return errors.New("not implemented")
 }
 

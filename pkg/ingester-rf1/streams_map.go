@@ -1,4 +1,4 @@
-package ingester_rf1
+package ingesterrf1
 
 import (
 	"sync"

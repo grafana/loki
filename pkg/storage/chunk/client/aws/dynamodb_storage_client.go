@@ -119,8 +119,8 @@ type dynamoDBStorageClient struct {
 	metrics *dynamoDBMetrics
 }
 
-func (a dynamoDBStorageClient) PutWal(ctx context.Context, writer *wal.SegmentWriter) error {
-	panic("implement me")
+func (a dynamoDBStorageClient) PutWal(_ context.Context, _ *wal.SegmentWriter) error {
+	return errors.New("not implemented")
 }
 
 // NewDynamoDBIndexClient makes a new DynamoDB-backed IndexClient.

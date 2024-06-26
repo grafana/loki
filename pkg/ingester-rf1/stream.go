@@ -1,4 +1,4 @@
-package ingester_rf1
+package ingesterrf1
 
 import (
 	"bytes"
@@ -124,7 +124,7 @@ func newStream(
 // ingester chunk transfer.
 // Must hold chunkMtx
 // DEPRECATED: chunk transfers are no longer suggested and remain for compatibility.
-func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
+func (s *stream) consumeChunk(_ context.Context, _ *logproto.Chunk) error {
 	return nil
 }
 

@@ -15,7 +15,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/v3/pkg/storage/wal/testdata"
 
 	"github.com/grafana/loki/pkg/push"
@@ -122,7 +121,7 @@ func TestWalSegmentWriter_Append(t *testing.T) {
 				require.True(t, ok)
 				lbs, err := syntax.ParseLabels(expected.labels)
 				require.NoError(t, err)
-				lbs = append(lbs, labels.Label{Name: string(tsdb.TenantLabel), Value: expected.tenant})
+				lbs = append(lbs, labels.Label{Name: tenantLabel, Value: expected.tenant})
 				sort.Sort(lbs)
 				require.Equal(t, lbs, stream.lbls)
 				require.Equal(t, expected.entries, stream.entries)
@@ -260,7 +259,7 @@ func TestConcurrentAppends(t *testing.T) {
 
 	for _, tenant := range tenants {
 		for _, lbl := range lbls {
-			expectedSeries = append(expectedSeries, labels.NewBuilder(lbl).Set(tsdb.TenantLabel, string(tenant)).Labels().String())
+			expectedSeries = append(expectedSeries, labels.NewBuilder(lbl).Set(tenantLabel, string(tenant)).Labels().String())
 		}
 	}
 
@@ -325,7 +324,7 @@ func TestMultiTenantWrite(t *testing.T) {
 
 	for _, tenant := range tenants {
 		for _, lbl := range lbls {
-			expectedSeries = append(expectedSeries, labels.NewBuilder(lbl).Set(tsdb.TenantLabel, tenant).Labels().String())
+			expectedSeries = append(expectedSeries, labels.NewBuilder(lbl).Set(tenantLabel, tenant).Labels().String())
 		}
 	}
 

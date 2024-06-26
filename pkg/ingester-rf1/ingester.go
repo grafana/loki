@@ -1,4 +1,4 @@
-package ingester_rf1
+package ingesterrf1
 
 import (
 	"context"
@@ -197,7 +197,7 @@ func (o *flushCtx) Key() string {
 }
 
 func (o *flushCtx) Priority() int64 {
-	return -int64(o.creationTime.UnixNano())
+	return -o.creationTime.UnixNano()
 }
 
 // Ingester builds chunks for incoming log streams.

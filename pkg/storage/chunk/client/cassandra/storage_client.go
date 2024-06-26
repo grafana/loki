@@ -568,7 +568,7 @@ func (s *ObjectClient) reconnectReadSession() error {
 	return nil
 }
 
-func (s *ObjectClient) PutWal(ctx context.Context, segment *wal.SegmentWriter) error {
+func (s *ObjectClient) PutWal(_ context.Context, _ *wal.SegmentWriter) error {
 	return errors.New("not implemented")
 }
 
