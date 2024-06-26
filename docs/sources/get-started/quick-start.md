@@ -17,7 +17,7 @@ killercoda:
     imageid: ubuntu
 ---
 
-<!-- Killercoda intro.md START -->
+<!-- INTERACTIVE intro.md START -->
 
 # Quickstart to run Loki locally
 
@@ -38,7 +38,7 @@ The Docker Compose configuration runs the following components, each in its own 
 
 {{< figure max-width="75%" src="/media/docs/loki/get-started-flog-v3.png" caption="Getting started sample application" alt="Getting started sample application" >}}
 
-<!-- Killercoda intro.md END -->
+<!-- INTERACTIVE intro.md END -->
 
 ## Before you begin
 
@@ -63,35 +63,35 @@ Try out this demo within our interactive learning environment: [Loki Quickstart 
 - All commands run inside the interactive terminal.
 - You can access Grafana with the URL links provided within the sandbox.
 
-<!-- Killercoda step1.md START -->
+<!-- INTERACTIVE step1.md START -->
 
 ## Install Loki and collecting sample logs
 
-<!-- Killercoda ignore START -->
+<!-- INTERACTIVE ignore START -->
 
 {{< admonition type="note" >}}
 This quickstart assumes you are running Linux.
 {{< /admonition >}}
 
-<!-- Killercoda ignore END -->
+<!-- INTERACTIVE ignore END -->
 
 **To install Loki locally, follow these steps:**
 
 1. Create a directory called `evaluate-loki` for the demo environment.
    Make `evaluate-loki` your current working directory:
 
-   <!-- Killercoda exec START -->
+   <!-- INTERACTIVE exec START -->
 
    ```bash
    mkdir evaluate-loki
    cd evaluate-loki
    ```
 
-   <!-- Killercoda exec END -->
+   <!-- INTERACTIVE exec END -->
 
 1. Download `loki-config.yaml`, `alloy-local-config.yaml`, and `docker-compose.yaml`:
 
-   <!-- Killercoda exec START -->
+   <!-- INTERACTIVE exec START -->
 
    ```bash
    wget https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/loki-config.yaml -O loki-config.yaml
@@ -99,29 +99,29 @@ This quickstart assumes you are running Linux.
    wget https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/docker-compose.yaml -O docker-compose.yaml
    ```
 
-    <!-- Killercoda exec END -->
+    <!-- INTERACTIVE exec END -->
 
 1. Deploy the sample Docker image.
 
    With `evaluate-loki` as the current working directory, start the demo environment using `docker compose`:
 
-   <!-- Killercoda ignore START -->
+   <!-- INTERACTIVE ignore START -->
 
    ```bash
    docker compose up -d
    ```
 
-   <!-- Killercoda ignore END -->
+   <!-- INTERACTIVE ignore END -->
 
-   <!-- Killercoda include START -->
+   <!-- INTERACTIVE include START -->
    <!-- ```bash -->
    <!-- docker-compose up -d -->
    <!-- ```{{exec}} -->
-   <!-- Killercoda include END -->
+   <!-- INTERACTIVE include END -->
 
    At the end of the command, you should see something similar to the following:
 
-   <!-- Killercoda ignore START -->
+   <!-- INTERACTIVE ignore START -->
 
    ```console
    ✔ Network evaluate-loki_loki          Created      0.1s
@@ -135,9 +135,9 @@ This quickstart assumes you are running Linux.
    ✔ Container evaluate-loki-alloy-1     Started      1.4s
    ```
 
-   <!-- Killercoda ignore END -->
+   <!-- INTERACTIVE ignore END -->
 
-   <!-- Killercoda include START -->
+   <!-- INTERACTIVE include START -->
    <!-- ```console -->
    <!-- Creating evaluate-loki_flog_1  ... done -->
    <!-- Creating evaluate-loki_minio_1 ... done -->
@@ -148,7 +148,7 @@ This quickstart assumes you are running Linux.
    <!-- Creating evaluate-loki_grafana_1 ... done -->
    <!-- Creating evaluate-loki_backend_1 ... done -->
    <!-- ``` -->
-   <!-- Killercoda include END -->
+   <!-- INTERACTIVE include END -->
 
 1. (Optional) Verify that the Loki cluster is up and running.
 
@@ -160,9 +160,9 @@ This quickstart assumes you are running Linux.
 1. (Optional) Verify that Grafana Alloy is running.
    - You can access the Grafana Alloy UI at [http://localhost:12345](http://localhost:12345).
 
-<!-- Killercoda step1.md END -->
+<!-- INTERACTIVE step1.md END -->
 
-<!-- Killercoda step2.md START -->
+<!-- INTERACTIVE step2.md START -->
 
 ## View your logs in Grafana
 
@@ -208,13 +208,13 @@ You can view your logs using the command line interface, [LogCLI](/docs/loki/<LO
 
    1. View all the log lines which have the container label `evaluate-loki-flog-1`:
 
-      <!-- Killercoda copy START -->
+      <!-- INTERACTIVE copy START -->
 
       ```bash
       {container="evaluate-loki-flog-1"}
       ```
 
-      <!-- Killercoda copy END -->
+      <!-- INTERACTIVE copy END -->
 
       In Loki, this is a log stream.
 
@@ -225,43 +225,43 @@ You can view your logs using the command line interface, [LogCLI](/docs/loki/<LO
 
    1. To view all the log lines which have the container label `evaluate-loki-grafana-1`:
 
-      <!-- Killercoda copy START -->
+      <!-- INTERACTIVE copy START -->
 
       ```bash
       {container="evaluate-loki-grafana-1"}
       ```
 
-      <!-- Killercoda copy END -->
+      <!-- INTERACTIVE copy END -->
 
    1. Find all the log lines in the `{container="evaluate-loki-flog-1"}` stream that contain the string `status`:
 
-      <!-- Killercoda copy START -->
+      <!-- INTERACTIVE copy START -->
 
       ```bash
       {container="evaluate-loki-flog-1"} |= `status`
       ```
 
-      <!-- Killercoda copy END -->
+      <!-- INTERACTIVE copy END -->
 
    1. Find all the log lines in the `{container="evaluate-loki-flog-1"}` stream where the JSON field `status` has the value `404`:
 
-      <!-- Killercoda copy START -->
+      <!-- INTERACTIVE copy START -->
 
       ```bash
       {container="evaluate-loki-flog-1"} | json | status=`404`
       ```
 
-      <!-- Killercoda copy END -->
+      <!-- INTERACTIVE copy END -->
 
    1. Calculate the number of logs per second where the JSON field `status` has the value `404`:
 
-      <!-- Killercoda copy START -->
+      <!-- INTERACTIVE copy START -->
 
       ```bash
       sum by(container) (rate({container="evaluate-loki-flog-1"} | json | status=`404` [$__auto]))
       ```
 
-      <!-- Killercoda copy END -->
+      <!-- INTERACTIVE copy END -->
 
    The final query is a metric query which returns a time series.
    This makes Grafana draw a graph of the results.
@@ -283,59 +283,59 @@ Here are some more sample queries that you can run using the Flog sample data.
 
 To see all the log lines that flog has generated, enter the LogQL query:
 
-<!-- Killercoda copy START -->
+<!-- INTERACTIVE copy START -->
 
 ```bash
 {container="evaluate-loki-flog-1"}
 ```
 
-<!-- Killercoda copy END -->
+<!-- INTERACTIVE copy END -->
 
 The flog app generates log lines for simulated HTTP requests.
 
 To see all `GET` log lines, enter the LogQL query:
 
-<!-- Killercoda copy START -->
+<!-- INTERACTIVE copy START -->
 
 ```bash
 {container="evaluate-loki-flog-1"} |= "GET"
 ```
 
-<!-- Killercoda copy END -->
+<!-- INTERACTIVE copy END -->
 
 To see all `POST` methods, enter the LogQL query:
 
-<!-- Killercoda copy START -->
+<!-- INTERACTIVE copy START -->
 
 ```bash
 {container="evaluate-loki-flog-1"} |= "POST"
 ```
 
-<!-- Killercoda copy END -->
+<!-- INTERACTIVE copy END -->
 
 To see every log line with a 401 status (unauthorized error), enter the LogQL query:
 
-<!-- Killercoda copy START -->
+<!-- INTERACTIVE copy START -->
 
 ```bash
 {container="evaluate-loki-flog-1"} | json | status="401"
 ```
 
-<!-- Killercoda copy END -->
+<!-- INTERACTIVE copy END -->
 
 To see every log line that doesn't contain the text `401`:
 
-<!-- Killercoda copy START -->
+<!-- INTERACTIVE copy START -->
 
 ```bash
 {container="evaluate-loki-flog-1"} != "401"
 ```
 
-<!-- Killercoda copy END -->
+<!-- INTERACTIVE copy END -->
 
 For more examples, refer to the [query documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/query/query_examples/).
 
-<!-- Killercoda step2.md END -->
+<!-- INTERACTIVE step2.md END -->
 
 ## Complete metrics, logs, traces, and profiling example
 
