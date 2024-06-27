@@ -3,8 +3,6 @@ package builder
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-
-	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 )
 
 const (
@@ -32,7 +30,7 @@ type Metrics struct {
 	chunkSize prometheus.Histogram
 }
 
-func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
+func NewMetrics(r prometheus.Registerer) *Metrics {
 	return &Metrics{
 		running: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Namespace: metricsNamespace,
