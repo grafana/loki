@@ -69,7 +69,7 @@ func New(
 		return nil, fmt.Errorf("error creating TSDB store: %w", err)
 	}
 
-	metrics := NewMetrics(r, bloomStore.BloomMetrics())
+	metrics := NewMetrics(r)
 	b := &Builder{
 		ID:          builderID,
 		cfg:         cfg,
