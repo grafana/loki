@@ -11,11 +11,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
-var notOwnedStreamsMetric = promauto.NewGaugeVec(prometheus.GaugeOpts{
+var notOwnedStreamsMetric = promauto.NewGauge(prometheus.GaugeOpts{
 	Namespace: constants.Loki,
 	Name:      "ingester_not_owned_streams",
-	Help:      "The total number of not owned streams in memory per tenant.",
-}, []string{"tenant"})
+	Help:      "The total number of not owned streams in memory.",
+})
 
 type ownedStreamService struct {
 	tenantID         string
@@ -44,9 +44,10 @@ func (s *ownedStreamService) getOwnedStreamCount() int {
 	return s.ownedStreamCount
 }
 
-func (s *ownedStreamService) updateFixedLimit() {
-	limit, _, _, _ := s.limiter.GetStreamCountLimit(s.tenantID)
-	s.fixedLimit.Store(int32(limit))
+func (s *ownedStreamService) updateFixedLimit() (old, new int32) {
+	newLimit, _, _, _ := s.limiter.GetStreamCountLimit(s.tenantID)
+	return s.fixedLimit.Swap(int32(newLimit)), int32(newLimit)
+
 }
 
 func (s *ownedStreamService) getFixedLimit() int {
@@ -60,7 +61,7 @@ func (s *ownedStreamService) trackStreamOwnership(fp model.Fingerprint, owned bo
 		s.ownedStreamCount++
 		return
 	}
-	notOwnedStreamsMetric.WithLabelValues(s.tenantID).Inc()
+	notOwnedStreamsMetric.Inc()
 	s.notOwnedStreams[fp] = nil
 }
 
@@ -69,7 +70,7 @@ func (s *ownedStreamService) trackRemovedStream(fp model.Fingerprint) {
 	defer s.lock.Unlock()
 
 	if _, notOwned := s.notOwnedStreams[fp]; notOwned {
-		notOwnedStreamsMetric.WithLabelValues(s.tenantID).Dec()
+		notOwnedStreamsMetric.Dec()
 		delete(s.notOwnedStreams, fp)
 		return
 	}
@@ -80,7 +81,7 @@ func (s *ownedStreamService) resetStreamCounts() {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	s.ownedStreamCount = 0
-	notOwnedStreamsMetric.WithLabelValues(s.tenantID).Set(0)
+	notOwnedStreamsMetric.Sub(float64(len(s.notOwnedStreams)))
 	s.notOwnedStreams = make(map[model.Fingerprint]any)
 }
 
