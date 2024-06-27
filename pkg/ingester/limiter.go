@@ -131,7 +131,7 @@ func calculateLimitForSingleZone(globalLimit int, l *Limiter) int {
 func calculateLimitForMultipleZones(globalLimit, zonesCount int, l *Limiter) int {
 	ingestersInZone := l.ring.HealthyInstancesInZoneCount()
 	if ingestersInZone > 0 {
-		return int(float64(globalLimit) * float64(l.replicationFactor) * float64(zonesCount) / float64(ingestersInZone))
+		return int((float64(globalLimit) * float64(l.replicationFactor)) / float64(zonesCount) / float64(ingestersInZone))
 	}
 	return 0
 }

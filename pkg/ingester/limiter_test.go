@@ -293,9 +293,9 @@ func TestConvertGlobalToLocalLimit(t *testing.T) {
 	}{
 		{"GlobalLimitZero", 0, 1, 1, 1, 3, 0},
 		{"SingleZoneMultipleIngesters", 100, 1, 10, 10, 3, 30},
-		{"MultipleZones", 200, 3, 0, 10, 3, 180},
-		{"MultipleZonesNoIngesters", 200, 2, 0, 0, 3, 0},
-		{"MultipleZonesNoIngestersInZone", 200, 3, 10, 0, 3, 0},
+		{"MultipleZones", 200, 3, 30, 10, 3, 20},
+		{"MultipleZonesNoHealthyIngesters", 200, 2, 0, 0, 3, 0},
+		{"MultipleZonesNoHealthyIngestersInZone", 200, 3, 10, 0, 3, 0},
 	}
 
 	for _, tc := range tests {
