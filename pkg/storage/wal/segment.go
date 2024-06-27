@@ -279,16 +279,18 @@ func NewEncodedSegmentReader(encodedContent *bytes.Buffer) *EncodedSegmentReader
 	}
 }
 
-func (e EncodedSegmentReader) Read(p []byte) (n int, err error) {
+func (e *EncodedSegmentReader) Read(p []byte) (n int, err error) {
 	return e.delegate.Read(p)
 }
 
-func (e EncodedSegmentReader) Seek(offset int64, whence int) (int64, error) {
+func (e *EncodedSegmentReader) Seek(offset int64, whence int) (int64, error) {
 	return e.delegate.Seek(offset, whence)
 }
 
-func (e EncodedSegmentReader) Close() error {
+func (e *EncodedSegmentReader) Close() error {
 	encodedWalSegmentBufferPool.Put(e.encodedContent)
+	e.encodedContent = nil
+	e.delegate = nil
 	return nil
 }
 
