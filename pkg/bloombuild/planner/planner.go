@@ -524,7 +524,8 @@ func (p *Planner) loadTenantWork(
 			// NOTE(salvacorts): We will reset them multiple times for the same tenant, for each table, but it's not a big deal.
 			//                   Alternatively, we can use a Counter instead of a Gauge, but I think a Gauge is easier to reason about.
 			p.metrics.tenantTasksPlanned.WithLabelValues(tenant).Set(0)
-			p.metrics.tenantTasksCompleted.WithLabelValues(tenant).Set(0)
+			p.metrics.tenantTasksCompleted.WithLabelValues(tenant, statusSuccess).Set(0)
+			p.metrics.tenantTasksCompleted.WithLabelValues(tenant, statusFailure).Set(0)
 
 			level.Debug(p.logger).Log("msg", "loading work for tenant", "table", table, "tenant", tenant, "splitFactor", splitFactor)
 		}
@@ -799,7 +800,7 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 		if err != nil {
 			maxRetries := p.limits.BloomTaskMaxRetries(task.Tenant)
 			if maxRetries > 0 && int(task.timesEnqueued.Load()) >= maxRetries {
-				p.metrics.tasksFailed.Inc()
+				p.metrics.tenantTasksCompleted.WithLabelValues(task.Tenant, statusFailure).Inc()
 				p.removePendingTask(task)
 				level.Error(logger).Log(
 					"msg", "task failed after max retries",
@@ -841,7 +842,7 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 			"retries", task.timesEnqueued.Load()-1, // -1 because the first enqueue is not a retry
 		)
 		p.removePendingTask(task)
-		p.metrics.tenantTasksCompleted.WithLabelValues(task.Tenant).Inc()
+		p.metrics.tenantTasksCompleted.WithLabelValues(task.Tenant, statusSuccess).Inc()
 
 		// Send the result back to the task. The channel is buffered, so this should not block.
 		task.resultsChannel <- result

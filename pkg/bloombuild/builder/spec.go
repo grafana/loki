@@ -49,7 +49,7 @@ type SimpleBloomGenerator struct {
 	// options to build blocks with
 	opts v1.BlockOptions
 
-	metrics *Metrics
+	metrics *v1.Metrics
 	logger  log.Logger
 
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader)
@@ -70,7 +70,7 @@ func NewSimpleBloomGenerator(
 	blocksIter v1.ResettableIterator[*v1.SeriesWithBlooms],
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
 	reporter func(model.Fingerprint),
-	metrics *Metrics,
+	metrics *v1.Metrics,
 	logger log.Logger,
 ) *SimpleBloomGenerator {
 	return &SimpleBloomGenerator{
@@ -92,7 +92,7 @@ func NewSimpleBloomGenerator(
 			opts.Schema.NGramLen(),
 			opts.Schema.NGramSkip(),
 			int(opts.UnencodedBlockOptions.MaxBloomSizeBytes),
-			metrics.bloomMetrics,
+			metrics,
 		),
 	}
 }
@@ -163,7 +163,7 @@ func (s *SimpleBloomGenerator) Generate(ctx context.Context) *LazyBlockBuilderIt
 type LazyBlockBuilderIterator struct {
 	ctx          context.Context
 	opts         v1.BlockOptions
-	metrics      *Metrics
+	metrics      *v1.Metrics
 	populate     v1.BloomPopulatorFunc
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader)
 	series       v1.PeekingIterator[*v1.Series]
@@ -177,7 +177,7 @@ type LazyBlockBuilderIterator struct {
 func NewLazyBlockBuilderIterator(
 	ctx context.Context,
 	opts v1.BlockOptions,
-	metrics *Metrics,
+	metrics *v1.Metrics,
 	populate v1.BloomPopulatorFunc,
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
 	series v1.PeekingIterator[*v1.Series],
@@ -214,7 +214,7 @@ func (b *LazyBlockBuilderIterator) Next() bool {
 		return false
 	}
 
-	mergeBuilder := v1.NewMergeBuilder(b.blocks, b.series, b.populate, b.metrics.bloomMetrics)
+	mergeBuilder := v1.NewMergeBuilder(b.blocks, b.series, b.populate, b.metrics)
 	writer, reader := b.readWriterFn()
 	blockBuilder, err := v1.NewBlockBuilder(b.opts, writer)
 	if err != nil {
@@ -229,7 +229,7 @@ func (b *LazyBlockBuilderIterator) Next() bool {
 		return false
 	}
 
-	b.curr = v1.NewBlock(reader, b.metrics.bloomMetrics)
+	b.curr = v1.NewBlock(reader, b.metrics)
 	return true
 }
 
