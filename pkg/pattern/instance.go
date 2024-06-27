@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -17,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/pattern/chunk"
+	"github.com/grafana/loki/v3/pkg/pattern/drain"
 	"github.com/grafana/loki/v3/pkg/pattern/metric"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
@@ -208,7 +210,15 @@ func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream
 	}
 	fp := i.getHashForLabels(labels)
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
-	s, err := newStream(fp, sortedLabels, i.metrics, i.chunkMetrics, i.aggregationCfg, i.logger)
+	firstEntryLine := pushReqStream.Entries[0].Line
+	format := drain.FormatUnknown
+	if firstEntryLine[0] == '{' && firstEntryLine[len(firstEntryLine)-1] == '}' {
+		format = drain.FormatJson
+	} else if strings.Count(firstEntryLine, "=") > len(firstEntryLine)/20 {
+		format = drain.FormatLogfmt
+	}
+	s, err := newStream(fp, sortedLabels, i.metrics, i.chunkMetrics, i.aggregationCfg, i.logger, format)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}

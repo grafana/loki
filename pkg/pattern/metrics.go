@@ -7,10 +7,10 @@ import (
 
 type ingesterMetrics struct {
 	flushQueueLength       prometheus.Gauge
-	patternsDiscardedTotal prometheus.Counter
-	patternsDetectedTotal  prometheus.Counter
-	tokensPerLine          prometheus.Histogram
-	metadataPerLine        prometheus.Histogram
+	patternsDiscardedTotal *prometheus.CounterVec
+	patternsDetectedTotal  *prometheus.CounterVec
+	tokensPerLine          *prometheus.HistogramVec
+	metadataPerLine        *prometheus.HistogramVec
 }
 
 func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *ingesterMetrics {
@@ -21,32 +21,32 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 			Name:      "flush_queue_length",
 			Help:      "The total number of series pending in the flush queue.",
 		}),
-		patternsDiscardedTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		patternsDiscardedTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: "pattern_ingester",
 			Name:      "patterns_evicted_total",
-			Help:      "The total number of patterns evicted from the LRU cache.",
-		}),
-		patternsDetectedTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Help:      "The total number of patterns evicted from the LRU cache, by log format.",
+		}, []string{"format"}),
+		patternsDetectedTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: "pattern_ingester",
 			Name:      "patterns_detected_total",
-			Help:      "The total number of patterns detected from incoming log lines.",
-		}),
-		tokensPerLine: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Help:      "The total number of patterns detected from incoming log lines, by log format.",
+		}, []string{"format"}),
+		tokensPerLine: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: metricsNamespace,
 			Subsystem: "pattern_ingester",
 			Name:      "tokens_per_line",
 			Help:      "The number of tokens an incoming logline is split into for pattern recognision",
 			Buckets:   []float64{5, 10, 20, 40, 80, 120, 160, 240, 320, 640, 1280},
-		}),
-		metadataPerLine: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+		}, []string{"format"}),
+		metadataPerLine: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: metricsNamespace,
 			Subsystem: "pattern_ingester",
 			Name:      "metadata_per_line",
 			Help:      "The number of items of additional metadata returned alongside tokens for pattern recognition",
 			Buckets:   []float64{5, 10, 20, 40, 80, 100, 120, 140, 160, 240, 320, 640, 1280},
-		}),
+		}, []string{"format"}),
 	}
 }
 

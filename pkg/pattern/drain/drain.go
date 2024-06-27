@@ -154,7 +154,9 @@ func New(config *Config, metrics *Metrics) *Drain {
 	config.maxNodeDepth = config.LogClusterDepth - 2
 	var evictFn func(int, *LogCluster)
 	if metrics != nil {
-		evictFn = func(int, *LogCluster) { metrics.PatternsEvictedTotal.Inc() }
+		evictFn = func(int, *LogCluster) {
+			metrics.PatternsEvictedTotal.WithLabelValues(metrics.DetectedLogFormat).Inc()
+		}
 	}
 
 	d := &Drain{
@@ -199,8 +201,8 @@ func (d *Drain) train(tokens []string, state interface{}, ts int64) *LogCluster 
 		return nil
 	}
 	if d.metrics != nil {
-		d.metrics.TokensPerLine.Observe(float64(len(tokens)))
-		d.metrics.MetadataPerLine.Observe(float64(len(state.([]int))))
+		d.metrics.TokensPerLine.WithLabelValues(d.metrics.DetectedLogFormat).Observe(float64(len(tokens)))
+		d.metrics.MetadataPerLine.WithLabelValues(d.metrics.DetectedLogFormat).Observe(float64(len(state.([]int))))
 	}
 	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, false)
 	// Match no existing log cluster
@@ -219,7 +221,7 @@ func (d *Drain) train(tokens []string, state interface{}, ts int64) *LogCluster 
 		d.idToCluster.Set(clusterID, matchCluster)
 		d.addSeqToPrefixTree(d.rootNode, matchCluster)
 		if d.metrics != nil {
-			d.metrics.PatternsDetectedTotal.Inc()
+			d.metrics.PatternsDetectedTotal.WithLabelValues(d.metrics.DetectedLogFormat).Inc()
 		}
 	} else {
 		newTemplateTokens := d.createTemplate(tokens, matchCluster.Tokens)

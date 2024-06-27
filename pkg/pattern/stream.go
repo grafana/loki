@@ -52,6 +52,7 @@ func newStream(
 	chunkMetrics *metric.ChunkMetrics,
 	cfg metric.AggregationConfig,
 	logger log.Logger,
+	guessedFormat string,
 ) (*stream, error) {
 	stream := &stream{
 		fp:           fp,
@@ -63,6 +64,7 @@ func newStream(
 			PatternsDetectedTotal: metrics.patternsDetectedTotal,
 			TokensPerLine:         metrics.tokensPerLine,
 			MetadataPerLine:       metrics.metadataPerLine,
+			DetectedLogFormat:     guessedFormat,
 		}),
 		cfg:    cfg,
 		logger: logger,
