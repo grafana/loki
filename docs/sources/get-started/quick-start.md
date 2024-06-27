@@ -17,7 +17,7 @@ killercoda:
     imageid: ubuntu
 ---
 
-<!-- INTERACTIVE intro.md START -->
+<!-- INTERACTIVE page intro.md START -->
 
 # Quickstart to run Loki locally
 
@@ -38,7 +38,7 @@ The Docker Compose configuration runs the following components, each in its own 
 
 {{< figure max-width="75%" src="/media/docs/loki/get-started-flog-v3.png" caption="Getting started sample application" alt="Getting started sample application" >}}
 
-<!-- INTERACTIVE intro.md END -->
+<!-- INTERACTIVE page intro.md END -->
 
 ## Before you begin
 
@@ -63,7 +63,7 @@ Try out this demo within our interactive learning environment: [Loki Quickstart 
 - All commands run inside the interactive terminal.
 - You can access Grafana with the URL links provided within the sandbox.
 
-<!-- INTERACTIVE step1.md START -->
+<!-- INTERACTIVE page step1.md START -->
 
 ## Install Loki and collecting sample logs
 
@@ -160,9 +160,9 @@ This quickstart assumes you are running Linux.
 1. (Optional) Verify that Grafana Alloy is running.
    - You can access the Grafana Alloy UI at [http://localhost:12345](http://localhost:12345).
 
-<!-- INTERACTIVE step1.md END -->
+<!-- INTERACTIVE page step1.md END -->
 
-<!-- INTERACTIVE step2.md START -->
+<!-- INTERACTIVE page step2.md START -->
 
 ## View your logs in Grafana
 
@@ -295,7 +295,7 @@ To see every log line that doesn't contain the text `401`:
 
 For more examples, refer to the [query documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/query/query_examples/).
 
-<!-- INTERACTIVE step2.md END -->
+<!-- INTERACTIVE page step2.md END -->
 
 ## Complete metrics, logs, traces, and profiling example
 
