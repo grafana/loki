@@ -26,7 +26,8 @@ type Config struct {
 	MemoryManagement    MemoryManagementConfig    `yaml:"memory_management" doc:"hidden"`
 
 	// This will always be set to true when flags are registered.
-	// In tests, where config is created as literal, it can be set manually.
+	// In unit tests, you can set this to false as a literal.
+	// In integration tests, you can override this via the flag.
 	CacheListOps bool `yaml:"-"`
 }
 
@@ -41,9 +42,7 @@ func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	c.MetasCache.RegisterFlagsWithPrefix(prefix+"metas-cache.", "Cache for bloom metas. ", f)
 	c.MetasLRUCache.RegisterFlagsWithPrefix(prefix+"metas-lru-cache.", "In-memory LRU cache for bloom metas. ", f)
 	c.MemoryManagement.RegisterFlagsWithPrefix(prefix+"memory-management.", f)
-
-	// always cache LIST operations
-	c.CacheListOps = true
+	f.BoolVar(&c.CacheListOps, prefix+"cache-list-ops", true, "Cache LIST operations. This is a hidden flag.")
 }
 
 func (c *Config) Validate() error {

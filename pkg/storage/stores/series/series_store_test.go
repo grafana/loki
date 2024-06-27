@@ -755,7 +755,8 @@ func dummyChunkWithFormat(t testing.TB, now model.Time, metric labels.Labels, fo
 	chk := chunkenc.NewMemChunk(format, chunkenc.EncGZIP, headfmt, 256*1024, 0)
 	for i := 0; i < samples; i++ {
 		ts := time.Duration(i) * 15 * time.Second
-		err := chk.Append(&logproto.Entry{Timestamp: chunkStart.Time().Add(ts), Line: fmt.Sprintf("line %d", i)})
+		dup, err := chk.Append(&logproto.Entry{Timestamp: chunkStart.Time().Add(ts), Line: fmt.Sprintf("line %d", i)})
+		require.False(t, dup)
 		require.NoError(t, err)
 	}
 

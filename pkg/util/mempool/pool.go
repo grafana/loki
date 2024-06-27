@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/dustin/go-humanize"
@@ -51,15 +52,11 @@ func (s *slab) get(size int) ([]byte, error) {
 	s.metrics.accesses.WithLabelValues(s.name, opTypeGet).Inc()
 	s.once.Do(s.init)
 
+	waitStart := time.Now()
 	// wait for available buffer on channel
-	var buf []byte
-	select {
-	case ptr := <-s.buffer:
-		buf = unsafe.Slice((*byte)(ptr), s.size)
-	default:
-		s.metrics.errorsCounter.WithLabelValues(s.name, reasonSlabExhausted).Inc()
-		return nil, errSlabExhausted
-	}
+	ptr := <-s.buffer
+	buf := unsafe.Slice((*byte)(ptr), s.size)
+	s.metrics.waitDuration.WithLabelValues(s.name).Observe(time.Since(waitStart).Seconds())
 
 	return buf[:size], nil
 }

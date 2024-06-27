@@ -89,7 +89,7 @@ func DummyChunkFor(from, through model.Time, metric labels.Labels) chunk.Chunk {
 	cs := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncGZIP, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 256*1024, 0)
 
 	for ts := from; ts <= through; ts = ts.Add(15 * time.Second) {
-		err := cs.Append(&logproto.Entry{Timestamp: ts.Time(), Line: fmt.Sprintf("line ts=%d", ts)})
+		_, err := cs.Append(&logproto.Entry{Timestamp: ts.Time(), Line: fmt.Sprintf("line ts=%d", ts)})
 		if err != nil {
 			panic(err)
 		}

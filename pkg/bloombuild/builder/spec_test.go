@@ -107,7 +107,7 @@ func dummyBloomGen(t *testing.T, opts v1.BlockOptions, store v1.Iterator[*v1.Ser
 			return v1.NewMemoryBlockWriter(indexBuf, bloomsBuf), v1.NewByteReader(indexBuf, bloomsBuf)
 		},
 		nil,
-		NewMetrics(nil, v1.NewMetrics(nil)),
+		v1.NewMetrics(nil),
 		log.NewNopLogger(),
 	)
 }

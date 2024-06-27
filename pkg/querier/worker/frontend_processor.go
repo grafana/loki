@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v1/frontendv1pb"
@@ -83,8 +84,8 @@ func (fp *frontendProcessor) processQueriesOnSingleStream(ctx context.Context, c
 // process loops processing requests on an established stream.
 func (fp *frontendProcessor) process(c frontendv1pb.Frontend_ProcessClient) error {
 	// Build a child context so we can cancel a query when the stream is closed.
-	ctx, cancel := context.WithCancel(c.Context())
-	defer cancel()
+	ctx, cancel := context.WithCancelCause(c.Context())
+	defer cancel(errors.New("frontend processor process finished"))
 
 	for {
 		request, err := c.Recv()

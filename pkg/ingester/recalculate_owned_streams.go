@@ -2,7 +2,6 @@ package ingester
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/go-kit/log"
@@ -10,8 +9,6 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 )
-
-var ownedStreamRingOp = ring.NewOp([]ring.InstanceState{ring.PENDING, ring.JOINING, ring.ACTIVE, ring.LEAVING}, nil)
 
 type recalculateOwnedStreams struct {
 	services.Service
@@ -42,34 +39,46 @@ func (s *recalculateOwnedStreams) iteration(_ context.Context) error {
 }
 
 func (s *recalculateOwnedStreams) recalculate() {
+	level.Info(s.logger).Log("msg", "starting recalculate owned streams job")
+	defer func() {
+		s.updateFixedLimitForAll()
+		level.Info(s.logger).Log("msg", "completed recalculate owned streams job")
+	}()
 	ringChanged, err := s.checkRingForChanges()
 	if err != nil {
 		level.Error(s.logger).Log("msg", "failed to check ring for changes", "err", err)
 		return
 	}
 	if !ringChanged {
+		level.Debug(s.logger).Log("msg", "ring is not changed, skipping the job")
 		return
 	}
-	ownedTokenRange, err := s.getTokenRangesForIngester()
-	if err != nil {
-		level.Error(s.logger).Log("msg", "failed to get token ranges for ingester", "err", err)
-		return
-	}
+	level.Info(s.logger).Log("msg", "detected ring changes, re-evaluating streams ownership")
 
 	for _, instance := range s.instancesSupplier() {
 		if !instance.limiter.limits.UseOwnedStreamCount(instance.instanceID) {
 			continue
 		}
-		err = instance.updateOwnedStreams(ownedTokenRange)
+
+		level.Info(s.logger).Log("msg", "updating streams ownership", "tenant", instance.instanceID)
+		err := instance.updateOwnedStreams(s.ingestersRing, s.ingesterID)
 		if err != nil {
-			level.Error(s.logger).Log("msg", "failed to update owned streams", "err", err)
+			level.Error(s.logger).Log("msg", "failed to re-evaluate streams ownership", "tenant", instance.instanceID, "err", err)
 		}
-		instance.ownedStreamsSvc.updateFixedLimit()
+	}
+}
+
+func (s *recalculateOwnedStreams) updateFixedLimitForAll() {
+	for _, instance := range s.instancesSupplier() {
+		oldLimit, newLimit := instance.ownedStreamsSvc.updateFixedLimit()
+		if oldLimit != newLimit {
+			level.Info(s.logger).Log("msg", "fixed limit has been updated", "tenant", instance.instanceID, "old", oldLimit, "new", newLimit)
+		}
 	}
 }
 
 func (s *recalculateOwnedStreams) checkRingForChanges() (bool, error) {
-	rs, err := s.ingestersRing.GetAllHealthy(ownedStreamRingOp)
+	rs, err := s.ingestersRing.GetAllHealthy(ring.WriteNoExtend)
 	if err != nil {
 		return false, err
 	}
@@ -77,16 +86,4 @@ func (s *recalculateOwnedStreams) checkRingForChanges() (bool, error) {
 	ringChanged := ring.HasReplicationSetChangedWithoutStateOrAddr(s.previousRing, rs)
 	s.previousRing = rs
 	return ringChanged, nil
-}
-
-func (s *recalculateOwnedStreams) getTokenRangesForIngester() (ring.TokenRanges, error) {
-	ranges, err := s.ingestersRing.GetTokenRangesForInstance(s.ingesterID)
-	if err != nil {
-		if errors.Is(err, ring.ErrInstanceNotFound) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	return ranges, nil
 }

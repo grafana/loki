@@ -42,6 +42,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner"
+	bloomprotos "github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
 	"github.com/grafana/loki/v3/pkg/compactor"
 	compactorclient "github.com/grafana/loki/v3/pkg/compactor/client"
@@ -782,9 +783,9 @@ func (t *Loki) initStore() (services.Service, error) {
 }
 
 func (t *Loki) initBloomStore() (services.Service, error) {
-	// BloomStore is a dependency of IndexGateway, even when the BloomGateway is not enabled.
-	// Do not instantiate store and do not create a service.
-	if !t.Cfg.BloomGateway.Enabled {
+	// BloomStore is a dependency of IndexGateway and Bloom Planner & Builder.
+	// Do not instantiate store and do not create a service if neither ar enabled.
+	if !t.Cfg.BloomGateway.Enabled && !t.Cfg.BloomBuild.Enabled {
 		return nil, nil
 	}
 
@@ -1652,7 +1653,7 @@ func (t *Loki) initBloomPlanner() (services.Service, error) {
 
 	logger := log.With(util_log.Logger, "component", "bloom-planner")
 
-	return planner.New(
+	p, err := planner.New(
 		t.Cfg.BloomBuild.Planner,
 		t.Overrides,
 		t.Cfg.SchemaConfig,
@@ -1662,6 +1663,12 @@ func (t *Loki) initBloomPlanner() (services.Service, error) {
 		logger,
 		prometheus.DefaultRegisterer,
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	bloomprotos.RegisterPlannerForBuilderServer(t.Server.GRPC, p)
+	return p, nil
 }
 
 func (t *Loki) initBloomBuilder() (services.Service, error) {
@@ -1669,7 +1676,7 @@ func (t *Loki) initBloomBuilder() (services.Service, error) {
 		return nil, nil
 	}
 
-	logger := log.With(util_log.Logger, "component", "bloom-worker")
+	logger := log.With(util_log.Logger, "component", "bloom-builder")
 
 	return builder.New(
 		t.Cfg.BloomBuild.Builder,

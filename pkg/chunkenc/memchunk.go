@@ -181,9 +181,10 @@ func (hb *headBlock) Reset() {
 
 func (hb *headBlock) Bounds() (int64, int64) { return hb.mint, hb.maxt }
 
-func (hb *headBlock) Append(ts int64, line string, _ labels.Labels) error {
+// The headBlock does not check for duplicates, and will always return false
+func (hb *headBlock) Append(ts int64, line string, _ labels.Labels) (bool, error) {
 	if !hb.IsEmpty() && hb.maxt > ts {
-		return ErrOutOfOrder
+		return false, ErrOutOfOrder
 	}
 
 	hb.entries = append(hb.entries, entry{t: ts, s: line})
@@ -193,7 +194,7 @@ func (hb *headBlock) Append(ts int64, line string, _ labels.Labels) error {
 	hb.maxt = ts
 	hb.size += len(line)
 
-	return nil
+	return false, nil
 }
 
 func (hb *headBlock) Serialise(pool WriterPool) ([]byte, error) {
@@ -340,7 +341,7 @@ func (hb *headBlock) Convert(version HeadBlockFmt, symbolizer *symbolizer) (Head
 	out := version.NewBlock(symbolizer)
 
 	for _, e := range hb.entries {
-		if err := out.Append(e.t, e.s, e.structuredMetadata); err != nil {
+		if _, err := out.Append(e.t, e.s, e.structuredMetadata); err != nil {
 			return nil, err
 		}
 	}
@@ -834,27 +835,29 @@ func (c *MemChunk) Utilization() float64 {
 }
 
 // Append implements Chunk.
-func (c *MemChunk) Append(entry *logproto.Entry) error {
+// The MemChunk may return true or false, depending on what the head block returns.
+func (c *MemChunk) Append(entry *logproto.Entry) (bool, error) {
 	entryTimestamp := entry.Timestamp.UnixNano()
 
 	// If the head block is empty but there are cut blocks, we have to make
 	// sure the new entry is not out of order compared to the previous block
 	if c.headFmt < UnorderedHeadBlockFmt && c.head.IsEmpty() && len(c.blocks) > 0 && c.blocks[len(c.blocks)-1].maxt > entryTimestamp {
-		return ErrOutOfOrder
+		return false, ErrOutOfOrder
 	}
 
 	if c.format < ChunkFormatV4 {
 		entry.StructuredMetadata = nil
 	}
-	if err := c.head.Append(entryTimestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)); err != nil {
-		return err
+	dup, err := c.head.Append(entryTimestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata))
+	if err != nil {
+		return dup, err
 	}
 
 	if c.head.UncompressedSize() >= c.blockSize {
-		return c.cut()
+		return false, c.cut()
 	}
 
-	return nil
+	return dup, nil
 }
 
 // Close implements Chunk.
@@ -1122,7 +1125,7 @@ func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, err
 		if filter != nil && filter(entry.Timestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)...) {
 			continue
 		}
-		if err := newChunk.Append(&entry); err != nil {
+		if _, err := newChunk.Append(&entry); err != nil {
 			return nil, err
 		}
 	}

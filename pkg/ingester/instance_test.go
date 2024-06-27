@@ -316,9 +316,10 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 		require.NoError(t, err)
 		chunkfmt, headfmt, err := instance.chunkFormatAt(minTs(&testStream))
 		require.NoError(t, err)
-		chunk := newStream(chunkfmt, headfmt, cfg, limiter, "fake", 0, nil, true, NewStreamRateCalculator(), NilMetrics, nil).NewChunk()
+		chunk := newStream(chunkfmt, headfmt, cfg, limiter, "fake", 0, nil, true, NewStreamRateCalculator(), NilMetrics, nil, nil).NewChunk()
 		for _, entry := range testStream.Entries {
-			err = chunk.Append(&entry)
+			dup, err := chunk.Append(&entry)
+			require.False(t, dup)
 			require.NoError(t, err)
 		}
 		stream.chunks = append(stream.chunks, chunkDesc{chunk: chunk})
@@ -575,7 +576,7 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 
 	b.Run("addTailersToNewStream", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			inst.addTailersToNewStream(newStream(chunkfmt, headfmt, nil, limiter, "fake", 0, lbs, true, NewStreamRateCalculator(), NilMetrics, nil))
+			inst.addTailersToNewStream(newStream(chunkfmt, headfmt, nil, limiter, "fake", 0, lbs, true, NewStreamRateCalculator(), NilMetrics, nil, nil))
 		}
 	})
 }

@@ -223,7 +223,7 @@ For example with `cluster="namespace"` the cluster is the label identifier, the 
 We support multiple **value** types which are automatically inferred from the query input.
 
 - **String** is double quoted or backticked such as `"200"` or \``us-central1`\`.
-- **[Duration](https://golang.org/pkg/time/#ParseDuration)** is a sequence of decimal numbers, each with optional fraction and a unit suffix, such as "300ms", "1.5h" or "2h45m". Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
+- **[Duration](https://golang.org/pkg/time/#ParseDuration)** is a sequence of decimal numbers, each with optional fraction and a unit suffix, such as "300ms", "1.5h" or "2h45m". Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h". The value of the label identifier used for comparison must be a string with a unit suffix to be parsed correctly, such as "0.10ms" or "1h30m". Optionally, `label_format` can be used to modify the value and append the unit before making the comparison.
 - **Number** are floating-point number (64bits), such as`250`, `89.923`.
 - **Bytes** is a sequence of decimal numbers, each with optional fraction and a unit suffix, such as "42MB", "1.5Kib" or "20b". Valid bytes units are "b", "kib", "kb", "mib", "mb", "gib",  "gb", "tib", "tb", "pib", "pb", "eib", "eb".
 

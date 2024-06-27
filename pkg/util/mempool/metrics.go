@@ -11,6 +11,7 @@ type metrics struct {
 	availableBuffersPerSlab *prometheus.GaugeVec
 	errorsCounter           *prometheus.CounterVec
 	accesses                *prometheus.CounterVec
+	waitDuration            *prometheus.HistogramVec
 }
 
 const (
@@ -41,5 +42,12 @@ func newMetrics(r prometheus.Registerer, name string) *metrics {
 			Help:        "The total amount of accesses to the pool.",
 			ConstLabels: prometheus.Labels{"pool": name},
 		}, []string{"slab", "op"}),
+		waitDuration: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace:   constants.Loki,
+			Subsystem:   "mempool",
+			Name:        "wait_duration_seconds",
+			Help:        "Time spent waiting for obtaining buffer from slab.",
+			ConstLabels: prometheus.Labels{"pool": name},
+		}, []string{"slab"}),
 	}
 }

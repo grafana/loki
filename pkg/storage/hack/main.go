@@ -110,7 +110,7 @@ func fillStore(cm storage.ClientMetrics) error {
 					Line:      randString(250),
 				}
 				if chunkEnc.SpaceFor(entry) {
-					_ = chunkEnc.Append(entry)
+					_, _ = chunkEnc.Append(entry)
 				} else {
 					from, to := chunkEnc.Bounds()
 					c := chunk.NewChunk("fake", fp, metric, chunkenc.NewFacade(chunkEnc, 0, 0), model.TimeFromUnixNano(from.UnixNano()), model.TimeFromUnixNano(to.UnixNano()))

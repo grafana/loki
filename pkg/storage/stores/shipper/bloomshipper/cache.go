@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/multierror"
 	"github.com/pkg/errors"
 
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -23,11 +24,12 @@ type CloseableBlockQuerier struct {
 }
 
 func (c *CloseableBlockQuerier) Close() error {
-	c.BlockQuerier.Close()
+	var err multierror.MultiError
+	err.Add(c.BlockQuerier.Reset())
 	if c.close != nil {
-		return c.close()
+		err.Add(c.close())
 	}
-	return nil
+	return err.Err()
 }
 
 func (c *CloseableBlockQuerier) SeriesIter() (v1.PeekingIterator[*v1.SeriesWithBlooms], error) {

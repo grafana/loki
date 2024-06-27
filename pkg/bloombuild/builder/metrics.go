@@ -16,8 +16,7 @@ const (
 )
 
 type Metrics struct {
-	bloomMetrics *v1.Metrics
-	running      prometheus.Gauge
+	running prometheus.Gauge
 
 	taskStarted   prometheus.Counter
 	taskCompleted *prometheus.CounterVec
@@ -35,7 +34,6 @@ type Metrics struct {
 
 func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
 	return &Metrics{
-		bloomMetrics: bloomMetrics,
 		running: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
