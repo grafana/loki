@@ -12,7 +12,7 @@ killercoda:
   description: This sandbox provides an online enviroment for testing the Loki quickstart demo.
   details:
     finish:
-      text: finished.md
+      text: finish.md
   backend:
     imageid: ubuntu
 ---
