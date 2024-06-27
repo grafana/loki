@@ -284,6 +284,27 @@ func (d *Drain) PatternString(c *LogCluster) string {
 	return s
 }
 
+func (d *Drain) Prune() {
+	d.pruneTree(d.rootNode)
+}
+
+func (d *Drain) pruneTree(node *Node) int {
+	for key, child := range node.keyToChildNode {
+		if d.pruneTree(child) == 0 {
+			delete(node.keyToChildNode, key)
+		}
+	}
+
+	validClusterIds := 0
+	for _, clusterID := range node.clusterIDs {
+		cluster := d.idToCluster.Get(clusterID)
+		if cluster != nil {
+			validClusterIds++
+		}
+	}
+	return len(node.keyToChildNode) + validClusterIds
+}
+
 func (d *Drain) Delete(cluster *LogCluster) {
 	d.idToCluster.cache.Remove(cluster.id)
 }

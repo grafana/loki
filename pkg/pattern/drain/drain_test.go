@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/slices"
@@ -624,4 +625,69 @@ func TestDeduplicatePlaceholders(b *testing.T) {
 			require.Equal(t, tc.want, got)
 		})
 	}
+}
+
+func TestDrain_PruneTreeClearsOldBranches(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		drain      *Drain
+		inputLines []string
+	}{
+		{
+			name:  "should prune old branches",
+			drain: New(DefaultConfig(), nil),
+			inputLines: []string{
+				"test test test A",
+				"test test test B",
+				"test test test C",
+				"test test test D",
+				"test test test E",
+				"test test test F",
+				"test test test G",
+				"my name is W",
+				"my name is X",
+				"my name is Y",
+				"my name is Z",
+			},
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			now := time.Now()
+			for i, line := range tt.inputLines {
+				ts := now.Add(time.Millisecond * time.Duration(i))
+				if i < 7 {
+					ts = ts.Add(-time.Duration(7-i) * time.Minute)
+				}
+				tt.drain.Train(line, ts.UnixNano())
+			}
+
+			require.Len(t, tt.drain.Clusters(), 2)
+			require.Equal(t, 8, countNodes(tt.drain.rootNode))
+
+			clusters := tt.drain.Clusters()
+			for _, cluster := range clusters {
+				cluster.Prune(time.Second * 10)
+				if cluster.Size == 0 {
+					tt.drain.Delete(cluster)
+				}
+			}
+			require.Len(t, tt.drain.Clusters(), 1)
+			require.Equal(t, 8, countNodes(tt.drain.rootNode), "expected same number of nodes before pruning")
+
+			tt.drain.Prune()
+			require.Len(t, tt.drain.Clusters(), 1)
+			require.Equal(t, 5, countNodes(tt.drain.rootNode), "expected fewer nodes after pruning")
+		})
+	}
+}
+
+func countNodes(node *Node) int {
+	total := 1
+	for _, child := range node.keyToChildNode {
+		total += countNodes(child)
+	}
+	return total
 }
