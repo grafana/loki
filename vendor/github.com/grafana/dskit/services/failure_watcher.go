@@ -35,7 +35,7 @@ func (w *FailureWatcher) WatchService(service Service) {
 		panic(errFailureWatcherNotInitialized)
 	}
 
-	service.AddListener(NewListener(nil, nil, nil, nil, func(from State, failure error) {
+	service.AddListener(NewListener(nil, nil, nil, nil, func(_ State, failure error) {
 		w.ch <- errors.Wrapf(failure, "service %s failed", DescribeService(service))
 	}))
 }
