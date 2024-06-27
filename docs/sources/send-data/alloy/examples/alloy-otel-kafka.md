@@ -1,26 +1,20 @@
 ---
-title: Sending OpenTelemetry logs to Loki using Alloy
-menuTitle: Sending OpenTelemetry logs to Loki using Alloy
-description: Configuring Grafana Alloy to send OpenTelemetry logs to Loki.
+title: Recive OpenTelemetry logs via Kafka using Alloy and Loki
+menuTitle: Recive OpenTelemetry logs via Kafka using Alloy and Loki
+description: Configuring Grafana Alloy to recive OpenTelemetry logs via Kafka and send them to Loki.
 weight: 250
 killercoda:
-  title: Sending OpenTelemetry logs to Loki using Alloy
-  description: Configuring Grafana Alloy to send OpenTelemetry logs to Loki.
-  details:
-    finish:
-      text: finish.md
+  title: Recive OpenTelemetry logs via Kafka using Alloy and Loki
+  description: Configuring Grafana Alloy to recive OpenTelemetry logs via Kafka and send them to Loki.
   backend:
     imageid: ubuntu
 ---
 
 <!-- INTERACTIVE page intro.md START -->
 
-# Sending OpenTelemetry logs to Loki using Alloy
+#  Recive OpenTelemetry logs via Kafka using Alloy and Loki
 
-Alloy natively supports receiving logs in the OpenTelemetry format. This allows you to send logs from applications instrumented with OpenTelemetry to Alloy, which can then be sent to Loki for storage and visualization in Grafana. In this example, we will make use of 3 Alloy components to achieve this:
-- **OpenTelemetry Logs Receiver:** This receiver will accept logs via HTTP and gRPC.
-- **OpenTelemetry Logs Processor:** This processor will batch the logs before sending them to the logs exporter.
-- **OpenTelemetry Logs Exporter:** This exporter will send the logs to Loki.
+Alloy natively supports ingesting OpenTelemetry logs via Kafka. There maybe several scenarios where you may want to ingest logs via Kafka. For instance you may already use Kafka to aggregate logs from several otel collectors. Or your application may already be writing logs to Kafka and you want to ingest them into Loki. In this example, we will make use of 3 Alloy components to achieve this:
 
 ## Dependencies
 
