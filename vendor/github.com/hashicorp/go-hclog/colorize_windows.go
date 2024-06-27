@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MIT
+
 //go:build windows
 // +build windows
 
@@ -7,32 +10,32 @@ import (
 	"os"
 
 	colorable "github.com/mattn/go-colorable"
-	"github.com/mattn/go-isatty"
 )
 
 // setColorization will mutate the values of this logger
-// to approperately configure colorization options. It provides
+// to appropriately configure colorization options. It provides
 // a wrapper to the output stream on Windows systems.
 func (l *intLogger) setColorization(opts *LoggerOptions) {
-	switch opts.Color {
-	case ColorOff:
+	if opts.Color == ColorOff {
 		return
-	case ForceColor:
-		fi := l.checkWriterIsFile()
-		l.writer.w = colorable.NewColorable(fi)
-	case AutoColor:
-		fi := l.checkWriterIsFile()
-		isUnixTerm := isatty.IsTerminal(os.Stdout.Fd())
-		isCygwinTerm := isatty.IsCygwinTerminal(os.Stdout.Fd())
-		isTerm := isUnixTerm || isCygwinTerm
-		if !isTerm {
-			l.writer.color = ColorOff
-			l.headerColor = ColorOff
-			return
-		}
+	}
 
-		if l.headerColor == ColorOff {
-			l.writer.w = colorable.NewColorable(fi)
-		}
+	fi, ok := l.writer.w.(*os.File)
+	if !ok {
+		l.writer.color = ColorOff
+		l.headerColor = ColorOff
+		return
+	}
+
+	cfi := colorable.NewColorable(fi)
+
+	// NewColorable detects if color is possible and if it's not, then it
+	// returns the original value. So we can test if we got the original
+	// value back to know if color is possible.
+	if cfi == fi {
+		l.writer.color = ColorOff
+		l.headerColor = ColorOff
+	} else {
+		l.writer.w = cfi
 	}
 }
