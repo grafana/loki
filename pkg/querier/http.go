@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/middleware"
 	"github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/promql/parser"
 
@@ -474,7 +475,7 @@ func WrapQuerySpanAndTimeout(call string, limits Limits) middleware.Interface {
 
 			timeoutCapture := func(id string) time.Duration { return limits.QueryTimeout(ctx, id) }
 			timeout := util_validation.SmallestPositiveNonZeroDurationPerTenant(tenants, timeoutCapture)
-			newCtx, cancel := context.WithTimeout(ctx, timeout)
+			newCtx, cancel := context.WithTimeoutCause(ctx, timeout, errors.New("query timeout reached"))
 			defer cancel()
 
 			newReq := req.WithContext(newCtx)

@@ -646,6 +646,19 @@ bloom_build:
     # CLI flag: -bloom-build.builder.planner-address
     [planner_address: <string> | default = ""]
 
+    backoff_config:
+      # Minimum delay when backing off.
+      # CLI flag: -bloom-build.builder.backoff.backoff-min-period
+      [min_period: <duration> | default = 100ms]
+
+      # Maximum delay when backing off.
+      # CLI flag: -bloom-build.builder.backoff.backoff-max-period
+      [max_period: <duration> | default = 10s]
+
+      # Number of times to backoff and retry before failing.
+      # CLI flag: -bloom-build.builder.backoff.backoff-retries
+      [max_retries: <int> | default = 10]
+
 # Experimental: The bloom_gateway block configures the Loki bloom gateway
 # server, responsible for serving queries for filtering chunks based on filter
 # expressions.
@@ -4050,6 +4063,14 @@ These are values which allow you to control aspects of Loki's operation, most co
 # runtime config only).
 # CLI flag: -operation-config.log-push-request-streams
 [log_push_request_streams: <boolean> | default = false]
+
+# Log metrics for duplicate lines received.
+# CLI flag: -operation-config.log-duplicate-metrics
+[log_duplicate_metrics: <boolean> | default = false]
+
+# Log stream info for duplicate lines received
+# CLI flag: -operation-config.log-duplicate-stream-info
+[log_duplicate_stream_info: <boolean> | default = false]
 
 # Log push errors with a rate limited logger, will show client push errors
 # without overly spamming logs.

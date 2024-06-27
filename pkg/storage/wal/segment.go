@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/wal/chunks"
 	"github.com/grafana/loki/v3/pkg/storage/wal/index"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
+	"github.com/grafana/loki/v3/pkg/util/pool"
 )
 
 // LOKW is the magic number for the Loki WAL format.
@@ -35,6 +36,8 @@ var (
 		},
 	}
 	tenantLabel = "__loki_tenant__"
+	// 512kb - 20 mb
+	encodedWalSegmentBufferPool = pool.NewBuffer(512*1024, 20*1024*1024, 2)
 )
 
 func init() {
@@ -63,6 +66,10 @@ type streamSegment struct {
 
 func (s *streamSegment) Reset() {
 	s.entries = s.entries[:0]
+}
+
+func (s *streamSegment) WriteTo(w io.Writer) (n int64, err error) {
+	return chunks.WriteChunk(w, s.entries, chunks.EncodingSnappy)
 }
 
 // NewWalSegmentWriter creates a new WalSegmentWriter.
@@ -233,6 +240,7 @@ func (b *SegmentWriter) WriteTo(w io.Writer) (int64, error) {
 	// write index len 4b
 	b.buf1.PutBE32int(n)
 	n, err = w.Write(b.buf1.Get())
+	b.buf1.Reset()
 	if err != nil {
 		return total, err
 	}
@@ -255,10 +263,6 @@ func (b *SegmentWriter) WriteTo(w io.Writer) (int64, error) {
 	return total, nil
 }
 
-func (s *streamSegment) WriteTo(w io.Writer) (n int64, err error) {
-	return chunks.WriteChunk(w, s.entries, chunks.EncodingSnappy)
-}
-
 // Reset clears the writer.
 // After calling Reset, the writer can be reused.
 func (b *SegmentWriter) Reset() {
@@ -267,8 +271,48 @@ func (b *SegmentWriter) Reset() {
 		streamSegmentPool.Put(s)
 	}
 	b.streams = make(map[streamID]*streamSegment, 64)
-	b.buf1.Reset()
 	b.inputSize.Store(0)
+}
+
+func (b *SegmentWriter) ToReader() (io.ReadSeekCloser, error) {
+	// snappy compression rate is ~5x , but we can not predict it, so we need to allocate bigger buffer to avoid allocations
+	buffer := encodedWalSegmentBufferPool.Get(int(b.inputSize / 3))
+	_, err := b.WriteTo(buffer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write segment to create a reader: %w", err)
+	}
+	return NewEncodedSegmentReader(buffer), nil
+}
+
+var (
+	_ io.ReadSeekCloser = &EncodedSegmentReader{}
+)
+
+type EncodedSegmentReader struct {
+	delegate       io.ReadSeeker
+	encodedContent *bytes.Buffer
+}
+
+func NewEncodedSegmentReader(encodedContent *bytes.Buffer) *EncodedSegmentReader {
+	return &EncodedSegmentReader{
+		encodedContent: encodedContent,
+		delegate:       bytes.NewReader(encodedContent.Bytes()),
+	}
+}
+
+func (e *EncodedSegmentReader) Read(p []byte) (n int, err error) {
+	return e.delegate.Read(p)
+}
+
+func (e *EncodedSegmentReader) Seek(offset int64, whence int) (int64, error) {
+	return e.delegate.Seek(offset, whence)
+}
+
+func (e *EncodedSegmentReader) Close() error {
+	encodedWalSegmentBufferPool.Put(e.encodedContent)
+	e.encodedContent = nil
+	e.delegate = nil
+	return nil
 }
 
 // InputSize returns the total size of the input data written to the writer.

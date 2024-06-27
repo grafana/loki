@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"sync"
 	"testing"
 	"time"
 
@@ -489,30 +488,40 @@ func BenchmarkWrites(b *testing.B) {
 
 	dst := bytes.NewBuffer(make([]byte, 0, inputSize))
 
-	pool := sync.Pool{
-		New: func() interface{} {
-			writer, err := NewWalSegmentWriter()
-			if err != nil {
-				panic(err)
-			}
-			return writer
-		},
+	writer, err := NewWalSegmentWriter()
+	require.NoError(b, err)
+
+	for _, d := range data {
+		writer.Append(d.tenant, d.labels, d.lbls, d.entries)
 	}
 
-	b.ResetTimer()
-	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		writer := pool.Get().(*SegmentWriter)
+	encodedLength, err := writer.WriteTo(dst)
+	require.NoError(b, err)
 
-		dst.Reset()
-		writer.Reset()
-
-		for _, d := range data {
-			writer.Append(d.tenant, d.labels, d.lbls, d.entries)
+	b.Run("WriteTo", func(b *testing.B) {
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			dst.Reset()
+			n, err := writer.WriteTo(dst)
+			require.NoError(b, err)
+			require.EqualValues(b, encodedLength, n)
 		}
-		n, err := writer.WriteTo(dst)
-		require.NoError(b, err)
-		require.True(b, n > 0)
-		pool.Put(writer)
-	}
+	})
+
+	bytesBuf := make([]byte, inputSize)
+	b.Run("Reader", func(b *testing.B) {
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			var err error
+			reader, err := writer.ToReader()
+			require.NoError(b, err)
+
+			n, err := reader.Read(bytesBuf)
+			require.NoError(b, err)
+			require.EqualValues(b, encodedLength, n)
+			require.NoError(b, reader.Close())
+		}
+	})
 }

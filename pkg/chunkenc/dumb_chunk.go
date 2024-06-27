@@ -36,17 +36,18 @@ func (c *dumbChunk) SpaceFor(_ *logproto.Entry) bool {
 	return len(c.entries) < tmpNumEntries
 }
 
-func (c *dumbChunk) Append(entry *logproto.Entry) error {
+// The dumbChunk does not check for duplicates, and will always return false
+func (c *dumbChunk) Append(entry *logproto.Entry) (bool, error) {
 	if len(c.entries) == tmpNumEntries {
-		return ErrChunkFull
+		return false, ErrChunkFull
 	}
 
 	if len(c.entries) > 0 && c.entries[len(c.entries)-1].Timestamp.After(entry.Timestamp) {
-		return ErrOutOfOrder
+		return false, ErrOutOfOrder
 	}
 
 	c.entries = append(c.entries, *entry)
-	return nil
+	return false, nil
 }
 
 func (c *dumbChunk) Size() int {
