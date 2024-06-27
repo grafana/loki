@@ -276,7 +276,7 @@ func (b *SegmentWriter) Reset() {
 
 func (b *SegmentWriter) ToReader() (io.ReadSeekCloser, error) {
 	// snappy compression rate is ~5x , but we can not predict it, so we need to allocate bigger buffer to avoid allocations
-	buffer := encodedWalSegmentBufferPool.Get(int(b.inputSize / 3))
+	buffer := encodedWalSegmentBufferPool.Get(int(b.InputSize() / 3))
 	_, err := b.WriteTo(buffer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write segment to create a reader: %w", err)
