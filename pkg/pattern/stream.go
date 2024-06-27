@@ -61,6 +61,8 @@ func newStream(
 		patterns: drain.New(drain.DefaultConfig(), &drain.Metrics{
 			PatternsEvictedTotal:  metrics.patternsDiscardedTotal,
 			PatternsDetectedTotal: metrics.patternsDetectedTotal,
+			TokensPerLine:         metrics.tokensPerLine,
+			MetadataPerLine:       metrics.metadataPerLine,
 		}),
 		cfg:    cfg,
 		logger: logger,

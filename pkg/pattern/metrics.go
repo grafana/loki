@@ -9,6 +9,8 @@ type ingesterMetrics struct {
 	flushQueueLength       prometheus.Gauge
 	patternsDiscardedTotal prometheus.Counter
 	patternsDetectedTotal  prometheus.Counter
+	tokensPerLine          prometheus.Histogram
+	metadataPerLine        prometheus.Histogram
 }
 
 func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *ingesterMetrics {
@@ -30,6 +32,20 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 			Subsystem: "pattern_ingester",
 			Name:      "patterns_detected_total",
 			Help:      "The total number of patterns detected from incoming log lines.",
+		}),
+		tokensPerLine: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Namespace: metricsNamespace,
+			Subsystem: "pattern_ingester",
+			Name:      "tokens_per_line",
+			Help:      "The number of tokens an incoming logline is split into for pattern recognision",
+			Buckets:   []float64{5, 10, 20, 40, 80, 120, 160, 240, 320, 640, 1280},
+		}),
+		metadataPerLine: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Namespace: metricsNamespace,
+			Subsystem: "pattern_ingester",
+			Name:      "metadata_per_line",
+			Help:      "The number of items of additional metadata returned alongside tokens for pattern recognition",
+			Buckets:   []float64{5, 10, 20, 40, 80, 100, 120, 140, 160, 240, 320, 640, 1280},
 		}),
 	}
 }

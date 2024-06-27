@@ -94,7 +94,7 @@ func (c *LogClusterCache) Get(key int) *LogCluster {
 func createNode() *Node {
 	return &Node{
 		keyToChildNode: make(map[string]*Node),
-		clusterIDs:     make([]int, 0),
+		clusterIDs:     make([]int, 0, 8),
 	}
 }
 
@@ -197,6 +197,10 @@ func (d *Drain) Train(content string, ts int64) *LogCluster {
 func (d *Drain) train(tokens []string, state interface{}, ts int64) *LogCluster {
 	if len(tokens) < 4 {
 		return nil
+	}
+	if d.metrics != nil {
+		d.metrics.TokensPerLine.Observe(float64(len(tokens)))
+		d.metrics.MetadataPerLine.Observe(float64(len(state.([]int))))
 	}
 	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, false)
 	// Match no existing log cluster
