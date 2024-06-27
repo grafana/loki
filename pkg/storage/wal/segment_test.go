@@ -358,10 +358,12 @@ func BenchmarkWrites(b *testing.B) {
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
+			var err error
 			reader, err := writer.ToReader()
 			require.NoError(b, err)
 
 			n, err := reader.Read(bytesBuf)
+			require.NoError(b, err)
 			require.EqualValues(b, encodedLength, n)
 			require.NoError(b, reader.Close())
 		}
