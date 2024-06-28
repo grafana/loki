@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+
 	"io"
 	"math"
 	"time"
@@ -34,7 +35,7 @@ type HeadBlock interface {
 	Entries() int
 	UncompressedSize() int
 	Convert(HeadBlockFmt, *symbolizer) (HeadBlock, error)
-	Append(int64, string, labels.Labels) error
+	Append(int64, string, labels.Labels) (bool, error)
 	Iterator(
 		ctx context.Context,
 		direction logproto.Direction,
@@ -110,7 +111,8 @@ func (e *nsEntries) ValueAtDimension(_ uint64) int64 {
 	return e.ts
 }
 
-func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata labels.Labels) error {
+// unorderedHeadBlock will return true if the entry is a duplicate, false otherwise
+func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata labels.Labels) (bool, error) {
 	if hb.format < UnorderedWithStructuredMetadataHeadBlockFmt {
 		// structuredMetadata must be ignored for the previous head block formats
 		structuredMetadata = nil
@@ -135,7 +137,7 @@ func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata l
 		for _, et := range displaced[0].(*nsEntries).entries {
 			if et.line == line {
 				e.entries = displaced[0].(*nsEntries).entries
-				return nil
+				return true, nil
 			}
 		}
 		e.entries = append(displaced[0].(*nsEntries).entries, nsEntry{line, hb.symbolizer.Add(structuredMetadata)})
@@ -156,7 +158,7 @@ func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata l
 	hb.size += len(structuredMetadata) * 2 * 4 // 4 bytes per label and value pair as structuredMetadataSymbols
 	hb.lines++
 
-	return nil
+	return false, nil
 }
 
 func metaLabelsLen(metaLabels labels.Labels) int {
@@ -443,7 +445,8 @@ func (hb *unorderedHeadBlock) Convert(version HeadBlockFmt, symbolizer *symboliz
 		0,
 		math.MaxInt64,
 		func(_ *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
-			return out.Append(ts, line, hb.symbolizer.Lookup(structuredMetadataSymbols))
+			_, err := out.Append(ts, line, hb.symbolizer.Lookup(structuredMetadataSymbols))
+			return err
 		},
 	)
 	return out, err
@@ -583,7 +586,7 @@ func (hb *unorderedHeadBlock) LoadBytes(b []byte) error {
 			}
 		}
 
-		if err := hb.Append(ts, line, hb.symbolizer.Lookup(structuredMetadataSymbols)); err != nil {
+		if _, err := hb.Append(ts, line, hb.symbolizer.Lookup(structuredMetadataSymbols)); err != nil {
 			return err
 		}
 	}

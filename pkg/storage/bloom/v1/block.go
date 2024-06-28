@@ -136,6 +136,7 @@ func (bq *BlockQuerier) Schema() (Schema, error) {
 }
 
 func (bq *BlockQuerier) Reset() error {
+	bq.blooms.Reset()
 	return bq.LazySeriesIter.Seek(0)
 }
 
@@ -145,10 +146,6 @@ func (bq *BlockQuerier) Err() error {
 	}
 
 	return bq.blooms.Err()
-}
-
-func (bq *BlockQuerier) Close() {
-	bq.blooms.Close()
 }
 
 type BlockQuerierIter struct {
@@ -163,7 +160,11 @@ func (bq *BlockQuerier) Iter() *BlockQuerierIter {
 }
 
 func (b *BlockQuerierIter) Next() bool {
-	return b.LazySeriesIter.Next()
+	next := b.LazySeriesIter.Next()
+	if !next {
+		b.blooms.Reset()
+	}
+	return next
 }
 
 func (b *BlockQuerierIter) At() *SeriesWithBlooms {

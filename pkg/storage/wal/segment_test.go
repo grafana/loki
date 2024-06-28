@@ -104,7 +104,8 @@ func TestWalSegmentWriter_Append(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			// Create a new WalSegmentWriter
-			w := NewWalSegmentWriter()
+			w, err := NewWalSegmentWriter()
+			require.NoError(t, err)
 			// Append the entries
 			for _, batch := range tt.batches {
 				for _, stream := range batch {
@@ -116,7 +117,7 @@ func TestWalSegmentWriter_Append(t *testing.T) {
 			require.NotEmpty(t, tt.expected, "expected entries are empty")
 			// Check the entries
 			for _, expected := range tt.expected {
-				stream, ok := w.streams.Get(streamID{labels: expected.labels, tenant: expected.tenant})
+				stream, ok := w.streams[streamID{labels: expected.labels, tenant: expected.tenant}]
 				require.True(t, ok)
 				lbs, err := syntax.ParseLabels(expected.labels)
 				require.NoError(t, err)
@@ -130,7 +131,8 @@ func TestWalSegmentWriter_Append(t *testing.T) {
 }
 
 func TestMultiTenantWrite(t *testing.T) {
-	w := NewWalSegmentWriter()
+	w, err := NewWalSegmentWriter()
+	require.NoError(t, err)
 	dst := bytes.NewBuffer(nil)
 
 	lbls := []labels.Labels{
@@ -199,7 +201,8 @@ func TestCompression(t *testing.T) {
 }
 
 func testCompression(t *testing.T, maxInputSize int64) {
-	w := NewWalSegmentWriter()
+	w, err := NewWalSegmentWriter()
+	require.NoError(t, err)
 	dst := bytes.NewBuffer(nil)
 	files := testdata.Files()
 	lbls := []labels.Labels{}
@@ -252,4 +255,117 @@ func testCompression(t *testing.T, maxInputSize int64) {
 		sizesString += humanize.Bytes(uint64(size)) + ", "
 	}
 	t.Logf("Series sizes: [%s]\n", sizesString)
+}
+
+func TestReset(t *testing.T) {
+	w, err := NewWalSegmentWriter()
+	require.NoError(t, err)
+	dst := bytes.NewBuffer(nil)
+
+	w.Append("tenant", "foo", labels.FromStrings("container", "foo", "namespace", "dev"), []*push.Entry{
+		{Timestamp: time.Unix(0, 0), Line: "Entry 1"},
+		{Timestamp: time.Unix(1, 0), Line: "Entry 2"},
+		{Timestamp: time.Unix(2, 0), Line: "Entry 3"},
+	})
+
+	n, err := w.WriteTo(dst)
+	require.NoError(t, err)
+	require.True(t, n > 0)
+
+	copyBuffer := bytes.NewBuffer(nil)
+
+	w.Reset()
+	w.Append("tenant", "foo", labels.FromStrings("container", "foo", "namespace", "dev"), []*push.Entry{
+		{Timestamp: time.Unix(0, 0), Line: "Entry 1"},
+		{Timestamp: time.Unix(1, 0), Line: "Entry 2"},
+		{Timestamp: time.Unix(2, 0), Line: "Entry 3"},
+	})
+
+	n, err = w.WriteTo(copyBuffer)
+	require.NoError(t, err)
+	require.True(t, n > 0)
+
+	require.Equal(t, dst.Bytes(), copyBuffer.Bytes())
+}
+
+func BenchmarkWrites(b *testing.B) {
+	files := testdata.Files()
+	lbls := []labels.Labels{}
+	generators := []*testdata.LogGenerator{}
+
+	for _, file := range files {
+		lbls = append(lbls, labels.FromStrings("filename", file, "namespace", "dev"))
+		lbls = append(lbls, labels.FromStrings("filename", file, "namespace", "prod"))
+		g := testdata.NewLogGenerator(b, file)
+		generators = append(generators, g, g)
+	}
+	inputSize := int64(0)
+	data := []struct {
+		tenant  string
+		labels  string
+		lbls    labels.Labels
+		entries []*push.Entry
+	}{}
+	for inputSize < 5<<20 {
+		for i, lbl := range lbls {
+			more, line := generators[i].Next()
+			if !more {
+				continue
+			}
+			inputSize += int64(len(line))
+			data = append(data, struct {
+				tenant  string
+				labels  string
+				lbls    labels.Labels
+				entries []*push.Entry
+			}{
+				tenant: "tenant",
+				labels: lbl.String(),
+				lbls:   lbl,
+				entries: []*push.Entry{
+					{Timestamp: time.Unix(0, int64(i*1e9)), Line: string(line)},
+				},
+			})
+
+		}
+	}
+
+	dst := bytes.NewBuffer(make([]byte, 0, inputSize))
+
+	writer, err := NewWalSegmentWriter()
+	require.NoError(b, err)
+
+	for _, d := range data {
+		writer.Append(d.tenant, d.labels, d.lbls, d.entries)
+	}
+
+	encodedLength, err := writer.WriteTo(dst)
+	require.NoError(b, err)
+
+	b.Run("WriteTo", func(b *testing.B) {
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			dst.Reset()
+			n, err := writer.WriteTo(dst)
+			require.NoError(b, err)
+			require.EqualValues(b, encodedLength, n)
+		}
+	})
+
+	bytesBuf := make([]byte, inputSize)
+	b.Run("Reader", func(b *testing.B) {
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			var err error
+			reader, err := writer.ToReader()
+			require.NoError(b, err)
+
+			n, err := reader.Read(bytesBuf)
+			require.NoError(b, err)
+			require.EqualValues(b, encodedLength, n)
+			require.NoError(b, reader.Close())
+		}
+	})
 }
