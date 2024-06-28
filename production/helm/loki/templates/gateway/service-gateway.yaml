@@ -28,9 +28,9 @@ spec:
   loadBalancerIP: {{ .Values.gateway.service.loadBalancerIP }}
   {{- end }}
   ports:
-    - name: http-metrics
+    - name: http
       port: {{ .Values.gateway.service.port }}
-      targetPort: http-metrics
+      targetPort: http
       {{- if and (eq "NodePort" .Values.gateway.service.type) .Values.gateway.service.nodePort }}
       nodePort: {{ .Values.gateway.service.nodePort }}
       {{- end }}

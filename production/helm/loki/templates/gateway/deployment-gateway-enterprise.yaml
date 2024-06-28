@@ -103,7 +103,7 @@ spec:
             {{ toYaml .Values.enterpriseGateway.extraVolumeMounts | nindent 12 }}
             {{- end }}
           ports:
-            - name: http-metrics
+            - name: http
               containerPort: 3100
               protocol: TCP
           readinessProbe:
