@@ -630,6 +630,13 @@ test:
 # that it's working correctly
 lokiCanary:
   enabled: true
+  # -- Mode can be either `daemonset` or `deployment`
+  mode: daemonset
+  # -- Used when `mode=deployment`
+  deployment:
+    replicaCount: 3
+    strategy:
+      type: RollingUpdate
   # -- If true, the canary will send directly to Loki via the address configured for verification --
   # -- If false, it will write to stdout and an Agent will be needed to scrape and send the logs --
   push: true
