@@ -137,5 +137,5 @@ func (d *DynamicConfig) ApplyDynamicConfig() Source {
 func (d *DynamicConfig) RegisterFlags(fs *flag.FlagSet) {
 	fs.IntVar(&d.Server.Port, "server.port", 80, "")
 	fs.DurationVar(&d.Server.Timeout, "server.timeout", 60*time.Second, "")
-	fs.StringVar(&d.ConfigFile, "config.file", "", "yaml file to load")
+	fs.StringVar(&d.ConfigFile, "config.file", "", "yaml file to load (see https://bit.ly/promtail-yaml-reference)")
 }
