@@ -69,12 +69,11 @@ In this step, we will set up our environment by cloning the repository that cont
     ```
     <!-- INTERACTIVE ignore END -->
 
-    <!-- INTERACTIVE include START -->
-
-    <!--  ```bash -->
-    <!-- docker-compose -f loki-fundamentals/docker-compose.yml up -d -->
-    <!--  ```{{exec}} -->
-    <!-- INTERACTIVE include END -->
+    {{< docs/ignore >}}
+    ```bash 
+    docker-compose -f loki-fundamentals/docker-compose.yml up -d 
+    ```{{exec}}
+    {{< /docs/ignore >}}
 
     This will spin up the following services:
     ```bash
@@ -94,9 +93,9 @@ We will be access two UI interfaces:
 
 To configure Alloy to ingest OpenTelemetry logs, we need to update the Alloy configuration file. To start, we will update the `config.alloy` file to include the OpenTelemetry logs configuration.
 
-<!-- INTERACTIVE include START -->
-<!-- **Note: Killercoda has an inbuilt Code editor which can be accessed via the `Editor` tab.** -->
-<!-- INTERACTIVE include END -->
+{{< docs/ignore >}}
+**Note: Killercoda has an inbuilt Code editor which can be accessed via the `Editor` tab.**
+{{< /docs/ignore >}}
 
 ### OpenTelelmetry Receiver OTLP
 
@@ -191,11 +190,10 @@ This docker-compose file relies on the `loki-fundamentals_loki` docker network. 
 {{< /admonition >}}
 <!-- INTERACTIVE ignore END -->
 
-<!-- INTERACTIVE include START -->
-<!-- **Note: This docker-compose file relies on the `loki-fundamentals_loki` docker network. If you have not started the observability stack, you will need to start it first.** -->
-<!-- INTERACTIVE include END -->
+{{< docs/ignore >}}
+**Note: This docker-compose file relies on the `loki-fundamentals_loki` docker network. If you have not started the observability stack, you will need to start it first.**
+{{< /docs/ignore >}}
 
-<!-- INTERACTIVE ignore START -->
 ```bash
 docker compose -f loki-fundamentals/greenhouse/docker-compose-micro.yml up -d --build 
 ```
@@ -203,10 +201,11 @@ docker compose -f loki-fundamentals/greenhouse/docker-compose-micro.yml up -d --
 
 <!-- INTERACTIVE include START -->
 
-<!--  ```bash -->
-<!-- docker-compose -f loki-fundamentals/greenhouse/docker-compose-micro.yml up -d --build  -->
-<!--  ```{{exec}} -->
-<!-- INTERACTIVE include END -->
+{{docs/ignore}}
+```bash
+docker-compose -f loki-fundamentals/greenhouse/docker-compose-micro.yml up -d --build
+```{{exec}}
+{{< /docs/ignore >}}
 
 This will start the following services:
 ```bash
@@ -237,10 +236,10 @@ Finally to view the logs in Loki, navigate to the Loki Logs Explore view in Graf
 
 In this example, we configured Alloy to ingest OpenTelemetry logs and send them to Loki. This was a simple example to demonstrate how to send logs from an application instrumented with OpenTelemetry to Loki using Alloy. Where to go next?
 
-<!-- INTERACTIVE include START -->
-<!--  ### Back to Docs -->
-<!--  Head back to wear you started from to continue with the Loki documentation: [Loki documentation](https://grafana.com/docs/loki/latest/send-data/alloy).-->
-<!-- INTERACTIVE include END -->
+{{< docs/ignore >}}
+### Back to Docs
+Head back to wear you started from to continue with the Loki documentation: [Loki documentation](https://grafana.com/docs/loki/latest/send-data/alloy)
+{{< /docs/ignore >}}
 
 
 ## Further reading

@@ -71,12 +71,11 @@ In this step, we will set up our environment by cloning the repository that cont
     ```
     <!-- INTERACTIVE ignore END -->
 
-    <!-- INTERACTIVE include START -->
-
-    <!--  ```bash -->
-    <!-- docker-compose -f loki-fundamentals/docker-compose.yml up -d -->
-    <!--  ```{{exec}} -->
-    <!-- INTERACTIVE include END -->
+    {{< docs/ignore >}}
+    ```bash 
+    docker-compose -f loki-fundamentals/docker-compose.yml up -d 
+    ```{{exec}}
+    {{< /docs/ignore >}}
 
     This will spin up the following services:
     ```bash
@@ -98,9 +97,9 @@ We will be access two UI interfaces:
 
 In this first step, we will configure Alloy to ingest raw Kafka logs. To do this, we will update the `config.alloy` file to include the Kafka logs configuration.
 
-<!-- INTERACTIVE include START -->
-<!-- **Note: Killercoda has an inbuilt Code editor which can be accessed via the `Editor` tab.** -->
-<!-- INTERACTIVE include END -->
+{{< docs/ignore >}}
+**Note: Killercoda has an inbuilt Code editor which can be accessed via the `Editor` tab.**
+{{< /docs/ignore >}}
 
 ### Loki Kafka Source component
 
@@ -200,9 +199,9 @@ curl -X POST http://localhost:12345/-/reload
 
 Next we will configure Alloy to also ingest OpenTelemetry logs via Kafka, we need to update the Alloy configuration file once again. We will add the new components to the `config.alloy` file along with the existing components.
 
-<!-- INTERACTIVE include START -->
-<!-- **Note: Killercoda has an inbuilt Code editor which can be accessed via the `Editor` tab.** -->
-<!-- INTERACTIVE include END -->
+{{< docs/ignore >}}
+**Note: Killercoda has an inbuilt Code editor which can be accessed via the `Editor` tab.**
+{{< /docs/ignore >}}
 
 ### OpenTelelmetry Kafka Receiver
 
@@ -303,22 +302,22 @@ This docker-compose file relies on the `loki-fundamentals_loki` docker network. 
 {{< /admonition >}}
 <!-- INTERACTIVE ignore END -->
 
-<!-- INTERACTIVE include START -->
-<!-- **Note: This docker-compose file relies on the `loki-fundamentals_loki` docker network. If you have not started the observability stack, you will need to start it first.** -->
-<!-- INTERACTIVE include END -->
+{{< docs/ignore >}}
+**Note: This docker-compose file relies on the `loki-fundamentals_loki` docker network. If you have not started the observability stack, you will need to start it first.**
+{{< /docs/ignore >}}
 
 <!-- INTERACTIVE ignore START -->
 ```bash
-docker compose -f lloki-fundamentals/greenhouse/docker-compose-micro.yml up -d --build 
+docker compose -f loki-fundamentals/greenhouse/docker-compose-micro.yml up -d --build 
 ```
 <!-- INTERACTIVE ignore END -->
 
-<!-- INTERACTIVE include START -->
 
-<!--  ```bash -->
-<!-- docker-compose -f loki-fundamentals/greenhouse/docker-compose-micro.yml up -d --build  -->
-<!--  ```{{exec}} -->
-<!-- INTERACTIVE include END -->
+{{docs/ignore}}
+```bash
+docker-compose -f loki-fundamentals/greenhouse/docker-compose-micro.yml up -d --build
+```{{exec}}
+{{< /docs/ignore >}}
 
 This will start the following services:
 ```bash
@@ -349,10 +348,10 @@ Finally to view the logs in Loki, navigate to the Loki Logs Explore view in Graf
 
 In this example, we configured Alloy to ingest logs via Kafka. We configured Alloy to ingest logs in two different formats: raw logs and OpenTelemetry logs. Where to go next?
 
-<!-- INTERACTIVE include START -->
-<!--  ### Back to Docs -->
-<!--  Head back to wear you started from to continue with the Loki documentation: [Loki documentation](https://grafana.com/docs/loki/latest/send-data/alloy).-->
-<!-- INTERACTIVE include END -->
+{{< docs/ignore >}}
+### Back to Docs
+Head back to wear you started from to continue with the Loki documentation: [Loki documentation](https://grafana.com/docs/loki/latest/send-data/alloy)
+{{< /docs/ignore >}}
 
 ## Further reading
 
