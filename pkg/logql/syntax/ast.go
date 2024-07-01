@@ -366,14 +366,6 @@ func newLineFilterExpr(ty log.LineMatchType, op, match string) *LineFilterExpr {
 func newOrLineFilter(left, right *LineFilterExpr) *LineFilterExpr {
 	right.Ty = left.Ty
 
-	if left.Ty == log.LineMatchEqual || left.Ty == log.LineMatchRegexp || left.Ty == log.LineMatchPattern {
-		left.Or = right
-		right.IsOrChild = true
-		return left
-	}
-
-	// !(left or right) == (!left and !right).
-
 	// NOTE: Consider, we have chain of "or", != "foo" or "bar" or "baz"
 	// we parse from right to left, so first time left="bar", right="baz", and we don't know the actual `Ty` (equal: |=, notequal: !=, regex: |~, etc). So
 	// it will have default (0, LineMatchEqual).
@@ -385,6 +377,13 @@ func newOrLineFilter(left, right *LineFilterExpr) *LineFilterExpr {
 		tmp = tmp.Or
 	}
 
+	if left.Ty == log.LineMatchEqual || left.Ty == log.LineMatchRegexp || left.Ty == log.LineMatchPattern {
+		left.Or = right
+		right.IsOrChild = true
+		return left
+	}
+
+	// !(left or right) == (!left and !right).
 	return newNestedLineFilterExpr(left, right)
 }
 
@@ -1242,7 +1241,9 @@ const (
 	// internal expressions not represented in LogQL. These are used to
 	// evaluate expressions differently resulting in intermediate formats
 	// that are not consumable by LogQL clients but are used for sharding.
-	OpRangeTypeQuantileSketch = "__quantile_sketch_over_time__"
+	OpRangeTypeQuantileSketch     = "__quantile_sketch_over_time__"
+	OpRangeTypeFirstWithTimestamp = "__first_over_time_ts__"
+	OpRangeTypeLastWithTimestamp  = "__last_over_time_ts__"
 )
 
 func IsComparisonOperator(op string) bool {
@@ -1346,7 +1347,9 @@ func (e *RangeAggregationExpr) MatcherGroups() ([]MatcherRange, error) {
 func (e RangeAggregationExpr) validate() error {
 	if e.Grouping != nil {
 		switch e.Operation {
-		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeQuantileSketch, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeFirst, OpRangeTypeLast:
+		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile,
+			OpRangeTypeQuantileSketch, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeFirst,
+			OpRangeTypeLast, OpRangeTypeFirstWithTimestamp, OpRangeTypeLastWithTimestamp:
 		default:
 			return fmt.Errorf("grouping not allowed for %s aggregation", e.Operation)
 		}
@@ -1355,7 +1358,8 @@ func (e RangeAggregationExpr) validate() error {
 		switch e.Operation {
 		case OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev,
 			OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeRate, OpRangeTypeRateCounter,
-			OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast, OpRangeTypeQuantileSketch:
+			OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast, OpRangeTypeQuantileSketch,
+			OpRangeTypeFirstWithTimestamp, OpRangeTypeLastWithTimestamp:
 			return nil
 		default:
 			return fmt.Errorf("invalid aggregation %s with unwrap", e.Operation)
@@ -2216,6 +2220,8 @@ var shardableOps = map[string]bool{
 	// range vector ops
 	OpRangeTypeAvg:       true,
 	OpRangeTypeCount:     true,
+	OpRangeTypeFirst:     true,
+	OpRangeTypeLast:      true,
 	OpRangeTypeRate:      true,
 	OpRangeTypeBytes:     true,
 	OpRangeTypeBytesRate: true,

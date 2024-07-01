@@ -277,8 +277,6 @@ func NewQuerySizeLimiterMiddleware(
 func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryrangebase.Request) (uint64, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "querySizeLimiter.getBytesReadForRequest")
 	defer sp.Finish()
-	log := spanlogger.FromContextWithFallback(ctx, q.logger)
-	defer log.Finish()
 
 	expr, err := syntax.ParseExpr(r.GetQuery())
 	if err != nil {
@@ -300,7 +298,7 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 
 	combinedStats := stats.MergeStats(matcherStats...)
 
-	level.Debug(log).Log(
+	level.Debug(q.logger).Log(
 		append(
 			combinedStats.LoggingKeyValues(),
 			"msg", "queried index",
@@ -340,15 +338,12 @@ func (q *querySizeLimiter) guessLimitName() string {
 }
 
 func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	span, ctx := opentracing.StartSpanFromContext(ctx, "query_size_limits")
-	defer span.Finish()
 	log := spanlogger.FromContext(ctx)
-	defer log.Finish()
 
 	// Only support TSDB
 	schemaCfg, err := q.getSchemaCfg(r)
 	if err != nil {
-		level.Error(log).Log("msg", "failed to get schema config, not applying querySizeLimit", "err", err)
+		level.Warn(log).Log("msg", "failed to get schema config, not applying querySizeLimit", "err", err)
 		return q.next.Do(ctx, r)
 	}
 	if schemaCfg.IndexType != types.TSDBType {
@@ -374,8 +369,6 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 			level.Warn(log).Log("msg", "Query exceeds limits", "status", "rejected", "limit_name", q.guessLimitName(), "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, q.limitErrorTmpl, statsBytesStr, maxBytesReadStr)
 		}
-
-		level.Debug(log).Log("msg", "Query is within limits", "status", "accepted", "limit_name", q.guessLimitName(), "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
 	}
 
 	return q.next.Do(ctx, r)

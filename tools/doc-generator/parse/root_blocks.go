@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/grafana/dskit/server"
+	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloomcompactor"
@@ -22,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester"
 	ingester_client "github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/loki"
 	"github.com/grafana/loki/v3/pkg/loki/common"
 	frontend "github.com/grafana/loki/v3/pkg/lokifrontend"
 	"github.com/grafana/loki/v3/pkg/querier"
@@ -167,6 +169,11 @@ var (
 			StructType: []reflect.Type{reflect.TypeOf(analytics.Config{})},
 			Desc:       "Configuration for analytics.",
 		},
+		{
+			Name:       "profiling",
+			StructType: []reflect.Type{reflect.TypeOf(loki.ProfilingConfig{})},
+			Desc:       "Configuration for profiling options.",
+		},
 
 		{
 			Name:       "common",
@@ -288,3 +295,16 @@ Named store from this example can be used by setting object_store to store-1 in 
 		},
 	}
 )
+
+func init() {
+	slices.SortFunc(RootBlocks, func(a, b RootBlock) int {
+		if a.Name < b.Name {
+			return -1
+		}
+		if a.Name > b.Name {
+			return 1
+		}
+
+		return 0
+	})
+}

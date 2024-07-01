@@ -128,7 +128,7 @@ func (s server) UpdateTable(_ context.Context, request *UpdateTableRequest) (*em
 	return &empty.Empty{}, err
 }
 
-// NewStorageClient returns a new StorageClient.
+// NewTestStorageClient returns a new StorageClient.
 func NewTestStorageClient(cfg Config, schemaCfg config.SchemaConfig) (*StorageClient, error) {
 	grpcClient, _, err := connectToGrpcServer(cfg.Address)
 	if err != nil {

@@ -8,7 +8,7 @@ You can use [Grafana Cloud](https://grafana.com/products/cloud/features/#cloud-l
 
 ## Getting started with Loki
 
-Configuration files in the `getting-started` directory are used by the [Loki getting started guide](https://grafana.com/docs/loki/latest/getting-started/).
+Configuration files in the `getting-started` directory are used by the [Loki getting started guide](https://grafana.com/docs/loki/latest/get-started/).
 
 ## Sending logs from Heroku to Loki
 

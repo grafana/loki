@@ -87,7 +87,7 @@
             "steppedLine": false,
             "targets": [
                {
-                  "expr": "sum by (status) (\nlabel_replace(\n  label_replace(\n        rate(loki_request_duration_seconds_count{cluster=\"$cluster\", job=~\"($namespace)/(loki|enterprise-logs)-read\", route=~\"api_prom_query|api_prom_label|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_label_name_values\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n\"status\", \"${1}\", \"status_code\", \"([a-z]+)\")\n)",
+                  "expr": "sum by (status) (\nlabel_replace(\n  label_replace(\n        rate(loki_request_duration_seconds_count{cluster=\"$cluster\", job=~\"($namespace)/(loki.*|enterprise-logs)-read\", route=~\"api_prom_query|api_prom_label|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_label_name_values\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n\"status\", \"${1}\", \"status_code\", \"([a-z]+)\")\n)",
                   "legendFormat": "{{status}}",
                   "refId": "A"
                }
@@ -183,7 +183,7 @@
             "steppedLine": false,
             "targets": [
                {
-                  "expr": "sum by (status) (\nlabel_replace(\n  label_replace(\n          rate(loki_request_duration_seconds_count{cluster=\"$cluster\", job=~\"($namespace)/(loki|enterprise-logs)-write\", route=~\"api_prom_push|loki_api_v1_push\"}[$__rate_interval]),\n   \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n\"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))",
+                  "expr": "sum by (status) (\nlabel_replace(\n  label_replace(\n          rate(loki_request_duration_seconds_count{cluster=\"$cluster\", job=~\"($namespace)/(loki.*|enterprise-logs)-write\", route=~\"api_prom_push|loki_api_v1_push\"}[$__rate_interval]),\n   \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n\"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))",
                   "legendFormat": "{{status}}",
                   "refId": "A"
                }
@@ -526,7 +526,7 @@
             "fieldConfig": {
                "defaults": {
                   "custom": { },
-                  "unit": "s"
+                  "unit": "ms"
                },
                "overrides": [ ]
             },
@@ -568,17 +568,17 @@
             "steppedLine": false,
             "targets": [
                {
-                  "expr": "histogram_quantile(0.99, sum by (le) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki|enterprise-logs)-write\", route=~\"api_prom_push|loki_api_v1_push\", cluster=~\"$cluster\"})) * 1e3",
+                  "expr": "histogram_quantile(0.99, sum by (le) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki.*|enterprise-logs)-write\", route=~\"api_prom_push|loki_api_v1_push\", cluster=~\"$cluster\"})) * 1e3",
                   "legendFormat": ".99",
                   "refId": "A"
                },
                {
-                  "expr": "histogram_quantile(0.75, sum by (le) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki|enterprise-logs)-write\", route=~\"api_prom_push|loki_api_v1_push\", cluster=~\"$cluster\"})) * 1e3",
+                  "expr": "histogram_quantile(0.75, sum by (le) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki.*|enterprise-logs)-write\", route=~\"api_prom_push|loki_api_v1_push\", cluster=~\"$cluster\"})) * 1e3",
                   "legendFormat": ".9",
                   "refId": "B"
                },
                {
-                  "expr": "histogram_quantile(0.5, sum by (le) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki|enterprise-logs)-write\", route=~\"api_prom_push|loki_api_v1_push\", cluster=~\"$cluster\"})) * 1e3",
+                  "expr": "histogram_quantile(0.5, sum by (le) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki.*|enterprise-logs)-write\", route=~\"api_prom_push|loki_api_v1_push\", cluster=~\"$cluster\"})) * 1e3",
                   "legendFormat": ".5",
                   "refId": "C"
                }
@@ -633,7 +633,7 @@
             "fieldConfig": {
                "defaults": {
                   "custom": { },
-                  "unit": "s"
+                  "unit": "ms"
                },
                "overrides": [ ]
             },
@@ -675,17 +675,17 @@
             "steppedLine": false,
             "targets": [
                {
-                  "expr": "histogram_quantile(0.99, sum by (le) (cluster_job:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki|enterprise-logs)-write\", cluster=~\"$cluster\"})) * 1e3",
+                  "expr": "histogram_quantile(0.99, sum by (le) (cluster_job:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki.*|enterprise-logs)-write\", cluster=~\"$cluster\"})) * 1e3",
                   "legendFormat": ".99",
                   "refId": "A"
                },
                {
-                  "expr": "histogram_quantile(0.9, sum by (le) (cluster_job:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki|enterprise-logs)-write\", cluster=~\"$cluster\"})) * 1e3",
+                  "expr": "histogram_quantile(0.9, sum by (le) (cluster_job:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki.*|enterprise-logs)-write\", cluster=~\"$cluster\"})) * 1e3",
                   "legendFormat": ".9",
                   "refId": "B"
                },
                {
-                  "expr": "histogram_quantile(0.5, sum by (le) (cluster_job:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki|enterprise-logs)-write\", cluster=~\"$cluster\"})) * 1e3",
+                  "expr": "histogram_quantile(0.5, sum by (le) (cluster_job:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki.*|enterprise-logs)-write\", cluster=~\"$cluster\"})) * 1e3",
                   "legendFormat": ".5",
                   "refId": "C"
                }
@@ -781,7 +781,7 @@
             "steppedLine": false,
             "targets": [
                {
-                  "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\", status_code!~\"5[0-9]{2}\"}[$__rate_interval])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\"}[$__rate_interval])) by (route) > 0",
+                  "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki.*|enterprise-logs)-write\", status_code!~\"5[0-9]{2}\"}[$__rate_interval])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki.*|enterprise-logs)-write\"}[$__rate_interval])) by (route) > 0",
                   "interval": "",
                   "legendFormat": "{{route}}",
                   "refId": "A"
@@ -838,7 +838,7 @@
             "fieldConfig": {
                "defaults": {
                   "custom": { },
-                  "unit": "s"
+                  "unit": "ms"
                },
                "overrides": [ ]
             },
@@ -880,18 +880,18 @@
             "steppedLine": false,
             "targets": [
                {
-                  "expr": "histogram_quantile(0.99, sum by (le) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki|enterprise-logs)-write\", route=\"/logproto.Pusher/Push\", cluster=~\"$cluster\"})) * 1e3",
+                  "expr": "histogram_quantile(0.99, sum by (le) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki.*|enterprise-logs)-write\", route=\"/logproto.Pusher/Push\", cluster=~\"$cluster\"})) * 1e3",
                   "legendFormat": ".99",
                   "refId": "A"
                },
                {
-                  "expr": "histogram_quantile(0.9, sum by (le) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki|enterprise-logs)-write\", route=\"/logproto.Pusher/Push\", cluster=~\"$cluster\"})) * 1e3",
+                  "expr": "histogram_quantile(0.9, sum by (le) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki.*|enterprise-logs)-write\", route=\"/logproto.Pusher/Push\", cluster=~\"$cluster\"})) * 1e3",
                   "hide": false,
                   "legendFormat": ".9",
                   "refId": "B"
                },
                {
-                  "expr": "histogram_quantile(0.5, sum by (le) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki|enterprise-logs)-write\", route=\"/logproto.Pusher/Push\", cluster=~\"$cluster\"})) * 1e3",
+                  "expr": "histogram_quantile(0.5, sum by (le) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki.*|enterprise-logs)-write\", route=\"/logproto.Pusher/Push\", cluster=~\"$cluster\"})) * 1e3",
                   "hide": false,
                   "legendFormat": ".5",
                   "refId": "C"
@@ -988,7 +988,7 @@
             "steppedLine": false,
             "targets": [
                {
-                  "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\", status_code!~\"5[0-9]{2}\", route=\"/logproto.Pusher/Push\"}[$__rate_interval])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\", route=\"/logproto.Pusher/Push\"}[$__rate_interval])) by (route) > 0",
+                  "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki.*|enterprise-logs)-write\", status_code!~\"5[0-9]{2}\", route=\"/logproto.Pusher/Push\"}[$__rate_interval])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki.*|enterprise-logs)-write\", route=\"/logproto.Pusher/Push\"}[$__rate_interval])) by (route) > 0",
                   "interval": "",
                   "legendFormat": "{{route}}",
                   "refId": "A"
@@ -1045,7 +1045,7 @@
             "fieldConfig": {
                "defaults": {
                   "custom": { },
-                  "unit": "s"
+                  "unit": "ms"
                },
                "overrides": [ ]
             },
@@ -1089,17 +1089,17 @@
             "steppedLine": false,
             "targets": [
                {
-                  "expr": "histogram_quantile(0.99, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki|enterprise-logs)-read\", route=~\"api_prom_query|api_prom_labels|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_label_name_values\", cluster=\"$cluster\"}))",
+                  "expr": "histogram_quantile(0.99, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki.*|enterprise-logs)-read\", route=~\"api_prom_query|api_prom_labels|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_label_name_values\", cluster=\"$cluster\"}))",
                   "legendFormat": "{{route}}-.99",
                   "refId": "A"
                },
                {
-                  "expr": "histogram_quantile(0.9, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki|enterprise-logs)-read\", route=~\"api_prom_query|api_prom_labels|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_label_name_values\", cluster=\"$cluster\"}))",
+                  "expr": "histogram_quantile(0.9, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki.*|enterprise-logs)-read\", route=~\"api_prom_query|api_prom_labels|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_label_name_values\", cluster=\"$cluster\"}))",
                   "legendFormat": "{{route}}-.9",
                   "refId": "B"
                },
                {
-                  "expr": "histogram_quantile(0.5, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki|enterprise-logs)-read\", route=~\"api_prom_query|api_prom_labels|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_label_name_values\", cluster=\"$cluster\"}))",
+                  "expr": "histogram_quantile(0.5, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki.*|enterprise-logs)-read\", route=~\"api_prom_query|api_prom_labels|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_label_name_values\", cluster=\"$cluster\"}))",
                   "legendFormat": "{{route}}-.5",
                   "refId": "C"
                }
@@ -1154,7 +1154,7 @@
             "fieldConfig": {
                "defaults": {
                   "custom": { },
-                  "unit": "s"
+                  "unit": "ms"
                },
                "overrides": [ ]
             },
@@ -1196,17 +1196,17 @@
             "steppedLine": false,
             "targets": [
                {
-                  "expr": "histogram_quantile(0.99, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki|enterprise-logs)-read\", route=~\"api_prom_query|api_prom_labels|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_label_name_values\", cluster=\"$cluster\"})) * 1e3",
+                  "expr": "histogram_quantile(0.99, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki.*|enterprise-logs)-read\", route=~\"api_prom_query|api_prom_labels|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_label_name_values\", cluster=\"$cluster\"})) * 1e3",
                   "legendFormat": ".99-{{route}}",
                   "refId": "A"
                },
                {
-                  "expr": "histogram_quantile(0.9, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki|enterprise-logs)-read\", route=~\"api_prom_query|api_prom_labels|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_label_name_values\", cluster=\"$cluster\"})) * 1e3",
+                  "expr": "histogram_quantile(0.9, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki.*|enterprise-logs)-read\", route=~\"api_prom_query|api_prom_labels|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_label_name_values\", cluster=\"$cluster\"})) * 1e3",
                   "legendFormat": ".9-{{route}}",
                   "refId": "B"
                },
                {
-                  "expr": "histogram_quantile(0.5, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki|enterprise-logs)-read\", route=~\"api_prom_query|api_prom_labels|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_label_name_values\", cluster=\"$cluster\"})) * 1e3",
+                  "expr": "histogram_quantile(0.5, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki.*|enterprise-logs)-read\", route=~\"api_prom_query|api_prom_labels|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_label_name_values\", cluster=\"$cluster\"})) * 1e3",
                   "legendFormat": ".5-{{route}}",
                   "refId": "C"
                }
@@ -1302,7 +1302,7 @@
             "steppedLine": false,
             "targets": [
                {
-                  "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-read\", status_code!~\"5[0-9]{2}\"}[$__rate_interval])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-read\"}[$__rate_interval])) by (route) > 0",
+                  "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki.*|enterprise-logs)-read\", status_code!~\"5[0-9]{2}\"}[$__rate_interval])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki.*|enterprise-logs)-read\"}[$__rate_interval])) by (route) > 0",
                   "interval": "",
                   "legendFormat": "{{route}}",
                   "refId": "A"
@@ -1360,7 +1360,7 @@
             "fieldConfig": {
                "defaults": {
                   "custom": { },
-                  "unit": "s"
+                  "unit": "ms"
                },
                "overrides": [ ]
             },
@@ -1402,17 +1402,17 @@
             "steppedLine": false,
             "targets": [
                {
-                  "expr": "histogram_quantile(0.99, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki|enterprise-logs)-write\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\", cluster=\"$cluster\"})) * 1e3",
+                  "expr": "histogram_quantile(0.99, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki.*|enterprise-logs)-write\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\", cluster=\"$cluster\"})) * 1e3",
                   "legendFormat": ".99-{{route}}",
                   "refId": "A"
                },
                {
-                  "expr": "histogram_quantile(0.9, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki|enterprise-logs)-write\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\", cluster=\"$cluster\"})) * 1e3",
+                  "expr": "histogram_quantile(0.9, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki.*|enterprise-logs)-write\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\", cluster=\"$cluster\"})) * 1e3",
                   "legendFormat": ".9-{{route}}",
                   "refId": "B"
                },
                {
-                  "expr": "histogram_quantile(0.5, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki|enterprise-logs)-write\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\", cluster=\"$cluster\"})) * 1e3",
+                  "expr": "histogram_quantile(0.5, sum by (le,route) (cluster_job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki.*|enterprise-logs)-write\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\", cluster=\"$cluster\"})) * 1e3",
                   "legendFormat": ".5-{{route}}",
                   "refId": "C"
                }
@@ -1508,7 +1508,7 @@
             "steppedLine": false,
             "targets": [
                {
-                  "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\", status_code!~\"5[0-9]{2}\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\"}[$__rate_interval])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\"}[$__rate_interval])) by (route) > 0",
+                  "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki.*|enterprise-logs)-write\", status_code!~\"5[0-9]{2}\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\"}[$__rate_interval])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki.*|enterprise-logs)-write\", route=~\"/logproto.Querier/Query|/logproto.Querier/Label|/logproto.Querier/Series|/logproto.Querier/QuerySample|/logproto.Querier/GetChunkIDs\"}[$__rate_interval])) by (route) > 0",
                   "interval": "",
                   "legendFormat": "{{route}}",
                   "refId": "A"
@@ -1657,9 +1657,93 @@
                   }
                },
                {
-                  "columns": [ ],
                   "datasource": "$datasource",
-                  "fontSize": "100%",
+                  "fieldConfig": {
+                     "defaults": {
+                        "color": {
+                           "mode": "thresholds"
+                        },
+                        "custom": {
+                           "align": "right",
+                           "cellOptions": {
+                              "type": "auto"
+                           },
+                           "inspect": false
+                        },
+                        "decimals": 2,
+                        "displayName": "",
+                        "mappings": [ ],
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [
+                              {
+                                 "color": "green",
+                                 "value": null
+                              },
+                              {
+                                 "color": "red",
+                                 "value": 80
+                              }
+                           ]
+                        },
+                        "unit": "short"
+                     },
+                     "overrides": [
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "Time"
+                           },
+                           "properties": [
+                              {
+                                 "id": "displayName",
+                                 "value": "Time"
+                              },
+                              {
+                                 "id": "custom.align"
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "tenant"
+                           },
+                           "properties": [
+                              {
+                                 "id": "unit",
+                                 "value": "short"
+                              },
+                              {
+                                 "id": "decimals",
+                                 "value": 2
+                              },
+                              {
+                                 "id": "custom.align"
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "reason"
+                           },
+                           "properties": [
+                              {
+                                 "id": "unit",
+                                 "value": "short"
+                              },
+                              {
+                                 "id": "decimals",
+                                 "value": 2
+                              },
+                              {
+                                 "id": "custom.align"
+                              }
+                           ]
+                        }
+                     ]
+                  },
                   "gridPos": {
                      "h": 8,
                      "w": 12,
@@ -1667,71 +1751,20 @@
                      "y": 27
                   },
                   "id": 113,
-                  "pageSize": null,
-                  "panels": [ ],
-                  "showHeader": true,
-                  "sort": {
-                     "col": 3,
-                     "desc": true
+                  "options": {
+                     "cellHeight": "sm",
+                     "footer": {
+                        "countRows": false,
+                        "fields": "",
+                        "reducer": [
+                           "sum"
+                        ],
+                        "show": false
+                     },
+                     "showHeader": true
                   },
-                  "styles": [
-                     {
-                        "alias": "Time",
-                        "align": "auto",
-                        "dateFormat": "YYYY-MM-DD HH:mm:ss",
-                        "pattern": "Time",
-                        "type": "hidden"
-                     },
-                     {
-                        "alias": "",
-                        "align": "auto",
-                        "colorMode": null,
-                        "colors": [
-                           "rgba(245, 54, 54, 0.9)",
-                           "rgba(237, 129, 40, 0.89)",
-                           "rgba(50, 172, 45, 0.97)"
-                        ],
-                        "dateFormat": "YYYY-MM-DD HH:mm:ss",
-                        "decimals": 2,
-                        "mappingType": 1,
-                        "pattern": "tenant",
-                        "thresholds": [ ],
-                        "type": "string",
-                        "unit": "short"
-                     },
-                     {
-                        "alias": "",
-                        "align": "auto",
-                        "colorMode": null,
-                        "colors": [
-                           "rgba(245, 54, 54, 0.9)",
-                           "rgba(237, 129, 40, 0.89)",
-                           "rgba(50, 172, 45, 0.97)"
-                        ],
-                        "dateFormat": "YYYY-MM-DD HH:mm:ss",
-                        "decimals": 2,
-                        "mappingType": 1,
-                        "pattern": "reason",
-                        "thresholds": [ ],
-                        "type": "number",
-                        "unit": "short"
-                     },
-                     {
-                        "alias": "",
-                        "align": "right",
-                        "colorMode": null,
-                        "colors": [
-                           "rgba(245, 54, 54, 0.9)",
-                           "rgba(237, 129, 40, 0.89)",
-                           "rgba(50, 172, 45, 0.97)"
-                        ],
-                        "decimals": 2,
-                        "pattern": "/.*/",
-                        "thresholds": [ ],
-                        "type": "number",
-                        "unit": "short"
-                     }
-                  ],
+                  "panels": [ ],
+                  "pluginVersion": "10.4.0",
                   "targets": [
                      {
                         "expr": "topk(10, sum by (tenant, reason) (sum_over_time(increase(loki_discarded_samples_total{cluster=\"$cluster\",namespace=\"$namespace\"}[$__rate_interval])[$__range:$__rate_interval])))",
@@ -1742,11 +1775,16 @@
                         "refId": "A"
                      }
                   ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Discarded Lines Per Interval",
-                  "transform": "table",
-                  "type": "table-old"
+                  "transformations": [
+                     {
+                        "id": "merge",
+                        "options": {
+                           "reducers": [ ]
+                        }
+                     }
+                  ],
+                  "type": "table"
                }
             ],
             "targets": [ ],
@@ -1806,7 +1844,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=~\"(loki|enterprise-logs)-write.*\"}[$__rate_interval]))",
+                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=~\"(loki.*|enterprise-logs)-write.*\"}[$__rate_interval]))",
                         "intervalFactor": 3,
                         "legendFormat": "{{pod}}",
                         "refId": "A"
@@ -1902,7 +1940,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "go_memstats_heap_inuse_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"(loki|enterprise-logs)-write.*\"}",
+                        "expr": "go_memstats_heap_inuse_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"(loki.*|enterprise-logs)-write.*\"}",
                         "instant": false,
                         "intervalFactor": 3,
                         "legendFormat": "{{pod}}",
@@ -1997,7 +2035,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\"} | logfmt | level=\"error\"[$__rate_interval]))",
+                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki.*|enterprise-logs)-write\"} | logfmt | level=\"error\"[$__auto]))",
                         "refId": "A"
                      }
                   ],
@@ -2060,7 +2098,7 @@
                   "panels": [ ],
                   "targets": [
                      {
-                        "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\"} |= \"level=error\"",
+                        "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki.*|enterprise-logs)-write\"} |= \"level=error\"",
                         "refId": "A"
                      }
                   ],
@@ -2111,7 +2149,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\", status_code!~\"5[0-9]{2}\"}[$__rate_interval])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-write\"}[$__rate_interval])) by (route) > 0",
+                        "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki.*|enterprise-logs)-write\", status_code!~\"5[0-9]{2}\"}[$__rate_interval])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki.*|enterprise-logs)-write\"}[$__rate_interval])) by (route) > 0",
                         "interval": "",
                         "intervalFactor": 1,
                         "legendFormat": "{{route}}",
@@ -2501,7 +2539,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "topk(10,sum by (tenant) (loki_ingester_memory_streams{cluster=\"$cluster\",job=~\"($namespace)/(loki|enterprise-logs)-write\"}))",
+                        "expr": "topk(10,sum by (tenant) (loki_ingester_memory_streams{cluster=\"$cluster\",job=~\"($namespace)/(loki.*|enterprise-logs)-write\"}))",
                         "interval": "",
                         "legendFormat": "{{ tenant }}",
                         "refId": "A"
@@ -2592,7 +2630,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "topk(10, sum by (tenant) (rate(loki_ingester_streams_created_total{cluster=\"$cluster\",job=~\"($namespace)/(loki|enterprise-logs)-write\"}[$__rate_interval]) > 0))",
+                        "expr": "topk(10, sum by (tenant) (rate(loki_ingester_streams_created_total{cluster=\"$cluster\",job=~\"($namespace)/(loki.*|enterprise-logs)-write\"}[$__rate_interval]) > 0))",
                         "interval": "",
                         "legendFormat": "{{ tenant }}",
                         "refId": "A"
@@ -2702,13 +2740,13 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum(rate(loki_ingester_chunks_flushed_total{cluster=\"$cluster\",job=~\"($namespace)/(loki|enterprise-logs)-write\"}[$__rate_interval]))",
+                        "expr": "sum(rate(loki_ingester_chunks_flushed_total{cluster=\"$cluster\",job=~\"($namespace)/(loki.*|enterprise-logs)-write\"}[$__rate_interval]))",
                         "interval": "",
                         "legendFormat": "Chunks",
                         "refId": "A"
                      },
                      {
-                        "expr": "sum(increase(loki_chunk_store_deduped_chunks_total{cluster=\"$cluster\", job=~\"($namespace)/(loki|enterprise-logs)-write\"}[$__rate_interval]))/sum(increase(loki_ingester_chunks_flushed_total{cluster=\"$cluster\", job=~\"($namespace)/(loki|enterprise-logs)-write\"}[$__rate_interval])) < 1",
+                        "expr": "sum(increase(loki_chunk_store_deduped_chunks_total{cluster=\"$cluster\", job=~\"($namespace)/(loki.*|enterprise-logs)-write\"}[$__rate_interval]))/sum(increase(loki_ingester_chunks_flushed_total{cluster=\"$cluster\", job=~\"($namespace)/(loki.*|enterprise-logs)-write\"}[$__rate_interval])) < 1",
                         "interval": "",
                         "legendFormat": "De-Dupe Ratio",
                         "refId": "B"
@@ -2786,7 +2824,7 @@
                   "reverseYBuckets": false,
                   "targets": [
                      {
-                        "expr": "sum(rate(loki_ingester_chunk_size_bytes_bucket{cluster=\"$cluster\",job=~\"($namespace)/(loki|enterprise-logs)-write\"}[$__rate_interval])) by (le)",
+                        "expr": "sum(rate(loki_ingester_chunk_size_bytes_bucket{cluster=\"$cluster\",job=~\"($namespace)/(loki.*|enterprise-logs)-write\"}[$__rate_interval])) by (le)",
                         "format": "heatmap",
                         "instant": false,
                         "interval": "",
@@ -2941,7 +2979,7 @@
                   "reverseYBuckets": false,
                   "targets": [
                      {
-                        "expr": "sum by (le) (rate(loki_ingester_chunk_utilization_bucket{cluster=\"$cluster\", job=~\"($namespace)/(loki|enterprise-logs)-write\"}[$__rate_interval]))",
+                        "expr": "sum by (le) (rate(loki_ingester_chunk_utilization_bucket{cluster=\"$cluster\", job=~\"($namespace)/(loki.*|enterprise-logs)-write\"}[$__rate_interval]))",
                         "format": "heatmap",
                         "instant": false,
                         "interval": "",
@@ -3033,7 +3071,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=~\"(loki|enterprise-logs)-read.*\"}[$__rate_interval]))",
+                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=~\"(loki.*|enterprise-logs)-read.*\"}[$__rate_interval]))",
                         "intervalFactor": 3,
                         "legendFormat": "{{pod}}",
                         "refId": "A"
@@ -3129,7 +3167,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "go_memstats_heap_inuse_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"(loki|enterprise-logs)-read.*\"}",
+                        "expr": "go_memstats_heap_inuse_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"(loki.*|enterprise-logs)-read.*\"}",
                         "instant": false,
                         "intervalFactor": 3,
                         "legendFormat": "{{pod}}",
@@ -3224,7 +3262,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-read\"} | logfmt |  level=\"error\"[$__rate_interval]))",
+                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki.*|enterprise-logs)-read\"} | logfmt |  level=\"error\"[$__auto]))",
                         "refId": "A"
                      }
                   ],
@@ -3287,7 +3325,7 @@
                   "panels": [ ],
                   "targets": [
                      {
-                        "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-read\"} |= \"level=error\"",
+                        "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki.*|enterprise-logs)-read\"} |= \"level=error\"",
                         "refId": "A"
                      }
                   ],
@@ -3338,7 +3376,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-read\", status_code!~\"5[0-9]{2}\"}[$__rate_interval])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki|enterprise-logs)-read\"}[$__rate_interval])) by (route) > 0",
+                        "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki.*|enterprise-logs)-read\", status_code!~\"5[0-9]{2}\"}[$__rate_interval])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki.*|enterprise-logs)-read\"}[$__rate_interval])) by (route) > 0",
                         "interval": "",
                         "intervalFactor": 1,
                         "legendFormat": "{{route}}",
