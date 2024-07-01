@@ -239,7 +239,7 @@ In this example, we configured Alloy to ingest OpenTelemetry logs and send them 
 
 <!-- INTERACTIVE include START -->
 <!--  ### Back to Docs -->
-<!--  Head back to wear you started from to continue with the Loki documentation: [Loki documentation](https://grafana.com/docs/send-data/alloy).-->
+<!--  Head back to wear you started from to continue with the Loki documentation: [Loki documentation](https://grafana.com/docs/loki/latest/send-data/alloy).-->
 <!-- INTERACTIVE include END -->
 
 
