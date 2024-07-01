@@ -38,13 +38,8 @@ func newPunctuationTokenizer() *punctuationTokenizer {
 }
 
 func (p *punctuationTokenizer) Tokenize(line string) ([]string, interface{}) {
-<<<<<<< Updated upstream
-	tokens := make([]string, len(line))                  // Maximum size is every character is punctuation
-	spacesAfter := make([]int, strings.Count(line, " ")) // Could be a bitmap, but it's not worth it for a few bytes.
-=======
 	tokens := make([]string, 0, 128)  // ~p90 for most log types except json
 	spacesAfter := make([]int, 0, 64) // p95 metadata size.
->>>>>>> Stashed changes
 
 	start := 0
 	nextTokenIdx := 0
