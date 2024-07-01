@@ -57,17 +57,17 @@
           {
             alert: 'LokiTooManyCompactorsRunning',
             expr: |||
-              sum(loki_boltdb_shipper_compactor_running) by (namespace, cluster) > 1
-            |||,
+              sum(loki_boltdb_shipper_compactor_running) by (namespace, %s) > 1
+            ||| % $._config.per_cluster_label,
             'for': '5m',
             labels: {
               severity: 'warning',
             },
             annotations: {
               summary: 'Loki deployment is running more than one compactor.',
-              description: |||
+              description: std.strReplace(|||
                 {{ $labels.cluster }} {{ $labels.namespace }} has had {{ printf "%.0f" $value }} compactors running for more than 5m. Only one compactor should run at a time.
-              |||,
+              |||, 'cluster', $._config.per_cluster_label),
             },
           },
         ],

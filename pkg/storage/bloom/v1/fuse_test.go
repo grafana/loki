@@ -3,15 +3,25 @@ package v1
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/concurrency"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
+
+var BloomPagePool = mempool.New("test", []mempool.Bucket{
+	{Size: 16, Capacity: 128 << 10},
+	{Size: 16, Capacity: 256 << 10},
+	{Size: 16, Capacity: 512 << 10},
+}, nil)
 
 // TODO(owen-d): this is unhinged from the data it represents. I'm leaving this solely so I don't
 // have to refactor tests here in order to fix this elsewhere, but it can/should be fixed --
@@ -42,7 +52,7 @@ func TestFusedQuerier(t *testing.T) {
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
 	reader := NewByteReader(indexBuf, bloomsBuf)
 	numSeries := 1000
-	data, keys := MkBasicSeriesWithBlooms(numSeries, 0, 0x0000, 0xffff, 0, 10000)
+	data, keys := MkBasicSeriesWithBlooms(numSeries, 0x0000, 0xffff, 0, 10000)
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
@@ -56,14 +66,14 @@ func TestFusedQuerier(t *testing.T) {
 		writer,
 	)
 	require.Nil(t, err)
-	itr := NewSliceIter[SeriesWithBloom](data)
+	itr := NewSliceIter[SeriesWithBlooms](data)
 	_, err = builder.BuildFrom(itr)
 	require.NoError(t, err)
 	require.False(t, itr.Next())
 	block := NewBlock(reader, NewMetrics(nil))
-	querier := NewBlockQuerier(block, true, DefaultMaxPageSize)
+	querier := NewBlockQuerier(block, BloomPagePool, DefaultMaxPageSize)
 
-	n := 2
+	n := 500 // series per request
 	nReqs := numSeries / n
 	var inputs [][]Request
 	var resChans []chan Output
@@ -74,6 +84,7 @@ func TestFusedQuerier(t *testing.T) {
 		for j := 0; j < n; j++ {
 			idx := numSeries/nReqs*i + j
 			reqs = append(reqs, Request{
+				Recorder: NewBloomRecorder(context.Background(), "unknown"),
 				Fp:       data[idx].Series.Fingerprint,
 				Chks:     data[idx].Series.Chunks,
 				Response: ch,
@@ -130,14 +141,227 @@ func TestFusedQuerier(t *testing.T) {
 	}
 }
 
+// Successfully query series across multiple pages as well as series that only occupy 1 bloom
+func TestFuseMultiPage(t *testing.T) {
+	indexBuf := bytes.NewBuffer(nil)
+	bloomsBuf := bytes.NewBuffer(nil)
+	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
+	reader := NewByteReader(indexBuf, bloomsBuf)
+
+	builder, err := NewBlockBuilder(
+		BlockOptions{
+			Schema: Schema{
+				version:     DefaultSchemaVersion,
+				encoding:    chunkenc.EncSnappy,
+				nGramLength: 3, // we test trigrams
+				nGramSkip:   0,
+			},
+			SeriesPageSize: 100,
+			BloomPageSize:  10, // So we force one bloom per page
+		},
+		writer,
+	)
+	require.Nil(t, err)
+
+	fp := model.Fingerprint(1)
+	chk := ChunkRef{
+		From:     0,
+		Through:  10,
+		Checksum: 0,
+	}
+	series := &Series{
+		Fingerprint: fp,
+		Chunks:      []ChunkRef{chk},
+	}
+
+	buf, prefixLn := prefixedToken(3, chk, nil)
+
+	b1 := &Bloom{
+		*filter.NewScalableBloomFilter(1024, 0.01, 0.8),
+	}
+	key1, key2 := []byte("foo"), []byte("bar")
+	b1.Add(key1)
+	b1.Add(append(buf[:prefixLn], key1...))
+
+	b2 := &Bloom{
+		*filter.NewScalableBloomFilter(1024, 0.01, 0.8),
+	}
+	b2.Add(key2)
+	b2.Add(append(buf[:prefixLn], key2...))
+
+	_, err = builder.BuildFrom(NewSliceIter([]SeriesWithBlooms{
+		{
+			series,
+			NewSliceIter([]*Bloom{
+				b1, b2,
+			}),
+		},
+	}))
+	require.NoError(t, err)
+
+	block := NewBlock(reader, NewMetrics(nil))
+
+	querier := NewBlockQuerier(block, BloomPagePool, 100<<20) // 100MB too large to interfere
+
+	keys := [][]byte{
+		key1,          // found in the first bloom
+		key2,          // found in the second bloom
+		[]byte("not"), // not found in any bloom
+	}
+
+	chans := make([]chan Output, len(keys))
+	for i := range chans {
+		chans[i] = make(chan Output, 1) // buffered once to not block in test
+	}
+
+	req := func(ngram []byte, ch chan Output) Request {
+		return Request{
+			Fp:   fp,
+			Chks: []ChunkRef{chk},
+			Search: stringTest{
+				ngrams: [][]byte{ngram},
+			},
+			Response: ch,
+			Recorder: NewBloomRecorder(context.Background(), "unknown"),
+		}
+	}
+	var reqs []Request
+	for i, key := range keys {
+		reqs = append(reqs, req(key, chans[i]))
+	}
+
+	fused := querier.Fuse(
+		[]PeekingIterator[Request]{
+			NewPeekingIter(NewSliceIter(reqs)),
+		},
+		log.NewNopLogger(),
+	)
+
+	require.NoError(t, fused.Run())
+
+	// assume they're returned in order
+	for i := range reqs {
+		out := <-chans[i]
+
+		// the last check doesn't match
+		if i == len(keys)-1 {
+			require.Equal(t, ChunkRefs{chk}, out.Removals)
+			continue
+		}
+		require.Equal(t, ChunkRefs(nil), out.Removals, "on index %d and key %s", i, string(keys[i]))
+	}
+
+}
+
+func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
+	// references for linking in memory reader+writer
+	indexBuf := bytes.NewBuffer(nil)
+	bloomsBuf := bytes.NewBuffer(nil)
+	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
+	reader := NewByteReader(indexBuf, bloomsBuf)
+
+	largeSeries := func(i int) bool {
+		return i%2 == 0
+	}
+
+	numSeries := 4
+	data := make([]SeriesWithBlooms, 0, numSeries)
+	tokenizer := NewNGramTokenizer(4, 0)
+	for i := 0; i < numSeries; i++ {
+		var series Series
+		series.Fingerprint = model.Fingerprint(i)
+		series.Chunks = []ChunkRef{
+			{
+				From:     0,
+				Through:  100,
+				Checksum: uint32(i),
+			},
+		}
+
+		var bloom Bloom
+		bloom.ScalableBloomFilter = *filter.NewScalableBloomFilter(1024, 0.01, 0.8)
+
+		nLines := 10
+		// all even series will have a larger bloom (more than 1 filter)
+		if largeSeries(i) {
+			// Add enough lines to make the bloom page too large and
+			// trigger another filter addition
+			nLines = 10000
+		}
+
+		for j := 0; j < nLines; j++ {
+			line := fmt.Sprintf("%04x:%04x", i, j)
+			it := tokenizer.Tokens(line)
+			for it.Next() {
+				key := it.At()
+				bloom.Add(key)
+			}
+		}
+
+		data = append(data, SeriesWithBlooms{
+			Series: &series,
+			Blooms: NewSliceIter([]*Bloom{&bloom}),
+		})
+	}
+
+	builder, err := NewBlockBuilder(
+		BlockOptions{
+			Schema: Schema{
+				version:  DefaultSchemaVersion,
+				encoding: chunkenc.EncSnappy,
+			},
+			SeriesPageSize: 100,
+			BloomPageSize:  10, // So we force one series per page
+		},
+		writer,
+	)
+	require.Nil(t, err)
+	itr := NewSliceIter[SeriesWithBlooms](data)
+	_, err = builder.BuildFrom(itr)
+	require.NoError(t, err)
+	require.False(t, itr.Next())
+	block := NewBlock(reader, NewMetrics(nil))
+
+	querier := NewBlockQuerier(block, BloomPagePool, 1000)
+
+	for fp := model.Fingerprint(0); fp < model.Fingerprint(numSeries); fp++ {
+		err := querier.Seek(fp)
+		require.NoError(t, err)
+
+		require.True(t, querier.Next())
+		series := querier.At()
+
+		// earlier test only has 1 bloom offset per series
+		require.Equal(t, 1, len(series.Offsets))
+		require.Equal(t, fp, series.Fingerprint)
+
+		//
+		seekable := true
+		if large := largeSeries(int(fp)); large {
+			seekable = false
+		}
+
+		if !seekable {
+			require.True(t, querier.blooms.LoadOffset(series.Offsets[0]))
+			continue
+		}
+
+		for _, offset := range series.Offsets {
+			require.False(t, querier.blooms.LoadOffset(offset))
+			require.True(t, querier.blooms.Next())
+			require.NoError(t, querier.blooms.Err())
+		}
+
+	}
+}
+
 func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]Request, []chan Output) {
 	indexBuf := bytes.NewBuffer(nil)
 	bloomsBuf := bytes.NewBuffer(nil)
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
 	reader := NewByteReader(indexBuf, bloomsBuf)
 	numSeries := 10000
-	numKeysPerSeries := 100
-	data, _ := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffffff, 0, 10000)
+	data, _ := MkBasicSeriesWithBlooms(numSeries, 0, 0xffffff, 0, 10000)
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
@@ -151,11 +375,11 @@ func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]Request, []chan Ou
 		writer,
 	)
 	require.Nil(b, err)
-	itr := NewSliceIter[SeriesWithBloom](data)
+	itr := NewSliceIter[SeriesWithBlooms](data)
 	_, err = builder.BuildFrom(itr)
 	require.Nil(b, err)
 	block := NewBlock(reader, NewMetrics(nil))
-	querier := NewBlockQuerier(block, true, DefaultMaxPageSize)
+	querier := NewBlockQuerier(block, BloomPagePool, DefaultMaxPageSize)
 
 	numRequestChains := 100
 	seriesPerRequest := 100
@@ -174,6 +398,7 @@ func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]Request, []chan Ou
 				idx = numSeries - 1
 			}
 			reqs = append(reqs, Request{
+				Recorder: NewBloomRecorder(context.Background(), "unknown"),
 				Fp:       data[idx].Series.Fingerprint,
 				Chks:     data[idx].Series.Chunks,
 				Response: ch,
@@ -192,16 +417,6 @@ func BenchmarkBlockQuerying(b *testing.B) {
 	// benchmark
 	b.StartTimer()
 
-	b.Run("single-pass", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			for _, chain := range requestChains {
-				for _, req := range chain {
-					_, _ = querier.CheckChunksForSeries(req.Fp, req.Chks, nil)
-				}
-			}
-		}
-
-	})
 	b.Run("fused", func(b *testing.B) {
 		// spin up some goroutines to consume the responses so they don't block
 		go func() {

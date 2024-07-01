@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"container/heap"
 	"context"
-	"errors"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,19 +14,14 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/exp/maps"
-
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
-	"github.com/grafana/loki/v3/pkg/storage/detected"
-	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
-
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
-	json "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
+	"golang.org/x/exp/maps"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -36,12 +31,20 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/v3/pkg/storage/detected"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	indexStats "github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/marshal"
 	marshal_legacy "github.com/grafana/loki/v3/pkg/util/marshal/legacy"
 	"github.com/grafana/loki/v3/pkg/util/querylimits"
+)
+
+const (
+	cacheControlHeader = "Cache-Control"
+	noCacheVal         = "no-cache"
 )
 
 var DefaultCodec = &Codec{}
@@ -97,8 +100,6 @@ func (r *LokiRequest) LogToSpan(sp opentracing.Span) {
 	)
 }
 
-func (*LokiRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
-
 func (r *LokiInstantRequest) GetStep() int64 {
 	return 0
 }
@@ -143,8 +144,6 @@ func (r *LokiInstantRequest) LogToSpan(sp opentracing.Span) {
 		otlog.String("shards", strings.Join(r.GetShards(), ",")),
 	)
 }
-
-func (*LokiInstantRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
 
 func (r *LokiSeriesRequest) GetEnd() time.Time {
 	return r.EndTs
@@ -269,36 +268,24 @@ type DetectedLabelsRequest struct {
 	logproto.DetectedLabelsRequest
 }
 
-// NewDetectedLabelsRequest creates a new request for detected labels
-func NewDetectedLabelsRequest(start, end time.Time, query, path string) *DetectedLabelsRequest {
-	return &DetectedLabelsRequest{
-		DetectedLabelsRequest: logproto.DetectedLabelsRequest{
-			Start: &start,
-			End:   &end,
-			Query: query,
-		},
-		path: path,
-	}
-}
-
 func (r *DetectedLabelsRequest) AsProto() *logproto.DetectedLabelsRequest {
 	return &r.DetectedLabelsRequest
 }
 
 func (r *DetectedLabelsRequest) GetEnd() time.Time {
-	return *r.End
+	return r.End
 }
 
 func (r *DetectedLabelsRequest) GetEndTs() time.Time {
-	return *r.End
+	return r.End
 }
 
 func (r *DetectedLabelsRequest) GetStart() time.Time {
-	return *r.Start
+	return r.Start
 }
 
 func (r *DetectedLabelsRequest) GetStartTs() time.Time {
-	return *r.Start
+	return r.Start
 }
 
 func (r *DetectedLabelsRequest) GetStep() int64 {
@@ -307,8 +294,8 @@ func (r *DetectedLabelsRequest) GetStep() int64 {
 
 func (r *DetectedLabelsRequest) WithStartEnd(s, e time.Time) queryrangebase.Request {
 	clone := *r
-	clone.Start = &s
-	clone.End = &e
+	clone.Start = s
+	clone.End = e
 	return &clone
 }
 
@@ -343,54 +330,30 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
+	disableCacheReq := false
+
+	if strings.ToLower(strings.TrimSpace(r.Header.Get(cacheControlHeader))) == noCacheVal {
+		disableCacheReq = true
+	}
+
 	switch op := getOperation(r.URL.Path); op {
 	case QueryRangeOp:
-		rangeQuery, err := loghttp.ParseRangeQuery(r)
+		req, err := parseRangeQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
-
-		parsed, err := syntax.ParseExpr(rangeQuery.Query)
-		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-		}
-
-		return &LokiRequest{
-			Query:     rangeQuery.Query,
-			Limit:     rangeQuery.Limit,
-			Direction: rangeQuery.Direction,
-			StartTs:   rangeQuery.Start.UTC(),
-			EndTs:     rangeQuery.End.UTC(),
-			Step:      rangeQuery.Step.Milliseconds(),
-			Interval:  rangeQuery.Interval.Milliseconds(),
-			Path:      r.URL.Path,
-			Shards:    rangeQuery.Shards,
-			Plan: &plan.QueryPlan{
-				AST: parsed,
-			},
-		}, nil
+		return req, nil
 	case InstantQueryOp:
-		req, err := loghttp.ParseInstantQuery(r)
+		req, err := parseInstantQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
-		parsed, err := syntax.ParseExpr(req.Query)
-		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		req.CachingOptions = queryrangebase.CachingOptions{
+			Disabled: disableCacheReq,
 		}
 
-		return &LokiInstantRequest{
-			Query:     req.Query,
-			Limit:     req.Limit,
-			Direction: req.Direction,
-			TimeTs:    req.Ts.UTC(),
-			Path:      r.URL.Path,
-			Shards:    req.Shards,
-			Plan: &plan.QueryPlan{
-				AST: parsed,
-			},
-		}, nil
+		return req, nil
 	case SeriesOp:
 		req, err := loghttp.ParseAndValidateSeriesQuery(r)
 		if err != nil {
@@ -496,6 +459,12 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			DetectedLabelsRequest: *req,
 			path:                  r.URL.Path,
 		}, nil
+	case SamplesQueryOp:
+		req, err := loghttp.ParseSamplesQuery(r)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		return req, nil
 	default:
 		return nil, httpgrpc.Errorf(http.StatusNotFound, fmt.Sprintf("unknown request path: %s", r.URL.Path))
 	}
@@ -560,52 +529,19 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 
 	switch op := getOperation(httpReq.URL.Path); op {
 	case QueryRangeOp:
-		req, err := loghttp.ParseRangeQuery(httpReq)
+		req, err := parseRangeQuery(httpReq)
 		if err != nil {
 			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
-		parsed, err := syntax.ParseExpr(req.Query)
-		if err != nil {
-			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-		}
-
-		return &LokiRequest{
-			Query:     req.Query,
-			Limit:     req.Limit,
-			Direction: req.Direction,
-			StartTs:   req.Start.UTC(),
-			EndTs:     req.End.UTC(),
-			Step:      req.Step.Milliseconds(),
-			Interval:  req.Interval.Milliseconds(),
-			Path:      r.Url,
-			Shards:    req.Shards,
-			Plan: &plan.QueryPlan{
-				AST: parsed,
-			},
-		}, ctx, nil
+		return req, ctx, nil
 	case InstantQueryOp:
-		req, err := loghttp.ParseInstantQuery(httpReq)
+		req, err := parseInstantQuery(httpReq)
 		if err != nil {
 			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
-		parsed, err := syntax.ParseExpr(req.Query)
-		if err != nil {
-			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-		}
-
-		return &LokiInstantRequest{
-			Query:     req.Query,
-			Limit:     req.Limit,
-			Direction: req.Direction,
-			TimeTs:    req.Ts.UTC(),
-			Path:      r.Url,
-			Shards:    req.Shards,
-			Plan: &plan.QueryPlan{
-				AST: parsed,
-			},
-		}, ctx, nil
+		return req, ctx, nil
 	case SeriesOp:
 		req, err := loghttp.ParseAndValidateSeriesQuery(httpReq)
 		if err != nil {
@@ -714,6 +650,12 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 			DetectedLabelsRequest: *req,
 			path:                  httpReq.URL.Path,
 		}, ctx, err
+	case SamplesQueryOp:
+		req, err := loghttp.ParseSamplesQuery(httpReq)
+		if err != nil {
+			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		return req, ctx, nil
 	default:
 		return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, fmt.Sprintf("unknown request path in HTTP gRPC decode: %s", r.Url))
 	}
@@ -821,6 +763,17 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		}
 		if request.Interval != 0 {
 			params["interval"] = []string{fmt.Sprintf("%f", float64(request.Interval)/float64(1e3))}
+		}
+		// undocumented param to allow specifying store chunks for a request,
+		// used in bounded tsdb sharding
+		// TODO(owen-d): version & encode in body instead? We're experiencing the limits
+		// using the same reprs for internal vs external APIs and maybe we should handle that.
+		if request.StoreChunks != nil {
+			b, err := request.StoreChunks.Marshal()
+			if err != nil {
+				return nil, errors.Wrap(err, "marshaling store chunks")
+			}
+			params["storeChunks"] = []string{string(b)}
 		}
 		u := &url.URL{
 			// the request could come /api/prom/query but we want to only use the new api.
@@ -978,7 +931,10 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 			"end":         []string{fmt.Sprintf("%d", request.End.UnixNano())},
 			"line_limit":  []string{fmt.Sprintf("%d", request.GetLineLimit())},
 			"field_limit": []string{fmt.Sprintf("%d", request.GetFieldLimit())},
-			"step":        []string{fmt.Sprintf("%d", request.GetStep())},
+		}
+
+		if request.Step != 0 {
+			params["step"] = []string{fmt.Sprintf("%f", float64(request.Step)/float64(1e3))}
 		}
 
 		u := &url.URL{
@@ -996,9 +952,13 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		return req.WithContext(ctx), nil
 	case *logproto.QueryPatternsRequest:
 		params := url.Values{
+			"query": []string{request.GetQuery()},
 			"start": []string{fmt.Sprintf("%d", request.Start.UnixNano())},
 			"end":   []string{fmt.Sprintf("%d", request.End.UnixNano())},
-			"query": []string{request.GetQuery()},
+		}
+
+		if request.Step != 0 {
+			params["step"] = []string{fmt.Sprintf("%f", float64(request.Step)/float64(1e3))}
 		}
 
 		u := &url.URL{
@@ -1023,6 +983,27 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 
 		u := &url.URL{
 			Path:     "/loki/api/v1/detected_labels",
+			RawQuery: params.Encode(),
+		}
+		req := &http.Request{
+			Method:     "GET",
+			RequestURI: u.String(), // This is what the httpgrpc code looks at.
+			URL:        u,
+			Body:       http.NoBody,
+			Header:     header,
+		}
+
+		return req.WithContext(ctx), nil
+	case *logproto.QuerySamplesRequest:
+		params := url.Values{
+			"query": []string{request.GetQuery()},
+			"start": []string{fmt.Sprintf("%d", request.Start.UnixNano())},
+			"end":   []string{fmt.Sprintf("%d", request.End.UnixNano())},
+			"step":  []string{fmt.Sprintf("%d", request.GetStep())},
+		}
+
+		u := &url.URL{
+			Path:     "/loki/api/v1/explore/query_range",
 			RawQuery: params.Encode(),
 		}
 		req := &http.Request{
@@ -1065,6 +1046,8 @@ func (c Codec) Path(r queryrangebase.Request) string {
 		return "/loki/api/v1/patterns"
 	case *DetectedLabelsRequest:
 		return "/loki/api/v1/detected_labels"
+	case *logproto.QuerySamplesRequest:
+		return "/loki/api/v1/explore/query_range"
 	}
 
 	return "other"
@@ -1189,6 +1172,15 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 		}
 		return &DetectedLabelsResponse{
+			Response: &resp,
+			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
+		}, nil
+	case *logproto.QuerySamplesRequest:
+		var resp logproto.QuerySamplesResponse
+		if err := json.Unmarshal(buf, &resp); err != nil {
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+		}
+		return &QuerySamplesResponse{
 			Response: &resp,
 			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
 		}, nil
@@ -1422,6 +1414,10 @@ func encodeResponseJSONTo(version loghttp.Version, res queryrangebase.Response, 
 		if err := marshal.WriteDetectedLabelsResponseJSON(response.Response, w); err != nil {
 			return err
 		}
+	case *QuerySamplesResponse:
+		if err := marshal.WriteQuerySamplesResponseJSON(response.Response, w); err != nil {
+			return err
+		}
 	default:
 		return httpgrpc.Errorf(http.StatusInternalServerError, fmt.Sprintf("invalid response format, got (%T)", res))
 	}
@@ -1610,7 +1606,26 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		return &DetectedFieldsResponse{
 			Response: &logproto.DetectedFieldsResponse{
 				Fields:     mergedFields,
-				FieldLimit: fieldLimit,
+				FieldLimit: 0,
+			},
+			Headers: headers,
+		}, nil
+	case *DetectedLabelsResponse:
+		resp0 := responses[0].(*DetectedLabelsResponse)
+		headers := resp0.Headers
+		var labels []*logproto.DetectedLabel
+
+		for _, r := range responses {
+			labels = append(labels, r.(*DetectedLabelsResponse).Response.DetectedLabels...)
+		}
+		mergedLabels, err := detected.MergeLabels(labels)
+		if err != nil {
+			return nil, err
+		}
+
+		return &DetectedLabelsResponse{
+			Response: &logproto.DetectedLabelsResponse{
+				DetectedLabels: mergedLabels,
 			},
 			Headers: headers,
 		}, nil
@@ -1812,6 +1827,10 @@ func ParamsFromRequest(req queryrangebase.Request) (logql.Params, error) {
 		return &paramsDetectedFieldsWrapper{
 			DetectedFieldsRequest: r,
 		}, nil
+	case *DetectedLabelsRequest:
+		return &paramsDetectedLabelsWrapper{
+			DetectedLabelsRequest: r,
+		}, nil
 	default:
 		return nil, fmt.Errorf("expected one of the *LokiRequest, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, *DetectedFieldsRequest, got (%T)", r)
 	}
@@ -1853,6 +1872,10 @@ func (p paramsRangeWrapper) Shards() []string {
 	return p.GetShards()
 }
 
+func (p paramsRangeWrapper) CachingOptions() resultscache.CachingOptions {
+	return resultscache.CachingOptions{}
+}
+
 type paramsInstantWrapper struct {
 	*LokiInstantRequest
 }
@@ -1883,6 +1906,10 @@ func (p paramsInstantWrapper) Direction() logproto.Direction {
 func (p paramsInstantWrapper) Limit() uint32 { return p.LokiInstantRequest.Limit }
 func (p paramsInstantWrapper) Shards() []string {
 	return p.GetShards()
+}
+
+func (p paramsInstantWrapper) CachingOptions() resultscache.CachingOptions {
+	return p.LokiInstantRequest.CachingOptions
 }
 
 type paramsSeriesWrapper struct {
@@ -1917,6 +1944,14 @@ func (p paramsSeriesWrapper) Shards() []string {
 	return p.GetShards()
 }
 
+func (p paramsSeriesWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
+	return nil
+}
+
+func (p paramsSeriesWrapper) CachingOptions() resultscache.CachingOptions {
+	return resultscache.CachingOptions{}
+}
+
 type paramsLabelWrapper struct {
 	*LabelRequest
 }
@@ -1949,6 +1984,14 @@ func (p paramsLabelWrapper) Shards() []string {
 	return make([]string, 0)
 }
 
+func (p paramsLabelWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
+	return nil
+}
+
+func (p paramsLabelWrapper) CachingOptions() resultscache.CachingOptions {
+	return resultscache.CachingOptions{}
+}
+
 type paramsStatsWrapper struct {
 	*logproto.IndexStatsRequest
 }
@@ -1979,6 +2022,14 @@ func (p paramsStatsWrapper) Direction() logproto.Direction {
 func (p paramsStatsWrapper) Limit() uint32 { return 0 }
 func (p paramsStatsWrapper) Shards() []string {
 	return make([]string, 0)
+}
+
+func (p paramsStatsWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
+	return nil
+}
+
+func (p paramsStatsWrapper) CachingOptions() resultscache.CachingOptions {
+	return resultscache.CachingOptions{}
 }
 
 type paramsDetectedFieldsWrapper struct {
@@ -2017,9 +2068,68 @@ func (p paramsDetectedFieldsWrapper) Interval() time.Duration {
 func (p paramsDetectedFieldsWrapper) Direction() logproto.Direction {
 	return logproto.BACKWARD
 }
+
 func (p paramsDetectedFieldsWrapper) Limit() uint32 { return p.DetectedFieldsRequest.LineLimit }
+
 func (p paramsDetectedFieldsWrapper) Shards() []string {
 	return make([]string, 0)
+}
+
+type paramsDetectedLabelsWrapper struct {
+	*DetectedLabelsRequest
+}
+
+func (p paramsDetectedLabelsWrapper) QueryString() string {
+	return p.GetQuery()
+}
+
+func (p paramsDetectedLabelsWrapper) GetExpression() syntax.Expr {
+	expr, err := syntax.ParseExpr(p.GetQuery())
+	if err != nil {
+		return nil
+	}
+
+	return expr
+}
+
+func (p paramsDetectedLabelsWrapper) Start() time.Time {
+	return p.GetStartTs()
+}
+
+func (p paramsDetectedLabelsWrapper) End() time.Time {
+	return p.GetEndTs()
+}
+
+func (p paramsDetectedLabelsWrapper) Step() time.Duration {
+	return time.Duration(p.GetStep() * 1e6)
+}
+
+func (p paramsDetectedLabelsWrapper) Interval() time.Duration {
+	return 0
+}
+
+func (p paramsDetectedLabelsWrapper) Direction() logproto.Direction {
+	return logproto.BACKWARD
+}
+func (p paramsDetectedLabelsWrapper) Limit() uint32 { return 0 }
+func (p paramsDetectedLabelsWrapper) Shards() []string {
+	return make([]string, 0)
+}
+
+func (p paramsDetectedLabelsWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
+	return nil
+}
+
+func (p paramsDetectedFieldsWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
+	return nil
+}
+
+func (p paramsDetectedLabelsWrapper) CachingOptions() resultscache.CachingOptions {
+	return resultscache.CachingOptions{}
+}
+
+func (p paramsDetectedFieldsWrapper) CachingOptions() resultscache.CachingOptions {
+	return resultscache.CachingOptions{}
 }
 
 func httpResponseHeadersToPromResponseHeaders(httpHeaders http.Header) []queryrangebase.PrometheusResponseHeader {
@@ -2086,6 +2196,10 @@ func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error)
 		return &VolumeResponse{
 			Response: &logproto.VolumeResponse{},
 		}, nil
+	case *DetectedLabelsRequest:
+		return &DetectedLabelsResponse{
+			Response: &logproto.DetectedLabelsResponse{},
+		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported request type %T", req)
 	}
@@ -2137,7 +2251,81 @@ func mergeLokiResponse(responses ...queryrangebase.Response) *LokiResponse {
 	}
 }
 
-// In some other world LabelRequest could implement queryrangebase.Request.
+func parseRangeQuery(r *http.Request) (*LokiRequest, error) {
+	rangeQuery, err := loghttp.ParseRangeQuery(r)
+	if err != nil {
+		return nil, err
+	}
+
+	parsed, err := syntax.ParseExpr(rangeQuery.Query)
+	if err != nil {
+		return nil, err
+	}
+
+	storeChunks, err := parseStoreChunks(r)
+	if err != nil {
+		return nil, err
+	}
+
+	return &LokiRequest{
+		Query:       rangeQuery.Query,
+		Limit:       rangeQuery.Limit,
+		Direction:   rangeQuery.Direction,
+		StartTs:     rangeQuery.Start.UTC(),
+		EndTs:       rangeQuery.End.UTC(),
+		Step:        rangeQuery.Step.Milliseconds(),
+		Interval:    rangeQuery.Interval.Milliseconds(),
+		Path:        r.URL.Path,
+		Shards:      rangeQuery.Shards,
+		StoreChunks: storeChunks,
+		Plan: &plan.QueryPlan{
+			AST: parsed,
+		},
+	}, nil
+}
+
+func parseInstantQuery(r *http.Request) (*LokiInstantRequest, error) {
+	req, err := loghttp.ParseInstantQuery(r)
+	if err != nil {
+		return nil, err
+	}
+
+	parsed, err := syntax.ParseExpr(req.Query)
+	if err != nil {
+		return nil, err
+	}
+
+	storeChunks, err := parseStoreChunks(r)
+	if err != nil {
+		return nil, err
+	}
+
+	return &LokiInstantRequest{
+		Query:       req.Query,
+		Limit:       req.Limit,
+		Direction:   req.Direction,
+		TimeTs:      req.Ts.UTC(),
+		Path:        r.URL.Path,
+		Shards:      req.Shards,
+		StoreChunks: storeChunks,
+		Plan: &plan.QueryPlan{
+			AST: parsed,
+		},
+	}, nil
+}
+
+// escape hatch for including store chunks in the request
+func parseStoreChunks(r *http.Request) (*logproto.ChunkRefGroup, error) {
+	if s := r.Form.Get("storeChunks"); s != "" {
+		storeChunks := &logproto.ChunkRefGroup{}
+		if err := storeChunks.Unmarshal([]byte(s)); err != nil {
+			return nil, errors.Wrap(err, "unmarshaling storeChunks")
+		}
+		return storeChunks, nil
+	}
+	return nil, nil
+}
+
 type DetectedFieldsRequest struct {
 	logproto.DetectedFieldsRequest
 	path string

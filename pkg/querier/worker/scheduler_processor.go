@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/dskit/user"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -38,9 +39,9 @@ func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, m
 		log:            log,
 		handler:        handler,
 		codec:          codec,
-		maxMessageSize: cfg.GRPCClientConfig.MaxSendMsgSize,
+		maxMessageSize: cfg.NewQueryFrontendGRPCClientConfig.MaxRecvMsgSize,
 		querierID:      cfg.QuerierID,
-		grpcConfig:     cfg.GRPCClientConfig,
+		grpcConfig:     cfg.NewQueryFrontendGRPCClientConfig,
 		schedulerClientFactory: func(conn *grpc.ClientConn) schedulerpb.SchedulerForQuerierClient {
 			return schedulerpb.NewSchedulerForQuerierClient(conn)
 		},
@@ -89,7 +90,7 @@ func (sp *schedulerProcessor) processQueriesOnSingleStream(workerCtx context.Con
 	// Run the querier loop (and so all the queries) in a dedicated context that we call the "execution context".
 	// The execution context is cancelled once the workerCtx is cancelled AND there's no inflight query executing.
 	execCtx, execCancel, inflightQuery := newExecutionContext(workerCtx, sp.log)
-	defer execCancel()
+	defer execCancel(errors.New("scheduler processor execution context canceled"))
 
 	backoff := backoff.New(execCtx, processorBackoffConfig)
 	for backoff.Ongoing() {
@@ -121,8 +122,8 @@ func (sp *schedulerProcessor) processQueriesOnSingleStream(workerCtx context.Con
 // process loops processing requests on an established stream.
 func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_QuerierLoopClient, address string, inflightQuery *atomic.Bool, workerID string) error {
 	// Build a child context so we can cancel a query when the stream is closed.
-	ctx, cancel := context.WithCancel(c.Context())
-	defer cancel()
+	ctx, cancel := context.WithCancelCause(c.Context())
+	defer cancel(errors.New("querier loop canceled"))
 
 	for {
 		start := time.Now()

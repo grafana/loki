@@ -176,7 +176,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
         step.new('download images')
         + step.withRun(|||
           echo "downloading images to $(pwd)/images"
-          gsutil cp -r gs://loki-build-artifacts/${{ needs.createRelease.outputs.sha }}/images .
+          gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${{ needs.createRelease.outputs.sha }}/images .
         |||),
         step.new('publish docker images', './lib/actions/push-images')
         + step.with({
