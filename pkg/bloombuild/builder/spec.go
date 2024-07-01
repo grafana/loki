@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -45,12 +44,12 @@ type SimpleBloomGenerator struct {
 	userID      string
 	store       v1.Iterator[*v1.Series]
 	chunkLoader ChunkLoader
-	blocksIter  v1.ResettableIterator[*v1.SeriesWithBloom]
+	blocksIter  v1.ResettableIterator[*v1.SeriesWithBlooms]
 
 	// options to build blocks with
 	opts v1.BlockOptions
 
-	metrics *Metrics
+	metrics *v1.Metrics
 	logger  log.Logger
 
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader)
@@ -68,10 +67,10 @@ func NewSimpleBloomGenerator(
 	opts v1.BlockOptions,
 	store v1.Iterator[*v1.Series],
 	chunkLoader ChunkLoader,
-	blocksIter v1.ResettableIterator[*v1.SeriesWithBloom],
+	blocksIter v1.ResettableIterator[*v1.SeriesWithBlooms],
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
 	reporter func(model.Fingerprint),
-	metrics *Metrics,
+	metrics *v1.Metrics,
 	logger log.Logger,
 ) *SimpleBloomGenerator {
 	return &SimpleBloomGenerator{
@@ -93,49 +92,35 @@ func NewSimpleBloomGenerator(
 			opts.Schema.NGramLen(),
 			opts.Schema.NGramSkip(),
 			int(opts.UnencodedBlockOptions.MaxBloomSizeBytes),
-			metrics.bloomMetrics,
+			metrics,
 		),
 	}
 }
 
-func (s *SimpleBloomGenerator) populator(ctx context.Context) func(series *v1.Series, bloom *v1.Bloom) (int, bool, error) {
-	return func(series *v1.Series, bloom *v1.Bloom) (int, bool, error) {
-		start := time.Now()
+func (s *SimpleBloomGenerator) populator(ctx context.Context) v1.BloomPopulatorFunc {
+	return func(
+		series *v1.Series,
+		srcBlooms v1.SizedIterator[*v1.Bloom],
+		toAdd v1.ChunkRefs,
+		ch chan *v1.BloomCreation,
+	) {
 		level.Debug(s.logger).Log(
 			"msg", "populating bloom filter",
 			"stage", "before",
 			"fp", series.Fingerprint,
 			"chunks", len(series.Chunks),
 		)
-		chunkItersWithFP, err := s.chunkLoader.Load(ctx, s.userID, series)
-		if err != nil {
-			return 0, false, errors.Wrapf(err, "failed to load chunks for series: %+v", series)
-		}
+		chunkItersWithFP := s.chunkLoader.Load(ctx, s.userID, &v1.Series{
+			Fingerprint: series.Fingerprint,
+			Chunks:      toAdd,
+		})
 
-		bytesAdded, skip, err := s.tokenizer.Populate(
-			&v1.SeriesWithBloom{
-				Series: series,
-				Bloom:  bloom,
-			},
-			chunkItersWithFP.itr,
-		)
-
-		level.Debug(s.logger).Log(
-			"msg", "populating bloom filter",
-			"stage", "after",
-			"fp", series.Fingerprint,
-			"chunks", len(series.Chunks),
-			"series_bytes", bytesAdded,
-			"duration", time.Since(start),
-			"err", err,
-		)
+		s.tokenizer.Populate(srcBlooms, chunkItersWithFP.itr, ch)
 
 		if s.reporter != nil {
 			s.reporter(series.Fingerprint)
 		}
-		return bytesAdded, skip, err
 	}
-
 }
 
 func (s *SimpleBloomGenerator) Generate(ctx context.Context) *LazyBlockBuilderIterator {
@@ -178,11 +163,11 @@ func (s *SimpleBloomGenerator) Generate(ctx context.Context) *LazyBlockBuilderIt
 type LazyBlockBuilderIterator struct {
 	ctx          context.Context
 	opts         v1.BlockOptions
-	metrics      *Metrics
-	populate     func(*v1.Series, *v1.Bloom) (int, bool, error)
+	metrics      *v1.Metrics
+	populate     v1.BloomPopulatorFunc
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader)
 	series       v1.PeekingIterator[*v1.Series]
-	blocks       v1.ResettableIterator[*v1.SeriesWithBloom]
+	blocks       v1.ResettableIterator[*v1.SeriesWithBlooms]
 
 	bytesAdded int
 	curr       *v1.Block
@@ -192,11 +177,11 @@ type LazyBlockBuilderIterator struct {
 func NewLazyBlockBuilderIterator(
 	ctx context.Context,
 	opts v1.BlockOptions,
-	metrics *Metrics,
-	populate func(*v1.Series, *v1.Bloom) (int, bool, error),
+	metrics *v1.Metrics,
+	populate v1.BloomPopulatorFunc,
 	readWriterFn func() (v1.BlockWriter, v1.BlockReader),
 	series v1.PeekingIterator[*v1.Series],
-	blocks v1.ResettableIterator[*v1.SeriesWithBloom],
+	blocks v1.ResettableIterator[*v1.SeriesWithBlooms],
 ) *LazyBlockBuilderIterator {
 	return &LazyBlockBuilderIterator{
 		ctx:          ctx,
@@ -229,7 +214,7 @@ func (b *LazyBlockBuilderIterator) Next() bool {
 		return false
 	}
 
-	mergeBuilder := v1.NewMergeBuilder(b.blocks, b.series, b.populate, b.metrics.bloomMetrics)
+	mergeBuilder := v1.NewMergeBuilder(b.blocks, b.series, b.populate, b.metrics)
 	writer, reader := b.readWriterFn()
 	blockBuilder, err := v1.NewBlockBuilder(b.opts, writer)
 	if err != nil {
@@ -244,7 +229,7 @@ func (b *LazyBlockBuilderIterator) Next() bool {
 		return false
 	}
 
-	b.curr = v1.NewBlock(reader, b.metrics.bloomMetrics)
+	b.curr = v1.NewBlock(reader, b.metrics)
 	return true
 }
 
@@ -270,7 +255,7 @@ type ChunkItersByFingerprint struct {
 
 // ChunkLoader loads chunks from a store
 type ChunkLoader interface {
-	Load(ctx context.Context, userID string, series *v1.Series) (*ChunkItersByFingerprint, error)
+	Load(ctx context.Context, userID string, series *v1.Series) *ChunkItersByFingerprint
 }
 
 // StoreChunkLoader loads chunks from a store
@@ -286,7 +271,7 @@ func NewStoreChunkLoader(fetcherProvider stores.ChunkFetcherProvider, metrics *M
 	}
 }
 
-func (s *StoreChunkLoader) Load(ctx context.Context, userID string, series *v1.Series) (*ChunkItersByFingerprint, error) {
+func (s *StoreChunkLoader) Load(ctx context.Context, userID string, series *v1.Series) *ChunkItersByFingerprint {
 	// NB(owen-d): This is probably unnecessary as we should only have one fetcher
 	// because we'll only be working on a single index period at a time, but this should protect
 	// us in the case of refactoring/changing this and likely isn't a perf bottleneck.
@@ -317,5 +302,5 @@ func (s *StoreChunkLoader) Load(ctx context.Context, userID string, series *v1.S
 	return &ChunkItersByFingerprint{
 		fp:  series.Fingerprint,
 		itr: newBatchedChunkLoader(ctx, fetchers, inputs, s.metrics, batchedLoaderDefaultBatchSize),
-	}, nil
+	}
 }

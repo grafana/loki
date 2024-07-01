@@ -316,6 +316,17 @@ pattern_ingester:
   # CLI flag: -pattern-ingester.flush-check-period
   [flush_check_period: <duration> | default = 30s]
 
+  # Configures the metric aggregation and storage behavior of the pattern
+  # ingester.
+  metric_aggregation:
+    # Whether the pattern ingester metric aggregation is enabled.
+    # CLI flag: -pattern-ingester.metric-aggregation.enabled
+    [enabled: <boolean> | default = false]
+
+    # Whether to log push observations.
+    # CLI flag: -pattern-ingester.metric-aggregation.log-push-observations
+    [log_push_observations: <boolean> | default = false]
+
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
 # object store.
@@ -365,6 +376,19 @@ bloom_build:
     # Hostname (and port) of the bloom planner
     # CLI flag: -bloom-build.builder.planner-address
     [planner_address: <string> | default = ""]
+
+    backoff_config:
+      # Minimum delay when backing off.
+      # CLI flag: -bloom-build.builder.backoff.backoff-min-period
+      [min_period: <duration> | default = 100ms]
+
+      # Maximum delay when backing off.
+      # CLI flag: -bloom-build.builder.backoff.backoff-max-period
+      [max_period: <duration> | default = 10s]
+
+      # Number of times to backoff and retry before failing.
+      # CLI flag: -bloom-build.builder.backoff.backoff-retries
+      [max_retries: <int> | default = 10]
 
 # Experimental: The bloom_gateway block configures the Loki bloom gateway
 # server, responsible for serving queries for filtering chunks based on filter
@@ -555,6 +579,9 @@ compactor_grpc_client:
 
 # Configuration for analytics.
 [analytics: <analytics>]
+
+# Configuration for profiling options.
+[profiling: <profiling>]
 
 # Common configuration to be shared between multiple modules. If a more specific
 # configuration is given in other sections, the related configuration within
@@ -2752,7 +2779,23 @@ lifecycler:
 # CLI flag: -ingester.flush-check-period
 [flush_check_period: <duration> | default = 30s]
 
-# The timeout before a flush is cancelled.
+flush_op_backoff:
+  # Minimum backoff period when a flush fails. Each concurrent flush has its own
+  # backoff, see `ingester.concurrent-flushes`.
+  # CLI flag: -ingester.flush-op-backoff-min-period
+  [min_period: <duration> | default = 10s]
+
+  # Maximum backoff period when a flush fails. Each concurrent flush has its own
+  # backoff, see `ingester.concurrent-flushes`.
+  # CLI flag: -ingester.flush-op-backoff-max-period
+  [max_period: <duration> | default = 1m]
+
+  # Maximum retries for failed flushes.
+  # CLI flag: -ingester.flush-op-backoff-retries
+  [max_retries: <int> | default = 10]
+
+# The timeout for an individual flush. Will be retried up to
+# `flush-op-backoff-retries` times.
 # CLI flag: -ingester.flush-op-timeout
 [flush_op_timeout: <duration> | default = 10m]
 
@@ -2863,6 +2906,11 @@ wal:
 # common.path_prefix is set then common.path_prefix will be used.
 # CLI flag: -ingester.shutdown-marker-path
 [shutdown_marker_path: <string> | default = ""]
+
+# Interval at which the ingester ownedStreamService checks for changes in the
+# ring to recalculate owned streams.
+# CLI flag: -ingester.owned-streams-check-interval
+[owned_streams_check_interval: <duration> | default = 30s]
 ```
 
 ### ingester_client
@@ -3524,7 +3572,7 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # The timeout for establishing a connection with a remote node, and for
 # read/write operations.
 # CLI flag: -memberlist.stream-timeout
-[stream_timeout: <duration> | default = 10s]
+[stream_timeout: <duration> | default = 2s]
 
 # Multiplication factor used when sending out messages (factor * log(N+1)).
 # CLI flag: -memberlist.retransmit-factor
@@ -3757,6 +3805,14 @@ These are values which allow you to control aspects of Loki's operation, most co
 # CLI flag: -operation-config.log-push-request-streams
 [log_push_request_streams: <boolean> | default = false]
 
+# Log metrics for duplicate lines received.
+# CLI flag: -operation-config.log-duplicate-metrics
+[log_duplicate_metrics: <boolean> | default = false]
+
+# Log stream info for duplicate lines received
+# CLI flag: -operation-config.log-duplicate-stream-info
+[log_duplicate_stream_info: <boolean> | default = false]
+
 # Log push errors with a rate limited logger, will show client push errors
 # without overly spamming logs.
 # CLI flag: -operation-config.limited-log-push-errors
@@ -3816,6 +3872,24 @@ chunks:
 
 # How many shards will be created. Only used if schema is v10 or greater.
 [row_shards: <int> | default = 16]
+```
+
+### profiling
+
+Configuration for `profiling` options.
+
+```yaml
+# Sets the value for runtime.SetBlockProfilingRate
+# CLI flag: -profiling.block-profile-rate
+[block_profile_rate: <int> | default = 0]
+
+# Sets the value for runtime.SetCPUProfileRate
+# CLI flag: -profiling.cpu-profile-rate
+[cpu_profile_rate: <int> | default = 0]
+
+# Sets the value for runtime.SetMutexProfileFraction
+# CLI flag: -profiling.mutex-profile-fraction
+[mutex_profile_fraction: <int> | default = 0]
 ```
 
 ### querier
@@ -4212,9 +4286,10 @@ storage:
 # CLI flag: -ruler.alertmanager-refresh-interval
 [alertmanager_refresh_interval: <duration> | default = 1m]
 
-# If enabled requests to Alertmanager will utilize the V2 API.
+# Use Alertmanager APIv2. APIv1 was deprecated in Alertmanager 0.16.0 and is
+# removed as of 0.27.0.
 # CLI flag: -ruler.alertmanager-use-v2
-[enable_alertmanager_v2: <boolean> | default = false]
+[enable_alertmanager_v2: <boolean> | default = true]
 
 # List of alert relabel configs.
 [alert_relabel_configs: <relabel_config...>]
@@ -4739,6 +4814,10 @@ Configures the `server` of the launched module(s).
 # CLI flag: -server.grpc-conn-limit
 [grpc_listen_conn_limit: <int> | default = 0]
 
+# Enables PROXY protocol.
+# CLI flag: -server.proxy-protocol-enabled
+[proxy_protocol_enabled: <boolean> | default = false]
+
 # Comma-separated list of cipher suites to use. If blank, the default Go cipher
 # suites is used.
 # CLI flag: -server.tls-cipher-suites
@@ -4893,6 +4972,21 @@ grpc_tls_config:
 # CLI flag: -server.grpc.num-workers
 [grpc_server_num_workers: <int> | default = 0]
 
+# If true, the request_message_bytes, response_message_bytes, and
+# inflight_requests metrics will be tracked. Enabling this option prevents the
+# use of memory pools for parsing gRPC request bodies and may lead to more
+# memory allocations.
+# CLI flag: -server.grpc.stats-tracking-enabled
+[grpc_server_stats_tracking_enabled: <boolean> | default = true]
+
+# If true, gGPC's buffer pools will be used to handle incoming requests.
+# Enabling this feature can reduce memory allocation, but also requires
+# disabling GRPC server stats tracking by setting
+# `server.grpc.stats-tracking-enabled=false`. This is an experimental gRPC
+# feature, so it might be removed in a future version of the gRPC library.
+# CLI flag: -server.grpc.recv-buffer-pools-enabled
+[grpc_server_recv_buffer_pools_enabled: <boolean> | default = false]
+
 # Output log messages in the given format. Valid formats: [logfmt, json]
 # CLI flag: -log.format
 [log_format: <string> | default = "logfmt"]
@@ -4905,6 +4999,11 @@ grpc_tls_config:
 # Optionally log the source IPs.
 # CLI flag: -server.log-source-ips-enabled
 [log_source_ips_enabled: <boolean> | default = false]
+
+# Log all source IPs instead of only the originating one. Only used if
+# server.log-source-ips-enabled is true
+# CLI flag: -server.log-source-ips-full
+[log_source_ips_full: <boolean> | default = false]
 
 # Header field storing the source IPs. Only used if
 # server.log-source-ips-enabled is true. If not set the default Forwarded,

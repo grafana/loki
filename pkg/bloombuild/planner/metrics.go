@@ -26,13 +26,19 @@ type Metrics struct {
 	inflightRequests  prometheus.Summary
 	tasksRequeued     prometheus.Counter
 	taskLost          prometheus.Counter
-	tasksFailed       prometheus.Counter
 
-	buildStarted   prometheus.Counter
-	buildCompleted *prometheus.CounterVec
-	buildTime      *prometheus.HistogramVec
+	planningTime     prometheus.Histogram
+	buildStarted     prometheus.Counter
+	buildCompleted   *prometheus.CounterVec
+	buildTime        *prometheus.HistogramVec
+	buildLastSuccess prometheus.Gauge
 
-	tenantsDiscovered prometheus.Counter
+	blocksDeleted prometheus.Counter
+	metasDeleted  prometheus.Counter
+
+	tenantsDiscovered    prometheus.Counter
+	tenantTasksPlanned   *prometheus.GaugeVec
+	tenantTasksCompleted *prometheus.GaugeVec
 }
 
 func NewMetrics(
@@ -80,13 +86,15 @@ func NewMetrics(
 			Name:      "tasks_lost_total",
 			Help:      "Total number of tasks lost due to not being picked up by a builder and failed to be requeued.",
 		}),
-		tasksFailed: promauto.With(r).NewCounter(prometheus.CounterOpts{
+
+		planningTime: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
-			Name:      "tasks_failed_total",
-			Help:      "Total number of tasks that failed to be processed by builders (after the configured retries).",
+			Name:      "planning_time_seconds",
+			Help:      "Time spent planning a build cycle.",
+			// 1s --> 1h (steps of 1 minute)
+			Buckets: prometheus.LinearBuckets(1, 60, 60),
 		}),
-
 		buildStarted: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
@@ -104,8 +112,33 @@ func NewMetrics(
 			Subsystem: metricsSubsystem,
 			Name:      "build_time_seconds",
 			Help:      "Time spent during a builds cycle.",
-			Buckets:   prometheus.DefBuckets,
+			// Buckets in seconds:
+			Buckets: append(
+				// 1s --> 1h (steps of 10 minutes)
+				prometheus.LinearBuckets(1, 600, 6),
+				// 1h --> 24h (steps of 1 hour)
+				prometheus.LinearBuckets(3600, 3600, 24)...,
+			),
 		}, []string{"status"}),
+		buildLastSuccess: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "build_last_successful_run_timestamp_seconds",
+			Help:      "Unix timestamp of the last successful build cycle.",
+		}),
+
+		blocksDeleted: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "blocks_deleted_total",
+			Help:      "Number of blocks deleted",
+		}),
+		metasDeleted: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "metas_deleted_total",
+			Help:      "Number of metas deleted",
+		}),
 
 		tenantsDiscovered: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
@@ -113,6 +146,18 @@ func NewMetrics(
 			Name:      "tenants_discovered_total",
 			Help:      "Number of tenants discovered during the current build iteration",
 		}),
+		tenantTasksPlanned: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "tenant_tasks_planned",
+			Help:      "Number of tasks planned for a tenant during the current build iteration.",
+		}, []string{"tenant"}),
+		tenantTasksCompleted: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "tenant_tasks_completed",
+			Help:      "Number of tasks completed for a tenant during the current build iteration.",
+		}, []string{"tenant", "status"}),
 	}
 }
 

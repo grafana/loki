@@ -23,6 +23,7 @@ import (
 	storageconfig "github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
 	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
 
 func newMockBloomStore(t *testing.T) (*BloomStore, string, error) {
@@ -77,7 +78,7 @@ func newMockBloomStoreWithWorkDir(t *testing.T, workDir, storeDir string) (*Bloo
 
 	metasCache := cache.NewMockCache()
 	blocksCache := NewFsBlocksCache(storageConfig.BloomShipperConfig.BlocksCache, prometheus.NewPedanticRegistry(), logger)
-	store, err := NewBloomStore(periodicConfigs, storageConfig, metrics, metasCache, blocksCache, reg, logger)
+	store, err := NewBloomStore(periodicConfigs, storageConfig, metrics, metasCache, blocksCache, &mempool.SimpleHeapAllocator{}, reg, logger)
 	if err == nil {
 		t.Cleanup(store.Stop)
 	}
