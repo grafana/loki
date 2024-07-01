@@ -2,11 +2,7 @@ local lokiRelease = import 'workflows/main.jsonnet';
 local build = lokiRelease.build;
 local job = lokiRelease.job;
 
-local releaseLibRef = std.filter(
-  function(dep) dep.source.git.remote == 'https://github.com/grafana/loki-release.git',
-  (import 'jsonnetfile.json').dependencies
-)[0].version;
-
+local releaseLibRef = "release-1.12.x";
 local checkTemplate = 'grafana/loki-release/.github/workflows/check.yml@%s' % releaseLibRef;
 
 local imageJobs = {
