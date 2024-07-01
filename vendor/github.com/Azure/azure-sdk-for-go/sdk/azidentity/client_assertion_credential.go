@@ -23,7 +23,7 @@ const credNameAssertion = "ClientAssertionCredential"
 // the most common assertion scenario, authenticating a service principal with a certificate. See
 // [Microsoft Entra ID documentation] for details of the assertion format.
 //
-// [Microsoft Entra ID documentation]: https://learn.microsoft.com/azure/active-directory/develop/active-directory-certificate-credentials#assertion-format
+// [Microsoft Entra ID documentation]: https://learn.microsoft.com/entra/identity-platform/certificate-credentials#assertion-format
 type ClientAssertionCredential struct {
 	client *confidentialClient
 }

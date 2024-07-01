@@ -8,10 +8,8 @@ package azidentity
 
 import (
 	"context"
-	"errors"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
@@ -98,13 +96,13 @@ func NewDefaultAzureCredential(options *DefaultAzureCredentialOptions) (*Default
 		creds = append(creds, &defaultCredentialErrorReporter{credType: credNameWorkloadIdentity, err: err})
 	}
 
-	o := &ManagedIdentityCredentialOptions{ClientOptions: options.ClientOptions}
+	o := &ManagedIdentityCredentialOptions{ClientOptions: options.ClientOptions, dac: true}
 	if ID, ok := os.LookupEnv(azureClientID); ok {
 		o.ID = ClientID(ID)
 	}
 	miCred, err := NewManagedIdentityCredential(o)
 	if err == nil {
-		creds = append(creds, &timeoutWrapper{mic: miCred, timeout: time.Second})
+		creds = append(creds, miCred)
 	} else {
 		errorMessages = append(errorMessages, credNameManagedIdentity+": "+err.Error())
 		creds = append(creds, &defaultCredentialErrorReporter{credType: credNameManagedIdentity, err: err})
@@ -158,51 +156,10 @@ type defaultCredentialErrorReporter struct {
 }
 
 func (d *defaultCredentialErrorReporter) GetToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
-	if _, ok := d.err.(*credentialUnavailableError); ok {
+	if _, ok := d.err.(credentialUnavailable); ok {
 		return azcore.AccessToken{}, d.err
 	}
 	return azcore.AccessToken{}, newCredentialUnavailableError(d.credType, d.err.Error())
 }
 
 var _ azcore.TokenCredential = (*defaultCredentialErrorReporter)(nil)
-
-// timeoutWrapper prevents a potentially very long timeout when managed identity isn't available
-type timeoutWrapper struct {
-	mic *ManagedIdentityCredential
-	// timeout applies to all auth attempts until one doesn't time out
-	timeout time.Duration
-}
-
-// GetToken wraps DefaultAzureCredential's initial managed identity auth attempt with a short timeout
-// because managed identity may not be available and connecting to IMDS can take several minutes to time out.
-func (w *timeoutWrapper) GetToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
-	var tk azcore.AccessToken
-	var err error
-	// no need to synchronize around this value because it's written only within ChainedTokenCredential's critical section
-	if w.timeout > 0 {
-		c, cancel := context.WithTimeout(ctx, w.timeout)
-		defer cancel()
-		tk, err = w.mic.GetToken(c, opts)
-		if isAuthFailedDueToContext(err) {
-			err = newCredentialUnavailableError(credNameManagedIdentity, "managed identity timed out. See https://aka.ms/azsdk/go/identity/troubleshoot#dac for more information")
-		} else {
-			// some managed identity implementation is available, so don't apply the timeout to future calls
-			w.timeout = 0
-		}
-	} else {
-		tk, err = w.mic.GetToken(ctx, opts)
-	}
-	return tk, err
-}
-
-// unwraps nested AuthenticationFailedErrors to get the root error
-func isAuthFailedDueToContext(err error) bool {
-	for {
-		var authFailedErr *AuthenticationFailedError
-		if !errors.As(err, &authFailedErr) {
-			break
-		}
-		err = authFailedErr.err
-	}
-	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
-}
