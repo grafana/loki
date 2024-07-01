@@ -27,8 +27,9 @@ Before you begin, ensure you have the following to run the demo:
 - Docker Compose
 
 <!-- INTERACTIVE ignore START -->
-{{< admonition type="note" >}}
+{{< admonition type="tip" >}}
 Alternatively, you can try out this example in our online sandbox. Which is a fully configured environment with all the dependencies pre-installed. You can access the sandbox [here](https://killercoda.com/grafana-labs/course/loki/alloy-otel-logs).
+![Interactive](https://raw.githubusercontent.com/grafana/killercoda/staging/assets/loki-ile.svg)
 {{< /admonition >}}
 <!-- INTERACTIVE ignore END -->
 
@@ -196,7 +197,7 @@ This docker-compose file relies on the `loki-fundamentals_loki` docker network. 
 
 <!-- INTERACTIVE ignore START -->
 ```bash
-docker compose -f lloki-fundamentals/greenhouse/docker-compose-micro.yml up -d --build 
+docker compose -f loki-fundamentals/greenhouse/docker-compose-micro.yml up -d --build 
 ```
 <!-- INTERACTIVE ignore END -->
 
@@ -236,11 +237,18 @@ Finally to view the logs in Loki, navigate to the Loki Logs Explore view in Graf
 
 In this example, we configured Alloy to ingest OpenTelemetry logs and send them to Loki. This was a simple example to demonstrate how to send logs from an application instrumented with OpenTelemetry to Loki using Alloy. Where to go next?
 
+<!-- INTERACTIVE include START -->
+<!--  ### Back to Docs -->
+<!--  Head back to wear you started from to continue with the Loki documentation: [Loki documentation](https://grafana.com/docs/send-data/alloy).-->
+<!-- INTERACTIVE include END -->
+
 
 ## Further reading
-- [ "Grafana Alloy getting started examples"](https://grafana.com/docs/alloy/latest/tutorials/)
-- ["Grafana Alloy common task examples"](https://grafana.com/docs/alloy/latest/tasks/)
-- ["Grafana Alloy component reference"](https://grafana.com/docs/alloy/latest/reference/components/)
+
+For more information on Grafana Alloy, refer to the following resources:
+- [Grafana Alloy getting started examples](https://grafana.com/docs/alloy/latest/tutorials/)
+- [Grafana Alloy common task examples](https://grafana.com/docs/alloy/latest/tasks/)
+- [Grafana Alloy component reference](https://grafana.com/docs/alloy/latest/reference/components/)
 
 ## Complete metrics, logs, traces, and profiling example
 

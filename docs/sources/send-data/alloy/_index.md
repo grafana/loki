@@ -10,6 +10,8 @@ weight:  250
 
 Grafana Alloy is a versatile observability collector that can ingest logs in various formats and send them to Loki. We recommend Alloy as the primary method for sending logs to Loki, as it provides a more robust and feature-rich solution for building a highly scalable and reliable observability pipeline.
 
+{{< figure src="/media/docs/alloy/flow-diagram-small-alloy.png" alt="Alloy flow diagram" >}}
+
 ## Installing Alloy
 
 To get started with Grafana Alloy and send logs to Loki, you need to install and configure Alloy. You can follow the [official documentation](https://grafana.com/docs/alloy/latest/get-started/install/) to install Alloy on your preferred platform.
@@ -24,7 +26,7 @@ Alloy pipelines are built using components that perform specific functions. For 
 
 ### Log components in Alloy
 
-Here is a non-exhaustive list of components that can be used to build a log pipeline in Alloy. For a complete list of components, refer to the [official documentation](https://grafana.com/docs/alloy/latest/reference/components/).
+Here is a non-exhaustive list of components that can be used to build a log pipeline in Alloy. For a complete list of components, refer to the [components list](https://grafana.com/docs/alloy/latest/reference/components/).
 
 | Type       | Component                                                                                           |
 |------------|-----------------------------------------------------------------------------------------------------|
@@ -56,7 +58,7 @@ Here is a non-exhaustive list of components that can be used to build a log pipe
 
 To learn more about how to configure Alloy to send logs to Loki within different scenarios, follow these interactive tutorials:
 
-- [Sending OpenTelemetry logs to Loki using Alloy](https://killercoda.com/grafana-labs/course/loki/alloy-otel-logs)
-- [Sending logs over Kafka to Loki using Alloy](https://killercoda.com/grafana-labs/course/loki/alloy-http-logs)
+- [Sending OpenTelemetry logs to Loki using Alloy]({{< relref "./examples/alloy-otel-logs" >}})
+- [Sending logs over Kafka to Loki using Alloy]({{< relref "./examples/alloy-kafka-logs" >}})
 
 
