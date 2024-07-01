@@ -624,9 +624,10 @@ func Test_processTenantTaskResults(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 
-		originalMetas []bloomshipper.Meta
-		taskResults   []*protos.TaskResult
-		expectedMetas []bloomshipper.Meta
+		originalMetas        []bloomshipper.Meta
+		taskResults          []*protos.TaskResult
+		expectedMetas        []bloomshipper.Meta
+		expectedTasksSucceed int
 	}{
 		{
 			name: "errors",
@@ -649,6 +650,7 @@ func Test_processTenantTaskResults(t *testing.T) {
 				genMeta(0, 10, []int{0}, []bloomshipper.BlockRef{genBlockRef(0, 10)}),
 				genMeta(10, 20, []int{0}, []bloomshipper.BlockRef{genBlockRef(10, 20)}),
 			},
+			expectedTasksSucceed: 0,
 		},
 		{
 			name: "no new metas",
@@ -669,6 +671,7 @@ func Test_processTenantTaskResults(t *testing.T) {
 				genMeta(0, 10, []int{0}, []bloomshipper.BlockRef{genBlockRef(0, 10)}),
 				genMeta(10, 20, []int{0}, []bloomshipper.BlockRef{genBlockRef(10, 20)}),
 			},
+			expectedTasksSucceed: 2,
 		},
 		{
 			name: "no original metas",
@@ -690,6 +693,7 @@ func Test_processTenantTaskResults(t *testing.T) {
 				genMeta(0, 10, []int{0}, []bloomshipper.BlockRef{genBlockRef(0, 10)}),
 				genMeta(10, 20, []int{0}, []bloomshipper.BlockRef{genBlockRef(10, 20)}),
 			},
+			expectedTasksSucceed: 2,
 		},
 		{
 			name: "single meta covers all original",
@@ -708,6 +712,7 @@ func Test_processTenantTaskResults(t *testing.T) {
 			expectedMetas: []bloomshipper.Meta{
 				genMeta(0, 10, []int{1}, []bloomshipper.BlockRef{genBlockRef(0, 10)}),
 			},
+			expectedTasksSucceed: 1,
 		},
 		{
 			name: "multi version ordering",
@@ -727,6 +732,7 @@ func Test_processTenantTaskResults(t *testing.T) {
 				genMeta(0, 10, []int{1}, []bloomshipper.BlockRef{genBlockRef(0, 10)}),
 				genMeta(8, 10, []int{2}, []bloomshipper.BlockRef{genBlockRef(8, 10)}),
 			},
+			expectedTasksSucceed: 1,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -755,7 +761,7 @@ func Test_processTenantTaskResults(t *testing.T) {
 			go func() {
 				defer wg.Done()
 
-				err = planner.processTenantTaskResults(
+				completed, err := planner.processTenantTaskResults(
 					ctx,
 					testTable,
 					"fakeTenant",
@@ -764,6 +770,7 @@ func Test_processTenantTaskResults(t *testing.T) {
 					resultsCh,
 				)
 				require.NoError(t, err)
+				require.Equal(t, tc.expectedTasksSucceed, completed)
 			}()
 
 			for _, taskResult := range tc.taskResults {
