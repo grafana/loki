@@ -9,7 +9,7 @@ weight:
 
 # geoip
 
-The `geoip` stage is a parsing stage that reads an ip address and populates the labelset with geoip fields. [Maxmind's GeoIP2 database](https://www.maxmind.com/en/home) is used for the lookup.
+The `geoip` stage is a parsing stage that reads an IP address and populates the labelset and extracted map with GeoIP fields. [Maxmind's GeoIP2 database](https://www.maxmind.com/en/home) is used for the lookup.
 
 Populated fields for City db:
 
@@ -110,6 +110,67 @@ Only the labels listed under `labelallow` will be sent to Loki.
 ```
 
 All the labels except the ones listed under `labeldrop` will be sent to Loki.
+
+### replace/template example
+
+```yaml
+- regex:
+    expression: '^(?P<ip>\S+) .*'
+- geoip:
+    db: "/path/to/GeoCity.mmdb"
+    source: "ip"
+    db_type: "city"
+- replace:
+    expression: '^(\S+) .*'
+    replace: "{{ .Value }} ({{ .geoip_country_name }})"
+```
+
+The country name will be included in the log message.
+
+```
+"34.120.177.193 (United States) - "POST /loki/api/push/ HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"
+```
+
+### pack example
+
+```yaml
+- regex:
+    expression: '^(?P<ip>\S+) .*'
+- geoip:
+    db: "/path/to/GeoCity.mmdb"
+    source: "ip"
+    db_type: "city"
+- pack:
+    labels:
+    - geoip_city_name
+    - geoip_country_name
+    - geoip_continent_name
+    - geoip_continent_code
+    - geoip_location_latitude
+    - geoip_location_longitude
+    - geoip_postal_code
+    - geoip_timezone
+    - geoip_subdivision_name
+    - geoip_subdivision_code
+```
+
+The output will be a JSON message containing all the fields. All packed labels will be dropped.
+
+```json
+{
+  "geoip_city_name": "Kansas City",
+  "geoip_continent_code": "NA",
+  "geoip_continent_name": "North America",
+  "geoip_country_name": "United States",
+  "geoip_location_latitude": "39.1027",
+  "geoip_location_longitude": "-94.5778",
+  "geoip_postal_code": "64184",
+  "geoip_subdivision_code": "MO",
+  "geoip_subdivision_name": "Missouri",
+  "geoip_timezone": "America/Chicago",
+  "_entry": "34.120.177.193 - \"POST /loki/api/push/ HTTP/1.1\" 200 932 \"-\" \"Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6\""
+}
+```
 
 ## GeoIP with ASN (Autonomous System Number) database example
 
