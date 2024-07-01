@@ -537,6 +537,9 @@ func ParseIndexShardsQuery(r *http.Request) (*RangeQuery, datasize.ByteSize, err
 		return nil, 0, err
 	}
 	targetBytes, err := parseBytes(r, "targetBytesPerShard", true)
+	if targetBytes <= 0 {
+		return nil, 0, errors.New("targetBytesPerShard must be a positive value")
+	}
 	return parsed, targetBytes, err
 }
 

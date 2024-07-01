@@ -1,0 +1,14 @@
+# doc-example:skip-validation=true
+# This partial configuration uses Azure for chunk storage and a service principal for authentication
+storage_config:
+  azure:
+    use_service_principal: true
+    # Azure tenant ID used to authenticate through Azure OAuth
+    tenant_id: <tenant-id>
+    # Azure Service Principal ID
+    client_id: <client-id>
+    # Azure Service Principal secret key
+    client_secret: <client-secret>
+    # See https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blobs-introduction#containers
+    container_name: <azure_storage_bucket_name>
+    request_timeout: 0

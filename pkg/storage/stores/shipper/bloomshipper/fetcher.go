@@ -19,6 +19,8 @@ import (
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 var downloadQueueCapacity = 10000
@@ -29,7 +31,7 @@ type options struct {
 	// return bloom blocks to pool after iteration; default=false
 	// NB(owen-d): this can only be safely used when blooms are not captured outside
 	// of iteration or it can introduce use-after-free bugs
-	usePool bool
+	usePool mempool.Allocator
 }
 
 func (o *options) apply(opts ...FetchOption) {
@@ -52,7 +54,7 @@ func WithFetchAsync(v bool) FetchOption {
 	}
 }
 
-func WithPool(v bool) FetchOption {
+func WithPool(v mempool.Allocator) FetchOption {
 	return func(opts *options) {
 		opts.usePool = v
 	}
@@ -119,6 +121,8 @@ func (f *Fetcher) Close() {
 
 // FetchMetas implements fetcher
 func (f *Fetcher) FetchMetas(ctx context.Context, refs []MetaRef) ([]Meta, error) {
+	logger := spanlogger.FromContextWithFallback(ctx, f.logger)
+
 	if ctx.Err() != nil {
 		return nil, errors.Wrap(ctx.Err(), "fetch Metas")
 	}
@@ -127,9 +131,13 @@ func (f *Fetcher) FetchMetas(ctx context.Context, refs []MetaRef) ([]Meta, error
 	for _, ref := range refs {
 		keys = append(keys, f.client.Meta(ref).Addr())
 	}
+
+	cacheStart := time.Now()
 	cacheHits, cacheBufs, _, err := f.metasCache.Fetch(ctx, keys)
+	cacheDur := time.Since(cacheStart)
 	if err != nil {
-		return nil, err
+		level.Error(logger).Log("msg", "failed to fetch metas from cache", "err", err)
+		return nil, nil
 	}
 
 	fromCache, missing, err := f.processMetasCacheResponse(ctx, refs, cacheHits, cacheBufs)
@@ -137,15 +145,30 @@ func (f *Fetcher) FetchMetas(ctx context.Context, refs []MetaRef) ([]Meta, error
 		return nil, err
 	}
 
+	storageStart := time.Now()
 	fromStorage, err := f.client.GetMetas(ctx, missing)
+	storageDur := time.Since(storageStart)
 	if err != nil {
 		return nil, err
 	}
 
+	writeBackStart := time.Now()
 	err = f.writeBackMetas(ctx, fromStorage)
+	writeBackDur := time.Since(writeBackStart)
 	if err != nil {
 		return nil, err
 	}
+
+	logger.LogKV(
+		"phase", "fetch_metas",
+		"err", err,
+		"keys", len(keys),
+		"hits", len(cacheHits),
+		"misses", len(missing),
+		"cache_dur", cacheDur.String(),
+		"storage_dur", storageDur.String(),
+		"write_back_dur", writeBackDur.String(),
+	)
 
 	results := append(fromCache, fromStorage...)
 	f.metrics.metasFetched.Observe(float64(len(results)))
@@ -200,7 +223,7 @@ func (f *Fetcher) writeBackMetas(ctx context.Context, metas []Meta) error {
 // FetchBlocks implements fetcher
 func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...FetchOption) ([]*CloseableBlockQuerier, error) {
 	// apply fetch options
-	cfg := &options{ignoreNotFound: true, fetchAsync: false, usePool: false}
+	cfg := &options{ignoreNotFound: true, fetchAsync: false, usePool: &mempool.SimpleHeapAllocator{}}
 	cfg.apply(opts...)
 
 	// first, resolve blocks from cache and enqueue missing blocks to download queue
@@ -480,6 +503,7 @@ func newDownloadQueue[T any, R any](size, workers int, process processFunc[T, R]
 func (q *downloadQueue[T, R]) enqueue(t downloadRequest[T, R]) {
 	if !t.async {
 		q.queue <- t
+		return
 	}
 	// for async task we attempt to dedupe task already in progress.
 	q.enqueuedMutex.Lock()

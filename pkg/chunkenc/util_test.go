@@ -33,7 +33,7 @@ func generateData(enc Encoding, chunksCount, blockSize, targetSize int) ([]Chunk
 		c := NewMemChunk(ChunkFormatV4, enc, UnorderedWithStructuredMetadataHeadBlockFmt, blockSize, targetSize)
 		for c.SpaceFor(entry) {
 			size += uint64(len(entry.Line))
-			_ = c.Append(entry)
+			_, _ = c.Append(entry)
 			i++
 			entry = logprotoEntry(i, testdata.LogString(i))
 		}
@@ -55,7 +55,7 @@ func fillChunkClose(c Chunk, close bool) int64 {
 		Line:      testdata.LogString(i),
 	}
 	for c.SpaceFor(entry) {
-		err := c.Append(entry)
+		_, err := c.Append(entry)
 		if err != nil {
 			panic(err)
 		}
@@ -81,7 +81,7 @@ func fillChunkRandomOrder(c Chunk, close bool) {
 	}
 
 	for c.SpaceFor(entry) {
-		err := c.Append(entry)
+		_, err := c.Append(entry)
 		if err != nil {
 			panic(err)
 		}

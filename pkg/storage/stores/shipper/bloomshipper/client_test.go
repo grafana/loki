@@ -107,11 +107,20 @@ func TestBloomClient_GetMetas(t *testing.T) {
 		require.Equal(t, metas, []Meta{m1, m2})
 	})
 
-	t.Run("does not exist", func(t *testing.T) {
-		metas, err := c.GetMetas(ctx, []MetaRef{{}})
-		require.Error(t, err)
-		require.True(t, c.client.IsObjectNotFoundErr(err))
-		require.Equal(t, metas, []Meta{{}})
+	t.Run("does not exist - skips empty meta", func(t *testing.T) {
+		notExist := MetaRef{
+			Ref: Ref{
+				TenantID:       "tenant",
+				TableName:      "table",
+				Bounds:         v1.FingerprintBounds{},
+				StartTimestamp: 1000,
+				EndTimestamp:   2000,
+				Checksum:       1234,
+			},
+		}
+		metas, err := c.GetMetas(ctx, []MetaRef{notExist, m1.MetaRef})
+		require.NoError(t, err)
+		require.Equal(t, metas, []Meta{m1})
 	})
 }
 

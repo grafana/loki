@@ -21,6 +21,7 @@ type BlockWriter interface {
 	Index() (io.WriteCloser, error)
 	Blooms() (io.WriteCloser, error)
 	Size() (int, error) // byte size of accumualted index & blooms
+	Full(maxSize uint64) (full bool, size int, err error)
 }
 
 // in memory impl
@@ -44,6 +45,19 @@ func (b MemoryBlockWriter) Blooms() (io.WriteCloser, error) {
 
 func (b MemoryBlockWriter) Size() (int, error) {
 	return b.index.Len() + b.blooms.Len(), nil
+}
+
+func (b MemoryBlockWriter) Full(maxSize uint64) (full bool, size int, err error) {
+	size, err = b.Size()
+	if err != nil {
+		return false, 0, errors.Wrap(err, "getting block size")
+	}
+
+	if maxSize == 0 {
+		return false, size, nil
+	}
+
+	return uint64(size) >= maxSize, size, nil
 }
 
 // Directory based impl
@@ -111,4 +125,17 @@ func (b *DirectoryBlockWriter) Size() (int, error) {
 		size += int(info.Size())
 	}
 	return size, nil
+}
+
+func (b *DirectoryBlockWriter) Full(maxSize uint64) (full bool, size int, err error) {
+	size, err = b.Size()
+	if err != nil {
+		return false, 0, errors.Wrap(err, "getting block size")
+	}
+
+	if maxSize == 0 {
+		return false, size, nil
+	}
+
+	return uint64(size) >= maxSize, size, nil
 }

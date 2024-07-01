@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package protos;
+
+import "gogoproto/gogo.proto";
+import "pkg/bloombuild/protos/types.proto";
+
+option go_package = "protos";
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+service PlannerForBuilder {
+  rpc BuilderLoop(stream BuilderToPlanner) returns (stream PlannerToBuilder) {}
+
+  rpc NotifyBuilderShutdown(NotifyBuilderShutdownRequest) returns (NotifyBuilderShutdownResponse) {}
+}
+
+message BuilderToPlanner {
+  string builderID = 1;
+  ProtoTaskResult result = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "result"
+  ];
+}
+
+message PlannerToBuilder {
+  ProtoTask task = 1;
+}
+
+message NotifyBuilderShutdownRequest {
+  string builderID = 1;
+}
+
+message NotifyBuilderShutdownResponse {
+  // empty: just to acknowledge the request
+}

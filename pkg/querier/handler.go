@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/opentracing/opentracing-go"
-
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
@@ -24,8 +22,6 @@ func NewQuerierHandler(api *QuerierAPI) *Handler {
 }
 
 func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-	span, ctx := opentracing.StartSpanFromContext(ctx, "queryHandler")
-	defer span.Finish()
 
 	switch concrete := req.(type) {
 	case *queryrange.LokiRequest:
@@ -135,6 +131,14 @@ func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrang
 		}
 
 		return &queryrange.DetectedLabelsResponse{Response: result}, nil
+	case *logproto.QuerySamplesRequest:
+		result, err := h.api.SamplesHandler(ctx, concrete)
+		if err != nil {
+			return nil, err
+		}
+		return &queryrange.QuerySamplesResponse{
+			Response: result,
+		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported query type %T", req)
 	}

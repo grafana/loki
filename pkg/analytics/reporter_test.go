@@ -157,3 +157,16 @@ func TestWrongKV(t *testing.T) {
 	}()
 	require.Equal(t, nil, r.running(ctx))
 }
+
+func TestStartCPUCollection(t *testing.T) {
+	r, err := NewReporter(Config{Leader: true, Enabled: true}, kv.Config{
+		Store: "inmemory",
+	}, nil, log.NewLogfmtLogger(os.Stdout), prometheus.NewPedanticRegistry())
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r.startCPUPercentCollection(ctx, 1*time.Second)
+	require.Eventually(t, func() bool {
+		return cpuUsage.Value() > 0
+	}, 5*time.Second, 1*time.Second)
+}

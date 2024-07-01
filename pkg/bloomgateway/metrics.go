@@ -15,21 +15,25 @@ type metrics struct {
 	*serverMetrics
 }
 
+const (
+	typeSuccess = "success"
+	typeError   = "error"
+)
+
 type clientMetrics struct {
-	cacheLocalityScore prometheus.Histogram
-	requestLatency     *prometheus.HistogramVec
-	clients            prometheus.Gauge
+	clientRequests *prometheus.CounterVec
+	requestLatency *prometheus.HistogramVec
+	clients        prometheus.Gauge
 }
 
 func newClientMetrics(registerer prometheus.Registerer) *clientMetrics {
 	return &clientMetrics{
-		cacheLocalityScore: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+		clientRequests: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Subsystem: "bloom_gateway_client",
-			Name:      "cache_locality_score",
-			Help:      "Cache locality score of the bloom filter, as measured by % of keyspace touched / % of bloom_gws required",
-			Buckets:   prometheus.LinearBuckets(0.01, 0.2, 5),
-		}),
+			Name:      "requests_total",
+			Help:      "Total number of requests made to the bloom gateway",
+		}, []string{"type"}),
 		requestLatency: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: constants.Loki,
 			Subsystem: "bloom_gateway_client",
@@ -112,12 +116,13 @@ func newServerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 }
 
 type workerMetrics struct {
-	dequeueDuration   *prometheus.HistogramVec
-	queueDuration     *prometheus.HistogramVec
-	processDuration   *prometheus.HistogramVec
-	tasksDequeued     *prometheus.CounterVec
-	tasksProcessed    *prometheus.CounterVec
-	blockQueryLatency *prometheus.HistogramVec
+	dequeueDuration    *prometheus.HistogramVec
+	queueDuration      *prometheus.HistogramVec
+	processDuration    *prometheus.HistogramVec
+	tasksDequeued      *prometheus.CounterVec
+	tasksProcessed     *prometheus.CounterVec
+	blocksNotAvailable *prometheus.CounterVec
+	blockQueryLatency  *prometheus.HistogramVec
 }
 
 func newWorkerMetrics(registerer prometheus.Registerer, namespace, subsystem string) *workerMetrics {
@@ -154,6 +159,12 @@ func newWorkerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 			Name:      "tasks_processed_total",
 			Help:      "Total amount of tasks that the worker processed",
 		}, append(labels, "status")),
+		blocksNotAvailable: r.NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "blocks_not_available_total",
+			Help:      "Total amount of blocks that have been skipped because they were not found or not downloaded yet",
+		}, labels),
 		blockQueryLatency: r.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,

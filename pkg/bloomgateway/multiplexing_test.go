@@ -31,8 +31,7 @@ func TestTask(t *testing.T) {
 			},
 		}
 		swb := partitionRequest(req)[0]
-		task, err := NewTask(context.Background(), "tenant", swb, nil)
-		require.NoError(t, err)
+		task := newTask(context.Background(), "tenant", swb, nil, nil)
 		from, through := task.Bounds()
 		require.Equal(t, ts.Add(-1*time.Hour), from)
 		require.Equal(t, ts, through)
@@ -45,8 +44,7 @@ func createTasksForRequests(t *testing.T, tenant string, requests ...*logproto.F
 	tasks := make([]Task, 0, len(requests))
 	for _, r := range requests {
 		for _, swb := range partitionRequest(r) {
-			task, err := NewTask(context.Background(), tenant, swb, nil)
-			require.NoError(t, err)
+			task := newTask(context.Background(), tenant, swb, nil, nil)
 			tasks = append(tasks, task)
 		}
 	}
@@ -63,7 +61,7 @@ func TestTask_RequestIterator(t *testing.T) {
 			interval: bloomshipper.Interval{Start: 0, End: math.MaxInt64},
 			series:   []*logproto.GroupedChunkRefs{},
 		}
-		task, _ := NewTask(context.Background(), tenant, swb, []syntax.LineFilterExpr{})
+		task := newTask(context.Background(), tenant, swb, []syntax.LineFilterExpr{}, nil)
 		it := task.RequestIter(tokenizer)
 		// nothing to iterate over
 		require.False(t, it.Next())

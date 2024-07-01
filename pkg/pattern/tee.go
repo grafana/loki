@@ -18,14 +18,14 @@ import (
 type Tee struct {
 	cfg        Config
 	logger     log.Logger
-	ringClient *RingClient
+	ringClient RingClient
 
 	ingesterAppends *prometheus.CounterVec
 }
 
 func NewTee(
 	cfg Config,
-	ringClient *RingClient,
+	ringClient RingClient,
 	metricsNamespace string,
 	registerer prometheus.Registerer,
 	logger log.Logger,
@@ -58,7 +58,7 @@ func (t *Tee) Duplicate(tenant string, streams []distributor.KeyedStream) {
 
 func (t *Tee) sendStream(tenant string, stream distributor.KeyedStream) error {
 	var descs [1]ring.InstanceDesc
-	replicationSet, err := t.ringClient.ring.Get(stream.HashKey, ring.WriteNoExtend, descs[:0], nil, nil)
+	replicationSet, err := t.ringClient.Ring().Get(stream.HashKey, ring.WriteNoExtend, descs[:0], nil, nil)
 	if err != nil {
 		return err
 	}
@@ -66,7 +66,7 @@ func (t *Tee) sendStream(tenant string, stream distributor.KeyedStream) error {
 		return errors.New("no instances found")
 	}
 	addr := replicationSet.Instances[0].Addr
-	client, err := t.ringClient.pool.GetClientFor(addr)
+	client, err := t.ringClient.Pool().GetClientFor(addr)
 	if err != nil {
 		return err
 	}

@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
@@ -77,12 +79,20 @@ func (r BlockRef) String() string {
 	return defaultKeyResolver{}.Block(r).Addr()
 }
 
+func BlockRefFromKey(k string) (BlockRef, error) {
+	return defaultKeyResolver{}.ParseBlockKey(key(k))
+}
+
 type MetaRef struct {
 	Ref
 }
 
 func (r MetaRef) String() string {
 	return defaultKeyResolver{}.Meta(r).Addr()
+}
+
+func MetaRefFromKey(k string) (MetaRef, error) {
+	return defaultKeyResolver{}.ParseMetaKey(key(k))
 }
 
 // todo rename it
@@ -96,9 +106,9 @@ type Meta struct {
 	Blocks []BlockRef
 }
 
-func (m Meta) MostRecentSource() (tsdb.SingleTenantTSDBIdentifier, error) {
+func (m Meta) MostRecentSource() (tsdb.SingleTenantTSDBIdentifier, bool) {
 	if len(m.Sources) == 0 {
-		return tsdb.SingleTenantTSDBIdentifier{}, errors.New("no sources")
+		return tsdb.SingleTenantTSDBIdentifier{}, false
 	}
 
 	mostRecent := m.Sources[0]
@@ -108,7 +118,7 @@ func (m Meta) MostRecentSource() (tsdb.SingleTenantTSDBIdentifier, error) {
 		}
 	}
 
-	return mostRecent, nil
+	return mostRecent, true
 }
 
 func MetaRefFrom(
@@ -380,32 +390,46 @@ func (b *BloomClient) Stop() {
 }
 
 func (b *BloomClient) GetMetas(ctx context.Context, refs []MetaRef) ([]Meta, error) {
-	results := make([]Meta, len(refs))
+	results := make([]*Meta, len(refs))
 	err := concurrency.ForEachJob(ctx, len(refs), b.concurrency, func(ctx context.Context, idx int) error {
 		meta, err := b.GetMeta(ctx, refs[idx])
 		if err != nil {
-			return err
+			key := b.KeyResolver.Meta(refs[idx]).Addr()
+			if !b.IsObjectNotFoundErr(err) {
+				return fmt.Errorf("failed to get meta file %s: %w", key, err)
+			}
+			level.Error(b.logger).Log("msg", "failed to get meta file", "ref", key, "err", err)
+			return nil
 		}
-		results[idx] = meta
+		results[idx] = &meta
 		return nil
 	})
-	return results, err
+
+	filtered := make([]Meta, 0, len(results))
+	for _, r := range results {
+		if r != nil {
+			filtered = append(filtered, *r)
+		}
+	}
+	return filtered, err
 }
 
+// GetMeta fetches the meta file for given MetaRef from object storage and
+// decodes the JSON data into a Meta.
+// If the meta file is not found in storage or decoding fails, the empty Meta
+// is returned along with the error.
 func (b *BloomClient) GetMeta(ctx context.Context, ref MetaRef) (Meta, error) {
-	meta := Meta{
-		MetaRef: ref,
-	}
+	meta := Meta{MetaRef: ref}
 	key := b.KeyResolver.Meta(ref).Addr()
 	reader, _, err := b.client.GetObject(ctx, key)
 	if err != nil {
-		return Meta{}, fmt.Errorf("failed to get meta file%s: %w", key, err)
+		return meta, err
 	}
 	defer reader.Close()
 
 	err = json.NewDecoder(reader).Decode(&meta)
 	if err != nil {
-		return Meta{}, fmt.Errorf("failed to decode meta file %s: %w", key, err)
+		return meta, errors.Wrap(err, "failed to decode JSON")
 	}
 	return meta, nil
 }
@@ -469,12 +493,26 @@ func newCachedListOpObjectClient(oc client.ObjectClient, ttl, interval time.Dura
 }
 
 func (c *cachedListOpObjectClient) List(ctx context.Context, prefix string, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
+	var (
+		start    = time.Now()
+		cacheDur time.Duration
+	)
+	defer func() {
+		if sp := opentracing.SpanFromContext(ctx); sp != nil {
+			sp.LogKV(
+				"cache_duration", cacheDur,
+				"total_duration", time.Since(start),
+			)
+		}
+	}()
+
 	if delimiter != "" {
 		return nil, nil, fmt.Errorf("does not support LIST calls with delimiter: %s", delimiter)
 	}
 	c.mtx.RLock()
 	cached, found := c.cache[prefix]
 	c.mtx.RUnlock()
+	cacheDur = time.Since(start)
 	if found {
 		return cached.objects, cached.prefixes, nil
 	}

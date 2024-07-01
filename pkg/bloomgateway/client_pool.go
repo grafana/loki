@@ -72,6 +72,14 @@ func (p *JumpHashClientPool) AddrForFingerprint(fp uint64) (string, error) {
 	return addr.String(), nil
 }
 
+func (p *JumpHashClientPool) Addr(key string) (string, error) {
+	addr, err := p.FromString(key)
+	if err != nil {
+		return "", err
+	}
+	return addr.String(), nil
+}
+
 func (p *JumpHashClientPool) Start() {
 	ctx := context.Background()
 	_ = services.StartAndAwaitRunning(ctx, p.Pool)

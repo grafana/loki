@@ -53,7 +53,7 @@ type Compactor struct {
 	retentionManager *RetentionManager
 
 	// temporary workaround until bloomStore has implemented read/write shipper interface
-	bloomStore bloomshipper.Store
+	bloomStore bloomshipper.StoreBase
 
 	sharding util_ring.TenantSharding
 
@@ -69,7 +69,7 @@ func New(
 	ring ring.ReadRing,
 	ringLifeCycler *ring.BasicLifecycler,
 	limits Limits,
-	store bloomshipper.StoreWithMetrics,
+	store bloomshipper.Store,
 	logger log.Logger,
 	r prometheus.Registerer,
 ) (*Compactor, error) {
@@ -303,7 +303,7 @@ func (c *Compactor) loadWork(
 		if err != nil {
 			return errors.Wrap(err, "getting tenants")
 		}
-		nTenants := tenants.Len()
+		nTenants := tenants.Remaining()
 
 		type ownedTenant struct {
 			tenant          string

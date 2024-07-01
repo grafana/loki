@@ -31,6 +31,7 @@ type contextKey int
 
 const (
 	contextKeyMethodName contextKey = 1
+	contextKeyRouteName  contextKey = 2
 )
 
 func (g *grpcStatsHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) context.Context {

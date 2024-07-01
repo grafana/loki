@@ -313,6 +313,47 @@ ruler:
   {{- if .Timeout }}
   notification_timeout: {{ .Timeout }}
   {{- end }}
+  {{- if .Notifier }}
+  {{- with .Notifier }}
+  alertmanager_client:
+    {{- if .TLS.CertPath }}
+    tls_cert_path: {{ .TLS.CertPath }}
+    {{- end }}
+    {{- if .TLS.KeyPath }}
+    tls_key_path: {{ .TLS.KeyPath }}
+    {{- end }}
+    {{- if .TLS.CAPath }}
+    tls_ca_path: {{ .TLS.CAPath }}
+    {{- end }}
+    {{- if .TLS.ServerName }}
+    tls_server_name: {{ .TLS.ServerName }}
+    {{- end }}
+    {{- if .TLS.InsecureSkipVerify }}
+    tls_insecure_skip_verify: {{ .TLS.InsecureSkipVerify }}
+    {{- end }}
+    {{- if .TLS.CipherSuites }}
+    tls_cipher_suites: {{ .TLS.CipherSuites }}
+    {{- end }}
+    {{- if .TLS.MinVersion }}
+    tls_min_version: {{ .TLS.MinVersion }}
+    {{- end }}
+    {{- if .BasicAuth.Username }}
+    basic_auth_username: {{ .BasicAuth.Username }}
+    {{- end }}
+    {{- if .BasicAuth.Password }}
+    basic_auth_password: {{ .BasicAuth.Password }}
+    {{- end }}
+    {{- if .HeaderAuth.Type }}
+    type: {{ .HeaderAuth.Type }}
+    {{- end }}
+    {{- if .HeaderAuth.Credentials }}
+    credentials: {{ .HeaderAuth.Credentials }}
+    {{- end }}
+    {{- if .HeaderAuth.CredentialsFile }}
+    credentials_file: {{ .HeaderAuth.CredentialsFile }}
+    {{- end }}
+  {{- end }}
+  {{- end }}
 
   {{- with .RelabelConfigs }}
   alert_relabel_configs:

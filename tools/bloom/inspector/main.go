@@ -5,6 +5,7 @@ import (
 	"os"
 
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
 
 func main() {
@@ -18,7 +19,7 @@ func main() {
 
 	r := v1.NewDirectoryBlockReader(path)
 	b := v1.NewBlock(r, v1.NewMetrics(nil))
-	q := v1.NewBlockQuerier(b, true, v1.DefaultMaxPageSize)
+	q := v1.NewBlockQuerier(b, &mempool.SimpleHeapAllocator{}, v1.DefaultMaxPageSize)
 
 	md, err := q.Metadata()
 	if err != nil {

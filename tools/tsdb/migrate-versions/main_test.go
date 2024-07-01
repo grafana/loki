@@ -142,4 +142,5 @@ func TestMigrateTables(t *testing.T) {
 			}
 		})
 	}
+	clientMetrics.Unregister()
 }

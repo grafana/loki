@@ -11,6 +11,7 @@ import (
 	_ "github.com/gogo/protobuf/types"
 	github_com_gogo_protobuf_types "github.com/gogo/protobuf/types"
 	push "github.com/grafana/loki/pkg/push"
+	stats "github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	github_com_prometheus_common_model "github.com/prometheus/common/model"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
@@ -39,6 +40,7 @@ type QueryPatternsRequest struct {
 	Query string    `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
 	Start time.Time `protobuf:"bytes,2,opt,name=start,proto3,stdtime" json:"start"`
 	End   time.Time `protobuf:"bytes,3,opt,name=end,proto3,stdtime" json:"end"`
+	Step  int64     `protobuf:"varint,4,opt,name=step,proto3" json:"step,omitempty"`
 }
 
 func (m *QueryPatternsRequest) Reset()      { *m = QueryPatternsRequest{} }
@@ -92,6 +94,13 @@ func (m *QueryPatternsRequest) GetEnd() time.Time {
 		return m.End
 	}
 	return time.Time{}
+}
+
+func (m *QueryPatternsRequest) GetStep() int64 {
+	if m != nil {
+		return m.Step
+	}
+	return 0
 }
 
 type QueryPatternsResponse struct {
@@ -232,47 +241,176 @@ func (m *PatternSample) GetValue() int64 {
 	return 0
 }
 
+type QuerySamplesRequest struct {
+	Query string    `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	Start time.Time `protobuf:"bytes,2,opt,name=start,proto3,stdtime" json:"start"`
+	End   time.Time `protobuf:"bytes,3,opt,name=end,proto3,stdtime" json:"end"`
+	Step  int64     `protobuf:"varint,4,opt,name=step,proto3" json:"step,omitempty"`
+}
+
+func (m *QuerySamplesRequest) Reset()      { *m = QuerySamplesRequest{} }
+func (*QuerySamplesRequest) ProtoMessage() {}
+func (*QuerySamplesRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_aaf4192acc66a4ea, []int{4}
+}
+func (m *QuerySamplesRequest) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *QuerySamplesRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_QuerySamplesRequest.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *QuerySamplesRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_QuerySamplesRequest.Merge(m, src)
+}
+func (m *QuerySamplesRequest) XXX_Size() int {
+	return m.Size()
+}
+func (m *QuerySamplesRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_QuerySamplesRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_QuerySamplesRequest proto.InternalMessageInfo
+
+func (m *QuerySamplesRequest) GetQuery() string {
+	if m != nil {
+		return m.Query
+	}
+	return ""
+}
+
+func (m *QuerySamplesRequest) GetStart() time.Time {
+	if m != nil {
+		return m.Start
+	}
+	return time.Time{}
+}
+
+func (m *QuerySamplesRequest) GetEnd() time.Time {
+	if m != nil {
+		return m.End
+	}
+	return time.Time{}
+}
+
+func (m *QuerySamplesRequest) GetStep() int64 {
+	if m != nil {
+		return m.Step
+	}
+	return 0
+}
+
+type QuerySamplesResponse struct {
+	Series   []Series       `protobuf:"bytes,1,rep,name=series,proto3,customtype=Series" json:"series,omitempty"`
+	Stats    stats.Ingester `protobuf:"bytes,2,opt,name=stats,proto3" json:"stats"`
+	Warnings []string       `protobuf:"bytes,3,rep,name=warnings,proto3" json:"warnings,omitempty"`
+}
+
+func (m *QuerySamplesResponse) Reset()      { *m = QuerySamplesResponse{} }
+func (*QuerySamplesResponse) ProtoMessage() {}
+func (*QuerySamplesResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_aaf4192acc66a4ea, []int{5}
+}
+func (m *QuerySamplesResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *QuerySamplesResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_QuerySamplesResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *QuerySamplesResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_QuerySamplesResponse.Merge(m, src)
+}
+func (m *QuerySamplesResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *QuerySamplesResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_QuerySamplesResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_QuerySamplesResponse proto.InternalMessageInfo
+
+func (m *QuerySamplesResponse) GetStats() stats.Ingester {
+	if m != nil {
+		return m.Stats
+	}
+	return stats.Ingester{}
+}
+
+func (m *QuerySamplesResponse) GetWarnings() []string {
+	if m != nil {
+		return m.Warnings
+	}
+	return nil
+}
+
 func init() {
 	proto.RegisterType((*QueryPatternsRequest)(nil), "logproto.QueryPatternsRequest")
 	proto.RegisterType((*QueryPatternsResponse)(nil), "logproto.QueryPatternsResponse")
 	proto.RegisterType((*PatternSeries)(nil), "logproto.PatternSeries")
 	proto.RegisterType((*PatternSample)(nil), "logproto.PatternSample")
+	proto.RegisterType((*QuerySamplesRequest)(nil), "logproto.QuerySamplesRequest")
+	proto.RegisterType((*QuerySamplesResponse)(nil), "logproto.QuerySamplesResponse")
 }
 
 func init() { proto.RegisterFile("pkg/logproto/pattern.proto", fileDescriptor_aaf4192acc66a4ea) }
 
 var fileDescriptor_aaf4192acc66a4ea = []byte{
-	// 470 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x52, 0x31, 0x6f, 0xd4, 0x30,
-	0x14, 0x8e, 0x1b, 0xae, 0xd7, 0xba, 0x62, 0x31, 0x57, 0x88, 0x82, 0xe4, 0x9c, 0xb2, 0x70, 0x53,
-	0x0c, 0x57, 0x09, 0x24, 0xc6, 0x9b, 0x18, 0x40, 0x2a, 0x81, 0x09, 0xc1, 0x90, 0x6b, 0x5d, 0xe7,
-	0xd4, 0x38, 0x4e, 0x63, 0xbb, 0x12, 0x1b, 0x3f, 0xe1, 0x7e, 0x02, 0x23, 0x3f, 0xa5, 0xe3, 0x8d,
-	0x15, 0x43, 0xe1, 0x72, 0x0b, 0x63, 0x7f, 0x02, 0x8a, 0xed, 0xf4, 0xae, 0x15, 0x1d, 0x58, 0x12,
-	0xbf, 0xf7, 0x7d, 0xef, 0xf3, 0xf7, 0xde, 0x33, 0x0c, 0xab, 0x53, 0x46, 0x0a, 0xc1, 0xaa, 0x5a,
-	0x28, 0x41, 0xaa, 0x4c, 0x29, 0x5a, 0x97, 0x89, 0x89, 0xd0, 0x4e, 0x97, 0x0f, 0x07, 0x4c, 0x30,
-	0x61, 0x29, 0xed, 0xc9, 0xe2, 0x61, 0xc4, 0x84, 0x60, 0x05, 0x25, 0x26, 0x9a, 0xea, 0x13, 0xa2,
-	0x66, 0x9c, 0x4a, 0x95, 0xf1, 0xca, 0x11, 0x9e, 0xde, 0x12, 0xef, 0x0e, 0x0e, 0x7c, 0xd4, 0x82,
-	0x95, 0x96, 0xb9, 0xf9, 0xd8, 0x64, 0xfc, 0x1d, 0xc0, 0xc1, 0x7b, 0x4d, 0xeb, 0xaf, 0x87, 0xd6,
-	0x89, 0x4c, 0xe9, 0x99, 0xa6, 0x52, 0xa1, 0x01, 0xec, 0x9d, 0xb5, 0xf9, 0x00, 0x0c, 0xc1, 0x68,
-	0x37, 0xb5, 0x01, 0x7a, 0x0d, 0x7b, 0x52, 0x65, 0xb5, 0x0a, 0xb6, 0x86, 0x60, 0xb4, 0x37, 0x0e,
-	0x13, 0xeb, 0x28, 0xe9, 0x1c, 0x25, 0x1f, 0x3b, 0x47, 0x93, 0x9d, 0x8b, 0xab, 0xc8, 0x9b, 0xff,
-	0x8a, 0x40, 0x6a, 0x4b, 0xd0, 0x4b, 0xe8, 0xd3, 0xf2, 0x38, 0xf0, 0xff, 0xa3, 0xb2, 0x2d, 0x88,
-	0xdf, 0xc0, 0xfd, 0x3b, 0x0e, 0x65, 0x25, 0x4a, 0x49, 0x11, 0x81, 0xdb, 0x92, 0xd6, 0x33, 0x2a,
-	0x03, 0x30, 0xf4, 0x47, 0x7b, 0xe3, 0x27, 0xc9, 0x4d, 0xc7, 0x8e, 0xfb, 0xc1, 0xc0, 0xa9, 0xa3,
-	0xc5, 0x9f, 0xe1, 0xc3, 0x5b, 0x00, 0x0a, 0x60, 0xdf, 0x6d, 0xc0, 0xb5, 0xd9, 0x85, 0xe8, 0x05,
-	0xec, 0xcb, 0x8c, 0x57, 0x05, 0x95, 0xc1, 0xd6, 0x7d, 0xe2, 0x06, 0x4f, 0x3b, 0x5e, 0xac, 0xd6,
-	0xea, 0x26, 0x83, 0xde, 0xc1, 0xdd, 0x9b, 0x05, 0x19, 0x7d, 0x7f, 0x42, 0xda, 0xd6, 0x7e, 0x5e,
-	0x45, 0xcf, 0xd8, 0x4c, 0xe5, 0x7a, 0x9a, 0x1c, 0x09, 0xde, 0x6e, 0x93, 0x53, 0x95, 0x53, 0x2d,
-	0xc9, 0x91, 0xe0, 0x5c, 0x94, 0x84, 0x8b, 0x63, 0x5a, 0x98, 0x81, 0xa4, 0x6b, 0x85, 0x76, 0x23,
-	0xe7, 0x59, 0xa1, 0xa9, 0x99, 0xbd, 0x9f, 0xda, 0x60, 0x3c, 0x07, 0xb0, 0xef, 0xae, 0x45, 0xaf,
-	0xe0, 0x83, 0x43, 0x2d, 0x73, 0xb4, 0xbf, 0xe1, 0x55, 0xcb, 0xdc, 0xad, 0x34, 0x7c, 0x7c, 0x37,
-	0x6d, 0xe7, 0x18, 0x7b, 0xe8, 0x2d, 0xec, 0x99, 0x11, 0x23, 0xbc, 0xa6, 0xfc, 0xeb, 0x55, 0x84,
-	0xd1, 0xbd, 0x78, 0xa7, 0xf5, 0x1c, 0x4c, 0xbe, 0x2c, 0x96, 0xd8, 0xbb, 0x5c, 0x62, 0xef, 0x7a,
-	0x89, 0xc1, 0xb7, 0x06, 0x83, 0x1f, 0x0d, 0x06, 0x17, 0x0d, 0x06, 0x8b, 0x06, 0x83, 0xdf, 0x0d,
-	0x06, 0x7f, 0x1a, 0xec, 0x5d, 0x37, 0x18, 0xcc, 0x57, 0xd8, 0x5b, 0xac, 0xb0, 0x77, 0xb9, 0xc2,
-	0xde, 0xa7, 0xcd, 0x91, 0xb0, 0x3a, 0x3b, 0xc9, 0xca, 0x8c, 0x14, 0xe2, 0x74, 0x46, 0xce, 0x0f,
-	0xc8, 0xe6, 0xb3, 0x9e, 0x6e, 0x9b, 0xdf, 0xc1, 0xdf, 0x00, 0x00, 0x00, 0xff, 0xff, 0xec, 0xd6,
-	0xbc, 0xfc, 0x4a, 0x03, 0x00, 0x00,
+	// 597 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xd4, 0x54, 0xbb, 0x8e, 0xd3, 0x40,
+	0x14, 0xf5, 0xac, 0xb3, 0xaf, 0x59, 0xf1, 0xd0, 0xec, 0x2e, 0x58, 0x46, 0x8c, 0x2d, 0x37, 0x44,
+	0x42, 0xf2, 0x40, 0x56, 0x02, 0x44, 0x99, 0x0a, 0x24, 0x90, 0x82, 0xa1, 0x42, 0x50, 0x38, 0xbb,
+	0xb3, 0x4e, 0xb4, 0xb6, 0xc7, 0xf1, 0x8c, 0x17, 0xd1, 0xf1, 0x09, 0xdb, 0xf2, 0x07, 0xf4, 0xf0,
+	0x11, 0x29, 0x53, 0xae, 0xb6, 0x08, 0xc4, 0x69, 0x28, 0xf7, 0x13, 0x90, 0x67, 0xc6, 0x79, 0x89,
+	0x14, 0x94, 0x34, 0xce, 0xdc, 0x7b, 0xce, 0xbd, 0x39, 0xf7, 0x9e, 0xb1, 0xa1, 0x9d, 0x9d, 0x45,
+	0x24, 0x66, 0x51, 0x96, 0x33, 0xc1, 0x48, 0x16, 0x0a, 0x41, 0xf3, 0xd4, 0x97, 0x11, 0xda, 0xa9,
+	0xf3, 0xf6, 0x41, 0xc4, 0x22, 0xa6, 0x28, 0xd5, 0x49, 0xe1, 0xb6, 0x13, 0x31, 0x16, 0xc5, 0x94,
+	0xc8, 0xa8, 0x5b, 0x9c, 0x12, 0xd1, 0x4f, 0x28, 0x17, 0x61, 0x92, 0x69, 0xc2, 0xbd, 0xa5, 0xe6,
+	0xf5, 0x41, 0x83, 0xae, 0x06, 0x07, 0x71, 0xc2, 0x4e, 0x68, 0x4c, 0xb8, 0x08, 0x05, 0x57, 0x4f,
+	0xcd, 0xd8, 0xaf, 0x18, 0x59, 0xc1, 0x7b, 0xf2, 0xa1, 0x92, 0xde, 0x0f, 0x00, 0x0f, 0xde, 0x14,
+	0x34, 0xff, 0xdc, 0x51, 0x5a, 0x79, 0x40, 0x07, 0x05, 0xe5, 0x02, 0x1d, 0xc0, 0xcd, 0x41, 0x95,
+	0xb7, 0x80, 0x0b, 0x9a, 0xbb, 0x81, 0x0a, 0xd0, 0x73, 0xb8, 0xc9, 0x45, 0x98, 0x0b, 0x6b, 0xc3,
+	0x05, 0xcd, 0xbd, 0x96, 0xed, 0x2b, 0xcd, 0x7e, 0xad, 0xd9, 0x7f, 0x57, 0x6b, 0x6e, 0xef, 0x0c,
+	0xc7, 0x8e, 0x71, 0xf1, 0xd3, 0x01, 0x81, 0x2a, 0x41, 0x4f, 0xa0, 0x49, 0xd3, 0x13, 0xcb, 0xfc,
+	0x87, 0xca, 0xaa, 0x00, 0x21, 0xd8, 0xe0, 0x82, 0x66, 0x56, 0xc3, 0x05, 0x4d, 0x33, 0x90, 0x67,
+	0xef, 0x05, 0x3c, 0x5c, 0x51, 0xcd, 0x33, 0x96, 0x72, 0x8a, 0x08, 0xdc, 0xe2, 0x34, 0xef, 0x53,
+	0x6e, 0x01, 0xd7, 0x6c, 0xee, 0xb5, 0xee, 0xfa, 0xb3, 0x3d, 0x69, 0xee, 0x5b, 0x09, 0x07, 0x9a,
+	0xe6, 0x7d, 0x80, 0x37, 0x96, 0x00, 0x64, 0xc1, 0x6d, 0xed, 0x9b, 0x1e, 0xbd, 0x0e, 0xd1, 0x63,
+	0xb8, 0xcd, 0xc3, 0x24, 0x8b, 0x29, 0xb7, 0x36, 0xd6, 0x35, 0x97, 0x78, 0x50, 0xf3, 0x3c, 0x31,
+	0xef, 0x2e, 0x33, 0xe8, 0x35, 0xdc, 0x9d, 0xd9, 0x2a, 0xfb, 0x9b, 0x6d, 0x52, 0x8d, 0x7b, 0x35,
+	0x76, 0x1e, 0x44, 0x7d, 0xd1, 0x2b, 0xba, 0xfe, 0x31, 0x4b, 0xaa, 0x3b, 0x90, 0x50, 0xd1, 0xa3,
+	0x05, 0x27, 0xc7, 0x2c, 0x49, 0x58, 0x4a, 0xa4, 0xab, 0x72, 0x49, 0xc1, 0xbc, 0x43, 0xe5, 0xd2,
+	0x79, 0x18, 0x17, 0x54, 0xfa, 0x61, 0x06, 0x2a, 0xf0, 0xbe, 0x03, 0xb8, 0x2f, 0xd7, 0xa3, 0xfe,
+	0xf4, 0x3f, 0xf1, 0xf4, 0x6b, 0x7d, 0x15, 0x67, 0xaa, 0xb5, 0xa7, 0xcf, 0x56, 0x3c, 0xbd, 0x3d,
+	0x5f, 0xbb, 0xf2, 0xac, 0x7d, 0x73, 0x38, 0x76, 0xc0, 0xd5, 0xd8, 0xd9, 0x5a, 0x36, 0x17, 0x3d,
+	0x94, 0xa3, 0x09, 0xae, 0x47, 0xbb, 0xe5, 0xab, 0xf7, 0xe1, 0x65, 0x1a, 0x51, 0x2e, 0x68, 0xde,
+	0x6e, 0x54, 0xaa, 0x02, 0xc5, 0x41, 0x36, 0xdc, 0xf9, 0x14, 0xe6, 0x69, 0x3f, 0x8d, 0xb8, 0x65,
+	0xba, 0x66, 0x73, 0x37, 0x98, 0xc5, 0xad, 0x12, 0xc0, 0x6d, 0x6d, 0x24, 0x7a, 0x0a, 0x1b, 0x9d,
+	0x82, 0xf7, 0xd0, 0xe1, 0x82, 0xfb, 0x05, 0xef, 0xe9, 0x25, 0xdb, 0x77, 0x56, 0xd3, 0x6a, 0x0a,
+	0xcf, 0x40, 0xaf, 0xe0, 0xa6, 0x9c, 0x0f, 0xe1, 0x39, 0xe5, 0x6f, 0xef, 0x9e, 0xed, 0xac, 0xc5,
+	0xeb, 0x5e, 0x8f, 0x00, 0xea, 0xc0, 0xbd, 0x85, 0x6d, 0xa1, 0xfb, 0x2b, 0x35, 0xcb, 0xd6, 0xdb,
+	0x78, 0x1d, 0x3c, 0xef, 0xd8, 0xfe, 0x38, 0x9a, 0x60, 0xe3, 0x72, 0x82, 0x8d, 0xeb, 0x09, 0x06,
+	0x5f, 0x4a, 0x0c, 0xbe, 0x95, 0x18, 0x0c, 0x4b, 0x0c, 0x46, 0x25, 0x06, 0xbf, 0x4a, 0x0c, 0x7e,
+	0x97, 0xd8, 0xb8, 0x2e, 0x31, 0xb8, 0x98, 0x62, 0x63, 0x34, 0xc5, 0xc6, 0xe5, 0x14, 0x1b, 0xef,
+	0x17, 0xaf, 0x6d, 0x94, 0x87, 0xa7, 0x61, 0x1a, 0x92, 0x98, 0x9d, 0xf5, 0xc9, 0xf9, 0x11, 0x59,
+	0xfc, 0x60, 0x75, 0xb7, 0xe4, 0xcf, 0xd1, 0x9f, 0x00, 0x00, 0x00, 0xff, 0xff, 0xbc, 0xa2, 0x72,
+	0x12, 0x24, 0x05, 0x00, 0x00,
 }
 
 func (this *QueryPatternsRequest) Equal(that interface{}) bool {
@@ -301,6 +439,9 @@ func (this *QueryPatternsRequest) Equal(that interface{}) bool {
 		return false
 	}
 	if !this.End.Equal(that1.End) {
+		return false
+	}
+	if this.Step != that1.Step {
 		return false
 	}
 	return true
@@ -393,15 +534,89 @@ func (this *PatternSample) Equal(that interface{}) bool {
 	}
 	return true
 }
+func (this *QuerySamplesRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*QuerySamplesRequest)
+	if !ok {
+		that2, ok := that.(QuerySamplesRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Query != that1.Query {
+		return false
+	}
+	if !this.Start.Equal(that1.Start) {
+		return false
+	}
+	if !this.End.Equal(that1.End) {
+		return false
+	}
+	if this.Step != that1.Step {
+		return false
+	}
+	return true
+}
+func (this *QuerySamplesResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*QuerySamplesResponse)
+	if !ok {
+		that2, ok := that.(QuerySamplesResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Series) != len(that1.Series) {
+		return false
+	}
+	for i := range this.Series {
+		if !this.Series[i].Equal(that1.Series[i]) {
+			return false
+		}
+	}
+	if !this.Stats.Equal(&that1.Stats) {
+		return false
+	}
+	if len(this.Warnings) != len(that1.Warnings) {
+		return false
+	}
+	for i := range this.Warnings {
+		if this.Warnings[i] != that1.Warnings[i] {
+			return false
+		}
+	}
+	return true
+}
 func (this *QueryPatternsRequest) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 7)
+	s := make([]string, 0, 8)
 	s = append(s, "&logproto.QueryPatternsRequest{")
 	s = append(s, "Query: "+fmt.Sprintf("%#v", this.Query)+",\n")
 	s = append(s, "Start: "+fmt.Sprintf("%#v", this.Start)+",\n")
 	s = append(s, "End: "+fmt.Sprintf("%#v", this.End)+",\n")
+	s = append(s, "Step: "+fmt.Sprintf("%#v", this.Step)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -441,6 +656,31 @@ func (this *PatternSample) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
+func (this *QuerySamplesRequest) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 8)
+	s = append(s, "&logproto.QuerySamplesRequest{")
+	s = append(s, "Query: "+fmt.Sprintf("%#v", this.Query)+",\n")
+	s = append(s, "Start: "+fmt.Sprintf("%#v", this.Start)+",\n")
+	s = append(s, "End: "+fmt.Sprintf("%#v", this.End)+",\n")
+	s = append(s, "Step: "+fmt.Sprintf("%#v", this.Step)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *QuerySamplesResponse) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 7)
+	s = append(s, "&logproto.QuerySamplesResponse{")
+	s = append(s, "Series: "+fmt.Sprintf("%#v", this.Series)+",\n")
+	s = append(s, "Stats: "+strings.Replace(this.Stats.GoString(), `&`, ``, 1)+",\n")
+	s = append(s, "Warnings: "+fmt.Sprintf("%#v", this.Warnings)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
 func valueToGoStringPattern(v interface{}, typ string) string {
 	rv := reflect.ValueOf(v)
 	if rv.IsNil() {
@@ -464,6 +704,7 @@ const _ = grpc.SupportPackageIsVersion4
 type PatternClient interface {
 	Push(ctx context.Context, in *push.PushRequest, opts ...grpc.CallOption) (*push.PushResponse, error)
 	Query(ctx context.Context, in *QueryPatternsRequest, opts ...grpc.CallOption) (Pattern_QueryClient, error)
+	QuerySample(ctx context.Context, in *QuerySamplesRequest, opts ...grpc.CallOption) (Pattern_QuerySampleClient, error)
 }
 
 type patternClient struct {
@@ -515,10 +756,43 @@ func (x *patternQueryClient) Recv() (*QueryPatternsResponse, error) {
 	return m, nil
 }
 
+func (c *patternClient) QuerySample(ctx context.Context, in *QuerySamplesRequest, opts ...grpc.CallOption) (Pattern_QuerySampleClient, error) {
+	stream, err := c.cc.NewStream(ctx, &_Pattern_serviceDesc.Streams[1], "/logproto.Pattern/QuerySample", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &patternQuerySampleClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type Pattern_QuerySampleClient interface {
+	Recv() (*QuerySamplesResponse, error)
+	grpc.ClientStream
+}
+
+type patternQuerySampleClient struct {
+	grpc.ClientStream
+}
+
+func (x *patternQuerySampleClient) Recv() (*QuerySamplesResponse, error) {
+	m := new(QuerySamplesResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // PatternServer is the server API for Pattern service.
 type PatternServer interface {
 	Push(context.Context, *push.PushRequest) (*push.PushResponse, error)
 	Query(*QueryPatternsRequest, Pattern_QueryServer) error
+	QuerySample(*QuerySamplesRequest, Pattern_QuerySampleServer) error
 }
 
 // UnimplementedPatternServer can be embedded to have forward compatible implementations.
@@ -530,6 +804,9 @@ func (*UnimplementedPatternServer) Push(ctx context.Context, req *push.PushReque
 }
 func (*UnimplementedPatternServer) Query(req *QueryPatternsRequest, srv Pattern_QueryServer) error {
 	return status.Errorf(codes.Unimplemented, "method Query not implemented")
+}
+func (*UnimplementedPatternServer) QuerySample(req *QuerySamplesRequest, srv Pattern_QuerySampleServer) error {
+	return status.Errorf(codes.Unimplemented, "method QuerySample not implemented")
 }
 
 func RegisterPatternServer(s *grpc.Server, srv PatternServer) {
@@ -575,6 +852,27 @@ func (x *patternQueryServer) Send(m *QueryPatternsResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
+func _Pattern_QuerySample_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(QuerySamplesRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(PatternServer).QuerySample(m, &patternQuerySampleServer{stream})
+}
+
+type Pattern_QuerySampleServer interface {
+	Send(*QuerySamplesResponse) error
+	grpc.ServerStream
+}
+
+type patternQuerySampleServer struct {
+	grpc.ServerStream
+}
+
+func (x *patternQuerySampleServer) Send(m *QuerySamplesResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 var _Pattern_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "logproto.Pattern",
 	HandlerType: (*PatternServer)(nil),
@@ -588,6 +886,11 @@ var _Pattern_serviceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "Query",
 			Handler:       _Pattern_Query_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "QuerySample",
+			Handler:       _Pattern_QuerySample_Handler,
 			ServerStreams: true,
 		},
 	},
@@ -614,6 +917,11 @@ func (m *QueryPatternsRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.Step != 0 {
+		i = encodeVarintPattern(dAtA, i, uint64(m.Step))
+		i--
+		dAtA[i] = 0x20
+	}
 	n1, err1 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.End, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.End):])
 	if err1 != nil {
 		return 0, err1
@@ -754,6 +1062,113 @@ func (m *PatternSample) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *QuerySamplesRequest) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *QuerySamplesRequest) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *QuerySamplesRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.Step != 0 {
+		i = encodeVarintPattern(dAtA, i, uint64(m.Step))
+		i--
+		dAtA[i] = 0x20
+	}
+	n3, err3 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.End, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.End):])
+	if err3 != nil {
+		return 0, err3
+	}
+	i -= n3
+	i = encodeVarintPattern(dAtA, i, uint64(n3))
+	i--
+	dAtA[i] = 0x1a
+	n4, err4 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Start, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Start):])
+	if err4 != nil {
+		return 0, err4
+	}
+	i -= n4
+	i = encodeVarintPattern(dAtA, i, uint64(n4))
+	i--
+	dAtA[i] = 0x12
+	if len(m.Query) > 0 {
+		i -= len(m.Query)
+		copy(dAtA[i:], m.Query)
+		i = encodeVarintPattern(dAtA, i, uint64(len(m.Query)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *QuerySamplesResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *QuerySamplesResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *QuerySamplesResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Warnings) > 0 {
+		for iNdEx := len(m.Warnings) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.Warnings[iNdEx])
+			copy(dAtA[i:], m.Warnings[iNdEx])
+			i = encodeVarintPattern(dAtA, i, uint64(len(m.Warnings[iNdEx])))
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
+	{
+		size, err := m.Stats.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = encodeVarintPattern(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x12
+	if len(m.Series) > 0 {
+		for iNdEx := len(m.Series) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size := m.Series[iNdEx].Size()
+				i -= size
+				if _, err := m.Series[iNdEx].MarshalTo(dAtA[i:]); err != nil {
+					return 0, err
+				}
+				i = encodeVarintPattern(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0xa
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
 func encodeVarintPattern(dAtA []byte, offset int, v uint64) int {
 	offset -= sovPattern(v)
 	base := offset
@@ -779,6 +1194,9 @@ func (m *QueryPatternsRequest) Size() (n int) {
 	n += 1 + l + sovPattern(uint64(l))
 	l = github_com_gogo_protobuf_types.SizeOfStdTime(m.End)
 	n += 1 + l + sovPattern(uint64(l))
+	if m.Step != 0 {
+		n += 1 + sovPattern(uint64(m.Step))
+	}
 	return n
 }
 
@@ -831,6 +1249,49 @@ func (m *PatternSample) Size() (n int) {
 	return n
 }
 
+func (m *QuerySamplesRequest) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Query)
+	if l > 0 {
+		n += 1 + l + sovPattern(uint64(l))
+	}
+	l = github_com_gogo_protobuf_types.SizeOfStdTime(m.Start)
+	n += 1 + l + sovPattern(uint64(l))
+	l = github_com_gogo_protobuf_types.SizeOfStdTime(m.End)
+	n += 1 + l + sovPattern(uint64(l))
+	if m.Step != 0 {
+		n += 1 + sovPattern(uint64(m.Step))
+	}
+	return n
+}
+
+func (m *QuerySamplesResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if len(m.Series) > 0 {
+		for _, e := range m.Series {
+			l = e.Size()
+			n += 1 + l + sovPattern(uint64(l))
+		}
+	}
+	l = m.Stats.Size()
+	n += 1 + l + sovPattern(uint64(l))
+	if len(m.Warnings) > 0 {
+		for _, s := range m.Warnings {
+			l = len(s)
+			n += 1 + l + sovPattern(uint64(l))
+		}
+	}
+	return n
+}
+
 func sovPattern(x uint64) (n int) {
 	return (math_bits.Len64(x|1) + 6) / 7
 }
@@ -845,6 +1306,7 @@ func (this *QueryPatternsRequest) String() string {
 		`Query:` + fmt.Sprintf("%v", this.Query) + `,`,
 		`Start:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Start), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
 		`End:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.End), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`Step:` + fmt.Sprintf("%v", this.Step) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -887,6 +1349,31 @@ func (this *PatternSample) String() string {
 	s := strings.Join([]string{`&PatternSample{`,
 		`Timestamp:` + fmt.Sprintf("%v", this.Timestamp) + `,`,
 		`Value:` + fmt.Sprintf("%v", this.Value) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *QuerySamplesRequest) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&QuerySamplesRequest{`,
+		`Query:` + fmt.Sprintf("%v", this.Query) + `,`,
+		`Start:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Start), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`End:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.End), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
+		`Step:` + fmt.Sprintf("%v", this.Step) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *QuerySamplesResponse) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&QuerySamplesResponse{`,
+		`Series:` + fmt.Sprintf("%v", this.Series) + `,`,
+		`Stats:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Stats), "Ingester", "stats.Ingester", 1), `&`, ``, 1) + `,`,
+		`Warnings:` + fmt.Sprintf("%v", this.Warnings) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1026,6 +1513,25 @@ func (m *QueryPatternsRequest) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Step", wireType)
+			}
+			m.Step = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPattern
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Step |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipPattern(dAtA[iNdEx:])
@@ -1323,6 +1829,328 @@ func (m *PatternSample) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipPattern(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthPattern
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthPattern
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *QuerySamplesRequest) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowPattern
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: QuerySamplesRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: QuerySamplesRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Query", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPattern
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthPattern
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthPattern
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Query = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Start", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPattern
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPattern
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPattern
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(&m.Start, dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field End", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPattern
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPattern
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPattern
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := github_com_gogo_protobuf_types.StdTimeUnmarshal(&m.End, dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Step", wireType)
+			}
+			m.Step = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPattern
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Step |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipPattern(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthPattern
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthPattern
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *QuerySamplesResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowPattern
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: QuerySamplesResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: QuerySamplesResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Series", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPattern
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPattern
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPattern
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Series = append(m.Series, Series{})
+			if err := m.Series[len(m.Series)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Stats", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPattern
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPattern
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPattern
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.Stats.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Warnings", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPattern
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthPattern
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthPattern
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Warnings = append(m.Warnings, string(dAtA[iNdEx:postIndex]))
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipPattern(dAtA[iNdEx:])

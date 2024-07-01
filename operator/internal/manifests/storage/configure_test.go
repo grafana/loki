@@ -2505,102 +2505,6 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 				},
 			},
 		},
-		{
-			desc: "object storage Swift",
-			opts: Options{
-				SecretName:  "test",
-				SharedStore: lokiv1.ObjectStorageSecretSwift,
-				TLS: &TLSConfig{
-					CA:  "test",
-					Key: "service-ca.crt",
-				},
-			},
-			dpl: &appsv1.Deployment{
-				Spec: appsv1.DeploymentSpec{
-					Template: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{
-								{
-									Name: "loki-querier",
-								},
-							},
-						},
-					},
-				},
-			},
-			want: &appsv1.Deployment{
-				Spec: appsv1.DeploymentSpec{
-					Template: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{
-								{
-									Name: "loki-querier",
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      "test",
-											ReadOnly:  false,
-											MountPath: "/etc/storage/secrets",
-										},
-										{
-											Name:      "storage-tls",
-											ReadOnly:  false,
-											MountPath: "/etc/storage/ca",
-										},
-									},
-									Args: []string{
-										"-swift.http.ca-file=/etc/storage/ca/service-ca.crt",
-									},
-									Env: []corev1.EnvVar{
-										{
-											Name: EnvSwiftUsername,
-											ValueFrom: &corev1.EnvVarSource{
-												SecretKeyRef: &corev1.SecretKeySelector{
-													LocalObjectReference: corev1.LocalObjectReference{
-														Name: "test",
-													},
-													Key: KeySwiftUsername,
-												},
-											},
-										},
-										{
-											Name: EnvSwiftPassword,
-											ValueFrom: &corev1.EnvVarSource{
-												SecretKeyRef: &corev1.SecretKeySelector{
-													LocalObjectReference: corev1.LocalObjectReference{
-														Name: "test",
-													},
-													Key: KeySwiftPassword,
-												},
-											},
-										},
-									},
-								},
-							},
-							Volumes: []corev1.Volume{
-								{
-									Name: "test",
-									VolumeSource: corev1.VolumeSource{
-										Secret: &corev1.SecretVolumeSource{
-											SecretName: "test",
-										},
-									},
-								},
-								{
-									Name: "storage-tls",
-									VolumeSource: corev1.VolumeSource{
-										ConfigMap: &corev1.ConfigMapVolumeSource{
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: "test",
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
 	}
 
 	for _, tc := range tc {
@@ -2627,7 +2531,7 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 			desc: "object storage other than S3",
 			opts: Options{
 				SecretName:  "test",
-				SharedStore: lokiv1.ObjectStorageSecretAzure,
+				SharedStore: lokiv1.ObjectStorageSecretSwift,
 				TLS: &TLSConfig{
 					CA: "test",
 				},
@@ -2661,24 +2565,24 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 									},
 									Env: []corev1.EnvVar{
 										{
-											Name: EnvAzureStorageAccountName,
+											Name: EnvSwiftUsername,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: KeyAzureStorageAccountName,
+													Key: KeySwiftUsername,
 												},
 											},
 										},
 										{
-											Name: EnvAzureStorageAccountKey,
+											Name: EnvSwiftPassword,
 											ValueFrom: &corev1.EnvVarSource{
 												SecretKeyRef: &corev1.SecretKeySelector{
 													LocalObjectReference: corev1.LocalObjectReference{
 														Name: "test",
 													},
-													Key: KeyAzureStorageAccountKey,
+													Key: KeySwiftPassword,
 												},
 											},
 										},
@@ -2765,102 +2669,6 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 														Name: "test",
 													},
 													Key: KeyAWSAccessKeySecret,
-												},
-											},
-										},
-									},
-								},
-							},
-							Volumes: []corev1.Volume{
-								{
-									Name: "test",
-									VolumeSource: corev1.VolumeSource{
-										Secret: &corev1.SecretVolumeSource{
-											SecretName: "test",
-										},
-									},
-								},
-								{
-									Name: "storage-tls",
-									VolumeSource: corev1.VolumeSource{
-										ConfigMap: &corev1.ConfigMapVolumeSource{
-											LocalObjectReference: corev1.LocalObjectReference{
-												Name: "test",
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			desc: "object storage Swift",
-			opts: Options{
-				SecretName:  "test",
-				SharedStore: lokiv1.ObjectStorageSecretSwift,
-				TLS: &TLSConfig{
-					CA:  "test",
-					Key: "service-ca.crt",
-				},
-			},
-			sts: &appsv1.StatefulSet{
-				Spec: appsv1.StatefulSetSpec{
-					Template: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{
-								{
-									Name: "loki-ingester",
-								},
-							},
-						},
-					},
-				},
-			},
-			want: &appsv1.StatefulSet{
-				Spec: appsv1.StatefulSetSpec{
-					Template: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{
-								{
-									Name: "loki-ingester",
-									VolumeMounts: []corev1.VolumeMount{
-										{
-											Name:      "test",
-											ReadOnly:  false,
-											MountPath: "/etc/storage/secrets",
-										},
-										{
-											Name:      "storage-tls",
-											ReadOnly:  false,
-											MountPath: "/etc/storage/ca",
-										},
-									},
-									Args: []string{
-										"-swift.http.ca-file=/etc/storage/ca/service-ca.crt",
-									},
-									Env: []corev1.EnvVar{
-										{
-											Name: EnvSwiftUsername,
-											ValueFrom: &corev1.EnvVarSource{
-												SecretKeyRef: &corev1.SecretKeySelector{
-													LocalObjectReference: corev1.LocalObjectReference{
-														Name: "test",
-													},
-													Key: KeySwiftUsername,
-												},
-											},
-										},
-										{
-											Name: EnvSwiftPassword,
-											ValueFrom: &corev1.EnvVarSource{
-												SecretKeyRef: &corev1.SecretKeySelector{
-													LocalObjectReference: corev1.LocalObjectReference{
-														Name: "test",
-													},
-													Key: KeySwiftPassword,
 												},
 											},
 										},

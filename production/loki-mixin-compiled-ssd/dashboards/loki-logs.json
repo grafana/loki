@@ -801,7 +801,7 @@
             "steppedLine": false,
             "targets": [
                {
-                  "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$deployment.*\", pod=~\"$pod\", container=~\"$container\" } |logfmt| level=\"$level\" |= \"$filter\" | __error__=\"\" [$__rate_interval])) by (level)",
+                  "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$deployment.*\", pod=~\"$pod\", container=~\"$container\" } |logfmt| level=\"$level\" |= \"$filter\" | __error__=\"\" [$__auto])) by (level)",
                   "intervalFactor": 3,
                   "legendFormat": "{{level}}",
                   "refId": "A"

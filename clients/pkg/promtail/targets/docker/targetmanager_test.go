@@ -95,6 +95,7 @@ func Test_TargetManager(t *testing.T) {
 		ps,
 		entryHandler,
 		cfgs,
+		0,
 	)
 	require.NoError(t, err)
 	require.True(t, ta.Ready())

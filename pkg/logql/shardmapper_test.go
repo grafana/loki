@@ -24,7 +24,7 @@ func TestShardedStringer(t *testing.T) {
 					shard: NewPowerOfTwoShard(index.ShardAnnotation{
 						Shard: 0,
 						Of:    2,
-					}).Ptr(),
+					}).Bind(nil),
 					LogSelectorExpr: &syntax.MatchersExpr{
 						Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 					},
@@ -34,7 +34,7 @@ func TestShardedStringer(t *testing.T) {
 						shard: NewPowerOfTwoShard(index.ShardAnnotation{
 							Shard: 1,
 							Of:    2,
-						}).Ptr(),
+						}).Bind(nil),
 						LogSelectorExpr: &syntax.MatchersExpr{
 							Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 						},
@@ -75,7 +75,7 @@ func TestMapSampleExpr(t *testing.T) {
 					shard: NewPowerOfTwoShard(index.ShardAnnotation{
 						Shard: 0,
 						Of:    2,
-					}).Ptr(),
+					}).Bind(nil),
 					SampleExpr: &syntax.RangeAggregationExpr{
 						Operation: syntax.OpRangeTypeRate,
 						Left: &syntax.LogRange{
@@ -91,7 +91,7 @@ func TestMapSampleExpr(t *testing.T) {
 						shard: NewPowerOfTwoShard(index.ShardAnnotation{
 							Shard: 1,
 							Of:    2,
-						}).Ptr(),
+						}).Bind(nil),
 						SampleExpr: &syntax.RangeAggregationExpr{
 							Operation: syntax.OpRangeTypeRate,
 							Left: &syntax.LogRange{
@@ -392,6 +392,38 @@ func TestMappingStrings(t *testing.T) {
 				)
 			)`,
 		},
+		{
+			in: `avg_over_time({job=~"myapps.*"} |= "stats" | json | keep busy | unwrap busy [5m])`,
+			out: `(
+				sum without() (
+					downstream<sum without() (sum_over_time({job=~"myapps.*"} |="stats" | json | keep busy | unwrap busy [5m])),shard=0_of_2>
+					++
+					downstream<sum without() (sum_over_time({job=~"myapps.*"} |="stats" | json | keep busy | unwrap busy [5m])),shard=1_of_2>
+				)
+				/
+				sum without(busy) (
+					downstream<sum without(busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m])),shard=0_of_2>
+					++
+					downstream<sum without(busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m])),shard=1_of_2>
+				)
+			)`,
+		},
+		{
+			in: `avg_over_time({job=~"myapps.*"} |= "stats" | json | keep busy | unwrap busy [5m]) without (foo)`,
+			out: `(
+				sum without(foo) (
+					downstream<sum without(foo) (sum_over_time({job=~"myapps.*"} |="stats" | json | keep busy | unwrap busy [5m])),shard=0_of_2>
+					++
+					downstream<sum without(foo) (sum_over_time({job=~"myapps.*"} |="stats" | json | keep busy | unwrap busy [5m])),shard=1_of_2>
+				)
+				/
+				sum without(foo,busy) (
+					downstream<sum without(foo,busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m])),shard=0_of_2>
+					++
+					downstream<sum without(foo,busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m])),shard=1_of_2>
+				)
+			)`,
+		},
 		// should be noop if VectorExpr
 		{
 			in:  `vector(0)`,
@@ -508,7 +540,7 @@ func TestMapping(t *testing.T) {
 					shard: NewPowerOfTwoShard(index.ShardAnnotation{
 						Shard: 0,
 						Of:    2,
-					}).Ptr(),
+					}).Bind(nil),
 					LogSelectorExpr: &syntax.MatchersExpr{
 						Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 					},
@@ -518,7 +550,7 @@ func TestMapping(t *testing.T) {
 						shard: NewPowerOfTwoShard(index.ShardAnnotation{
 							Shard: 1,
 							Of:    2,
-						}).Ptr(),
+						}).Bind(nil),
 						LogSelectorExpr: &syntax.MatchersExpr{
 							Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 						},
@@ -534,7 +566,7 @@ func TestMapping(t *testing.T) {
 					shard: NewPowerOfTwoShard(index.ShardAnnotation{
 						Shard: 0,
 						Of:    2,
-					}).Ptr(),
+					}).Bind(nil),
 					LogSelectorExpr: &syntax.PipelineExpr{
 						Left: &syntax.MatchersExpr{
 							Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
@@ -555,7 +587,7 @@ func TestMapping(t *testing.T) {
 						shard: NewPowerOfTwoShard(index.ShardAnnotation{
 							Shard: 1,
 							Of:    2,
-						}).Ptr(),
+						}).Bind(nil),
 						LogSelectorExpr: &syntax.PipelineExpr{
 							Left: &syntax.MatchersExpr{
 								Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
@@ -582,7 +614,7 @@ func TestMapping(t *testing.T) {
 					shard: NewPowerOfTwoShard(index.ShardAnnotation{
 						Shard: 0,
 						Of:    2,
-					}).Ptr(),
+					}).Bind(nil),
 					SampleExpr: &syntax.RangeAggregationExpr{
 						Operation: syntax.OpRangeTypeRate,
 						Left: &syntax.LogRange{
@@ -598,7 +630,7 @@ func TestMapping(t *testing.T) {
 						shard: NewPowerOfTwoShard(index.ShardAnnotation{
 							Shard: 1,
 							Of:    2,
-						}).Ptr(),
+						}).Bind(nil),
 						SampleExpr: &syntax.RangeAggregationExpr{
 							Operation: syntax.OpRangeTypeRate,
 							Left: &syntax.LogRange{
@@ -620,7 +652,7 @@ func TestMapping(t *testing.T) {
 					shard: NewPowerOfTwoShard(index.ShardAnnotation{
 						Shard: 0,
 						Of:    2,
-					}).Ptr(),
+					}).Bind(nil),
 					SampleExpr: &syntax.RangeAggregationExpr{
 						Operation: syntax.OpRangeTypeCount,
 						Left: &syntax.LogRange{
@@ -636,7 +668,7 @@ func TestMapping(t *testing.T) {
 						shard: NewPowerOfTwoShard(index.ShardAnnotation{
 							Shard: 1,
 							Of:    2,
-						}).Ptr(),
+						}).Bind(nil),
 						SampleExpr: &syntax.RangeAggregationExpr{
 							Operation: syntax.OpRangeTypeCount,
 							Left: &syntax.LogRange{
@@ -661,7 +693,7 @@ func TestMapping(t *testing.T) {
 						shard: NewPowerOfTwoShard(index.ShardAnnotation{
 							Shard: 0,
 							Of:    2,
-						}).Ptr(),
+						}).Bind(nil),
 						SampleExpr: &syntax.VectorAggregationExpr{
 							Grouping:  &syntax.Grouping{},
 							Operation: syntax.OpTypeSum,
@@ -681,7 +713,7 @@ func TestMapping(t *testing.T) {
 							shard: NewPowerOfTwoShard(index.ShardAnnotation{
 								Shard: 1,
 								Of:    2,
-							}).Ptr(),
+							}).Bind(nil),
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Grouping:  &syntax.Grouping{},
 								Operation: syntax.OpTypeSum,
@@ -712,7 +744,7 @@ func TestMapping(t *testing.T) {
 						shard: NewPowerOfTwoShard(index.ShardAnnotation{
 							Shard: 0,
 							Of:    2,
-						}).Ptr(),
+						}).Bind(nil),
 						SampleExpr: &syntax.RangeAggregationExpr{
 							Operation: syntax.OpRangeTypeRate,
 							Left: &syntax.LogRange{
@@ -728,7 +760,7 @@ func TestMapping(t *testing.T) {
 							shard: NewPowerOfTwoShard(index.ShardAnnotation{
 								Shard: 1,
 								Of:    2,
-							}).Ptr(),
+							}).Bind(nil),
 							SampleExpr: &syntax.RangeAggregationExpr{
 								Operation: syntax.OpRangeTypeRate,
 								Left: &syntax.LogRange{
@@ -754,7 +786,7 @@ func TestMapping(t *testing.T) {
 						shard: NewPowerOfTwoShard(index.ShardAnnotation{
 							Shard: 0,
 							Of:    2,
-						}).Ptr(),
+						}).Bind(nil),
 						SampleExpr: &syntax.VectorAggregationExpr{
 							Grouping:  &syntax.Grouping{},
 							Operation: syntax.OpTypeCount,
@@ -774,7 +806,7 @@ func TestMapping(t *testing.T) {
 							shard: NewPowerOfTwoShard(index.ShardAnnotation{
 								Shard: 1,
 								Of:    2,
-							}).Ptr(),
+							}).Bind(nil),
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Grouping:  &syntax.Grouping{},
 								Operation: syntax.OpTypeCount,
@@ -806,7 +838,7 @@ func TestMapping(t *testing.T) {
 							shard: NewPowerOfTwoShard(index.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
-							}).Ptr(),
+							}).Bind(nil),
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Grouping:  &syntax.Grouping{},
 								Operation: syntax.OpTypeSum,
@@ -826,7 +858,7 @@ func TestMapping(t *testing.T) {
 								shard: NewPowerOfTwoShard(index.ShardAnnotation{
 									Shard: 1,
 									Of:    2,
-								}).Ptr(),
+								}).Bind(nil),
 								SampleExpr: &syntax.VectorAggregationExpr{
 									Grouping:  &syntax.Grouping{},
 									Operation: syntax.OpTypeSum,
@@ -853,7 +885,7 @@ func TestMapping(t *testing.T) {
 							shard: NewPowerOfTwoShard(index.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
-							}).Ptr(),
+							}).Bind(nil),
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Grouping:  &syntax.Grouping{},
 								Operation: syntax.OpTypeCount,
@@ -873,7 +905,7 @@ func TestMapping(t *testing.T) {
 								shard: NewPowerOfTwoShard(index.ShardAnnotation{
 									Shard: 1,
 									Of:    2,
-								}).Ptr(),
+								}).Bind(nil),
 								SampleExpr: &syntax.VectorAggregationExpr{
 									Grouping:  &syntax.Grouping{},
 									Operation: syntax.OpTypeCount,
@@ -913,7 +945,7 @@ func TestMapping(t *testing.T) {
 							shard: NewPowerOfTwoShard(index.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
-							}).Ptr(),
+							}).Bind(nil),
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Grouping: &syntax.Grouping{
 									Groups: []string{"cluster"},
@@ -935,7 +967,7 @@ func TestMapping(t *testing.T) {
 								shard: NewPowerOfTwoShard(index.ShardAnnotation{
 									Shard: 1,
 									Of:    2,
-								}).Ptr(),
+								}).Bind(nil),
 								SampleExpr: &syntax.VectorAggregationExpr{
 									Grouping: &syntax.Grouping{
 										Groups: []string{"cluster"},
@@ -975,7 +1007,7 @@ func TestMapping(t *testing.T) {
 							shard: NewPowerOfTwoShard(index.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
-							}).Ptr(),
+							}).Bind(nil),
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Grouping:  &syntax.Grouping{},
 								Operation: syntax.OpTypeSum,
@@ -995,7 +1027,7 @@ func TestMapping(t *testing.T) {
 								shard: NewPowerOfTwoShard(index.ShardAnnotation{
 									Shard: 1,
 									Of:    2,
-								}).Ptr(),
+								}).Bind(nil),
 								SampleExpr: &syntax.VectorAggregationExpr{
 									Grouping:  &syntax.Grouping{},
 									Operation: syntax.OpTypeSum,
@@ -1030,7 +1062,7 @@ func TestMapping(t *testing.T) {
 							shard: NewPowerOfTwoShard(index.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
-							}).Ptr(),
+							}).Bind(nil),
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Grouping:  &syntax.Grouping{},
 								Operation: syntax.OpTypeCount,
@@ -1050,7 +1082,7 @@ func TestMapping(t *testing.T) {
 								shard: NewPowerOfTwoShard(index.ShardAnnotation{
 									Shard: 1,
 									Of:    2,
-								}).Ptr(),
+								}).Bind(nil),
 								SampleExpr: &syntax.VectorAggregationExpr{
 									Grouping:  &syntax.Grouping{},
 									Operation: syntax.OpTypeCount,
@@ -1092,7 +1124,7 @@ func TestMapping(t *testing.T) {
 								shard: NewPowerOfTwoShard(index.ShardAnnotation{
 									Shard: 0,
 									Of:    2,
-								}).Ptr(),
+								}).Bind(nil),
 								SampleExpr: &syntax.VectorAggregationExpr{
 									Grouping: &syntax.Grouping{
 										Groups: []string{"cluster"},
@@ -1114,7 +1146,7 @@ func TestMapping(t *testing.T) {
 									shard: NewPowerOfTwoShard(index.ShardAnnotation{
 										Shard: 1,
 										Of:    2,
-									}).Ptr(),
+									}).Bind(nil),
 									SampleExpr: &syntax.VectorAggregationExpr{
 										Grouping: &syntax.Grouping{
 											Groups: []string{"cluster"},
@@ -1144,7 +1176,7 @@ func TestMapping(t *testing.T) {
 							shard: NewPowerOfTwoShard(index.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
-							}).Ptr(),
+							}).Bind(nil),
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Grouping:  &syntax.Grouping{},
 								Operation: syntax.OpTypeCount,
@@ -1164,7 +1196,7 @@ func TestMapping(t *testing.T) {
 								shard: NewPowerOfTwoShard(index.ShardAnnotation{
 									Shard: 1,
 									Of:    2,
-								}).Ptr(),
+								}).Bind(nil),
 								SampleExpr: &syntax.VectorAggregationExpr{
 									Grouping:  &syntax.Grouping{},
 									Operation: syntax.OpTypeCount,
@@ -1206,7 +1238,7 @@ func TestMapping(t *testing.T) {
 							shard: NewPowerOfTwoShard(index.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
-							}).Ptr(),
+							}).Bind(nil),
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Grouping: &syntax.Grouping{
 									Groups: []string{"cluster"},
@@ -1228,7 +1260,7 @@ func TestMapping(t *testing.T) {
 								shard: NewPowerOfTwoShard(index.ShardAnnotation{
 									Shard: 1,
 									Of:    2,
-								}).Ptr(),
+								}).Bind(nil),
 								SampleExpr: &syntax.VectorAggregationExpr{
 									Grouping: &syntax.Grouping{
 										Groups: []string{"cluster"},
@@ -1257,7 +1289,7 @@ func TestMapping(t *testing.T) {
 							shard: NewPowerOfTwoShard(index.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
-							}).Ptr(),
+							}).Bind(nil),
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Grouping:  &syntax.Grouping{},
 								Operation: syntax.OpTypeCount,
@@ -1277,7 +1309,7 @@ func TestMapping(t *testing.T) {
 								shard: NewPowerOfTwoShard(index.ShardAnnotation{
 									Shard: 1,
 									Of:    2,
-								}).Ptr(),
+								}).Bind(nil),
 								SampleExpr: &syntax.VectorAggregationExpr{
 									Grouping:  &syntax.Grouping{},
 									Operation: syntax.OpTypeCount,
@@ -1312,7 +1344,7 @@ func TestMapping(t *testing.T) {
 							shard: NewPowerOfTwoShard(index.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
-							}).Ptr(),
+							}).Bind(nil),
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Grouping: &syntax.Grouping{
 									Groups: []string{"cluster"},
@@ -1337,7 +1369,7 @@ func TestMapping(t *testing.T) {
 								shard: NewPowerOfTwoShard(index.ShardAnnotation{
 									Shard: 1,
 									Of:    2,
-								}).Ptr(),
+								}).Bind(nil),
 								SampleExpr: &syntax.VectorAggregationExpr{
 									Grouping: &syntax.Grouping{
 										Groups: []string{"cluster"},
@@ -1371,7 +1403,7 @@ func TestMapping(t *testing.T) {
 							shard: NewPowerOfTwoShard(index.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
-							}).Ptr(),
+							}).Bind(nil),
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Grouping: &syntax.Grouping{
 									Groups: []string{"cluster"},
@@ -1393,7 +1425,7 @@ func TestMapping(t *testing.T) {
 								shard: NewPowerOfTwoShard(index.ShardAnnotation{
 									Shard: 1,
 									Of:    2,
-								}).Ptr(),
+								}).Bind(nil),
 								SampleExpr: &syntax.VectorAggregationExpr{
 									Grouping: &syntax.Grouping{
 										Groups: []string{"cluster"},
@@ -1482,7 +1514,7 @@ func TestMapping(t *testing.T) {
 							shard: NewPowerOfTwoShard(index.ShardAnnotation{
 								Shard: 0,
 								Of:    2,
-							}).Ptr(),
+							}).Bind(nil),
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Left: &syntax.RangeAggregationExpr{
 									Left: &syntax.LogRange{
@@ -1505,7 +1537,7 @@ func TestMapping(t *testing.T) {
 								shard: NewPowerOfTwoShard(index.ShardAnnotation{
 									Shard: 1,
 									Of:    2,
-								}).Ptr(),
+								}).Bind(nil),
 								SampleExpr: &syntax.VectorAggregationExpr{
 									Left: &syntax.RangeAggregationExpr{
 										Left: &syntax.LogRange{

@@ -17,8 +17,7 @@ func TestArchive(t *testing.T) {
 	dir2 := t.TempDir()
 
 	numSeries := 100
-	numKeysPerSeries := 10000
-	data, _ := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0x0000, 0xffff, 0, 10000)
+	data, _ := MkBasicSeriesWithBlooms(numSeries, 0x0000, 0xffff, 0, 10000)
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
@@ -33,7 +32,7 @@ func TestArchive(t *testing.T) {
 	)
 
 	require.Nil(t, err)
-	itr := NewSliceIter[SeriesWithBloom](data)
+	itr := NewSliceIter[SeriesWithBlooms](data)
 	_, err = builder.BuildFrom(itr)
 	require.Nil(t, err)
 

@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pkg/errors"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 )
@@ -44,7 +45,7 @@ func newProcessorManager(ctx context.Context, p processor, conn *grpc.ClientConn
 func (pm *processorManager) stop() {
 	// Notify the remote query-frontend or query-scheduler we're shutting down.
 	// We use a new context to make sure it's not cancelled.
-	notifyCtx, cancel := context.WithTimeout(context.Background(), notifyShutdownTimeout)
+	notifyCtx, cancel := context.WithTimeoutCause(context.Background(), notifyShutdownTimeout, errors.New("notify shutdown timeout reached"))
 	defer cancel()
 	pm.p.notifyShutdown(notifyCtx, pm.conn, pm.address)
 

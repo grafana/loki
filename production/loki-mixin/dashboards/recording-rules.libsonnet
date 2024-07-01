@@ -7,7 +7,7 @@ local template = import 'grafonnet/template.libsonnet';
     template.new(
       'tenant',
       '$datasource',
-      'query_result(sum by (id) (grafanacloud_logs_instance_info) and sum(label_replace(loki_tenant:active_streams{cluster="$cluster",namespace="$namespace"},"id","$1","tenant","(.*)")) by(id))',
+      'query_result(sum by (id) (grafanacloud_logs_instance_info) and sum(label_replace(loki_tenant:active_streams{' + $._config.per_cluster_label + '="$cluster",namespace="$namespace"},"id","$1","tenant","(.*)")) by(id))',
       regex='/"([^"]+)"/',
       sort=1,
       includeAll=true,

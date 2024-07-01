@@ -400,13 +400,13 @@ bytesFilter:
     ;
 
 numberFilter:
-      IDENTIFIER GT NUMBER      { $$ = log.NewNumericLabelFilter(log.LabelFilterGreaterThan, $1, mustNewFloat($3))}
-    | IDENTIFIER GTE NUMBER     { $$ = log.NewNumericLabelFilter(log.LabelFilterGreaterThanOrEqual, $1, mustNewFloat($3))}
-    | IDENTIFIER LT NUMBER      { $$ = log.NewNumericLabelFilter(log.LabelFilterLesserThan, $1, mustNewFloat($3))}
-    | IDENTIFIER LTE NUMBER     { $$ = log.NewNumericLabelFilter(log.LabelFilterLesserThanOrEqual, $1, mustNewFloat($3))}
-    | IDENTIFIER NEQ NUMBER     { $$ = log.NewNumericLabelFilter(log.LabelFilterNotEqual, $1, mustNewFloat($3))}
-    | IDENTIFIER EQ NUMBER      { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, mustNewFloat($3))}
-    | IDENTIFIER CMP_EQ NUMBER  { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, mustNewFloat($3))}
+      IDENTIFIER GT literalExpr      { $$ = log.NewNumericLabelFilter(log.LabelFilterGreaterThan, $1,  $3.Val)}
+    | IDENTIFIER GTE literalExpr     { $$ = log.NewNumericLabelFilter(log.LabelFilterGreaterThanOrEqual, $1,$3.Val)}
+    | IDENTIFIER LT literalExpr      { $$ = log.NewNumericLabelFilter(log.LabelFilterLesserThan, $1, $3.Val)}
+    | IDENTIFIER LTE literalExpr     { $$ = log.NewNumericLabelFilter(log.LabelFilterLesserThanOrEqual, $1, $3.Val)}
+    | IDENTIFIER NEQ literalExpr     { $$ = log.NewNumericLabelFilter(log.LabelFilterNotEqual, $1, $3.Val)}
+    | IDENTIFIER EQ literalExpr      { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, $3.Val)}
+    | IDENTIFIER CMP_EQ literalExpr  { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, $3.Val)}
     ;
 
 dropLabel:

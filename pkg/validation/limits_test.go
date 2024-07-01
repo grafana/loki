@@ -345,6 +345,7 @@ func TestLimitsValidation(t *testing.T) {
 		desc := fmt.Sprintf("%s/%s", tc.limits.DeletionMode, tc.limits.BloomBlockEncoding)
 		t.Run(desc, func(t *testing.T) {
 			tc.limits.TSDBShardingStrategy = logql.PowerOfTwoVersion.String() // hacky but needed for test
+			tc.limits.TSDBMaxBytesPerShard = DefaultTSDBMaxBytesPerShard
 			if tc.expected == nil {
 				require.NoError(t, tc.limits.Validate())
 			} else {

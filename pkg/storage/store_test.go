@@ -1338,7 +1338,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 
 	// get all the chunks from the first period
 	predicate := chunk.NewPredicate(newMatchers(fooLabelsWithName.String()), nil)
-	chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(firstPeriodDate), timeToModelTime(secondPeriodDate), predicate)
+	chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(firstPeriodDate), timeToModelTime(secondPeriodDate), predicate, nil)
 	require.NoError(t, err)
 	var totalChunks int
 	for _, chks := range chunks {
@@ -1409,7 +1409,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 
 	// get all the chunks from both the stores
 	predicate = chunk.NewPredicate(newMatchers(fooLabelsWithName.String()), nil)
-	chunks, _, err = store.GetChunks(ctx, "fake", timeToModelTime(firstPeriodDate), timeToModelTime(secondPeriodDate.Add(24*time.Hour)), predicate)
+	chunks, _, err = store.GetChunks(ctx, "fake", timeToModelTime(firstPeriodDate), timeToModelTime(secondPeriodDate.Add(24*time.Hour)), predicate, nil)
 	require.NoError(t, err)
 
 	totalChunks = 0
@@ -1543,7 +1543,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 
 			// get all the chunks from both the stores
 			predicate := chunk.NewPredicate(newMatchers(fooLabelsWithName.String()), nil)
-			chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(firstStoreDate), timeToModelTime(secondStoreDate.Add(24*time.Hour)), predicate)
+			chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(firstStoreDate), timeToModelTime(secondStoreDate.Add(24*time.Hour)), predicate, nil)
 			require.NoError(t, err)
 			var totalChunks int
 			for _, chks := range chunks {
@@ -1914,7 +1914,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 
 	// get all the chunks from both the stores
 	predicate := chunk.NewPredicate(newMatchers(fooLabelsWithName.String()), nil)
-	chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(boltdbShipperStartDate), timeToModelTime(tsdbStartDate.Add(24*time.Hour)), predicate)
+	chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(boltdbShipperStartDate), timeToModelTime(tsdbStartDate.Add(24*time.Hour)), predicate, nil)
 	require.NoError(t, err)
 	var totalChunks int
 	for _, chks := range chunks {
@@ -2049,7 +2049,9 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 					},
 				}
 			}
-			require.NoError(t, chunkEnc.Append(&entry))
+			dup, err := chunkEnc.Append(&entry)
+			require.False(t, dup)
+			require.NoError(t, err)
 		}
 
 		require.NoError(t, chunkEnc.Close())

@@ -142,6 +142,11 @@ func (m *eventLogMessageStage) Name() string {
 	return StageTypeEventLogMessage
 }
 
+// Cleanup implements Stage.
+func (*eventLogMessageStage) Cleanup() {
+	// no-op
+}
+
 // Sanitize a input string to convert it into a valid prometheus label
 // TODO: switch to prometheus/prometheus/util/strutil/SanitizeFullLabelName
 func SanitizeFullLabelName(input string) string {

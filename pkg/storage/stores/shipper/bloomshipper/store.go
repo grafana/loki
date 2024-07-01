@@ -21,13 +21,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 var (
 	errNoStore = errors.New("no store found for time")
 )
 
-type Store interface {
+type StoreBase interface {
 	ResolveMetas(ctx context.Context, params MetaSearchParams) ([][]MetaRef, []*Fetcher, error)
 	FetchMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error)
 	FetchBlocks(ctx context.Context, refs []BlockRef, opts ...FetchOption) ([]*CloseableBlockQuerier, error)
@@ -40,9 +42,10 @@ type Store interface {
 	Stop()
 }
 
-type StoreWithMetrics interface {
-	Store
+type Store interface {
+	StoreBase
 	BloomMetrics() *v1.Metrics
+	Allocator() mempool.Allocator
 }
 
 type bloomStoreConfig struct {
@@ -52,7 +55,7 @@ type bloomStoreConfig struct {
 }
 
 // Compiler check to ensure bloomStoreEntry implements the Store interface
-var _ Store = &bloomStoreEntry{}
+var _ StoreBase = &bloomStoreEntry{}
 
 type bloomStoreEntry struct {
 	start              model.Time
@@ -112,15 +115,51 @@ func (b *bloomStoreEntry) ResolveMetas(ctx context.Context, params MetaSearchPar
 	return [][]MetaRef{refs}, []*Fetcher{b.fetcher}, nil
 }
 
+// FilterMetasOverlappingBounds filters metas that are within the given bounds.
+// the input metas are expected to be sorted by fingerprint.
+func FilterMetasOverlappingBounds(metas []Meta, bounds v1.FingerprintBounds) []Meta {
+	withinBounds := make([]Meta, 0, len(metas))
+	for _, meta := range metas {
+		// We can stop iterating once we find an item greater
+		// than the keyspace we're looking for
+		if bounds.Cmp(meta.Bounds.Min) == v1.After {
+			break
+		}
+
+		// Only check keyspace for now, because we don't have start/end timestamps in the refs
+		if !bounds.Overlaps(meta.Bounds) {
+			continue
+		}
+
+		withinBounds = append(withinBounds, meta)
+	}
+
+	return withinBounds
+}
+
 // FetchMetas implements store.
 func (b *bloomStoreEntry) FetchMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error) {
+	logger := spanlogger.FromContext(ctx)
+
+	resolverStart := time.Now()
 	metaRefs, fetchers, err := b.ResolveMetas(ctx, params)
+	resolverDuration := time.Since(resolverStart)
 	if err != nil {
 		return nil, err
 	}
 	if len(metaRefs) != len(fetchers) {
 		return nil, errors.New("metaRefs and fetchers have unequal length")
 	}
+
+	var metaCt int
+	for i := range metaRefs {
+		metaCt += len(metaRefs[i])
+	}
+	logger.LogKV(
+		"msg", "resolved metas",
+		"metas", metaCt,
+		"duration", resolverDuration,
+	)
 
 	var metas []Meta
 	for i := range fetchers {
@@ -235,15 +274,15 @@ func (b bloomStoreEntry) Stop() {
 }
 
 // Compiler check to ensure BloomStore implements the Store interface
-var _ StoreWithMetrics = &BloomStore{}
+var _ Store = &BloomStore{}
 
 type BloomStore struct {
-	stores        []*bloomStoreEntry
-	storageConfig storage.Config
-	metrics       *storeMetrics
-	bloomMetrics  *v1.Metrics
-
+	stores             []*bloomStoreEntry
+	storageConfig      storage.Config
+	metrics            *storeMetrics
+	bloomMetrics       *v1.Metrics
 	logger             log.Logger
+	allocator          mempool.Allocator
 	defaultKeyResolver // TODO(owen-d): impl schema aware resolvers
 }
 
@@ -253,6 +292,7 @@ func NewBloomStore(
 	clientMetrics storage.ClientMetrics,
 	metasCache cache.Cache,
 	blocksCache Cache,
+	allocator mempool.Allocator,
 	reg prometheus.Registerer,
 	logger log.Logger,
 ) (*BloomStore, error) {
@@ -260,6 +300,7 @@ func NewBloomStore(
 		storageConfig: storageConfig,
 		metrics:       newStoreMetrics(reg, constants.Loki, "bloom_store"),
 		bloomMetrics:  v1.NewMetrics(reg),
+		allocator:     allocator,
 		logger:        logger,
 	}
 
@@ -286,6 +327,9 @@ func NewBloomStore(
 	for _, wd := range cfg.workingDirs {
 		if err := util.EnsureDirectory(wd); err != nil {
 			return nil, errors.Wrapf(err, "failed to create working directory for bloom store: '%s'", wd)
+		}
+		if err := util.RequirePermissions(wd, 0o700); err != nil {
+			return nil, errors.Wrapf(err, "insufficient permissions on working directory for bloom store: '%s'", wd)
 		}
 	}
 
@@ -364,7 +408,7 @@ func (b *BloomStore) TenantFilesForInterval(
 ) (map[string][]client.StorageObject, error) {
 	var allTenants map[string][]client.StorageObject
 
-	err := b.forStores(ctx, interval, func(innerCtx context.Context, interval Interval, store Store) error {
+	err := b.forStores(ctx, interval, func(innerCtx context.Context, interval Interval, store StoreBase) error {
 		tenants, err := store.TenantFilesForInterval(innerCtx, interval, filter)
 		if err != nil {
 			return err
@@ -401,12 +445,17 @@ func (b *BloomStore) Client(ts model.Time) (Client, error) {
 	return nil, errNoStore
 }
 
+// Allocator implements Store.
+func (b *BloomStore) Allocator() mempool.Allocator {
+	return b.allocator
+}
+
 // ResolveMetas implements Store.
 func (b *BloomStore) ResolveMetas(ctx context.Context, params MetaSearchParams) ([][]MetaRef, []*Fetcher, error) {
 	refs := make([][]MetaRef, 0, len(b.stores))
 	fetchers := make([]*Fetcher, 0, len(b.stores))
 
-	err := b.forStores(ctx, params.Interval, func(innerCtx context.Context, interval Interval, store Store) error {
+	err := b.forStores(ctx, params.Interval, func(innerCtx context.Context, interval Interval, store StoreBase) error {
 		newParams := params
 		newParams.Interval = interval
 		metas, fetcher, err := store.ResolveMetas(innerCtx, newParams)
@@ -540,7 +589,7 @@ func (b *BloomStore) storeDo(ts model.Time, f func(s *bloomStoreEntry) error) er
 	return fmt.Errorf("no store found for timestamp %s", ts.Time())
 }
 
-func (b *BloomStore) forStores(ctx context.Context, interval Interval, f func(innerCtx context.Context, interval Interval, store Store) error) error {
+func (b *BloomStore) forStores(ctx context.Context, interval Interval, f func(innerCtx context.Context, interval Interval, store StoreBase) error) error {
 	if len(b.stores) == 0 {
 		return nil
 	}

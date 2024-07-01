@@ -1,15 +1,18 @@
 package detected
 
 import (
+	"slices"
+
 	"github.com/axiomhq/hyperloglog"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 type UnmarshaledDetectedField struct {
-	Label  string
-	Type   logproto.DetectedFieldType
-	Sketch *hyperloglog.Sketch
+	Label   string
+	Type    logproto.DetectedFieldType
+	Parsers []string
+	Sketch  *hyperloglog.Sketch
 }
 
 func UnmarshalDetectedField(f *logproto.DetectedField) (*UnmarshaledDetectedField, error) {
@@ -20,9 +23,10 @@ func UnmarshalDetectedField(f *logproto.DetectedField) (*UnmarshaledDetectedFiel
 	}
 
 	return &UnmarshaledDetectedField{
-		Label:  f.Label,
-		Type:   f.Type,
-		Sketch: sketch,
+		Label:   f.Label,
+		Type:    f.Type,
+		Parsers: f.Parsers,
+		Sketch:  sketch,
 	}, nil
 }
 
@@ -32,6 +36,14 @@ func (f *UnmarshaledDetectedField) Merge(df *logproto.DetectedField) error {
 	if err != nil {
 		return err
 	}
+
+	if f.Type != df.Type {
+		f.Type = logproto.DetectedFieldString
+	}
+
+	f.Parsers = append(f.Parsers, df.Parsers...)
+	slices.Sort(f.Parsers)
+	f.Parsers = slices.Compact(f.Parsers)
 
 	return f.Sketch.Merge(sketch)
 }
@@ -73,18 +85,12 @@ func MergeFields(
 
 	result := make([]*logproto.DetectedField, 0, fieldLimit)
 	for _, field := range mergedFields {
-		// TODO(twhitney): what's the performance cost of marshalling here? We technically don't need to marshal in the merge
-		// but it's nice to keep the response consistent through middlewares in case we need the sketch somewhere else,
-		// need to benchmark this to find out.
-		sketch, err := field.Sketch.MarshalBinary()
-		if err != nil {
-			return nil, err
-		}
 		detectedField := &logproto.DetectedField{
 			Label:       field.Label,
 			Type:        field.Type,
 			Cardinality: field.Sketch.Estimate(),
-			Sketch:      sketch,
+			Parsers:     field.Parsers,
+			Sketch:      nil,
 		}
 		result = append(result, detectedField)
 	}

@@ -316,7 +316,7 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 		ticker := time.NewTicker(d.refreshInterval)
 
 		// Watched services and their cancellation functions.
-		services := make(map[string]func())
+		services := make(map[string]func(error))
 
 		for {
 			select {
@@ -340,7 +340,7 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 // Watch the catalog for new services we would like to watch. This is called only
 // when we don't know yet the names of the services and need to ask Consul the
 // entire list of services.
-func (d *Discovery) watchServices(ctx context.Context, ch chan<- []*targetgroup.Group, services map[string]func()) {
+func (d *Discovery) watchServices(ctx context.Context, ch chan<- []*targetgroup.Group, services map[string]func(error)) {
 	agent := d.client.Agent()
 	level.Debug(d.logger).Log("msg", "Watching services", "tags", strings.Join(d.watchedTags, ","))
 
@@ -378,7 +378,7 @@ func (d *Discovery) watchServices(ctx context.Context, ch chan<- []*targetgroup.
 			continue // We are already watching the service.
 		}
 
-		wctx, cancel := context.WithCancel(ctx)
+		wctx, cancel := context.WithCancelCause(ctx)
 		d.watchService(wctx, ch, name)
 		services[name] = cancel
 	}
@@ -390,7 +390,7 @@ func (d *Discovery) watchServices(ctx context.Context, ch chan<- []*targetgroup.
 				"msg", "removing service since consul no longer has a record of it",
 				"name", name)
 			// Call the watch cancellation function.
-			cancel()
+			cancel(errors.New("canceling service since consul no longer has a record of it"))
 			delete(services, name)
 
 			// Send clearing target group.

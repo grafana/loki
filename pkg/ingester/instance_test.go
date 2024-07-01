@@ -18,6 +18,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logql/log"
 
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -40,9 +41,16 @@ import (
 
 func defaultConfig() *Config {
 	cfg := Config{
-		BlockSize:     512,
-		ChunkEncoding: "gzip",
-		IndexShards:   32,
+		BlockSize:      512,
+		ChunkEncoding:  "gzip",
+		IndexShards:    32,
+		FlushOpTimeout: 15 * time.Second,
+		FlushOpBackoff: backoff.Config{
+			MinBackoff: 100 * time.Millisecond,
+			MaxBackoff: 10 * time.Second,
+			MaxRetries: 1,
+		},
+		OwnedStreamsCheckInterval: 1 * time.Second,
 	}
 	if err := cfg.Validate(); err != nil {
 		panic(errors.Wrap(err, "error building default test config"))
@@ -73,7 +81,7 @@ func TestLabelsCollisions(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
-	i, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil)
+	i, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
 	require.Nil(t, err)
 
 	// avoid entries from the future.
@@ -101,7 +109,7 @@ func TestConcurrentPushes(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
-	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil)
+	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
 	require.Nil(t, err)
 
 	const (
@@ -153,7 +161,7 @@ func TestGetStreamRates(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
-	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil)
+	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
 	require.NoError(t, err)
 
 	const (
@@ -247,7 +255,7 @@ func TestSyncPeriod(t *testing.T) {
 		minUtil    = 0.20
 	)
 
-	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil)
+	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
 	require.Nil(t, err)
 
 	lbls := makeRandomLabels()
@@ -292,7 +300,7 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 	cfg.SyncMinUtilization = 0.20
 	cfg.IndexShards = indexShards
 
-	instance, err := newInstance(cfg, defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil)
+	instance, err := newInstance(cfg, defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
 	require.Nil(t, err)
 
 	currentTime := time.Now()
@@ -308,9 +316,10 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 		require.NoError(t, err)
 		chunkfmt, headfmt, err := instance.chunkFormatAt(minTs(&testStream))
 		require.NoError(t, err)
-		chunk := newStream(chunkfmt, headfmt, cfg, limiter, "fake", 0, nil, true, NewStreamRateCalculator(), NilMetrics, nil).NewChunk()
+		chunk := newStream(chunkfmt, headfmt, cfg, limiter, "fake", 0, nil, true, NewStreamRateCalculator(), NilMetrics, nil, nil).NewChunk()
 		for _, entry := range testStream.Entries {
-			err = chunk.Append(&entry)
+			dup, err := chunk.Append(&entry)
+			require.False(t, dup)
 			require.NoError(t, err)
 		}
 		stream.chunks = append(stream.chunks, chunkDesc{chunk: chunk})
@@ -501,7 +510,7 @@ func Benchmark_PushInstance(b *testing.B) {
 	require.NoError(b, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
-	i, _ := newInstance(&Config{IndexShards: 1}, defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil)
+	i, _ := newInstance(&Config{IndexShards: 1}, defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
 	ctx := context.Background()
 
 	for n := 0; n < b.N; n++ {
@@ -545,7 +554,7 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 
 	ctx := context.Background()
 
-	inst, _ := newInstance(&Config{}, defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil)
+	inst, _ := newInstance(&Config{}, defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
 	expr, err := syntax.ParseLogSelector(`{namespace="foo",pod="bar",instance=~"10.*"}`, true)
 	require.NoError(b, err)
 	t, err := newTailer("foo", expr, nil, 10)
@@ -567,7 +576,7 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 
 	b.Run("addTailersToNewStream", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			inst.addTailersToNewStream(newStream(chunkfmt, headfmt, nil, limiter, "fake", 0, lbs, true, NewStreamRateCalculator(), NilMetrics, nil))
+			inst.addTailersToNewStream(newStream(chunkfmt, headfmt, nil, limiter, "fake", 0, lbs, true, NewStreamRateCalculator(), NilMetrics, nil, nil))
 		}
 	})
 }
@@ -1049,7 +1058,7 @@ func (f fakeLimits) AllByUserID() map[string]*validation.Limits {
 
 func TestStreamShardingUsage(t *testing.T) {
 	setupCustomTenantLimit := func(perStreamLimit string) *validation.Limits {
-		shardStreamsCfg := &shardstreams.Config{Enabled: true, LoggingEnabled: true}
+		shardStreamsCfg := shardstreams.Config{Enabled: true, LoggingEnabled: true}
 		shardStreamsCfg.DesiredRate.Set("6MB") //nolint:errcheck
 
 		customTenantLimits := &validation.Limits{}
@@ -1095,7 +1104,9 @@ func TestStreamShardingUsage(t *testing.T) {
 	})
 
 	t.Run("invalid push returns error", func(t *testing.T) {
-		i, _ := newInstance(&Config{IndexShards: 1}, defaultPeriodConfigs, customTenant1, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil)
+		tracker := &mockUsageTracker{}
+
+		i, _ := newInstance(&Config{IndexShards: 1, OwnedStreamsCheckInterval: 1 * time.Second}, defaultPeriodConfigs, customTenant1, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, tracker)
 		ctx := context.Background()
 
 		err = i.Push(ctx, &logproto.PushRequest{
@@ -1111,10 +1122,11 @@ func TestStreamShardingUsage(t *testing.T) {
 			},
 		})
 		require.Error(t, err)
+		require.Equal(t, 3.0, tracker.discardedBytes)
 	})
 
 	t.Run("valid push returns no error", func(t *testing.T) {
-		i, _ := newInstance(&Config{IndexShards: 1}, defaultPeriodConfigs, customTenant2, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil)
+		i, _ := newInstance(&Config{IndexShards: 1, OwnedStreamsCheckInterval: 1 * time.Second}, defaultPeriodConfigs, customTenant2, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
 		ctx := context.Background()
 
 		err = i.Push(ctx, &logproto.PushRequest{
@@ -1449,6 +1461,7 @@ func defaultInstance(t *testing.T) *instance {
 		nil,
 		NewStreamRateCalculator(),
 		nil,
+		nil,
 	)
 	require.Nil(t, err)
 	insertData(t, instance)
@@ -1480,9 +1493,71 @@ func insertData(t *testing.T, instance *instance) {
 	}
 }
 
+func TestInstance_LabelsWithValues(t *testing.T) {
+	instance, currentTime, _ := setupTestStreams(t)
+	start := []time.Time{currentTime.Add(11 * time.Nanosecond)}[0]
+	m, err := labels.NewMatcher(labels.MatchEqual, "app", "test")
+	require.NoError(t, err)
+
+	t.Run("label names with no matchers returns all detected labels", func(t *testing.T) {
+		var matchers []*labels.Matcher
+		res, err := instance.LabelsWithValues(context.Background(), start, matchers...)
+		completeResponse := map[string]UniqueValues{
+			"app": map[string]struct{}{
+				"test":  {},
+				"test2": {},
+			},
+			"job": map[string]struct{}{
+				"varlogs":  {},
+				"varlogs2": {},
+			},
+		}
+		require.NoError(t, err)
+		require.Equal(t, completeResponse, res)
+	})
+
+	t.Run("label names with matcher returns response with matching detected labels", func(t *testing.T) {
+		matchers := []*labels.Matcher{m}
+		res, err := instance.LabelsWithValues(context.Background(), start, matchers...)
+		responseWithMatchingLabel := map[string]UniqueValues{
+			"app": map[string]struct{}{
+				"test": {},
+			},
+			"job": map[string]struct{}{
+				"varlogs":  {},
+				"varlogs2": {},
+			},
+		}
+		require.NoError(t, err)
+		require.Equal(t, responseWithMatchingLabel, res)
+	})
+
+	t.Run("label names matchers and no start time returns a empty response", func(t *testing.T) {
+		matchers := []*labels.Matcher{m}
+		var st time.Time
+		res, err := instance.LabelsWithValues(context.Background(), st, matchers...)
+
+		require.NoError(t, err)
+		require.Equal(t, map[string]UniqueValues{}, res)
+	})
+}
+
 type fakeQueryServer func(*logproto.QueryResponse) error
 
 func (f fakeQueryServer) Send(res *logproto.QueryResponse) error {
 	return f(res)
 }
 func (f fakeQueryServer) Context() context.Context { return context.TODO() }
+
+type mockUsageTracker struct {
+	discardedBytes float64
+}
+
+// DiscardedBytesAdd implements push.UsageTracker.
+func (m *mockUsageTracker) DiscardedBytesAdd(_ context.Context, _ string, _ string, _ labels.Labels, value float64) {
+	m.discardedBytes += value
+}
+
+// ReceivedBytesAdd implements push.UsageTracker.
+func (*mockUsageTracker) ReceivedBytesAdd(_ context.Context, _ string, _ time.Duration, _ labels.Labels, _ float64) {
+}

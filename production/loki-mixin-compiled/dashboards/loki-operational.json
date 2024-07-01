@@ -623,7 +623,7 @@
             "fieldConfig": {
                "defaults": {
                   "custom": { },
-                  "unit": "s"
+                  "unit": "ms"
                },
                "overrides": [ ]
             },
@@ -730,7 +730,7 @@
             "fieldConfig": {
                "defaults": {
                   "custom": { },
-                  "unit": "s"
+                  "unit": "ms"
                },
                "overrides": [ ]
             },
@@ -935,7 +935,7 @@
             "fieldConfig": {
                "defaults": {
                   "custom": { },
-                  "unit": "s"
+                  "unit": "ms"
                },
                "overrides": [ ]
             },
@@ -1142,7 +1142,7 @@
             "fieldConfig": {
                "defaults": {
                   "custom": { },
-                  "unit": "s"
+                  "unit": "ms"
                },
                "overrides": [ ]
             },
@@ -1251,7 +1251,7 @@
             "fieldConfig": {
                "defaults": {
                   "custom": { },
-                  "unit": "s"
+                  "unit": "ms"
                },
                "overrides": [ ]
             },
@@ -1457,7 +1457,7 @@
             "fieldConfig": {
                "defaults": {
                   "custom": { },
-                  "unit": "s"
+                  "unit": "ms"
                },
                "overrides": [ ]
             },
@@ -1754,9 +1754,93 @@
                   }
                },
                {
-                  "columns": [ ],
                   "datasource": "$datasource",
-                  "fontSize": "100%",
+                  "fieldConfig": {
+                     "defaults": {
+                        "color": {
+                           "mode": "thresholds"
+                        },
+                        "custom": {
+                           "align": "right",
+                           "cellOptions": {
+                              "type": "auto"
+                           },
+                           "inspect": false
+                        },
+                        "decimals": 2,
+                        "displayName": "",
+                        "mappings": [ ],
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [
+                              {
+                                 "color": "green",
+                                 "value": null
+                              },
+                              {
+                                 "color": "red",
+                                 "value": 80
+                              }
+                           ]
+                        },
+                        "unit": "short"
+                     },
+                     "overrides": [
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "Time"
+                           },
+                           "properties": [
+                              {
+                                 "id": "displayName",
+                                 "value": "Time"
+                              },
+                              {
+                                 "id": "custom.align"
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "tenant"
+                           },
+                           "properties": [
+                              {
+                                 "id": "unit",
+                                 "value": "short"
+                              },
+                              {
+                                 "id": "decimals",
+                                 "value": 2
+                              },
+                              {
+                                 "id": "custom.align"
+                              }
+                           ]
+                        },
+                        {
+                           "matcher": {
+                              "id": "byName",
+                              "options": "reason"
+                           },
+                           "properties": [
+                              {
+                                 "id": "unit",
+                                 "value": "short"
+                              },
+                              {
+                                 "id": "decimals",
+                                 "value": 2
+                              },
+                              {
+                                 "id": "custom.align"
+                              }
+                           ]
+                        }
+                     ]
+                  },
                   "gridPos": {
                      "h": 8,
                      "w": 12,
@@ -1764,71 +1848,20 @@
                      "y": 27
                   },
                   "id": 113,
-                  "pageSize": null,
-                  "panels": [ ],
-                  "showHeader": true,
-                  "sort": {
-                     "col": 3,
-                     "desc": true
+                  "options": {
+                     "cellHeight": "sm",
+                     "footer": {
+                        "countRows": false,
+                        "fields": "",
+                        "reducer": [
+                           "sum"
+                        ],
+                        "show": false
+                     },
+                     "showHeader": true
                   },
-                  "styles": [
-                     {
-                        "alias": "Time",
-                        "align": "auto",
-                        "dateFormat": "YYYY-MM-DD HH:mm:ss",
-                        "pattern": "Time",
-                        "type": "hidden"
-                     },
-                     {
-                        "alias": "",
-                        "align": "auto",
-                        "colorMode": null,
-                        "colors": [
-                           "rgba(245, 54, 54, 0.9)",
-                           "rgba(237, 129, 40, 0.89)",
-                           "rgba(50, 172, 45, 0.97)"
-                        ],
-                        "dateFormat": "YYYY-MM-DD HH:mm:ss",
-                        "decimals": 2,
-                        "mappingType": 1,
-                        "pattern": "tenant",
-                        "thresholds": [ ],
-                        "type": "string",
-                        "unit": "short"
-                     },
-                     {
-                        "alias": "",
-                        "align": "auto",
-                        "colorMode": null,
-                        "colors": [
-                           "rgba(245, 54, 54, 0.9)",
-                           "rgba(237, 129, 40, 0.89)",
-                           "rgba(50, 172, 45, 0.97)"
-                        ],
-                        "dateFormat": "YYYY-MM-DD HH:mm:ss",
-                        "decimals": 2,
-                        "mappingType": 1,
-                        "pattern": "reason",
-                        "thresholds": [ ],
-                        "type": "number",
-                        "unit": "short"
-                     },
-                     {
-                        "alias": "",
-                        "align": "right",
-                        "colorMode": null,
-                        "colors": [
-                           "rgba(245, 54, 54, 0.9)",
-                           "rgba(237, 129, 40, 0.89)",
-                           "rgba(50, 172, 45, 0.97)"
-                        ],
-                        "decimals": 2,
-                        "pattern": "/.*/",
-                        "thresholds": [ ],
-                        "type": "number",
-                        "unit": "short"
-                     }
-                  ],
+                  "panels": [ ],
+                  "pluginVersion": "10.4.0",
                   "targets": [
                      {
                         "expr": "topk(10, sum by (tenant, reason) (sum_over_time(increase(loki_discarded_samples_total{cluster=\"$cluster\",namespace=\"$namespace\"}[$__rate_interval])[$__range:$__rate_interval])))",
@@ -1839,11 +1872,16 @@
                         "refId": "A"
                      }
                   ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Discarded Lines Per Interval",
-                  "transform": "table",
-                  "type": "table-old"
+                  "transformations": [
+                     {
+                        "id": "merge",
+                        "options": {
+                           "reducers": [ ]
+                        }
+                     }
+                  ],
+                  "type": "table"
                }
             ],
             "targets": [ ],
@@ -2094,7 +2132,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/distributor\"} | logfmt | level=\"error\"[$__rate_interval]))",
+                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/distributor\"} | logfmt | level=\"error\"[$__auto]))",
                         "refId": "A"
                      }
                   ],
@@ -2787,7 +2825,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/ingester.*\"} | logfmt | level=\"error\"[$__rate_interval]))",
+                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/ingester.*\"} | logfmt | level=\"error\"[$__auto]))",
                         "refId": "A"
                      }
                   ],
@@ -3732,7 +3770,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/querier\"} | logfmt |  level=\"error\"[$__rate_interval]))",
+                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/querier\"} | logfmt |  level=\"error\"[$__auto]))",
                         "refId": "A"
                      }
                   ],
