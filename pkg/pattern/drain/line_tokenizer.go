@@ -42,10 +42,8 @@ func (p *punctuationTokenizer) Tokenize(line string) ([]string, interface{}) {
 	spacesAfter := make([]int, 0, 64) // p95 metadata size.
 
 	start := 0
-	nextTokenIdx := 0
-	nextSpaceIdx := 0
 	for i, char := range line {
-		if len(tokens) == cap(tokens)-1 {
+		if len(tokens) >= cap(tokens)-1 {
 			// Line is too long: append the rest of the string as a single token before returning
 			break
 		}
@@ -55,26 +53,22 @@ func (p *punctuationTokenizer) Tokenize(line string) ([]string, interface{}) {
 		included := char < 128 && p.includeDelimiters[char] != 0
 		if char == ' ' || included || unicode.IsPunct(char) {
 			if i > start {
-				tokens[nextTokenIdx] = line[start:i]
-				nextTokenIdx++
+				tokens = append(tokens, line[start:i])
 			}
 			if char == ' ' {
-				spacesAfter[nextSpaceIdx] = nextTokenIdx - 1
-				nextSpaceIdx++
+				spacesAfter = append(spacesAfter, len(tokens))
 			} else {
-				tokens[nextTokenIdx] = line[i : i+1]
-				nextTokenIdx++
+				tokens = append(tokens, line[i:i+1])
 			}
 			start = i + 1
 		}
 	}
 
 	if start < len(line) {
-		tokens[nextTokenIdx] = line[start:]
-		nextTokenIdx++
+		tokens = append(tokens, line[start:])
 	}
 
-	return tokens[:nextTokenIdx], spacesAfter[:nextSpaceIdx]
+	return tokens, spacesAfter
 }
 
 func (p *punctuationTokenizer) Join(tokens []string, state interface{}) string {
