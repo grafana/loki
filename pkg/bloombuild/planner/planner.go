@@ -357,9 +357,6 @@ func (p *Planner) computeTasks(
 			level.Error(logger).Log("msg", "failed to find outdated gaps", "err", err)
 			continue
 		}
-		if len(gaps) == 0 {
-			continue
-		}
 
 		for _, gap := range gaps {
 			tasks = append(tasks, protos.NewTask(table, tenant, ownershipRange, gap.tsdb, gap.gaps))
@@ -448,11 +445,18 @@ func (p *Planner) deleteOutdatedMetas(
 
 	upToDate, outdated := outdatedMetas(metas)
 	if len(outdated) == 0 {
-		level.Debug(logger).Log("msg", "no outdated metas found")
+		level.Debug(logger).Log(
+			"msg", "no outdated metas found",
+			"upToDate", len(upToDate),
+		)
 		return upToDate, nil
 	}
 
-	level.Debug(logger).Log("msg", "found outdated metas", "outdated", len(outdated))
+	level.Debug(logger).Log(
+		"msg", "found outdated metas",
+		"outdated", len(outdated),
+		"upToDate", len(upToDate),
+	)
 
 	client, err := p.bloomStore.Client(table.ModelTime())
 	if err != nil {

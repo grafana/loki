@@ -261,5 +261,11 @@ func outdatedMetas(metas []bloomshipper.Meta) ([]bloomshipper.Meta, []bloomshipp
 		upToDate = append(upToDate, meta)
 	}
 
+	// We previously sorted the input metas by their TSDB source TS, therefore, they may not be sorted by FP anymore.
+	// We need to re-sort them by their FP to match the original order.
+	sort.Slice(upToDate, func(i, j int) bool {
+		return upToDate[i].Bounds.Less(upToDate[j].Bounds)
+	})
+
 	return upToDate, outdated
 }
