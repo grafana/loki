@@ -91,7 +91,7 @@ func NewMetrics(
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
 			Name:      "planning_time_seconds",
-			Help:      "Time spent during on planning during a build cycle.",
+			Help:      "Time spent planning a build cycle.",
 			// 1s --> 1h (steps of 1 minute)
 			Buckets: prometheus.LinearBuckets(1, 60, 60),
 		}),
