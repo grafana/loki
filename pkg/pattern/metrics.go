@@ -10,7 +10,7 @@ type ingesterMetrics struct {
 	patternsDiscardedTotal *prometheus.CounterVec
 	patternsDetectedTotal  *prometheus.CounterVec
 	tokensPerLine          *prometheus.HistogramVec
-	metadataPerLine        *prometheus.HistogramVec
+	statePerLine           *prometheus.HistogramVec
 }
 
 func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *ingesterMetrics {
@@ -25,28 +25,28 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 			Namespace: metricsNamespace,
 			Subsystem: "pattern_ingester",
 			Name:      "patterns_evicted_total",
-			Help:      "The total number of patterns evicted from the LRU cache, by log format.",
-		}, []string{"format"}),
+			Help:      "The total number of patterns evicted from the LRU cache.",
+		}, []string{"tenant", "format"}),
 		patternsDetectedTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: "pattern_ingester",
 			Name:      "patterns_detected_total",
-			Help:      "The total number of patterns detected from incoming log lines, by log format.",
-		}, []string{"format"}),
+			Help:      "The total number of patterns detected from incoming log lines.",
+		}, []string{"tenant", "format"}),
 		tokensPerLine: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: metricsNamespace,
 			Subsystem: "pattern_ingester",
 			Name:      "tokens_per_line",
-			Help:      "The number of tokens an incoming logline is split into for pattern recognision",
-			Buckets:   []float64{5, 10, 20, 40, 80, 120, 160, 240, 320, 640, 1280},
-		}, []string{"format"}),
-		metadataPerLine: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Help:      "The number of tokens an incoming logline is split into for pattern recognition.",
+			Buckets:   []float64{20, 40, 80, 120, 160, 320, 640, 1280},
+		}, []string{"tenant", "format"}),
+		statePerLine: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: metricsNamespace,
 			Subsystem: "pattern_ingester",
-			Name:      "metadata_per_line",
-			Help:      "The number of items of additional metadata returned alongside tokens for pattern recognition",
-			Buckets:   []float64{5, 10, 20, 40, 80, 100, 120, 140, 160, 240, 320, 640, 1280},
-		}, []string{"format"}),
+			Name:      "state_per_line",
+			Help:      "The number of items of additional state returned alongside tokens for pattern recognition.",
+			Buckets:   []float64{20, 40, 80, 120, 160, 320, 640, 1280},
+		}, []string{"tenant", "format"}),
 	}
 }
 

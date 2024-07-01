@@ -53,6 +53,7 @@ func newStream(
 	cfg metric.AggregationConfig,
 	logger log.Logger,
 	guessedFormat string,
+	instanceID string,
 ) (*stream, error) {
 	stream := &stream{
 		fp:           fp,
@@ -60,11 +61,10 @@ func newStream(
 		labelsString: labels.String(),
 		labelHash:    labels.Hash(),
 		patterns: drain.New(drain.DefaultConfig(), &drain.Metrics{
-			PatternsEvictedTotal:  metrics.patternsDiscardedTotal,
-			PatternsDetectedTotal: metrics.patternsDetectedTotal,
-			TokensPerLine:         metrics.tokensPerLine,
-			MetadataPerLine:       metrics.metadataPerLine,
-			DetectedLogFormat:     guessedFormat,
+			PatternsEvictedTotal:  metrics.patternsDiscardedTotal.WithLabelValues(instanceID, guessedFormat),
+			PatternsDetectedTotal: metrics.patternsDetectedTotal.WithLabelValues(instanceID, guessedFormat),
+			TokensPerLine:         metrics.tokensPerLine.WithLabelValues(instanceID, guessedFormat),
+			StatePerLine:          metrics.statePerLine.WithLabelValues(instanceID, guessedFormat),
 		}),
 		cfg:    cfg,
 		logger: logger,

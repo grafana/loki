@@ -12,21 +12,22 @@ const (
 	FormatUnknown = "unknown"
 )
 
+// DetectLogFormat guesses at how the logs are encoded based on some simple heuristics.
+// It only runs on the first log line when a new stream is created, so it could do some more complex parsing or regex.
 func DetectLogFormat(line string) string {
-	format := FormatUnknown
-	if line[0] == '{' && line[len(line)-1] == '}' {
+	if len(line) < 2 {
+		return FormatUnknown
+	} else if line[0] == '{' && line[len(line)-1] == '}' {
 		return FormatJson
+	} else if strings.Count(line, "=") > strings.Count(line, " ")-5 {
+		return FormatLogfmt
 	}
-	if strings.Count(line, "=") > strings.Count(line, " ")-5 {
-		format = FormatLogfmt
-	}
-	return format
+	return FormatUnknown
 }
 
 type Metrics struct {
-	PatternsEvictedTotal  *prometheus.CounterVec
-	PatternsDetectedTotal *prometheus.CounterVec
-	TokensPerLine         *prometheus.HistogramVec
-	MetadataPerLine       *prometheus.HistogramVec
-	DetectedLogFormat     string
+	PatternsEvictedTotal  prometheus.Counter
+	PatternsDetectedTotal prometheus.Counter
+	TokensPerLine         prometheus.Observer
+	StatePerLine          prometheus.Observer
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -211,13 +210,7 @@ func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream
 	fp := i.getHashForLabels(labels)
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
 	firstEntryLine := pushReqStream.Entries[0].Line
-	format := drain.FormatUnknown
-	if firstEntryLine[0] == '{' && firstEntryLine[len(firstEntryLine)-1] == '}' {
-		format = drain.FormatJson
-	} else if strings.Count(firstEntryLine, "=") > len(firstEntryLine)/20 {
-		format = drain.FormatLogfmt
-	}
-	s, err := newStream(fp, sortedLabels, i.metrics, i.chunkMetrics, i.aggregationCfg, i.logger, format)
+	s, err := newStream(fp, sortedLabels, i.metrics, i.chunkMetrics, i.aggregationCfg, i.logger, drain.DetectLogFormat(firstEntryLine), i.instanceID)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
