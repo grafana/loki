@@ -62,6 +62,9 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.7.0
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to 3.1.0
+## 6.7.0
+
+- [ENHANCEMENT] Option to create canay as deployment or daemonset
 
 ## 6.6.6
 
