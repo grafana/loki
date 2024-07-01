@@ -1,23 +1,22 @@
 ---
-title: Sending OpenTelemetry logs to Loki using Alloy
-menuTitle: Sending OpenTelemetry logs to Loki using Alloy
-description: Configuring Grafana Alloy to send OpenTelemetry logs to Loki.
+title: Sending Logs to Loki via Kafka using Alloy
+menuTitle: Sending Logs to Loki via Kafka using Alloy
+description: Configuring Grafana Alloy to recive logs via Kafka and send them to Loki.
 weight: 250
 killercoda:
-  title: Sending OpenTelemetry logs to Loki using Alloy
-  description: Configuring Grafana Alloy to send OpenTelemetry logs to Loki.
+  title: Sending Logs to Loki via Kafka using Alloy
+  description: Configuring Grafana Alloy to recive logs via Kafka and send them to Loki.
   backend:
     imageid: ubuntu
 ---
 
 <!-- INTERACTIVE page intro.md START -->
 
-# Sending OpenTelemetry logs to Loki using Alloy
+#  Sending Logs to Loki via Kafka using Alloy
 
-Alloy natively supports receiving logs in the OpenTelemetry format. This allows you to send logs from applications instrumented with OpenTelemetry to Alloy, which can then be sent to Loki for storage and visualization in Grafana. In this example, we will make use of 3 Alloy components to achieve this:
-- **OpenTelemetry Receiver:** This component will receive logs in the OpenTelemetry format via HTTP and gRPC.
-- **OpenTelemetry Processor:** This component will accept telemetry data from other `otelcol.*` components and place them into batches. Batching improves the compression of data and reduces the number of outgoing network requests required to transmit data.
-- **OpenTelemetry Exporter:** This component will accept telemetry data from other `otelcol.*` components and write them over the network using the OTLP HTTP protocol. We will use this exporter to send the logs to Loki's native OTLP endpoint.
+Alloy nativley supports receiving logs via Kafka. In this example, we will configure Alloy to recive logs via kafka using two different methods:
+- [loki.source.kafka](https://grafana.com/docs/alloy/latest/reference/components/loki.source.kafka): reads messages from Kafka using a consumer group and forwards them to other loki.* components.
+- [otelcol.receiver.kafka](https://grafana.com/docs/alloy/latest/reference/components/otelcol.receiver.kafka/): accepts telemetry data from a Kafka broker and forwards it to other otelcol.* components.
 
 ## Dependencies
 
@@ -28,7 +27,7 @@ Before you begin, ensure you have the following to run the demo:
 
 <!-- INTERACTIVE ignore START -->
 {{< admonition type="note" >}}
-Alternatively, you can try out this example in our online sandbox. Which is a fully configured environment with all the dependencies pre-installed. You can access the sandbox [here](https://killercoda.com/grafana-labs/course/loki/alloy-otel-logs).
+Alternatively, you can try out this example in our online sandbox. Which is a fully configured environment with all the dependencies pre-installed. You can access the sandbox [here](https://killercoda.com/grafana-labs/course/loki/alloy-kafka-logs).
 {{< /admonition >}}
 <!-- INTERACTIVE ignore END -->
 
@@ -44,7 +43,11 @@ In this scenario, we have a microservices application called the Carnivourse Gre
 - **Main App:** The main application that ties all the services together.
 - **Database:** A database that stores user and plant data.
 
-Each service generates logs using the OpenTelemetry SDK and exports to Alloy in the OpenTelemetry format. Alloy then ingests the logs and sends them to Loki. We will configure Alloy to ingest OpenTelemetry logs, send them to Loki, and view the logs in Grafana.
+Each service generates logs that are sent to Alloy via Kafka. In this example, they are sent on two different topics:
+- `loki`: This sends a structured log formatted message (json). 
+- `otlp`: This sends a serialized OpenTelemetry log message.
+
+You would not typically do this within your own application, but for the purposes of this example we wanted to show how Alloy can handle different types of log messages over Kafka.
 
 <!-- INTERACTIVE page intro.md END -->
 
@@ -57,7 +60,7 @@ In this step, we will set up our environment by cloning the repository that cont
 1. To get started, clone the repository that contains our demo application:
     <!-- INTERACTIVE exec START -->
     ```bash
-    git clone -b microservice-otel  https://github.com/grafana/loki-fundamentals.git
+    git clone -b microservice-kafka  https://github.com/grafana/loki-fundamentals.git
     ```
     <!-- INTERACTIVE exec END -->
 1.  Next we will spin up our observability stack using Docker Compose:
@@ -77,9 +80,11 @@ In this step, we will set up our environment by cloning the repository that cont
 
     This will spin up the following services:
     ```bash
-    ✔ Container loki-fundamentals-grafana-1  Started                                                        
-    ✔ Container loki-fundamentals-loki-1     Started                        
-    ✔ Container loki-fundamentals-alloy-1    Started
+    ✔ Container loki-fundamentals-grafana-1      Started                                                        
+    ✔ Container loki-fundamentals-loki-1         Started                        
+    ✔ Container loki-fundamentals-alloy-1        Started
+    ✔ Container loki-fundamentals-zookeeper-1    Started
+    ✔ Container loki-fundamentals-kafka-1        Started
     ```
 
 We will be access two UI interfaces:
@@ -89,38 +94,141 @@ We will be access two UI interfaces:
 
 <!-- INTERACTIVE page step2.md START -->
 
-## Step 2: Configure Alloy to ingest OpenTelemetry logs
+## Step 2: Configure Alloy to ingest raw Kafka logs
 
-To configure Alloy to ingest OpenTelemetry logs, we need to update the Alloy configuration file. To start, we will update the `config.alloy` file to include the OpenTelemetry logs configuration.
+In this first step, we will configure Alloy to ingest raw Kafka logs. To do this, we will update the `config.alloy` file to include the Kafka logs configuration.
 
 <!-- INTERACTIVE include START -->
 <!-- **Note: Killercoda has an inbuilt Code editor which can be accessed via the `Editor` tab.** -->
 <!-- INTERACTIVE include END -->
 
-### OpenTelelmetry Receiver OTLP
+### Loki Kafka Source component
 
-First, we will configure the OpenTelemetry receiver. `otelcol.receiver.otlp` accepts logs in the OpenTelemetry format via HTTP and gRPC. We will use this receiver to receive logs from the Carnivorous Greenhouse application.
+First, we will configure the Loki Kafka source. `loki.source.kafka` reads messages from Kafka using a consumer group and forwards them to other `loki.*` components.
+
+The component starts a new Kafka consumer group for the given arguments and fans out incoming entries to the list of receivers in forward_to.
+
+Open the `config.alloy` file in the `loki-fundamentals` directory and copy the following configuration:
+```alloy
+loki.source.kafka "raw" {
+  brokers                = ["kafka:9092"]
+  topics                 = ["loki"]
+  forward_to             = [loki.write.http.receiver]
+  relabel_rules          = loki.relabel.kafka.rules
+  version                = "2.0.0"
+}
+```
+
+In this configuration:
+- `brokers`: The Kafka brokers to connect to.
+- `topics`: The Kafka topics to consume. In this case, we are consuming the `loki` topic.
+- `forward_to`: The list of receivers to forward the logs to. In this case, we are forwarding the logs to the `loki.write.http.receiver`.
+- `relabel_rules`: The relabel rules to apply to the incoming logs. This can be used to generate labels from the temporary internal labels that are added by the Kafka source.
+- `version`: The Kafka protocol version to use.
+
+For more information on the `loki.source.kafka` configuration, see the [Loki Kafka Source documentation](https://grafana.com/docs/alloy/latest/reference/components/loki.source.kafka/).
+
+### Loki Relabel Rules component
+
+Next, we will configure the Loki relabel rules. The `loki.relabel` component rewrites the label set of each log entry passed to its receiver by applying one or more relabeling rules and forwards the results to the list of receivers in the component’s arguments. In our case we are directly calling the rule from the `loki.source.kafka` component.
+
+Open the `config.alloy` file in the `loki-fundamentals` directory and copy the following configuration:
+```alloy
+loki.relabel "kafka" {
+  forward_to      = [loki.write.http.receiver]
+  rule {
+    source_labels = ["__meta_kafka_topic"]
+    target_label  = "topic"
+  }
+}
+```
+
+In this configuration:
+- `forward_to`: The list of receivers to forward the logs to. In this case, we are forwarding the logs to the `loki.write.http.receiver`. Though in this case, we are directly calling the rule from the `loki.source.kafka` component. So `forward_to` is being used as a placeholder as it is required by the `loki.relabel` component.
+- `rule`: The relabeling rule to apply to the incoming logs. In this case, we are renaming the `__meta_kafka_topic` label to `topic`.
+
+For more information on the `loki.relabel` configuration, see the [Loki Relabel documentation](https://grafana.com/docs/alloy/latest/reference/components/loki.relabel/).
+
+### Loki Write component 
+
+Lastly, we will configure the Loki write component. `loki.write` receives log entries from other loki components and sends them over the network using the Loki logproto format.
+
+Open the `config.alloy` file in the `loki-fundamentals` directory and copy the following configuration:
+```alloy
+loki.write "http" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+```
+
+In this configuration:
+- `endpoint`: The endpoint to send the logs to. In this case, we are sending the logs to the Loki HTTP endpoint.
+
+For more information on the `loki.write` configuration, see the [Loki Write documentation](https://grafana.com/docs/alloy/latest/reference/components/loki.write/).
+
+### Reload the Alloy configuration
+
+Once added, save the file. Then run the following command to request Alloy to reload the configuration:
+<!-- INTERACTIVE exec START -->
+```bash
+curl -X POST http://localhost:12345/-/reload
+```
+<!-- INTERACTIVE exec END -->
+
+The new configuration will be loaded this can be verified by checking the Alloy UI: [http://localhost:12345](http://localhost:12345).
+
+## Stuck? Need help?
+
+If you get stuck or need help creating the configuration, you can copy and replace the entire `config.alloy` using the completed configuration file:
+
+<!-- INTERACTIVE exec START -->
+```bash
+cp loki-fundamentals/completed/config-raw.alloy loki-fundamentals/config.alloy
+curl -X POST http://localhost:12345/-/reload
+```
+<!-- INTERACTIVE exec END -->
+
+<!-- INTERACTIVE page step2.md END -->
+
+
+<!-- INTERACTIVE page step3.md START -->
+
+## Step 3: Configure Alloy to ingest OpenTelemetry logs via Kafka
+
+Next we will configure Alloy to also ingest OpenTelemetry logs via Kafka, we need to update the Alloy configuration file once again. We will add the new components to the `config.alloy` file along with the existing components.
+
+<!-- INTERACTIVE include START -->
+<!-- **Note: Killercoda has an inbuilt Code editor which can be accessed via the `Editor` tab.** -->
+<!-- INTERACTIVE include END -->
+
+### OpenTelelmetry Kafka Receiver
+
+First, we will configure the OpenTelemetry Kafaka receiver. `otelcol.receiver.kafka` accepts telemetry data from a Kafka broker and forwards it to other `otelcol.*` components.
 
 Open the `config.alloy` file in the `loki-fundamentals` directory and copy the following configuration:
 
 ```alloy
- otelcol.receiver.otlp "default" {
-   http {}
-   grpc {}
+otelcol.receiver.kafka "default" {
+  brokers          = ["kafka:9092"]
+  protocol_version = "2.0.0"
+  topic           = "otlp"
+  encoding        = "otlp_proto"
 
-   output {
-     logs    = [otelcol.processor.batch.default.input]
-   }
- }
+  output {
+    logs    = [otelcol.processor.batch.default.input]
+  }
+}
 ```
 
 In this configuration:
-- `http`: The HTTP configuration for the receiver. This configuration is used to receive logs in the OpenTelemetry format via HTTP.
-- `grpc`: The gRPC configuration for the receiver. This configuration is used to receive logs in the OpenTelemetry format via gRPC.
-- `output`: The list of processors to forward the logs to. In this case, we are forwarding the logs to the `otelcol.processor.batch.default.input`.
+- `brokers`: The Kafka brokers to connect to.
+- `protocol_version`: The Kafka protocol version to use.
+- `topic`: The Kafka topic to consume. In this case, we are consuming the `otlp` topic.
+- `encoding`: The encoding of the incoming logs. Which decodes messages as OTLP protobuf.
+- `output`: The list of receivers to forward the logs to. In this case, we are forwarding the logs to the `otelcol.processor.batch.default.input`.
 
-For more information on the `otelcol.receiver.otlp` configuration, see the [OpenTelemetry Receiver OTLP documentation](https://grafana.com/docs/alloy/latest/reference/components/otelcol.receiver.otlp/).
-
+For more information on the `otelcol.receiver.kafka` configuration, see the [OpenTelemetry Receiver Kafka documentation](https://grafana.com/docs/alloy/latest/reference/components/otelcol.receiver.kafka/).
 
 ### OpenTelemetry Processor Batch
 
@@ -153,6 +261,9 @@ otelcol.exporter.otlphttp "default" {
 }
 ```
 
+In this configuration:
+- `client`: The client configuration for the exporter. In this case, we are sending the logs to the Loki OTLP endpoint.
+
 For more information on the `otelcol.exporter.otlphttp` configuration, see the [OpenTelemetry Exporter OTLP HTTP documentation](https://grafana.com/docs/alloy/latest/reference/components/otelcol.exporter.otlphttp/).
 
 ### Reload the Alloy configuration
@@ -177,9 +288,9 @@ curl -X POST http://localhost:12345/-/reload
 ```
 <!-- INTERACTIVE exec END -->
 
-<!-- INTERACTIVE page step2.md END -->
+<!-- INTERACTIVE page step3.md END -->
 
-<!-- INTERACTIVE page step3.md START -->
+<!-- INTERACTIVE page step4.md START -->
 
 ## Step 3: Start the Carnivorous Greenhouse
 
@@ -228,7 +339,7 @@ Once started, you can access the Carnivorous Greenhouse application at [http://l
 Finally to view the logs in Loki, navigate to the Loki Logs Explore view in Grafana at [http://localhost:3000/a/grafana-lokiexplore-app/explore](http://localhost:3000/a/grafana-lokiexplore-app/explore).
 
 
-<!-- INTERACTIVE page step3.md END -->
+<!-- INTERACTIVE page step4.md END -->
 
 <!-- INTERACTIVE page finish.md START -->
 
