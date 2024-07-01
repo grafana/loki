@@ -56,7 +56,7 @@ func (p *punctuationTokenizer) Tokenize(line string) ([]string, interface{}) {
 				tokens = append(tokens, line[start:i])
 			}
 			if char == ' ' {
-				spacesAfter = append(spacesAfter, len(tokens))
+				spacesAfter = append(spacesAfter, len(tokens)-1)
 			} else {
 				tokens = append(tokens, line[i:i+1])
 			}
