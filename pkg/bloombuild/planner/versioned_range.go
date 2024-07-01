@@ -210,8 +210,9 @@ func (t tsdbTokenRange) reassemble(from int) tsdbTokenRange {
 	return t[:len(t)-(reassembleTo-from)]
 }
 
-func outdatedMetas(metas []bloomshipper.Meta) []bloomshipper.Meta {
+func outdatedMetas(metas []bloomshipper.Meta) ([]bloomshipper.Meta, []bloomshipper.Meta) {
 	var outdated []bloomshipper.Meta
+	var upToDate []bloomshipper.Meta
 
 	// Sort metas descending by most recent source when checking
 	// for outdated metas (older metas are discarded if they don't change the range).
@@ -254,8 +255,11 @@ func outdatedMetas(metas []bloomshipper.Meta) []bloomshipper.Meta {
 		tokenRange, added = tokenRange.Add(version, meta.Bounds)
 		if !added {
 			outdated = append(outdated, meta)
+			continue
 		}
+
+		upToDate = append(upToDate, meta)
 	}
 
-	return outdated
+	return upToDate, outdated
 }
