@@ -28,6 +28,7 @@ Before you begin, ensure you have the following to run the demo:
 <!-- INTERACTIVE ignore START -->
 {{< admonition type="tip" >}}
 Alternatively, you can try out this example in our online sandbox. Which is a fully configured environment with all the dependencies pre-installed. You can access the sandbox [here](https://killercoda.com/grafana-labs/course/loki/alloy-kafka-logs).
+![Interactive](https://raw.githubusercontent.com/grafana/killercoda/staging/assets/loki-ile.svg)
 {{< /admonition >}}
 <!-- INTERACTIVE ignore END -->
 
@@ -313,10 +314,12 @@ docker compose -f loki-fundamentals/greenhouse/docker-compose-micro.yml up -d --
 <!-- INTERACTIVE ignore END -->
 
 
-{{docs/ignore}}
+{{< docs/ignore >}}
+
 ```bash
 docker-compose -f loki-fundamentals/greenhouse/docker-compose-micro.yml up -d --build
 ```{{exec}}
+
 {{< /docs/ignore >}}
 
 This will start the following services:

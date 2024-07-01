@@ -201,7 +201,7 @@ docker compose -f loki-fundamentals/greenhouse/docker-compose-micro.yml up -d --
 
 <!-- INTERACTIVE include START -->
 
-{{docs/ignore}}
+{{< docs/ignore >}}
 ```bash
 docker-compose -f loki-fundamentals/greenhouse/docker-compose-micro.yml up -d --build
 ```{{exec}}
