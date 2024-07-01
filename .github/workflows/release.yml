@@ -3,7 +3,7 @@ concurrency:
 env:
   IMAGE_PREFIX: "grafana"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "release-1.12.x"
+  RELEASE_LIB_REF: "loki-2.9.x"
   RELEASE_REPO: "grafana/loki"
   USE_GITHUB_APP_TOKEN: false
 jobs:
