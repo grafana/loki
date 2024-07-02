@@ -8,7 +8,7 @@ import (
 
 const (
 	FormatLogfmt  = "logfmt"
-	FormatJson    = "json"
+	FormatJSON    = "json"
 	FormatUnknown = "unknown"
 )
 
@@ -20,7 +20,7 @@ func DetectLogFormat(line string) string {
 	if len(line) < 2 {
 		return FormatUnknown
 	} else if line[0] == '{' && line[len(line)-1] == '}' {
-		return FormatJson
+		return FormatJSON
 	} else if logfmtRegex.MatchString(line) {
 		return FormatLogfmt
 	}

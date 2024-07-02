@@ -73,7 +73,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 		{
 			drain:     New(DefaultConfig(), nil),
 			inputFile: `testdata/drone-json.txt`,
-			format:    FormatJson,
+			format:    FormatJSON,
 			patterns: []string{
 				`{"duration":<_>,"level":"debug","method":"GET","msg":"request completed","referer":"","remote":"10.136.105.40:52702","request":"/metrics","status":200,"time":"<_>:<_>:<_>","user-agent":"GrafanaAgent/v0.40.3 (flow; linux; helm)"}`,
 				`{"id":"<_>","level":"debug","max-pool":4,"min-pool":0,"msg":"check capacity","pending-builds":0,"running-builds":0,"server-buffer":0,"server-capacity":0,"server-count":0,"time":"<_>:<_>:<_>"}`,
