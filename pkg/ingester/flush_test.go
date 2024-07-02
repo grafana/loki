@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -98,6 +99,67 @@ func Benchmark_FlushLoop(b *testing.B) {
 		}
 		wg.Wait()
 	}
+}
+
+func Test_FlushOp(t *testing.T) {
+	t.Run("no error", func(t *testing.T) {
+		cfg := defaultIngesterTestConfig(t)
+		cfg.FlushOpBackoff.MinBackoff = time.Second
+		cfg.FlushOpBackoff.MaxBackoff = 10 * time.Second
+		cfg.FlushOpBackoff.MaxRetries = 1
+		cfg.FlushCheckPeriod = 100 * time.Millisecond
+
+		_, ing := newTestStore(t, cfg, nil)
+
+		ctx := user.InjectOrgID(context.Background(), "foo")
+		ins, err := ing.GetOrCreateInstance("foo")
+		require.NoError(t, err)
+
+		lbs := makeRandomLabels()
+		req := &logproto.PushRequest{Streams: []logproto.Stream{{
+			Labels:  lbs.String(),
+			Entries: entries(5, time.Now()),
+		}}}
+		require.NoError(t, ins.Push(ctx, req))
+
+		time.Sleep(cfg.FlushCheckPeriod)
+		require.NoError(t, ing.flushOp(gokitlog.NewNopLogger(), &flushOp{
+			immediate: true,
+			userID:    "foo",
+			fp:        ins.getHashForLabels(lbs),
+		}))
+	})
+
+	t.Run("max retries exceeded", func(t *testing.T) {
+		cfg := defaultIngesterTestConfig(t)
+		cfg.FlushOpBackoff.MinBackoff = time.Second
+		cfg.FlushOpBackoff.MaxBackoff = 10 * time.Second
+		cfg.FlushOpBackoff.MaxRetries = 1
+		cfg.FlushCheckPeriod = 100 * time.Millisecond
+
+		store, ing := newTestStore(t, cfg, nil)
+		store.onPut = func(_ context.Context, _ []chunk.Chunk) error {
+			return errors.New("failed to write chunks")
+		}
+
+		ctx := user.InjectOrgID(context.Background(), "foo")
+		ins, err := ing.GetOrCreateInstance("foo")
+		require.NoError(t, err)
+
+		lbs := makeRandomLabels()
+		req := &logproto.PushRequest{Streams: []logproto.Stream{{
+			Labels:  lbs.String(),
+			Entries: entries(5, time.Now()),
+		}}}
+		require.NoError(t, ins.Push(ctx, req))
+
+		time.Sleep(cfg.FlushCheckPeriod)
+		require.EqualError(t, ing.flushOp(gokitlog.NewNopLogger(), &flushOp{
+			immediate: true,
+			userID:    "foo",
+			fp:        ins.getHashForLabels(lbs),
+		}), "terminated after 1 retries")
+	})
 }
 
 func Test_Flush(t *testing.T) {
@@ -295,6 +357,10 @@ func defaultIngesterTestConfig(t testing.TB) Config {
 
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
+	cfg.FlushOpBackoff.MinBackoff = 100 * time.Millisecond
+	cfg.FlushOpBackoff.MaxBackoff = 10 * time.Second
+	cfg.FlushOpBackoff.MaxRetries = 1
+	cfg.FlushOpTimeout = 15 * time.Second
 	cfg.FlushCheckPeriod = 99999 * time.Hour
 	cfg.MaxChunkIdle = 99999 * time.Hour
 	cfg.ConcurrentFlushes = 1
