@@ -2049,7 +2049,9 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 					},
 				}
 			}
-			require.NoError(t, chunkEnc.Append(&entry))
+			dup, err := chunkEnc.Append(&entry)
+			require.False(t, dup)
+			require.NoError(t, err)
 		}
 
 		require.NoError(t, chunkEnc.Close())

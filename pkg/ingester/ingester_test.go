@@ -1568,6 +1568,10 @@ func (r *readRingMock) ZonesCount() int {
 	return 1
 }
 
+func (r *readRingMock) HealthyInstancesInZoneCount() int {
+	return len(r.replicationSet.Instances)
+}
+
 func (r *readRingMock) Subring(_ uint32, _ int) ring.ReadRing {
 	return r
 }

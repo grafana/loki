@@ -275,6 +275,8 @@ func (s *stream) prune(olderThan time.Duration) bool {
 			s.patterns.Delete(cluster)
 		}
 	}
+	// Clear empty branches after deleting chunks & clusters
+	s.patterns.Prune()
 
 	chunksPruned := true
 	if s.chunks != nil {

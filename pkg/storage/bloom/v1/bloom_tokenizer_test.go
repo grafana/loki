@@ -101,7 +101,7 @@ func TestTokenizerPopulate(t *testing.T) {
 	sbf := filter.NewScalableBloomFilter(1024, 0.01, 0.8)
 
 	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
-	_ = memChunk.Append(&push.Entry{
+	_, _ = memChunk.Append(&push.Entry{
 		Timestamp: time.Unix(0, 1),
 		Line:      testLine,
 	})
@@ -140,7 +140,7 @@ func TestBloomTokenizerPopulateWithoutPreexistingBloom(t *testing.T) {
 	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics)
 
 	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
-	_ = memChunk.Append(&push.Entry{
+	_, _ = memChunk.Append(&push.Entry{
 		Timestamp: time.Unix(0, 1),
 		Line:      testLine,
 	})
@@ -174,7 +174,7 @@ func TestBloomTokenizerPopulateWithoutPreexistingBloom(t *testing.T) {
 func chunkRefItrFromLines(lines ...string) (iter.EntryIterator, error) {
 	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
 	for i, line := range lines {
-		if err := memChunk.Append(&push.Entry{
+		if _, err := memChunk.Append(&push.Entry{
 			Timestamp: time.Unix(0, int64(i)),
 			Line:      line,
 		}); err != nil {
@@ -261,7 +261,7 @@ func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 		sbf := filter.NewScalableBloomFilter(1024, 0.01, 0.8)
 
 		memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
-		_ = memChunk.Append(&push.Entry{
+		_, _ = memChunk.Append(&push.Entry{
 			Timestamp: time.Unix(0, 1),
 			Line:      testLine,
 		})
@@ -285,6 +285,45 @@ func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 				Itr: itr}}),
 		)
 		require.NoError(b, err)
+	}
+}
+
+func TestTokenizerClearsCacheBetweenPopulateCalls(t *testing.T) {
+	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, NewMetrics(nil))
+	line := "foobarbazz"
+	var blooms []*Bloom
+
+	for i := 0; i < 2; i++ {
+		ch := make(chan *BloomCreation)
+		itr, err := chunkRefItrFromLines(line)
+		require.NoError(t, err)
+		go bt.Populate(
+			NewEmptyIter[*Bloom](),
+			NewSliceIter([]ChunkRefWithIter{
+				{
+					Ref: ChunkRef{},
+					Itr: itr,
+				},
+			}),
+			ch,
+		)
+		var ct int
+		for created := range ch {
+			blooms = append(blooms, created.Bloom)
+			ct++
+		}
+		// ensure we created one bloom for each call
+		require.Equal(t, 1, ct)
+
+	}
+
+	for _, bloom := range blooms {
+		toks := bt.lineTokenizer.Tokens(line)
+		for toks.Next() {
+			token := toks.At()
+			require.True(t, bloom.Test(token))
+		}
+		require.NoError(t, toks.Err())
 	}
 }
 

@@ -7,9 +7,10 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
-	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/grpcutil"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"google.golang.org/grpc/codes"
 
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -88,9 +89,8 @@ func (r retry) Do(ctx context.Context, req Request) (Response, error) {
 			return resp, nil
 		}
 
-		// Retry if we get a HTTP 500 or a non-HTTP error.
-		httpResp, ok := httpgrpc.HTTPResponseFromError(err)
-		if !ok || httpResp.Code/100 == 5 {
+		// Retry if we get a HTTP 500 or an unknown error.
+		if code := grpcutil.ErrorToStatusCode(err); code == codes.Unknown || code/100 == 5 {
 			lastErr = err
 			level.Error(util_log.WithContext(ctx, r.log)).Log(
 				"msg", "error processing request",

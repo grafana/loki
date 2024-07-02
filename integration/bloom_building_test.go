@@ -78,13 +78,13 @@ func TestBloomBuilding(t *testing.T) {
 	tCompactor := clu.AddComponent(
 		"compactor",
 		"-target=compactor",
-		"-compactor.compaction-interval=10m",
-		"-compactor.run-once=true",
+		"-compactor.compaction-interval=10s",
 	)
 	require.NoError(t, clu.Run())
 
 	// Wait for compaction to finish.
-	time.Sleep(5 * time.Second)
+	cliCompactor := client.New(tenantID, "", tCompactor.HTTPURL())
+	checkCompactionFinished(t, cliCompactor)
 
 	// Now create the bloom planner and builders
 	tBloomPlanner := clu.AddComponent(
@@ -92,27 +92,27 @@ func TestBloomBuilding(t *testing.T) {
 		"-target=bloom-planner",
 		"-bloom-build.enabled=true",
 		"-bloom-build.enable=true",
-		"-bloom-build.planner.interval=10m",
-		"-bloom-build.planner.min-table-offset=0",
+		"-bloom-build.planner.interval=15s",
+		"-bloom-build.planner.min-table-offset=0", // Disable table offset so we process today's data.
+		"-bloom.cache-list-ops=0",                 // Disable cache list operations to avoid caching issues.
 	)
 	require.NoError(t, clu.Run())
 
 	// Add several builders
-	builders := make([]*cluster.Component, 0, nBuilders)
 	for i := 0; i < nBuilders; i++ {
-		builder := clu.AddComponent(
+		clu.AddComponent(
 			"bloom-builder",
 			"-target=bloom-builder",
 			"-bloom-build.enabled=true",
 			"-bloom-build.enable=true",
 			"-bloom-build.builder.planner-address="+tBloomPlanner.GRPCURL(),
 		)
-		builders = append(builders, builder)
 	}
 	require.NoError(t, clu.Run())
 
 	// Wait for bloom build to finish
-	time.Sleep(5 * time.Second)
+	cliPlanner := client.New(tenantID, "", tBloomPlanner.HTTPURL())
+	checkBloomBuildFinished(t, cliPlanner)
 
 	// Create bloom client to fetch metas and blocks.
 	bloomStore := createBloomStore(t, tBloomPlanner.ClusterSharedPath())
@@ -133,25 +133,39 @@ func TestBloomBuilding(t *testing.T) {
 	// restart ingester which should flush the chunks and index
 	require.NoError(t, tIngester.Restart())
 
-	// Restart compactor and wait for compaction to finish so TSDBs are updated.
-	require.NoError(t, tCompactor.Restart())
-	time.Sleep(5 * time.Second)
-
-	// Restart bloom planner to trigger bloom build
-	require.NoError(t, tBloomPlanner.Restart())
-
-	// TODO(salvacorts): Implement retry on builder so we don't need to restart them.
-	for _, tBloomBuilder := range builders {
-		tBloomBuilder.AddFlags("-bloom-build.builder.planner-address=" + tBloomPlanner.GRPCURL())
-		require.NoError(t, tBloomBuilder.Restart())
-	}
+	// Wait for compaction to finish so TSDBs are updated.
+	checkCompactionFinished(t, cliCompactor)
 
 	// Wait for bloom build to finish
-	time.Sleep(5 * time.Second)
+	checkBloomBuildFinished(t, cliPlanner)
 
 	// Check that all series (both previous and new ones) pushed are present in the metas and blocks.
 	// This check ensures up to 1 meta per series, which tests deletion of old metas.
 	checkSeriesInBlooms(t, now, tenantID, bloomStore, series)
+}
+
+func checkCompactionFinished(t *testing.T, cliCompactor *client.Client) {
+	checkForTimestampMetric(t, cliCompactor, "loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds")
+}
+
+func checkBloomBuildFinished(t *testing.T, cliPlanner *client.Client) {
+	checkForTimestampMetric(t, cliPlanner, "loki_bloomplanner_build_last_successful_run_timestamp_seconds")
+}
+
+func checkForTimestampMetric(t *testing.T, cliPlanner *client.Client, metricName string) {
+	start := time.Now()
+	time.Sleep(1 * time.Second) // Gauge seconds has second precision, so we need to wait a bit.
+
+	require.Eventually(t, func() bool {
+		metrics, err := cliPlanner.Metrics()
+		require.NoError(t, err)
+
+		val, _, err := extractMetric(metricName, metrics)
+		require.NoError(t, err)
+
+		lastRun := time.Unix(int64(val), 0)
+		return lastRun.After(start)
+	}, 30*time.Second, 1*time.Second)
 }
 
 func createBloomStore(t *testing.T, sharedPath string) *bloomshipper.BloomStore {

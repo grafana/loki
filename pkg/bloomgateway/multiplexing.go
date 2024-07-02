@@ -127,7 +127,7 @@ func (t Task) Copy(series []*logproto.GroupedChunkRefs) Task {
 		interval: t.interval,
 		table:    t.table,
 		ctx:      t.ctx,
-		done:     make(chan struct{}),
+		done:     t.done,
 	}
 }
 

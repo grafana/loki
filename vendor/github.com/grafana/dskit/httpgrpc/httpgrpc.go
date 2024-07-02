@@ -116,8 +116,14 @@ func Errorf(code int, tmpl string, args ...interface{}) error {
 	})
 }
 
-// ErrorFromHTTPResponse converts an HTTP response into a grpc error
+// ErrorFromHTTPResponse converts an HTTP response into a grpc error, and uses HTTP response body as an error message.
+// Note that if HTTP response body contains non-utf8 string, then returned error cannot be marshalled by protobuf.
 func ErrorFromHTTPResponse(resp *HTTPResponse) error {
+	return ErrorFromHTTPResponseWithMessage(resp, string(resp.Body))
+}
+
+// ErrorFromHTTPResponseWithMessage converts an HTTP response into a grpc error, and uses supplied message for Error message.
+func ErrorFromHTTPResponseWithMessage(resp *HTTPResponse, msg string) error {
 	a, err := types.MarshalAny(resp)
 	if err != nil {
 		return err
@@ -125,7 +131,7 @@ func ErrorFromHTTPResponse(resp *HTTPResponse) error {
 
 	return status.ErrorProto(&spb.Status{
 		Code:    resp.Code,
-		Message: string(resp.Body),
+		Message: msg,
 		Details: []*types.Any{a},
 	})
 }
