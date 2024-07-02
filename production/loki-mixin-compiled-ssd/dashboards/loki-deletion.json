@@ -426,7 +426,7 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "go_memstats_heap_inuse_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"compactor\"} / 1024 / 1024 ",
+                        "expr": "go_memstats_heap_inuse_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"loki\", pod=~\"(loki.*|enterprise-logs)-backend.*\"} / 1024 / 1024 ",
                         "format": "time_series",
                         "legendFormat": " {{pod}} ",
                         "legendLink": null
