@@ -60,6 +60,10 @@ func main() {
 	serverCfg := &config.Server
 	serverCfg.Log = util_log.InitLogger(serverCfg, prometheus.DefaultRegisterer, false)
 
+	if config.InternalServer.Enable {
+		config.InternalServer.Log = serverCfg.Log
+	}
+
 	// Validate the config once both the config file has been loaded
 	// and CLI flags parsed.
 	if err := config.Validate(); err != nil {
@@ -102,6 +106,8 @@ func main() {
 		}()
 	}
 
+	setProfilingOptions(config.Profiling)
+
 	// Allocate a block of memory to reduce the frequency of garbage collection.
 	// The larger the ballast, the lower the garbage collection frequency.
 	// https://github.com/grafana/loki/issues/781
@@ -122,4 +128,16 @@ func main() {
 
 	err = t.Run(loki.RunOpts{StartTime: startTime})
 	util_log.CheckFatal("running loki", err, util_log.Logger)
+}
+
+func setProfilingOptions(cfg loki.ProfilingConfig) {
+	if cfg.BlockProfileRate > 0 {
+		runtime.SetBlockProfileRate(cfg.BlockProfileRate)
+	}
+	if cfg.CPUProfileRate > 0 {
+		runtime.SetCPUProfileRate(cfg.CPUProfileRate)
+	}
+	if cfg.MutexProfileFraction > 0 {
+		runtime.SetMutexProfileFraction(cfg.MutexProfileFraction)
+	}
 }

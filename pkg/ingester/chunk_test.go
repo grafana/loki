@@ -55,10 +55,11 @@ func TestIterator(t *testing.T) {
 		t.Run(chk.name, func(t *testing.T) {
 			chunk := chk.new()
 			for i := int64(0); i < entries; i++ {
-				err := chunk.Append(&logproto.Entry{
+				dup, err := chunk.Append(&logproto.Entry{
 					Timestamp: time.Unix(i, 0),
 					Line:      fmt.Sprintf("line %d", i),
 				})
+				require.False(t, dup)
 				require.NoError(t, err)
 			}
 

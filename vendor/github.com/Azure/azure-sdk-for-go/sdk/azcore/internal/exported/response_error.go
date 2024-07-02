@@ -59,7 +59,7 @@ func NewResponseErrorWithErrorCode(resp *http.Response, errorCode string) error 
 }
 
 func extractErrorCodeJSON(body []byte) string {
-	var rawObj map[string]interface{}
+	var rawObj map[string]any
 	if err := json.Unmarshal(body, &rawObj); err != nil {
 		// not a JSON object
 		return ""
@@ -68,7 +68,7 @@ func extractErrorCodeJSON(body []byte) string {
 	// check if this is a wrapped error, i.e. { "error": { ... } }
 	// if so then unwrap it
 	if wrapped, ok := rawObj["error"]; ok {
-		unwrapped, ok := wrapped.(map[string]interface{})
+		unwrapped, ok := wrapped.(map[string]any)
 		if !ok {
 			return ""
 		}

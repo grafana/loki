@@ -21,6 +21,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/modules"
 	"github.com/grafana/dskit/multierror"
@@ -32,7 +33,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"golang.org/x/time/rate"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	server_util "github.com/grafana/loki/v3/pkg/util/server"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
@@ -82,6 +86,7 @@ type Config struct {
 
 	ConcurrentFlushes   int               `yaml:"concurrent_flushes"`
 	FlushCheckPeriod    time.Duration     `yaml:"flush_check_period"`
+	FlushOpBackoff      backoff.Config    `yaml:"flush_op_backoff"`
 	FlushOpTimeout      time.Duration     `yaml:"flush_op_timeout"`
 	RetainPeriod        time.Duration     `yaml:"chunk_retain_period"`
 	MaxChunkIdle        time.Duration     `yaml:"chunk_idle_period"`
@@ -118,6 +123,8 @@ type Config struct {
 	MaxDroppedStreams int `yaml:"max_dropped_streams"`
 
 	ShutdownMarkerPath string `yaml:"shutdown_marker_path"`
+
+	OwnedStreamsCheckInterval time.Duration `yaml:"owned_streams_check_interval" doc:"description=Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams."`
 }
 
 // RegisterFlags registers the flags.
@@ -127,7 +134,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 32, "How many flushes can happen concurrently from each stream.")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "How often should the ingester see if there are any blocks to flush. The first flush check is delayed by a random time up to 0.8x the flush check period. Additionally, there is +/- 1% jitter added to the interval.")
-	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Minute, "The timeout before a flush is cancelled.")
+	f.DurationVar(&cfg.FlushOpBackoff.MinBackoff, "ingester.flush-op-backoff-min-period", 10*time.Second, "Minimum backoff period when a flush fails. Each concurrent flush has its own backoff, see `ingester.concurrent-flushes`.")
+	f.DurationVar(&cfg.FlushOpBackoff.MaxBackoff, "ingester.flush-op-backoff-max-period", time.Minute, "Maximum backoff period when a flush fails. Each concurrent flush has its own backoff, see `ingester.concurrent-flushes`.")
+	f.IntVar(&cfg.FlushOpBackoff.MaxRetries, "ingester.flush-op-backoff-retries", 10, "Maximum retries for failed flushes.")
+	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Minute, "The timeout for an individual flush. Will be retried up to `flush-op-backoff-retries` times.")
 	f.DurationVar(&cfg.RetainPeriod, "ingester.chunks-retain-period", 0, "How long chunks should be retained in-memory after they've been flushed.")
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.chunks-idle-period", 30*time.Minute, "How long chunks should sit in-memory with no updates before being flushed if they don't hit the max block size. This means that half-empty chunks will still be flushed after a certain period as long as they receive no further activity.")
 	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "The targeted _uncompressed_ size in bytes of a chunk block When this threshold is exceeded the head block will be cut and compressed inside the chunk.")
@@ -142,6 +152,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.IndexShards, "ingester.index-shards", index.DefaultIndexShards, "Shard factor used in the ingesters for the in process reverse index. This MUST be evenly divisible by ALL schema shard factors or Loki will not start.")
 	f.IntVar(&cfg.MaxDroppedStreams, "ingester.tailer.max-dropped-streams", 10, "Maximum number of dropped streams to keep in memory during tailing.")
 	f.StringVar(&cfg.ShutdownMarkerPath, "ingester.shutdown-marker-path", "", "Path where the shutdown marker file is stored. If not set and common.path_prefix is set then common.path_prefix will be used.")
+	f.DurationVar(&cfg.OwnedStreamsCheckInterval, "ingester.owned-streams-check-interval", 30*time.Second, "Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams.")
 }
 
 func (cfg *Config) Validate() error {
@@ -155,6 +166,15 @@ func (cfg *Config) Validate() error {
 		return err
 	}
 
+	if cfg.FlushOpBackoff.MinBackoff > cfg.FlushOpBackoff.MaxBackoff {
+		return errors.New("invalid flush op min backoff: cannot be larger than max backoff")
+	}
+	if cfg.FlushOpBackoff.MaxRetries <= 0 {
+		return fmt.Errorf("invalid flush op max retries: %d", cfg.FlushOpBackoff.MaxRetries)
+	}
+	if cfg.FlushOpTimeout <= 0 {
+		return fmt.Errorf("invalid flush op timeout: %s", cfg.FlushOpTimeout)
+	}
 	if cfg.IndexShards <= 0 {
 		return fmt.Errorf("invalid ingester index shard factor: %d", cfg.IndexShards)
 	}
@@ -220,6 +240,9 @@ type Ingester struct {
 	flushQueues     []*util.PriorityQueue
 	flushQueuesDone sync.WaitGroup
 
+	// Spread out calls to the chunk store over the flush period
+	flushRateLimiter *rate.Limiter
+
 	limiter *Limiter
 
 	// Denotes whether the ingester should flush on shutdown.
@@ -246,10 +269,14 @@ type Ingester struct {
 	writeLogManager *writefailures.Manager
 
 	customStreamsTracker push.UsageTracker
+
+	// recalculateOwnedStreams periodically checks the ring for changes and recalculates owned streams for each instance.
+	readRing                ring.ReadRing
+	recalculateOwnedStreams *recalculateOwnedStreams
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg, metricsNamespace string, logger log.Logger, customStreamsTracker push.UsageTracker) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg, metricsNamespace string, logger log.Logger, customStreamsTracker push.UsageTracker, readRing ring.ReadRing) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -271,6 +298,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		periodicConfigs:       store.GetSchemaConfigs(),
 		loopQuit:              make(chan struct{}),
 		flushQueues:           make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
+		flushRateLimiter:      rate.NewLimiter(rate.Inf, 1),
 		tailersQuit:           make(chan struct{}),
 		metrics:               metrics,
 		flushOnShutdownSwitch: &OnceSwitch{},
@@ -278,6 +306,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		streamRateCalculator:  NewStreamRateCalculator(),
 		writeLogManager:       writefailures.NewManager(logger, registerer, writeFailuresCfg, configs, "ingester"),
 		customStreamsTracker:  customStreamsTracker,
+		readRing:              readRing,
 	}
 	i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 
@@ -326,6 +355,8 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	if i.cfg.SampleExtractorWrapper != nil {
 		i.SetExtractorWrapper(i.cfg.SampleExtractorWrapper)
 	}
+
+	i.recalculateOwnedStreams = newRecalculateOwnedStreams(i.getInstances, i.lifecycler.ID, i.readRing, cfg.OwnedStreamsCheckInterval, util_log.Logger)
 
 	return i, nil
 }
@@ -518,6 +549,16 @@ func (i *Ingester) starting(ctx context.Context) error {
 	if shutdownMarker {
 		level.Info(i.logger).Log("msg", "detected existing shutdown marker, setting unregister and flush on shutdown", "path", shutdownMarkerPath)
 		i.setPrepareShutdown()
+	}
+
+	err = i.recalculateOwnedStreams.StartAsync(ctx)
+	if err != nil {
+		return fmt.Errorf("can not start recalculate owned streams service: %w", err)
+	}
+
+	err = i.lifecycler.AwaitRunning(ctx)
+	if err != nil {
+		return fmt.Errorf("can not ensure recalculate owned streams service is running: %w", err)
 	}
 
 	// start our loop
@@ -834,16 +875,16 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 		return nil, ErrReadOnly
 	}
 
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "write"))
+	pprof.SetGoroutineLabels(ctx)
+
 	instance, err := i.GetOrCreateInstance(instanceID)
 	if err != nil {
 		return &logproto.PushResponse{}, err
 	}
-
-	pprof.Do(ctx, pprof.Labels("path", "write", "tenant", instanceID), func(c context.Context) {
-		err = instance.Push(ctx, req)
-	})
-
-	return &logproto.PushResponse{}, err
+	return &logproto.PushResponse{}, instance.Push(ctx, req)
 }
 
 // GetStreamRates returns a response containing all streams and their current rate
@@ -854,11 +895,12 @@ func (i *Ingester) GetStreamRates(ctx context.Context, _ *logproto.StreamRatesRe
 		defer sp.LogKV("event", "ingester finished handling GetStreamRates")
 	}
 
-	var allRates []logproto.StreamRate
-	pprof.Do(ctx, pprof.Labels("path", "write"), func(c context.Context) {
-		allRates = i.streamRateCalculator.Rates()
-	})
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "write"))
+	pprof.SetGoroutineLabels(ctx)
 
+	allRates := i.streamRateCalculator.Rates()
 	rates := make([]*logproto.StreamRate, len(allRates))
 	for idx := range allRates {
 		rates[idx] = &allRates[idx]
@@ -908,49 +950,48 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		return err
 	}
 
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "log"))
+	pprof.SetGoroutineLabels(ctx)
+
 	instance, err := i.GetOrCreateInstance(instanceID)
 	if err != nil {
 		return err
 	}
+	it, err := instance.Query(ctx, logql.SelectLogParams{QueryRequest: req})
+	if err != nil {
+		return err
+	}
 
-	pprof.Do(ctx, pprof.Labels("path", "read", "type", "log", "tenant", instanceID), func(c context.Context) {
-		var it iter.EntryIterator
-		it, err = instance.Query(ctx, logql.SelectLogParams{QueryRequest: req})
+	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
+		storeReq := logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
+			Selector:  req.Selector,
+			Direction: req.Direction,
+			Start:     start,
+			End:       end,
+			Limit:     req.Limit,
+			Shards:    req.Shards,
+			Deletes:   req.Deletes,
+			Plan:      req.Plan,
+		}}
+		storeItr, err := i.store.SelectLogs(ctx, storeReq)
 		if err != nil {
-			return
+			util.LogErrorWithContext(ctx, "closing iterator", it.Close)
+			return err
 		}
+		it = iter.NewMergeEntryIterator(ctx, []iter.EntryIterator{it, storeItr}, req.Direction)
+	}
 
-		if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
-			storeReq := logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
-				Selector:  req.Selector,
-				Direction: req.Direction,
-				Start:     start,
-				End:       end,
-				Limit:     req.Limit,
-				Shards:    req.Shards,
-				Deletes:   req.Deletes,
-				Plan:      req.Plan,
-			}}
-			var storeItr iter.EntryIterator
-			storeItr, err = i.store.SelectLogs(ctx, storeReq)
-			if err != nil {
-				util.LogErrorWithContext(ctx, "closing iterator", it.Close)
-				return
-			}
-			it = iter.NewMergeEntryIterator(ctx, []iter.EntryIterator{it, storeItr}, req.Direction)
-		}
+	defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
 
-		defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
+	// sendBatches uses -1 to specify no limit.
+	batchLimit := int32(req.Limit)
+	if batchLimit == 0 {
+		batchLimit = -1
+	}
 
-		// sendBatches uses -1 to specify no limit.
-		batchLimit := int32(req.Limit)
-		if batchLimit == 0 {
-			batchLimit = -1
-		}
-		err = sendBatches(ctx, it, queryServer, batchLimit)
-	})
-
-	return err
+	return sendBatches(ctx, it, queryServer, batchLimit)
 }
 
 // QuerySample the ingesters for series from logs matching a set of matchers.
@@ -976,46 +1017,45 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 		return err
 	}
 
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "metric"))
+	pprof.SetGoroutineLabels(ctx)
+
 	instance, err := i.GetOrCreateInstance(instanceID)
 	if err != nil {
 		return err
 	}
 
-	pprof.Do(ctx, pprof.Labels("path", "read", "type", "metric", "tenant", instanceID), func(c context.Context) {
-		var it iter.SampleIterator
-		it, err = instance.QuerySample(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
+	it, err := instance.QuerySample(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
+	if err != nil {
+		return err
+	}
+	if sp != nil {
+		sp.LogKV("event", "finished instance query sample", "selector", req.Selector, "start", req.Start, "end", req.End)
+	}
+
+	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
+		storeReq := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+			Start:    start,
+			End:      end,
+			Selector: req.Selector,
+			Shards:   req.Shards,
+			Deletes:  req.Deletes,
+			Plan:     req.Plan,
+		}}
+		storeItr, err := i.store.SelectSamples(ctx, storeReq)
 		if err != nil {
-			return
-		}
-		if sp != nil {
-			sp.LogKV("event", "finished instance query sample", "selector", req.Selector, "start", req.Start, "end", req.End)
+			util.LogErrorWithContext(ctx, "closing iterator", it.Close)
+			return err
 		}
 
-		if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
-			storeReq := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
-				Start:    start,
-				End:      end,
-				Selector: req.Selector,
-				Shards:   req.Shards,
-				Deletes:  req.Deletes,
-				Plan:     req.Plan,
-			}}
-			var storeItr iter.SampleIterator
-			storeItr, err = i.store.SelectSamples(ctx, storeReq)
-			if err != nil {
-				util.LogErrorWithContext(ctx, "closing iterator", it.Close)
-				return
-			}
+		it = iter.NewMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
+	}
 
-			it = iter.NewMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
-		}
+	defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
 
-		defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
-
-		err = sendSampleBatches(ctx, it, queryServer)
-	})
-
-	return err
+	return sendSampleBatches(ctx, it, queryServer)
 }
 
 // asyncStoreMaxLookBack returns a max look back period only if active index type is one of async index stores like `boltdb-shipper` and `tsdb`.
@@ -1041,10 +1081,22 @@ func (i *Ingester) asyncStoreMaxLookBack() time.Duration {
 
 // GetChunkIDs is meant to be used only when using an async store like boltdb-shipper or tsdb.
 func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsRequest) (*logproto.GetChunkIDsResponse, error) {
+	gcr, err := i.getChunkIDs(ctx, req)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return gcr, err
+}
+
+// GetChunkIDs is meant to be used only when using an async store like boltdb-shipper or tsdb.
+func (i *Ingester) getChunkIDs(ctx context.Context, req *logproto.GetChunkIDsRequest) (*logproto.GetChunkIDsResponse, error) {
 	orgID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
+
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "chunkIDs"))
+	pprof.SetGoroutineLabels(ctx)
 
 	asyncStoreMaxLookBack := i.asyncStoreMaxLookBack()
 	if asyncStoreMaxLookBack == 0 {
@@ -1061,27 +1113,24 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 		return nil, err
 	}
 
-	var resp logproto.GetChunkIDsResponse
-	pprof.Do(ctx, pprof.Labels("path", "read", "type", "chunkIDs", "tenant", orgID), func(c context.Context) {
-		// get chunk references
-		chunksGroups, _, err := i.store.GetChunks(ctx, orgID, start, end, chunk.NewPredicate(matchers, nil), nil)
-		if err != nil {
-			return
-		}
+	// get chunk references
+	chunksGroups, _, err := i.store.GetChunks(ctx, orgID, start, end, chunk.NewPredicate(matchers, nil), nil)
+	if err != nil {
+		return nil, err
+	}
 
-		// todo (Callum) ingester should maybe store the whole schema config?
-		s := config.SchemaConfig{
-			Configs: i.periodicConfigs,
-		}
+	// todo (Callum) ingester should maybe store the whole schema config?
+	s := config.SchemaConfig{
+		Configs: i.periodicConfigs,
+	}
 
-		// build the response
-		resp = logproto.GetChunkIDsResponse{ChunkIDs: []string{}}
-		for _, chunks := range chunksGroups {
-			for _, chk := range chunks {
-				resp.ChunkIDs = append(resp.ChunkIDs, s.ExternalKey(chk.ChunkRef))
-			}
+	// build the response
+	resp := logproto.GetChunkIDsResponse{ChunkIDs: []string{}}
+	for _, chunks := range chunksGroups {
+		for _, chk := range chunks {
+			resp.ChunkIDs = append(resp.ChunkIDs, s.ExternalKey(chk.ChunkRef))
 		}
-	})
+	}
 
 	return &resp, nil
 }
@@ -1092,6 +1141,11 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	if err != nil {
 		return nil, err
 	}
+
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "labels"))
+	pprof.SetGoroutineLabels(ctx)
 
 	instance, err := i.GetOrCreateInstance(userID)
 	if err != nil {
@@ -1106,59 +1160,49 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		}
 	}
 
-	var resp *logproto.LabelResponse
-	var storeValues []string
-	pprof.Do(ctx, pprof.Labels("path", "read", "type", "labels", "tenant", userID), func(c context.Context) {
-		resp, err = instance.Label(ctx, req, matchers...)
-		if err != nil {
-			return
-		}
-		if req.Start == nil {
-			return
-		}
-
-		// Only continue if the active index type is one of async index store types or QueryStore flag is true.
-		asyncStoreMaxLookBack := i.asyncStoreMaxLookBack()
-		if asyncStoreMaxLookBack == 0 && !i.cfg.QueryStore {
-			return
-		}
-
-		var cs storage.Store
-		var ok bool
-		if cs, ok = i.store.(storage.Store); !ok {
-			return
-		}
-
-		maxLookBackPeriod := i.cfg.QueryStoreMaxLookBackPeriod
-		if asyncStoreMaxLookBack != 0 {
-			maxLookBackPeriod = asyncStoreMaxLookBack
-		}
-		// Adjust the start time based on QueryStoreMaxLookBackPeriod.
-		start := adjustQueryStartTime(maxLookBackPeriod, *req.Start, time.Now())
-		if start.After(*req.End) {
-			// The request is older than we are allowed to query the store, just return what we have.
-			return
-		}
-		from, through := model.TimeFromUnixNano(start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
-
-		if req.Values {
-			storeValues, err = cs.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name, matchers...)
-			if err != nil {
-				return
-			}
-		} else {
-			storeValues, err = cs.LabelNamesForMetricName(ctx, userID, from, through, "logs")
-			if err != nil {
-				return
-			}
-		}
-	})
-
-	// When wrapping the work above in the pprof.Do function we created a possible scenario where resp could
-	// be populated with values but an error occurred later on, prior to this profiling wrapper we would have
-	// always exited with a nil response and the error message, this is here to keep that behavior.
+	resp, err := instance.Label(ctx, req, matchers...)
 	if err != nil {
 		return nil, err
+	}
+
+	if req.Start == nil {
+		return resp, nil
+	}
+
+	// Only continue if the active index type is one of async index store types or QueryStore flag is true.
+	asyncStoreMaxLookBack := i.asyncStoreMaxLookBack()
+	if asyncStoreMaxLookBack == 0 && !i.cfg.QueryStore {
+		return resp, nil
+	}
+
+	var cs storage.Store
+	var ok bool
+	if cs, ok = i.store.(storage.Store); !ok {
+		return resp, nil
+	}
+
+	maxLookBackPeriod := i.cfg.QueryStoreMaxLookBackPeriod
+	if asyncStoreMaxLookBack != 0 {
+		maxLookBackPeriod = asyncStoreMaxLookBack
+	}
+	// Adjust the start time based on QueryStoreMaxLookBackPeriod.
+	start := adjustQueryStartTime(maxLookBackPeriod, *req.Start, time.Now())
+	if start.After(*req.End) {
+		// The request is older than we are allowed to query the store, just return what we have.
+		return resp, nil
+	}
+	from, through := model.TimeFromUnixNano(start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
+	var storeValues []string
+	if req.Values {
+		storeValues, err = cs.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name, matchers...)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		storeValues, err = cs.LabelNamesForMetricName(ctx, userID, from, through, "logs", matchers...)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &logproto.LabelResponse{
@@ -1168,22 +1212,27 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 
 // Series queries the ingester for log stream identifiers (label sets) matching a set of matchers
 func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
+	sr, err := i.series(ctx, req)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return sr, err
+}
+
+func (i *Ingester) series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "series"))
+	pprof.SetGoroutineLabels(ctx)
+
 	instance, err := i.GetOrCreateInstance(instanceID)
 	if err != nil {
 		return nil, err
 	}
-
-	var series *logproto.SeriesResponse
-	pprof.Do(ctx, pprof.Labels("path", "read", "type", "series", "tenant", instanceID), func(c context.Context) {
-		series, err = instance.Series(ctx, req)
-	})
-
-	return series, err
+	return instance.Series(ctx, req)
 }
 
 func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
@@ -1193,6 +1242,11 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 	if err != nil {
 		return nil, err
 	}
+
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "stats"))
+	pprof.SetGoroutineLabels(ctx)
 
 	instance, err := i.GetOrCreateInstance(user)
 	if err != nil {
@@ -1204,47 +1258,43 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 		return nil, err
 	}
 
-	var merged logproto.IndexStatsResponse
-	pprof.Do(ctx, pprof.Labels("path", "read", "type", "stats", "tenant", user), func(c context.Context) {
+	type f func() (*logproto.IndexStatsResponse, error)
+	jobs := []f{
+		f(func() (*logproto.IndexStatsResponse, error) {
+			return instance.GetStats(ctx, req)
+		}),
+		f(func() (*logproto.IndexStatsResponse, error) {
+			return i.store.Stats(ctx, user, req.From, req.Through, matchers...)
+		}),
+	}
+	resps := make([]*logproto.IndexStatsResponse, len(jobs))
 
-		type f func() (*logproto.IndexStatsResponse, error)
-		jobs := []f{
-			f(func() (*logproto.IndexStatsResponse, error) {
-				return instance.GetStats(ctx, req)
-			}),
-			f(func() (*logproto.IndexStatsResponse, error) {
-				return i.store.Stats(ctx, user, req.From, req.Through, matchers...)
-			}),
-		}
-		resps := make([]*logproto.IndexStatsResponse, len(jobs))
+	if err := concurrency.ForEachJob(
+		ctx,
+		len(jobs),
+		2,
+		func(_ context.Context, idx int) error {
+			res, err := jobs[idx]()
+			resps[idx] = res
+			return err
+		},
+	); err != nil {
+		return nil, err
+	}
 
-		if err := concurrency.ForEachJob(
-			ctx,
-			len(jobs),
-			2,
-			func(_ context.Context, idx int) error {
-				res, err := jobs[idx]()
-				resps[idx] = res
-				return err
-			},
-		); err != nil {
-			return
-		}
-
-		merged = index_stats.MergeStats(resps...)
-		if sp != nil {
-			sp.LogKV(
-				"user", user,
-				"from", req.From.Time(),
-				"through", req.Through.Time(),
-				"matchers", syntax.MatchersString(matchers),
-				"streams", merged.Streams,
-				"chunks", merged.Chunks,
-				"bytes", merged.Bytes,
-				"entries", merged.Entries,
-			)
-		}
-	})
+	merged := index_stats.MergeStats(resps...)
+	if sp != nil {
+		sp.LogKV(
+			"user", user,
+			"from", req.From.Time(),
+			"through", req.Through.Time(),
+			"matchers", syntax.MatchersString(matchers),
+			"streams", merged.Streams,
+			"chunks", merged.Chunks,
+			"bytes", merged.Bytes,
+			"entries", merged.Entries,
+		)
+	}
 
 	return &merged, nil
 }
@@ -1254,6 +1304,11 @@ func (i *Ingester) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (
 	if err != nil {
 		return nil, err
 	}
+
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "volume"))
+	pprof.SetGoroutineLabels(ctx)
 
 	instance, err := i.GetOrCreateInstance(user)
 	if err != nil {
@@ -1265,33 +1320,31 @@ func (i *Ingester) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (
 		return nil, err
 	}
 
-	var merged *logproto.VolumeResponse
-	pprof.Do(ctx, pprof.Labels("path", "read", "type", "volume", "tenant", user), func(c context.Context) {
-		type f func() (*logproto.VolumeResponse, error)
-		jobs := []f{
-			f(func() (*logproto.VolumeResponse, error) {
-				return instance.GetVolume(ctx, req)
-			}),
-			f(func() (*logproto.VolumeResponse, error) {
-				return i.store.Volume(ctx, user, req.From, req.Through, req.Limit, req.TargetLabels, req.AggregateBy, matchers...)
-			}),
-		}
-		resps := make([]*logproto.VolumeResponse, len(jobs))
+	type f func() (*logproto.VolumeResponse, error)
+	jobs := []f{
+		f(func() (*logproto.VolumeResponse, error) {
+			return instance.GetVolume(ctx, req)
+		}),
+		f(func() (*logproto.VolumeResponse, error) {
+			return i.store.Volume(ctx, user, req.From, req.Through, req.Limit, req.TargetLabels, req.AggregateBy, matchers...)
+		}),
+	}
+	resps := make([]*logproto.VolumeResponse, len(jobs))
 
-		if err := concurrency.ForEachJob(
-			ctx,
-			len(jobs),
-			2,
-			func(_ context.Context, idx int) error {
-				res, err := jobs[idx]()
-				resps[idx] = res
-				return err
-			},
-		); err != nil {
-			return
-		}
-		merged = seriesvolume.Merge(resps, req.Limit)
-	})
+	if err := concurrency.ForEachJob(
+		ctx,
+		len(jobs),
+		2,
+		func(_ context.Context, idx int) error {
+			res, err := jobs[idx]()
+			resps[idx] = res
+			return err
+		},
+	); err != nil {
+		return nil, err
+	}
+
+	merged := seriesvolume.Merge(resps, req.Limit)
 	return merged, nil
 }
 
@@ -1331,6 +1384,11 @@ func (i *Ingester) getInstances() []*instance {
 
 // Tail logs matching given query
 func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_TailServer) error {
+	err := i.tail(req, queryServer)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return err
+}
+func (i *Ingester) tail(req *logproto.TailRequest, queryServer logproto.Querier_TailServer) error {
 	select {
 	case <-i.tailersQuit:
 		return errors.New("Ingester is stopping")
@@ -1376,6 +1434,12 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 
 // TailersCount returns count of active tail requests from a user
 func (i *Ingester) TailersCount(ctx context.Context, _ *logproto.TailersCountRequest) (*logproto.TailersCountResponse, error) {
+	tcr, err := i.tailersCount(ctx)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return tcr, err
+}
+
+func (i *Ingester) tailersCount(ctx context.Context) (*logproto.TailersCountResponse, error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1431,10 +1495,21 @@ func (i *Ingester) GetDetectedFields(_ context.Context, r *logproto.DetectedFiel
 
 // GetDetectedLabels returns map of detected labels and unique values from this ingester
 func (i *Ingester) GetDetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.LabelToValuesResponse, error) {
+	lvr, err := i.getDetectedLabels(ctx, req)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return lvr, err
+}
+
+func (i *Ingester) getDetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.LabelToValuesResponse, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
+
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "detectedLabels"))
+	pprof.SetGoroutineLabels(ctx)
 
 	instance, err := i.GetOrCreateInstance(userID)
 	if err != nil {
@@ -1448,22 +1523,19 @@ func (i *Ingester) GetDetectedLabels(ctx context.Context, req *logproto.Detected
 		}
 	}
 
-	var result map[string]*logproto.UniqueLabelValues
-	pprof.Do(ctx, pprof.Labels("path", "read", "type", "detectedLabels", "tenant", userID), func(c context.Context) {
-		labelMap, err := instance.LabelsWithValues(ctx, req.Start, matchers...)
-		if err != nil {
-			return
-		}
-		result = make(map[string]*logproto.UniqueLabelValues)
-		for label, values := range labelMap {
-			var uniqueValues []string
-			for v := range values {
-				uniqueValues = append(uniqueValues, v)
-			}
+	labelMap, err := instance.LabelsWithValues(ctx, req.Start, matchers...)
 
-			result[label] = &logproto.UniqueLabelValues{Values: uniqueValues}
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]*logproto.UniqueLabelValues)
+	for label, values := range labelMap {
+		var uniqueValues []string
+		for v := range values {
+			uniqueValues = append(uniqueValues, v)
 		}
-	})
 
+		result[label] = &logproto.UniqueLabelValues{Values: uniqueValues}
+	}
 	return &logproto.LabelToValuesResponse{Labels: result}, nil
 }

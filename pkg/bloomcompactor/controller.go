@@ -22,7 +22,7 @@ import (
 
 type SimpleBloomController struct {
 	tsdbStore   TSDBStore
-	bloomStore  bloomshipper.Store
+	bloomStore  bloomshipper.StoreBase
 	chunkLoader ChunkLoader
 	metrics     *Metrics
 	limits      Limits
@@ -32,7 +32,7 @@ type SimpleBloomController struct {
 
 func NewSimpleBloomController(
 	tsdbStore TSDBStore,
-	blockStore bloomshipper.Store,
+	blockStore bloomshipper.StoreBase,
 	chunkLoader ChunkLoader,
 	limits Limits,
 	metrics *Metrics,
@@ -287,7 +287,7 @@ func (s *SimpleBloomController) loadWorkForGap(
 	tenant string,
 	id tsdb.Identifier,
 	gap gapWithBlocks,
-) (v1.Iterator[*v1.Series], v1.CloseableResettableIterator[*v1.SeriesWithBloom], error) {
+) (v1.Iterator[*v1.Series], v1.CloseableResettableIterator[*v1.SeriesWithBlooms], error) {
 	// load a series iterator for the gap
 	seriesItr, err := s.tsdbStore.LoadTSDB(ctx, table, tenant, id, gap.bounds)
 	if err != nil {
