@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/base64"
 	"io"
+	"math/rand"
 	"strings"
 	"time"
 
+	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -85,6 +87,7 @@ type client struct {
 	keyEncoder          KeyEncoder
 	getChunkMaxParallel int
 	schema              config.SchemaConfig
+	entropy             io.Reader
 }
 
 // NewClient wraps the provided ObjectClient with a chunk.Client implementation
@@ -98,6 +101,7 @@ func NewClientWithMaxParallel(store ObjectClient, encoder KeyEncoder, maxParalle
 		keyEncoder:          encoder,
 		getChunkMaxParallel: maxParallel,
 		schema:              schema,
+		entropy:             rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
@@ -114,7 +118,9 @@ func (o *client) PutWal(ctx context.Context, segment *wal.SegmentWriter) error {
 	defer func(reader io.ReadSeekCloser) {
 		_ = reader.Close()
 	}(reader)
-	return o.store.PutObject(ctx, "wal-segment-"+time.Now().UTC().Format(time.RFC3339Nano), reader)
+
+	newUlid := ulid.MustNew(ulid.Timestamp(time.Now()), o.entropy)
+	return o.store.PutObject(ctx, "loki-v2/wal/anon/"+newUlid.String(), bytes.NewReader(buffer.Bytes()))
 }
 
 // PutChunks stores the provided chunks in the configured backend. If multiple errors are
