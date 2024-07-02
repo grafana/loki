@@ -9,10 +9,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"go/types"
-	"io/ioutil"
 	"log"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"reflect"
@@ -22,7 +21,6 @@ import (
 	"sync"
 	"unicode"
 
-	exec "golang.org/x/sys/execabs"
 	"golang.org/x/tools/go/internal/packagesdriver"
 	"golang.org/x/tools/internal/gocommand"
 	"golang.org/x/tools/internal/packagesinternal"
@@ -37,23 +35,23 @@ type goTooOldError struct {
 	error
 }
 
-// responseDeduper wraps a driverResponse, deduplicating its contents.
+// responseDeduper wraps a DriverResponse, deduplicating its contents.
 type responseDeduper struct {
 	seenRoots    map[string]bool
 	seenPackages map[string]*Package
-	dr           *driverResponse
+	dr           *DriverResponse
 }
 
 func newDeduper() *responseDeduper {
 	return &responseDeduper{
-		dr:           &driverResponse{},
+		dr:           &DriverResponse{},
 		seenRoots:    map[string]bool{},
 		seenPackages: map[string]*Package{},
 	}
 }
 
-// addAll fills in r with a driverResponse.
-func (r *responseDeduper) addAll(dr *driverResponse) {
+// addAll fills in r with a DriverResponse.
+func (r *responseDeduper) addAll(dr *DriverResponse) {
 	for _, pkg := range dr.Packages {
 		r.addPackage(pkg)
 	}
@@ -130,7 +128,7 @@ func (state *golistState) mustGetEnv() map[string]string {
 // goListDriver uses the go list command to interpret the patterns and produce
 // the build system package structure.
 // See driver for more details.
-func goListDriver(cfg *Config, patterns ...string) (*driverResponse, error) {
+func goListDriver(cfg *Config, patterns ...string) (_ *DriverResponse, err error) {
 	// Make sure that any asynchronous go commands are killed when we return.
 	parentCtx := cfg.Context
 	if parentCtx == nil {
@@ -148,16 +146,18 @@ func goListDriver(cfg *Config, patterns ...string) (*driverResponse, error) {
 	}
 
 	// Fill in response.Sizes asynchronously if necessary.
-	var sizeserr error
-	var sizeswg sync.WaitGroup
 	if cfg.Mode&NeedTypesSizes != 0 || cfg.Mode&NeedTypes != 0 {
-		sizeswg.Add(1)
+		errCh := make(chan error)
 		go func() {
-			var sizes types.Sizes
-			sizes, sizeserr = packagesdriver.GetSizesGolist(ctx, state.cfgInvocation(), cfg.gocmdRunner)
-			// types.SizesFor always returns nil or a *types.StdSizes.
-			response.dr.Sizes, _ = sizes.(*types.StdSizes)
-			sizeswg.Done()
+			compiler, arch, err := packagesdriver.GetSizesForArgsGolist(ctx, state.cfgInvocation(), cfg.gocmdRunner)
+			response.dr.Compiler = compiler
+			response.dr.Arch = arch
+			errCh <- err
+		}()
+		defer func() {
+			if sizesErr := <-errCh; sizesErr != nil {
+				err = sizesErr
+			}
 		}()
 	}
 
@@ -210,85 +210,8 @@ extractQueries:
 		}
 	}
 
-	// Only use go/packages' overlay processing if we're using a Go version
-	// below 1.16. Otherwise, go list handles it.
-	if goVersion, err := state.getGoVersion(); err == nil && goVersion < 16 {
-		modifiedPkgs, needPkgs, err := state.processGolistOverlay(response)
-		if err != nil {
-			return nil, err
-		}
-
-		var containsCandidates []string
-		if len(containFiles) > 0 {
-			containsCandidates = append(containsCandidates, modifiedPkgs...)
-			containsCandidates = append(containsCandidates, needPkgs...)
-		}
-		if err := state.addNeededOverlayPackages(response, needPkgs); err != nil {
-			return nil, err
-		}
-		// Check candidate packages for containFiles.
-		if len(containFiles) > 0 {
-			for _, id := range containsCandidates {
-				pkg, ok := response.seenPackages[id]
-				if !ok {
-					response.addPackage(&Package{
-						ID: id,
-						Errors: []Error{{
-							Kind: ListError,
-							Msg:  fmt.Sprintf("package %s expected but not seen", id),
-						}},
-					})
-					continue
-				}
-				for _, f := range containFiles {
-					for _, g := range pkg.GoFiles {
-						if sameFile(f, g) {
-							response.addRoot(id)
-						}
-					}
-				}
-			}
-		}
-		// Add root for any package that matches a pattern. This applies only to
-		// packages that are modified by overlays, since they are not added as
-		// roots automatically.
-		for _, pattern := range restPatterns {
-			match := matchPattern(pattern)
-			for _, pkgID := range modifiedPkgs {
-				pkg, ok := response.seenPackages[pkgID]
-				if !ok {
-					continue
-				}
-				if match(pkg.PkgPath) {
-					response.addRoot(pkg.ID)
-				}
-			}
-		}
-	}
-
-	sizeswg.Wait()
-	if sizeserr != nil {
-		return nil, sizeserr
-	}
+	// (We may yet return an error due to defer.)
 	return response.dr, nil
-}
-
-func (state *golistState) addNeededOverlayPackages(response *responseDeduper, pkgs []string) error {
-	if len(pkgs) == 0 {
-		return nil
-	}
-	dr, err := state.createDriverResponse(pkgs...)
-	if err != nil {
-		return err
-	}
-	for _, pkg := range dr.Packages {
-		response.addPackage(pkg)
-	}
-	_, needPkgs, err := state.processGolistOverlay(response)
-	if err != nil {
-		return err
-	}
-	return state.addNeededOverlayPackages(response, needPkgs)
 }
 
 func (state *golistState) runContainsQueries(response *responseDeduper, queries []string) error {
@@ -342,7 +265,7 @@ func (state *golistState) runContainsQueries(response *responseDeduper, queries 
 
 // adhocPackage attempts to load or construct an ad-hoc package for a given
 // query, if the original call to the driver produced inadequate results.
-func (state *golistState) adhocPackage(pattern, query string) (*driverResponse, error) {
+func (state *golistState) adhocPackage(pattern, query string) (*DriverResponse, error) {
 	response, err := state.createDriverResponse(query)
 	if err != nil {
 		return nil, err
@@ -433,7 +356,7 @@ func otherFiles(p *jsonPackage) [][]string {
 
 // createDriverResponse uses the "go list" command to expand the pattern
 // words and return a response for the specified packages.
-func (state *golistState) createDriverResponse(words ...string) (*driverResponse, error) {
+func (state *golistState) createDriverResponse(words ...string) (*DriverResponse, error) {
 	// go list uses the following identifiers in ImportPath and Imports:
 	//
 	// 	"p"			-- importable package or main (command)
@@ -460,7 +383,7 @@ func (state *golistState) createDriverResponse(words ...string) (*driverResponse
 	pkgs := make(map[string]*Package)
 	additionalErrors := make(map[string][]Error)
 	// Decode the JSON and convert it to Package form.
-	response := &driverResponse{
+	response := &DriverResponse{
 		GoVersion: goVersion,
 	}
 	for dec := json.NewDecoder(buf); dec.More(); {
@@ -1110,7 +1033,7 @@ func (state *golistState) writeOverlays() (filename string, cleanup func(), err 
 	if len(state.cfg.Overlay) == 0 {
 		return "", func() {}, nil
 	}
-	dir, err := ioutil.TempDir("", "gopackages-*")
+	dir, err := os.MkdirTemp("", "gopackages-*")
 	if err != nil {
 		return "", nil, err
 	}
@@ -1129,7 +1052,7 @@ func (state *golistState) writeOverlays() (filename string, cleanup func(), err 
 		// Create a unique filename for the overlaid files, to avoid
 		// creating nested directories.
 		noSeparator := strings.Join(strings.Split(filepath.ToSlash(k), "/"), "")
-		f, err := ioutil.TempFile(dir, fmt.Sprintf("*-%s", noSeparator))
+		f, err := os.CreateTemp(dir, fmt.Sprintf("*-%s", noSeparator))
 		if err != nil {
 			return "", func() {}, err
 		}
@@ -1147,7 +1070,7 @@ func (state *golistState) writeOverlays() (filename string, cleanup func(), err 
 	}
 	// Write out the overlay file that contains the filepath mappings.
 	filename = filepath.Join(dir, "overlay.json")
-	if err := ioutil.WriteFile(filename, b, 0665); err != nil {
+	if err := os.WriteFile(filename, b, 0665); err != nil {
 		return "", func() {}, err
 	}
 	return filename, cleanup, nil
