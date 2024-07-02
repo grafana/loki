@@ -288,6 +288,45 @@ func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 	}
 }
 
+func TestTokenizerClearsCacheBetweenPopulateCalls(t *testing.T) {
+	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, NewMetrics(nil))
+	line := "foobarbazz"
+	var blooms []*Bloom
+
+	for i := 0; i < 2; i++ {
+		ch := make(chan *BloomCreation)
+		itr, err := chunkRefItrFromLines(line)
+		require.NoError(t, err)
+		go bt.Populate(
+			NewEmptyIter[*Bloom](),
+			NewSliceIter([]ChunkRefWithIter{
+				{
+					Ref: ChunkRef{},
+					Itr: itr,
+				},
+			}),
+			ch,
+		)
+		var ct int
+		for created := range ch {
+			blooms = append(blooms, created.Bloom)
+			ct++
+		}
+		// ensure we created one bloom for each call
+		require.Equal(t, 1, ct)
+
+	}
+
+	for _, bloom := range blooms {
+		toks := bt.lineTokenizer.Tokens(line)
+		for toks.Next() {
+			token := toks.At()
+			require.True(t, bloom.Test(token))
+		}
+		require.NoError(t, toks.Err())
+	}
+}
+
 func BenchmarkMapClear(b *testing.B) {
 	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics)
 	for i := 0; i < b.N; i++ {

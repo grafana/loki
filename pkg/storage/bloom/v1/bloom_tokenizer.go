@@ -97,11 +97,14 @@ func (bt *BloomTokenizer) newBloom() *Bloom {
 	}
 }
 
+// Populates a bloom filter(s) with the tokens from the given chunks.
+// Called once per series
 func (bt *BloomTokenizer) Populate(
 	blooms SizedIterator[*Bloom],
 	chks Iterator[ChunkRefWithIter],
 	ch chan *BloomCreation,
 ) {
+	clear(bt.cache) // MUST always clear the cache before starting a new series
 	var next bool
 
 	// All but the last bloom are considered full -- send back unaltered
