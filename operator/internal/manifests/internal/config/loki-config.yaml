@@ -202,7 +202,7 @@ limits_config:
   max_streams_matchers_per_query: 1000
   query_timeout: {{ .Stack.Limits.Global.QueryLimits.QueryTimeout }}
   volume_enabled: true
-  volume_max_series: 1000
+  volume_max_series: {{ .Stack.Limits.Global.QueryLimits.MaxVolumeSeries }}
 {{- if .Retention.Enabled }}{{- with .Stack.Limits.Global.Retention }}
   retention_period: {{.Days}}d
 {{- with .Streams }}
