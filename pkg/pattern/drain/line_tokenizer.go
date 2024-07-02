@@ -38,7 +38,7 @@ func newPunctuationTokenizer() *punctuationTokenizer {
 }
 
 func (p *punctuationTokenizer) Tokenize(line string) ([]string, interface{}) {
-	tokens := make([]string, len(line))                  // Maximum size is every character is punctuation
+	tokens := make([]string, 0, 64)                      // Maximum size is every character is punctuation
 	spacesAfter := make([]int, strings.Count(line, " ")) // Could be a bitmap, but it's not worth it for a few bytes.
 
 	start := 0
@@ -51,14 +51,14 @@ func (p *punctuationTokenizer) Tokenize(line string) ([]string, interface{}) {
 		included := char < 128 && p.includeDelimiters[char] != 0
 		if char == ' ' || included || unicode.IsPunct(char) {
 			if i > start {
-				tokens[nextTokenIdx] = line[start:i]
+				tokens = append(tokens, line[start:i])
 				nextTokenIdx++
 			}
 			if char == ' ' {
 				spacesAfter[nextSpaceIdx] = nextTokenIdx - 1
 				nextSpaceIdx++
 			} else {
-				tokens[nextTokenIdx] = line[i : i+1]
+				tokens = append(tokens, line[i:i+1])
 				nextTokenIdx++
 			}
 			start = i + 1
@@ -66,7 +66,7 @@ func (p *punctuationTokenizer) Tokenize(line string) ([]string, interface{}) {
 	}
 
 	if start < len(line) {
-		tokens[nextTokenIdx] = line[start:]
+		tokens = append(tokens, line[start:])
 		nextTokenIdx++
 	}
 
