@@ -127,8 +127,8 @@ func TestNewCategorizeLabelsIterator(t *testing.T) {
 
 			streamsEntries := make(map[string][]logproto.Entry)
 			for itr.Next() {
-				streamsEntries[itr.Labels()] = append(streamsEntries[itr.Labels()], itr.Entry())
-				require.NoError(t, itr.Error())
+				streamsEntries[itr.Labels()] = append(streamsEntries[itr.Labels()], itr.At())
+				require.NoError(t, itr.Err())
 			}
 
 			var streams []logproto.Stream

@@ -5,10 +5,12 @@ import (
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/common/model"
+
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 )
 
 type SeriesIterator interface {
-	Iterator[*SeriesWithOffset]
+	iter.Iterator[*SeriesWithOffset]
 	Reset()
 }
 

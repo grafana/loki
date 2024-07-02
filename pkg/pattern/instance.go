@@ -22,7 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 
-	loki_iter "github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/iter"
 	pattern_iter "github.com/grafana/loki/v3/pkg/pattern/iter"
 )
 
@@ -115,10 +115,10 @@ func (i *instance) QuerySample(
 	ctx context.Context,
 	expr syntax.SampleExpr,
 	req *logproto.QuerySamplesRequest,
-) (loki_iter.SampleIterator, error) {
+) (iter.SampleIterator, error) {
 	if !i.aggregationCfg.Enabled {
 		// Should never get here, but this will prevent nil pointer panics in test
-		return loki_iter.NoopIterator, nil
+		return iter.NoopSampleIterator, nil
 	}
 
 	from, through := util.RoundToMilliseconds(req.Start, req.End)
@@ -132,11 +132,11 @@ func (i *instance) QuerySample(
 		return nil, err
 	}
 
-	var iters []loki_iter.SampleIterator
+	var iters []iter.SampleIterator
 	err = i.forMatchingStreams(
 		selector.Matchers(),
 		func(stream *stream) error {
-			var iter loki_iter.SampleIterator
+			var iter iter.SampleIterator
 			var err error
 			iter, err = stream.SampleIterator(ctx, expr, from, through, step)
 			if err != nil {

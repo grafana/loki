@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
 )
 
@@ -38,7 +39,7 @@ func MakeBlock(t testing.TB, nth int, fromFp, throughFp model.Fingerprint, fromT
 		writer,
 	)
 	require.Nil(t, err)
-	itr := NewSliceIter[SeriesWithBlooms](data)
+	itr := iter.NewSliceIter[SeriesWithBlooms](data)
 	_, err = builder.BuildFrom(itr)
 	require.Nil(t, err)
 	block := NewBlock(reader, NewMetrics(nil))
@@ -55,7 +56,7 @@ type SeriesWithLiteralBlooms struct {
 func (s *SeriesWithLiteralBlooms) SeriesWithBlooms() SeriesWithBlooms {
 	return SeriesWithBlooms{
 		Series: s.Series,
-		Blooms: NewSliceIter[*Bloom](s.Blooms),
+		Blooms: iter.NewSliceIter[*Bloom](s.Blooms),
 	}
 }
 
@@ -124,7 +125,7 @@ func MkBasicSeriesWithLiteralBlooms(nSeries int, fromFp, throughFp model.Fingerp
 	return
 }
 
-func EqualIterators[T any](t *testing.T, test func(a, b T), expected, actual Iterator[T]) {
+func EqualIterators[T any](t *testing.T, test func(a, b T), expected, actual iter.Iterator[T]) {
 	for expected.Next() {
 		require.True(t, actual.Next())
 		a, b := expected.At(), actual.At()
@@ -142,8 +143,8 @@ func EqualIterators[T any](t *testing.T, test func(a, b T), expected, actual Ite
 func CompareIterators[A, B any](
 	t *testing.T,
 	f func(t *testing.T, a A, b B),
-	a Iterator[A],
-	b Iterator[B],
+	a iter.Iterator[A],
+	b iter.Iterator[B],
 ) {
 	for a.Next() {
 		require.True(t, b.Next())

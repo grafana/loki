@@ -10,6 +10,7 @@ import (
 	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -168,9 +169,9 @@ func newBatchedBlockLoader(
 }
 
 // compiler checks
-var _ v1.Iterator[*v1.SeriesWithBlooms] = &blockLoadingIter{}
-var _ v1.CloseableIterator[*v1.SeriesWithBlooms] = &blockLoadingIter{}
-var _ v1.ResettableIterator[*v1.SeriesWithBlooms] = &blockLoadingIter{}
+var _ iter.Iterator[*v1.SeriesWithBlooms] = &blockLoadingIter{}
+var _ iter.CloseIterator[*v1.SeriesWithBlooms] = &blockLoadingIter{}
+var _ iter.ResetIterator[*v1.SeriesWithBlooms] = &blockLoadingIter{}
 
 // TODO(chaudum): testware
 func newBlockLoadingIter(ctx context.Context, blocks []bloomshipper.BlockRef, fetcher FetchFunc[bloomshipper.BlockRef, *bloomshipper.CloseableBlockQuerier], batchSize int) *blockLoadingIter {
@@ -189,14 +190,14 @@ type blockLoadingIter struct {
 	ctx         context.Context
 	fetcher     Fetcher[bloomshipper.BlockRef, *bloomshipper.CloseableBlockQuerier]
 	inputs      []bloomshipper.BlockRef
-	overlapping v1.Iterator[[]bloomshipper.BlockRef]
+	overlapping iter.Iterator[[]bloomshipper.BlockRef]
 	batchSize   int
 	// optional arguments
 	filter func(*bloomshipper.CloseableBlockQuerier) bool
 	// internals
 	initialized bool
 	err         error
-	iter        v1.Iterator[*v1.SeriesWithBlooms]
+	iter        iter.Iterator[*v1.SeriesWithBlooms]
 	loader      *batchedLoader[bloomshipper.BlockRef, *bloomshipper.CloseableBlockQuerier, *bloomshipper.CloseableBlockQuerier]
 	loaded      map[io.Closer]struct{}
 }
@@ -229,7 +230,7 @@ func (i *blockLoadingIter) init() {
 	i.overlapping = overlappingBlocksIter(i.inputs)
 
 	// set initial iter
-	i.iter = v1.NewEmptyIter[*v1.SeriesWithBlooms]()
+	i.iter = iter.NewEmptyIter[*v1.SeriesWithBlooms]()
 
 	// set "match all" filter function if not present
 	if i.filter == nil {
@@ -247,24 +248,24 @@ func (i *blockLoadingIter) loadNext() bool {
 		blockRefs := i.overlapping.At()
 
 		loader := newBatchedBlockLoader(i.ctx, i.fetcher, blockRefs, i.batchSize)
-		filtered := v1.NewFilterIter[*bloomshipper.CloseableBlockQuerier](loader, i.filter)
+		filtered := iter.NewFilterIter[*bloomshipper.CloseableBlockQuerier](loader, i.filter)
 
-		iters := make([]v1.PeekingIterator[*v1.SeriesWithBlooms], 0, len(blockRefs))
+		iters := make([]iter.PeekIterator[*v1.SeriesWithBlooms], 0, len(blockRefs))
 		for filtered.Next() {
 			bq := filtered.At()
 			i.loaded[bq] = struct{}{}
-			iter, err := bq.SeriesIter()
+			itr, err := bq.SeriesIter()
 			if err != nil {
 				i.err = err
-				i.iter = v1.NewEmptyIter[*v1.SeriesWithBlooms]()
+				i.iter = iter.NewEmptyIter[*v1.SeriesWithBlooms]()
 				return false
 			}
-			iters = append(iters, iter)
+			iters = append(iters, itr)
 		}
 
 		if err := filtered.Err(); err != nil {
 			i.err = err
-			i.iter = v1.NewEmptyIter[*v1.SeriesWithBlooms]()
+			i.iter = iter.NewEmptyIter[*v1.SeriesWithBlooms]()
 			return false
 		}
 
@@ -278,23 +279,23 @@ func (i *blockLoadingIter) loadNext() bool {
 		// two overlapping blocks can conceivably have the same series, so we need to dedupe,
 		// preferring the one with the most chunks already indexed since we'll have
 		// to add fewer chunks to the bloom
-		i.iter = v1.NewDedupingIter[*v1.SeriesWithBlooms, *v1.SeriesWithBlooms](
+		i.iter = iter.NewDedupingIter[*v1.SeriesWithBlooms, *v1.SeriesWithBlooms](
 			func(a, b *v1.SeriesWithBlooms) bool {
 				return a.Series.Fingerprint == b.Series.Fingerprint
 			},
-			v1.Identity[*v1.SeriesWithBlooms],
+			iter.Identity[*v1.SeriesWithBlooms],
 			func(a, b *v1.SeriesWithBlooms) *v1.SeriesWithBlooms {
 				if len(a.Series.Chunks) > len(b.Series.Chunks) {
 					return a
 				}
 				return b
 			},
-			v1.NewPeekingIter(mergedBlocks),
+			iter.NewPeekIter(mergedBlocks),
 		)
 		return i.iter.Next()
 	}
 
-	i.iter = v1.NewEmptyIter[*v1.SeriesWithBlooms]()
+	i.iter = iter.NewEmptyIter[*v1.SeriesWithBlooms]()
 	i.err = i.overlapping.Err()
 	return false
 }
@@ -335,11 +336,11 @@ func (i *blockLoadingIter) Filter(filter func(*bloomshipper.CloseableBlockQuerie
 	i.filter = filter
 }
 
-func overlappingBlocksIter(inputs []bloomshipper.BlockRef) v1.Iterator[[]bloomshipper.BlockRef] {
+func overlappingBlocksIter(inputs []bloomshipper.BlockRef) iter.Iterator[[]bloomshipper.BlockRef] {
 	// can we assume sorted blocks?
-	peekIter := v1.NewPeekingIter(v1.NewSliceIter(inputs))
+	peekIter := iter.NewPeekIter(iter.NewSliceIter(inputs))
 
-	return v1.NewDedupingIter[bloomshipper.BlockRef, []bloomshipper.BlockRef](
+	return iter.NewDedupingIter[bloomshipper.BlockRef, []bloomshipper.BlockRef](
 		func(a bloomshipper.BlockRef, b []bloomshipper.BlockRef) bool {
 			minFp := b[0].Bounds.Min
 			maxFp := slices.MaxFunc(b, func(a, b bloomshipper.BlockRef) int { return int(a.Bounds.Max - b.Bounds.Max) }).Bounds.Max

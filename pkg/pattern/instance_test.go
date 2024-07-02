@@ -113,7 +113,7 @@ func TestInstance_QuerySample(t *testing.T) {
 			next := iter.Next()
 			require.True(t, next)
 
-			sample := iter.Sample()
+			sample := iter.At()
 			require.Equal(t, float64(4), sample.Value)
 			require.Equal(t, model.Time(thirdPoint).UnixNano(), sample.Timestamp)
 
@@ -132,7 +132,7 @@ func TestInstance_QuerySample(t *testing.T) {
 			next := iter.Next()
 			require.True(t, next)
 
-			sample := iter.Sample()
+			sample := iter.At()
 			require.Equal(t, float64(80), sample.Value)
 			require.Equal(t, model.Time(thirdPoint).UnixNano(), sample.Timestamp)
 
@@ -273,7 +273,7 @@ func TestInstance_QuerySample(t *testing.T) {
 			next := iter.Next()
 			require.True(t, next)
 
-			sample := iter.Sample()
+			sample := iter.At()
 			require.Equal(t, model.Time(thirdStep).UnixNano(), sample.Timestamp)
 			require.Equal(t, float64(8), sample.Value)
 			require.Equal(t, expectedLabels.String(), iter.Labels())
@@ -284,7 +284,7 @@ func TestInstance_QuerySample(t *testing.T) {
 			next = iter.Next()
 			require.True(t, next)
 
-			sample = iter.Sample()
+			sample = iter.At()
 			require.Equal(t, model.Time(fifthStep).UnixNano(), sample.Timestamp)
 			require.Equal(t, float64(6), sample.Value)
 			require.Equal(t, expectedLabels.String(), iter.Labels())
@@ -315,7 +315,7 @@ func TestInstance_QuerySample(t *testing.T) {
 				next := iter.Next()
 				require.True(t, next)
 
-				sample := iter.Sample()
+				sample := iter.At()
 				require.Equal(t, model.Time(thirdStep).UnixNano(), sample.Timestamp)
 				require.Equal(t, float64(8), sample.Value)
 				require.Equal(t, expectedLabels.String(), iter.Labels())
@@ -324,7 +324,7 @@ func TestInstance_QuerySample(t *testing.T) {
 				next = iter.Next()
 				require.True(t, next)
 
-				sample = iter.Sample()
+				sample = iter.At()
 				require.Equal(t, model.Time(fourthStep).UnixNano(), sample.Timestamp)
 				require.Equal(t, float64(8), sample.Value)
 				require.Equal(t, expectedLabels.String(), iter.Labels())
@@ -333,7 +333,7 @@ func TestInstance_QuerySample(t *testing.T) {
 				next = iter.Next()
 				require.True(t, next)
 
-				sample = iter.Sample()
+				sample = iter.At()
 				require.Equal(t, model.Time(fifthStep).UnixNano(), sample.Timestamp)
 				require.Equal(t, float64(14), sample.Value)
 				require.Equal(t, expectedLabels.String(), iter.Labels())

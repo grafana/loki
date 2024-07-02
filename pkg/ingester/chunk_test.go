@@ -19,25 +19,25 @@ import (
 func testIteratorForward(t *testing.T, iter iter.EntryIterator, from, through int64) {
 	i := from
 	for iter.Next() {
-		entry := iter.Entry()
+		entry := iter.At()
 		require.Equal(t, time.Unix(i, 0).Unix(), entry.Timestamp.Unix())
 		require.Equal(t, fmt.Sprintf("line %d", i), entry.Line)
 		i++
 	}
 	require.Equal(t, through, i)
-	require.NoError(t, iter.Error())
+	require.NoError(t, iter.Err())
 }
 
 func testIteratorBackward(t *testing.T, iter iter.EntryIterator, from, through int64) {
 	i := through - 1
 	for iter.Next() {
-		entry := iter.Entry()
+		entry := iter.At()
 		require.Equal(t, time.Unix(i, 0).Unix(), entry.Timestamp.Unix())
 		require.Equal(t, fmt.Sprintf("line %d", i), entry.Line)
 		i--
 	}
 	require.Equal(t, from-1, i)
-	require.NoError(t, iter.Error())
+	require.NoError(t, iter.Err())
 }
 
 func TestIterator(t *testing.T) {

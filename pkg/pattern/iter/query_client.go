@@ -99,8 +99,8 @@ func (i *querySamplesClientIterator) Next() bool {
 	return true
 }
 
-func (i *querySamplesClientIterator) Sample() logproto.Sample {
-	return i.curr.Sample()
+func (i *querySamplesClientIterator) At() logproto.Sample {
+	return i.curr.At()
 }
 
 func (i *querySamplesClientIterator) StreamHash() uint64 {
@@ -111,7 +111,7 @@ func (i *querySamplesClientIterator) Labels() string {
 	return i.curr.Labels()
 }
 
-func (i *querySamplesClientIterator) Error() error {
+func (i *querySamplesClientIterator) Err() error {
 	return i.err
 }
 

@@ -35,7 +35,7 @@ import (
 
 var (
 	testSize        = int64(300)
-	ErrMock         = errors.New("mock error")
+	ErrMock         = errors.New("error")
 	ErrMockMultiple = util.MultiError{ErrMock, ErrMock}
 )
 
@@ -2298,13 +2298,13 @@ type statsQuerier struct{}
 func (statsQuerier) SelectLogs(ctx context.Context, _ SelectLogParams) (iter.EntryIterator, error) {
 	st := stats.FromContext(ctx)
 	st.AddDecompressedBytes(1)
-	return iter.NoopIterator, nil
+	return iter.NoopEntryIterator, nil
 }
 
 func (statsQuerier) SelectSamples(ctx context.Context, _ SelectSampleParams) (iter.SampleIterator, error) {
 	st := stats.FromContext(ctx)
 	st.AddDecompressedBytes(1)
-	return iter.NoopIterator, nil
+	return iter.NoopSampleIterator, nil
 }
 
 func TestEngine_Stats(t *testing.T) {
@@ -2332,14 +2332,14 @@ func (metaQuerier) SelectLogs(ctx context.Context, _ SelectLogParams) (iter.Entr
 			Values: []string{"value"},
 		},
 	})
-	return iter.NoopIterator, nil
+	return iter.NoopEntryIterator, nil
 }
 
 func (metaQuerier) SelectSamples(ctx context.Context, _ SelectSampleParams) (iter.SampleIterator, error) {
 	_ = metadata.JoinHeaders(ctx, []*definitions.PrometheusResponseHeader{
 		{Name: "Header", Values: []string{"value"}},
 	})
-	return iter.NoopIterator, nil
+	return iter.NoopSampleIterator, nil
 }
 
 func TestEngine_Metadata(t *testing.T) {
@@ -2409,7 +2409,7 @@ func TestStepEvaluator_Error(t *testing.T) {
 				samples: func() []iter.SampleIterator {
 					return []iter.SampleIterator{
 						iter.NewSeriesIterator(newSeries(testSize, identity, `{app="foo"}`)),
-						NewErrorSampleIterator(),
+						iter.ErrorSampleIterator,
 					}
 				},
 			},
@@ -2422,7 +2422,7 @@ func TestStepEvaluator_Error(t *testing.T) {
 				entries: func() []iter.EntryIterator {
 					return []iter.EntryIterator{
 						iter.NewStreamIterator(newStream(testSize, identity, `{app="foo"}`)),
-						NewErrorEntryIterator(),
+						iter.ErrorEntryIterator,
 					}
 				},
 			},
@@ -2435,7 +2435,7 @@ func TestStepEvaluator_Error(t *testing.T) {
 				samples: func() []iter.SampleIterator {
 					return []iter.SampleIterator{
 						iter.NewSeriesIterator(newSeries(testSize, identity, `{app="foo"}`)),
-						NewErrorSampleIterator(),
+						iter.ErrorSampleIterator,
 					}
 				},
 			},
@@ -2745,7 +2745,7 @@ func (q *querierRecorder) SelectSamples(_ context.Context, p SelectSampleParams)
 	}
 	recordID := paramsID(p)
 	if len(q.series) == 0 {
-		return iter.NoopIterator, nil
+		return iter.NoopSampleIterator, nil
 	}
 	series, ok := q.series[recordID]
 	if !ok {
@@ -2926,30 +2926,3 @@ func inverse(g generator) generator {
 		return g(-i)
 	}
 }
-
-// errorIterator
-type errorIterator struct{}
-
-// NewErrorSampleIterator return an sample iterator that errors out
-func NewErrorSampleIterator() iter.SampleIterator {
-	return &errorIterator{}
-}
-
-// NewErrorEntryIterator return an entry iterator that errors out
-func NewErrorEntryIterator() iter.EntryIterator {
-	return &errorIterator{}
-}
-
-func (errorIterator) Next() bool { return false }
-
-func (errorIterator) Error() error { return ErrMock }
-
-func (errorIterator) Labels() string { return "" }
-
-func (errorIterator) StreamHash() uint64 { return 0 }
-
-func (errorIterator) Entry() logproto.Entry { return logproto.Entry{} }
-
-func (errorIterator) Sample() logproto.Sample { return logproto.Sample{} }
-
-func (errorIterator) Close() error { return nil }

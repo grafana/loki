@@ -1,4 +1,4 @@
-package v1
+package v2
 
 import (
 	"testing"
@@ -9,7 +9,7 @@ import (
 func TestPeekingIterator(t *testing.T) {
 	t.Parallel()
 	data := []int{1, 2, 3, 4, 5}
-	itr := NewPeekingIter[int](NewSliceIter[int](data))
+	itr := NewPeekIter[int](NewSliceIter[int](data))
 
 	for i := 0; i < len(data)*2; i++ {
 		if i%2 == 0 {
@@ -32,7 +32,7 @@ func TestCounterIter(t *testing.T) {
 
 	data := []int{1, 2, 3, 4, 5}
 	itr := NewCounterIter[int](NewSliceIter[int](data))
-	peekItr := NewPeekingIter[int](itr)
+	peekItr := NewPeekIter[int](itr)
 
 	// Consume the outer iter and use peek
 	for {

@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/bloomutils"
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -185,13 +186,13 @@ type tenantTableRange struct {
 	queueTime, startTime, endTime time.Time
 }
 
-func (c *Compactor) tenants(ctx context.Context, table config.DayTable) (*v1.SliceIter[string], error) {
+func (c *Compactor) tenants(ctx context.Context, table config.DayTable) (*iter.SliceIter[string], error) {
 	tenants, err := c.tsdbStore.UsersForPeriod(ctx, table)
 	if err != nil {
 		return nil, errors.Wrap(err, "getting tenants")
 	}
 
-	return v1.NewSliceIter(tenants), nil
+	return iter.NewSliceIter(tenants), nil
 }
 
 // ownsTenant returns the ownership range for the tenant, if the compactor owns the tenant, and an error.

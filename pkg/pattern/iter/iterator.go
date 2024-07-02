@@ -6,6 +6,7 @@ import (
 
 var Empty Iterator = &emptyIterator{}
 
+// TODO(chaudum): inline v2.Iteratpr[logproto.PatternSample]
 type Iterator interface {
 	Next() bool
 
@@ -17,6 +18,7 @@ type Iterator interface {
 }
 
 func NewSlice(pattern string, s []logproto.PatternSample) Iterator {
+	// TODO(chaudum): replace with v2.NewSliceIter()
 	return &sliceIterator{
 		values:  s,
 		pattern: pattern,

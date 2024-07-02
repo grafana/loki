@@ -484,7 +484,7 @@ func Test_SeriesIterator(t *testing.T) {
 				Labels: logproto.FromLabelAdaptersToLabels(iter.Stream().Labels).String(),
 			}
 			for it.Next() {
-				stream.Entries = append(stream.Entries, it.Entry())
+				stream.Entries = append(stream.Entries, it.At())
 			}
 			require.NoError(t, it.Close())
 			streams = append(streams, stream)

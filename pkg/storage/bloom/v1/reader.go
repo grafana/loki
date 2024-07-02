@@ -7,12 +7,14 @@ import (
 	"path/filepath"
 
 	"github.com/pkg/errors"
+
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 )
 
 type BlockReader interface {
 	Index() (io.ReadSeeker, error)
 	Blooms() (io.ReadSeeker, error)
-	TarEntries() (Iterator[TarEntry], error)
+	TarEntries() (iter.Iterator[TarEntry], error)
 }
 
 // In memory reader
@@ -32,7 +34,7 @@ func (r *ByteReader) Blooms() (io.ReadSeeker, error) {
 	return bytes.NewReader(r.blooms.Bytes()), nil
 }
 
-func (r *ByteReader) TarEntries() (Iterator[TarEntry], error) {
+func (r *ByteReader) TarEntries() (iter.Iterator[TarEntry], error) {
 	indexLn := r.index.Len()
 	index, err := r.Index()
 	if err != nil {
@@ -56,7 +58,7 @@ func (r *ByteReader) TarEntries() (Iterator[TarEntry], error) {
 		},
 	}
 
-	return NewSliceIter[TarEntry](entries), err
+	return iter.NewSliceIter[TarEntry](entries), err
 }
 
 // File reader
@@ -110,7 +112,7 @@ func (r *DirectoryBlockReader) Blooms() (io.ReadSeeker, error) {
 	return r.blooms, nil
 }
 
-func (r *DirectoryBlockReader) TarEntries() (Iterator[TarEntry], error) {
+func (r *DirectoryBlockReader) TarEntries() (iter.Iterator[TarEntry], error) {
 	if !r.initialized {
 		if err := r.Init(); err != nil {
 			return nil, err
@@ -140,5 +142,5 @@ func (r *DirectoryBlockReader) TarEntries() (Iterator[TarEntry], error) {
 		},
 	}
 
-	return NewSliceIter[TarEntry](entries), nil
+	return iter.NewSliceIter[TarEntry](entries), nil
 }

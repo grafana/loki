@@ -194,7 +194,7 @@ func TestBlock(t *testing.T) {
 
 				idx := 0
 				for it.Next() {
-					e := it.Entry()
+					e := it.At()
 					require.Equal(t, cases[idx].ts, e.Timestamp.UnixNano())
 					require.Equal(t, cases[idx].str, e.Line)
 					if chunkFormat < ChunkFormatV4 {
@@ -211,7 +211,7 @@ func TestBlock(t *testing.T) {
 					idx++
 				}
 
-				require.NoError(t, it.Error())
+				require.NoError(t, it.Err())
 				require.NoError(t, it.Close())
 				require.Equal(t, len(cases), idx)
 
@@ -226,14 +226,14 @@ func TestBlock(t *testing.T) {
 				sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
 				idx = 0
 				for sampleIt.Next() {
-					s := sampleIt.Sample()
+					s := sampleIt.At()
 					require.Equal(t, cases[idx].ts, s.Timestamp)
 					require.Equal(t, 1., s.Value)
 					require.NotEmpty(t, s.Hash)
 					idx++
 				}
 
-				require.NoError(t, sampleIt.Error())
+				require.NoError(t, sampleIt.Err())
 				require.NoError(t, sampleIt.Close())
 				require.Equal(t, len(cases), idx)
 
@@ -243,12 +243,12 @@ func TestBlock(t *testing.T) {
 
 					idx := 2
 					for it.Next() {
-						e := it.Entry()
+						e := it.At()
 						require.Equal(t, cases[idx].ts, e.Timestamp.UnixNano())
 						require.Equal(t, cases[idx].str, e.Line)
 						idx++
 					}
-					require.NoError(t, it.Error())
+					require.NoError(t, it.Err())
 					require.Equal(t, 6, idx)
 				})
 			})
@@ -287,7 +287,7 @@ func TestCorruptChunk(t *testing.T) {
 					for it.Next() {
 						idx++
 					}
-					require.Error(t, it.Error(), "case %d", i)
+					require.Error(t, it.Err(), "case %d", i)
 					require.NoError(t, it.Close())
 				}
 			})
@@ -321,8 +321,8 @@ func TestReadFormatV1(t *testing.T) {
 
 	i := int64(0)
 	for it.Next() {
-		require.Equal(t, i, it.Entry().Timestamp.UnixNano())
-		require.Equal(t, testdata.LogString(i), it.Entry().Line)
+		require.Equal(t, i, it.At().Timestamp.UnixNano())
+		require.Equal(t, testdata.LogString(i), it.At().Line)
 
 		i++
 	}
@@ -354,10 +354,10 @@ func TestRoundtripV2(t *testing.T) {
 					i := int64(0)
 					var data int64
 					for it.Next() {
-						require.Equal(t, i, it.Entry().Timestamp.UnixNano())
-						require.Equal(t, testdata.LogString(i), it.Entry().Line)
+						require.Equal(t, i, it.At().Timestamp.UnixNano())
+						require.Equal(t, testdata.LogString(i), it.At().Line)
 
-						data += int64(len(it.Entry().Line))
+						data += int64(len(it.At().Line))
 						i++
 					}
 					require.Equal(t, populated, data)
@@ -462,7 +462,7 @@ func TestSerialization(t *testing.T) {
 					for i := 0; i < numSamples; i++ {
 						require.True(t, it.Next())
 
-						e := it.Entry()
+						e := it.At()
 						require.Equal(t, int64(i), e.Timestamp.UnixNano())
 						require.Equal(t, strconv.Itoa(i), e.Line)
 						if appendWithStructuredMetadata && testData.chunkFormat >= ChunkFormatV4 {
@@ -473,7 +473,7 @@ func TestSerialization(t *testing.T) {
 							require.Nil(t, e.StructuredMetadata)
 						}
 					}
-					require.NoError(t, it.Error())
+					require.NoError(t, it.Err())
 
 					extractor := func() log.StreamSampleExtractor {
 						ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
@@ -487,7 +487,7 @@ func TestSerialization(t *testing.T) {
 					for i := 0; i < numSamples; i++ {
 						require.True(t, sampleIt.Next(), i)
 
-						s := sampleIt.Sample()
+						s := sampleIt.At()
 						require.Equal(t, int64(i), s.Timestamp)
 						require.Equal(t, 1., s.Value)
 						if appendWithStructuredMetadata && testData.chunkFormat >= ChunkFormatV4 {
@@ -496,7 +496,7 @@ func TestSerialization(t *testing.T) {
 							require.Equal(t, labels.EmptyLabels().String(), sampleIt.Labels())
 						}
 					}
-					require.NoError(t, sampleIt.Error())
+					require.NoError(t, sampleIt.Err())
 
 					byt2, err := chk.Bytes()
 					require.NoError(t, err)
@@ -544,7 +544,7 @@ func TestChunkFilling(t *testing.T) {
 				require.NoError(t, err)
 				i = 0
 				for it.Next() {
-					entry := it.Entry()
+					entry := it.At()
 					require.Equal(t, i, entry.Timestamp.UnixNano())
 					i++
 				}
@@ -810,7 +810,7 @@ func TestIteratorClose(t *testing.T) {
 					func(iter iter.EntryIterator, t *testing.T) {
 						// close after iterating
 						for iter.Next() {
-							_ = iter.Entry()
+							_ = iter.At()
 						}
 						if err := iter.Close(); err != nil {
 							t.Fatal(err)
@@ -819,7 +819,7 @@ func TestIteratorClose(t *testing.T) {
 					func(iter iter.EntryIterator, t *testing.T) {
 						// close after a single iteration
 						iter.Next()
-						_ = iter.Entry()
+						_ = iter.At()
 						if err := iter.Close(); err != nil {
 							t.Fatal(err)
 						}
@@ -909,7 +909,7 @@ func BenchmarkRead(b *testing.B) {
 							panic(err)
 						}
 						for iterator.Next() {
-							_ = iterator.Entry()
+							_ = iterator.At()
 						}
 						if err := iterator.Close(); err != nil {
 							b.Fatal(err)
@@ -933,7 +933,7 @@ func BenchmarkRead(b *testing.B) {
 					for _, c := range chunks {
 						iterator := c.SampleIterator(ctx, time.Unix(0, 0), time.Now(), countExtractor)
 						for iterator.Next() {
-							_ = iterator.Sample()
+							_ = iterator.At()
 						}
 						if err := iterator.Close(); err != nil {
 							b.Fatal(err)
@@ -961,7 +961,7 @@ func BenchmarkBackwardIterator(b *testing.B) {
 					panic(err)
 				}
 				for iterator.Next() {
-					_ = iterator.Entry()
+					_ = iterator.At()
 				}
 				if err := iterator.Close(); err != nil {
 					b.Fatal(err)
@@ -985,7 +985,7 @@ func TestGenerateDataSize(t *testing.T) {
 					panic(err)
 				}
 				for iterator.Next() {
-					e := iterator.Entry()
+					e := iterator.At()
 					bytesRead += uint64(len(e.Line))
 				}
 				if err := iterator.Close(); err != nil {
@@ -1022,7 +1022,7 @@ func BenchmarkHeadBlockIterator(b *testing.B) {
 					iter := h.Iterator(context.Background(), logproto.BACKWARD, 0, math.MaxInt64, noopStreamPipeline)
 
 					for iter.Next() {
-						_ = iter.Entry()
+						_ = iter.At()
 					}
 				}
 			})
@@ -1053,7 +1053,7 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 					iter := h.SampleIterator(context.Background(), 0, math.MaxInt64, countExtractor)
 
 					for iter.Next() {
-						_ = iter.Sample()
+						_ = iter.At()
 					}
 					iter.Close()
 				}
@@ -1302,7 +1302,7 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 					for n := 0; n < b.N; n++ {
 						for _, it := range iters {
 							for it.Next() {
-								streams = append(streams, logproto.Stream{Labels: it.Labels(), Entries: []logproto.Entry{it.Entry()}})
+								streams = append(streams, logproto.Stream{Labels: it.Labels(), Entries: []logproto.Entry{it.At()}})
 							}
 						}
 					}
@@ -1337,7 +1337,7 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 					for n := 0; n < b.N; n++ {
 						for _, it := range iters {
 							for it.Next() {
-								series = append(series, logproto.Series{Labels: it.Labels(), Samples: []logproto.Sample{it.Sample()}})
+								series = append(series, logproto.Series{Labels: it.Labels(), Samples: []logproto.Sample{it.At()}})
 							}
 						}
 					}
@@ -1374,7 +1374,7 @@ func Test_HeadIteratorReverse(t *testing.T) {
 				require.NoError(t, err)
 				for it.Next() {
 					total--
-					require.Equal(t, total, it.Entry().Timestamp.UnixNano())
+					require.Equal(t, total, it.At().Timestamp.UnixNano())
 				}
 			}
 
@@ -1459,7 +1459,7 @@ func TestMemChunk_Rebound(t *testing.T) {
 					break
 				}
 
-				require.Equal(t, originalChunkItr.Entry(), newChunkItr.Entry())
+				require.Equal(t, originalChunkItr.At(), newChunkItr.At())
 			}
 		})
 	}
@@ -1975,8 +1975,8 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 							var streams []string
 							var structuredMetadata [][]logproto.LabelAdapter
 							for it.Next() {
-								require.NoError(t, it.Error())
-								e := it.Entry()
+								require.NoError(t, it.Err())
+								e := it.At()
 								lines = append(lines, e.Line)
 								streams = append(streams, it.Labels())
 
@@ -2012,8 +2012,8 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 							var sumValues int
 							var streams []string
 							for it.Next() {
-								require.NoError(t, it.Error())
-								e := it.Sample()
+								require.NoError(t, it.Err())
+								e := it.At()
 								sumValues += int(e.Value)
 								streams = append(streams, it.Labels())
 							}
