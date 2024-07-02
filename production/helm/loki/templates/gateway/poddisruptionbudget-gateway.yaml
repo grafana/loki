@@ -3,7 +3,7 @@
   (and (not .Values.gateway.autoscaling.enabled) (gt (int .Values.gateway.replicas) 1)) 
   (and .Values.gateway.autoscaling.enabled (gt (int .Values.gateway.autoscaling.minReplicas) 1))
 }}
-apiVersion: policy/v1
+apiVersion: {{ include "loki.pdb.apiVersion" . }}
 kind: PodDisruptionBudget
 metadata:
   name: {{ include "loki.gatewayFullname" . }}
