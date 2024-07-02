@@ -14,8 +14,8 @@ jobs:
   check:
     uses: "grafana/loki-release/.github/workflows/check.yml@loki-2.9.x"
     with:
-      build_image: "grafana/loki-build-image:0.33.1"
-      golang_ci_lint_version: "v1.55.1"
+      build_image: "grafana/loki-build-image:0.30.1"
+      golang_ci_lint_version: "v1.51.2"
       release_lib_ref: "loki-2.9.x"
       skip_validation: false
       use_github_app_token: true
@@ -89,7 +89,7 @@ jobs:
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
           --token "${{ steps.github_app_token.outputs.token }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
-
+        
       working-directory: "lib"
   dist:
     needs:
@@ -136,7 +136,7 @@ jobs:
           --env SKIP_ARM \
           --volume .:/src/loki \
           --workdir /src/loki \
-          --entrypoint /bin/sh "grafana/loki-build-image:0.33.1"
+          --entrypoint /bin/sh "grafana/loki-build-image:0.30.1"
           git config --global --add safe.directory /src/loki
           echo "${NFPM_SIGNING_KEY}" > $NFPM_SIGNING_KEY_FILE
           make dist packages
@@ -181,7 +181,7 @@ jobs:
       name: "parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -243,7 +243,7 @@ jobs:
       name: "parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -305,7 +305,7 @@ jobs:
       name: "parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -369,7 +369,7 @@ jobs:
       name: "parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -431,7 +431,7 @@ jobs:
       name: "parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -495,7 +495,7 @@ jobs:
       name: "parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -559,7 +559,7 @@ jobs:
       name: "parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -623,7 +623,7 @@ jobs:
       name: "parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -687,7 +687,7 @@ jobs:
       name: "parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -778,16 +778,16 @@ jobs:
           --target-branch "${{ steps.extract_branch.outputs.branch }}" \
           --token "${{ steps.github_app_token.outputs.token }}" \
           --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
-
+        
         cat release.json
-
-        if [[ `jq length release.json` -gt 1 ]]; then
+        
+        if [[ `jq length release.json` -gt 1 ]]; then 
           echo 'release-please would create more than 1 PR, so cannot determine correct version'
           echo "pr_created=false" >> $GITHUB_OUTPUT
           exit 1
         fi
-
-        if [[ `jq length release.json` -eq 0 ]]; then
+        
+        if [[ `jq length release.json` -eq 0 ]]; then 
           echo "pr_created=false" >> $GITHUB_OUTPUT
         else
           version="$(npm run --silent get-version)"
