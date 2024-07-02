@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/pattern/drain"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
 	"github.com/grafana/loki/v3/pkg/pattern/metric"
 
@@ -28,6 +29,8 @@ func TestAddStream(t *testing.T) {
 			Enabled: false,
 		},
 		log.NewNopLogger(),
+		drain.FormatUnknown,
+		"123",
 	)
 	require.NoError(t, err)
 
@@ -65,6 +68,8 @@ func TestPruneStream(t *testing.T) {
 			Enabled: false,
 		},
 		log.NewNopLogger(),
+		drain.FormatUnknown,
+		"123",
 	)
 	require.NoError(t, err)
 
@@ -113,6 +118,8 @@ func TestSampleIterator(t *testing.T) {
 				Enabled: true,
 			},
 			log.NewNopLogger(),
+			drain.FormatUnknown,
+			"123",
 		)
 		require.NoError(t, err)
 
@@ -158,6 +165,8 @@ func TestSampleIterator(t *testing.T) {
 				Enabled: true,
 			},
 			log.NewNopLogger(),
+			drain.FormatUnknown,
+			"123",
 		)
 		require.NoError(t, err)
 
@@ -244,6 +253,8 @@ func TestSampleIterator(t *testing.T) {
 				Enabled: true,
 			},
 			log.NewNopLogger(),
+			drain.FormatUnknown,
+			"123",
 		)
 		require.NoError(t, err)
 
