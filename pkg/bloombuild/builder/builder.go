@@ -42,7 +42,7 @@ type Builder struct {
 	logger  log.Logger
 
 	tsdbStore   common.TSDBStore
-	bloomStore  bloomshipper.StoreBase
+	bloomStore  bloomshipper.Store
 	chunkLoader ChunkLoader
 
 	client protos.PlannerForBuilderClient
@@ -55,20 +55,23 @@ func New(
 	storeCfg storage.Config,
 	storageMetrics storage.ClientMetrics,
 	fetcherProvider stores.ChunkFetcherProvider,
-	bloomStore bloomshipper.StoreBase,
+	bloomStore bloomshipper.Store,
 	logger log.Logger,
 	r prometheus.Registerer,
 ) (*Builder, error) {
 	utillog.WarnExperimentalUse("Bloom Builder", logger)
+
+	builderID := uuid.NewString()
+	logger = log.With(logger, "builder_id", builderID)
 
 	tsdbStore, err := common.NewTSDBStores(schemaCfg, storeCfg, storageMetrics, logger)
 	if err != nil {
 		return nil, fmt.Errorf("error creating TSDB store: %w", err)
 	}
 
-	metrics := NewMetrics(r, v1.NewMetrics(r))
+	metrics := NewMetrics(r)
 	b := &Builder{
-		ID:          uuid.NewString(),
+		ID:          builderID,
 		cfg:         cfg,
 		limits:      limits,
 		metrics:     metrics,
@@ -341,7 +344,7 @@ func (b *Builder) processTask(
 			blocksIter,
 			b.rwFn,
 			nil, // TODO(salvacorts): Pass reporter or remove when we address tracking
-			b.metrics,
+			b.bloomStore.BloomMetrics(),
 			logger,
 		)
 

@@ -20,8 +20,10 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	"github.com/grafana/loki/v3/pkg/storage"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	bloomshipperconfig "github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 )
@@ -86,7 +88,7 @@ func Test_BuilderLoop(t *testing.T) {
 	}
 	flagext.DefaultValues(&cfg.GrpcConfig)
 
-	builder, err := New(cfg, limits, schemaCfg, storageCfg, storage.NewClientMetrics(), nil, nil, logger, prometheus.DefaultRegisterer)
+	builder, err := New(cfg, limits, schemaCfg, storageCfg, storage.NewClientMetrics(), nil, fakeBloomStore{}, logger, prometheus.DefaultRegisterer)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		err = services.StopAndAwaitTerminated(context.Background(), builder)
@@ -238,6 +240,14 @@ func (f fakeLimits) BloomCompactorMaxBlockSize(_ string) int {
 
 func (f fakeLimits) BloomCompactorMaxBloomSize(_ string) int {
 	panic("implement me")
+}
+
+type fakeBloomStore struct {
+	bloomshipper.Store
+}
+
+func (f fakeBloomStore) BloomMetrics() *v1.Metrics {
+	return nil
 }
 
 func parseDayTime(s string) config.DayTime {
