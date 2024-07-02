@@ -422,6 +422,10 @@ func (b *BlobStorage) getServicePrincipalToken(authFunctions authFunctions) (*ad
 
 	if b.cfg.UseFederatedToken {
 		token, err := b.servicePrincipalTokenFromFederatedToken(resource, authFunctions.NewOAuthConfigFunc, authFunctions.NewServicePrincipalTokenFromFederatedTokenFunc)
+		if err != nil {
+			return nil, err
+		}
+
 		var customRefreshFunc adal.TokenRefresh = func(context context.Context, resource string) (*adal.Token, error) {
 			newToken, err := b.servicePrincipalTokenFromFederatedToken(resource, authFunctions.NewOAuthConfigFunc, authFunctions.NewServicePrincipalTokenFromFederatedTokenFunc)
 			if err != nil {
