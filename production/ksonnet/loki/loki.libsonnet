@@ -23,6 +23,9 @@
 // Index Gateway support
 (import 'index-gateway.libsonnet') +
 
+// Accelerated search using bloom filters
+(import 'bloomfilters.libsonnet') +
+
 // BoltDB and TSDB Shipper support. Anything that modifies the compactor must be imported after this.
 (import 'shipper.libsonnet') +
 
