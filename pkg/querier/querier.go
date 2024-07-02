@@ -1179,13 +1179,8 @@ func (q *SingleTenantQuerier) StructuredMetadata(ctx context.Context, req *logpr
 
 	structuredMetadata := parseStructuredMetadata(ctx, streams)
 
-	keys := make([]string, len(structuredMetadata))
-	for k, v := range structuredMetadata {
-		keys[k] = v
-	}
-
 	return &logproto.StructuredMetadataKeysResponse{
-		Keys: keys,
+		Keys: structuredMetadata,
 	}, nil
 }
 
