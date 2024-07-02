@@ -15,10 +15,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	tsdb_index "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v3/pkg/storage/wal"
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
+type WalSegmentWriter interface {
+	PutWal(ctx context.Context, writer *wal.SegmentWriter) error
+}
+
 type ChunkWriter interface {
+	WalSegmentWriter
 	Put(ctx context.Context, chunks []chunk.Chunk) error
 	PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error
 }
@@ -45,6 +51,7 @@ type Store interface {
 	ChunkWriter
 	ChunkFetcher
 	ChunkFetcherProvider
+	WalSegmentWriter
 	Stop()
 }
 
@@ -86,6 +93,12 @@ func (c *CompositeStore) Stores() []Store {
 		stores = append(stores, store.Store)
 	}
 	return stores
+}
+
+func (c CompositeStore) PutWal(ctx context.Context, writer *wal.SegmentWriter) error {
+	// TODO: Understand how to use the forStores method to correctly pick a store for this
+	err := c.stores[0].PutWal(ctx, writer)
+	return err
 }
 
 func (c CompositeStore) Put(ctx context.Context, chunks []chunk.Chunk) error {

@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/storage/wal"
 )
 
 var (
@@ -18,6 +19,7 @@ var (
 // Client is for storing and retrieving chunks.
 type Client interface {
 	Stop()
+	PutWal(ctx context.Context, writer *wal.SegmentWriter) error
 	PutChunks(ctx context.Context, chunks []chunk.Chunk) error
 	GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error)
 	DeleteChunk(ctx context.Context, userID, chunkID string) error

@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/wal"
 	"github.com/grafana/loki/v3/pkg/util/math"
 )
 
@@ -81,6 +82,10 @@ func (s *bigtableObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chu
 		}
 	}
 	return nil
+}
+
+func (s *bigtableObjectClient) PutWal(_ context.Context, _ *wal.SegmentWriter) error {
+	panic("not implemented")
 }
 
 func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {
