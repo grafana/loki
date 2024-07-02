@@ -38,13 +38,12 @@ func newPunctuationTokenizer() *punctuationTokenizer {
 }
 
 func (p *punctuationTokenizer) Tokenize(line string) ([]string, interface{}) {
-	tokens := make([]string, 0, 128)  // ~p90 for most log types except json
-	spacesAfter := make([]int, 0, 64) // p95 metadata size.
+	tokens := make([]string, 0, 128)
+	spacesAfter := make([]int, 0, 64)
 
 	start := 0
 	for i, char := range line {
 		if len(tokens) >= cap(tokens)-1 {
-			// Line is too long: append the rest of the string as a single token before returning
 			break
 		}
 		if unicode.IsLetter(char) || unicode.IsNumber(char) || char < 128 && p.excludeDelimiters[char] != 0 {
