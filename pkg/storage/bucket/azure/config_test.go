@@ -15,15 +15,18 @@ import (
 var defaultConfig = Config{
 	ContainerName: "loki",
 	MaxRetries:    20,
-	Config: http.Config{
-		IdleConnTimeout:       90 * time.Second,
-		ResponseHeaderTimeout: 2 * time.Minute,
-		InsecureSkipVerify:    false,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-		MaxIdleConns:          100,
-		MaxIdleConnsPerHost:   100,
-		MaxConnsPerHost:       0,
+	MaxRetryDelay: 500000000,
+	HTTP: HTTPConfig{
+		Config: http.Config{
+			IdleConnTimeout:       90 * time.Second,
+			ResponseHeaderTimeout: 2 * time.Minute,
+			InsecureSkipVerify:    false,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+			MaxIdleConns:          100,
+			MaxIdleConnsPerHost:   100,
+			MaxConnsPerHost:       0,
+		},
 	},
 }
 
@@ -48,6 +51,7 @@ connection_string: test-connection-string
 container_name: test-container-name
 endpoint_suffix: test-endpoint-suffix
 max_retries: 1
+max_retry_delay: 500000000
 http:
   idle_conn_timeout: 2s
   response_header_timeout: 3s
@@ -59,21 +63,24 @@ http:
   max_connections_per_host: 8
 `,
 			expectedConfig: Config{
-				StorageAccountName: "test-account-name",
-				StorageAccountKey:  flagext.SecretWithValue("test-account-key"),
-				ConnectionString:   flagext.SecretWithValue("test-connection-string"),
-				ContainerName:      "test-container-name",
-				EndpointSuffix:     "test-endpoint-suffix",
-				MaxRetries:         1,
-				Config: http.Config{
-					IdleConnTimeout:       2 * time.Second,
-					ResponseHeaderTimeout: 3 * time.Second,
-					InsecureSkipVerify:    true,
-					TLSHandshakeTimeout:   4 * time.Second,
-					ExpectContinueTimeout: 5 * time.Second,
-					MaxIdleConns:          6,
-					MaxIdleConnsPerHost:   7,
-					MaxConnsPerHost:       8,
+				StorageAccountName:      "test-account-name",
+				StorageAccountKey:       flagext.SecretWithValue("test-account-key"),
+				StorageConnectionString: flagext.SecretWithValue("test-connection-string"),
+				ContainerName:           "test-container-name",
+				Endpoint:                "test-endpoint-suffix",
+				MaxRetries:              1,
+				MaxRetryDelay:           500000000,
+				HTTP: HTTPConfig{
+					Config: http.Config{
+						IdleConnTimeout:       2 * time.Second,
+						ResponseHeaderTimeout: 3 * time.Second,
+						InsecureSkipVerify:    true,
+						TLSHandshakeTimeout:   4 * time.Second,
+						ExpectContinueTimeout: 5 * time.Second,
+						MaxIdleConns:          6,
+						MaxIdleConnsPerHost:   7,
+						MaxConnsPerHost:       8,
+					},
 				},
 			},
 			expectedErr: nil,
