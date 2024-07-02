@@ -20,20 +20,30 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
 
-var _ bloomshipper.Store = &dummyStore{}
+var _ bloomshipper.StoreBase = &dummyStore{}
 
-func newMockBloomStore(bqs []*bloomshipper.CloseableBlockQuerier, metas []bloomshipper.Meta) *dummyStore {
+// refs and blocks must be in 1-1 correspondence.
+func newMockBloomStore(refs []bloomshipper.BlockRef, blocks []*v1.Block, metas []bloomshipper.Meta) *dummyStore {
+	allocator := mempool.New("bloompages", mempool.Buckets{
+		{Size: 32, Capacity: 512 << 10},
+	}, nil)
 	return &dummyStore{
-		querieres: bqs,
+		refs:      refs,
+		blocks:    blocks,
 		metas:     metas,
+		allocator: allocator,
 	}
 }
 
 type dummyStore struct {
-	metas     []bloomshipper.Meta
-	querieres []*bloomshipper.CloseableBlockQuerier
+	metas  []bloomshipper.Meta
+	refs   []bloomshipper.BlockRef
+	blocks []*v1.Block
+
+	allocator mempool.Allocator
 
 	// mock how long it takes to serve block queriers
 	delay time.Duration
@@ -73,11 +83,15 @@ func (s *dummyStore) Client(_ model.Time) (bloomshipper.Client, error) {
 	return nil, nil
 }
 
+func (s *dummyStore) Allocator() mempool.Allocator {
+	return s.allocator
+}
+
 func (s *dummyStore) Stop() {
 }
 
 func (s *dummyStore) FetchBlocks(_ context.Context, refs []bloomshipper.BlockRef, _ ...bloomshipper.FetchOption) ([]*bloomshipper.CloseableBlockQuerier, error) {
-	result := make([]*bloomshipper.CloseableBlockQuerier, 0, len(s.querieres))
+	result := make([]*bloomshipper.CloseableBlockQuerier, 0, len(s.blocks))
 
 	if s.err != nil {
 		time.Sleep(s.delay)
@@ -85,8 +99,13 @@ func (s *dummyStore) FetchBlocks(_ context.Context, refs []bloomshipper.BlockRef
 	}
 
 	for _, ref := range refs {
-		for _, bq := range s.querieres {
-			if ref.Bounds.Equal(bq.Bounds) {
+		for i, block := range s.blocks {
+			if ref.Bounds.Equal(s.refs[i].Bounds) {
+				blockCopy := *block
+				bq := &bloomshipper.CloseableBlockQuerier{
+					BlockQuerier: v1.NewBlockQuerier(&blockCopy, s.Allocator(), v1.DefaultMaxPageSize),
+					BlockRef:     s.refs[i],
+				}
 				result = append(result, bq)
 			}
 		}
@@ -107,9 +126,9 @@ func TestProcessor(t *testing.T) {
 	metrics := newWorkerMetrics(prometheus.NewPedanticRegistry(), constants.Loki, "bloom_gatway")
 
 	t.Run("success case - without blocks", func(t *testing.T) {
-		_, metas, queriers, data := createBlocks(t, tenant, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
+		refs, metas, queriers, data := createBlocks(t, tenant, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
 
-		mockStore := newMockBloomStore(queriers, metas)
+		mockStore := newMockBloomStore(refs, queriers, metas)
 		p := newProcessor("worker", 1, mockStore, log.NewNopLogger(), metrics)
 
 		chunkRefs := createQueryInputFromBlockData(t, tenant, data, 10)
@@ -147,21 +166,21 @@ func TestProcessor(t *testing.T) {
 			}(tasks[i])
 		}
 
-		err := p.run(ctx, tasks)
+		err := p.processTasks(ctx, tasks)
 		wg.Wait()
 		require.NoError(t, err)
 		require.Equal(t, int64(0), results.Load())
 	})
 
 	t.Run("success case - with blocks", func(t *testing.T) {
-		_, metas, queriers, data := createBlocks(t, tenant, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
+		refs, metas, queriers, data := createBlocks(t, tenant, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
 		blocks := make([]bloomshipper.BlockRef, 0, len(metas))
 		for _, meta := range metas {
 			// we can safely append all block refs from the meta, because it only contains a single one
 			blocks = append(blocks, meta.Blocks...)
 		}
 
-		mockStore := newMockBloomStore(queriers, metas)
+		mockStore := newMockBloomStore(refs, queriers, metas)
 		p := newProcessor("worker", 1, mockStore, log.NewNopLogger(), metrics)
 
 		chunkRefs := createQueryInputFromBlockData(t, tenant, data, 10)
@@ -199,16 +218,16 @@ func TestProcessor(t *testing.T) {
 			}(tasks[i])
 		}
 
-		err := p.run(ctx, tasks)
+		err := p.processTasks(ctx, tasks)
 		wg.Wait()
 		require.NoError(t, err)
 		require.Equal(t, int64(len(swb.series)), results.Load())
 	})
 
 	t.Run("failure case", func(t *testing.T) {
-		_, metas, queriers, data := createBlocks(t, tenant, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
+		refs, metas, queriers, data := createBlocks(t, tenant, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
 
-		mockStore := newMockBloomStore(queriers, metas)
+		mockStore := newMockBloomStore(refs, queriers, metas)
 		mockStore.err = errors.New("store failed")
 
 		p := newProcessor("worker", 1, mockStore, log.NewNopLogger(), metrics)
@@ -248,7 +267,7 @@ func TestProcessor(t *testing.T) {
 			}(tasks[i])
 		}
 
-		err := p.run(ctx, tasks)
+		err := p.processTasks(ctx, tasks)
 		wg.Wait()
 		require.Errorf(t, err, "store failed")
 		require.Equal(t, int64(0), results.Load())

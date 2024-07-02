@@ -21,6 +21,13 @@ func (ts ByAddr) Len() int           { return len(ts) }
 func (ts ByAddr) Swap(i, j int)      { ts[i], ts[j] = ts[j], ts[i] }
 func (ts ByAddr) Less(i, j int) bool { return ts[i].Addr < ts[j].Addr }
 
+// ByID is a sortable list of InstanceDesc.
+type ByID []InstanceDesc
+
+func (ts ByID) Len() int           { return len(ts) }
+func (ts ByID) Swap(i, j int)      { ts[i], ts[j] = ts[j], ts[i] }
+func (ts ByID) Less(i, j int) bool { return ts[i].Id < ts[j].Id }
+
 // ProtoDescFactory makes new Descs
 func ProtoDescFactory() proto.Message {
 	return NewDesc()
@@ -195,7 +202,6 @@ func (d *Desc) mergeWithTime(mergeable memberlist.Mergeable, localCAS bool, now 
 
 	other, ok := mergeable.(*Desc)
 	if !ok {
-		// This method only deals with non-nil rings.
 		return nil, fmt.Errorf("expected *ring.Desc, got %T", mergeable)
 	}
 
@@ -510,6 +516,40 @@ func (d *Desc) getOldestRegisteredTimestamp() int64 {
 	}
 
 	return result
+}
+
+func (d *Desc) instancesWithTokensCount() int {
+	count := 0
+	if d != nil {
+		for _, ingester := range d.Ingesters {
+			if len(ingester.Tokens) > 0 {
+				count++
+			}
+		}
+	}
+	return count
+}
+
+func (d *Desc) instancesCountPerZone() map[string]int {
+	instancesCountPerZone := map[string]int{}
+	if d != nil {
+		for _, ingester := range d.Ingesters {
+			instancesCountPerZone[ingester.Zone]++
+		}
+	}
+	return instancesCountPerZone
+}
+
+func (d *Desc) instancesWithTokensCountPerZone() map[string]int {
+	instancesCountPerZone := map[string]int{}
+	if d != nil {
+		for _, ingester := range d.Ingesters {
+			if len(ingester.Tokens) > 0 {
+				instancesCountPerZone[ingester.Zone]++
+			}
+		}
+	}
+	return instancesCountPerZone
 }
 
 type CompareResult int

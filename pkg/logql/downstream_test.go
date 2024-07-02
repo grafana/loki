@@ -57,6 +57,9 @@ func TestMappingEquivalence(t *testing.T) {
 		{`sum(rate({a=~".+"} |= "foo" != "foo"[1s]) or vector(1))`, false, nil},
 		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s])`, false, nil},
 		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, true, nil},
+		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s]) without (stream)`, true, nil},
+		{`avg_over_time({a=~".+"} | logfmt | drop level | unwrap value [1s])`, true, nil},
+		{`avg_over_time({a=~".+"} | logfmt | drop level | unwrap value [1s]) without (stream)`, true, nil},
 		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s])`, true, []string{ShardQuantileOverTime}},
 		{
 			`

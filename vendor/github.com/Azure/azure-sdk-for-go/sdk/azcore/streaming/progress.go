@@ -73,3 +73,17 @@ func (p *progress) Seek(offset int64, whence int) (int64, error) {
 func (p *progress) Close() error {
 	return p.rc.Close()
 }
+
+// MultipartContent contains streaming content used in multipart/form payloads.
+type MultipartContent struct {
+	// Body contains the required content body.
+	Body io.ReadSeekCloser
+
+	// ContentType optionally specifies the HTTP Content-Type for this Body.
+	// The default value is application/octet-stream.
+	ContentType string
+
+	// Filename optionally specifies the filename for this Body.
+	// The default value is the field name for the multipart/form section.
+	Filename string
+}

@@ -91,8 +91,12 @@ configs:
     "1":
         log_push_request: false
         limited_log_push_errors: false
+        log_duplicate_metrics: false
+        log_duplicate_stream_info: false
     "2":
         log_push_request: true
+        log_duplicate_metrics: true
+        log_duplicate_stream_info: true
 `)
 
 	tenantConfigs, err := runtime.NewTenantConfigs(runtimeGetter)
@@ -104,6 +108,12 @@ configs:
 	require.Equal(t, true, tenantConfigs.LogPushRequest("2"))
 	require.Equal(t, true, tenantConfigs.LimitedLogPushErrors("3"))
 	require.Equal(t, false, tenantConfigs.LogPushRequest("3"))
+	require.Equal(t, false, tenantConfigs.LogDuplicateMetrics("1"))
+	require.Equal(t, true, tenantConfigs.LogDuplicateMetrics("2"))
+	require.Equal(t, false, tenantConfigs.LogDuplicateMetrics("3"))
+	require.Equal(t, false, tenantConfigs.LogDuplicateStreamInfo("1"))
+	require.Equal(t, true, tenantConfigs.LogDuplicateStreamInfo("2"))
+	require.Equal(t, false, tenantConfigs.LogDuplicateStreamInfo("3"))
 }
 
 func newTestRuntimeconfig(t *testing.T, yaml string) runtime.TenantConfigProvider {

@@ -621,7 +621,7 @@
       "fieldConfig": {
         "defaults": {
           "custom": {},
-          "unit": "s"
+          "unit": "ms"
         },
         "overrides": []
       },
@@ -727,7 +727,7 @@
       "fieldConfig": {
         "defaults": {
           "custom": {},
-          "unit": "s"
+          "unit": "ms"
         },
         "overrides": []
       },
@@ -930,7 +930,7 @@
       "fieldConfig": {
         "defaults": {
           "custom": {},
-          "unit": "s"
+          "unit": "ms"
         },
         "overrides": []
       },
@@ -1135,7 +1135,7 @@
       "fieldConfig": {
         "defaults": {
           "custom": {},
-          "unit": "s"
+          "unit": "ms"
         },
         "overrides": []
       },
@@ -1243,7 +1243,7 @@
       "fieldConfig": {
         "defaults": {
           "custom": {},
-          "unit": "s"
+          "unit": "ms"
         },
         "overrides": []
       },
@@ -1447,7 +1447,7 @@
       "fieldConfig": {
         "defaults": {
           "custom": {},
-          "unit": "s"
+          "unit": "ms"
         },
         "overrides": []
       },

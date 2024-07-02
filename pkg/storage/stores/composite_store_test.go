@@ -45,7 +45,7 @@ func (m mockStore) GetSeries(_ context.Context, _ string, _, _ model.Time, _ ...
 	return nil, nil
 }
 
-func (m mockStore) LabelNamesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string) ([]string, error) {
+func (m mockStore) LabelNamesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string, _ ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 
@@ -210,7 +210,7 @@ func (m mockStoreLabel) LabelValuesForMetricName(_ context.Context, _ string, _,
 	return m.values, nil
 }
 
-func (m mockStoreLabel) LabelNamesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string) ([]string, error) {
+func (m mockStoreLabel) LabelNamesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string, _ ...*labels.Matcher) ([]string, error) {
 	return m.values, nil
 }
 
@@ -420,6 +420,23 @@ func TestFilterForTimeRange(t *testing.T) {
 			from:    3,
 			through: 7,
 			exp:     mkChks(5, 7),
+		},
+		{
+			desc: "ref with from == through",
+			input: []*logproto.ChunkRef{
+				{From: 1, Through: 1}, // outside
+				{From: 2, Through: 2}, // ref.From == from == ref.Through
+				{From: 3, Through: 3}, // inside
+				{From: 4, Through: 4}, // ref.From == through == ref.Through
+				{From: 5, Through: 5}, // outside
+			},
+			from:    2,
+			through: 4,
+			exp: []chunk.Chunk{
+				{ChunkRef: logproto.ChunkRef{From: 2, Through: 2}},
+				{ChunkRef: logproto.ChunkRef{From: 3, Through: 3}},
+				{ChunkRef: logproto.ChunkRef{From: 4, Through: 4}},
+			},
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {

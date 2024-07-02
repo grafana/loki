@@ -8,7 +8,6 @@ package runtime
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -16,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/arm/internal/resource"
 	armpolicy "github.com/Azure/azure-sdk-for-go/sdk/azcore/arm/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/exported"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/shared"
@@ -44,6 +44,9 @@ func setDefaults(r *armpolicy.RegistrationOptions) {
 	}
 	if r.PollingDuration == 0 {
 		r.PollingDuration = 5 * time.Minute
+	}
+	if len(r.StatusCodes) == 0 {
+		r.StatusCodes = []int{http.StatusConflict}
 	}
 }
 
@@ -88,7 +91,7 @@ func (r *rpRegistrationPolicy) Do(req *azpolicy.Request) (*http.Response, error)
 		// make the original request
 		resp, err = req.Next()
 		// getting a 409 is the first indication that the RP might need to be registered, check error response
-		if err != nil || resp.StatusCode != http.StatusConflict {
+		if err != nil || !runtime.HasStatusCode(resp, r.options.StatusCodes...) {
 			return resp, err
 		}
 		var reqErr requestError
@@ -105,17 +108,12 @@ func (r *rpRegistrationPolicy) Do(req *azpolicy.Request) (*http.Response, error)
 			// to the caller so its error unmarshalling will kick in
 			return resp, err
 		}
-		// RP needs to be registered.  start by getting the subscription ID from the original request
-		subID, err := getSubscription(req.Raw().URL.Path)
+		res, err := resource.ParseResourceID(req.Raw().URL.Path)
 		if err != nil {
 			return resp, err
 		}
-		// now get the RP from the error
-		rp, err = getProvider(reqErr)
-		if err != nil {
-			return resp, err
-		}
-		logRegistrationExit := func(v interface{}) {
+		rp = res.ResourceType.Namespace
+		logRegistrationExit := func(v any) {
 			log.Writef(LogRPRegistration, "END registration for %s: %v", rp, v)
 		}
 		log.Writef(LogRPRegistration, "BEGIN registration for %s", rp)
@@ -124,7 +122,7 @@ func (r *rpRegistrationPolicy) Do(req *azpolicy.Request) (*http.Response, error)
 		rpOps := &providersOperations{
 			p:     r.pipeline,
 			u:     r.endpoint,
-			subID: subID,
+			subID: res.SubscriptionID,
 		}
 		if _, err = rpOps.Register(&shared.ContextWithDeniedValues{Context: req.Raw().Context()}, rp); err != nil {
 			logRegistrationExit(err)
@@ -189,36 +187,13 @@ func isUnregisteredRPCode(errorCode string) bool {
 	return false
 }
 
-func getSubscription(path string) (string, error) {
-	parts := strings.Split(path, "/")
-	for i, v := range parts {
-		if v == "subscriptions" && (i+1) < len(parts) {
-			return parts[i+1], nil
-		}
-	}
-	return "", fmt.Errorf("failed to obtain subscription ID from %s", path)
-}
-
-func getProvider(re requestError) (string, error) {
-	if len(re.ServiceError.Details) > 0 {
-		return re.ServiceError.Details[0].Target, nil
-	}
-	return "", errors.New("unexpected empty Details")
-}
-
 // minimal error definitions to simplify detection
 type requestError struct {
 	ServiceError *serviceError `json:"error"`
 }
 
 type serviceError struct {
-	Code    string                `json:"code"`
-	Details []serviceErrorDetails `json:"details"`
-}
-
-type serviceErrorDetails struct {
-	Code   string `json:"code"`
-	Target string `json:"target"`
+	Code string `json:"code"`
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////

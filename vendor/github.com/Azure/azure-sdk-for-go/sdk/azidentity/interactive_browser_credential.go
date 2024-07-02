@@ -33,8 +33,8 @@ type InteractiveBrowserCredentialOptions struct {
 	ClientID string
 
 	// disableAutomaticAuthentication prevents the credential from automatically prompting the user to authenticate.
-	// When this option is true, [InteractiveBrowserCredential.GetToken] will return [ErrAuthenticationRequired] when
-	// user interaction is necessary to acquire a token.
+	// When this option is true, GetToken will return authenticationRequiredError when user interaction is necessary
+	// to acquire a token.
 	disableAutomaticAuthentication bool
 
 	// DisableInstanceDiscovery should be set true only by applications authenticating in disconnected clouds, or

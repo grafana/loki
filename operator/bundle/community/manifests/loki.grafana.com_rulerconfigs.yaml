@@ -107,6 +107,9 @@ spec:
                             description: The client-side certificate file path for
                               the TLS configuration.
                             type: string
+                          insecureSkipVerify:
+                            description: Skip validating server certificate.
+                            type: boolean
                           keyPath:
                             description: The client-side key file path for the TLS
                               configuration.
@@ -310,6 +313,9 @@ spec:
                                   description: The client-side certificate file path
                                     for the TLS configuration.
                                   type: string
+                                insecureSkipVerify:
+                                  description: Skip validating server certificate.
+                                  type: boolean
                                 keyPath:
                                   description: The client-side key file path for the
                                     TLS configuration.

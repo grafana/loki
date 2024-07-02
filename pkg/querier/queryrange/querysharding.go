@@ -146,9 +146,10 @@ func (ast *astMapperware) checkQuerySizeLimit(ctx context.Context, bytesPerShard
 }
 
 func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	logger := spanlogger.FromContextWithFallback(
+	logger := util_log.WithContext(ctx, ast.logger)
+	spLogger := spanlogger.FromContextWithFallback(
 		ctx,
-		util_log.WithContext(ctx, ast.logger),
+		logger,
 	)
 
 	params, err := ParamsFromRequest(r)
@@ -158,14 +159,14 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 
 	maxRVDuration, maxOffset, err := maxRangeVectorAndOffsetDuration(params.GetExpression())
 	if err != nil {
-		level.Warn(logger).Log("err", err.Error(), "msg", "failed to get range-vector and offset duration so skipped AST mapper for request")
+		level.Warn(spLogger).Log("err", err.Error(), "msg", "failed to get range-vector and offset duration so skipped AST mapper for request")
 		return ast.next.Do(ctx, r)
 	}
 
 	conf, err := ast.confs.GetConf(int64(model.Time(r.GetStart().UnixMilli()).Add(-maxRVDuration).Add(-maxOffset)), int64(model.Time(r.GetEnd().UnixMilli()).Add(-maxOffset)))
 	// cannot shard with this timerange
 	if err != nil {
-		level.Warn(logger).Log("err", err.Error(), "msg", "skipped AST mapper for request")
+		level.Warn(spLogger).Log("err", err.Error(), "msg", "skipped AST mapper for request")
 		return ast.next.Do(ctx, r)
 	}
 
@@ -200,7 +201,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	v := ast.limits.TSDBShardingStrategy(tenants[0])
 	version, err := logql.ParseShardVersion(v)
 	if err != nil {
-		level.Warn(logger).Log(
+		level.Warn(spLogger).Log(
 			"msg", "failed to parse shard version",
 			"fallback", version.String(),
 			"err", err.Error(),
@@ -214,7 +215,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 
 	noop, bytesPerShard, parsed, err := mapper.Parse(params.GetExpression())
 	if err != nil {
-		level.Warn(logger).Log("msg", "failed mapping AST", "err", err.Error(), "query", r.GetQuery())
+		level.Warn(spLogger).Log("msg", "failed mapping AST", "err", err.Error(), "query", r.GetQuery())
 		return nil, err
 	}
 	level.Debug(logger).Log("no-op", noop, "mapped", parsed.String())

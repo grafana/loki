@@ -410,6 +410,20 @@ type VectorAggEvaluator struct {
 	lb            *labels.Builder
 }
 
+func NewVectorAggEvaluator(
+	nextEvaluator StepEvaluator,
+	expr *syntax.VectorAggregationExpr,
+	buf []byte,
+	lb *labels.Builder,
+) *VectorAggEvaluator {
+	return &VectorAggEvaluator{
+		nextEvaluator: nextEvaluator,
+		expr:          expr,
+		buf:           buf,
+		lb:            lb,
+	}
+}
+
 func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
 	next, ts, r := e.nextEvaluator.Next()
 
@@ -684,9 +698,7 @@ func newRangeAggEvaluator(
 			return nil, err
 		}
 
-		return &RangeVectorEvaluator{
-			iter: iter,
-		}, nil
+		return NewRangeVectorEvaluator(iter), nil
 	}
 }
 
@@ -694,6 +706,12 @@ type RangeVectorEvaluator struct {
 	iter RangeVectorIterator
 
 	err error
+}
+
+func NewRangeVectorEvaluator(iter RangeVectorIterator) *RangeVectorEvaluator {
+	return &RangeVectorEvaluator{
+		iter: iter,
+	}
 }
 
 func (r *RangeVectorEvaluator) Next() (bool, int64, StepResult) {
@@ -805,7 +823,7 @@ func newBinOpStepEvaluator(
 
 	var lse, rse StepEvaluator
 
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancelCause(ctx)
 	g := errgroup.Group{}
 
 	// We have two non-literal legs,
@@ -814,7 +832,7 @@ func newBinOpStepEvaluator(
 		var err error
 		lse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q)
 		if err != nil {
-			cancel()
+			cancel(fmt.Errorf("new step evaluator for left leg errored: %w", err))
 		}
 		return err
 	})
@@ -822,7 +840,7 @@ func newBinOpStepEvaluator(
 		var err error
 		rse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q)
 		if err != nil {
-			cancel()
+			cancel(fmt.Errorf("new step evaluator for right leg errored: %w", err))
 		}
 		return err
 	})

@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"io"
-	"math"
 	"sort"
 
 	"github.com/go-kit/log"
@@ -208,22 +207,12 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, _ string, interval blo
 		return nil, nil
 	}
 
-	firstFp, lastFp := uint64(math.MaxUint64), uint64(0)
 	pos := make(map[string]int)
 	servers := make([]addrWithGroups, 0, len(blocks))
 	for _, blockWithSeries := range blocks {
 		addr, err := c.pool.Addr(blockWithSeries.block.String())
 		if err != nil {
 			return nil, errors.Wrapf(err, "server address for block: %s", blockWithSeries.block)
-		}
-
-		// min/max fingerprint needed for the cache locality score
-		first, last := getFirstLast(blockWithSeries.series)
-		if first.Fingerprint < firstFp {
-			firstFp = first.Fingerprint
-		}
-		if last.Fingerprint > lastFp {
-			lastFp = last.Fingerprint
 		}
 
 		if idx, found := pos[addr]; found {

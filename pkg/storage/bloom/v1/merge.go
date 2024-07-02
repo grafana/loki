@@ -13,9 +13,9 @@ type HeapIterator[T any] struct {
 	ok    bool
 }
 
-func NewHeapIterForSeriesWithBloom(queriers ...PeekingIterator[*SeriesWithBloom]) *HeapIterator[*SeriesWithBloom] {
+func NewHeapIterForSeriesWithBloom(queriers ...PeekingIterator[*SeriesWithBlooms]) *HeapIterator[*SeriesWithBlooms] {
 	return NewHeapIterator(
-		func(a, b *SeriesWithBloom) bool {
+		func(a, b *SeriesWithBlooms) bool {
 			return a.Series.Fingerprint < b.Series.Fingerprint
 		},
 		queriers...,

@@ -168,9 +168,9 @@ func newBatchedBlockLoader(
 }
 
 // compiler checks
-var _ v1.Iterator[*v1.SeriesWithBloom] = &blockLoadingIter{}
-var _ v1.CloseableIterator[*v1.SeriesWithBloom] = &blockLoadingIter{}
-var _ v1.ResettableIterator[*v1.SeriesWithBloom] = &blockLoadingIter{}
+var _ v1.Iterator[*v1.SeriesWithBlooms] = &blockLoadingIter{}
+var _ v1.CloseableIterator[*v1.SeriesWithBlooms] = &blockLoadingIter{}
+var _ v1.ResettableIterator[*v1.SeriesWithBlooms] = &blockLoadingIter{}
 
 // TODO(chaudum): testware
 func newBlockLoadingIter(ctx context.Context, blocks []bloomshipper.BlockRef, fetcher FetchFunc[bloomshipper.BlockRef, *bloomshipper.CloseableBlockQuerier], batchSize int) *blockLoadingIter {
@@ -196,13 +196,13 @@ type blockLoadingIter struct {
 	// internals
 	initialized bool
 	err         error
-	iter        v1.Iterator[*v1.SeriesWithBloom]
+	iter        v1.Iterator[*v1.SeriesWithBlooms]
 	loader      *batchedLoader[bloomshipper.BlockRef, *bloomshipper.CloseableBlockQuerier, *bloomshipper.CloseableBlockQuerier]
 	loaded      map[io.Closer]struct{}
 }
 
 // At implements v1.Iterator.
-func (i *blockLoadingIter) At() *v1.SeriesWithBloom {
+func (i *blockLoadingIter) At() *v1.SeriesWithBlooms {
 	if !i.initialized {
 		panic("iterator not initialized")
 	}
@@ -229,7 +229,7 @@ func (i *blockLoadingIter) init() {
 	i.overlapping = overlappingBlocksIter(i.inputs)
 
 	// set initial iter
-	i.iter = v1.NewEmptyIter[*v1.SeriesWithBloom]()
+	i.iter = v1.NewEmptyIter[*v1.SeriesWithBlooms]()
 
 	// set "match all" filter function if not present
 	if i.filter == nil {
@@ -249,14 +249,14 @@ func (i *blockLoadingIter) loadNext() bool {
 		loader := newBatchedBlockLoader(i.ctx, i.fetcher, blockRefs, i.batchSize)
 		filtered := v1.NewFilterIter[*bloomshipper.CloseableBlockQuerier](loader, i.filter)
 
-		iters := make([]v1.PeekingIterator[*v1.SeriesWithBloom], 0, len(blockRefs))
+		iters := make([]v1.PeekingIterator[*v1.SeriesWithBlooms], 0, len(blockRefs))
 		for filtered.Next() {
 			bq := filtered.At()
 			i.loaded[bq] = struct{}{}
 			iter, err := bq.SeriesIter()
 			if err != nil {
 				i.err = err
-				i.iter = v1.NewEmptyIter[*v1.SeriesWithBloom]()
+				i.iter = v1.NewEmptyIter[*v1.SeriesWithBlooms]()
 				return false
 			}
 			iters = append(iters, iter)
@@ -264,7 +264,7 @@ func (i *blockLoadingIter) loadNext() bool {
 
 		if err := filtered.Err(); err != nil {
 			i.err = err
-			i.iter = v1.NewEmptyIter[*v1.SeriesWithBloom]()
+			i.iter = v1.NewEmptyIter[*v1.SeriesWithBlooms]()
 			return false
 		}
 
@@ -278,12 +278,12 @@ func (i *blockLoadingIter) loadNext() bool {
 		// two overlapping blocks can conceivably have the same series, so we need to dedupe,
 		// preferring the one with the most chunks already indexed since we'll have
 		// to add fewer chunks to the bloom
-		i.iter = v1.NewDedupingIter[*v1.SeriesWithBloom, *v1.SeriesWithBloom](
-			func(a, b *v1.SeriesWithBloom) bool {
+		i.iter = v1.NewDedupingIter[*v1.SeriesWithBlooms, *v1.SeriesWithBlooms](
+			func(a, b *v1.SeriesWithBlooms) bool {
 				return a.Series.Fingerprint == b.Series.Fingerprint
 			},
-			v1.Identity[*v1.SeriesWithBloom],
-			func(a, b *v1.SeriesWithBloom) *v1.SeriesWithBloom {
+			v1.Identity[*v1.SeriesWithBlooms],
+			func(a, b *v1.SeriesWithBlooms) *v1.SeriesWithBlooms {
 				if len(a.Series.Chunks) > len(b.Series.Chunks) {
 					return a
 				}
@@ -294,7 +294,7 @@ func (i *blockLoadingIter) loadNext() bool {
 		return i.iter.Next()
 	}
 
-	i.iter = v1.NewEmptyIter[*v1.SeriesWithBloom]()
+	i.iter = v1.NewEmptyIter[*v1.SeriesWithBlooms]()
 	i.err = i.overlapping.Err()
 	return false
 }

@@ -320,6 +320,7 @@ message LabelNamesForMetricNameRequest {
     (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
     (gogoproto.nullable) = false
   ];
+  string matchers = 4;
 }
 
 // TODO(owen-d): fix. This will break rollouts as soon as the internal repr is changed.

@@ -556,8 +556,7 @@ const (
 	ObjectStorageSchemaV13 ObjectStorageSchemaVersion = "v13"
 )
 
-// ObjectStorageSchema defines the requirements needed to configure a new
-// storage schema.
+// ObjectStorageSchema defines a schema version and the date when it will become effective.
 type ObjectStorageSchema struct {
 	// Version for writing and reading logs.
 	//
@@ -566,9 +565,12 @@ type ObjectStorageSchema struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:v11","urn:alm:descriptor:com.tectonic.ui:select:v12","urn:alm:descriptor:com.tectonic.ui:select:v13"},displayName="Version"
 	Version ObjectStorageSchemaVersion `json:"version"`
 
-	// EffectiveDate is the date in UTC that the schema will be applied on.
-	// To ensure readibility of logs, this date should be before the current
-	// date in UTC.
+	// EffectiveDate contains a date in YYYY-MM-DD format which is interpreted in the UTC time zone.
+	//
+	// The configuration always needs at least one schema that is currently valid. This means that when creating a new
+	// LokiStack it is recommended to add a schema with the latest available version and an effective date of "yesterday".
+	// New schema versions added to the configuration always needs to be placed "in the future", so that Loki can start
+	// using it once the day rolls over.
 	//
 	// +required
 	// +kubebuilder:validation:Required

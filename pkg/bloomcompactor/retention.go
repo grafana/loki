@@ -95,7 +95,7 @@ type RetentionLimits interface {
 type RetentionManager struct {
 	cfg        RetentionConfig
 	limits     RetentionLimits
-	bloomStore bloomshipper.Store
+	bloomStore bloomshipper.StoreBase
 	sharding   retentionSharding
 	metrics    *Metrics
 	logger     log.Logger
@@ -108,7 +108,7 @@ type RetentionManager struct {
 func NewRetentionManager(
 	cfg RetentionConfig,
 	limits RetentionLimits,
-	bloomStore bloomshipper.Store,
+	bloomStore bloomshipper.StoreBase,
 	sharding retentionSharding,
 	metrics *Metrics,
 	logger log.Logger,

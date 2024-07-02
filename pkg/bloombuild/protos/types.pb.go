@@ -80,6 +80,57 @@ func (m *ProtoFingerprintBounds) GetMax() github_com_prometheus_common_model.Fin
 	return 0
 }
 
+type DayTable struct {
+	DayTimestampMS int64  `protobuf:"varint,1,opt,name=dayTimestampMS,proto3" json:"dayTimestampMS,omitempty"`
+	Prefix         string `protobuf:"bytes,2,opt,name=prefix,proto3" json:"prefix,omitempty"`
+}
+
+func (m *DayTable) Reset()      { *m = DayTable{} }
+func (*DayTable) ProtoMessage() {}
+func (*DayTable) Descriptor() ([]byte, []int) {
+	return fileDescriptor_5325fb0610e1e9ae, []int{1}
+}
+func (m *DayTable) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *DayTable) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_DayTable.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *DayTable) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_DayTable.Merge(m, src)
+}
+func (m *DayTable) XXX_Size() int {
+	return m.Size()
+}
+func (m *DayTable) XXX_DiscardUnknown() {
+	xxx_messageInfo_DayTable.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_DayTable proto.InternalMessageInfo
+
+func (m *DayTable) GetDayTimestampMS() int64 {
+	if m != nil {
+		return m.DayTimestampMS
+	}
+	return 0
+}
+
+func (m *DayTable) GetPrefix() string {
+	if m != nil {
+		return m.Prefix
+	}
+	return ""
+}
+
 type ProtoGapWithBlocks struct {
 	Bounds   ProtoFingerprintBounds `protobuf:"bytes,1,opt,name=bounds,proto3" json:"bounds"`
 	BlockRef []string               `protobuf:"bytes,2,rep,name=blockRef,proto3" json:"blockRef,omitempty"`
@@ -88,7 +139,7 @@ type ProtoGapWithBlocks struct {
 func (m *ProtoGapWithBlocks) Reset()      { *m = ProtoGapWithBlocks{} }
 func (*ProtoGapWithBlocks) ProtoMessage() {}
 func (*ProtoGapWithBlocks) Descriptor() ([]byte, []int) {
-	return fileDescriptor_5325fb0610e1e9ae, []int{1}
+	return fileDescriptor_5325fb0610e1e9ae, []int{2}
 }
 func (m *ProtoGapWithBlocks) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -136,7 +187,7 @@ func (m *ProtoGapWithBlocks) GetBlockRef() []string {
 //	instead of unmarshaling them from strings or doing unsafe casts.
 type ProtoTask struct {
 	Id     string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Table  string                 `protobuf:"bytes,2,opt,name=table,proto3" json:"table,omitempty"`
+	Table  DayTable               `protobuf:"bytes,2,opt,name=table,proto3" json:"table"`
 	Tenant string                 `protobuf:"bytes,3,opt,name=tenant,proto3" json:"tenant,omitempty"`
 	Bounds ProtoFingerprintBounds `protobuf:"bytes,4,opt,name=bounds,proto3" json:"bounds"`
 	Tsdb   string                 `protobuf:"bytes,5,opt,name=tsdb,proto3" json:"tsdb,omitempty"`
@@ -146,7 +197,7 @@ type ProtoTask struct {
 func (m *ProtoTask) Reset()      { *m = ProtoTask{} }
 func (*ProtoTask) ProtoMessage() {}
 func (*ProtoTask) Descriptor() ([]byte, []int) {
-	return fileDescriptor_5325fb0610e1e9ae, []int{2}
+	return fileDescriptor_5325fb0610e1e9ae, []int{3}
 }
 func (m *ProtoTask) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -182,11 +233,11 @@ func (m *ProtoTask) GetId() string {
 	return ""
 }
 
-func (m *ProtoTask) GetTable() string {
+func (m *ProtoTask) GetTable() DayTable {
 	if m != nil {
 		return m.Table
 	}
-	return ""
+	return DayTable{}
 }
 
 func (m *ProtoTask) GetTenant() string {
@@ -217,41 +268,172 @@ func (m *ProtoTask) GetGaps() []*ProtoGapWithBlocks {
 	return nil
 }
 
+type ProtoMeta struct {
+	MetaRef      string   `protobuf:"bytes,1,opt,name=metaRef,proto3" json:"metaRef,omitempty"`
+	SourcesTSDBs []string `protobuf:"bytes,2,rep,name=sourcesTSDBs,proto3" json:"sourcesTSDBs,omitempty"`
+	BlockRefs    []string `protobuf:"bytes,3,rep,name=blockRefs,proto3" json:"blockRefs,omitempty"`
+}
+
+func (m *ProtoMeta) Reset()      { *m = ProtoMeta{} }
+func (*ProtoMeta) ProtoMessage() {}
+func (*ProtoMeta) Descriptor() ([]byte, []int) {
+	return fileDescriptor_5325fb0610e1e9ae, []int{4}
+}
+func (m *ProtoMeta) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ProtoMeta) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ProtoMeta.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *ProtoMeta) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ProtoMeta.Merge(m, src)
+}
+func (m *ProtoMeta) XXX_Size() int {
+	return m.Size()
+}
+func (m *ProtoMeta) XXX_DiscardUnknown() {
+	xxx_messageInfo_ProtoMeta.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ProtoMeta proto.InternalMessageInfo
+
+func (m *ProtoMeta) GetMetaRef() string {
+	if m != nil {
+		return m.MetaRef
+	}
+	return ""
+}
+
+func (m *ProtoMeta) GetSourcesTSDBs() []string {
+	if m != nil {
+		return m.SourcesTSDBs
+	}
+	return nil
+}
+
+func (m *ProtoMeta) GetBlockRefs() []string {
+	if m != nil {
+		return m.BlockRefs
+	}
+	return nil
+}
+
+type ProtoTaskResult struct {
+	TaskID       string       `protobuf:"bytes,1,opt,name=taskID,proto3" json:"taskID,omitempty"`
+	Error        string       `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	CreatedMetas []*ProtoMeta `protobuf:"bytes,3,rep,name=createdMetas,proto3" json:"createdMetas,omitempty"`
+}
+
+func (m *ProtoTaskResult) Reset()      { *m = ProtoTaskResult{} }
+func (*ProtoTaskResult) ProtoMessage() {}
+func (*ProtoTaskResult) Descriptor() ([]byte, []int) {
+	return fileDescriptor_5325fb0610e1e9ae, []int{5}
+}
+func (m *ProtoTaskResult) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ProtoTaskResult) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ProtoTaskResult.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *ProtoTaskResult) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ProtoTaskResult.Merge(m, src)
+}
+func (m *ProtoTaskResult) XXX_Size() int {
+	return m.Size()
+}
+func (m *ProtoTaskResult) XXX_DiscardUnknown() {
+	xxx_messageInfo_ProtoTaskResult.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ProtoTaskResult proto.InternalMessageInfo
+
+func (m *ProtoTaskResult) GetTaskID() string {
+	if m != nil {
+		return m.TaskID
+	}
+	return ""
+}
+
+func (m *ProtoTaskResult) GetError() string {
+	if m != nil {
+		return m.Error
+	}
+	return ""
+}
+
+func (m *ProtoTaskResult) GetCreatedMetas() []*ProtoMeta {
+	if m != nil {
+		return m.CreatedMetas
+	}
+	return nil
+}
+
 func init() {
 	proto.RegisterType((*ProtoFingerprintBounds)(nil), "protos.ProtoFingerprintBounds")
+	proto.RegisterType((*DayTable)(nil), "protos.DayTable")
 	proto.RegisterType((*ProtoGapWithBlocks)(nil), "protos.ProtoGapWithBlocks")
 	proto.RegisterType((*ProtoTask)(nil), "protos.ProtoTask")
+	proto.RegisterType((*ProtoMeta)(nil), "protos.ProtoMeta")
+	proto.RegisterType((*ProtoTaskResult)(nil), "protos.ProtoTaskResult")
 }
 
 func init() { proto.RegisterFile("pkg/bloombuild/protos/types.proto", fileDescriptor_5325fb0610e1e9ae) }
 
 var fileDescriptor_5325fb0610e1e9ae = []byte{
-	// 393 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xa4, 0x92, 0x31, 0xeb, 0x9b, 0x40,
-	0x18, 0xc6, 0x3d, 0xf5, 0x2f, 0xf5, 0x02, 0x19, 0x8e, 0x10, 0x24, 0xc3, 0x99, 0x66, 0xca, 0xa4,
-	0x90, 0x4e, 0x85, 0x4e, 0x0e, 0xe9, 0xd0, 0xa5, 0x48, 0xa1, 0xd0, 0xed, 0x2e, 0x5e, 0xcd, 0x11,
-	0xf5, 0x24, 0x77, 0x82, 0xdd, 0xfa, 0x11, 0xfa, 0x31, 0x3a, 0xf7, 0x53, 0x64, 0xcc, 0x52, 0xc8,
-	0x24, 0x8d, 0x59, 0x4a, 0xa6, 0xcc, 0x9d, 0x8a, 0xa7, 0x94, 0x04, 0x3a, 0xb5, 0xd3, 0xfb, 0x3c,
-	0xaf, 0xbe, 0xbf, 0xf7, 0x79, 0x45, 0xf8, 0xbc, 0xdc, 0xa5, 0x21, 0xcd, 0x84, 0xc8, 0x69, 0xc5,
-	0xb3, 0x24, 0x2c, 0xf7, 0x42, 0x09, 0x19, 0xaa, 0x4f, 0x25, 0x93, 0x81, 0x36, 0xc8, 0xe9, 0x7b,
-	0xb3, 0x49, 0x2a, 0x52, 0xa1, 0x75, 0xd8, 0xa9, 0xfe, 0xe9, 0xe2, 0x1b, 0x80, 0xd3, 0xb7, 0x9d,
-	0x5a, 0xf3, 0x22, 0x65, 0xfb, 0x72, 0xcf, 0x0b, 0x15, 0x89, 0xaa, 0x48, 0x24, 0x7a, 0x03, 0xad,
-	0x9c, 0x17, 0x1e, 0x98, 0x83, 0xa5, 0x1d, 0xbd, 0xbc, 0x36, 0x7e, 0x67, 0x7f, 0x35, 0x7e, 0x90,
-	0x72, 0xb5, 0xad, 0x68, 0xb0, 0x11, 0x79, 0xb7, 0x2f, 0x67, 0x6a, 0xcb, 0x2a, 0x19, 0x6e, 0x44,
-	0x9e, 0x8b, 0x22, 0xcc, 0x45, 0xc2, 0xb2, 0xe0, 0x8e, 0x16, 0x77, 0x63, 0x1a, 0x46, 0x6a, 0xcf,
-	0xbc, 0x83, 0x91, 0xfa, 0x9f, 0x60, 0xa4, 0x5e, 0xd4, 0x10, 0xe9, 0xcc, 0xaf, 0x49, 0xf9, 0x9e,
-	0xab, 0x6d, 0x94, 0x89, 0xcd, 0x4e, 0xa2, 0x35, 0x74, 0xa8, 0x4e, 0xae, 0x23, 0x8f, 0x56, 0xb8,
-	0x3f, 0x51, 0x06, 0x7f, 0xbf, 0x2f, 0x1a, 0x1f, 0x1a, 0xdf, 0xb8, 0x36, 0xfe, 0x30, 0x15, 0x0f,
-	0x15, 0xcd, 0xe0, 0x33, 0xda, 0x11, 0x63, 0xf6, 0xd1, 0x33, 0xe7, 0xd6, 0xd2, 0x8d, 0xff, 0xf8,
-	0xc5, 0x77, 0x00, 0x5d, 0x8d, 0x7b, 0x47, 0xe4, 0x0e, 0x8d, 0xa1, 0xc9, 0x13, 0xbd, 0xcd, 0x8d,
-	0x4d, 0x9e, 0xa0, 0x09, 0x7c, 0x52, 0x84, 0x66, 0x4c, 0x9f, 0xe9, 0xc6, 0xbd, 0x41, 0x53, 0xe8,
-	0x28, 0x56, 0x90, 0x42, 0x79, 0x96, 0x6e, 0x0f, 0xee, 0x2e, 0xaf, 0xfd, 0x5f, 0x79, 0x11, 0xb4,
-	0x95, 0x4c, 0xa8, 0xf7, 0xa4, 0xe9, 0x5a, 0xa3, 0x00, 0xda, 0x29, 0x29, 0xa5, 0xe7, 0xcc, 0xad,
-	0xe5, 0x68, 0x35, 0x7b, 0x20, 0x3f, 0x7c, 0xb5, 0x58, 0xbf, 0x17, 0xbd, 0x3a, 0x9e, 0xb1, 0x71,
-	0x3a, 0x63, 0xe3, 0x76, 0xc6, 0xe0, 0x73, 0x8b, 0xc1, 0xd7, 0x16, 0x83, 0x43, 0x8b, 0xc1, 0xb1,
-	0xc5, 0xe0, 0x47, 0x8b, 0xc1, 0xcf, 0x16, 0x1b, 0xb7, 0x16, 0x83, 0x2f, 0x17, 0x6c, 0x1c, 0x2f,
-	0xd8, 0x38, 0x5d, 0xb0, 0xf1, 0x61, 0xf8, 0xb5, 0x68, 0x5f, 0x5f, 0xfc, 0x0e, 0x00, 0x00, 0xff,
-	0xff, 0x57, 0x05, 0xc7, 0x5d, 0x8e, 0x02, 0x00, 0x00,
+	// 551 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xa4, 0x53, 0xb1, 0x6f, 0xd3, 0x4e,
+	0x18, 0xb5, 0xe3, 0x34, 0xbf, 0xe6, 0xd2, 0x5f, 0x81, 0x53, 0x55, 0x59, 0x11, 0xba, 0x04, 0x0f,
+	0x28, 0x93, 0x2d, 0x05, 0x75, 0x40, 0x62, 0xb2, 0xa2, 0x22, 0x40, 0x95, 0xd0, 0x35, 0x12, 0x12,
+	0xdb, 0x39, 0xbe, 0x3a, 0x56, 0x6c, 0x9f, 0xe5, 0x3b, 0xa3, 0x64, 0xe3, 0x4f, 0xe0, 0xcf, 0x60,
+	0xe6, 0xaf, 0xe8, 0x98, 0xb1, 0x53, 0x44, 0x9c, 0x05, 0x75, 0xea, 0xc4, 0xc0, 0x84, 0xee, 0xce,
+	0x29, 0x09, 0x62, 0x82, 0xe9, 0xbe, 0xf7, 0xdd, 0x77, 0xef, 0x7b, 0xef, 0xc9, 0x06, 0x4f, 0xf2,
+	0x59, 0xe4, 0x05, 0x09, 0x63, 0x69, 0x50, 0xc6, 0x49, 0xe8, 0xe5, 0x05, 0x13, 0x8c, 0x7b, 0x62,
+	0x91, 0x53, 0xee, 0x2a, 0x00, 0x5b, 0xba, 0xd7, 0x3d, 0x89, 0x58, 0xc4, 0x54, 0xed, 0xc9, 0x4a,
+	0xdf, 0x3a, 0x5f, 0x4c, 0x70, 0xfa, 0x56, 0x56, 0xe7, 0x71, 0x16, 0xd1, 0x22, 0x2f, 0xe2, 0x4c,
+	0xf8, 0xac, 0xcc, 0x42, 0x0e, 0xdf, 0x00, 0x2b, 0x8d, 0x33, 0xdb, 0xec, 0x9b, 0x83, 0xa6, 0xff,
+	0xfc, 0x76, 0xd5, 0x93, 0xf0, 0xc7, 0xaa, 0xe7, 0x46, 0xb1, 0x98, 0x96, 0x81, 0x3b, 0x61, 0xa9,
+	0xdc, 0x97, 0x52, 0x31, 0xa5, 0x25, 0xf7, 0x26, 0x2c, 0x4d, 0x59, 0xe6, 0xa5, 0x2c, 0xa4, 0x89,
+	0xbb, 0xc3, 0x86, 0xe5, 0x33, 0x45, 0x46, 0xe6, 0x76, 0x63, 0x87, 0x8c, 0xcc, 0xff, 0x8a, 0x8c,
+	0xcc, 0x9d, 0xd7, 0xe0, 0x70, 0x44, 0x16, 0x63, 0x12, 0x24, 0x14, 0x3e, 0x05, 0xc7, 0x21, 0x59,
+	0x8c, 0xe3, 0x94, 0x72, 0x41, 0xd2, 0xfc, 0xe2, 0x52, 0x09, 0xb6, 0xf0, 0x6f, 0x5d, 0x78, 0x0a,
+	0x5a, 0x79, 0x41, 0xaf, 0x62, 0xad, 0xa1, 0x8d, 0x6b, 0xe4, 0xcc, 0x01, 0x54, 0xfe, 0x5f, 0x92,
+	0xfc, 0x5d, 0x2c, 0xa6, 0x7e, 0xc2, 0x26, 0x33, 0x0e, 0xcf, 0x41, 0x2b, 0x50, 0x29, 0x28, 0xb6,
+	0xce, 0x10, 0xe9, 0xb8, 0xb8, 0xfb, 0xe7, 0xac, 0xfc, 0xe3, 0xeb, 0x55, 0xcf, 0xb8, 0x5d, 0xf5,
+	0xea, 0x57, 0xb8, 0x3e, 0x61, 0x17, 0x1c, 0x06, 0x92, 0x11, 0xd3, 0x2b, 0xbb, 0xd1, 0xb7, 0x06,
+	0x6d, 0x7c, 0x8f, 0x9d, 0xef, 0x26, 0x68, 0x2b, 0xba, 0x31, 0xe1, 0x33, 0x78, 0x0c, 0x1a, 0x71,
+	0xa8, 0xb6, 0xb5, 0x71, 0x23, 0x0e, 0xe1, 0x19, 0x38, 0x10, 0xd2, 0xa0, 0x92, 0xdb, 0x19, 0x3e,
+	0xdc, 0x0a, 0xd8, 0x1a, 0xf7, 0xff, 0xaf, 0x57, 0xea, 0x31, 0xac, 0x0f, 0x69, 0x53, 0xd0, 0x8c,
+	0x64, 0xc2, 0xb6, 0xb4, 0x4d, 0x8d, 0x76, 0x0c, 0x35, 0xff, 0xc9, 0x10, 0x04, 0x4d, 0xc1, 0xc3,
+	0xc0, 0x3e, 0x50, 0xec, 0xaa, 0x86, 0x2e, 0x68, 0x46, 0x24, 0xe7, 0x76, 0xab, 0x6f, 0x0d, 0x3a,
+	0xc3, 0xee, 0x1e, 0xf3, 0x5e, 0xac, 0x58, 0xcd, 0x39, 0x51, 0xed, 0xfb, 0x82, 0x0a, 0x02, 0x6d,
+	0xf0, 0x5f, 0x4a, 0x05, 0x91, 0x01, 0x69, 0xf3, 0x5b, 0x08, 0x1d, 0x70, 0xc4, 0x59, 0x59, 0x4c,
+	0x28, 0x1f, 0x5f, 0x8e, 0x7c, 0x5e, 0xe7, 0xb7, 0xd7, 0x83, 0x8f, 0x41, 0x7b, 0x9b, 0x27, 0xb7,
+	0x2d, 0x35, 0xf0, 0xab, 0xe1, 0x7c, 0x00, 0x0f, 0xee, 0x03, 0xc6, 0x94, 0x97, 0x89, 0x50, 0xf9,
+	0x10, 0x3e, 0x7b, 0x35, 0xaa, 0xb7, 0xd5, 0x08, 0x9e, 0x80, 0x03, 0x5a, 0x14, 0xac, 0xa8, 0xbf,
+	0x0e, 0x0d, 0xe0, 0x19, 0x38, 0x9a, 0x14, 0x94, 0x08, 0x1a, 0x4a, 0xad, 0x7a, 0x43, 0x67, 0xf8,
+	0x68, 0xcf, 0xa1, 0xbc, 0xc1, 0x7b, 0x63, 0xfe, 0x8b, 0xe5, 0x1a, 0x19, 0x37, 0x6b, 0x64, 0xdc,
+	0xad, 0x91, 0xf9, 0xb1, 0x42, 0xe6, 0xe7, 0x0a, 0x99, 0xd7, 0x15, 0x32, 0x97, 0x15, 0x32, 0xbf,
+	0x56, 0xc8, 0xfc, 0x56, 0x21, 0xe3, 0xae, 0x42, 0xe6, 0xa7, 0x0d, 0x32, 0x96, 0x1b, 0x64, 0xdc,
+	0x6c, 0x90, 0xf1, 0xbe, 0xfe, 0x51, 0x03, 0x7d, 0x3e, 0xfb, 0x19, 0x00, 0x00, 0xff, 0xff, 0xdc,
+	0x0e, 0x2e, 0xd1, 0xdc, 0x03, 0x00, 0x00,
 }
 
 func (this *ProtoFingerprintBounds) Equal(that interface{}) bool {
@@ -277,6 +459,33 @@ func (this *ProtoFingerprintBounds) Equal(that interface{}) bool {
 		return false
 	}
 	if this.Max != that1.Max {
+		return false
+	}
+	return true
+}
+func (this *DayTable) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*DayTable)
+	if !ok {
+		that2, ok := that.(DayTable)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.DayTimestampMS != that1.DayTimestampMS {
+		return false
+	}
+	if this.Prefix != that1.Prefix {
 		return false
 	}
 	return true
@@ -335,7 +544,7 @@ func (this *ProtoTask) Equal(that interface{}) bool {
 	if this.Id != that1.Id {
 		return false
 	}
-	if this.Table != that1.Table {
+	if !this.Table.Equal(&that1.Table) {
 		return false
 	}
 	if this.Tenant != that1.Tenant {
@@ -357,6 +566,81 @@ func (this *ProtoTask) Equal(that interface{}) bool {
 	}
 	return true
 }
+func (this *ProtoMeta) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ProtoMeta)
+	if !ok {
+		that2, ok := that.(ProtoMeta)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.MetaRef != that1.MetaRef {
+		return false
+	}
+	if len(this.SourcesTSDBs) != len(that1.SourcesTSDBs) {
+		return false
+	}
+	for i := range this.SourcesTSDBs {
+		if this.SourcesTSDBs[i] != that1.SourcesTSDBs[i] {
+			return false
+		}
+	}
+	if len(this.BlockRefs) != len(that1.BlockRefs) {
+		return false
+	}
+	for i := range this.BlockRefs {
+		if this.BlockRefs[i] != that1.BlockRefs[i] {
+			return false
+		}
+	}
+	return true
+}
+func (this *ProtoTaskResult) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ProtoTaskResult)
+	if !ok {
+		that2, ok := that.(ProtoTaskResult)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.TaskID != that1.TaskID {
+		return false
+	}
+	if this.Error != that1.Error {
+		return false
+	}
+	if len(this.CreatedMetas) != len(that1.CreatedMetas) {
+		return false
+	}
+	for i := range this.CreatedMetas {
+		if !this.CreatedMetas[i].Equal(that1.CreatedMetas[i]) {
+			return false
+		}
+	}
+	return true
+}
 func (this *ProtoFingerprintBounds) GoString() string {
 	if this == nil {
 		return "nil"
@@ -365,6 +649,17 @@ func (this *ProtoFingerprintBounds) GoString() string {
 	s = append(s, "&protos.ProtoFingerprintBounds{")
 	s = append(s, "Min: "+fmt.Sprintf("%#v", this.Min)+",\n")
 	s = append(s, "Max: "+fmt.Sprintf("%#v", this.Max)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *DayTable) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&protos.DayTable{")
+	s = append(s, "DayTimestampMS: "+fmt.Sprintf("%#v", this.DayTimestampMS)+",\n")
+	s = append(s, "Prefix: "+fmt.Sprintf("%#v", this.Prefix)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -386,12 +681,38 @@ func (this *ProtoTask) GoString() string {
 	s := make([]string, 0, 10)
 	s = append(s, "&protos.ProtoTask{")
 	s = append(s, "Id: "+fmt.Sprintf("%#v", this.Id)+",\n")
-	s = append(s, "Table: "+fmt.Sprintf("%#v", this.Table)+",\n")
+	s = append(s, "Table: "+strings.Replace(this.Table.GoString(), `&`, ``, 1)+",\n")
 	s = append(s, "Tenant: "+fmt.Sprintf("%#v", this.Tenant)+",\n")
 	s = append(s, "Bounds: "+strings.Replace(this.Bounds.GoString(), `&`, ``, 1)+",\n")
 	s = append(s, "Tsdb: "+fmt.Sprintf("%#v", this.Tsdb)+",\n")
 	if this.Gaps != nil {
 		s = append(s, "Gaps: "+fmt.Sprintf("%#v", this.Gaps)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *ProtoMeta) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 7)
+	s = append(s, "&protos.ProtoMeta{")
+	s = append(s, "MetaRef: "+fmt.Sprintf("%#v", this.MetaRef)+",\n")
+	s = append(s, "SourcesTSDBs: "+fmt.Sprintf("%#v", this.SourcesTSDBs)+",\n")
+	s = append(s, "BlockRefs: "+fmt.Sprintf("%#v", this.BlockRefs)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *ProtoTaskResult) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 7)
+	s = append(s, "&protos.ProtoTaskResult{")
+	s = append(s, "TaskID: "+fmt.Sprintf("%#v", this.TaskID)+",\n")
+	s = append(s, "Error: "+fmt.Sprintf("%#v", this.Error)+",\n")
+	if this.CreatedMetas != nil {
+		s = append(s, "CreatedMetas: "+fmt.Sprintf("%#v", this.CreatedMetas)+",\n")
 	}
 	s = append(s, "}")
 	return strings.Join(s, "")
@@ -431,6 +752,41 @@ func (m *ProtoFingerprintBounds) MarshalToSizedBuffer(dAtA []byte) (int, error) 
 	}
 	if m.Min != 0 {
 		i = encodeVarintTypes(dAtA, i, uint64(m.Min))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *DayTable) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *DayTable) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *DayTable) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Prefix) > 0 {
+		i -= len(m.Prefix)
+		copy(dAtA[i:], m.Prefix)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.Prefix)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.DayTimestampMS != 0 {
+		i = encodeVarintTypes(dAtA, i, uint64(m.DayTimestampMS))
 		i--
 		dAtA[i] = 0x8
 	}
@@ -537,17 +893,119 @@ func (m *ProtoTask) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x1a
 	}
-	if len(m.Table) > 0 {
-		i -= len(m.Table)
-		copy(dAtA[i:], m.Table)
-		i = encodeVarintTypes(dAtA, i, uint64(len(m.Table)))
-		i--
-		dAtA[i] = 0x12
+	{
+		size, err := m.Table.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = encodeVarintTypes(dAtA, i, uint64(size))
 	}
+	i--
+	dAtA[i] = 0x12
 	if len(m.Id) > 0 {
 		i -= len(m.Id)
 		copy(dAtA[i:], m.Id)
 		i = encodeVarintTypes(dAtA, i, uint64(len(m.Id)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *ProtoMeta) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ProtoMeta) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *ProtoMeta) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.BlockRefs) > 0 {
+		for iNdEx := len(m.BlockRefs) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.BlockRefs[iNdEx])
+			copy(dAtA[i:], m.BlockRefs[iNdEx])
+			i = encodeVarintTypes(dAtA, i, uint64(len(m.BlockRefs[iNdEx])))
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
+	if len(m.SourcesTSDBs) > 0 {
+		for iNdEx := len(m.SourcesTSDBs) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.SourcesTSDBs[iNdEx])
+			copy(dAtA[i:], m.SourcesTSDBs[iNdEx])
+			i = encodeVarintTypes(dAtA, i, uint64(len(m.SourcesTSDBs[iNdEx])))
+			i--
+			dAtA[i] = 0x12
+		}
+	}
+	if len(m.MetaRef) > 0 {
+		i -= len(m.MetaRef)
+		copy(dAtA[i:], m.MetaRef)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.MetaRef)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *ProtoTaskResult) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ProtoTaskResult) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *ProtoTaskResult) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.CreatedMetas) > 0 {
+		for iNdEx := len(m.CreatedMetas) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.CreatedMetas[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintTypes(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
+	if len(m.Error) > 0 {
+		i -= len(m.Error)
+		copy(dAtA[i:], m.Error)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.Error)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.TaskID) > 0 {
+		i -= len(m.TaskID)
+		copy(dAtA[i:], m.TaskID)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.TaskID)))
 		i--
 		dAtA[i] = 0xa
 	}
@@ -580,6 +1038,22 @@ func (m *ProtoFingerprintBounds) Size() (n int) {
 	return n
 }
 
+func (m *DayTable) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.DayTimestampMS != 0 {
+		n += 1 + sovTypes(uint64(m.DayTimestampMS))
+	}
+	l = len(m.Prefix)
+	if l > 0 {
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	return n
+}
+
 func (m *ProtoGapWithBlocks) Size() (n int) {
 	if m == nil {
 		return 0
@@ -607,10 +1081,8 @@ func (m *ProtoTask) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovTypes(uint64(l))
 	}
-	l = len(m.Table)
-	if l > 0 {
-		n += 1 + l + sovTypes(uint64(l))
-	}
+	l = m.Table.Size()
+	n += 1 + l + sovTypes(uint64(l))
 	l = len(m.Tenant)
 	if l > 0 {
 		n += 1 + l + sovTypes(uint64(l))
@@ -623,6 +1095,54 @@ func (m *ProtoTask) Size() (n int) {
 	}
 	if len(m.Gaps) > 0 {
 		for _, e := range m.Gaps {
+			l = e.Size()
+			n += 1 + l + sovTypes(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *ProtoMeta) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.MetaRef)
+	if l > 0 {
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	if len(m.SourcesTSDBs) > 0 {
+		for _, s := range m.SourcesTSDBs {
+			l = len(s)
+			n += 1 + l + sovTypes(uint64(l))
+		}
+	}
+	if len(m.BlockRefs) > 0 {
+		for _, s := range m.BlockRefs {
+			l = len(s)
+			n += 1 + l + sovTypes(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *ProtoTaskResult) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.TaskID)
+	if l > 0 {
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	l = len(m.Error)
+	if l > 0 {
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	if len(m.CreatedMetas) > 0 {
+		for _, e := range m.CreatedMetas {
 			l = e.Size()
 			n += 1 + l + sovTypes(uint64(l))
 		}
@@ -643,6 +1163,17 @@ func (this *ProtoFingerprintBounds) String() string {
 	s := strings.Join([]string{`&ProtoFingerprintBounds{`,
 		`Min:` + fmt.Sprintf("%v", this.Min) + `,`,
 		`Max:` + fmt.Sprintf("%v", this.Max) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *DayTable) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&DayTable{`,
+		`DayTimestampMS:` + fmt.Sprintf("%v", this.DayTimestampMS) + `,`,
+		`Prefix:` + fmt.Sprintf("%v", this.Prefix) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -669,11 +1200,40 @@ func (this *ProtoTask) String() string {
 	repeatedStringForGaps += "}"
 	s := strings.Join([]string{`&ProtoTask{`,
 		`Id:` + fmt.Sprintf("%v", this.Id) + `,`,
-		`Table:` + fmt.Sprintf("%v", this.Table) + `,`,
+		`Table:` + strings.Replace(strings.Replace(this.Table.String(), "DayTable", "DayTable", 1), `&`, ``, 1) + `,`,
 		`Tenant:` + fmt.Sprintf("%v", this.Tenant) + `,`,
 		`Bounds:` + strings.Replace(strings.Replace(this.Bounds.String(), "ProtoFingerprintBounds", "ProtoFingerprintBounds", 1), `&`, ``, 1) + `,`,
 		`Tsdb:` + fmt.Sprintf("%v", this.Tsdb) + `,`,
 		`Gaps:` + repeatedStringForGaps + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ProtoMeta) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ProtoMeta{`,
+		`MetaRef:` + fmt.Sprintf("%v", this.MetaRef) + `,`,
+		`SourcesTSDBs:` + fmt.Sprintf("%v", this.SourcesTSDBs) + `,`,
+		`BlockRefs:` + fmt.Sprintf("%v", this.BlockRefs) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ProtoTaskResult) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForCreatedMetas := "[]*ProtoMeta{"
+	for _, f := range this.CreatedMetas {
+		repeatedStringForCreatedMetas += strings.Replace(f.String(), "ProtoMeta", "ProtoMeta", 1) + ","
+	}
+	repeatedStringForCreatedMetas += "}"
+	s := strings.Join([]string{`&ProtoTaskResult{`,
+		`TaskID:` + fmt.Sprintf("%v", this.TaskID) + `,`,
+		`Error:` + fmt.Sprintf("%v", this.Error) + `,`,
+		`CreatedMetas:` + repeatedStringForCreatedMetas + `,`,
 		`}`,
 	}, "")
 	return s
@@ -753,6 +1313,110 @@ func (m *ProtoFingerprintBounds) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTypes(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *DayTable) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTypes
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: DayTable: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: DayTable: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DayTimestampMS", wireType)
+			}
+			m.DayTimestampMS = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.DayTimestampMS |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Prefix", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Prefix = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipTypes(dAtA[iNdEx:])
@@ -960,7 +1624,7 @@ func (m *ProtoTask) Unmarshal(dAtA []byte) error {
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Table", wireType)
 			}
-			var stringLen uint64
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowTypes
@@ -970,23 +1634,24 @@ func (m *ProtoTask) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
+			if msglen < 0 {
 				return ErrInvalidLengthTypes
 			}
-			postIndex := iNdEx + intStringLen
+			postIndex := iNdEx + msglen
 			if postIndex < 0 {
 				return ErrInvalidLengthTypes
 			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Table = string(dAtA[iNdEx:postIndex])
+			if err := m.Table.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
 			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
@@ -1116,6 +1781,306 @@ func (m *ProtoTask) Unmarshal(dAtA []byte) error {
 			}
 			m.Gaps = append(m.Gaps, &ProtoGapWithBlocks{})
 			if err := m.Gaps[len(m.Gaps)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTypes(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ProtoMeta) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTypes
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ProtoMeta: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ProtoMeta: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MetaRef", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.MetaRef = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SourcesTSDBs", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.SourcesTSDBs = append(m.SourcesTSDBs, string(dAtA[iNdEx:postIndex]))
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BlockRefs", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.BlockRefs = append(m.BlockRefs, string(dAtA[iNdEx:postIndex]))
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTypes(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ProtoTaskResult) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTypes
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ProtoTaskResult: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ProtoTaskResult: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TaskID", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.TaskID = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Error", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Error = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CreatedMetas", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.CreatedMetas = append(m.CreatedMetas, &ProtoMeta{})
+			if err := m.CreatedMetas[len(m.CreatedMetas)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex

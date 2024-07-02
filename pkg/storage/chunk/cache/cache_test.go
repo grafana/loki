@@ -36,7 +36,7 @@ func fillCache(t *testing.T, scfg config.SchemaConfig, cache cache.Cache) ([]str
 
 		cs := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncGZIP, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 256*1024, 0)
 
-		err := cs.Append(&logproto.Entry{
+		_, err := cs.Append(&logproto.Entry{
 			Timestamp: ts.Time(),
 			Line:      fmt.Sprintf("line ts=%d", ts),
 		})

@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
 
 // NB(chaudum): Some block pages are way bigger than others (400MiB and
@@ -24,7 +25,7 @@ type Bloom struct {
 
 func (b *Bloom) Encode(enc *encoding.Encbuf) error {
 	// divide by 8 b/c bloom capacity is measured in bits, but we want bytes
-	buf := bytes.NewBuffer(BloomPagePool.Get(int(b.Capacity() / 8)))
+	buf := bytes.NewBuffer(make([]byte, 0, int(b.Capacity()/8)))
 
 	// TODO(owen-d): have encoder implement writer directly so we don't need
 	// to indirect via a buffer
@@ -36,7 +37,6 @@ func (b *Bloom) Encode(enc *encoding.Encbuf) error {
 	data := buf.Bytes()
 	enc.PutUvarint(len(data)) // length of bloom filter
 	enc.PutBytes(data)
-	BloomPagePool.Put(data[:0]) // release to pool
 	return nil
 }
 
@@ -64,11 +64,14 @@ func (b *Bloom) Decode(dec *encoding.Decbuf) error {
 	return nil
 }
 
-func LazyDecodeBloomPage(r io.Reader, pool chunkenc.ReaderPool, page BloomPageHeader) (*BloomPageDecoder, error) {
-	data := BloomPagePool.Get(page.Len)[:page.Len]
-	defer BloomPagePool.Put(data)
+func LazyDecodeBloomPage(r io.Reader, alloc mempool.Allocator, pool chunkenc.ReaderPool, page BloomPageHeader) (*BloomPageDecoder, error) {
+	data, err := alloc.Get(page.Len)
+	if err != nil {
+		return nil, errors.Wrap(err, "allocating buffer")
+	}
+	defer alloc.Put(data)
 
-	_, err := io.ReadFull(r, data)
+	_, err = io.ReadFull(r, data)
 	if err != nil {
 		return nil, errors.Wrap(err, "reading bloom page")
 	}
@@ -84,7 +87,10 @@ func LazyDecodeBloomPage(r io.Reader, pool chunkenc.ReaderPool, page BloomPageHe
 	}
 	defer pool.PutReader(decompressor)
 
-	b := BloomPagePool.Get(page.DecompressedLen)[:page.DecompressedLen]
+	b, err := alloc.Get(page.DecompressedLen)
+	if err != nil {
+		return nil, errors.Wrap(err, "allocating buffer")
+	}
 
 	if _, err = io.ReadFull(decompressor, b); err != nil {
 		return nil, errors.Wrap(err, "decompressing bloom page")
@@ -96,14 +102,18 @@ func LazyDecodeBloomPage(r io.Reader, pool chunkenc.ReaderPool, page BloomPageHe
 }
 
 // shortcut to skip allocations when we know the page is not compressed
-func LazyDecodeBloomPageNoCompression(r io.Reader, page BloomPageHeader) (*BloomPageDecoder, error) {
+func LazyDecodeBloomPageNoCompression(r io.Reader, alloc mempool.Allocator, page BloomPageHeader) (*BloomPageDecoder, error) {
 	// data + checksum
 	if page.Len != page.DecompressedLen+4 {
 		return nil, errors.New("the Len and DecompressedLen of the page do not match")
 	}
-	data := BloomPagePool.Get(page.Len)[:page.Len]
 
-	_, err := io.ReadFull(r, data)
+	data, err := alloc.Get(page.Len)
+	if err != nil {
+		return nil, errors.Wrap(err, "allocating buffer")
+	}
+
+	_, err = io.ReadFull(r, data)
 	if err != nil {
 		return nil, errors.Wrap(err, "reading bloom page")
 	}
@@ -158,13 +168,19 @@ type BloomPageDecoder struct {
 // This can only safely be used when the underlying bloom
 // bytes don't escape the decoder:
 // on reads in the bloom-gw but not in the bloom-compactor
-func (d *BloomPageDecoder) Relinquish() {
+func (d *BloomPageDecoder) Relinquish(alloc mempool.Allocator) {
+	if d == nil {
+		return
+	}
+
 	data := d.data
 	d.data = nil
+	d.Reset() // Reset for cleaning up residual references to data via `dec`
 
 	if cap(data) > 0 {
-		BloomPagePool.Put(data)
+		_ = alloc.Put(data)
 	}
+
 }
 
 func (d *BloomPageDecoder) Reset() {
@@ -225,12 +241,6 @@ type BloomBlock struct {
 	pageHeaders []BloomPageHeader
 }
 
-func NewBloomBlock(encoding chunkenc.Encoding) BloomBlock {
-	return BloomBlock{
-		schema: Schema{version: DefaultSchemaVersion, encoding: encoding},
-	}
-}
-
 func (b *BloomBlock) DecodeHeaders(r io.ReadSeeker) (uint32, error) {
 	if err := b.schema.DecodeFrom(r); err != nil {
 		return 0, errors.Wrap(err, "decoding schema")
@@ -277,7 +287,7 @@ func (b *BloomBlock) DecodeHeaders(r io.ReadSeeker) (uint32, error) {
 // BloomPageDecoder returns a decoder for the given page index.
 // It may skip the page if it's too large.
 // NB(owen-d): if `skip` is true, err _must_ be nil.
-func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, maxPageSize int, metrics *Metrics) (res *BloomPageDecoder, skip bool, err error) {
+func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, alloc mempool.Allocator, pageIdx int, maxPageSize int, metrics *Metrics) (res *BloomPageDecoder, skip bool, err error) {
 	if pageIdx < 0 || pageIdx >= len(b.pageHeaders) {
 		metrics.pagesSkipped.WithLabelValues(pageTypeBloom, skipReasonOOB).Inc()
 		metrics.bytesSkipped.WithLabelValues(pageTypeBloom, skipReasonOOB).Add(float64(b.pageHeaders[pageIdx].DecompressedLen))
@@ -300,9 +310,9 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, pageIdx int, maxPageSize 
 	}
 
 	if b.schema.encoding == chunkenc.EncNone {
-		res, err = LazyDecodeBloomPageNoCompression(r, page)
+		res, err = LazyDecodeBloomPageNoCompression(r, alloc, page)
 	} else {
-		res, err = LazyDecodeBloomPage(r, b.schema.DecompressorPool(), page)
+		res, err = LazyDecodeBloomPage(r, alloc, b.schema.DecompressorPool(), page)
 	}
 
 	if err != nil {

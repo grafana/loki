@@ -116,7 +116,7 @@ func (c *Client) Put(ctx context.Context, key string, value interface{}) error {
 		return err
 	}
 
-	return instrument.CollectedRequest(ctx, "Put", c.consulMetrics.consulRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	return instrument.CollectedRequest(ctx, "Put", c.consulMetrics.consulRequestDuration, instrument.ErrorCode, func(context.Context) error {
 		_, err := c.kv.Put(&consul.KVPair{
 			Key:   key,
 			Value: bytes,
@@ -376,16 +376,18 @@ func checkLastIndex(index, metaLastIndex uint64) (newIndex uint64, skip bool) {
 		// Don't just keep using index=0.
 		// After blocking request, returned index must be at least 1.
 		return 1, false
-	} else if metaLastIndex < index {
+	}
+	if metaLastIndex < index {
 		// Index reset.
 		return 0, false
-	} else if index == metaLastIndex {
+	}
+	if index == metaLastIndex {
 		// Skip if the index is the same as last time, because the key value is
 		// guaranteed to be the same as last time
 		return metaLastIndex, true
-	} else {
-		return metaLastIndex, false
 	}
+
+	return metaLastIndex, false
 }
 
 func (c *Client) createRateLimiter() *rate.Limiter {

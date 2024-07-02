@@ -328,4 +328,23 @@ local utils = import 'mixin-utils/utils.libsonnet';
   containerDiskSpaceUtilizationPanel(title, containerName)::
     $.newQueryPanel(title, 'percentunit') +
     $.queryPanel('max by(persistentvolumeclaim) (kubelet_volume_stats_used_bytes{%s} / kubelet_volume_stats_capacity_bytes{%s}) and count by(persistentvolumeclaim) (kube_persistentvolumeclaim_labels{%s,%s})' % [$.namespaceMatcher(), $.namespaceMatcher(), $.namespaceMatcher(), $.containerLabelMatcher(containerName)], '{{persistentvolumeclaim}}'),
+
+  local latencyPanelWithExtraGrouping(metricName, selector, multiplier='1e3', extra_grouping='') = {
+    nullPointMode: 'null as zero',
+    targets: [
+      {
+        expr: 'histogram_quantile(0.99, sum(rate(%s_bucket%s[$__rate_interval])) by (le,%s)) * %s' % [metricName, selector, extra_grouping, multiplier],
+        format: 'time_series',
+        intervalFactor: 2,
+        refId: 'A',
+        step: 10,
+        interval: '1m',
+        legendFormat: '__auto',
+      },
+    ],
+  },
+
+  p99LatencyByPod(metric, selectorStr)::
+    $.newQueryPanel('Per Pod Latency (p99)', 'ms') +
+    latencyPanelWithExtraGrouping(metric, selectorStr, '1e3', 'pod'),
 }

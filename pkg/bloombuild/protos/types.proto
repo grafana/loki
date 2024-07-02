@@ -22,6 +22,11 @@ message ProtoFingerprintBounds {
   ];
 }
 
+message DayTable {
+  int64 dayTimestampMS = 1;
+  string prefix = 2;
+}
+
 message ProtoGapWithBlocks {
   ProtoFingerprintBounds bounds = 1 [
     (gogoproto.nullable) = false,
@@ -34,7 +39,10 @@ message ProtoGapWithBlocks {
 //       instead of unmarshaling them from strings or doing unsafe casts.
 message ProtoTask {
   string id = 1;
-  string table = 2;
+  DayTable table = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "table"
+  ];
   string tenant = 3;
   ProtoFingerprintBounds bounds = 4 [
     (gogoproto.nullable) = false,
@@ -42,4 +50,16 @@ message ProtoTask {
   ];
   string tsdb = 5;
   repeated ProtoGapWithBlocks gaps = 6;
+}
+
+message ProtoMeta {
+  string metaRef = 1;
+  repeated string sourcesTSDBs = 2;
+  repeated string blockRefs = 3;
+}
+
+message ProtoTaskResult {
+  string taskID = 1;
+  string error = 2;
+  repeated ProtoMeta createdMetas = 3;
 }

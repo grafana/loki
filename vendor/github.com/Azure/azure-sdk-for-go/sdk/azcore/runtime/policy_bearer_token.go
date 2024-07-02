@@ -24,6 +24,7 @@ type BearerTokenPolicy struct {
 	authzHandler policy.AuthorizationHandler
 	cred         exported.TokenCredential
 	scopes       []string
+	allowHTTP    bool
 }
 
 type acquiringResourceState struct {
@@ -55,6 +56,7 @@ func NewBearerTokenPolicy(cred exported.TokenCredential, scopes []string, opts *
 		cred:         cred,
 		scopes:       scopes,
 		mainResource: temporal.NewResource(acquire),
+		allowHTTP:    opts.InsecureAllowCredentialWithHTTP,
 	}
 }
 
@@ -80,7 +82,7 @@ func (b *BearerTokenPolicy) Do(req *policy.Request) (*http.Response, error) {
 		return req.Next()
 	}
 
-	if err := checkHTTPSForAuth(req); err != nil {
+	if err := checkHTTPSForAuth(req, b.allowHTTP); err != nil {
 		return nil, err
 	}
 
@@ -113,8 +115,8 @@ func (b *BearerTokenPolicy) Do(req *policy.Request) (*http.Response, error) {
 	return res, err
 }
 
-func checkHTTPSForAuth(req *policy.Request) error {
-	if strings.ToLower(req.Raw().URL.Scheme) != "https" {
+func checkHTTPSForAuth(req *policy.Request, allowHTTP bool) error {
+	if strings.ToLower(req.Raw().URL.Scheme) != "https" && !allowHTTP {
 		return errorinfo.NonRetriableError(errors.New("authenticated requests are not permitted for non TLS protected (https) endpoints"))
 	}
 	return nil

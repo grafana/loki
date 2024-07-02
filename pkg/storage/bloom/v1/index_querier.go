@@ -136,7 +136,7 @@ func (it *LazySeriesIter) next() bool {
 	return false
 }
 
-func (it *LazySeriesIter) At() *SeriesWithOffset {
+func (it *LazySeriesIter) At() *SeriesWithOffsets {
 	return it.curPage.At()
 }
 

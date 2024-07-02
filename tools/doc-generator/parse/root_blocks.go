@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester"
 	ingester_client "github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/loki"
 	"github.com/grafana/loki/v3/pkg/loki/common"
 	frontend "github.com/grafana/loki/v3/pkg/lokifrontend"
 	"github.com/grafana/loki/v3/pkg/querier"
@@ -167,6 +168,11 @@ var (
 			Name:       "analytics",
 			StructType: []reflect.Type{reflect.TypeOf(analytics.Config{})},
 			Desc:       "Configuration for analytics.",
+		},
+		{
+			Name:       "profiling",
+			StructType: []reflect.Type{reflect.TypeOf(loki.ProfilingConfig{})},
+			Desc:       "Configuration for profiling options.",
 		},
 
 		{

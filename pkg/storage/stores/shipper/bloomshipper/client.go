@@ -14,6 +14,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
@@ -23,7 +24,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
-	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 const (
@@ -91,6 +91,10 @@ func (r MetaRef) String() string {
 	return defaultKeyResolver{}.Meta(r).Addr()
 }
 
+func MetaRefFromKey(k string) (MetaRef, error) {
+	return defaultKeyResolver{}.ParseMetaKey(key(k))
+}
+
 // todo rename it
 type Meta struct {
 	MetaRef `json:"-"`
@@ -102,9 +106,9 @@ type Meta struct {
 	Blocks []BlockRef
 }
 
-func (m Meta) MostRecentSource() (tsdb.SingleTenantTSDBIdentifier, error) {
+func (m Meta) MostRecentSource() (tsdb.SingleTenantTSDBIdentifier, bool) {
 	if len(m.Sources) == 0 {
-		return tsdb.SingleTenantTSDBIdentifier{}, errors.New("no sources")
+		return tsdb.SingleTenantTSDBIdentifier{}, false
 	}
 
 	mostRecent := m.Sources[0]
@@ -114,7 +118,7 @@ func (m Meta) MostRecentSource() (tsdb.SingleTenantTSDBIdentifier, error) {
 		}
 	}
 
-	return mostRecent, nil
+	return mostRecent, true
 }
 
 func MetaRefFrom(
@@ -386,7 +390,7 @@ func (b *BloomClient) Stop() {
 }
 
 func (b *BloomClient) GetMetas(ctx context.Context, refs []MetaRef) ([]Meta, error) {
-	results := make([]Meta, len(refs))
+	results := make([]*Meta, len(refs))
 	err := concurrency.ForEachJob(ctx, len(refs), b.concurrency, func(ctx context.Context, idx int) error {
 		meta, err := b.GetMeta(ctx, refs[idx])
 		if err != nil {
@@ -395,11 +399,19 @@ func (b *BloomClient) GetMetas(ctx context.Context, refs []MetaRef) ([]Meta, err
 				return fmt.Errorf("failed to get meta file %s: %w", key, err)
 			}
 			level.Error(b.logger).Log("msg", "failed to get meta file", "ref", key, "err", err)
+			return nil
 		}
-		results[idx] = meta
+		results[idx] = &meta
 		return nil
 	})
-	return results, err
+
+	filtered := make([]Meta, 0, len(results))
+	for _, r := range results {
+		if r != nil {
+			filtered = append(filtered, *r)
+		}
+	}
+	return filtered, err
 }
 
 // GetMeta fetches the meta file for given MetaRef from object storage and
@@ -482,15 +494,16 @@ func newCachedListOpObjectClient(oc client.ObjectClient, ttl, interval time.Dura
 
 func (c *cachedListOpObjectClient) List(ctx context.Context, prefix string, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	var (
-		logger   = spanlogger.FromContext(ctx)
 		start    = time.Now()
 		cacheDur time.Duration
 	)
 	defer func() {
-		logger.LogKV(
-			"cache_duration", cacheDur,
-			"total_duration", time.Since(start),
-		)
+		if sp := opentracing.SpanFromContext(ctx); sp != nil {
+			sp.LogKV(
+				"cache_duration", cacheDur,
+				"total_duration", time.Since(start),
+			)
+		}
 	}()
 
 	if delimiter != "" {

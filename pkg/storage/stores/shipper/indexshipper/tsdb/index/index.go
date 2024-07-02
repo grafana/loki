@@ -176,7 +176,6 @@ func (m *Metadata) EnsureBounds(from, through int64) {
 	if m.Through == 0 || through > m.Through {
 		m.Through = through
 	}
-
 }
 
 // NewTOCFromByteSlice return parsed TOC from given index byte slice.
@@ -1646,7 +1645,6 @@ func readFingerprintOffsetsTable(bs ByteSlice, off uint64) (FingerprintOffsets, 
 	}
 
 	return res, d.Err()
-
 }
 
 // Close the reader and its underlying resources.
@@ -2074,7 +2072,7 @@ func (dec *Decoder) Postings(b []byte) (int, Postings, error) {
 	if len(l) != 4*n {
 		return 0, nil, fmt.Errorf("unexpected postings length, should be %d bytes for %d postings, got %d bytes", 4*n, n, len(l))
 	}
-	return n, newBigEndianPostings(l), nil
+	return n, NewBigEndianPostings(l), nil
 }
 
 // LabelNamesOffsetsFor decodes the offsets of the name symbols for a given series.
@@ -2335,7 +2333,6 @@ func (dec *Decoder) readChunkStatsV3(d *encoding.Decbuf, from, through int64) (r
 	}
 
 	return res, d.Err()
-
 }
 
 func (dec *Decoder) accumulateChunkStats(d *encoding.Decbuf, nChunks int, from, through int64) (res ChunkStats, err error) {
@@ -2372,16 +2369,13 @@ func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.
 		} else if chk.MinTime >= through {
 			break
 		}
-
 	}
 
 	return res, nil
-
 }
 
 // Series decodes a series entry from the given byte slice into lset and chks.
 func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
-
 	d, fprint, err := dec.prepSeries(b, lbls, chks)
 	if err != nil {
 		return 0, err
@@ -2392,7 +2386,6 @@ func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, f
 		return 0, errors.Wrapf(err, "series %s", lbls.String())
 	}
 	return fprint, nil
-
 }
 
 func (dec *Decoder) readChunks(version int, d *encoding.Decbuf, seriesRef storage.SeriesRef, from int64, through int64, chks *[]ChunkMeta) error {

@@ -1,10 +1,12 @@
 package logproto
 
 import (
+	"encoding/json"
 	"sort"
 	"strings"
 	"sync/atomic" //lint:ignore faillint we can't use go.uber.org/atomic with a protobuf struct without wrapping it.
 
+	"github.com/buger/jsonparser"
 	"github.com/cespare/xxhash/v2"
 	"github.com/dustin/go-humanize"
 	jsoniter "github.com/json-iterator/go"
@@ -187,4 +189,48 @@ func (m *ShardsResponse) Merge(other *ShardsResponse) {
 	m.Shards = append(m.Shards, other.Shards...)
 	m.ChunkGroups = append(m.ChunkGroups, other.ChunkGroups...)
 	m.Statistics.Merge(other.Statistics)
+}
+
+func NewPatternSeries(pattern string, samples []*PatternSample) *PatternSeries {
+	return &PatternSeries{Pattern: pattern, Samples: samples}
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface.
+// QuerySamplesResponse json representation is different from the proto
+func (r *QuerySamplesResponse) UnmarshalJSON(data []byte) error {
+	return jsonparser.ObjectEach(
+		data,
+		func(key, value []byte, dataType jsonparser.ValueType, offset int) error {
+			if string(key) == "data" {
+				var m []model.SampleStream
+				if err := json.Unmarshal(value, &m); err != nil {
+					return err
+				}
+				series := make([]Series, len(m))
+
+				for i, s := range m {
+					lbls := FromMetricsToLabels(s.Metric)
+
+					newSeries := Series{
+						Labels:     s.Metric.String(),
+						StreamHash: lbls.Hash(),
+						Samples:    make([]Sample, len(s.Values)),
+					}
+
+					for j, samplePair := range s.Values {
+						newSeries.Samples[j] = Sample{
+							Timestamp: samplePair.Timestamp.UnixNano(),
+							Value:     float64(samplePair.Value),
+						}
+					}
+
+					series[i] = newSeries
+				}
+
+				r.Series = series
+			}
+
+			return nil
+		},
+	)
 }

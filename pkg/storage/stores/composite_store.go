@@ -149,10 +149,10 @@ func (c CompositeStore) LabelValuesForMetricName(ctx context.Context, userID str
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
-func (c CompositeStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
+func (c CompositeStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error) {
 	var result util.UniqueStrings
 	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
-		labelNames, err := store.LabelNamesForMetricName(innerCtx, userID, from, through, metricName)
+		labelNames, err := store.LabelNamesForMetricName(innerCtx, userID, from, through, metricName, matchers...)
 		if err != nil {
 			return err
 		}
@@ -172,8 +172,8 @@ func (c CompositeStore) GetChunks(
 ) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	chunkIDs := [][]chunk.Chunk{}
 	fetchers := []*fetcher.Fetcher{}
-	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
-		ids, fetcher, err := store.GetChunks(innerCtx, userID, from, through, predicate, storeChunksOverride)
+	err := c.forStores(ctx, from, through, func(innerCtx context.Context, innerFrom, innerThrough model.Time, store Store) error {
+		ids, fetcher, err := store.GetChunks(innerCtx, userID, innerFrom, innerThrough, predicate, storeChunksOverride)
 		if err != nil {
 			return err
 		}
