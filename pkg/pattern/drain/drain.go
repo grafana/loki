@@ -205,7 +205,9 @@ func (d *Drain) train(tokens []string, state interface{}, ts int64) *LogCluster 
 	}
 	if d.metrics != nil {
 		d.metrics.TokensPerLine.Observe(float64(len(tokens)))
-		d.metrics.StatePerLine.Observe(float64(len(state.([]int))))
+		if stateInts, ok := state.([]int); ok {
+			d.metrics.StatePerLine.Observe(float64(len(stateInts)))
+		}
 	}
 	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, false)
 	// Match no existing log cluster
