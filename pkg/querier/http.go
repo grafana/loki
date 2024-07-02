@@ -117,11 +117,7 @@ func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelReques
 		sp.LogKV(statResult.KVList()...)
 	}
 
-	status := 200
-	if err != nil {
-		status, _ = serverutil.ClientHTTPStatusAndError(err)
-	}
-
+	status, _ := serverutil.ClientHTTPStatusAndError(err)
 	logql.RecordLabelQueryMetrics(ctx, util_log.Logger, *req.Start, *req.End, req.Name, req.Query, strconv.Itoa(status), statResult)
 
 	return resp, err
@@ -272,11 +268,7 @@ func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequ
 		sp.LogKV(statResult.KVList()...)
 	}
 
-	status := 200
-	if err != nil {
-		status, _ = serverutil.ClientHTTPStatusAndError(err)
-	}
-
+	status, _ := serverutil.ClientHTTPStatusAndError(err)
 	logql.RecordSeriesQueryMetrics(ctx, util_log.Logger, req.Start, req.End, req.Groups, strconv.Itoa(status), req.GetShards(), statResult)
 
 	return resp, statResult, err
@@ -303,11 +295,7 @@ func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQu
 		sp.LogKV(statResult.KVList()...)
 	}
 
-	status := 200
-	if err != nil {
-		status, _ = serverutil.ClientHTTPStatusAndError(err)
-	}
-
+	status, _ := serverutil.ClientHTTPStatusAndError(err)
 	logql.RecordStatsQueryMetrics(ctx, util_log.Logger, req.Start, req.End, req.Query, strconv.Itoa(status), statResult)
 
 	return resp, err
@@ -335,11 +323,7 @@ func (q *QuerierAPI) IndexShardsHandler(ctx context.Context, req *loghttp.RangeQ
 		sp.LogKV(statResult.KVList()...)
 	}
 
-	status := 200
-	if err != nil {
-		status, _ = serverutil.ClientHTTPStatusAndError(err)
-	}
-
+	status, _ := serverutil.ClientHTTPStatusAndError(err)
 	logql.RecordShardsQueryMetrics(
 		ctx, util_log.Logger, req.Start, req.End, req.Query, targetBytesPerShard, strconv.Itoa(status), resLength, statResult,
 	)
@@ -372,11 +356,7 @@ func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequ
 		sp.LogKV(statResult.KVList()...)
 	}
 
-	status := 200
-	if err != nil {
-		status, _ = serverutil.ClientHTTPStatusAndError(err)
-	}
-
+	status, _ := serverutil.ClientHTTPStatusAndError(err)
 	logql.RecordVolumeQueryMetrics(ctx, util_log.Logger, req.From.Time(), req.Through.Time(), req.GetQuery(), uint32(req.GetLimit()), time.Duration(req.GetStep()), strconv.Itoa(status), statResult)
 
 	return resp, nil
