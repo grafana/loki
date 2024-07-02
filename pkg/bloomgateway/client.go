@@ -116,11 +116,20 @@ type Client interface {
 	FilterChunks(ctx context.Context, tenant string, interval bloomshipper.Interval, blocks []blockWithSeries, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error)
 }
 
+// clientPool is a minimal interface that is satisfied by the JumpHashClientPool.
+// It does only expose functions that are used by the GatewayClient
+// and is required to mock the JumpHashClientPool in tests.
+type clientPool interface {
+	GetClientFor(string) (ringclient.PoolClient, error)
+	Addr(string) (string, error)
+	Stop()
+}
+
 type GatewayClient struct {
 	cfg         ClientConfig
 	logger      log.Logger
 	metrics     *clientMetrics
-	pool        *JumpHashClientPool
+	pool        clientPool
 	dnsProvider *discovery.DNS
 }
 
@@ -211,8 +220,15 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, _ string, interval blo
 	servers := make([]addrWithGroups, 0, len(blocks))
 	for _, blockWithSeries := range blocks {
 		addr, err := c.pool.Addr(blockWithSeries.block.String())
+
+		// the client should return the full, unfiltered list of chunks instead of an error
 		if err != nil {
-			return nil, errors.Wrapf(err, "server address for block: %s", blockWithSeries.block)
+			level.Error(c.logger).Log("msg", "failed to resolve server address for block", "block", blockWithSeries.block, "err", err)
+			var series [][]*logproto.GroupedChunkRefs
+			for i := range blocks {
+				series = append(series, blocks[i].series)
+			}
+			return mergeSeries(series, nil)
 		}
 
 		if idx, found := pos[addr]; found {
