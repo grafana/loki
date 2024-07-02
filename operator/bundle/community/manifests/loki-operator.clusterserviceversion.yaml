@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:0.6.1
-    createdAt: "2024-06-12T17:07:25Z"
+    createdAt: "2024-07-02T16:13:50Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -377,6 +377,12 @@ spec:
         path: limits.global.queries.maxQuerySeries
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: MaxVolumeSeries defines the maximum number of aggregated series
+          in a log-volume response
+        displayName: Max Volume Series
+        path: limits.global.queries.maxVolumeSeries
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
       - description: Timeout when querying ingesters or storage during the execution
           of a query request.
         displayName: Query Timeout
@@ -486,6 +492,12 @@ spec:
           by a metric query.
         displayName: Max Query Series
         path: limits.tenants.queries.maxQuerySeries
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: MaxVolumeSeries defines the maximum number of aggregated series
+          in a log-volume response
+        displayName: Max Volume Series
+        path: limits.tenants.queries.maxVolumeSeries
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
       - description: Timeout when querying ingesters or storage during the execution
