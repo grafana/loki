@@ -154,7 +154,7 @@ func NewPollerFromResumeToken[T any](token string, pl exported.Pipeline, options
 	if err != nil {
 		return nil, err
 	}
-	var asJSON map[string]interface{}
+	var asJSON map[string]any
 	if err := json.Unmarshal(raw, &asJSON); err != nil {
 		return nil, err
 	}
@@ -240,7 +240,7 @@ func (p *Poller[T]) PollUntilDone(ctx context.Context, options *PollUntilDoneOpt
 	}
 
 	start := time.Now()
-	logPollUntilDoneExit := func(v interface{}) {
+	logPollUntilDoneExit := func(v any) {
 		log.Writef(log.EventLRO, "END PollUntilDone() for %T: %v, total time: %s", p.op, v, time.Since(start))
 	}
 	log.Writef(log.EventLRO, "BEGIN PollUntilDone() for %T", p.op)
@@ -334,6 +334,11 @@ func (p *Poller[T]) Result(ctx context.Context) (res T, err error) {
 	err = p.op.Result(ctx, p.result)
 	var respErr *exported.ResponseError
 	if errors.As(err, &respErr) {
+		if pollers.IsNonTerminalHTTPStatusCode(respErr.RawResponse) {
+			// the request failed in a non-terminal way.
+			// don't cache the error or mark the Poller as done
+			return
+		}
 		// the LRO failed. record the error
 		p.err = err
 	} else if err != nil {
