@@ -56,6 +56,7 @@ overrides:
     {{- end }}
     {{- if $spec.QueryLimits.MaxVolumeSeries }}
     max_volume_series: {{ $spec.QueryLimits.MaxVolumeSeries }}
+    {{- end }}
     {{- with $l.Blocked }}
     blocked_queries:
     {{- range $blockedQuery := . }}
