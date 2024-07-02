@@ -444,6 +444,21 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			DetectedFieldsRequest: *req,
 			path:                  r.URL.Path,
 		}, nil
+	case StructuredMetadataKeysOp:
+		req, err := loghttp.ParseStructuredMetadataQuery(r)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+
+		_, err = syntax.ParseExpr(req.Query)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+
+		return &StructuredMetadataKeysRequest{
+			StructuredMetadataKeysRequest: *req,
+			path:                      r.URL.Path,
+		}, nil
 	case PatternsQueryOp:
 		req, err := loghttp.ParsePatternsQuery(r)
 		if err != nil {
@@ -634,6 +649,16 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 		return &DetectedFieldsRequest{
 			DetectedFieldsRequest: *req,
 			path:                  httpReq.URL.Path,
+		}, ctx, nil
+	case StructuredMetadataKeysOp:
+		req, err := loghttp.ParseStructuredMetadataQuery(httpReq)
+		if err != nil {
+			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+
+		return &StructuredMetadataKeysRequest{
+			StructuredMetadataKeysRequest: *req,
+			path:                      httpReq.URL.Path,
 		}, ctx, nil
 	case PatternsQueryOp:
 		req, err := loghttp.ParsePatternsQuery(httpReq)
@@ -950,6 +975,26 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		}
 
 		return req.WithContext(ctx), nil
+	case *StructuredMetadataKeysRequest:
+		params := url.Values{
+			"query": []string{request.GetQuery()},
+			"start": []string{fmt.Sprintf("%d", request.Start.UnixNano())},
+			"end":   []string{fmt.Sprintf("%d", request.End.UnixNano())},
+		}
+
+		u := &url.URL{
+			Path:     "/loki/api/v1/structured_metadata/keys",
+			RawQuery: params.Encode(),
+		}
+		req := &http.Request{
+			Method:     "GET",
+			RequestURI: u.String(),
+			URL:        u,
+			Body:       http.NoBody,
+			Header:     header,
+		}
+
+		return req.WithContext(ctx), nil
 	case *logproto.QueryPatternsRequest:
 		params := url.Values{
 			"query": []string{request.GetQuery()},
@@ -1154,6 +1199,15 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 		}
 		return &DetectedFieldsResponse{
+			Response: &resp,
+			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
+		}, nil
+	case *StructuredMetadataKeysRequest:
+		var resp logproto.StructuredMetadataKeysResponse
+		if err := json.Unmarshal(buf, &resp); err != nil {
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+		}
+		return &StructuredMetadataKeysResponse{
 			Response: &resp,
 			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
 		}, nil
@@ -1406,6 +1460,10 @@ func encodeResponseJSONTo(version loghttp.Version, res queryrangebase.Response, 
 		if err := marshal.WriteDetectedFieldsResponseJSON(response.Response, w); err != nil {
 			return err
 		}
+	case *StructuredMetadataKeysResponse:
+		if err := marshal.WriteStructuredMetadataKeysResponseJSON(response.Response, w); err != nil {
+			return err
+		}
 	case *QueryPatternsResponse:
 		if err := marshal.WriteQueryPatternsResponseJSON(response.Response, w); err != nil {
 			return err
@@ -1607,6 +1665,21 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			Response: &logproto.DetectedFieldsResponse{
 				Fields:     mergedFields,
 				FieldLimit: 0,
+			},
+			Headers: headers,
+		}, nil
+	case *StructuredMetadataKeysResponse:
+		resp0 := responses[0].(*DetectedFieldsResponse)
+		headers := resp0.Headers
+
+		keys := []string{}
+		for _, r := range responses {
+			keys = append(keys, r.(*StructuredMetadataKeysResponse).Response.Keys...)
+		}
+
+		return &StructuredMetadataKeysResponse{
+			Response: &logproto.StructuredMetadataKeysResponse{
+				Keys: keys,
 			},
 			Headers: headers,
 		}, nil
@@ -2412,3 +2485,73 @@ func (r *DetectedFieldsRequest) LogToSpan(sp opentracing.Span) {
 }
 
 func (*DetectedFieldsRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
+
+type StructuredMetadataKeysRequest struct {
+	logproto.StructuredMetadataKeysRequest
+	path string
+}
+
+func NewStructuredMetadataKeysRequest(start, end time.Time, query, path string) *StructuredMetadataKeysRequest {
+	return &StructuredMetadataKeysRequest{
+		StructuredMetadataKeysRequest: logproto.StructuredMetadataKeysRequest{
+			Start: start,
+			End:   end,
+			Query: query,
+		},
+		path: path,
+	}
+}
+
+func (r *StructuredMetadataKeysRequest) AsProto() *logproto.StructuredMetadataKeysRequest {
+	return &r.StructuredMetadataKeysRequest
+}
+
+func (r *StructuredMetadataKeysRequest) GetEnd() time.Time {
+	return r.End
+}
+
+func (r *StructuredMetadataKeysRequest) GetEndTs() time.Time {
+	return r.End
+}
+
+func (r *StructuredMetadataKeysRequest) GetStart() time.Time {
+	return r.Start
+}
+
+func (r *StructuredMetadataKeysRequest) GetStartTs() time.Time {
+	return r.Start
+}
+
+func (r *StructuredMetadataKeysRequest) GetStep() int64 {
+	return 0
+}
+
+func (r *StructuredMetadataKeysRequest) Path() string {
+	return r.path
+}
+
+func (r *StructuredMetadataKeysRequest) WithStartEnd(s, e time.Time) queryrangebase.Request {
+	clone := *r
+	clone.Start = s
+	clone.End = e
+	return &clone
+}
+
+func (r *StructuredMetadataKeysRequest) WithStartEndForCache(s time.Time, e time.Time) resultscache.Request {
+	return r.WithStartEnd(s, e).(resultscache.Request)
+}
+
+func (r *StructuredMetadataKeysRequest) WithQuery(query string) queryrangebase.Request {
+	clone := *r
+	clone.Query = query
+	return &clone
+}
+
+func (r *StructuredMetadataKeysRequest) LogToSpan(sp opentracing.Span) {
+	sp.LogFields(
+		otlog.String("start", timestamp.Time(r.GetStart().UnixNano()).String()),
+		otlog.String("end", timestamp.Time(r.GetEnd().UnixNano()).String()),
+	)
+}
+
+func (*StructuredMetadataKeysRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }

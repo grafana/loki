@@ -642,6 +642,18 @@ func (q *querierMock) DetectedLabels(ctx context.Context, req *logproto.Detected
 	return resp.(*logproto.DetectedLabelsResponse), err
 }
 
+func (q *querierMock) StructuredMetadata(ctx context.Context, req *logproto.StructuredMetadataKeysRequest) (*logproto.StructuredMetadataKeysResponse, error) {
+	args := q.MethodCalled("StructuredMetadata", ctx, req)
+
+	resp := args.Get(0)
+	err := args.Error(1)
+	if resp == nil {
+		return nil, err
+	}
+
+	return resp.(*logproto.StructuredMetadataKeysResponse), err
+}
+
 func (q *querierMock) SelectMetricSamples(
 	ctx context.Context,
 	req *logproto.QuerySamplesRequest,

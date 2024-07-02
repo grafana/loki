@@ -278,6 +278,8 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 		p.Response = &QueryResponse_DetectedFields{response}
 	case *QuerySamplesResponse:
 		p.Response = &QueryResponse_SamplesResponse{response}
+	case *StructuredMetadataKeysResponse:
+		p.Response = &QueryResponse_StructuredMetadataKeys{response}
 	default:
 		return nil, fmt.Errorf("invalid response format, got (%T)", res)
 	}
