@@ -1,7 +1,7 @@
 package scrapeconfig
 
 import (
-	"fmt"
+	"errors"
 	"reflect"
 	"time"
 
@@ -479,7 +479,7 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 
 	if len(c.JobName) == 0 {
-		return fmt.Errorf("job_name is empty")
+		return errors.New("job_name is empty")
 	}
 
 	return nil

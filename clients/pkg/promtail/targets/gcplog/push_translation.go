@@ -2,6 +2,7 @@ package gcplog
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -29,13 +30,13 @@ type PushMessage struct {
 
 func (pm PushMessage) Validate() error {
 	if pm.Message.Data == "" {
-		return fmt.Errorf("push message has no data")
+		return errors.New("push message has no data")
 	}
 	if pm.Message.ID == "" {
-		return fmt.Errorf("push message has no ID")
+		return errors.New("push message has no ID")
 	}
 	if pm.Subscription == "" {
-		return fmt.Errorf("push message has no subscription")
+		return errors.New("push message has no subscription")
 	}
 	return nil
 }
