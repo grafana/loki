@@ -123,9 +123,12 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, _ *C.char) int {
 		if ret != 0 {
 			break
 		}
-
+		
 		// Get timestamp
 		var timestamp time.Time
+		if tsSlice, ok := ts.([]interface{}); ok && len(tsSlice) > 0 {
+			ts = tsSlice[0]
+		}
 		switch t := ts.(type) {
 		case output.FLBTime:
 			timestamp = ts.(output.FLBTime).Time
