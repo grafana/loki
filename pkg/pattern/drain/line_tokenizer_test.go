@@ -1,6 +1,7 @@
 package drain
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -86,6 +87,22 @@ var testCases = []TestCase{
 		want: map[string][]string{
 			typePunctuation: {`ts`, `=`, `2024-05-30T12`, `:`, `50`, `:`, `36`, `.`, `648377186Z`, `caller`, `=`, `scheduler_processor`, `.`, `go`, `:`, `143`, `level`, `=`, `warn`, `msg`, `=`, `"`, `error`, `contacting`, `scheduler`, `"`, `err`, `=`, `"`, `rpc`, `error`, `:`, `code`, `=`, `Unavailable`, `desc`, `=`, `connection`, `error`, `:`, `desc`, `=`, `\`, `"`, `error`, `reading`, `server`, `preface`, `:`, `EOF`, `\`, `"`, `"`, `addr`, `=`, `10`, `.`, `0`, `.`, `151`, `.`, `101`, `:`, `9095`},
 			typeSplitting:   {"ts=", "2024-05-30T12:50:36.648377186Z", "caller=", "scheduler_processor.go:143", "level=", "warn", "msg=", "\"error", "contacting", "scheduler\"", "err=", "\"rpc", "error:", "code", "=", ``, "Unavailable", "desc", "=", ``, "connection", "error:", "desc", "=", ``, `\"error`, "reading", "server", "preface:", `EOF\""`, "addr=", "10.0.151.101:9095"},
+		},
+	},
+	{
+		name: "Exactly 128 tokens are not combined",
+		line: strings.Repeat(`A `, 126) + "127 128",
+		want: map[string][]string{
+			typePunctuation: append(strings.Split(strings.Repeat(`A `, 126), " ")[:126], "127", "128"),
+			typeSplitting:   append(strings.Split(strings.Repeat(`A `, 126), " ")[:126], "127", "128"),
+		},
+	},
+	{
+		name: "More than 128 tokens combined suffix into one token",
+		line: strings.Repeat(`A `, 126) + "127 128 129",
+		want: map[string][]string{
+			typePunctuation: append(strings.Split(strings.Repeat(`A `, 126), " ")[:126], "127", "128 129"),
+			typeSplitting:   append(strings.Split(strings.Repeat(`A `, 126), " ")[:126], "127", "128", "129"),
 		},
 	},
 	{
