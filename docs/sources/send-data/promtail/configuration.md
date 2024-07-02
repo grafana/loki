@@ -2,8 +2,6 @@
 title: Configure Promtail
 menuTitle:  Configuration reference
 description: Configuration parameters for the Promtail agent.
-aliases: 
-- ../../clients/promtail/configuration/
 weight:  200
 ---
 
