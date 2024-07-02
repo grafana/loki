@@ -1,16 +1,48 @@
 ---
-title: Observability
-menuTitle:  
+title: Monitoring Loki
+menuTitle:  Observability
 description: Observing Grafana Loki
 weight: 
 ---
-# Observability
 
-Both Grafana Loki and Promtail expose a `/metrics` endpoint that expose Prometheus
-metrics (the default port is 3100 for Loki and 80 for Promtail). You will need
-a local Prometheus and add Loki and Promtail as targets. See [configuring
-Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/configuration)
-for more information.
+As part of your Loki implementation, you will also want to monitor your Loki cluster.
+
+As a best practice, you should collect data about Loki in a separate instance of Loki, for example, send your Loki data to a [Grafana Cloud account](https://grafana.com/products/cloud/). This will let you troubleshoot a broken Loki cluster from a working one.
+
+Loki exposes the following observability data about itself:
+
+- **Metrics**: Loki provides a `/metrics` endpoint that exports information about Loki in Prometheus format. These metrics provide aggregated metrics of the health of your Loki cluster, allowing you to observe query response times, etc etc.
+- **Logs**: Loki emits a detailed log line "metrics.go" for every query, which shows query duration, number of lines returned, query throughput, the specific LogQL that was executed, chunks searched, and much more. You can use these log lines to improve and optimize your query performance.
+
+You can also scrape Loki's logs and metrics and push them to separate instances of Loki and Mimir to provide information about the health of your Loki system (a process known as "meta-monitoring").
+
+The Loki [mixin](https://github.com/grafana/loki/blob/main/production/loki-mixin) is an opinionated set of dashboards, alerts and recording rules to monitor your Loki cluster. The mixin provides a comprehensive package for monitoring Loki in production. You can install the mixin into a Grafana instance.
+
+- To install meta-monitoring using the Loki Helm Chart and Grafana Cloud, follow [these directions](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/monitor-and-alert/with-grafana-cloud/).
+
+- To install meta-monitoring using the Loki Helm Chart and a local Loki stack, follow [these directions](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/monitor-and-alert/with-local-monitoring/).
+
+- To install the Loki mixin, follow [these directions](./mixins).
+
+You should also plan separately for infrastructure-level monitoring, to monitor the capacity or throughput of your storage provider, for example, or your networking layer.  (LINK? )
+MinIO - https://min.io/docs/minio/linux/operations/monitoring/collect-minio-metrics-using-prometheus.html
+Kubernetes - https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/
+
+## Loki Metrics
+
+As Loki is a [distributed system](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/components/), each component exports its own metrics. The `/metrics` endpoint exposes over a thousand different metrics.  You can find a sampling of the metrics exposed by Loki and their descriptions, in the sections below.
+
+You can find a complete list of the exposed metrics by checking the `/metrics` endpoint.
+
+`http://<host>:<http_listen_port>/metrics`
+
+For example:
+
+`http://localhost:3100/metrics`
+
+Both Grafana Loki and Promtail expose a `/metrics` endpoint that expose Prometheus metrics (the default port is 3100 for Loki and 80 for Promtail). You will need
+a local Prometheus and add Loki and Promtail as targets.
+See [configuring Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/configuration) for more information.
 
 All components of Loki expose the following metrics:
 
@@ -99,16 +131,6 @@ dashboard [10004](/dashboards/10004).
 
 ## Metrics cardinality
 
-Some of the Loki observability metrics are emitted per tracked file (active), with the file path included in labels. 
-This increases the quantity of label values across the environment, thereby increasing cardinality. Best practices with Prometheus [labels](https://prometheus.io/docs/practices/naming/#labels) discourage increasing cardinality in this way. 
+Some of the Loki observability metrics are emitted per tracked file (active), with the file path included in labels.
+This increases the quantity of label values across the environment, thereby increasing cardinality. Best practices with Prometheus [labels](https://prometheus.io/docs/practices/naming/#labels) discourage increasing cardinality in this way.
 Review your emitted metrics before scraping with Prometheus, and configure the scraping to avoid this issue.
-
-
-## Mixins
-
-The Loki repository has a [mixin](https://github.com/grafana/loki/blob/main/production/loki-mixin) that includes a
-set of dashboards, recording rules, and alerts. Together, the mixin gives you a
-comprehensive package for monitoring Loki in production.
-
-For more information about mixins, take a look at the docs for the
-[monitoring-mixins project](https://github.com/monitoring-mixins/docs).
