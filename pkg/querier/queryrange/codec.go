@@ -457,7 +457,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 
 		return &StructuredMetadataKeysRequest{
 			StructuredMetadataKeysRequest: *req,
-			path:                      r.URL.Path,
+			path:                          r.URL.Path,
 		}, nil
 	case PatternsQueryOp:
 		req, err := loghttp.ParsePatternsQuery(r)
@@ -658,7 +658,7 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 
 		return &StructuredMetadataKeysRequest{
 			StructuredMetadataKeysRequest: *req,
-			path:                      httpReq.URL.Path,
+			path:                          httpReq.URL.Path,
 		}, ctx, nil
 	case PatternsQueryOp:
 		req, err := loghttp.ParsePatternsQuery(httpReq)

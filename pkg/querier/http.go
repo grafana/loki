@@ -409,7 +409,7 @@ func (q *QuerierAPI) StructuredMetadataHandler(ctx context.Context, req *logprot
 			"msg", "queried store for detected fields that does not support it, no response from querier.DetectedFields",
 		)
 		return &logproto.StructuredMetadataKeysResponse{
-			Keys:     []string{},
+			Keys: []string{},
 		}, nil
 	}
 	return resp, nil

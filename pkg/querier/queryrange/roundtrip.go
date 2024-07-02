@@ -506,18 +506,18 @@ func transformRegexQuery(req *http.Request, expr syntax.LogSelectorExpr) (syntax
 }
 
 const (
-	InstantQueryOp       = "instant_query"
-	QueryRangeOp         = "query_range"
-	SeriesOp             = "series"
-	LabelNamesOp         = "labels"
-	IndexStatsOp         = "index_stats"
-	VolumeOp             = "volume"
-	VolumeRangeOp        = "volume_range"
-	IndexShardsOp        = "index_shards"
-	DetectedFieldsOp     = "detected_fields"
-	PatternsQueryOp      = "patterns"
-	DetectedLabelsOp     = "detected_labels"
-	SamplesQueryOp       = "samples"
+	InstantQueryOp           = "instant_query"
+	QueryRangeOp             = "query_range"
+	SeriesOp                 = "series"
+	LabelNamesOp             = "labels"
+	IndexStatsOp             = "index_stats"
+	VolumeOp                 = "volume"
+	VolumeRangeOp            = "volume_range"
+	IndexShardsOp            = "index_shards"
+	DetectedFieldsOp         = "detected_fields"
+	PatternsQueryOp          = "patterns"
+	DetectedLabelsOp         = "detected_labels"
+	SamplesQueryOp           = "samples"
 	StructuredMetadataKeysOp = "structured_metadata_keys"
 )
 

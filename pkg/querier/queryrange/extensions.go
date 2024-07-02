@@ -270,7 +270,6 @@ func (m *StructuredMetadataKeysResponse) WithHeaders(h []queryrangebase.Promethe
 	return m
 }
 
-
 // GetHeaders returns the HTTP headers in the response.
 func (m *QueryPatternsResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
 	if m != nil {
