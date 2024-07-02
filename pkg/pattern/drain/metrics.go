@@ -1,7 +1,7 @@
 package drain
 
 import (
-	"strings"
+	"regexp"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -12,6 +12,8 @@ const (
 	FormatUnknown = "unknown"
 )
 
+var logfmtRegex = regexp.MustCompile("^(\\w+?=([^\"]\\S*?|\".+?\") )*?(\\w+?=([^\"]\\S*?|\".+?\"))+$")
+
 // DetectLogFormat guesses at how the logs are encoded based on some simple heuristics.
 // It only runs on the first log line when a new stream is created, so it could do some more complex parsing or regex.
 func DetectLogFormat(line string) string {
@@ -19,7 +21,7 @@ func DetectLogFormat(line string) string {
 		return FormatUnknown
 	} else if line[0] == '{' && line[len(line)-1] == '}' {
 		return FormatJson
-	} else if strings.Count(line, "=") > strings.Count(line, " ")-5 {
+	} else if logfmtRegex.MatchString(line) {
 		return FormatLogfmt
 	}
 	return FormatUnknown
