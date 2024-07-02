@@ -27,7 +27,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 		format    string
 	}{
 		{
-			drain:     New(DefaultConfig(), nil),
+			drain:     New(DefaultConfig(), "", nil),
 			inputFile: `testdata/agent-logfmt.txt`,
 			format:    FormatLogfmt,
 			patterns: []string{
@@ -62,7 +62,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 			},
 		},
 		{
-			drain:     New(DefaultConfig(), nil),
+			drain:     New(DefaultConfig(), "", nil),
 			inputFile: `testdata/ingester-logfmt.txt`,
 			format:    FormatLogfmt,
 			patterns: []string{
@@ -72,7 +72,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 			},
 		},
 		{
-			drain:     New(DefaultConfig(), nil),
+			drain:     New(DefaultConfig(), "", nil),
 			inputFile: `testdata/drone-json.txt`,
 			format:    FormatJSON,
 			patterns: []string{
@@ -85,7 +85,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 			},
 		},
 		{
-			drain:     New(DefaultConfig(), nil),
+			drain:     New(DefaultConfig(), "", nil),
 			inputFile: "testdata/distributor-logfmt.txt",
 			format:    FormatLogfmt,
 			patterns: []string{
@@ -97,7 +97,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 			},
 		},
 		{
-			drain:     New(DefaultConfig(), nil),
+			drain:     New(DefaultConfig(), "", nil),
 			inputFile: "testdata/journald.txt",
 			format:    FormatUnknown,
 			patterns: []string{
@@ -204,7 +204,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 			},
 		},
 		{
-			drain:     New(DefaultConfig(), nil),
+			drain:     New(DefaultConfig(), "", nil),
 			inputFile: "testdata/kafka.txt",
 			format:    FormatUnknown,
 			patterns: []string{
@@ -225,7 +225,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 			},
 		},
 		{
-			drain:     New(DefaultConfig(), nil),
+			drain:     New(DefaultConfig(), "", nil),
 			inputFile: "testdata/kubernetes.txt",
 			format:    FormatUnknown,
 			patterns: []string{
@@ -275,7 +275,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 			},
 		},
 		{
-			drain:     New(DefaultConfig(), nil),
+			drain:     New(DefaultConfig(), "", nil),
 			inputFile: "testdata/vault.txt",
 			format:    FormatUnknown,
 			patterns: []string{
@@ -284,7 +284,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 			},
 		},
 		{
-			drain:     New(DefaultConfig(), nil),
+			drain:     New(DefaultConfig(), "", nil),
 			inputFile: "testdata/calico.txt",
 			format:    FormatUnknown,
 			patterns: []string{
@@ -366,7 +366,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 			},
 		},
 		{
-			drain:     New(DefaultConfig(), nil),
+			drain:     New(DefaultConfig(), "", nil),
 			inputFile: "testdata/grafana-ruler.txt",
 			format:    FormatLogfmt,
 			patterns: []string{
@@ -462,7 +462,7 @@ func TestDrain_TrainGeneratesMatchablePatterns(t *testing.T) {
 	}{
 		{
 			name:  "should match each line against a pattern",
-			drain: New(DefaultConfig(), nil),
+			drain: New(DefaultConfig(), "", nil),
 			inputLines: []string{
 				"test test test test",
 				"test test test test",
@@ -472,7 +472,7 @@ func TestDrain_TrainGeneratesMatchablePatterns(t *testing.T) {
 		},
 		{
 			name:  "should also match newlines",
-			drain: New(DefaultConfig(), nil),
+			drain: New(DefaultConfig(), "", nil),
 			inputLines: []string{
 				`test test test test
 `,
@@ -509,7 +509,7 @@ func TestDrain_TrainGeneratesPatternsMatchableByLokiPatternFilter(t *testing.T) 
 	}{
 		{
 			name:  "should extract patterns that all lines match",
-			drain: New(DefaultConfig(), nil),
+			drain: New(DefaultConfig(), "", nil),
 			inputLines: []string{
 				"test 1 test test",
 				"test 2 test test",
@@ -519,7 +519,7 @@ func TestDrain_TrainGeneratesPatternsMatchableByLokiPatternFilter(t *testing.T) 
 		},
 		{
 			name:  "should extract patterns that match if line ends with newlines",
-			drain: New(DefaultConfig(), nil),
+			drain: New(DefaultConfig(), "", nil),
 			inputLines: []string{
 				`test 1 test test
 `,
@@ -533,7 +533,7 @@ func TestDrain_TrainGeneratesPatternsMatchableByLokiPatternFilter(t *testing.T) 
 		},
 		{
 			name:  "should extract patterns that match if line ends with empty space",
-			drain: New(DefaultConfig(), nil),
+			drain: New(DefaultConfig(), "", nil),
 			inputLines: []string{
 				`test 1 test test			`,
 				`test 2 test test			`,
@@ -543,7 +543,7 @@ func TestDrain_TrainGeneratesPatternsMatchableByLokiPatternFilter(t *testing.T) 
 		},
 		{
 			name:  "should extract patterns that match if line starts with empty space",
-			drain: New(DefaultConfig(), nil),
+			drain: New(DefaultConfig(), "", nil),
 			inputLines: []string{
 				`			test 1 test test`,
 				`			test 2 test test`,
@@ -553,7 +553,7 @@ func TestDrain_TrainGeneratesPatternsMatchableByLokiPatternFilter(t *testing.T) 
 		},
 		{
 			name:  "Scheduler patterns are matchable",
-			drain: New(DefaultConfig(), nil),
+			drain: New(DefaultConfig(), "", nil),
 			inputLines: []string{
 				`ts=2024-05-30T12:50:36.648377186Z caller=scheduler_processor.go:143 level=warn msg="error contacting scheduler" err="rpc error: code = Unavailable desc = connection error: desc = \"error reading server preface: EOF\"" addr=10.0.151.101:9095`,
 				`ts=2024-05-30T12:50:36.350575929Z caller=scheduler_processor.go:143 level=warn msg="error contacting scheduler" err="rpc error: code = Unavailable desc = connection error: desc = \"error reading server preface: EOF\"" addr=10.0.151.101:9095`,
@@ -651,7 +651,7 @@ func TestDrain_PruneTreeClearsOldBranches(t *testing.T) {
 	}{
 		{
 			name:  "should prune old branches",
-			drain: New(DefaultConfig(), nil),
+			drain: New(DefaultConfig(), "", nil),
 			inputLines: []string{
 				"test test test A",
 				"test test test B",

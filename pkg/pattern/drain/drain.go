@@ -147,7 +147,7 @@ func DefaultConfig() *Config {
 	}
 }
 
-func New(config *Config, metrics *Metrics) *Drain {
+func New(config *Config, format string, metrics *Metrics) *Drain {
 	if config.LogClusterDepth < 3 {
 		panic("depth argument must be at least 3")
 	}
@@ -156,13 +156,18 @@ func New(config *Config, metrics *Metrics) *Drain {
 	if metrics != nil {
 		evictFn = func(int, *LogCluster) { metrics.PatternsEvictedTotal.Inc() }
 	}
-
+	var tokenizer LineTokenizer
+	if format == FormatLogfmt {
+		tokenizer = newLogfmtTokenizer(config.ParamString)
+	} else {
+		tokenizer = newPunctuationTokenizer()
+	}
 	d := &Drain{
 		config:               config,
 		rootNode:             createNode(),
 		idToCluster:          createLogClusterCache(config.MaxClusters, evictFn),
 		metrics:              metrics,
-		tokenizer:            newPunctuationTokenizer(),
+		tokenizer:            tokenizer,
 		maxAllowedLineLength: 3000,
 	}
 	return d

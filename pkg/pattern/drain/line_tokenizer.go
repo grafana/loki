@@ -1,8 +1,12 @@
 package drain
 
 import (
+	"bytes"
 	"strings"
 	"unicode"
+
+	gologfmt "github.com/go-logfmt/logfmt"
+	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
 )
 
 type LineTokenizer interface {
@@ -130,4 +134,56 @@ func (splittingTokenizer) Join(tokens []string, state interface{}) string {
 		}
 	}
 	return strBuilder.String()
+}
+
+type logfmtTokenizer struct {
+	dec        *logfmt.Decoder
+	varReplace string
+}
+
+func newLogfmtTokenizer(varReplace string) *logfmtTokenizer {
+	return &logfmtTokenizer{
+		dec:        logfmt.NewDecoder(nil),
+		varReplace: varReplace,
+	}
+}
+
+func (t *logfmtTokenizer) Tokenize(line string) ([]string, interface{}) {
+	var tokens []string
+	t.dec.Reset([]byte(line))
+	for !t.dec.EOL() && t.dec.ScanKeyval() {
+		key := t.dec.Key()
+		if isTimeStampField(key) {
+			tokens = append(tokens, string(t.dec.Key()), t.varReplace)
+
+			continue
+		}
+		tokens = append(tokens, string(t.dec.Key()), string(t.dec.Value()))
+	}
+	if t.dec.Err() != nil {
+		return nil, nil
+	}
+	return tokens, nil
+}
+
+func (t *logfmtTokenizer) Join(tokens []string, state interface{}) string {
+	if len(tokens) == 0 {
+		return ""
+	}
+	if len(tokens)%2 == 1 {
+		tokens = append(tokens, "")
+	}
+	buf := bytes.NewBuffer(make([]byte, 0, 1024))
+	enc := gologfmt.NewEncoder(buf)
+	for i := 0; i < len(tokens); i += 2 {
+		k, v := tokens[i], tokens[i+1]
+		if err := enc.EncodeKeyval(k, v); err != nil {
+			return ""
+		}
+	}
+	return buf.String()
+}
+
+func isTimeStampField(key []byte) bool {
+	return bytes.EqualFold(key, []byte("ts")) || bytes.EqualFold(key, []byte("time")) || bytes.EqualFold(key, []byte("timestamp"))
 }

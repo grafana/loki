@@ -12,8 +12,10 @@ type TestCase struct {
 	want map[string][]string
 }
 
-const typePunctuation = "punctuation"
-const typeSplitting = "splitting"
+const (
+	typePunctuation = "punctuation"
+	typeSplitting   = "splitting"
+)
 
 var testCases = []TestCase{
 	{
@@ -159,6 +161,94 @@ func BenchmarkSplittingTokenizer(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				tokenizer.Tokenize(tc.line)
 			}
+		})
+	}
+}
+
+func TestLogFmtTokenizer(t *testing.T) {
+	param := DefaultConfig().ParamString
+	tests := []struct {
+		name string
+		line string
+		want []string
+	}{
+		{
+			line: `foo=bar baz="this is a message"`,
+			want: []string{"foo", "bar", "baz", "this is a message"},
+		},
+		{
+			line: `foo baz="this is a message"`,
+			want: []string{"foo", "", "baz", "this is a message"},
+		},
+		{
+			line: `foo= baz="this is a message"`,
+			want: []string{"foo", "", "baz", "this is a message"},
+		},
+		{
+			line: `foo baz`,
+			want: []string{"foo", "", "baz", ""},
+		},
+		{
+			line: `ts=2024-05-30T12:50:36.648377186Z caller=scheduler_processor.go:143 level=warn msg="error contacting scheduler" err="rpc error: code = Unavailable desc = connection error: desc = \"error reading server preface: EOF\"" addr=10.0.151.101:9095`,
+			want: []string{"ts", param, "caller", "scheduler_processor.go:143", "level", "warn", "msg", "error contacting scheduler", "err", "rpc error: code = Unavailable desc = connection error: desc = \"error reading server preface: EOF\"", "addr", "10.0.151.101:9095"},
+		},
+	}
+
+	tokenizer := newLogfmtTokenizer(param)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, _ := tokenizer.Tokenize(tt.line)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestLogFmtTokenizerJoin(t *testing.T) {
+	tests := []struct {
+		tokens []string
+		want   string
+	}{
+		{
+			want:   ``,
+			tokens: []string{},
+		},
+		{
+			want:   `foo=bar baz="this is a message"`,
+			tokens: []string{"foo", "bar", "baz", "this is a message"},
+		},
+		{
+			want:   `foo= baz="this is a message"`,
+			tokens: []string{"foo", "", "baz", "this is a message"},
+		},
+		{
+			want:   `foo= baz="this is a message"`,
+			tokens: []string{"foo", "", "baz", "this is a message"},
+		},
+		{
+			want:   `foo= baz=`,
+			tokens: []string{"foo", "", "baz", ""},
+		},
+		{
+			want:   `foo=`,
+			tokens: []string{"foo"},
+		},
+		{
+			want:   `foo= bar=`,
+			tokens: []string{"foo", "", "bar"},
+		},
+		{
+			want:   `ts=2024-05-30T12:50:36.648377186Z caller=scheduler_processor.go:143 level=warn msg="error contacting scheduler" err="rpc error: code = Unavailable desc = connection error: desc = \"error reading server preface: EOF\"" addr=10.0.151.101:9095`,
+			tokens: []string{"ts", "2024-05-30T12:50:36.648377186Z", "caller", "scheduler_processor.go:143", "level", "warn", "msg", "error contacting scheduler", "err", "rpc error: code = Unavailable desc = connection error: desc = \"error reading server preface: EOF\"", "addr", "10.0.151.101:9095"},
+		},
+	}
+
+	tokenizer := newLogfmtTokenizer("")
+
+	for _, tt := range tests {
+		t.Run("", func(t *testing.T) {
+			got := tokenizer.Join(tt.tokens, nil)
+			require.Equal(t, tt.want, got)
 		})
 	}
 }
