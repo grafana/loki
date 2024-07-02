@@ -137,7 +137,7 @@ func prunePatterns(resp *logproto.QueryPatternsResponse, minClusterSize int, met
 	pruneConfig.SimTh = 1.0 // Merge & de-dup patterns but don't modify them
 
 	patternsBefore := len(resp.Series)
-	d := drain.New(pruneConfig, nil)
+	d := drain.New(pruneConfig, "", nil)
 	for _, p := range resp.Series {
 		d.TrainPattern(p.GetPattern(), p.Samples)
 	}
