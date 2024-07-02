@@ -88,7 +88,7 @@ func unmarshalData(data []byte) (events.CloudwatchLogsData, error) {
 
 func createLabels(record events.KinesisEventRecord, recordData events.CloudwatchLogsData) model.LabelSet {
 	labels := model.LabelSet{
-		model.LabelName("__aws_log_type"):                 model.LabelValue("cloudwatch"),
+		model.LabelName("__aws_log_type"):                 model.LabelValue("kinesis"),
 		model.LabelName("__aws_kinesis_event_source_arn"): model.LabelValue(record.EventSourceArn),
 		model.LabelName("__aws_cloudwatch_log_group"):     model.LabelValue(recordData.LogGroup),
 		model.LabelName("__aws_cloudwatch_owner"):         model.LabelValue(recordData.Owner),

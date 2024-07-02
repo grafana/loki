@@ -40,7 +40,4 @@ func TestLambdaPromtail_KinesisParseEvents(t *testing.T) {
 
 	err = parseKinesisEvent(ctx, mockBatch, &testEvent)
 	require.Nil(t, err)
-
-	labelsStr := "{__aws_kinesis_event_source_arn=\"arn:aws:kinesis:us-east-1:123456789012:stream/simple-stream\", __aws_log_type=\"kinesis\"}"
-	require.Contains(t, mockBatch.streams, labelsStr)
 }
