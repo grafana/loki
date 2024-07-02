@@ -55,24 +55,10 @@ var (
 
 	faintBoldColor                 = color.New(color.Faint, color.Bold)
 	faintColor                     = color.New(color.Faint)
-	faintMultiLinePrefix           string
-	faintFieldSeparator            string
-	faintFieldSeparatorWithNewLine string
-)
-
-func init() {
-	// Force all the colors to enabled because we do our own detection of color usage.
-	for _, c := range _levelToColor {
-		c.EnableColor()
-	}
-
-	faintBoldColor.EnableColor()
-	faintColor.EnableColor()
-
-	faintMultiLinePrefix = faintColor.Sprint("  | ")
-	faintFieldSeparator = faintColor.Sprint("=")
+	faintMultiLinePrefix           = faintColor.Sprint("  | ")
+	faintFieldSeparator            = faintColor.Sprint("=")
 	faintFieldSeparatorWithNewLine = faintColor.Sprint("=\n")
-}
+)
 
 // Make sure that intLogger is a Logger
 var _ Logger = &intLogger{}
@@ -80,32 +66,18 @@ var _ Logger = &intLogger{}
 // intLogger is an internal logger implementation. Internal in that it is
 // defined entirely by this package.
 type intLogger struct {
-	json              bool
-	jsonEscapeEnabled bool
-	callerOffset      int
-	name              string
-	timeFormat        string
-	timeFn            TimeFunction
-	disableTime       bool
+	json         bool
+	callerOffset int
+	name         string
+	timeFormat   string
+	timeFn       TimeFunction
+	disableTime  bool
 
 	// This is an interface so that it's shared by any derived loggers, since
 	// those derived loggers share the bufio.Writer as well.
 	mutex  Locker
 	writer *writer
 	level  *int32
-
-	// The value of curEpoch when our level was set
-	setEpoch uint64
-
-	// The value of curEpoch the last time we performed the level sync process
-	ownEpoch uint64
-
-	// Shared amongst all the loggers created in this hierachy, used to determine
-	// if the level sync process should be run by comparing it with ownEpoch
-	curEpoch *uint64
-
-	// The logger this one was created from. Only set when syncParentLevel is set
-	parent *intLogger
 
 	headerColor ColorOption
 	fieldColor  ColorOption
@@ -116,7 +88,6 @@ type intLogger struct {
 
 	// create subloggers with their own level setting
 	independentLevels bool
-	syncParentLevel   bool
 
 	subloggerHook func(sub Logger) Logger
 }
@@ -158,9 +129,9 @@ func newLogger(opts *LoggerOptions) *intLogger {
 	}
 
 	var (
-		primaryColor = ColorOff
-		headerColor  = ColorOff
-		fieldColor   = ColorOff
+		primaryColor ColorOption = ColorOff
+		headerColor  ColorOption = ColorOff
+		fieldColor   ColorOption = ColorOff
 	)
 	switch {
 	case opts.ColorHeaderOnly:
@@ -174,7 +145,6 @@ func newLogger(opts *LoggerOptions) *intLogger {
 
 	l := &intLogger{
 		json:              opts.JSONFormat,
-		jsonEscapeEnabled: !opts.JSONEscapeDisabled,
 		name:              opts.Name,
 		timeFormat:        TimeFormat,
 		timeFn:            time.Now,
@@ -182,10 +152,8 @@ func newLogger(opts *LoggerOptions) *intLogger {
 		mutex:             mutex,
 		writer:            newWriter(output, primaryColor),
 		level:             new(int32),
-		curEpoch:          new(uint64),
 		exclude:           opts.Exclude,
 		independentLevels: opts.IndependentLevels,
-		syncParentLevel:   opts.SyncParentLevel,
 		headerColor:       headerColor,
 		fieldColor:        fieldColor,
 		subloggerHook:     opts.SubloggerHook,
@@ -226,7 +194,7 @@ const offsetIntLogger = 3
 // Log a message and a set of key/value pairs if the given level is at
 // or more severe that the threshold configured in the Logger.
 func (l *intLogger) log(name string, level Level, msg string, args ...interface{}) {
-	if level < l.GetLevel() {
+	if level < Level(atomic.LoadInt32(l.level)) {
 		return
 	}
 
@@ -629,7 +597,7 @@ func (l *intLogger) logJSON(t time.Time, name string, level Level, msg string, a
 	vals := l.jsonMapEntry(t, name, level, msg)
 	args = append(l.implied, args...)
 
-	if len(args) > 0 {
+	if args != nil && len(args) > 0 {
 		if len(args)%2 != 0 {
 			cs, ok := args[len(args)-1].(CapturedStacktrace)
 			if ok {
@@ -669,17 +637,13 @@ func (l *intLogger) logJSON(t time.Time, name string, level Level, msg string, a
 		}
 	}
 
-	encoder := json.NewEncoder(l.writer)
-	encoder.SetEscapeHTML(l.jsonEscapeEnabled)
-	err := encoder.Encode(vals)
+	err := json.NewEncoder(l.writer).Encode(vals)
 	if err != nil {
 		if _, ok := err.(*json.UnsupportedTypeError); ok {
 			plainVal := l.jsonMapEntry(t, name, level, msg)
 			plainVal["@warn"] = errJsonUnsupportedTypeMsg
 
-			errEncoder := json.NewEncoder(l.writer)
-			errEncoder.SetEscapeHTML(l.jsonEscapeEnabled)
-			errEncoder.Encode(plainVal)
+			json.NewEncoder(l.writer).Encode(plainVal)
 		}
 	}
 }
@@ -754,27 +718,27 @@ func (l *intLogger) Error(msg string, args ...interface{}) {
 
 // Indicate that the logger would emit TRACE level logs
 func (l *intLogger) IsTrace() bool {
-	return l.GetLevel() == Trace
+	return Level(atomic.LoadInt32(l.level)) == Trace
 }
 
 // Indicate that the logger would emit DEBUG level logs
 func (l *intLogger) IsDebug() bool {
-	return l.GetLevel() <= Debug
+	return Level(atomic.LoadInt32(l.level)) <= Debug
 }
 
 // Indicate that the logger would emit INFO level logs
 func (l *intLogger) IsInfo() bool {
-	return l.GetLevel() <= Info
+	return Level(atomic.LoadInt32(l.level)) <= Info
 }
 
 // Indicate that the logger would emit WARN level logs
 func (l *intLogger) IsWarn() bool {
-	return l.GetLevel() <= Warn
+	return Level(atomic.LoadInt32(l.level)) <= Warn
 }
 
 // Indicate that the logger would emit ERROR level logs
 func (l *intLogger) IsError() bool {
-	return l.GetLevel() <= Error
+	return Level(atomic.LoadInt32(l.level)) <= Error
 }
 
 const MissingKey = "EXTRA_VALUE_AT_END"
@@ -890,63 +854,12 @@ func (l *intLogger) resetOutput(opts *LoggerOptions) error {
 // Update the logging level on-the-fly. This will affect all subloggers as
 // well.
 func (l *intLogger) SetLevel(level Level) {
-	if !l.syncParentLevel {
-		atomic.StoreInt32(l.level, int32(level))
-		return
-	}
-
-	nsl := new(int32)
-	*nsl = int32(level)
-
-	l.level = nsl
-
-	l.ownEpoch = atomic.AddUint64(l.curEpoch, 1)
-	l.setEpoch = l.ownEpoch
-}
-
-func (l *intLogger) searchLevelPtr() *int32 {
-	p := l.parent
-
-	ptr := l.level
-
-	max := l.setEpoch
-
-	for p != nil {
-		if p.setEpoch > max {
-			max = p.setEpoch
-			ptr = p.level
-		}
-
-		p = p.parent
-	}
-
-	return ptr
+	atomic.StoreInt32(l.level, int32(level))
 }
 
 // Returns the current level
 func (l *intLogger) GetLevel() Level {
-	// We perform the loads immediately to keep the CPU pipeline busy, which
-	// effectively makes the second load cost nothing. Once loaded into registers
-	// the comparison returns the already loaded value. The comparison is almost
-	// always true, so the branch predictor should hit consistently with it.
-	var (
-		curEpoch = atomic.LoadUint64(l.curEpoch)
-		level    = Level(atomic.LoadInt32(l.level))
-		own      = l.ownEpoch
-	)
-
-	if curEpoch == own {
-		return level
-	}
-
-	// Perform the level sync process. We'll avoid doing this next time by seeing the
-	// epoch as current.
-
-	ptr := l.searchLevelPtr()
-	l.level = ptr
-	l.ownEpoch = curEpoch
-
-	return Level(atomic.LoadInt32(ptr))
+	return Level(atomic.LoadInt32(l.level))
 }
 
 // Create a *log.Logger that will send it's data through this Logger. This
@@ -999,8 +912,6 @@ func (l *intLogger) copy() *intLogger {
 	if l.independentLevels {
 		sl.level = new(int32)
 		*sl.level = *l.level
-	} else if l.syncParentLevel {
-		sl.parent = l
 	}
 
 	return &sl

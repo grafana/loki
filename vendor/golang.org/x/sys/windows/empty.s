@@ -2,10 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build gc
+//go:build !go1.12
 
-package cpu
-
-func getisar0() uint64
-func getisar1() uint64
-func getpfr0() uint64
+// This file is here to allow bodyless functions with go:linkname for Go 1.11
+// and earlier (see https://golang.org/issue/23311).
