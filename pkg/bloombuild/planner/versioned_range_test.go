@@ -252,21 +252,25 @@ func Test_OutdatedMetas(t *testing.T) {
 	}
 
 	for _, tc := range []struct {
-		desc  string
-		metas []bloomshipper.Meta
-		exp   []bloomshipper.Meta
+		desc        string
+		metas       []bloomshipper.Meta
+		expOutdated []bloomshipper.Meta
+		expUpToDate []bloomshipper.Meta
 	}{
 		{
-			desc:  "no metas",
-			metas: nil,
-			exp:   nil,
+			desc:        "no metas",
+			metas:       nil,
+			expOutdated: nil,
 		},
 		{
 			desc: "single meta",
 			metas: []bloomshipper.Meta{
 				gen(v1.NewBounds(0, 10), 0),
 			},
-			exp: nil,
+			expOutdated: nil,
+			expUpToDate: []bloomshipper.Meta{
+				gen(v1.NewBounds(0, 10), 0),
+			},
 		},
 		{
 			desc: "single outdated meta",
@@ -274,8 +278,11 @@ func Test_OutdatedMetas(t *testing.T) {
 				gen(v1.NewBounds(0, 10), 0),
 				gen(v1.NewBounds(0, 10), 1),
 			},
-			exp: []bloomshipper.Meta{
+			expOutdated: []bloomshipper.Meta{
 				gen(v1.NewBounds(0, 10), 0),
+			},
+			expUpToDate: []bloomshipper.Meta{
+				gen(v1.NewBounds(0, 10), 1),
 			},
 		},
 		{
@@ -285,9 +292,12 @@ func Test_OutdatedMetas(t *testing.T) {
 				gen(v1.NewBounds(6, 10), 0),
 				gen(v1.NewBounds(0, 10), 1),
 			},
-			exp: []bloomshipper.Meta{
+			expOutdated: []bloomshipper.Meta{
 				gen(v1.NewBounds(6, 10), 0),
 				gen(v1.NewBounds(0, 5), 0),
+			},
+			expUpToDate: []bloomshipper.Meta{
+				gen(v1.NewBounds(0, 10), 1),
 			},
 		},
 		{
@@ -297,9 +307,12 @@ func Test_OutdatedMetas(t *testing.T) {
 				gen(v1.NewBounds(6, 10), 0),
 				gen(v1.NewBounds(0, 10), 1),
 			},
-			exp: []bloomshipper.Meta{
+			expOutdated: []bloomshipper.Meta{
 				gen(v1.NewBounds(6, 10), 0),
 				gen(v1.NewBounds(0, 5), 0),
+			},
+			expUpToDate: []bloomshipper.Meta{
+				gen(v1.NewBounds(0, 10), 1),
 			},
 		},
 		{
@@ -309,14 +322,19 @@ func Test_OutdatedMetas(t *testing.T) {
 				gen(v1.NewBounds(0, 10), 1), // only part of the range is outdated, must keep
 				gen(v1.NewBounds(8, 10), 2),
 			},
-			exp: []bloomshipper.Meta{
+			expOutdated: []bloomshipper.Meta{
 				gen(v1.NewBounds(0, 5), 0),
+			},
+			expUpToDate: []bloomshipper.Meta{
+				gen(v1.NewBounds(0, 10), 1),
+				gen(v1.NewBounds(8, 10), 2),
 			},
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			outdated := outdatedMetas(tc.metas)
-			require.Equal(t, tc.exp, outdated)
+			upToDate, outdated := outdatedMetas(tc.metas)
+			require.ElementsMatch(t, tc.expOutdated, outdated)
+			require.ElementsMatch(t, tc.expUpToDate, upToDate)
 		})
 	}
 }

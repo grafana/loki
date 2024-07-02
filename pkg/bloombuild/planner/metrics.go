@@ -15,6 +15,9 @@ const (
 
 	statusSuccess = "success"
 	statusFailure = "failure"
+
+	phasePlanning = "planning"
+	phaseBuilding = "building"
 )
 
 type Metrics struct {
@@ -33,8 +36,8 @@ type Metrics struct {
 	buildTime        *prometheus.HistogramVec
 	buildLastSuccess prometheus.Gauge
 
-	blocksDeleted prometheus.Counter
-	metasDeleted  prometheus.Counter
+	blocksDeleted *prometheus.CounterVec
+	metasDeleted  *prometheus.CounterVec
 
 	tenantsDiscovered    prometheus.Counter
 	tenantTasksPlanned   *prometheus.GaugeVec
@@ -127,18 +130,18 @@ func NewMetrics(
 			Help:      "Unix timestamp of the last successful build cycle.",
 		}),
 
-		blocksDeleted: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		blocksDeleted: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
 			Name:      "blocks_deleted_total",
 			Help:      "Number of blocks deleted",
-		}),
-		metasDeleted: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		}, []string{"phase"}),
+		metasDeleted: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
 			Name:      "metas_deleted_total",
 			Help:      "Number of metas deleted",
-		}),
+		}, []string{"phase"}),
 
 		tenantsDiscovered: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,

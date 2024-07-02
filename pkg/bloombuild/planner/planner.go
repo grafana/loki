@@ -338,6 +338,13 @@ func (p *Planner) computeTasks(
 		return nil, nil, fmt.Errorf("failed to get metas: %w", err)
 	}
 
+	// In case the planner restarted before deleting outdated metas in the previous iteration,
+	// we delete them during the planning phase to avoid reprocessing them.
+	metas, err = p.deleteOutdatedMetas(ctx, table, tenant, metas, phasePlanning)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to delete outdated metas during planning: %w", err)
+	}
+
 	for _, ownershipRange := range ownershipRanges {
 		logger := log.With(logger, "ownership", ownershipRange.String())
 
@@ -348,9 +355,6 @@ func (p *Planner) computeTasks(
 		gaps, err := p.findOutdatedGaps(ctx, tenant, table, ownershipRange, metasInBounds, logger)
 		if err != nil {
 			level.Error(logger).Log("msg", "failed to find outdated gaps", "err", err)
-			continue
-		}
-		if len(gaps) == 0 {
 			continue
 		}
 
@@ -423,32 +427,41 @@ func (p *Planner) processTenantTaskResults(
 	}
 
 	combined := append(originalMetas, newMetas...)
-	outdated := outdatedMetas(combined)
-	if len(outdated) == 0 {
-		level.Debug(logger).Log("msg", "no outdated metas found")
-		return tasksSucceed, nil
-	}
-
-	level.Debug(logger).Log("msg", "found outdated metas", "outdated", len(outdated))
-	if err := p.deleteOutdatedMetasAndBlocks(ctx, table, tenant, outdated); err != nil {
+	if _, err := p.deleteOutdatedMetas(ctx, table, tenant, combined, phaseBuilding); err != nil {
 		return 0, fmt.Errorf("failed to delete outdated metas: %w", err)
 	}
 
 	return tasksSucceed, nil
 }
 
-func (p *Planner) deleteOutdatedMetasAndBlocks(
+func (p *Planner) deleteOutdatedMetas(
 	ctx context.Context,
 	table config.DayTable,
 	tenant string,
 	metas []bloomshipper.Meta,
-) error {
-	logger := log.With(p.logger, "table", table.Addr(), "tenant", tenant)
+	phase string,
+) ([]bloomshipper.Meta, error) {
+	logger := log.With(p.logger, "table", table.Addr(), "tenant", tenant, "phase", phase)
+
+	upToDate, outdated := outdatedMetas(metas)
+	if len(outdated) == 0 {
+		level.Debug(logger).Log(
+			"msg", "no outdated metas found",
+			"upToDate", len(upToDate),
+		)
+		return upToDate, nil
+	}
+
+	level.Debug(logger).Log(
+		"msg", "found outdated metas",
+		"outdated", len(outdated),
+		"upToDate", len(upToDate),
+	)
 
 	client, err := p.bloomStore.Client(table.ModelTime())
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to get client", "err", err)
-		return errors.Wrap(err, "failed to get client")
+		return nil, errors.Wrap(err, "failed to get client")
 	}
 
 	var (
@@ -456,18 +469,18 @@ func (p *Planner) deleteOutdatedMetasAndBlocks(
 		deletedBlocks int
 	)
 	defer func() {
-		p.metrics.metasDeleted.Add(float64(deletedMetas))
-		p.metrics.blocksDeleted.Add(float64(deletedBlocks))
+		p.metrics.metasDeleted.WithLabelValues(phase).Add(float64(deletedMetas))
+		p.metrics.blocksDeleted.WithLabelValues(phase).Add(float64(deletedBlocks))
 	}()
 
-	for _, meta := range metas {
+	for _, meta := range outdated {
 		for _, block := range meta.Blocks {
 			if err := client.DeleteBlocks(ctx, []bloomshipper.BlockRef{block}); err != nil {
 				if client.IsObjectNotFoundErr(err) {
 					level.Debug(logger).Log("msg", "block not found while attempting delete, continuing", "block", block.String())
 				} else {
 					level.Error(logger).Log("msg", "failed to delete block", "err", err, "block", block.String())
-					return errors.Wrap(err, "failed to delete block")
+					return nil, errors.Wrap(err, "failed to delete block")
 				}
 			}
 
@@ -481,7 +494,7 @@ func (p *Planner) deleteOutdatedMetasAndBlocks(
 				level.Debug(logger).Log("msg", "meta not found while attempting delete, continuing", "meta", meta.MetaRef.String())
 			} else {
 				level.Error(logger).Log("msg", "failed to delete meta", "err", err, "meta", meta.MetaRef.String())
-				return errors.Wrap(err, "failed to delete meta")
+				return nil, errors.Wrap(err, "failed to delete meta")
 			}
 		}
 		deletedMetas++
@@ -494,7 +507,7 @@ func (p *Planner) deleteOutdatedMetasAndBlocks(
 		"blocks", deletedBlocks,
 	)
 
-	return nil
+	return upToDate, nil
 }
 
 func (p *Planner) tables(ts time.Time) *dayRangeIterator {
