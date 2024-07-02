@@ -59,4 +59,4 @@ standardClient := retryClient.StandardClient() // *http.Client
 ```
 
 For more usage and examples see the
-[pkg.go.dev](https://pkg.go.dev/github.com/hashicorp/go-retryablehttp).
+[godoc](http://godoc.org/github.com/hashicorp/go-retryablehttp).
