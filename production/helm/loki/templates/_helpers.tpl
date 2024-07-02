@@ -300,6 +300,15 @@ azure:
 {{- else if eq .Values.loki.storage.type "swift" -}}
 {{- with .Values.loki.storage.swift }}
 swift:
+  {{- with .application_credential_id }}
+  application_credential_id: {{ . }}
+  {{- end }}
+  {{- with .application_credential_name }}
+  application_credential_name: {{ . }}
+  {{- end }}
+  {{- with .application_credential_secret }}
+  application_credential_secret: {{ . }}
+  {{- end }}
   {{- with .auth_version }}
   auth_version: {{ . }}
   {{- end }}
@@ -307,7 +316,9 @@ swift:
   {{- with .internal }}
   internal: {{ . }}
   {{- end }}
-  username: {{ .username }}
+  {{- with .username }}
+  username: {{ . }}
+  {{- end }}
   user_domain_name: {{ .user_domain_name }}
   {{- with .user_domain_id }}
   user_domain_id: {{ . }}
@@ -315,7 +326,9 @@ swift:
   {{- with .user_id }}
   user_id: {{ . }}
   {{- end }}
-  password: {{ .password }}
+  {{- with .password }}
+  password: {{ . }}
+  {{- end }}
   {{- with .domain_id }}
   domain_id: {{ . }}
   {{- end }}
@@ -409,6 +422,15 @@ azure:
 {{- else if eq .Values.loki.storage.type "swift" -}}
 {{- with .Values.loki.storage.swift }}
 swift:
+  {{- with .application_credential_id }}
+  application_credential_id: {{ . }}
+  {{- end }}
+  {{- with .application_credential_name }}
+  application_credential_name: {{ . }}
+  {{- end }}
+  {{- with .application_credential_secret }}
+  application_credential_secret: {{ . }}
+  {{- end }}
   {{- with .auth_version }}
   auth_version: {{ . }}
   {{- end }}
@@ -416,7 +438,9 @@ swift:
   {{- with .internal }}
   internal: {{ . }}
   {{- end }}
-  username: {{ .username }}
+  {{- with .username }}
+  username: {{ . }}
+  {{- end }}
   user_domain_name: {{ .user_domain_name }}
   {{- with .user_domain_id }}
   user_domain_id: {{ . }}
@@ -424,7 +448,9 @@ swift:
   {{- with .user_id }}
   user_id: {{ . }}
   {{- end }}
-  password: {{ .password }}
+  {{- with .password }}
+  password: {{ . }}
+  {{- end }}
   {{- with .domain_id }}
   domain_id: {{ . }}
   {{- end }}
@@ -493,6 +519,15 @@ storage:
   {{- with .Values.loki.storage.swift }}
   backend: "swift"
   swift:
+    {{- with .application_credential_id }}
+    application_credential_id: {{ . }}
+    {{- end }}
+    {{- with .application_credential_name }}
+    application_credential_name: {{ . }}
+    {{- end }}
+    {{- with .application_credential_secret }}
+    application_credential_secret: {{ . }}
+    {{- end }}
     {{- with .auth_version }}
     auth_version: {{ . }}
     {{- end }}
@@ -500,7 +535,9 @@ storage:
     {{- with .internal }}
     internal: {{ . }}
     {{- end }}
-    username: {{ .username }}
+    {{- with .username }}
+    username: {{ . }}
+    {{- end }}
     user_domain_name: {{ .user_domain_name }}
     {{- with .user_domain_id }}
     user_domain_id: {{ . }}
@@ -508,7 +545,9 @@ storage:
     {{- with .user_id }}
     user_id: {{ . }}
     {{- end }}
-    password: {{ .password }}
+    {{- with .password }}
+    password: {{ . }}
+    {{- end }}
     {{- with .domain_id }}
     domain_id: {{ . }}
     {{- end }}
