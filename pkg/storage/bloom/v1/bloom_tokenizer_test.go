@@ -299,8 +299,8 @@ func TestTokenizerClearsCacheBetweenPopulateCalls(t *testing.T) {
 		itr, err := chunkRefItrFromLines(line)
 		require.NoError(t, err)
 		go bt.Populate(
-			NewEmptyIter[*Bloom](),
-			NewSliceIter([]ChunkRefWithIter{
+			v2.NewEmptyIter[*Bloom](),
+			v2.NewSliceIter([]ChunkRefWithIter{
 				{
 					Ref: ChunkRef{},
 					Itr: itr,
