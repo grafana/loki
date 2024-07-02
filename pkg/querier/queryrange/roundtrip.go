@@ -518,7 +518,7 @@ const (
 	PatternsQueryOp      = "patterns"
 	DetectedLabelsOp     = "detected_labels"
 	SamplesQueryOp       = "samples"
-	StructuredMetadataOp = "structured_metadata"
+	StructuredMetadataKeysOp = "structured_metadata_keys"
 )
 
 func getOperation(path string) string {
@@ -547,8 +547,8 @@ func getOperation(path string) string {
 		return PatternsQueryOp
 	case path == "/loki/api/v1/detected_labels":
 		return DetectedLabelsOp
-	case path == "/loki/api/v1/structured_metadata":
-		return StructuredMetadataOp
+	case path == "/loki/api/v1/structured_metadata/keys":
+		return StructuredMetadataKeysOp
 	default:
 		return ""
 	}

@@ -254,18 +254,18 @@ func (m *DetectedFieldsResponse) WithHeaders(h []queryrangebase.PrometheusRespon
 	return m
 }
 
-func (m *StructuredMetadataResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
+func (m *StructuredMetadataKeysResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
 	if m != nil {
 		return convertPrometheusResponseHeadersToPointers(m.Headers)
 	}
 	return nil
 }
 
-func (m *StructuredMetadataResponse) SetHeader(name, value string) {
+func (m *StructuredMetadataKeysResponse) SetHeader(name, value string) {
 	m.Headers = setHeader(m.Headers, name, value)
 }
 
-func (m *StructuredMetadataResponse) WithHeaders(h []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
+func (m *StructuredMetadataKeysResponse) WithHeaders(h []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
 	m.Headers = h
 	return m
 }

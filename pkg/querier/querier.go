@@ -106,7 +106,7 @@ type Querier interface {
 	Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error)
 	DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error)
 	SelectMetricSamples(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error)
-	StructuredMetadata(ctx context.Context, req *logproto.StructuredMetadataRequest) (*logproto.StructuredMetadataResponse, error)
+	StructuredMetadata(ctx context.Context, req *logproto.StructuredMetadataKeysRequest) (*logproto.StructuredMetadataKeysResponse, error)
 }
 
 type Limits querier_limits.Limits
@@ -1149,7 +1149,7 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 	}, nil
 }
 
-func (q *SingleTenantQuerier) StructuredMetadata(ctx context.Context, req *logproto.StructuredMetadataRequest) (*logproto.StructuredMetadataResponse, error) {
+func (q *SingleTenantQuerier) StructuredMetadata(ctx context.Context, req *logproto.StructuredMetadataKeysRequest) (*logproto.StructuredMetadataKeysResponse, error) {
 	expr, err := syntax.ParseLogSelector(req.Query, true)
 	if err != nil {
 		return nil, err
@@ -1179,13 +1179,13 @@ func (q *SingleTenantQuerier) StructuredMetadata(ctx context.Context, req *logpr
 
 	structuredMetadata := parseStructuredMetadata(ctx, streams)
 
-	fields := make([]*logproto.StructuredMetadata, len(structuredMetadata))
+	keys := make([]string, len(structuredMetadata))
 	for k, v := range structuredMetadata {
-		fields[k] = &logproto.StructuredMetadata{Label: v}
+		keys[k] = v
 	}
 
-	return &logproto.StructuredMetadataResponse{
-		Fields: fields,
+	return &logproto.StructuredMetadataKeysResponse{
+		Keys: keys,
 	}, nil
 }
 

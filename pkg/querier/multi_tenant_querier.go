@@ -308,7 +308,7 @@ func (q *MultiTenantQuerier) DetectedFields(ctx context.Context, req *logproto.D
 	}, nil
 }
 
-func (q *MultiTenantQuerier) StructuredMetadata(ctx context.Context, req *logproto.StructuredMetadataRequest) (*logproto.StructuredMetadataResponse, error) {
+func (q *MultiTenantQuerier) StructuredMetadata(ctx context.Context, req *logproto.StructuredMetadataKeysRequest) (*logproto.StructuredMetadataKeysResponse, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
@@ -323,8 +323,8 @@ func (q *MultiTenantQuerier) StructuredMetadata(ctx context.Context, req *logpro
 		"tenantIDs", strings.Join(tenantIDs, ","),
 	)
 
-	return &logproto.StructuredMetadataResponse{
-		Fields:     []*logproto.StructuredMetadata{},
+	return &logproto.StructuredMetadataKeysResponse{
+		Keys:     []string{},
 	}, nil
 }
 

@@ -687,9 +687,9 @@ func ParseDetectedFieldsQuery(r *http.Request) (*logproto.DetectedFieldsRequest,
 	return result, nil
 }
 
-func ParseStructuredMetadataQuery(r *http.Request) (*logproto.StructuredMetadataRequest, error) {
+func ParseStructuredMetadataQuery(r *http.Request) (*logproto.StructuredMetadataKeysRequest, error) {
 	var err error
-	result := &logproto.StructuredMetadataRequest{}
+	result := &logproto.StructuredMetadataKeysRequest{}
 
 	result.Query = query(r)
 	result.Start, result.End, err = bounds(r)

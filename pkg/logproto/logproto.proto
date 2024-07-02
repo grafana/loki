@@ -498,7 +498,7 @@ message DetectedLabel {
   bytes sketch = 3 [(gogoproto.jsontag) = "sketch,omitempty"];
 }
 
-message StructuredMetadataRequest {
+message StructuredMetadataKeysRequest {
   google.protobuf.Timestamp start = 1 [
     (gogoproto.stdtime) = true,
     (gogoproto.nullable) = false
@@ -508,12 +508,9 @@ message StructuredMetadataRequest {
     (gogoproto.nullable) = false
   ];
   string query = 3;
+  uint32 lineLimit = 4;
 }
 
-message StructuredMetadataResponse {
-  repeated StructuredMetadata fields = 1;
-}
-
-message StructuredMetadata {
-  string label = 1;
+message StructuredMetadataKeysResponse {
+  repeated string keys = 1;
 }

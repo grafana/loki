@@ -399,7 +399,7 @@ func (q *QuerierAPI) DetectedFieldsHandler(ctx context.Context, req *logproto.De
 	return resp, nil
 }
 
-func (q *QuerierAPI) StructuredMetadataHandler(ctx context.Context, req *logproto.StructuredMetadataRequest) (*logproto.StructuredMetadataResponse, error) {
+func (q *QuerierAPI) StructuredMetadataHandler(ctx context.Context, req *logproto.StructuredMetadataKeysRequest) (*logproto.StructuredMetadataKeysResponse, error) {
 	resp, err := q.querier.StructuredMetadata(ctx, req)
 	if err != nil {
 		return nil, err
@@ -408,8 +408,8 @@ func (q *QuerierAPI) StructuredMetadataHandler(ctx context.Context, req *logprot
 		level.Debug(spanlogger.FromContext(ctx)).Log(
 			"msg", "queried store for detected fields that does not support it, no response from querier.DetectedFields",
 		)
-		return &logproto.StructuredMetadataResponse{
-			Fields:     []*logproto.StructuredMetadata{},
+		return &logproto.StructuredMetadataKeysResponse{
+			Keys:     []string{},
 		}, nil
 	}
 	return resp, nil
