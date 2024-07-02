@@ -23,7 +23,7 @@ It primarily:
 - Pushes them to the Loki instance.
 
 Currently, Promtail can tail logs from two sources: local log files and the
-systemd journal (on AMD64 machines only).
+systemd journal (on ARM and AMD64 machines).
 
 ## Log file discovery
 
