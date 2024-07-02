@@ -851,14 +851,52 @@ using the AMD64 Docker image, this is enabled by default.
 labels:
   [ <labelname>: <labelvalue> ... ]
 
+# Get labels from journal, when it is not empty
+relabel_configs:
+- source_labels: ['__journal__hostname']
+  target_label: host
+- source_labels: ['__journal__systemd_unit']
+  target_label: systemd_unit
+  regex: '(.+)'
+- source_labels: ['__journal__systemd_user_unit']
+  target_label: systemd_user_unit
+  regex: '(.+)'
+- source_labels: ['__journal__transport']
+  target_label: transport
+  regex: '(.+)'
+- source_labels: ['__journal_priority_keyword']
+  target_label: severity
+  regex: '(.+)'
+
 # Path to a directory to read entries from. Defaults to system
 # paths (/var/log/journal and /run/log/journal) when empty.
 [path: <string>]
 ```
+#### Available Labels
 
-{{% admonition type="note" %}}
-Priority label is available as both value and keyword. For example, if `priority` is `3` then the labels will be `__journal_priority` with a value `3` and `__journal_priority_keyword` with a corresponding keyword `err`.
-{{% /admonition %}}
+Labels are imported from systemd-journal fields. The label name is the field name set to lower case with **__journal_** prefix. See the man page [systemd.journal-fields](https://www.freedesktop.org/software/systemd/man/latest/systemd.journal-fields.html) for more information.
+
+For example:
+
+| journal field      | label                        |
+|--------------------|------------------------------|
+| _HOSTNAME          | __journal__hostname          |
+| _SYSTEMD_UNIT      | __journal__systemd_unit      |
+| _SYSTEMD_USER_UNIT | __journal__systemd_user_unit |
+| ERRNO              | __journal_errno              |
+
+In addition to `__journal_priority` (imported from `PRIORITY` journal field, where the value is an integer from 0 to 7), promtail adds `__journal_priority_keyword` label where the value is generated using the `makeJournalPriority` mapping function.
+
+| journal priority | keyword |
+|------------------|---------|
+| 0                | emerg   |
+| 1                | alert   |
+| 2                | crit    |
+| 3                | error   |
+| 4                | warning |
+| 5                | notice  |
+| 6                | info    |
+| 7                | debug   |
 
 ### syslog
 
