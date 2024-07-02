@@ -324,7 +324,7 @@ func (q *MultiTenantQuerier) StructuredMetadata(ctx context.Context, req *logpro
 	)
 
 	return &logproto.StructuredMetadataKeysResponse{
-		Keys:     []string{},
+		Keys: []string{},
 	}, nil
 }
 
