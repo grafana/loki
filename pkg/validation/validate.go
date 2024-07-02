@@ -128,3 +128,13 @@ var LineLengthHist = promauto.NewHistogram(prometheus.HistogramOpts{
 	Help:      "The total number of bytes per line.",
 	Buckets:   prometheus.ExponentialBuckets(1, 8, 8), // 1B -> 16MB
 })
+
+// DiscardedSamples is a metric of the number of discarded samples, by reason.
+var MaxLabelNamesPerTenant = promauto.NewGaugeVec(
+	prometheus.GaugeOpts{
+		Namespace: constants.Loki,
+		Name:      "max_label_names",
+		Help:      "The maximum number of labels seen on all streams for a tenant.",
+	},
+	[]string{"tenant"},
+)
