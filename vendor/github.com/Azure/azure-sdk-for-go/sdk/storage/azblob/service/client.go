@@ -7,8 +7,13 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/streaming"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/base"
 	"net/http"
 	"strings"
 	"time"
@@ -18,7 +23,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
-	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/base"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/exported"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/generated"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/shared"
@@ -26,9 +30,7 @@ import (
 )
 
 // ClientOptions contains the optional parameters when creating a Client.
-type ClientOptions struct {
-	azcore.ClientOptions
-}
+type ClientOptions base.ClientOptions
 
 // Client represents a URL to the Azure Blob Storage service allowing you to manipulate blob containers.
 type Client base.Client[generated.ServiceClient]
@@ -38,12 +40,16 @@ type Client base.Client[generated.ServiceClient]
 //   - cred - an Azure AD credential, typically obtained via the azidentity module
 //   - options - client options; pass nil to accept the default values
 func NewClient(serviceURL string, cred azcore.TokenCredential, options *ClientOptions) (*Client, error) {
-	authPolicy := runtime.NewBearerTokenPolicy(cred, []string{shared.TokenScope}, nil)
+	audience := base.GetAudience((*base.ClientOptions)(options))
+	authPolicy := shared.NewStorageChallengePolicy(cred, audience)
 	conOptions := shared.GetClientOptions(options)
-	conOptions.PerRetryPolicies = append(conOptions.PerRetryPolicies, authPolicy)
-	pl := runtime.NewPipeline(exported.ModuleName, exported.ModuleVersion, runtime.PipelineOptions{}, &conOptions.ClientOptions)
+	plOpts := runtime.PipelineOptions{PerRetry: []policy.Policy{authPolicy}}
 
-	return (*Client)(base.NewServiceClient(serviceURL, pl, nil)), nil
+	azClient, err := azcore.NewClient(exported.ModuleName, exported.ModuleVersion, plOpts, &conOptions.ClientOptions)
+	if err != nil {
+		return nil, err
+	}
+	return (*Client)(base.NewServiceClient(serviceURL, azClient, &cred, (*base.ClientOptions)(conOptions))), nil
 }
 
 // NewClientWithNoCredential creates an instance of Client with the specified values.
@@ -52,9 +58,12 @@ func NewClient(serviceURL string, cred azcore.TokenCredential, options *ClientOp
 //   - options - client options; pass nil to accept the default values
 func NewClientWithNoCredential(serviceURL string, options *ClientOptions) (*Client, error) {
 	conOptions := shared.GetClientOptions(options)
-	pl := runtime.NewPipeline(exported.ModuleName, exported.ModuleVersion, runtime.PipelineOptions{}, &conOptions.ClientOptions)
 
-	return (*Client)(base.NewServiceClient(serviceURL, pl, nil)), nil
+	azClient, err := azcore.NewClient(exported.ModuleName, exported.ModuleVersion, runtime.PipelineOptions{}, &conOptions.ClientOptions)
+	if err != nil {
+		return nil, err
+	}
+	return (*Client)(base.NewServiceClient(serviceURL, azClient, nil, (*base.ClientOptions)(conOptions))), nil
 }
 
 // NewClientWithSharedKeyCredential creates an instance of Client with the specified values.
@@ -64,10 +73,14 @@ func NewClientWithNoCredential(serviceURL string, options *ClientOptions) (*Clie
 func NewClientWithSharedKeyCredential(serviceURL string, cred *SharedKeyCredential, options *ClientOptions) (*Client, error) {
 	authPolicy := exported.NewSharedKeyCredPolicy(cred)
 	conOptions := shared.GetClientOptions(options)
-	conOptions.PerRetryPolicies = append(conOptions.PerRetryPolicies, authPolicy)
-	pl := runtime.NewPipeline(exported.ModuleName, exported.ModuleVersion, runtime.PipelineOptions{}, &conOptions.ClientOptions)
+	plOpts := runtime.PipelineOptions{PerRetry: []policy.Policy{authPolicy}}
 
-	return (*Client)(base.NewServiceClient(serviceURL, pl, cred)), nil
+	azClient, err := azcore.NewClient(exported.ModuleName, exported.ModuleVersion, plOpts, &conOptions.ClientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	return (*Client)(base.NewServiceClient(serviceURL, azClient, cred, (*base.ClientOptions)(conOptions))), nil
 }
 
 // NewClientFromConnectionString creates an instance of Client with the specified values.
@@ -115,19 +128,29 @@ func (s *Client) sharedKey() *SharedKeyCredential {
 	return base.SharedKey((*base.Client[generated.ServiceClient])(s))
 }
 
+func (s *Client) credential() any {
+	return base.Credential((*base.Client[generated.ServiceClient])(s))
+}
+
+// helper method to return the generated.BlobClient which is used for creating the sub-requests
+func getGeneratedBlobClient(b *blob.Client) *generated.BlobClient {
+	return base.InnerClient((*base.Client[generated.BlobClient])(b))
+}
+
+func (s *Client) getClientOptions() *base.ClientOptions {
+	return base.GetClientOptions((*base.Client[generated.ServiceClient])(s))
+}
+
 // URL returns the URL endpoint used by the Client object.
 func (s *Client) URL() string {
 	return s.generated().Endpoint()
 }
 
-// NewContainerClient creates a new ContainerClient object by concatenating containerName to the end of
-// Client's URL. The new ContainerClient uses the same request policy pipeline as the Client.
-// To change the pipeline, create the ContainerClient and then call its WithPipeline method passing in the
-// desired pipeline object. Or, call this package's NewContainerClient instead of calling this object's
-// NewContainerClient method.
+// NewContainerClient creates a new container.Client object by concatenating containerName to the end of
+// this Client's URL. The new container.Client uses the same request policy pipeline as the Client.
 func (s *Client) NewContainerClient(containerName string) *container.Client {
 	containerURL := runtime.JoinPaths(s.generated().Endpoint(), containerName)
-	return (*container.Client)(base.NewContainerClient(containerURL, s.generated().Pipeline(), s.sharedKey()))
+	return (*container.Client)(base.NewContainerClient(containerURL, s.generated().InternalClient().WithClientName(exported.ModuleName), s.credential(), s.getClientOptions()))
 }
 
 // CreateContainer is a lifecycle method to creates a new container under the specified account.
@@ -157,6 +180,7 @@ func (s *Client) RestoreContainer(ctx context.Context, deletedContainerName stri
 }
 
 // GetAccountInfo provides account level information
+// For more information, see https://learn.microsoft.com/en-us/rest/api/storageservices/get-account-information?tabs=shared-access-signatures.
 func (s *Client) GetAccountInfo(ctx context.Context, o *GetAccountInfoOptions) (GetAccountInfoResponse, error) {
 	getAccountInfoOptions := o.format()
 	resp, err := s.generated().GetAccountInfo(ctx, getAccountInfoOptions)
@@ -175,6 +199,9 @@ func (s *Client) NewListContainersPager(o *ListContainersOptions) *runtime.Pager
 		if o.Include.Metadata {
 			listOptions.Include = append(listOptions.Include, generated.ListContainersIncludeTypeMetadata)
 		}
+		if o.Include.System {
+			listOptions.Include = append(listOptions.Include, generated.ListContainersIncludeTypeSystem)
+		}
 		listOptions.Marker = o.Marker
 		listOptions.Maxresults = o.MaxResults
 		listOptions.Prefix = o.Prefix
@@ -189,13 +216,13 @@ func (s *Client) NewListContainersPager(o *ListContainersOptions) *runtime.Pager
 			if page == nil {
 				req, err = s.generated().ListContainersSegmentCreateRequest(ctx, &listOptions)
 			} else {
-				listOptions.Marker = page.Marker
+				listOptions.Marker = page.NextMarker
 				req, err = s.generated().ListContainersSegmentCreateRequest(ctx, &listOptions)
 			}
 			if err != nil {
 				return ListContainersResponse{}, err
 			}
-			resp, err := s.generated().Pipeline().Do(req)
+			resp, err := s.generated().InternalClient().Pipeline().Do(req)
 			if err != nil {
 				return ListContainersResponse{}, err
 			}
@@ -246,19 +273,17 @@ func (s *Client) GetStatistics(ctx context.Context, o *GetStatisticsOptions) (Ge
 
 // GetSASURL is a convenience method for generating a SAS token for the currently pointed at account.
 // It can only be used if the credential supplied during creation was a SharedKeyCredential.
-// This validity can be checked with CanGetAccountSASToken().
-func (s *Client) GetSASURL(resources sas.AccountResourceTypes, permissions sas.AccountPermissions, services sas.AccountServices, start time.Time, expiry time.Time) (string, error) {
+func (s *Client) GetSASURL(resources sas.AccountResourceTypes, permissions sas.AccountPermissions, expiry time.Time, o *GetSASURLOptions) (string, error) {
 	if s.sharedKey() == nil {
-		return "", errors.New("SAS can only be signed with a SharedKeyCredential")
+		return "", bloberror.MissingSharedKeyCredential
 	}
-
+	st := o.format()
 	qps, err := sas.AccountSignatureValues{
 		Version:       sas.Version,
 		Protocol:      sas.ProtocolHTTPS,
 		Permissions:   permissions.String(),
-		Services:      services.String(),
 		ResourceTypes: resources.String(),
-		StartTime:     start.UTC(),
+		StartTime:     st,
 		ExpiryTime:    expiry.UTC(),
 	}.SignWithSharedKey(s.sharedKey())
 	if err != nil {
@@ -280,8 +305,73 @@ func (s *Client) GetSASURL(resources sas.AccountResourceTypes, permissions sas.A
 // https://docs.microsoft.com/en-us/rest/api/storageservices/find-blobs-by-tags
 // eg. "dog='germanshepherd' and penguin='emperorpenguin'"
 // To specify a container, eg. "@container=’containerName’ and Name = ‘C’"
-func (s *Client) FilterBlobs(ctx context.Context, o *FilterBlobsOptions) (FilterBlobsResponse, error) {
+func (s *Client) FilterBlobs(ctx context.Context, where string, o *FilterBlobsOptions) (FilterBlobsResponse, error) {
 	serviceFilterBlobsOptions := o.format()
-	resp, err := s.generated().FilterBlobs(ctx, serviceFilterBlobsOptions)
+	resp, err := s.generated().FilterBlobs(ctx, where, serviceFilterBlobsOptions)
 	return resp, err
+}
+
+// NewBatchBuilder creates an instance of BatchBuilder using the same auth policy as the client.
+// BatchBuilder is used to build the batch consisting of either delete or set tier sub-requests.
+// All sub-requests in the batch must be of the same type, either delete or set tier.
+// NOTE: Service level Blob Batch operation is supported only when the Client was created using SharedKeyCredential and Account SAS.
+func (s *Client) NewBatchBuilder() (*BatchBuilder, error) {
+	var authPolicy policy.Policy
+
+	switch cred := s.credential().(type) {
+	case *azcore.TokenCredential:
+		authPolicy = shared.NewStorageChallengePolicy(*cred, base.GetAudience(s.getClientOptions()))
+	case *SharedKeyCredential:
+		authPolicy = exported.NewSharedKeyCredPolicy(cred)
+	case nil:
+		// for authentication using SAS
+		authPolicy = nil
+	default:
+		return nil, fmt.Errorf("unrecognised authentication type %T", cred)
+	}
+
+	return &BatchBuilder{
+		endpoint:   s.URL(),
+		authPolicy: authPolicy,
+	}, nil
+}
+
+// SubmitBatch operation allows multiple API calls to be embedded into a single HTTP request.
+// It builds the request body using the BatchBuilder object passed.
+// BatchBuilder contains the list of operations to be submitted. It supports up to 256 sub-requests in a single batch.
+// For more information, see https://docs.microsoft.com/rest/api/storageservices/blob-batch.
+func (s *Client) SubmitBatch(ctx context.Context, bb *BatchBuilder, options *SubmitBatchOptions) (SubmitBatchResponse, error) {
+	if bb == nil || len(bb.subRequests) == 0 {
+		return SubmitBatchResponse{}, errors.New("batch builder is empty")
+	}
+
+	// create the request body
+	batchReq, batchID, err := exported.CreateBatchRequest(&exported.BlobBatchBuilder{
+		AuthPolicy:  bb.authPolicy,
+		SubRequests: bb.subRequests,
+	})
+	if err != nil {
+		return SubmitBatchResponse{}, err
+	}
+
+	reader := bytes.NewReader(batchReq)
+	rsc := streaming.NopCloser(reader)
+	multipartContentType := "multipart/mixed; boundary=" + batchID
+
+	resp, err := s.generated().SubmitBatch(ctx, int64(len(batchReq)), multipartContentType, rsc, options.format())
+	if err != nil {
+		return SubmitBatchResponse{}, err
+	}
+
+	batchResponses, err := exported.ParseBlobBatchResponse(resp.Body, resp.ContentType, bb.subRequests)
+	if err != nil {
+		return SubmitBatchResponse{}, err
+	}
+
+	return SubmitBatchResponse{
+		Responses:   batchResponses,
+		ContentType: resp.ContentType,
+		RequestID:   resp.RequestID,
+		Version:     resp.Version,
+	}, nil
 }
