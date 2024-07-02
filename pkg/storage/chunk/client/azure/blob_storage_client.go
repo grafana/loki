@@ -635,22 +635,6 @@ func parseConnectionString(connectionString string) (ParsedConnectionString, err
 		connStrMap[parts[0]] = parts[1]
 	}
 
-	accountName, ok := connStrMap["AccountName"]
-	if !ok {
-		return ParsedConnectionString{}, errors.New("connection string missing AccountName")
-	}
-
-	accountKey, ok := connStrMap["AccountKey"]
-	if !ok {
-		sharedAccessSignature, ok := connStrMap["SharedAccessSignature"]
-		if !ok {
-			return ParsedConnectionString{}, errors.New("connection string missing AccountKey and SharedAccessSignature")
-		}
-		return ParsedConnectionString{
-			ServiceURL: fmt.Sprintf("%v://%v.blob.%v/?%v", defaultScheme, accountName, defaultSuffix, sharedAccessSignature),
-		}, nil
-	}
-
 	protocol, ok := connStrMap["DefaultEndpointsProtocol"]
 	if !ok {
 		protocol = defaultScheme
@@ -661,19 +645,40 @@ func parseConnectionString(connectionString string) (ParsedConnectionString, err
 		suffix = defaultSuffix
 	}
 
-	if blobEndpoint, ok := connStrMap["BlobEndpoint"]; ok {
+	blobEndpoint, hasBlobendpoint := connStrMap["BlobEndpoint"]
+	accountName, hasAccountname := connStrMap["AccountName"]
+
+	var serviceURL string
+	if hasBlobendpoint {
+		serviceURL = blobEndpoint
+	} else if hasAccountname {
+		serviceURL = fmt.Sprintf("%v://%v.blob.%v", protocol, accountName, suffix)
+	} else {
+		return ParsedConnectionString{}, errors.New("connection string needs either AccountName or BlobEndpoint")
+	}
+
+	if !strings.HasSuffix(serviceURL, "/") {
+		// add a trailing slash to be consistent with the portal
+		serviceURL += "/"
+	}
+
+	accountKey, hasAccountkey := connStrMap["AccountKey"]
+	sharedAccessSignature, hasSharedaccesssignature := connStrMap["SharedAccessSignature"]
+
+	if hasAccountname && hasAccountkey {
 		return ParsedConnectionString{
-			ServiceURL:  blobEndpoint,
+			ServiceURL:  serviceURL,
 			AccountName: accountName,
 			AccountKey:  accountKey,
 		}, nil
+	} else if hasSharedaccesssignature {
+		return ParsedConnectionString{
+			ServiceURL: fmt.Sprintf("%v?%v", serviceURL, sharedAccessSignature),
+		}, nil
+	} else {
+		return ParsedConnectionString{}, errors.New("connection string needs either AccountKey or SharedAccessSignature")
 	}
 
-	return ParsedConnectionString{
-		ServiceURL:  fmt.Sprintf("%v://%v.blob.%v", protocol, accountName, suffix),
-		AccountName: accountName,
-		AccountKey:  accountKey,
-	}, nil
 }
 
 // TODO(dannyk): implement for client
