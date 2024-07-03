@@ -234,75 +234,39 @@ func (s *GatewayClient) QueryIndex(_ context.Context, _ *logproto.QueryIndexRequ
 }
 
 func (s *GatewayClient) GetChunkRef(ctx context.Context, in *logproto.GetChunkRefRequest) (*logproto.GetChunkRefResponse, error) {
-	var (
-		resp *logproto.GetChunkRefResponse
-		err  error
-	)
-	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		resp, err = client.GetChunkRef(ctx, in)
-		return err
+	return poolDo(ctx, s, true, func(innerCtx context.Context, client logproto.IndexGatewayClient) (*logproto.GetChunkRefResponse, error) {
+		return client.GetChunkRef(innerCtx, in)
 	})
-	return resp, err
 }
 
 func (s *GatewayClient) GetSeries(ctx context.Context, in *logproto.GetSeriesRequest) (*logproto.GetSeriesResponse, error) {
-	var (
-		resp *logproto.GetSeriesResponse
-		err  error
-	)
-	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		resp, err = client.GetSeries(ctx, in)
-		return err
+	return poolDo(ctx, s, true, func(innerCtx context.Context, client logproto.IndexGatewayClient) (*logproto.GetSeriesResponse, error) {
+		return client.GetSeries(innerCtx, in)
 	})
-	return resp, err
 }
 
 func (s *GatewayClient) LabelNamesForMetricName(ctx context.Context, in *logproto.LabelNamesForMetricNameRequest) (*logproto.LabelResponse, error) {
-	var (
-		resp *logproto.LabelResponse
-		err  error
-	)
-	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		resp, err = client.LabelNamesForMetricName(ctx, in)
-		return err
+	return poolDo(ctx, s, true, func(innerCtx context.Context, client logproto.IndexGatewayClient) (*logproto.LabelResponse, error) {
+		return client.LabelNamesForMetricName(innerCtx, in)
 	})
-	return resp, err
 }
 
 func (s *GatewayClient) LabelValuesForMetricName(ctx context.Context, in *logproto.LabelValuesForMetricNameRequest) (*logproto.LabelResponse, error) {
-	var (
-		resp *logproto.LabelResponse
-		err  error
-	)
-	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		resp, err = client.LabelValuesForMetricName(ctx, in)
-		return err
+	return poolDo(ctx, s, true, func(innerCtx context.Context, client logproto.IndexGatewayClient) (*logproto.LabelResponse, error) {
+		return client.LabelValuesForMetricName(innerCtx, in)
 	})
-	return resp, err
 }
 
 func (s *GatewayClient) GetStats(ctx context.Context, in *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
-	var (
-		resp *logproto.IndexStatsResponse
-		err  error
-	)
-	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		resp, err = client.GetStats(ctx, in)
-		return err
+	return poolDo(ctx, s, true, func(ctx context.Context, client logproto.IndexGatewayClient) (*logproto.IndexStatsResponse, error) {
+		return client.GetStats(ctx, in)
 	})
-	return resp, err
 }
 
 func (s *GatewayClient) GetVolume(ctx context.Context, in *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
-	var (
-		resp *logproto.VolumeResponse
-		err  error
-	)
-	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		resp, err = client.GetVolume(ctx, in)
-		return err
+	return poolDo(ctx, s, true, func(innerCtx context.Context, client logproto.IndexGatewayClient) (*logproto.VolumeResponse, error) {
+		return client.GetVolume(innerCtx, in)
 	})
-	return resp, err
 }
 
 func (s *GatewayClient) GetShards(
@@ -310,24 +274,15 @@ func (s *GatewayClient) GetShards(
 	in *logproto.ShardsRequest,
 ) (res *logproto.ShardsResponse, err error) {
 
-	// We try to get the shards from the index gateway,
-	// but if it's not implemented, we fall back to the stats.
-	// We limit the maximum number of errors to 2 to avoid
-	// cascading all requests to new node(s) when
-	// the idx-gw replicas start to update to a version
-	// which supports the new API.
-	var (
-		maxErrs = 2
-		errCt   int
-	)
-
-	if err := s.poolDoWithStrategy(
+	return poolDo(
 		ctx,
-		func(client logproto.IndexGatewayClient) error {
+		s,
+		true,
+		func(innerCtx context.Context, client logproto.IndexGatewayClient) (*logproto.ShardsResponse, error) {
 			perReplicaResult := &logproto.ShardsResponse{}
-			streamer, err := client.GetShards(ctx, in)
+			streamer, err := client.GetShards(innerCtx, in)
 			if err != nil {
-				return errors.Wrap(err, "get shards")
+				return nil, errors.Wrap(err, "get shards")
 			}
 
 			// TODO(owen-d): stream currently unused (buffered) because query planning doesn't expect a streamed response,
@@ -338,7 +293,7 @@ func (s *GatewayClient) GetShards(
 					break
 				}
 				if err != nil {
-					return errors.WithStack(err)
+					return nil, errors.WithStack(err)
 				}
 				perReplicaResult.Merge(resp)
 			}
@@ -347,16 +302,8 @@ func (s *GatewayClient) GetShards(
 			// This avoids cases where we add duplicates to the response on retries.
 			res = perReplicaResult
 
-			return nil
-		},
-		func(err error) bool {
-			errCt++
-			return errCt <= maxErrs
-		},
-	); err != nil {
-		return nil, err
-	}
-	return res, nil
+			return res, nil
+		})
 }
 
 // TODO(owen-d): this was copied from ingester_querier.go -- move it to a shared pkg
@@ -388,10 +335,12 @@ func (s *GatewayClient) doQueries(ctx context.Context, queries []index.Query, ca
 		})
 	}
 
-	return s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		return s.clientDoQueries(ctx, gatewayQueries, queryKeyQueryMap, callback, client)
+	// Don't hedge these requests because we can't make this threadsafe as it is
+	// mutating state in this function via the callback function being passed.
+	_, err := poolDo(ctx, s, false, func(innerCtx context.Context, client logproto.IndexGatewayClient) (*any, error) {
+		return nil, s.clientDoQueries(innerCtx, gatewayQueries, queryKeyQueryMap, callback, client)
 	})
-
+	return err
 }
 
 // clientDoQueries send a query request to an Index Gateway instance using the given gRPC client.
@@ -426,58 +375,107 @@ func (s *GatewayClient) clientDoQueries(ctx context.Context, gatewayQueries []*l
 	return nil
 }
 
-// poolDo executes the given function for each Index Gateway instance in the ring mapping to the correct tenant in the index.
-// In case of callback failure, we'll try another member of the ring for that tenant ID.
-func (s *GatewayClient) poolDo(ctx context.Context, callback func(client logproto.IndexGatewayClient) error) error {
-	return s.poolDoWithStrategy(ctx, callback, func(error) bool { return true })
+type callbackResponse[T any] struct {
+	resp     *T
+	hedged   bool
+	duration time.Duration
+	err      error
 }
 
-func (s *GatewayClient) poolDoWithStrategy(
-	ctx context.Context,
-	callback func(client logproto.IndexGatewayClient) error,
-	shouldRetry func(error) bool,
-) error {
+// poolDo will call callback providing a random index gateway client, if hedge is true, it will dispatch
+// a second call to callback after the hedge timeout providing a different random index gateway client.
+// NOTE: if hedge is true, callback must be safe to call concurrently from different threads.
+func poolDo[T any](ctx context.Context, gatewayClient *GatewayClient, hedge bool, callback func(ctx context.Context, client logproto.IndexGatewayClient) (*T, error)) (*T, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		return errors.Wrap(err, "index gateway client get tenant ID")
+		return nil, errors.Wrap(err, "index gateway client get tenant ID")
 	}
-	addrs, err := s.getServerAddresses(userID)
+
+	// This function returns the gateways in a random order
+	addrs, err := gatewayClient.getServerAddresses(userID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if len(addrs) == 0 {
-		level.Error(s.logger).Log("msg", fmt.Sprintf("no index gateway instances found for tenant %s", userID))
-		return fmt.Errorf("no index gateway instances found for tenant %s", userID)
+		level.Error(gatewayClient.logger).Log("msg", fmt.Sprintf("no index gateway instances found for tenant %s", userID))
+		return nil, fmt.Errorf("no index gateway instances found for tenant %s", userID)
 	}
 
-	var lastErr error
-	for _, addr := range addrs {
-		if s.cfg.LogGatewayRequests {
-			level.Debug(s.logger).Log("msg", "sending request to gateway", "gateway", addr, "tenant", userID)
+	respChan := make(chan callbackResponse[T])
+	firstAddr := addrs[0]
+	genericClient, err := gatewayClient.pool.GetClientFor(firstAddr)
+	if err != nil {
+		level.Error(gatewayClient.logger).Log("msg", fmt.Sprintf("failed to get client for instance %s", firstAddr), "err", err)
+		return nil, fmt.Errorf("failed to get index gateway client for instance %s", firstAddr)
+	}
+
+	// Send first request
+	client1 := genericClient.(logproto.IndexGatewayClient)
+	ctx1, cancel1 := context.WithCancelCause(ctx)
+	defer cancel1(errors.New("canceled from defer statement"))
+	go func() {
+		req1Start := time.Now()
+		if gatewayClient.cfg.LogGatewayRequests {
+			level.Debug(gatewayClient.logger).Log("msg", "sending request to gateway", "gateway", firstAddr, "tenant", userID)
 		}
-
-		genericClient, err := s.pool.GetClientFor(addr)
-		if err != nil {
-			level.Error(s.logger).Log("msg", fmt.Sprintf("failed to get client for instance %s", addr), "err", err)
-			continue
-		}
-
-		client := (genericClient.(logproto.IndexGatewayClient))
-		if err := callback(client); err != nil {
-			lastErr = err
-			level.Error(s.logger).Log("msg", fmt.Sprintf("client do failed for instance %s", addr), "err", err)
-
-			if !shouldRetry(err) {
-				return err
+		r, err := callback(ctx1, client1)
+		// Because we only listen for once response to make sure we don't leak a goroutine
+		// here also watch for the context to be canceled
+		select {
+		case respChan <- callbackResponse[T]{resp: r, hedged: false, duration: time.Since(req1Start), err: err}:
+		case <-ctx1.Done():
+			if gatewayClient.cfg.LogGatewayRequests {
+				level.Debug(gatewayClient.logger).Log("msg", "gateway request context finished", "gateway", firstAddr, "tenant", userID, "cause", context.Cause(ctx1), "duration", time.Since(req1Start))
 			}
-			continue
 		}
+	}()
 
-		return nil
+	hedgedSent := false
+	timer := time.NewTimer(1 * time.Second)
+	defer timer.Stop()
+
+	for {
+		select {
+		case r := <-respChan:
+			if gatewayClient.cfg.LogGatewayRequests {
+				level.Debug(gatewayClient.logger).Log("msg", "returning index gateway response", "tenant", userID, "duration", r.duration, "hedged", r.hedged, "err", r.err)
+			} else if r.hedged {
+				level.Warn(gatewayClient.logger).Log("msg", "returning hedged index gateway response", "tenant", userID, "duration", r.duration, "hedged", r.hedged, "err", r.err)
+			}
+			return r.resp, r.err
+		case <-timer.C:
+			// Send hedged request if we have another address and we are able to get a client from it.
+			// Ignore errors here and just don't send the hedged request
+			if hedge && len(addrs) > 1 && !hedgedSent {
+				gc2, err := gatewayClient.pool.GetClientFor(addrs[1])
+				client2 := gc2.(logproto.IndexGatewayClient)
+				if err == nil {
+					ctx2, cancel2 := context.WithCancelCause(ctx)
+					defer cancel2(errors.New("canceled from defer statement"))
+					go func() {
+						req2Start := time.Now()
+						if gatewayClient.cfg.LogGatewayRequests {
+							level.Debug(gatewayClient.logger).Log("msg", "sending hedged request to gateway", "gateway", addrs[1], "tenant", userID)
+						}
+						r, err := callback(ctx2, client2)
+						// Because we only listen for once response to make sure we don't leak a goroutine
+						// here also watch for the context to be canceled
+						select {
+						case respChan <- callbackResponse[T]{resp: r, hedged: true, duration: time.Since(req2Start), err: err}:
+						case <-ctx2.Done():
+							if gatewayClient.cfg.LogGatewayRequests {
+								level.Debug(gatewayClient.logger).Log("msg", "hedged gateway request context finished", "gateway", firstAddr, "tenant", userID, "cause", context.Cause(ctx2), "duration", time.Since(req2Start))
+							}
+						}
+					}()
+					hedgedSent = true
+				}
+			}
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
-
-	return lastErr
 }
 
 func (s *GatewayClient) getServerAddresses(tenantID string) ([]string, error) {
