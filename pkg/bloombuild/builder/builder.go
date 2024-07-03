@@ -191,13 +191,19 @@ func (b *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 			return fmt.Errorf("failed to receive task from planner: %w", err)
 		}
 
-		logger := log.With(b.logger, "task", protoTask.Task.Id)
+		task, err := protos.FromProtoTask(protoTask.Task)
+		if err != nil {
+			return fmt.Errorf("failed to convert proto task to task: %w", err)
+		}
+
+		logger := task.GetLogger(b.logger)
+		level.Debug(logger).Log("msg", "received task")
 
 		b.metrics.taskStarted.Inc()
 		start := time.Now()
 		status := statusSuccess
 
-		newMetas, err := b.processTask(c.Context(), protoTask.Task)
+		newMetas, err := b.processTask(c.Context(), task)
 		if err != nil {
 			status = statusFailure
 			level.Error(logger).Log("msg", "failed to process task", "err", err)
@@ -205,9 +211,14 @@ func (b *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 
 		b.metrics.taskCompleted.WithLabelValues(status).Inc()
 		b.metrics.taskDuration.WithLabelValues(status).Observe(time.Since(start).Seconds())
+		level.Debug(logger).Log(
+			"msg", "task completed",
+			"status", status,
+			"duration", time.Since(start).String(),
+		)
 
 		// Acknowledge task completion to planner
-		if err = b.notifyTaskCompletedToPlanner(c, protoTask.Task.Id, newMetas, err); err != nil {
+		if err = b.notifyTaskCompletedToPlanner(c, task, newMetas, err); err != nil {
 			return fmt.Errorf("failed to notify task completion to planner: %w", err)
 		}
 	}
@@ -218,12 +229,14 @@ func (b *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 
 func (b *Builder) notifyTaskCompletedToPlanner(
 	c protos.PlannerForBuilder_BuilderLoopClient,
-	taskID string,
+	task *protos.Task,
 	metas []bloomshipper.Meta,
 	err error,
 ) error {
+	logger := task.GetLogger(b.logger)
+
 	result := &protos.TaskResult{
-		TaskID:       taskID,
+		TaskID:       task.ID,
 		Error:        err,
 		CreatedMetas: metas,
 	}
@@ -239,7 +252,7 @@ func (b *Builder) notifyTaskCompletedToPlanner(
 			break
 		}
 
-		level.Error(b.logger).Log("msg", "failed to acknowledge task completion to planner. Retrying", "err", err)
+		level.Error(logger).Log("msg", "failed to acknowledge task completion to planner. Retrying", "err", err)
 		retries.Wait()
 	}
 
@@ -247,6 +260,7 @@ func (b *Builder) notifyTaskCompletedToPlanner(
 		return fmt.Errorf("failed to acknowledge task completion to planner: %w", err)
 	}
 
+	level.Debug(logger).Log("msg", "acknowledged task completion to planner")
 	return nil
 }
 
@@ -261,27 +275,16 @@ func (b *Builder) notifyTaskCompletedToPlanner(
 // accelerate bloom generation for the new blocks.
 func (b *Builder) processTask(
 	ctx context.Context,
-	protoTask *protos.ProtoTask,
+	task *protos.Task,
 ) ([]bloomshipper.Meta, error) {
-	task, err := protos.FromProtoTask(protoTask)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert proto task to task: %w", err)
-	}
+	tenant := task.Tenant
+	logger := task.GetLogger(b.logger)
 
 	client, err := b.bloomStore.Client(task.Table.ModelTime())
 	if err != nil {
-		level.Error(b.logger).Log("msg", "failed to get client", "err", err)
+		level.Error(logger).Log("msg", "failed to get client", "err", err)
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
-
-	tenant := task.Tenant
-	logger := log.With(
-		b.logger,
-		"tenant", tenant,
-		"task", task.ID,
-		"tsdb", task.TSDB.Name(),
-	)
-	level.Debug(logger).Log("msg", "received task")
 
 	blockEnc, err := chunkenc.ParseEncoding(b.limits.BloomBlockEncoding(task.Tenant))
 	if err != nil {
