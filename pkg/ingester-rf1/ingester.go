@@ -584,11 +584,6 @@ func (i *Ingester) doFlushTick() {
 	//i.logger.Log("msg", "starting periodic flush")
 	// Stop new chunks being written while we swap destinations - we'll never unlock as this flushctx can no longer be used.
 	currentFlushCtx := i.flushCtx
-	// Don't write empty files if there is nothing to write.
-	if currentFlushCtx.segmentWriter.InputSize() == 0 {
-		i.flushCtx.lock.Unlock()
-		return
-	}
 
 	// APIs become unblocked after resetting flushCtx
 	segmentWriter, err := wal.NewWalSegmentWriter()
@@ -605,7 +600,10 @@ func (i *Ingester) doFlushTick() {
 	close(currentFlushCtx.newCtxAvailable) // Broadcast to all waiters that they can now fetch a new flushCtx. Small chance of a race but if they re-fetch the old one, they'll just check again immediately.
 	// Flush the finished context in the background & then notify watching API requests
 	// TODO: use multiple flush queues if required
-	i.flushQueues[0].Enqueue(currentFlushCtx)
+	// Don't write empty segments if there is nothing to write.
+	if currentFlushCtx.segmentWriter.InputSize() > 0 {
+		i.flushQueues[0].Enqueue(currentFlushCtx)
+	}
 }
 
 // PrepareShutdown will handle the /ingester/prepare_shutdown endpoint.
