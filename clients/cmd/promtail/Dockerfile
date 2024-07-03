@@ -1,4 +1,4 @@
-FROM golang:1.22.2-bookworm as build
+FROM golang:1.22.5-bookworm as build
 
 COPY . /src/loki
 WORKDIR /src/loki
