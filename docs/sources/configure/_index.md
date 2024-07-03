@@ -1442,7 +1442,23 @@ lifecycler:
 # CLI flag: -ingester.flush-check-period
 [flush_check_period: <duration> | default = 30s]
 
-# The timeout before a flush is cancelled.
+flush_op_backoff:
+  # Minimum backoff period when a flush fails. Each concurrent flush has its own
+  # backoff, see `ingester.concurrent-flushes`.
+  # CLI flag: -ingester.flush-op-backoff-min-period
+  [min_period: <duration> | default = 10s]
+
+  # Maximum backoff period when a flush fails. Each concurrent flush has its own
+  # backoff, see `ingester.concurrent-flushes`.
+  # CLI flag: -ingester.flush-op-backoff-max-period
+  [max_period: <duration> | default = 1m]
+
+  # Maximum retries for failed flushes.
+  # CLI flag: -ingester.flush-op-backoff-retries
+  [max_retries: <int> | default = 10]
+
+# The timeout for an individual flush. Will be retried up to
+# `flush-op-backoff-retries` times.
 # CLI flag: -ingester.flush-op-timeout
 [flush_op_timeout: <duration> | default = 10m]
 
