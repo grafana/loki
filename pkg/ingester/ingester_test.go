@@ -2,7 +2,7 @@ package ingester
 
 import (
 	"fmt"
-	math "math"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -48,6 +48,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v3/pkg/storage/wal"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -433,6 +434,10 @@ func TestIngesterStreamLimitExceeded(t *testing.T) {
 type mockStore struct {
 	mtx    sync.Mutex
 	chunks map[string][]chunk.Chunk
+}
+
+func (s *mockStore) PutWal(_ context.Context, _ *wal.SegmentWriter) error {
+	return nil
 }
 
 func (s *mockStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
