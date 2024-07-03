@@ -3,11 +3,13 @@ package client
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/base64"
 	"io"
 	"strings"
 	"time"
 
+	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -114,7 +116,9 @@ func (o *client) PutWal(ctx context.Context, segment *wal.SegmentWriter) error {
 	defer func(reader io.ReadSeekCloser) {
 		_ = reader.Close()
 	}(reader)
-	return o.store.PutObject(ctx, "wal-segment-"+time.Now().UTC().Format(time.RFC3339Nano), reader)
+
+	newUlid := ulid.MustNew(ulid.Timestamp(time.Now()), rand.Reader)
+	return o.store.PutObject(ctx, "loki-v2/wal/anon/"+newUlid.String(), reader)
 }
 
 // PutChunks stores the provided chunks in the configured backend. If multiple errors are
