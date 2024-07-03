@@ -35,9 +35,10 @@ var (
 			}
 		},
 	}
-	tenantLabel = "__loki_tenant__"
+
 	// 512kb - 20 mb
 	encodedWalSegmentBufferPool = pool.NewBuffer(512*1024, 20*1024*1024, 2)
+	tenantLabel                 = "__loki_tenant__"
 )
 
 func init() {
@@ -271,12 +272,13 @@ func (b *SegmentWriter) Reset() {
 		streamSegmentPool.Put(s)
 	}
 	b.streams = make(map[streamID]*streamSegment, 64)
+	b.buf1.Reset()
 	b.inputSize.Store(0)
 }
 
 func (b *SegmentWriter) ToReader() (io.ReadSeekCloser, error) {
 	// snappy compression rate is ~5x , but we can not predict it, so we need to allocate bigger buffer to avoid allocations
-	buffer := encodedWalSegmentBufferPool.Get(int(b.InputSize() / 3))
+	buffer := encodedWalSegmentBufferPool.Get(int(b.inputSize.Load() / 3))
 	_, err := b.WriteTo(buffer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write segment to create a reader: %w", err)

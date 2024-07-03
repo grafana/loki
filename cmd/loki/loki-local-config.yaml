@@ -19,7 +19,7 @@ common:
       store: inmemory
 
 ingester_rf1:
-  enabled: true
+  enabled: false
 
 query_range:
   results_cache:

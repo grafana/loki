@@ -198,6 +198,10 @@ func (d *Drain) train(tokens []string, state interface{}, ts int64) *LogCluster 
 	if len(tokens) < 4 {
 		return nil
 	}
+	if d.metrics != nil {
+		d.metrics.TokensPerLine.Observe(float64(len(tokens)))
+		d.metrics.StatePerLine.Observe(float64(len(state.([]int))))
+	}
 	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, false)
 	// Match no existing log cluster
 	if matchCluster == nil {
@@ -282,6 +286,27 @@ func (d *Drain) PatternString(c *LogCluster) string {
 		return ""
 	}
 	return s
+}
+
+func (d *Drain) Prune() {
+	d.pruneTree(d.rootNode)
+}
+
+func (d *Drain) pruneTree(node *Node) int {
+	for key, child := range node.keyToChildNode {
+		if d.pruneTree(child) == 0 {
+			delete(node.keyToChildNode, key)
+		}
+	}
+
+	validClusterIds := 0
+	for _, clusterID := range node.clusterIDs {
+		cluster := d.idToCluster.Get(clusterID)
+		if cluster != nil {
+			validClusterIds++
+		}
+	}
+	return len(node.keyToChildNode) + validClusterIds
 }
 
 func (d *Drain) Delete(cluster *LogCluster) {

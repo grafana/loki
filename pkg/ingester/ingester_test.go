@@ -1048,8 +1048,8 @@ func Test_DedupeIngester(t *testing.T) {
 			actualHashes := []uint64{}
 			for j := 0; j < int(streamCount); j++ {
 				require.True(t, it.Next())
-				require.Equal(t, fmt.Sprintf("line %d", i), it.Entry().Line)
-				require.Equal(t, i, it.Entry().Timestamp.UnixNano())
+				require.Equal(t, fmt.Sprintf("line %d", i), it.At().Line)
+				require.Equal(t, i, it.At().Timestamp.UnixNano())
 				require.Equal(t, `{bar="", foo="bar"}`, it.Labels())
 				actualHashes = append(actualHashes, it.StreamHash())
 			}
@@ -1057,7 +1057,7 @@ func Test_DedupeIngester(t *testing.T) {
 			require.Equal(t, streamHashes, actualHashes)
 		}
 		require.False(t, it.Next())
-		require.NoError(t, it.Error())
+		require.NoError(t, it.Err())
 	})
 	t.Run("forward log", func(t *testing.T) {
 		iterators := make([]iter.EntryIterator, 0, len(ingesterSet))
@@ -1078,8 +1078,8 @@ func Test_DedupeIngester(t *testing.T) {
 			actualHashes := []uint64{}
 			for j := 0; j < int(streamCount); j++ {
 				require.True(t, it.Next())
-				require.Equal(t, fmt.Sprintf("line %d", i), it.Entry().Line)
-				require.Equal(t, i, it.Entry().Timestamp.UnixNano())
+				require.Equal(t, fmt.Sprintf("line %d", i), it.At().Line)
+				require.Equal(t, i, it.At().Timestamp.UnixNano())
 				require.Equal(t, `{bar="", foo="bar"}`, it.Labels())
 				actualHashes = append(actualHashes, it.StreamHash())
 			}
@@ -1087,7 +1087,7 @@ func Test_DedupeIngester(t *testing.T) {
 			require.Equal(t, streamHashes, actualHashes)
 		}
 		require.False(t, it.Next())
-		require.NoError(t, it.Error())
+		require.NoError(t, it.Err())
 	})
 	t.Run("sum by metrics", func(t *testing.T) {
 		iterators := make([]iter.SampleIterator, 0, len(ingesterSet))
@@ -1114,8 +1114,8 @@ func Test_DedupeIngester(t *testing.T) {
 			actualHashes := []uint64{}
 			for j := 0; j < int(streamCount); j++ {
 				require.True(t, it.Next())
-				require.Equal(t, float64(1), it.Sample().Value)
-				require.Equal(t, i, it.Sample().Timestamp)
+				require.Equal(t, float64(1), it.At().Value)
+				require.Equal(t, i, it.At().Timestamp)
 				labels = append(labels, it.Labels())
 				actualHashes = append(actualHashes, it.StreamHash())
 			}
@@ -1125,7 +1125,7 @@ func Test_DedupeIngester(t *testing.T) {
 			require.Equal(t, streamHashes, actualHashes)
 		}
 		require.False(t, it.Next())
-		require.NoError(t, it.Error())
+		require.NoError(t, it.Err())
 	})
 	t.Run("sum metrics", func(t *testing.T) {
 		iterators := make([]iter.SampleIterator, 0, len(ingesterSet))
@@ -1146,8 +1146,8 @@ func Test_DedupeIngester(t *testing.T) {
 			actualHashes := []uint64{}
 			for j := 0; j < int(streamCount); j++ {
 				require.True(t, it.Next())
-				require.Equal(t, float64(1), it.Sample().Value)
-				require.Equal(t, i, it.Sample().Timestamp)
+				require.Equal(t, float64(1), it.At().Value)
+				require.Equal(t, i, it.At().Timestamp)
 				require.Equal(t, "{}", it.Labels())
 				actualHashes = append(actualHashes, it.StreamHash())
 			}
@@ -1155,7 +1155,7 @@ func Test_DedupeIngester(t *testing.T) {
 			require.Equal(t, streamHashes, actualHashes)
 		}
 		require.False(t, it.Next())
-		require.NoError(t, it.Error())
+		require.NoError(t, it.Err())
 	})
 }
 
@@ -1210,12 +1210,12 @@ func Test_DedupeIngesterParser(t *testing.T) {
 			for j := 0; j < streamCount; j++ {
 				for k := 0; k < 2; k++ { // 2 line per entry
 					require.True(t, it.Next())
-					require.Equal(t, int64(i), it.Entry().Timestamp.UnixNano())
+					require.Equal(t, int64(i), it.At().Timestamp.UnixNano())
 				}
 			}
 		}
 		require.False(t, it.Next())
-		require.NoError(t, it.Error())
+		require.NoError(t, it.Err())
 	})
 
 	t.Run("forward log", func(t *testing.T) {
@@ -1240,12 +1240,12 @@ func Test_DedupeIngesterParser(t *testing.T) {
 			for j := 0; j < streamCount; j++ {
 				for k := 0; k < 2; k++ { // 2 line per entry
 					require.True(t, it.Next())
-					require.Equal(t, int64(i), it.Entry().Timestamp.UnixNano())
+					require.Equal(t, int64(i), it.At().Timestamp.UnixNano())
 				}
 			}
 		}
 		require.False(t, it.Next())
-		require.NoError(t, it.Error())
+		require.NoError(t, it.Err())
 	})
 	t.Run("no sum metrics", func(t *testing.T) {
 		iterators := make([]iter.SampleIterator, 0, len(ingesterSet))
@@ -1267,13 +1267,13 @@ func Test_DedupeIngesterParser(t *testing.T) {
 			for j := 0; j < streamCount; j++ {
 				for k := 0; k < 2; k++ { // 2 line per entry
 					require.True(t, it.Next())
-					require.Equal(t, float64(1), it.Sample().Value)
-					require.Equal(t, int64(i), it.Sample().Timestamp)
+					require.Equal(t, float64(1), it.At().Value)
+					require.Equal(t, int64(i), it.At().Timestamp)
 				}
 			}
 		}
 		require.False(t, it.Next())
-		require.NoError(t, it.Error())
+		require.NoError(t, it.Err())
 	})
 	t.Run("sum metrics", func(t *testing.T) {
 		iterators := make([]iter.SampleIterator, 0, len(ingesterSet))
@@ -1295,13 +1295,13 @@ func Test_DedupeIngesterParser(t *testing.T) {
 			for j := 0; j < streamCount; j++ {
 				for k := 0; k < 2; k++ { // 2 line per entry
 					require.True(t, it.Next())
-					require.Equal(t, float64(1), it.Sample().Value)
-					require.Equal(t, int64(i), it.Sample().Timestamp)
+					require.Equal(t, float64(1), it.At().Value)
+					require.Equal(t, int64(i), it.At().Timestamp)
 				}
 			}
 		}
 		require.False(t, it.Next())
-		require.NoError(t, it.Error())
+		require.NoError(t, it.Err())
 	})
 }
 
@@ -1571,6 +1571,10 @@ func (r *readRingMock) InstancesWithTokensInZoneCount(_ string) int {
 
 func (r *readRingMock) ZonesCount() int {
 	return 1
+}
+
+func (r *readRingMock) HealthyInstancesInZoneCount() int {
+	return len(r.replicationSet.Instances)
 }
 
 func (r *readRingMock) Subring(_ uint32, _ int) ring.ReadRing {

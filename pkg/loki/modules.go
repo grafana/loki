@@ -630,6 +630,10 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 }
 
 func (t *Loki) initIngesterRF1() (_ services.Service, err error) {
+	if !t.Cfg.IngesterRF1.Enabled {
+		return nil, nil
+	}
+
 	logger := log.With(util_log.Logger, "component", "ingester-rf1")
 	t.Cfg.IngesterRF1.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
 
