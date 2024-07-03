@@ -198,9 +198,6 @@ func (d *Drain) TrainTokens(tokens []string, stringer func([]string) string, ts 
 }
 
 func (d *Drain) Train(content string, ts int64) *LogCluster {
-	if d.format == FormatJSON {
-		return nil
-	}
 	if len(content) > d.maxAllowedLineLength {
 		return nil
 	}

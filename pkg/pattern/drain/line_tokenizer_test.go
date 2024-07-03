@@ -293,6 +293,11 @@ func TestJsonTokenizer(t *testing.T) {
 			want:    []string{"OK"},
 			pattern: "<_>OK<_>",
 		},
+		{
+			line:    `{"time":"2024-07-03T10:48:10.58330448Z","level":"INFO","msg":"successfully discovered 15 agent IP addresses","git_commit":"1","git_time":"2024-06-26T06:59:04Z","git_modified":true,"go_os":"linux","go_arch":"arm64","process_generation":"ea2d9b41-0314-4ddc-a415-f8af2d80a32c","hostname_fqdn":"foobar","hostname_short":foobar","private_ips":["10.0.132.23"],"num_vcpus":8,"kafka_enabled":true,"service_protocol":"VIRTUALENV_ZONE_LOCAL","module":"agent_resolver","ip_addresses":[{"Hostname":"10.0.100.152","Port":8080},{"Hostname":"10.0.41.210","Port":8080},{"Hostname":"10.0.212.83","Port":8080},{"Hostname":"10.0.145.77","Port":8080},{"Hostname":"10.0.59.71","Port":8080},{"Hostname":"10.0.224.219","Port":8080},{"Hostname":"10.0.103.29","Port":8080},{"Hostname":"10.0.86.220","Port":8080},{"Hostname":"10.0.154.82","Port":8080},{"Hostname":"10.0.9.213","Port":8080},{"Hostname":"10.0.240.157","Port":8080},{"Hostname":"10.0.166.11","Port":8080},{"Hostname":"10.0.230.22","Port":8080},{"Hostname":"10.0.123.239","Port":8080},{"Hostname":"10.0.233.210","Port":8080}]}`,
+			want:    []string{"successfully", "discovered", "15", "agent", "IP", "addresses"},
+			pattern: "<_>successfully discovered 15 agent IP addresses<_>",
+		},
 	}
 
 	tokenizer := newJSONTokenizer(param)
