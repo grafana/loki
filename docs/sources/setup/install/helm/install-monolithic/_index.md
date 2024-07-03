@@ -80,7 +80,6 @@ If you set the `singleBinary.replicas` value to 2 or more, this chart configures
             object_store: filesystem
             schema: v13
         storage:
-          bucketNames:
           type: 's3'
           bucketNames:
             chunks: loki-chunks
