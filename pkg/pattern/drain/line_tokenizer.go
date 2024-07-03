@@ -31,6 +31,8 @@ func newPunctuationTokenizer() *punctuationTokenizer {
 	included['='] = 1
 	excluded['_'] = 1
 	excluded['-'] = 1
+	excluded['.'] = 1
+	excluded[':'] = 1
 	return &punctuationTokenizer{
 		includeDelimiters: included,
 		excludeDelimiters: excluded,
