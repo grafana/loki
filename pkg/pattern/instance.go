@@ -75,9 +75,6 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 			appendErr.Add(err)
 			continue
 		}
-		if s == nil {
-			continue
-		}
 		err = s.Push(ctx, reqStream.Entries)
 		if err != nil {
 			appendErr.Add(err)
@@ -213,11 +210,7 @@ func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream
 	fp := i.getHashForLabels(labels)
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
 	firstEntryLine := pushReqStream.Entries[0].Line
-	format := drain.DetectLogFormat(firstEntryLine)
-	if format == drain.FormatJSON {
-		return nil, nil
-	}
-	s, err := newStream(fp, sortedLabels, i.metrics, i.chunkMetrics, i.aggregationCfg, i.logger, format, i.instanceID)
+	s, err := newStream(fp, sortedLabels, i.metrics, i.chunkMetrics, i.aggregationCfg, i.logger, drain.DetectLogFormat(firstEntryLine), i.instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}

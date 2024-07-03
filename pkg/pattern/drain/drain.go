@@ -169,6 +169,7 @@ func New(config *Config, format string, metrics *Metrics) *Drain {
 		metrics:              metrics,
 		tokenizer:            tokenizer,
 		maxAllowedLineLength: 3000,
+		format:               format,
 	}
 	return d
 }
@@ -181,6 +182,7 @@ type Drain struct {
 	metrics              *Metrics
 	tokenizer            LineTokenizer
 	maxAllowedLineLength int
+	format               string
 }
 
 func (d *Drain) Clusters() []*LogCluster {
@@ -192,6 +194,9 @@ func (d *Drain) TrainTokens(tokens []string, stringer func([]string) string, ts 
 }
 
 func (d *Drain) Train(content string, ts int64) *LogCluster {
+	if d.format == FormatJSON {
+		return nil
+	}
 	if len(content) > d.maxAllowedLineLength {
 		return nil
 	}
