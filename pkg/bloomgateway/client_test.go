@@ -130,6 +130,3 @@ func TestGatewayClient_MergeChunkSets(t *testing.T) {
 	result := mergeChunkSets(inp1, inp2)
 	require.Equal(t, expected, result)
 }
-
-func TestGatewayClient_FilterChunks(t *testing.T) {
-}
