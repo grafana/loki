@@ -1568,6 +1568,7 @@ func (si *bufferedIterator) Close() error {
 	return si.err
 }
 
+// nolint:staticcheck
 func (si *bufferedIterator) close() {
 	if si.reader != nil {
 		si.pool.PutReader(si.reader)
@@ -1585,7 +1586,6 @@ func (si *bufferedIterator) close() {
 	}
 
 	if si.currStructuredMetadata != nil {
-		// nolint:staticcheck
 		structuredMetadataPool.Put(si.currStructuredMetadata)
 		si.currStructuredMetadata = nil
 	}

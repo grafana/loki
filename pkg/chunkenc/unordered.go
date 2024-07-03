@@ -244,6 +244,7 @@ func (hb *unorderedHeadBlock) forEntries(
 	return nil
 }
 
+// nolint:staticcheck
 func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.Direction, mint, maxt int64, pipeline log.StreamPipeline) iter.EntryIterator {
 	// We are doing a copy everytime, this is because b.entries could change completely,
 	// the alternate would be that we allocate a new b.entries everytime we cut a block,
@@ -305,6 +306,7 @@ func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.D
 }
 
 // nolint:unused
+// nolint:staticcheck
 func (hb *unorderedHeadBlock) SampleIterator(
 	ctx context.Context,
 	mint,
@@ -365,7 +367,6 @@ func (hb *unorderedHeadBlock) SampleIterator(
 			SamplesPool.Put(s.Samples)
 		}
 		if structuredMetadata != nil {
-			// nolint:staticcheck
 			structuredMetadataPool.Put(structuredMetadata)
 		}
 		return nil
