@@ -15,13 +15,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
-// EntryIterator iterates over entries in time-order.
-type EntryIterator interface {
-	Iterator
-	Entry() logproto.Entry
-}
-
-// streamIterator iterates over entries in a stream.
 type streamIterator struct {
 	i      int
 	stream logproto.Stream
@@ -40,7 +33,7 @@ func (i *streamIterator) Next() bool {
 	return i.i < len(i.stream.Entries)
 }
 
-func (i *streamIterator) Error() error {
+func (i *streamIterator) Err() error {
 	return nil
 }
 
@@ -48,9 +41,11 @@ func (i *streamIterator) Labels() string {
 	return i.stream.Labels
 }
 
-func (i *streamIterator) StreamHash() uint64 { return i.stream.Hash }
+func (i *streamIterator) StreamHash() uint64 {
+	return i.stream.Hash
+}
 
-func (i *streamIterator) Entry() logproto.Entry {
+func (i *streamIterator) At() logproto.Entry {
 	return i.stream.Entries[i.i]
 }
 
@@ -92,7 +87,7 @@ func NewMergeEntryIterator(ctx context.Context, is []EntryIterator, direction lo
 }
 
 func (i *mergeEntryIterator) closeEntry(e EntryIterator) {
-	if err := e.Error(); err != nil {
+	if err := e.Err(); err != nil {
 		i.errs = append(i.errs, err)
 	}
 	util.LogError("closing iterator", e.Close)
@@ -129,7 +124,7 @@ func (i *mergeEntryIterator) fillBuffer() {
 	// Entries with identical timestamp and line are removed as duplicates.
 	for {
 		next := i.tree.Winner()
-		entry := next.Entry()
+		entry := next.At()
 		i.buffer = append(i.buffer, entryWithLabels{
 			Entry:      entry,
 			labels:     next.Labels(),
@@ -175,7 +170,7 @@ func (i *mergeEntryIterator) nextFromBuffer() {
 	i.buffer = i.buffer[1:]
 }
 
-func (i *mergeEntryIterator) Entry() logproto.Entry {
+func (i *mergeEntryIterator) At() logproto.Entry {
 	return i.currEntry.Entry
 }
 
@@ -185,7 +180,7 @@ func (i *mergeEntryIterator) Labels() string {
 
 func (i *mergeEntryIterator) StreamHash() uint64 { return i.currEntry.streamHash }
 
-func (i *mergeEntryIterator) Error() error {
+func (i *mergeEntryIterator) Err() error {
 	switch len(i.errs) {
 	case 0:
 		return nil
@@ -199,7 +194,7 @@ func (i *mergeEntryIterator) Error() error {
 func (i *mergeEntryIterator) Close() error {
 	i.tree.Close()
 	i.buffer = nil
-	return i.Error()
+	return i.Err()
 }
 
 func (i *mergeEntryIterator) Peek() time.Time {
@@ -232,7 +227,7 @@ type entrySortIterator struct {
 // When timestamp is equal, the iterator sorts samples by their label alphabetically.
 func NewSortEntryIterator(is []EntryIterator, direction logproto.Direction) EntryIterator {
 	if len(is) == 0 {
-		return NoopIterator
+		return NoopEntryIterator
 	}
 	if len(is) == 1 {
 		return is[0]
@@ -265,7 +260,7 @@ type sortFields struct {
 
 func sortFieldsAt(i EntryIterator) sortFields {
 	return sortFields{
-		timeNanos:  i.Entry().Timestamp.UnixNano(),
+		timeNanos:  i.At().Timestamp.UnixNano(),
 		labels:     i.Labels(),
 		streamHash: i.StreamHash(),
 	}
@@ -295,7 +290,7 @@ func lessDescending(e1, e2 sortFields) bool {
 }
 
 func (i *entrySortIterator) closeEntry(e EntryIterator) {
-	if err := e.Error(); err != nil {
+	if err := e.Err(); err != nil {
 		i.errs = append(i.errs, err)
 	}
 	util.LogError("closing iterator", e.Close)
@@ -307,13 +302,13 @@ func (i *entrySortIterator) Next() bool {
 		return false
 	}
 	next := i.tree.Winner()
-	i.currEntry.Entry = next.Entry()
+	i.currEntry.Entry = next.At()
 	i.currEntry.labels = next.Labels()
 	i.currEntry.streamHash = next.StreamHash()
 	return true
 }
 
-func (i *entrySortIterator) Entry() logproto.Entry {
+func (i *entrySortIterator) At() logproto.Entry {
 	return i.currEntry.Entry
 }
 
@@ -325,7 +320,7 @@ func (i *entrySortIterator) StreamHash() uint64 {
 	return i.currEntry.streamHash
 }
 
-func (i *entrySortIterator) Error() error {
+func (i *entrySortIterator) Err() error {
 	switch len(i.errs) {
 	case 0:
 		return nil
@@ -338,7 +333,7 @@ func (i *entrySortIterator) Error() error {
 
 func (i *entrySortIterator) Close() error {
 	i.tree.Close()
-	return i.Error()
+	return i.Err()
 }
 
 // NewStreamsIterator returns an iterator over logproto.Stream
@@ -388,8 +383,8 @@ func (i *queryClientIterator) Next() bool {
 	return true
 }
 
-func (i *queryClientIterator) Entry() logproto.Entry {
-	return i.curr.Entry()
+func (i *queryClientIterator) At() logproto.Entry {
+	return i.curr.At()
 }
 
 func (i *queryClientIterator) Labels() string {
@@ -398,7 +393,7 @@ func (i *queryClientIterator) Labels() string {
 
 func (i *queryClientIterator) StreamHash() uint64 { return i.curr.StreamHash() }
 
-func (i *queryClientIterator) Error() error {
+func (i *queryClientIterator) Err() error {
 	return i.err
 }
 
@@ -435,8 +430,8 @@ func (i *nonOverlappingIterator) Next() bool {
 	return true
 }
 
-func (i *nonOverlappingIterator) Entry() logproto.Entry {
-	return i.curr.Entry()
+func (i *nonOverlappingIterator) At() logproto.Entry {
+	return i.curr.At()
 }
 
 func (i *nonOverlappingIterator) Labels() string {
@@ -453,11 +448,11 @@ func (i *nonOverlappingIterator) StreamHash() uint64 {
 	return i.curr.StreamHash()
 }
 
-func (i *nonOverlappingIterator) Error() error {
+func (i *nonOverlappingIterator) Err() error {
 	if i.curr == nil {
 		return nil
 	}
-	return i.curr.Error()
+	return i.curr.Err()
 }
 
 func (i *nonOverlappingIterator) Close() error {
@@ -492,13 +487,13 @@ func (i *timeRangedIterator) Next() bool {
 		i.EntryIterator.Close()
 		return ok
 	}
-	ts := i.EntryIterator.Entry().Timestamp
+	ts := i.EntryIterator.At().Timestamp
 	for ok && i.mint.After(ts) {
 		ok = i.EntryIterator.Next()
 		if !ok {
 			continue
 		}
-		ts = i.EntryIterator.Entry().Timestamp
+		ts = i.EntryIterator.At().Timestamp
 	}
 	if ok {
 		if ts.Equal(i.mint) { // The mint is inclusive
@@ -537,7 +532,7 @@ func NewReversedIter(it EntryIterator, limit uint32, preload bool) (EntryIterato
 		iter:              it,
 		entriesWithLabels: make([]entryWithLabels, 0, 1024),
 		limit:             limit,
-	}, it.Error()
+	}, it.Err()
 	if err != nil {
 		return nil, err
 	}
@@ -553,7 +548,7 @@ func (i *reverseIterator) load() {
 	if !i.loaded {
 		i.loaded = true
 		for count := uint32(0); (i.limit == 0 || count < i.limit) && i.iter.Next(); count++ {
-			i.entriesWithLabels = append(i.entriesWithLabels, entryWithLabels{i.iter.Entry(), i.iter.Labels(), i.iter.StreamHash()})
+			i.entriesWithLabels = append(i.entriesWithLabels, entryWithLabels{i.iter.At(), i.iter.Labels(), i.iter.StreamHash()})
 		}
 		i.iter.Close()
 	}
@@ -569,7 +564,7 @@ func (i *reverseIterator) Next() bool {
 	return true
 }
 
-func (i *reverseIterator) Entry() logproto.Entry {
+func (i *reverseIterator) At() logproto.Entry {
 	return i.cur.Entry
 }
 
@@ -581,7 +576,7 @@ func (i *reverseIterator) StreamHash() uint64 {
 	return i.cur.streamHash
 }
 
-func (i *reverseIterator) Error() error { return nil }
+func (i *reverseIterator) Err() error { return nil }
 
 func (i *reverseIterator) Close() error {
 	if !i.loaded {
@@ -616,7 +611,7 @@ func NewEntryReversedIter(it EntryIterator) (EntryIterator, error) {
 	iter, err := &reverseEntryIterator{
 		iter: it,
 		buf:  entryBufferPool.Get().(*entryBuffer),
-	}, it.Error()
+	}, it.Err()
 	if err != nil {
 		return nil, err
 	}
@@ -628,7 +623,7 @@ func (i *reverseEntryIterator) load() {
 	if !i.loaded {
 		i.loaded = true
 		for i.iter.Next() {
-			i.buf.entries = append(i.buf.entries, entryWithLabels{i.iter.Entry(), i.iter.Labels(), i.iter.StreamHash()})
+			i.buf.entries = append(i.buf.entries, entryWithLabels{i.iter.At(), i.iter.Labels(), i.iter.StreamHash()})
 		}
 		i.iter.Close()
 	}
@@ -644,7 +639,7 @@ func (i *reverseEntryIterator) Next() bool {
 	return true
 }
 
-func (i *reverseEntryIterator) Entry() logproto.Entry {
+func (i *reverseEntryIterator) At() logproto.Entry {
 	return i.cur.Entry
 }
 
@@ -656,7 +651,7 @@ func (i *reverseEntryIterator) StreamHash() uint64 {
 	return i.cur.streamHash
 }
 
-func (i *reverseEntryIterator) Error() error { return nil }
+func (i *reverseEntryIterator) Err() error { return nil }
 
 func (i *reverseEntryIterator) release() {
 	if i.buf == nil {
@@ -687,7 +682,7 @@ func ReadBatch(i EntryIterator, size uint32) (*logproto.QueryResponse, uint32, e
 		streamsCount int
 	)
 	for ; respSize < size && i.Next(); respSize++ {
-		labels, hash, entry := i.Labels(), i.StreamHash(), i.Entry()
+		labels, hash, entry := i.Labels(), i.StreamHash(), i.At()
 		mutatedStreams, ok := streams[hash]
 		if !ok {
 			mutatedStreams = map[string]*logproto.Stream{}
@@ -713,7 +708,7 @@ func ReadBatch(i EntryIterator, size uint32) (*logproto.QueryResponse, uint32, e
 			result.Streams = append(result.Streams, *s)
 		}
 	}
-	return &result, respSize, i.Error()
+	return &result, respSize, i.Err()
 }
 
 type peekingEntryIterator struct {
@@ -737,7 +732,7 @@ func NewPeekingIterator(iter EntryIterator) PeekingEntryIterator {
 	next := &entryWithLabels{}
 	if iter.Next() {
 		cache = &entryWithLabels{
-			Entry:      iter.Entry(),
+			Entry:      iter.At(),
 			labels:     iter.Labels(),
 			streamHash: iter.StreamHash(),
 		}
@@ -766,7 +761,7 @@ func (it *peekingEntryIterator) Next() bool {
 // cacheNext caches the next element if it exists.
 func (it *peekingEntryIterator) cacheNext() {
 	if it.iter.Next() {
-		it.cache.Entry = it.iter.Entry()
+		it.cache.Entry = it.iter.At()
 		it.cache.labels = it.iter.Labels()
 		it.cache.streamHash = it.iter.StreamHash()
 		return
@@ -799,7 +794,7 @@ func (it *peekingEntryIterator) StreamHash() uint64 {
 }
 
 // Entry implements `EntryIterator`
-func (it *peekingEntryIterator) Entry() logproto.Entry {
+func (it *peekingEntryIterator) At() logproto.Entry {
 	if it.next != nil {
 		return it.next.Entry
 	}
@@ -807,8 +802,8 @@ func (it *peekingEntryIterator) Entry() logproto.Entry {
 }
 
 // Error implements `EntryIterator`
-func (it *peekingEntryIterator) Error() error {
-	return it.iter.Error()
+func (it *peekingEntryIterator) Err() error {
+	return it.iter.Err()
 }
 
 // Close implements `EntryIterator`

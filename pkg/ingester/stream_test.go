@@ -456,8 +456,8 @@ func TestUnorderedPush(t *testing.T) {
 	require.Nil(t, err)
 	for _, x := range exp {
 		require.Equal(t, true, sItr.Next())
-		require.Equal(t, x.Timestamp, time.Unix(0, sItr.Sample().Timestamp))
-		require.Equal(t, float64(1), sItr.Sample().Value)
+		require.Equal(t, x.Timestamp, time.Unix(0, sItr.At().Timestamp))
+		require.Equal(t, float64(1), sItr.At().Value)
 	}
 	require.Equal(t, false, sItr.Next())
 }
@@ -599,8 +599,8 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 func iterEq(t *testing.T, exp []logproto.Entry, got iter.EntryIterator) {
 	var i int
 	for got.Next() {
-		require.Equal(t, exp[i].Timestamp, got.Entry().Timestamp, "failed on the (%d) ts", i)
-		require.Equal(t, exp[i].Line, got.Entry().Line)
+		require.Equal(t, exp[i].Timestamp, got.At().Timestamp, "failed on the (%d) ts", i)
+		require.Equal(t, exp[i].Line, got.At().Line)
 		i++
 	}
 	require.Equal(t, i, len(exp), "incorrect number of entries expected")
