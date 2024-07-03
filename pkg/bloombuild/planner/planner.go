@@ -340,7 +340,7 @@ func (p *Planner) computeTasks(
 
 	// In case the planner restarted before deleting outdated metas in the previous iteration,
 	// we delete them during the planning phase to avoid reprocessing them.
-	metas, err = p.deleteOutdatedMetas(ctx, table, tenant, metas, phasePlanning)
+	metas, err = p.deleteOutdatedMetasAndBlocks(ctx, table, tenant, metas, phasePlanning)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to delete outdated metas during planning: %w", err)
 	}
@@ -427,14 +427,16 @@ func (p *Planner) processTenantTaskResults(
 	}
 
 	combined := append(originalMetas, newMetas...)
-	if _, err := p.deleteOutdatedMetas(ctx, table, tenant, combined, phaseBuilding); err != nil {
+	if _, err := p.deleteOutdatedMetasAndBlocks(ctx, table, tenant, combined, phaseBuilding); err != nil {
 		return 0, fmt.Errorf("failed to delete outdated metas: %w", err)
 	}
 
 	return tasksSucceed, nil
 }
 
-func (p *Planner) deleteOutdatedMetas(
+// deleteOutdatedMetasAndBlocks filters out the outdated metas from the `metas` argument and deletes them from the store.
+// It returns the up-to-date metas from the `metas` argument.
+func (p *Planner) deleteOutdatedMetasAndBlocks(
 	ctx context.Context,
 	table config.DayTable,
 	tenant string,

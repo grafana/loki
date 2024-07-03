@@ -884,7 +884,7 @@ func Test_deleteOutdatedMetas(t *testing.T) {
 			removeLocFromMetasSources(metas)
 			require.ElementsMatch(t, tc.originalMetas, metas)
 
-			upToDate, err := planner.deleteOutdatedMetas(context.Background(), testTable, "fakeTenant", tc.originalMetas, phasePlanning)
+			upToDate, err := planner.deleteOutdatedMetasAndBlocks(context.Background(), testTable, "fakeTenant", tc.originalMetas, phasePlanning)
 			require.NoError(t, err)
 			require.ElementsMatch(t, tc.expectedUpToDateMetas, upToDate)
 
