@@ -73,9 +73,13 @@ In this step, we will set up our environment by cloning the repository that cont
     <!-- INTERACTIVE ignore END -->
 
     {{< docs/ignore >}}
+
+    <!-- INTERACTIVE exec START -->
     ```bash 
     docker-compose -f loki-fundamentals/docker-compose.yml up -d 
-    ```{{exec}}
+    ```
+    <!-- INTERACTIVE exec END -->
+
     {{< /docs/ignore >}}
 
     This will spin up the following services:
@@ -99,10 +103,12 @@ We will be access two UI interfaces:
 In this first step, we will configure Alloy to ingest raw Kafka logs. To do this, we will update the `config.alloy` file to include the Kafka logs configuration.
 
 {{< docs/ignore >}}
+
 **Note: Killercoda has an inbuilt Code editor which can be accessed via the `Editor` tab.**
+
 {{< /docs/ignore >}}
 
-### Loki Kafka Source component
+### Source logs from kafka
 
 First, we will configure the Loki Kafka source. `loki.source.kafka` reads messages from Kafka using a consumer group and forwards them to other `loki.*` components.
 
@@ -130,7 +136,7 @@ In this configuration:
 
 For more information on the `loki.source.kafka` configuration, see the [Loki Kafka Source documentation](https://grafana.com/docs/alloy/latest/reference/components/loki.source.kafka/).
 
-### Loki Relabel Rules component
+### Create a dynamic relabel based on Kafka topic
 
 Next, we will configure the Loki relabel rules. The `loki.relabel` component rewrites the label set of each log entry passed to its receiver by applying one or more relabeling rules and forwards the results to the list of receivers in the component’s arguments. In our case we are directly calling the rule from the `loki.source.kafka` component.
 
@@ -151,7 +157,7 @@ In this configuration:
 
 For more information on the `loki.relabel` configuration, see the [Loki Relabel documentation](https://grafana.com/docs/alloy/latest/reference/components/loki.relabel/).
 
-### Loki Write component 
+### Write logs to Loki
 
 Lastly, we will configure the Loki write component. `loki.write` receives log entries from other loki components and sends them over the network using the Loki logproto format.
 
@@ -169,7 +175,7 @@ In this configuration:
 
 For more information on the `loki.write` configuration, see the [Loki Write documentation](https://grafana.com/docs/alloy/latest/reference/components/loki.write/).
 
-### Reload the Alloy configuration
+### Reload the Alloy configuration to check the changes
 
 Once added, save the file. Then run the following command to request Alloy to reload the configuration:
 <!-- INTERACTIVE exec START -->
@@ -201,10 +207,12 @@ curl -X POST http://localhost:12345/-/reload
 Next we will configure Alloy to also ingest OpenTelemetry logs via Kafka, we need to update the Alloy configuration file once again. We will add the new components to the `config.alloy` file along with the existing components.
 
 {{< docs/ignore >}}
+
 **Note: Killercoda has an inbuilt Code editor which can be accessed via the `Editor` tab.**
+
 {{< /docs/ignore >}}
 
-### OpenTelelmetry Kafka Receiver
+### Source OpenTelemetry logs from Kafka
 
 First, we will configure the OpenTelemetry Kafaka receiver. `otelcol.receiver.kafka` accepts telemetry data from a Kafka broker and forwards it to other `otelcol.*` components.
 
@@ -232,7 +240,7 @@ In this configuration:
 
 For more information on the `otelcol.receiver.kafka` configuration, see the [OpenTelemetry Receiver Kafka documentation](https://grafana.com/docs/alloy/latest/reference/components/otelcol.receiver.kafka/).
 
-### OpenTelemetry Processor Batch
+### Batch OpenTelemetry logs before sending
 
 Next, we will configure a OpenTelemetry processor. `otelcol.processor.batch` accepts telemetry data from other otelcol components and places them into batches. Batching improves the compression of data and reduces the number of outgoing network requests required to transmit data. This processor supports both size and time based batching.
 
@@ -250,7 +258,7 @@ In this configuration:
 
 For more information on the `otelcol.processor.batch` configuration, see the [OpenTelemetry Processor Batch documentation](https://grafana.com/docs/alloy/latest/reference/components/otelcol.processor.batch/).
 
-### OpenTelemetry Exporter OTLP HTTP
+### Write OpenTelemetry logs to Loki
 
 Lastly, we will configure the OpenTelemetry exporter. `otelcol.exporter.otlphttp` accepts telemetry data from other otelcol components and writes them over the network using the OTLP HTTP protocol. We will use this exporter to send the logs to Loki's native OTLP endpoint.
 
@@ -268,7 +276,7 @@ In this configuration:
 
 For more information on the `otelcol.exporter.otlphttp` configuration, see the [OpenTelemetry Exporter OTLP HTTP documentation](https://grafana.com/docs/alloy/latest/reference/components/otelcol.exporter.otlphttp/).
 
-### Reload the Alloy configuration
+### Reload the Alloy configuration to check the changes
 
 Once added, save the file. Then run the following command to request Alloy to reload the configuration:
 <!-- INTERACTIVE exec START -->
@@ -304,7 +312,9 @@ This docker-compose file relies on the `loki-fundamentals_loki` docker network. 
 <!-- INTERACTIVE ignore END -->
 
 {{< docs/ignore >}}
+
 **Note: This docker-compose file relies on the `loki-fundamentals_loki` docker network. If you have not started the observability stack, you will need to start it first.**
+
 {{< /docs/ignore >}}
 
 <!-- INTERACTIVE ignore START -->
@@ -316,9 +326,11 @@ docker compose -f loki-fundamentals/greenhouse/docker-compose-micro.yml up -d --
 
 {{< docs/ignore >}}
 
+<!-- INTERACTIVE exec START -->
 ```bash
 docker-compose -f loki-fundamentals/greenhouse/docker-compose-micro.yml up -d --build
-```{{exec}}
+```
+<!-- INTERACTIVE exec END -->
 
 {{< /docs/ignore >}}
 
@@ -352,8 +364,10 @@ Finally to view the logs in Loki, navigate to the Loki Logs Explore view in Graf
 In this example, we configured Alloy to ingest logs via Kafka. We configured Alloy to ingest logs in two different formats: raw logs and OpenTelemetry logs. Where to go next?
 
 {{< docs/ignore >}}
+
 ### Back to Docs
 Head back to wear you started from to continue with the Loki documentation: [Loki documentation](https://grafana.com/docs/loki/latest/send-data/alloy)
+
 {{< /docs/ignore >}}
 
 ## Further reading
