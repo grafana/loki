@@ -155,6 +155,8 @@ In this configuration:
 - `forward_to`: The list of receivers to forward the logs to. In this case, we are forwarding the logs to the `loki.write.http.receiver`. Though in this case, we are directly calling the rule from the `loki.source.kafka` component. So `forward_to` is being used as a placeholder as it is required by the `loki.relabel` component.
 - `rule`: The relabeling rule to apply to the incoming logs. In this case, we are renaming the `__meta_kafka_topic` label to `topic`.
 
+In this case we are using the `__meta_kafka_topic` label to dynamically set the `topic` label on the incoming logs. This will allow us to identify and restrive logs steams based on the Kafka topic in the Log Explorer App in Grafana. This can be useful when you have multiple applications sending logs to Alloy using different Kafka topics.
+
 For more information on the `loki.relabel` configuration, see the [Loki Relabel documentation](https://grafana.com/docs/alloy/latest/reference/components/loki.relabel/).
 
 ### Write logs to Loki
