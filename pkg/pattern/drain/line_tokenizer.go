@@ -13,18 +13,25 @@ import (
 )
 
 type LineTokenizer interface {
-	Tokenize(line string) ([]string, interface{})
+	Tokenize(line string, tokens []string, state interface{}) ([]string, interface{})
 	Join(tokens []string, state interface{}) string
+	Clone(tokens []string, state interface{}) ([]string, interface{})
 }
 
 type spacesTokenizer struct{}
 
-func (spacesTokenizer) Tokenize(line string) ([]string, interface{}) {
+func (spacesTokenizer) Tokenize(line string, tokens []string, state interface{}) ([]string, interface{}) {
 	return strings.Split(line, " "), nil
 }
 
 func (spacesTokenizer) Join(tokens []string, _ interface{}) string {
 	return strings.Join(tokens, " ")
+}
+
+func (spacesTokenizer) Clone(tokens []string, _ interface{}) ([]string, interface{}) {
+	res := make([]string, len(tokens))
+	copy(res, tokens)
+	return res, nil
 }
 
 type punctuationTokenizer struct {
@@ -46,13 +53,20 @@ func newPunctuationTokenizer() *punctuationTokenizer {
 	}
 }
 
-func (p *punctuationTokenizer) Tokenize(line string) ([]string, interface{}) {
-	tokens := make([]string, 0, 128)
-	spacesAfter := make([]int, 0, 64)
+func (p *punctuationTokenizer) Tokenize(line string, tokens []string, state interface{}) ([]string, interface{}) {
+	if cap(tokens) == 0 {
+		tokens = make([]string, 0, 128)
+	}
+	tokens = tokens[:0]
+	if state == nil || cap(state.([]int)) == 0 {
+		state = make([]int, 0, 64)
+	}
+	spacesAfter := state.([]int)
+	spacesAfter = spacesAfter[:0]
 
 	start := 0
 	for i, char := range line {
-		if len(tokens) >= cap(tokens)-1 {
+		if len(tokens) >= 127 {
 			break
 		}
 		if unicode.IsLetter(char) || unicode.IsNumber(char) || char < 128 && p.excludeDelimiters[char] != 0 {
@@ -94,9 +108,23 @@ func (p *punctuationTokenizer) Join(tokens []string, state interface{}) string {
 	return strBuilder.String()
 }
 
+func (p *punctuationTokenizer) Clone(tokens []string, state interface{}) ([]string, interface{}) {
+	res := make([]string, len(tokens))
+	for i, token := range tokens {
+		res[i] = strings.Clone(token)
+	}
+	if state == nil {
+		return res, nil
+	}
+	spacesAfter := state.([]int)
+	spacesAfterCopy := make([]int, len(spacesAfter))
+	copy(spacesAfterCopy, spacesAfter)
+	return res, spacesAfterCopy
+}
+
 type splittingTokenizer struct{}
 
-func (splittingTokenizer) Tokenize(line string) ([]string, interface{}) {
+func (splittingTokenizer) Tokenize(line string, tokens []string, state interface{}) ([]string, interface{}) {
 	numEquals := strings.Count(line, "=")
 	numColons := strings.Count(line, ":")
 	numSpaces := strings.Count(line, " ")
@@ -108,8 +136,16 @@ func (splittingTokenizer) Tokenize(line string) ([]string, interface{}) {
 		expectedTokens = numSpaces + numColons
 	}
 
-	tokens := make([]string, 0, expectedTokens)
-	spacesAfter := make([]int, 0, strings.Count(line, " "))
+	if cap(tokens) == 0 {
+		tokens = make([]string, 0, expectedTokens)
+	}
+	tokens = tokens[:0]
+	if state == nil || cap(state.([]int)) == 0 {
+		state = make([]int, 0, numSpaces)
+	}
+	spacesAfter := state.([]int)
+	spacesAfter = spacesAfter[:0]
+
 	for _, token := range strings.SplitAfter(line, keyvalSeparator) {
 		words := strings.Split(token, " ")
 		for i, entry := range words {
@@ -138,6 +174,20 @@ func (splittingTokenizer) Join(tokens []string, state interface{}) string {
 	return strBuilder.String()
 }
 
+func (splittingTokenizer) Clone(tokens []string, state interface{}) ([]string, interface{}) {
+	res := make([]string, len(tokens))
+	for i, token := range tokens {
+		res[i] = strings.Clone(token)
+	}
+	if state == nil {
+		return res, nil
+	}
+	spacesAfter := state.([]int)
+	spacesAfterCopy := make([]int, len(spacesAfter))
+	copy(spacesAfterCopy, spacesAfter)
+	return res, spacesAfterCopy
+}
+
 type logfmtTokenizer struct {
 	dec        *logfmt.Decoder
 	varReplace string
@@ -150,17 +200,21 @@ func newLogfmtTokenizer(varReplace string) *logfmtTokenizer {
 	}
 }
 
-func (t *logfmtTokenizer) Tokenize(line string) ([]string, interface{}) {
-	var tokens []string
-	t.dec.Reset([]byte(line))
+func (t *logfmtTokenizer) Tokenize(line string, tokens []string, _ interface{}) ([]string, interface{}) {
+	if cap(tokens) == 0 {
+		tokens = make([]string, 0, 64)
+	}
+	tokens = tokens[:0]
+	t.dec.Reset(util.GetUnsafeBytes(line))
 	for !t.dec.EOL() && t.dec.ScanKeyval() {
 		key := t.dec.Key()
 		if isVariableField(key) {
-			tokens = append(tokens, string(t.dec.Key()), t.varReplace)
+			tokens = append(tokens, util.GetUnsafeString(t.dec.Key()), t.varReplace)
 
 			continue
 		}
-		tokens = append(tokens, string(t.dec.Key()), string(t.dec.Value()))
+		// todo we want to pass bytes and let user copy if needed.
+		tokens = append(tokens, util.GetUnsafeString(t.dec.Key()), util.GetUnsafeString(t.dec.Value()))
 	}
 	if t.dec.Err() != nil {
 		return nil, nil
@@ -186,6 +240,14 @@ func (t *logfmtTokenizer) Join(tokens []string, state interface{}) string {
 	return buf.String()
 }
 
+func (t *logfmtTokenizer) Clone(tokens []string, _ interface{}) ([]string, interface{}) {
+	res := make([]string, len(tokens))
+	for i, token := range tokens {
+		res[i] = strings.Clone(token)
+	}
+	return res, nil
+}
+
 type jsonTokenizer struct {
 	*punctuationTokenizer
 	varReplace string
@@ -195,7 +257,7 @@ func newJSONTokenizer(varReplace string) *jsonTokenizer {
 	return &jsonTokenizer{newPunctuationTokenizer(), varReplace}
 }
 
-func (t *jsonTokenizer) Tokenize(line string) ([]string, interface{}) {
+func (t *jsonTokenizer) Tokenize(line string, tokens []string, state interface{}) ([]string, interface{}) {
 	var found []byte
 	for _, key := range []string{"log", "message", "msg", "msg_", "_msg", "content"} {
 		msg, ty, _, err := jsonparser.Get(util.GetUnsafeBytes(line), key)
@@ -208,8 +270,8 @@ func (t *jsonTokenizer) Tokenize(line string) ([]string, interface{}) {
 	if found == nil {
 		return nil, nil
 	}
-	tokens, state := t.punctuationTokenizer.Tokenize(util.GetUnsafeString(found))
-	return tokens, state
+
+	return t.punctuationTokenizer.Tokenize(util.GetUnsafeString(found), tokens, state)
 }
 
 func (t *jsonTokenizer) Join(tokens []string, state interface{}) string {

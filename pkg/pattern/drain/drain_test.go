@@ -62,7 +62,8 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 			patterns: []string{
 				`ts=2024-04-17T09:52:46.363974185Z caller=http.go:194 level=debug traceID=1b48f5156a61ca69 msg="GET /debug/pprof/delta_mutex (200) 1.161082ms"`,
 				`ts=<_> caller=head.go:216 level=debug tenant=987678 msg="profile is empty after delta computation" metricName=memory`,
-				`ts=<_> caller=http.go:194 level=debug traceID=<_> orgID=<_> msg="POST /ingester.v1.IngesterService/Push (200) <_>"`},
+				`ts=<_> caller=http.go:194 level=debug traceID=<_> orgID=<_> msg="POST /ingester.v1.IngesterService/Push (200) <_>"`,
+			},
 		},
 		{
 			drain:     New(DefaultConfig(), "", nil),
@@ -86,7 +87,8 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 				`ts=2024-05-02T12:17:22.242343806Z caller=http.go:194 level=debug traceID=404c6a83a18e66a4 orgID=75 msg="POST /ingest?aggregationType=average&from=1714652227232613927&name=checkoutservice%7B__session_id__%3D294b9729f5a7de95%2Cnamespace%3Dotel-demo%7D&sampleRate=0&spyName=gospy&units=goroutines&until=1714652242232506798 (200) 2.902485ms"`,
 				`ts=<_> caller=http.go:194 level=debug traceID=<_> orgID=1819 msg="POST /pyroscope/ingest?aggregationType=sum&from=1714652230&name=<_>%7Bapp_kubernetes_io_instance%3Dflamegraph-com%2Capp_kubernetes_io_name%3Dflamegraph-com%2Ccluster%3Dflamegraph.com%2Cinstance%<_>%<_>%2Cjob%3Dkubernetes-pods%2Cnamespace%3Dflamegraph-com%2Cpod%<_>%2Cpod_template_hash%<_>%2Cpyroscope_tenant%3Dpyroscope%2Ctier%<_>%7D&sampleRate=0&spyName=scrape&units=samples&until=1714652240 (200) <_>"`,
 				`ts=<_> caller=http.go:194 level=debug traceID=<_> orgID=75 msg="POST /ingest?aggregationType=&from=1714652227232613927&name=checkoutservice%7B__session_id__%3D294b9729f5a7de95%2Cnamespace%3Dotel-demo%7D&sampleRate=<_>&spyName=gospy&units=&until=1714652242232506798 (200) <_>"`,
-				`ts=<_> caller=http.go:194 level=debug traceID=<_> orgID=<_> msg="POST /push.v1.PusherService/Push (<_>) <_>"`},
+				`ts=<_> caller=http.go:194 level=debug traceID=<_> orgID=<_> msg="POST /push.v1.PusherService/Push (<_>) <_>"`,
+			},
 		},
 		{
 			drain:     New(DefaultConfig(), "", nil),
@@ -439,6 +441,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.inputFile, func(t *testing.T) {
 			file, err := os.Open(tt.inputFile)
 			require.NoError(t, err)
@@ -470,53 +473,6 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 
 			require.Equal(t, tt.patterns, output)
 			require.Falsef(t, outputPatternsForTestUpdate, `outputPatternsForTestUpdate should only be used locally to update test patterns.`)
-		})
-	}
-}
-
-func TestDrain_TrainGeneratesMatchablePatterns(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name       string
-		drain      *Drain
-		inputLines []string
-	}{
-		{
-			name:  "should match each line against a pattern",
-			drain: New(DefaultConfig(), "", nil),
-			inputLines: []string{
-				"test test test test",
-				"test test test test",
-				"test test test test",
-				"test test test test",
-			},
-		},
-		{
-			name:  "should also match newlines",
-			drain: New(DefaultConfig(), "", nil),
-			inputLines: []string{
-				`test test test test
-`,
-				`test test test test
-`,
-				`test test test test
-`,
-				`test test test test
-`,
-			},
-		},
-	}
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			for _, line := range tt.inputLines {
-				tt.drain.Train(line, 0)
-			}
-
-			for _, line := range tt.inputLines {
-				match := tt.drain.Match(line)
-				require.NotNil(t, match, `Line should match a cluster`)
-			}
 		})
 	}
 }

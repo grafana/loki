@@ -135,7 +135,7 @@ func TestTokenizer_Tokenize(t *testing.T) {
 	for _, tt := range tests {
 		for _, tc := range testCases {
 			t.Run(tt.name+":"+tc.name, func(t *testing.T) {
-				got, _ := tt.tokenizer.Tokenize(tc.line)
+				got, _ := tt.tokenizer.Tokenize(tc.line, nil, nil)
 				require.Equal(t, tc.want[tt.name], got)
 			})
 		}
@@ -160,7 +160,7 @@ func TestTokenizer_TokenizeAndJoin(t *testing.T) {
 	for _, tt := range tests {
 		for _, tc := range testCases {
 			t.Run(tt.name+":"+tc.name, func(t *testing.T) {
-				got := tt.tokenizer.Join(tt.tokenizer.Tokenize(tc.line))
+				got := tt.tokenizer.Join(tt.tokenizer.Tokenize(tc.line, nil, nil))
 				require.Equal(t, tc.line, got)
 			})
 		}
@@ -176,7 +176,7 @@ func BenchmarkSplittingTokenizer(b *testing.B) {
 			b.ResetTimer()
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				tokenizer.Tokenize(tc.line)
+				tokenizer.Tokenize(tc.line, nil, nil)
 			}
 		})
 	}
@@ -215,7 +215,7 @@ func TestLogFmtTokenizer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, _ := tokenizer.Tokenize(tt.line)
+			got, _ := tokenizer.Tokenize(tt.line, nil, nil)
 			require.Equal(t, tt.want, got)
 		})
 	}
@@ -280,7 +280,7 @@ func TestJsonTokenizer(t *testing.T) {
 	}{
 		{
 			line:    `{"level":30,"time":1719998371869,"pid":17,"hostname":"otel-demo-ops-paymentservice-7c759bf575-55t4p","trace_id":"1425c6df5a4321cf6a7de254de5b8204","span_id":"2ac7a3fc800b80d4","trace_flags":"01","transactionId":"e501032b-3215-4e43-b1db-f4886a906fc5","cardType":"visa","lastFourDigits":"5647","amount":{"units":{"low":656,"high":0,"unsigned":false},"nanos":549999996,"currencyCode":"USD"},"msg":"Transaction complete."}`,
-			want:    []string{"Transaction", "complete", "."},
+			want:    []string{"Transaction", "complete."},
 			pattern: "<_>Transaction complete.<_>",
 		},
 		{
@@ -304,7 +304,7 @@ func TestJsonTokenizer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, state := tokenizer.Tokenize(tt.line)
+			got, state := tokenizer.Tokenize(tt.line, nil, nil)
 			require.Equal(t, tt.want, got)
 			pattern := tokenizer.Join(got, state)
 			require.Equal(t, tt.pattern, pattern)
