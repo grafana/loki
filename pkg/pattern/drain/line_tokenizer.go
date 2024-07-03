@@ -9,7 +9,6 @@ import (
 	"github.com/buger/jsonparser"
 	gologfmt "github.com/go-logfmt/logfmt"
 	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/util"
 )
 
 type LineTokenizer interface {
@@ -205,16 +204,16 @@ func (t *logfmtTokenizer) Tokenize(line string, tokens []string, _ interface{}) 
 		tokens = make([]string, 0, 64)
 	}
 	tokens = tokens[:0]
-	t.dec.Reset(util.GetUnsafeBytes(line))
+	t.dec.Reset(unsafeBytes(line))
 	for !t.dec.EOL() && t.dec.ScanKeyval() {
 		key := t.dec.Key()
 		if isVariableField(key) {
-			tokens = append(tokens, util.GetUnsafeString(t.dec.Key()), t.varReplace)
+			tokens = append(tokens, unsafeString(t.dec.Key()), t.varReplace)
 
 			continue
 		}
 		// todo we want to pass bytes and let user copy if needed.
-		tokens = append(tokens, util.GetUnsafeString(t.dec.Key()), util.GetUnsafeString(t.dec.Value()))
+		tokens = append(tokens, unsafeString(t.dec.Key()), unsafeString(t.dec.Value()))
 	}
 	if t.dec.Err() != nil {
 		return nil, nil
@@ -260,7 +259,7 @@ func newJSONTokenizer(varReplace string) *jsonTokenizer {
 func (t *jsonTokenizer) Tokenize(line string, tokens []string, state interface{}) ([]string, interface{}) {
 	var found []byte
 	for _, key := range []string{"log", "message", "msg", "msg_", "_msg", "content"} {
-		msg, ty, _, err := jsonparser.Get(util.GetUnsafeBytes(line), key)
+		msg, ty, _, err := jsonparser.Get(unsafeBytes(line), key)
 		if err == nil && ty == jsonparser.String {
 			found = msg
 			break
@@ -271,7 +270,7 @@ func (t *jsonTokenizer) Tokenize(line string, tokens []string, state interface{}
 		return nil, nil
 	}
 
-	return t.punctuationTokenizer.Tokenize(util.GetUnsafeString(found), tokens, state)
+	return t.punctuationTokenizer.Tokenize(unsafeString(found), tokens, state)
 }
 
 func (t *jsonTokenizer) Join(tokens []string, state interface{}) string {

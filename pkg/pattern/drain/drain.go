@@ -292,7 +292,7 @@ func deduplicatePlaceholders(line string, placeholder string) string {
 	}
 	builder = append(builder, line[low:]...)
 
-	return unsafe.String(unsafe.SliceData(builder), len(builder))
+	return unsafeString(builder)
 }
 
 func (d *Drain) PatternString(c *LogCluster) string {
@@ -525,4 +525,12 @@ func (d *Drain) createTemplate(tokens, matchClusterTokens []string) []string {
 		}
 	}
 	return matchClusterTokens
+}
+
+func unsafeString(s []byte) string {
+	return unsafe.String(unsafe.SliceData(s), len(s))
+}
+
+func unsafeBytes(s string) []byte {
+	return unsafe.Slice(unsafe.StringData(s), len(s))
 }
