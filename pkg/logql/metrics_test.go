@@ -92,8 +92,8 @@ func TestLogSlowQuery(t *testing.T) {
 
 func TestLogLabelsQuery(t *testing.T) {
 	buf := bytes.NewBufferString("")
-	logger := log.NewLogfmtLogger(buf)
 	tr, c := jaeger.NewTracer("foo", jaeger.NewConstSampler(true), jaeger.NewInMemoryReporter())
+	logger := log.NewLogfmtLogger(buf)
 	defer c.Close()
 	opentracing.SetGlobalTracer(tr)
 	sp := opentracing.StartSpan("")

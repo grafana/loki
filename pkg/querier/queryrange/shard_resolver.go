@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/v3/pkg/storage/types"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
@@ -141,8 +142,6 @@ func getStatsForMatchers(
 func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
 	sp, ctx := opentracing.StartSpanFromContext(r.ctx, "dynamicShardResolver.GetStats")
 	defer sp.Finish()
-	log := spanlogger.FromContext(r.ctx)
-	defer log.Finish()
 
 	start := time.Now()
 
@@ -159,6 +158,7 @@ func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
 		grps = append(grps, syntax.MatcherRange{})
 	}
 
+	log := util_log.WithContext(ctx, util_log.Logger)
 	results, err := getStatsForMatchers(ctx, log, r.statsHandler, r.from, r.through, grps, r.maxParallelism, r.defaultLookback)
 	if err != nil {
 		return stats.Stats{}, err
@@ -222,7 +222,6 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 	error,
 ) {
 	log := spanlogger.FromContext(r.ctx)
-	defer log.Finish()
 
 	adjustedFrom := r.from
 

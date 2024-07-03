@@ -237,6 +237,18 @@ string
 <p>The client-side key file path for the TLS configuration.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>insecureSkipVerify</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Skip validating server certificate.</p>
+</td>
+</tr>
 </tbody>
 </table>
 
@@ -2594,8 +2606,7 @@ string
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackStorageStatus">LokiStackStorageStatus</a>, <a href="#loki-grafana-com-v1-ObjectStorageSpec">ObjectStorageSpec</a>)
 </p>
 <div>
-<p>ObjectStorageSchema defines the requirements needed to configure a new
-storage schema.</p>
+<p>ObjectStorageSchema defines a schema version and the date when it will become effective.</p>
 </div>
 <table>
 <thead>
@@ -2628,9 +2639,11 @@ StorageSchemaEffectiveDate
 </em>
 </td>
 <td>
-<p>EffectiveDate is the date in UTC that the schema will be applied on.
-To ensure readibility of logs, this date should be before the current
-date in UTC.</p>
+<p>EffectiveDate contains a date in YYYY-MM-DD format which is interpreted in the UTC time zone.</p>
+<p>The configuration always needs at least one schema that is currently valid. This means that when creating a new
+LokiStack it is recommended to add a schema with the latest available version and an effective date of &ldquo;yesterday&rdquo;.
+New schema versions added to the configuration always needs to be placed &ldquo;in the future&rdquo;, so that Loki can start
+using it once the day rolls over.</p>
 </td>
 </tr>
 </tbody>
@@ -3150,6 +3163,18 @@ int32
 <td>
 <em>(Optional)</em>
 <p>CardinalityLimit defines the cardinality limit for index queries.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>maxVolumeSeries</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>MaxVolumeSeries defines the maximum number of aggregated series in a log-volume response</p>
 </td>
 </tr>
 </tbody>

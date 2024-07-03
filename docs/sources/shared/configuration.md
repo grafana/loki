@@ -316,6 +316,17 @@ pattern_ingester:
   # CLI flag: -pattern-ingester.flush-check-period
   [flush_check_period: <duration> | default = 30s]
 
+  # Configures the metric aggregation and storage behavior of the pattern
+  # ingester.
+  metric_aggregation:
+    # Whether the pattern ingester metric aggregation is enabled.
+    # CLI flag: -pattern-ingester.metric-aggregation.enabled
+    [enabled: <boolean> | default = false]
+
+    # Whether to log push observations.
+    # CLI flag: -pattern-ingester.metric-aggregation.log-push-observations
+    [log_push_observations: <boolean> | default = false]
+
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
 # object store.
@@ -325,6 +336,59 @@ pattern_ingester:
 # server, responsible for compacting stream indexes into bloom filters and
 # merging them as bloom blocks.
 [bloom_compactor: <bloom_compactor>]
+
+bloom_build:
+  # Flag to enable or disable the usage of the bloom-planner and bloom-builder
+  # components.
+  # CLI flag: -bloom-build.enabled
+  [enabled: <boolean> | default = false]
+
+  planner:
+    # Interval at which to re-run the bloom creation planning.
+    # CLI flag: -bloom-build.planner.interval
+    [planning_interval: <duration> | default = 8h]
+
+    # Newest day-table offset (from today, inclusive) to build blooms for.
+    # Increase to lower cost by not re-writing data to object storage too
+    # frequently since recent data changes more often at the cost of not having
+    # blooms available as quickly.
+    # CLI flag: -bloom-build.planner.min-table-offset
+    [min_table_offset: <int> | default = 1]
+
+    # Oldest day-table offset (from today, inclusive) to compact. This can be
+    # used to lower cost by not trying to compact older data which doesn't
+    # change. This can be optimized by aligning it with the maximum
+    # `reject_old_samples_max_age` setting of any tenant.
+    # CLI flag: -bloom-build.planner.max-table-offset
+    [max_table_offset: <int> | default = 2]
+
+    # Maximum number of tasks to queue per tenant.
+    # CLI flag: -bloom-build.planner.max-tasks-per-tenant
+    [max_queued_tasks_per_tenant: <int> | default = 30000]
+
+  builder:
+    # The grpc_client block configures the gRPC client used to communicate
+    # between a client and server component in Loki.
+    # The CLI flags prefix for this block configuration is:
+    # bloom-build.builder.grpc
+    [grpc_config: <grpc_client>]
+
+    # Hostname (and port) of the bloom planner
+    # CLI flag: -bloom-build.builder.planner-address
+    [planner_address: <string> | default = ""]
+
+    backoff_config:
+      # Minimum delay when backing off.
+      # CLI flag: -bloom-build.builder.backoff.backoff-min-period
+      [min_period: <duration> | default = 100ms]
+
+      # Maximum delay when backing off.
+      # CLI flag: -bloom-build.builder.backoff.backoff-max-period
+      [max_period: <duration> | default = 10s]
+
+      # Number of times to backoff and retry before failing.
+      # CLI flag: -bloom-build.builder.backoff.backoff-retries
+      [max_retries: <int> | default = 10]
 
 # Experimental: The bloom_gateway block configures the Loki bloom gateway
 # server, responsible for serving queries for filtering chunks based on filter
@@ -516,6 +580,9 @@ compactor_grpc_client:
 # Configuration for analytics.
 [analytics: <analytics>]
 
+# Configuration for profiling options.
+[profiling: <profiling>]
+
 # Common configuration to be shared between multiple modules. If a more specific
 # configuration is given in other sections, the related configuration within
 # this section will be ignored.
@@ -543,19 +610,19 @@ The `alibabacloud_storage_config` block configures the connection to Alibaba Clo
 
 ```yaml
 # Name of OSS bucket.
-# CLI flag: -common.storage.oss.bucketname
+# CLI flag: -<prefix>.storage.oss.bucketname
 [bucket: <string> | default = ""]
 
 # oss Endpoint to connect to.
-# CLI flag: -common.storage.oss.endpoint
+# CLI flag: -<prefix>.storage.oss.endpoint
 [endpoint: <string> | default = ""]
 
 # alibabacloud Access Key ID
-# CLI flag: -common.storage.oss.access-key-id
+# CLI flag: -<prefix>.storage.oss.access-key-id
 [access_key_id: <string> | default = ""]
 
 # alibabacloud Secret Access Key
-# CLI flag: -common.storage.oss.secret-access-key
+# CLI flag: -<prefix>.storage.oss.secret-access-key
 [secret_access_key: <string> | default = ""]
 ```
 
@@ -2236,10 +2303,23 @@ The `frontend_worker` configures the worker - running within the Loki querier - 
 # CLI flag: -querier.id
 [id: <string> | default = ""]
 
-# The grpc_client block configures the gRPC client used to communicate between a
-# client and server component in Loki.
+# Configures the querier gRPC client used to communicate with the
+# query-frontend. This can't be used in conjunction with 'grpc_client_config'.
+# The CLI flags prefix for this block configuration is:
+# querier.frontend-grpc-client
+[query_frontend_grpc_client: <grpc_client>]
+
+# Configures the querier gRPC client used to communicate with the query-frontend
+# and with the query-scheduler. This can't be used in conjunction with
+# 'query_frontend_grpc_client' or 'query_scheduler_grpc_client'.
 # The CLI flags prefix for this block configuration is: querier.frontend-client
 [grpc_client_config: <grpc_client>]
+
+# Configures the querier gRPC client used to communicate with the
+# query-scheduler. This can't be used in conjunction with 'grpc_client_config'.
+# The CLI flags prefix for this block configuration is:
+# querier.scheduler-grpc-client
+[query_scheduler_grpc_client: <grpc_client>]
 ```
 
 ### gcs_storage_config
@@ -2291,12 +2371,15 @@ The `gcs_storage_config` block configures the connection to Google Cloud Storage
 The `grpc_client` block configures the gRPC client used to communicate between a client and server component in Loki. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bigtable`
+- `bloom-build.builder.grpc`
 - `bloom-gateway-client.grpc`
 - `boltdb.shipper.index-gateway-client.grpc`
 - `frontend.grpc-client-config`
 - `ingester.client`
 - `pattern-ingester.client`
 - `querier.frontend-client`
+- `querier.frontend-grpc-client`
+- `querier.scheduler-grpc-client`
 - `query-scheduler.grpc-client-config`
 - `ruler.client`
 - `tsdb.shipper.index-gateway-client.grpc`
@@ -2696,7 +2779,23 @@ lifecycler:
 # CLI flag: -ingester.flush-check-period
 [flush_check_period: <duration> | default = 30s]
 
-# The timeout before a flush is cancelled.
+flush_op_backoff:
+  # Minimum backoff period when a flush fails. Each concurrent flush has its own
+  # backoff, see `ingester.concurrent-flushes`.
+  # CLI flag: -ingester.flush-op-backoff-min-period
+  [min_period: <duration> | default = 10s]
+
+  # Maximum backoff period when a flush fails. Each concurrent flush has its own
+  # backoff, see `ingester.concurrent-flushes`.
+  # CLI flag: -ingester.flush-op-backoff-max-period
+  [max_period: <duration> | default = 1m]
+
+  # Maximum retries for failed flushes.
+  # CLI flag: -ingester.flush-op-backoff-retries
+  [max_retries: <int> | default = 10]
+
+# The timeout for an individual flush. Will be retried up to
+# `flush-op-backoff-retries` times.
 # CLI flag: -ingester.flush-op-timeout
 [flush_op_timeout: <duration> | default = 10m]
 
@@ -2807,6 +2906,11 @@ wal:
 # common.path_prefix is set then common.path_prefix will be used.
 # CLI flag: -ingester.shutdown-marker-path
 [shutdown_marker_path: <string> | default = ""]
+
+# Interval at which the ingester ownedStreamService checks for changes in the
+# ring to recalculate owned streams.
+# CLI flag: -ingester.owned-streams-check-interval
+[owned_streams_check_interval: <duration> | default = 30s]
 ```
 
 ### ingester_client
@@ -2925,10 +3029,17 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 [discover_service_name: <list of strings> | default = [service app application name app_kubernetes_io_name container container_name component workload job]]
 
 # Discover and add log levels during ingestion, if not present already. Levels
-# would be added to Structured Metadata with name 'level' and one of the values
-# from 'debug', 'info', 'warn', 'error', 'critical', 'fatal'.
+# would be added to Structured Metadata with name
+# level/LEVEL/Level/Severity/severity/SEVERITY/lvl/LVL/Lvl (case-sensitive) and
+# one of the values from 'trace', 'debug', 'info', 'warn', 'error', 'critical',
+# 'fatal' (case insensitive).
 # CLI flag: -validation.discover-log-levels
 [discover_log_levels: <boolean> | default = true]
+
+# When true an ingester takes into account only the streams that it owns
+# according to the ring while applying the stream limit.
+# CLI flag: -ingester.use-owned-stream-count
+[use_owned_stream_count: <boolean> | default = false]
 
 # Maximum number of active streams per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-streams-per-user
@@ -3288,12 +3399,22 @@ ruler_remote_write_sigv4_config:
 # Deprecated: Use deletion_mode per tenant configuration instead.
 [allow_deletes: <boolean>]
 
+# Define streams sharding behavior.
 shard_streams:
-  [enabled: <boolean>]
+  # Automatically shard streams to keep them under the per-stream rate limit.
+  # Sharding is dictated by the desired rate.
+  # CLI flag: -shard-streams.enabled
+  [enabled: <boolean> | default = true]
 
-  [logging_enabled: <boolean>]
+  # Whether to log sharding streams behavior or not. Not recommended for
+  # production environments.
+  # CLI flag: -shard-streams.logging-enabled
+  [logging_enabled: <boolean> | default = false]
 
-  [desired_rate: <int>]
+  # Threshold used to cut a new shard. Default (1536KB) means if a rate is above
+  # 1536KB/s, it will be sharded into two streams.
+  # CLI flag: -shard-streams.desired-rate
+  [desired_rate: <int> | default = 1536KB]
 
 [blocked_queries: <blocked_query...>]
 
@@ -3344,6 +3465,33 @@ shard_streams:
 # an unlimited size. Default is 128MB.
 # CLI flag: -bloom-compactor.max-bloom-size
 [bloom_compactor_max_bloom_size: <int> | default = 128MB]
+
+# Experimental. Whether to create blooms for the tenant.
+# CLI flag: -bloom-build.enable
+[bloom_creation_enabled: <boolean> | default = false]
+
+# Experimental. Number of splits to create for the series keyspace when building
+# blooms. The series keyspace is split into this many parts to parallelize bloom
+# creation.
+# CLI flag: -bloom-build.split-keyspace-by
+[bloom_split_series_keyspace_by: <int> | default = 256]
+
+# Experimental. Maximum number of builders to use when building blooms. 0 allows
+# unlimited builders.
+# CLI flag: -bloom-build.max-builders
+[bloom_build_max_builders: <int> | default = 0]
+
+# Experimental. Timeout for a builder to finish a task. If a builder does not
+# respond within this time, it is considered failed and the task will be
+# requeued. 0 disables the timeout.
+# CLI flag: -bloom-build.builder-response-timeout
+[bloom_build_builder_response_timeout: <duration> | default = 0s]
+
+# Experimental. Maximum number of retries for a failed task. If a task fails
+# more than this number of times, it is considered failed and will not be
+# retried. A value of 0 disables this limit.
+# CLI flag: -bloom-build.task-max-retries
+[bloom_build_task_max_retries: <int> | default = 3]
 
 # Experimental. Length of the n-grams created when computing blooms from log
 # lines.
@@ -3424,7 +3572,7 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # The timeout for establishing a connection with a remote node, and for
 # read/write operations.
 # CLI flag: -memberlist.stream-timeout
-[stream_timeout: <duration> | default = 10s]
+[stream_timeout: <duration> | default = 2s]
 
 # Multiplication factor used when sending out messages (factor * log(N+1)).
 # CLI flag: -memberlist.retransmit-factor
@@ -3657,6 +3805,14 @@ These are values which allow you to control aspects of Loki's operation, most co
 # CLI flag: -operation-config.log-push-request-streams
 [log_push_request_streams: <boolean> | default = false]
 
+# Log metrics for duplicate lines received.
+# CLI flag: -operation-config.log-duplicate-metrics
+[log_duplicate_metrics: <boolean> | default = false]
+
+# Log stream info for duplicate lines received
+# CLI flag: -operation-config.log-duplicate-stream-info
+[log_duplicate_stream_info: <boolean> | default = false]
+
 # Log push errors with a rate limited logger, will show client push errors
 # without overly spamming logs.
 # CLI flag: -operation-config.limited-log-push-errors
@@ -3716,6 +3872,24 @@ chunks:
 
 # How many shards will be created. Only used if schema is v10 or greater.
 [row_shards: <int> | default = 16]
+```
+
+### profiling
+
+Configuration for `profiling` options.
+
+```yaml
+# Sets the value for runtime.SetBlockProfilingRate
+# CLI flag: -profiling.block-profile-rate
+[block_profile_rate: <int> | default = 0]
+
+# Sets the value for runtime.SetCPUProfileRate
+# CLI flag: -profiling.cpu-profile-rate
+[cpu_profile_rate: <int> | default = 0]
+
+# Sets the value for runtime.SetMutexProfileFraction
+# CLI flag: -profiling.mutex-profile-fraction
+[mutex_profile_fraction: <int> | default = 0]
 ```
 
 ### querier
@@ -3801,7 +3975,8 @@ results_cache:
 [parallelise_shardable_queries: <boolean> | default = true]
 
 # A comma-separated list of LogQL vector and range aggregations that should be
-# sharded
+# sharded. Possible values 'quantile_over_time', 'last_over_time',
+# 'first_over_time'.
 # CLI flag: -querier.shard-aggregations
 [shard_aggregations: <string> | default = ""]
 
@@ -4111,9 +4286,10 @@ storage:
 # CLI flag: -ruler.alertmanager-refresh-interval
 [alertmanager_refresh_interval: <duration> | default = 1m]
 
-# If enabled requests to Alertmanager will utilize the V2 API.
+# Use Alertmanager APIv2. APIv1 was deprecated in Alertmanager 0.16.0 and is
+# removed as of 0.27.0.
 # CLI flag: -ruler.alertmanager-use-v2
-[enable_alertmanager_v2: <boolean> | default = false]
+[enable_alertmanager_v2: <boolean> | default = true]
 
 # List of alert relabel configs.
 [alert_relabel_configs: <relabel_config...>]
@@ -4638,6 +4814,10 @@ Configures the `server` of the launched module(s).
 # CLI flag: -server.grpc-conn-limit
 [grpc_listen_conn_limit: <int> | default = 0]
 
+# Enables PROXY protocol.
+# CLI flag: -server.proxy-protocol-enabled
+[proxy_protocol_enabled: <boolean> | default = false]
+
 # Comma-separated list of cipher suites to use. If blank, the default Go cipher
 # suites is used.
 # CLI flag: -server.tls-cipher-suites
@@ -4792,6 +4972,21 @@ grpc_tls_config:
 # CLI flag: -server.grpc.num-workers
 [grpc_server_num_workers: <int> | default = 0]
 
+# If true, the request_message_bytes, response_message_bytes, and
+# inflight_requests metrics will be tracked. Enabling this option prevents the
+# use of memory pools for parsing gRPC request bodies and may lead to more
+# memory allocations.
+# CLI flag: -server.grpc.stats-tracking-enabled
+[grpc_server_stats_tracking_enabled: <boolean> | default = true]
+
+# If true, gGPC's buffer pools will be used to handle incoming requests.
+# Enabling this feature can reduce memory allocation, but also requires
+# disabling GRPC server stats tracking by setting
+# `server.grpc.stats-tracking-enabled=false`. This is an experimental gRPC
+# feature, so it might be removed in a future version of the gRPC library.
+# CLI flag: -server.grpc.recv-buffer-pools-enabled
+[grpc_server_recv_buffer_pools_enabled: <boolean> | default = false]
+
 # Output log messages in the given format. Valid formats: [logfmt, json]
 # CLI flag: -log.format
 [log_format: <string> | default = "logfmt"]
@@ -4804,6 +4999,11 @@ grpc_tls_config:
 # Optionally log the source IPs.
 # CLI flag: -server.log-source-ips-enabled
 [log_source_ips_enabled: <boolean> | default = false]
+
+# Log all source IPs instead of only the originating one. Only used if
+# server.log-source-ips-enabled is true
+# CLI flag: -server.log-source-ips-full
+[log_source_ips_full: <boolean> | default = false]
 
 # Header field storing the source IPs. Only used if
 # server.log-source-ips-enabled is true. If not set the default Forwarded,

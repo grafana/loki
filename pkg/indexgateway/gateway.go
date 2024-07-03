@@ -292,7 +292,22 @@ func (g *Gateway) LabelNamesForMetricName(ctx context.Context, req *logproto.Lab
 	if err != nil {
 		return nil, err
 	}
-	names, err := g.indexQuerier.LabelNamesForMetricName(ctx, instanceID, req.From, req.Through, req.MetricName)
+	var matchers []*labels.Matcher
+	// An empty matchers string cannot be parsed,
+	// therefore we check the string representation of the matchers.
+	if req.Matchers != syntax.EmptyMatchers {
+		expr, err := syntax.ParseExprWithoutValidation(req.Matchers)
+		if err != nil {
+			return nil, err
+		}
+
+		matcherExpr, ok := expr.(*syntax.MatchersExpr)
+		if !ok {
+			return nil, fmt.Errorf("invalid label matchers found of type %T", expr)
+		}
+		matchers = matcherExpr.Mts
+	}
+	names, err := g.indexQuerier.LabelNamesForMetricName(ctx, instanceID, req.From, req.Through, req.MetricName, matchers...)
 	if err != nil {
 		return nil, err
 	}
@@ -308,7 +323,7 @@ func (g *Gateway) LabelValuesForMetricName(ctx context.Context, req *logproto.La
 	}
 	var matchers []*labels.Matcher
 	// An empty matchers string cannot be parsed,
-	// therefore we check the string representation of the the matchers.
+	// therefore we check the string representation of the matchers.
 	if req.Matchers != syntax.EmptyMatchers {
 		expr, err := syntax.ParseExprWithoutValidation(req.Matchers)
 		if err != nil {
@@ -418,7 +433,7 @@ func (g *Gateway) boundedShards(
 	// sending multiple requests to the entire keyspace).
 
 	logger := util_log.WithContext(ctx, g.log)
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "indexgateway.getShardsWithBlooms")
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "indexgateway.boundedShards")
 	defer sp.Finish()
 
 	// 1) for all bounds, get chunk refs
@@ -431,6 +446,11 @@ func (g *Gateway) boundedShards(
 	for _, g := range grps {
 		ct += len(g)
 	}
+
+	sp.LogKV(
+		"stage", "queried local index",
+		"index_chunks_resolved", ct,
+	)
 	// TODO(owen-d): pool
 	refs := make([]*logproto.ChunkRef, 0, ct)
 
@@ -443,11 +463,18 @@ func (g *Gateway) boundedShards(
 	filtered := refs
 
 	// 2) filter via blooms if enabled
-	if g.bloomQuerier != nil && len(syntax.ExtractLineFilters(p.Plan().AST)) > 0 {
-		filtered, err = g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, refs, p.Plan())
+	filters := syntax.ExtractLineFilters(p.Plan().AST)
+	if g.bloomQuerier != nil && len(filters) > 0 {
+		xs, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, refs, p.Plan())
 		if err != nil {
-			return err
+			level.Error(logger).Log("msg", "failed to filter chunk refs", "err", err)
+		} else {
+			filtered = xs
 		}
+		sp.LogKV(
+			"stage", "queried bloom gateway",
+			"err", err,
+		)
 	}
 
 	g.metrics.preFilterChunks.WithLabelValues(routeShards).Observe(float64(ct))
@@ -508,6 +535,7 @@ func (g *Gateway) boundedShards(
 		"through", req.Through.Time().String(),
 		"length", req.Through.Time().Sub(req.From.Time()).String(),
 		"end_delta", time.Since(req.Through.Time()).String(),
+		"filters", len(filters),
 	)
 
 	// 3) build shards

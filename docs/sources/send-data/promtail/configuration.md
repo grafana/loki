@@ -2,8 +2,6 @@
 title: Configure Promtail
 menuTitle:  Configuration reference
 description: Configuration parameters for the Promtail agent.
-aliases: 
-- ../../clients/promtail/configuration/
 weight:  200
 ---
 
@@ -865,9 +863,10 @@ Priority label is available as both value and keyword. For example, if `priority
 ### syslog
 
 The `syslog` block configures a syslog listener allowing users to push
-logs to Promtail with the syslog protocol.
-Currently supported is [IETF Syslog (RFC5424)](https://tools.ietf.org/html/rfc5424)
-with and without octet counting.
+logs to Promtail with the syslog protocol. Currently supported both
+[BSD syslog Protocol](https://datatracker.ietf.org/doc/html/rfc3164) and
+[IETF Syslog (RFC5424)](https://tools.ietf.org/html/rfc5424) with and
+without octet counting.
 
 The recommended deployment is to have a dedicated syslog forwarder like **syslog-ng** or **rsyslog**
 in front of Promtail. The forwarder can take care of the various specifications
@@ -918,6 +917,13 @@ use_incoming_timestamp: <bool>
 
 # Sets the maximum limit to the length of syslog messages
 max_message_length: <int>
+
+# Defines used Sylog format at the target. 
+syslog_format:
+ [type: <string> | default = "rfc5424"]
+
+# Defines whether the full RFC5424 formatted syslog message should be pushed to Loki
+use_rfc5424_message: <bool>
 ```
 
 #### Available Labels

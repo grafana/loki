@@ -277,147 +277,6 @@
                      "sort": 2
                   },
                   "type": "timeseries"
-               },
-               {
-                  "datasource": "$datasource",
-                  "fieldConfig": {
-                     "defaults": {
-                        "custom": {
-                           "drawStyle": "line",
-                           "fillOpacity": 100,
-                           "lineWidth": 0,
-                           "pointSize": 5,
-                           "showPoints": "never",
-                           "spanNulls": false,
-                           "stacking": {
-                              "group": "A",
-                              "mode": "normal"
-                           }
-                        },
-                        "thresholds": {
-                           "mode": "absolute",
-                           "steps": [ ]
-                        },
-                        "unit": "Bps"
-                     },
-                     "overrides": [ ]
-                  },
-                  "gridPos": { },
-                  "id": 4,
-                  "links": [ ],
-                  "options": {
-                     "legend": {
-                        "showLegend": true
-                     },
-                     "tooltip": {
-                        "mode": "single",
-                        "sort": "none"
-                     }
-                  },
-                  "targets": [
-                     {
-                        "expr": "sum by(instance, pod, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + ignoring(pod) group_right() (label_replace(count by(instance, pod, device) (container_fs_writes_bytes_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"loki\", pod=~\"(loki.*|enterprise-logs)-read.*\", device!~\".*sda.*\"}), \"device\", \"$1\", \"device\", \"/dev/(.*)\") * 0)\n",
-                        "format": "time_series",
-                        "legendFormat": "{{pod}} - {{device}}",
-                        "legendLink": null
-                     }
-                  ],
-                  "title": "Disk Writes",
-                  "type": "timeseries"
-               },
-               {
-                  "datasource": "$datasource",
-                  "fieldConfig": {
-                     "defaults": {
-                        "custom": {
-                           "drawStyle": "line",
-                           "fillOpacity": 100,
-                           "lineWidth": 0,
-                           "pointSize": 5,
-                           "showPoints": "never",
-                           "spanNulls": false,
-                           "stacking": {
-                              "group": "A",
-                              "mode": "normal"
-                           }
-                        },
-                        "thresholds": {
-                           "mode": "absolute",
-                           "steps": [ ]
-                        },
-                        "unit": "Bps"
-                     },
-                     "overrides": [ ]
-                  },
-                  "gridPos": { },
-                  "id": 5,
-                  "links": [ ],
-                  "options": {
-                     "legend": {
-                        "showLegend": true
-                     },
-                     "tooltip": {
-                        "mode": "single",
-                        "sort": "none"
-                     }
-                  },
-                  "targets": [
-                     {
-                        "expr": "sum by(instance, pod, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + ignoring(pod) group_right() (label_replace(count by(instance, pod, device) (container_fs_writes_bytes_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"loki\", pod=~\"(loki.*|enterprise-logs)-read.*\", device!~\".*sda.*\"}), \"device\", \"$1\", \"device\", \"/dev/(.*)\") * 0)\n",
-                        "format": "time_series",
-                        "legendFormat": "{{pod}} - {{device}}",
-                        "legendLink": null
-                     }
-                  ],
-                  "title": "Disk Reads",
-                  "type": "timeseries"
-               },
-               {
-                  "datasource": "$datasource",
-                  "fieldConfig": {
-                     "defaults": {
-                        "custom": {
-                           "drawStyle": "line",
-                           "fillOpacity": 10,
-                           "lineWidth": 1,
-                           "pointSize": 5,
-                           "showPoints": "never",
-                           "spanNulls": false,
-                           "stacking": {
-                              "group": "A",
-                              "mode": "none"
-                           }
-                        },
-                        "thresholds": {
-                           "mode": "absolute",
-                           "steps": [ ]
-                        },
-                        "unit": "percentunit"
-                     },
-                     "overrides": [ ]
-                  },
-                  "gridPos": { },
-                  "id": 6,
-                  "links": [ ],
-                  "options": {
-                     "legend": {
-                        "showLegend": true
-                     },
-                     "tooltip": {
-                        "mode": "single",
-                        "sort": "none"
-                     }
-                  },
-                  "targets": [
-                     {
-                        "expr": "max by(persistentvolumeclaim) (kubelet_volume_stats_used_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\"} / kubelet_volume_stats_capacity_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\"}) and count by(persistentvolumeclaim) (kube_persistentvolumeclaim_labels{cluster=~\"$cluster\", namespace=~\"$namespace\",label_name=~\"(loki.*|enterprise-logs)-read.*\"})",
-                        "format": "time_series",
-                        "legendFormat": "{{persistentvolumeclaim}}",
-                        "legendLink": null
-                     }
-                  ],
-                  "title": "Disk Space Utilization",
-                  "type": "timeseries"
                }
             ],
             "repeat": null,
@@ -495,7 +354,7 @@
                         }
                      ]
                   },
-                  "id": 7,
+                  "id": 4,
                   "links": [ ],
                   "options": {
                      "legend": {
@@ -596,7 +455,7 @@
                         }
                      ]
                   },
-                  "id": 8,
+                  "id": 5,
                   "links": [ ],
                   "options": {
                      "legend": {
@@ -658,7 +517,7 @@
                      },
                      "overrides": [ ]
                   },
-                  "id": 9,
+                  "id": 6,
                   "links": [ ],
                   "options": {
                      "legend": {

@@ -24,7 +24,7 @@ import (
 
 // timeout for downloading initial files for a table to avoid leaking resources by allowing it to take all the time.
 const (
-	downloadTimeout        = 5 * time.Minute
+	downloadTimeout        = 1 * time.Minute
 	maxDownloadConcurrency = 50
 )
 
@@ -57,12 +57,8 @@ type table struct {
 // NewTable just creates an instance of table without trying to load files from local storage or object store.
 // It is used for initializing table at query time.
 func NewTable(name, cacheLocation string, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc, metrics *metrics) Table {
-	maxConcurrent := runtime.GOMAXPROCS(0) / 2
-	if maxConcurrent == 0 {
-		maxConcurrent = 1
-	}
-
-	table := table{
+	maxConcurrent := max(runtime.GOMAXPROCS(0)/2, 1)
+	return &table{
 		name:               name,
 		cacheLocation:      cacheLocation,
 		storageClient:      storageClient,
@@ -74,8 +70,6 @@ func NewTable(name, cacheLocation string, storageClient storage.Client, openInde
 		maxConcurrent:      maxConcurrent,
 		indexSets:          map[string]IndexSet{},
 	}
-
-	return &table
 }
 
 // LoadTable loads a table from local storage(syncs the table too if we have it locally) or downloads it from the shared store.
@@ -91,10 +85,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 		return nil, err
 	}
 
-	maxConcurrent := runtime.GOMAXPROCS(0) / 2
-	if maxConcurrent == 0 {
-		maxConcurrent = 1
-	}
+	maxConcurrent := max(runtime.GOMAXPROCS(0)/2, 1)
 
 	table := table{
 		name:               name,
@@ -296,6 +287,8 @@ func (t *table) Sync(ctx context.Context) error {
 // forQuerying must be set to true only getting the index for querying since
 // it captures the amount of time it takes to download the index at query time.
 func (t *table) getOrCreateIndexSet(ctx context.Context, id string, forQuerying bool) (IndexSet, error) {
+	logger := spanlogger.FromContextWithFallback(ctx, log.With(t.logger, "user", id, "table", t.name))
+
 	t.indexSetsMtx.RLock()
 	indexSet, ok := t.indexSets[id]
 	t.indexSetsMtx.RUnlock()
@@ -318,28 +311,29 @@ func (t *table) getOrCreateIndexSet(ctx context.Context, id string, forQuerying 
 	}
 
 	// instantiate the index set, add it to the map
-	indexSet, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.openIndexFileFunc,
-		loggerWithUserID(t.logger, id))
+	indexSet, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.openIndexFileFunc, logger)
 	if err != nil {
 		return nil, err
 	}
 	t.indexSets[id] = indexSet
 
-	// initialize the index set in async mode, it would be upto the caller to wait for its readiness using IndexSet.AwaitReady()
+	// initialize the index set in async mode
+	// it is up to the caller to wait for its readiness using IndexSet.AwaitReady()
 	go func() {
+		start := time.Now()
+		err := indexSet.Init(forQuerying)
+		duration := time.Since(start)
+
+		level.Info(logger).Log("msg", "init index set", "duration", duration, "success", err == nil)
+
 		if forQuerying {
-			start := time.Now()
-			defer func() {
-				duration := time.Since(start)
-				t.metrics.queryTimeTableDownloadDurationSeconds.WithLabelValues(t.name).Add(duration.Seconds())
-				logger := spanlogger.FromContextWithFallback(ctx, loggerWithUserID(t.logger, id))
-				level.Info(logger).Log("msg", "downloaded index set at query time", "duration", duration)
-			}()
+			t.metrics.queryTimeTableDownloadDurationSeconds.WithLabelValues(t.name).Add(duration.Seconds())
+			t.metrics.queryWaitTime.WithLabelValues(t.name).Observe(duration.Seconds())
+			level.Info(logger).Log("msg", "downloaded index set at query time", "duration", duration)
 		}
 
-		err := indexSet.Init(forQuerying)
 		if err != nil {
-			level.Error(t.logger).Log("msg", fmt.Sprintf("failed to init user index set %s", id), "err", err)
+			level.Error(logger).Log("msg", "failed to init user index set", "err", err)
 			t.cleanupBrokenIndexSet(ctx, id)
 		}
 	}()
@@ -372,7 +366,7 @@ func (t *table) EnsureQueryReadiness(ctx context.Context, userIDs []string) erro
 	if err != nil {
 		return err
 	}
-	err = commonIndexSet.AwaitReady(ctx)
+	err = commonIndexSet.AwaitReady(ctx, "ensure query readiness")
 	if err != nil {
 		return err
 	}
@@ -401,7 +395,7 @@ func (t *table) downloadUserIndexes(ctx context.Context, userIDs []string) error
 			return err
 		}
 
-		return indexSet.AwaitReady(ctx)
+		return indexSet.AwaitReady(ctx, "download user indexes")
 	})
 }
 

@@ -33,6 +33,7 @@
             },
             "id": 73,
             "panels": [ ],
+            "targets": [ ],
             "title": "Overview",
             "type": "row"
          },
@@ -131,6 +132,7 @@
                   "sort": "none"
                }
             },
+            "panels": [ ],
             "targets": [
                {
                   "datasource": {
@@ -223,6 +225,7 @@
                "showThresholdMarkers": true,
                "sizing": "auto"
             },
+            "panels": [ ],
             "pluginVersion": "11.1.0-70005",
             "targets": [
                {
@@ -395,6 +398,7 @@
                   "sort": "none"
                }
             },
+            "panels": [ ],
             "targets": [
                {
                   "datasource": {
@@ -536,6 +540,7 @@
                   "sort": "none"
                }
             },
+            "panels": [ ],
             "targets": [
                {
                   "datasource": {
@@ -577,6 +582,7 @@
                "sortOrder": "Descending",
                "wrapLogMessage": true
             },
+            "panels": [ ],
             "targets": [
                {
                   "datasource": {
@@ -730,6 +736,7 @@
                   "sort": "none"
                }
             },
+            "panels": [ ],
             "targets": [
                {
                   "datasource": {
@@ -847,6 +854,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -970,6 +978,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -1094,6 +1103,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -1234,6 +1244,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -1336,6 +1347,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -1437,6 +1449,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -1547,6 +1560,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -1647,6 +1661,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -1666,6 +1681,7 @@
                   "type": "timeseries"
                }
             ],
+            "targets": [ ],
             "title": "Resource usage",
             "type": "row"
          },
@@ -1799,6 +1815,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -1937,6 +1954,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -2032,6 +2050,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -2152,6 +2171,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -2171,6 +2191,7 @@
                   "type": "timeseries"
                }
             ],
+            "targets": [ ],
             "title": "QPS and Latency",
             "type": "row"
          },
@@ -2260,6 +2281,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -2380,6 +2402,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -2513,6 +2536,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -2532,6 +2556,7 @@
                   "type": "timeseries"
                }
             ],
+            "targets": [ ],
             "title": "Task Queue",
             "type": "row"
          },
@@ -2625,6 +2650,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -2748,6 +2774,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -2870,6 +2897,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -2901,6 +2929,7 @@
                   "type": "timeseries"
                }
             ],
+            "targets": [ ],
             "title": "Processing",
             "type": "row"
          },
@@ -2936,7 +2965,9 @@
                      "content": "",
                      "mode": "markdown"
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-70005",
+                  "targets": [ ],
                   "title": "We cache bloom blocks in memory to prevent the gateway from hitting the object store too often",
                   "transparent": true,
                   "type": "text"
@@ -3021,6 +3052,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -3178,6 +3210,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -3347,6 +3380,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -3458,6 +3492,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -3581,6 +3616,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -3678,6 +3714,7 @@
                   "type": "timeseries"
                }
             ],
+            "targets": [ ],
             "title": "Blocks Cache",
             "type": "row"
          },
@@ -3713,7 +3750,9 @@
                      "content": "",
                      "mode": "markdown"
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-70005",
+                  "targets": [ ],
                   "title": "The gateway download bloom meta files and blocks from the object store.",
                   "transparent": true,
                   "type": "text"
@@ -3740,7 +3779,9 @@
                      "content": "---\n#### GCS\n",
                      "mode": "markdown"
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-70005",
+                  "targets": [ ],
                   "transparent": true,
                   "type": "text"
                },
@@ -3820,6 +3861,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -3913,6 +3955,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -3978,7 +4021,9 @@
                      "content": "---\n#### S3\n",
                      "mode": "markdown"
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-70005",
+                  "targets": [ ],
                   "transparent": true,
                   "type": "text"
                },
@@ -4058,6 +4103,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -4151,6 +4197,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -4216,7 +4263,9 @@
                      "content": "---\n#### Azure\nBlob Storage\n\n",
                      "mode": "markdown"
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-70005",
+                  "targets": [ ],
                   "transparent": true,
                   "type": "text"
                },
@@ -4296,6 +4345,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -4389,6 +4439,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -4433,6 +4484,7 @@
                   "type": "timeseries"
                }
             ],
+            "targets": [ ],
             "title": "Object Store",
             "type": "row"
          },
@@ -4528,6 +4580,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -4652,6 +4705,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -4770,6 +4824,7 @@
                      "xTickLabelRotation": 0,
                      "xTickLabelSpacing": 0
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.0.0-67814",
                   "targets": [
                      {
@@ -4882,6 +4937,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -4912,6 +4968,7 @@
                   "type": "timeseries"
                }
             ],
+            "targets": [ ],
             "title": "Misc",
             "type": "row"
          }
