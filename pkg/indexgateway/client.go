@@ -428,41 +428,42 @@ func poolDo[T any](ctx context.Context, gatewayClient *GatewayClient, hedge bool
 		}
 	}()
 
-	select {
-	case r := <-respChan:
-		return r.resp, r.err
-	case <-time.After(1 * time.Second):
-		// Send hedged request if we have another address and we are able to get a client from it.
-		// Ignore errors here and just don't send the hedged request
-		if hedge && len(addrs) > 1 {
-			gc2, err := gatewayClient.pool.GetClientFor(addrs[1])
-			client2 := gc2.(logproto.IndexGatewayClient)
-			if err == nil {
-				ctx2, cancel2 := context.WithCancelCause(ctx)
-				defer cancel2(errors.New("canceled from defer statement"))
-				go func() {
-					level.Info(gatewayClient.logger).Log("msg", "sending hedged request", "err", err)
-					req2start := time.Now()
-					r, err := callback(ctx2, client2)
-					level.Info(gatewayClient.logger).Log("msg", "hedged request returned", "duration", time.Since(req2start), "err", err)
-					// Because we only listen for once response to make sure we don't leak a goroutine
-					// here also watch for the context to be canceled
-					select {
-					case respChan <- callbackResponse[T]{resp: r, hedged: true, err: err}:
-					case <-ctx2.Done():
-					}
-				}()
-			}
-		}
-	}
+	hedgedSent := false
+	timer := time.NewTimer(1 * time.Second)
+	defer timer.Stop()
 
-	// Wait for either request to return or on the underlying context to finish
-	select {
-	case r := <-respChan:
-		level.Info(gatewayClient.logger).Log("msg", "returning index gateway response", "hedged", r.hedged, "err", r.err)
-		return r.resp, r.err
-	case <-ctx.Done():
-		return nil, ctx.Err()
+	for {
+		select {
+		case r := <-respChan:
+			level.Info(gatewayClient.logger).Log("msg", "returning index gateway response", "hedged", r.hedged, "err", r.err)
+			return r.resp, r.err
+		case <-timer.C:
+			// Send hedged request if we have another address and we are able to get a client from it.
+			// Ignore errors here and just don't send the hedged request
+			if hedge && len(addrs) > 1 && !hedgedSent {
+				gc2, err := gatewayClient.pool.GetClientFor(addrs[1])
+				client2 := gc2.(logproto.IndexGatewayClient)
+				if err == nil {
+					ctx2, cancel2 := context.WithCancelCause(ctx)
+					defer cancel2(errors.New("canceled from defer statement"))
+					go func() {
+						level.Info(gatewayClient.logger).Log("msg", "sending hedged request")
+						req2start := time.Now()
+						r, err := callback(ctx2, client2)
+						level.Info(gatewayClient.logger).Log("msg", "hedged request returned", "duration", time.Since(req2start), "err", err)
+						// Because we only listen for once response to make sure we don't leak a goroutine
+						// here also watch for the context to be canceled
+						select {
+						case respChan <- callbackResponse[T]{resp: r, hedged: true, err: err}:
+						case <-ctx2.Done():
+						}
+					}()
+					hedgedSent = true
+				}
+			}
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
 }
 
