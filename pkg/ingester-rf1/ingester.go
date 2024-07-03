@@ -580,13 +580,13 @@ func (i *Ingester) loop() {
 
 func (i *Ingester) doFlushTick() {
 	i.flushCtx.lock.Lock()
-	defer i.flushCtx.lock.Unlock()
 
 	//i.logger.Log("msg", "starting periodic flush")
 	// Stop new chunks being written while we swap destinations - we'll never unlock as this flushctx can no longer be used.
 	currentFlushCtx := i.flushCtx
 	// Don't write empty files if there is nothing to write.
 	if currentFlushCtx.segmentWriter.InputSize() == 0 {
+		i.flushCtx.lock.Unlock()
 		return
 	}
 
