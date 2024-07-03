@@ -107,12 +107,14 @@ func (o *client) Stop() {
 }
 
 func (o *client) PutWal(ctx context.Context, segment *wal.SegmentWriter) error {
-	buffer := bytes.NewBuffer(nil)
-	_, err := segment.WriteTo(buffer)
+	reader, err := segment.ToReader()
 	if err != nil {
 		return err
 	}
-	return o.store.PutObject(ctx, "wal-segment-"+time.Now().UTC().Format(time.RFC3339Nano), bytes.NewReader(buffer.Bytes()))
+	defer func(reader io.ReadSeekCloser) {
+		_ = reader.Close()
+	}(reader)
+	return o.store.PutObject(ctx, "wal-segment-"+time.Now().UTC().Format(time.RFC3339Nano), reader)
 }
 
 // PutChunks stores the provided chunks in the configured backend. If multiple errors are
