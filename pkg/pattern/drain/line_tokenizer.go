@@ -8,6 +8,7 @@ import (
 
 	"github.com/buger/jsonparser"
 	gologfmt "github.com/go-logfmt/logfmt"
+
 	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
 )
 
@@ -279,6 +280,7 @@ func (t *jsonTokenizer) Join(tokens []string, state interface{}) string {
 
 func isVariableField(key []byte) bool {
 	return bytes.EqualFold(key, []byte("ts")) ||
+		bytes.Equal(key, []byte("t")) ||
 		bytes.EqualFold(key, []byte("traceID")) ||
 		bytes.EqualFold(key, []byte("time")) ||
 		bytes.EqualFold(key, []byte("timestamp"))
