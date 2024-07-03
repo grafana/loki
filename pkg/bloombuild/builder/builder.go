@@ -191,33 +191,26 @@ func (b *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 			return fmt.Errorf("failed to receive task from planner: %w", err)
 		}
 
-		task, err := protos.FromProtoTask(protoTask.Task)
-		if err != nil {
-			return fmt.Errorf("failed to convert proto task to task: %w", err)
-		}
-
-		logger := task.GetLogger(b.logger)
-		level.Debug(logger).Log("msg", "received task")
-
 		b.metrics.taskStarted.Inc()
 		start := time.Now()
-		status := statusSuccess
+
+		task, err := protos.FromProtoTask(protoTask.Task)
+		if err != nil {
+			task = &protos.Task{ID: protoTask.Task.Id}
+			err = fmt.Errorf("failed to convert proto task to task: %w", err)
+			b.logTaskCompleted(task, nil, err, start)
+			if err = b.notifyTaskCompletedToPlanner(c, task, nil, err); err != nil {
+				return fmt.Errorf("failed to notify task completion to planner: %w", err)
+			}
+			continue
+		}
 
 		newMetas, err := b.processTask(c.Context(), task)
 		if err != nil {
-			status = statusFailure
-			level.Error(logger).Log("msg", "failed to process task", "err", err)
+			err = fmt.Errorf("failed to process task: %w", err)
 		}
 
-		b.metrics.taskCompleted.WithLabelValues(status).Inc()
-		b.metrics.taskDuration.WithLabelValues(status).Observe(time.Since(start).Seconds())
-		level.Debug(logger).Log(
-			"msg", "task completed",
-			"status", status,
-			"duration", time.Since(start).String(),
-		)
-
-		// Acknowledge task completion to planner
+		b.logTaskCompleted(task, newMetas, err, start)
 		if err = b.notifyTaskCompletedToPlanner(c, task, newMetas, err); err != nil {
 			return fmt.Errorf("failed to notify task completion to planner: %w", err)
 		}
@@ -225,6 +218,34 @@ func (b *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 
 	level.Debug(b.logger).Log("msg", "builder loop stopped")
 	return nil
+}
+
+func (b *Builder) logTaskCompleted(
+	task *protos.Task,
+	metas []bloomshipper.Meta,
+	err error,
+	start time.Time,
+) {
+	logger := task.GetLogger(b.logger)
+
+	if err != nil {
+		b.metrics.taskCompleted.WithLabelValues(statusFailure).Inc()
+		b.metrics.taskDuration.WithLabelValues(statusFailure).Observe(time.Since(start).Seconds())
+		level.Debug(logger).Log(
+			"msg", "task failed",
+			"duration", time.Since(start).String(),
+			"err", err,
+		)
+		return
+	}
+
+	b.metrics.taskCompleted.WithLabelValues(statusSuccess).Inc()
+	b.metrics.taskDuration.WithLabelValues(statusSuccess).Observe(time.Since(start).Seconds())
+	level.Debug(logger).Log(
+		"msg", "task completed",
+		"duration", time.Since(start).String(),
+		"metas", len(metas),
+	)
 }
 
 func (b *Builder) notifyTaskCompletedToPlanner(
@@ -279,6 +300,7 @@ func (b *Builder) processTask(
 ) ([]bloomshipper.Meta, error) {
 	tenant := task.Tenant
 	logger := task.GetLogger(b.logger)
+	level.Debug(logger).Log("msg", "task started")
 
 	client, err := b.bloomStore.Client(task.Table.ModelTime())
 	if err != nil {
