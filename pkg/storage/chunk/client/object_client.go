@@ -87,7 +87,6 @@ type client struct {
 	keyEncoder          KeyEncoder
 	getChunkMaxParallel int
 	schema              config.SchemaConfig
-	entropy             io.Reader
 }
 
 // NewClient wraps the provided ObjectClient with a chunk.Client implementation
