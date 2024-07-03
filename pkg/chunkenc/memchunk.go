@@ -8,7 +8,6 @@ import (
 	"hash"
 	"hash/crc32"
 	"io"
-	"reflect"
 	"time"
 	"unsafe"
 
@@ -1305,11 +1304,7 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 }
 
 func unsafeGetBytes(s string) []byte {
-	var buf []byte
-	p := unsafe.Pointer(&buf)
-	*(*string)(p) = s
-	(*reflect.SliceHeader)(p).Cap = len(s)
-	return buf
+	return unsafe.Slice(unsafe.StringData(s), len(s))
 }
 
 type bufferedIterator struct {
@@ -1364,7 +1359,7 @@ func (si *bufferedIterator) Next() bool {
 		}
 	}
 
-	ts, line, structuredMetadata, ok := si.moveNext()
+	ts, line, structuredMetadata, ok := si.moveNext(si.currStructuredMetadata)
 	if !ok {
 		si.Close()
 		return false
@@ -1377,7 +1372,7 @@ func (si *bufferedIterator) Next() bool {
 }
 
 // moveNext moves the buffer to the next entry
-func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
+func (si *bufferedIterator) moveNext(structuredMetadata labels.Labels) (int64, []byte, labels.Labels, bool) {
 	var decompressedBytes int64
 	var decompressedStructuredMetadataBytes int64
 	var ts int64
@@ -1560,7 +1555,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 	si.stats.AddDecompressedStructuredMetadataBytes(decompressedStructuredMetadataBytes)
 	si.stats.AddDecompressedBytes(decompressedBytes + decompressedStructuredMetadataBytes)
 
-	return ts, si.buf[:lineSize], si.symbolizer.Lookup(si.symbolsBuf[:nSymbols]), true
+	return ts, si.buf[:lineSize], si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], structuredMetadata), true
 }
 
 func (si *bufferedIterator) Err() error { return si.err }
@@ -1587,6 +1582,12 @@ func (si *bufferedIterator) close() {
 	if si.symbolsBuf != nil {
 		SymbolsPool.Put(si.symbolsBuf)
 		si.symbolsBuf = nil
+	}
+
+	if si.currStructuredMetadata != nil {
+		// nolint:staticcheck
+		structuredMetadataPool.Put(si.currStructuredMetadata)
+		si.currStructuredMetadata = nil
 	}
 
 	si.origBytes = nil

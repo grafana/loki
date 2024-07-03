@@ -99,7 +99,6 @@ func TestBlocksInclusive(t *testing.T) {
 			require.Equal(t, 1, blocks[0].Entries())
 		}
 	}
-
 }
 
 func TestBlock(t *testing.T) {
@@ -387,7 +386,6 @@ func TestRoundtripV2(t *testing.T) {
 				assertLines(loaded)
 			})
 		}
-
 	}
 }
 
@@ -886,9 +884,11 @@ func (nomatchPipeline) BaseLabels() log.LabelsResult { return log.EmptyLabelsRes
 func (nomatchPipeline) Process(_ int64, line []byte, _ ...labels.Label) ([]byte, log.LabelsResult, bool) {
 	return line, nil, false
 }
+
 func (nomatchPipeline) ProcessString(_ int64, line string, _ ...labels.Label) (string, log.LabelsResult, bool) {
 	return line, nil, false
 }
+
 func (nomatchPipeline) ReferencedStructuredMetadata() bool {
 	return false
 }
@@ -947,16 +947,31 @@ func BenchmarkRead(b *testing.B) {
 	}
 }
 
+type noopTestPipeline struct{}
+
+func (noopTestPipeline) BaseLabels() log.LabelsResult { return log.EmptyLabelsResult }
+func (noopTestPipeline) Process(_ int64, line []byte, _ ...labels.Label) ([]byte, log.LabelsResult, bool) {
+	return line, nil, false
+}
+
+func (noopTestPipeline) ProcessString(_ int64, line string, _ ...labels.Label) (string, log.LabelsResult, bool) {
+	return line, nil, false
+}
+
+func (noopTestPipeline) ReferencedStructuredMetadata() bool {
+	return false
+}
+
 func BenchmarkBackwardIterator(b *testing.B) {
 	for _, bs := range testBlockSizes {
 		b.Run(humanize.Bytes(uint64(bs)), func(b *testing.B) {
 			b.ReportAllocs()
-			c := NewMemChunk(ChunkFormatV3, EncSnappy, DefaultTestHeadBlockFmt, bs, testTargetSize)
+			c := NewMemChunk(ChunkFormatV4, EncSnappy, DefaultTestHeadBlockFmt, bs, testTargetSize)
 			_ = fillChunk(c)
 			b.ResetTimer()
 			for n := 0; n < b.N; n++ {
-				noopStreamPipeline := log.NewNoopPipeline().ForStream(labels.Labels{})
-				iterator, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Now(), logproto.BACKWARD, noopStreamPipeline)
+				noop := noopTestPipeline{}
+				iterator, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Now(), logproto.BACKWARD, noop)
 				if err != nil {
 					panic(err)
 				}
@@ -1754,7 +1769,6 @@ func TestMemChunk_SpaceFor(t *testing.T) {
 					require.Equal(t, expect, chk.SpaceFor(&tc.entry))
 				})
 			}
-
 		})
 	}
 }
