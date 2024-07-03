@@ -19,7 +19,7 @@ type LineTokenizer interface {
 
 type spacesTokenizer struct{}
 
-func (spacesTokenizer) Tokenize(line string, tokens []string, state interface{}) ([]string, interface{}) {
+func (spacesTokenizer) Tokenize(line string, _ []string, _ interface{}) ([]string, interface{}) {
 	return strings.Split(line, " "), nil
 }
 
@@ -221,7 +221,7 @@ func (t *logfmtTokenizer) Tokenize(line string, tokens []string, _ interface{}) 
 	return tokens, nil
 }
 
-func (t *logfmtTokenizer) Join(tokens []string, state interface{}) string {
+func (t *logfmtTokenizer) Join(tokens []string, _ interface{}) string {
 	if len(tokens) == 0 {
 		return ""
 	}
