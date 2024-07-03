@@ -31,7 +31,7 @@ var testCases = []TestCase{
 		name: "Test with colon",
 		line: "key1:value1 key2:value2",
 		want: map[string][]string{
-			typePunctuation: {"key1", ":", "value1", "key2", ":", "value2"},
+			typePunctuation: {"key1:value1", "key2:value2"},
 			typeSplitting:   {"key1:", "value1", "key2:", "value2"},
 		},
 	},
@@ -39,7 +39,7 @@ var testCases = []TestCase{
 		name: "Test with mixed delimiters, more = than :",
 		line: "key1=value1 key2:value2 key3=value3",
 		want: map[string][]string{
-			typePunctuation: {"key1", "=", "value1", "key2", ":", "value2", "key3", "=", "value3"},
+			typePunctuation: {"key1", "=", "value1", "key2:value2", "key3", "=", "value3"},
 			typeSplitting:   {"key1=", "value1", "key2:value2", "key3=", "value3"},
 		},
 	},
@@ -47,7 +47,7 @@ var testCases = []TestCase{
 		name: "Test with mixed delimiters, more : than =",
 		line: "key1:value1 key2:value2 key3=value3",
 		want: map[string][]string{
-			typePunctuation: {"key1", ":", "value1", "key2", ":", "value2", "key3", "=", "value3"},
+			typePunctuation: {"key1:value1", "key2:value2", "key3", "=", "value3"},
 			typeSplitting:   {"key1:", "value1", "key2:", "value2", "key3=value3"},
 		},
 	},
@@ -79,7 +79,7 @@ var testCases = []TestCase{
 		name: "longer line",
 		line: "09:17:38.033366 ▶ INFO  route ops sending to dest https://graphite-cortex-ops-blocks-us-east4.grafana.net/graphite/metrics: service_is_carbon-relay-ng.instance_is_carbon-relay-ng-c665b7b-j2trk.mtype_is_counter.dest_is_https_graphite-cortex-ops-blocks-us-east4_grafana_netgraphitemetrics.unit_is_Metric.action_is_drop.reason_is_queue_full 0 1717060658",
 		want: map[string][]string{
-			typePunctuation: {`09`, `:`, `17`, `:`, `38`, `.`, `033366`, `▶`, `INFO`, `route`, `ops`, `sending`, `to`, `dest`, `https`, `:`, `/`, `/`, `graphite-cortex-ops-blocks-us-east4`, `.`, `grafana`, `.`, `net`, `/`, `graphite`, `/`, `metrics`, `:`, `service_is_carbon-relay-ng`, `.`, `instance_is_carbon-relay-ng-c665b7b-j2trk`, `.`, `mtype_is_counter`, `.`, `dest_is_https_graphite-cortex-ops-blocks-us-east4_grafana_netgraphitemetrics`, `.`, `unit_is_Metric`, `.`, `action_is_drop`, `.`, `reason_is_queue_full`, `0`, `1717060658`},
+			typePunctuation: {`09:17:38.033366`, `▶`, `INFO`, `route`, `ops`, `sending`, `to`, `dest`, `https:`, `/`, `/`, `graphite-cortex-ops-blocks-us-east4.grafana.net`, `/`, `graphite`, `/`, `metrics:`, `service_is_carbon-relay-ng.instance_is_carbon-relay-ng-c665b7b-j2trk.mtype_is_counter.dest_is_https_graphite-cortex-ops-blocks-us-east4_grafana_netgraphitemetrics.unit_is_Metric.action_is_drop.reason_is_queue_full`, `0`, `1717060658`},
 			typeSplitting:   {`09:`, `17:`, `38.033366`, `▶`, `INFO`, ``, `route`, `ops`, `sending`, `to`, `dest`, `https:`, `//graphite-cortex-ops-blocks-us-east4.grafana.net/graphite/metrics:`, ``, `service_is_carbon-relay-ng.instance_is_carbon-relay-ng-c665b7b-j2trk.mtype_is_counter.dest_is_https_graphite-cortex-ops-blocks-us-east4_grafana_netgraphitemetrics.unit_is_Metric.action_is_drop.reason_is_queue_full`, `0`, `1717060658`},
 		},
 	},
@@ -87,7 +87,7 @@ var testCases = []TestCase{
 		name: "Consecutive splits points: equals followed by space",
 		line: `ts=2024-05-30T12:50:36.648377186Z caller=scheduler_processor.go:143 level=warn msg="error contacting scheduler" err="rpc error: code = Unavailable desc = connection error: desc = \"error reading server preface: EOF\"" addr=10.0.151.101:9095`,
 		want: map[string][]string{
-			typePunctuation: {`ts`, `=`, `2024-05-30T12`, `:`, `50`, `:`, `36`, `.`, `648377186Z`, `caller`, `=`, `scheduler_processor`, `.`, `go`, `:`, `143`, `level`, `=`, `warn`, `msg`, `=`, `"`, `error`, `contacting`, `scheduler`, `"`, `err`, `=`, `"`, `rpc`, `error`, `:`, `code`, `=`, `Unavailable`, `desc`, `=`, `connection`, `error`, `:`, `desc`, `=`, `\`, `"`, `error`, `reading`, `server`, `preface`, `:`, `EOF`, `\`, `"`, `"`, `addr`, `=`, `10`, `.`, `0`, `.`, `151`, `.`, `101`, `:`, `9095`},
+			typePunctuation: {`ts`, `=`, `2024-05-30T12:50:36.648377186Z`, `caller`, `=`, `scheduler_processor.go:143`, `level`, `=`, `warn`, `msg`, `=`, `"`, `error`, `contacting`, `scheduler`, `"`, `err`, `=`, `"`, `rpc`, `error:`, `code`, `=`, `Unavailable`, `desc`, `=`, `connection`, `error:`, `desc`, `=`, `\`, `"`, `error`, `reading`, `server`, `preface:`, `EOF`, `\`, `"`, `"`, `addr`, `=`, `10.0.151.101:9095`},
 			typeSplitting:   {"ts=", "2024-05-30T12:50:36.648377186Z", "caller=", "scheduler_processor.go:143", "level=", "warn", "msg=", "\"error", "contacting", "scheduler\"", "err=", "\"rpc", "error:", "code", "=", ``, "Unavailable", "desc", "=", ``, "connection", "error:", "desc", "=", ``, `\"error`, "reading", "server", "preface:", `EOF\""`, "addr=", "10.0.151.101:9095"},
 		},
 	},
