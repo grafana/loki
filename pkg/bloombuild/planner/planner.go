@@ -14,9 +14,11 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/common"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/queue"
 	"github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -251,11 +253,18 @@ func (p *Planner) runOne(ctx context.Context) error {
 		}
 	}
 
-	level.Debug(p.logger).Log("msg", "planning completed", "tasks", totalTasks)
+	p.metrics.planningTime.Observe(time.Since(start).Seconds())
+	level.Debug(p.logger).Log(
+		"msg", "planning completed",
+		"tenantTables", len(tasksResultForTenantTable),
+		"tasks", totalTasks,
+		"time", time.Since(start).Seconds(),
+	)
 
 	// Create a goroutine to process the results for each table tenant tuple
 	// TODO(salvacorts): This may end up creating too many goroutines.
 	//                   Create a pool of workers to process table-tenant tuples.
+	var tasksSucceed atomic.Int64
 	var wg sync.WaitGroup
 	for tt, results := range tasksResultForTenantTable {
 		if results.tasksToWait == 0 {
@@ -267,21 +276,40 @@ func (p *Planner) runOne(ctx context.Context) error {
 		go func(table config.DayTable, tenant string, results tenantTableTaskResults) {
 			defer wg.Done()
 
-			if err := p.processTenantTaskResults(
+			logger := log.With(p.logger, "table", table.Addr(), "tenant", tenant)
+
+			nSucceed, err := p.processTenantTaskResults(
 				ctx, table, tenant,
 				results.originalMetas, results.tasksToWait, results.resultsCh,
-			); err != nil {
-				level.Error(p.logger).Log("msg", "failed to process tenant task results", "err", err)
+			)
+			if err != nil {
+				level.Error(logger).Log("msg", "failed to process tenant task results", "err", err)
 			}
+
+			if nSucceed != results.tasksToWait {
+				level.Error(logger).Log(
+					"msg", "not all tasks succeeded for tenant table",
+					"tasks", results.tasksToWait,
+					"tasksSucceed", nSucceed,
+					"tasksFailed", results.tasksToWait-nSucceed,
+				)
+			}
+			tasksSucceed.Add(int64(nSucceed))
 		}(tt.table, tt.tenant, results)
 	}
 
-	level.Debug(p.logger).Log("msg", "waiting for all tasks to be completed", "tasks", totalTasks, "tenantTables", len(tasksResultForTenantTable))
+	level.Debug(p.logger).Log(
+		"msg", "waiting for all tasks to be completed",
+		"tenantTables", len(tasksResultForTenantTable),
+		"tasks", totalTasks,
+	)
 	wg.Wait()
 
 	status = statusSuccess
 	level.Info(p.logger).Log(
 		"msg", "bloom build iteration completed",
+		"tasks", totalTasks,
+		"tasksSucceed", tasksSucceed.Load(),
 		"duration", time.Since(start).Seconds(),
 	)
 	return nil
@@ -324,7 +352,6 @@ func (p *Planner) computeTasks(
 			continue
 		}
 		if len(gaps) == 0 {
-			level.Debug(logger).Log("msg", "no gaps found")
 			continue
 		}
 
@@ -343,28 +370,31 @@ func (p *Planner) processTenantTaskResults(
 	originalMetas []bloomshipper.Meta,
 	totalTasks int,
 	resultsCh <-chan *protos.TaskResult,
-) error {
+) (int, error) {
 	logger := log.With(p.logger, "table", table.Addr(), "tenant", tenant)
 	level.Debug(logger).Log("msg", "waiting for all tasks to be completed", "tasks", totalTasks)
 
+	var tasksSucceed int
 	newMetas := make([]bloomshipper.Meta, 0, totalTasks)
 	for i := 0; i < totalTasks; i++ {
 		select {
 		case <-ctx.Done():
 			if err := ctx.Err(); err != nil && !errors.Is(err, context.Canceled) {
 				level.Error(logger).Log("msg", "planner context done with error", "err", err)
-				return err
+				return tasksSucceed, err
 			}
 
 			// No error or context canceled, just return
 			level.Debug(logger).Log("msg", "context done while waiting for task results")
-			return nil
+			return tasksSucceed, nil
 		case result := <-resultsCh:
 			if result == nil {
+				p.metrics.tenantTasksCompleted.WithLabelValues(tenant, statusFailure).Inc()
 				level.Error(logger).Log("msg", "received nil task result")
 				continue
 			}
 			if result.Error != nil {
+				p.metrics.tenantTasksCompleted.WithLabelValues(tenant, statusFailure).Inc()
 				level.Error(logger).Log(
 					"msg", "task failed",
 					"err", result.Error,
@@ -373,13 +403,16 @@ func (p *Planner) processTenantTaskResults(
 				continue
 			}
 
+			p.metrics.tenantTasksCompleted.WithLabelValues(tenant, statusSuccess).Inc()
 			newMetas = append(newMetas, result.CreatedMetas...)
+			tasksSucceed++
 		}
 	}
 
 	level.Debug(logger).Log(
-		"msg", "all tasks completed",
+		"msg", "all tasks completed for tenant table",
 		"tasks", totalTasks,
+		"tasksSucceed", tasksSucceed,
 		"originalMetas", len(originalMetas),
 		"newMetas", len(newMetas),
 	)
@@ -387,22 +420,22 @@ func (p *Planner) processTenantTaskResults(
 	if len(newMetas) == 0 {
 		// No new metas were created, nothing to delete
 		// Note: this would only happen if all tasks failed
-		return nil
+		return tasksSucceed, nil
 	}
 
 	combined := append(originalMetas, newMetas...)
 	outdated := outdatedMetas(combined)
 	if len(outdated) == 0 {
 		level.Debug(logger).Log("msg", "no outdated metas found")
-		return nil
+		return tasksSucceed, nil
 	}
 
 	level.Debug(logger).Log("msg", "found outdated metas", "outdated", len(outdated))
 	if err := p.deleteOutdatedMetasAndBlocks(ctx, table, tenant, outdated); err != nil {
-		return fmt.Errorf("failed to delete outdated metas: %w", err)
+		return 0, fmt.Errorf("failed to delete outdated metas: %w", err)
 	}
 
-	return nil
+	return tasksSucceed, nil
 }
 
 func (p *Planner) deleteOutdatedMetasAndBlocks(
@@ -543,13 +576,13 @@ func (p *Planner) loadTenantWork(
 	return tenantTableWork, ctx.Err()
 }
 
-func (p *Planner) tenants(ctx context.Context, table config.DayTable) (*v1.SliceIter[string], error) {
+func (p *Planner) tenants(ctx context.Context, table config.DayTable) (*iter.SliceIter[string], error) {
 	tenants, err := p.tsdbStore.UsersForPeriod(ctx, table)
 	if err != nil {
 		return nil, fmt.Errorf("error loading tenants for table (%s): %w", table, err)
 	}
 
-	return v1.NewSliceIter(tenants), nil
+	return iter.NewSliceIter(tenants), nil
 }
 
 // blockPlan is a plan for all the work needed to build a meta.json
@@ -688,24 +721,24 @@ func blockPlansForGaps(tsdbs []tsdbGaps, metas []bloomshipper.Meta) ([]blockPlan
 				return planGap.Blocks[i].Bounds.Less(planGap.Blocks[j].Bounds)
 			})
 
-			peekingBlocks := v1.NewPeekingIter[bloomshipper.BlockRef](
-				v1.NewSliceIter[bloomshipper.BlockRef](
+			peekingBlocks := iter.NewPeekIter[bloomshipper.BlockRef](
+				iter.NewSliceIter[bloomshipper.BlockRef](
 					planGap.Blocks,
 				),
 			)
 			// dedupe blocks which could be in multiple metas
-			itr := v1.NewDedupingIter[bloomshipper.BlockRef, bloomshipper.BlockRef](
+			itr := iter.NewDedupingIter[bloomshipper.BlockRef, bloomshipper.BlockRef](
 				func(a, b bloomshipper.BlockRef) bool {
 					return a == b
 				},
-				v1.Identity[bloomshipper.BlockRef],
+				iter.Identity[bloomshipper.BlockRef],
 				func(a, _ bloomshipper.BlockRef) bloomshipper.BlockRef {
 					return a
 				},
 				peekingBlocks,
 			)
 
-			deduped, err := v1.Collect[bloomshipper.BlockRef](itr)
+			deduped, err := iter.Collect[bloomshipper.BlockRef](itr)
 			if err != nil {
 				return nil, fmt.Errorf("failed to dedupe blocks: %w", err)
 			}
@@ -800,7 +833,6 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 		if err != nil {
 			maxRetries := p.limits.BloomTaskMaxRetries(task.Tenant)
 			if maxRetries > 0 && int(task.timesEnqueued.Load()) >= maxRetries {
-				p.metrics.tenantTasksCompleted.WithLabelValues(task.Tenant, statusFailure).Inc()
 				p.removePendingTask(task)
 				level.Error(logger).Log(
 					"msg", "task failed after max retries",
@@ -842,7 +874,6 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 			"retries", task.timesEnqueued.Load()-1, // -1 because the first enqueue is not a retry
 		)
 		p.removePendingTask(task)
-		p.metrics.tenantTasksCompleted.WithLabelValues(task.Tenant, statusSuccess).Inc()
 
 		// Send the result back to the task. The channel is buffered, so this should not block.
 		task.resultsChannel <- result

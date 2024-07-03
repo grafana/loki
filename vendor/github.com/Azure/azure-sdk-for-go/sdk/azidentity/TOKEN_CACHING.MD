@@ -45,7 +45,7 @@ With persistent disk token caching enabled, the library first determines if a va
 
 #### Example code
 
-See the [package documentation](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity@v1.5.0-beta.1#pkg-overview) for code examples demonstrating how to configure persistent caching and access cached data.
+See the [package documentation](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity@v1.6.0-beta.2#pkg-overview) for example code demonstrating how to configure persistent caching and access cached data.
 
 ### Credentials supporting token caching
 

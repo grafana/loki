@@ -3,7 +3,6 @@ package protos
 import (
 	"fmt"
 
-	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
@@ -28,9 +27,15 @@ type Task struct {
 	Gaps            []GapWithBlocks
 }
 
-func NewTask(table config.DayTable, tenant string, bounds v1.FingerprintBounds, tsdb tsdb.SingleTenantTSDBIdentifier, gaps []GapWithBlocks) *Task {
+func NewTask(
+	table config.DayTable,
+	tenant string,
+	bounds v1.FingerprintBounds,
+	tsdb tsdb.SingleTenantTSDBIdentifier,
+	gaps []GapWithBlocks,
+) *Task {
 	return &Task{
-		ID: uuid.NewString(),
+		ID: fmt.Sprintf("%s-%s-%s-%d-%d", table.Addr(), tenant, bounds.String(), tsdb.Checksum, len(gaps)),
 
 		Table:           table,
 		Tenant:          tenant,

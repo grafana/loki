@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/dskit/multierror"
 	"github.com/pkg/errors"
 
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -32,11 +33,11 @@ func (c *CloseableBlockQuerier) Close() error {
 	return err.Err()
 }
 
-func (c *CloseableBlockQuerier) SeriesIter() (v1.PeekingIterator[*v1.SeriesWithBlooms], error) {
+func (c *CloseableBlockQuerier) SeriesIter() (iter.PeekIterator[*v1.SeriesWithBlooms], error) {
 	if err := c.Reset(); err != nil {
 		return nil, err
 	}
-	return v1.NewPeekingIter[*v1.SeriesWithBlooms](c.BlockQuerier.Iter()), nil
+	return iter.NewPeekIter[*v1.SeriesWithBlooms](c.BlockQuerier.Iter()), nil
 }
 
 func LoadBlocksDirIntoCache(paths []string, c Cache, logger log.Logger) error {
