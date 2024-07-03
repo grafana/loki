@@ -3,9 +3,9 @@ package client
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/base64"
 	"io"
-	"math/rand"
 	"strings"
 	"time"
 
@@ -101,7 +101,6 @@ func NewClientWithMaxParallel(store ObjectClient, encoder KeyEncoder, maxParalle
 		keyEncoder:          encoder,
 		getChunkMaxParallel: maxParallel,
 		schema:              schema,
-		entropy:             rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
@@ -119,8 +118,8 @@ func (o *client) PutWal(ctx context.Context, segment *wal.SegmentWriter) error {
 		_ = reader.Close()
 	}(reader)
 
-	newUlid := ulid.MustNew(ulid.Timestamp(time.Now()), o.entropy)
-	return o.store.PutObject(ctx, "loki-v2/wal/anon/"+newUlid.String(), bytes.NewReader(buffer.Bytes()))
+	newUlid := ulid.MustNew(ulid.Timestamp(time.Now()), rand.Reader)
+	return o.store.PutObject(ctx, "loki-v2/wal/anon/"+newUlid.String(), reader)
 }
 
 // PutChunks stores the provided chunks in the configured backend. If multiple errors are
