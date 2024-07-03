@@ -157,11 +157,15 @@ func New(config *Config, format string, metrics *Metrics) *Drain {
 		evictFn = func(int, *LogCluster) { metrics.PatternsEvictedTotal.Inc() }
 	}
 	var tokenizer LineTokenizer
-	if format == FormatLogfmt {
+	switch format {
+	case FormatJSON:
+		tokenizer = newJSONTokenizer(config.ParamString)
+	case FormatLogfmt:
 		tokenizer = newLogfmtTokenizer(config.ParamString)
-	} else {
+	default:
 		tokenizer = newPunctuationTokenizer()
 	}
+
 	d := &Drain{
 		config:               config,
 		rootNode:             createNode(),

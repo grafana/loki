@@ -2,11 +2,14 @@ package drain
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"unicode"
 
+	"github.com/buger/jsonparser"
 	gologfmt "github.com/go-logfmt/logfmt"
 	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/util"
 )
 
 type LineTokenizer interface {
@@ -153,7 +156,7 @@ func (t *logfmtTokenizer) Tokenize(line string) ([]string, interface{}) {
 	t.dec.Reset([]byte(line))
 	for !t.dec.EOL() && t.dec.ScanKeyval() {
 		key := t.dec.Key()
-		if isTimeStampField(key) {
+		if isVariableField(key) {
 			tokens = append(tokens, string(t.dec.Key()), t.varReplace)
 
 			continue
@@ -184,6 +187,39 @@ func (t *logfmtTokenizer) Join(tokens []string, state interface{}) string {
 	return buf.String()
 }
 
-func isTimeStampField(key []byte) bool {
-	return bytes.EqualFold(key, []byte("ts")) || bytes.EqualFold(key, []byte("time")) || bytes.EqualFold(key, []byte("timestamp"))
+type jsonTokenizer struct {
+	*punctuationTokenizer
+	varReplace string
+}
+
+func newJSONTokenizer(varReplace string) *jsonTokenizer {
+	return &jsonTokenizer{newPunctuationTokenizer(), varReplace}
+}
+
+func (t *jsonTokenizer) Tokenize(line string) ([]string, interface{}) {
+	var found []byte
+	for _, key := range []string{"log", "message", "msg", "msg_", "_msg", "content"} {
+		msg, ty, _, err := jsonparser.Get(util.GetUnsafeBytes(line), key)
+		if err == nil && ty == jsonparser.String {
+			found = msg
+			break
+		}
+	}
+
+	if found == nil {
+		return nil, nil
+	}
+	tokens, state := t.punctuationTokenizer.Tokenize(util.GetUnsafeString(found))
+	return tokens, state
+}
+
+func (t *jsonTokenizer) Join(tokens []string, state interface{}) string {
+	return fmt.Sprintf("%s%s%s", t.varReplace, t.punctuationTokenizer.Join(tokens, state), t.varReplace)
+}
+
+func isVariableField(key []byte) bool {
+	return bytes.EqualFold(key, []byte("ts")) ||
+		bytes.EqualFold(key, []byte("traceID")) ||
+		bytes.EqualFold(key, []byte("time")) ||
+		bytes.EqualFold(key, []byte("timestamp"))
 }
