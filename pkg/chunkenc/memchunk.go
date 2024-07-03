@@ -1359,7 +1359,7 @@ func (si *bufferedIterator) Next() bool {
 		}
 	}
 
-	ts, line, structuredMetadata, ok := si.moveNext(si.currStructuredMetadata)
+	ts, line, structuredMetadata, ok := si.moveNext()
 	if !ok {
 		si.Close()
 		return false
@@ -1372,7 +1372,7 @@ func (si *bufferedIterator) Next() bool {
 }
 
 // moveNext moves the buffer to the next entry
-func (si *bufferedIterator) moveNext(structuredMetadata labels.Labels) (int64, []byte, labels.Labels, bool) {
+func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 	var decompressedBytes int64
 	var decompressedStructuredMetadataBytes int64
 	var ts int64
@@ -1555,7 +1555,7 @@ func (si *bufferedIterator) moveNext(structuredMetadata labels.Labels) (int64, [
 	si.stats.AddDecompressedStructuredMetadataBytes(decompressedStructuredMetadataBytes)
 	si.stats.AddDecompressedBytes(decompressedBytes + decompressedStructuredMetadataBytes)
 
-	return ts, si.buf[:lineSize], si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], structuredMetadata), true
+	return ts, si.buf[:lineSize], si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], si.currStructuredMetadata), true
 }
 
 func (si *bufferedIterator) Err() error { return si.err }
