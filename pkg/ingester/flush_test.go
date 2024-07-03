@@ -37,6 +37,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	walsegment "github.com/grafana/loki/v3/pkg/storage/wal"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -432,6 +433,10 @@ func defaultIngesterTestConfig(t testing.TB) Config {
 	return cfg
 }
 
+func (s *testStore) PutWal(_ context.Context, _ *walsegment.SegmentWriter) error {
+	return nil
+}
+
 func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
@@ -588,8 +593,8 @@ func buildStreamsFromChunk(t *testing.T, lbs string, chk chunkenc.Chunk) logprot
 		Labels: lbs,
 	}
 	for it.Next() {
-		stream.Entries = append(stream.Entries, it.Entry())
+		stream.Entries = append(stream.Entries, it.At())
 	}
-	require.NoError(t, it.Error())
+	require.NoError(t, it.Err())
 	return stream
 }

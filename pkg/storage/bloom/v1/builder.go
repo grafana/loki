@@ -8,6 +8,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
 
@@ -160,23 +161,23 @@ type BloomCreation struct {
 // from a list of blocks and a store of series.
 type MergeBuilder struct {
 	// existing blocks
-	blocks Iterator[*SeriesWithBlooms]
+	blocks iter.Iterator[*SeriesWithBlooms]
 	// store
-	store Iterator[*Series]
+	store iter.Iterator[*Series]
 	// Add chunks to a bloom
-	populate func(s *Series, srcBlooms SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation)
+	populate func(s *Series, srcBlooms iter.SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation)
 	metrics  *Metrics
 }
 
-type BloomPopulatorFunc = func(s *Series, srcBlooms SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation)
+type BloomPopulatorFunc = func(s *Series, srcBlooms iter.SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation)
 
 // NewMergeBuilder is a specific builder which does the following:
 //  1. merges multiple blocks into a single ordered querier,
 //     i) When two blocks have the same series, it will prefer the one with the most chunks already indexed
 //  2. iterates through the store, adding chunks to the relevant blooms via the `populate` argument
 func NewMergeBuilder(
-	blocks Iterator[*SeriesWithBlooms],
-	store Iterator[*Series],
+	blocks iter.Iterator[*SeriesWithBlooms],
+	store iter.Iterator[*Series],
 	populate BloomPopulatorFunc,
 	metrics *Metrics,
 ) *MergeBuilder {
@@ -184,13 +185,13 @@ func NewMergeBuilder(
 	// because blooms dont contain the label-set (only the fingerprint),
 	// in the case of a fingerprint collision we simply treat it as one
 	// series with multiple chunks.
-	combinedSeriesIter := NewDedupingIter[*Series, *Series](
+	combinedSeriesIter := iter.NewDedupingIter[*Series, *Series](
 		// eq
 		func(s1, s2 *Series) bool {
 			return s1.Fingerprint == s2.Fingerprint
 		},
 		// from
-		Identity[*Series],
+		iter.Identity[*Series],
 		// merge
 		func(s1, s2 *Series) *Series {
 			return &Series{
@@ -198,7 +199,7 @@ func NewMergeBuilder(
 				Chunks:      s1.Chunks.Union(s2.Chunks),
 			}
 		},
-		NewPeekingIter[*Series](store),
+		iter.NewPeekIter[*Series](store),
 	)
 
 	return &MergeBuilder{
@@ -256,8 +257,8 @@ func (mb *MergeBuilder) processNextSeries(
 
 	var (
 		offsets           []BloomOffset
-		chunksToAdd                             = nextInStore.Chunks
-		preExistingBlooms SizedIterator[*Bloom] = NewEmptyIter[*Bloom]()
+		chunksToAdd                                  = nextInStore.Chunks
+		preExistingBlooms iter.SizedIterator[*Bloom] = iter.NewEmptyIter[*Bloom]()
 	)
 
 	if nextInBlocks != nil && nextInBlocks.Series.Fingerprint == nextInStore.Fingerprint {
