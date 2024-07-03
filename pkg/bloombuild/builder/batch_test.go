@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 )
@@ -128,7 +129,7 @@ func TestBatchedLoader(t *testing.T) {
 				tc.batchSize,
 			)
 
-			got, err := v1.Collect[int](loader)
+			got, err := v2.Collect[int](loader)
 			if tc.err {
 				require.Error(t, err)
 				return
