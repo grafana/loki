@@ -85,7 +85,7 @@ func (s *bigtableObjectClient) PutChunks(ctx context.Context, chunks []chunk.Chu
 }
 
 func (s *bigtableObjectClient) PutWal(_ context.Context, _ *wal.SegmentWriter) error {
-	panic("not implemented")
+	return errors.New("not implemented")
 }
 
 func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chunk) ([]chunk.Chunk, error) {
