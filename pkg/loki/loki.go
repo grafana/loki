@@ -649,10 +649,6 @@ func (t *Loki) setupModuleManager() error {
 		mm.RegisterModule(InternalServer, t.initInternalServer, modules.UserInvisibleModule)
 	}
 
-	///                        >---- ./loki -target=ingester
-	/// Distributor -> gRPC --->
-	///                        >---- ./loki -target=sexy-ingester
-
 	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig, modules.UserInvisibleModule)
 	mm.RegisterModule(MemberlistKV, t.initMemberlistKV, modules.UserInvisibleModule)
 	mm.RegisterModule(Ring, t.initRing, modules.UserInvisibleModule)
