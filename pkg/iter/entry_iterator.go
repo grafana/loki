@@ -91,7 +91,6 @@ func (i *mergeEntryIterator) closeEntry(e EntryIterator) {
 		i.errs = append(i.errs, err)
 	}
 	util.LogError("closing iterator", e.Close)
-
 }
 
 func (i *mergeEntryIterator) Push(ei EntryIterator) {
@@ -294,8 +293,8 @@ func (i *entrySortIterator) closeEntry(e EntryIterator) {
 		i.errs = append(i.errs, err)
 	}
 	util.LogError("closing iterator", e.Close)
-
 }
+
 func (i *entrySortIterator) Next() bool {
 	ret := i.tree.Next()
 	if !ret {
@@ -809,4 +808,34 @@ func (it *peekingEntryIterator) Err() error {
 // Close implements `EntryIterator`
 func (it *peekingEntryIterator) Close() error {
 	return it.iter.Close()
+}
+
+type withCloseEntryIterator struct {
+	closeOnce sync.Once
+	closeFn   func() error
+	errs      []error
+	EntryIterator
+}
+
+func (w *withCloseEntryIterator) Close() error {
+	w.closeOnce.Do(func() {
+		if err := w.EntryIterator.Close(); err != nil {
+			w.errs = append(w.errs, err)
+		}
+		if err := w.closeFn(); err != nil {
+			w.errs = append(w.errs, err)
+		}
+	})
+	if len(w.errs) == 0 {
+		return nil
+	}
+	return util.MultiError(w.errs)
+}
+
+func EntryIteratorWithClose(it EntryIterator, closeFn func() error) EntryIterator {
+	return &withCloseEntryIterator{
+		closeOnce:     sync.Once{},
+		closeFn:       closeFn,
+		EntryIterator: it,
+	}
 }
