@@ -66,6 +66,9 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	appendErr := multierror.New()
 
 	for _, reqStream := range req.Streams {
+		if reqStream.Entries == nil || len(reqStream.Entries) == 0 {
+			continue
+		}
 		s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
 			func() (*stream, error) {
 				// add stream
