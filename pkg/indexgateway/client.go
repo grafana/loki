@@ -374,9 +374,10 @@ func (s *GatewayClient) clientDoQueries(ctx context.Context, gatewayQueries []*l
 }
 
 type callbackResponse[T any] struct {
-	resp   *T
-	hedged bool
-	err    error
+	resp     *T
+	hedged   bool
+	duration time.Duration
+	err      error
 }
 
 // poolDo will call callback providing a random index gateway client, if hedge is true, it will dispatch
@@ -401,11 +402,6 @@ func poolDo[T any](ctx context.Context, gatewayClient *GatewayClient, hedge bool
 
 	respChan := make(chan callbackResponse[T])
 	firstAddr := addrs[0]
-
-	if gatewayClient.cfg.LogGatewayRequests {
-		level.Debug(gatewayClient.logger).Log("msg", "sending request to gateway", "gateway", firstAddr, "tenant", userID)
-	}
-
 	genericClient, err := gatewayClient.pool.GetClientFor(firstAddr)
 	if err != nil {
 		level.Error(gatewayClient.logger).Log("msg", fmt.Sprintf("failed to get client for instance %s", firstAddr), "err", err)
@@ -418,13 +414,18 @@ func poolDo[T any](ctx context.Context, gatewayClient *GatewayClient, hedge bool
 	defer cancel1(errors.New("canceled from defer statement"))
 	go func() {
 		req1Start := time.Now()
+		if gatewayClient.cfg.LogGatewayRequests {
+			level.Debug(gatewayClient.logger).Log("msg", "sending request to gateway", "gateway", firstAddr, "tenant", userID)
+		}
 		r, err := callback(ctx1, client1)
-		level.Info(gatewayClient.logger).Log("msg", "initial request returned", "duration", time.Since(req1Start), "err", err)
 		// Because we only listen for once response to make sure we don't leak a goroutine
 		// here also watch for the context to be canceled
 		select {
-		case respChan <- callbackResponse[T]{resp: r, hedged: false, err: err}:
+		case respChan <- callbackResponse[T]{resp: r, hedged: false, duration: time.Since(req1Start), err: err}:
 		case <-ctx1.Done():
+			if gatewayClient.cfg.LogGatewayRequests {
+				level.Debug(gatewayClient.logger).Log("msg", "gateway request context finished", "gateway", firstAddr, "tenant", userID, "cause", context.Cause(ctx1), "duration", time.Since(req1Start))
+			}
 		}
 	}()
 
@@ -435,7 +436,11 @@ func poolDo[T any](ctx context.Context, gatewayClient *GatewayClient, hedge bool
 	for {
 		select {
 		case r := <-respChan:
-			level.Info(gatewayClient.logger).Log("msg", "returning index gateway response", "hedged", r.hedged, "err", r.err)
+			if gatewayClient.cfg.LogGatewayRequests {
+				level.Debug(gatewayClient.logger).Log("msg", "returning index gateway response", "tenant", userID, "duration", r.duration, "hedged", r.hedged, "err", r.err)
+			} else if r.hedged {
+				level.Warn(gatewayClient.logger).Log("msg", "returning hedged index gateway response", "tenant", userID, "duration", r.duration, "hedged", r.hedged, "err", r.err)
+			}
 			return r.resp, r.err
 		case <-timer.C:
 			// Send hedged request if we have another address and we are able to get a client from it.
@@ -447,15 +452,19 @@ func poolDo[T any](ctx context.Context, gatewayClient *GatewayClient, hedge bool
 					ctx2, cancel2 := context.WithCancelCause(ctx)
 					defer cancel2(errors.New("canceled from defer statement"))
 					go func() {
-						level.Info(gatewayClient.logger).Log("msg", "sending hedged request")
-						req2start := time.Now()
+						req2Start := time.Now()
+						if gatewayClient.cfg.LogGatewayRequests {
+							level.Debug(gatewayClient.logger).Log("msg", "sending hedged request to gateway", "gateway", addrs[1], "tenant", userID)
+						}
 						r, err := callback(ctx2, client2)
-						level.Info(gatewayClient.logger).Log("msg", "hedged request returned", "duration", time.Since(req2start), "err", err)
 						// Because we only listen for once response to make sure we don't leak a goroutine
 						// here also watch for the context to be canceled
 						select {
-						case respChan <- callbackResponse[T]{resp: r, hedged: true, err: err}:
+						case respChan <- callbackResponse[T]{resp: r, hedged: true, duration: time.Since(req2Start), err: err}:
 						case <-ctx2.Done():
+							if gatewayClient.cfg.LogGatewayRequests {
+								level.Debug(gatewayClient.logger).Log("msg", "hedged gateway request context finished", "gateway", firstAddr, "tenant", userID, "cause", context.Cause(ctx2), "duration", time.Since(req2Start))
+							}
 						}
 					}()
 					hedgedSent = true
