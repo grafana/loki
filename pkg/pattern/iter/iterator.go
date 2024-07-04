@@ -11,26 +11,26 @@ type Iterator interface {
 	Pattern() string
 }
 
-func NewSlice(pattern string, s []logproto.PatternSample) *patternIter {
-	return &patternIter{
+func NewSlice(pattern string, s []logproto.PatternSample) *PatternIter {
+	return &PatternIter{
 		CloseIterator: iter.WithClose(iter.NewSliceIter(s), nil),
 		pattern:       pattern,
 	}
 }
 
-func NewEmpty(pattern string) *patternIter {
-	return &patternIter{
+func NewEmpty(pattern string) *PatternIter {
+	return &PatternIter{
 		CloseIterator: iter.WithClose(iter.NewEmptyIter[logproto.PatternSample](), nil),
 		pattern:       pattern,
 	}
 }
 
-type patternIter struct {
+type PatternIter struct {
 	iter.CloseIterator[logproto.PatternSample]
 	pattern string
 }
 
-func (s *patternIter) Pattern() string {
+func (s *PatternIter) Pattern() string {
 	return s.pattern
 }
 
