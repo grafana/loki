@@ -16,6 +16,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/log"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/pollers"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/shared"
+	"github.com/Azure/azure-sdk-for-go/sdk/internal/poller"
 )
 
 // Applicable returns true if the LRO is using Operation-Location.
@@ -24,7 +25,7 @@ func Applicable(resp *http.Response) bool {
 }
 
 // CanResume returns true if the token can rehydrate this poller type.
-func CanResume(token map[string]interface{}) bool {
+func CanResume(token map[string]any) bool {
 	_, ok := token["oplocURL"]
 	return ok
 }
@@ -54,19 +55,19 @@ func New[T any](pl exported.Pipeline, resp *http.Response, finalState pollers.Fi
 	if opURL == "" {
 		return nil, errors.New("response is missing Operation-Location header")
 	}
-	if !pollers.IsValidURL(opURL) {
+	if !poller.IsValidURL(opURL) {
 		return nil, fmt.Errorf("invalid Operation-Location URL %s", opURL)
 	}
 	locURL := resp.Header.Get(shared.HeaderLocation)
 	// Location header is optional
-	if locURL != "" && !pollers.IsValidURL(locURL) {
+	if locURL != "" && !poller.IsValidURL(locURL) {
 		return nil, fmt.Errorf("invalid Location URL %s", locURL)
 	}
 	// default initial state to InProgress.  if the
 	// service sent us a status then use that instead.
-	curState := pollers.StatusInProgress
-	status, err := pollers.GetStatus(resp)
-	if err != nil && !errors.Is(err, pollers.ErrNoBody) {
+	curState := poller.StatusInProgress
+	status, err := poller.GetStatus(resp)
+	if err != nil && !errors.Is(err, poller.ErrNoBody) {
 		return nil, err
 	}
 	if status != "" {
@@ -86,16 +87,16 @@ func New[T any](pl exported.Pipeline, resp *http.Response, finalState pollers.Fi
 }
 
 func (p *Poller[T]) Done() bool {
-	return pollers.IsTerminalState(p.CurState)
+	return poller.IsTerminalState(p.CurState)
 }
 
 func (p *Poller[T]) Poll(ctx context.Context) (*http.Response, error) {
 	err := pollers.PollHelper(ctx, p.OpLocURL, p.pl, func(resp *http.Response) (string, error) {
-		if !pollers.StatusCodeValid(resp) {
+		if !poller.StatusCodeValid(resp) {
 			p.resp = resp
 			return "", exported.NewResponseError(resp)
 		}
-		state, err := pollers.GetStatus(resp)
+		state, err := poller.GetStatus(resp)
 		if err != nil {
 			return "", err
 		} else if state == "" {
@@ -118,7 +119,7 @@ func (p *Poller[T]) Result(ctx context.Context, out *T) error {
 		req, err = exported.NewRequest(ctx, http.MethodGet, p.LocURL)
 	} else if p.FinalState == pollers.FinalStateViaOpLocation && p.Method == http.MethodPost {
 		// no final GET required, terminal response should have it
-	} else if rl, rlErr := pollers.GetResourceLocation(p.resp); rlErr != nil && !errors.Is(rlErr, pollers.ErrNoBody) {
+	} else if rl, rlErr := poller.GetResourceLocation(p.resp); rlErr != nil && !errors.Is(rlErr, poller.ErrNoBody) {
 		return rlErr
 	} else if rl != "" {
 		req, err = exported.NewRequest(ctx, http.MethodGet, rl)
@@ -140,5 +141,5 @@ func (p *Poller[T]) Result(ctx context.Context, out *T) error {
 		p.resp = resp
 	}
 
-	return pollers.ResultHelper(p.resp, pollers.Failed(p.CurState), out)
+	return pollers.ResultHelper(p.resp, poller.Failed(p.CurState), out)
 }

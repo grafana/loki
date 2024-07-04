@@ -9,39 +9,59 @@ package runtime
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
-	"os"
+	"net/textproto"
+	"net/url"
 	"path"
-	"reflect"
 	"strings"
-	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/exported"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/shared"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/streaming"
 )
 
 // Base64Encoding is usesd to specify which base-64 encoder/decoder to use when
 // encoding/decoding a slice of bytes to/from a string.
-type Base64Encoding int
+type Base64Encoding = exported.Base64Encoding
 
 const (
 	// Base64StdFormat uses base64.StdEncoding for encoding and decoding payloads.
-	Base64StdFormat Base64Encoding = 0
+	Base64StdFormat Base64Encoding = exported.Base64StdFormat
 
 	// Base64URLFormat uses base64.RawURLEncoding for encoding and decoding payloads.
-	Base64URLFormat Base64Encoding = 1
+	Base64URLFormat Base64Encoding = exported.Base64URLFormat
 )
 
 // NewRequest creates a new policy.Request with the specified input.
 // The endpoint MUST be properly encoded before calling this function.
 func NewRequest(ctx context.Context, httpMethod string, endpoint string) (*policy.Request, error) {
 	return exported.NewRequest(ctx, httpMethod, endpoint)
+}
+
+// EncodeQueryParams will parse and encode any query parameters in the specified URL.
+// Any semicolons will automatically be escaped.
+func EncodeQueryParams(u string) (string, error) {
+	before, after, found := strings.Cut(u, "?")
+	if !found {
+		return u, nil
+	}
+	// starting in Go 1.17, url.ParseQuery will reject semicolons in query params.
+	// so, we must escape them first. note that this assumes that semicolons aren't
+	// being used as query param separators which is per the current RFC.
+	// for more info:
+	// https://github.com/golang/go/issues/25192
+	// https://github.com/golang/go/issues/50034
+	qp, err := url.ParseQuery(strings.ReplaceAll(after, ";", "%3B"))
+	if err != nil {
+		return "", err
+	}
+	return before + "?" + qp.Encode(), nil
 }
 
 // JoinPaths concatenates multiple URL path segments into one path,
@@ -79,10 +99,7 @@ func JoinPaths(root string, paths ...string) string {
 
 // EncodeByteArray will base-64 encode the byte slice v.
 func EncodeByteArray(v []byte, format Base64Encoding) string {
-	if format == Base64URLFormat {
-		return base64.RawURLEncoding.EncodeToString(v)
-	}
-	return base64.StdEncoding.EncodeToString(v)
+	return exported.EncodeByteArray(v, format)
 }
 
 // MarshalAsByteArray will base-64 encode the byte slice v, then calls SetBody.
@@ -90,23 +107,22 @@ func EncodeByteArray(v []byte, format Base64Encoding) string {
 func MarshalAsByteArray(req *policy.Request, v []byte, format Base64Encoding) error {
 	// send as a JSON string
 	encode := fmt.Sprintf("\"%s\"", EncodeByteArray(v, format))
-	return req.SetBody(exported.NopCloser(strings.NewReader(encode)), shared.ContentTypeAppJSON)
+	// tsp generated code can set Content-Type so we must prefer that
+	return exported.SetBody(req, exported.NopCloser(strings.NewReader(encode)), shared.ContentTypeAppJSON, false)
 }
 
 // MarshalAsJSON calls json.Marshal() to get the JSON encoding of v then calls SetBody.
-func MarshalAsJSON(req *policy.Request, v interface{}) error {
-	if omit := os.Getenv("AZURE_SDK_GO_OMIT_READONLY"); omit == "true" {
-		v = cloneWithoutReadOnlyFields(v)
-	}
+func MarshalAsJSON(req *policy.Request, v any) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return fmt.Errorf("error marshalling type %T: %s", v, err)
 	}
-	return req.SetBody(exported.NopCloser(bytes.NewReader(b)), shared.ContentTypeAppJSON)
+	// tsp generated code can set Content-Type so we must prefer that
+	return exported.SetBody(req, exported.NopCloser(bytes.NewReader(b)), shared.ContentTypeAppJSON, false)
 }
 
 // MarshalAsXML calls xml.Marshal() to get the XML encoding of v then calls SetBody.
-func MarshalAsXML(req *policy.Request, v interface{}) error {
+func MarshalAsXML(req *policy.Request, v any) error {
 	b, err := xml.Marshal(v)
 	if err != nil {
 		return fmt.Errorf("error marshalling type %T: %s", v, err)
@@ -116,10 +132,10 @@ func MarshalAsXML(req *policy.Request, v interface{}) error {
 	return req.SetBody(exported.NopCloser(bytes.NewReader(b)), shared.ContentTypeAppXML)
 }
 
-// SetMultipartFormData writes the specified keys/values as multi-part form
-// fields with the specified value.  File content must be specified as a ReadSeekCloser.
-// All other values are treated as string values.
-func SetMultipartFormData(req *policy.Request, formData map[string]interface{}) error {
+// SetMultipartFormData writes the specified keys/values as multi-part form fields with the specified value.
+// File content must be specified as an [io.ReadSeekCloser] or [streaming.MultipartContent].
+// Byte slices will be treated as JSON. All other values are treated as string values.
+func SetMultipartFormData(req *policy.Request, formData map[string]any) error {
 	body := bytes.Buffer{}
 	writer := multipart.NewWriter(&body)
 
@@ -130,6 +146,60 @@ func SetMultipartFormData(req *policy.Request, formData map[string]interface{}) 
 		}
 		// copy the data to the form file
 		if _, err = io.Copy(fd, src); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	quoteEscaper := strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
+
+	writeMultipartContent := func(fieldname string, mpc streaming.MultipartContent) error {
+		if mpc.Body == nil {
+			return errors.New("streaming.MultipartContent.Body cannot be nil")
+		}
+
+		// use fieldname for the file name when unspecified
+		filename := fieldname
+
+		if mpc.ContentType == "" && mpc.Filename == "" {
+			return writeContent(fieldname, filename, mpc.Body)
+		}
+		if mpc.Filename != "" {
+			filename = mpc.Filename
+		}
+		// this is pretty much copied from multipart.Writer.CreateFormFile
+		// but lets us set the caller provided Content-Type and filename
+		h := make(textproto.MIMEHeader)
+		h.Set("Content-Disposition",
+			fmt.Sprintf(`form-data; name="%s"; filename="%s"`,
+				quoteEscaper.Replace(fieldname), quoteEscaper.Replace(filename)))
+		contentType := "application/octet-stream"
+		if mpc.ContentType != "" {
+			contentType = mpc.ContentType
+		}
+		h.Set("Content-Type", contentType)
+		fd, err := writer.CreatePart(h)
+		if err != nil {
+			return err
+		}
+		// copy the data to the form file
+		if _, err = io.Copy(fd, mpc.Body); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	// the same as multipart.Writer.WriteField but lets us specify the Content-Type
+	writeField := func(fieldname, contentType string, value string) error {
+		h := make(textproto.MIMEHeader)
+		h.Set("Content-Disposition",
+			fmt.Sprintf(`form-data; name="%s"`, quoteEscaper.Replace(fieldname)))
+		h.Set("Content-Type", contentType)
+		fd, err := writer.CreatePart(h)
+		if err != nil {
+			return err
+		}
+		if _, err = fd.Write([]byte(value)); err != nil {
 			return err
 		}
 		return nil
@@ -148,13 +218,35 @@ func SetMultipartFormData(req *policy.Request, formData map[string]interface{}) 
 				}
 			}
 			continue
+		} else if mpc, ok := v.(streaming.MultipartContent); ok {
+			if err := writeMultipartContent(k, mpc); err != nil {
+				return err
+			}
+			continue
+		} else if mpcs, ok := v.([]streaming.MultipartContent); ok {
+			for _, mpc := range mpcs {
+				if err := writeMultipartContent(k, mpc); err != nil {
+					return err
+				}
+			}
+			continue
 		}
-		// ensure the value is in string format
-		s, ok := v.(string)
-		if !ok {
-			s = fmt.Sprintf("%v", v)
+
+		var content string
+		contentType := shared.ContentTypeTextPlain
+		switch tt := v.(type) {
+		case []byte:
+			// JSON, don't quote it
+			content = string(tt)
+			contentType = shared.ContentTypeAppJSON
+		case string:
+			content = tt
+		default:
+			// ensure the value is in string format
+			content = fmt.Sprintf("%v", v)
 		}
-		if err := writer.WriteField(k, s); err != nil {
+
+		if err := writeField(k, contentType, content); err != nil {
 			return err
 		}
 	}
@@ -169,80 +261,5 @@ func SkipBodyDownload(req *policy.Request) {
 	req.SetOperationValue(bodyDownloadPolicyOpValues{Skip: true})
 }
 
-// returns a clone of the object graph pointed to by v, omitting values of all read-only
-// fields. if there are no read-only fields in the object graph, no clone is created.
-func cloneWithoutReadOnlyFields(v interface{}) interface{} {
-	val := reflect.Indirect(reflect.ValueOf(v))
-	if val.Kind() != reflect.Struct {
-		// not a struct, skip
-		return v
-	}
-	// first walk the graph to find any R/O fields.
-	// if there aren't any, skip cloning the graph.
-	if !recursiveFindReadOnlyField(val) {
-		return v
-	}
-	return recursiveCloneWithoutReadOnlyFields(val)
-}
-
-// returns true if any field in the object graph of val contains the `azure:"ro"` tag value
-func recursiveFindReadOnlyField(val reflect.Value) bool {
-	t := val.Type()
-	// iterate over the fields, looking for the "azure" tag.
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		aztag := field.Tag.Get("azure")
-		if azureTagIsReadOnly(aztag) {
-			return true
-		} else if reflect.Indirect(val.Field(i)).Kind() == reflect.Struct && recursiveFindReadOnlyField(reflect.Indirect(val.Field(i))) {
-			return true
-		}
-	}
-	return false
-}
-
-// clones the object graph of val.  all non-R/O properties are copied to the clone
-func recursiveCloneWithoutReadOnlyFields(val reflect.Value) interface{} {
-	t := val.Type()
-	clone := reflect.New(t)
-	// iterate over the fields, looking for the "azure" tag.
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		aztag := field.Tag.Get("azure")
-		if azureTagIsReadOnly(aztag) {
-			// omit from payload
-			continue
-		}
-		// clone field will receive the same value as the source field...
-		value := val.Field(i)
-		v := reflect.Indirect(value)
-		if v.IsValid() && v.Type() != reflect.TypeOf(time.Time{}) && v.Kind() == reflect.Struct {
-			// ...unless the source value is a struct, in which case we recurse to clone that struct.
-			// (We can't recursively clone time.Time because it contains unexported fields.)
-			c := recursiveCloneWithoutReadOnlyFields(v)
-			if field.Anonymous {
-				// NOTE: this does not handle the case of embedded fields of unexported struct types.
-				// this should be ok as we don't generate any code like this at present
-				value = reflect.Indirect(reflect.ValueOf(c))
-			} else {
-				value = reflect.ValueOf(c)
-			}
-		}
-		reflect.Indirect(clone).Field(i).Set(value)
-	}
-	return clone.Interface()
-}
-
-// returns true if the "azure" tag contains the option "ro"
-func azureTagIsReadOnly(tag string) bool {
-	if tag == "" {
-		return false
-	}
-	parts := strings.Split(tag, ",")
-	for _, part := range parts {
-		if part == "ro" {
-			return true
-		}
-	}
-	return false
-}
+// CtxAPINameKey is used as a context key for adding/retrieving the API name.
+type CtxAPINameKey = shared.CtxAPINameKey
