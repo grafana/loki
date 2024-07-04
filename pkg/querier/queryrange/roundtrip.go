@@ -206,7 +206,7 @@ func NewMiddleware(
 		return nil, nil, err
 	}
 
-	limitedTripperware, err := NewLimitedTripperware(cfg, log, limits, schema, metrics, indexStatsTripperware, codec, iqo, metricsNamespace)
+	limitedTripperware, err := NewLimitedTripperware(cfg, log, limits, schema, metrics, codec, iqo, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -617,7 +617,7 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Lo
 }
 
 // NewLimitedTripperware creates a new frontend tripperware responsible for handling log requests which are label matcher only, no filter expression.
-func NewLimitedTripperware(cfg Config, log log.Logger, limits Limits, schema config.SchemaConfig, metrics *Metrics, indexStatsTripperware base.Middleware, merger base.Merger, iqo util.IngesterQueryOptions, metricsNamespace string) (base.Middleware, error) {
+func NewLimitedTripperware(cfg Config, log log.Logger, limits Limits, schema config.SchemaConfig, metrics *Metrics, merger base.Merger, iqo util.IngesterQueryOptions, metricsNamespace string) (base.Middleware, error) {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		queryRangeMiddleware := []base.Middleware{
 			StatsCollectorMiddleware(),
