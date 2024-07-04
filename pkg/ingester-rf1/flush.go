@@ -140,6 +140,7 @@ func (i *Ingester) flushOp(l log.Logger, flushCtx *flushCtx) error {
 // If the flush isn't successful, the operation for this userID is requeued allowing this and all other unflushed
 // segments to have another opportunity to be flushed.
 func (i *Ingester) flushSegment(ctx context.Context, ch *wal.SegmentWriter) error {
+	// todo
 	if err := i.store.PutWal(ctx, ch); err != nil {
 		i.metrics.chunksFlushFailures.Inc()
 		return fmt.Errorf("store put chunk: %w", err)

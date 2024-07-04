@@ -20,10 +20,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester/index"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
-	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -69,7 +67,7 @@ type instance struct {
 	streamsCreatedTotal prometheus.Counter
 	streamsRemovedTotal prometheus.Counter
 
-	//tailers   map[uint32]*tailer
+	// tailers   map[uint32]*tailer
 	tailerMtx sync.RWMutex
 
 	limiter            *Limiter
@@ -80,9 +78,6 @@ type instance struct {
 
 	metrics *ingesterMetrics
 
-	chunkFilter          chunk.RequestChunkFilterer
-	pipelineWrapper      log.PipelineWrapper
-	extractorWrapper     log.SampleExtractorWrapper
 	streamRateCalculator *StreamRateCalculator
 
 	writeFailures *writefailures.Manager
@@ -123,9 +118,6 @@ func newInstance(
 	limiter *Limiter,
 	configs *runtime.TenantConfigs,
 	metrics *ingesterMetrics,
-	chunkFilter chunk.RequestChunkFilterer,
-	pipelineWrapper log.PipelineWrapper,
-	extractorWrapper log.SampleExtractorWrapper,
 	streamRateCalculator *StreamRateCalculator,
 	writeFailures *writefailures.Manager,
 	customStreamsTracker push.UsageTracker,
@@ -154,9 +146,6 @@ func newInstance(
 		ownedStreamsSvc:    ownedStreamsSvc,
 		configs:            configs,
 		metrics:            metrics,
-		chunkFilter:        chunkFilter,
-		pipelineWrapper:    pipelineWrapper,
-		extractorWrapper:   extractorWrapper,
 
 		streamRateCalculator: streamRateCalculator,
 
@@ -286,7 +275,7 @@ func (i *instance) onStreamCreated(s *stream) {
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
 	memoryStreamsLabelsBytes.Add(float64(len(s.labels.String())))
 	i.streamsCreatedTotal.Inc()
-	//i.addTailersToNewStream(s)
+	// i.addTailersToNewStream(s)
 	streamsCountStats.Add(1)
 	i.ownedStreamsSvc.incOwnedStreamCount()
 	if i.configs.LogStreamCreation(i.instanceID) {

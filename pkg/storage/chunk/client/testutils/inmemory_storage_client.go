@@ -426,7 +426,7 @@ func (m *InMemoryObjectClient) GetObject(_ context.Context, objectKey string) (i
 }
 
 // PutObject implements client.ObjectClient.
-func (m *InMemoryObjectClient) PutObject(_ context.Context, objectKey string, object io.ReadSeeker) error {
+func (m *InMemoryObjectClient) PutObject(_ context.Context, objectKey string, object io.Reader) error {
 	buf, err := io.ReadAll(object)
 	if err != nil {
 		return err

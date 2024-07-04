@@ -52,8 +52,8 @@ type stream struct {
 
 	metrics *ingesterMetrics
 
-	//tailers   map[uint32]*tailer
-	//tailerMtx sync.RWMutex
+	// tailers   map[uint32]*tailer
+	// tailerMtx sync.RWMutex
 
 	// entryCt is a counter which is incremented on each accepted entry.
 	// This allows us to discard WAL entries during replays which were
@@ -63,7 +63,7 @@ type stream struct {
 	entryCt int64
 
 	unorderedWrites bool
-	//streamRateCalculator *StreamRateCalculator
+	// streamRateCalculator *StreamRateCalculator
 
 	writeFailures *writefailures.Manager
 
@@ -95,11 +95,11 @@ func newStream(
 	fp model.Fingerprint,
 	labels labels.Labels,
 	unorderedWrites bool,
-	//streamRateCalculator *StreamRateCalculator,
+	// streamRateCalculator *StreamRateCalculator,
 	metrics *ingesterMetrics,
 	writeFailures *writefailures.Manager,
 ) *stream {
-	//hashNoShard, _ := labels.HashWithoutLabels(make([]byte, 0, 1024), ShardLbName)
+	// hashNoShard, _ := labels.HashWithoutLabels(make([]byte, 0, 1024), ShardLbName)
 	return &stream{
 		limiter:      NewStreamRateLimiter(limits, tenant, 10*time.Second),
 		cfg:          cfg,
@@ -107,11 +107,11 @@ func newStream(
 		labels:       labels,
 		labelsString: labels.String(),
 		labelHash:    labels.Hash(),
-		//labelHashNoShard:     hashNoShard,
-		//tailers:              map[uint32]*tailer{},
+		// labelHashNoShard:     hashNoShard,
+		// tailers:              map[uint32]*tailer{},
 		metrics: metrics,
 		tenant:  tenant,
-		//streamRateCalculator: streamRateCalculator,
+		// streamRateCalculator: streamRateCalculator,
 
 		unorderedWrites:      unorderedWrites,
 		writeFailures:        writeFailures,
@@ -137,13 +137,12 @@ func (s *stream) Push(
 	usageTracker push.UsageTracker,
 	flushCtx *flushCtx,
 ) (int, error) {
-
 	toStore, invalid := s.validateEntries(ctx, entries, rateLimitWholeStream, usageTracker)
 	if rateLimitWholeStream && hasRateLimitErr(invalid) {
 		return 0, errorForFailedEntries(s, invalid, len(entries))
 	}
 
-	bytesAdded, _ := s.storeEntries(ctx, toStore, usageTracker, flushCtx)
+	bytesAdded := s.storeEntries(ctx, toStore, usageTracker, flushCtx)
 
 	return bytesAdded, errorForFailedEntries(s, invalid, len(entries))
 }
@@ -196,7 +195,7 @@ func hasRateLimitErr(errs []entryWithError) bool {
 	return ok
 }
 
-func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usageTracker push.UsageTracker, flushCtx *flushCtx) (int, []*logproto.Entry) {
+func (s *stream) storeEntries(ctx context.Context, entries []*logproto.Entry, usageTracker push.UsageTracker, flushCtx *flushCtx) int {
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
 		sp.LogKV("event", "stream started to store entries", "labels", s.labelsString)
 		defer sp.LogKV("event", "stream finished to store entries")
@@ -204,7 +203,6 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 
 	var bytesAdded, outOfOrderSamples, outOfOrderBytes int
 
-	storedEntries := make([]*logproto.Entry, 0, len(entries))
 	for i := 0; i < len(entries); i++ {
 		s.entryCt++
 		s.lastLine.ts = entries[i].Timestamp
@@ -214,15 +212,13 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 		}
 
 		bytesAdded += len(entries[i].Line)
-		storedEntries = append(storedEntries, &entries[i])
 	}
-	flushCtx.segmentWriter.Append(s.tenant, s.labels.String(), s.labels, storedEntries)
+	flushCtx.segmentWriter.Append(s.tenant, s.labels.String(), s.labels, entries)
 	s.reportMetrics(ctx, outOfOrderSamples, outOfOrderBytes, 0, 0, usageTracker)
-	return bytesAdded, storedEntries
+	return bytesAdded
 }
 
-func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, rateLimitWholeStream bool, usageTracker push.UsageTracker) ([]logproto.Entry, []entryWithError) {
-
+func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, rateLimitWholeStream bool, usageTracker push.UsageTracker) ([]*logproto.Entry, []entryWithError) {
 	var (
 		outOfOrderSamples, outOfOrderBytes   int
 		rateLimitedSamples, rateLimitedBytes int
@@ -231,7 +227,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		limit                                = s.limiter.lim.Limit()
 		lastLine                             = s.lastLine
 		highestTs                            = s.highestTs
-		toStore                              = make([]logproto.Entry, 0, len(entries))
+		toStore                              = make([]*logproto.Entry, 0, len(entries))
 	)
 
 	for i := range entries {
@@ -277,7 +273,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 			highestTs = entries[i].Timestamp
 		}
 
-		toStore = append(toStore, entries[i])
+		toStore = append(toStore, &entries[i])
 	}
 
 	// Each successful call to 'AllowN' advances the limiter. With all-or-nothing
@@ -289,12 +285,12 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		rateLimitedSamples = len(toStore)
 		failedEntriesWithError = make([]entryWithError, 0, len(toStore))
 		for i := 0; i < len(toStore); i++ {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&toStore[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(toStore[i].Line))}})
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{toStore[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(toStore[i].Line))}})
 			rateLimitedBytes += len(toStore[i].Line)
 		}
 	}
 
-	//s.streamRateCalculator.Record(s.tenant, s.labelHash, s.labelHashNoShard, totalBytes)
+	// s.streamRateCalculator.Record(s.tenant, s.labelHash, s.labelHashNoShard, totalBytes)
 	s.reportMetrics(ctx, outOfOrderSamples, outOfOrderBytes, rateLimitedSamples, rateLimitedBytes, usageTracker)
 	return toStore, failedEntriesWithError
 }
