@@ -3504,13 +3504,14 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 [min_sharding_lookback: <duration> | default = 0s]
 
 # Max number of bytes a query can fetch. Enforced in log and metric queries only
-# when TSDB is used. The default value of 0 disables this limit.
+# when TSDB is used. This limit is not enforced on log queries without filters.
+# The default value of 0 disables this limit.
 # CLI flag: -frontend.max-query-bytes-read
 [max_query_bytes_read: <int> | default = 0B]
 
 # Max number of bytes a query can fetch after splitting and sharding. Enforced
-# in log and metric queries only when TSDB is used. The default value of 0
-# disables this limit.
+# in log and metric queries only when TSDB is used. This limit is not enforced
+# on log queries without filters. The default value of 0 disables this limit.
 # CLI flag: -frontend.max-querier-bytes-read
 [max_querier_bytes_read: <int> | default = 150GB]
 
