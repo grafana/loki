@@ -7,6 +7,7 @@ import (
 
 	"github.com/prometheus/common/model"
 
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -133,21 +134,21 @@ func (t Task) Copy(series []*logproto.GroupedChunkRefs) Task {
 
 func (t Task) RequestIter(
 	tokenizer *v1.NGramTokenizer,
-) v1.Iterator[v1.Request] {
+) iter.Iterator[v1.Request] {
 	return &requestIterator{
 		recorder: t.recorder,
-		series:   v1.NewSliceIter(t.series),
+		series:   iter.NewSliceIter(t.series),
 		search:   v1.FiltersToBloomTest(tokenizer, t.filters...),
 		channel:  t.resCh,
 		curr:     v1.Request{},
 	}
 }
 
-var _ v1.Iterator[v1.Request] = &requestIterator{}
+var _ iter.Iterator[v1.Request] = &requestIterator{}
 
 type requestIterator struct {
 	recorder *v1.BloomRecorder
-	series   v1.Iterator[*logproto.GroupedChunkRefs]
+	series   iter.Iterator[*logproto.GroupedChunkRefs]
 	search   v1.BloomTest
 	channel  chan<- v1.Output
 	curr     v1.Request

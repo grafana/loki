@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
+	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
@@ -307,7 +307,7 @@ func TestRefWithSizingInfo(t *testing.T) {
 		desc string
 		a    refWithSizingInfo
 		b    tsdb_index.ChunkMeta
-		exp  v1.Ord
+		exp  v2.Ord
 	}{
 		{
 			desc: "less by from",
@@ -319,7 +319,7 @@ func TestRefWithSizingInfo(t *testing.T) {
 			b: tsdb_index.ChunkMeta{
 				MinTime: 2,
 			},
-			exp: v1.Less,
+			exp: v2.Less,
 		},
 		{
 			desc: "eq by from",
@@ -331,7 +331,7 @@ func TestRefWithSizingInfo(t *testing.T) {
 			b: tsdb_index.ChunkMeta{
 				MinTime: 1,
 			},
-			exp: v1.Eq,
+			exp: v2.Eq,
 		},
 		{
 			desc: "gt by from",
@@ -343,7 +343,7 @@ func TestRefWithSizingInfo(t *testing.T) {
 			b: tsdb_index.ChunkMeta{
 				MinTime: 1,
 			},
-			exp: v1.Greater,
+			exp: v2.Greater,
 		},
 		{
 			desc: "less by through",
@@ -355,7 +355,7 @@ func TestRefWithSizingInfo(t *testing.T) {
 			b: tsdb_index.ChunkMeta{
 				MaxTime: 2,
 			},
-			exp: v1.Less,
+			exp: v2.Less,
 		},
 		{
 			desc: "eq by through",
@@ -367,7 +367,7 @@ func TestRefWithSizingInfo(t *testing.T) {
 			b: tsdb_index.ChunkMeta{
 				MaxTime: 2,
 			},
-			exp: v1.Eq,
+			exp: v2.Eq,
 		},
 		{
 			desc: "gt by through",
@@ -379,7 +379,7 @@ func TestRefWithSizingInfo(t *testing.T) {
 			b: tsdb_index.ChunkMeta{
 				MaxTime: 1,
 			},
-			exp: v1.Greater,
+			exp: v2.Greater,
 		},
 		{
 			desc: "less by checksum",
@@ -391,7 +391,7 @@ func TestRefWithSizingInfo(t *testing.T) {
 			b: tsdb_index.ChunkMeta{
 				Checksum: 2,
 			},
-			exp: v1.Less,
+			exp: v2.Less,
 		},
 		{
 			desc: "eq by checksum",
@@ -403,7 +403,7 @@ func TestRefWithSizingInfo(t *testing.T) {
 			b: tsdb_index.ChunkMeta{
 				Checksum: 2,
 			},
-			exp: v1.Eq,
+			exp: v2.Eq,
 		},
 		{
 			desc: "gt by checksum",
@@ -415,7 +415,7 @@ func TestRefWithSizingInfo(t *testing.T) {
 			b: tsdb_index.ChunkMeta{
 				Checksum: 1,
 			},
-			exp: v1.Greater,
+			exp: v2.Greater,
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {

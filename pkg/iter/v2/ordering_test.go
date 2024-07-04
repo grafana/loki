@@ -1,7 +1,9 @@
-package v1
+package v2
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestOrdering(t *testing.T) {
@@ -85,4 +87,15 @@ func TestOrdering(t *testing.T) {
 			EqualIterators[int](t, func(a, b int) {}, NewSliceIter(tc.expected), unmap)
 		})
 	}
+}
+
+func EqualIterators[T any](t *testing.T, test func(a, b T), expected, actual Iterator[T]) {
+	for expected.Next() {
+		require.True(t, actual.Next())
+		a, b := expected.At(), actual.At()
+		test(a, b)
+	}
+	require.False(t, actual.Next())
+	require.Nil(t, expected.Err())
+	require.Nil(t, actual.Err())
 }
