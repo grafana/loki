@@ -28,8 +28,11 @@ Before you begin, ensure you have the following to run the demo:
 
 <!-- INTERACTIVE ignore START -->
 {{< admonition type="tip" >}}
-Alternatively, you can try out this example in our online sandbox. Which is a fully configured environment with all the dependencies pre-installed. You can access the sandbox [here](https://killercoda.com/grafana-labs/course/loki/alloy-otel-logs).
-![Interactive](https://raw.githubusercontent.com/grafana/killercoda/staging/assets/loki-ile.svg)
+Alternatively, you can try out this example in our interactive learning environment: [Sending Logs to Loki via Kafka using Alloy](https://killercoda.com/grafana-labs/course/loki/alloy-otel-logs).
+
+It's a fully configured environment with all the dependencies already installed.
+
+![Interactive](https://raw.githubusercontent.com/grafana/killercoda/prod/assets/loki-ile.svg)
 {{< /admonition >}}
 <!-- INTERACTIVE ignore END -->
 
