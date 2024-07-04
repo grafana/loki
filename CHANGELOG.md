@@ -9,6 +9,13 @@
 * [12925](https://github.com/grafana/loki/pull/12925) **grobinson-grafana** Ingester: Add ingester_chunks_flush_failures_total
 * [13140](https://github.com/grafana/loki/pull/13140) **grobinson-grafana** Ingester: Add backoff to flush op
 
+## [2.9.9](https://github.com/grafana/loki/compare/v2.9.8...v2.9.9) (2024-07-04)
+
+
+### Bug Fixes
+
+* prepare 2.9.9 release ([#13412](https://github.com/grafana/loki/issues/13412)) ([aaca205](https://github.com/grafana/loki/commit/aaca205d6c13a6c1fd208aa45462217dac1284b1))
+
 ## [2.9.8](https://github.com/grafana/loki/compare/v2.9.7...v2.9.8) (2024-05-03)
 
 ### All Changes
