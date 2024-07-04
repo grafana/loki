@@ -47,7 +47,7 @@ func TestInstantQueryHandler(t *testing.T) {
 
 		httpHandler.ServeHTTP(rr, req)
 		require.Equal(t, http.StatusBadRequest, rr.Code)
-		require.Equal(t, logqlmodel.ErrUnsupportedSyntaxForInstantQuery, rr.Body.String())
+		require.Equal(t, logqlmodel.ErrUnsupportedSyntaxForInstantQuery.Error(), rr.Body.String())
 	})
 }
 
