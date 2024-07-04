@@ -82,18 +82,6 @@ Starting with the 3.0 release we began using [conventional commits](https://www.
 * **promtail**: Lambda-Promtail: Add support for dropping labels passed via env var [10755](https://github.com/grafana/loki/pull/10755)
 
 ### Bug Fixes
-##### Fixes
-* [11074](https://github.com/grafana/loki/pull/11074) **hainenber** Fix panic in lambda-promtail due to mishandling of empty DROP_LABELS env var.
-* [11195](https://github.com/grafana/loki/pull/11195) **canuteson** Generate tsdb_shipper storage_config even if using_boltdb_shipper is false
-* [9831](https://github.com/grafana/loki/pull/9831) **sijmenhuizenga**: Fix Promtail excludepath not evaluated on newly added files.
-* [11551](https://github.com/grafana/loki/pull/11551) **dannykopping** Do not reflect label names in request metrics' "route" label.
-* [11563](https://github.com/grafana/loki/pull/11563) **ptqa** Fix duplicate logs from docker containers.
-* [11601](https://github.com/grafana/loki/pull/11601) **dannykopping** Ruler: Fixed a panic that can be caused by concurrent read-write access of tenant configs when there are a large amount of rules.
-* [11606](https://github.com/grafana/loki/pull/11606) **dannykopping** Fixed regression adding newlines to HTTP error response bodies which may break client integrations.
-* [11657](https://github.com/grafana/loki/pull/11657) **ashwanthgoli** Log results cache: compose empty response based on the request being served to avoid returning incorrect limit or direction.
-* [11587](https://github.com/grafana/loki/pull/11587) **trevorwhitney** Fix semantics of label parsing logic of metrics and logs queries. Both only parse the first label if multiple extractions into the same label are requested.
-* [11776](https://github.com/grafana/loki/pull/11776) **ashwanthgoli** Background Cache: Fixes a bug that is causing the background queue size to be incremented twice for each enqueued item.
-* [11921](https://github.com/grafana/loki/pull/11921) **paul1r**: Parsing: String array elements were not being parsed correctly in JSON processing
 
 * All lifecycler cfgs ref a valid IPv6 addr and port combination ([#11121](https://github.com/grafana/loki/issues/11121)) ([6385b19](https://github.com/grafana/loki/commit/6385b195739bd7d4e9706faddd0de663d8e5331a))
 * **deps:** update github.com/c2h5oh/datasize digest to 859f65c (main) ([#10820](https://github.com/grafana/loki/issues/10820)) ([c66ffd1](https://github.com/grafana/loki/commit/c66ffd125cd89f5845a75a1751186fa46d003f70))
