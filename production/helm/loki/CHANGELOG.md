@@ -17,6 +17,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [FEATURE] Expose labels on volumeClaimTemplates
 
+## 6.6.5
+
+- [BUGFIX] Fix querier address in SingleBinary mode
+
 ## 6.6.4
 
 - [BUGFIX] Fix extraObjects

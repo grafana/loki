@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/wal"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
@@ -58,6 +59,10 @@ func NewChunkClientMetrics(reg prometheus.Registerer) ChunkClientMetrics {
 
 func (c MetricsChunkClient) Stop() {
 	c.Client.Stop()
+}
+
+func (c MetricsChunkClient) PutWal(ctx context.Context, writer *wal.SegmentWriter) error {
+	return c.Client.PutWal(ctx, writer)
 }
 
 func (c MetricsChunkClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {

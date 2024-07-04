@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/storage/wal"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -565,6 +566,10 @@ func (s *ObjectClient) reconnectReadSession() error {
 	s.readSession.Close()
 	s.readSession = newSession
 	return nil
+}
+
+func (s *ObjectClient) PutWal(_ context.Context, _ *wal.SegmentWriter) error {
+	return errors.New("not implemented")
 }
 
 // PutChunks implements chunk.ObjectClient.

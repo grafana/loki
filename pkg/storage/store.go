@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/storage/wal"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 
 	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
@@ -502,7 +503,7 @@ func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (
 	}
 
 	if len(lazyChunks) == 0 {
-		return iter.NoopIterator, nil
+		return iter.NoopEntryIterator, nil
 	}
 
 	expr, err := req.LogSelector()
@@ -549,7 +550,7 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 	}
 
 	if len(lazyChunks) == 0 {
-		return iter.NoopIterator, nil
+		return iter.NoopSampleIterator, nil
 	}
 
 	expr, err := req.Expr()
@@ -606,5 +607,9 @@ func (f failingChunkWriter) Put(_ context.Context, _ []chunk.Chunk) error {
 }
 
 func (f failingChunkWriter) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
+	return errWritingChunkUnsupported
+}
+
+func (f failingChunkWriter) PutWal(_ context.Context, _ *wal.SegmentWriter) error {
 	return errWritingChunkUnsupported
 }

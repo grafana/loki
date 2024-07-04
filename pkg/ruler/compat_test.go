@@ -118,11 +118,11 @@ func TestNonMetricQuery(t *testing.T) {
 type FakeQuerier struct{}
 
 func (q *FakeQuerier) SelectLogs(context.Context, logql.SelectLogParams) (iter.EntryIterator, error) {
-	return iter.NoopIterator, nil
+	return iter.NoopEntryIterator, nil
 }
 
 func (q *FakeQuerier) SelectSamples(context.Context, logql.SelectSampleParams) (iter.SampleIterator, error) {
-	return iter.NoopIterator, nil
+	return iter.NoopSampleIterator, nil
 }
 
 type fakeChecker struct{}

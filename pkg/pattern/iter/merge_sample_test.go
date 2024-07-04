@@ -21,13 +21,13 @@ func TestNewSumMergeSampleIterator(t *testing.T) {
 		for i := 1; i < 4; i++ {
 			require.True(t, it.Next(), i)
 			require.Equal(t, `{foo="car"}`, it.Labels(), i)
-			require.Equal(t, sample(int64(i), float64(i)), it.Sample(), i)
+			require.Equal(t, sample(int64(i), float64(i)), it.At(), i)
 			require.True(t, it.Next(), i)
 			require.Equal(t, `{foo="var"}`, it.Labels(), i)
-			require.Equal(t, sample(int64(i), float64(i)), it.Sample(), i)
+			require.Equal(t, sample(int64(i), float64(i)), it.At(), i)
 		}
 		require.False(t, it.Next())
-		require.NoError(t, it.Error())
+		require.NoError(t, it.Err())
 		require.NoError(t, it.Close())
 	})
 
@@ -45,13 +45,13 @@ func TestNewSumMergeSampleIterator(t *testing.T) {
 		for i := 1; i < 4; i++ {
 			require.True(t, it.Next(), i)
 			require.Equal(t, `{foo="car"}`, it.Labels(), i)
-			require.Equal(t, sample(int64(i), float64(i*3)), it.Sample(), i)
+			require.Equal(t, sample(int64(i), float64(i*3)), it.At(), i)
 			require.True(t, it.Next(), i)
 			require.Equal(t, `{foo="var"}`, it.Labels(), i)
-			require.Equal(t, sample(int64(i), float64(i*3)), it.Sample(), i)
+			require.Equal(t, sample(int64(i), float64(i*3)), it.At(), i)
 		}
 		require.False(t, it.Next())
-		require.NoError(t, it.Error())
+		require.NoError(t, it.Err())
 		require.NoError(t, it.Close())
 	})
 
@@ -73,13 +73,13 @@ func TestNewSumMergeSampleIterator(t *testing.T) {
 		for i := 1; i < 4; i++ {
 			require.True(t, it.Next(), i)
 			require.Equal(t, ``, it.Labels(), i)
-			require.Equal(t, sample(int64(i), float64(i)), it.Sample(), i)
+			require.Equal(t, sample(int64(i), float64(i)), it.At(), i)
 			require.True(t, it.Next(), i)
 			require.Equal(t, ``, it.Labels(), i)
-			require.Equal(t, sample(int64(i), float64(i)), it.Sample(), i)
+			require.Equal(t, sample(int64(i), float64(i)), it.At(), i)
 		}
 		require.False(t, it.Next())
-		require.NoError(t, it.Error())
+		require.NoError(t, it.Err())
 		require.NoError(t, it.Close())
 	})
 
@@ -121,13 +121,13 @@ func TestNewSumMergeSampleIterator(t *testing.T) {
 		for i := 1; i < 4; i++ {
 			require.True(t, it.Next(), i)
 			require.Equal(t, ``, it.Labels(), i)
-			require.Equal(t, sample(int64(i), float64(i*3)), it.Sample(), i)
+			require.Equal(t, sample(int64(i), float64(i*3)), it.At(), i)
 			require.True(t, it.Next(), i)
 			require.Equal(t, ``, it.Labels(), i)
-			require.Equal(t, sample(int64(i), float64(i*3)), it.Sample(), i)
+			require.Equal(t, sample(int64(i), float64(i*3)), it.At(), i)
 		}
 		require.False(t, it.Next())
-		require.NoError(t, it.Error())
+		require.NoError(t, it.Err())
 		require.NoError(t, it.Close())
 	})
 	t.Run("it sums the values from two identical points", func(t *testing.T) {
@@ -146,15 +146,15 @@ func TestNewSumMergeSampleIterator(t *testing.T) {
 
 		require.True(t, it.Next())
 		require.Equal(t, `{foo="bar"}`, it.Labels())
-		require.Equal(t, sample(1, 2), it.Sample())
+		require.Equal(t, sample(1, 2), it.At())
 
 		require.True(t, it.Next())
 		require.Equal(t, `{foo="bar"}`, it.Labels())
-		require.Equal(t, sample(2, 4), it.Sample())
+		require.Equal(t, sample(2, 4), it.At())
 
 		require.True(t, it.Next())
 		require.Equal(t, `{foo="bar"}`, it.Labels())
-		require.Equal(t, sample(3, 6), it.Sample())
+		require.Equal(t, sample(3, 6), it.At())
 
 		require.False(t, it.Next())
 	})
@@ -189,31 +189,31 @@ func TestNewSumMergeSampleIterator(t *testing.T) {
 
 		require.True(t, it.Next())
 		require.Equal(t, `{foo="baz"}`, it.Labels())
-		require.Equal(t, sample(1, 1), it.Sample())
+		require.Equal(t, sample(1, 1), it.At())
 
 		require.True(t, it.Next())
 		require.Equal(t, `{foo="bar"}`, it.Labels())
-		require.Equal(t, sample(1, 1), it.Sample()) // first only
+		require.Equal(t, sample(1, 1), it.At()) // first only
 
 		require.True(t, it.Next())
 		require.Equal(t, `{foo="baz"}`, it.Labels())
-		require.Equal(t, sample(2, 2), it.Sample())
+		require.Equal(t, sample(2, 2), it.At())
 
 		require.True(t, it.Next())
 		require.Equal(t, `{foo="bar"}`, it.Labels())
-		require.Equal(t, sample(2, 4), it.Sample()) // merged
+		require.Equal(t, sample(2, 4), it.At()) // merged
 
 		require.True(t, it.Next())
 		require.Equal(t, `{foo="baz"}`, it.Labels())
-		require.Equal(t, sample(3, 4), it.Sample())
+		require.Equal(t, sample(3, 4), it.At())
 
 		require.True(t, it.Next())
 		require.Equal(t, `{foo="bar"}`, it.Labels())
-		require.Equal(t, sample(3, 3), it.Sample())
+		require.Equal(t, sample(3, 3), it.At())
 
 		require.True(t, it.Next())
 		require.Equal(t, `{foo="bar"}`, it.Labels())
-		require.Equal(t, sample(4, 4), it.Sample()) // second only
+		require.Equal(t, sample(4, 4), it.At()) // second only
 
 		require.False(t, it.Next())
 	})

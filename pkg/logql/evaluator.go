@@ -823,7 +823,7 @@ func newBinOpStepEvaluator(
 
 	var lse, rse StepEvaluator
 
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancelCause(ctx)
 	g := errgroup.Group{}
 
 	// We have two non-literal legs,
@@ -832,7 +832,7 @@ func newBinOpStepEvaluator(
 		var err error
 		lse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q)
 		if err != nil {
-			cancel()
+			cancel(fmt.Errorf("new step evaluator for left leg errored: %w", err))
 		}
 		return err
 	})
@@ -840,7 +840,7 @@ func newBinOpStepEvaluator(
 		var err error
 		rse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q)
 		if err != nil {
-			cancel()
+			cancel(fmt.Errorf("new step evaluator for right leg errored: %w", err))
 		}
 		return err
 	})

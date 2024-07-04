@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores"
 	index_stats "github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v3/pkg/storage/wal"
 	loki_util "github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -110,7 +111,7 @@ func newChunk(chunkFormat byte, headBlockFmt chunkenc.HeadBlockFmt, stream logpr
 	from, through := loki_util.RoundToMilliseconds(stream.Entries[0].Timestamp, stream.Entries[len(stream.Entries)-1].Timestamp)
 	chk := chunkenc.NewMemChunk(chunkFormat, chunkenc.EncGZIP, headBlockFmt, 256*1024, 0)
 	for _, e := range stream.Entries {
-		_ = chk.Append(&e)
+		_, _ = chk.Append(&e)
 	}
 	chk.Close()
 	c := chunk.NewChunk("fake", client.Fingerprint(lbs), lbs, chunkenc.NewFacade(chk, 0, 0), from, through)
@@ -185,7 +186,8 @@ func newMockChunkStore(chunkFormat byte, headfmt chunkenc.HeadBlockFmt, streams 
 	return &mockChunkStore{schemas: config.SchemaConfig{}, chunks: chunks, client: &mockChunkStoreClient{chunks: chunks, scfg: config.SchemaConfig{}}}
 }
 
-func (m *mockChunkStore) Put(_ context.Context, _ []chunk.Chunk) error { return nil }
+func (m *mockChunkStore) PutWal(_ context.Context, _ *wal.SegmentWriter) error { return nil }
+func (m *mockChunkStore) Put(_ context.Context, _ []chunk.Chunk) error         { return nil }
 func (m *mockChunkStore) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
 	return nil
 }
@@ -292,6 +294,7 @@ func (m mockChunkStoreClient) Stop() {
 	panic("implement me")
 }
 
+func (m mockChunkStoreClient) PutWal(_ context.Context, _ *wal.SegmentWriter) error { return nil }
 func (m mockChunkStoreClient) PutChunks(_ context.Context, _ []chunk.Chunk) error {
 	return nil
 }

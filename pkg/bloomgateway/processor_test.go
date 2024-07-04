@@ -166,7 +166,7 @@ func TestProcessor(t *testing.T) {
 			}(tasks[i])
 		}
 
-		err := p.run(ctx, tasks)
+		err := p.processTasks(ctx, tasks)
 		wg.Wait()
 		require.NoError(t, err)
 		require.Equal(t, int64(0), results.Load())
@@ -218,7 +218,7 @@ func TestProcessor(t *testing.T) {
 			}(tasks[i])
 		}
 
-		err := p.run(ctx, tasks)
+		err := p.processTasks(ctx, tasks)
 		wg.Wait()
 		require.NoError(t, err)
 		require.Equal(t, int64(len(swb.series)), results.Load())
@@ -267,7 +267,7 @@ func TestProcessor(t *testing.T) {
 			}(tasks[i])
 		}
 
-		err := p.run(ctx, tasks)
+		err := p.processTasks(ctx, tasks)
 		wg.Wait()
 		require.Errorf(t, err, "store failed")
 		require.Equal(t, int64(0), results.Load())

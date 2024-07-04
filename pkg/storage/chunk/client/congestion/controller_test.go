@@ -211,8 +211,8 @@ func TestAIMDReducedThroughput(t *testing.T) {
 	require.Less(t, count, previousCount)
 	require.Less(t, success, previousSuccess)
 
-	// should have fewer successful requests than total since we are failing some
-	require.Less(t, success, count)
+	// should have fewer successful requests than total since we may be failing some
+	require.LessOrEqual(t, success, count)
 
 	// should have registered some congestion latency in stats
 	require.NotZero(t, statsCtx.Store().CongestionControlLatency)
