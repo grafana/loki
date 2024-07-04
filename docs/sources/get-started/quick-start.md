@@ -113,11 +113,16 @@ This quickstart assumes you are running Linux.
 
    <!-- INTERACTIVE ignore END -->
 
-   <!-- INTERACTIVE include START -->
-   <!-- ```bash -->
-   <!-- docker-compose up -d -->
-   <!-- ```{{exec}} -->
-   <!-- INTERACTIVE include END -->
+   {{< docs/ignore >}}
+   <!-- INTERACTIVE exec START -->
+
+   ```bash
+   docker-compose up -d
+   ```
+
+   <!-- INTERACTIVE exec END -->
+
+   {{< /docs/ignore >}}
 
    At the end of the command, you should see something similar to the following:
 
@@ -137,18 +142,20 @@ This quickstart assumes you are running Linux.
 
    <!-- INTERACTIVE ignore END -->
 
-   <!-- INTERACTIVE include START -->
-   <!-- ```console -->
-   <!-- Creating evaluate-loki_flog_1  ... done -->
-   <!-- Creating evaluate-loki_minio_1 ... done -->
-   <!-- Creating evaluate-loki_read_1  ... done -->
-   <!-- Creating evaluate-loki_write_1 ... done -->
-   <!-- Creating evaluate-loki_gateway_1 ... done -->
-   <!-- Creating evaluate-loki_alloy_1   ... done -->
-   <!-- Creating evaluate-loki_grafana_1 ... done -->
-   <!-- Creating evaluate-loki_backend_1 ... done -->
-   <!-- ``` -->
-   <!-- INTERACTIVE include END -->
+   {{< docs/ignore >}}
+
+   ```console
+   Creating evaluate-loki_flog_1  ... done
+   Creating evaluate-loki_minio_1 ... done
+   Creating evaluate-loki_read_1  ... done
+   Creating evaluate-loki_write_1 ... done
+   Creating evaluate-loki_gateway_1 ... done
+   Creating evaluate-loki_alloy_1   ... done
+   Creating evaluate-loki_grafana_1 ... done
+   Creating evaluate-loki_backend_1 ... done
+   ```
+
+   {{< /docs/ignore >}}
 
 1. (Optional) Verify that the Loki cluster is up and running.
 
