@@ -4,6 +4,14 @@ menuTitle: Loki quickstart
 weight: 200
 description: How to create and use a local Loki cluster for testing and evaluation purposes.
 killercoda:
+  comment: |
+    The killercoda front matter and the HTML comments that start '<!-- INTERACTIVE ' are used by a transformation tool that converts this Markdown source into a Killercoda tutorial.
+
+    You can find the tutorial in https://github.com/grafana/killercoda/tree/staging/loki/loki-quickstart.
+
+    Changes to this source file affect the Killercoda tutorial.
+
+    For more information about the transformation tool, refer to https://github.com/grafana/killercoda/blob/staging/docs/transformer.md.
   preprocessing:
     substitutions:
       - regexp: evaluate-loki-([^-]+)-
@@ -42,7 +50,13 @@ The Docker Compose configuration runs the following components, each in its own 
 
 ## Before you begin
 
-You can use the [Interactive Learning Environment](#interactive-learning-environment) to skip installing Docker and Docker Compose.
+{{< admonition type="tip" >}}
+Alternatively, you can try out this example in our interactive learning environment: [Loki Quickstart Sandbox](https://killercoda.com/grafana-labs/course/loki/loki-quickstart).
+
+It's a fully configured environment with all the dependencies already installed.
+
+![Interactive](https://raw.githubusercontent.com/grafana/killercoda/prod/assets/loki-ile.svg)
+{{< /admonition >}}
 
 - Install [Docker](https://docs.docker.com/install)
 - Install [Docker Compose](https://docs.docker.com/compose/install)
@@ -67,13 +81,9 @@ Try out this demo within our interactive learning environment: [Loki Quickstart 
 
 ## Install Loki and collecting sample logs
 
-<!-- INTERACTIVE ignore START -->
-
 {{< admonition type="note" >}}
 This quickstart assumes you are running Linux.
 {{< /admonition >}}
-
-<!-- INTERACTIVE ignore END -->
 
 **To install Loki locally, follow these steps:**
 
