@@ -130,7 +130,7 @@ func (c Chunks) Iterator(pattern string, from, through, step model.Time) iter.It
 		}
 		iters = append(iters, iter.NewSlice(pattern, samples))
 	}
-	return iter.NewNonOverlappingIterator(pattern, iters)
+	return iter.NewMerge(iters...)
 }
 
 func (c Chunks) samples() []*logproto.PatternSample {
