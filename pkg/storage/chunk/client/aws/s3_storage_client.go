@@ -30,6 +30,7 @@ import (
 	bucket_s3 "github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
+	clientutil "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	storageawscommon "github.com/grafana/loki/v3/pkg/storage/common/aws"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -309,7 +310,6 @@ func (a *S3ObjectClient) ObjectExists(ctx context.Context, objectKey string) (bo
 		_, err := a.S3.HeadObject(headObjectInput)
 		return err
 	})
-
 	if err != nil {
 		return false, err
 	}
@@ -381,10 +381,14 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 }
 
 // PutObject into the store
-func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object io.Reader) error {
 	return loki_instrument.TimeRequest(ctx, "S3.PutObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		readSeeker, err := clientutil.ReadSeeker(object)
+		if err != nil {
+			return err
+		}
 		putObjectInput := &s3.PutObjectInput{
-			Body:         object,
+			Body:         readSeeker,
 			Bucket:       aws.String(a.bucketFromKey(objectKey)),
 			Key:          aws.String(objectKey),
 			StorageClass: aws.String(a.cfg.StorageClass),
@@ -396,7 +400,7 @@ func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object
 			putObjectInput.SSEKMSEncryptionContext = a.sseConfig.KMSEncryptionContext
 		}
 
-		_, err := a.S3.PutObjectWithContext(ctx, putObjectInput)
+		_, err = a.S3.PutObjectWithContext(ctx, putObjectInput)
 		return err
 	})
 }
@@ -405,7 +409,7 @@ func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object
 func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	var storageObjects []client.StorageObject
 	var commonPrefixes []client.StorageCommonPrefix
-	var commonPrefixesSet = make(map[string]bool)
+	commonPrefixesSet := make(map[string]bool)
 
 	for i := range a.bucketNames {
 		err := loki_instrument.TimeRequest(ctx, "S3.List", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {

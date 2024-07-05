@@ -1,6 +1,7 @@
 package ingesterrf1
 
 import (
+	"crypto/rand"
 	"fmt"
 	"net/http"
 	"time"
@@ -9,14 +10,14 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/ring"
-	"github.com/prometheus/client_golang/prometheus"
+	"github.com/grafana/dskit/runutil"
+	"github.com/oklog/ulid"
 	"github.com/prometheus/common/model"
 	"golang.org/x/net/context"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
-	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/wal"
 	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -140,47 +141,16 @@ func (i *Ingester) flushOp(l log.Logger, flushCtx *flushCtx) error {
 // If the flush isn't successful, the operation for this userID is requeued allowing this and all other unflushed
 // segments to have another opportunity to be flushed.
 func (i *Ingester) flushSegment(ctx context.Context, ch *wal.SegmentWriter) error {
-	if err := i.store.PutWal(ctx, ch); err != nil {
+	reader := ch.Reader()
+	defer runutil.CloseWithLogOnErr(util_log.Logger, reader, "flushSegment")
+
+	newUlid := ulid.MustNew(ulid.Timestamp(time.Now()), rand.Reader)
+
+	if err := i.store.PutObject(ctx, fmt.Sprintf("loki-v2/wal/anon/"+newUlid.String()), reader); err != nil {
 		i.metrics.chunksFlushFailures.Inc()
 		return fmt.Errorf("store put chunk: %w", err)
 	}
 	i.metrics.flushedChunksStats.Inc(1)
 	// TODO: report some flush metrics
 	return nil
-}
-
-// reportFlushedChunkStatistics calculate overall statistics of flushed chunks without compromising the flush process.
-func (i *Ingester) reportFlushedChunkStatistics(ch *chunk.Chunk, desc *chunkDesc, sizePerTenant prometheus.Counter, countPerTenant prometheus.Counter, reason string) {
-	byt, err := ch.Encoded()
-	if err != nil {
-		level.Error(i.logger).Log("msg", "failed to encode flushed wire chunk", "err", err)
-		return
-	}
-
-	i.metrics.chunksFlushedPerReason.WithLabelValues(reason).Add(1)
-
-	compressedSize := float64(len(byt))
-	uncompressedSize, ok := chunkenc.UncompressedSize(ch.Data)
-
-	if ok && compressedSize > 0 {
-		i.metrics.chunkCompressionRatio.Observe(float64(uncompressedSize) / compressedSize)
-	}
-
-	utilization := ch.Data.Utilization()
-	i.metrics.chunkUtilization.Observe(utilization)
-	numEntries := desc.chunk.Size()
-	i.metrics.chunkEntries.Observe(float64(numEntries))
-	i.metrics.chunkSize.Observe(compressedSize)
-	sizePerTenant.Add(compressedSize)
-	countPerTenant.Inc()
-
-	boundsFrom, boundsTo := desc.chunk.Bounds()
-	i.metrics.chunkAge.Observe(time.Since(boundsFrom).Seconds())
-	i.metrics.chunkLifespan.Observe(boundsTo.Sub(boundsFrom).Hours())
-
-	i.metrics.flushedChunksBytesStats.Record(compressedSize)
-	i.metrics.flushedChunksLinesStats.Record(float64(numEntries))
-	i.metrics.flushedChunksUtilizationStats.Record(utilization)
-	i.metrics.flushedChunksAgeStats.Record(time.Since(boundsFrom).Seconds())
-	i.metrics.flushedChunksLifespanStats.Record(boundsTo.Sub(boundsFrom).Seconds())
 }

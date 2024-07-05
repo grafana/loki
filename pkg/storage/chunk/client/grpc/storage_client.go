@@ -9,7 +9,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
-	"github.com/grafana/loki/v3/pkg/storage/wal"
 )
 
 type StorageClient struct {
@@ -65,10 +64,6 @@ func (s *StorageClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) err
 	}
 
 	return nil
-}
-
-func (s *StorageClient) PutWal(_ context.Context, _ *wal.SegmentWriter) error {
-	return errors.New("not implemented")
 }
 
 func (s *StorageClient) DeleteChunk(ctx context.Context, _, chunkID string) error {
