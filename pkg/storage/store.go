@@ -229,6 +229,7 @@ func (s *LokiStore) chunkClientForPeriod(p config.PeriodConfig) (client.Client, 
 	if objectStoreType == "" {
 		objectStoreType = p.IndexType
 	}
+
 	var cc congestion.Controller
 	ccCfg := s.cfg.CongestionControl
 
@@ -283,7 +284,13 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 			}, nil
 		}
 
-		objectClient, err := NewObjectClient(component, p.ObjectType, s.cfg, s.clientMetrics, s.registerer)
+		var objectClient client.ObjectClient
+		var err error
+		if s.cfg.ThanosObjStore {
+			objectClient, err = NewObjectClientV2(component, p.ObjectType, s.cfg, s.clientMetrics, s.registerer)
+		} else {
+			objectClient, err = NewObjectClient(p.ObjectType, s.cfg, s.clientMetrics)
+		}
 		if err != nil {
 			return nil, nil, nil, err
 		}

@@ -1365,7 +1365,13 @@ func (t *Loki) initCompactor() (services.Service, error) {
 			continue
 		}
 
-		objectClient, err := storage.NewObjectClient("compactor", periodConfig.ObjectType, t.Cfg.StorageConfig, t.ClientMetrics, prometheus.DefaultRegisterer)
+		var objectClient client.ObjectClient
+		var err error
+		if t.Cfg.StorageConfig.ThanosObjStore {
+			objectClient, err = storage.NewObjectClientV2("compactor", periodConfig.ObjectType, t.Cfg.StorageConfig, t.ClientMetrics, prometheus.DefaultRegisterer)
+		} else {
+			objectClient, err = storage.NewObjectClient(periodConfig.ObjectType, t.Cfg.StorageConfig, t.ClientMetrics)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to create object client: %w", err)
 		}
@@ -1376,7 +1382,12 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	var deleteRequestStoreClient client.ObjectClient
 	if t.Cfg.CompactorConfig.RetentionEnabled {
 		if deleteStore := t.Cfg.CompactorConfig.DeleteRequestStore; deleteStore != "" {
-			if deleteRequestStoreClient, err = storage.NewObjectClient("compactor", deleteStore, t.Cfg.StorageConfig, t.ClientMetrics, prometheus.DefaultRegisterer); err != nil {
+			if t.Cfg.StorageConfig.ThanosObjStore {
+				deleteRequestStoreClient, err = storage.NewObjectClientV2("compactor", deleteStore, t.Cfg.StorageConfig, t.ClientMetrics, prometheus.DefaultRegisterer)
+			} else {
+				deleteRequestStoreClient, err = storage.NewObjectClient(deleteStore, t.Cfg.StorageConfig, t.ClientMetrics)
+			}
+			if err != nil {
 				return nil, fmt.Errorf("failed to create delete request store object client: %w", err)
 			}
 		} else {
@@ -1713,7 +1724,12 @@ func (t *Loki) initAnalytics() (services.Service, error) {
 		return nil, err
 	}
 
-	objectClient, err := storage.NewObjectClient("analytics", period.ObjectType, t.Cfg.StorageConfig, t.ClientMetrics, prometheus.DefaultRegisterer)
+	var objectClient client.ObjectClient
+	if t.Cfg.StorageConfig.ThanosObjStore {
+		objectClient, err = storage.NewObjectClientV2("analytics", period.ObjectType, t.Cfg.StorageConfig, t.ClientMetrics, prometheus.DefaultRegisterer)
+	} else {
+		objectClient, err = storage.NewObjectClient(period.ObjectType, t.Cfg.StorageConfig, t.ClientMetrics)
+	}
 	if err != nil {
 		level.Info(util_log.Logger).Log("msg", "failed to initialize usage report", "err", err)
 		return nil, nil

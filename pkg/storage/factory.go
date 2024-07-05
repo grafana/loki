@@ -404,7 +404,14 @@ func NewIndexClient(component string, periodCfg config.PeriodConfig, tableRange 
 				return client, nil
 			}
 
-			objectClient, err := NewObjectClient(component, periodCfg.ObjectType, cfg, cm, registerer)
+			var objectClient client.ObjectClient
+			var err error
+			if cfg.ThanosObjStore {
+				objectClient, err = NewObjectClientV2(component, periodCfg.ObjectType, cfg, cm, registerer)
+			} else {
+				registerer = prometheus.WrapRegistererWith(prometheus.Labels{"component": component}, registerer)
+				objectClient, err = NewObjectClient(periodCfg.ObjectType, cfg, cm)
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -478,7 +485,13 @@ func NewChunkClient(component, name string, cfg Config, schemaCfg config.SchemaC
 	case util.StringsContain(types.TestingStorageTypes, storeType):
 		switch storeType {
 		case types.StorageTypeInMemory:
-			c, err := NewObjectClient(component, name, cfg, clientMetrics, registerer)
+			var c client.ObjectClient
+			var err error
+			if cfg.ThanosObjStore {
+				c, err = NewObjectClientV2(component, name, cfg, clientMetrics, registerer)
+			} else {
+				c, err = NewObjectClient(name, cfg, clientMetrics)
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -488,21 +501,39 @@ func NewChunkClient(component, name string, cfg Config, schemaCfg config.SchemaC
 	case util.StringsContain(types.SupportedStorageTypes, storeType):
 		switch storeType {
 		case types.StorageTypeFileSystem:
-			c, err := NewObjectClient(component, name, cfg, clientMetrics, registerer)
+			var c client.ObjectClient
+			var err error
+			if cfg.ThanosObjStore {
+				c, err = NewObjectClientV2(component, name, cfg, clientMetrics, registerer)
+			} else {
+				c, err = NewObjectClient(name, cfg, clientMetrics)
+			}
 			if err != nil {
 				return nil, err
 			}
 			return client.NewClientWithMaxParallel(c, client.FSEncoder, cfg.MaxParallelGetChunk, schemaCfg), nil
 
 		case types.StorageTypeAWS, types.StorageTypeS3, types.StorageTypeAzure, types.StorageTypeBOS, types.StorageTypeSwift, types.StorageTypeCOS, types.StorageTypeAlibabaCloud:
-			c, err := NewObjectClient(component, name, cfg, clientMetrics, registerer)
+			var c client.ObjectClient
+			var err error
+			if cfg.ThanosObjStore {
+				c, err = NewObjectClientV2(component, name, cfg, clientMetrics, registerer)
+			} else {
+				c, err = NewObjectClient(name, cfg, clientMetrics)
+			}
 			if err != nil {
 				return nil, err
 			}
 			return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 
 		case types.StorageTypeGCS:
-			c, err := NewObjectClient(component, name, cfg, clientMetrics, registerer)
+			var c client.ObjectClient
+			var err error
+			if cfg.ThanosObjStore {
+				c, err = NewObjectClientV2(component, name, cfg, clientMetrics, registerer)
+			} else {
+				c, err = NewObjectClient(name, cfg, clientMetrics)
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -552,7 +583,13 @@ func NewTableClient(component, name string, periodCfg config.PeriodConfig, cfg C
 		}
 
 	case util.StringsContain(types.SupportedIndexTypes, name):
-		objectClient, err := NewObjectClient(component, periodCfg.ObjectType, cfg, cm, registerer)
+		var objectClient client.ObjectClient
+		var err error
+		if cfg.ThanosObjStore {
+			objectClient, err = NewObjectClientV2(component, periodCfg.ObjectType, cfg, cm, registerer)
+		} else {
+			objectClient, err = NewObjectClient(periodCfg.ObjectType, cfg, cm)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -607,7 +644,22 @@ func (c *ClientMetrics) Unregister() {
 }
 
 // NewObjectClient makes a new StorageClient with the prefix in the front.
-func NewObjectClient(component, name string, cfg Config, clientMetrics ClientMetrics, reg prometheus.Registerer) (client.ObjectClient, error) {
+func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
+	actual, err := internalNewObjectClient("", name, cfg, clientMetrics, prometheus.DefaultRegisterer)
+	if err != nil {
+		return nil, err
+	}
+
+	if cfg.ObjectPrefix == "" {
+		return actual, nil
+	} else {
+		prefix := strings.Trim(cfg.ObjectPrefix, "/") + "/"
+		return client.NewPrefixedObjectClient(actual, prefix), nil
+	}
+}
+
+// NewObjectClient makes a new StorageClient with the prefix in the front.
+func NewObjectClientV2(component, name string, cfg Config, clientMetrics ClientMetrics, reg prometheus.Registerer) (client.ObjectClient, error) {
 	actual, err := internalNewObjectClient(component, name, cfg, clientMetrics, reg)
 	if err != nil {
 		return nil, err
@@ -627,11 +679,6 @@ func internalNewObjectClient(component, name string, cfg Config, clientMetrics C
 		namedStore string
 		storeType  = name
 	)
-
-	// preserve olf reg behaviour
-	if !cfg.ThanosObjStore {
-		reg = prometheus.WrapRegistererWith(prometheus.Labels{"component": component}, reg)
-	}
 
 	// lookup storeType for named stores
 	if nsType, ok := cfg.NamedStores.storeType[name]; ok {

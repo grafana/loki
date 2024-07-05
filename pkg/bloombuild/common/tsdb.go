@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	baseStore "github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
@@ -191,8 +192,13 @@ func NewTSDBStores(
 
 	for i, cfg := range schemaCfg.Configs {
 		if cfg.IndexType == types.TSDBType {
-
-			c, err := baseStore.NewObjectClient(component, cfg.ObjectType, storeCfg, clientMetrics, reg)
+			var c client.ObjectClient
+			var err error
+			if storeCfg.ThanosObjStore {
+				c, err = baseStore.NewObjectClientV2(component, cfg.ObjectType, storeCfg, clientMetrics, reg)
+			} else {
+				c, err = baseStore.NewObjectClient(cfg.ObjectType, storeCfg, clientMetrics)
+			}
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to create object client")
 			}

@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/loki"
 	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
@@ -98,7 +99,13 @@ func main() {
 }
 
 func migrateTables(pCfg config.PeriodConfig, storageCfg storage.Config, clientMetrics storage.ClientMetrics, tableRange config.TableRange) error {
-	objClient, err := storage.NewObjectClient("tables-migration-tool", pCfg.ObjectType, storageCfg, clientMetrics, prometheus.DefaultRegisterer)
+	var objClient client.ObjectClient
+	var err error
+	if storageCfg.ThanosObjStore {
+		objClient, err = storage.NewObjectClientV2("tables-migration-tool", pCfg.ObjectType, storageCfg, clientMetrics, prometheus.DefaultRegisterer)
+	} else {
+		objClient, err = storage.NewObjectClient(pCfg.ObjectType, storageCfg, clientMetrics)
+	}
 	if err != nil {
 		return err
 	}

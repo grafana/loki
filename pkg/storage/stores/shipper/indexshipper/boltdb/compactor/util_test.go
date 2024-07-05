@@ -10,7 +10,6 @@ import (
 
 	ww "github.com/grafana/dskit/server"
 	"github.com/grafana/dskit/user"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -129,11 +128,11 @@ type testObjectClient struct {
 }
 
 func newTestObjectClient(path string, clientMetrics storage.ClientMetrics) client.ObjectClient {
-	c, err := storage.NewObjectClient("compactor", "filesystem", storage.Config{
+	c, err := storage.NewObjectClient("filesystem", storage.Config{
 		FSConfig: local.FSConfig{
 			Directory: path,
 		},
-	}, clientMetrics, prometheus.NewRegistry())
+	}, clientMetrics)
 	if err != nil {
 		panic(err)
 	}

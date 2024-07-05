@@ -6,6 +6,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -24,7 +25,12 @@ func main() {
 	periodCfg, tableRange, tableName, err := helpers.GetPeriodConfigForTableNumber(bucket, conf.SchemaConfig.Configs)
 	helpers.ExitErr("find period config for bucket", err)
 
-	objectClient, err := storage.NewObjectClient("index-analyzer", periodCfg.ObjectType, conf.StorageConfig, clientMetrics, prometheus.DefaultRegisterer)
+	var objectClient client.ObjectClient
+	if conf.StorageConfig.ThanosObjStore {
+		objectClient, err = storage.NewObjectClientV2("index-analyzer", periodCfg.ObjectType, conf.StorageConfig, clientMetrics, prometheus.DefaultRegisterer)
+	} else {
+		objectClient, err = storage.NewObjectClient(periodCfg.ObjectType, conf.StorageConfig, clientMetrics)
+	}
 	helpers.ExitErr("creating object client", err)
 
 	shipper, err := indexshipper.NewIndexShipper(
