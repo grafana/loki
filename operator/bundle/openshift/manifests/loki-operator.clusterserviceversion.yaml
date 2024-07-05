@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: quay.io/openshift-logging/loki-operator:0.1.0
-    createdAt: "2024-07-02T16:13:54Z"
+    createdAt: "2024-07-05T08:22:23Z"
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
@@ -1717,7 +1717,7 @@ spec:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI
-                  value: quay.io/openshift-logging/loki:v2.9.8
+                  value: quay.io/openshift-logging/loki:v3.1.0
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
@@ -1841,7 +1841,7 @@ spec:
   provider:
     name: Red Hat
   relatedImages:
-  - image: quay.io/openshift-logging/loki:v2.9.8
+  - image: quay.io/openshift-logging/loki:v3.1.0
     name: loki
   - image: quay.io/observatorium/api:latest
     name: gateway
