@@ -17,7 +17,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/clientpool"
-	"github.com/grafana/loki/v3/pkg/ingester-rf1/store"
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/objstore"
 	"github.com/grafana/loki/v3/pkg/ingester/index"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/storage"
@@ -257,7 +257,7 @@ func New(cfg Config, clientConfig client.Config,
 	logger log.Logger,
 	customStreamsTracker push.UsageTracker, readRing ring.ReadRing,
 ) (*Ingester, error) {
-	storage, err := store.NewMulti(periodConfigs, storageConfig, clientMetrics, registerer, logger)
+	storage, err := objstore.New(periodConfigs, storageConfig, clientMetrics)
 	if err != nil {
 		return nil, err
 	}
@@ -298,7 +298,6 @@ func New(cfg Config, clientConfig client.Config,
 			segmentWriter:   segmentWriter,
 		},
 	}
-	// i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 
 	// TODO: change flush on shutdown
 	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester-rf1", "ingester-rf1-ring", true, logger, prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", registerer))

@@ -1,4 +1,4 @@
-package store
+package objstore
 
 import (
 	"context"
@@ -6,8 +6,6 @@ import (
 	"io"
 	"sort"
 
-	"github.com/go-kit/log"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/storage"
@@ -18,7 +16,6 @@ import (
 type Multi struct {
 	stores        []*storeEntry
 	storageConfig storage.Config
-	logger        log.Logger
 }
 
 type storeEntry struct {
@@ -29,16 +26,13 @@ type storeEntry struct {
 
 var _ client.ObjectClient = (*Multi)(nil)
 
-func NewMulti(
+func New(
 	periodicConfigs []config.PeriodConfig,
 	storageConfig storage.Config,
 	clientMetrics storage.ClientMetrics,
-	reg prometheus.Registerer,
-	logger log.Logger,
 ) (*Multi, error) {
 	store := &Multi{
 		storageConfig: storageConfig,
-		logger:        logger,
 	}
 	// sort by From time
 	sort.Slice(periodicConfigs, func(i, j int) bool {
@@ -116,16 +110,16 @@ func (m *Multi) DeleteObject(ctx context.Context, objectKey string) error {
 }
 
 func (m *Multi) IsObjectNotFoundErr(err error) bool {
-	s, err := m.GetStoreFor(model.Now())
-	if err != nil {
+	s, _ := m.GetStoreFor(model.Now())
+	if s == nil {
 		return false
 	}
 	return s.IsObjectNotFoundErr(err)
 }
 
 func (m *Multi) IsRetryableErr(err error) bool {
-	s, err := m.GetStoreFor(model.Now())
-	if err != nil {
+	s, _ := m.GetStoreFor(model.Now())
+	if s == nil {
 		return false
 	}
 	return s.IsRetryableErr(err)
