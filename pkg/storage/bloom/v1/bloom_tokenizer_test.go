@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/iter"
+	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 
@@ -120,8 +121,8 @@ func TestTokenizerPopulate(t *testing.T) {
 
 	blooms, err := populateAndConsumeBloom(
 		bt,
-		NewSliceIter([]*Bloom{&bloom}),
-		NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{},
+		v2.NewSliceIter([]*Bloom{&bloom}),
+		v2.NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{},
 			Itr: itr}}),
 	)
 	require.NoError(t, err)
@@ -155,8 +156,8 @@ func TestBloomTokenizerPopulateWithoutPreexistingBloom(t *testing.T) {
 
 	blooms, err := populateAndConsumeBloom(
 		bt,
-		NewEmptyIter[*Bloom](),
-		NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{},
+		v2.NewEmptyIter[*Bloom](),
+		v2.NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{},
 			Itr: itr}}),
 	)
 	require.NoError(t, err)
@@ -211,12 +212,12 @@ func TestTokenizerPopulateWontExceedMaxSize(t *testing.T) {
 	itr, err := chunkRefItrFromLines(line)
 	require.NoError(t, err)
 	go bt.Populate(
-		NewSliceIter([]*Bloom{
+		v2.NewSliceIter([]*Bloom{
 			{
 				*filter.NewScalableBloomFilter(1024, 0.01, 0.8),
 			},
 		}),
-		NewSliceIter([]ChunkRefWithIter{
+		v2.NewSliceIter([]ChunkRefWithIter{
 			{
 				Ref: ChunkRef{},
 				Itr: itr,
@@ -237,8 +238,8 @@ func TestTokenizerPopulateWontExceedMaxSize(t *testing.T) {
 
 func populateAndConsumeBloom(
 	bt *BloomTokenizer,
-	blooms SizedIterator[*Bloom],
-	chks Iterator[ChunkRefWithIter],
+	blooms v2.SizedIterator[*Bloom],
+	chks v2.Iterator[ChunkRefWithIter],
 ) (res []*Bloom, err error) {
 	var e multierror.MultiError
 	ch := make(chan *BloomCreation)
@@ -280,8 +281,8 @@ func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 
 		_, err = populateAndConsumeBloom(
 			bt,
-			NewSliceIter([]*Bloom{&bloom}),
-			NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{},
+			v2.NewSliceIter([]*Bloom{&bloom}),
+			v2.NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{},
 				Itr: itr}}),
 		)
 		require.NoError(b, err)
@@ -298,8 +299,8 @@ func TestTokenizerClearsCacheBetweenPopulateCalls(t *testing.T) {
 		itr, err := chunkRefItrFromLines(line)
 		require.NoError(t, err)
 		go bt.Populate(
-			NewEmptyIter[*Bloom](),
-			NewSliceIter([]ChunkRefWithIter{
+			v2.NewEmptyIter[*Bloom](),
+			v2.NewSliceIter([]ChunkRefWithIter{
 				{
 					Ref: ChunkRef{},
 					Itr: itr,

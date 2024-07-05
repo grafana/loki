@@ -133,7 +133,7 @@ func (r *batchRangeVectorIterator) Close() error {
 }
 
 func (r *batchRangeVectorIterator) Error() error {
-	return r.iter.Error()
+	return r.iter.Err()
 }
 
 // popBack removes all entries out of the current window from the back.
@@ -552,7 +552,7 @@ func (r *streamRangeVectorIterator) Close() error {
 }
 
 func (r *streamRangeVectorIterator) Error() error {
-	return r.iter.Error()
+	return r.iter.Err()
 }
 
 // load the next sample range window.
