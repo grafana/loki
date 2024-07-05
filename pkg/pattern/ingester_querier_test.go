@@ -255,7 +255,7 @@ func (f *fakeRing) Get(
 }
 
 func (f *fakeRing) GetAllHealthy(_ ring.Operation) (ring.ReplicationSet, error) {
-	panic("not implemented")
+	return ring.ReplicationSet{}, nil
 }
 
 func (f *fakeRing) GetReplicationSetForOperation(_ ring.Operation) (ring.ReplicationSet, error) {
