@@ -22,17 +22,20 @@ The loki chart supports three methods of deployment:
 - [Simple Scalable]({{< relref "./install-scalable" >}})
 - [Microservice]({{< relref "./install-microservices" >}})
 
-By default, the chart installs the simple scalable method. This is the recommended method for most users. To understand the differences between deployment methods, see the [Loki deployment modes]({{< relref "../../../get-started/deployment-modes/" >}}) documentation.
+By default, the chart installs [Simple Scalable]({{< relref "./install-scalable" >}}). This is the recommended method for most users. To understand the differences between deployment methods, see the [Loki deployment modes]({{< relref "../../../get-started/deployment-modes/" >}}) documentation.
 
-## Monitoring
+## Monitoring Loki
 
 The Loki Helm chart does not deploy monitoring by default. Loki clusters can be monitored using the meta monitoring stack, which monitors, the logs, metrics, and traces of the Loki cluster. There are two deployment options for this stack see the installation instructions within [Monitoring]({{< relref "./monitor-and-alert" >}})
 
+{{< admonition type="warning" >}}
+The meta monitoring stack replaces the monitoring section of the Loki helm chart which is now **DEPRECATED**. See the [Monitoring]({{< relref "./monitor-and-alert" >}}) section for more information.
+{{< /admonition >}}
 
 
 ## Canary
 
-This chart installs the [canary]({{< relref "../../../operations/loki-canary" >}}) and its alerts by default. This is another tool to verify the Loki deployment is in a healthy state. It can be disabled with `monitoring.lokiCanary.enabled=false`.
+This chart installs the [canary app]({{< relref "../../../operations/loki-canary" >}}) by default. This is another tool to verify the Loki deployment is in a healthy state. It can be disabled with `lokiCanary.enabled=false`.
 
 ## Gateway
 
@@ -45,4 +48,4 @@ If NetworkPolicies are enabled, they are more restrictive if the gateway is enab
 
 ## Caching
 
-By default, this chart configures in-memory caching. If that caching does not work for your deployment, you should setup memcache.
+By default, this chart configures in-memory caching. If that caching does not work for your deployment, you should setup [memcache]({{< relref "../../../operations/caching/" >}}).
