@@ -1697,3 +1697,54 @@ func BenchmarkQuerierDetectedLabels(b *testing.B) {
 		assert.NoError(b, err)
 	}
 }
+
+func TestQuerier_DetectedFields(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	conf := mockQuerierConfig()
+	conf.IngesterQueryStoreMaxLookback = 0
+
+	request := logproto.DetectedFieldsRequest{
+		Start:      time.Now().Add(-1 * time.Minute),
+		End:        time.Now(),
+		Query:      `{type="test"}`,
+		LineLimit:  1000,
+		FieldLimit: 1000,
+	}
+
+	t.Run("returns detected fields from queried logs", func(t *testing.T) {
+		store := newStoreMock()
+		store.On("SelectLogs", mock.Anything, mock.Anything).
+			Return(mockLogfmtStreamIterator(1, 2), nil)
+
+		queryClient := newQueryClientMock()
+		queryClient.On("Recv").
+			Return(mockQueryResponse([]logproto.Stream{mockLogfmtStream(1, 2)}), nil)
+
+		ingesterClient := newQuerierClientMock()
+		ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).
+			Return(queryClient, nil)
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			store, limits)
+		require.NoError(t, err)
+
+		resp, err := querier.DetectedFields(ctx, &request)
+		require.NoError(t, err)
+
+		detectedFields := resp.Fields
+		assert.Len(t, detectedFields, 3)
+		expectedCardinality := map[string]uint64{"message": 2, "count": 2, "fake": 1}
+		for _, d := range detectedFields {
+			card := expectedCardinality[d.Label]
+			assert.Equal(t, card, d.Cardinality, "Expected cardinality mismatch for: %s", d.Label)
+		}
+	})
+}
