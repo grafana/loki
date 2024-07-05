@@ -147,7 +147,7 @@ func DefaultConfig() *Config {
 	}
 }
 
-func New(config *Config, metrics *Metrics) *Drain {
+func New(config *Config, format string, metrics *Metrics) *Drain {
 	if config.LogClusterDepth < 3 {
 		panic("depth argument must be at least 3")
 	}
@@ -156,14 +156,24 @@ func New(config *Config, metrics *Metrics) *Drain {
 	if metrics != nil {
 		evictFn = func(int, *LogCluster) { metrics.PatternsEvictedTotal.Inc() }
 	}
+	var tokenizer LineTokenizer
+	switch format {
+	case FormatJSON:
+		tokenizer = newJSONTokenizer(config.ParamString)
+	case FormatLogfmt:
+		tokenizer = newLogfmtTokenizer(config.ParamString)
+	default:
+		tokenizer = newPunctuationTokenizer()
+	}
 
 	d := &Drain{
 		config:               config,
 		rootNode:             createNode(),
 		idToCluster:          createLogClusterCache(config.MaxClusters, evictFn),
 		metrics:              metrics,
-		tokenizer:            newPunctuationTokenizer(),
+		tokenizer:            tokenizer,
 		maxAllowedLineLength: 3000,
+		format:               format,
 	}
 	return d
 }
@@ -176,6 +186,9 @@ type Drain struct {
 	metrics              *Metrics
 	tokenizer            LineTokenizer
 	maxAllowedLineLength int
+	format               string
+	tokens               []string
+	state                interface{}
 }
 
 func (d *Drain) Clusters() []*LogCluster {
@@ -190,19 +203,26 @@ func (d *Drain) Train(content string, ts int64) *LogCluster {
 	if len(content) > d.maxAllowedLineLength {
 		return nil
 	}
-	tokens, state := d.tokenizer.Tokenize(content)
-	return d.train(tokens, state, ts)
+	d.tokens, d.state = d.tokenizer.Tokenize(content, d.tokens, d.state)
+	return d.train(d.tokens, d.state, ts)
 }
 
 func (d *Drain) train(tokens []string, state interface{}, ts int64) *LogCluster {
 	if len(tokens) < 4 {
 		return nil
 	}
+	if d.metrics != nil {
+		d.metrics.TokensPerLine.Observe(float64(len(tokens)))
+		if stateInts, ok := state.([]int); ok {
+			d.metrics.StatePerLine.Observe(float64(len(stateInts)))
+		}
+	}
 	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, false)
 	// Match no existing log cluster
 	if matchCluster == nil {
 		d.clustersCounter++
 		clusterID := d.clustersCounter
+		tokens, state = d.tokenizer.Clone(tokens, state)
 		matchCluster = &LogCluster{
 			Tokens:     tokens,
 			TokenState: state,
@@ -218,8 +238,7 @@ func (d *Drain) train(tokens []string, state interface{}, ts int64) *LogCluster 
 			d.metrics.PatternsDetectedTotal.Inc()
 		}
 	} else {
-		newTemplateTokens := d.createTemplate(tokens, matchCluster.Tokens)
-		matchCluster.Tokens = newTemplateTokens
+		matchCluster.Tokens = d.createTemplate(tokens, matchCluster.Tokens)
 		matchCluster.append(model.TimeFromUnixNano(ts))
 		// Touch cluster to update its state in the cache.
 		d.idToCluster.Get(matchCluster.id)
@@ -228,12 +247,13 @@ func (d *Drain) train(tokens []string, state interface{}, ts int64) *LogCluster 
 }
 
 func (d *Drain) TrainPattern(content string, samples []*logproto.PatternSample) *LogCluster {
-	tokens, state := d.tokenizer.Tokenize(content)
+	tokens, state := d.tokenizer.Tokenize(content, d.tokens, d.state)
 	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, true)
 	// Match no existing log cluster
 	if matchCluster == nil {
 		d.clustersCounter++
 		clusterID := d.clustersCounter
+		tokens, state = d.tokenizer.Clone(tokens, state)
 		matchCluster = &LogCluster{
 			Tokens:     tokens,
 			TokenState: state,
@@ -242,8 +262,7 @@ func (d *Drain) TrainPattern(content string, samples []*logproto.PatternSample) 
 		d.idToCluster.Set(clusterID, matchCluster)
 		d.addSeqToPrefixTree(d.rootNode, matchCluster)
 	} else {
-		newTemplateTokens := d.createTemplate(tokens, matchCluster.Tokens)
-		matchCluster.Tokens = newTemplateTokens
+		matchCluster.Tokens = d.createTemplate(tokens, matchCluster.Tokens)
 		// Touch cluster to update its state in the cache.
 		d.idToCluster.Get(matchCluster.id)
 	}
@@ -273,7 +292,7 @@ func deduplicatePlaceholders(line string, placeholder string) string {
 	}
 	builder = append(builder, line[low:]...)
 
-	return unsafe.String(unsafe.SliceData(builder), len(builder))
+	return unsafeString(builder)
 }
 
 func (d *Drain) PatternString(c *LogCluster) string {
@@ -307,13 +326,6 @@ func (d *Drain) pruneTree(node *Node) int {
 
 func (d *Drain) Delete(cluster *LogCluster) {
 	d.idToCluster.cache.Remove(cluster.id)
-}
-
-// Match against an already existing cluster. Match shall be perfect (sim_th=1.0). New cluster will not be created as a result of this call, nor any cluster modifications.
-func (d *Drain) Match(content string) *LogCluster {
-	contentTokens, _ := d.tokenizer.Tokenize(content)
-	matchCluster := d.treeSearch(d.rootNode, contentTokens, 1.0, true)
-	return matchCluster
 }
 
 func (d *Drain) treeSearch(rootNode *Node, tokens []string, simTh float64, includeParams bool) *LogCluster {
@@ -507,12 +519,18 @@ func (d *Drain) createTemplate(tokens, matchClusterTokens []string) []string {
 	if len(tokens) != len(matchClusterTokens) {
 		panic("seq1 seq2 be of same length")
 	}
-	retVal := make([]string, len(matchClusterTokens))
-	copy(retVal, matchClusterTokens)
 	for i := range tokens {
 		if tokens[i] != matchClusterTokens[i] {
-			retVal[i] = d.config.ParamString
+			matchClusterTokens[i] = d.config.ParamString
 		}
 	}
-	return retVal
+	return matchClusterTokens
+}
+
+func unsafeString(s []byte) string {
+	return unsafe.String(unsafe.SliceData(s), len(s))
+}
+
+func unsafeBytes(s string) []byte {
+	return unsafe.Slice(unsafe.StringData(s), len(s))
 }

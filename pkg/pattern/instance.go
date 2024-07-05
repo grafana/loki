@@ -17,11 +17,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/pattern/chunk"
+	"github.com/grafana/loki/v3/pkg/pattern/drain"
 	"github.com/grafana/loki/v3/pkg/pattern/metric"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 
-	loki_iter "github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/iter"
 	pattern_iter "github.com/grafana/loki/v3/pkg/pattern/iter"
 )
 
@@ -65,6 +66,9 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	appendErr := multierror.New()
 
 	for _, reqStream := range req.Streams {
+		if reqStream.Entries == nil || len(reqStream.Entries) == 0 {
+			continue
+		}
 		s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
 			func() (*stream, error) {
 				// add stream
@@ -114,10 +118,10 @@ func (i *instance) QuerySample(
 	ctx context.Context,
 	expr syntax.SampleExpr,
 	req *logproto.QuerySamplesRequest,
-) (loki_iter.SampleIterator, error) {
+) (iter.SampleIterator, error) {
 	if !i.aggregationCfg.Enabled {
 		// Should never get here, but this will prevent nil pointer panics in test
-		return loki_iter.NoopIterator, nil
+		return iter.NoopSampleIterator, nil
 	}
 
 	from, through := util.RoundToMilliseconds(req.Start, req.End)
@@ -131,11 +135,11 @@ func (i *instance) QuerySample(
 		return nil, err
 	}
 
-	var iters []loki_iter.SampleIterator
+	var iters []iter.SampleIterator
 	err = i.forMatchingStreams(
 		selector.Matchers(),
 		func(stream *stream) error {
-			var iter loki_iter.SampleIterator
+			var iter iter.SampleIterator
 			var err error
 			iter, err = stream.SampleIterator(ctx, expr, from, through, step)
 			if err != nil {
@@ -208,7 +212,8 @@ func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream
 	}
 	fp := i.getHashForLabels(labels)
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
-	s, err := newStream(fp, sortedLabels, i.metrics, i.chunkMetrics, i.aggregationCfg, i.logger)
+	firstEntryLine := pushReqStream.Entries[0].Line
+	s, err := newStream(fp, sortedLabels, i.metrics, i.chunkMetrics, i.aggregationCfg, i.logger, drain.DetectLogFormat(firstEntryLine), i.instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}

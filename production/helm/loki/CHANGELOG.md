@@ -17,6 +17,9 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [BUGFIX] Rename Gatway port name to avoid beeing scraped by the ServiceMonitor #13350
 - [CHANGE] Changed `gateway.readinessProbe.httpGet.port` from `http-metrics` to `metrics` #13350
+## 6.6.5
+
+- [BUGFIX] Fix querier address in SingleBinary mode
 
 ## 6.6.4
 
