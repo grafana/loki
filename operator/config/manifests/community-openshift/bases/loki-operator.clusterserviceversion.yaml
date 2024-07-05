@@ -274,6 +274,65 @@ spec:
         path: limits.global.ingestion.perStreamRateLimitBurst
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: RessourceAttributes contains the configuration for resource attributes
+          to store them as index labels or Structured Metadata or drop them altogether.
+        displayName: Action
+        path: limits.global.openTelemetry.indexedResourceAttributes
+      - description: RessourceAttributes contains the configuration for log attributes
+          to store them as index labels or Structured Metadata or drop them altogether.
+        displayName: Action
+        path: limits.global.openTelemetry.logAttributes
+      - description: Action defines the indexing action for the selected attributes.
+        displayName: Action
+        path: limits.global.openTelemetry.logAttributes[0].action
+      - description: Attributes is the list of attributes to configure indexing or
+          drop them altogether.
+        displayName: Action
+        path: limits.global.openTelemetry.logAttributes[0].attributes
+      - description: Regex to choose attributes to configure indexing or drop them
+          altogether.
+        displayName: Action
+        path: limits.global.openTelemetry.logAttributes[0].regex
+      - description: RessourceAttributes contains the configuration for resource attributes
+          to store them as index labels or Structured Metadata or drop them altogether.
+        displayName: Action
+        path: limits.global.openTelemetry.resourceAttributes
+      - description: Attributes contains the configuration for resource attributes
+          to store them as index labels or Structured Metadata or drop them altogether.
+        displayName: Action
+        path: limits.global.openTelemetry.resourceAttributes.attributes
+      - description: Action defines the indexing action for the selected attributes.
+        displayName: Action
+        path: limits.global.openTelemetry.resourceAttributes.attributes[0].action
+      - description: Attributes is the list of attributes to configure indexing or
+          drop them altogether.
+        displayName: Action
+        path: limits.global.openTelemetry.resourceAttributes.attributes[0].attributes
+      - description: Regex to choose attributes to configure indexing or drop them
+          altogether.
+        displayName: Action
+        path: limits.global.openTelemetry.resourceAttributes.attributes[0].regex
+      - description: IgnoreDefaults whether to ignore the default global list of resource
+          attributes indexed as labels.
+        displayName: Ignore Global Defaults
+        path: limits.global.openTelemetry.resourceAttributes.ignoreDefaults
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - description: RessourceAttributes contains the configuration for scope attributes
+          to store them as index labels or Structured Metadata or drop them altogether.
+        displayName: Action
+        path: limits.global.openTelemetry.scopeAttributes
+      - description: Action defines the indexing action for the selected attributes.
+        displayName: Action
+        path: limits.global.openTelemetry.scopeAttributes[0].action
+      - description: Attributes is the list of attributes to configure indexing or
+          drop them altogether.
+        displayName: Action
+        path: limits.global.openTelemetry.scopeAttributes[0].attributes
+      - description: Regex to choose attributes to configure indexing or drop them
+          altogether.
+        displayName: Action
+        path: limits.global.openTelemetry.scopeAttributes[0].regex
       - description: CardinalityLimit defines the cardinality limit for index queries.
         displayName: Cardinality Limit
         path: limits.global.queries.cardinalityLimit
@@ -370,6 +429,61 @@ spec:
         path: limits.tenants.ingestion.perStreamRateLimitBurst
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: RessourceAttributes contains the configuration for log attributes
+          to store them as index labels or Structured Metadata or drop them altogether.
+        displayName: Action
+        path: limits.tenants.openTelemetry.logAttributes
+      - description: Action defines the indexing action for the selected attributes.
+        displayName: Action
+        path: limits.tenants.openTelemetry.logAttributes[0].action
+      - description: Attributes is the list of attributes to configure indexing or
+          drop them altogether.
+        displayName: Action
+        path: limits.tenants.openTelemetry.logAttributes[0].attributes
+      - description: Regex to choose attributes to configure indexing or drop them
+          altogether.
+        displayName: Action
+        path: limits.tenants.openTelemetry.logAttributes[0].regex
+      - description: RessourceAttributes contains the configuration for resource attributes
+          to store them as index labels or Structured Metadata or drop them altogether.
+        displayName: Action
+        path: limits.tenants.openTelemetry.resourceAttributes
+      - description: Attributes contains the configuration for resource attributes
+          to store them as index labels or Structured Metadata or drop them altogether.
+        displayName: Action
+        path: limits.tenants.openTelemetry.resourceAttributes.attributes
+      - description: Action defines the indexing action for the selected attributes.
+        displayName: Action
+        path: limits.tenants.openTelemetry.resourceAttributes.attributes[0].action
+      - description: Attributes is the list of attributes to configure indexing or
+          drop them altogether.
+        displayName: Action
+        path: limits.tenants.openTelemetry.resourceAttributes.attributes[0].attributes
+      - description: Regex to choose attributes to configure indexing or drop them
+          altogether.
+        displayName: Action
+        path: limits.tenants.openTelemetry.resourceAttributes.attributes[0].regex
+      - description: IgnoreDefaults whether to ignore the default global list of resource
+          attributes indexed as labels.
+        displayName: Ignore Global Defaults
+        path: limits.tenants.openTelemetry.resourceAttributes.ignoreDefaults
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - description: RessourceAttributes contains the configuration for scope attributes
+          to store them as index labels or Structured Metadata or drop them altogether.
+        displayName: Action
+        path: limits.tenants.openTelemetry.scopeAttributes
+      - description: Action defines the indexing action for the selected attributes.
+        displayName: Action
+        path: limits.tenants.openTelemetry.scopeAttributes[0].action
+      - description: Attributes is the list of attributes to configure indexing or
+          drop them altogether.
+        displayName: Action
+        path: limits.tenants.openTelemetry.scopeAttributes[0].attributes
+      - description: Regex to choose attributes to configure indexing or drop them
+          altogether.
+        displayName: Action
+        path: limits.tenants.openTelemetry.scopeAttributes[0].regex
       - description: Blocked defines the list of rules to block matching queries.
         displayName: Blocked
         path: limits.tenants.queries.blocked

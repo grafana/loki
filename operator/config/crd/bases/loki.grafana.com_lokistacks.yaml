@@ -146,6 +146,124 @@ spec:
                             format: int32
                             type: integer
                         type: object
+                      openTelemetry:
+                        description: |-
+                          OpenTelemetry to configure which resource, scope and log attributes
+                          to store as labels or structured metadata or drop them altogether
+                          for all tenants.
+                        properties:
+                          indexedResourceAttributes:
+                            description: |-
+                              RessourceAttributes contains the configuration for resource attributes
+                              to store them as index labels or Structured Metadata or drop them altogether.
+                            items:
+                              type: string
+                            type: array
+                          logAttributes:
+                            description: |-
+                              RessourceAttributes contains the configuration for log attributes
+                              to store them as index labels or Structured Metadata or drop them altogether.
+                            items:
+                              description: |-
+                                OTLPAttributesSpec contains the configuration for a set of attributes
+                                to store them as index labels or Structured Metadata or drop them altogether.
+                              properties:
+                                action:
+                                  description: Action defines the indexing action
+                                    for the selected attributes.
+                                  enum:
+                                  - index_label
+                                  - structured_metadata
+                                  - drop
+                                  type: string
+                                attributes:
+                                  description: |-
+                                    Attributes is the list of attributes to configure indexing or drop them
+                                    altogether.
+                                  items:
+                                    type: string
+                                  type: array
+                                regex:
+                                  description: |-
+                                    Regex to choose attributes to configure indexing or drop them
+                                    altogether.
+                                  type: string
+                              type: object
+                            type: array
+                          resourceAttributes:
+                            description: |-
+                              RessourceAttributes contains the configuration for resource attributes
+                              to store them as index labels or Structured Metadata or drop them altogether.
+                            properties:
+                              attributes:
+                                description: |-
+                                  Attributes contains the configuration for resource attributes
+                                  to store them as index labels or Structured Metadata or drop them altogether.
+                                items:
+                                  description: |-
+                                    OTLPAttributesSpec contains the configuration for a set of attributes
+                                    to store them as index labels or Structured Metadata or drop them altogether.
+                                  properties:
+                                    action:
+                                      description: Action defines the indexing action
+                                        for the selected attributes.
+                                      enum:
+                                      - index_label
+                                      - structured_metadata
+                                      - drop
+                                      type: string
+                                    attributes:
+                                      description: |-
+                                        Attributes is the list of attributes to configure indexing or drop them
+                                        altogether.
+                                      items:
+                                        type: string
+                                      type: array
+                                    regex:
+                                      description: |-
+                                        Regex to choose attributes to configure indexing or drop them
+                                        altogether.
+                                      type: string
+                                  type: object
+                                type: array
+                              ignoreDefaults:
+                                description: |-
+                                  IgnoreDefaults whether to ignore the default global list of resource attributes
+                                  indexed as labels.
+                                type: boolean
+                            type: object
+                          scopeAttributes:
+                            description: |-
+                              RessourceAttributes contains the configuration for scope attributes
+                              to store them as index labels or Structured Metadata or drop them altogether.
+                            items:
+                              description: |-
+                                OTLPAttributesSpec contains the configuration for a set of attributes
+                                to store them as index labels or Structured Metadata or drop them altogether.
+                              properties:
+                                action:
+                                  description: Action defines the indexing action
+                                    for the selected attributes.
+                                  enum:
+                                  - index_label
+                                  - structured_metadata
+                                  - drop
+                                  type: string
+                                attributes:
+                                  description: |-
+                                    Attributes is the list of attributes to configure indexing or drop them
+                                    altogether.
+                                  items:
+                                    type: string
+                                  type: array
+                                regex:
+                                  description: |-
+                                    Regex to choose attributes to configure indexing or drop them
+                                    altogether.
+                                  type: string
+                              type: object
+                            type: array
+                        type: object
                       queries:
                         description: QueryLimits defines the limit applied on querying
                           log streams.
@@ -288,6 +406,117 @@ spec:
                                 burst bytes per stream. Units MB.
                               format: int32
                               type: integer
+                          type: object
+                        openTelemetry:
+                          description: |-
+                            OpenTelemetry to configure which resource, scope and log attributes
+                            to store as labels or structured metadata or drop them altogether
+                            for a single tenants.
+                          properties:
+                            logAttributes:
+                              description: |-
+                                RessourceAttributes contains the configuration for log attributes
+                                to store them as index labels or Structured Metadata or drop them altogether.
+                              items:
+                                description: |-
+                                  OTLPAttributesSpec contains the configuration for a set of attributes
+                                  to store them as index labels or Structured Metadata or drop them altogether.
+                                properties:
+                                  action:
+                                    description: Action defines the indexing action
+                                      for the selected attributes.
+                                    enum:
+                                    - index_label
+                                    - structured_metadata
+                                    - drop
+                                    type: string
+                                  attributes:
+                                    description: |-
+                                      Attributes is the list of attributes to configure indexing or drop them
+                                      altogether.
+                                    items:
+                                      type: string
+                                    type: array
+                                  regex:
+                                    description: |-
+                                      Regex to choose attributes to configure indexing or drop them
+                                      altogether.
+                                    type: string
+                                type: object
+                              type: array
+                            resourceAttributes:
+                              description: |-
+                                RessourceAttributes contains the configuration for resource attributes
+                                to store them as index labels or Structured Metadata or drop them altogether.
+                              properties:
+                                attributes:
+                                  description: |-
+                                    Attributes contains the configuration for resource attributes
+                                    to store them as index labels or Structured Metadata or drop them altogether.
+                                  items:
+                                    description: |-
+                                      OTLPAttributesSpec contains the configuration for a set of attributes
+                                      to store them as index labels or Structured Metadata or drop them altogether.
+                                    properties:
+                                      action:
+                                        description: Action defines the indexing action
+                                          for the selected attributes.
+                                        enum:
+                                        - index_label
+                                        - structured_metadata
+                                        - drop
+                                        type: string
+                                      attributes:
+                                        description: |-
+                                          Attributes is the list of attributes to configure indexing or drop them
+                                          altogether.
+                                        items:
+                                          type: string
+                                        type: array
+                                      regex:
+                                        description: |-
+                                          Regex to choose attributes to configure indexing or drop them
+                                          altogether.
+                                        type: string
+                                    type: object
+                                  type: array
+                                ignoreDefaults:
+                                  description: |-
+                                    IgnoreDefaults whether to ignore the default global list of resource attributes
+                                    indexed as labels.
+                                  type: boolean
+                              type: object
+                            scopeAttributes:
+                              description: |-
+                                RessourceAttributes contains the configuration for scope attributes
+                                to store them as index labels or Structured Metadata or drop them altogether.
+                              items:
+                                description: |-
+                                  OTLPAttributesSpec contains the configuration for a set of attributes
+                                  to store them as index labels or Structured Metadata or drop them altogether.
+                                properties:
+                                  action:
+                                    description: Action defines the indexing action
+                                      for the selected attributes.
+                                    enum:
+                                    - index_label
+                                    - structured_metadata
+                                    - drop
+                                    type: string
+                                  attributes:
+                                    description: |-
+                                      Attributes is the list of attributes to configure indexing or drop them
+                                      altogether.
+                                    items:
+                                      type: string
+                                    type: array
+                                  regex:
+                                    description: |-
+                                      Regex to choose attributes to configure indexing or drop them
+                                      altogether.
+                                    type: string
+                                type: object
+                              type: array
                           type: object
                         queries:
                           description: QueryLimits defines the limit applied on querying
