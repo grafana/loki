@@ -247,7 +247,7 @@ type mockObjectClient struct {
 	nonRetryableErrs bool
 }
 
-func (m *mockObjectClient) PutObject(context.Context, string, io.ReadSeeker) error {
+func (m *mockObjectClient) PutObject(context.Context, string, io.Reader) error {
 	panic("not implemented")
 }
 
