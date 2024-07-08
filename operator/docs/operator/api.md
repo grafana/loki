@@ -1518,7 +1518,7 @@ QueryLimitSpec
 </tr>
 <tr>
 <td>
-<code>openTelemetry</code><br/>
+<code>otlp</code><br/>
 <em>
 <a href="#loki-grafana-com-v1-GlobalOTLPSpec">
 GlobalOTLPSpec
@@ -1527,7 +1527,7 @@ GlobalOTLPSpec
 </td>
 <td>
 <em>(Optional)</em>
-<p>OpenTelemetry to configure which resource, scope and log attributes
+<p>OTLP to configure which resource, scope and log attributes
 to store as labels or structured metadata or drop them altogether
 for all tenants.</p>
 </td>
@@ -3213,7 +3213,7 @@ PerTenantQueryLimitSpec
 </tr>
 <tr>
 <td>
-<code>openTelemetry</code><br/>
+<code>otlp</code><br/>
 <em>
 <a href="#loki-grafana-com-v1-OTLPSpec">
 OTLPSpec
@@ -3222,7 +3222,7 @@ OTLPSpec
 </td>
 <td>
 <em>(Optional)</em>
-<p>OpenTelemetry to configure which resource, scope and log attributes
+<p>OTLP to configure which resource, scope and log attributes
 to store as labels or structured metadata or drop them altogether
 for a single tenants.</p>
 </td>

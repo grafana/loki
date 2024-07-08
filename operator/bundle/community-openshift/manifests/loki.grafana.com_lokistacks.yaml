@@ -164,9 +164,9 @@ spec:
                             format: int32
                             type: integer
                         type: object
-                      openTelemetry:
+                      otlp:
                         description: |-
-                          OpenTelemetry to configure which resource, scope and log attributes
+                          OTLP to configure which resource, scope and log attributes
                           to store as labels or structured metadata or drop them altogether
                           for all tenants.
                         properties:
@@ -425,9 +425,9 @@ spec:
                               format: int32
                               type: integer
                           type: object
-                        openTelemetry:
+                        otlp:
                           description: |-
-                            OpenTelemetry to configure which resource, scope and log attributes
+                            OTLP to configure which resource, scope and log attributes
                             to store as labels or structured metadata or drop them altogether
                             for a single tenants.
                           properties:

@@ -950,13 +950,13 @@ type LimitsTemplateSpec struct {
 	// +kubebuilder:validation:Optional
 	QueryLimits *QueryLimitSpec `json:"queries,omitempty"`
 
-	// OpenTelemetry to configure which resource, scope and log attributes
+	// OTLP to configure which resource, scope and log attributes
 	// to store as labels or structured metadata or drop them altogether
 	// for all tenants.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	OpenTelemetry *GlobalOTLPSpec `json:"openTelemetry,omitempty"`
+	OTLP *GlobalOTLPSpec `json:"otlp,omitempty"`
 
 	// Retention defines how long logs are kept in storage.
 	//
@@ -979,13 +979,13 @@ type PerTenantLimitsTemplateSpec struct {
 	// +kubebuilder:validation:Optional
 	QueryLimits *PerTenantQueryLimitSpec `json:"queries,omitempty"`
 
-	// OpenTelemetry to configure which resource, scope and log attributes
+	// OTLP to configure which resource, scope and log attributes
 	// to store as labels or structured metadata or drop them altogether
 	// for a single tenants.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	OpenTelemetry *OTLPSpec `json:"openTelemetry,omitempty"`
+	OTLP *OTLPSpec `json:"otlp,omitempty"`
 
 	// Retention defines how long logs are kept in storage.
 	//

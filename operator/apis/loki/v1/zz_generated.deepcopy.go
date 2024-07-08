@@ -600,8 +600,8 @@ func (in *LimitsTemplateSpec) DeepCopyInto(out *LimitsTemplateSpec) {
 		*out = new(QueryLimitSpec)
 		**out = **in
 	}
-	if in.OpenTelemetry != nil {
-		in, out := &in.OpenTelemetry, &out.OpenTelemetry
+	if in.OTLP != nil {
+		in, out := &in.OTLP, &out.OTLP
 		*out = new(GlobalOTLPSpec)
 		(*in).DeepCopyInto(*out)
 	}
@@ -1260,8 +1260,8 @@ func (in *PerTenantLimitsTemplateSpec) DeepCopyInto(out *PerTenantLimitsTemplate
 		*out = new(PerTenantQueryLimitSpec)
 		(*in).DeepCopyInto(*out)
 	}
-	if in.OpenTelemetry != nil {
-		in, out := &in.OpenTelemetry, &out.OpenTelemetry
+	if in.OTLP != nil {
+		in, out := &in.OTLP, &out.OTLP
 		*out = new(OTLPSpec)
 		(*in).DeepCopyInto(*out)
 	}

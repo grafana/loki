@@ -6320,7 +6320,7 @@ overrides:
 						PerStreamRateLimitBurst:   15,
 						PerStreamDesiredRate:      3,
 					},
-					OpenTelemetry: &lokiv1.GlobalOTLPSpec{
+					OTLP: &lokiv1.GlobalOTLPSpec{
 						GlobalResourceAttributesAsLabels: []string{
 							"foo.bar",
 							"bar.baz",
@@ -6515,7 +6515,7 @@ overrides:
 		Overrides: map[string]LokiOverrides{
 			"test-a": {
 				Limits: lokiv1.PerTenantLimitsTemplateSpec{
-					OpenTelemetry: &lokiv1.OTLPSpec{
+					OTLP: &lokiv1.OTLPSpec{
 						RessourceAttributes: lokiv1.OTLPResourceAttributesSpec{
 							IgnoreDefaults: true,
 							Attributes: []lokiv1.OTLPAttributesSpec{

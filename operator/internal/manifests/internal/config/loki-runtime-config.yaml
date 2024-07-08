@@ -73,7 +73,7 @@ overrides:
     {{- end }}
     {{- end}}
   {{- end -}}
-  {{- if $l := $spec.OpenTelemetry }}
+  {{- if $l := $spec.OTLP }}
     otlp_config:
       {{- with $l.RessourceAttributes }}
       resource_attributes:
