@@ -27,6 +27,7 @@ func (i *Ingester) Flush() {
 
 func (i *Ingester) flush(mayRemoveStreams bool) {
 	i.sweepUsers(true, mayRemoveStreams)
+	i.downsampleMetrics(model.Now())
 
 	// Close the flush queues, to unblock waiting workers.
 	for _, flushQueue := range i.flushQueues {

@@ -39,7 +39,7 @@ type Chunks struct {
 	lock       sync.RWMutex
 	logger     log.Logger
 	metrics    metrics
-	rawSamples Samples
+	rawSamples SamplesWithoutTS
 	service    string
 }
 
@@ -59,7 +59,7 @@ func NewChunks(labels labels.Labels, chunkMetrics *ChunkMetrics, logger log.Logg
 		chunks:     []*Chunk{},
 		labels:     labels,
 		logger:     logger,
-		rawSamples: Samples{},
+		rawSamples: SamplesWithoutTS{},
 		service:    service,
 
 		metrics: metrics{
@@ -73,7 +73,7 @@ func (c *Chunks) Observe(bytes, count float64, ts model.Time) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	c.rawSamples = append(c.rawSamples, newSample(bytes, count, ts))
+	c.rawSamples = append(c.rawSamples, newSampleWithoutTS(bytes, count))
 	c.metrics.samples.Inc()
 }
 
@@ -193,6 +193,11 @@ type Sample struct {
 	Count     float64
 }
 
+type SampleWithoutTS struct {
+	Bytes float64
+	Count float64
+}
+
 func newSample(bytes, count float64, ts model.Time) Sample {
 	return Sample{
 		Timestamp: ts,
@@ -201,7 +206,17 @@ func newSample(bytes, count float64, ts model.Time) Sample {
 	}
 }
 
-type Samples []Sample
+func newSampleWithoutTS(bytes, count float64) SampleWithoutTS {
+	return SampleWithoutTS{
+		Bytes: bytes,
+		Count: count,
+	}
+}
+
+type (
+	Samples          []Sample
+	SamplesWithoutTS []SampleWithoutTS
+)
 
 type Chunk struct {
 	Samples    Samples
