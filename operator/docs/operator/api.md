@@ -1146,6 +1146,51 @@ a secret. This mode is only supported for certain object storage types in certai
 </tr></tbody>
 </table>
 
+## GlobalOTLPSpec { #loki-grafana-com-v1-GlobalOTLPSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>)
+</p>
+<div>
+<p>GlobalOTLPSpec defines which resource, scope and log attributes to
+be stored as index or structured metadata or drop altogether for all
+tenants.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>indexedResourceAttributes</code><br/>
+<em>
+[]string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>RessourceAttributes contains the configuration for resource attributes
+to store them as index labels or Structured Metadata or drop them altogether.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>OTLPSpec</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OTLPSpec">
+OTLPSpec
+</a>
+</em>
+</td>
+<td>
+</td>
+</tr>
+</tbody>
+</table>
+
 ## HashRingSpec { #loki-grafana-com-v1-HashRingSpec }
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackSpec">LokiStackSpec</a>)
@@ -1469,6 +1514,22 @@ QueryLimitSpec
 <td>
 <em>(Optional)</em>
 <p>QueryLimits defines the limit applied on querying log streams.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>openTelemetry</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-GlobalOTLPSpec">
+GlobalOTLPSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>OpenTelemetry to configure which resource, scope and log attributes
+to store as labels or structured metadata or drop them altogether
+for all tenants.</p>
 </td>
 </tr>
 <tr>
@@ -2601,6 +2662,205 @@ string
 </tbody>
 </table>
 
+## OTLPAttributeAction { #loki-grafana-com-v1-OTLPAttributeAction }
+(<code>string</code> alias)
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-OTLPAttributesSpec">OTLPAttributesSpec</a>)
+</p>
+<div>
+<p>OTLPAttributeAction defines the action to executed when indexing
+OTLP resource attributes. Resource attributes can be either added
+to the index, the chunk structured metadata or enterily dropped.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr><td><p>&#34;drop&#34;</p></td>
+<td><p>DropAction drops Attributes for which the Attribute name does match the regex.</p>
+</td>
+</tr><tr><td><p>&#34;index_label&#34;</p></td>
+<td><p>IndexLabelAction stores a Resource Attribute as a label in index to identify streams.</p>
+</td>
+</tr><tr><td><p>&#34;structured_metadata&#34;</p></td>
+<td><p>StructuredMetadataAction stores an Attribute as Structured Metadata with each log entry.</p>
+</td>
+</tr></tbody>
+</table>
+
+## OTLPAttributesSpec { #loki-grafana-com-v1-OTLPAttributesSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-OTLPResourceAttributesSpec">OTLPResourceAttributesSpec</a>, <a href="#loki-grafana-com-v1-OTLPSpec">OTLPSpec</a>)
+</p>
+<div>
+<p>OTLPAttributesSpec contains the configuration for a set of attributes
+to store them as index labels or Structured Metadata or drop them altogether.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>action</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OTLPAttributeAction">
+OTLPAttributeAction
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Action defines the indexing action for the selected attributes.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>attributes</code><br/>
+<em>
+[]string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Attributes is the list of attributes to configure indexing or drop them
+altogether.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>regex</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Regex to choose attributes to configure indexing or drop them
+altogether.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## OTLPResourceAttributesSpec { #loki-grafana-com-v1-OTLPResourceAttributesSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-OTLPSpec">OTLPSpec</a>)
+</p>
+<div>
+<p>OTLPResourceAttributesSpec contains the configuration for resource attributes
+to store them as index labels or Structured Metadata or drop them altogether.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>ignoreDefaults</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>IgnoreDefaults whether to ignore the default global list of resource attributes
+indexed as labels.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>attributes</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OTLPAttributesSpec">
+[]OTLPAttributesSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Attributes contains the configuration for resource attributes
+to store them as index labels or Structured Metadata or drop them altogether.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## OTLPSpec { #loki-grafana-com-v1-OTLPSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-GlobalOTLPSpec">GlobalOTLPSpec</a>, <a href="#loki-grafana-com-v1-PerTenantLimitsTemplateSpec">PerTenantLimitsTemplateSpec</a>)
+</p>
+<div>
+<p>OTLPSpec  defines which resource, scope and log attributes to
+be stored as index or structured metadata or drop altogether</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>resourceAttributes</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OTLPResourceAttributesSpec">
+OTLPResourceAttributesSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>RessourceAttributes contains the configuration for resource attributes
+to store them as index labels or Structured Metadata or drop them altogether.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>scopeAttributes</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OTLPAttributesSpec">
+[]OTLPAttributesSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>RessourceAttributes contains the configuration for scope attributes
+to store them as index labels or Structured Metadata or drop them altogether.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>logAttributes</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OTLPAttributesSpec">
+[]OTLPAttributesSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>RessourceAttributes contains the configuration for log attributes
+to store them as index labels or Structured Metadata or drop them altogether.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
 ## ObjectStorageSchema { #loki-grafana-com-v1-ObjectStorageSchema }
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackStorageStatus">LokiStackStorageStatus</a>, <a href="#loki-grafana-com-v1-ObjectStorageSpec">ObjectStorageSpec</a>)
@@ -2949,6 +3209,22 @@ PerTenantQueryLimitSpec
 <td>
 <em>(Optional)</em>
 <p>QueryLimits defines the limit applied on querying log streams.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>openTelemetry</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OTLPSpec">
+OTLPSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>OpenTelemetry to configure which resource, scope and log attributes
+to store as labels or structured metadata or drop them altogether
+for a single tenants.</p>
 </td>
 </tr>
 <tr>
