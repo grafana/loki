@@ -209,7 +209,7 @@ func (i *Ingester) loop() {
 
 	var downsampleTicker *time.Timer
 	if i.cfg.MetricAggregation.Enabled {
-	downsampleTicker = time.NewTimer(i.cfg.MetricAggregation.DownsamplePeriod)
+		downsampleTicker = time.NewTimer(i.cfg.MetricAggregation.DownsamplePeriod)
 	}
 
 	if i.cfg.MetricAggregation.Enabled {
@@ -218,8 +218,8 @@ func (i *Ingester) loop() {
 			case <-flushTicker.C:
 				i.sweepUsers(false, true)
 
-      case t := <-downsampleTicker.C:
-        now := model.TimeFromUnixNano(t.UnixNano())
+			case t := <-downsampleTicker.C:
+				now := model.TimeFromUnixNano(t.UnixNano())
 				i.downsampleMetrics(now)
 
 			case <-i.loopQuit:
