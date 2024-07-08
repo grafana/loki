@@ -60,7 +60,7 @@ func newStream(
 		labels:       labels,
 		labelsString: labels.String(),
 		labelHash:    labels.Hash(),
-		patterns: drain.New(drain.DefaultConfig(), &drain.Metrics{
+		patterns: drain.New(drain.DefaultConfig(), guessedFormat, &drain.Metrics{
 			PatternsEvictedTotal:  metrics.patternsDiscardedTotal.WithLabelValues(instanceID, guessedFormat),
 			PatternsDetectedTotal: metrics.patternsDetectedTotal.WithLabelValues(instanceID, guessedFormat),
 			TokensPerLine:         metrics.tokensPerLine.WithLabelValues(instanceID, guessedFormat),

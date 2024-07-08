@@ -53,6 +53,13 @@ func fillChunkClose(c Chunk, close bool) int64 {
 	entry := &logproto.Entry{
 		Timestamp: time.Unix(0, 0),
 		Line:      testdata.LogString(i),
+		StructuredMetadata: []logproto.LabelAdapter{
+			{Name: "foo", Value: "bar"},
+			{Name: "baz", Value: "buzz"},
+			{Name: "qux", Value: "quux"},
+			{Name: "corge", Value: "grault"},
+			{Name: "garply", Value: "waldo"},
+		},
 	}
 	for c.SpaceFor(entry) {
 		_, err := c.Append(entry)

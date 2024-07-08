@@ -85,6 +85,11 @@ func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.Loki
 
 // InstantQueryHandler is a http.HandlerFunc for instant queries.
 func (q *QuerierAPI) InstantQueryHandler(ctx context.Context, req *queryrange.LokiInstantRequest) (logqlmodel.Result, error) {
+	// do not allow log selector expression (aka log query) as instant query
+	if _, ok := req.Plan.AST.(syntax.SampleExpr); !ok {
+		return logqlmodel.Result{}, logqlmodel.ErrUnsupportedSyntaxForInstantQuery
+	}
+
 	if err := q.validateMaxEntriesLimits(ctx, req.Plan.AST, req.Limit); err != nil {
 		return logqlmodel.Result{}, err
 	}
