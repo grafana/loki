@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/logql/log"
-	"github.com/grafana/loki/v3/pkg/storage/wal"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 
@@ -340,9 +339,6 @@ func (s *storeMock) GetChunks(ctx context.Context, userID string, from, through 
 	return args.Get(0).([][]chunk.Chunk), args.Get(0).([]*fetcher.Fetcher), args.Error(2)
 }
 
-func (s *storeMock) PutWal(_ context.Context, _ *wal.SegmentWriter) error {
-	return errors.New("storeMock.PutWal() has not been mocked")
-}
 func (s *storeMock) Put(_ context.Context, _ []chunk.Chunk) error {
 	return errors.New("storeMock.Put() has not been mocked")
 }

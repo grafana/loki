@@ -13,7 +13,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index"
-	"github.com/grafana/loki/v3/pkg/storage/wal"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
@@ -64,10 +63,6 @@ func (c *Writer) Put(ctx context.Context, chunks []chunk.Chunk) error {
 		}
 	}
 	return nil
-}
-
-func (c *Writer) PutWal(ctx context.Context, segment *wal.SegmentWriter) error {
-	return c.fetcher.Client().PutWal(ctx, segment)
 }
 
 // PutOne implements Store

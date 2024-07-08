@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"sort"
 	"sync"
 	"testing"
@@ -510,16 +511,15 @@ func BenchmarkWrites(b *testing.B) {
 		}
 	})
 
-	bytesBuf := make([]byte, inputSize)
+	bytesBuf := make([]byte, encodedLength)
 	b.Run("Reader", func(b *testing.B) {
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			var err error
-			reader, err := writer.ToReader()
-			require.NoError(b, err)
+			reader := writer.Reader()
 
-			n, err := reader.Read(bytesBuf)
+			n, err := io.ReadFull(reader, bytesBuf)
 			require.NoError(b, err)
 			require.EqualValues(b, encodedLength, n)
 			require.NoError(b, reader.Close())

@@ -240,14 +240,12 @@ func NewMiddleware(
 
 	detectedFieldsTripperware, err := NewDetectedFieldsTripperware(
 		cfg,
-		engineOpts,
 		log,
 		limits,
 		schema,
 		codec,
 		iqo,
 		metrics,
-		indexStatsTripperware,
 		metricsNamespace)
 	if err != nil {
 		return nil, nil, err
@@ -1185,34 +1183,23 @@ func sharedIndexTripperware(
 // NewDetectedFieldsTripperware creates a new frontend tripperware responsible for handling detected field requests, which are basically log filter requests with a bit more processing.
 func NewDetectedFieldsTripperware(
 	cfg Config,
-	engineOpts logql.EngineOpts,
 	log log.Logger,
 	limits Limits,
 	schema config.SchemaConfig,
 	merger base.Merger,
 	iqo util.IngesterQueryOptions,
 	metrics *Metrics,
-	indexStatsTripperware base.Middleware,
 	metricsNamespace string,
 ) (base.Middleware, error) {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
-		statsHandler := indexStatsTripperware.Wrap(next)
-
 		splitter := newDefaultSplitter(limits, iqo)
 
 		queryRangeMiddleware := []base.Middleware{
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
-			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitter, metrics.SplitByMetrics),
 		}
-
-		// The sharding middleware takes care of enforcing this limit for both shardable and non-shardable queries.
-		// If we are not using sharding, we enforce the limit by adding this middleware after time splitting.
-		queryRangeMiddleware = append(queryRangeMiddleware,
-			NewQuerierSizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
-		)
 
 		if cfg.MaxRetries > 0 {
 			queryRangeMiddleware = append(

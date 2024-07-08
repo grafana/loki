@@ -15,16 +15,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	tsdb_index "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
-	"github.com/grafana/loki/v3/pkg/storage/wal"
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
-type WalSegmentWriter interface {
-	PutWal(ctx context.Context, writer *wal.SegmentWriter) error
-}
-
 type ChunkWriter interface {
-	WalSegmentWriter
 	Put(ctx context.Context, chunks []chunk.Chunk) error
 	PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error
 }
@@ -51,7 +45,6 @@ type Store interface {
 	ChunkWriter
 	ChunkFetcher
 	ChunkFetcherProvider
-	WalSegmentWriter
 	Stop()
 }
 
@@ -93,12 +86,6 @@ func (c *CompositeStore) Stores() []Store {
 		stores = append(stores, store.Store)
 	}
 	return stores
-}
-
-func (c CompositeStore) PutWal(ctx context.Context, writer *wal.SegmentWriter) error {
-	// TODO: Understand how to use the forStores method to correctly pick a store for this
-	err := c.stores[0].PutWal(ctx, writer)
-	return err
 }
 
 func (c CompositeStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
@@ -210,10 +197,8 @@ func (c CompositeStore) Stats(ctx context.Context, userID string, from, through 
 		xs = append(xs, x)
 		return err
 	})
-
 	if err != nil {
 		return nil, err
-
 	}
 	res := stats.MergeStats(xs...)
 	return &res, err
@@ -226,7 +211,6 @@ func (c CompositeStore) Volume(ctx context.Context, userID string, from, through
 		volumes = append(volumes, volume)
 		return err
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +238,6 @@ func (c CompositeStore) GetShards(
 		groups = append(groups, shards)
 		return nil
 	})
-
 	if err != nil {
 		return nil, err
 	}

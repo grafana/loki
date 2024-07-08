@@ -7,11 +7,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-type Value interface {
+type logprotoType interface {
 	logproto.Entry | logproto.Sample
 }
 
-type StreamIterator[T Value] interface {
+type StreamIterator[T logprotoType] interface {
 	v2.CloseIterator[T]
 	// Labels returns the labels for the current entry.
 	// The labels can be mutated by the query engine and not reflect the original stream.
@@ -24,7 +24,7 @@ type EntryIterator StreamIterator[logproto.Entry]
 type SampleIterator StreamIterator[logproto.Sample]
 
 // noOpIterator implements StreamIterator
-type noOpIterator[T Value] struct{}
+type noOpIterator[T logprotoType] struct{}
 
 func (noOpIterator[T]) Next() bool         { return false }
 func (noOpIterator[T]) Err() error         { return nil }
@@ -37,7 +37,7 @@ var NoopEntryIterator = noOpIterator[logproto.Entry]{}
 var NoopSampleIterator = noOpIterator[logproto.Sample]{}
 
 // errorIterator implements StreamIterator
-type errorIterator[T Value] struct{}
+type errorIterator[T logprotoType] struct{}
 
 func (errorIterator[T]) Next() bool         { return false }
 func (errorIterator[T]) Err() error         { return errors.New("error") }
