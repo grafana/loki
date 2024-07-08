@@ -104,6 +104,16 @@ compactor:
   retention_delete_delay: 4h
   retention_delete_worker_count: {{.DeleteWorkerCount}}
 {{- end }}{{- end }}
+{{- if $l := .Stack.Limits.Global }}
+{{- with $l.OpenTelemetry }}
+distributor:
+  otlp_config:
+    default_resource_attributes_as_index_labels:
+    {{- range $k, $attr := .GlobalResourceAttributesAsLabels }}
+    - {{ $attr }}
+    {{- end }}
+{{- end }}
+{{- end }}
 frontend:
   tail_proxy_url: {{ .Querier.Protocol }}://{{ .Querier.FQDN }}:{{ .Querier.Port }}
 {{- if .Gates.HTTPEncryption }}
@@ -221,6 +231,46 @@ limits_config:
     desired_rate: {{ . }}MB
 {{- end }}
   allow_structured_metadata: true
+{{- with .Stack.Limits.Global.OpenTelemetry }}
+  otlp_config:
+    {{- with .RessourceAttributes }}
+    resource_attributes:
+      ignore_defaults: {{ .IgnoreDefaults }}
+      {{- with .Attributes}}
+      attributes_config:
+      {{- range $k, $attr := . }}
+      - action: {{ $attr.Action }}
+        attributes:
+        {{- range $k, $attrVal := $attr.Attributes }}
+        - {{ $attrVal }}
+        {{- end}}
+        regex: {{ $attr.Regex }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
+    {{- with .ScopeAttributes }}
+    scope_attributes:
+    {{- range $k, $attr := . }}
+    - action: {{ $attr.Action }}
+      attributes:
+      {{- range $k, $attrVal := $attr.Attributes }}
+      - {{ $attrVal }}
+      {{- end }}
+      regex: {{ $attr.Regex }}
+    {{- end }}
+    {{- end }}
+    {{- with .LogAttributes }}
+    log_attributes:
+    {{- range $k, $attr := . }}
+    - action: {{ $attr.Action }}
+      attributes:
+      {{- range $k, $attrVal := $attr.Attributes }}
+      - {{ $attrVal }}
+      {{- end }}
+      regex: {{ $attr.Regex }}
+    {{- end }}
+    {{- end }}
+{{- end }}
 {{- with .GossipRing }}
 memberlist:
   abort_if_cluster_join_fails: true

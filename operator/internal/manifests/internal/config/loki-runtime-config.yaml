@@ -73,6 +73,46 @@ overrides:
     {{- end }}
     {{- end}}
   {{- end -}}
+  {{- if $l := $spec.OpenTelemetry }}
+    otlp_config:
+      {{- with $l.RessourceAttributes }}
+      resource_attributes:
+        ignore_defaults: {{ .IgnoreDefaults }}
+        {{- with .Attributes}}
+        attributes_config:
+        {{- range $k, $attr := . }}
+        - action: {{ $attr.Action }}
+          attributes:
+          {{- range $k, $attrVal := $attr.Attributes }}
+          - {{ $attrVal }}
+          {{- end }}
+          regex: {{ $attr.Regex }}
+        {{- end }}
+        {{- end }}
+      {{- end}}
+      {{- with $l.ScopeAttributes }}
+      scope_attributes:
+      {{- range $k, $attr := . }}
+      - action: {{ $attr.Action }}
+        attributes:
+        {{- range $k, $attrVal := $attr.Attributes }}
+        - {{ $attrVal }}
+        {{- end }}
+        regex: {{ $attr.Regex }}
+      {{- end }}
+      {{- end }}
+      {{- with $l.LogAttributes }}
+      log_attributes:
+      {{- range $k, $attr := . }}
+      - action: {{ $attr.Action }}
+        attributes:
+        {{- range $k, $attrVal := $attr.Attributes }}
+        - {{ $attrVal }}
+        {{- end }}
+        regex: {{ $attr.Regex }}
+      {{- end }}
+      {{- end }}
+  {{- end }}
   {{- with $spec.Retention }}
     retention_period: {{ .Days }}d
     {{- with .Streams }}
