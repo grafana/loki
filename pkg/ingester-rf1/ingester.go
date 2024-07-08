@@ -219,6 +219,7 @@ type Ingester struct {
 	// pick a queue.
 	flushQueues     []*util.PriorityQueue
 	flushQueuesDone sync.WaitGroup
+	nextFlushQueue  int
 
 	flushCtx *flushCtx
 
@@ -297,6 +298,7 @@ func New(cfg Config, clientConfig client.Config,
 			newCtxAvailable: make(chan struct{}),
 			segmentWriter:   segmentWriter,
 		},
+		nextFlushQueue: 0,
 	}
 
 	// TODO: change flush on shutdown
@@ -590,7 +592,8 @@ func (i *Ingester) doFlushTick() {
 	// TODO: use multiple flush queues if required
 	// Don't write empty segments if there is nothing to write.
 	if currentFlushCtx.segmentWriter.InputSize() > 0 {
-		i.flushQueues[0].Enqueue(currentFlushCtx)
+		i.flushQueues[i.nextFlushQueue].Enqueue(currentFlushCtx)
+		i.nextFlushQueue++
 	}
 }
 
