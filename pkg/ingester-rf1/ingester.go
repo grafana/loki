@@ -593,7 +593,7 @@ func (i *Ingester) doFlushTick() {
 	// Don't write empty segments if there is nothing to write.
 	if currentFlushCtx.segmentWriter.InputSize() > 0 {
 		i.flushQueues[i.nextFlushQueue].Enqueue(currentFlushCtx)
-		i.nextFlushQueue++
+		i.nextFlushQueue = (i.nextFlushQueue + 1) % len(i.flushQueues)
 	}
 }
 
