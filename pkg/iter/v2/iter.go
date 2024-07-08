@@ -159,15 +159,15 @@ func NewCancelableIter[T any](ctx context.Context, itr Iterator[T]) *Cancellable
 	return &CancellableIter[T]{ctx: ctx, Iterator: itr}
 }
 
-func NewCloseableIterator[T io.Closer](itr Iterator[T]) *CloseIter[T] {
-	return &CloseIter[T]{itr}
+func NewCloserIter[T io.Closer](itr Iterator[T]) *CloserIter[T] {
+	return &CloserIter[T]{itr}
 }
 
-type CloseIter[T io.Closer] struct {
+type CloserIter[T io.Closer] struct {
 	Iterator[T]
 }
 
-func (i *CloseIter[T]) Close() error {
+func (i *CloserIter[T]) Close() error {
 	return i.At().Close()
 }
 
@@ -225,4 +225,23 @@ func (it *CounterIter[T]) Next() bool {
 
 func (it *CounterIter[T]) Count() int {
 	return it.count
+}
+
+func WithClose[T any](itr Iterator[T], close func() bool) *CloseIter[T] {
+	return &CloseIter[T]{
+		Iterator: itr,
+		close:    close,
+	}
+}
+
+type CloseIter[T any] struct {
+	Iterator[T]
+	close func() bool
+}
+
+func (i *CloseIter[T]) Close() error {
+	if i.close != nil {
+		return i.Close()
+	}
+	return nil
 }
