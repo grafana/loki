@@ -152,10 +152,14 @@ func New(config *Config, format string, metrics *Metrics) *Drain {
 		panic("depth argument must be at least 3")
 	}
 	config.maxNodeDepth = config.LogClusterDepth - 2
-	var evictFn func(int, *LogCluster)
-	if metrics != nil {
-		evictFn = func(int, *LogCluster) { metrics.PatternsEvictedTotal.Inc() }
+	limiter := newLimiter(0.8)
+	evictFn := func(int, *LogCluster) {
+		if metrics != nil {
+			metrics.PatternsEvictedTotal.Inc()
+		}
+		limiter.Evict()
 	}
+
 	var tokenizer LineTokenizer
 	switch format {
 	case FormatJSON:
@@ -174,6 +178,7 @@ func New(config *Config, format string, metrics *Metrics) *Drain {
 		tokenizer:            tokenizer,
 		maxAllowedLineLength: 3000,
 		format:               format,
+		limiter:              limiter,
 	}
 	return d
 }
@@ -189,6 +194,7 @@ type Drain struct {
 	format               string
 	tokens               []string
 	state                interface{}
+	limiter              *limiter
 }
 
 func (d *Drain) Clusters() []*LogCluster {
@@ -200,6 +206,9 @@ func (d *Drain) TrainTokens(tokens []string, stringer func([]string) string, ts 
 }
 
 func (d *Drain) Train(content string, ts int64) *LogCluster {
+	if !d.limiter.Allow() {
+		return nil
+	}
 	if len(content) > d.maxAllowedLineLength {
 		return nil
 	}
