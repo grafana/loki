@@ -291,3 +291,12 @@ func (s *stream) prune(olderThan time.Duration) bool {
 
 	return len(s.patterns.Clusters()) == 0 && chunksPruned
 }
+
+func (s *stream) Downsample(ts model.Time) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	if s.chunks != nil {
+		s.chunks.Downsample(ts)
+	}
+}

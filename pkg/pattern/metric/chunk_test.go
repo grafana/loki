@@ -447,3 +447,31 @@ func Test_Chunks_Iterator(t *testing.T) {
 		require.Equal(t, 4, cap(res.Series[0].Samples))
 	})
 }
+
+func TestDownsample(t *testing.T) {
+	// Create a Chunks object with two rawChunks, each containing two Samples
+	c := NewChunks(labels.Labels{
+		labels.Label{Name: "foo", Value: "bar"},
+	}, NewChunkMetrics(nil, "test"), log.NewNopLogger())
+
+	c.Observe(2.0, 1.0, 1000)
+	c.Observe(2.0, 1.0, 2000)
+	c.Observe(2.0, 1.0, 3000)
+
+	now := model.Time(5000)
+	// Call the Downsample function
+	c.Downsample(now)
+
+	chunks := c.chunks
+
+	require.Len(t, chunks, 1)
+
+	// Check that the result is a Chunk with the correct summed values
+	result := chunks[0]
+	require.Len(t, result.Samples, 1)
+	require.Equal(t, 6.0, result.Samples[0].Bytes)
+	require.Equal(t, 3.0, result.Samples[0].Count)
+	require.Equal(t, model.Time(5000), result.Samples[0].Timestamp)
+
+	require.Len(t, c.rawSamples, 0)
+}
