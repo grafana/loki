@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -292,7 +293,22 @@ func (g *Gateway) LabelNamesForMetricName(ctx context.Context, req *logproto.Lab
 	if err != nil {
 		return nil, err
 	}
-	names, err := g.indexQuerier.LabelNamesForMetricName(ctx, instanceID, req.From, req.Through, req.MetricName)
+	var matchers []*labels.Matcher
+	// An empty matchers string cannot be parsed,
+	// therefore we check the string representation of the matchers.
+	if req.Matchers != syntax.EmptyMatchers {
+		expr, err := syntax.ParseExprWithoutValidation(req.Matchers)
+		if err != nil {
+			return nil, err
+		}
+
+		matcherExpr, ok := expr.(*syntax.MatchersExpr)
+		if !ok {
+			return nil, fmt.Errorf("invalid label matchers found of type %T", expr)
+		}
+		matchers = matcherExpr.Mts
+	}
+	names, err := g.indexQuerier.LabelNamesForMetricName(ctx, instanceID, req.From, req.Through, req.MetricName, matchers...)
 	if err != nil {
 		return nil, err
 	}
@@ -308,7 +324,7 @@ func (g *Gateway) LabelValuesForMetricName(ctx context.Context, req *logproto.La
 	}
 	var matchers []*labels.Matcher
 	// An empty matchers string cannot be parsed,
-	// therefore we check the string representation of the the matchers.
+	// therefore we check the string representation of the matchers.
 	if req.Matchers != syntax.EmptyMatchers {
 		expr, err := syntax.ParseExprWithoutValidation(req.Matchers)
 		if err != nil {
@@ -450,12 +466,15 @@ func (g *Gateway) boundedShards(
 	// 2) filter via blooms if enabled
 	filters := syntax.ExtractLineFilters(p.Plan().AST)
 	if g.bloomQuerier != nil && len(filters) > 0 {
-		filtered, err = g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, refs, p.Plan())
+		xs, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, refs, p.Plan())
 		if err != nil {
-			return err
+			level.Error(logger).Log("msg", "failed to filter chunk refs", "err", err)
+		} else {
+			filtered = xs
 		}
 		sp.LogKV(
 			"stage", "queried bloom gateway",
+			"err", err,
 		)
 	}
 
@@ -595,14 +614,14 @@ func accumulateChunksToShards(
 			for i := range filteredChks {
 				for j < len(chks) {
 					switch filteredChks[i].Cmp(chks[j]) {
-					case v1.Less:
+					case iter.Less:
 						// this chunk is not in the queried index, continue checking other chunks
 						continue outer
-					case v1.Greater:
+					case iter.Greater:
 						// next chunk in index but didn't pass filter; continue
 						j++
 						continue
-					case v1.Eq:
+					case iter.Eq:
 						// a match; set the sizing info
 						filteredChks[i].KB = chks[j].KB
 						filteredChks[i].Entries = chks[j].Entries
@@ -661,32 +680,32 @@ type refWithSizingInfo struct {
 }
 
 // careful: only checks from,through,checksum
-func (r refWithSizingInfo) Cmp(chk tsdb_index.ChunkMeta) v1.Ord {
+func (r refWithSizingInfo) Cmp(chk tsdb_index.ChunkMeta) iter.Ord {
 	ref := *r.ref
 	chkFrom := model.Time(chk.MinTime)
 	if ref.From != chkFrom {
 		if ref.From < chkFrom {
-			return v1.Less
+			return iter.Less
 		}
-		return v1.Greater
+		return iter.Greater
 	}
 
 	chkThrough := model.Time(chk.MaxTime)
 	if ref.Through != chkThrough {
 		if ref.Through < chkThrough {
-			return v1.Less
+			return iter.Less
 		}
-		return v1.Greater
+		return iter.Greater
 	}
 
 	if ref.Checksum != chk.Checksum {
 		if ref.Checksum < chk.Checksum {
-			return v1.Less
+			return iter.Less
 		}
-		return v1.Greater
+		return iter.Greater
 	}
 
-	return v1.Eq
+	return iter.Eq
 }
 
 type failingIndexClient struct{}

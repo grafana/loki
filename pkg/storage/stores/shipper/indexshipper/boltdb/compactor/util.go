@@ -34,10 +34,12 @@ func createChunk(t testing.TB, chunkFormat byte, headBlockFmt chunkenc.HeadBlock
 	chunkEnc := chunkenc.NewMemChunk(chunkFormat, chunkenc.EncSnappy, headBlockFmt, blockSize, targetSize)
 
 	for ts := from; !ts.After(through); ts = ts.Add(1 * time.Minute) {
-		require.NoError(t, chunkEnc.Append(&logproto.Entry{
+		dup, err := chunkEnc.Append(&logproto.Entry{
 			Timestamp: ts.Time(),
 			Line:      ts.String(),
-		}))
+		})
+		require.False(t, dup)
+		require.NoError(t, err)
 	}
 
 	require.NoError(t, chunkEnc.Close())

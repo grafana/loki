@@ -21,7 +21,7 @@ spec:
   ports:
     - name: http-metrics
       port: 3100
-      targetPort: http
+      targetPort: http-metrics
       protocol: TCP
     - name: grpclb
       port: 9095

@@ -212,7 +212,7 @@ loki:
     query_range:
       align_queries_with_step: true
       {{- with .Values.loki.query_range }}
-      {{- tpl (. | toYaml) $ | nindent 4 }}
+      {{- tpl (. | toYaml) $ | nindent 2 }}
       {{- end }}
       {{- if .Values.resultsCache.enabled }}
       {{- with .Values.resultsCache }}
@@ -858,6 +858,8 @@ gateway:
   enabled: true
   # -- Number of replicas for the gateway
   replicas: 1
+  # -- Default container port
+  containerPort: 8080
   # -- Enable logging of 2xx and 3xx HTTP requests
   verboseLogging: true
   autoscaling:
@@ -1294,6 +1296,8 @@ singleBinary:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+    # -- Annotations for volume claim
+    annotations: {}
 ######################################################################################################################
 #
 # Simple Scalable Deployment (SSD) Mode
@@ -1421,6 +1425,8 @@ write:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+    # -- Annotations for volume claim
+    annotations: {}
 # --  Configuration for the read pod(s)
 read:
   # -- Number of replicas for the read
@@ -1528,6 +1534,8 @@ read:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+    # -- Annotations for volume claim
+    annotations: {}
 # --  Configuration for the backend pod(s)
 backend:
   # -- Number of replicas for the backend
@@ -1636,6 +1644,8 @@ backend:
     storageClass: null
     # -- Selector for persistent disk
     selector: null
+    # -- Annotations for volume claim
+    annotations: {}
 ######################################################################################################################
 #
 # Microservices Mode
@@ -3091,6 +3101,7 @@ minio:
       purge: false
   persistence:
     size: 5Gi
+    annotations: {}
   resources:
     requests:
       cpu: 100m

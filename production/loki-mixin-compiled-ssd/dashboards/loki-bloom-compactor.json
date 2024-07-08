@@ -32,6 +32,7 @@
             },
             "id": 111,
             "panels": [ ],
+            "targets": [ ],
             "title": "Overview",
             "type": "row"
          },
@@ -52,7 +53,9 @@
                "content": "## About the Bloom Compactor\nThe compactor iterates through chunks and creates blooms out of them.\nThe size of the resulting blooms depends on the bloom filter settings, the tokenizer settings, the number of ring tokens per compactor and the total number opf compactors.\n\nCompactors are horizontally scalable and uses a ring to:\n- Shard tenants\n- Shard series fingerprints within a tenant subring.\n\nThe blooms for the series are grouped together in blocks which are flushed to object store.",
                "mode": "markdown"
             },
+            "panels": [ ],
             "pluginVersion": "11.1.0-70005",
+            "targets": [ ],
             "transparent": true,
             "type": "text"
          },
@@ -140,6 +143,7 @@
                   "sort": "none"
                }
             },
+            "panels": [ ],
             "pluginVersion": "11.1.0-69868",
             "targets": [
                {
@@ -290,6 +294,7 @@
                   "sort": "none"
                }
             },
+            "panels": [ ],
             "pluginVersion": "11.1.0-69868",
             "targets": [
                {
@@ -371,6 +376,7 @@
                "sortOrder": "Descending",
                "wrapLogMessage": false
             },
+            "panels": [ ],
             "pluginVersion": "11.1.0-69868",
             "targets": [
                {
@@ -467,6 +473,7 @@
                   "sort": "none"
                }
             },
+            "panels": [ ],
             "pluginVersion": "11.1.0-69868",
             "targets": [
                {
@@ -576,6 +583,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -645,6 +653,7 @@
                      "showThresholdMarkers": false,
                      "sizing": "auto"
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.0.0-68102",
                   "targets": [
                      {
@@ -665,6 +674,7 @@
                   "type": "gauge"
                }
             ],
+            "targets": [ ],
             "title": "Progress per pod",
             "type": "row"
          },
@@ -696,7 +706,9 @@
                      "content": "",
                      "mode": "markdown"
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-70005",
+                  "targets": [ ],
                   "title": "We use tenant sharding so each compactor will process a subset of the tenants.",
                   "transparent": true,
                   "type": "text"
@@ -777,6 +789,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-69868",
                   "targets": [
                      {
@@ -893,6 +906,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-69868",
                   "targets": [
                      {
@@ -1000,6 +1014,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-69868",
                   "targets": [
                      {
@@ -1149,6 +1164,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-69868",
                   "targets": [
                      {
@@ -1273,6 +1289,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-69868",
                   "targets": [
                      {
@@ -1448,6 +1465,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-69868",
                   "targets": [
                      {
@@ -1576,6 +1594,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-69868",
                   "targets": [
                      {
@@ -1678,6 +1697,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-69868",
                   "targets": [
                      {
@@ -1697,6 +1717,7 @@
                   "type": "timeseries"
                }
             ],
+            "targets": [ ],
             "title": "Resource Usage",
             "type": "row"
          },
@@ -1791,6 +1812,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-69868",
                   "targets": [
                      {
@@ -1904,6 +1926,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-69868",
                   "targets": [
                      {
@@ -2004,6 +2027,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-69868",
                   "targets": [
                      {
@@ -2130,6 +2154,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-69868",
                   "targets": [
                      {
@@ -2150,6 +2175,7 @@
                   "type": "timeseries"
                }
             ],
+            "targets": [ ],
             "title": "Bloom building",
             "type": "row"
          },
@@ -2238,6 +2264,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -2332,6 +2359,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -2426,6 +2454,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -2445,6 +2474,7 @@
                   "type": "timeseries"
                }
             ],
+            "targets": [ ],
             "title": "Blocks building",
             "type": "row"
          },
@@ -2533,6 +2563,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-69868",
                   "targets": [
                      {
@@ -2628,6 +2659,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-69868",
                   "targets": [
                      {
@@ -2648,6 +2680,7 @@
                   "type": "timeseries"
                }
             ],
+            "targets": [ ],
             "title": "Metas building",
             "type": "row"
          },
@@ -2679,7 +2712,9 @@
                      "content": "",
                      "mode": "markdown"
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-70005",
+                  "targets": [ ],
                   "title": "We use tenant sharding so each compactor will process a subset of the tenants.",
                   "transparent": true,
                   "type": "text"
@@ -2759,6 +2794,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -2878,6 +2914,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -2914,7 +2951,9 @@
                      "content": "",
                      "mode": "markdown"
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-70005",
+                  "targets": [ ],
                   "title": "Number of tenant tables processed. ",
                   "transparent": true,
                   "type": "text"
@@ -2994,6 +3033,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -3113,6 +3153,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -3149,7 +3190,9 @@
                      "content": "",
                      "mode": "markdown"
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-70005",
+                  "targets": [ ],
                   "title": "Series per compaction (includes series copied from other blocks)",
                   "transparent": true,
                   "type": "text"
@@ -3230,6 +3273,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -3349,6 +3393,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -3385,7 +3430,9 @@
                      "content": "",
                      "mode": "markdown"
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-70005",
+                  "targets": [ ],
                   "title": "Number of bytes from chunks added to blocks during each compaction.",
                   "transparent": true,
                   "type": "text"
@@ -3466,6 +3513,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -3586,6 +3634,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -3605,6 +3654,7 @@
                   "type": "timeseries"
                }
             ],
+            "targets": [ ],
             "title": "Data processed",
             "type": "row"
          },
@@ -3640,7 +3690,9 @@
                      "content": "\nCompactors write blocks to the attached PVs before flushing them into the object store.\nIt also download chunks and index files.\n\nAfter compacting a given tenant, all the downloaded index files and chunks, as well as the already flushed blocks are deleted.",
                      "mode": "markdown"
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-69747",
+                  "targets": [ ],
                   "title": "",
                   "transparent": true,
                   "type": "text"
@@ -3726,6 +3778,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -3850,6 +3903,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -3946,6 +4000,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -4068,6 +4123,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -4164,6 +4220,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -4286,6 +4343,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -4304,6 +4362,7 @@
                   "type": "timeseries"
                }
             ],
+            "targets": [ ],
             "title": "Disk Usage",
             "type": "row"
          },
@@ -4339,7 +4398,9 @@
                      "content": "Once all blocks and metas are built locally, the compactor flushes them to the object store.\n\nAfter each iteration, the compactor deletes the metas and blocks marked for deletion in the tombstones.",
                      "mode": "markdown"
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-69747",
+                  "targets": [ ],
                   "title": "",
                   "transparent": true,
                   "type": "text"
@@ -4366,7 +4427,9 @@
                      "content": "---\n#### GCS\n",
                      "mode": "markdown"
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-69747",
+                  "targets": [ ],
                   "title": "",
                   "transparent": true,
                   "type": "text"
@@ -4447,6 +4510,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -4541,6 +4605,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -4607,7 +4672,9 @@
                      "content": "---\n#### S3\n",
                      "mode": "markdown"
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-69747",
+                  "targets": [ ],
                   "title": "",
                   "transparent": true,
                   "type": "text"
@@ -4688,6 +4755,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -4782,6 +4850,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -4848,7 +4917,9 @@
                      "content": "---\n#### Azure\nBlob Storage",
                      "mode": "markdown"
                   },
+                  "panels": [ ],
                   "pluginVersion": "11.1.0-69747",
+                  "targets": [ ],
                   "title": "",
                   "transparent": true,
                   "type": "text"
@@ -4929,6 +5000,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -5023,6 +5095,7 @@
                         "sort": "none"
                      }
                   },
+                  "panels": [ ],
                   "targets": [
                      {
                         "datasource": {
@@ -5068,6 +5141,7 @@
                   "type": "timeseries"
                }
             ],
+            "targets": [ ],
             "title": "Object Store",
             "type": "row"
          }

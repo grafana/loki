@@ -9,11 +9,10 @@ import (
 
 type Metrics struct {
 	// writes
-	bloomsTotal         *prometheus.CounterVec // number of blooms created
-	sbfCreationTime     *prometheus.CounterVec // time spent creating sbfs
-	bloomSize           prometheus.Histogram   // size of the bloom filter in bytes
-	hammingWeightRatio  prometheus.Histogram   // ratio of the hamming weight of the bloom filter to the number of bits in the bloom filter
-	estimatedCount      prometheus.Histogram   // estimated number of elements in the bloom filter
+	bloomsTotal         prometheus.Counter   // number of blooms created
+	bloomSize           prometheus.Histogram // size of the bloom filter in bytes
+	hammingWeightRatio  prometheus.Histogram // ratio of the hamming weight of the bloom filter to the number of bits in the bloom filter
+	estimatedCount      prometheus.Histogram // estimated number of elements in the bloom filter
 	chunksIndexed       *prometheus.CounterVec
 	chunksPerSeries     prometheus.Histogram
 	blockSeriesIterated prometheus.Counter
@@ -37,11 +36,9 @@ const (
 	chunkIndexedTypeIterated = "iterated"
 	chunkIndexedTypeCopied   = "copied"
 
-	tokenTypeRaw           = "raw"
-	tokenTypeChunkPrefixed = "chunk_prefixed"
-	collisionTypeFalse     = "false"
-	collisionTypeTrue      = "true"
-	collisionTypeCache     = "cache"
+	collisionTypeFalse = "false"
+	collisionTypeTrue  = "true"
+	collisionTypeCache = "cache"
 
 	blockFlushReasonFull     = "full"
 	blockFlushReasonFinished = "finished"
@@ -53,9 +50,6 @@ const (
 	skipReasonErr      = "err"
 	skipReasonOOB      = "out_of_bounds"
 
-	bloomCreationTypeIndexed = "indexed"
-	bloomCreationTypeSkipped = "skipped"
-
 	recorderRequested = "requested"
 	recorderFound     = "found"
 	recorderSkipped   = "skipped"
@@ -65,16 +59,11 @@ const (
 
 func NewMetrics(r prometheus.Registerer) *Metrics {
 	return &Metrics{
-		bloomsTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		bloomsTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "blooms_created_total",
 			Help:      "Number of blooms created",
-		}, []string{"type"}),
-		sbfCreationTime: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "bloom_creation_time_total",
-			Help:      "Time spent creating scalable bloom filters",
-		}, []string{"type"}),
+		}),
 		bloomSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Namespace: constants.Loki,
 			Name:      "bloom_size",
@@ -118,7 +107,7 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			Namespace: constants.Loki,
 			Name:      "bloom_inserts_total",
 			Help:      "Number of inserts into the bloom filter. collision type may be `false` (no collision), `cache` (found in token cache) or true (found in bloom filter). token_type may be either `raw` (the original ngram) or `chunk_prefixed` (the ngram with the chunk prefix)",
-		}, []string{"token_type", "collision"}),
+		}, []string{"collision"}),
 		sourceBytesAdded: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "bloom_source_bytes_added_total",

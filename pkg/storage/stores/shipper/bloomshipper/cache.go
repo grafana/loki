@@ -8,11 +8,14 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/multierror"
 	"github.com/pkg/errors"
 
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
 
 type CloseableBlockQuerier struct {
@@ -22,17 +25,19 @@ type CloseableBlockQuerier struct {
 }
 
 func (c *CloseableBlockQuerier) Close() error {
+	var err multierror.MultiError
+	err.Add(c.BlockQuerier.Reset())
 	if c.close != nil {
-		return c.close()
+		err.Add(c.close())
 	}
-	return nil
+	return err.Err()
 }
 
-func (c *CloseableBlockQuerier) SeriesIter() (v1.PeekingIterator[*v1.SeriesWithBloom], error) {
+func (c *CloseableBlockQuerier) SeriesIter() (iter.PeekIterator[*v1.SeriesWithBlooms], error) {
 	if err := c.Reset(); err != nil {
 		return nil, err
 	}
-	return v1.NewPeekingIter[*v1.SeriesWithBloom](c.BlockQuerier), nil
+	return iter.NewPeekIter[*v1.SeriesWithBlooms](c.BlockQuerier.Iter()), nil
 }
 
 func LoadBlocksDirIntoCache(paths []string, c Cache, logger log.Logger) error {
@@ -157,15 +162,14 @@ func (b *BlockDirectory) resolveSize() error {
 
 // BlockQuerier returns a new block querier from the directory.
 // The passed function `close` is called when the the returned querier is closed.
-
 func (b BlockDirectory) BlockQuerier(
-	usePool bool,
+	alloc mempool.Allocator,
 	close func() error,
 	maxPageSize int,
 	metrics *v1.Metrics,
 ) *CloseableBlockQuerier {
 	return &CloseableBlockQuerier{
-		BlockQuerier: v1.NewBlockQuerier(b.Block(metrics), usePool, maxPageSize),
+		BlockQuerier: v1.NewBlockQuerier(b.Block(metrics), alloc, maxPageSize),
 		BlockRef:     b.BlockRef,
 		close:        close,
 	}

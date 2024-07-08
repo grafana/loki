@@ -4,26 +4,32 @@ import (
 	"context"
 	"time"
 
-	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"go.uber.org/atomic"
+
+	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 )
 
-// TODO: Extract this definiton to a proto file at pkg/bloombuild/protos/protos.proto
+type QueueTask struct {
+	*protos.Task
 
-type GapWithBlocks struct {
-	bounds v1.FingerprintBounds
-	blocks []bloomshipper.BlockRef
-}
-
-type Task struct {
-	table           string
-	tenant          string
-	OwnershipBounds v1.FingerprintBounds
-	tsdb            tsdb.SingleTenantTSDBIdentifier
-	gaps            []GapWithBlocks
+	resultsChannel chan *protos.TaskResult
 
 	// Tracking
-	queueTime time.Time
-	ctx       context.Context
+	timesEnqueued atomic.Int64
+	queueTime     time.Time
+	ctx           context.Context
+}
+
+func NewQueueTask(
+	ctx context.Context,
+	queueTime time.Time,
+	task *protos.Task,
+	resultsChannel chan *protos.TaskResult,
+) *QueueTask {
+	return &QueueTask{
+		Task:           task,
+		resultsChannel: resultsChannel,
+		ctx:            ctx,
+		queueTime:      queueTime,
+	}
 }

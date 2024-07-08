@@ -65,8 +65,8 @@ func slice(it Iterator) []patternSample {
 			sample:  it.At(),
 		})
 	}
-	if it.Error() != nil {
-		panic(it.Error())
+	if it.Err() != nil {
+		panic(it.Err())
 	}
 	return samples
 }

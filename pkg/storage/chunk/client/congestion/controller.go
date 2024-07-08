@@ -83,7 +83,7 @@ func (a *AIMDController) withLogger(logger log.Logger) Controller {
 	return a
 }
 
-func (a *AIMDController) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+func (a *AIMDController) PutObject(ctx context.Context, objectKey string, object io.Reader) error {
 	return a.inner.PutObject(ctx, objectKey, object)
 }
 
@@ -208,11 +208,12 @@ func NewNoopController(Config) *NoopController {
 	return &NoopController{}
 }
 
-func (n *NoopController) ObjectExists(context.Context, string) (bool, error)     { return true, nil }
-func (n *NoopController) PutObject(context.Context, string, io.ReadSeeker) error { return nil }
+func (n *NoopController) ObjectExists(context.Context, string) (bool, error) { return true, nil }
+func (n *NoopController) PutObject(context.Context, string, io.Reader) error { return nil }
 func (n *NoopController) GetObject(context.Context, string) (io.ReadCloser, int64, error) {
 	return nil, 0, nil
 }
+
 func (n *NoopController) List(context.Context, string, string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	return nil, nil, nil
 }
@@ -226,14 +227,17 @@ func (n *NoopController) withLogger(logger log.Logger) Controller {
 	n.logger = logger
 	return n
 }
+
 func (n *NoopController) withRetrier(r Retrier) Controller {
 	n.retrier = r
 	return n
 }
+
 func (n *NoopController) withHedger(h Hedger) Controller {
 	n.hedger = h
 	return n
 }
+
 func (n *NoopController) withMetrics(m *Metrics) Controller {
 	n.metrics = m
 	return n

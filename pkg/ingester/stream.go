@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/runtime"
+
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/opentracing/opentracing-go"
@@ -78,6 +80,8 @@ type stream struct {
 
 	chunkFormat          byte
 	chunkHeadBlockFormat chunkenc.HeadBlockFmt
+
+	configs *runtime.TenantConfigs
 }
 
 type chunkDesc struct {
@@ -107,6 +111,7 @@ func newStream(
 	streamRateCalculator *StreamRateCalculator,
 	metrics *ingesterMetrics,
 	writeFailures *writefailures.Manager,
+	configs *runtime.TenantConfigs,
 ) *stream {
 	hashNoShard, _ := labels.HashWithoutLabels(make([]byte, 0, 1024), ShardLbName)
 	return &stream{
@@ -126,6 +131,8 @@ func newStream(
 		writeFailures:        writeFailures,
 		chunkFormat:          chunkFormat,
 		chunkHeadBlockFormat: headBlockFmt,
+
+		configs: configs,
 	}
 }
 
@@ -333,7 +340,8 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 		}
 
 		chunk.lastUpdated = time.Now()
-		if err := chunk.chunk.Append(&entries[i]); err != nil {
+		dup, err := chunk.chunk.Append(&entries[i])
+		if err != nil {
 			invalid = append(invalid, entryWithError{&entries[i], err})
 			if chunkenc.IsOutOfOrderErr(err) {
 				s.writeFailures.Log(s.tenant, err)
@@ -341,6 +349,9 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 				outOfOrderBytes += len(entries[i].Line)
 			}
 			continue
+		}
+		if dup {
+			s.handleLoggingOfDuplicateEntry(entries[i])
 		}
 
 		s.entryCt++
@@ -355,6 +366,21 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 	}
 	s.reportMetrics(ctx, outOfOrderSamples, outOfOrderBytes, 0, 0, usageTracker)
 	return bytesAdded, storedEntries, invalid
+}
+
+func (s *stream) handleLoggingOfDuplicateEntry(entry logproto.Entry) {
+	if s.configs == nil {
+		return
+	}
+	if s.configs.LogDuplicateMetrics(s.tenant) {
+		s.metrics.duplicateLogBytesTotal.WithLabelValues(s.tenant).Add(float64(len(entry.Line)))
+	}
+	if s.configs.LogDuplicateStreamInfo(s.tenant) {
+		errMsg := fmt.Sprintf("duplicate log entry with size=%d at timestamp %s for stream %s", len(entry.Line), entry.Timestamp.Format(time.RFC3339), s.labelsString)
+		dupErr := errors.New(errMsg)
+		s.writeFailures.Log(s.tenant, dupErr)
+	}
+
 }
 
 func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, isReplay, rateLimitWholeStream bool, usageTracker push.UsageTracker) ([]logproto.Entry, []entryWithError) {

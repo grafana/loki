@@ -315,6 +315,7 @@ This is the generated reference for the Loki Helm Chart values.
   "initContainers": [],
   "nodeSelector": {},
   "persistence": {
+    "annotations": {},
     "dataVolumeParameters": {
       "emptyDir": {}
     },
@@ -509,6 +510,15 @@ null
 			<td>backend.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for backend pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for volume claim</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3480,6 +3490,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>gateway.containerPort</td>
+			<td>int</td>
+			<td>Default container port</td>
+			<td><pre lang="json">
+8080
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.containerSecurityContext</td>
 			<td>object</td>
 			<td>The SecurityContext for gateway containers</td>
@@ -6226,6 +6245,7 @@ false
   "drivesPerNode": 2,
   "enabled": false,
   "persistence": {
+    "annotations": {},
     "size": "5Gi"
   },
   "replicas": 1,
@@ -8442,6 +8462,7 @@ false
   "lifecycle": {},
   "nodeSelector": {},
   "persistence": {
+    "annotations": {},
     "enableStatefulSetAutoDeletePVC": true,
     "selector": null,
     "size": "10Gi",
@@ -8650,6 +8671,15 @@ false
 			<td>read.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for read pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for volume claim</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -9896,6 +9926,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for volume claim</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.persistence.enableStatefulSetAutoDeletePVC</td>
 			<td>bool</td>
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
@@ -10674,6 +10713,15 @@ null
 			<td>write.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for write pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for volume claim</td>
 			<td><pre lang="json">
 {}
 </pre>
