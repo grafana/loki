@@ -20,7 +20,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/wal/chunks"
 	"github.com/grafana/loki/v3/pkg/storage/wal/index"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
-	"github.com/grafana/loki/v3/pkg/util/pool"
 )
 
 // LOKW is the magic number for the Loki WAL format.
@@ -35,10 +34,7 @@ var (
 			}
 		},
 	}
-
-	// 512kb - 20 mb
-	encodedWalSegmentBufferPool = pool.NewBuffer(512*1024, 20*1024*1024, 2)
-	tenantLabel                 = "__loki_tenant__"
+	tenantLabel = "__loki_tenant__"
 )
 
 func init() {
@@ -276,45 +272,30 @@ func (b *SegmentWriter) Reset() {
 	b.inputSize.Store(0)
 }
 
-func (b *SegmentWriter) ToReader() (io.ReadSeekCloser, error) {
-	// snappy compression rate is ~5x , but we can not predict it, so we need to allocate bigger buffer to avoid allocations
-	buffer := encodedWalSegmentBufferPool.Get(int(b.inputSize.Load() / 3))
-	_, err := b.WriteTo(buffer)
-	if err != nil {
-		return nil, fmt.Errorf("failed to write segment to create a reader: %w", err)
-	}
-	return NewEncodedSegmentReader(buffer), nil
-}
-
-var (
-	_ io.ReadSeekCloser = &EncodedSegmentReader{}
-)
-
 type EncodedSegmentReader struct {
-	delegate       io.ReadSeeker
-	encodedContent *bytes.Buffer
-}
-
-func NewEncodedSegmentReader(encodedContent *bytes.Buffer) *EncodedSegmentReader {
-	return &EncodedSegmentReader{
-		encodedContent: encodedContent,
-		delegate:       bytes.NewReader(encodedContent.Bytes()),
-	}
-}
-
-func (e *EncodedSegmentReader) Read(p []byte) (n int, err error) {
-	return e.delegate.Read(p)
-}
-
-func (e *EncodedSegmentReader) Seek(offset int64, whence int) (int64, error) {
-	return e.delegate.Seek(offset, whence)
+	*io.PipeReader
+	*io.PipeWriter
 }
 
 func (e *EncodedSegmentReader) Close() error {
-	encodedWalSegmentBufferPool.Put(e.encodedContent)
-	e.encodedContent = nil
-	e.delegate = nil
+	err := e.PipeWriter.Close()
+	if err != nil {
+		return err
+	}
+	err = e.PipeReader.Close()
+	if err != nil {
+		return err
+	}
 	return nil
+}
+
+func (b *SegmentWriter) Reader() io.ReadCloser {
+	pr, pw := io.Pipe()
+	go func() {
+		_, err := b.WriteTo(pw)
+		pw.CloseWithError(err)
+	}()
+	return &EncodedSegmentReader{PipeReader: pr, PipeWriter: pw}
 }
 
 // InputSize returns the total size of the input data written to the writer.

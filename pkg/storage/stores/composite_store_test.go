@@ -9,7 +9,6 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/storage/wal"
 
 	"github.com/grafana/dskit/test"
 	"github.com/prometheus/common/model"
@@ -23,10 +22,6 @@ import (
 )
 
 type mockStore int
-
-func (m mockStore) PutWal(_ context.Context, _ *wal.SegmentWriter) error {
-	return nil
-}
 
 func (m mockStore) Put(_ context.Context, _ []chunk.Chunk) error {
 	return nil
@@ -357,7 +352,6 @@ func TestVolume(t *testing.T) {
 		require.Error(t, err, "something bad")
 		require.Nil(t, volumes)
 	})
-
 }
 
 func TestFilterForTimeRange(t *testing.T) {
