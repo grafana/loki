@@ -1,80 +1,37 @@
 package iter
 
 import (
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-var Empty Iterator = &emptyIterator{}
-
-// TODO(chaudum): inline v2.Iteratpr[logproto.PatternSample]
 type Iterator interface {
-	Next() bool
+	iter.CloseIterator[logproto.PatternSample]
 
 	Pattern() string
-	At() logproto.PatternSample
-
-	Error() error
-	Close() error
 }
 
-func NewSlice(pattern string, s []logproto.PatternSample) Iterator {
-	// TODO(chaudum): replace with v2.NewSliceIter()
-	return &sliceIterator{
-		values:  s,
-		pattern: pattern,
-		i:       -1,
+func NewSlice(pattern string, s []logproto.PatternSample) *PatternIter {
+	return &PatternIter{
+		CloseIterator: iter.WithClose(iter.NewSliceIter(s), nil),
+		pattern:       pattern,
 	}
 }
 
-type sliceIterator struct {
-	i       int
+func NewEmpty(pattern string) *PatternIter {
+	return &PatternIter{
+		CloseIterator: iter.WithClose(iter.NewEmptyIter[logproto.PatternSample](), nil),
+		pattern:       pattern,
+	}
+}
+
+type PatternIter struct {
+	iter.CloseIterator[logproto.PatternSample]
 	pattern string
-	values  []logproto.PatternSample
 }
 
-func (s *sliceIterator) Next() bool {
-	s.i++
-	return s.i < len(s.values)
-}
-
-func (s *sliceIterator) Pattern() string {
+func (s *PatternIter) Pattern() string {
 	return s.pattern
-}
-
-func (s *sliceIterator) At() logproto.PatternSample {
-	return s.values[s.i]
-}
-
-func (s *sliceIterator) Error() error {
-	return nil
-}
-
-func (s *sliceIterator) Close() error {
-	return nil
-}
-
-type emptyIterator struct {
-	pattern string
-}
-
-func (e *emptyIterator) Next() bool {
-	return false
-}
-
-func (e *emptyIterator) Pattern() string {
-	return e.pattern
-}
-
-func (e *emptyIterator) At() logproto.PatternSample {
-	return logproto.PatternSample{}
-}
-
-func (e *emptyIterator) Error() error {
-	return nil
-}
-
-func (e *emptyIterator) Close() error {
-	return nil
 }
 
 type nonOverlappingIterator struct {
@@ -116,11 +73,11 @@ func (i *nonOverlappingIterator) Pattern() string {
 	return i.pattern
 }
 
-func (i *nonOverlappingIterator) Error() error {
-	if i.curr == nil {
-		return nil
+func (i *nonOverlappingIterator) Err() error {
+	if i.curr != nil {
+		return i.curr.Err()
 	}
-	return i.curr.Error()
+	return nil
 }
 
 func (i *nonOverlappingIterator) Close() error {
