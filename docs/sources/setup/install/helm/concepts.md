@@ -26,7 +26,7 @@ By default, the chart installs [Simple Scalable]({{< relref "./install-scalable"
 
 ## Monitoring Loki
 
-The Loki Helm chart does not deploy monitoring by default. Loki clusters can be monitored using the meta monitoring stack, which monitors, the logs, metrics, and traces of the Loki cluster. There are two deployment options for this stack see the installation instructions within [Monitoring]({{< relref "./monitor-and-alert" >}})
+The Loki Helm chart does not deploy self-monitoring by default. Loki clusters can be monitored using the meta monitoring stack, which monitors, the logs, metrics, and traces of the Loki cluster. There are two deployment options for this stack see the installation instructions within [Monitoring]({{< relref "./monitor-and-alert" >}})
 
 {{< admonition type="warning" >}}
 The meta monitoring stack replaces the monitoring section of the Loki helm chart which is now **DEPRECATED**. See the [Monitoring]({{< relref "./monitor-and-alert" >}}) section for more information.
