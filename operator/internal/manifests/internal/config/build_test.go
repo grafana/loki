@@ -114,7 +114,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
-  allow_structured_metadata: true
+  allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -371,7 +371,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
-  allow_structured_metadata: true
+  allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -797,7 +797,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
-  allow_structured_metadata: true
+  allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -1155,7 +1155,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
-  allow_structured_metadata: true
+  allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -1514,7 +1514,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
-  allow_structured_metadata: true
+  allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -1911,7 +1911,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
-  allow_structured_metadata: true
+  allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -2241,7 +2241,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
-  allow_structured_metadata: true
+  allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -2680,7 +2680,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
-  allow_structured_metadata: true
+  allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -3004,7 +3004,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
-  allow_structured_metadata: true
+  allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -3501,7 +3501,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
-  allow_structured_metadata: true
+  allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_addr: ${HASH_RING_INSTANCE_ADDR}
@@ -3762,7 +3762,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
-  allow_structured_metadata: true
+  allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_addr: ${HASH_RING_INSTANCE_ADDR}
@@ -4024,7 +4024,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
-  allow_structured_metadata: true
+  allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -4287,7 +4287,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
-  allow_structured_metadata: true
+  allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -4586,7 +4586,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
-  allow_structured_metadata: true
+  allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -4880,7 +4880,7 @@ limits_config:
   query_timeout: 1m
   volume_enabled: true
   volume_max_series: 1000
-  allow_structured_metadata: true
+  allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -5124,11 +5124,12 @@ func defaultOptions() Options {
 
 func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
 	for _, tc := range []struct {
-		name             string
-		schemaConfig     []lokiv1.ObjectStorageSchema
-		shippers         []string
-		expSchemaConfig  string
-		expStorageConfig string
+		name                  string
+		schemaConfig          []lokiv1.ObjectStorageSchema
+		shippers              []string
+		expSchemaConfig       string
+		expStorageConfig      string
+		expStructuredMetadata string
 	}{
 		{
 			name: "default_config_v11_schema",
@@ -5156,6 +5157,8 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
     resync_interval: 5m
     index_gateway_client:
       server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095`,
+			expStructuredMetadata: `
+  allow_structured_metadata: false`,
 		},
 		{
 			name: "v12_schema",
@@ -5183,6 +5186,8 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
     resync_interval: 5m
     index_gateway_client:
       server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095`,
+			expStructuredMetadata: `
+  allow_structured_metadata: false`,
 		},
 		{
 			name: "v13_schema",
@@ -5210,6 +5215,8 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
     resync_interval: 5m
     index_gateway_client:
       server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095`,
+			expStructuredMetadata: `
+  allow_structured_metadata: true`,
 		},
 		{
 			name: "multiple_schema",
@@ -5266,6 +5273,8 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
     resync_interval: 5m
     index_gateway_client:
       server_address: dns:///loki-index-gateway-grpc-lokistack-dev.default.svc.cluster.local:9095`,
+			expStructuredMetadata: `
+  allow_structured_metadata: true`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -5366,7 +5375,7 @@ limits_config:
   query_timeout: 1m
   volume_enabled: true
   volume_max_series: 1000
-  allow_structured_metadata: true
+  ${STORAGE_STRUCTURED_METADATA}
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -5416,6 +5425,7 @@ analytics:
 `
 			expCfg = strings.Replace(expCfg, "${SCHEMA_CONFIG}", tc.expSchemaConfig, 1)
 			expCfg = strings.Replace(expCfg, "${STORAGE_CONFIG}", tc.expStorageConfig, 1)
+			expCfg = strings.Replace(expCfg, "${STORAGE_STRUCTURED_METADATA}", tc.expStructuredMetadata, 1)
 
 			opts := defaultOptions()
 			opts.ObjectStorage.Schemas = tc.schemaConfig
@@ -5540,7 +5550,7 @@ limits_config:
   query_timeout: 1m
   volume_enabled: true
   volume_max_series: 1000
-  allow_structured_metadata: true
+  allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -5712,7 +5722,7 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: 3MB
-  allow_structured_metadata: true
+  allow_structured_metadata: false
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946

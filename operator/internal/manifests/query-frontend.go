@@ -14,6 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
 // BuildQueryFrontend returns a list of k8s objects for Loki QueryFrontend
@@ -42,6 +43,10 @@ func BuildQueryFrontend(opts Options) ([]client.Object, error) {
 		if err := configurePodSpecForRestrictedStandard(&deployment.Spec.Template.Spec); err != nil {
 			return nil, err
 		}
+	}
+
+	if err := storage.ConfigureDeployment(deployment, opts.ObjectStorage); err != nil {
+		return nil, err
 	}
 
 	if err := configureHashRingEnv(&deployment.Spec.Template.Spec, opts); err != nil {

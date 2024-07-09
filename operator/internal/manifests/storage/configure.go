@@ -72,6 +72,11 @@ func configureDeployment(d *appsv1.Deployment, opts Options) error {
 		return kverrors.Wrap(err, "failed to merge gcs object storage spec ")
 	}
 
+	p = ensureObjectStoreStructuredMetadata(&d.Spec.Template.Spec, opts)
+	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
+		return kverrors.Wrap(err, "failed to merge object store structured metadata CLI arguments ")
+	}
+
 	return nil
 }
 
@@ -98,6 +103,11 @@ func configureStatefulSet(s *appsv1.StatefulSet, opts Options) error {
 		return kverrors.Wrap(err, "failed to merge gcs object storage spec ")
 	}
 
+	p = ensureObjectStoreStructuredMetadata(&s.Spec.Template.Spec, opts)
+	if err := mergo.Merge(&s.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
+		return kverrors.Wrap(err, "failed to merge object store structured metadata CLI arguments ")
+	}
+
 	return nil
 }
 
@@ -114,6 +124,22 @@ func configureStatefulSetCA(s *appsv1.StatefulSet, tls *TLSConfig) error {
 	}
 
 	return nil
+}
+
+func ensureObjectStoreStructuredMetadata(p *corev1.PodSpec, opts Options) corev1.PodSpec {
+	if !opts.AllowStructuredMetadata() {
+		return *p
+	}
+
+	container := p.Containers[0].DeepCopy()
+
+	container.Args = append(container.Args, "-validation.allow-structured-metadata=false")
+
+	return corev1.PodSpec{
+		Containers: []corev1.Container{
+			*container,
+		},
+	}
 }
 
 func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options) corev1.PodSpec {

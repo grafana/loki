@@ -2712,3 +2712,465 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 		})
 	}
 }
+
+func TestConfigureDeploymentForObjectStoreStructuredMetadata(t *testing.T) {
+	type tt struct {
+		desc string
+		opts Options
+		dpl  *appsv1.Deployment
+		want *appsv1.Deployment
+	}
+
+	tc := []tt{
+		{
+			desc: "structured metadata allowed",
+			opts: Options{
+				SecretName:  "test",
+				SharedStore: lokiv1.ObjectStorageSecretS3,
+				Schemas: []lokiv1.ObjectStorageSchema{
+					{
+						Version: lokiv1.ObjectStorageSchemaV11,
+					},
+					{
+						Version: lokiv1.ObjectStorageSchemaV13,
+					},
+				},
+				TLS: &TLSConfig{
+					CA:  "test",
+					Key: "service-ca.crt",
+				},
+			},
+			dpl: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-querier",
+								},
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-querier",
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      "test",
+											ReadOnly:  false,
+											MountPath: "/etc/storage/secrets",
+										},
+										{
+											Name:      "storage-tls",
+											ReadOnly:  false,
+											MountPath: "/etc/storage/ca",
+										},
+									},
+									Args: []string{
+										"-validation.allow-structured-metadata=false",
+										"-s3.http.ca-file=/etc/storage/ca/service-ca.crt",
+									},
+									Env: []corev1.EnvVar{
+										{
+											Name: EnvAWSAccessKeyID,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAWSAccessKeyID,
+												},
+											},
+										},
+										{
+											Name: EnvAWSAccessKeySecret,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAWSAccessKeySecret,
+												},
+											},
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: "test",
+									VolumeSource: corev1.VolumeSource{
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: "test",
+										},
+									},
+								},
+								{
+									Name: "storage-tls",
+									VolumeSource: corev1.VolumeSource{
+										ConfigMap: &corev1.ConfigMapVolumeSource{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: "test",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc: "structured metadata not allowed",
+			opts: Options{
+				SecretName:  "test",
+				SharedStore: lokiv1.ObjectStorageSecretS3,
+				Schemas: []lokiv1.ObjectStorageSchema{
+					{
+						Version: lokiv1.ObjectStorageSchemaV11,
+					},
+					{
+						Version: lokiv1.ObjectStorageSchemaV12,
+					},
+				},
+				TLS: &TLSConfig{
+					CA:  "test",
+					Key: "service-ca.crt",
+				},
+			},
+			dpl: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-querier",
+								},
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-querier",
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      "test",
+											ReadOnly:  false,
+											MountPath: "/etc/storage/secrets",
+										},
+										{
+											Name:      "storage-tls",
+											ReadOnly:  false,
+											MountPath: "/etc/storage/ca",
+										},
+									},
+									Args: []string{
+										"-s3.http.ca-file=/etc/storage/ca/service-ca.crt",
+									},
+									Env: []corev1.EnvVar{
+										{
+											Name: EnvAWSAccessKeyID,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAWSAccessKeyID,
+												},
+											},
+										},
+										{
+											Name: EnvAWSAccessKeySecret,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAWSAccessKeySecret,
+												},
+											},
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: "test",
+									VolumeSource: corev1.VolumeSource{
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: "test",
+										},
+									},
+								},
+								{
+									Name: "storage-tls",
+									VolumeSource: corev1.VolumeSource{
+										ConfigMap: &corev1.ConfigMapVolumeSource{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: "test",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range tc {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+			err := ConfigureDeployment(tc.dpl, tc.opts)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, tc.dpl)
+		})
+	}
+}
+
+func TestConfigureStatefulSetForObjectStoreStructuredMetadata(t *testing.T) {
+	type tt struct {
+		desc string
+		opts Options
+		sts  *appsv1.StatefulSet
+		want *appsv1.StatefulSet
+	}
+
+	tc := []tt{
+		{
+			desc: "structured metadata allowed",
+			opts: Options{
+				SecretName:  "test",
+				SharedStore: lokiv1.ObjectStorageSecretS3,
+				Schemas: []lokiv1.ObjectStorageSchema{
+					{
+						Version: lokiv1.ObjectStorageSchemaV11,
+					},
+					{
+						Version: lokiv1.ObjectStorageSchemaV13,
+					},
+				},
+				TLS: &TLSConfig{
+					CA:  "test",
+					Key: "service-ca.crt",
+				},
+			},
+			sts: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+								},
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      "test",
+											ReadOnly:  false,
+											MountPath: "/etc/storage/secrets",
+										},
+										{
+											Name:      "storage-tls",
+											ReadOnly:  false,
+											MountPath: "/etc/storage/ca",
+										},
+									},
+									Args: []string{
+										"-validation.allow-structured-metadata=false",
+										"-s3.http.ca-file=/etc/storage/ca/service-ca.crt",
+									},
+									Env: []corev1.EnvVar{
+										{
+											Name: EnvAWSAccessKeyID,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAWSAccessKeyID,
+												},
+											},
+										},
+										{
+											Name: EnvAWSAccessKeySecret,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAWSAccessKeySecret,
+												},
+											},
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: "test",
+									VolumeSource: corev1.VolumeSource{
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: "test",
+										},
+									},
+								},
+								{
+									Name: "storage-tls",
+									VolumeSource: corev1.VolumeSource{
+										ConfigMap: &corev1.ConfigMapVolumeSource{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: "test",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc: "structured metadata not allowed",
+			opts: Options{
+				SecretName:  "test",
+				SharedStore: lokiv1.ObjectStorageSecretS3,
+				Schemas: []lokiv1.ObjectStorageSchema{
+					{
+						Version: lokiv1.ObjectStorageSchemaV11,
+					},
+					{
+						Version: lokiv1.ObjectStorageSchemaV12,
+					},
+				},
+				TLS: &TLSConfig{
+					CA:  "test",
+					Key: "service-ca.crt",
+				},
+			},
+			sts: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+								},
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      "test",
+											ReadOnly:  false,
+											MountPath: "/etc/storage/secrets",
+										},
+										{
+											Name:      "storage-tls",
+											ReadOnly:  false,
+											MountPath: "/etc/storage/ca",
+										},
+									},
+									Args: []string{
+										"-s3.http.ca-file=/etc/storage/ca/service-ca.crt",
+									},
+									Env: []corev1.EnvVar{
+										{
+											Name: EnvAWSAccessKeyID,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAWSAccessKeyID,
+												},
+											},
+										},
+										{
+											Name: EnvAWSAccessKeySecret,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAWSAccessKeySecret,
+												},
+											},
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: "test",
+									VolumeSource: corev1.VolumeSource{
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: "test",
+										},
+									},
+								},
+								{
+									Name: "storage-tls",
+									VolumeSource: corev1.VolumeSource{
+										ConfigMap: &corev1.ConfigMapVolumeSource{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: "test",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range tc {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+			err := ConfigureStatefulSet(tc.sts, tc.opts)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, tc.sts)
+		})
+	}
+}

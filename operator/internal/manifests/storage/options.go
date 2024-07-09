@@ -106,3 +106,15 @@ type CloudCredentials struct {
 func (o OpenShiftOptions) TokenCCOAuthEnabled() bool {
 	return o.CloudCredentials.SecretName != "" && o.CloudCredentials.SHA1 != ""
 }
+
+func (o Options) AllowStructuredMetadata() bool {
+	var allowed bool
+	for _, schema := range o.Schemas {
+		if schema.Version == lokiv1.ObjectStorageSchemaV11 || schema.Version == lokiv1.ObjectStorageSchemaV12 {
+			continue
+		}
+
+		allowed = true
+	}
+	return allowed
+}
