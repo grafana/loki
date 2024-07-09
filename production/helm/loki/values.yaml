@@ -3286,7 +3286,6 @@ monitoring:
       labels: {}
       # -- If defined a MetricsInstance will be created to remote write metrics.
       remoteWrite: null
-  #     
   # -- DEPRECATED Self monitoring determines whether Loki should scrape its own logs.
   # This feature currently relies on the Grafana Agent Operator being installed,
   # which is installed by default using the grafana-agent-operator sub-chart.
