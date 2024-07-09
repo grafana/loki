@@ -6375,6 +6375,24 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.rules</td>
+			<td>object</td>
+			<td>DEPRECATED Recording rules for monitoring Loki, required for some dashboards</td>
+			<td><pre lang="json">
+{
+  "additionalGroups": [],
+  "additionalRuleLabels": {},
+  "alerting": true,
+  "annotations": {},
+  "disabled": {},
+  "enabled": false,
+  "labels": {},
+  "namespace": null
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.rules.additionalGroups</td>
 			<td>list</td>
 			<td>Additional groups to add to the rules file</td>
@@ -6467,7 +6485,7 @@ false
 		<tr>
 			<td>monitoring.selfMonitoring.grafanaAgent.installOperator</td>
 			<td>bool</td>
-			<td>Controls whether to install the Grafana Agent Operator and its CRDs. Note that helm will not install CRDs if this flag is enabled during an upgrade. In that case install the CRDs manually from https://github.com/grafana/agent/tree/main/production/operator/crds</td>
+			<td>DEPRECATED Controls whether to install the Grafana Agent Operator and its CRDs. Note that helm will not install CRDs if this flag is enabled during an upgrade. In that case install the CRDs manually from https://github.com/grafana/agent/tree/main/production/operator/crds</td>
 			<td><pre lang="json">
 false
 </pre>
