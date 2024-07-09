@@ -3287,7 +3287,7 @@ monitoring:
       # -- If defined a MetricsInstance will be created to remote write metrics.
       remoteWrite: null
   #     
-  #  -- DEPRECATED Self monitoring determines whether Loki should scrape its own logs.
+  # -- DEPRECATED Self monitoring determines whether Loki should scrape its own logs.
   # This feature currently relies on the Grafana Agent Operator being installed,
   # which is installed by default using the grafana-agent-operator sub-chart.
   # It will create custom resources for GrafanaAgent, LogsInstance, and PodLogs to configure
@@ -3303,7 +3303,7 @@ monitoring:
       # -- Namespace to create additional tenant token secret in. Useful if your Grafana instance
       # is in a separate namespace. Token will still be created in the canary namespace.
       secretNamespace: "{{ .Release.Namespace }}"
-    #  -- DEPRECATED Grafana Agent configuration
+    # -- DEPRECATED Grafana Agent configuration
     grafanaAgent:
       # -- DEPRECATED Controls whether to install the Grafana Agent Operator and its CRDs.
       # Note that helm will not install CRDs if this flag is enabled during an upgrade.

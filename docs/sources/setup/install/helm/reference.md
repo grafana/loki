@@ -6465,6 +6465,60 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.selfMonitoring</td>
+			<td>object</td>
+			<td>DEPRECATED Self monitoring determines whether Loki should scrape its own logs. This feature currently relies on the Grafana Agent Operator being installed, which is installed by default using the grafana-agent-operator sub-chart. It will create custom resources for GrafanaAgent, LogsInstance, and PodLogs to configure scrape configs to scrape its own logs with the labels expected by the included dashboards.</td>
+			<td><pre lang="json">
+{
+  "enabled": false,
+  "grafanaAgent": {
+    "annotations": {},
+    "enableConfigReadAPI": false,
+    "installOperator": false,
+    "labels": {},
+    "priorityClassName": null,
+    "resources": {},
+    "tolerations": []
+  },
+  "logsInstance": {
+    "annotations": {},
+    "clients": null,
+    "labels": {}
+  },
+  "podLogs": {
+    "additionalPipelineStages": [],
+    "annotations": {},
+    "apiVersion": "monitoring.grafana.com/v1alpha1",
+    "labels": {},
+    "relabelings": []
+  },
+  "tenant": {
+    "name": "self-monitoring",
+    "password": null,
+    "secretNamespace": "{{ .Release.Namespace }}"
+  }
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.selfMonitoring.grafanaAgent</td>
+			<td>object</td>
+			<td>DEPRECATED Grafana Agent configuration</td>
+			<td><pre lang="json">
+{
+  "annotations": {},
+  "enableConfigReadAPI": false,
+  "installOperator": false,
+  "labels": {},
+  "priorityClassName": null,
+  "resources": {},
+  "tolerations": []
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.selfMonitoring.grafanaAgent.annotations</td>
 			<td>object</td>
 			<td>Grafana Agent annotations</td>
