@@ -764,10 +764,6 @@ func (t *Loki) initTableManager() (services.Service, error) {
 }
 
 func (t *Loki) initStore() (services.Service, error) {
-	if t.Cfg.isTarget(IngesterRF1) && t.Cfg.StorageConfig.GCSConfig.ChunkBufferSize == 0 {
-		t.Cfg.StorageConfig.GCSConfig.ChunkBufferSize = 1024 * 1024
-	}
-
 	// Set configs pertaining to object storage based indices
 	if config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
 		t.updateConfigForShipperStore()
