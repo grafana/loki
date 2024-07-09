@@ -15,7 +15,7 @@ func NewPrefixedObjectClient(downstreamClient ObjectClient, prefix string) Objec
 	return PrefixedObjectClient{downstreamClient: downstreamClient, prefix: prefix}
 }
 
-func (p PrefixedObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+func (p PrefixedObjectClient) PutObject(ctx context.Context, objectKey string, object io.Reader) error {
 	return p.downstreamClient.PutObject(ctx, p.prefix+objectKey, object)
 }
 

@@ -23,10 +23,10 @@ If possible try to stay current and do sequential updates. If you want to skip v
 Using docker you can check changes between 2 versions of Loki with a command like this:
 
 ```
-export OLD_LOKI=2.3.0
-export NEW_LOKI=2.4.1
-export CONFIG_FILE=loki-local-config.yaml
-diff --color=always --side-by-side <(docker run --rm -t -v "${PWD}":/config grafana/loki:${OLD_LOKI} -config.file=/config/${CONFIG_FILE} -print-config-stderr 2>&1 | sed '/Starting Loki/q' | tr -d '\r') <(docker run --rm -t -v "${PWD}":/config grafana/loki:${NEW_LOKI} -config.file=/config/${CONFIG_FILE} -print-config-stderr 2>&1 | sed '/Starting Loki/q' | tr -d '\r') | less -R
+export OLD_LOKI=2.9.4
+export NEW_LOKI=3.0.0
+export CONFIG_FILE=local-config.yaml
+diff --color=always --side-by-side <(docker run --rm -t -v "${PWD}":/config grafana/loki:${OLD_LOKI} -config.file=/etc/loki/${CONFIG_FILE} -print-config-stderr 2>&1 | sed '/Starting Loki/q' | tr -d '\r') <(docker run --rm -t -v "${PWD}":/config grafana/loki:${NEW_LOKI} -config.file=/etc/loki/${CONFIG_FILE} -print-config-stderr 2>&1 | sed '/Starting Loki/q' | tr -d '\r') | less -R
 ```
 
 The `tr -d '\r'` is likely not necessary for most people, seems like WSL2 was sneaking in some windows newline characters...
@@ -35,6 +35,14 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 
 ## Main / Unreleased
+
+### HTTP API
+
+The API endpoint for instant queries `/api/v1/query` now returns a HTTP status 400 (Bad Request) when the provided `query`
+parameter contains a log selector query instead of returning inconsistent results. Please use the range query endpoint
+`/api/v1/query_range` (`Range` type in Grafana Explore) instead.
+
+### Configuration
 
 Loki changes the default value of `-ruler.alertmanager-use-v2` from `false` to `true`. Alertmanager APIv1 was deprecated in Alertmanager 0.16.0 and is removed as of 0.27.0.
 
