@@ -65,7 +65,9 @@ type ingesterMetrics struct {
 	// Shutdown marker for ingester scale down
 	shutdownMarker prometheus.Gauge
 
-	flushQueueLength prometheus.Gauge
+	flushQueueLength       prometheus.Gauge
+	duplicateLogBytesTotal *prometheus.CounterVec
+	streamsOwnershipCheck  prometheus.Histogram
 }
 
 // setRecoveryBytesInUse bounds the bytes reports to >= 0.
@@ -293,5 +295,20 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 			Name:      "flush_queue_length",
 			Help:      "The total number of series pending in the flush queue.",
 		}),
+
+		streamsOwnershipCheck: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "ingester_streams_ownership_check_duration_ms",
+			Help:      "Distribution of streams ownership check durations in milliseconds.",
+			// 100ms to 5s.
+			Buckets: []float64{100, 250, 350, 500, 750, 1000, 1500, 2000, 5000},
+		}),
+
+		duplicateLogBytesTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: "ingester",
+			Name:      "duplicate_log_bytes_total",
+			Help:      "The total number of bytes that were discarded for duplicate log lines.",
+		}, []string{"tenant"}),
 	}
 }

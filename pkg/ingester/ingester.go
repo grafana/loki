@@ -33,6 +33,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"golang.org/x/time/rate"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	server_util "github.com/grafana/loki/v3/pkg/util/server"
@@ -239,6 +240,9 @@ type Ingester struct {
 	flushQueues     []*util.PriorityQueue
 	flushQueuesDone sync.WaitGroup
 
+	// Spread out calls to the chunk store over the flush period
+	flushRateLimiter *rate.Limiter
+
 	limiter *Limiter
 
 	// Denotes whether the ingester should flush on shutdown.
@@ -294,6 +298,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		periodicConfigs:       store.GetSchemaConfigs(),
 		loopQuit:              make(chan struct{}),
 		flushQueues:           make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
+		flushRateLimiter:      rate.NewLimiter(rate.Inf, 1),
 		tailersQuit:           make(chan struct{}),
 		metrics:               metrics,
 		flushOnShutdownSwitch: &OnceSwitch{},
@@ -872,7 +877,7 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 
 	// Set profiling tags
 	defer pprof.SetGoroutineLabels(ctx)
-	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "write", "tenant", instanceID))
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "write"))
 	pprof.SetGoroutineLabels(ctx)
 
 	instance, err := i.GetOrCreateInstance(instanceID)
@@ -947,7 +952,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 
 	// Set profiling tags
 	defer pprof.SetGoroutineLabels(ctx)
-	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "log", "tenant", instanceID))
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "log"))
 	pprof.SetGoroutineLabels(ctx)
 
 	instance, err := i.GetOrCreateInstance(instanceID)
@@ -1014,7 +1019,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 
 	// Set profiling tags
 	defer pprof.SetGoroutineLabels(ctx)
-	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "metric", "tenant", instanceID))
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "metric"))
 	pprof.SetGoroutineLabels(ctx)
 
 	instance, err := i.GetOrCreateInstance(instanceID)
@@ -1090,7 +1095,7 @@ func (i *Ingester) getChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 
 	// Set profiling tags
 	defer pprof.SetGoroutineLabels(ctx)
-	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "chunkIDs", "tenant", orgID))
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "chunkIDs"))
 	pprof.SetGoroutineLabels(ctx)
 
 	asyncStoreMaxLookBack := i.asyncStoreMaxLookBack()
@@ -1139,7 +1144,7 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 
 	// Set profiling tags
 	defer pprof.SetGoroutineLabels(ctx)
-	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "labels", "tenant", userID))
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "labels"))
 	pprof.SetGoroutineLabels(ctx)
 
 	instance, err := i.GetOrCreateInstance(userID)
@@ -1220,7 +1225,7 @@ func (i *Ingester) series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 
 	// Set profiling tags
 	defer pprof.SetGoroutineLabels(ctx)
-	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "series", "tenant", instanceID))
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "series"))
 	pprof.SetGoroutineLabels(ctx)
 
 	instance, err := i.GetOrCreateInstance(instanceID)
@@ -1240,7 +1245,7 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 
 	// Set profiling tags
 	defer pprof.SetGoroutineLabels(ctx)
-	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "stats", "tenant", user))
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "stats"))
 	pprof.SetGoroutineLabels(ctx)
 
 	instance, err := i.GetOrCreateInstance(user)
@@ -1302,7 +1307,7 @@ func (i *Ingester) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (
 
 	// Set profiling tags
 	defer pprof.SetGoroutineLabels(ctx)
-	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "volume", "tenant", user))
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "volume"))
 	pprof.SetGoroutineLabels(ctx)
 
 	instance, err := i.GetOrCreateInstance(user)
@@ -1503,7 +1508,7 @@ func (i *Ingester) getDetectedLabels(ctx context.Context, req *logproto.Detected
 
 	// Set profiling tags
 	defer pprof.SetGoroutineLabels(ctx)
-	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "detectedLabels", "tenant", userID))
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "detectedLabels"))
 	pprof.SetGoroutineLabels(ctx)
 
 	instance, err := i.GetOrCreateInstance(userID)

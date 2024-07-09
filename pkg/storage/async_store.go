@@ -25,7 +25,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 type IngesterQuerier interface {
@@ -73,8 +72,6 @@ func (a *AsyncStore) GetChunks(ctx context.Context,
 	predicate chunk.Predicate,
 	storeChunksOverride *logproto.ChunkRefGroup,
 ) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
-	spanLogger := spanlogger.FromContext(ctx)
-
 	errs := make(chan error)
 
 	var storeChunks [][]chunk.Chunk
@@ -98,7 +95,9 @@ func (a *AsyncStore) GetChunks(ctx context.Context,
 		ingesterChunks, err = a.ingesterQuerier.GetChunkIDs(ctx, from, through, predicate.Matchers...)
 
 		if err == nil {
-			level.Debug(spanLogger).Log("ingester-chunks-count", len(ingesterChunks))
+			if sp := opentracing.SpanFromContext(ctx); sp != nil {
+				sp.LogKV("ingester-chunks-count", len(ingesterChunks))
+			}
 			level.Debug(util_log.Logger).Log("msg", "got chunk ids from ingester", "count", len(ingesterChunks))
 		}
 		errs <- err

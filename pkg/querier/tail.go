@@ -259,7 +259,7 @@ func (t *Tailer) next() bool {
 		return false
 	}
 
-	t.currEntry = t.openStreamIterator.Entry()
+	t.currEntry = t.openStreamIterator.At()
 	t.currLabels = t.openStreamIterator.Labels()
 	t.recordStream(t.openStreamIterator.StreamHash())
 

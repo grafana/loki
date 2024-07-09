@@ -253,6 +253,56 @@ func TestFlushingCollidingLabels(t *testing.T) {
 	}
 }
 
+func Test_flush_not_owned_stream(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.FlushCheckPeriod = time.Millisecond * 100
+	cfg.MaxChunkAge = time.Minute
+	cfg.MaxChunkIdle = time.Hour
+
+	store, ing := newTestStore(t, cfg, nil)
+	defer store.Stop()
+
+	now := time.Unix(0, 0)
+
+	entries := []logproto.Entry{
+		{Timestamp: now.Add(time.Nanosecond), Line: "1"},
+		{Timestamp: now.Add(time.Minute), Line: "2"},
+	}
+
+	labelSet := model.LabelSet{"app": "l"}
+	req := &logproto.PushRequest{Streams: []logproto.Stream{
+		{Labels: labelSet.String(), Entries: entries},
+	}}
+
+	const userID = "testUser"
+	ctx := user.InjectOrgID(context.Background(), userID)
+
+	_, err := ing.Push(ctx, req)
+	require.NoError(t, err)
+
+	time.Sleep(2 * cfg.FlushCheckPeriod)
+
+	// ensure chunk is not flushed after flush period elapses
+	store.checkData(t, map[string][]logproto.Stream{})
+
+	instance, found := ing.getInstanceByID(userID)
+	require.True(t, found)
+	fingerprint := instance.getHashForLabels(labels.FromStrings("app", "l"))
+	require.Equal(t, model.Fingerprint(16794418009594958), fingerprint)
+	instance.ownedStreamsSvc.trackStreamOwnership(fingerprint, false)
+
+	time.Sleep(2 * cfg.FlushCheckPeriod)
+
+	// assert stream is now both batches
+	store.checkData(t, map[string][]logproto.Stream{
+		userID: {
+			{Labels: labelSet.String(), Entries: entries},
+		},
+	})
+
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
+}
+
 func TestFlushMaxAge(t *testing.T) {
 	cfg := defaultIngesterTestConfig(t)
 	cfg.FlushCheckPeriod = time.Millisecond * 100
@@ -538,8 +588,8 @@ func buildStreamsFromChunk(t *testing.T, lbs string, chk chunkenc.Chunk) logprot
 		Labels: lbs,
 	}
 	for it.Next() {
-		stream.Entries = append(stream.Entries, it.Entry())
+		stream.Entries = append(stream.Entries, it.At())
 	}
-	require.NoError(t, it.Error())
+	require.NoError(t, it.Err())
 	return stream
 }

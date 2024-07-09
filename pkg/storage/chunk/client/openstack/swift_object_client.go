@@ -145,7 +145,7 @@ func (s *SwiftObjectClient) GetObject(_ context.Context, objectKey string) (io.R
 }
 
 // PutObject puts the specified bytes into the configured Swift container at the provided key
-func (s *SwiftObjectClient) PutObject(_ context.Context, objectKey string, object io.ReadSeeker) error {
+func (s *SwiftObjectClient) PutObject(_ context.Context, objectKey string, object io.Reader) error {
 	_, err := s.conn.ObjectPut(s.cfg.ContainerName, objectKey, object, false, "", "", nil)
 	return err
 }

@@ -3165,6 +3165,18 @@ int32
 <p>CardinalityLimit defines the cardinality limit for index queries.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>maxVolumeSeries</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>MaxVolumeSeries defines the maximum number of aggregated series in a log-volume response</p>
+</td>
+</tr>
 </tbody>
 </table>
 

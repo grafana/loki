@@ -65,6 +65,69 @@ func TestTruncateDay(t *testing.T) {
 	}
 }
 
+func TestDaysForRange(t *testing.T) {
+	for _, tc := range []struct {
+		desc  string
+		pairs [2]string
+		exp   []string
+	}{
+		{
+			desc:  "single day range",
+			pairs: [2]string{"2024-01-24 00:00", "2024-01-24 23:59"},
+			exp:   []string{"2024-01-24 00:00"},
+		},
+		{
+			desc:  "two consecutive days",
+			pairs: [2]string{"2024-01-24 00:00", "2024-01-25 23:59"},
+			exp:   []string{"2024-01-24 00:00", "2024-01-25 00:00"},
+		},
+		{
+			desc:  "multiple days range",
+			pairs: [2]string{"2024-01-24 00:00", "2024-01-27 23:59"},
+			exp:   []string{"2024-01-24 00:00", "2024-01-25 00:00", "2024-01-26 00:00", "2024-01-27 00:00"},
+		},
+		{
+			desc:  "end of month to beginning of next",
+			pairs: [2]string{"2024-01-31 00:00", "2024-02-01 23:59"},
+			exp:   []string{"2024-01-31 00:00", "2024-02-01 00:00"},
+		},
+		{
+			desc:  "leap year day range",
+			pairs: [2]string{"2024-02-28 00:00", "2024-02-29 23:59"},
+			exp:   []string{"2024-02-28 00:00", "2024-02-29 00:00"},
+		},
+		{
+			desc:  "two consecutive days not nicely aligned",
+			pairs: [2]string{"2024-01-24 04:00", "2024-01-25 10:00"},
+			exp:   []string{"2024-01-24 00:00", "2024-01-25 00:00"},
+		},
+		{
+			desc:  "two consecutive days end zeroed trimmed",
+			pairs: [2]string{"2024-01-24 00:00", "2024-01-25 00:00"},
+			exp:   []string{"2024-01-24 00:00"},
+		},
+		{
+			desc:  "preserve one day",
+			pairs: [2]string{"2024-01-24 00:00", "2024-01-24 00:00"},
+			exp:   []string{"2024-01-24 00:00"},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			from := mktime(tc.pairs[0])
+			through := mktime(tc.pairs[1])
+			result := daysForRange(from, through)
+			var collected []string
+			for _, d := range result {
+				parsed := d.Time().UTC().Format("2006-01-02 15:04")
+				collected = append(collected, parsed)
+			}
+
+			require.Equal(t, tc.exp, collected)
+		})
+	}
+
+}
+
 func mkBlockRef(minFp, maxFp uint64) bloomshipper.BlockRef {
 	return bloomshipper.BlockRef{
 		Ref: bloomshipper.Ref{
@@ -73,7 +136,7 @@ func mkBlockRef(minFp, maxFp uint64) bloomshipper.BlockRef {
 	}
 }
 
-func TestPartitionTasks(t *testing.T) {
+func TestPartitionTasksByBlock(t *testing.T) {
 
 	t.Run("consecutive block ranges", func(t *testing.T) {
 		bounds := []bloomshipper.BlockRef{
@@ -93,7 +156,7 @@ func TestPartitionTasks(t *testing.T) {
 			tasks[i%nTasks].series = append(tasks[i%nTasks].series, &logproto.GroupedChunkRefs{Fingerprint: uint64(i)})
 		}
 
-		results := partitionTasks(tasks, bounds)
+		results := partitionTasksByBlock(tasks, bounds)
 		require.Equal(t, 3, len(results)) // ensure we only return bounds in range
 
 		actualFingerprints := make([]*logproto.GroupedChunkRefs, 0, nSeries)
@@ -128,7 +191,7 @@ func TestPartitionTasks(t *testing.T) {
 			task.series = append(task.series, &logproto.GroupedChunkRefs{Fingerprint: uint64(i)})
 		}
 
-		results := partitionTasks([]Task{task}, bounds)
+		results := partitionTasksByBlock([]Task{task}, bounds)
 		require.Equal(t, 3, len(results)) // ensure we only return bounds in range
 		for _, res := range results {
 			// ensure we have the right number of tasks per bound
@@ -153,8 +216,37 @@ func TestPartitionTasks(t *testing.T) {
 			},
 		}
 
-		results := partitionTasks(tasks, bounds)
+		results := partitionTasksByBlock(tasks, bounds)
 		require.Len(t, results, 0)
+	})
+
+	t.Run("overlapping and unsorted block ranges", func(t *testing.T) {
+		bounds := []bloomshipper.BlockRef{
+			mkBlockRef(5, 14),
+			mkBlockRef(0, 9),
+			mkBlockRef(10, 19),
+		}
+
+		tasks := []Task{
+			{
+				series: []*logproto.GroupedChunkRefs{
+					{Fingerprint: 6},
+				},
+			},
+			{
+				series: []*logproto.GroupedChunkRefs{
+					{Fingerprint: 12},
+				},
+			},
+		}
+
+		expected := []blockWithTasks{
+			{ref: bounds[0], tasks: tasks},     // both tasks
+			{ref: bounds[1], tasks: tasks[:1]}, // first task
+			{ref: bounds[2], tasks: tasks[1:]}, // second task
+		}
+		results := partitionTasksByBlock(tasks, bounds)
+		require.Equal(t, expected, results)
 	})
 }
 
@@ -432,6 +524,7 @@ func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, 
 		// 		t.Log(i, j, string(keys[i][j]))
 		// 	}
 		// }
+
 		blocks = append(blocks, block)
 		metas = append(metas, meta)
 		blockRefs = append(blockRefs, blockRef)
