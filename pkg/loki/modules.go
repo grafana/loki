@@ -636,7 +636,6 @@ func (t *Loki) initIngesterRF1() (_ services.Service, err error) {
 
 	logger := log.With(util_log.Logger, "component", "ingester-rf1")
 	t.Cfg.IngesterRF1.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
-	t.Cfg.StorageConfig.GCSConfig.ChunkBufferSize = 1024 * 1024 // Hardcoded to 1MB because the RF1 WAL segments use an unbuffered writer to GCS, and that results in a lot of small packets with this set to the default of 0.
 
 	if t.Cfg.IngesterRF1.ShutdownMarkerPath == "" && t.Cfg.Common.PathPrefix != "" {
 		t.Cfg.IngesterRF1.ShutdownMarkerPath = t.Cfg.Common.PathPrefix
@@ -765,6 +764,10 @@ func (t *Loki) initTableManager() (services.Service, error) {
 }
 
 func (t *Loki) initStore() (services.Service, error) {
+	if t.Cfg.isTarget(IngesterRF1) && t.Cfg.StorageConfig.GCSConfig.ChunkBufferSize == 0 {
+		t.Cfg.StorageConfig.GCSConfig.ChunkBufferSize = 1024 * 1024
+	}
+
 	// Set configs pertaining to object storage based indices
 	if config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
 		t.updateConfigForShipperStore()
