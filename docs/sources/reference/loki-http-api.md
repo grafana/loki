@@ -284,8 +284,9 @@ GET /loki/api/v1/query
 ```
 
 `/loki/api/v1/query` allows for doing queries against a single point in time.
-This type of query is often referred to as an instant query. Instant queries are mostly used for metric type LogQL queries.
-It accepts the following query parameters in the URL:
+This type of query is often referred to as an instant query. Instant queries are only used for metric type LogQL queries
+and will return a 400 (Bad Request) in case a log type query is provided.
+The endpoint accepts the following query parameters in the URL:
 
 - `query`: The [LogQL]({{< relref "../query" >}}) query to perform. Requests that do not use valid LogQL syntax will return errors.
 - `limit`: The max number of entries to return. It defaults to `100`. Only applies to query types which produce a stream (log lines) response.

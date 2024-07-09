@@ -19,7 +19,7 @@ import (
 type ObjectClient interface {
 	ObjectExists(ctx context.Context, objectKey string) (bool, error)
 
-	PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error
+	PutObject(ctx context.Context, objectKey string, object io.Reader) error
 	// NOTE: The consumer of GetObject should always call the Close method when it is done reading which otherwise could cause a resource leak.
 	GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error)
 

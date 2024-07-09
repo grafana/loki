@@ -2,6 +2,8 @@ package v1
 
 import (
 	"unicode/utf8"
+
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 )
 
 const (
@@ -51,7 +53,7 @@ func NewNGramTokenizer(n, skip int) *NGramTokenizer {
 // Token implements the NGramBuilder interface
 // The Token iterator uses shared buffers for performance. The []byte returned by At()
 // is not safe for use after subsequent calls to Next()
-func (t *NGramTokenizer) Tokens(line string) Iterator[[]byte] {
+func (t *NGramTokenizer) Tokens(line string) iter.Iterator[[]byte] {
 	return &NGramTokenIter{
 		n:    t.N(),
 		skip: t.SkipFactor(),
@@ -108,17 +110,17 @@ type PrefixedTokenIter struct {
 	buf       []byte
 	prefixLen int
 
-	Iterator[[]byte]
+	iter.Iterator[[]byte]
 }
 
 func (t *PrefixedTokenIter) At() []byte {
 	return append(t.buf[:t.prefixLen], t.Iterator.At()...)
 }
 
-func NewPrefixedTokenIter(buf []byte, prefixLn int, iter Iterator[[]byte]) *PrefixedTokenIter {
+func NewPrefixedTokenIter(buf []byte, prefixLn int, itr iter.Iterator[[]byte]) *PrefixedTokenIter {
 	return &PrefixedTokenIter{
 		buf:       buf,
 		prefixLen: prefixLn,
-		Iterator:  iter,
+		Iterator:  itr,
 	}
 }

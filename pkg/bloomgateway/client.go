@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
@@ -116,11 +117,20 @@ type Client interface {
 	FilterChunks(ctx context.Context, tenant string, interval bloomshipper.Interval, blocks []blockWithSeries, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error)
 }
 
+// clientPool is a minimal interface that is satisfied by the JumpHashClientPool.
+// It does only expose functions that are used by the GatewayClient
+// and is required to mock the JumpHashClientPool in tests.
+type clientPool interface {
+	GetClientFor(string) (ringclient.PoolClient, error)
+	Addr(string) (string, error)
+	Stop()
+}
+
 type GatewayClient struct {
 	cfg         ClientConfig
 	logger      log.Logger
 	metrics     *clientMetrics
-	pool        *JumpHashClientPool
+	pool        clientPool
 	dnsProvider *discovery.DNS
 }
 
@@ -211,8 +221,15 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, _ string, interval blo
 	servers := make([]addrWithGroups, 0, len(blocks))
 	for _, blockWithSeries := range blocks {
 		addr, err := c.pool.Addr(blockWithSeries.block.String())
+
+		// the client should return the full, unfiltered list of chunks instead of an error
 		if err != nil {
-			return nil, errors.Wrapf(err, "server address for block: %s", blockWithSeries.block)
+			level.Error(c.logger).Log("msg", "failed to resolve server address for block", "block", blockWithSeries.block, "err", err)
+			var series [][]*logproto.GroupedChunkRefs
+			for i := range blocks {
+				series = append(series, blocks[i].series)
+			}
+			return mergeSeries(series, nil)
 		}
 
 		if idx, found := pos[addr]; found {
@@ -284,10 +301,10 @@ func mergeSeries(input [][]*logproto.GroupedChunkRefs, buf []*logproto.GroupedCh
 	// clear provided buffer
 	buf = buf[:0]
 
-	iters := make([]v1.PeekingIterator[*logproto.GroupedChunkRefs], 0, len(input))
+	iters := make([]iter.PeekIterator[*logproto.GroupedChunkRefs], 0, len(input))
 	for _, inp := range input {
 		sort.Slice(inp, func(i, j int) bool { return inp[i].Fingerprint < inp[j].Fingerprint })
-		iters = append(iters, v1.NewPeekingIter(v1.NewSliceIter(inp)))
+		iters = append(iters, iter.NewPeekIter(iter.NewSliceIter(inp)))
 	}
 
 	heapIter := v1.NewHeapIterator[*logproto.GroupedChunkRefs](
@@ -295,11 +312,11 @@ func mergeSeries(input [][]*logproto.GroupedChunkRefs, buf []*logproto.GroupedCh
 		iters...,
 	)
 
-	dedupeIter := v1.NewDedupingIter[*logproto.GroupedChunkRefs, *logproto.GroupedChunkRefs](
+	dedupeIter := iter.NewDedupingIter[*logproto.GroupedChunkRefs, *logproto.GroupedChunkRefs](
 		// eq
 		func(a, b *logproto.GroupedChunkRefs) bool { return a.Fingerprint == b.Fingerprint },
 		// from
-		v1.Identity[*logproto.GroupedChunkRefs],
+		iter.Identity[*logproto.GroupedChunkRefs],
 		// merge
 		func(a, b *logproto.GroupedChunkRefs) *logproto.GroupedChunkRefs {
 			// TODO(chaudum): Check if we can assume sorted shortrefs here
@@ -316,10 +333,10 @@ func mergeSeries(input [][]*logproto.GroupedChunkRefs, buf []*logproto.GroupedCh
 			}
 		},
 		// iterator
-		v1.NewPeekingIter(heapIter),
+		iter.NewPeekIter(heapIter),
 	)
 
-	return v1.CollectInto(dedupeIter, buf)
+	return iter.CollectInto(dedupeIter, buf)
 }
 
 // mergeChunkSets merges and deduplicates two sorted slices of shortRefs
