@@ -22,7 +22,7 @@ The loki chart supports three methods of deployment:
 - [Simple Scalable]({{< relref "./install-scalable" >}})
 - [Microservice]({{< relref "./install-microservices" >}})
 
-By default, the chart installs [Simple Scalable]({{< relref "./install-scalable" >}}). This is the recommended method for most users. To understand the differences between deployment methods, see the [Loki deployment modes]({{< relref "../../../get-started/deployment-modes/" >}}) documentation.
+By default, the chart installs [Simple Scalable]({{< relref "./install-scalable" >}}). This is the recommended method for most users. To understand the differences between deployment methods, see the [Loki deployment modes]({{< relref "../../../get-started/deployment-modes" >}}) documentation.
 
 ## Monitoring Loki
 
@@ -48,4 +48,4 @@ If NetworkPolicies are enabled, they are more restrictive if the gateway is enab
 
 ## Caching
 
-By default, this chart configures in-memory caching. If that caching does not work for your deployment, you should setup [memcache]({{< relref "../../../operations/caching/" >}}).
+By default, this chart configures in-memory caching. If that caching does not work for your deployment, you should setup [memcache]({{< relref "../../../operations/caching" >}}).
