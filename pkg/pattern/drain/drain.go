@@ -61,27 +61,11 @@ type LogClusterCache struct {
 }
 
 func (c *LogClusterCache) Values() []*LogCluster {
-	values := make([]*LogCluster, 0)
-	for _, key := range c.cache.Keys() {
-		if value, ok := c.cache.Peek(key); ok {
-			values = append(values, value)
-		}
-	}
-	return values
+	return c.cache.Values()
 }
 
 func (c *LogClusterCache) Set(key int, cluster *LogCluster) {
 	c.cache.Add(key, cluster)
-}
-
-func (c *LogClusterCache) Iterate(fn func(*LogCluster) bool) {
-	for _, key := range c.cache.Keys() {
-		if value, ok := c.cache.Peek(key); ok {
-			if !fn(value) {
-				return
-			}
-		}
-	}
 }
 
 func (c *LogClusterCache) Get(key int) *LogCluster {
