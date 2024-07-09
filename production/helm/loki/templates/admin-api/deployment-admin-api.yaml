@@ -32,7 +32,7 @@ spec:
         {{- if .Values.useExternalConfig }}
         checksum/config: {{ .Values.externalConfigVersion }}
         {{- else }}
-        checksum/config: {{ include (print $.Template.BasePath "/config.yaml") . | sha256sum }}
+        {{- include "loki.config.checksum" $ | nindent 8 }}
         {{- end}}
         {{- with .Values.adminApi.annotations }}
         {{- toYaml . | nindent 8 }}

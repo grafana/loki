@@ -1080,7 +1080,7 @@ enableServiceLinks: false
 {{- end }}
 
 {{- define "loki.config.checksum" -}}
-checksum/config: {{ include (print .Template.BasePath "/config.yaml") . | sha256sum }}
+checksum/config: {{ include "loki.calculatedConfig" . | sha256sum }}
 {{- end -}}
 
 {{/*
