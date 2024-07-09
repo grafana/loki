@@ -326,7 +326,7 @@ func Test_RangeVectorIterator_InstantQuery(t *testing.T) {
 
 	for i, tt := range tests {
 		t.Run(
-			fmt.Sprintf("%d logs[%s] - start %s - end %s", i, time.Duration(tt.selRange), tt.now.Add(tt.selRange), tt.now),
+			fmt.Sprintf("%d logs[%s] - start %s - end %s", i, tt.selRange, tt.now.Add(tt.selRange), tt.now),
 			func(t *testing.T) {
 				it, err := newRangeVectorIterator(
 					newfakePeekingSampleIterator(samples),
