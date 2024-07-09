@@ -955,7 +955,6 @@ func TestEngine_InstantQuery(t *testing.T) {
 	} {
 		test := test
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
-			t.Parallel()
 
 			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params), NoLimits, log.NewNopLogger())
 
@@ -2735,6 +2734,11 @@ func (q *querierRecorder) SelectSamples(_ context.Context, p SelectSampleParams)
 }
 
 func paramsID(p interface{}) string {
+	switch params := p.(type) {
+	case SelectLogParams:
+	case SelectSampleParams:
+		return fmt.Sprintf("%d", params.Plan.Hash())
+	}
 	b, err := json.Marshal(p)
 	if err != nil {
 		panic(err)
