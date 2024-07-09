@@ -1,6 +1,8 @@
 package drain
 
-import "time"
+import (
+	"time"
+)
 
 type limiter struct {
 	added         int64
@@ -16,17 +18,21 @@ func newLimiter(maxPercentage float64) *limiter {
 }
 
 func (l *limiter) Allow() bool {
-	if l.blockedUntil != (time.Time{}) {
+	if !l.blockedUntil.IsZero() {
 		if time.Now().Before(l.blockedUntil) {
 			return false
 		}
 		l.reset()
 	}
-	l.added++
+	if l.added == 0 {
+		l.added++
+		return true
+	}
 	if float64(l.evicted)/float64(l.added) > l.maxPercentage {
 		l.block()
 		return false
 	}
+	l.added++
 	return true
 }
 
@@ -41,5 +47,5 @@ func (l *limiter) reset() {
 }
 
 func (l *limiter) block() {
-	l.blockedUntil = time.Now().Add(1 * time.Minute)
+	l.blockedUntil = time.Now().Add(10 * time.Minute)
 }

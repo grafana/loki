@@ -26,7 +26,7 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 			Subsystem: "pattern_ingester",
 			Name:      "patterns_evicted_total",
 			Help:      "The total number of patterns evicted from the LRU cache.",
-		}, []string{"tenant", "format"}),
+		}, []string{"tenant", "format", "pruned"}),
 		patternsDetectedTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: "pattern_ingester",

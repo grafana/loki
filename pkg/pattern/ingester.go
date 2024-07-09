@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/pattern/clientpool"
+	"github.com/grafana/loki/v3/pkg/pattern/drain"
 	"github.com/grafana/loki/v3/pkg/pattern/metric"
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -39,6 +40,8 @@ type Config struct {
 	ClientConfig      clientpool.Config     `yaml:"client_config,omitempty" doc:"description=Configures how the pattern ingester will connect to the ingesters."`
 	ConcurrentFlushes int                   `yaml:"concurrent_flushes"`
 	FlushCheckPeriod  time.Duration         `yaml:"flush_check_period"`
+	MaxClusters       int                   `yaml:"max_clusters,omitempty" doc:"description=The maximum number of detected pattern clusters that can be created by streams."`
+	MaxEvictionRatio  float64               `yaml:"max_eviction_ratio,omitempty" doc:"description=The maximum eviction ratio of patterns per stream. Once that ratio is reached, the stream will throttled pattern detection."`
 
 	MetricAggregation metric.AggregationConfig `yaml:"metric_aggregation,omitempty" doc:"description=Configures the metric aggregation and storage behavior of the pattern ingester."`
 	// For testing.
@@ -54,6 +57,8 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	fs.BoolVar(&cfg.Enabled, "pattern-ingester.enabled", false, "Flag to enable or disable the usage of the pattern-ingester component.")
 	fs.IntVar(&cfg.ConcurrentFlushes, "pattern-ingester.concurrent-flushes", 32, "How many flushes can happen concurrently from each stream.")
 	fs.DurationVar(&cfg.FlushCheckPeriod, "pattern-ingester.flush-check-period", 30*time.Second, "How often should the ingester see if there are any blocks to flush. The first flush check is delayed by a random time up to 0.8x the flush check period. Additionally, there is +/- 1% jitter added to the interval.")
+	fs.IntVar(&cfg.MaxClusters, "pattern-ingester.max-clusters", drain.DefaultConfig().MaxClusters, "The maximum number of detected pattern clusters that can be created by the pattern ingester.")
+	fs.Float64Var(&cfg.MaxEvictionRatio, "pattern-ingester.max-eviction-ratio", drain.DefaultConfig().MaxEvictionRatio, "The maximum eviction ratio of patterns per stream. Once that ratio is reached, the stream will be throttled for pattern detection.")
 }
 
 func (cfg *Config) Validate() error {
@@ -85,6 +90,7 @@ type Ingester struct {
 
 	metrics      *ingesterMetrics
 	chunkMetrics *metric.ChunkMetrics
+	drainCfg     *drain.Config
 }
 
 func New(
@@ -97,6 +103,10 @@ func New(
 	chunkMetrics := metric.NewChunkMetrics(registerer, metricsNamespace)
 	registerer = prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", registerer)
 
+	drainCfg := drain.DefaultConfig()
+	drainCfg.MaxClusters = cfg.MaxClusters
+	drainCfg.MaxEvictionRatio = cfg.MaxEvictionRatio
+
 	i := &Ingester{
 		cfg:          cfg,
 		logger:       log.With(logger, "component", "pattern-ingester"),
@@ -106,6 +116,7 @@ func New(
 		instances:    make(map[string]*instance),
 		flushQueues:  make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
 		loopQuit:     make(chan struct{}),
+		drainCfg:     drainCfg,
 	}
 	i.Service = services.NewBasicService(i.starting, i.running, i.stopping)
 	var err error
@@ -357,6 +368,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 			i.logger,
 			i.metrics,
 			i.chunkMetrics,
+			i.drainCfg,
 			i.cfg.MetricAggregation,
 		)
 		if err != nil {

@@ -31,6 +31,7 @@ func TestAddStream(t *testing.T) {
 		log.NewNopLogger(),
 		drain.FormatUnknown,
 		"123",
+		drain.DefaultConfig(),
 	)
 	require.NoError(t, err)
 
@@ -70,6 +71,7 @@ func TestPruneStream(t *testing.T) {
 		log.NewNopLogger(),
 		drain.FormatUnknown,
 		"123",
+		drain.DefaultConfig(),
 	)
 	require.NoError(t, err)
 
@@ -120,6 +122,7 @@ func TestSampleIterator(t *testing.T) {
 			log.NewNopLogger(),
 			drain.FormatUnknown,
 			"123",
+			drain.DefaultConfig(),
 		)
 		require.NoError(t, err)
 
@@ -167,6 +170,7 @@ func TestSampleIterator(t *testing.T) {
 			log.NewNopLogger(),
 			drain.FormatUnknown,
 			"123",
+			drain.DefaultConfig(),
 		)
 		require.NoError(t, err)
 
@@ -255,6 +259,7 @@ func TestSampleIterator(t *testing.T) {
 			log.NewNopLogger(),
 			drain.FormatUnknown,
 			"123",
+			drain.DefaultConfig(),
 		)
 		require.NoError(t, err)
 

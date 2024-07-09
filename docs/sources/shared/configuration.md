@@ -585,6 +585,16 @@ pattern_ingester:
   # CLI flag: -pattern-ingester.flush-check-period
   [flush_check_period: <duration> | default = 30s]
 
+  # The maximum number of detected pattern clusters that can be created by
+  # streams.
+  # CLI flag: -pattern-ingester.max-clusters
+  [max_clusters: <int> | default = 300]
+
+  # The maximum eviction ratio of patterns per stream. Once that ratio is
+  # reached, the stream will throttled pattern detection.
+  # CLI flag: -pattern-ingester.max-eviction-ratio
+  [max_eviction_ratio: <float> | default = 0.25]
+
   # Configures the metric aggregation and storage behavior of the pattern
   # ingester.
   metric_aggregation:
