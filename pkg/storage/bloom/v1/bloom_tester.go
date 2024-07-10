@@ -5,6 +5,7 @@ import (
 
 	"github.com/grafana/regexp"
 
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -176,7 +177,7 @@ func (n matchAllTest) MatchesWithPrefixBuf(_ filter.Checker, _ []byte, _ int) bo
 // Extracting this interface allows us to test the bloom filter without having to use the actual tokenizer
 // TODO: This should be moved to tokenizer.go
 type NGramBuilder interface {
-	Tokens(line string) Iterator[[]byte]
+	Tokens(line string) iter.Iterator[[]byte]
 	N() int
 	SkipFactor() int
 }

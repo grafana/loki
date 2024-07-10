@@ -212,7 +212,7 @@ loki:
     query_range:
       align_queries_with_step: true
       {{- with .Values.loki.query_range }}
-      {{- tpl (. | toYaml) $ | nindent 4 }}
+      {{- tpl (. | toYaml) $ | nindent 2 }}
       {{- end }}
       {{- if .Values.resultsCache.enabled }}
       {{- with .Values.resultsCache }}
@@ -858,6 +858,8 @@ gateway:
   enabled: true
   # -- Number of replicas for the gateway
   replicas: 1
+  # -- Default container port
+  containerPort: 8080
   # -- Enable logging of 2xx and 3xx HTTP requests
   verboseLogging: true
   autoscaling:

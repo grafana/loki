@@ -16,7 +16,7 @@ type Check func(ctx context.Context) bool
 
 // WithManager returns a new Check that tests if the managed services are healthy.
 func WithManager(manager *services.Manager) Check {
-	return func(ctx context.Context) bool {
+	return func(context.Context) bool {
 		states := manager.ServicesByState()
 
 		// Given this is a health check endpoint for the whole instance, we should consider
@@ -33,7 +33,7 @@ func WithManager(manager *services.Manager) Check {
 
 // WithShutdownRequested returns a new Check that returns false when shutting down.
 func WithShutdownRequested(requested *atomic.Bool) Check {
-	return func(ctx context.Context) bool {
+	return func(context.Context) bool {
 		return !requested.Load()
 	}
 }

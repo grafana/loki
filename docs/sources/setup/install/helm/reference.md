@@ -3490,6 +3490,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>gateway.containerPort</td>
+			<td>int</td>
+			<td>Default container port</td>
+			<td><pre lang="json">
+8080
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.containerSecurityContext</td>
 			<td>object</td>
 			<td>The SecurityContext for gateway containers</td>

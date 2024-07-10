@@ -4,34 +4,35 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 )
 
 func TestMergeDedupeIter(t *testing.T) {
 	t.Parallel()
 	var (
-		numSeries        = 100
-		numKeysPerSeries = 10000
-		data, _          = MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0, 0xffff, 0, 10000)
-		dataPtr          = PointerSlice(data)
-		queriers         = make([]PeekingIterator[*SeriesWithBloom], 4)
+		numSeries = 100
+		data, _   = MkBasicSeriesWithBlooms(numSeries, 0, 0xffff, 0, 10000)
+		dataPtr   = PointerSlice(data)
+		queriers  = make([]iter.PeekIterator[*SeriesWithBlooms], 4)
 	)
 
 	for i := 0; i < len(queriers); i++ {
-		queriers[i] = NewPeekingIter[*SeriesWithBloom](NewSliceIter[*SeriesWithBloom](dataPtr))
+		queriers[i] = iter.NewPeekIter[*SeriesWithBlooms](iter.NewSliceIter[*SeriesWithBlooms](dataPtr))
 	}
 
 	mbq := NewHeapIterForSeriesWithBloom(queriers...)
-	eq := func(a, b *SeriesWithBloom) bool {
+	eq := func(a, b *SeriesWithBlooms) bool {
 		return a.Series.Fingerprint == b.Series.Fingerprint
 	}
-	merge := func(a, _ *SeriesWithBloom) *SeriesWithBloom {
+	merge := func(a, _ *SeriesWithBlooms) *SeriesWithBlooms {
 		return a
 	}
-	deduper := NewDedupingIter[*SeriesWithBloom, *SeriesWithBloom](
+	deduper := iter.NewDedupingIter[*SeriesWithBlooms, *SeriesWithBlooms](
 		eq,
-		Identity[*SeriesWithBloom],
+		iter.Identity[*SeriesWithBlooms],
 		merge,
-		NewPeekingIter[*SeriesWithBloom](mbq),
+		iter.NewPeekIter[*SeriesWithBlooms](mbq),
 	)
 
 	for i := 0; i < len(data); i++ {

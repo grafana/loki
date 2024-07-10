@@ -18,6 +18,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logql/log"
 
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -40,9 +41,16 @@ import (
 
 func defaultConfig() *Config {
 	cfg := Config{
-		BlockSize:     512,
-		ChunkEncoding: "gzip",
-		IndexShards:   32,
+		BlockSize:      512,
+		ChunkEncoding:  "gzip",
+		IndexShards:    32,
+		FlushOpTimeout: 15 * time.Second,
+		FlushOpBackoff: backoff.Config{
+			MinBackoff: 100 * time.Millisecond,
+			MaxBackoff: 10 * time.Second,
+			MaxRetries: 1,
+		},
+		OwnedStreamsCheckInterval: 1 * time.Second,
 	}
 	if err := cfg.Validate(); err != nil {
 		panic(errors.Wrap(err, "error building default test config"))
@@ -308,9 +316,10 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 		require.NoError(t, err)
 		chunkfmt, headfmt, err := instance.chunkFormatAt(minTs(&testStream))
 		require.NoError(t, err)
-		chunk := newStream(chunkfmt, headfmt, cfg, limiter, "fake", 0, nil, true, NewStreamRateCalculator(), NilMetrics, nil).NewChunk()
+		chunk := newStream(chunkfmt, headfmt, cfg, limiter, "fake", 0, nil, true, NewStreamRateCalculator(), NilMetrics, nil, nil).NewChunk()
 		for _, entry := range testStream.Entries {
-			err = chunk.Append(&entry)
+			dup, err := chunk.Append(&entry)
+			require.False(t, dup)
 			require.NoError(t, err)
 		}
 		stream.chunks = append(stream.chunks, chunkDesc{chunk: chunk})
@@ -567,7 +576,7 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 
 	b.Run("addTailersToNewStream", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			inst.addTailersToNewStream(newStream(chunkfmt, headfmt, nil, limiter, "fake", 0, lbs, true, NewStreamRateCalculator(), NilMetrics, nil))
+			inst.addTailersToNewStream(newStream(chunkfmt, headfmt, nil, limiter, "fake", 0, lbs, true, NewStreamRateCalculator(), NilMetrics, nil, nil))
 		}
 	})
 }
@@ -672,7 +681,7 @@ func Test_ChunkFilter(t *testing.T) {
 	defer it.Close()
 
 	for it.Next() {
-		require.NoError(t, it.Error())
+		require.NoError(t, it.Err())
 		lbs, err := syntax.ParseLabels(it.Labels())
 		require.NoError(t, err)
 		require.NotEqual(t, "dispatcher", lbs.Get("log_stream"))
@@ -712,7 +721,7 @@ func Test_PipelineWrapper(t *testing.T) {
 
 	for it.Next() {
 		// Consume the iterator
-		require.NoError(t, it.Error())
+		require.NoError(t, it.Err())
 	}
 
 	require.Equal(t, "test-user", wrapper.tenant)
@@ -753,7 +762,7 @@ func Test_PipelineWrapper_disabled(t *testing.T) {
 
 	for it.Next() {
 		// Consume the iterator
-		require.NoError(t, it.Error())
+		require.NoError(t, it.Err())
 	}
 
 	require.Equal(t, "", wrapper.tenant)
@@ -844,7 +853,7 @@ func Test_ExtractorWrapper(t *testing.T) {
 
 	for it.Next() {
 		// Consume the iterator
-		require.NoError(t, it.Error())
+		require.NoError(t, it.Err())
 	}
 
 	require.Equal(t, `sum(count_over_time({job="3"}[1m]))`, wrapper.query)
@@ -879,7 +888,7 @@ func Test_ExtractorWrapper_disabled(t *testing.T) {
 
 	for it.Next() {
 		// Consume the iterator
-		require.NoError(t, it.Error())
+		require.NoError(t, it.Err())
 	}
 
 	require.Equal(t, ``, wrapper.query)
@@ -981,7 +990,7 @@ func Test_QueryWithDelete(t *testing.T) {
 
 	var logs []string
 	for it.Next() {
-		logs = append(logs, it.Entry().Line)
+		logs = append(logs, it.At().Line)
 	}
 
 	require.Equal(t, logs, []string{`msg="dispatcher_7"`})
@@ -1024,7 +1033,7 @@ func Test_QuerySampleWithDelete(t *testing.T) {
 
 	var samples []float64
 	for it.Next() {
-		samples = append(samples, it.Sample().Value)
+		samples = append(samples, it.At().Value)
 	}
 
 	require.Equal(t, samples, []float64{1.})
@@ -1096,7 +1105,8 @@ func TestStreamShardingUsage(t *testing.T) {
 
 	t.Run("invalid push returns error", func(t *testing.T) {
 		tracker := &mockUsageTracker{}
-		i, _ := newInstance(&Config{IndexShards: 1}, defaultPeriodConfigs, customTenant1, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, tracker)
+
+		i, _ := newInstance(&Config{IndexShards: 1, OwnedStreamsCheckInterval: 1 * time.Second}, defaultPeriodConfigs, customTenant1, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, tracker)
 		ctx := context.Background()
 
 		err = i.Push(ctx, &logproto.PushRequest{
@@ -1116,7 +1126,7 @@ func TestStreamShardingUsage(t *testing.T) {
 	})
 
 	t.Run("valid push returns no error", func(t *testing.T) {
-		i, _ := newInstance(&Config{IndexShards: 1}, defaultPeriodConfigs, customTenant2, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
+		i, _ := newInstance(&Config{IndexShards: 1, OwnedStreamsCheckInterval: 1 * time.Second}, defaultPeriodConfigs, customTenant2, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
 		ctx := context.Background()
 
 		err = i.Push(ctx, &logproto.PushRequest{

@@ -499,19 +499,19 @@ var ParseTestCases = []struct {
 	// label filter for ip-matcher
 	{
 		in:  `{ foo = "bar" }|logfmt|addr>=ip("1.2.3.4")`,
-		err: logqlmodel.NewParseError("syntax error: unexpected ip, expecting BYTES or NUMBER or DURATION", 1, 30),
+		err: logqlmodel.NewParseError("syntax error: unexpected ip", 1, 30),
 	},
 	{
 		in:  `{ foo = "bar" }|logfmt|addr>ip("1.2.3.4")`,
-		err: logqlmodel.NewParseError("syntax error: unexpected ip, expecting BYTES or NUMBER or DURATION", 1, 29),
+		err: logqlmodel.NewParseError("syntax error: unexpected ip", 1, 29),
 	},
 	{
 		in:  `{ foo = "bar" }|logfmt|addr<=ip("1.2.3.4")`,
-		err: logqlmodel.NewParseError("syntax error: unexpected ip, expecting BYTES or NUMBER or DURATION", 1, 30),
+		err: logqlmodel.NewParseError("syntax error: unexpected ip", 1, 30),
 	},
 	{
 		in:  `{ foo = "bar" }|logfmt|addr<ip("1.2.3.4")`,
-		err: logqlmodel.NewParseError("syntax error: unexpected ip, expecting BYTES or NUMBER or DURATION", 1, 29),
+		err: logqlmodel.NewParseError("syntax error: unexpected ip", 1, 29),
 	},
 	{
 		in: `{ foo = "bar" }|logfmt|addr=ip("1.2.3.4")`,
@@ -3168,6 +3168,66 @@ var ParseTestCases = []struct {
 						},
 						IsOrChild: true,
 					},
+					IsOrChild: false,
+				},
+			},
+		},
+	},
+	{
+		in: `{app="foo"} |= "foo" or "bar" or "baz"`,
+		exp: &PipelineExpr{
+			Left: newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "app", "foo")}),
+			MultiStages: MultiStageExpr{
+				&LineFilterExpr{
+					LineFilter: LineFilter{
+						Ty:    log.LineMatchEqual,
+						Match: "foo",
+					},
+					Or: newOrLineFilter(
+						&LineFilterExpr{
+							LineFilter: LineFilter{
+								Ty:    log.LineMatchEqual,
+								Match: "bar",
+							},
+							IsOrChild: true,
+						},
+						&LineFilterExpr{
+							LineFilter: LineFilter{
+								Ty:    log.LineMatchEqual,
+								Match: "baz",
+							},
+							IsOrChild: true,
+						}),
+					IsOrChild: false,
+				},
+			},
+		},
+	},
+	{
+		in: `{app="foo"} |> "foo" or "bar" or "baz"`,
+		exp: &PipelineExpr{
+			Left: newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "app", "foo")}),
+			MultiStages: MultiStageExpr{
+				&LineFilterExpr{
+					LineFilter: LineFilter{
+						Ty:    log.LineMatchPattern,
+						Match: "foo",
+					},
+					Or: newOrLineFilter(
+						&LineFilterExpr{
+							LineFilter: LineFilter{
+								Ty:    log.LineMatchPattern,
+								Match: "bar",
+							},
+							IsOrChild: true,
+						},
+						&LineFilterExpr{
+							LineFilter: LineFilter{
+								Ty:    log.LineMatchPattern,
+								Match: "baz",
+							},
+							IsOrChild: true,
+						}),
 					IsOrChild: false,
 				},
 			},

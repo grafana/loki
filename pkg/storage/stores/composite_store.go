@@ -172,8 +172,8 @@ func (c CompositeStore) GetChunks(
 ) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	chunkIDs := [][]chunk.Chunk{}
 	fetchers := []*fetcher.Fetcher{}
-	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
-		ids, fetcher, err := store.GetChunks(innerCtx, userID, from, through, predicate, storeChunksOverride)
+	err := c.forStores(ctx, from, through, func(innerCtx context.Context, innerFrom, innerThrough model.Time, store Store) error {
+		ids, fetcher, err := store.GetChunks(innerCtx, userID, innerFrom, innerThrough, predicate, storeChunksOverride)
 		if err != nil {
 			return err
 		}
@@ -197,10 +197,8 @@ func (c CompositeStore) Stats(ctx context.Context, userID string, from, through 
 		xs = append(xs, x)
 		return err
 	})
-
 	if err != nil {
 		return nil, err
-
 	}
 	res := stats.MergeStats(xs...)
 	return &res, err
@@ -213,7 +211,6 @@ func (c CompositeStore) Volume(ctx context.Context, userID string, from, through
 		volumes = append(volumes, volume)
 		return err
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +238,6 @@ func (c CompositeStore) GetShards(
 		groups = append(groups, shards)
 		return nil
 	})
-
 	if err != nil {
 		return nil, err
 	}

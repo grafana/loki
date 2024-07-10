@@ -56,6 +56,12 @@ func (oe *OverridesExporter) Collect(ch chan<- prometheus.Metric) {
 			return float64(val.Field(i).Uint()), true
 		case float64:
 			return val.Field(i).Float(), true
+		case bool:
+			v := 0.0
+			if val.Field(i).Bool() {
+				v = 1.0
+			}
+			return v, true
 		default:
 			return 0, false
 		}
