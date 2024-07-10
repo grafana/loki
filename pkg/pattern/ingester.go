@@ -207,18 +207,17 @@ func (i *Ingester) loop() {
 	flushTicker := util.NewTickerWithJitter(i.cfg.FlushCheckPeriod, j)
 	defer flushTicker.Stop()
 
-	var downsampleTicker *time.Timer
 	if i.cfg.MetricAggregation.Enabled {
-		downsampleTicker = time.NewTimer(i.cfg.MetricAggregation.DownsamplePeriod)
-	}
+    downsampleTicker := time.NewTimer(i.cfg.MetricAggregation.DownsamplePeriod)
+		defer downsampleTicker.Stop()
 
-	if i.cfg.MetricAggregation.Enabled {
 		for {
 			select {
 			case <-flushTicker.C:
 				i.sweepUsers(false, true)
 
 			case t := <-downsampleTicker.C:
+				downsampleTicker.Reset(i.cfg.MetricAggregation.DownsamplePeriod)
 				now := model.TimeFromUnixNano(t.UnixNano())
 				i.downsampleMetrics(now)
 
