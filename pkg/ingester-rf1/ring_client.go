@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
@@ -36,7 +37,7 @@ func NewRingClient(
 		logger: log.With(logger, "component", "ingester-rf1-client"),
 		cfg:    cfg,
 	}
-	ringClient.ring, err = ring.New(cfg.LifecyclerConfig.RingConfig, "ingester-rf1", "ingester-rf1-ring", ringClient.logger, registerer)
+	ringClient.ring, err = newRing(cfg.LifecyclerConfig.RingConfig, "ingester-rf1", "ingester-rf1-ring", ringClient.logger, registerer)
 	if err != nil {
 		return nil, err
 	}
@@ -57,6 +58,22 @@ func NewRingClient(
 	ringClient.Service = services.NewBasicService(ringClient.starting, ringClient.running, ringClient.stopping)
 
 	return ringClient, nil
+}
+
+func newRing(cfg ring.Config, name, key string, logger log.Logger, reg prometheus.Registerer) (*ring.Ring, error) {
+	codec := ring.GetCodec()
+	// Suffix all client names with "-ring" to denote this kv client is used by the ring
+	store, err := kv.NewClient(
+		cfg.KVStore,
+		codec,
+		kv.RegistererWithKVName(reg, name+"-ring"),
+		logger,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return ring.NewWithStoreClientAndStrategy(cfg, name, key, store, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), reg, logger)
 }
 
 func (q *RingClient) starting(ctx context.Context) error {
