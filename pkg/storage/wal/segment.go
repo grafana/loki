@@ -62,6 +62,12 @@ type streamSegment struct {
 }
 
 func (s *streamSegment) Reset() {
+	for i := range s.entries {
+		s.entries[i] = nil
+	}
+	s.lbls = nil
+	s.tenantID = ""
+	s.maxt = 0
 	s.entries = s.entries[:0]
 }
 
@@ -102,7 +108,6 @@ func (b *SegmentWriter) getOrCreateStream(id streamID, lbls labels.Labels) *stre
 		lbls = labels.NewBuilder(lbls).Set(tenantLabel, id.tenant).Labels()
 	}
 	s = streamSegmentPool.Get().(*streamSegment)
-	s.Reset()
 	s.lbls = lbls
 	s.tenantID = id.tenant
 	b.streams[id] = s
@@ -265,6 +270,7 @@ func (b *SegmentWriter) WriteTo(w io.Writer) (int64, error) {
 func (b *SegmentWriter) Reset() {
 	for _, s := range b.streams {
 		s := s
+		s.Reset()
 		streamSegmentPool.Put(s)
 	}
 	b.streams = make(map[streamID]*streamSegment, 64)
