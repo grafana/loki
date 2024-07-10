@@ -109,7 +109,7 @@ compactor:
 distributor:
   otlp_config:
     default_resource_attributes_as_index_labels:
-    {{- range $k, $attr := .GlobalResourceAttributesAsLabels }}
+    {{- range $k, $attr := .IndexedResourceAttributes }}
     - {{ $attr }}
     {{- end }}
 {{- end }}
@@ -233,7 +233,7 @@ limits_config:
   allow_structured_metadata: true
 {{- with .Stack.Limits.Global.OTLP }}
   otlp_config:
-    {{- with .RessourceAttributes }}
+    {{- with .ResourceAttributes }}
     resource_attributes:
       ignore_defaults: {{ .IgnoreDefaults }}
       {{- with .Attributes}}

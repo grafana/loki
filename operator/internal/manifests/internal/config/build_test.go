@@ -6321,12 +6321,12 @@ overrides:
 						PerStreamDesiredRate:      3,
 					},
 					OTLP: &lokiv1.GlobalOTLPSpec{
-						GlobalResourceAttributesAsLabels: []string{
+						IndexedResourceAttributes: []string{
 							"foo.bar",
 							"bar.baz",
 						},
 						OTLPSpec: lokiv1.OTLPSpec{
-							RessourceAttributes: lokiv1.OTLPResourceAttributesSpec{
+							ResourceAttributes: lokiv1.OTLPResourceAttributesSpec{
 								IgnoreDefaults: true,
 								Attributes: []lokiv1.OTLPAttributesSpec{
 									{
@@ -6516,7 +6516,7 @@ overrides:
 			"test-a": {
 				Limits: lokiv1.PerTenantLimitsTemplateSpec{
 					OTLP: &lokiv1.OTLPSpec{
-						RessourceAttributes: lokiv1.OTLPResourceAttributesSpec{
+						ResourceAttributes: lokiv1.OTLPResourceAttributesSpec{
 							IgnoreDefaults: true,
 							Attributes: []lokiv1.OTLPAttributesSpec{
 								{

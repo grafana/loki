@@ -1172,7 +1172,7 @@ tenants.</p>
 </td>
 <td>
 <em>(Optional)</em>
-<p>RessourceAttributes contains the configuration for resource attributes
+<p>IndexedResourceAttributes contains the global configuration for resource attributes
 to store them as index labels or Structured Metadata or drop them altogether.</p>
 </td>
 </tr>
@@ -2802,7 +2802,7 @@ to store them as index labels or Structured Metadata or drop them altogether.</p
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-GlobalOTLPSpec">GlobalOTLPSpec</a>, <a href="#loki-grafana-com-v1-PerTenantLimitsTemplateSpec">PerTenantLimitsTemplateSpec</a>)
 </p>
 <div>
-<p>OTLPSpec  defines which resource, scope and log attributes to
+<p>OTLPSpec defines which resource, scope and log attributes to
 be stored as index or structured metadata or drop altogether</p>
 </div>
 <table>
@@ -2824,7 +2824,7 @@ OTLPResourceAttributesSpec
 </td>
 <td>
 <em>(Optional)</em>
-<p>RessourceAttributes contains the configuration for resource attributes
+<p>ResourceAttributes contains the configuration for resource attributes
 to store them as index labels or Structured Metadata or drop them altogether.</p>
 </td>
 </tr>
@@ -2839,7 +2839,7 @@ to store them as index labels or Structured Metadata or drop them altogether.</p
 </td>
 <td>
 <em>(Optional)</em>
-<p>RessourceAttributes contains the configuration for scope attributes
+<p>ScopeAttributes contains the configuration for scope attributes
 to store them as index labels or Structured Metadata or drop them altogether.</p>
 </td>
 </tr>
@@ -2854,7 +2854,7 @@ to store them as index labels or Structured Metadata or drop them altogether.</p
 </td>
 <td>
 <em>(Optional)</em>
-<p>RessourceAttributes contains the configuration for log attributes
+<p>LogAttributes contains the configuration for log attributes
 to store them as index labels or Structured Metadata or drop them altogether.</p>
 </td>
 </tr>

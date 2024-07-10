@@ -172,14 +172,14 @@ spec:
                         properties:
                           indexedResourceAttributes:
                             description: |-
-                              RessourceAttributes contains the configuration for resource attributes
+                              IndexedResourceAttributes contains the global configuration for resource attributes
                               to store them as index labels or Structured Metadata or drop them altogether.
                             items:
                               type: string
                             type: array
                           logAttributes:
                             description: |-
-                              RessourceAttributes contains the configuration for log attributes
+                              LogAttributes contains the configuration for log attributes
                               to store them as index labels or Structured Metadata or drop them altogether.
                             items:
                               description: |-
@@ -210,7 +210,7 @@ spec:
                             type: array
                           resourceAttributes:
                             description: |-
-                              RessourceAttributes contains the configuration for resource attributes
+                              ResourceAttributes contains the configuration for resource attributes
                               to store them as index labels or Structured Metadata or drop them altogether.
                             properties:
                               attributes:
@@ -252,7 +252,7 @@ spec:
                             type: object
                           scopeAttributes:
                             description: |-
-                              RessourceAttributes contains the configuration for scope attributes
+                              ScopeAttributes contains the configuration for scope attributes
                               to store them as index labels or Structured Metadata or drop them altogether.
                             items:
                               description: |-
@@ -433,7 +433,7 @@ spec:
                           properties:
                             logAttributes:
                               description: |-
-                                RessourceAttributes contains the configuration for log attributes
+                                LogAttributes contains the configuration for log attributes
                                 to store them as index labels or Structured Metadata or drop them altogether.
                               items:
                                 description: |-
@@ -464,7 +464,7 @@ spec:
                               type: array
                             resourceAttributes:
                               description: |-
-                                RessourceAttributes contains the configuration for resource attributes
+                                ResourceAttributes contains the configuration for resource attributes
                                 to store them as index labels or Structured Metadata or drop them altogether.
                               properties:
                                 attributes:
@@ -506,7 +506,7 @@ spec:
                               type: object
                             scopeAttributes:
                               description: |-
-                                RessourceAttributes contains the configuration for scope attributes
+                                ScopeAttributes contains the configuration for scope attributes
                                 to store them as index labels or Structured Metadata or drop them altogether.
                               items:
                                 description: |-

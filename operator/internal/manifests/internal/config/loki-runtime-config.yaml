@@ -75,7 +75,7 @@ overrides:
   {{- end -}}
   {{- if $l := $spec.OTLP }}
     otlp_config:
-      {{- with $l.RessourceAttributes }}
+      {{- with $l.ResourceAttributes }}
       resource_attributes:
         ignore_defaults: {{ .IgnoreDefaults }}
         {{- with .Attributes}}

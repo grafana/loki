@@ -822,7 +822,7 @@ type OTLPAttributesSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Action"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Attributes"
 	Attributes []string `json:"attributes,omitempty"`
 
 	// Regex to choose attributes to configure indexing or drop them
@@ -830,7 +830,7 @@ type OTLPAttributesSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Action"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Regex"
 	Regex string `json:"regex,omitempty"`
 }
 
@@ -850,7 +850,7 @@ type OTLPResourceAttributesSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Action"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Attributes"
 	Attributes []OTLPAttributesSpec `json:"attributes,omitempty"`
 }
 
@@ -858,42 +858,42 @@ type OTLPResourceAttributesSpec struct {
 // be stored as index or structured metadata or drop altogether for all
 // tenants.
 type GlobalOTLPSpec struct {
-	// RessourceAttributes contains the configuration for resource attributes
+	// IndexedResourceAttributes contains the global configuration for resource attributes
 	// to store them as index labels or Structured Metadata or drop them altogether.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Action"
-	GlobalResourceAttributesAsLabels []string `json:"indexedResourceAttributes,omitempty"`
+	IndexedResourceAttributes []string `json:"indexedResourceAttributes,omitempty"`
 
 	OTLPSpec `json:",omitempty"`
 }
 
-// OTLPSpec  defines which resource, scope and log attributes to
+// OTLPSpec defines which resource, scope and log attributes to
 // be stored as index or structured metadata or drop altogether
 type OTLPSpec struct {
-	// RessourceAttributes contains the configuration for resource attributes
+	// ResourceAttributes contains the configuration for resource attributes
 	// to store them as index labels or Structured Metadata or drop them altogether.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Action"
-	RessourceAttributes OTLPResourceAttributesSpec `json:"resourceAttributes,omitempty"`
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Resource Attributes"
+	ResourceAttributes OTLPResourceAttributesSpec `json:"resourceAttributes,omitempty"`
 
-	// RessourceAttributes contains the configuration for scope attributes
+	// ScopeAttributes contains the configuration for scope attributes
 	// to store them as index labels or Structured Metadata or drop them altogether.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Action"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Scope Attributes"
 	ScopeAttributes []OTLPAttributesSpec `json:"scopeAttributes,omitempty"`
 
-	// RessourceAttributes contains the configuration for log attributes
+	// LogAttributes contains the configuration for log attributes
 	// to store them as index labels or Structured Metadata or drop them altogether.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Action"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Log Attributes"
 	LogAttributes []OTLPAttributesSpec `json:"logAttributes,omitempty"`
 }
 

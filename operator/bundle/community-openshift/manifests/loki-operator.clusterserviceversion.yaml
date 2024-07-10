@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:0.6.1
-    createdAt: "2024-07-08T17:25:26Z"
+    createdAt: "2024-07-10T06:27:34Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     features.operators.openshift.io/disconnected: "true"
@@ -361,43 +361,44 @@ spec:
         path: limits.global.ingestion.perStreamRateLimitBurst
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: RessourceAttributes contains the configuration for resource attributes
-          to store them as index labels or Structured Metadata or drop them altogether.
+      - description: IndexedResourceAttributes contains the global configuration for
+          resource attributes to store them as index labels or Structured Metadata
+          or drop them altogether.
         displayName: Action
         path: limits.global.otlp.indexedResourceAttributes
-      - description: RessourceAttributes contains the configuration for log attributes
-          to store them as index labels or Structured Metadata or drop them altogether.
-        displayName: Action
+      - description: LogAttributes contains the configuration for log attributes to
+          store them as index labels or Structured Metadata or drop them altogether.
+        displayName: Log Attributes
         path: limits.global.otlp.logAttributes
       - description: Action defines the indexing action for the selected attributes.
         displayName: Action
         path: limits.global.otlp.logAttributes[0].action
       - description: Attributes is the list of attributes to configure indexing or
           drop them altogether.
-        displayName: Action
+        displayName: Attributes
         path: limits.global.otlp.logAttributes[0].attributes
       - description: Regex to choose attributes to configure indexing or drop them
           altogether.
-        displayName: Action
+        displayName: Regex
         path: limits.global.otlp.logAttributes[0].regex
-      - description: RessourceAttributes contains the configuration for resource attributes
+      - description: ResourceAttributes contains the configuration for resource attributes
           to store them as index labels or Structured Metadata or drop them altogether.
-        displayName: Action
+        displayName: Resource Attributes
         path: limits.global.otlp.resourceAttributes
       - description: Attributes contains the configuration for resource attributes
           to store them as index labels or Structured Metadata or drop them altogether.
-        displayName: Action
+        displayName: Attributes
         path: limits.global.otlp.resourceAttributes.attributes
       - description: Action defines the indexing action for the selected attributes.
         displayName: Action
         path: limits.global.otlp.resourceAttributes.attributes[0].action
       - description: Attributes is the list of attributes to configure indexing or
           drop them altogether.
-        displayName: Action
+        displayName: Attributes
         path: limits.global.otlp.resourceAttributes.attributes[0].attributes
       - description: Regex to choose attributes to configure indexing or drop them
           altogether.
-        displayName: Action
+        displayName: Regex
         path: limits.global.otlp.resourceAttributes.attributes[0].regex
       - description: IgnoreDefaults whether to ignore the default global list of resource
           attributes indexed as labels.
@@ -405,20 +406,20 @@ spec:
         path: limits.global.otlp.resourceAttributes.ignoreDefaults
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
-      - description: RessourceAttributes contains the configuration for scope attributes
+      - description: ScopeAttributes contains the configuration for scope attributes
           to store them as index labels or Structured Metadata or drop them altogether.
-        displayName: Action
+        displayName: Scope Attributes
         path: limits.global.otlp.scopeAttributes
       - description: Action defines the indexing action for the selected attributes.
         displayName: Action
         path: limits.global.otlp.scopeAttributes[0].action
       - description: Attributes is the list of attributes to configure indexing or
           drop them altogether.
-        displayName: Action
+        displayName: Attributes
         path: limits.global.otlp.scopeAttributes[0].attributes
       - description: Regex to choose attributes to configure indexing or drop them
           altogether.
-        displayName: Action
+        displayName: Regex
         path: limits.global.otlp.scopeAttributes[0].regex
       - description: CardinalityLimit defines the cardinality limit for index queries.
         displayName: Cardinality Limit
@@ -516,39 +517,39 @@ spec:
         path: limits.tenants.ingestion.perStreamRateLimitBurst
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: RessourceAttributes contains the configuration for log attributes
-          to store them as index labels or Structured Metadata or drop them altogether.
-        displayName: Action
+      - description: LogAttributes contains the configuration for log attributes to
+          store them as index labels or Structured Metadata or drop them altogether.
+        displayName: Log Attributes
         path: limits.tenants.otlp.logAttributes
       - description: Action defines the indexing action for the selected attributes.
         displayName: Action
         path: limits.tenants.otlp.logAttributes[0].action
       - description: Attributes is the list of attributes to configure indexing or
           drop them altogether.
-        displayName: Action
+        displayName: Attributes
         path: limits.tenants.otlp.logAttributes[0].attributes
       - description: Regex to choose attributes to configure indexing or drop them
           altogether.
-        displayName: Action
+        displayName: Regex
         path: limits.tenants.otlp.logAttributes[0].regex
-      - description: RessourceAttributes contains the configuration for resource attributes
+      - description: ResourceAttributes contains the configuration for resource attributes
           to store them as index labels or Structured Metadata or drop them altogether.
-        displayName: Action
+        displayName: Resource Attributes
         path: limits.tenants.otlp.resourceAttributes
       - description: Attributes contains the configuration for resource attributes
           to store them as index labels or Structured Metadata or drop them altogether.
-        displayName: Action
+        displayName: Attributes
         path: limits.tenants.otlp.resourceAttributes.attributes
       - description: Action defines the indexing action for the selected attributes.
         displayName: Action
         path: limits.tenants.otlp.resourceAttributes.attributes[0].action
       - description: Attributes is the list of attributes to configure indexing or
           drop them altogether.
-        displayName: Action
+        displayName: Attributes
         path: limits.tenants.otlp.resourceAttributes.attributes[0].attributes
       - description: Regex to choose attributes to configure indexing or drop them
           altogether.
-        displayName: Action
+        displayName: Regex
         path: limits.tenants.otlp.resourceAttributes.attributes[0].regex
       - description: IgnoreDefaults whether to ignore the default global list of resource
           attributes indexed as labels.
@@ -556,20 +557,20 @@ spec:
         path: limits.tenants.otlp.resourceAttributes.ignoreDefaults
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
-      - description: RessourceAttributes contains the configuration for scope attributes
+      - description: ScopeAttributes contains the configuration for scope attributes
           to store them as index labels or Structured Metadata or drop them altogether.
-        displayName: Action
+        displayName: Scope Attributes
         path: limits.tenants.otlp.scopeAttributes
       - description: Action defines the indexing action for the selected attributes.
         displayName: Action
         path: limits.tenants.otlp.scopeAttributes[0].action
       - description: Attributes is the list of attributes to configure indexing or
           drop them altogether.
-        displayName: Action
+        displayName: Attributes
         path: limits.tenants.otlp.scopeAttributes[0].attributes
       - description: Regex to choose attributes to configure indexing or drop them
           altogether.
-        displayName: Action
+        displayName: Regex
         path: limits.tenants.otlp.scopeAttributes[0].regex
       - description: Blocked defines the list of rules to block matching queries.
         displayName: Blocked
