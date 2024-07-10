@@ -12,19 +12,22 @@ import (
 )
 
 const (
-	// MaxAge is the default maximum amount of time a segment can be buffered
-	// in memory before it should be flushed.
-	MaxAge = 500 * time.Millisecond
-	// MaxSegments is the default maximum number of segments that can be buffered
-	// in memory, including closed segments waiting to be flushed.
-	MaxSegments = 10
-	// MaxSegmentSize is the default maximum segment size (8MB).
-	MaxSegmentSize = 8 * 1024 * 1024
+	// DefaultMaxAge is the default value for the maximum amount of time a
+	// segment can can be buffered in memory before it should be flushed.
+	DefaultMaxAge = 500 * time.Millisecond
+	// DefaultMaxSegments is the default value for the maximum number of
+	// segments that can be buffered in memory, including segments waiting to
+	// be flushed.
+	DefaultMaxSegments = 10
+	// DefaultMaxSegmentSize is the default value for the maximum segment size
+	// (uncompressed).
+	DefaultMaxSegmentSize = 8 * 1024 * 1024 // 8MB.
 )
 
 var (
-	// ErrFull is an error returned when there are no available segments, as
-	// all segments are closed and waiting to be flushed.
+	// ErrFull is returned when an append fails because the WAL is full. This
+	// happens when all segments are either in the pending list waiting to be
+	// flushed, or in the process of being flushed.
 	ErrFull = errors.New("The WAL is full")
 )
 
@@ -40,13 +43,15 @@ type AppendResult struct {
 	err  error
 }
 
-// Done returns a channel that is closed when the result is available.
+// Done returns a channel that is closed when the result of an append is
+// available. Err() should be called to check if the operation was successful.
 func (p *AppendResult) Done() <-chan struct{} {
 	return p.done
 }
 
-// Err returns a non-nil error if the append failed. It should not be called
-// until Done() is closed to avoid data races.
+// Err returns a non-nil error if the operation failed, and nil if it was
+// successful. It should not be called until Done() is closed to avoid data
+// races.
 func (p *AppendResult) Err() error {
 	return p.err
 }
@@ -59,9 +64,9 @@ func (p *AppendResult) SetDone(err error) {
 
 type Config struct {
 	// MaxAge is the maximum amount of time a segment can be buffered in memory
-	// before it is closed. Increasing MaxAge allows more time for a segment to
-	// grow to MaxSegmentSize, but may increase latency if the write volume is
-	// low.
+	// before it is moved to the pending list to be flushed. Increasing MaxAge
+	// allows more time for a segment to grow to MaxSegmentSize, but may increase
+	// latency if the write volume is too small.
 	MaxAge time.Duration
 
 	// MaxSegments is the maximum number of segments that can be buffered in
@@ -70,55 +75,62 @@ type Config struct {
 	// the rate at which segments can be flushed.
 	MaxSegments int64
 
-	// MaxSegmentSize is the maximum size of a segment. It is not a strict
-	// limit, and segments can exceed the maximum size if the size of an
-	// individual append is larger than the remaining capacity.
+	// MaxSegmentSize is the maximum size (uncompressed) of a segment. It is
+	// not a strict limit, and segments can exceed the maximum size when
+	// individual appends are larger than the remaining capacity.
 	MaxSegmentSize int64
 }
 
 // Manager buffers segments in memory, and keeps track of which segments are
-// accepting writes and which segments need to be flushed. The number of
-// segments that are buffered in memory, their maximum age and maximum size
-// are configured when creating the Manager.
+// available and which are waiting to be flushed. The maximum number of
+// segments that can be buffered in memory, and their maximum age and maximum
+// size before being flushed are configured when creating the Manager.
 //
-// By buffering segments in memory, the manager can tolerate bursts of appends
-// that arrive faster than they can be flushed. The amount of data that can be
-// buffered is configured using MaxSegments and MaxSegmentSize. You must use
+// By buffering segments in memory, the WAL can tolerate bursts of append
+// requests that arrive faster than can be flushed. The amount of data that can
+// be buffered is configured using MaxSegments and MaxSegmentSize. You must use
 // caution when configuring these to avoid excessive latency.
 //
-// If no segments are accepting writes, because all segments are waiting to be
-// flushed, then subsequent appends fail. It will not be possible to append more
-// data until an existing segment has been flushed. This allows the manager to
-// also apply back pressure to writers to avoid congestion collapse due to high
-// latency and retries.
+// The WAL is full when all segments are waiting to be flushed or in the process
+// of being flushed. When the WAL is full, subsequent appends fail with ErrFull.
+// It is not permitted to append more data until another segment has been flushed
+// and returned to the available list. This allows the manager to apply back-pressure
+// and avoid congestion collapse due to excessive timeouts and retries.
 type Manager struct {
 	cfg Config
 
-	// available is a list of segments that are accepting writes. When a
-	// segment is full, or the close timer has expired, it is moved to the
-	// closed list to be flushed.
+	// available is a list of segments that are available and accepting data.
+	// All segments other than the segment at the front of the list are empty,
+	// and only the segment at the front of the list is written to. When this
+	// segment has exceeded its maximum age or maximum size it is moved to the
+	// pending list to be flushed, and the next segment in the available list
+	// takes its place.
 	available *list.List
 
-	// closed is a list of segments that are full and waiting to be flushed.
-	// Once flushed, the segment is moved back to the available list to
-	// accept writes again.
-	closed   *list.List
+	// pending is a list of segments that are waiting to be flushed. Once
+	// flushed, the segment is reset and moved to the back of the available
+	// list to accept writes again.
+	pending  *list.List
 	shutdown chan struct{}
 	mu       sync.Mutex
 }
 
-// item is similar to ClosedWriter, but it is an internal struct used in the
-// available and closed lists. It contains a single-use result that is returned
-// to callers of Append and a re-usable writer that is reset after each flush.
+// item is similar to PendingItem, but it is an internal struct used in the
+// available and pending lists. It contains a single-use result that is returned
+// to callers of Manager.Append() and a re-usable segment that is reset after
+// each flush.
 type item struct {
 	r *AppendResult
 	w *SegmentWriter
+	// firstAppendedAt is the time of the first append to the segment, and is
+	// used to know when the segment has exceeded the maximum age and should
+	// be moved to the pending list. It is reset after each flush.
+	firstAppendedAt time.Time
 }
 
-// ClosedWriter contains a result and a writer that has either exceeded the
-// maximum age or the maximum size for a segment. ClosedWriters are to be
-// flushed and then returned so the writer can be re-used.
-type ClosedWriter struct {
+// PendingItem contains a result and the segment to be flushed. ClosedWriters
+// are to be returned following a flush so the segment can be re-used.
+type PendingItem struct {
 	Result *AppendResult
 	Writer *SegmentWriter
 }
@@ -127,7 +139,7 @@ func NewManager(cfg Config) (*Manager, error) {
 	m := Manager{
 		cfg:       cfg,
 		available: list.New(),
-		closed:    list.New(),
+		pending:   list.New(),
 		shutdown:  make(chan struct{}),
 	}
 	for i := int64(0); i < cfg.MaxSegments; i++ {
@@ -146,35 +158,50 @@ func NewManager(cfg Config) (*Manager, error) {
 func (m *Manager) Append(r AppendRequest) (*AppendResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	// When the WAL becomes full it stops accepting writes.
 	if m.available.Len() == 0 {
 		return nil, ErrFull
 	}
 	el := m.available.Front()
 	it := el.Value.(*item)
+	if it.firstAppendedAt.IsZero() {
+		it.firstAppendedAt = time.Now()
+	}
 	it.w.Append(r.TenantID, r.LabelsStr, r.Labels, r.Entries)
-	// If the item exceeded the maximum age or the maximum size, move it to
-	// closed to be flushed.
-	if it.w.InputSize() >= m.cfg.MaxSegmentSize {
-		m.closed.PushBack(it)
+	// If the segment exceeded the maximum age or the maximum size, move it to
+	// the closed list to be flushed.
+	if time.Since(it.firstAppendedAt) >= m.cfg.MaxAge || it.w.InputSize() >= m.cfg.MaxSegmentSize {
+		m.pending.PushBack(it)
 		m.available.Remove(el)
 	}
 	return it.r, nil
 }
 
-func (m *Manager) Get() (*ClosedWriter, error) {
+func (m *Manager) Get() (*PendingItem, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.closed.Len() == 0 {
-		return nil, nil
+	if m.pending.Len() == 0 {
+		if m.available.Len() > 0 {
+			// Check if the current segment has exceeded its maximum age and
+			// should be moved to the pending list.
+			el := m.available.Front()
+			it := el.Value.(*item)
+			if !it.firstAppendedAt.IsZero() && time.Since(it.firstAppendedAt) >= m.cfg.MaxAge {
+				m.pending.PushBack(it)
+				m.available.Remove(el)
+			}
+		}
+		// If there are still no pending items, return nil.
+		if m.pending.Len() == 0 {
+			return nil, nil
+		}
 	}
-	el := m.closed.Front()
+	el := m.pending.Front()
 	it := el.Value.(*item)
-	m.closed.Remove(el)
-	return &ClosedWriter{Result: it.r, Writer: it.w}, nil
+	m.pending.Remove(el)
+	return &PendingItem{Result: it.r, Writer: it.w}, nil
 }
 
-func (m *Manager) Put(it *ClosedWriter) error {
+func (m *Manager) Put(it *PendingItem) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	it.Writer.Reset()
@@ -183,38 +210,4 @@ func (m *Manager) Put(it *ClosedWriter) error {
 		w: it.Writer,
 	})
 	return nil
-}
-
-// Run the Manager. This runs a number of periodic tasks.
-func (m *Manager) Run() error {
-	t := time.NewTicker(m.cfg.MaxAge)
-	for {
-		select {
-		case <-t.C:
-			m.doTick()
-		case <-m.shutdown:
-			return nil
-		}
-	}
-}
-
-// Stop the Manager.
-func (m *Manager) Stop() error {
-	close(m.shutdown)
-	return nil
-}
-
-func (m *Manager) doTick() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	// Check if the current segment has exceeded its maximum age, and if so,
-	// move it to the closed list.
-	if m.available.Len() > 0 {
-		el := m.available.Front()
-		it := el.Value.(*item)
-		if it.w.InputSize() > 0 {
-			m.closed.PushBack(it)
-			m.available.Remove(el)
-		}
-	}
 }

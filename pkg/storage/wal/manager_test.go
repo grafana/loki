@@ -137,6 +137,7 @@ func TestManager_Append_ErrFull(t *testing.T) {
 
 func TestManager_Get(t *testing.T) {
 	m, err := NewManager(Config{
+		MaxAge:         DefaultMaxAge,
 		MaxSegments:    1,
 		MaxSegmentSize: 1024, // 1KB
 	})
@@ -197,9 +198,9 @@ func TestManager_Put(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// There should be 10 available segments, and 0 closed.
+	// There should be 10 available segments, and 0 pending.
 	require.Equal(t, 10, m.available.Len())
-	require.Equal(t, 0, m.closed.Len())
+	require.Equal(t, 0, m.pending.Len())
 
 	// Append 1KB of data.
 	lbs := labels.Labels{{
@@ -219,16 +220,16 @@ func TestManager_Put(t *testing.T) {
 	require.NoError(t, err)
 
 	// 1 segment is full, so there should now be 9 available segments,
-	// and 1 closed segment.
+	// and 1 pending segment.
 	require.Equal(t, 9, m.available.Len())
-	require.Equal(t, 1, m.closed.Len())
+	require.Equal(t, 1, m.pending.Len())
 
-	// Getting the closed segment should remove it from the list.
+	// Getting the pending segment should remove it from the list.
 	it, err := m.Get()
 	require.NoError(t, err)
 	require.NotNil(t, it)
 	require.Equal(t, 9, m.available.Len())
-	require.Equal(t, 0, m.closed.Len())
+	require.Equal(t, 0, m.pending.Len())
 
 	// The segment should contain 1KB of data.
 	require.Equal(t, int64(1024), it.Writer.InputSize())
@@ -236,7 +237,7 @@ func TestManager_Put(t *testing.T) {
 	// Putting it back should add it to the available list.
 	require.NoError(t, m.Put(it))
 	require.Equal(t, 10, m.available.Len())
-	require.Equal(t, 0, m.closed.Len())
+	require.Equal(t, 0, m.pending.Len())
 
 	// The segment should be reset.
 	require.Equal(t, int64(0), it.Writer.InputSize())
