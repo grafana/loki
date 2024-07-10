@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/pattern/drain"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
 	"github.com/grafana/loki/v3/pkg/pattern/metric"
 
@@ -28,6 +29,7 @@ func setup(t *testing.T) *instance {
 		log.NewNopLogger(),
 		newIngesterMetrics(nil, "test"),
 		metric.NewChunkMetrics(nil, "test"),
+		drain.DefaultConfig(),
 		metric.AggregationConfig{
 			Enabled: true,
 		},
