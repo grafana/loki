@@ -143,10 +143,6 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [ingester: <ingester>]
 
 ingester_rf1:
-  # Whether the ingester is enabled.
-  # CLI flag: -ingester-rf1.enabled
-  [enabled: <boolean> | default = false]
-
   # Configures how the lifecycle of the ingester will operate and where it will
   # register for discovery.
   lifecycler:
@@ -286,15 +282,40 @@ ingester_rf1:
     # CLI flag: -ingester-rf1.lifecycler.ID
     [id: <string> | default = "<hostname>"]
 
-  # How many flushes can happen concurrently from each stream.
-  # CLI flag: -ingester-rf1.concurrent-flushes
-  [concurrent_flushes: <int> | default = 32]
+  # The algorithm to use for compressing chunk. (none, gzip, lz4-64k, snappy,
+  # lz4-256k, lz4-1M, lz4, flate, zstd)
+  # CLI flag: -ingester-rf1.chunk-encoding
+  [chunk_encoding: <string> | default = "gzip"]
 
-  # How often should the ingester see if there are any blocks to flush. The
-  # first flush check is delayed by a random time up to 0.8x the flush check
-  # period. Additionally, there is +/- 1% jitter added to the interval.
-  # CLI flag: -ingester-rf1.flush-check-period
-  [flush_check_period: <duration> | default = 500ms]
+  # Path where the shutdown marker file is stored. If not set and
+  # common.path_prefix is set then common.path_prefix will be used.
+  # CLI flag: -ingester-rf1.shutdown-marker-path
+  [shutdown_marker_path: <string> | default = ""]
+
+  # Configures how the pattern ingester will connect to the ingesters.
+  client_config:
+    # Configures how connections are pooled.
+    pool_config:
+      # How frequently to clean up clients for ingesters that have gone away.
+      # CLI flag: -ingester-rf1.client-cleanup-period
+      [client_cleanup_period: <duration> | default = 15s]
+
+      # Run a health check on each ingester client during periodic cleanup.
+      # CLI flag: -ingester-rf1.health-check-ingesters
+      [health_check_ingesters: <boolean> | default = true]
+
+      # Timeout for the health check.
+      # CLI flag: -ingester-rf1.remote-timeout
+      [remote_timeout: <duration> | default = 1s]
+
+    # The remote request timeout on the client side.
+    # CLI flag: -ingester-rf1.client.timeout
+    [remote_timeout: <duration> | default = 5s]
+
+    # Configures how the gRPC connection to ingesters work as a client.
+    # The CLI flags prefix for this block configuration is:
+    # pattern-ingester.client
+    [grpc_client_config: <grpc_client>]
 
   flush_op_backoff:
     # Minimum backoff period when a flush fails. Each concurrent flush has its
@@ -310,6 +331,16 @@ ingester_rf1:
     # Maximum retries for failed flushes.
     # CLI flag: -ingester-rf1.flush-op-backoff-retries
     [max_retries: <int> | default = 10]
+
+  # How many flushes can happen concurrently from each stream.
+  # CLI flag: -ingester-rf1.concurrent-flushes
+  [concurrent_flushes: <int> | default = 32]
+
+  # How often should the ingester see if there are any blocks to flush. The
+  # first flush check is delayed by a random time up to 0.8x the flush check
+  # period. Additionally, there is +/- 1% jitter added to the interval.
+  # CLI flag: -ingester-rf1.flush-check-period
+  [flush_check_period: <duration> | default = 500ms]
 
   # The timeout for an individual flush. Will be retried up to
   # `flush-op-backoff-retries` times.
@@ -336,26 +367,11 @@ ingester_rf1:
   # CLI flag: -ingester-rf1.chunk-target-size
   [chunk_target_size: <int> | default = 1572864]
 
-  # The algorithm to use for compressing chunk. (none, gzip, lz4-64k, snappy,
-  # lz4-256k, lz4-1M, lz4, flate, zstd)
-  # CLI flag: -ingester-rf1.chunk-encoding
-  [chunk_encoding: <string> | default = "gzip"]
-
   # The maximum duration of a timeseries chunk in memory. If a timeseries runs
   # for longer than this, the current chunk will be flushed to the store and a
   # new chunk created.
   # CLI flag: -ingester-rf1.max-chunk-age
   [max_chunk_age: <duration> | default = 2h]
-
-  # Forget about ingesters having heartbeat timestamps older than
-  # `ring.kvstore.heartbeat_timeout`. This is equivalent to clicking on the
-  # `/ring` `forget` button in the UI: the ingester is removed from the ring.
-  # This is a useful setting when you are sure that an unhealthy node won't
-  # return. An example is when not using stateful sets or the equivalent. Use
-  # `memberlist.rejoin_interval` > 0 to handle network partition cases when
-  # using a memberlist.
-  # CLI flag: -ingester-rf1.autoforget-unhealthy
-  [autoforget_unhealthy: <boolean> | default = false]
 
   # The maximum number of errors a stream will report to the user when a push
   # fails. 0 to make unlimited.
@@ -371,40 +387,24 @@ ingester_rf1:
   # CLI flag: -ingester-rf1.tailer.max-dropped-streams
   [max_dropped_streams: <int> | default = 10]
 
-  # Path where the shutdown marker file is stored. If not set and
-  # common.path_prefix is set then common.path_prefix will be used.
-  # CLI flag: -ingester-rf1.shutdown-marker-path
-  [shutdown_marker_path: <string> | default = ""]
-
   # Interval at which the ingester ownedStreamService checks for changes in the
   # ring to recalculate owned streams.
   # CLI flag: -ingester-rf1.owned-streams-check-interval
   [owned_streams_check_interval: <duration> | default = 30s]
 
-  # Configures how the pattern ingester will connect to the ingesters.
-  client_config:
-    # Configures how connections are pooled.
-    pool_config:
-      # How frequently to clean up clients for ingesters that have gone away.
-      # CLI flag: -ingester-rf1.client-cleanup-period
-      [client_cleanup_period: <duration> | default = 15s]
+  # Whether the ingester is enabled.
+  # CLI flag: -ingester-rf1.enabled
+  [enabled: <boolean> | default = false]
 
-      # Run a health check on each ingester client during periodic cleanup.
-      # CLI flag: -ingester-rf1.health-check-ingesters
-      [health_check_ingesters: <boolean> | default = true]
-
-      # Timeout for the health check.
-      # CLI flag: -ingester-rf1.remote-timeout
-      [remote_timeout: <duration> | default = 1s]
-
-    # The remote request timeout on the client side.
-    # CLI flag: -ingester-rf1.client.timeout
-    [remote_timeout: <duration> | default = 5s]
-
-    # Configures how the gRPC connection to ingesters work as a client.
-    # The CLI flags prefix for this block configuration is:
-    # pattern-ingester.client
-    [grpc_client_config: <grpc_client>]
+  # Forget about ingesters having heartbeat timestamps older than
+  # `ring.kvstore.heartbeat_timeout`. This is equivalent to clicking on the
+  # `/ring` `forget` button in the UI: the ingester is removed from the ring.
+  # This is a useful setting when you are sure that an unhealthy node won't
+  # return. An example is when not using stateful sets or the equivalent. Use
+  # `memberlist.rejoin_interval` > 0 to handle network partition cases when
+  # using a memberlist.
+  # CLI flag: -ingester-rf1.autoforget-unhealthy
+  [autoforget_unhealthy: <boolean> | default = false]
 
 pattern_ingester:
   # Whether the pattern ingester is enabled.
@@ -3149,10 +3149,6 @@ flush_op_backoff:
 # the local file systems in order to guarantee persistence of acknowledged data
 # in the event of a process crash.
 wal:
-  # Enable writing of ingested data into WAL.
-  # CLI flag: -ingester.wal-enabled
-  [enabled: <boolean> | default = true]
-
   # Directory where the WAL data is stored and/or recovered from.
   # CLI flag: -ingester.wal-dir
   [dir: <string> | default = "wal"]
@@ -3161,16 +3157,20 @@ wal:
   # CLI flag: -ingester.checkpoint-duration
   [checkpoint_duration: <duration> | default = 5m]
 
-  # When WAL is enabled, should chunks be flushed to long-term storage on
-  # shutdown.
-  # CLI flag: -ingester.flush-on-shutdown
-  [flush_on_shutdown: <boolean> | default = false]
-
   # Maximum memory size the WAL may use during replay. After hitting this, it
   # will flush data to storage before continuing. A unit suffix (KB, MB, GB) may
   # be applied.
   # CLI flag: -ingester.wal-replay-memory-ceiling
   [replay_memory_ceiling: <int> | default = 4GB]
+
+  # Enable writing of ingested data into WAL.
+  # CLI flag: -ingester.wal-enabled
+  [enabled: <boolean> | default = true]
+
+  # When WAL is enabled, should chunks be flushed to long-term storage on
+  # shutdown.
+  # CLI flag: -ingester.flush-on-shutdown
+  [flush_on_shutdown: <boolean> | default = false]
 
 # Shard factor used in the ingesters for the in process reverse index. This MUST
 # be evenly divisible by ALL schema shard factors or Loki will not start.
