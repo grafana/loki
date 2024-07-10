@@ -201,8 +201,8 @@ func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(context.Co
 }
 
 type ResponseFromIngesters struct {
-	addr     string
 	response interface{}
+	addr     string
 }
 
 func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet ring.ReplicationSet, f func(context.Context, logproto.PatternClient) (interface{}, error)) ([]ResponseFromIngesters, error) {

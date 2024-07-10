@@ -24,11 +24,11 @@ const walSegmentSize = wlog.DefaultSegmentSize * 4
 const defaultCeiling = 4 << 30 // 4GB
 
 type WALConfig struct {
-	Enabled             bool             `yaml:"enabled"`
 	Dir                 string           `yaml:"dir"`
 	CheckpointDuration  time.Duration    `yaml:"checkpoint_duration"`
-	FlushOnShutdown     bool             `yaml:"flush_on_shutdown"`
 	ReplayMemoryCeiling flagext.ByteSize `yaml:"replay_memory_ceiling"`
+	Enabled             bool             `yaml:"enabled"`
+	FlushOnShutdown     bool             `yaml:"flush_on_shutdown"`
 }
 
 func (cfg *WALConfig) Validate() error {
@@ -66,13 +66,14 @@ func (noopWAL) Log(*wal.Record) error { return nil }
 func (noopWAL) Stop() error           { return nil }
 
 type walWrapper struct {
-	cfg        WALConfig
-	wal        *wlog.WL
-	metrics    *ingesterMetrics
 	seriesIter SeriesIter
 
+	wal     *wlog.WL
+	metrics *ingesterMetrics
+	quit    chan struct{}
+	cfg     WALConfig
+
 	wait sync.WaitGroup
-	quit chan struct{}
 }
 
 // newWAL creates a WAL object. If the WAL is disabled, then the returned WAL is a no-op WAL.

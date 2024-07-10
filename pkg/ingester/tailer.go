@@ -29,16 +29,14 @@ type TailServer interface {
 }
 
 type tailRequest struct {
-	stream logproto.Stream
 	lbs    labels.Labels
+	stream logproto.Stream
 }
 
 type tailer struct {
-	id          uint32
-	orgID       string
-	matchers    []*labels.Matcher
-	pipeline    syntax.Pipeline
-	pipelineMtx sync.Mutex
+	pipeline syntax.Pipeline
+
+	conn TailServer
 
 	queue    chan tailRequest
 	sendChan chan *logproto.Stream
@@ -46,15 +44,20 @@ type tailer struct {
 	// Signaling channel used to notify once the tailer gets closed
 	// and the loop and senders should stop
 	closeChan chan struct{}
-	closeOnce sync.Once
-	closed    atomic.Bool
 
-	blockedAt         *time.Time
-	blockedMtx        sync.RWMutex
-	droppedStreams    []*logproto.DroppedStream
+	blockedAt      *time.Time
+	orgID          string
+	matchers       []*labels.Matcher
+	droppedStreams []*logproto.DroppedStream
+	closed         atomic.Bool
+
 	maxDroppedStreams int
 
-	conn TailServer
+	blockedMtx  sync.RWMutex
+	closeOnce   sync.Once
+	pipelineMtx sync.Mutex
+
+	id uint32
 }
 
 func newTailer(orgID string, expr syntax.LogSelectorExpr, conn TailServer, maxDroppedStreams int) (*tailer, error) {

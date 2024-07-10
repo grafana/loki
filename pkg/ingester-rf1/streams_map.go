@@ -8,10 +8,10 @@ import (
 )
 
 type streamsMap struct {
-	consistencyMtx sync.RWMutex // Keep read/write consistency between other fields
-	streams        *sync.Map    // map[string]*stream
-	streamsByFP    *sync.Map    // map[model.Fingerprint]*stream
+	streams        *sync.Map // map[string]*stream
+	streamsByFP    *sync.Map // map[model.Fingerprint]*stream
 	streamsCounter *atomic.Int64
+	consistencyMtx sync.RWMutex // Keep read/write consistency between other fields
 }
 
 func newStreamsMap() *streamsMap {

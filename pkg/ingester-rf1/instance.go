@@ -54,21 +54,16 @@ var (
 )
 
 type instance struct {
-	cfg *Config
+	streamsCreatedTotal prometheus.Counter
+	streamsRemovedTotal prometheus.Counter
 
-	buf     []byte // buffer used to compute fps.
+	customStreamsTracker push.UsageTracker
+	cfg                  *Config
+
 	streams *streamsMap
 
 	index  *index.Multi
 	mapper *FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
-
-	instanceID string
-
-	streamsCreatedTotal prometheus.Counter
-	streamsRemovedTotal prometheus.Counter
-
-	// tailers   map[uint32]*tailer
-	tailerMtx sync.RWMutex
 
 	limiter            *Limiter
 	streamCountLimiter *streamCountLimiter
@@ -84,7 +79,12 @@ type instance struct {
 
 	schemaconfig *config.SchemaConfig
 
-	customStreamsTracker push.UsageTracker
+	instanceID string
+
+	buf []byte // buffer used to compute fps.
+
+	// tailers   map[uint32]*tailer
+	tailerMtx sync.RWMutex
 }
 
 func (i *instance) Push(ctx context.Context, req *logproto.PushRequest, flushCtx *flushCtx) error {

@@ -58,11 +58,11 @@ type Recoverer interface {
 }
 
 type ingesterRecoverer struct {
-	// basically map[userID]map[fingerprint]*stream
-	users  sync.Map
-	ing    *Ingester
 	logger log.Logger
+	ing    *Ingester
 	done   chan struct{}
+	// basically map[userID]map[fingerprint]*stream
+	users sync.Map
 }
 
 func newIngesterRecoverer(i *Ingester) *ingesterRecoverer {
@@ -345,8 +345,8 @@ func RecoverCheckpoint(reader WALReader, recoverer Recoverer) error {
 }
 
 type recoveryInput struct {
-	userID string
 	data   interface{}
+	userID string
 }
 
 // recoverGeneric enables reusing the ability to recover from WALs of different types

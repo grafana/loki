@@ -34,10 +34,11 @@ type Limits interface {
 // Limiter implements primitives to get the maximum number of streams
 // an ingester can handle for a specific tenant
 type Limiter struct {
-	limits            Limits
-	ring              RingCount
+	limits  Limits
+	ring    RingCount
+	metrics *ingesterMetrics
+
 	replicationFactor int
-	metrics           *ingesterMetrics
 
 	mtx      sync.RWMutex
 	disabled bool
@@ -128,10 +129,10 @@ func (l *Limiter) convertGlobalToLocalLimit(globalLimit int) int {
 type supplier[T any] func() T
 
 type streamCountLimiter struct {
-	tenantID                   string
 	limiter                    *Limiter
 	defaultStreamCountSupplier supplier[int]
 	ownedStreamSvc             *ownedStreamService
+	tenantID                   string
 }
 
 var noopFixedLimitSupplier = func() int {
@@ -187,11 +188,11 @@ func (l *Limiter) RateLimit(tenant string) validation.RateLimit {
 }
 
 type StreamRateLimiter struct {
-	recheckPeriod time.Duration
 	recheckAt     time.Time
 	strategy      RateLimiterStrategy
-	tenant        string
 	lim           *rate.Limiter
+	tenant        string
+	recheckPeriod time.Duration
 }
 
 func NewStreamRateLimiter(strategy RateLimiterStrategy, tenant string, recheckPeriod time.Duration) *StreamRateLimiter {

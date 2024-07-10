@@ -88,21 +88,24 @@ var (
 )
 
 type instance struct {
-	cfg *Config
+	streamsCreatedTotal prometheus.Counter
+	streamsRemovedTotal prometheus.Counter
 
-	buf     []byte // buffer used to compute fps.
+	wal WAL
+
+	chunkFilter      chunk.RequestChunkFilterer
+	pipelineWrapper  log.PipelineWrapper
+	extractorWrapper log.SampleExtractorWrapper
+
+	customStreamsTracker push.UsageTracker
+	cfg                  *Config
+
 	streams *streamsMap
 
 	index  *index.Multi
 	mapper *FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
 
-	instanceID string
-
-	streamsCreatedTotal prometheus.Counter
-	streamsRemovedTotal prometheus.Counter
-
-	tailers   map[uint32]*tailer
-	tailerMtx sync.RWMutex
+	tailers map[uint32]*tailer
 
 	limiter            *Limiter
 	streamCountLimiter *streamCountLimiter
@@ -110,24 +113,22 @@ type instance struct {
 
 	configs *runtime.TenantConfigs
 
-	wal WAL
-
 	// Denotes whether the ingester should flush on shutdown.
 	// Currently only used by the WAL to signal when the disk is full.
 	flushOnShutdownSwitch *OnceSwitch
 
 	metrics *ingesterMetrics
 
-	chunkFilter          chunk.RequestChunkFilterer
-	pipelineWrapper      log.PipelineWrapper
-	extractorWrapper     log.SampleExtractorWrapper
 	streamRateCalculator *StreamRateCalculator
 
 	writeFailures *writefailures.Manager
 
 	schemaconfig *config.SchemaConfig
 
-	customStreamsTracker push.UsageTracker
+	instanceID string
+
+	buf       []byte // buffer used to compute fps.
+	tailerMtx sync.RWMutex
 }
 
 func newInstance(

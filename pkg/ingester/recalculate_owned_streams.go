@@ -15,11 +15,12 @@ type recalculateOwnedStreams struct {
 
 	logger log.Logger
 
+	ingestersRing ring.ReadRing
+
 	instancesSupplier func() []*instance
+	ticker            *time.Ticker
 	ingesterID        string
 	previousRing      ring.ReplicationSet
-	ingestersRing     ring.ReadRing
-	ticker            *time.Ticker
 }
 
 func newRecalculateOwnedStreams(instancesSupplier func() []*instance, ingesterID string, ring ring.ReadRing, ringPollInterval time.Duration, logger log.Logger) *recalculateOwnedStreams {

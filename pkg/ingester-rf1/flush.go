@@ -77,8 +77,8 @@ func (i *Ingester) FlushHandler(w http.ResponseWriter, _ *http.Request) {
 }
 
 type flushOp struct {
-	from      model.Time
 	userID    string
+	from      model.Time
 	fp        model.Fingerprint
 	immediate bool
 }

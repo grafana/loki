@@ -40,6 +40,10 @@ type Flusher interface {
 
 // replayController handles coordinating backpressure between WAL replays and chunk flushing.
 type replayController struct {
+	flusher Flusher
+	metrics *ingesterMetrics
+	cond    *sync.Cond
+	cfg     WALConfig
 	// Note, this has to be defined first to make sure it is aligned properly for 32bit ARM OS
 	// From https://golang.org/pkg/sync/atomic/#pkg-note-BUG:
 	// > On ARM, 386, and 32-bit MIPS, it is the caller's responsibility to arrange for
@@ -47,11 +51,7 @@ type replayController struct {
 	// > variable or in an allocated struct, array, or slice can be relied upon to
 	// > be 64-bit aligned.
 	currentBytes atomic.Int64
-	cfg          WALConfig
-	metrics      *ingesterMetrics
-	cond         *sync.Cond
 	isFlushing   atomic.Bool
-	flusher      Flusher
 }
 
 // flusher is expected to reduce pressure via calling Sub

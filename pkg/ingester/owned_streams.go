@@ -18,12 +18,12 @@ var notOwnedStreamsMetric = promauto.NewGauge(prometheus.GaugeOpts{
 })
 
 type ownedStreamService struct {
-	tenantID         string
 	limiter          *Limiter
 	fixedLimit       *atomic.Int32
+	notOwnedStreams  map[model.Fingerprint]any
+	tenantID         string
 	ownedStreamCount int
 	lock             sync.RWMutex
-	notOwnedStreams  map[model.Fingerprint]any
 }
 
 func newOwnedStreamService(tenantID string, limiter *Limiter) *ownedStreamService {

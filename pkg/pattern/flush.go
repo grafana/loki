@@ -38,8 +38,8 @@ func (i *Ingester) flush(mayRemoveStreams bool) {
 }
 
 type flushOp struct {
-	from      model.Time
 	userID    string
+	from      model.Time
 	fp        model.Fingerprint
 	immediate bool
 }

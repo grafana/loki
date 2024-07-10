@@ -10,9 +10,10 @@ import (
 type ownedStreamService struct {
 	services.Service
 
+	limiter    *Limiter
+	fixedLimit *atomic.Int32
+
 	tenantID            string
-	limiter             *Limiter
-	fixedLimit          *atomic.Int32
 	ownedStreamCount    int
 	notOwnedStreamCount int
 	lock                sync.RWMutex
