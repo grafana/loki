@@ -133,9 +133,278 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # the querier.
 [ingester_client: <ingester_client>]
 
+# The ingester_client block configures how the distributor will connect to
+# ingesters. Only appropriate when running all components, the distributor, or
+# the querier.
+[ingester_rf1_client: <ingester_client>]
+
 # The ingester block configures the ingester and how the ingester will register
 # itself to a key value store.
 [ingester: <ingester>]
+
+ingester_rf1:
+  # Whether the ingester is enabled.
+  # CLI flag: -ingester-rf1.enabled
+  [enabled: <boolean> | default = false]
+
+  # Configures how the lifecycle of the ingester will operate and where it will
+  # register for discovery.
+  lifecycler:
+    ring:
+      kvstore:
+        # Backend storage to use for the ring. Supported values are: consul,
+        # etcd, inmemory, memberlist, multi.
+        # CLI flag: -ingester-rf1.store
+        [store: <string> | default = "consul"]
+
+        # The prefix for the keys in the store. Should end with a /.
+        # CLI flag: -ingester-rf1.prefix
+        [prefix: <string> | default = "collectors/"]
+
+        # Configuration for a Consul client. Only applies if the selected
+        # kvstore is consul.
+        # The CLI flags prefix for this block configuration is: ingester-rf1
+        [consul: <consul>]
+
+        # Configuration for an ETCD v3 client. Only applies if the selected
+        # kvstore is etcd.
+        # The CLI flags prefix for this block configuration is: ingester-rf1
+        [etcd: <etcd>]
+
+        multi:
+          # Primary backend storage used by multi-client.
+          # CLI flag: -ingester-rf1.multi.primary
+          [primary: <string> | default = ""]
+
+          # Secondary backend storage used by multi-client.
+          # CLI flag: -ingester-rf1.multi.secondary
+          [secondary: <string> | default = ""]
+
+          # Mirror writes to secondary store.
+          # CLI flag: -ingester-rf1.multi.mirror-enabled
+          [mirror_enabled: <boolean> | default = false]
+
+          # Timeout for storing value to secondary store.
+          # CLI flag: -ingester-rf1.multi.mirror-timeout
+          [mirror_timeout: <duration> | default = 2s]
+
+      # The heartbeat timeout after which ingesters are skipped for
+      # reads/writes. 0 = never (timeout disabled).
+      # CLI flag: -ingester-rf1.ring.heartbeat-timeout
+      [heartbeat_timeout: <duration> | default = 1m]
+
+      # The number of ingesters to write to and read from.
+      # CLI flag: -ingester-rf1.distributor.replication-factor
+      [replication_factor: <int> | default = 3]
+
+      # True to enable the zone-awareness and replicate ingested samples across
+      # different availability zones.
+      # CLI flag: -ingester-rf1.distributor.zone-awareness-enabled
+      [zone_awareness_enabled: <boolean> | default = false]
+
+      # Comma-separated list of zones to exclude from the ring. Instances in
+      # excluded zones will be filtered out from the ring.
+      # CLI flag: -ingester-rf1.distributor.excluded-zones
+      [excluded_zones: <string> | default = ""]
+
+    # Number of tokens for each ingester.
+    # CLI flag: -ingester-rf1.num-tokens
+    [num_tokens: <int> | default = 128]
+
+    # Period at which to heartbeat to consul. 0 = disabled.
+    # CLI flag: -ingester-rf1.heartbeat-period
+    [heartbeat_period: <duration> | default = 5s]
+
+    # Heartbeat timeout after which instance is assumed to be unhealthy. 0 =
+    # disabled.
+    # CLI flag: -ingester-rf1.heartbeat-timeout
+    [heartbeat_timeout: <duration> | default = 1m]
+
+    # Observe tokens after generating to resolve collisions. Useful when using
+    # gossiping ring.
+    # CLI flag: -ingester-rf1.observe-period
+    [observe_period: <duration> | default = 0s]
+
+    # Period to wait for a claim from another member; will join automatically
+    # after this.
+    # CLI flag: -ingester-rf1.join-after
+    [join_after: <duration> | default = 0s]
+
+    # Minimum duration to wait after the internal readiness checks have passed
+    # but before succeeding the readiness endpoint. This is used to slowdown
+    # deployment controllers (eg. Kubernetes) after an instance is ready and
+    # before they proceed with a rolling update, to give the rest of the cluster
+    # instances enough time to receive ring updates.
+    # CLI flag: -ingester-rf1.min-ready-duration
+    [min_ready_duration: <duration> | default = 15s]
+
+    # Name of network interface to read address from.
+    # CLI flag: -ingester-rf1.lifecycler.interface
+    [interface_names: <list of strings> | default = [<private network interfaces>]]
+
+    # Enable IPv6 support. Required to make use of IP addresses from IPv6
+    # interfaces.
+    # CLI flag: -ingester-rf1.enable-inet6
+    [enable_inet6: <boolean> | default = false]
+
+    # Duration to sleep for before exiting, to ensure metrics are scraped.
+    # CLI flag: -ingester-rf1.final-sleep
+    [final_sleep: <duration> | default = 0s]
+
+    # File path where tokens are stored. If empty, tokens are not stored at
+    # shutdown and restored at startup.
+    # CLI flag: -ingester-rf1.tokens-file-path
+    [tokens_file_path: <string> | default = ""]
+
+    # The availability zone where this instance is running.
+    # CLI flag: -ingester-rf1.availability-zone
+    [availability_zone: <string> | default = ""]
+
+    # Unregister from the ring upon clean shutdown. It can be useful to disable
+    # for rolling restarts with consistent naming in conjunction with
+    # -distributor.extend-writes=false.
+    # CLI flag: -ingester-rf1.unregister-on-shutdown
+    [unregister_on_shutdown: <boolean> | default = true]
+
+    # When enabled the readiness probe succeeds only after all instances are
+    # ACTIVE and healthy in the ring, otherwise only the instance itself is
+    # checked. This option should be disabled if in your cluster multiple
+    # instances can be rolled out simultaneously, otherwise rolling updates may
+    # be slowed down.
+    # CLI flag: -ingester-rf1.readiness-check-ring-health
+    [readiness_check_ring_health: <boolean> | default = true]
+
+    # IP address to advertise in the ring.
+    # CLI flag: -ingester-rf1.lifecycler.addr
+    [address: <string> | default = ""]
+
+    # port to advertise in consul (defaults to server.grpc-listen-port).
+    # CLI flag: -ingester-rf1.lifecycler.port
+    [port: <int> | default = 0]
+
+    # ID to register in the ring.
+    # CLI flag: -ingester-rf1.lifecycler.ID
+    [id: <string> | default = "<hostname>"]
+
+  # How many flushes can happen concurrently from each stream.
+  # CLI flag: -ingester-rf1.concurrent-flushes
+  [concurrent_flushes: <int> | default = 32]
+
+  # How often should the ingester see if there are any blocks to flush. The
+  # first flush check is delayed by a random time up to 0.8x the flush check
+  # period. Additionally, there is +/- 1% jitter added to the interval.
+  # CLI flag: -ingester-rf1.flush-check-period
+  [flush_check_period: <duration> | default = 500ms]
+
+  flush_op_backoff:
+    # Minimum backoff period when a flush fails. Each concurrent flush has its
+    # own backoff, see `ingester.concurrent-flushes`.
+    # CLI flag: -ingester-rf1.flush-op-backoff-min-period
+    [min_period: <duration> | default = 100ms]
+
+    # Maximum backoff period when a flush fails. Each concurrent flush has its
+    # own backoff, see `ingester.concurrent-flushes`.
+    # CLI flag: -ingester-rf1.flush-op-backoff-max-period
+    [max_period: <duration> | default = 1m]
+
+    # Maximum retries for failed flushes.
+    # CLI flag: -ingester-rf1.flush-op-backoff-retries
+    [max_retries: <int> | default = 10]
+
+  # The timeout for an individual flush. Will be retried up to
+  # `flush-op-backoff-retries` times.
+  # CLI flag: -ingester-rf1.flush-op-timeout
+  [flush_op_timeout: <duration> | default = 10m]
+
+  # How long chunks should be retained in-memory after they've been flushed.
+  # CLI flag: -ingester-rf1.chunks-retain-period
+  [chunk_retain_period: <duration> | default = 0s]
+
+  [chunk_idle_period: <duration>]
+
+  # The targeted _uncompressed_ size in bytes of a chunk block When this
+  # threshold is exceeded the head block will be cut and compressed inside the
+  # chunk.
+  # CLI flag: -ingester-rf1.chunks-block-size
+  [chunk_block_size: <int> | default = 262144]
+
+  # A target _compressed_ size in bytes for chunks. This is a desired size not
+  # an exact size, chunks may be slightly bigger or significantly smaller if
+  # they get flushed for other reasons (e.g. chunk_idle_period). A value of 0
+  # creates chunks with a fixed 10 blocks, a non zero value will create chunks
+  # with a variable number of blocks to meet the target size.
+  # CLI flag: -ingester-rf1.chunk-target-size
+  [chunk_target_size: <int> | default = 1572864]
+
+  # The algorithm to use for compressing chunk. (none, gzip, lz4-64k, snappy,
+  # lz4-256k, lz4-1M, lz4, flate, zstd)
+  # CLI flag: -ingester-rf1.chunk-encoding
+  [chunk_encoding: <string> | default = "gzip"]
+
+  # The maximum duration of a timeseries chunk in memory. If a timeseries runs
+  # for longer than this, the current chunk will be flushed to the store and a
+  # new chunk created.
+  # CLI flag: -ingester-rf1.max-chunk-age
+  [max_chunk_age: <duration> | default = 2h]
+
+  # Forget about ingesters having heartbeat timestamps older than
+  # `ring.kvstore.heartbeat_timeout`. This is equivalent to clicking on the
+  # `/ring` `forget` button in the UI: the ingester is removed from the ring.
+  # This is a useful setting when you are sure that an unhealthy node won't
+  # return. An example is when not using stateful sets or the equivalent. Use
+  # `memberlist.rejoin_interval` > 0 to handle network partition cases when
+  # using a memberlist.
+  # CLI flag: -ingester-rf1.autoforget-unhealthy
+  [autoforget_unhealthy: <boolean> | default = false]
+
+  # The maximum number of errors a stream will report to the user when a push
+  # fails. 0 to make unlimited.
+  # CLI flag: -ingester-rf1.max-ignored-stream-errors
+  [max_returned_stream_errors: <int> | default = 10]
+
+  # Shard factor used in the ingesters for the in process reverse index. This
+  # MUST be evenly divisible by ALL schema shard factors or Loki will not start.
+  # CLI flag: -ingester-rf1.index-shards
+  [index_shards: <int> | default = 32]
+
+  # Maximum number of dropped streams to keep in memory during tailing.
+  # CLI flag: -ingester-rf1.tailer.max-dropped-streams
+  [max_dropped_streams: <int> | default = 10]
+
+  # Path where the shutdown marker file is stored. If not set and
+  # common.path_prefix is set then common.path_prefix will be used.
+  # CLI flag: -ingester-rf1.shutdown-marker-path
+  [shutdown_marker_path: <string> | default = ""]
+
+  # Interval at which the ingester ownedStreamService checks for changes in the
+  # ring to recalculate owned streams.
+  # CLI flag: -ingester-rf1.owned-streams-check-interval
+  [owned_streams_check_interval: <duration> | default = 30s]
+
+  # Configures how the pattern ingester will connect to the ingesters.
+  client_config:
+    # Configures how connections are pooled.
+    pool_config:
+      # How frequently to clean up clients for ingesters that have gone away.
+      # CLI flag: -ingester-rf1.client-cleanup-period
+      [client_cleanup_period: <duration> | default = 15s]
+
+      # Run a health check on each ingester client during periodic cleanup.
+      # CLI flag: -ingester-rf1.health-check-ingesters
+      [health_check_ingesters: <boolean> | default = true]
+
+      # Timeout for the health check.
+      # CLI flag: -ingester-rf1.remote-timeout
+      [remote_timeout: <duration> | default = 1s]
+
+    # The remote request timeout on the client side.
+    # CLI flag: -ingester-rf1.client.timeout
+    [remote_timeout: <duration> | default = 5s]
+
+    # Configures how the gRPC connection to ingesters work as a client.
+    # The CLI flags prefix for this block configuration is:
+    # pattern-ingester.client
+    [grpc_client_config: <grpc_client>]
 
 pattern_ingester:
   # Whether the pattern ingester is enabled.
@@ -303,7 +572,7 @@ pattern_ingester:
 
     # Configures how the gRPC connection to ingesters work as a client.
     # The CLI flags prefix for this block configuration is:
-    # pattern-ingester.client
+    # bloom-build.builder.grpc
     [grpc_client_config: <grpc_client>]
 
   # How many flushes can happen concurrently from each stream.
@@ -314,7 +583,28 @@ pattern_ingester:
   # first flush check is delayed by a random time up to 0.8x the flush check
   # period. Additionally, there is +/- 1% jitter added to the interval.
   # CLI flag: -pattern-ingester.flush-check-period
-  [flush_check_period: <duration> | default = 30s]
+  [flush_check_period: <duration> | default = 1m]
+
+  # The maximum number of detected pattern clusters that can be created by
+  # streams.
+  # CLI flag: -pattern-ingester.max-clusters
+  [max_clusters: <int> | default = 300]
+
+  # The maximum eviction ratio of patterns per stream. Once that ratio is
+  # reached, the stream will throttled pattern detection.
+  # CLI flag: -pattern-ingester.max-eviction-ratio
+  [max_eviction_ratio: <float> | default = 0.25]
+
+  # Configures the metric aggregation and storage behavior of the pattern
+  # ingester.
+  metric_aggregation:
+    # Whether the pattern ingester metric aggregation is enabled.
+    # CLI flag: -pattern-ingester.metric-aggregation.enabled
+    [enabled: <boolean> | default = false]
+
+    # Whether to log push observations.
+    # CLI flag: -pattern-ingester.metric-aggregation.log-push-observations
+    [log_push_observations: <boolean> | default = false]
 
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
@@ -359,12 +649,25 @@ bloom_build:
     # The grpc_client block configures the gRPC client used to communicate
     # between a client and server component in Loki.
     # The CLI flags prefix for this block configuration is:
-    # bloom-build.builder.grpc
+    # bloom-gateway-client.grpc
     [grpc_config: <grpc_client>]
 
     # Hostname (and port) of the bloom planner
     # CLI flag: -bloom-build.builder.planner-address
     [planner_address: <string> | default = ""]
+
+    backoff_config:
+      # Minimum delay when backing off.
+      # CLI flag: -bloom-build.builder.backoff.backoff-min-period
+      [min_period: <duration> | default = 100ms]
+
+      # Maximum delay when backing off.
+      # CLI flag: -bloom-build.builder.backoff.backoff-max-period
+      [max_period: <duration> | default = 10s]
+
+      # Number of times to backoff and retry before failing.
+      # CLI flag: -bloom-build.builder.backoff.backoff-retries
+      [max_retries: <int> | default = 10]
 
 # Experimental: The bloom_gateway block configures the Loki bloom gateway
 # server, responsible for serving queries for filtering chunks based on filter
@@ -555,6 +858,9 @@ compactor_grpc_client:
 
 # Configuration for analytics.
 [analytics: <analytics>]
+
+# Configuration for profiling options.
+[profiling: <profiling>]
 
 # Common configuration to be shared between multiple modules. If a more specific
 # configuration is given in other sections, the related configuration within
@@ -1093,8 +1399,7 @@ client:
 
   # The grpc_client block configures the gRPC client used to communicate between
   # a client and server component in Loki.
-  # The CLI flags prefix for this block configuration is:
-  # bloom-gateway-client.grpc
+  # The CLI flags prefix for this block configuration is: bigtable
   [grpc_client_config: <grpc_client>]
 
   results_cache:
@@ -1840,6 +2145,7 @@ Configuration for a Consul client. Only applies if the selected kvstore is `cons
 - `compactor.ring`
 - `distributor.ring`
 - `index-gateway.ring`
+- `ingester-rf1`
 - `pattern-ingester`
 - `query-scheduler.ring`
 - `ruler.ring`
@@ -2060,6 +2366,7 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 - `compactor.ring`
 - `distributor.ring`
 - `index-gateway.ring`
+- `ingester-rf1`
 - `pattern-ingester`
 - `query-scheduler.ring`
 - `ruler.ring`
@@ -2278,20 +2585,18 @@ The `frontend_worker` configures the worker - running within the Loki querier - 
 
 # Configures the querier gRPC client used to communicate with the
 # query-frontend. This can't be used in conjunction with 'grpc_client_config'.
-# The CLI flags prefix for this block configuration is:
-# querier.frontend-grpc-client
+# The CLI flags prefix for this block configuration is: querier.frontend-client
 [query_frontend_grpc_client: <grpc_client>]
 
 # Configures the querier gRPC client used to communicate with the query-frontend
 # and with the query-scheduler. This can't be used in conjunction with
 # 'query_frontend_grpc_client' or 'query_scheduler_grpc_client'.
-# The CLI flags prefix for this block configuration is: querier.frontend-client
+# The CLI flags prefix for this block configuration is:
+# querier.scheduler-grpc-client
 [grpc_client_config: <grpc_client>]
 
 # Configures the querier gRPC client used to communicate with the
 # query-scheduler. This can't be used in conjunction with 'grpc_client_config'.
-# The CLI flags prefix for this block configuration is:
-# querier.scheduler-grpc-client
 [query_scheduler_grpc_client: <grpc_client>]
 ```
 
@@ -2348,6 +2653,7 @@ The `grpc_client` block configures the gRPC client used to communicate between a
 - `bloom-gateway-client.grpc`
 - `boltdb.shipper.index-gateway-client.grpc`
 - `frontend.grpc-client-config`
+- `ingester-rf1.client`
 - `ingester.client`
 - `pattern-ingester.client`
 - `querier.frontend-client`
@@ -2361,82 +2667,82 @@ The `grpc_client` block configures the gRPC client used to communicate between a
 
 ```yaml
 # gRPC client max receive message size (bytes).
-# CLI flag: -<prefix>.grpc-max-recv-msg-size
+# CLI flag: -boltdb.shipper.index-gateway-client.grpc.grpc-max-recv-msg-size
 [max_recv_msg_size: <int> | default = 104857600]
 
 # gRPC client max send message size (bytes).
-# CLI flag: -<prefix>.grpc-max-send-msg-size
+# CLI flag: -boltdb.shipper.index-gateway-client.grpc.grpc-max-send-msg-size
 [max_send_msg_size: <int> | default = 104857600]
 
 # Use compression when sending messages. Supported values are: 'gzip', 'snappy'
 # and '' (disable compression)
-# CLI flag: -<prefix>.grpc-compression
+# CLI flag: -boltdb.shipper.index-gateway-client.grpc.grpc-compression
 [grpc_compression: <string> | default = ""]
 
 # Rate limit for gRPC client; 0 means disabled.
-# CLI flag: -<prefix>.grpc-client-rate-limit
+# CLI flag: -boltdb.shipper.index-gateway-client.grpc.grpc-client-rate-limit
 [rate_limit: <float> | default = 0]
 
 # Rate limit burst for gRPC client.
-# CLI flag: -<prefix>.grpc-client-rate-limit-burst
+# CLI flag: -boltdb.shipper.index-gateway-client.grpc.grpc-client-rate-limit-burst
 [rate_limit_burst: <int> | default = 0]
 
 # Enable backoff and retry when we hit rate limits.
-# CLI flag: -<prefix>.backoff-on-ratelimits
+# CLI flag: -boltdb.shipper.index-gateway-client.grpc.backoff-on-ratelimits
 [backoff_on_ratelimits: <boolean> | default = false]
 
 backoff_config:
   # Minimum delay when backing off.
-  # CLI flag: -<prefix>.backoff-min-period
+  # CLI flag: -boltdb.shipper.index-gateway-client.grpc.backoff-min-period
   [min_period: <duration> | default = 100ms]
 
   # Maximum delay when backing off.
-  # CLI flag: -<prefix>.backoff-max-period
+  # CLI flag: -boltdb.shipper.index-gateway-client.grpc.backoff-max-period
   [max_period: <duration> | default = 10s]
 
   # Number of times to backoff and retry before failing.
-  # CLI flag: -<prefix>.backoff-retries
+  # CLI flag: -boltdb.shipper.index-gateway-client.grpc.backoff-retries
   [max_retries: <int> | default = 10]
 
 # Initial stream window size. Values less than the default are not supported and
 # are ignored. Setting this to a value other than the default disables the BDP
 # estimator.
-# CLI flag: -<prefix>.initial-stream-window-size
+# CLI flag: -boltdb.shipper.index-gateway-client.grpc.initial-stream-window-size
 [initial_stream_window_size: <int> | default = 63KiB1023B]
 
 # Initial connection window size. Values less than the default are not supported
 # and are ignored. Setting this to a value other than the default disables the
 # BDP estimator.
-# CLI flag: -<prefix>.initial-connection-window-size
+# CLI flag: -boltdb.shipper.index-gateway-client.grpc.initial-connection-window-size
 [initial_connection_window_size: <int> | default = 63KiB1023B]
 
 # Enable TLS in the gRPC client. This flag needs to be enabled when any other
 # TLS flag is set. If set to false, insecure connection to gRPC server will be
 # used.
-# CLI flag: -<prefix>.tls-enabled
+# CLI flag: -boltdb.shipper.index-gateway-client.grpc.tls-enabled
 [tls_enabled: <boolean> | default = false]
 
 # Path to the client certificate, which will be used for authenticating with the
 # server. Also requires the key path to be configured.
-# CLI flag: -<prefix>.tls-cert-path
+# CLI flag: -boltdb.shipper.index-gateway-client.grpc.tls-cert-path
 [tls_cert_path: <string> | default = ""]
 
 # Path to the key for the client certificate. Also requires the client
 # certificate to be configured.
-# CLI flag: -<prefix>.tls-key-path
+# CLI flag: -boltdb.shipper.index-gateway-client.grpc.tls-key-path
 [tls_key_path: <string> | default = ""]
 
 # Path to the CA certificates to validate server certificate against. If not
 # set, the host's root CA certificates are used.
-# CLI flag: -<prefix>.tls-ca-path
+# CLI flag: -boltdb.shipper.index-gateway-client.grpc.tls-ca-path
 [tls_ca_path: <string> | default = ""]
 
 # Override the expected name on the server certificate.
-# CLI flag: -<prefix>.tls-server-name
+# CLI flag: -boltdb.shipper.index-gateway-client.grpc.tls-server-name
 [tls_server_name: <string> | default = ""]
 
 # Skip validating server certificate.
-# CLI flag: -<prefix>.tls-insecure-skip-verify
+# CLI flag: -boltdb.shipper.index-gateway-client.grpc.tls-insecure-skip-verify
 [tls_insecure_skip_verify: <boolean> | default = false]
 
 # Override the default cipher suite list (separated by commas). Allowed values:
@@ -2469,27 +2775,27 @@ backoff_config:
 # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
 # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
 # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
-# CLI flag: -<prefix>.tls-cipher-suites
+# CLI flag: -boltdb.shipper.index-gateway-client.grpc.tls-cipher-suites
 [tls_cipher_suites: <string> | default = ""]
 
 # Override the default minimum TLS version. Allowed values: VersionTLS10,
 # VersionTLS11, VersionTLS12, VersionTLS13
-# CLI flag: -<prefix>.tls-min-version
+# CLI flag: -boltdb.shipper.index-gateway-client.grpc.tls-min-version
 [tls_min_version: <string> | default = ""]
 
 # The maximum amount of time to establish a connection. A value of 0 means
 # default gRPC client connect timeout and backoff.
-# CLI flag: -<prefix>.connect-timeout
+# CLI flag: -boltdb.shipper.index-gateway-client.grpc.connect-timeout
 [connect_timeout: <duration> | default = 5s]
 
 # Initial backoff delay after first connection failure. Only relevant if
 # ConnectTimeout > 0.
-# CLI flag: -<prefix>.connect-backoff-base-delay
+# CLI flag: -boltdb.shipper.index-gateway-client.grpc.connect-backoff-base-delay
 [connect_backoff_base_delay: <duration> | default = 1s]
 
 # Maximum backoff delay when establishing a connection. Only relevant if
 # ConnectTimeout > 0.
-# CLI flag: -<prefix>.connect-backoff-max-delay
+# CLI flag: -boltdb.shipper.index-gateway-client.grpc.connect-backoff-max-delay
 [connect_backoff_max_delay: <duration> | default = 5s]
 ```
 
@@ -2879,6 +3185,11 @@ wal:
 # common.path_prefix is set then common.path_prefix will be used.
 # CLI flag: -ingester.shutdown-marker-path
 [shutdown_marker_path: <string> | default = ""]
+
+# Interval at which the ingester ownedStreamService checks for changes in the
+# ring to recalculate owned streams.
+# CLI flag: -ingester.owned-streams-check-interval
+[owned_streams_check_interval: <duration> | default = 30s]
 ```
 
 ### ingester_client
@@ -2888,26 +3199,16 @@ The `ingester_client` block configures how the distributor will connect to inges
 ```yaml
 # Configures how connections are pooled.
 pool_config:
-  # How frequently to clean up clients for ingesters that have gone away.
-  # CLI flag: -distributor.client-cleanup-period
-  [client_cleanup_period: <duration> | default = 15s]
+  [client_cleanup_period: <duration>]
 
-  # Run a health check on each ingester client during periodic cleanup.
-  # CLI flag: -distributor.health-check-ingesters
-  [health_check_ingesters: <boolean> | default = true]
+  [health_check_ingesters: <boolean>]
 
-  # How quickly a dead client will be removed after it has been detected to
-  # disappear. Set this to a value to allow time for a secondary health check to
-  # recover the missing client.
-  # CLI flag: -ingester.client.healthcheck-timeout
-  [remote_timeout: <duration> | default = 1s]
+  [remote_timeout: <duration>]
 
-# The remote request timeout on the client side.
-# CLI flag: -ingester.client.timeout
-[remote_timeout: <duration> | default = 5s]
+[remote_timeout: <duration>]
 
 # Configures how the gRPC connection to ingesters work as a client.
-# The CLI flags prefix for this block configuration is: ingester.client
+# The CLI flags prefix for this block configuration is: ingester-rf1.client
 [grpc_client_config: <grpc_client>]
 ```
 
@@ -3213,13 +3514,14 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 [min_sharding_lookback: <duration> | default = 0s]
 
 # Max number of bytes a query can fetch. Enforced in log and metric queries only
-# when TSDB is used. The default value of 0 disables this limit.
+# when TSDB is used. This limit is not enforced on log queries without filters.
+# The default value of 0 disables this limit.
 # CLI flag: -frontend.max-query-bytes-read
 [max_query_bytes_read: <int> | default = 0B]
 
 # Max number of bytes a query can fetch after splitting and sharding. Enforced
-# in log and metric queries only when TSDB is used. The default value of 0
-# disables this limit.
+# in log and metric queries only when TSDB is used. This limit is not enforced
+# on log queries without filters. The default value of 0 disables this limit.
 # CLI flag: -frontend.max-querier-bytes-read
 [max_querier_bytes_read: <int> | default = 150GB]
 
@@ -3540,7 +3842,7 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # The timeout for establishing a connection with a remote node, and for
 # read/write operations.
 # CLI flag: -memberlist.stream-timeout
-[stream_timeout: <duration> | default = 10s]
+[stream_timeout: <duration> | default = 2s]
 
 # Multiplication factor used when sending out messages (factor * log(N+1)).
 # CLI flag: -memberlist.retransmit-factor
@@ -3773,6 +4075,14 @@ These are values which allow you to control aspects of Loki's operation, most co
 # CLI flag: -operation-config.log-push-request-streams
 [log_push_request_streams: <boolean> | default = false]
 
+# Log metrics for duplicate lines received.
+# CLI flag: -operation-config.log-duplicate-metrics
+[log_duplicate_metrics: <boolean> | default = false]
+
+# Log stream info for duplicate lines received
+# CLI flag: -operation-config.log-duplicate-stream-info
+[log_duplicate_stream_info: <boolean> | default = false]
+
 # Log push errors with a rate limited logger, will show client push errors
 # without overly spamming logs.
 # CLI flag: -operation-config.limited-log-push-errors
@@ -3832,6 +4142,24 @@ chunks:
 
 # How many shards will be created. Only used if schema is v10 or greater.
 [row_shards: <int> | default = 16]
+```
+
+### profiling
+
+Configuration for `profiling` options.
+
+```yaml
+# Sets the value for runtime.SetBlockProfilingRate
+# CLI flag: -profiling.block-profile-rate
+[block_profile_rate: <int> | default = 0]
+
+# Sets the value for runtime.SetCPUProfileRate
+# CLI flag: -profiling.cpu-profile-rate
+[cpu_profile_rate: <int> | default = 0]
+
+# Sets the value for runtime.SetMutexProfileFraction
+# CLI flag: -profiling.mutex-profile-fraction
+[mutex_profile_fraction: <int> | default = 0]
 ```
 
 ### querier
@@ -4228,9 +4556,10 @@ storage:
 # CLI flag: -ruler.alertmanager-refresh-interval
 [alertmanager_refresh_interval: <duration> | default = 1m]
 
-# If enabled requests to Alertmanager will utilize the V2 API.
+# Use Alertmanager APIv2. APIv1 was deprecated in Alertmanager 0.16.0 and is
+# removed as of 0.27.0.
 # CLI flag: -ruler.alertmanager-use-v2
-[enable_alertmanager_v2: <boolean> | default = false]
+[enable_alertmanager_v2: <boolean> | default = true]
 
 # List of alert relabel configs.
 [alert_relabel_configs: <relabel_config...>]
@@ -4755,6 +5084,10 @@ Configures the `server` of the launched module(s).
 # CLI flag: -server.grpc-conn-limit
 [grpc_listen_conn_limit: <int> | default = 0]
 
+# Enables PROXY protocol.
+# CLI flag: -server.proxy-protocol-enabled
+[proxy_protocol_enabled: <boolean> | default = false]
+
 # Comma-separated list of cipher suites to use. If blank, the default Go cipher
 # suites is used.
 # CLI flag: -server.tls-cipher-suites
@@ -4909,6 +5242,21 @@ grpc_tls_config:
 # CLI flag: -server.grpc.num-workers
 [grpc_server_num_workers: <int> | default = 0]
 
+# If true, the request_message_bytes, response_message_bytes, and
+# inflight_requests metrics will be tracked. Enabling this option prevents the
+# use of memory pools for parsing gRPC request bodies and may lead to more
+# memory allocations.
+# CLI flag: -server.grpc.stats-tracking-enabled
+[grpc_server_stats_tracking_enabled: <boolean> | default = true]
+
+# If true, gGPC's buffer pools will be used to handle incoming requests.
+# Enabling this feature can reduce memory allocation, but also requires
+# disabling GRPC server stats tracking by setting
+# `server.grpc.stats-tracking-enabled=false`. This is an experimental gRPC
+# feature, so it might be removed in a future version of the gRPC library.
+# CLI flag: -server.grpc.recv-buffer-pools-enabled
+[grpc_server_recv_buffer_pools_enabled: <boolean> | default = false]
+
 # Output log messages in the given format. Valid formats: [logfmt, json]
 # CLI flag: -log.format
 [log_format: <string> | default = "logfmt"]
@@ -4921,6 +5269,11 @@ grpc_tls_config:
 # Optionally log the source IPs.
 # CLI flag: -server.log-source-ips-enabled
 [log_source_ips_enabled: <boolean> | default = false]
+
+# Log all source IPs instead of only the originating one. Only used if
+# server.log-source-ips-enabled is true
+# CLI flag: -server.log-source-ips-full
+[log_source_ips_full: <boolean> | default = false]
 
 # Header field storing the source IPs. Only used if
 # server.log-source-ips-enabled is true. If not set the default Forwarded,
@@ -4990,7 +5343,8 @@ bigtable:
 
   # The grpc_client block configures the gRPC client used to communicate between
   # a client and server component in Loki.
-  # The CLI flags prefix for this block configuration is: bigtable
+  # The CLI flags prefix for this block configuration is:
+  # boltdb.shipper.index-gateway-client.grpc
   [grpc_client_config: <grpc_client>]
 
   # If enabled, once a tables info is fetched, it is cached.
@@ -5282,7 +5636,7 @@ boltdb_shipper:
     # The grpc_client block configures the gRPC client used to communicate
     # between a client and server component in Loki.
     # The CLI flags prefix for this block configuration is:
-    # boltdb.shipper.index-gateway-client.grpc
+    # tsdb.shipper.index-gateway-client.grpc
     [grpc_client_config: <grpc_client>]
 
     # Hostname or IP of the Index Gateway gRPC server running in simple mode.
@@ -5337,7 +5691,7 @@ tsdb_shipper:
     # The grpc_client block configures the gRPC client used to communicate
     # between a client and server component in Loki.
     # The CLI flags prefix for this block configuration is:
-    # tsdb.shipper.index-gateway-client.grpc
+    # querier.frontend-grpc-client
     [grpc_client_config: <grpc_client>]
 
     # Hostname or IP of the Index Gateway gRPC server running in simple mode.

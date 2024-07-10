@@ -62,15 +62,19 @@ func (m *mockChunksClient) PutChunks(_ context.Context, _ []chunk.Chunk) error {
 
 func (m *mockChunksClient) Stop() {
 }
+
 func (m *mockChunksClient) GetChunks(_ context.Context, _ []chunk.Chunk) ([]chunk.Chunk, error) {
 	panic("GetChunks not implemented")
 }
+
 func (m *mockChunksClient) DeleteChunk(_ context.Context, _, _ string) error {
 	panic("DeleteChunk not implemented")
 }
+
 func (m *mockChunksClient) IsChunkNotFoundErr(_ error) bool {
 	panic("IsChunkNotFoundErr not implemented")
 }
+
 func (m *mockChunksClient) IsRetryableErr(_ error) bool {
 	panic("IsRetryableErr not implemented")
 }

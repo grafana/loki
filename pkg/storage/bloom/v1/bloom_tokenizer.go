@@ -5,12 +5,12 @@ import (
 
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/loki/v3/pkg/iter"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
-
 	"github.com/grafana/loki/pkg/push"
 
+	"github.com/grafana/loki/v3/pkg/iter"
+	v2iter "github.com/grafana/loki/v3/pkg/iter/v2"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -97,11 +97,14 @@ func (bt *BloomTokenizer) newBloom() *Bloom {
 	}
 }
 
+// Populates a bloom filter(s) with the tokens from the given chunks.
+// Called once per series
 func (bt *BloomTokenizer) Populate(
-	blooms SizedIterator[*Bloom],
-	chks Iterator[ChunkRefWithIter],
+	blooms v2iter.SizedIterator[*Bloom],
+	chks v2iter.Iterator[ChunkRefWithIter],
 	ch chan *BloomCreation,
 ) {
+	clear(bt.cache) // MUST always clear the cache before starting a new series
 	var next bool
 
 	// All but the last bloom are considered full -- send back unaltered
@@ -184,7 +187,7 @@ func (bt *BloomTokenizer) sendBloom(
 // so we can advance the iterator only after we're sure the bloom has accepted the line.
 // This is because the _line_ is the atom in Loki's data model and a query must either match (or not) an individual line.
 // Therefore, we index entire lines into a bloom to ensure a lookups are accurate.
-func (bt *BloomTokenizer) addChunkToBloom(bloom *Bloom, ref ChunkRef, entryIter PeekingIterator[push.Entry]) (full bool, bytesAdded int) {
+func (bt *BloomTokenizer) addChunkToBloom(bloom *Bloom, ref ChunkRef, entryIter v2iter.PeekIterator[push.Entry]) (full bool, bytesAdded int) {
 	var (
 		tokenBuf, prefixLn = prefixedToken(bt.lineTokenizer.N(), ref, nil)
 		tokens             int
@@ -201,7 +204,7 @@ outer:
 		line := entry.Line
 		chunkBytes += len(line)
 
-		tokenItrs := []Iterator[[]byte]{
+		tokenItrs := []v2iter.Iterator[[]byte]{
 			// two iterators, one for the raw tokens and one for the chunk prefixed tokens.
 			// Warning: the underlying line tokenizer (used in both iterators) uses the same buffer for tokens.
 			// They are NOT SAFE for concurrent use.
@@ -270,13 +273,13 @@ type entryIterAdapter struct {
 }
 
 func (a entryIterAdapter) At() logproto.Entry {
-	return a.EntryIterator.Entry()
+	return a.EntryIterator.At()
 }
 
 func (a entryIterAdapter) Err() error {
-	return a.EntryIterator.Error()
+	return a.EntryIterator.Err()
 }
 
-func newPeekingEntryIterAdapter(itr iter.EntryIterator) *PeekIter[logproto.Entry] {
-	return NewPeekingIter[logproto.Entry](entryIterAdapter{itr})
+func newPeekingEntryIterAdapter(itr iter.EntryIterator) *v2iter.PeekIter[logproto.Entry] {
+	return v2iter.NewPeekIter[logproto.Entry](entryIterAdapter{itr})
 }

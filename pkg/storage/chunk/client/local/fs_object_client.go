@@ -89,7 +89,7 @@ func (f *FSObjectClient) GetObject(_ context.Context, objectKey string) (io.Read
 }
 
 // PutObject into the store
-func (f *FSObjectClient) PutObject(_ context.Context, objectKey string, object io.ReadSeeker) error {
+func (f *FSObjectClient) PutObject(_ context.Context, objectKey string, object io.Reader) error {
 	fullPath := filepath.Join(f.cfg.Directory, filepath.FromSlash(objectKey))
 	err := util.EnsureDirectory(filepath.Dir(fullPath))
 	if err != nil {

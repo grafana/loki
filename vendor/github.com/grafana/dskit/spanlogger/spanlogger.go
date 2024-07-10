@@ -158,7 +158,7 @@ func (s *SpanLogger) getLogger() log.Logger {
 
 	traceID, ok := tracing.ExtractSampledTraceID(s.ctx)
 	if ok {
-		logger = log.With(logger, "traceID", traceID)
+		logger = log.With(logger, "trace_id", traceID)
 	}
 	// If the value has been set by another goroutine, fetch that other value and discard the one we made.
 	if !s.logger.CompareAndSwap(nil, &logger) {
@@ -166,4 +166,18 @@ func (s *SpanLogger) getLogger() log.Logger {
 		logger = *pLogger
 	}
 	return logger
+}
+
+// SetSpanAndLogTag sets a tag on the span used by this SpanLogger, and appends a key/value pair to the logger used for
+// future log lines emitted by this SpanLogger.
+//
+// It is not safe to call this method from multiple goroutines simultaneously.
+// It is safe to call this method at the same time as calling other SpanLogger methods, however, this may produce
+// inconsistent results (eg. some log lines may be emitted with the provided key/value pair, and others may not).
+func (s *SpanLogger) SetSpanAndLogTag(key string, value interface{}) {
+	s.Span.SetTag(key, value)
+
+	logger := s.getLogger()
+	wrappedLogger := log.With(logger, key, value)
+	s.logger.Store(&wrappedLogger)
 }

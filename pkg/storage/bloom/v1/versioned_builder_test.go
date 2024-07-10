@@ -7,7 +7,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
 
 // smallBlockOpts returns a set of block options that are suitable for testing
@@ -46,8 +48,8 @@ func TestV1RoundTrip(t *testing.T) {
 	b, err := NewBlockBuilderV1(opts, writer)
 	require.NoError(t, err)
 
-	mapped := NewMapIter[SeriesWithLiteralBlooms](
-		NewSliceIter(data),
+	mapped := v2.NewMapIter[SeriesWithLiteralBlooms](
+		v2.NewSliceIter(data),
 		func(s SeriesWithLiteralBlooms) SeriesWithBloom {
 			return SeriesWithBloom{
 				Series: s.Series,
@@ -61,13 +63,13 @@ func TestV1RoundTrip(t *testing.T) {
 
 	// Ensure Equality
 	block := NewBlock(reader, NewMetrics(nil))
-	querier := NewBlockQuerier(block, false, DefaultMaxPageSize).Iter()
+	querier := NewBlockQuerier(block, &mempool.SimpleHeapAllocator{}, DefaultMaxPageSize).Iter()
 
 	CompareIterators[SeriesWithLiteralBlooms, *SeriesWithBlooms](
 		t,
 		func(t *testing.T, a SeriesWithLiteralBlooms, b *SeriesWithBlooms) {
 			require.Equal(t, a.Series, b.Series) // ensure series equality
-			bs, err := Collect(b.Blooms)
+			bs, err := v2.Collect(b.Blooms)
 			require.NoError(t, err)
 
 			// ensure we only have one bloom in v1
@@ -80,7 +82,7 @@ func TestV1RoundTrip(t *testing.T) {
 
 			require.Equal(t, encA.Get(), encB.Get())
 		},
-		NewSliceIter(data),
+		v2.NewSliceIter(data),
 		querier,
 	)
 }
@@ -88,9 +90,9 @@ func TestV1RoundTrip(t *testing.T) {
 func TestV2Roundtrip(t *testing.T) {
 	opts, data, writer, reader := setup(V2)
 
-	data, err := Collect(
-		NewMapIter[SeriesWithLiteralBlooms, SeriesWithLiteralBlooms](
-			NewSliceIter(data),
+	data, err := v2.Collect(
+		v2.NewMapIter[SeriesWithLiteralBlooms, SeriesWithLiteralBlooms](
+			v2.NewSliceIter(data),
 			func(swlb SeriesWithLiteralBlooms) SeriesWithLiteralBlooms {
 				return SeriesWithLiteralBlooms{
 					Series: swlb.Series,
@@ -106,8 +108,8 @@ func TestV2Roundtrip(t *testing.T) {
 	b, err := NewBlockBuilderV2(opts, writer)
 	require.NoError(t, err)
 
-	mapped := NewMapIter[SeriesWithLiteralBlooms](
-		NewSliceIter(data),
+	mapped := v2.NewMapIter[SeriesWithLiteralBlooms](
+		v2.NewSliceIter(data),
 		func(s SeriesWithLiteralBlooms) SeriesWithBlooms {
 			return s.SeriesWithBlooms()
 		},
@@ -118,13 +120,13 @@ func TestV2Roundtrip(t *testing.T) {
 
 	// Ensure Equality
 	block := NewBlock(reader, NewMetrics(nil))
-	querier := NewBlockQuerier(block, false, DefaultMaxPageSize).Iter()
+	querier := NewBlockQuerier(block, &mempool.SimpleHeapAllocator{}, DefaultMaxPageSize).Iter()
 
 	CompareIterators[SeriesWithLiteralBlooms, *SeriesWithBlooms](
 		t,
 		func(t *testing.T, a SeriesWithLiteralBlooms, b *SeriesWithBlooms) {
 			require.Equal(t, a.Series, b.Series) // ensure series equality
-			bs, err := Collect(b.Blooms)
+			bs, err := v2.Collect(b.Blooms)
 			require.NoError(t, err)
 
 			// ensure we only have one bloom in v1
@@ -140,7 +142,7 @@ func TestV2Roundtrip(t *testing.T) {
 				encB.Reset()
 			}
 		},
-		NewSliceIter(data),
+		v2.NewSliceIter(data),
 		querier,
 	)
 }

@@ -35,11 +35,11 @@ func BenchmarkDrain_TrainExtractsPatterns(b *testing.B) {
 				line := scanner.Text()
 				lines = append(lines, line)
 			}
+			drain := New(DefaultConfig(), DetectLogFormat(lines[0]), nil)
 
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				drain := New(DefaultConfig(), nil)
 				for _, line := range lines {
 					drain.Train(line, 0)
 				}
