@@ -174,22 +174,6 @@ type Interface interface {
 	PrepareShutdown(w http.ResponseWriter, r *http.Request)
 }
 
-type flushCtx struct {
-	lock            *sync.RWMutex
-	flushDone       chan struct{}
-	newCtxAvailable chan struct{}
-	segmentWriter   *wal.SegmentWriter
-	creationTime    time.Time
-}
-
-func (o *flushCtx) Key() string {
-	return fmt.Sprintf("%d", o.creationTime.UnixNano())
-}
-
-func (o *flushCtx) Priority() int64 {
-	return -o.creationTime.UnixNano()
-}
-
 // Ingester builds chunks for incoming log streams.
 type Ingester struct {
 	services.Service
@@ -217,10 +201,11 @@ type Ingester struct {
 
 	// One queue per flush thread.  Fingerprint is used to
 	// pick a queue.
+	numOps          int64
 	flushQueues     []*util.PriorityQueue
 	flushQueuesDone sync.WaitGroup
 
-	flushCtx *flushCtx
+	wal *wal.Manager
 
 	limiter *Limiter
 
@@ -268,7 +253,11 @@ func New(cfg Config, clientConfig client.Config,
 	targetSizeStats.Set(int64(cfg.TargetChunkSize))
 	metrics := newIngesterMetrics(registerer, metricsNamespace)
 
-	segmentWriter, err := wal.NewWalSegmentWriter()
+	walManager, err := wal.NewManager(wal.Config{
+		MaxAge:         wal.DefaultMaxAge,
+		MaxSegments:    wal.DefaultMaxSegments,
+		MaxSegmentSize: wal.DefaultMaxSegmentSize,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -291,12 +280,7 @@ func New(cfg Config, clientConfig client.Config,
 		writeLogManager:      writefailures.NewManager(logger, registerer, writeFailuresCfg, configs, "ingester_rf1"),
 		customStreamsTracker: customStreamsTracker,
 		readRing:             readRing,
-		flushCtx: &flushCtx{
-			lock:            &sync.RWMutex{},
-			flushDone:       make(chan struct{}),
-			newCtxAvailable: make(chan struct{}),
-			segmentWriter:   segmentWriter,
-		},
+		wal:                  walManager,
 	}
 
 	// TODO: change flush on shutdown
@@ -477,7 +461,6 @@ func (i *Ingester) running(ctx context.Context) error {
 func (i *Ingester) stopping(_ error) error {
 	i.stopIncomingRequests()
 	var errs util.MultiError
-	// errs.Add(i.wal.Stop())
 
 	//if i.flushOnShutdownSwitch.Get() {
 	//	i.lifecycler.SetFlushOnShutdown(true)
@@ -567,30 +550,18 @@ func (i *Ingester) loop() {
 }
 
 func (i *Ingester) doFlushTick() {
-	i.flushCtx.lock.Lock()
-
-	// i.logger.Log("msg", "starting periodic flush")
-	// Stop new chunks being written while we swap destinations - we'll never unlock as this flushctx can no longer be used.
-	currentFlushCtx := i.flushCtx
-
-	// APIs become unblocked after resetting flushCtx
-	segmentWriter, err := wal.NewWalSegmentWriter()
-	if err != nil {
-		// TODO: handle this properly
-		panic(err)
-	}
-	i.flushCtx = &flushCtx{
-		lock:            &sync.RWMutex{},
-		flushDone:       make(chan struct{}),
-		newCtxAvailable: make(chan struct{}),
-		segmentWriter:   segmentWriter,
-	}
-	close(currentFlushCtx.newCtxAvailable) // Broadcast to all waiters that they can now fetch a new flushCtx. Small chance of a race but if they re-fetch the old one, they'll just check again immediately.
-	// Flush the finished context in the background & then notify watching API requests
-	// TODO: use multiple flush queues if required
-	// Don't write empty segments if there is nothing to write.
-	if currentFlushCtx.segmentWriter.InputSize() > 0 {
-		i.flushQueues[0].Enqueue(currentFlushCtx)
+	for {
+		// Keep adding ops to the queue until there are no more.
+		it, _ := i.wal.NextPending()
+		if it == nil {
+			break
+		}
+		i.numOps++
+		flushQueueIndex := i.numOps % int64(i.cfg.ConcurrentFlushes)
+		i.flushQueues[flushQueueIndex].Enqueue(&flushOp{
+			num: i.numOps,
+			it:  it,
+		})
 	}
 }
 
@@ -796,27 +767,11 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 		return &logproto.PushResponse{}, err
 	}
 
-	// Fetch a flush context and try to acquire the RLock
-	// The only time the Write Lock is held is when this context is no longer usable and a new one is being created.
-	// In this case, we need to re-read i.flushCtx in order to fetch the new one as soon as it's available.
-	// The newCtxAvailable chan is closed as soon as the new one is available to avoid a busy loop.
-	currentFlushCtx := i.flushCtx
-	for !currentFlushCtx.lock.TryRLock() {
-		select {
-		case <-currentFlushCtx.newCtxAvailable:
-		case <-ctx.Done():
-			return &logproto.PushResponse{}, ctx.Err()
-		}
-		currentFlushCtx = i.flushCtx
+	if err = instance.Push(ctx, i.wal, req); err != nil {
+		return nil, err
 	}
-	err = instance.Push(ctx, req, currentFlushCtx)
-	currentFlushCtx.lock.RUnlock()
-	select {
-	case <-ctx.Done():
-		return &logproto.PushResponse{}, ctx.Err()
-	case <-currentFlushCtx.flushDone:
-		return &logproto.PushResponse{}, err
-	}
+
+	return &logproto.PushResponse{}, nil
 }
 
 // GetStreamRates returns a response containing all streams and their current rate
@@ -851,7 +806,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 	inst, ok = i.instances[instanceID]
 	if !ok {
 		var err error
-		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.metrics, i.streamRateCalculator, i.writeLogManager, i.customStreamsTracker)
+		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.metrics, i.streamRateCalculator, i.writeLogManager, i.customStreamsTracker, i.logger)
 		if err != nil {
 			return nil, err
 		}
