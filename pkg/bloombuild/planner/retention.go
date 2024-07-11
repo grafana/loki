@@ -20,7 +20,7 @@ import (
 
 type RetentionConfig struct {
 	Enabled         bool `yaml:"enabled"`
-	MaxLookbackDays int  `yaml:"max_lookback_days"`
+	MaxLookbackDays int  `yaml:"max_lookback_days" doc:"hidden"`
 }
 
 func (cfg *RetentionConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
