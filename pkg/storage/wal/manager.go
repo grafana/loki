@@ -30,7 +30,7 @@ var (
 	// ErrFull is returned when an append fails because the WAL is full. This
 	// happens when all segments are either in the pending list waiting to be
 	// flushed, or in the process of being flushed.
-	ErrFull = errors.New("The WAL is full")
+	ErrFull = errors.New("WAL is full")
 )
 
 type AppendRequest struct {
@@ -154,8 +154,7 @@ type item struct {
 	firstAppendedAt time.Time
 }
 
-// PendingItem contains a result and the segment to be flushed. ClosedWriters
-// are to be returned following a flush so the segment can be re-used.
+// PendingItem contains a result and the segment to be flushed.
 type PendingItem struct {
 	Result *AppendResult
 	Writer *SegmentWriter
@@ -194,6 +193,9 @@ func (m *Manager) Append(r AppendRequest) (*AppendResult, error) {
 	el := m.available.Front()
 	it := el.Value.(*item)
 	if it.firstAppendedAt.IsZero() {
+		// This is the first append to the segment. This time will be used in
+		// know when the segment has exceeded its maximum age and should be
+		// moved to the pending list.
 		it.firstAppendedAt = time.Now()
 	}
 	it.w.Append(r.TenantID, r.LabelsStr, r.Labels, r.Entries)
