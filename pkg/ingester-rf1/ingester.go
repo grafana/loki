@@ -552,7 +552,7 @@ func (i *Ingester) loop() {
 func (i *Ingester) doFlushTick() {
 	for {
 		// Keep adding ops to the queue until there are no more.
-		it, _ := i.wal.NextPending()
+		it := i.wal.NextPending()
 		if it == nil {
 			break
 		}

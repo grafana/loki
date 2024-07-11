@@ -47,8 +47,7 @@ func TestManager_Append(t *testing.T) {
 	}
 
 	// Flush the data and broadcast that the flush is successful.
-	it, err := m.NextPending()
-	require.NoError(t, err)
+	it := m.NextPending()
 	require.NotNil(t, it)
 	it.Result.SetDone(nil)
 
@@ -61,7 +60,7 @@ func TestManager_Append(t *testing.T) {
 	require.NoError(t, res.Err())
 
 	// Return the segment to be written to again.
-	require.NoError(t, m.Put(it))
+	m.Put(it)
 
 	// Append some more data.
 	entries = []*logproto.Entry{{
@@ -78,8 +77,7 @@ func TestManager_Append(t *testing.T) {
 	require.NotNil(t, res)
 
 	// Flush the data, but this time broadcast an error that the flush failed.
-	it, err = m.NextPending()
-	require.NoError(t, err)
+	it = m.NextPending()
 	require.NotNil(t, it)
 	it.Result.SetDone(errors.New("failed to flush"))
 
@@ -146,8 +144,7 @@ func TestManager_NextPending(t *testing.T) {
 	require.NoError(t, err)
 
 	// There should be no items as no data has been written.
-	it, err := m.NextPending()
-	require.NoError(t, err)
+	it := m.NextPending()
 	require.Nil(t, it)
 
 	// Append 512B of data. There should still be no items to as the segment is
@@ -167,8 +164,7 @@ func TestManager_NextPending(t *testing.T) {
 		Entries:   entries,
 	})
 	require.NoError(t, err)
-	it, err = m.NextPending()
-	require.NoError(t, err)
+	it = m.NextPending()
 	require.Nil(t, it)
 
 	// Write another 512B of data. There should be an item waiting to be flushed.
@@ -183,13 +179,11 @@ func TestManager_NextPending(t *testing.T) {
 		Entries:   entries,
 	})
 	require.NoError(t, err)
-	it, err = m.NextPending()
-	require.NoError(t, err)
+	it = m.NextPending()
 	require.NotNil(t, it)
 
 	// Should not get the same item more than once.
-	it, err = m.NextPending()
-	require.NoError(t, err)
+	it = m.NextPending()
 	require.Nil(t, it)
 }
 
@@ -227,8 +221,7 @@ func TestManager_Put(t *testing.T) {
 	require.Equal(t, 1, m.pending.Len())
 
 	// Getting the pending segment should remove it from the list.
-	it, err := m.NextPending()
-	require.NoError(t, err)
+	it := m.NextPending()
 	require.NotNil(t, it)
 	require.Equal(t, 9, m.available.Len())
 	require.Equal(t, 0, m.pending.Len())
@@ -237,7 +230,7 @@ func TestManager_Put(t *testing.T) {
 	require.Equal(t, int64(1024), it.Writer.InputSize())
 
 	// Putting it back should add it to the available list.
-	require.NoError(t, m.Put(it))
+	m.Put(it)
 	require.Equal(t, 10, m.available.Len())
 	require.Equal(t, 0, m.pending.Len())
 
@@ -297,8 +290,7 @@ wal_segments_pending 1
 	require.NoError(t, testutil.CollectAndCompare(r, strings.NewReader(expected), metricNames...))
 
 	// Get the segment from the pending list.
-	it, err := m.NextPending()
-	require.NoError(t, err)
+	it := m.NextPending()
 	require.NotNil(t, it)
 	expected = `
 # HELP wal_segments_available The number of WAL segments accepting writes.
@@ -314,7 +306,7 @@ wal_segments_pending 0
 	require.NoError(t, testutil.CollectAndCompare(r, strings.NewReader(expected), metricNames...))
 
 	// Reset the segment and put it back in the available list.
-	require.NoError(t, m.Put(it))
+	m.Put(it)
 	expected = `
 # HELP wal_segments_available The number of WAL segments accepting writes.
 # TYPE wal_segments_available gauge
