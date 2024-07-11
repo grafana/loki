@@ -113,8 +113,6 @@ func (i *Ingester) flushLoop(j int) {
 		d := time.Since(start)
 		if err != nil {
 			level.Error(l).Log("msg", "failed to flush", "size", n, "duration", d, "err", err)
-			// Immediately re-queue another attempt at flushing this segment.
-			// TODO: Add some backoff or something?
 		} else {
 			level.Debug(l).Log("msg", "flushed", "size", n, "duration", d)
 		}
