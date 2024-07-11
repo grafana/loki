@@ -65,15 +65,17 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 				{newSeries(testSize, offset(46, constantValue(1)), `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{
-					Start:    time.Unix(30, 0),
-					End:      time.Unix(60, 0),
-					Selector: `rate({app="foo"} | unwrap foo[30s])`,
-					Plan: &plan.QueryPlan{
-						AST: syntax.MustParseExpr(`rate({app="foo"} | unwrap foo[30s])`),
+				{
+					&logproto.SampleQueryRequest{
+						Start:    time.Unix(30, 0),
+						End:      time.Unix(60, 0),
+						Selector: `rate({app="foo"} | unwrap foo[30s])`,
+						Plan: &plan.QueryPlan{
+							AST: syntax.MustParseExpr(`rate({app="foo"} | unwrap foo[30s])`),
+						},
 					},
 				},
-				}},
+			},
 			// there are 15 samples (from 47 to 61) matched from the generated series
 			// SUM(n=47, 61, 1) = 15
 			// 15 / 30 = 0.5
@@ -1611,10 +1613,12 @@ func TestEngine_RangeQuery(t *testing.T) {
 				promql.Series{
 					// vector result
 					Metric: labels.Labels(nil),
-					Floats: []promql.FPoint{{T: 60000, F: 0}, {T: 80000, F: 0}, {T: 100000, F: 0}, {T: 120000, F: 0}, {T: 140000, F: 0}, {T: 160000, F: 0}, {T: 180000, F: 0}}},
+					Floats: []promql.FPoint{{T: 60000, F: 0}, {T: 80000, F: 0}, {T: 100000, F: 0}, {T: 120000, F: 0}, {T: 140000, F: 0}, {T: 160000, F: 0}, {T: 180000, F: 0}},
+				},
 				promql.Series{
 					Metric: labels.FromStrings("app", "foo"),
-					Floats: []promql.FPoint{{T: 60000, F: 0.03333333333333333}, {T: 80000, F: 0.06666666666666667}, {T: 100000, F: 0.06666666666666667}, {T: 120000, F: 0.03333333333333333}, {T: 180000, F: 0.03333333333333333}}},
+					Floats: []promql.FPoint{{T: 60000, F: 0.03333333333333333}, {T: 80000, F: 0.06666666666666667}, {T: 100000, F: 0.06666666666666667}, {T: 120000, F: 0.03333333333333333}, {T: 180000, F: 0.03333333333333333}},
+				},
 			},
 		},
 		{
@@ -2654,6 +2658,31 @@ func TestHashingStability(t *testing.T) {
 			queryDirectly(),
 		)
 	}
+}
+
+func TestUnexpectedEmptyResults(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "fake")
+
+	mock := &mockEvaluatorFactory{SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params) (StepEvaluator, error) {
+		return EmptyEvaluator[SampleVector]{value: nil}, nil
+	})}
+
+	eng := NewEngine(EngineOpts{}, nil, NoLimits, log.NewNopLogger())
+	params, err := NewLiteralParams(`first_over_time({a=~".+"} | logfmt | unwrap value [1s])`, time.Now(), time.Now(), 0, 0, logproto.BACKWARD, 0, nil, nil)
+	require.NoError(t, err)
+	q := eng.Query(params).(*query)
+	q.evaluator = mock
+
+	_, err = q.Exec(ctx)
+	require.Error(t, err)
+}
+
+type mockEvaluatorFactory struct {
+	SampleEvaluatorFactory
+}
+
+func (*mockEvaluatorFactory) NewIterator(context.Context, syntax.LogSelectorExpr, Params) (iter.EntryIterator, error) {
+	return nil, errors.New("unimplemented mock EntryEvaluatorFactory")
 }
 
 func getLocalQuerier(size int64) Querier {
