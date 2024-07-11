@@ -196,7 +196,7 @@ Loki will check blooms for any log filtering expression within a query that sati
     whereas `|~ "f.*oo"` would not be simplifiable.
 - The filtering expression is a match (`|=`) or regex match (`|~`) filter. We don’t use blooms for not equal (`!=`) or not regex (`!~`) expressions.
   - For example, `|= "level=error"` would use blooms but `!= "level=error"` would not.
-- The filtering expression is placed before a [line format expression](https://grafana.com/docs/loki /<LOKI_VERSION>/query/log_queries/#line-format-expression).
+- The filtering expression is placed before a [line format expression](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#line-format-expression).
   - For example, with `|= "level=error" | logfmt | line_format "ERROR {{.err}}" |= "traceID=3ksn8d4jj3"`, 
     the first filter (`|= "level=error"`) will benefit from blooms but the second one (`|= "traceID=3ksn8d4jj3"`) will not.
 
