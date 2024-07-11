@@ -124,7 +124,7 @@ func (c *Fetcher) Client() client.Client {
 // FetchChunks fetches a set of chunks from cache and store. Note, returned chunks are not in the same order they are passed in
 func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
 	if ctx.Err() != nil {
-		return nil, ctx.Err()
+		return nil, context.Cause(ctx)
 	}
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "ChunkStore.FetchChunks")
 	defer sp.Finish()

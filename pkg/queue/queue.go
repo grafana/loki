@@ -197,7 +197,7 @@ FindQueue:
 		return nil, last, wantedQueueName, false, ErrStopped
 	}
 
-	if err := ctx.Err(); err != nil {
+	if err := context.Cause(ctx); err != nil {
 		return nil, last, wantedQueueName, false, err
 	}
 

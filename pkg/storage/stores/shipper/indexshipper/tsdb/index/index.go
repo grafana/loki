@@ -369,7 +369,7 @@ func (fw *FileWriter) Remove() error {
 func (w *Writer) ensureStage(s indexWriterStage) error {
 	select {
 	case <-w.ctx.Done():
-		return w.ctx.Err()
+		return context.Cause(w.ctx)
 	default:
 	}
 
@@ -1112,7 +1112,7 @@ func (w *Writer) writePostingsToTmpFiles() error {
 		}
 		select {
 		case <-w.ctx.Done():
-			return w.ctx.Err()
+			return context.Cause(w.ctx)
 		default:
 		}
 

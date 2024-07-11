@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"bytes"
+	ccontext "context"
 	"fmt"
 	"net/http"
 	"sync"
@@ -405,7 +406,7 @@ func (i *Ingester) closeChunk(desc *chunkDesc, chunkMtx sync.Locker) error {
 // If the encoding is unsuccessful the flush operation is reinserted in the queue which will cause
 // the encoding for a given chunk to be evaluated again.
 func (i *Ingester) encodeChunk(ctx context.Context, ch *chunk.Chunk, desc *chunkDesc) error {
-	if err := ctx.Err(); err != nil {
+	if err := ccontext.Cause(ctx); err != nil {
 		return err
 	}
 	start := time.Now()

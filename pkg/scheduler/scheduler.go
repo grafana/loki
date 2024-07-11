@@ -533,7 +533,7 @@ func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuer
 		// If the upstream request is cancelled (eg. frontend issued CANCEL or closed connection),
 		// we need to cancel the downstream req. Only way we can do that is to close the stream (by returning error here).
 		// Querier is expecting this semantics.
-		return req.ctx.Err()
+		return context.Cause(req.ctx)
 
 	case err := <-errCh:
 		// Is there was an error handling this request due to network IO,

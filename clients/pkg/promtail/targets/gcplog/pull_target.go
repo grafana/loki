@@ -106,7 +106,7 @@ func (t *pullTarget) run() error {
 	for {
 		select {
 		case <-t.ctx.Done():
-			return t.ctx.Err()
+			return context.Cause(t.ctx)
 		case m := <-t.msgs:
 			entry, err := parseGCPLogsEntry(m.Data, t.config.Labels, nil, t.config.UseIncomingTimestamp, t.config.UseFullLine, t.relabelConfig)
 			if err != nil {

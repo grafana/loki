@@ -158,7 +158,7 @@ func (h *pushTarget) doSendEntry(ctx context.Context, entry api.Entry) error {
 	select {
 	// Timeout the api.Entry channel send operation, which is the only blocking operation in the handler
 	case <-ctx.Done():
-		return fmt.Errorf("timeout exceeded: %w", ctx.Err())
+		return fmt.Errorf("timeout exceeded: %w", context.Cause(ctx))
 	case h.entries <- entry:
 		return nil
 	}

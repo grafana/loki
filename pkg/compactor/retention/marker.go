@@ -317,7 +317,7 @@ func (r *markerProcessor) processPath(path string, deleteFunc func(ctx context.C
 			select {
 			case queue <- key:
 			case <-r.ctx.Done():
-				return r.ctx.Err()
+				return context.Cause(r.ctx)
 			}
 
 		}

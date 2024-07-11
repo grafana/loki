@@ -494,7 +494,7 @@ func (b *BlobStorage) List(ctx context.Context, prefix, delimiter string) ([]cli
 
 	for marker := (azblob.Marker{}); marker.NotDone(); {
 		if ctx.Err() != nil {
-			return nil, nil, ctx.Err()
+			return nil, nil, context.Cause(ctx)
 		}
 
 		err := loki_instrument.TimeRequest(ctx, "azure.List", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {

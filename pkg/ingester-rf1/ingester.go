@@ -805,7 +805,7 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 		select {
 		case <-currentFlushCtx.newCtxAvailable:
 		case <-ctx.Done():
-			return &logproto.PushResponse{}, ctx.Err()
+			return &logproto.PushResponse{}, context.Cause(ctx)
 		}
 		currentFlushCtx = i.flushCtx
 	}
@@ -813,7 +813,7 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 	currentFlushCtx.lock.RUnlock()
 	select {
 	case <-ctx.Done():
-		return &logproto.PushResponse{}, ctx.Err()
+		return &logproto.PushResponse{}, context.Cause(ctx)
 	case <-currentFlushCtx.flushDone:
 		return &logproto.PushResponse{}, err
 	}

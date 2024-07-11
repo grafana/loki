@@ -355,7 +355,7 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 	retries := backoff.New(ctx, a.cfg.BackoffConfig)
 	for retries.Ongoing() {
 		if ctx.Err() != nil {
-			return nil, 0, errors.Wrap(ctx.Err(), "ctx related error during s3 getObject")
+			return nil, 0, errors.Wrap(context.Cause(ctx), "ctx related error during s3 getObject")
 		}
 
 		lastErr = loki_instrument.TimeRequest(ctx, "S3.GetObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {

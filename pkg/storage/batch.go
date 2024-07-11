@@ -360,7 +360,7 @@ func (it *logBatchIterator) Err() error {
 		return it.curr.Err()
 	}
 	if it.ctx.Err() != nil {
-		return it.ctx.Err()
+		return context.Cause(it.ctx)
 	}
 	return nil
 }
@@ -505,7 +505,7 @@ func (it *sampleBatchIterator) Err() error {
 		return it.curr.Err()
 	}
 	if it.ctx.Err() != nil {
-		return it.ctx.Err()
+		return context.Cause(it.ctx)
 	}
 	return nil
 }

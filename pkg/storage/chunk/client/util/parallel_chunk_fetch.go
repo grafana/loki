@@ -25,7 +25,7 @@ func GetParallelChunks(ctx context.Context, maxParallel int, chunks []chunk.Chun
 	sp.LogFields(otlog.Int("requested", len(chunks)))
 
 	if ctx.Err() != nil {
-		return nil, ctx.Err()
+		return nil, context.Cause(ctx)
 	}
 
 	queuedChunks := make(chan chunk.Chunk)

@@ -130,7 +130,7 @@ func (h *splitByInterval) Process(
 	for _, x := range input {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, context.Cause(ctx)
 		case data := <-x.ch:
 			if data.err != nil {
 				return nil, data.err

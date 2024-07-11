@@ -278,7 +278,7 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 			// connection scheduler stops the call, but that doesn't seem to be the case).
 			//
 			// Reporting error here would delay reopening the stream (if the worker context is not done yet).
-			level.Debug(w.log).Log("msg", "stream context finished", "err", ctx.Err())
+			level.Debug(w.log).Log("msg", "stream context finished", "err", context.Cause(ctx))
 			return nil
 
 		case req := <-w.requestCh:

@@ -205,7 +205,7 @@ func (b *LazyBlockBuilderIterator) Next() bool {
 		return false
 	}
 
-	if err := b.ctx.Err(); err != nil {
+	if err := context.Cause(b.ctx); err != nil {
 		b.err = errors.Wrap(err, "context canceled")
 		return false
 	}
