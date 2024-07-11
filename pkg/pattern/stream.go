@@ -109,7 +109,7 @@ func (s *stream) Push(
 					"sample_ts_ns", s.lastTs,
 				)
 		}
-		s.chunks.Observe(bytes, count, model.TimeFromUnixNano(s.lastTs))
+		s.chunks.Observe(bytes, count)
 	}
 	return nil
 }

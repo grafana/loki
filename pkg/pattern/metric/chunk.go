@@ -69,7 +69,7 @@ func NewChunks(labels labels.Labels, chunkMetrics *ChunkMetrics, logger log.Logg
 	}
 }
 
-func (c *Chunks) Observe(bytes, count float64, ts model.Time) {
+func (c *Chunks) Observe(bytes, count float64) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 

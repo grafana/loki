@@ -208,7 +208,7 @@ func (i *Ingester) loop() {
 	defer flushTicker.Stop()
 
 	if i.cfg.MetricAggregation.Enabled {
-    downsampleTicker := time.NewTimer(i.cfg.MetricAggregation.DownsamplePeriod)
+		downsampleTicker := time.NewTimer(i.cfg.MetricAggregation.DownsamplePeriod)
 		defer downsampleTicker.Stop()
 
 		for {

@@ -454,9 +454,9 @@ func TestDownsample(t *testing.T) {
 		labels.Label{Name: "foo", Value: "bar"},
 	}, NewChunkMetrics(nil, "test"), log.NewNopLogger())
 
-	c.Observe(2.0, 1.0, 1000)
-	c.Observe(2.0, 1.0, 2000)
-	c.Observe(2.0, 1.0, 3000)
+	c.Observe(2.0, 1.0)
+	c.Observe(2.0, 1.0)
+	c.Observe(2.0, 1.0)
 
 	now := model.Time(5000)
 	// Call the Downsample function
