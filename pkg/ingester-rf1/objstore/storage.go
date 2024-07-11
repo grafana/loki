@@ -31,6 +31,10 @@ func New(
 	storageConfig storage.Config,
 	clientMetrics storage.ClientMetrics,
 ) (*Multi, error) {
+	if storageConfig.GCSConfig.ChunkBufferSize == 0 {
+		storageConfig.GCSConfig.ChunkBufferSize = 1 * 1024 * 1024 // 1MB
+	}
+
 	store := &Multi{
 		storageConfig: storageConfig,
 	}
