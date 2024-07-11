@@ -378,7 +378,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 			return nil, fmt.Errorf("unsupported result type: %T", r)
 		}
 	}
-	return promql.Vector{}, nil
+	return nil, errors.New("unexpected empty result")
 }
 
 func (q *query) JoinSampleVector(next bool, r StepResult, stepEvaluator StepEvaluator, maxSeries int) (promql_parser.Value, error) {

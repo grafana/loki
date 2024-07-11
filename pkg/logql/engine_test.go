@@ -2638,7 +2638,7 @@ func TestHashingStability(t *testing.T) {
 	}
 }
 
-func TestEmptyResults(t *testing.T) {
+func TestUnexpectedEmptyResults(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "fake")
 
 	mock := &mockEvaluatorFactory{SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params) (StepEvaluator, error) {
@@ -2651,9 +2651,8 @@ func TestEmptyResults(t *testing.T) {
 	q := eng.Query(params).(*query)
 	q.evaluator = mock
 
-	r, err := q.Exec(ctx)
-	require.NoError(t, err)
-	require.NotNil(t, r.Data)
+	_, err = q.Exec(ctx)
+	require.Error(t, err)
 }
 
 type mockEvaluatorFactory struct {
