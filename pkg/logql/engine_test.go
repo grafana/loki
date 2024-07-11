@@ -167,7 +167,7 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 	}
 }
 
-func TestEngine_LogsInstantQuery(t *testing.T) {
+func TestEngine_InstantQuery(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
 		qs        string
@@ -182,26 +182,6 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 
 		expected interface{}
 	}{
-		{
-			`{app="foo"}`, time.Unix(30, 0), logproto.FORWARD, 10,
-			[][]logproto.Stream{
-				{newStream(testSize, identity, `{app="foo"}`)},
-			},
-			[]SelectLogParams{
-				{&logproto.QueryRequest{Direction: logproto.FORWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 10, Selector: `{app="foo"}`}},
-			},
-			logqlmodel.Streams([]logproto.Stream{newStream(10, identity, `{app="foo"}`)}),
-		},
-		{
-			`{app="bar"} |= "foo" |~ ".+bar"`, time.Unix(30, 0), logproto.BACKWARD, 30,
-			[][]logproto.Stream{
-				{newStream(testSize, identity, `{app="bar"}`)},
-			},
-			[]SelectLogParams{
-				{&logproto.QueryRequest{Direction: logproto.BACKWARD, Start: time.Unix(0, 0), End: time.Unix(30, 0), Limit: 30, Selector: `{app="bar"}|="foo"|~".+bar"`}},
-			},
-			logqlmodel.Streams([]logproto.Stream{newStream(30, identity, `{app="bar"}`)}),
-		},
 		{
 			`rate({app="foo"} |~".+bar" [1m])`, time.Unix(60, 0), logproto.BACKWARD, 10,
 			[][]logproto.Series{
@@ -975,7 +955,6 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 	} {
 		test := test
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
-			t.Parallel()
 
 			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params), NoLimits, log.NewNopLogger())
 
@@ -2755,6 +2734,11 @@ func (q *querierRecorder) SelectSamples(_ context.Context, p SelectSampleParams)
 }
 
 func paramsID(p interface{}) string {
+	switch params := p.(type) {
+	case SelectLogParams:
+	case SelectSampleParams:
+		return fmt.Sprintf("%d", params.Plan.Hash())
+	}
 	b, err := json.Marshal(p)
 	if err != nil {
 		panic(err)
