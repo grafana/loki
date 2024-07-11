@@ -556,7 +556,7 @@ func (i *Ingester) doFlushTick() {
 		if it == nil {
 			break
 		}
-		i.numOps += 1
+		i.numOps++
 		flushQueueIndex := i.numOps % int64(i.cfg.ConcurrentFlushes)
 		i.flushQueues[flushQueueIndex].Enqueue(&flushOp{
 			num: i.numOps,
