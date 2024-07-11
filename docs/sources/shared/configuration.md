@@ -606,6 +606,10 @@ pattern_ingester:
     # CLI flag: -pattern-ingester.metric-aggregation.log-push-observations
     [log_push_observations: <boolean> | default = false]
 
+    # How often to downsample metrics from raw push observations.
+    # CLI flag: -pattern-ingester.downsample-period
+    [downsample_period: <duration> | default = 10s]
+
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
 # object store.

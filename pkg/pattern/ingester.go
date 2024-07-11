@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	ring_client "github.com/grafana/dskit/ring/client"
@@ -206,13 +207,33 @@ func (i *Ingester) loop() {
 	flushTicker := util.NewTickerWithJitter(i.cfg.FlushCheckPeriod, j)
 	defer flushTicker.Stop()
 
-	for {
-		select {
-		case <-flushTicker.C:
-			i.sweepUsers(false, true)
+	if i.cfg.MetricAggregation.Enabled {
+		downsampleTicker := time.NewTimer(i.cfg.MetricAggregation.DownsamplePeriod)
+		defer downsampleTicker.Stop()
 
-		case <-i.loopQuit:
-			return
+		for {
+			select {
+			case <-flushTicker.C:
+				i.sweepUsers(false, true)
+
+			case t := <-downsampleTicker.C:
+				downsampleTicker.Reset(i.cfg.MetricAggregation.DownsamplePeriod)
+				now := model.TimeFromUnixNano(t.UnixNano())
+				i.downsampleMetrics(now)
+
+			case <-i.loopQuit:
+				return
+			}
+		}
+	} else {
+		for {
+			select {
+			case <-flushTicker.C:
+				i.sweepUsers(false, true)
+
+			case <-i.loopQuit:
+				return
+			}
 		}
 	}
 }
