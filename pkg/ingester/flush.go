@@ -88,8 +88,8 @@ func (i *Ingester) FlushHandler(w http.ResponseWriter, _ *http.Request) {
 }
 
 type flushOp struct {
-	from      model.Time
 	userID    string
+	from      model.Time
 	fp        model.Fingerprint
 	immediate bool
 }
@@ -136,8 +136,10 @@ func (i *Ingester) sweepStream(instance *instance, stream *stream, immediate boo
 	flushQueueIndex := int(uint64(stream.fp) % uint64(i.cfg.ConcurrentFlushes))
 	firstTime, _ := stream.chunks[0].chunk.Bounds()
 	i.flushQueues[flushQueueIndex].Enqueue(&flushOp{
-		model.TimeFromUnixNano(firstTime.UnixNano()), instance.instanceID,
-		stream.fp, immediate,
+		userID:    instance.instanceID,
+		from:      model.TimeFromUnixNano(firstTime.UnixNano()),
+		fp:        stream.fp,
+		immediate: immediate,
 	})
 }
 
@@ -179,7 +181,6 @@ func (i *Ingester) flushLoop(j int) {
 
 		m := util_log.WithUserID(op.userID, l)
 		err := i.flushOp(m, op)
-
 		if err != nil {
 			level.Error(m).Log("msg", "failed to flush", "err", err)
 		}

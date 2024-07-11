@@ -28,21 +28,22 @@ import (
 )
 
 type stream struct {
-	fp           model.Fingerprint
-	labels       labels.Labels
-	labelsString string
-	labelHash    uint64
-	patterns     *drain.Drain
-	mtx          sync.Mutex
-
-	cfg    metric.AggregationConfig
-	chunks *metric.Chunks
-
 	evaluator metric.SampleEvaluatorFactory
+
+	logger   log.Logger
+	patterns *drain.Drain
+	chunks   *metric.Chunks
+
+	labelsString string
+	labels       labels.Labels
+	fp           model.Fingerprint
+	labelHash    uint64
 
 	lastTs int64
 
-	logger log.Logger
+	mtx sync.Mutex
+
+	cfg metric.AggregationConfig
 }
 
 func newStream(

@@ -38,33 +38,38 @@ type line struct {
 }
 
 type stream struct {
-	limiter *StreamRateLimiter
-	cfg     *Config
-	tenant  string
-	// Newest chunk at chunks[n-1].
-	// Not thread-safe; assume accesses to this are locked by caller.
-	chunks   []chunkDesc
-	fp       model.Fingerprint // possibly remapped fingerprint, used in the streams map
-	chunkMtx sync.RWMutex
-
-	labels           labels.Labels
-	labelsString     string
-	labelHash        uint64
-	labelHashNoShard uint64
-
-	// most recently pushed line. This is used to prevent duplicate pushes.
-	// It also determines chunk synchronization when unordered writes are disabled.
-	lastLine line
 
 	// keeps track of the highest timestamp accepted by the stream.
 	// This is used when unordered writes are enabled to cap the validity window
 	// of accepted writes and for chunk synchronization.
 	highestTs time.Time
 
+	limiter *StreamRateLimiter
+	cfg     *Config
+
 	metrics *ingesterMetrics
 
-	tailers   map[uint32]*tailer
-	tailerMtx sync.RWMutex
+	tailers              map[uint32]*tailer
+	streamRateCalculator *StreamRateCalculator
+
+	writeFailures *writefailures.Manager
+
+	configs *runtime.TenantConfigs
+
+	// most recently pushed line. This is used to prevent duplicate pushes.
+	// It also determines chunk synchronization when unordered writes are disabled.
+	lastLine line
+
+	tenant       string
+	labelsString string
+	// Newest chunk at chunks[n-1].
+	// Not thread-safe; assume accesses to this are locked by caller.
+	chunks []chunkDesc
+
+	labels           labels.Labels
+	fp               model.Fingerprint // possibly remapped fingerprint, used in the streams map
+	labelHash        uint64
+	labelHashNoShard uint64
 
 	// entryCt is a counter which is incremented on each accepted entry.
 	// This allows us to discard WAL entries during replays which were
@@ -73,25 +78,25 @@ type stream struct {
 	// introduced to facilitate removing the ordering constraint.
 	entryCt int64
 
-	unorderedWrites      bool
-	streamRateCalculator *StreamRateCalculator
+	chunkMtx sync.RWMutex
 
-	writeFailures *writefailures.Manager
+	tailerMtx sync.RWMutex
+
+	unorderedWrites bool
 
 	chunkFormat          byte
 	chunkHeadBlockFormat chunkenc.HeadBlockFmt
-
-	configs *runtime.TenantConfigs
 }
 
 type chunkDesc struct {
-	chunk   *chunkenc.MemChunk
-	closed  bool
-	synced  bool
 	flushed time.Time
-	reason  string
 
 	lastUpdated time.Time
+	chunk       *chunkenc.MemChunk
+	reason      string
+
+	closed bool
+	synced bool
 }
 
 type entryWithError struct {

@@ -24,13 +24,14 @@ type stripeLock struct {
 }
 
 type StreamRateCalculator struct {
-	size     int
-	samples  []map[string]map[uint64]logproto.StreamRate
-	locks    []stripeLock
 	stopchan chan struct{}
 
-	rateLock sync.RWMutex
+	samples  []map[string]map[uint64]logproto.StreamRate
+	locks    []stripeLock
 	allRates []logproto.StreamRate
+	size     int
+
+	rateLock sync.RWMutex
 }
 
 func NewStreamRateCalculator() *StreamRateCalculator {

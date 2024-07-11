@@ -29,28 +29,33 @@ type line struct {
 }
 
 type stream struct {
-	limiter *StreamRateLimiter
-	cfg     *Config
-	tenant  string
-	// Newest chunk at chunks[n-1].
-	// Not thread-safe; assume accesses to this are locked by caller.
-	fp model.Fingerprint // possibly remapped fingerprint, used in the streams map
-
-	labels           labels.Labels
-	labelsString     string
-	labelHash        uint64
-	labelHashNoShard uint64
-
-	// most recently pushed line. This is used to prevent duplicate pushes.
-	// It also determines chunk synchronization when unordered writes are disabled.
-	lastLine line
 
 	// keeps track of the highest timestamp accepted by the stream.
 	// This is used when unordered writes are enabled to cap the validity window
 	// of accepted writes and for chunk synchronization.
 	highestTs time.Time
 
+	limiter *StreamRateLimiter
+	cfg     *Config
+
 	metrics *ingesterMetrics
+
+	writeFailures *writefailures.Manager
+
+	// most recently pushed line. This is used to prevent duplicate pushes.
+	// It also determines chunk synchronization when unordered writes are disabled.
+	lastLine line
+
+	tenant       string
+	labelsString string
+
+	labels labels.Labels
+	// Newest chunk at chunks[n-1].
+	// Not thread-safe; assume accesses to this are locked by caller.
+	fp model.Fingerprint // possibly remapped fingerprint, used in the streams map
+
+	labelHash        uint64
+	labelHashNoShard uint64
 
 	// tailers   map[uint32]*tailer
 	// tailerMtx sync.RWMutex
@@ -65,20 +70,19 @@ type stream struct {
 	unorderedWrites bool
 	// streamRateCalculator *StreamRateCalculator
 
-	writeFailures *writefailures.Manager
-
 	chunkFormat          byte
 	chunkHeadBlockFormat chunkenc.HeadBlockFmt
 }
 
 type chunkDesc struct {
-	chunk   *chunkenc.MemChunk
-	closed  bool
-	synced  bool
 	flushed time.Time
-	reason  string
 
 	lastUpdated time.Time
+	chunk       *chunkenc.MemChunk
+	reason      string
+
+	closed bool
+	synced bool
 }
 
 type entryWithError struct {

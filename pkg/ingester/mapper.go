@@ -21,10 +21,6 @@ var separatorString = string([]byte{model.SeparatorByte})
 // FpMapper is used to map fingerprints in order to work around fingerprint
 // collisions.
 type FpMapper struct {
-	// highestMappedFP has to be aligned for atomic operations.
-	highestMappedFP atomic.Uint64
-
-	mtx sync.RWMutex // Protects mappings.
 	// maps original fingerprints to a map of string representations of
 	// metrics to the truly unique fingerprint.
 	mappings map[model.Fingerprint]map[string]model.Fingerprint
@@ -32,6 +28,10 @@ type FpMapper struct {
 	// Returns existing labels for given fingerprint, if any.
 	// Equality check relies on labels.Labels being sorted.
 	fpToLabels func(fingerprint model.Fingerprint) labels.Labels
+	// highestMappedFP has to be aligned for atomic operations.
+	highestMappedFP atomic.Uint64
+
+	mtx sync.RWMutex // Protects mappings.
 }
 
 // NewFPMapper returns an fpMapper ready to use.

@@ -191,11 +191,11 @@ type streamInstance struct {
 }
 
 type streamIterator struct {
+	current   Series
+	err       error
 	instances []streamInstance
 
-	current Series
-	buffer  []chunkWithBuffer
-	err     error
+	buffer []chunkWithBuffer
 }
 
 // newStreamsIterator returns a new stream iterators that iterates over one instance at a time, then
@@ -303,14 +303,14 @@ type walLogger interface {
 }
 
 type WALCheckpointWriter struct {
-	metrics    *ingesterMetrics
-	segmentWAL *wlog.WL
-
 	checkpointWAL walLogger
-	lastSegment   int    // name of the last segment guaranteed to be covered by the checkpoint
-	final         string // filename to atomically rotate upon completion
-	bufSize       int
-	recs          [][]byte
+	metrics       *ingesterMetrics
+	segmentWAL    *wlog.WL
+
+	final       string // filename to atomically rotate upon completion
+	recs        [][]byte
+	lastSegment int // name of the last segment guaranteed to be covered by the checkpoint
+	bufSize     int
 }
 
 func (w *WALCheckpointWriter) Advance() (bool, error) {
@@ -517,12 +517,12 @@ func (w *WALCheckpointWriter) Close(abort bool) error {
 }
 
 type Checkpointer struct {
-	dur     time.Duration
 	iter    SeriesIter
 	writer  CheckpointWriter
 	metrics *ingesterMetrics
 
 	quit <-chan struct{}
+	dur  time.Duration
 }
 
 func NewCheckpointer(dur time.Duration, iter SeriesIter, writer CheckpointWriter, metrics *ingesterMetrics, quit <-chan struct{}) *Checkpointer {

@@ -66,42 +66,45 @@ var (
 
 // Config for an ingester.
 type Config struct {
-	Enabled bool `yaml:"enabled" doc:"description=Whether the ingester is enabled."`
-
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the ingester will operate and where it will register for discovery."`
 
-	ConcurrentFlushes   int               `yaml:"concurrent_flushes"`
-	FlushCheckPeriod    time.Duration     `yaml:"flush_check_period"`
-	FlushOpBackoff      backoff.Config    `yaml:"flush_op_backoff"`
-	FlushOpTimeout      time.Duration     `yaml:"flush_op_timeout"`
-	RetainPeriod        time.Duration     `yaml:"chunk_retain_period"`
-	MaxChunkIdle        time.Duration     `yaml:"chunk_idle_period"`
-	BlockSize           int               `yaml:"chunk_block_size"`
-	TargetChunkSize     int               `yaml:"chunk_target_size"`
-	ChunkEncoding       string            `yaml:"chunk_encoding"`
-	parsedEncoding      chunkenc.Encoding `yaml:"-"` // placeholder for validated encoding
-	MaxChunkAge         time.Duration     `yaml:"max_chunk_age"`
-	AutoForgetUnhealthy bool              `yaml:"autoforget_unhealthy"`
+	// Optional wrapper that can be used to modify the behaviour of the ingester
+	Wrapper Wrapper `yaml:"-"`
 
-	MaxReturnedErrors int `yaml:"max_returned_stream_errors"`
+	factory ring_client.PoolFactory `yaml:"-"`
 
 	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(cfg client.Config, addr string) (client.HealthAndIngesterClient, error)
 
-	// Optional wrapper that can be used to modify the behaviour of the ingester
-	Wrapper Wrapper `yaml:"-"`
+	ChunkEncoding string `yaml:"chunk_encoding"`
+
+	ShutdownMarkerPath string `yaml:"shutdown_marker_path"`
+
+	// Tee configs
+	ClientConfig   clientpool.Config `yaml:"client_config,omitempty" doc:"description=Configures how the pattern ingester will connect to the ingesters."`
+	FlushOpBackoff backoff.Config    `yaml:"flush_op_backoff"`
+
+	ConcurrentFlushes int           `yaml:"concurrent_flushes"`
+	FlushCheckPeriod  time.Duration `yaml:"flush_check_period"`
+	FlushOpTimeout    time.Duration `yaml:"flush_op_timeout"`
+	RetainPeriod      time.Duration `yaml:"chunk_retain_period"`
+	MaxChunkIdle      time.Duration `yaml:"chunk_idle_period"`
+	BlockSize         int           `yaml:"chunk_block_size"`
+	TargetChunkSize   int           `yaml:"chunk_target_size"`
+	MaxChunkAge       time.Duration `yaml:"max_chunk_age"`
+
+	MaxReturnedErrors int `yaml:"max_returned_stream_errors"`
 
 	IndexShards int `yaml:"index_shards"`
 
 	MaxDroppedStreams int `yaml:"max_dropped_streams"`
 
-	ShutdownMarkerPath string `yaml:"shutdown_marker_path"`
-
 	OwnedStreamsCheckInterval time.Duration `yaml:"owned_streams_check_interval" doc:"description=Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams."`
 
-	// Tee configs
-	ClientConfig clientpool.Config       `yaml:"client_config,omitempty" doc:"description=Configures how the pattern ingester will connect to the ingesters."`
-	factory      ring_client.PoolFactory `yaml:"-"`
+	Enabled bool `yaml:"enabled" doc:"description=Whether the ingester is enabled."`
+
+	parsedEncoding      chunkenc.Encoding `yaml:"-"` // placeholder for validated encoding
+	AutoForgetUnhealthy bool              `yaml:"autoforget_unhealthy"`
 }
 
 // RegisterFlags registers the flags.
@@ -192,42 +195,31 @@ func (o *flushCtx) Priority() int64 {
 
 // Ingester builds chunks for incoming log streams.
 type Ingester struct {
+	cfg Config
 	services.Service
 
-	cfg    Config
 	logger log.Logger
 
-	clientConfig  client.Config
+	store Storage
+
+	customStreamsTracker push.UsageTracker
+
+	// recalculateOwnedStreams periodically checks the ring for changes and recalculates owned streams for each instance.
+	readRing ring.ReadRing
+	// recalculateOwnedStreams *recalculateOwnedStreams
 	tenantConfigs *runtime.TenantConfigs
 
-	shutdownMtx  sync.Mutex // Allows processes to grab a lock and prevent a shutdown
-	instancesMtx sync.RWMutex
-	instances    map[string]*instance
-	readonly     bool
+	instances map[string]*instance
 
 	lifecycler        *ring.Lifecycler
 	lifecyclerWatcher *services.FailureWatcher
 
-	store           Storage
-	periodicConfigs []config.PeriodConfig
-
-	loopDone    sync.WaitGroup
 	loopQuit    chan struct{}
 	tailersQuit chan struct{}
-
-	// One queue per flush thread.  Fingerprint is used to
-	// pick a queue.
-	flushQueues     []*util.PriorityQueue
-	flushQueuesDone sync.WaitGroup
 
 	flushCtx *flushCtx
 
 	limiter *Limiter
-
-	// Flag for whether stopping the ingester service should also terminate the
-	// loki process.
-	// This is set when calling the shutdown handler.
-	terminateOnShutdown bool
 
 	// Only used by WAL & flusher to coordinate backpressure during replay.
 	// replayController *replayController
@@ -238,11 +230,26 @@ type Ingester struct {
 
 	writeLogManager *writefailures.Manager
 
-	customStreamsTracker push.UsageTracker
+	periodicConfigs []config.PeriodConfig
 
-	// recalculateOwnedStreams periodically checks the ring for changes and recalculates owned streams for each instance.
-	readRing ring.ReadRing
-	// recalculateOwnedStreams *recalculateOwnedStreams
+	// One queue per flush thread.  Fingerprint is used to
+	// pick a queue.
+	flushQueues []*util.PriorityQueue
+
+	clientConfig client.Config
+
+	loopDone        sync.WaitGroup
+	flushQueuesDone sync.WaitGroup
+
+	instancesMtx sync.RWMutex
+
+	shutdownMtx sync.Mutex // Allows processes to grab a lock and prevent a shutdown
+	readonly    bool
+
+	// Flag for whether stopping the ingester service should also terminate the
+	// loki process.
+	// This is set when calling the shutdown handler.
+	terminateOnShutdown bool
 }
 
 // New makes a new Ingester.

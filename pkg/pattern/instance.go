@@ -30,16 +30,16 @@ const indexShards = 32
 
 // instance is a tenant instance of the pattern ingester.
 type instance struct {
-	instanceID     string
-	buf            []byte             // buffer used to compute fps.
+	logger         log.Logger
 	mapper         *ingester.FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
 	streams        *streamsMap
 	index          *index.BitPrefixInvertedIndex
-	logger         log.Logger
 	metrics        *ingesterMetrics
 	chunkMetrics   *metric.ChunkMetrics
-	aggregationCfg metric.AggregationConfig
 	drainCfg       *drain.Config
+	instanceID     string
+	buf            []byte // buffer used to compute fps.
+	aggregationCfg metric.AggregationConfig
 }
 
 func newInstance(instanceID string, logger log.Logger, metrics *ingesterMetrics, chunkMetrics *metric.ChunkMetrics, drainCfg *drain.Config, aggCfg metric.AggregationConfig) (*instance, error) {
