@@ -36,6 +36,7 @@ type Planner struct {
 	// Subservices manager.
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
+	retentionManager   *RetentionManager
 
 	cfg       Config
 	limits    Limits
@@ -90,6 +91,14 @@ func New(
 		metrics:     NewMetrics(r, tasksQueue.GetConnectedConsumersMetric),
 		logger:      logger,
 	}
+
+	p.retentionManager = NewRetentionManager(
+		p.cfg.RetentionConfig,
+		p.limits,
+		p.bloomStore,
+		p.metrics,
+		p.logger,
+	)
 
 	svcs := []services.Service{p.tasksQueue, p.activeUsers}
 	p.subservices, err = services.NewManager(svcs...)
@@ -184,6 +193,7 @@ type tenantTable struct {
 
 func (p *Planner) runOne(ctx context.Context) error {
 	var (
+		wg     sync.WaitGroup
 		start  = time.Now()
 		status = statusFailure
 	)
@@ -197,6 +207,16 @@ func (p *Planner) runOne(ctx context.Context) error {
 	}()
 
 	p.metrics.buildStarted.Inc()
+	level.Info(p.logger).Log("msg", "running bloom build iteration")
+
+	// Launch retention (will return instantly if retention is disabled)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := p.retentionManager.Apply(ctx); err != nil {
+			level.Error(p.logger).Log("msg", "failed apply retention", "err", err)
+		}
+	}()
 
 	tables := p.tables(time.Now())
 	level.Debug(p.logger).Log("msg", "loaded tables", "tables", tables.TotalDays())
@@ -265,7 +285,6 @@ func (p *Planner) runOne(ctx context.Context) error {
 	// TODO(salvacorts): This may end up creating too many goroutines.
 	//                   Create a pool of workers to process table-tenant tuples.
 	var tasksSucceed atomic.Int64
-	var wg sync.WaitGroup
 	for tt, results := range tasksResultForTenantTable {
 		if results.tasksToWait == 0 {
 			// No tasks enqueued for this tenant-table tuple, skip processing

@@ -1019,6 +1019,7 @@ func (f *fakeBuilder) Recv() (*protos.BuilderToPlanner, error) {
 }
 
 type fakeLimits struct {
+	Limits
 	timeout    time.Duration
 	maxRetries int
 }
