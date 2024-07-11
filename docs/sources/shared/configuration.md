@@ -645,6 +645,15 @@ bloom_build:
     # CLI flag: -bloom-build.planner.max-tasks-per-tenant
     [max_queued_tasks_per_tenant: <int> | default = 30000]
 
+    retention:
+      # Enable bloom retention.
+      # CLI flag: -bloom-build.planner.retention.enabled
+      [enabled: <boolean> | default = false]
+
+      # Max lookback days for retention.
+      # CLI flag: -bloom-build.planner.retention.max-lookback-days
+      [max_lookback_days: <int> | default = 365]
+
   builder:
     # The grpc_client block configures the gRPC client used to communicate
     # between a client and server component in Loki.
