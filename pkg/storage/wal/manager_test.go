@@ -6,17 +6,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func TestManager_Append(t *testing.T) {
 	m, err := NewManager(Config{
 		MaxSegments:    1,
 		MaxSegmentSize: 1024, // 1KB
-	})
+	}, NewMetrics(nil))
 	require.NoError(t, err)
 
 	// Append some data.
@@ -96,7 +98,7 @@ func TestManager_Append_ErrFull(t *testing.T) {
 	m, err := NewManager(Config{
 		MaxSegments:    10,
 		MaxSegmentSize: 1024, // 1KB
-	})
+	}, NewMetrics(nil))
 	require.NoError(t, err)
 
 	// Should be able to write to all 10 segments of 1KB each.
@@ -140,7 +142,7 @@ func TestManager_NextPending(t *testing.T) {
 		MaxAge:         DefaultMaxAge,
 		MaxSegments:    1,
 		MaxSegmentSize: 1024, // 1KB
-	})
+	}, NewMetrics(nil))
 	require.NoError(t, err)
 
 	// There should be no items as no data has been written.
@@ -195,7 +197,7 @@ func TestManager_Put(t *testing.T) {
 	m, err := NewManager(Config{
 		MaxSegments:    10,
 		MaxSegmentSize: 1024, // 1KB
-	})
+	}, NewMetrics(nil))
 	require.NoError(t, err)
 
 	// There should be 10 available segments, and 0 pending.
@@ -241,4 +243,89 @@ func TestManager_Put(t *testing.T) {
 
 	// The segment should be reset.
 	require.Equal(t, int64(0), it.Writer.InputSize())
+}
+
+func TestManager_Metrics(t *testing.T) {
+	r := prometheus.NewRegistry()
+	m, err := NewManager(Config{
+		MaxSegments:    1,
+		MaxSegmentSize: 1024, // 1KB
+	}, NewMetrics(r))
+	require.NoError(t, err)
+
+	metricNames := []string{
+		"wal_segments_available",
+		"wal_segments_flushing",
+		"wal_segments_pending",
+	}
+	expected := `
+# HELP wal_segments_available The number of WAL segments accepting writes.
+# TYPE wal_segments_available gauge
+wal_segments_available 1
+# HELP wal_segments_flushing The number of WAL segments being flushed.
+# TYPE wal_segments_flushing gauge
+wal_segments_flushing 0
+# HELP wal_segments_pending The number of WAL segments waiting to be flushed.
+# TYPE wal_segments_pending gauge
+wal_segments_pending 0
+`
+	require.NoError(t, testutil.CollectAndCompare(r, strings.NewReader(expected), metricNames...))
+
+	// Appending 1KB of data.
+	lbs := labels.Labels{{Name: "foo", Value: "bar"}}
+	entries := []*logproto.Entry{{Timestamp: time.Now(), Line: strings.Repeat("b", 1024)}}
+	_, err = m.Append(AppendRequest{
+		TenantID:  "1",
+		Labels:    lbs,
+		LabelsStr: lbs.String(),
+		Entries:   entries,
+	})
+	require.NoError(t, err)
+
+	// This should move the segment from the available to the pending list.
+	expected = `
+# HELP wal_segments_available The number of WAL segments accepting writes.
+# TYPE wal_segments_available gauge
+wal_segments_available 0
+# HELP wal_segments_flushing The number of WAL segments being flushed.
+# TYPE wal_segments_flushing gauge
+wal_segments_flushing 0
+# HELP wal_segments_pending The number of WAL segments waiting to be flushed.
+# TYPE wal_segments_pending gauge
+wal_segments_pending 1
+`
+	require.NoError(t, testutil.CollectAndCompare(r, strings.NewReader(expected), metricNames...))
+
+	// Get the segment from the pending list.
+	it, err := m.NextPending()
+	require.NoError(t, err)
+	require.NotNil(t, it)
+	expected = `
+# HELP wal_segments_available The number of WAL segments accepting writes.
+# TYPE wal_segments_available gauge
+wal_segments_available 0
+# HELP wal_segments_flushing The number of WAL segments being flushed.
+# TYPE wal_segments_flushing gauge
+wal_segments_flushing 1
+# HELP wal_segments_pending The number of WAL segments waiting to be flushed.
+# TYPE wal_segments_pending gauge
+wal_segments_pending 0
+`
+	require.NoError(t, testutil.CollectAndCompare(r, strings.NewReader(expected), metricNames...))
+
+	// Reset the segment and put it back in the available list.
+	require.NoError(t, m.Put(it))
+	expected = `
+# HELP wal_segments_available The number of WAL segments accepting writes.
+# TYPE wal_segments_available gauge
+wal_segments_available 1
+# HELP wal_segments_flushing The number of WAL segments being flushed.
+# TYPE wal_segments_flushing gauge
+wal_segments_flushing 0
+# HELP wal_segments_pending The number of WAL segments waiting to be flushed.
+# TYPE wal_segments_pending gauge
+wal_segments_pending 0
+`
+	require.NoError(t, testutil.CollectAndCompare(r, strings.NewReader(expected), metricNames...))
+
 }

@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -81,6 +83,29 @@ type Config struct {
 	MaxSegmentSize int64
 }
 
+type Metrics struct {
+	NumAvailable prometheus.Gauge
+	NumPending   prometheus.Gauge
+	NumFlushing  prometheus.Gauge
+}
+
+func NewMetrics(r prometheus.Registerer) *Metrics {
+	return &Metrics{
+		NumAvailable: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Name: "wal_segments_available",
+			Help: "The number of WAL segments accepting writes.",
+		}),
+		NumPending: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Name: "wal_segments_pending",
+			Help: "The number of WAL segments waiting to be flushed.",
+		}),
+		NumFlushing: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Name: "wal_segments_flushing",
+			Help: "The number of WAL segments being flushed.",
+		}),
+	}
+}
+
 // Manager buffers segments in memory, and keeps track of which segments are
 // available and which are waiting to be flushed. The maximum number of
 // segments that can be buffered in memory, and their maximum age and maximum
@@ -97,7 +122,8 @@ type Config struct {
 // and returned to the available list. This allows the manager to apply back-pressure
 // and avoid congestion collapse due to excessive timeouts and retries.
 type Manager struct {
-	cfg Config
+	cfg     Config
+	metrics *Metrics
 
 	// available is a list of segments that are available and accepting data.
 	// All segments other than the segment at the front of the list are empty,
@@ -135,13 +161,16 @@ type PendingItem struct {
 	Writer *SegmentWriter
 }
 
-func NewManager(cfg Config) (*Manager, error) {
+func NewManager(cfg Config, metrics *Metrics) (*Manager, error) {
 	m := Manager{
 		cfg:       cfg,
+		metrics:   metrics,
 		available: list.New(),
 		pending:   list.New(),
 		shutdown:  make(chan struct{}),
 	}
+	m.metrics.NumPending.Set(0)
+	m.metrics.NumFlushing.Set(0)
 	for i := int64(0); i < cfg.MaxSegments; i++ {
 		w, err := NewWalSegmentWriter()
 		if err != nil {
@@ -151,6 +180,7 @@ func NewManager(cfg Config) (*Manager, error) {
 			r: &AppendResult{done: make(chan struct{})},
 			w: w,
 		})
+		m.metrics.NumAvailable.Inc()
 	}
 	return &m, nil
 }
@@ -171,7 +201,9 @@ func (m *Manager) Append(r AppendRequest) (*AppendResult, error) {
 	// the closed list to be flushed.
 	if time.Since(it.firstAppendedAt) >= m.cfg.MaxAge || it.w.InputSize() >= m.cfg.MaxSegmentSize {
 		m.pending.PushBack(it)
+		m.metrics.NumPending.Inc()
 		m.available.Remove(el)
+		m.metrics.NumAvailable.Dec()
 	}
 	return it.r, nil
 }
@@ -189,7 +221,9 @@ func (m *Manager) NextPending() (*PendingItem, error) {
 			it := el.Value.(*item)
 			if !it.firstAppendedAt.IsZero() && time.Since(it.firstAppendedAt) >= m.cfg.MaxAge {
 				m.pending.PushBack(it)
+				m.metrics.NumPending.Inc()
 				m.available.Remove(el)
+				m.metrics.NumAvailable.Dec()
 			}
 		}
 		// If the pending list is still empty return nil.
@@ -200,6 +234,8 @@ func (m *Manager) NextPending() (*PendingItem, error) {
 	el := m.pending.Front()
 	it := el.Value.(*item)
 	m.pending.Remove(el)
+	m.metrics.NumPending.Dec()
+	m.metrics.NumFlushing.Inc()
 	return &PendingItem{Result: it.r, Writer: it.w}, nil
 }
 
@@ -209,6 +245,8 @@ func (m *Manager) Put(it *PendingItem) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	it.Writer.Reset()
+	m.metrics.NumFlushing.Dec()
+	m.metrics.NumAvailable.Inc()
 	m.available.PushBack(&item{
 		r: &AppendResult{done: make(chan struct{})},
 		w: it.Writer,

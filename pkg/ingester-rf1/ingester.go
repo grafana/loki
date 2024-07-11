@@ -257,7 +257,7 @@ func New(cfg Config, clientConfig client.Config,
 		MaxAge:         wal.DefaultMaxAge,
 		MaxSegments:    wal.DefaultMaxSegments,
 		MaxSegmentSize: wal.DefaultMaxSegmentSize,
-	})
+	}, wal.NewMetrics(registerer))
 	if err != nil {
 		return nil, err
 	}
