@@ -2,6 +2,7 @@ package v1
 
 import (
 	"math"
+	"unsafe"
 
 	"github.com/go-kit/log/level"
 
@@ -216,10 +217,12 @@ outer:
 			for itr.Next() {
 				tok := itr.At()
 				tokens++
+
 				// TODO[owen-d]: [n]byte this
-				str := string(tok)
-				_, found := bt.cache[str] // A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
-				if found {
+				// To avoid allocations, an unsafe string can be used to check ownership in cache.
+				str := unsafe.String(unsafe.SliceData(tok), len(tok))
+				// A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
+				if _, found := bt.cache[str]; found {
 					cachedInserts++
 					continue
 				}
@@ -246,6 +249,7 @@ outer:
 
 				// only register the key in the cache if it was successfully added to the bloom
 				// as can prevent us from trying subsequent copies
+				str = string(tok)
 				bt.cache[str] = nil
 				if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
 					clear(bt.cache)
