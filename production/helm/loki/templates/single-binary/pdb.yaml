@@ -1,7 +1,7 @@
 {{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
 {{- if and .Values.podDisruptionBudget $isSingleBinary -}}
 ---
-apiVersion: policy/v1
+apiVersion: {{ include "loki.pdb.apiVersion" . }}
 kind: PodDisruptionBudget
 metadata:
   name: {{ template "loki.fullname" . }}
