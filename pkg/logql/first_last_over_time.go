@@ -157,10 +157,6 @@ func (e *mergeOverTimeStepEvaluator) Next() (bool, int64, StepResult) {
 		vec[i].T = ts
 	}
 
-	if len(vec) == 0 {
-		return true, ts, SampleVector(vec)
-	}
-
 	return true, ts, SampleVector(vec)
 }
 
