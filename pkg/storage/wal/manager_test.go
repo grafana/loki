@@ -16,7 +16,7 @@ func TestManager_Append(t *testing.T) {
 	m, err := NewManager(Config{
 		MaxSegments:    1,
 		MaxSegmentSize: 1024, // 1KB
-	})
+	}, NewMetrics(nil))
 	require.NoError(t, err)
 
 	// Append some data.
@@ -96,7 +96,7 @@ func TestManager_Append_ErrFull(t *testing.T) {
 	m, err := NewManager(Config{
 		MaxSegments:    10,
 		MaxSegmentSize: 1024, // 1KB
-	})
+	}, NewMetrics(nil))
 	require.NoError(t, err)
 
 	// Should be able to write to all 10 segments of 1KB each.
@@ -140,7 +140,7 @@ func TestManager_NextPending(t *testing.T) {
 		MaxAge:         DefaultMaxAge,
 		MaxSegments:    1,
 		MaxSegmentSize: 1024, // 1KB
-	})
+	}, NewMetrics(nil))
 	require.NoError(t, err)
 
 	// There should be no items as no data has been written.
@@ -195,7 +195,7 @@ func TestManager_Put(t *testing.T) {
 	m, err := NewManager(Config{
 		MaxSegments:    10,
 		MaxSegmentSize: 1024, // 1KB
-	})
+	}, NewMetrics(nil))
 	require.NoError(t, err)
 
 	// There should be 10 available segments, and 0 pending.
