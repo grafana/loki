@@ -45,7 +45,7 @@ func TestManager_Append(t *testing.T) {
 	}
 
 	// Flush the data and broadcast that the flush is successful.
-	it, err := m.Get()
+	it, err := m.NextPending()
 	require.NoError(t, err)
 	require.NotNil(t, it)
 	it.Result.SetDone(nil)
@@ -76,7 +76,7 @@ func TestManager_Append(t *testing.T) {
 	require.NotNil(t, res)
 
 	// Flush the data, but this time broadcast an error that the flush failed.
-	it, err = m.Get()
+	it, err = m.NextPending()
 	require.NoError(t, err)
 	require.NotNil(t, it)
 	it.Result.SetDone(errors.New("failed to flush"))
@@ -135,7 +135,7 @@ func TestManager_Append_ErrFull(t *testing.T) {
 	require.Nil(t, res)
 }
 
-func TestManager_Get(t *testing.T) {
+func TestManager_NextPending(t *testing.T) {
 	m, err := NewManager(Config{
 		MaxAge:         DefaultMaxAge,
 		MaxSegments:    1,
@@ -144,7 +144,7 @@ func TestManager_Get(t *testing.T) {
 	require.NoError(t, err)
 
 	// There should be no items as no data has been written.
-	it, err := m.Get()
+	it, err := m.NextPending()
 	require.NoError(t, err)
 	require.Nil(t, it)
 
@@ -165,7 +165,7 @@ func TestManager_Get(t *testing.T) {
 		Entries:   entries,
 	})
 	require.NoError(t, err)
-	it, err = m.Get()
+	it, err = m.NextPending()
 	require.NoError(t, err)
 	require.Nil(t, it)
 
@@ -181,12 +181,12 @@ func TestManager_Get(t *testing.T) {
 		Entries:   entries,
 	})
 	require.NoError(t, err)
-	it, err = m.Get()
+	it, err = m.NextPending()
 	require.NoError(t, err)
 	require.NotNil(t, it)
 
 	// Should not get the same item more than once.
-	it, err = m.Get()
+	it, err = m.NextPending()
 	require.NoError(t, err)
 	require.Nil(t, it)
 }
@@ -225,7 +225,7 @@ func TestManager_Put(t *testing.T) {
 	require.Equal(t, 1, m.pending.Len())
 
 	// Getting the pending segment should remove it from the list.
-	it, err := m.Get()
+	it, err := m.NextPending()
 	require.NoError(t, err)
 	require.NotNil(t, it)
 	require.Equal(t, 9, m.available.Len())
