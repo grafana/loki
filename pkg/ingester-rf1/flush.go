@@ -118,9 +118,7 @@ func (i *Ingester) flushLoop(j int) {
 		}
 
 		op.it.Result.SetDone(err)
-		if err = i.wal.Put(op.it); err != nil {
-			level.Error(l).Log("msg", "failed to put back in WAL Manager", "err", err)
-		}
+		i.wal.Put(op.it)
 	}
 }
 

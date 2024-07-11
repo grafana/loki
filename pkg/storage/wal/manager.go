@@ -210,7 +210,7 @@ func (m *Manager) Append(r AppendRequest) (*AppendResult, error) {
 
 // NextPending returns the next segment to be flushed. It returns nil if the
 // pending list is empty.
-func (m *Manager) NextPending() (*PendingItem, error) {
+func (m *Manager) NextPending() *PendingItem {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.pending.Len() == 0 {
@@ -228,7 +228,7 @@ func (m *Manager) NextPending() (*PendingItem, error) {
 		}
 		// If the pending list is still empty return nil.
 		if m.pending.Len() == 0 {
-			return nil, nil
+			return nil
 		}
 	}
 	el := m.pending.Front()
@@ -236,12 +236,12 @@ func (m *Manager) NextPending() (*PendingItem, error) {
 	m.pending.Remove(el)
 	m.metrics.NumPending.Dec()
 	m.metrics.NumFlushing.Inc()
-	return &PendingItem{Result: it.r, Writer: it.w}, nil
+	return &PendingItem{Result: it.r, Writer: it.w}
 }
 
 // Put resets the segment and puts it back in the available list to accept
 // writes. A PendingItem should not be put back until it has been flushed.
-func (m *Manager) Put(it *PendingItem) error {
+func (m *Manager) Put(it *PendingItem) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	it.Writer.Reset()
@@ -251,5 +251,4 @@ func (m *Manager) Put(it *PendingItem) error {
 		r: &AppendResult{done: make(chan struct{})},
 		w: it.Writer,
 	})
-	return nil
 }
