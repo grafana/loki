@@ -29,6 +29,7 @@ func DetectLogFormat(line string) string {
 
 type Metrics struct {
 	PatternsEvictedTotal  prometheus.Counter
+	PatternsPrunedTotal   prometheus.Counter
 	PatternsDetectedTotal prometheus.Counter
 	TokensPerLine         prometheus.Observer
 	StatePerLine          prometheus.Observer

@@ -331,9 +331,12 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 			nextEvFactory = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params) (StepEvaluator, error) {
 				it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 					&logproto.SampleQueryRequest{
-						Start:    q.Start().Add(-rangExpr.Left.Interval).Add(-rangExpr.Left.Offset),
-						End:      q.End().Add(-rangExpr.Left.Offset),
-						Selector: e.String(), // intentionally send the vector for reducing labels.
+						// extend startTs backwards by step
+						Start: q.Start().Add(-rangExpr.Left.Interval).Add(-rangExpr.Left.Offset),
+						// add leap nanosecond to endTs to include lines exactly at endTs. range iterators work on start exclusive, end inclusive ranges
+						End: q.End().Add(-rangExpr.Left.Offset).Add(time.Nanosecond),
+						// intentionally send the vector for reducing labels.
+						Selector: e.String(),
 						Shards:   q.Shards(),
 						Plan: &plan.QueryPlan{
 							AST: expr,
@@ -351,9 +354,12 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 	case *syntax.RangeAggregationExpr:
 		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 			&logproto.SampleQueryRequest{
-				Start:    q.Start().Add(-e.Left.Interval).Add(-e.Left.Offset),
-				End:      q.End().Add(-e.Left.Offset),
-				Selector: expr.String(),
+				// extend startTs backwards by step
+				Start: q.Start().Add(-e.Left.Interval).Add(-e.Left.Offset),
+				// add leap nanosecond to endTs to include lines exactly at endTs. range iterators work on start exclusive, end inclusive ranges
+				End: q.End().Add(-e.Left.Offset).Add(time.Nanosecond),
+				// intentionally send the vector for reducing labels.
+				Selector: e.String(),
 				Shards:   q.Shards(),
 				Plan: &plan.QueryPlan{
 					AST: expr,
