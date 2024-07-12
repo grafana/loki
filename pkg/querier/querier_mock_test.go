@@ -119,7 +119,6 @@ func (c *querierClientMock) GetDetectedLabels(ctx context.Context, in *logproto.
 		return (*logproto.LabelToValuesResponse)(nil), args.Error(1)
 	}
 	return res.(*logproto.LabelToValuesResponse), args.Error(1)
-
 }
 
 func (c *querierClientMock) GetVolume(ctx context.Context, in *logproto.VolumeRequest, opts ...grpc.CallOption) (*logproto.VolumeResponse, error) {
@@ -572,7 +571,14 @@ func mockLogfmtStreamWithLabels(from int, quantity int, labels string) logproto.
 	for i := quantity; i > 0; i-- {
 		entries = append(entries, logproto.Entry{
 			Timestamp: time.Unix(int64(i), 0),
-			Line:      fmt.Sprintf(`message="line %d" count=%d fake=true`, i, i),
+			Line: fmt.Sprintf(
+				`message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t`,
+				i,
+				i,
+				(i * 10),
+				(i * 256),
+				float32(i*10.0),
+				(i%2 == 0)),
 		})
 	}
 
