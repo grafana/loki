@@ -187,7 +187,7 @@ func combineFilters(in []*LineFilterExpr) StageExpr {
 	for i := len(in) - 2; i >= 0; i-- {
 		leaf := leafNode(result, in[i])
 		if leaf != nil {
-			leaf = in[i]
+			leaf.Left = in[i]
 		}
 	}
 
