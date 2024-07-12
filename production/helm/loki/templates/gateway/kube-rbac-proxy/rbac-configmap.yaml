@@ -1,0 +1,12 @@
+{{- if and .Values.gateway.kubeRBACProxy.enabled .Values.gateway.kubeRBACProxy.config }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "loki.gatewayKubeRBACProxyConfigFullname" . }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "loki.gatewayLabels" . | nindent 4 }}
+data:
+  config-file.yaml: |
+    {{- .Values.gateway.kubeRBACProxy.config | toYaml | nindent 4 }}
+{{- end }}
