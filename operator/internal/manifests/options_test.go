@@ -8,7 +8,6 @@ import (
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
-	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
 func TestNewTimeoutConfig_ReturnsDefaults_WhenLimitsSpecEmpty(t *testing.T) {
@@ -190,52 +189,4 @@ func TestNewTimeoutConfig_ReturnsDefaults_WhenTenantQueryTimeoutParseError(t *te
 
 	_, err := NewTimeoutConfig(s.Spec.Limits)
 	require.Error(t, err)
-}
-
-func TestAllowStructuredMetadata_ReturnsTrue(t *testing.T) {
-	opts := Options{
-		ObjectStorage: storage.Options{
-			Schemas: []lokiv1.ObjectStorageSchema{
-				{Version: lokiv1.ObjectStorageSchemaV13},
-			},
-		},
-	}
-
-	require.True(t, opts.ObjectStorage.AllowStructuredMetadata())
-}
-
-func TestAllowStructuredMetadata_ReturnsTrue_WithFutureVersions(t *testing.T) {
-	opts := Options{
-		ObjectStorage: storage.Options{
-			Schemas: []lokiv1.ObjectStorageSchema{
-				{Version: lokiv1.ObjectStorageSchemaVersion("v14")},
-			},
-		},
-	}
-
-	require.True(t, opts.ObjectStorage.AllowStructuredMetadata())
-}
-
-func TestAllowStructuredMetadata_ReturnsFalse_WithV11(t *testing.T) {
-	opts := Options{
-		ObjectStorage: storage.Options{
-			Schemas: []lokiv1.ObjectStorageSchema{
-				{Version: lokiv1.ObjectStorageSchemaV11},
-			},
-		},
-	}
-
-	require.False(t, opts.ObjectStorage.AllowStructuredMetadata())
-}
-
-func TestAllowStructuredMetadata_ReturnsFalse_WithV12(t *testing.T) {
-	opts := Options{
-		ObjectStorage: storage.Options{
-			Schemas: []lokiv1.ObjectStorageSchema{
-				{Version: lokiv1.ObjectStorageSchemaV12},
-			},
-		},
-	}
-
-	require.False(t, opts.ObjectStorage.AllowStructuredMetadata())
 }

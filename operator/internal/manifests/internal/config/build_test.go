@@ -5124,12 +5124,13 @@ func defaultOptions() Options {
 
 func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
 	for _, tc := range []struct {
-		name                  string
-		schemaConfig          []lokiv1.ObjectStorageSchema
-		shippers              []string
-		expSchemaConfig       string
-		expStorageConfig      string
-		expStructuredMetadata string
+		name                    string
+		schemaConfig            []lokiv1.ObjectStorageSchema
+		shippers                []string
+		allowStructuredMetadata bool
+		expSchemaConfig         string
+		expStorageConfig        string
+		expStructuredMetadata   string
 	}{
 		{
 			name: "default_config_v11_schema",
@@ -5197,7 +5198,8 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
 					EffectiveDate: "2024-01-01",
 				},
 			},
-			shippers: []string{"tsdb"},
+			allowStructuredMetadata: true,
+			shippers:                []string{"tsdb"},
 			expSchemaConfig: `
   configs:
     - from: "2024-01-01"
@@ -5234,7 +5236,8 @@ func TestBuild_ConfigAndRuntimeConfig_Schemas(t *testing.T) {
 					EffectiveDate: "2024-01-01",
 				},
 			},
-			shippers: []string{"boltdb", "tsdb"},
+			shippers:                []string{"boltdb", "tsdb"},
+			allowStructuredMetadata: true,
 			expSchemaConfig: `
   configs:
     - from: "2020-01-01"
@@ -5429,6 +5432,7 @@ analytics:
 
 			opts := defaultOptions()
 			opts.ObjectStorage.Schemas = tc.schemaConfig
+			opts.ObjectStorage.AllowStructuredMetadata = tc.allowStructuredMetadata
 			opts.Shippers = tc.shippers
 
 			cfg, _, err := Build(opts)

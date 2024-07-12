@@ -7,9 +7,10 @@ import (
 // Options is used to configure Loki to integrate with
 // supported object storages.
 type Options struct {
-	Schemas        []lokiv1.ObjectStorageSchema
-	SharedStore    lokiv1.ObjectStorageSecretType
-	CredentialMode lokiv1.CredentialMode
+	Schemas                 []lokiv1.ObjectStorageSchema
+	SharedStore             lokiv1.ObjectStorageSecretType
+	CredentialMode          lokiv1.CredentialMode
+	AllowStructuredMetadata bool
 
 	Azure        *AzureStorageConfig
 	GCS          *GCSStorageConfig
@@ -105,16 +106,4 @@ type CloudCredentials struct {
 
 func (o OpenShiftOptions) TokenCCOAuthEnabled() bool {
 	return o.CloudCredentials.SecretName != "" && o.CloudCredentials.SHA1 != ""
-}
-
-func (o Options) AllowStructuredMetadata() bool {
-	var allowed bool
-	for _, schema := range o.Schemas {
-		if schema.Version == lokiv1.ObjectStorageSchemaV11 || schema.Version == lokiv1.ObjectStorageSchemaV12 {
-			continue
-		}
-
-		allowed = true
-	}
-	return allowed
 }
