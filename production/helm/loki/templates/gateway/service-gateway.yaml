@@ -29,8 +29,13 @@ spec:
   {{- end }}
   ports:
     - name: http-metrics
+      {{-  if .Values.gateway.kubeRBACProxy.enabled  }}
+      port: {{ .Values.gateway.service.securePort }}
+      targetPort: krp
+      {{- else }}
       port: {{ .Values.gateway.service.port }}
       targetPort: http-metrics
+      {{- end }}
       {{- if and (eq "NodePort" .Values.gateway.service.type) .Values.gateway.service.nodePort }}
       nodePort: {{ .Values.gateway.service.nodePort }}
       {{- end }}
