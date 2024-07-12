@@ -38,7 +38,6 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
-	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -68,23 +67,15 @@ var (
 type Config struct {
 	Enabled bool `yaml:"enabled" doc:"description=Whether the ingester is enabled."`
 
-	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the ingester will operate and where it will register for discovery."`
-
-	ConcurrentFlushes   int               `yaml:"concurrent_flushes"`
-	FlushCheckPeriod    time.Duration     `yaml:"flush_check_period"`
-	FlushOpBackoff      backoff.Config    `yaml:"flush_op_backoff"`
-	FlushOpTimeout      time.Duration     `yaml:"flush_op_timeout"`
-	MaxSegmentAge       time.Duration     `yaml:"max_segment_age"`
-	MaxSegmentSize      int               `yaml:"max_segment_size"`
-	MaxSegments         int               `yaml:"max_segments"`
-	RetainPeriod        time.Duration     `yaml:"chunk_retain_period"`
-	MaxChunkIdle        time.Duration     `yaml:"chunk_idle_period"`
-	BlockSize           int               `yaml:"chunk_block_size"`
-	TargetChunkSize     int               `yaml:"chunk_target_size"`
-	ChunkEncoding       string            `yaml:"chunk_encoding"`
-	parsedEncoding      chunkenc.Encoding `yaml:"-"` // placeholder for validated encoding
-	MaxChunkAge         time.Duration     `yaml:"max_chunk_age"`
-	AutoForgetUnhealthy bool              `yaml:"autoforget_unhealthy"`
+	LifecyclerConfig    ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the ingester will operate and where it will register for discovery."`
+	MaxSegmentAge       time.Duration         `yaml:"max_segment_age"`
+	MaxSegmentSize      int                   `yaml:"max_segment_size"`
+	MaxSegments         int                   `yaml:"max_segments"`
+	ConcurrentFlushes   int                   `yaml:"concurrent_flushes"`
+	FlushCheckPeriod    time.Duration         `yaml:"flush_check_period"`
+	FlushOpBackoff      backoff.Config        `yaml:"flush_op_backoff"`
+	FlushOpTimeout      time.Duration         `yaml:"flush_op_timeout"`
+	AutoForgetUnhealthy bool                  `yaml:"autoforget_unhealthy"`
 
 	MaxReturnedErrors int `yaml:"max_returned_stream_errors"`
 
@@ -101,6 +92,7 @@ type Config struct {
 	ShutdownMarkerPath string `yaml:"shutdown_marker_path"`
 
 	OwnedStreamsCheckInterval time.Duration `yaml:"owned_streams_check_interval" doc:"description=Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams."`
+	StreamRetainPeriod        time.Duration `yaml:"stream_retain_period" doc:"description=How long stream metadata is retained in memory after it was last seen."`
 
 	// Tee configs
 	ClientConfig clientpool.Config       `yaml:"client_config,omitempty" doc:"description=Configures how the pattern ingester will connect to the ingesters."`
@@ -122,28 +114,17 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxSegmentSize, "ingester-rf1.max-segment-size", 8*1024*1024, "The maximum size of a segment before it should be flushed. It is not a strict limit, and segments can exceed the maximum size when individual appends are larger than the remaining capacity.")
 	f.IntVar(&cfg.MaxSegments, "ingester-rf1.max-segments", 10, "The maximum number of segments to buffer in-memory. Increasing this value allows for large bursts of writes to be buffered in memory, but may increase latency if the write volume exceeds the rate at which segments can be flushed.")
 
-	f.DurationVar(&cfg.RetainPeriod, "ingester-rf1.chunks-retain-period", 0, "How long chunks should be retained in-memory after they've been flushed.")
-	// f.DurationVar(&cfg.MaxChunkIdle, "ingester-rf1.chunks-idle-period", 30*time.Minute, "How long chunks should sit in-memory with no updates before being flushed if they don't hit the max block size. This means that half-empty chunks will still be flushed after a certain period as long as they receive no further activity.")
-	f.IntVar(&cfg.BlockSize, "ingester-rf1.chunks-block-size", 256*1024, "The targeted _uncompressed_ size in bytes of a chunk block When this threshold is exceeded the head block will be cut and compressed inside the chunk.")
-	f.IntVar(&cfg.TargetChunkSize, "ingester-rf1.chunk-target-size", 1572864, "A target _compressed_ size in bytes for chunks. This is a desired size not an exact size, chunks may be slightly bigger or significantly smaller if they get flushed for other reasons (e.g. chunk_idle_period). A value of 0 creates chunks with a fixed 10 blocks, a non zero value will create chunks with a variable number of blocks to meet the target size.") // 1.5 MB
-	f.StringVar(&cfg.ChunkEncoding, "ingester-rf1.chunk-encoding", chunkenc.EncGZIP.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", chunkenc.SupportedEncoding()))
 	f.IntVar(&cfg.MaxReturnedErrors, "ingester-rf1.max-ignored-stream-errors", 10, "The maximum number of errors a stream will report to the user when a push fails. 0 to make unlimited.")
-	f.DurationVar(&cfg.MaxChunkAge, "ingester-rf1.max-chunk-age", 2*time.Hour, "The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this, the current chunk will be flushed to the store and a new chunk created.")
 	f.BoolVar(&cfg.AutoForgetUnhealthy, "ingester-rf1.autoforget-unhealthy", false, "Forget about ingesters having heartbeat timestamps older than `ring.kvstore.heartbeat_timeout`. This is equivalent to clicking on the `/ring` `forget` button in the UI: the ingester is removed from the ring. This is a useful setting when you are sure that an unhealthy node won't return. An example is when not using stateful sets or the equivalent. Use `memberlist.rejoin_interval` > 0 to handle network partition cases when using a memberlist.")
 	f.IntVar(&cfg.IndexShards, "ingester-rf1.index-shards", index.DefaultIndexShards, "Shard factor used in the ingesters for the in process reverse index. This MUST be evenly divisible by ALL schema shard factors or Loki will not start.")
 	f.IntVar(&cfg.MaxDroppedStreams, "ingester-rf1.tailer.max-dropped-streams", 10, "Maximum number of dropped streams to keep in memory during tailing.")
 	f.StringVar(&cfg.ShutdownMarkerPath, "ingester-rf1.shutdown-marker-path", "", "Path where the shutdown marker file is stored. If not set and common.path_prefix is set then common.path_prefix will be used.")
 	f.DurationVar(&cfg.OwnedStreamsCheckInterval, "ingester-rf1.owned-streams-check-interval", 30*time.Second, "Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams.")
+	f.DurationVar(&cfg.StreamRetainPeriod, "ingester-rf1.stream-retain-period", 5*time.Minute, "How long stream metadata should be retained in-memory after the last log was seen.")
 	f.BoolVar(&cfg.Enabled, "ingester-rf1.enabled", false, "Flag to enable or disable the usage of the ingester-rf1 component.")
 }
 
 func (cfg *Config) Validate() error {
-	enc, err := chunkenc.ParseEncoding(cfg.ChunkEncoding)
-	if err != nil {
-		return err
-	}
-	cfg.parsedEncoding = enc
-
 	if cfg.FlushOpBackoff.MinBackoff > cfg.FlushOpBackoff.MaxBackoff {
 		return errors.New("invalid flush op min backoff: cannot be larger than max backoff")
 	}
@@ -202,6 +183,7 @@ type Ingester struct {
 	store           Storage
 	periodicConfigs []config.PeriodConfig
 
+	loopQuit    chan struct{}
 	tailersQuit chan struct{}
 
 	// One queue per flush thread.  Fingerprint is used to
@@ -253,8 +235,6 @@ func New(cfg Config, clientConfig client.Config,
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
-	compressionStats.Set(cfg.ChunkEncoding)
-	targetSizeStats.Set(int64(cfg.TargetChunkSize))
 	metrics := newIngesterMetrics(registerer)
 
 	walManager, err := wal.NewManager(wal.Config{
@@ -275,6 +255,7 @@ func New(cfg Config, clientConfig client.Config,
 		store:            storage,
 		periodicConfigs:  periodConfigs,
 		flushWorkersDone: sync.WaitGroup{},
+		loopQuit:         make(chan struct{}),
 		tailersQuit:      make(chan struct{}),
 		metrics:          metrics,
 		// flushOnShutdownSwitch: &OnceSwitch{},
@@ -431,6 +412,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 		return fmt.Errorf("can not ensure recalculate owned streams service is running: %w", err)
 	}
 
+	go i.periodicStreamMaintenance()
 	return nil
 }
 
@@ -503,6 +485,31 @@ func (i *Ingester) removeShutdownMarkerFile() {
 		if err != nil {
 			level.Error(i.logger).Log("msg", "error removing shutdown marker file", "err", err)
 		}
+	}
+}
+
+func (i *Ingester) periodicStreamMaintenance() {
+	streamRetentionTicker := time.NewTicker(i.cfg.StreamRetainPeriod)
+	defer streamRetentionTicker.Stop()
+
+	for {
+		select {
+		case <-streamRetentionTicker.C:
+			i.cleanIdleStreams()
+		case <-i.loopQuit:
+			return
+		}
+	}
+}
+
+func (i *Ingester) cleanIdleStreams() {
+	for _, instance := range i.getInstances() {
+		_ = instance.streams.ForEach(func(s *stream) (bool, error) {
+			if time.Since(s.highestTs) > i.cfg.StreamRetainPeriod {
+				instance.streams.Delete(s)
+			}
+			return true, nil
+		})
 	}
 }
 
@@ -884,16 +891,6 @@ func (i *Ingester) getInstances() []*instance {
 //
 //	return &resp, nil
 //}
-
-func adjustQueryStartTime(maxLookBackPeriod time.Duration, start, now time.Time) time.Time {
-	if maxLookBackPeriod > 0 {
-		oldestStartTime := now.Add(-maxLookBackPeriod)
-		if oldestStartTime.After(start) {
-			return oldestStartTime
-		}
-	}
-	return start
-}
 
 func (i *Ingester) GetDetectedFields(_ context.Context, r *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
 	return &logproto.DetectedFieldsResponse{
