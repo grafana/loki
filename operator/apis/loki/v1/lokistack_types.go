@@ -643,6 +643,13 @@ type QueryLimitSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Cardinality Limit"
 	CardinalityLimit int32 `json:"cardinalityLimit,omitempty"`
+
+	// MaxVolumeSeries defines the maximum number of aggregated series in a log-volume response
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Max Volume Series"
+	MaxVolumeSeries int32 `json:"maxVolumeSeries,omitempty"`
 }
 
 // BlockedQueryType defines which type of query a blocked query should apply to.

@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	baseStore "github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -41,7 +42,7 @@ type TSDBStore interface {
 		tenant string,
 		id tsdb.Identifier,
 		bounds v1.FingerprintBounds,
-	) (v1.Iterator[*v1.Series], error)
+	) (iter.Iterator[*v1.Series], error)
 }
 
 // BloomTSDBStore is a wrapper around the storage.Client interface which
@@ -93,7 +94,7 @@ func (b *BloomTSDBStore) LoadTSDB(
 	tenant string,
 	id tsdb.Identifier,
 	bounds v1.FingerprintBounds,
-) (v1.Iterator[*v1.Series], error) {
+) (iter.Iterator[*v1.Series], error) {
 	withCompression := id.Name() + gzipExtension
 
 	data, err := b.storage.GetUserFile(ctx, table.Addr(), tenant, withCompression)
@@ -129,7 +130,7 @@ func (b *BloomTSDBStore) LoadTSDB(
 	return NewTSDBSeriesIter(ctx, tenant, idx, bounds)
 }
 
-func NewTSDBSeriesIter(ctx context.Context, user string, f sharding.ForSeries, bounds v1.FingerprintBounds) (v1.Iterator[*v1.Series], error) {
+func NewTSDBSeriesIter(ctx context.Context, user string, f sharding.ForSeries, bounds v1.FingerprintBounds) (iter.Iterator[*v1.Series], error) {
 	// TODO(salvacorts): Create a pool
 	series := make([]*v1.Series, 0, 100)
 
@@ -166,9 +167,9 @@ func NewTSDBSeriesIter(ctx context.Context, user string, f sharding.ForSeries, b
 
 	select {
 	case <-ctx.Done():
-		return v1.NewEmptyIter[*v1.Series](), ctx.Err()
+		return iter.NewEmptyIter[*v1.Series](), ctx.Err()
 	default:
-		return v1.NewCancelableIter[*v1.Series](ctx, v1.NewSliceIter[*v1.Series](series)), nil
+		return iter.NewCancelableIter[*v1.Series](ctx, iter.NewSliceIter[*v1.Series](series)), nil
 	}
 }
 
@@ -261,7 +262,7 @@ func (s *TSDBStores) LoadTSDB(
 	tenant string,
 	id tsdb.Identifier,
 	bounds v1.FingerprintBounds,
-) (v1.Iterator[*v1.Series], error) {
+) (iter.Iterator[*v1.Series], error) {
 	store, err := s.storeForPeriod(table.DayTime)
 	if err != nil {
 		return nil, err

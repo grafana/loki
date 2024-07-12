@@ -1,6 +1,10 @@
 package v1
 
-import "github.com/pkg/errors"
+import (
+	"github.com/pkg/errors"
+
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
+)
 
 /*
 Each binary format (version) has it's own builder. This provides type-safe way to build the binary format
@@ -34,7 +38,7 @@ type V2Builder struct {
 
 type SeriesWithBlooms struct {
 	Series *Series
-	Blooms SizedIterator[*Bloom]
+	Blooms iter.SizedIterator[*Bloom]
 }
 
 func NewBlockBuilderV2(opts BlockOptions, writer BlockWriter) (*V2Builder, error) {
@@ -59,7 +63,7 @@ func NewBlockBuilderV2(opts BlockOptions, writer BlockWriter) (*V2Builder, error
 	}, nil
 }
 
-func (b *V2Builder) BuildFrom(itr Iterator[SeriesWithBlooms]) (uint32, error) {
+func (b *V2Builder) BuildFrom(itr iter.Iterator[SeriesWithBlooms]) (uint32, error) {
 	for itr.Next() {
 		at := itr.At()
 		var offsets []BloomOffset
@@ -160,7 +164,7 @@ func NewBlockBuilderV1(opts BlockOptions, writer BlockWriter) (*V1Builder, error
 	}, nil
 }
 
-func (b *V1Builder) BuildFrom(itr Iterator[SeriesWithBloom]) (uint32, error) {
+func (b *V1Builder) BuildFrom(itr iter.Iterator[SeriesWithBloom]) (uint32, error) {
 	for itr.Next() {
 		at := itr.At()
 		offset, err := b.AddBloom(at.Bloom)

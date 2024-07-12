@@ -161,7 +161,7 @@ func (s *GCSObjectClient) getObject(ctx context.Context, objectKey string) (rc i
 }
 
 // PutObject puts the specified bytes into the configured GCS bucket at the provided key
-func (s *GCSObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+func (s *GCSObjectClient) PutObject(ctx context.Context, objectKey string, object io.Reader) error {
 	writer := s.defaultBucket.Object(objectKey).NewWriter(ctx)
 	// Default GCSChunkSize is 8M and for each call, 8M is allocated xD
 	// By setting it to 0, we just upload the object in a single a request

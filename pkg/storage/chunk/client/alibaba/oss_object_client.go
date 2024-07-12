@@ -106,18 +106,16 @@ func (s *OssObjectClient) GetObject(ctx context.Context, objectKey string) (io.R
 		return nil, 0, err
 	}
 	return resp.Response.Body, int64(size), err
-
 }
 
 // PutObject puts the specified bytes into the configured OSS bucket at the provided key
-func (s *OssObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+func (s *OssObjectClient) PutObject(ctx context.Context, objectKey string, object io.Reader) error {
 	return instrument.CollectedRequest(ctx, "OSS.PutObject", ossRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		if err := s.defaultBucket.PutObject(objectKey, object); err != nil {
 			return errors.Wrap(err, "failed to put oss object")
 		}
 		return nil
 	})
-
 }
 
 // List implements chunk.ObjectClient.
