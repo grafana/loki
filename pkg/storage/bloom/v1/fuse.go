@@ -299,15 +299,24 @@ func (fq *FusedQuerier) runSeries(schema Schema, series *SeriesWithOffsets, reqs
 
 		// Test each bloom individually
 		bloom := fq.bq.blooms.At()
-		for j, req := range reqs {
-			// TODO(owen-d): this is a stopgap to avoid filtering broken blooms until we find their cause.
-			// In the case we don't have any data in the bloom, don't filter any chunks.
-			if bloom.ScalableBloomFilter.Count() == 0 {
+
+		// TODO(owen-d): this is a stopgap to avoid filtering broken blooms until we find their cause.
+		// In the case we don't have any data in the bloom, don't filter any chunks.
+		if bloom.ScalableBloomFilter.Count() == 0 {
+			level.Warn(fq.logger).Log(
+				"Found bloom with no data",
+				"offset_page", offset.Page,
+				"offset_bytes", offset.ByteOffset,
+			)
+
+			for j := range reqs {
 				for k := range inputs[j].InBlooms {
 					inputs[j].found[k] = true
 				}
 			}
+		}
 
+		for j, req := range reqs {
 			// shortcut: series level removal
 			// we can skip testing chunk keys individually if the bloom doesn't match
 			// the query.
