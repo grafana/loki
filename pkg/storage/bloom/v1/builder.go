@@ -94,8 +94,9 @@ type PageWriter struct {
 }
 
 func NewPageWriter(targetSize int) PageWriter {
+	enc := encoding.EncWith(make([]byte, 0, targetSize))
 	return PageWriter{
-		enc:        &encoding.Encbuf{},
+		enc:        &enc,
 		targetSize: targetSize,
 	}
 }
@@ -128,7 +129,7 @@ func (w *PageWriter) writePage(writer io.Writer, pool chunkenc.WriterPool, crc32
 	w.enc.PutBE64(uint64(w.n))
 	decompressedLen := w.enc.Len()
 
-	buf := &bytes.Buffer{}
+	buf := bytes.NewBuffer(make([]byte, 0, w.enc.Len()))
 	compressor := pool.GetWriter(buf)
 	defer pool.PutWriter(compressor)
 
