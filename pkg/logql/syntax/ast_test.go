@@ -1080,7 +1080,7 @@ func TestGroupingString(t *testing.T) {
 func TestCombineFilters(t *testing.T) {
 	in := []*LineFilterExpr{
 		{LineFilter: LineFilter{Ty: log.LineMatchEqual, Match: "test1"}},
-		{LineFilter: LineFilter{Ty: log.LineMatchEqual, Match: "tes2"}},
+		{LineFilter: LineFilter{Ty: log.LineMatchEqual, Match: "test2"}},
 	}
 
 	var combineFilter StageExpr
