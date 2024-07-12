@@ -304,7 +304,7 @@ func (fq *FusedQuerier) runSeries(schema Schema, series *SeriesWithOffsets, reqs
 		// In the case we don't have any data in the bloom, don't filter any chunks.
 		if bloom.ScalableBloomFilter.Count() == 0 {
 			level.Warn(fq.logger).Log(
-				"Found bloom with no data",
+				"msg", "Found bloom with no data",
 				"offset_page", offset.Page,
 				"offset_bytes", offset.ByteOffset,
 			)
