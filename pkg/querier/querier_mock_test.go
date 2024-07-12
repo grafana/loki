@@ -7,8 +7,9 @@ import (
 	"math"
 	"time"
 
-	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/logql/log"
+
+	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 
@@ -564,7 +565,7 @@ func mockLogfmtStream(from int, quantity int) logproto.Stream {
 	return mockLogfmtStreamWithLabels(from, quantity, `{type="test"}`)
 }
 
-func mockLogfmtStreamWithLabels(from int, quantity int, labels string) logproto.Stream {
+func mockLogfmtStreamWithLabels(_ int, quantity int, labels string) logproto.Stream {
 	entries := make([]logproto.Entry, 0, quantity)
 
 	// used for detected fields queries which are always BACKWARD
