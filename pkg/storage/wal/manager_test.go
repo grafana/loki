@@ -283,7 +283,7 @@ func TestManager_Put(t *testing.T) {
 	}, NewMetrics(nil))
 	require.NoError(t, err)
 
-	// There should be 10 available and 0 pending segments.
+	// There should be 1 available and 0 pending segments.
 	require.Equal(t, 1, m.available.Len())
 	require.Equal(t, 0, m.pending.Len())
 
