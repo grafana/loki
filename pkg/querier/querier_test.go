@@ -1718,11 +1718,11 @@ func TestQuerier_DetectedFields(t *testing.T) {
 	t.Run("returns detected fields from queried logs", func(t *testing.T) {
 		store := newStoreMock()
 		store.On("SelectLogs", mock.Anything, mock.Anything).
-			Return(mockLogfmtStreamIterator(1, 2), nil)
+			Return(mockLogfmtStreamIterator(1, 5), nil)
 
 		queryClient := newQueryClientMock()
 		queryClient.On("Recv").
-			Return(mockQueryResponse([]logproto.Stream{mockLogfmtStream(1, 2)}), nil)
+			Return(mockQueryResponse([]logproto.Stream{mockLogfmtStream(1, 5)}), nil)
 
 		ingesterClient := newQuerierClientMock()
 		ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).
@@ -1741,8 +1741,18 @@ func TestQuerier_DetectedFields(t *testing.T) {
 		require.NoError(t, err)
 
 		detectedFields := resp.Fields
-		assert.Len(t, detectedFields, 3)
-		expectedCardinality := map[string]uint64{"message": 2, "count": 2, "fake": 1}
+		// log lines come from querier_mock_test.go
+		// message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t
+		assert.Len(t, detectedFields, 7)
+		expectedCardinality := map[string]uint64{
+			"message":  5,
+			"count":    5,
+			"fake":     1,
+			"bytes":    5,
+			"duration": 5,
+			"percent":  5,
+			"even":     2,
+		}
 		for _, d := range detectedFields {
 			card := expectedCardinality[d.Label]
 			assert.Equal(t, card, d.Cardinality, "Expected cardinality mismatch for: %s", d.Label)
