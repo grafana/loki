@@ -261,6 +261,7 @@ func TestManager_NexPendingMaxAge(t *testing.T) {
 
 	// The segment that was just appended to has neither reached the maximum
 	// age nor maximum size to be flushed.
+	m.doPeriodicTasks()
 	it := m.NextPending()
 	require.Nil(t, it)
 	require.Equal(t, 1, m.available.Len())
@@ -269,6 +270,7 @@ func TestManager_NexPendingMaxAge(t *testing.T) {
 	// Wait 100ms. The segment that was just appended to should have reached
 	// the maximum age.
 	time.Sleep(100 * time.Millisecond)
+	m.doPeriodicTasks()
 	it = m.NextPending()
 	require.NotNil(t, it)
 	require.Equal(t, 0, m.available.Len())

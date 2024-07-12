@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"math/rand"
 	"net/http"
 	"os"
 	"path"
@@ -71,7 +70,6 @@ type Config struct {
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the ingester will operate and where it will register for discovery."`
 
 	ConcurrentFlushes   int               `yaml:"concurrent_flushes"`
-	FlushCheckPeriod    time.Duration     `yaml:"flush_check_period"`
 	FlushOpBackoff      backoff.Config    `yaml:"flush_op_backoff"`
 	FlushOpTimeout      time.Duration     `yaml:"flush_op_timeout"`
 	RetainPeriod        time.Duration     `yaml:"chunk_retain_period"`
@@ -110,7 +108,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ClientConfig.RegisterFlags(f)
 
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester-rf1.concurrent-flushes", 32, "How many flushes can happen concurrently from each stream.")
-	f.DurationVar(&cfg.FlushCheckPeriod, "ingester-rf1.flush-check-period", 500*time.Millisecond, "How often should the ingester see if there are any blocks to flush. The first flush check is delayed by a random time up to 0.8x the flush check period. Additionally, there is +/- 1% jitter added to the interval.")
 	f.DurationVar(&cfg.FlushOpBackoff.MinBackoff, "ingester-rf1.flush-op-backoff-min-period", 100*time.Millisecond, "Minimum backoff period when a flush fails. Each concurrent flush has its own backoff, see `ingester.concurrent-flushes`.")
 	f.DurationVar(&cfg.FlushOpBackoff.MaxBackoff, "ingester-rf1.flush-op-backoff-max-period", time.Minute, "Maximum backoff period when a flush fails. Each concurrent flush has its own backoff, see `ingester.concurrent-flushes`.")
 	f.IntVar(&cfg.FlushOpBackoff.MaxRetries, "ingester-rf1.flush-op-backoff-retries", 10, "Maximum retries for failed flushes.")
@@ -396,6 +393,8 @@ func (i *Ingester) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (i *Ingester) starting(ctx context.Context) error {
 	i.InitFlushQueues()
 
+	go i.wal.Run()
+
 	// pass new context to lifecycler, so that it doesn't stop automatically when Ingester's service context is done
 	err := i.lifecycler.StartAsync(context.Background())
 	if err != nil {
@@ -462,6 +461,8 @@ func (i *Ingester) stopping(_ error) error {
 	i.stopIncomingRequests()
 	var errs util.MultiError
 
+	i.wal.Stop()
+
 	//if i.flushOnShutdownSwitch.Get() {
 	//	i.lifecycler.SetFlushOnShutdown(true)
 	//}
@@ -512,49 +513,10 @@ func (i *Ingester) removeShutdownMarkerFile() {
 }
 
 func (i *Ingester) loop() {
-	defer i.loopDone.Done()
-
-	// Delay the first flush operation by up to 0.8x the flush time period.
-	// This will ensure that multiple ingesters started at the same time do not
-	// flush at the same time. Flushing at the same time can cause concurrently
-	// writing the same chunk to object storage, which in AWS S3 leads to being
-	// rate limited.
-	jitter := time.Duration(rand.Int63n(int64(float64(i.cfg.FlushCheckPeriod.Nanoseconds()) * 0.8)))
-	initialDelay := time.NewTimer(jitter)
-	defer initialDelay.Stop()
-
-	level.Info(i.logger).Log("msg", "sleeping for initial delay before starting periodic flushing", "delay", jitter)
-
-	select {
-	case <-initialDelay.C:
-		// do nothing and continue with flush loop
-	case <-i.loopQuit:
-		// ingester stopped while waiting for initial delay
-		return
-	}
-
-	// Add +/- 20% of flush interval as jitter.
-	// The default flush check period is 30s so max jitter will be 6s.
-	j := i.cfg.FlushCheckPeriod / 5
-	flushTicker := util.NewTickerWithJitter(i.cfg.FlushCheckPeriod, j)
-	defer flushTicker.Stop()
-
-	for {
-		select {
-		case <-flushTicker.C:
-			i.doFlushTick()
-		case <-i.loopQuit:
-			return
-		}
-	}
-}
-
-func (i *Ingester) doFlushTick() {
-	for {
-		// Keep adding ops to the queue until there are no more.
+	for range i.wal.Iter() {
 		it := i.wal.NextPending()
 		if it == nil {
-			break
+			continue
 		}
 		i.numOps++
 		flushQueueIndex := i.numOps % int64(i.cfg.ConcurrentFlushes)
