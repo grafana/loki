@@ -60,7 +60,7 @@ func (s *GCSThanosObjectClient) ObjectExists(ctx context.Context, objectKey stri
 }
 
 // PutObject puts the specified bytes into the configured GCS bucket at the provided key
-func (s *GCSThanosObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+func (s *GCSThanosObjectClient) PutObject(ctx context.Context, objectKey string, object io.Reader) error {
 	return s.client.Upload(ctx, objectKey, object)
 }
 
