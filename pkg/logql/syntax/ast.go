@@ -185,16 +185,22 @@ func (m MultiStageExpr) reorderStages() []StageExpr {
 func combineFilters(in []*LineFilterExpr) StageExpr {
 	result := in[len(in)-1]
 	for i := len(in) - 2; i >= 0; i-- {
-		leafNode(result).Left = in[i]
+		leaf := leafNode(result, in[i])
+		if leaf != nil {
+			leaf = in[i]
+		}
 	}
 
 	return result
 }
 
-func leafNode(in *LineFilterExpr) *LineFilterExpr {
+func leafNode(in *LineFilterExpr, child *LineFilterExpr) *LineFilterExpr {
 	current := in
 	//nolint:revive
 	for ; current.Left != nil; current = current.Left {
+		if current == child {
+			return nil
+		}
 	}
 	return current
 }
