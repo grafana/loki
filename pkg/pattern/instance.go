@@ -39,9 +39,10 @@ type instance struct {
 	metrics        *ingesterMetrics
 	chunkMetrics   *metric.ChunkMetrics
 	aggregationCfg metric.AggregationConfig
+	drainCfg       *drain.Config
 }
 
-func newInstance(instanceID string, logger log.Logger, metrics *ingesterMetrics, chunkMetrics *metric.ChunkMetrics, aggCfg metric.AggregationConfig) (*instance, error) {
+func newInstance(instanceID string, logger log.Logger, metrics *ingesterMetrics, chunkMetrics *metric.ChunkMetrics, drainCfg *drain.Config, aggCfg metric.AggregationConfig) (*instance, error) {
 	index, err := index.NewBitPrefixWithShards(indexShards)
 	if err != nil {
 		return nil, err
@@ -55,6 +56,7 @@ func newInstance(instanceID string, logger log.Logger, metrics *ingesterMetrics,
 		metrics:        metrics,
 		chunkMetrics:   chunkMetrics,
 		aggregationCfg: aggCfg,
+		drainCfg:       drainCfg,
 	}
 	i.mapper = ingester.NewFPMapper(i.getLabelsFromFingerprint)
 	return i, nil
@@ -213,7 +215,7 @@ func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream
 	fp := i.getHashForLabels(labels)
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
 	firstEntryLine := pushReqStream.Entries[0].Line
-	s, err := newStream(fp, sortedLabels, i.metrics, i.chunkMetrics, i.aggregationCfg, i.logger, drain.DetectLogFormat(firstEntryLine), i.instanceID)
+	s, err := newStream(fp, sortedLabels, i.metrics, i.chunkMetrics, i.aggregationCfg, i.logger, drain.DetectLogFormat(firstEntryLine), i.instanceID, i.drainCfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}

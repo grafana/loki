@@ -36,13 +36,14 @@ import (
 )
 
 type Config struct {
-	maxNodeDepth    int
-	LogClusterDepth int
-	SimTh           float64
-	MaxChildren     int
-	ExtraDelimiters []string
-	MaxClusters     int
-	ParamString     string
+	maxNodeDepth     int
+	LogClusterDepth  int
+	SimTh            float64
+	MaxChildren      int
+	ExtraDelimiters  []string
+	MaxClusters      int
+	ParamString      string
+	MaxEvictionRatio float64
 }
 
 func createLogClusterCache(maxSize int, onEvict func(int, *LogCluster)) *LogClusterCache {
@@ -60,27 +61,11 @@ type LogClusterCache struct {
 }
 
 func (c *LogClusterCache) Values() []*LogCluster {
-	values := make([]*LogCluster, 0)
-	for _, key := range c.cache.Keys() {
-		if value, ok := c.cache.Peek(key); ok {
-			values = append(values, value)
-		}
-	}
-	return values
+	return c.cache.Values()
 }
 
 func (c *LogClusterCache) Set(key int, cluster *LogCluster) {
 	c.cache.Add(key, cluster)
-}
-
-func (c *LogClusterCache) Iterate(fn func(*LogCluster) bool) {
-	for _, key := range c.cache.Keys() {
-		if value, ok := c.cache.Peek(key); ok {
-			if !fn(value) {
-				return
-			}
-		}
-	}
 }
 
 func (c *LogClusterCache) Get(key int) *LogCluster {
@@ -140,10 +125,11 @@ func DefaultConfig() *Config {
 		// Both SimTh and MaxClusterDepth impact branching factor: the greater
 		// MaxClusterDepth and SimTh, the less the chance that there will be
 		// "similar" clusters, but the greater the footprint.
-		SimTh:       0.3,
-		MaxChildren: 15,
-		ParamString: `<_>`,
-		MaxClusters: 300,
+		SimTh:            0.3,
+		MaxChildren:      15,
+		ParamString:      `<_>`,
+		MaxClusters:      300,
+		MaxEvictionRatio: 0.25,
 	}
 }
 
@@ -152,10 +138,17 @@ func New(config *Config, format string, metrics *Metrics) *Drain {
 		panic("depth argument must be at least 3")
 	}
 	config.maxNodeDepth = config.LogClusterDepth - 2
-	var evictFn func(int, *LogCluster)
-	if metrics != nil {
-		evictFn = func(int, *LogCluster) { metrics.PatternsEvictedTotal.Inc() }
+
+	d := &Drain{
+		config:               config,
+		rootNode:             createNode(),
+		metrics:              metrics,
+		maxAllowedLineLength: 3000,
+		format:               format,
 	}
+
+	limiter := newLimiter(config.MaxEvictionRatio)
+
 	var tokenizer LineTokenizer
 	switch format {
 	case FormatJSON:
@@ -165,16 +158,20 @@ func New(config *Config, format string, metrics *Metrics) *Drain {
 	default:
 		tokenizer = newPunctuationTokenizer()
 	}
-
-	d := &Drain{
-		config:               config,
-		rootNode:             createNode(),
-		idToCluster:          createLogClusterCache(config.MaxClusters, evictFn),
-		metrics:              metrics,
-		tokenizer:            tokenizer,
-		maxAllowedLineLength: 3000,
-		format:               format,
-	}
+	d.idToCluster = createLogClusterCache(config.MaxClusters, func(int, *LogCluster) {
+		if metrics != nil {
+			if d.pruning {
+				metrics.PatternsPrunedTotal.Inc()
+			} else {
+				metrics.PatternsEvictedTotal.Inc()
+			}
+		}
+		if !d.pruning {
+			limiter.Evict()
+		}
+	})
+	d.tokenizer = tokenizer
+	d.limiter = limiter
 	return d
 }
 
@@ -189,6 +186,8 @@ type Drain struct {
 	format               string
 	tokens               []string
 	state                interface{}
+	limiter              *limiter
+	pruning              bool
 }
 
 func (d *Drain) Clusters() []*LogCluster {
@@ -200,6 +199,9 @@ func (d *Drain) TrainTokens(tokens []string, stringer func([]string) string, ts 
 }
 
 func (d *Drain) Train(content string, ts int64) *LogCluster {
+	if !d.limiter.Allow() {
+		return nil
+	}
 	if len(content) > d.maxAllowedLineLength {
 		return nil
 	}
@@ -325,7 +327,9 @@ func (d *Drain) pruneTree(node *Node) int {
 }
 
 func (d *Drain) Delete(cluster *LogCluster) {
+	d.pruning = true
 	d.idToCluster.cache.Remove(cluster.id)
+	d.pruning = false
 }
 
 func (d *Drain) treeSearch(rootNode *Node, tokens []string, simTh float64, includeParams bool) *LogCluster {

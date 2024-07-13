@@ -583,7 +583,17 @@ pattern_ingester:
   # first flush check is delayed by a random time up to 0.8x the flush check
   # period. Additionally, there is +/- 1% jitter added to the interval.
   # CLI flag: -pattern-ingester.flush-check-period
-  [flush_check_period: <duration> | default = 30s]
+  [flush_check_period: <duration> | default = 1m]
+
+  # The maximum number of detected pattern clusters that can be created by
+  # streams.
+  # CLI flag: -pattern-ingester.max-clusters
+  [max_clusters: <int> | default = 300]
+
+  # The maximum eviction ratio of patterns per stream. Once that ratio is
+  # reached, the stream will throttled pattern detection.
+  # CLI flag: -pattern-ingester.max-eviction-ratio
+  [max_eviction_ratio: <float> | default = 0.25]
 
   # Configures the metric aggregation and storage behavior of the pattern
   # ingester.
@@ -595,6 +605,10 @@ pattern_ingester:
     # Whether to log push observations.
     # CLI flag: -pattern-ingester.metric-aggregation.log-push-observations
     [log_push_observations: <boolean> | default = false]
+
+    # How often to downsample metrics from raw push observations.
+    # CLI flag: -pattern-ingester.downsample-period
+    [downsample_period: <duration> | default = 10s]
 
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
@@ -634,6 +648,11 @@ bloom_build:
     # Maximum number of tasks to queue per tenant.
     # CLI flag: -bloom-build.planner.max-tasks-per-tenant
     [max_queued_tasks_per_tenant: <int> | default = 30000]
+
+    retention:
+      # Enable bloom retention.
+      # CLI flag: -bloom-build.planner.retention.enabled
+      [enabled: <boolean> | default = false]
 
   builder:
     # The grpc_client block configures the gRPC client used to communicate
