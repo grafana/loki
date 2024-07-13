@@ -3,7 +3,6 @@ package syntax
 import (
 	"fmt"
 	"math"
-	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -199,7 +198,7 @@ func leafNode(in *LineFilterExpr, child *LineFilterExpr) *LineFilterExpr {
 	current := in
 	//nolint:revive
 	for ; current.Left != nil; current = current.Left {
-		if reflect.DeepEqual(current.Left, child) {
+		if current == child || current.Left == child {
 			return nil
 		}
 	}
