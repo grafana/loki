@@ -54,6 +54,10 @@ spec:
       securityContext:
         {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.queryScheduler.terminationGracePeriodSeconds }}
+      {{- with .Values.queryScheduler.initContainers }}
+      initContainers:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: query-scheduler
           image: {{ include "loki.image" . }}

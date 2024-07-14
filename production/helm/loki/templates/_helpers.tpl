@@ -222,6 +222,9 @@ s3:
   {{- with .endpoint }}
   endpoint: {{ . }}
   {{- end }}
+  {{- with .stsEndpoint }}
+  sts_endpoint: {{ . }}
+  {{- end }}
   {{- with .region }}
   region: {{ . }}
   {{- end}}

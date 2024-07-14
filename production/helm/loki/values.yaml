@@ -320,6 +320,7 @@ loki:
     s3:
       s3: null
       endpoint: null
+      sts_endpoint: null
       region: null
       secretAccessKey: null
       accessKeyId: null

@@ -13,6 +13,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 6.7.0
+
+- [ENHANCEMENT] Add support for STS Endpoint and init containers for query-frontend, query-scheduler and distributor
+
 ## 6.6.6
 
 - [BUGFIX] Fix HPA ingester typo
