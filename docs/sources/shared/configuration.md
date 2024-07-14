@@ -1049,6 +1049,11 @@ dynamodb:
 # CLI flag: -s3.endpoint
 [endpoint: <string> | default = ""]
 
+# Accessing S3 resources using temporary, secure credentials provided by AWS
+# Security Token Service.
+# CLI flag: -s3.sts-endpoint
+[sts_endpoint: <string> | default = ""]
+
 # AWS region to use.
 # CLI flag: -s3.region
 [region: <string> | default = ""]
@@ -4964,6 +4969,11 @@ The `s3_storage_config` block configures the connection to Amazon S3 object stor
 # S3 Endpoint to connect to.
 # CLI flag: -<prefix>.storage.s3.endpoint
 [endpoint: <string> | default = ""]
+
+# Accessing S3 resources using temporary, secure credentials provided by AWS
+# Security Token Service.
+# CLI flag: -<prefix>.storage.s3.sts-endpoint
+[sts_endpoint: <string> | default = ""]
 
 # AWS region to use.
 # CLI flag: -<prefix>.storage.s3.region

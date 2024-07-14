@@ -42,6 +42,7 @@ func newS3Config(cfg Config) (s3.Config, error) {
 		Bucket:          cfg.BucketName,
 		Endpoint:        cfg.Endpoint,
 		Region:          cfg.Region,
+		STSEndpoint:     cfg.STSEndpoint,
 		AccessKey:       cfg.AccessKeyID,
 		SecretKey:       cfg.SecretAccessKey.String(),
 		SessionToken:    cfg.SessionToken.String(),
