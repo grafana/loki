@@ -1118,9 +1118,6 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 
 	detectedFields := parseDetectedFields(ctx, req.FieldLimit, streams)
 
-	//TODO: detected field needs to contain the sketch
-	// make sure response to frontend is GRPC
-	//only want cardinality in JSON
 	fields := make([]*logproto.DetectedField, len(detectedFields))
 	fieldCount := 0
 	for k, v := range detectedFields {
@@ -1141,7 +1138,6 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 		fieldCount++
 	}
 
-	//TODO: detected fields response needs to include the sketch
 	return &logproto.DetectedFieldsResponse{
 		Fields:     fields,
 		FieldLimit: req.GetFieldLimit(),
@@ -1218,7 +1214,6 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 	fieldCount := uint32(0)
 
 	for _, stream := range streams {
-		detectType := true
 		level.Debug(spanlogger.FromContext(ctx)).Log(
 			"detected_fields", "true",
 			"msg", fmt.Sprintf("looking for detected fields in stream %d with %d lines", stream.Hash, len(stream.Entries)))
@@ -1241,6 +1236,7 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 					df.parsers = append(df.parsers, *parser)
 				}
 
+				detectType := true
 				for _, v := range vals {
 					parsedFields := detectedFields[k]
 					if detectType {
