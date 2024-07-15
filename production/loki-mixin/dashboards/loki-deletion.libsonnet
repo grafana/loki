@@ -2,10 +2,7 @@ local g = import 'grafana-builder/grafana.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
-  local compactor_matcher = if $._config.meta_monitoring.enabled
-  then 'pod=~"(compactor|%s-backend.*|loki-single-binary)"' % $._config.ssd.pod_prefix_matcher
-  else if $._config.ssd.enabled then 'container="loki", pod=~"%s-backend.*"' % $._config.ssd.pod_prefix_matcher
-  else 'container="compactor"',
+  local compactor_matcher = 'pod=~"(compactor|%s-backend.*|loki-single-binary)"' % $._config.ssd.pod_prefix_matcher,
   grafanaDashboards+::
     {
       'loki-deletion.json':
