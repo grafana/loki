@@ -155,7 +155,7 @@ func (i *Ingester) flushSegment(ctx context.Context, ch *wal.SegmentWriter) erro
 	}()
 
 	// TODO: observe flush size, not just segment size
-	i.metrics.segmentSize.Observe(float64(ch.InputSize()) / 1024 / 1024)
+	i.metrics.segmentSize.Observe(float64(ch.InputSize()))
 
 	i.metrics.flushesTotal.Add(1)
 	if err := i.store.PutObject(ctx, fmt.Sprintf("loki-v2/wal/anon/"+newUlid.String()), reader); err != nil {
