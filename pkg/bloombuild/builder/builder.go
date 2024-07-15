@@ -356,7 +356,7 @@ func (b *Builder) processTask(
 			seriesItrWithCounter,
 			b.chunkLoader,
 			blocksIter,
-			b.rwFn,
+			b.writerReaderFunc,
 			nil, // TODO(salvacorts): Pass reporter or remove when we address tracking
 			b.bloomStore.BloomMetrics(),
 			logger,
@@ -483,7 +483,7 @@ func (b *Builder) loadWorkForGap(
 	return seriesItr, blocksIter, nil
 }
 
-func (b *Builder) rwFn() (v1.BlockWriter, v1.BlockReader) {
+func (b *Builder) writerReaderFunc() (v1.BlockWriter, v1.BlockReader) {
 	dir, err := os.MkdirTemp("", "bloom-block-")
 	if err != nil {
 		panic(err)

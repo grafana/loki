@@ -49,7 +49,7 @@ func NewSimpleBloomController(
 	}
 }
 
-func (s *SimpleBloomController) rwFn() (v1.BlockWriter, v1.BlockReader) {
+func (s *SimpleBloomController) writerReaderFunc() (v1.BlockWriter, v1.BlockReader) {
 	dir, err := os.MkdirTemp("", "bloom-block-")
 	if err != nil {
 		panic(err)
@@ -410,7 +410,7 @@ func (s *SimpleBloomController) buildGaps(
 				seriesItrWithCounter,
 				s.chunkLoader,
 				blocksIter,
-				s.rwFn,
+				s.writerReaderFunc,
 				reporter,
 				s.metrics,
 				logger,

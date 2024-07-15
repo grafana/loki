@@ -122,15 +122,26 @@ func (r *DirectoryBlockReader) Blooms() (io.ReadSeeker, error) {
 }
 
 func (r *DirectoryBlockReader) TarEntries() (iter.Iterator[TarEntry], error) {
+	var err error
 	if !r.initialized {
-		if err := r.Init(); err != nil {
+		if err = r.Init(); err != nil {
 			return nil, err
 		}
+	}
+
+	_, err = r.index.Seek(0, io.SeekStart)
+	if err != nil {
+		return nil, errors.Wrap(err, "error seeking series file")
 	}
 
 	idxInfo, err := r.index.Stat()
 	if err != nil {
 		return nil, errors.Wrap(err, "error stat'ing series file")
+	}
+
+	_, err = r.blooms.Seek(0, io.SeekStart)
+	if err != nil {
+		return nil, errors.Wrap(err, "error seeking bloom file")
 	}
 
 	bloomInfo, err := r.blooms.Stat()

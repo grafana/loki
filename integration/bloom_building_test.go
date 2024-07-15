@@ -222,7 +222,6 @@ func checkSeriesInBlooms(
 ) {
 	for _, lbs := range series {
 		seriesFP := model.Fingerprint(lbs.Hash())
-		t.Log(seriesFP)
 
 		metas, err := bloomStore.FetchMetas(context.Background(), bloomshipper.MetaSearchParams{
 			TenantID: tenantID,
