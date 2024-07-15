@@ -145,20 +145,18 @@ func (i *Ingester) flushOp(l log.Logger, op *flushOp) error {
 // If the flush isn't successful, the operation for this userID is requeued allowing this and all other unflushed
 // segments to have another opportunity to be flushed.
 func (i *Ingester) flushSegment(ctx context.Context, ch *wal.SegmentWriter) error {
-	reader := ch.Reader()
-	defer runutil.CloseWithLogOnErr(util_log.Logger, reader, "flushSegment")
-	newUlid := ulid.MustNew(ulid.Timestamp(time.Now()), rand.Reader)
+	id := ulid.MustNew(ulid.Timestamp(time.Now()), rand.Reader)
+	r := ch.Reader()
 
 	start := time.Now()
 	defer func() {
+		runutil.CloseWithLogOnErr(util_log.Logger, r, "flushSegment")
 		i.metrics.flushDuration.Observe(time.Since(start).Seconds())
+		ch.Observe()
 	}()
 
-	// TODO: observe flush size, not just segment size
-	i.metrics.segmentSize.Observe(float64(ch.InputSize()))
-
 	i.metrics.flushesTotal.Add(1)
-	if err := i.store.PutObject(ctx, fmt.Sprintf("loki-v2/wal/anon/"+newUlid.String()), reader); err != nil {
+	if err := i.store.PutObject(ctx, fmt.Sprintf("loki-v2/wal/anon/"+id.String()), r); err != nil {
 		i.metrics.flushFailuresTotal.Inc()
 		return fmt.Errorf("store put chunk: %w", err)
 	}

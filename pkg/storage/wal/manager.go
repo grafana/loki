@@ -6,8 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -83,29 +81,6 @@ type Config struct {
 	MaxSegmentSize int64
 }
 
-type Metrics struct {
-	NumAvailable prometheus.Gauge
-	NumPending   prometheus.Gauge
-	NumFlushing  prometheus.Gauge
-}
-
-func NewMetrics(r prometheus.Registerer) *Metrics {
-	return &Metrics{
-		NumAvailable: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-			Name: "wal_segments_available",
-			Help: "The number of WAL segments accepting writes.",
-		}),
-		NumPending: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-			Name: "wal_segments_pending",
-			Help: "The number of WAL segments waiting to be flushed.",
-		}),
-		NumFlushing: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-			Name: "wal_segments_flushing",
-			Help: "The number of WAL segments being flushed.",
-		}),
-	}
-}
-
 // Manager buffers segments in memory, and keeps track of which segments are
 // available and which are waiting to be flushed. The maximum number of
 // segments that can be buffered in memory, and their maximum age and maximum
@@ -123,7 +98,7 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 // and avoid congestion collapse due to excessive timeouts and retries.
 type Manager struct {
 	cfg     Config
-	metrics *Metrics
+	metrics *ManagerMetrics
 
 	// available is a list of segments that are available and accepting data.
 	// All segments other than the segment at the front of the list are empty,
@@ -163,7 +138,7 @@ type PendingItem struct {
 func NewManager(cfg Config, metrics *Metrics) (*Manager, error) {
 	m := Manager{
 		cfg:       cfg,
-		metrics:   metrics,
+		metrics:   metrics.ManagerMetrics,
 		available: list.New(),
 		pending:   list.New(),
 		shutdown:  make(chan struct{}),
@@ -171,7 +146,7 @@ func NewManager(cfg Config, metrics *Metrics) (*Manager, error) {
 	m.metrics.NumPending.Set(0)
 	m.metrics.NumFlushing.Set(0)
 	for i := int64(0); i < cfg.MaxSegments; i++ {
-		w, err := NewWalSegmentWriter()
+		w, err := NewWalSegmentWriter(metrics.SegmentMetrics)
 		if err != nil {
 			return nil, err
 		}
