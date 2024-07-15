@@ -16,6 +16,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.6.6
 
 - [ENHANCEMENT] Make access modes for persistence on writes editable
+- [BUGFIX] Fix HPA ingester typo
 
 ## 6.6.5
 

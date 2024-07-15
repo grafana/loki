@@ -606,6 +606,10 @@ pattern_ingester:
     # CLI flag: -pattern-ingester.metric-aggregation.log-push-observations
     [log_push_observations: <boolean> | default = false]
 
+    # How often to downsample metrics from raw push observations.
+    # CLI flag: -pattern-ingester.downsample-period
+    [downsample_period: <duration> | default = 10s]
+
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
 # object store.
@@ -644,6 +648,11 @@ bloom_build:
     # Maximum number of tasks to queue per tenant.
     # CLI flag: -bloom-build.planner.max-tasks-per-tenant
     [max_queued_tasks_per_tenant: <int> | default = 30000]
+
+    retention:
+      # Enable bloom retention.
+      # CLI flag: -bloom-build.planner.retention.enabled
+      [enabled: <boolean> | default = false]
 
   builder:
     # The grpc_client block configures the gRPC client used to communicate
