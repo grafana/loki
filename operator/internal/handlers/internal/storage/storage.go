@@ -111,21 +111,14 @@ func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg
 }
 
 func allowStructuredMetadata(schemas []lokiv1.ObjectStorageSchema, now time.Time) (bool, error) {
-	var allowed bool
-	for _, schema := range schemas {
-		if schema.Version == lokiv1.ObjectStorageSchemaV11 || schema.Version == lokiv1.ObjectStorageSchemaV12 {
-			continue
-		}
-
-		effectiveDate, err := schema.EffectiveDate.UTCTime()
-		if err != nil {
-			return false, err
-		}
-
-		if effectiveDate.Before(now) {
-			allowed = true
+	activeVersion := lokiv1.ObjectStorageSchemaV11
+	for _, s := range schemas {
+		time, _ := s.EffectiveDate.UTCTime()
+		if time.Before(now) {
+			activeVersion = s.Version
 		}
 	}
 
-	return allowed, nil
+	return activeVersion != lokiv1.ObjectStorageSchemaV11 &&
+		activeVersion != lokiv1.ObjectStorageSchemaV12, nil
 }
