@@ -45,8 +45,9 @@ func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg
 		}
 	}
 
+	now := time.Now().UTC()
 	storageSchemas, err := storage.BuildSchemaConfig(
-		time.Now().UTC(),
+		now,
 		stack.Spec.Storage,
 		stack.Status.Storage,
 	)
@@ -58,7 +59,7 @@ func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg
 		}
 	}
 
-	allowSM, err := allowStructuredMetadata(storageSchemas)
+	allowSM, err := allowStructuredMetadata(storageSchemas, now)
 	if err != nil {
 		return storage.Options{}, &status.DegradedError{
 			Message: fmt.Sprintf("Invalid object storage schema contents: %s", err),
@@ -109,9 +110,7 @@ func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg
 	return objStore, nil
 }
 
-func allowStructuredMetadata(schemas []lokiv1.ObjectStorageSchema) (bool, error) {
-	now := time.Now().UTC()
-
+func allowStructuredMetadata(schemas []lokiv1.ObjectStorageSchema, now time.Time) (bool, error) {
 	var allowed bool
 	for _, schema := range schemas {
 		if schema.Version == lokiv1.ObjectStorageSchemaV11 || schema.Version == lokiv1.ObjectStorageSchemaV12 {
