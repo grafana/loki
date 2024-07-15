@@ -170,7 +170,6 @@ func checkForTimestampMetric(t *testing.T, cliPlanner *client.Client, metricName
 
 func createBloomStore(t *testing.T, sharedPath string) *bloomshipper.BloomStore {
 	logger := log.NewNopLogger()
-	//logger := log.NewLogfmtLogger(os.Stdout)
 
 	schemaCfg := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
@@ -223,6 +222,7 @@ func checkSeriesInBlooms(
 ) {
 	for _, lbs := range series {
 		seriesFP := model.Fingerprint(lbs.Hash())
+		t.Log(seriesFP)
 
 		metas, err := bloomStore.FetchMetas(context.Background(), bloomshipper.MetaSearchParams{
 			TenantID: tenantID,

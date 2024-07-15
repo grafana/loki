@@ -1,9 +1,9 @@
 package builder
 
 import (
-	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -371,6 +371,7 @@ func (b *Builder) processTask(
 
 			built, err := bloomshipper.BlockFrom(tenant, task.Table.Addr(), blk)
 			if err != nil {
+				_ = blk.Reader().Cleanup()
 				level.Error(logger).Log("msg", "failed to build block", "err", err)
 				return nil, fmt.Errorf("failed to build block: %w", err)
 			}
@@ -381,10 +382,15 @@ func (b *Builder) processTask(
 				ctx,
 				built,
 			); err != nil {
+				_ = blk.Reader().Cleanup()
 				level.Error(logger).Log("msg", "failed to write block", "err", err)
 				return nil, fmt.Errorf("failed to write block: %w", err)
 			}
 			b.metrics.blocksCreated.Inc()
+
+			if err := blk.Reader().Cleanup(); err != nil {
+				level.Error(logger).Log("msg", "failed to cleanup block directory", "err", err)
+			}
 
 			totalGapKeyspace := gap.Bounds.Max - gap.Bounds.Min
 			progress := built.Bounds.Max - gap.Bounds.Min
@@ -477,9 +483,10 @@ func (b *Builder) loadWorkForGap(
 	return seriesItr, blocksIter, nil
 }
 
-// TODO(owen-d): pool, evaluate if memory-only is the best choice
 func (b *Builder) rwFn() (v1.BlockWriter, v1.BlockReader) {
-	indexBuf := bytes.NewBuffer(nil)
-	bloomsBuf := bytes.NewBuffer(nil)
-	return v1.NewMemoryBlockWriter(indexBuf, bloomsBuf), v1.NewByteReader(indexBuf, bloomsBuf)
+	dir, err := os.MkdirTemp("", "bloom-block-")
+	if err != nil {
+		panic(err)
+	}
+	return v1.NewDirectoryBlockWriter(dir), v1.NewDirectoryBlockReader(dir)
 }
