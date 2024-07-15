@@ -371,8 +371,10 @@ func (b *Builder) processTask(
 
 			built, err := bloomshipper.BlockFrom(tenant, task.Table.Addr(), blk)
 			if err != nil {
-				_ = blk.Reader().Cleanup()
 				level.Error(logger).Log("msg", "failed to build block", "err", err)
+				if err = blk.Reader().Cleanup(); err != nil {
+					level.Error(logger).Log("msg", "failed to cleanup block directory", "err", err)
+				}
 				return nil, fmt.Errorf("failed to build block: %w", err)
 			}
 
@@ -382,8 +384,10 @@ func (b *Builder) processTask(
 				ctx,
 				built,
 			); err != nil {
-				_ = blk.Reader().Cleanup()
 				level.Error(logger).Log("msg", "failed to write block", "err", err)
+				if err = blk.Reader().Cleanup(); err != nil {
+					level.Error(logger).Log("msg", "failed to cleanup block directory", "err", err)
+				}
 				return nil, fmt.Errorf("failed to write block: %w", err)
 			}
 			b.metrics.blocksCreated.Inc()
