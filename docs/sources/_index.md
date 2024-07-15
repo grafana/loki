@@ -41,8 +41,12 @@ cards:
 ## Overview
 
 Unlike other logging systems, Loki is built around the idea of only indexing metadata about your logs' labels (just like Prometheus labels).
-Log data itself is then compressed and stored in chunks in object stores such as Amazon Simple Storage Service (S3) or Google Cloud Storage (GCS), or even locally on the filesystem.  
+Log data itself is then compressed and stored in chunks in object stores such as Amazon Simple Storage Service (S3) or Google Cloud Storage (GCS), or even locally on the filesystem.
 
 ## Explore
 
 {{< card-grid key="cards" type="simple" >}}
+
+{{< admonition type="tip" >}}
+Check out our [new queryless experience for logs](https://grafana.com/docs/grafana-cloud/visualizations/simplified-exploration/logs/) currently in Public Preview.
+{{< /admonition >}}

@@ -3,14 +3,15 @@ title: Visualize log data
 menuTitle: Visualize
 description: Visualize your log data with Grafana
 aliases:
-   - ../getting-started/grafana/
-   - ../operations/grafana/
+  - ../getting-started/grafana/
+  - ../operations/grafana/
 weight: 725
 keywords:
-   - visualize
-   - grafana
-   - dashboards
+  - visualize
+  - grafana
+  - dashboards
 ---
+
 # Visualize log data
 
 Modern Grafana versions after 6.3 have built-in support for Grafana Loki and [LogQL](https://grafana.com/docs/loki/<LOKI_VERSION>/query/).
@@ -40,6 +41,10 @@ If you would like to see an example of this live, you can try [Grafana Play's Ex
 Read more about Grafana's Explore feature in the
 [Grafana documentation](http://docs.grafana.org/features/explore) and on how to
 search and filter for logs with Loki.
+
+## Using our new queryless experience
+
+To try our new app, head over to the [Explore Logs documentation (Public Preview)](https://grafana.com/docs/grafana-cloud/visualizations/simplified-exploration/logs/).
 
 ## Using Grafana Dashboards
 
