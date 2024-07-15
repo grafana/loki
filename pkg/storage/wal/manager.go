@@ -122,8 +122,8 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 // The WAL is full when all segments are waiting to be flushed or in the
 // process of being flushed. When the WAL is full, subsequent appends fail with
 // ErrFull. It is not permitted to append more data until another segment has
-// been flushed and returned to the available list. This allows the manager to
-// apply back-pressure to clients that may be timing out and retrying.
+// been flushed and returned to the available list. Callers should back off and
+// retry at a later time.
 type Manager struct {
 	cfg     Config
 	metrics *Metrics
