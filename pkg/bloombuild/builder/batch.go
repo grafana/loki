@@ -303,6 +303,12 @@ func (i *blockLoadingIter) loadNext() bool {
 // Next implements v1.Iterator.
 func (i *blockLoadingIter) Next() bool {
 	i.init()
+
+	if i.ctx.Err() != nil {
+		i.err = i.ctx.Err()
+		return false
+	}
+
 	return i.iter.Next() || i.loadNext()
 }
 
