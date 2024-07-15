@@ -59,17 +59,8 @@ func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg
 		}
 	}
 
-	allowSM, err := allowStructuredMetadata(storageSchemas, now)
-	if err != nil {
-		return storage.Options{}, &status.DegradedError{
-			Message: fmt.Sprintf("Invalid object storage schema contents: %s", err),
-			Reason:  lokiv1.ReasonInvalidObjectStorageSchema,
-			Requeue: false,
-		}
-	}
-
 	objStore.Schemas = storageSchemas
-	objStore.AllowStructuredMetadata = allowSM
+	objStore.AllowStructuredMetadata = allowStructuredMetadata(storageSchemas, now)
 
 	if stack.Spec.Storage.TLS == nil {
 		return objStore, nil
@@ -110,7 +101,7 @@ func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg
 	return objStore, nil
 }
 
-func allowStructuredMetadata(schemas []lokiv1.ObjectStorageSchema, now time.Time) (bool, error) {
+func allowStructuredMetadata(schemas []lokiv1.ObjectStorageSchema, now time.Time) bool {
 	activeVersion := lokiv1.ObjectStorageSchemaV11
 	for _, s := range schemas {
 		time, _ := s.EffectiveDate.UTCTime()
@@ -120,5 +111,5 @@ func allowStructuredMetadata(schemas []lokiv1.ObjectStorageSchema, now time.Time
 	}
 
 	return activeVersion != lokiv1.ObjectStorageSchemaV11 &&
-		activeVersion != lokiv1.ObjectStorageSchemaV12, nil
+		activeVersion != lokiv1.ObjectStorageSchemaV12
 }

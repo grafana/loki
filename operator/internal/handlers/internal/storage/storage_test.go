@@ -675,11 +675,7 @@ func TestAllowStructuredMetadata(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
-			allow, err := allowStructuredMetadata(tc.schemas, testTime)
-			if err != nil {
-				t.Errorf("got error: %s", err)
-			}
-
+			allow := allowStructuredMetadata(tc.schemas, testTime)
 			if allow != tc.wantAllow {
 				t.Errorf("got %v, want %v", allow, tc.wantAllow)
 			}
