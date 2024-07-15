@@ -563,7 +563,7 @@ func TestBuildOptions_WhenInvalidCAConfigMap_SetDegraded(t *testing.T) {
 }
 
 func TestAllowStructuredMetadata(t *testing.T) {
-	testTime := time.Date(2024, 07, 1, 1, 0, 0, 0, time.UTC)
+	testTime := time.Date(2024, 7, 1, 1, 0, 0, 0, time.UTC)
 	tt := []struct {
 		desc      string
 		schemas   []lokiv1.ObjectStorageSchema
