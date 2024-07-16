@@ -257,6 +257,9 @@ func (c *Config) Validate() error {
 	if err := c.Ingester.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingester config"))
 	}
+	if err := c.IngesterRF1.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingester config"))
+	}
 	if err := c.LimitsConfig.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid limits_config config"))
 	}
@@ -670,7 +673,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(RuleEvaluator, t.initRuleEvaluator, modules.UserInvisibleModule)
 	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
-	mm.RegisterModule(BloomStore, t.initBloomStore)
+	mm.RegisterModule(BloomStore, t.initBloomStore, modules.UserInvisibleModule)
 	mm.RegisterModule(BloomCompactor, t.initBloomCompactor)
 	mm.RegisterModule(BloomCompactorRing, t.initBloomCompactorRing, modules.UserInvisibleModule)
 	mm.RegisterModule(BloomPlanner, t.initBloomPlanner)
@@ -715,6 +718,7 @@ func (t *Loki) setupModuleManager() error {
 		BloomCompactor:           {Server, BloomStore, BloomCompactorRing, Analytics, Store},
 		BloomPlanner:             {Server, BloomStore, Analytics, Store},
 		BloomBuilder:             {Server, BloomStore, Analytics, Store},
+		BloomStore:               {IndexGatewayRing},
 		PatternIngester:          {Server, MemberlistKV, Analytics},
 		PatternRingClient:        {Server, MemberlistKV, Analytics},
 		IngesterRF1RingClient:    {Server, MemberlistKV, Analytics},

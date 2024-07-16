@@ -17,6 +17,9 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to 3.1.0
 
+## 6.6.6
+
+- [BUGFIX] Fix HPA ingester typo
 
 ## 6.6.5
 

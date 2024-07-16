@@ -314,6 +314,10 @@ restore: // should be faster than a defer
 	return false
 }
 
+// 'b' and 'B' are not present here because of the way we check for byte size
+// units below. If they were present, then suffixes like 'Bb', 'bb', etc. would
+// be considered valid byte sizes. Also, only integer numbers are accepted as
+// valid bytesizes in bytes, so we handle bytes with special cases instead.
 var byteSizes = [256]bool{'k': true, 'K': true, 'm': true, 'M': true, 'g': true, 'G': true, 't': true, 'T': true, 'p': true, 'P': true}
 
 // Only moves the head forward if it successfully matches a duration
@@ -336,6 +340,22 @@ func (r *replacer) advanceBytesize(c1 byte) (matched bool) {
 		r.head += unitLen
 		return true
 	}
+	return false
+}
+
+func (r *replacer) advanceSpacedBytesize(canBeBytes bool) (matched bool) {
+	// Get the next character after the space
+	c1, hasNext := r.advance()
+	if !hasNext {
+		return false
+	}
+	if canBeBytes && (c1 == 'b' || c1 == 'B') && r.peekNextIsBoundary() {
+		return true
+	}
+	if r.advanceBytesize(c1) {
+		return true
+	}
+	r.backtrack()
 	return false
 }
 
@@ -392,6 +412,14 @@ func (r *replacer) handleHexOrUnit(hasMinusPrefix bool, n1, l1 uint, c1 byte) (e
 	if n1 == 0 && l1 == 1 && c1 == 'x' {
 		zeroHex = true // these cannot be the start of an UUID
 		c1 = r.peekFirstNonInt()
+	}
+
+	// Special case, this might be a byte size
+	if (c1 == 'b' || c1 == 'B') && r.peekNextIsBoundary() {
+		// We do not subsume a minus sign - byte sizes are unlikely to be
+		// negative, it's more likely this is a dash as a part of a range
+		r.emit(hasMinusPrefix, placeholderBytesize)
+		return true
 	}
 
 	// Maybe we are at the start of a hex string, either something like
@@ -487,6 +515,14 @@ func (r *replacer) handleNumberWithDecimal(hasMinusPrefix bool, n1 uint, l1 uint
 	// like size (e.g. 12KB, 3MiB) or durations (e.g. 3.5124s), etc.
 	if !boundaryChars[b2] {
 		return r.handlePotentialUnitWithDecimal(hasMinusPrefix, b2)
+	}
+
+	// This can be a byte size with a space, e.g. "3.14 GiB"
+	if b2 == ' ' && r.advanceSpacedBytesize(false) {
+		// We do not subsume a minus sign - byte sizes are unlikely to be
+		// negative, it's more likely this is a dash as a part of a range
+		r.emit(hasMinusPrefix, placeholderBytesize)
+		return true
 	}
 
 	// We have a decimal number followed by a non-dot boundary, so this is not
@@ -632,6 +668,11 @@ func (r *replacer) handleNumberStart(hasMinusPrefix bool) (endsWithBoundary bool
 	// `2024/03/27...`; timestamps in the far future are not supported :)
 	case n1 <= maxYear && l1 <= 4 && (b1 == '-' || b1 == '/'):
 		return r.handleSaneTimestamp(hasMinusPrefix, n1, b1)
+
+	// This might be a byte size with a space, e.g. "2 b", "3 GiB"
+	case b1 == ' ' && r.advanceSpacedBytesize(true):
+		r.emit(hasMinusPrefix, placeholderBytesize)
+		return true
 
 	// Weird RFC822 dates like "02 Jan 06 15:04 MST"
 	case n1 <= 31 && l1 <= 2 && b1 == ' ':

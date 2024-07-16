@@ -4,15 +4,16 @@ import (
 	"crypto/rand"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/runutil"
 	"github.com/oklog/ulid"
-	"github.com/prometheus/common/model"
 	"golang.org/x/net/context"
 
 	"github.com/grafana/loki/v3/pkg/storage/wal"
@@ -40,7 +41,7 @@ const (
 func (i *Ingester) InitFlushQueues() {
 	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
 	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
-		i.flushQueues[j] = util.NewPriorityQueue(i.metrics.flushQueueLength)
+		i.flushQueues[j] = util.NewPriorityQueue(i.metrics.flushQueues)
 		go i.flushLoop(j)
 	}
 }
@@ -77,18 +78,16 @@ func (i *Ingester) FlushHandler(w http.ResponseWriter, _ *http.Request) {
 }
 
 type flushOp struct {
-	from      model.Time
-	userID    string
-	fp        model.Fingerprint
-	immediate bool
+	it  *wal.PendingItem
+	num int64
 }
 
 func (o *flushOp) Key() string {
-	return fmt.Sprintf("%s-%s-%v", o.userID, o.fp, o.immediate)
+	return strconv.Itoa(int(o.num))
 }
 
 func (o *flushOp) Priority() int64 {
-	return -int64(o.from)
+	return -o.num
 }
 
 func (i *Ingester) flushLoop(j int) {
@@ -103,29 +102,34 @@ func (i *Ingester) flushLoop(j int) {
 		if o == nil {
 			return
 		}
-		op := o.(*flushCtx)
+		op := o.(*flushOp)
+
+		start := time.Now()
+
+		// We'll use this to log the size of the segment that was flushed.
+		n := op.it.Writer.InputSize()
+		humanized := humanize.Bytes(uint64(n))
 
 		err := i.flushOp(l, op)
+		d := time.Since(start)
 		if err != nil {
-			level.Error(l).Log("msg", "failed to flush", "err", err)
-			// Immediately re-queue another attempt at flushing this segment.
-			// TODO: Add some backoff or something?
-			i.flushQueues[j].Enqueue(op)
+			level.Error(l).Log("msg", "failed to flush", "size", humanized, "duration", d, "err", err)
 		} else {
-			// Close the channel and trigger all waiting listeners to return
-			// TODO: Figure out how to return an error if we want to?
-			close(op.flushDone)
+			level.Debug(l).Log("msg", "flushed", "size", humanized, "duration", d)
 		}
+
+		op.it.Result.SetDone(err)
+		i.wal.Put(op.it)
 	}
 }
 
-func (i *Ingester) flushOp(l log.Logger, flushCtx *flushCtx) error {
+func (i *Ingester) flushOp(l log.Logger, op *flushOp) error {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
 	b := backoff.New(ctx, i.cfg.FlushOpBackoff)
 	for b.Ongoing() {
-		err := i.flushSegment(ctx, flushCtx.segmentWriter)
+		err := i.flushSegment(ctx, op.it.Writer)
 		if err == nil {
 			break
 		}
@@ -141,16 +145,21 @@ func (i *Ingester) flushOp(l log.Logger, flushCtx *flushCtx) error {
 // If the flush isn't successful, the operation for this userID is requeued allowing this and all other unflushed
 // segments to have another opportunity to be flushed.
 func (i *Ingester) flushSegment(ctx context.Context, ch *wal.SegmentWriter) error {
-	reader := ch.Reader()
-	defer runutil.CloseWithLogOnErr(util_log.Logger, reader, "flushSegment")
+	id := ulid.MustNew(ulid.Timestamp(time.Now()), rand.Reader)
+	r := ch.Reader()
 
-	newUlid := ulid.MustNew(ulid.Timestamp(time.Now()), rand.Reader)
+	start := time.Now()
+	defer func() {
+		runutil.CloseWithLogOnErr(util_log.Logger, r, "flushSegment")
+		i.metrics.flushDuration.Observe(time.Since(start).Seconds())
+		ch.Observe()
+	}()
 
-	if err := i.store.PutObject(ctx, fmt.Sprintf("loki-v2/wal/anon/"+newUlid.String()), reader); err != nil {
-		i.metrics.chunksFlushFailures.Inc()
+	i.metrics.flushesTotal.Add(1)
+	if err := i.store.PutObject(ctx, fmt.Sprintf("loki-v2/wal/anon/"+id.String()), r); err != nil {
+		i.metrics.flushFailuresTotal.Inc()
 		return fmt.Errorf("store put chunk: %w", err)
 	}
-	i.metrics.flushedChunksStats.Inc(1)
-	// TODO: report some flush metrics
+
 	return nil
 }

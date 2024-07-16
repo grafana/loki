@@ -1406,6 +1406,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.BloomCompactor.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Pattern.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.IngesterRF1.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
 
 	if t.Cfg.InternalServer.Enable {
