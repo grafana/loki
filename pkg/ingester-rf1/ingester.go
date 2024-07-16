@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"math/rand"
 	"net/http"
 	"os"
 	"path"
@@ -202,15 +201,11 @@ type Ingester struct {
 	store           Storage
 	periodicConfigs []config.PeriodConfig
 
-	loopDone    sync.WaitGroup
-	loopQuit    chan struct{}
 	tailersQuit chan struct{}
 
 	// One queue per flush thread.  Fingerprint is used to
 	// pick a queue.
-	numOps          int64
-	flushQueues     []*util.PriorityQueue
-	flushQueuesDone sync.WaitGroup
+	flushWorkersDone sync.WaitGroup
 
 	wal *wal.Manager
 
@@ -270,17 +265,16 @@ func New(cfg Config, clientConfig client.Config,
 	}
 
 	i := &Ingester{
-		cfg:             cfg,
-		logger:          logger,
-		clientConfig:    clientConfig,
-		tenantConfigs:   configs,
-		instances:       map[string]*instance{},
-		store:           storage,
-		periodicConfigs: periodConfigs,
-		loopQuit:        make(chan struct{}),
-		flushQueues:     make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
-		tailersQuit:     make(chan struct{}),
-		metrics:         metrics,
+		cfg:              cfg,
+		logger:           logger,
+		clientConfig:     clientConfig,
+		tenantConfigs:    configs,
+		instances:        map[string]*instance{},
+		store:            storage,
+		periodicConfigs:  periodConfigs,
+		flushWorkersDone: sync.WaitGroup{},
+		tailersQuit:      make(chan struct{}),
+		metrics:          metrics,
 		// flushOnShutdownSwitch: &OnceSwitch{},
 		terminateOnShutdown:  false,
 		streamRateCalculator: NewStreamRateCalculator(),
@@ -401,7 +395,7 @@ func (i *Ingester) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (i *Ingester) starting(ctx context.Context) error {
-	i.InitFlushQueues()
+	i.InitFlushWorkers()
 
 	// pass new context to lifecycler, so that it doesn't stop automatically when Ingester's service context is done
 	err := i.lifecycler.StartAsync(context.Background())
@@ -435,9 +429,6 @@ func (i *Ingester) starting(ctx context.Context) error {
 		return fmt.Errorf("can not ensure recalculate owned streams service is running: %w", err)
 	}
 
-	// start our loop
-	i.loopDone.Add(1)
-	go i.loop()
 	return nil
 }
 
@@ -457,8 +448,6 @@ func (i *Ingester) running(ctx context.Context) error {
 	//	instance.closeTailers()
 	//}
 
-	close(i.loopQuit)
-	i.loopDone.Wait()
 	return serviceError
 }
 
@@ -474,10 +463,7 @@ func (i *Ingester) stopping(_ error) error {
 	//}
 	errs.Add(services.StopAndAwaitTerminated(context.Background(), i.lifecycler))
 
-	for _, flushQueue := range i.flushQueues {
-		flushQueue.Close()
-	}
-	i.flushQueuesDone.Wait()
+	i.flushWorkersDone.Wait()
 
 	// i.streamRateCalculator.Stop()
 
@@ -515,60 +501,6 @@ func (i *Ingester) removeShutdownMarkerFile() {
 		if err != nil {
 			level.Error(i.logger).Log("msg", "error removing shutdown marker file", "err", err)
 		}
-	}
-}
-
-func (i *Ingester) loop() {
-	defer i.loopDone.Done()
-
-	// Delay the first flush operation by up to 0.8x the flush time period.
-	// This will ensure that multiple ingesters started at the same time do not
-	// flush at the same time. Flushing at the same time can cause concurrently
-	// writing the same chunk to object storage, which in AWS S3 leads to being
-	// rate limited.
-	jitter := time.Duration(rand.Int63n(int64(float64(i.cfg.FlushCheckPeriod.Nanoseconds()) * 0.8)))
-	initialDelay := time.NewTimer(jitter)
-	defer initialDelay.Stop()
-
-	level.Info(i.logger).Log("msg", "sleeping for initial delay before starting periodic flushing", "delay", jitter)
-
-	select {
-	case <-initialDelay.C:
-		// do nothing and continue with flush loop
-	case <-i.loopQuit:
-		// ingester stopped while waiting for initial delay
-		return
-	}
-
-	// Add +/- 20% of flush interval as jitter.
-	// The default flush check period is 30s so max jitter will be 6s.
-	j := i.cfg.FlushCheckPeriod / 5
-	flushTicker := util.NewTickerWithJitter(i.cfg.FlushCheckPeriod, j)
-	defer flushTicker.Stop()
-
-	for {
-		select {
-		case <-flushTicker.C:
-			i.doFlushTick()
-		case <-i.loopQuit:
-			return
-		}
-	}
-}
-
-func (i *Ingester) doFlushTick() {
-	for {
-		// Keep adding ops to the queue until there are no more.
-		it := i.wal.NextPending()
-		if it == nil {
-			break
-		}
-		i.numOps++
-		flushQueueIndex := i.numOps % int64(i.cfg.ConcurrentFlushes)
-		i.flushQueues[flushQueueIndex].Enqueue(&flushOp{
-			num: i.numOps,
-			it:  it,
-		})
 	}
 }
 

@@ -171,6 +171,40 @@ func TestManager_AppendMaxSize(t *testing.T) {
 	require.Equal(t, 1, m.pending.Len())
 }
 
+func TestManager_AppendWALClosed(t *testing.T) {
+	m, err := NewManager(Config{
+		MaxAge:         30 * time.Second,
+		MaxSegments:    10,
+		MaxSegmentSize: 1024, // 1KB
+	}, NewMetrics(nil))
+	require.NoError(t, err)
+
+	// Append some data.
+	lbs := labels.Labels{{Name: "a", Value: "b"}}
+	entries := []*logproto.Entry{{Timestamp: time.Now(), Line: "c"}}
+	res, err := m.Append(AppendRequest{
+		TenantID:  "1",
+		Labels:    lbs,
+		LabelsStr: lbs.String(),
+		Entries:   entries,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, res)
+
+	// Close the WAL.
+	m.Close()
+
+	// Should not be able to append more data as the WAL is closed.
+	res, err = m.Append(AppendRequest{
+		TenantID:  "1",
+		Labels:    lbs,
+		LabelsStr: lbs.String(),
+		Entries:   entries,
+	})
+	require.Nil(t, res)
+	require.ErrorIs(t, err, ErrClosed)
+}
+
 func TestManager_AppendWALFull(t *testing.T) {
 	m, err := NewManager(Config{
 		MaxAge:         30 * time.Second,
@@ -216,7 +250,8 @@ func TestManager_NextPending(t *testing.T) {
 
 	// There should be no segments waiting to be flushed as no data has been
 	// written.
-	it := m.NextPending()
+	it, err := m.NextPending()
+	require.NoError(t, err)
 	require.Nil(t, it)
 
 	// Append 1KB of data.
@@ -231,11 +266,54 @@ func TestManager_NextPending(t *testing.T) {
 	require.NoError(t, err)
 
 	// There should be a segment waiting to be flushed.
-	it = m.NextPending()
+	it, err = m.NextPending()
+	require.NoError(t, err)
 	require.NotNil(t, it)
 
 	// There should be no more segments waiting to be flushed.
-	it = m.NextPending()
+	it, err = m.NextPending()
+	require.NoError(t, err)
+	require.Nil(t, it)
+}
+
+func TestManager_NextPendingClosed(t *testing.T) {
+	m, err := NewManager(Config{
+		MaxAge:         30 * time.Second,
+		MaxSegments:    10,
+		MaxSegmentSize: 1024, // 1KB
+	}, NewMetrics(nil))
+	require.NoError(t, err)
+
+	// Append some data.
+	lbs := labels.Labels{{Name: "a", Value: "b"}}
+	entries := []*logproto.Entry{{Timestamp: time.Now(), Line: "c"}}
+	res, err := m.Append(AppendRequest{
+		TenantID:  "1",
+		Labels:    lbs,
+		LabelsStr: lbs.String(),
+		Entries:   entries,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, res)
+
+	// There should be no segments waiting to be flushed as neither the maximum
+	// age nor maximum size has been exceeded.
+	it, err := m.NextPending()
+	require.NoError(t, err)
+	require.Nil(t, it)
+
+	// Close the WAL.
+	m.Close()
+
+	// There should be one segment waiting to be flushed.
+	it, err = m.NextPending()
+	require.NoError(t, err)
+	require.NotNil(t, it)
+
+	// There are no more segments waiting to be flushed, and since the WAL is
+	// closed, successive calls should return ErrClosed.
+	it, err = m.NextPending()
+	require.ErrorIs(t, err, ErrClosed)
 	require.Nil(t, it)
 }
 
@@ -261,7 +339,8 @@ func TestManager_NexPendingMaxAge(t *testing.T) {
 
 	// The segment that was just appended to has neither reached the maximum
 	// age nor maximum size to be flushed.
-	it := m.NextPending()
+	it, err := m.NextPending()
+	require.NoError(t, err)
 	require.Nil(t, it)
 	require.Equal(t, 1, m.available.Len())
 	require.Equal(t, 0, m.pending.Len())
@@ -269,7 +348,8 @@ func TestManager_NexPendingMaxAge(t *testing.T) {
 	// Wait 100ms. The segment that was just appended to should have reached
 	// the maximum age.
 	time.Sleep(100 * time.Millisecond)
-	it = m.NextPending()
+	it, err = m.NextPending()
+	require.NoError(t, err)
 	require.NotNil(t, it)
 	require.Equal(t, 0, m.available.Len())
 	require.Equal(t, 0, m.pending.Len())
@@ -304,7 +384,8 @@ func TestManager_Put(t *testing.T) {
 	require.Equal(t, 1, m.pending.Len())
 
 	// Getting the pending segment should remove it from the list.
-	it := m.NextPending()
+	it, err := m.NextPending()
+	require.NoError(t, err)
 	require.NotNil(t, it)
 	require.Equal(t, 0, m.available.Len())
 	require.Equal(t, 0, m.pending.Len())
@@ -373,7 +454,8 @@ wal_segments_pending 1
 	require.NoError(t, testutil.CollectAndCompare(r, strings.NewReader(expected), metricNames...))
 
 	// Get the segment from the pending list.
-	it := m.NextPending()
+	it, err := m.NextPending()
+	require.NoError(t, err)
 	require.NotNil(t, it)
 	expected = `
 # HELP wal_segments_available The number of WAL segments accepting writes.

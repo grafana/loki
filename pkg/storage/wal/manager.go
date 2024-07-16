@@ -25,6 +25,9 @@ const (
 )
 
 var (
+	// ErrClosed is returned when the WAL is closed.
+	ErrClosed = errors.New("WAL is closed")
+
 	// ErrFull is returned when an append fails because the WAL is full. This
 	// happens when all segments are either in the pending list waiting to be
 	// flushed, or in the process of being flushed.
@@ -111,9 +114,10 @@ type Manager struct {
 	// pending is a list of segments that are waiting to be flushed. Once
 	// flushed, the segment is reset and moved to the back of the available
 	// list to accept writes again.
-	pending  *list.List
-	shutdown chan struct{}
-	mu       sync.Mutex
+	pending *list.List
+
+	closed bool
+	mu     sync.Mutex
 }
 
 // item is similar to PendingItem, but it is an internal struct used in the
@@ -141,7 +145,6 @@ func NewManager(cfg Config, metrics *Metrics) (*Manager, error) {
 		metrics:   metrics.ManagerMetrics,
 		available: list.New(),
 		pending:   list.New(),
-		shutdown:  make(chan struct{}),
 	}
 	m.metrics.NumPending.Set(0)
 	m.metrics.NumFlushing.Set(0)
@@ -162,6 +165,9 @@ func NewManager(cfg Config, metrics *Metrics) (*Manager, error) {
 func (m *Manager) Append(r AppendRequest) (*AppendResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.closed {
+		return nil, ErrClosed
+	}
 	if m.available.Len() == 0 {
 		return nil, ErrFull
 	}
@@ -185,9 +191,25 @@ func (m *Manager) Append(r AppendRequest) (*AppendResult, error) {
 	return it.r, nil
 }
 
+func (m *Manager) Close() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.closed = true
+	if m.available.Len() > 0 {
+		el := m.available.Front()
+		it := el.Value.(*item)
+		if it.w.InputSize() > 0 {
+			m.pending.PushBack(it)
+			m.metrics.NumPending.Inc()
+			m.available.Remove(el)
+			m.metrics.NumAvailable.Dec()
+		}
+	}
+}
+
 // NextPending returns the next segment to be flushed. It returns nil if the
-// pending list is empty.
-func (m *Manager) NextPending() *PendingItem {
+// pending list is empty, and ErrClosed if the WAL is closed.
+func (m *Manager) NextPending() (*PendingItem, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.pending.Len() == 0 {
@@ -205,7 +227,10 @@ func (m *Manager) NextPending() *PendingItem {
 		}
 		// If the pending list is still empty return nil.
 		if m.pending.Len() == 0 {
-			return nil
+			if m.closed {
+				return nil, ErrClosed
+			}
+			return nil, nil
 		}
 	}
 	el := m.pending.Front()
@@ -213,7 +238,7 @@ func (m *Manager) NextPending() *PendingItem {
 	m.pending.Remove(el)
 	m.metrics.NumPending.Dec()
 	m.metrics.NumFlushing.Inc()
-	return &PendingItem{Result: it.r, Writer: it.w}
+	return &PendingItem{Result: it.r, Writer: it.w}, nil
 }
 
 // Put resets the segment and puts it back in the available list to accept
