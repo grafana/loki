@@ -290,6 +290,12 @@ spec:
         path: limits.global.queries.maxQuerySeries
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: MaxVolumeSeries defines the maximum number of aggregated series
+          in a log-volume response
+        displayName: Max Volume Series
+        path: limits.global.queries.maxVolumeSeries
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
       - description: Timeout when querying ingesters or storage during the execution
           of a query request.
         displayName: Query Timeout
@@ -399,6 +405,12 @@ spec:
           by a metric query.
         displayName: Max Query Series
         path: limits.tenants.queries.maxQuerySeries
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: MaxVolumeSeries defines the maximum number of aggregated series
+          in a log-volume response
+        displayName: Max Volume Series
+        path: limits.tenants.queries.maxVolumeSeries
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
       - description: Timeout when querying ingesters or storage during the execution

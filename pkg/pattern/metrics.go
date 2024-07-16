@@ -7,8 +7,10 @@ import (
 
 type ingesterMetrics struct {
 	flushQueueLength       prometheus.Gauge
-	patternsDiscardedTotal prometheus.Counter
-	patternsDetectedTotal  prometheus.Counter
+	patternsDiscardedTotal *prometheus.CounterVec
+	patternsDetectedTotal  *prometheus.CounterVec
+	tokensPerLine          *prometheus.HistogramVec
+	statePerLine           *prometheus.HistogramVec
 }
 
 func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *ingesterMetrics {
@@ -19,18 +21,32 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 			Name:      "flush_queue_length",
 			Help:      "The total number of series pending in the flush queue.",
 		}),
-		patternsDiscardedTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		patternsDiscardedTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: "pattern_ingester",
 			Name:      "patterns_evicted_total",
 			Help:      "The total number of patterns evicted from the LRU cache.",
-		}),
-		patternsDetectedTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		}, []string{"tenant", "format", "pruned"}),
+		patternsDetectedTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: "pattern_ingester",
 			Name:      "patterns_detected_total",
 			Help:      "The total number of patterns detected from incoming log lines.",
-		}),
+		}, []string{"tenant", "format"}),
+		tokensPerLine: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: metricsNamespace,
+			Subsystem: "pattern_ingester",
+			Name:      "tokens_per_line",
+			Help:      "The number of tokens an incoming logline is split into for pattern recognition.",
+			Buckets:   []float64{20, 40, 80, 120, 160, 320, 640, 1280},
+		}, []string{"tenant", "format"}),
+		statePerLine: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: metricsNamespace,
+			Subsystem: "pattern_ingester",
+			Name:      "state_per_line",
+			Help:      "The number of items of additional state returned alongside tokens for pattern recognition.",
+			Buckets:   []float64{20, 40, 80, 120, 160, 320, 640, 1280},
+		}, []string{"tenant", "format"}),
 	}
 }
 

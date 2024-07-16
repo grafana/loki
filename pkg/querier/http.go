@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/middleware"
 	"github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/promql/parser"
 
@@ -84,6 +85,11 @@ func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.Loki
 
 // InstantQueryHandler is a http.HandlerFunc for instant queries.
 func (q *QuerierAPI) InstantQueryHandler(ctx context.Context, req *queryrange.LokiInstantRequest) (logqlmodel.Result, error) {
+	// do not allow log selector expression (aka log query) as instant query
+	if _, ok := req.Plan.AST.(syntax.SampleExpr); !ok {
+		return logqlmodel.Result{}, logqlmodel.ErrUnsupportedSyntaxForInstantQuery
+	}
+
 	if err := q.validateMaxEntriesLimits(ctx, req.Plan.AST, req.Limit); err != nil {
 		return logqlmodel.Result{}, err
 	}
@@ -474,7 +480,7 @@ func WrapQuerySpanAndTimeout(call string, limits Limits) middleware.Interface {
 
 			timeoutCapture := func(id string) time.Duration { return limits.QueryTimeout(ctx, id) }
 			timeout := util_validation.SmallestPositiveNonZeroDurationPerTenant(tenants, timeoutCapture)
-			newCtx, cancel := context.WithTimeout(ctx, timeout)
+			newCtx, cancel := context.WithTimeoutCause(ctx, timeout, errors.New("query timeout reached"))
 			defer cancel()
 
 			newReq := req.WithContext(newCtx)

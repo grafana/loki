@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/pattern/drain"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
 	"github.com/grafana/loki/v3/pkg/pattern/metric"
 
@@ -28,6 +29,9 @@ func TestAddStream(t *testing.T) {
 			Enabled: false,
 		},
 		log.NewNopLogger(),
+		drain.FormatUnknown,
+		"123",
+		drain.DefaultConfig(),
 	)
 	require.NoError(t, err)
 
@@ -65,6 +69,9 @@ func TestPruneStream(t *testing.T) {
 			Enabled: false,
 		},
 		log.NewNopLogger(),
+		drain.FormatUnknown,
+		"123",
+		drain.DefaultConfig(),
 	)
 	require.NoError(t, err)
 
@@ -113,6 +120,9 @@ func TestSampleIterator(t *testing.T) {
 				Enabled: true,
 			},
 			log.NewNopLogger(),
+			drain.FormatUnknown,
+			"123",
+			drain.DefaultConfig(),
 		)
 		require.NoError(t, err)
 
@@ -126,6 +136,7 @@ func TestSampleIterator(t *testing.T) {
 				Line:      "ts=2 msg=hello",
 			},
 		})
+		stream.Downsample(model.TimeFromUnix(20))
 
 		require.NoError(t, err)
 
@@ -158,6 +169,9 @@ func TestSampleIterator(t *testing.T) {
 				Enabled: true,
 			},
 			log.NewNopLogger(),
+			drain.FormatUnknown,
+			"123",
+			drain.DefaultConfig(),
 		)
 		require.NoError(t, err)
 
@@ -172,6 +186,7 @@ func TestSampleIterator(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
+		stream.Downsample(model.TimeFromUnix(20))
 
 		err = stream.Push(context.Background(), []push.Entry{
 			{
@@ -184,6 +199,7 @@ func TestSampleIterator(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
+		stream.Downsample(model.TimeFromUnix(40))
 
 		t.Run("non-overlapping timestamps", func(t *testing.T) {
 			expr, err := syntax.ParseSampleExpr("count_over_time({foo=\"bar\"}[5s])")
@@ -244,6 +260,9 @@ func TestSampleIterator(t *testing.T) {
 				Enabled: true,
 			},
 			log.NewNopLogger(),
+			drain.FormatUnknown,
+			"123",
+			drain.DefaultConfig(),
 		)
 		require.NoError(t, err)
 
@@ -257,6 +276,7 @@ func TestSampleIterator(t *testing.T) {
 				Line:      "ts=2 msg=hello",
 			},
 		})
+		stream.Downsample(model.TimeFromUnixNano(time.Unix(26, 999).UnixNano()))
 
 		require.NoError(t, err)
 

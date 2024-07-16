@@ -10,11 +10,12 @@ import (
 	"sort"
 	"sync"
 
+	"go.uber.org/atomic"
+
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/wal/chunks"
 	"github.com/grafana/loki/v3/pkg/storage/wal/index"
@@ -28,10 +29,12 @@ var (
 	streamSegmentPool = sync.Pool{
 		New: func() interface{} {
 			return &streamSegment{
+				lock:    &sync.Mutex{},
 				entries: make([]*logproto.Entry, 0, 4096),
 			}
 		},
 	}
+	tenantLabel = "__loki_tenant__"
 )
 
 func init() {
@@ -43,13 +46,17 @@ type streamID struct {
 }
 
 type SegmentWriter struct {
-	streams   map[streamID]*streamSegment
-	buf1      encoding.Encbuf
-	inputSize int64
-	idxWriter *index.Writer
+	metrics        *SegmentMetrics
+	streams        map[streamID]*streamSegment
+	buf1           encoding.Encbuf
+	outputSize     atomic.Int64
+	inputSize      atomic.Int64
+	idxWriter      *index.Writer
+	consistencyMtx *sync.RWMutex
 }
 
 type streamSegment struct {
+	lock     *sync.Mutex
 	lbls     labels.Labels
 	entries  []*logproto.Entry
 	tenantID string
@@ -57,20 +64,57 @@ type streamSegment struct {
 }
 
 func (s *streamSegment) Reset() {
+	for i := range s.entries {
+		s.entries[i] = nil
+	}
+	s.lbls = nil
+	s.tenantID = ""
+	s.maxt = 0
 	s.entries = s.entries[:0]
 }
 
+func (s *streamSegment) WriteTo(w io.Writer) (n int64, err error) {
+	return chunks.WriteChunk(w, s.entries, chunks.EncodingSnappy)
+}
+
 // NewWalSegmentWriter creates a new WalSegmentWriter.
-func NewWalSegmentWriter() (*SegmentWriter, error) {
+func NewWalSegmentWriter(m *SegmentMetrics) (*SegmentWriter, error) {
 	idxWriter, err := index.NewWriter()
 	if err != nil {
 		return nil, err
 	}
 	return &SegmentWriter{
-		streams:   make(map[streamID]*streamSegment, 64),
-		buf1:      encoding.EncWith(make([]byte, 0, 4)),
-		idxWriter: idxWriter,
+		metrics:        m,
+		streams:        make(map[streamID]*streamSegment, 64),
+		buf1:           encoding.EncWith(make([]byte, 0, 4)),
+		idxWriter:      idxWriter,
+		inputSize:      atomic.Int64{},
+		consistencyMtx: &sync.RWMutex{},
 	}, nil
+}
+
+func (b *SegmentWriter) getOrCreateStream(id streamID, lbls labels.Labels) *streamSegment {
+	b.consistencyMtx.RLock()
+	s, ok := b.streams[id]
+	b.consistencyMtx.RUnlock()
+	if ok {
+		return s
+	}
+	b.consistencyMtx.Lock()
+	defer b.consistencyMtx.Unlock()
+	// Check another thread has not created it
+	s, ok = b.streams[id]
+	if ok {
+		return s
+	}
+	if lbls.Get(tenantLabel) == "" {
+		lbls = labels.NewBuilder(lbls).Set(tenantLabel, id.tenant).Labels()
+	}
+	s = streamSegmentPool.Get().(*streamSegment)
+	s.lbls = lbls
+	s.tenantID = id.tenant
+	b.streams[id] = s
+	return s
 }
 
 // Labels are passed a string  `{foo="bar",baz="qux"}`  `{foo="foo",baz="foo"}`. labels.Labels => Symbols foo, baz , qux
@@ -79,24 +123,13 @@ func (b *SegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels
 		return
 	}
 	for _, e := range entries {
-		b.inputSize += int64(len(e.Line))
+		b.inputSize.Add(int64(len(e.Line)))
 	}
 	id := streamID{labels: labelsString, tenant: tenantID}
-	s, ok := b.streams[id]
-	if !ok {
-		if lbls.Get(tsdb.TenantLabel) == "" {
-			lbls = labels.NewBuilder(lbls).Set(tsdb.TenantLabel, tenantID).Labels()
-		}
-		s = streamSegmentPool.Get().(*streamSegment)
-		s.Reset()
-		s.lbls = lbls
-		s.tenantID = tenantID
-		s.maxt = entries[len(entries)-1].Timestamp.UnixNano()
-		s.entries = append(s.entries, entries...)
-		b.streams[id] = s
-		return
-	}
+	s := b.getOrCreateStream(id, lbls)
 
+	s.lock.Lock()
+	defer s.lock.Unlock()
 	for i, e := range entries {
 		if e.Timestamp.UnixNano() >= s.maxt {
 			s.entries = append(s.entries, entries[i])
@@ -112,6 +145,22 @@ func (b *SegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels
 		copy(s.entries[idx+1:], s.entries[idx:])
 		s.entries[idx] = e
 	}
+}
+
+// Observe updates metrics for the writer. If called before WriteTo then the
+// output size histogram will observe 0.
+func (b *SegmentWriter) Observe() {
+	b.consistencyMtx.Lock()
+	defer b.consistencyMtx.Unlock()
+
+	b.metrics.streams.Observe(float64(len(b.streams)))
+	tenants := make(map[string]struct{}, len(b.streams))
+	for _, s := range b.streams {
+		tenants[s.tenantID] = struct{}{}
+	}
+	b.metrics.tenants.Observe(float64(len(tenants)))
+	b.metrics.inputSizeBytes.Observe(float64(b.inputSize.Load()))
+	b.metrics.outputSizeBytes.Observe(float64(b.outputSize.Load()))
 }
 
 func (b *SegmentWriter) WriteTo(w io.Writer) (int64, error) {
@@ -212,6 +261,7 @@ func (b *SegmentWriter) WriteTo(w io.Writer) (int64, error) {
 	// write index len 4b
 	b.buf1.PutBE32int(n)
 	n, err = w.Write(b.buf1.Get())
+	b.buf1.Reset()
 	if err != nil {
 		return total, err
 	}
@@ -231,11 +281,9 @@ func (b *SegmentWriter) WriteTo(w io.Writer) (int64, error) {
 	}
 	total += int64(n)
 
-	return total, nil
-}
+	b.outputSize.Store(total)
 
-func (s *streamSegment) WriteTo(w io.Writer) (n int64, err error) {
-	return chunks.WriteChunk(w, s.entries, chunks.EncodingSnappy)
+	return total, nil
 }
 
 // Reset clears the writer.
@@ -243,17 +291,44 @@ func (s *streamSegment) WriteTo(w io.Writer) (n int64, err error) {
 func (b *SegmentWriter) Reset() {
 	for _, s := range b.streams {
 		s := s
+		s.Reset()
 		streamSegmentPool.Put(s)
 	}
 	b.streams = make(map[streamID]*streamSegment, 64)
 	b.buf1.Reset()
-	b.inputSize = 0
+	b.inputSize.Store(0)
+}
+
+type EncodedSegmentReader struct {
+	*io.PipeReader
+	*io.PipeWriter
+}
+
+func (e *EncodedSegmentReader) Close() error {
+	err := e.PipeWriter.Close()
+	if err != nil {
+		return err
+	}
+	err = e.PipeReader.Close()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (b *SegmentWriter) Reader() io.ReadCloser {
+	pr, pw := io.Pipe()
+	go func() {
+		_, err := b.WriteTo(pw)
+		pw.CloseWithError(err)
+	}()
+	return &EncodedSegmentReader{PipeReader: pr, PipeWriter: pw}
 }
 
 // InputSize returns the total size of the input data written to the writer.
 // It doesn't account for timestamps and labels.
 func (b *SegmentWriter) InputSize() int64 {
-	return b.inputSize
+	return b.inputSize.Load()
 }
 
 type SegmentReader struct {

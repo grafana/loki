@@ -2,7 +2,6 @@ package bloomgateway
 
 import (
 	"context"
-	"math"
 	"time"
 
 	"github.com/go-kit/log"
@@ -12,6 +11,7 @@ import (
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/multierror"
 
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
@@ -35,21 +35,12 @@ type processor struct {
 	metrics     *workerMetrics
 }
 
-func (p *processor) run(ctx context.Context, tasks []Task) error {
-	return p.runWithBounds(ctx, tasks, v1.MultiFingerprintBounds{{Min: 0, Max: math.MaxUint64}})
-}
-
-func (p *processor) runWithBounds(ctx context.Context, tasks []Task, bounds v1.MultiFingerprintBounds) error {
+func (p *processor) processTasks(ctx context.Context, tasks []Task) error {
 	tenant := tasks[0].tenant
-	level.Info(p.logger).Log(
-		"msg", "process tasks with bounds",
-		"tenant", tenant,
-		"tasks", len(tasks),
-		"bounds", len(bounds),
-	)
+	level.Info(p.logger).Log("msg", "process tasks", "tenant", tenant, "tasks", len(tasks))
 
 	for ts, tasks := range group(tasks, func(t Task) config.DayTime { return t.table }) {
-		err := p.processTasks(ctx, tenant, ts, bounds, tasks)
+		err := p.processTasksForDay(ctx, tenant, ts, tasks)
 		if err != nil {
 			for _, task := range tasks {
 				task.CloseWithError(err)
@@ -63,7 +54,7 @@ func (p *processor) runWithBounds(ctx context.Context, tasks []Task, bounds v1.M
 	return nil
 }
 
-func (p *processor) processTasks(ctx context.Context, tenant string, day config.DayTime, _ v1.MultiFingerprintBounds, tasks []Task) error {
+func (p *processor) processTasksForDay(ctx context.Context, tenant string, day config.DayTime, tasks []Task) error {
 	level.Info(p.logger).Log("msg", "process tasks for day", "tenant", tenant, "tasks", len(tasks), "day", day.String())
 	var duration time.Duration
 
@@ -72,10 +63,10 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 		blocksRefs = append(blocksRefs, task.blocks...)
 	}
 
-	data := partitionTasks(tasks, blocksRefs)
+	tasksByBlock := partitionTasksByBlock(tasks, blocksRefs)
 
-	refs := make([]bloomshipper.BlockRef, 0, len(data))
-	for _, block := range data {
+	refs := make([]bloomshipper.BlockRef, 0, len(tasksByBlock))
+	for _, block := range tasksByBlock {
 		refs = append(refs, block.ref)
 	}
 
@@ -103,7 +94,7 @@ func (p *processor) processTasks(ctx context.Context, tenant string, day config.
 	}
 
 	startProcess := time.Now()
-	res := p.processBlocks(ctx, bqs, data)
+	res := p.processBlocks(ctx, bqs, tasksByBlock)
 	duration = time.Since(startProcess)
 
 	for _, t := range tasks {
@@ -159,7 +150,7 @@ func (p *processor) processBlock(_ context.Context, bq *bloomshipper.CloseableBl
 	}
 
 	tokenizer := v1.NewNGramTokenizer(schema.NGramLen(), schema.NGramSkip())
-	iters := make([]v1.PeekingIterator[v1.Request], 0, len(tasks))
+	iters := make([]iter.PeekIterator[v1.Request], 0, len(tasks))
 
 	for _, task := range tasks {
 		// NB(owen-d): can be helpful for debugging, but is noisy
@@ -172,11 +163,12 @@ func (p *processor) processBlock(_ context.Context, bq *bloomshipper.CloseableBl
 		// 	sp.LogKV("process block", blockID, "series", len(task.series))
 		// }
 
-		it := v1.NewPeekingIter(task.RequestIter(tokenizer))
+		it := iter.NewPeekIter(task.RequestIter(tokenizer))
 		iters = append(iters, it)
 	}
 
-	fq := blockQuerier.Fuse(iters, p.logger)
+	logger := log.With(p.logger, "block", bq.BlockRef.String())
+	fq := blockQuerier.Fuse(iters, logger)
 
 	start := time.Now()
 	err = fq.Run()

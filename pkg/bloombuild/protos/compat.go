@@ -3,7 +3,7 @@ package protos
 import (
 	"fmt"
 
-	"github.com/google/uuid"
+	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
@@ -28,9 +28,15 @@ type Task struct {
 	Gaps            []GapWithBlocks
 }
 
-func NewTask(table config.DayTable, tenant string, bounds v1.FingerprintBounds, tsdb tsdb.SingleTenantTSDBIdentifier, gaps []GapWithBlocks) *Task {
+func NewTask(
+	table config.DayTable,
+	tenant string,
+	bounds v1.FingerprintBounds,
+	tsdb tsdb.SingleTenantTSDBIdentifier,
+	gaps []GapWithBlocks,
+) *Task {
 	return &Task{
-		ID: uuid.NewString(),
+		ID: fmt.Sprintf("%s-%s-%s-%d-%d", table.Addr(), tenant, bounds.String(), tsdb.Checksum, len(gaps)),
 
 		Table:           table,
 		Tenant:          tenant,
@@ -119,6 +125,15 @@ func (t *Task) ToProtoTask() *ProtoTask {
 		Tsdb: t.TSDB.Path(),
 		Gaps: protoGaps,
 	}
+}
+
+func (t *Task) GetLogger(logger log.Logger) log.Logger {
+	return log.With(logger,
+		"task", t.ID,
+		"tenant", t.Tenant,
+		"table", t.Table.String(),
+		"tsdb", t.TSDB.Name(),
+	)
 }
 
 type TaskResult struct {

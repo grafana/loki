@@ -147,7 +147,7 @@ func (i *dumbChunkIterator) Next() bool {
 	}
 }
 
-func (i *dumbChunkIterator) Entry() logproto.Entry {
+func (i *dumbChunkIterator) At() logproto.Entry {
 	return i.entries[i.i]
 }
 
@@ -159,7 +159,7 @@ func (i *dumbChunkIterator) StreamHash() uint64 {
 	return 0
 }
 
-func (i *dumbChunkIterator) Error() error {
+func (i *dumbChunkIterator) Err() error {
 	return nil
 }
 

@@ -1171,7 +1171,7 @@ func (m *KV) queueBroadcast(key string, content []string, version uint, message 
 		content: content,
 		version: version,
 		msg:     message,
-		finished: func(b ringBroadcast) {
+		finished: func(ringBroadcast) {
 			m.totalSizeOfBroadcastMessagesInQueue.Sub(float64(l))
 		},
 		logger: m.logger,
