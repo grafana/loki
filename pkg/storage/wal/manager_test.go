@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/quartz"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"
@@ -94,6 +95,10 @@ func TestManager_AppendMaxAge(t *testing.T) {
 	}, NewMetrics(nil))
 	require.NoError(t, err)
 
+	// Create a mock clock.
+	clock := quartz.NewMock(t)
+	m.clock = clock
+
 	// Append 1B of data.
 	lbs := labels.Labels{{Name: "a", Value: "b"}}
 	entries := []*logproto.Entry{{Timestamp: time.Now(), Line: "c"}}
@@ -112,7 +117,7 @@ func TestManager_AppendMaxAge(t *testing.T) {
 	require.Equal(t, 0, m.pending.Len())
 
 	// Wait 100ms and append some more data.
-	time.Sleep(100 * time.Millisecond)
+	clock.Advance(100 * time.Millisecond)
 	entries = []*logproto.Entry{{Timestamp: time.Now(), Line: "c"}}
 	res, err = m.Append(AppendRequest{
 		TenantID:  "1",
@@ -325,6 +330,10 @@ func TestManager_NexPendingMaxAge(t *testing.T) {
 	}, NewMetrics(nil))
 	require.NoError(t, err)
 
+	// Create a mock clock.
+	clock := quartz.NewMock(t)
+	m.clock = clock
+
 	// Append 1B of data.
 	lbs := labels.Labels{{Name: "a", Value: "b"}}
 	entries := []*logproto.Entry{{Timestamp: time.Now(), Line: "c"}}
@@ -347,7 +356,7 @@ func TestManager_NexPendingMaxAge(t *testing.T) {
 
 	// Wait 100ms. The segment that was just appended to should have reached
 	// the maximum age.
-	time.Sleep(100 * time.Millisecond)
+	clock.Advance(100 * time.Millisecond)
 	it, err = m.NextPending()
 	require.NoError(t, err)
 	require.NotNil(t, it)
