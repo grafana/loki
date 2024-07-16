@@ -54,14 +54,16 @@ func newStream(
 	logger log.Logger,
 	guessedFormat string,
 	instanceID string,
+	drainCfg *drain.Config,
 ) (*stream, error) {
 	stream := &stream{
 		fp:           fp,
 		labels:       labels,
 		labelsString: labels.String(),
 		labelHash:    labels.Hash(),
-		patterns: drain.New(drain.DefaultConfig(), &drain.Metrics{
-			PatternsEvictedTotal:  metrics.patternsDiscardedTotal.WithLabelValues(instanceID, guessedFormat),
+		patterns: drain.New(drainCfg, guessedFormat, &drain.Metrics{
+			PatternsEvictedTotal:  metrics.patternsDiscardedTotal.WithLabelValues(instanceID, guessedFormat, "false"),
+			PatternsPrunedTotal:   metrics.patternsDiscardedTotal.WithLabelValues(instanceID, guessedFormat, "true"),
 			PatternsDetectedTotal: metrics.patternsDetectedTotal.WithLabelValues(instanceID, guessedFormat),
 			TokensPerLine:         metrics.tokensPerLine.WithLabelValues(instanceID, guessedFormat),
 			StatePerLine:          metrics.statePerLine.WithLabelValues(instanceID, guessedFormat),
@@ -107,7 +109,7 @@ func (s *stream) Push(
 					"sample_ts_ns", s.lastTs,
 				)
 		}
-		s.chunks.Observe(bytes, count, model.TimeFromUnixNano(s.lastTs))
+		s.chunks.Observe(bytes, count)
 	}
 	return nil
 }
@@ -288,4 +290,13 @@ func (s *stream) prune(olderThan time.Duration) bool {
 	}
 
 	return len(s.patterns.Clusters()) == 0 && chunksPruned
+}
+
+func (s *stream) Downsample(ts model.Time) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	if s.chunks != nil {
+		s.chunks.Downsample(ts)
+	}
 }

@@ -18,6 +18,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/common"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/queue"
 	"github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -35,6 +36,7 @@ type Planner struct {
 	// Subservices manager.
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
+	retentionManager   *RetentionManager
 
 	cfg       Config
 	limits    Limits
@@ -89,6 +91,14 @@ func New(
 		metrics:     NewMetrics(r, tasksQueue.GetConnectedConsumersMetric),
 		logger:      logger,
 	}
+
+	p.retentionManager = NewRetentionManager(
+		p.cfg.RetentionConfig,
+		p.limits,
+		p.bloomStore,
+		p.metrics,
+		p.logger,
+	)
 
 	svcs := []services.Service{p.tasksQueue, p.activeUsers}
 	p.subservices, err = services.NewManager(svcs...)
@@ -183,6 +193,7 @@ type tenantTable struct {
 
 func (p *Planner) runOne(ctx context.Context) error {
 	var (
+		wg     sync.WaitGroup
 		start  = time.Now()
 		status = statusFailure
 	)
@@ -196,6 +207,16 @@ func (p *Planner) runOne(ctx context.Context) error {
 	}()
 
 	p.metrics.buildStarted.Inc()
+	level.Info(p.logger).Log("msg", "running bloom build iteration")
+
+	// Launch retention (will return instantly if retention is disabled)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := p.retentionManager.Apply(ctx); err != nil {
+			level.Error(p.logger).Log("msg", "failed apply retention", "err", err)
+		}
+	}()
 
 	tables := p.tables(time.Now())
 	level.Debug(p.logger).Log("msg", "loaded tables", "tables", tables.TotalDays())
@@ -264,7 +285,6 @@ func (p *Planner) runOne(ctx context.Context) error {
 	// TODO(salvacorts): This may end up creating too many goroutines.
 	//                   Create a pool of workers to process table-tenant tuples.
 	var tasksSucceed atomic.Int64
-	var wg sync.WaitGroup
 	for tt, results := range tasksResultForTenantTable {
 		if results.tasksToWait == 0 {
 			// No tasks enqueued for this tenant-table tuple, skip processing
@@ -338,6 +358,13 @@ func (p *Planner) computeTasks(
 		return nil, nil, fmt.Errorf("failed to get metas: %w", err)
 	}
 
+	// In case the planner restarted before deleting outdated metas in the previous iteration,
+	// we delete them during the planning phase to avoid reprocessing them.
+	metas, err = p.deleteOutdatedMetasAndBlocks(ctx, table, tenant, metas, phasePlanning)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to delete outdated metas during planning: %w", err)
+	}
+
 	for _, ownershipRange := range ownershipRanges {
 		logger := log.With(logger, "ownership", ownershipRange.String())
 
@@ -348,9 +375,6 @@ func (p *Planner) computeTasks(
 		gaps, err := p.findOutdatedGaps(ctx, tenant, table, ownershipRange, metasInBounds, logger)
 		if err != nil {
 			level.Error(logger).Log("msg", "failed to find outdated gaps", "err", err)
-			continue
-		}
-		if len(gaps) == 0 {
 			continue
 		}
 
@@ -423,32 +447,43 @@ func (p *Planner) processTenantTaskResults(
 	}
 
 	combined := append(originalMetas, newMetas...)
-	outdated := outdatedMetas(combined)
-	if len(outdated) == 0 {
-		level.Debug(logger).Log("msg", "no outdated metas found")
-		return tasksSucceed, nil
-	}
-
-	level.Debug(logger).Log("msg", "found outdated metas", "outdated", len(outdated))
-	if err := p.deleteOutdatedMetasAndBlocks(ctx, table, tenant, outdated); err != nil {
+	if _, err := p.deleteOutdatedMetasAndBlocks(ctx, table, tenant, combined, phaseBuilding); err != nil {
 		return 0, fmt.Errorf("failed to delete outdated metas: %w", err)
 	}
 
 	return tasksSucceed, nil
 }
 
+// deleteOutdatedMetasAndBlocks filters out the outdated metas from the `metas` argument and deletes them from the store.
+// It returns the up-to-date metas from the `metas` argument.
 func (p *Planner) deleteOutdatedMetasAndBlocks(
 	ctx context.Context,
 	table config.DayTable,
 	tenant string,
 	metas []bloomshipper.Meta,
-) error {
-	logger := log.With(p.logger, "table", table.Addr(), "tenant", tenant)
+	phase string,
+) ([]bloomshipper.Meta, error) {
+	logger := log.With(p.logger, "table", table.Addr(), "tenant", tenant, "phase", phase)
+
+	upToDate, outdated := outdatedMetas(metas)
+	if len(outdated) == 0 {
+		level.Debug(logger).Log(
+			"msg", "no outdated metas found",
+			"upToDate", len(upToDate),
+		)
+		return upToDate, nil
+	}
+
+	level.Debug(logger).Log(
+		"msg", "found outdated metas",
+		"outdated", len(outdated),
+		"upToDate", len(upToDate),
+	)
 
 	client, err := p.bloomStore.Client(table.ModelTime())
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to get client", "err", err)
-		return errors.Wrap(err, "failed to get client")
+		return nil, errors.Wrap(err, "failed to get client")
 	}
 
 	var (
@@ -456,18 +491,18 @@ func (p *Planner) deleteOutdatedMetasAndBlocks(
 		deletedBlocks int
 	)
 	defer func() {
-		p.metrics.metasDeleted.Add(float64(deletedMetas))
-		p.metrics.blocksDeleted.Add(float64(deletedBlocks))
+		p.metrics.metasDeleted.WithLabelValues(phase).Add(float64(deletedMetas))
+		p.metrics.blocksDeleted.WithLabelValues(phase).Add(float64(deletedBlocks))
 	}()
 
-	for _, meta := range metas {
+	for _, meta := range outdated {
 		for _, block := range meta.Blocks {
 			if err := client.DeleteBlocks(ctx, []bloomshipper.BlockRef{block}); err != nil {
 				if client.IsObjectNotFoundErr(err) {
 					level.Debug(logger).Log("msg", "block not found while attempting delete, continuing", "block", block.String())
 				} else {
 					level.Error(logger).Log("msg", "failed to delete block", "err", err, "block", block.String())
-					return errors.Wrap(err, "failed to delete block")
+					return nil, errors.Wrap(err, "failed to delete block")
 				}
 			}
 
@@ -481,7 +516,7 @@ func (p *Planner) deleteOutdatedMetasAndBlocks(
 				level.Debug(logger).Log("msg", "meta not found while attempting delete, continuing", "meta", meta.MetaRef.String())
 			} else {
 				level.Error(logger).Log("msg", "failed to delete meta", "err", err, "meta", meta.MetaRef.String())
-				return errors.Wrap(err, "failed to delete meta")
+				return nil, errors.Wrap(err, "failed to delete meta")
 			}
 		}
 		deletedMetas++
@@ -494,7 +529,7 @@ func (p *Planner) deleteOutdatedMetasAndBlocks(
 		"blocks", deletedBlocks,
 	)
 
-	return nil
+	return upToDate, nil
 }
 
 func (p *Planner) tables(ts time.Time) *dayRangeIterator {
@@ -575,13 +610,13 @@ func (p *Planner) loadTenantWork(
 	return tenantTableWork, ctx.Err()
 }
 
-func (p *Planner) tenants(ctx context.Context, table config.DayTable) (*v1.SliceIter[string], error) {
+func (p *Planner) tenants(ctx context.Context, table config.DayTable) (*iter.SliceIter[string], error) {
 	tenants, err := p.tsdbStore.UsersForPeriod(ctx, table)
 	if err != nil {
 		return nil, fmt.Errorf("error loading tenants for table (%s): %w", table, err)
 	}
 
-	return v1.NewSliceIter(tenants), nil
+	return iter.NewSliceIter(tenants), nil
 }
 
 // blockPlan is a plan for all the work needed to build a meta.json
@@ -720,24 +755,24 @@ func blockPlansForGaps(tsdbs []tsdbGaps, metas []bloomshipper.Meta) ([]blockPlan
 				return planGap.Blocks[i].Bounds.Less(planGap.Blocks[j].Bounds)
 			})
 
-			peekingBlocks := v1.NewPeekingIter[bloomshipper.BlockRef](
-				v1.NewSliceIter[bloomshipper.BlockRef](
+			peekingBlocks := iter.NewPeekIter[bloomshipper.BlockRef](
+				iter.NewSliceIter[bloomshipper.BlockRef](
 					planGap.Blocks,
 				),
 			)
 			// dedupe blocks which could be in multiple metas
-			itr := v1.NewDedupingIter[bloomshipper.BlockRef, bloomshipper.BlockRef](
+			itr := iter.NewDedupingIter[bloomshipper.BlockRef, bloomshipper.BlockRef](
 				func(a, b bloomshipper.BlockRef) bool {
 					return a == b
 				},
-				v1.Identity[bloomshipper.BlockRef],
+				iter.Identity[bloomshipper.BlockRef],
 				func(a, _ bloomshipper.BlockRef) bloomshipper.BlockRef {
 					return a
 				},
 				peekingBlocks,
 			)
 
-			deduped, err := v1.Collect[bloomshipper.BlockRef](itr)
+			deduped, err := iter.Collect[bloomshipper.BlockRef](itr)
 			if err != nil {
 				return nil, fmt.Errorf("failed to dedupe blocks: %w", err)
 			}

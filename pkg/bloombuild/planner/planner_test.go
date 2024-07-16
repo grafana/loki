@@ -403,6 +403,7 @@ func createPlanner(
 				HardLimit: flagext.Bytes(20 << 20),
 				TTL:       time.Hour,
 			},
+			CacheListOps: false,
 		},
 		FSConfig: local.FSConfig{
 			Directory: t.TempDir(),
@@ -796,23 +797,109 @@ func Test_processTenantTaskResults(t *testing.T) {
 				},
 			)
 			require.NoError(t, err)
-
-			// TODO(salvacorts): Fix this
-			// For some reason, when the tests are run in the CI, we do not encode the `loc` of model.Time for each TSDB.
-			// As a result, when we fetch them, the loc is empty whereas in the original metas, it is not. Therefore the
-			// comparison fails. As a workaround to fix the issue, we will manually reset the TS of the sources to the
-			// fetched metas
-			for i := range metas {
-				for j := range metas[i].Sources {
-					sec := metas[i].Sources[j].TS.Unix()
-					nsec := metas[i].Sources[j].TS.Nanosecond()
-					metas[i].Sources[j].TS = time.Unix(sec, int64(nsec))
-				}
-			}
+			removeLocFromMetasSources(metas)
 
 			// Compare metas
 			require.Equal(t, len(tc.expectedMetas), len(metas))
 			require.ElementsMatch(t, tc.expectedMetas, metas)
+		})
+	}
+}
+
+// For some reason, when the tests are run in the CI, we do not encode the `loc` of model.Time for each TSDB.
+// As a result, when we fetch them, the loc is empty whereas in the original metas, it is not. Therefore the
+// comparison fails. As a workaround to fix the issue, we will manually reset the TS of the sources to the
+// fetched metas
+func removeLocFromMetasSources(metas []bloomshipper.Meta) []bloomshipper.Meta {
+	for i := range metas {
+		for j := range metas[i].Sources {
+			sec := metas[i].Sources[j].TS.Unix()
+			nsec := metas[i].Sources[j].TS.Nanosecond()
+			metas[i].Sources[j].TS = time.Unix(sec, int64(nsec))
+		}
+	}
+
+	return metas
+}
+
+func Test_deleteOutdatedMetas(t *testing.T) {
+	for _, tc := range []struct {
+		name                  string
+		originalMetas         []bloomshipper.Meta
+		expectedUpToDateMetas []bloomshipper.Meta
+	}{
+		{
+			name: "no metas",
+		},
+		{
+			name: "only up to date metas",
+			originalMetas: []bloomshipper.Meta{
+				genMeta(0, 10, []int{0}, []bloomshipper.BlockRef{genBlockRef(0, 10)}),
+				genMeta(10, 20, []int{0}, []bloomshipper.BlockRef{genBlockRef(10, 20)}),
+			},
+			expectedUpToDateMetas: []bloomshipper.Meta{
+				genMeta(0, 10, []int{0}, []bloomshipper.BlockRef{genBlockRef(0, 10)}),
+				genMeta(10, 20, []int{0}, []bloomshipper.BlockRef{genBlockRef(10, 20)}),
+			},
+		},
+		{
+			name: "outdated metas",
+			originalMetas: []bloomshipper.Meta{
+				genMeta(0, 5, []int{0}, []bloomshipper.BlockRef{genBlockRef(0, 5)}),
+				genMeta(6, 10, []int{0}, []bloomshipper.BlockRef{genBlockRef(6, 10)}),
+				genMeta(0, 10, []int{1}, []bloomshipper.BlockRef{genBlockRef(0, 10)}),
+			},
+			expectedUpToDateMetas: []bloomshipper.Meta{
+				genMeta(0, 10, []int{1}, []bloomshipper.BlockRef{genBlockRef(0, 10)}),
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			logger := log.NewNopLogger()
+			//logger := log.NewLogfmtLogger(os.Stdout)
+
+			cfg := Config{
+				PlanningInterval:        1 * time.Hour,
+				MaxQueuedTasksPerTenant: 10000,
+			}
+			planner := createPlanner(t, cfg, &fakeLimits{}, logger)
+
+			bloomClient, err := planner.bloomStore.Client(testDay.ModelTime())
+			require.NoError(t, err)
+
+			// Create original metas and blocks
+			err = putMetas(bloomClient, tc.originalMetas)
+			require.NoError(t, err)
+
+			// Get all metas
+			metas, err := planner.bloomStore.FetchMetas(
+				context.Background(),
+				bloomshipper.MetaSearchParams{
+					TenantID: "fakeTenant",
+					Interval: bloomshipper.NewInterval(testTable.Bounds()),
+					Keyspace: v1.NewBounds(0, math.MaxUint64),
+				},
+			)
+			require.NoError(t, err)
+			removeLocFromMetasSources(metas)
+			require.ElementsMatch(t, tc.originalMetas, metas)
+
+			upToDate, err := planner.deleteOutdatedMetasAndBlocks(context.Background(), testTable, "fakeTenant", tc.originalMetas, phasePlanning)
+			require.NoError(t, err)
+			require.ElementsMatch(t, tc.expectedUpToDateMetas, upToDate)
+
+			// Get all metas
+			metas, err = planner.bloomStore.FetchMetas(
+				context.Background(),
+				bloomshipper.MetaSearchParams{
+					TenantID: "fakeTenant",
+					Interval: bloomshipper.NewInterval(testTable.Bounds()),
+					Keyspace: v1.NewBounds(0, math.MaxUint64),
+				},
+			)
+			require.NoError(t, err)
+			removeLocFromMetasSources(metas)
+			require.ElementsMatch(t, tc.expectedUpToDateMetas, metas)
 		})
 	}
 }
@@ -932,6 +1019,7 @@ func (f *fakeBuilder) Recv() (*protos.BuilderToPlanner, error) {
 }
 
 type fakeLimits struct {
+	Limits
 	timeout    time.Duration
 	maxRetries int
 }

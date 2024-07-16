@@ -29,6 +29,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -327,7 +328,6 @@ func (c *COSObjectClient) ObjectExists(ctx context.Context, objectKey string) (b
 		})
 		return requestErr
 	})
-
 	if err != nil {
 		return false, err
 	}
@@ -337,7 +337,6 @@ func (c *COSObjectClient) ObjectExists(ctx context.Context, objectKey string) (b
 
 // GetObject returns a reader and the size for the specified object key from the configured S3 bucket.
 func (c *COSObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
-
 	var resp *cos.GetObjectOutput
 
 	// Map the key into a bucket
@@ -370,15 +369,19 @@ func (c *COSObjectClient) GetObject(ctx context.Context, objectKey string) (io.R
 }
 
 // PutObject into the store
-func (c *COSObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+func (c *COSObjectClient) PutObject(ctx context.Context, objectKey string, object io.Reader) error {
 	return instrument.CollectedRequest(ctx, "COS.PutObject", cosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		readSeeker, err := util.ReadSeeker(object)
+		if err != nil {
+			return err
+		}
 		putObjectInput := &cos.PutObjectInput{
-			Body:   object,
+			Body:   readSeeker,
 			Bucket: ibm.String(c.bucketFromKey(objectKey)),
 			Key:    ibm.String(objectKey),
 		}
 
-		_, err := c.cos.PutObjectWithContext(ctx, putObjectInput)
+		_, err = c.cos.PutObjectWithContext(ctx, putObjectInput)
 		return err
 	})
 }

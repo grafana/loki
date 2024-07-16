@@ -31,7 +31,7 @@ func ReadBatch(it Iterator, batchSize int) (*logproto.QueryPatternsResponse, err
 			Samples: samples,
 		})
 	}
-	return &result, it.Error()
+	return &result, it.Err()
 }
 
 func ReadAll(it Iterator) (*logproto.QueryPatternsResponse, error) {
@@ -56,7 +56,7 @@ func ReadMetricsBatch(it iter.SampleIterator, batchSize int, logger log.Logger) 
 			series[hash] = s
 		}
 
-		s.Samples = append(s.Samples, it.Sample())
+		s.Samples = append(s.Samples, it.At())
 		series[hash] = s
 	}
 
@@ -68,7 +68,7 @@ func ReadMetricsBatch(it iter.SampleIterator, batchSize int, logger log.Logger) 
 		level.Debug(logger).Log("msg", "appending series", "s", fmt.Sprintf("%v", s))
 		result.Series = append(result.Series, s)
 	}
-	return &result, it.Error()
+	return &result, it.Err()
 }
 
 // ReadAllSamples reads all samples from the given iterator. It is only used in tests.

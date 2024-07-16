@@ -22,7 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 
-	loki_iter "github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/iter"
 	pattern_iter "github.com/grafana/loki/v3/pkg/pattern/iter"
 )
 
@@ -39,9 +39,10 @@ type instance struct {
 	metrics        *ingesterMetrics
 	chunkMetrics   *metric.ChunkMetrics
 	aggregationCfg metric.AggregationConfig
+	drainCfg       *drain.Config
 }
 
-func newInstance(instanceID string, logger log.Logger, metrics *ingesterMetrics, chunkMetrics *metric.ChunkMetrics, aggCfg metric.AggregationConfig) (*instance, error) {
+func newInstance(instanceID string, logger log.Logger, metrics *ingesterMetrics, chunkMetrics *metric.ChunkMetrics, drainCfg *drain.Config, aggCfg metric.AggregationConfig) (*instance, error) {
 	index, err := index.NewBitPrefixWithShards(indexShards)
 	if err != nil {
 		return nil, err
@@ -55,6 +56,7 @@ func newInstance(instanceID string, logger log.Logger, metrics *ingesterMetrics,
 		metrics:        metrics,
 		chunkMetrics:   chunkMetrics,
 		aggregationCfg: aggCfg,
+		drainCfg:       drainCfg,
 	}
 	i.mapper = ingester.NewFPMapper(i.getLabelsFromFingerprint)
 	return i, nil
@@ -66,6 +68,9 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	appendErr := multierror.New()
 
 	for _, reqStream := range req.Streams {
+		if reqStream.Entries == nil || len(reqStream.Entries) == 0 {
+			continue
+		}
 		s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
 			func() (*stream, error) {
 				// add stream
@@ -115,10 +120,10 @@ func (i *instance) QuerySample(
 	ctx context.Context,
 	expr syntax.SampleExpr,
 	req *logproto.QuerySamplesRequest,
-) (loki_iter.SampleIterator, error) {
+) (iter.SampleIterator, error) {
 	if !i.aggregationCfg.Enabled {
 		// Should never get here, but this will prevent nil pointer panics in test
-		return loki_iter.NoopIterator, nil
+		return iter.NoopSampleIterator, nil
 	}
 
 	from, through := util.RoundToMilliseconds(req.Start, req.End)
@@ -132,11 +137,11 @@ func (i *instance) QuerySample(
 		return nil, err
 	}
 
-	var iters []loki_iter.SampleIterator
+	var iters []iter.SampleIterator
 	err = i.forMatchingStreams(
 		selector.Matchers(),
 		func(stream *stream) error {
-			var iter loki_iter.SampleIterator
+			var iter iter.SampleIterator
 			var err error
 			iter, err = stream.SampleIterator(ctx, expr, from, through, step)
 			if err != nil {
@@ -210,8 +215,7 @@ func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream
 	fp := i.getHashForLabels(labels)
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
 	firstEntryLine := pushReqStream.Entries[0].Line
-	s, err := newStream(fp, sortedLabels, i.metrics, i.chunkMetrics, i.aggregationCfg, i.logger, drain.DetectLogFormat(firstEntryLine), i.instanceID)
-
+	s, err := newStream(fp, sortedLabels, i.metrics, i.chunkMetrics, i.aggregationCfg, i.logger, drain.DetectLogFormat(firstEntryLine), i.instanceID, i.drainCfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}

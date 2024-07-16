@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/bloombuild/common"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -190,23 +191,27 @@ func (b *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 			return fmt.Errorf("failed to receive task from planner: %w", err)
 		}
 
-		logger := log.With(b.logger, "task", protoTask.Task.Id)
-
 		b.metrics.taskStarted.Inc()
 		start := time.Now()
-		status := statusSuccess
 
-		newMetas, err := b.processTask(c.Context(), protoTask.Task)
+		task, err := protos.FromProtoTask(protoTask.Task)
 		if err != nil {
-			status = statusFailure
-			level.Error(logger).Log("msg", "failed to process task", "err", err)
+			task = &protos.Task{ID: protoTask.Task.Id}
+			err = fmt.Errorf("failed to convert proto task to task: %w", err)
+			b.logTaskCompleted(task, nil, err, start)
+			if err = b.notifyTaskCompletedToPlanner(c, task, nil, err); err != nil {
+				return fmt.Errorf("failed to notify task completion to planner: %w", err)
+			}
+			continue
 		}
 
-		b.metrics.taskCompleted.WithLabelValues(status).Inc()
-		b.metrics.taskDuration.WithLabelValues(status).Observe(time.Since(start).Seconds())
+		newMetas, err := b.processTask(c.Context(), task)
+		if err != nil {
+			err = fmt.Errorf("failed to process task: %w", err)
+		}
 
-		// Acknowledge task completion to planner
-		if err = b.notifyTaskCompletedToPlanner(c, protoTask.Task.Id, newMetas, err); err != nil {
+		b.logTaskCompleted(task, newMetas, err, start)
+		if err = b.notifyTaskCompletedToPlanner(c, task, newMetas, err); err != nil {
 			return fmt.Errorf("failed to notify task completion to planner: %w", err)
 		}
 	}
@@ -215,37 +220,56 @@ func (b *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 	return nil
 }
 
+func (b *Builder) logTaskCompleted(
+	task *protos.Task,
+	metas []bloomshipper.Meta,
+	err error,
+	start time.Time,
+) {
+	logger := task.GetLogger(b.logger)
+
+	if err != nil {
+		b.metrics.taskCompleted.WithLabelValues(statusFailure).Inc()
+		b.metrics.taskDuration.WithLabelValues(statusFailure).Observe(time.Since(start).Seconds())
+		level.Debug(logger).Log(
+			"msg", "task failed",
+			"duration", time.Since(start).String(),
+			"err", err,
+		)
+		return
+	}
+
+	b.metrics.taskCompleted.WithLabelValues(statusSuccess).Inc()
+	b.metrics.taskDuration.WithLabelValues(statusSuccess).Observe(time.Since(start).Seconds())
+	level.Debug(logger).Log(
+		"msg", "task completed",
+		"duration", time.Since(start).String(),
+		"metas", len(metas),
+	)
+}
+
 func (b *Builder) notifyTaskCompletedToPlanner(
 	c protos.PlannerForBuilder_BuilderLoopClient,
-	taskID string,
+	task *protos.Task,
 	metas []bloomshipper.Meta,
 	err error,
 ) error {
+	logger := task.GetLogger(b.logger)
+
 	result := &protos.TaskResult{
-		TaskID:       taskID,
+		TaskID:       task.ID,
 		Error:        err,
 		CreatedMetas: metas,
 	}
 
-	// We have a retry mechanism upper in the stack, but we add another one here
-	// to try our best to avoid losing the task result.
-	retries := backoff.New(c.Context(), b.cfg.BackoffConfig)
-	for retries.Ongoing() {
-		if err := c.Send(&protos.BuilderToPlanner{
-			BuilderID: b.ID,
-			Result:    *result.ToProtoTaskResult(),
-		}); err == nil {
-			break
-		}
-
-		level.Error(b.logger).Log("msg", "failed to acknowledge task completion to planner. Retrying", "err", err)
-		retries.Wait()
-	}
-
-	if err := retries.Err(); err != nil {
+	if err := c.Send(&protos.BuilderToPlanner{
+		BuilderID: b.ID,
+		Result:    *result.ToProtoTaskResult(),
+	}); err != nil {
 		return fmt.Errorf("failed to acknowledge task completion to planner: %w", err)
 	}
 
+	level.Debug(logger).Log("msg", "acknowledged task completion to planner")
 	return nil
 }
 
@@ -260,27 +284,17 @@ func (b *Builder) notifyTaskCompletedToPlanner(
 // accelerate bloom generation for the new blocks.
 func (b *Builder) processTask(
 	ctx context.Context,
-	protoTask *protos.ProtoTask,
+	task *protos.Task,
 ) ([]bloomshipper.Meta, error) {
-	task, err := protos.FromProtoTask(protoTask)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert proto task to task: %w", err)
-	}
+	tenant := task.Tenant
+	logger := task.GetLogger(b.logger)
+	level.Debug(logger).Log("msg", "task started")
 
 	client, err := b.bloomStore.Client(task.Table.ModelTime())
 	if err != nil {
-		level.Error(b.logger).Log("msg", "failed to get client", "err", err)
+		level.Error(logger).Log("msg", "failed to get client", "err", err)
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
-
-	tenant := task.Tenant
-	logger := log.With(
-		b.logger,
-		"tenant", tenant,
-		"task", task.ID,
-		"tsdb", task.TSDB.Name(),
-	)
-	level.Debug(logger).Log("msg", "received task")
 
 	blockEnc, err := chunkenc.ParseEncoding(b.limits.BloomBlockEncoding(task.Tenant))
 	if err != nil {
@@ -334,7 +348,7 @@ func (b *Builder) processTask(
 		// Blocks are built consuming the series iterator. For observability, we wrap the series iterator
 		// with a counter iterator to count the number of times Next() is called on it.
 		// This is used to observe the number of series that are being processed.
-		seriesItrWithCounter := v1.NewCounterIter[*v1.Series](seriesItr)
+		seriesItrWithCounter := iter.NewCounterIter[*v1.Series](seriesItr)
 
 		gen := NewSimpleBloomGenerator(
 			tenant,
@@ -429,7 +443,7 @@ func (b *Builder) loadWorkForGap(
 	tenant string,
 	id tsdb.Identifier,
 	gap protos.GapWithBlocks,
-) (v1.Iterator[*v1.Series], v1.CloseableResettableIterator[*v1.SeriesWithBlooms], error) {
+) (iter.Iterator[*v1.Series], iter.CloseResetIterator[*v1.SeriesWithBlooms], error) {
 	// load a series iterator for the gap
 	seriesItr, err := b.tsdbStore.LoadTSDB(ctx, table, tenant, id, gap.Bounds)
 	if err != nil {

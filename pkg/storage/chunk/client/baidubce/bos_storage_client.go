@@ -79,7 +79,7 @@ func NewBOSObjectStorage(cfg *BOSStorageConfig) (*BOSObjectStorage, error) {
 	}, nil
 }
 
-func (b *BOSObjectStorage) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+func (b *BOSObjectStorage) PutObject(ctx context.Context, objectKey string, object io.Reader) error {
 	return instrument.CollectedRequest(ctx, "BOS.PutObject", bosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		body, err := bce.NewBodyFromSizedReader(object, -1)
 		if err != nil {

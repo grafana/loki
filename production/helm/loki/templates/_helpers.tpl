@@ -1056,7 +1056,8 @@ enableServiceLinks: false
 {{/* Determine querier address */}}
 {{- define "loki.querierAddress" -}}
 {{- $querierAddress := "" }}
-{{- if "loki.deployment.isDistributed "}}
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if $isDistributed -}}
 {{- $querierHost := include "loki.querierFullname" .}}
 {{- $querierUrl := printf "http://%s.%s.svc.%s:3100" $querierHost .Release.Namespace .Values.global.clusterDomain }}
 {{- $querierAddress = $querierUrl }}

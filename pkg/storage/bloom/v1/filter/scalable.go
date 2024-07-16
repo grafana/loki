@@ -110,6 +110,13 @@ func (s *ScalableBloomFilter) K() uint {
 	return s.filters[len(s.filters)-1].K()
 }
 
+func (s *ScalableBloomFilter) Count() (ct int) {
+	for _, filter := range s.filters {
+		ct += int(filter.Count())
+	}
+	return
+}
+
 // FillRatio returns the average ratio of set bits across every filter.
 func (s *ScalableBloomFilter) FillRatio() float64 {
 	var sum, count float64

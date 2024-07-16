@@ -378,11 +378,10 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 			return nil, fmt.Errorf("unsupported result type: %T", r)
 		}
 	}
-	return nil, nil
+	return nil, errors.New("unexpected empty result")
 }
 
 func (q *query) JoinSampleVector(next bool, r StepResult, stepEvaluator StepEvaluator, maxSeries int) (promql_parser.Value, error) {
-
 	seriesIndex := map[uint64]*promql.Series{}
 
 	vec := promql.Vector{}
@@ -540,7 +539,7 @@ func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, inte
 	// value here because many unit tests start at time.Unix(0,0)
 	lastEntry := lastEntryMinTime
 	for respSize < size && i.Next() {
-		streamLabels, entry := i.Labels(), i.Entry()
+		streamLabels, entry := i.Labels(), i.At()
 
 		forwardShouldOutput := dir == logproto.FORWARD &&
 			(entry.Timestamp.Equal(lastEntry.Add(interval)) || entry.Timestamp.After(lastEntry.Add(interval)))
@@ -559,7 +558,7 @@ func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, inte
 				streams[streamLabels] = stream
 			}
 			stream.Entries = append(stream.Entries, entry)
-			lastEntry = i.Entry().Timestamp
+			lastEntry = i.At().Timestamp
 			respSize++
 		}
 	}
@@ -569,7 +568,7 @@ func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, inte
 		result = append(result, *stream)
 	}
 	sort.Sort(result)
-	return result, i.Error()
+	return result, i.Err()
 }
 
 type groupedAggregation struct {

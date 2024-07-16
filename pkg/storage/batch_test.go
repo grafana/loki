@@ -1745,7 +1745,7 @@ func TestBatchCancel(t *testing.T) {
 	//nolint:revive
 	for it.Next() {
 	}
-	require.Equal(t, context.Canceled, it.Error())
+	require.Equal(t, context.Canceled, it.Err())
 }
 
 var entry logproto.Entry
@@ -1784,7 +1784,7 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 			b.Fatal(err)
 		}
 		for it.Next() {
-			entry = it.Entry()
+			entry = it.At()
 		}
 		if err := it.Close(); err != nil {
 			b.Fatal(err)
