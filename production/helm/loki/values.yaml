@@ -1410,6 +1410,9 @@ write:
   persistence:
     # -- Enable volume claims in pod spec
     volumeClaimsEnabled: true
+    #-- Set access modes on the PersistentVolumeClaim
+    accessModes:
+      - ReadWriteOnce
     # -- Parameters used for the `data` volume when volumeClaimEnabled if false
     dataVolumeParameters:
       emptyDir: {}
