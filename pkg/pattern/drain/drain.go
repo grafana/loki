@@ -158,6 +158,7 @@ func New(config *Config, format string, metrics *Metrics) *Drain {
 	default:
 		tokenizer = newPunctuationTokenizer()
 	}
+
 	d.idToCluster = createLogClusterCache(config.MaxClusters, func(int, *LogCluster) {
 		if metrics != nil {
 			if d.pruning {
@@ -170,7 +171,10 @@ func New(config *Config, format string, metrics *Metrics) *Drain {
 			limiter.Evict()
 		}
 	})
-	d.tokenizer = tokenizer
+	d.tokenizer = &DedupingTokenizer{
+		LineTokenizer: tokenizer,
+		dedupParam:    config.ParamString,
+	}
 	d.limiter = limiter
 	return d
 }
