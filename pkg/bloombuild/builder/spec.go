@@ -224,6 +224,7 @@ func (b *LazyBlockBuilderIterator) Next() bool {
 	writer, reader := b.writerReaderFunc()
 	blockBuilder, err := v1.NewBlockBuilder(b.opts, writer)
 	if err != nil {
+		_ = writer.Cleanup()
 		b.err = errors.Wrap(err, "failed to create bloom block builder")
 		return false
 	}
@@ -231,6 +232,7 @@ func (b *LazyBlockBuilderIterator) Next() bool {
 	b.bytesAdded += sourceBytes
 
 	if err != nil {
+		_ = writer.Cleanup()
 		b.err = errors.Wrap(err, "failed to build bloom block")
 		return false
 	}

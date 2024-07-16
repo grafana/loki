@@ -488,7 +488,7 @@ func (b *Builder) loadWorkForGap(
 }
 
 func (b *Builder) writerReaderFunc() (v1.BlockWriter, v1.BlockReader) {
-	dir, err := os.MkdirTemp("", "bloom-block-")
+	dir, err := os.MkdirTemp(b.cfg.WorkingDir, "bloom-block-")
 	if err != nil {
 		panic(err)
 	}
