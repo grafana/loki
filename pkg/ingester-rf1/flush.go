@@ -1,6 +1,7 @@
 package ingesterrf1
 
 import (
+	"bytes"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -12,12 +13,10 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/ring"
-	"github.com/grafana/dskit/runutil"
 	"github.com/oklog/ulid"
 	"golang.org/x/net/context"
 
 	"github.com/grafana/loki/v3/pkg/storage/wal"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -124,19 +123,27 @@ func (i *Ingester) flushItem(l log.Logger, it *wal.PendingItem) error {
 // If the flush is successful, metrics for this flush are to be reported.
 // If the flush isn't successful, the operation for this userID is requeued allowing this and all other unflushed
 // segments to have another opportunity to be flushed.
-func (i *Ingester) flushSegment(ctx context.Context, ch *wal.SegmentWriter) error {
+func (i *Ingester) flushSegment(ctx context.Context, w *wal.SegmentWriter) error {
 	id := ulid.MustNew(ulid.Timestamp(time.Now()), rand.Reader)
-	r := ch.Reader()
 
 	start := time.Now()
 	defer func() {
-		runutil.CloseWithLogOnErr(util_log.Logger, r, "flushSegment")
 		i.metrics.flushDuration.Observe(time.Since(start).Seconds())
-		ch.Observe()
+		w.Observe()
 	}()
 
+	buf := i.flushBuffers.Get().(*bytes.Buffer)
+	defer func() {
+		buf.Reset()
+		i.flushBuffers.Put(buf)
+	}()
+
+	if _, err := w.WriteTo(buf); err != nil {
+		return err
+	}
+
 	i.metrics.flushesTotal.Add(1)
-	if err := i.store.PutObject(ctx, fmt.Sprintf("loki-v2/wal/anon/"+id.String()), r); err != nil {
+	if err := i.store.PutObject(ctx, fmt.Sprintf("loki-v2/wal/anon/"+id.String()), buf); err != nil {
 		i.metrics.flushFailuresTotal.Inc()
 		return fmt.Errorf("store put chunk: %w", err)
 	}

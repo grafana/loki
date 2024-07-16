@@ -1,6 +1,7 @@
 package ingesterrf1
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -205,6 +206,7 @@ type Ingester struct {
 
 	// One queue per flush thread.  Fingerprint is used to
 	// pick a queue.
+	flushBuffers     sync.Pool
 	flushWorkersDone sync.WaitGroup
 
 	wal *wal.Manager
@@ -272,6 +274,7 @@ func New(cfg Config, clientConfig client.Config,
 		instances:        map[string]*instance{},
 		store:            storage,
 		periodicConfigs:  periodConfigs,
+		flushBuffers:     sync.Pool{New: func() any { return new(bytes.Buffer) }},
 		flushWorkersDone: sync.WaitGroup{},
 		tailersQuit:      make(chan struct{}),
 		metrics:          metrics,
