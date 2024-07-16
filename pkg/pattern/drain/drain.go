@@ -301,14 +301,6 @@ func deduplicatePlaceholders(line string, placeholder string) string {
 	return unsafeString(builder)
 }
 
-func (d *Drain) PatternString(c *LogCluster) string {
-	s := deduplicatePlaceholders(d.tokenizer.Join(c.Tokens, c.TokenState), d.config.ParamString)
-	if s == d.config.ParamString {
-		return ""
-	}
-	return s
-}
-
 func (d *Drain) Prune() {
 	d.pruneTree(d.rootNode)
 }
