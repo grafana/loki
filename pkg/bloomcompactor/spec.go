@@ -94,6 +94,11 @@ func NewSimpleBloomGenerator(
 			opts.Schema.NGramSkip(),
 			int(opts.UnencodedBlockOptions.MaxBloomSizeBytes),
 			metrics.bloomMetrics,
+			log.With(
+				logger,
+				"component", "bloom_tokenizer",
+				"org_id", userID,
+			),
 		),
 	}
 }
