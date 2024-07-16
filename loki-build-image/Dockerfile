@@ -4,7 +4,7 @@
 # tag of the Docker image in `../.drone/drone.jsonnet` and run `make drone`.
 # See ../docs/sources/community/maintaining/release-loki-build-image.md for instructions
 # on how to publish a new build image.
-ARG GO_VERSION=1.22.4
+ARG GO_VERSION=1.22
 # Install helm (https://helm.sh/) and helm-docs (https://github.com/norwoodj/helm-docs) for generating Helm Chart reference.
 FROM golang:${GO_VERSION}-bookworm as helm
 ARG TARGETARCH

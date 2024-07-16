@@ -9,7 +9,7 @@ WORKDIR /src/loki
 RUN make clean && make BUILD_IN_CONTAINER=false PROMTAIL_JOURNAL_ENABLED=true promtail-debug
 
 
-FROM       gcr.io/distroless/base:debug
+FROM       gcr.io/distroless/base-nossl:debug
 COPY       --from=build /src/loki/clients/cmd/promtail/promtail-debug /usr/bin/promtail-debug
 COPY       --from=build /usr/bin/dlv /usr/bin/dlv
 COPY       clients/cmd/promtail/promtail-local-config.yaml /etc/promtail/local-config.yaml

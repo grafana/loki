@@ -1,5 +1,5 @@
 ARG BUILD_IMAGE=grafana/loki-build-image:0.33.2
-ARG GO_VERSION=1.22.4
+ARG GO_VERSION=1.22
 # Directories in this file are referenced from the root of the project not this folder
 # This file is intended to be called from the root like so:
 # docker build -t grafana/loki -f cmd/loki/Dockerfile.debug .
@@ -16,7 +16,7 @@ WORKDIR /src/loki
 RUN make clean && \
     GOARCH=$(cat /goarch) GOARM=$(cat /goarm) make BUILD_IN_CONTAINER=false loki-debug
 
-FROM       gcr.io/distroless/base:debug
+FROM       gcr.io/distroless/base-nossl:debug
 COPY       --from=build /src/loki/cmd/loki/loki-debug /usr/bin/loki-debug
 COPY       --from=goenv /go/bin/dlv /usr/bin/dlv
 COPY       cmd/loki/loki-docker-config.yaml /etc/loki/local-config.yaml
