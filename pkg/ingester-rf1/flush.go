@@ -41,7 +41,7 @@ const (
 func (i *Ingester) InitFlushQueues() {
 	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
 	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
-		i.flushQueues[j] = util.NewPriorityQueue(i.metrics.flushQueueLength)
+		i.flushQueues[j] = util.NewPriorityQueue(i.metrics.flushQueues)
 		go i.flushLoop(j)
 	}
 }
@@ -107,14 +107,15 @@ func (i *Ingester) flushLoop(j int) {
 		start := time.Now()
 
 		// We'll use this to log the size of the segment that was flushed.
-		n := humanize.Bytes(uint64(op.it.Writer.InputSize()))
+		n := op.it.Writer.InputSize()
+		humanized := humanize.Bytes(uint64(n))
 
 		err := i.flushOp(l, op)
 		d := time.Since(start)
 		if err != nil {
-			level.Error(l).Log("msg", "failed to flush", "size", n, "duration", d, "err", err)
+			level.Error(l).Log("msg", "failed to flush", "size", humanized, "duration", d, "err", err)
 		} else {
-			level.Debug(l).Log("msg", "flushed", "size", n, "duration", d)
+			level.Debug(l).Log("msg", "flushed", "size", humanized, "duration", d)
 		}
 
 		op.it.Result.SetDone(err)
@@ -144,16 +145,21 @@ func (i *Ingester) flushOp(l log.Logger, op *flushOp) error {
 // If the flush isn't successful, the operation for this userID is requeued allowing this and all other unflushed
 // segments to have another opportunity to be flushed.
 func (i *Ingester) flushSegment(ctx context.Context, ch *wal.SegmentWriter) error {
-	reader := ch.Reader()
-	defer runutil.CloseWithLogOnErr(util_log.Logger, reader, "flushSegment")
+	id := ulid.MustNew(ulid.Timestamp(time.Now()), rand.Reader)
+	r := ch.Reader()
 
-	newUlid := ulid.MustNew(ulid.Timestamp(time.Now()), rand.Reader)
+	start := time.Now()
+	defer func() {
+		runutil.CloseWithLogOnErr(util_log.Logger, r, "flushSegment")
+		i.metrics.flushDuration.Observe(time.Since(start).Seconds())
+		ch.Observe()
+	}()
 
-	if err := i.store.PutObject(ctx, fmt.Sprintf("loki-v2/wal/anon/"+newUlid.String()), reader); err != nil {
-		i.metrics.chunksFlushFailures.Inc()
+	i.metrics.flushesTotal.Add(1)
+	if err := i.store.PutObject(ctx, fmt.Sprintf("loki-v2/wal/anon/"+id.String()), r); err != nil {
+		i.metrics.flushFailuresTotal.Inc()
 		return fmt.Errorf("store put chunk: %w", err)
 	}
-	i.metrics.flushedChunksStats.Inc(1)
-	// TODO: report some flush metrics
+
 	return nil
 }

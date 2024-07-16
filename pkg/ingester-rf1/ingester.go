@@ -258,7 +258,7 @@ func New(cfg Config, clientConfig client.Config,
 	}
 	compressionStats.Set(cfg.ChunkEncoding)
 	targetSizeStats.Set(int64(cfg.TargetChunkSize))
-	metrics := newIngesterMetrics(registerer, metricsNamespace)
+	metrics := newIngesterMetrics(registerer)
 
 	walManager, err := wal.NewManager(wal.Config{
 		MaxAge:         cfg.MaxSegmentAge,
