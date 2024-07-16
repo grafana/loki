@@ -74,6 +74,9 @@ type Config struct {
 	FlushCheckPeriod    time.Duration     `yaml:"flush_check_period"`
 	FlushOpBackoff      backoff.Config    `yaml:"flush_op_backoff"`
 	FlushOpTimeout      time.Duration     `yaml:"flush_op_timeout"`
+	MaxSegmentAge       time.Duration     `yaml:"max_segment_age"`
+	MaxSegmentSize      int               `yaml:"max_segment_size"`
+	MaxSegments         int               `yaml:"max_segments"`
 	RetainPeriod        time.Duration     `yaml:"chunk_retain_period"`
 	MaxChunkIdle        time.Duration     `yaml:"chunk_idle_period"`
 	BlockSize           int               `yaml:"chunk_block_size"`
@@ -115,6 +118,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.FlushOpBackoff.MaxBackoff, "ingester-rf1.flush-op-backoff-max-period", time.Minute, "Maximum backoff period when a flush fails. Each concurrent flush has its own backoff, see `ingester.concurrent-flushes`.")
 	f.IntVar(&cfg.FlushOpBackoff.MaxRetries, "ingester-rf1.flush-op-backoff-retries", 10, "Maximum retries for failed flushes.")
 	f.DurationVar(&cfg.FlushOpTimeout, "ingester-rf1.flush-op-timeout", 10*time.Minute, "The timeout for an individual flush. Will be retried up to `flush-op-backoff-retries` times.")
+	f.DurationVar(&cfg.MaxSegmentAge, "ingester-rf1.max-segment-age", 500*time.Millisecond, "The maximum age of a segment before it should be flushed. Increasing this value allows more time for a segment to grow to max-segment-size, but may increase latency if the write volume is too small.")
+	f.IntVar(&cfg.MaxSegmentSize, "ingester-rf1.max-segment-size", 8*1024*1024, "The maximum size of a segment before it should be flushed. It is not a strict limit, and segments can exceed the maximum size when individual appends are larger than the remaining capacity.")
+	f.IntVar(&cfg.MaxSegments, "ingester-rf1.max-segments", 10, "The maximum number of segments to buffer in-memory. Increasing this value allows for large bursts of writes to be buffered in memory, but may increase latency if the write volume exceeds the rate at which segments can be flushed.")
+
 	f.DurationVar(&cfg.RetainPeriod, "ingester-rf1.chunks-retain-period", 0, "How long chunks should be retained in-memory after they've been flushed.")
 	// f.DurationVar(&cfg.MaxChunkIdle, "ingester-rf1.chunks-idle-period", 30*time.Minute, "How long chunks should sit in-memory with no updates before being flushed if they don't hit the max block size. This means that half-empty chunks will still be flushed after a certain period as long as they receive no further activity.")
 	f.IntVar(&cfg.BlockSize, "ingester-rf1.chunks-block-size", 256*1024, "The targeted _uncompressed_ size in bytes of a chunk block When this threshold is exceeded the head block will be cut and compressed inside the chunk.")
@@ -251,12 +258,12 @@ func New(cfg Config, clientConfig client.Config,
 	}
 	compressionStats.Set(cfg.ChunkEncoding)
 	targetSizeStats.Set(int64(cfg.TargetChunkSize))
-	metrics := newIngesterMetrics(registerer, metricsNamespace)
+	metrics := newIngesterMetrics(registerer)
 
 	walManager, err := wal.NewManager(wal.Config{
-		MaxAge:         wal.DefaultMaxAge,
-		MaxSegments:    wal.DefaultMaxSegments,
-		MaxSegmentSize: wal.DefaultMaxSegmentSize,
+		MaxAge:         cfg.MaxSegmentAge,
+		MaxSegments:    int64(cfg.MaxSegments),
+		MaxSegmentSize: int64(cfg.MaxSegmentSize),
 	}, wal.NewMetrics(registerer))
 	if err != nil {
 		return nil, err

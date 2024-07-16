@@ -220,7 +220,7 @@ limits_config:
     enabled: true
     desired_rate: {{ . }}MB
 {{- end }}
-  allow_structured_metadata: true
+  allow_structured_metadata: {{ .ObjectStorage.AllowStructuredMetadata }}
 {{- with .GossipRing }}
 memberlist:
   abort_if_cluster_join_fails: true

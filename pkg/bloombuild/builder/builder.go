@@ -262,22 +262,10 @@ func (b *Builder) notifyTaskCompletedToPlanner(
 		CreatedMetas: metas,
 	}
 
-	// We have a retry mechanism upper in the stack, but we add another one here
-	// to try our best to avoid losing the task result.
-	retries := backoff.New(c.Context(), b.cfg.BackoffConfig)
-	for retries.Ongoing() {
-		if err := c.Send(&protos.BuilderToPlanner{
-			BuilderID: b.ID,
-			Result:    *result.ToProtoTaskResult(),
-		}); err == nil {
-			break
-		}
-
-		level.Error(logger).Log("msg", "failed to acknowledge task completion to planner. Retrying", "err", err)
-		retries.Wait()
-	}
-
-	if err := retries.Err(); err != nil {
+	if err := c.Send(&protos.BuilderToPlanner{
+		BuilderID: b.ID,
+		Result:    *result.ToProtoTaskResult(),
+	}); err != nil {
 		return fmt.Errorf("failed to acknowledge task completion to planner: %w", err)
 	}
 

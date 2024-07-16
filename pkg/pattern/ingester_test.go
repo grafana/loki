@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
@@ -39,6 +40,16 @@ func setup(t *testing.T) *instance {
 	return inst
 }
 
+func downsampleInstance(inst *instance, tts int64) {
+	ts := model.TimeFromUnixNano(time.Unix(tts, 0).UnixNano())
+	_ = inst.streams.ForEach(func(s *stream) (bool, error) {
+		inst.streams.WithLock(func() {
+			s.Downsample(ts)
+		})
+		return true, nil
+	})
+}
+
 func TestInstancePushQuery(t *testing.T) {
 	inst := setup(t)
 	err := inst.Push(context.Background(), &push.PushRequest{
@@ -55,6 +66,7 @@ func TestInstancePushQuery(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
+	downsampleInstance(inst, 20)
 
 	err = inst.Push(context.Background(), &push.PushRequest{
 		Streams: []push.Stream{
@@ -70,6 +82,7 @@ func TestInstancePushQuery(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
+	downsampleInstance(inst, 30)
 
 	for i := 0; i <= 30; i++ {
 		err = inst.Push(context.Background(), &push.PushRequest{
@@ -87,6 +100,7 @@ func TestInstancePushQuery(t *testing.T) {
 		})
 		require.NoError(t, err)
 	}
+	downsampleInstance(inst, 30)
 
 	it, err := inst.Iterator(context.Background(), &logproto.QueryPatternsRequest{
 		Query: "{test=\"test\"}",
@@ -115,6 +129,9 @@ func TestInstancePushQuerySamples(t *testing.T) {
 				},
 			},
 		})
+		require.NoError(t, err)
+		downsampleInstance(inst, 0)
+
 		for i := 1; i <= 30; i++ {
 			err = inst.Push(context.Background(), &push.PushRequest{
 				Streams: []push.Stream{
@@ -130,8 +147,8 @@ func TestInstancePushQuerySamples(t *testing.T) {
 				},
 			})
 			require.NoError(t, err)
+			downsampleInstance(inst, int64(20*i))
 		}
-		require.NoError(t, err)
 
 		expr, err := syntax.ParseSampleExpr(`count_over_time({test="test"}[20s])`)
 		require.NoError(t, err)
@@ -149,10 +166,11 @@ func TestInstancePushQuerySamples(t *testing.T) {
 
 		require.Equal(t, lbls.String(), res.Series[0].GetLabels())
 
-		// end - start / step -- (start is 0, step is 10s)
+		// end - start / step -- (start is 0, step is 10s, downsampling at 20s intervals)
 		expectedDataPoints := ((20 * 30) / 10)
 		require.Equal(t, expectedDataPoints, len(res.Series[0].Samples))
 		require.Equal(t, float64(1), res.Series[0].Samples[0].Value)
+		require.Equal(t, float64(1), res.Series[0].Samples[expectedDataPoints-1].Value)
 
 		expr, err = syntax.ParseSampleExpr(`count_over_time({test="test"}[80s])`)
 		require.NoError(t, err)
@@ -170,7 +188,7 @@ func TestInstancePushQuerySamples(t *testing.T) {
 
 		require.Equal(t, lbls.String(), res.Series[0].GetLabels())
 
-		// end - start / step -- (start is 0, step is 10s)
+		// end - start / step -- (start is 0, step is 10s, downsampling at 20s intervals)
 		expectedDataPoints = ((20 * 30) / 10)
 		require.Equal(t, expectedDataPoints, len(res.Series[0].Samples))
 
@@ -185,6 +203,101 @@ func TestInstancePushQuerySamples(t *testing.T) {
 		require.Equal(t, float64(3), res.Series[0].Samples[5].Value)
 		require.Equal(t, float64(4), res.Series[0].Samples[6].Value)
 		require.Equal(t, float64(4), res.Series[0].Samples[expectedDataPoints-1].Value)
+	})
+
+	t.Run("test count_over_time samples with downsampling", func(t *testing.T) {
+		inst := setup(t)
+		err := inst.Push(context.Background(), &push.PushRequest{
+			Streams: []push.Stream{
+				{
+					Labels: lbls.String(),
+					Entries: []push.Entry{
+						{
+							Timestamp: time.Unix(0, 0),
+							Line:      "ts=1 msg=hello",
+						},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+		downsampleInstance(inst, 0)
+
+		for i := 1; i <= 30; i++ {
+			err = inst.Push(context.Background(), &push.PushRequest{
+				Streams: []push.Stream{
+					{
+						Labels: lbls.String(),
+						Entries: []push.Entry{
+							{
+								Timestamp: time.Unix(int64(10*i), 0),
+								Line:      "foo bar foo bar",
+							},
+						},
+					},
+				},
+			})
+			require.NoError(t, err)
+
+			// downsample every 20s
+			if i%2 == 0 {
+				downsampleInstance(inst, int64(10*i))
+			}
+		}
+
+		expr, err := syntax.ParseSampleExpr(`count_over_time({test="test"}[20s])`)
+		require.NoError(t, err)
+
+		it, err := inst.QuerySample(context.Background(), expr, &logproto.QuerySamplesRequest{
+			Query: expr.String(),
+			Start: time.Unix(0, 0),
+			End:   time.Unix(int64(10*30), 0),
+			Step:  20000,
+		})
+		require.NoError(t, err)
+		res, err := iter.ReadAllSamples(it)
+		require.NoError(t, err)
+		require.Equal(t, 1, len(res.Series))
+
+		require.Equal(t, lbls.String(), res.Series[0].GetLabels())
+
+		// end - start / step -- (start is 0, step is 10s, downsampling at 20s intervals)
+		expectedDataPoints := ((10 * 30) / 20)
+		require.Equal(t, expectedDataPoints, len(res.Series[0].Samples))
+		require.Equal(t, float64(1), res.Series[0].Samples[0].Value)
+
+		// after the first push there's 2 pushes per sample due to downsampling
+		require.Equal(t, float64(2), res.Series[0].Samples[expectedDataPoints-1].Value)
+
+		expr, err = syntax.ParseSampleExpr(`count_over_time({test="test"}[80s])`)
+		require.NoError(t, err)
+
+		it, err = inst.QuerySample(context.Background(), expr, &logproto.QuerySamplesRequest{
+			Query: expr.String(),
+			Start: time.Unix(0, 0),
+			End:   time.Unix(int64(10*30), 0),
+			Step:  20000,
+		})
+		require.NoError(t, err)
+		res, err = iter.ReadAllSamples(it)
+		require.NoError(t, err)
+		require.Equal(t, 1, len(res.Series))
+
+		require.Equal(t, lbls.String(), res.Series[0].GetLabels())
+
+		// end - start / step -- (start is 0, step is 10s, downsampling at 20s intervals)
+		expectedDataPoints = ((10 * 30) / 20)
+		require.Equal(t, expectedDataPoints, len(res.Series[0].Samples))
+
+		// with a larger selection range of 80s, we expect to eventually get up to 8 per datapoint
+		// our pushes are spaced 10s apart, downsampled every 20s, and there's 10s step,
+		// so we expect to see the value increase by 2 every samples, maxing out and staying at 8 after 5 samples
+		require.Equal(t, float64(1), res.Series[0].Samples[0].Value)
+		require.Equal(t, float64(3), res.Series[0].Samples[1].Value)
+		require.Equal(t, float64(5), res.Series[0].Samples[2].Value)
+		require.Equal(t, float64(7), res.Series[0].Samples[3].Value)
+		require.Equal(t, float64(8), res.Series[0].Samples[4].Value)
+		require.Equal(t, float64(8), res.Series[0].Samples[expectedDataPoints-1].Value)
 	})
 
 	t.Run("test bytes_over_time samples", func(t *testing.T) {
@@ -202,6 +315,9 @@ func TestInstancePushQuerySamples(t *testing.T) {
 				},
 			},
 		})
+		require.NoError(t, err)
+
+		downsampleInstance(inst, 0)
 		for i := 1; i <= 30; i++ {
 			err = inst.Push(context.Background(), &push.PushRequest{
 				Streams: []push.Stream{
@@ -217,8 +333,8 @@ func TestInstancePushQuerySamples(t *testing.T) {
 				},
 			})
 			require.NoError(t, err)
+			downsampleInstance(inst, int64(20*i))
 		}
-		require.NoError(t, err)
 
 		expr, err := syntax.ParseSampleExpr(`bytes_over_time({test="test"}[20s])`)
 		require.NoError(t, err)
@@ -343,6 +459,9 @@ func TestInstancePushQuerySamples(t *testing.T) {
 				},
 			},
 		})
+		require.NoError(t, err)
+		downsampleInstance(inst, 0)
+
 		for i := 1; i <= 30; i++ {
 			err = inst.Push(context.Background(), &push.PushRequest{
 				Streams: []push.Stream{
@@ -397,8 +516,8 @@ func TestInstancePushQuerySamples(t *testing.T) {
 				},
 			})
 			require.NoError(t, err)
+			downsampleInstance(inst, int64(20*i))
 		}
-		require.NoError(t, err)
 
 		for _, tt := range []struct {
 			name                string

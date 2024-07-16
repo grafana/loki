@@ -316,6 +316,25 @@ ingester_rf1:
   # CLI flag: -ingester-rf1.flush-op-timeout
   [flush_op_timeout: <duration> | default = 10m]
 
+  # The maximum age of a segment before it should be flushed. Increasing this
+  # value allows more time for a segment to grow to max-segment-size, but may
+  # increase latency if the write volume is too small.
+  # CLI flag: -ingester-rf1.max-segment-age
+  [max_segment_age: <duration> | default = 500ms]
+
+  # The maximum size of a segment before it should be flushed. It is not a
+  # strict limit, and segments can exceed the maximum size when individual
+  # appends are larger than the remaining capacity.
+  # CLI flag: -ingester-rf1.max-segment-size
+  [max_segment_size: <int> | default = 8388608]
+
+  # The maximum number of segments to buffer in-memory. Increasing this value
+  # allows for large bursts of writes to be buffered in memory, but may increase
+  # latency if the write volume exceeds the rate at which segments can be
+  # flushed.
+  # CLI flag: -ingester-rf1.max-segments
+  [max_segments: <int> | default = 10]
+
   # How long chunks should be retained in-memory after they've been flushed.
   # CLI flag: -ingester-rf1.chunks-retain-period
   [chunk_retain_period: <duration> | default = 0s]
@@ -605,6 +624,10 @@ pattern_ingester:
     # Whether to log push observations.
     # CLI flag: -pattern-ingester.metric-aggregation.log-push-observations
     [log_push_observations: <boolean> | default = false]
+
+    # How often to downsample metrics from raw push observations.
+    # CLI flag: -pattern-ingester.downsample-period
+    [downsample_period: <duration> | default = 10s]
 
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the

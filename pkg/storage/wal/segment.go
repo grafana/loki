@@ -46,8 +46,10 @@ type streamID struct {
 }
 
 type SegmentWriter struct {
+	metrics        *SegmentMetrics
 	streams        map[streamID]*streamSegment
 	buf1           encoding.Encbuf
+	outputSize     atomic.Int64
 	inputSize      atomic.Int64
 	idxWriter      *index.Writer
 	consistencyMtx *sync.RWMutex
@@ -76,12 +78,13 @@ func (s *streamSegment) WriteTo(w io.Writer) (n int64, err error) {
 }
 
 // NewWalSegmentWriter creates a new WalSegmentWriter.
-func NewWalSegmentWriter() (*SegmentWriter, error) {
+func NewWalSegmentWriter(m *SegmentMetrics) (*SegmentWriter, error) {
 	idxWriter, err := index.NewWriter()
 	if err != nil {
 		return nil, err
 	}
 	return &SegmentWriter{
+		metrics:        m,
 		streams:        make(map[streamID]*streamSegment, 64),
 		buf1:           encoding.EncWith(make([]byte, 0, 4)),
 		idxWriter:      idxWriter,
@@ -142,6 +145,22 @@ func (b *SegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels
 		copy(s.entries[idx+1:], s.entries[idx:])
 		s.entries[idx] = e
 	}
+}
+
+// Observe updates metrics for the writer. If called before WriteTo then the
+// output size histogram will observe 0.
+func (b *SegmentWriter) Observe() {
+	b.consistencyMtx.Lock()
+	defer b.consistencyMtx.Unlock()
+
+	b.metrics.streams.Observe(float64(len(b.streams)))
+	tenants := make(map[string]struct{}, len(b.streams))
+	for _, s := range b.streams {
+		tenants[s.tenantID] = struct{}{}
+	}
+	b.metrics.tenants.Observe(float64(len(tenants)))
+	b.metrics.inputSizeBytes.Observe(float64(b.inputSize.Load()))
+	b.metrics.outputSizeBytes.Observe(float64(b.outputSize.Load()))
 }
 
 func (b *SegmentWriter) WriteTo(w io.Writer) (int64, error) {
@@ -261,6 +280,8 @@ func (b *SegmentWriter) WriteTo(w io.Writer) (int64, error) {
 		return total, err
 	}
 	total += int64(n)
+
+	b.outputSize.Store(total)
 
 	return total, nil
 }
