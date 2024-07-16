@@ -147,6 +147,8 @@ func (b *SegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels
 	}
 }
 
+// Observe updates metrics for the writer. If called before WriteTo then the
+// output size histogram will observe 0.
 func (b *SegmentWriter) Observe() {
 	b.consistencyMtx.Lock()
 	defer b.consistencyMtx.Unlock()
