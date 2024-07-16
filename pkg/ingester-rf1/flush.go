@@ -39,6 +39,7 @@ const (
 func (i *Ingester) InitFlushWorkers() {
 	i.flushWorkersDone.Add(i.cfg.ConcurrentFlushes)
 	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
+		i.flushBuffers[j] = new(bytes.Buffer)
 		go i.flushWorker(j)
 	}
 }
@@ -89,7 +90,7 @@ func (i *Ingester) flushWorker(j int) {
 		n := it.Writer.InputSize()
 		humanized := humanize.Bytes(uint64(n))
 
-		err = i.flushItem(l, it)
+		err = i.flushItem(l, j, it)
 		d := time.Since(start)
 		if err != nil {
 			level.Error(l).Log("msg", "failed to flush", "size", humanized, "duration", d, "err", err)
@@ -102,13 +103,13 @@ func (i *Ingester) flushWorker(j int) {
 	}
 }
 
-func (i *Ingester) flushItem(l log.Logger, it *wal.PendingItem) error {
+func (i *Ingester) flushItem(l log.Logger, j int, it *wal.PendingItem) error {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
 	b := backoff.New(ctx, i.cfg.FlushOpBackoff)
 	for b.Ongoing() {
-		err := i.flushSegment(ctx, it.Writer)
+		err := i.flushSegment(ctx, j, it.Writer)
 		if err == nil {
 			break
 		}
@@ -123,7 +124,7 @@ func (i *Ingester) flushItem(l log.Logger, it *wal.PendingItem) error {
 // If the flush is successful, metrics for this flush are to be reported.
 // If the flush isn't successful, the operation for this userID is requeued allowing this and all other unflushed
 // segments to have another opportunity to be flushed.
-func (i *Ingester) flushSegment(ctx context.Context, w *wal.SegmentWriter) error {
+func (i *Ingester) flushSegment(ctx context.Context, j int, w *wal.SegmentWriter) error {
 	id := ulid.MustNew(ulid.Timestamp(time.Now()), rand.Reader)
 
 	start := time.Now()
@@ -132,12 +133,8 @@ func (i *Ingester) flushSegment(ctx context.Context, w *wal.SegmentWriter) error
 		w.Observe()
 	}()
 
-	buf := i.flushBuffers.Get().(*bytes.Buffer)
-	defer func() {
-		buf.Reset()
-		i.flushBuffers.Put(buf)
-	}()
-
+	buf := i.flushBuffers[j]
+	defer buf.Reset()
 	if _, err := w.WriteTo(buf); err != nil {
 		return err
 	}
