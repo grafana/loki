@@ -1831,8 +1831,12 @@ func ParamsFromRequest(req queryrangebase.Request) (logql.Params, error) {
 		return &paramsDetectedLabelsWrapper{
 			DetectedLabelsRequest: r,
 		}, nil
+	case *logproto.QuerySamplesRequest:
+		return &paramsQuerySamplesWrapper{
+			QuerySamplesRequest: r,
+		}, nil
 	default:
-		return nil, fmt.Errorf("expected one of the *LokiRequest, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, *DetectedFieldsRequest, got (%T)", r)
+		return nil, fmt.Errorf("expected one of the *LokiRequest, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, *DetectedFieldsRequest, *QuerySamplesRequest got (%T)", r)
 	}
 }
 
@@ -2129,6 +2133,55 @@ func (p paramsDetectedLabelsWrapper) CachingOptions() resultscache.CachingOption
 }
 
 func (p paramsDetectedFieldsWrapper) CachingOptions() resultscache.CachingOptions {
+	return resultscache.CachingOptions{}
+}
+
+type paramsQuerySamplesWrapper struct {
+	*logproto.QuerySamplesRequest
+}
+
+func (p paramsQuerySamplesWrapper) QueryString() string {
+	return p.GetQuery()
+}
+
+func (p paramsQuerySamplesWrapper) GetExpression() syntax.Expr {
+	expr, err := syntax.ParseExpr(p.GetQuery())
+	if err != nil {
+		return nil
+	}
+
+	return expr
+}
+
+func (p paramsQuerySamplesWrapper) Start() time.Time {
+	return p.GetStart()
+}
+
+func (p paramsQuerySamplesWrapper) End() time.Time {
+	return p.GetEnd()
+}
+
+func (p paramsQuerySamplesWrapper) Step() time.Duration {
+	return time.Duration(p.GetStep() * 1e6)
+}
+
+func (p paramsQuerySamplesWrapper) Interval() time.Duration {
+	return 0
+}
+
+func (p paramsQuerySamplesWrapper) Direction() logproto.Direction {
+	return logproto.BACKWARD
+}
+func (p paramsQuerySamplesWrapper) Limit() uint32 { return 0 }
+func (p paramsQuerySamplesWrapper) Shards() []string {
+	return make([]string, 0)
+}
+
+func (p paramsQuerySamplesWrapper) GetStoreChunks() *logproto.ChunkRefGroup {
+	return nil
+}
+
+func (p paramsQuerySamplesWrapper) CachingOptions() resultscache.CachingOptions {
 	return resultscache.CachingOptions{}
 }
 

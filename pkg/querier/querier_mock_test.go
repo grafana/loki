@@ -772,3 +772,41 @@ func (tl mockTenantLimits) TenantLimits(userID string) *validation.Limits {
 func (tl mockTenantLimits) AllByUserID() map[string]*validation.Limits {
 	return tl
 }
+
+type patternQuerierMock struct {
+	util.ExtendedMock
+}
+
+func newPatternQuerierMock() *patternQuerierMock {
+  return &patternQuerierMock{}
+}
+
+func (p *patternQuerierMock) Patterns(
+	ctx context.Context,
+	req *logproto.QueryPatternsRequest,
+) (*logproto.QueryPatternsResponse, error) {
+	args := p.Called(ctx, req)
+
+	resp := args.Get(0)
+	err := args.Error(1)
+	if resp == nil {
+		return nil, err
+	}
+
+	return resp.(*logproto.QueryPatternsResponse), err
+}
+
+func (p *patternQuerierMock) Samples(
+	ctx context.Context,
+	req *logproto.QuerySamplesRequest,
+) (*logproto.QuerySamplesResponse, error) {
+	args := p.Called(ctx, req)
+
+	resp := args.Get(0)
+	err := args.Error(1)
+	if resp == nil {
+		return nil, err
+	}
+
+	return resp.(*logproto.QuerySamplesResponse), err
+}

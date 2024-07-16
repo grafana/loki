@@ -264,6 +264,20 @@ func NewMiddleware(
 	if err != nil {
 		return nil, nil, err
 	}
+
+	exploreMetricTripperware, err := NewExploreMetricTripperware(
+		cfg,
+		log,
+		limits,
+		schema,
+		codec,
+		iqo,
+		metrics,
+		metricsNamespace)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		var (
 			metricRT         = metricsTripperware.Wrap(next)
@@ -276,9 +290,24 @@ func NewMiddleware(
 			seriesVolumeRT   = seriesVolumeTripperware.Wrap(next)
 			detectedFieldsRT = detectedFieldsTripperware.Wrap(next)
 			detectedLabelsRT = detectedLabelsTripperware.Wrap(next)
+			exploreMetricRT  = exploreMetricTripperware.Wrap(next)
 		)
 
-		return newRoundTripper(log, next, limitedRT, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, statsRT, seriesVolumeRT, detectedFieldsRT, detectedLabelsRT, limits)
+		return newRoundTripper(
+			log,
+			next,
+			limitedRT,
+			logFilterRT,
+			metricRT,
+			seriesRT,
+			labelsRT,
+			instantRT,
+			statsRT,
+			seriesVolumeRT,
+			detectedFieldsRT,
+			detectedLabelsRT,
+			exploreMetricRT,
+			limits)
 	}), StopperWrapper{resultsCache, statsCache, volumeCache}, nil
 }
 
@@ -342,13 +371,13 @@ func NewDetectedLabelsCardinalityFilter(rt queryrangebase.Handler) queryrangebas
 type roundTripper struct {
 	logger log.Logger
 
-	next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume, detectedFields, detectedLabels base.Handler
+	next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume, detectedFields, detectedLabels, exploreMetric base.Handler
 
 	limits Limits
 }
 
 // newRoundTripper creates a new queryrange roundtripper
-func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume, detectedFields, detectedLabels base.Handler, limits Limits) roundTripper {
+func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume, detectedFields, detectedLabels, exploreMetric base.Handler, limits Limits) roundTripper {
 	return roundTripper{
 		logger:         logger,
 		limited:        limited,
@@ -362,6 +391,7 @@ func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labe
 		seriesVolume:   seriesVolume,
 		detectedFields: detectedFields,
 		detectedLabels: detectedLabels,
+		exploreMetric:  exploreMetric,
 		next:           next,
 	}
 }
@@ -479,6 +509,17 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			"start", op.Start,
 		)
 		return r.detectedLabels.Do(ctx, req)
+	case *logproto.QuerySamplesRequest:
+		level.Info(logger).Log(
+			"msg", "executing query",
+			"type", "explore_query_range",
+			"end", op.End,
+			"length", op.End.Sub(op.Start),
+			"query", op.Query,
+			"start", op.Start,
+		)
+		return r.exploreMetric.Do(ctx, req)
+
 	default:
 		return r.next.Do(ctx, req)
 	}
@@ -1266,4 +1307,47 @@ func removeSketches(resp *DetectedFieldsResponse) *DetectedFieldsResponse {
 
 	resp.Response.FieldLimit = 0
 	return resp
+}
+
+func NewExploreMetricTripperware(
+	cfg Config,
+	log log.Logger,
+	limits Limits,
+	schema config.SchemaConfig,
+	merger base.Merger,
+	iqo util.IngesterQueryOptions,
+	metrics *Metrics,
+	metricsNamespace string,
+) (base.Middleware, error) {
+	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
+		splitter := newDefaultSplitter(limits, iqo)
+
+		middlewares := []base.Middleware{
+			NewLimitsMiddleware(limits),
+			base.InstrumentMiddleware("explore_query_range", metrics.InstrumentMiddlewareMetrics),
+			SplitExploreQueryRangeMiddleware(limits, iqo),
+			SplitByIntervalMiddleware(
+				schema.Configs,
+				limits,
+				merger,
+				splitter,
+				metrics.SplitByMetrics,
+			),
+		}
+
+		if cfg.MaxRetries > 0 {
+			middlewares = append(
+				middlewares,
+				base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
+				base.NewRetryMiddleware(
+					log,
+					cfg.MaxRetries,
+					metrics.RetryMiddlewareMetrics,
+					metricsNamespace,
+				),
+			)
+		}
+
+		return base.MergeMiddlewares(middlewares...).Wrap(next)
+	}), nil
 }

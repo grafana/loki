@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -162,9 +163,21 @@ func mockQueryResponse(streams []logproto.Stream) *logproto.QueryResponse {
 	}
 }
 
+func mockSampleQueryResponse(series []logproto.Series) *logproto.SampleQueryResponse {
+	return &logproto.SampleQueryResponse{
+		Series: series,
+	}
+}
+
 func mockLabelResponse(values []string) *logproto.LabelResponse {
 	return &logproto.LabelResponse{
 		Values: values,
+	}
+}
+
+func mockQuerySamplesResponse(series []logproto.Series) *logproto.QuerySamplesResponse {
+	return &logproto.QuerySamplesResponse{
+		Series: series,
 	}
 }
 
@@ -1858,4 +1871,69 @@ func BenchmarkQuerierDetectedFields(b *testing.B) {
 		_, err := querier.DetectedFields(ctx, &request)
 		assert.NoError(b, err)
 	}
+}
+
+func TestQuerier_SelectMetricSamples(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	conf := mockQuerierConfig()
+	conf.IngesterQueryStoreMaxLookback = 0
+
+	lbls, err := syntax.ParseLabels(`{type="test"}`)
+
+	t.Run("it queries pattern ingesters for metric samples", func(t *testing.T) {
+		now := time.Now()
+		then := now.Add(-1 * time.Minute)
+
+		request := logproto.QuerySamplesRequest{
+			Query: fmt.Sprintf(`count_over_time(%s[5m])`, lbls.String()),
+			Start: then,
+			End:   now,
+			Step:  10,
+		}
+
+		series := []logproto.Series{
+			{
+				Labels: `{type="test"}`,
+				Samples: []logproto.Sample{
+					{
+						Timestamp: then.UnixNano(),
+						Value:     42,
+					},
+					{
+						Timestamp: now.Add(-10 * time.Second).UnixNano(),
+						Value:     12,
+					},
+				},
+				StreamHash: lbls.Hash(),
+			},
+		}
+
+		store := newStoreMock()
+
+		patternQueryClient := newPatternQuerierMock()
+		patternQueryClient.On("Samples", mock.Anything, mock.Anything).
+			Return(mockQuerySamplesResponse(series), nil)
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(nil),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			store, limits)
+		require.NoError(t, err)
+
+		querier.WithPatternQuerier(patternQueryClient)
+
+		resp, err := querier.SelectMetricSamples(ctx, &request)
+		require.NoError(t, err)
+
+		require.Len(t, resp.Series, 1)
+		require.Equal(t, lbls.String(), resp.Series[0].Labels)
+		require.Len(t, resp.Series[0].Samples, 2)
+		require.Equal(t, float64(42), resp.Series[0].Samples[0].Value)
+	})
 }

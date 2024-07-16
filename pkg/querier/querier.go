@@ -123,7 +123,7 @@ type SingleTenantQuerier struct {
 	store           Store
 	limits          Limits
 	ingesterQuerier *IngesterQuerier
-	patternQuerier  PatterQuerier
+	patternQuerier  PatternQuerier
 	deleteGetter    deleteGetter
 	metrics         *Metrics
 	logger          log.Logger
@@ -1038,12 +1038,12 @@ func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabel
 	return detectedLabels
 }
 
-type PatterQuerier interface {
+type PatternQuerier interface {
 	Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error)
 	Samples(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error)
 }
 
-func (q *SingleTenantQuerier) WithPatternQuerier(pq PatterQuerier) {
+func (q *SingleTenantQuerier) WithPatternQuerier(pq PatternQuerier) {
 	q.patternQuerier = pq
 }
 

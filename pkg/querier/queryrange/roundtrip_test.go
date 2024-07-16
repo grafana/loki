@@ -360,7 +360,7 @@ func TestInstantQueryTripperwareResultCaching(t *testing.T) {
 	testLocal.CacheResults = false
 	testLocal.CacheIndexStatsResults = false
 	testLocal.CacheInstantMetricResults = false
-	var l = fakeLimits{
+	l := fakeLimits{
 		maxQueryParallelism:     1,
 		tsdbMaxQueryParallelism: 1,
 		maxQueryBytesRead:       1000,
@@ -1005,6 +1005,7 @@ func TestPostQueries(t *testing.T) {
 		handler,
 		handler,
 		handler,
+		handler,
 		fakeLimits{},
 	).Do(ctx, lreq)
 	require.NoError(t, err)
@@ -1379,6 +1380,140 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 	}
 }
 
+func TestExploreQueryRangeTripperware(t *testing.T) {
+	var l Limits = fakeLimits{
+		maxSeries:               math.MaxInt32,
+		maxQueryParallelism:     1,
+		tsdbMaxQueryParallelism: 1,
+		maxQueryBytesRead:       1000,
+		maxQuerierBytesRead:     100,
+	}
+	l = WithSplitByLimits(l, 12*time.Hour)
+	noCacheTestCfg := testConfig
+	noCacheTestCfg.CacheResults = false
+	noCacheTestCfg.CacheIndexStatsResults = false
+	iqo := ingesterQueryOpts{
+		queryStoreOnly:       false,
+		queryIngestersWithin: 2 * time.Hour,
+	}
+	tpw, stopper, err := NewMiddleware(noCacheTestCfg, testEngineOpts, iqo, util_log.Logger, l, config.SchemaConfig{
+		Configs: testSchemasTSDB,
+	}, nil, false, nil, constants.Loki)
+	if stopper != nil {
+		defer stopper.Stop()
+	}
+	require.NoError(t, err)
+
+	now := time.Now()
+	samplesRequest := &logproto.QuerySamplesRequest{
+		Query: `count_over_time({app="foo"}[1m])`,
+		Start: now.Add(-6 * time.Hour),
+		End:   now,
+		Step:  30000, // 30sec
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "1")
+
+	// testing happy path
+	count, h := promqlResult(matrix)
+	queryRangeResponse, err := tpw.Wrap(h).Do(ctx, samplesRequest)
+	require.NoError(t, err)
+
+	// since we're below the 12h split interval, we should have 2 queries, one to pattern ingester and one traditional
+	require.Equal(t, 2, *count)
+	res, ok := queryRangeResponse.(*LokiPromResponse)
+	require.True(t, ok)
+
+	require.Equal(t, loghttp.ResultTypeMatrix, res.Response.Data.ResultType)
+	require.Len(t, res.Response.Data.Result, 1)
+	require.Equal(t,
+		[]logproto.LabelAdapter{
+			{
+				Name:  "filename",
+				Value: `/var/hostlog/apport.log`,
+			},
+			{
+				Name:  "job",
+				Value: "varlogs",
+			},
+		}, res.Response.Data.Result[0].Labels)
+
+	require.Equal(t, 0.013333333333333334, res.Response.Data.Result[0].Samples[0].Value)
+	require.Equal(t, toMs(testTime.Add(-4*time.Hour)), res.Response.Data.Result[0].Samples[0].TimestampMs)
+
+	// does not split a query that pattern ingester cannot handle
+	samplesRequest = &logproto.QuerySamplesRequest{
+		Query: `count_over_time({app="foo"} |= "cannot split" [1m])`,
+		Start: now.Add(-6 * time.Hour),
+		End:   now,
+		Step:  30000, // 30sec
+	}
+
+	count, h = promqlResult(matrix)
+	queryRangeResponse, err = tpw.Wrap(h).Do(ctx, samplesRequest)
+	require.NoError(t, err)
+
+	// since we're below the 12h split interval, we should have 1 query to traditional path only
+	require.Equal(t, 1, *count)
+	res, ok = queryRangeResponse.(*LokiPromResponse)
+	require.True(t, ok)
+
+	// does not split a query outside the time range
+	samplesRequest = &logproto.QuerySamplesRequest{
+		Query: `count_over_time({app="foo"}[1m])`,
+		Start: now.Add(-6 * time.Hour),
+		End:   now.Add(-3 * time.Hour),
+		Step:  30000, // 30sec
+	}
+
+	count, h = promqlResult(matrix)
+	queryRangeResponse, err = tpw.Wrap(h).Do(ctx, samplesRequest)
+	require.NoError(t, err)
+
+	// since we're below the 12h split interval, we should have 1 query to traditional path only
+	require.Equal(t, 1, *count)
+	res, ok = queryRangeResponse.(*LokiPromResponse)
+	require.True(t, ok)
+
+	// TODO(twhitney): test caching, retry, and split interval
+	// // testing retry
+	// _, statsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
+	// retries, queryHandler := counterWithError(errors.New("handle error"))
+	// h := getQueryAndStatsHandler(queryHandler, statsHandler)
+	// _, err = tpw.Wrap(h).Do(ctx, lreq)
+	// // 3 retries configured.
+	// require.GreaterOrEqual(t, *retries, 3)
+	// require.Error(t, err)
+
+	// // Configure with cache
+	// tpw, stopper, err = NewMiddleware(testConfig, testEngineOpts, nil, util_log.Logger, l, config.SchemaConfig{
+	// 	Configs: testSchemasTSDB,
+	// }, nil, false, nil, constants.Loki)
+	// if stopper != nil {
+	// 	defer stopper.Stop()
+	// }
+	// require.NoError(t, err)
+
+	// // testing split interval
+	// _, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
+	// count, queryHandler := promqlResult(matrix)
+	// h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	// lokiResponse, err := tpw.Wrap(h).Do(ctx, lreq)
+	// // 2 queries
+	// require.Equal(t, 2, *count)
+	// require.NoError(t, err)
+
+	// // testing cache
+	// count, queryHandler = counter()
+	// h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	// lokiCacheResponse, err := tpw.Wrap(h).Do(ctx, lreq)
+	// // 0 queries result are cached.
+	// require.Equal(t, 0, *count)
+	// require.NoError(t, err)
+
+	// require.Equal(t, lokiResponse.(*LokiPromResponse).Response, lokiCacheResponse.(*LokiPromResponse).Response)
+}
+
 type fakeLimits struct {
 	maxQueryLength              time.Duration
 	maxQueryParallelism         int
@@ -1616,7 +1751,7 @@ func seriesVolumeResult(v logproto.VolumeResponse) (*int, base.Handler) {
 }
 
 // instantQueryResultWithCache used when instant query tripperware is created with split align and cache middleware.
-// Assuming each subquery handler returns `val` sample, then this function returns overal result by combining all the subqueries sample values.
+// Assuming each subquery handler returns `val` sample, then this function returns overall result by combining all the subqueries sample values.
 func instantQueryResultWithCache(split int, ts time.Duration, val promql.Sample) promql.Vector {
 	v := (val.F * float64(split)) / ts.Seconds()
 	return promql.Vector{
