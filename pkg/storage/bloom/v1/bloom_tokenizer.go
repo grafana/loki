@@ -127,7 +127,7 @@ func (bt *BloomTokenizer) Populate(
 		// Here we log an error if we find an empty bloom.
 		if bloom.Count() == 0 {
 			level.Warn(bt.logger).Log(
-				"msg", "Found existing empty bloom",
+				"msg", "found existing empty bloom",
 			)
 		}
 	} else {
@@ -170,7 +170,7 @@ func (bt *BloomTokenizer) Populate(
 	// TODO(salvacorts): Delete this once we solve the correctness bug
 	if bloom.Count() == 0 {
 		level.Warn(bt.logger).Log(
-			"msg", "Resulting bloom is empty",
+			"msg", "resulting bloom is empty",
 		)
 	}
 
