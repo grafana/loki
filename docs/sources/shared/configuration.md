@@ -872,6 +872,33 @@ compactor_grpc_client:
 # a ring unless otherwise specified in the component's configuration section.
 [memberlist: <memberlist>]
 
+metastore:
+  # CLI flag: -metastore.data-dir
+  [data_dir: <string> | default = "./data-metastore/data"]
+
+  raft:
+    # CLI flag: -metastore.raft.dir
+    [dir: <string> | default = "./data-metastore/raft"]
+
+    # CLI flag: -metastore.raft.bootstrap-peers
+    [bootstrap_peers: <list of strings> | default = []]
+
+    # CLI flag: -metastore.raft.server-id
+    [server_id: <string> | default = "localhost:9099"]
+
+    # CLI flag: -metastore.raft.bind-address
+    [bind_address: <string> | default = "localhost:9099"]
+
+    # CLI flag: -metastore.raft.advertise-address
+    [advertise_address: <string> | default = "localhost:9099"]
+
+metastore_client:
+  # CLI flag: -metastore.address
+  [address: <string> | default = "localhost:9095"]
+
+  # Configures the gRPC client used to communicate with the metastore.
+  [grpc_client_config: <grpc_client>]
+
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
 [runtime_config: <runtime_config>]
@@ -2625,6 +2652,8 @@ The `frontend_worker` configures the worker - running within the Loki querier - 
 
 # Configures the querier gRPC client used to communicate with the
 # query-scheduler. This can't be used in conjunction with 'grpc_client_config'.
+# The CLI flags prefix for this block configuration is:
+# metastore.grpc-client-config
 [query_scheduler_grpc_client: <grpc_client>]
 ```
 
@@ -2683,6 +2712,7 @@ The `grpc_client` block configures the gRPC client used to communicate between a
 - `frontend.grpc-client-config`
 - `ingester-rf1.client`
 - `ingester.client`
+- `metastore.grpc-client-config`
 - `pattern-ingester.client`
 - `querier.frontend-client`
 - `querier.frontend-grpc-client`
