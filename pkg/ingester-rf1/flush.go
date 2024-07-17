@@ -18,21 +18,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/wal"
 )
 
-const (
-	// Backoff for retrying 'immediate' flushes. Only counts for queue
-	// position, not wallclock time.
-	flushBackoff = 1 * time.Second
-
-	nameLabel = "__name__"
-	logsValue = "logs"
-
-	flushReasonIdle   = "idle"
-	flushReasonMaxAge = "max_age"
-	flushReasonForced = "forced"
-	flushReasonFull   = "full"
-	flushReasonSynced = "synced"
-)
-
 // Note: this is called both during the WAL replay (zero or more times)
 // and then after replay as well.
 func (i *Ingester) InitFlushWorkers() {
