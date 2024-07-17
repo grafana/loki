@@ -1833,6 +1833,7 @@ compactor:
   retention_enabled: true
   retention_delete_delay: 4h
   retention_delete_worker_count: 50
+  delete_request_store: s3
 frontend:
   tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
   compress_responses: true
