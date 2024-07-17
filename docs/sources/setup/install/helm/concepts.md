@@ -22,7 +22,7 @@ The Loki chart supports three methods of deployment:
 - [Simple Scalable]({{< relref "./install-scalable" >}})
 - [Microservice]({{< relref "./install-microservices" >}})
 
-By default, the chart installs [Simple Scalable]({{< relref "./install-scalable" >}}). This is the recommended method for most users. To understand the differences between deployment methods, see the [Loki deployment modes]({{< relref "../../../get-started/deployment-modes" >}}) documentation.
+By default, the chart installs in [Simple Scalable]({{< relref "./install-scalable" >}}) mode. This is the recommended method for most users. To understand the differences between deployment methods, see the [Loki deployment modes]({{< relref "../../../get-started/deployment-modes" >}}) documentation.
 
 ## Monitoring Loki
 
