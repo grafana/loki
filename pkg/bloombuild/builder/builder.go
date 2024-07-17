@@ -1,9 +1,9 @@
 package builder
 
 import (
-	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -368,7 +368,7 @@ func (b *Builder) processTask(
 			seriesItrWithCounter,
 			b.chunkLoader,
 			blocksIter,
-			b.rwFn,
+			b.writerReaderFunc,
 			nil, // TODO(salvacorts): Pass reporter or remove when we address tracking
 			b.bloomStore.BloomMetrics(),
 			logger,
@@ -384,6 +384,9 @@ func (b *Builder) processTask(
 			built, err := bloomshipper.BlockFrom(tenant, task.Table.Addr(), blk)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to build block", "err", err)
+				if err = blk.Reader().Cleanup(); err != nil {
+					level.Error(logger).Log("msg", "failed to cleanup block directory", "err", err)
+				}
 				return nil, fmt.Errorf("failed to build block: %w", err)
 			}
 
@@ -394,9 +397,16 @@ func (b *Builder) processTask(
 				built,
 			); err != nil {
 				level.Error(logger).Log("msg", "failed to write block", "err", err)
+				if err = blk.Reader().Cleanup(); err != nil {
+					level.Error(logger).Log("msg", "failed to cleanup block directory", "err", err)
+				}
 				return nil, fmt.Errorf("failed to write block: %w", err)
 			}
 			b.metrics.blocksCreated.Inc()
+
+			if err := blk.Reader().Cleanup(); err != nil {
+				level.Error(logger).Log("msg", "failed to cleanup block directory", "err", err)
+			}
 
 			totalGapKeyspace := gap.Bounds.Max - gap.Bounds.Min
 			progress := built.Bounds.Max - gap.Bounds.Min
@@ -489,9 +499,10 @@ func (b *Builder) loadWorkForGap(
 	return seriesItr, blocksIter, nil
 }
 
-// TODO(owen-d): pool, evaluate if memory-only is the best choice
-func (b *Builder) rwFn() (v1.BlockWriter, v1.BlockReader) {
-	indexBuf := bytes.NewBuffer(nil)
-	bloomsBuf := bytes.NewBuffer(nil)
-	return v1.NewMemoryBlockWriter(indexBuf, bloomsBuf), v1.NewByteReader(indexBuf, bloomsBuf)
+func (b *Builder) writerReaderFunc() (v1.BlockWriter, v1.BlockReader) {
+	dir, err := os.MkdirTemp(b.cfg.WorkingDir, "bloom-block-")
+	if err != nil {
+		panic(err)
+	}
+	return v1.NewDirectoryBlockWriter(dir), v1.NewDirectoryBlockReader(dir)
 }
