@@ -121,7 +121,7 @@ type Manager struct {
 	clock quartz.Clock
 }
 
-// item is similar to PendingItem, but it is an internal struct used in the
+// item is similar to PendingSegment, but it is an internal struct used in the
 // available and pending lists. It contains a single-use result that is returned
 // to callers appending to the WAL and a re-usable segment that is reset after
 // each flush.
@@ -130,8 +130,8 @@ type item struct {
 	w *SegmentWriter
 }
 
-// PendingItem contains a result and the segment to be flushed.
-type PendingItem struct {
+// PendingSegment contains a result and the segment to be flushed.
+type PendingSegment struct {
 	Result *AppendResult
 	Writer *SegmentWriter
 }
@@ -203,7 +203,7 @@ func (m *Manager) Close() {
 // It returns nil if there are no segments waiting to be flushed. If the WAL
 // is closed it returns all remaining segments from the pending list and then
 // ErrClosed.
-func (m *Manager) NextPending() (*PendingItem, error) {
+func (m *Manager) NextPending() (*PendingSegment, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.pending.Len() == 0 && !m.moveFrontIfExpired() {
@@ -217,12 +217,12 @@ func (m *Manager) NextPending() (*PendingItem, error) {
 	m.pending.Remove(el)
 	m.metrics.NumPending.Dec()
 	m.metrics.NumFlushing.Inc()
-	return &PendingItem{Result: it.r, Writer: it.w}, nil
+	return &PendingSegment{Result: it.r, Writer: it.w}, nil
 }
 
 // Put resets the segment and puts it back in the available list to accept
-// writes. A PendingItem should not be put back until it has been flushed.
-func (m *Manager) Put(it *PendingItem) {
+// writes. A PendingSegment should not be put back until it has been flushed.
+func (m *Manager) Put(it *PendingSegment) {
 	it.Writer.Reset()
 	m.mu.Lock()
 	defer m.mu.Unlock()
