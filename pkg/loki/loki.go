@@ -633,7 +633,7 @@ func (t *Loki) readyHandler(sm *services.Manager, shutdownRequested *atomic.Bool
 		// and that all other ring entries are OK too.
 		if t.IngesterRF1 != nil {
 			if err := t.IngesterRF1.CheckReady(r.Context()); err != nil {
-				http.Error(w, "Pattern Ingester not ready: "+err.Error(), http.StatusServiceUnavailable)
+				http.Error(w, "RF-1 Ingester not ready: "+err.Error(), http.StatusServiceUnavailable)
 				return
 			}
 		}

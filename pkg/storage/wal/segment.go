@@ -299,32 +299,6 @@ func (b *SegmentWriter) Reset() {
 	b.inputSize.Store(0)
 }
 
-type EncodedSegmentReader struct {
-	*io.PipeReader
-	*io.PipeWriter
-}
-
-func (e *EncodedSegmentReader) Close() error {
-	err := e.PipeWriter.Close()
-	if err != nil {
-		return err
-	}
-	err = e.PipeReader.Close()
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (b *SegmentWriter) Reader() io.ReadCloser {
-	pr, pw := io.Pipe()
-	go func() {
-		_, err := b.WriteTo(pw)
-		pw.CloseWithError(err)
-	}()
-	return &EncodedSegmentReader{PipeReader: pr, PipeWriter: pw}
-}
-
 // InputSize returns the total size of the input data written to the writer.
 // It doesn't account for timestamps and labels.
 func (b *SegmentWriter) InputSize() int64 {
