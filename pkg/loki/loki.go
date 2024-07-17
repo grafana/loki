@@ -382,7 +382,7 @@ type Loki struct {
 	Tee                distributor.Tee
 	PushParserWrapper  push.RequestParserWrapper
 	HTTPAuthMiddleware middleware.Interface
-	health             health.Service
+	health             *health.GRPCHealthService
 
 	Codec   Codec
 	Metrics *server.Metrics
@@ -503,7 +503,11 @@ func (t *Loki) Run(opts RunOpts) error {
 
 	t.Server.HTTP.Path("/log_level").Methods("GET", "POST").Handler(util_log.LevelHandler(&t.Cfg.Server.LogLevel))
 
-	grpc_health_v1.RegisterHealthServer(t.Server.GRPC, grpcutil.NewHealthCheck(sm))
+	if t.Cfg.isTarget(Metastore) {
+		grpc_health_v1.RegisterHealthServer(t.Server.GRPC, t.health)
+	} else {
+		grpc_health_v1.RegisterHealthServer(t.Server.GRPC, grpcutil.NewHealthCheck(sm))
+	}
 
 	// Config endpoint adds a way to see the config and the changes compared to the defaults.
 	t.bindConfigEndpoint(opts)

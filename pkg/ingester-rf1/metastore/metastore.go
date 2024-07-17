@@ -25,7 +25,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/raftleader"
 )
 
-const metastoreRaftLeaderHealthServiceName = "metastore.v1.MetastoreService.RaftLeader"
+const metastoreRaftLeaderHealthServiceName = "metastorepb.MetastoreService.RaftLeader"
 
 type Config struct {
 	DataDir string     `yaml:"data_dir"`

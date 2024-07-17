@@ -32,7 +32,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/common/model"
-	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
@@ -173,9 +172,7 @@ func (t *Loki) initServer() (services.Service, error) {
 
 	t.Server = serv
 
-	healthService := health.NewGRPCHealthService()
-	grpc_health_v1.RegisterHealthServer(t.Server.GRPC, healthService)
-	t.health = healthService
+	t.health = health.NewGRPCHealthService()
 
 	servicesToWaitFor := func() []services.Service {
 		svs := []services.Service(nil)

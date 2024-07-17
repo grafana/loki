@@ -65,11 +65,11 @@ func dial(cfg Config) (*grpc.ClientConn, error) {
 
 const grpcServiceConfig = `{
 	"healthCheckConfig": {
-		"serviceName": "metastore.v1.MetastoreService.RaftLeader"
+		"serviceName": "metastorepb.MetastoreService.RaftLeader"
 	},
 	"loadBalancingPolicy":"round_robin",
     "methodConfig": [{
-        "name": [{"service": "metastore.v1.MetastoreService"}],
+        "name": [{"service": "metastorepb.MetastoreService"}],
         "waitForReady": true,
         "retryPolicy": {
             "MaxAttempts": 4,
