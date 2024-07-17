@@ -1817,12 +1817,12 @@ func (t *Loki) initMetastore() (services.Service, error) {
 	return m, nil
 }
 
-func (f *Loki) initMetastoreClient() (services.Service, error) {
-	mc, err := metastoreclient.New(f.Cfg.MetastoreClient)
+func (t *Loki) initMetastoreClient() (services.Service, error) {
+	mc, err := metastoreclient.New(t.Cfg.MetastoreClient)
 	if err != nil {
 		return nil, err
 	}
-	f.MetastoreClient = mc
+	t.MetastoreClient = mc
 	return mc.Service(), nil
 }
 
