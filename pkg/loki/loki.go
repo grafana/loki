@@ -11,8 +11,6 @@ import (
 	rt "runtime"
 	"time"
 
-	ingester_rf1 "github.com/grafana/loki/v3/pkg/ingester-rf1"
-
 	"go.uber.org/atomic"
 
 	"github.com/fatih/color"
@@ -42,6 +40,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
+	ingester_rf1 "github.com/grafana/loki/v3/pkg/ingester-rf1"
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore"
+	metastoreclient "github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/client"
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/health"
 	ingester_client "github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/loki/common"
@@ -107,6 +109,8 @@ type Config struct {
 	Worker              worker.Config              `yaml:"frontend_worker,omitempty"`
 	TableManager        index.TableManagerConfig   `yaml:"table_manager,omitempty"`
 	MemberlistKV        memberlist.KVConfig        `yaml:"memberlist"`
+	Metastore           metastore.Config           `yaml:"metastore,omitempty"`
+	MetastoreClient     metastoreclient.Config     `yaml:"metastore_client"`
 
 	RuntimeConfig     runtimeconfig.Config `yaml:"runtime_config,omitempty"`
 	OperationalConfig runtime.Config       `yaml:"operational_config,omitempty"`
@@ -163,7 +167,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.CompactorHTTPClient.RegisterFlags(f)
 	c.CompactorGRPCClient.RegisterFlags(f)
 	c.IngesterClient.RegisterFlags(f)
-	//c.IngesterRF1Client.RegisterFlags(f)
+	// c.IngesterRF1Client.RegisterFlags(f)
 	c.Ingester.RegisterFlags(f)
 	c.IngesterRF1.RegisterFlags(f)
 	c.StorageConfig.RegisterFlags(f)
@@ -187,6 +191,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Analytics.RegisterFlags(f)
 	c.OperationalConfig.RegisterFlags(f)
 	c.Profiling.RegisterFlags(f)
+	c.Metastore.RegisterFlags(f)
+	c.MetastoreClient.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -368,6 +374,7 @@ type Loki struct {
 	indexGatewayRingManager   *lokiring.RingManager
 	bloomCompactorRingManager *lokiring.RingManager
 	bloomGatewayRingManager   *lokiring.RingManager
+	MetastoreClient           *metastoreclient.Client
 
 	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -375,6 +382,7 @@ type Loki struct {
 	Tee                distributor.Tee
 	PushParserWrapper  push.RequestParserWrapper
 	HTTPAuthMiddleware middleware.Interface
+	health             health.Service
 
 	Codec   Codec
 	Metrics *server.Metrics
@@ -688,6 +696,8 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(CacheGenerationLoader, t.initCacheGenerationLoader)
 	mm.RegisterModule(PatternIngester, t.initPatternIngester)
 	mm.RegisterModule(PatternRingClient, t.initPatternRingClient, modules.UserInvisibleModule)
+	mm.RegisterModule(Metastore, t.initMetastore)
+	mm.RegisterModule(MetastoreClient, t.initMetastoreClient, modules.UserInvisibleModule)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -721,7 +731,8 @@ func (t *Loki) setupModuleManager() error {
 		BloomStore:               {IndexGatewayRing},
 		PatternIngester:          {Server, MemberlistKV, Analytics},
 		PatternRingClient:        {Server, MemberlistKV, Analytics},
-		IngesterRF1RingClient:    {Server, MemberlistKV, Analytics},
+		IngesterRF1RingClient:    {Server, MemberlistKV, MetastoreClient, Analytics},
+		Metastore:                {Server, MetastoreClient},
 		IngesterQuerier:          {Ring},
 		QuerySchedulerRing:       {Overrides, MemberlistKV},
 		IndexGatewayRing:         {Overrides, MemberlistKV},

@@ -15,8 +15,6 @@ import (
 	"strings"
 	"time"
 
-	ingester_rf1 "github.com/grafana/loki/v3/pkg/ingester-rf1"
-
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -34,15 +32,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/common/model"
-
-	"github.com/grafana/loki/v3/pkg/bloomcompactor"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/storage/types"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner"
 	bloomprotos "github.com/grafana/loki/v3/pkg/bloombuild/protos"
+	"github.com/grafana/loki/v3/pkg/bloomcompactor"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
 	"github.com/grafana/loki/v3/pkg/compactor"
 	compactorclient "github.com/grafana/loki/v3/pkg/compactor/client"
@@ -52,8 +48,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
+	ingester_rf1 "github.com/grafana/loki/v3/pkg/ingester-rf1"
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore"
+	metastoreclient "github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/client"
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/health"
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend"
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v1/frontendv1pb"
@@ -78,6 +80,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb"
 	boltdbcompactor "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb/compactor"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/limiter"
@@ -139,6 +142,8 @@ const (
 	Backend                  string = "backend"
 	Analytics                string = "analytics"
 	InitCodec                string = "init-codec"
+	Metastore                string = "metastore"
+	MetastoreClient          string = "metastore-client"
 )
 
 const (
@@ -167,6 +172,10 @@ func (t *Loki) initServer() (services.Service, error) {
 	}
 
 	t.Server = serv
+
+	healthService := health.NewGRPCHealthService()
+	grpc_health_v1.RegisterHealthServer(t.Server.GRPC, healthService)
+	t.health = healthService
 
 	servicesToWaitFor := func() []services.Service {
 		svs := []services.Service(nil)
@@ -1796,6 +1805,25 @@ func (t *Loki) initAnalytics() (services.Service, error) {
 	}
 	t.usageReport = ur
 	return ur, nil
+}
+
+func (t *Loki) initMetastore() (services.Service, error) {
+	m, err := metastore.New(t.Cfg.Metastore, log.With(util_log.Logger, "component", "metastore"), prometheus.DefaultRegisterer, t.health)
+	if err != nil {
+		return nil, err
+	}
+	metastorepb.RegisterMetastoreServiceServer(t.Server.GRPC, m)
+
+	return m, nil
+}
+
+func (f *Loki) initMetastoreClient() (services.Service, error) {
+	mc, err := metastoreclient.New(f.Cfg.MetastoreClient)
+	if err != nil {
+		return nil, err
+	}
+	f.MetastoreClient = mc
+	return mc.Service(), nil
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLimits) (deletion.DeleteRequestsClient, error) {
