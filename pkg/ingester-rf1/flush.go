@@ -2,9 +2,9 @@ package ingesterrf1
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -17,7 +17,6 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/grafana/loki/v3/pkg/storage/wal"
-	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -38,11 +37,10 @@ const (
 
 // Note: this is called both during the WAL replay (zero or more times)
 // and then after replay as well.
-func (i *Ingester) InitFlushQueues() {
-	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
+func (i *Ingester) InitFlushWorkers() {
+	i.flushWorkersDone.Add(i.cfg.ConcurrentFlushes)
 	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
-		i.flushQueues[j] = util.NewPriorityQueue(i.metrics.flushQueues)
-		go i.flushLoop(j)
+		go i.flushWorker(j)
 	}
 }
 
@@ -50,7 +48,8 @@ func (i *Ingester) InitFlushQueues() {
 // Flush triggers a flush of all the chunks and closes the flush queues.
 // Called from the Lifecycler as part of the ingester shutdown.
 func (i *Ingester) Flush() {
-	i.flush()
+	i.wal.Close()
+	i.flushWorkersDone.Wait()
 }
 
 // TransferOut implements ring.FlushTransferer
@@ -60,57 +59,38 @@ func (i *Ingester) TransferOut(_ context.Context) error {
 	return ring.ErrTransferDisabled
 }
 
-func (i *Ingester) flush() {
-	// TODO: Flush the last chunks
-	// Close the flush queues, to unblock waiting workers.
-	for _, flushQueue := range i.flushQueues {
-		flushQueue.Close()
-	}
-
-	i.flushQueuesDone.Wait()
-	level.Debug(i.logger).Log("msg", "flush queues have drained")
-}
-
 // FlushHandler triggers a flush of all in memory chunks.  Mainly used for
 // local testing.
 func (i *Ingester) FlushHandler(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-type flushOp struct {
-	it  *wal.PendingItem
-	num int64
-}
-
-func (o *flushOp) Key() string {
-	return strconv.Itoa(int(o.num))
-}
-
-func (o *flushOp) Priority() int64 {
-	return -o.num
-}
-
-func (i *Ingester) flushLoop(j int) {
-	l := log.With(i.logger, "loop", j)
+func (i *Ingester) flushWorker(j int) {
+	l := log.With(i.logger, "worker", j)
 	defer func() {
-		level.Debug(l).Log("msg", "Ingester.flushLoop() exited")
-		i.flushQueuesDone.Done()
+		level.Debug(l).Log("msg", "Ingester.flushWorker() exited")
+		i.flushWorkersDone.Done()
 	}()
 
 	for {
-		o := i.flushQueues[j].Dequeue()
-		if o == nil {
+		it, err := i.wal.NextPending()
+		if errors.Is(err, wal.ErrClosed) {
 			return
 		}
-		op := o.(*flushOp)
+
+		if it == nil {
+			// TODO: Do something more clever here instead.
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
 
 		start := time.Now()
 
 		// We'll use this to log the size of the segment that was flushed.
-		n := op.it.Writer.InputSize()
+		n := it.Writer.InputSize()
 		humanized := humanize.Bytes(uint64(n))
 
-		err := i.flushOp(l, op)
+		err = i.flushItem(l, it)
 		d := time.Since(start)
 		if err != nil {
 			level.Error(l).Log("msg", "failed to flush", "size", humanized, "duration", d, "err", err)
@@ -118,18 +98,18 @@ func (i *Ingester) flushLoop(j int) {
 			level.Debug(l).Log("msg", "flushed", "size", humanized, "duration", d)
 		}
 
-		op.it.Result.SetDone(err)
-		i.wal.Put(op.it)
+		it.Result.SetDone(err)
+		i.wal.Put(it)
 	}
 }
 
-func (i *Ingester) flushOp(l log.Logger, op *flushOp) error {
+func (i *Ingester) flushItem(l log.Logger, it *wal.PendingItem) error {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
 	b := backoff.New(ctx, i.cfg.FlushOpBackoff)
 	for b.Ongoing() {
-		err := i.flushSegment(ctx, op.it.Writer)
+		err := i.flushSegment(ctx, it.Writer)
 		if err == nil {
 			break
 		}
