@@ -233,7 +233,7 @@ func (t *logfmtTokenizer) Join(tokens []string, _ interface{}) string {
 	buf := bytes.NewBuffer(make([]byte, 0, 1024))
 	enc := gologfmt.NewEncoder(buf)
 	for i := 0; i < len(tokens); i += 2 {
-		k, v := tokens[i], tokens[i+1]
+		k, v := tokens[i], unsafeBytes(tokens[i+1])
 		if err := enc.EncodeKeyval(k, v); err != nil {
 			return ""
 		}
