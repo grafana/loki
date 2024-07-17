@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/quartz"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"
@@ -86,13 +87,86 @@ func TestManager_AppendFailed(t *testing.T) {
 	require.EqualError(t, res.Err(), "failed to flush")
 }
 
-func TestManager_AppendMaxAge(t *testing.T) {
+func TestManager_AppendFailedWALClosed(t *testing.T) {
+	m, err := NewManager(Config{
+		MaxAge:         30 * time.Second,
+		MaxSegments:    10,
+		MaxSegmentSize: 1024, // 1KB
+	}, NewMetrics(nil))
+	require.NoError(t, err)
+
+	// Append some data.
+	lbs := labels.Labels{{Name: "a", Value: "b"}}
+	entries := []*logproto.Entry{{Timestamp: time.Now(), Line: "c"}}
+	res, err := m.Append(AppendRequest{
+		TenantID:  "1",
+		Labels:    lbs,
+		LabelsStr: lbs.String(),
+		Entries:   entries,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, res)
+
+	// Close the WAL.
+	m.Close()
+
+	// Should not be able to append more data as the WAL is closed.
+	res, err = m.Append(AppendRequest{
+		TenantID:  "1",
+		Labels:    lbs,
+		LabelsStr: lbs.String(),
+		Entries:   entries,
+	})
+	require.Nil(t, res)
+	require.ErrorIs(t, err, ErrClosed)
+}
+
+func TestManager_AppendFailedWALFull(t *testing.T) {
+	m, err := NewManager(Config{
+		MaxAge:         30 * time.Second,
+		MaxSegments:    10,
+		MaxSegmentSize: 1024, // 1KB
+	}, NewMetrics(nil))
+	require.NoError(t, err)
+
+	// Should be able to write 100KB of data, 10KB per segment.
+	lbs := labels.Labels{{Name: "a", Value: "b"}}
+	for i := 0; i < 10; i++ {
+		entries := []*logproto.Entry{{Timestamp: time.Now(), Line: strings.Repeat("c", 1024)}}
+		res, err := m.Append(AppendRequest{
+			TenantID:  "1",
+			Labels:    lbs,
+			LabelsStr: lbs.String(),
+			Entries:   entries,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, res)
+	}
+
+	// However, appending more data should fail as all segments are full and
+	// waiting to be flushed.
+	entries := []*logproto.Entry{{Timestamp: time.Now(), Line: strings.Repeat("c", 1024)}}
+	res, err := m.Append(AppendRequest{
+		TenantID:  "1",
+		Labels:    lbs,
+		LabelsStr: lbs.String(),
+		Entries:   entries,
+	})
+	require.ErrorIs(t, err, ErrFull)
+	require.Nil(t, res)
+}
+
+func TestManager_AppendMaxAgeExceeded(t *testing.T) {
 	m, err := NewManager(Config{
 		MaxAge:         100 * time.Millisecond,
 		MaxSegments:    1,
 		MaxSegmentSize: 8 * 1024 * 1024, // 8MB
 	}, NewMetrics(nil))
 	require.NoError(t, err)
+
+	// Create a mock clock.
+	clock := quartz.NewMock(t)
+	m.clock = clock
 
 	// Append 1B of data.
 	lbs := labels.Labels{{Name: "a", Value: "b"}}
@@ -112,7 +186,7 @@ func TestManager_AppendMaxAge(t *testing.T) {
 	require.Equal(t, 0, m.pending.Len())
 
 	// Wait 100ms and append some more data.
-	time.Sleep(100 * time.Millisecond)
+	clock.Advance(100 * time.Millisecond)
 	entries = []*logproto.Entry{{Timestamp: time.Now(), Line: "c"}}
 	res, err = m.Append(AppendRequest{
 		TenantID:  "1",
@@ -129,7 +203,7 @@ func TestManager_AppendMaxAge(t *testing.T) {
 	require.Equal(t, 1, m.pending.Len())
 }
 
-func TestManager_AppendMaxSize(t *testing.T) {
+func TestManager_AppendMaxSizeExceeded(t *testing.T) {
 	m, err := NewManager(Config{
 		MaxAge:         30 * time.Second,
 		MaxSegments:    1,
@@ -171,41 +245,6 @@ func TestManager_AppendMaxSize(t *testing.T) {
 	require.Equal(t, 1, m.pending.Len())
 }
 
-func TestManager_AppendWALFull(t *testing.T) {
-	m, err := NewManager(Config{
-		MaxAge:         30 * time.Second,
-		MaxSegments:    10,
-		MaxSegmentSize: 1024, // 1KB
-	}, NewMetrics(nil))
-	require.NoError(t, err)
-
-	// Should be able to write 100KB of data, 10KB per segment.
-	lbs := labels.Labels{{Name: "a", Value: "b"}}
-	for i := 0; i < 10; i++ {
-		entries := []*logproto.Entry{{Timestamp: time.Now(), Line: strings.Repeat("c", 1024)}}
-		res, err := m.Append(AppendRequest{
-			TenantID:  "1",
-			Labels:    lbs,
-			LabelsStr: lbs.String(),
-			Entries:   entries,
-		})
-		require.NoError(t, err)
-		require.NotNil(t, res)
-	}
-
-	// However, appending more data should fail as all segments are full and
-	// waiting to be flushed.
-	entries := []*logproto.Entry{{Timestamp: time.Now(), Line: strings.Repeat("c", 1024)}}
-	res, err := m.Append(AppendRequest{
-		TenantID:  "1",
-		Labels:    lbs,
-		LabelsStr: lbs.String(),
-		Entries:   entries,
-	})
-	require.ErrorIs(t, err, ErrFull)
-	require.Nil(t, res)
-}
-
 func TestManager_NextPending(t *testing.T) {
 	m, err := NewManager(Config{
 		MaxAge:         30 * time.Second,
@@ -216,7 +255,8 @@ func TestManager_NextPending(t *testing.T) {
 
 	// There should be no segments waiting to be flushed as no data has been
 	// written.
-	it := m.NextPending()
+	it, err := m.NextPending()
+	require.NoError(t, err)
 	require.Nil(t, it)
 
 	// Append 1KB of data.
@@ -231,21 +271,27 @@ func TestManager_NextPending(t *testing.T) {
 	require.NoError(t, err)
 
 	// There should be a segment waiting to be flushed.
-	it = m.NextPending()
+	it, err = m.NextPending()
+	require.NoError(t, err)
 	require.NotNil(t, it)
 
 	// There should be no more segments waiting to be flushed.
-	it = m.NextPending()
+	it, err = m.NextPending()
+	require.NoError(t, err)
 	require.Nil(t, it)
 }
 
-func TestManager_NexPendingMaxAge(t *testing.T) {
+func TestManager_NextPendingMaxAgeExceeded(t *testing.T) {
 	m, err := NewManager(Config{
 		MaxAge:         100 * time.Millisecond,
 		MaxSegments:    1,
 		MaxSegmentSize: 1024, // 1KB
 	}, NewMetrics(nil))
 	require.NoError(t, err)
+
+	// Create a mock clock.
+	clock := quartz.NewMock(t)
+	m.clock = clock
 
 	// Append 1B of data.
 	lbs := labels.Labels{{Name: "a", Value: "b"}}
@@ -261,18 +307,63 @@ func TestManager_NexPendingMaxAge(t *testing.T) {
 
 	// The segment that was just appended to has neither reached the maximum
 	// age nor maximum size to be flushed.
-	it := m.NextPending()
+	it, err := m.NextPending()
+	require.NoError(t, err)
 	require.Nil(t, it)
 	require.Equal(t, 1, m.available.Len())
 	require.Equal(t, 0, m.pending.Len())
 
 	// Wait 100ms. The segment that was just appended to should have reached
 	// the maximum age.
-	time.Sleep(100 * time.Millisecond)
-	it = m.NextPending()
+	clock.Advance(100 * time.Millisecond)
+	it, err = m.NextPending()
+	require.NoError(t, err)
 	require.NotNil(t, it)
 	require.Equal(t, 0, m.available.Len())
 	require.Equal(t, 0, m.pending.Len())
+}
+
+func TestManager_NextPendingWALClosed(t *testing.T) {
+	m, err := NewManager(Config{
+		MaxAge:         30 * time.Second,
+		MaxSegments:    1,
+		MaxSegmentSize: 1024, // 1KB
+	}, NewMetrics(nil))
+	require.NoError(t, err)
+
+	// Append some data.
+	lbs := labels.Labels{{Name: "a", Value: "b"}}
+	entries := []*logproto.Entry{{Timestamp: time.Now(), Line: "c"}}
+	res, err := m.Append(AppendRequest{
+		TenantID:  "1",
+		Labels:    lbs,
+		LabelsStr: lbs.String(),
+		Entries:   entries,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, res)
+
+	// There should be no segments waiting to be flushed as neither the maximum
+	// age nor maximum size has been exceeded.
+	it, err := m.NextPending()
+	require.NoError(t, err)
+	require.Nil(t, it)
+
+	// Close the WAL.
+	m.Close()
+
+	// There should be one segment waiting to be flushed.
+	it, err = m.NextPending()
+	require.NoError(t, err)
+	require.NotNil(t, it)
+
+	// There are no more segments waiting to be flushed, and since the WAL is
+	// closed, successive calls should return ErrClosed.
+	for i := 0; i < 10; i++ {
+		it, err = m.NextPending()
+		require.ErrorIs(t, err, ErrClosed)
+		require.Nil(t, it)
+	}
 }
 
 func TestManager_Put(t *testing.T) {
@@ -304,7 +395,8 @@ func TestManager_Put(t *testing.T) {
 	require.Equal(t, 1, m.pending.Len())
 
 	// Getting the pending segment should remove it from the list.
-	it := m.NextPending()
+	it, err := m.NextPending()
+	require.NoError(t, err)
 	require.NotNil(t, it)
 	require.Equal(t, 0, m.available.Len())
 	require.Equal(t, 0, m.pending.Len())
@@ -373,7 +465,8 @@ wal_segments_pending 1
 	require.NoError(t, testutil.CollectAndCompare(r, strings.NewReader(expected), metricNames...))
 
 	// Get the segment from the pending list.
-	it := m.NextPending()
+	it, err := m.NextPending()
+	require.NoError(t, err)
 	require.NotNil(t, it)
 	expected = `
 # HELP wal_segments_available The number of WAL segments accepting writes.
@@ -402,5 +495,4 @@ wal_segments_flushing 0
 wal_segments_pending 0
 `
 	require.NoError(t, testutil.CollectAndCompare(r, strings.NewReader(expected), metricNames...))
-
 }

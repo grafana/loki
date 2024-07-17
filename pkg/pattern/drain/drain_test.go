@@ -260,7 +260,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 				`I0507 <_>       1 defaultevictor.go:202] "Pod fails the following checks" pod="<_>" checks="[pod is a mirror pod, pod is a static pod, pod has system critical priority, pod has higher priority than specified priority class threshold, pod has local storage and descheduler is not configured with evictLocalStoragePods]"`,
 				`I0507 <_>       1 defaultevictor.go:202] "Pod fails the following checks" pod="<_>" checks="pod has local storage and descheduler is not configured with evictLocalStoragePods"`,
 				`I0507 <_>       1 defaultevictor.go:202] "Pod fails the following checks" pod="<_>" checks="pod is a DaemonSet pod"`,
-				`I0507 <_>       1 node.go:157] "Pod does not fit on any other node" pod:="<_>" node:="<_>" error:="[pod node selector does not match the node label, <_> <_><_> <_> <_><_> <_> <_>]"`,
+				`I0507 <_>       1 node.go:157] "Pod does not fit on any other node" pod:="<_>" node:="<_>" error:="[pod node selector does not match the node label, <_> <_> <_> <_> <_> <_>]"`,
 				`I0507 <_>       1 node.go:157] "Pod does not fit on any other node" pod:="<_>" node:="<_>" error:="[pod node selector does not match the node label, insufficient <_>, insufficient <_>]"`,
 				`I0507 <_>       1 node.go:157] "Pod does not fit on any other node" pod:="<_>" node:="<_>" error:="[pod node selector does not match the node label, insufficient <_>]"`,
 				`I0507 <_>       1 node.go:157] "Pod does not fit on any other node" pod:="<_>" node:="<_>" error:="[pod node selector does not match the node label, pod does not tolerate taints on the node, insufficient <_>, insufficient <_>]"`,

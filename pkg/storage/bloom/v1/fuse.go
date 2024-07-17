@@ -237,7 +237,12 @@ func (fq *FusedQuerier) Run() error {
 		series := fq.bq.At()
 		if series.Fingerprint != fp {
 			// fingerprint not found, can't remove chunks
-			level.Debug(fq.logger).Log("msg", "fingerprint not found", "fp", series.Fingerprint, "err", fq.bq.Err())
+			level.Debug(fq.logger).Log(
+				"msg", "fingerprint not found",
+				"fp", fp,
+				"foundFP", series.Fingerprint,
+				"err", fq.bq.Err(),
+			)
 			fq.recordMissingFp(nextBatch, fp)
 			continue
 		}

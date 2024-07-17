@@ -286,6 +286,25 @@ ingester_rf1:
     # CLI flag: -ingester-rf1.lifecycler.ID
     [id: <string> | default = "<hostname>"]
 
+  # The maximum age of a segment before it should be flushed. Increasing this
+  # value allows more time for a segment to grow to max-segment-size, but may
+  # increase latency if the write volume is too small.
+  # CLI flag: -ingester-rf1.max-segment-age
+  [max_segment_age: <duration> | default = 500ms]
+
+  # The maximum size of a segment before it should be flushed. It is not a
+  # strict limit, and segments can exceed the maximum size when individual
+  # appends are larger than the remaining capacity.
+  # CLI flag: -ingester-rf1.max-segment-size
+  [max_segment_size: <int> | default = 8388608]
+
+  # The maximum number of segments to buffer in-memory. Increasing this value
+  # allows for large bursts of writes to be buffered in memory, but may increase
+  # latency if the write volume exceeds the rate at which segments can be
+  # flushed.
+  # CLI flag: -ingester-rf1.max-segments
+  [max_segments: <int> | default = 10]
+
   # How many flushes can happen concurrently from each stream.
   # CLI flag: -ingester-rf1.concurrent-flushes
   [concurrent_flushes: <int> | default = 32]
@@ -315,56 +334,6 @@ ingester_rf1:
   # `flush-op-backoff-retries` times.
   # CLI flag: -ingester-rf1.flush-op-timeout
   [flush_op_timeout: <duration> | default = 10m]
-
-  # The maximum age of a segment before it should be flushed. Increasing this
-  # value allows more time for a segment to grow to max-segment-size, but may
-  # increase latency if the write volume is too small.
-  # CLI flag: -ingester-rf1.max-segment-age
-  [max_segment_age: <duration> | default = 500ms]
-
-  # The maximum size of a segment before it should be flushed. It is not a
-  # strict limit, and segments can exceed the maximum size when individual
-  # appends are larger than the remaining capacity.
-  # CLI flag: -ingester-rf1.max-segment-size
-  [max_segment_size: <int> | default = 8388608]
-
-  # The maximum number of segments to buffer in-memory. Increasing this value
-  # allows for large bursts of writes to be buffered in memory, but may increase
-  # latency if the write volume exceeds the rate at which segments can be
-  # flushed.
-  # CLI flag: -ingester-rf1.max-segments
-  [max_segments: <int> | default = 10]
-
-  # How long chunks should be retained in-memory after they've been flushed.
-  # CLI flag: -ingester-rf1.chunks-retain-period
-  [chunk_retain_period: <duration> | default = 0s]
-
-  [chunk_idle_period: <duration>]
-
-  # The targeted _uncompressed_ size in bytes of a chunk block When this
-  # threshold is exceeded the head block will be cut and compressed inside the
-  # chunk.
-  # CLI flag: -ingester-rf1.chunks-block-size
-  [chunk_block_size: <int> | default = 262144]
-
-  # A target _compressed_ size in bytes for chunks. This is a desired size not
-  # an exact size, chunks may be slightly bigger or significantly smaller if
-  # they get flushed for other reasons (e.g. chunk_idle_period). A value of 0
-  # creates chunks with a fixed 10 blocks, a non zero value will create chunks
-  # with a variable number of blocks to meet the target size.
-  # CLI flag: -ingester-rf1.chunk-target-size
-  [chunk_target_size: <int> | default = 1572864]
-
-  # The algorithm to use for compressing chunk. (none, gzip, lz4-64k, snappy,
-  # lz4-256k, lz4-1M, lz4, flate, zstd)
-  # CLI flag: -ingester-rf1.chunk-encoding
-  [chunk_encoding: <string> | default = "gzip"]
-
-  # The maximum duration of a timeseries chunk in memory. If a timeseries runs
-  # for longer than this, the current chunk will be flushed to the store and a
-  # new chunk created.
-  # CLI flag: -ingester-rf1.max-chunk-age
-  [max_chunk_age: <duration> | default = 2h]
 
   # Forget about ingesters having heartbeat timestamps older than
   # `ring.kvstore.heartbeat_timeout`. This is equivalent to clicking on the
@@ -399,6 +368,10 @@ ingester_rf1:
   # ring to recalculate owned streams.
   # CLI flag: -ingester-rf1.owned-streams-check-interval
   [owned_streams_check_interval: <duration> | default = 30s]
+
+  # How long stream metadata is retained in memory after it was last seen.
+  # CLI flag: -ingester-rf1.stream-retain-period
+  [stream_retain_period: <duration> | default = 5m]
 
   # Configures how the pattern ingester will connect to the ingesters.
   client_config:

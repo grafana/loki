@@ -297,6 +297,14 @@ azure:
   endpoint_suffix: {{ . }}
   {{- end }}
 {{- end -}}
+{{- else if eq .Values.loki.storage.type "alibabacloud" -}}
+{{- with .Values.loki.storage.alibabacloud }}
+alibabacloud:
+  bucket: {{ $.Values.loki.storage.bucketNames.chunks }}
+  endpoint: {{ .endpoint }}
+  access_key_id: {{ .accessKeyId }}
+  secret_access_key: {{ .secretAccessKey }}
+{{- end -}}
 {{- else if eq .Values.loki.storage.type "swift" -}}
 {{- with .Values.loki.storage.swift }}
 swift:
