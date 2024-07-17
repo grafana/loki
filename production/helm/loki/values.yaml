@@ -277,6 +277,17 @@ loki:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
+    {{- with .Values.loki.bloom_compactor }}
+    bloom_compactor:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
+    {{- with .Values.loki.bloom_gateway }}
+    bloom_gateway:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
+
     tracing:
       enabled: {{ .Values.loki.tracing.enabled }}
   # Should authentication be enabled
@@ -408,7 +419,7 @@ loki:
         server_address: '{{ include "loki.indexGatewayAddress" . }}'
     tsdb_shipper:
       index_gateway_client:
-        server_address: '{{ include "loki.indexGatewayAddress" . }}'
+        server_address: '{{ include "loki.indexGatewayAddress" . }}'        
     hedging:
       at: "250ms"
       max_per_second: 20
@@ -429,6 +440,14 @@ loki:
   # --  Optional index gateway configuration
   index_gateway:
     mode: simple
+  # --  Optional bloom gateway configuration
+  bloom_gateway:
+    enabled: false
+    client:
+      addresses: '{{ include "loki.indexGatewayAddress" . }}'
+  # --  Optional bloom compactor configuration
+  bloom_compactor:
+    enabled: false
   frontend:
     scheduler_address: '{{ include "loki.querySchedulerAddress" . }}'
     tail_proxy_url: '{{ include "loki.querierAddress" . }}'
