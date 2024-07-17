@@ -147,9 +147,9 @@ func (b *SegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels
 	}
 }
 
-// Observe updates metrics for the writer. If called before WriteTo then the
-// output size histogram will observe 0.
-func (b *SegmentWriter) Observe() {
+// ReportMetrics for the writer. If called before WriteTo then the output size
+// histogram will observe 0.
+func (b *SegmentWriter) ReportMetrics() {
 	b.consistencyMtx.Lock()
 	defer b.consistencyMtx.Unlock()
 
@@ -297,32 +297,6 @@ func (b *SegmentWriter) Reset() {
 	b.streams = make(map[streamID]*streamSegment, 64)
 	b.buf1.Reset()
 	b.inputSize.Store(0)
-}
-
-type EncodedSegmentReader struct {
-	*io.PipeReader
-	*io.PipeWriter
-}
-
-func (e *EncodedSegmentReader) Close() error {
-	err := e.PipeWriter.Close()
-	if err != nil {
-		return err
-	}
-	err = e.PipeReader.Close()
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (b *SegmentWriter) Reader() io.ReadCloser {
-	pr, pw := io.Pipe()
-	go func() {
-		_, err := b.WriteTo(pw)
-		pw.CloseWithError(err)
-	}()
-	return &EncodedSegmentReader{PipeReader: pr, PipeWriter: pw}
 }
 
 // InputSize returns the total size of the input data written to the writer.
