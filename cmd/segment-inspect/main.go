@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
+
 	"github.com/grafana/loki/v3/pkg/storage/wal"
 )
 
