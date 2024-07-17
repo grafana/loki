@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"github.com/oklog/ulid"
 	"net/http"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/ring"
+	"github.com/oklog/ulid"
 	"golang.org/x/net/context"
 
 	"github.com/grafana/loki/v3/pkg/storage/wal"
