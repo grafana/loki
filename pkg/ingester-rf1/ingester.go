@@ -1,6 +1,7 @@
 package ingesterrf1
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -205,6 +206,7 @@ type Ingester struct {
 
 	// One queue per flush thread.  Fingerprint is used to
 	// pick a queue.
+	flushBuffers     []*bytes.Buffer
 	flushWorkersDone sync.WaitGroup
 
 	wal *wal.Manager
