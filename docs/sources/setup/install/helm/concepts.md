@@ -17,7 +17,7 @@ This section describes the components installed by the Helm Chart.
 
 ## 3 methods of deployment
 
-The loki chart supports three methods of deployment:
+The Loki chart supports three methods of deployment:
 - [Monolithic]({{< relref "./install-monolithic" >}}) 
 - [Simple Scalable]({{< relref "./install-scalable" >}})
 - [Microservice]({{< relref "./install-microservices" >}})
