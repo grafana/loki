@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coder/quartz"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -115,9 +116,11 @@ type Manager struct {
 	// flushed, the segment is reset and moved to the back of the available
 	// list to accept writes again.
 	pending *list.List
+	closed  bool
+	mu      sync.Mutex
 
-	closed bool
-	mu     sync.Mutex
+	// Used in tests.
+	clock quartz.Clock
 }
 
 // item is similar to PendingItem, but it is an internal struct used in the
@@ -145,6 +148,7 @@ func NewManager(cfg Config, metrics *Metrics) (*Manager, error) {
 		metrics:   metrics.ManagerMetrics,
 		available: list.New(),
 		pending:   list.New(),
+		clock:     quartz.NewReal(),
 	}
 	m.metrics.NumPending.Set(0)
 	m.metrics.NumFlushing.Set(0)
@@ -177,12 +181,12 @@ func (m *Manager) Append(r AppendRequest) (*AppendResult, error) {
 		// This is the first append to the segment. This time will be used in
 		// know when the segment has exceeded its maximum age and should be
 		// moved to the pending list.
-		it.firstAppendedAt = time.Now()
+		it.firstAppendedAt = m.clock.Now()
 	}
 	it.w.Append(r.TenantID, r.LabelsStr, r.Labels, r.Entries)
 	// If the segment exceeded the maximum age or the maximum size, move it to
 	// the closed list to be flushed.
-	if time.Since(it.firstAppendedAt) >= m.cfg.MaxAge || it.w.InputSize() >= m.cfg.MaxSegmentSize {
+	if m.clock.Since(it.firstAppendedAt) >= m.cfg.MaxAge || it.w.InputSize() >= m.cfg.MaxSegmentSize {
 		m.pending.PushBack(it)
 		m.metrics.NumPending.Inc()
 		m.available.Remove(el)
@@ -218,7 +222,7 @@ func (m *Manager) NextPending() (*PendingItem, error) {
 			// should be moved to the pending list.
 			el := m.available.Front()
 			it := el.Value.(*item)
-			if !it.firstAppendedAt.IsZero() && time.Since(it.firstAppendedAt) >= m.cfg.MaxAge {
+			if !it.firstAppendedAt.IsZero() && m.clock.Since(it.firstAppendedAt) >= m.cfg.MaxAge {
 				m.pending.PushBack(it)
 				m.metrics.NumPending.Inc()
 				m.available.Remove(el)
