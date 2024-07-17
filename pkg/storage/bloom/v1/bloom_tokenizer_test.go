@@ -96,7 +96,7 @@ func TestSetLineTokenizer(t *testing.T) {
 
 func TestTokenizerPopulate(t *testing.T) {
 	t.Parallel()
-	testLine := "this is a log line"
+	var testLine = "this is a log line"
 	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics, logger.NewNopLogger())
 
 	sbf := filter.NewScalableBloomFilter(1024, 0.01, 0.8)
@@ -122,10 +122,8 @@ func TestTokenizerPopulate(t *testing.T) {
 	blooms, err := populateAndConsumeBloom(
 		bt,
 		v2.NewSliceIter([]*Bloom{&bloom}),
-		v2.NewSliceIter([]ChunkRefWithIter{{
-			Ref: ChunkRef{},
-			Itr: itr,
-		}}),
+		v2.NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{},
+			Itr: itr}}),
 	)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(blooms))
@@ -139,7 +137,7 @@ func TestTokenizerPopulate(t *testing.T) {
 }
 
 func TestBloomTokenizerPopulateWithoutPreexistingBloom(t *testing.T) {
-	testLine := "this is a log line"
+	var testLine = "this is a log line"
 	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics, logger.NewNopLogger())
 
 	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
@@ -159,10 +157,8 @@ func TestBloomTokenizerPopulateWithoutPreexistingBloom(t *testing.T) {
 	blooms, err := populateAndConsumeBloom(
 		bt,
 		v2.NewEmptyIter[*Bloom](),
-		v2.NewSliceIter([]ChunkRefWithIter{{
-			Ref: ChunkRef{},
-			Itr: itr,
-		}}),
+		v2.NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{},
+			Itr: itr}}),
 	)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(blooms))
@@ -173,6 +169,7 @@ func TestBloomTokenizerPopulateWithoutPreexistingBloom(t *testing.T) {
 		token := toks.At()
 		require.True(t, blooms[0].Test(token))
 	}
+
 }
 
 func chunkRefItrFromLines(lines ...string) (iter.EntryIterator, error) {
@@ -259,7 +256,7 @@ func populateAndConsumeBloom(
 
 func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		testLine := lorem + lorem + lorem
+		var testLine = lorem + lorem + lorem
 		bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics, logger.NewNopLogger())
 
 		sbf := filter.NewScalableBloomFilter(1024, 0.01, 0.8)
@@ -285,10 +282,8 @@ func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 		_, err = populateAndConsumeBloom(
 			bt,
 			v2.NewSliceIter([]*Bloom{&bloom}),
-			v2.NewSliceIter([]ChunkRefWithIter{{
-				Ref: ChunkRef{},
-				Itr: itr,
-			}}),
+			v2.NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{},
+				Itr: itr}}),
 		)
 		require.NoError(b, err)
 	}
