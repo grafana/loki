@@ -35,7 +35,7 @@ The meta-monitoring stack replaces the monitoring section of the Loki helm chart
 
 ## Canary
 
-This chart installs the [canary app]({{< relref "../../../operations/loki-canary" >}}) by default. This is another tool to verify the Loki deployment is in a healthy state. It can be disabled with `lokiCanary.enabled=false`.
+This chart installs the [Loki Canary app]({{< relref "../../../operations/loki-canary" >}}) by default. This is another tool to verify the Loki deployment is in a healthy state. It can be disabled by setting `lokiCanary.enabled=false`.
 
 ## Gateway
 
