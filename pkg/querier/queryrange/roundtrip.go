@@ -290,7 +290,7 @@ func NewDetectedLabelsTripperware(cfg Config, opts logql.EngineOpts, logger log.
 		queryRangeMiddleware := []base.Middleware{
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(l),
-			NewQuerySizeLimiterMiddleware(schema.Configs, opts, logger, l, statsHandler),
+			NewQuerySizeLimiterMiddleware(schema.Configs, opts, logger, l, cfg.MaxRetries, statsHandler),
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitter, metrics.SplitByMetrics),
 		}
@@ -298,7 +298,7 @@ func NewDetectedLabelsTripperware(cfg Config, opts logql.EngineOpts, logger log.
 		// The sharding middleware takes care of enforcing this limit for both shardable and non-shardable queries.
 		// If we are not using sharding, we enforce the limit by adding this middleware after time splitting.
 		queryRangeMiddleware = append(queryRangeMiddleware,
-			NewQuerierSizeLimiterMiddleware(schema.Configs, opts, logger, l, statsHandler),
+			NewQuerierSizeLimiterMiddleware(schema.Configs, opts, logger, l, cfg.MaxRetries, statsHandler),
 		)
 
 		if cfg.MaxRetries > 0 {
@@ -558,7 +558,7 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Lo
 			QueryMetricsMiddleware(metrics.QueryMetrics),
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
-			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, cfg.MaxRetries, statsHandler),
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 			SplitByIntervalMiddleware(schema.Configs, limits, merger, newDefaultSplitter(limits, iqo), metrics.SplitByMetrics),
 		}
@@ -593,13 +593,14 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Lo
 					0, // 0 is unlimited shards
 					statsHandler,
 					cfg.ShardAggregations,
+					cfg.MaxRetries,
 				),
 			)
 		} else {
 			// The sharding middleware takes care of enforcing this limit for both shardable and non-shardable queries.
 			// If we are not using sharding, we enforce the limit by adding this middleware after time splitting.
 			queryRangeMiddleware = append(queryRangeMiddleware,
-				NewQuerierSizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+				NewQuerierSizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, cfg.MaxRetries, statsHandler),
 			)
 		}
 
@@ -850,7 +851,7 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logge
 
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
-			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, cfg.MaxRetries, statsHandler),
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 			SplitByIntervalMiddleware(schema.Configs, limits, merger, newMetricQuerySplitter(limits, iqo), metrics.SplitByMetrics),
 		)
@@ -875,13 +876,14 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logge
 					0, // 0 is unlimited shards
 					statsHandler,
 					cfg.ShardAggregations,
+					cfg.MaxRetries,
 				),
 			)
 		} else {
 			// The sharding middleware takes care of enforcing this limit for both shardable and non-shardable queries.
 			// If we are not using sharding, we enforce the limit by adding this middleware after time splitting.
 			queryRangeMiddleware = append(queryRangeMiddleware,
-				NewQuerierSizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+				NewQuerierSizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, cfg.MaxRetries, statsHandler),
 			)
 		}
 
@@ -959,7 +961,7 @@ func NewInstantMetricTripperware(
 		queryRangeMiddleware := []base.Middleware{
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
-			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, cfg.MaxRetries, statsHandler),
 			NewSplitByRangeMiddleware(log, engineOpts, limits, cfg.InstantMetricQuerySplitAlign, metrics.MiddlewareMapperMetrics.rangeMapper),
 		}
 
@@ -983,6 +985,7 @@ func NewInstantMetricTripperware(
 					0, // 0 is unlimited shards
 					statsHandler,
 					cfg.ShardAggregations,
+					cfg.MaxRetries,
 				),
 			)
 		}

@@ -207,6 +207,7 @@ type querySizeLimiter struct {
 	maxLookBackPeriod time.Duration
 	limitFunc         func(context.Context, string) int
 	limitErrorTmpl    string
+	retries           int
 }
 
 func newQuerySizeLimiter(
@@ -216,6 +217,7 @@ func newQuerySizeLimiter(
 	logger log.Logger,
 	limitFunc func(context.Context, string) int,
 	limitErrorTmpl string,
+	retries int,
 	statsHandler ...queryrangebase.Handler,
 ) *querySizeLimiter {
 	q := &querySizeLimiter{
@@ -225,6 +227,7 @@ func newQuerySizeLimiter(
 		maxLookBackPeriod: engineOpts.MaxLookBackPeriod,
 		limitFunc:         limitFunc,
 		limitErrorTmpl:    limitErrorTmpl,
+		retries:           retries,
 	}
 
 	q.statsHandler = next
@@ -242,10 +245,11 @@ func NewQuerierSizeLimiterMiddleware(
 	engineOpts logql.EngineOpts,
 	logger log.Logger,
 	limits Limits,
+	retries int,
 	statsHandler ...queryrangebase.Handler,
 ) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newQuerySizeLimiter(next, cfg, engineOpts, logger, limits.MaxQuerierBytesRead, limErrQuerierTooManyBytesTmpl, statsHandler...)
+		return newQuerySizeLimiter(next, cfg, engineOpts, logger, limits.MaxQuerierBytesRead, limErrQuerierTooManyBytesTmpl, retries, statsHandler...)
 	})
 }
 
@@ -256,10 +260,11 @@ func NewQuerySizeLimiterMiddleware(
 	engineOpts logql.EngineOpts,
 	logger log.Logger,
 	limits Limits,
+	retries int,
 	statsHandler ...queryrangebase.Handler,
 ) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newQuerySizeLimiter(next, cfg, engineOpts, logger, limits.MaxQueryBytesRead, limErrQueryTooManyBytesTmpl, statsHandler...)
+		return newQuerySizeLimiter(next, cfg, engineOpts, logger, limits.MaxQueryBytesRead, limErrQueryTooManyBytesTmpl, retries, statsHandler...)
 	})
 }
 
@@ -291,7 +296,7 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 	// TODO: Set concurrency dynamically as in shardResolverForConf?
 	start := time.Now()
 	const maxConcurrentIndexReq = 10
-	matcherStats, err := getStatsForMatchers(ctx, q.logger, q.statsHandler, model.Time(r.GetStart().UnixMilli()), model.Time(r.GetEnd().UnixMilli()), matcherGroups, maxConcurrentIndexReq, q.maxLookBackPeriod)
+	matcherStats, err := getStatsForMatchers(ctx, q.logger, q.statsHandler, model.Time(r.GetStart().UnixMilli()), model.Time(r.GetEnd().UnixMilli()), matcherGroups, maxConcurrentIndexReq, q.maxLookBackPeriod, q.retries)
 	if err != nil {
 		return 0, err
 	}

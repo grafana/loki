@@ -697,8 +697,8 @@ func Test_MaxQuerySize(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "foo")
 
 			middlewares := []base.Middleware{
-				NewQuerySizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, tc.limits, queryStatsHandler),
-				NewQuerierSizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, tc.limits, querierStatsHandler),
+				NewQuerySizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, tc.limits, 0, queryStatsHandler),
+				NewQuerierSizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, tc.limits, 0, querierStatsHandler),
 			}
 
 			_, err := base.MergeMiddlewares(middlewares...).Wrap(promHandler).Do(ctx, lokiReq)
@@ -742,11 +742,11 @@ func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {
 	}{
 		{
 			desc:       "QuerySizeLimiter",
-			middleware: NewQuerySizeLimiterMiddleware(testSchemasTSDB, engineOpts, util_log.Logger, lim, statsHandler),
+			middleware: NewQuerySizeLimiterMiddleware(testSchemasTSDB, engineOpts, util_log.Logger, lim, 0, statsHandler),
 		},
 		{
 			desc:       "QuerierSizeLimiter",
-			middleware: NewQuerierSizeLimiterMiddleware(testSchemasTSDB, engineOpts, util_log.Logger, lim, statsHandler),
+			middleware: NewQuerierSizeLimiterMiddleware(testSchemasTSDB, engineOpts, util_log.Logger, lim, 0, statsHandler),
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {

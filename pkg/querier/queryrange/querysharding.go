@@ -43,6 +43,7 @@ func NewQueryShardMiddleware(
 	maxShards int,
 	statsHandler queryrangebase.Handler,
 	shardAggregation []string,
+	retries int,
 ) queryrangebase.Middleware {
 	noshards := !hasShards(confs)
 
@@ -56,7 +57,7 @@ func NewQueryShardMiddleware(
 	}
 
 	mapperware := queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newASTMapperware(confs, engineOpts, next, statsHandler, logger, shardingMetrics, limits, maxShards, shardAggregation)
+		return newASTMapperware(confs, engineOpts, next, statsHandler, logger, shardingMetrics, limits, maxShards, shardAggregation, retries)
 	})
 
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
@@ -82,6 +83,7 @@ func newASTMapperware(
 	limits Limits,
 	maxShards int,
 	shardAggregation []string,
+	retries int,
 ) *astMapperware {
 	ast := &astMapperware{
 		confs:            confs,
@@ -93,6 +95,7 @@ func newASTMapperware(
 		metrics:          metrics,
 		maxShards:        maxShards,
 		shardAggregation: shardAggregation,
+		retries:          retries,
 	}
 
 	if statsHandler != nil {
@@ -111,6 +114,7 @@ type astMapperware struct {
 	ng           *logql.DownstreamEngine
 	metrics      *logql.MapperMetrics
 	maxShards    int
+	retries      int
 
 	// Feature flag for sharding range and vector aggregations such as
 	// quantile_ver_time with probabilistic data structures.
@@ -193,6 +197,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		ast.statsHandler,
 		ast.next,
 		ast.limits,
+		ast.retries,
 	)
 	if !ok {
 		return ast.next.Do(ctx, r)

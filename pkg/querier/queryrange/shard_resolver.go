@@ -39,6 +39,7 @@ func shardResolverForConf(
 	r queryrangebase.Request,
 	statsHandler, next queryrangebase.Handler,
 	limits Limits,
+	retries int,
 ) (logql.ShardResolver, bool) {
 	if conf.IndexType == types.TSDBType {
 		return &dynamicShardResolver{
@@ -52,6 +53,7 @@ func shardResolverForConf(
 			maxParallelism:  maxParallelism,
 			maxShards:       maxShards,
 			defaultLookback: defaultLookback,
+			retries:         retries,
 		}, true
 	}
 	if conf.RowShards < 2 {
@@ -73,6 +75,7 @@ type dynamicShardResolver struct {
 	maxParallelism  int
 	maxShards       int
 	defaultLookback time.Duration
+	retries         int
 }
 
 // getStatsForMatchers returns the index stats for all the groups in matcherGroups.
@@ -84,6 +87,7 @@ func getStatsForMatchers(
 	matcherGroups []syntax.MatcherRange,
 	parallelism int,
 	defaultLookback time.Duration,
+	retries int,
 ) ([]*stats.Stats, error) {
 	startTime := time.Now()
 
@@ -101,6 +105,21 @@ func getStatsForMatchers(
 		}
 
 		adjustedThrough := end.Add(-matcherGroups[i].Offset)
+
+		// Our retry middleware cannot be easily added to support these stats calls without retrying
+		// entire splits from split_by_time (sharding is downstream of this in our handlers and
+		// and we insert the retry middleware downstream of this such that we retry subqueries and
+		// not entire splits.)
+		// This creates a problem for these stats calls which also dispatch to queriers the same as subqueries
+		// but they are not wrapped with the retry middleware so instead we do that here so that only this
+		// call is retried and not the entire split_by_time.
+		// I also chose to do it this way to easily reuse the retry code.
+		// We ignore tracking any metrics while using this here, mostly because it didn't feel worth
+		// wiring the metrics object through all the function calls to get here.
+		if retries > 0 {
+			rm := queryrangebase.NewRetryMiddleware(log.With(logger, "caller", log.DefaultCaller), retries, nil, "")
+			statsHandler = rm.Wrap(statsHandler)
+		}
 
 		resp, err := statsHandler.Do(ctx, &logproto.IndexStatsRequest{
 			From:     adjustedFrom,
@@ -159,7 +178,7 @@ func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
 	}
 
 	log := util_log.WithContext(ctx, util_log.Logger)
-	results, err := getStatsForMatchers(ctx, log, r.statsHandler, r.from, r.through, grps, r.maxParallelism, r.defaultLookback)
+	results, err := getStatsForMatchers(ctx, log, r.statsHandler, r.from, r.through, grps, r.maxParallelism, r.defaultLookback, r.retries)
 	if err != nil {
 		return stats.Stats{}, err
 	}
