@@ -15,6 +15,7 @@ import (
 	"github.com/oklog/ulid"
 	"golang.org/x/net/context"
 
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 	"github.com/grafana/loki/v3/pkg/storage/wal"
 )
 
@@ -100,7 +101,7 @@ func (i *Ingester) flushItem(l log.Logger, j int, it *wal.PendingItem) error {
 // If the flush isn't successful, the operation for this userID is requeued allowing this and all other unflushed
 // segments to have another opportunity to be flushed.
 func (i *Ingester) flushSegment(ctx context.Context, j int, w *wal.SegmentWriter) error {
-	id := ulid.MustNew(ulid.Timestamp(time.Now()), rand.Reader)
+	id := ulid.MustNew(ulid.Timestamp(time.Now()), rand.Reader).String()
 
 	start := time.Now()
 	defer func() {
@@ -115,9 +116,16 @@ func (i *Ingester) flushSegment(ctx context.Context, j int, w *wal.SegmentWriter
 	}
 
 	i.metrics.flushesTotal.Add(1)
-	if err := i.store.PutObject(ctx, fmt.Sprintf("loki-v2/wal/anon/"+id.String()), buf); err != nil {
+	if err := i.store.PutObject(ctx, fmt.Sprintf("loki-v2/wal/anon/"+id), buf); err != nil {
 		i.metrics.flushFailuresTotal.Inc()
 		return fmt.Errorf("store put chunk: %w", err)
+	}
+
+	if _, err := i.metastoreClient.AddBlock(ctx, &metastorepb.AddBlockRequest{
+		Block: w.Meta(id),
+	}); err != nil {
+		i.metrics.flushFailuresTotal.Inc()
+		return fmt.Errorf("metastore add block: %w", err)
 	}
 
 	return nil
