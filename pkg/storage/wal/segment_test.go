@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"sort"
 	"sync"
 	"testing"
@@ -105,7 +104,7 @@ func TestWalSegmentWriter_Append(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			// Create a new WalSegmentWriter
-			w, err := NewWalSegmentWriter()
+			w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
 			require.NoError(t, err)
 			// Append the entries
 			for _, batch := range tt.batches {
@@ -168,7 +167,7 @@ func BenchmarkConcurrentAppends(t *testing.B) {
 	t.ResetTimer()
 	for i := 0; i < t.N; i++ {
 		var err error
-		w, err = NewWalSegmentWriter()
+		w, err = NewWalSegmentWriter(NewSegmentMetrics(nil))
 		require.NoError(t, err)
 
 		for _, lbl := range lbls {
@@ -197,7 +196,7 @@ func TestConcurrentAppends(t *testing.T) {
 	}
 	dst := bytes.NewBuffer(nil)
 
-	w, err := NewWalSegmentWriter()
+	w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
 	require.NoError(t, err)
 	var wg sync.WaitGroup
 	workChan := make(chan *appendArgs, 100)
@@ -289,7 +288,7 @@ func TestConcurrentAppends(t *testing.T) {
 }
 
 func TestMultiTenantWrite(t *testing.T) {
-	w, err := NewWalSegmentWriter()
+	w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
 	require.NoError(t, err)
 	dst := bytes.NewBuffer(nil)
 
@@ -359,7 +358,7 @@ func TestCompression(t *testing.T) {
 }
 
 func testCompression(t *testing.T, maxInputSize int64) {
-	w, err := NewWalSegmentWriter()
+	w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
 	require.NoError(t, err)
 	dst := bytes.NewBuffer(nil)
 	files := testdata.Files()
@@ -416,7 +415,7 @@ func testCompression(t *testing.T, maxInputSize int64) {
 }
 
 func TestReset(t *testing.T) {
-	w, err := NewWalSegmentWriter()
+	w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
 	require.NoError(t, err)
 	dst := bytes.NewBuffer(nil)
 
@@ -490,7 +489,7 @@ func BenchmarkWrites(b *testing.B) {
 
 	dst := bytes.NewBuffer(make([]byte, 0, inputSize))
 
-	writer, err := NewWalSegmentWriter()
+	writer, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
 	require.NoError(b, err)
 
 	for _, d := range data {
@@ -508,21 +507,6 @@ func BenchmarkWrites(b *testing.B) {
 			n, err := writer.WriteTo(dst)
 			require.NoError(b, err)
 			require.EqualValues(b, encodedLength, n)
-		}
-	})
-
-	bytesBuf := make([]byte, encodedLength)
-	b.Run("Reader", func(b *testing.B) {
-		b.ResetTimer()
-		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
-			var err error
-			reader := writer.Reader()
-
-			n, err := io.ReadFull(reader, bytesBuf)
-			require.NoError(b, err)
-			require.EqualValues(b, encodedLength, n)
-			require.NoError(b, reader.Close())
 		}
 	})
 }
