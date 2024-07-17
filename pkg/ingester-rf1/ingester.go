@@ -17,6 +17,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/clientpool"
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/objstore"
 	"github.com/grafana/loki/v3/pkg/ingester/index"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
@@ -200,6 +201,7 @@ type Ingester struct {
 	lifecyclerWatcher *services.FailureWatcher
 
 	store           Storage
+	metastoreClient metastorepb.MetastoreServiceClient
 	periodicConfigs []config.PeriodConfig
 
 	loopDone    sync.WaitGroup
@@ -243,6 +245,7 @@ func New(cfg Config, clientConfig client.Config,
 	storageConfig storage.Config,
 	clientMetrics storage.ClientMetrics,
 	limits Limits, configs *runtime.TenantConfigs,
+	metastoreClient metastorepb.MetastoreServiceClient,
 	registerer prometheus.Registerer,
 	writeFailuresCfg writefailures.Cfg,
 	metricsNamespace string,
@@ -270,18 +273,18 @@ func New(cfg Config, clientConfig client.Config,
 	}
 
 	i := &Ingester{
-		cfg:             cfg,
-		logger:          logger,
-		clientConfig:    clientConfig,
-		tenantConfigs:   configs,
-		instances:       map[string]*instance{},
-		store:           storage,
-		periodicConfigs: periodConfigs,
-		loopQuit:        make(chan struct{}),
-		flushQueues:     make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
-		tailersQuit:     make(chan struct{}),
-		metrics:         metrics,
-		// flushOnShutdownSwitch: &OnceSwitch{},
+		cfg:                  cfg,
+		logger:               logger,
+		clientConfig:         clientConfig,
+		tenantConfigs:        configs,
+		instances:            map[string]*instance{},
+		store:                storage,
+		periodicConfigs:      periodConfigs,
+		loopQuit:             make(chan struct{}),
+		flushQueues:          make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
+		tailersQuit:          make(chan struct{}),
+		metrics:              metrics,
+		metastoreClient:      metastoreClient,
 		terminateOnShutdown:  false,
 		streamRateCalculator: NewStreamRateCalculator(),
 		writeLogManager:      writefailures.NewManager(logger, registerer, writeFailuresCfg, configs, "ingester_rf1"),
@@ -307,19 +310,7 @@ func New(cfg Config, clientConfig client.Config,
 
 	i.setupAutoForget()
 
-	//if i.cfg.ChunkFilterer != nil {
-	//	i.SetChunkFilterer(i.cfg.ChunkFilterer)
-	//}
-	//
-	//if i.cfg.PipelineWrapper != nil {
-	//	i.SetPipelineWrapper(i.cfg.PipelineWrapper)
-	//}
-	//
-	//if i.cfg.SampleExtractorWrapper != nil {
-	//	i.SetExtractorWrapper(i.cfg.SampleExtractorWrapper)
-	//}
-	//
-	//i.recalculateOwnedStreams = newRecalculateOwnedStreams(i.getInstances, i.lifecycler.ID, i.readRing, cfg.OwnedStreamsCheckInterval, util_log.Logger)
+	// i.recalculateOwnedStreams = newRecalculateOwnedStreams(i.getInstances, i.lifecycler.ID, i.readRing, cfg.OwnedStreamsCheckInterval, util_log.Logger)
 
 	return i, nil
 }
