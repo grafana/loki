@@ -286,3 +286,12 @@ func isVariableField(key []byte) bool {
 		bytes.EqualFold(key, []byte("time")) ||
 		bytes.EqualFold(key, []byte("timestamp"))
 }
+
+type DedupingTokenizer struct {
+	LineTokenizer
+	dedupParam string
+}
+
+func (d DedupingTokenizer) Join(tokens []string, state interface{}) string {
+	return deduplicatePlaceholders(d.LineTokenizer.Join(tokens, state), d.dedupParam)
+}
