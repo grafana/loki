@@ -102,26 +102,19 @@ type Manager struct {
 	cfg       Config
 	metrics   *ManagerMetrics
 	available *list.List
-
-	// pending is a list of segments that are waiting to be flushed. Once
-	// flushed, the segment is reset and moved to the back of the available
-	// list to accept writes again.
-	pending *list.List
-
+	pending   *list.List
 	// firstAppend is the time of the first append to the segment at the
 	// front of the available list. It is used to know when the segment has
 	// exceeded the maximum age and should be moved to the pending list.
 	// It is reset each time this happens.
 	firstAppend time.Time
-
-	closed bool
-	mu     sync.Mutex
-
+	closed      bool
+	mu          sync.Mutex
 	// Used in tests.
 	clock quartz.Clock
 }
 
-// item is similar to PendingItem, but it is an internal struct used in the
+// item is similar to PendingSegment, but it is an internal struct used in the
 // available and pending lists. It contains a single-use result that is returned
 // to callers appending to the WAL and a re-usable segment that is reset after
 // each flush.
@@ -130,8 +123,8 @@ type item struct {
 	w *SegmentWriter
 }
 
-// PendingItem contains a result and the segment to be flushed.
-type PendingItem struct {
+// PendingSegment contains a result and the segment to be flushed.
+type PendingSegment struct {
 	Result *AppendResult
 	Writer *SegmentWriter
 }
@@ -203,7 +196,7 @@ func (m *Manager) Close() {
 // It returns nil if there are no segments waiting to be flushed. If the WAL
 // is closed it returns all remaining segments from the pending list and then
 // ErrClosed.
-func (m *Manager) NextPending() (*PendingItem, error) {
+func (m *Manager) NextPending() (*PendingSegment, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.pending.Len() == 0 && !m.moveFrontIfExpired() {
@@ -217,12 +210,12 @@ func (m *Manager) NextPending() (*PendingItem, error) {
 	m.pending.Remove(el)
 	m.metrics.NumPending.Dec()
 	m.metrics.NumFlushing.Inc()
-	return &PendingItem{Result: it.r, Writer: it.w}, nil
+	return &PendingSegment{Result: it.r, Writer: it.w}, nil
 }
 
 // Put resets the segment and puts it back in the available list to accept
-// writes. A PendingItem should not be put back until it has been flushed.
-func (m *Manager) Put(it *PendingItem) {
+// writes. A PendingSegment should not be put back until it has been flushed.
+func (m *Manager) Put(it *PendingSegment) {
 	it.Writer.Reset()
 	m.mu.Lock()
 	defer m.mu.Unlock()
