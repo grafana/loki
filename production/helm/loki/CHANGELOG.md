@@ -15,7 +15,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 6.7.2
 
-- [FEATURE] Add support configure bloom components
+- [FEATURE] Add support configure bloom components #13556
 
 ## 6.7.1
 
