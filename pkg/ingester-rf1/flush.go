@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
@@ -84,18 +83,9 @@ func (i *Ingester) flushWorker(j int) {
 			continue
 		}
 
-		start := time.Now()
-
-		// We'll use this to log the size of the segment that was flushed.
-		n := it.Writer.InputSize()
-		humanized := humanize.Bytes(uint64(n))
-
 		err = i.flushItem(l, j, it)
-		d := time.Since(start)
 		if err != nil {
-			level.Error(l).Log("msg", "failed to flush", "size", humanized, "duration", d, "err", err)
-		} else {
-			level.Debug(l).Log("msg", "flushed", "size", humanized, "duration", d)
+			level.Error(l).Log("msg", "failed to flush", "err", err)
 		}
 
 		it.Result.SetDone(err)
