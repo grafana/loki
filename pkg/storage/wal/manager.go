@@ -102,21 +102,14 @@ type Manager struct {
 	cfg       Config
 	metrics   *ManagerMetrics
 	available *list.List
-
-	// pending is a list of segments that are waiting to be flushed. Once
-	// flushed, the segment is reset and moved to the back of the available
-	// list to accept writes again.
-	pending *list.List
-
+	pending   *list.List
 	// firstAppend is the time of the first append to the segment at the
 	// front of the available list. It is used to know when the segment has
 	// exceeded the maximum age and should be moved to the pending list.
 	// It is reset each time this happens.
 	firstAppend time.Time
-
-	closed bool
-	mu     sync.Mutex
-
+	closed      bool
+	mu          sync.Mutex
 	// Used in tests.
 	clock quartz.Clock
 }
