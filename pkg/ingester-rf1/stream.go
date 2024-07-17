@@ -72,16 +72,6 @@ type stream struct {
 	chunkHeadBlockFormat chunkenc.HeadBlockFmt
 }
 
-type chunkDesc struct {
-	chunk   *chunkenc.MemChunk
-	closed  bool
-	synced  bool
-	flushed time.Time
-	reason  string
-
-	lastUpdated time.Time
-}
-
 type entryWithError struct {
 	entry *logproto.Entry
 	e     error
@@ -269,7 +259,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		}
 
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
-		cutoff := highestTs.Add(-s.cfg.MaxChunkAge / 2)
+		cutoff := highestTs.Add(-time.Hour)
 		if s.unorderedWrites && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(entries[i].Timestamp, cutoff)})
 			s.writeFailures.Log(s.tenant, fmt.Errorf("%w for stream %s", failedEntriesWithError[len(failedEntriesWithError)-1].e, s.labels))
