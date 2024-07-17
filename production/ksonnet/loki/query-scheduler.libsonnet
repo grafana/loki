@@ -1,5 +1,5 @@
-local k = import 'ksonnet-util/kausal.libsonnet';
 local loki = import 'github.com/grafana/loki/production/ksonnet/loki/loki.libsonnet';
+local k = import 'ksonnet-util/kausal.libsonnet';
 
 {
   local max_outstanding = if $._config.queryFrontend.sharded_queries_enabled then 1024 else 256,
