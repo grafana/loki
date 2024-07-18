@@ -317,6 +317,15 @@ func (e *PipelineExpr) Pipeline() (log.Pipeline, error) {
 
 // HasFilter returns true if the pipeline contains stage that can filter out lines.
 func (e *PipelineExpr) HasFilter() bool {
+	if len(e.MultiStages) == 1 {
+		switch s := e.MultiStages[0].(type) {
+		case *LineFilterExpr:
+			if s.Match == "" {
+				return false
+			}
+		}
+	}
+
 	for _, p := range e.MultiStages {
 		switch p.(type) {
 		case *LineFilterExpr, *LabelFilterExpr:
