@@ -28,10 +28,11 @@ import (
 )
 
 type ChunkMetrics struct {
-	refs    *prometheus.CounterVec
-	series  *prometheus.CounterVec
-	chunks  *prometheus.CounterVec
-	batches *prometheus.HistogramVec
+	refs         *prometheus.CounterVec
+	refsBypassed prometheus.Counter
+	series       *prometheus.CounterVec
+	chunks       *prometheus.CounterVec
+	batches      *prometheus.HistogramVec
 }
 
 const (
@@ -52,6 +53,12 @@ func NewChunkMetrics(r prometheus.Registerer, maxBatchSize int) *ChunkMetrics {
 			Name:      "chunk_refs_total",
 			Help:      "Number of chunks refs downloaded, partitioned by whether they intersect the query bounds.",
 		}, []string{"status"}),
+		refsBypassed: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Subsystem: "store",
+			Name:      "chunk_ref_lookups_bypassed_total",
+			Help:      "Number of chunk refs that were bypassed due to store overrides: computed during planning to avoid lookups",
+		}),
 		series: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Subsystem: "store",
@@ -345,12 +352,12 @@ func (it *logBatchIterator) StreamHash() uint64 {
 	return it.curr.StreamHash()
 }
 
-func (it *logBatchIterator) Error() error {
+func (it *logBatchIterator) Err() error {
 	if it.err != nil {
 		return it.err
 	}
-	if it.curr != nil && it.curr.Error() != nil {
-		return it.curr.Error()
+	if it.curr != nil && it.curr.Err() != nil {
+		return it.curr.Err()
 	}
 	if it.ctx.Err() != nil {
 		return it.ctx.Err()
@@ -366,8 +373,8 @@ func (it *logBatchIterator) Close() error {
 	return nil
 }
 
-func (it *logBatchIterator) Entry() logproto.Entry {
-	return it.curr.Entry()
+func (it *logBatchIterator) At() logproto.Entry {
+	return it.curr.At()
 }
 
 func (it *logBatchIterator) Next() bool {
@@ -490,12 +497,12 @@ func (it *sampleBatchIterator) StreamHash() uint64 {
 	return it.curr.StreamHash()
 }
 
-func (it *sampleBatchIterator) Error() error {
+func (it *sampleBatchIterator) Err() error {
 	if it.err != nil {
 		return it.err
 	}
-	if it.curr != nil && it.curr.Error() != nil {
-		return it.curr.Error()
+	if it.curr != nil && it.curr.Err() != nil {
+		return it.curr.Err()
 	}
 	if it.ctx.Err() != nil {
 		return it.ctx.Err()
@@ -511,8 +518,8 @@ func (it *sampleBatchIterator) Close() error {
 	return nil
 }
 
-func (it *sampleBatchIterator) Sample() logproto.Sample {
-	return it.curr.Sample()
+func (it *sampleBatchIterator) At() logproto.Sample {
+	return it.curr.At()
 }
 
 func (it *sampleBatchIterator) Next() bool {

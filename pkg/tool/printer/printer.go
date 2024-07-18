@@ -13,11 +13,11 @@ import (
 	"github.com/mitchellh/colorstring"
 	"gopkg.in/yaml.v3"
 
-	"github.com/grafana/loki/pkg/tool/rules"
-	"github.com/grafana/loki/pkg/tool/rules/rwrulefmt"
+	"github.com/grafana/loki/v3/pkg/tool/rules"
+	"github.com/grafana/loki/v3/pkg/tool/rules/rwrulefmt"
 )
 
-// Printer is  used for printing formatted output from the cortextool
+// Printer is  used for printing formatted output from the lokitool
 type Printer struct {
 	disableColor bool
 	colorizer    colorstring.Colorize

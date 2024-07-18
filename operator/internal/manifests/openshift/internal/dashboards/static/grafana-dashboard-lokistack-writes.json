@@ -36,34 +36,181 @@
                   "error": "#E24D42",
                   "success": "#7EB26D"
                },
-               "bars": false,
-               "dashLength": 10,
-               "dashes": false,
                "datasource": "$datasource",
+               "fieldConfig": {
+                  "defaults": {
+                     "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 100,
+                        "lineWidth": 0,
+                        "pointSize": 5,
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "normal"
+                        }
+                     },
+                     "min": 0,
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ ]
+                     },
+                     "unit": "short"
+                  },
+                  "overrides": [
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "1xx"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#EAB839",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "2xx"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#7EB26D",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "3xx"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#6ED0E0",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "4xx"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#EF843C",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "5xx"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#E24D42",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "OK"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#7EB26D",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "cancel"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#A9A9A9",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "error"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#E24D42",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "success"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#7EB26D",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     }
+                  ]
+               },
                "fill": 10,
                "id": 1,
-               "legend": {
-                  "avg": false,
-                  "current": false,
-                  "max": false,
-                  "min": false,
-                  "show": true,
-                  "total": false,
-                  "values": false
-               },
-               "lines": true,
                "linewidth": 0,
                "links": [ ],
-               "nullPointMode": "null as zero",
-               "percentage": false,
-               "pointradius": 5,
-               "points": false,
-               "renderer": "flot",
-               "seriesOverrides": [ ],
-               "spaceLength": 10,
-               "span": 6,
+               "options": {
+                  "legend": {
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
+               "span": 4,
                "stack": true,
-               "steppedLine": false,
                "targets": [
                   {
                      "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_request_duration_seconds_count{namespace=\"$namespace\",job=~\".+-distributor-http\", route=~\"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))\n",
@@ -74,75 +221,49 @@
                      "step": 10
                   }
                ],
-               "thresholds": [ ],
-               "timeFrom": null,
-               "timeShift": null,
                "title": "QPS",
-               "tooltip": {
-                  "shared": true,
-                  "sort": 2,
-                  "value_type": "individual"
-               },
-               "type": "graph",
-               "xaxis": {
-                  "buckets": null,
-                  "mode": "time",
-                  "name": null,
-                  "show": true,
-                  "values": [ ]
-               },
-               "yaxes": [
-                  {
-                     "format": "short",
-                     "label": null,
-                     "logBase": 1,
-                     "max": null,
-                     "min": 0,
-                     "show": true
-                  },
-                  {
-                     "format": "short",
-                     "label": null,
-                     "logBase": 1,
-                     "max": null,
-                     "min": null,
-                     "show": false
-                  }
-               ]
+               "type": "graph"
             },
             {
-               "aliasColors": { },
-               "bars": false,
-               "dashLength": 10,
-               "dashes": false,
                "datasource": "$datasource",
-               "fill": 1,
-               "id": 2,
-               "legend": {
-                  "avg": false,
-                  "current": false,
-                  "max": false,
-                  "min": false,
-                  "show": true,
-                  "total": false,
-                  "values": false
+               "fieldConfig": {
+                  "defaults": {
+                     "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "none"
+                        }
+                     },
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ ]
+                     },
+                     "unit": "ms"
+                  },
+                  "overrides": [ ]
                },
-               "lines": true,
-               "linewidth": 1,
+               "id": 2,
                "links": [ ],
                "nullPointMode": "null as zero",
-               "percentage": false,
-               "pointradius": 5,
-               "points": false,
-               "renderer": "flot",
-               "seriesOverrides": [ ],
-               "spaceLength": 10,
-               "span": 6,
-               "stack": false,
-               "steppedLine": false,
+               "options": {
+                  "legend": {
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
+               "span": 4,
                "targets": [
                   {
-                     "expr": "histogram_quantile(0.99, sum by (le) (namespace_job_route:loki_request_duration_seconds_bucket:sum_rate{namespace=\"$namespace\", job=~\".+-distributor-http\", route=\"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle\"})) * 1e3",
+                     "expr": "histogram_quantile(0.99, sum by (le) (namespace_job_route:loki_request_duration_seconds_bucket:sum_rate{namespace=\"$namespace\", job=~\".+-distributor-http\", route=~\"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle\"})) * 1e3",
                      "format": "time_series",
                      "intervalFactor": 2,
                      "legendFormat": "99th Percentile",
@@ -150,7 +271,7 @@
                      "step": 10
                   },
                   {
-                     "expr": "histogram_quantile(0.50, sum by (le) (namespace_job_route:loki_request_duration_seconds_bucket:sum_rate{namespace=\"$namespace\", job=~\".+-distributor-http\", route=\"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle\"})) * 1e3",
+                     "expr": "histogram_quantile(0.50, sum by (le) (namespace_job_route:loki_request_duration_seconds_bucket:sum_rate{namespace=\"$namespace\", job=~\".+-distributor-http\", route=~\"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle\"})) * 1e3",
                      "format": "time_series",
                      "intervalFactor": 2,
                      "legendFormat": "50th Percentile",
@@ -158,7 +279,7 @@
                      "step": 10
                   },
                   {
-                     "expr": "1e3 * sum(namespace_job_route:loki_request_duration_seconds_sum:sum_rate{namespace=\"$namespace\", job=~\".+-distributor-http\", route=\"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle\"}) / sum(namespace_job_route:loki_request_duration_seconds_count:sum_rate{namespace=\"$namespace\", job=~\".+-distributor-http\", route=\"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle\"})",
+                     "expr": "1e3 * sum(namespace_job_route:loki_request_duration_seconds_sum:sum_rate{namespace=\"$namespace\", job=~\".+-distributor-http\", route=~\"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle\"}) / sum(namespace_job_route:loki_request_duration_seconds_count:sum_rate{namespace=\"$namespace\", job=~\".+-distributor-http\", route=~\"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle\"})",
                      "format": "time_series",
                      "intervalFactor": 2,
                      "legendFormat": "Average",
@@ -166,23 +287,8 @@
                      "step": 10
                   }
                ],
-               "thresholds": [ ],
-               "timeFrom": null,
-               "timeShift": null,
                "title": "Latency",
-               "tooltip": {
-                  "shared": true,
-                  "sort": 2,
-                  "value_type": "individual"
-               },
                "type": "graph",
-               "xaxis": {
-                  "buckets": null,
-                  "mode": "time",
-                  "name": null,
-                  "show": true,
-                  "values": [ ]
-               },
                "yaxes": [
                   {
                      "format": "ms",
@@ -201,6 +307,57 @@
                      "show": false
                   }
                ]
+            },
+            {
+               "datasource": "$datasource",
+               "fieldConfig": {
+                  "defaults": {
+                     "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "none"
+                        }
+                     },
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ ]
+                     },
+                     "unit": "ms"
+                  },
+                  "overrides": [ ]
+               },
+               "id": 3,
+               "links": [ ],
+               "nullPointMode": "null as zero",
+               "options": {
+                  "legend": {
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
+               "span": 4,
+               "targets": [
+                  {
+                     "expr": "histogram_quantile(0.99, sum(rate(loki_request_duration_seconds_bucket{namespace=\"$namespace\", job=~\".+-distributor-http\", route=~\"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle\"}[$__rate_interval])) by (le,pod)) * 1e3",
+                     "format": "time_series",
+                     "interval": "1m",
+                     "intervalFactor": 2,
+                     "legendFormat": "__auto",
+                     "refId": "A",
+                     "step": 10
+                  }
+               ],
+               "title": "Per Pod Latency (p99)",
+               "type": "graph"
             }
          ],
          "repeat": null,
@@ -215,35 +372,41 @@
          "height": "250px",
          "panels": [
             {
-               "aliasColors": { },
-               "bars": false,
-               "dashLength": 10,
-               "dashes": false,
                "datasource": "$datasource",
-               "fill": 1,
-               "id": 3,
-               "legend": {
-                  "avg": false,
-                  "current": false,
-                  "max": false,
-                  "min": false,
-                  "show": true,
-                  "total": false,
-                  "values": false
+               "fieldConfig": {
+                  "defaults": {
+                     "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "none"
+                        }
+                     },
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ ]
+                     },
+                     "unit": "short"
+                  },
+                  "overrides": [ ]
                },
-               "lines": true,
-               "linewidth": 1,
+               "id": 4,
                "links": [ ],
-               "nullPointMode": "null as zero",
-               "percentage": false,
-               "pointradius": 5,
-               "points": false,
-               "renderer": "flot",
-               "seriesOverrides": [ ],
-               "spaceLength": 10,
+               "options": {
+                  "legend": {
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
                "span": 6,
-               "stack": false,
-               "steppedLine": false,
                "targets": [
                   {
                      "expr": "sum (rate(loki_distributor_structured_metadata_bytes_received_total{namespace=\"$namespace\",job=~\".+-distributor-http\",}[$__rate_interval])) / sum(rate(loki_distributor_bytes_received_total{namespace=\"$namespace\",job=~\".+-distributor-http\",}[$__rate_interval]))",
@@ -254,72 +417,46 @@
                      "step": 10
                   }
                ],
-               "thresholds": [ ],
-               "timeFrom": null,
-               "timeShift": null,
                "title": "Per Total Received Bytes",
-               "tooltip": {
-                  "shared": true,
-                  "sort": 2,
-                  "value_type": "individual"
-               },
-               "type": "graph",
-               "xaxis": {
-                  "buckets": null,
-                  "mode": "time",
-                  "name": null,
-                  "show": true,
-                  "values": [ ]
-               },
-               "yaxes": [
-                  {
-                     "format": "short",
-                     "label": null,
-                     "logBase": 1,
-                     "max": null,
-                     "min": 0,
-                     "show": true
-                  },
-                  {
-                     "format": "short",
-                     "label": null,
-                     "logBase": 1,
-                     "max": null,
-                     "min": null,
-                     "show": false
-                  }
-               ]
+               "type": "graph"
             },
             {
-               "aliasColors": { },
-               "bars": false,
-               "dashLength": 10,
-               "dashes": false,
                "datasource": "$datasource",
-               "fill": 1,
-               "id": 4,
-               "legend": {
-                  "avg": false,
-                  "current": false,
-                  "max": false,
-                  "min": false,
-                  "show": true,
-                  "total": false,
-                  "values": false
+               "fieldConfig": {
+                  "defaults": {
+                     "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "none"
+                        }
+                     },
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ ]
+                     },
+                     "unit": "short"
+                  },
+                  "overrides": [ ]
                },
-               "lines": true,
-               "linewidth": 1,
+               "id": 5,
                "links": [ ],
-               "nullPointMode": "null as zero",
-               "percentage": false,
-               "pointradius": 5,
-               "points": false,
-               "renderer": "flot",
-               "seriesOverrides": [ ],
-               "spaceLength": 10,
+               "options": {
+                  "legend": {
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
                "span": 6,
                "stack": true,
-               "steppedLine": false,
                "targets": [
                   {
                      "expr": "sum by (tenant) (rate(loki_distributor_structured_metadata_bytes_received_total{namespace=\"$namespace\",job=~\".+-distributor-http\",}[$__rate_interval])) / ignoring(tenant) group_left sum(rate(loki_distributor_structured_metadata_bytes_received_total{namespace=\"$namespace\",job=~\".+-distributor-http\",}[$__rate_interval]))",
@@ -330,23 +467,8 @@
                      "step": 10
                   }
                ],
-               "thresholds": [ ],
-               "timeFrom": null,
-               "timeShift": null,
                "title": "Per Tenant",
-               "tooltip": {
-                  "shared": true,
-                  "sort": 2,
-                  "value_type": "individual"
-               },
                "type": "graph",
-               "xaxis": {
-                  "buckets": null,
-                  "mode": "time",
-                  "name": null,
-                  "show": true,
-                  "values": [ ]
-               },
                "yaxes": [
                   {
                      "format": "short",
@@ -388,34 +510,181 @@
                   "error": "#E24D42",
                   "success": "#7EB26D"
                },
-               "bars": false,
-               "dashLength": 10,
-               "dashes": false,
                "datasource": "$datasource",
-               "fill": 10,
-               "id": 7,
-               "legend": {
-                  "avg": false,
-                  "current": false,
-                  "max": false,
-                  "min": false,
-                  "show": true,
-                  "total": false,
-                  "values": false
+               "fieldConfig": {
+                  "defaults": {
+                     "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 100,
+                        "lineWidth": 0,
+                        "pointSize": 5,
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "normal"
+                        }
+                     },
+                     "min": 0,
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ ]
+                     },
+                     "unit": "short"
+                  },
+                  "overrides": [
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "1xx"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#EAB839",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "2xx"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#7EB26D",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "3xx"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#6ED0E0",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "4xx"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#EF843C",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "5xx"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#E24D42",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "OK"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#7EB26D",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "cancel"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#A9A9A9",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "error"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#E24D42",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "success"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#7EB26D",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     }
+                  ]
                },
-               "lines": true,
+               "fill": 10,
+               "id": 9,
                "linewidth": 0,
                "links": [ ],
-               "nullPointMode": "null as zero",
-               "percentage": false,
-               "pointradius": 5,
-               "points": false,
-               "renderer": "flot",
-               "seriesOverrides": [ ],
-               "spaceLength": 10,
-               "span": 6,
+               "options": {
+                  "legend": {
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
+               "span": 4,
                "stack": true,
-               "steppedLine": false,
                "targets": [
                   {
                      "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_request_duration_seconds_count{namespace=\"$namespace\",job=~\".+-ingester-http\", route=\"/logproto.Pusher/Push\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))\n",
@@ -426,72 +695,46 @@
                      "step": 10
                   }
                ],
-               "thresholds": [ ],
-               "timeFrom": null,
-               "timeShift": null,
                "title": "QPS",
-               "tooltip": {
-                  "shared": true,
-                  "sort": 2,
-                  "value_type": "individual"
-               },
-               "type": "graph",
-               "xaxis": {
-                  "buckets": null,
-                  "mode": "time",
-                  "name": null,
-                  "show": true,
-                  "values": [ ]
-               },
-               "yaxes": [
-                  {
-                     "format": "short",
-                     "label": null,
-                     "logBase": 1,
-                     "max": null,
-                     "min": 0,
-                     "show": true
-                  },
-                  {
-                     "format": "short",
-                     "label": null,
-                     "logBase": 1,
-                     "max": null,
-                     "min": null,
-                     "show": false
-                  }
-               ]
+               "type": "graph"
             },
             {
-               "aliasColors": { },
-               "bars": false,
-               "dashLength": 10,
-               "dashes": false,
                "datasource": "$datasource",
-               "fill": 1,
-               "id": 8,
-               "legend": {
-                  "avg": false,
-                  "current": false,
-                  "max": false,
-                  "min": false,
-                  "show": true,
-                  "total": false,
-                  "values": false
+               "fieldConfig": {
+                  "defaults": {
+                     "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "none"
+                        }
+                     },
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ ]
+                     },
+                     "unit": "ms"
+                  },
+                  "overrides": [ ]
                },
-               "lines": true,
-               "linewidth": 1,
+               "id": 10,
                "links": [ ],
                "nullPointMode": "null as zero",
-               "percentage": false,
-               "pointradius": 5,
-               "points": false,
-               "renderer": "flot",
-               "seriesOverrides": [ ],
-               "spaceLength": 10,
-               "span": 6,
-               "stack": false,
-               "steppedLine": false,
+               "options": {
+                  "legend": {
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
+               "span": 4,
                "targets": [
                   {
                      "expr": "histogram_quantile(0.99, sum by (le) (namespace_job_route:loki_request_duration_seconds_bucket:sum_rate{namespace=\"$namespace\", job=~\".+-ingester-http\", route=\"/logproto.Pusher/Push\"})) * 1e3",
@@ -518,23 +761,8 @@
                      "step": 10
                   }
                ],
-               "thresholds": [ ],
-               "timeFrom": null,
-               "timeShift": null,
                "title": "Latency",
-               "tooltip": {
-                  "shared": true,
-                  "sort": 2,
-                  "value_type": "individual"
-               },
                "type": "graph",
-               "xaxis": {
-                  "buckets": null,
-                  "mode": "time",
-                  "name": null,
-                  "show": true,
-                  "values": [ ]
-               },
                "yaxes": [
                   {
                      "format": "ms",
@@ -553,6 +781,57 @@
                      "show": false
                   }
                ]
+            },
+            {
+               "datasource": "$datasource",
+               "fieldConfig": {
+                  "defaults": {
+                     "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "none"
+                        }
+                     },
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ ]
+                     },
+                     "unit": "ms"
+                  },
+                  "overrides": [ ]
+               },
+               "id": 11,
+               "links": [ ],
+               "nullPointMode": "null as zero",
+               "options": {
+                  "legend": {
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
+               "span": 4,
+               "targets": [
+                  {
+                     "expr": "histogram_quantile(0.99, sum(rate(loki_request_duration_seconds_bucket{namespace=\"$namespace\", job=~\".+-ingester-http\", route=\"/logproto.Pusher/Push\"}[$__rate_interval])) by (le,pod)) * 1e3",
+                     "format": "time_series",
+                     "interval": "1m",
+                     "intervalFactor": 2,
+                     "legendFormat": "__auto",
+                     "refId": "A",
+                     "step": 10
+                  }
+               ],
+               "title": "Per Pod Latency (p99)",
+               "type": "graph"
             }
          ],
          "repeat": null,
@@ -576,34 +855,181 @@
                   "error": "#E24D42",
                   "success": "#7EB26D"
                },
-               "bars": false,
-               "dashLength": 10,
-               "dashes": false,
                "datasource": "$datasource",
-               "fill": 10,
-               "id": 9,
-               "legend": {
-                  "avg": false,
-                  "current": false,
-                  "max": false,
-                  "min": false,
-                  "show": true,
-                  "total": false,
-                  "values": false
+               "fieldConfig": {
+                  "defaults": {
+                     "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 100,
+                        "lineWidth": 0,
+                        "pointSize": 5,
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "normal"
+                        }
+                     },
+                     "min": 0,
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ ]
+                     },
+                     "unit": "short"
+                  },
+                  "overrides": [
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "1xx"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#EAB839",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "2xx"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#7EB26D",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "3xx"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#6ED0E0",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "4xx"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#EF843C",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "5xx"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#E24D42",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "OK"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#7EB26D",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "cancel"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#A9A9A9",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "error"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#E24D42",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "success"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#7EB26D",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     }
+                  ]
                },
-               "lines": true,
+               "fill": 10,
+               "id": 12,
                "linewidth": 0,
                "links": [ ],
-               "nullPointMode": "null as zero",
-               "percentage": false,
-               "pointradius": 5,
-               "points": false,
-               "renderer": "flot",
-               "seriesOverrides": [ ],
-               "spaceLength": 10,
-               "span": 6,
+               "options": {
+                  "legend": {
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
+               "span": 4,
                "stack": true,
-               "steppedLine": false,
                "targets": [
                   {
                      "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_index_request_duration_seconds_count{namespace=\"$namespace\",job=~\".+-ingester-http\", operation=\"index_chunk\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))\n",
@@ -614,72 +1040,46 @@
                      "step": 10
                   }
                ],
-               "thresholds": [ ],
-               "timeFrom": null,
-               "timeShift": null,
                "title": "QPS",
-               "tooltip": {
-                  "shared": true,
-                  "sort": 2,
-                  "value_type": "individual"
-               },
-               "type": "graph",
-               "xaxis": {
-                  "buckets": null,
-                  "mode": "time",
-                  "name": null,
-                  "show": true,
-                  "values": [ ]
-               },
-               "yaxes": [
-                  {
-                     "format": "short",
-                     "label": null,
-                     "logBase": 1,
-                     "max": null,
-                     "min": 0,
-                     "show": true
-                  },
-                  {
-                     "format": "short",
-                     "label": null,
-                     "logBase": 1,
-                     "max": null,
-                     "min": null,
-                     "show": false
-                  }
-               ]
+               "type": "graph"
             },
             {
-               "aliasColors": { },
-               "bars": false,
-               "dashLength": 10,
-               "dashes": false,
                "datasource": "$datasource",
-               "fill": 1,
-               "id": 10,
-               "legend": {
-                  "avg": false,
-                  "current": false,
-                  "max": false,
-                  "min": false,
-                  "show": true,
-                  "total": false,
-                  "values": false
+               "fieldConfig": {
+                  "defaults": {
+                     "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "none"
+                        }
+                     },
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ ]
+                     },
+                     "unit": "ms"
+                  },
+                  "overrides": [ ]
                },
-               "lines": true,
-               "linewidth": 1,
+               "id": 13,
                "links": [ ],
                "nullPointMode": "null as zero",
-               "percentage": false,
-               "pointradius": 5,
-               "points": false,
-               "renderer": "flot",
-               "seriesOverrides": [ ],
-               "spaceLength": 10,
-               "span": 6,
-               "stack": false,
-               "steppedLine": false,
+               "options": {
+                  "legend": {
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
+               "span": 4,
                "targets": [
                   {
                      "expr": "histogram_quantile(0.99, sum(rate(loki_index_request_duration_seconds_bucket{namespace=\"$namespace\",job=~\".+-ingester-http\", operation=\"index_chunk\"}[$__rate_interval])) by (le)) * 1e3",
@@ -706,23 +1106,8 @@
                      "step": 10
                   }
                ],
-               "thresholds": [ ],
-               "timeFrom": null,
-               "timeShift": null,
                "title": "Latency",
-               "tooltip": {
-                  "shared": true,
-                  "sort": 2,
-                  "value_type": "individual"
-               },
                "type": "graph",
-               "xaxis": {
-                  "buckets": null,
-                  "mode": "time",
-                  "name": null,
-                  "show": true,
-                  "values": [ ]
-               },
                "yaxes": [
                   {
                      "format": "ms",
@@ -741,6 +1126,57 @@
                      "show": false
                   }
                ]
+            },
+            {
+               "datasource": "$datasource",
+               "fieldConfig": {
+                  "defaults": {
+                     "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "none"
+                        }
+                     },
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ ]
+                     },
+                     "unit": "ms"
+                  },
+                  "overrides": [ ]
+               },
+               "id": 14,
+               "links": [ ],
+               "nullPointMode": "null as zero",
+               "options": {
+                  "legend": {
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
+               "span": 4,
+               "targets": [
+                  {
+                     "expr": "histogram_quantile(0.99, sum(rate(loki_index_request_duration_seconds_bucket{namespace=\"$namespace\",job=~\".+-ingester-http\", operation=\"index_chunk\"}[$__rate_interval])) by (le,pod)) * 1e3",
+                     "format": "time_series",
+                     "interval": "1m",
+                     "intervalFactor": 2,
+                     "legendFormat": "__auto",
+                     "refId": "A",
+                     "step": 10
+                  }
+               ],
+               "title": "Per Pod Latency (p99)",
+               "type": "graph"
             }
          ],
          "repeat": null,
@@ -748,6 +1184,351 @@
          "repeatRowId": null,
          "showTitle": true,
          "title": "Index",
+         "titleSize": "h6"
+      },
+      {
+         "collapse": false,
+         "height": "250px",
+         "panels": [
+            {
+               "aliasColors": {
+                  "1xx": "#EAB839",
+                  "2xx": "#7EB26D",
+                  "3xx": "#6ED0E0",
+                  "4xx": "#EF843C",
+                  "5xx": "#E24D42",
+                  "error": "#E24D42",
+                  "success": "#7EB26D"
+               },
+               "datasource": "$datasource",
+               "fieldConfig": {
+                  "defaults": {
+                     "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 100,
+                        "lineWidth": 0,
+                        "pointSize": 5,
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "normal"
+                        }
+                     },
+                     "min": 0,
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ ]
+                     },
+                     "unit": "short"
+                  },
+                  "overrides": [
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "1xx"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#EAB839",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "2xx"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#7EB26D",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "3xx"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#6ED0E0",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "4xx"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#EF843C",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "5xx"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#E24D42",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "OK"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#7EB26D",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "cancel"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#A9A9A9",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "error"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#E24D42",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     },
+                     {
+                        "matcher": {
+                           "id": "byName",
+                           "options": "success"
+                        },
+                        "properties": [
+                           {
+                              "id": "color",
+                              "value": {
+                                 "fixedColor": "#7EB26D",
+                                 "mode": "fixed"
+                              }
+                           }
+                        ]
+                     }
+                  ]
+               },
+               "fill": 10,
+               "id": 15,
+               "linewidth": 0,
+               "links": [ ],
+               "options": {
+                  "legend": {
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
+               "span": 4,
+               "stack": true,
+               "targets": [
+                  {
+                     "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_boltdb_shipper_request_duration_seconds_count{namespace=\"$namespace\",job=~\".+-ingester-http\", operation=\"WRITE\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))\n",
+                     "format": "time_series",
+                     "intervalFactor": 2,
+                     "legendFormat": "{{status}}",
+                     "refId": "A",
+                     "step": 10
+                  }
+               ],
+               "title": "QPS",
+               "type": "graph"
+            },
+            {
+               "datasource": "$datasource",
+               "fieldConfig": {
+                  "defaults": {
+                     "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "none"
+                        }
+                     },
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ ]
+                     },
+                     "unit": "ms"
+                  },
+                  "overrides": [ ]
+               },
+               "id": 16,
+               "links": [ ],
+               "nullPointMode": "null as zero",
+               "options": {
+                  "legend": {
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
+               "span": 4,
+               "targets": [
+                  {
+                     "expr": "histogram_quantile(0.99, sum(rate(loki_boltdb_shipper_request_duration_seconds_bucket{namespace=\"$namespace\",job=~\".+-ingester-http\", operation=\"WRITE\"}[$__rate_interval])) by (le)) * 1e3",
+                     "format": "time_series",
+                     "intervalFactor": 2,
+                     "legendFormat": "99th Percentile",
+                     "refId": "A",
+                     "step": 10
+                  },
+                  {
+                     "expr": "histogram_quantile(0.50, sum(rate(loki_boltdb_shipper_request_duration_seconds_bucket{namespace=\"$namespace\",job=~\".+-ingester-http\", operation=\"WRITE\"}[$__rate_interval])) by (le)) * 1e3",
+                     "format": "time_series",
+                     "intervalFactor": 2,
+                     "legendFormat": "50th Percentile",
+                     "refId": "B",
+                     "step": 10
+                  },
+                  {
+                     "expr": "sum(rate(loki_boltdb_shipper_request_duration_seconds_sum{namespace=\"$namespace\",job=~\".+-ingester-http\", operation=\"WRITE\"}[$__rate_interval])) * 1e3 / sum(rate(loki_boltdb_shipper_request_duration_seconds_count{namespace=\"$namespace\",job=~\".+-ingester-http\", operation=\"WRITE\"}[$__rate_interval]))",
+                     "format": "time_series",
+                     "intervalFactor": 2,
+                     "legendFormat": "Average",
+                     "refId": "C",
+                     "step": 10
+                  }
+               ],
+               "title": "Latency",
+               "type": "graph",
+               "yaxes": [
+                  {
+                     "format": "ms",
+                     "label": null,
+                     "logBase": 1,
+                     "max": null,
+                     "min": 0,
+                     "show": true
+                  },
+                  {
+                     "format": "short",
+                     "label": null,
+                     "logBase": 1,
+                     "max": null,
+                     "min": null,
+                     "show": false
+                  }
+               ]
+            },
+            {
+               "datasource": "$datasource",
+               "fieldConfig": {
+                  "defaults": {
+                     "custom": {
+                        "drawStyle": "line",
+                        "fillOpacity": 10,
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "showPoints": "never",
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "none"
+                        }
+                     },
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [ ]
+                     },
+                     "unit": "ms"
+                  },
+                  "overrides": [ ]
+               },
+               "id": 17,
+               "links": [ ],
+               "nullPointMode": "null as zero",
+               "options": {
+                  "legend": {
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
+               "span": 4,
+               "targets": [
+                  {
+                     "expr": "histogram_quantile(0.99, sum(rate(loki_boltdb_shipper_request_duration_seconds_bucket{namespace=\"$namespace\",job=~\".+-ingester-http\", operation=\"WRITE\"}[$__rate_interval])) by (le,pod)) * 1e3",
+                     "format": "time_series",
+                     "interval": "1m",
+                     "intervalFactor": 2,
+                     "legendFormat": "__auto",
+                     "refId": "A",
+                     "step": 10
+                  }
+               ],
+               "title": "Per Pod Latency (p99)",
+               "type": "graph"
+            }
+         ],
+         "repeat": null,
+         "repeatIteration": null,
+         "repeatRowId": null,
+         "showTitle": true,
+         "title": "BoltDB Index",
          "titleSize": "h6"
       }
    ],

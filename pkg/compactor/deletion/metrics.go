@@ -12,6 +12,11 @@ type DeleteRequestClientMetrics struct {
 	deleteRequestsLookupsFailedTotal prometheus.Counter
 }
 
+func (m DeleteRequestClientMetrics) Unregister() {
+	prometheus.Unregister(m.deleteRequestsLookupsTotal)
+	prometheus.Unregister(m.deleteRequestsLookupsFailedTotal)
+}
+
 func NewDeleteRequestClientMetrics(r prometheus.Registerer) *DeleteRequestClientMetrics {
 	m := DeleteRequestClientMetrics{}
 

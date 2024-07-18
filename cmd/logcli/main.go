@@ -16,6 +16,7 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 
 	"github.com/grafana/loki/v3/pkg/logcli/client"
+	"github.com/grafana/loki/v3/pkg/logcli/detected"
 	"github.com/grafana/loki/v3/pkg/logcli/index"
 	"github.com/grafana/loki/v3/pkg/logcli/labelquery"
 	"github.com/grafana/loki/v3/pkg/logcli/output"
@@ -253,6 +254,39 @@ Example:
 	   'my-query'
   `)
 	volumeRangeQuery = newVolumeQuery(true, volumeRangeCmd)
+
+	detectedFieldsCmd = app.Command("detected-fields", `Run a query for detected fields..
+
+The "detected-fields" command will return information about fields detected using either
+the "logfmt" or "json" parser against the log lines returned by the provided query for the
+provided time range.
+
+The "detected-fields" command will output extra information about the query
+and its results, such as the API URL, set of common labels, and set
+of excluded labels. This extra information can be suppressed with the
+--quiet flag.
+
+By default we look over the last hour of data; use --since to modify
+or provide specific start and end times with --from and --to respectively.
+
+Notice that when using --from and --to then ensure to use RFC3339Nano
+time format, but without timezone at the end. The local timezone will be added
+automatically or if using  --timezone flag.
+
+Example:
+
+	logcli detected-fields
+	   --timezone=UTC
+	   --from="2021-01-19T10:00:00Z"
+	   --to="2021-01-19T20:00:00Z"
+	   --output=jsonl
+	   'my-query'
+
+The output is limited to 100 fields by default; use --field-limit to increase.
+The query is limited to processing 1000 lines per subquery; use --line-limit to increase.
+`)
+
+	detectedFieldsQuery = newDetectedFieldsQuery(detectedFieldsCmd)
 )
 
 func main() {
@@ -388,6 +422,8 @@ func main() {
 		} else {
 			index.GetVolume(volumeQuery, queryClient, out, *statistics)
 		}
+	case detectedFieldsCmd.FullCommand():
+		detectedFieldsQuery.Do(queryClient, *outputMode)
 	}
 }
 
@@ -439,6 +475,7 @@ func newQueryClient(app *kingpin.Application) client.Client {
 	app.Flag("key", "Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.").Default("").Envar("LOKI_CLIENT_KEY_PATH").StringVar(&client.TLSConfig.KeyFile)
 	app.Flag("org-id", "adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when bypassing an auth gateway. Can also be set using LOKI_ORG_ID env var.").Default("").Envar("LOKI_ORG_ID").StringVar(&client.OrgID)
 	app.Flag("query-tags", "adds X-Query-Tags http header to API requests. This header value will be part of `metrics.go` statistics. Useful for tracking the query. Can also be set using LOKI_QUERY_TAGS env var.").Default("").Envar("LOKI_QUERY_TAGS").StringVar(&client.QueryTags)
+	app.Flag("nocache", "adds Cache-Control: no-cache http header to API requests. Can also be set using LOKI_NO_CACHE env var.").Default("false").Envar("LOKI_NO_CACHE").BoolVar(&client.NoCache)
 	app.Flag("bearer-token", "adds the Authorization header to API requests for authentication purposes. Can also be set using LOKI_BEARER_TOKEN env var.").Default("").Envar("LOKI_BEARER_TOKEN").StringVar(&client.BearerToken)
 	app.Flag("bearer-token-file", "adds the Authorization header to API requests for authentication purposes. Can also be set using LOKI_BEARER_TOKEN_FILE env var.").Default("").Envar("LOKI_BEARER_TOKEN_FILE").StringVar(&client.BearerTokenFile)
 	app.Flag("retries", "How many times to retry each query when getting an error response from Loki. Can also be set using LOKI_CLIENT_RETRIES env var.").Default("0").Envar("LOKI_CLIENT_RETRIES").IntVar(&client.Retries)
@@ -649,6 +686,44 @@ func newVolumeQuery(rangeQuery bool, cmd *kingpin.CmdClause) *volume.Query {
 	if rangeQuery {
 		cmd.Flag("step", "Query resolution step width, roll up volumes into buckets cover step time each.").Default("1h").DurationVar(&q.Step)
 	}
+
+	return q
+}
+
+func newDetectedFieldsQuery(cmd *kingpin.CmdClause) *detected.FieldsQuery {
+	// calculate query range from cli params
+	var from, to string
+	var since time.Duration
+
+	q := &detected.FieldsQuery{}
+
+	// executed after all command flags are parsed
+	cmd.Action(func(c *kingpin.ParseContext) error {
+		defaultEnd := time.Now()
+		defaultStart := defaultEnd.Add(-since)
+
+		q.Start = mustParse(from, defaultStart)
+		q.End = mustParse(to, defaultEnd)
+
+		q.Quiet = *quiet
+
+		return nil
+	})
+
+	cmd.Flag("field-limit", "Limit on number of fields to return.").
+		Default("100").
+		IntVar(&q.FieldLimit)
+	cmd.Flag("line-limit", "Limit the number of lines each subquery is allowed to process.").
+		Default("1000").
+		IntVar(&q.LineLimit)
+	cmd.Arg("query", "eg '{foo=\"bar\",baz=~\".*blip\"} |~ \".*error.*\"'").
+		Required().
+		StringVar(&q.QueryString)
+	cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
+	cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").StringVar(&from)
+	cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
+	cmd.Flag("step", "Query resolution step width, for metric queries. Evaluate the query at the specified step over the time range.").
+		DurationVar(&q.Step)
 
 	return q
 }

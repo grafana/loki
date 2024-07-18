@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
 )
 
 func TestArchive(t *testing.T) {
@@ -17,8 +18,7 @@ func TestArchive(t *testing.T) {
 	dir2 := t.TempDir()
 
 	numSeries := 100
-	numKeysPerSeries := 10000
-	data, _ := MkBasicSeriesWithBlooms(numSeries, numKeysPerSeries, 0x0000, 0xffff, 0, 10000)
+	data, _ := MkBasicSeriesWithBlooms(numSeries, 0x0000, 0xffff, 0, 10000)
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
@@ -33,7 +33,7 @@ func TestArchive(t *testing.T) {
 	)
 
 	require.Nil(t, err)
-	itr := NewSliceIter[SeriesWithBloom](data)
+	itr := v2.NewSliceIter[SeriesWithBlooms](data)
 	_, err = builder.BuildFrom(itr)
 	require.Nil(t, err)
 

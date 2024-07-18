@@ -4,7 +4,8 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
 
 type BlockMetadata struct {
@@ -104,24 +105,25 @@ func (b *Block) Schema() (Schema, error) {
 }
 
 type BlockQuerier struct {
-	series *LazySeriesIter
+	*LazySeriesIter
 	blooms *LazyBloomIter
 
 	block *Block // ref to underlying block
-
-	cur *SeriesWithBloom
 }
 
 // NewBlockQuerier returns a new BlockQuerier for the given block.
-// WARNING: If noCapture is true, the underlying byte slice of the bloom page
-// will be returned to the pool for efficiency. This can only safely be used
-// when the underlying bloom bytes don't escape the decoder, i.e.
-// when loading blooms for querying (bloom-gw) but not for writing (bloom-compactor).
-func NewBlockQuerier(b *Block, noCapture bool, maxPageSize int) *BlockQuerier {
+// WARNING: You can pass an implementation of Allocator that is responsible for
+// whether the underlying byte slice of the bloom page will be returned to the
+// pool for efficiency or not. Returning to the pool can only safely be used
+// when the underlying bloom bytes don't escape the decoder, i.e. when loading
+// blooms for querying (bloom-gateway), but not for writing (bloom-compactor).
+// Therefore, when calling NewBlockQuerier on the write path, you should always
+// pass the SimpleHeapAllocator implementation of the Allocator interface.
+func NewBlockQuerier(b *Block, alloc mempool.Allocator, maxPageSize int) *BlockQuerier {
 	return &BlockQuerier{
-		block:  b,
-		series: NewLazySeriesIter(b),
-		blooms: NewLazyBloomIter(b, noCapture, maxPageSize),
+		block:          b,
+		LazySeriesIter: NewLazySeriesIter(b),
+		blooms:         NewLazyBloomIter(b, alloc, maxPageSize),
 	}
 }
 
@@ -134,111 +136,82 @@ func (bq *BlockQuerier) Schema() (Schema, error) {
 }
 
 func (bq *BlockQuerier) Reset() error {
-	return bq.series.Seek(0)
-}
-
-func (bq *BlockQuerier) Seek(fp model.Fingerprint) error {
-	return bq.series.Seek(fp)
-}
-
-func (bq *BlockQuerier) Next() bool {
-	for bq.series.Next() {
-		series := bq.series.At()
-		bq.blooms.Seek(series.Offset)
-		if !bq.blooms.Next() {
-			// skip blocks that are too large
-			if errors.Is(bq.blooms.Err(), ErrPageTooLarge) {
-				// fmt.Printf("skipping bloom page: %s (%d)\n", series.Fingerprint, series.Chunks.Len())
-				bq.blooms.err = nil
-				continue
-			}
-			return false
-		}
-		bloom := bq.blooms.At()
-		bq.cur = &SeriesWithBloom{
-			Series: &series.Series,
-			Bloom:  bloom,
-		}
-		return true
-	}
-	return false
-}
-
-func (bq *BlockQuerier) At() *SeriesWithBloom {
-	return bq.cur
+	bq.blooms.Reset()
+	return bq.LazySeriesIter.Seek(0)
 }
 
 func (bq *BlockQuerier) Err() error {
-	if err := bq.series.Err(); err != nil {
+	if err := bq.LazySeriesIter.Err(); err != nil {
 		return err
 	}
 
 	return bq.blooms.Err()
 }
 
-// CheckChunksForSeries checks if the given chunks pass a set of searches in the given bloom block.
-// It returns the list of chunks which will need to be downloaded for a query based on the initial list
-// passed as the `chks` argument. Chunks will be removed from the result set if they are indexed in the bloom
-// and fail to pass all the searches.
-func (bq *BlockQuerier) CheckChunksForSeries(fp model.Fingerprint, chks ChunkRefs, searches [][]byte) (ChunkRefs, error) {
-	schema, err := bq.Schema()
-	if err != nil {
-		return chks, fmt.Errorf("getting schema: %w", err)
+type BlockQuerierIter struct {
+	*BlockQuerier
+}
+
+// Iter returns a new BlockQuerierIter, which changes the iteration type to SeriesWithBlooms,
+// automatically loading the blooms for each series rather than requiring the caller to
+// turn the offset to a `Bloom` via `LoadOffset`
+func (bq *BlockQuerier) Iter() *BlockQuerierIter {
+	return &BlockQuerierIter{BlockQuerier: bq}
+}
+
+func (b *BlockQuerierIter) Next() bool {
+	next := b.LazySeriesIter.Next()
+	if !next {
+		b.blooms.Reset()
 	}
+	return next
+}
 
-	if err := bq.Seek(fp); err != nil {
-		return chks, errors.Wrapf(err, "seeking to series for fp: %v", fp)
+func (b *BlockQuerierIter) At() *SeriesWithBlooms {
+	s := b.LazySeriesIter.At()
+	res := &SeriesWithBlooms{
+		Series: &s.Series,
+		Blooms: newOffsetsIter(b.blooms, s.Offsets),
 	}
+	return res
+}
 
-	if !bq.series.Next() {
-		return chks, nil
+type offsetsIter struct {
+	blooms  *LazyBloomIter
+	offsets []BloomOffset
+	cur     int
+}
+
+func newOffsetsIter(blooms *LazyBloomIter, offsets []BloomOffset) *offsetsIter {
+	return &offsetsIter{
+		blooms:  blooms,
+		offsets: offsets,
 	}
+}
 
-	series := bq.series.At()
-	if series.Fingerprint != fp {
-		return chks, nil
-	}
+func (it *offsetsIter) Next() bool {
+	for it.cur < len(it.offsets) {
 
-	bq.blooms.Seek(series.Offset)
-	if !bq.blooms.Next() {
-		return chks, fmt.Errorf("seeking to bloom for fp: %v", fp)
-	}
-
-	bloom := bq.blooms.At()
-
-	// First, see if the search passes the series level bloom before checking for chunks individually
-	for _, search := range searches {
-		if !bloom.Test(search) {
-			// the entire series bloom didn't pass one of the searches,
-			// so we can skip checking chunks individually.
-			// We still return all chunks that are not included in the bloom
-			// as they may still have the data
-			return chks.Unless(series.Chunks), nil
+		if skip := it.blooms.LoadOffset(it.offsets[it.cur]); skip {
+			it.cur++
+			continue
 		}
-	}
 
-	// TODO(salvacorts): pool tokenBuf
-	var tokenBuf []byte
-	var prefixLen int
-
-	// Check chunks individually now
-	mustCheck, inBlooms := chks.Compare(series.Chunks, true)
-
-outer:
-	for _, chk := range inBlooms {
-		// Get buf to concatenate the chunk and search token
-		tokenBuf, prefixLen = prefixedToken(schema.NGramLen(), chk, tokenBuf)
-		for _, search := range searches {
-			tokenBuf = append(tokenBuf[:prefixLen], search...)
-
-			if !bloom.Test(tokenBuf) {
-				// chunk didn't pass the search, continue to the next chunk
-				continue outer
-			}
-		}
-		// chunk passed all searches, add to the list of chunks to download
-		mustCheck = append(mustCheck, chk)
+		it.cur++
+		return it.blooms.Next()
 
 	}
-	return mustCheck, nil
+	return false
+}
+
+func (it *offsetsIter) At() *Bloom {
+	return it.blooms.At()
+}
+
+func (it *offsetsIter) Err() error {
+	return it.blooms.Err()
+}
+
+func (it *offsetsIter) Remaining() int {
+	return len(it.offsets) - it.cur
 }

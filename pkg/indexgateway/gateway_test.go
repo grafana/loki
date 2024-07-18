@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
+	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
@@ -38,6 +38,18 @@ const (
 	rangeValuePrefix = "range-value"
 	valuePrefix      = "value"
 )
+
+type mockLimits struct{}
+
+func (mockLimits) IndexGatewayShardSize(_ string) int {
+	return 0
+}
+func (mockLimits) TSDBMaxBytesPerShard(_ string) int {
+	return sharding.DefaultTSDBMaxBytesPerShard
+}
+func (mockLimits) TSDBPrecomputeChunks(_ string) bool {
+	return false
+}
 
 type mockBatch struct {
 	size int
@@ -233,7 +245,7 @@ func TestGateway_QueryIndex_multistore(t *testing.T) {
 			},
 		},
 	}}
-	gateway, err := NewIndexGateway(Config{}, util_log.Logger, nil, nil, indexClients, nil)
+	gateway, err := NewIndexGateway(Config{}, mockLimits{}, util_log.Logger, nil, nil, indexClients, nil)
 	require.NoError(t, err)
 
 	expectedQueries = append(expectedQueries,
@@ -258,7 +270,7 @@ func TestVolume(t *testing.T) {
 		{Name: "bar", Volume: 38},
 	}}, nil)
 
-	gateway, err := NewIndexGateway(Config{}, util_log.Logger, nil, indexQuerier, nil, nil)
+	gateway, err := NewIndexGateway(Config{}, mockLimits{}, util_log.Logger, nil, indexQuerier, nil, nil)
 	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.Background(), "test")
@@ -295,7 +307,7 @@ func TestRefWithSizingInfo(t *testing.T) {
 		desc string
 		a    refWithSizingInfo
 		b    tsdb_index.ChunkMeta
-		exp  v1.Ord
+		exp  v2.Ord
 	}{
 		{
 			desc: "less by from",
@@ -307,7 +319,7 @@ func TestRefWithSizingInfo(t *testing.T) {
 			b: tsdb_index.ChunkMeta{
 				MinTime: 2,
 			},
-			exp: v1.Less,
+			exp: v2.Less,
 		},
 		{
 			desc: "eq by from",
@@ -319,7 +331,7 @@ func TestRefWithSizingInfo(t *testing.T) {
 			b: tsdb_index.ChunkMeta{
 				MinTime: 1,
 			},
-			exp: v1.Eq,
+			exp: v2.Eq,
 		},
 		{
 			desc: "gt by from",
@@ -331,7 +343,7 @@ func TestRefWithSizingInfo(t *testing.T) {
 			b: tsdb_index.ChunkMeta{
 				MinTime: 1,
 			},
-			exp: v1.Greater,
+			exp: v2.Greater,
 		},
 		{
 			desc: "less by through",
@@ -343,7 +355,7 @@ func TestRefWithSizingInfo(t *testing.T) {
 			b: tsdb_index.ChunkMeta{
 				MaxTime: 2,
 			},
-			exp: v1.Less,
+			exp: v2.Less,
 		},
 		{
 			desc: "eq by through",
@@ -355,7 +367,7 @@ func TestRefWithSizingInfo(t *testing.T) {
 			b: tsdb_index.ChunkMeta{
 				MaxTime: 2,
 			},
-			exp: v1.Eq,
+			exp: v2.Eq,
 		},
 		{
 			desc: "gt by through",
@@ -367,7 +379,7 @@ func TestRefWithSizingInfo(t *testing.T) {
 			b: tsdb_index.ChunkMeta{
 				MaxTime: 1,
 			},
-			exp: v1.Greater,
+			exp: v2.Greater,
 		},
 		{
 			desc: "less by checksum",
@@ -379,7 +391,7 @@ func TestRefWithSizingInfo(t *testing.T) {
 			b: tsdb_index.ChunkMeta{
 				Checksum: 2,
 			},
-			exp: v1.Less,
+			exp: v2.Less,
 		},
 		{
 			desc: "eq by checksum",
@@ -391,7 +403,7 @@ func TestRefWithSizingInfo(t *testing.T) {
 			b: tsdb_index.ChunkMeta{
 				Checksum: 2,
 			},
-			exp: v1.Eq,
+			exp: v2.Eq,
 		},
 		{
 			desc: "gt by checksum",
@@ -403,7 +415,7 @@ func TestRefWithSizingInfo(t *testing.T) {
 			b: tsdb_index.ChunkMeta{
 				Checksum: 1,
 			},
-			exp: v1.Greater,
+			exp: v2.Greater,
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
@@ -532,7 +544,7 @@ func TestAccumulateChunksToShards(t *testing.T) {
 		},
 	}
 
-	shards, err := accumulateChunksToShards(
+	shards, grps, err := accumulateChunksToShards(
 		context.Background(),
 		"",
 		fsImpl(series),
@@ -543,6 +555,12 @@ func TestAccumulateChunksToShards(t *testing.T) {
 		filtered,
 	)
 
+	expectedChks := [][]*logproto.ChunkRef{
+		filtered[0:3],
+		filtered[3:6],
+		filtered[6:9],
+		filtered[9:10],
+	}
 	exp := []logproto.Shard{
 		{
 			Bounds: logproto.FPBounds{Min: 0, Max: 1},
@@ -586,6 +604,9 @@ func TestAccumulateChunksToShards(t *testing.T) {
 
 	for i := range shards {
 		require.Equal(t, exp[i], shards[i], "invalid shard at index %d", i)
+		for j := range grps[i].Refs {
+			require.Equal(t, expectedChks[i][j], grps[i].Refs[j], "invalid chunk in grp %d at index %d", i, j)
+		}
 	}
 	require.Equal(t, len(exp), len(shards))
 

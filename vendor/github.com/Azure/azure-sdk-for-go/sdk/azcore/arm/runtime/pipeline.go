@@ -30,8 +30,9 @@ func NewPipeline(module, version string, cred azcore.TokenCredential, plOpts azr
 		return azruntime.Pipeline{}, err
 	}
 	authPolicy := NewBearerTokenPolicy(cred, &armpolicy.BearerTokenOptions{
-		AuxiliaryTenants: options.AuxiliaryTenants,
-		Scopes:           []string{conf.Audience + "/.default"},
+		AuxiliaryTenants:                options.AuxiliaryTenants,
+		InsecureAllowCredentialWithHTTP: options.InsecureAllowCredentialWithHTTP,
+		Scopes:                          []string{conf.Audience + "/.default"},
 	})
 	perRetry := make([]azpolicy.Policy, len(plOpts.PerRetry), len(plOpts.PerRetry)+1)
 	copy(perRetry, plOpts.PerRetry)

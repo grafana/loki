@@ -49,6 +49,7 @@ func Test_logSelectorExpr_String(t *testing.T) {
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt | b=ip("127.0.0.1") | level="error" | c=ip("::1")`, true}, // chain inside label filters.
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | regexp "(?P<foo>foo|bar)"`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | regexp "(?P<foo>foo|bar)" | ( ( foo<5.01 , bar>20ms ) or foo="bar" ) | line_format "blip{{.boop}}bap" | label_format foo=bar,bar="blip{{.blop}}"`, true},
+		{`{foo="bar"} | logfmt | counter>-1 | counter>=-1 | counter<-1 | counter<=-1 | counter!=-1 | counter==-1`, true},
 	}
 
 	for _, tt := range tests {
@@ -76,6 +77,7 @@ func Test_logSelectorExpr_String(t *testing.T) {
 func Test_SampleExpr_String(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []string{
+		`rate( ( {job="mysql"} |="error" !="timeout" ) [10s] )>-1`,
 		`rate( ( {job="mysql"} |="error" !="timeout" ) [10s] )`,
 		`absent_over_time( ( {job="mysql"} |="error" !="timeout" ) [10s] )`,
 		`absent_over_time( ( {job="mysql"} |="error" !="timeout" ) [10s] offset 10d )`,
@@ -543,11 +545,18 @@ func Test_FilterMatcher(t *testing.T) {
 			[]linecheck{{"foo", false}, {"bar", true}, {"127.0.0.2", true}, {"127.0.0.1", false}},
 		},
 		{
-			`{app="foo"} |> "foo" or "bar"`,
+			`{app="foo"} |> "<_>foo<_>" or "<_>bar<_>"`,
 			[]*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, "app", "foo"),
 			},
-			[]linecheck{{"foo", true}, {"bar", true}, {"none", false}},
+			[]linecheck{{"test foo test", true}, {"test bar test", true}, {"none", false}},
+		},
+		{
+			`{app="foo"} |> "<_>foo<_>" or "<_>bar<_>" or "<_>baz<_>"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"test foo test", true}, {"test bar test", true}, {"test baz test", true}, {"none", false}},
 		},
 		{
 			`{app="foo"} !> "foo" or "bar"`,
@@ -555,6 +564,27 @@ func Test_FilterMatcher(t *testing.T) {
 				mustNewMatcher(labels.MatchEqual, "app", "foo"),
 			},
 			[]linecheck{{"foo", false}, {"bar", false}, {"none", true}},
+		},
+		{
+			`{app="foo"} | logfmt | duration > -1s`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"duration=5m", true}, {"duration=1s", true}, {"duration=0s", true}, {"duration=-5m", false}},
+		},
+		{
+			`{app="foo"} | logfmt | count > -1`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"count=5", true}, {"count=1", true}, {"count=0", true}, {"count=-5", false}},
+		},
+		{
+			`{app="foo"} | logfmt | counter <= -1`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"counter=1", false}, {"counter=0", false}, {"counter=-1", true}, {"counter=-2", true}},
 		},
 	} {
 		tt := tt
@@ -595,6 +625,18 @@ func TestOrLineFilterTypes(t *testing.T) {
 
 			_ = newOrLineFilter(left, right)
 			require.Equal(t, tt.ty, right.Ty)
+			require.Equal(t, tt.ty, left.Ty)
+		})
+
+		t.Run("right inherits left's type with multiple or filters", func(t *testing.T) {
+			f1 := &LineFilterExpr{LineFilter: LineFilter{Ty: tt.ty, Match: "something"}}
+			f2 := &LineFilterExpr{LineFilter: LineFilter{Ty: log.LineMatchEqual, Match: "something"}}
+			f3 := &LineFilterExpr{LineFilter: LineFilter{Ty: log.LineMatchEqual, Match: "something"}}
+
+			_ = newOrLineFilter(f1, newOrLineFilter(f2, f3))
+			require.Equal(t, tt.ty, f1.Ty)
+			require.Equal(t, tt.ty, f2.Ty)
+			require.Equal(t, tt.ty, f3.Ty)
 		})
 	}
 }

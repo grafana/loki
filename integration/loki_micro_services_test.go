@@ -739,7 +739,7 @@ func TestOTLPLogsIngestQuery(t *testing.T) {
 
 	t.Run("ingest-logs", func(t *testing.T) {
 		// ingest some log lines
-		require.NoError(t, cliDistributor.PushOTLPLogLine("lineA", now.Add(-45*time.Minute), map[string]any{"trace_id": 1, "user_id": "2"}))
+		require.NoError(t, cliDistributor.PushOTLPLogLine("lineA", now.Add(-45*time.Minute), map[string]any{"trace_id": 1, "user_id": "2", "email": "foo@bar.com"}))
 		require.NoError(t, cliDistributor.PushOTLPLogLine("lineB", now.Add(-45*time.Minute), nil))
 
 		require.NoError(t, cliDistributor.PushOTLPLogLine("lineC", now, map[string]any{"order.ids": []any{5, 6}}))
@@ -1045,7 +1045,7 @@ func TestCategorizedLabels(t *testing.T) {
 				expectedEncodingFlags = tc.encodingFlags
 			}
 
-			resp, err := cliQueryFrontend.RunQuery(context.Background(), tc.query, headers...)
+			resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), tc.query, headers...)
 			require.NoError(t, err)
 			assert.Equal(t, "streams", resp.Data.ResultType)
 

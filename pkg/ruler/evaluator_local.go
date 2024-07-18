@@ -37,6 +37,7 @@ func (l *LocalEvaluator) Eval(ctx context.Context, qs string, now time.Time) (*l
 		logproto.FORWARD,
 		0,
 		nil,
+		nil,
 	)
 	if err != nil {
 		return nil, err

@@ -1,10 +1,10 @@
 package bloomcompactor
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"math"
+	"os"
 	"sort"
 	"sync"
 
@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
@@ -22,7 +23,7 @@ import (
 
 type SimpleBloomController struct {
 	tsdbStore   TSDBStore
-	bloomStore  bloomshipper.Store
+	bloomStore  bloomshipper.StoreBase
 	chunkLoader ChunkLoader
 	metrics     *Metrics
 	limits      Limits
@@ -32,7 +33,7 @@ type SimpleBloomController struct {
 
 func NewSimpleBloomController(
 	tsdbStore TSDBStore,
-	blockStore bloomshipper.Store,
+	blockStore bloomshipper.StoreBase,
 	chunkLoader ChunkLoader,
 	limits Limits,
 	metrics *Metrics,
@@ -48,11 +49,12 @@ func NewSimpleBloomController(
 	}
 }
 
-// TODO(owen-d): pool, evaluate if memory-only is the best choice
-func (s *SimpleBloomController) rwFn() (v1.BlockWriter, v1.BlockReader) {
-	indexBuf := bytes.NewBuffer(nil)
-	bloomsBuf := bytes.NewBuffer(nil)
-	return v1.NewMemoryBlockWriter(indexBuf, bloomsBuf), v1.NewByteReader(indexBuf, bloomsBuf)
+func (s *SimpleBloomController) writerReaderFunc() (v1.BlockWriter, v1.BlockReader) {
+	dir, err := os.MkdirTemp("", "bloom-block-")
+	if err != nil {
+		panic(err)
+	}
+	return v1.NewDirectoryBlockWriter(dir), v1.NewDirectoryBlockReader(dir)
 }
 
 /*
@@ -287,7 +289,7 @@ func (s *SimpleBloomController) loadWorkForGap(
 	tenant string,
 	id tsdb.Identifier,
 	gap gapWithBlocks,
-) (v1.Iterator[*v1.Series], v1.CloseableResettableIterator[*v1.SeriesWithBloom], error) {
+) (iter.Iterator[*v1.Series], iter.CloseResetIterator[*v1.SeriesWithBlooms], error) {
 	// load a series iterator for the gap
 	seriesItr, err := s.tsdbStore.LoadTSDB(ctx, table, tenant, id, gap.bounds)
 	if err != nil {
@@ -352,7 +354,8 @@ func (s *SimpleBloomController) buildGaps(
 		nGramSize    = uint64(s.limits.BloomNGramLength(tenant))
 		nGramSkip    = uint64(s.limits.BloomNGramSkip(tenant))
 		maxBlockSize = uint64(s.limits.BloomCompactorMaxBlockSize(tenant))
-		blockOpts    = v1.NewBlockOptions(blockEnc, nGramSize, nGramSkip, maxBlockSize)
+		maxBloomSize = uint64(s.limits.BloomCompactorMaxBloomSize(tenant))
+		blockOpts    = v1.NewBlockOptions(blockEnc, nGramSize, nGramSkip, maxBlockSize, maxBloomSize)
 		created      []bloomshipper.Meta
 		totalSeries  int
 		bytesAdded   int
@@ -383,6 +386,10 @@ func (s *SimpleBloomController) buildGaps(
 			// to try and accelerate bloom creation
 			level.Debug(logger).Log("msg", "loading series and blocks for gap", "blocks", len(gap.blocks))
 			seriesItr, blocksIter, err := s.loadWorkForGap(ctx, table, tenant, plan.tsdb, gap)
+			if err != nil {
+				level.Error(logger).Log("msg", "failed to get series and blocks", "err", err)
+				return nil, errors.Wrap(err, "failed to get series and blocks")
+			}
 
 			// TODO(owen-d): more elegant error handling than sync.OnceFunc
 			closeBlocksIter := sync.OnceFunc(func() {
@@ -392,15 +399,10 @@ func (s *SimpleBloomController) buildGaps(
 			})
 			defer closeBlocksIter()
 
-			if err != nil {
-				level.Error(logger).Log("msg", "failed to get series and blocks", "err", err)
-				return nil, errors.Wrap(err, "failed to get series and blocks")
-			}
-
 			// Blocks are built consuming the series iterator. For observability, we wrap the series iterator
 			// with a counter iterator to count the number of times Next() is called on it.
 			// This is used to observe the number of series that are being processed.
-			seriesItrWithCounter := v1.NewCounterIter[*v1.Series](seriesItr)
+			seriesItrWithCounter := iter.NewCounterIter[*v1.Series](seriesItr)
 
 			gen := NewSimpleBloomGenerator(
 				tenant,
@@ -408,7 +410,7 @@ func (s *SimpleBloomController) buildGaps(
 				seriesItrWithCounter,
 				s.chunkLoader,
 				blocksIter,
-				s.rwFn,
+				s.writerReaderFunc,
 				reporter,
 				s.metrics,
 				logger,
@@ -612,24 +614,24 @@ func blockPlansForGaps(tsdbs []tsdbGaps, metas []bloomshipper.Meta) ([]blockPlan
 				return planGap.blocks[i].Bounds.Less(planGap.blocks[j].Bounds)
 			})
 
-			peekingBlocks := v1.NewPeekingIter[bloomshipper.BlockRef](
-				v1.NewSliceIter[bloomshipper.BlockRef](
+			peekingBlocks := iter.NewPeekIter[bloomshipper.BlockRef](
+				iter.NewSliceIter[bloomshipper.BlockRef](
 					planGap.blocks,
 				),
 			)
 			// dedupe blocks which could be in multiple metas
-			itr := v1.NewDedupingIter[bloomshipper.BlockRef, bloomshipper.BlockRef](
+			itr := iter.NewDedupingIter[bloomshipper.BlockRef, bloomshipper.BlockRef](
 				func(a, b bloomshipper.BlockRef) bool {
 					return a == b
 				},
-				v1.Identity[bloomshipper.BlockRef],
+				iter.Identity[bloomshipper.BlockRef],
 				func(a, _ bloomshipper.BlockRef) bloomshipper.BlockRef {
 					return a
 				},
 				peekingBlocks,
 			)
 
-			deduped, err := v1.Collect[bloomshipper.BlockRef](itr)
+			deduped, err := iter.Collect[bloomshipper.BlockRef](itr)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to dedupe blocks")
 			}

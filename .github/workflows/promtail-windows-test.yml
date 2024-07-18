@@ -1,8 +1,10 @@
 name: Promtail Windows Test
 on:
   pull_request:
-  tags: ['v[0-9].[0-9]+.[0-9]+']
-  branches: [main, k*]
+    branches: ["main", "k*", "release-[0-9]+.[0-9]+.x"]
+  push:
+    tags: ['v[0-9].[0-9]+.[0-9]+']
+    branches: ["main", "k*", "release-[0-9]+.[0-9]+.x"]
 jobs:
   build:
     runs-on: windows-latest

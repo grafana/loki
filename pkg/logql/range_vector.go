@@ -75,21 +75,18 @@ func newRangeVectorIterator(
 	if err != nil {
 		return nil, err
 	}
-	return &batchRangeVectorIterator{
-		iter:     it,
-		step:     step,
-		end:      end,
-		selRange: selRange,
-		metrics:  map[string]labels.Labels{},
-		window:   map[string]*promql.Series{},
-		agg:      vectorAggregator,
-		current:  start - step, // first loop iteration will set it to start
-		offset:   offset,
-	}, nil
+	return NewBatchRangeVectorIterator(
+		it,
+		selRange,
+		step,
+		start,
+		end,
+		offset,
+		vectorAggregator,
+	), nil
 }
 
-//batch
-
+// batch
 type batchRangeVectorIterator struct {
 	iter                                 iter.PeekingSampleIterator
 	selRange, step, end, current, offset int64
@@ -97,6 +94,24 @@ type batchRangeVectorIterator struct {
 	metrics                              map[string]labels.Labels
 	at                                   []promql.Sample
 	agg                                  BatchRangeVectorAggregator
+}
+
+func NewBatchRangeVectorIterator(
+	it iter.PeekingSampleIterator,
+	selRange, step, start, end, offset int64,
+	agg BatchRangeVectorAggregator,
+) RangeVectorIterator {
+	return &batchRangeVectorIterator{
+		iter:     it,
+		selRange: selRange,
+		step:     step,
+		end:      end,
+		current:  start - step, // first loop iteration will set it to start
+		offset:   offset,
+		metrics:  map[string]labels.Labels{},
+		window:   map[string]*promql.Series{},
+		agg:      agg,
+	}
 }
 
 func (r *batchRangeVectorIterator) Next() bool {
@@ -118,7 +133,7 @@ func (r *batchRangeVectorIterator) Close() error {
 }
 
 func (r *batchRangeVectorIterator) Error() error {
-	return r.iter.Error()
+	return r.iter.Err()
 }
 
 // popBack removes all entries out of the current window from the back.
@@ -178,6 +193,7 @@ func (r *batchRangeVectorIterator) load(start, end int64) {
 			series.Metric = metric
 			r.window[lbs] = series
 		}
+		// TODO(twhitney): Everywhere else, an FPoint.T is in milliseconds, but here it's in nanoseconds.
 		p := promql.FPoint{
 			T: sample.Timestamp,
 			F: sample.Value,
@@ -536,7 +552,7 @@ func (r *streamRangeVectorIterator) Close() error {
 }
 
 func (r *streamRangeVectorIterator) Error() error {
-	return r.iter.Error()
+	return r.iter.Err()
 }
 
 // load the next sample range window.
