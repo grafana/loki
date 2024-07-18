@@ -183,7 +183,7 @@ func TestReadMetricsBatch(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			it := NewSumMergeSampleIterator(tt.seriesIter)
-			got, err := ReadMetrics(it, log.NewNopLogger())
+			got, err := ReadAllSamples(it)
 			require.NoError(t, err)
 			sort.Slice(tt.expected.Series, func(i, j int) bool {
 				return tt.expected.Series[i].Labels < tt.expected.Series[j].Labels

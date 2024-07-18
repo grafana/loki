@@ -111,7 +111,7 @@ func (q *IngesterQuerier) Samples(
 	}
 
 	// TODO(twhitney): what should batch size be here?
-	resp, err := pattern_iter.ReadMetrics(pattern_iter.NewSumMergeSampleIterator(iterators), q.logger)
+	resp, err := pattern_iter.ReadMetrics(pattern_iter.NewSumMergeSampleIterator(iterators), q.logger, req)
 	if err != nil {
 		return nil, err
 	}

@@ -38,7 +38,7 @@ func ReadAll(it Iterator) (*logproto.QueryPatternsResponse, error) {
 	return ReadBatch(it, math.MaxInt32)
 }
 
-func ReadMetrics(it iter.SampleIterator, logger log.Logger) (*logproto.QuerySamplesResponse, error) {
+func ReadMetrics(it iter.SampleIterator, logger log.Logger, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error) {
 	series := map[uint64]logproto.Series{}
 
 	var mint, maxt int64
@@ -76,16 +76,21 @@ func ReadMetrics(it iter.SampleIterator, logger log.Logger) (*logproto.QuerySamp
 		result.Series = append(result.Series, s)
 	}
 
-	level.Debug(logger).Log("msg", "finished reading metrics",
-		"num_series", len(result.Series),
-		"mint", mint,
-		"maxt", mint,
-	)
+	if req != nil {
+		level.Debug(logger).Log("msg", "finished reading metrics",
+			"num_series", len(result.Series),
+			"start", req.Start,
+			"end", req.End,
+			"length", req.End.Sub(req.Start),
+			"mint", mint,
+			"maxt", mint,
+		)
+	}
 
 	return &result, it.Err()
 }
 
 // ReadAllSamples reads all samples from the given iterator. It is only used in tests.
 func ReadAllSamples(it iter.SampleIterator) (*logproto.QuerySamplesResponse, error) {
-	return ReadMetrics(it, log.NewNopLogger())
+	return ReadMetrics(it, log.NewNopLogger(), nil)
 }

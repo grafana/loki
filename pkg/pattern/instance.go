@@ -170,6 +170,7 @@ func (i *instance) QuerySample(
 		"start", from,
 		"end", through,
 		"length", through.Sub(from),
+		"expr", expr,
 	)
 
 	return pattern_iter.NewSumMergeSampleIterator(iters), nil
