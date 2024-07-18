@@ -417,6 +417,8 @@ loki:
     boltdb_shipper:
       index_gateway_client:
         server_address: '{{ include "loki.indexGatewayAddress" . }}'
+    bloom_shipper:
+      working_directory: /var/loki/blooms
     tsdb_shipper:
       index_gateway_client:
         server_address: '{{ include "loki.indexGatewayAddress" . }}'
@@ -444,7 +446,7 @@ loki:
   bloom_gateway:
     enabled: false
     client:
-      addresses: '{{ include "loki.indexGatewayAddress" . }}'
+      addresses: '{{ include "loki.bloomGatewayAddress" . }}'
   # --  Optional bloom compactor configuration
   bloom_compactor:
     enabled: false

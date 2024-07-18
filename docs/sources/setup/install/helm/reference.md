@@ -5324,7 +5324,7 @@ See values.yaml
 			<td><pre lang="json">
 {
   "client": {
-    "addresses": "{{ include \"loki.indexGatewayAddress\" . }}"
+    "addresses": "{{ include \"loki.bloomGatewayAddress\" . }}"
   },
   "enabled": false
 }
@@ -5764,6 +5764,9 @@ null
 			<td>Additional storage config</td>
 			<td><pre lang="json">
 {
+  "bloom_shipper": {
+    "working_directory": "/var/loki/blooms"
+  },
   "boltdb_shipper": {
     "index_gateway_client": {
       "server_address": "{{ include \"loki.indexGatewayAddress\" . }}"
