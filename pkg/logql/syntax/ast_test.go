@@ -1042,6 +1042,7 @@ func TestParseLargeQuery(t *testing.T) {
 func TestLogSelectorExprHasFilter(t *testing.T) {
 	for query, hasFilter := range map[string]bool{
 		`{foo="bar"} |= ""`:                  false,
+		`{foo="bar"} |= "" |= ""`:            false,
 		`{foo="bar"} |= "notempty"`:          true,
 		`{foo="bar"} |= "" |= "notempty"`:    true,
 		`{foo="bar"} | lbl="notempty"`:       true,
