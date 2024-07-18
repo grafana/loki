@@ -414,6 +414,7 @@ func (t *Loki) setupAuthMiddleware() {
 		[]string{
 			"/grpc.health.v1.Health/Check",
 			"/grpc.health.v1.Health/Watch",
+			"/metastorepb.MetastoreService/AddBlock",
 			"/logproto.StreamData/GetStreamRates",
 			"/frontend.Frontend/Process",
 			"/frontend.Frontend/NotifyClientShutdown",
