@@ -27,6 +27,7 @@ func (i *Ingester) Flush() {
 
 func (i *Ingester) flush(mayRemoveStreams bool) {
 	i.sweepUsers(true, mayRemoveStreams)
+	i.downsampleMetrics(model.Now())
 
 	// Close the flush queues, to unblock waiting workers.
 	for _, flushQueue := range i.flushQueues {
@@ -70,6 +71,23 @@ func (i *Ingester) sweepInstance(instance *instance, _, mayRemoveStreams bool) {
 				}
 			})
 		}
+		return true, nil
+	})
+}
+
+func (i *Ingester) downsampleMetrics(ts model.Time) {
+	instances := i.getInstances()
+
+	for _, instance := range instances {
+		i.downsampleInstance(instance, ts)
+	}
+}
+
+func (i *Ingester) downsampleInstance(instance *instance, ts model.Time) {
+	_ = instance.streams.ForEach(func(s *stream) (bool, error) {
+		instance.streams.WithLock(func() {
+			s.Downsample(ts)
+		})
 		return true, nil
 	})
 }

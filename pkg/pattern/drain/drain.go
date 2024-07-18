@@ -36,13 +36,14 @@ import (
 )
 
 type Config struct {
-	maxNodeDepth    int
-	LogClusterDepth int
-	SimTh           float64
-	MaxChildren     int
-	ExtraDelimiters []string
-	MaxClusters     int
-	ParamString     string
+	maxNodeDepth     int
+	LogClusterDepth  int
+	SimTh            float64
+	MaxChildren      int
+	ExtraDelimiters  []string
+	MaxClusters      int
+	ParamString      string
+	MaxEvictionRatio float64
 }
 
 func createLogClusterCache(maxSize int, onEvict func(int, *LogCluster)) *LogClusterCache {
@@ -60,27 +61,11 @@ type LogClusterCache struct {
 }
 
 func (c *LogClusterCache) Values() []*LogCluster {
-	values := make([]*LogCluster, 0)
-	for _, key := range c.cache.Keys() {
-		if value, ok := c.cache.Peek(key); ok {
-			values = append(values, value)
-		}
-	}
-	return values
+	return c.cache.Values()
 }
 
 func (c *LogClusterCache) Set(key int, cluster *LogCluster) {
 	c.cache.Add(key, cluster)
-}
-
-func (c *LogClusterCache) Iterate(fn func(*LogCluster) bool) {
-	for _, key := range c.cache.Keys() {
-		if value, ok := c.cache.Peek(key); ok {
-			if !fn(value) {
-				return
-			}
-		}
-	}
 }
 
 func (c *LogClusterCache) Get(key int) *LogCluster {
@@ -140,31 +125,57 @@ func DefaultConfig() *Config {
 		// Both SimTh and MaxClusterDepth impact branching factor: the greater
 		// MaxClusterDepth and SimTh, the less the chance that there will be
 		// "similar" clusters, but the greater the footprint.
-		SimTh:       0.3,
-		MaxChildren: 15,
-		ParamString: `<_>`,
-		MaxClusters: 300,
+		SimTh:            0.3,
+		MaxChildren:      15,
+		ParamString:      `<_>`,
+		MaxClusters:      300,
+		MaxEvictionRatio: 0.25,
 	}
 }
 
-func New(config *Config, metrics *Metrics) *Drain {
+func New(config *Config, format string, metrics *Metrics) *Drain {
 	if config.LogClusterDepth < 3 {
 		panic("depth argument must be at least 3")
 	}
 	config.maxNodeDepth = config.LogClusterDepth - 2
-	var evictFn func(int, *LogCluster)
-	if metrics != nil {
-		evictFn = func(int, *LogCluster) { metrics.PatternsEvictedTotal.Inc() }
-	}
 
 	d := &Drain{
 		config:               config,
 		rootNode:             createNode(),
-		idToCluster:          createLogClusterCache(config.MaxClusters, evictFn),
 		metrics:              metrics,
-		tokenizer:            newPunctuationTokenizer(),
 		maxAllowedLineLength: 3000,
+		format:               format,
 	}
+
+	limiter := newLimiter(config.MaxEvictionRatio)
+
+	var tokenizer LineTokenizer
+	switch format {
+	case FormatJSON:
+		tokenizer = newJSONTokenizer(config.ParamString)
+	case FormatLogfmt:
+		tokenizer = newLogfmtTokenizer(config.ParamString)
+	default:
+		tokenizer = newPunctuationTokenizer()
+	}
+
+	d.idToCluster = createLogClusterCache(config.MaxClusters, func(int, *LogCluster) {
+		if metrics != nil {
+			if d.pruning {
+				metrics.PatternsPrunedTotal.Inc()
+			} else {
+				metrics.PatternsEvictedTotal.Inc()
+			}
+		}
+		if !d.pruning {
+			limiter.Evict()
+		}
+	})
+	d.tokenizer = &DedupingTokenizer{
+		LineTokenizer: tokenizer,
+		dedupParam:    config.ParamString,
+	}
+	d.limiter = limiter
 	return d
 }
 
@@ -176,6 +187,11 @@ type Drain struct {
 	metrics              *Metrics
 	tokenizer            LineTokenizer
 	maxAllowedLineLength int
+	format               string
+	tokens               []string
+	state                interface{}
+	limiter              *limiter
+	pruning              bool
 }
 
 func (d *Drain) Clusters() []*LogCluster {
@@ -187,22 +203,32 @@ func (d *Drain) TrainTokens(tokens []string, stringer func([]string) string, ts 
 }
 
 func (d *Drain) Train(content string, ts int64) *LogCluster {
+	if !d.limiter.Allow() {
+		return nil
+	}
 	if len(content) > d.maxAllowedLineLength {
 		return nil
 	}
-	tokens, state := d.tokenizer.Tokenize(content)
-	return d.train(tokens, state, ts)
+	d.tokens, d.state = d.tokenizer.Tokenize(content, d.tokens, d.state)
+	return d.train(d.tokens, d.state, ts)
 }
 
 func (d *Drain) train(tokens []string, state interface{}, ts int64) *LogCluster {
 	if len(tokens) < 4 {
 		return nil
 	}
+	if d.metrics != nil {
+		d.metrics.TokensPerLine.Observe(float64(len(tokens)))
+		if stateInts, ok := state.([]int); ok {
+			d.metrics.StatePerLine.Observe(float64(len(stateInts)))
+		}
+	}
 	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, false)
 	// Match no existing log cluster
 	if matchCluster == nil {
 		d.clustersCounter++
 		clusterID := d.clustersCounter
+		tokens, state = d.tokenizer.Clone(tokens, state)
 		matchCluster = &LogCluster{
 			Tokens:     tokens,
 			TokenState: state,
@@ -218,8 +244,7 @@ func (d *Drain) train(tokens []string, state interface{}, ts int64) *LogCluster 
 			d.metrics.PatternsDetectedTotal.Inc()
 		}
 	} else {
-		newTemplateTokens := d.createTemplate(tokens, matchCluster.Tokens)
-		matchCluster.Tokens = newTemplateTokens
+		matchCluster.Tokens = d.createTemplate(tokens, matchCluster.Tokens)
 		matchCluster.append(model.TimeFromUnixNano(ts))
 		// Touch cluster to update its state in the cache.
 		d.idToCluster.Get(matchCluster.id)
@@ -228,12 +253,13 @@ func (d *Drain) train(tokens []string, state interface{}, ts int64) *LogCluster 
 }
 
 func (d *Drain) TrainPattern(content string, samples []*logproto.PatternSample) *LogCluster {
-	tokens, state := d.tokenizer.Tokenize(content)
+	tokens, state := d.tokenizer.Tokenize(content, d.tokens, d.state)
 	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, true)
 	// Match no existing log cluster
 	if matchCluster == nil {
 		d.clustersCounter++
 		clusterID := d.clustersCounter
+		tokens, state = d.tokenizer.Clone(tokens, state)
 		matchCluster = &LogCluster{
 			Tokens:     tokens,
 			TokenState: state,
@@ -242,8 +268,7 @@ func (d *Drain) TrainPattern(content string, samples []*logproto.PatternSample) 
 		d.idToCluster.Set(clusterID, matchCluster)
 		d.addSeqToPrefixTree(d.rootNode, matchCluster)
 	} else {
-		newTemplateTokens := d.createTemplate(tokens, matchCluster.Tokens)
-		matchCluster.Tokens = newTemplateTokens
+		matchCluster.Tokens = d.createTemplate(tokens, matchCluster.Tokens)
 		// Touch cluster to update its state in the cache.
 		d.idToCluster.Get(matchCluster.id)
 	}
@@ -273,26 +298,34 @@ func deduplicatePlaceholders(line string, placeholder string) string {
 	}
 	builder = append(builder, line[low:]...)
 
-	return unsafe.String(unsafe.SliceData(builder), len(builder))
+	return unsafeString(builder)
 }
 
-func (d *Drain) PatternString(c *LogCluster) string {
-	s := deduplicatePlaceholders(d.tokenizer.Join(c.Tokens, c.TokenState), d.config.ParamString)
-	if s == d.config.ParamString {
-		return ""
+func (d *Drain) Prune() {
+	d.pruneTree(d.rootNode)
+}
+
+func (d *Drain) pruneTree(node *Node) int {
+	for key, child := range node.keyToChildNode {
+		if d.pruneTree(child) == 0 {
+			delete(node.keyToChildNode, key)
+		}
 	}
-	return s
+
+	validClusterIds := 0
+	for _, clusterID := range node.clusterIDs {
+		cluster := d.idToCluster.Get(clusterID)
+		if cluster != nil {
+			validClusterIds++
+		}
+	}
+	return len(node.keyToChildNode) + validClusterIds
 }
 
 func (d *Drain) Delete(cluster *LogCluster) {
+	d.pruning = true
 	d.idToCluster.cache.Remove(cluster.id)
-}
-
-// Match against an already existing cluster. Match shall be perfect (sim_th=1.0). New cluster will not be created as a result of this call, nor any cluster modifications.
-func (d *Drain) Match(content string) *LogCluster {
-	contentTokens, _ := d.tokenizer.Tokenize(content)
-	matchCluster := d.treeSearch(d.rootNode, contentTokens, 1.0, true)
-	return matchCluster
+	d.pruning = false
 }
 
 func (d *Drain) treeSearch(rootNode *Node, tokens []string, simTh float64, includeParams bool) *LogCluster {
@@ -486,12 +519,18 @@ func (d *Drain) createTemplate(tokens, matchClusterTokens []string) []string {
 	if len(tokens) != len(matchClusterTokens) {
 		panic("seq1 seq2 be of same length")
 	}
-	retVal := make([]string, len(matchClusterTokens))
-	copy(retVal, matchClusterTokens)
 	for i := range tokens {
 		if tokens[i] != matchClusterTokens[i] {
-			retVal[i] = d.config.ParamString
+			matchClusterTokens[i] = d.config.ParamString
 		}
 	}
-	return retVal
+	return matchClusterTokens
+}
+
+func unsafeString(s []byte) string {
+	return unsafe.String(unsafe.SliceData(s), len(s))
+}
+
+func unsafeBytes(s string) []byte {
+	return unsafe.Slice(unsafe.StringData(s), len(s))
 }

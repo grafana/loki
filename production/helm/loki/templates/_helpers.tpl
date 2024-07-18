@@ -297,6 +297,14 @@ azure:
   endpoint_suffix: {{ . }}
   {{- end }}
 {{- end -}}
+{{- else if eq .Values.loki.storage.type "alibabacloud" -}}
+{{- with .Values.loki.storage.alibabacloud }}
+alibabacloud:
+  bucket: {{ $.Values.loki.storage.bucketNames.chunks }}
+  endpoint: {{ .endpoint }}
+  access_key_id: {{ .accessKeyId }}
+  secret_access_key: {{ .secretAccessKey }}
+{{- end -}}
 {{- else if eq .Values.loki.storage.type "swift" -}}
 {{- with .Values.loki.storage.swift }}
 swift:
@@ -1056,7 +1064,8 @@ enableServiceLinks: false
 {{/* Determine querier address */}}
 {{- define "loki.querierAddress" -}}
 {{- $querierAddress := "" }}
-{{- if "loki.deployment.isDistributed "}}
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if $isDistributed -}}
 {{- $querierHost := include "loki.querierFullname" .}}
 {{- $querierUrl := printf "http://%s.%s.svc.%s:3100" $querierHost .Release.Namespace .Values.global.clusterDomain }}
 {{- $querierAddress = $querierUrl }}

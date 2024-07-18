@@ -1,4 +1,5 @@
-FROM golang:1.22.2-bookworm as build
+ARG GO_VERSION=1.22
+FROM golang:${GO_VERSION}-bookworm as build
 
 COPY . /src/loki
 WORKDIR /src/loki

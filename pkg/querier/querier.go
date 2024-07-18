@@ -161,6 +161,7 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
 
+	sp := opentracing.SpanFromContext(ctx)
 	iters := []iter.EntryIterator{}
 	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
 		// Make a copy of the request before modifying
@@ -171,9 +172,11 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 		}
 		newParams.Start = ingesterQueryInterval.start
 		newParams.End = ingesterQueryInterval.end
-		level.Debug(spanlogger.FromContext(ctx)).Log(
-			"msg", "querying ingester",
-			"params", newParams)
+		if sp != nil {
+			sp.LogKV(
+				"msg", "querying ingester",
+				"params", newParams)
+		}
 		ingesterIters, err := q.ingesterQuerier.SelectLogs(ctx, newParams)
 		if err != nil {
 			return nil, err
@@ -185,9 +188,11 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
 		params.Start = storeQueryInterval.start
 		params.End = storeQueryInterval.end
-		level.Debug(spanlogger.FromContext(ctx)).Log(
-			"msg", "querying store",
-			"params", params)
+		if sp != nil {
+			sp.LogKV(
+				"msg", "querying store",
+				"params", params)
+		}
 		storeIter, err := q.store.SelectLogs(ctx, params)
 		if err != nil {
 			return nil, err
@@ -544,7 +549,7 @@ func (q *SingleTenantQuerier) Series(ctx context.Context, req *logproto.SeriesRe
 
 	// Enforce the query timeout while querying backends
 	queryTimeout := q.limits.QueryTimeout(ctx, userID)
-	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
+	ctx, cancel := context.WithDeadlineCause(ctx, time.Now().Add(queryTimeout), errors.New("query timeout reached"))
 	defer cancel()
 
 	return q.awaitSeries(ctx, req)
@@ -1113,9 +1118,6 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 
 	detectedFields := parseDetectedFields(ctx, req.FieldLimit, streams)
 
-	//TODO: detected field needs to contain the sketch
-	// make sure response to frontend is GRPC
-	//only want cardinality in JSON
 	fields := make([]*logproto.DetectedField, len(detectedFields))
 	fieldCount := 0
 	for k, v := range detectedFields {
@@ -1136,7 +1138,6 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 		fieldCount++
 	}
 
-	//TODO: detected fields response needs to include the sketch
 	return &logproto.DetectedFieldsResponse{
 		Fields:     fields,
 		FieldLimit: req.GetFieldLimit(),
@@ -1213,7 +1214,6 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 	fieldCount := uint32(0)
 
 	for _, stream := range streams {
-		detectType := true
 		level.Debug(spanlogger.FromContext(ctx)).Log(
 			"detected_fields", "true",
 			"msg", fmt.Sprintf("looking for detected fields in stream %d with %d lines", stream.Hash, len(stream.Entries)))
@@ -1236,6 +1236,7 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 					df.parsers = append(df.parsers, *parser)
 				}
 
+				detectType := true
 				for _, v := range vals {
 					parsedFields := detectedFields[k]
 					if detectType {
@@ -1305,7 +1306,7 @@ func streamsForFieldDetection(i iter.EntryIterator, size uint32) (logqlmodel.Str
 	// value here because many unit tests start at time.Unix(0,0)
 	lastEntry := time.Unix(-100, 0)
 	for respSize < size && i.Next() {
-		streamLabels, entry := i.Labels(), i.Entry()
+		streamLabels, entry := i.Labels(), i.At()
 
 		// Always going backward as the direction for field detection is hard-coded to BACKWARD
 		shouldOutput := entry.Timestamp.Equal(lastEntry) || entry.Timestamp.Before(lastEntry)
@@ -1321,7 +1322,7 @@ func streamsForFieldDetection(i iter.EntryIterator, size uint32) (logqlmodel.Str
 				streams[streamLabels] = stream
 			}
 			stream.Entries = append(stream.Entries, entry)
-			lastEntry = i.Entry().Timestamp
+			lastEntry = i.At().Timestamp
 			respSize++
 		}
 	}
@@ -1331,5 +1332,5 @@ func streamsForFieldDetection(i iter.EntryIterator, size uint32) (logqlmodel.Str
 		result = append(result, *stream)
 	}
 	sort.Sort(result)
-	return result, i.Error()
+	return result, i.Err()
 }

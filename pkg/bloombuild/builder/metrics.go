@@ -3,8 +3,6 @@ package builder
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-
-	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 )
 
 const (
@@ -16,8 +14,8 @@ const (
 )
 
 type Metrics struct {
-	bloomMetrics *v1.Metrics
-	running      prometheus.Gauge
+	running        prometheus.Gauge
+	processingTask prometheus.Gauge
 
 	taskStarted   prometheus.Counter
 	taskCompleted *prometheus.CounterVec
@@ -33,14 +31,19 @@ type Metrics struct {
 	chunkSize prometheus.Histogram
 }
 
-func NewMetrics(r prometheus.Registerer, bloomMetrics *v1.Metrics) *Metrics {
+func NewMetrics(r prometheus.Registerer) *Metrics {
 	return &Metrics{
-		bloomMetrics: bloomMetrics,
 		running: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
 			Name:      "running",
 			Help:      "Value will be 1 if the bloom builder is currently running on this instance",
+		}),
+		processingTask: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "processing_task",
+			Help:      "Value will be 1 if the bloom builder is currently processing a task",
 		}),
 
 		taskStarted: promauto.With(r).NewCounter(prometheus.CounterOpts{

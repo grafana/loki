@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/common/model"
 	"go.uber.org/atomic"
 
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
@@ -125,17 +126,17 @@ type Output struct {
 // Fuse combines multiple requests into a single loop iteration
 // over the data set and returns the corresponding outputs
 // TODO(owen-d): better async control
-func (bq *BlockQuerier) Fuse(inputs []PeekingIterator[Request], logger log.Logger) *FusedQuerier {
+func (bq *BlockQuerier) Fuse(inputs []iter.PeekIterator[Request], logger log.Logger) *FusedQuerier {
 	return NewFusedQuerier(bq, inputs, logger)
 }
 
 type FusedQuerier struct {
 	bq     *BlockQuerier
-	inputs Iterator[[]Request]
+	inputs iter.Iterator[[]Request]
 	logger log.Logger
 }
 
-func NewFusedQuerier(bq *BlockQuerier, inputs []PeekingIterator[Request], logger log.Logger) *FusedQuerier {
+func NewFusedQuerier(bq *BlockQuerier, inputs []iter.PeekIterator[Request], logger log.Logger) *FusedQuerier {
 	heap := NewHeapIterator[Request](
 		func(a, b Request) bool {
 			return a.Fp < b.Fp
@@ -143,7 +144,7 @@ func NewFusedQuerier(bq *BlockQuerier, inputs []PeekingIterator[Request], logger
 		inputs...,
 	)
 
-	merging := NewDedupingIter[Request, []Request](
+	merging := iter.NewDedupingIter[Request, []Request](
 		func(a Request, b []Request) bool {
 			return a.Fp == b[0].Fp
 		},
@@ -151,7 +152,7 @@ func NewFusedQuerier(bq *BlockQuerier, inputs []PeekingIterator[Request], logger
 		func(a Request, b []Request) []Request {
 			return append(b, a)
 		},
-		NewPeekingIter[Request](heap),
+		iter.NewPeekIter[Request](heap),
 	)
 	return &FusedQuerier{
 		bq:     bq,
@@ -236,7 +237,12 @@ func (fq *FusedQuerier) Run() error {
 		series := fq.bq.At()
 		if series.Fingerprint != fp {
 			// fingerprint not found, can't remove chunks
-			level.Debug(fq.logger).Log("msg", "fingerprint not found", "fp", series.Fingerprint, "err", fq.bq.Err())
+			level.Debug(fq.logger).Log(
+				"msg", "fingerprint not found",
+				"fp", fp,
+				"foundFP", series.Fingerprint,
+				"err", fq.bq.Err(),
+			)
 			fq.recordMissingFp(nextBatch, fp)
 			continue
 		}
@@ -298,8 +304,24 @@ func (fq *FusedQuerier) runSeries(schema Schema, series *SeriesWithOffsets, reqs
 
 		// Test each bloom individually
 		bloom := fq.bq.blooms.At()
-		for j, req := range reqs {
 
+		// TODO(owen-d): this is a stopgap to avoid filtering broken blooms until we find their cause.
+		// In the case we don't have any data in the bloom, don't filter any chunks.
+		if bloom.ScalableBloomFilter.Count() == 0 {
+			level.Warn(fq.logger).Log(
+				"msg", "Found bloom with no data",
+				"offset_page", offset.Page,
+				"offset_bytes", offset.ByteOffset,
+			)
+
+			for j := range reqs {
+				for k := range inputs[j].InBlooms {
+					inputs[j].found[k] = true
+				}
+			}
+		}
+
+		for j, req := range reqs {
 			// shortcut: series level removal
 			// we can skip testing chunk keys individually if the bloom doesn't match
 			// the query.

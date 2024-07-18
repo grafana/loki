@@ -131,7 +131,7 @@ func TestSymbolizer(t *testing.T) {
 				for i, labels := range tc.labelsToAdd {
 					symbols := s.Add(labels)
 					require.Equal(t, tc.expectedSymbols[i], symbols)
-					require.Equal(t, labels, s.Lookup(symbols))
+					require.Equal(t, labels, s.Lookup(symbols, nil))
 				}
 
 				// Test that Lookup returns empty labels if no symbols are provided.
@@ -141,7 +141,7 @@ func TestSymbolizer(t *testing.T) {
 							Name:  0,
 							Value: 0,
 						},
-					})
+					}, nil)
 					require.Equal(t, "", ret[0].Name)
 					require.Equal(t, "", ret[0].Value)
 				}
@@ -157,7 +157,7 @@ func TestSymbolizer(t *testing.T) {
 
 				loaded := symbolizerFromCheckpoint(buf.Bytes())
 				for i, symbols := range tc.expectedSymbols {
-					require.Equal(t, tc.labelsToAdd[i], loaded.Lookup(symbols))
+					require.Equal(t, tc.labelsToAdd[i], loaded.Lookup(symbols, nil))
 				}
 
 				buf.Reset()
@@ -167,7 +167,7 @@ func TestSymbolizer(t *testing.T) {
 				loaded, err = symbolizerFromEnc(buf.Bytes(), GetReaderPool(encoding))
 				require.NoError(t, err)
 				for i, symbols := range tc.expectedSymbols {
-					require.Equal(t, tc.labelsToAdd[i], loaded.Lookup(symbols))
+					require.Equal(t, tc.labelsToAdd[i], loaded.Lookup(symbols, nil))
 				}
 			})
 		}

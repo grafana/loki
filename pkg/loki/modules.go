@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	ingester_rf1 "github.com/grafana/loki/v3/pkg/ingester-rf1"
+
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -40,6 +42,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner"
+	bloomprotos "github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
 	"github.com/grafana/loki/v3/pkg/compactor"
 	compactorclient "github.com/grafana/loki/v3/pkg/compactor/client"
@@ -101,6 +104,8 @@ const (
 	Querier                  string = "querier"
 	CacheGenerationLoader    string = "cache-generation-loader"
 	Ingester                 string = "ingester"
+	IngesterRF1              string = "ingester-rf1"
+	IngesterRF1RingClient    string = "ingester-rf1-ring-client"
 	PatternIngester          string = "pattern-ingester"
 	PatternRingClient        string = "pattern-ring-client"
 	IngesterQuerier          string = "ingester-querier"
@@ -326,6 +331,13 @@ func (t *Loki) initDistributor() (services.Service, error) {
 			return nil, err
 		}
 		t.Tee = distributor.WrapTee(t.Tee, patternTee)
+	}
+	if t.Cfg.IngesterRF1.Enabled {
+		rf1Tee, err := ingester_rf1.NewTee(t.Cfg.IngesterRF1, t.IngesterRF1RingClient, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer, util_log.Logger)
+		if err != nil {
+			return nil, err
+		}
+		t.Tee = distributor.WrapTee(t.Tee, rf1Tee)
 	}
 
 	var err error
@@ -617,6 +629,67 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	return t.Ingester, nil
 }
 
+func (t *Loki) initIngesterRF1() (_ services.Service, err error) {
+	if !t.Cfg.IngesterRF1.Enabled {
+		return nil, nil
+	}
+
+	logger := log.With(util_log.Logger, "component", "ingester-rf1")
+	t.Cfg.IngesterRF1.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
+
+	if t.Cfg.IngesterRF1.ShutdownMarkerPath == "" && t.Cfg.Common.PathPrefix != "" {
+		t.Cfg.IngesterRF1.ShutdownMarkerPath = t.Cfg.Common.PathPrefix
+	}
+	if t.Cfg.IngesterRF1.ShutdownMarkerPath == "" {
+		level.Warn(util_log.Logger).Log("msg", "The config setting shutdown marker path is not set. The /ingester/prepare_shutdown endpoint won't work")
+	}
+
+	t.IngesterRF1, err = ingester_rf1.New(t.Cfg.IngesterRF1, t.Cfg.IngesterRF1Client, t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.ClientMetrics, t.Overrides, t.tenantConfigs, prometheus.DefaultRegisterer, t.Cfg.Distributor.WriteFailuresLogging, t.Cfg.MetricsNamespace, logger, t.UsageTracker, t.ring)
+	if err != nil {
+		fmt.Println("Error initializing ingester rf1", err)
+		return
+	}
+
+	if t.Cfg.IngesterRF1.Wrapper != nil {
+		t.IngesterRF1 = t.Cfg.IngesterRF1.Wrapper.Wrap(t.IngesterRF1)
+	}
+
+	fmt.Println("registered GRPC")
+	logproto.RegisterPusherRF1Server(t.Server.GRPC, t.IngesterRF1)
+
+	t.Server.HTTP.Path("/ingester-rf1/ring").Methods("GET", "POST").Handler(t.IngesterRF1)
+
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/ingester-rf1/ring").Methods("GET", "POST").Handler(t.IngesterRF1)
+	}
+
+	httpMiddleware := middleware.Merge(
+		serverutil.RecoveryHTTPMiddleware,
+	)
+	t.Server.HTTP.Methods("GET", "POST").Path("/flush").Handler(
+		httpMiddleware.Wrap(http.HandlerFunc(t.IngesterRF1.FlushHandler)),
+	)
+	t.Server.HTTP.Methods("POST", "GET", "DELETE").Path("/ingester-rf1/prepare_shutdown").Handler(
+		httpMiddleware.Wrap(http.HandlerFunc(t.IngesterRF1.PrepareShutdown)),
+	)
+	t.Server.HTTP.Methods("POST", "GET").Path("/ingester-rf1/shutdown").Handler(
+		httpMiddleware.Wrap(http.HandlerFunc(t.IngesterRF1.ShutdownHandler)),
+	)
+	return t.IngesterRF1, nil
+}
+
+func (t *Loki) initIngesterRF1RingClient() (_ services.Service, err error) {
+	if !t.Cfg.IngesterRF1.Enabled {
+		return nil, nil
+	}
+	ringClient, err := ingester_rf1.NewRingClient(t.Cfg.IngesterRF1, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer, util_log.Logger)
+	if err != nil {
+		return nil, err
+	}
+	t.IngesterRF1RingClient = ringClient
+	return ringClient, nil
+}
+
 func (t *Loki) initPatternIngester() (_ services.Service, err error) {
 	if !t.Cfg.Pattern.Enabled {
 		return nil, nil
@@ -714,9 +787,9 @@ func (t *Loki) initStore() (services.Service, error) {
 }
 
 func (t *Loki) initBloomStore() (services.Service, error) {
-	// BloomStore is a dependency of IndexGateway, even when the BloomGateway is not enabled.
-	// Do not instantiate store and do not create a service.
-	if !t.Cfg.BloomGateway.Enabled {
+	// BloomStore is a dependency of IndexGateway and Bloom Planner & Builder.
+	// Do not instantiate store and do not create a service if neither ar enabled.
+	if !t.Cfg.BloomGateway.Enabled && !t.Cfg.BloomBuild.Enabled {
 		return nil, nil
 	}
 
@@ -826,7 +899,7 @@ func (t *Loki) updateConfigForShipperStore() {
 		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeWriteOnly
 		t.Cfg.StorageConfig.TSDBShipperConfig.IngesterDBRetainPeriod = shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.IndexCacheValidity, t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval)
 
-	case t.Cfg.isTarget(Querier), t.Cfg.isTarget(Ruler), t.Cfg.isTarget(Read), t.Cfg.isTarget(Backend), t.isModuleActive(IndexGateway), t.Cfg.isTarget(BloomCompactor), t.Cfg.isTarget(BloomPlanner), t.Cfg.isTarget(BloomBuilder):
+	case t.Cfg.isTarget(IngesterRF1), t.Cfg.isTarget(Querier), t.Cfg.isTarget(Ruler), t.Cfg.isTarget(Read), t.Cfg.isTarget(Backend), t.isModuleActive(IndexGateway), t.Cfg.isTarget(BloomCompactor), t.Cfg.isTarget(BloomPlanner), t.Cfg.isTarget(BloomBuilder):
 		// We do not want query to do any updates to index
 		t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
 		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
@@ -1333,6 +1406,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.BloomCompactor.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Pattern.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.IngesterRF1.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
 
 	if t.Cfg.InternalServer.Enable {
@@ -1584,7 +1658,7 @@ func (t *Loki) initBloomPlanner() (services.Service, error) {
 
 	logger := log.With(util_log.Logger, "component", "bloom-planner")
 
-	return planner.New(
+	p, err := planner.New(
 		t.Cfg.BloomBuild.Planner,
 		t.Overrides,
 		t.Cfg.SchemaConfig,
@@ -1594,6 +1668,12 @@ func (t *Loki) initBloomPlanner() (services.Service, error) {
 		logger,
 		prometheus.DefaultRegisterer,
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	bloomprotos.RegisterPlannerForBuilderServer(t.Server.GRPC, p)
+	return p, nil
 }
 
 func (t *Loki) initBloomBuilder() (services.Service, error) {
@@ -1601,7 +1681,7 @@ func (t *Loki) initBloomBuilder() (services.Service, error) {
 		return nil, nil
 	}
 
-	logger := log.With(util_log.Logger, "component", "bloom-worker")
+	logger := log.With(util_log.Logger, "component", "bloom-builder")
 
 	return builder.New(
 		t.Cfg.BloomBuild.Builder,

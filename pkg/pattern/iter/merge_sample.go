@@ -78,7 +78,7 @@ func (i *sumMergeSampleIterator) requeue(ei iter.SampleIterator, advanced bool) 
 		return
 	}
 
-	if err := ei.Error(); err != nil {
+	if err := ei.Err(); err != nil {
 		i.errs = append(i.errs, err)
 	}
 	util.LogError("closing iterator", ei.Close)
@@ -98,7 +98,7 @@ func (i *sumMergeSampleIterator) Next() bool {
 
 	// shortcut for the last iterator.
 	if i.heap.Len() == 1 {
-		i.curr.Sample = i.heap.Peek().Sample()
+		i.curr.Sample = i.heap.Peek().At()
 		i.curr.labels = i.heap.Peek().Labels()
 		i.curr.streamHash = i.heap.Peek().StreamHash()
 		if !i.heap.Peek().Next() {
@@ -112,7 +112,7 @@ func (i *sumMergeSampleIterator) Next() bool {
 	// heap with the same timestamp, and add them to the buffer to sum their values.
 	for i.heap.Len() > 0 {
 		next := i.heap.Peek()
-		sample := next.Sample()
+		sample := next.At()
 
 		if len(i.buffer) > 0 && (i.buffer[0].streamHash != next.StreamHash() ||
 			i.buffer[0].Timestamp != sample.Timestamp) {
@@ -169,7 +169,7 @@ func (i *sumMergeSampleIterator) nextFromBuffer() {
 	i.buffer = i.buffer[numSamples:]
 }
 
-func (i *sumMergeSampleIterator) Sample() logproto.Sample {
+func (i *sumMergeSampleIterator) At() logproto.Sample {
 	return i.curr.Sample
 }
 
@@ -181,7 +181,7 @@ func (i *sumMergeSampleIterator) StreamHash() uint64 {
 	return i.curr.streamHash
 }
 
-func (i *sumMergeSampleIterator) Error() error {
+func (i *sumMergeSampleIterator) Err() error {
 	switch len(i.errs) {
 	case 0:
 		return nil

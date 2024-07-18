@@ -206,7 +206,7 @@ func NewMiddleware(
 		return nil, nil, err
 	}
 
-	limitedTripperware, err := NewLimitedTripperware(cfg, engineOpts, log, limits, schema, metrics, indexStatsTripperware, codec, iqo, metricsNamespace)
+	limitedTripperware, err := NewLimitedTripperware(cfg, log, limits, schema, metrics, codec, iqo, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -240,14 +240,12 @@ func NewMiddleware(
 
 	detectedFieldsTripperware, err := NewDetectedFieldsTripperware(
 		cfg,
-		engineOpts,
 		log,
 		limits,
 		schema,
 		codec,
 		iqo,
 		metrics,
-		indexStatsTripperware,
 		metricsNamespace)
 	if err != nil {
 		return nil, nil, err
@@ -617,17 +615,13 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Lo
 }
 
 // NewLimitedTripperware creates a new frontend tripperware responsible for handling log requests which are label matcher only, no filter expression.
-func NewLimitedTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logger, limits Limits, schema config.SchemaConfig, metrics *Metrics, indexStatsTripperware base.Middleware, merger base.Merger, iqo util.IngesterQueryOptions, metricsNamespace string) (base.Middleware, error) {
+func NewLimitedTripperware(cfg Config, log log.Logger, limits Limits, schema config.SchemaConfig, metrics *Metrics, merger base.Merger, iqo util.IngesterQueryOptions, metricsNamespace string) (base.Middleware, error) {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
-		statsHandler := indexStatsTripperware.Wrap(next)
-
 		queryRangeMiddleware := []base.Middleware{
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
-			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 			SplitByIntervalMiddleware(schema.Configs, WithMaxParallelism(limits, limitedQuerySplits), merger, newDefaultSplitter(limits, iqo), metrics.SplitByMetrics),
-			NewQuerierSizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
 		}
 		if cfg.MaxRetries > 0 {
 			queryRangeMiddleware = append(
@@ -1189,34 +1183,23 @@ func sharedIndexTripperware(
 // NewDetectedFieldsTripperware creates a new frontend tripperware responsible for handling detected field requests, which are basically log filter requests with a bit more processing.
 func NewDetectedFieldsTripperware(
 	cfg Config,
-	engineOpts logql.EngineOpts,
 	log log.Logger,
 	limits Limits,
 	schema config.SchemaConfig,
 	merger base.Merger,
 	iqo util.IngesterQueryOptions,
 	metrics *Metrics,
-	indexStatsTripperware base.Middleware,
 	metricsNamespace string,
 ) (base.Middleware, error) {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
-		statsHandler := indexStatsTripperware.Wrap(next)
-
 		splitter := newDefaultSplitter(limits, iqo)
 
 		queryRangeMiddleware := []base.Middleware{
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
-			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitter, metrics.SplitByMetrics),
 		}
-
-		// The sharding middleware takes care of enforcing this limit for both shardable and non-shardable queries.
-		// If we are not using sharding, we enforce the limit by adding this middleware after time splitting.
-		queryRangeMiddleware = append(queryRangeMiddleware,
-			NewQuerierSizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
-		)
 
 		if cfg.MaxRetries > 0 {
 			queryRangeMiddleware = append(
