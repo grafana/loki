@@ -81,9 +81,11 @@ func ReadMetrics(it iter.SampleIterator, logger log.Logger, req *logproto.QueryS
 			"num_series", len(result.Series),
 			"start", req.Start,
 			"end", req.End,
+      "query", req.Query,
 			"length", req.End.Sub(req.Start),
 			"mint", mint,
 			"maxt", maxt,
+      "delta_seconds", maxt - mint / 1e9,
 		)
 	}
 

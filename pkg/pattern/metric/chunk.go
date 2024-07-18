@@ -141,7 +141,8 @@ func (c *Chunks) Iterator(
 		return iter.NewSeriesIterator(series), nil
 	}
 
-	samples := make([]logproto.Sample, 0, maximumSteps)
+	// samples := make([]logproto.Sample, 0, maximumSteps)
+	samples := []logproto.Sample{}
 	for _, chunk := range c.chunks {
 		ss, err := chunk.ForTypeAndRange(typ, from, through)
 		if err != nil {
@@ -221,6 +222,7 @@ type (
 type Chunk struct {
 	Samples    Samples
 	mint, maxt int64
+	lock       sync.Mutex
 }
 
 func (c *Chunk) Bounds() (fromT, toT time.Time) {
@@ -228,6 +230,9 @@ func (c *Chunk) Bounds() (fromT, toT time.Time) {
 }
 
 func (c *Chunk) AddSample(s Sample) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	c.Samples = append(c.Samples, s)
 	ts := int64(s.Timestamp)
 
@@ -264,6 +269,9 @@ func (c *Chunk) ForTypeAndRange(
 	typ Type,
 	start, end model.Time,
 ) ([]logproto.Sample, error) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	if typ == Unsupported {
 		return nil, fmt.Errorf("unsupported metric type")
 	}
