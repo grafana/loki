@@ -171,9 +171,9 @@ func (h *splitExploreQueryRange) Do(ctx context.Context, r queryrangebase.Reques
 	}
 
 	splits, err := h.splitter.split(time.Now().UTC(), tenantIDs, r)
-  if err != nil {
-    return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-  }
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
 
 	input := make([]*lokiResult, 0, len(splits))
 	for _, interval := range splits {
