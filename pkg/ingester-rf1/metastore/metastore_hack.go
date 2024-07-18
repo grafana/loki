@@ -29,7 +29,7 @@ func (m *Metastore) cleanupLoop() {
 			if m.raft.State() != raft.Leader {
 				continue
 			}
-			timestamp := uint64(time.Now().Add(-15 * time.Minute).UnixMilli())
+			timestamp := uint64(time.Now().Add(-1 * time.Hour).UnixMilli())
 			req := &raftlogpb.TruncateCommand{Timestamp: timestamp}
 			_, _, err := applyCommand[*raftlogpb.TruncateCommand, *anypb.Any](m.raft, req, m.config.Raft.ApplyTimeout)
 			if err != nil {
