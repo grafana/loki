@@ -17,3 +17,4 @@ rules:
 {{- else }}
 rules: []
 {{- end }}
+{{- end }}
