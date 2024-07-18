@@ -38,3 +38,17 @@ func forAllFixtures(t *testing.T, storageClientTest storageClientTest) {
 		})
 	}
 }
+
+func forAllFixturesBench(b *testing.B, storageClientTest storageClientTest) {
+	s3Chunk := aws.Fixtures[0]
+	b.ReportAllocs()
+	for n := 0; n < b.N; n++ {
+		indexClient, objectClient, closer, err := testutils.Setup(s3Chunk, tableName)
+		if err != nil {
+			panic(err)
+		}
+		defer closer.Close()
+		storageClientTest(&testing.T{}, indexClient, objectClient)
+	}
+
+}

@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"io"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pkg/errors"
@@ -84,6 +85,7 @@ type client struct {
 	keyEncoder          KeyEncoder
 	getChunkMaxParallel int
 	schema              config.SchemaConfig
+	bufferPool          sync.Pool
 }
 
 // NewClient wraps the provided ObjectClient with a chunk.Client implementation
@@ -92,11 +94,17 @@ func NewClient(store ObjectClient, encoder KeyEncoder, schema config.SchemaConfi
 }
 
 func NewClientWithMaxParallel(store ObjectClient, encoder KeyEncoder, maxParallel int, schema config.SchemaConfig) Client {
+
 	return &client{
 		store:               store,
 		keyEncoder:          encoder,
 		getChunkMaxParallel: maxParallel,
 		schema:              schema,
+		bufferPool: sync.Pool{
+			New: func() interface{} {
+				return bytes.NewBuffer(make([]byte, 0, 1024))
+			},
+		},
 	}
 }
 
@@ -166,7 +174,7 @@ func (o *client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 		key = o.keyEncoder(o.schema, c)
 	}
 
-	readCloser, size, err := o.store.GetObject(ctx, key)
+	readCloser, _, err := o.store.GetObject(ctx, key)
 	if err != nil {
 		return chunk.Chunk{}, errors.WithStack(errors.Wrapf(err, "failed to load chunk '%s'", key))
 	}
@@ -176,15 +184,18 @@ func (o *client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 	}
 	defer readCloser.Close()
 
-	// adds bytes.MinRead to avoid allocations when the size is known.
-	// This is because ReadFrom reads bytes.MinRead by bytes.MinRead.
-	buf := bytes.NewBuffer(make([]byte, 0, size+bytes.MinRead))
+	buf := o.bufferPool.Get().(*bytes.Buffer)
+	defer func() {
+		buf.Reset()
+		o.bufferPool.Put(buf)
+	}()
 	_, err = buf.ReadFrom(readCloser)
 	if err != nil {
 		return chunk.Chunk{}, errors.WithStack(err)
 	}
-
-	if err := c.Decode(decodeContext, buf.Bytes()); err != nil {
+	chunkBytes := make([]byte, len(buf.Bytes()))
+	copy(chunkBytes, buf.Bytes())
+	if err := c.Decode(decodeContext, chunkBytes); err != nil {
 		return chunk.Chunk{}, errors.WithStack(err)
 	}
 	return c, nil
