@@ -413,6 +413,7 @@ func (t *Loki) setupAuthMiddleware() {
 		// Also don't check auth for these gRPC methods, since single call is used for multiple users (or no user like health check).
 		[]string{
 			"/grpc.health.v1.Health/Check",
+			"/grpc.health.v1.Health/Watch",
 			"/logproto.StreamData/GetStreamRates",
 			"/frontend.Frontend/Process",
 			"/frontend.Frontend/NotifyClientShutdown",
