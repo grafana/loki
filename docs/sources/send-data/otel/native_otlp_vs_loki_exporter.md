@@ -22,17 +22,17 @@ OpenTelemetry (OTel) is quickly becoming an industry standard with increasing ad
 - Index Labels:
   - It supports label control via hints set by the OTel client/collector.
   - Default labels:
-    - job=service.namespace/service.name 
-    - instance=service.instance.id 
-    - exporter=OTLP 
+    - job=service.namespace/service.name
+    - instance=service.instance.id
+    - exporter=OTLP
     - level=severity
 - Log Body: Encodes log records and attributes in json(default) or logfmt format.
 
 **Loki’s native OTel log ingestion endpoint**
 
 - Index Labels:
-  - It supports label control via per-tenant OTLP configuration in Loki. 
-  - By default, it picks some resource attributes as index labels.
+  - It supports label control via per-tenant OTLP configuration in Loki.
+  - By default, it picks some pre-configured resource attributes as index labels as explained [here](http://localhost:3002/docs/loki/<LOKI_VERSION>/send-data/otel/#format-considerations).
 - LogLine: Stringified LogRecord.Body.
 - Structured Metadata: Anything not stored in Index labels and LogLine gets stored as Structured Metadata.
 
@@ -84,9 +84,9 @@ Taking the above-ingested log line, let us look at how the querying experience w
 
 ## Benefits of switching from LokiExporter to native OTel endpoint:
 
+- **Future improvements:** There is an ongoing discussion on deprecating LokiExporter, which would stop receiving future enhancements. Loki’s native OTel endpoint represents the future of our product, and all future development and enhancements will be focused there. Upgrading to the native endpoint will ensure you benefit from the latest enhancements and the best possible user experience.
 - **Simplified client config:** LokiExporter requires setting hints for managing stream labels, which defeats the purpose of choosing OTel in the first place since you can’t switch from one OTel-compatible storage to another without having to reconfigure your clients. With Loki’s native OTel endpoint, there is no added complexity in setting hints for your client to manage the labels.
 - **Simplified querying:** Loki’s native OTel endpoint leverages Structured Metadata, which makes it easier to reference the attributes and other fields from the OTel LogRecord without having to use json or logfmt parsers for decoding the data at query time.
-- **Future improvements:** There is an ongoing discussion on deprecating LokiExporter, which would stop receiving future enhancements. Loki’s native OTel endpoint represents the future of our product, and all future development and enhancements will be focused there. Upgrading to the native endpoint will ensure you benefit from the latest enhancements and the best possible user experience.
 - **More modern high context data model:** Better aligned with modern observability practices than the older json based model.
 
 ## What needs to be done to switch from LokiExporter to native OTel ingestion format?
