@@ -7,6 +7,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -18,13 +20,15 @@ import (
 )
 
 // TODO: need pattern ingester specific options
-func SplitExploreQueryRangeMiddleware(limits Limits, iqo util.IngesterQueryOptions) queryrangebase.Middleware {
+func SplitExploreQueryRangeMiddleware(limits Limits, iqo util.IngesterQueryOptions, log log.Logger) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &splitExploreQueryRange{
 			next:   next,
 			limits: limits,
+			log:    log,
 			splitter: exploreSplitter{
 				newMetricQuerySplitter(limits, iqo),
+				log,
 			},
 		}
 	})
@@ -32,6 +36,7 @@ func SplitExploreQueryRangeMiddleware(limits Limits, iqo util.IngesterQueryOptio
 
 type exploreSplitter struct {
 	*metricQuerySplitter
+	log log.Logger
 }
 
 func (s *exploreSplitter) split(execTime time.Time, tenantIDs []string, r queryrangebase.Request) ([]queryrangebase.Request, error) {
@@ -50,6 +55,13 @@ func (s *exploreSplitter) split(execTime time.Time, tenantIDs []string, r queryr
 	start, end = s.alignStartEnd(r.GetStep(), start, end)
 
 	if needsIngesterSplits {
+		level.Debug(s.log).Log(
+			"msg", "executing query to pattern ingesters for recent data",
+			"start", start,
+			"end", end,
+			"query", lokiReq.Query,
+			"step", lokiReq.Step,
+		)
 		reqs = append(reqs, &logproto.QuerySamplesRequest{
 			Query: lokiReq.Query,
 			Start: start,
@@ -72,6 +84,13 @@ func (s *exploreSplitter) split(execTime time.Time, tenantIDs []string, r queryr
 		end = origEnd
 	}
 
+	level.Debug(s.log).Log(
+		"msg", "executing query to traditional query range endpoint for older data",
+		"start", start,
+		"end", end,
+		"query", lokiReq.Query,
+		"step", lokiReq.Step,
+	)
 	reqs = append(reqs, &LokiRequest{
 		Query:     lokiReq.Query,
 		Step:      lokiReq.Step,
@@ -111,6 +130,7 @@ type splitExploreQueryRange struct {
 	next     queryrangebase.Handler
 	limits   Limits
 	splitter exploreSplitter
+	log      log.Logger
 }
 
 func shouldSplit(query string) bool {
@@ -166,10 +186,16 @@ func (h *splitExploreQueryRange) Do(ctx context.Context, r queryrangebase.Reques
 	if err != nil {
 		return nil, err
 	}
-	return mergeResponses(resps...)
+	return mergeResponses(h.log, resps...)
 }
 
-func mergeResponses(responses ...queryrangebase.Response) (queryrangebase.Response, error) {
+func mergeResponses(
+	log log.Logger,
+	responses ...queryrangebase.Response,
+) (queryrangebase.Response, error) {
+	level.Debug(log).
+		Log("msg", "merging explore query range responses", "responses", len(responses))
+
 	if len(responses) == 0 {
 		return nil, errors.New("merging responses requires at least one response")
 	}
@@ -207,11 +233,11 @@ func mergeResponses(responses ...queryrangebase.Response) (queryrangebase.Respon
 				// The prometheus API is inclusive of start and end timestamps.
 				if len(existing.Samples) > 0 && len(stream.Samples) > 0 {
 					existingEndTs := existing.Samples[len(existing.Samples)-1].Timestamp
-					if existingEndTs == stream.Samples[0].TimestampMs {
+					if existingEndTs == (stream.Samples[0].TimestampMs * 1e6) {
 						// Typically this the cases where only 1 sample point overlap,
 						// so optimize with simple code.
 						stream.Samples = stream.Samples[1:]
-					} else if existingEndTs > stream.Samples[0].TimestampMs {
+					} else if existingEndTs > (stream.Samples[0].TimestampMs * 1e6) {
 						// Overlap might be big, use heavier algorithm to remove overlap.
 						stream.Samples = sliceSamples(stream.Samples, existingEndTs)
 					} // else there is no overlap, yay!

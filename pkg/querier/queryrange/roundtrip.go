@@ -517,6 +517,7 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			"length", op.End.Sub(op.Start),
 			"query", op.Query,
 			"start", op.Start,
+			"step", op.Step,
 		)
 		return r.exploreMetric.Do(ctx, req)
 
@@ -1325,7 +1326,7 @@ func NewExploreMetricTripperware(
 		middlewares := []base.Middleware{
 			NewLimitsMiddleware(limits),
 			base.InstrumentMiddleware("explore_query_range", metrics.InstrumentMiddlewareMetrics),
-			SplitExploreQueryRangeMiddleware(limits, iqo),
+			SplitExploreQueryRangeMiddleware(limits, iqo, log),
 			SplitByIntervalMiddleware(
 				schema.Configs,
 				limits,

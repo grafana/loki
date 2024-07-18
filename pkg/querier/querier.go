@@ -1063,6 +1063,13 @@ func (q *SingleTenantQuerier) SelectMetricSamples(ctx context.Context, req *logp
 	if q.patternQuerier == nil {
 		return nil, httpgrpc.Errorf(http.StatusNotFound, "")
 	}
+
+	level.Debug(q.logger).Log("msg", "selecting metric samples",
+		"start", req.Start,
+		"end", req.End,
+		"query", req.Query,
+		"step", req.Step,
+	)
 	res, err := q.patternQuerier.Samples(ctx, req)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
