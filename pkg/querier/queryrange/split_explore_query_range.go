@@ -39,7 +39,7 @@ type exploreSplitter struct {
 	log log.Logger
 }
 
-func (s *exploreSplitter) split(execTime time.Time, tenantIDs []string, r queryrangebase.Request) ([]queryrangebase.Request, error) {
+func (s *exploreSplitter) split(execTime time.Time, _ []string, r queryrangebase.Request) ([]queryrangebase.Request, error) {
 	var reqs []queryrangebase.Request
 
 	lokiReq := r.(*logproto.QuerySamplesRequest)
@@ -171,6 +171,9 @@ func (h *splitExploreQueryRange) Do(ctx context.Context, r queryrangebase.Reques
 	}
 
 	splits, err := h.splitter.split(time.Now().UTC(), tenantIDs, r)
+  if err != nil {
+    return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+  }
 
 	input := make([]*lokiResult, 0, len(splits))
 	for _, interval := range splits {
@@ -212,10 +215,10 @@ func mergeResponses(
 		case *LokiPromResponse:
 			level.Debug(log).Log(
 				"msg", "merging explore query range response",
-				"type", fmt.Sprintf("%t", res),
+				"type", fmt.Sprintf("%T", res),
 				"results", len(res.Response.Data.Result),
 			)
-			if headers == nil {
+			if len(headers) == 0 {
 				headers = []queryrangebase.PrometheusResponseHeader{}
 				for _, header := range res.Response.Headers {
 					headers = append(headers, *header)
@@ -253,11 +256,11 @@ func mergeResponses(
 		case *QuerySamplesResponse:
 			level.Debug(log).Log(
 				"msg", "merging explore query range response",
-				"type", fmt.Sprintf("%t", res),
+				"type", fmt.Sprintf("%T", res),
 				"results", len(res.Response.Series),
 			)
 
-			if headers == nil || len(headers) == 0 {
+			if len(headers) == 0 {
 				headers = res.Headers
 			}
 

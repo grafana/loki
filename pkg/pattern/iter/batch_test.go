@@ -91,22 +91,20 @@ func TestReadMetricsBatch(t *testing.T) {
 		name       string
 		pattern    string
 		seriesIter []loki_iter.SampleIterator
-		batchSize  int
 		expected   *logproto.QuerySamplesResponse
 	}{
 		{
-			name: "ReadBatch empty iterator",
+			name: "ReadMetrics empty iterator",
 			seriesIter: singleSeriesIterator(logproto.Series{
 				Labels:  "",
 				Samples: []logproto.Sample{},
 			}),
-			batchSize: 2,
 			expected: &logproto.QuerySamplesResponse{
 				Series: []logproto.Series{},
 			},
 		},
 		{
-			name: "ReadBatch less than batchSize",
+			name: "ReadMetrics reads all",
 			seriesIter: singleSeriesIterator(logproto.Series{
 				Labels: `{foo="bar"}`,
 				Samples: []logproto.Sample{
@@ -115,30 +113,6 @@ func TestReadMetricsBatch(t *testing.T) {
 					{Timestamp: 30, Value: 6},
 				},
 			}),
-			batchSize: 2,
-			expected: &logproto.QuerySamplesResponse{
-				Series: []logproto.Series{
-					{
-						Labels: `{foo="bar"}`,
-						Samples: []logproto.Sample{
-							{Timestamp: 10, Value: 2},
-							{Timestamp: 20, Value: 4},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "ReadBatch more than batchSize",
-			seriesIter: singleSeriesIterator(logproto.Series{
-				Labels: `{foo="bar"}`,
-				Samples: []logproto.Sample{
-					{Timestamp: 10, Value: 2},
-					{Timestamp: 20, Value: 4},
-					{Timestamp: 30, Value: 6},
-				},
-			}),
-			batchSize: 4,
 			expected: &logproto.QuerySamplesResponse{
 				Series: []logproto.Series{
 					{
@@ -153,7 +127,7 @@ func TestReadMetricsBatch(t *testing.T) {
 			},
 		},
 		{
-			name: "ReadBatch multiple series",
+			name: "ReadMetrics multiple series",
 			seriesIter: []loki_iter.SampleIterator{
 				loki_iter.NewSeriesIterator(logproto.Series{
 					Labels: `{foo="bar"}`,
@@ -181,7 +155,6 @@ func TestReadMetricsBatch(t *testing.T) {
 					StreamHash: labels.StableHash([]labels.Label{{Name: "foo", Value: "bar"}}),
 				}),
 			},
-			batchSize: 8,
 			expected: &logproto.QuerySamplesResponse{
 				Series: []logproto.Series{
 					{
@@ -210,7 +183,7 @@ func TestReadMetricsBatch(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			it := NewSumMergeSampleIterator(tt.seriesIter)
-			got, err := ReadMetricsBatch(it, tt.batchSize, log.NewNopLogger())
+			got, err := ReadMetrics(it, log.NewNopLogger())
 			require.NoError(t, err)
 			sort.Slice(tt.expected.Series, func(i, j int) bool {
 				return tt.expected.Series[i].Labels < tt.expected.Series[j].Labels

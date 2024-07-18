@@ -38,13 +38,11 @@ func ReadAll(it Iterator) (*logproto.QueryPatternsResponse, error) {
 	return ReadBatch(it, math.MaxInt32)
 }
 
-func ReadMetricsBatch(it iter.SampleIterator, batchSize int, logger log.Logger) (*logproto.QuerySamplesResponse, error) {
-	var (
-		series   = map[uint64]logproto.Series{}
-		respSize int
-	)
+func ReadMetrics(it iter.SampleIterator, logger log.Logger) (*logproto.QuerySamplesResponse, error) {
+	series := map[uint64]logproto.Series{}
 
-	for ; respSize < batchSize && it.Next(); respSize++ {
+	var mint, maxt int64
+	for it.Next() && it.Err() == nil {
 		hash := it.StreamHash()
 		s, ok := series[hash]
 		if !ok {
@@ -56,7 +54,16 @@ func ReadMetricsBatch(it iter.SampleIterator, batchSize int, logger log.Logger) 
 			series[hash] = s
 		}
 
-		s.Samples = append(s.Samples, it.At())
+		curSample := it.At()
+		if mint == 0 || curSample.Timestamp < mint {
+			mint = curSample.Timestamp
+		}
+
+		if maxt == 0 || curSample.Timestamp > maxt {
+			maxt = curSample.Timestamp
+		}
+
+		s.Samples = append(s.Samples, curSample)
 		series[hash] = s
 	}
 
@@ -68,10 +75,17 @@ func ReadMetricsBatch(it iter.SampleIterator, batchSize int, logger log.Logger) 
 		level.Debug(logger).Log("msg", "appending series", "s", fmt.Sprintf("%v", s))
 		result.Series = append(result.Series, s)
 	}
+
+	level.Debug(logger).Log("msg", "finished reading metrics",
+		"num_series", len(result.Series),
+		"mint", mint,
+		"maxt", mint,
+	)
+
 	return &result, it.Err()
 }
 
 // ReadAllSamples reads all samples from the given iterator. It is only used in tests.
 func ReadAllSamples(it iter.SampleIterator) (*logproto.QuerySamplesResponse, error) {
-	return ReadMetricsBatch(it, math.MaxInt32, log.NewNopLogger())
+	return ReadMetrics(it, log.NewNopLogger())
 }

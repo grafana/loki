@@ -1455,7 +1455,7 @@ func TestExploreQueryRangeTripperware(t *testing.T) {
 
 	// since we're below the 12h split interval, we should have 1 query to traditional path only
 	require.Equal(t, 1, *count)
-	res, ok = queryRangeResponse.(*LokiPromResponse)
+	_, ok = queryRangeResponse.(*LokiPromResponse)
 	require.True(t, ok)
 
 	// does not split a query outside the time range
@@ -1472,7 +1472,7 @@ func TestExploreQueryRangeTripperware(t *testing.T) {
 
 	// since we're below the 12h split interval, we should have 1 query to traditional path only
 	require.Equal(t, 1, *count)
-	res, ok = queryRangeResponse.(*LokiPromResponse)
+	_, ok = queryRangeResponse.(*LokiPromResponse)
 	require.True(t, ok)
 
 	// TODO(twhitney): test caching, retry, and split interval

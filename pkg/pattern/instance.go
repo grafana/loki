@@ -157,19 +157,20 @@ func (i *instance) QuerySample(
 	}
 
 	spanLogger := spanlogger.FromContext(ctx)
+	var withDebug log.Logger
 	if spanLogger != nil {
-		level.Debug(spanLogger).Log(
-			"msg", "summing results of querying streams",
-			"num_iters", len(iters),
-			"iters", fmt.Sprintf("%v", iters),
-		)
+		withDebug = level.Debug(spanLogger)
 	} else {
-		level.Debug(i.logger).Log(
-			"msg", "summing results of querying streams",
-			"num_iters", len(iters),
-			"iters", fmt.Sprintf("%v", iters),
-		)
+		withDebug = level.Debug(i.logger)
 	}
+
+	withDebug.Log(
+		"msg", "finished querying samples in pattern ingester",
+		"num_iters", len(iters),
+		"start", from,
+		"end", through,
+		"length", through.Sub(from),
+	)
 
 	return pattern_iter.NewSumMergeSampleIterator(iters), nil
 }

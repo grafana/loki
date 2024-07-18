@@ -778,7 +778,7 @@ type patternQuerierMock struct {
 }
 
 func newPatternQuerierMock() *patternQuerierMock {
-  return &patternQuerierMock{}
+	return &patternQuerierMock{}
 }
 
 func (p *patternQuerierMock) Patterns(

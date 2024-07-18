@@ -307,30 +307,18 @@ func (i *Ingester) QuerySample(
 		return err
 	}
 
-	level.Debug(i.logger).Log("msg", "QuerySample", "instanceID", instanceID, "expr", expr)
-	iterator, err := instance.QuerySample(ctx, expr, req) // this is returning a first value of 0,0
+	level.Debug(i.logger).Log("msg", "executing query sample in pattern ingester",
+		"instanceID", instanceID,
+		"expr", expr,
+		"start", req.Start,
+		"end", req.End,
+		"length", req.End.Sub(req.Start),
+		"step", req.Step,
+	)
+	iterator, err := instance.QuerySample(ctx, expr, req)
 	if err != nil {
 		return err
 	}
-
-	// TODO(twhitney): query store
-	// if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
-	// 	storeReq := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
-	// 		Start:    start,
-	// 		End:      end,
-	// 		Selector: req.Selector,
-	// 		Shards:   req.Shards,
-	// 		Deletes:  req.Deletes,
-	// 		Plan:     req.Plan,
-	// 	}}
-	// 	storeItr, err := i.store.SelectSamples(ctx, storeReq)
-	// 	if err != nil {
-	// 		util.LogErrorWithContext(ctx, "closing iterator", it.Close)
-	// 		return err
-	// 	}
-
-	// 	it = iter.NewMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
-	// }
 
 	defer util.LogErrorWithContext(ctx, "closing iterator", iterator.Close)
 	return sendMetricSamples(ctx, iterator, stream, i.logger)
@@ -359,7 +347,7 @@ func sendMetricSamples(
 	logger log.Logger,
 ) error {
 	for ctx.Err() == nil {
-		batch, err := pattern_iter.ReadMetricsBatch(it, readBatchSize, logger)
+		batch, err := pattern_iter.ReadMetrics(it, logger)
 		if err != nil {
 			return err
 		}

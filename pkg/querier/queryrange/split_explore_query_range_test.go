@@ -4,11 +4,12 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 func Test_mergeResponses(t *testing.T) {

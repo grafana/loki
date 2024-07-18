@@ -1882,6 +1882,7 @@ func TestQuerier_SelectMetricSamples(t *testing.T) {
 	conf.IngesterQueryStoreMaxLookback = 0
 
 	lbls, err := syntax.ParseLabels(`{type="test"}`)
+	require.NoError(t, err)
 
 	t.Run("it queries pattern ingesters for metric samples", func(t *testing.T) {
 		now := time.Now()
