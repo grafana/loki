@@ -191,6 +191,7 @@ func (b *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 			return fmt.Errorf("failed to receive task from planner: %w", err)
 		}
 
+		b.metrics.processingTask.Set(1)
 		b.metrics.taskStarted.Inc()
 		start := time.Now()
 
@@ -212,8 +213,11 @@ func (b *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 
 		b.logTaskCompleted(task, newMetas, err, start)
 		if err = b.notifyTaskCompletedToPlanner(c, task, newMetas, err); err != nil {
+			b.metrics.processingTask.Set(0)
 			return fmt.Errorf("failed to notify task completion to planner: %w", err)
 		}
+
+		b.metrics.processingTask.Set(0)
 	}
 
 	level.Debug(b.logger).Log("msg", "builder loop stopped")
