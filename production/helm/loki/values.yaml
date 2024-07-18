@@ -287,7 +287,6 @@ loki:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
-
     tracing:
       enabled: {{ .Values.loki.tracing.enabled }}
   # Should authentication be enabled
