@@ -210,6 +210,11 @@ func mergeResponses(
 	for _, r := range responses {
 		switch res := r.(type) {
 		case *LokiPromResponse:
+			level.Debug(log).Log(
+				"msg", "merging explore query range response",
+				"type", fmt.Sprintf("%t", res),
+				"results", len(res.Response.Data.Result),
+			)
 			if headers == nil {
 				headers = []queryrangebase.PrometheusResponseHeader{}
 				for _, header := range res.Response.Headers {
@@ -246,6 +251,12 @@ func mergeResponses(
 				output[metric] = existing
 			}
 		case *QuerySamplesResponse:
+			level.Debug(log).Log(
+				"msg", "merging explore query range response",
+				"type", fmt.Sprintf("%t", res),
+				"results", len(res.Response.Series),
+			)
+
 			if headers == nil || len(headers) == 0 {
 				headers = res.Headers
 			}

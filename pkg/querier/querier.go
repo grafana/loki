@@ -1064,16 +1064,33 @@ func (q *SingleTenantQuerier) SelectMetricSamples(ctx context.Context, req *logp
 		return nil, httpgrpc.Errorf(http.StatusNotFound, "")
 	}
 
+	res, err := q.patternQuerier.Samples(ctx, req)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	mint := int64(0)
+	maxt := int64(0)
+	for _, s := range res.Series {
+		for _, sample := range s.Samples {
+			if mint == 0 || sample.Timestamp < mint {
+				mint = sample.Timestamp
+			}
+			if maxt == 0 || sample.Timestamp > maxt {
+				maxt = sample.Timestamp
+			}
+		}
+	}
 	level.Debug(q.logger).Log("msg", "selecting metric samples",
 		"start", req.Start,
 		"end", req.End,
 		"query", req.Query,
 		"step", req.Step,
+		"length", req.End.Sub(req.Start),
+		"series", len(res.Series),
+		"mint", mint,
+		"maxt", maxt,
 	)
-	res, err := q.patternQuerier.Samples(ctx, req)
-	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
 
 	return res, err
 }
