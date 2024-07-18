@@ -69,7 +69,14 @@ func (m *Metastore) bootstrapPeers() ([]raft.Server, error) {
 		if err := prov.Resolve(ctx, resolve); err != nil {
 			return nil, fmt.Errorf("failed to resolve bootstrap peers: %w", err)
 		}
-		for _, peer := range prov.Addresses() {
+		resolvedPeers := prov.Addresses()
+		if len(resolvedPeers) == 0 {
+			// The local node is the only one in the cluster, but peers
+			// were supposed to be present. Stop here to avoid bootstrapping
+			// a single-node cluster.
+			return nil, fmt.Errorf("bootstrap peers can't be resolved")
+		}
+		for _, peer := range resolvedPeers {
 			peers = append(peers, raft.Server{
 				Suffrage: raft.Voter,
 				ID:       raft.ServerID(peer),
