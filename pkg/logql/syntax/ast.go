@@ -322,8 +322,8 @@ func (e *PipelineExpr) HasFilter() bool {
 		case *LabelFilterExpr:
 			return true
 		case *LineFilterExpr:
-			// return false if all line filters are empty
-			if v.Match != "" {
+			// ignore empty matchers as they match everything
+			if !((v.Ty == log.LineMatchEqual || v.Ty == log.LineMatchRegexp) && v.Match == "") {
 				return true
 			}
 		default:
