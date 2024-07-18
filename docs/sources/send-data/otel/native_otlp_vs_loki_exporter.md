@@ -9,13 +9,13 @@ weight:  251
 
 ## Introduction
 
-OTel is quickly becoming an industry standard with increasing adoption. Prior to the Loki 3.0 release, there was no native support for ingesting OTel logs to Loki, which led to creation of [LokiExporter](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/exporter/lokiexporter/README.md). While the LokiExporter got the job done of ingesting OTel logs to Loki, it did not provide a native user experience, and the querying experience was not as optimal. As part of our effort to improve user experience with OTel, we added native OTel log ingestion support to Loki with 3.0 release.
+OpenTelemetry (OTel) is quickly becoming an industry standard with increasing adoption. Prior to the Loki 3.0 release, there was no native support for ingesting OTel logs to Loki, which led to creation of the [LokiExporter](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/exporter/lokiexporter/README.md). While the LokiExporter got the job done of ingesting OTel logs to Loki, it did not provide a native user experience, and the querying experience was not optimal. As part of our effort to improve user experience with OTel, we added native OTel log ingestion support to Loki with 3.0 release.
 
 ## What has changed?
 
 ### Formatting of logs
 
-[LokiExporter's README](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/exporter/lokiexporter/README.md) explains in detail the formatting of OTel logs ingested via LokiExporter, while Loki’s native OTel log ingestion endpoint is described in detail in its documentation. Here is a summary of how the logs are formatted between the two:
+[LokiExporter's README](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/exporter/lokiexporter/README.md) explains in detail the formatting of OTel logs ingested via LokiExporter, while Loki’s native OTel log ingestion endpoint is described in detail in its [documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/otel/). Here is a summary of how the logs are formatted between the two:
 
 **LokiExporter**
 
