@@ -225,6 +225,43 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			},
 			"/loki/api/v1/detected_fields",
 		}, false},
+		{"structured_metadata/keys", func() (*http.Request, error) {
+			return DefaultCodec.EncodeRequest(ctx, &StructuredMetadataKeysRequest{
+				logproto.StructuredMetadataKeysRequest{
+					Query:      `{foo="bar"}`,
+					Start:      start,
+					End:        end,
+					LineLimit:  100,
+				},
+				"/loki/api/v1/structured_metadata/keys",
+			})
+		}, &StructuredMetadataKeysRequest{
+			logproto.StructuredMetadataKeysRequest{
+				Query:      `{foo="bar"}`,
+				Start:      start,
+				End:        end,
+				LineLimit:  100,
+			},
+			"/loki/api/v1/structured_metadata/keys",
+		}, false},
+		{"structured_metadata/keys-default-limit", func() (*http.Request, error) {
+			return DefaultCodec.EncodeRequest(ctx, &StructuredMetadataKeysRequest{
+				logproto.StructuredMetadataKeysRequest{
+					Query:      `{foo="bar"}`,
+					Start:      start,
+					End:        end,
+				},
+				"/loki/api/v1/structured_metadata/keys",
+			})
+		}, &StructuredMetadataKeysRequest{
+			logproto.StructuredMetadataKeysRequest{
+				Query:      `{foo="bar"}`,
+				Start:      start,
+				End:        end,
+				LineLimit:  100,
+			},
+			"/loki/api/v1/structured_metadata/keys",
+		}, false},
 		{"patterns", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(ctx, &logproto.QueryPatternsRequest{
 				Start: start,
@@ -1747,6 +1784,86 @@ func Test_codec_MergeResponse(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func Test_codec_MergeResponse_StructuredMetadataKeysResponse(t *testing.T) {
+	t.Run("merges the responses with different keys", func(t *testing.T) {
+		responses := []queryrangebase.Response{
+			&StructuredMetadataKeysResponse{
+				Response: &logproto.StructuredMetadataKeysResponse{
+					Keys: []string{
+						"bar",
+					},
+				},
+			},
+			&StructuredMetadataKeysResponse{
+				Response: &logproto.StructuredMetadataKeysResponse{
+					Keys: []string{
+						"foo",
+					},
+				},
+			},
+		}
+
+		got, err := DefaultCodec.MergeResponse(responses...)
+		require.Nil(t, err)
+		response := got.(*StructuredMetadataKeysResponse).Response
+		require.Equal(t, 2, len(response.Keys))
+
+		require.Equal(t, response.Keys[0], "bar")
+		require.Equal(t, response.Keys[1], "foo")
+	})
+	t.Run("merges the responses and sorts", func(t *testing.T) {
+		responses := []queryrangebase.Response{
+			&StructuredMetadataKeysResponse{
+				Response: &logproto.StructuredMetadataKeysResponse{
+					Keys: []string{
+						"foo",
+					},
+				},
+			},
+			&StructuredMetadataKeysResponse{
+				Response: &logproto.StructuredMetadataKeysResponse{
+					Keys: []string{
+						"bar",
+					},
+				},
+			},
+		}
+
+		got, err := DefaultCodec.MergeResponse(responses...)
+		require.Nil(t, err)
+		response := got.(*StructuredMetadataKeysResponse).Response
+		require.Equal(t, 2, len(response.Keys))
+
+		require.Equal(t, response.Keys[0], "bar")
+		require.Equal(t, response.Keys[1], "foo")
+	})
+	t.Run("merges the responses with same keys", func(t *testing.T) {
+		responses := []queryrangebase.Response{
+			&StructuredMetadataKeysResponse{
+				Response: &logproto.StructuredMetadataKeysResponse{
+					Keys: []string{
+						"foo",
+					},
+				},
+			},
+			&StructuredMetadataKeysResponse{
+				Response: &logproto.StructuredMetadataKeysResponse{
+					Keys: []string{
+						"foo",
+					},
+				},
+			},
+		}
+
+		got, err := DefaultCodec.MergeResponse(responses...)
+		require.Nil(t, err)
+		response := got.(*StructuredMetadataKeysResponse).Response
+		require.Equal(t, 1, len(response.Keys))
+
+		require.Equal(t, response.Keys[0], "foo")
+	})
 }
 
 func Test_codec_MergeResponse_DetectedFieldsResponse(t *testing.T) {

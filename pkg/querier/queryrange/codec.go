@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -445,7 +446,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			path:                  r.URL.Path,
 		}, nil
 	case StructuredMetadataKeysOp:
-		req, err := loghttp.ParseStructuredMetadataQuery(r)
+		req, err := loghttp.ParseStructuredMetadataKeysQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
@@ -651,7 +652,7 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 			path:                  httpReq.URL.Path,
 		}, ctx, nil
 	case StructuredMetadataKeysOp:
-		req, err := loghttp.ParseStructuredMetadataQuery(httpReq)
+		req, err := loghttp.ParseStructuredMetadataKeysQuery(httpReq)
 		if err != nil {
 			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
@@ -1669,17 +1670,18 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			Headers: headers,
 		}, nil
 	case *StructuredMetadataKeysResponse:
-		resp0 := responses[0].(*DetectedFieldsResponse)
+		resp0 := responses[0].(*StructuredMetadataKeysResponse)
 		headers := resp0.Headers
 
 		keys := []string{}
 		for _, r := range responses {
 			keys = append(keys, r.(*StructuredMetadataKeysResponse).Response.Keys...)
 		}
+		slices.Sort(keys)
 
 		return &StructuredMetadataKeysResponse{
 			Response: &logproto.StructuredMetadataKeysResponse{
-				Keys: keys,
+				Keys: slices.Compact(keys),
 			},
 			Headers: headers,
 		}, nil
@@ -2491,12 +2493,13 @@ type StructuredMetadataKeysRequest struct {
 	path string
 }
 
-func NewStructuredMetadataKeysRequest(start, end time.Time, query, path string) *StructuredMetadataKeysRequest {
+func NewStructuredMetadataKeysRequest(start, end time.Time, query, path string, limit uint32) *StructuredMetadataKeysRequest {
 	return &StructuredMetadataKeysRequest{
 		StructuredMetadataKeysRequest: logproto.StructuredMetadataKeysRequest{
 			Start: start,
 			End:   end,
 			Query: query,
+			LineLimit: limit,
 		},
 		path: path,
 	}
