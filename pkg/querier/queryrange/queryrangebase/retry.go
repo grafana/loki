@@ -2,6 +2,7 @@ package queryrangebase
 
 import (
 	"context"
+	"reflect"
 	"time"
 
 	"github.com/go-kit/log"
@@ -81,12 +82,19 @@ func (r retry) Do(ctx context.Context, req Request) (Response, error) {
 	query := req.GetQuery()
 
 	for ; tries < r.maxRetries; tries++ {
+		// Make sure the context isn't done before sending the request
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
+
 		resp, err := r.next.Do(ctx, req)
 		if err == nil {
 			return resp, nil
+		}
+
+		// Make sure the context isn't done before retrying the request
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
 		}
 
 		// Retry if we get a HTTP 500 or an unknown error.
@@ -95,6 +103,7 @@ func (r retry) Do(ctx context.Context, req Request) (Response, error) {
 			level.Error(util_log.WithContext(ctx, r.log)).Log(
 				"msg", "error processing request",
 				"try", tries,
+				"type", logImplementingType(req),
 				"query", query,
 				"query_hash", util.HashedQuery(query),
 				"start", start.Format(time.RFC3339Nano),
@@ -112,4 +121,19 @@ func (r retry) Do(ctx context.Context, req Request) (Response, error) {
 		return nil, err
 	}
 	return nil, lastErr
+}
+
+func logImplementingType(i Request) string {
+	if i == nil {
+		return "nil"
+	}
+
+	t := reflect.TypeOf(i)
+
+	// Check if it's a pointer and get the underlying type if so
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+
+	return t.String()
 }
