@@ -228,37 +228,37 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 		{"structured_metadata/keys", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(ctx, &StructuredMetadataKeysRequest{
 				logproto.StructuredMetadataKeysRequest{
-					Query:      `{foo="bar"}`,
-					Start:      start,
-					End:        end,
-					LineLimit:  100,
+					Query:     `{foo="bar"}`,
+					Start:     start,
+					End:       end,
+					LineLimit: 100,
 				},
 				"/loki/api/v1/structured_metadata/keys",
 			})
 		}, &StructuredMetadataKeysRequest{
 			logproto.StructuredMetadataKeysRequest{
-				Query:      `{foo="bar"}`,
-				Start:      start,
-				End:        end,
-				LineLimit:  100,
+				Query:     `{foo="bar"}`,
+				Start:     start,
+				End:       end,
+				LineLimit: 100,
 			},
 			"/loki/api/v1/structured_metadata/keys",
 		}, false},
 		{"structured_metadata/keys-default-limit", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(ctx, &StructuredMetadataKeysRequest{
 				logproto.StructuredMetadataKeysRequest{
-					Query:      `{foo="bar"}`,
-					Start:      start,
-					End:        end,
+					Query: `{foo="bar"}`,
+					Start: start,
+					End:   end,
 				},
 				"/loki/api/v1/structured_metadata/keys",
 			})
 		}, &StructuredMetadataKeysRequest{
 			logproto.StructuredMetadataKeysRequest{
-				Query:      `{foo="bar"}`,
-				Start:      start,
-				End:        end,
-				LineLimit:  100,
+				Query:     `{foo="bar"}`,
+				Start:     start,
+				End:       end,
+				LineLimit: 100,
 			},
 			"/loki/api/v1/structured_metadata/keys",
 		}, false},

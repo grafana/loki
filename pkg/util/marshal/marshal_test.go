@@ -618,7 +618,6 @@ var structuredMetadataKeysTests = []struct {
 	},
 }
 
-
 func Test_WriteStructuredMetadataKeysResponseJSON(t *testing.T) {
 	for i, structuredMetadataKeysTest := range structuredMetadataKeysTests {
 		var b bytes.Buffer

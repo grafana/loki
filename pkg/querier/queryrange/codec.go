@@ -2496,9 +2496,9 @@ type StructuredMetadataKeysRequest struct {
 func NewStructuredMetadataKeysRequest(start, end time.Time, query, path string, limit uint32) *StructuredMetadataKeysRequest {
 	return &StructuredMetadataKeysRequest{
 		StructuredMetadataKeysRequest: logproto.StructuredMetadataKeysRequest{
-			Start: start,
-			End:   end,
-			Query: query,
+			Start:     start,
+			End:       end,
+			Query:     query,
 			LineLimit: limit,
 		},
 		path: path,

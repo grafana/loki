@@ -10,8 +10,6 @@ import (
 	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 
-	"github.com/grafana/loki/pkg/push"
-
 	"github.com/grafana/loki/v3/pkg/loghttp"
 
 	"github.com/grafana/dskit/grpcclient"
