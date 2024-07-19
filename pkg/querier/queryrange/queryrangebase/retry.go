@@ -2,6 +2,7 @@ package queryrangebase
 
 import (
 	"context"
+	"reflect"
 	"time"
 
 	"github.com/go-kit/log"
@@ -95,6 +96,7 @@ func (r retry) Do(ctx context.Context, req Request) (Response, error) {
 			level.Error(util_log.WithContext(ctx, r.log)).Log(
 				"msg", "error processing request",
 				"try", tries,
+				"type", logImplementingType(req),
 				"query", query,
 				"query_hash", util.HashedQuery(query),
 				"start", start.Format(time.RFC3339Nano),
@@ -112,4 +114,19 @@ func (r retry) Do(ctx context.Context, req Request) (Response, error) {
 		return nil, err
 	}
 	return nil, lastErr
+}
+
+func logImplementingType(i Request) string {
+	if i == nil {
+		return "nil"
+	}
+
+	t := reflect.TypeOf(i)
+
+	// Check if it's a pointer and get the underlying type if so
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+
+	return t.String()
 }
