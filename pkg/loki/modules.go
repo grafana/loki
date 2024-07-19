@@ -15,8 +15,6 @@ import (
 	"strings"
 	"time"
 
-	ingester_rf1 "github.com/grafana/loki/v3/pkg/ingester-rf1"
-
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -35,14 +33,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/v3/pkg/bloomcompactor"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/storage/types"
-
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner"
 	bloomprotos "github.com/grafana/loki/v3/pkg/bloombuild/protos"
+	"github.com/grafana/loki/v3/pkg/bloomcompactor"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
 	"github.com/grafana/loki/v3/pkg/compactor"
 	compactorclient "github.com/grafana/loki/v3/pkg/compactor/client"
@@ -52,8 +47,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
+	ingester_rf1 "github.com/grafana/loki/v3/pkg/ingester-rf1"
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore"
+	metastoreclient "github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/client"
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/health"
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend"
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v1/frontendv1pb"
@@ -78,6 +79,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb"
 	boltdbcompactor "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb/compactor"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/limiter"
@@ -139,6 +141,8 @@ const (
 	Backend                  string = "backend"
 	Analytics                string = "analytics"
 	InitCodec                string = "init-codec"
+	Metastore                string = "metastore"
+	MetastoreClient          string = "metastore-client"
 )
 
 const (
@@ -167,6 +171,8 @@ func (t *Loki) initServer() (services.Service, error) {
 	}
 
 	t.Server = serv
+
+	t.health = health.NewGRPCHealthService()
 
 	servicesToWaitFor := func() []services.Service {
 		svs := []services.Service(nil)
@@ -644,7 +650,7 @@ func (t *Loki) initIngesterRF1() (_ services.Service, err error) {
 		level.Warn(util_log.Logger).Log("msg", "The config setting shutdown marker path is not set. The /ingester/prepare_shutdown endpoint won't work")
 	}
 
-	t.IngesterRF1, err = ingester_rf1.New(t.Cfg.IngesterRF1, t.Cfg.IngesterRF1Client, t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.ClientMetrics, t.Overrides, t.tenantConfigs, prometheus.DefaultRegisterer, t.Cfg.Distributor.WriteFailuresLogging, t.Cfg.MetricsNamespace, logger, t.UsageTracker, t.ring)
+	t.IngesterRF1, err = ingester_rf1.New(t.Cfg.IngesterRF1, t.Cfg.IngesterRF1Client, t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.ClientMetrics, t.Overrides, t.tenantConfigs, t.MetastoreClient, prometheus.DefaultRegisterer, t.Cfg.Distributor.WriteFailuresLogging, t.Cfg.MetricsNamespace, logger, t.UsageTracker, t.ring)
 	if err != nil {
 		fmt.Println("Error initializing ingester rf1", err)
 		return
@@ -1797,6 +1803,25 @@ func (t *Loki) initAnalytics() (services.Service, error) {
 	}
 	t.usageReport = ur
 	return ur, nil
+}
+
+func (t *Loki) initMetastore() (services.Service, error) {
+	m, err := metastore.New(t.Cfg.Metastore, log.With(util_log.Logger, "component", "metastore"), prometheus.DefaultRegisterer, t.health)
+	if err != nil {
+		return nil, err
+	}
+	metastorepb.RegisterMetastoreServiceServer(t.Server.GRPC, m)
+
+	return m, nil
+}
+
+func (t *Loki) initMetastoreClient() (services.Service, error) {
+	mc, err := metastoreclient.New(t.Cfg.MetastoreClient)
+	if err != nil {
+		return nil, err
+	}
+	t.MetastoreClient = mc
+	return mc.Service(), nil
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLimits) (deletion.DeleteRequestsClient, error) {

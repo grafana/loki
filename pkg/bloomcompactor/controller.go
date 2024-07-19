@@ -1,10 +1,10 @@
 package bloomcompactor
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"math"
+	"os"
 	"sort"
 	"sync"
 
@@ -49,11 +49,12 @@ func NewSimpleBloomController(
 	}
 }
 
-// TODO(owen-d): pool, evaluate if memory-only is the best choice
-func (s *SimpleBloomController) rwFn() (v1.BlockWriter, v1.BlockReader) {
-	indexBuf := bytes.NewBuffer(nil)
-	bloomsBuf := bytes.NewBuffer(nil)
-	return v1.NewMemoryBlockWriter(indexBuf, bloomsBuf), v1.NewByteReader(indexBuf, bloomsBuf)
+func (s *SimpleBloomController) writerReaderFunc() (v1.BlockWriter, v1.BlockReader) {
+	dir, err := os.MkdirTemp("", "bloom-block-")
+	if err != nil {
+		panic(err)
+	}
+	return v1.NewDirectoryBlockWriter(dir), v1.NewDirectoryBlockReader(dir)
 }
 
 /*
@@ -409,7 +410,7 @@ func (s *SimpleBloomController) buildGaps(
 				seriesItrWithCounter,
 				s.chunkLoader,
 				blocksIter,
-				s.rwFn,
+				s.writerReaderFunc,
 				reporter,
 				s.metrics,
 				logger,

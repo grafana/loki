@@ -25,7 +25,7 @@ func NewSerializeRoundTripper(next queryrangebase.Handler, codec queryrangebase.
 
 func (rt *serializeRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 	ctx := r.Context()
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "limitedRoundTripper.do")
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "serializeRoundTripper.do")
 	defer sp.Finish()
 
 	request, err := rt.codec.DecodeRequest(ctx, r, nil)

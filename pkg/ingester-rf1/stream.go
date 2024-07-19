@@ -3,13 +3,13 @@ package ingesterrf1
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/opentracing/opentracing-go"
-	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/wal"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -71,16 +72,6 @@ type stream struct {
 	chunkHeadBlockFormat chunkenc.HeadBlockFmt
 }
 
-type chunkDesc struct {
-	chunk   *chunkenc.MemChunk
-	closed  bool
-	synced  bool
-	flushed time.Time
-	reason  string
-
-	lastUpdated time.Time
-}
-
 type entryWithError struct {
 	entry *logproto.Entry
 	e     error
@@ -130,21 +121,24 @@ func (s *stream) consumeChunk(_ context.Context, _ *logproto.Chunk) error {
 
 func (s *stream) Push(
 	ctx context.Context,
+	wal *wal.Manager,
 	entries []logproto.Entry,
 	// Whether nor not to ingest all at once or not. It is a per-tenant configuration.
 	rateLimitWholeStream bool,
 
 	usageTracker push.UsageTracker,
-	flushCtx *flushCtx,
-) (int, error) {
+) (int, *wal.AppendResult, error) {
 	toStore, invalid := s.validateEntries(ctx, entries, rateLimitWholeStream, usageTracker)
 	if rateLimitWholeStream && hasRateLimitErr(invalid) {
-		return 0, errorForFailedEntries(s, invalid, len(entries))
+		return 0, nil, errorForFailedEntries(s, invalid, len(entries))
 	}
 
-	bytesAdded := s.storeEntries(ctx, toStore, usageTracker, flushCtx)
+	bytesAdded, res, err := s.storeEntries(ctx, wal, toStore, usageTracker)
+	if err != nil {
+		return 0, nil, err
+	}
 
-	return bytesAdded, errorForFailedEntries(s, invalid, len(entries))
+	return bytesAdded, res, errorForFailedEntries(s, invalid, len(entries))
 }
 
 func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, totalEntries int) error {
@@ -195,7 +189,7 @@ func hasRateLimitErr(errs []entryWithError) bool {
 	return ok
 }
 
-func (s *stream) storeEntries(ctx context.Context, entries []*logproto.Entry, usageTracker push.UsageTracker, flushCtx *flushCtx) int {
+func (s *stream) storeEntries(ctx context.Context, w *wal.Manager, entries []*logproto.Entry, usageTracker push.UsageTracker) (int, *wal.AppendResult, error) {
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
 		sp.LogKV("event", "stream started to store entries", "labels", s.labelsString)
 		defer sp.LogKV("event", "stream finished to store entries")
@@ -213,9 +207,18 @@ func (s *stream) storeEntries(ctx context.Context, entries []*logproto.Entry, us
 
 		bytesAdded += len(entries[i].Line)
 	}
-	flushCtx.segmentWriter.Append(s.tenant, s.labels.String(), s.labels, entries)
+
+	res, err := w.Append(wal.AppendRequest{
+		TenantID:  s.tenant,
+		Labels:    s.labels,
+		LabelsStr: s.labels.String(),
+		Entries:   entries,
+	})
+	if err != nil {
+		return 0, nil, err
+	}
 	s.reportMetrics(ctx, outOfOrderSamples, outOfOrderBytes, 0, 0, usageTracker)
-	return bytesAdded
+	return bytesAdded, res, nil
 }
 
 func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, rateLimitWholeStream bool, usageTracker push.UsageTracker) ([]*logproto.Entry, []entryWithError) {
@@ -256,7 +259,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		}
 
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
-		cutoff := highestTs.Add(-s.cfg.MaxChunkAge / 2)
+		cutoff := highestTs.Add(-time.Hour)
 		if s.unorderedWrites && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(entries[i].Timestamp, cutoff)})
 			s.writeFailures.Log(s.tenant, fmt.Errorf("%w for stream %s", failedEntriesWithError[len(failedEntriesWithError)-1].e, s.labels))
