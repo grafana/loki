@@ -700,7 +700,7 @@ func ParseStructuredMetadataKeysQuery(r *http.Request) (*logproto.StructuredMeta
 	if result.End.Before(result.Start) {
 		return nil, errEndBeforeStart
 	}
-	
+
 	result.LineLimit, err = lineLimit(r)
 	if err != nil {
 		return nil, err

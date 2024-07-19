@@ -1168,7 +1168,7 @@ func (q *SingleTenantQuerier) StructuredMetadata(ctx context.Context, req *logpr
 		return nil, err
 	}
 
-  //TODO(twhitney): we can improve this in the future as we don't need to iterate lines for structured metadata, just chunks
+	//TODO(twhitney): we can improve this in the future as we don't need to iterate lines for structured metadata, just chunks
 	streams, err := streamsForFieldDetection(iters, 1000)
 	if err != nil {
 		return nil, err
