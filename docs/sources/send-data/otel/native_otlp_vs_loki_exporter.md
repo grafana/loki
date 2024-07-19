@@ -34,7 +34,7 @@ OpenTelemetry (OTel) is quickly becoming an industry standard with increasing ad
   - It supports label control via per-tenant OTLP configuration in Loki.
   - By default, it picks some pre-configured resource attributes as index labels as explained [here](http://localhost:3002/docs/loki/<LOKI_VERSION>/send-data/otel/#format-considerations).
 - LogLine: Stringified LogRecord.Body.
-- Structured Metadata: Anything not stored in Index labels and LogLine gets stored as Structured Metadata.
+- Structured Metadata: Anything not stored in Index labels and LogLine gets stored as [Structured Metadata](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/structured-metadata/).
 
 ### Sample Log
 
@@ -89,7 +89,7 @@ Taking the above-ingested log line, let us look at how the querying experience w
 - **Simplified querying:** Loki’s native OTel endpoint leverages Structured Metadata, which makes it easier to reference the attributes and other fields from the OTel LogRecord without having to use json or logfmt parsers for decoding the data at query time.
 - **More modern high context data model:** Better aligned with modern observability practices than the older json based model.
 
-## What needs to be done to switch from LokiExporter to native OTel ingestion format?
+## What do you need to do to switch from LokiExporter to native OTel ingestion format?
 
-- Point OpenTelemetry Collector to Loki's native OTel ingestion endpoint as explained [here](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/otel/#loki-configuration).
-- Rewrite LogQL queries in various places, including dashboards, alerts, starred queries in Grafana Explore, etc. to query OTel logs as per the new format.
+- Point your OpenTelemetry Collector to Loki's native OTel ingestion endpoint as explained [here](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/otel/#loki-configuration).
+- Rewrite your LogQL queries in various places, including dashboards, alerts, starred queries in Grafana Explore, etc. to query OTel logs as per the new format.
