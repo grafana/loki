@@ -1154,7 +1154,7 @@ func (q *SingleTenantQuerier) StructuredMetadata(ctx context.Context, req *logpr
 		QueryRequest: &logproto.QueryRequest{
 			Start:     req.Start,
 			End:       req.End,
-			Limit:     1000,
+			Limit:     req.LineLimit,
 			Direction: logproto.BACKWARD,
 			Selector:  expr.String(),
 			Plan: &plan.QueryPlan{
