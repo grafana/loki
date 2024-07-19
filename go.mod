@@ -129,6 +129,8 @@ require (
 	github.com/grafana/jsonparser v0.0.0-20240209175146-098958973a2d
 	github.com/grafana/loki/pkg/push v0.0.0-20231124142027-e52380921608
 	github.com/hashicorp/golang-lru/v2 v2.0.7
+	github.com/hashicorp/raft v1.7.0
+	github.com/hashicorp/raft-wal v0.4.1
 	github.com/heroku/x v0.0.61
 	github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db
@@ -151,10 +153,14 @@ require (
 )
 
 require (
+	github.com/benbjohnson/immutable v0.4.0 // indirect
 	github.com/containerd/containerd v1.7.20 // indirect
+	github.com/coreos/etcd v3.3.27+incompatible // indirect
+	github.com/coreos/pkg v0.0.0-20220810130054-c7d1c02cb6cf // indirect
 	github.com/dlclark/regexp2 v1.4.0 // indirect
 	github.com/go-kit/kit v0.12.0 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
+	github.com/hashicorp/go-msgpack/v2 v2.1.1 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/pires/go-proxyproto v0.7.0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
@@ -266,7 +272,7 @@ require (
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
-	github.com/hashicorp/go-msgpack v0.5.5 // indirect
+	github.com/hashicorp/go-msgpack v1.1.5 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-retryablehttp v0.7.7 // indirect
 	github.com/hashicorp/go-rootcerts v1.0.2 // indirect
