@@ -42,7 +42,7 @@ type retry struct {
 // NewRetryMiddleware returns a middleware that retries requests if they
 // fail with 500 or a non-HTTP error.
 func NewRetryMiddleware(log log.Logger, maxRetries int, metrics *RetryMiddlewareMetrics, metricsNamespace string) Middleware {
-	if metrics == nil {
+	if metrics == nil && metricsNamespace != "" {
 		metrics = NewRetryMiddlewareMetrics(nil, metricsNamespace)
 	}
 
@@ -58,7 +58,9 @@ func NewRetryMiddleware(log log.Logger, maxRetries int, metrics *RetryMiddleware
 
 func (r retry) Do(ctx context.Context, req Request) (Response, error) {
 	tries := 0
-	defer func() { r.metrics.retriesCount.Observe(float64(tries)) }()
+	if r.metrics != nil {
+		defer func() { r.metrics.retriesCount.Observe(float64(tries)) }()
+	}
 
 	var lastErr error
 
