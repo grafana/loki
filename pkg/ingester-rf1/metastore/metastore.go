@@ -2,6 +2,7 @@ package metastore
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -17,7 +18,6 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/hashicorp/raft"
 	raftwal "github.com/hashicorp/raft-wal"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/health"
