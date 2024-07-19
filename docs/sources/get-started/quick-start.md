@@ -81,9 +81,13 @@ Try out this demo within our interactive learning environment: [Loki Quickstart 
 
 ## Install Loki and collecting sample logs
 
+<!-- INTERACTIVE ignore START -->
+
 {{< admonition type="note" >}}
 This quickstart assumes you are running Linux.
 {{< /admonition >}}
+
+<!-- INTERACTIVE ignore END -->
 
 **To install Loki locally, follow these steps:**
 
