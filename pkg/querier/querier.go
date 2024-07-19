@@ -1182,23 +1182,22 @@ func (q *SingleTenantQuerier) StructuredMetadata(ctx context.Context, req *logpr
 }
 
 func parseStructuredMetadata(ctx context.Context, streams logqlmodel.Streams) []string {
-	lbls := []string{}
+	keysm := map[string]struct{}{}
 
 	for _, stream := range streams {
-		level.Debug(spanlogger.FromContext(ctx)).Log(
-			"structured_metadata", "true",
-			"msg", fmt.Sprintf("looking for structured metadata in stream %d with %d lines", stream.Hash, len(stream.Entries)))
-
 		for _, entry := range stream.Entries {
 			for _, l := range entry.StructuredMetadata {
-				if !slices.Contains(lbls, l.Name) {
-					lbls = append(lbls, l.Name)
-				}
+				keysm[l.Name] = struct{}{}
 			}
 		}
 	}
 
-	return lbls
+	keys := make([]string, 0, len(keysm))
+	for k := range keysm {
+		keys = append(keys, k)
+	}
+
+	return keys
 }
 
 type parsedFields struct {
@@ -1271,10 +1270,6 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 	fieldCount := uint32(0)
 
 	for _, stream := range streams {
-		level.Debug(spanlogger.FromContext(ctx)).Log(
-			"detected_fields", "true",
-			"msg", fmt.Sprintf("looking for detected fields in stream %d with %d lines", stream.Hash, len(stream.Entries)))
-
 		for _, entry := range stream.Entries {
 			detected, parser := parseLine(entry.Line)
 			for k, vals := range detected {
