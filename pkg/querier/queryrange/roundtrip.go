@@ -285,6 +285,10 @@ func NewMiddleware(
 func NewDetectedLabelsTripperware(cfg Config, opts logql.EngineOpts, logger log.Logger, l Limits, schema config.SchemaConfig, metrics *Metrics, mw base.Middleware, namespace string, merger base.Merger, limits Limits, iqo util.IngesterQueryOptions) (base.Middleware, error) {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := mw.Wrap(next)
+		if cfg.MaxRetries > 0 {
+			rm := base.NewRetryMiddleware(logger, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, namespace)
+			statsHandler = rm.Wrap(statsHandler)
+		}
 		splitter := newDefaultSplitter(limits, iqo)
 
 		queryRangeMiddleware := []base.Middleware{
@@ -553,6 +557,12 @@ func getOperation(path string) string {
 func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logger, limits Limits, schema config.SchemaConfig, merger base.Merger, iqo util.IngesterQueryOptions, c cache.Cache, metrics *Metrics, indexStatsTripperware base.Middleware, metricsNamespace string) (base.Middleware, error) {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := indexStatsTripperware.Wrap(next)
+		retryNextHandler := next
+		if cfg.MaxRetries > 0 {
+			rm := base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace)
+			statsHandler = rm.Wrap(statsHandler)
+			retryNextHandler = rm.Wrap(next)
+		}
 
 		queryRangeMiddleware := []base.Middleware{
 			QueryMetricsMiddleware(metrics.QueryMetrics),
@@ -592,6 +602,7 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Lo
 					limits,
 					0, // 0 is unlimited shards
 					statsHandler,
+					retryNextHandler,
 					cfg.ShardAggregations,
 				),
 			)
@@ -618,6 +629,12 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Lo
 func NewLimitedTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logger, limits Limits, schema config.SchemaConfig, metrics *Metrics, merger base.Merger, iqo util.IngesterQueryOptions, indexStatsTripperware base.Middleware, metricsNamespace string) (base.Middleware, error) {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := indexStatsTripperware.Wrap(next)
+		retryNextHandler := next
+		if cfg.MaxRetries > 0 {
+			rm := base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace)
+			statsHandler = rm.Wrap(statsHandler)
+			retryNextHandler = rm.Wrap(next)
+		}
 
 		queryRangeMiddleware := []base.Middleware{
 			StatsCollectorMiddleware(),
@@ -639,6 +656,7 @@ func NewLimitedTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logg
 					// and overwhelming the frontend, therefore we fix the number of shards to prevent this.
 					32, // 0 is unlimited shards
 					statsHandler,
+					retryNextHandler,
 					cfg.ShardAggregations,
 				),
 			)
@@ -854,6 +872,12 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logge
 
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := indexStatsTripperware.Wrap(next)
+		retryNextHandler := next
+		if cfg.MaxRetries > 0 {
+			rm := base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace)
+			statsHandler = rm.Wrap(statsHandler)
+			retryNextHandler = rm.Wrap(next)
+		}
 
 		queryRangeMiddleware := []base.Middleware{
 			QueryMetricsMiddleware(metrics.QueryMetrics),
@@ -895,6 +919,7 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logge
 					limits,
 					0, // 0 is unlimited shards
 					statsHandler,
+					retryNextHandler,
 					cfg.ShardAggregations,
 				),
 			)
@@ -976,6 +1001,12 @@ func NewInstantMetricTripperware(
 
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := indexStatsTripperware.Wrap(next)
+		retryNextHandler := next
+		if cfg.MaxRetries > 0 {
+			rm := base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace)
+			statsHandler = rm.Wrap(statsHandler)
+			retryNextHandler = rm.Wrap(next)
+		}
 
 		queryRangeMiddleware := []base.Middleware{
 			StatsCollectorMiddleware(),
@@ -1003,6 +1034,7 @@ func NewInstantMetricTripperware(
 					limits,
 					0, // 0 is unlimited shards
 					statsHandler,
+					retryNextHandler,
 					cfg.ShardAggregations,
 				),
 			)
