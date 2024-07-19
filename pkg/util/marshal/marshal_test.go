@@ -601,6 +601,34 @@ var tailTestWithEncodingFlags = []struct {
 	},
 }
 
+// covers responses from /loki/api/v1/structured_metadata/keys
+var structuredMetadataKeysTests = []struct {
+	actual   logproto.StructuredMetadataKeysResponse
+	expected string
+}{
+	{
+		logproto.StructuredMetadataKeysResponse{
+			Keys: []string{
+				"label1",
+				"test",
+				"value",
+			},
+		},
+		`{"keys": ["label1", "test", "value"]}`,
+	},
+}
+
+
+func Test_WriteStructuredMetadataKeysResponseJSON(t *testing.T) {
+	for i, structuredMetadataKeysTest := range structuredMetadataKeysTests {
+		var b bytes.Buffer
+		err := WriteStructuredMetadataKeysResponseJSON(&structuredMetadataKeysTest.actual, &b)
+		require.NoError(t, err)
+
+		require.JSONEqf(t, structuredMetadataKeysTest.expected, b.String(), "Structured Metadata Keys Test %d failed", i)
+	}
+}
+
 func Test_WriteQueryResponseJSON(t *testing.T) {
 	for i, queryTest := range queryTests {
 		var b bytes.Buffer
