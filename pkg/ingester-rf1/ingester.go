@@ -3,6 +3,7 @@ package ingesterrf1
 import (
 	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -34,7 +35,6 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -386,7 +386,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 	shutdownMarkerPath := path.Join(i.cfg.ShutdownMarkerPath, shutdownMarkerFilename)
 	shutdownMarker, err := shutdownMarkerExists(shutdownMarkerPath)
 	if err != nil {
-		return errors.Wrap(err, "failed to check ingester shutdown marker")
+		return fmt.Errorf("failed to check ingester shutdown marker: %w", err)
 	}
 
 	if shutdownMarker {
