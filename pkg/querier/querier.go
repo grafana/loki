@@ -1174,14 +1174,14 @@ func (q *SingleTenantQuerier) StructuredMetadata(ctx context.Context, req *logpr
 		return nil, err
 	}
 
-	structuredMetadata := parseStructuredMetadata(ctx, streams)
+	structuredMetadata := parseStructuredMetadata(streams)
 
 	return &logproto.StructuredMetadataKeysResponse{
 		Keys: structuredMetadata,
 	}, nil
 }
 
-func parseStructuredMetadata(ctx context.Context, streams logqlmodel.Streams) []string {
+func parseStructuredMetadata(streams logqlmodel.Streams) []string {
 	keysm := map[string]struct{}{}
 
 	for _, stream := range streams {
