@@ -40,47 +40,59 @@ OpenTelemetry (OTel) is quickly becoming an industry standard with increasing ad
 
 Let us take the following sample OTel log and see how it would look after ingestion in both formats with the default configuration:
 - Resource Attributes:
-  - service.name: “auth”
-  - service.namespace: “dev”
-  - service.kind: “app”
+  - service.name: "auth"
+  - service.namespace: "dev"
+  - service.kind: "app"
 - Log Record:
   - Timestamp: 1715247552000000000
-  - Body: “user logged in”
-  - Severity Text: “INFO”
+  - Body: "user logged in"
+  - Severity Text: "INFO"
   - Attributes:
-    - email: “foo@bar.com”
+    - email: "foo@bar.com"
 
 **Ingested with LokiExporter:**
 
 - Index Labels:
-  - job=”dev/auth”
-  - exporter=”OTLP”
+  - job="dev/auth"
+  - exporter="OTLP"
 - Log Body: `{"body":"user logged in","severity":"INFO","attributes":{"email":"foo@bar.com"}, "resources":{"service.kind":"app","service.name":"auth","service.namespace":"dev"}}`
 
 **Ingested with Loki’s native OTel endpoint:**
 
 - Index Labels:
-  - service_name=”auth”
-  - service_namespace=”dev”
-- Log Body: “user logged in”
+  - service_name="auth"
+  - service_namespace="dev"
+- Log Body: "user logged in"
 - Structured Metadata:
-  - service_kind: “app”
-  - severity_text: “INFO”
-  - email: “foo@bar.com”
+  - service_kind: "app"
+  - severity_text: "INFO"
+  - email: "foo@bar.com"
 
 ### Querying experience
 
+As seen earlier, LokiExporter encodes data to json or logfmt blob, which requires decoding it at query time to interact with OTel attributes.
+However, the native OTel endpoint doesn't do any encoding of data before storing it. It leverages [Structured Metadata](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/structured-metadata/), which makes it easier to interact with OTel attributes without having to use any parsers in the queries.
 Taking the above-ingested log line, let us look at how the querying experience would look between the two considering various scenarios:
 
 **Query all logs without any filters**
 
-- Ingested with LokiExporter: `{job=”dev/auth”}`
-- Ingested with Loki’s native OTel endpoint: `{service_name=”auth”, service_namespace=”dev”}`
+- Ingested with LokiExporter: `{job="dev/auth"}`
+- Ingested with Loki’s native OTel endpoint: `{service_name="auth", service_namespace="dev"}`
 
 **Query logs with severity INFO**
 
-- Ingested with LokiExporter: `{job=”dev/auth”} | json | severity=”INFO”`
-- Ingested with Loki’s native OTel endpoint: `{service_name=”auth”, service_namespace=”dev”} | severity_text=”INFO”`
+- Ingested with LokiExporter: `{job="dev/auth"} | json | severity="INFO"`
+- Ingested with Loki’s native OTel endpoint: `{service_name="auth", service_namespace="dev"} | severity_text="INFO"`
+
+**Display log message as log line in logs query results**
+
+- Ingested with LokiExporter: `{job="dev/auth"} | json | line_format "{{.body}}"`
+- Ingested with Loki’s native OTel endpoint: `{service_name="auth", service_namespace="dev"}`
+
+**Count login events in the last hour by email**
+
+- Ingested with LokiExporter: `sum(count_over_time({job="dev/auth"} |= "user logged in" | json[1h])) by (email)`
+- Ingested with Loki’s native OTel endpoint: `sum(count_over_time({service_name="auth", service_namespace="dev"} |= "user logged in"[1h])) by (email)`
 
 ## Benefits of switching from LokiExporter to native OTel endpoint:
 
