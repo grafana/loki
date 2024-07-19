@@ -82,12 +82,19 @@ func (r retry) Do(ctx context.Context, req Request) (Response, error) {
 	query := req.GetQuery()
 
 	for ; tries < r.maxRetries; tries++ {
+		// Make sure the context isn't done before sending the request
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
+
 		resp, err := r.next.Do(ctx, req)
 		if err == nil {
 			return resp, nil
+		}
+
+		// Make sure the context isn't done before retrying the request
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
 		}
 
 		// Retry if we get a HTTP 500 or an unknown error.
