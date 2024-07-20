@@ -11,7 +11,6 @@ import (
 	"github.com/grafana/dskit/grpcutil"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"google.golang.org/grpc/codes"
 
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -97,8 +96,13 @@ func (r retry) Do(ctx context.Context, req Request) (Response, error) {
 			return nil, ctx.Err()
 		}
 
-		// Retry if we get a HTTP 500 or an unknown error.
-		if code := grpcutil.ErrorToStatusCode(err); code == codes.Unknown || code/100 == 5 {
+		code := grpcutil.ErrorToStatusCode(err)
+		// Error handling is tricky... There are many places we wrap any error and set an HTTP style status code
+		// but there are also places where we return an existing GRPC object which will use GRPC status codes
+		// If the code is < 100 it's a gRPC status code, currently we retry all of these, even codes.Canceled
+		// because when our pools close connections they do so with a cancel and we want to retry these
+		// If it's > 100, it's an HTTP code and we only retry 5xx
+		if code < 100 || code/100 == 5 {
 			lastErr = err
 			level.Error(util_log.WithContext(ctx, r.log)).Log(
 				"msg", "error processing request",
@@ -112,10 +116,13 @@ func (r retry) Do(ctx context.Context, req Request) (Response, error) {
 				"end_delta", time.Since(end),
 				"length", end.Sub(start),
 				"retry_in", bk.NextDelay(),
+				"code", code,
 				"err", err,
 			)
 			bk.Wait()
 			continue
+		} else {
+			level.Warn(util_log.WithContext(ctx, r.log)).Log("msg", "received an error but not a retryable code, this is possibly a bug.", "code", code, "err", err)
 		}
 
 		return nil, err
