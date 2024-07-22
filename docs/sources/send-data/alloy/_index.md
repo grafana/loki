@@ -14,7 +14,7 @@ Grafana Alloy is a versatile observability collector that can ingest logs in var
 
 ## Installing Alloy
 
-To get started with Grafana Alloy and send logs to Loki, you need to install and configure Alloy. You can follow the [official documentation](https://grafana.com/docs/alloy/latest/get-started/install/) to install Alloy on your preferred platform.
+To get started with Grafana Alloy and send logs to Loki, you need to install and configure Alloy. You can follow the [Alloy documentation](https://grafana.com/docs/alloy/latest/get-started/install/) to install Alloy on your preferred platform.
 
 ## Components of Alloy for logs
 
