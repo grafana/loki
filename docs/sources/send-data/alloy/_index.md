@@ -21,7 +21,7 @@ To get started with Grafana Alloy and send logs to Loki, you need to install and
 Alloy pipelines are built using components that perform specific functions. For logs these can be broken down into three categories:
 
 - **Collector:** These components collect/receive logs from various sources. This can be scraping logs from a file, receiving logs over HTTP, gRPC or ingesting logs from a message queue.
-- **Transformer:** These components can be used to manipulate logs before they are sent to a writer. This can be used to add additional metadata, filter logs or batch logs before sending them to a writer.
+- **Transformer:** These components can be used to manipulate logs before they are sent to a writer. This can be used to add additional metadata, filter logs, or batch logs before sending them to a writer.
 - **Writer:** These components send logs to the desired destination. Our documentation will focus on sending logs to Loki, but Alloy supports sending logs to various destinations.
 
 ### Log components in Alloy
