@@ -45,13 +45,18 @@ func (cfg *AggregationConfig) RegisterFlagsWithPrefix(fs *flag.FlagSet, prefix s
 		10*time.Second,
 		"How often to downsample metrics from raw push observations.",
 	)
+	fs.StringVar(
+		&cfg.LokiAddr,
+		prefix+"metric-aggregation.loki-address",
+		"",
+		"Loki address to send aggregated metrics to.",
+	)
 	fs.DurationVar(
 		&cfg.WriteTimeout,
 		prefix+"metric-aggregation.timeout",
 		10*time.Second,
 		"How long to wait write response from Loki",
 	)
-
 	fs.BoolVar(
 		&cfg.UseTLS,
 		prefix+"metric-aggregation.tls",
@@ -60,6 +65,7 @@ func (cfg *AggregationConfig) RegisterFlagsWithPrefix(fs *flag.FlagSet, prefix s
 	)
 
 	cfg.BackoffConfig.RegisterFlagsWithPrefix(prefix+"metric-aggregation", fs)
+	cfg.BasicAuth.RegisterFlagsWithPrefix(prefix+"metric-aggregation.", fs)
 }
 
 // BasicAuth contains basic HTTP authentication credentials.
@@ -70,7 +76,7 @@ type BasicAuth struct {
 	// PasswordFile string `yaml:"password_file,omitempty" json:"password_file,omitempty"`
 }
 
-func (cfg *BasicAuth) RegisterFlagsWithPrefix(fs *flag.FlagSet, prefix string) {
+func (cfg *BasicAuth) RegisterFlagsWithPrefix(prefix string, fs *flag.FlagSet) {
 	fs.StringVar(
 		&cfg.Username,
 		prefix+"basic-auth.username",
