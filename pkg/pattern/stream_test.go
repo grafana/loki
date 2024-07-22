@@ -8,6 +8,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -20,6 +21,7 @@ import (
 
 func TestAddStream(t *testing.T) {
 	lbs := labels.New(labels.Label{Name: "test", Value: "test"})
+	mockWriter := &mockEntryWriter{}
 	stream, err := newStream(
 		model.Fingerprint(lbs.Hash()),
 		lbs,
@@ -32,6 +34,7 @@ func TestAddStream(t *testing.T) {
 		drain.FormatUnknown,
 		"123",
 		drain.DefaultConfig(),
+		mockWriter,
 	)
 	require.NoError(t, err)
 
@@ -60,6 +63,7 @@ func TestAddStream(t *testing.T) {
 
 func TestPruneStream(t *testing.T) {
 	lbs := labels.New(labels.Label{Name: "test", Value: "test"})
+	mockWriter := &mockEntryWriter{}
 	stream, err := newStream(
 		model.Fingerprint(lbs.Hash()),
 		lbs,
@@ -72,6 +76,7 @@ func TestPruneStream(t *testing.T) {
 		drain.FormatUnknown,
 		"123",
 		drain.DefaultConfig(),
+		mockWriter,
 	)
 	require.NoError(t, err)
 
@@ -109,6 +114,8 @@ func TestSampleIterator(t *testing.T) {
 		labels.Label{Name: "foo", Value: "bar"},
 		labels.Label{Name: "fizz", Value: "buzz"},
 	)
+	mockWriter := &mockEntryWriter{}
+	mockWriter.On("WriteEntry", mock.Anything, mock.Anything, mock.Anything)
 
 	t.Run("single stream single push", func(t *testing.T) {
 		stream, err := newStream(
@@ -123,6 +130,7 @@ func TestSampleIterator(t *testing.T) {
 			drain.FormatUnknown,
 			"123",
 			drain.DefaultConfig(),
+			mockWriter,
 		)
 		require.NoError(t, err)
 
@@ -172,6 +180,7 @@ func TestSampleIterator(t *testing.T) {
 			drain.FormatUnknown,
 			"123",
 			drain.DefaultConfig(),
+			mockWriter,
 		)
 		require.NoError(t, err)
 
@@ -263,6 +272,7 @@ func TestSampleIterator(t *testing.T) {
 			drain.FormatUnknown,
 			"123",
 			drain.DefaultConfig(),
+			mockWriter,
 		)
 		require.NoError(t, err)
 
@@ -318,4 +328,16 @@ func TestSampleIterator(t *testing.T) {
 		require.Equal(t, 1, len(res.Series[0].Samples))
 		require.Equal(t, int64(30000000000), res.Series[0].Samples[0].Timestamp)
 	})
+}
+
+type mockEntryWriter struct {
+	mock.Mock
+}
+
+func (m *mockEntryWriter) WriteEntry(ts time.Time, entry string, lbls labels.Labels) {
+	_ = m.Called(ts, entry, lbls)
+}
+
+func (m *mockEntryWriter) Stop() {
+	_ = m.Called()
 }

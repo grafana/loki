@@ -61,9 +61,11 @@ const (
 
 	ringAutoForgetUnhealthyPeriods = 2
 
-	labelServiceName = "service_name"
-	serviceUnknown   = "unknown_service"
-	levelLabel       = "detected_level"
+	LabelServiceName = "service_name"
+	ServiceUnknown   = "unknown_service"
+	LevelLabel       = "detected_level"
+	LogLevelUnknown  = "unknown"
+
 	logLevelDebug    = "debug"
 	logLevelInfo     = "info"
 	logLevelWarn     = "warn"
@@ -71,7 +73,6 @@ const (
 	logLevelFatal    = "fatal"
 	logLevelCritical = "critical"
 	logLevelTrace    = "trace"
-	logLevelUnknown  = "unknown"
 )
 
 var (
@@ -406,11 +407,11 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 					} else if levelFromMetadata, ok := hasAnyLevelLabels(structuredMetadata); ok {
 						logLevel = levelFromMetadata
 					} else {
-						logLevel = detectLogLevelFromLogEntry(entry, structuredMetadata)
+						logLevel = DetectLogLevelFromLogEntry(entry, structuredMetadata)
 					}
-					if logLevel != logLevelUnknown && logLevel != "" {
+					if logLevel != LogLevelUnknown && logLevel != "" {
 						entry.StructuredMetadata = append(entry.StructuredMetadata, logproto.LabelAdapter{
-							Name:  levelLabel,
+							Name:  LevelLabel,
 							Value: logLevel,
 						})
 					}
@@ -786,8 +787,8 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 	}
 
 	// We do not want to count service_name added by us in the stream limit so adding it after validating original labels.
-	if !ls.Has(labelServiceName) && len(vContext.discoverServiceName) > 0 {
-		serviceName := serviceUnknown
+	if !ls.Has(LabelServiceName) && len(vContext.discoverServiceName) > 0 {
+		serviceName := ServiceUnknown
 		for _, labelName := range vContext.discoverServiceName {
 			if labelVal := ls.Get(labelName); labelVal != "" {
 				serviceName = labelVal
@@ -795,7 +796,7 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 			}
 		}
 
-		ls = labels.NewBuilder(ls).Set(labelServiceName, serviceName).Labels()
+		ls = labels.NewBuilder(ls).Set(LabelServiceName, serviceName).Labels()
 		stream.Labels = ls.String()
 	}
 
@@ -889,7 +890,7 @@ func (d *Distributor) HealthyInstancesCount() int {
 	return int(d.healthyInstancesCount.Load())
 }
 
-func detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.Labels) string {
+func DetectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.Labels) string {
 	// otlp logs have a severity number, using which we are defining the log levels.
 	// Significance of severity number is explained in otel docs here https://opentelemetry.io/docs/specs/otel/logs/data-model/#field-severitynumber
 	if otlpSeverityNumberTxt := structuredMetadata.Get(push.OTLPSeverityNumber); otlpSeverityNumberTxt != "" {
@@ -898,7 +899,7 @@ func detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.
 			return logLevelInfo
 		}
 		if otlpSeverityNumber == int(plog.SeverityNumberUnspecified) {
-			return logLevelUnknown
+			return LogLevelUnknown
 		} else if otlpSeverityNumber <= int(plog.SeverityNumberTrace4) {
 			return logLevelTrace
 		} else if otlpSeverityNumber <= int(plog.SeverityNumberDebug4) {
@@ -912,7 +913,7 @@ func detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.
 		} else if otlpSeverityNumber <= int(plog.SeverityNumberFatal4) {
 			return logLevelFatal
 		}
-		return logLevelUnknown
+		return LogLevelUnknown
 	}
 
 	return extractLogLevelFromLogLine(entry.Line)
@@ -1012,5 +1013,5 @@ func detectLevelFromLogLine(log string) string {
 	if strings.Contains(log, "debug:") || strings.Contains(log, "DEBUG:") {
 		return logLevelDebug
 	}
-	return logLevelUnknown
+	return LogLevelUnknown
 }

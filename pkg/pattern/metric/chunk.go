@@ -7,12 +7,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -26,6 +28,7 @@ const (
 	Bytes Type = iota
 	Count
 	Unsupported
+	AggregatedMetricLabel = "__aggregated_metric__"
 )
 
 type metrics struct {
@@ -41,18 +44,25 @@ type Chunks struct {
 	metrics    metrics
 	rawSamples SamplesWithoutTS
 	service    string
+	level      string
 }
 
 func NewChunks(labels labels.Labels, chunkMetrics *ChunkMetrics, logger log.Logger) *Chunks {
-	service := labels.Get("service_name")
+	service := labels.Get(distributor.LabelServiceName)
 	if service == "" {
-		service = "unknown_service"
+		service = distributor.ServiceUnknown
+	}
+
+	lvl := labels.Get("level")
+	if lvl == "" {
+		lvl = distributor.LogLevelUnknown
 	}
 
 	level.Debug(logger).Log(
 		"msg", "creating new chunks",
 		"labels", labels.String(),
 		"service", service,
+		"level", lvl,
 	)
 
 	return &Chunks{
@@ -61,6 +71,7 @@ func NewChunks(labels labels.Labels, chunkMetrics *ChunkMetrics, logger log.Logg
 		logger:     logger,
 		rawSamples: SamplesWithoutTS{},
 		service:    service,
+		level:      lvl,
 
 		metrics: metrics{
 			chunks:  chunkMetrics.chunks.WithLabelValues(service),
@@ -69,7 +80,7 @@ func NewChunks(labels labels.Labels, chunkMetrics *ChunkMetrics, logger log.Logg
 	}
 }
 
-func (c *Chunks) Observe(bytes, count float64) {
+func (c *Chunks) Observe(bytes, count uint64) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -189,16 +200,16 @@ func (c *Chunks) Iterator(
 
 type Sample struct {
 	Timestamp model.Time
-	Bytes     float64
-	Count     float64
+	Bytes     uint64
+	Count     uint64
 }
 
 type SampleWithoutTS struct {
-	Bytes float64
-	Count float64
+	Bytes uint64
+	Count uint64
 }
 
-func newSample(bytes, count float64, ts model.Time) Sample {
+func newSample(bytes, count uint64, ts model.Time) Sample {
 	return Sample{
 		Timestamp: ts,
 		Bytes:     bytes,
@@ -206,7 +217,7 @@ func newSample(bytes, count float64, ts model.Time) Sample {
 	}
 }
 
-func newSampleWithoutTS(bytes, count float64) SampleWithoutTS {
+func newSampleWithoutTS(bytes, count uint64) SampleWithoutTS {
 	return SampleWithoutTS{
 		Bytes: bytes,
 		Count: count,
@@ -240,7 +251,7 @@ func (c *Chunk) AddSample(s Sample) {
 	}
 }
 
-func newChunk(bytes, count float64, ts model.Time) *Chunk {
+func newChunk(bytes, count uint64, ts model.Time) *Chunk {
 	// TODO(twhitney): maybe bring this back when we introduce downsampling
 	// maxSize := int(chunk.MaxChunkTime.Nanoseconds()/chunk.TimeResolution.UnixNano()) + 1
 	v := &Chunk{Samples: []Sample{}}
@@ -280,7 +291,7 @@ func (c *Chunk) ForTypeAndRange(
 
 	for _, sample := range c.Samples {
 		if sample.Timestamp >= start && sample.Timestamp < end {
-			var v float64
+			var v uint64
 			if typ == Bytes {
 				v = sample.Bytes
 			} else {
@@ -288,7 +299,7 @@ func (c *Chunk) ForTypeAndRange(
 			}
 			aggregatedSamples = append(aggregatedSamples, logproto.Sample{
 				Timestamp: sample.Timestamp.UnixNano(),
-				Value:     v,
+				Value:     float64(v),
 			})
 		}
 	}
@@ -296,20 +307,21 @@ func (c *Chunk) ForTypeAndRange(
 	return aggregatedSamples, nil
 }
 
-func (c *Chunks) Downsample(now model.Time) {
+func (c *Chunks) Downsample(now model.Time, w EntryWriter) {
 	c.lock.Lock()
 	defer func() {
 		c.lock.Unlock()
 		c.rawSamples = c.rawSamples[:0]
 	}()
 
-	var totalBytes, totalCount float64
+	var totalBytes, totalCount uint64
 	for _, sample := range c.rawSamples {
 		totalBytes += sample.Bytes
 		totalCount += sample.Count
 	}
 
 	c.metrics.samples.Inc()
+	c.writeAggregatedMetrics(w, now, totalBytes, totalCount)
 
 	if len(c.chunks) == 0 {
 		c.chunks = append(c.chunks, newChunk(totalBytes, totalCount, now))
@@ -323,6 +335,33 @@ func (c *Chunks) Downsample(now model.Time) {
 		c.metrics.chunks.Set(float64(len(c.chunks)))
 		return
 	}
-
 	last.AddSample(newSample(totalBytes, totalCount, now))
+}
+
+func (c *Chunks) writeAggregatedMetrics(
+	w EntryWriter,
+	now model.Time,
+	totalBytes, totalCount uint64,
+) {
+	lbls := labels.Labels{
+		labels.Label{Name: AggregatedMetricLabel, Value: c.service},
+		labels.Label{Name: "level", Value: c.level},
+	}
+
+	if w != nil {
+		w.WriteEntry(
+			now.Time(),
+			aggregatedMetricEntry(now, totalBytes, totalCount),
+			lbls,
+		)
+	}
+}
+
+func aggregatedMetricEntry(ts model.Time, totalBytes, totalCount uint64) string {
+	return fmt.Sprintf(
+		"ts=%d bytes=%s count=%d",
+		ts.UnixNano(),
+		humanize.Bytes(totalBytes),
+		totalCount,
+	)
 }

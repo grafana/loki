@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"testing"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -25,6 +27,9 @@ import (
 var lbls = labels.New(labels.Label{Name: "test", Value: "test"})
 
 func setup(t *testing.T) *instance {
+	writer := &mockEntryWriter{}
+	writer.On("WriteEntry", mock.Anything, mock.Anything, mock.Anything)
+
 	inst, err := newInstance(
 		"foo",
 		log.NewNopLogger(),
@@ -34,6 +39,7 @@ func setup(t *testing.T) *instance {
 		metric.AggregationConfig{
 			Enabled: true,
 		},
+		writer,
 	)
 	require.NoError(t, err)
 
@@ -164,7 +170,8 @@ func TestInstancePushQuerySamples(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 1, len(res.Series))
 
-		require.Equal(t, lbls.String(), res.Series[0].GetLabels())
+		lblsWithLevel := addUnknownLevelLabel(lbls)
+		require.Equal(t, lblsWithLevel.String(), res.Series[0].GetLabels())
 
 		// end - start / step -- (start is 0, step is 10s, downsampling at 20s intervals)
 		expectedDataPoints := ((20 * 30) / 10)
@@ -186,7 +193,8 @@ func TestInstancePushQuerySamples(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 1, len(res.Series))
 
-		require.Equal(t, lbls.String(), res.Series[0].GetLabels())
+		lblsWithLevel = addUnknownLevelLabel(lbls)
+		require.Equal(t, lblsWithLevel.String(), res.Series[0].GetLabels())
 
 		// end - start / step -- (start is 0, step is 10s, downsampling at 20s intervals)
 		expectedDataPoints = ((20 * 30) / 10)
@@ -259,7 +267,8 @@ func TestInstancePushQuerySamples(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 1, len(res.Series))
 
-		require.Equal(t, lbls.String(), res.Series[0].GetLabels())
+		lblsWithLevel := addUnknownLevelLabel(lbls)
+		require.Equal(t, lblsWithLevel.String(), res.Series[0].GetLabels())
 
 		// end - start / step -- (start is 0, step is 10s, downsampling at 20s intervals)
 		expectedDataPoints := ((10 * 30) / 20)
@@ -283,7 +292,8 @@ func TestInstancePushQuerySamples(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 1, len(res.Series))
 
-		require.Equal(t, lbls.String(), res.Series[0].GetLabels())
+		lblsWithLevel = addUnknownLevelLabel(lbls)
+		require.Equal(t, lblsWithLevel.String(), res.Series[0].GetLabels())
 
 		// end - start / step -- (start is 0, step is 10s, downsampling at 20s intervals)
 		expectedDataPoints = ((10 * 30) / 20)
@@ -350,7 +360,8 @@ func TestInstancePushQuerySamples(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 1, len(res.Series))
 
-		require.Equal(t, lbls.String(), res.Series[0].GetLabels())
+		lblsWithLevel := addUnknownLevelLabel(lbls)
+		require.Equal(t, lblsWithLevel.String(), res.Series[0].GetLabels())
 
 		// end - start / step -- (start is 0, step is 10s)
 		expectedDataPoints := ((20 * 30) / 10)
@@ -371,7 +382,8 @@ func TestInstancePushQuerySamples(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 1, len(res.Series))
 
-		require.Equal(t, lbls.String(), res.Series[0].GetLabels())
+		lblsWithLevel = addUnknownLevelLabel(lbls)
+		require.Equal(t, lblsWithLevel.String(), res.Series[0].GetLabels())
 
 		// end - start / step -- (start is 0, step is 10s)
 		expectedDataPoints = ((20 * 30) / 10)
@@ -544,9 +556,15 @@ func TestInstancePushQuerySamples(t *testing.T) {
 				},
 				verifySeries20sStep: func(series []logproto.Series) {
 					require.Equal(t, 3, len(series))
-					require.Equal(t, lbls2.String(), series[0].GetLabels())
-					require.Equal(t, lbls3.String(), series[1].GetLabels())
-					require.Equal(t, lbls.String(), series[2].GetLabels())
+
+					lbls2WithLevel := addUnknownLevelLabel(lbls2)
+					require.Equal(t, lbls2WithLevel.String(), series[0].GetLabels())
+
+					lbls3WithLevel := addUnknownLevelLabel(lbls3)
+					require.Equal(t, lbls3WithLevel.String(), series[1].GetLabels())
+
+					lblsWithLevel := addUnknownLevelLabel(lbls)
+					require.Equal(t, lblsWithLevel.String(), series[2].GetLabels())
 
 					// end - start / step -- (start is 0, step is 10s)
 					expectedDataPoints := ((20 * 30) / 10)
@@ -571,9 +589,15 @@ func TestInstancePushQuerySamples(t *testing.T) {
 				},
 				verifySeries80sStep: func(series []logproto.Series) {
 					require.Equal(t, 3, len(series))
-					require.Equal(t, lbls2.String(), series[0].GetLabels())
-					require.Equal(t, lbls3.String(), series[1].GetLabels())
-					require.Equal(t, lbls.String(), series[2].GetLabels())
+
+					lbls2WithLevel := addUnknownLevelLabel(lbls2)
+					require.Equal(t, lbls2WithLevel.String(), series[0].GetLabels())
+
+					lbls3WithLevel := addUnknownLevelLabel(lbls3)
+					require.Equal(t, lbls3WithLevel.String(), series[1].GetLabels())
+
+					lblsWithLevel := addUnknownLevelLabel(lbls)
+					require.Equal(t, lblsWithLevel.String(), series[2].GetLabels())
 
 					// end - start / step -- (start is 0, step is 10s)
 					expectedDataPoints := ((20 * 30) / 10)
@@ -618,14 +642,18 @@ func TestInstancePushQuerySamples(t *testing.T) {
 				},
 				verifySeries20sStep: func(series []logproto.Series) {
 					require.Equal(t, 3, len(series))
-					sereisLabels := make([]string, 0, len(series))
+					seriesLabels := make([]string, 0, len(series))
 					for _, s := range series {
-						sereisLabels = append(sereisLabels, s.GetLabels())
+						seriesLabels = append(seriesLabels, s.GetLabels())
 					}
 
-					require.Equal(t, lbls2.String(), series[0].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
-					require.Equal(t, lbls4.String(), series[1].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
-					require.Equal(t, lbls3.String(), series[2].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
+					lbls2WithLevel := addUnknownLevelLabel(lbls2)
+					lbls3WithLevel := addUnknownLevelLabel(lbls3)
+					lbls4WithLevel := addUnknownLevelLabel(lbls4)
+
+					require.Equal(t, lbls2WithLevel.String(), series[0].GetLabels(), fmt.Sprintf("series: %v", seriesLabels))
+					require.Equal(t, lbls4WithLevel.String(), series[1].GetLabels(), fmt.Sprintf("series: %v", seriesLabels))
+					require.Equal(t, lbls3WithLevel.String(), series[2].GetLabels(), fmt.Sprintf("series: %v", seriesLabels))
 
 					// end - start / step -- (start is 0, step is 10s)
 					expectedDataPoints := ((20 * 30) / 10)
@@ -655,9 +683,13 @@ func TestInstancePushQuerySamples(t *testing.T) {
 						sereisLabels = append(sereisLabels, s.GetLabels())
 					}
 
-					require.Equal(t, lbls2.String(), series[0].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
-					require.Equal(t, lbls4.String(), series[1].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
-					require.Equal(t, lbls3.String(), series[2].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
+					lbls2WithLevel := addUnknownLevelLabel(lbls2)
+					lbls3WithLevel := addUnknownLevelLabel(lbls3)
+					lbls4WithLevel := addUnknownLevelLabel(lbls4)
+
+					require.Equal(t, lbls2WithLevel.String(), series[0].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
+					require.Equal(t, lbls4WithLevel.String(), series[1].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
+					require.Equal(t, lbls3WithLevel.String(), series[2].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
 
 					// end - start / step -- (start is 0, step is 10s)
 					expectedDataPoints := ((20 * 30) / 10)
@@ -708,7 +740,8 @@ func TestInstancePushQuerySamples(t *testing.T) {
 						sereisLabels = append(sereisLabels, s.GetLabels())
 					}
 
-					require.Equal(t, lbls2.String(), series[0].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
+					lbls2WithLevel := addUnknownLevelLabel(lbls2)
+					require.Equal(t, lbls2WithLevel.String(), series[0].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
 
 					// end - start / step -- (start is 0, step is 10s)
 					expectedDataPoints := ((20 * 30) / 10)
@@ -727,7 +760,8 @@ func TestInstancePushQuerySamples(t *testing.T) {
 						sereisLabels = append(sereisLabels, s.GetLabels())
 					}
 
-					require.Equal(t, lbls2.String(), series[0].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
+					lbls2WithLevel := addUnknownLevelLabel(lbls2)
+					require.Equal(t, lbls2WithLevel.String(), series[0].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
 
 					// end - start / step -- (start is 0, step is 10s)
 					expectedDataPoints := ((20 * 30) / 10)
@@ -764,8 +798,10 @@ func TestInstancePushQuerySamples(t *testing.T) {
 						sereisLabels = append(sereisLabels, s.GetLabels())
 					}
 
-					require.Equal(t, lbls2.String(), series[0].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
-					require.Equal(t, lbls4.String(), series[1].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
+					lbls2WithLevel := addUnknownLevelLabel(lbls2)
+					lbls4WithLevel := addUnknownLevelLabel(lbls4)
+					require.Equal(t, lbls2WithLevel.String(), series[0].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
+					require.Equal(t, lbls4WithLevel.String(), series[1].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
 
 					// end - start / step -- (start is 0, step is 10s)
 					expectedDataPoints := ((20 * 30) / 10)
@@ -790,8 +826,10 @@ func TestInstancePushQuerySamples(t *testing.T) {
 						sereisLabels = append(sereisLabels, s.GetLabels())
 					}
 
-					require.Equal(t, lbls2.String(), series[0].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
-					require.Equal(t, lbls4.String(), series[1].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
+					lbls2WithLevel := addUnknownLevelLabel(lbls2)
+					lbls4WithLevel := addUnknownLevelLabel(lbls4)
+					require.Equal(t, lbls2WithLevel.String(), series[0].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
+					require.Equal(t, lbls4WithLevel.String(), series[1].GetLabels(), fmt.Sprintf("series: %v", sereisLabels))
 
 					// end - start / step -- (start is 0, step is 10s)
 					expectedDataPoints := ((20 * 30) / 10)
@@ -851,4 +889,21 @@ func TestInstancePushQuerySamples(t *testing.T) {
 			})
 		}
 	})
+}
+
+func addUnknownLevelLabel(lbls labels.Labels) labels.Labels {
+	lblsWithLevel := append(lbls, labels.Label{Name: "level", Value: "unknown"})
+	slices.SortFunc(lblsWithLevel, func(i, j labels.Label) int {
+		if i.Name < j.Name {
+			return -1
+		}
+
+		if i.Name > j.Name {
+			return 1
+		}
+
+		return 0
+	})
+
+	return lblsWithLevel
 }

@@ -43,6 +43,8 @@ type stream struct {
 	lastTs int64
 
 	logger log.Logger
+
+	writer metric.EntryWriter
 }
 
 func newStream(
@@ -55,6 +57,7 @@ func newStream(
 	guessedFormat string,
 	instanceID string,
 	drainCfg *drain.Config,
+	writer metric.EntryWriter,
 ) (*stream, error) {
 	stream := &stream{
 		fp:           fp,
@@ -70,6 +73,7 @@ func newStream(
 		}),
 		cfg:    cfg,
 		logger: logger,
+		writer: writer,
 	}
 
 	chunks := metric.NewChunks(labels, chunkMetrics, logger)
@@ -86,14 +90,14 @@ func (s *stream) Push(
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	bytes := float64(0)
-	count := float64(len(entries))
+	bytes := uint64(0)
+	count := uint64(len(entries))
 	for _, entry := range entries {
 		if entry.Timestamp.UnixNano() < s.lastTs {
 			continue
 		}
 
-		bytes += float64(len(entry.Line))
+		bytes += uint64(len(entry.Line))
 
 		s.lastTs = entry.Timestamp.UnixNano()
 		s.patterns.Train(entry.Line, entry.Timestamp.UnixNano())
@@ -297,6 +301,6 @@ func (s *stream) Downsample(ts model.Time) {
 	defer s.mtx.Unlock()
 
 	if s.chunks != nil {
-		s.chunks.Downsample(ts)
+		s.chunks.Downsample(ts, s.writer)
 	}
 }

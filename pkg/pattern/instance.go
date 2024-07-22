@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/ingester/index"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -40,9 +41,18 @@ type instance struct {
 	chunkMetrics   *metric.ChunkMetrics
 	aggregationCfg metric.AggregationConfig
 	drainCfg       *drain.Config
+	writer         metric.EntryWriter
 }
 
-func newInstance(instanceID string, logger log.Logger, metrics *ingesterMetrics, chunkMetrics *metric.ChunkMetrics, drainCfg *drain.Config, aggCfg metric.AggregationConfig) (*instance, error) {
+func newInstance(
+	instanceID string,
+	logger log.Logger,
+	metrics *ingesterMetrics,
+	chunkMetrics *metric.ChunkMetrics,
+	drainCfg *drain.Config,
+	aggCfg metric.AggregationConfig,
+	writer metric.EntryWriter,
+) (*instance, error) {
 	index, err := index.NewBitPrefixWithShards(indexShards)
 	if err != nil {
 		return nil, err
@@ -57,8 +67,10 @@ func newInstance(instanceID string, logger log.Logger, metrics *ingesterMetrics,
 		chunkMetrics:   chunkMetrics,
 		aggregationCfg: aggCfg,
 		drainCfg:       drainCfg,
+		writer:         writer,
 	}
 	i.mapper = ingester.NewFPMapper(i.getLabelsFromFingerprint)
+
 	return i, nil
 }
 
@@ -67,30 +79,61 @@ func newInstance(instanceID string, logger log.Logger, metrics *ingesterMetrics,
 func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	appendErr := multierror.New()
 
+	entriesByStream := make(map[string][]logproto.Entry)
 	for _, reqStream := range req.Streams {
 		if reqStream.Entries == nil || len(reqStream.Entries) == 0 {
 			continue
 		}
-		s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
+
+		for _, entry := range reqStream.Entries {
+			structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
+			//TODO(twhitney): messy dependency on distributor package. Move this function.
+			level := distributor.DetectLogLevelFromLogEntry(entry, structuredMetadata)
+
+			lbls, err := syntax.ParseLabels(reqStream.Labels)
+			if err != nil {
+				appendErr.Add(err)
+			}
+
+			lbls = append(lbls, labels.Label{Name: "level", Value: level})
+
+			stream := lbls.String()
+			if _, ok := entriesByStream[stream]; !ok {
+				entriesByStream[stream] = []logproto.Entry{}
+			}
+			entriesByStream[stream] = append(entriesByStream[stream], entry)
+		}
+	}
+
+	for ss, entries := range entriesByStream {
+		if len(entries) == 0 {
+			continue
+		}
+
+		s, _, err := i.streams.LoadOrStoreNew(ss,
 			func() (*stream, error) {
 				// add stream
-				return i.createStream(ctx, reqStream)
+				return i.createStream(ctx, ss, entries[0].Line)
 			}, nil)
 		if err != nil {
 			appendErr.Add(err)
 			continue
 		}
-		err = s.Push(ctx, reqStream.Entries)
+		err = s.Push(ctx, entries)
 		if err != nil {
 			appendErr.Add(err)
 			continue
 		}
 	}
+
 	return appendErr.Err()
 }
 
 // Iterator returns an iterator of pattern samples matching the given query patterns request.
-func (i *instance) Iterator(ctx context.Context, req *logproto.QueryPatternsRequest) (pattern_iter.Iterator, error) {
+func (i *instance) Iterator(
+	ctx context.Context,
+	req *logproto.QueryPatternsRequest,
+) (pattern_iter.Iterator, error) {
 	matchers, err := syntax.ParseMatchers(req.Query, true)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -207,15 +250,29 @@ outer:
 	return nil
 }
 
-func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream) (*stream, error) {
-	labels, err := syntax.ParseLabels(pushReqStream.Labels)
+func (i *instance) createStream(
+	_ context.Context,
+	lbls string,
+	firstEntryLine string,
+) (*stream, error) {
+	labels, err := syntax.ParseLabels(lbls)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 	fp := i.getHashForLabels(labels)
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
-	firstEntryLine := pushReqStream.Entries[0].Line
-	s, err := newStream(fp, sortedLabels, i.metrics, i.chunkMetrics, i.aggregationCfg, i.logger, drain.DetectLogFormat(firstEntryLine), i.instanceID, i.drainCfg)
+	s, err := newStream(
+		fp,
+		sortedLabels,
+		i.metrics,
+		i.chunkMetrics,
+		i.aggregationCfg,
+		i.logger,
+		drain.DetectLogFormat(firstEntryLine),
+		i.instanceID,
+		i.drainCfg,
+		i.writer,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}

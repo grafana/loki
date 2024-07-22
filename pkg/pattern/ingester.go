@@ -176,6 +176,7 @@ func (i *Ingester) stopping(_ error) error {
 		flushQueue.Close()
 	}
 	i.flushQueuesDone.Wait()
+	i.stopWriters()
 	return err
 }
 
@@ -313,25 +314,6 @@ func (i *Ingester) QuerySample(
 		return err
 	}
 
-	// TODO(twhitney): query store
-	// if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
-	// 	storeReq := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
-	// 		Start:    start,
-	// 		End:      end,
-	// 		Selector: req.Selector,
-	// 		Shards:   req.Shards,
-	// 		Deletes:  req.Deletes,
-	// 		Plan:     req.Plan,
-	// 	}}
-	// 	storeItr, err := i.store.SelectSamples(ctx, storeReq)
-	// 	if err != nil {
-	// 		util.LogErrorWithContext(ctx, "closing iterator", it.Close)
-	// 		return err
-	// 	}
-
-	// 	it = iter.NewMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
-	// }
-
 	defer util.LogErrorWithContext(ctx, "closing iterator", iterator.Close)
 	return sendMetricSamples(ctx, iterator, stream, i.logger)
 }
@@ -383,7 +365,28 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 	defer i.instancesMtx.Unlock()
 	inst, ok = i.instances[instanceID]
 	if !ok {
+
 		var err error
+		var writer metric.EntryWriter
+
+		aggCfg := i.cfg.MetricAggregation
+		if aggCfg.Enabled {
+			writer, err = metric.NewPush(
+				aggCfg.LokiAddr,
+				instanceID,
+				aggCfg.WriteTimeout,
+				aggCfg.HTTPClientConfig,
+				aggCfg.BasicAuth.Username,
+				string(aggCfg.BasicAuth.Password),
+				aggCfg.UseTLS,
+				&aggCfg.BackoffConfig,
+				i.logger,
+			)
+			if err != nil {
+				return nil, err
+			}
+		}
+
 		inst, err = newInstance(
 			instanceID,
 			i.logger,
@@ -391,6 +394,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 			i.chunkMetrics,
 			i.drainCfg,
 			i.cfg.MetricAggregation,
+			writer,
 		)
 		if err != nil {
 			return nil, err
@@ -417,4 +421,14 @@ func (i *Ingester) getInstances() []*instance {
 		instances = append(instances, instance)
 	}
 	return instances
+}
+
+func (i *Ingester) stopWriters() {
+	instances := i.getInstances()
+
+	for _, instance := range instances {
+		if instance.writer != nil {
+			instance.writer.Stop()
+		}
+	}
 }

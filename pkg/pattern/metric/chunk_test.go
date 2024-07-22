@@ -3,10 +3,12 @@ package metric
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -449,29 +451,41 @@ func Test_Chunks_Iterator(t *testing.T) {
 }
 
 func TestDownsample(t *testing.T) {
+	mockWriter := &mockEntryWriter{}
+
+	mockWriter.On("WriteEntry", mock.Anything, mock.Anything, mock.Anything)
+
 	// Create a Chunks object with two rawChunks, each containing two Samples
 	c := NewChunks(labels.Labels{
 		labels.Label{Name: "foo", Value: "bar"},
+		labels.Label{Name: "service_name", Value: "foo_service"},
+		labels.Label{Name: "level", Value: "info"},
 	}, NewChunkMetrics(nil, "test"), log.NewNopLogger())
 
-	c.Observe(2.0, 1.0)
-	c.Observe(2.0, 1.0)
-	c.Observe(2.0, 1.0)
+	c.Observe(2, 1)
+	c.Observe(2, 1)
+	c.Observe(2, 1)
 
 	now := model.Time(5000)
 	// Call the Downsample function
-	c.Downsample(now)
+	c.Downsample(now, mockWriter)
 
-	chunks := c.chunks
-
-	require.Len(t, chunks, 1)
-
-	// Check that the result is a Chunk with the correct summed values
-	result := chunks[0]
-	require.Len(t, result.Samples, 1)
-	require.Equal(t, 6.0, result.Samples[0].Bytes)
-	require.Equal(t, 3.0, result.Samples[0].Count)
-	require.Equal(t, model.Time(5000), result.Samples[0].Timestamp)
+	mockWriter.AssertCalled(t, "WriteEntry", now.Time(), aggregatedMetricEntry(now, 6.0, 3.0), labels.Labels{
+		labels.Label{Name: AggregatedMetricLabel, Value: "foo_service"},
+		labels.Label{Name: "level", Value: "info"},
+	})
 
 	require.Len(t, c.rawSamples, 0)
+}
+
+type mockEntryWriter struct {
+	mock.Mock
+}
+
+func (m *mockEntryWriter) WriteEntry(ts time.Time, entry string, lbls labels.Labels) {
+	_ = m.Called(ts, entry, lbls)
+}
+
+func (m *mockEntryWriter) Stop() {
+	_ = m.Called()
 }

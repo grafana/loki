@@ -8,6 +8,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -20,6 +21,9 @@ import (
 
 func TestInstance_QuerySample(t *testing.T) {
 	setupInstance := func() *instance {
+		writer := &mockEntryWriter{}
+		writer.On("WriteEntry", mock.Anything, mock.Anything, mock.Anything)
+
 		instance, err := newInstance(
 			"test",
 			log.NewNopLogger(),
@@ -29,6 +33,7 @@ func TestInstance_QuerySample(t *testing.T) {
 			metric.AggregationConfig{
 				Enabled: true,
 			},
+			writer,
 		)
 
 		require.NoError(t, err)
