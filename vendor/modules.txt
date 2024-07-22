@@ -462,6 +462,9 @@ github.com/baidubce/bce-sdk-go/util/log
 # github.com/bboreham/go-loser v0.0.0-20230920113527-fcc2c21820a3
 ## explicit; go 1.20
 github.com/bboreham/go-loser
+# github.com/benbjohnson/immutable v0.4.0
+## explicit; go 1.18
+github.com/benbjohnson/immutable
 # github.com/beorn7/perks v1.0.1
 ## explicit; go 1.11
 github.com/beorn7/perks/quantile
@@ -481,7 +484,7 @@ github.com/census-instrumentation/opencensus-proto/gen-go/trace/v1
 # github.com/cespare/xxhash v1.1.0
 ## explicit
 github.com/cespare/xxhash
-# github.com/cespare/xxhash/v2 v2.2.0
+# github.com/cespare/xxhash/v2 v2.3.0
 ## explicit; go 1.11
 github.com/cespare/xxhash/v2
 # github.com/cncf/udpa/go v0.0.0-20220112060539-c52dc94e7fbe
@@ -509,6 +512,9 @@ github.com/containerd/fifo
 # github.com/containerd/log v0.1.0
 ## explicit; go 1.20
 github.com/containerd/log
+# github.com/coreos/etcd v3.3.27+incompatible
+## explicit
+github.com/coreos/etcd/pkg/fileutil
 # github.com/coreos/go-semver v0.3.0
 ## explicit
 github.com/coreos/go-semver/semver
@@ -516,11 +522,15 @@ github.com/coreos/go-semver/semver
 ## explicit
 github.com/coreos/go-systemd/activation
 github.com/coreos/go-systemd/internal/dlopen
+github.com/coreos/go-systemd/journal
 github.com/coreos/go-systemd/sdjournal
 # github.com/coreos/go-systemd/v22 v22.5.0
 ## explicit; go 1.12
 github.com/coreos/go-systemd/v22/activation
 github.com/coreos/go-systemd/v22/journal
+# github.com/coreos/pkg v0.0.0-20220810130054-c7d1c02cb6cf
+## explicit
+github.com/coreos/pkg/capnslog
 # github.com/cristalhq/hedgedhttp v0.9.1
 ## explicit; go 1.16
 github.com/cristalhq/hedgedhttp
@@ -922,8 +932,8 @@ github.com/gophercloud/gophercloud/openstack/identity/v3/extensions/oauth1
 github.com/gophercloud/gophercloud/openstack/identity/v3/tokens
 github.com/gophercloud/gophercloud/openstack/utils
 github.com/gophercloud/gophercloud/pagination
-# github.com/gorilla/mux v1.8.0
-## explicit; go 1.12
+# github.com/gorilla/mux v1.8.1
+## explicit; go 1.20
 github.com/gorilla/mux
 # github.com/gorilla/websocket v1.5.0
 ## explicit; go 1.12
@@ -1030,9 +1040,12 @@ github.com/hashicorp/go-hclog
 # github.com/hashicorp/go-immutable-radix v1.3.1
 ## explicit
 github.com/hashicorp/go-immutable-radix
-# github.com/hashicorp/go-msgpack v0.5.5
-## explicit
+# github.com/hashicorp/go-msgpack v1.1.5
+## explicit; go 1.13
 github.com/hashicorp/go-msgpack/codec
+# github.com/hashicorp/go-msgpack/v2 v2.1.1
+## explicit; go 1.19
+github.com/hashicorp/go-msgpack/v2/codec
 # github.com/hashicorp/go-multierror v1.1.1
 ## explicit; go 1.13
 github.com/hashicorp/go-multierror
@@ -1062,6 +1075,17 @@ github.com/hashicorp/golang-lru/v2/simplelru
 # github.com/hashicorp/memberlist v0.5.0 => github.com/grafana/memberlist v0.3.1-0.20220714140823-09ffed8adbbe
 ## explicit; go 1.12
 github.com/hashicorp/memberlist
+# github.com/hashicorp/raft v1.7.0
+## explicit; go 1.20
+github.com/hashicorp/raft
+# github.com/hashicorp/raft-wal v0.4.1
+## explicit; go 1.18
+github.com/hashicorp/raft-wal
+github.com/hashicorp/raft-wal/fs
+github.com/hashicorp/raft-wal/metadb
+github.com/hashicorp/raft-wal/metrics
+github.com/hashicorp/raft-wal/segment
+github.com/hashicorp/raft-wal/types
 # github.com/hashicorp/serf v0.10.1
 ## explicit; go 1.12
 github.com/hashicorp/serf/coordinate
@@ -1916,6 +1940,7 @@ google.golang.org/grpc/encoding/gzip
 google.golang.org/grpc/encoding/proto
 google.golang.org/grpc/experimental
 google.golang.org/grpc/grpclog
+google.golang.org/grpc/health
 google.golang.org/grpc/health/grpc_health_v1
 google.golang.org/grpc/internal
 google.golang.org/grpc/internal/admin

@@ -12,6 +12,8 @@ weight:  500
 This plugin has more configuration options compared to the built-in Fluent Bit Loki plugin.
 You can define which log files you want to collect using the [`Tail`](https://docs.fluentbit.io/manual/pipeline/inputs/tail) or [`Stdin`](https://docs.fluentbit.io/manual/pipeline/inputs/standard-input) data pipeline input. Additionally, Fluent Bit supports multiple `Filter` and `Parser` plugins (`Kubernetes`, `JSON`, etc.) to structure and alter log lines.
 
+{{< youtube id="s43IBSVyTpQ" >}}
+
 ## Usage
 
 ### Docker

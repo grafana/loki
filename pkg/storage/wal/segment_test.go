@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/wal/testdata"
@@ -443,6 +444,45 @@ func TestReset(t *testing.T) {
 	require.True(t, n > 0)
 
 	require.Equal(t, dst.Bytes(), copyBuffer.Bytes())
+}
+
+func Test_Meta(t *testing.T) {
+	w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
+	require.NoError(t, err)
+
+	lbls := labels.FromStrings("container", "foo", "namespace", "dev")
+	w.Append("tenantb", lbls.String(), lbls, []*push.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "Entry 1"},
+		{Timestamp: time.Unix(2, 0), Line: "Entry 2"},
+		{Timestamp: time.Unix(3, 0), Line: "Entry 3"},
+	})
+	lbls = labels.FromStrings("container", "bar", "namespace", "dev")
+	w.Append("tenanta", lbls.String(), lbls, []*push.Entry{
+		{Timestamp: time.Unix(2, 0), Line: "Entry 1"},
+		{Timestamp: time.Unix(3, 0), Line: "Entry 2"},
+		{Timestamp: time.Unix(4, 0), Line: "Entry 3"},
+	})
+	meta := w.Meta("bar")
+
+	require.Equal(t, &metastorepb.BlockMeta{
+		FormatVersion:   1,
+		Id:              "bar",
+		MinTime:         time.Unix(1, 0).UnixNano(),
+		MaxTime:         time.Unix(4, 0).UnixNano(),
+		CompactionLevel: 0,
+		TenantStreams: []*metastorepb.TenantStreams{
+			{
+				TenantId: "tenanta",
+				MinTime:  time.Unix(2, 0).UnixNano(),
+				MaxTime:  time.Unix(4, 0).UnixNano(),
+			},
+			{
+				TenantId: "tenantb",
+				MinTime:  time.Unix(1, 0).UnixNano(),
+				MaxTime:  time.Unix(3, 0).UnixNano(),
+			},
+		},
+	}, meta)
 }
 
 func BenchmarkWrites(b *testing.B) {
