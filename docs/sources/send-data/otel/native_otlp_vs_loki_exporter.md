@@ -32,7 +32,7 @@ OpenTelemetry (OTel) is quickly becoming an industry standard with increasing ad
 
 - Index Labels:
   - It supports label control via per-tenant OTLP configuration in Loki.
-  - By default, it picks some pre-configured resource attributes as index labels as explained [here](http://localhost:3002/docs/loki/<LOKI_VERSION>/send-data/otel/#format-considerations).
+  - By default, it picks some pre-configured resource attributes as index labels as explained [here](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/otel/#format-considerations).
 - LogLine: Stringified LogRecord.Body.
 - Structured Metadata: Anything not stored in Index labels and LogLine gets stored as [Structured Metadata](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/structured-metadata/).
 
