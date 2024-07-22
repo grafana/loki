@@ -2640,7 +2640,7 @@ null
     "tolerations": []
   },
   "useExternalLicense": false,
-  "version": "3.0.1"
+  "version": "3.1.0"
 }
 </pre>
 </td>
@@ -6375,6 +6375,24 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.rules</td>
+			<td>object</td>
+			<td>DEPRECATED Recording rules for monitoring Loki, required for some dashboards</td>
+			<td><pre lang="json">
+{
+  "additionalGroups": [],
+  "additionalRuleLabels": {},
+  "alerting": true,
+  "annotations": {},
+  "disabled": {},
+  "enabled": false,
+  "labels": {},
+  "namespace": null
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.rules.additionalGroups</td>
 			<td>list</td>
 			<td>Additional groups to add to the rules file</td>
@@ -6447,6 +6465,60 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.selfMonitoring</td>
+			<td>object</td>
+			<td>DEPRECATED Self monitoring determines whether Loki should scrape its own logs. This feature currently relies on the Grafana Agent Operator being installed, which is installed by default using the grafana-agent-operator sub-chart. It will create custom resources for GrafanaAgent, LogsInstance, and PodLogs to configure scrape configs to scrape its own logs with the labels expected by the included dashboards.</td>
+			<td><pre lang="json">
+{
+  "enabled": false,
+  "grafanaAgent": {
+    "annotations": {},
+    "enableConfigReadAPI": false,
+    "installOperator": false,
+    "labels": {},
+    "priorityClassName": null,
+    "resources": {},
+    "tolerations": []
+  },
+  "logsInstance": {
+    "annotations": {},
+    "clients": null,
+    "labels": {}
+  },
+  "podLogs": {
+    "additionalPipelineStages": [],
+    "annotations": {},
+    "apiVersion": "monitoring.grafana.com/v1alpha1",
+    "labels": {},
+    "relabelings": []
+  },
+  "tenant": {
+    "name": "self-monitoring",
+    "password": null,
+    "secretNamespace": "{{ .Release.Namespace }}"
+  }
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.selfMonitoring.grafanaAgent</td>
+			<td>object</td>
+			<td>DEPRECATED Grafana Agent configuration</td>
+			<td><pre lang="json">
+{
+  "annotations": {},
+  "enableConfigReadAPI": false,
+  "installOperator": false,
+  "labels": {},
+  "priorityClassName": null,
+  "resources": {},
+  "tolerations": []
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.selfMonitoring.grafanaAgent.annotations</td>
 			<td>object</td>
 			<td>Grafana Agent annotations</td>
@@ -6467,7 +6539,7 @@ false
 		<tr>
 			<td>monitoring.selfMonitoring.grafanaAgent.installOperator</td>
 			<td>bool</td>
-			<td>Controls whether to install the Grafana Agent Operator and its CRDs. Note that helm will not install CRDs if this flag is enabled during an upgrade. In that case install the CRDs manually from https://github.com/grafana/agent/tree/main/production/operator/crds</td>
+			<td>DEPRECATED Controls whether to install the Grafana Agent Operator and its CRDs. Note that helm will not install CRDs if this flag is enabled during an upgrade. In that case install the CRDs manually from https://github.com/grafana/agent/tree/main/production/operator/crds</td>
 			<td><pre lang="json">
 false
 </pre>

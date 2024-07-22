@@ -2,17 +2,18 @@ package v1
 
 import (
 	"math"
+	"unsafe"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-
-	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	v2iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 /*
@@ -23,6 +24,7 @@ Bloom filters are utilized for faster lookups of log lines.
 */
 type BloomTokenizer struct {
 	metrics *Metrics
+	logger  log.Logger
 
 	maxBloomSize  int // size in bytes
 	lineTokenizer *NGramTokenizer
@@ -38,11 +40,11 @@ const eightBits = 8
 // 1) The token slices generated must not be mutated externally
 // 2) The token slice must not be used after the next call to `Tokens()` as it will repopulate the slice.
 // 2) This is not thread safe.
-func NewBloomTokenizer(nGramLen, nGramSkip int, maxBloomSize int, metrics *Metrics) *BloomTokenizer {
-	// TODO(chaudum): Replace logger
-	level.Info(util_log.Logger).Log("msg", "create new bloom tokenizer", "ngram length", nGramLen, "ngram skip", nGramSkip)
+func NewBloomTokenizer(nGramLen, nGramSkip int, maxBloomSize int, metrics *Metrics, logger log.Logger) *BloomTokenizer {
+	level.Info(logger).Log("msg", "create new bloom tokenizer", "ngram length", nGramLen, "ngram skip", nGramSkip)
 	return &BloomTokenizer{
 		metrics:       metrics,
+		logger:        logger,
 		cache:         make(map[string]interface{}, cacheSize),
 		lineTokenizer: NewNGramTokenizer(nGramLen, nGramSkip),
 		maxBloomSize:  maxBloomSize,
@@ -119,6 +121,16 @@ func (bt *BloomTokenizer) Populate(
 	if next {
 		// The last bloom has been made available via the `Next()` call above
 		bloom = blooms.At()
+
+		// TODO(salvacorts): Delete this once we solve the correctness bug
+		// We noticed some blooms are empty on the resulting blocks.
+		// We have the feeling that the empty blooms may be reused from old blocks.
+		// Here we log an error if we find an empty bloom.
+		if bloom.Count() == 0 {
+			level.Warn(bt.logger).Log(
+				"msg", "found existing empty bloom",
+			)
+		}
 	} else {
 		bloom = bt.newBloom()
 	}
@@ -154,7 +166,13 @@ func (bt *BloomTokenizer) Populate(
 
 			break
 		}
+	}
 
+	// TODO(salvacorts): Delete this once we solve the correctness bug
+	if bloom.Count() == 0 {
+		level.Warn(bt.logger).Log(
+			"msg", "resulting bloom is empty",
+		)
 	}
 
 	// Send the last bloom
@@ -216,10 +234,12 @@ outer:
 			for itr.Next() {
 				tok := itr.At()
 				tokens++
+
 				// TODO[owen-d]: [n]byte this
-				str := string(tok)
-				_, found := bt.cache[str] // A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
-				if found {
+				// To avoid allocations, an unsafe string can be used to check ownership in cache.
+				str := unsafe.String(unsafe.SliceData(tok), len(tok))
+				// A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
+				if _, found := bt.cache[str]; found {
 					cachedInserts++
 					continue
 				}
@@ -246,6 +266,7 @@ outer:
 
 				// only register the key in the cache if it was successfully added to the bloom
 				// as can prevent us from trying subsequent copies
+				str = string(tok)
 				bt.cache[str] = nil
 				if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
 					clear(bt.cache)

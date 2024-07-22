@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"net/http"
-	"net/url"
 	"time"
 
 	"github.com/go-kit/log"
@@ -25,7 +24,6 @@ type promtailClient struct {
 type promtailClientConfig struct {
 	backoff *backoff.Config
 	http    *httpClientConfig
-	url     *url.URL
 }
 
 type httpClientConfig struct {
