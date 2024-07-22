@@ -1213,6 +1213,7 @@ func determineType(value string) logproto.DetectedFieldType {
 func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.Streams) map[string]*parsedFields {
 	detectedFields := make(map[string]*parsedFields, limit)
 	fieldCount := uint32(0)
+	emtpyparser := ""
 
 	for _, stream := range streams {
 		level.Debug(spanlogger.FromContext(ctx)).Log(
@@ -1221,7 +1222,6 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 
 		for _, entry := range stream.Entries {
 			structuredMetadata := getStructuredMetadata(entry)
-			emtpyparser := ""
 			for k, vals := range structuredMetadata {
 				df, ok := detectedFields[k]
 				if !ok && fieldCount < limit {
