@@ -182,7 +182,9 @@ func genBlock(ref bloomshipper.BlockRef) (bloomshipper.Block, error) {
 		return bloomshipper.Block{}, err
 	}
 
-	_, err = builder.BuildFrom(iter.NewEmptyIter[v1.SeriesWithBlooms]())
+	if _, err = builder.BuildFrom(iter.NewEmptyIter[v1.SeriesWithBlooms]()); err != nil {
+		return bloomshipper.Block{}, err
+	}
 
 	block := v1.NewBlock(reader, v1.NewMetrics(nil))
 
