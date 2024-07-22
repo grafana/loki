@@ -13,9 +13,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
-## 6.7.0
+## 6.8.0
 
 - [CHANGE] Changed `gateway.readinessProbe.httpGet.port` from `http-metrics` to `http` to avoid beeing scraped by the ServiceMonitor #13350
+
 ## 6.7.1
 
 - [CHANGE] Changed version of Loki to 3.1.0
