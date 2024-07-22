@@ -1,0 +1,16 @@
+{
+    "bootstrap-sha": "c8cc0fb3bc0d72c06fc8df8dc66df09043a8f66e",
+    "bump-minor-pre-major": true,
+    "bump-patch-for-minor-pre-major": true,
+    "include-component-in-tag": true,
+    "draft": true,
+    "tag-separator": "/",
+    "packages": {
+        "operator": {
+            "component": "operator",
+            "release-type": "go",
+            "pull-request-title-pattern": "chore(${component}): community release ${version}",
+            "changelog-path": "CHANGELOG.md"
+        }
+    }
+}

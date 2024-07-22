@@ -28,7 +28,7 @@ func Applicable(resp *http.Response) bool {
 }
 
 // CanResume returns true if the token can rehydrate this poller type.
-func CanResume(token map[string]interface{}) bool {
+func CanResume(token map[string]any) bool {
 	t, ok := token["type"]
 	if !ok {
 		return false
@@ -103,6 +103,10 @@ func (p *Poller[T]) Poll(ctx context.Context) (*http.Response, error) {
 		} else if resp.StatusCode > 199 && resp.StatusCode < 300 {
 			// any 2xx other than a 202 indicates success
 			p.CurState = poller.StatusSucceeded
+		} else if pollers.IsNonTerminalHTTPStatusCode(resp) {
+			// the request timed out or is being throttled.
+			// DO NOT include this as a terminal failure. preserve
+			// the existing state and return the response.
 		} else {
 			p.CurState = poller.StatusFailed
 		}

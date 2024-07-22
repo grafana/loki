@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -37,8 +38,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/series"
 	series_index "github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/gatewayclient"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/indexgateway"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/deletion"
@@ -280,7 +279,7 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 	if p.IndexType == types.TSDBType {
 		if shouldUseIndexGatewayClient(s.cfg.TSDBShipperConfig) {
 			// inject the index-gateway client into the index store
-			gw, err := gatewayclient.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
+			gw, err := indexgateway.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger, s.metricsNamespace)
 			if err != nil {
 				return nil, nil, nil, err
 			}
@@ -367,6 +366,7 @@ func decodeReq(req logql.QueryParams) ([]*labels.Matcher, model.Time, model.Time
 
 // TODO(owen-d): refactor this. Injecting shard labels via matchers is a big hack and we shouldn't continue
 // doing it, _but_ it requires adding `fingerprintfilter` support to much of our storage interfaces
+// or a way to transform the base store into a more specialized variant.
 func injectShardLabel(shards []string, matchers []*labels.Matcher) ([]*labels.Matcher, error) {
 	if shards != nil {
 		parsed, _, err := logql.ParseShards(shards)
@@ -402,8 +402,13 @@ func (s *LokiStore) SetPipelineWrapper(wrapper lokilog.PipelineWrapper) {
 	s.pipelineWrapper = wrapper
 }
 
-// lazyChunks is an internal function used to resolve a set of lazy chunks from the store without actually loading them. It's used internally by `LazyQuery` and `GetSeries`
-func (s *LokiStore) lazyChunks(ctx context.Context, from, through model.Time, predicate chunk.Predicate) ([]*LazyChunk, error) {
+// lazyChunks is an internal function used to resolve a set of lazy chunks from the store without actually loading them.
+func (s *LokiStore) lazyChunks(
+	ctx context.Context,
+	from, through model.Time,
+	predicate chunk.Predicate,
+	storeChunksOverride *logproto.ChunkRefGroup,
+) ([]*LazyChunk, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -412,7 +417,7 @@ func (s *LokiStore) lazyChunks(ctx context.Context, from, through model.Time, pr
 	stats := stats.FromContext(ctx)
 
 	start := time.Now()
-	chks, fetchers, err := s.GetChunks(ctx, userID, from, through, predicate)
+	chks, fetchers, err := s.GetChunks(ctx, userID, from, through, predicate, storeChunksOverride)
 	stats.AddChunkRefsFetchTime(time.Since(start))
 
 	if err != nil {
@@ -428,6 +433,9 @@ func (s *LokiStore) lazyChunks(ctx context.Context, from, through model.Time, pr
 		filtered += len(chks[i])
 	}
 
+	if storeChunksOverride != nil {
+		s.chunkMetrics.refsBypassed.Add(float64(len(storeChunksOverride.Refs)))
+	}
 	s.chunkMetrics.refs.WithLabelValues(statusDiscarded).Add(float64(prefiltered - filtered))
 	s.chunkMetrics.refs.WithLabelValues(statusMatched).Add(float64(filtered))
 
@@ -488,13 +496,13 @@ func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (
 		return nil, err
 	}
 
-	lazyChunks, err := s.lazyChunks(ctx, from, through, chunk.NewPredicate(matchers, req.Plan))
+	lazyChunks, err := s.lazyChunks(ctx, from, through, chunk.NewPredicate(matchers, req.Plan), req.GetStoreChunks())
 	if err != nil {
 		return nil, err
 	}
 
 	if len(lazyChunks) == 0 {
-		return iter.NoopIterator, nil
+		return iter.NoopEntryIterator, nil
 	}
 
 	expr, err := req.LogSelector()
@@ -535,13 +543,13 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 		return nil, err
 	}
 
-	lazyChunks, err := s.lazyChunks(ctx, from, through, chunk.NewPredicate(matchers, req.Plan))
+	lazyChunks, err := s.lazyChunks(ctx, from, through, chunk.NewPredicate(matchers, req.Plan), req.GetStoreChunks())
 	if err != nil {
 		return nil, err
 	}
 
 	if len(lazyChunks) == 0 {
-		return iter.NoopIterator, nil
+		return iter.NoopSampleIterator, nil
 	}
 
 	expr, err := req.Expr()

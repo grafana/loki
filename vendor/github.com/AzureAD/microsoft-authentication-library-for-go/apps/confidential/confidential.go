@@ -48,8 +48,8 @@ duplication.
 
 .Net People, Take note on X509:
 This uses x509.Certificates and private keys. x509 does not store private keys. .Net
-has some x509.Certificate2 thing that has private keys, but that is just some bullcrap that .Net
-added, it doesn't exist in real life. As such I've put a PEM decoder into here.
+has a x509.Certificate2 abstraction that has private keys, but that just a strange invention.
+As such I've put a PEM decoder into here.
 */
 
 // TODO(msal): This should have example code for each method on client using Go's example doc framework.

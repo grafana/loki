@@ -14,6 +14,8 @@ instance or [Grafana Cloud](/products/cloud/).
 
 The plugin source code is in the [fluentd directory of the repository](https://github.com/grafana/loki/tree/main/clients/cmd/fluentd).
 
+{{< youtube id="s43IBSVyTpQ" >}}
+
 ## Installation
 
 ### Local
@@ -154,7 +156,7 @@ Use with the `remove_keys kubernetes` option to eliminate metadata from the log.
 
 ### Multi-worker usage
 
-Loki enables out-of-order inserts by default; refer to [accept out-of-order writes]({{< relref "../../configure#accept-out-of-order-writes" >}}).
+Loki enables out-of-order inserts by default; refer to [accept out-of-order writes](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#accept-out-of-order-writes).
 If out-of-order inserts are _disabled_, attempting to insert a log entry with an earlier timestamp after a log entry with identical labels but a later timestamp, the insert will fail with `HTTP status code: 500, message: rpc error: code = Unknown desc = Entry out of order`. Therefore, in order to use this plugin in a multi worker Fluentd setup, you'll need to include the worker ID in the labels or otherwise [ensure log streams are always sent to the same worker](https://docs.fluentd.org/deployment/multi-process-workers#less-than-worker-n-greater-than-directive).
 
 For example, using [fluent-plugin-record-modifier](https://github.com/repeatedly/fluent-plugin-record-modifier):

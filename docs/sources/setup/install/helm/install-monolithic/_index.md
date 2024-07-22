@@ -12,7 +12,7 @@ weight: 100
 
 This Helm Chart installation runs the Grafana Loki *single binary* within a Kubernetes cluster.
 
-If you set the `singleBinary.replicas` value to 1, this chart configures Loki to run the `all` target in a [monolithic mode]({{< relref "../../../../get-started/deployment-modes#monolithic-mode" >}}), designed to work with a filesystem storage. It will also configure meta-monitoring of metrics and logs.
+If you set the `singleBinary.replicas` value to 1 and set the deployment mode to `SingleBinary`, this chart configures Loki to run the `all` target in a [monolithic mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode), designed to work with a filesystem storage. It will also configure meta-monitoring of metrics and logs.
 If you set the `singleBinary.replicas` value to 2 or more, this chart configures Loki to run a *single binary* in a replicated, highly available mode.  When running replicas of a single binary, you must configure object storage.
 
 **Before you begin: Software Requirements**
@@ -39,13 +39,29 @@ If you set the `singleBinary.replicas` value to 2 or more, this chart configures
     - If running a single replica of Loki, configure the `filesystem` storage:
 
       ```yaml
+      deploymentMode: SingleBinary
       loki:
         commonConfig:
           replication_factor: 1
         storage:
           type: 'filesystem'
+        schemaConfig:
+          configs:
+          - from: "2024-01-01"
+            store: tsdb
+            index:
+              prefix: loki_index_
+              period: 24h
+            object_store: filesystem # we're storing on filesystem so there's no real persistence here.
+            schema: v13
       singleBinary:
         replicas: 1
+      read:
+        replicas: 0
+      backend:
+        replicas: 0
+      write:
+        replicas: 0
       ```
 
     - If running Loki with a replication factor greater than 1, set the desired number replicas and provide object storage credentials:
@@ -54,11 +70,16 @@ If you set the `singleBinary.replicas` value to 2 or more, this chart configures
       loki:
         commonConfig:
           replication_factor: 3
+        schemaConfig:
+          configs:
+          - from: "2024-01-01"
+            store: tsdb
+            index:
+              prefix: loki_index_
+              period: 24h
+            object_store: s3
+            schema: v13
         storage:
-          bucketNames:
-            chunks: loki-chunks
-            ruler: loki-ruler
-            admin: loki-admin
           type: 's3'
           bucketNames:
             chunks: loki-chunks

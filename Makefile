@@ -36,8 +36,9 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
 
-# ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION ?= 0.33.1
+# ensure you run `make drone` and `make release-workflows` after changing this
+BUILD_IMAGE_VERSION ?= 0.33.4
+GO_VERSION := 1.22.5
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -85,10 +86,11 @@ PROMTAIL_UI_FILES := $(shell find ./clients/pkg/promtail/server/ui -type f -name
 
 # Documentation source path
 DOC_SOURCES_PATH := docs/sources
+DOC_TEMPLATE_PATH := docs/templates
 
 # Configuration flags documentation
-DOC_FLAGS_TEMPLATE := $(DOC_SOURCES_PATH)/configure/index.template
-DOC_FLAGS := $(DOC_SOURCES_PATH)/configure/_index.md
+DOC_FLAGS_TEMPLATE := $(DOC_TEMPLATE_PATH)/configuration.template
+DOC_FLAGS := $(DOC_SOURCES_PATH)/shared/configuration.md
 
 ##########
 # Docker #
@@ -140,7 +142,7 @@ logcli: cmd/logcli/logcli ## build logcli executable
 logcli-debug: cmd/logcli/logcli-debug ## build debug logcli executable
 
 logcli-image: ## build logcli docker image
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/logcli:$(IMAGE_TAG) -f cmd/logcli/Dockerfile .
+	$(SUDO) docker build --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/logcli:$(IMAGE_TAG) -f cmd/logcli/Dockerfile .
 
 cmd/logcli/logcli:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./cmd/logcli
@@ -202,6 +204,15 @@ loki-querytee: cmd/querytee/querytee ## build loki-querytee executable
 
 cmd/querytee/querytee:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
+
+############
+# lokitool #
+############
+.PHONY: cmd/lokitool/lokitool
+lokitool: cmd/lokitool/lokitool ## build lokitool executable
+
+cmd/lokitool/lokitool:
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./cmd/lokitool
 
 ############
 # Promtail #
@@ -291,12 +302,14 @@ ifeq ($(SKIP_ARM),true)
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/logcli
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
+	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 darwin/amd64 windows/amd64 freebsd/amd64" ./cmd/lokitool
 	CGO_ENABLED=0 $(GOX) -osarch="darwin/amd64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
 	CGO_ENABLED=1 $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/amd64" ./clients/cmd/promtail
 else
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/logcli
 	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/loki-canary
+	CGO_ENABLED=0 $(GOX) -osarch="linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 freebsd/amd64" ./cmd/lokitool
 	CGO_ENABLED=0 $(GOX) -osarch="darwin/amd64 darwin/arm64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
 	PKG_CONFIG_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig" CC="aarch64-linux-gnu-gcc" $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/arm64" ./clients/cmd/promtail
 	PKG_CONFIG_PATH="/usr/lib/arm-linux-gnueabihf/pkgconfig" CC="arm-linux-gnueabihf-gcc" $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/arm" ./clients/cmd/promtail
@@ -585,9 +598,9 @@ endef
 
 # promtail
 promtail-image: ## build the promtail docker image
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) -f clients/cmd/promtail/Dockerfile .
+	$(SUDO) docker build --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) -f clients/cmd/promtail/Dockerfile .
 promtail-image-cross:
-	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) -f clients/cmd/promtail/Dockerfile.cross .
+	$(SUDO) $(BUILD_OCI) --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) -f clients/cmd/promtail/Dockerfile.cross .
 
 promtail-debug-image: ## build the promtail debug docker image
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG)-debug -f clients/cmd/promtail/Dockerfile.debug .
@@ -597,47 +610,47 @@ promtail-push: promtail-image-cross
 
 # loki
 loki-image: ## build the loki docker image
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile .
+	$(SUDO) docker build --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile .
 loki-image-cross:
-	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile.cross .
+	$(SUDO) $(BUILD_OCI) --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile.cross .
 
 loki-debug-image: ## build the debug loki docker image
-	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)-debug -f cmd/loki/Dockerfile.debug .
+	$(SUDO) $(BUILD_OCI) --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)-debug -f cmd/loki/Dockerfile.debug .
 
 loki-push: loki-image-cross
 	$(call push-image,loki)
 
 # loki-canary
 loki-canary-image: ## build the loki canary docker image
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile .
+	$(SUDO) docker build --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile .
 loki-canary-image-cross:
-	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile.cross .
+	$(SUDO) $(BUILD_OCI) --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile.cross .
 loki-canary-image-cross-boringcrypto:
-	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-canary-boringcrypto:$(IMAGE_TAG) -f cmd/loki-canary-boringcrypto/Dockerfile .
+	$(SUDO) $(BUILD_OCI) --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-canary-boringcrypto:$(IMAGE_TAG) -f cmd/loki-canary-boringcrypto/Dockerfile .
 loki-canary-push: loki-canary-image-cross
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
 loki-canary-push-boringcrypto: loki-canary-image-cross-boringcrypto
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-canary-boringcrypto:$(IMAGE_TAG)
 helm-test-image: ## build the helm test image
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG) -f production/helm/loki/src/helm-test/Dockerfile .
+	$(SUDO) docker build --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG) -f production/helm/loki/src/helm-test/Dockerfile .
 helm-test-push: helm-test-image ## push the helm test image
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG)
 
 # loki-querytee
 loki-querytee-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG) -f cmd/querytee/Dockerfile .
+	$(SUDO) docker build --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG) -f cmd/querytee/Dockerfile .
 loki-querytee-image-cross:
-	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG) -f cmd/querytee/Dockerfile.cross .
+	$(SUDO) $(BUILD_OCI) --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG) -f cmd/querytee/Dockerfile.cross .
 loki-querytee-push: loki-querytee-image-cross
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG)
 
 # migrate-image
 migrate-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-migrate:$(IMAGE_TAG) -f cmd/migrate/Dockerfile .
+	$(SUDO) docker build --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-migrate:$(IMAGE_TAG) -f cmd/migrate/Dockerfile .
 
 # LogQL Analyzer
 logql-analyzer-image: ## build the LogQL Analyzer image
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/logql-analyzer:$(IMAGE_TAG) -f cmd/logql-analyzer/Dockerfile .
+	$(SUDO) docker build --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/logql-analyzer:$(IMAGE_TAG) -f cmd/logql-analyzer/Dockerfile .
 logql-analyzer-push: logql-analyzer-image ## push the LogQL Analyzer image
 	$(call push-image,logql-analyzer)
 
@@ -651,14 +664,15 @@ else
 endif
 
 build-image: ensure-buildx-builder
-	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) ./loki-build-image
+	$(SUDO) $(BUILD_OCI) --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) ./loki-build-image
 build-image-push: build-image ## push the docker build image
 ifneq (,$(findstring WIP,$(IMAGE_TAG)))
 	@echo "Cannot push a WIP image, commit changes first"; \
 	false;
 endif
 	echo ${DOCKER_PASSWORD} | docker login --username ${DOCKER_USERNAME} --password-stdin
-	$(SUDO) $(BUILD_OCI) -o type=registry -t $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) ./loki-build-image
+	$(SUDO) DOCKER_BUILDKIT=$(DOCKER_BUILDKIT) docker buildx build $(OCI_PLATFORMS) \
+		-o type=registry -t $(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) ./loki-build-image
 
 # loki-operator
 loki-operator-image:
@@ -804,7 +818,13 @@ check-format: format
 # Documentation related commands
 
 doc: ## Generates the config file documentation
+ifeq ($(BUILD_IN_CONTAINER),true)
+	$(SUDO) docker run $(RM) $(TTY) -i \
+		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
+		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
+else
 	go run ./tools/doc-generator $(DOC_FLAGS_TEMPLATE) > $(DOC_FLAGS)
+endif
 
 docs: doc
 
@@ -883,4 +903,17 @@ scan-vulnerabilities: trivy snyk
 .PHONY: release-workflows
 release-workflows:
 	pushd $(CURDIR)/.github && jb update && popd
-	jsonnet -SJ .github/vendor -m .github/workflows .github/release-workflows.jsonnet
+	jsonnet -SJ .github/vendor -m .github/workflows -V BUILD_IMAGE_VERSION=$(BUILD_IMAGE_VERSION) .github/release-workflows.jsonnet
+
+.PHONY: release-workflows-check
+release-workflows-check:
+ifeq ($(BUILD_IN_CONTAINER),true)
+	$(SUDO) docker run  $(RM) $(TTY) -i \
+		-v $(shell go env GOPATH)/pkg:/go/pkg$(MOUNT_FLAGS) \
+		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
+		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
+else
+	@$(MAKE) release-workflows
+	@echo "Checking diff"
+	@git diff --exit-code -- ".github/workflows/*release*" || (echo "Please build release workflows by running 'make release-workflows'" && false)
+endif

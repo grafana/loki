@@ -11,6 +11,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -21,12 +22,14 @@ import (
 	logqllog "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	logutil "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 const (
@@ -203,7 +206,7 @@ func NewMiddleware(
 		return nil, nil, err
 	}
 
-	limitedTripperware, err := NewLimitedTripperware(cfg, engineOpts, log, limits, schema, metrics, indexStatsTripperware, codec, iqo)
+	limitedTripperware, err := NewLimitedTripperware(cfg, engineOpts, log, limits, schema, metrics, codec, iqo, indexStatsTripperware, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -235,6 +238,32 @@ func NewMiddleware(
 		return nil, nil, err
 	}
 
+	detectedFieldsTripperware, err := NewDetectedFieldsTripperware(
+		cfg,
+		log,
+		limits,
+		schema,
+		codec,
+		iqo,
+		metrics,
+		metricsNamespace)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	detectedLabelsTripperware, err := NewDetectedLabelsTripperware(
+		cfg,
+		engineOpts,
+		log,
+		limits,
+		schema,
+		metrics,
+		indexStatsTripperware,
+		metricsNamespace,
+		codec, limits, iqo)
+	if err != nil {
+		return nil, nil, err
+	}
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		var (
 			metricRT         = metricsTripperware.Wrap(next)
@@ -243,14 +272,71 @@ func NewMiddleware(
 			seriesRT         = seriesTripperware.Wrap(next)
 			labelsRT         = labelsTripperware.Wrap(next)
 			instantRT        = instantMetricTripperware.Wrap(next)
-			statsRT          = indexStatsTripperware.Wrap(next)
+			statsRT          = base.MergeMiddlewares(StatsCollectorMiddleware(), indexStatsTripperware).Wrap(next)
 			seriesVolumeRT   = seriesVolumeTripperware.Wrap(next)
-			detectedFieldsRT = next // TODO(twhitney): add middlewares for detected fields
-			detectedLabelsRT = next // TODO(shantanu): add middlewares
+			detectedFieldsRT = detectedFieldsTripperware.Wrap(next)
+			detectedLabelsRT = detectedLabelsTripperware.Wrap(next)
 		)
 
 		return newRoundTripper(log, next, limitedRT, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, statsRT, seriesVolumeRT, detectedFieldsRT, detectedLabelsRT, limits)
 	}), StopperWrapper{resultsCache, statsCache, volumeCache}, nil
+}
+
+func NewDetectedLabelsTripperware(cfg Config, opts logql.EngineOpts, logger log.Logger, l Limits, schema config.SchemaConfig, metrics *Metrics, mw base.Middleware, namespace string, merger base.Merger, limits Limits, iqo util.IngesterQueryOptions) (base.Middleware, error) {
+	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
+		statsHandler := mw.Wrap(next)
+		splitter := newDefaultSplitter(limits, iqo)
+
+		queryRangeMiddleware := []base.Middleware{
+			StatsCollectorMiddleware(),
+			NewLimitsMiddleware(l),
+			NewQuerySizeLimiterMiddleware(schema.Configs, opts, logger, l, statsHandler),
+			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
+			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitter, metrics.SplitByMetrics),
+		}
+
+		// The sharding middleware takes care of enforcing this limit for both shardable and non-shardable queries.
+		// If we are not using sharding, we enforce the limit by adding this middleware after time splitting.
+		queryRangeMiddleware = append(queryRangeMiddleware,
+			NewQuerierSizeLimiterMiddleware(schema.Configs, opts, logger, l, statsHandler),
+		)
+
+		if cfg.MaxRetries > 0 {
+			queryRangeMiddleware = append(
+				queryRangeMiddleware, base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
+				base.NewRetryMiddleware(logger, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, namespace),
+			)
+		}
+		limitedRt := NewLimitedRoundTripper(next, l, schema.Configs, queryRangeMiddleware...)
+		return NewDetectedLabelsCardinalityFilter(limitedRt)
+	}), nil
+}
+
+func NewDetectedLabelsCardinalityFilter(rt queryrangebase.Handler) queryrangebase.Handler {
+	return queryrangebase.HandlerFunc(
+		func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			res, err := rt.Do(ctx, req)
+			if err != nil {
+				return nil, err
+			}
+
+			resp, ok := res.(*DetectedLabelsResponse)
+			if !ok {
+				return res, nil
+			}
+
+			var result []*logproto.DetectedLabel
+
+			for _, dl := range resp.Response.DetectedLabels {
+				if dl.Cardinality > 1 && dl.Cardinality < 50 {
+					result = append(result, &logproto.DetectedLabel{Label: dl.Label, Cardinality: dl.Cardinality})
+				}
+			}
+			return &DetectedLabelsResponse{
+				Response: &logproto.DetectedLabelsResponse{DetectedLabels: result},
+				Headers:  resp.Headers,
+			}, nil
+		})
 }
 
 type roundTripper struct {
@@ -372,15 +458,27 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 	case *DetectedFieldsRequest:
 		level.Info(logger).Log(
 			"msg", "executing query",
-			"type", "detected fields",
-			"query", op.Query,
-			"length", op.End.Sub(op.Start),
-			"start", op.Start,
+			"type", "detected_fields",
 			"end", op.End,
+			"field_limit", op.FieldLimit,
+			"length", op.End.Sub(op.Start),
+			"line_limit", op.LineLimit,
+			"query", op.Query,
+			"start", op.Start,
+			"step", op.Step,
 		)
 
 		return r.detectedFields.Do(ctx, req)
-	// TODO(shantanu): Add DetectedLabels
+	case *DetectedLabelsRequest:
+		level.Info(logger).Log(
+			"msg", "executing query",
+			"type", "detected_label",
+			"end", op.End,
+			"length", op.End.Sub(op.Start),
+			"query", op.Query,
+			"start", op.Start,
+		)
+		return r.detectedLabels.Do(ctx, req)
 	default:
 		return r.next.Do(ctx, req)
 	}
@@ -417,10 +515,13 @@ const (
 	DetectedFieldsOp = "detected_fields"
 	PatternsQueryOp  = "patterns"
 	DetectedLabelsOp = "detected_labels"
+	SamplesQueryOp   = "samples"
 )
 
 func getOperation(path string) string {
 	switch {
+	case path == "/loki/api/v1/explore/query_range":
+		return SamplesQueryOp
 	case strings.HasSuffix(path, "/query_range") || strings.HasSuffix(path, "/prom/query"):
 		return QueryRangeOp
 	case strings.HasSuffix(path, "/series"):
@@ -452,6 +553,12 @@ func getOperation(path string) string {
 func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logger, limits Limits, schema config.SchemaConfig, merger base.Merger, iqo util.IngesterQueryOptions, c cache.Cache, metrics *Metrics, indexStatsTripperware base.Middleware, metricsNamespace string) (base.Middleware, error) {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := indexStatsTripperware.Wrap(next)
+		retryNextHandler := next
+		if cfg.MaxRetries > 0 {
+			tr := base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics)
+			rm := base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace)
+			retryNextHandler = queryrangebase.MergeMiddlewares(tr, rm).Wrap(next)
+		}
 
 		queryRangeMiddleware := []base.Middleware{
 			QueryMetricsMiddleware(metrics.QueryMetrics),
@@ -491,6 +598,7 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Lo
 					limits,
 					0, // 0 is unlimited shards
 					statsHandler,
+					retryNextHandler,
 					cfg.ShardAggregations,
 				),
 			)
@@ -514,17 +622,47 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Lo
 }
 
 // NewLimitedTripperware creates a new frontend tripperware responsible for handling log requests which are label matcher only, no filter expression.
-func NewLimitedTripperware(_ Config, engineOpts logql.EngineOpts, log log.Logger, limits Limits, schema config.SchemaConfig, metrics *Metrics, indexStatsTripperware base.Middleware, merger base.Merger, iqo util.IngesterQueryOptions) (base.Middleware, error) {
+func NewLimitedTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logger, limits Limits, schema config.SchemaConfig, metrics *Metrics, merger base.Merger, iqo util.IngesterQueryOptions, indexStatsTripperware base.Middleware, metricsNamespace string) (base.Middleware, error) {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := indexStatsTripperware.Wrap(next)
+		retryNextHandler := next
+		if cfg.MaxRetries > 0 {
+			tr := base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics)
+			rm := base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace)
+			retryNextHandler = queryrangebase.MergeMiddlewares(tr, rm).Wrap(next)
+		}
 
 		queryRangeMiddleware := []base.Middleware{
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
-			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 			SplitByIntervalMiddleware(schema.Configs, WithMaxParallelism(limits, limitedQuerySplits), merger, newDefaultSplitter(limits, iqo), metrics.SplitByMetrics),
-			NewQuerierSizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+		}
+
+		if cfg.ShardedQueries {
+			queryRangeMiddleware = append(queryRangeMiddleware,
+				NewQueryShardMiddleware(
+					log,
+					schema.Configs,
+					engineOpts,
+					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
+					metrics.MiddlewareMapperMetrics.shardMapper,
+					limits,
+					// Too many shards on limited queries results in slowing down this type of query
+					// and overwhelming the frontend, therefore we fix the number of shards to prevent this.
+					32, // 0 is unlimited shards
+					statsHandler,
+					retryNextHandler,
+					cfg.ShardAggregations,
+				),
+			)
+		}
+
+		if cfg.MaxRetries > 0 {
+			queryRangeMiddleware = append(
+				queryRangeMiddleware, base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
+				base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace),
+			)
 		}
 
 		if len(queryRangeMiddleware) > 0 {
@@ -730,6 +868,12 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logge
 
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := indexStatsTripperware.Wrap(next)
+		retryNextHandler := next
+		if cfg.MaxRetries > 0 {
+			tr := base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics)
+			rm := base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace)
+			retryNextHandler = queryrangebase.MergeMiddlewares(tr, rm).Wrap(next)
+		}
 
 		queryRangeMiddleware := []base.Middleware{
 			QueryMetricsMiddleware(metrics.QueryMetrics),
@@ -771,6 +915,7 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logge
 					limits,
 					0, // 0 is unlimited shards
 					statsHandler,
+					retryNextHandler,
 					cfg.ShardAggregations,
 				),
 			)
@@ -852,6 +997,12 @@ func NewInstantMetricTripperware(
 
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := indexStatsTripperware.Wrap(next)
+		retryNextHandler := next
+		if cfg.MaxRetries > 0 {
+			tr := base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics)
+			rm := base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace)
+			retryNextHandler = queryrangebase.MergeMiddlewares(tr, rm).Wrap(next)
+		}
 
 		queryRangeMiddleware := []base.Middleware{
 			StatsCollectorMiddleware(),
@@ -879,6 +1030,7 @@ func NewInstantMetricTripperware(
 					limits,
 					0, // 0 is unlimited shards
 					statsHandler,
+					retryNextHandler,
 					cfg.ShardAggregations,
 				),
 			)
@@ -956,22 +1108,6 @@ func NewVolumeTripperware(cfg Config, log log.Logger, limits Limits, schema conf
 	), nil
 }
 
-func statsTripperware(nextTW base.Middleware) base.Middleware {
-	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
-		return base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
-			cacheMiddlewares := []base.Middleware{
-				StatsCollectorMiddleware(),
-				nextTW,
-			}
-
-			// wrap nextRT with our new middleware
-			return base.MergeMiddlewares(
-				cacheMiddlewares...,
-			).Wrap(next).Do(ctx, r)
-		})
-	})
-}
-
 func volumeRangeTripperware(nextTW base.Middleware) base.Middleware {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		return base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
@@ -1042,7 +1178,7 @@ func NewIndexStatsTripperware(cfg Config, log log.Logger, limits Limits, schema 
 		}
 	}
 
-	tw, err := sharedIndexTripperware(
+	return sharedIndexTripperware(
 		cacheMiddleware,
 		cfg,
 		merger,
@@ -1053,11 +1189,6 @@ func NewIndexStatsTripperware(cfg Config, log log.Logger, limits Limits, schema 
 		schema,
 		metricsNamespace,
 	)
-	if err != nil {
-		return nil, err
-	}
-
-	return statsTripperware(tw), nil
 }
 
 func sharedIndexTripperware(
@@ -1096,4 +1227,92 @@ func sharedIndexTripperware(
 
 		return base.MergeMiddlewares(middlewares...).Wrap(next)
 	}), nil
+}
+
+// NewDetectedFieldsTripperware creates a new frontend tripperware responsible for handling detected field requests, which are basically log filter requests with a bit more processing.
+func NewDetectedFieldsTripperware(
+	cfg Config,
+	log log.Logger,
+	limits Limits,
+	schema config.SchemaConfig,
+	merger base.Merger,
+	iqo util.IngesterQueryOptions,
+	metrics *Metrics,
+	metricsNamespace string,
+) (base.Middleware, error) {
+	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
+		splitter := newDefaultSplitter(limits, iqo)
+
+		queryRangeMiddleware := []base.Middleware{
+			StatsCollectorMiddleware(),
+			NewLimitsMiddleware(limits),
+			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
+			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitter, metrics.SplitByMetrics),
+		}
+
+		if cfg.MaxRetries > 0 {
+			queryRangeMiddleware = append(
+				queryRangeMiddleware, base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
+				base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace),
+			)
+		}
+
+		limitedRT := NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
+		return NewSketchRemovingHandler(limitedRT, limits, splitter)
+	}), nil
+}
+
+// NewSketchRemovingHandler returns a handler that removes sketches from detected fields responses before
+// returning them to the user. We only need sketches internally for calculating cardinality for split queries.
+// We're already doing this sanitization in the merge code, so this handler catches non-split queries
+// to make sure their sketches are also removed.
+func NewSketchRemovingHandler(next queryrangebase.Handler, limits Limits, splitter splitter) queryrangebase.Handler {
+	return queryrangebase.HandlerFunc(
+		func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			res, err := next.Do(ctx, req)
+			if err != nil {
+				return nil, err
+			}
+
+			resp, ok := res.(*DetectedFieldsResponse)
+			if !ok {
+				return res, nil
+			}
+
+			tenantIDs, err := tenant.TenantIDs(ctx)
+			if err != nil {
+				return resp, nil
+			}
+
+			interval := validation.SmallestPositiveNonZeroDurationPerTenant(
+				tenantIDs,
+				limits.QuerySplitDuration,
+			)
+
+			// sketeches get cleaned up in the merge code, so we only need catch the cases
+			// where no splitting happened
+			if interval == 0 {
+				return removeSketches(resp), nil
+			}
+
+			intervals, err := splitter.split(time.Now().UTC(), tenantIDs, req, interval)
+			if err != nil || len(intervals) < 2 {
+				return removeSketches(resp), nil
+			}
+
+			// must have been splits, so sketches are already removed
+			return resp, nil
+		},
+	)
+}
+
+// removeSketches removes sketches and field limit from a detected fields response.
+// this is only needed for queries that were not split.
+func removeSketches(resp *DetectedFieldsResponse) *DetectedFieldsResponse {
+	for i := range resp.Response.Fields {
+		resp.Response.Fields[i].Sketch = nil
+	}
+
+	resp.Response.FieldLimit = 0
+	return resp
 }

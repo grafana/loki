@@ -376,7 +376,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   ],
 };
 
-local build_image_tag = '0.33.1';
+local build_image_tag = '0.33.2';
 [
   pipeline('loki-build-image-' + arch) {
     workspace: {
@@ -447,23 +447,6 @@ local build_image_tag = '0.33.1';
           password: { from_secret: docker_password_secret.name },
           dry_run: false,
         },
-      },
-    ],
-  },
-  pipeline('mixins') {
-    workspace: {
-      base: '/src',
-      path: 'loki',
-    },
-    steps: [
-      make('lint-jsonnet', container=false) {
-        // Docker image defined at https://github.com/grafana/jsonnet-libs/tree/master/build
-        image: 'grafana/jsonnet-build:c8b75df',
-        depends_on: ['clone'],
-      },
-      make('loki-mixin-check', container=false) {
-        depends_on: ['clone'],
-        when: onPRs + onPath('production/loki-mixin/**'),
       },
     ],
   },

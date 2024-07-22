@@ -1,9 +1,21 @@
 ## Main
 
-- [12469](https://github.com/grafana/loki/pull/12469) **btaani**: Configure Loki to use virtual-host-style URLs for S3 AWS endpoints
-- [12181](https://github.com/grafana/loki/pull/12181) **btaani**: Improve validation of provided S3 storage configuration
-- [12370](https://github.com/grafana/loki/pull/12370) **periklis**: Update Loki operand to v2.9.6
-- [12333](https://github.com/grafana/loki/pull/12333) **periklis**: Bump max OpenShift version to next release
+## [0.6.1](https://github.com/grafana/loki/compare/operator/v0.6.0...operator/v0.6.1) (2024-06-03)
+
+
+### Features
+
+* prepare 3.0.0 release candidate ([#12348](https://github.com/grafana/loki/issues/12348)) ([664e569](https://github.com/grafana/loki/commit/664e569e14ef55a79cd77bdb49e9ffbe0c55bc37))
+
+
+### Bug Fixes
+
+* **operator:** Bump golang builder to 1.21.9 ([#12503](https://github.com/grafana/loki/issues/12503)) ([f680ee0](https://github.com/grafana/loki/commit/f680ee0453d1b7d315774591293927b988bca223))
+* **operator:** Configure Loki to use virtual-host-style URLs for S3 AWS endpoints ([#12469](https://github.com/grafana/loki/issues/12469)) ([0084262](https://github.com/grafana/loki/commit/0084262269f4e2cb94d04e0cc0d40e9666177f06))
+* **operator:** Improve validation of provided S3 storage configuration ([#12181](https://github.com/grafana/loki/issues/12181)) ([f9350d6](https://github.com/grafana/loki/commit/f9350d6415d45c3cc2f9c0b4f7cd6f8f219907f2))
+* **operator:** Use a minimum value for replay memory ceiling ([#13066](https://github.com/grafana/loki/issues/13066)) ([4f3ed77](https://github.com/grafana/loki/commit/4f3ed77cb92c2ffd605743237e609c28f7841728))
+* update to build image 0.33.2, fixes bug with promtail windows DNS resolution ([#12732](https://github.com/grafana/loki/issues/12732)) ([759f42d](https://github.com/grafana/loki/commit/759f42dd50bb4896f5e568691ef32245bb8fb25a))
+* updated all dockerfiles go1.22 ([#12708](https://github.com/grafana/loki/issues/12708)) ([71a8f2c](https://github.com/grafana/loki/commit/71a8f2c2b11b419bd8c0af1f859671e5d8730448))
 
 ## 0.6.0 (2024-03-19)
 

@@ -60,6 +60,7 @@ const (
 	defaultMaxStructuredMetadataSize  = "64kb"
 	defaultMaxStructuredMetadataCount = 128
 	defaultBloomCompactorMaxBlockSize = "200MB"
+	defaultBloomCompactorMaxBloomSize = "128MB"
 )
 
 // Limits describe all the limits for users; can be used to describe global default
@@ -84,6 +85,7 @@ type Limits struct {
 	DiscoverLogLevels           bool             `yaml:"discover_log_levels" json:"discover_log_levels"`
 
 	// Ingester enforced limits.
+	UseOwnedStreamCount     bool             `yaml:"use_owned_stream_count" json:"use_owned_stream_count"`
 	MaxLocalStreamsPerUser  int              `yaml:"max_streams_per_user" json:"max_streams_per_user"`
 	MaxGlobalStreamsPerUser int              `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user"`
 	UnorderedWrites         bool             `yaml:"unordered_writes" json:"unordered_writes"`
@@ -100,6 +102,7 @@ type Limits struct {
 	TSDBMaxQueryParallelism    int              `yaml:"tsdb_max_query_parallelism" json:"tsdb_max_query_parallelism"`
 	TSDBMaxBytesPerShard       flagext.ByteSize `yaml:"tsdb_max_bytes_per_shard" json:"tsdb_max_bytes_per_shard"`
 	TSDBShardingStrategy       string           `yaml:"tsdb_sharding_strategy" json:"tsdb_sharding_strategy"`
+	TSDBPrecomputeChunks       bool             `yaml:"tsdb_precompute_chunks" json:"tsdb_precompute_chunks"`
 	CardinalityLimit           int              `yaml:"cardinality_limit" json:"cardinality_limit"`
 	MaxStreamsMatchersPerQuery int              `yaml:"max_streams_matchers_per_query" json:"max_streams_matchers_per_query"`
 	MaxConcurrentTailRequests  int              `yaml:"max_concurrent_tail_requests" json:"max_concurrent_tail_requests"`
@@ -185,7 +188,7 @@ type Limits struct {
 	// Deprecated
 	CompactorDeletionEnabled bool `yaml:"allow_deletes" json:"allow_deletes" doc:"deprecated|description=Use deletion_mode per tenant configuration instead."`
 
-	ShardStreams *shardstreams.Config `yaml:"shard_streams" json:"shard_streams"`
+	ShardStreams shardstreams.Config `yaml:"shard_streams" json:"shard_streams" doc:"description=Define streams sharding behavior."`
 
 	BlockedQueries []*validation.BlockedQuery `yaml:"blocked_queries,omitempty" json:"blocked_queries,omitempty"`
 
@@ -201,6 +204,13 @@ type Limits struct {
 	BloomCompactorShardSize    int              `yaml:"bloom_compactor_shard_size" json:"bloom_compactor_shard_size" category:"experimental"`
 	BloomCompactorEnabled      bool             `yaml:"bloom_compactor_enable_compaction" json:"bloom_compactor_enable_compaction" category:"experimental"`
 	BloomCompactorMaxBlockSize flagext.ByteSize `yaml:"bloom_compactor_max_block_size" json:"bloom_compactor_max_block_size" category:"experimental"`
+	BloomCompactorMaxBloomSize flagext.ByteSize `yaml:"bloom_compactor_max_bloom_size" json:"bloom_compactor_max_bloom_size" category:"experimental"`
+
+	BloomCreationEnabled       bool          `yaml:"bloom_creation_enabled" json:"bloom_creation_enabled" category:"experimental"`
+	BloomSplitSeriesKeyspaceBy int           `yaml:"bloom_split_series_keyspace_by" json:"bloom_split_series_keyspace_by" category:"experimental"`
+	BloomBuildMaxBuilders      int           `yaml:"bloom_build_max_builders" json:"bloom_build_max_builders" category:"experimental"`
+	BuilderResponseTimeout     time.Duration `yaml:"bloom_build_builder_response_timeout" json:"bloom_build_builder_response_timeout" category:"experimental"`
+	BloomTaskMaxRetries        int           `yaml:"bloom_build_task_max_retries" json:"bloom_build_task_max_retries" category:"experimental"`
 
 	BloomNGramLength       int     `yaml:"bloom_ngram_length" json:"bloom_ngram_length" category:"experimental"`
 	BloomNGramSkip         int     `yaml:"bloom_ngram_skip" json:"bloom_ngram_skip" category:"experimental"`
@@ -255,7 +265,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		"job",
 	}
 	f.Var((*dskit_flagext.StringSlice)(&l.DiscoverServiceName), "validation.discover-service-name", "If no service_name label exists, Loki maps a single label from the configured list to service_name. If none of the configured labels exist in the stream, label is set to unknown_service. Empty list disables setting the label.")
-	f.BoolVar(&l.DiscoverLogLevels, "validation.discover-log-levels", true, "Discover and add log levels during ingestion, if not present already. Levels would be added to Structured Metadata with name 'level' and one of the values from 'debug', 'info', 'warn', 'error', 'critical', 'fatal'.")
+	f.BoolVar(&l.DiscoverLogLevels, "validation.discover-log-levels", true, "Discover and add log levels during ingestion, if not present already. Levels would be added to Structured Metadata with name level/LEVEL/Level/Severity/severity/SEVERITY/lvl/LVL/Lvl (case-sensitive) and one of the values from 'trace', 'debug', 'info', 'warn', 'error', 'critical', 'fatal' (case insensitive).")
 
 	_ = l.RejectOldSamplesMaxAge.Set("7d")
 	f.Var(&l.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", "Maximum accepted sample age before rejecting.")
@@ -263,6 +273,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.CreationGracePeriod, "validation.create-grace-period", "Duration which table will be created/deleted before/after it's needed; we won't accept sample from before this time.")
 	f.IntVar(&l.MaxEntriesLimitPerQuery, "validation.max-entries-limit", 5000, "Maximum number of log entries that will be returned for a query.")
 
+	f.BoolVar(&l.UseOwnedStreamCount, "ingester.use-owned-stream-count", false, "When true an ingester takes into account only the streams that it owns according to the ring while applying the stream limit.")
 	f.IntVar(&l.MaxLocalStreamsPerUser, "ingester.max-streams-per-user", 0, "Maximum number of active streams per user, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxGlobalStreamsPerUser, "ingester.max-global-streams-per-user", 5000, "Maximum number of active streams per user, across the cluster. 0 to disable. When the global limit is enabled, each ingester is configured with a dynamic local limit based on the replication factor and the current number of healthy ingesters, and is kept updated whenever the number of ingesters change.")
 
@@ -299,6 +310,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 			logql.BoundedVersion.String(),
 		),
 	)
+	f.BoolVar(&l.TSDBPrecomputeChunks, "querier.tsdb-precompute-chunks", false, "Precompute chunks for TSDB queries. This can improve query performance at the cost of increased memory usage by computing chunks once during planning, reducing index calls.")
 	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries.")
 	f.IntVar(&l.MaxStreamsMatchersPerQuery, "querier.max-streams-matcher-per-query", 1000, "Maximum number of stream matchers per query.")
 	f.IntVar(&l.MaxConcurrentTailRequests, "querier.max-concurrent-tail-requests", 10, "Maximum number of concurrent tail requests.")
@@ -306,10 +318,10 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.MinShardingLookback.Set("0s")
 	f.Var(&l.MinShardingLookback, "frontend.min-sharding-lookback", "Limit queries that can be sharded. Queries within the time range of now and now minus this sharding lookback are not sharded. The default value of 0s disables the lookback, causing sharding of all queries at all times.")
 
-	f.Var(&l.MaxQueryBytesRead, "frontend.max-query-bytes-read", "Max number of bytes a query can fetch. Enforced in log and metric queries only when TSDB is used. The default value of 0 disables this limit.")
+	f.Var(&l.MaxQueryBytesRead, "frontend.max-query-bytes-read", "Max number of bytes a query can fetch. Enforced in log and metric queries only when TSDB is used. This limit is not enforced on log queries without filters. The default value of 0 disables this limit.")
 
 	_ = l.MaxQuerierBytesRead.Set("150GB")
-	f.Var(&l.MaxQuerierBytesRead, "frontend.max-querier-bytes-read", "Max number of bytes a query can fetch after splitting and sharding. Enforced in log and metric queries only when TSDB is used. The default value of 0 disables this limit.")
+	f.Var(&l.MaxQuerierBytesRead, "frontend.max-querier-bytes-read", "Max number of bytes a query can fetch after splitting and sharding. Enforced in log and metric queries only when TSDB is used. This limit is not enforced on log queries without filters. The default value of 0 disables this limit.")
 
 	_ = l.MaxCacheFreshness.Set("10m")
 	f.Var(&l.MaxCacheFreshness, "frontend.max-cache-freshness", "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
@@ -376,7 +388,20 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		),
 	)
 
-	l.ShardStreams = &shardstreams.Config{}
+	f.BoolVar(&l.BloomCreationEnabled, "bloom-build.enable", false, "Experimental. Whether to create blooms for the tenant.")
+	f.IntVar(&l.BloomSplitSeriesKeyspaceBy, "bloom-build.split-keyspace-by", 256, "Experimental. Number of splits to create for the series keyspace when building blooms. The series keyspace is split into this many parts to parallelize bloom creation.")
+	f.IntVar(&l.BloomBuildMaxBuilders, "bloom-build.max-builders", 0, "Experimental. Maximum number of builders to use when building blooms. 0 allows unlimited builders.")
+	f.DurationVar(&l.BuilderResponseTimeout, "bloom-build.builder-response-timeout", 0, "Experimental. Timeout for a builder to finish a task. If a builder does not respond within this time, it is considered failed and the task will be requeued. 0 disables the timeout.")
+	f.IntVar(&l.BloomTaskMaxRetries, "bloom-build.task-max-retries", 3, "Experimental. Maximum number of retries for a failed task. If a task fails more than this number of times, it is considered failed and will not be retried. A value of 0 disables this limit.")
+
+	_ = l.BloomCompactorMaxBloomSize.Set(defaultBloomCompactorMaxBloomSize)
+	f.Var(&l.BloomCompactorMaxBloomSize, "bloom-compactor.max-bloom-size",
+		fmt.Sprintf(
+			"Experimental. The maximum bloom size per log stream. A log stream whose generated bloom filter exceeds this size will be discarded. A value of 0 sets an unlimited size. Default is %s.",
+			defaultBloomCompactorMaxBloomSize,
+		),
+	)
+
 	l.ShardStreams.RegisterFlagsWithPrefix("shard-streams", f)
 
 	f.IntVar(&l.VolumeMaxSeries, "limits.volume-max-series", 1000, "The default number of aggregated series or labels that can be returned from a log-volume endpoint")
@@ -385,12 +410,13 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.MaxStructuredMetadataSize.Set(defaultMaxStructuredMetadataSize)
 	f.Var(&l.MaxStructuredMetadataSize, "limits.max-structured-metadata-size", "Maximum size accepted for structured metadata per entry. Default: 64 kb. Any log line exceeding this limit will be discarded. There is no limit when unset or set to 0.")
 	f.IntVar(&l.MaxStructuredMetadataEntriesCount, "limits.max-structured-metadata-entries-count", defaultMaxStructuredMetadataCount, "Maximum number of structured metadata entries per log line. Default: 128. Any log line exceeding this limit will be discarded. There is no limit when unset or set to 0.")
+	f.BoolVar(&l.VolumeEnabled, "limits.volume-enabled", true, "Enable log volume endpoint.")
 }
 
 // SetGlobalOTLPConfig set GlobalOTLPConfig which is used while unmarshaling per-tenant otlp config to use the default list of resource attributes picked as index labels.
 func (l *Limits) SetGlobalOTLPConfig(cfg push.GlobalOTLPConfig) {
 	l.GlobalOTLPConfig = cfg
-	l.OTLPConfig = push.DefaultOTLPConfig(cfg)
+	l.OTLPConfig.ApplyGlobalOTLPConfig(cfg)
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -465,6 +491,10 @@ func (l *Limits) Validate() error {
 
 	if _, err := chunkenc.ParseEncoding(l.BloomBlockEncoding); err != nil {
 		return err
+	}
+
+	if l.TSDBMaxBytesPerShard <= 0 {
+		return errors.New("querier.tsdb-max-bytes-per-shard must be greater than 0")
 	}
 
 	return nil
@@ -564,6 +594,10 @@ func (o *Overrides) CreationGracePeriod(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).CreationGracePeriod)
 }
 
+func (o *Overrides) UseOwnedStreamCount(userID string) bool {
+	return o.getOverridesForUser(userID).UseOwnedStreamCount
+}
+
 // MaxLocalStreamsPerUser returns the maximum number of streams a user is allowed to store
 // in a single ingester.
 func (o *Overrides) MaxLocalStreamsPerUser(userID string) int {
@@ -629,6 +663,10 @@ func (o *Overrides) TSDBMaxBytesPerShard(userID string) int {
 // TSDBShardingStrategy returns the sharding strategy to use in query planning.
 func (o *Overrides) TSDBShardingStrategy(userID string) string {
 	return o.getOverridesForUser(userID).TSDBShardingStrategy
+}
+
+func (o *Overrides) TSDBPrecomputeChunks(userID string) bool {
+	return o.getOverridesForUser(userID).TSDBPrecomputeChunks
 }
 
 // MaxQueryParallelism returns the limit to the number of sub-queries the
@@ -879,7 +917,7 @@ func (o *Overrides) DeletionMode(userID string) string {
 	return o.getOverridesForUser(userID).DeletionMode
 }
 
-func (o *Overrides) ShardStreams(userID string) *shardstreams.Config {
+func (o *Overrides) ShardStreams(userID string) shardstreams.Config {
 	return o.getOverridesForUser(userID).ShardStreams
 }
 
@@ -953,6 +991,26 @@ func (o *Overrides) BloomCompactorEnabled(userID string) bool {
 	return o.getOverridesForUser(userID).BloomCompactorEnabled
 }
 
+func (o *Overrides) BloomCreationEnabled(userID string) bool {
+	return o.getOverridesForUser(userID).BloomCreationEnabled
+}
+
+func (o *Overrides) BloomSplitSeriesKeyspaceBy(userID string) int {
+	return o.getOverridesForUser(userID).BloomSplitSeriesKeyspaceBy
+}
+
+func (o *Overrides) BloomBuildMaxBuilders(userID string) int {
+	return o.getOverridesForUser(userID).BloomBuildMaxBuilders
+}
+
+func (o *Overrides) BuilderResponseTimeout(userID string) time.Duration {
+	return o.getOverridesForUser(userID).BuilderResponseTimeout
+}
+
+func (o *Overrides) BloomTaskMaxRetries(userID string) int {
+	return o.getOverridesForUser(userID).BloomTaskMaxRetries
+}
+
 func (o *Overrides) BloomNGramLength(userID string) int {
 	return o.getOverridesForUser(userID).BloomNGramLength
 }
@@ -963,6 +1021,10 @@ func (o *Overrides) BloomNGramSkip(userID string) int {
 
 func (o *Overrides) BloomCompactorMaxBlockSize(userID string) int {
 	return o.getOverridesForUser(userID).BloomCompactorMaxBlockSize.Val()
+}
+
+func (o *Overrides) BloomCompactorMaxBloomSize(userID string) int {
+	return o.getOverridesForUser(userID).BloomCompactorMaxBloomSize.Val()
 }
 
 func (o *Overrides) BloomFalsePositiveRate(userID string) float64 {

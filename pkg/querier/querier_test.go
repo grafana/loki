@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"testing"
 	"time"
 
@@ -18,6 +19,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
@@ -321,9 +324,11 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 						{Key: "a", Value: "1"},
 						{Key: "b", Value: "2"},
 					}},
-					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
-						{Key: "a", Value: "1"},
-						{Key: "b", Value: "3"}},
+					{
+						Labels: []logproto.SeriesIdentifier_LabelsEntry{
+							{Key: "a", Value: "1"},
+							{Key: "b", Value: "3"},
+						},
 					},
 					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
 						{Key: "a", Value: "1"},
@@ -991,7 +996,6 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.desc, func(t *testing.T) {
-
 			conf := mockQuerierConfig()
 			conf.QueryIngestersWithin = time.Minute * 30
 			if tc.setIngesterQueryStoreMaxLookback {
@@ -1148,6 +1152,13 @@ func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*quer
 			},
 		},
 	}, nil)
+	ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything).Return(&logproto.DetectedLabelsResponse{
+		DetectedLabels: []*logproto.DetectedLabel{
+			{Label: "pod", Cardinality: 1},
+			{Label: "namespace", Cardinality: 3},
+			{Label: "customerId", Cardinality: 200},
+		},
+	}, nil)
 
 	store := newStoreMock()
 	store.On("SelectLogs", mock.Anything, mock.Anything).Return(mockStreamIterator(0, 1), nil)
@@ -1165,7 +1176,6 @@ func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*quer
 		mockReadRingWithOneActiveIngester(),
 		&mockDeleteGettter{},
 		store, limits)
-
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -1181,6 +1191,7 @@ type fakeTimeLimits struct {
 func (f fakeTimeLimits) MaxQueryLookback(_ context.Context, _ string) time.Duration {
 	return f.maxQueryLookback
 }
+
 func (f fakeTimeLimits) MaxQueryLength(_ context.Context, _ string) time.Duration {
 	return f.maxQueryLength
 }
@@ -1351,7 +1362,7 @@ func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
 }
 
 func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.PoolFactory, ring ring.ReadRing, dg *mockDeleteGettter, store storage.Store, limits *validation.Overrides) (*SingleTenantQuerier, error) {
-	iq, err := newIngesterQuerier(clientCfg, ring, cfg.ExtraQueryDelay, clientFactory, constants.Loki)
+	iq, err := newIngesterQuerier(clientCfg, ring, cfg.ExtraQueryDelay, clientFactory, constants.Loki, util_log.Logger)
 	if err != nil {
 		return nil, err
 	}
@@ -1369,48 +1380,590 @@ func (d *mockDeleteGettter) GetAllDeleteRequestsForUser(_ context.Context, userI
 	return d.results, nil
 }
 
-func TestQuerier_isLabelRelevant(t *testing.T) {
-	for _, tc := range []struct {
-		name     string
-		label    string
-		values   *logproto.UniqueLabelValues
-		expected bool
-	}{
-		{
-			label:    "uuidv4 values are not relevant",
-			values:   &logproto.UniqueLabelValues{Values: []string{"751e8ee6-b377-4b2e-b7b5-5508fbe980ef", "6b7e2663-8ecb-42e1-8bdc-0c5de70185b3", "2e1e67ff-be4f-47b8-aee1-5d67ff1ddabf", "c95b2d62-74ed-4ed7-a8a1-eb72fc67946e"}},
-			expected: false,
-		},
-		{
-			label:    "guid values are not relevant",
-			values:   &logproto.UniqueLabelValues{Values: []string{"57808f62-f117-4a22-84a0-bc3282c7f106", "5076e837-cd8d-4dd7-95ff-fecb087dccf6", "2e2a6554-1744-4399-b89a-88ae79c27096", "d3c31248-ec0c-4bc4-b11c-8fb1cfb42e62"}},
-			expected: false,
-		},
-		{
-			label:    "integer values are not relevant",
-			values:   &logproto.UniqueLabelValues{Values: []string{"1", "2", "3", "4"}},
-			expected: false,
-		},
-		{
-			label:    "string values are relevant",
-			values:   &logproto.UniqueLabelValues{Values: []string{"ingester", "querier", "query-frontend", "index-gateway"}},
-			expected: true,
-		},
-		{
-			label:    "guid with braces are not relevant",
-			values:   &logproto.UniqueLabelValues{Values: []string{"{E9550CF7-58D9-48B9-8845-D9800C651AAC}", "{1617921B-1749-4FF0-A058-31AFB5D98149}", "{C119D92E-A4B9-48A3-A92C-6CA8AA8A6CCC}", "{228AAF1D-2DE7-4909-A4E9-246A7FA9D988}"}},
-			expected: false,
-		},
-		{
-			label:    "float values are not relevant",
-			values:   &logproto.UniqueLabelValues{Values: []string{"1.2", "2.5", "3.3", "4.1"}},
-			expected: false,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			querier := &SingleTenantQuerier{cfg: mockQuerierConfig()}
-			assert.Equal(t, tc.expected, querier.isLabelRelevant(tc.label, tc.values))
-		})
+func TestQuerier_DetectedLabels(t *testing.T) {
+	manyValues := []string{}
+	now := time.Now()
+	for i := 0; i < 60; i++ {
+		manyValues = append(manyValues, "a"+strconv.Itoa(i))
+	}
 
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	conf := mockQuerierConfig()
+	conf.IngesterQueryStoreMaxLookback = 0
+
+	request := logproto.DetectedLabelsRequest{
+		Start: now,
+		End:   now,
+		Query: "",
+	}
+
+	t.Run("when both store and ingester responses are present, a combined response is returned", func(t *testing.T) {
+		ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+			"cluster":       {Values: []string{"ingester"}},
+			"ingesterLabel": {Values: []string{"abc", "def", "ghi", "abc"}},
+		}}
+
+		ingesterClient := newQuerierClientMock()
+		storeClient := newStoreMock()
+
+		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(&ingesterResponse, nil)
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]string{"storeLabel"}, nil).
+			On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, "storeLabel", mock.Anything).
+			Return([]string{"val1", "val2"}, nil)
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			storeClient, limits)
+		require.NoError(t, err)
+
+		resp, err := querier.DetectedLabels(ctx, &request)
+		require.NoError(t, err)
+
+		calls := ingesterClient.GetMockedCallsByMethod("GetDetectedLabels")
+		assert.Equal(t, 1, len(calls))
+
+		detectedLabels := resp.DetectedLabels
+		assert.Len(t, detectedLabels, 3)
+		expectedCardinality := map[string]uint64{"storeLabel": 2, "ingesterLabel": 3, "cluster": 1}
+		for _, d := range detectedLabels {
+			card := expectedCardinality[d.Label]
+			assert.Equal(t, d.Cardinality, card, "Expected cardinality mismatch for: ", d.Label)
+		}
+	})
+
+	t.Run("when both store and ingester responses are present, duplicates are removed", func(t *testing.T) {
+		ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+			"cluster":       {Values: []string{"ingester"}},
+			"ingesterLabel": {Values: []string{"abc", "def", "ghi", "abc"}},
+			"commonLabel":   {Values: []string{"abc", "def", "ghi", "abc"}},
+		}}
+
+		ingesterClient := newQuerierClientMock()
+		storeClient := newStoreMock()
+
+		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(&ingesterResponse, nil)
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]string{"storeLabel", "commonLabel"}, nil).
+			On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, "storeLabel", mock.Anything).
+			Return([]string{"val1", "val2"}, nil).
+			On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, "commonLabel", mock.Anything).
+			Return([]string{"def", "xyz", "lmo", "abc"}, nil)
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			storeClient, limits)
+		require.NoError(t, err)
+
+		resp, err := querier.DetectedLabels(ctx, &request)
+		require.NoError(t, err)
+
+		calls := ingesterClient.GetMockedCallsByMethod("GetDetectedLabels")
+		assert.Equal(t, 1, len(calls))
+
+		detectedLabels := resp.DetectedLabels
+		assert.Len(t, detectedLabels, 4)
+
+		expectedCardinality := map[string]uint64{"storeLabel": 2, "ingesterLabel": 3, "cluster": 1, "commonLabel": 5}
+		for _, d := range detectedLabels {
+			card := expectedCardinality[d.Label]
+			assert.Equal(t, d.Cardinality, card, "Expected cardinality mismatch for: ", d.Label)
+		}
+	})
+
+	t.Run("returns a response when ingester data is empty", func(t *testing.T) {
+		ingesterClient := newQuerierClientMock()
+		storeClient := newStoreMock()
+
+		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(&logproto.LabelToValuesResponse{}, nil)
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]string{"storeLabel1", "storeLabel2"}, nil).
+			On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, "storeLabel1", mock.Anything).
+			Return([]string{"val1", "val2"}, nil).
+			On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, "storeLabel2", mock.Anything).
+			Return([]string{"val1", "val2"}, nil)
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			storeClient, limits)
+		require.NoError(t, err)
+
+		resp, err := querier.DetectedLabels(ctx, &request)
+		require.NoError(t, err)
+
+		detectedLabels := resp.DetectedLabels
+		assert.Len(t, detectedLabels, 2)
+		expectedCardinality := map[string]uint64{"storeLabel1": 2, "storeLabel2": 2}
+		for _, d := range detectedLabels {
+			card := expectedCardinality[d.Label]
+			assert.Equal(t, d.Cardinality, card, "Expected cardinality mismatch for: ", d.Label)
+		}
+	})
+
+	t.Run("returns a response when store data is empty", func(t *testing.T) {
+		ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+			"cluster":       {Values: []string{"ingester"}},
+			"ingesterLabel": {Values: []string{"abc", "def", "ghi", "abc"}},
+		}}
+
+		ingesterClient := newQuerierClientMock()
+		storeClient := newStoreMock()
+
+		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(&ingesterResponse, nil)
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]string{}, nil)
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			storeClient, limits)
+		require.NoError(t, err)
+
+		resp, err := querier.DetectedLabels(ctx, &request)
+		require.NoError(t, err)
+
+		detectedLabels := resp.DetectedLabels
+		assert.Len(t, detectedLabels, 2)
+		expectedCardinality := map[string]uint64{"cluster": 1, "ingesterLabel": 3}
+		for _, d := range detectedLabels {
+			card := expectedCardinality[d.Label]
+			assert.Equal(t, d.Cardinality, card, "Expected cardinality mismatch for: ", d.Label)
+		}
+	})
+
+	t.Run("id types like uuids, guids and numbers are not relevant detected labels", func(t *testing.T) {
+		ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+			"all-ints":   {Values: []string{"1", "2", "3", "4"}},
+			"all-floats": {Values: []string{"1.2", "2.3", "3.4", "4.5"}},
+			"all-uuids":  {Values: []string{"751e8ee6-b377-4b2e-b7b5-5508fbe980ef", "6b7e2663-8ecb-42e1-8bdc-0c5de70185b3", "2e1e67ff-be4f-47b8-aee1-5d67ff1ddabf", "c95b2d62-74ed-4ed7-a8a1-eb72fc67946e"}},
+		}}
+
+		ingesterClient := newQuerierClientMock()
+		storeClient := newStoreMock()
+
+		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(&ingesterResponse, nil)
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]string{}, nil)
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			storeClient, limits)
+		require.NoError(t, err)
+
+		resp, err := querier.DetectedLabels(ctx, &request)
+		require.NoError(t, err)
+
+		detectedLabels := resp.DetectedLabels
+		assert.Len(t, detectedLabels, 0)
+	})
+
+	t.Run("static labels are always returned no matter their cardinality or value types", func(t *testing.T) {
+		ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+			"cluster":   {Values: []string{"val1"}},
+			"namespace": {Values: manyValues},
+			"pod":       {Values: []string{"1", "2", "3", "4"}},
+		}}
+
+		ingesterClient := newQuerierClientMock()
+		storeClient := newStoreMock()
+
+		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(&ingesterResponse, nil)
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]string{}, nil)
+		request := logproto.DetectedLabelsRequest{
+			Start: now,
+			End:   now,
+			Query: "",
+		}
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			storeClient, limits)
+		require.NoError(t, err)
+
+		resp, err := querier.DetectedLabels(ctx, &request)
+		require.NoError(t, err)
+
+		detectedLabels := resp.DetectedLabels
+		assert.Len(t, detectedLabels, 3)
+		expectedCardinality := map[string]uint64{"cluster": 1, "pod": 4, "namespace": 60}
+		for _, d := range detectedLabels {
+			card := expectedCardinality[d.Label]
+			assert.Equal(t, d.Cardinality, card, "Expected cardinality mismatch for: ", d.Label)
+		}
+	})
+
+	t.Run("no panics with ingester response is nil", func(t *testing.T) {
+		ingesterClient := newQuerierClientMock()
+		storeClient := newStoreMock()
+
+		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, nil)
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]string{}, nil)
+		request := logproto.DetectedLabelsRequest{
+			Start: now,
+			End:   now.Add(2 * time.Hour),
+			Query: "",
+		}
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			storeClient, limits)
+		require.NoError(t, err)
+
+		_, err = querier.DetectedLabels(ctx, &request)
+		require.NoError(t, err)
+	})
+}
+
+func BenchmarkQuerierDetectedLabels(b *testing.B) {
+	now := time.Now()
+
+	limits, _ := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	conf := mockQuerierConfig()
+	conf.IngesterQueryStoreMaxLookback = 0
+
+	request := logproto.DetectedLabelsRequest{
+		Start: now,
+		End:   now,
+		Query: "",
+	}
+	ingesterResponse := logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+		"cluster":       {Values: []string{"ingester"}},
+		"ingesterLabel": {Values: []string{"abc", "def", "ghi", "abc"}},
+	}}
+
+	ingesterClient := newQuerierClientMock()
+	storeClient := newStoreMock()
+
+	ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(&ingesterResponse, nil)
+	storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return([]string{"storeLabel"}, nil).
+		On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, "storeLabel", mock.Anything).
+		Return([]string{"val1", "val2"}, nil)
+
+	querier, _ := newQuerier(
+		conf,
+		mockIngesterClientConfig(),
+		newIngesterClientMockFactory(ingesterClient),
+		mockReadRingWithOneActiveIngester(),
+		&mockDeleteGettter{},
+		storeClient, limits)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_, err := querier.DetectedLabels(ctx, &request)
+		assert.NoError(b, err)
+	}
+}
+
+func TestQuerier_DetectedFields(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	conf := mockQuerierConfig()
+	conf.IngesterQueryStoreMaxLookback = 0
+
+	request := logproto.DetectedFieldsRequest{
+		Start:      time.Now().Add(-1 * time.Minute),
+		End:        time.Now(),
+		Query:      `{type="test"}`,
+		LineLimit:  1000,
+		FieldLimit: 1000,
+	}
+
+	t.Run("returns detected fields from queried logs", func(t *testing.T) {
+		store := newStoreMock()
+		store.On("SelectLogs", mock.Anything, mock.Anything).
+			Return(mockLogfmtStreamIterator(1, 5), nil)
+
+		queryClient := newQueryClientMock()
+		queryClient.On("Recv").
+			Return(mockQueryResponse([]logproto.Stream{mockLogfmtStream(1, 5)}), nil)
+
+		ingesterClient := newQuerierClientMock()
+		ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).
+			Return(queryClient, nil)
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			store, limits)
+		require.NoError(t, err)
+
+		resp, err := querier.DetectedFields(ctx, &request)
+		require.NoError(t, err)
+
+		detectedFields := resp.Fields
+		// log lines come from querier_mock_test.go
+		// message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t
+		assert.Len(t, detectedFields, 7)
+		expectedCardinality := map[string]uint64{
+			"message":  5,
+			"count":    5,
+			"fake":     1,
+			"bytes":    5,
+			"duration": 5,
+			"percent":  5,
+			"even":     2,
+		}
+		for _, d := range detectedFields {
+			card := expectedCardinality[d.Label]
+			assert.Equal(t, card, d.Cardinality, "Expected cardinality mismatch for: %s", d.Label)
+		}
+	})
+
+	t.Run("returns detected fields with structured metadata from queried logs", func(t *testing.T) {
+		store := newStoreMock()
+		store.On("SelectLogs", mock.Anything, mock.Anything).
+			Return(mockLogfmtStreamIterator(1, 5), nil)
+
+		queryClient := newQueryClientMock()
+		queryClient.On("Recv").
+			Return(mockQueryResponse([]logproto.Stream{mockLogfmtStreamWithStructuredMetadata(1, 5)}), nil)
+
+		ingesterClient := newQuerierClientMock()
+		ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).
+			Return(queryClient, nil)
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			store, limits)
+		require.NoError(t, err)
+
+		resp, err := querier.DetectedFields(ctx, &request)
+		require.NoError(t, err)
+
+		detectedFields := resp.Fields
+		// log lines come from querier_mock_test.go
+		// message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t
+		assert.Len(t, detectedFields, 9)
+		expectedCardinality := map[string]uint64{
+			"variable": 5,
+			"constant": 1,
+			"message":  5,
+			"count":    5,
+			"fake":     1,
+			"bytes":    5,
+			"duration": 5,
+			"percent":  5,
+			"even":     2,
+		}
+		for _, d := range detectedFields {
+			card := expectedCardinality[d.Label]
+			assert.Equal(t, card, d.Cardinality, "Expected cardinality mismatch for: %s", d.Label)
+		}
+	})
+
+	t.Run("correctly identifies different field types", func(t *testing.T) {
+		store := newStoreMock()
+		store.On("SelectLogs", mock.Anything, mock.Anything).
+			Return(mockLogfmtStreamIterator(1, 2), nil)
+
+		queryClient := newQueryClientMock()
+		queryClient.On("Recv").
+			Return(mockQueryResponse([]logproto.Stream{mockLogfmtStream(1, 2)}), nil)
+
+		ingesterClient := newQuerierClientMock()
+		ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).
+			Return(queryClient, nil)
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			store, limits)
+		require.NoError(t, err)
+
+		resp, err := querier.DetectedFields(ctx, &request)
+		require.NoError(t, err)
+
+		detectedFields := resp.Fields
+		// log lines come from querier_mock_test.go
+		// message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t
+		assert.Len(t, detectedFields, 7)
+
+		var messageField, countField, bytesField, durationField, floatField, evenField *logproto.DetectedField
+		for _, field := range detectedFields {
+			switch field.Label {
+			case "message":
+				messageField = field
+			case "count":
+				countField = field
+			case "bytes":
+				bytesField = field
+			case "duration":
+				durationField = field
+			case "percent":
+				floatField = field
+			case "even":
+				evenField = field
+			}
+		}
+
+		assert.Equal(t, logproto.DetectedFieldString, messageField.Type)
+		assert.Equal(t, logproto.DetectedFieldInt, countField.Type)
+		assert.Equal(t, logproto.DetectedFieldBytes, bytesField.Type)
+		assert.Equal(t, logproto.DetectedFieldDuration, durationField.Type)
+		assert.Equal(t, logproto.DetectedFieldFloat, floatField.Type)
+		assert.Equal(t, logproto.DetectedFieldBoolean, evenField.Type)
+	})
+
+	t.Run("correctly identifies parser to use with logfmt and structured metadata", func(t *testing.T) {
+		store := newStoreMock()
+		store.On("SelectLogs", mock.Anything, mock.Anything).
+			Return(mockLogfmtStreamIterator(1, 2), nil)
+
+		queryClient := newQueryClientMock()
+		queryClient.On("Recv").
+			Return(mockQueryResponse([]logproto.Stream{mockLogfmtStreamWithStructuredMetadata(1, 2)}), nil)
+
+		ingesterClient := newQuerierClientMock()
+		ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).
+			Return(queryClient, nil)
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			store, limits)
+		require.NoError(t, err)
+
+		resp, err := querier.DetectedFields(ctx, &request)
+		require.NoError(t, err)
+
+		detectedFields := resp.Fields
+		// log lines come from querier_mock_test.go
+		// message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t
+		assert.Len(t, detectedFields, 9)
+
+		var messageField, countField, bytesField, durationField, floatField, evenField, constantField, variableField *logproto.DetectedField
+		for _, field := range detectedFields {
+			switch field.Label {
+			case "message":
+				messageField = field
+			case "count":
+				countField = field
+			case "bytes":
+				bytesField = field
+			case "duration":
+				durationField = field
+			case "percent":
+				floatField = field
+			case "even":
+				evenField = field
+			case "constant":
+				constantField = field
+			case "variable":
+				variableField = field
+			}
+		}
+
+		assert.Equal(t, []string{"logfmt"}, messageField.Parsers)
+		assert.Equal(t, []string{"logfmt"}, countField.Parsers)
+		assert.Equal(t, []string{"logfmt"}, bytesField.Parsers)
+		assert.Equal(t, []string{"logfmt"}, durationField.Parsers)
+		assert.Equal(t, []string{"logfmt"}, floatField.Parsers)
+		assert.Equal(t, []string{"logfmt"}, evenField.Parsers)
+		assert.Equal(t, []string{""}, constantField.Parsers)
+		assert.Equal(t, []string{""}, variableField.Parsers)
+	})
+}
+
+func BenchmarkQuerierDetectedFields(b *testing.B) {
+	limits, _ := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	conf := mockQuerierConfig()
+	conf.IngesterQueryStoreMaxLookback = 0
+
+	request := logproto.DetectedFieldsRequest{
+		Start:      time.Now().Add(-1 * time.Minute),
+		End:        time.Now(),
+		Query:      `{type="test"}`,
+		LineLimit:  1000,
+		FieldLimit: 1000,
+	}
+
+	store := newStoreMock()
+	store.On("SelectLogs", mock.Anything, mock.Anything).
+		Return(mockLogfmtStreamIterator(1, 2), nil)
+
+	queryClient := newQueryClientMock()
+	queryClient.On("Recv").
+		Return(mockQueryResponse([]logproto.Stream{mockLogfmtStream(1, 2)}), nil)
+
+	ingesterClient := newQuerierClientMock()
+	ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).
+		Return(queryClient, nil)
+
+	querier, _ := newQuerier(
+		conf,
+		mockIngesterClientConfig(),
+		newIngesterClientMockFactory(ingesterClient),
+		mockReadRingWithOneActiveIngester(),
+		&mockDeleteGettter{},
+		store, limits)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_, err := querier.DetectedFields(ctx, &request)
+		assert.NoError(b, err)
 	}
 }

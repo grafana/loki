@@ -19,9 +19,9 @@ Starting with the 3.0 release we began using [conventional commits](https://www.
 * **loki**: bugfix(memcached): Make memcached batch fetch truly context aware. [11363](https://github.com/grafana/loki/pull/11363)
 * **loki**: Helm: Add extraContainers to the write pods. [11319](https://github.com/grafana/loki/pull/11319)
 * **loki**: Inflight-logging: Add extra metadata to inflight requests logging. [11243](https://github.com/grafana/loki/pull/11243)
-* **loki**: Change the default of the `metrics-namespace` flag to 'loki'. [11110](https://github.com/grafana/loki/pull/11003)
+* **loki**: Use metrics namespace for more metrics. [11025](https://github.com/grafana/loki/pull/11025).
+* **loki**: Change default of metrics.namespace. [11110](https://github.com/grafana/loki/pull/11110).
 * **loki**: Helm: Allow topologySpreadConstraints [11086](https://github.com/grafana/loki/pull/11086)
-* **loki**: Add the `metrics-namespace` flag to change the namespace of metrics currently using cortex as namespace. [11003](https://github.com/grafana/loki/pull/11003)
 * **loki**: Storage: Allow setting a constant prefix for all created keys [10096](https://github.com/grafana/loki/pull/10096)
 * **loki**: Remove already deprecated `store.max-look-back-period`. [11038](https://github.com/grafana/loki/pull/11038)
 * **loki**: Support Loki ruler to notify WAL writes to remote storage. [10906](https://github.com/grafana/loki/pull/10906)
@@ -110,8 +110,28 @@ Starting with the 3.0 release we began using [conventional commits](https://www.
 * **loki** Background Cache: Fixes a bug that is causing the background queue size to be incremented twice for each enqueued item. [11776](https://github.com/grafana/loki/pull/11776)
 * **loki**: Parsing: String array elements were not being parsed correctly in JSON processing [11921](https://github.com/grafana/loki/pull/11921)
 
-## [2.9.7](https://github.com/grafana/loki/compare/v2.9.6...v2.9.7) (2024-04-10)
+## [2.9.9](https://github.com/grafana/loki/compare/v2.9.8...v2.9.9) (2024-07-04)
 
+### All Changes
+
+#### Loki
+
+##### Fixes
+
+* [12925](https://github.com/grafana/loki/pull/12925) **grobinson-grafana** Ingester: Add ingester_chunks_flush_failures_total
+* [13140](https://github.com/grafana/loki/pull/13140) **grobinson-grafana** Ingester: Add backoff to flush op
+
+## [2.9.8](https://github.com/grafana/loki/compare/v2.9.7...v2.9.8) (2024-05-03)
+
+### All Changes
+
+#### Loki
+
+##### Fixes
+
+* update module golang.org/x/net to v0.23.0 [security] (release-2.9.x) ([#12865](https://github.com/grafana/loki/issues/12865)) ([94e0029](https://github.com/grafana/loki/commit/94e00299ec9b36ad97c147641566b6922268c54e))
+
+## [2.9.7](https://github.com/grafana/loki/compare/v2.9.6...v2.9.7) (2024-04-10)
 
 ### Bug Fixes
 
@@ -135,6 +155,7 @@ Starting with the 3.0 release we began using [conventional commits](https://www.
 
 ##### Fixes
 
+* [10708](https://github.com/grafana/loki/pull/10708) **joshuapare**: Fix UDP receiver on syslog transport
 * [10631](https://github.com/grafana/loki/pull/10631) **thampiotr**: Fix race condition in cleaning up metrics when stopping to tail files.
 * [10798](https://github.com/grafana/loki/pull/10798) **hainenber**: Fix agent panicking after reloaded due to duplicate metric collector registration.
 * [10848](https://github.com/grafana/loki/pull/10848) **rgroothuijsen**: Correctly parse list of drop stage sources from YAML.

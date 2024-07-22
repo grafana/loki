@@ -125,6 +125,9 @@ func (c *ConfigWrapper) ApplyDynamicConfig() cfg.Source {
 		applyIngesterFinalSleep(r)
 		applyIngesterReplicationFactor(r)
 		applyChunkRetain(r, &defaults)
+		if err := applyCommonQuerierWorkerGRPCConfig(r, &defaults); err != nil {
+			return err
+		}
 
 		return nil
 	}
@@ -241,6 +244,21 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.Ingester.LifecyclerConfig.Zone = rc.InstanceZone
 		r.Ingester.LifecyclerConfig.ListenPort = rc.ListenPort
 		r.Ingester.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
+	}
+
+	if mergeWithExisting {
+		r.IngesterRF1.LifecyclerConfig.RingConfig.KVStore = rc.KVStore
+		r.IngesterRF1.LifecyclerConfig.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.IngesterRF1.LifecyclerConfig.RingConfig.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.IngesterRF1.LifecyclerConfig.TokensFilePath = rc.TokensFilePath
+		r.IngesterRF1.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.IngesterRF1.LifecyclerConfig.ID = rc.InstanceID
+		r.IngesterRF1.LifecyclerConfig.InfNames = rc.InstanceInterfaceNames
+		r.IngesterRF1.LifecyclerConfig.Port = rc.InstancePort
+		r.IngesterRF1.LifecyclerConfig.Addr = rc.InstanceAddr
+		r.IngesterRF1.LifecyclerConfig.Zone = rc.InstanceZone
+		r.IngesterRF1.LifecyclerConfig.ListenPort = rc.ListenPort
+		r.IngesterRF1.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
 	}
 
 	if mergeWithExisting {
@@ -666,6 +684,7 @@ func applyIngesterFinalSleep(cfg *ConfigWrapper) {
 
 func applyIngesterReplicationFactor(cfg *ConfigWrapper) {
 	cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor = cfg.Common.ReplicationFactor
+	cfg.IngesterRF1.LifecyclerConfig.RingConfig.ReplicationFactor = cfg.Common.ReplicationFactor
 }
 
 // applyChunkRetain is used to set chunk retain based on having an index query cache configured
@@ -683,4 +702,20 @@ func applyChunkRetain(cfg, defaults *ConfigWrapper) {
 			cfg.Ingester.RetainPeriod = cfg.StorageConfig.IndexCacheValidity + 1*time.Minute
 		}
 	}
+}
+
+func applyCommonQuerierWorkerGRPCConfig(cfg, defaults *ConfigWrapper) error {
+	usingNewFrontendCfg := !reflect.DeepEqual(cfg.Worker.NewQueryFrontendGRPCClientConfig, defaults.Worker.NewQueryFrontendGRPCClientConfig)
+	usingNewSchedulerCfg := !reflect.DeepEqual(cfg.Worker.QuerySchedulerGRPCClientConfig, defaults.Worker.QuerySchedulerGRPCClientConfig)
+	usingOldFrontendCfg := !reflect.DeepEqual(cfg.Worker.OldQueryFrontendGRPCClientConfig, defaults.Worker.OldQueryFrontendGRPCClientConfig)
+
+	if usingOldFrontendCfg {
+		if usingNewFrontendCfg || usingNewSchedulerCfg {
+			return fmt.Errorf("both `grpc_client_config` and (`query_frontend_grpc_client` or `query_scheduler_grpc_client`) are set at the same time. Please use only `query_frontend_grpc_client` and `query_scheduler_grpc_client`")
+		}
+		cfg.Worker.NewQueryFrontendGRPCClientConfig = cfg.Worker.OldQueryFrontendGRPCClientConfig
+		cfg.Worker.QuerySchedulerGRPCClientConfig = cfg.Worker.OldQueryFrontendGRPCClientConfig
+	}
+
+	return nil
 }

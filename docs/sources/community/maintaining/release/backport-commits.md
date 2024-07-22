@@ -28,3 +28,8 @@ Any PRs or commits not on the release branch that you want to include in the rel
    	{{% /admonition %}}
 
 1. Repeat the above steps for any PRs that need to be backported.
+
+
+## Backporting Release PRs
+
+If backporting a release PR, make sure you remove any `autorelease: pending` or `autorelease: tagged` labels before merging the backport PR. By default our backport action brings over all labels, but these labels are reserved for the release workflow and will cause future pipelines to fail if left of backport PRs.

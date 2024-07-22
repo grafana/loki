@@ -12,6 +12,8 @@ weight:  500
 This plugin has more configuration options compared to the built-in Fluent Bit Loki plugin.
 You can define which log files you want to collect using the [`Tail`](https://docs.fluentbit.io/manual/pipeline/inputs/tail) or [`Stdin`](https://docs.fluentbit.io/manual/pipeline/inputs/standard-input) data pipeline input. Additionally, Fluent Bit supports multiple `Filter` and `Parser` plugins (`Kubernetes`, `JSON`, etc.) to structure and alter log lines.
 
+{{< youtube id="s43IBSVyTpQ" >}}
+
 ## Usage
 
 ### Docker
@@ -229,7 +231,7 @@ Buffering refers to the ability to store the records somewhere, and while they a
 
 The blocking state with some of the input plugins is not acceptable, because it can have an undesirable side effect on the part that generates the logs. Fluent Bit implements a buffering mechanism that is based on parallel processing. Therefore, it cannot send logs in order. There are two ways of handling the out-of-order logs: 
 
-- Configure Loki to [accept out-of-order writes]({{< relref "../../configure#accept-out-of-order-writes" >}}).
+- Configure Loki to [accept out-of-order writes](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#accept-out-of-order-writes).
 
 - Configure the Loki output plugin to use the buffering mechanism based on [`dque`](https://github.com/joncrlsn/dque), which is compatible with the Loki server strict time ordering:
 

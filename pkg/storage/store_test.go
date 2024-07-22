@@ -126,7 +126,7 @@ func Benchmark_store_SelectSample(b *testing.B) {
 				}
 
 				for iter.Next() {
-					_ = iter.Sample()
+					_ = iter.At()
 					sampleCount++
 				}
 				iter.Close()
@@ -168,7 +168,7 @@ func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {
 		for iter.Next() {
 			j++
 			printHeap(b, false)
-			res = append(res, iter.Entry())
+			res = append(res, iter.At())
 			// limit result like the querier would do.
 			if j == query.Limit {
 				break
@@ -928,7 +928,7 @@ func Test_PipelineWrapper(t *testing.T) {
 	}
 	defer logit.Close()
 	for logit.Next() {
-		require.NoError(t, logit.Error()) // consume the iterator
+		require.NoError(t, logit.Err()) // consume the iterator
 	}
 
 	require.Equal(t, "test-user", wrapper.tenant)
@@ -959,7 +959,7 @@ func Test_PipelineWrapper_disabled(t *testing.T) {
 	}
 	defer logit.Close()
 	for logit.Next() {
-		require.NoError(t, logit.Error()) // consume the iterator
+		require.NoError(t, logit.Err()) // consume the iterator
 	}
 
 	require.Equal(t, "", wrapper.tenant)
@@ -1044,7 +1044,7 @@ func Test_SampleWrapper(t *testing.T) {
 	}
 	defer it.Close()
 	for it.Next() {
-		require.NoError(t, it.Error()) // consume the iterator
+		require.NoError(t, it.Err()) // consume the iterator
 	}
 
 	require.Equal(t, "test-user", wrapper.tenant)
@@ -1074,7 +1074,7 @@ func Test_SampleWrapper_disabled(t *testing.T) {
 	}
 	defer it.Close()
 	for it.Next() {
-		require.NoError(t, it.Error()) // consume the iterator
+		require.NoError(t, it.Err()) // consume the iterator
 	}
 
 	require.Equal(t, "", wrapper.tenant)
@@ -1338,7 +1338,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 
 	// get all the chunks from the first period
 	predicate := chunk.NewPredicate(newMatchers(fooLabelsWithName.String()), nil)
-	chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(firstPeriodDate), timeToModelTime(secondPeriodDate), predicate)
+	chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(firstPeriodDate), timeToModelTime(secondPeriodDate), predicate, nil)
 	require.NoError(t, err)
 	var totalChunks int
 	for _, chks := range chunks {
@@ -1409,7 +1409,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 
 	// get all the chunks from both the stores
 	predicate = chunk.NewPredicate(newMatchers(fooLabelsWithName.String()), nil)
-	chunks, _, err = store.GetChunks(ctx, "fake", timeToModelTime(firstPeriodDate), timeToModelTime(secondPeriodDate.Add(24*time.Hour)), predicate)
+	chunks, _, err = store.GetChunks(ctx, "fake", timeToModelTime(firstPeriodDate), timeToModelTime(secondPeriodDate.Add(24*time.Hour)), predicate, nil)
 	require.NoError(t, err)
 
 	totalChunks = 0
@@ -1543,7 +1543,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 
 			// get all the chunks from both the stores
 			predicate := chunk.NewPredicate(newMatchers(fooLabelsWithName.String()), nil)
-			chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(firstStoreDate), timeToModelTime(secondStoreDate.Add(24*time.Hour)), predicate)
+			chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(firstStoreDate), timeToModelTime(secondStoreDate.Add(24*time.Hour)), predicate, nil)
 			require.NoError(t, err)
 			var totalChunks int
 			for _, chks := range chunks {
@@ -1656,13 +1656,13 @@ func Test_OverlappingChunks(t *testing.T) {
 	}
 	defer it.Close()
 	require.True(t, it.Next())
-	require.Equal(t, "4", it.Entry().Line)
+	require.Equal(t, "4", it.At().Line)
 	require.True(t, it.Next())
-	require.Equal(t, "3", it.Entry().Line)
+	require.Equal(t, "3", it.At().Line)
 	require.True(t, it.Next())
-	require.Equal(t, "2", it.Entry().Line)
+	require.Equal(t, "2", it.At().Line)
 	require.True(t, it.Next())
-	require.Equal(t, "1", it.Entry().Line)
+	require.Equal(t, "1", it.At().Line)
 	require.False(t, it.Next())
 }
 
@@ -1914,7 +1914,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 
 	// get all the chunks from both the stores
 	predicate := chunk.NewPredicate(newMatchers(fooLabelsWithName.String()), nil)
-	chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(boltdbShipperStartDate), timeToModelTime(tsdbStartDate.Add(24*time.Hour)), predicate)
+	chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(boltdbShipperStartDate), timeToModelTime(tsdbStartDate.Add(24*time.Hour)), predicate, nil)
 	require.NoError(t, err)
 	var totalChunks int
 	for _, chks := range chunks {
@@ -1930,6 +1930,76 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 			require.True(t, ok)
 		}
 	}
+}
+
+func TestStore_SyncStopInteraction(t *testing.T) {
+	tempDir := t.TempDir()
+
+	ingesterName := "ingester-1"
+	limits, err := validation.NewOverrides(validation.Limits{}, nil)
+	require.NoError(t, err)
+
+	// config for BoltDB Shipper
+	boltdbShipperConfig := boltdb.IndexCfg{}
+	flagext.DefaultValues(&boltdbShipperConfig)
+	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "boltdb-index")
+	boltdbShipperConfig.CacheLocation = path.Join(tempDir, "boltdb-shipper-cache")
+	boltdbShipperConfig.Mode = indexshipper.ModeReadWrite
+	boltdbShipperConfig.IngesterName = ingesterName
+	boltdbShipperConfig.ResyncInterval = time.Millisecond
+
+	// config for tsdb Shipper
+	tsdbShipperConfig := indexshipper.Config{}
+	flagext.DefaultValues(&tsdbShipperConfig)
+	tsdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "tsdb-index")
+	tsdbShipperConfig.CacheLocation = path.Join(tempDir, "tsdb-shipper-cache")
+	tsdbShipperConfig.Mode = indexshipper.ModeReadWrite
+	tsdbShipperConfig.IngesterName = ingesterName
+	tsdbShipperConfig.ResyncInterval = time.Millisecond
+
+	// dates for activation of boltdb shippers
+	boltdbShipperStartDate := parseDate("2019-01-01")
+	tsdbStartDate := parseDate("2019-01-02")
+
+	cfg := Config{
+		FSConfig:            local.FSConfig{Directory: path.Join(tempDir, "chunks")},
+		BoltDBShipperConfig: boltdbShipperConfig,
+		TSDBShipperConfig:   tsdbShipperConfig,
+	}
+
+	schemaConfig := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
+			{
+				From:       config.DayTime{Time: timeToModelTime(boltdbShipperStartDate)},
+				IndexType:  "boltdb-shipper",
+				ObjectType: types.StorageTypeFileSystem,
+				Schema:     "v12",
+				IndexTables: config.IndexPeriodicTableConfig{
+					PathPrefix: "index/",
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
+				RowShards: 2,
+			},
+			{
+				From:       config.DayTime{Time: timeToModelTime(tsdbStartDate)},
+				IndexType:  "tsdb",
+				ObjectType: types.StorageTypeFileSystem,
+				Schema:     "v12",
+				IndexTables: config.IndexPeriodicTableConfig{
+					PathPrefix: "index/",
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					}},
+			},
+		},
+	}
+
+	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
+	require.NoError(t, err)
+	store.Stop()
 }
 
 func TestQueryReferencingStructuredMetadata(t *testing.T) {
@@ -1979,7 +2049,9 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 					},
 				}
 			}
-			require.NoError(t, chunkEnc.Append(&entry))
+			dup, err := chunkEnc.Append(&entry)
+			require.False(t, dup)
+			require.NoError(t, err)
 		}
 
 		require.NoError(t, chunkEnc.Close())
@@ -2022,7 +2094,7 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 					},
 				}
 			}
-			require.Equal(t, expectedEntry, it.Entry())
+			require.Equal(t, expectedEntry, it.At())
 		}
 
 		require.False(t, it.Next())

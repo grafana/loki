@@ -223,11 +223,13 @@ func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time
 	chunkEnc := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, blockSize, targetSize)
 
 	for ts := from; !ts.After(through); ts = ts.Add(1 * time.Minute) {
-		require.NoError(t, chunkEnc.Append(&logproto.Entry{
+		dup, err := chunkEnc.Append(&logproto.Entry{
 			Timestamp:          ts.Time(),
 			Line:               ts.String(),
 			StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", ts.String())),
-		}))
+		})
+		require.False(t, dup)
+		require.NoError(t, err)
 	}
 
 	require.NoError(t, chunkEnc.Close())
@@ -560,7 +562,7 @@ func TestChunkRewriter(t *testing.T) {
 							Timestamp:          curr.Time(),
 							Line:               curr.String(),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(expectedStructuredMetadata),
-						}, newChunkItr.Entry())
+						}, newChunkItr.At())
 						require.Equal(t, expectedStructuredMetadata.String(), newChunkItr.Labels())
 					}
 				}

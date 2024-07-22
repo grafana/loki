@@ -2,7 +2,8 @@
 title: Loki HTTP API
 description: Provides a reference page for the Loki HTTP API endpoints for data ingestion, data retrieval, and cluster management.
 aliases:
-- ../api/
+  - ../api/ # /docs/loki/latest/api/
+  - ./api/ # /docs/loki/latest/reference/api/
 weight: 500
 ---
 
@@ -23,6 +24,7 @@ Authorization needs to be done separately, for example, using an open-source loa
 These endpoints are exposed by the `distributor`, `write`, and `all` components:
 
 - [`POST /loki/api/v1/push`](#ingest-logs)
+- [`POST /otlp/v1/logs`](#ingest-logs-using-otlp)
 
 A [list of clients]({{< relref "../send-data" >}}) can be found in the clients documentation.
 
@@ -259,6 +261,22 @@ curl -H "Content-Type: application/json" \
   --data-raw '{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}'
 ```
 
+## Ingest logs using OTLP
+
+```bash
+POST /otlp/v1/logs
+```
+
+`/otlp/v1/logs` lets the OpenTelemetry Collector send logs to Loki using `otlphttp` protocol.
+
+For information on how to configure Loki, refer to the [OTel Collector topic](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/otel/).
+
+<!-- vale Google.Will = NO -->
+{{< admonition type="note" >}}
+When configuring the OpenTelemetry Collector, you must use `endpoint: http://<loki-addr>:3100/otlp`, as the collector automatically completes the endpoint.  Entering the full endpoint will generate an error.
+{{< /admonition >}}
+<!-- vale Google.Will = YES -->
+
 ## Query logs at a single point in time
 
 ```bash
@@ -266,8 +284,9 @@ GET /loki/api/v1/query
 ```
 
 `/loki/api/v1/query` allows for doing queries against a single point in time.
-This type of query is often referred to as an instant query. Instant queries are mostly used for metric type LogQL queries.
-It accepts the following query parameters in the URL:
+This type of query is often referred to as an instant query. Instant queries are only used for metric type LogQL queries
+and will return a 400 (Bad Request) in case a log type query is provided.
+The endpoint accepts the following query parameters in the URL:
 
 - `query`: The [LogQL]({{< relref "../query" >}}) query to perform. Requests that do not use valid LogQL syntax will return errors.
 - `limit`: The max number of entries to return. It defaults to `100`. Only applies to query types which produce a stream (log lines) response.
@@ -615,6 +634,7 @@ It accepts the following query parameters in the URL:
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
 - `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now. Any value specified for `start` supersedes this parameter.
+- `query`: Log stream selector that selects the streams to match and return label names. Example: `{app="myapp", environment="dev"}`
 
 In microservices mode, `/loki/api/v1/labels` is exposed by the querier.
 
@@ -664,7 +684,7 @@ It accepts the following query parameters in the URL:
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
 - `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now. Any value specified for `start` supersedes this parameter.
-- `query`: A set of log stream selector that selects the streams to match and return label values for `<name>`. Example: `{"app": "myapp", "environment": "dev"}`
+- `query`: Log stream selector that selects the streams to match and return label values for `<name>`. Example: `{app="myapp", environment="dev"}`
 
 In microservices mode, `/loki/api/v1/label/<name>/values` is exposed by the querier.
 
@@ -785,7 +805,7 @@ gave this response:
 ## Query log statistics
 
 ```bash
-GET `/loki/api/v1/index/stats`
+GET /loki/api/v1/index/stats
 ```
 
 The `/loki/api/v1/index/stats` endpoint can be used to query the index for the number of `streams`, `chunks`, `entries`, and `bytes` that a query resolves to.
@@ -879,7 +899,7 @@ ts=2024-03-30T23:03:40 caller=grpc_logging.go:66 level=info method=/cortex.Inges
 ts=2024-03-30T23:03:41 caller=grpc_logging.go:66 level=info method=/cortex.Ingester/Push duration=500ms msg=gRPC
 ```
 
-The pattern detected would be:
+The pattern detected might be:
 
 ```log
 ts=<_> caller=grpc_logging.go:66 level=info method=/cortex.Ingester/Push duration=<_> msg=gRPC
@@ -890,6 +910,7 @@ URL query parameters:
 - `query`: The [LogQL]({{< relref "../query" >}}) matchers to check (that is, `{job="foo", env=~".+"}`). This parameter is required.
 - `start=<nanosecond Unix epoch>`: Start timestamp. This parameter is required.
 - `end=<nanosecond Unix epoch>`: End timestamp. This parameter is required.
+- `step=<duration string or float number of seconds>`: Step between samples for occurrences of this pattern. This parameter is optional.
 
 ### Examples
 
@@ -1039,7 +1060,7 @@ GET /config
 ```
 
 `/config` exposes the current configuration. The optional `mode` query parameter can be used to
-modify the output. If it has the value `diff` only the differences between the default configuration
+modify the output. If it has the value `diffs` only the differences between the default configuration
 and the current are returned. A value of `defaults` returns the default configuration.
 
 In microservices mode, the `/config` endpoint is exposed by all components.

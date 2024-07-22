@@ -13,8 +13,116 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 6.7.1
+
+- [CHANGE] Changed version of Loki to 3.1.0
+
+## 6.7.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to 3.1.0
+
+## 6.6.6
+
+- [BUGFIX] Fix HPA ingester typo
+
+## 6.6.5
+
+- [BUGFIX] Fix querier address in SingleBinary mode
+
+## 6.6.4
+
+- [BUGFIX] Fix extraObjects
+
+## 6.6.3
+
+- [BUGFIX] Fix indentation of `query_range` Helm chart values
+
+## 6.6.2
+
+- [BUGFIX] Fix query-frontend (headless) and ruler http-metrics targetPort
+
+## 6.6.1
+
+- [BUGFIX] Fix query scheduler http-metrics targetPort
+
+## 6.6.0
+
+- [ENHANCEMENT] Allow setting PVC annotations for all volume claim templates in simple scalable and single binary mode
+
+## 6.5.2
+
+- [BUGFIX] Fixed Ingress routing for all deployment modes.
+
+## 6.5.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to v3.0.1
+
+
+## 6.4.2
+
+- [BUGFIX] Fixed helm helper functions to include missing `loki.hpa.apiVersion`  #12716
+
+## 6.4.1
+
+- [BUGFIX] Fixes read & backend replicas settings
+
+## 6.4.0
+
+- [ENHANCEMENT] Allow extraObject items as multiline strings, allowing for templating field names
+
+## 6.3.4
+
+- [BUGFIX] Add missing OTLP endpoint to nginx config
+
+## 6.3.3
+
+- [ENHANCEMENT] make the singlebinary set 0 the replicas number of backend, write,read.
+
+## 6.3.2
+
+- [BUGFIX] Missing password for Loki-Canary when loki.auth_enabled is true
+
+## 6.3.1
+
+- [BUGFIX] Fixed Typo in Ingester templates for zoneAwareReplication
+
+## 6.3.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to v3.0.0
+
+## 6.2.5
+
+- [BUGFIX] Add missing toleration blocks to bloom components.
+
+## 6.2.4
+
+- [ENHANCEMENT] Activate the volume endpoint by default.
+
+## 6.2.3
+
+- [ENHANCEMENT] Allow minio address to be overridden.
+- [CHANGE] `query-scheduler-discovery` service will now be prefixed by query scheduler full name.
+- [BUGFIX] Fix `helm-tests` Go source which was missing a param following #12245.
+
+## 6.2.2
+
+- [FEATURE] Add support for enabling pattern ingester config via `loki.pattern_ingester.enabled`.
+
+## 6.2.1
+
+- [BUGFIX] Removed duplicate bucketNames from documentation and fixed key name `deploymentMode`
+
+## 6.2.0
+
+- [FEATURE] Add a headless service to the bloom gateway component.
+
+## 6.1.0
+
+- [CHANGE] Only default bucket names in helm when using minio.
+
 ## 6.0.0
 
+- [FEATURE] added a new `Distributed` mode of deployment.
 - [CHANGE] the lokiCanary section was moved from under monitoring to be under the root of the file.
 - [CHANGE] the definitions for topologySpreadConstraints and podAffinity were converted from string templates to objects. Also removed the soft constraint on zone.
 - [CHANGE] the externalConfigSecretName was replaced with more generic configs
@@ -30,7 +138,6 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.47.0
 
 - [CHANGE] Changed version of Loki to 2.9.6
-
 
 ## 5.46.0
 
@@ -188,7 +295,6 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.33.0
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to v1.8.4
-
 
 ## 5.32.0
 
@@ -441,11 +547,9 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to v1.7.2
 
-
 ## 5.4.0
 
 - [CHANGE] Changed version of Loki to 2.8.2
-
 
 - [CHANGE] Change default GEL and Loki versions to 1.7.1 and 2.8.1 respectively
 - [BUGFIX] Fix dns port in network-policy
@@ -456,11 +560,9 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [BUGFIX] Add projected volume type to psp
 
-
 ## 4.9.0
 
 - [CHANGE] Changed version of Loki to 2.7.5
-
 
 - [BUGFIX] Fix role/PSP mapping
 

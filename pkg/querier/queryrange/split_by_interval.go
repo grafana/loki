@@ -8,6 +8,7 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -102,8 +103,8 @@ func (h *splitByInterval) Process(
 	maxSeries int,
 ) ([]queryrangebase.Response, error) {
 	var responses []queryrangebase.Response
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(errors.New("split by interval process canceled"))
 
 	ch := h.Feed(ctx, input)
 
@@ -223,7 +224,12 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 				intervals[i], intervals[j] = intervals[j], intervals[i]
 			}
 		}
-	case *LokiSeriesRequest, *LabelRequest, *logproto.IndexStatsRequest, *logproto.VolumeRequest, *logproto.ShardsRequest:
+	case *DetectedFieldsRequest:
+		limit = int64(req.LineLimit)
+		for i, j := 0, len(intervals)-1; i < j; i, j = i+1, j-1 {
+			intervals[i], intervals[j] = intervals[j], intervals[i]
+		}
+	case *LokiSeriesRequest, *LabelRequest, *logproto.IndexStatsRequest, *logproto.VolumeRequest, *logproto.ShardsRequest, *DetectedLabelsRequest:
 		// Set this to 0 since this is not used in Series/Labels/Index Request.
 		limit = 0
 	default:

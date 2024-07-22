@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
+
 	"github.com/go-kit/log"
 )
 
@@ -116,11 +117,6 @@ func (c *Context) Caches() Caches {
 	}
 }
 
-// Index returns the index statistics accumulated so far.
-func (c *Context) Index() Index {
-	return c.index
-}
-
 // Reset clears the statistics.
 func (c *Context) Reset() {
 	c.mtx.Lock()
@@ -168,15 +164,6 @@ func JoinIngesters(ctx context.Context, inc Ingester) {
 	defer stats.mtx.Unlock()
 
 	stats.ingester.Merge(inc)
-}
-
-// JoinIndex joins the index statistics in a concurrency-safe manner.
-func JoinIndex(ctx context.Context, index Index) {
-	stats := FromContext(ctx)
-	stats.mtx.Lock()
-	defer stats.mtx.Unlock()
-
-	stats.index.Merge(index)
 }
 
 // ComputeSummary compute the summary of the statistics.
@@ -247,6 +234,7 @@ func (i *Ingester) Merge(m Ingester) {
 func (i *Index) Merge(m Index) {
 	i.TotalChunks += m.TotalChunks
 	i.PostFilterChunks += m.PostFilterChunks
+	i.ShardsDuration += m.ShardsDuration
 }
 
 func (c *Caches) Merge(m Caches) {
@@ -531,9 +519,12 @@ func (c *Context) getCacheStatsByType(t CacheType) *Cache {
 	return stats
 }
 
-// Log logs a query statistics result.
-func (r Result) Log(log log.Logger) {
-	_ = log.Log(
+func (r Result) Log(logger log.Logger) {
+	logger.Log(r.KVList()...)
+}
+
+func (r Result) KVList() []any {
+	result := []any{
 		"Ingester.TotalReached", r.Ingester.TotalReached,
 		"Ingester.TotalChunksMatched", r.Ingester.TotalChunksMatched,
 		"Ingester.TotalBatches", r.Ingester.TotalBatches,
@@ -562,13 +553,14 @@ func (r Result) Log(log log.Logger) {
 		"Querier.CompressedBytes", humanize.Bytes(uint64(r.Querier.Store.Chunk.CompressedBytes)),
 		"Querier.TotalDuplicates", r.Querier.Store.Chunk.TotalDuplicates,
 		"Querier.QueryReferencedStructuredMetadata", r.Querier.Store.QueryReferencedStructured,
-	)
-	r.Caches.Log(log)
-	r.Summary.Log(log)
+	}
+
+	result = append(result, r.Caches.kvList()...)
+	return append(result, r.Summary.kvList()...)
 }
 
-func (s Summary) Log(log log.Logger) {
-	_ = log.Log(
+func (s Summary) kvList() []any {
+	return []any{
 		"Summary.BytesProcessedPerSecond", humanize.Bytes(uint64(s.BytesProcessedPerSecond)),
 		"Summary.LinesProcessedPerSecond", s.LinesProcessedPerSecond,
 		"Summary.TotalBytesProcessed", humanize.Bytes(uint64(s.TotalBytesProcessed)),
@@ -576,11 +568,11 @@ func (s Summary) Log(log log.Logger) {
 		"Summary.PostFilterLines", s.TotalPostFilterLines,
 		"Summary.ExecTime", ConvertSecondsToNanoseconds(s.ExecTime),
 		"Summary.QueueTime", ConvertSecondsToNanoseconds(s.QueueTime),
-	)
+	}
 }
 
-func (c Caches) Log(log log.Logger) {
-	_ = log.Log(
+func (c Caches) kvList() []any {
+	return []any{
 		"Cache.Chunk.Requests", c.Chunk.Requests,
 		"Cache.Chunk.EntriesRequested", c.Chunk.EntriesRequested,
 		"Cache.Chunk.EntriesFound", c.Chunk.EntriesFound,
@@ -633,5 +625,5 @@ func (c Caches) Log(log log.Logger) {
 		"Cache.InstantMetricResult.BytesSent", humanize.Bytes(uint64(c.InstantMetricResult.BytesSent)),
 		"Cache.InstantMetricResult.BytesReceived", humanize.Bytes(uint64(c.InstantMetricResult.BytesReceived)),
 		"Cache.InstantMetricResult.DownloadTime", c.InstantMetricResult.CacheDownloadTime(),
-	)
+	}
 }

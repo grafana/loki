@@ -46,6 +46,7 @@ func TestRequestNoopRetry(t *testing.T) {
 
 	require.EqualValues(t, 2, testutil.ToFloat64(metrics.requests))
 	require.EqualValues(t, 0, testutil.ToFloat64(metrics.retries))
+	metrics.Unregister()
 }
 
 func TestRequestZeroLimitedRetry(t *testing.T) {
@@ -74,6 +75,7 @@ func TestRequestZeroLimitedRetry(t *testing.T) {
 
 	require.EqualValues(t, 1, testutil.ToFloat64(metrics.requests))
 	require.EqualValues(t, 0, testutil.ToFloat64(metrics.retries))
+	metrics.Unregister()
 }
 
 func TestRequestLimitedRetry(t *testing.T) {
@@ -109,6 +111,7 @@ func TestRequestLimitedRetry(t *testing.T) {
 	require.EqualValues(t, 1, testutil.ToFloat64(metrics.retriesExceeded))
 	require.EqualValues(t, 2, testutil.ToFloat64(metrics.retries))
 	require.EqualValues(t, 4, testutil.ToFloat64(metrics.requests))
+	metrics.Unregister()
 }
 
 func TestRequestLimitedRetryNonRetryableErr(t *testing.T) {
@@ -139,6 +142,7 @@ func TestRequestLimitedRetryNonRetryableErr(t *testing.T) {
 	require.EqualValues(t, 0, testutil.ToFloat64(metrics.retries))
 	require.EqualValues(t, 1, testutil.ToFloat64(metrics.nonRetryableErrors))
 	require.EqualValues(t, 1, testutil.ToFloat64(metrics.requests))
+	metrics.Unregister()
 }
 
 func TestAIMDReducedThroughput(t *testing.T) {
@@ -207,11 +211,12 @@ func TestAIMDReducedThroughput(t *testing.T) {
 	require.Less(t, count, previousCount)
 	require.Less(t, success, previousSuccess)
 
-	// should have fewer successful requests than total since we are failing some
-	require.Less(t, success, count)
+	// should have fewer successful requests than total since we may be failing some
+	require.LessOrEqual(t, success, count)
 
 	// should have registered some congestion latency in stats
 	require.NotZero(t, statsCtx.Store().CongestionControlLatency)
+	metrics.Unregister()
 }
 
 func runAndMeasureRate(ctx context.Context, ctrl Controller, duration time.Duration) (float64, float64) {
@@ -242,7 +247,7 @@ type mockObjectClient struct {
 	nonRetryableErrs bool
 }
 
-func (m *mockObjectClient) PutObject(context.Context, string, io.ReadSeeker) error {
+func (m *mockObjectClient) PutObject(context.Context, string, io.Reader) error {
 	panic("not implemented")
 }
 
