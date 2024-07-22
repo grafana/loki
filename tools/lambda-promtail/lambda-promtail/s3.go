@@ -187,17 +187,17 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 
 	var lineCount int
 	for scanner.Scan() {
-		log_line := scanner.Text()
+		logLine := scanner.Text()
 		lineCount++
 		if lineCount <= parser.skipHeaderCount {
 			continue
 		}
 		if printLogLine {
-			fmt.Println(log_line)
+			fmt.Println(logLine)
 		}
 
 		timestamp := time.Now()
-		match := parser.timestampRegex.FindStringSubmatch(log_line)
+		match := parser.timestampRegex.FindStringSubmatch(logLine)
 		if len(match) > 0 {
 			if labels["lb_type"] == LB_NLB_TYPE {
 				// NLB logs don't have .SSSSSSZ suffix. RFC3339 requires a TZ specifier, use UTC
@@ -222,7 +222,7 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 		}
 
 		if err := b.add(ctx, entry{ls, logproto.Entry{
-			Line:      log_line,
+			Line:      logLine,
 			Timestamp: timestamp,
 		}}); err != nil {
 			return err
@@ -281,7 +281,7 @@ func processS3Event(ctx context.Context, ev *events.S3Event, pc Client, log *log
 				ExpectedBucketOwner: aws.String(labels["bucketOwner"]),
 			})
 		if err != nil {
-			return fmt.Errorf("Failed to get object %s from bucket %s on account %s\n, %s", labels["key"], labels["bucket"], labels["bucketOwner"], err)
+			return fmt.Errorf("failed to get object %s from bucket %s on account %s, %s", labels["key"], labels["bucket"], labels["bucketOwner"], err)
 		}
 		err = parseS3Log(ctx, batch, labels, obj.Body, log)
 		if err != nil {

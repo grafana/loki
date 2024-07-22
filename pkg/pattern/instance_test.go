@@ -12,6 +12,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/pattern/drain"
 	"github.com/grafana/loki/v3/pkg/pattern/metric"
 
 	"github.com/grafana/loki/pkg/push"
@@ -24,6 +25,7 @@ func TestInstance_QuerySample(t *testing.T) {
 			log.NewNopLogger(),
 			newIngesterMetrics(nil, "test"),
 			metric.NewChunkMetrics(nil, "test"),
+			drain.DefaultConfig(),
 			metric.AggregationConfig{
 				Enabled: true,
 			},
@@ -32,6 +34,15 @@ func TestInstance_QuerySample(t *testing.T) {
 		require.NoError(t, err)
 
 		return instance
+	}
+
+	downsampleInstance := func(inst *instance, ts model.Time) {
+		_ = inst.streams.ForEach(func(s *stream) (bool, error) {
+			inst.streams.WithLock(func() {
+				s.Downsample(ts)
+			})
+			return true, nil
+		})
 	}
 
 	ctx := context.Background()
@@ -83,6 +94,7 @@ func TestInstance_QuerySample(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
+		downsampleInstance(instance, model.Time(lastTsMilli))
 
 		// 5 min query range
 		// 1 min step
@@ -201,6 +213,7 @@ func TestInstance_QuerySample(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
+		downsampleInstance(instance, model.Time(then+oneMin+thirtySeconds))
 
 		err = instance.Push(ctx, &logproto.PushRequest{
 			Streams: []push.Stream{
@@ -243,6 +256,7 @@ func TestInstance_QuerySample(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
+		downsampleInstance(instance, model.Time(then+oneMin+oneMin+oneMin+thirtySeconds))
 
 		// steps
 		start := then

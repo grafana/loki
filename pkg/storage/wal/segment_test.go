@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/wal/testdata"
@@ -104,7 +105,7 @@ func TestWalSegmentWriter_Append(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			// Create a new WalSegmentWriter
-			w, err := NewWalSegmentWriter()
+			w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
 			require.NoError(t, err)
 			// Append the entries
 			for _, batch := range tt.batches {
@@ -167,7 +168,7 @@ func BenchmarkConcurrentAppends(t *testing.B) {
 	t.ResetTimer()
 	for i := 0; i < t.N; i++ {
 		var err error
-		w, err = NewWalSegmentWriter()
+		w, err = NewWalSegmentWriter(NewSegmentMetrics(nil))
 		require.NoError(t, err)
 
 		for _, lbl := range lbls {
@@ -196,7 +197,7 @@ func TestConcurrentAppends(t *testing.T) {
 	}
 	dst := bytes.NewBuffer(nil)
 
-	w, err := NewWalSegmentWriter()
+	w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
 	require.NoError(t, err)
 	var wg sync.WaitGroup
 	workChan := make(chan *appendArgs, 100)
@@ -288,7 +289,7 @@ func TestConcurrentAppends(t *testing.T) {
 }
 
 func TestMultiTenantWrite(t *testing.T) {
-	w, err := NewWalSegmentWriter()
+	w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
 	require.NoError(t, err)
 	dst := bytes.NewBuffer(nil)
 
@@ -358,7 +359,7 @@ func TestCompression(t *testing.T) {
 }
 
 func testCompression(t *testing.T, maxInputSize int64) {
-	w, err := NewWalSegmentWriter()
+	w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
 	require.NoError(t, err)
 	dst := bytes.NewBuffer(nil)
 	files := testdata.Files()
@@ -415,7 +416,7 @@ func testCompression(t *testing.T, maxInputSize int64) {
 }
 
 func TestReset(t *testing.T) {
-	w, err := NewWalSegmentWriter()
+	w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
 	require.NoError(t, err)
 	dst := bytes.NewBuffer(nil)
 
@@ -443,6 +444,45 @@ func TestReset(t *testing.T) {
 	require.True(t, n > 0)
 
 	require.Equal(t, dst.Bytes(), copyBuffer.Bytes())
+}
+
+func Test_Meta(t *testing.T) {
+	w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
+	require.NoError(t, err)
+
+	lbls := labels.FromStrings("container", "foo", "namespace", "dev")
+	w.Append("tenantb", lbls.String(), lbls, []*push.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "Entry 1"},
+		{Timestamp: time.Unix(2, 0), Line: "Entry 2"},
+		{Timestamp: time.Unix(3, 0), Line: "Entry 3"},
+	})
+	lbls = labels.FromStrings("container", "bar", "namespace", "dev")
+	w.Append("tenanta", lbls.String(), lbls, []*push.Entry{
+		{Timestamp: time.Unix(2, 0), Line: "Entry 1"},
+		{Timestamp: time.Unix(3, 0), Line: "Entry 2"},
+		{Timestamp: time.Unix(4, 0), Line: "Entry 3"},
+	})
+	meta := w.Meta("bar")
+
+	require.Equal(t, &metastorepb.BlockMeta{
+		FormatVersion:   1,
+		Id:              "bar",
+		MinTime:         time.Unix(1, 0).UnixNano(),
+		MaxTime:         time.Unix(4, 0).UnixNano(),
+		CompactionLevel: 0,
+		TenantStreams: []*metastorepb.TenantStreams{
+			{
+				TenantId: "tenanta",
+				MinTime:  time.Unix(2, 0).UnixNano(),
+				MaxTime:  time.Unix(4, 0).UnixNano(),
+			},
+			{
+				TenantId: "tenantb",
+				MinTime:  time.Unix(1, 0).UnixNano(),
+				MaxTime:  time.Unix(3, 0).UnixNano(),
+			},
+		},
+	}, meta)
 }
 
 func BenchmarkWrites(b *testing.B) {
@@ -489,7 +529,7 @@ func BenchmarkWrites(b *testing.B) {
 
 	dst := bytes.NewBuffer(make([]byte, 0, inputSize))
 
-	writer, err := NewWalSegmentWriter()
+	writer, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
 	require.NoError(b, err)
 
 	for _, d := range data {
@@ -507,22 +547,6 @@ func BenchmarkWrites(b *testing.B) {
 			n, err := writer.WriteTo(dst)
 			require.NoError(b, err)
 			require.EqualValues(b, encodedLength, n)
-		}
-	})
-
-	bytesBuf := make([]byte, inputSize)
-	b.Run("Reader", func(b *testing.B) {
-		b.ResetTimer()
-		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
-			var err error
-			reader, err := writer.ToReader()
-			require.NoError(b, err)
-
-			n, err := reader.Read(bytesBuf)
-			require.NoError(b, err)
-			require.EqualValues(b, encodedLength, n)
-			require.NoError(b, reader.Close())
 		}
 	})
 }

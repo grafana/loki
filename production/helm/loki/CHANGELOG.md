@@ -16,6 +16,17 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.7.0
 
 - [CHANGE] Changed `gateway.readinessProbe.httpGet.port` from `http-metrics` to `http` to avoid beeing scraped by the ServiceMonitor #13350
+## 6.7.1
+
+- [CHANGE] Changed version of Loki to 3.1.0
+
+## 6.7.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to 3.1.0
+
+## 6.6.6
+
+- [BUGFIX] Fix HPA ingester typo
 
 ## 6.6.5
 

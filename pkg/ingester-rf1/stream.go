@@ -3,13 +3,13 @@ package ingesterrf1
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/opentracing/opentracing-go"
-	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/wal"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -52,8 +53,8 @@ type stream struct {
 
 	metrics *ingesterMetrics
 
-	//tailers   map[uint32]*tailer
-	//tailerMtx sync.RWMutex
+	// tailers   map[uint32]*tailer
+	// tailerMtx sync.RWMutex
 
 	// entryCt is a counter which is incremented on each accepted entry.
 	// This allows us to discard WAL entries during replays which were
@@ -63,22 +64,12 @@ type stream struct {
 	entryCt int64
 
 	unorderedWrites bool
-	//streamRateCalculator *StreamRateCalculator
+	// streamRateCalculator *StreamRateCalculator
 
 	writeFailures *writefailures.Manager
 
 	chunkFormat          byte
 	chunkHeadBlockFormat chunkenc.HeadBlockFmt
-}
-
-type chunkDesc struct {
-	chunk   *chunkenc.MemChunk
-	closed  bool
-	synced  bool
-	flushed time.Time
-	reason  string
-
-	lastUpdated time.Time
 }
 
 type entryWithError struct {
@@ -95,11 +86,11 @@ func newStream(
 	fp model.Fingerprint,
 	labels labels.Labels,
 	unorderedWrites bool,
-	//streamRateCalculator *StreamRateCalculator,
+	// streamRateCalculator *StreamRateCalculator,
 	metrics *ingesterMetrics,
 	writeFailures *writefailures.Manager,
 ) *stream {
-	//hashNoShard, _ := labels.HashWithoutLabels(make([]byte, 0, 1024), ShardLbName)
+	// hashNoShard, _ := labels.HashWithoutLabels(make([]byte, 0, 1024), ShardLbName)
 	return &stream{
 		limiter:      NewStreamRateLimiter(limits, tenant, 10*time.Second),
 		cfg:          cfg,
@@ -107,11 +98,11 @@ func newStream(
 		labels:       labels,
 		labelsString: labels.String(),
 		labelHash:    labels.Hash(),
-		//labelHashNoShard:     hashNoShard,
-		//tailers:              map[uint32]*tailer{},
+		// labelHashNoShard:     hashNoShard,
+		// tailers:              map[uint32]*tailer{},
 		metrics: metrics,
 		tenant:  tenant,
-		//streamRateCalculator: streamRateCalculator,
+		// streamRateCalculator: streamRateCalculator,
 
 		unorderedWrites:      unorderedWrites,
 		writeFailures:        writeFailures,
@@ -130,22 +121,24 @@ func (s *stream) consumeChunk(_ context.Context, _ *logproto.Chunk) error {
 
 func (s *stream) Push(
 	ctx context.Context,
+	wal *wal.Manager,
 	entries []logproto.Entry,
 	// Whether nor not to ingest all at once or not. It is a per-tenant configuration.
 	rateLimitWholeStream bool,
 
 	usageTracker push.UsageTracker,
-	flushCtx *flushCtx,
-) (int, error) {
-
+) (int, *wal.AppendResult, error) {
 	toStore, invalid := s.validateEntries(ctx, entries, rateLimitWholeStream, usageTracker)
 	if rateLimitWholeStream && hasRateLimitErr(invalid) {
-		return 0, errorForFailedEntries(s, invalid, len(entries))
+		return 0, nil, errorForFailedEntries(s, invalid, len(entries))
 	}
 
-	bytesAdded, _ := s.storeEntries(ctx, toStore, usageTracker, flushCtx)
+	bytesAdded, res, err := s.storeEntries(ctx, wal, toStore, usageTracker)
+	if err != nil {
+		return 0, nil, err
+	}
 
-	return bytesAdded, errorForFailedEntries(s, invalid, len(entries))
+	return bytesAdded, res, errorForFailedEntries(s, invalid, len(entries))
 }
 
 func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, totalEntries int) error {
@@ -196,7 +189,7 @@ func hasRateLimitErr(errs []entryWithError) bool {
 	return ok
 }
 
-func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usageTracker push.UsageTracker, flushCtx *flushCtx) (int, []*logproto.Entry) {
+func (s *stream) storeEntries(ctx context.Context, w *wal.Manager, entries []*logproto.Entry, usageTracker push.UsageTracker) (int, *wal.AppendResult, error) {
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
 		sp.LogKV("event", "stream started to store entries", "labels", s.labelsString)
 		defer sp.LogKV("event", "stream finished to store entries")
@@ -204,7 +197,6 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 
 	var bytesAdded, outOfOrderSamples, outOfOrderBytes int
 
-	storedEntries := make([]*logproto.Entry, 0, len(entries))
 	for i := 0; i < len(entries); i++ {
 		s.entryCt++
 		s.lastLine.ts = entries[i].Timestamp
@@ -214,15 +206,22 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 		}
 
 		bytesAdded += len(entries[i].Line)
-		storedEntries = append(storedEntries, &entries[i])
 	}
-	flushCtx.segmentWriter.Append(s.tenant, s.labels.String(), s.labels, storedEntries)
+
+	res, err := w.Append(wal.AppendRequest{
+		TenantID:  s.tenant,
+		Labels:    s.labels,
+		LabelsStr: s.labels.String(),
+		Entries:   entries,
+	})
+	if err != nil {
+		return 0, nil, err
+	}
 	s.reportMetrics(ctx, outOfOrderSamples, outOfOrderBytes, 0, 0, usageTracker)
-	return bytesAdded, storedEntries
+	return bytesAdded, res, nil
 }
 
-func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, rateLimitWholeStream bool, usageTracker push.UsageTracker) ([]logproto.Entry, []entryWithError) {
-
+func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, rateLimitWholeStream bool, usageTracker push.UsageTracker) ([]*logproto.Entry, []entryWithError) {
 	var (
 		outOfOrderSamples, outOfOrderBytes   int
 		rateLimitedSamples, rateLimitedBytes int
@@ -231,7 +230,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		limit                                = s.limiter.lim.Limit()
 		lastLine                             = s.lastLine
 		highestTs                            = s.highestTs
-		toStore                              = make([]logproto.Entry, 0, len(entries))
+		toStore                              = make([]*logproto.Entry, 0, len(entries))
 	)
 
 	for i := range entries {
@@ -260,7 +259,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		}
 
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
-		cutoff := highestTs.Add(-s.cfg.MaxChunkAge / 2)
+		cutoff := highestTs.Add(-time.Hour)
 		if s.unorderedWrites && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(entries[i].Timestamp, cutoff)})
 			s.writeFailures.Log(s.tenant, fmt.Errorf("%w for stream %s", failedEntriesWithError[len(failedEntriesWithError)-1].e, s.labels))
@@ -277,7 +276,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 			highestTs = entries[i].Timestamp
 		}
 
-		toStore = append(toStore, entries[i])
+		toStore = append(toStore, &entries[i])
 	}
 
 	// Each successful call to 'AllowN' advances the limiter. With all-or-nothing
@@ -289,12 +288,12 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		rateLimitedSamples = len(toStore)
 		failedEntriesWithError = make([]entryWithError, 0, len(toStore))
 		for i := 0; i < len(toStore); i++ {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&toStore[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(toStore[i].Line))}})
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{toStore[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(toStore[i].Line))}})
 			rateLimitedBytes += len(toStore[i].Line)
 		}
 	}
 
-	//s.streamRateCalculator.Record(s.tenant, s.labelHash, s.labelHashNoShard, totalBytes)
+	// s.streamRateCalculator.Record(s.tenant, s.labelHash, s.labelHashNoShard, totalBytes)
 	s.reportMetrics(ctx, outOfOrderSamples, outOfOrderBytes, rateLimitedSamples, rateLimitedBytes, usageTracker)
 	return toStore, failedEntriesWithError
 }

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/prometheus/client_golang/prometheus"
@@ -20,11 +21,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester/index"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
-	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/wal"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -69,9 +69,10 @@ type instance struct {
 	streamsCreatedTotal prometheus.Counter
 	streamsRemovedTotal prometheus.Counter
 
-	//tailers   map[uint32]*tailer
+	// tailers   map[uint32]*tailer
 	tailerMtx sync.RWMutex
 
+	logger             log.Logger
 	limiter            *Limiter
 	streamCountLimiter *streamCountLimiter
 	ownedStreamsSvc    *ownedStreamService
@@ -80,9 +81,6 @@ type instance struct {
 
 	metrics *ingesterMetrics
 
-	chunkFilter          chunk.RequestChunkFilterer
-	pipelineWrapper      log.PipelineWrapper
-	extractorWrapper     log.SampleExtractorWrapper
 	streamRateCalculator *StreamRateCalculator
 
 	writeFailures *writefailures.Manager
@@ -92,10 +90,10 @@ type instance struct {
 	customStreamsTracker push.UsageTracker
 }
 
-func (i *instance) Push(ctx context.Context, req *logproto.PushRequest, flushCtx *flushCtx) error {
+func (i *instance) Push(ctx context.Context, w *wal.Manager, req *logproto.PushRequest) error {
 	rateLimitWholeStream := i.limiter.limits.ShardStreams(i.instanceID).Enabled
 
-	var appendErr error
+	results := make([]*wal.AppendResult, 0, len(req.Streams))
 	for _, reqStream := range req.Streams {
 		s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
 			func() (*stream, error) {
@@ -107,13 +105,27 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest, flushCtx
 			},
 		)
 		if err != nil {
-			appendErr = err
-			continue
+			return err
 		}
-
-		_, appendErr = s.Push(ctx, reqStream.Entries, rateLimitWholeStream, i.customStreamsTracker, flushCtx)
+		_, res, err := s.Push(ctx, w, reqStream.Entries, rateLimitWholeStream, i.customStreamsTracker)
+		if err != nil {
+			return err
+		}
+		results = append(results, res)
 	}
-	return appendErr
+
+	for _, result := range results {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-result.Done():
+			if err := result.Err(); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 func newInstance(
@@ -123,14 +135,11 @@ func newInstance(
 	limiter *Limiter,
 	configs *runtime.TenantConfigs,
 	metrics *ingesterMetrics,
-	chunkFilter chunk.RequestChunkFilterer,
-	pipelineWrapper log.PipelineWrapper,
-	extractorWrapper log.SampleExtractorWrapper,
 	streamRateCalculator *StreamRateCalculator,
 	writeFailures *writefailures.Manager,
 	customStreamsTracker push.UsageTracker,
+	logger log.Logger,
 ) (*instance, error) {
-	fmt.Println("new instance for", instanceID)
 	invertedIndex, err := index.NewMultiInvertedIndex(periodConfigs, uint32(cfg.IndexShards))
 	if err != nil {
 		return nil, err
@@ -149,14 +158,12 @@ func newInstance(
 		streamsRemovedTotal: streamsRemovedTotal.WithLabelValues(instanceID),
 		//
 		//tailers:            map[uint32]*tailer{},
+		logger:             logger,
 		limiter:            limiter,
 		streamCountLimiter: newStreamCountLimiter(instanceID, streams.Len, limiter, ownedStreamsSvc),
 		ownedStreamsSvc:    ownedStreamsSvc,
 		configs:            configs,
 		metrics:            metrics,
-		chunkFilter:        chunkFilter,
-		pipelineWrapper:    pipelineWrapper,
-		extractorWrapper:   extractorWrapper,
 
 		streamRateCalculator: streamRateCalculator,
 
@@ -286,7 +293,7 @@ func (i *instance) onStreamCreated(s *stream) {
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
 	memoryStreamsLabelsBytes.Add(float64(len(s.labels.String())))
 	i.streamsCreatedTotal.Inc()
-	//i.addTailersToNewStream(s)
+	// i.addTailersToNewStream(s)
 	streamsCountStats.Add(1)
 	i.ownedStreamsSvc.incOwnedStreamCount()
 	if i.configs.LogStreamCreation(i.instanceID) {

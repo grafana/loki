@@ -3,6 +3,7 @@ package protos
 import (
 	"fmt"
 
+	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
@@ -124,6 +125,15 @@ func (t *Task) ToProtoTask() *ProtoTask {
 		Tsdb: t.TSDB.Path(),
 		Gaps: protoGaps,
 	}
+}
+
+func (t *Task) GetLogger(logger log.Logger) log.Logger {
+	return log.With(logger,
+		"task", t.ID,
+		"tenant", t.Tenant,
+		"table", t.Table.String(),
+		"tsdb", t.TSDB.Name(),
+	)
 }
 
 type TaskResult struct {

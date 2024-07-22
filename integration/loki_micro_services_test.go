@@ -1045,7 +1045,7 @@ func TestCategorizedLabels(t *testing.T) {
 				expectedEncodingFlags = tc.encodingFlags
 			}
 
-			resp, err := cliQueryFrontend.RunQuery(context.Background(), tc.query, headers...)
+			resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), tc.query, headers...)
 			require.NoError(t, err)
 			assert.Equal(t, "streams", resp.Data.ResultType)
 

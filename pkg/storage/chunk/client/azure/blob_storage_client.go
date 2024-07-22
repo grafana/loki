@@ -229,7 +229,6 @@ func (b *BlobStorage) ObjectExists(ctx context.Context, objectKey string) (bool,
 		_, err = blockBlobURL.GetProperties(ctx, azblob.BlobAccessConditions{}, azblob.ClientProvidedKeyOptions{})
 		return err
 	})
-
 	if err != nil {
 		return false, err
 	}
@@ -278,7 +277,7 @@ func (b *BlobStorage) getObject(ctx context.Context, objectKey string) (rc io.Re
 	return downloadResponse.Body(azblob.RetryReaderOptions{MaxRetryRequests: b.cfg.MaxRetries}), downloadResponse.ContentLength(), nil
 }
 
-func (b *BlobStorage) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+func (b *BlobStorage) PutObject(ctx context.Context, objectKey string, object io.Reader) error {
 	return loki_instrument.TimeRequest(ctx, "azure.PutObject", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
 		blockBlobURL, err := b.getBlobURL(objectKey, false)
 		if err != nil {
