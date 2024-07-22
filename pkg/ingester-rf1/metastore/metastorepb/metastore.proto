@@ -18,8 +18,9 @@ message BlockMeta {
   int64 min_time = 3;
   int64 max_time = 4;
   uint32 compaction_level = 6;
+  uint64 indexRef = 7;
 
-  repeated TenantStreams tenant_streams = 7;
+  repeated TenantStreams tenant_streams = 8;
 }
 
 // TenantStreams object points to the offset in the block at which
