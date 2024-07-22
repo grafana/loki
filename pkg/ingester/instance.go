@@ -1191,7 +1191,14 @@ func (i *instance) updateOwnedStreams(ingesterRing ring.ReadRing, ingesterID str
 			if err != nil {
 				return false, fmt.Errorf("error getting replication set for stream %s: %v", s.labelsString, err)
 			}
-			ownedStream := i.isOwnedStream(replicationSet, ingesterID)
+
+			var ownedStream bool
+			if s.isAggregatedMetric {
+				ownedStream = false
+			} else {
+				ownedStream = i.isOwnedStream(replicationSet, ingesterID)
+			}
+
 			i.ownedStreamsSvc.trackStreamOwnership(s.fp, ownedStream)
 			return true, nil
 		})

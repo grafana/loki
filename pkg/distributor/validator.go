@@ -9,6 +9,7 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/detection"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -157,6 +158,12 @@ func (v Validator) ValidateLabels(ctx validationContext, ls labels.Labels, strea
 		validation.DiscardedSamples.WithLabelValues(validation.MissingLabels, ctx.userID).Inc()
 		return fmt.Errorf(validation.MissingLabelsErrorMsg)
 	}
+
+	// Skip validation for aggregated metric streams, as we create those for internal use
+	if ls.Has(detection.AggregatedMetricLabel) {
+		return nil
+	}
+
 	numLabelNames := len(ls)
 	if numLabelNames > ctx.maxLabelNamesPerSeries {
 		updateMetrics(validation.MaxLabelNamesPerSeries, ctx.userID, stream)

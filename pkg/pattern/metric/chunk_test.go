@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/detection"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
@@ -471,7 +472,7 @@ func TestDownsample(t *testing.T) {
 	c.Downsample(now, mockWriter)
 
 	mockWriter.AssertCalled(t, "WriteEntry", now.Time(), aggregatedMetricEntry(now, 6.0, 3.0), labels.Labels{
-		labels.Label{Name: AggregatedMetricLabel, Value: "foo_service"},
+		labels.Label{Name: detection.AggregatedMetricLabel, Value: "foo_service"},
 		labels.Label{Name: "level", Value: "info"},
 	})
 

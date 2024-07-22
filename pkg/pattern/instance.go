@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/distributor"
+	"github.com/grafana/loki/v3/pkg/detection"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/ingester/index"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -87,8 +87,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 
 		for _, entry := range reqStream.Entries {
 			structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
-			//TODO(twhitney): messy dependency on distributor package. Move this function.
-			level := distributor.DetectLogLevelFromLogEntry(entry, structuredMetadata)
+			level := detection.DetectLogLevelFromLogEntry(entry, structuredMetadata)
 
 			lbls, err := syntax.ParseLabels(reqStream.Labels)
 			if err != nil {

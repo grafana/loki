@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/detection"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -28,7 +29,6 @@ const (
 	Bytes Type = iota
 	Count
 	Unsupported
-	AggregatedMetricLabel = "__aggregated_metric__"
 )
 
 type metrics struct {
@@ -55,7 +55,7 @@ func NewChunks(labels labels.Labels, chunkMetrics *ChunkMetrics, logger log.Logg
 
 	lvl := labels.Get("level")
 	if lvl == "" {
-		lvl = distributor.LogLevelUnknown
+		lvl = detection.LogLevelUnknown
 	}
 
 	level.Debug(logger).Log(
@@ -344,7 +344,7 @@ func (c *Chunks) writeAggregatedMetrics(
 	totalBytes, totalCount uint64,
 ) {
 	lbls := labels.Labels{
-		labels.Label{Name: AggregatedMetricLabel, Value: c.service},
+		labels.Label{Name: detection.AggregatedMetricLabel, Value: c.service},
 		labels.Label{Name: "level", Value: c.level},
 	}
 

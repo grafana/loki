@@ -9,7 +9,7 @@ import (
 )
 
 type AggregationConfig struct {
-  //TODO(twhitney): This needs to be a per-tenant config
+	//TODO(twhitney): This needs to be a per-tenant config
 	Enabled             bool                    `yaml:"enabled,omitempty" doc:"description=Whether the pattern ingester metric aggregation is enabled."`
 	LogPushObservations bool                    `yaml:"log_push_observations,omitempty" doc:"description=Whether to log push observations."`
 	DownsamplePeriod    time.Duration           `yaml:"downsample_period"`
