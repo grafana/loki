@@ -1344,7 +1344,7 @@ PUT /loki/api/v1/delete
 Create a new delete request for the authenticated tenant.
 The [log entry deletion]({{< relref "../operations/storage/logs-deletion" >}}) documentation has configuration details.
 
-Log entry deletion is supported _only_ when the BoltDB Shipper is configured for the index store.
+Log entry deletion is supported _only_ when TSDB or BoltDB Shipper is configured for the index store.
 
 Query parameters:
 
@@ -1384,7 +1384,7 @@ GET /loki/api/v1/delete
 List the existing delete requests for the authenticated tenant.
 The [log entry deletion]({{< relref "../operations/storage/logs-deletion" >}}) documentation has configuration details.
 
-Log entry deletion is supported _only_ when the BoltDB Shipper is configured for the index store.
+Log entry deletion is supported _only_ when TSDB or BoltDB Shipper is configured for the index store.
 
 List the existing delete requests using the following API:
 
@@ -1423,7 +1423,7 @@ The [log entry deletion]({{< relref "../operations/storage/logs-deletion" >}}) d
 
 Loki allows cancellation of delete requests until the requests are picked up for processing. It is controlled by the `delete_request_cancel_period` YAML configuration or the equivalent command line option when invoking Loki. To cancel a delete request that has been picked up for processing or is partially complete, pass the `force=true` query parameter to the API.
 
-Log entry deletion is supported _only_ when the BoltDB Shipper is configured for the index store.
+Log entry deletion is supported _only_ when TSDB or BoltDB Shipper is configured for the index store.
 
 Cancel a delete request using this compactor endpoint:
 
