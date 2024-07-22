@@ -25,6 +25,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/iter"
@@ -1219,6 +1220,33 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 			"msg", fmt.Sprintf("looking for detected fields in stream %d with %d lines", stream.Hash, len(stream.Entries)))
 
 		for _, entry := range stream.Entries {
+			structuredMetadata := getStructuredMetadata(entry)
+			emtpyparser := ""
+			for k, vals := range structuredMetadata {
+				df, ok := detectedFields[k]
+				if !ok && fieldCount < limit {
+					df = newParsedFields(&emtpyparser)
+					detectedFields[k] = df
+					fieldCount++
+				}
+
+				if df == nil {
+					continue
+				}
+
+				detectType := true
+				for _, v := range vals {
+					parsedFields := detectedFields[k]
+					if detectType {
+						// we don't want to determine the type for every line, so we assume the type in each stream will be the same, and re-detect the type for the next stream
+						parsedFields.DetermineType(v)
+						detectType = false
+					}
+
+					parsedFields.Insert(v)
+				}
+			}
+
 			detected, parser := parseLine(entry.Line)
 			for k, vals := range detected {
 				df, ok := detectedFields[k]
@@ -1247,15 +1275,33 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 
 					parsedFields.Insert(v)
 				}
-
-				level.Debug(spanlogger.FromContext(ctx)).Log(
-					"detected_fields", "true",
-					"msg", fmt.Sprintf("detected field %s with %d values", k, len(vals)))
 			}
 		}
 	}
 
 	return detectedFields
+}
+
+func getStructuredMetadata(entry push.Entry) map[string][]string {
+	labels := map[string]map[string]struct{}{}
+	for _, lbl := range entry.StructuredMetadata {
+		if values, ok := labels[lbl.Name]; ok {
+			values[lbl.Value] = struct{}{}
+		} else {
+			labels[lbl.Name] = map[string]struct{}{lbl.Value: {}}
+		}
+	}
+
+	result := make(map[string][]string, len(labels))
+	for lbl, values := range labels {
+		vals := make([]string, 0, len(values))
+		for v := range values {
+			vals = append(vals, v)
+		}
+		result[lbl] = vals
+	}
+
+	return result
 }
 
 func parseLine(line string) (map[string][]string, *string) {
