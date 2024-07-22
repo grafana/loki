@@ -210,6 +210,7 @@ The new configuration will be loaded this can be verified by checking the Alloy 
 
 If you get stuck or need help creating the configuration, you can copy and replace the entire `config.alloy` using the completed configuration file:
 
+
 <!-- INTERACTIVE exec START -->
 ```bash
 cp loki-fundamentals/completed/config-raw.alloy loki-fundamentals/config.alloy
@@ -224,6 +225,10 @@ curl -X POST http://localhost:12345/-/reload
 ## Step 3: Configure Alloy to ingest OpenTelemetry logs via Kafka
 
 Next we will configure Alloy to also ingest OpenTelemetry logs via Kafka, we need to update the Alloy configuration file once again. We will add the new components to the `config.alloy` file along with the existing components.
+
+### Open your Code Editor and Locate the `config.alloy` file
+
+Like before, we generate our next pipeline configuration within the same `config.alloy` file. The below configuration snippets will be added **in addition** to the existing configuration. Essentially, we are configuring two pipelines within the same Alloy configuration file.
 
 
 ### Source OpenTelemetry logs from Kafka
@@ -254,9 +259,6 @@ In this configuration:
 
 For more information on the `otelcol.receiver.kafka` configuration, see the [OpenTelemetry Receiver Kafka documentation](https://grafana.com/docs/alloy/latest/reference/components/otelcol.receiver.kafka/).
 
-### Open your Code Editor and Locate the `config.alloy` file
-
-Like before, we generate our next pipeline configuration within the same `config.alloy` file. The below configuration snippets will be added **in addition** to the existing configuration. Essentially, we are configuring two pipelines within the same Alloy configuration file.
 
 ### Batch OpenTelemetry logs before sending
 
