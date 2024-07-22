@@ -3,7 +3,6 @@ package querier
 import (
 	"context"
 	"flag"
-	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -1117,7 +1116,7 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 		return nil, err
 	}
 
-	detectedFields := parseDetectedFields(ctx, req.FieldLimit, streams)
+	detectedFields := parseDetectedFields(req.FieldLimit, streams)
 
 	fields := make([]*logproto.DetectedField, len(detectedFields))
 	fieldCount := 0
@@ -1210,16 +1209,12 @@ func determineType(value string) logproto.DetectedFieldType {
 	return logproto.DetectedFieldString
 }
 
-func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.Streams) map[string]*parsedFields {
+func parseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*parsedFields {
 	detectedFields := make(map[string]*parsedFields, limit)
 	fieldCount := uint32(0)
 	emtpyparser := ""
 
 	for _, stream := range streams {
-		level.Debug(spanlogger.FromContext(ctx)).Log(
-			"detected_fields", "true",
-			"msg", fmt.Sprintf("looking for detected fields in stream %d with %d lines", stream.Hash, len(stream.Entries)))
-
 		for _, entry := range stream.Entries {
 			structuredMetadata := getStructuredMetadata(entry)
 			for k, vals := range structuredMetadata {
