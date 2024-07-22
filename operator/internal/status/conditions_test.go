@@ -11,7 +11,8 @@ import (
 )
 
 func TestMergeConditions(t *testing.T) {
-	now := metav1.NewTime(time.Unix(0, 0))
+	oldTime := metav1.NewTime(time.Unix(0, 0))
+	now := metav1.NewTime(time.Unix(10, 0))
 	tt := []struct {
 		desc       string
 		old        []metav1.Condition
@@ -37,12 +38,25 @@ func TestMergeConditions(t *testing.T) {
 		{
 			desc: "reset old condition",
 			old: []metav1.Condition{
-				conditionPending,
+				{
+					Type:               conditionPending.Type,
+					Status:             metav1.ConditionTrue,
+					LastTransitionTime: oldTime,
+					Reason:             conditionPending.Reason,
+					Message:            conditionPending.Message,
+				},
 			},
 			active: []metav1.Condition{
 				conditionReady,
 			},
 			wantMerged: []metav1.Condition{
+				{
+					Type:               conditionReady.Type,
+					Status:             metav1.ConditionTrue,
+					LastTransitionTime: now,
+					Reason:             conditionReady.Reason,
+					Message:            conditionReady.Message,
+				},
 				{
 					Type:               conditionPending.Type,
 					Status:             metav1.ConditionFalse,
@@ -50,12 +64,27 @@ func TestMergeConditions(t *testing.T) {
 					Reason:             conditionPending.Reason,
 					Message:            conditionPending.Message,
 				},
+			},
+		},
+		{
+			desc: "keep transition time of old condition",
+			old: []metav1.Condition{
 				{
-					Type:               conditionReady.Type,
-					Status:             metav1.ConditionTrue,
-					LastTransitionTime: now,
-					Reason:             conditionReady.Reason,
-					Message:            conditionReady.Message,
+					Type:               conditionPending.Type,
+					Status:             metav1.ConditionFalse,
+					LastTransitionTime: oldTime,
+					Reason:             conditionPending.Reason,
+					Message:            conditionPending.Message,
+				},
+			},
+			active: []metav1.Condition{},
+			wantMerged: []metav1.Condition{
+				{
+					Type:               conditionPending.Type,
+					Status:             metav1.ConditionFalse,
+					LastTransitionTime: oldTime,
+					Reason:             conditionPending.Reason,
+					Message:            conditionPending.Message,
 				},
 			},
 		},
@@ -72,7 +101,7 @@ func TestMergeConditions(t *testing.T) {
 				{
 					Type:               conditionPending.Type,
 					Status:             metav1.ConditionFalse,
-					LastTransitionTime: now,
+					LastTransitionTime: oldTime,
 					Reason:             conditionPending.Reason,
 					Message:            conditionPending.Message,
 				},
@@ -94,11 +123,54 @@ func TestMergeConditions(t *testing.T) {
 					Message:            conditionReady.Message,
 				},
 				{
+					Type:               string(lokiv1.ConditionWarning),
+					Status:             metav1.ConditionTrue,
+					LastTransitionTime: now,
+					Reason:             "test-warning",
+					Message:            "test-warning-message",
+				},
+				{
 					Type:               conditionPending.Type,
 					Status:             metav1.ConditionFalse,
-					LastTransitionTime: now,
+					LastTransitionTime: oldTime,
 					Reason:             conditionPending.Reason,
 					Message:            conditionPending.Message,
+				},
+			},
+		},
+		{
+			desc: "remove duplicates",
+			old: []metav1.Condition{
+				{
+					Type:               conditionReady.Type,
+					Status:             metav1.ConditionTrue,
+					LastTransitionTime: now,
+					Reason:             conditionReady.Reason,
+					Message:            conditionReady.Message,
+				},
+				{
+					Type:               conditionReady.Type,
+					Status:             metav1.ConditionTrue,
+					LastTransitionTime: now,
+					Reason:             conditionReady.Reason,
+					Message:            conditionReady.Message,
+				},
+			},
+			active: []metav1.Condition{
+				conditionReady,
+				{
+					Type:    string(lokiv1.ConditionWarning),
+					Reason:  "test-warning",
+					Message: "test-warning-message",
+				},
+			},
+			wantMerged: []metav1.Condition{
+				{
+					Type:               conditionReady.Type,
+					Status:             metav1.ConditionTrue,
+					LastTransitionTime: now,
+					Reason:             conditionReady.Reason,
+					Message:            conditionReady.Message,
 				},
 				{
 					Type:               string(lokiv1.ConditionWarning),

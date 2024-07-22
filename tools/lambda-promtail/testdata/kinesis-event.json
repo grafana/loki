@@ -1,36 +1,25 @@
 {
-	"Records": [
-		{
-		"kinesis": {
-			"kinesisSchemaVersion": "1.0",
-			"partitionKey": "s1",
-			"sequenceNumber": "49568167373333333333333333333333333333333333333333333333",
-			"data": "SGVsbG8gV29ybGQ=",
-			"approximateArrivalTimestamp": 1480641523.477
-		},
-		"eventSource": "aws:kinesis",
-		"eventVersion": "1.0",
-		"eventID": "shardId-000000000000:49568167373333333333333333333333333333333333333333333333",
-		"eventName": "aws:kinesis:record",
-		"invokeIdentityArn": "arn:aws:iam::123456789012:role/LambdaRole",
-		"awsRegion": "us-east-1",
-		"eventSourceARN": "arn:aws:kinesis:us-east-1:123456789012:stream/simple-stream"
-		},
-		{
-		"kinesis": {
-			"kinesisSchemaVersion": "1.0",
-			"partitionKey": "s1",
-			"sequenceNumber": "49568167373333333334444444444444444444444444444444444444",
-			"data": "SGVsbG8gV29ybGQ=",
-			"approximateArrivalTimestamp": 1480841523.477
-		},
-		"eventSource": "aws:kinesis",
-		"eventVersion": "1.0",
-		"eventID": "shardId-000000000000:49568167373333333334444444444444444444444444444444444444",
-		"eventName": "aws:kinesis:record",
-		"invokeIdentityArn": "arn:aws:iam::123456789012:role/LambdaRole",
-		"awsRegion": "us-east-1",
-		"eventSourceARN": "arn:aws:kinesis:us-east-1:123456789012:stream/simple-stream"
-		}
-	]
+  "messageType": "DATA_MESSAGE",
+  "owner": "some_owner",
+  "logGroup": "test-logroup",
+  "logStream": "test-logstream",
+  "subscriptionFilters": ["test-subscription"],
+  "logEvents": [
+    {
+      "id": "98237509",
+      "timestamp": 1719922604969,
+      "message": "some_message"
+    },
+    {
+      "id": "20396236",
+      "timestamp": 1719922604969,
+      "message": "some_message"
+    },
+    {
+      "id": "23485670",
+      "timestamp": 1719922604969,
+      "message": "some_message"
+    }
+  ]
 }
+

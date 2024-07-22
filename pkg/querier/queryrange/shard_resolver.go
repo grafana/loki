@@ -37,21 +37,22 @@ func shardResolverForConf(
 	maxParallelism int,
 	maxShards int,
 	r queryrangebase.Request,
-	statsHandler, next queryrangebase.Handler,
+	statsHandler, next, retryNext queryrangebase.Handler,
 	limits Limits,
 ) (logql.ShardResolver, bool) {
 	if conf.IndexType == types.TSDBType {
 		return &dynamicShardResolver{
-			ctx:             ctx,
-			logger:          logger,
-			statsHandler:    statsHandler,
-			next:            next,
-			limits:          limits,
-			from:            model.Time(r.GetStart().UnixMilli()),
-			through:         model.Time(r.GetEnd().UnixMilli()),
-			maxParallelism:  maxParallelism,
-			maxShards:       maxShards,
-			defaultLookback: defaultLookback,
+			ctx:              ctx,
+			logger:           logger,
+			statsHandler:     statsHandler,
+			retryNextHandler: retryNext,
+			next:             next,
+			limits:           limits,
+			from:             model.Time(r.GetStart().UnixMilli()),
+			through:          model.Time(r.GetEnd().UnixMilli()),
+			maxParallelism:   maxParallelism,
+			maxShards:        maxShards,
+			defaultLookback:  defaultLookback,
 		}, true
 	}
 	if conf.RowShards < 2 {
@@ -64,10 +65,11 @@ type dynamicShardResolver struct {
 	ctx context.Context
 	// TODO(owen-d): shouldn't have to fork handlers here -- one should just transparently handle the right logic
 	// depending on the underlying type?
-	statsHandler queryrangebase.Handler // index stats handler (hooked up to results cache, etc)
-	next         queryrangebase.Handler // next handler in the chain (used for non-stats reqs)
-	logger       log.Logger
-	limits       Limits
+	statsHandler     queryrangebase.Handler // index stats handler (hooked up to results cache, etc)
+	retryNextHandler queryrangebase.Handler // next handler wrapped with retries
+	next             queryrangebase.Handler // next handler in the chain (used for non-stats reqs)
+	logger           log.Logger
+	limits           Limits
 
 	from, through   model.Time
 	maxParallelism  int
@@ -251,7 +253,8 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 	exprStr := expr.String()
 	// try to get shards for the given expression
 	// if it fails, fallback to linearshards based on stats
-	resp, err := r.next.Do(r.ctx, &logproto.ShardsRequest{
+	// use the retry handler here to retry transient errors
+	resp, err := r.retryNextHandler.Do(r.ctx, &logproto.ShardsRequest{
 		From:                adjustedFrom,
 		Through:             r.through,
 		Query:               expr.String(),
