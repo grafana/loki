@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/iter"
@@ -101,12 +102,15 @@ func (bt *BloomTokenizer) newBloom() *Bloom {
 // Populates a bloom filter(s) with the tokens from the given chunks.
 // Called once per series
 func (bt *BloomTokenizer) Populate(
+	seriesFP model.Fingerprint,
 	blooms v2iter.SizedIterator[*Bloom],
 	chks v2iter.Iterator[ChunkRefWithIter],
 	ch chan *BloomCreation,
 ) {
 	clear(bt.cache) // MUST always clear the cache before starting a new series
 	var next bool
+
+	logger := log.With(bt.logger, "fingerprint", seriesFP)
 
 	// All but the last bloom are considered full -- send back unaltered
 	for next = blooms.Next(); next && blooms.Remaining() > 0; next = blooms.Next() {
@@ -116,6 +120,7 @@ func (bt *BloomTokenizer) Populate(
 		}
 	}
 
+	var wasEmpty bool
 	var bloom *Bloom
 	if next {
 		// The last bloom has been made available via the `Next()` call above
@@ -126,7 +131,8 @@ func (bt *BloomTokenizer) Populate(
 		// We have the feeling that the empty blooms may be reused from old blocks.
 		// Here we log an error if we find an empty bloom.
 		if bloom.Count() == 0 {
-			level.Warn(bt.logger).Log(
+			wasEmpty = true
+			level.Warn(logger).Log(
 				"msg", "found existing empty bloom",
 			)
 		}
@@ -169,8 +175,10 @@ func (bt *BloomTokenizer) Populate(
 
 	// TODO(salvacorts): Delete this once we solve the correctness bug
 	if bloom.Count() == 0 {
-		level.Warn(bt.logger).Log(
+		level.Warn(logger).Log(
 			"msg", "resulting bloom is empty",
+			"wasFound", next,
+			"wasEmpty", wasEmpty,
 		)
 	}
 

@@ -5,6 +5,8 @@ import (
 	"hash"
 	"io"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
@@ -167,6 +169,7 @@ type MergeBuilder struct {
 	// Add chunks to a bloom
 	populate func(s *Series, srcBlooms iter.SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation)
 	metrics  *Metrics
+	logger   log.Logger
 }
 
 type BloomPopulatorFunc = func(s *Series, srcBlooms iter.SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation)
@@ -180,6 +183,7 @@ func NewMergeBuilder(
 	store iter.Iterator[*Series],
 	populate BloomPopulatorFunc,
 	metrics *Metrics,
+	logger log.Logger,
 ) *MergeBuilder {
 	// combinedSeriesIter handles series with fingerprint collisions:
 	// because blooms dont contain the label-set (only the fingerprint),
@@ -207,6 +211,7 @@ func NewMergeBuilder(
 		store:    combinedSeriesIter,
 		populate: populate,
 		metrics:  metrics,
+		logger:   logger,
 	}
 }
 
@@ -266,6 +271,15 @@ func (mb *MergeBuilder) processNextSeries(
 		chunksToAdd = nextInStore.Chunks.Unless(nextInBlocks.Series.Chunks)
 		chunksCopied += len(nextInStore.Chunks) - len(chunksToAdd)
 		preExistingBlooms = nextInBlocks.Blooms
+
+		level.Debug(mb.logger).Log(
+			"msg", "series already exists in block",
+			"fingerprint", nextInStore.Fingerprint,
+			"seriesChunks", len(nextInStore.Chunks),
+			"chunksToAdd", len(chunksToAdd),
+			"chunksCopied", len(nextInStore.Chunks)-len(chunksToAdd),
+			"preExistingBlooms", preExistingBlooms.Remaining(),
+		)
 	}
 
 	chunksIndexed += len(chunksToAdd)
