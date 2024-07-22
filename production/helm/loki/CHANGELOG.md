@@ -15,7 +15,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 6.7.0
 
-- [CHANGE] Changed `gateway.readinessProbe.httpGet.port` from `http-metrics` to `metrics` to avoid beeing scraped by the ServiceMonitor #13350
+- [CHANGE] Changed `gateway.readinessProbe.httpGet.port` from `http-metrics` to `http` to avoid beeing scraped by the ServiceMonitor #13350
 
 ## 6.6.5
 
