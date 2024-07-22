@@ -14,9 +14,11 @@ killercoda:
 
 #  Sending Logs to Loki via Kafka using Alloy
 
-Alloy nativley supports receiving logs via Kafka. In this example, we will configure Alloy to recive logs via kafka using two different methods:
+Alloy natively supports receiving logs via Kafka. In this example, we will configure Alloy to receive logs via Kafka using two different methods:
 - [loki.source.kafka](https://grafana.com/docs/alloy/latest/reference/components/loki.source.kafka): reads messages from Kafka using a consumer group and forwards them to other `loki.*` components.
 - [otelcol.receiver.kafka](https://grafana.com/docs/alloy/latest/reference/components/otelcol.receiver.kafka/): accepts telemetry data from a Kafka broker and forwards it to other `otelcol.*` components.
+
+<!-- INTERACTIVE ignore START -->
 
 ## Dependencies
 
@@ -25,7 +27,6 @@ Before you begin, ensure you have the following to run the demo:
 - Docker
 - Docker Compose
 
-<!-- INTERACTIVE ignore START -->
 {{< admonition type="tip" >}}
 Alternatively, you can try out this example in our interactive learning environment: [Sending Logs to Loki via Kafka using Alloy](https://killercoda.com/grafana-labs/course/loki/alloy-kafka-logs).
 
@@ -39,11 +40,8 @@ Provide feedback, report bugs, and raise issues in the [Grafana Killercoda repos
 
 
 ## Scenario
-
-In this scenario, we have a microservices application called the Carnivourse Greenhouse. This application consists of the following services:
-
-- **User Service:** Mangages user data and authentication for the application. Such as creating users and logging in.
-- **plant Service:** Manges the creation of new plants and updates other services when a new plant is created.
+In this scenario, we have a microservices application called the Carnivorous Greenhouse. This application consists of the following services:
+- **User Service:** Manages user data and authentication for the application. Such as creating users and logging in.
 - **Simulation Service:** Generates sensor data for each plant.
 - **Websocket Service:** Manages the websocket connections for the application.
 - **Bug Service:** A service that when enabled, randomly causes services to fail and generate additional logs.
@@ -89,7 +87,7 @@ In this step, we will set up our environment by cloning the repository that cont
     {{< /docs/ignore >}}
 
     This will spin up the following services:
-    ```bash
+    ```console
     ✔ Container loki-fundamentals-grafana-1      Started                                                        
     ✔ Container loki-fundamentals-loki-1         Started                        
     ✔ Container loki-fundamentals-alloy-1        Started
@@ -108,19 +106,32 @@ We will be access two UI interfaces:
 
 In this first step, we will configure Alloy to ingest raw Kafka logs. To do this, we will update the `config.alloy` file to include the Kafka logs configuration.
 
+### Open your Code Editor and Locate the `config.alloy` file
+
+Grafana Alloy requires a configuration file to define the components and their relationships. The configuration file is written using Alloy configuration syntax. We will build the entire observability pipeline within this configuration file. To start, we will open the `config.alloy` file in the code editor:
+
 {{< docs/ignore >}}
-
 **Note: Killercoda has an inbuilt Code editor which can be accessed via the `Editor` tab.**
-
+1. Expand the `loki-fundamentals` directory in the file explorer of the `Editor` tab.
+1. Locate the `config.alloy` file in the `loki-fundamentals` directory (Top level directory).
+1. Click on the `config.alloy` file to open it in the code editor.
 {{< /docs/ignore >}}
+
+<!-- INTERACTIVE ignore START -->
+1. Open the `loki-fundamentals` directory in a code editor of your choice.
+1. Locate the `config.alloy` file in the `loki-fundamentals` directory (Top level directory).
+1. Click on the `config.alloy` file to open it in the code editor.
+<!-- INTERACTIVE ignore END -->
+
+The below configuration snippets will be added to the `config.alloy` file.  
 
 ### Source logs from kafka
 
 First, we will configure the Loki Kafka source. `loki.source.kafka` reads messages from Kafka using a consumer group and forwards them to other `loki.*` components.
 
-The component starts a new Kafka consumer group for the given arguments and fans out incoming entries to the list of receivers in forward_to.
+The component starts a new Kafka consumer group for the given arguments and fans out incoming entries to the list of receivers in `forward_to`.
 
-Open the `config.alloy` file in the `loki-fundamentals` directory and copy the following configuration:
+Add the following configuration to the `config.alloy` file:
 ```alloy
 loki.source.kafka "raw" {
   brokers                = ["kafka:9092"]
@@ -146,7 +157,7 @@ For more information on the `loki.source.kafka` configuration, see the [Loki Kaf
 
 Next, we will configure the Loki relabel rules. The `loki.relabel` component rewrites the label set of each log entry passed to its receiver by applying one or more relabeling rules and forwards the results to the list of receivers in the component’s arguments. In our case we are directly calling the rule from the `loki.source.kafka` component.
 
-Open the `config.alloy` file in the `loki-fundamentals` directory and copy the following configuration:
+Add the following configuration to the `config.alloy` file:
 ```alloy
 loki.relabel "kafka" {
   forward_to      = [loki.write.http.receiver]
@@ -161,7 +172,7 @@ In this configuration:
 - `forward_to`: The list of receivers to forward the logs to. In this case, we are forwarding the logs to the `loki.write.http.receiver`. Though in this case, we are directly calling the rule from the `loki.source.kafka` component. So `forward_to` is being used as a placeholder as it is required by the `loki.relabel` component.
 - `rule`: The relabeling rule to apply to the incoming logs. In this case, we are renaming the `__meta_kafka_topic` label to `topic`.
 
-In this case we are using the `__meta_kafka_topic` label to dynamically set the `topic` label on the incoming logs. This will allow us to identify and restrive logs steams based on the Kafka topic in the Log Explorer App in Grafana. This can be useful when you have multiple applications sending logs to Alloy using different Kafka topics.
+Lastly, we will configure the Loki write component. `loki.write` receives log entries from other Loki components and sends them over the network using the Loki logproto format.
 
 For more information on the `loki.relabel` configuration, see the [Loki Relabel documentation](https://grafana.com/docs/alloy/latest/reference/components/loki.relabel/).
 
@@ -169,7 +180,7 @@ For more information on the `loki.relabel` configuration, see the [Loki Relabel 
 
 Lastly, we will configure the Loki write component. `loki.write` receives log entries from other loki components and sends them over the network using the Loki logproto format.
 
-Open the `config.alloy` file in the `loki-fundamentals` directory and copy the following configuration:
+Add the following configuration to the `config.alloy` file:
 ```alloy
 loki.write "http" {
   endpoint {
@@ -186,6 +197,7 @@ For more information on the `loki.write` configuration, see the [Loki Write docu
 ### Reload the Alloy configuration to check the changes
 
 Once added, save the file. Then run the following command to request Alloy to reload the configuration:
+
 <!-- INTERACTIVE exec START -->
 ```bash
 curl -X POST http://localhost:12345/-/reload
@@ -207,24 +219,18 @@ curl -X POST http://localhost:12345/-/reload
 
 <!-- INTERACTIVE page step2.md END -->
 
-
 <!-- INTERACTIVE page step3.md START -->
 
 ## Step 3: Configure Alloy to ingest OpenTelemetry logs via Kafka
 
 Next we will configure Alloy to also ingest OpenTelemetry logs via Kafka, we need to update the Alloy configuration file once again. We will add the new components to the `config.alloy` file along with the existing components.
 
-{{< docs/ignore >}}
-
-**Note: Killercoda has an inbuilt Code editor which can be accessed via the `Editor` tab.**
-
-{{< /docs/ignore >}}
 
 ### Source OpenTelemetry logs from Kafka
 
 First, we will configure the OpenTelemetry Kafaka receiver. `otelcol.receiver.kafka` accepts telemetry data from a Kafka broker and forwards it to other `otelcol.*` components.
 
-Open the `config.alloy` file in the `loki-fundamentals` directory and copy the following configuration:
+Add the following configuration to the `config.alloy` file:
 
 ```alloy
 otelcol.receiver.kafka "default" {
@@ -248,11 +254,15 @@ In this configuration:
 
 For more information on the `otelcol.receiver.kafka` configuration, see the [OpenTelemetry Receiver Kafka documentation](https://grafana.com/docs/alloy/latest/reference/components/otelcol.receiver.kafka/).
 
+### Open your Code Editor and Locate the `config.alloy` file
+
+Like before, we generate our next pipeline configuration within the same `config.alloy` file. The below configuration snippets will be added **in addition** to the existing configuration. Essentially, we are configuring two pipelines within the same Alloy configuration file.
+
 ### Batch OpenTelemetry logs before sending
 
 Next, we will configure a OpenTelemetry processor. `otelcol.processor.batch` accepts telemetry data from other otelcol components and places them into batches. Batching improves the compression of data and reduces the number of outgoing network requests required to transmit data. This processor supports both size and time based batching.
 
-Open the `config.alloy` file in the `loki-fundamentals` directory and copy the following configuration:
+Add the following configuration to the `config.alloy` file:
 ```alloy
 otelcol.processor.batch "default" {
     output {
@@ -270,7 +280,7 @@ For more information on the `otelcol.processor.batch` configuration, see the [Op
 
 Lastly, we will configure the OpenTelemetry exporter. `otelcol.exporter.otlphttp` accepts telemetry data from other otelcol components and writes them over the network using the OTLP HTTP protocol. We will use this exporter to send the logs to Loki's native OTLP endpoint.
 
-Open the `config.alloy` file in the `loki-fundamentals` directory and copy the following configuration:
+Add the following configuration to the `config.alloy` file:
 ```alloy
 otelcol.exporter.otlphttp "default" {
   client {
@@ -295,9 +305,9 @@ curl -X POST http://localhost:12345/-/reload
 
 The new configuration will be loaded this can be verified by checking the Alloy UI: [http://localhost:12345](http://localhost:12345).
 
-## Stuck? Need help?
+## Stuck? Need help (Full Configuration)?
 
-If you get stuck or need help creating the configuration, you can copy and replace the entire `config.alloy` using the completed configuration file:
+If you get stuck or need help creating the configuration, you can copy and replace the entire `config.alloy`. This differs from the previous `Stuck? Need help` section as we are replacing the entire configuration file with the completed configuration file. Rather than just adding the first Loki Raw Pipeline configuration.
 
 <!-- INTERACTIVE exec START -->
 ```bash
@@ -343,7 +353,7 @@ docker-compose -f loki-fundamentals/greenhouse/docker-compose-micro.yml up -d --
 {{< /docs/ignore >}}
 
 This will start the following services:
-```bash
+```console
  ✔ Container greenhouse-db-1                 Started                                                         
  ✔ Container greenhouse-websocket_service-1  Started 
  ✔ Container greenhouse-bug_service-1        Started
@@ -374,7 +384,7 @@ In this example, we configured Alloy to ingest logs via Kafka. We configured All
 {{< docs/ignore >}}
 
 ### Back to Docs
-Head back to wear you started from to continue with the Loki documentation: [Loki documentation](https://grafana.com/docs/loki/latest/send-data/alloy)
+Head back to where you started from to continue with the Loki documentation: [Loki documentation](https://grafana.com/docs/loki/latest/send-data/alloy)
 
 {{< /docs/ignore >}}
 

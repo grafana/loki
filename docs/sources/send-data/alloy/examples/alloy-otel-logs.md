@@ -19,6 +19,8 @@ Alloy natively supports receiving logs in the OpenTelemetry format. This allows 
 - **OpenTelemetry Processor:** This component will accept telemetry data from other `otelcol.*` components and place them into batches. Batching improves the compression of data and reduces the number of outgoing network requests required to transmit data.
 - **OpenTelemetry Exporter:** This component will accept telemetry data from other `otelcol.*` components and write them over the network using the OTLP HTTP protocol. We will use this exporter to send the logs to Loki's native OTLP endpoint.
 
+<!-- INTERACTIVE ignore START -->
+
 ## Dependencies
 
 Before you begin, ensure you have the following to run the demo:
@@ -26,7 +28,6 @@ Before you begin, ensure you have the following to run the demo:
 - Docker
 - Docker Compose
 
-<!-- INTERACTIVE ignore START -->
 {{< admonition type="tip" >}}
 Alternatively, you can try out this example in our interactive learning environment: [Sending Logs to Loki via Kafka using Alloy](https://killercoda.com/grafana-labs/course/loki/alloy-otel-logs).
 
@@ -36,14 +37,15 @@ It's a fully configured environment with all the dependencies already installed.
 
 Provide feedback, report bugs, and raise issues in the [Grafana Killercoda repository](https://github.com/grafana/killercoda).
 {{< /admonition >}}
+
 <!-- INTERACTIVE ignore END -->
 
 ## Scenario
 
 In this scenario, we have a microservices application called the Carnivourse Greenhouse. This application consists of the following services:
 
-- **User Service:** Mangages user data and authentication for the application. Such as creating users and logging in.
-- **plant Service:** Manges the creation of new plants and updates other services when a new plant is created.
+- **User Service:** Manages user data and authentication for the application. Such as creating users and logging in.
+- **plant Service:** Manages the creation of new plants and updates other services when a new plant is created.
 - **Simulation Service:** Generates sensor data for each plant.
 - **Websocket Service:** Manages the websocket connections for the application.
 - **Bug Service:** A service that when enabled, randomly causes services to fail and generate additional logs.
@@ -85,7 +87,7 @@ In this step, we will set up our environment by cloning the repository that cont
     {{< /docs/ignore >}}
 
     This will spin up the following services:
-    ```bash
+    ```console
     ✔ Container loki-fundamentals-grafana-1  Started                                                        
     ✔ Container loki-fundamentals-loki-1     Started                        
     ✔ Container loki-fundamentals-alloy-1    Started
@@ -102,17 +104,30 @@ We will be access two UI interfaces:
 
 To configure Alloy to ingest OpenTelemetry logs, we need to update the Alloy configuration file. To start, we will update the `config.alloy` file to include the OpenTelemetry logs configuration.
 
+### Open your Code Editor and Locate the `config.alloy` file
+
+Grafana Alloy requires a configuration file to define the components and their relationships. The configuration file is written using Alloy configuration syntax. We will build the entire observability pipeline within this configuration file. To start, we will open the `config.alloy` file in the code editor:
+
 {{< docs/ignore >}}
-
-  **Note: Killercoda has an inbuilt Code editor which can be accessed via the `Editor` tab.**
-
+**Note: Killercoda has an inbuilt Code editor which can be accessed via the `Editor` tab.**
+1. Expand the `loki-fundamentals` directory in the file explorer of the `Editor` tab.
+1. Locate the `config.alloy` file in the `loki-fundamentals` directory (Top level directory).
+1. Click on the `config.alloy` file to open it in the code editor.
 {{< /docs/ignore >}}
+
+<!-- INTERACTIVE ignore START -->
+1. Open the `loki-fundamentals` directory in a code editor of your choice.
+1. Locate the `config.alloy` file in the `loki-fundamentals` directory (Top level directory).
+1. Click on the `config.alloy` file to open it in the code editor.
+<!-- INTERACTIVE ignore END -->
+
+The below configuration snippets will be added to the `config.alloy` file.  
 
 ### Recive OpenTelemetry logs via gRPC and HTTP
 
 First, we will configure the OpenTelemetry receiver. `otelcol.receiver.otlp` accepts logs in the OpenTelemetry format via HTTP and gRPC. We will use this receiver to receive logs from the Carnivorous Greenhouse application.
 
-Open the `config.alloy` file in the `loki-fundamentals` directory and copy the following configuration:
+Add the following configuration to the `config.alloy` file:
 
 ```alloy
  otelcol.receiver.otlp "default" {
@@ -137,7 +152,7 @@ For more information on the `otelcol.receiver.otlp` configuration, see the [Open
 
 Next, we will configure a OpenTelemetry processor. `otelcol.processor.batch` accepts telemetry data from other otelcol components and places them into batches. Batching improves the compression of data and reduces the number of outgoing network requests required to transmit data. This processor supports both size and time based batching.
 
-Open the `config.alloy` file in the `loki-fundamentals` directory and copy the following configuration:
+Add the following configuration to the `config.alloy` file:
 ```alloy
 otelcol.processor.batch "default" {
     output {
@@ -155,7 +170,7 @@ For more information on the `otelcol.processor.batch` configuration, see the [Op
 
 Lastly, we will configure the OpenTelemetry exporter. `otelcol.exporter.otlphttp` accepts telemetry data from other otelcol components and writes them over the network using the OTLP HTTP protocol. We will use this exporter to send the logs to Loki's native OTLP endpoint.
 
-Open the `config.alloy` file in the `loki-fundamentals` directory and copy the following configuration:
+Add the following configuration to the `config.alloy` file:
 ```alloy
 otelcol.exporter.otlphttp "default" {
   client {
@@ -256,7 +271,7 @@ In this example, we configured Alloy to ingest OpenTelemetry logs and send them 
 {{< docs/ignore >}}
 
 ### Back to Docs
-Head back to wear you started from to continue with the Loki documentation: [Loki documentation](https://grafana.com/docs/loki/latest/send-data/alloy)
+Head back to where you started from to continue with the Loki documentation: [Loki documentation](https://grafana.com/docs/loki/latest/send-data/alloy)
 
 {{< /docs/ignore >}}
 
