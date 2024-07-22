@@ -42,7 +42,8 @@ pattern_ingester:
   enabled: true
   metric_aggregation:
     enabled: true
-    log_push_observations: true
+    log_push_observations: false
+    loki_address: localhost:3100
 
 ruler:
   alertmanager_url: http://localhost:9093
