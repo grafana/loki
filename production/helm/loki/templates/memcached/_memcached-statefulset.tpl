@@ -122,8 +122,12 @@ spec:
             {{- end }}
           securityContext:
             {{- toYaml $.ctx.Values.memcached.containerSecurityContext | nindent 12 }}
-          {{- if .extraVolumeMounts }}
           volumeMounts:
+          {{- if .persistence.enabled }}
+            - name: data
+              mountPath: {{ .persistence.mountPath }}
+          {{- end }}
+          {{- if .extraVolumeMounts }}
             {{- toYaml .extraVolumeMounts | nindent 12 }}
           {{- end }}
 
@@ -151,6 +155,19 @@ spec:
             {{- toYaml .extraVolumeMounts | nindent 12 }}
           {{- end }}
       {{- end }}
+  {{- if .persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        {{- with .persistence.storageClass }}
+        storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .persistence.storageSize | quote }}
+  {{- end }}
 {{- end -}}
 {{- end -}}
 {{- end -}}
