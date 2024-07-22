@@ -1,9 +1,9 @@
 package builder
 
 import (
-	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -191,6 +191,7 @@ func (b *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 			return fmt.Errorf("failed to receive task from planner: %w", err)
 		}
 
+		b.metrics.processingTask.Set(1)
 		b.metrics.taskStarted.Inc()
 		start := time.Now()
 
@@ -212,8 +213,11 @@ func (b *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 
 		b.logTaskCompleted(task, newMetas, err, start)
 		if err = b.notifyTaskCompletedToPlanner(c, task, newMetas, err); err != nil {
+			b.metrics.processingTask.Set(0)
 			return fmt.Errorf("failed to notify task completion to planner: %w", err)
 		}
+
+		b.metrics.processingTask.Set(0)
 	}
 
 	level.Debug(b.logger).Log("msg", "builder loop stopped")
@@ -262,22 +266,10 @@ func (b *Builder) notifyTaskCompletedToPlanner(
 		CreatedMetas: metas,
 	}
 
-	// We have a retry mechanism upper in the stack, but we add another one here
-	// to try our best to avoid losing the task result.
-	retries := backoff.New(c.Context(), b.cfg.BackoffConfig)
-	for retries.Ongoing() {
-		if err := c.Send(&protos.BuilderToPlanner{
-			BuilderID: b.ID,
-			Result:    *result.ToProtoTaskResult(),
-		}); err == nil {
-			break
-		}
-
-		level.Error(logger).Log("msg", "failed to acknowledge task completion to planner. Retrying", "err", err)
-		retries.Wait()
-	}
-
-	if err := retries.Err(); err != nil {
+	if err := c.Send(&protos.BuilderToPlanner{
+		BuilderID: b.ID,
+		Result:    *result.ToProtoTaskResult(),
+	}); err != nil {
 		return fmt.Errorf("failed to acknowledge task completion to planner: %w", err)
 	}
 
@@ -368,7 +360,7 @@ func (b *Builder) processTask(
 			seriesItrWithCounter,
 			b.chunkLoader,
 			blocksIter,
-			b.rwFn,
+			b.writerReaderFunc,
 			nil, // TODO(salvacorts): Pass reporter or remove when we address tracking
 			b.bloomStore.BloomMetrics(),
 			logger,
@@ -384,6 +376,9 @@ func (b *Builder) processTask(
 			built, err := bloomshipper.BlockFrom(tenant, task.Table.Addr(), blk)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to build block", "err", err)
+				if err = blk.Reader().Cleanup(); err != nil {
+					level.Error(logger).Log("msg", "failed to cleanup block directory", "err", err)
+				}
 				return nil, fmt.Errorf("failed to build block: %w", err)
 			}
 
@@ -394,9 +389,16 @@ func (b *Builder) processTask(
 				built,
 			); err != nil {
 				level.Error(logger).Log("msg", "failed to write block", "err", err)
+				if err = blk.Reader().Cleanup(); err != nil {
+					level.Error(logger).Log("msg", "failed to cleanup block directory", "err", err)
+				}
 				return nil, fmt.Errorf("failed to write block: %w", err)
 			}
 			b.metrics.blocksCreated.Inc()
+
+			if err := blk.Reader().Cleanup(); err != nil {
+				level.Error(logger).Log("msg", "failed to cleanup block directory", "err", err)
+			}
 
 			totalGapKeyspace := gap.Bounds.Max - gap.Bounds.Min
 			progress := built.Bounds.Max - gap.Bounds.Min
@@ -489,9 +491,10 @@ func (b *Builder) loadWorkForGap(
 	return seriesItr, blocksIter, nil
 }
 
-// TODO(owen-d): pool, evaluate if memory-only is the best choice
-func (b *Builder) rwFn() (v1.BlockWriter, v1.BlockReader) {
-	indexBuf := bytes.NewBuffer(nil)
-	bloomsBuf := bytes.NewBuffer(nil)
-	return v1.NewMemoryBlockWriter(indexBuf, bloomsBuf), v1.NewByteReader(indexBuf, bloomsBuf)
+func (b *Builder) writerReaderFunc() (v1.BlockWriter, v1.BlockReader) {
+	dir, err := os.MkdirTemp(b.cfg.WorkingDir, "bloom-block-")
+	if err != nil {
+		panic(err)
+	}
+	return v1.NewDirectoryBlockWriter(dir), v1.NewDirectoryBlockReader(dir)
 }
