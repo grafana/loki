@@ -61,7 +61,7 @@ spec:
           image: {{ include "loki.gatewayImage" . }}
           imagePullPolicy: {{ .Values.gateway.image.pullPolicy }}
           ports:
-            - name: http-metrics
+            - name: http
               containerPort: {{ .Values.gateway.containerPort }}
               protocol: TCP
           {{- with .Values.gateway.extraEnv }}
