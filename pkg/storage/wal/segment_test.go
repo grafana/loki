@@ -468,7 +468,7 @@ func Test_Meta(t *testing.T) {
 	_, err = w.WriteTo(buff)
 	require.NoError(t, err)
 	meta := w.Meta("bar")
-	indexReader, err := index.NewReader(index.RealByteSlice(buff.Bytes()[meta.IndexRef.Offset : meta.IndexRef.Offset+int64(meta.IndexRef.Length)]))
+	indexReader, err := index.NewReader(index.RealByteSlice(buff.Bytes()[meta.IndexRef.Offset : meta.IndexRef.Offset+meta.IndexRef.Length]))
 	require.NoError(t, err)
 
 	defer indexReader.Close()
