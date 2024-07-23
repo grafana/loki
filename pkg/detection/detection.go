@@ -8,11 +8,12 @@ import (
 	"unsafe"
 
 	"github.com/buger/jsonparser"
+	"go.opentelemetry.io/collector/pdata/plog"
+	"k8s.io/apimachinery/pkg/labels"
+
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
-	"go.opentelemetry.io/collector/pdata/plog"
-	"k8s.io/apimachinery/pkg/labels"
 )
 
 const (
