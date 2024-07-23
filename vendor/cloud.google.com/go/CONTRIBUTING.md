@@ -47,6 +47,22 @@
 
    Commits will be squashed when they're merged.
 
+## Policy on new dependencies
+
+While the Go ecosystem is rich with useful modules, in this project we try to
+minimize the number of direct dependencies we have on modules that are not
+Google-owned.
+
+Adding new third party dependencies can have the following effects:
+* broadens the vulnerability surface
+* increases so called "vanity" import routing infrastructure failure points
+* increases complexity of our own [`third_party`][] imports 
+
+So if you are contributing, please either contribute the full implementation
+directly, or find a Google-owned project that provides the functionality. Of
+course, there may be exceptions to this rule, but those should be well defined
+and agreed upon by the maintainers ahead of time.
+
 ## Testing
 
 We test code against two versions of Go, the minimum and maximum versions
@@ -343,3 +359,4 @@ available at [https://contributor-covenant.org/version/1/2/0/](https://contribut
 [gcloudcli]: https://developers.google.com/cloud/sdk/gcloud/
 [indvcla]: https://developers.google.com/open-source/cla/individual
 [corpcla]: https://developers.google.com/open-source/cla/corporate
+[`third_party`]: https://opensource.google/documentation/reference/thirdparty

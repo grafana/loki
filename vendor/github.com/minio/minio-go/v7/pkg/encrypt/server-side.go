@@ -23,7 +23,7 @@ import (
 	"errors"
 	"net/http"
 
-	jsoniter "github.com/json-iterator/go"
+	"github.com/goccy/go-json"
 	"golang.org/x/crypto/argon2"
 )
 
@@ -101,7 +101,6 @@ func NewSSEKMS(keyID string, context interface{}) (ServerSide, error) {
 	if context == nil {
 		return kms{key: keyID, hasContext: false}, nil
 	}
-	json := jsoniter.ConfigCompatibleWithStandardLibrary
 	serializedContext, err := json.Marshal(context)
 	if err != nil {
 		return nil, err

@@ -756,7 +756,7 @@ func (r *timingReader) Read(b []byte) (n int, err error) {
 	r.readBytes += int64(n)
 	// Report metric just once.
 	if !r.alreadyGotErr && err != nil && err != io.EOF {
-		if !r.isFailureExpected(err) {
+		if !r.isFailureExpected(err) && !errors.Is(err, context.Canceled) {
 			r.failed.WithLabelValues(r.op).Inc()
 		}
 		r.alreadyGotErr = true
