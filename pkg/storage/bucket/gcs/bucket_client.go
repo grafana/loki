@@ -14,6 +14,7 @@ func NewBucketClient(ctx context.Context, cfg Config, name string, logger log.Lo
 	bucketConfig := gcs.Config{
 		Bucket:         cfg.BucketName,
 		ServiceAccount: cfg.ServiceAccount.String(),
+		ChunkSizeBytes: cfg.ChunkBufferSize,
 	}
 
 	// Thanos currently doesn't support passing the config as is, but expects a YAML,
