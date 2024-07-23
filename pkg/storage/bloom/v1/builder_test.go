@@ -6,6 +6,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
@@ -203,6 +204,7 @@ func dedupedBlocks(blocks []iter.PeekIterator[*SeriesWithBlooms]) iter.Iterator[
 
 func TestMergeBuilder(t *testing.T) {
 	t.Parallel()
+	logger := log.NewNopLogger()
 
 	nBlocks := 10
 	numSeries := 100
@@ -266,7 +268,7 @@ func TestMergeBuilder(t *testing.T) {
 	)
 
 	// Ensure that the merge builder combines all the blocks correctly
-	mergeBuilder := NewMergeBuilder(dedupedBlocks(blocks), storeItr, pop, NewMetrics(nil))
+	mergeBuilder := NewMergeBuilder(dedupedBlocks(blocks), storeItr, pop, NewMetrics(nil), logger)
 	indexBuf := bytes.NewBuffer(nil)
 	bloomsBuf := bytes.NewBuffer(nil)
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
@@ -297,6 +299,7 @@ func TestMergeBuilder(t *testing.T) {
 // Fingerprint collisions are treated as the same series.
 func TestMergeBuilderFingerprintCollision(t *testing.T) {
 	t.Parallel()
+	logger := log.NewNopLogger()
 
 	// references for linking in memory reader+writer
 	indexBuf := bytes.NewBuffer(nil)
@@ -368,6 +371,7 @@ func TestMergeBuilderFingerprintCollision(t *testing.T) {
 		iter.NewSliceIter(data),
 		pop,
 		NewMetrics(nil),
+		logger,
 	)
 
 	_, _, err = mergeBuilder.Build(builder)
@@ -441,6 +445,7 @@ func TestBlockReset(t *testing.T) {
 // one copy of the first set (duplicate data) and one copy of the second set (disjoint data).
 func TestMergeBuilder_Roundtrip(t *testing.T) {
 	t.Parallel()
+	logger := log.NewNopLogger()
 
 	numSeries := 100
 	minTs, maxTs := model.Time(0), model.Time(10000)
@@ -544,6 +549,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 		dedupedStore,
 		pop,
 		NewMetrics(nil),
+		logger,
 	)
 	builder, err := NewBlockBuilder(blockOpts, writer)
 	require.Nil(t, err)
