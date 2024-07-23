@@ -1087,6 +1087,20 @@ enableServiceLinks: false
 {{- printf "%s" $idxGatewayAddress }}
 {{- end }}
 
+{{/* Determine bloom-gateway address */}}
+{{- define "loki.bloomGatewayAddress" -}}
+{{- $bloomGatewayAddress := ""}}
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- $isScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
+{{- if $isDistributed -}}
+{{- $bloomGatewayAddress = printf "dns+%s-headless.%s.svc.%s:%s" (include "loki.bloomGatewayFullname" .) .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.grpc_listen_port | toString) -}}
+{{- end -}}
+{{- if $isScalable -}}
+{{- $bloomGatewayAddress = printf "dns+%s-headless.%s.svc.%s:%s" (include "loki.backendFullname" .) .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.grpc_listen_port | toString) -}}
+{{- end -}}
+{{- printf "%s" $bloomGatewayAddress }}
+{{- end }}
+
 {{- define "loki.config.checksum" -}}
 checksum/config: {{ include (print .Template.BasePath "/config.yaml") . | sha256sum }}
 {{- end -}}

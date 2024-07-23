@@ -5307,6 +5307,31 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>loki.bloom_compactor</td>
+			<td>object</td>
+			<td>Optional bloom compactor configuration</td>
+			<td><pre lang="json">
+{
+  "enabled": false
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.bloom_gateway</td>
+			<td>object</td>
+			<td>Optional bloom gateway configuration</td>
+			<td><pre lang="json">
+{
+  "client": {
+    "addresses": "{{ include \"loki.bloomGatewayAddress\" . }}"
+  },
+  "enabled": false
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.commonConfig</td>
 			<td>object</td>
 			<td>Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration</td>
@@ -5739,6 +5764,9 @@ null
 			<td>Additional storage config</td>
 			<td><pre lang="json">
 {
+  "bloom_shipper": {
+    "working_directory": "/var/loki/blooms"
+  },
   "boltdb_shipper": {
     "index_gateway_client": {
       "server_address": "{{ include \"loki.indexGatewayAddress\" . }}"
