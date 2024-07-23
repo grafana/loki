@@ -603,6 +603,7 @@ pattern_ingester:
     [downsample_period: <duration> | default = 10s]
 
     # The address of the Loki instance to push aggregated metrics to.
+    # CLI flag: -pattern-ingester.metric-aggregation.loki-address
     [loki_address: <string> | default = ""]
 
     # The timeout for writing to Loki.
@@ -714,8 +715,12 @@ pattern_ingester:
 
     # The basic auth configuration for pushing metrics to Loki.
     basic_auth:
+      # Basic auth username for sending aggregations back to Loki.
+      # CLI flag: -pattern-ingester.metric-aggregation.basic-auth.username
       [username: <string> | default = ""]
 
+      # Basic auth password for sending aggregations back to Loki.
+      # CLI flag: -pattern-ingester.metric-aggregation.basic-auth.password
       [password: <string> | default = ""]
 
     # The backoff configuration for pushing metrics to Loki.
