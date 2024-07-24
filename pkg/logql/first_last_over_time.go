@@ -131,7 +131,7 @@ type mergeOverTimeStepEvaluator struct {
 
 // Next returns the first or last element within one step of each matrix.
 func (e *mergeOverTimeStepEvaluator) Next() (bool, int64, StepResult) {
-	var vec promql.Vector
+	vec := promql.Vector{}
 
 	e.ts = e.ts.Add(e.step)
 	if e.ts.After(e.end) {
