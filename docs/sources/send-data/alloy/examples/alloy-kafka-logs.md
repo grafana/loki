@@ -228,7 +228,7 @@ Next we will configure Alloy to also ingest OpenTelemetry logs via Kafka, we nee
 
 ### Open your Code Editor and Locate the `config.alloy` file
 
-Like before, we generate our next pipeline configuration within the same `config.alloy` file. The below configuration snippets will be added **in addition** to the existing configuration. Essentially, we are configuring two pipelines within the same Alloy configuration file.
+Like before, we generate our next pipeline configuration within the same `config.alloy` file. You will add the following configuration snippets to the file **in addition** to the existing configuration. Essentially, we are configuring two pipelines within the same Alloy configuration file.
 
 
 ### Source OpenTelemetry logs from Kafka
