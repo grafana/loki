@@ -697,11 +697,6 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 		return nil, ErrReadOnly
 	}
 
-	// Set profiling tags
-	defer pprof.SetGoroutineLabels(ctx)
-	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "write", "tenant", instanceID))
-	pprof.SetGoroutineLabels(ctx)
-
 	instance, err := i.GetOrCreateInstance(instanceID)
 	if err != nil {
 		return &logproto.PushResponse{}, err

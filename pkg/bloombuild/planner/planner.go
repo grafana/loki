@@ -360,7 +360,7 @@ func (p *Planner) computeTasks(
 
 	// In case the planner restarted before deleting outdated metas in the previous iteration,
 	// we delete them during the planning phase to avoid reprocessing them.
-	metas, err = p.deleteOutdatedMetasAndBlocks(ctx, table, tenant, metas, phasePlanning)
+	metas, err = p.deleteOutdatedMetasAndBlocks(ctx, table, tenant, nil, metas, phasePlanning)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to delete outdated metas during planning: %w", err)
 	}
@@ -446,8 +446,7 @@ func (p *Planner) processTenantTaskResults(
 		return tasksSucceed, nil
 	}
 
-	combined := append(originalMetas, newMetas...)
-	if _, err := p.deleteOutdatedMetasAndBlocks(ctx, table, tenant, combined, phaseBuilding); err != nil {
+	if _, err := p.deleteOutdatedMetasAndBlocks(ctx, table, tenant, newMetas, originalMetas, phaseBuilding); err != nil {
 		return 0, fmt.Errorf("failed to delete outdated metas: %w", err)
 	}
 
@@ -460,12 +459,14 @@ func (p *Planner) deleteOutdatedMetasAndBlocks(
 	ctx context.Context,
 	table config.DayTable,
 	tenant string,
-	metas []bloomshipper.Meta,
+	newMetas []bloomshipper.Meta,
+	originalMetas []bloomshipper.Meta,
 	phase string,
 ) ([]bloomshipper.Meta, error) {
 	logger := log.With(p.logger, "table", table.Addr(), "tenant", tenant, "phase", phase)
 
-	upToDate, outdated := outdatedMetas(metas)
+	combined := append(originalMetas, newMetas...)
+	upToDate, outdated := outdatedMetas(combined)
 	if len(outdated) == 0 {
 		level.Debug(logger).Log(
 			"msg", "no outdated metas found",
@@ -497,17 +498,25 @@ func (p *Planner) deleteOutdatedMetasAndBlocks(
 
 	for _, meta := range outdated {
 		for _, block := range meta.Blocks {
+			logger := log.With(logger, "block", block.String())
+
+			// Prevent deleting blocks that are reused in new metas
+			if isBlockInMetas(block, upToDate) {
+				level.Debug(logger).Log("msg", "block is still in use in new meta, skipping delete")
+				continue
+			}
+
 			if err := client.DeleteBlocks(ctx, []bloomshipper.BlockRef{block}); err != nil {
 				if client.IsObjectNotFoundErr(err) {
-					level.Debug(logger).Log("msg", "block not found while attempting delete, continuing", "block", block.String())
+					level.Debug(logger).Log("msg", "block not found while attempting delete, continuing")
 				} else {
-					level.Error(logger).Log("msg", "failed to delete block", "err", err, "block", block.String())
+					level.Error(logger).Log("msg", "failed to delete block", "err", err)
 					return nil, errors.Wrap(err, "failed to delete block")
 				}
 			}
 
 			deletedBlocks++
-			level.Debug(logger).Log("msg", "removed outdated block", "block", block.String())
+			level.Debug(logger).Log("msg", "removed outdated block")
 		}
 
 		err = client.DeleteMetas(ctx, []bloomshipper.MetaRef{meta.MetaRef})
@@ -530,6 +539,22 @@ func (p *Planner) deleteOutdatedMetasAndBlocks(
 	)
 
 	return upToDate, nil
+}
+
+func isBlockInMetas(block bloomshipper.BlockRef, metas []bloomshipper.Meta) bool {
+	// Blocks are sorted within a meta, so we can find it with binary search
+	for _, meta := range metas {
+		// Search for the first block whose bound is >= than the target block min bound.
+		i := sort.Search(len(meta.Blocks), func(i int) bool {
+			return meta.Blocks[i].Cmp(uint64(block.Bounds.Max)) <= v1.Overlap
+		})
+
+		if i < len(meta.Blocks) && meta.Blocks[i] == block {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (p *Planner) tables(ts time.Time) *dayRangeIterator {

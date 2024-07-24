@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/storage/wal/index"
 	"github.com/grafana/loki/v3/pkg/storage/wal/testdata"
 
 	"github.com/grafana/loki/pkg/push"
@@ -448,6 +449,8 @@ func TestReset(t *testing.T) {
 
 func Test_Meta(t *testing.T) {
 	w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
+	buff := bytes.NewBuffer(nil)
+
 	require.NoError(t, err)
 
 	lbls := labels.FromStrings("container", "foo", "namespace", "dev")
@@ -462,7 +465,13 @@ func Test_Meta(t *testing.T) {
 		{Timestamp: time.Unix(3, 0), Line: "Entry 2"},
 		{Timestamp: time.Unix(4, 0), Line: "Entry 3"},
 	})
+	_, err = w.WriteTo(buff)
+	require.NoError(t, err)
 	meta := w.Meta("bar")
+	indexReader, err := index.NewReader(index.RealByteSlice(buff.Bytes()[meta.IndexRef.Offset : meta.IndexRef.Offset+meta.IndexRef.Length]))
+	require.NoError(t, err)
+
+	defer indexReader.Close()
 
 	require.Equal(t, &metastorepb.BlockMeta{
 		FormatVersion:   1,
@@ -470,6 +479,7 @@ func Test_Meta(t *testing.T) {
 		MinTime:         time.Unix(1, 0).UnixNano(),
 		MaxTime:         time.Unix(4, 0).UnixNano(),
 		CompactionLevel: 0,
+		IndexRef:        meta.IndexRef,
 		TenantStreams: []*metastorepb.TenantStreams{
 			{
 				TenantId: "tenanta",
