@@ -123,7 +123,7 @@ Grafana Alloy requires a configuration file to define the components and their r
 1. Click on the `config.alloy` file to open it in the code editor.
 <!-- INTERACTIVE ignore END -->
 
-The below configuration snippets will be added to the `config.alloy` file.  
+You will copy all three of the following configuration snippets into the `config.alloy` file.  
 
 ### Source logs from kafka
 
