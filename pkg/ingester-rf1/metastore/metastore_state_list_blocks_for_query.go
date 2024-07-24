@@ -5,9 +5,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 )
 
 func (m *Metastore) ListBlocksForQuery(

@@ -40,7 +40,6 @@ message TenantStreams {
   //todo offset in the block.
 }
 
-
 message ListBlocksForQueryRequest {
   string tenant_id = 1;
   int64 start_time = 2;
