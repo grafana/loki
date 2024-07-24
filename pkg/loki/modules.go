@@ -61,6 +61,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	"github.com/grafana/loki/v3/pkg/pattern"
 	"github.com/grafana/loki/v3/pkg/querier"
+	querierrf1 "github.com/grafana/loki/v3/pkg/querier-rf1"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/ruler"
@@ -104,6 +105,7 @@ const (
 	InternalServer           string = "internal-server"
 	Distributor              string = "distributor"
 	Querier                  string = "querier"
+	QuerierRF1               string = "querier-rf1"
 	CacheGenerationLoader    string = "cache-generation-loader"
 	Ingester                 string = "ingester"
 	IngesterRF1              string = "ingester-rf1"
@@ -423,8 +425,16 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		}
 		q.WithPatternQuerier(patternQuerier)
 	}
+
 	if t.Cfg.Querier.MultiTenantQueriesEnabled {
 		t.Querier = querier.NewMultiTenantQuerier(q, util_log.Logger)
+	} else if (t.Cfg.QuerierRF1.Enabled && t.Cfg.isTarget(All)) || t.Cfg.isTarget(QuerierRF1) {
+		logger.Log("Using RF-1 querier implementation")
+		q, err := querierrf1.New(t.Cfg.QuerierRF1, t.Store, t.Overrides, deleteStore, logger)
+		if err != nil {
+			return nil, err
+		}
+		t.Querier = q
 	} else {
 		t.Querier = q
 	}
