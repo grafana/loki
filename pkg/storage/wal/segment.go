@@ -66,7 +66,10 @@ type SegmentWriter struct {
 
 // SegmentStats contains the stats for a SegmentWriter.
 type SegmentStats struct {
-	Age       time.Duration
+	// Age is the time between the first append and the flush.
+	Age time.Duration
+	// Idle is the time between the last append and the flush.
+	Idle      time.Duration
 	Streams   int
 	Tenants   int
 	Size      int64
@@ -83,6 +86,7 @@ func GetSegmentStats(w *SegmentWriter, t time.Time) SegmentStats {
 	}
 	return SegmentStats{
 		Age:       t.Sub(w.firstAppend),
+		Idle:      t.Sub(w.lastAppend),
 		Streams:   len(w.streams),
 		Tenants:   len(tenants),
 		Size:      w.inputSize.Load(),
