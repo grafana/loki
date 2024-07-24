@@ -105,7 +105,7 @@ func TestWalSegmentWriter_Append(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			// Create a new WalSegmentWriter
-			w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
+			w, err := NewWalSegmentWriter()
 			require.NoError(t, err)
 			// Append the entries
 			for _, batch := range tt.batches {
@@ -132,7 +132,7 @@ func TestWalSegmentWriter_Append(t *testing.T) {
 }
 
 func TestMultiTenantWrite(t *testing.T) {
-	w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
+	w, err := NewWalSegmentWriter()
 	require.NoError(t, err)
 	dst := bytes.NewBuffer(nil)
 
@@ -202,7 +202,7 @@ func TestCompression(t *testing.T) {
 }
 
 func testCompression(t *testing.T, maxInputSize int64) {
-	w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
+	w, err := NewWalSegmentWriter()
 	require.NoError(t, err)
 	dst := bytes.NewBuffer(nil)
 	files := testdata.Files()
@@ -259,7 +259,7 @@ func testCompression(t *testing.T, maxInputSize int64) {
 }
 
 func TestReset(t *testing.T) {
-	w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
+	w, err := NewWalSegmentWriter()
 	require.NoError(t, err)
 	dst := bytes.NewBuffer(nil)
 
@@ -290,7 +290,7 @@ func TestReset(t *testing.T) {
 }
 
 func Test_Meta(t *testing.T) {
-	w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
+	w, err := NewWalSegmentWriter()
 	buff := bytes.NewBuffer(nil)
 
 	require.NoError(t, err)
@@ -381,7 +381,7 @@ func BenchmarkWrites(b *testing.B) {
 
 	dst := bytes.NewBuffer(make([]byte, 0, inputSize))
 
-	writer, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
+	writer, err := NewWalSegmentWriter()
 	require.NoError(b, err)
 
 	for _, d := range data {

@@ -97,12 +97,9 @@ func (i *Ingester) flush(l log.Logger, j int, it *wal.PendingSegment) error {
 
 func (i *Ingester) flushSegment(ctx context.Context, j int, w *wal.SegmentWriter) error {
 	start := time.Now()
-	defer func() {
-		i.metrics.flushDuration.Observe(time.Since(start).Seconds())
-		w.ReportMetrics()
-	}()
 
 	i.metrics.flushesTotal.Add(1)
+	defer i.metrics.flushDuration.Observe(time.Since(start).Seconds())
 
 	buf := i.flushBuffers[j]
 	defer buf.Reset()
@@ -110,6 +107,9 @@ func (i *Ingester) flushSegment(ctx context.Context, j int, w *wal.SegmentWriter
 		i.metrics.flushFailuresTotal.Inc()
 		return err
 	}
+
+	stats := wal.GetSegmentStats(w, time.Now())
+	wal.ReportSegmentStats(stats, i.metrics.segmentMetrics)
 
 	id := ulid.MustNew(ulid.Timestamp(time.Now()), rand.Reader).String()
 	if err := i.store.PutObject(ctx, fmt.Sprintf("loki-v2/wal/anon/"+id), buf); err != nil {
@@ -121,7 +121,7 @@ func (i *Ingester) flushSegment(ctx context.Context, j int, w *wal.SegmentWriter
 		Block: w.Meta(id),
 	}); err != nil {
 		i.metrics.flushFailuresTotal.Inc()
-		return fmt.Errorf("metastore add block: %w", err)
+		return fmt.Errorf("failed to update metastore: %w", err)
 	}
 
 	return nil

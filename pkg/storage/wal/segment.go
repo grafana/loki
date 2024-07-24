@@ -47,7 +47,6 @@ type streamID struct {
 }
 
 type SegmentWriter struct {
-	metrics    *SegmentMetrics
 	streams    map[streamID]*streamSegment
 	buf1       encoding.Encbuf
 	outputSize atomic.Int64
@@ -63,6 +62,41 @@ type SegmentWriter struct {
 	// how long a segment has been idle between the last append and the
 	// subsequent flush.
 	lastAppend time.Time
+}
+
+// SegmentStats contains the stats for a SegmentWriter.
+type SegmentStats struct {
+	Age       time.Duration
+	Streams   int
+	Tenants   int
+	Size      int64
+	WriteSize int64
+}
+
+// GetSegmentStats returns the stats for a SegmentWriter. The age of a segment
+// is calculated from t. WriteSize is zero if GetSegmentStats is called before
+// SegmentWriter.WriteTo.
+func GetSegmentStats(w *SegmentWriter, t time.Time) SegmentStats {
+	tenants := make(map[string]struct{}, 64)
+	for _, s := range w.streams {
+		tenants[s.tenantID] = struct{}{}
+	}
+	return SegmentStats{
+		Age:       t.Sub(w.firstAppend),
+		Streams:   len(w.streams),
+		Tenants:   len(tenants),
+		Size:      w.inputSize.Load(),
+		WriteSize: w.outputSize.Load(),
+	}
+}
+
+// ReportSegmentStats reports the stats as metrics.
+func ReportSegmentStats(s SegmentStats, m *SegmentMetrics) {
+	m.age.Observe(s.Age.Seconds())
+	m.streams.Observe(float64(s.Streams))
+	m.tenants.Observe(float64(s.Tenants))
+	m.size.Observe(float64(s.Size))
+	m.writeSize.Observe(float64(s.WriteSize))
 }
 
 type streamSegment struct {
@@ -87,13 +121,12 @@ func (s *streamSegment) WriteTo(w io.Writer) (n int64, err error) {
 }
 
 // NewWalSegmentWriter creates a new WalSegmentWriter.
-func NewWalSegmentWriter(m *SegmentMetrics) (*SegmentWriter, error) {
+func NewWalSegmentWriter() (*SegmentWriter, error) {
 	idxWriter, err := index.NewWriter()
 	if err != nil {
 		return nil, err
 	}
 	return &SegmentWriter{
-		metrics:   m,
 		streams:   make(map[streamID]*streamSegment, 64),
 		buf1:      encoding.EncWith(make([]byte, 0, 4)),
 		idxWriter: idxWriter,
@@ -157,19 +190,6 @@ func (b *SegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels
 		copy(s.entries[idx+1:], s.entries[idx:])
 		s.entries[idx] = e
 	}
-}
-
-// ReportMetrics for the writer. If called before WriteTo then the output size
-// histogram will observe 0.
-func (b *SegmentWriter) ReportMetrics() {
-	b.metrics.streams.Observe(float64(len(b.streams)))
-	tenants := make(map[string]struct{}, 64)
-	for _, s := range b.streams {
-		tenants[s.tenantID] = struct{}{}
-	}
-	b.metrics.tenants.Observe(float64(len(tenants)))
-	b.metrics.inputSizeBytes.Observe(float64(b.inputSize.Load()))
-	b.metrics.outputSizeBytes.Observe(float64(b.outputSize.Load()))
 }
 
 func (b *SegmentWriter) Meta(id string) *metastorepb.BlockMeta {
