@@ -54,6 +54,7 @@ type SegmentWriter struct {
 	inputSize      atomic.Int64
 	idxWriter      *index.Writer
 	consistencyMtx *sync.RWMutex
+	indexRef       metastorepb.DataRef
 }
 
 type streamSegment struct {
@@ -209,6 +210,7 @@ func (b *SegmentWriter) Meta(id string) *metastorepb.BlockMeta {
 		Id:              id,
 		FormatVersion:   uint64(1),
 		CompactionLevel: 0,
+		IndexRef:        b.indexRef,
 		MinTime:         globalMinT,
 		MaxTime:         globalMaxT,
 		TenantStreams:   result,
@@ -308,6 +310,8 @@ func (b *SegmentWriter) WriteTo(w io.Writer) (int64, error) {
 	if n != len(buf) {
 		return total, errors.New("invalid written index len")
 	}
+	b.indexRef.Offset = total
+	b.indexRef.Length = int64(n)
 	total += int64(n)
 
 	// write index len 4b
@@ -349,6 +353,8 @@ func (b *SegmentWriter) Reset() {
 	b.streams = make(map[streamID]*streamSegment, 64)
 	b.buf1.Reset()
 	b.inputSize.Store(0)
+	b.indexRef.Length = 0
+	b.indexRef.Offset = 0
 }
 
 // InputSize returns the total size of the input data written to the writer.

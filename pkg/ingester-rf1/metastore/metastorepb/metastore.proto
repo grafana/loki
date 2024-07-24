@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package metastorepb;
 
+import "gogoproto/gogo.proto";
+
 service MetastoreService {
   rpc AddBlock(AddBlockRequest) returns (AddBlockResponse) {}
 }
@@ -18,8 +20,14 @@ message BlockMeta {
   int64 min_time = 3;
   int64 max_time = 4;
   uint32 compaction_level = 6;
+  DataRef indexRef = 7 [(gogoproto.nullable) = false];
 
-  repeated TenantStreams tenant_streams = 7;
+  repeated TenantStreams tenant_streams = 8;
+}
+
+message DataRef {
+  int64 offset = 1;
+  int64 length = 2;
 }
 
 // TenantStreams object points to the offset in the block at which

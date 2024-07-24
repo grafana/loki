@@ -99,7 +99,7 @@ func Test_LoadBlocksDirIntoCache(t *testing.T) {
 
 	require.Equal(t, 1, len(c.entries))
 
-	key := filepath.Join(wd, validDir) + ".tar.gz"
+	key := validDir + ".tar.gz" // cache key must not contain directory prefix
 	elem, found := c.entries[key]
 	require.True(t, found)
 	blockDir := elem.Value.(*Entry).Value

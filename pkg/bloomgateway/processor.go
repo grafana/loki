@@ -52,7 +52,7 @@ func (p *processor) processTasks(ctx context.Context, tasks []Task) error {
 	return nil
 }
 
-func (p *processor) processTasksForDay(ctx context.Context, tenant string, day config.DayTime, tasks []Task) error {
+func (p *processor) processTasksForDay(ctx context.Context, _ string, _ config.DayTime, tasks []Task) error {
 	var duration time.Duration
 
 	blocksRefs := make([]bloomshipper.BlockRef, 0, len(tasks[0].blocks)*len(tasks))
