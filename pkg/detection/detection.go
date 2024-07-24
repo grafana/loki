@@ -28,6 +28,8 @@ const (
 	LogLevelFatal    = "fatal"
 	LogLevelCritical = "critical"
 	LogLevelTrace    = "trace"
+
+	LabelServiceName = "service_name"
 )
 
 var AllowedLabelsForLevel = map[string]struct{}{

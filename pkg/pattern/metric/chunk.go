@@ -48,7 +48,7 @@ type Chunks struct {
 }
 
 func NewChunks(labels labels.Labels, chunkMetrics *ChunkMetrics, logger log.Logger) *Chunks {
-	service := labels.Get(distributor.LabelServiceName)
+	service := labels.Get(detection.LabelServiceName)
 	if service == "" {
 		service = distributor.ServiceUnknown
 	}
@@ -351,17 +351,18 @@ func (c *Chunks) writeAggregatedMetrics(
 	if w != nil {
 		w.WriteEntry(
 			now.Time(),
-			aggregatedMetricEntry(now, totalBytes, totalCount),
+			aggregatedMetricEntry(now, totalBytes, totalCount, c.service),
 			lbls,
 		)
 	}
 }
 
-func aggregatedMetricEntry(ts model.Time, totalBytes, totalCount uint64) string {
+func aggregatedMetricEntry(ts model.Time, totalBytes, totalCount uint64, service string) string {
 	return fmt.Sprintf(
-		"ts=%d bytes=%s count=%d",
+		"ts=%d bytes=%s count=%d %s=%s",
 		ts.UnixNano(),
 		humanize.Bytes(totalBytes),
 		totalCount,
+		detection.LabelServiceName, service,
 	)
 }

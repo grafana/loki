@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -17,6 +18,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util/build"
 
 	"github.com/grafana/dskit/backoff"
@@ -51,9 +53,6 @@ type Push struct {
 	contentType string
 	logger      log.Logger
 
-	// channel for incoming logs
-	entries chan entry
-
 	// shutdown channels
 	quit chan struct{}
 	done chan struct{}
@@ -66,6 +65,8 @@ type Push struct {
 
 	// push retry and backoff
 	backoff *backoff.Config
+
+	entries entries
 }
 
 type entry struct {
@@ -74,10 +75,28 @@ type entry struct {
 	labels labels.Labels
 }
 
+type entries struct {
+	lock    sync.RWMutex
+	entries []entry
+}
+
+func (e *entries) add(entry entry) {
+	e.lock.Lock()
+	defer e.lock.Unlock()
+	e.entries = append(e.entries, entry)
+}
+
+func (e *entries) reset() {
+	e.lock.Lock()
+	defer e.lock.Unlock()
+	e.entries = e.entries[:0]
+}
+
 // NewPush creates an instance of `Push` which writes logs directly to given `lokiAddr`
 func NewPush(
 	lokiAddr, tenantID string,
 	timeout time.Duration,
+	pushPeriod time.Duration,
 	cfg config.HTTPClientConfig,
 	username, password string,
 	useTLS bool,
@@ -112,18 +131,22 @@ func NewPush(
 		username:    username,
 		password:    password,
 		logger:      logger,
-		entries:     make(chan entry, 50), // Use a buffered channel so we can retry failed pushes without blocking WriteEntry
 		quit:        make(chan struct{}),
 		done:        make(chan struct{}),
 		backoff:     backoffCfg,
+		entries: entries{
+			entries: make([]entry, 0),
+		},
 	}
-	go p.run()
+
+	// TODO: pass run a ticker
+	go p.run(pushPeriod)
 	return p, nil
 }
 
 // WriteEntry implements EntryWriter
 func (p *Push) WriteEntry(ts time.Time, e string, lbls labels.Labels) {
-	p.entries <- entry{ts, e, lbls}
+	p.entries.add(entry{ts: ts, entry: e, labels: lbls})
 }
 
 // Stop will cancel any ongoing requests and stop the goroutine listening for requests
@@ -136,20 +159,41 @@ func (p *Push) Stop() {
 }
 
 // buildPayload creates the snappy compressed protobuf to send to Loki
-func (p *Push) buildPayload(e entry) ([]byte, error) {
+func (p *Push) buildPayload() ([]byte, error) {
+	p.entries.lock.RLock()
+	defer p.entries.lock.RUnlock()
+
+	entriesByStream := make(map[string][]logproto.Entry)
+	for _, e := range p.entries.entries {
+		stream := e.labels.String()
+		entries, ok := entriesByStream[stream]
+		if !ok {
+			entries = make([]logproto.Entry, 0)
+		}
+
+		entries = append(entries, logproto.Entry{
+			Timestamp: e.ts,
+			Line:      e.entry,
+		})
+		entriesByStream[stream] = entries
+	}
+
+	streams := make([]logproto.Stream, 0, len(entriesByStream))
+	for s, entries := range entriesByStream {
+		lbls, err := syntax.ParseLabels(s)
+		if err != nil {
+			continue
+		}
+
+		streams = append(streams, logproto.Stream{
+			Labels:  s,
+			Entries: entries,
+			Hash:    lbls.Hash(),
+		})
+	}
+
 	req := &logproto.PushRequest{
-		Streams: []logproto.Stream{
-			{
-				Labels: e.labels.String(),
-				Entries: []logproto.Entry{
-					{
-						Timestamp: e.ts,
-						Line:      e.entry,
-					},
-				},
-				Hash: e.labels.Hash(),
-			},
-		},
+		Streams: streams,
 	}
 	payload, err := proto.Marshal(req)
 	if err != nil {
@@ -162,9 +206,13 @@ func (p *Push) buildPayload(e entry) ([]byte, error) {
 }
 
 // run pulls lines out of the channel and sends them to Loki
-func (p *Push) run() {
+func (p *Push) run(pushPeriod time.Duration) {
 	ctx, cancel := context.WithCancel(context.Background())
+	pushTicker := time.NewTimer(pushPeriod)
+	defer pushTicker.Stop()
+
 	defer func() {
+		pushTicker.Stop()
 		close(p.done)
 	}()
 
@@ -173,9 +221,8 @@ func (p *Push) run() {
 		case <-p.quit:
 			cancel()
 			return
-			// TODO(twhitney): could buffer these into fewer pushes?
-		case e := <-p.entries:
-			payload, err := p.buildPayload(e)
+		case <-pushTicker.C:
+			payload, err := p.buildPayload()
 			if err != nil {
 				level.Error(p.logger).Log("msg", "failed to build payload", "err", err)
 				continue
@@ -189,21 +236,28 @@ func (p *Push) run() {
 				status := 0
 				status, err = p.send(ctx, payload)
 				if err == nil {
+					// reset entries on successful push
+					p.entries.reset()
+					pushTicker.Reset(pushPeriod)
 					break
 				}
 
 				if status > 0 && status != 429 && status/100 != 5 {
-					level.Error(p.logger).Log("msg", "failed to send entry, server rejected push with a non-retryable status code", "entry", e.ts.UnixNano(), "status", status, "err", err)
+					level.Error(p.logger).Log("msg", "failed to send entry, server rejected push with a non-retryable status code", "status", status, "err", err)
+					pushTicker.Reset(pushPeriod)
 					break
 				}
 
 				if !backoff.Ongoing() {
-					level.Error(p.logger).Log("msg", "failed to send entry, retries exhausted, entry will be dropped", "entry", e.ts.UnixNano(), "status", status, "error", err)
+					level.Error(p.logger).Log("msg", "failed to send entry, retries exhausted, entry will be dropped", "entry", "status", status, "error", err)
+					pushTicker.Reset(pushPeriod)
 					break
 				}
-				level.Warn(p.logger).Log("msg", "failed to send entry, retrying", "entry", e.ts.UnixNano(), "status", status, "error", err)
+				level.Warn(p.logger).
+					Log("msg", "failed to send entry, retrying", "entry", "status", status, "error", err)
 				backoff.Wait()
 			}
+
 		}
 	}
 }

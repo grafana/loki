@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/common/config"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -35,8 +37,8 @@ func Test_Push(t *testing.T) {
 	responses := make(chan response, 1) // buffered not to block the response handler
 	backoff := backoff.Config{
 		MinBackoff: 300 * time.Millisecond,
-		MaxBackoff: 5 * time.Minute,
-		MaxRetries: 10,
+		MaxBackoff: 1 * time.Minute,
+		MaxRetries: 1,
 	}
 
 	// mock loki server
@@ -44,39 +46,184 @@ func Test_Push(t *testing.T) {
 	require.NotNil(t, mock)
 	defer mock.Close()
 
-	// without TLS
-	push, err := NewPush(
-		mock.Listener.Addr().String(),
-		"test1",
-		2*time.Second,
-		config.DefaultHTTPClientConfig,
-		"", "",
-		false,
-		&backoff,
-		log.NewNopLogger(),
-	)
-	require.NoError(t, err)
-	ts, payload := testPayload()
-	push.WriteEntry(ts, payload, lbls)
-	resp := <-responses
-	assertResponse(t, resp, false, labelSet("test", "test"), ts, payload)
+	t.Run("sends log entry to loki server without TLS", func(t *testing.T) {
+		// without TLS
+		push, err := NewPush(
+			mock.Listener.Addr().String(),
+			"test1",
+			2*time.Second,
+			1*time.Second,
+			config.DefaultHTTPClientConfig,
+			"", "",
+			false,
+			&backoff,
+			log.NewNopLogger(),
+		)
+		require.NoError(t, err)
+		ts, payload := testPayload()
+		push.WriteEntry(ts, payload, lbls)
+		resp := <-responses
+		assertResponse(t, resp, false, labelSet("test", "test"), ts, payload)
+	})
 
-	// with basic Auth
-	push, err = NewPush(
-		mock.Listener.Addr().String(),
-		"test1",
-		2*time.Second,
-		config.DefaultHTTPClientConfig,
-		"user", "secret",
-		false,
-		&backoff,
-		log.NewNopLogger(),
-	)
-	require.NoError(t, err)
-	ts, payload = testPayload()
-	push.WriteEntry(ts, payload, lbls)
-	resp = <-responses
-	assertResponse(t, resp, true, labelSet("test", "test"), ts, payload)
+	t.Run("sends log entry to loki server with basic auth", func(t *testing.T) {
+		// with basic Auth
+		push, err := NewPush(
+			mock.Listener.Addr().String(),
+			"test1",
+			2*time.Second,
+			1*time.Second,
+			config.DefaultHTTPClientConfig,
+			"user", "secret",
+			false,
+			&backoff,
+			log.NewNopLogger(),
+		)
+		require.NoError(t, err)
+		ts, payload := testPayload()
+		push.WriteEntry(ts, payload, lbls)
+		resp := <-responses
+		assertResponse(t, resp, true, labelSet("test", "test"), ts, payload)
+	})
+
+	t.Run("batches push requests", func(t *testing.T) {
+		client, err := config.NewClientFromConfig(
+			config.DefaultHTTPClientConfig,
+			"pattern-ingester-push-test",
+			config.WithHTTP2Disabled(),
+		)
+		require.NoError(t, err)
+		client.Timeout = 2 * time.Second
+
+		u := url.URL{
+			Scheme: "http",
+			Host:   mock.Listener.Addr().String(),
+			Path:   pushEndpoint,
+		}
+
+		p := &Push{
+			lokiURL:     u.String(),
+			tenantID:    "test1",
+			httpClient:  client,
+			userAgent:   defaultUserAgent,
+			contentType: defaultContentType,
+			username:    "user",
+			password:    "secret",
+			logger:      log.NewNopLogger(),
+			quit:        make(chan struct{}),
+			done:        make(chan struct{}),
+			backoff:     &backoff,
+			entries:     entries{},
+		}
+
+		lbls1 := labels.New(labels.Label{Name: "test", Value: "test"})
+		lbls2 := labels.New(
+			labels.Label{Name: "test", Value: "test"},
+			labels.Label{Name: "test2", Value: "test2"},
+		)
+
+		now := time.Now().Truncate(time.Second).UTC()
+		then := now.Add(-1 * time.Minute)
+		wayBack := now.Add(-5 * time.Minute)
+
+		p.WriteEntry(
+			wayBack,
+			aggregatedMetricEntry(model.TimeFromUnix(wayBack.Unix()), 1, 1, "test_service"),
+			lbls1,
+		)
+		p.WriteEntry(
+			then,
+			aggregatedMetricEntry(model.TimeFromUnix(then.Unix()), 2, 2, "test_service"),
+			lbls1,
+		)
+		p.WriteEntry(
+			now,
+			aggregatedMetricEntry(model.TimeFromUnix(now.Unix()), 3, 3, "test_service"),
+			lbls1,
+		)
+
+		p.WriteEntry(
+			wayBack,
+			aggregatedMetricEntry(model.TimeFromUnix(wayBack.Unix()), 1, 1, "test2_service"),
+			lbls2,
+		)
+		p.WriteEntry(
+			then,
+			aggregatedMetricEntry(model.TimeFromUnix(then.Unix()), 2, 2, "test2_service"),
+			lbls2,
+		)
+		p.WriteEntry(
+			now,
+			aggregatedMetricEntry(model.TimeFromUnix(now.Unix()), 3, 3, "test2_service"),
+			lbls2,
+		)
+
+		go p.run(time.Nanosecond)
+
+		select {
+		case resp := <-responses:
+			p.Stop()
+			req := resp.pushReq
+			assert.Len(t, req.Streams, 2)
+
+			var stream1, stream2 logproto.Stream
+			for _, stream := range req.Streams {
+				if stream.Labels == lbls1.String() {
+					stream1 = stream
+				}
+
+				if stream.Labels == lbls2.String() {
+					stream2 = stream
+				}
+			}
+
+			require.Len(t, stream1.Entries, 3)
+			require.Len(t, stream2.Entries, 3)
+
+			require.Equal(t, stream1.Entries[0].Timestamp, wayBack)
+			require.Equal(t, stream1.Entries[1].Timestamp, then)
+			require.Equal(t, stream1.Entries[2].Timestamp, now)
+
+			require.Equal(
+				t,
+				aggregatedMetricEntry(model.TimeFromUnix(wayBack.Unix()), 1, 1, "test_service"),
+				stream1.Entries[0].Line,
+			)
+			require.Equal(
+				t,
+				aggregatedMetricEntry(model.TimeFromUnix(then.Unix()), 2, 2, "test_service"),
+				stream1.Entries[1].Line,
+			)
+			require.Equal(
+				t,
+				aggregatedMetricEntry(model.TimeFromUnix(now.Unix()), 3, 3, "test_service"),
+				stream1.Entries[2].Line,
+			)
+
+			require.Equal(t, stream2.Entries[0].Timestamp, wayBack)
+			require.Equal(t, stream2.Entries[1].Timestamp, then)
+			require.Equal(t, stream2.Entries[2].Timestamp, now)
+
+			require.Equal(
+				t,
+				aggregatedMetricEntry(model.TimeFromUnix(wayBack.Unix()), 1, 1, "test2_service"),
+				stream2.Entries[0].Line,
+			)
+			require.Equal(
+				t,
+				aggregatedMetricEntry(model.TimeFromUnix(then.Unix()), 2, 2, "test2_service"),
+				stream2.Entries[1].Line,
+			)
+			require.Equal(
+				t,
+				aggregatedMetricEntry(model.TimeFromUnix(now.Unix()), 3, 3, "test2_service"),
+				stream2.Entries[2].Line,
+			)
+
+		case <-time.After(5 * time.Second):
+			t.Fatal("timeout")
+		}
+	})
 }
 
 // Test helpers

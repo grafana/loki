@@ -471,7 +471,7 @@ func TestDownsample(t *testing.T) {
 	// Call the Downsample function
 	c.Downsample(now, mockWriter)
 
-	mockWriter.AssertCalled(t, "WriteEntry", now.Time(), aggregatedMetricEntry(now, 6.0, 3.0), labels.Labels{
+	mockWriter.AssertCalled(t, "WriteEntry", now.Time(), aggregatedMetricEntry(now, 6.0, 3.0, "foo_service"), labels.Labels{
 		labels.Label{Name: detection.AggregatedMetricLabel, Value: "foo_service"},
 		labels.Label{Name: "level", Value: "info"},
 	})

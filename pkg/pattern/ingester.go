@@ -375,6 +375,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 				aggCfg.LokiAddr,
 				instanceID,
 				aggCfg.WriteTimeout,
+				aggCfg.PushPeriod,
 				aggCfg.HTTPClientConfig,
 				aggCfg.BasicAuth.Username,
 				string(aggCfg.BasicAuth.Password),

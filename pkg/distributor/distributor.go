@@ -56,7 +56,6 @@ const (
 
 	ringAutoForgetUnhealthyPeriods = 2
 
-	LabelServiceName = "service_name"
 	ServiceUnknown   = "unknown_service"
 )
 
@@ -766,7 +765,7 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 	}
 
 	// We do not want to count service_name added by us in the stream limit so adding it after validating original labels.
-	if !ls.Has(LabelServiceName) && !ls.Has(detection.AggregatedMetricLabel) &&
+	if !ls.Has(detection.LabelServiceName) && !ls.Has(detection.AggregatedMetricLabel) &&
 		len(vContext.discoverServiceName) > 0 {
 		serviceName := ServiceUnknown
 		for _, labelName := range vContext.discoverServiceName {
@@ -776,7 +775,7 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 			}
 		}
 
-		ls = labels.NewBuilder(ls).Set(LabelServiceName, serviceName).Labels()
+		ls = labels.NewBuilder(ls).Set(detection.LabelServiceName, serviceName).Labels()
 		stream.Labels = ls.String()
 	}
 

@@ -15,6 +15,7 @@ type AggregationConfig struct {
 	DownsamplePeriod    time.Duration           `yaml:"downsample_period"`
 	LokiAddr            string                  `yaml:"loki_address,omitempty" doc:"description=The address of the Loki instance to push aggregated metrics to."`
 	WriteTimeout        time.Duration           `yaml:"timeout,omitempty" doc:"description=The timeout for writing to Loki."`
+	PushPeriod          time.Duration           `yaml:"timeout,omitempty" doc:"description=How long to wait in between pushes to Loki."`
 	HTTPClientConfig    config.HTTPClientConfig `yaml:"http_client_config,omitempty" doc:"description=The HTTP client configuration for pushing metrics to Loki."`
 	UseTLS              bool                    `yaml:"use_tls,omitempty" doc:"description=Whether to use TLS for pushing metrics to Loki."`
 	BasicAuth           BasicAuth               `yaml:"basic_auth,omitempty" doc:"description=The basic auth configuration for pushing metrics to Loki."`
@@ -55,6 +56,12 @@ func (cfg *AggregationConfig) RegisterFlagsWithPrefix(fs *flag.FlagSet, prefix s
 		&cfg.WriteTimeout,
 		prefix+"metric-aggregation.timeout",
 		10*time.Second,
+		"How long to wait write response from Loki",
+	)
+	fs.DurationVar(
+		&cfg.PushPeriod,
+		prefix+"metric-aggregation.push-period",
+		1*time.Minute,
 		"How long to wait write response from Loki",
 	)
 	fs.BoolVar(

@@ -903,7 +903,7 @@ func TestParseStreamLabels(t *testing.T) {
 					Value: "bar",
 				},
 				{
-					Name:  LabelServiceName,
+					Name:  detection.LabelServiceName,
 					Value: ServiceUnknown,
 				},
 			},
@@ -923,7 +923,7 @@ func TestParseStreamLabels(t *testing.T) {
 					Value: "bar",
 				},
 				{
-					Name:  LabelServiceName,
+					Name:  detection.LabelServiceName,
 					Value: ServiceUnknown,
 				},
 			},
@@ -948,7 +948,7 @@ func TestParseStreamLabels(t *testing.T) {
 					Value: "auth",
 				},
 				{
-					Name:  LabelServiceName,
+					Name:  detection.LabelServiceName,
 					Value: "auth",
 				},
 			},
