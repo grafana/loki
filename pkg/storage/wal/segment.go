@@ -9,6 +9,7 @@ import (
 	"io"
 	"sort"
 	"sync"
+	"time"
 
 	"go.uber.org/atomic"
 
@@ -53,6 +54,15 @@ type SegmentWriter struct {
 	inputSize  atomic.Int64
 	idxWriter  *index.Writer
 	indexRef   metastorepb.DataRef
+
+	// firstAppend is the timestamp of the first append. It is used to know
+	// when the segment has exceeded the maximum aage and should be flushed.
+	firstAppend time.Time
+
+	// lastAppend is the timestamp of the last append. It is used to know
+	// how long a segment has been idle between the last append and the
+	// subsequent flush.
+	lastAppend time.Time
 }
 
 type streamSegment struct {
@@ -91,6 +101,11 @@ func NewWalSegmentWriter(m *SegmentMetrics) (*SegmentWriter, error) {
 	}, nil
 }
 
+// Age returns the age of the segment.
+func (b *SegmentWriter) Age(now time.Time) time.Duration {
+	return now.Sub(b.firstAppend)
+}
+
 func (b *SegmentWriter) getOrCreateStream(id streamID, lbls labels.Labels) *streamSegment {
 	s, ok := b.streams[id]
 	if ok {
@@ -112,10 +127,15 @@ func (b *SegmentWriter) getOrCreateStream(id streamID, lbls labels.Labels) *stre
 }
 
 // Labels are passed a string  `{foo="bar",baz="qux"}`  `{foo="foo",baz="foo"}`. labels.Labels => Symbols foo, baz , qux
-func (b *SegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels, entries []*logproto.Entry) {
+func (b *SegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels, entries []*logproto.Entry, now time.Time) {
 	if len(entries) == 0 {
 		return
 	}
+	if b.firstAppend.IsZero() {
+		b.firstAppend = now
+	}
+	b.lastAppend = now
+
 	for _, e := range entries {
 		b.inputSize.Add(int64(len(e.Line)))
 	}
@@ -329,6 +349,8 @@ func (b *SegmentWriter) WriteTo(w io.Writer) (int64, error) {
 // Reset clears the writer.
 // After calling Reset, the writer can be reused.
 func (b *SegmentWriter) Reset() {
+	b.firstAppend = time.Time{}
+	b.lastAppend = time.Time{}
 	for _, s := range b.streams {
 		s := s
 		s.Reset()

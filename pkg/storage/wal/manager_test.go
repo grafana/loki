@@ -311,7 +311,7 @@ func TestManager_NextPendingAge(t *testing.T) {
 	s, err := m.NextPending()
 	require.NoError(t, err)
 	require.NotNil(t, s)
-	require.Equal(t, 100*time.Millisecond, s.Age())
+	require.Equal(t, 100*time.Millisecond, s.Writer.Age(s.Moved))
 	m.Put(s)
 
 	// Append 1KB of data using two separate append requests, 1ms apart.
@@ -342,7 +342,7 @@ func TestManager_NextPendingAge(t *testing.T) {
 	s, err = m.NextPending()
 	require.NoError(t, err)
 	require.NotNil(t, s)
-	require.Equal(t, time.Millisecond, s.Age())
+	require.Equal(t, time.Millisecond, s.Writer.Age(s.Moved))
 }
 
 func TestManager_NextPendingMaxAgeExceeded(t *testing.T) {

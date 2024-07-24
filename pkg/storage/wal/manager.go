@@ -117,11 +117,6 @@ type segment struct {
 	r *AppendResult
 	w *SegmentWriter
 
-	// firstAppend is the time of the first append to the segment. It is used to
-	// know when the segment has exceeded the maximum age and should be moved to
-	// the pending list.
-	firstAppend time.Time
-
 	// moved is the time the segment was moved to the pending list. It is used
 	// to calculate the age of the segment. A segment is moved when it has
 	// exceeded the maximum age or the maximum size.
@@ -130,15 +125,9 @@ type segment struct {
 
 // PendingSegment contains a result and the segment to be flushed.
 type PendingSegment struct {
-	Result      *AppendResult
-	Writer      *SegmentWriter
-	FirstAppend time.Time
-	Moved       time.Time
-}
-
-// Age returns the age of the segment.
-func (p *PendingSegment) Age() time.Duration {
-	return p.Moved.Sub(p.FirstAppend)
+	Result *AppendResult
+	Writer *SegmentWriter
+	Moved  time.Time
 }
 
 func NewManager(cfg Config, metrics *Metrics) (*Manager, error) {
@@ -177,16 +166,10 @@ func (m *Manager) Append(r AppendRequest) (*AppendResult, error) {
 		return nil, ErrFull
 	}
 	s := el.Value.(*segment)
-	if s.firstAppend.IsZero() {
-		// This is the first append to the segment. This time will be used in
-		// know when the segment has exceeded its maximum age and should be
-		// moved to the pending list.
-		s.firstAppend = m.clock.Now()
-	}
-	s.w.Append(r.TenantID, r.LabelsStr, r.Labels, r.Entries)
+	s.w.Append(r.TenantID, r.LabelsStr, r.Labels, r.Entries, m.clock.Now())
 	// If the segment exceeded the maximum age or the maximum size, move s to
 	// the closed list to be flushed.
-	if m.clock.Since(s.firstAppend) >= m.cfg.MaxAge || s.w.InputSize() >= m.cfg.MaxSegmentSize {
+	if m.clock.Since(s.w.firstAppend) >= m.cfg.MaxAge || s.w.InputSize() >= m.cfg.MaxSegmentSize {
 		m.move(el, s)
 	}
 	return s.r, nil
@@ -223,10 +206,9 @@ func (m *Manager) NextPending() (*PendingSegment, error) {
 	m.metrics.NumPending.Dec()
 	m.metrics.NumFlushing.Inc()
 	return &PendingSegment{
-		Result:      s.r,
-		Writer:      s.w,
-		FirstAppend: s.firstAppend,
-		Moved:       s.moved,
+		Result: s.r,
+		Writer: s.w,
+		Moved:  s.moved,
 	}, nil
 }
 
@@ -260,7 +242,7 @@ func (m *Manager) move(el *list.Element, s *segment) {
 func (m *Manager) moveFrontIfExpired() bool {
 	if el := m.available.Front(); el != nil {
 		s := el.Value.(*segment)
-		if !s.firstAppend.IsZero() && m.clock.Since(s.firstAppend) >= m.cfg.MaxAge {
+		if !s.w.firstAppend.IsZero() && m.clock.Since(s.w.firstAppend) >= m.cfg.MaxAge {
 			m.move(el, s)
 			return true
 		}
