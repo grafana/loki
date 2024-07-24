@@ -157,7 +157,7 @@ For more information on the `loki.source.kafka` configuration, see the [Loki Kaf
 
 Next, we will configure the Loki relabel rules. The `loki.relabel` component rewrites the label set of each log entry passed to its receiver by applying one or more relabeling rules and forwards the results to the list of receivers in the component’s arguments. In our case we are directly calling the rule from the `loki.source.kafka` component.
 
-Add the following configuration to the `config.alloy` file:
+Now add the following configuration to the `config.alloy` file:
 ```alloy
 loki.relabel "kafka" {
   forward_to      = [loki.write.http.receiver]
