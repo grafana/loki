@@ -1,9 +1,10 @@
 package ingesterrf1
 
 import (
-	"github.com/grafana/loki/v3/pkg/storage/wal"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/grafana/loki/v3/pkg/storage/wal"
 )
 
 type ingesterMetrics struct {
