@@ -114,6 +114,31 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # querier.
 [querier: <querier>]
 
+querier_rf1:
+  # Enable the RF1 querier. If set, replaces the usual querier with a RF-1
+  # querier when using 'ALL' target.
+  # CLI flag: -querier-rf1.enabled
+  [enabled: <boolean> | default = false]
+
+  # Time to wait before sending more than the minimum successful query requests.
+  # CLI flag: -querier-rf1.extra-query-delay
+  [extra_query_delay: <duration> | default = 0s]
+
+  engine:
+    # The maximum amount of time to look back for log lines. Used only for
+    # instant log queries.
+    # CLI flag: -querier-rf1.engine.max-lookback-period
+    [max_look_back_period: <duration> | default = 30s]
+
+  # The maximum number of queries that can be simultaneously processed by the
+  # querier.
+  # CLI flag: -querier-rf1.max-concurrent
+  [max_concurrent: <int> | default = 4]
+
+  # When true, querier limits sent via a header are enforced.
+  # CLI flag: -querier-rf1.per-request-limits-enabled
+  [per_request_limits_enabled: <boolean> | default = false]
+
 # The query_scheduler block configures the Loki query scheduler. When configured
 # it separates the tenant query queues from the query-frontend.
 [query_scheduler: <query_scheduler>]
@@ -844,6 +869,33 @@ compactor_grpc_client:
 # type memberlist is automatically selected for all the components that require
 # a ring unless otherwise specified in the component's configuration section.
 [memberlist: <memberlist>]
+
+metastore:
+  # CLI flag: -metastore.data-dir
+  [data_dir: <string> | default = "./data-metastore/data"]
+
+  raft:
+    # CLI flag: -metastore.raft.dir
+    [dir: <string> | default = "./data-metastore/raft"]
+
+    # CLI flag: -metastore.raft.bootstrap-peers
+    [bootstrap_peers: <list of strings> | default = []]
+
+    # CLI flag: -metastore.raft.server-id
+    [server_id: <string> | default = "localhost:9099"]
+
+    # CLI flag: -metastore.raft.bind-address
+    [bind_address: <string> | default = "localhost:9099"]
+
+    # CLI flag: -metastore.raft.advertise-address
+    [advertise_address: <string> | default = "localhost:9099"]
+
+metastore_client:
+  # CLI flag: -metastore.address
+  [address: <string> | default = "localhost:9095"]
+
+  # Configures the gRPC client used to communicate with the metastore.
+  [grpc_client_config: <grpc_client>]
 
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
@@ -2598,6 +2650,8 @@ The `frontend_worker` configures the worker - running within the Loki querier - 
 
 # Configures the querier gRPC client used to communicate with the
 # query-scheduler. This can't be used in conjunction with 'grpc_client_config'.
+# The CLI flags prefix for this block configuration is:
+# metastore.grpc-client-config
 [query_scheduler_grpc_client: <grpc_client>]
 ```
 
@@ -2656,6 +2710,7 @@ The `grpc_client` block configures the gRPC client used to communicate between a
 - `frontend.grpc-client-config`
 - `ingester-rf1.client`
 - `ingester.client`
+- `metastore.grpc-client-config`
 - `pattern-ingester.client`
 - `querier.frontend-client`
 - `querier.frontend-grpc-client`

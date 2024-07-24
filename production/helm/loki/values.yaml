@@ -3222,7 +3222,7 @@ monitoring:
     # -- Labels for the dashboards ConfigMap
     labels:
       grafana_dashboard: "1"
-  # Recording rules for monitoring Loki, required for some dashboards
+  # -- DEPRECATED Recording rules for monitoring Loki, required for some dashboards
   rules:
     # -- If enabled, create PrometheusRule resource with Loki recording rules
     enabled: false
@@ -3252,7 +3252,7 @@ monitoring:
     #       expr: sum(rate(loki_request_duration_seconds_bucket[1m])) by (le, job, route)
     #     - record: node_namespace_pod_container:container_cpu_usage_seconds_total:sum_rate
     #       expr: sum(rate(container_cpu_usage_seconds_total[1m])) by (node, namespace, pod, container)
-  # ServiceMonitor configuration
+  #  -- DEPRECATED ServiceMonitor configuration
   serviceMonitor:
     # -- If enabled, ServiceMonitor resources for Prometheus Operator are created
     enabled: false
@@ -3288,7 +3288,7 @@ monitoring:
       labels: {}
       # -- If defined a MetricsInstance will be created to remote write metrics.
       remoteWrite: null
-  # Self monitoring determines whether Loki should scrape its own logs.
+  # -- DEPRECATED Self monitoring determines whether Loki should scrape its own logs.
   # This feature currently relies on the Grafana Agent Operator being installed,
   # which is installed by default using the grafana-agent-operator sub-chart.
   # It will create custom resources for GrafanaAgent, LogsInstance, and PodLogs to configure
@@ -3304,9 +3304,9 @@ monitoring:
       # -- Namespace to create additional tenant token secret in. Useful if your Grafana instance
       # is in a separate namespace. Token will still be created in the canary namespace.
       secretNamespace: "{{ .Release.Namespace }}"
-    # Grafana Agent configuration
+    # -- DEPRECATED Grafana Agent configuration
     grafanaAgent:
-      # -- Controls whether to install the Grafana Agent Operator and its CRDs.
+      # -- DEPRECATED Controls whether to install the Grafana Agent Operator and its CRDs.
       # Note that helm will not install CRDs if this flag is enabled during an upgrade.
       # In that case install the CRDs manually from https://github.com/grafana/agent/tree/main/production/operator/crds
       installOperator: false

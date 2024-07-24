@@ -14,7 +14,7 @@ services:
       - ./conf:/etc/kafka/secrets
 
   kafka:
-    image: confluentinc/cp-kafka:6.2.1
+    image: confluentinc/cp-kafka:6.2.15
     depends_on:
       - zookeeper
     ports:
