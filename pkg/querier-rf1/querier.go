@@ -91,11 +91,12 @@ type Store interface {
 
 // Rf1Querier handles rf1 queries.
 type Rf1Querier struct {
-	cfg          Config
-	store        Store
-	limits       Limits
-	deleteGetter deleteGetter
-	logger       log.Logger
+	cfg            Config
+	store          Store
+	limits         Limits
+	deleteGetter   deleteGetter
+	logger         log.Logger
+	patternQuerier PatterQuerier
 }
 
 type deleteGetter interface {
@@ -903,10 +904,27 @@ func streamsForFieldDetection(i iter.EntryIterator, size uint32) (logqlmodel.Str
 	return result, i.Err()
 }
 
-func (q *Rf1Querier) Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
-	return nil, httpgrpc.Errorf(http.StatusBadRequest, "not implmented")
+type PatterQuerier interface {
+	Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error)
+	Samples(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error)
 }
 
-func (q *Rf1Querier) SelectMetricSamples(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error) {
+func (q *Rf1Querier) WithPatternQuerier(pq querier.PatterQuerier) {
+	q.patternQuerier = pq
+}
+
+func (q *Rf1Querier) Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
+	if q.patternQuerier == nil {
+		return nil, httpgrpc.Errorf(http.StatusNotFound, "")
+	}
+	res, err := q.patternQuerier.Patterns(ctx, req)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	return res, err
+}
+
+func (q *Rf1Querier) SelectMetricSamples(_ context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error) {
 	return nil, httpgrpc.Errorf(http.StatusBadRequest, "not implmented")
 }
