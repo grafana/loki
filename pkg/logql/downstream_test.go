@@ -242,14 +242,13 @@ func TestMappingEquivalence_Instant(t *testing.T) {
 	)
 
 	for _, tc := range []struct {
-		query       string
-		approximate bool
-		shardAgg    []string
+		query    string
+		shardAgg []string
 	}{
-		{`first_over_time({a=~".+"} | logfmt | unwrap value [1s])`, false, []string{ShardFirstOverTime}},
-		{`first_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, false, []string{ShardFirstOverTime}},
-		{`last_over_time({a=~".+"} | logfmt | unwrap value [1s])`, false, []string{ShardLastOverTime}},
-		{`last_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, false, []string{ShardLastOverTime}},
+		{`first_over_time({a=~".+"} | logfmt | unwrap value [1s])`, []string{ShardFirstOverTime}},
+		{`first_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, []string{ShardFirstOverTime}},
+		{`last_over_time({a=~".+"} | logfmt | unwrap value [1s])`, []string{ShardLastOverTime}},
+		{`last_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, []string{ShardLastOverTime}},
 	} {
 		q := NewMockQuerier(
 			shards,
@@ -290,11 +289,7 @@ func TestMappingEquivalence_Instant(t *testing.T) {
 			shardedRes, err := shardedQry.Exec(ctx)
 			require.NoError(t, err)
 
-			if tc.approximate {
-				approximatelyEquals(t, res.Data.(promql.Matrix), shardedRes.Data.(promql.Matrix))
-			} else {
-				require.Equal(t, res.Data, shardedRes.Data)
-			}
+			require.Equal(t, res.Data, shardedRes.Data)
 		})
 	}
 }
