@@ -133,6 +133,10 @@ func (a *AIMDController) GetObject(ctx context.Context, objectKey string) (io.Re
 	return rc, sz, err
 }
 
+func (a *AIMDController) GetObjectRange(ctx context.Context, objectKey string, offset, length int64) (io.ReadCloser, error) {
+	return a.inner.GetObjectRange(ctx, objectKey, offset, length)
+}
+
 func (a *AIMDController) List(ctx context.Context, prefix string, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	return a.inner.List(ctx, prefix, delimiter)
 }
@@ -212,6 +216,9 @@ func (n *NoopController) ObjectExists(context.Context, string) (bool, error) { r
 func (n *NoopController) PutObject(context.Context, string, io.Reader) error { return nil }
 func (n *NoopController) GetObject(context.Context, string) (io.ReadCloser, int64, error) {
 	return nil, 0, nil
+}
+func (n *NoopController) GetObjectRange(context.Context, string, int64, int64) (io.ReadCloser, error) {
+	return nil, nil
 }
 
 func (n *NoopController) List(context.Context, string, string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
