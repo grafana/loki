@@ -15,6 +15,7 @@ import (
 	"github.com/oklog/ulid"
 	"golang.org/x/net/context"
 
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 	"github.com/grafana/loki/v3/pkg/storage/wal"
 )
 
@@ -68,7 +69,7 @@ func (i *Ingester) flushWorker(j int) {
 			continue
 		}
 
-		err = i.flushItem(l, j, it)
+		err = i.flush(l, j, it)
 		if err != nil {
 			level.Error(l).Log("msg", "failed to flush", "err", err)
 		}
@@ -78,7 +79,7 @@ func (i *Ingester) flushWorker(j int) {
 	}
 }
 
-func (i *Ingester) flushItem(l log.Logger, j int, it *wal.PendingItem) error {
+func (i *Ingester) flush(l log.Logger, j int, it *wal.PendingSegment) error {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
@@ -94,30 +95,33 @@ func (i *Ingester) flushItem(l log.Logger, j int, it *wal.PendingItem) error {
 	return b.Err()
 }
 
-// flushChunk flushes the given chunk to the store.
-//
-// If the flush is successful, metrics for this flush are to be reported.
-// If the flush isn't successful, the operation for this userID is requeued allowing this and all other unflushed
-// segments to have another opportunity to be flushed.
 func (i *Ingester) flushSegment(ctx context.Context, j int, w *wal.SegmentWriter) error {
-	id := ulid.MustNew(ulid.Timestamp(time.Now()), rand.Reader)
-
 	start := time.Now()
 	defer func() {
 		i.metrics.flushDuration.Observe(time.Since(start).Seconds())
-		w.Observe()
+		w.ReportMetrics()
 	}()
+
+	i.metrics.flushesTotal.Add(1)
 
 	buf := i.flushBuffers[j]
 	defer buf.Reset()
 	if _, err := w.WriteTo(buf); err != nil {
+		i.metrics.flushFailuresTotal.Inc()
 		return err
 	}
 
-	i.metrics.flushesTotal.Add(1)
-	if err := i.store.PutObject(ctx, fmt.Sprintf("loki-v2/wal/anon/"+id.String()), buf); err != nil {
+	id := ulid.MustNew(ulid.Timestamp(time.Now()), rand.Reader).String()
+	if err := i.store.PutObject(ctx, fmt.Sprintf("loki-v2/wal/anon/"+id), buf); err != nil {
 		i.metrics.flushFailuresTotal.Inc()
-		return fmt.Errorf("store put chunk: %w", err)
+		return fmt.Errorf("failed to put object: %w", err)
+	}
+
+	if _, err := i.metastoreClient.AddBlock(ctx, &metastorepb.AddBlockRequest{
+		Block: w.Meta(id),
+	}); err != nil {
+		i.metrics.flushFailuresTotal.Inc()
+		return fmt.Errorf("metastore add block: %w", err)
 	}
 
 	return nil

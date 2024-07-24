@@ -99,11 +99,14 @@ common:
 compactor:
   compaction_interval: 2h
   working_directory: {{ .StorageDirectory }}/compactor
-{{- if .Retention.Enabled }}{{- with .Retention }}
+{{- if .Retention.Enabled }}
+{{- with .Retention }}
   retention_enabled: true
   retention_delete_delay: 4h
   retention_delete_worker_count: {{.DeleteWorkerCount}}
-{{- end }}{{- end }}
+{{- end }}
+  delete_request_store: {{.ObjectStorage.SharedStore}}
+{{- end }}
 frontend:
   tail_proxy_url: {{ .Querier.Protocol }}://{{ .Querier.FQDN }}:{{ .Querier.Port }}
 {{- if .Gates.HTTPEncryption }}

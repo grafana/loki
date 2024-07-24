@@ -102,38 +102,43 @@ type Manager struct {
 	cfg       Config
 	metrics   *ManagerMetrics
 	available *list.List
-
-	// pending is a list of segments that are waiting to be flushed. Once
-	// flushed, the segment is reset and moved to the back of the available
-	// list to accept writes again.
-	pending *list.List
-
-	// firstAppend is the time of the first append to the segment at the
-	// front of the available list. It is used to know when the segment has
-	// exceeded the maximum age and should be moved to the pending list.
-	// It is reset each time this happens.
-	firstAppend time.Time
-
-	closed bool
-	mu     sync.Mutex
-
+	pending   *list.List
+	closed    bool
+	mu        sync.Mutex
 	// Used in tests.
 	clock quartz.Clock
 }
 
-// item is similar to PendingItem, but it is an internal struct used in the
-// available and pending lists. It contains a single-use result that is returned
-// to callers appending to the WAL and a re-usable segment that is reset after
-// each flush.
-type item struct {
+// segment is similar to PendingSegment, however it is an internal struct used
+// in the available and pending lists. It contains a single-use result that is
+// returned to callers appending to the WAL and a re-usable segment that is reset
+// after each flush.
+type segment struct {
 	r *AppendResult
 	w *SegmentWriter
+
+	// firstAppend is the time of the first append to the segment. It is used to
+	// know when the segment has exceeded the maximum age and should be moved to
+	// the pending list.
+	firstAppend time.Time
+
+	// moved is the time the segment was moved to the pending list. It is used
+	// to calculate the age of the segment. A segment is moved when it has
+	// exceeded the maximum age or the maximum size.
+	moved time.Time
 }
 
-// PendingItem contains a result and the segment to be flushed.
-type PendingItem struct {
-	Result *AppendResult
-	Writer *SegmentWriter
+// PendingSegment contains a result and the segment to be flushed.
+type PendingSegment struct {
+	Result      *AppendResult
+	Writer      *SegmentWriter
+	FirstAppend time.Time
+	Moved       time.Time
+}
+
+// Age returns the age of the segment.
+func (p *PendingSegment) Age() time.Duration {
+	return p.Moved.Sub(p.FirstAppend)
 }
 
 func NewManager(cfg Config, metrics *Metrics) (*Manager, error) {
@@ -152,7 +157,7 @@ func NewManager(cfg Config, metrics *Metrics) (*Manager, error) {
 		if err != nil {
 			return nil, err
 		}
-		m.available.PushBack(&item{
+		m.available.PushBack(&segment{
 			r: &AppendResult{done: make(chan struct{})},
 			w: w,
 		})
@@ -171,29 +176,29 @@ func (m *Manager) Append(r AppendRequest) (*AppendResult, error) {
 	if el == nil {
 		return nil, ErrFull
 	}
-	it := el.Value.(*item)
-	if m.firstAppend.IsZero() {
+	s := el.Value.(*segment)
+	if s.firstAppend.IsZero() {
 		// This is the first append to the segment. This time will be used in
 		// know when the segment has exceeded its maximum age and should be
 		// moved to the pending list.
-		m.firstAppend = m.clock.Now()
+		s.firstAppend = m.clock.Now()
 	}
-	it.w.Append(r.TenantID, r.LabelsStr, r.Labels, r.Entries)
-	// If the segment exceeded the maximum age or the maximum size, move it to
+	s.w.Append(r.TenantID, r.LabelsStr, r.Labels, r.Entries)
+	// If the segment exceeded the maximum age or the maximum size, move s to
 	// the closed list to be flushed.
-	if m.clock.Since(m.firstAppend) >= m.cfg.MaxAge || it.w.InputSize() >= m.cfg.MaxSegmentSize {
-		m.move(el, it)
+	if m.clock.Since(s.firstAppend) >= m.cfg.MaxAge || s.w.InputSize() >= m.cfg.MaxSegmentSize {
+		m.move(el, s)
 	}
-	return it.r, nil
+	return s.r, nil
 }
 
 func (m *Manager) Close() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if el := m.available.Front(); el != nil {
-		it := el.Value.(*item)
-		if it.w.InputSize() > 0 {
-			m.move(el, it)
+		s := el.Value.(*segment)
+		if s.w.InputSize() > 0 {
+			m.move(el, s)
 		}
 	}
 	m.closed = true
@@ -203,7 +208,7 @@ func (m *Manager) Close() {
 // It returns nil if there are no segments waiting to be flushed. If the WAL
 // is closed it returns all remaining segments from the pending list and then
 // ErrClosed.
-func (m *Manager) NextPending() (*PendingItem, error) {
+func (m *Manager) NextPending() (*PendingSegment, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.pending.Len() == 0 && !m.moveFrontIfExpired() {
@@ -213,35 +218,40 @@ func (m *Manager) NextPending() (*PendingItem, error) {
 		return nil, nil
 	}
 	el := m.pending.Front()
-	it := el.Value.(*item)
+	s := el.Value.(*segment)
 	m.pending.Remove(el)
 	m.metrics.NumPending.Dec()
 	m.metrics.NumFlushing.Inc()
-	return &PendingItem{Result: it.r, Writer: it.w}, nil
+	return &PendingSegment{
+		Result:      s.r,
+		Writer:      s.w,
+		FirstAppend: s.firstAppend,
+		Moved:       s.moved,
+	}, nil
 }
 
 // Put resets the segment and puts it back in the available list to accept
-// writes. A PendingItem should not be put back until it has been flushed.
-func (m *Manager) Put(it *PendingItem) {
-	it.Writer.Reset()
+// writes. A PendingSegment should not be put back until it has been flushed.
+func (m *Manager) Put(s *PendingSegment) {
+	s.Writer.Reset()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.metrics.NumFlushing.Dec()
 	m.metrics.NumAvailable.Inc()
-	m.available.PushBack(&item{
+	m.available.PushBack(&segment{
 		r: &AppendResult{done: make(chan struct{})},
-		w: it.Writer,
+		w: s.Writer,
 	})
 }
 
 // move the element from the available list to the pending list and sets the
 // relevant metrics.
-func (m *Manager) move(el *list.Element, it *item) {
-	m.pending.PushBack(it)
+func (m *Manager) move(el *list.Element, s *segment) {
+	s.moved = m.clock.Now()
+	m.pending.PushBack(s)
 	m.metrics.NumPending.Inc()
 	m.available.Remove(el)
 	m.metrics.NumAvailable.Dec()
-	m.firstAppend = time.Time{}
 }
 
 // moveFrontIfExpired moves the element from the front of the available list to
@@ -249,9 +259,9 @@ func (m *Manager) move(el *list.Element, it *item) {
 // relevant metrics.
 func (m *Manager) moveFrontIfExpired() bool {
 	if el := m.available.Front(); el != nil {
-		it := el.Value.(*item)
-		if !m.firstAppend.IsZero() && m.clock.Since(m.firstAppend) >= m.cfg.MaxAge {
-			m.move(el, it)
+		s := el.Value.(*segment)
+		if !s.firstAppend.IsZero() && m.clock.Since(s.firstAppend) >= m.cfg.MaxAge {
+			m.move(el, s)
 			return true
 		}
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/wal/chunks"
@@ -29,7 +30,6 @@ var (
 	streamSegmentPool = sync.Pool{
 		New: func() interface{} {
 			return &streamSegment{
-				lock:    &sync.Mutex{},
 				entries: make([]*logproto.Entry, 0, 4096),
 			}
 		},
@@ -46,17 +46,16 @@ type streamID struct {
 }
 
 type SegmentWriter struct {
-	metrics        *SegmentMetrics
-	streams        map[streamID]*streamSegment
-	buf1           encoding.Encbuf
-	outputSize     atomic.Int64
-	inputSize      atomic.Int64
-	idxWriter      *index.Writer
-	consistencyMtx *sync.RWMutex
+	metrics    *SegmentMetrics
+	streams    map[streamID]*streamSegment
+	buf1       encoding.Encbuf
+	outputSize atomic.Int64
+	inputSize  atomic.Int64
+	idxWriter  *index.Writer
+	indexRef   metastorepb.DataRef
 }
 
 type streamSegment struct {
-	lock     *sync.Mutex
 	lbls     labels.Labels
 	entries  []*logproto.Entry
 	tenantID string
@@ -84,24 +83,19 @@ func NewWalSegmentWriter(m *SegmentMetrics) (*SegmentWriter, error) {
 		return nil, err
 	}
 	return &SegmentWriter{
-		metrics:        m,
-		streams:        make(map[streamID]*streamSegment, 64),
-		buf1:           encoding.EncWith(make([]byte, 0, 4)),
-		idxWriter:      idxWriter,
-		inputSize:      atomic.Int64{},
-		consistencyMtx: &sync.RWMutex{},
+		metrics:   m,
+		streams:   make(map[streamID]*streamSegment, 64),
+		buf1:      encoding.EncWith(make([]byte, 0, 4)),
+		idxWriter: idxWriter,
+		inputSize: atomic.Int64{},
 	}, nil
 }
 
 func (b *SegmentWriter) getOrCreateStream(id streamID, lbls labels.Labels) *streamSegment {
-	b.consistencyMtx.RLock()
 	s, ok := b.streams[id]
-	b.consistencyMtx.RUnlock()
 	if ok {
 		return s
 	}
-	b.consistencyMtx.Lock()
-	defer b.consistencyMtx.Unlock()
 	// Check another thread has not created it
 	s, ok = b.streams[id]
 	if ok {
@@ -128,8 +122,6 @@ func (b *SegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels
 	id := streamID{labels: labelsString, tenant: tenantID}
 	s := b.getOrCreateStream(id, lbls)
 
-	s.lock.Lock()
-	defer s.lock.Unlock()
 	for i, e := range entries {
 		if e.Timestamp.UnixNano() >= s.maxt {
 			s.entries = append(s.entries, entries[i])
@@ -147,20 +139,66 @@ func (b *SegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels
 	}
 }
 
-// Observe updates metrics for the writer. If called before WriteTo then the
-// output size histogram will observe 0.
-func (b *SegmentWriter) Observe() {
-	b.consistencyMtx.Lock()
-	defer b.consistencyMtx.Unlock()
-
+// ReportMetrics for the writer. If called before WriteTo then the output size
+// histogram will observe 0.
+func (b *SegmentWriter) ReportMetrics() {
 	b.metrics.streams.Observe(float64(len(b.streams)))
-	tenants := make(map[string]struct{}, len(b.streams))
+	tenants := make(map[string]struct{}, 64)
 	for _, s := range b.streams {
 		tenants[s.tenantID] = struct{}{}
 	}
 	b.metrics.tenants.Observe(float64(len(tenants)))
 	b.metrics.inputSizeBytes.Observe(float64(b.inputSize.Load()))
 	b.metrics.outputSizeBytes.Observe(float64(b.outputSize.Load()))
+}
+
+func (b *SegmentWriter) Meta(id string) *metastorepb.BlockMeta {
+	var globalMinT, globalMaxT int64
+
+	tenants := make(map[string]*metastorepb.TenantStreams, 64)
+	for _, s := range b.streams {
+		tenant, ok := tenants[s.tenantID]
+		if !ok {
+			tenant = &metastorepb.TenantStreams{
+				TenantId: s.tenantID,
+			}
+			tenants[s.tenantID] = tenant
+		}
+		if len(s.entries) == 0 {
+			continue
+		}
+		streamMinT, streamMaxT := s.entries[0].Timestamp.UnixNano(), s.entries[len(s.entries)-1].Timestamp.UnixNano()
+
+		if globalMinT == 0 || streamMinT < globalMinT {
+			globalMinT = streamMinT
+		}
+		if streamMaxT > globalMaxT {
+			globalMaxT = streamMaxT
+		}
+		if tenant.MinTime == 0 || tenant.MinTime > streamMinT {
+			tenant.MinTime = streamMinT
+		}
+		if tenant.MaxTime < streamMaxT {
+			tenant.MaxTime = streamMaxT
+		}
+	}
+	result := make([]*metastorepb.TenantStreams, 0, len(tenants))
+	for _, tenant := range tenants {
+		tenant := tenant
+		result = append(result, tenant)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].TenantId < result[j].TenantId
+	})
+	return &metastorepb.BlockMeta{
+		Id:              id,
+		FormatVersion:   uint64(1),
+		CompactionLevel: 0,
+		IndexRef:        b.indexRef,
+		MinTime:         globalMinT,
+		MaxTime:         globalMaxT,
+		TenantStreams:   result,
+	}
 }
 
 func (b *SegmentWriter) WriteTo(w io.Writer) (int64, error) {
@@ -256,6 +294,8 @@ func (b *SegmentWriter) WriteTo(w io.Writer) (int64, error) {
 	if n != len(buf) {
 		return total, errors.New("invalid written index len")
 	}
+	b.indexRef.Offset = total
+	b.indexRef.Length = int64(n)
 	total += int64(n)
 
 	// write index len 4b
@@ -297,6 +337,8 @@ func (b *SegmentWriter) Reset() {
 	b.streams = make(map[streamID]*streamSegment, 64)
 	b.buf1.Reset()
 	b.inputSize.Store(0)
+	b.indexRef.Length = 0
+	b.indexRef.Offset = 0
 }
 
 // InputSize returns the total size of the input data written to the writer.
