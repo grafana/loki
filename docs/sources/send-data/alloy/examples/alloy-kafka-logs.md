@@ -32,7 +32,7 @@ Alternatively, you can try out this example in our interactive learning environm
 
 It's a fully configured environment with all the dependencies already installed.
 
-![Interactive](https://raw.githubusercontent.com/grafana/killercoda/prod/assets/loki-ile.svg)
+![Interactive](/media/docs/loki/loki-ile.svg)
 
 Provide feedback, report bugs, and raise issues in the [Grafana Killercoda repository](https://github.com/grafana/killercoda).
 {{< /admonition >}}
@@ -123,7 +123,7 @@ Grafana Alloy requires a configuration file to define the components and their r
 1. Click on the `config.alloy` file to open it in the code editor.
 <!-- INTERACTIVE ignore END -->
 
-The below configuration snippets will be added to the `config.alloy` file.  
+You will copy all three of the following configuration snippets into the `config.alloy` file.  
 
 ### Source logs from kafka
 
@@ -157,7 +157,7 @@ For more information on the `loki.source.kafka` configuration, see the [Loki Kaf
 
 Next, we will configure the Loki relabel rules. The `loki.relabel` component rewrites the label set of each log entry passed to its receiver by applying one or more relabeling rules and forwards the results to the list of receivers in the component’s arguments. In our case we are directly calling the rule from the `loki.source.kafka` component.
 
-Add the following configuration to the `config.alloy` file:
+Now add the following configuration to the `config.alloy` file:
 ```alloy
 loki.relabel "kafka" {
   forward_to      = [loki.write.http.receiver]
@@ -180,7 +180,7 @@ For more information on the `loki.relabel` configuration, see the [Loki Relabel 
 
 Lastly, we will configure the Loki write component. `loki.write` receives log entries from other loki components and sends them over the network using the Loki logproto format.
 
-Add the following configuration to the `config.alloy` file:
+Now add the following configuration to the `config.alloy` file:
 ```alloy
 loki.write "http" {
   endpoint {
@@ -228,15 +228,14 @@ Next we will configure Alloy to also ingest OpenTelemetry logs via Kafka, we nee
 
 ### Open your Code Editor and Locate the `config.alloy` file
 
-Like before, we generate our next pipeline configuration within the same `config.alloy` file. The below configuration snippets will be added **in addition** to the existing configuration. Essentially, we are configuring two pipelines within the same Alloy configuration file.
+Like before, we generate our next pipeline configuration within the same `config.alloy` file. You will add the following configuration snippets to the file **in addition** to the existing configuration. Essentially, we are configuring two pipelines within the same Alloy configuration file.
 
 
 ### Source OpenTelemetry logs from Kafka
 
 First, we will configure the OpenTelemetry Kafaka receiver. `otelcol.receiver.kafka` accepts telemetry data from a Kafka broker and forwards it to other `otelcol.*` components.
 
-Add the following configuration to the `config.alloy` file:
-
+Now add the following configuration to the `config.alloy` file:
 ```alloy
 otelcol.receiver.kafka "default" {
   brokers          = ["kafka:9092"]
@@ -264,7 +263,7 @@ For more information on the `otelcol.receiver.kafka` configuration, see the [Ope
 
 Next, we will configure a OpenTelemetry processor. `otelcol.processor.batch` accepts telemetry data from other otelcol components and places them into batches. Batching improves the compression of data and reduces the number of outgoing network requests required to transmit data. This processor supports both size and time based batching.
 
-Add the following configuration to the `config.alloy` file:
+Now add the following configuration to the `config.alloy` file:
 ```alloy
 otelcol.processor.batch "default" {
     output {

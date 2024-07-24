@@ -33,7 +33,7 @@ Alternatively, you can try out this example in our interactive learning environm
 
 It's a fully configured environment with all the dependencies already installed.
 
-![Interactive](https://raw.githubusercontent.com/grafana/killercoda/prod/assets/loki-ile.svg)
+![Interactive](/media/docs/loki/loki-ile.svg)
 
 Provide feedback, report bugs, and raise issues in the [Grafana Killercoda repository](https://github.com/grafana/killercoda).
 {{< /admonition >}}
@@ -111,7 +111,7 @@ Grafana Alloy requires a configuration file to define the components and their r
 {{< docs/ignore >}}
 **Note: Killercoda has an inbuilt Code editor which can be accessed via the `Editor` tab.**
 1. Expand the `loki-fundamentals` directory in the file explorer of the `Editor` tab.
-1. Locate the `config.alloy` file in the `loki-fundamentals` directory (Top level directory).
+1. Locate the `config.alloy` file in the top level directory, `loki-fundamentals'.
 1. Click on the `config.alloy` file to open it in the code editor.
 {{< /docs/ignore >}}
 
@@ -121,14 +121,13 @@ Grafana Alloy requires a configuration file to define the components and their r
 1. Click on the `config.alloy` file to open it in the code editor.
 <!-- INTERACTIVE ignore END -->
 
-The below configuration snippets will be added to the `config.alloy` file.  
+You will copy all three of the following configuration snippets into the `config.alloy` file.
 
 ### Recive OpenTelemetry logs via gRPC and HTTP
 
 First, we will configure the OpenTelemetry receiver. `otelcol.receiver.otlp` accepts logs in the OpenTelemetry format via HTTP and gRPC. We will use this receiver to receive logs from the Carnivorous Greenhouse application.
 
-Add the following configuration to the `config.alloy` file:
-
+Now add the following configuration to the `config.alloy` file:
 ```alloy
  otelcol.receiver.otlp "default" {
    http {}
@@ -152,7 +151,7 @@ For more information on the `otelcol.receiver.otlp` configuration, see the [Open
 
 Next, we will configure a OpenTelemetry processor. `otelcol.processor.batch` accepts telemetry data from other otelcol components and places them into batches. Batching improves the compression of data and reduces the number of outgoing network requests required to transmit data. This processor supports both size and time based batching.
 
-Add the following configuration to the `config.alloy` file:
+Now add the following configuration to the `config.alloy` file:
 ```alloy
 otelcol.processor.batch "default" {
     output {
@@ -170,7 +169,7 @@ For more information on the `otelcol.processor.batch` configuration, see the [Op
 
 Lastly, we will configure the OpenTelemetry exporter. `otelcol.exporter.otlphttp` accepts telemetry data from other otelcol components and writes them over the network using the OTLP HTTP protocol. We will use this exporter to send the logs to Loki's native OTLP endpoint.
 
-Add the following configuration to the `config.alloy` file:
+Now add the following configuration to the `config.alloy` file:
 ```alloy
 otelcol.exporter.otlphttp "default" {
   client {
