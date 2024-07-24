@@ -180,7 +180,7 @@ For more information on the `loki.relabel` configuration, see the [Loki Relabel 
 
 Lastly, we will configure the Loki write component. `loki.write` receives log entries from other loki components and sends them over the network using the Loki logproto format.
 
-Add the following configuration to the `config.alloy` file:
+And finally, add the following configuration to the `config.alloy` file:
 ```alloy
 loki.write "http" {
   endpoint {
