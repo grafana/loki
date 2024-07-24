@@ -107,6 +107,7 @@ type Querier interface {
 	Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error)
 	DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error)
 	SelectMetricSamples(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error)
+	WithPatternQuerier(patternQuerier PatterQuerier)
 }
 
 type Limits querier_limits.Limits

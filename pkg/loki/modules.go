@@ -61,6 +61,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	"github.com/grafana/loki/v3/pkg/pattern"
 	"github.com/grafana/loki/v3/pkg/querier"
+	querierrf1 "github.com/grafana/loki/v3/pkg/querier-rf1"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/ruler"
@@ -412,21 +413,29 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		return nil, err
 	}
 
-	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, prometheus.DefaultRegisterer, logger)
-	if err != nil {
-		return nil, err
+	if t.Cfg.QuerierRF1.Enabled {
+		logger.Log("Using RF-1 querier implementation")
+		t.Querier, err = querierrf1.New(t.Cfg.QuerierRF1, t.Store, t.Overrides, deleteStore, logger)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		t.Querier, err = querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, prometheus.DefaultRegisterer, logger)
+		if err != nil {
+			return nil, err
+		}
 	}
+
 	if t.Cfg.Pattern.Enabled {
 		patternQuerier, err := pattern.NewIngesterQuerier(t.Cfg.Pattern, t.PatternRingClient, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer, util_log.Logger)
 		if err != nil {
 			return nil, err
 		}
-		q.WithPatternQuerier(patternQuerier)
+		t.Querier.WithPatternQuerier(patternQuerier)
 	}
+
 	if t.Cfg.Querier.MultiTenantQueriesEnabled {
-		t.Querier = querier.NewMultiTenantQuerier(q, util_log.Logger)
-	} else {
-		t.Querier = q
+		t.Querier = querier.NewMultiTenantQuerier(t.Querier, util_log.Logger)
 	}
 
 	querierWorkerServiceConfig := querier.WorkerServiceConfig{
