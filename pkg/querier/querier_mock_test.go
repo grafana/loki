@@ -737,6 +737,8 @@ func (q *querierMock) SelectMetricSamples(
 	return resp.(*logproto.QuerySamplesResponse), err
 }
 
+func (q *querierMock) WithPatternQuerier(_ PatterQuerier) {}
+
 type engineMock struct {
 	util.ExtendedMock
 }

@@ -114,6 +114,31 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # querier.
 [querier: <querier>]
 
+querier_rf1:
+  # Enable the RF1 querier. If set, replaces the usual querier with a RF-1
+  # querier when using 'ALL' target.
+  # CLI flag: -querier-rf1.enabled
+  [enabled: <boolean> | default = false]
+
+  # Time to wait before sending more than the minimum successful query requests.
+  # CLI flag: -querier-rf1.extra-query-delay
+  [extra_query_delay: <duration> | default = 0s]
+
+  engine:
+    # The maximum amount of time to look back for log lines. Used only for
+    # instant log queries.
+    # CLI flag: -querier-rf1.engine.max-lookback-period
+    [max_look_back_period: <duration> | default = 30s]
+
+  # The maximum number of queries that can be simultaneously processed by the
+  # querier.
+  # CLI flag: -querier-rf1.max-concurrent
+  [max_concurrent: <int> | default = 4]
+
+  # When true, querier limits sent via a header are enforced.
+  # CLI flag: -querier-rf1.per-request-limits-enabled
+  [per_request_limits_enabled: <boolean> | default = false]
+
 # The query_scheduler block configures the Loki query scheduler. When configured
 # it separates the tenant query queues from the query-frontend.
 [query_scheduler: <query_scheduler>]
