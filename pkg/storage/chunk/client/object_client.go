@@ -22,6 +22,7 @@ type ObjectClient interface {
 	PutObject(ctx context.Context, objectKey string, object io.Reader) error
 	// NOTE: The consumer of GetObject should always call the Close method when it is done reading which otherwise could cause a resource leak.
 	GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error)
+	GetObjectRange(ctx context.Context, objectKey string, off, length int64) (io.ReadCloser, error)
 
 	// List objects with given prefix.
 	//

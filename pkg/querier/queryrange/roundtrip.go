@@ -253,12 +253,10 @@ func NewMiddleware(
 
 	detectedLabelsTripperware, err := NewDetectedLabelsTripperware(
 		cfg,
-		engineOpts,
 		log,
 		limits,
 		schema,
 		metrics,
-		indexStatsTripperware,
 		metricsNamespace,
 		codec, limits, iqo)
 	if err != nil {
@@ -282,24 +280,16 @@ func NewMiddleware(
 	}), StopperWrapper{resultsCache, statsCache, volumeCache}, nil
 }
 
-func NewDetectedLabelsTripperware(cfg Config, opts logql.EngineOpts, logger log.Logger, l Limits, schema config.SchemaConfig, metrics *Metrics, mw base.Middleware, namespace string, merger base.Merger, limits Limits, iqo util.IngesterQueryOptions) (base.Middleware, error) {
+func NewDetectedLabelsTripperware(cfg Config, logger log.Logger, l Limits, schema config.SchemaConfig, metrics *Metrics, namespace string, merger base.Merger, limits Limits, iqo util.IngesterQueryOptions) (base.Middleware, error) {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
-		statsHandler := mw.Wrap(next)
 		splitter := newDefaultSplitter(limits, iqo)
 
 		queryRangeMiddleware := []base.Middleware{
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(l),
-			NewQuerySizeLimiterMiddleware(schema.Configs, opts, logger, l, statsHandler),
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitter, metrics.SplitByMetrics),
 		}
-
-		// The sharding middleware takes care of enforcing this limit for both shardable and non-shardable queries.
-		// If we are not using sharding, we enforce the limit by adding this middleware after time splitting.
-		queryRangeMiddleware = append(queryRangeMiddleware,
-			NewQuerierSizeLimiterMiddleware(schema.Configs, opts, logger, l, statsHandler),
-		)
 
 		if cfg.MaxRetries > 0 {
 			queryRangeMiddleware = append(
@@ -328,9 +318,7 @@ func NewDetectedLabelsCardinalityFilter(rt queryrangebase.Handler) queryrangebas
 			var result []*logproto.DetectedLabel
 
 			for _, dl := range resp.Response.DetectedLabels {
-				if dl.Cardinality > 1 && dl.Cardinality < 50 {
-					result = append(result, &logproto.DetectedLabel{Label: dl.Label, Cardinality: dl.Cardinality})
-				}
+				result = append(result, &logproto.DetectedLabel{Label: dl.Label, Cardinality: dl.Cardinality})
 			}
 			return &DetectedLabelsResponse{
 				Response: &logproto.DetectedLabelsResponse{DetectedLabels: result},
