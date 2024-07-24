@@ -187,7 +187,7 @@ func checkEventType(ev map[string]interface{}) (interface{}, error) {
 		reader.Seek(0, 0)
 	}
 
-	return nil, fmt.Errorf("unknown event type!")
+	return nil, fmt.Errorf("unknown event type")
 }
 
 func handler(ctx context.Context, ev map[string]interface{}) error {
@@ -210,7 +210,7 @@ func handler(ctx context.Context, ev map[string]interface{}) error {
 
 	event, err := checkEventType(ev)
 	if err != nil {
-		level.Error(*pClient.log).Log("err", fmt.Errorf("invalid event: %s\n", ev))
+		level.Error(*pClient.log).Log("err", fmt.Errorf("invalid event: %s", ev))
 		return err
 	}
 

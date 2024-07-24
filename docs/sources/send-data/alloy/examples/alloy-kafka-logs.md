@@ -119,7 +119,7 @@ Grafana Alloy requires a configuration file to define the components and their r
 
 <!-- INTERACTIVE ignore START -->
 1. Open the `loki-fundamentals` directory in a code editor of your choice.
-1. Locate the `config.alloy` file in the `loki-fundamentals` directory (Top level directory).
+1. Locate the `config.alloy` file in the top level directory, `loki-fundamentals'.
 1. Click on the `config.alloy` file to open it in the code editor.
 <!-- INTERACTIVE ignore END -->
 
@@ -180,7 +180,7 @@ For more information on the `loki.relabel` configuration, see the [Loki Relabel 
 
 Lastly, we will configure the Loki write component. `loki.write` receives log entries from other loki components and sends them over the network using the Loki logproto format.
 
-Now add the following configuration to the `config.alloy` file:
+And finally, add the following configuration to the `config.alloy` file:
 ```alloy
 loki.write "http" {
   endpoint {
