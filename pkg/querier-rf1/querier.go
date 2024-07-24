@@ -925,6 +925,6 @@ func (q *Rf1Querier) Patterns(ctx context.Context, req *logproto.QueryPatternsRe
 	return res, err
 }
 
-func (q *Rf1Querier) SelectMetricSamples(_ context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error) {
+func (q *Rf1Querier) SelectMetricSamples(_ context.Context, _ *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error) {
 	return nil, httpgrpc.Errorf(http.StatusBadRequest, "not implmented")
 }
