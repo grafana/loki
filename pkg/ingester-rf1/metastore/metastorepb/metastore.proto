@@ -6,6 +6,7 @@ import "gogoproto/gogo.proto";
 
 service MetastoreService {
   rpc AddBlock(AddBlockRequest) returns (AddBlockResponse) {}
+  rpc ListBlocksForQuery(ListBlocksForQueryRequest) returns (ListBlocksForQueryResponse) {}
 }
 
 message AddBlockRequest {
@@ -37,4 +38,15 @@ message TenantStreams {
   int64 min_time = 3;
   int64 max_time = 4;
   //todo offset in the block.
+}
+
+
+message ListBlocksForQueryRequest {
+  string tenant_id = 1;
+  int64 start_time = 2;
+  int64 end_time = 3;
+}
+
+message ListBlocksForQueryResponse {
+  repeated BlockMeta blocks = 1;
 }
