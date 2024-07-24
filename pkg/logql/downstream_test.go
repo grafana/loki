@@ -619,7 +619,7 @@ func approximatelyEquals(t *testing.T, as, bs promql.Matrix) {
 	}
 }
 
-// approximatelyEquals ensures two responses are approximately equal,
+// approximatelyEqualsVector ensures two responses are approximately equal,
 // up to 6 decimals precision per sample
 func approximatelyEqualsVector(t *testing.T, as, bs promql.Vector) {
 	require.Len(t, bs, len(as))
@@ -633,7 +633,7 @@ func approximatelyEqualsVector(t *testing.T, as, bs promql.Vector) {
 		aSample = math.Round(aSample*1e6) / 1e6
 		bSample := b.F
 		bSample = math.Round(bSample*1e6) / 1e6
-		require.Equalf(t, a, b, "metric %s differs from %s at %d", a.Metric, b.Metric, i)
+		require.Equalf(t, aSample, bSample, "metric %s differs from %s at %d", a.Metric, b.Metric, i)
 	}
 }
 
