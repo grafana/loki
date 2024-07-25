@@ -12,12 +12,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-const (
-	DefaultMaxAge         = 500 * time.Millisecond
-	DefaultMaxSegments    = 10
-	DefaultMaxSegmentSize = 8 * 1024 * 1024 // 8MB.
-)
-
 var (
 	// ErrClosed is returned when the WAL is closed. It is a permanent error
 	// as once closed, a WAL cannot be re-opened.
@@ -109,31 +103,24 @@ type Manager struct {
 	clock quartz.Clock
 }
 
-// segment is similar to PendingSegment, however it is an internal struct used
-// in the available and pending lists. It contains a single-use result that is
-// returned to callers appending to the WAL and a re-usable segment that is reset
-// after each flush.
+// segment is an internal struct used in the available and pending lists. It
+// contains a single-use result that is returned to callers appending to the
+// WAL and a re-usable segment that is reset after each flush.
 type segment struct {
 	r *AppendResult
 	w *SegmentWriter
-
-	// moved is the time the segment was moved to the pending list. It is used
-	// to calculate the age of the segment. A segment is moved when it has
-	// exceeded the maximum age or the maximum size.
-	moved time.Time
 }
 
 // PendingSegment contains a result and the segment to be flushed.
 type PendingSegment struct {
 	Result *AppendResult
 	Writer *SegmentWriter
-	Moved  time.Time
 }
 
-func NewManager(cfg Config, metrics *Metrics) (*Manager, error) {
+func NewManager(cfg Config, metrics *ManagerMetrics) (*Manager, error) {
 	m := Manager{
 		cfg:       cfg,
-		metrics:   metrics.ManagerMetrics,
+		metrics:   metrics,
 		available: list.New(),
 		pending:   list.New(),
 		clock:     quartz.NewReal(),
@@ -142,7 +129,7 @@ func NewManager(cfg Config, metrics *Metrics) (*Manager, error) {
 	m.metrics.NumPending.Set(0)
 	m.metrics.NumFlushing.Set(0)
 	for i := int64(0); i < cfg.MaxSegments; i++ {
-		w, err := NewWalSegmentWriter(metrics.SegmentMetrics)
+		w, err := NewWalSegmentWriter()
 		if err != nil {
 			return nil, err
 		}
@@ -205,11 +192,7 @@ func (m *Manager) NextPending() (*PendingSegment, error) {
 	m.pending.Remove(el)
 	m.metrics.NumPending.Dec()
 	m.metrics.NumFlushing.Inc()
-	return &PendingSegment{
-		Result: s.r,
-		Writer: s.w,
-		Moved:  s.moved,
-	}, nil
+	return &PendingSegment{Result: s.r, Writer: s.w}, nil
 }
 
 // Put resets the segment and puts it back in the available list to accept
@@ -229,7 +212,6 @@ func (m *Manager) Put(s *PendingSegment) {
 // move the element from the available list to the pending list and sets the
 // relevant metrics.
 func (m *Manager) move(el *list.Element, s *segment) {
-	s.moved = m.clock.Now()
 	m.pending.PushBack(s)
 	m.metrics.NumPending.Inc()
 	m.available.Remove(el)
