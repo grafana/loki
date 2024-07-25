@@ -45,7 +45,7 @@ Provide feedback, report bugs, and raise issues in the [Grafana Killercoda repos
 In this scenario, we have a microservices application called the Carnivourse Greenhouse. This application consists of the following services:
 
 - **User Service:** Manages user data and authentication for the application. Such as creating users and logging in.
-- **plant Service:** Manages the creation of new plants and updates other services when a new plant is created.
+- **Plant Service:** Manages the creation of new plants and updates other services when a new plant is created.
 - **Simulation Service:** Generates sensor data for each plant.
 - **Websocket Service:** Manages the websocket connections for the application.
 - **Bug Service:** A service that when enabled, randomly causes services to fail and generate additional logs.
