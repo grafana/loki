@@ -20,7 +20,7 @@ func TestManager_Append(t *testing.T) {
 		MaxAge:         30 * time.Second,
 		MaxSegments:    1,
 		MaxSegmentSize: 1024, // 1KB
-	}, NewMetrics(nil))
+	}, NewManagerMetrics(nil))
 	require.NoError(t, err)
 
 	// Append some data.
@@ -59,7 +59,7 @@ func TestManager_AppendFailed(t *testing.T) {
 		MaxAge:         30 * time.Second,
 		MaxSegments:    1,
 		MaxSegmentSize: 1024, // 1KB
-	}, NewMetrics(nil))
+	}, NewManagerMetrics(nil))
 	require.NoError(t, err)
 
 	// Append some data.
@@ -92,7 +92,7 @@ func TestManager_AppendFailedWALClosed(t *testing.T) {
 		MaxAge:         30 * time.Second,
 		MaxSegments:    10,
 		MaxSegmentSize: 1024, // 1KB
-	}, NewMetrics(nil))
+	}, NewManagerMetrics(nil))
 	require.NoError(t, err)
 
 	// Append some data.
@@ -126,7 +126,7 @@ func TestManager_AppendFailedWALFull(t *testing.T) {
 		MaxAge:         30 * time.Second,
 		MaxSegments:    10,
 		MaxSegmentSize: 1024, // 1KB
-	}, NewMetrics(nil))
+	}, NewManagerMetrics(nil))
 	require.NoError(t, err)
 
 	// Should be able to write 100KB of data, 10KB per segment.
@@ -161,7 +161,7 @@ func TestManager_AppendMaxAgeExceeded(t *testing.T) {
 		MaxAge:         100 * time.Millisecond,
 		MaxSegments:    1,
 		MaxSegmentSize: 8 * 1024 * 1024, // 8MB
-	}, NewMetrics(nil))
+	}, NewManagerMetrics(nil))
 	require.NoError(t, err)
 
 	// Create a mock clock.
@@ -208,7 +208,7 @@ func TestManager_AppendMaxSizeExceeded(t *testing.T) {
 		MaxAge:         30 * time.Second,
 		MaxSegments:    1,
 		MaxSegmentSize: 1024, // 1KB
-	}, NewMetrics(nil))
+	}, NewManagerMetrics(nil))
 	require.NoError(t, err)
 
 	// Append 512B of data.
@@ -250,7 +250,7 @@ func TestManager_NextPending(t *testing.T) {
 		MaxAge:         30 * time.Second,
 		MaxSegments:    1,
 		MaxSegmentSize: 1024, // 1KB
-	}, NewMetrics(nil))
+	}, NewManagerMetrics(nil))
 	require.NoError(t, err)
 
 	// There should be no segments waiting to be flushed as no data has been
@@ -286,7 +286,7 @@ func TestManager_NextPendingAge(t *testing.T) {
 		MaxAge:         100 * time.Millisecond,
 		MaxSegments:    1,
 		MaxSegmentSize: 1024, // 1KB
-	}, NewMetrics(nil))
+	}, NewManagerMetrics(nil))
 	require.NoError(t, err)
 
 	// Create a mock clock.
@@ -311,7 +311,7 @@ func TestManager_NextPendingAge(t *testing.T) {
 	s, err := m.NextPending()
 	require.NoError(t, err)
 	require.NotNil(t, s)
-	require.Equal(t, 100*time.Millisecond, s.Writer.Age(s.Moved))
+	require.Equal(t, 100*time.Millisecond, s.Writer.Age(clock.Now()))
 	m.Put(s)
 
 	// Append 1KB of data using two separate append requests, 1ms apart.
@@ -342,7 +342,7 @@ func TestManager_NextPendingAge(t *testing.T) {
 	s, err = m.NextPending()
 	require.NoError(t, err)
 	require.NotNil(t, s)
-	require.Equal(t, time.Millisecond, s.Writer.Age(s.Moved))
+	require.Equal(t, time.Millisecond, s.Writer.Age(clock.Now()))
 }
 
 func TestManager_NextPendingMaxAgeExceeded(t *testing.T) {
@@ -350,7 +350,7 @@ func TestManager_NextPendingMaxAgeExceeded(t *testing.T) {
 		MaxAge:         100 * time.Millisecond,
 		MaxSegments:    1,
 		MaxSegmentSize: 1024, // 1KB
-	}, NewMetrics(nil))
+	}, NewManagerMetrics(nil))
 	require.NoError(t, err)
 
 	// Create a mock clock.
@@ -392,7 +392,7 @@ func TestManager_NextPendingWALClosed(t *testing.T) {
 		MaxAge:         30 * time.Second,
 		MaxSegments:    1,
 		MaxSegmentSize: 1024, // 1KB
-	}, NewMetrics(nil))
+	}, NewManagerMetrics(nil))
 	require.NoError(t, err)
 
 	// Append some data.
@@ -435,7 +435,7 @@ func TestManager_Put(t *testing.T) {
 		MaxAge:         30 * time.Second,
 		MaxSegments:    1,
 		MaxSegmentSize: 1024, // 1KB
-	}, NewMetrics(nil))
+	}, NewManagerMetrics(nil))
 	require.NoError(t, err)
 
 	// There should be 1 available and 0 pending segments.
@@ -482,7 +482,7 @@ func TestManager_Metrics(t *testing.T) {
 	m, err := NewManager(Config{
 		MaxSegments:    1,
 		MaxSegmentSize: 1024, // 1KB
-	}, NewMetrics(r))
+	}, NewManagerMetrics(r))
 	require.NoError(t, err)
 
 	metricNames := []string{

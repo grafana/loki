@@ -57,7 +57,7 @@ type Config struct {
 // RegisterFlags register flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Engine.RegisterFlagsWithPrefix("querier-rf1", f)
-	f.BoolVar(&cfg.Enabled, "querier-rf1.enabled", false, "Enable the RF1 querier. If set, replaces the usual querier with a RF-1 querier when using 'ALL' target.")
+	f.BoolVar(&cfg.Enabled, "querier-rf1.enabled", false, "Enable the RF1 querier. If set, replaces the usual querier with an RF-1 querier.")
 	f.DurationVar(&cfg.ExtraQueryDelay, "querier-rf1.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.IntVar(&cfg.MaxConcurrent, "querier-rf1.max-concurrent", 4, "The maximum number of queries that can be simultaneously processed by the querier.")
 	f.BoolVar(&cfg.PerRequestLimitsEnabled, "querier-rf1.per-request-limits-enabled", false, "When true, querier limits sent via a header are enforced.")

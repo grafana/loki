@@ -115,8 +115,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [querier: <querier>]
 
 querier_rf1:
-  # Enable the RF1 querier. If set, replaces the usual querier with a RF-1
-  # querier when using 'ALL' target.
+  # Enable the RF1 querier. If set, replaces the usual querier with an RF-1
+  # querier.
   # CLI flag: -querier-rf1.enabled
   [enabled: <boolean> | default = false]
 
