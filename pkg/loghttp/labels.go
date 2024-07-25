@@ -89,10 +89,16 @@ func ParseLabelQuery(r *http.Request) (*logproto.LabelRequest, error) {
 }
 
 func ParseDetectedLabelsQuery(r *http.Request) (*logproto.DetectedLabelsRequest, error) {
-	var err error
-
 	start, end, err := bounds(r)
+	if err != nil {
+		return nil, err
+	}
+
 	minCardinality, err := parseInt(r.Form.Get("minCardinality"), 0)
+	if err != nil {
+		return nil, err
+	}
+
 	maxCardinality, err := parseInt(r.Form.Get("maxCardinality"), 0)
 
 	if err != nil {
