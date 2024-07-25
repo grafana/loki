@@ -99,7 +99,7 @@ func (i *Ingester) flushSegment(ctx context.Context, j int, w *wal.SegmentWriter
 	start := time.Now()
 
 	i.metrics.flushesTotal.Add(1)
-	defer i.metrics.flushDuration.Observe(time.Since(start).Seconds())
+	defer func() { i.metrics.flushDuration.Observe(time.Since(start).Seconds()) }()
 
 	buf := i.flushBuffers[j]
 	defer buf.Reset()
