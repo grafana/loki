@@ -13,6 +13,9 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 6.7.4
+- [BUGFIX] Ensure the GEL admin-api resources are not created when using SimpleScalable deployment mode #13655
+
 ## 6.7.3
 
 - [BUGFIX] Removed Helm test binary
