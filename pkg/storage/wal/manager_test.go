@@ -87,6 +87,26 @@ func TestManager_AppendFailed(t *testing.T) {
 	require.EqualError(t, res.Err(), "failed to flush")
 }
 
+func TestManager_AppendFailedNoEntries(t *testing.T) {
+	m, err := NewManager(Config{
+		MaxAge:         30 * time.Second,
+		MaxSegments:    1,
+		MaxSegmentSize: 1024, // 1KB
+	}, NewManagerMetrics(nil))
+	require.NoError(t, err)
+
+	// Append no entries.
+	lbs := labels.Labels{{Name: "a", Value: "b"}}
+	res, err := m.Append(AppendRequest{
+		TenantID:  "1",
+		Labels:    lbs,
+		LabelsStr: lbs.String(),
+		Entries:   []*logproto.Entry{},
+	})
+	require.ErrorIs(t, err, ErrNoEntries)
+	require.Nil(t, res)
+}
+
 func TestManager_AppendFailedWALClosed(t *testing.T) {
 	m, err := NewManager(Config{
 		MaxAge:         30 * time.Second,

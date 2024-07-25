@@ -35,7 +35,8 @@ var (
 			}
 		},
 	}
-	tenantLabel = "__loki_tenant__"
+	tenantLabel  = "__loki_tenant__"
+	ErrNoEntries = errors.New("no entries")
 )
 
 func init() {
@@ -164,9 +165,9 @@ func (b *SegmentWriter) getOrCreateStream(id streamID, lbls labels.Labels) *stre
 }
 
 // Labels are passed a string  `{foo="bar",baz="qux"}`  `{foo="foo",baz="foo"}`. labels.Labels => Symbols foo, baz , qux
-func (b *SegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels, entries []*logproto.Entry, now time.Time) {
+func (b *SegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels, entries []*logproto.Entry, now time.Time) error {
 	if len(entries) == 0 {
-		return
+		return ErrNoEntries
 	}
 	if b.firstAppend.IsZero() {
 		b.firstAppend = now
@@ -194,6 +195,7 @@ func (b *SegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels
 		copy(s.entries[idx+1:], s.entries[idx:])
 		s.entries[idx] = e
 	}
+	return nil
 }
 
 func (b *SegmentWriter) Meta(id string) *metastorepb.BlockMeta {

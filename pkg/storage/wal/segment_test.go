@@ -112,7 +112,7 @@ func TestWalSegmentWriter_Append(t *testing.T) {
 				for _, stream := range batch {
 					labels, err := syntax.ParseLabels(stream.labels)
 					require.NoError(t, err)
-					w.Append(stream.tenant, stream.labels, labels, stream.entries, time.Now())
+					require.NoError(t, w.Append(stream.tenant, stream.labels, labels, stream.entries, time.Now()))
 				}
 			}
 			require.NotEmpty(t, tt.expected, "expected entries are empty")
@@ -148,9 +148,9 @@ func TestMultiTenantWrite(t *testing.T) {
 		for _, lbl := range lbls {
 			lblString := lbl.String()
 			for i := 0; i < 10; i++ {
-				w.Append(tenant, lblString, lbl, []*push.Entry{
+				require.NoError(t, w.Append(tenant, lblString, lbl, []*push.Entry{
 					{Timestamp: time.Unix(0, int64(i)), Line: fmt.Sprintf("log line %d", i)},
-				}, time.Now())
+				}, time.Now()))
 			}
 		}
 	}
@@ -223,9 +223,9 @@ func testCompression(t *testing.T, maxInputSize int64) {
 				continue
 			}
 			inputSize += int64(len(line))
-			w.Append("tenant", lbl.String(), lbl, []*push.Entry{
+			require.NoError(t, w.Append("tenant", lbl.String(), lbl, []*push.Entry{
 				{Timestamp: time.Unix(0, int64(i*1e9)), Line: string(line)},
-			}, time.Now())
+			}, time.Now()))
 		}
 	}
 
@@ -263,11 +263,11 @@ func TestReset(t *testing.T) {
 	require.NoError(t, err)
 	dst := bytes.NewBuffer(nil)
 
-	w.Append("tenant", "foo", labels.FromStrings("container", "foo", "namespace", "dev"), []*push.Entry{
+	require.NoError(t, w.Append("tenant", "foo", labels.FromStrings("container", "foo", "namespace", "dev"), []*push.Entry{
 		{Timestamp: time.Unix(0, 0), Line: "Entry 1"},
 		{Timestamp: time.Unix(1, 0), Line: "Entry 2"},
 		{Timestamp: time.Unix(2, 0), Line: "Entry 3"},
-	}, time.Now())
+	}, time.Now()))
 
 	n, err := w.WriteTo(dst)
 	require.NoError(t, err)
@@ -276,11 +276,11 @@ func TestReset(t *testing.T) {
 	copyBuffer := bytes.NewBuffer(nil)
 
 	w.Reset()
-	w.Append("tenant", "foo", labels.FromStrings("container", "foo", "namespace", "dev"), []*push.Entry{
+	require.NoError(t, w.Append("tenant", "foo", labels.FromStrings("container", "foo", "namespace", "dev"), []*push.Entry{
 		{Timestamp: time.Unix(0, 0), Line: "Entry 1"},
 		{Timestamp: time.Unix(1, 0), Line: "Entry 2"},
 		{Timestamp: time.Unix(2, 0), Line: "Entry 3"},
-	}, time.Now())
+	}, time.Now()))
 
 	n, err = w.WriteTo(copyBuffer)
 	require.NoError(t, err)
@@ -296,17 +296,17 @@ func Test_Meta(t *testing.T) {
 	require.NoError(t, err)
 
 	lbls := labels.FromStrings("container", "foo", "namespace", "dev")
-	w.Append("tenantb", lbls.String(), lbls, []*push.Entry{
+	require.NoError(t, w.Append("tenantb", lbls.String(), lbls, []*push.Entry{
 		{Timestamp: time.Unix(1, 0), Line: "Entry 1"},
 		{Timestamp: time.Unix(2, 0), Line: "Entry 2"},
 		{Timestamp: time.Unix(3, 0), Line: "Entry 3"},
-	}, time.Now())
+	}, time.Now()))
 	lbls = labels.FromStrings("container", "bar", "namespace", "dev")
-	w.Append("tenanta", lbls.String(), lbls, []*push.Entry{
+	require.NoError(t, w.Append("tenanta", lbls.String(), lbls, []*push.Entry{
 		{Timestamp: time.Unix(2, 0), Line: "Entry 1"},
 		{Timestamp: time.Unix(3, 0), Line: "Entry 2"},
 		{Timestamp: time.Unix(4, 0), Line: "Entry 3"},
-	}, time.Now())
+	}, time.Now()))
 	_, err = w.WriteTo(buff)
 	require.NoError(t, err)
 	meta := w.Meta("bar")
@@ -385,7 +385,7 @@ func BenchmarkWrites(b *testing.B) {
 	require.NoError(b, err)
 
 	for _, d := range data {
-		writer.Append(d.tenant, d.labels, d.lbls, d.entries, time.Now())
+		require.NoError(b, writer.Append(d.tenant, d.labels, d.lbls, d.entries, time.Now()))
 	}
 
 	encodedLength, err := writer.WriteTo(dst)

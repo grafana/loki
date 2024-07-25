@@ -153,7 +153,10 @@ func (m *Manager) Append(r AppendRequest) (*AppendResult, error) {
 		return nil, ErrFull
 	}
 	s := el.Value.(*segment)
-	s.w.Append(r.TenantID, r.LabelsStr, r.Labels, r.Entries, m.clock.Now())
+	err := s.w.Append(r.TenantID, r.LabelsStr, r.Labels, r.Entries, m.clock.Now())
+	if err != nil {
+		return nil, err
+	}
 	// If the segment exceeded the maximum age or the maximum size, move s to
 	// the closed list to be flushed.
 	if m.clock.Since(s.w.firstAppend) >= m.cfg.MaxAge || s.w.InputSize() >= m.cfg.MaxSegmentSize {
