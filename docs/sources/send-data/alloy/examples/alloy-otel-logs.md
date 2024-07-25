@@ -29,7 +29,7 @@ Before you begin, ensure you have the following to run the demo:
 - Docker Compose
 
 {{< admonition type="tip" >}}
-Alternatively, you can try out this example in our interactive learning environment: [Sending Logs to Loki via Kafka using Alloy](https://killercoda.com/grafana-labs/course/loki/alloy-otel-logs).
+Alternatively, you can try out this example in our interactive learning environment: [Sending OpenTelemetry logs to Loki using Alloy](https://killercoda.com/grafana-labs/course/loki/alloy-otel-logs).
 
 It's a fully configured environment with all the dependencies already installed.
 
