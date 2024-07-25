@@ -189,7 +189,7 @@ curl -X POST http://localhost:12345/-/reload
 ```
 <!-- INTERACTIVE exec END -->
 
-The new configuration will be loaded this can be verified by checking the Alloy UI: [http://localhost:12345](http://localhost:12345).
+The new configuration will be loaded. You can verify this by checking the Alloy UI: [http://localhost:12345](http://localhost:12345).
 
 ## Stuck? Need help?
 
