@@ -96,4 +96,8 @@ message AlertStateDesc {
     (gogoproto.nullable) = false,
     (gogoproto.stdtime) = true
   ];
+  google.protobuf.Timestamp keep_firing_since = 10 [
+    (gogoproto.nullable) = false,
+    (gogoproto.stdtime) = true
+  ];
 }

@@ -107,8 +107,9 @@ func TestLoadRules(t *testing.T) {
 	runForEachRuleStore(t, func(t *testing.T, rs rulestore.RuleStore, _ interface{}) {
 		groups := []testGroup{
 			{user: "user1", namespace: "hello", ruleGroup: rulefmt.RuleGroup{Name: "first testGroup", Interval: model.Duration(time.Minute), Rules: []rulefmt.RuleNode{{
-				For:    model.Duration(5 * time.Minute),
-				Labels: map[string]string{"label1": "value1"},
+				For:           model.Duration(5 * time.Minute),
+				KeepFiringFor: model.Duration(2 * time.Minute),
+				Labels:        map[string]string{"label1": "value1"},
 			}}, Limit: 10}},
 			{user: "user1", namespace: "hello", ruleGroup: rulefmt.RuleGroup{Name: "second testGroup", Interval: model.Duration(2 * time.Minute), Limit: 0}},
 			{user: "user1", namespace: "world", ruleGroup: rulefmt.RuleGroup{Name: "another namespace testGroup", Interval: model.Duration(1 * time.Hour), Limit: 1}},
@@ -147,8 +148,9 @@ func TestLoadRules(t *testing.T) {
 			require.ElementsMatch(t, []*rulespb.RuleGroupDesc{
 				{User: "user1", Namespace: "hello", Name: "first testGroup", Interval: time.Minute, Rules: []*rulespb.RuleDesc{
 					{
-						For:    5 * time.Minute,
-						Labels: []logproto.LabelAdapter{{Name: "label1", Value: "value1"}},
+						For:           5 * time.Minute,
+						KeepFiringFor: 2 * time.Minute,
+						Labels:        []logproto.LabelAdapter{{Name: "label1", Value: "value1"}},
 					},
 				}, Limit: 10},
 				{User: "user1", Namespace: "hello", Name: "second testGroup", Interval: 2 * time.Minute, Limit: 0},
