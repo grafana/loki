@@ -281,7 +281,7 @@ For more information on the `otelcol.processor.batch` configuration, see the [Op
 
 Lastly, we will configure the OpenTelemetry exporter. `otelcol.exporter.otlphttp` accepts telemetry data from other otelcol components and writes them over the network using the OTLP HTTP protocol. We will use this exporter to send the logs to Loki's native OTLP endpoint.
 
-Add the following configuration to the `config.alloy` file:
+Finally, add the following configuration to the `config.alloy` file:
 ```alloy
 otelcol.exporter.otlphttp "default" {
   client {
