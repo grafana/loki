@@ -599,7 +599,6 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 				return nil, fmt.Errorf("unexpected type (%s) uncoercible to StepEvaluator", data.Type())
 			}
 		}
-
 		return NewMergeLastOverTimeStepEvaluator(params, xs), nil
 	default:
 		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params)
