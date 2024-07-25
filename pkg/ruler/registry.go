@@ -205,14 +205,14 @@ func (r *walRegistry) getTenantConfig(tenant string) (instance.Config, error) {
 				clt.Headers = make(map[string]string)
 			}
 
-			// ensure that no variation of the X-Scope-OrgId header can be added, which might trick authentication
-			for k := range clt.Headers {
-				if strings.EqualFold(user.OrgIDHeaderName, strings.TrimSpace(k)) {
-					delete(clt.Headers, k)
-				}
-			}
-
 			if rwCfg.AddOrgIDHeader {
+				// ensure that no variation of the X-Scope-OrgId header can be added, which might trick authentication
+				for k := range clt.Headers {
+					if strings.EqualFold(user.OrgIDHeaderName, strings.TrimSpace(k)) {
+						delete(clt.Headers, k)
+					}
+				}
+
 				// inject the X-Scope-OrgId header for multi-tenant metrics backends
 				clt.Headers[user.OrgIDHeaderName] = tenant
 			}
