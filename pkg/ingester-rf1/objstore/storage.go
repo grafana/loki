@@ -93,6 +93,14 @@ func (m *Multi) GetObject(ctx context.Context, objectKey string) (io.ReadCloser,
 	return s.GetObject(ctx, objectKey)
 }
 
+func (m *Multi) GetObjectRange(ctx context.Context, objectKey string, off, length int64) (io.ReadCloser, error) {
+	s, err := m.GetStoreFor(model.Now())
+	if err != nil {
+		return nil, err
+	}
+	return s.GetObjectRange(ctx, objectKey, off, length)
+}
+
 func (m *Multi) List(ctx context.Context, prefix string, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	s, err := m.GetStoreFor(model.Now())
 	if err != nil {

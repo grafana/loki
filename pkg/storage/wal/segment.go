@@ -9,6 +9,7 @@ import (
 	"io"
 	"sort"
 	"sync"
+	"time"
 
 	"go.uber.org/atomic"
 
@@ -30,7 +31,6 @@ var (
 	streamSegmentPool = sync.Pool{
 		New: func() interface{} {
 			return &streamSegment{
-				lock:    &sync.Mutex{},
 				entries: make([]*logproto.Entry, 0, 4096),
 			}
 		},
@@ -47,18 +47,25 @@ type streamID struct {
 }
 
 type SegmentWriter struct {
-	metrics        *SegmentMetrics
-	streams        map[streamID]*streamSegment
-	buf1           encoding.Encbuf
-	outputSize     atomic.Int64
-	inputSize      atomic.Int64
-	idxWriter      *index.Writer
-	consistencyMtx *sync.RWMutex
-	indexRef       metastorepb.DataRef
+	metrics    *SegmentMetrics
+	streams    map[streamID]*streamSegment
+	buf1       encoding.Encbuf
+	outputSize atomic.Int64
+	inputSize  atomic.Int64
+	idxWriter  *index.Writer
+	indexRef   metastorepb.DataRef
+
+	// firstAppend is the timestamp of the first append. It is used to know
+	// when the segment has exceeded the maximum aage and should be flushed.
+	firstAppend time.Time
+
+	// lastAppend is the timestamp of the last append. It is used to know
+	// how long a segment has been idle between the last append and the
+	// subsequent flush.
+	lastAppend time.Time
 }
 
 type streamSegment struct {
-	lock     *sync.Mutex
 	lbls     labels.Labels
 	entries  []*logproto.Entry
 	tenantID string
@@ -86,24 +93,24 @@ func NewWalSegmentWriter(m *SegmentMetrics) (*SegmentWriter, error) {
 		return nil, err
 	}
 	return &SegmentWriter{
-		metrics:        m,
-		streams:        make(map[streamID]*streamSegment, 64),
-		buf1:           encoding.EncWith(make([]byte, 0, 4)),
-		idxWriter:      idxWriter,
-		inputSize:      atomic.Int64{},
-		consistencyMtx: &sync.RWMutex{},
+		metrics:   m,
+		streams:   make(map[streamID]*streamSegment, 64),
+		buf1:      encoding.EncWith(make([]byte, 0, 4)),
+		idxWriter: idxWriter,
+		inputSize: atomic.Int64{},
 	}, nil
 }
 
+// Age returns the age of the segment.
+func (b *SegmentWriter) Age(now time.Time) time.Duration {
+	return now.Sub(b.firstAppend)
+}
+
 func (b *SegmentWriter) getOrCreateStream(id streamID, lbls labels.Labels) *streamSegment {
-	b.consistencyMtx.RLock()
 	s, ok := b.streams[id]
-	b.consistencyMtx.RUnlock()
 	if ok {
 		return s
 	}
-	b.consistencyMtx.Lock()
-	defer b.consistencyMtx.Unlock()
 	// Check another thread has not created it
 	s, ok = b.streams[id]
 	if ok {
@@ -120,18 +127,21 @@ func (b *SegmentWriter) getOrCreateStream(id streamID, lbls labels.Labels) *stre
 }
 
 // Labels are passed a string  `{foo="bar",baz="qux"}`  `{foo="foo",baz="foo"}`. labels.Labels => Symbols foo, baz , qux
-func (b *SegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels, entries []*logproto.Entry) {
+func (b *SegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels, entries []*logproto.Entry, now time.Time) {
 	if len(entries) == 0 {
 		return
 	}
+	if b.firstAppend.IsZero() {
+		b.firstAppend = now
+	}
+	b.lastAppend = now
+
 	for _, e := range entries {
 		b.inputSize.Add(int64(len(e.Line)))
 	}
 	id := streamID{labels: labelsString, tenant: tenantID}
 	s := b.getOrCreateStream(id, lbls)
 
-	s.lock.Lock()
-	defer s.lock.Unlock()
 	for i, e := range entries {
 		if e.Timestamp.UnixNano() >= s.maxt {
 			s.entries = append(s.entries, entries[i])
@@ -152,9 +162,6 @@ func (b *SegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels
 // ReportMetrics for the writer. If called before WriteTo then the output size
 // histogram will observe 0.
 func (b *SegmentWriter) ReportMetrics() {
-	b.consistencyMtx.Lock()
-	defer b.consistencyMtx.Unlock()
-
 	b.metrics.streams.Observe(float64(len(b.streams)))
 	tenants := make(map[string]struct{}, 64)
 	for _, s := range b.streams {
@@ -166,9 +173,6 @@ func (b *SegmentWriter) ReportMetrics() {
 }
 
 func (b *SegmentWriter) Meta(id string) *metastorepb.BlockMeta {
-	b.consistencyMtx.Lock()
-	defer b.consistencyMtx.Unlock()
-
 	var globalMinT, globalMaxT int64
 
 	tenants := make(map[string]*metastorepb.TenantStreams, 64)
@@ -345,6 +349,8 @@ func (b *SegmentWriter) WriteTo(w io.Writer) (int64, error) {
 // Reset clears the writer.
 // After calling Reset, the writer can be reused.
 func (b *SegmentWriter) Reset() {
+	b.firstAppend = time.Time{}
+	b.lastAppend = time.Time{}
 	for _, s := range b.streams {
 		s := s
 		s.Reset()
