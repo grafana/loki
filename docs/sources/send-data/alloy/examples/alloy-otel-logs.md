@@ -149,7 +149,7 @@ For more information on the `otelcol.receiver.otlp` configuration, see the [Open
 
 ### Create batches of logs using a OpenTelemetry Processor
 
-Next, we will configure a OpenTelemetry processor. `otelcol.processor.batch` accepts telemetry data from other otelcol components and places them into batches. Batching improves the compression of data and reduces the number of outgoing network requests required to transmit data. This processor supports both size and time based batching.
+Next, we will configure a OpenTelemetry processor. `otelcol.processor.batch` accepts telemetry data from other `otelcol` components and places them into batches. Batching improves the compression of data and reduces the number of outgoing network requests required to transmit data. This processor supports both size and time based batching.
 
 Now add the following configuration to the `config.alloy` file:
 ```alloy
