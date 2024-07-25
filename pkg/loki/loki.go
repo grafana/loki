@@ -722,7 +722,7 @@ func (t *Loki) setupModuleManager() error {
 		TenantConfigs:            {RuntimeConfig},
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, IngesterRF1RingClient, Analytics},
 		Store:                    {Overrides, IndexGatewayRing},
-		IngesterRF1:              {Store, Server, MemberlistKV, TenantConfigs, MetastoreClient, Analytics, Metastore},
+		IngesterRF1:              {Store, Server, MemberlistKV, TenantConfigs, MetastoreClient, Analytics},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics},
 		Querier:                  {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
@@ -752,7 +752,7 @@ func (t *Loki) setupModuleManager() error {
 		Write:   {Ingester, IngesterRF1, Distributor, PatternIngester},
 		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway, BloomGateway, BloomCompactor},
 
-		All: {QueryScheduler, QueryFrontend, Querier, Ingester, IngesterRF1, PatternIngester, Distributor, Ruler, Compactor},
+		All: {QueryScheduler, QueryFrontend, Querier, Ingester, IngesterRF1, PatternIngester, Distributor, Ruler, Compactor, Metastore},
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {
