@@ -351,18 +351,25 @@ func (c *Chunks) writeAggregatedMetrics(
 	if w != nil {
 		w.WriteEntry(
 			now.Time(),
-			aggregatedMetricEntry(now, totalBytes, totalCount, c.service),
+			AggregatedMetricEntry(now, totalBytes, totalCount, c.service, c.labels),
 			lbls,
 		)
 	}
 }
 
-func aggregatedMetricEntry(ts model.Time, totalBytes, totalCount uint64, service string) string {
-	return fmt.Sprintf(
+func AggregatedMetricEntry(ts model.Time, totalBytes, totalCount uint64, service string, lbls labels.Labels) string {
+	byteString := humanize.Bytes(totalBytes)
+	base := fmt.Sprintf(
 		"ts=%d bytes=%s count=%d %s=%s",
 		ts.UnixNano(),
-		humanize.Bytes(totalBytes),
+		byteString,
 		totalCount,
 		detection.LabelServiceName, service,
 	)
+
+	for _, l := range lbls {
+		base += fmt.Sprintf(" %s=%s", l.Name, l.Value)
+	}
+
+	return base
 }

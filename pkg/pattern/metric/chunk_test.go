@@ -1,13 +1,16 @@
 package metric
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
@@ -471,12 +474,68 @@ func TestDownsample(t *testing.T) {
 	// Call the Downsample function
 	c.Downsample(now, mockWriter)
 
-	mockWriter.AssertCalled(t, "WriteEntry", now.Time(), aggregatedMetricEntry(now, 6.0, 3.0, "foo_service"), labels.Labels{
+	lbls := labels.Labels{
 		labels.Label{Name: detection.AggregatedMetricLabel, Value: "foo_service"},
 		labels.Label{Name: "level", Value: "info"},
-	})
+	}
+	mockWriter.AssertCalled(t, "WriteEntry", now.Time(), AggregatedMetricEntry(now, 6.0, 3.0, "foo_service", lbls), lbls)
 
 	require.Len(t, c.rawSamples, 0)
+}
+
+func TestAggregatedMetricEntry(t *testing.T) {
+	ts := time.Now().Truncate(time.Second).UTC()
+	totalBytes := uint64(1024)
+	totalCount := uint64(5)
+	service := "testService"
+	emptyLbls := labels.Labels{}
+	t.Run("it includes count, bytes, and service name", func(t *testing.T) {
+		expected := fmt.Sprintf(
+			"ts=%d bytes=%s count=%d %s=%s",
+			ts.UnixNano(),
+			humanize.Bytes(totalBytes),
+			totalCount,
+			detection.LabelServiceName, service,
+		)
+
+		result := AggregatedMetricEntry(
+			model.TimeFromUnix(ts.Unix()),
+			totalBytes,
+			totalCount,
+			service,
+			emptyLbls,
+		)
+
+		assert.Equal(t, expected, result)
+	})
+
+	t.Run("it includes count and bytes for each label key", func(t *testing.T) {
+		lbls := labels.Labels{
+			labels.Label{Name: "foo", Value: "bar"},
+			labels.Label{Name: "test", Value: "test"},
+		}
+
+		bytes := humanize.Bytes(totalBytes)
+		expected := fmt.Sprintf(
+			"ts=%d bytes=%s count=%d %s=%s foo_bytes=%s foo_count=%d test_bytes=%s test_count=%d",
+			ts.UnixNano(),
+			bytes,
+			totalCount,
+			detection.LabelServiceName, service,
+			bytes, totalCount,
+			bytes, totalCount,
+		)
+
+		result := AggregatedMetricEntry(
+			model.TimeFromUnix(ts.Unix()),
+			totalBytes,
+			totalCount,
+			service,
+			lbls,
+		)
+
+		assert.Equal(t, expected, result)
+	})
 }
 
 type mockEntryWriter struct {

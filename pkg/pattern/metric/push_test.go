@@ -128,33 +128,33 @@ func Test_Push(t *testing.T) {
 
 		p.WriteEntry(
 			wayBack,
-			aggregatedMetricEntry(model.TimeFromUnix(wayBack.Unix()), 1, 1, "test_service"),
+			AggregatedMetricEntry(model.TimeFromUnix(wayBack.Unix()), 1, 1, "test_service", lbls1),
 			lbls1,
 		)
 		p.WriteEntry(
 			then,
-			aggregatedMetricEntry(model.TimeFromUnix(then.Unix()), 2, 2, "test_service"),
+			AggregatedMetricEntry(model.TimeFromUnix(then.Unix()), 2, 2, "test_service", lbls1),
 			lbls1,
 		)
 		p.WriteEntry(
 			now,
-			aggregatedMetricEntry(model.TimeFromUnix(now.Unix()), 3, 3, "test_service"),
+			AggregatedMetricEntry(model.TimeFromUnix(now.Unix()), 3, 3, "test_service", lbls1),
 			lbls1,
 		)
 
 		p.WriteEntry(
 			wayBack,
-			aggregatedMetricEntry(model.TimeFromUnix(wayBack.Unix()), 1, 1, "test2_service"),
+			AggregatedMetricEntry(model.TimeFromUnix(wayBack.Unix()), 1, 1, "test2_service", lbls2),
 			lbls2,
 		)
 		p.WriteEntry(
 			then,
-			aggregatedMetricEntry(model.TimeFromUnix(then.Unix()), 2, 2, "test2_service"),
+			AggregatedMetricEntry(model.TimeFromUnix(then.Unix()), 2, 2, "test2_service", lbls2),
 			lbls2,
 		)
 		p.WriteEntry(
 			now,
-			aggregatedMetricEntry(model.TimeFromUnix(now.Unix()), 3, 3, "test2_service"),
+			AggregatedMetricEntry(model.TimeFromUnix(now.Unix()), 3, 3, "test2_service", lbls2),
 			lbls2,
 		)
 
@@ -186,17 +186,17 @@ func Test_Push(t *testing.T) {
 
 			require.Equal(
 				t,
-				aggregatedMetricEntry(model.TimeFromUnix(wayBack.Unix()), 1, 1, "test_service"),
+				AggregatedMetricEntry(model.TimeFromUnix(wayBack.Unix()), 1, 1, "test_service", lbls1),
 				stream1.Entries[0].Line,
 			)
 			require.Equal(
 				t,
-				aggregatedMetricEntry(model.TimeFromUnix(then.Unix()), 2, 2, "test_service"),
+				AggregatedMetricEntry(model.TimeFromUnix(then.Unix()), 2, 2, "test_service", lbls1),
 				stream1.Entries[1].Line,
 			)
 			require.Equal(
 				t,
-				aggregatedMetricEntry(model.TimeFromUnix(now.Unix()), 3, 3, "test_service"),
+				AggregatedMetricEntry(model.TimeFromUnix(now.Unix()), 3, 3, "test_service", lbls1),
 				stream1.Entries[2].Line,
 			)
 
@@ -206,17 +206,17 @@ func Test_Push(t *testing.T) {
 
 			require.Equal(
 				t,
-				aggregatedMetricEntry(model.TimeFromUnix(wayBack.Unix()), 1, 1, "test2_service"),
+				AggregatedMetricEntry(model.TimeFromUnix(wayBack.Unix()), 1, 1, "test2_service", lbls2),
 				stream2.Entries[0].Line,
 			)
 			require.Equal(
 				t,
-				aggregatedMetricEntry(model.TimeFromUnix(then.Unix()), 2, 2, "test2_service"),
+				AggregatedMetricEntry(model.TimeFromUnix(then.Unix()), 2, 2, "test2_service", lbls2),
 				stream2.Entries[1].Line,
 			)
 			require.Equal(
 				t,
-				aggregatedMetricEntry(model.TimeFromUnix(now.Unix()), 3, 3, "test2_service"),
+				AggregatedMetricEntry(model.TimeFromUnix(now.Unix()), 3, 3, "test2_service", lbls2),
 				stream2.Entries[2].Line,
 			)
 
