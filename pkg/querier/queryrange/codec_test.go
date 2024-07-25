@@ -236,7 +236,7 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			End:   end,
 			Step:  30 * 1e3, // step is expected in ms; default is 0 or no step
 		}, false},
-		{"detected_labels", func() (*http.Request, error) {
+		{"detected_labels_no_limits", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(ctx, &DetectedLabelsRequest{
 				"/loki/api/v1/detected_labels",
 				logproto.DetectedLabelsRequest{
@@ -251,6 +251,46 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 				Query: `{foo="bar"}`,
 				Start: start,
 				End:   end,
+			},
+		}, false},
+		{"detected_labels_min_limit_only", func() (*http.Request, error) {
+			return DefaultCodec.EncodeRequest(ctx, &DetectedLabelsRequest{
+				"/loki/api/v1/detected_labels",
+				logproto.DetectedLabelsRequest{
+					Query:          `{foo="bar"}`,
+					Start:          start,
+					End:            end,
+					MinCardinality: uint64(1),
+				},
+			})
+		}, &DetectedLabelsRequest{
+			"/loki/api/v1/detected_labels",
+			logproto.DetectedLabelsRequest{
+				Query:          `{foo="bar"}`,
+				Start:          start,
+				End:            end,
+				MinCardinality: uint64(1),
+				MaxCardinality: uint64(0),
+			},
+		}, false},
+		{"detected_labels_max_limit_only", func() (*http.Request, error) {
+			return DefaultCodec.EncodeRequest(ctx, &DetectedLabelsRequest{
+				"/loki/api/v1/detected_labels",
+				logproto.DetectedLabelsRequest{
+					Query:          `{foo="bar"}`,
+					Start:          start,
+					End:            end,
+					MaxCardinality: uint64(10),
+				},
+			})
+		}, &DetectedLabelsRequest{
+			"/loki/api/v1/detected_labels",
+			logproto.DetectedLabelsRequest{
+				Query:          `{foo="bar"}`,
+				Start:          start,
+				End:            end,
+				MaxCardinality: uint64(10),
+				MinCardinality: uint64(0),
 			},
 		}, false},
 	}

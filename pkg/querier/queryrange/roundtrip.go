@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -309,7 +310,6 @@ func NewDetectedLabelsCardinalityFilter(rt queryrangebase.Handler) queryrangebas
 			if err != nil {
 				return nil, err
 			}
-
 			resp, ok := res.(*DetectedLabelsResponse)
 			if !ok {
 				return res, nil
@@ -317,8 +317,17 @@ func NewDetectedLabelsCardinalityFilter(rt queryrangebase.Handler) queryrangebas
 
 			var result []*logproto.DetectedLabel
 
+			// parse the request to check the min and max cardinality
+			r := req.(*DetectedLabelsRequest)
+			minCard, maxCard := r.MinCardinality, r.MaxCardinality
+			// required if maxCard is not sent in the request
+			if maxCard == 0 {
+				maxCard = uint64(math.Inf(1))
+			}
 			for _, dl := range resp.Response.DetectedLabels {
-				result = append(result, &logproto.DetectedLabel{Label: dl.Label, Cardinality: dl.Cardinality})
+				if dl.Cardinality >= minCard && dl.Cardinality <= maxCard {
+					result = append(result, &logproto.DetectedLabel{Label: dl.Label, Cardinality: dl.Cardinality})
+				}
 			}
 			return &DetectedLabelsResponse{
 				Response: &logproto.DetectedLabelsResponse{DetectedLabels: result},
