@@ -1589,7 +1589,7 @@ backend:
     annotations: {}
     # -- Additional labels for backend Service
     labels: {}
-  # -- Comma-separated list of Loki modules to load for the read
+  # -- Comma-separated list of Loki modules to load for the backend
   targetModule: "backend"
   # -- Additional CLI args for the backend
   extraArgs: []

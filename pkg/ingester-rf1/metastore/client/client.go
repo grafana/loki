@@ -13,7 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
-	metastorepb "github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
@@ -106,12 +106,10 @@ const grpcServiceConfig = `{
 func instrumentation(latency *prometheus.HistogramVec) ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
 	var unaryInterceptors []grpc.UnaryClientInterceptor
 	unaryInterceptors = append(unaryInterceptors, otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()))
-	unaryInterceptors = append(unaryInterceptors, middleware.ClientUserHeaderInterceptor)
 	unaryInterceptors = append(unaryInterceptors, middleware.UnaryClientInstrumentInterceptor(latency))
 
 	var streamInterceptors []grpc.StreamClientInterceptor
 	streamInterceptors = append(streamInterceptors, otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()))
-	streamInterceptors = append(streamInterceptors, middleware.StreamClientUserHeaderInterceptor)
 	streamInterceptors = append(streamInterceptors, middleware.StreamClientInstrumentInterceptor(latency))
 
 	return unaryInterceptors, streamInterceptors
