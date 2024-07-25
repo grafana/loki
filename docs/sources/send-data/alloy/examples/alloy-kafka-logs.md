@@ -173,8 +173,6 @@ In this configuration:
 - `forward_to`: The list of receivers to forward the logs to. In this case, we are forwarding the logs to the `loki.write.http.receiver`. Though in this case, we are directly calling the rule from the `loki.source.kafka` component. So `forward_to` is being used as a placeholder as it is required by the `loki.relabel` component.
 - `rule`: The relabeling rule to apply to the incoming logs. In this case, we are renaming the `__meta_kafka_topic` label to `topic`.
 
-Lastly, we will configure the Loki write component. `loki.write` receives log entries from other Loki components and sends them over the network using the Loki logproto format.
-
 For more information on the `loki.relabel` configuration, see the [Loki Relabel documentation](https://grafana.com/docs/alloy/latest/reference/components/loki.relabel/).
 
 ### Write logs to Loki
