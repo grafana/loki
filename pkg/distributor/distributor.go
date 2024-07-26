@@ -438,6 +438,10 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				pushSize += len(entry.Line)
 			}
 			stream.Entries = stream.Entries[:n]
+			if len(stream.Entries) == 0 {
+				// Empty stream after validating all the entries
+				continue
+			}
 
 			shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)
 			if shardStreamsCfg.Enabled {
