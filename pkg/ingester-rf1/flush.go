@@ -96,8 +96,10 @@ func (i *Ingester) flush(l log.Logger, j int, it *wal.PendingSegment) error {
 }
 
 func (i *Ingester) flushSegment(ctx context.Context, j int, w *wal.SegmentWriter) error {
-	start := time.Now()
+	ctx, cancelFunc := context.WithTimeout(ctx, i.cfg.FlushOpTimeout)
+	defer cancelFunc()
 
+	start := time.Now()
 	i.metrics.flushesTotal.Add(1)
 	defer func() { i.metrics.flushDuration.Observe(time.Since(start).Seconds()) }()
 
