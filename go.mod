@@ -387,3 +387,6 @@ replace github.com/grafana/loki/pkg/push => ./pkg/push
 
 // leodido fork his project to continue support
 replace github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.1.0
+
+// Replace prometheus until https://github.com/prometheus/prometheus/pull/14517 is merged.
+replace github.com/prometheus/prometheus => github.com/pracucci/prometheus v1.8.2-0.20240726123816-142b3838d160

@@ -1394,7 +1394,7 @@ github.com/prometheus/exporter-toolkit/web
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v0.53.2-0.20240724125459-71c90c71d419
+# github.com/prometheus/prometheus v0.53.2-0.20240724125459-71c90c71d419 => github.com/pracucci/prometheus v1.8.2-0.20240726123816-142b3838d160
 ## explicit; go 1.21.0
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery
@@ -2397,3 +2397,4 @@ sigs.k8s.io/yaml
 # github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd
 # github.com/grafana/loki/pkg/push => ./pkg/push
 # github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.1.0
+# github.com/prometheus/prometheus => github.com/pracucci/prometheus v1.8.2-0.20240726123816-142b3838d160
