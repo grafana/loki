@@ -180,7 +180,6 @@ func (i *Ingester) flushLoop(j int) {
 
 		m := util_log.WithUserID(op.userID, l)
 		err := i.flushOp(m, op)
-
 		if err != nil {
 			level.Error(m).Log("msg", "failed to flush", "err", err)
 		}
@@ -416,10 +415,10 @@ func (i *Ingester) encodeChunk(ctx context.Context, ch *chunk.Chunk, desc *chunk
 			return fmt.Errorf("chunk encoding: %w", err)
 		}
 
-		i.metrics.chunkDecodeFailures.Inc()
-	} 
+		i.metrics.chunkDecodeFailures.WithLabelValues(ch.UserID).Inc()
+	}
 	i.metrics.chunkEncodeTime.Observe(time.Since(start).Seconds())
-	i.metrics.chunksEncoded.Inc()
+	i.metrics.chunksEncoded.WithLabelValues(ch.UserID).Inc()
 	return nil
 }
 

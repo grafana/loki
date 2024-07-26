@@ -50,8 +50,8 @@ type ingesterMetrics struct {
 	chunksFlushFailures           prometheus.Counter
 	chunksFlushedPerReason        *prometheus.CounterVec
 	chunkLifespan                 prometheus.Histogram
-	chunksEncoded                 prometheus.Counter
-	chunkDecodeFailures           prometheus.Counter
+	chunksEncoded                 *prometheus.CounterVec
+	chunkDecodeFailures           *prometheus.CounterVec
 	flushedChunksStats            *analytics.Counter
 	flushedChunksBytesStats       *analytics.Statistics
 	flushedChunksLinesStats       *analytics.Statistics
@@ -254,16 +254,16 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 			// 1h -> 8hr
 			Buckets: prometheus.LinearBuckets(1, 1, 8),
 		}),
-		chunksEncoded: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		chunksEncoded: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "ingester_chunks_encoded_total",
 			Help:      "The total number of chunks encoded in the ingester.",
-		}),
-		chunkDecodeFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		}, []string{"user"}),
+		chunkDecodeFailures: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "ingester_chunk_decode_failures_total",
 			Help:      "The number of freshly encoded chunks that failed to decode.",
-		}),
+		}, []string{"user"}),
 		flushedChunksStats:      analytics.NewCounter("ingester_flushed_chunks"),
 		flushedChunksBytesStats: analytics.NewStatistics("ingester_flushed_chunks_bytes"),
 		flushedChunksLinesStats: analytics.NewStatistics("ingester_flushed_chunks_lines"),
