@@ -461,6 +461,7 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 	num := db.uvarint()
 	bc.blocks = make([]block, 0, num)
 
+	expectedOffset := -1
 	for i := 0; i < num; i++ {
 		var blk block
 		// Read #entries.
@@ -472,18 +473,31 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 
 		// Read offset and length.
 		blk.offset = db.uvarint()
+		if expectedOffset == -1 {
+			// init with offset of the first block
+			expectedOffset = blk.offset
+		}
+
 		if version >= ChunkFormatV3 {
 			blk.uncompressedSize = db.uvarint()
 		}
-		l := db.uvarint()
-		blk.b = b[blk.offset : blk.offset+l]
 
+		l := db.uvarint()
+		if blk.offset != expectedOffset {
+			_ = level.Error(util_log.Logger).Log("msg", "block offset does not match expected one", "actual", blk.offset, "expected", expectedOffset)
+			blk.offset = expectedOffset
+		}
+
+		blk.b = b[blk.offset : blk.offset+l]
 		// Verify checksums.
 		expCRC := binary.BigEndian.Uint32(b[blk.offset+l:])
 		if expCRC != crc32.Checksum(blk.b, castagnoliTable) {
 			_ = level.Error(util_log.Logger).Log("msg", "Checksum does not match for a block in chunk, this block will be skipped", "err", ErrInvalidChecksum)
 			continue
 		}
+
+		// length of the line + 4 byte checksum
+		expectedOffset += l + 4
 
 		bc.blocks = append(bc.blocks, blk)
 
