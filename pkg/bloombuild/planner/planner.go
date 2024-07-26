@@ -365,6 +365,29 @@ func (p *Planner) computeTasks(
 		return nil, nil, fmt.Errorf("failed to delete outdated metas during planning: %w", err)
 	}
 
+	// Resolve TSDBs
+	tsdbs, err := p.tsdbStore.ResolveTSDBs(ctx, table, tenant)
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to resolve tsdbs", "err", err)
+		return nil, nil, fmt.Errorf("failed to resolve tsdbs: %w", err)
+	}
+
+	if len(tsdbs) == 0 {
+		return nil, metas, nil
+	}
+
+	openTSDBs, err := openAllTSDBs(ctx, table, tenant, p.tsdbStore, tsdbs)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to open all tsdbs: %w", err)
+	}
+	defer func() {
+		for idx, reader := range openTSDBs {
+			if err := reader.Close(); err != nil {
+				level.Error(logger).Log("msg", "failed to close index", "err", err, "tsdb", idx.Name())
+			}
+		}
+	}()
+
 	for _, ownershipRange := range ownershipRanges {
 		logger := log.With(logger, "ownership", ownershipRange.String())
 
@@ -372,7 +395,7 @@ func (p *Planner) computeTasks(
 		metasInBounds := bloomshipper.FilterMetasOverlappingBounds(metas, ownershipRange)
 
 		// Find gaps in the TSDBs for this tenant/table
-		gaps, err := p.findOutdatedGaps(ctx, tenant, table, ownershipRange, metasInBounds, logger)
+		gaps, err := p.findOutdatedGaps(ctx, tenant, openTSDBs, ownershipRange, metasInBounds, logger)
 		if err != nil {
 			level.Error(logger).Log("msg", "failed to find outdated gaps", "err", err)
 			continue
@@ -451,6 +474,26 @@ func (p *Planner) processTenantTaskResults(
 	}
 
 	return tasksSucceed, nil
+}
+
+func openAllTSDBs(
+	ctx context.Context,
+	table config.DayTable,
+	tenant string,
+	store common.TSDBStore,
+	tsdbs []tsdb.SingleTenantTSDBIdentifier,
+) (map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries, error) {
+	openTSDBs := make(map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries, len(tsdbs))
+	for _, idx := range tsdbs {
+		tsdb, err := store.LoadTSDB(ctx, table, tenant, idx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load tsdb: %w", err)
+		}
+
+		openTSDBs[idx] = tsdb
+	}
+
+	return openTSDBs, nil
 }
 
 // deleteOutdatedMetasAndBlocks filters out the outdated metas from the `metas` argument and deletes them from the store.
@@ -661,22 +704,11 @@ type blockPlan struct {
 func (p *Planner) findOutdatedGaps(
 	ctx context.Context,
 	tenant string,
-	table config.DayTable,
+	tsdbs map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries,
 	ownershipRange v1.FingerprintBounds,
 	metas []bloomshipper.Meta,
 	logger log.Logger,
 ) ([]blockPlan, error) {
-	// Resolve TSDBs
-	tsdbs, err := p.tsdbStore.ResolveTSDBs(ctx, table, tenant)
-	if err != nil {
-		level.Error(logger).Log("msg", "failed to resolve tsdbs", "err", err)
-		return nil, fmt.Errorf("failed to resolve tsdbs: %w", err)
-	}
-
-	if len(tsdbs) == 0 {
-		return nil, nil
-	}
-
 	// Determine which TSDBs have gaps in the ownership range and need to
 	// be processed.
 	tsdbsWithGaps, err := gapsBetweenTSDBsAndMetas(ownershipRange, tsdbs, metas)
@@ -690,7 +722,7 @@ func (p *Planner) findOutdatedGaps(
 		return nil, nil
 	}
 
-	work, err := blockPlansForGaps(ctx, tenant, table, p.tsdbStore, tsdbsWithGaps, metas, logger)
+	work, err := blockPlansForGaps(ctx, tenant, tsdbsWithGaps, metas)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to create plan", "err", err)
 		return nil, fmt.Errorf("failed to create plan: %w", err)
@@ -701,18 +733,19 @@ func (p *Planner) findOutdatedGaps(
 
 // Used to signal the gaps that need to be populated for a tsdb
 type tsdbGaps struct {
-	tsdb tsdb.SingleTenantTSDBIdentifier
-	gaps []v1.FingerprintBounds
+	tsdbIdentifier tsdb.SingleTenantTSDBIdentifier
+	tsdb           common.ClosableForSeries
+	gaps           []v1.FingerprintBounds
 }
 
 // gapsBetweenTSDBsAndMetas returns if the metas are up-to-date with the TSDBs. This is determined by asserting
 // that for each TSDB, there are metas covering the entire ownership range which were generated from that specific TSDB.
 func gapsBetweenTSDBsAndMetas(
 	ownershipRange v1.FingerprintBounds,
-	tsdbs []tsdb.SingleTenantTSDBIdentifier,
+	tsdbs map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries,
 	metas []bloomshipper.Meta,
 ) (res []tsdbGaps, err error) {
-	for _, db := range tsdbs {
+	for db, tsdb := range tsdbs {
 		id := db.Name()
 
 		relevantMetas := make([]v1.FingerprintBounds, 0, len(metas))
@@ -731,8 +764,9 @@ func gapsBetweenTSDBsAndMetas(
 
 		if len(gaps) > 0 {
 			res = append(res, tsdbGaps{
-				tsdb: db,
-				gaps: gaps,
+				tsdbIdentifier: db,
+				tsdb:           tsdb,
+				gaps:           gaps,
 			})
 		}
 	}
@@ -746,32 +780,14 @@ func gapsBetweenTSDBsAndMetas(
 func blockPlansForGaps(
 	ctx context.Context,
 	tenant string,
-	table config.DayTable,
-	store common.TSDBStore,
 	tsdbs []tsdbGaps,
 	metas []bloomshipper.Meta,
-	logger log.Logger,
 ) ([]blockPlan, error) {
 	plans := make([]blockPlan, 0, len(tsdbs))
 
-	openTSDBs := make([]common.ClosableForSeries, 0, len(tsdbs))
-	defer func() {
-		for _, tsdb := range openTSDBs {
-			if err := tsdb.Close(); err != nil {
-				level.Error(logger).Log("msg", "failed to close index", "err", err)
-			}
-		}
-	}()
-
 	for _, idx := range tsdbs {
-		tsdb, err := store.LoadTSDB(ctx, table, tenant, idx.tsdb)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load tsdb: %w", err)
-		}
-		openTSDBs = append(openTSDBs, tsdb)
-
 		plan := blockPlan{
-			tsdb: idx.tsdb,
+			tsdb: idx.tsdbIdentifier,
 			gaps: make([]protos.Gap, 0, len(idx.gaps)),
 		}
 
@@ -780,7 +796,7 @@ func blockPlansForGaps(
 				Bounds: gap,
 			}
 
-			seriesItr, err := common.NewTSDBSeriesIter(ctx, tenant, tsdb, gap)
+			seriesItr, err := common.NewTSDBSeriesIter(ctx, tenant, idx.tsdb, gap)
 			if err != nil {
 				return nil, fmt.Errorf("failed to load series from TSDB for gap (%s): %w", gap.String(), err)
 			}

@@ -71,14 +71,16 @@ func Test_gapsBetweenTSDBsAndMetas(t *testing.T) {
 		err            bool
 		exp            []tsdbGaps
 		ownershipRange v1.FingerprintBounds
-		tsdbs          []tsdb.SingleTenantTSDBIdentifier
+		tsdbs          map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries
 		metas          []bloomshipper.Meta
 	}{
 		{
 			desc:           "non-overlapping tsdbs and metas",
 			err:            true,
 			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.SingleTenantTSDBIdentifier{tsdbID(0)},
+			tsdbs: map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries{
+				tsdbID(0): nil,
+			},
 			metas: []bloomshipper.Meta{
 				genMeta(11, 20, []int{0}, nil),
 			},
@@ -86,13 +88,15 @@ func Test_gapsBetweenTSDBsAndMetas(t *testing.T) {
 		{
 			desc:           "single tsdb",
 			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.SingleTenantTSDBIdentifier{tsdbID(0)},
+			tsdbs: map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries{
+				tsdbID(0): nil,
+			},
 			metas: []bloomshipper.Meta{
 				genMeta(4, 8, []int{0}, nil),
 			},
 			exp: []tsdbGaps{
 				{
-					tsdb: tsdbID(0),
+					tsdbIdentifier: tsdbID(0),
 					gaps: []v1.FingerprintBounds{
 						v1.NewBounds(0, 3),
 						v1.NewBounds(9, 10),
@@ -103,20 +107,23 @@ func Test_gapsBetweenTSDBsAndMetas(t *testing.T) {
 		{
 			desc:           "multiple tsdbs with separate blocks",
 			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.SingleTenantTSDBIdentifier{tsdbID(0), tsdbID(1)},
+			tsdbs: map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries{
+				tsdbID(0): nil,
+				tsdbID(1): nil,
+			},
 			metas: []bloomshipper.Meta{
 				genMeta(0, 5, []int{0}, nil),
 				genMeta(6, 10, []int{1}, nil),
 			},
 			exp: []tsdbGaps{
 				{
-					tsdb: tsdbID(0),
+					tsdbIdentifier: tsdbID(0),
 					gaps: []v1.FingerprintBounds{
 						v1.NewBounds(6, 10),
 					},
 				},
 				{
-					tsdb: tsdbID(1),
+					tsdbIdentifier: tsdbID(1),
 					gaps: []v1.FingerprintBounds{
 						v1.NewBounds(0, 5),
 					},
@@ -126,20 +133,23 @@ func Test_gapsBetweenTSDBsAndMetas(t *testing.T) {
 		{
 			desc:           "multiple tsdbs with the same blocks",
 			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.SingleTenantTSDBIdentifier{tsdbID(0), tsdbID(1)},
+			tsdbs: map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries{
+				tsdbID(0): nil,
+				tsdbID(1): nil,
+			},
 			metas: []bloomshipper.Meta{
 				genMeta(0, 5, []int{0, 1}, nil),
 				genMeta(6, 8, []int{1}, nil),
 			},
 			exp: []tsdbGaps{
 				{
-					tsdb: tsdbID(0),
+					tsdbIdentifier: tsdbID(0),
 					gaps: []v1.FingerprintBounds{
 						v1.NewBounds(6, 10),
 					},
 				},
 				{
-					tsdb: tsdbID(1),
+					tsdbIdentifier: tsdbID(1),
 					gaps: []v1.FingerprintBounds{
 						v1.NewBounds(9, 10),
 					},
@@ -382,21 +392,21 @@ func Test_blockPlansForGaps(t *testing.T) {
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			// We add series spanning the whole FP ownership range
-			tsdbStore := newFakeTsdbStore(genSeries(tc.ownershipRange))
+			tsdbs := make(map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries)
+			for _, id := range tc.tsdbs {
+				tsdbs[id] = newFakeForSeries(genSeries(tc.ownershipRange))
+			}
 
 			// we reuse the gapsBetweenTSDBsAndMetas function to generate the gaps as this function is tested
 			// separately and it's used to generate input in our regular code path (easier to write tests this way).
-			gaps, err := gapsBetweenTSDBsAndMetas(tc.ownershipRange, tc.tsdbs, tc.metas)
+			gaps, err := gapsBetweenTSDBsAndMetas(tc.ownershipRange, tsdbs, tc.metas)
 			require.NoError(t, err)
 
 			plans, err := blockPlansForGaps(
 				context.Background(),
 				"fakeTenant",
-				config.NewDayTable(testDay, "fake"),
-				tsdbStore,
 				gaps,
 				tc.metas,
-				log.NewNopLogger(),
 			)
 			if tc.err {
 				require.Error(t, err)
@@ -424,24 +434,14 @@ func genSeries(bounds v1.FingerprintBounds) []*v1.Series {
 	return series
 }
 
-type fakeTsdbStore struct {
-	common.TSDBStore
-
-	series []*v1.Series
-}
-
-func newFakeTsdbStore(series []*v1.Series) *fakeTsdbStore {
-	return &fakeTsdbStore{
-		series: series,
-	}
-}
-
-func (f *fakeTsdbStore) LoadTSDB(_ context.Context, _ config.DayTable, _ string, _ tsdb.Identifier) (common.ClosableForSeries, error) {
-	return &fakeForSeries{series: f.series}, nil
-}
-
 type fakeForSeries struct {
 	series []*v1.Series
+}
+
+func newFakeForSeries(series []*v1.Series) *fakeForSeries {
+	return &fakeForSeries{
+		series: series,
+	}
 }
 
 func (f fakeForSeries) ForSeries(_ context.Context, _ string, ff index.FingerprintFilter, _ model.Time, _ model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), _ ...*labels.Matcher) error {
