@@ -58,10 +58,11 @@ func (c *Client) Service() services.Service { return c.service }
 
 func dial(cfg Config, r prometheus.Registerer) (*grpc.ClientConn, error) {
 	latency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: constants.Loki,
-		Name:      "metastore_request_duration_seconds",
-		Help:      "Time (in seconds) spent serving requests when using the metastore",
-		Buckets:   instrument.DefBuckets,
+		Namespace:                   constants.Loki,
+		Name:                        "metastore_request_duration_seconds",
+		Help:                        "Time (in seconds) spent serving requests when using the metastore",
+		Buckets:                     instrument.DefBuckets,
+		NativeHistogramBucketFactor: 1.1,
 	}, []string{"operation", "status_code"})
 	if r != nil {
 		err := r.Register(latency)
