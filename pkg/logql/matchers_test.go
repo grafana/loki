@@ -51,7 +51,17 @@ func Test_match(t *testing.T) {
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {
-				require.Equal(t, tt.want, got)
+				// Prometheus label matchers are not comparable with a deep equal because of the internal
+				// fast regexp implementation. For this reason, we compare their string representation.
+				require.Len(t, got, len(tt.want))
+
+				for i, expectedMatchers := range tt.want {
+					require.Len(t, got[i], len(expectedMatchers))
+
+					for j, expectedMatcher := range expectedMatchers {
+						require.Equal(t, expectedMatcher.String(), got[i][j].String())
+					}
+				}
 			}
 		})
 	}
