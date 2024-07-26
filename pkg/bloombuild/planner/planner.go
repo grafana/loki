@@ -655,7 +655,7 @@ func (p *Planner) tenants(ctx context.Context, table config.DayTable) (*iter.Sli
 //     This is a performance optimization to avoid expensive re-reindexing
 type blockPlan struct {
 	tsdb tsdb.SingleTenantTSDBIdentifier
-	gaps []protos.GapWithBlocks
+	gaps []protos.Gap
 }
 
 func (p *Planner) findOutdatedGaps(
@@ -690,7 +690,7 @@ func (p *Planner) findOutdatedGaps(
 		return nil, nil
 	}
 
-	work, err := blockPlansForGaps(tsdbsWithGaps, metas)
+	work, err := blockPlansForGaps(ctx, tenant, table, p.tsdbStore, tsdbsWithGaps, metas)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to create plan", "err", err)
 		return nil, fmt.Errorf("failed to create plan: %w", err)
@@ -743,22 +743,37 @@ func gapsBetweenTSDBsAndMetas(
 // blockPlansForGaps groups tsdb gaps we wish to fill with overlapping but out of date blocks.
 // This allows us to expedite bloom generation by using existing blocks to fill in the gaps
 // since many will contain the same chunks.
-func blockPlansForGaps(tsdbs []tsdbGaps, metas []bloomshipper.Meta) ([]blockPlan, error) {
+func blockPlansForGaps(
+	ctx context.Context,
+	tenant string,
+	table config.DayTable,
+	store common.TSDBStore,
+	tsdbs []tsdbGaps,
+	metas []bloomshipper.Meta,
+) ([]blockPlan, error) {
 	plans := make([]blockPlan, 0, len(tsdbs))
 
 	for _, idx := range tsdbs {
 		plan := blockPlan{
 			tsdb: idx.tsdb,
-			gaps: make([]protos.GapWithBlocks, 0, len(idx.gaps)),
+			gaps: make([]protos.Gap, 0, len(idx.gaps)),
 		}
 
 		for _, gap := range idx.gaps {
-			planGap := protos.GapWithBlocks{
+			planGap := protos.Gap{
 				Bounds: gap,
 			}
 
-			for _, meta := range metas {
+			seriesItr, err := store.LoadTSDB(ctx, table, tenant, idx.tsdb, gap)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load series from TSDB for gap (%s): %w", gap.String(), err)
+			}
+			planGap.Series, err = iter.Collect(seriesItr)
+			if err != nil {
+				return nil, fmt.Errorf("failed to collect series: %w", err)
+			}
 
+			for _, meta := range metas {
 				if meta.Bounds.Intersection(gap) == nil {
 					// this meta doesn't overlap the gap, skip
 					continue

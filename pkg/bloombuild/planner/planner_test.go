@@ -20,6 +20,7 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
+	"github.com/grafana/loki/v3/pkg/bloombuild/common"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
@@ -220,9 +221,10 @@ func Test_blockPlansForGaps(t *testing.T) {
 			exp: []blockPlan{
 				{
 					tsdb: tsdbID(0),
-					gaps: []protos.GapWithBlocks{
+					gaps: []protos.Gap{
 						{
 							Bounds: v1.NewBounds(0, 10),
+							Series: genSeries(v1.NewBounds(0, 10)),
 						},
 					},
 				},
@@ -238,9 +240,10 @@ func Test_blockPlansForGaps(t *testing.T) {
 			exp: []blockPlan{
 				{
 					tsdb: tsdbID(0),
-					gaps: []protos.GapWithBlocks{
+					gaps: []protos.Gap{
 						{
 							Bounds: v1.NewBounds(0, 10),
+							Series: genSeries(v1.NewBounds(0, 10)),
 							Blocks: []bloomshipper.BlockRef{genBlockRef(9, 20)},
 						},
 					},
@@ -261,9 +264,10 @@ func Test_blockPlansForGaps(t *testing.T) {
 			exp: []blockPlan{
 				{
 					tsdb: tsdbID(0),
-					gaps: []protos.GapWithBlocks{
+					gaps: []protos.Gap{
 						{
 							Bounds: v1.NewBounds(0, 8),
+							Series: genSeries(v1.NewBounds(0, 8)),
 						},
 					},
 				},
@@ -280,9 +284,10 @@ func Test_blockPlansForGaps(t *testing.T) {
 			exp: []blockPlan{
 				{
 					tsdb: tsdbID(0),
-					gaps: []protos.GapWithBlocks{
+					gaps: []protos.Gap{
 						{
 							Bounds: v1.NewBounds(0, 8),
+							Series: genSeries(v1.NewBounds(0, 8)),
 							Blocks: []bloomshipper.BlockRef{genBlockRef(5, 20)},
 						},
 					},
@@ -306,14 +311,16 @@ func Test_blockPlansForGaps(t *testing.T) {
 			exp: []blockPlan{
 				{
 					tsdb: tsdbID(0),
-					gaps: []protos.GapWithBlocks{
+					gaps: []protos.Gap{
 						// tsdb (id=0) can source chunks from the blocks built from tsdb (id=1)
 						{
 							Bounds: v1.NewBounds(3, 5),
+							Series: genSeries(v1.NewBounds(3, 5)),
 							Blocks: []bloomshipper.BlockRef{genBlockRef(3, 5)},
 						},
 						{
 							Bounds: v1.NewBounds(9, 10),
+							Series: genSeries(v1.NewBounds(9, 10)),
 							Blocks: []bloomshipper.BlockRef{genBlockRef(8, 10)},
 						},
 					},
@@ -321,9 +328,10 @@ func Test_blockPlansForGaps(t *testing.T) {
 				// tsdb (id=1) can source chunks from the blocks built from tsdb (id=0)
 				{
 					tsdb: tsdbID(1),
-					gaps: []protos.GapWithBlocks{
+					gaps: []protos.Gap{
 						{
 							Bounds: v1.NewBounds(0, 2),
+							Series: genSeries(v1.NewBounds(0, 2)),
 							Blocks: []bloomshipper.BlockRef{
 								genBlockRef(0, 1),
 								genBlockRef(1, 2),
@@ -331,6 +339,7 @@ func Test_blockPlansForGaps(t *testing.T) {
 						},
 						{
 							Bounds: v1.NewBounds(6, 7),
+							Series: genSeries(v1.NewBounds(6, 7)),
 							Blocks: []bloomshipper.BlockRef{genBlockRef(6, 8)},
 						},
 					},
@@ -354,9 +363,10 @@ func Test_blockPlansForGaps(t *testing.T) {
 			exp: []blockPlan{
 				{
 					tsdb: tsdbID(0),
-					gaps: []protos.GapWithBlocks{
+					gaps: []protos.Gap{
 						{
 							Bounds: v1.NewBounds(0, 10),
+							Series: genSeries(v1.NewBounds(0, 10)),
 							Blocks: []bloomshipper.BlockRef{
 								genBlockRef(1, 4),
 								genBlockRef(5, 10),
@@ -369,20 +379,68 @@ func Test_blockPlansForGaps(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
+			// We add series spanning the whole FP ownership range
+			tsdbStore := newFakeTsdbStore(genSeries(tc.ownershipRange))
+
 			// we reuse the gapsBetweenTSDBsAndMetas function to generate the gaps as this function is tested
 			// separately and it's used to generate input in our regular code path (easier to write tests this way).
 			gaps, err := gapsBetweenTSDBsAndMetas(tc.ownershipRange, tc.tsdbs, tc.metas)
 			require.NoError(t, err)
 
-			plans, err := blockPlansForGaps(gaps, tc.metas)
+			plans, err := blockPlansForGaps(
+				context.Background(),
+				"fakeTenant",
+				config.NewDayTable(testDay, "fake"),
+				tsdbStore,
+				gaps,
+				tc.metas,
+			)
 			if tc.err {
 				require.Error(t, err)
 				return
 			}
 			require.Equal(t, tc.exp, plans)
-
 		})
 	}
+}
+
+func genSeries(bounds v1.FingerprintBounds) []*v1.Series {
+	series := make([]*v1.Series, 0, int(bounds.Max-bounds.Min+1))
+	for i := bounds.Min; i <= bounds.Max; i++ {
+		series = append(series, &v1.Series{
+			Fingerprint: i,
+			Chunks: v1.ChunkRefs{
+				{
+					From:     0,
+					Through:  1,
+					Checksum: 1,
+				},
+			},
+		})
+	}
+	return series
+}
+
+type fakeTsdbStore struct {
+	common.TSDBStore
+
+	series []*v1.Series
+}
+
+func newFakeTsdbStore(series []*v1.Series) *fakeTsdbStore {
+	return &fakeTsdbStore{
+		series: series,
+	}
+}
+
+func (f *fakeTsdbStore) LoadTSDB(_ context.Context, _ config.DayTable, _ string, _ tsdb.Identifier, bounds v1.FingerprintBounds) (iter.Iterator[*v1.Series], error) {
+	overlapping := make([]*v1.Series, 0, len(f.series))
+	for _, s := range f.series {
+		if bounds.Match(s.Fingerprint) {
+			overlapping = append(overlapping, s)
+		}
+	}
+	return iter.NewSliceIter(overlapping), nil
 }
 
 func createTasks(n int, resultsCh chan *protos.TaskResult) []*QueueTask {
