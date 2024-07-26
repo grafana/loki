@@ -690,7 +690,7 @@ func (p *Planner) findOutdatedGaps(
 		return nil, nil
 	}
 
-	work, err := blockPlansForGaps(ctx, tenant, table, p.tsdbStore, tsdbsWithGaps, metas)
+	work, err := blockPlansForGaps(ctx, tenant, table, p.tsdbStore, tsdbsWithGaps, metas, logger)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to create plan", "err", err)
 		return nil, fmt.Errorf("failed to create plan: %w", err)
@@ -750,10 +750,26 @@ func blockPlansForGaps(
 	store common.TSDBStore,
 	tsdbs []tsdbGaps,
 	metas []bloomshipper.Meta,
+	logger log.Logger,
 ) ([]blockPlan, error) {
 	plans := make([]blockPlan, 0, len(tsdbs))
 
+	openTSDBs := make([]common.ClosableForSeries, 0, len(tsdbs))
+	defer func() {
+		for _, tsdb := range openTSDBs {
+			if err := tsdb.Close(); err != nil {
+				level.Error(logger).Log("msg", "failed to close index", "err", err)
+			}
+		}
+	}()
+
 	for _, idx := range tsdbs {
+		tsdb, err := store.LoadTSDB(ctx, table, tenant, idx.tsdb)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load tsdb: %w", err)
+		}
+		openTSDBs = append(openTSDBs, tsdb)
+
 		plan := blockPlan{
 			tsdb: idx.tsdb,
 			gaps: make([]protos.Gap, 0, len(idx.gaps)),
@@ -764,7 +780,7 @@ func blockPlansForGaps(
 				Bounds: gap,
 			}
 
-			seriesItr, err := store.LoadTSDB(ctx, table, tenant, idx.tsdb, gap)
+			seriesItr, err := common.NewTSDBSeriesIter(ctx, tenant, tsdb, gap)
 			if err != nil {
 				return nil, fmt.Errorf("failed to load series from TSDB for gap (%s): %w", gap.String(), err)
 			}

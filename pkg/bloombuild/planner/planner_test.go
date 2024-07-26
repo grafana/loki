@@ -16,6 +16,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
@@ -32,6 +33,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	bloomshipperconfig "github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
@@ -394,6 +396,7 @@ func Test_blockPlansForGaps(t *testing.T) {
 				tsdbStore,
 				gaps,
 				tc.metas,
+				log.NewNopLogger(),
 			)
 			if tc.err {
 				require.Error(t, err)
@@ -433,14 +436,41 @@ func newFakeTsdbStore(series []*v1.Series) *fakeTsdbStore {
 	}
 }
 
-func (f *fakeTsdbStore) LoadTSDB(_ context.Context, _ config.DayTable, _ string, _ tsdb.Identifier, bounds v1.FingerprintBounds) (iter.Iterator[*v1.Series], error) {
+func (f *fakeTsdbStore) LoadTSDB(_ context.Context, _ config.DayTable, _ string, _ tsdb.Identifier) (common.ClosableForSeries, error) {
+	return &fakeForSeries{series: f.series}, nil
+}
+
+type fakeForSeries struct {
+	series []*v1.Series
+}
+
+func (f fakeForSeries) ForSeries(_ context.Context, _ string, ff index.FingerprintFilter, _ model.Time, _ model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), _ ...*labels.Matcher) error {
 	overlapping := make([]*v1.Series, 0, len(f.series))
 	for _, s := range f.series {
-		if bounds.Match(s.Fingerprint) {
+		if ff.Match(s.Fingerprint) {
 			overlapping = append(overlapping, s)
 		}
 	}
-	return iter.NewSliceIter(overlapping), nil
+
+	for _, s := range overlapping {
+		chunks := make([]index.ChunkMeta, 0, len(s.Chunks))
+		for _, c := range s.Chunks {
+			chunks = append(chunks, index.ChunkMeta{
+				MinTime:  int64(c.From),
+				MaxTime:  int64(c.Through),
+				Checksum: c.Checksum,
+			})
+		}
+
+		if fn(labels.EmptyLabels(), s.Fingerprint, chunks) {
+			break
+		}
+	}
+	return nil
+}
+
+func (f fakeForSeries) Close() error {
+	return nil
 }
 
 func createTasks(n int, resultsCh chan *protos.TaskResult) []*QueueTask {
