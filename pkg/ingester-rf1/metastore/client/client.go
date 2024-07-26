@@ -82,6 +82,8 @@ func dial(cfg Config, r prometheus.Registerer) (*grpc.ClientConn, error) {
 	}
 	// TODO: https://github.com/grpc/grpc-proto/blob/master/grpc/service_config/service_config.proto
 	options = append(options, grpc.WithDefaultServiceConfig(grpcServiceConfig))
+
+	// nolint:staticcheck // grpc.Dial() has been deprecated; we'll address it before upgrading to gRPC 2.
 	return grpc.Dial(cfg.MetastoreAddress, options...)
 }
 
