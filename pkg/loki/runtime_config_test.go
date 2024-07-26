@@ -47,7 +47,11 @@ overrides:
 	require.Equal(t, time.Duration(0), overrides.RetentionPeriod("1"))   // default
 	require.Equal(t, 2*30*24*time.Hour, overrides.RetentionPeriod("29")) // overrides
 	require.Equal(t, []validation.StreamRetention(nil), overrides.StreamRetention("1"))
-	require.Equal(t, []validation.StreamRetention{
+
+	// Prometheus label matchers are not comparable with a deep equal because of the internal
+	// fast regexp implementation. For this reason, we compare their string representation.
+	actual := overrides.StreamRetention("29")
+	expected := []validation.StreamRetention{
 		{Period: model.Duration(48 * time.Hour), Priority: 10, Selector: `{app="foo"}`, Matchers: []*labels.Matcher{
 			labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
 		}},
@@ -55,7 +59,19 @@ overrides:
 			labels.MustNewMatcher(labels.MatchEqual, "namespace", "bar"),
 			labels.MustNewMatcher(labels.MatchRegexp, "cluster", "fo.*|b.+|[1-2]"),
 		}},
-	}, overrides.StreamRetention("29"))
+	}
+
+	require.Len(t, actual, len(expected))
+	for i, expectedStreamRetention := range expected {
+		require.Equal(t, expectedStreamRetention.Selector, actual[i].Selector)
+		require.Equal(t, expectedStreamRetention.Period, actual[i].Period)
+		require.Equal(t, expectedStreamRetention.Priority, actual[i].Priority)
+
+		require.Len(t, actual[i].Matchers, len(expectedStreamRetention.Matchers))
+		for j, expectedMatcher := range expectedStreamRetention.Matchers {
+			require.Equal(t, actual[i].Matchers[j].String(), expectedMatcher.String())
+		}
+	}
 }
 
 func Test_ValidateRules(t *testing.T) {
