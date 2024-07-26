@@ -80,6 +80,7 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 		})
 	}
 }
+
 func TestJSONSerializationParseTestCases(t *testing.T) {
 	for _, tc := range ParseTestCases {
 		if tc.err == nil {
@@ -98,7 +99,9 @@ func TestJSONSerializationParseTestCases(t *testing.T) {
 
 				t.Log(buf.String())
 
-				require.Equal(t, tc.exp, actual)
+				// Prometheus label matchers are not comparable with a deep equal because of the internal
+				// fast regexp implementation. For this reason, we compare their string representation.
+				require.Equal(t, tc.exp.String(), actual.String())
 			})
 		}
 	}

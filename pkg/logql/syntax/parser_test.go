@@ -2,7 +2,6 @@ package syntax
 
 import (
 	"errors"
-	"reflect"
 	"testing"
 	"time"
 
@@ -3295,8 +3294,16 @@ func TestParseMatchers(t *testing.T) {
 				t.Errorf("ParseMatchers() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("ParseMatchers() = %v, want %v", got, tt.want)
+
+			if tt.want == nil {
+				require.Nil(t, got)
+			} else {
+				// Prometheus label matchers are not comparable with a deep equal because of the internal
+				// fast regexp implementation. For this reason, we compare their string representation.
+				require.Len(t, got, len(tt.want))
+				for i, expected := range tt.want {
+					require.Equal(t, expected.String(), got[i].String())
+				}
 			}
 		})
 	}
