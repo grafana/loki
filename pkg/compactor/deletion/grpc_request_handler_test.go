@@ -38,6 +38,7 @@ func server(t *testing.T, h *GRPCRequestHandler) (compactor_client_grpc.Compacto
 		}
 	}()
 
+	// nolint:staticcheck // grpc.DialContext() has been deprecated; we'll address it before upgrading to gRPC 2.
 	conn, err := grpc.DialContext(context.Background(), "",
 		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 			return lis.Dial()
