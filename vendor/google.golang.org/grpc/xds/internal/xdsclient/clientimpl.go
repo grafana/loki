@@ -25,7 +25,7 @@ import (
 	"google.golang.org/grpc/internal/cache"
 	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/grpcsync"
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 )
 
 var _ XDSClient = &clientImpl{}

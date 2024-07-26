@@ -115,7 +115,9 @@ type priorityBalancer struct {
 }
 
 func (b *priorityBalancer) UpdateClientConnState(s balancer.ClientConnState) error {
-	b.logger.Debugf("Received an update with balancer config: %+v", pretty.ToJSON(s.BalancerConfig))
+	if b.logger.V(2) {
+		b.logger.Infof("Received an update with balancer config: %+v", pretty.ToJSON(s.BalancerConfig))
+	}
 	newConfig, ok := s.BalancerConfig.(*LBConfig)
 	if !ok {
 		return fmt.Errorf("unexpected balancer config with type: %T", s.BalancerConfig)

@@ -617,10 +617,10 @@ func (m *testMatrix) Select(_ context.Context, _ bool, _ *storage.SelectHints, m
 	return m.Copy()
 }
 
-func (m *testMatrix) LabelValues(_ context.Context, _ string, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (m *testMatrix) LabelValues(_ context.Context, _ string, _ *storage.LabelHints, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, nil
 }
-func (m *testMatrix) LabelNames(_ context.Context, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (m *testMatrix) LabelNames(_ context.Context, _ *storage.LabelHints, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, nil
 }
 func (m *testMatrix) Close() error { return nil }

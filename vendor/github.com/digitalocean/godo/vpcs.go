@@ -19,6 +19,14 @@ type VPCsService interface {
 	Update(context.Context, string, *VPCUpdateRequest) (*VPC, *Response, error)
 	Set(context.Context, string, ...VPCSetField) (*VPC, *Response, error)
 	Delete(context.Context, string) (*Response, error)
+	CreateVPCPeering(context.Context, *VPCPeeringCreateRequest) (*VPCPeering, *Response, error)
+	GetVPCPeering(context.Context, string) (*VPCPeering, *Response, error)
+	ListVPCPeerings(context.Context, *ListOptions) ([]*VPCPeering, *Response, error)
+	UpdateVPCPeering(context.Context, string, *VPCPeeringUpdateRequest) (*VPCPeering, *Response, error)
+	DeleteVPCPeering(context.Context, string) (*Response, error)
+	CreateVPCPeeringByVPCID(context.Context, string, *VPCPeeringCreateRequestByVPCID) (*VPCPeering, *Response, error)
+	ListVPCPeeringsByVPCID(context.Context, string, *ListOptions) ([]*VPCPeering, *Response, error)
+	UpdateVPCPeeringByVPCID(context.Context, string, string, *VPCPeeringUpdateRequest) (*VPCPeering, *Response, error)
 }
 
 var _ VPCsService = &VPCsServiceOp{}

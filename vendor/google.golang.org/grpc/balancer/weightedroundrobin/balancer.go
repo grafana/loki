@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -33,7 +34,6 @@ import (
 	"google.golang.org/grpc/balancer/weightedroundrobin/internal"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/internal/grpclog"
-	"google.golang.org/grpc/internal/grpcrand"
 	iserviceconfig "google.golang.org/grpc/internal/serviceconfig"
 	"google.golang.org/grpc/orca"
 	"google.golang.org/grpc/resolver"
@@ -318,7 +318,7 @@ func (b *wrrBalancer) regeneratePicker() {
 	}
 
 	p := &picker{
-		v:        grpcrand.Uint32(), // start the scheduler at a random point
+		v:        rand.Uint32(), // start the scheduler at a random point
 		cfg:      b.cfg,
 		subConns: b.readySubConns(),
 	}

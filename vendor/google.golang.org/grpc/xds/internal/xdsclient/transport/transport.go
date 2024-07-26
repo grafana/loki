@@ -33,8 +33,8 @@ import (
 	"google.golang.org/grpc/internal/buffer"
 	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/pretty"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/keepalive"
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
 	"google.golang.org/grpc/xds/internal/xdsclient/load"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -63,7 +63,7 @@ type adsStream = v3adsgrpc.AggregatedDiscoveryService_StreamAggregatedResourcesC
 // protocol version.
 type Transport struct {
 	// These fields are initialized at creation time and are read-only afterwards.
-	cc              *grpc.ClientConn        // ClientConn to the mangement server.
+	cc              *grpc.ClientConn        // ClientConn to the management server.
 	serverURI       string                  // URI of the management server.
 	onRecvHandler   OnRecvHandlerFunc       // Resource update handler. xDS data model layer.
 	onErrorHandler  func(error)             // To report underlying stream errors.
@@ -363,29 +363,21 @@ func (t *Transport) send(ctx context.Context) {
 	// The xDS protocol only requires that we send the node proto in the first
 	// discovery request on every stream. Sending the node proto in every
 	// request message wastes CPU resources on the client and the server.
-	sendNodeProto := true
+	sentNodeProto := false
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case stream = <-t.adsStreamCh:
 			// We have a new stream and we've to ensure that the node proto gets
-			// sent out in the first request on the stream. At this point, we
-			// might not have any registered watches. Setting this field to true
-			// here will ensure that the node proto gets sent out along with the
-			// discovery request when the first watch is registered.
-			if len(t.resources) == 0 {
-				sendNodeProto = true
-				continue
-			}
-
-			if !t.sendExisting(stream) {
+			// sent out in the first request on the stream.
+			var err error
+			if sentNodeProto, err = t.sendExisting(stream); err != nil {
 				// Send failed, clear the current stream. Attempt to resend will
 				// only be made after a new stream is created.
 				stream = nil
 				continue
 			}
-			sendNodeProto = false
 		case u, ok := <-t.adsRequestCh.Get():
 			if !ok {
 				// No requests will be sent after the adsRequestCh buffer is closed.
@@ -416,12 +408,12 @@ func (t *Transport) send(ctx context.Context) {
 				// sending response back).
 				continue
 			}
-			if err := t.sendAggregatedDiscoveryServiceRequest(stream, sendNodeProto, resources, url, version, nonce, nackErr); err != nil {
+			if err := t.sendAggregatedDiscoveryServiceRequest(stream, !sentNodeProto, resources, url, version, nonce, nackErr); err != nil {
 				t.logger.Warningf("Sending ADS request for resources: %q, url: %q, version: %q, nonce: %q failed: %v", resources, url, version, nonce, err)
 				// Send failed, clear the current stream.
 				stream = nil
 			}
-			sendNodeProto = false
+			sentNodeProto = true
 		}
 	}
 }
@@ -433,7 +425,9 @@ func (t *Transport) send(ctx context.Context) {
 // that here because the stream has just started and Send() usually returns
 // quickly (once it pushes the message onto the transport layer) and is only
 // ever blocked if we don't have enough flow control quota.
-func (t *Transport) sendExisting(stream adsStream) bool {
+//
+// Returns true if the node proto was sent.
+func (t *Transport) sendExisting(stream adsStream) (sentNodeProto bool, err error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -450,16 +444,18 @@ func (t *Transport) sendExisting(stream adsStream) bool {
 	t.nonces = make(map[string]string)
 
 	// Send node proto only in the first request on the stream.
-	sendNodeProto := true
 	for url, resources := range t.resources {
-		if err := t.sendAggregatedDiscoveryServiceRequest(stream, sendNodeProto, mapToSlice(resources), url, t.versions[url], "", nil); err != nil {
-			t.logger.Warningf("Sending ADS request for resources: %q, url: %q, version: %q, nonce: %q failed: %v", resources, url, t.versions[url], "", err)
-			return false
+		if len(resources) == 0 {
+			continue
 		}
-		sendNodeProto = false
+		if err := t.sendAggregatedDiscoveryServiceRequest(stream, !sentNodeProto, mapToSlice(resources), url, t.versions[url], "", nil); err != nil {
+			t.logger.Warningf("Sending ADS request for resources: %q, url: %q, version: %q, nonce: %q failed: %v", resources, url, t.versions[url], "", err)
+			return false, err
+		}
+		sentNodeProto = true
 	}
 
-	return true
+	return sentNodeProto, nil
 }
 
 // recv receives xDS responses on the provided ADS stream and branches out to

@@ -11,6 +11,7 @@ import (
 	"net/mail"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -31,20 +32,54 @@ var (
 	_ = (*url.URL)(nil)
 	_ = (*mail.Address)(nil)
 	_ = anypb.Any{}
+	_ = sort.Sort
 )
 
 // Validate checks the field values on ServerNameMatcher with the rules defined
-// in the proto definition for this message. If any rules are violated, an
-// error is returned.
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
 func (m *ServerNameMatcher) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on ServerNameMatcher with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// ServerNameMatcherMultiError, or nil if none found.
+func (m *ServerNameMatcher) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *ServerNameMatcher) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
+	var errors []error
+
 	for idx, item := range m.GetDomainMatchers() {
 		_, _ = idx, item
 
-		if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, ServerNameMatcherValidationError{
+						field:  fmt.Sprintf("DomainMatchers[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, ServerNameMatcherValidationError{
+						field:  fmt.Sprintf("DomainMatchers[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
 			if err := v.Validate(); err != nil {
 				return ServerNameMatcherValidationError{
 					field:  fmt.Sprintf("DomainMatchers[%v]", idx),
@@ -56,8 +91,29 @@ func (m *ServerNameMatcher) Validate() error {
 
 	}
 
+	if len(errors) > 0 {
+		return ServerNameMatcherMultiError(errors)
+	}
+
 	return nil
 }
+
+// ServerNameMatcherMultiError is an error wrapping multiple validation errors
+// returned by ServerNameMatcher.ValidateAll() if the designated constraints
+// aren't met.
+type ServerNameMatcherMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m ServerNameMatcherMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m ServerNameMatcherMultiError) AllErrors() []error { return m }
 
 // ServerNameMatcherValidationError is the validation error returned by
 // ServerNameMatcher.Validate if the designated constraints aren't met.
@@ -117,20 +173,57 @@ var _ interface {
 
 // Validate checks the field values on ServerNameMatcher_DomainMatcher with the
 // rules defined in the proto definition for this message. If any rules are
-// violated, an error is returned.
+// violated, the first error encountered is returned, or nil if there are no violations.
 func (m *ServerNameMatcher_DomainMatcher) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on ServerNameMatcher_DomainMatcher with
+// the rules defined in the proto definition for this message. If any rules
+// are violated, the result is a list of violation errors wrapped in
+// ServerNameMatcher_DomainMatcherMultiError, or nil if none found.
+func (m *ServerNameMatcher_DomainMatcher) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *ServerNameMatcher_DomainMatcher) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
+	var errors []error
+
 	if len(m.GetDomains()) < 1 {
-		return ServerNameMatcher_DomainMatcherValidationError{
+		err := ServerNameMatcher_DomainMatcherValidationError{
 			field:  "Domains",
 			reason: "value must contain at least 1 item(s)",
 		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
 	}
 
-	if v, ok := interface{}(m.GetOnMatch()).(interface{ Validate() error }); ok {
+	if all {
+		switch v := interface{}(m.GetOnMatch()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, ServerNameMatcher_DomainMatcherValidationError{
+					field:  "OnMatch",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, ServerNameMatcher_DomainMatcherValidationError{
+					field:  "OnMatch",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetOnMatch()).(interface{ Validate() error }); ok {
 		if err := v.Validate(); err != nil {
 			return ServerNameMatcher_DomainMatcherValidationError{
 				field:  "OnMatch",
@@ -140,8 +233,29 @@ func (m *ServerNameMatcher_DomainMatcher) Validate() error {
 		}
 	}
 
+	if len(errors) > 0 {
+		return ServerNameMatcher_DomainMatcherMultiError(errors)
+	}
+
 	return nil
 }
+
+// ServerNameMatcher_DomainMatcherMultiError is an error wrapping multiple
+// validation errors returned by ServerNameMatcher_DomainMatcher.ValidateAll()
+// if the designated constraints aren't met.
+type ServerNameMatcher_DomainMatcherMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m ServerNameMatcher_DomainMatcherMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m ServerNameMatcher_DomainMatcherMultiError) AllErrors() []error { return m }
 
 // ServerNameMatcher_DomainMatcherValidationError is the validation error
 // returned by ServerNameMatcher_DomainMatcher.Validate if the designated

@@ -115,10 +115,13 @@ func (p *Poller[T]) Poll(ctx context.Context) (*http.Response, error) {
 func (p *Poller[T]) Result(ctx context.Context, out *T) error {
 	var req *exported.Request
 	var err error
+
+	// when the payload is included with the status monitor on
+	// terminal success it's in the "result" JSON property
+	payloadPath := "result"
+
 	if p.FinalState == pollers.FinalStateViaLocation && p.LocURL != "" {
 		req, err = exported.NewRequest(ctx, http.MethodGet, p.LocURL)
-	} else if p.FinalState == pollers.FinalStateViaOpLocation && p.Method == http.MethodPost {
-		// no final GET required, terminal response should have it
 	} else if rl, rlErr := poller.GetResourceLocation(p.resp); rlErr != nil && !errors.Is(rlErr, poller.ErrNoBody) {
 		return rlErr
 	} else if rl != "" {
@@ -134,6 +137,8 @@ func (p *Poller[T]) Result(ctx context.Context, out *T) error {
 
 	// if a final GET request has been created, execute it
 	if req != nil {
+		// no JSON path when making a final GET request
+		payloadPath = ""
 		resp, err := p.pl.Do(req)
 		if err != nil {
 			return err
@@ -141,5 +146,5 @@ func (p *Poller[T]) Result(ctx context.Context, out *T) error {
 		p.resp = resp
 	}
 
-	return pollers.ResultHelper(p.resp, poller.Failed(p.CurState), out)
+	return pollers.ResultHelper(p.resp, poller.Failed(p.CurState), payloadPath, out)
 }

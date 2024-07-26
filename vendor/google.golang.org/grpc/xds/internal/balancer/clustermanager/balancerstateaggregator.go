@@ -45,17 +45,14 @@ func (s *subBalancerState) String() string {
 type balancerStateAggregator struct {
 	cc     balancer.ClientConn
 	logger *grpclog.PrefixLogger
+	csEval *balancer.ConnectivityStateEvaluator
 
 	mu sync.Mutex
-	// If started is false, no updates should be sent to the parent cc. A closed
-	// sub-balancer could still send pickers to this aggregator. This makes sure
-	// that no updates will be forwarded to parent when the whole balancer group
-	// and states aggregator is closed.
-	started bool
-	// All balancer IDs exist as keys in this map, even if balancer group is not
-	// started.
-	//
-	// If an ID is not in map, it's either removed or never added.
+	// This field is used to ensure that no updates are forwarded to the parent
+	// CC once the aggregator is closed. A closed sub-balancer could still send
+	// pickers to this aggregator.
+	closed bool
+	// Map from child policy name to last reported state.
 	idToPickerState map[string]*subBalancerState
 	// Set when UpdateState call propagation is paused.
 	pauseUpdateState bool
@@ -68,34 +65,24 @@ func newBalancerStateAggregator(cc balancer.ClientConn, logger *grpclog.PrefixLo
 	return &balancerStateAggregator{
 		cc:              cc,
 		logger:          logger,
+		csEval:          &balancer.ConnectivityStateEvaluator{},
 		idToPickerState: make(map[string]*subBalancerState),
 	}
 }
 
-// Start starts the aggregator. It can be called after Close to restart the
-// aggretator.
-func (bsa *balancerStateAggregator) start() {
-	bsa.mu.Lock()
-	defer bsa.mu.Unlock()
-	bsa.started = true
-}
-
-// Close closes the aggregator. When the aggregator is closed, it won't call
-// parent ClientConn to update balancer state.
 func (bsa *balancerStateAggregator) close() {
 	bsa.mu.Lock()
 	defer bsa.mu.Unlock()
-	bsa.started = false
-	bsa.clearStates()
+	bsa.closed = true
 }
 
-// add adds a sub-balancer state with weight. It adds a place holder, and waits
-// for the real sub-balancer to update state.
+// add adds a sub-balancer in CONNECTING state.
 //
 // This is called when there's a new child.
 func (bsa *balancerStateAggregator) add(id string) {
 	bsa.mu.Lock()
 	defer bsa.mu.Unlock()
+
 	bsa.idToPickerState[id] = &subBalancerState{
 		// Start everything in CONNECTING, so if one of the sub-balancers
 		// reports TransientFailure, the RPCs will still wait for the other
@@ -106,6 +93,8 @@ func (bsa *balancerStateAggregator) add(id string) {
 		},
 		stateToAggregate: connectivity.Connecting,
 	}
+	bsa.csEval.RecordTransition(connectivity.Shutdown, connectivity.Connecting)
+	bsa.buildAndUpdateLocked()
 }
 
 // remove removes the sub-balancer state. Future updates from this sub-balancer,
@@ -118,9 +107,15 @@ func (bsa *balancerStateAggregator) remove(id string) {
 	if _, ok := bsa.idToPickerState[id]; !ok {
 		return
 	}
+	// Setting the state of the deleted sub-balancer to Shutdown will get
+	// csEvltr to remove the previous state for any aggregated state
+	// evaluations. Transitions to and from connectivity.Shutdown are ignored
+	// by csEvltr.
+	bsa.csEval.RecordTransition(bsa.idToPickerState[id].stateToAggregate, connectivity.Shutdown)
 	// Remove id and picker from picker map. This also results in future updates
 	// for this ID to be ignored.
 	delete(bsa.idToPickerState, id)
+	bsa.buildAndUpdateLocked()
 }
 
 // pauseStateUpdates causes UpdateState calls to not propagate to the parent
@@ -140,7 +135,7 @@ func (bsa *balancerStateAggregator) resumeStateUpdates() {
 	defer bsa.mu.Unlock()
 	bsa.pauseUpdateState = false
 	if bsa.needUpdateStateOnResume {
-		bsa.cc.UpdateState(bsa.build())
+		bsa.cc.UpdateState(bsa.buildLocked())
 	}
 }
 
@@ -149,6 +144,8 @@ func (bsa *balancerStateAggregator) resumeStateUpdates() {
 //
 // It calls parent ClientConn's UpdateState with the new aggregated state.
 func (bsa *balancerStateAggregator) UpdateState(id string, state balancer.State) {
+	bsa.logger.Infof("State update from sub-balancer %q: %+v", id, state)
+
 	bsa.mu.Lock()
 	defer bsa.mu.Unlock()
 	pickerSt, ok := bsa.idToPickerState[id]
@@ -162,11 +159,17 @@ func (bsa *balancerStateAggregator) UpdateState(id string, state balancer.State)
 		// update the state, to prevent the aggregated state from being always
 		// CONNECTING. Otherwise, stateToAggregate is the same as
 		// state.ConnectivityState.
+		bsa.csEval.RecordTransition(pickerSt.stateToAggregate, state.ConnectivityState)
 		pickerSt.stateToAggregate = state.ConnectivityState
 	}
 	pickerSt.state = state
+	bsa.buildAndUpdateLocked()
+}
 
-	if !bsa.started {
+// buildAndUpdateLocked combines the sub-state from each sub-balancer into one
+// state, and sends a picker update to the parent ClientConn.
+func (bsa *balancerStateAggregator) buildAndUpdateLocked() {
+	if bsa.closed {
 		return
 	}
 	if bsa.pauseUpdateState {
@@ -175,78 +178,11 @@ func (bsa *balancerStateAggregator) UpdateState(id string, state balancer.State)
 		bsa.needUpdateStateOnResume = true
 		return
 	}
-	bsa.cc.UpdateState(bsa.build())
+	bsa.cc.UpdateState(bsa.buildLocked())
 }
 
-// clearState Reset everything to init state (Connecting) but keep the entry in
-// map (to keep the weight).
-//
-// Caller must hold bsa.mu.
-func (bsa *balancerStateAggregator) clearStates() {
-	for _, pState := range bsa.idToPickerState {
-		pState.state = balancer.State{
-			ConnectivityState: connectivity.Connecting,
-			Picker:            base.NewErrPicker(balancer.ErrNoSubConnAvailable),
-		}
-		pState.stateToAggregate = connectivity.Connecting
-	}
-}
-
-// buildAndUpdate combines the sub-state from each sub-balancer into one state,
-// and update it to parent ClientConn.
-func (bsa *balancerStateAggregator) buildAndUpdate() {
-	bsa.mu.Lock()
-	defer bsa.mu.Unlock()
-	if !bsa.started {
-		return
-	}
-	if bsa.pauseUpdateState {
-		// If updates are paused, do not call UpdateState, but remember that we
-		// need to call it when they are resumed.
-		bsa.needUpdateStateOnResume = true
-		return
-	}
-	bsa.cc.UpdateState(bsa.build())
-}
-
-// build combines sub-states into one. The picker will do a child pick.
-//
-// Caller must hold bsa.mu.
-func (bsa *balancerStateAggregator) build() balancer.State {
-	// TODO: the majority of this function (and UpdateState) is exactly the same
-	// as weighted_target's state aggregator. Try to make a general utility
-	// function/struct to handle the logic.
-	//
-	// One option: make a SubBalancerState that handles Update(State), including
-	// handling the special connecting after ready, as in UpdateState(). Then a
-	// function to calculate the aggregated connectivity state as in this
-	// function.
-	//
-	// TODO: use balancer.ConnectivityStateEvaluator to calculate the aggregated
-	// state.
-	var readyN, connectingN, idleN int
-	for _, ps := range bsa.idToPickerState {
-		switch ps.stateToAggregate {
-		case connectivity.Ready:
-			readyN++
-		case connectivity.Connecting:
-			connectingN++
-		case connectivity.Idle:
-			idleN++
-		}
-	}
-	var aggregatedState connectivity.State
-	switch {
-	case readyN > 0:
-		aggregatedState = connectivity.Ready
-	case connectingN > 0:
-		aggregatedState = connectivity.Connecting
-	case idleN > 0:
-		aggregatedState = connectivity.Idle
-	default:
-		aggregatedState = connectivity.TransientFailure
-	}
-
+// buildLocked combines sub-states into one.
+func (bsa *balancerStateAggregator) buildLocked() balancer.State {
 	// The picker's return error might not be consistent with the
 	// aggregatedState. Because for this LB policy, we want to always build
 	// picker with all sub-pickers (not only ready sub-pickers), so even if the
@@ -254,7 +190,7 @@ func (bsa *balancerStateAggregator) build() balancer.State {
 	// or TransientFailure.
 	bsa.logger.Infof("Child pickers: %+v", bsa.idToPickerState)
 	return balancer.State{
-		ConnectivityState: aggregatedState,
+		ConnectivityState: bsa.csEval.CurrentState(),
 		Picker:            newPickerGroup(bsa.idToPickerState),
 	}
 }

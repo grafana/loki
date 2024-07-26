@@ -65,7 +65,7 @@ type dnsDiscoveryMechanism struct {
 // propagated to the child policy which eventually move the channel to
 // transient failure.
 //
-// The `dnsR` field is unset if we run into erros in this function. Therefore, a
+// The `dnsR` field is unset if we run into errors in this function. Therefore, a
 // nil check is required wherever we access that field.
 func newDNSResolver(target string, topLevelResolver topLevelResolver, logger *grpclog.PrefixLogger) *dnsDiscoveryMechanism {
 	ret := &dnsDiscoveryMechanism{

@@ -48,7 +48,7 @@ func NewDedicatedHostGroupsClient(subscriptionID string, credential azcore.Token
 // see Dedicated Host Documentation [https://go.microsoft.com/fwlink/?linkid=2082596]
 // If the operation fails it returns an *azcore.ResponseError type.
 //
-// Generated from API version 2023-09-01
+// Generated from API version 2024-03-01
 //   - resourceGroupName - The name of the resource group.
 //   - hostGroupName - The name of the dedicated host group.
 //   - parameters - Parameters supplied to the Create Dedicated Host Group.
@@ -96,7 +96,7 @@ func (client *DedicatedHostGroupsClient) createOrUpdateCreateRequest(ctx context
 		return nil, err
 	}
 	reqQP := req.Raw().URL.Query()
-	reqQP.Set("api-version", "2023-09-01")
+	reqQP.Set("api-version", "2024-03-01")
 	req.Raw().URL.RawQuery = reqQP.Encode()
 	req.Raw().Header["Accept"] = []string{"application/json"}
 	if err := runtime.MarshalAsJSON(req, parameters); err != nil {
@@ -117,7 +117,7 @@ func (client *DedicatedHostGroupsClient) createOrUpdateHandleResponse(resp *http
 // Delete - Delete a dedicated host group.
 // If the operation fails it returns an *azcore.ResponseError type.
 //
-// Generated from API version 2023-09-01
+// Generated from API version 2024-03-01
 //   - resourceGroupName - The name of the resource group.
 //   - hostGroupName - The name of the dedicated host group.
 //   - options - DedicatedHostGroupsClientDeleteOptions contains the optional parameters for the DedicatedHostGroupsClient.Delete
@@ -163,7 +163,7 @@ func (client *DedicatedHostGroupsClient) deleteCreateRequest(ctx context.Context
 		return nil, err
 	}
 	reqQP := req.Raw().URL.Query()
-	reqQP.Set("api-version", "2023-09-01")
+	reqQP.Set("api-version", "2024-03-01")
 	req.Raw().URL.RawQuery = reqQP.Encode()
 	req.Raw().Header["Accept"] = []string{"application/json"}
 	return req, nil
@@ -172,7 +172,7 @@ func (client *DedicatedHostGroupsClient) deleteCreateRequest(ctx context.Context
 // Get - Retrieves information about a dedicated host group.
 // If the operation fails it returns an *azcore.ResponseError type.
 //
-// Generated from API version 2023-09-01
+// Generated from API version 2024-03-01
 //   - resourceGroupName - The name of the resource group.
 //   - hostGroupName - The name of the dedicated host group.
 //   - options - DedicatedHostGroupsClientGetOptions contains the optional parameters for the DedicatedHostGroupsClient.Get method.
@@ -221,7 +221,7 @@ func (client *DedicatedHostGroupsClient) getCreateRequest(ctx context.Context, r
 	if options != nil && options.Expand != nil {
 		reqQP.Set("$expand", string(*options.Expand))
 	}
-	reqQP.Set("api-version", "2023-09-01")
+	reqQP.Set("api-version", "2024-03-01")
 	req.Raw().URL.RawQuery = reqQP.Encode()
 	req.Raw().Header["Accept"] = []string{"application/json"}
 	return req, nil
@@ -239,7 +239,7 @@ func (client *DedicatedHostGroupsClient) getHandleResponse(resp *http.Response) 
 // NewListByResourceGroupPager - Lists all of the dedicated host groups in the specified resource group. Use the nextLink
 // property in the response to get the next page of dedicated host groups.
 //
-// Generated from API version 2023-09-01
+// Generated from API version 2024-03-01
 //   - resourceGroupName - The name of the resource group.
 //   - options - DedicatedHostGroupsClientListByResourceGroupOptions contains the optional parameters for the DedicatedHostGroupsClient.NewListByResourceGroupPager
 //     method.
@@ -282,7 +282,7 @@ func (client *DedicatedHostGroupsClient) listByResourceGroupCreateRequest(ctx co
 		return nil, err
 	}
 	reqQP := req.Raw().URL.Query()
-	reqQP.Set("api-version", "2023-09-01")
+	reqQP.Set("api-version", "2024-03-01")
 	req.Raw().URL.RawQuery = reqQP.Encode()
 	req.Raw().Header["Accept"] = []string{"application/json"}
 	return req, nil
@@ -300,7 +300,7 @@ func (client *DedicatedHostGroupsClient) listByResourceGroupHandleResponse(resp 
 // NewListBySubscriptionPager - Lists all of the dedicated host groups in the subscription. Use the nextLink property in the
 // response to get the next page of dedicated host groups.
 //
-// Generated from API version 2023-09-01
+// Generated from API version 2024-03-01
 //   - options - DedicatedHostGroupsClientListBySubscriptionOptions contains the optional parameters for the DedicatedHostGroupsClient.NewListBySubscriptionPager
 //     method.
 func (client *DedicatedHostGroupsClient) NewListBySubscriptionPager(options *DedicatedHostGroupsClientListBySubscriptionOptions) *runtime.Pager[DedicatedHostGroupsClientListBySubscriptionResponse] {
@@ -338,7 +338,7 @@ func (client *DedicatedHostGroupsClient) listBySubscriptionCreateRequest(ctx con
 		return nil, err
 	}
 	reqQP := req.Raw().URL.Query()
-	reqQP.Set("api-version", "2023-09-01")
+	reqQP.Set("api-version", "2024-03-01")
 	req.Raw().URL.RawQuery = reqQP.Encode()
 	req.Raw().Header["Accept"] = []string{"application/json"}
 	return req, nil
@@ -356,7 +356,7 @@ func (client *DedicatedHostGroupsClient) listBySubscriptionHandleResponse(resp *
 // Update - Update an dedicated host group.
 // If the operation fails it returns an *azcore.ResponseError type.
 //
-// Generated from API version 2023-09-01
+// Generated from API version 2024-03-01
 //   - resourceGroupName - The name of the resource group.
 //   - hostGroupName - The name of the dedicated host group.
 //   - parameters - Parameters supplied to the Update Dedicated Host Group operation.
@@ -404,7 +404,7 @@ func (client *DedicatedHostGroupsClient) updateCreateRequest(ctx context.Context
 		return nil, err
 	}
 	reqQP := req.Raw().URL.Query()
-	reqQP.Set("api-version", "2023-09-01")
+	reqQP.Set("api-version", "2024-03-01")
 	req.Raw().URL.RawQuery = reqQP.Encode()
 	req.Raw().Header["Accept"] = []string{"application/json"}
 	if err := runtime.MarshalAsJSON(req, parameters); err != nil {
