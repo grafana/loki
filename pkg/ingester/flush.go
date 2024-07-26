@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -62,7 +63,7 @@ func (i *Ingester) Flush() {
 }
 
 // TransferOut implements ring.FlushTransferer
-// Noop implemenetation because ingesters have a WAL now that does not require transferring chunks any more.
+// Noop implementation because ingesters have a WAL now that does not require transferring chunks any more.
 // We return ErrTransferDisabled to indicate that we don't support transfers, and therefore we may flush on shutdown if configured to do so.
 func (i *Ingester) TransferOut(_ context.Context) error {
 	return ring.ErrTransferDisabled
@@ -410,10 +411,15 @@ func (i *Ingester) encodeChunk(ctx context.Context, ch *chunk.Chunk, desc *chunk
 	}
 	start := time.Now()
 	chunkBytesSize := desc.chunk.BytesSize() + 4*1024 // size + 4kB should be enough room for cortex header
-	if err := ch.EncodeTo(bytes.NewBuffer(make([]byte, 0, chunkBytesSize))); err != nil {
-		return fmt.Errorf("chunk encoding: %w", err)
-	}
+	if err := ch.EncodeTo(bytes.NewBuffer(make([]byte, 0, chunkBytesSize)), i.logger); err != nil {
+		if !errors.Is(err, chunk.ErrChunkDecode) {
+			return fmt.Errorf("chunk encoding: %w", err)
+		}
+
+		i.metrics.chunkDecodeFailures.Inc()
+	} 
 	i.metrics.chunkEncodeTime.Observe(time.Since(start).Seconds())
+	i.metrics.chunksEncoded.Inc()
 	return nil
 }
 

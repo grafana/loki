@@ -187,7 +187,14 @@ func (o *client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 	}
 
 	if err := c.Decode(decodeContext, buf.Bytes()); err != nil {
-		return chunk.Chunk{}, errors.WithStack(fmt.Errorf("failed to decode chunk '%s': %w", key, err))
+		return chunk.Chunk{}, errors.WithStack(
+			fmt.Errorf(
+				"failed to decode chunk '%s' for tenant `%s`: %w",
+				key,
+				c.ChunkRef.UserID,
+				err,
+			),
+		)
 	}
 	return c, nil
 }
