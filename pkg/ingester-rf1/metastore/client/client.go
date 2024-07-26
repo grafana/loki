@@ -14,7 +14,6 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
-	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 type Config struct {
@@ -58,8 +57,7 @@ func (c *Client) Service() services.Service { return c.service }
 
 func dial(cfg Config, r prometheus.Registerer) (*grpc.ClientConn, error) {
 	latency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace:                   constants.Loki,
-		Name:                        "metastore_request_duration_seconds",
+		Name:                        "loki_metastore_request_duration_seconds",
 		Help:                        "Time (in seconds) spent serving requests when using the metastore",
 		Buckets:                     instrument.DefBuckets,
 		NativeHistogramBucketFactor: 1.1,
