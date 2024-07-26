@@ -156,7 +156,7 @@ func (m *Manager) Append(r AppendRequest) (*AppendResult, error) {
 	s.w.Append(r.TenantID, r.LabelsStr, r.Labels, r.Entries, m.clock.Now())
 	// If the segment exceeded the maximum age or the maximum size, move s to
 	// the closed list to be flushed.
-	if m.clock.Since(s.w.firstAppend) >= m.cfg.MaxAge || s.w.InputSize() >= m.cfg.MaxSegmentSize {
+	if s.w.Age(m.clock.Now()) >= m.cfg.MaxAge || s.w.InputSize() >= m.cfg.MaxSegmentSize {
 		m.move(el, s)
 	}
 	return s.r, nil
@@ -224,7 +224,7 @@ func (m *Manager) move(el *list.Element, s *segment) {
 func (m *Manager) moveFrontIfExpired() bool {
 	if el := m.available.Front(); el != nil {
 		s := el.Value.(*segment)
-		if !s.w.firstAppend.IsZero() && m.clock.Since(s.w.firstAppend) >= m.cfg.MaxAge {
+		if s.w.Age(m.clock.Now()) >= m.cfg.MaxAge {
 			m.move(el, s)
 			return true
 		}

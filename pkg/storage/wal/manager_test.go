@@ -54,6 +54,38 @@ func TestManager_Append(t *testing.T) {
 	require.NoError(t, res.Err())
 }
 
+func TestManager_AppendNoEntries(t *testing.T) {
+	m, err := NewManager(Config{
+		MaxAge:         30 * time.Second,
+		MaxSegments:    1,
+		MaxSegmentSize: 1024, // 1KB
+	}, NewManagerMetrics(nil))
+	require.NoError(t, err)
+
+	// Append no entries.
+	lbs := labels.Labels{{Name: "a", Value: "b"}}
+	res, err := m.Append(AppendRequest{
+		TenantID:  "1",
+		Labels:    lbs,
+		LabelsStr: lbs.String(),
+		Entries:   []*logproto.Entry{},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, res)
+
+	// The data hasn't been flushed, so reading from Done() should block.
+	select {
+	case <-res.Done():
+		t.Fatal("unexpected closed Done()")
+	default:
+	}
+
+	// The segment that was just appended to has neither reached the maximum
+	// age nor maximum size to be flushed.
+	require.Equal(t, 1, m.available.Len())
+	require.Equal(t, 0, m.pending.Len())
+}
+
 func TestManager_AppendFailed(t *testing.T) {
 	m, err := NewManager(Config{
 		MaxAge:         30 * time.Second,

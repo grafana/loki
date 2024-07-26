@@ -140,6 +140,9 @@ func NewWalSegmentWriter() (*SegmentWriter, error) {
 
 // Age returns the age of the segment.
 func (b *SegmentWriter) Age(now time.Time) time.Duration {
+	if b.firstAppend.IsZero() {
+		return 0
+	}
 	return now.Sub(b.firstAppend)
 }
 
