@@ -54,7 +54,7 @@ func ForEachChunk(ctx context.Context, bucket *bbolt.Bucket, config config.Perio
 		}
 	}
 
-	return ctx.Err()
+	return context.Cause(ctx)
 }
 
 type seriesCleaner struct {

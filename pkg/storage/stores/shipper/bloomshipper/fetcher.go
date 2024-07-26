@@ -124,7 +124,7 @@ func (f *Fetcher) FetchMetas(ctx context.Context, refs []MetaRef) ([]Meta, error
 	logger := spanlogger.FromContextWithFallback(ctx, f.logger)
 
 	if ctx.Err() != nil {
-		return nil, errors.Wrap(ctx.Err(), "fetch Metas")
+		return nil, errors.Wrap(context.Cause(ctx), "fetch Metas")
 	}
 
 	keys := make([]string, 0, len(refs))
@@ -318,7 +318,7 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 
 func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef, BlockDirectory]) {
 	if ctx.Err() != nil {
-		task.errors <- ctx.Err()
+		task.errors <- context.Cause(ctx)
 		return
 	}
 
@@ -371,7 +371,7 @@ func (f *Fetcher) fromCache(ctx context.Context, key string) (BlockDirectory, bo
 	var zero BlockDirectory
 
 	if ctx.Err() != nil {
-		return zero, false, errors.Wrap(ctx.Err(), "from cache")
+		return zero, false, errors.Wrap(context.Cause(ctx), "from cache")
 	}
 
 	item, found := f.blocksCache.Get(ctx, key)
@@ -390,7 +390,7 @@ func (f *Fetcher) fetchBlock(ctx context.Context, ref BlockRef) (BlockDirectory,
 	var zero BlockDirectory
 
 	if ctx.Err() != nil {
-		return zero, errors.Wrap(ctx.Err(), "fetch block")
+		return zero, errors.Wrap(context.Cause(ctx), "fetch block")
 	}
 
 	fromStorage, err := f.client.GetBlock(ctx, ref)
@@ -535,7 +535,7 @@ func (q *downloadQueue[T, R]) runWorker() {
 
 func (q *downloadQueue[T, R]) do(ctx context.Context, task downloadRequest[T, R]) {
 	if ctx.Err() != nil {
-		task.errors <- ctx.Err()
+		task.errors <- context.Cause(ctx)
 		return
 	}
 	q.mu.LockKey(task.key)

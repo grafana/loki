@@ -146,7 +146,7 @@ func (p *Planner) running(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			if err := ctx.Err(); !errors.Is(err, context.Canceled) {
+			if err := context.Cause(ctx); !errors.Is(err, context.Canceled) {
 				level.Error(p.logger).Log("msg", "planner context done with error", "err", err)
 				return err
 			}
@@ -402,7 +402,7 @@ func (p *Planner) processTenantTaskResults(
 	for i := 0; i < totalTasks; i++ {
 		select {
 		case <-ctx.Done():
-			if err := ctx.Err(); err != nil && !errors.Is(err, context.Canceled) {
+			if err := context.Cause(ctx); err != nil && !errors.Is(err, context.Canceled) {
 				level.Error(logger).Log("msg", "planner context done with error", "err", err)
 				return tasksSucceed, err
 			}
@@ -632,7 +632,7 @@ func (p *Planner) loadTenantWork(
 		return nil, fmt.Errorf("error iterating tables: %w", err)
 	}
 
-	return tenantTableWork, ctx.Err()
+	return tenantTableWork, context.Cause(ctx)
 }
 
 func (p *Planner) tenants(ctx context.Context, table config.DayTable) (*iter.SliceIter[string], error) {
@@ -882,7 +882,7 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 		p.metrics.queueDuration.Observe(queueTime.Seconds())
 
 		if task.ctx.Err() != nil {
-			level.Warn(logger).Log("msg", "task context done after dequeue", "err", task.ctx.Err())
+			level.Warn(logger).Log("msg", "task context done after dequeue", "err", context.Cause(task.ctx))
 			lastIndex = lastIndex.ReuseLastIndex()
 			p.removePendingTask(task)
 			continue

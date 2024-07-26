@@ -53,7 +53,7 @@ func (c *storeEntry) GetChunks(
 	[]*fetcher.Fetcher,
 	error) {
 	if ctx.Err() != nil {
-		return nil, nil, ctx.Err()
+		return nil, nil, context.Cause(ctx)
 	}
 
 	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)

@@ -164,7 +164,7 @@ func NewTSDBSeriesIter(ctx context.Context, user string, f sharding.ForSeries, b
 
 	select {
 	case <-ctx.Done():
-		return iter.NewEmptyIter[*v1.Series](), ctx.Err()
+		return iter.NewEmptyIter[*v1.Series](), context.Cause(ctx)
 	default:
 		return iter.NewCancelableIter[*v1.Series](ctx, iter.NewSliceIter[*v1.Series](series)), nil
 	}

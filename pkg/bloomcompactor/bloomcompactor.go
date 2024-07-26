@@ -139,7 +139,7 @@ func (c *Compactor) running(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			err := ctx.Err()
+			err := context.Cause(ctx)
 			level.Debug(c.logger).Log("msg", "compactor context done", "err", err)
 			return err
 
@@ -257,7 +257,7 @@ func (c *Compactor) runOne(ctx context.Context) error {
 
 	wg.Wait()
 	duration := time.Since(start)
-	err = multierror.New(retentionErr, workersErr, err, ctx.Err()).Err()
+	err = multierror.New(retentionErr, workersErr, err, context.Cause(ctx)).Err()
 
 	if err != nil {
 		level.Error(c.logger).Log("msg", "compaction iteration failed", "err", err, "duration", duration)
@@ -362,7 +362,7 @@ func (c *Compactor) loadWork(
 				select {
 				case ch <- tt:
 				case <-ctx.Done():
-					return ctx.Err()
+					return context.Cause(ctx)
 				}
 			}
 		}
@@ -380,7 +380,7 @@ func (c *Compactor) loadWork(
 	}
 
 	close(ch)
-	return ctx.Err()
+	return context.Cause(ctx)
 }
 
 func (c *Compactor) runWorkers(
@@ -413,7 +413,7 @@ func (c *Compactor) runWorkers(
 		for {
 			select {
 			case <-ctx.Done():
-				return ctx.Err()
+				return context.Cause(ctx)
 
 			case tt, ok := <-input:
 				if !ok {

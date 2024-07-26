@@ -237,7 +237,7 @@ func (t *TCPTransport) acceptConnections() {
 		c, err := t.listener.Accept()
 		if err != nil {
 			if !t.Ready() {
-				level.Info(l).Log("msg", "syslog server shutting down", "protocol", protocolTCP, "err", t.ctx.Err())
+				level.Info(l).Log("msg", "syslog server shutting down", "protocol", protocolTCP, "err", context.Cause(t.ctx))
 				return
 			}
 
@@ -350,7 +350,7 @@ func (t *UDPTransport) acceptPackets() {
 
 	for {
 		if !t.Ready() {
-			level.Info(t.logger).Log("msg", "syslog server shutting down", "protocol", protocolUDP, "err", t.ctx.Err())
+			level.Info(t.logger).Log("msg", "syslog server shutting down", "protocol", protocolUDP, "err", context.Cause(t.ctx))
 			for _, stream := range streams {
 				if err = stream.Close(); err != nil {
 					level.Error(t.logger).Log("msg", "failed to close pipe", "err", err)

@@ -160,7 +160,7 @@ func (o *client) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.C
 
 func (o *client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
 	if ctx.Err() != nil {
-		return chunk.Chunk{}, ctx.Err()
+		return chunk.Chunk{}, context.Cause(ctx)
 	}
 
 	key := o.schema.ExternalKey(c.ChunkRef)

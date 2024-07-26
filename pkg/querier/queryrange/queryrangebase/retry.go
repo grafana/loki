@@ -83,7 +83,7 @@ func (r retry) Do(ctx context.Context, req Request) (Response, error) {
 	for ; tries < r.maxRetries; tries++ {
 		// Make sure the context isn't done before sending the request
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return nil, context.Cause(ctx)
 		}
 
 		resp, err := r.next.Do(ctx, req)

@@ -260,7 +260,7 @@ func (rep *Reporter) running(ctx context.Context) error {
 
 	if rep.cluster == nil {
 		<-ctx.Done()
-		if err := ctx.Err(); !errors.Is(err, context.Canceled) {
+		if err := context.Cause(ctx); !errors.Is(err, context.Canceled) {
 			return err
 		}
 		return nil
@@ -291,7 +291,7 @@ func (rep *Reporter) running(ctx context.Context) error {
 			rep.lastReport = next
 			next = next.Add(reportInterval)
 		case <-ctx.Done():
-			if err := ctx.Err(); !errors.Is(err, context.Canceled) {
+			if err := context.Cause(ctx); !errors.Is(err, context.Canceled) {
 				return err
 			}
 			return nil

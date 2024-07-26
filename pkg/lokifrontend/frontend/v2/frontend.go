@@ -265,7 +265,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 				level.Warn(f.log).Log("msg", "failed to send cancellation request to scheduler, queue full")
 			}
 		}
-		return nil, ctx.Err()
+		return nil, context.Cause(ctx)
 
 	case resp := <-freq.response:
 		switch concrete := resp.Response.(type) {
@@ -341,7 +341,7 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 				level.Warn(f.log).Log("msg", "failed to send cancellation request to scheduler, queue full")
 			}
 		}
-		return nil, ctx.Err()
+		return nil, context.Cause(ctx)
 
 	case resp := <-freq.response:
 		if resp.error != nil {
@@ -377,7 +377,7 @@ enqueueAgain:
 	var cancelCh chan<- uint64
 	select {
 	case <-ctx.Done():
-		return cancelCh, ctx.Err()
+		return cancelCh, context.Cause(ctx)
 
 	case f.requestsCh <- freq:
 		// Enqueued, let's wait for response.

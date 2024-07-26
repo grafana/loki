@@ -344,10 +344,10 @@ func (c *COSObjectClient) GetObject(ctx context.Context, objectKey string) (io.R
 	bucket := c.bucketFromKey(objectKey)
 
 	retries := backoff.New(ctx, c.cfg.BackoffConfig)
-	err := ctx.Err()
+	err := context.Cause(ctx)
 	for retries.Ongoing() {
 		if ctx.Err() != nil {
-			return nil, 0, errors.Wrap(ctx.Err(), "ctx related error during cos getObject")
+			return nil, 0, errors.Wrap(context.Cause(ctx), "ctx related error during cos getObject")
 		}
 		err = instrument.CollectedRequest(ctx, "COS.GetObject", cosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			var requestErr error

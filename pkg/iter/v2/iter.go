@@ -149,7 +149,7 @@ func (cii *CancellableIter[T]) Next() bool {
 }
 
 func (cii *CancellableIter[T]) Err() error {
-	if err := cii.ctx.Err(); err != nil {
+	if err := context.Cause(cii.ctx); err != nil {
 		return err
 	}
 	return cii.Iterator.Err()

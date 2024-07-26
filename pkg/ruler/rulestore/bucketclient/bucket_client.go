@@ -252,7 +252,7 @@ func (b *BucketRuleStore) DeleteNamespace(ctx context.Context, userID string, na
 
 	userBucket := bucket.NewUserBucketClient(userID, b.bucket, b.cfgProvider)
 	for _, rg := range ruleGroupList {
-		if err := ctx.Err(); err != nil {
+		if err := context.Cause(ctx); err != nil {
 			return err
 		}
 		objectKey := getRuleGroupObjectKey(rg.Namespace, rg.Name)

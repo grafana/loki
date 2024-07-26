@@ -145,7 +145,7 @@ func (s *OssObjectClient) List(ctx context.Context, prefix, delimiter string) ([
 	marker := oss.Marker("")
 	for {
 		if ctx.Err() != nil {
-			return nil, nil, ctx.Err()
+			return nil, nil, context.Cause(ctx)
 		}
 
 		objects, err := s.defaultBucket.ListObjects(oss.Prefix(prefix), oss.Delimiter(delimiter), marker)

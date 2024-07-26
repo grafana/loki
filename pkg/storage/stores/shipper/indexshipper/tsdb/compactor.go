@@ -328,7 +328,7 @@ func (c *compactedIndex) ForEachChunk(ctx context.Context, callback retention.Ch
 		}
 	}
 
-	return ctx.Err()
+	return context.Cause(ctx)
 }
 
 // IndexChunk adds the chunk to the list of chunks to index.

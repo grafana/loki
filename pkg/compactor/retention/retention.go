@@ -125,7 +125,7 @@ func (t *Marker) markTable(ctx context.Context, tableName, userID string, indexP
 	}
 
 	if ctx.Err() != nil {
-		return false, false, ctx.Err()
+		return false, false, context.Cause(ctx)
 	}
 
 	chunkRewriter := newChunkRewriter(t.chunkClient, tableName, indexProcessor)
@@ -244,7 +244,7 @@ func markForDelete(
 		return true, true, nil
 	}
 	if ctx.Err() != nil {
-		return false, false, ctx.Err()
+		return false, false, context.Cause(ctx)
 	}
 
 	return false, modified, seriesMap.ForEach(func(info userSeriesInfo) error {

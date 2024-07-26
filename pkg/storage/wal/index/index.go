@@ -1429,7 +1429,7 @@ func (r *Reader) LabelNamesFor(ctx context.Context, ids ...storage.SeriesRef) ([
 	offsetsMap := make(map[uint32]struct{})
 	for _, id := range ids {
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return nil, context.Cause(ctx)
 		}
 
 		offset := id
@@ -1524,7 +1524,7 @@ func (r *Reader) traversePostingOffsets(ctx context.Context, off int, cb func(st
 	d := encoding.NewDecbufAt(r.b, int(r.toc.PostingsTable), nil)
 	d.Skip(off)
 	skip := 0
-	ctxErr := ctx.Err()
+	ctxErr := context.Cause(ctx)
 	for d.Err() == nil && ctxErr == nil {
 		if skip == 0 {
 			// These are always the same number of bytes,
@@ -1543,7 +1543,7 @@ func (r *Reader) traversePostingOffsets(ctx context.Context, off int, cb func(st
 		} else if !ok {
 			break
 		}
-		ctxErr = ctx.Err()
+		ctxErr = context.Cause(ctx)
 	}
 	if d.Err() != nil {
 		return fmt.Errorf("get postings offset entry: %w", d.Err())
@@ -1676,7 +1676,7 @@ func (r *Reader) postingsForLabelMatchingV1(ctx context.Context, name string, ma
 	count := 1
 	for val, offset := range e {
 		if count%checkContextEveryNIterations == 0 && ctx.Err() != nil {
-			return index.ErrPostings(ctx.Err())
+			return index.ErrPostings(context.Cause(ctx))
 		}
 		count++
 		if !match(val) {

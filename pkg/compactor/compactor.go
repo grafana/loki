@@ -805,7 +805,7 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) (err
 		return firstErr
 	}
 
-	return ctx.Err()
+	return context.Cause(ctx)
 }
 
 type expirationChecker struct {

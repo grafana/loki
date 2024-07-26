@@ -213,7 +213,7 @@ func (s *GCSObjectClient) List(ctx context.Context, prefix, delimiter string) ([
 	iter := s.defaultBucket.Objects(ctx, q)
 	for {
 		if ctx.Err() != nil {
-			return nil, nil, ctx.Err()
+			return nil, nil, context.Cause(ctx)
 		}
 
 		attr, err := iter.Next()

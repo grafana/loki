@@ -232,7 +232,7 @@ func (o *RuleStore) DeleteNamespace(ctx context.Context, userID, namespace strin
 	}
 
 	for _, obj := range ruleGroupObjects {
-		if err := ctx.Err(); err != nil {
+		if err := context.Cause(ctx); err != nil {
 			return err
 		}
 

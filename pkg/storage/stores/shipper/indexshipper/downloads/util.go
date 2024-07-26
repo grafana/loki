@@ -29,7 +29,7 @@ func (m *mtxWithReadiness) awaitReady(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return context.Cause(ctx)
 	case <-m.ready:
 		return nil
 	}

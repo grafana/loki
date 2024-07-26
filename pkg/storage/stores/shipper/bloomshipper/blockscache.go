@@ -156,7 +156,7 @@ func NewFsBlocksCache(cfg config.BlocksCacheConfig, reg prometheus.Registerer, l
 // It stores a value with given key.
 func (c *BlocksCache) Put(ctx context.Context, key string, value BlockDirectory) error {
 	if ctx.Err() != nil {
-		return ctx.Err()
+		return context.Cause(ctx)
 	}
 
 	c.lock.Lock()
@@ -169,7 +169,7 @@ func (c *BlocksCache) Put(ctx context.Context, key string, value BlockDirectory)
 // It stores a value with given key and increments the ref counter on that item.
 func (c *BlocksCache) PutInc(ctx context.Context, key string, value BlockDirectory) error {
 	if ctx.Err() != nil {
-		return ctx.Err()
+		return context.Cause(ctx)
 	}
 
 	c.lock.Lock()
@@ -187,7 +187,7 @@ func (c *BlocksCache) PutInc(ctx context.Context, key string, value BlockDirecto
 // PutMany implements Cache.
 func (c *BlocksCache) PutMany(ctx context.Context, keys []string, values []BlockDirectory) error {
 	if ctx.Err() != nil {
-		return ctx.Err()
+		return context.Cause(ctx)
 	}
 
 	c.lock.Lock()
@@ -324,7 +324,7 @@ func (c *BlocksCache) get(key string) *Entry {
 // Release decrements the ref counter on the cached item with given key.
 func (c *BlocksCache) Release(ctx context.Context, key string) error {
 	if ctx.Err() != nil {
-		return ctx.Err()
+		return context.Cause(ctx)
 	}
 
 	// We can use a read lock because we only update a field on an existing entry

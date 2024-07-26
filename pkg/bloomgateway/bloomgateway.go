@@ -274,7 +274,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	select {
 	case <-ctx.Done():
 		stats.Status = "cancel"
-		return nil, errors.Wrap(ctx.Err(), "request failed")
+		return nil, errors.Wrap(context.Cause(ctx), "request failed")
 	case task = <-tasksCh:
 		if task.Err() != nil {
 			stats.Status = labelFailure
