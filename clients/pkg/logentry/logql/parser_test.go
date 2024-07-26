@@ -151,7 +151,25 @@ func TestParse(t *testing.T) {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := ParseExpr(tc.in)
 			require.Equal(t, tc.err, err)
-			require.Equal(t, tc.exp, ast)
+
+			if tc.exp == nil {
+				require.Nil(t, ast)
+			} else {
+				require.NotNil(t, ast)
+
+				// TODO this test is just comparing the matchers, I don't have a smart idea on how to compare the whole expression.
+				// Maybe we can use the visitor pattern? Alternatively, we may try to use reflection to manipulate the matchers
+				// to make them comparable with deep equal.
+
+				// Prometheus label matchers are not comparable with a deep equal because of the internal
+				// fast regexp implementation. For this reason, we compare their string representation.
+				expectedMatchers := tc.exp.Matchers()
+				actualMatchers := ast.Matchers()
+				require.Len(t, actualMatchers, len(expectedMatchers))
+				for i, expected := range expectedMatchers {
+					require.Equal(t, expected.String(), actualMatchers[i].String())
+				}
+			}
 		})
 	}
 }
