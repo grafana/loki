@@ -260,6 +260,7 @@ func parseLokiChunk(chunkHeader *ChunkHeader, r io.Reader) (*LokiChunk, error) {
 
 		offset := block.dataOffset
 		if offset != expectedOffset {
+			fmt.Printf("Incorrect offset. expected %v actual %v\n", expectedOffset, offset)
 			offset = expectedOffset
 		}
 
@@ -268,6 +269,8 @@ func parseLokiChunk(chunkHeader *ChunkHeader, r io.Reader) (*LokiChunk, error) {
 		block.computedChecksum = crc32.Checksum(block.rawData, castagnoliTable)
 		block.originalData, block.entries, err = parseLokiBlock(f, compression, block.rawData, structuredMetadataSymbols)
 		lokiChunk.blocks = append(lokiChunk.blocks, block)
+
+		expectedOffset += dataLength + 4
 	}
 
 	return lokiChunk, nil
