@@ -371,7 +371,11 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 		case SampleVector:
 			maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
 			maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
-			return q.JoinSampleVector(next, vec, stepEvaluator, maxSeries)
+			mfl := false
+			if rae, ok := expr.(*syntax.RangeAggregationExpr); ok && (rae.Operation == syntax.OpRangeTypeFirstWithTimestamp || rae.Operation == syntax.OpRangeTypeLastWithTimestamp) {
+				mfl = true
+			}
+			return q.JoinSampleVector(next, vec, stepEvaluator, maxSeries, mfl)
 		case ProbabilisticQuantileVector:
 			return MergeQuantileSketchVector(next, vec, stepEvaluator, q.params)
 		default:
@@ -381,9 +385,31 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	return nil, errors.New("unexpected empty result")
 }
 
-func (q *query) JoinSampleVector(next bool, r StepResult, stepEvaluator StepEvaluator, maxSeries int) (promql_parser.Value, error) {
-	seriesIndex := map[uint64]*promql.Series{}
+func vectorsToSeries(vec promql.Vector, sm map[uint64]promql.Series) {
+	for _, p := range vec {
+		var (
+			series promql.Series
+			hash   = p.Metric.Hash()
+			ok     bool
+		)
 
+		series, ok = sm[hash]
+		if !ok {
+			series = promql.Series{
+				Metric: p.Metric,
+				Floats: make([]promql.FPoint, 0, 1),
+			}
+			sm[hash] = series
+		}
+		series.Floats = append(series.Floats, promql.FPoint{
+			T: p.T,
+			F: p.F,
+		})
+		sm[hash] = series
+	}
+}
+
+func (q *query) JoinSampleVector(next bool, r StepResult, stepEvaluator StepEvaluator, maxSeries int, mergeFirstLast bool) (promql_parser.Value, error) {
 	vec := promql.Vector{}
 	if next {
 		vec = r.SampleVector()
@@ -393,8 +419,21 @@ func (q *query) JoinSampleVector(next bool, r StepResult, stepEvaluator StepEval
 	if len(vec) > maxSeries {
 		return nil, logqlmodel.NewSeriesLimitError(maxSeries)
 	}
+	seriesIndex := map[uint64]promql.Series{}
 
 	if GetRangeType(q.params) == InstantType {
+		// an instant query sharded first/last_over_time can return a single vector
+		if mergeFirstLast {
+			vectorsToSeries(vec, seriesIndex)
+			series := make([]promql.Series, 0, len(seriesIndex))
+			for _, s := range seriesIndex {
+				series = append(series, s)
+			}
+			result := promql.Matrix(series)
+			sort.Sort(result)
+			return result, stepEvaluator.Error()
+		}
+
 		sortByValue, err := Sortable(q.params)
 		if err != nil {
 			return nil, fmt.Errorf("fail to check Sortable, logql: %s ,err: %s", q.params.QueryString(), err)
@@ -412,26 +451,7 @@ func (q *query) JoinSampleVector(next bool, r StepResult, stepEvaluator StepEval
 
 	for next {
 		vec = r.SampleVector()
-		for _, p := range vec {
-			var (
-				series *promql.Series
-				hash   = p.Metric.Hash()
-				ok     bool
-			)
-
-			series, ok = seriesIndex[hash]
-			if !ok {
-				series = &promql.Series{
-					Metric: p.Metric,
-					Floats: make([]promql.FPoint, 0, stepCount),
-				}
-				seriesIndex[hash] = series
-			}
-			series.Floats = append(series.Floats, promql.FPoint{
-				T: p.T,
-				F: p.F,
-			})
-		}
+		vectorsToSeries(vec, seriesIndex)
 		// as we slowly build the full query for each steps, make sure we don't go over the limit of unique series.
 		if len(seriesIndex) > maxSeries {
 			return nil, logqlmodel.NewSeriesLimitError(maxSeries)
@@ -444,7 +464,7 @@ func (q *query) JoinSampleVector(next bool, r StepResult, stepEvaluator StepEval
 
 	series := make([]promql.Series, 0, len(seriesIndex))
 	for _, s := range seriesIndex {
-		series = append(series, *s)
+		series = append(series, s)
 	}
 	result := promql.Matrix(series)
 	sort.Sort(result)
