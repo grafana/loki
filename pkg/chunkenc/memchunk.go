@@ -441,9 +441,12 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 
 	metasOffset := uint64(0)
 	metasLen := uint64(0)
+	structuredMetadataLength := uint64(0)
+	structuredMetadataOffset := uint64(0)
 	if version >= ChunkFormatV4 {
 		// version >= 4 starts writing length of sections after their offsets
 		metasLen, metasOffset = readSectionLenAndOffset(chunkMetasSectionIdx)
+		structuredMetadataLength, structuredMetadataOffset = readSectionLenAndOffset(chunkStructuredMetadataSectionIdx)
 	} else {
 		// version <= 3 does not store length of metas. metas are followed by metasOffset + hash and then the chunk ends
 		metasOffset = binary.BigEndian.Uint64(b[len(b)-8:])
@@ -461,7 +464,7 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 	num := db.uvarint()
 	bc.blocks = make([]block, 0, num)
 
-	expectedOffset := -1
+	expectedOffset := int(structuredMetadataLength + structuredMetadataOffset + 4)
 	for i := 0; i < num; i++ {
 		var blk block
 		// Read #entries.
@@ -473,19 +476,17 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 
 		// Read offset and length.
 		blk.offset = db.uvarint()
-		if expectedOffset == -1 {
-			// init with offset of the first block
-			expectedOffset = blk.offset
-		}
 
 		if version >= ChunkFormatV3 {
 			blk.uncompressedSize = db.uvarint()
 		}
 
 		l := db.uvarint()
-		if blk.offset != expectedOffset {
-			_ = level.Error(util_log.Logger).Log("msg", "block offset does not match expected one", "actual", blk.offset, "expected", expectedOffset)
-			blk.offset = expectedOffset
+		if version >= ChunkFormatV4 {
+			if blk.offset != expectedOffset {
+				_ = level.Error(util_log.Logger).Log("msg", "block offset does not match expected one", "actual", blk.offset, "expected", expectedOffset)
+				blk.offset = expectedOffset
+			}
 		}
 
 		blk.b = b[blk.offset : blk.offset+l]
@@ -510,7 +511,6 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 	}
 
 	if version >= ChunkFormatV4 {
-		structuredMetadataLength, structuredMetadataOffset := readSectionLenAndOffset(chunkStructuredMetadataSectionIdx)
 		lb := b[structuredMetadataOffset : structuredMetadataOffset+structuredMetadataLength] // structured metadata offset + checksum
 		db = decbuf{b: lb}
 
