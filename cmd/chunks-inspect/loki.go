@@ -176,9 +176,10 @@ func parseLokiChunk(chunkHeader *ChunkHeader, r io.Reader) (*LokiChunk, error) {
 
 	// If chunkFormat >= v4 we also need to read the structured metadata section
 	var structuredMetadataSymbols []string
+	var structuredMetadataLength, structuredMetadataOffset uint64
 	if f >= chunkFormatV4 {
 		// the chunk metas section is index 2
-		structuredMetadataLength, structuredMetadataOffset := readSectionLenAndOffset(2)
+		structuredMetadataLength, structuredMetadataOffset = readSectionLenAndOffset(2)
 
 		//expCRC := binary.BigEndian.Uint32(data[structuredMetadataOffset+structuredMetadataLength:])
 		//computedMetaChecksum := crc32.Checksum(lb, castagnoliTable)
@@ -232,7 +233,7 @@ func parseLokiChunk(chunkHeader *ChunkHeader, r io.Reader) (*LokiChunk, error) {
 		computedMetadataChecksum: computedMetaChecksum,
 	}
 
-	expectedOffset := uint64(0)
+	expectedOffset := structuredMetadataOffset + structuredMetadataLength + 4
 	for ix := 0; ix < int(blocks); ix++ {
 		block := LokiBlock{}
 		// Read number of entries in block
@@ -243,9 +244,6 @@ func parseLokiChunk(chunkHeader *ChunkHeader, r io.Reader) (*LokiChunk, error) {
 		block.maxT, metadata, err = readVarint(err, metadata)
 		// Read offset to block data
 		block.dataOffset, metadata, err = readUvarint(err, metadata)
-		if expectedOffset == 0 {
-			expectedOffset = block.dataOffset
-		}
 		if f >= chunkFormatV3 {
 			// Read uncompressed size
 			block.uncompSize, metadata, err = readUvarint(err, metadata)
