@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 
 	"github.com/pkg/errors"
@@ -118,6 +119,7 @@ func parseBlocks(b []byte, encoding chunkenc.Encoding, version byte) ([]block, e
 	// Read the number of blocks.
 	num := db.uvarint()
 	blocks := make([]block, 0, num)
+	expectedOffset := -1
 	for i := 0; i < num; i++ {
 		var blk block
 		// Read #entries.
@@ -129,11 +131,20 @@ func parseBlocks(b []byte, encoding chunkenc.Encoding, version byte) ([]block, e
 
 		// Read offset and length.
 		blk.offset = db.uvarint()
+		if expectedOffset == -1 {
+			expectedOffset = blk.offset
+		}
 		if version >= chunkenc.ChunkFormatV3 {
 			blk.uncompressedSize = db.uvarint()
 		}
 		l := db.uvarint()
-		blk.rawData = b[blk.offset : blk.offset+l]
+
+		offset := blk.offset
+		if expectedOffset != offset {
+			offset = expectedOffset
+			fmt.Printf("Offset Mismatch. entry=%s\n", string(b[offset:offset+l]))
+		}
+		blk.rawData = b[offset : offset+l]
 
 		r, err := decompressorPool.GetReader(bytes.NewBuffer(blk.rawData))
 		if err != nil {
@@ -145,6 +156,7 @@ func parseBlocks(b []byte, encoding chunkenc.Encoding, version byte) ([]block, e
 		}
 
 		blocks = append(blocks, blk)
+		expectedOffset += l + 4
 	}
 	return blocks, nil
 }

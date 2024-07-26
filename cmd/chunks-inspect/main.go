@@ -91,7 +91,7 @@ func printFile(filename string, blockDetails, printLines, storeBlocks bool) {
 		if printLines {
 			iter := b.Iterator(context.Background(), pipeline.ForStream(nil))
 			for iter.Next() {
-				e := iter.Entry()
+				e := iter.At()
 				fmt.Printf("%v\t%s\n", e.Timestamp.In(timezone).Format(format), strings.TrimSpace(e.Line))
 				if e.StructuredMetadata != nil {
 					fmt.Println("Structured Metadata:")
