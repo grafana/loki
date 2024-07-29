@@ -80,7 +80,7 @@ These HTTP endpoints are exposed by the `ingester`, `write`, and `all` component
 These HTTP endpoints are exposed by the `ruler` component:
 
 - [`GET /loki/api/v1/rules`](#list-rule-groups)
-- [`GET /loki/api/v1/rules/({namespace}`](#get-rule-groups-by-namespace)
+- [`GET /loki/api/v1/rules/{namespace}`](#get-rule-groups-by-namespace)
 - [`GET /loki/api/v1/rules/{namespace}/{groupName}`](#get-rule-group)
 - [`POST /loki/api/v1/rules/{namespace}`](#set-rule-group)
 - [`DELETE /loki/api/v1/rules/{namespace}/{groupName}`](#delete-rule-group)
