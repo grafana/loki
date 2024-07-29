@@ -54,10 +54,12 @@ func TestParseRequest(t *testing.T) {
 		contentType                     string
 		contentEncoding                 string
 		valid                           bool
+		enableServiceDiscovery          bool
 		expectedStructuredMetadataBytes int
 		expectedBytes                   int
 		expectedLines                   int
 		expectedBytesUsageTracker       map[string]float64
+		expectedLabels                  labels.Labels
 	}{
 		{
 			path:        `/loki/api/v1/push`,
@@ -79,6 +81,7 @@ func TestParseRequest(t *testing.T) {
 			expectedBytes:             len("fizzbuzz"),
 			expectedLines:             1,
 			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuss"))},
+			expectedLabels:            labels.FromStrings("foo", "bar2"),
 		},
 		{
 			path:                      `/loki/api/v1/push`,
@@ -89,6 +92,7 @@ func TestParseRequest(t *testing.T) {
 			expectedBytes:             len("fizzbuzz"),
 			expectedLines:             1,
 			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuss"))},
+			expectedLabels:            labels.FromStrings("foo", "bar2"),
 		},
 		{
 			path:            `/loki/api/v1/push`,
@@ -106,6 +110,7 @@ func TestParseRequest(t *testing.T) {
 			expectedBytes:             len("fizzbuzz"),
 			expectedLines:             1,
 			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuss"))},
+			expectedLabels:            labels.FromStrings("foo", "bar2"),
 		},
 		{
 			path:                      `/loki/api/v1/push`,
@@ -116,6 +121,7 @@ func TestParseRequest(t *testing.T) {
 			expectedBytes:             len("fizzbuzz"),
 			expectedLines:             1,
 			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuss"))},
+			expectedLabels:            labels.FromStrings("foo", "bar2"),
 		},
 		{
 			path:            `/loki/api/v1/push`,
@@ -133,6 +139,7 @@ func TestParseRequest(t *testing.T) {
 			expectedBytes:             len("fizzbuzz"),
 			expectedLines:             1,
 			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuss"))},
+			expectedLabels:            labels.FromStrings("foo", "bar2"),
 		},
 		{
 			path:                      `/loki/api/v1/push`,
@@ -143,6 +150,7 @@ func TestParseRequest(t *testing.T) {
 			expectedBytes:             len("fizzbuzz"),
 			expectedLines:             1,
 			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuss"))},
+			expectedLabels:            labels.FromStrings("foo", "bar2"),
 		},
 		{
 			path:            `/loki/api/v1/push`,
@@ -196,6 +204,29 @@ func TestParseRequest(t *testing.T) {
 			expectedBytes:                   len("fizzbuzz") + 2*len("a") + 2*len("b"),
 			expectedLines:                   1,
 			expectedBytesUsageTracker:       map[string]float64{`{foo="bar2"}`: float64(len("fizzbuzz") + 2*len("a") + 2*len("b"))},
+			expectedLabels:                  labels.FromStrings("foo", "bar2"),
+		},
+		{
+			path:                      `/loki/api/v1/push`,
+			body:                      `{"streams": [{ "stream": { "foo": "bar2", "job": "stuff" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`,
+			contentType:               `application/json`,
+			valid:                     true,
+			enableServiceDiscovery:    true,
+			expectedBytes:             len("fizzbuzz"),
+			expectedLines:             1,
+			expectedBytesUsageTracker: map[string]float64{`{foo="bar2", job="stuff"}`: float64(len("fizzbuss"))},
+			expectedLabels:            labels.FromStrings("foo", "bar2", LabelServiceName, "stuff"),
+		},
+		{
+			path:                      `/loki/api/v1/push`,
+			body:                      `{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`,
+			contentType:               `application/json`,
+			valid:                     true,
+			enableServiceDiscovery:    true,
+			expectedBytes:             len("fizzbuzz"),
+			expectedLines:             1,
+			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuss"))},
+			expectedLabels:            labels.FromStrings("foo", "bar2", LabelServiceName, ServiceUnknown),
 		},
 	} {
 		t.Run(fmt.Sprintf("test %d", index), func(t *testing.T) {
@@ -212,7 +243,7 @@ func TestParseRequest(t *testing.T) {
 			}
 
 			tracker := NewMockTracker()
-			data, err := ParseRequest(util_log.Logger, "fake", request, nil, nil, ParseLokiRequest, tracker)
+			data, err := ParseRequest(util_log.Logger, "fake", request, nil, &fakeLimits{test.enableServiceDiscovery}, ParseLokiRequest, tracker)
 
 			structuredMetadataBytesReceived := int(structuredMetadataBytesReceivedStats.Value()["total"].(int64)) - previousStructuredMetadataBytesReceived
 			previousStructuredMetadataBytesReceived += structuredMetadataBytesReceived
@@ -243,6 +274,33 @@ func TestParseRequest(t *testing.T) {
 				require.Equal(t, float64(0), testutil.ToFloat64(linesIngested.WithLabelValues("fake")))
 			}
 		})
+	}
+}
+
+type fakeLimits struct {
+	enabled bool
+}
+
+func (l *fakeLimits) OTLPConfig(userID string) OTLPConfig {
+	return OTLPConfig{}
+}
+
+func (l *fakeLimits) DiscoverServiceName(userID string) []string {
+	if !l.enabled {
+		return nil
+	}
+
+	return []string{
+		"service",
+		"app",
+		"application",
+		"name",
+		"app_kubernetes_io_name",
+		"container",
+		"container_name",
+		"component",
+		"workload",
+		"job",
 	}
 }
 
