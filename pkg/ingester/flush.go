@@ -288,7 +288,8 @@ func (i *Ingester) flushUserSeries(ctx context.Context, userID string, fp model.
 	}
 
 	lbs := labels.String()
-	level.Info(i.logger).Log(
+	logValues := make([]interface{}, 0, 35)
+	logValues = append(logValues,
 		"msg", "flushing stream",
 		"user", userID,
 		"fp", fp,
@@ -297,9 +298,10 @@ func (i *Ingester) flushUserSeries(ctx context.Context, userID string, fp model.
 		"total_comp", humanize.Bytes(uint64(totalCompressedSize)),
 		"avg_comp", humanize.Bytes(uint64(totalCompressedSize/len(chunks))),
 		"total_uncomp", humanize.Bytes(uint64(totalUncompressedSize)),
-		"avg_uncomp", humanize.Bytes(uint64(totalUncompressedSize/len(chunks))),
-		frc.Log(),
-		"labels", lbs)
+		"avg_uncomp", humanize.Bytes(uint64(totalUncompressedSize/len(chunks))))
+	logValues = append(logValues, frc.Log()...)
+	logValues = append(logValues, "labels", lbs)
+	level.Info(i.logger).Log(logValues...)
 
 	ctx = user.InjectOrgID(ctx, userID)
 	ctx, cancelFunc := context.WithTimeout(ctx, i.cfg.FlushOpTimeout)
