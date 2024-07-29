@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 )
 
 type BloomTest interface {
@@ -65,6 +66,29 @@ func ExtractTestableLineFilters(expr syntax.Expr) []syntax.LineFilterExpr {
 	}
 	expr.Accept(visitor)
 	return filters
+}
+
+func ShouldUseBloomFilter(expr syntax.Expr, stats *stats.Stats) bool {
+	filters := ExtractTestableLineFilters(expr)
+	if len(filters) == 0 {
+		return false
+	}
+
+	// Less than 50GB
+	// TODO: configurable
+	if stats.Bytes < 50*(1<<30) {
+		return false
+	}
+
+	// At least one line filter should be longer than the n-gram length
+	// TODO: Look at the ngram length per-tenant override (default is 4)
+	for _, f := range filters {
+		if len(f.LineFilter.Match) > 4 {
+			return true
+		}
+	}
+
+	return false
 }
 
 // FiltersToBloomTest converts a list of line filters to a BloomTest.

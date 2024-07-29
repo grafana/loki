@@ -246,9 +246,13 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 		return result, nil
 	}
 
-	// Extract LineFiltersExpr from the plan. If there is none, we can short-circuit and return before making a req
-	// to the bloom-gateway (through the g.bloomQuerier)
-	if len(v1.ExtractTestableLineFilters(req.Plan.AST)) == 0 {
+	stats, err := g.indexQuerier.Stats(ctx, instanceID, req.From, req.Through, matchers...)
+	if err != nil {
+		return nil, err
+	}
+
+	// Short-circuit if the query would not benefit from bloom filtering
+	if !v1.ShouldUseBloomFilter(req.Plan.AST, stats) {
 		return result, nil
 	}
 
