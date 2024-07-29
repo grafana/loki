@@ -41,11 +41,12 @@ func Benchmark_metastoreState_applyAddBlock(t *testing.B) {
 		wg.Add(1)
 		go func() {
 			for range workChan {
-				m.applyAddBlock(&metastorepb.AddBlockRequest{
+				_, err = m.applyAddBlock(&metastorepb.AddBlockRequest{
 					Block: &metastorepb.BlockMeta{
 						Id: ulid.MustNew(anHourAgo, rand.Reader).String(),
 					},
 				})
+				require.NoError(t, err)
 			}
 			wg.Done()
 		}()
