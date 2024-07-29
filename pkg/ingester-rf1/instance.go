@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/prometheus/client_golang/prometheus"
@@ -23,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/wal"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -70,6 +72,7 @@ type instance struct {
 	// tailers   map[uint32]*tailer
 	tailerMtx sync.RWMutex
 
+	logger             log.Logger
 	limiter            *Limiter
 	streamCountLimiter *streamCountLimiter
 	ownedStreamsSvc    *ownedStreamService
@@ -87,10 +90,10 @@ type instance struct {
 	customStreamsTracker push.UsageTracker
 }
 
-func (i *instance) Push(ctx context.Context, req *logproto.PushRequest, flushCtx *flushCtx) error {
+func (i *instance) Push(ctx context.Context, w *wal.Manager, req *logproto.PushRequest) error {
 	rateLimitWholeStream := i.limiter.limits.ShardStreams(i.instanceID).Enabled
 
-	var appendErr error
+	results := make([]*wal.AppendResult, 0, len(req.Streams))
 	for _, reqStream := range req.Streams {
 		s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
 			func() (*stream, error) {
@@ -102,13 +105,27 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest, flushCtx
 			},
 		)
 		if err != nil {
-			appendErr = err
-			continue
+			return err
 		}
-
-		_, appendErr = s.Push(ctx, reqStream.Entries, rateLimitWholeStream, i.customStreamsTracker, flushCtx)
+		_, res, err := s.Push(ctx, w, reqStream.Entries, rateLimitWholeStream, i.customStreamsTracker)
+		if err != nil {
+			return err
+		}
+		results = append(results, res)
 	}
-	return appendErr
+
+	for _, result := range results {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-result.Done():
+			if err := result.Err(); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 func newInstance(
@@ -121,8 +138,8 @@ func newInstance(
 	streamRateCalculator *StreamRateCalculator,
 	writeFailures *writefailures.Manager,
 	customStreamsTracker push.UsageTracker,
+	logger log.Logger,
 ) (*instance, error) {
-	fmt.Println("new instance for", instanceID)
 	invertedIndex, err := index.NewMultiInvertedIndex(periodConfigs, uint32(cfg.IndexShards))
 	if err != nil {
 		return nil, err
@@ -141,6 +158,7 @@ func newInstance(
 		streamsRemovedTotal: streamsRemovedTotal.WithLabelValues(instanceID),
 		//
 		//tailers:            map[uint32]*tailer{},
+		logger:             logger,
 		limiter:            limiter,
 		streamCountLimiter: newStreamCountLimiter(instanceID, streams.Len, limiter, ownedStreamsSvc),
 		ownedStreamsSvc:    ownedStreamsSvc,

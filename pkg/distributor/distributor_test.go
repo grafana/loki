@@ -589,6 +589,26 @@ func Test_TruncateLogLines(t *testing.T) {
 	})
 }
 
+func Test_DiscardEmptyStreamsAfterValidation(t *testing.T) {
+	setup := func() (*validation.Limits, *mockIngester) {
+		limits := &validation.Limits{}
+		flagext.DefaultValues(limits)
+
+		limits.MaxLineSize = 5
+		return limits, &mockIngester{}
+	}
+
+	t.Run("it discards invalid entries and discards resulting empty streams completely", func(t *testing.T) {
+		limits, ingester := setup()
+		distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+
+		_, err := distributors[0].Push(ctx, makeWriteRequest(1, 10))
+		require.Equal(t, err, httpgrpc.Errorf(http.StatusBadRequest, fmt.Sprintf(validation.LineTooLongErrorMsg, 5, "{foo=\"bar\", service_name=\"unknown_service\"}", 10)))
+		topVal := ingester.Peek()
+		require.Nil(t, topVal)
+	})
+}
+
 func TestStreamShard(t *testing.T) {
 	// setup base stream.
 	baseStream := logproto.Stream{}

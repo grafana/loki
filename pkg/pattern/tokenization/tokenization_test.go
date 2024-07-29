@@ -145,8 +145,11 @@ var tokenizationCornerTestCases = []tokenizationTestCase{
 		[]string{"<NUM>.<DURATION>", "3h121m3.<DURATION>", "1h0.<DURATION>", "100usa", "0.12msa"},
 	},
 	{
-		"2Mib 0.12KB-5GB 3.12kb 123Gbps 124mbit:512Tbit",
-		[]string{"<BYTESIZE>", "<BYTESIZE>-<BYTESIZE>", "<BYTESIZE>", "<BYTESIZE>", "<BYTESIZE>:<BYTESIZE>"},
+		// We only consider integers to be valid bytesizes in bytes (0.2B doesn't make sense)
+		"2Mib 0.12KB-5GB 3.12kb 123Gbps 124mbit:512Tbit 5 B;124.1 KB/3b - 2b or 2 BeNot 13.37 b 3 b",
+		[]string{
+			"<BYTESIZE>", "<BYTESIZE>-<BYTESIZE>", "<BYTESIZE>", "<BYTESIZE>", "<BYTESIZE>:<BYTESIZE>",
+			"<BYTESIZE>;<BYTESIZE>/<BYTESIZE>", "-", "<BYTESIZE>", "or", "<NUM>", "BeNot", "<NUM>", "b", "<BYTESIZE>"},
 	},
 	{
 		`status=123 status_code:500 status 200 status="-1" status_code:"404" httpStatus=200`,
@@ -173,6 +176,13 @@ var tokenizationRealisticTestCases = []tokenizationTestCase{
 		`level=debug ts=2023-09-06T00:59:59.98214402Z caller=shard_resolver.go:114 bytes=205kB chunks=2 streams=2 entries=200 msg="queried index" type=single matchers="{stream=\"stdout\", pod=\"loki-canary-v75j4\"}" duration=9.498885ms from=2023-09-06T00:48:53.138Z through=2023-09-06T00:49:43.138Z length=50s`,
 		[]string{
 			"level=debug", "ts=<TIMESTAMP>", "caller=shard_resolver.go:<NUM>", "bytes=<BYTESIZE>", "chunks=<NUM>", "streams=<NUM>", "entries=<NUM>", `msg="queried index"`, "type=single", `matchers="{stream=\"stdout\", pod=\"loki-canary-v75j4\"}"`, "duration=<DURATION>", "from=<TIMESTAMP>", "through=<TIMESTAMP>", "length=<DURATION>",
+		},
+	},
+	// tricky loki distributor message:
+	{
+		`level=debug ts=2024-07-12T12:25:06.175464934Z caller=push.go:146 org_id=29 traceID=7af4f918eab1c80f msg="push request parsed" path=/loki/api/v1/push contentType=application/x-protobuf contentEncoding= bodySize="8.8 kB" streams=11 entries=43 streamLabelsSize="3.4 kB" entriesSize="19 kB" structuredMetadataSize="71 B" totalSize="22 kB" mostRecentLagMs=167 adaptiveLogsDroppedLines=10 adaptiveLogsDroppedSize=4965 adaptiveLogsMatchedLines=37`,
+		[]string{
+			"level=debug", "ts=<TIMESTAMP>", "caller=push.go:<NUM>", "org_id=<NUM>", "traceID=<HEX>", `msg="push request parsed"`, "path=/loki/api/v1/push", "contentType=application/x-protobuf", "contentEncoding=", `bodySize="<BYTESIZE>"`, "streams=<NUM>", "entries=<NUM>", `streamLabelsSize="<BYTESIZE>"`, `entriesSize="<BYTESIZE>"`, `structuredMetadataSize="<BYTESIZE>"`, `totalSize="<BYTESIZE>"`, "mostRecentLagMs=<NUM>", "adaptiveLogsDroppedLines=<NUM>", "adaptiveLogsDroppedSize=<NUM>", "adaptiveLogsMatchedLines=<NUM>",
 		},
 	},
 	// random JSON logs

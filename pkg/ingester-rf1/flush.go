@@ -1,7 +1,9 @@
 package ingesterrf1
 
 import (
+	"bytes"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -10,38 +12,20 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/ring"
-	"github.com/grafana/dskit/runutil"
 	"github.com/oklog/ulid"
-	"github.com/prometheus/common/model"
 	"golang.org/x/net/context"
 
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 	"github.com/grafana/loki/v3/pkg/storage/wal"
-	"github.com/grafana/loki/v3/pkg/util"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
-)
-
-const (
-	// Backoff for retrying 'immediate' flushes. Only counts for queue
-	// position, not wallclock time.
-	flushBackoff = 1 * time.Second
-
-	nameLabel = "__name__"
-	logsValue = "logs"
-
-	flushReasonIdle   = "idle"
-	flushReasonMaxAge = "max_age"
-	flushReasonForced = "forced"
-	flushReasonFull   = "full"
-	flushReasonSynced = "synced"
 )
 
 // Note: this is called both during the WAL replay (zero or more times)
 // and then after replay as well.
-func (i *Ingester) InitFlushQueues() {
-	i.flushQueuesDone.Add(i.cfg.ConcurrentFlushes)
+func (i *Ingester) InitFlushWorkers() {
+	i.flushWorkersDone.Add(i.cfg.ConcurrentFlushes)
 	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
-		i.flushQueues[j] = util.NewPriorityQueue(i.metrics.flushQueueLength)
-		go i.flushLoop(j)
+		i.flushBuffers[j] = new(bytes.Buffer)
+		go i.flushWorker(j)
 	}
 }
 
@@ -49,7 +33,8 @@ func (i *Ingester) InitFlushQueues() {
 // Flush triggers a flush of all the chunks and closes the flush queues.
 // Called from the Lifecycler as part of the ingester shutdown.
 func (i *Ingester) Flush() {
-	i.flush()
+	i.wal.Close()
+	i.flushWorkersDone.Wait()
 }
 
 // TransferOut implements ring.FlushTransferer
@@ -59,73 +44,48 @@ func (i *Ingester) TransferOut(_ context.Context) error {
 	return ring.ErrTransferDisabled
 }
 
-func (i *Ingester) flush() {
-	// TODO: Flush the last chunks
-	// Close the flush queues, to unblock waiting workers.
-	for _, flushQueue := range i.flushQueues {
-		flushQueue.Close()
-	}
-
-	i.flushQueuesDone.Wait()
-	level.Debug(i.logger).Log("msg", "flush queues have drained")
-}
-
 // FlushHandler triggers a flush of all in memory chunks.  Mainly used for
 // local testing.
 func (i *Ingester) FlushHandler(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-type flushOp struct {
-	from      model.Time
-	userID    string
-	fp        model.Fingerprint
-	immediate bool
-}
-
-func (o *flushOp) Key() string {
-	return fmt.Sprintf("%s-%s-%v", o.userID, o.fp, o.immediate)
-}
-
-func (o *flushOp) Priority() int64 {
-	return -int64(o.from)
-}
-
-func (i *Ingester) flushLoop(j int) {
-	l := log.With(i.logger, "loop", j)
+func (i *Ingester) flushWorker(j int) {
+	l := log.With(i.logger, "worker", j)
 	defer func() {
-		level.Debug(l).Log("msg", "Ingester.flushLoop() exited")
-		i.flushQueuesDone.Done()
+		level.Debug(l).Log("msg", "Ingester.flushWorker() exited")
+		i.flushWorkersDone.Done()
 	}()
 
 	for {
-		o := i.flushQueues[j].Dequeue()
-		if o == nil {
+		it, err := i.wal.NextPending()
+		if errors.Is(err, wal.ErrClosed) {
 			return
 		}
-		op := o.(*flushCtx)
 
-		err := i.flushOp(l, op)
+		if it == nil {
+			// TODO: Do something more clever here instead.
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+
+		err = i.flush(l, j, it)
 		if err != nil {
 			level.Error(l).Log("msg", "failed to flush", "err", err)
-			// Immediately re-queue another attempt at flushing this segment.
-			// TODO: Add some backoff or something?
-			i.flushQueues[j].Enqueue(op)
-		} else {
-			// Close the channel and trigger all waiting listeners to return
-			// TODO: Figure out how to return an error if we want to?
-			close(op.flushDone)
 		}
+
+		it.Result.SetDone(err)
+		i.wal.Put(it)
 	}
 }
 
-func (i *Ingester) flushOp(l log.Logger, flushCtx *flushCtx) error {
+func (i *Ingester) flush(l log.Logger, j int, it *wal.PendingSegment) error {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
 	b := backoff.New(ctx, i.cfg.FlushOpBackoff)
 	for b.Ongoing() {
-		err := i.flushSegment(ctx, flushCtx.segmentWriter)
+		err := i.flushSegment(ctx, j, it.Writer)
 		if err == nil {
 			break
 		}
@@ -135,22 +95,36 @@ func (i *Ingester) flushOp(l log.Logger, flushCtx *flushCtx) error {
 	return b.Err()
 }
 
-// flushChunk flushes the given chunk to the store.
-//
-// If the flush is successful, metrics for this flush are to be reported.
-// If the flush isn't successful, the operation for this userID is requeued allowing this and all other unflushed
-// segments to have another opportunity to be flushed.
-func (i *Ingester) flushSegment(ctx context.Context, ch *wal.SegmentWriter) error {
-	reader := ch.Reader()
-	defer runutil.CloseWithLogOnErr(util_log.Logger, reader, "flushSegment")
+func (i *Ingester) flushSegment(ctx context.Context, j int, w *wal.SegmentWriter) error {
+	ctx, cancelFunc := context.WithTimeout(ctx, i.cfg.FlushOpTimeout)
+	defer cancelFunc()
 
-	newUlid := ulid.MustNew(ulid.Timestamp(time.Now()), rand.Reader)
+	start := time.Now()
+	i.metrics.flushesTotal.Add(1)
+	defer func() { i.metrics.flushDuration.Observe(time.Since(start).Seconds()) }()
 
-	if err := i.store.PutObject(ctx, fmt.Sprintf("loki-v2/wal/anon/"+newUlid.String()), reader); err != nil {
-		i.metrics.chunksFlushFailures.Inc()
-		return fmt.Errorf("store put chunk: %w", err)
+	buf := i.flushBuffers[j]
+	defer buf.Reset()
+	if _, err := w.WriteTo(buf); err != nil {
+		i.metrics.flushFailuresTotal.Inc()
+		return err
 	}
-	i.metrics.flushedChunksStats.Inc(1)
-	// TODO: report some flush metrics
+
+	stats := wal.GetSegmentStats(w, time.Now())
+	wal.ReportSegmentStats(stats, i.metrics.segmentMetrics)
+
+	id := ulid.MustNew(ulid.Timestamp(time.Now()), rand.Reader).String()
+	if err := i.store.PutObject(ctx, fmt.Sprintf("loki-v2/wal/anon/"+id), buf); err != nil {
+		i.metrics.flushFailuresTotal.Inc()
+		return fmt.Errorf("failed to put object: %w", err)
+	}
+
+	if _, err := i.metastoreClient.AddBlock(ctx, &metastorepb.AddBlockRequest{
+		Block: w.Meta(id),
+	}); err != nil {
+		i.metrics.flushFailuresTotal.Inc()
+		return fmt.Errorf("failed to update metastore: %w", err)
+	}
+
 	return nil
 }

@@ -36,6 +36,14 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### HTTP API
+
+The API endpoint for instant queries `/api/v1/query` now returns a HTTP status 400 (Bad Request) when the provided `query`
+parameter contains a log selector query instead of returning inconsistent results. Please use the range query endpoint
+`/api/v1/query_range` (`Range` type in Grafana Explore) instead.
+
+### Configuration
+
 Loki changes the default value of `-ruler.alertmanager-use-v2` from `false` to `true`. Alertmanager APIv1 was deprecated in Alertmanager 0.16.0 and is removed as of 0.27.0.
 
 ## 3.0.0
@@ -61,7 +69,7 @@ If you would like to see if your existing configuration will work with Loki 3.0:
 1. In an empty directory on your computer, copy you configuration into a file named `loki-config.yaml`.
 1. Run this command from that directory: 
 ```bash
-docker run --rm -t -v "${PWD}":/config grafana/loki:3.0.0 -config.file=/config/loki-config.yaml -verify-config=true`
+docker run --rm -t -v "${PWD}":/config grafana/loki:3.0.0 -config.file=/config/loki-config.yaml -verify-config=true
 ```
 
 {{< admonition type="note" >}}

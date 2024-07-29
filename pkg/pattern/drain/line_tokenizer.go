@@ -233,7 +233,7 @@ func (t *logfmtTokenizer) Join(tokens []string, _ interface{}) string {
 	buf := bytes.NewBuffer(make([]byte, 0, 1024))
 	enc := gologfmt.NewEncoder(buf)
 	for i := 0; i < len(tokens); i += 2 {
-		k, v := tokens[i], tokens[i+1]
+		k, v := tokens[i], unsafeBytes(tokens[i+1])
 		if err := enc.EncodeKeyval(k, v); err != nil {
 			return ""
 		}
@@ -285,4 +285,13 @@ func isVariableField(key []byte) bool {
 		bytes.EqualFold(key, []byte("traceID")) ||
 		bytes.EqualFold(key, []byte("time")) ||
 		bytes.EqualFold(key, []byte("timestamp"))
+}
+
+type DedupingTokenizer struct {
+	LineTokenizer
+	dedupParam string
+}
+
+func (d DedupingTokenizer) Join(tokens []string, state interface{}) string {
+	return deduplicatePlaceholders(d.LineTokenizer.Join(tokens, state), d.dedupParam)
 }

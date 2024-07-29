@@ -34,6 +34,14 @@ The underlying blooms are built by the new [Bloom Compactor](#bloom-compactor) c
 and served by the new [Bloom Gateway](#bloom-gateway) component.
 
 ## Enable Query Acceleration with Blooms
+{{< admonition type="warning" >}}
+Building and querying bloom filters are by design not supported in single binary deployment.
+It can be used with Single Scalable deployment (SSD), but it is recommended to
+run bloom components only in fully distributed microservice mode.
+The reason is that bloom filters also come with a relatively high cost for both building
+and querying the bloom filters that only pays off at large scale deployments.
+{{< /admonition >}}
+
 To start building and using blooms you need to:
 - Deploy the [Bloom Compactor](#bloom-compactor) component and enable the component in the [Bloom Compactor config][compactor-cfg].
 - Deploy the [Bloom Gateway](#bloom-gateway) component (as a [microservice][microservices] or via the [SSD][ssd] Backend target) and enable the component in the [Bloom Gateway config][gateway-cfg].
@@ -196,7 +204,7 @@ Loki will check blooms for any log filtering expression within a query that sati
     whereas `|~ "f.*oo"` would not be simplifiable.
 - The filtering expression is a match (`|=`) or regex match (`|~`) filter. We don’t use blooms for not equal (`!=`) or not regex (`!~`) expressions.
   - For example, `|= "level=error"` would use blooms but `!= "level=error"` would not.
-- The filtering expression is placed before a [line format expression](https://grafana.com/docs/loki /<LOKI_VERSION>/query/log_queries/#line-format-expression).
+- The filtering expression is placed before a [line format expression](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#line-format-expression).
   - For example, with `|= "level=error" | logfmt | line_format "ERROR {{.err}}" |= "traceID=3ksn8d4jj3"`, 
     the first filter (`|= "level=error"`) will benefit from blooms but the second one (`|= "traceID=3ksn8d4jj3"`) will not.
 

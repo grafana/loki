@@ -14,6 +14,8 @@ instance or [Grafana Cloud](/products/cloud/).
 
 The plugin source code is in the [fluentd directory of the repository](https://github.com/grafana/loki/tree/main/clients/cmd/fluentd).
 
+{{< youtube id="s43IBSVyTpQ" >}}
+
 ## Installation
 
 ### Local
