@@ -476,6 +476,9 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 			blk.uncompressedSize = db.uvarint()
 		}
 		l := db.uvarint()
+		if blk.offset+l > len(b) {
+			return nil, fmt.Errorf("block %d offset %d + length %d exceeds chunk length %d", i, blk.offset, l, len(b))
+		}
 		blk.b = b[blk.offset : blk.offset+l]
 
 		// Verify checksums.

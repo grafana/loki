@@ -358,7 +358,7 @@ ingester_rf1:
   # The timeout for an individual flush. Will be retried up to
   # `flush-op-backoff-retries` times.
   # CLI flag: -ingester-rf1.flush-op-timeout
-  [flush_op_timeout: <duration> | default = 10m]
+  [flush_op_timeout: <duration> | default = 10s]
 
   # Forget about ingesters having heartbeat timestamps older than
   # `ring.kvstore.heartbeat_timeout`. This is equivalent to clicking on the
