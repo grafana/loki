@@ -194,6 +194,9 @@ func fetchChunkEntries(
 	storage BlockStorage,
 ) (iter.EntryIterator, error) {
 	offset, size := c.meta.Ref.Unpack()
+	// todo: We should be able to avoid many IOPS to object storage
+	// if chunks are next to each other and we should be able to pack range request
+	// together.
 	reader, err := storage.GetRangeObject(ctx, wal.Dir+c.id, int64(offset), int64(size))
 	if err != nil {
 		return nil, err
