@@ -105,14 +105,14 @@ func TestWalSegmentWriter_Append(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			// Create a new WalSegmentWriter
-			w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
+			w, err := NewWalSegmentWriter()
 			require.NoError(t, err)
 			// Append the entries
 			for _, batch := range tt.batches {
 				for _, stream := range batch {
 					labels, err := syntax.ParseLabels(stream.labels)
 					require.NoError(t, err)
-					w.Append(stream.tenant, stream.labels, labels, stream.entries)
+					w.Append(stream.tenant, stream.labels, labels, stream.entries, time.Now())
 				}
 			}
 			require.NotEmpty(t, tt.expected, "expected entries are empty")
@@ -132,7 +132,7 @@ func TestWalSegmentWriter_Append(t *testing.T) {
 }
 
 func TestMultiTenantWrite(t *testing.T) {
-	w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
+	w, err := NewWalSegmentWriter()
 	require.NoError(t, err)
 	dst := bytes.NewBuffer(nil)
 
@@ -150,7 +150,7 @@ func TestMultiTenantWrite(t *testing.T) {
 			for i := 0; i < 10; i++ {
 				w.Append(tenant, lblString, lbl, []*push.Entry{
 					{Timestamp: time.Unix(0, int64(i)), Line: fmt.Sprintf("log line %d", i)},
-				})
+				}, time.Now())
 			}
 		}
 	}
@@ -202,7 +202,7 @@ func TestCompression(t *testing.T) {
 }
 
 func testCompression(t *testing.T, maxInputSize int64) {
-	w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
+	w, err := NewWalSegmentWriter()
 	require.NoError(t, err)
 	dst := bytes.NewBuffer(nil)
 	files := testdata.Files()
@@ -225,7 +225,7 @@ func testCompression(t *testing.T, maxInputSize int64) {
 			inputSize += int64(len(line))
 			w.Append("tenant", lbl.String(), lbl, []*push.Entry{
 				{Timestamp: time.Unix(0, int64(i*1e9)), Line: string(line)},
-			})
+			}, time.Now())
 		}
 	}
 
@@ -259,7 +259,7 @@ func testCompression(t *testing.T, maxInputSize int64) {
 }
 
 func TestReset(t *testing.T) {
-	w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
+	w, err := NewWalSegmentWriter()
 	require.NoError(t, err)
 	dst := bytes.NewBuffer(nil)
 
@@ -267,7 +267,7 @@ func TestReset(t *testing.T) {
 		{Timestamp: time.Unix(0, 0), Line: "Entry 1"},
 		{Timestamp: time.Unix(1, 0), Line: "Entry 2"},
 		{Timestamp: time.Unix(2, 0), Line: "Entry 3"},
-	})
+	}, time.Now())
 
 	n, err := w.WriteTo(dst)
 	require.NoError(t, err)
@@ -280,7 +280,7 @@ func TestReset(t *testing.T) {
 		{Timestamp: time.Unix(0, 0), Line: "Entry 1"},
 		{Timestamp: time.Unix(1, 0), Line: "Entry 2"},
 		{Timestamp: time.Unix(2, 0), Line: "Entry 3"},
-	})
+	}, time.Now())
 
 	n, err = w.WriteTo(copyBuffer)
 	require.NoError(t, err)
@@ -290,7 +290,7 @@ func TestReset(t *testing.T) {
 }
 
 func Test_Meta(t *testing.T) {
-	w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
+	w, err := NewWalSegmentWriter()
 	buff := bytes.NewBuffer(nil)
 
 	require.NoError(t, err)
@@ -300,13 +300,13 @@ func Test_Meta(t *testing.T) {
 		{Timestamp: time.Unix(1, 0), Line: "Entry 1"},
 		{Timestamp: time.Unix(2, 0), Line: "Entry 2"},
 		{Timestamp: time.Unix(3, 0), Line: "Entry 3"},
-	})
+	}, time.Now())
 	lbls = labels.FromStrings("container", "bar", "namespace", "dev")
 	w.Append("tenanta", lbls.String(), lbls, []*push.Entry{
 		{Timestamp: time.Unix(2, 0), Line: "Entry 1"},
 		{Timestamp: time.Unix(3, 0), Line: "Entry 2"},
 		{Timestamp: time.Unix(4, 0), Line: "Entry 3"},
-	})
+	}, time.Now())
 	_, err = w.WriteTo(buff)
 	require.NoError(t, err)
 	meta := w.Meta("bar")
@@ -381,11 +381,11 @@ func BenchmarkWrites(b *testing.B) {
 
 	dst := bytes.NewBuffer(make([]byte, 0, inputSize))
 
-	writer, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
+	writer, err := NewWalSegmentWriter()
 	require.NoError(b, err)
 
 	for _, d := range data {
-		writer.Append(d.tenant, d.labels, d.lbls, d.entries)
+		writer.Append(d.tenant, d.labels, d.lbls, d.entries, time.Now())
 	}
 
 	encodedLength, err := writer.WriteTo(dst)

@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/grafana/dskit/grpcclient"
-	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/services"
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
@@ -13,8 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
-	metastorepb "github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
-	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 )
 
 type Config struct {
@@ -58,10 +56,10 @@ func (c *Client) Service() services.Service { return c.service }
 
 func dial(cfg Config, r prometheus.Registerer) (*grpc.ClientConn, error) {
 	latency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: constants.Loki,
-		Name:      "metastore_request_duration_seconds",
-		Help:      "Time (in seconds) spent serving requests when using the metastore",
-		Buckets:   instrument.DefBuckets,
+		Name:                        "loki_metastore_request_duration_seconds",
+		Help:                        "Time (in seconds) spent serving requests when using the metastore",
+		Buckets:                     prometheus.ExponentialBuckets(0.001, 4, 8),
+		NativeHistogramBucketFactor: 1.1,
 	}, []string{"operation", "status_code"})
 	if r != nil {
 		err := r.Register(latency)
@@ -106,12 +104,10 @@ const grpcServiceConfig = `{
 func instrumentation(latency *prometheus.HistogramVec) ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
 	var unaryInterceptors []grpc.UnaryClientInterceptor
 	unaryInterceptors = append(unaryInterceptors, otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()))
-	unaryInterceptors = append(unaryInterceptors, middleware.ClientUserHeaderInterceptor)
 	unaryInterceptors = append(unaryInterceptors, middleware.UnaryClientInstrumentInterceptor(latency))
 
 	var streamInterceptors []grpc.StreamClientInterceptor
 	streamInterceptors = append(streamInterceptors, otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()))
-	streamInterceptors = append(streamInterceptors, middleware.StreamClientUserHeaderInterceptor)
 	streamInterceptors = append(streamInterceptors, middleware.StreamClientInstrumentInterceptor(latency))
 
 	return unaryInterceptors, streamInterceptors

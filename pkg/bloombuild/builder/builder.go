@@ -335,7 +335,7 @@ func (b *Builder) processTask(
 		// Fetch blocks that aren't up to date but are in the desired fingerprint range
 		// to try and accelerate bloom creation.
 		level.Debug(logger).Log("msg", "loading series and blocks for gap", "blocks", len(gap.Blocks))
-		seriesItr, blocksIter, err := b.loadWorkForGap(ctx, task.Table, tenant, task.TSDB, gap)
+		seriesItr, blocksIter, err := b.loadWorkForGap(ctx, task.Table, gap)
 		if err != nil {
 			level.Error(logger).Log("msg", "failed to get series and blocks", "err", err)
 			return nil, fmt.Errorf("failed to get series and blocks: %w", err)
@@ -454,15 +454,9 @@ func (b *Builder) processTask(
 func (b *Builder) loadWorkForGap(
 	ctx context.Context,
 	table config.DayTable,
-	tenant string,
-	id tsdb.Identifier,
-	gap protos.GapWithBlocks,
+	gap protos.Gap,
 ) (iter.Iterator[*v1.Series], iter.CloseResetIterator[*v1.SeriesWithBlooms], error) {
-	// load a series iterator for the gap
-	seriesItr, err := b.tsdbStore.LoadTSDB(ctx, table, tenant, id, gap.Bounds)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to load tsdb")
-	}
+	seriesItr := iter.NewCancelableIter[*v1.Series](ctx, iter.NewSliceIter[*v1.Series](gap.Series))
 
 	// load a blocks iterator for the gap
 	fetcher, err := b.bloomStore.Fetcher(table.ModelTime())

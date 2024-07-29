@@ -117,6 +117,19 @@ func (b *BOSObjectStorage) GetObject(ctx context.Context, objectKey string) (io.
 	return res.Body, size, nil
 }
 
+func (b *BOSObjectStorage) GetObjectRange(ctx context.Context, objectKey string, offset, length int64) (io.ReadCloser, error) {
+	var res *api.GetObjectResult
+	err := instrument.CollectedRequest(ctx, "BOS.GetObject", bosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		var requestErr error
+		res, requestErr = b.client.GetObject(b.cfg.BucketName, objectKey, nil, offset, offset+length-1)
+		return requestErr
+	})
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get BOS object [ %s ]", objectKey)
+	}
+	return res.Body, nil
+}
+
 func (b *BOSObjectStorage) List(ctx context.Context, prefix string, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	var storageObjects []client.StorageObject
 	var commonPrefixes []client.StorageCommonPrefix

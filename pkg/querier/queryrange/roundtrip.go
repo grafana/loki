@@ -318,9 +318,7 @@ func NewDetectedLabelsCardinalityFilter(rt queryrangebase.Handler) queryrangebas
 			var result []*logproto.DetectedLabel
 
 			for _, dl := range resp.Response.DetectedLabels {
-				if dl.Cardinality > 1 && dl.Cardinality < 50 {
-					result = append(result, &logproto.DetectedLabel{Label: dl.Label, Cardinality: dl.Cardinality})
-				}
+				result = append(result, &logproto.DetectedLabel{Label: dl.Label, Cardinality: dl.Cardinality})
 			}
 			return &DetectedLabelsResponse{
 				Response: &logproto.DetectedLabelsResponse{DetectedLabels: result},
