@@ -281,11 +281,11 @@ type fakeLimits struct {
 	enabled bool
 }
 
-func (l *fakeLimits) OTLPConfig(userID string) OTLPConfig {
+func (l *fakeLimits) OTLPConfig(_ string) OTLPConfig {
 	return OTLPConfig{}
 }
 
-func (l *fakeLimits) DiscoverServiceName(userID string) []string {
+func (l *fakeLimits) DiscoverServiceName(_ string) []string {
 	if !l.enabled {
 		return nil
 	}
