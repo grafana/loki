@@ -19,7 +19,15 @@ This section describes the components installed by the Helm Chart.
 
 By default Loki will be installed in the scalable mode. This consists of a read and write component. These can be scaled-out independently.
 
-## Dashboards
+By default, the chart installs in [Simple Scalable]({{< relref "./install-scalable" >}}) mode. This is the recommended method for most users. To understand the differences between deployment methods, see the [Loki deployment modes]({{< relref "../../../get-started/deployment-modes" >}}) documentation.
+
+## Monitoring Loki
+
+The Loki Helm chart does not deploy self-monitoring by default. Loki clusters can be monitored using the meta-monitoring stack, which monitors the logs, metrics, and traces of the Loki cluster. There are two deployment options for this stack, see the installation instructions within [Monitoring]({{< relref "./monitor-and-alert" >}}).
+
+{{< admonition type="note" >}}
+The meta-monitoring stack replaces the monitoring section of the Loki helm chart which is now **DEPRECATED**. See the [Monitoring]({{< relref "./monitor-and-alert" >}}) section for more information.
+{{< /admonition >}}
 
 This chart includes dashboards for monitoring Loki. These require the scrape configs defined in the `monitoring.serviceMonitor` and `monitoring.selfMonitoring` sections described below. The dashboards are deployed via a config map which can be mounted on a Grafana instance. The Dashboard requires an installation of the Grafana Agent and the Prometheus operator. The agent is installed with this chart.
 
