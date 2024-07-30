@@ -6,6 +6,7 @@ package metastorepb
 import (
 	context "context"
 	fmt "fmt"
+	_ "github.com/gogo/protobuf/gogoproto"
 	proto "github.com/gogo/protobuf/proto"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
@@ -112,7 +113,8 @@ type BlockMeta struct {
 	MinTime         int64            `protobuf:"varint,3,opt,name=min_time,json=minTime,proto3" json:"min_time,omitempty"`
 	MaxTime         int64            `protobuf:"varint,4,opt,name=max_time,json=maxTime,proto3" json:"max_time,omitempty"`
 	CompactionLevel uint32           `protobuf:"varint,6,opt,name=compaction_level,json=compactionLevel,proto3" json:"compaction_level,omitempty"`
-	TenantStreams   []*TenantStreams `protobuf:"bytes,7,rep,name=tenant_streams,json=tenantStreams,proto3" json:"tenant_streams,omitempty"`
+	IndexRef        DataRef          `protobuf:"bytes,7,opt,name=indexRef,proto3" json:"indexRef"`
+	TenantStreams   []*TenantStreams `protobuf:"bytes,8,rep,name=tenant_streams,json=tenantStreams,proto3" json:"tenant_streams,omitempty"`
 }
 
 func (m *BlockMeta) Reset()      { *m = BlockMeta{} }
@@ -182,11 +184,69 @@ func (m *BlockMeta) GetCompactionLevel() uint32 {
 	return 0
 }
 
+func (m *BlockMeta) GetIndexRef() DataRef {
+	if m != nil {
+		return m.IndexRef
+	}
+	return DataRef{}
+}
+
 func (m *BlockMeta) GetTenantStreams() []*TenantStreams {
 	if m != nil {
 		return m.TenantStreams
 	}
 	return nil
+}
+
+type DataRef struct {
+	Offset int64 `protobuf:"varint,1,opt,name=offset,proto3" json:"offset,omitempty"`
+	Length int64 `protobuf:"varint,2,opt,name=length,proto3" json:"length,omitempty"`
+}
+
+func (m *DataRef) Reset()      { *m = DataRef{} }
+func (*DataRef) ProtoMessage() {}
+func (*DataRef) Descriptor() ([]byte, []int) {
+	return fileDescriptor_43ce85359599db4e, []int{3}
+}
+func (m *DataRef) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *DataRef) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_DataRef.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *DataRef) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_DataRef.Merge(m, src)
+}
+func (m *DataRef) XXX_Size() int {
+	return m.Size()
+}
+func (m *DataRef) XXX_DiscardUnknown() {
+	xxx_messageInfo_DataRef.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_DataRef proto.InternalMessageInfo
+
+func (m *DataRef) GetOffset() int64 {
+	if m != nil {
+		return m.Offset
+	}
+	return 0
+}
+
+func (m *DataRef) GetLength() int64 {
+	if m != nil {
+		return m.Length
+	}
+	return 0
 }
 
 // TenantStreams object points to the offset in the block at which
@@ -200,7 +260,7 @@ type TenantStreams struct {
 func (m *TenantStreams) Reset()      { *m = TenantStreams{} }
 func (*TenantStreams) ProtoMessage() {}
 func (*TenantStreams) Descriptor() ([]byte, []int) {
-	return fileDescriptor_43ce85359599db4e, []int{3}
+	return fileDescriptor_43ce85359599db4e, []int{4}
 }
 func (m *TenantStreams) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -250,11 +310,116 @@ func (m *TenantStreams) GetMaxTime() int64 {
 	return 0
 }
 
+type ListBlocksForQueryRequest struct {
+	TenantId  string `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	StartTime int64  `protobuf:"varint,2,opt,name=start_time,json=startTime,proto3" json:"start_time,omitempty"`
+	EndTime   int64  `protobuf:"varint,3,opt,name=end_time,json=endTime,proto3" json:"end_time,omitempty"`
+}
+
+func (m *ListBlocksForQueryRequest) Reset()      { *m = ListBlocksForQueryRequest{} }
+func (*ListBlocksForQueryRequest) ProtoMessage() {}
+func (*ListBlocksForQueryRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_43ce85359599db4e, []int{5}
+}
+func (m *ListBlocksForQueryRequest) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ListBlocksForQueryRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ListBlocksForQueryRequest.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *ListBlocksForQueryRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ListBlocksForQueryRequest.Merge(m, src)
+}
+func (m *ListBlocksForQueryRequest) XXX_Size() int {
+	return m.Size()
+}
+func (m *ListBlocksForQueryRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_ListBlocksForQueryRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ListBlocksForQueryRequest proto.InternalMessageInfo
+
+func (m *ListBlocksForQueryRequest) GetTenantId() string {
+	if m != nil {
+		return m.TenantId
+	}
+	return ""
+}
+
+func (m *ListBlocksForQueryRequest) GetStartTime() int64 {
+	if m != nil {
+		return m.StartTime
+	}
+	return 0
+}
+
+func (m *ListBlocksForQueryRequest) GetEndTime() int64 {
+	if m != nil {
+		return m.EndTime
+	}
+	return 0
+}
+
+type ListBlocksForQueryResponse struct {
+	Blocks []*BlockMeta `protobuf:"bytes,1,rep,name=blocks,proto3" json:"blocks,omitempty"`
+}
+
+func (m *ListBlocksForQueryResponse) Reset()      { *m = ListBlocksForQueryResponse{} }
+func (*ListBlocksForQueryResponse) ProtoMessage() {}
+func (*ListBlocksForQueryResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_43ce85359599db4e, []int{6}
+}
+func (m *ListBlocksForQueryResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ListBlocksForQueryResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ListBlocksForQueryResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *ListBlocksForQueryResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ListBlocksForQueryResponse.Merge(m, src)
+}
+func (m *ListBlocksForQueryResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *ListBlocksForQueryResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_ListBlocksForQueryResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ListBlocksForQueryResponse proto.InternalMessageInfo
+
+func (m *ListBlocksForQueryResponse) GetBlocks() []*BlockMeta {
+	if m != nil {
+		return m.Blocks
+	}
+	return nil
+}
+
 func init() {
 	proto.RegisterType((*AddBlockRequest)(nil), "metastorepb.AddBlockRequest")
 	proto.RegisterType((*AddBlockResponse)(nil), "metastorepb.AddBlockResponse")
 	proto.RegisterType((*BlockMeta)(nil), "metastorepb.BlockMeta")
+	proto.RegisterType((*DataRef)(nil), "metastorepb.DataRef")
 	proto.RegisterType((*TenantStreams)(nil), "metastorepb.TenantStreams")
+	proto.RegisterType((*ListBlocksForQueryRequest)(nil), "metastorepb.ListBlocksForQueryRequest")
+	proto.RegisterType((*ListBlocksForQueryResponse)(nil), "metastorepb.ListBlocksForQueryResponse")
 }
 
 func init() {
@@ -262,32 +427,42 @@ func init() {
 }
 
 var fileDescriptor_43ce85359599db4e = []byte{
-	// 400 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x9c, 0x92, 0x41, 0x6f, 0xd3, 0x30,
-	0x14, 0xc7, 0xe3, 0x76, 0x6c, 0x8d, 0xab, 0x74, 0x95, 0x0f, 0x28, 0x0c, 0xb0, 0xa2, 0x48, 0x48,
-	0x41, 0x82, 0x4e, 0x14, 0xc4, 0x15, 0x6d, 0xb7, 0x49, 0xec, 0xe2, 0x4d, 0xdc, 0x50, 0xe4, 0x24,
-	0x6f, 0x93, 0xb5, 0xda, 0x0e, 0xb6, 0xa9, 0x76, 0xe4, 0x23, 0xf0, 0x31, 0xf8, 0x28, 0x1c, 0x7b,
-	0xec, 0x91, 0xa6, 0x12, 0xe2, 0xd8, 0x8f, 0x80, 0x9a, 0xb4, 0xa4, 0x45, 0xe2, 0xc2, 0xed, 0xbd,
-	0xff, 0xef, 0xaf, 0xa7, 0xf7, 0xf7, 0x33, 0x7e, 0x5b, 0xde, 0xdd, 0x9e, 0x0a, 0x75, 0x0b, 0xd6,
-	0x81, 0x79, 0x69, 0x6e, 0x5e, 0x9d, 0x4a, 0x70, 0xdc, 0x3a, 0x6d, 0xa0, 0xad, 0xca, 0xac, 0xad,
-	0x47, 0xa5, 0xd1, 0x4e, 0x93, 0xfe, 0x0e, 0x8c, 0xdf, 0xe1, 0xe3, 0xb3, 0xa2, 0x38, 0x9f, 0xe8,
-	0xfc, 0x8e, 0xc1, 0xa7, 0xcf, 0x60, 0x1d, 0x79, 0x81, 0x1f, 0x64, 0xeb, 0x3e, 0x44, 0x11, 0x4a,
-	0xfa, 0xe3, 0x87, 0xa3, 0x1d, 0xff, 0xa8, 0x76, 0x5e, 0x82, 0xe3, 0xac, 0x31, 0xc5, 0x04, 0x0f,
-	0xdb, 0x01, 0xb6, 0xd4, 0xca, 0x42, 0xfc, 0x13, 0x61, 0xff, 0x8f, 0x91, 0x3c, 0xc3, 0x83, 0x1b,
-	0x6d, 0x24, 0x77, 0xe9, 0x14, 0x8c, 0x15, 0x5a, 0xd5, 0x83, 0x0f, 0x58, 0xd0, 0xa8, 0x1f, 0x1a,
-	0x91, 0x0c, 0x70, 0x47, 0x14, 0x61, 0x27, 0x42, 0x89, 0xcf, 0x3a, 0xa2, 0x20, 0x8f, 0x70, 0x4f,
-	0x0a, 0x95, 0x3a, 0x21, 0x21, 0xec, 0x46, 0x28, 0xe9, 0xb2, 0x23, 0x29, 0xd4, 0xb5, 0x90, 0x50,
-	0x23, 0x7e, 0xdf, 0xa0, 0x83, 0x0d, 0xe2, 0xf7, 0x35, 0x7a, 0x8e, 0x87, 0xb9, 0x96, 0x25, 0xcf,
-	0x9d, 0xd0, 0x2a, 0x9d, 0xc0, 0x14, 0x26, 0xe1, 0x61, 0x84, 0x92, 0x80, 0x1d, 0xb7, 0xfa, 0xfb,
-	0xb5, 0x4c, 0xce, 0xf0, 0xc0, 0x81, 0xe2, 0xca, 0xa5, 0xd6, 0x19, 0xe0, 0xd2, 0x86, 0x47, 0x51,
-	0x37, 0xe9, 0x8f, 0x4f, 0xf6, 0x02, 0x5f, 0xd7, 0x96, 0xab, 0xc6, 0xc1, 0x02, 0xb7, 0xdb, 0xc6,
-	0x19, 0x0e, 0xf6, 0x38, 0x79, 0x8c, 0xfd, 0xcd, 0x4c, 0x51, 0xd4, 0x31, 0x7d, 0xd6, 0x6b, 0x84,
-	0x8b, 0xff, 0x4c, 0x34, 0xfe, 0x88, 0x87, 0x97, 0xdb, 0x7d, 0xae, 0xc0, 0x4c, 0x45, 0x0e, 0xe4,
-	0x02, 0xf7, 0xb6, 0x8f, 0x4e, 0x9e, 0xec, 0xad, 0xfb, 0xd7, 0x31, 0x4f, 0x9e, 0xfe, 0x83, 0x6e,
-	0x2e, 0xe5, 0x9d, 0xbf, 0x99, 0x2d, 0xa8, 0x37, 0x5f, 0x50, 0x6f, 0xb5, 0xa0, 0xe8, 0x4b, 0x45,
-	0xd1, 0xb7, 0x8a, 0xa2, 0xef, 0x15, 0x45, 0xb3, 0x8a, 0xa2, 0x1f, 0x15, 0x45, 0xbf, 0x2a, 0xea,
-	0xad, 0x2a, 0x8a, 0xbe, 0x2e, 0xa9, 0x37, 0x5b, 0x52, 0x6f, 0xbe, 0xa4, 0x5e, 0x76, 0x58, 0x7f,
-	0xa5, 0xd7, 0xbf, 0x03, 0x00, 0x00, 0xff, 0xff, 0x05, 0x41, 0x71, 0x83, 0x84, 0x02, 0x00, 0x00,
+	// 558 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x9c, 0x53, 0xc1, 0x6e, 0x13, 0x3b,
+	0x14, 0x1d, 0x27, 0x7d, 0x69, 0xe2, 0x2a, 0x6d, 0x65, 0x55, 0xd5, 0x34, 0x8f, 0x9a, 0x68, 0x24,
+	0x20, 0x48, 0x90, 0x8a, 0x82, 0x2a, 0xb1, 0x42, 0x8d, 0x10, 0x52, 0xa5, 0x74, 0x81, 0x5b, 0xb1,
+	0x8d, 0x26, 0x99, 0x3b, 0x83, 0xd5, 0x8c, 0x1d, 0x6c, 0x37, 0x0a, 0x3b, 0x3e, 0x81, 0x2f, 0x60,
+	0xcd, 0x97, 0xa0, 0x2e, 0xb3, 0xec, 0x0a, 0x91, 0xc9, 0x86, 0x65, 0x3f, 0x01, 0xc5, 0x33, 0x69,
+	0x32, 0x40, 0x40, 0x62, 0xe7, 0x7b, 0xce, 0x99, 0x73, 0xaf, 0xef, 0x1c, 0xe3, 0xa3, 0xc1, 0x45,
+	0x74, 0xc0, 0x45, 0x04, 0xda, 0x80, 0x7a, 0xac, 0xc2, 0x27, 0x07, 0x31, 0x18, 0x5f, 0x1b, 0xa9,
+	0x60, 0x71, 0x1a, 0x74, 0x17, 0xe7, 0xe6, 0x40, 0x49, 0x23, 0xc9, 0xc6, 0x12, 0x59, 0xdb, 0x89,
+	0x64, 0x24, 0x2d, 0x7e, 0x30, 0x3b, 0xa5, 0x12, 0xef, 0x05, 0xde, 0x3a, 0x0e, 0x82, 0x56, 0x5f,
+	0xf6, 0x2e, 0x18, 0xbc, 0xbb, 0x04, 0x6d, 0xc8, 0x23, 0xfc, 0x5f, 0x77, 0x56, 0xbb, 0xa8, 0x8e,
+	0x1a, 0x1b, 0x87, 0xbb, 0xcd, 0x25, 0x97, 0xa6, 0x55, 0x9e, 0x82, 0xf1, 0x59, 0x2a, 0xf2, 0x08,
+	0xde, 0x5e, 0x18, 0xe8, 0x81, 0x14, 0x1a, 0xbc, 0x4f, 0x05, 0x5c, 0xb9, 0x15, 0x92, 0x7b, 0x78,
+	0x33, 0x94, 0x2a, 0xf6, 0x4d, 0x67, 0x08, 0x4a, 0x73, 0x29, 0xac, 0xf1, 0x1a, 0xab, 0xa6, 0xe8,
+	0x9b, 0x14, 0x24, 0x9b, 0xb8, 0xc0, 0x03, 0xb7, 0x50, 0x47, 0x8d, 0x0a, 0x2b, 0xf0, 0x80, 0xec,
+	0xe1, 0x72, 0xcc, 0x45, 0xc7, 0xf0, 0x18, 0xdc, 0x62, 0x1d, 0x35, 0x8a, 0x6c, 0x3d, 0xe6, 0xe2,
+	0x9c, 0xc7, 0x60, 0x29, 0x7f, 0x94, 0x52, 0x6b, 0x19, 0xe5, 0x8f, 0x2c, 0xf5, 0x10, 0x6f, 0xf7,
+	0x64, 0x3c, 0xf0, 0x7b, 0x86, 0x4b, 0xd1, 0xe9, 0xc3, 0x10, 0xfa, 0x6e, 0xa9, 0x8e, 0x1a, 0x55,
+	0xb6, 0xb5, 0xc0, 0xdb, 0x33, 0x98, 0x1c, 0xe1, 0x32, 0x17, 0x01, 0x8c, 0x18, 0x84, 0xee, 0xba,
+	0xbd, 0xea, 0x4e, 0xee, 0xaa, 0x2f, 0x7d, 0xe3, 0x33, 0x08, 0x5b, 0x6b, 0x57, 0x5f, 0xef, 0x3a,
+	0xec, 0x56, 0x4b, 0x8e, 0xf1, 0xa6, 0x01, 0xe1, 0x0b, 0xd3, 0xd1, 0x46, 0x81, 0x1f, 0x6b, 0xb7,
+	0x5c, 0x2f, 0x36, 0x36, 0x0e, 0x6b, 0xb9, 0xaf, 0xcf, 0xad, 0xe4, 0x2c, 0x55, 0xb0, 0xaa, 0x59,
+	0x2e, 0xbd, 0xe7, 0x78, 0x3d, 0x73, 0x27, 0xbb, 0xb8, 0x24, 0xc3, 0x50, 0x83, 0xb1, 0x5b, 0x29,
+	0xb2, 0xac, 0x9a, 0xe1, 0x7d, 0x10, 0x91, 0x79, 0x6b, 0x57, 0x52, 0x64, 0x59, 0xe5, 0x75, 0x71,
+	0x35, 0x67, 0x4d, 0xfe, 0xc7, 0x95, 0x6c, 0x1c, 0x1e, 0x58, 0x8f, 0x0a, 0x2b, 0xa7, 0xc0, 0xc9,
+	0x3f, 0x2e, 0xd1, 0x53, 0x78, 0xaf, 0xcd, 0xb5, 0xb1, 0xbf, 0x50, 0xbf, 0x92, 0xea, 0xf5, 0x25,
+	0xa8, 0xf7, 0xf3, 0x78, 0xfc, 0xb1, 0xdf, 0x3e, 0xc6, 0xda, 0xf8, 0xca, 0xa4, 0xb6, 0xe9, 0xe4,
+	0x15, 0x8b, 0xcc, 0x7b, 0x82, 0x08, 0x72, 0xe3, 0x80, 0x08, 0x6c, 0xcf, 0x36, 0xae, 0xfd, 0xae,
+	0x67, 0x9a, 0x28, 0xd2, 0xc4, 0x25, 0x1b, 0x37, 0xed, 0x22, 0xbb, 0xeb, 0x55, 0xa1, 0xcc, 0x54,
+	0x87, 0x5f, 0x10, 0xde, 0x3e, 0x9d, 0x2b, 0xce, 0x40, 0x0d, 0x79, 0x0f, 0xc8, 0x09, 0x2e, 0xcf,
+	0xa3, 0x4a, 0xee, 0xe4, 0x0c, 0x7e, 0x7a, 0x02, 0xb5, 0xfd, 0x15, 0x6c, 0x96, 0x6f, 0x87, 0x44,
+	0x98, 0xfc, 0x3a, 0x2d, 0xb9, 0x9f, 0xfb, 0x6c, 0xe5, 0x0a, 0x6b, 0x0f, 0xfe, 0xaa, 0x9b, 0x37,
+	0x6a, 0x3d, 0x1b, 0x4f, 0xa8, 0x73, 0x3d, 0xa1, 0xce, 0xcd, 0x84, 0xa2, 0x0f, 0x09, 0x45, 0x9f,
+	0x13, 0x8a, 0xae, 0x12, 0x8a, 0xc6, 0x09, 0x45, 0xdf, 0x12, 0x8a, 0xbe, 0x27, 0xd4, 0xb9, 0x49,
+	0x28, 0xfa, 0x38, 0xa5, 0xce, 0x78, 0x4a, 0x9d, 0xeb, 0x29, 0x75, 0xba, 0x25, 0xfb, 0xb8, 0x9f,
+	0xfe, 0x08, 0x00, 0x00, 0xff, 0xff, 0xfa, 0xbc, 0xd9, 0xf7, 0x39, 0x04, 0x00, 0x00,
 }
 
 func (this *AddBlockRequest) Equal(that interface{}) bool {
@@ -369,6 +544,9 @@ func (this *BlockMeta) Equal(that interface{}) bool {
 	if this.CompactionLevel != that1.CompactionLevel {
 		return false
 	}
+	if !this.IndexRef.Equal(&that1.IndexRef) {
+		return false
+	}
 	if len(this.TenantStreams) != len(that1.TenantStreams) {
 		return false
 	}
@@ -376,6 +554,33 @@ func (this *BlockMeta) Equal(that interface{}) bool {
 		if !this.TenantStreams[i].Equal(that1.TenantStreams[i]) {
 			return false
 		}
+	}
+	return true
+}
+func (this *DataRef) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*DataRef)
+	if !ok {
+		that2, ok := that.(DataRef)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Offset != that1.Offset {
+		return false
+	}
+	if this.Length != that1.Length {
+		return false
 	}
 	return true
 }
@@ -409,6 +614,65 @@ func (this *TenantStreams) Equal(that interface{}) bool {
 	}
 	return true
 }
+func (this *ListBlocksForQueryRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ListBlocksForQueryRequest)
+	if !ok {
+		that2, ok := that.(ListBlocksForQueryRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.TenantId != that1.TenantId {
+		return false
+	}
+	if this.StartTime != that1.StartTime {
+		return false
+	}
+	if this.EndTime != that1.EndTime {
+		return false
+	}
+	return true
+}
+func (this *ListBlocksForQueryResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ListBlocksForQueryResponse)
+	if !ok {
+		that2, ok := that.(ListBlocksForQueryResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Blocks) != len(that1.Blocks) {
+		return false
+	}
+	for i := range this.Blocks {
+		if !this.Blocks[i].Equal(that1.Blocks[i]) {
+			return false
+		}
+	}
+	return true
+}
 func (this *AddBlockRequest) GoString() string {
 	if this == nil {
 		return "nil"
@@ -434,16 +698,28 @@ func (this *BlockMeta) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 10)
+	s := make([]string, 0, 11)
 	s = append(s, "&metastorepb.BlockMeta{")
 	s = append(s, "FormatVersion: "+fmt.Sprintf("%#v", this.FormatVersion)+",\n")
 	s = append(s, "Id: "+fmt.Sprintf("%#v", this.Id)+",\n")
 	s = append(s, "MinTime: "+fmt.Sprintf("%#v", this.MinTime)+",\n")
 	s = append(s, "MaxTime: "+fmt.Sprintf("%#v", this.MaxTime)+",\n")
 	s = append(s, "CompactionLevel: "+fmt.Sprintf("%#v", this.CompactionLevel)+",\n")
+	s = append(s, "IndexRef: "+strings.Replace(this.IndexRef.GoString(), `&`, ``, 1)+",\n")
 	if this.TenantStreams != nil {
 		s = append(s, "TenantStreams: "+fmt.Sprintf("%#v", this.TenantStreams)+",\n")
 	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *DataRef) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&metastorepb.DataRef{")
+	s = append(s, "Offset: "+fmt.Sprintf("%#v", this.Offset)+",\n")
+	s = append(s, "Length: "+fmt.Sprintf("%#v", this.Length)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -456,6 +732,30 @@ func (this *TenantStreams) GoString() string {
 	s = append(s, "TenantId: "+fmt.Sprintf("%#v", this.TenantId)+",\n")
 	s = append(s, "MinTime: "+fmt.Sprintf("%#v", this.MinTime)+",\n")
 	s = append(s, "MaxTime: "+fmt.Sprintf("%#v", this.MaxTime)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *ListBlocksForQueryRequest) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 7)
+	s = append(s, "&metastorepb.ListBlocksForQueryRequest{")
+	s = append(s, "TenantId: "+fmt.Sprintf("%#v", this.TenantId)+",\n")
+	s = append(s, "StartTime: "+fmt.Sprintf("%#v", this.StartTime)+",\n")
+	s = append(s, "EndTime: "+fmt.Sprintf("%#v", this.EndTime)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *ListBlocksForQueryResponse) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 5)
+	s = append(s, "&metastorepb.ListBlocksForQueryResponse{")
+	if this.Blocks != nil {
+		s = append(s, "Blocks: "+fmt.Sprintf("%#v", this.Blocks)+",\n")
+	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -481,6 +781,7 @@ const _ = grpc.SupportPackageIsVersion4
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type MetastoreServiceClient interface {
 	AddBlock(ctx context.Context, in *AddBlockRequest, opts ...grpc.CallOption) (*AddBlockResponse, error)
+	ListBlocksForQuery(ctx context.Context, in *ListBlocksForQueryRequest, opts ...grpc.CallOption) (*ListBlocksForQueryResponse, error)
 }
 
 type metastoreServiceClient struct {
@@ -500,9 +801,19 @@ func (c *metastoreServiceClient) AddBlock(ctx context.Context, in *AddBlockReque
 	return out, nil
 }
 
+func (c *metastoreServiceClient) ListBlocksForQuery(ctx context.Context, in *ListBlocksForQueryRequest, opts ...grpc.CallOption) (*ListBlocksForQueryResponse, error) {
+	out := new(ListBlocksForQueryResponse)
+	err := c.cc.Invoke(ctx, "/metastorepb.MetastoreService/ListBlocksForQuery", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MetastoreServiceServer is the server API for MetastoreService service.
 type MetastoreServiceServer interface {
 	AddBlock(context.Context, *AddBlockRequest) (*AddBlockResponse, error)
+	ListBlocksForQuery(context.Context, *ListBlocksForQueryRequest) (*ListBlocksForQueryResponse, error)
 }
 
 // UnimplementedMetastoreServiceServer can be embedded to have forward compatible implementations.
@@ -511,6 +822,9 @@ type UnimplementedMetastoreServiceServer struct {
 
 func (*UnimplementedMetastoreServiceServer) AddBlock(ctx context.Context, req *AddBlockRequest) (*AddBlockResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AddBlock not implemented")
+}
+func (*UnimplementedMetastoreServiceServer) ListBlocksForQuery(ctx context.Context, req *ListBlocksForQueryRequest) (*ListBlocksForQueryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListBlocksForQuery not implemented")
 }
 
 func RegisterMetastoreServiceServer(s *grpc.Server, srv MetastoreServiceServer) {
@@ -535,6 +849,24 @@ func _MetastoreService_AddBlock_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _MetastoreService_ListBlocksForQuery_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListBlocksForQueryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MetastoreServiceServer).ListBlocksForQuery(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/metastorepb.MetastoreService/ListBlocksForQuery",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MetastoreServiceServer).ListBlocksForQuery(ctx, req.(*ListBlocksForQueryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 var _MetastoreService_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "metastorepb.MetastoreService",
 	HandlerType: (*MetastoreServiceServer)(nil),
@@ -542,6 +874,10 @@ var _MetastoreService_serviceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AddBlock",
 			Handler:    _MetastoreService_AddBlock_Handler,
+		},
+		{
+			MethodName: "ListBlocksForQuery",
+			Handler:    _MetastoreService_ListBlocksForQuery_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
@@ -637,9 +973,19 @@ func (m *BlockMeta) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 				i = encodeVarintMetastore(dAtA, i, uint64(size))
 			}
 			i--
-			dAtA[i] = 0x3a
+			dAtA[i] = 0x42
 		}
 	}
+	{
+		size, err := m.IndexRef.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = encodeVarintMetastore(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x3a
 	if m.CompactionLevel != 0 {
 		i = encodeVarintMetastore(dAtA, i, uint64(m.CompactionLevel))
 		i--
@@ -664,6 +1010,39 @@ func (m *BlockMeta) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	}
 	if m.FormatVersion != 0 {
 		i = encodeVarintMetastore(dAtA, i, uint64(m.FormatVersion))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *DataRef) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *DataRef) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *DataRef) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.Length != 0 {
+		i = encodeVarintMetastore(dAtA, i, uint64(m.Length))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.Offset != 0 {
+		i = encodeVarintMetastore(dAtA, i, uint64(m.Offset))
 		i--
 		dAtA[i] = 0x8
 	}
@@ -706,6 +1085,83 @@ func (m *TenantStreams) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i = encodeVarintMetastore(dAtA, i, uint64(len(m.TenantId)))
 		i--
 		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *ListBlocksForQueryRequest) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ListBlocksForQueryRequest) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *ListBlocksForQueryRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.EndTime != 0 {
+		i = encodeVarintMetastore(dAtA, i, uint64(m.EndTime))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.StartTime != 0 {
+		i = encodeVarintMetastore(dAtA, i, uint64(m.StartTime))
+		i--
+		dAtA[i] = 0x10
+	}
+	if len(m.TenantId) > 0 {
+		i -= len(m.TenantId)
+		copy(dAtA[i:], m.TenantId)
+		i = encodeVarintMetastore(dAtA, i, uint64(len(m.TenantId)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *ListBlocksForQueryResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ListBlocksForQueryResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *ListBlocksForQueryResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Blocks) > 0 {
+		for iNdEx := len(m.Blocks) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Blocks[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintMetastore(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0xa
+		}
 	}
 	return len(dAtA) - i, nil
 }
@@ -765,11 +1221,28 @@ func (m *BlockMeta) Size() (n int) {
 	if m.CompactionLevel != 0 {
 		n += 1 + sovMetastore(uint64(m.CompactionLevel))
 	}
+	l = m.IndexRef.Size()
+	n += 1 + l + sovMetastore(uint64(l))
 	if len(m.TenantStreams) > 0 {
 		for _, e := range m.TenantStreams {
 			l = e.Size()
 			n += 1 + l + sovMetastore(uint64(l))
 		}
+	}
+	return n
+}
+
+func (m *DataRef) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Offset != 0 {
+		n += 1 + sovMetastore(uint64(m.Offset))
+	}
+	if m.Length != 0 {
+		n += 1 + sovMetastore(uint64(m.Length))
 	}
 	return n
 }
@@ -789,6 +1262,40 @@ func (m *TenantStreams) Size() (n int) {
 	}
 	if m.MaxTime != 0 {
 		n += 1 + sovMetastore(uint64(m.MaxTime))
+	}
+	return n
+}
+
+func (m *ListBlocksForQueryRequest) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.TenantId)
+	if l > 0 {
+		n += 1 + l + sovMetastore(uint64(l))
+	}
+	if m.StartTime != 0 {
+		n += 1 + sovMetastore(uint64(m.StartTime))
+	}
+	if m.EndTime != 0 {
+		n += 1 + sovMetastore(uint64(m.EndTime))
+	}
+	return n
+}
+
+func (m *ListBlocksForQueryResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if len(m.Blocks) > 0 {
+		for _, e := range m.Blocks {
+			l = e.Size()
+			n += 1 + l + sovMetastore(uint64(l))
+		}
 	}
 	return n
 }
@@ -833,7 +1340,19 @@ func (this *BlockMeta) String() string {
 		`MinTime:` + fmt.Sprintf("%v", this.MinTime) + `,`,
 		`MaxTime:` + fmt.Sprintf("%v", this.MaxTime) + `,`,
 		`CompactionLevel:` + fmt.Sprintf("%v", this.CompactionLevel) + `,`,
+		`IndexRef:` + strings.Replace(strings.Replace(this.IndexRef.String(), "DataRef", "DataRef", 1), `&`, ``, 1) + `,`,
 		`TenantStreams:` + repeatedStringForTenantStreams + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *DataRef) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&DataRef{`,
+		`Offset:` + fmt.Sprintf("%v", this.Offset) + `,`,
+		`Length:` + fmt.Sprintf("%v", this.Length) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -846,6 +1365,33 @@ func (this *TenantStreams) String() string {
 		`TenantId:` + fmt.Sprintf("%v", this.TenantId) + `,`,
 		`MinTime:` + fmt.Sprintf("%v", this.MinTime) + `,`,
 		`MaxTime:` + fmt.Sprintf("%v", this.MaxTime) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ListBlocksForQueryRequest) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ListBlocksForQueryRequest{`,
+		`TenantId:` + fmt.Sprintf("%v", this.TenantId) + `,`,
+		`StartTime:` + fmt.Sprintf("%v", this.StartTime) + `,`,
+		`EndTime:` + fmt.Sprintf("%v", this.EndTime) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ListBlocksForQueryResponse) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForBlocks := "[]*BlockMeta{"
+	for _, f := range this.Blocks {
+		repeatedStringForBlocks += strings.Replace(f.String(), "BlockMeta", "BlockMeta", 1) + ","
+	}
+	repeatedStringForBlocks += "}"
+	s := strings.Join([]string{`&ListBlocksForQueryResponse{`,
+		`Blocks:` + repeatedStringForBlocks + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1139,6 +1685,39 @@ func (m *BlockMeta) Unmarshal(dAtA []byte) error {
 			}
 		case 7:
 			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field IndexRef", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetastore
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.IndexRef.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 8:
+			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field TenantStreams", wireType)
 			}
 			var msglen int
@@ -1171,6 +1750,97 @@ func (m *BlockMeta) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipMetastore(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *DataRef) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowMetastore
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: DataRef: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: DataRef: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Offset", wireType)
+			}
+			m.Offset = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetastore
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Offset |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Length", wireType)
+			}
+			m.Length = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetastore
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Length |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipMetastore(dAtA[iNdEx:])
@@ -1294,6 +1964,216 @@ func (m *TenantStreams) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipMetastore(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ListBlocksForQueryRequest) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowMetastore
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ListBlocksForQueryRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ListBlocksForQueryRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TenantId", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetastore
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.TenantId = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StartTime", wireType)
+			}
+			m.StartTime = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetastore
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.StartTime |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field EndTime", wireType)
+			}
+			m.EndTime = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetastore
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.EndTime |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipMetastore(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ListBlocksForQueryResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowMetastore
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ListBlocksForQueryResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ListBlocksForQueryResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Blocks", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMetastore
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthMetastore
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Blocks = append(m.Blocks, &BlockMeta{})
+			if err := m.Blocks[len(m.Blocks)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipMetastore(dAtA[iNdEx:])

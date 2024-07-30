@@ -524,6 +524,9 @@ func NewChunkClient(component, name string, cfg Config, schemaCfg config.SchemaC
 			if err != nil {
 				return nil, err
 			}
+			if cfg.CongestionControl.Enabled {
+				c = cc.Wrap(c)
+			}
 			return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 
 		case types.StorageTypeGCS:

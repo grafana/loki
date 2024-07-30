@@ -100,9 +100,12 @@ func loadBlockDirectories(root string, logger log.Logger) (keys []string, values
 		}
 
 		if ok, clean := isBlockDir(path, logger); ok {
-			keys = append(keys, resolver.Block(ref).Addr())
+			// the cache key must not contain the directory prefix
+			// therefore we use the defaultKeyResolver to resolve the block's address
+			key := defaultKeyResolver{}.Block(ref).Addr()
+			keys = append(keys, key)
 			values = append(values, NewBlockDirectory(ref, path))
-			level.Debug(logger).Log("msg", "found block directory", "ref", ref, "path", path)
+			level.Debug(logger).Log("msg", "found block directory", "path", path, "key", key)
 		} else {
 			level.Warn(logger).Log("msg", "skip directory entry", "err", "not a block directory containing blooms and series", "path", path)
 			_ = clean(path)

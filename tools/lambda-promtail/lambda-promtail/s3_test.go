@@ -94,6 +94,38 @@ func Test_getLabels(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "s3_guardduty",
+			args: args{
+				record: events.S3EventRecord{
+					AWSRegion: "us-east-1",
+					S3: events.S3Entity{
+						Bucket: events.S3Bucket{
+							Name: "s3_guardduty_test",
+							OwnerIdentity: events.S3UserIdentity{
+								PrincipalID: "test",
+							},
+						},
+						Object: events.S3Object{
+							Key: "AWSLogs/123456789012/GuardDuty/us-east-1/2024/05/30/07a3f2ce-1485-3031-b842-e1f324c4a48d.jsonl.gz",
+						},
+					},
+				},
+			},
+			want: map[string]string{
+				"account_id":    "123456789012",
+				"bucket":        "s3_guardduty_test",
+				"bucket_owner":  "test",
+				"bucket_region": "us-east-1",
+				"day":           "30",
+				"key":           "AWSLogs/123456789012/GuardDuty/us-east-1/2024/05/30/07a3f2ce-1485-3031-b842-e1f324c4a48d.jsonl.gz",
+				"month":         "05",
+				"region":        "us-east-1",
+				"type":          GUARDDUTY_LOG_TYPE,
+				"year":          "2024",
+			},
+			wantErr: false,
+		},
+		{
 			name: "s3_flow_logs",
 			args: args{
 				record: events.S3EventRecord{

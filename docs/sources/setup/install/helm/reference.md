@@ -664,7 +664,7 @@ null
 		<tr>
 			<td>backend.targetModule</td>
 			<td>string</td>
-			<td>Comma-separated list of Loki modules to load for the read</td>
+			<td>Comma-separated list of Loki modules to load for the backend</td>
 			<td><pre lang="json">
 "backend"
 </pre>
