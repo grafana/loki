@@ -9,7 +9,7 @@ description: Provides an overview of the steps for implementing Grafana Loki to 
 
 {{< youtube id="1uk8LtQqsZQ" >}}
 
-Loki is a horizontally-scalable, highly-available, multi-tenant log aggregation system inspired by Prometheus. It is designed to be very cost effective and easy to operate. It does not index the contents of the logs, but rather a set of labels for each log stream.
+Loki is a horizontally scalable, highly available, multi-tenant log aggregation system inspired by Prometheus. It is designed to be very cost effective and easy to operate. It does not index the contents of the logs, but rather a set of labels for each log stream.
 
 Because all Loki implementations are unique, the installation process is
 different for every customer. But there are some steps in the process that
@@ -26,13 +26,13 @@ To collect logs and view your log data generally involves the following steps:
 1. Deploy the [Grafana Agent](https://grafana.com/docs/agent/latest/flow/) to collect logs from your applications.
     1. On Kubernetes, deploy the Grafana Agent using the Helm chart. Configure Grafana Agent to scrape logs from your Kubernetes cluster, and add your Loki endpoint details. See the following section for an example Grafana Agent Flow configuration file.
     1. Add [labels](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/) to your logs following our [best practices](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/bp-labels/). Most Loki users start by adding labels which describe where the logs are coming from (region, cluster, environment, etc.).
-1. Deploy [Grafana](https://grafana.com/docs/grafana/latest/setup-grafana/) or [Grafana Cloud](https://grafana.com/docs/grafana-cloud/quickstart/) and configure a [Loki datasource](https://grafana.com/docs/grafana/latest/datasources/loki/configure-loki-data-source/).
+1. Deploy [Grafana](https://grafana.com/docs/grafana/latest/setup-grafana/) or [Grafana Cloud](https://grafana.com/docs/grafana-cloud/quickstart/) and configure a [Loki data source](https://grafana.com/docs/grafana/latest/datasources/loki/configure-loki-data-source/).
 1. Select the [Explore feature](https://grafana.com/docs/grafana/latest/explore/) in the Grafana main menu. To [view logs in Explore](https://grafana.com/docs/grafana/latest/explore/logs-integration/):
     1. Pick a time range.
-    1. Choose the Loki datasource.
+    1. Choose the Loki data source.
     1. Use [LogQL](https://grafana.com/docs/loki/<LOKI_VERSION>/query/) in the [query editor](https://grafana.com/docs/grafana/latest/datasources/loki/query-editor/), use the Builder view to explore your labels, or select from sample pre-configured queries using the **Kick start your query** button.
 
-**Next steps:** Learn more about Loki’s query language, [LogQL](https://grafana.com/docs/loki/<LOKI_VERSION>/query/).
+**Next steps:** Learn more about the Loki query language, [LogQL](https://grafana.com/docs/loki/<LOKI_VERSION>/query/).
 
 ## Example Grafana Agent configuration file to ship Kubernetes Pod logs to Loki
 
