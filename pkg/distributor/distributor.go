@@ -429,7 +429,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 	// Return early if request does not contain any streams
 	if len(req.Streams) == 0 {
-		return &logproto.PushResponse{}, nil
+		return &logproto.PushResponse{}, httpgrpc.Errorf(http.StatusUnprocessableEntity, validation.MissingStreams)
 	}
 
 	// First we flatten out the request into a list of samples.
