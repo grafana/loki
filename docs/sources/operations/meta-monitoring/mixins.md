@@ -59,7 +59,7 @@ For an example, see [Collect and forward Prometheus metrics](https://grafana.com
 
 ## Configure Grafana
 
-In your Grafana instance, you'll need to [create a Prometheus datasource](https://grafana.com/docs/grafana/latest/datasources/prometheus/configure-prometheus-data-source/) to visualize the metrics scraped from your Loki cluster.
+In your Grafana instance, you'll need to [create a Prometheus data source](https://grafana.com/docs/grafana/latest/datasources/prometheus/configure-prometheus-data-source/) to visualize the metrics scraped from your Loki cluster.
 
 ## Install Loki dashboards in Grafana
 
