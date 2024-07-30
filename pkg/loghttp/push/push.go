@@ -276,6 +276,8 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 				pushStats.MostRecentEntryTimestamp = e.Timestamp
 			}
 		}
+
+		req.Streams[i] = s
 	}
 
 	return &req, pushStats, nil

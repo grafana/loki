@@ -215,7 +215,7 @@ func TestParseRequest(t *testing.T) {
 			expectedBytes:             len("fizzbuzz"),
 			expectedLines:             1,
 			expectedBytesUsageTracker: map[string]float64{`{foo="bar2", job="stuff"}`: float64(len("fizzbuss"))},
-			expectedLabels:            labels.FromStrings("foo", "bar2", LabelServiceName, "stuff"),
+			expectedLabels:            labels.FromStrings("foo", "bar2", "job", "stuff", LabelServiceName, "stuff"),
 		},
 		{
 			path:                      `/loki/api/v1/push`,
@@ -262,6 +262,7 @@ func TestParseRequest(t *testing.T) {
 				require.Equal(t, float64(test.expectedStructuredMetadataBytes), testutil.ToFloat64(structuredMetadataBytesIngested.WithLabelValues("fake", "")))
 				require.Equal(t, float64(test.expectedBytes), testutil.ToFloat64(bytesIngested.WithLabelValues("fake", "")))
 				require.Equal(t, float64(test.expectedLines), testutil.ToFloat64(linesIngested.WithLabelValues("fake")))
+				require.Equal(t, test.expectedLabels.String(), data.Streams[0].Labels)
 				require.InDeltaMapValuesf(t, test.expectedBytesUsageTracker, tracker.receivedBytes, 0.0, "%s != %s", test.expectedBytesUsageTracker, tracker.receivedBytes)
 			} else {
 				assert.Errorf(t, err, "Should give error for %d", index)
