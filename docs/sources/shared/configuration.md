@@ -2036,6 +2036,11 @@ storage:
       # CLI flag: -common.storage.thanos.gcs.service-account
       [service_account: <string> | default = ""]
 
+      # The size of the buffer that GCS client for each PUT request. 0 to
+      # disable buffering.
+      # CLI flag: -common.storage.thanos.gcs.chunk-buffer-size
+      [chunk_buffer_size: <int> | default = 0]
+
       http:
         # The time an idle connection will remain idle before closing.
         # CLI flag: -common.storage.thanos.s3.http.idle-conn-timeout
@@ -4993,6 +4998,8 @@ storage:
 
       service_account:
 
+      [chunk_buffer_size: <int>]
+
       http:
         [idle_conn_timeout: <duration>]
 
@@ -6328,6 +6335,11 @@ objstore_config:
     # file. If empty, fallback to Google default logic.
     # CLI flag: -thanos.gcs.service-account
     [service_account: <string> | default = ""]
+
+    # The size of the buffer that GCS client for each PUT request. 0 to disable
+    # buffering.
+    # CLI flag: -thanos.gcs.chunk-buffer-size
+    [chunk_buffer_size: <int> | default = 0]
 
     http:
       # The time an idle connection will remain idle before closing.
