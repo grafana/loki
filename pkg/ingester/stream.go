@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/detection"
 	"github.com/grafana/loki/v3/pkg/runtime"
 
 	"github.com/go-kit/log/level"
@@ -83,8 +82,6 @@ type stream struct {
 	chunkHeadBlockFormat chunkenc.HeadBlockFmt
 
 	configs *runtime.TenantConfigs
-
-	isAggregatedMetric bool
 }
 
 type chunkDesc struct {
@@ -135,8 +132,7 @@ func newStream(
 		chunkFormat:          chunkFormat,
 		chunkHeadBlockFormat: headBlockFmt,
 
-		configs:            configs,
-		isAggregatedMetric: labels.Has(detection.AggregatedMetricLabel),
+		configs: configs,
 	}
 }
 
