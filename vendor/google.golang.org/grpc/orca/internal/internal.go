@@ -35,7 +35,7 @@ import (
 // configured via ServiceOptions, to a minimum of 30s.
 //
 // For testing purposes only.
-var AllowAnyMinReportingInterval interface{} // func(*ServiceOptions)
+var AllowAnyMinReportingInterval any // func(*ServiceOptions)
 
 // DefaultBackoffFunc is used by the producer to control its backoff behavior.
 //

@@ -1,5 +1,4 @@
 //go:build !windows
-// +build !windows
 
 package plugins // import "github.com/docker/docker/pkg/plugins"
 import (
@@ -9,38 +8,24 @@ import (
 	"github.com/docker/docker/pkg/rootless"
 )
 
-const globalConfigPluginsPath = "/etc/docker/plugins"
-const globalLibPluginsPath = "/usr/lib/docker/plugins"
-
-var globalSpecsPaths = []string{globalConfigPluginsPath, globalLibPluginsPath}
-
 func rootlessConfigPluginsPath() string {
-	configHome, err := homedir.GetConfigHome()
-	if err == nil {
+	if configHome, err := homedir.GetConfigHome(); err != nil {
 		return filepath.Join(configHome, "docker/plugins")
 	}
-
-	return globalConfigPluginsPath
+	return "/etc/docker/plugins"
 }
 
 func rootlessLibPluginsPath() string {
-	libHome, err := homedir.GetLibHome()
-	if err == nil {
+	if libHome, err := homedir.GetLibHome(); err == nil {
 		return filepath.Join(libHome, "docker/plugins")
 	}
-
-	return globalLibPluginsPath
+	return "/usr/lib/docker/plugins"
 }
 
-// SpecsPaths returns
-// { "%programdata%\docker\plugins" } on Windows,
-// { "/etc/docker/plugins", "/usr/lib/docker/plugins" } on Unix in non-rootless mode,
-// { "$XDG_CONFIG_HOME/docker/plugins", "$HOME/.local/lib/docker/plugins" } on Unix in rootless mode
-// with fallback to the corresponding path in non-rootless mode if $XDG_CONFIG_HOME or $HOME is not set.
-func SpecsPaths() []string {
+// specsPaths is the non-Windows implementation of [SpecsPaths].
+func specsPaths() []string {
 	if rootless.RunningWithRootlessKit() {
 		return []string{rootlessConfigPluginsPath(), rootlessLibPluginsPath()}
 	}
-
-	return globalSpecsPaths
+	return []string{"/etc/docker/plugins", "/usr/lib/docker/plugins"}
 }

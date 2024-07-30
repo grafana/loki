@@ -44,7 +44,7 @@ type AddrInfo struct {
 }
 
 // Equal allows the values to be compared by Attributes.Equal.
-func (a AddrInfo) Equal(o interface{}) bool {
+func (a AddrInfo) Equal(o any) bool {
 	oa, ok := o.(AddrInfo)
 	return ok && oa.Weight == a.Weight
 }

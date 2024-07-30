@@ -91,15 +91,20 @@ pull method.
 
 # Streams Management
 
-Streams used for streaming pull are configured by setting sub.ReceiveSettings.NumGoroutines.
-However, the total number of streams possible is capped by the gRPC connection pool setting.
-By default, the number of connections in the pool is min(4,GOMAXPROCS).
+The number of StreamingPull connections can be configured by setting sub.ReceiveSettings.NumGoroutines.
+The default value of 10 means the client library will maintain 10 StreamingPull connections.
+This is more than sufficient for most use cases, as StreamingPull connections can handle up to
+10 MB/s https://cloud.google.com/pubsub/quotas#resource_limits. In some cases, using too many streams
+can lead to client library behaving poorly as the application becomes I/O bound.
 
-If you have 4 or more CPU cores, the default setting allows a maximum of 400 streams which is still a good default for most cases.
-If you want to have more open streams (such as for low CPU core machines), you should pass in the grpc option as described below:
+By default, the number of connections in the gRPC conn pool is min(4,GOMAXPROCS). Each connection supports
+up to 100 streams. Thus, if you have 4 or more CPU cores, the default setting allows a maximum of 400 streams
+which is already excessive for most use cases.
+If you want to change the limits on the number of streams, you can change the number of connections
+in the gRPC connection pool as shown below:
 
 	 opts := []option.ClientOption{
-		option.WithGRPCConnectionPool(8),
+		option.WithGRPCConnectionPool(2),
 	 }
 	 client, err := pubsub.NewClient(ctx, projID, opts...)
 

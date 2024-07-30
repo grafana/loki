@@ -345,7 +345,7 @@ func (b *outlierDetectionBalancer) ResolverError(err error) {
 	b.child.ResolverError(err)
 }
 
-func (b *outlierDetectionBalancer) UpdateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
+func (b *outlierDetectionBalancer) updateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	scw, ok := b.scWrappers[sc]
@@ -362,6 +362,10 @@ func (b *outlierDetectionBalancer) UpdateSubConnState(sc balancer.SubConn, state
 		scw:   scw,
 		state: state,
 	})
+}
+
+func (b *outlierDetectionBalancer) UpdateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
+	b.logger.Errorf("UpdateSubConnState(%v, %+v) called unexpectedly", sc, state)
 }
 
 func (b *outlierDetectionBalancer) Close() {
@@ -466,6 +470,9 @@ func (b *outlierDetectionBalancer) UpdateState(s balancer.State) {
 }
 
 func (b *outlierDetectionBalancer) NewSubConn(addrs []resolver.Address, opts balancer.NewSubConnOptions) (balancer.SubConn, error) {
+	var sc balancer.SubConn
+	oldListener := opts.StateListener
+	opts.StateListener = func(state balancer.SubConnState) { b.updateSubConnState(sc, state) }
 	sc, err := b.cc.NewSubConn(addrs, opts)
 	if err != nil {
 		return nil, err
@@ -474,6 +481,7 @@ func (b *outlierDetectionBalancer) NewSubConn(addrs []resolver.Address, opts bal
 		SubConn:    sc,
 		addresses:  addrs,
 		scUpdateCh: b.scUpdateCh,
+		listener:   oldListener,
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -494,14 +502,7 @@ func (b *outlierDetectionBalancer) NewSubConn(addrs []resolver.Address, opts bal
 }
 
 func (b *outlierDetectionBalancer) RemoveSubConn(sc balancer.SubConn) {
-	scw, ok := sc.(*subConnWrapper)
-	if !ok { // Shouldn't happen
-		return
-	}
-	// Remove the wrapped SubConn from the parent Client Conn. We don't remove
-	// from map entry until we get a Shutdown state for the SubConn, as we need
-	// that data to forward that state down.
-	b.cc.RemoveSubConn(scw.SubConn)
+	b.logger.Errorf("RemoveSubConn(%v) called unexpectedly", sc)
 }
 
 // appendIfPresent appends the scw to the address, if the address is present in
@@ -614,9 +615,11 @@ func (b *outlierDetectionBalancer) handleSubConnUpdate(u *scUpdate) {
 	scw := u.scw
 	scw.latestState = u.state
 	if !scw.ejected {
-		b.childMu.Lock()
-		b.child.UpdateSubConnState(scw, u.state)
-		b.childMu.Unlock()
+		if scw.listener != nil {
+			b.childMu.Lock()
+			scw.listener(u.state)
+			b.childMu.Unlock()
+		}
 	}
 }
 
@@ -633,9 +636,11 @@ func (b *outlierDetectionBalancer) handleEjectedUpdate(u *ejectionUpdate) {
 			ConnectivityState: connectivity.TransientFailure,
 		}
 	}
-	b.childMu.Lock()
-	b.child.UpdateSubConnState(scw, stateToUpdate)
-	b.childMu.Unlock()
+	if scw.listener != nil {
+		b.childMu.Lock()
+		scw.listener(stateToUpdate)
+		b.childMu.Unlock()
+	}
 }
 
 // handleChildStateUpdate forwards the picker update wrapped in a wrapped picker
