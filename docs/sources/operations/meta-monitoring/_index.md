@@ -16,7 +16,7 @@ Loki exposes the following observability data about itself:
 - **Metrics**: Loki provides a `/metrics` endpoint that exports information about Loki in Prometheus format. These metrics provide aggregated metrics of the health of your Loki cluster, allowing you to observe query response times, etc etc.
 - **Logs**: Loki emits a detailed log line `metrics.go` for every query, which shows query duration, number of lines returned, query throughput, the specific LogQL that was executed, chunks searched, and much more. You can use these log lines to improve and optimize your query performance.
 
-You can also scrape Loki's logs and metrics and push them to separate instances of Loki and Mimir to provide information about the health of your Loki system (a process known as "meta-monitoring").
+You can also scrape the Loki logs and metrics and push them to separate instances of Loki and Mimir to provide information about the health of your Loki system (a process known as "meta-monitoring").
 
 The Loki [mixin](https://github.com/grafana/loki/blob/main/production/loki-mixin) is an opinionated set of dashboards, alerts and recording rules to monitor your Loki cluster. The mixin provides a comprehensive package for monitoring Loki in production. You can install the mixin into a Grafana instance.
 
