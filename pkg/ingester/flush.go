@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
@@ -44,6 +45,60 @@ const (
 	flushReasonFull     = "full"
 	flushReasonSynced   = "synced"
 )
+
+// I don't know if this needs to be private but I only needed it in this package.
+type flushReasonCounter struct {
+	flushReasonIdle     int
+	flushReasonMaxAge   int
+	flushReasonForced   int
+	flushReasonNotOwned int
+	flushReasonFull     int
+	flushReasonSynced   int
+}
+
+func (f *flushReasonCounter) Log() []interface{} {
+	// return counters only if they are non zero
+	var log []interface{}
+	if f.flushReasonIdle > 0 {
+		log = append(log, "idle", f.flushReasonIdle)
+	}
+	if f.flushReasonMaxAge > 0 {
+		log = append(log, "max_age", f.flushReasonMaxAge)
+	}
+	if f.flushReasonForced > 0 {
+		log = append(log, "forced", f.flushReasonForced)
+	}
+	if f.flushReasonNotOwned > 0 {
+		log = append(log, "not_owned", f.flushReasonNotOwned)
+	}
+	if f.flushReasonFull > 0 {
+		log = append(log, "full", f.flushReasonFull)
+	}
+	if f.flushReasonSynced > 0 {
+		log = append(log, "synced", f.flushReasonSynced)
+	}
+	return log
+}
+
+func (f *flushReasonCounter) IncrementForReason(reason string) error {
+	switch reason {
+	case flushReasonIdle:
+		f.flushReasonIdle++
+	case flushReasonMaxAge:
+		f.flushReasonMaxAge++
+	case flushReasonForced:
+		f.flushReasonForced++
+	case flushReasonNotOwned:
+		f.flushReasonNotOwned++
+	case flushReasonFull:
+		f.flushReasonFull++
+	case flushReasonSynced:
+		f.flushReasonSynced++
+	default:
+		return fmt.Errorf("unknown reason: %s", reason)
+	}
+	return nil
+}
 
 // Note: this is called both during the WAL replay (zero or more times)
 // and then after replay as well.
@@ -220,8 +275,33 @@ func (i *Ingester) flushUserSeries(ctx context.Context, userID string, fp model.
 		return nil
 	}
 
+	totalCompressedSize := 0
+	totalUncompressedSize := 0
+	frc := flushReasonCounter{}
+	for _, c := range chunks {
+		totalCompressedSize += c.chunk.CompressedSize()
+		totalUncompressedSize += c.chunk.UncompressedSize()
+		err := frc.IncrementForReason(c.reason)
+		if err != nil {
+			level.Error(i.logger).Log("msg", "error incrementing flush reason", "err", err)
+		}
+	}
+
 	lbs := labels.String()
-	level.Info(i.logger).Log("msg", "flushing stream", "user", userID, "fp", fp, "immediate", immediate, "num_chunks", len(chunks), "labels", lbs)
+	logValues := make([]interface{}, 0, 35)
+	logValues = append(logValues,
+		"msg", "flushing stream",
+		"user", userID,
+		"fp", fp,
+		"immediate", immediate,
+		"num_chunks", len(chunks),
+		"total_comp", humanize.Bytes(uint64(totalCompressedSize)),
+		"avg_comp", humanize.Bytes(uint64(totalCompressedSize/len(chunks))),
+		"total_uncomp", humanize.Bytes(uint64(totalUncompressedSize)),
+		"avg_uncomp", humanize.Bytes(uint64(totalUncompressedSize/len(chunks))))
+	logValues = append(logValues, frc.Log()...)
+	logValues = append(logValues, "labels", lbs)
+	level.Info(i.logger).Log(logValues...)
 
 	ctx = user.InjectOrgID(ctx, userID)
 	ctx, cancelFunc := context.WithTimeout(ctx, i.cfg.FlushOpTimeout)
