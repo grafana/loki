@@ -33,7 +33,7 @@ Modern Grafana versions after 6.3 have built-in support for Grafana Loki and [Lo
 1. To see the logs, click <kbd>Explore</kbd> on the sidebar, select the Loki
    data source in the top-left dropdown, and then choose a log stream using the
    <kbd>Log labels</kbd> button.
-1. Learn more about querying by reading about Loki's query language [LogQL]({{< relref "../query/_index.md" >}}).
+1. Learn more about querying by reading about the Loki query language [LogQL]({{< relref "../query/_index.md" >}}).
 
 If you would like to see an example of this live, you can try [Grafana Play's Explore feature](https://play.grafana.org/explore?schemaVersion=1&panes=%7B%22v1d%22:%7B%22datasource%22:%22ac4000ca-1959-45f5-aa45-2bd0898f7026%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22expr%22:%22%7Bagent%3D%5C%22promtail%5C%22%7D%20%7C%3D%20%60%60%22,%22queryType%22:%22range%22,%22datasource%22:%7B%22type%22:%22loki%22,%22uid%22:%22ac4000ca-1959-45f5-aa45-2bd0898f7026%22%7D,%22editorMode%22:%22builder%22%7D%5D,%22range%22:%7B%22from%22:%22now-1h%22,%22to%22:%22now%22%7D%7D%7D&orgId=1)
 
@@ -43,7 +43,7 @@ search and filter for logs with Loki.
 
 ## Using Grafana Dashboards
 
-Because Loki can be used as a built-in data source above, we can use LogQL queries based on that datasource
+Because Loki can be used as a built-in data source above, we can use LogQL queries based on that data source
 to build complex visualizations that persist on Grafana dashboards.
 
 {{< docs/play title="Loki Example Grafana Dashboard" url="https://play.grafana.org/d/T512JVH7z/" >}}
