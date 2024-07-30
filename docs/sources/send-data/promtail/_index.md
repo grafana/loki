@@ -164,7 +164,7 @@ This endpoint returns 200 when Promtail is up and running, and there's at least 
 ### `GET /metrics`
 
 This endpoint returns Promtail metrics for Prometheus. Refer to
-[Observing Grafana Loki]({{< relref "../../operations/observability" >}}) for the list
+[Observing Grafana Loki]({{< relref "../../operations/meta-monitoring" >}}) for the list
 of exported metrics.
 
 ### Promtail web server config
