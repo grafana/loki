@@ -79,6 +79,14 @@ func (s *GCSThanosObjectClient) GetObject(ctx context.Context, objectKey string)
 	return reader, attr.Size, err
 }
 
+func (s *GCSThanosObjectClient) GetObjectRange(ctx context.Context, objectKey string, offset, length int64) (io.ReadCloser, error) {
+	reader, err := s.client.GetRange(ctx, objectKey, offset, length)
+	if err != nil {
+		return nil, err
+	}
+	return reader, nil
+}
+
 // List objects with given prefix.
 func (s *GCSThanosObjectClient) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	var storageObjects []client.StorageObject
