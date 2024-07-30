@@ -1,8 +1,8 @@
 package wal
 
 import (
-	"bytes"
 	"context"
+	"fmt"
 	"sort"
 	"sync"
 
@@ -10,55 +10,99 @@ import (
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
-	"github.com/grafana/loki/v3/pkg/storage/wal"
 	"github.com/grafana/loki/v3/pkg/storage/wal/chunks"
-	"github.com/grafana/loki/v3/pkg/storage/wal/index"
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 )
 
 const batchSize = 16
 
-var _ iter.EntryIterator = (*lazyChunks)(nil)
-
-type lazyChunk struct {
+type ChunkData struct {
 	meta   *chunks.Meta
 	labels labels.Labels
 	id     string
 }
 
-func newLazyChunk(id string, lbs *labels.ScratchBuilder, meta *chunks.Meta) lazyChunk {
+func newChunkData(id string, lbs *labels.ScratchBuilder, meta *chunks.Meta) ChunkData {
 	lbs.Sort()
-	return lazyChunk{
+	return ChunkData{
 		id:     id,
 		meta:   meta,
 		labels: lbs.Labels(),
 	}
 }
 
-type lazyChunks struct {
-	chunks     []lazyChunk
-	direction  logproto.Direction
-	pipeline   log.Pipeline
-	minT, maxT int64
-	storage    BlockStorage
-	ctx        context.Context
+// ChunksEntryIterator iterates over log entries
+type ChunksEntryIterator[T iter.EntryIterator] struct {
+	baseChunksIterator[T]
 
-	current iter.EntryIterator
-	batch   []lazyChunk
-	err     error
+	pipeline log.Pipeline
+	current  iter.EntryIterator
 }
 
-// todo: Support SampleIterator.
+// ChunksSampleIterator iterates over metric samples
+type ChunksSampleIterator[T iter.SampleIterator] struct {
+	baseChunksIterator[T]
+	current   iter.SampleIterator
+	extractor log.SampleExtractor
+}
+
 func NewChunksEntryIterator(
 	ctx context.Context,
 	storage BlockStorage,
-	chunks []lazyChunk,
+	chunks []ChunkData,
 	pipeline log.Pipeline,
 	direction logproto.Direction,
 	minT, maxT int64,
-) *lazyChunks {
-	// sort by time and then by labels following the direction.
+) *ChunksEntryIterator[iter.EntryIterator] {
+	sortChunks(chunks, direction)
+	return &ChunksEntryIterator[iter.EntryIterator]{
+		baseChunksIterator: baseChunksIterator[iter.EntryIterator]{
+			ctx:       ctx,
+			chunks:    chunks,
+			direction: direction,
+			storage:   storage,
+			batch:     make([]ChunkData, 0, batchSize),
+			minT:      minT,
+			maxT:      maxT,
+
+			iteratorFactory: func(chunks []ChunkData) (iter.EntryIterator, error) {
+				return createNextEntryIterator(ctx, chunks, direction, pipeline, storage, minT, maxT)
+			},
+			isNil: func(it iter.EntryIterator) bool { return it == nil },
+		},
+		pipeline: pipeline,
+	}
+}
+
+func NewChunksSampleIterator(
+	ctx context.Context,
+	storage BlockStorage,
+	chunks []ChunkData,
+	extractor log.SampleExtractor,
+	minT, maxT int64,
+) *ChunksSampleIterator[iter.SampleIterator] {
+	sortChunks(chunks, logproto.FORWARD)
+	return &ChunksSampleIterator[iter.SampleIterator]{
+		baseChunksIterator: baseChunksIterator[iter.SampleIterator]{
+			ctx:       ctx,
+			chunks:    chunks,
+			direction: logproto.FORWARD,
+			storage:   storage,
+			batch:     make([]ChunkData, 0, batchSize),
+			minT:      minT,
+			maxT:      maxT,
+
+			iteratorFactory: func(chunks []ChunkData) (iter.SampleIterator, error) {
+				return createNextSampleIterator(ctx, chunks, extractor, storage, minT, maxT)
+			},
+			isNil: func(it iter.SampleIterator) bool { return it == nil },
+		},
+		extractor: extractor,
+	}
+}
+
+func sortChunks(chunks []ChunkData, direction logproto.Direction) {
 	sort.Slice(chunks, func(i, j int) bool {
 		if direction == logproto.FORWARD {
 			t1, t2 := chunks[i].meta.MinTime, chunks[j].meta.MinTime
@@ -73,159 +117,205 @@ func NewChunksEntryIterator(
 		}
 		return labels.Compare(chunks[i].labels, chunks[j].labels) < 0
 	})
-	return &lazyChunks{
-		ctx:       ctx,
-		chunks:    chunks,
-		direction: direction,
-		pipeline:  pipeline,
-		storage:   storage,
-		batch:     make([]lazyChunk, 0, batchSize),
-		minT:      minT,
-		maxT:      maxT,
-	}
 }
 
-// At implements iter.EntryIterator.
-func (l *lazyChunks) At() push.Entry {
-	if l.current == nil {
-		return push.Entry{}
-	}
-	return l.current.At()
+// baseChunksIterator contains common fields and methods for both entry and sample iterators
+type baseChunksIterator[T interface {
+	Next() bool
+	Close() error
+	Err() error
+	StreamHash() uint64
+	Labels() string
+}] struct {
+	chunks          []ChunkData
+	direction       logproto.Direction
+	minT, maxT      int64
+	storage         BlockStorage
+	ctx             context.Context
+	iteratorFactory func([]ChunkData) (T, error)
+	isNil           func(T) bool
+
+	batch   []ChunkData
+	current T
+	err     error
 }
 
-func (l *lazyChunks) Labels() string {
-	if l.current == nil {
-		return ""
+func (b *baseChunksIterator[T]) nextBatch() error {
+	b.batch = b.batch[:0]
+	for len(b.chunks) > 0 &&
+		(len(b.batch) < batchSize ||
+			isOverlapping(b.batch[len(b.batch)-1], b.chunks[0], b.direction)) {
+		b.batch = append(b.batch, b.chunks[0])
+		b.chunks = b.chunks[1:]
 	}
-	return l.current.Labels()
-}
-
-func (l *lazyChunks) StreamHash() uint64 {
-	if l.current == nil {
-		return 0
-	}
-	return l.current.StreamHash()
-}
-
-// Close implements iter.EntryIterator.
-func (l *lazyChunks) Close() error {
-	if l.current == nil {
-		return nil
-	}
-	return l.current.Close()
-}
-
-// Err implements iter.EntryIterator.
-func (l *lazyChunks) Err() error {
-	if l.err != nil {
-		return l.err
-	}
-	if l.current == nil {
-		return l.current.Err()
-	}
+	// todo: error if the batch is too big.
 	return nil
 }
 
-// Next implements iter.EntryIterator.
-func (l *lazyChunks) Next() bool {
-	if l.current != nil && l.current.Next() {
-		return true
-	}
-	if l.current != nil {
-		if err := l.current.Close(); err != nil {
-			l.err = err
+// todo: better chunk batch iterator
+func (b *baseChunksIterator[T]) Next() bool {
+	for b.isNil(b.current) || !b.current.Next() {
+		if !b.isNil(b.current) {
+			if err := b.current.Close(); err != nil {
+				b.err = err
+				return false
+			}
+		}
+		if len(b.chunks) == 0 {
+			return false
+		}
+		if err := b.nextBatch(); err != nil {
+			b.err = err
+			return false
+		}
+		var err error
+		b.current, err = b.iteratorFactory(b.batch)
+		if err != nil {
+			b.err = err
 			return false
 		}
 	}
-	if len(l.chunks) == 0 {
-		return false
-	}
-	// take the next batch of chunks
-	if err := l.nextBatch(); err != nil {
-		l.err = err
-		return false
-	}
-	return l.current.Next()
+	return true
 }
 
-func (l *lazyChunks) nextBatch() error {
-	l.batch = l.batch[:0]
-	for len(l.chunks) > 0 &&
-		(len(l.batch) < batchSize ||
-			isOverlapping(l.batch[len(l.batch)-1], l.chunks[0], l.direction)) {
-		l.batch = append(l.batch, l.chunks[0])
-		l.chunks = l.chunks[1:]
-	}
-	// todo: error if the batch is too big.
-	// todo: reuse previous sortIterator array
-	// todo: Try to use iter.NonOverlappingEntryIterator if possible which can reduce the amount of work.
-	var (
-		iters []iter.EntryIterator
-		mtx   sync.Mutex
-	)
-	g, ctx := errgroup.WithContext(l.ctx)
-	g.SetLimit(64)
-	for _, c := range l.batch {
-		c := c
-		g.Go(func() error {
-			iter, err := fetchChunkEntries(ctx, c, l.minT, l.maxT, l.direction, l.pipeline, l.storage)
-			if err != nil {
-				return err
-			}
-			mtx.Lock()
-			iters = append(iters, iter)
-			mtx.Unlock()
-			return nil
-		})
-	}
-	if err := g.Wait(); err != nil {
-		return err
-	}
-	l.current = iter.NewSortEntryIterator(iters, l.direction)
-	return nil
-}
-
-func fetchChunkEntries(
+func createNextEntryIterator(
 	ctx context.Context,
-	c lazyChunk,
-	from, through int64,
+	batch []ChunkData,
 	direction logproto.Direction,
 	pipeline log.Pipeline,
 	storage BlockStorage,
+	minT, maxT int64,
 ) (iter.EntryIterator, error) {
-	offset, size := c.meta.Ref.Unpack()
-	// todo: We should be able to avoid many IOPS to object storage
-	// if chunks are next to each other and we should be able to pack range request
-	// together.
-	reader, err := storage.GetRangeObject(ctx, wal.Dir+c.id, int64(offset), int64(size))
-	if err != nil {
-		return nil, err
-	}
-	defer reader.Close()
-	// todo: use a pool
-	buf := bytes.NewBuffer(make([]byte, 0, size))
-	_, err = buf.ReadFrom(reader)
-	if err != nil {
-		return nil, err
-	}
-	// create logql pipeline and remove tenantID
-	// todo: we might want to create a single pipeline for all chunks from the same series.
-	streamPipeline := pipeline.ForStream(
-		labels.NewBuilder(c.labels).Del(index.TenantLabel).Labels(),
+	var (
+		iterators []iter.EntryIterator
+		mtx       sync.Mutex
 	)
-	it, err := chunks.NewEntryIterator(buf.Bytes(), streamPipeline, direction, from, through)
-	if err != nil {
+
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(64)
+	for _, chunk := range batch {
+		chunk := chunk // https://golang.org/doc/faq#closures_and_goroutines
+		g.Go(func() error {
+			chunkData, err := readChunkData(ctx, storage, chunk)
+			if err != nil {
+				return fmt.Errorf("error reading chunk data: %w", err)
+			}
+
+			streamPipeline := pipeline.ForStream(chunk.labels)
+			chunkIterator, err := chunks.NewEntryIterator(chunkData, streamPipeline, direction, minT, maxT)
+			if err != nil {
+				return fmt.Errorf("error creating entry iterator: %w", err)
+			}
+
+			mtx.Lock()
+			iterators = append(iterators, chunkIterator)
+			mtx.Unlock()
+
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
 		return nil, err
 	}
-	return iter.EntryIteratorWithClose(it, func() error {
-		// todo: return buffer to pool.
-		return nil
-	}), nil
+
+	return iter.NewSortEntryIterator(iterators, direction), nil
 }
 
-func isOverlapping(first, second lazyChunk, direction logproto.Direction) bool {
+func createNextSampleIterator(
+	ctx context.Context,
+	batch []ChunkData,
+	pipeline log.SampleExtractor,
+	storage BlockStorage,
+	minT, maxT int64,
+) (iter.SampleIterator, error) {
+	var (
+		iterators []iter.SampleIterator
+		mtx       sync.Mutex
+	)
+
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(64)
+	for _, chunk := range batch {
+		chunk := chunk // https://golang.org/doc/faq#closures_and_goroutines
+		g.Go(func() error {
+			chunkData, err := readChunkData(ctx, storage, chunk)
+			if err != nil {
+				return fmt.Errorf("error reading chunk data: %w", err)
+			}
+
+			streamPipeline := pipeline.ForStream(chunk.labels)
+			chunkIterator, err := chunks.NewSampleIterator(chunkData, streamPipeline, minT, maxT)
+			if err != nil {
+				return fmt.Errorf("error creating sample iterator: %w", err)
+			}
+
+			mtx.Lock()
+			iterators = append(iterators, chunkIterator)
+			mtx.Unlock()
+
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	return iter.NewSortSampleIterator(iterators), nil
+}
+
+func (b *baseChunksIterator[T]) Close() error {
+	if !b.isNil(b.current) {
+		return b.current.Close()
+	}
+	return nil
+}
+
+func (b *baseChunksIterator[T]) Err() error {
+	if b.err != nil {
+		return b.err
+	}
+	if !b.isNil(b.current) {
+		return b.current.Err()
+	}
+	return nil
+}
+
+func (b *baseChunksIterator[T]) Labels() string {
+	return b.current.Labels()
+}
+
+func (b *baseChunksIterator[T]) StreamHash() uint64 {
+	return b.current.StreamHash()
+}
+
+func (c *ChunksEntryIterator[T]) At() push.Entry       { return c.current.At() }
+func (c *ChunksSampleIterator[T]) At() logproto.Sample { return c.current.At() }
+
+func isOverlapping(first, second ChunkData, direction logproto.Direction) bool {
 	if direction == logproto.BACKWARD {
 		return first.meta.MinTime <= second.meta.MaxTime
 	}
 	return first.meta.MaxTime < second.meta.MinTime
+}
+
+func readChunkData(ctx context.Context, storage BlockStorage, chunk ChunkData) ([]byte, error) {
+	offset, size := chunk.meta.Ref.Unpack()
+	// todo: We should be able to avoid many IOPS to object storage
+	// if chunks are next to each other and we should be able to pack range request
+	// together.
+	reader, err := storage.GetRangeObject(ctx, chunk.id, int64(offset), int64(size))
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+
+	data := make([]byte, size)
+	_, err = reader.Read(data)
+	if err != nil {
+		return nil, err
+	}
+
+	return data, nil
 }

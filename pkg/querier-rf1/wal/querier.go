@@ -60,35 +60,77 @@ func (q *Querier) SelectLogs(ctx context.Context, req logql.SelectLogParams) (it
 	if err != nil {
 		return nil, err
 	}
-	// todo support sharding
-	var (
-		lazyChunks []lazyChunk
-		mtx        sync.Mutex
-	)
 
-	err = q.forSeries(ctx, &metastorepb.ListBlocksForQueryRequest{
-		TenantId:  tenantID,
-		StartTime: req.Start.UnixNano(),
-		EndTime:   req.End.UnixNano(),
-	}, func(id string, lbs *labels.ScratchBuilder, chk *chunks.Meta) error {
-		mtx.Lock()
-		lazyChunks = append(lazyChunks, newLazyChunk(id, lbs, chk))
-		mtx.Unlock()
-		return nil
-	}, matchers...)
+	chks, err := q.matchingChunks(ctx, tenantID, req.Start.UnixNano(), req.End.UnixNano(), matchers...)
+	if err != nil {
+		return nil, err
+	}
 
 	return NewChunksEntryIterator(ctx,
 		q.blockStorage,
-		lazyChunks,
+		chks,
 		pipeline,
 		req.Direction,
 		req.Start.UnixNano(),
-		req.End.UnixNano()), err
+		req.End.UnixNano()), nil
 }
 
-func (q *Querier) SelectSamples(context.Context, logql.SelectSampleParams) (iter.SampleIterator, error) {
-	// todo: implement
-	return nil, nil
+func (q *Querier) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
+	// todo request validation and delete markers.
+	tenantID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	expr, err := req.Expr()
+	if err != nil {
+		return nil, err
+	}
+	selector, err := expr.Selector()
+	if err != nil {
+		return nil, err
+	}
+	matchers := selector.Matchers()
+	// todo: not sure if Extractor is thread safe
+
+	extractor, err := expr.Extractor()
+	if err != nil {
+		return nil, err
+	}
+
+	chks, err := q.matchingChunks(ctx, tenantID, req.Start.UnixNano(), req.End.UnixNano(), matchers...)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewChunksSampleIterator(ctx,
+		q.blockStorage,
+		chks,
+		extractor,
+		req.Start.UnixNano(),
+		req.End.UnixNano()), nil
+}
+
+func (q *Querier) matchingChunks(ctx context.Context, tenantID string, from, through int64, matchers ...*labels.Matcher) ([]ChunkData, error) {
+	// todo support sharding
+	var (
+		lazyChunks []ChunkData
+		mtx        sync.Mutex
+	)
+
+	err := q.forSeries(ctx, &metastorepb.ListBlocksForQueryRequest{
+		TenantId:  tenantID,
+		StartTime: from,
+		EndTime:   through,
+	}, func(id string, lbs *labels.ScratchBuilder, chk *chunks.Meta) error {
+		mtx.Lock()
+		lazyChunks = append(lazyChunks, newChunkData(id, lbs, chk))
+		mtx.Unlock()
+		return nil
+	}, matchers...)
+	if err != nil {
+		return nil, err
+	}
+	return lazyChunks, nil
 }
 
 func (q *Querier) forSeries(ctx context.Context, req *metastorepb.ListBlocksForQueryRequest, fn func(string, *labels.ScratchBuilder, *chunks.Meta) error, ms ...*labels.Matcher) error {

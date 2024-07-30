@@ -9,17 +9,14 @@ import (
 	"hash/crc32"
 	"io"
 	"sync"
-	"time"
 	"unsafe"
 
 	"github.com/golang/snappy"
 	"github.com/klauspost/compress/s2"
 
-	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/log"
 )
 
 // EncodingType defines the type for encoding enums
@@ -338,86 +335,4 @@ func (r *ChunkReader) readChunkHeader() error {
 
 func unsafeGetBytes(s string) []byte {
 	return unsafe.Slice(unsafe.StringData(s), len(s))
-}
-
-type entryBufferedIterator struct {
-	reader        *ChunkReader
-	pipeline      log.StreamPipeline
-	from, through int64
-
-	cur        logproto.Entry
-	currLabels log.LabelsResult
-}
-
-func NewEntryIterator(
-	chunkData []byte,
-	pipeline log.StreamPipeline,
-	direction logproto.Direction,
-	from, through int64,
-) (iter.EntryIterator, error) {
-	chkReader, err := NewChunkReader(chunkData)
-	if err != nil {
-		return nil, err
-	}
-	it := &entryBufferedIterator{
-		reader:   chkReader,
-		pipeline: pipeline,
-		from:     from,
-		through:  through,
-	}
-	if direction == logproto.FORWARD {
-		return it, nil
-	}
-	return iter.NewEntryReversedIter(it)
-}
-
-// At implements iter.EntryIterator.
-func (e *entryBufferedIterator) At() push.Entry {
-	return e.cur
-}
-
-// Close implements iter.EntryIterator.
-func (e *entryBufferedIterator) Close() error {
-	return e.reader.Close()
-}
-
-// Err implements iter.EntryIterator.
-func (e *entryBufferedIterator) Err() error {
-	return e.reader.Err()
-}
-
-// Labels implements iter.EntryIterator.
-func (e *entryBufferedIterator) Labels() string {
-	return e.currLabels.String()
-}
-
-// Next implements iter.EntryIterator.
-func (e *entryBufferedIterator) Next() bool {
-	for e.reader.Next() {
-		ts, line := e.reader.At()
-		// check if the timestamp is within the range before applying the pipeline.
-		if ts < e.from {
-			continue
-		}
-		if ts >= e.through {
-			return false
-		}
-		// todo: structured metadata.
-		newLine, lbs, matches := e.pipeline.Process(ts, line)
-		if !matches {
-			continue
-		}
-		e.currLabels = lbs
-		e.cur.Timestamp = time.Unix(0, ts)
-		e.cur.Line = string(newLine)
-		e.cur.StructuredMetadata = logproto.FromLabelsToLabelAdapters(lbs.StructuredMetadata())
-		e.cur.Parsed = logproto.FromLabelsToLabelAdapters(lbs.Parsed())
-		return true
-	}
-	return false
-}
-
-// StreamHash implements iter.EntryIterator.
-func (e *entryBufferedIterator) StreamHash() uint64 {
-	return e.pipeline.BaseLabels().Hash()
 }
