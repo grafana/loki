@@ -32,6 +32,8 @@ import (
 	unmarshal2 "github.com/grafana/loki/v3/pkg/util/unmarshal/legacy"
 )
 
+const AggregatedMetricLabel = "__aggregated_metric__"
+
 var (
 	contentType   = http.CanonicalHeaderKey("Content-Type")
 	contentEnc    = http.CanonicalHeaderKey("Content-Encoding")
@@ -73,8 +75,10 @@ func (EmptyLimits) OTLPConfig(string) OTLPConfig {
 	return DefaultOTLPConfig(GlobalOTLPConfig{})
 }
 
-type RequestParser func(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker) (*logproto.PushRequest, *Stats, error)
-type RequestParserWrapper func(inner RequestParser) RequestParser
+type (
+	RequestParser        func(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker) (*logproto.PushRequest, *Stats, error)
+	RequestParserWrapper func(inner RequestParser) RequestParser
+)
 
 type Stats struct {
 	Errs                            []error
@@ -90,6 +94,8 @@ type Stats struct {
 	BodySize int64
 	// Extra is a place for a wrapped perser to record any interesting stats as key-value pairs to be logged
 	Extra []any
+
+	IsAggregatedMetric bool
 }
 
 func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, pushRequestParser RequestParser, tracker UsageTracker) (*logproto.PushRequest, error) {
@@ -102,21 +108,26 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		entriesSize            int64
 		structuredMetadataSize int64
 	)
+
 	for retentionPeriod, size := range pushStats.LogLinesBytes {
 		retentionHours := RetentionPeriodToString(retentionPeriod)
 
-		bytesIngested.WithLabelValues(userID, retentionHours).Add(float64(size))
-		bytesReceivedStats.Inc(size)
+		if !pushStats.IsAggregatedMetric {
+			bytesIngested.WithLabelValues(userID, retentionHours).Add(float64(size))
+			bytesReceivedStats.Inc(size)
+		}
 		entriesSize += size
 	}
 
 	for retentionPeriod, size := range pushStats.StructuredMetadataBytes {
 		retentionHours := RetentionPeriodToString(retentionPeriod)
 
-		structuredMetadataBytesIngested.WithLabelValues(userID, retentionHours).Add(float64(size))
-		bytesIngested.WithLabelValues(userID, retentionHours).Add(float64(size))
-		bytesReceivedStats.Inc(size)
-		structuredMetadataBytesReceivedStats.Inc(size)
+		if !pushStats.IsAggregatedMetric {
+			structuredMetadataBytesIngested.WithLabelValues(userID, retentionHours).Add(float64(size))
+			bytesIngested.WithLabelValues(userID, retentionHours).Add(float64(size))
+			bytesReceivedStats.Inc(size)
+			structuredMetadataBytesReceivedStats.Inc(size)
+		}
 
 		entriesSize += size
 		structuredMetadataSize += size
@@ -227,6 +238,11 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 				return nil, nil, fmt.Errorf("couldn't parse labels: %w", err)
 			}
 		}
+
+		if lbs.Has(AggregatedMetricLabel) {
+			pushStats.IsAggregatedMetric = true
+		}
+
 		var retentionPeriod time.Duration
 		if tenantsRetention != nil {
 			retentionPeriod = tenantsRetention.RetentionPeriodFor(userID, lbs)

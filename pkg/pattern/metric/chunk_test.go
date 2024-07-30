@@ -478,9 +478,10 @@ func TestDownsample(t *testing.T) {
 		labels.Label{Name: detection.AggregatedMetricLabel, Value: "foo_service"},
 		labels.Label{Name: "level", Value: "info"},
 	}
-	mockWriter.AssertCalled(t, "WriteEntry", now.Time(), AggregatedMetricEntry(now, 6.0, 3.0, "foo_service", lbls), lbls)
+	mockWriter.AssertCalled(t, "WriteEntry", now.Time(), AggregatedMetricEntry(now, 6.0, 3.0, "foo_service", c.labels), lbls)
 
-	require.Len(t, c.rawSamples, 0)
+	require.Equal(t, uint64(0), c.rawBytes)
+	require.Equal(t, uint64(0), c.rawCount)
 }
 
 func TestAggregatedMetricEntry(t *testing.T) {
@@ -517,13 +518,11 @@ func TestAggregatedMetricEntry(t *testing.T) {
 
 		bytes := humanize.Bytes(totalBytes)
 		expected := fmt.Sprintf(
-			"ts=%d bytes=%s count=%d %s=%s foo_bytes=%s foo_count=%d test_bytes=%s test_count=%d",
+			"ts=%d bytes=%s count=%d %s=%s foo=bar test=test",
 			ts.UnixNano(),
 			bytes,
 			totalCount,
 			detection.LabelServiceName, service,
-			bytes, totalCount,
-			bytes, totalCount,
 		)
 
 		result := AggregatedMetricEntry(

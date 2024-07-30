@@ -17,9 +17,9 @@ import (
 )
 
 const (
-	AggregatedMetricLabel = "__aggregated_metric__"
 	LevelLabel            = "detected_level"
 	LogLevelUnknown       = "unknown"
+	AggregatedMetricLabel = push.AggregatedMetricLabel
 
 	LogLevelDebug    = "debug"
 	LogLevelInfo     = "info"

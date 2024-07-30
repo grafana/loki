@@ -37,14 +37,15 @@ type metrics struct {
 }
 
 type Chunks struct {
-	chunks     []*Chunk
-	labels     labels.Labels
-	lock       sync.RWMutex
-	logger     log.Logger
-	metrics    metrics
-	rawSamples SamplesWithoutTS
-	service    string
-	level      string
+	chunks   []*Chunk
+	labels   labels.Labels
+	lock     sync.RWMutex
+	logger   log.Logger
+	metrics  metrics
+	rawCount uint64
+	rawBytes uint64
+	service  string
+	level    string
 }
 
 func NewChunks(labels labels.Labels, chunkMetrics *ChunkMetrics, logger log.Logger) *Chunks {
@@ -66,12 +67,11 @@ func NewChunks(labels labels.Labels, chunkMetrics *ChunkMetrics, logger log.Logg
 	)
 
 	return &Chunks{
-		chunks:     []*Chunk{},
-		labels:     labels,
-		logger:     logger,
-		rawSamples: SamplesWithoutTS{},
-		service:    service,
-		level:      lvl,
+		chunks:  []*Chunk{},
+		labels:  labels,
+		logger:  logger,
+		service: service,
+		level:   lvl,
 
 		metrics: metrics{
 			chunks:  chunkMetrics.chunks.WithLabelValues(service),
@@ -84,7 +84,9 @@ func (c *Chunks) Observe(bytes, count uint64) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	c.rawSamples = append(c.rawSamples, newSampleWithoutTS(bytes, count))
+	c.rawBytes += bytes
+	c.rawCount += count
+
 	c.metrics.samples.Inc()
 }
 
@@ -204,11 +206,6 @@ type Sample struct {
 	Count     uint64
 }
 
-type SampleWithoutTS struct {
-	Bytes uint64
-	Count uint64
-}
-
 func newSample(bytes, count uint64, ts model.Time) Sample {
 	return Sample{
 		Timestamp: ts,
@@ -217,16 +214,8 @@ func newSample(bytes, count uint64, ts model.Time) Sample {
 	}
 }
 
-func newSampleWithoutTS(bytes, count uint64) SampleWithoutTS {
-	return SampleWithoutTS{
-		Bytes: bytes,
-		Count: count,
-	}
-}
-
 type (
-	Samples          []Sample
-	SamplesWithoutTS []SampleWithoutTS
+	Samples []Sample
 )
 
 type Chunk struct {
@@ -310,15 +299,13 @@ func (c *Chunk) ForTypeAndRange(
 func (c *Chunks) Downsample(now model.Time, w EntryWriter) {
 	c.lock.Lock()
 	defer func() {
+		c.rawBytes = 0
+		c.rawCount = 0
 		c.lock.Unlock()
-		c.rawSamples = c.rawSamples[:0]
 	}()
 
-	var totalBytes, totalCount uint64
-	for _, sample := range c.rawSamples {
-		totalBytes += sample.Bytes
-		totalCount += sample.Count
-	}
+	totalBytes := c.rawBytes
+	totalCount := c.rawCount
 
 	c.metrics.samples.Inc()
 	c.writeAggregatedMetrics(w, now, totalBytes, totalCount)

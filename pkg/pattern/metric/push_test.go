@@ -41,12 +41,12 @@ func Test_Push(t *testing.T) {
 		MaxRetries: 1,
 	}
 
-	// mock loki server
-	mock := httptest.NewServer(createServerHandler(responses))
-	require.NotNil(t, mock)
-	defer mock.Close()
-
 	t.Run("sends log entry to loki server without TLS", func(t *testing.T) {
+		// mock loki server
+		mock := httptest.NewServer(createServerHandler(responses))
+		require.NotNil(t, mock)
+		defer mock.Close()
+
 		// without TLS
 		push, err := NewPush(
 			mock.Listener.Addr().String(),
@@ -67,6 +67,11 @@ func Test_Push(t *testing.T) {
 	})
 
 	t.Run("sends log entry to loki server with basic auth", func(t *testing.T) {
+		// mock loki server
+		mock := httptest.NewServer(createServerHandler(responses))
+		require.NotNil(t, mock)
+		defer mock.Close()
+
 		// with basic Auth
 		push, err := NewPush(
 			mock.Listener.Addr().String(),
@@ -87,6 +92,11 @@ func Test_Push(t *testing.T) {
 	})
 
 	t.Run("batches push requests", func(t *testing.T) {
+		// mock loki server
+		mock := httptest.NewServer(createServerHandler(responses))
+		require.NotNil(t, mock)
+		defer mock.Close()
+
 		client, err := config.NewClientFromConfig(
 			config.DefaultHTTPClientConfig,
 			"pattern-ingester-push-test",

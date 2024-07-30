@@ -11,8 +11,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/grafana/loki/v3/pkg/detection"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 type Tee struct {
@@ -49,6 +51,17 @@ func NewTee(
 func (t *Tee) Duplicate(tenant string, streams []distributor.KeyedStream) {
 	for idx := range streams {
 		go func(stream distributor.KeyedStream) {
+			lbls, err := syntax.ParseLabels(stream.Stream.Labels)
+			if err != nil {
+				level.Error(t.logger).Log("msg", "failed to parse stream labels", "err", err)
+				return
+			}
+
+			// Don't send aggregated metrics to pattern ingesters.
+			if lbls.Has(detection.AggregatedMetricLabel) {
+				return
+			}
+
 			if err := t.sendStream(tenant, stream); err != nil {
 				level.Error(t.logger).Log("msg", "failed to send stream to pattern ingester", "err", err)
 			}
