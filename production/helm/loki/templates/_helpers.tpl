@@ -237,6 +237,9 @@ s3:
   {{- end }}
   s3forcepathstyle: {{ .s3ForcePathStyle }}
   insecure: {{ .insecure }}
+  {{- with .storageClass }}
+  storage_class: {{ . }}
+  {{- end }}
   {{- with .http_config}}
   http_config:
     {{- with .idle_conn_timeout }}
