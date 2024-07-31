@@ -1,10 +1,10 @@
 package bloomcompactor
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"math"
+	"os"
 	"sort"
 	"sync"
 
@@ -49,11 +49,12 @@ func NewSimpleBloomController(
 	}
 }
 
-// TODO(owen-d): pool, evaluate if memory-only is the best choice
-func (s *SimpleBloomController) rwFn() (v1.BlockWriter, v1.BlockReader) {
-	indexBuf := bytes.NewBuffer(nil)
-	bloomsBuf := bytes.NewBuffer(nil)
-	return v1.NewMemoryBlockWriter(indexBuf, bloomsBuf), v1.NewByteReader(indexBuf, bloomsBuf)
+func (s *SimpleBloomController) writerReaderFunc() (v1.BlockWriter, v1.BlockReader) {
+	dir, err := os.MkdirTemp("", "bloom-block-")
+	if err != nil {
+		panic(err)
+	}
+	return v1.NewDirectoryBlockWriter(dir), v1.NewDirectoryBlockReader(dir)
 }
 
 /*
@@ -409,7 +410,7 @@ func (s *SimpleBloomController) buildGaps(
 				seriesItrWithCounter,
 				s.chunkLoader,
 				blocksIter,
-				s.rwFn,
+				s.writerReaderFunc,
 				reporter,
 				s.metrics,
 				logger,
@@ -430,6 +431,9 @@ func (s *SimpleBloomController) buildGaps(
 				built, err := bloomshipper.BlockFrom(tenant, table.Addr(), blk)
 				if err != nil {
 					level.Error(logger).Log("msg", "failed to build block", "err", err)
+					if err = blk.Reader().Cleanup(); err != nil {
+						level.Error(logger).Log("msg", "failed to cleanup block directory", "err", err)
+					}
 					return nil, errors.Wrap(err, "failed to build block")
 				}
 
@@ -438,9 +442,16 @@ func (s *SimpleBloomController) buildGaps(
 					built,
 				); err != nil {
 					level.Error(logger).Log("msg", "failed to write block", "err", err)
+					if err = blk.Reader().Cleanup(); err != nil {
+						level.Error(logger).Log("msg", "failed to cleanup block directory", "err", err)
+					}
 					return nil, errors.Wrap(err, "failed to write block")
 				}
 				s.metrics.blocksCreated.Inc()
+
+				if err := blk.Reader().Cleanup(); err != nil {
+					level.Error(logger).Log("msg", "failed to cleanup block directory", "err", err)
+				}
 
 				totalGapKeyspace := (gap.bounds.Max - gap.bounds.Min)
 				progress := (built.Bounds.Max - gap.bounds.Min)

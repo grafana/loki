@@ -3,13 +3,13 @@ package ingesterrf1
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/opentracing/opentracing-go"
-	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -70,16 +70,6 @@ type stream struct {
 
 	chunkFormat          byte
 	chunkHeadBlockFormat chunkenc.HeadBlockFmt
-}
-
-type chunkDesc struct {
-	chunk   *chunkenc.MemChunk
-	closed  bool
-	synced  bool
-	flushed time.Time
-	reason  string
-
-	lastUpdated time.Time
 }
 
 type entryWithError struct {
@@ -143,7 +133,7 @@ func (s *stream) Push(
 		return 0, nil, errorForFailedEntries(s, invalid, len(entries))
 	}
 
-	bytesAdded, res, err := s.storeEntries(ctx, wal, toStore, usageTracker)
+	bytesAdded, res, err := s.storeEntries(ctx, wal, toStore)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -199,13 +189,11 @@ func hasRateLimitErr(errs []entryWithError) bool {
 	return ok
 }
 
-func (s *stream) storeEntries(ctx context.Context, w *wal.Manager, entries []*logproto.Entry, usageTracker push.UsageTracker) (int, *wal.AppendResult, error) {
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		sp.LogKV("event", "stream started to store entries", "labels", s.labelsString)
-		defer sp.LogKV("event", "stream finished to store entries")
-	}
+func (s *stream) storeEntries(ctx context.Context, w *wal.Manager, entries []*logproto.Entry) (int, *wal.AppendResult, error) {
+	sp, _ := opentracing.StartSpanFromContext(ctx, "storeEntries")
+	defer sp.Finish()
 
-	var bytesAdded, outOfOrderSamples, outOfOrderBytes int
+	var bytesAdded int
 
 	for i := 0; i < len(entries); i++ {
 		s.entryCt++
@@ -221,17 +209,18 @@ func (s *stream) storeEntries(ctx context.Context, w *wal.Manager, entries []*lo
 	res, err := w.Append(wal.AppendRequest{
 		TenantID:  s.tenant,
 		Labels:    s.labels,
-		LabelsStr: s.labels.String(),
+		LabelsStr: s.labelsString,
 		Entries:   entries,
 	})
 	if err != nil {
 		return 0, nil, err
 	}
-	s.reportMetrics(ctx, outOfOrderSamples, outOfOrderBytes, 0, 0, usageTracker)
 	return bytesAdded, res, nil
 }
 
 func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, rateLimitWholeStream bool, usageTracker push.UsageTracker) ([]*logproto.Entry, []entryWithError) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "validateEntries")
+	defer sp.Finish()
 	var (
 		outOfOrderSamples, outOfOrderBytes   int
 		rateLimitedSamples, rateLimitedBytes int
@@ -269,7 +258,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		}
 
 		// The validity window for unordered writes is the highest timestamp present minus 1/2 * max-chunk-age.
-		cutoff := highestTs.Add(-s.cfg.MaxChunkAge / 2)
+		cutoff := highestTs.Add(-time.Hour)
 		if s.unorderedWrites && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(entries[i].Timestamp, cutoff)})
 			s.writeFailures.Log(s.tenant, fmt.Errorf("%w for stream %s", failedEntriesWithError[len(failedEntriesWithError)-1].e, s.labels))

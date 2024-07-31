@@ -1,7 +1,7 @@
 ---
 title: Authentication
 menuTitle:  
-description: Describes Loki's authentication.
+description: Describes Loki authentication.
 weight: 
 ---
 # Authentication
