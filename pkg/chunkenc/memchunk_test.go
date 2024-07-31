@@ -2074,12 +2074,6 @@ func TestDecodeChunkIncorrectBlockOffset(t *testing.T) {
 					require.NoError(t, err)
 
 					metasOffset := binary.BigEndian.Uint64(b[len(b)-8:])
-					metasLen := 0
-					if chk.format >= ChunkFormatV4 {
-						metasLen = int(binary.BigEndian.Uint64(b[len(b)-16:]))
-					} else {
-						metasLen = len(b) - (8 + 4) - int(metasOffset)
-					}
 
 					w := bytes.NewBuffer(nil)
 					eb := EncodeBufferPool.Get().(*encbuf)
@@ -2093,7 +2087,6 @@ func TestDecodeChunkIncorrectBlockOffset(t *testing.T) {
 
 					// BEGIN - code copied from writeTo func starting from encoding of block metas to change offset of a block
 					eb.putUvarint(len(chk.blocks))
-					offset := int64(metasOffset)
 
 					for i, b := range chk.blocks {
 						eb.putUvarint(b.numEntries)
@@ -2110,12 +2103,11 @@ func TestDecodeChunkIncorrectBlockOffset(t *testing.T) {
 						}
 						eb.putUvarint(len(b.b))
 					}
-					metasLen = len(eb.get())
+					metasLen := len(eb.get())
 					eb.putHash(crc32Hash)
 
-					n, err := w.Write(eb.get())
+					_, err = w.Write(eb.get())
 					require.NoError(t, err)
-					offset += int64(n)
 
 					if chk.format >= ChunkFormatV4 {
 						// Write structured metadata offset and length
@@ -2123,9 +2115,8 @@ func TestDecodeChunkIncorrectBlockOffset(t *testing.T) {
 
 						eb.putBE64int(int(binary.BigEndian.Uint64(b[len(b)-32:])))
 						eb.putBE64int(int(binary.BigEndian.Uint64(b[len(b)-24:])))
-						n, err = w.Write(eb.get())
+						_, err = w.Write(eb.get())
 						require.NoError(t, err)
-						offset += int64(n)
 					}
 
 					// Write the metasOffset.
@@ -2134,7 +2125,7 @@ func TestDecodeChunkIncorrectBlockOffset(t *testing.T) {
 						eb.putBE64int(metasLen)
 					}
 					eb.putBE64int(int(metasOffset))
-					n, err = w.Write(eb.get())
+					_, err = w.Write(eb.get())
 					require.NoError(t, err)
 					// END - code copied from writeTo func
 
