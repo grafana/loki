@@ -136,7 +136,6 @@ func TestSampleIterator(t *testing.T) {
 				Line:      "ts=2 msg=hello",
 			},
 		})
-		stream.Downsample(model.TimeFromUnix(20))
 
 		require.NoError(t, err)
 
@@ -186,7 +185,6 @@ func TestSampleIterator(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		stream.Downsample(model.TimeFromUnix(20))
 
 		err = stream.Push(context.Background(), []push.Entry{
 			{
@@ -199,7 +197,6 @@ func TestSampleIterator(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		stream.Downsample(model.TimeFromUnix(40))
 
 		t.Run("non-overlapping timestamps", func(t *testing.T) {
 			expr, err := syntax.ParseSampleExpr("count_over_time({foo=\"bar\"}[5s])")
@@ -276,7 +273,6 @@ func TestSampleIterator(t *testing.T) {
 				Line:      "ts=2 msg=hello",
 			},
 		})
-		stream.Downsample(model.TimeFromUnixNano(time.Unix(26, 999).UnixNano()))
 
 		require.NoError(t, err)
 

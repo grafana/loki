@@ -36,15 +36,6 @@ func TestInstance_QuerySample(t *testing.T) {
 		return instance
 	}
 
-	downsampleInstance := func(inst *instance, ts model.Time) {
-		_ = inst.streams.ForEach(func(s *stream) (bool, error) {
-			inst.streams.WithLock(func() {
-				s.Downsample(ts)
-			})
-			return true, nil
-		})
-	}
-
 	ctx := context.Background()
 
 	thirtySeconds := int64(30000)
@@ -94,7 +85,6 @@ func TestInstance_QuerySample(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		downsampleInstance(instance, model.Time(lastTsMilli))
 
 		// 5 min query range
 		// 1 min step
@@ -213,7 +203,6 @@ func TestInstance_QuerySample(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		downsampleInstance(instance, model.Time(then+oneMin+thirtySeconds))
 
 		err = instance.Push(ctx, &logproto.PushRequest{
 			Streams: []push.Stream{
@@ -256,7 +245,6 @@ func TestInstance_QuerySample(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		downsampleInstance(instance, model.Time(then+oneMin+oneMin+oneMin+thirtySeconds))
 
 		// steps
 		start := then

@@ -109,7 +109,7 @@ func (s *stream) Push(
 					"sample_ts_ns", s.lastTs,
 				)
 		}
-		s.chunks.Observe(bytes, count)
+		s.chunks.Observe(bytes, count, model.TimeFromUnixNano(s.lastTs))
 	}
 	return nil
 }
@@ -290,13 +290,4 @@ func (s *stream) prune(olderThan time.Duration) bool {
 	}
 
 	return len(s.patterns.Clusters()) == 0 && chunksPruned
-}
-
-func (s *stream) Downsample(ts model.Time) {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
-	if s.chunks != nil {
-		s.chunks.Downsample(ts)
-	}
 }
