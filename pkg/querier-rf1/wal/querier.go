@@ -8,7 +8,7 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
-	grpc "google.golang.org/grpc"
+	"google.golang.org/grpc"
 
 	"github.com/grafana/dskit/tenant"
 
@@ -23,7 +23,7 @@ import (
 var _ logql.Querier = (*Querier)(nil)
 
 type BlockStorage interface {
-	GetRangeObject(ctx context.Context, objectKey string, off, length int64) (io.ReadCloser, error)
+	GetObjectRange(ctx context.Context, objectKey string, off, length int64) (io.ReadCloser, error)
 }
 
 type Metastore interface {
@@ -170,7 +170,7 @@ func (q *Querier) forIndices(ctx context.Context, req *metastorepb.ListBlocksFor
 
 		meta := meta
 		g.Go(func() error {
-			reader, err := q.blockStorage.GetRangeObject(ctx, wal.Dir+meta.Id, meta.IndexRef.Offset, meta.IndexRef.Length)
+			reader, err := q.blockStorage.GetObjectRange(ctx, wal.Dir+meta.Id, meta.IndexRef.Offset, meta.IndexRef.Length)
 			if err != nil {
 				return err
 			}
