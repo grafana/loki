@@ -207,6 +207,7 @@ type Limits struct {
 	BloomCompactorMaxBloomSize flagext.ByteSize `yaml:"bloom_compactor_max_bloom_size" json:"bloom_compactor_max_bloom_size" category:"experimental"`
 
 	BloomCreationEnabled       bool          `yaml:"bloom_creation_enabled" json:"bloom_creation_enabled" category:"experimental"`
+	BloomPlanningStrategy      string        `yaml:"bloom_planning_strategy" json:"bloom_planning_strategy" category:"experimental"`
 	BloomSplitSeriesKeyspaceBy int           `yaml:"bloom_split_series_keyspace_by" json:"bloom_split_series_keyspace_by" category:"experimental"`
 	BloomBuildMaxBuilders      int           `yaml:"bloom_build_max_builders" json:"bloom_build_max_builders" category:"experimental"`
 	BuilderResponseTimeout     time.Duration `yaml:"bloom_build_builder_response_timeout" json:"bloom_build_builder_response_timeout" category:"experimental"`
@@ -389,7 +390,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	)
 
 	f.BoolVar(&l.BloomCreationEnabled, "bloom-build.enable", false, "Experimental. Whether to create blooms for the tenant.")
-	f.IntVar(&l.BloomSplitSeriesKeyspaceBy, "bloom-build.split-keyspace-by", 256, "Experimental. Number of splits to create for the series keyspace when building blooms. The series keyspace is split into this many parts to parallelize bloom creation.")
+	f.StringVar(&l.BloomPlanningStrategy, "bloom-build.planning-strategy", "split", "Experimental. Bloom planning strategy to use in bloom creation. Can be one of: 'split'")
+	f.IntVar(&l.BloomSplitSeriesKeyspaceBy, "bloom-build.split-keyspace-by", 256, "Experimental. Only if `bloom-build.planning-strategy` is 'split'. Number of splits to create for the series keyspace when building blooms. The series keyspace is split into this many parts to parallelize bloom creation.")
 	f.IntVar(&l.BloomBuildMaxBuilders, "bloom-build.max-builders", 0, "Experimental. Maximum number of builders to use when building blooms. 0 allows unlimited builders.")
 	f.DurationVar(&l.BuilderResponseTimeout, "bloom-build.builder-response-timeout", 0, "Experimental. Timeout for a builder to finish a task. If a builder does not respond within this time, it is considered failed and the task will be requeued. 0 disables the timeout.")
 	f.IntVar(&l.BloomTaskMaxRetries, "bloom-build.task-max-retries", 3, "Experimental. Maximum number of retries for a failed task. If a task fails more than this number of times, it is considered failed and will not be retried. A value of 0 disables this limit.")
@@ -993,6 +995,10 @@ func (o *Overrides) BloomCompactorEnabled(userID string) bool {
 
 func (o *Overrides) BloomCreationEnabled(userID string) bool {
 	return o.getOverridesForUser(userID).BloomCreationEnabled
+}
+
+func (o *Overrides) BloomPlanningStrategy(userID string) string {
+	return o.getOverridesForUser(userID).BloomPlanningStrategy
 }
 
 func (o *Overrides) BloomSplitSeriesKeyspaceBy(userID string) int {

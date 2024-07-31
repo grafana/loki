@@ -3796,9 +3796,14 @@ shard_streams:
 # CLI flag: -bloom-build.enable
 [bloom_creation_enabled: <boolean> | default = false]
 
-# Experimental. Number of splits to create for the series keyspace when building
-# blooms. The series keyspace is split into this many parts to parallelize bloom
-# creation.
+# Experimental. Bloom planning strategy to use in bloom creation. Can be one of:
+# 'split'
+# CLI flag: -bloom-build.planning-strategy
+[bloom_planning_strategy: <string> | default = "split"]
+
+# Experimental. Only if `bloom-build.planning-strategy` is 'split'. Number of
+# splits to create for the series keyspace when building blooms. The series
+# keyspace is split into this many parts to parallelize bloom creation.
 # CLI flag: -bloom-build.split-keyspace-by
 [bloom_split_series_keyspace_by: <int> | default = 256]
 
