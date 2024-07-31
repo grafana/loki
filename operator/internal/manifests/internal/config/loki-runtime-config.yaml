@@ -80,36 +80,36 @@ overrides:
         ignore_defaults: {{ .IgnoreDefaults }}
         {{- with .Attributes}}
         attributes_config:
-        {{- range $k, $attr := . }}
-        - action: {{ $attr.Action }}
+        {{- range . }}
+        - action: {{ .Action }}
           attributes:
-          {{- range $k, $attrVal := $attr.Attributes }}
-          - {{ $attrVal }}
+          {{- range .Attributes }}
+          - {{ . }}
           {{- end }}
-          regex: {{ $attr.Regex }}
+          regex: {{ .Regex }}
         {{- end }}
         {{- end }}
       {{- end}}
       {{- with $l.ScopeAttributes }}
       scope_attributes:
-      {{- range $k, $attr := . }}
-      - action: {{ $attr.Action }}
+      {{- range . }}
+      - action: {{ .Action }}
         attributes:
-        {{- range $k, $attrVal := $attr.Attributes }}
-        - {{ $attrVal }}
+        {{- range .Attributes }}
+        - {{ . }}
         {{- end }}
-        regex: {{ $attr.Regex }}
+        regex: {{ .Regex }}
       {{- end }}
       {{- end }}
       {{- with $l.LogAttributes }}
       log_attributes:
-      {{- range $k, $attr := . }}
-      - action: {{ $attr.Action }}
+      {{- range . }}
+      - action: {{ .Action }}
         attributes:
-        {{- range $k, $attrVal := $attr.Attributes }}
-        - {{ $attrVal }}
+        {{- range .Attributes }}
+        - {{ . }}
         {{- end }}
-        regex: {{ $attr.Regex }}
+        regex: {{ .Regex }}
       {{- end }}
       {{- end }}
   {{- end }}
