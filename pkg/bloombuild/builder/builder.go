@@ -1,9 +1,9 @@
 package builder
 
 import (
-	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -191,62 +191,89 @@ func (b *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 			return fmt.Errorf("failed to receive task from planner: %w", err)
 		}
 
-		logger := log.With(b.logger, "task", protoTask.Task.Id)
-
+		b.metrics.processingTask.Set(1)
 		b.metrics.taskStarted.Inc()
 		start := time.Now()
-		status := statusSuccess
 
-		newMetas, err := b.processTask(c.Context(), protoTask.Task)
+		task, err := protos.FromProtoTask(protoTask.Task)
 		if err != nil {
-			status = statusFailure
-			level.Error(logger).Log("msg", "failed to process task", "err", err)
+			task = &protos.Task{ID: protoTask.Task.Id}
+			err = fmt.Errorf("failed to convert proto task to task: %w", err)
+			b.logTaskCompleted(task, nil, err, start)
+			if err = b.notifyTaskCompletedToPlanner(c, task, nil, err); err != nil {
+				return fmt.Errorf("failed to notify task completion to planner: %w", err)
+			}
+			continue
 		}
 
-		b.metrics.taskCompleted.WithLabelValues(status).Inc()
-		b.metrics.taskDuration.WithLabelValues(status).Observe(time.Since(start).Seconds())
+		newMetas, err := b.processTask(c.Context(), task)
+		if err != nil {
+			err = fmt.Errorf("failed to process task: %w", err)
+		}
 
-		// Acknowledge task completion to planner
-		if err = b.notifyTaskCompletedToPlanner(c, protoTask.Task.Id, newMetas, err); err != nil {
+		b.logTaskCompleted(task, newMetas, err, start)
+		if err = b.notifyTaskCompletedToPlanner(c, task, newMetas, err); err != nil {
+			b.metrics.processingTask.Set(0)
 			return fmt.Errorf("failed to notify task completion to planner: %w", err)
 		}
+
+		b.metrics.processingTask.Set(0)
 	}
 
 	level.Debug(b.logger).Log("msg", "builder loop stopped")
 	return nil
 }
 
+func (b *Builder) logTaskCompleted(
+	task *protos.Task,
+	metas []bloomshipper.Meta,
+	err error,
+	start time.Time,
+) {
+	logger := task.GetLogger(b.logger)
+
+	if err != nil {
+		b.metrics.taskCompleted.WithLabelValues(statusFailure).Inc()
+		b.metrics.taskDuration.WithLabelValues(statusFailure).Observe(time.Since(start).Seconds())
+		level.Debug(logger).Log(
+			"msg", "task failed",
+			"duration", time.Since(start).String(),
+			"err", err,
+		)
+		return
+	}
+
+	b.metrics.taskCompleted.WithLabelValues(statusSuccess).Inc()
+	b.metrics.taskDuration.WithLabelValues(statusSuccess).Observe(time.Since(start).Seconds())
+	level.Debug(logger).Log(
+		"msg", "task completed",
+		"duration", time.Since(start).String(),
+		"metas", len(metas),
+	)
+}
+
 func (b *Builder) notifyTaskCompletedToPlanner(
 	c protos.PlannerForBuilder_BuilderLoopClient,
-	taskID string,
+	task *protos.Task,
 	metas []bloomshipper.Meta,
 	err error,
 ) error {
+	logger := task.GetLogger(b.logger)
+
 	result := &protos.TaskResult{
-		TaskID:       taskID,
+		TaskID:       task.ID,
 		Error:        err,
 		CreatedMetas: metas,
 	}
 
-	// We have a retry mechanism upper in the stack, but we add another one here
-	// to try our best to avoid losing the task result.
-	retries := backoff.New(c.Context(), b.cfg.BackoffConfig)
-	for retries.Ongoing() {
-		if err := c.Send(&protos.BuilderToPlanner{
-			BuilderID: b.ID,
-			Result:    *result.ToProtoTaskResult(),
-		}); err == nil {
-			break
-		}
-
-		level.Error(b.logger).Log("msg", "failed to acknowledge task completion to planner. Retrying", "err", err)
-		retries.Wait()
-	}
-
-	if err := retries.Err(); err != nil {
+	if err := c.Send(&protos.BuilderToPlanner{
+		BuilderID: b.ID,
+		Result:    *result.ToProtoTaskResult(),
+	}); err != nil {
 		return fmt.Errorf("failed to acknowledge task completion to planner: %w", err)
 	}
 
+	level.Debug(logger).Log("msg", "acknowledged task completion to planner")
 	return nil
 }
 
@@ -261,27 +288,17 @@ func (b *Builder) notifyTaskCompletedToPlanner(
 // accelerate bloom generation for the new blocks.
 func (b *Builder) processTask(
 	ctx context.Context,
-	protoTask *protos.ProtoTask,
+	task *protos.Task,
 ) ([]bloomshipper.Meta, error) {
-	task, err := protos.FromProtoTask(protoTask)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert proto task to task: %w", err)
-	}
+	tenant := task.Tenant
+	logger := task.GetLogger(b.logger)
+	level.Debug(logger).Log("msg", "task started")
 
 	client, err := b.bloomStore.Client(task.Table.ModelTime())
 	if err != nil {
-		level.Error(b.logger).Log("msg", "failed to get client", "err", err)
+		level.Error(logger).Log("msg", "failed to get client", "err", err)
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
-
-	tenant := task.Tenant
-	logger := log.With(
-		b.logger,
-		"tenant", tenant,
-		"task", task.ID,
-		"tsdb", task.TSDB.Name(),
-	)
-	level.Debug(logger).Log("msg", "received task")
 
 	blockEnc, err := chunkenc.ParseEncoding(b.limits.BloomBlockEncoding(task.Tenant))
 	if err != nil {
@@ -318,7 +335,7 @@ func (b *Builder) processTask(
 		// Fetch blocks that aren't up to date but are in the desired fingerprint range
 		// to try and accelerate bloom creation.
 		level.Debug(logger).Log("msg", "loading series and blocks for gap", "blocks", len(gap.Blocks))
-		seriesItr, blocksIter, err := b.loadWorkForGap(ctx, task.Table, tenant, task.TSDB, gap)
+		seriesItr, blocksIter, err := b.loadWorkForGap(ctx, task.Table, gap)
 		if err != nil {
 			level.Error(logger).Log("msg", "failed to get series and blocks", "err", err)
 			return nil, fmt.Errorf("failed to get series and blocks: %w", err)
@@ -343,7 +360,7 @@ func (b *Builder) processTask(
 			seriesItrWithCounter,
 			b.chunkLoader,
 			blocksIter,
-			b.rwFn,
+			b.writerReaderFunc,
 			nil, // TODO(salvacorts): Pass reporter or remove when we address tracking
 			b.bloomStore.BloomMetrics(),
 			logger,
@@ -359,6 +376,9 @@ func (b *Builder) processTask(
 			built, err := bloomshipper.BlockFrom(tenant, task.Table.Addr(), blk)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to build block", "err", err)
+				if err = blk.Reader().Cleanup(); err != nil {
+					level.Error(logger).Log("msg", "failed to cleanup block directory", "err", err)
+				}
 				return nil, fmt.Errorf("failed to build block: %w", err)
 			}
 
@@ -369,9 +389,16 @@ func (b *Builder) processTask(
 				built,
 			); err != nil {
 				level.Error(logger).Log("msg", "failed to write block", "err", err)
+				if err = blk.Reader().Cleanup(); err != nil {
+					level.Error(logger).Log("msg", "failed to cleanup block directory", "err", err)
+				}
 				return nil, fmt.Errorf("failed to write block: %w", err)
 			}
 			b.metrics.blocksCreated.Inc()
+
+			if err := blk.Reader().Cleanup(); err != nil {
+				level.Error(logger).Log("msg", "failed to cleanup block directory", "err", err)
+			}
 
 			totalGapKeyspace := gap.Bounds.Max - gap.Bounds.Min
 			progress := built.Bounds.Max - gap.Bounds.Min
@@ -427,15 +454,9 @@ func (b *Builder) processTask(
 func (b *Builder) loadWorkForGap(
 	ctx context.Context,
 	table config.DayTable,
-	tenant string,
-	id tsdb.Identifier,
-	gap protos.GapWithBlocks,
+	gap protos.Gap,
 ) (iter.Iterator[*v1.Series], iter.CloseResetIterator[*v1.SeriesWithBlooms], error) {
-	// load a series iterator for the gap
-	seriesItr, err := b.tsdbStore.LoadTSDB(ctx, table, tenant, id, gap.Bounds)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to load tsdb")
-	}
+	seriesItr := iter.NewCancelableIter[*v1.Series](ctx, iter.NewSliceIter[*v1.Series](gap.Series))
 
 	// load a blocks iterator for the gap
 	fetcher, err := b.bloomStore.Fetcher(table.ModelTime())
@@ -464,9 +485,10 @@ func (b *Builder) loadWorkForGap(
 	return seriesItr, blocksIter, nil
 }
 
-// TODO(owen-d): pool, evaluate if memory-only is the best choice
-func (b *Builder) rwFn() (v1.BlockWriter, v1.BlockReader) {
-	indexBuf := bytes.NewBuffer(nil)
-	bloomsBuf := bytes.NewBuffer(nil)
-	return v1.NewMemoryBlockWriter(indexBuf, bloomsBuf), v1.NewByteReader(indexBuf, bloomsBuf)
+func (b *Builder) writerReaderFunc() (v1.BlockWriter, v1.BlockReader) {
+	dir, err := os.MkdirTemp(b.cfg.WorkingDir, "bloom-block-")
+	if err != nil {
+		panic(err)
+	}
+	return v1.NewDirectoryBlockWriter(dir), v1.NewDirectoryBlockReader(dir)
 }

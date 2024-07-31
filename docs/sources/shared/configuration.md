@@ -114,6 +114,31 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # querier.
 [querier: <querier>]
 
+querier_rf1:
+  # Enable the RF1 querier. If set, replaces the usual querier with an RF-1
+  # querier.
+  # CLI flag: -querier-rf1.enabled
+  [enabled: <boolean> | default = false]
+
+  # Time to wait before sending more than the minimum successful query requests.
+  # CLI flag: -querier-rf1.extra-query-delay
+  [extra_query_delay: <duration> | default = 0s]
+
+  engine:
+    # The maximum amount of time to look back for log lines. Used only for
+    # instant log queries.
+    # CLI flag: -querier-rf1.engine.max-lookback-period
+    [max_look_back_period: <duration> | default = 30s]
+
+  # The maximum number of queries that can be simultaneously processed by the
+  # querier.
+  # CLI flag: -querier-rf1.max-concurrent
+  [max_concurrent: <int> | default = 4]
+
+  # When true, querier limits sent via a header are enforced.
+  # CLI flag: -querier-rf1.per-request-limits-enabled
+  [per_request_limits_enabled: <boolean> | default = false]
+
 # The query_scheduler block configures the Loki query scheduler. When configured
 # it separates the tenant query queues from the query-frontend.
 [query_scheduler: <query_scheduler>]
@@ -286,6 +311,25 @@ ingester_rf1:
     # CLI flag: -ingester-rf1.lifecycler.ID
     [id: <string> | default = "<hostname>"]
 
+  # The maximum age of a segment before it should be flushed. Increasing this
+  # value allows more time for a segment to grow to max-segment-size, but may
+  # increase latency if the write volume is too small.
+  # CLI flag: -ingester-rf1.max-segment-age
+  [max_segment_age: <duration> | default = 500ms]
+
+  # The maximum size of a segment before it should be flushed. It is not a
+  # strict limit, and segments can exceed the maximum size when individual
+  # appends are larger than the remaining capacity.
+  # CLI flag: -ingester-rf1.max-segment-size
+  [max_segment_size: <int> | default = 8388608]
+
+  # The maximum number of segments to buffer in-memory. Increasing this value
+  # allows for large bursts of writes to be buffered in memory, but may increase
+  # latency if the write volume exceeds the rate at which segments can be
+  # flushed.
+  # CLI flag: -ingester-rf1.max-segments
+  [max_segments: <int> | default = 10]
+
   # How many flushes can happen concurrently from each stream.
   # CLI flag: -ingester-rf1.concurrent-flushes
   [concurrent_flushes: <int> | default = 32]
@@ -314,38 +358,7 @@ ingester_rf1:
   # The timeout for an individual flush. Will be retried up to
   # `flush-op-backoff-retries` times.
   # CLI flag: -ingester-rf1.flush-op-timeout
-  [flush_op_timeout: <duration> | default = 10m]
-
-  # How long chunks should be retained in-memory after they've been flushed.
-  # CLI flag: -ingester-rf1.chunks-retain-period
-  [chunk_retain_period: <duration> | default = 0s]
-
-  [chunk_idle_period: <duration>]
-
-  # The targeted _uncompressed_ size in bytes of a chunk block When this
-  # threshold is exceeded the head block will be cut and compressed inside the
-  # chunk.
-  # CLI flag: -ingester-rf1.chunks-block-size
-  [chunk_block_size: <int> | default = 262144]
-
-  # A target _compressed_ size in bytes for chunks. This is a desired size not
-  # an exact size, chunks may be slightly bigger or significantly smaller if
-  # they get flushed for other reasons (e.g. chunk_idle_period). A value of 0
-  # creates chunks with a fixed 10 blocks, a non zero value will create chunks
-  # with a variable number of blocks to meet the target size.
-  # CLI flag: -ingester-rf1.chunk-target-size
-  [chunk_target_size: <int> | default = 1572864]
-
-  # The algorithm to use for compressing chunk. (none, gzip, lz4-64k, snappy,
-  # lz4-256k, lz4-1M, lz4, flate, zstd)
-  # CLI flag: -ingester-rf1.chunk-encoding
-  [chunk_encoding: <string> | default = "gzip"]
-
-  # The maximum duration of a timeseries chunk in memory. If a timeseries runs
-  # for longer than this, the current chunk will be flushed to the store and a
-  # new chunk created.
-  # CLI flag: -ingester-rf1.max-chunk-age
-  [max_chunk_age: <duration> | default = 2h]
+  [flush_op_timeout: <duration> | default = 10s]
 
   # Forget about ingesters having heartbeat timestamps older than
   # `ring.kvstore.heartbeat_timeout`. This is equivalent to clicking on the
@@ -380,6 +393,10 @@ ingester_rf1:
   # ring to recalculate owned streams.
   # CLI flag: -ingester-rf1.owned-streams-check-interval
   [owned_streams_check_interval: <duration> | default = 30s]
+
+  # How long stream metadata is retained in memory after it was last seen.
+  # CLI flag: -ingester-rf1.stream-retain-period
+  [stream_retain_period: <duration> | default = 5m]
 
   # Configures how the pattern ingester will connect to the ingesters.
   client_config:
@@ -583,7 +600,17 @@ pattern_ingester:
   # first flush check is delayed by a random time up to 0.8x the flush check
   # period. Additionally, there is +/- 1% jitter added to the interval.
   # CLI flag: -pattern-ingester.flush-check-period
-  [flush_check_period: <duration> | default = 30s]
+  [flush_check_period: <duration> | default = 1m]
+
+  # The maximum number of detected pattern clusters that can be created by
+  # streams.
+  # CLI flag: -pattern-ingester.max-clusters
+  [max_clusters: <int> | default = 300]
+
+  # The maximum eviction ratio of patterns per stream. Once that ratio is
+  # reached, the stream will throttled pattern detection.
+  # CLI flag: -pattern-ingester.max-eviction-ratio
+  [max_eviction_ratio: <float> | default = 0.25]
 
   # Configures the metric aggregation and storage behavior of the pattern
   # ingester.
@@ -595,6 +622,10 @@ pattern_ingester:
     # Whether to log push observations.
     # CLI flag: -pattern-ingester.metric-aggregation.log-push-observations
     [log_push_observations: <boolean> | default = false]
+
+    # How often to downsample metrics from raw push observations.
+    # CLI flag: -pattern-ingester.downsample-period
+    [downsample_period: <duration> | default = 10s]
 
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
@@ -634,6 +665,11 @@ bloom_build:
     # Maximum number of tasks to queue per tenant.
     # CLI flag: -bloom-build.planner.max-tasks-per-tenant
     [max_queued_tasks_per_tenant: <int> | default = 30000]
+
+    retention:
+      # Enable bloom retention.
+      # CLI flag: -bloom-build.planner.retention.enabled
+      [enabled: <boolean> | default = false]
 
   builder:
     # The grpc_client block configures the gRPC client used to communicate
@@ -833,6 +869,33 @@ compactor_grpc_client:
 # type memberlist is automatically selected for all the components that require
 # a ring unless otherwise specified in the component's configuration section.
 [memberlist: <memberlist>]
+
+metastore:
+  # CLI flag: -metastore.data-dir
+  [data_dir: <string> | default = "./data-metastore/data"]
+
+  raft:
+    # CLI flag: -metastore.raft.dir
+    [dir: <string> | default = "./data-metastore/raft"]
+
+    # CLI flag: -metastore.raft.bootstrap-peers
+    [bootstrap_peers: <list of strings> | default = []]
+
+    # CLI flag: -metastore.raft.server-id
+    [server_id: <string> | default = "localhost:9099"]
+
+    # CLI flag: -metastore.raft.bind-address
+    [bind_address: <string> | default = "localhost:9099"]
+
+    # CLI flag: -metastore.raft.advertise-address
+    [advertise_address: <string> | default = "localhost:9099"]
+
+metastore_client:
+  # CLI flag: -metastore.address
+  [address: <string> | default = "localhost:9095"]
+
+  # Configures the gRPC client used to communicate with the metastore.
+  [grpc_client_config: <grpc_client>]
 
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
@@ -2587,6 +2650,8 @@ The `frontend_worker` configures the worker - running within the Loki querier - 
 
 # Configures the querier gRPC client used to communicate with the
 # query-scheduler. This can't be used in conjunction with 'grpc_client_config'.
+# The CLI flags prefix for this block configuration is:
+# metastore.grpc-client-config
 [query_scheduler_grpc_client: <grpc_client>]
 ```
 
@@ -2645,6 +2710,7 @@ The `grpc_client` block configures the gRPC client used to communicate between a
 - `frontend.grpc-client-config`
 - `ingester-rf1.client`
 - `ingester.client`
+- `metastore.grpc-client-config`
 - `pattern-ingester.client`
 - `querier.frontend-client`
 - `querier.frontend-grpc-client`

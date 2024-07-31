@@ -6,7 +6,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -127,7 +126,7 @@ func (ev *DefaultEvaluatorFactory) NewStepEvaluator(
 		}
 
 		if e.Grouping == nil {
-			return nil, errors.Errorf("aggregation operator '%q' without grouping", e.Operation)
+			return nil, fmt.Errorf("aggregation operator '%q' without grouping", e.Operation)
 		}
 		nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, e.Left, from, through, step)
 		if err != nil {
@@ -158,7 +157,7 @@ func (ev *DefaultEvaluatorFactory) NewStepEvaluator(
 		)
 		return NewSampleRangeAggEvaluator(loki_iter.NewPeekingSampleIterator(it), e, params, e.Left.Offset)
 	default:
-		return nil, errors.Errorf("unexpected expr type (%T)", e)
+		return nil, fmt.Errorf("unexpected expr type (%T)", e)
 	}
 }
 

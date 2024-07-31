@@ -9,6 +9,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logql/log"
 
+	"github.com/grafana/loki/pkg/push"
+
 	"github.com/grafana/loki/v3/pkg/loghttp"
 
 	"github.com/grafana/dskit/grpcclient"
@@ -118,7 +120,6 @@ func (c *querierClientMock) GetDetectedLabels(ctx context.Context, in *logproto.
 		return (*logproto.LabelToValuesResponse)(nil), args.Error(1)
 	}
 	return res.(*logproto.LabelToValuesResponse), args.Error(1)
-
 }
 
 func (c *querierClientMock) GetVolume(ctx context.Context, in *logproto.VolumeRequest, opts ...grpc.CallOption) (*logproto.VolumeResponse, error) {
@@ -517,6 +518,20 @@ func mockStreamIterator(from int, quantity int) iter.EntryIterator {
 	return iter.NewStreamIterator(mockStream(from, quantity))
 }
 
+// mockLogfmtStreamIterator returns an iterator with 1 stream and quantity entries,
+// where entries timestamp and line string are constructed as sequential numbers
+// starting at from, and the line is in logfmt format with the fields message, count and fake
+func mockLogfmtStreamIterator(from int, quantity int) iter.EntryIterator {
+	return iter.NewStreamIterator(mockLogfmtStream(from, quantity))
+}
+
+// mockLogfmtStreamIterator returns an iterator with 1 stream and quantity entries,
+// where entries timestamp and line string are constructed as sequential numbers
+// starting at from, and the line is in logfmt format with the fields message, count and fake
+func mockLogfmtStreamIteratorWithStructuredMetadata(from int, quantity int) iter.EntryIterator {
+	return iter.NewStreamIterator(mockLogfmtStreamWithStructuredMetadata(from, quantity))
+}
+
 // mockSampleIterator returns an iterator with 1 stream and quantity entries,
 // where entries timestamp and line string are constructed as sequential numbers
 // starting at from
@@ -543,6 +558,71 @@ func mockStreamWithLabels(from int, quantity int, labels string) logproto.Stream
 	return logproto.Stream{
 		Entries: entries,
 		Labels:  labels,
+	}
+}
+
+func mockLogfmtStream(from int, quantity int) logproto.Stream {
+	return mockLogfmtStreamWithLabels(from, quantity, `{type="test"}`)
+}
+
+func mockLogfmtStreamWithLabels(_ int, quantity int, labels string) logproto.Stream {
+	entries := make([]logproto.Entry, 0, quantity)
+
+	// used for detected fields queries which are always BACKWARD
+	for i := quantity; i > 0; i-- {
+		entries = append(entries, logproto.Entry{
+			Timestamp: time.Unix(int64(i), 0),
+			Line: fmt.Sprintf(
+				`message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t`,
+				i,
+				i,
+				(i * 10),
+				(i * 256),
+				float32(i*10.0),
+				(i%2 == 0)),
+		})
+	}
+
+	return logproto.Stream{
+		Entries: entries,
+		Labels:  labels,
+	}
+}
+
+func mockLogfmtStreamWithStructuredMetadata(from int, quantity int) logproto.Stream {
+	return mockLogfmtStreamWithLabelsAndStructuredMetadata(from, quantity, `{type="test"}`)
+}
+
+func mockLogfmtStreamWithLabelsAndStructuredMetadata(
+	from int,
+	quantity int,
+	labels string,
+) logproto.Stream {
+	var entries []logproto.Entry
+	metadata := push.LabelsAdapter{
+		{
+			Name:  "constant",
+			Value: "constant",
+		},
+	}
+
+	for i := from; i < from+quantity; i++ {
+		metadata = append(metadata, push.LabelAdapter{
+			Name:  "variable",
+			Value: fmt.Sprintf("value%d", i),
+		})
+	}
+
+	for i := quantity; i > 0; i-- {
+		entries = append(entries, logproto.Entry{
+			Timestamp:          time.Unix(int64(i), 0),
+			Line:               fmt.Sprintf(`message="line %d" count=%d fake=true`, i, i),
+			StructuredMetadata: metadata,
+		})
+	}
+	return logproto.Stream{
+		Labels:  labels,
+		Entries: entries,
 	}
 }
 
@@ -656,6 +736,8 @@ func (q *querierMock) SelectMetricSamples(
 
 	return resp.(*logproto.QuerySamplesResponse), err
 }
+
+func (q *querierMock) WithPatternQuerier(_ PatterQuerier) {}
 
 type engineMock struct {
 	util.ExtendedMock

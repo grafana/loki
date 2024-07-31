@@ -36,6 +36,7 @@ type Planner struct {
 	// Subservices manager.
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
+	retentionManager   *RetentionManager
 
 	cfg       Config
 	limits    Limits
@@ -90,6 +91,14 @@ func New(
 		metrics:     NewMetrics(r, tasksQueue.GetConnectedConsumersMetric),
 		logger:      logger,
 	}
+
+	p.retentionManager = NewRetentionManager(
+		p.cfg.RetentionConfig,
+		p.limits,
+		p.bloomStore,
+		p.metrics,
+		p.logger,
+	)
 
 	svcs := []services.Service{p.tasksQueue, p.activeUsers}
 	p.subservices, err = services.NewManager(svcs...)
@@ -184,6 +193,7 @@ type tenantTable struct {
 
 func (p *Planner) runOne(ctx context.Context) error {
 	var (
+		wg     sync.WaitGroup
 		start  = time.Now()
 		status = statusFailure
 	)
@@ -197,6 +207,16 @@ func (p *Planner) runOne(ctx context.Context) error {
 	}()
 
 	p.metrics.buildStarted.Inc()
+	level.Info(p.logger).Log("msg", "running bloom build iteration")
+
+	// Launch retention (will return instantly if retention is disabled)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := p.retentionManager.Apply(ctx); err != nil {
+			level.Error(p.logger).Log("msg", "failed apply retention", "err", err)
+		}
+	}()
 
 	tables := p.tables(time.Now())
 	level.Debug(p.logger).Log("msg", "loaded tables", "tables", tables.TotalDays())
@@ -265,7 +285,6 @@ func (p *Planner) runOne(ctx context.Context) error {
 	// TODO(salvacorts): This may end up creating too many goroutines.
 	//                   Create a pool of workers to process table-tenant tuples.
 	var tasksSucceed atomic.Int64
-	var wg sync.WaitGroup
 	for tt, results := range tasksResultForTenantTable {
 		if results.tasksToWait == 0 {
 			// No tasks enqueued for this tenant-table tuple, skip processing
@@ -341,10 +360,33 @@ func (p *Planner) computeTasks(
 
 	// In case the planner restarted before deleting outdated metas in the previous iteration,
 	// we delete them during the planning phase to avoid reprocessing them.
-	metas, err = p.deleteOutdatedMetasAndBlocks(ctx, table, tenant, metas, phasePlanning)
+	metas, err = p.deleteOutdatedMetasAndBlocks(ctx, table, tenant, nil, metas, phasePlanning)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to delete outdated metas during planning: %w", err)
 	}
+
+	// Resolve TSDBs
+	tsdbs, err := p.tsdbStore.ResolveTSDBs(ctx, table, tenant)
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to resolve tsdbs", "err", err)
+		return nil, nil, fmt.Errorf("failed to resolve tsdbs: %w", err)
+	}
+
+	if len(tsdbs) == 0 {
+		return nil, metas, nil
+	}
+
+	openTSDBs, err := openAllTSDBs(ctx, table, tenant, p.tsdbStore, tsdbs)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to open all tsdbs: %w", err)
+	}
+	defer func() {
+		for idx, reader := range openTSDBs {
+			if err := reader.Close(); err != nil {
+				level.Error(logger).Log("msg", "failed to close index", "err", err, "tsdb", idx.Name())
+			}
+		}
+	}()
 
 	for _, ownershipRange := range ownershipRanges {
 		logger := log.With(logger, "ownership", ownershipRange.String())
@@ -353,7 +395,7 @@ func (p *Planner) computeTasks(
 		metasInBounds := bloomshipper.FilterMetasOverlappingBounds(metas, ownershipRange)
 
 		// Find gaps in the TSDBs for this tenant/table
-		gaps, err := p.findOutdatedGaps(ctx, tenant, table, ownershipRange, metasInBounds, logger)
+		gaps, err := p.findOutdatedGaps(ctx, tenant, openTSDBs, ownershipRange, metasInBounds, logger)
 		if err != nil {
 			level.Error(logger).Log("msg", "failed to find outdated gaps", "err", err)
 			continue
@@ -427,12 +469,31 @@ func (p *Planner) processTenantTaskResults(
 		return tasksSucceed, nil
 	}
 
-	combined := append(originalMetas, newMetas...)
-	if _, err := p.deleteOutdatedMetasAndBlocks(ctx, table, tenant, combined, phaseBuilding); err != nil {
+	if _, err := p.deleteOutdatedMetasAndBlocks(ctx, table, tenant, newMetas, originalMetas, phaseBuilding); err != nil {
 		return 0, fmt.Errorf("failed to delete outdated metas: %w", err)
 	}
 
 	return tasksSucceed, nil
+}
+
+func openAllTSDBs(
+	ctx context.Context,
+	table config.DayTable,
+	tenant string,
+	store common.TSDBStore,
+	tsdbs []tsdb.SingleTenantTSDBIdentifier,
+) (map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries, error) {
+	openTSDBs := make(map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries, len(tsdbs))
+	for _, idx := range tsdbs {
+		tsdb, err := store.LoadTSDB(ctx, table, tenant, idx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load tsdb: %w", err)
+		}
+
+		openTSDBs[idx] = tsdb
+	}
+
+	return openTSDBs, nil
 }
 
 // deleteOutdatedMetasAndBlocks filters out the outdated metas from the `metas` argument and deletes them from the store.
@@ -441,12 +502,14 @@ func (p *Planner) deleteOutdatedMetasAndBlocks(
 	ctx context.Context,
 	table config.DayTable,
 	tenant string,
-	metas []bloomshipper.Meta,
+	newMetas []bloomshipper.Meta,
+	originalMetas []bloomshipper.Meta,
 	phase string,
 ) ([]bloomshipper.Meta, error) {
 	logger := log.With(p.logger, "table", table.Addr(), "tenant", tenant, "phase", phase)
 
-	upToDate, outdated := outdatedMetas(metas)
+	combined := append(originalMetas, newMetas...)
+	upToDate, outdated := outdatedMetas(combined)
 	if len(outdated) == 0 {
 		level.Debug(logger).Log(
 			"msg", "no outdated metas found",
@@ -478,17 +541,25 @@ func (p *Planner) deleteOutdatedMetasAndBlocks(
 
 	for _, meta := range outdated {
 		for _, block := range meta.Blocks {
+			logger := log.With(logger, "block", block.String())
+
+			// Prevent deleting blocks that are reused in new metas
+			if isBlockInMetas(block, upToDate) {
+				level.Debug(logger).Log("msg", "block is still in use in new meta, skipping delete")
+				continue
+			}
+
 			if err := client.DeleteBlocks(ctx, []bloomshipper.BlockRef{block}); err != nil {
 				if client.IsObjectNotFoundErr(err) {
-					level.Debug(logger).Log("msg", "block not found while attempting delete, continuing", "block", block.String())
+					level.Debug(logger).Log("msg", "block not found while attempting delete, continuing")
 				} else {
-					level.Error(logger).Log("msg", "failed to delete block", "err", err, "block", block.String())
+					level.Error(logger).Log("msg", "failed to delete block", "err", err)
 					return nil, errors.Wrap(err, "failed to delete block")
 				}
 			}
 
 			deletedBlocks++
-			level.Debug(logger).Log("msg", "removed outdated block", "block", block.String())
+			level.Debug(logger).Log("msg", "removed outdated block")
 		}
 
 		err = client.DeleteMetas(ctx, []bloomshipper.MetaRef{meta.MetaRef})
@@ -511,6 +582,22 @@ func (p *Planner) deleteOutdatedMetasAndBlocks(
 	)
 
 	return upToDate, nil
+}
+
+func isBlockInMetas(block bloomshipper.BlockRef, metas []bloomshipper.Meta) bool {
+	// Blocks are sorted within a meta, so we can find it with binary search
+	for _, meta := range metas {
+		// Search for the first block whose bound is >= than the target block min bound.
+		i := sort.Search(len(meta.Blocks), func(i int) bool {
+			return meta.Blocks[i].Cmp(uint64(block.Bounds.Max)) <= v1.Overlap
+		})
+
+		if i < len(meta.Blocks) && meta.Blocks[i] == block {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (p *Planner) tables(ts time.Time) *dayRangeIterator {
@@ -611,28 +698,17 @@ func (p *Planner) tenants(ctx context.Context, table config.DayTable) (*iter.Sli
 //     This is a performance optimization to avoid expensive re-reindexing
 type blockPlan struct {
 	tsdb tsdb.SingleTenantTSDBIdentifier
-	gaps []protos.GapWithBlocks
+	gaps []protos.Gap
 }
 
 func (p *Planner) findOutdatedGaps(
 	ctx context.Context,
 	tenant string,
-	table config.DayTable,
+	tsdbs map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries,
 	ownershipRange v1.FingerprintBounds,
 	metas []bloomshipper.Meta,
 	logger log.Logger,
 ) ([]blockPlan, error) {
-	// Resolve TSDBs
-	tsdbs, err := p.tsdbStore.ResolveTSDBs(ctx, table, tenant)
-	if err != nil {
-		level.Error(logger).Log("msg", "failed to resolve tsdbs", "err", err)
-		return nil, fmt.Errorf("failed to resolve tsdbs: %w", err)
-	}
-
-	if len(tsdbs) == 0 {
-		return nil, nil
-	}
-
 	// Determine which TSDBs have gaps in the ownership range and need to
 	// be processed.
 	tsdbsWithGaps, err := gapsBetweenTSDBsAndMetas(ownershipRange, tsdbs, metas)
@@ -646,7 +722,7 @@ func (p *Planner) findOutdatedGaps(
 		return nil, nil
 	}
 
-	work, err := blockPlansForGaps(tsdbsWithGaps, metas)
+	work, err := blockPlansForGaps(ctx, tenant, tsdbsWithGaps, metas)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to create plan", "err", err)
 		return nil, fmt.Errorf("failed to create plan: %w", err)
@@ -657,18 +733,19 @@ func (p *Planner) findOutdatedGaps(
 
 // Used to signal the gaps that need to be populated for a tsdb
 type tsdbGaps struct {
-	tsdb tsdb.SingleTenantTSDBIdentifier
-	gaps []v1.FingerprintBounds
+	tsdbIdentifier tsdb.SingleTenantTSDBIdentifier
+	tsdb           common.ClosableForSeries
+	gaps           []v1.FingerprintBounds
 }
 
 // gapsBetweenTSDBsAndMetas returns if the metas are up-to-date with the TSDBs. This is determined by asserting
 // that for each TSDB, there are metas covering the entire ownership range which were generated from that specific TSDB.
 func gapsBetweenTSDBsAndMetas(
 	ownershipRange v1.FingerprintBounds,
-	tsdbs []tsdb.SingleTenantTSDBIdentifier,
+	tsdbs map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries,
 	metas []bloomshipper.Meta,
 ) (res []tsdbGaps, err error) {
-	for _, db := range tsdbs {
+	for db, tsdb := range tsdbs {
 		id := db.Name()
 
 		relevantMetas := make([]v1.FingerprintBounds, 0, len(metas))
@@ -687,8 +764,9 @@ func gapsBetweenTSDBsAndMetas(
 
 		if len(gaps) > 0 {
 			res = append(res, tsdbGaps{
-				tsdb: db,
-				gaps: gaps,
+				tsdbIdentifier: db,
+				tsdb:           tsdb,
+				gaps:           gaps,
 			})
 		}
 	}
@@ -699,22 +777,35 @@ func gapsBetweenTSDBsAndMetas(
 // blockPlansForGaps groups tsdb gaps we wish to fill with overlapping but out of date blocks.
 // This allows us to expedite bloom generation by using existing blocks to fill in the gaps
 // since many will contain the same chunks.
-func blockPlansForGaps(tsdbs []tsdbGaps, metas []bloomshipper.Meta) ([]blockPlan, error) {
+func blockPlansForGaps(
+	ctx context.Context,
+	tenant string,
+	tsdbs []tsdbGaps,
+	metas []bloomshipper.Meta,
+) ([]blockPlan, error) {
 	plans := make([]blockPlan, 0, len(tsdbs))
 
 	for _, idx := range tsdbs {
 		plan := blockPlan{
-			tsdb: idx.tsdb,
-			gaps: make([]protos.GapWithBlocks, 0, len(idx.gaps)),
+			tsdb: idx.tsdbIdentifier,
+			gaps: make([]protos.Gap, 0, len(idx.gaps)),
 		}
 
 		for _, gap := range idx.gaps {
-			planGap := protos.GapWithBlocks{
+			planGap := protos.Gap{
 				Bounds: gap,
 			}
 
-			for _, meta := range metas {
+			seriesItr, err := common.NewTSDBSeriesIter(ctx, tenant, idx.tsdb, gap)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load series from TSDB for gap (%s): %w", gap.String(), err)
+			}
+			planGap.Series, err = iter.Collect(seriesItr)
+			if err != nil {
+				return nil, fmt.Errorf("failed to collect series: %w", err)
+			}
 
+			for _, meta := range metas {
 				if meta.Bounds.Intersection(gap) == nil {
 					// this meta doesn't overlap the gap, skip
 					continue

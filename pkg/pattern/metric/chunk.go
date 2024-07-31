@@ -34,12 +34,13 @@ type metrics struct {
 }
 
 type Chunks struct {
-	chunks  []*Chunk
-	labels  labels.Labels
-	service string
-	metrics metrics
-	logger  log.Logger
-	lock    sync.RWMutex
+	chunks     []*Chunk
+	labels     labels.Labels
+	lock       sync.RWMutex
+	logger     log.Logger
+	metrics    metrics
+	rawSamples SamplesWithoutTS
+	service    string
 }
 
 func NewChunks(labels labels.Labels, chunkMetrics *ChunkMetrics, logger log.Logger) *Chunks {
@@ -55,37 +56,25 @@ func NewChunks(labels labels.Labels, chunkMetrics *ChunkMetrics, logger log.Logg
 	)
 
 	return &Chunks{
-		chunks:  []*Chunk{},
-		labels:  labels,
-		service: service,
+		chunks:     []*Chunk{},
+		labels:     labels,
+		logger:     logger,
+		rawSamples: SamplesWithoutTS{},
+		service:    service,
+
 		metrics: metrics{
 			chunks:  chunkMetrics.chunks.WithLabelValues(service),
 			samples: chunkMetrics.samples.WithLabelValues(service),
 		},
-		logger: logger,
 	}
 }
 
-func (c *Chunks) Observe(bytes, count float64, ts model.Time) {
+func (c *Chunks) Observe(bytes, count float64) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
+	c.rawSamples = append(c.rawSamples, newSampleWithoutTS(bytes, count))
 	c.metrics.samples.Inc()
-
-	if len(c.chunks) == 0 {
-		c.chunks = append(c.chunks, newChunk(bytes, count, ts))
-		c.metrics.chunks.Set(float64(len(c.chunks)))
-		return
-	}
-
-	last := c.chunks[len(c.chunks)-1]
-	if !last.spaceFor(ts) {
-		c.chunks = append(c.chunks, newChunk(bytes, count, ts))
-		c.metrics.chunks.Set(float64(len(c.chunks)))
-		return
-	}
-
-	last.AddSample(newSample(bytes, count, ts))
 }
 
 func (c *Chunks) Prune(olderThan time.Duration) bool {
@@ -204,6 +193,11 @@ type Sample struct {
 	Count     float64
 }
 
+type SampleWithoutTS struct {
+	Bytes float64
+	Count float64
+}
+
 func newSample(bytes, count float64, ts model.Time) Sample {
 	return Sample{
 		Timestamp: ts,
@@ -212,7 +206,17 @@ func newSample(bytes, count float64, ts model.Time) Sample {
 	}
 }
 
-type Samples []Sample
+func newSampleWithoutTS(bytes, count float64) SampleWithoutTS {
+	return SampleWithoutTS{
+		Bytes: bytes,
+		Count: count,
+	}
+}
+
+type (
+	Samples          []Sample
+	SamplesWithoutTS []SampleWithoutTS
+)
 
 type Chunk struct {
 	Samples    Samples
@@ -290,4 +294,35 @@ func (c *Chunk) ForTypeAndRange(
 	}
 
 	return aggregatedSamples, nil
+}
+
+func (c *Chunks) Downsample(now model.Time) {
+	c.lock.Lock()
+	defer func() {
+		c.lock.Unlock()
+		c.rawSamples = c.rawSamples[:0]
+	}()
+
+	var totalBytes, totalCount float64
+	for _, sample := range c.rawSamples {
+		totalBytes += sample.Bytes
+		totalCount += sample.Count
+	}
+
+	c.metrics.samples.Inc()
+
+	if len(c.chunks) == 0 {
+		c.chunks = append(c.chunks, newChunk(totalBytes, totalCount, now))
+		c.metrics.chunks.Set(float64(len(c.chunks)))
+		return
+	}
+
+	last := c.chunks[len(c.chunks)-1]
+	if !last.spaceFor(now) {
+		c.chunks = append(c.chunks, newChunk(totalBytes, totalCount, now))
+		c.metrics.chunks.Set(float64(len(c.chunks)))
+		return
+	}
+
+	last.AddSample(newSample(totalBytes, totalCount, now))
 }

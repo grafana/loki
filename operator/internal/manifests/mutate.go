@@ -168,7 +168,6 @@ func mutateSecret(existing, desired *corev1.Secret) {
 }
 
 func mutateServiceAccount(existing, desired *corev1.ServiceAccount) {
-	existing.Annotations = desired.Annotations
 	existing.Labels = desired.Labels
 }
 

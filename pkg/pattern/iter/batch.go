@@ -31,7 +31,7 @@ func ReadBatch(it Iterator, batchSize int) (*logproto.QueryPatternsResponse, err
 			Samples: samples,
 		})
 	}
-	return &result, it.Error()
+	return &result, it.Err()
 }
 
 func ReadAll(it Iterator) (*logproto.QueryPatternsResponse, error) {
