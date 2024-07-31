@@ -11,6 +11,7 @@ import (
 	grpc "google.golang.org/grpc"
 
 	"github.com/grafana/dskit/tenant"
+
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logql"

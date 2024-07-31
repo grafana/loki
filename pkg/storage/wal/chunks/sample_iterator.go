@@ -57,25 +57,25 @@ func (s *sampleBufferedIterator) Labels() string {
 }
 
 // Next implements iter.SampleIterator.
-func (e *sampleBufferedIterator) Next() bool {
-	for e.reader.Next() {
+func (s *sampleBufferedIterator) Next() bool {
+	for s.reader.Next() {
 		// todo: Only use length columns for bytes_over_time without filter.
-		ts, line := e.reader.At()
+		ts, line := s.reader.At()
 		// check if the timestamp is within the range before applying the pipeline.
-		if ts < e.from {
+		if ts < s.from {
 			continue
 		}
-		if ts >= e.through {
+		if ts >= s.through {
 			return false
 		}
 		// todo: structured metadata.
-		val, lbs, matches := e.pipeline.Process(ts, line)
+		val, lbs, matches := s.pipeline.Process(ts, line)
 		if !matches {
 			continue
 		}
-		e.currLabels = lbs
-		e.cur.Value = val
-		e.cur.Timestamp = ts
+		s.currLabels = lbs
+		s.cur.Value = val
+		s.cur.Timestamp = ts
 		return true
 	}
 	return false

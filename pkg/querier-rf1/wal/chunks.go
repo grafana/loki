@@ -6,13 +6,15 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/grafana/loki/pkg/push"
+	"github.com/prometheus/prometheus/model/labels"
+	"golang.org/x/sync/errgroup"
+
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/storage/wal/chunks"
-	"github.com/prometheus/prometheus/model/labels"
-	"golang.org/x/sync/errgroup"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 const batchSize = 16
