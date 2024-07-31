@@ -441,13 +441,18 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 
 	metasOffset := uint64(0)
 	metasLen := uint64(0)
+	expectedBlockOffset := 0
 	if version >= ChunkFormatV4 {
-		// version >= 4 starts writing length of sections after their offsets
+		// version >= 4 starts writing length of sections before their offsets
 		metasLen, metasOffset = readSectionLenAndOffset(chunkMetasSectionIdx)
+		structuredMetadataLength, structuredMetadataOffset := readSectionLenAndOffset(chunkStructuredMetadataSectionIdx)
+		expectedBlockOffset = int(structuredMetadataLength + structuredMetadataOffset + 4)
 	} else {
 		// version <= 3 does not store length of metas. metas are followed by metasOffset + hash and then the chunk ends
 		metasOffset = binary.BigEndian.Uint64(b[len(b)-8:])
 		metasLen = uint64(len(b)-(8+4)) - metasOffset
+		// version 1 writes blocks after version number while version 2 and 3 write blocks after chunk encoding
+		expectedBlockOffset = len(b) - len(db.b)
 	}
 	mb := b[metasOffset : metasOffset+metasLen]
 	db = decbuf{b: mb}
@@ -476,18 +481,35 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 			blk.uncompressedSize = db.uvarint()
 		}
 		l := db.uvarint()
-		if blk.offset+l > len(b) {
-			return nil, fmt.Errorf("block %d offset %d + length %d exceeds chunk length %d", i, blk.offset, l, len(b))
+
+		invalidBlockErr := validateBlock(b, blk.offset, l)
+		if invalidBlockErr != nil {
+			level.Error(util_log.Logger).Log("msg", "invalid block found", "err", invalidBlockErr)
+			// if block is expected to have different offset than what is encoded, see if we get a valid block using expected offset
+			if blk.offset != expectedBlockOffset {
+				_ = level.Error(util_log.Logger).Log("msg", "block offset does not match expected one, will try reading with expected offset", "actual", blk.offset, "expected", expectedBlockOffset)
+				blk.offset = expectedBlockOffset
+				if err := validateBlock(b, blk.offset, l); err != nil {
+					level.Error(util_log.Logger).Log("msg", "could not find valid block using expected offset", "err", err)
+				} else {
+					invalidBlockErr = nil
+					level.Info(util_log.Logger).Log("msg", "valid block found using expected offset")
+				}
+			}
+
+			// if the block read with expected offset is still invalid, do not continue further
+			if invalidBlockErr != nil {
+				if errors.Is(invalidBlockErr, ErrInvalidChecksum) {
+					expectedBlockOffset += l + 4
+					continue
+				}
+				return nil, invalidBlockErr
+			}
 		}
+
+		// next block starts at current block start + current block length + checksum
+		expectedBlockOffset = blk.offset + l + 4
 		blk.b = b[blk.offset : blk.offset+l]
-
-		// Verify checksums.
-		expCRC := binary.BigEndian.Uint32(b[blk.offset+l:])
-		if expCRC != crc32.Checksum(blk.b, castagnoliTable) {
-			_ = level.Error(util_log.Logger).Log("msg", "Checksum does not match for a block in chunk, this block will be skipped", "err", ErrInvalidChecksum)
-			continue
-		}
-
 		bc.blocks = append(bc.blocks, blk)
 
 		// Update the counter used to track the size of cut blocks.
@@ -1695,4 +1717,22 @@ func (e *sampleBufferedIterator) StreamHash() uint64 { return e.extractor.BaseLa
 
 func (e *sampleBufferedIterator) At() logproto.Sample {
 	return e.cur
+}
+
+// validateBlock validates block by doing following checks:
+// 1. Offset+length do not overrun size of the chunk from which we are reading the block.
+// 2. Checksum of the block we will read matches the stored checksum in the chunk.
+func validateBlock(chunkBytes []byte, offset, length int) error {
+	if offset+length > len(chunkBytes) {
+		return fmt.Errorf("offset %d + length %d exceeds chunk length %d", offset, length, len(chunkBytes))
+	}
+
+	blockBytes := chunkBytes[offset : offset+length]
+	// Verify checksums.
+	expCRC := binary.BigEndian.Uint32(chunkBytes[offset+length:])
+	if expCRC != crc32.Checksum(blockBytes, castagnoliTable) {
+		return ErrInvalidChecksum
+	}
+
+	return nil
 }
