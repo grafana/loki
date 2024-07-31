@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/client"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/config"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/server"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/targets"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
@@ -139,10 +140,16 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 	}
 
 	cfg.Setup(p.logger)
+	var err error
+	err = scrapeconfig.ValidateJobName(cfg.ScrapeConfig)
+	if err != nil {
+		return err
+	}
+
 	if cfg.LimitsConfig.ReadlineRateEnabled {
 		stages.SetReadLineRateLimiter(cfg.LimitsConfig.ReadlineRate, cfg.LimitsConfig.ReadlineBurst, cfg.LimitsConfig.ReadlineRateDrop)
 	}
-	var err error
+
 	// entryHandlers contains all sinks were scraped log entries should get to
 	var entryHandlers = []api.EntryHandler{}
 
