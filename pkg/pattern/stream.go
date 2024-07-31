@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/pattern/drain"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
