@@ -20,10 +20,10 @@ import (
 
 	ring_client "github.com/grafana/dskit/ring/client"
 
-	"github.com/grafana/loki/v3/pkg/pattern/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/pattern/clientpool"
 	"github.com/grafana/loki/v3/pkg/pattern/drain"
+	"github.com/grafana/loki/v3/pkg/pattern/iter"
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )

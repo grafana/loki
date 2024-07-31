@@ -289,7 +289,8 @@ func NewDetectedLabelsTripperware(cfg Config, logger log.Logger, l Limits, schem
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(l),
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitter, metrics.SplitByMetrics)}
+			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitter, metrics.SplitByMetrics),
+		}
 
 		if cfg.MaxRetries > 0 {
 			queryRangeMiddleware = append(

@@ -149,7 +149,7 @@ func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet 
 		ingester := ingester
 		i := i
 		g.Go(func() error {
-      client, err := q.ringClient.pool.GetClientFor(ingester.Addr)
+			client, err := q.ringClient.pool.GetClientFor(ingester.Addr)
 			if err != nil {
 				return err
 			}

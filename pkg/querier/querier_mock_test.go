@@ -722,6 +722,8 @@ func (q *querierMock) DetectedLabels(ctx context.Context, req *logproto.Detected
 	return resp.(*logproto.DetectedLabelsResponse), err
 }
 
+func (q *querierMock) WithPatternQuerier(_ PatterQuerier) {}
+
 type engineMock struct {
 	util.ExtendedMock
 }

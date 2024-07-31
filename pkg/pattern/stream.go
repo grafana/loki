@@ -21,6 +21,7 @@ type stream struct {
 	labelHash    uint64
 	patterns     *drain.Drain
 	mtx          sync.Mutex
+	logger       log.Logger
 
 	lastTs int64
 }
@@ -39,6 +40,7 @@ func newStream(
 		labels:       labels,
 		labelsString: labels.String(),
 		labelHash:    labels.Hash(),
+		logger:       logger,
 		patterns: drain.New(drainCfg, guessedFormat, &drain.Metrics{
 			PatternsEvictedTotal:  metrics.patternsDiscardedTotal.WithLabelValues(instanceID, guessedFormat, "false"),
 			PatternsPrunedTotal:   metrics.patternsDiscardedTotal.WithLabelValues(instanceID, guessedFormat, "true"),

@@ -151,10 +151,6 @@ func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
 	return s, nil
-	if err != nil {
-		return nil, fmt.Errorf("failed to create stream: %w", err)
-	}
-	return s, nil
 }
 
 func (i *instance) getHashForLabels(ls labels.Labels) model.Fingerprint {
