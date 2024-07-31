@@ -20,6 +20,7 @@ import (
 
 	ring_client "github.com/grafana/dskit/ring/client"
 
+	"github.com/grafana/loki/v3/pkg/pattern/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/pattern/clientpool"
 	"github.com/grafana/loki/v3/pkg/pattern/drain"
@@ -288,7 +289,6 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 			i.logger,
 			i.metrics,
 			i.drainCfg,
-			i.cfg.MetricAggregation,
 		)
 		if err != nil {
 			return nil, err

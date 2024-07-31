@@ -14,11 +14,17 @@ import (
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
 
 	"github.com/grafana/loki/pkg/push"
+	"github.com/grafana/loki/v3/pkg/pattern/drain"
 )
 
 func TestInstancePushQuery(t *testing.T) {
 	lbs := labels.New(labels.Label{Name: "test", Value: "test"})
-	inst, err := newInstance("foo", log.NewNopLogger(), newIngesterMetrics(nil, "test"))
+	inst, err := newInstance(
+		"foo",
+		log.NewNopLogger(),
+		newIngesterMetrics(nil, "test"),
+		drain.DefaultConfig(),
+	)
 	require.NoError(t, err)
 
 	err = inst.Push(context.Background(), &push.PushRequest{
