@@ -9,32 +9,31 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/pattern/chunk"
 )
 
 func TestAdd(t *testing.T) {
 	cks := Chunks{}
-	cks.Add(chunk.TimeResolution + 1)
-	cks.Add(chunk.TimeResolution + 2)
-	cks.Add(2*chunk.TimeResolution + 1)
+	cks.Add(TimeResolution + 1)
+	cks.Add(TimeResolution + 2)
+	cks.Add(2*TimeResolution + 1)
 	require.Equal(t, 1, len(cks))
 	require.Equal(t, 2, len(cks[0].Samples))
-	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) + chunk.TimeResolution + 1)
+	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) + TimeResolution + 1)
 	require.Equal(t, 2, len(cks))
 	require.Equal(t, 1, len(cks[1].Samples))
-	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) - chunk.TimeResolution)
+	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) - TimeResolution)
 	require.Equal(t, 2, len(cks))
 	require.Equalf(t, 1, len(cks[1].Samples), "Older samples should not be added if they arrive out of order")
 }
 
 func TestIterator(t *testing.T) {
 	cks := Chunks{}
-	cks.Add(chunk.TimeResolution + 1)
-	cks.Add(chunk.TimeResolution + 2)
-	cks.Add(2*chunk.TimeResolution + 1)
-	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) + chunk.TimeResolution + 1)
+	cks.Add(TimeResolution + 1)
+	cks.Add(TimeResolution + 2)
+	cks.Add(2*TimeResolution + 1)
+	cks.Add(model.TimeFromUnixNano(time.Hour.Nanoseconds()) + TimeResolution + 1)
 
-	it := cks.Iterator("test", model.Time(0), model.Time(time.Hour.Nanoseconds()), chunk.TimeResolution)
+	it := cks.Iterator("test", model.Time(0), model.Time(time.Hour.Nanoseconds()), TimeResolution)
 	require.NotNil(t, it)
 
 	var samples []logproto.PatternSample

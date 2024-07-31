@@ -1,222 +1,29 @@
 package pattern
 
 import (
-	"context"
+	"bufio"
+	"os"
 	"testing"
-	"time"
 
-	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/dskit/ring"
-	ring_client "github.com/grafana/dskit/ring/client"
-	"github.com/grafana/dskit/services"
-
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/pattern/metric"
 )
 
-func TestPrunePatterns(t *testing.T) {
-	metrics := newIngesterQuerierMetrics(prometheus.NewRegistry(), "test")
-	testCases := []struct {
-		name             string
-		inputSeries      []*logproto.PatternSeries
-		minClusterSize   int64
-		expectedSeries   []*logproto.PatternSeries
-		expectedPruned   int
-		expectedRetained int
-	}{
-		{
-			name: "No pruning needed",
-			inputSeries: []*logproto.PatternSeries{
-				{Pattern: `{app="test1"}`, Samples: []*logproto.PatternSample{{Value: 40}}},
-				{Pattern: `{app="test2"}`, Samples: []*logproto.PatternSample{{Value: 35}}},
-			},
-			minClusterSize: 20,
-			expectedSeries: []*logproto.PatternSeries{
-				{Pattern: `{app="test1"}`, Samples: []*logproto.PatternSample{{Value: 40}}},
-				{Pattern: `{app="test2"}`, Samples: []*logproto.PatternSample{{Value: 35}}},
-			},
-			expectedPruned:   0,
-			expectedRetained: 2,
-		},
-		{
-			name: "Pruning some patterns",
-			inputSeries: []*logproto.PatternSeries{
-				{Pattern: `{app="test1"}`, Samples: []*logproto.PatternSample{{Value: 10}}},
-				{Pattern: `{app="test2"}`, Samples: []*logproto.PatternSample{{Value: 5}}},
-				{Pattern: `{app="test3"}`, Samples: []*logproto.PatternSample{{Value: 50}}},
-			},
-			minClusterSize: 20,
-			expectedSeries: []*logproto.PatternSeries{
-				{Pattern: `{app="test3"}`, Samples: []*logproto.PatternSample{{Value: 50}}},
-			},
-			expectedPruned:   2,
-			expectedRetained: 1,
-		},
-		{
-			name: "Limit patterns to maxPatterns",
-			inputSeries: func() []*logproto.PatternSeries {
-				series := make([]*logproto.PatternSeries, maxPatterns+10)
-				for i := 0; i < maxPatterns+10; i++ {
-					series[i] = &logproto.PatternSeries{
-						Pattern: `{app="test"}`,
-						Samples: []*logproto.PatternSample{{Value: int64(maxPatterns + 10 - i)}},
-					}
-				}
-				return series
-			}(),
-			minClusterSize: 0,
-			expectedSeries: func() []*logproto.PatternSeries {
-				series := make([]*logproto.PatternSeries, maxPatterns)
-				for i := 0; i < maxPatterns; i++ {
-					series[i] = &logproto.PatternSeries{
-						Pattern: `{app="test"}`,
-						Samples: []*logproto.PatternSample{{Value: int64(maxPatterns + 10 - i)}},
-					}
-				}
-				return series
-			}(),
-			expectedPruned:   10,
-			expectedRetained: maxPatterns,
-		},
-	}
+func Test_prunePatterns(t *testing.T) {
+	file, err := os.Open(`testdata/patterns.txt`)
+	require.NoError(t, err)
+	defer file.Close()
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			resp := &logproto.QueryPatternsResponse{
-				Series: tc.inputSeries,
-			}
-			result := prunePatterns(resp, tc.minClusterSize, metrics)
-
-			require.Equal(t, len(tc.expectedSeries), len(result.Series))
-			require.Equal(t, tc.expectedSeries, result.Series)
+	resp := new(logproto.QueryPatternsResponse)
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		resp.Series = append(resp.Series, &logproto.PatternSeries{
+			Pattern: scanner.Text(),
 		})
 	}
-}
-
-func Test_Samples(t *testing.T) {
-	t.Run("it rejects metric queries with filters", func(t *testing.T) {
-		q := &IngesterQuerier{
-			cfg: Config{
-				MetricAggregation: metric.AggregationConfig{
-					Enabled: true,
-				},
-			},
-			logger:     log.NewNopLogger(),
-			ringClient: &fakeRingClient{},
-			registerer: nil,
-		}
-		for _, query := range []string{
-			`count_over_time({foo="bar"} |= "baz" [5m])`,
-			`count_over_time({foo="bar"} != "baz" [5m])`,
-			`count_over_time({foo="bar"} |~ "baz" [5m])`,
-			`count_over_time({foo="bar"} !~ "baz" [5m])`,
-			`count_over_time({foo="bar"} | logfmt | color="blue" [5m])`,
-			`sum(count_over_time({foo="bar"} |= "baz" [5m]))`,
-			`sum by (label)(count_over_time({foo="bar"} |= "baz" [5m]))`,
-			`bytes_over_time({foo="bar"} |= "baz" [5m])`,
-		} {
-			_, err := q.Samples(
-				context.Background(),
-				&logproto.QuerySamplesRequest{
-					Query: query,
-				},
-			)
-			require.Error(t, err, query)
-			require.ErrorIs(t, err, ErrParseQuery, query)
-		}
-	})
-
-	t.Run("it rejects log selector queries", func(t *testing.T) {
-		q := &IngesterQuerier{
-			cfg: Config{
-				MetricAggregation: metric.AggregationConfig{
-					Enabled: true,
-				},
-			},
-			logger:     log.NewNopLogger(),
-			ringClient: &fakeRingClient{},
-			registerer: nil,
-		}
-		for _, query := range []string{
-			`{foo="bar"}`,
-		} {
-			_, err := q.Samples(
-				context.Background(),
-				&logproto.QuerySamplesRequest{
-					Query: query,
-				},
-			)
-			require.Error(t, err, query)
-			require.Equal(t, "only sample expression supported", err.Error(), query)
-		}
-	})
-
-	t.Run("accepts count and bytes metric queries", func(t *testing.T) {
-		q := &IngesterQuerier{
-			cfg: Config{
-				MetricAggregation: metric.AggregationConfig{
-					Enabled: true,
-				},
-			},
-			logger:     log.NewNopLogger(),
-			ringClient: &fakeRingClient{},
-			registerer: nil,
-		}
-		for _, query := range []string{
-			`count_over_time({foo="bar"}[5m])`,
-			`bytes_over_time({foo="bar"}[5m])`,
-			`sum(count_over_time({foo="bar"}[5m]))`,
-			`sum(bytes_over_time({foo="bar"}[5m]))`,
-			`sum by (level)(count_over_time({foo="bar"}[5m]))`,
-			`sum by (level)(bytes_over_time({foo="bar"}[5m]))`,
-		} {
-			_, err := q.Samples(
-				context.Background(),
-				&logproto.QuerySamplesRequest{
-					Query: query,
-				},
-			)
-			require.NoError(t, err, query)
-		}
-	})
-}
-
-type fakeRingClient struct{}
-
-func (f *fakeRingClient) Pool() *ring_client.Pool {
-	panic("not implemented")
-}
-
-func (f *fakeRingClient) StartAsync(_ context.Context) error {
-	panic("not implemented")
-}
-
-func (f *fakeRingClient) AwaitRunning(_ context.Context) error {
-	panic("not implemented")
-}
-
-func (f *fakeRingClient) StopAsync() {
-	panic("not implemented")
-}
-
-func (f *fakeRingClient) AwaitTerminated(_ context.Context) error {
-	panic("not implemented")
-}
-
-func (f *fakeRingClient) FailureCase() error {
-	panic("not implemented")
-}
-
-func (f *fakeRingClient) State() services.State {
-	panic("not implemented")
-}
-
-func (f *fakeRingClient) AddListener(_ services.Listener) {
-	panic("not implemented")
-}
+	require.NoError(t, scanner.Err())
 
 func (f *fakeRingClient) Ring() ring.ReadRing {
 	return &fakeRing{}
@@ -295,6 +102,6 @@ func (f *fakeRing) CleanupShuffleShardCache(_ string) {
 	panic("not implemented")
 }
 
-func (f *fakeRing) GetTokenRangesForInstance(_ string) (ring.TokenRanges, error) {
-	panic("not implemented")
+	require.Equal(t, expectedPatterns, patterns)
+	require.Less(t, len(patterns), startingPatterns, "prunePatterns should remove duplicates")
 }

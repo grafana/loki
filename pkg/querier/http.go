@@ -417,19 +417,6 @@ func (q *QuerierAPI) PatternsHandler(ctx context.Context, req *logproto.QueryPat
 	return resp, nil
 }
 
-func (q *QuerierAPI) SamplesHandler(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error) {
-	resp, err := q.querier.SelectMetricSamples(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if resp == nil { // Some stores don't implement this
-		return &logproto.QuerySamplesResponse{
-			Series: []logproto.Series{},
-		}, nil
-	}
-	return resp, nil
-}
-
 func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, expr syntax.Expr, limit uint32) error {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
