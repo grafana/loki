@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	logutil "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
@@ -318,9 +319,7 @@ func NewDetectedLabelsCardinalityFilter(rt queryrangebase.Handler) queryrangebas
 			var result []*logproto.DetectedLabel
 
 			for _, dl := range resp.Response.DetectedLabels {
-				if dl.Cardinality > 1 && dl.Cardinality < 50 {
-					result = append(result, &logproto.DetectedLabel{Label: dl.Label, Cardinality: dl.Cardinality})
-				}
+				result = append(result, &logproto.DetectedLabel{Label: dl.Label, Cardinality: dl.Cardinality})
 			}
 			return &DetectedLabelsResponse{
 				Response: &logproto.DetectedLabelsResponse{DetectedLabels: result},
@@ -402,8 +401,9 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 			}
 
-			// Only filter expressions are query sharded
-			if !e.HasFilter() {
+			// Some queries we don't want to parallelize as aggressively, like limited queries and `datasample` queries
+			tags := httpreq.ExtractQueryTagsFromContext(ctx)
+			if !e.HasFilter() || strings.Contains(tags, "datasample") {
 				return r.limited.Do(ctx, req)
 			}
 			return r.log.Do(ctx, req)

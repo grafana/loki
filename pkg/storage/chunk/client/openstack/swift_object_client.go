@@ -144,6 +144,20 @@ func (s *SwiftObjectClient) GetObject(_ context.Context, objectKey string) (io.R
 	return io.NopCloser(&buf), int64(buf.Len()), nil
 }
 
+// GetObject returns a reader and the size for the specified object key from the configured swift container.
+func (s *SwiftObjectClient) GetObjectRange(_ context.Context, objectKey string, offset, length int64) (io.ReadCloser, error) {
+	var buf bytes.Buffer
+	h := swift.Headers{
+		"Range": fmt.Sprintf("bytes=%d-%d", offset, offset+length-1),
+	}
+	_, err := s.hedgingConn.ObjectGet(s.cfg.ContainerName, objectKey, &buf, false, h)
+	if err != nil {
+		return nil, err
+	}
+
+	return io.NopCloser(&buf), nil
+}
+
 // PutObject puts the specified bytes into the configured Swift container at the provided key
 func (s *SwiftObjectClient) PutObject(_ context.Context, objectKey string, object io.Reader) error {
 	_, err := s.conn.ObjectPut(s.cfg.ContainerName, objectKey, object, false, "", "", nil)
