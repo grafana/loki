@@ -6,7 +6,9 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index"
+	logutil "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"time"
 	"unicode/utf8"
 
@@ -96,9 +98,14 @@ func ShouldUseBloomFilter(
 	}
 	matchers := ms[0].Matchers
 
+	var lbs labels.Labels
+	for _, m := range matchers {
+		lbs = append(lbs, labels.Label{Name: m.Name, Value: m.Value})
+	}
+
+	logger = logutil.WithContext(ctx, logger)
 	logger = logging.With(logger,
-		"tenant", tenant,
-		"matchers", matchers,
+		"matchers", lbs,
 		"from", from.Time(),
 		"through", through.Time(),
 		"length", through.Time().Sub(from.Time()),
