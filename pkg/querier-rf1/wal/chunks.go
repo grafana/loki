@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"sync"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
@@ -17,7 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/push"
 )
 
-const batchSize = 16
+const defaultBatchSize = 16
 
 type ChunkData struct {
 	meta   *chunks.Meta
@@ -37,16 +36,11 @@ func newChunkData(id string, lbs *labels.ScratchBuilder, meta *chunks.Meta) Chun
 // ChunksEntryIterator iterates over log entries
 type ChunksEntryIterator[T iter.EntryIterator] struct {
 	baseChunksIterator[T]
-
-	pipeline log.Pipeline
-	current  iter.EntryIterator
 }
 
 // ChunksSampleIterator iterates over metric samples
 type ChunksSampleIterator[T iter.SampleIterator] struct {
 	baseChunksIterator[T]
-	current   iter.SampleIterator
-	extractor log.SampleExtractor
 }
 
 func NewChunksEntryIterator(
@@ -64,7 +58,8 @@ func NewChunksEntryIterator(
 			chunks:    chunks,
 			direction: direction,
 			storage:   storage,
-			batch:     make([]ChunkData, 0, batchSize),
+			bachSize:  defaultBatchSize,
+			batch:     make([]ChunkData, 0, defaultBatchSize),
 			minT:      minT,
 			maxT:      maxT,
 
@@ -73,7 +68,6 @@ func NewChunksEntryIterator(
 			},
 			isNil: func(it iter.EntryIterator) bool { return it == nil },
 		},
-		pipeline: pipeline,
 	}
 }
 
@@ -91,7 +85,8 @@ func NewChunksSampleIterator(
 			chunks:    chunks,
 			direction: logproto.FORWARD,
 			storage:   storage,
-			batch:     make([]ChunkData, 0, batchSize),
+			bachSize:  defaultBatchSize,
+			batch:     make([]ChunkData, 0, defaultBatchSize),
 			minT:      minT,
 			maxT:      maxT,
 
@@ -100,7 +95,6 @@ func NewChunksSampleIterator(
 			},
 			isNil: func(it iter.SampleIterator) bool { return it == nil },
 		},
-		extractor: extractor,
 	}
 }
 
@@ -137,15 +131,16 @@ type baseChunksIterator[T interface {
 	iteratorFactory func([]ChunkData) (T, error)
 	isNil           func(T) bool
 
-	batch   []ChunkData
-	current T
-	err     error
+	bachSize int
+	batch    []ChunkData
+	current  T
+	err      error
 }
 
 func (b *baseChunksIterator[T]) nextBatch() error {
 	b.batch = b.batch[:0]
 	for len(b.chunks) > 0 &&
-		(len(b.batch) < batchSize ||
+		(len(b.batch) < b.bachSize ||
 			isOverlapping(b.batch[len(b.batch)-1], b.chunks[0], b.direction)) {
 		b.batch = append(b.batch, b.chunks[0])
 		b.chunks = b.chunks[1:]
@@ -188,39 +183,23 @@ func createNextEntryIterator(
 	storage BlockStorage,
 	minT, maxT int64,
 ) (iter.EntryIterator, error) {
-	var (
-		iterators []iter.EntryIterator
-		mtx       sync.Mutex
-	)
+	iterators := make([]iter.EntryIterator, 0, len(batch))
 
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(64)
-	for _, chunk := range batch {
-		chunk := chunk // https://golang.org/doc/faq#closures_and_goroutines
-		g.Go(func() error {
-			chunkData, err := readChunkData(ctx, storage, chunk)
-			if err != nil {
-				return fmt.Errorf("error reading chunk data: %w", err)
-			}
-
-			streamPipeline := pipeline.ForStream(chunk.labels)
-			chunkIterator, err := chunks.NewEntryIterator(chunkData, streamPipeline, direction, minT, maxT)
-			if err != nil {
-				return fmt.Errorf("error creating entry iterator: %w", err)
-			}
-
-			mtx.Lock()
-			iterators = append(iterators, chunkIterator)
-			mtx.Unlock()
-
-			return nil
-		})
-	}
-
-	if err := g.Wait(); err != nil {
+	data, err := downloadChunks(ctx, storage, batch)
+	if err != nil {
 		return nil, err
 	}
 
+	for i, chunk := range batch {
+		streamPipeline := pipeline.ForStream(chunk.labels)
+		chunkIterator, err := chunks.NewEntryIterator(data[i], streamPipeline, direction, minT, maxT)
+		if err != nil {
+			return nil, fmt.Errorf("error creating entry iterator: %w", err)
+		}
+		iterators = append(iterators, chunkIterator)
+	}
+
+	// todo: Use NonOverlapping iterator when possible. This will reduce the amount of entries processed during iteration.
 	return iter.NewSortEntryIterator(iterators, direction), nil
 }
 
@@ -231,37 +210,20 @@ func createNextSampleIterator(
 	storage BlockStorage,
 	minT, maxT int64,
 ) (iter.SampleIterator, error) {
-	var (
-		iterators []iter.SampleIterator
-		mtx       sync.Mutex
-	)
+	iterators := make([]iter.SampleIterator, 0, len(batch))
 
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(64)
-	for _, chunk := range batch {
-		chunk := chunk // https://golang.org/doc/faq#closures_and_goroutines
-		g.Go(func() error {
-			chunkData, err := readChunkData(ctx, storage, chunk)
-			if err != nil {
-				return fmt.Errorf("error reading chunk data: %w", err)
-			}
-
-			streamPipeline := pipeline.ForStream(chunk.labels)
-			chunkIterator, err := chunks.NewSampleIterator(chunkData, streamPipeline, minT, maxT)
-			if err != nil {
-				return fmt.Errorf("error creating sample iterator: %w", err)
-			}
-
-			mtx.Lock()
-			iterators = append(iterators, chunkIterator)
-			mtx.Unlock()
-
-			return nil
-		})
+	data, err := downloadChunks(ctx, storage, batch)
+	if err != nil {
+		return nil, err
 	}
 
-	if err := g.Wait(); err != nil {
-		return nil, err
+	for i, chunk := range batch {
+		streamPipeline := pipeline.ForStream(chunk.labels)
+		chunkIterator, err := chunks.NewSampleIterator(data[i], streamPipeline, minT, maxT)
+		if err != nil {
+			return nil, fmt.Errorf("error creating sample iterator: %w", err)
+		}
+		iterators = append(iterators, chunkIterator)
 	}
 
 	return iter.NewSortSampleIterator(iterators), nil
@@ -299,7 +261,30 @@ func isOverlapping(first, second ChunkData, direction logproto.Direction) bool {
 	if direction == logproto.BACKWARD {
 		return first.meta.MinTime <= second.meta.MaxTime
 	}
-	return first.meta.MaxTime < second.meta.MinTime
+	return first.meta.MaxTime >= second.meta.MinTime
+}
+
+func downloadChunks(ctx context.Context, storage BlockStorage, chks []ChunkData) ([][]byte, error) {
+	data := make([][]byte, len(chks))
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(64)
+	for i, chunk := range chks {
+		chunk := chunk
+		i := i
+		g.Go(func() error {
+			chunkData, err := readChunkData(ctx, storage, chunk)
+			if err != nil {
+				return fmt.Errorf("error reading chunk data: %w", err)
+			}
+			data[i] = chunkData
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	return data, nil
 }
 
 func readChunkData(ctx context.Context, storage BlockStorage, chunk ChunkData) ([]byte, error) {
