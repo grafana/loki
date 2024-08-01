@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/storage/wal"
 	"github.com/grafana/loki/v3/pkg/storage/wal/chunks"
 
 	"github.com/grafana/loki/pkg/push"
@@ -292,7 +293,7 @@ func readChunkData(ctx context.Context, storage BlockStorage, chunk ChunkData) (
 	// todo: We should be able to avoid many IOPS to object storage
 	// if chunks are next to each other and we should be able to pack range request
 	// together.
-	reader, err := storage.GetRangeObject(ctx, chunk.id, int64(offset), int64(size))
+	reader, err := storage.GetObjectRange(ctx, wal.Dir+chunk.id, int64(offset), int64(size))
 	if err != nil {
 		return nil, err
 	}
