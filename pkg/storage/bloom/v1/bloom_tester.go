@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index"
-	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/common/model"
 	"time"
 	"unicode/utf8"
 
@@ -79,21 +78,34 @@ func ExtractTestableLineFilters(expr syntax.Expr) []syntax.LineFilterExpr {
 func ShouldUseBloomFilter(
 	ctx context.Context,
 	tenant string,
-	matchers []*labels.Matcher,
-	req *logproto.GetChunkRefRequest,
+	from, through model.Time,
+	expr syntax.Expr,
 	idx index.StatsReader,
 	logger logging.Logger,
 ) (bool, error) {
+	ms, err := syntax.MatcherGroups(expr)
+	if err != nil {
+		return false, fmt.Errorf("failed to extract matchers: %w", err)
+	}
+	if len(ms) == 0 {
+		level.Info(logger).Log(
+			"msg", "skipping bloom filter",
+			"reason", "could not get matchers",
+		)
+		return false, nil
+	}
+	matchers := ms[0].Matchers
+
 	logger = logging.With(logger,
 		"tenant", tenant,
-		"matchers", req.Matchers,
-		"from", req.From.Time(),
-		"through", req.Through.Time(),
-		"length", req.Through.Time().Sub(req.From.Time()),
+		"matchers", matchers,
+		"from", from.Time(),
+		"through", through.Time(),
+		"length", through.Time().Sub(from.Time()),
 	)
 
 	// Has at least one filter
-	filters := ExtractTestableLineFilters(req.Plan.AST)
+	filters := ExtractTestableLineFilters(expr)
 	if len(filters) == 0 {
 		level.Info(logger).Log(
 			"msg", "skipping bloom filter",
@@ -105,7 +117,7 @@ func ShouldUseBloomFilter(
 	// Hits built blooms
 	const minQueryOld = 12 * time.Hour
 	minFrom := time.Now().Add(-minQueryOld)
-	if !req.From.Time().Before(minFrom) {
+	if !from.Time().Before(minFrom) {
 		level.Info(logger).Log(
 			"msg", "skipping bloom filter",
 			"reason", "query is too recent",
@@ -133,7 +145,7 @@ func ShouldUseBloomFilter(
 		return false, nil
 	}
 
-	stats, err := idx.Stats(ctx, tenant, req.From, req.Through, matchers...)
+	stats, err := idx.Stats(ctx, tenant, from, through, matchers...)
 	if err != nil {
 		return false, fmt.Errorf("failed to get stats: %w", err)
 	}

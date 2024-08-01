@@ -247,7 +247,7 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 	}
 
 	// Short-circuit if the query would not benefit from bloom filtering
-	useBlooms, err := v1.ShouldUseBloomFilter(ctx, instanceID, matchers, req, g.indexQuerier, g.log)
+	useBlooms, err := v1.ShouldUseBloomFilter(ctx, instanceID, req.From, req.Through, req.Plan.AST, g.indexQuerier, g.log)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to determine if bloom filters should be used")
 	}
@@ -469,16 +469,22 @@ func (g *Gateway) boundedShards(
 	// 2) filter via blooms if enabled
 	filters := syntax.ExtractLineFilters(p.Plan().AST)
 	if g.bloomQuerier != nil && len(filters) > 0 {
-		xs, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, refs, p.Plan())
+		useBlooms, err := v1.ShouldUseBloomFilter(ctx, instanceID, req.From, req.Through, p.Plan().AST, g.indexQuerier, g.log)
 		if err != nil {
-			level.Error(logger).Log("msg", "failed to filter chunk refs", "err", err)
-		} else {
-			filtered = xs
+			return errors.Wrap(err, "failed to determine if bloom filters should be used")
 		}
-		sp.LogKV(
-			"stage", "queried bloom gateway",
-			"err", err,
-		)
+		if useBlooms {
+			xs, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, refs, p.Plan())
+			if err != nil {
+				level.Error(logger).Log("msg", "failed to filter chunk refs", "err", err)
+			} else {
+				filtered = xs
+			}
+			sp.LogKV(
+				"stage", "queried bloom gateway",
+				"err", err,
+			)
+		}
 	}
 
 	g.metrics.preFilterChunks.WithLabelValues(routeShards).Observe(float64(ct))
