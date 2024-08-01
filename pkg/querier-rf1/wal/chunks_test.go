@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/storage/wal"
 	walchunks "github.com/grafana/loki/v3/pkg/storage/wal/chunks"
 )
 
@@ -408,7 +409,7 @@ func writeChunksToStorage(t *testing.T, storage *mockBlockStorage, chunkData []s
 		_, err := walchunks.WriteChunk(&buf, cd.entries, walchunks.EncodingSnappy)
 		require.NoError(t, err)
 
-		storage.data[chunkID] = buf.Bytes()
+		storage.data[wal.Dir+chunkID] = buf.Bytes()
 		chks = append(chks, newChunkData(chunkID, labelsToScratchBuilder(cd.labels), &walchunks.Meta{
 			Ref:     walchunks.NewChunkRef(0, uint64(buf.Len())),
 			MinTime: cd.entries[0].Timestamp.UnixNano(),
