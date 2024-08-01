@@ -1,8 +1,17 @@
 package v1
 
 import (
+	"context"
+	"fmt"
+	"github.com/dustin/go-humanize"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index"
+	"github.com/prometheus/prometheus/model/labels"
+	"time"
 	"unicode/utf8"
 
+	logging "github.com/go-kit/log"
 	"github.com/grafana/regexp"
 
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
@@ -10,7 +19,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
-	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 )
 
 type BloomTest interface {
@@ -68,27 +76,86 @@ func ExtractTestableLineFilters(expr syntax.Expr) []syntax.LineFilterExpr {
 	return filters
 }
 
-func ShouldUseBloomFilter(expr syntax.Expr, stats *stats.Stats) bool {
-	filters := ExtractTestableLineFilters(expr)
+func ShouldUseBloomFilter(
+	ctx context.Context,
+	tenant string,
+	matchers []*labels.Matcher,
+	req *logproto.GetChunkRefRequest,
+	idx index.StatsReader,
+	logger logging.Logger,
+) (bool, error) {
+	logger = logging.With(logger,
+		"tenant", tenant,
+		"matchers", req.Matchers,
+		"from", req.From.Time(),
+		"through", req.Through.Time(),
+		"length", req.Through.Time().Sub(req.From.Time()),
+	)
+
+	// Has at least one filter
+	filters := ExtractTestableLineFilters(req.Plan.AST)
 	if len(filters) == 0 {
-		return false
+		level.Info(logger).Log(
+			"msg", "skipping bloom filter",
+			"reason", "no filters",
+		)
+		return false, nil
 	}
 
-	// Less than 50GB
-	// TODO: configurable
-	if stats.Bytes < 50*(1<<30) {
-		return false
+	// Hits built blooms
+	const minQueryOld = 12 * time.Hour
+	minFrom := time.Now().Add(-minQueryOld)
+	if !req.From.Time().Before(minFrom) {
+		level.Info(logger).Log(
+			"msg", "skipping bloom filter",
+			"reason", "query is too recent",
+			"minQueryOld", minQueryOld,
+			"minFrom", minFrom,
+		)
+		return false, nil
 	}
 
 	// At least one line filter should be longer than the n-gram length
-	// TODO: Look at the ngram length per-tenant override (default is 4)
+	const ngramLength = 4
+	var found bool
 	for _, f := range filters {
-		if len(f.LineFilter.Match) > 4 {
-			return true
+		if len(f.LineFilter.Match) > ngramLength {
+			found = true
 		}
 	}
+	if !found {
+		level.Info(logger).Log(
+			"msg", "skipping bloom filter",
+			"reason", "no filter longer than n-gram length",
+			"filters", len(filters),
+			"nGramLen", ngramLength,
+		)
+		return false, nil
+	}
 
-	return false
+	stats, err := idx.Stats(ctx, tenant, req.From, req.Through, matchers...)
+	if err != nil {
+		return false, fmt.Errorf("failed to get stats: %w", err)
+	}
+
+	// Touches enough data
+	const minSizeGB = 150
+	if stats.Bytes < minSizeGB*(1<<30) {
+		level.Info(logger).Log(
+			"msg", "skipping bloom filter",
+			"reason", "few data touched",
+			"bytes", humanize.Bytes(stats.Bytes),
+			"minSizeGB", minSizeGB,
+		)
+		return false, nil
+	}
+
+	level.Info(logger).Log(
+		"msg", "using bloom filter",
+		"filters", len(filters),
+		"bytes", humanize.Bytes(stats.Bytes),
+	)
+	return true, nil
 }
 
 // FiltersToBloomTest converts a list of line filters to a BloomTest.

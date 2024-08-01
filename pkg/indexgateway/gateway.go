@@ -246,13 +246,12 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 		return result, nil
 	}
 
-	stats, err := g.indexQuerier.Stats(ctx, instanceID, req.From, req.Through, matchers...)
-	if err != nil {
-		return nil, err
-	}
-
 	// Short-circuit if the query would not benefit from bloom filtering
-	if !v1.ShouldUseBloomFilter(req.Plan.AST, stats) {
+	useBlooms, err := v1.ShouldUseBloomFilter(ctx, instanceID, matchers, req, g.indexQuerier, g.log)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to determine if bloom filters should be used")
+	}
+	if !useBlooms {
 		return result, nil
 	}
 
