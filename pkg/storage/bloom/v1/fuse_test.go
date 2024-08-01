@@ -356,6 +356,69 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 	}
 }
 
+func TestFusedQuerierSkipsEmptyBlooms(t *testing.T) {
+	// references for linking in memory reader+writer
+	indexBuf := bytes.NewBuffer(nil)
+	bloomsBuf := bytes.NewBuffer(nil)
+	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
+	reader := NewByteReader(indexBuf, bloomsBuf)
+
+	builder, err := NewBlockBuilder(
+		BlockOptions{
+			Schema: Schema{
+				version:  DefaultSchemaVersion,
+				encoding: chunkenc.EncNone,
+			},
+			SeriesPageSize: 100,
+			BloomPageSize:  10 << 10,
+		},
+		writer,
+	)
+	require.Nil(t, err)
+
+	data := SeriesWithBlooms{
+		Series: &Series{
+			Fingerprint: 0,
+			Chunks: []ChunkRef{
+				{
+					From:     0,
+					Through:  10,
+					Checksum: 0x1234,
+				},
+			},
+		},
+		Blooms: v2.NewSliceIter([]*Bloom{
+			// simulate empty bloom
+			{
+				*filter.NewScalableBloomFilter(1024, 0.01, 0.8),
+			},
+		}),
+	}
+
+	itr := v2.NewSliceIter[SeriesWithBlooms]([]SeriesWithBlooms{data})
+	_, err = builder.BuildFrom(itr)
+	require.NoError(t, err)
+	require.False(t, itr.Next())
+	block := NewBlock(reader, NewMetrics(nil))
+	ch := make(chan Output, 1)
+	req := Request{
+		Fp:       data.Series.Fingerprint,
+		Chks:     data.Series.Chunks,
+		Search:   keysToBloomTest([][]byte{[]byte("foobar")}),
+		Response: ch,
+		Recorder: NewBloomRecorder(context.Background(), "unknown"),
+	}
+	err = NewBlockQuerier(block, BloomPagePool, DefaultMaxPageSize).Fuse(
+		[]v2.PeekIterator[Request]{
+			v2.NewPeekIter[Request](v2.NewSliceIter[Request]([]Request{req})),
+		},
+		log.NewNopLogger(),
+	).Run()
+	require.NoError(t, err)
+	x := <-ch
+	require.Equal(t, 0, len(x.Removals))
+}
+
 func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]Request, []chan Output) {
 	indexBuf := bytes.NewBuffer(nil)
 	bloomsBuf := bytes.NewBuffer(nil)

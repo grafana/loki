@@ -9,12 +9,14 @@ import (
 	"io"
 	"sort"
 	"sync"
+	"time"
 
 	"go.uber.org/atomic"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/wal/chunks"
@@ -29,7 +31,6 @@ var (
 	streamSegmentPool = sync.Pool{
 		New: func() interface{} {
 			return &streamSegment{
-				lock:    &sync.Mutex{},
 				entries: make([]*logproto.Entry, 0, 4096),
 			}
 		},
@@ -46,15 +47,63 @@ type streamID struct {
 }
 
 type SegmentWriter struct {
-	streams        map[streamID]*streamSegment
-	buf1           encoding.Encbuf
-	inputSize      atomic.Int64
-	idxWriter      *index.Writer
-	consistencyMtx *sync.RWMutex
+	streams    map[streamID]*streamSegment
+	buf1       encoding.Encbuf
+	outputSize atomic.Int64
+	inputSize  atomic.Int64
+	idxWriter  *index.Writer
+	indexRef   metastorepb.DataRef
+
+	// firstAppend is the timestamp of the first append. It is used to know
+	// when the segment has exceeded the maximum aage and should be flushed.
+	firstAppend time.Time
+
+	// lastAppend is the timestamp of the last append. It is used to know
+	// how long a segment has been idle between the last append and the
+	// subsequent flush.
+	lastAppend time.Time
+}
+
+// SegmentStats contains the stats for a SegmentWriter.
+type SegmentStats struct {
+	// Age is the time between the first append and the flush.
+	Age time.Duration
+	// Idle is the time between the last append and the flush.
+	Idle      time.Duration
+	Streams   int
+	Tenants   int
+	Size      int64
+	WriteSize int64
+}
+
+// GetSegmentStats returns the stats for a SegmentWriter. The age of a segment
+// is calculated from t. WriteSize is zero if GetSegmentStats is called before
+// SegmentWriter.WriteTo.
+func GetSegmentStats(w *SegmentWriter, t time.Time) SegmentStats {
+	tenants := make(map[string]struct{}, 64)
+	for _, s := range w.streams {
+		tenants[s.tenantID] = struct{}{}
+	}
+	return SegmentStats{
+		Age:       t.Sub(w.firstAppend),
+		Idle:      t.Sub(w.lastAppend),
+		Streams:   len(w.streams),
+		Tenants:   len(tenants),
+		Size:      w.inputSize.Load(),
+		WriteSize: w.outputSize.Load(),
+	}
+}
+
+// ReportSegmentStats reports the stats as metrics.
+func ReportSegmentStats(s SegmentStats, m *SegmentMetrics) {
+	m.age.Observe(s.Age.Seconds())
+	m.streams.Observe(float64(s.Streams))
+	m.tenants.Observe(float64(s.Tenants))
+	m.size.Observe(float64(s.Size))
+	m.writeSize.Observe(float64(s.WriteSize))
 }
 
 type streamSegment struct {
-	lock     *sync.Mutex
 	lbls     labels.Labels
 	entries  []*logproto.Entry
 	tenantID string
@@ -82,23 +131,26 @@ func NewWalSegmentWriter() (*SegmentWriter, error) {
 		return nil, err
 	}
 	return &SegmentWriter{
-		streams:        make(map[streamID]*streamSegment, 64),
-		buf1:           encoding.EncWith(make([]byte, 0, 4)),
-		idxWriter:      idxWriter,
-		inputSize:      atomic.Int64{},
-		consistencyMtx: &sync.RWMutex{},
+		streams:   make(map[streamID]*streamSegment, 64),
+		buf1:      encoding.EncWith(make([]byte, 0, 4)),
+		idxWriter: idxWriter,
+		inputSize: atomic.Int64{},
 	}, nil
 }
 
+// Age returns the age of the segment.
+func (b *SegmentWriter) Age(now time.Time) time.Duration {
+	if b.firstAppend.IsZero() {
+		return 0
+	}
+	return now.Sub(b.firstAppend)
+}
+
 func (b *SegmentWriter) getOrCreateStream(id streamID, lbls labels.Labels) *streamSegment {
-	b.consistencyMtx.RLock()
 	s, ok := b.streams[id]
-	b.consistencyMtx.RUnlock()
 	if ok {
 		return s
 	}
-	b.consistencyMtx.Lock()
-	defer b.consistencyMtx.Unlock()
 	// Check another thread has not created it
 	s, ok = b.streams[id]
 	if ok {
@@ -115,18 +167,21 @@ func (b *SegmentWriter) getOrCreateStream(id streamID, lbls labels.Labels) *stre
 }
 
 // Labels are passed a string  `{foo="bar",baz="qux"}`  `{foo="foo",baz="foo"}`. labels.Labels => Symbols foo, baz , qux
-func (b *SegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels, entries []*logproto.Entry) {
+func (b *SegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels, entries []*logproto.Entry, now time.Time) {
 	if len(entries) == 0 {
 		return
 	}
+	if b.firstAppend.IsZero() {
+		b.firstAppend = now
+	}
+	b.lastAppend = now
+
 	for _, e := range entries {
 		b.inputSize.Add(int64(len(e.Line)))
 	}
 	id := streamID{labels: labelsString, tenant: tenantID}
 	s := b.getOrCreateStream(id, lbls)
 
-	s.lock.Lock()
-	defer s.lock.Unlock()
 	for i, e := range entries {
 		if e.Timestamp.UnixNano() >= s.maxt {
 			s.entries = append(s.entries, entries[i])
@@ -141,6 +196,55 @@ func (b *SegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels
 		s.entries = append(s.entries, nil)
 		copy(s.entries[idx+1:], s.entries[idx:])
 		s.entries[idx] = e
+	}
+}
+
+func (b *SegmentWriter) Meta(id string) *metastorepb.BlockMeta {
+	var globalMinT, globalMaxT int64
+
+	tenants := make(map[string]*metastorepb.TenantStreams, 64)
+	for _, s := range b.streams {
+		tenant, ok := tenants[s.tenantID]
+		if !ok {
+			tenant = &metastorepb.TenantStreams{
+				TenantId: s.tenantID,
+			}
+			tenants[s.tenantID] = tenant
+		}
+		if len(s.entries) == 0 {
+			continue
+		}
+		streamMinT, streamMaxT := s.entries[0].Timestamp.UnixNano(), s.entries[len(s.entries)-1].Timestamp.UnixNano()
+
+		if globalMinT == 0 || streamMinT < globalMinT {
+			globalMinT = streamMinT
+		}
+		if streamMaxT > globalMaxT {
+			globalMaxT = streamMaxT
+		}
+		if tenant.MinTime == 0 || tenant.MinTime > streamMinT {
+			tenant.MinTime = streamMinT
+		}
+		if tenant.MaxTime < streamMaxT {
+			tenant.MaxTime = streamMaxT
+		}
+	}
+	result := make([]*metastorepb.TenantStreams, 0, len(tenants))
+	for _, tenant := range tenants {
+		tenant := tenant
+		result = append(result, tenant)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].TenantId < result[j].TenantId
+	})
+	return &metastorepb.BlockMeta{
+		Id:              id,
+		FormatVersion:   uint64(1),
+		CompactionLevel: 0,
+		IndexRef:        b.indexRef,
+		MinTime:         globalMinT,
+		MaxTime:         globalMaxT,
+		TenantStreams:   result,
 	}
 }
 
@@ -237,6 +341,8 @@ func (b *SegmentWriter) WriteTo(w io.Writer) (int64, error) {
 	if n != len(buf) {
 		return total, errors.New("invalid written index len")
 	}
+	b.indexRef.Offset = total
+	b.indexRef.Length = int64(n)
 	total += int64(n)
 
 	// write index len 4b
@@ -262,12 +368,16 @@ func (b *SegmentWriter) WriteTo(w io.Writer) (int64, error) {
 	}
 	total += int64(n)
 
+	b.outputSize.Store(total)
+
 	return total, nil
 }
 
 // Reset clears the writer.
 // After calling Reset, the writer can be reused.
 func (b *SegmentWriter) Reset() {
+	b.firstAppend = time.Time{}
+	b.lastAppend = time.Time{}
 	for _, s := range b.streams {
 		s := s
 		s.Reset()
@@ -276,32 +386,8 @@ func (b *SegmentWriter) Reset() {
 	b.streams = make(map[streamID]*streamSegment, 64)
 	b.buf1.Reset()
 	b.inputSize.Store(0)
-}
-
-type EncodedSegmentReader struct {
-	*io.PipeReader
-	*io.PipeWriter
-}
-
-func (e *EncodedSegmentReader) Close() error {
-	err := e.PipeWriter.Close()
-	if err != nil {
-		return err
-	}
-	err = e.PipeReader.Close()
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (b *SegmentWriter) Reader() io.ReadCloser {
-	pr, pw := io.Pipe()
-	go func() {
-		_, err := b.WriteTo(pw)
-		pw.CloseWithError(err)
-	}()
-	return &EncodedSegmentReader{PipeReader: pr, PipeWriter: pw}
+	b.indexRef.Length = 0
+	b.indexRef.Offset = 0
 }
 
 // InputSize returns the total size of the input data written to the writer.
