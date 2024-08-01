@@ -21,7 +21,7 @@ type mockBlockStorage struct {
 	data map[string][]byte
 }
 
-func (m *mockBlockStorage) GetRangeObject(_ context.Context, objectKey string, off, length int64) (io.ReadCloser, error) {
+func (m *mockBlockStorage) GetObjectRange(_ context.Context, objectKey string, off, length int64) (io.ReadCloser, error) {
 	data := m.data[objectKey]
 	return io.NopCloser(bytes.NewReader(data[off : off+length])), nil
 }
