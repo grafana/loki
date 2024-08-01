@@ -1,7 +1,6 @@
 package tokenization
 
 import (
-	"bytes"
 	"unsafe"
 )
 
@@ -34,7 +33,7 @@ func (t *tokenizer) countOrSaveToken(endTokenPos, skip int) {
 		// Intentionally written like this and not with append(), so this can
 		// panic if we ever exceed the preallocated slice size, since that means
 		// we have a nasty bug in handleNextToken() below.
-		t.tokens[t.tokenCount] = t.line[t.tpos:endTokenPos]
+		t.tokens[t.tokenCount] = t.line[t.tpos : endTokenPos+skip]
 	}
 	t.tokenCount++
 	t.tpos = endTokenPos + skip
@@ -193,8 +192,6 @@ func (t *tokenizer) tokenize() []string {
 }
 
 func PreprocessAndTokenize(content []byte) []string {
-	content = bytes.TrimSpace(content)
-
 	t := tokenizer{rawLine: content, maxTokens: 100} // TODO: parametrize maxTokens
 
 	return t.tokenize()
