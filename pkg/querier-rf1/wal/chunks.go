@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/storage/wal"
 	"github.com/grafana/loki/v3/pkg/storage/wal/chunks"
+	"github.com/grafana/loki/v3/pkg/storage/wal/index"
 
 	"github.com/grafana/loki/pkg/push"
 )
@@ -27,10 +28,19 @@ type ChunkData struct {
 
 func newChunkData(id string, lbs *labels.ScratchBuilder, meta *chunks.Meta) ChunkData {
 	lbs.Sort()
+	newLbs := lbs.Labels()
+	j := 0
+	for _, l := range newLbs {
+		if l.Name != index.TenantLabel {
+			newLbs[j] = l
+			j++
+		}
+	}
+	newLbs = newLbs[:j]
 	return ChunkData{
 		id:     id,
 		meta:   meta,
-		labels: lbs.Labels(),
+		labels: newLbs,
 	}
 }
 
