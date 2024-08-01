@@ -3,7 +3,6 @@ package querier
 import (
 	"context"
 	"flag"
-	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -43,6 +42,8 @@ import (
 	listutil "github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 	util_validation "github.com/grafana/loki/v3/pkg/util/validation"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 const (
@@ -52,9 +53,7 @@ const (
 	tailerWaitEntryThrottle = time.Second / 2
 )
 
-var (
-	nowFunc = func() time.Time { return time.Now() }
-)
+var nowFunc = func() time.Time { return time.Now() }
 
 type interval struct {
 	start, end time.Time
@@ -107,6 +106,8 @@ type Querier interface {
 	DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error)
 	Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error)
 	DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error)
+	SelectMetricSamples(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error)
+	WithPatternQuerier(patternQuerier PatterQuerier)
 }
 
 type Limits querier_limits.Limits
@@ -162,6 +163,7 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
 
+	sp := opentracing.SpanFromContext(ctx)
 	iters := []iter.EntryIterator{}
 	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
 		// Make a copy of the request before modifying
@@ -172,9 +174,11 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 		}
 		newParams.Start = ingesterQueryInterval.start
 		newParams.End = ingesterQueryInterval.end
-		level.Debug(spanlogger.FromContext(ctx)).Log(
-			"msg", "querying ingester",
-			"params", newParams)
+		if sp != nil {
+			sp.LogKV(
+				"msg", "querying ingester",
+				"params", newParams)
+		}
 		ingesterIters, err := q.ingesterQuerier.SelectLogs(ctx, newParams)
 		if err != nil {
 			return nil, err
@@ -186,9 +190,11 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
 		params.Start = storeQueryInterval.start
 		params.End = storeQueryInterval.end
-		level.Debug(spanlogger.FromContext(ctx)).Log(
-			"msg", "querying store",
-			"params", params)
+		if sp != nil {
+			sp.LogKV(
+				"msg", "querying store",
+				"params", params)
+		}
 		storeIter, err := q.store.SelectLogs(ctx, params)
 		if err != nil {
 			return nil, err
@@ -545,7 +551,7 @@ func (q *SingleTenantQuerier) Series(ctx context.Context, req *logproto.SeriesRe
 
 	// Enforce the query timeout while querying backends
 	queryTimeout := q.limits.QueryTimeout(ctx, userID)
-	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
+	ctx, cancel := context.WithDeadlineCause(ctx, time.Now().Add(queryTimeout), errors.New("query timeout reached"))
 	defer cancel()
 
 	return q.awaitSeries(ctx, req)
@@ -1036,6 +1042,7 @@ func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabel
 
 type PatterQuerier interface {
 	Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error)
+	Samples(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error)
 }
 
 func (q *SingleTenantQuerier) WithPatternQuerier(pq PatterQuerier) {
@@ -1047,6 +1054,22 @@ func (q *SingleTenantQuerier) Patterns(ctx context.Context, req *logproto.QueryP
 		return nil, httpgrpc.Errorf(http.StatusNotFound, "")
 	}
 	res, err := q.patternQuerier.Patterns(ctx, req)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	return res, err
+}
+
+func (q *SingleTenantQuerier) SelectMetricSamples(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error) {
+	if q.patternQuerier == nil {
+		return nil, httpgrpc.Errorf(http.StatusNotFound, "")
+	}
+	res, err := q.patternQuerier.Samples(ctx, req)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
 	return res, err
 }
 
@@ -1095,11 +1118,8 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 		return nil, err
 	}
 
-	detectedFields := parseDetectedFields(ctx, req.FieldLimit, streams)
+	detectedFields := parseDetectedFields(req.FieldLimit, streams)
 
-	//TODO: detected field needs to contain the sketch
-	// make sure response to frontend is GRPC
-	//only want cardinality in JSON
 	fields := make([]*logproto.DetectedField, len(detectedFields))
 	fieldCount := 0
 	for k, v := range detectedFields {
@@ -1120,7 +1140,6 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 		fieldCount++
 	}
 
-	//TODO: detected fields response needs to include the sketch
 	return &logproto.DetectedFieldsResponse{
 		Fields:     fields,
 		FieldLimit: req.GetFieldLimit(),
@@ -1192,17 +1211,39 @@ func determineType(value string) logproto.DetectedFieldType {
 	return logproto.DetectedFieldString
 }
 
-func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.Streams) map[string]*parsedFields {
+func parseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*parsedFields {
 	detectedFields := make(map[string]*parsedFields, limit)
 	fieldCount := uint32(0)
+	emtpyparser := ""
 
 	for _, stream := range streams {
-		detectType := true
-		level.Debug(spanlogger.FromContext(ctx)).Log(
-			"detected_fields", "true",
-			"msg", fmt.Sprintf("looking for detected fields in stream %d with %d lines", stream.Hash, len(stream.Entries)))
-
 		for _, entry := range stream.Entries {
+			structuredMetadata := getStructuredMetadata(entry)
+			for k, vals := range structuredMetadata {
+				df, ok := detectedFields[k]
+				if !ok && fieldCount < limit {
+					df = newParsedFields(&emtpyparser)
+					detectedFields[k] = df
+					fieldCount++
+				}
+
+				if df == nil {
+					continue
+				}
+
+				detectType := true
+				for _, v := range vals {
+					parsedFields := detectedFields[k]
+					if detectType {
+						// we don't want to determine the type for every line, so we assume the type in each stream will be the same, and re-detect the type for the next stream
+						parsedFields.DetermineType(v)
+						detectType = false
+					}
+
+					parsedFields.Insert(v)
+				}
+			}
+
 			detected, parser := parseLine(entry.Line)
 			for k, vals := range detected {
 				df, ok := detectedFields[k]
@@ -1220,6 +1261,7 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 					df.parsers = append(df.parsers, *parser)
 				}
 
+				detectType := true
 				for _, v := range vals {
 					parsedFields := detectedFields[k]
 					if detectType {
@@ -1230,15 +1272,33 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 
 					parsedFields.Insert(v)
 				}
-
-				level.Debug(spanlogger.FromContext(ctx)).Log(
-					"detected_fields", "true",
-					"msg", fmt.Sprintf("detected field %s with %d values", k, len(vals)))
 			}
 		}
 	}
 
 	return detectedFields
+}
+
+func getStructuredMetadata(entry push.Entry) map[string][]string {
+	labels := map[string]map[string]struct{}{}
+	for _, lbl := range entry.StructuredMetadata {
+		if values, ok := labels[lbl.Name]; ok {
+			values[lbl.Value] = struct{}{}
+		} else {
+			labels[lbl.Name] = map[string]struct{}{lbl.Value: {}}
+		}
+	}
+
+	result := make(map[string][]string, len(labels))
+	for lbl, values := range labels {
+		vals := make([]string, 0, len(values))
+		for v := range values {
+			vals = append(vals, v)
+		}
+		result[lbl] = vals
+	}
+
+	return result
 }
 
 func parseLine(line string) (map[string][]string, *string) {
@@ -1289,7 +1349,7 @@ func streamsForFieldDetection(i iter.EntryIterator, size uint32) (logqlmodel.Str
 	// value here because many unit tests start at time.Unix(0,0)
 	lastEntry := time.Unix(-100, 0)
 	for respSize < size && i.Next() {
-		streamLabels, entry := i.Labels(), i.Entry()
+		streamLabels, entry := i.Labels(), i.At()
 
 		// Always going backward as the direction for field detection is hard-coded to BACKWARD
 		shouldOutput := entry.Timestamp.Equal(lastEntry) || entry.Timestamp.Before(lastEntry)
@@ -1305,7 +1365,7 @@ func streamsForFieldDetection(i iter.EntryIterator, size uint32) (logqlmodel.Str
 				streams[streamLabels] = stream
 			}
 			stream.Entries = append(stream.Entries, entry)
-			lastEntry = i.Entry().Timestamp
+			lastEntry = i.At().Timestamp
 			respSize++
 		}
 	}
@@ -1315,5 +1375,5 @@ func streamsForFieldDetection(i iter.EntryIterator, size uint32) (logqlmodel.Str
 		result = append(result, *stream)
 	}
 	sort.Sort(result)
-	return result, i.Error()
+	return result, i.Err()
 }

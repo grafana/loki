@@ -8,14 +8,16 @@ import (
 	"testing"
 	"time"
 
+	logger "github.com/go-kit/log"
 	"github.com/grafana/dskit/multierror"
-
-	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/iter"
+	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
+
+	"github.com/grafana/loki/pkg/push"
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
@@ -81,7 +83,7 @@ func TestPrefixedKeyCreation(t *testing.T) {
 
 func TestSetLineTokenizer(t *testing.T) {
 	t.Parallel()
-	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics)
+	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics, logger.NewNopLogger())
 
 	// Validate defaults
 	require.Equal(t, bt.lineTokenizer.N(), DefaultNGramLength)
@@ -96,12 +98,12 @@ func TestSetLineTokenizer(t *testing.T) {
 func TestTokenizerPopulate(t *testing.T) {
 	t.Parallel()
 	var testLine = "this is a log line"
-	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics)
+	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics, logger.NewNopLogger())
 
 	sbf := filter.NewScalableBloomFilter(1024, 0.01, 0.8)
 
 	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
-	_ = memChunk.Append(&push.Entry{
+	_, _ = memChunk.Append(&push.Entry{
 		Timestamp: time.Unix(0, 1),
 		Line:      testLine,
 	})
@@ -120,8 +122,8 @@ func TestTokenizerPopulate(t *testing.T) {
 
 	blooms, err := populateAndConsumeBloom(
 		bt,
-		NewSliceIter([]*Bloom{&bloom}),
-		NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{},
+		v2.NewSliceIter([]*Bloom{&bloom}),
+		v2.NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{},
 			Itr: itr}}),
 	)
 	require.NoError(t, err)
@@ -137,10 +139,10 @@ func TestTokenizerPopulate(t *testing.T) {
 
 func TestBloomTokenizerPopulateWithoutPreexistingBloom(t *testing.T) {
 	var testLine = "this is a log line"
-	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics)
+	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics, logger.NewNopLogger())
 
 	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
-	_ = memChunk.Append(&push.Entry{
+	_, _ = memChunk.Append(&push.Entry{
 		Timestamp: time.Unix(0, 1),
 		Line:      testLine,
 	})
@@ -155,8 +157,8 @@ func TestBloomTokenizerPopulateWithoutPreexistingBloom(t *testing.T) {
 
 	blooms, err := populateAndConsumeBloom(
 		bt,
-		NewEmptyIter[*Bloom](),
-		NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{},
+		v2.NewEmptyIter[*Bloom](),
+		v2.NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{},
 			Itr: itr}}),
 	)
 	require.NoError(t, err)
@@ -174,7 +176,7 @@ func TestBloomTokenizerPopulateWithoutPreexistingBloom(t *testing.T) {
 func chunkRefItrFromLines(lines ...string) (iter.EntryIterator, error) {
 	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
 	for i, line := range lines {
-		if err := memChunk.Append(&push.Entry{
+		if _, err := memChunk.Append(&push.Entry{
 			Timestamp: time.Unix(0, int64(i)),
 			Line:      line,
 		}); err != nil {
@@ -205,18 +207,18 @@ func randomStr(ln int) string {
 
 func TestTokenizerPopulateWontExceedMaxSize(t *testing.T) {
 	maxSize := 2048
-	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, maxSize, NewMetrics(nil))
+	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, maxSize, NewMetrics(nil), logger.NewNopLogger())
 	ch := make(chan *BloomCreation)
 	line := randomStr(10e3)
 	itr, err := chunkRefItrFromLines(line)
 	require.NoError(t, err)
 	go bt.Populate(
-		NewSliceIter([]*Bloom{
+		v2.NewSliceIter([]*Bloom{
 			{
 				*filter.NewScalableBloomFilter(1024, 0.01, 0.8),
 			},
 		}),
-		NewSliceIter([]ChunkRefWithIter{
+		v2.NewSliceIter([]ChunkRefWithIter{
 			{
 				Ref: ChunkRef{},
 				Itr: itr,
@@ -237,8 +239,8 @@ func TestTokenizerPopulateWontExceedMaxSize(t *testing.T) {
 
 func populateAndConsumeBloom(
 	bt *BloomTokenizer,
-	blooms SizedIterator[*Bloom],
-	chks Iterator[ChunkRefWithIter],
+	blooms v2.SizedIterator[*Bloom],
+	chks v2.Iterator[ChunkRefWithIter],
 ) (res []*Bloom, err error) {
 	var e multierror.MultiError
 	ch := make(chan *BloomCreation)
@@ -256,12 +258,12 @@ func populateAndConsumeBloom(
 func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		var testLine = lorem + lorem + lorem
-		bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics)
+		bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics, logger.NewNopLogger())
 
 		sbf := filter.NewScalableBloomFilter(1024, 0.01, 0.8)
 
 		memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
-		_ = memChunk.Append(&push.Entry{
+		_, _ = memChunk.Append(&push.Entry{
 			Timestamp: time.Unix(0, 1),
 			Line:      testLine,
 		})
@@ -280,16 +282,55 @@ func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 
 		_, err = populateAndConsumeBloom(
 			bt,
-			NewSliceIter([]*Bloom{&bloom}),
-			NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{},
+			v2.NewSliceIter([]*Bloom{&bloom}),
+			v2.NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{},
 				Itr: itr}}),
 		)
 		require.NoError(b, err)
 	}
 }
 
+func TestTokenizerClearsCacheBetweenPopulateCalls(t *testing.T) {
+	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, NewMetrics(nil), logger.NewNopLogger())
+	line := "foobarbazz"
+	var blooms []*Bloom
+
+	for i := 0; i < 2; i++ {
+		ch := make(chan *BloomCreation)
+		itr, err := chunkRefItrFromLines(line)
+		require.NoError(t, err)
+		go bt.Populate(
+			v2.NewEmptyIter[*Bloom](),
+			v2.NewSliceIter([]ChunkRefWithIter{
+				{
+					Ref: ChunkRef{},
+					Itr: itr,
+				},
+			}),
+			ch,
+		)
+		var ct int
+		for created := range ch {
+			blooms = append(blooms, created.Bloom)
+			ct++
+		}
+		// ensure we created one bloom for each call
+		require.Equal(t, 1, ct)
+
+	}
+
+	for _, bloom := range blooms {
+		toks := bt.lineTokenizer.Tokens(line)
+		for toks.Next() {
+			token := toks.At()
+			require.True(t, bloom.Test(token))
+		}
+		require.NoError(t, toks.Err())
+	}
+}
+
 func BenchmarkMapClear(b *testing.B) {
-	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics)
+	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics, logger.NewNopLogger())
 	for i := 0; i < b.N; i++ {
 		for k := 0; k < cacheSize; k++ {
 			bt.cache[fmt.Sprint(k)] = k
@@ -300,7 +341,7 @@ func BenchmarkMapClear(b *testing.B) {
 }
 
 func BenchmarkNewMap(b *testing.B) {
-	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics)
+	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics, logger.NewNopLogger())
 	for i := 0; i < b.N; i++ {
 		for k := 0; k < cacheSize; k++ {
 			bt.cache[fmt.Sprint(k)] = k

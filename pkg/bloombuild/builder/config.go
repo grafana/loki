@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/grpcclient"
 )
 
@@ -11,12 +12,16 @@ import (
 type Config struct {
 	GrpcConfig     grpcclient.Config `yaml:"grpc_config"`
 	PlannerAddress string            `yaml:"planner_address"`
+	BackoffConfig  backoff.Config    `yaml:"backoff_config"`
+	WorkingDir     string            `yaml:"working_directory" doc:"hidden"`
 }
 
 // RegisterFlagsWithPrefix registers flags for the bloom-planner configuration.
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.PlannerAddress, prefix+".planner-address", "", "Hostname (and port) of the bloom planner")
 	cfg.GrpcConfig.RegisterFlagsWithPrefix(prefix+".grpc", f)
+	cfg.BackoffConfig.RegisterFlagsWithPrefix(prefix+".backoff", f)
+	f.StringVar(&cfg.WorkingDir, prefix+".working-directory", "", "Working directory to which blocks are temporarily written to. Empty string defaults to the operating system's temp directory.")
 }
 
 func (cfg *Config) Validate() error {

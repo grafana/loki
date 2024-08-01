@@ -229,7 +229,6 @@ func (b *BlobStorage) ObjectExists(ctx context.Context, objectKey string) (bool,
 		_, err = blockBlobURL.GetProperties(ctx, azblob.BlobAccessConditions{}, azblob.ClientProvidedKeyOptions{})
 		return err
 	})
-
 	if err != nil {
 		return false, err
 	}
@@ -250,7 +249,7 @@ func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadC
 	)
 	err := loki_instrument.TimeRequest(ctx, "azure.GetObject", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
-		rc, size, err = b.getObject(ctx, objectKey)
+		rc, size, err = b.getObject(ctx, objectKey, 0, 0)
 		return err
 	})
 	b.metrics.egressBytesTotal.Add(float64(size))
@@ -263,14 +262,43 @@ func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadC
 	return client_util.NewReadCloserWithContextCancelFunc(rc, cancel), size, nil
 }
 
-func (b *BlobStorage) getObject(ctx context.Context, objectKey string) (rc io.ReadCloser, size int64, err error) {
+// GetObject returns a reader and the size for the specified object key.
+func (b *BlobStorage) GetObjectRange(ctx context.Context, objectKey string, offset, length int64) (io.ReadCloser, error) {
+	var cancel context.CancelFunc = func() {}
+	if b.cfg.RequestTimeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, (time.Duration(b.cfg.MaxRetries)*b.cfg.RequestTimeout)+(time.Duration(b.cfg.MaxRetries-1)*b.cfg.MaxRetryDelay)) // timeout only after azure client's built in retries
+	}
+
+	var (
+		size int64
+		rc   io.ReadCloser
+	)
+	err := loki_instrument.TimeRequest(ctx, "azure.GetObject", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
+		var err error
+		rc, size, err = b.getObject(ctx, objectKey, offset, length)
+		return err
+	})
+	b.metrics.egressBytesTotal.Add(float64(size))
+	if err != nil {
+		// cancel the context if there is an error.
+		cancel()
+		return nil, err
+	}
+	// else return a wrapped ReadCloser which cancels the context while closing the reader.
+	return client_util.NewReadCloserWithContextCancelFunc(rc, cancel), nil
+}
+
+func (b *BlobStorage) getObject(ctx context.Context, objectKey string, offset, length int64) (rc io.ReadCloser, size int64, err error) {
+	if offset == 0 && length == 0 {
+		length = azblob.CountToEnd // azblob.CountToEnd == 0 but leaving this here for clarity
+	}
 	blockBlobURL, err := b.getBlobURL(objectKey, true)
 	if err != nil {
 		return nil, 0, err
 	}
 
 	// Request access to the blob
-	downloadResponse, err := blockBlobURL.Download(ctx, 0, azblob.CountToEnd, azblob.BlobAccessConditions{}, false, noClientKey)
+	downloadResponse, err := blockBlobURL.Download(ctx, offset, length, azblob.BlobAccessConditions{}, false, noClientKey)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -278,7 +306,7 @@ func (b *BlobStorage) getObject(ctx context.Context, objectKey string) (rc io.Re
 	return downloadResponse.Body(azblob.RetryReaderOptions{MaxRetryRequests: b.cfg.MaxRetries}), downloadResponse.ContentLength(), nil
 }
 
-func (b *BlobStorage) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+func (b *BlobStorage) PutObject(ctx context.Context, objectKey string, object io.Reader) error {
 	return loki_instrument.TimeRequest(ctx, "azure.PutObject", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
 		blockBlobURL, err := b.getBlobURL(objectKey, false)
 		if err != nil {

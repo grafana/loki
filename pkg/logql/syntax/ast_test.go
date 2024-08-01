@@ -1039,6 +1039,23 @@ func TestParseLargeQuery(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestLogSelectorExprHasFilter(t *testing.T) {
+	for query, hasFilter := range map[string]bool{
+		`{foo="bar"} |= ""`:                  false,
+		`{foo="bar"} |= "" |= ""`:            false,
+		`{foo="bar"} |~ ""`:                  false,
+		`{foo="bar"} |= "notempty"`:          true,
+		`{foo="bar"} |= "" |= "notempty"`:    true,
+		`{foo="bar"} != ""`:                  true,
+		`{foo="bar"} | lbl="notempty"`:       true,
+		`{foo="bar"} |= "" | lbl="notempty"`: true,
+	} {
+		expr, err := ParseExpr(query)
+		require.NoError(t, err)
+		require.Equal(t, hasFilter, expr.(LogSelectorExpr).HasFilter())
+	}
+}
+
 func TestGroupingString(t *testing.T) {
 	g := Grouping{
 		Groups:  []string{"a", "b"},

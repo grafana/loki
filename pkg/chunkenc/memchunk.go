@@ -8,7 +8,6 @@ import (
 	"hash"
 	"hash/crc32"
 	"io"
-	"reflect"
 	"time"
 	"unsafe"
 
@@ -181,9 +180,10 @@ func (hb *headBlock) Reset() {
 
 func (hb *headBlock) Bounds() (int64, int64) { return hb.mint, hb.maxt }
 
-func (hb *headBlock) Append(ts int64, line string, _ labels.Labels) error {
+// The headBlock does not check for duplicates, and will always return false
+func (hb *headBlock) Append(ts int64, line string, _ labels.Labels) (bool, error) {
 	if !hb.IsEmpty() && hb.maxt > ts {
-		return ErrOutOfOrder
+		return false, ErrOutOfOrder
 	}
 
 	hb.entries = append(hb.entries, entry{t: ts, s: line})
@@ -193,7 +193,7 @@ func (hb *headBlock) Append(ts int64, line string, _ labels.Labels) error {
 	hb.maxt = ts
 	hb.size += len(line)
 
-	return nil
+	return false, nil
 }
 
 func (hb *headBlock) Serialise(pool WriterPool) ([]byte, error) {
@@ -340,7 +340,7 @@ func (hb *headBlock) Convert(version HeadBlockFmt, symbolizer *symbolizer) (Head
 	out := version.NewBlock(symbolizer)
 
 	for _, e := range hb.entries {
-		if err := out.Append(e.t, e.s, e.structuredMetadata); err != nil {
+		if _, err := out.Append(e.t, e.s, e.structuredMetadata); err != nil {
 			return nil, err
 		}
 	}
@@ -476,6 +476,9 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 			blk.uncompressedSize = db.uvarint()
 		}
 		l := db.uvarint()
+		if blk.offset+l > len(b) {
+			return nil, fmt.Errorf("block %d offset %d + length %d exceeds chunk length %d", i, blk.offset, l, len(b))
+		}
 		blk.b = b[blk.offset : blk.offset+l]
 
 		// Verify checksums.
@@ -834,27 +837,29 @@ func (c *MemChunk) Utilization() float64 {
 }
 
 // Append implements Chunk.
-func (c *MemChunk) Append(entry *logproto.Entry) error {
+// The MemChunk may return true or false, depending on what the head block returns.
+func (c *MemChunk) Append(entry *logproto.Entry) (bool, error) {
 	entryTimestamp := entry.Timestamp.UnixNano()
 
 	// If the head block is empty but there are cut blocks, we have to make
 	// sure the new entry is not out of order compared to the previous block
 	if c.headFmt < UnorderedHeadBlockFmt && c.head.IsEmpty() && len(c.blocks) > 0 && c.blocks[len(c.blocks)-1].maxt > entryTimestamp {
-		return ErrOutOfOrder
+		return false, ErrOutOfOrder
 	}
 
 	if c.format < ChunkFormatV4 {
 		entry.StructuredMetadata = nil
 	}
-	if err := c.head.Append(entryTimestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)); err != nil {
-		return err
+	dup, err := c.head.Append(entryTimestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata))
+	if err != nil {
+		return dup, err
 	}
 
 	if c.head.UncompressedSize() >= c.blockSize {
-		return c.cut()
+		return false, c.cut()
 	}
 
-	return nil
+	return dup, nil
 }
 
 // Close implements Chunk.
@@ -1118,11 +1123,11 @@ func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, err
 	}
 
 	for itr.Next() {
-		entry := itr.Entry()
+		entry := itr.At()
 		if filter != nil && filter(entry.Timestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)...) {
 			continue
 		}
-		if err := newChunk.Append(&entry); err != nil {
+		if _, err := newChunk.Append(&entry); err != nil {
 			return nil, err
 		}
 	}
@@ -1151,14 +1156,14 @@ type encBlock struct {
 
 func (b encBlock) Iterator(ctx context.Context, pipeline log.StreamPipeline) iter.EntryIterator {
 	if len(b.b) == 0 {
-		return iter.NoopIterator
+		return iter.NoopEntryIterator
 	}
 	return newEntryIterator(ctx, GetReaderPool(b.enc), b.b, pipeline, b.format, b.symbolizer)
 }
 
 func (b encBlock) SampleIterator(ctx context.Context, extractor log.StreamSampleExtractor) iter.SampleIterator {
 	if len(b.b) == 0 {
-		return iter.NoopIterator
+		return iter.NoopSampleIterator
 	}
 	return newSampleIterator(ctx, GetReaderPool(b.enc), b.b, b.format, extractor, b.symbolizer)
 }
@@ -1181,7 +1186,7 @@ func (b block) MaxTime() int64 {
 
 func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction, mint, maxt int64, pipeline log.StreamPipeline) iter.EntryIterator {
 	if hb.IsEmpty() || (maxt < hb.mint || hb.maxt < mint) {
-		return iter.NoopIterator
+		return iter.NoopEntryIterator
 	}
 
 	stats := stats.FromContext(ctx)
@@ -1236,7 +1241,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 	}
 
 	if len(streams) == 0 {
-		return iter.NoopIterator
+		return iter.NoopEntryIterator
 	}
 	streamsResult := make([]logproto.Stream, 0, len(streams))
 	for _, stream := range streams {
@@ -1247,7 +1252,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 
 func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extractor log.StreamSampleExtractor) iter.SampleIterator {
 	if hb.IsEmpty() || (maxt < hb.mint || hb.maxt < mint) {
-		return iter.NoopIterator
+		return iter.NoopSampleIterator
 	}
 	stats := stats.FromContext(ctx)
 	stats.AddHeadChunkLines(int64(len(hb.entries)))
@@ -1287,7 +1292,7 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 		stats.SetQueryReferencedStructuredMetadata()
 	}
 	if len(series) == 0 {
-		return iter.NoopIterator
+		return iter.NoopSampleIterator
 	}
 	seriesRes := make([]logproto.Series, 0, len(series))
 	for _, s := range series {
@@ -1302,11 +1307,7 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 }
 
 func unsafeGetBytes(s string) []byte {
-	var buf []byte
-	p := unsafe.Pointer(&buf)
-	*(*string)(p) = s
-	(*reflect.SliceHeader)(p).Cap = len(s)
-	return buf
+	return unsafe.Slice(unsafe.StringData(s), len(s))
 }
 
 type bufferedIterator struct {
@@ -1557,10 +1558,10 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 	si.stats.AddDecompressedStructuredMetadataBytes(decompressedStructuredMetadataBytes)
 	si.stats.AddDecompressedBytes(decompressedBytes + decompressedStructuredMetadataBytes)
 
-	return ts, si.buf[:lineSize], si.symbolizer.Lookup(si.symbolsBuf[:nSymbols]), true
+	return ts, si.buf[:lineSize], si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], si.currStructuredMetadata), true
 }
 
-func (si *bufferedIterator) Error() error { return si.err }
+func (si *bufferedIterator) Err() error { return si.err }
 
 func (si *bufferedIterator) Close() error {
 	if !si.closed {
@@ -1586,6 +1587,11 @@ func (si *bufferedIterator) close() {
 		si.symbolsBuf = nil
 	}
 
+	if si.currStructuredMetadata != nil {
+		structuredMetadataPool.Put(si.currStructuredMetadata) // nolint:staticcheck
+		si.currStructuredMetadata = nil
+	}
+
 	si.origBytes = nil
 }
 
@@ -1606,7 +1612,7 @@ type entryBufferedIterator struct {
 	currLabels log.LabelsResult
 }
 
-func (e *entryBufferedIterator) Entry() logproto.Entry {
+func (e *entryBufferedIterator) At() logproto.Entry {
 	return e.cur
 }
 
@@ -1642,12 +1648,11 @@ func (e *entryBufferedIterator) Close() error {
 }
 
 func newSampleIterator(ctx context.Context, pool ReaderPool, b []byte, format byte, extractor log.StreamSampleExtractor, symbolizer *symbolizer) iter.SampleIterator {
-	it := &sampleBufferedIterator{
+	return &sampleBufferedIterator{
 		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
 		extractor:        extractor,
 		stats:            stats.FromContext(ctx),
 	}
-	return it
 }
 
 type sampleBufferedIterator struct {
@@ -1688,6 +1693,6 @@ func (e *sampleBufferedIterator) Labels() string { return e.currLabels.String() 
 
 func (e *sampleBufferedIterator) StreamHash() uint64 { return e.extractor.BaseLabels().Hash() }
 
-func (e *sampleBufferedIterator) Sample() logproto.Sample {
+func (e *sampleBufferedIterator) At() logproto.Sample {
 	return e.cur
 }

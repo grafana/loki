@@ -237,6 +237,18 @@ string
 <p>The client-side key file path for the TLS configuration.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>insecureSkipVerify</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Skip validating server certificate.</p>
+</td>
+</tr>
 </tbody>
 </table>
 
@@ -3151,6 +3163,18 @@ int32
 <td>
 <em>(Optional)</em>
 <p>CardinalityLimit defines the cardinality limit for index queries.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>maxVolumeSeries</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>MaxVolumeSeries defines the maximum number of aggregated series in a log-volume response</p>
 </td>
 </tr>
 </tbody>

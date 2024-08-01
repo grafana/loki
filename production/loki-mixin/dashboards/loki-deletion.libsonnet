@@ -2,9 +2,7 @@ local g = import 'grafana-builder/grafana.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
-  local compactor_matcher = if $._config.meta_monitoring.enabled
-  then 'pod=~"(compactor|%s-backend.*|loki-single-binary)"' % $._config.ssd.pod_prefix_matcher
-  else if $._config.ssd.enabled then 'container="loki", pod=~"%s-backend.*"' % $._config.ssd.pod_prefix_matcher else 'container="compactor"',
+  local compactor_matcher = 'pod=~"(compactor|%s-backend.*|loki-single-binary)"' % $._config.ssd.pod_prefix_matcher,
   grafanaDashboards+::
     {
       'loki-deletion.json':
@@ -50,7 +48,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           )
           .addPanel(
             $.newQueryPanel('Compactor memory usage (MiB)') +
-            g.queryPanel('go_memstats_heap_inuse_bytes{%s, container="compactor"} / 1024 / 1024 ' % $.namespaceMatcher(), ' {{pod}} '),
+            g.queryPanel('go_memstats_heap_inuse_bytes{%s, %s} / 1024 / 1024 ' % [$.namespaceMatcher(), compactor_matcher], ' {{pod}} '),
           )
           .addPanel(
             $.newQueryPanel('Compaction run duration (seconds)') +

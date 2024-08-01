@@ -17,13 +17,13 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/log"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
-	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 // StatusSuccess Prometheus success result.
@@ -208,15 +208,13 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ R
 	}
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "ParseQueryRangeResponse") //nolint:ineffassign,staticcheck
 	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
-	defer log.Finish()
 
 	buf, err := bodyBuffer(r)
 	if err != nil {
 		log.Error(err)
 		return nil, err
 	}
-	log.LogFields(otlog.Int("bytes", len(buf)))
+	sp.LogKV(otlog.Int("bytes", len(buf)))
 
 	var resp PrometheusResponse
 	if err := json.Unmarshal(buf, &resp); err != nil {

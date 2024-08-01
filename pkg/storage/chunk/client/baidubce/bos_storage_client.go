@@ -79,7 +79,7 @@ func NewBOSObjectStorage(cfg *BOSStorageConfig) (*BOSObjectStorage, error) {
 	}, nil
 }
 
-func (b *BOSObjectStorage) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+func (b *BOSObjectStorage) PutObject(ctx context.Context, objectKey string, object io.Reader) error {
 	return instrument.CollectedRequest(ctx, "BOS.PutObject", bosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		body, err := bce.NewBodyFromSizedReader(object, -1)
 		if err != nil {
@@ -115,6 +115,19 @@ func (b *BOSObjectStorage) GetObject(ctx context.Context, objectKey string) (io.
 	}
 	size := res.ContentLength
 	return res.Body, size, nil
+}
+
+func (b *BOSObjectStorage) GetObjectRange(ctx context.Context, objectKey string, offset, length int64) (io.ReadCloser, error) {
+	var res *api.GetObjectResult
+	err := instrument.CollectedRequest(ctx, "BOS.GetObject", bosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		var requestErr error
+		res, requestErr = b.client.GetObject(b.cfg.BucketName, objectKey, nil, offset, offset+length-1)
+		return requestErr
+	})
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get BOS object [ %s ]", objectKey)
+	}
+	return res.Body, nil
 }
 
 func (b *BOSObjectStorage) List(ctx context.Context, prefix string, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {

@@ -42,6 +42,7 @@ func NewQueryShardMiddleware(
 	limits Limits,
 	maxShards int,
 	statsHandler queryrangebase.Handler,
+	retryNextHandler queryrangebase.Handler,
 	shardAggregation []string,
 ) queryrangebase.Middleware {
 	noshards := !hasShards(confs)
@@ -56,7 +57,7 @@ func NewQueryShardMiddleware(
 	}
 
 	mapperware := queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newASTMapperware(confs, engineOpts, next, statsHandler, logger, shardingMetrics, limits, maxShards, shardAggregation)
+		return newASTMapperware(confs, engineOpts, next, retryNextHandler, statsHandler, logger, shardingMetrics, limits, maxShards, shardAggregation)
 	})
 
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
@@ -76,6 +77,7 @@ func newASTMapperware(
 	confs ShardingConfigs,
 	engineOpts logql.EngineOpts,
 	next queryrangebase.Handler,
+	retryNextHandler queryrangebase.Handler,
 	statsHandler queryrangebase.Handler,
 	logger log.Logger,
 	metrics *logql.MapperMetrics,
@@ -88,6 +90,7 @@ func newASTMapperware(
 		logger:           log.With(logger, "middleware", "QueryShard.astMapperware"),
 		limits:           limits,
 		next:             next,
+		retryNextHandler: retryNextHandler,
 		statsHandler:     next,
 		ng:               logql.NewDownstreamEngine(engineOpts, DownstreamHandler{next: next, limits: limits}, limits, logger),
 		metrics:          metrics,
@@ -103,14 +106,15 @@ func newASTMapperware(
 }
 
 type astMapperware struct {
-	confs        ShardingConfigs
-	logger       log.Logger
-	limits       Limits
-	next         queryrangebase.Handler
-	statsHandler queryrangebase.Handler
-	ng           *logql.DownstreamEngine
-	metrics      *logql.MapperMetrics
-	maxShards    int
+	confs            ShardingConfigs
+	logger           log.Logger
+	limits           Limits
+	next             queryrangebase.Handler
+	retryNextHandler queryrangebase.Handler
+	statsHandler     queryrangebase.Handler
+	ng               *logql.DownstreamEngine
+	metrics          *logql.MapperMetrics
+	maxShards        int
 
 	// Feature flag for sharding range and vector aggregations such as
 	// quantile_ver_time with probabilistic data structures.
@@ -146,9 +150,10 @@ func (ast *astMapperware) checkQuerySizeLimit(ctx context.Context, bytesPerShard
 }
 
 func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	logger := spanlogger.FromContextWithFallback(
+	logger := util_log.WithContext(ctx, ast.logger)
+	spLogger := spanlogger.FromContextWithFallback(
 		ctx,
-		util_log.WithContext(ctx, ast.logger),
+		logger,
 	)
 
 	params, err := ParamsFromRequest(r)
@@ -158,14 +163,14 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 
 	maxRVDuration, maxOffset, err := maxRangeVectorAndOffsetDuration(params.GetExpression())
 	if err != nil {
-		level.Warn(logger).Log("err", err.Error(), "msg", "failed to get range-vector and offset duration so skipped AST mapper for request")
+		level.Warn(spLogger).Log("err", err.Error(), "msg", "failed to get range-vector and offset duration so skipped AST mapper for request")
 		return ast.next.Do(ctx, r)
 	}
 
 	conf, err := ast.confs.GetConf(int64(model.Time(r.GetStart().UnixMilli()).Add(-maxRVDuration).Add(-maxOffset)), int64(model.Time(r.GetEnd().UnixMilli()).Add(-maxOffset)))
 	// cannot shard with this timerange
 	if err != nil {
-		level.Warn(logger).Log("err", err.Error(), "msg", "skipped AST mapper for request")
+		level.Warn(spLogger).Log("err", err.Error(), "msg", "skipped AST mapper for request")
 		return ast.next.Do(ctx, r)
 	}
 
@@ -190,6 +195,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		ast.maxShards,
 		r,
 		ast.statsHandler,
+		ast.retryNextHandler,
 		ast.next,
 		ast.limits,
 	)
@@ -200,7 +206,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	v := ast.limits.TSDBShardingStrategy(tenants[0])
 	version, err := logql.ParseShardVersion(v)
 	if err != nil {
-		level.Warn(logger).Log(
+		level.Warn(spLogger).Log(
 			"msg", "failed to parse shard version",
 			"fallback", version.String(),
 			"err", err.Error(),
@@ -214,7 +220,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 
 	noop, bytesPerShard, parsed, err := mapper.Parse(params.GetExpression())
 	if err != nil {
-		level.Warn(logger).Log("msg", "failed mapping AST", "err", err.Error(), "query", r.GetQuery())
+		level.Warn(spLogger).Log("msg", "failed mapping AST", "err", err.Error(), "query", r.GetQuery())
 		return nil, err
 	}
 	level.Debug(logger).Log("no-op", noop, "mapped", parsed.String())

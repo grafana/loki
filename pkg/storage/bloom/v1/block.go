@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
+
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
 
 type BlockMetadata struct {
@@ -110,17 +112,18 @@ type BlockQuerier struct {
 }
 
 // NewBlockQuerier returns a new BlockQuerier for the given block.
-// WARNING: If noCapture is true, the underlying byte slice of the bloom page
-// will be returned to the pool for efficiency. This can only safely be used
-// when the underlying bloom bytes don't escape the decoder, i.e.
-// when loading blooms for querying (bloom-gw) but not for writing (bloom-compactor).
-// When usePool is true, the bloom MUST NOT be captured by the caller. Rather,
-// it should be discarded before another call to Next().
-func NewBlockQuerier(b *Block, usePool bool, maxPageSize int) *BlockQuerier {
+// WARNING: You can pass an implementation of Allocator that is responsible for
+// whether the underlying byte slice of the bloom page will be returned to the
+// pool for efficiency or not. Returning to the pool can only safely be used
+// when the underlying bloom bytes don't escape the decoder, i.e. when loading
+// blooms for querying (bloom-gateway), but not for writing (bloom-compactor).
+// Therefore, when calling NewBlockQuerier on the write path, you should always
+// pass the SimpleHeapAllocator implementation of the Allocator interface.
+func NewBlockQuerier(b *Block, alloc mempool.Allocator, maxPageSize int) *BlockQuerier {
 	return &BlockQuerier{
 		block:          b,
 		LazySeriesIter: NewLazySeriesIter(b),
-		blooms:         NewLazyBloomIter(b, usePool, maxPageSize),
+		blooms:         NewLazyBloomIter(b, alloc, maxPageSize),
 	}
 }
 
@@ -133,6 +136,7 @@ func (bq *BlockQuerier) Schema() (Schema, error) {
 }
 
 func (bq *BlockQuerier) Reset() error {
+	bq.blooms.Reset()
 	return bq.LazySeriesIter.Seek(0)
 }
 
@@ -156,7 +160,11 @@ func (bq *BlockQuerier) Iter() *BlockQuerierIter {
 }
 
 func (b *BlockQuerierIter) Next() bool {
-	return b.LazySeriesIter.Next()
+	next := b.LazySeriesIter.Next()
+	if !next {
+		b.blooms.Reset()
+	}
+	return next
 }
 
 func (b *BlockQuerierIter) At() *SeriesWithBlooms {

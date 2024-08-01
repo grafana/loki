@@ -103,7 +103,6 @@ func TestDistributor(t *testing.T) {
 		t.Run(fmt.Sprintf("[%d](lines=%v)", i, tc.lines), func(t *testing.T) {
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
-			limits.DiscoverServiceName = nil
 			limits.IngestionRateMB = ingestionRateLimit
 			limits.IngestionBurstSizeMB = ingestionRateLimit
 			limits.MaxLineSize = fe.ByteSize(tc.maxLineSize)
@@ -140,20 +139,17 @@ func TestDistributor(t *testing.T) {
 func Test_IncrementTimestamp(t *testing.T) {
 	incrementingDisabled := &validation.Limits{}
 	flagext.DefaultValues(incrementingDisabled)
-	incrementingDisabled.DiscoverServiceName = nil
 	incrementingDisabled.RejectOldSamples = false
 	incrementingDisabled.DiscoverLogLevels = false
 
 	incrementingEnabled := &validation.Limits{}
 	flagext.DefaultValues(incrementingEnabled)
-	incrementingEnabled.DiscoverServiceName = nil
 	incrementingEnabled.RejectOldSamples = false
 	incrementingEnabled.IncrementDuplicateTimestamp = true
 	incrementingEnabled.DiscoverLogLevels = false
 
 	defaultLimits := &validation.Limits{}
 	flagext.DefaultValues(defaultLimits)
-	now := time.Now()
 	defaultLimits.DiscoverLogLevels = false
 
 	tests := map[string]struct {
@@ -401,34 +397,6 @@ func Test_IncrementTimestamp(t *testing.T) {
 				},
 			},
 		},
-		"default limit adding service_name label": {
-			limits: defaultLimits,
-			push: &logproto.PushRequest{
-				Streams: []logproto.Stream{
-					{
-						Labels: "{job=\"foo\"}",
-						Entries: []logproto.Entry{
-							{Timestamp: now.Add(-2 * time.Second), Line: "hey1"},
-							{Timestamp: now.Add(-time.Second), Line: "hey2"},
-							{Timestamp: now, Line: "hey3"},
-						},
-					},
-				},
-			},
-			expectedPush: &logproto.PushRequest{
-				Streams: []logproto.Stream{
-					{
-						Labels: "{job=\"foo\", service_name=\"foo\"}",
-						Hash:   0x86ca305b6d86e8b0,
-						Entries: []logproto.Entry{
-							{Timestamp: now.Add(-2 * time.Second), Line: "hey1"},
-							{Timestamp: now.Add(-time.Second), Line: "hey2"},
-							{Timestamp: now, Line: "hey3"},
-						},
-					},
-				},
-			},
-		},
 	}
 
 	for testName, testData := range tests {
@@ -448,7 +416,6 @@ func Test_IncrementTimestamp(t *testing.T) {
 func TestDistributorPushConcurrently(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
-	limits.DiscoverServiceName = nil
 
 	distributors, ingesters := prepare(t, 1, 5, limits, nil)
 
@@ -552,20 +519,6 @@ func Test_SortLabelsOnPush(t *testing.T) {
 		topVal := ingester.Peek()
 		require.Equal(t, `{a="b", buzz="f", service_name="foo"}`, topVal.Streams[0].Labels)
 	})
-
-	t.Run("with service_name added during ingestion", func(t *testing.T) {
-		limits := &validation.Limits{}
-		flagext.DefaultValues(limits)
-		ingester := &mockIngester{}
-		distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
-
-		request := makeWriteRequest(10, 10)
-		request.Streams[0].Labels = `{buzz="f", x="y", a="b"}`
-		_, err := distributors[0].Push(ctx, request)
-		require.NoError(t, err)
-		topVal := ingester.Peek()
-		require.Equal(t, `{a="b", buzz="f", service_name="unknown_service", x="y"}`, topVal.Streams[0].Labels)
-	})
 }
 
 func Test_TruncateLogLines(t *testing.T) {
@@ -586,6 +539,26 @@ func Test_TruncateLogLines(t *testing.T) {
 		require.NoError(t, err)
 		topVal := ingester.Peek()
 		require.Len(t, topVal.Streams[0].Entries[0].Line, 5)
+	})
+}
+
+func Test_DiscardEmptyStreamsAfterValidation(t *testing.T) {
+	setup := func() (*validation.Limits, *mockIngester) {
+		limits := &validation.Limits{}
+		flagext.DefaultValues(limits)
+
+		limits.MaxLineSize = 5
+		return limits, &mockIngester{}
+	}
+
+	t.Run("it discards invalid entries and discards resulting empty streams completely", func(t *testing.T) {
+		limits, ingester := setup()
+		distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+
+		_, err := distributors[0].Push(ctx, makeWriteRequest(1, 10))
+		require.Equal(t, err, httpgrpc.Errorf(http.StatusBadRequest, fmt.Sprintf(validation.LineTooLongErrorMsg, 5, "{foo=\"bar\"}", 10)))
+		topVal := ingester.Peek()
+		require.Nil(t, topVal)
 	})
 }
 
@@ -866,52 +839,8 @@ func TestParseStreamLabels(t *testing.T) {
 		generateLimits func() *validation.Limits
 	}{
 		{
-			name: "service name label mapping disabled",
-			generateLimits: func() *validation.Limits {
-				limits := &validation.Limits{}
-				flagext.DefaultValues(limits)
-				limits.DiscoverServiceName = nil
-				return limits
-			},
-			origLabels: `{foo="bar"}`,
-			expectedLabels: labels.Labels{
-				{
-					Name:  "foo",
-					Value: "bar",
-				},
-			},
-		},
-		{
-			name: "no labels defined - service name label mapping disabled",
-			generateLimits: func() *validation.Limits {
-				limits := &validation.Limits{}
-				flagext.DefaultValues(limits)
-				limits.DiscoverServiceName = nil
-				return limits
-			},
-			origLabels:  `{}`,
-			expectedErr: fmt.Errorf(validation.MissingLabelsErrorMsg),
-		},
-		{
-			name:       "service name label enabled",
-			origLabels: `{foo="bar"}`,
-			generateLimits: func() *validation.Limits {
-				return defaultLimit
-			},
-			expectedLabels: labels.Labels{
-				{
-					Name:  "foo",
-					Value: "bar",
-				},
-				{
-					Name:  labelServiceName,
-					Value: serviceUnknown,
-				},
-			},
-		},
-		{
 			name:       "service name label should not get counted against max labels count",
-			origLabels: `{foo="bar"}`,
+			origLabels: `{foo="bar", service_name="unknown_service"}`,
 			generateLimits: func() *validation.Limits {
 				limits := &validation.Limits{}
 				flagext.DefaultValues(limits)
@@ -924,33 +853,8 @@ func TestParseStreamLabels(t *testing.T) {
 					Value: "bar",
 				},
 				{
-					Name:  labelServiceName,
-					Value: serviceUnknown,
-				},
-			},
-		},
-		{
-			name:       "use label service as service name",
-			origLabels: `{container="nginx", foo="bar", service="auth"}`,
-			generateLimits: func() *validation.Limits {
-				return defaultLimit
-			},
-			expectedLabels: labels.Labels{
-				{
-					Name:  "container",
-					Value: "nginx",
-				},
-				{
-					Name:  "foo",
-					Value: "bar",
-				},
-				{
-					Name:  "service",
-					Value: "auth",
-				},
-				{
-					Name:  labelServiceName,
-					Value: "auth",
+					Name:  loghttp_push.LabelServiceName,
+					Value: loghttp_push.ServiceUnknown,
 				},
 			},
 		},
@@ -1542,7 +1446,6 @@ func Test_DetectLogLevels(t *testing.T) {
 		flagext.DefaultValues(limits)
 
 		limits.DiscoverLogLevels = discoverLogLevels
-		limits.DiscoverServiceName = nil
 		limits.AllowStructuredMetadata = true
 		return limits, &mockIngester{}
 	}
@@ -1710,6 +1613,20 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 				Line: `{"foo":"bar","msg":"message with keyword warn but it should not get picked up","level":"ERR"}`,
 			},
 			expectedLogLevel: logLevelError,
+		},
+		{
+			name: "json log line with an INFO in block case",
+			entry: logproto.Entry{
+				Line: `{"foo":"bar","msg":"message with keyword INFO get picked up"}`,
+			},
+			expectedLogLevel: logLevelInfo,
+		},
+		{
+			name: "logfmt log line with an INFO and not level returns info log level",
+			entry: logproto.Entry{
+				Line: `foo=bar msg="message with info and not level should get picked up"`,
+			},
+			expectedLogLevel: logLevelInfo,
 		},
 		{
 			name: "logfmt log line with a warn",

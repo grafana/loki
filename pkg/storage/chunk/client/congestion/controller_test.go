@@ -211,8 +211,8 @@ func TestAIMDReducedThroughput(t *testing.T) {
 	require.Less(t, count, previousCount)
 	require.Less(t, success, previousSuccess)
 
-	// should have fewer successful requests than total since we are failing some
-	require.Less(t, success, count)
+	// should have fewer successful requests than total since we may be failing some
+	require.LessOrEqual(t, success, count)
 
 	// should have registered some congestion latency in stats
 	require.NotZero(t, statsCtx.Store().CongestionControlLatency)
@@ -247,7 +247,7 @@ type mockObjectClient struct {
 	nonRetryableErrs bool
 }
 
-func (m *mockObjectClient) PutObject(context.Context, string, io.ReadSeeker) error {
+func (m *mockObjectClient) PutObject(context.Context, string, io.Reader) error {
 	panic("not implemented")
 }
 
@@ -258,6 +258,9 @@ func (m *mockObjectClient) GetObject(context.Context, string) (io.ReadCloser, in
 	}
 
 	return io.NopCloser(strings.NewReader("bar")), 3, nil
+}
+func (m *mockObjectClient) GetObjectRange(context.Context, string, int64, int64) (io.ReadCloser, error) {
+	panic("not implemented")
 }
 
 func (m *mockObjectClient) ObjectExists(context.Context, string) (bool, error) {

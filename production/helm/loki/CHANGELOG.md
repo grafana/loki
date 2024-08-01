@@ -13,6 +13,34 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 6.7.3
+
+- [BUGFIX] Removed Helm test binary
+  
+## 6.7.2
+
+- [BUGFIX] Fix imagePullSecrets for statefulset-results-cache
+
+## 6.7.1
+
+- [CHANGE] Changed version of Loki to 3.1.0
+
+## 6.7.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to 3.1.0
+
+## 6.6.6
+
+- [BUGFIX] Fix HPA ingester typo
+
+## 6.6.5
+
+- [BUGFIX] Fix querier address in SingleBinary mode
+
+## 6.6.4
+
+- [BUGFIX] Fix extraObjects
+
 ## 6.6.3
 
 - [BUGFIX] Fix indentation of `query_range` Helm chart values
@@ -31,7 +59,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 6.5.2
 
-- [BUGFIX] Fixed Ingress routing for all deployment modes.  
+- [BUGFIX] Fixed Ingress routing for all deployment modes.
 
 ## 6.5.0
 

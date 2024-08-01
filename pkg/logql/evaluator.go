@@ -331,9 +331,12 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 			nextEvFactory = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params) (StepEvaluator, error) {
 				it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 					&logproto.SampleQueryRequest{
-						Start:    q.Start().Add(-rangExpr.Left.Interval).Add(-rangExpr.Left.Offset),
-						End:      q.End().Add(-rangExpr.Left.Offset),
-						Selector: e.String(), // intentionally send the vector for reducing labels.
+						// extend startTs backwards by step
+						Start: q.Start().Add(-rangExpr.Left.Interval).Add(-rangExpr.Left.Offset),
+						// add leap nanosecond to endTs to include lines exactly at endTs. range iterators work on start exclusive, end inclusive ranges
+						End: q.End().Add(-rangExpr.Left.Offset).Add(time.Nanosecond),
+						// intentionally send the vector for reducing labels.
+						Selector: e.String(),
 						Shards:   q.Shards(),
 						Plan: &plan.QueryPlan{
 							AST: expr,
@@ -351,9 +354,12 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 	case *syntax.RangeAggregationExpr:
 		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 			&logproto.SampleQueryRequest{
-				Start:    q.Start().Add(-e.Left.Interval).Add(-e.Left.Offset),
-				End:      q.End().Add(-e.Left.Offset),
-				Selector: expr.String(),
+				// extend startTs backwards by step
+				Start: q.Start().Add(-e.Left.Interval).Add(-e.Left.Offset),
+				// add leap nanosecond to endTs to include lines exactly at endTs. range iterators work on start exclusive, end inclusive ranges
+				End: q.End().Add(-e.Left.Offset).Add(time.Nanosecond),
+				// intentionally send the vector for reducing labels.
+				Selector: e.String(),
 				Shards:   q.Shards(),
 				Plan: &plan.QueryPlan{
 					AST: expr,
@@ -408,6 +414,20 @@ type VectorAggEvaluator struct {
 	expr          *syntax.VectorAggregationExpr
 	buf           []byte
 	lb            *labels.Builder
+}
+
+func NewVectorAggEvaluator(
+	nextEvaluator StepEvaluator,
+	expr *syntax.VectorAggregationExpr,
+	buf []byte,
+	lb *labels.Builder,
+) *VectorAggEvaluator {
+	return &VectorAggEvaluator{
+		nextEvaluator: nextEvaluator,
+		expr:          expr,
+		buf:           buf,
+		lb:            lb,
+	}
 }
 
 func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
@@ -684,9 +704,7 @@ func newRangeAggEvaluator(
 			return nil, err
 		}
 
-		return &RangeVectorEvaluator{
-			iter: iter,
-		}, nil
+		return NewRangeVectorEvaluator(iter), nil
 	}
 }
 
@@ -694,6 +712,12 @@ type RangeVectorEvaluator struct {
 	iter RangeVectorIterator
 
 	err error
+}
+
+func NewRangeVectorEvaluator(iter RangeVectorIterator) *RangeVectorEvaluator {
+	return &RangeVectorEvaluator{
+		iter: iter,
+	}
 }
 
 func (r *RangeVectorEvaluator) Next() (bool, int64, StepResult) {
@@ -805,7 +829,7 @@ func newBinOpStepEvaluator(
 
 	var lse, rse StepEvaluator
 
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancelCause(ctx)
 	g := errgroup.Group{}
 
 	// We have two non-literal legs,
@@ -814,7 +838,7 @@ func newBinOpStepEvaluator(
 		var err error
 		lse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q)
 		if err != nil {
-			cancel()
+			cancel(fmt.Errorf("new step evaluator for left leg errored: %w", err))
 		}
 		return err
 	})
@@ -822,7 +846,7 @@ func newBinOpStepEvaluator(
 		var err error
 		rse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q)
 		if err != nil {
-			cancel()
+			cancel(fmt.Errorf("new step evaluator for right leg errored: %w", err))
 		}
 		return err
 	})

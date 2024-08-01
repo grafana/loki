@@ -62,7 +62,7 @@ spec:
           imagePullPolicy: {{ .Values.gateway.image.pullPolicy }}
           ports:
             - name: http-metrics
-              containerPort: 8080
+              containerPort: {{ .Values.gateway.containerPort }}
               protocol: TCP
           {{- with .Values.gateway.extraEnv }}
           env:

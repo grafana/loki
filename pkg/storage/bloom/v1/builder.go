@@ -8,6 +8,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
 
@@ -160,23 +161,23 @@ type BloomCreation struct {
 // from a list of blocks and a store of series.
 type MergeBuilder struct {
 	// existing blocks
-	blocks Iterator[*SeriesWithBlooms]
+	blocks iter.Iterator[*SeriesWithBlooms]
 	// store
-	store Iterator[*Series]
+	store iter.Iterator[*Series]
 	// Add chunks to a bloom
-	populate func(s *Series, srcBlooms SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation)
+	populate func(s *Series, srcBlooms iter.SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation)
 	metrics  *Metrics
 }
 
-type BloomPopulatorFunc = func(s *Series, srcBlooms SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation)
+type BloomPopulatorFunc = func(s *Series, srcBlooms iter.SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation)
 
 // NewMergeBuilder is a specific builder which does the following:
 //  1. merges multiple blocks into a single ordered querier,
 //     i) When two blocks have the same series, it will prefer the one with the most chunks already indexed
 //  2. iterates through the store, adding chunks to the relevant blooms via the `populate` argument
 func NewMergeBuilder(
-	blocks Iterator[*SeriesWithBlooms],
-	store Iterator[*Series],
+	blocks iter.Iterator[*SeriesWithBlooms],
+	store iter.Iterator[*Series],
 	populate BloomPopulatorFunc,
 	metrics *Metrics,
 ) *MergeBuilder {
@@ -184,13 +185,13 @@ func NewMergeBuilder(
 	// because blooms dont contain the label-set (only the fingerprint),
 	// in the case of a fingerprint collision we simply treat it as one
 	// series with multiple chunks.
-	combinedSeriesIter := NewDedupingIter[*Series, *Series](
+	combinedSeriesIter := iter.NewDedupingIter[*Series, *Series](
 		// eq
 		func(s1, s2 *Series) bool {
 			return s1.Fingerprint == s2.Fingerprint
 		},
 		// from
-		Identity[*Series],
+		iter.Identity[*Series],
 		// merge
 		func(s1, s2 *Series) *Series {
 			return &Series{
@@ -198,7 +199,7 @@ func NewMergeBuilder(
 				Chunks:      s1.Chunks.Union(s2.Chunks),
 			}
 		},
-		NewPeekingIter[*Series](store),
+		iter.NewPeekIter[*Series](store),
 	)
 
 	return &MergeBuilder{
@@ -216,6 +217,7 @@ func (mb *MergeBuilder) processNextSeries(
 ) (
 	*SeriesWithBlooms, // nextInBlocks pointer update
 	int, // bytes added
+	int, // chunks added
 	bool, // blocksFinished update
 	bool, // done building block
 	error, // error
@@ -229,7 +231,7 @@ func (mb *MergeBuilder) processNextSeries(
 	}()
 
 	if !mb.store.Next() {
-		return nil, 0, false, true, nil
+		return nil, 0, 0, false, true, nil
 	}
 
 	nextInStore := mb.store.At()
@@ -248,7 +250,7 @@ func (mb *MergeBuilder) processNextSeries(
 		}
 
 		if err := mb.blocks.Err(); err != nil {
-			return nil, 0, false, false, errors.Wrap(err, "iterating blocks")
+			return nil, 0, 0, false, false, errors.Wrap(err, "iterating blocks")
 		}
 		blockSeriesIterated++
 		nextInBlocks = mb.blocks.At()
@@ -256,8 +258,8 @@ func (mb *MergeBuilder) processNextSeries(
 
 	var (
 		offsets           []BloomOffset
-		chunksToAdd                             = nextInStore.Chunks
-		preExistingBlooms SizedIterator[*Bloom] = NewEmptyIter[*Bloom]()
+		chunksToAdd                                  = nextInStore.Chunks
+		preExistingBlooms iter.SizedIterator[*Bloom] = iter.NewEmptyIter[*Bloom]()
 	)
 
 	if nextInBlocks != nil && nextInBlocks.Series.Fingerprint == nextInStore.Fingerprint {
@@ -275,11 +277,11 @@ func (mb *MergeBuilder) processNextSeries(
 
 	for bloom := range ch {
 		if bloom.Err != nil {
-			return nil, bytesAdded, false, false, errors.Wrap(bloom.Err, "populating bloom")
+			return nil, bytesAdded, 0, false, false, errors.Wrap(bloom.Err, "populating bloom")
 		}
 		offset, err := builder.AddBloom(bloom.Bloom)
 		if err != nil {
-			return nil, bytesAdded, false, false, errors.Wrapf(
+			return nil, bytesAdded, 0, false, false, errors.Wrapf(
 				err, "adding bloom to block for fp (%s)", nextInStore.Fingerprint,
 			)
 		}
@@ -289,25 +291,29 @@ func (mb *MergeBuilder) processNextSeries(
 
 	done, err := builder.AddSeries(*nextInStore, offsets)
 	if err != nil {
-		return nil, bytesAdded, false, false, errors.Wrap(err, "committing series")
+		return nil, bytesAdded, 0, false, false, errors.Wrap(err, "committing series")
 	}
 
-	return nextInBlocks, bytesAdded, blocksFinished, done, nil
+	return nextInBlocks, bytesAdded, chunksIndexed + chunksCopied, blocksFinished, done, nil
 }
 
 func (mb *MergeBuilder) Build(builder *BlockBuilder) (checksum uint32, totalBytes int, err error) {
 	var (
-		nextInBlocks   *SeriesWithBlooms
-		blocksFinished bool // whether any previous blocks have been exhausted while building new block
-		done           bool
+		nextInBlocks     *SeriesWithBlooms
+		blocksFinished   bool // whether any previous blocks have been exhausted while building new block
+		done             bool
+		totalSeriesAdded = 0
+		totalChunksAdded int
 	)
 	for {
-		var bytesAdded int
-		nextInBlocks, bytesAdded, blocksFinished, done, err = mb.processNextSeries(builder, nextInBlocks, blocksFinished)
+		var bytesAdded, chunksAdded int
+		nextInBlocks, bytesAdded, chunksAdded, blocksFinished, done, err = mb.processNextSeries(builder, nextInBlocks, blocksFinished)
 		totalBytes += bytesAdded
+		totalChunksAdded += chunksAdded
 		if err != nil {
 			return 0, totalBytes, errors.Wrap(err, "processing next series")
 		}
+		totalSeriesAdded++
 		if done {
 			break
 		}
@@ -323,6 +329,8 @@ func (mb *MergeBuilder) Build(builder *BlockBuilder) (checksum uint32, totalByte
 		flushedFor = blockFlushReasonFull
 	}
 	mb.metrics.blockSize.Observe(float64(sz))
+	mb.metrics.seriesPerBlock.Observe(float64(totalSeriesAdded))
+	mb.metrics.chunksPerBlock.Observe(float64(totalChunksAdded))
 	mb.metrics.blockFlushReason.WithLabelValues(flushedFor).Inc()
 
 	checksum, err = builder.Close()
