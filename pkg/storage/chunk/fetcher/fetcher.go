@@ -9,7 +9,6 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -218,8 +217,7 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 	}
 
 	if err != nil {
-		// Don't rely on Cortex error translation here.
-		return nil, promql.ErrStorage{Err: err}
+		level.Error(log).Log("msg", "failed downloading chunks", "err", err)
 	}
 
 	allChunks := append(fromCache, fromStorage...)

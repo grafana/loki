@@ -380,6 +380,40 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 	return nil, 0, errors.Wrap(lastErr, "failed to get s3 object")
 }
 
+// GetObject from the store
+func (a *S3ObjectClient) GetObjectRange(ctx context.Context, objectKey string, offset, length int64) (io.ReadCloser, error) {
+	var resp *s3.GetObjectOutput
+
+	// Map the key into a bucket
+	bucket := a.bucketFromKey(objectKey)
+
+	var lastErr error
+
+	retries := backoff.New(ctx, a.cfg.BackoffConfig)
+	for retries.Ongoing() {
+		if ctx.Err() != nil {
+			return nil, errors.Wrap(ctx.Err(), "ctx related error during s3 getObject")
+		}
+
+		lastErr = loki_instrument.TimeRequest(ctx, "S3.GetObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+			var requestErr error
+			resp, requestErr = a.hedgedS3.GetObjectWithContext(ctx, &s3.GetObjectInput{
+				Bucket: aws.String(bucket),
+				Key:    aws.String(objectKey),
+				Range:  aws.String(fmt.Sprintf("bytes=%d-%d", offset, offset+length-1)),
+			})
+			return requestErr
+		})
+
+		if lastErr == nil && resp.Body != nil {
+			return resp.Body, nil
+		}
+		retries.Wait()
+	}
+
+	return nil, errors.Wrap(lastErr, "failed to get s3 object")
+}
+
 // PutObject into the store
 func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object io.Reader) error {
 	return loki_instrument.TimeRequest(ctx, "S3.PutObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
