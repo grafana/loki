@@ -106,6 +106,7 @@ func ShouldUseBloomFilter(
 	logger = logutil.WithContext(ctx, logger)
 	logger = logging.With(logger,
 		"matchers", lbs,
+		"query", expr.String(),
 		"from", from.Time(),
 		"through", through.Time(),
 		"length", through.Time().Sub(from.Time()),
