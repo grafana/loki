@@ -47,13 +47,13 @@ When running Grafana (with Docker) and trying to connect to a locally built Loki
 1. Select the Loki datasource in the top-left menu.
 1. You can click **Kick start your query** to select from a list of common queries, or use the **Label filters** to start choosing labels that you want to query. For more information about the Loki query language, refer to the [LogQL section](https://grafana.com/docs/loki/<LOKI_VERSION>/query/).
 
-If you would like to see an example of this live, you can try [Grafana Play's Explore feature](https://play.grafana.org/explore?schemaVersion=1&panes=%7B%22v1d%22:%7B%22datasource%22:%22ac4000ca-1959-45f5-aa45-2bd0898f7026%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22expr%22:%22%7Bagent%3D%5C%22promtail%5C%22%7D%20%7C%3D%20%60%60%22,%22queryType%22:%22range%22,%22datasource%22:%7B%22type%22:%22loki%22,%22uid%22:%22ac4000ca-1959-45f5-aa45-2bd0898f7026%22%7D,%22editorMode%22:%22builder%22%7D%5D,%22range%22:%7B%22from%22:%22now-1h%22,%22to%22:%22now%22%7D%7D%7D&orgId=1)
+If you would like to see an example of this live, you can try [Grafana Play's Explore feature](https://play.grafana.org/explore?schemaVersion=1&panes=%7B%22v1d%22:%7B%22datasource%22:%22ac4000ca-1959-45f5-aa45-2bd0898f7026%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22expr%22:%22%7Bagent%3D%5C%22promtail%5C%22%7D%20%7C%3D%20%60%60%22,%22queryType%22:%22range%22,%22datasource%22:%7B%22type%22:%22loki%22,%22uid%22:%22ac4000ca-1959-45f5-aa45-2bd0898f7026%22%7D,%22editorMode%22:%22builder%22%7D%5D,%22range%22:%7B%22from%22:%22now-1h%22,%22to%22:%22now%22%7D%7D%7D&orgId=1).
 
 Learn more about the Grafana Explore feature in the [Grafana documentation](https://grafana.com/docs/grafana/latest/explore/logs-integration/).
 
 ## Loki mixins
 
-The Loki mixin provides a set of Grafana dashboards, Prometheus recording rules and alerts for monitoring Loki itself. For instructions on how to install the Loki mixins, refer to the [installation topic](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/mixins/)
+The Loki mixin provides a set of Grafana dashboards, Prometheus recording rules and alerts for monitoring Loki itself. For instructions on how to install the Loki mixins, refer to the [installation topic](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/mixins/).
 
 ## Using Grafana dashboards
 
@@ -63,4 +63,4 @@ Because Loki can be used as a built-in data source, you can use LogQL queries ba
 
 To configure Loki as a data source via provisioning, refer to the documentation for [Loki data source](https://grafana.com/docs/grafana/latest/datasources/loki/#configure-the-datasource-with-provisioning).
 
-Read more about how to build Grafana Dashboards in [build your first dashboard](https://grafana.com/docs/grafana/latest/getting-started/build-first-dashboard/)
+Read more about how to build Grafana Dashboards in [build your first dashboard](https://grafana.com/docs/grafana/latest/getting-started/build-first-dashboard/).
