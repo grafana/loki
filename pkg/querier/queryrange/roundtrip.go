@@ -506,6 +506,7 @@ const (
 	PatternsQueryOp  = "patterns"
 	DetectedLabelsOp = "detected_labels"
 	SamplesQueryOp   = "samples"
+	QueryPlanOp      = "query_plan"
 )
 
 func getOperation(path string) string {
@@ -534,6 +535,7 @@ func getOperation(path string) string {
 		return PatternsQueryOp
 	case path == "/loki/api/v1/detected_labels":
 		return DetectedLabelsOp
+	case path == "/loki/api/v1/query/plan":
 	default:
 		return ""
 	}

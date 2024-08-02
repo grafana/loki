@@ -34,6 +34,8 @@ service Querier {
   rpc GetDetectedFields(DetectedFieldsRequest) returns (DetectedFieldsResponse) {}
 
   rpc GetDetectedLabels(DetectedLabelsRequest) returns (LabelToValuesResponse) {}
+
+  rpc GetQueryPlan(QueryPlanRequest) returns (QueryPlanResponse) {}
 }
 
 message LabelToValuesResponse {
@@ -496,4 +498,49 @@ message DetectedLabel {
   string label = 1;
   uint64 cardinality = 2;
   bytes sketch = 3 [(gogoproto.jsontag) = "sketch,omitempty"];
+}
+
+message QueryPlanRequest {
+  string query = 1;
+  uint32 limit = 2;
+  google.protobuf.Timestamp start = 3 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp end = 4 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  Direction direction = 5;
+
+//  repeated string shards = 5 [(gogoproto.jsontag) = "shards,omitempty"];
+//  repeated Delete deletes = 6;
+//  Plan plan = 7 [(gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/plan.QueryPlan"];
+//  // If populated, these represent the chunk references that the querier should
+//  // use to fetch the data, plus any other chunks reported by ingesters.
+//  ChunkRefGroup storeChunks = 10 [(gogoproto.jsontag) = "storeChunks"];
+}
+
+message QueryPlanResponse {
+  repeated SubQueryResult results = 1;
+  MergeStrategy mergeStrategy = 2;
+}
+
+enum MergeStrategy {
+  LOGSTREAM = 0;
+  SUM = 1;
+  AVG = 2;
+}
+
+message SubQueryResult {
+  google.protobuf.Timestamp start = 1 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp end = 2 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  string query = 3;
+  uint32 limit = 4;
 }

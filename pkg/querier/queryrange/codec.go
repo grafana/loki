@@ -465,6 +465,12 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 		return req, nil
+	case QueryPlanOp:
+		req, err := loghttp.ParseQueryPlanRequest(r)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		return req, nil
 	default:
 		return nil, httpgrpc.Errorf(http.StatusNotFound, fmt.Sprintf("unknown request path: %s", r.URL.Path))
 	}
@@ -652,6 +658,12 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 		}, ctx, err
 	case SamplesQueryOp:
 		req, err := loghttp.ParseSamplesQuery(httpReq)
+		if err != nil {
+			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		return req, ctx, nil
+	case QueryPlanOp:
+		req, err := loghttp.ParseQueryPlanRequest(httpReq)
 		if err != nil {
 			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
@@ -1009,6 +1021,27 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		req := &http.Request{
 			Method:     "GET",
 			RequestURI: u.String(), // This is what the httpgrpc code looks at.
+			URL:        u,
+			Body:       http.NoBody,
+			Header:     header,
+		}
+
+		return req.WithContext(ctx), nil
+	case *logproto.QueryPlanRequest:
+		params := url.Values{
+			"query": []string{request.GetQuery()},
+			"start": []string{fmt.Sprintf("%d", request.Start.UnixNano())},
+			"end":   []string{fmt.Sprintf("%d", request.End.UnixNano())},
+		}
+
+		u := &url.URL{
+			Path:     "/loki/api/v1/query/plan",
+			RawQuery: params.Encode(),
+		}
+
+		req := &http.Request{
+			Method:     "GET",
+			RequestURI: u.String(),
 			URL:        u,
 			Body:       http.NoBody,
 			Header:     header,

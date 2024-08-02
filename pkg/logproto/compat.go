@@ -624,3 +624,33 @@ func (m *QuerySamplesRequest) LogToSpan(sp opentracing.Span) {
 	}
 	sp.LogFields(fields...)
 }
+
+func (m *QueryPlanRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
+
+func (m *QueryPlanRequest) WithStartEnd(start, end time.Time) definitions.Request {
+	clone := *m
+	clone.Start = start
+	clone.End = end
+	return &clone
+}
+
+func (m *QueryPlanRequest) WithStartEndForCache(start, end time.Time) resultscache.Request {
+	return m.WithStartEnd(start, end).(resultscache.Request)
+}
+
+func (m *QueryPlanRequest) WithQuery(query string) definitions.Request {
+	clone := *m
+	clone.Query = query
+	return &clone
+}
+
+func (m *QueryPlanRequest) LogToSpan(sp opentracing.Span) {
+	fields := []otlog.Field{
+		otlog.String("query", m.GetQuery()),
+		otlog.String("start", m.Start.String()),
+		otlog.String("end", m.End.String()),
+	}
+	sp.LogFields(fields...)
+}
+
+func (m *QueryPlanRequest) GetStep() int64 { return 0 }

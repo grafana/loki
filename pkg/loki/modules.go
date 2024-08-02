@@ -1223,6 +1223,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.Server.HTTP.Path("/api/prom/label").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/api/prom/label/{name}/values").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/api/prom/series").Methods("GET", "POST").Handler(frontendHandler)
+	t.Server.HTTP.Path("/loki/api/v1/query/plan").Methods("GET", "POST").Handler(frontendHandler)
 
 	// Only register tailing requests if this process does not act as a Querier
 	// If this process is also a Querier the Querier will register the tail endpoints.
