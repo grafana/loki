@@ -18,9 +18,6 @@ killercoda:
         replacement: evaluate-loki_${1}_
   title: Loki Quickstart Demo
   description: This sandbox provides an online enviroment for testing the Loki quickstart demo.
-  details:
-    finish:
-      text: finish.md
   backend:
     imageid: ubuntu
 ---
@@ -48,6 +45,7 @@ The Docker Compose configuration runs the following components, each in its own 
 
 <!-- INTERACTIVE page intro.md END -->
 
+<!-- INTERACTIVE ignore START -->
 ## Before you begin
 
 {{< admonition type="tip" >}}
@@ -55,27 +53,14 @@ Alternatively, you can try out this example in our interactive learning environm
 
 It's a fully configured environment with all the dependencies already installed.
 
-![Interactive](https://raw.githubusercontent.com/grafana/killercoda/prod/assets/loki-ile.svg)
-{{< /admonition >}}
-
-- Install [Docker](https://docs.docker.com/install)
-- Install [Docker Compose](https://docs.docker.com/compose/install)
-
-## Interactive Learning Environment
-
-{{< admonition type="note" >}}
-The Interactive Learning Environment is in trial.
+![Interactive](/media/docs/loki/loki-ile.svg)
 
 Provide feedback, report bugs, and raise issues in the [Grafana Killercoda repository](https://github.com/grafana/killercoda).
 {{< /admonition >}}
 
-Try out this demo within our interactive learning environment: [Loki Quickstart Sandbox](https://killercoda.com/grafana-labs/course/loki/loki-quickstart)
-
-- You must have a free Killercoda account to verify you aren't a bot.
-- Tutorial instructions are located on the left-side of the screen.
-  Click to move on to the next section.
-- All commands run inside the interactive terminal.
-- You can access Grafana with the URL links provided within the sandbox.
+- Install [Docker](https://docs.docker.com/install)
+- Install [Docker Compose](https://docs.docker.com/compose/install)
+<!-- INTERACTIVE ignore END -->
 
 <!-- INTERACTIVE page step1.md START -->
 
@@ -140,8 +125,6 @@ This quickstart assumes you are running Linux.
 
    At the end of the command, you should see something similar to the following:
 
-   <!-- INTERACTIVE ignore START -->
-
    ```console
    ✔ Network evaluate-loki_loki          Created      0.1s
    ✔ Container evaluate-loki-minio-1     Started      0.6s
@@ -154,22 +137,6 @@ This quickstart assumes you are running Linux.
    ✔ Container evaluate-loki-alloy-1     Started      1.4s
    ```
 
-   <!-- INTERACTIVE ignore END -->
-
-   {{< docs/ignore >}}
-
-   ```console
-   Creating evaluate-loki_flog_1  ... done
-   Creating evaluate-loki_minio_1 ... done
-   Creating evaluate-loki_read_1  ... done
-   Creating evaluate-loki_write_1 ... done
-   Creating evaluate-loki_gateway_1 ... done
-   Creating evaluate-loki_alloy_1   ... done
-   Creating evaluate-loki_grafana_1 ... done
-   Creating evaluate-loki_backend_1 ... done
-   ```
-
-   {{< /docs/ignore >}}
 
 1. (Optional) Verify that the Loki cluster is up and running.
 
@@ -180,6 +147,13 @@ This quickstart assumes you are running Linux.
 
 1. (Optional) Verify that Grafana Alloy is running.
    - You can access the Grafana Alloy UI at [http://localhost:12345](http://localhost:12345).
+
+1. (Optional) You can check all the containers are running by running the following command:
+   <!-- INTERACTIVE exec START -->
+   ```bash
+   docker ps -a 
+   ```
+   <!-- INTERACTIVE exec END -->
 
 <!-- INTERACTIVE page step1.md END -->
 
@@ -316,12 +290,66 @@ To see every log line that doesn't contain the text `401`:
 
 For more examples, refer to the [query documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/query/query_examples/).
 
+## Loki data source in Grafana
+
+In this example, the Loki data source is already configured in Grafana. This can be seen within the `docker-compose.yaml` file:
+
+```yaml
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    depends_on:
+      - gateway
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        mkdir -p /etc/grafana/provisioning/datasources
+        cat <<EOF > /etc/grafana/provisioning/datasources/ds.yaml
+        apiVersion: 1
+        datasources:
+          - name: Loki
+            type: loki
+            access: proxy
+            url: http://gateway:3100
+            jsonData:
+              httpHeaderName1: "X-Scope-OrgID"
+            secureJsonData:
+              httpHeaderValue1: "tenant1"
+        EOF
+        /run.sh
+```
+Within the entrypoint section, the Loki data source is configured with the following details:
+- Name: Loki (name of the data source)
+- Type: loki (type of data source)
+- Access: proxy (access type)
+- URL: http://gateway:3100 (URL of the Loki data source. Loki uses a nginx gateway to direct traffic to the appropriate component)
+- jsonData: httpHeaderName1: "X-Scope-OrgID" (header name for the organization ID)
+- secureJsonData: httpHeaderValue1: "tenant1" (header value for the organization ID)
+  
+It is important to note when Loki is configured in any other mode other than monolithic deployment, a tenant ID is required to be passed in the header. Without this, queries will return an authorization error.
+
 <!-- INTERACTIVE page step2.md END -->
+
+<!-- INTERACTIVE page finish.md START -->
 
 ## Complete metrics, logs, traces, and profiling example
 
+You have completed the Loki Quickstart demo. So where to go next?
+
+{{< docs/ignore >}}
+## Back to docs
+Head back to wear you started from to continue with the Loki documentation: [Loki documentation](https://grafana.com/docs/loki/latest/get-started/quick-start/).
+{{< /docs/ignore >}}
+
+## Complete metrics, logs, traces, and profiling example
 If you would like to run a demonstration environment that includes Mimir, Loki, Tempo, and Grafana, you can use [Introduction to Metrics, Logs, Traces, and Profiling in Grafana](https://github.com/grafana/intro-to-mlt).
 It's a self-contained environment for learning about Mimir, Loki, Tempo, and Grafana.
 
 The project includes detailed explanations of each component and annotated configurations for a single-instance deployment.
 You can also push the data from the environment to [Grafana Cloud](https://grafana.com/cloud/).
+
+<!-- INTERACTIVE page finish.md END -->
