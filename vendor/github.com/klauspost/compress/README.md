@@ -16,6 +16,46 @@ This package provides various compression algorithms.
 
 # changelog
 
+* June 13, 2023 - [v1.16.6](https://github.com/klauspost/compress/releases/tag/v1.16.6)
+	* zstd: correctly ignore WithEncoderPadding(1) by @ianlancetaylor in https://github.com/klauspost/compress/pull/806
+	* zstd: Add amd64 match length assembly https://github.com/klauspost/compress/pull/824
+	* gzhttp: Handle informational headers by @rtribotte in https://github.com/klauspost/compress/pull/815
+	* s2: Improve Better compression slightly https://github.com/klauspost/compress/pull/663
+
+* Apr 16, 2023 - [v1.16.5](https://github.com/klauspost/compress/releases/tag/v1.16.5)
+	* zstd: readByte needs to use io.ReadFull by @jnoxon in https://github.com/klauspost/compress/pull/802
+	* gzip: Fix WriterTo after initial read https://github.com/klauspost/compress/pull/804
+
+* Apr 5, 2023 - [v1.16.4](https://github.com/klauspost/compress/releases/tag/v1.16.4)
+	* zstd: Improve zstd best efficiency by @greatroar and @klauspost in https://github.com/klauspost/compress/pull/784
+	* zstd: Respect WithAllLitEntropyCompression https://github.com/klauspost/compress/pull/792
+	* zstd: Fix amd64 not always detecting corrupt data https://github.com/klauspost/compress/pull/785
+	* zstd: Various minor improvements by @greatroar in https://github.com/klauspost/compress/pull/788 https://github.com/klauspost/compress/pull/794 https://github.com/klauspost/compress/pull/795
+	* s2: Fix huge block overflow https://github.com/klauspost/compress/pull/779
+	* s2: Allow CustomEncoder fallback https://github.com/klauspost/compress/pull/780
+	* gzhttp: Suppport ResponseWriter Unwrap() in gzhttp handler by @jgimenez in https://github.com/klauspost/compress/pull/799
+
+* Mar 13, 2023 - [v1.16.1](https://github.com/klauspost/compress/releases/tag/v1.16.1)
+	* zstd: Speed up + improve best encoder by @greatroar in https://github.com/klauspost/compress/pull/776
+	* gzhttp: Add optional [BREACH mitigation](https://github.com/klauspost/compress/tree/master/gzhttp#breach-mitigation). https://github.com/klauspost/compress/pull/762 https://github.com/klauspost/compress/pull/768 https://github.com/klauspost/compress/pull/769 https://github.com/klauspost/compress/pull/770 https://github.com/klauspost/compress/pull/767
+	* s2: Add Intel LZ4s converter https://github.com/klauspost/compress/pull/766
+	* zstd: Minor bug fixes https://github.com/klauspost/compress/pull/771 https://github.com/klauspost/compress/pull/772 https://github.com/klauspost/compress/pull/773
+	* huff0: Speed up compress1xDo by @greatroar in https://github.com/klauspost/compress/pull/774
+
+* Feb 26, 2023 - [v1.16.0](https://github.com/klauspost/compress/releases/tag/v1.16.0)
+	* s2: Add [Dictionary](https://github.com/klauspost/compress/tree/master/s2#dictionaries) support.  https://github.com/klauspost/compress/pull/685
+	* s2: Add Compression Size Estimate.  https://github.com/klauspost/compress/pull/752
+	* s2: Add support for custom stream encoder. https://github.com/klauspost/compress/pull/755
+	* s2: Add LZ4 block converter. https://github.com/klauspost/compress/pull/748
+	* s2: Support io.ReaderAt in ReadSeeker. https://github.com/klauspost/compress/pull/747
+	* s2c/s2sx: Use concurrent decoding. https://github.com/klauspost/compress/pull/746
+
+* Jan 21st, 2023 (v1.15.15)
+	* deflate: Improve level 7-9 by @klauspost in https://github.com/klauspost/compress/pull/739
+	* zstd: Add delta encoding support by @greatroar in https://github.com/klauspost/compress/pull/728
+	* zstd: Various speed improvements by @greatroar https://github.com/klauspost/compress/pull/741 https://github.com/klauspost/compress/pull/734 https://github.com/klauspost/compress/pull/736 https://github.com/klauspost/compress/pull/744 https://github.com/klauspost/compress/pull/743 https://github.com/klauspost/compress/pull/745
+	* gzhttp: Add SuffixETag() and DropETag() options to prevent ETag collisions on compressed responses by @willbicks in https://github.com/klauspost/compress/pull/740
+
 * Jan 3rd, 2023 (v1.15.14)
 
 	* flate: Improve speed in big stateless blocks https://github.com/klauspost/compress/pull/718
@@ -594,6 +634,8 @@ Here are other packages of good quality and pure Go (no cgo wrappers or autoconv
 * [github.com/pierrec/lz4](https://github.com/pierrec/lz4) - strong multithreaded LZ4 compression.
 * [github.com/cosnicolaou/pbzip2](https://github.com/cosnicolaou/pbzip2) - multithreaded bzip2 decompression.
 * [github.com/dsnet/compress](https://github.com/dsnet/compress) - brotli decompression, bzip2 writer.
+* [github.com/ronanh/intcomp](https://github.com/ronanh/intcomp) - Integer compression.
+* [github.com/spenczar/fpc](https://github.com/spenczar/fpc) - Float compression.
 
 # license
 

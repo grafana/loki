@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/ptypes"
+	"google.golang.org/grpc/internal/backoff"
 	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/internal/pretty"
 	"google.golang.org/grpc/xds/internal"
@@ -100,54 +101,36 @@ func (t *Transport) lrsRunner(ctx context.Context) {
 	node := proto.Clone(t.nodeProto).(*v3corepb.Node)
 	node.ClientFeatures = append(node.ClientFeatures, "envoy.lrs.supports_send_all_clusters")
 
-	backoffAttempt := 0
-	backoffTimer := time.NewTimer(0)
-	for ctx.Err() == nil {
-		select {
-		case <-backoffTimer.C:
-		case <-ctx.Done():
-			backoffTimer.Stop()
-			return
+	runLoadReportStream := func() error {
+		// streamCtx is created and canceled in case we terminate the stream
+		// early for any reason, to avoid gRPC-Go leaking the RPC's monitoring
+		// goroutine.
+		streamCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		stream, err := v3lrsgrpc.NewLoadReportingServiceClient(t.cc).StreamLoadStats(streamCtx)
+		if err != nil {
+			t.logger.Warningf("Creating LRS stream to server %q failed: %v", t.serverURI, err)
+			return nil
+		}
+		t.logger.Infof("Created LRS stream to server %q", t.serverURI)
+
+		if err := t.sendFirstLoadStatsRequest(stream, node); err != nil {
+			t.logger.Warningf("Sending first LRS request failed: %v", err)
+			return nil
+		}
+
+		clusters, interval, err := t.recvFirstLoadStatsResponse(stream)
+		if err != nil {
+			t.logger.Warningf("Reading from LRS stream failed: %v", err)
+			return nil
 		}
 
 		// We reset backoff state when we successfully receive at least one
 		// message from the server.
-		resetBackoff := func() bool {
-			// streamCtx is created and canceled in case we terminate the stream
-			// early for any reason, to avoid gRPC-Go leaking the RPC's monitoring
-			// goroutine.
-			streamCtx, cancel := context.WithCancel(ctx)
-			defer cancel()
-			stream, err := v3lrsgrpc.NewLoadReportingServiceClient(t.cc).StreamLoadStats(streamCtx)
-			if err != nil {
-				t.logger.Warningf("Creating LRS stream to server %q failed: %v", t.serverURI, err)
-				return false
-			}
-			t.logger.Infof("Created LRS stream to server %q", t.serverURI)
-
-			if err := t.sendFirstLoadStatsRequest(stream, node); err != nil {
-				t.logger.Warningf("Sending first LRS request failed: %v", err)
-				return false
-			}
-
-			clusters, interval, err := t.recvFirstLoadStatsResponse(stream)
-			if err != nil {
-				t.logger.Warningf("Reading from LRS stream failed: %v", err)
-				return false
-			}
-
-			t.sendLoads(streamCtx, stream, clusters, interval)
-			return true
-		}()
-
-		if resetBackoff {
-			backoffTimer.Reset(0)
-			backoffAttempt = 0
-		} else {
-			backoffTimer.Reset(t.backoff(backoffAttempt))
-			backoffAttempt++
-		}
+		t.sendLoads(streamCtx, stream, clusters, interval)
+		return backoff.ErrResetBackoff
 	}
+	backoff.RunF(ctx, runLoadReportStream, t.backoff)
 }
 
 func (t *Transport) sendLoads(ctx context.Context, stream lrsStream, clusterNames []string, interval time.Duration) {

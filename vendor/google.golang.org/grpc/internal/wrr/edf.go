@@ -43,7 +43,7 @@ type edfEntry struct {
 	deadline    float64
 	weight      int64
 	orderOffset uint64
-	item        interface{}
+	item        any
 }
 
 // edfPriorityQueue is a heap.Interface implementation for edfEntry elements.
@@ -55,17 +55,17 @@ func (pq edfPriorityQueue) Less(i, j int) bool {
 }
 func (pq edfPriorityQueue) Swap(i, j int) { pq[i], pq[j] = pq[j], pq[i] }
 
-func (pq *edfPriorityQueue) Push(x interface{}) {
+func (pq *edfPriorityQueue) Push(x any) {
 	*pq = append(*pq, x.(*edfEntry))
 }
 
-func (pq *edfPriorityQueue) Pop() interface{} {
+func (pq *edfPriorityQueue) Pop() any {
 	old := *pq
 	*pq = old[0 : len(old)-1]
 	return old[len(old)-1]
 }
 
-func (edf *edfWrr) Add(item interface{}, weight int64) {
+func (edf *edfWrr) Add(item any, weight int64) {
 	edf.lock.Lock()
 	defer edf.lock.Unlock()
 	entry := edfEntry{
@@ -78,7 +78,7 @@ func (edf *edfWrr) Add(item interface{}, weight int64) {
 	heap.Push(&edf.items, &entry)
 }
 
-func (edf *edfWrr) Next() interface{} {
+func (edf *edfWrr) Next() any {
 	edf.lock.Lock()
 	defer edf.lock.Unlock()
 	if len(edf.items) == 0 {
