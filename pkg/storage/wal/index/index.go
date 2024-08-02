@@ -1929,9 +1929,7 @@ func yoloString(b []byte) string {
 
 // PostingsForMatchers assembles a single postings iterator against the index reader
 // based on the given matchers. The resulting postings are not ordered by series.
-func (r *Reader) PostingsForMatchers(ctx context.Context, tenantID string, ms ...*labels.Matcher) (index.Postings, error) {
-	ms = append(ms, labels.MustNewMatcher(labels.MatchEqual, TenantLabel, tenantID))
-
+func (r *Reader) PostingsForMatchers(ctx context.Context, ms ...*labels.Matcher) (index.Postings, error) {
 	var its, notIts []index.Postings
 	// See which label must be non-empty.
 	// Optimization for case like {l=~".", l!="1"}.

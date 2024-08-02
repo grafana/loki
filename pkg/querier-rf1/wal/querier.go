@@ -134,11 +134,16 @@ func (q *Querier) matchingChunks(ctx context.Context, tenantID string, from, thr
 	return lazyChunks, nil
 }
 
-func (q *Querier) forSeries(ctx context.Context, req *metastorepb.ListBlocksForQueryRequest, fn func(string, *labels.ScratchBuilder, *chunks.Meta) error, ms ...*labels.Matcher) error {
+func (q *Querier) forSeries(ctx context.Context, req *metastorepb.ListBlocksForQueryRequest, fn func(string, *labels.ScratchBuilder, *chunks.Meta) error, matchers ...*labels.Matcher) error {
+	// copy matchers to avoid modifying the original slice.
+	ms := make([]*labels.Matcher, 0, len(matchers)+1)
+	ms = append(ms, matchers...)
+	ms = append(ms, labels.MustNewMatcher(labels.MatchEqual, index.TenantLabel, req.TenantId))
+
 	return q.forIndices(ctx, req, func(ir *index.Reader, id string) error {
 		bufLbls := labels.ScratchBuilder{}
 		chunks := make([]chunks.Meta, 0, 1)
-		p, err := ir.PostingsForMatchers(ctx, req.TenantId, ms...)
+		p, err := ir.PostingsForMatchers(ctx, ms...)
 		if err != nil {
 			return err
 		}
