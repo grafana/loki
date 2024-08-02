@@ -2,6 +2,10 @@
 
 ## Versions
 
+### 0.33.5
+
+- Update to alpine 3.20.2
+
 ### 0.33.4
 
 - Update to go 1.22.5

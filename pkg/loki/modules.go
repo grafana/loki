@@ -52,6 +52,7 @@ import (
 	metastoreclient "github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/client"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/health"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/objstore"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -415,7 +416,11 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 	if t.Cfg.QuerierRF1.Enabled {
 		logger.Log("Using RF-1 querier implementation")
-		t.Querier, err = querierrf1.New(t.Cfg.QuerierRF1, t.Store, t.Overrides, deleteStore, logger)
+		store, err := objstore.New(t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.ClientMetrics)
+		if err != nil {
+			return nil, err
+		}
+		t.Querier, err = querierrf1.New(t.Cfg.QuerierRF1, t.Store, t.Overrides, deleteStore, t.MetastoreClient, store, logger)
 		if err != nil {
 			return nil, err
 		}
@@ -1818,7 +1823,7 @@ func (t *Loki) initMetastore() (services.Service, error) {
 		return nil, nil
 	}
 	if t.Cfg.isTarget(All) {
-		t.Cfg.MetastoreClient.MetastoreAddress = fmt.Sprintf("localhost:%s", t.Cfg.Server.GRPCListenAddress)
+		t.Cfg.MetastoreClient.MetastoreAddress = fmt.Sprintf("localhost:%d", t.Cfg.Server.GRPCListenPort)
 	}
 	m, err := metastore.New(t.Cfg.Metastore, log.With(util_log.Logger, "component", "metastore"), prometheus.DefaultRegisterer, t.health)
 	if err != nil {
