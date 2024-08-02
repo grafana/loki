@@ -6,6 +6,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -112,6 +113,8 @@ func (q *Querier) SelectSamples(ctx context.Context, req logql.SelectSampleParam
 }
 
 func (q *Querier) matchingChunks(ctx context.Context, tenantID string, from, through int64, matchers ...*labels.Matcher) ([]ChunkData, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "matchingChunks")
+	defer sp.Finish()
 	// todo support sharding
 	var (
 		lazyChunks []ChunkData
@@ -130,6 +133,9 @@ func (q *Querier) matchingChunks(ctx context.Context, tenantID string, from, thr
 	}, matchers...)
 	if err != nil {
 		return nil, err
+	}
+	if sp != nil {
+		sp.LogKV("matchedChunks", len(lazyChunks))
 	}
 	return lazyChunks, nil
 }
