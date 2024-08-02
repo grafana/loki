@@ -2,22 +2,29 @@ package pattern
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/multierror"
+	"github.com/grafana/dskit/ring"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/ingester/index"
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/pattern/aggregation"
 	"github.com/grafana/loki/v3/pkg/pattern/drain"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
 	"github.com/grafana/loki/v3/pkg/util"
+	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
 
 const indexShards = 32
@@ -32,21 +39,45 @@ type instance struct {
 	logger     log.Logger
 	metrics    *ingesterMetrics
 	drainCfg   *drain.Config
+	ringClient RingClient
+	ingesterID string
+
+	aggMetricsLock     sync.Mutex
+	aggMetricsByStream map[string]aggregatedMetrics
+
+	writer aggregation.EntryWriter
 }
 
-func newInstance(instanceID string, logger log.Logger, metrics *ingesterMetrics, drainCfg *drain.Config) (*instance, error) {
+type aggregatedMetrics struct {
+	bytes uint64
+	count uint64
+}
+
+func newInstance(
+	instanceID string,
+	logger log.Logger,
+	metrics *ingesterMetrics,
+	drainCfg *drain.Config,
+	ringClient RingClient,
+	ingesterID string,
+	writer aggregation.EntryWriter,
+) (*instance, error) {
 	index, err := index.NewBitPrefixWithShards(indexShards)
 	if err != nil {
 		return nil, err
 	}
 	i := &instance{
-		buf:        make([]byte, 0, 1024),
-		logger:     logger,
-		instanceID: instanceID,
-		streams:    newStreamsMap(),
-		index:      index,
-		metrics:    metrics,
-		drainCfg:   drainCfg,
+		buf:                make([]byte, 0, 1024),
+		logger:             logger,
+		instanceID:         instanceID,
+		streams:            newStreamsMap(),
+		index:              index,
+		metrics:            metrics,
+		drainCfg:           drainCfg,
+		ringClient:         ringClient,
+		ingesterID:         ingesterID,
+		aggMetricsByStream: make(map[string]aggregatedMetrics),
+		writer:             writer,
 	}
 	i.mapper = ingester.NewFPMapper(i.getLabelsFromFingerprint)
 	return i, nil
@@ -58,25 +89,66 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	appendErr := multierror.New()
 
 	for _, reqStream := range req.Streams {
-		if reqStream.Entries == nil || len(reqStream.Entries) == 0 {
-			continue
-		}
-		s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
-			func() (*stream, error) {
-				// add stream
-				return i.createStream(ctx, reqStream)
-			}, nil)
+		// All streams are observed for metrics
+		i.Observe(reqStream.Labels, reqStream.Entries)
+
+		// But only owned streamed are processed for patterns
+		ownedStream, err := i.isOwnedStream(i.ingesterID, reqStream.Labels)
 		if err != nil {
 			appendErr.Add(err)
-			continue
 		}
-		err = s.Push(ctx, reqStream.Entries)
-		if err != nil {
-			appendErr.Add(err)
-			continue
+
+		if ownedStream {
+			if reqStream.Entries == nil || len(reqStream.Entries) == 0 {
+				continue
+			}
+			s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
+				func() (*stream, error) {
+					// add stream
+					return i.createStream(ctx, reqStream)
+				}, nil)
+			if err != nil {
+				appendErr.Add(err)
+				continue
+			}
+			err = s.Push(ctx, reqStream.Entries)
+			if err != nil {
+				appendErr.Add(err)
+				continue
+			}
 		}
 	}
+
 	return appendErr.Err()
+}
+
+func (i *instance) isOwnedStream(ingesterID string, stream string) (bool, error) {
+	var descs [1]ring.InstanceDesc
+	replicationSet, err := i.ringClient.Ring().Get(
+		lokiring.TokenFor(i.instanceID, stream),
+		ring.WriteNoExtend,
+		descs[:0],
+		nil,
+		nil,
+	)
+	if err != nil {
+		return false, fmt.Errorf(
+			"error getting replication set for stream %s: %v",
+			stream,
+			err,
+		)
+	}
+
+	if replicationSet.Instances == nil {
+		return false, errors.New("no instances found")
+	}
+
+	for _, instanceDesc := range replicationSet.Instances {
+		if instanceDesc.Id == ingesterID {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // Iterator returns an iterator of pattern samples matching the given query patterns request.
@@ -172,5 +244,74 @@ func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels 
 func (i *instance) removeStream(s *stream) {
 	if i.streams.Delete(s) {
 		i.index.Delete(s.labels, s.fp)
+	}
+}
+
+func (i *instance) Observe(stream string, entries []logproto.Entry) {
+	i.aggMetricsLock.Lock()
+	defer i.aggMetricsLock.Unlock()
+
+	metrics, ok := i.aggMetricsByStream[stream]
+	if !ok {
+		metrics = aggregatedMetrics{}
+	}
+
+	bytes := uint64(0)
+	count := uint64(len(entries))
+	for _, entry := range entries {
+		bytes += uint64(len(entry.Line))
+	}
+
+	metrics.bytes += bytes
+	metrics.count += count
+
+	i.aggMetricsByStream[stream] = metrics
+}
+
+func (i *instance) Downsample(now model.Time) {
+	i.aggMetricsLock.Lock()
+	defer func() {
+		i.aggMetricsByStream = make(map[string]aggregatedMetrics)
+		i.aggMetricsLock.Unlock()
+	}()
+
+	for stream, metrics := range i.aggMetricsByStream {
+		lbls, err := syntax.ParseLabels(stream)
+		if err != nil {
+			continue
+		}
+
+		i.writeAggregatedMetrics(now, lbls, metrics.bytes, metrics.count)
+	}
+}
+
+func (i *instance) writeAggregatedMetrics(
+	now model.Time,
+	streamLbls labels.Labels,
+	totalBytes, totalCount uint64,
+) {
+	service := streamLbls.Get(push.LabelServiceName)
+	if service == "" {
+		service = push.ServiceUnknown
+	}
+
+	level := streamLbls.Get("level")
+	if level == "" {
+		level = distributor.LogLevelUnknown
+	}
+
+	newLbls := labels.Labels{
+		labels.Label{Name: push.AggregatedMetricLabel, Value: service},
+		labels.Label{Name: "level", Value: level},
+	}
+
+	if i.writer != nil {
+		i.writer.WriteEntry(
+			now.Time(),
+			aggregation.AggregatedMetricEntry(now, totalBytes, totalCount, service, streamLbls),
+			newLbls,
+		)
+
+		i.metrics.samples.WithLabelValues(service).Inc()
 	}
 }

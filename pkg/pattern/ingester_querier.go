@@ -27,7 +27,7 @@ type IngesterQuerier struct {
 	cfg    Config
 	logger log.Logger
 
-	ringClient *RingClient
+	ringClient RingClient
 
 	registerer             prometheus.Registerer
 	ingesterQuerierMetrics *ingesterQuerierMetrics
@@ -35,7 +35,7 @@ type IngesterQuerier struct {
 
 func NewIngesterQuerier(
 	cfg Config,
-	ringClient *RingClient,
+	ringClient RingClient,
 	metricsNamespace string,
 	registerer prometheus.Registerer,
 	logger log.Logger,
@@ -128,7 +128,7 @@ func prunePatterns(resp *logproto.QueryPatternsResponse, minClusterSize int64, m
 
 // ForAllIngesters runs f, in parallel, for all ingesters
 func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(context.Context, logproto.PatternClient) (interface{}, error)) ([]ResponseFromIngesters, error) {
-	replicationSet, err := q.ringClient.ring.GetAllHealthy(ring.Read)
+	replicationSet, err := q.ringClient.Ring().GetAllHealthy(ring.Read)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +149,7 @@ func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet 
 		ingester := ingester
 		i := i
 		g.Go(func() error {
-			client, err := q.ringClient.pool.GetClientFor(ingester.Addr)
+			client, err := q.ringClient.Pool().GetClientFor(ingester.Addr)
 			if err != nil {
 				return err
 			}

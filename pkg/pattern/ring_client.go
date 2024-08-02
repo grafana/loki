@@ -13,7 +13,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/pattern/clientpool"
 )
 
-type RingClient struct {
+type RingClient interface {
+	services.Service
+	Ring() ring.ReadRing
+	Pool() *ring_client.Pool
+}
+
+type ringClient struct {
 	cfg    Config
 	logger log.Logger
 
@@ -29,10 +35,10 @@ func NewRingClient(
 	metricsNamespace string,
 	registerer prometheus.Registerer,
 	logger log.Logger,
-) (*RingClient, error) {
+) (RingClient, error) {
 	var err error
 	registerer = prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", registerer)
-	ringClient := &RingClient{
+	ringClient := &ringClient{
 		logger: log.With(logger, "component", "pattern-ring-client"),
 		cfg:    cfg,
 	}
@@ -59,19 +65,55 @@ func NewRingClient(
 	return ringClient, nil
 }
 
-func (q *RingClient) starting(ctx context.Context) error {
-	return services.StartManagerAndAwaitHealthy(ctx, q.subservices)
+func (r *ringClient) starting(ctx context.Context) error {
+	return services.StartManagerAndAwaitHealthy(ctx, r.subservices)
 }
 
-func (q *RingClient) running(ctx context.Context) error {
+func (r *ringClient) running(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
 		return nil
-	case err := <-q.subservicesWatcher.Chan():
+	case err := <-r.subservicesWatcher.Chan():
 		return fmt.Errorf("pattern tee subservices failed: %w", err)
 	}
 }
 
-func (q *RingClient) stopping(_ error) error {
-	return services.StopManagerAndAwaitStopped(context.Background(), q.subservices)
+func (r *ringClient) stopping(_ error) error {
+	return services.StopManagerAndAwaitStopped(context.Background(), r.subservices)
+}
+
+func (r *ringClient) Ring() ring.ReadRing {
+	return r.ring
+}
+
+func (r *ringClient) Pool() *ring_client.Pool {
+	return r.pool
+}
+
+func (r *ringClient) StartAsync(ctx context.Context) error {
+	return r.ring.StartAsync(ctx)
+}
+
+func (r *ringClient) AwaitRunning(ctx context.Context) error {
+	return r.ring.AwaitRunning(ctx)
+}
+
+func (r *ringClient) StopAsync() {
+	r.ring.StopAsync()
+}
+
+func (r *ringClient) AwaitTerminated(ctx context.Context) error {
+	return r.ring.AwaitTerminated(ctx)
+}
+
+func (r *ringClient) FailureCase() error {
+	return r.ring.FailureCase()
+}
+
+func (r *ringClient) State() services.State {
+	return r.ring.State()
+}
+
+func (r *ringClient) AddListener(listener services.Listener) {
+	r.ring.AddListener(listener)
 }
