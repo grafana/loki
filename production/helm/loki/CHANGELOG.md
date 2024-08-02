@@ -13,12 +13,14 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 7.0.0
+- [BUGFIX] Removed affinity defaults to solve object merge problem
+
 ## 6.10.0
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to 3.1.1
 - [CHANGE] Changed version of Grafana Loki to 3.1.1
 - [ENHANCEMENT] Added ability to disable AWS S3 dualstack endpoint usage.
-
 
 ## 6.9.0
 
