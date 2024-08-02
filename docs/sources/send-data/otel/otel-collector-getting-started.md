@@ -6,6 +6,10 @@ weight: 250
 killercoda:
   title: Getting started with the OpenTelemetry Collector and Loki tutorial
   description: A Tutorial configuring the OpenTelemetry Collector to send OpenTelemetry logs to Loki
+  preprocessing:
+    substitutions:
+      - regexp: loki-fundamentals-otel-collector-1
+        replacement: loki-fundamentals_otel-collector_1
   backend:
     imageid: ubuntu
 ---
@@ -93,15 +97,15 @@ In this step, we will set up our environment by cloning the repository that cont
     ✔ Container loki-fundamentals-loki-1             Started                        
     ✔ Container loki-fundamentals-otel-collector-1   Started
     ```
-    <!-- INTERACTIVE ignore END -->
+    <!-- INTERACTIVE ignore START -->
     {{< admonition type="note" >}}
     The OpenTelemetry Collector container will show as `Stopped`. This is expected as we have provided an empty configuration file. We will update this file in the next step.
     {{< /admonition >}}
     <!-- INTERACTIVE ignore END -->
 
-    {{< docs/ignore >}}
-    ***Note:** The OpenTelemetry Collector container will show as `Stopped`. This is expected as we have provided an empty configuration file. We will update this file in the next step.*
-    {{< /docs/ignore >}}
+  {{< docs/ignore >}}
+  **Note:** The OpenTelemetry Collector container will show as `Stopped`. This is expected as we have provided an empty configuration file. We will update this file in the next step.
+  {{< /docs/ignore >}}
 
 Once we have finished configuring the OpenTelemetry Collector and sending logs to Loki, we will be able to view the logs in Grafana. To check if Grafana is up and running, navigate to the following URL: [http://localhost:3000](http://localhost:3000)
 <!-- INTERACTIVE page step1.md END -->
@@ -250,6 +254,23 @@ service:
       processors: [batch]
       exporters: [otlphttp/logs]
 ```
+Next, we need apply the configuration to the OpenTelemetry Collector. To do this, we will restart the OpenTelemetry Collector container:
+<!-- INTERACTIVE exec START -->
+```bash
+docker restart loki-fundamentals-otel-collector-1
+```
+<!-- INTERACTIVE exec END -->
+
+This will restart the OpenTelemetry Collector container with the new configuration. You can check the logs of the OpenTelemetry Collector container to see if the configuration was loaded successfully:
+<!-- INTERACTIVE exec START -->
+```bash
+docker logs loki-fundamentals-otel-collector-1
+```
+
+Within the logs, you should see the following message:
+```console
+2024-08-02T13:10:25.136Z        info    service@v0.106.1/service.go:225 Everything is ready. Begin running and processing data.
+```
 
 ## Stuck? Need help?
 
@@ -339,8 +360,8 @@ Head back to where you started from to continue with the Loki documentation: [Lo
 
 For more information on the OpenTelemetry Collector and the native OTLP endpoint of Loki, refer to the following resources:
 
-- [Loki OTLP endpoint]({{< relref "./" >}})
-- [How is native OTLP endpoint different from Loki Exporter]({{< relref "./native_otlp_vs_loki_exporter" >}})
+- [Loki OTLP endpoint](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/otel/)
+- [How is native OTLP endpoint different from Loki Exporter](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/otel/native_otlp_vs_loki_exporter)
 - [OpenTelemetry Collector Configuration](https://opentelemetry.io/docs/collector/configuration/)
 
 
