@@ -15,6 +15,7 @@ import (
 	"github.com/klauspost/compress/s2"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -27,7 +28,10 @@ const (
 )
 
 // Initialize the CRC32 table
-var castagnoliTable *crc32.Table
+var (
+	castagnoliTable *crc32.Table
+	_               iter.EntryIterator = (*entryBufferedIterator)(nil)
+)
 
 func init() {
 	castagnoliTable = crc32.MakeTable(crc32.Castagnoli)

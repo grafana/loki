@@ -114,7 +114,7 @@ func (i *Ingester) flushSegment(ctx context.Context, j int, w *wal.SegmentWriter
 	wal.ReportSegmentStats(stats, i.metrics.segmentMetrics)
 
 	id := ulid.MustNew(ulid.Timestamp(time.Now()), rand.Reader).String()
-	if err := i.store.PutObject(ctx, fmt.Sprintf("loki-v2/wal/anon/"+id), buf); err != nil {
+	if err := i.store.PutObject(ctx, fmt.Sprintf(wal.Dir+id), buf); err != nil {
 		i.metrics.flushFailuresTotal.Inc()
 		return fmt.Errorf("failed to put object: %w", err)
 	}
