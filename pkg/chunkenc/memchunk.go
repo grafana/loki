@@ -441,6 +441,8 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 
 	metasOffset := uint64(0)
 	metasLen := uint64(0)
+	// There is a rare issue where chunks built by Loki have incorrect offset for some blocks which causes Loki to fail to read those chunks.
+	// While the root cause is yet to be identified, we will try to read those problematic chunks using the expected offset for blocks calculated using other relative offsets in the chunk.
 	expectedBlockOffset := 0
 	if version >= ChunkFormatV4 {
 		// version >= 4 starts writing length of sections before their offsets
