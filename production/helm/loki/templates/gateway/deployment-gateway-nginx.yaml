@@ -6,7 +6,7 @@ metadata:
   namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.gatewayLabels" . | nindent 4 }}
-  {{- if or (not (empty .Values.loki.annotations)) (not (empty .Values.backend.annotations))}}
+  {{- if or (not (empty .Values.loki.annotations)) (not (empty .Values.gateway.annotations))}}
   annotations:
     {{- with .Values.loki.annotations }}
     {{- toYaml . | nindent 4 }}
@@ -31,6 +31,9 @@ spec:
     metadata:
       annotations:
         checksum/config: {{ include (print .Template.BasePath "/gateway/configmap-gateway.yaml") . | sha256sum }}
+        {{- if and .Values.gateway.kubeRBACProxy.enabled .Values.gateway.kubeRBACProxy.config }}
+        checksum/kubeRbacProxyConfig: {{ .Values.gateway.kubeRBACProxy.config | toJson | sha256sum }}
+        {{- end }}
         {{- with .Values.loki.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -96,6 +99,45 @@ spec:
             {{- end }}
           resources:
             {{- toYaml .Values.gateway.resources | nindent 12 }}
+        {{- if .Values.gateway.kubeRBACProxy.enabled }}
+        - name: kube-rbac-proxy
+          args:
+          {{-  if .Values.gateway.kubeRBACProxy.extraArgs  }}
+          {{- .Values.gateway.kubeRBACProxy.extraArgs | toYaml | nindent 10 }}
+          {{-  end  }}
+          - --secure-listen-address=:{{ .Values.gateway.kubeRBACProxy.port }}
+          - --upstream=http://127.0.0.1:{{ .Values.gateway.containerPort }}/
+          - --proxy-endpoints-port=8888
+          {{- if .Values.gateway.kubeRBACProxy.config }}
+          - --config-file=/etc/kube-rbac-proxy-config/config-file.yaml
+          {{- end }}
+          volumeMounts:
+            - name: kube-rbac-proxy-config
+              mountPath: /etc/kube-rbac-proxy-config
+            {{- with .Values.gateway.kubeRBACProxy.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          imagePullPolicy: {{ .Values.gateway.kubeRBACProxy.image.pullPolicy }}
+          image: {{ include "loki.gatewayKubeRBACProxyImage" . }}
+          ports:
+            - containerPort: {{ .Values.gateway.kubeRBACProxy.port }}
+              name: krp
+            - containerPort: 8888
+              name: krp-healthz
+          readinessProbe:
+            httpGet:
+              scheme: HTTPS
+              port: 8888
+              path: healthz
+            initialDelaySeconds: 5
+            timeoutSeconds: 5
+          {{- if .Values.gateway.kubeRBACProxy.resources }}
+          resources: {{ toYaml .Values.gateway.kubeRBACProxy.resources | nindent 10 }}
+          {{- end }}
+          {{- if .Values.gateway.kubeRBACProxy.containerSecurityContext }}
+          securityContext: {{ toYaml .Values.gateway.kubeRBACProxy.containerSecurityContext | nindent 12 }}
+          {{- end }}
+        {{- end }}
         {{- if .Values.gateway.extraContainers }}
         {{- toYaml .Values.gateway.extraContainers | nindent 8}}
         {{- end }}
@@ -132,6 +174,11 @@ spec:
           emptyDir: {}
         - name: docker-entrypoint-d-override
           emptyDir: {}
+        {{- if and .Values.gateway.kubeRBACProxy.enabled .Values.gateway.kubeRBACProxy.config }}
+        - name: kube-rbac-proxy-config
+          configMap:
+            name: {{ template "loki.gatewayKubeRBACProxyConfigFullname" . }}
+        {{- end }}
         {{- if .Values.gateway.extraVolumes }}
         {{- toYaml .Values.gateway.extraVolumes | nindent 8 }}
         {{- end }}
