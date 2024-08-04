@@ -13,6 +13,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 6.7.4
+
+- [BUGFIX] Fix selector of the loki-headless Service in the SingleBinary mode
+
 ## 6.7.3
 
 - [BUGFIX] Removed Helm test binary
