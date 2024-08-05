@@ -162,7 +162,7 @@ func (in instance) For(
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	ch := make(chan logql.Resp)
+	ch := make(chan logql.Resp, len(queries)+1)
 
 	// ForEachJob blocks until all are done. However, we want to process the
 	// results as they come in. That's why we start everything in another
