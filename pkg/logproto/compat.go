@@ -82,10 +82,6 @@ func FromMetricsToLabelAdapters(metric model.Metric) []LabelAdapter {
 	return result
 }
 
-func FromMetricsToLabels(metric model.Metric) labels.Labels {
-	return FromLabelAdaptersToLabels(FromMetricsToLabelAdapters(metric))
-}
-
 type byLabel []LabelAdapter
 
 func (s byLabel) Len() int           { return len(s) }
@@ -592,35 +588,6 @@ func (m *DetectedLabelsRequest) LogToSpan(sp opentracing.Span) {
 		otlog.String("query", m.GetQuery()),
 		otlog.String("start", m.Start.String()),
 		otlog.String("end", m.End.String()),
-	}
-	sp.LogFields(fields...)
-}
-
-func (m *QuerySamplesRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
-
-func (m *QuerySamplesRequest) WithStartEnd(start, end time.Time) definitions.Request {
-	clone := *m
-	clone.Start = start
-	clone.End = end
-	return &clone
-}
-
-func (m *QuerySamplesRequest) WithStartEndForCache(start, end time.Time) resultscache.Request {
-	return m.WithStartEnd(start, end).(resultscache.Request)
-}
-
-func (m *QuerySamplesRequest) WithQuery(query string) definitions.Request {
-	clone := *m
-	clone.Query = query
-	return &clone
-}
-
-func (m *QuerySamplesRequest) LogToSpan(sp opentracing.Span) {
-	fields := []otlog.Field{
-		otlog.String("query", m.GetQuery()),
-		otlog.String("start", m.Start.String()),
-		otlog.String("end", m.End.String()),
-		otlog.String("step", time.Duration(m.Step).String()),
 	}
 	sp.LogFields(fields...)
 }

@@ -353,7 +353,7 @@ type Loki struct {
 	IngesterRF1               ingester_rf1.Interface
 	IngesterRF1RingClient     *ingester_rf1.RingClient
 	PatternIngester           *pattern.Ingester
-	PatternRingClient         pattern.RingClient
+	PatternRingClient         *pattern.RingClient
 	Querier                   querier.Querier
 	cacheGenerationLoader     queryrangebase.CacheGenNumberLoader
 	querierAPI                *querier.QuerierAPI
