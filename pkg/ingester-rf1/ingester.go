@@ -497,7 +497,6 @@ func (i *Ingester) periodicStreamMaintenance() {
 func (i *Ingester) cleanIdleStreams() {
 	for _, instance := range i.getInstances() {
 		_ = instance.streams.ForEach(func(s *stream) (bool, error) {
-			instance.index.Delete(s.labels, s.fp)
 			if time.Since(s.highestTs) > i.cfg.StreamRetainPeriod {
 				instance.streams.Delete(s)
 			}
