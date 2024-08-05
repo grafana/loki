@@ -320,6 +320,7 @@ This is the generated reference for the Loki Helm Chart values.
       "emptyDir": {}
     },
     "enableStatefulSetAutoDeletePVC": true,
+    "labels": {},
     "selector": null,
     "size": "10Gi",
     "storageClass": null,
@@ -541,6 +542,15 @@ null
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
 			<td><pre lang="json">
 true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for volume claim</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -4120,6 +4130,7 @@ null
     "enableStatefulSetAutoDeletePVC": false,
     "enabled": false,
     "inMemory": false,
+    "labels": {},
     "size": "10Gi",
     "storageClass": null,
     "whenDeleted": "Retain",
@@ -4316,6 +4327,15 @@ false
 			<td>Use emptyDir with ramdisk for storage. **Please note that all data in indexGateway will be lost on pod restart**</td>
 			<td><pre lang="json">
 false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for index gateway PVCs</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -8536,6 +8556,7 @@ false
   "persistence": {
     "annotations": {},
     "enableStatefulSetAutoDeletePVC": true,
+    "labels": {},
     "selector": null,
     "size": "10Gi",
     "storageClass": null
@@ -8763,6 +8784,15 @@ false
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
 			<td><pre lang="json">
 true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for volume claim</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -9287,6 +9317,7 @@ null
   "persistence": {
     "annotations": {},
     "enabled": false,
+    "labels": {},
     "size": "10Gi",
     "storageClass": null
   },
@@ -9490,6 +9521,15 @@ null
 			<td>Enable creating PVCs which is required when using recording rules</td>
 			<td><pre lang="json">
 false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for ruler PVCs</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -10021,6 +10061,15 @@ true
 			<td>Enable persistent disk</td>
 			<td><pre lang="json">
 true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for volume claim</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -10816,6 +10865,15 @@ null
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
 			<td><pre lang="json">
 false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for volume claim</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
