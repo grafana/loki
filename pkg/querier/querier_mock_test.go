@@ -666,6 +666,9 @@ func (q *querierMock) GetShards(_ context.Context, _ string, _, _ model.Time, _ 
 	return nil, nil
 }
 
+func (q *querierMock) SelectQueryPlan(_ context.Context, _ *logproto.QueryPlanRequest) (*logproto.QueryPlanResponse, error) {
+	return nil, nil
+}
 func (q *querierMock) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
 	return nil, false
 }

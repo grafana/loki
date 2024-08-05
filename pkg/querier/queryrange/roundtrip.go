@@ -536,6 +536,7 @@ func getOperation(path string) string {
 	case path == "/loki/api/v1/detected_labels":
 		return DetectedLabelsOp
 	case path == "/loki/api/v1/query/plan":
+		return QueryPlanOp
 	default:
 		return ""
 	}

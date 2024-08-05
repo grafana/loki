@@ -330,6 +330,17 @@ func (q *MultiTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.D
 	}, nil
 }
 
+func (q *MultiTenantQuerier) SelectQueryPlan(ctx context.Context, req *logproto.QueryPlanRequest) (*logproto.QueryPlanResponse, error) {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(tenantIDs) == 1 {
+		return q.Querier.SelectQueryPlan(ctx, req)
+	}
+	return &logproto.QueryPlanResponse{Results: make([]*logproto.SubQueryResult, 0)}, nil
+}
+
 // removeTenantSelector filters the given tenant IDs based on any tenant ID filter the in passed selector.
 func removeTenantSelector(params logql.SelectSampleParams, tenantIDs []string) (map[string]struct{}, syntax.Expr, error) {
 	expr, err := params.Expr()

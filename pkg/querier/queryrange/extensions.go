@@ -306,3 +306,22 @@ func (m *QuerySamplesResponse) WithHeaders(
 	m.Headers = h
 	return m
 }
+
+// GetHeaders returns the HTTP headers in the response.
+func (m *QueryPlanResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
+	if m != nil {
+		return convertPrometheusResponseHeadersToPointers(m.Headers)
+	}
+	return nil
+}
+
+func (m *QueryPlanResponse) SetHeader(name, value string) {
+	m.Headers = setHeader(m.Headers, name, value)
+}
+
+func (m *QueryPlanResponse) WithHeaders(
+	h []queryrangebase.PrometheusResponseHeader,
+) queryrangebase.Response {
+	m.Headers = h
+	return m
+}

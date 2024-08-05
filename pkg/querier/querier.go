@@ -108,6 +108,7 @@ type Querier interface {
 	DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error)
 	SelectMetricSamples(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error)
 	WithPatternQuerier(patternQuerier PatterQuerier)
+	SelectQueryPlan(ctx context.Context, req *logproto.QueryPlanRequest) (*logproto.QueryPlanResponse, error)
 }
 
 type Limits querier_limits.Limits
@@ -557,6 +558,50 @@ func (q *SingleTenantQuerier) Series(ctx context.Context, req *logproto.SeriesRe
 	return q.awaitSeries(ctx, req)
 }
 
+func (q *SingleTenantQuerier) SelectQueryPlan(ctx context.Context, req *logproto.QueryPlanRequest) (*logproto.QueryPlanResponse, error) {
+	userID, err := tenant.TenantID(ctx)
+	_, storeQueryInterval := q.buildQueryIntervals(req.Start, req.End)
+	if err != nil {
+		return nil, err
+	}
+
+	var matchers []*labels.Matcher
+	if req.Query != "" {
+		matchers, err = syntax.ParseMatchers(req.Query, true)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	from := model.TimeFromUnixNano(storeQueryInterval.start.UnixNano())
+	through := model.TimeFromUnixNano(storeQueryInterval.end.UnixNano())
+
+	streamShardValues, err := q.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", streamShardLabel, matchers...)
+	if err != nil {
+		return nil, err
+	}
+	volumes := make([]Shard, len(streamShardValues))
+	// for each streamShardValues, get stats and add
+	for v := range streamShardValues {
+		// get stats for each shard
+		m := append(matchers, labels.MustNewMatcher(labels.MatchEqual, streamShardLabel, streamShardValues[v]))
+		stats, err := q.store.Stats(ctx, userID, from, through, m...)
+		if err != nil {
+			return nil, err
+		}
+		volumes[v] = Shard{
+			ID:     streamShardValues[v],
+			Volume: stats.Bytes,
+		}
+	}
+
+	d := NewAdaptiveShardDistributor(volumes)
+	subqueries := d.DistributeShards(req.Query, from, through, int(req.Buckets))
+	return &logproto.QueryPlanResponse{
+		Results: subqueries,
+	}, nil
+}
+
 func (q *SingleTenantQuerier) awaitSeries(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
 	// buffer the channels to the # of calls they're expecting su
 	series := make(chan [][]logproto.SeriesIdentifier, 2)
@@ -564,7 +609,6 @@ func (q *SingleTenantQuerier) awaitSeries(ctx context.Context, req *logproto.Ser
 
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(req.Start, req.End)
 
-	// fetch series from ingesters and store concurrently
 	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
 		timeFramedReq := *req
 		timeFramedReq.Start = ingesterQueryInterval.start

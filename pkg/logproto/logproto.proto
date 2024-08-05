@@ -34,8 +34,6 @@ service Querier {
   rpc GetDetectedFields(DetectedFieldsRequest) returns (DetectedFieldsResponse) {}
 
   rpc GetDetectedLabels(DetectedLabelsRequest) returns (LabelToValuesResponse) {}
-
-  rpc GetQueryPlan(QueryPlanRequest) returns (QueryPlanResponse) {}
 }
 
 message LabelToValuesResponse {
@@ -512,6 +510,7 @@ message QueryPlanRequest {
     (gogoproto.nullable) = false
   ];
   Direction direction = 5;
+  uint32 buckets = 6;
 
 //  repeated string shards = 5 [(gogoproto.jsontag) = "shards,omitempty"];
 //  repeated Delete deletes = 6;
@@ -543,4 +542,7 @@ message SubQueryResult {
   ];
   string query = 3;
   uint32 limit = 4;
+  repeated string shards = 5 [(gogoproto.jsontag) = "shards,omitempty"];
+  uint64 volume = 6;
+  string id = 7;
 }

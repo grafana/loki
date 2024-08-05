@@ -607,6 +607,10 @@ func (q *Rf1Querier) DetectedLabels(ctx context.Context, req *logproto.DetectedL
 	}, nil
 }
 
+func (q *Rf1Querier) SelectQueryPlan(_ context.Context, _ *logproto.QueryPlanRequest) (*logproto.QueryPlanResponse, error) {
+	return nil, nil
+}
+
 func countLabelsAndCardinality(storeLabelsMap map[string][]string, staticLabels map[string]struct{}) []*logproto.DetectedLabel {
 	dlMap := make(map[string]*parsedFields)
 

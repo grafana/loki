@@ -266,6 +266,16 @@ func WriteQuerySamplesResponseJSON(r *logproto.QuerySamplesResponse, w io.Writer
 	return nil
 }
 
+// WriteQueryPlanResponseJSON marshals a logproto.QuerySamplesResponse to JSON and then
+// writes it to the provided io.Writer.
+func WriteQueryPlanResponseJSON(r *logproto.QueryPlanResponse, w io.Writer) error {
+	s := jsoniter.ConfigFastest.BorrowStream(w)
+	defer jsoniter.ConfigFastest.ReturnStream(s)
+	s.WriteVal(r)
+	s.WriteRaw("\n")
+	return s.Flush()
+}
+
 func logprotoSeriesToPromQLMatrix(series []logproto.Series) (promql.Matrix, error) {
 	promMatrix := make(promql.Matrix, len(series))
 	for i, s := range series {

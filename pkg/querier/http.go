@@ -430,6 +430,15 @@ func (q *QuerierAPI) SamplesHandler(ctx context.Context, req *logproto.QuerySamp
 	return resp, nil
 }
 
+func (q *QuerierAPI) QueryPlanHandler(ctx context.Context, req *logproto.QueryPlanRequest) (*logproto.QueryPlanResponse, error) {
+	resp, err := q.querier.SelectQueryPlan(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	// select something from index and get the query plan?
+	return resp, nil
+}
+
 func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, expr syntax.Expr, limit uint32) error {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
