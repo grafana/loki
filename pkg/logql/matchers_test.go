@@ -5,6 +5,8 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 func Test_match(t *testing.T) {
@@ -51,16 +53,9 @@ func Test_match(t *testing.T) {
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {
-				// Prometheus label matchers are not comparable with a deep equal because of the internal
-				// fast regexp implementation. For this reason, we compare their string representation.
 				require.Len(t, got, len(tt.want))
-
 				for i, expectedMatchers := range tt.want {
-					require.Len(t, got[i], len(expectedMatchers))
-
-					for j, expectedMatcher := range expectedMatchers {
-						require.Equal(t, expectedMatcher.String(), got[i][j].String())
-					}
+					syntax.AssertMatchers(t, expectedMatchers, got[i])
 				}
 			}
 		})

@@ -196,9 +196,7 @@ func Test_SampleExpr_String(t *testing.T) {
 			expr2, err := ParseExpr(expr.String())
 			require.Nil(t, err)
 
-			// Prometheus label matchers are not comparable with a deep equal because of the internal
-			// fast regexp implementation. For this reason, we compare their string representation.
-			require.Equal(t, expr.String(), expr2.String())
+			AssertExpressions(t, expr, expr2)
 		})
 	}
 }
@@ -595,15 +593,7 @@ func Test_FilterMatcher(t *testing.T) {
 			t.Parallel()
 			expr, err := ParseLogSelector(tt.q, true)
 			assert.Nil(t, err)
-
-			// Prometheus label matchers are not comparable with a deep equal because of the internal
-			// fast regexp implementation. For this reason, we compare their string representation.
-			actualMatchers := expr.Matchers()
-			require.Len(t, actualMatchers, len(tt.expectedMatchers))
-			for i, expected := range tt.expectedMatchers {
-				assert.Equal(t, expected.String(), actualMatchers[i].String())
-			}
-
+			AssertMatchers(t, tt.expectedMatchers, expr.Matchers())
 			p, err := expr.Pipeline()
 			assert.Nil(t, err)
 			if tt.lines == nil {

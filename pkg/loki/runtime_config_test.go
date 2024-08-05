@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -48,8 +49,6 @@ overrides:
 	require.Equal(t, 2*30*24*time.Hour, overrides.RetentionPeriod("29")) // overrides
 	require.Equal(t, []validation.StreamRetention(nil), overrides.StreamRetention("1"))
 
-	// Prometheus label matchers are not comparable with a deep equal because of the internal
-	// fast regexp implementation. For this reason, we compare their string representation.
 	actual := overrides.StreamRetention("29")
 	expected := []validation.StreamRetention{
 		{Period: model.Duration(48 * time.Hour), Priority: 10, Selector: `{app="foo"}`, Matchers: []*labels.Matcher{
@@ -61,17 +60,15 @@ overrides:
 		}},
 	}
 
-	require.Len(t, actual, len(expected))
-	for i, expectedStreamRetention := range expected {
-		require.Equal(t, expectedStreamRetention.Selector, actual[i].Selector)
-		require.Equal(t, expectedStreamRetention.Period, actual[i].Period)
-		require.Equal(t, expectedStreamRetention.Priority, actual[i].Priority)
+	require.Equal(t, removeFastRegexMatcher(expected), removeFastRegexMatcher(actual))
+}
 
-		require.Len(t, actual[i].Matchers, len(expectedStreamRetention.Matchers))
-		for j, expectedMatcher := range expectedStreamRetention.Matchers {
-			require.Equal(t, actual[i].Matchers[j].String(), expectedMatcher.String())
-		}
+func removeFastRegexMatcher(configs []validation.StreamRetention) []validation.StreamRetention {
+	result := make([]validation.StreamRetention, 0, len(configs))
+	for _, config := range configs {
+		config.Matchers = syntax.RemoveFastRegexMatchers(config.Matchers)
 	}
+	return result
 }
 
 func Test_ValidateRules(t *testing.T) {

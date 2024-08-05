@@ -3239,16 +3239,7 @@ func TestParse(t *testing.T) {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := ParseExpr(tc.in)
 			require.Equal(t, tc.err, err)
-
-			if tc.exp != nil {
-				require.NotNil(t, ast)
-
-				// Prometheus label matchers are not comparable with a deep equal because of the internal
-				// fast regexp implementation. For this reason, we compare their string representation.
-				require.Equal(t, tc.exp.String(), ast.String())
-			} else {
-				require.Nil(t, ast)
-			}
+			AssertExpressions(t, tc.exp, ast)
 		})
 	}
 }
@@ -3298,12 +3289,7 @@ func TestParseMatchers(t *testing.T) {
 			if tt.want == nil {
 				require.Nil(t, got)
 			} else {
-				// Prometheus label matchers are not comparable with a deep equal because of the internal
-				// fast regexp implementation. For this reason, we compare their string representation.
-				require.Len(t, got, len(tt.want))
-				for i, expected := range tt.want {
-					require.Equal(t, expected.String(), got[i].String())
-				}
+				AssertMatchers(t, tt.want, got)
 			}
 		})
 	}

@@ -99,9 +99,7 @@ func TestJSONSerializationParseTestCases(t *testing.T) {
 
 				t.Log(buf.String())
 
-				// Prometheus label matchers are not comparable with a deep equal because of the internal
-				// fast regexp implementation. For this reason, we compare their string representation.
-				require.Equal(t, tc.exp.String(), actual.String())
+				AssertExpressions(t, tc.exp, actual)
 			})
 		}
 	}

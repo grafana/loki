@@ -1250,12 +1250,7 @@ func Test_store_decodeReq_Matchers(t *testing.T) {
 				return
 			}
 
-			// Prometheus label matchers are not comparable with a deep equal because of the internal
-			// fast regexp implementation. For this reason, we compare their string representation.
-			require.Len(t, ms, len(tt.matchers))
-			for i, expected := range tt.matchers {
-				require.Equal(t, expected.String(), ms[i].String())
-			}
+			syntax.AssertMatchers(t, tt.matchers, ms)
 		})
 	}
 }
