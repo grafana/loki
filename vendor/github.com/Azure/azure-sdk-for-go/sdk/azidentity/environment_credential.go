@@ -23,6 +23,17 @@ const envVarSendCertChain = "AZURE_CLIENT_SEND_CERTIFICATE_CHAIN"
 // EnvironmentCredentialOptions contains optional parameters for EnvironmentCredential
 type EnvironmentCredentialOptions struct {
 	azcore.ClientOptions
+
+	// DisableInstanceDiscovery should be set true only by applications authenticating in disconnected clouds, or
+	// private clouds such as Azure Stack. It determines whether the credential requests Microsoft Entra instance metadata
+	// from https://login.microsoft.com before authenticating. Setting this to true will skip this request, making
+	// the application responsible for ensuring the configured authority is valid and trustworthy.
+	DisableInstanceDiscovery bool
+	// additionallyAllowedTenants is used only by NewDefaultAzureCredential() to enable that constructor's explicit
+	// option to override the value of AZURE_ADDITIONALLY_ALLOWED_TENANTS. Applications using EnvironmentCredential
+	// directly should set that variable instead. This field should remain unexported to preserve this credential's
+	// unambiguous "all configuration from environment variables" design.
+	additionallyAllowedTenants []string
 }
 
 // EnvironmentCredential authenticates a service principal with a secret or certificate, or a user with a password, depending
@@ -46,6 +57,9 @@ type EnvironmentCredentialOptions struct {
 //
 // AZURE_CLIENT_CERTIFICATE_PASSWORD: (optional) password for the certificate file.
 //
+// Note that this credential uses [ParseCertificates] to load the certificate and key from the file. If this
+// function isn't able to parse your certificate, use [ClientCertificateCredential] instead.
+//
 // # User with username and password
 //
 // AZURE_TENANT_ID: (optional) tenant to authenticate in. Defaults to "organizations".
@@ -55,6 +69,12 @@ type EnvironmentCredentialOptions struct {
 // AZURE_USERNAME: a username (usually an email address)
 //
 // AZURE_PASSWORD: the user's password
+//
+// # Configuration for multitenant applications
+//
+// To enable multitenant authentication, set AZURE_ADDITIONALLY_ALLOWED_TENANTS with a semicolon delimited list of tenants
+// the credential may request tokens from in addition to the tenant specified by AZURE_TENANT_ID. Set
+// AZURE_ADDITIONALLY_ALLOWED_TENANTS to "*" to enable the credential to request a token from any tenant.
 type EnvironmentCredential struct {
 	cred azcore.TokenCredential
 }
@@ -72,9 +92,20 @@ func NewEnvironmentCredential(options *EnvironmentCredentialOptions) (*Environme
 	if clientID == "" {
 		return nil, errors.New("missing environment variable " + azureClientID)
 	}
+	// tenants set by NewDefaultAzureCredential() override the value of AZURE_ADDITIONALLY_ALLOWED_TENANTS
+	additionalTenants := options.additionallyAllowedTenants
+	if len(additionalTenants) == 0 {
+		if tenants := os.Getenv(azureAdditionallyAllowedTenants); tenants != "" {
+			additionalTenants = strings.Split(tenants, ";")
+		}
+	}
 	if clientSecret := os.Getenv(azureClientSecret); clientSecret != "" {
 		log.Write(EventAuthentication, "EnvironmentCredential will authenticate with ClientSecretCredential")
-		o := &ClientSecretCredentialOptions{ClientOptions: options.ClientOptions}
+		o := &ClientSecretCredentialOptions{
+			AdditionallyAllowedTenants: additionalTenants,
+			ClientOptions:              options.ClientOptions,
+			DisableInstanceDiscovery:   options.DisableInstanceDiscovery,
+		}
 		cred, err := NewClientSecretCredential(tenantID, clientID, clientSecret, o)
 		if err != nil {
 			return nil, err
@@ -93,9 +124,13 @@ func NewEnvironmentCredential(options *EnvironmentCredentialOptions) (*Environme
 		}
 		certs, key, err := ParseCertificates(certData, password)
 		if err != nil {
-			return nil, fmt.Errorf(`failed to load certificate from "%s": %v`, certPath, err)
+			return nil, fmt.Errorf("failed to parse %q due to error %q. This may be due to a limitation of this module's certificate loader. Consider calling NewClientCertificateCredential instead", certPath, err.Error())
 		}
-		o := &ClientCertificateCredentialOptions{ClientOptions: options.ClientOptions}
+		o := &ClientCertificateCredentialOptions{
+			AdditionallyAllowedTenants: additionalTenants,
+			ClientOptions:              options.ClientOptions,
+			DisableInstanceDiscovery:   options.DisableInstanceDiscovery,
+		}
 		if v, ok := os.LookupEnv(envVarSendCertChain); ok {
 			o.SendCertificateChain = v == "1" || strings.ToLower(v) == "true"
 		}
@@ -108,7 +143,11 @@ func NewEnvironmentCredential(options *EnvironmentCredentialOptions) (*Environme
 	if username := os.Getenv(azureUsername); username != "" {
 		if password := os.Getenv(azurePassword); password != "" {
 			log.Write(EventAuthentication, "EnvironmentCredential will authenticate with UsernamePasswordCredential")
-			o := &UsernamePasswordCredentialOptions{ClientOptions: options.ClientOptions}
+			o := &UsernamePasswordCredentialOptions{
+				AdditionallyAllowedTenants: additionalTenants,
+				ClientOptions:              options.ClientOptions,
+				DisableInstanceDiscovery:   options.DisableInstanceDiscovery,
+			}
 			cred, err := NewUsernamePasswordCredential(tenantID, clientID, username, password, o)
 			if err != nil {
 				return nil, err
@@ -120,7 +159,7 @@ func NewEnvironmentCredential(options *EnvironmentCredentialOptions) (*Environme
 	return nil, errors.New("incomplete environment variable configuration. Only AZURE_TENANT_ID and AZURE_CLIENT_ID are set")
 }
 
-// GetToken requests an access token from Azure Active Directory. This method is called automatically by Azure SDK clients.
+// GetToken requests an access token from Microsoft Entra ID. This method is called automatically by Azure SDK clients.
 func (c *EnvironmentCredential) GetToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
 	return c.cred.GetToken(ctx, opts)
 }

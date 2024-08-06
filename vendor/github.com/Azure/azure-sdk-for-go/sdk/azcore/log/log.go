@@ -23,6 +23,11 @@ const (
 	// This includes information like the HTTP status code, headers, and request URL.
 	EventResponse Event = "Response"
 
+	// EventResponseError entries contain information about HTTP responses that returned
+	// an *azcore.ResponseError (i.e. responses with a non 2xx HTTP status code).
+	// This includes the contents of ResponseError.Error().
+	EventResponseError Event = "ResponseError"
+
 	// EventRetryPolicy entries contain information specific to the retry policy in use.
 	EventRetryPolicy Event = "Retry"
 

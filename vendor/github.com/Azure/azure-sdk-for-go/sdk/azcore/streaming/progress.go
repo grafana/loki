@@ -20,6 +20,9 @@ type progress struct {
 }
 
 // NopCloser returns a ReadSeekCloser with a no-op close method wrapping the provided io.ReadSeeker.
+// In addition to adding a Close method to an io.ReadSeeker, this can also be used to wrap an
+// io.ReadSeekCloser with a no-op Close method to allow explicit control of when the io.ReedSeekCloser
+// has its underlying stream closed.
 func NopCloser(rs io.ReadSeeker) io.ReadSeekCloser {
 	return exported.NopCloser(rs)
 }
@@ -69,4 +72,18 @@ func (p *progress) Seek(offset int64, whence int) (int64, error) {
 // requestBodyProgress supports Close but the underlying stream may not; if it does, Close will close it.
 func (p *progress) Close() error {
 	return p.rc.Close()
+}
+
+// MultipartContent contains streaming content used in multipart/form payloads.
+type MultipartContent struct {
+	// Body contains the required content body.
+	Body io.ReadSeekCloser
+
+	// ContentType optionally specifies the HTTP Content-Type for this Body.
+	// The default value is application/octet-stream.
+	ContentType string
+
+	// Filename optionally specifies the filename for this Body.
+	// The default value is the field name for the multipart/form section.
+	Filename string
 }

@@ -1,5 +1,288 @@
 # Release History
 
+## 1.11.1 (2024-04-02)
+
+### Bugs Fixed
+
+* Pollers that use the `Location` header won't consider `http.StatusRequestTimeout` a terminal failure.
+* `runtime.Poller[T].Result` won't consider non-terminal error responses as terminal.
+
+## 1.11.0 (2024-04-01)
+
+### Features Added
+
+* Added `StatusCodes` to `arm/policy.RegistrationOptions` to allow supporting non-standard HTTP status codes during registration.
+* Added field `InsecureAllowCredentialWithHTTP` to `azcore.ClientOptions` and dependent authentication pipeline policies.
+* Added type `MultipartContent` to the `streaming` package to support multipart/form payloads with custom Content-Type and file name.
+
+### Bugs Fixed
+
+* `runtime.SetMultipartFormData` won't try to stringify `[]byte` values.
+* Pollers that use the `Location` header won't consider `http.StatusTooManyRequests` a terminal failure.
+
+### Other Changes
+
+* Update dependencies.
+
+## 1.10.0 (2024-02-29)
+
+### Features Added
+
+* Added logging event `log.EventResponseError` that will contain the contents of `ResponseError.Error()` whenever an `azcore.ResponseError` is created.
+* Added `runtime.NewResponseErrorWithErrorCode` for creating an `azcore.ResponseError` with a caller-supplied error code.
+* Added type `MatchConditions` for use in conditional requests.
+
+### Bugs Fixed
+
+* Fixed a potential race condition between `NullValue` and `IsNullValue`.
+* `runtime.EncodeQueryParams` will escape semicolons before calling `url.ParseQuery`.
+
+### Other Changes
+
+* Update dependencies.
+
+## 1.9.2 (2024-02-06)
+
+### Bugs Fixed
+
+* `runtime.MarshalAsByteArray` and `runtime.MarshalAsJSON` will preserve the preexisting value of the `Content-Type` header.
+
+### Other Changes
+
+* Update to latest version of `internal`.
+
+## 1.9.1 (2023-12-11)
+
+### Bugs Fixed
+
+* The `retry-after-ms` and `x-ms-retry-after-ms` headers weren't being checked during retries.
+
+### Other Changes
+
+* Update dependencies.
+
+## 1.9.0 (2023-11-06)
+
+### Breaking Changes
+> These changes affect only code written against previous beta versions of `v1.7.0` and `v1.8.0`
+* The function `NewTokenCredential` has been removed from the `fake` package. Use a literal `&fake.TokenCredential{}` instead.
+* The field `TracingNamespace` in `runtime.PipelineOptions` has been replaced by `TracingOptions`.
+
+### Bugs Fixed
+
+* Fixed an issue that could cause some allowed HTTP header values to not show up in logs.
+* Include error text instead of error type in traces when the transport returns an error.
+* Fixed an issue that could cause an HTTP/2 request to hang when the TCP connection becomes unresponsive.
+* Block key and SAS authentication for non TLS protected endpoints.
+* Passing a `nil` credential value will no longer cause a panic. Instead, the authentication is skipped.
+* Calling `Error` on a zero-value `azcore.ResponseError` will no longer panic.
+* Fixed an issue in `fake.PagerResponder[T]` that would cause a trailing error to be omitted when iterating over pages.
+* Context values created by `azcore` will no longer flow across disjoint HTTP requests.
+
+### Other Changes
+
+* Skip generating trace info for no-op tracers.
+* The `clientName` paramater in client constructors has been renamed to `moduleName`.
+
+## 1.9.0-beta.1 (2023-10-05)
+
+### Other Changes
+
+* The beta features for tracing and fakes have been reinstated.
+
+## 1.8.0 (2023-10-05)
+
+### Features Added
+
+* This includes the following features from `v1.8.0-beta.N` releases.
+  * Claims and CAE for authentication.
+  * New `messaging` package.
+  * Various helpers in the `runtime` package.
+  * Deprecation of `runtime.With*` funcs and their replacements in the `policy` package.
+* Added types `KeyCredential` and `SASCredential` to the `azcore` package.
+  * Includes their respective constructor functions.
+* Added types `KeyCredentialPolicy` and `SASCredentialPolicy` to the `azcore/runtime` package.
+  * Includes their respective constructor functions and options types.
+
+### Breaking Changes
+> These changes affect only code written against beta versions of `v1.8.0`
+* The beta features for tracing and fakes have been omitted for this release.
+
+### Bugs Fixed
+
+* Fixed an issue that could cause some ARM RPs to not be automatically registered.
+* Block bearer token authentication for non TLS protected endpoints.
+
+### Other Changes
+
+* Updated dependencies.
+
+## 1.8.0-beta.3 (2023-09-07)
+
+### Features Added
+
+* Added function `FetcherForNextLink` and `FetcherForNextLinkOptions` to the `runtime` package to centralize creation of `Pager[T].Fetcher` from a next link URL.
+
+### Bugs Fixed
+
+* Suppress creating spans for nested SDK API calls. The HTTP span will be a child of the outer API span.
+
+### Other Changes
+
+* The following functions in the `runtime` package are now exposed from the `policy` package, and the `runtime` versions have been deprecated.
+  * `WithCaptureResponse`
+  * `WithHTTPHeader`
+  * `WithRetryOptions`
+
+## 1.7.2 (2023-09-06)
+
+### Bugs Fixed
+
+* Fix default HTTP transport to work in WASM modules.
+
+## 1.8.0-beta.2 (2023-08-14)
+
+### Features Added
+
+* Added function `SanitizePagerPollerPath` to the `server` package to centralize sanitization and formalize the contract.
+* Added `TokenRequestOptions.EnableCAE` to indicate whether to request a CAE token.
+
+### Breaking Changes
+
+> This change affects only code written against beta version `v1.8.0-beta.1`.
+* `messaging.CloudEvent` deserializes JSON objects as `[]byte`, instead of `json.RawMessage`. See the documentation for CloudEvent.Data for more information.
+
+> This change affects only code written against beta versions `v1.7.0-beta.2` and `v1.8.0-beta.1`.
+* Removed parameter from method `Span.End()` and its type `tracing.SpanEndOptions`. This API GA'ed in `v1.2.0` so we cannot change it.
+
+### Bugs Fixed
+
+* Propagate any query parameters when constructing a fake poller and/or injecting next links.
+
+## 1.7.1 (2023-08-14)
+
+## Bugs Fixed
+
+* Enable TLS renegotiation in the default transport policy.
+
+## 1.8.0-beta.1 (2023-07-12)
+
+### Features Added
+
+- `messaging/CloudEvent` allows you to serialize/deserialize CloudEvents, as described in the CloudEvents 1.0 specification: [link](https://github.com/cloudevents/spec)
+
+### Other Changes
+
+* The beta features for CAE, tracing, and fakes have been reinstated.
+
+## 1.7.0 (2023-07-12)
+
+### Features Added
+* Added method `WithClientName()` to type `azcore.Client` to support shallow cloning of a client with a new name used for tracing.
+
+### Breaking Changes
+> These changes affect only code written against beta versions v1.7.0-beta.1 or v1.7.0-beta.2
+* The beta features for CAE, tracing, and fakes have been omitted for this release.
+
+## 1.7.0-beta.2 (2023-06-06)
+
+### Breaking Changes
+> These changes affect only code written against beta version v1.7.0-beta.1
+* Method `SpanFromContext()` on type `tracing.Tracer` had the `bool` return value removed.
+  * This includes the field `SpanFromContext` in supporting type `tracing.TracerOptions`.
+* Method `AddError()` has been removed from type `tracing.Span`.
+* Method `Span.End()` now requires an argument of type `*tracing.SpanEndOptions`.
+
+## 1.6.1 (2023-06-06)
+
+### Bugs Fixed
+* Fixed an issue in `azcore.NewClient()` and `arm.NewClient()` that could cause an incorrect module name to be used in telemetry.
+
+### Other Changes
+* This version contains all bug fixes from `v1.7.0-beta.1`
+
+## 1.7.0-beta.1 (2023-05-24)
+
+### Features Added
+* Restored CAE support for ARM clients.
+* Added supporting features to enable distributed tracing.
+  * Added func `runtime.StartSpan()` for use by SDKs to start spans.
+  * Added method `WithContext()` to `runtime.Request` to support shallow cloning with a new context.
+  * Added field `TracingNamespace` to `runtime.PipelineOptions`.
+  * Added field `Tracer` to `runtime.NewPollerOptions` and `runtime.NewPollerFromResumeTokenOptions` types.
+  * Added field `SpanFromContext` to `tracing.TracerOptions`.
+  * Added methods `Enabled()`, `SetAttributes()`, and `SpanFromContext()` to `tracing.Tracer`.
+  * Added supporting pipeline policies to include HTTP spans when creating clients.
+* Added package `fake` to support generated fakes packages in SDKs.
+  * The package contains public surface area exposed by fake servers and supporting APIs intended only for use by the fake server implementations.
+  * Added an internal fake poller implementation.
+
+### Bugs Fixed
+* Retry policy always clones the underlying `*http.Request` before invoking the next policy.
+* Added some non-standard error codes to the list of error codes for unregistered resource providers.
+
+## 1.6.0 (2023-05-04)
+
+### Features Added
+* Added support for ARM cross-tenant authentication. Set the `AuxiliaryTenants` field of `arm.ClientOptions` to enable.
+* Added `TenantID` field to `policy.TokenRequestOptions`.
+
+## 1.5.0 (2023-04-06)
+
+### Features Added
+* Added `ShouldRetry` to `policy.RetryOptions` for finer-grained control over when to retry.
+
+### Breaking Changes
+> These changes affect only code written against a beta version such as v1.5.0-beta.1
+> These features will return in v1.6.0-beta.1.
+* Removed `TokenRequestOptions.Claims` and `.TenantID`
+* Removed ARM client support for CAE and cross-tenant auth.
+
+### Bugs Fixed
+* Added non-conformant LRO terminal states `Cancelled` and `Completed`.
+
+### Other Changes
+* Updated to latest `internal` module.
+
+## 1.5.0-beta.1 (2023-03-02)
+
+### Features Added
+* This release includes the features added in v1.4.0-beta.1
+
+## 1.4.0 (2023-03-02)
+> This release doesn't include features added in v1.4.0-beta.1. They will return in v1.5.0-beta.1.
+
+### Features Added
+* Add `Clone()` method for `arm/policy.ClientOptions`.
+
+### Bugs Fixed
+* ARM's RP registration policy will no longer swallow unrecognized errors.
+* Fixed an issue in `runtime.NewPollerFromResumeToken()` when resuming a `Poller` with a custom `PollingHandler`.
+* Fixed wrong policy copy in `arm/runtime.NewPipeline()`.
+
+## 1.4.0-beta.1 (2023-02-02)
+
+### Features Added
+* Added support for ARM cross-tenant authentication. Set the `AuxiliaryTenants` field of `arm.ClientOptions` to enable.
+* Added `Claims` and `TenantID` fields to `policy.TokenRequestOptions`.
+* ARM bearer token policy handles CAE challenges.
+
+## 1.3.1 (2023-02-02)
+
+### Other Changes
+* Update dependencies to latest versions.
+
+## 1.3.0 (2023-01-06)
+
+### Features Added
+* Added `BearerTokenOptions.AuthorizationHandler` to enable extending `runtime.BearerTokenPolicy`
+  with custom authorization logic
+* Added `Client` types and matching constructors to the `azcore` and `arm` packages.  These represent a basic client for HTTP and ARM respectively.
+
+### Other Changes
+* Updated `internal` module to latest version.
+* `policy/Request.SetBody()` allows replacing a request's body with an empty one
+
 ## 1.2.0 (2022-11-04)
 
 ### Features Added

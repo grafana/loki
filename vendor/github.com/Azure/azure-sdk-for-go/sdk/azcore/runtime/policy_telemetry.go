@@ -43,6 +43,10 @@ func NewTelemetryPolicy(mod, ver string, o *policy.TelemetryOptions) policy.Poli
 		b.WriteString(o.ApplicationID)
 		b.WriteRune(' ')
 	}
+	// mod might be the fully qualified name. in that case, we just want the package name
+	if i := strings.LastIndex(mod, "/"); i > -1 {
+		mod = mod[i+1:]
+	}
 	b.WriteString(formatTelemetry(mod, ver))
 	b.WriteRune(' ')
 	b.WriteString(platformInfo)

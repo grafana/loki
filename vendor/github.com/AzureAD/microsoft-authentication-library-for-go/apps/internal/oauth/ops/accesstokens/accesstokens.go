@@ -30,7 +30,7 @@ import (
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/authority"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/internal/grant"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/wstrust"
-	"github.com/golang-jwt/jwt/v4"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
 
@@ -157,6 +157,9 @@ type Client struct {
 // FromUsernamePassword uses a username and password to get an access token.
 func (c Client) FromUsernamePassword(ctx context.Context, authParameters authority.AuthParams) (TokenResponse, error) {
 	qv := url.Values{}
+	if err := addClaims(qv, authParameters); err != nil {
+		return TokenResponse{}, err
+	}
 	qv.Set(grantType, grant.Password)
 	qv.Set(username, authParameters.Username)
 	qv.Set(password, authParameters.Password)
@@ -219,6 +222,9 @@ func (c Client) FromAuthCode(ctx context.Context, req AuthCodeRequest) (TokenRes
 	qv.Set(clientID, req.AuthParams.ClientID)
 	qv.Set(clientInfo, clientInfoVal)
 	addScopeQueryParam(qv, req.AuthParams)
+	if err := addClaims(qv, req.AuthParams); err != nil {
+		return TokenResponse{}, err
+	}
 
 	return c.doTokenResp(ctx, req.AuthParams, qv)
 }
@@ -233,6 +239,9 @@ func (c Client) FromRefreshToken(ctx context.Context, appType AppType, authParam
 			return TokenResponse{}, err
 		}
 	}
+	if err := addClaims(qv, authParams); err != nil {
+		return TokenResponse{}, err
+	}
 	qv.Set(grantType, grant.RefreshToken)
 	qv.Set(clientID, authParams.ClientID)
 	qv.Set(clientInfo, clientInfoVal)
@@ -245,6 +254,9 @@ func (c Client) FromRefreshToken(ctx context.Context, appType AppType, authParam
 // FromClientSecret uses a client's secret (aka password) to get a new token.
 func (c Client) FromClientSecret(ctx context.Context, authParameters authority.AuthParams, clientSecret string) (TokenResponse, error) {
 	qv := url.Values{}
+	if err := addClaims(qv, authParameters); err != nil {
+		return TokenResponse{}, err
+	}
 	qv.Set(grantType, grant.ClientCredential)
 	qv.Set("client_secret", clientSecret)
 	qv.Set(clientID, authParameters.ClientID)
@@ -259,6 +271,9 @@ func (c Client) FromClientSecret(ctx context.Context, authParameters authority.A
 
 func (c Client) FromAssertion(ctx context.Context, authParameters authority.AuthParams, assertion string) (TokenResponse, error) {
 	qv := url.Values{}
+	if err := addClaims(qv, authParameters); err != nil {
+		return TokenResponse{}, err
+	}
 	qv.Set(grantType, grant.ClientCredential)
 	qv.Set("client_assertion_type", grant.ClientAssertion)
 	qv.Set("client_assertion", assertion)
@@ -275,6 +290,9 @@ func (c Client) FromAssertion(ctx context.Context, authParameters authority.Auth
 
 func (c Client) FromUserAssertionClientSecret(ctx context.Context, authParameters authority.AuthParams, userAssertion string, clientSecret string) (TokenResponse, error) {
 	qv := url.Values{}
+	if err := addClaims(qv, authParameters); err != nil {
+		return TokenResponse{}, err
+	}
 	qv.Set(grantType, grant.JWT)
 	qv.Set(clientID, authParameters.ClientID)
 	qv.Set("client_secret", clientSecret)
@@ -288,6 +306,9 @@ func (c Client) FromUserAssertionClientSecret(ctx context.Context, authParameter
 
 func (c Client) FromUserAssertionClientCertificate(ctx context.Context, authParameters authority.AuthParams, userAssertion string, assertion string) (TokenResponse, error) {
 	qv := url.Values{}
+	if err := addClaims(qv, authParameters); err != nil {
+		return TokenResponse{}, err
+	}
 	qv.Set(grantType, grant.JWT)
 	qv.Set("client_assertion_type", grant.ClientAssertion)
 	qv.Set("client_assertion", assertion)
@@ -302,6 +323,9 @@ func (c Client) FromUserAssertionClientCertificate(ctx context.Context, authPara
 
 func (c Client) DeviceCodeResult(ctx context.Context, authParameters authority.AuthParams) (DeviceCodeResult, error) {
 	qv := url.Values{}
+	if err := addClaims(qv, authParameters); err != nil {
+		return DeviceCodeResult{}, err
+	}
 	qv.Set(clientID, authParameters.ClientID)
 	addScopeQueryParam(qv, authParameters)
 
@@ -318,6 +342,9 @@ func (c Client) DeviceCodeResult(ctx context.Context, authParameters authority.A
 
 func (c Client) FromDeviceCodeResult(ctx context.Context, authParameters authority.AuthParams, deviceCodeResult DeviceCodeResult) (TokenResponse, error) {
 	qv := url.Values{}
+	if err := addClaims(qv, authParameters); err != nil {
+		return TokenResponse{}, err
+	}
 	qv.Set(grantType, grant.DeviceCode)
 	qv.Set(deviceCode, deviceCodeResult.DeviceCode)
 	qv.Set(clientID, authParameters.ClientID)
@@ -329,6 +356,9 @@ func (c Client) FromDeviceCodeResult(ctx context.Context, authParameters authori
 
 func (c Client) FromSamlGrant(ctx context.Context, authParameters authority.AuthParams, samlGrant wstrust.SamlTokenInfo) (TokenResponse, error) {
 	qv := url.Values{}
+	if err := addClaims(qv, authParameters); err != nil {
+		return TokenResponse{}, err
+	}
 	qv.Set(username, authParameters.Username)
 	qv.Set(password, authParameters.Password)
 	qv.Set(clientID, authParameters.ClientID)
@@ -350,6 +380,12 @@ func (c Client) FromSamlGrant(ctx context.Context, authParameters authority.Auth
 
 func (c Client) doTokenResp(ctx context.Context, authParams authority.AuthParams, qv url.Values) (TokenResponse, error) {
 	resp := TokenResponse{}
+	if authParams.AuthnScheme != nil {
+		trParams := authParams.AuthnScheme.TokenRequestParams()
+		for k, v := range trParams {
+			qv.Set(k, v)
+		}
+	}
 	err := c.Comm.URLFormCall(ctx, authParams.Endpoints.TokenEndpoint, qv, &resp)
 	if err != nil {
 		return resp, err
@@ -404,6 +440,15 @@ func AppendDefaultScopes(authParameters authority.AuthParams) []string {
 	}
 	scopes = append(scopes, defaultScopes...)
 	return scopes
+}
+
+// addClaims adds client capabilities and claims from AuthParams to the given url.Values
+func addClaims(v url.Values, ap authority.AuthParams) error {
+	claims, err := ap.MergeCapabilitiesAndClaims()
+	if err == nil && claims != "" {
+		v.Set("claims", claims)
+	}
+	return err
 }
 
 func addScopeQueryParam(queryParams url.Values, authParameters authority.AuthParams) {

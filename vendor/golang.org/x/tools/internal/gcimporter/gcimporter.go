@@ -29,7 +29,6 @@ import (
 	"go/token"
 	"go/types"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -221,7 +220,7 @@ func Import(packages map[string]*types.Package, path, srcDir string, lookup func
 	switch hdr {
 	case "$$B\n":
 		var data []byte
-		data, err = ioutil.ReadAll(buf)
+		data, err = io.ReadAll(buf)
 		if err != nil {
 			break
 		}
@@ -258,13 +257,6 @@ func Import(packages map[string]*types.Package, path, srcDir string, lookup func
 	}
 
 	return
-}
-
-func deref(typ types.Type) types.Type {
-	if p, _ := typ.(*types.Pointer); p != nil {
-		return p.Elem()
-	}
-	return typ
 }
 
 type byPath []*types.Package
