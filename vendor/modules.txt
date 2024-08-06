@@ -579,7 +579,7 @@ github.com/distribution/reference
 ## explicit
 github.com/dlclark/regexp2
 github.com/dlclark/regexp2/syntax
-# github.com/docker/docker v27.0.3+incompatible
+# github.com/docker/docker v27.1.0+incompatible
 ## explicit
 github.com/docker/docker/api
 github.com/docker/docker/api/types
