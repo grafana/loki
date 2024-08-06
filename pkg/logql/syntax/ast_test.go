@@ -1094,3 +1094,24 @@ func TestGroupingString(t *testing.T) {
 	}
 	require.Equal(t, " without ()", g.String())
 }
+
+func TestCombineFilters(t *testing.T) {
+	in := []*LineFilterExpr{
+		{LineFilter: LineFilter{Ty: log.LineMatchEqual, Match: "test1"}},
+		{LineFilter: LineFilter{Ty: log.LineMatchEqual, Match: "test2"}},
+	}
+
+	var combineFilter StageExpr
+	for i := 0; i < 2; i++ {
+		combineFilter = combineFilters(in)
+	}
+
+	current := combineFilter.(*LineFilterExpr)
+	i := 0
+	for ; current.Left != nil; current = current.Left {
+		i++
+		if i > 2 {
+			t.Fatalf("left num isn't a correct number")
+		}
+	}
+}

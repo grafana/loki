@@ -96,8 +96,10 @@ func (i *Ingester) flush(l log.Logger, j int, it *wal.PendingSegment) error {
 }
 
 func (i *Ingester) flushSegment(ctx context.Context, j int, w *wal.SegmentWriter) error {
-	start := time.Now()
+	ctx, cancelFunc := context.WithTimeout(ctx, i.cfg.FlushOpTimeout)
+	defer cancelFunc()
 
+	start := time.Now()
 	i.metrics.flushesTotal.Add(1)
 	defer func() { i.metrics.flushDuration.Observe(time.Since(start).Seconds()) }()
 
@@ -112,7 +114,7 @@ func (i *Ingester) flushSegment(ctx context.Context, j int, w *wal.SegmentWriter
 	wal.ReportSegmentStats(stats, i.metrics.segmentMetrics)
 
 	id := ulid.MustNew(ulid.Timestamp(time.Now()), rand.Reader).String()
-	if err := i.store.PutObject(ctx, fmt.Sprintf("loki-v2/wal/anon/"+id), buf); err != nil {
+	if err := i.store.PutObject(ctx, fmt.Sprintf(wal.Dir+id), buf); err != nil {
 		i.metrics.flushFailuresTotal.Inc()
 		return fmt.Errorf("failed to put object: %w", err)
 	}

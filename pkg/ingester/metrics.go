@@ -50,6 +50,8 @@ type ingesterMetrics struct {
 	chunksFlushFailures           prometheus.Counter
 	chunksFlushedPerReason        *prometheus.CounterVec
 	chunkLifespan                 prometheus.Histogram
+	chunksEncoded                 *prometheus.CounterVec
+	chunkDecodeFailures           *prometheus.CounterVec
 	flushedChunksStats            *analytics.Counter
 	flushedChunksBytesStats       *analytics.Statistics
 	flushedChunksLinesStats       *analytics.Statistics
@@ -252,12 +254,28 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 			// 1h -> 8hr
 			Buckets: prometheus.LinearBuckets(1, 1, 8),
 		}),
-		flushedChunksStats:            analytics.NewCounter("ingester_flushed_chunks"),
-		flushedChunksBytesStats:       analytics.NewStatistics("ingester_flushed_chunks_bytes"),
-		flushedChunksLinesStats:       analytics.NewStatistics("ingester_flushed_chunks_lines"),
-		flushedChunksAgeStats:         analytics.NewStatistics("ingester_flushed_chunks_age_seconds"),
-		flushedChunksLifespanStats:    analytics.NewStatistics("ingester_flushed_chunks_lifespan_seconds"),
-		flushedChunksUtilizationStats: analytics.NewStatistics("ingester_flushed_chunks_utilization"),
+		chunksEncoded: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingester_chunks_encoded_total",
+			Help:      "The total number of chunks encoded in the ingester.",
+		}, []string{"user"}),
+		chunkDecodeFailures: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingester_chunk_decode_failures_total",
+			Help:      "The number of freshly encoded chunks that failed to decode.",
+		}, []string{"user"}),
+		flushedChunksStats:      analytics.NewCounter("ingester_flushed_chunks"),
+		flushedChunksBytesStats: analytics.NewStatistics("ingester_flushed_chunks_bytes"),
+		flushedChunksLinesStats: analytics.NewStatistics("ingester_flushed_chunks_lines"),
+		flushedChunksAgeStats: analytics.NewStatistics(
+			"ingester_flushed_chunks_age_seconds",
+		),
+		flushedChunksLifespanStats: analytics.NewStatistics(
+			"ingester_flushed_chunks_lifespan_seconds",
+		),
+		flushedChunksUtilizationStats: analytics.NewStatistics(
+			"ingester_flushed_chunks_utilization",
+		),
 		chunksCreatedTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "ingester_chunks_created_total",

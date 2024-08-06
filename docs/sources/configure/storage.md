@@ -27,7 +27,7 @@ You can find more detailed information about all of the storage options in the [
 
 ## Single Store
 
-Single Store refers to using object storage as the storage medium for both Loki's index as well as its data ("chunks"). There are two supported modes:
+Single Store refers to using object storage as the storage medium for both the Loki index as well as its data ("chunks"). There are two supported modes:
 
 ### TSDB (recommended)
 
@@ -83,7 +83,7 @@ You may use any substitutable services, such as those that implement the S3 API 
 
 ### Cassandra (deprecated)
 
-Cassandra is a popular database and one of Loki's possible chunk stores and is production safe.
+Cassandra is a popular database and one of the possible chunk stores for Loki and is production safe.
 
 {{< collapse title="Title of hidden content" >}}
 This storage type for chunks is deprecated and may be removed in future major versions of Loki.

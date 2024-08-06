@@ -278,7 +278,7 @@ For more information on the `otelcol.processor.batch` configuration, see the [Op
 
 ### Write OpenTelemetry logs to Loki
 
-Lastly, we will configure the OpenTelemetry exporter. `otelcol.exporter.otlphttp` accepts telemetry data from other otelcol components and writes them over the network using the OTLP HTTP protocol. We will use this exporter to send the logs to Loki's native OTLP endpoint.
+Lastly, we will configure the OpenTelemetry exporter. `otelcol.exporter.otlphttp` accepts telemetry data from other otelcol components and writes them over the network using the OTLP HTTP protocol. We will use this exporter to send the logs to the Loki native OTLP endpoint.
 
 Finally, add the following configuration to the `config.alloy` file:
 ```alloy
@@ -392,7 +392,7 @@ Head back to where you started from to continue with the Loki documentation: [Lo
 
 For more information on Grafana Alloy, refer to the following resources:
 - [Grafana Alloy getting started examples](https://grafana.com/docs/alloy/latest/tutorials/)
-- [Grafana Alloy common task examples](https://grafana.com/docs/alloy/latest/tasks/)
+- [Grafana Alloy common task examples](https://grafana.com/docs/alloy/latest/collect/)
 - [Grafana Alloy component reference](https://grafana.com/docs/alloy/latest/reference/components/)
 
 ## Complete metrics, logs, traces, and profiling example
