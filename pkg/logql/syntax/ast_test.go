@@ -195,7 +195,8 @@ func Test_SampleExpr_String(t *testing.T) {
 
 			expr2, err := ParseExpr(expr.String())
 			require.Nil(t, err)
-			require.Equal(t, expr, expr2)
+
+			AssertExpressions(t, expr, expr2)
 		})
 	}
 }
@@ -592,7 +593,7 @@ func Test_FilterMatcher(t *testing.T) {
 			t.Parallel()
 			expr, err := ParseLogSelector(tt.q, true)
 			assert.Nil(t, err)
-			assert.Equal(t, tt.expectedMatchers, expr.Matchers())
+			AssertMatchers(t, tt.expectedMatchers, expr.Matchers())
 			p, err := expr.Pipeline()
 			assert.Nil(t, err)
 			if tt.lines == nil {

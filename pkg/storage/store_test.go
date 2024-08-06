@@ -1249,7 +1249,8 @@ func Test_store_decodeReq_Matchers(t *testing.T) {
 				t.Errorf("store.GetSeries() error = %v", err)
 				return
 			}
-			require.Equal(t, tt.matchers, ms)
+
+			syntax.AssertMatchers(t, tt.matchers, ms)
 		})
 	}
 }

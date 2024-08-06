@@ -42,7 +42,7 @@ type pullStream struct {
 // for testing
 type streamingPullFunc func(context.Context, ...gax.CallOption) (pb.Subscriber_StreamingPullClient, error)
 
-func newPullStream(ctx context.Context, streamingPull streamingPullFunc, subName string, maxOutstandingMessages, maxOutstandingBytes int, maxDurationPerLeaseExtension time.Duration) *pullStream {
+func newPullStream(ctx context.Context, streamingPull streamingPullFunc, subName, clientID string, maxOutstandingMessages, maxOutstandingBytes int, maxDurationPerLeaseExtension time.Duration) *pullStream {
 	ctx = withSubscriptionKey(ctx, subName)
 	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "subscription", url.QueryEscape(subName))}
 	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
@@ -62,6 +62,7 @@ func newPullStream(ctx context.Context, streamingPull streamingPullFunc, subName
 				}
 				err = spc.Send(&pb.StreamingPullRequest{
 					Subscription:             subName,
+					ClientId:                 clientID,
 					StreamAckDeadlineSeconds: streamAckDeadline,
 					MaxOutstandingMessages:   int64(maxOutstandingMessages),
 					MaxOutstandingBytes:      int64(maxOutstandingBytes),

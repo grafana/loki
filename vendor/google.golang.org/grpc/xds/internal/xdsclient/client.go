@@ -21,9 +21,11 @@
 package xdsclient
 
 import (
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/xds/internal/xdsclient/load"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
+
+	v3statuspb "github.com/envoyproxy/go-control-plane/envoy/service/status/v3"
 )
 
 // XDSClient is a full fledged gRPC client which queries a set of discovery APIs
@@ -48,7 +50,7 @@ type XDSClient interface {
 
 	// DumpResources returns the status of the xDS resources. Returns a map of
 	// resource type URLs to a map of resource names to resource state.
-	DumpResources() map[string]map[string]xdsresource.UpdateWithMD
+	DumpResources() (*v3statuspb.ClientStatusResponse, error)
 
 	ReportLoad(*bootstrap.ServerConfig) (*load.Store, func())
 
