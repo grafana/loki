@@ -26,7 +26,7 @@ import (
 	"net/url"
 	"time"
 
-	jsoniter "github.com/json-iterator/go"
+	"github.com/goccy/go-json"
 	"github.com/minio/minio-go/v7/pkg/notification"
 	"github.com/minio/minio-go/v7/pkg/s3utils"
 )
@@ -207,7 +207,6 @@ func (c *Client) ListenBucketNotification(ctx context.Context, bucketName, prefi
 			// Use a higher buffer to support unexpected
 			// caching done by proxies
 			bio.Buffer(notificationEventBuffer, notificationCapacity)
-			json := jsoniter.ConfigCompatibleWithStandardLibrary
 
 			// Unmarshal each line, returns marshaled values.
 			for bio.Scan() {

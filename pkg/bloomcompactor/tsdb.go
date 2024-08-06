@@ -11,6 +11,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -18,6 +19,7 @@ import (
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	baseStore "github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
@@ -188,8 +190,13 @@ func NewTSDBStores(
 
 	for i, cfg := range schemaCfg.Configs {
 		if cfg.IndexType == types.TSDBType {
-
-			c, err := baseStore.NewObjectClient(cfg.ObjectType, storeCfg, clientMetrics)
+			var c client.ObjectClient
+			var err error
+			if storeCfg.ThanosObjStore {
+				c, err = baseStore.NewObjectClientV2("tsdb-store", cfg.ObjectType, storeCfg, clientMetrics, prometheus.DefaultRegisterer)
+			} else {
+				c, err = baseStore.NewObjectClient(cfg.ObjectType, storeCfg, clientMetrics)
+			}
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to create object client")
 			}

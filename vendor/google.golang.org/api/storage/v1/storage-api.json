@@ -33,7 +33,7 @@
       "location": "me-central2"
     }
   ],
-  "etag": "\"3135323132313733303039343736303631393739\"",
+  "etag": "\"33303333323233383838323039393532373539\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -1632,6 +1632,11 @@
             "managedFolder"
           ],
           "parameters": {
+            "allowNonEmpty": {
+              "description": "Allows the deletion of a managed folder even if it is not empty. A managed folder is empty if there are no objects or managed folders that it applies to. Callers must have storage.managedFolders.setIamPolicy permission.",
+              "location": "query",
+              "type": "boolean"
+            },
             "bucket": {
               "description": "Name of the bucket containing the managed folder.",
               "location": "path",
@@ -3141,7 +3146,8 @@
           "id": "storage.objects.restore",
           "parameterOrder": [
             "bucket",
-            "object"
+            "object",
+            "generation"
           ],
           "parameters": {
             "bucket": {
@@ -3212,9 +3218,6 @@
             }
           },
           "path": "b/{bucket}/o/{object}/restore",
-          "request": {
-            "$ref": "Object"
-          },
           "response": {
             "$ref": "Object"
           },
@@ -4040,7 +4043,7 @@
       }
     }
   },
-  "revision": "20240209",
+  "revision": "20240319",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "AnywhereCache": {

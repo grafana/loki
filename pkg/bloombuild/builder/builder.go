@@ -65,7 +65,7 @@ func New(
 	builderID := uuid.NewString()
 	logger = log.With(logger, "builder_id", builderID)
 
-	tsdbStore, err := common.NewTSDBStores(schemaCfg, storeCfg, storageMetrics, logger)
+	tsdbStore, err := common.NewTSDBStores("bloom-builder", schemaCfg, storeCfg, storageMetrics, logger, r)
 	if err != nil {
 		return nil, fmt.Errorf("error creating TSDB store: %w", err)
 	}

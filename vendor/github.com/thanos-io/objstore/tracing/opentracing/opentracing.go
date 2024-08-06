@@ -209,8 +209,8 @@ func startSpan(ctx context.Context, operationName string, opts ...opentracing.St
 
 // doWithSpan executes function doFn inside new span with `operationName` name and hooking as child to a span found within given context if any.
 // It uses opentracing.Tracer propagated in context. If no found, it uses noop tracer notification.
-func doWithSpan(ctx context.Context, operationName string, doFn func(context.Context, Span), opts ...opentracing.StartSpanOption) {
-	span, newCtx := startSpan(ctx, operationName, opts...)
+func doWithSpan(ctx context.Context, operationName string, doFn func(context.Context, Span), _ ...opentracing.StartSpanOption) {
+	span, newCtx := startSpan(ctx, operationName)
 	defer span.Finish()
 	doFn(newCtx, span)
 }

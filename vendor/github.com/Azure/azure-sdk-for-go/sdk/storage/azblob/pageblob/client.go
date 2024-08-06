@@ -8,10 +8,12 @@ package pageblob
 
 import (
 	"context"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/sas"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
@@ -24,9 +26,7 @@ import (
 )
 
 // ClientOptions contains the optional parameters when creating a Client.
-type ClientOptions struct {
-	azcore.ClientOptions
-}
+type ClientOptions base.ClientOptions
 
 // Client represents a client to an Azure Storage page blob;
 type Client base.CompositeClient[generated.BlobClient, generated.PageBlobClient]
@@ -36,12 +36,16 @@ type Client base.CompositeClient[generated.BlobClient, generated.PageBlobClient]
 //   - cred - an Azure AD credential, typically obtained via the azidentity module
 //   - options - client options; pass nil to accept the default values
 func NewClient(blobURL string, cred azcore.TokenCredential, options *ClientOptions) (*Client, error) {
-	authPolicy := runtime.NewBearerTokenPolicy(cred, []string{shared.TokenScope}, nil)
+	audience := base.GetAudience((*base.ClientOptions)(options))
+	authPolicy := shared.NewStorageChallengePolicy(cred, audience)
 	conOptions := shared.GetClientOptions(options)
-	conOptions.PerRetryPolicies = append(conOptions.PerRetryPolicies, authPolicy)
-	pl := runtime.NewPipeline(exported.ModuleName, exported.ModuleVersion, runtime.PipelineOptions{}, &conOptions.ClientOptions)
+	plOpts := runtime.PipelineOptions{PerRetry: []policy.Policy{authPolicy}}
 
-	return (*Client)(base.NewPageBlobClient(blobURL, pl, nil)), nil
+	azClient, err := azcore.NewClient(exported.ModuleName, exported.ModuleVersion, plOpts, &conOptions.ClientOptions)
+	if err != nil {
+		return nil, err
+	}
+	return (*Client)(base.NewPageBlobClient(blobURL, azClient, nil)), nil
 }
 
 // NewClientWithNoCredential creates an instance of Client with the specified values.
@@ -50,9 +54,12 @@ func NewClient(blobURL string, cred azcore.TokenCredential, options *ClientOptio
 //   - options - client options; pass nil to accept the default values
 func NewClientWithNoCredential(blobURL string, options *ClientOptions) (*Client, error) {
 	conOptions := shared.GetClientOptions(options)
-	pl := runtime.NewPipeline(exported.ModuleName, exported.ModuleVersion, runtime.PipelineOptions{}, &conOptions.ClientOptions)
 
-	return (*Client)(base.NewPageBlobClient(blobURL, pl, nil)), nil
+	azClient, err := azcore.NewClient(exported.ModuleName, exported.ModuleVersion, runtime.PipelineOptions{}, &conOptions.ClientOptions)
+	if err != nil {
+		return nil, err
+	}
+	return (*Client)(base.NewPageBlobClient(blobURL, azClient, nil)), nil
 }
 
 // NewClientWithSharedKeyCredential creates an instance of Client with the specified values.
@@ -62,10 +69,13 @@ func NewClientWithNoCredential(blobURL string, options *ClientOptions) (*Client,
 func NewClientWithSharedKeyCredential(blobURL string, cred *blob.SharedKeyCredential, options *ClientOptions) (*Client, error) {
 	authPolicy := exported.NewSharedKeyCredPolicy(cred)
 	conOptions := shared.GetClientOptions(options)
-	conOptions.PerRetryPolicies = append(conOptions.PerRetryPolicies, authPolicy)
-	pl := runtime.NewPipeline(exported.ModuleName, exported.ModuleVersion, runtime.PipelineOptions{}, &conOptions.ClientOptions)
+	plOpts := runtime.PipelineOptions{PerRetry: []policy.Policy{authPolicy}}
 
-	return (*Client)(base.NewPageBlobClient(blobURL, pl, cred)), nil
+	azClient, err := azcore.NewClient(exported.ModuleName, exported.ModuleVersion, plOpts, &conOptions.ClientOptions)
+	if err != nil {
+		return nil, err
+	}
+	return (*Client)(base.NewPageBlobClient(blobURL, azClient, cred)), nil
 }
 
 // NewClientFromConnectionString creates an instance of Client with the specified values.
@@ -120,7 +130,7 @@ func (pb *Client) WithSnapshot(snapshot string) (*Client, error) {
 	}
 	p.Snapshot = snapshot
 
-	return (*Client)(base.NewPageBlobClient(p.String(), pb.generated().Pipeline(), pb.sharedKey())), nil
+	return (*Client)(base.NewPageBlobClient(p.String(), pb.generated().InternalClient(), pb.sharedKey())), nil
 }
 
 // WithVersionID creates a new PageBlobURL object identical to the source but with the specified snapshot timestamp.
@@ -132,7 +142,7 @@ func (pb *Client) WithVersionID(versionID string) (*Client, error) {
 	}
 	p.VersionID = versionID
 
-	return (*Client)(base.NewPageBlobClient(p.String(), pb.generated().Pipeline(), pb.sharedKey())), nil
+	return (*Client)(base.NewPageBlobClient(p.String(), pb.generated().InternalClient(), pb.sharedKey())), nil
 }
 
 // Create creates a page blob of the specified length. Call PutPage to upload data to a page blob.
@@ -149,14 +159,25 @@ func (pb *Client) Create(ctx context.Context, size int64, o *CreateOptions) (Cre
 // This method panics if the stream is not at position 0.
 // Note that the http client closes the body stream after the request is sent to the service.
 // For more information, see https://docs.microsoft.com/rest/api/storageservices/put-page.
-func (pb *Client) UploadPages(ctx context.Context, body io.ReadSeekCloser, options *UploadPagesOptions) (UploadPagesResponse, error) {
+func (pb *Client) UploadPages(ctx context.Context, body io.ReadSeekCloser, contentRange blob.HTTPRange, options *UploadPagesOptions) (UploadPagesResponse, error) {
 	count, err := shared.ValidateSeekableStreamAt0AndGetCount(body)
 
 	if err != nil {
 		return UploadPagesResponse{}, err
 	}
 
-	uploadPagesOptions, leaseAccessConditions, cpkInfo, cpkScopeInfo, sequenceNumberAccessConditions, modifiedAccessConditions := options.format()
+	uploadPagesOptions := &generated.PageBlobClientUploadPagesOptions{
+		Range: exported.FormatHTTPRange(contentRange),
+	}
+
+	leaseAccessConditions, cpkInfo, cpkScopeInfo, sequenceNumberAccessConditions, modifiedAccessConditions := options.format()
+
+	if options != nil && options.TransactionalValidation != nil {
+		body, err = options.TransactionalValidation.Apply(body, uploadPagesOptions)
+		if err != nil {
+			return UploadPagesResponse{}, nil
+		}
+	}
 
 	resp, err := pb.generated().UploadPages(ctx, count, body, uploadPagesOptions, leaseAccessConditions,
 		cpkInfo, cpkScopeInfo, sequenceNumberAccessConditions, modifiedAccessConditions)
@@ -218,7 +239,7 @@ func (pb *Client) NewGetPageRangesPager(o *GetPageRangesOptions) *runtime.Pager[
 			if err != nil {
 				return GetPageRangesResponse{}, err
 			}
-			resp, err := pb.generated().Pipeline().Do(req)
+			resp, err := pb.generated().InternalClient().Pipeline().Do(req)
 			if err != nil {
 				return GetPageRangesResponse{}, err
 			}
@@ -251,7 +272,7 @@ func (pb *Client) NewGetPageRangesDiffPager(o *GetPageRangesDiffOptions) *runtim
 			if err != nil {
 				return GetPageRangesDiffResponse{}, err
 			}
-			resp, err := pb.generated().Pipeline().Do(req)
+			resp, err := pb.generated().InternalClient().Pipeline().Do(req)
 			if err != nil {
 				return GetPageRangesDiffResponse{}, err
 			}
@@ -317,9 +338,27 @@ func (pb *Client) Undelete(ctx context.Context, o *blob.UndeleteOptions) (blob.U
 	return pb.BlobClient().Undelete(ctx, o)
 }
 
+// SetImmutabilityPolicy operation enables users to set the immutability policy on a blob.
+// https://learn.microsoft.com/en-us/azure/storage/blobs/immutable-storage-overview
+func (pb *Client) SetImmutabilityPolicy(ctx context.Context, expiryTime time.Time, options *blob.SetImmutabilityPolicyOptions) (blob.SetImmutabilityPolicyResponse, error) {
+	return pb.BlobClient().SetImmutabilityPolicy(ctx, expiryTime, options)
+}
+
+// DeleteImmutabilityPolicy operation enables users to delete the immutability policy on a blob.
+// https://learn.microsoft.com/en-us/azure/storage/blobs/immutable-storage-overview
+func (pb *Client) DeleteImmutabilityPolicy(ctx context.Context, options *blob.DeleteImmutabilityPolicyOptions) (blob.DeleteImmutabilityPolicyResponse, error) {
+	return pb.BlobClient().DeleteImmutabilityPolicy(ctx, options)
+}
+
+// SetLegalHold operation enables users to set legal hold on a blob.
+// https://learn.microsoft.com/en-us/azure/storage/blobs/immutable-storage-overview
+func (pb *Client) SetLegalHold(ctx context.Context, legalHold bool, options *blob.SetLegalHoldOptions) (blob.SetLegalHoldResponse, error) {
+	return pb.BlobClient().SetLegalHold(ctx, legalHold, options)
+}
+
 // SetTier operation sets the tier on a blob. The operation is allowed on a page
 // blob in a premium storage account and on a block blob in a blob storage account (locally
-// redundant storage only). A premium page blob's tier determines the allowed size, IOPS, and
+// redundant storage only). A premium page blob's tier determines the allowed size, IOPs, and
 // bandwidth of the blob. A block blob's tier determines Hot/Cool/Archive storage type. This operation
 // does not update the blob's ETag.
 // For detailed information about block blob level tier-ing see https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blob-storage-tiers.
@@ -333,6 +372,12 @@ func (pb *Client) GetProperties(ctx context.Context, o *blob.GetPropertiesOption
 	return pb.BlobClient().GetProperties(ctx, o)
 }
 
+// GetAccountInfo provides account level information
+// For more information, see https://learn.microsoft.com/en-us/rest/api/storageservices/get-account-information?tabs=shared-access-signatures.
+func (pb *Client) GetAccountInfo(ctx context.Context, o *blob.GetAccountInfoOptions) (blob.GetAccountInfoResponse, error) {
+	return pb.BlobClient().GetAccountInfo(ctx, o)
+}
+
 // SetHTTPHeaders changes a blob's HTTP headers.
 // For more information, see https://docs.microsoft.com/rest/api/storageservices/set-blob-properties.
 func (pb *Client) SetHTTPHeaders(ctx context.Context, HTTPHeaders blob.HTTPHeaders, o *blob.SetHTTPHeadersOptions) (blob.SetHTTPHeadersResponse, error) {
@@ -341,7 +386,7 @@ func (pb *Client) SetHTTPHeaders(ctx context.Context, HTTPHeaders blob.HTTPHeade
 
 // SetMetadata changes a blob's metadata.
 // https://docs.microsoft.com/rest/api/storageservices/set-blob-metadata.
-func (pb *Client) SetMetadata(ctx context.Context, metadata map[string]string, o *blob.SetMetadataOptions) (blob.SetMetadataResponse, error) {
+func (pb *Client) SetMetadata(ctx context.Context, metadata map[string]*string, o *blob.SetMetadataOptions) (blob.SetMetadataResponse, error) {
 	return pb.BlobClient().SetMetadata(ctx, metadata, o)
 }
 
@@ -381,6 +426,12 @@ func (pb *Client) GetTags(ctx context.Context, o *blob.GetTagsOptions) (blob.Get
 // For more information, see https://docs.microsoft.com/en-us/rest/api/storageservices/copy-blob-from-url.
 func (pb *Client) CopyFromURL(ctx context.Context, copySource string, o *blob.CopyFromURLOptions) (blob.CopyFromURLResponse, error) {
 	return pb.BlobClient().CopyFromURL(ctx, copySource, o)
+}
+
+// GetSASURL is a convenience method for generating a SAS token for the currently pointed at Page blob.
+// It can only be used if the credential supplied during creation was a SharedKeyCredential.
+func (pb *Client) GetSASURL(permissions sas.BlobPermissions, expiry time.Time, o *blob.GetSASURLOptions) (string, error) {
+	return pb.BlobClient().GetSASURL(permissions, expiry, o)
 }
 
 // Concurrent Download Functions -----------------------------------------------------------------------------------------

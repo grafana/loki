@@ -19,6 +19,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -74,9 +75,10 @@ func newHTTPStorageClient(ctx context.Context, opts ...storageOption) (storageCl
 		// Prepend default options to avoid overriding options passed by the user.
 		o = append([]option.ClientOption{option.WithScopes(ScopeFullControl, "https://www.googleapis.com/auth/cloud-platform"), option.WithUserAgent(userAgent)}, o...)
 
-		o = append(o, internaloption.WithDefaultEndpoint("https://storage.googleapis.com/storage/v1/"))
-		o = append(o, internaloption.WithDefaultMTLSEndpoint("https://storage.mtls.googleapis.com/storage/v1/"))
-
+		o = append(o, internaloption.WithDefaultEndpointTemplate("https://storage.UNIVERSE_DOMAIN/storage/v1/"),
+			internaloption.WithDefaultMTLSEndpoint("https://storage.mtls.googleapis.com/storage/v1/"),
+			internaloption.WithDefaultUniverseDomain("googleapis.com"),
+		)
 		// Don't error out here. The user may have passed in their own HTTP
 		// client which does not auth with ADC or other common conventions.
 		c, err := transport.Creds(ctx, o...)
@@ -348,6 +350,7 @@ func (c *httpStorageClient) ListObjects(ctx context.Context, bucket string, q *Q
 		req.Versions(it.query.Versions)
 		req.IncludeTrailingDelimiter(it.query.IncludeTrailingDelimiter)
 		req.MatchGlob(it.query.MatchGlob)
+		req.IncludeFoldersAsPrefixes(it.query.IncludeFoldersAsPrefixes)
 		if selection := it.query.toFieldSelection(); selection != "" {
 			req.Fields("nextPageToken", googleapi.Field(selection))
 		}
@@ -883,7 +886,7 @@ func (c *httpStorageClient) OpenWriter(params *openWriterParams, opts ...storage
 	mediaOpts := []googleapi.MediaOption{
 		googleapi.ChunkSize(params.chunkSize),
 	}
-	if c := attrs.ContentType; c != "" {
+	if c := attrs.ContentType; c != "" || params.forceEmptyContentType {
 		mediaOpts = append(mediaOpts, googleapi.ContentType(c))
 	}
 	if params.chunkRetryDeadline != 0 {
@@ -1216,9 +1219,12 @@ func (c *httpStorageClient) DeleteNotification(ctx context.Context, bucket strin
 }
 
 type httpReader struct {
-	body   io.ReadCloser
-	seen   int64
-	reopen func(seen int64) (*http.Response, error)
+	body     io.ReadCloser
+	seen     int64
+	reopen   func(seen int64) (*http.Response, error)
+	checkCRC bool   // should we check the CRC?
+	wantCRC  uint32 // the CRC32c value the server sent in the header
+	gotCRC   uint32 // running crc
 }
 
 func (r *httpReader) Read(p []byte) (int, error) {
@@ -1227,7 +1233,22 @@ func (r *httpReader) Read(p []byte) (int, error) {
 		m, err := r.body.Read(p[n:])
 		n += m
 		r.seen += int64(m)
-		if err == nil || err == io.EOF {
+		if r.checkCRC {
+			r.gotCRC = crc32.Update(r.gotCRC, crc32cTable, p[:n])
+		}
+		if err == nil {
+			return n, nil
+		}
+		if err == io.EOF {
+			// Check CRC here. It would be natural to check it in Close, but
+			// everybody defers Close on the assumption that it doesn't return
+			// anything worth looking at.
+			if r.checkCRC {
+				if r.gotCRC != r.wantCRC {
+					return n, fmt.Errorf("storage: bad CRC on read: got %d, want %d",
+						r.gotCRC, r.wantCRC)
+				}
+			}
 			return n, err
 		}
 		// Read failed (likely due to connection issues), but we will try to reopen
@@ -1433,11 +1454,12 @@ func parseReadResponse(res *http.Response, params *newRangeReaderParams, reopen 
 		Attrs:    attrs,
 		size:     size,
 		remain:   remain,
-		wantCRC:  crc,
 		checkCRC: checkCRC,
 		reader: &httpReader{
-			reopen: reopen,
-			body:   body,
+			reopen:   reopen,
+			body:     body,
+			wantCRC:  crc,
+			checkCRC: checkCRC,
 		},
 	}, nil
 }
