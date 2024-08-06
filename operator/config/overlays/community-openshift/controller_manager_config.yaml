@@ -7,8 +7,8 @@ metrics:
 webhook:
   port: 9443
 leaderElection:
-  leaderElect: false
-  resourceName: e3716011.grafana.com
+  leaderElect: true
+  resourceName: loki-operator.grafana.com
 featureGates:
   #
   # Monitoring feature gates
