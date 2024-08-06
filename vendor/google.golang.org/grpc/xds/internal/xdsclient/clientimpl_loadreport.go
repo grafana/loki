@@ -18,7 +18,7 @@
 package xdsclient
 
 import (
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/xds/internal/xdsclient/load"
 )
 

@@ -19,35 +19,30 @@
 package xdsclient
 
 import (
-	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
+	v3statuspb "github.com/envoyproxy/go-control-plane/envoy/service/status/v3"
 )
 
-func appendMaps(dst, src map[string]map[string]xdsresource.UpdateWithMD) {
-	// Iterate through the resource types.
-	for rType, srcResources := range src {
-		// Lookup/create the resource type specific map in the destination.
-		dstResources := dst[rType]
-		if dstResources == nil {
-			dstResources = make(map[string]xdsresource.UpdateWithMD)
-			dst[rType] = dstResources
-		}
-
-		// Iterate through the resources within the resource type in the source,
-		// and copy them over to the destination.
-		for name, update := range srcResources {
-			dstResources[name] = update
-		}
-	}
-}
-
 // DumpResources returns the status and contents of all xDS resources.
-func (c *clientImpl) DumpResources() map[string]map[string]xdsresource.UpdateWithMD {
+func (c *clientImpl) DumpResources() (*v3statuspb.ClientStatusResponse, error) {
 	c.authorityMu.Lock()
 	defer c.authorityMu.Unlock()
-	dumps := make(map[string]map[string]xdsresource.UpdateWithMD)
+
+	var retCfg []*v3statuspb.ClientConfig_GenericXdsConfig
 	for _, a := range c.authorities {
-		dump := a.dumpResources()
-		appendMaps(dumps, dump)
+		cfg, err := a.dumpResources()
+		if err != nil {
+			return nil, err
+		}
+		retCfg = append(retCfg, cfg...)
 	}
-	return dumps
+
+	return &v3statuspb.ClientStatusResponse{
+		Config: []*v3statuspb.ClientConfig{
+			{
+				// TODO: Populate ClientScope. Need to update go-control-plane dependency.
+				Node:              c.config.NodeProto,
+				GenericXdsConfigs: retCfg,
+			},
+		},
+	}, nil
 }

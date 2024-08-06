@@ -22,3 +22,13 @@ func GetUInt64SliceState(ms UInt64Slice) *State {
 func NewUInt64Slice(orig *[]uint64, state *State) UInt64Slice {
 	return UInt64Slice{orig: orig, state: state}
 }
+
+func FillTestUInt64Slice(tv UInt64Slice) {
+}
+
+func GenerateTestUInt64Slice() UInt64Slice {
+	state := StateMutable
+	var orig []uint64 = nil
+
+	return UInt64Slice{&orig, &state}
+}

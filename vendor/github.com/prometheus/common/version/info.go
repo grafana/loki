@@ -17,10 +17,9 @@ import (
 	"bytes"
 	"fmt"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"text/template"
-
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // Build information. Populated at build-time.
@@ -33,34 +32,10 @@ var (
 	GoVersion = runtime.Version()
 	GoOS      = runtime.GOOS
 	GoArch    = runtime.GOARCH
-)
 
-// Deprecated: Use github.com/prometheus/client_golang/prometheus/collectors/version.NewCollector instead.
-//
-// NewCollector returns a collector that exports metrics about current version
-// information.
-func NewCollector(program string) prometheus.Collector {
-	return prometheus.NewGaugeFunc(
-		prometheus.GaugeOpts{
-			Namespace: program,
-			Name:      "build_info",
-			Help: fmt.Sprintf(
-				"A metric with a constant '1' value labeled by version, revision, branch, goversion from which %s was built, and the goos and goarch for the build.",
-				program,
-			),
-			ConstLabels: prometheus.Labels{
-				"version":   Version,
-				"revision":  GetRevision(),
-				"branch":    Branch,
-				"goversion": GoVersion,
-				"goos":      GoOS,
-				"goarch":    GoArch,
-				"tags":      GetTags(),
-			},
-		},
-		func() float64 { return 1 },
-	)
-}
+	computedRevision string
+	computedTags     string
+)
 
 // versionInfoTmpl contains the template used by Info.
 var versionInfoTmpl = `
@@ -102,4 +77,49 @@ func Info() string {
 // BuildContext returns goVersion, platform, buildUser and buildDate information.
 func BuildContext() string {
 	return fmt.Sprintf("(go=%s, platform=%s, user=%s, date=%s, tags=%s)", GoVersion, GoOS+"/"+GoArch, BuildUser, BuildDate, GetTags())
+}
+
+func GetRevision() string {
+	if Revision != "" {
+		return Revision
+	}
+	return computedRevision
+}
+
+func GetTags() string {
+	return computedTags
+}
+
+func init() {
+	computedRevision, computedTags = computeRevision()
+}
+
+func computeRevision() (string, string) {
+	var (
+		rev      = "unknown"
+		tags     = "unknown"
+		modified bool
+	)
+
+	buildInfo, ok := debug.ReadBuildInfo()
+	if !ok {
+		return rev, tags
+	}
+	for _, v := range buildInfo.Settings {
+		if v.Key == "vcs.revision" {
+			rev = v.Value
+		}
+		if v.Key == "vcs.modified" {
+			if v.Value == "true" {
+				modified = true
+			}
+		}
+		if v.Key == "-tags" {
+			tags = v.Value
+		}
+	}
+	if modified {
+		return rev + "-modified", tags
+	}
+	return rev, tags
 }

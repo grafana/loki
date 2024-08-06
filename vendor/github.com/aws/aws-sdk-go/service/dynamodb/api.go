@@ -484,6 +484,10 @@ func (c *DynamoDB) BatchWriteItemRequest(input *BatchWriteItemInput) (req *reque
 //
 //   - The total request size exceeds 16 MB.
 //
+//   - Any individual items with keys exceeding the key length limits. For
+//     a partition key, the limit is 2048 bytes and for a sort key, the limit
+//     is 1024 bytes.
+//
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
 // the error.
@@ -781,13 +785,16 @@ func (c *DynamoDB) CreateGlobalTableRequest(input *CreateGlobalTableInput) (req 
 // relationship between two or more DynamoDB tables with the same table name
 // in the provided Regions.
 //
-// This operation only applies to Version 2017.11.29 (Legacy) (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.V1.html)
-// of global tables. We recommend using Version 2019.11.21 (Current) (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.V2.html)
-// when creating new global tables, as it provides greater flexibility, higher
-// efficiency and consumes less write capacity than 2017.11.29 (Legacy). To
-// determine which version you are using, see Determining the version (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.DetermineVersion.html).
+// This documentation is for version 2017.11.29 (Legacy) of global tables, which
+// should be avoided for new global tables. Customers should use Global Tables
+// version 2019.11.21 (Current) (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/GlobalTables.html)
+// when possible, because it provides greater flexibility, higher efficiency,
+// and consumes less write capacity than 2017.11.29 (Legacy).
+//
+// To determine which version you're using, see Determining the global table
+// version you are using (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.DetermineVersion.html).
 // To update existing global tables from version 2017.11.29 (Legacy) to version
-// 2019.11.21 (Current), see Updating global tables (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/V2globaltables_upgrade.html).
+// 2019.11.21 (Current), see Upgrading global tables (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/V2globaltables_upgrade.html).
 //
 // If you want to add a new replica table to a global table, each of the following
 // conditions must be true:
@@ -1319,6 +1326,164 @@ func (c *DynamoDB) DeleteItemWithContext(ctx aws.Context, input *DeleteItemInput
 	return out, req.Send()
 }
 
+const opDeleteResourcePolicy = "DeleteResourcePolicy"
+
+// DeleteResourcePolicyRequest generates a "aws/request.Request" representing the
+// client's request for the DeleteResourcePolicy operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See DeleteResourcePolicy for more information on using the DeleteResourcePolicy
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//	// Example sending a request using the DeleteResourcePolicyRequest method.
+//	req, resp := client.DeleteResourcePolicyRequest(params)
+//
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/dynamodb-2012-08-10/DeleteResourcePolicy
+func (c *DynamoDB) DeleteResourcePolicyRequest(input *DeleteResourcePolicyInput) (req *request.Request, output *DeleteResourcePolicyOutput) {
+	op := &request.Operation{
+		Name:       opDeleteResourcePolicy,
+		HTTPMethod: "POST",
+		HTTPPath:   "/",
+	}
+
+	if input == nil {
+		input = &DeleteResourcePolicyInput{}
+	}
+
+	output = &DeleteResourcePolicyOutput{}
+	req = c.newRequest(op, input, output)
+	// if custom endpoint for the request is set to a non empty string,
+	// we skip the endpoint discovery workflow.
+	if req.Config.Endpoint == nil || *req.Config.Endpoint == "" {
+		if aws.BoolValue(req.Config.EnableEndpointDiscovery) {
+			de := discovererDescribeEndpoints{
+				Required:      false,
+				EndpointCache: c.endpointCache,
+				Params: map[string]*string{
+					"op": aws.String(req.Operation.Name),
+				},
+				Client: c,
+			}
+
+			for k, v := range de.Params {
+				if v == nil {
+					delete(de.Params, k)
+				}
+			}
+
+			req.Handlers.Build.PushFrontNamed(request.NamedHandler{
+				Name: "crr.endpointdiscovery",
+				Fn:   de.Handler,
+			})
+		}
+	}
+	return
+}
+
+// DeleteResourcePolicy API operation for Amazon DynamoDB.
+//
+// Deletes the resource-based policy attached to the resource, which can be
+// a table or stream.
+//
+// DeleteResourcePolicy is an idempotent operation; running it multiple times
+// on the same resource doesn't result in an error response, unless you specify
+// an ExpectedRevisionId, which will then return a PolicyNotFoundException.
+//
+// To make sure that you don't inadvertently lock yourself out of your own resources,
+// the root principal in your Amazon Web Services account can perform DeleteResourcePolicy
+// requests, even if your resource-based policy explicitly denies the root principal's
+// access.
+//
+// DeleteResourcePolicy is an asynchronous operation. If you issue a GetResourcePolicy
+// request immediately after running the DeleteResourcePolicy request, DynamoDB
+// might still return the deleted policy. This is because the policy for your
+// resource might not have been deleted yet. Wait for a few seconds, and then
+// try the GetResourcePolicy request again.
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon DynamoDB's
+// API operation DeleteResourcePolicy for usage and error information.
+//
+// Returned Error Types:
+//
+//   - ResourceNotFoundException
+//     The operation tried to access a nonexistent table or index. The resource
+//     might not be specified correctly, or its status might not be ACTIVE.
+//
+//   - InternalServerError
+//     An error occurred on the server side.
+//
+//   - PolicyNotFoundException
+//     The operation tried to access a nonexistent resource-based policy.
+//
+//     If you specified an ExpectedRevisionId, it's possible that a policy is present
+//     for the resource but its revision ID didn't match the expected value.
+//
+//   - ResourceInUseException
+//     The operation conflicts with the resource's availability. For example, you
+//     attempted to recreate an existing table, or tried to delete a table currently
+//     in the CREATING state.
+//
+//   - LimitExceededException
+//     There is no limit to the number of daily on-demand backups that can be taken.
+//
+//     For most purposes, up to 500 simultaneous table operations are allowed per
+//     account. These operations include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive,
+//     RestoreTableFromBackup, and RestoreTableToPointInTime.
+//
+//     When you are creating a table with one or more secondary indexes, you can
+//     have up to 250 such requests running at a time. However, if the table or
+//     index specifications are complex, then DynamoDB might temporarily reduce
+//     the number of concurrent operations.
+//
+//     When importing into DynamoDB, up to 50 simultaneous import table operations
+//     are allowed per account.
+//
+//     There is a soft account quota of 2,500 tables.
+//
+//     GetRecords was called with a value of more than 1000 for the limit request
+//     parameter.
+//
+//     More than 2 processes are reading from the same streams shard at the same
+//     time. Exceeding this limit may result in request throttling.
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/dynamodb-2012-08-10/DeleteResourcePolicy
+func (c *DynamoDB) DeleteResourcePolicy(input *DeleteResourcePolicyInput) (*DeleteResourcePolicyOutput, error) {
+	req, out := c.DeleteResourcePolicyRequest(input)
+	return out, req.Send()
+}
+
+// DeleteResourcePolicyWithContext is the same as DeleteResourcePolicy with the addition of
+// the ability to pass a context and additional request options.
+//
+// See DeleteResourcePolicy for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *DynamoDB) DeleteResourcePolicyWithContext(ctx aws.Context, input *DeleteResourcePolicyInput, opts ...request.Option) (*DeleteResourcePolicyOutput, error) {
+	req, out := c.DeleteResourcePolicyRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
 const opDeleteTable = "DeleteTable"
 
 // DeleteTableRequest generates a "aws/request.Request" representing the
@@ -1394,8 +1559,8 @@ func (c *DynamoDB) DeleteTableRequest(input *DeleteTableInput) (req *request.Req
 // If the specified table does not exist, DynamoDB returns a ResourceNotFoundException.
 // If table is already in the DELETING state, no error is returned.
 //
-// This operation only applies to Version 2019.11.21 (Current) (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.V2.html)
-// of global tables.
+// For global tables, this operation only applies to global tables using Version
+// 2019.11.21 (Current version).
 //
 // DynamoDB might continue to accept data read and write operations, such as
 // GetItem and PutItem, on a table in the DELETING state until the table deletion
@@ -2110,13 +2275,16 @@ func (c *DynamoDB) DescribeGlobalTableRequest(input *DescribeGlobalTableInput) (
 //
 // Returns information about the specified global table.
 //
-// This operation only applies to Version 2017.11.29 (Legacy) (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.V1.html)
-// of global tables. We recommend using Version 2019.11.21 (Current) (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.V2.html)
-// when creating new global tables, as it provides greater flexibility, higher
-// efficiency and consumes less write capacity than 2017.11.29 (Legacy). To
-// determine which version you are using, see Determining the version (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.DetermineVersion.html).
+// This documentation is for version 2017.11.29 (Legacy) of global tables, which
+// should be avoided for new global tables. Customers should use Global Tables
+// version 2019.11.21 (Current) (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/GlobalTables.html)
+// when possible, because it provides greater flexibility, higher efficiency,
+// and consumes less write capacity than 2017.11.29 (Legacy).
+//
+// To determine which version you're using, see Determining the global table
+// version you are using (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.DetermineVersion.html).
 // To update existing global tables from version 2017.11.29 (Legacy) to version
-// 2019.11.21 (Current), see Updating global tables (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/V2globaltables_upgrade.html).
+// 2019.11.21 (Current), see Upgrading global tables (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/V2globaltables_upgrade.html).
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -2225,13 +2393,16 @@ func (c *DynamoDB) DescribeGlobalTableSettingsRequest(input *DescribeGlobalTable
 //
 // Describes Region-specific settings for a global table.
 //
-// This operation only applies to Version 2017.11.29 (Legacy) (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.V1.html)
-// of global tables. We recommend using Version 2019.11.21 (Current) (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.V2.html)
-// when creating new global tables, as it provides greater flexibility, higher
-// efficiency and consumes less write capacity than 2017.11.29 (Legacy). To
-// determine which version you are using, see Determining the version (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.DetermineVersion.html).
+// This documentation is for version 2017.11.29 (Legacy) of global tables, which
+// should be avoided for new global tables. Customers should use Global Tables
+// version 2019.11.21 (Current) (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/GlobalTables.html)
+// when possible, because it provides greater flexibility, higher efficiency,
+// and consumes less write capacity than 2017.11.29 (Legacy).
+//
+// To determine which version you're using, see Determining the global table
+// version you are using (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.DetermineVersion.html).
 // To update existing global tables from version 2017.11.29 (Legacy) to version
-// 2019.11.21 (Current), see Updating global tables (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/V2globaltables_upgrade.html).
+// 2019.11.21 (Current), see Upgrading global tables (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/V2globaltables_upgrade.html).
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -2690,8 +2861,8 @@ func (c *DynamoDB) DescribeTableRequest(input *DescribeTableInput) (req *request
 // table, when it was created, the primary key schema, and any indexes on the
 // table.
 //
-// This operation only applies to Version 2019.11.21 (Current) (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.V2.html)
-// of global tables.
+// For global tables, this operation only applies to global tables using Version
+// 2019.11.21 (Current version).
 //
 // If you issue a DescribeTable request immediately after a CreateTable request,
 // DynamoDB might return a ResourceNotFoundException. This is because DescribeTable
@@ -2782,8 +2953,8 @@ func (c *DynamoDB) DescribeTableReplicaAutoScalingRequest(input *DescribeTableRe
 //
 // Describes auto scaling settings across replicas of the global table at once.
 //
-// This operation only applies to Version 2019.11.21 (Current) (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.V2.html)
-// of global tables.
+// For global tables, this operation only applies to global tables using Version
+// 2019.11.21 (Current version).
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -3818,6 +3989,147 @@ func (c *DynamoDB) GetItemWithContext(ctx aws.Context, input *GetItemInput, opts
 	return out, req.Send()
 }
 
+const opGetResourcePolicy = "GetResourcePolicy"
+
+// GetResourcePolicyRequest generates a "aws/request.Request" representing the
+// client's request for the GetResourcePolicy operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See GetResourcePolicy for more information on using the GetResourcePolicy
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//	// Example sending a request using the GetResourcePolicyRequest method.
+//	req, resp := client.GetResourcePolicyRequest(params)
+//
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/dynamodb-2012-08-10/GetResourcePolicy
+func (c *DynamoDB) GetResourcePolicyRequest(input *GetResourcePolicyInput) (req *request.Request, output *GetResourcePolicyOutput) {
+	op := &request.Operation{
+		Name:       opGetResourcePolicy,
+		HTTPMethod: "POST",
+		HTTPPath:   "/",
+	}
+
+	if input == nil {
+		input = &GetResourcePolicyInput{}
+	}
+
+	output = &GetResourcePolicyOutput{}
+	req = c.newRequest(op, input, output)
+	// if custom endpoint for the request is set to a non empty string,
+	// we skip the endpoint discovery workflow.
+	if req.Config.Endpoint == nil || *req.Config.Endpoint == "" {
+		if aws.BoolValue(req.Config.EnableEndpointDiscovery) {
+			de := discovererDescribeEndpoints{
+				Required:      false,
+				EndpointCache: c.endpointCache,
+				Params: map[string]*string{
+					"op": aws.String(req.Operation.Name),
+				},
+				Client: c,
+			}
+
+			for k, v := range de.Params {
+				if v == nil {
+					delete(de.Params, k)
+				}
+			}
+
+			req.Handlers.Build.PushFrontNamed(request.NamedHandler{
+				Name: "crr.endpointdiscovery",
+				Fn:   de.Handler,
+			})
+		}
+	}
+	return
+}
+
+// GetResourcePolicy API operation for Amazon DynamoDB.
+//
+// Returns the resource-based policy document attached to the resource, which
+// can be a table or stream, in JSON format.
+//
+// GetResourcePolicy follows an eventually consistent (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadConsistency.html)
+// model. The following list describes the outcomes when you issue the GetResourcePolicy
+// request immediately after issuing another request:
+//
+//   - If you issue a GetResourcePolicy request immediately after a PutResourcePolicy
+//     request, DynamoDB might return a PolicyNotFoundException.
+//
+//   - If you issue a GetResourcePolicyrequest immediately after a DeleteResourcePolicy
+//     request, DynamoDB might return the policy that was present before the
+//     deletion request.
+//
+//   - If you issue a GetResourcePolicy request immediately after a CreateTable
+//     request, which includes a resource-based policy, DynamoDB might return
+//     a ResourceNotFoundException or a PolicyNotFoundException.
+//
+// Because GetResourcePolicy uses an eventually consistent query, the metadata
+// for your policy or table might not be available at that moment. Wait for
+// a few seconds, and then retry the GetResourcePolicy request.
+//
+// After a GetResourcePolicy request returns a policy created using the PutResourcePolicy
+// request, the policy will be applied in the authorization of requests to the
+// resource. Because this process is eventually consistent, it will take some
+// time to apply the policy to all requests to a resource. Policies that you
+// attach while creating a table using the CreateTable request will always be
+// applied to all requests for that table.
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon DynamoDB's
+// API operation GetResourcePolicy for usage and error information.
+//
+// Returned Error Types:
+//
+//   - ResourceNotFoundException
+//     The operation tried to access a nonexistent table or index. The resource
+//     might not be specified correctly, or its status might not be ACTIVE.
+//
+//   - InternalServerError
+//     An error occurred on the server side.
+//
+//   - PolicyNotFoundException
+//     The operation tried to access a nonexistent resource-based policy.
+//
+//     If you specified an ExpectedRevisionId, it's possible that a policy is present
+//     for the resource but its revision ID didn't match the expected value.
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/dynamodb-2012-08-10/GetResourcePolicy
+func (c *DynamoDB) GetResourcePolicy(input *GetResourcePolicyInput) (*GetResourcePolicyOutput, error) {
+	req, out := c.GetResourcePolicyRequest(input)
+	return out, req.Send()
+}
+
+// GetResourcePolicyWithContext is the same as GetResourcePolicy with the addition of
+// the ability to pass a context and additional request options.
+//
+// See GetResourcePolicy for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *DynamoDB) GetResourcePolicyWithContext(ctx aws.Context, input *GetResourcePolicyInput, opts ...request.Option) (*GetResourcePolicyOutput, error) {
+	req, out := c.GetResourcePolicyRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
 const opImportTable = "ImportTable"
 
 // ImportTableRequest generates a "aws/request.Request" representing the
@@ -4412,13 +4724,16 @@ func (c *DynamoDB) ListGlobalTablesRequest(input *ListGlobalTablesInput) (req *r
 //
 // Lists all global tables that have a replica in the specified Region.
 //
-// This operation only applies to Version 2017.11.29 (Legacy) (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.V1.html)
-// of global tables. We recommend using Version 2019.11.21 (Current) (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.V2.html)
-// when creating new global tables, as it provides greater flexibility, higher
-// efficiency and consumes less write capacity than 2017.11.29 (Legacy). To
-// determine which version you are using, see Determining the version (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.DetermineVersion.html).
+// This documentation is for version 2017.11.29 (Legacy) of global tables, which
+// should be avoided for new global tables. Customers should use Global Tables
+// version 2019.11.21 (Current) (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/GlobalTables.html)
+// when possible, because it provides greater flexibility, higher efficiency,
+// and consumes less write capacity than 2017.11.29 (Legacy).
+//
+// To determine which version you're using, see Determining the global table
+// version you are using (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.DetermineVersion.html).
 // To update existing global tables from version 2017.11.29 (Legacy) to version
-// 2019.11.21 (Current), see Updating global tables (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/V2globaltables_upgrade.html).
+// 2019.11.21 (Current), see Upgrading global tables (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/V2globaltables_upgrade.html).
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -5034,6 +5349,162 @@ func (c *DynamoDB) PutItem(input *PutItemInput) (*PutItemOutput, error) {
 // for more information on using Contexts.
 func (c *DynamoDB) PutItemWithContext(ctx aws.Context, input *PutItemInput, opts ...request.Option) (*PutItemOutput, error) {
 	req, out := c.PutItemRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
+const opPutResourcePolicy = "PutResourcePolicy"
+
+// PutResourcePolicyRequest generates a "aws/request.Request" representing the
+// client's request for the PutResourcePolicy operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See PutResourcePolicy for more information on using the PutResourcePolicy
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//	// Example sending a request using the PutResourcePolicyRequest method.
+//	req, resp := client.PutResourcePolicyRequest(params)
+//
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/dynamodb-2012-08-10/PutResourcePolicy
+func (c *DynamoDB) PutResourcePolicyRequest(input *PutResourcePolicyInput) (req *request.Request, output *PutResourcePolicyOutput) {
+	op := &request.Operation{
+		Name:       opPutResourcePolicy,
+		HTTPMethod: "POST",
+		HTTPPath:   "/",
+	}
+
+	if input == nil {
+		input = &PutResourcePolicyInput{}
+	}
+
+	output = &PutResourcePolicyOutput{}
+	req = c.newRequest(op, input, output)
+	// if custom endpoint for the request is set to a non empty string,
+	// we skip the endpoint discovery workflow.
+	if req.Config.Endpoint == nil || *req.Config.Endpoint == "" {
+		if aws.BoolValue(req.Config.EnableEndpointDiscovery) {
+			de := discovererDescribeEndpoints{
+				Required:      false,
+				EndpointCache: c.endpointCache,
+				Params: map[string]*string{
+					"op": aws.String(req.Operation.Name),
+				},
+				Client: c,
+			}
+
+			for k, v := range de.Params {
+				if v == nil {
+					delete(de.Params, k)
+				}
+			}
+
+			req.Handlers.Build.PushFrontNamed(request.NamedHandler{
+				Name: "crr.endpointdiscovery",
+				Fn:   de.Handler,
+			})
+		}
+	}
+	return
+}
+
+// PutResourcePolicy API operation for Amazon DynamoDB.
+//
+// Attaches a resource-based policy document to the resource, which can be a
+// table or stream. When you attach a resource-based policy using this API,
+// the policy application is eventually consistent (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadConsistency.html).
+//
+// PutResourcePolicy is an idempotent operation; running it multiple times on
+// the same resource using the same policy document will return the same revision
+// ID. If you specify an ExpectedRevisionId that doesn't match the current policy's
+// RevisionId, the PolicyNotFoundException will be returned.
+//
+// PutResourcePolicy is an asynchronous operation. If you issue a GetResourcePolicy
+// request immediately after a PutResourcePolicy request, DynamoDB might return
+// your previous policy, if there was one, or return the PolicyNotFoundException.
+// This is because GetResourcePolicy uses an eventually consistent query, and
+// the metadata for your policy or table might not be available at that moment.
+// Wait for a few seconds, and then try the GetResourcePolicy request again.
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon DynamoDB's
+// API operation PutResourcePolicy for usage and error information.
+//
+// Returned Error Types:
+//
+//   - ResourceNotFoundException
+//     The operation tried to access a nonexistent table or index. The resource
+//     might not be specified correctly, or its status might not be ACTIVE.
+//
+//   - InternalServerError
+//     An error occurred on the server side.
+//
+//   - LimitExceededException
+//     There is no limit to the number of daily on-demand backups that can be taken.
+//
+//     For most purposes, up to 500 simultaneous table operations are allowed per
+//     account. These operations include CreateTable, UpdateTable, DeleteTable,UpdateTimeToLive,
+//     RestoreTableFromBackup, and RestoreTableToPointInTime.
+//
+//     When you are creating a table with one or more secondary indexes, you can
+//     have up to 250 such requests running at a time. However, if the table or
+//     index specifications are complex, then DynamoDB might temporarily reduce
+//     the number of concurrent operations.
+//
+//     When importing into DynamoDB, up to 50 simultaneous import table operations
+//     are allowed per account.
+//
+//     There is a soft account quota of 2,500 tables.
+//
+//     GetRecords was called with a value of more than 1000 for the limit request
+//     parameter.
+//
+//     More than 2 processes are reading from the same streams shard at the same
+//     time. Exceeding this limit may result in request throttling.
+//
+//   - PolicyNotFoundException
+//     The operation tried to access a nonexistent resource-based policy.
+//
+//     If you specified an ExpectedRevisionId, it's possible that a policy is present
+//     for the resource but its revision ID didn't match the expected value.
+//
+//   - ResourceInUseException
+//     The operation conflicts with the resource's availability. For example, you
+//     attempted to recreate an existing table, or tried to delete a table currently
+//     in the CREATING state.
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/dynamodb-2012-08-10/PutResourcePolicy
+func (c *DynamoDB) PutResourcePolicy(input *PutResourcePolicyInput) (*PutResourcePolicyOutput, error) {
+	req, out := c.PutResourcePolicyRequest(input)
+	return out, req.Send()
+}
+
+// PutResourcePolicyWithContext is the same as PutResourcePolicy with the addition of
+// the ability to pass a context and additional request options.
+//
+// See PutResourcePolicy for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *DynamoDB) PutResourcePolicyWithContext(ctx aws.Context, input *PutResourcePolicyInput, opts ...request.Option) (*PutResourcePolicyOutput, error) {
+	req, out := c.PutResourcePolicyRequest(input)
 	req.SetContext(ctx)
 	req.ApplyOptions(opts...)
 	return out, req.Send()
@@ -6936,17 +7407,21 @@ func (c *DynamoDB) UpdateGlobalTableRequest(input *UpdateGlobalTableInput) (req 
 // schema, have DynamoDB Streams enabled, and have the same provisioned and
 // maximum write capacity units.
 //
-// This operation only applies to Version 2017.11.29 (Legacy) (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.V1.html)
-// of global tables. We recommend using Version 2019.11.21 (Current) (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.V2.html)
-// when creating new global tables, as it provides greater flexibility, higher
-// efficiency and consumes less write capacity than 2017.11.29 (Legacy). To
-// determine which version you are using, see Determining the version (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.DetermineVersion.html).
-// To update existing global tables from version 2017.11.29 (Legacy) to version
-// 2019.11.21 (Current), see Updating global tables (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/V2globaltables_upgrade.html).
+// This documentation is for version 2017.11.29 (Legacy) of global tables, which
+// should be avoided for new global tables. Customers should use Global Tables
+// version 2019.11.21 (Current) (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/GlobalTables.html)
+// when possible, because it provides greater flexibility, higher efficiency,
+// and consumes less write capacity than 2017.11.29 (Legacy).
 //
-// This operation only applies to Version 2017.11.29 (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.V1.html)
-// of global tables. If you are using global tables Version 2019.11.21 (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.V2.html)
-// you can use DescribeTable (https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_DescribeTable.html)
+// To determine which version you're using, see Determining the global table
+// version you are using (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.DetermineVersion.html).
+// To update existing global tables from version 2017.11.29 (Legacy) to version
+// 2019.11.21 (Current), see Upgrading global tables (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/V2globaltables_upgrade.html).
+//
+// For global tables, this operation only applies to global tables using Version
+// 2019.11.21 (Current version). If you are using global tables Version 2019.11.21
+// (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/GlobalTables.html)
+// you can use UpdateTable (https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_UpdateTable.html)
 // instead.
 //
 // Although you can use UpdateGlobalTable to add replicas and remove replicas
@@ -7082,13 +7557,16 @@ func (c *DynamoDB) UpdateGlobalTableSettingsRequest(input *UpdateGlobalTableSett
 //
 // Updates settings for a global table.
 //
-// This operation only applies to Version 2017.11.29 (Legacy) (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.V1.html)
-// of global tables. We recommend using Version 2019.11.21 (Current) (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.V2.html)
-// when creating new global tables, as it provides greater flexibility, higher
-// efficiency and consumes less write capacity than 2017.11.29 (Legacy). To
-// determine which version you are using, see Determining the version (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.DetermineVersion.html).
+// This documentation is for version 2017.11.29 (Legacy) of global tables, which
+// should be avoided for new global tables. Customers should use Global Tables
+// version 2019.11.21 (Current) (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/GlobalTables.html)
+// when possible, because it provides greater flexibility, higher efficiency,
+// and consumes less write capacity than 2017.11.29 (Legacy).
+//
+// To determine which version you're using, see Determining the global table
+// version you are using (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.DetermineVersion.html).
 // To update existing global tables from version 2017.11.29 (Legacy) to version
-// 2019.11.21 (Current), see Updating global tables (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/V2globaltables_upgrade.html).
+// 2019.11.21 (Current), see Upgrading global tables (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/V2globaltables_upgrade.html).
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -7506,8 +7984,8 @@ func (c *DynamoDB) UpdateTableRequest(input *UpdateTableInput) (req *request.Req
 // Modifies the provisioned throughput settings, global secondary indexes, or
 // DynamoDB Streams settings for a given table.
 //
-// This operation only applies to Version 2019.11.21 (Current) (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.V2.html)
-// of global tables.
+// For global tables, this operation only applies to global tables using Version
+// 2019.11.21 (Current version).
 //
 // You can only perform one of the following operations at once:
 //
@@ -7520,8 +7998,8 @@ func (c *DynamoDB) UpdateTableRequest(input *UpdateTableInput) (req *request.Req
 //
 // UpdateTable is an asynchronous operation; while it's executing, the table
 // status changes from ACTIVE to UPDATING. While it's UPDATING, you can't issue
-// another UpdateTable request on the base table nor any replicas. When the
-// table returns to the ACTIVE state, the UpdateTable operation is complete.
+// another UpdateTable request. When the table returns to the ACTIVE state,
+// the UpdateTable operation is complete.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -7634,8 +8112,8 @@ func (c *DynamoDB) UpdateTableReplicaAutoScalingRequest(input *UpdateTableReplic
 //
 // Updates auto scaling settings on your global tables at once.
 //
-// This operation only applies to Version 2019.11.21 (Current) (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.V2.html)
-// of global tables.
+// For global tables, this operation only applies to global tables using Version
+// 2019.11.21 (Current version).
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -7924,7 +8402,7 @@ func (s *ArchivalSummary) SetArchivalReason(v string) *ArchivalSummary {
 	return s
 }
 
-// Represents an attribute for describing the key schema for the table and indexes.
+// Represents an attribute for describing the schema for the table and indexes.
 type AttributeDefinition struct {
 	_ struct{} `type:"structure"`
 
@@ -9010,7 +9488,7 @@ type BackupSummary struct {
 	BackupType *string `type:"string" enum:"BackupType"`
 
 	// ARN associated with the table.
-	TableArn *string `type:"string"`
+	TableArn *string `min:"1" type:"string"`
 
 	// Unique identifier for the table.
 	TableId *string `type:"string"`
@@ -9223,9 +9701,9 @@ func (s *BatchExecuteStatementOutput) SetResponses(v []*BatchStatementResponse) 
 type BatchGetItemInput struct {
 	_ struct{} `type:"structure"`
 
-	// A map of one or more table names and, for each table, a map that describes
-	// one or more items to retrieve from that table. Each table name can be used
-	// only once per BatchGetItem request.
+	// A map of one or more table names or table ARNs and, for each table, a map
+	// that describes one or more items to retrieve from that table. Each table
+	// name or ARN can be used only once per BatchGetItem request.
 	//
 	// Each element in the map of items to retrieve consists of the following:
 	//
@@ -9359,9 +9837,9 @@ type BatchGetItemOutput struct {
 	//    * CapacityUnits - The total number of capacity units consumed.
 	ConsumedCapacity []*ConsumedCapacity `type:"list"`
 
-	// A map of table name to a list of items. Each object in Responses consists
-	// of a table name, along with a map of attribute data consisting of the data
-	// type and attribute value.
+	// A map of table name or table ARN to a list of items. Each object in Responses
+	// consists of a table name or ARN, along with a map of attribute data consisting
+	// of the data type and attribute value.
 	Responses map[string][]map[string]*AttributeValue `type:"map"`
 
 	// A map of tables and their respective keys that were not processed with the
@@ -9613,9 +10091,9 @@ func (s *BatchStatementResponse) SetTableName(v string) *BatchStatementResponse 
 type BatchWriteItemInput struct {
 	_ struct{} `type:"structure"`
 
-	// A map of one or more table names and, for each table, a list of operations
-	// to be performed (DeleteRequest or PutRequest). Each element in the map consists
-	// of the following:
+	// A map of one or more table names or table ARNs and, for each table, a list
+	// of operations to be performed (DeleteRequest or PutRequest). Each element
+	// in the map consists of the following:
 	//
 	//    * DeleteRequest - Perform a DeleteItem operation on the specified item.
 	//    The item to be deleted is identified by a Key subelement: Key - A map
@@ -9750,8 +10228,8 @@ type BatchWriteItemOutput struct {
 	// provide this value directly to a subsequent BatchWriteItem operation. For
 	// more information, see RequestItems in the Request Parameters section.
 	//
-	// Each UnprocessedItems entry consists of a table name and, for that table,
-	// a list of operations to perform (DeleteRequest or PutRequest).
+	// Each UnprocessedItems entry consists of a table name or table ARN and, for
+	// that table, a list of operations to perform (DeleteRequest or PutRequest).
 	//
 	//    * DeleteRequest - Perform a DeleteItem operation on the specified item.
 	//    The item to be deleted is identified by a Key subelement: Key - A map
@@ -10189,10 +10667,11 @@ type ConditionCheck struct {
 	// the valid values are: NONE and ALL_OLD.
 	ReturnValuesOnConditionCheckFailure *string `type:"string" enum:"ReturnValuesOnConditionCheckFailure"`
 
-	// Name of the table for the check item request.
+	// Name of the table for the check item request. You can also provide the Amazon
+	// Resource Name (ARN) of the table in this parameter.
 	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -10225,8 +10704,8 @@ func (s *ConditionCheck) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -10342,8 +10821,8 @@ func (s *ConditionalCheckFailedException) RequestID() string {
 // The capacity units consumed by an operation. The data returned includes the
 // total provisioned throughput consumed, along with statistics for the table
 // and any indexes involved in the operation. ConsumedCapacity is only returned
-// if the request asked for it. For more information, see Provisioned Throughput
-// (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ProvisionedThroughputIntro.html)
+// if the request asked for it. For more information, see Provisioned capacity
+// mode (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/provisioned-capacity-mode.html)
 // in the Amazon DynamoDB Developer Guide.
 type ConsumedCapacity struct {
 	_ struct{} `type:"structure"`
@@ -10363,8 +10842,10 @@ type ConsumedCapacity struct {
 	// The amount of throughput consumed on the table affected by the operation.
 	Table *Capacity `type:"structure"`
 
-	// The name of the table that was affected by the operation.
-	TableName *string `min:"3" type:"string"`
+	// The name of the table that was affected by the operation. If you had specified
+	// the Amazon Resource Name (ARN) of a table in the input, you'll see the table
+	// ARN in the response.
+	TableName *string `min:"1" type:"string"`
 
 	// The total number of write capacity units consumed by the operation.
 	WriteCapacityUnits *float64 `type:"double"`
@@ -10597,10 +11078,11 @@ type CreateBackupInput struct {
 	// BackupName is a required field
 	BackupName *string `min:"3" type:"string" required:"true"`
 
-	// The name of the table.
+	// The name of the table. You can also provide the Amazon Resource Name (ARN)
+	// of the table in this parameter.
 	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -10633,8 +11115,8 @@ func (s *CreateBackupInput) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -10699,6 +11181,11 @@ type CreateGlobalSecondaryIndexAction struct {
 	//
 	// KeySchema is a required field
 	KeySchema []*KeySchemaElement `min:"1" type:"list" required:"true"`
+
+	// The maximum number of read and write units for the global secondary index
+	// being created. If you use this parameter, you must specify MaxReadRequestUnits,
+	// MaxWriteRequestUnits, or both.
+	OnDemandThroughput *OnDemandThroughput `type:"structure"`
 
 	// Represents attributes that are copied (projected) from the table into an
 	// index. These are in addition to the primary key attributes and index key
@@ -10788,6 +11275,12 @@ func (s *CreateGlobalSecondaryIndexAction) SetIndexName(v string) *CreateGlobalS
 // SetKeySchema sets the KeySchema field's value.
 func (s *CreateGlobalSecondaryIndexAction) SetKeySchema(v []*KeySchemaElement) *CreateGlobalSecondaryIndexAction {
 	s.KeySchema = v
+	return s
+}
+
+// SetOnDemandThroughput sets the OnDemandThroughput field's value.
+func (s *CreateGlobalSecondaryIndexAction) SetOnDemandThroughput(v *OnDemandThroughput) *CreateGlobalSecondaryIndexAction {
+	s.OnDemandThroughput = v
 	return s
 }
 
@@ -10957,6 +11450,11 @@ type CreateReplicationGroupMemberAction struct {
 	// different from the default DynamoDB KMS key alias/aws/dynamodb.
 	KMSMasterKeyId *string `type:"string"`
 
+	// The maximum on-demand throughput settings for the specified replica table
+	// being created. You can only modify MaxReadRequestUnits, because you can't
+	// modify MaxWriteRequestUnits for individual replica tables.
+	OnDemandThroughputOverride *OnDemandThroughputOverride `type:"structure"`
+
 	// Replica-specific provisioned throughput. If not specified, uses the source
 	// table's provisioned throughput settings.
 	ProvisionedThroughputOverride *ProvisionedThroughputOverride `type:"structure"`
@@ -11032,6 +11530,12 @@ func (s *CreateReplicationGroupMemberAction) SetKMSMasterKeyId(v string) *Create
 	return s
 }
 
+// SetOnDemandThroughputOverride sets the OnDemandThroughputOverride field's value.
+func (s *CreateReplicationGroupMemberAction) SetOnDemandThroughputOverride(v *OnDemandThroughputOverride) *CreateReplicationGroupMemberAction {
+	s.OnDemandThroughputOverride = v
+	return s
+}
+
 // SetProvisionedThroughputOverride sets the ProvisionedThroughputOverride field's value.
 func (s *CreateReplicationGroupMemberAction) SetProvisionedThroughputOverride(v *ProvisionedThroughputOverride) *CreateReplicationGroupMemberAction {
 	s.ProvisionedThroughputOverride = v
@@ -11063,10 +11567,11 @@ type CreateTableInput struct {
 	// capacity. This setting can be changed later.
 	//
 	//    * PROVISIONED - We recommend using PROVISIONED for predictable workloads.
-	//    PROVISIONED sets the billing mode to Provisioned Mode (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadWriteCapacityMode.html#HowItWorks.ProvisionedThroughput.Manual).
+	//    PROVISIONED sets the billing mode to Provisioned capacity mode (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/provisioned-capacity-mode.html).
 	//
 	//    * PAY_PER_REQUEST - We recommend using PAY_PER_REQUEST for unpredictable
-	//    workloads. PAY_PER_REQUEST sets the billing mode to On-Demand Mode (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadWriteCapacityMode.html#HowItWorks.OnDemand).
+	//    workloads. PAY_PER_REQUEST sets the billing mode to On-demand capacity
+	//    mode (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/on-demand-capacity-mode.html).
 	BillingMode *string `type:"string" enum:"BillingMode"`
 
 	// Indicates whether deletion protection is to be enabled (true) or disabled
@@ -11161,6 +11666,11 @@ type CreateTableInput struct {
 	//    attributes when determining the total.
 	LocalSecondaryIndexes []*LocalSecondaryIndex `type:"list"`
 
+	// Sets the maximum number of read and write units for the specified table in
+	// on-demand capacity mode. If you use this parameter, you must specify MaxReadRequestUnits,
+	// MaxWriteRequestUnits, or both.
+	OnDemandThroughput *OnDemandThroughput `type:"structure"`
+
 	// Represents the provisioned throughput settings for a specified table or index.
 	// The settings can be modified using the UpdateTable operation.
 	//
@@ -11171,6 +11681,21 @@ type CreateTableInput struct {
 	// Account, and Table Quotas (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
 	// in the Amazon DynamoDB Developer Guide.
 	ProvisionedThroughput *ProvisionedThroughput `type:"structure"`
+
+	// An Amazon Web Services resource-based policy document in JSON format that
+	// will be attached to the table.
+	//
+	// When you attach a resource-based policy while creating a table, the policy
+	// application is strongly consistent.
+	//
+	// The maximum size supported for a resource-based policy document is 20 KB.
+	// DynamoDB counts whitespaces when calculating the size of a policy against
+	// this limit. For a full list of all considerations that apply for resource-based
+	// policies, see Resource-based policy considerations (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/rbac-considerations.html).
+	//
+	// You need to specify the CreateTable and PutResourcePolicy IAM actions for
+	// authorizing a user to create a table with a resource-based policy.
+	ResourcePolicy *string `type:"string"`
 
 	// Represents the settings used to enable server-side encryption.
 	SSESpecification *SSESpecification `type:"structure"`
@@ -11193,10 +11718,11 @@ type CreateTableInput struct {
 	// The table class of the new table. Valid values are STANDARD and STANDARD_INFREQUENT_ACCESS.
 	TableClass *string `type:"string" enum:"TableClass"`
 
-	// The name of the table to create.
+	// The name of the table to create. You can also provide the Amazon Resource
+	// Name (ARN) of the table in this parameter.
 	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 
 	// A list of key-value pairs to label the table. For more information, see Tagging
 	// for DynamoDB (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Tagging.html).
@@ -11236,8 +11762,8 @@ func (s *CreateTableInput) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 	if s.AttributeDefinitions != nil {
 		for i, v := range s.AttributeDefinitions {
@@ -11342,9 +11868,21 @@ func (s *CreateTableInput) SetLocalSecondaryIndexes(v []*LocalSecondaryIndex) *C
 	return s
 }
 
+// SetOnDemandThroughput sets the OnDemandThroughput field's value.
+func (s *CreateTableInput) SetOnDemandThroughput(v *OnDemandThroughput) *CreateTableInput {
+	s.OnDemandThroughput = v
+	return s
+}
+
 // SetProvisionedThroughput sets the ProvisionedThroughput field's value.
 func (s *CreateTableInput) SetProvisionedThroughput(v *ProvisionedThroughput) *CreateTableInput {
 	s.ProvisionedThroughput = v
+	return s
+}
+
+// SetResourcePolicy sets the ResourcePolicy field's value.
+func (s *CreateTableInput) SetResourcePolicy(v string) *CreateTableInput {
+	s.ResourcePolicy = &v
 	return s
 }
 
@@ -11494,10 +12032,11 @@ type Delete struct {
 	// values are: NONE and ALL_OLD.
 	ReturnValuesOnConditionCheckFailure *string `type:"string" enum:"ReturnValuesOnConditionCheckFailure"`
 
-	// Name of the table in which the item to be deleted resides.
+	// Name of the table in which the item to be deleted resides. You can also provide
+	// the Amazon Resource Name (ARN) of the table in this parameter.
 	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -11527,8 +12066,8 @@ func (s *Delete) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -11849,10 +12388,11 @@ type DeleteItemInput struct {
 	// No read capacity units are consumed.
 	ReturnValuesOnConditionCheckFailure *string `type:"string" enum:"ReturnValuesOnConditionCheckFailure"`
 
-	// The name of the table from which to delete the item.
+	// The name of the table from which to delete the item. You can also provide
+	// the Amazon Resource Name (ARN) of the table in this parameter.
 	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -11882,8 +12422,8 @@ func (s *DeleteItemInput) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -11971,7 +12511,7 @@ type DeleteItemOutput struct {
 	// includes the total provisioned throughput consumed, along with statistics
 	// for the table and any indexes involved in the operation. ConsumedCapacity
 	// is only returned if the ReturnConsumedCapacity parameter was specified. For
-	// more information, see Provisioned Throughput (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ProvisionedThroughputIntro.html)
+	// more information, see Provisioned capacity mode (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/provisioned-capacity-mode.html)
 	// in the Amazon DynamoDB Developer Guide.
 	ConsumedCapacity *ConsumedCapacity `type:"structure"`
 
@@ -12162,14 +12702,118 @@ func (s *DeleteRequest) SetKey(v map[string]*AttributeValue) *DeleteRequest {
 	return s
 }
 
+type DeleteResourcePolicyInput struct {
+	_ struct{} `type:"structure"`
+
+	// A string value that you can use to conditionally delete your policy. When
+	// you provide an expected revision ID, if the revision ID of the existing policy
+	// on the resource doesn't match or if there's no policy attached to the resource,
+	// the request will fail and return a PolicyNotFoundException.
+	ExpectedRevisionId *string `min:"1" type:"string"`
+
+	// The Amazon Resource Name (ARN) of the DynamoDB resource from which the policy
+	// will be removed. The resources you can specify include tables and streams.
+	// If you remove the policy of a table, it will also remove the permissions
+	// for the table's indexes defined in that policy document. This is because
+	// index permissions are defined in the table's policy.
+	//
+	// ResourceArn is a required field
+	ResourceArn *string `min:"1" type:"string" required:"true"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s DeleteResourcePolicyInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s DeleteResourcePolicyInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *DeleteResourcePolicyInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "DeleteResourcePolicyInput"}
+	if s.ExpectedRevisionId != nil && len(*s.ExpectedRevisionId) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("ExpectedRevisionId", 1))
+	}
+	if s.ResourceArn == nil {
+		invalidParams.Add(request.NewErrParamRequired("ResourceArn"))
+	}
+	if s.ResourceArn != nil && len(*s.ResourceArn) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("ResourceArn", 1))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetExpectedRevisionId sets the ExpectedRevisionId field's value.
+func (s *DeleteResourcePolicyInput) SetExpectedRevisionId(v string) *DeleteResourcePolicyInput {
+	s.ExpectedRevisionId = &v
+	return s
+}
+
+// SetResourceArn sets the ResourceArn field's value.
+func (s *DeleteResourcePolicyInput) SetResourceArn(v string) *DeleteResourcePolicyInput {
+	s.ResourceArn = &v
+	return s
+}
+
+type DeleteResourcePolicyOutput struct {
+	_ struct{} `type:"structure"`
+
+	// A unique string that represents the revision ID of the policy. If you're
+	// comparing revision IDs, make sure to always use string comparison logic.
+	//
+	// This value will be empty if you make a request against a resource without
+	// a policy.
+	RevisionId *string `min:"1" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s DeleteResourcePolicyOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s DeleteResourcePolicyOutput) GoString() string {
+	return s.String()
+}
+
+// SetRevisionId sets the RevisionId field's value.
+func (s *DeleteResourcePolicyOutput) SetRevisionId(v string) *DeleteResourcePolicyOutput {
+	s.RevisionId = &v
+	return s
+}
+
 // Represents the input of a DeleteTable operation.
 type DeleteTableInput struct {
 	_ struct{} `type:"structure"`
 
-	// The name of the table to delete.
+	// The name of the table to delete. You can also provide the Amazon Resource
+	// Name (ARN) of the table in this parameter.
 	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -12196,8 +12840,8 @@ func (s *DeleteTableInput) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -12330,8 +12974,11 @@ type DescribeContinuousBackupsInput struct {
 	// Name of the table for which the customer wants to check the continuous backups
 	// and point in time recovery settings.
 	//
+	// You can also provide the Amazon Resource Name (ARN) of the table in this
+	// parameter.
+	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -12358,8 +13005,8 @@ func (s *DescribeContinuousBackupsInput) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -12412,10 +13059,11 @@ type DescribeContributorInsightsInput struct {
 	// The name of the global secondary index to describe, if applicable.
 	IndexName *string `min:"3" type:"string"`
 
-	// The name of the table to describe.
+	// The name of the table to describe. You can also provide the Amazon Resource
+	// Name (ARN) of the table in this parameter.
 	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -12445,8 +13093,8 @@ func (s *DescribeContributorInsightsInput) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -12950,10 +13598,11 @@ func (s *DescribeImportOutput) SetImportTableDescription(v *ImportTableDescripti
 type DescribeKinesisStreamingDestinationInput struct {
 	_ struct{} `type:"structure"`
 
-	// The name of the table being described.
+	// The name of the table being described. You can also provide the Amazon Resource
+	// Name (ARN) of the table in this parameter.
 	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -12980,8 +13629,8 @@ func (s *DescribeKinesisStreamingDestinationInput) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -13128,10 +13777,11 @@ func (s *DescribeLimitsOutput) SetTableMaxWriteCapacityUnits(v int64) *DescribeL
 type DescribeTableInput struct {
 	_ struct{} `type:"structure"`
 
-	// The name of the table to describe.
+	// The name of the table to describe. You can also provide the Amazon Resource
+	// Name (ARN) of the table in this parameter.
 	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -13158,8 +13808,8 @@ func (s *DescribeTableInput) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -13209,10 +13859,11 @@ func (s *DescribeTableOutput) SetTable(v *TableDescription) *DescribeTableOutput
 type DescribeTableReplicaAutoScalingInput struct {
 	_ struct{} `type:"structure"`
 
-	// The name of the table.
+	// The name of the table. You can also provide the Amazon Resource Name (ARN)
+	// of the table in this parameter.
 	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -13239,8 +13890,8 @@ func (s *DescribeTableReplicaAutoScalingInput) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -13289,10 +13940,11 @@ func (s *DescribeTableReplicaAutoScalingOutput) SetTableAutoScalingDescription(v
 type DescribeTimeToLiveInput struct {
 	_ struct{} `type:"structure"`
 
-	// The name of the table to be described.
+	// The name of the table to be described. You can also provide the Amazon Resource
+	// Name (ARN) of the table in this parameter.
 	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -13319,8 +13971,8 @@ func (s *DescribeTimeToLiveInput) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -13377,10 +14029,11 @@ type DisableKinesisStreamingDestinationInput struct {
 	// StreamArn is a required field
 	StreamArn *string `min:"37" type:"string" required:"true"`
 
-	// The name of the DynamoDB table.
+	// The name of the DynamoDB table. You can also provide the Amazon Resource
+	// Name (ARN) of the table in this parameter.
 	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -13413,8 +14066,8 @@ func (s *DisableKinesisStreamingDestinationInput) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -13608,10 +14261,11 @@ type EnableKinesisStreamingDestinationInput struct {
 	// StreamArn is a required field
 	StreamArn *string `min:"37" type:"string" required:"true"`
 
-	// The name of the DynamoDB table.
+	// The name of the DynamoDB table. You can also provide the Amazon Resource
+	// Name (ARN) of the table in this parameter.
 	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -13644,8 +14298,8 @@ func (s *EnableKinesisStreamingDestinationInput) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -13919,8 +14573,8 @@ type ExecuteStatementOutput struct {
 	// The capacity units consumed by an operation. The data returned includes the
 	// total provisioned throughput consumed, along with statistics for the table
 	// and any indexes involved in the operation. ConsumedCapacity is only returned
-	// if the request asked for it. For more information, see Provisioned Throughput
-	// (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ProvisionedThroughputIntro.html)
+	// if the request asked for it. For more information, see Provisioned capacity
+	// mode (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/provisioned-capacity-mode.html)
 	// in the Amazon DynamoDB Developer Guide.
 	ConsumedCapacity *ConsumedCapacity `type:"structure"`
 
@@ -14477,7 +15131,7 @@ type ExportDescription struct {
 	StartTime *time.Time `type:"timestamp"`
 
 	// The Amazon Resource Name (ARN) of the table that was exported.
-	TableArn *string `type:"string"`
+	TableArn *string `min:"1" type:"string"`
 
 	// Unique ID of the table that was exported.
 	TableId *string `type:"string"`
@@ -14783,6 +15437,9 @@ type ExportTableToPointInTimeInput struct {
 
 	// The ID of the Amazon Web Services account that owns the bucket the export
 	// will be stored in.
+	//
+	// S3BucketOwner is a required parameter when exporting to a S3 bucket in another
+	// account.
 	S3BucketOwner *string `type:"string"`
 
 	// The Amazon S3 bucket prefix to use as the file name and path of the exported
@@ -14804,7 +15461,7 @@ type ExportTableToPointInTimeInput struct {
 	// The Amazon Resource Name (ARN) associated with the table to export.
 	//
 	// TableArn is a required field
-	TableArn *string `type:"string" required:"true"`
+	TableArn *string `min:"1" type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -14836,6 +15493,9 @@ func (s *ExportTableToPointInTimeInput) Validate() error {
 	}
 	if s.TableArn == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableArn"))
+	}
+	if s.TableArn != nil && len(*s.TableArn) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableArn", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -15004,10 +15664,11 @@ type Get struct {
 	// they do not appear in the result.
 	ProjectionExpression *string `type:"string"`
 
-	// The name of the table from which to retrieve the specified item.
+	// The name of the table from which to retrieve the specified item. You can
+	// also provide the Amazon Resource Name (ARN) of the table in this parameter.
 	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -15037,8 +15698,8 @@ func (s *Get) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -15160,10 +15821,11 @@ type GetItemInput struct {
 	//    * NONE - No ConsumedCapacity details are included in the response.
 	ReturnConsumedCapacity *string `type:"string" enum:"ReturnConsumedCapacity"`
 
-	// The name of the table containing the requested item.
+	// The name of the table containing the requested item. You can also provide
+	// the Amazon Resource Name (ARN) of the table in this parameter.
 	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -15196,8 +15858,8 @@ func (s *GetItemInput) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -15256,7 +15918,7 @@ type GetItemOutput struct {
 	// the total provisioned throughput consumed, along with statistics for the
 	// table and any indexes involved in the operation. ConsumedCapacity is only
 	// returned if the ReturnConsumedCapacity parameter was specified. For more
-	// information, see Provisioned Throughput (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ProvisionedThroughput.html#ItemSizeCalculations.Reads)
+	// information, see Capacity unit consumption for read operations (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/read-write-operations.html#read-operation-consumption)
 	// in the Amazon DynamoDB Developer Guide.
 	ConsumedCapacity *ConsumedCapacity `type:"structure"`
 
@@ -15294,6 +15956,98 @@ func (s *GetItemOutput) SetItem(v map[string]*AttributeValue) *GetItemOutput {
 	return s
 }
 
+type GetResourcePolicyInput struct {
+	_ struct{} `type:"structure"`
+
+	// The Amazon Resource Name (ARN) of the DynamoDB resource to which the policy
+	// is attached. The resources you can specify include tables and streams.
+	//
+	// ResourceArn is a required field
+	ResourceArn *string `min:"1" type:"string" required:"true"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetResourcePolicyInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetResourcePolicyInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *GetResourcePolicyInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "GetResourcePolicyInput"}
+	if s.ResourceArn == nil {
+		invalidParams.Add(request.NewErrParamRequired("ResourceArn"))
+	}
+	if s.ResourceArn != nil && len(*s.ResourceArn) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("ResourceArn", 1))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetResourceArn sets the ResourceArn field's value.
+func (s *GetResourcePolicyInput) SetResourceArn(v string) *GetResourcePolicyInput {
+	s.ResourceArn = &v
+	return s
+}
+
+type GetResourcePolicyOutput struct {
+	_ struct{} `type:"structure"`
+
+	// The resource-based policy document attached to the resource, which can be
+	// a table or stream, in JSON format.
+	Policy *string `type:"string"`
+
+	// A unique string that represents the revision ID of the policy. If you're
+	// comparing revision IDs, make sure to always use string comparison logic.
+	RevisionId *string `min:"1" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetResourcePolicyOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetResourcePolicyOutput) GoString() string {
+	return s.String()
+}
+
+// SetPolicy sets the Policy field's value.
+func (s *GetResourcePolicyOutput) SetPolicy(v string) *GetResourcePolicyOutput {
+	s.Policy = &v
+	return s
+}
+
+// SetRevisionId sets the RevisionId field's value.
+func (s *GetResourcePolicyOutput) SetRevisionId(v string) *GetResourcePolicyOutput {
+	s.RevisionId = &v
+	return s
+}
+
 // Represents the properties of a global secondary index.
 type GlobalSecondaryIndex struct {
 	_ struct{} `type:"structure"`
@@ -15322,6 +16076,11 @@ type GlobalSecondaryIndex struct {
 	//
 	// KeySchema is a required field
 	KeySchema []*KeySchemaElement `min:"1" type:"list" required:"true"`
+
+	// The maximum number of read and write units for the specified global secondary
+	// index. If you use this parameter, you must specify MaxReadRequestUnits, MaxWriteRequestUnits,
+	// or both.
+	OnDemandThroughput *OnDemandThroughput `type:"structure"`
 
 	// Represents attributes that are copied (projected) from the table into the
 	// global secondary index. These are in addition to the primary key attributes
@@ -15411,6 +16170,12 @@ func (s *GlobalSecondaryIndex) SetIndexName(v string) *GlobalSecondaryIndex {
 // SetKeySchema sets the KeySchema field's value.
 func (s *GlobalSecondaryIndex) SetKeySchema(v []*KeySchemaElement) *GlobalSecondaryIndex {
 	s.KeySchema = v
+	return s
+}
+
+// SetOnDemandThroughput sets the OnDemandThroughput field's value.
+func (s *GlobalSecondaryIndex) SetOnDemandThroughput(v *OnDemandThroughput) *GlobalSecondaryIndex {
+	s.OnDemandThroughput = v
 	return s
 }
 
@@ -15550,6 +16315,11 @@ type GlobalSecondaryIndexDescription struct {
 	// key physically close together, in sorted order by the sort key value.
 	KeySchema []*KeySchemaElement `min:"1" type:"list"`
 
+	// The maximum number of read and write units for the specified global secondary
+	// index. If you use this parameter, you must specify MaxReadRequestUnits, MaxWriteRequestUnits,
+	// or both.
+	OnDemandThroughput *OnDemandThroughput `type:"structure"`
+
 	// Represents attributes that are copied (projected) from the table into the
 	// global secondary index. These are in addition to the primary key attributes
 	// and index key attributes, which are automatically projected.
@@ -15624,6 +16394,12 @@ func (s *GlobalSecondaryIndexDescription) SetKeySchema(v []*KeySchemaElement) *G
 	return s
 }
 
+// SetOnDemandThroughput sets the OnDemandThroughput field's value.
+func (s *GlobalSecondaryIndexDescription) SetOnDemandThroughput(v *OnDemandThroughput) *GlobalSecondaryIndexDescription {
+	s.OnDemandThroughput = v
+	return s
+}
+
 // SetProjection sets the Projection field's value.
 func (s *GlobalSecondaryIndexDescription) SetProjection(v *Projection) *GlobalSecondaryIndexDescription {
 	s.Projection = v
@@ -15660,6 +16436,11 @@ type GlobalSecondaryIndexInfo struct {
 	// attribute" derives from the way DynamoDB stores items with the same partition
 	// key physically close together, in sorted order by the sort key value.
 	KeySchema []*KeySchemaElement `min:"1" type:"list"`
+
+	// Sets the maximum number of read and write units for the specified on-demand
+	// table. If you use this parameter, you must specify MaxReadRequestUnits, MaxWriteRequestUnits,
+	// or both.
+	OnDemandThroughput *OnDemandThroughput `type:"structure"`
 
 	// Represents attributes that are copied (projected) from the table into the
 	// global secondary index. These are in addition to the primary key attributes
@@ -15698,6 +16479,12 @@ func (s *GlobalSecondaryIndexInfo) SetIndexName(v string) *GlobalSecondaryIndexI
 // SetKeySchema sets the KeySchema field's value.
 func (s *GlobalSecondaryIndexInfo) SetKeySchema(v []*KeySchemaElement) *GlobalSecondaryIndexInfo {
 	s.KeySchema = v
+	return s
+}
+
+// SetOnDemandThroughput sets the OnDemandThroughput field's value.
+func (s *GlobalSecondaryIndexInfo) SetOnDemandThroughput(v *OnDemandThroughput) *GlobalSecondaryIndexInfo {
+	s.OnDemandThroughput = v
 	return s
 }
 
@@ -16357,7 +17144,7 @@ type ImportSummary struct {
 	StartTime *time.Time `type:"timestamp"`
 
 	// The Amazon Resource Number (ARN) of the table being imported into.
-	TableArn *string `type:"string"`
+	TableArn *string `min:"1" type:"string"`
 }
 
 // String returns the string representation.
@@ -16488,7 +17275,7 @@ type ImportTableDescription struct {
 	StartTime *time.Time `type:"timestamp"`
 
 	// The Amazon Resource Number (ARN) of the table being imported into.
-	TableArn *string `type:"string"`
+	TableArn *string `min:"1" type:"string"`
 
 	// The parameters for the new table that is being imported into.
 	TableCreationParameters *TableCreationParameters `type:"structure"`
@@ -17704,8 +18491,9 @@ type ListBackupsInput struct {
 	// Maximum number of backups to return at once.
 	Limit *int64 `min:"1" type:"integer"`
 
-	// The backups from the table specified by TableName are listed.
-	TableName *string `min:"3" type:"string"`
+	// Lists the backups from the table specified in TableName. You can also provide
+	// the Amazon Resource Name (ARN) of the table in this parameter.
+	TableName *string `min:"1" type:"string"`
 
 	// Only backups created after this time are listed. TimeRangeLowerBound is inclusive.
 	TimeRangeLowerBound *time.Time `type:"timestamp"`
@@ -17742,8 +18530,8 @@ func (s *ListBackupsInput) Validate() error {
 	if s.Limit != nil && *s.Limit < 1 {
 		invalidParams.Add(request.NewErrParamMinValue("Limit", 1))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -17847,8 +18635,9 @@ type ListContributorInsightsInput struct {
 	// A token to for the desired page, if there is one.
 	NextToken *string `type:"string"`
 
-	// The name of the table.
-	TableName *string `min:"3" type:"string"`
+	// The name of the table. You can also provide the Amazon Resource Name (ARN)
+	// of the table in this parameter.
+	TableName *string `min:"1" type:"string"`
 }
 
 // String returns the string representation.
@@ -17872,8 +18661,8 @@ func (s ListContributorInsightsInput) GoString() string {
 // Validate inspects the fields of the type to determine if they are valid.
 func (s *ListContributorInsightsInput) Validate() error {
 	invalidParams := request.ErrInvalidParams{Context: "ListContributorInsightsInput"}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -17952,7 +18741,7 @@ type ListExportsInput struct {
 	NextToken *string `type:"string"`
 
 	// The Amazon Resource Name (ARN) associated with the exported table.
-	TableArn *string `type:"string"`
+	TableArn *string `min:"1" type:"string"`
 }
 
 // String returns the string representation.
@@ -17978,6 +18767,9 @@ func (s *ListExportsInput) Validate() error {
 	invalidParams := request.ErrInvalidParams{Context: "ListExportsInput"}
 	if s.MaxResults != nil && *s.MaxResults < 1 {
 		invalidParams.Add(request.NewErrParamMinValue("MaxResults", 1))
+	}
+	if s.TableArn != nil && len(*s.TableArn) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableArn", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -18169,7 +18961,7 @@ type ListImportsInput struct {
 
 	// The Amazon Resource Name (ARN) associated with the table that was imported
 	// to.
-	TableArn *string `type:"string"`
+	TableArn *string `min:"1" type:"string"`
 }
 
 // String returns the string representation.
@@ -18198,6 +18990,9 @@ func (s *ListImportsInput) Validate() error {
 	}
 	if s.PageSize != nil && *s.PageSize < 1 {
 		invalidParams.Add(request.NewErrParamMinValue("PageSize", 1))
+	}
+	if s.TableArn != nil && len(*s.TableArn) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableArn", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -18755,6 +19550,92 @@ func (s *LocalSecondaryIndexInfo) SetProjection(v *Projection) *LocalSecondaryIn
 	return s
 }
 
+// Sets the maximum number of read and write units for the specified on-demand
+// table. If you use this parameter, you must specify MaxReadRequestUnits, MaxWriteRequestUnits,
+// or both.
+type OnDemandThroughput struct {
+	_ struct{} `type:"structure"`
+
+	// Maximum number of read request units for the specified table.
+	//
+	// To specify a maximum OnDemandThroughput on your table, set the value of MaxReadRequestUnits
+	// as greater than or equal to 1. To remove the maximum OnDemandThroughput that
+	// is currently set on your table, set the value of MaxReadRequestUnits to -1.
+	MaxReadRequestUnits *int64 `type:"long"`
+
+	// Maximum number of write request units for the specified table.
+	//
+	// To specify a maximum OnDemandThroughput on your table, set the value of MaxWriteRequestUnits
+	// as greater than or equal to 1. To remove the maximum OnDemandThroughput that
+	// is currently set on your table, set the value of MaxWriteRequestUnits to
+	// -1.
+	MaxWriteRequestUnits *int64 `type:"long"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s OnDemandThroughput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s OnDemandThroughput) GoString() string {
+	return s.String()
+}
+
+// SetMaxReadRequestUnits sets the MaxReadRequestUnits field's value.
+func (s *OnDemandThroughput) SetMaxReadRequestUnits(v int64) *OnDemandThroughput {
+	s.MaxReadRequestUnits = &v
+	return s
+}
+
+// SetMaxWriteRequestUnits sets the MaxWriteRequestUnits field's value.
+func (s *OnDemandThroughput) SetMaxWriteRequestUnits(v int64) *OnDemandThroughput {
+	s.MaxWriteRequestUnits = &v
+	return s
+}
+
+// Overrides the on-demand throughput settings for this replica table. If you
+// don't specify a value for this parameter, it uses the source table's on-demand
+// throughput settings.
+type OnDemandThroughputOverride struct {
+	_ struct{} `type:"structure"`
+
+	// Maximum number of read request units for the specified replica table.
+	MaxReadRequestUnits *int64 `type:"long"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s OnDemandThroughputOverride) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s OnDemandThroughputOverride) GoString() string {
+	return s.String()
+}
+
+// SetMaxReadRequestUnits sets the MaxReadRequestUnits field's value.
+func (s *OnDemandThroughputOverride) SetMaxReadRequestUnits(v int64) *OnDemandThroughputOverride {
+	s.MaxReadRequestUnits = &v
+	return s
+}
+
 // Represents a PartiQL statement that uses parameters.
 type ParameterizedStatement struct {
 	_ struct{} `type:"structure"`
@@ -18998,6 +19879,73 @@ func (s *PointInTimeRecoveryUnavailableException) RequestID() string {
 	return s.RespMetadata.RequestID
 }
 
+// The operation tried to access a nonexistent resource-based policy.
+//
+// If you specified an ExpectedRevisionId, it's possible that a policy is present
+// for the resource but its revision ID didn't match the expected value.
+type PolicyNotFoundException struct {
+	_            struct{}                  `type:"structure"`
+	RespMetadata protocol.ResponseMetadata `json:"-" xml:"-"`
+
+	Message_ *string `locationName:"message" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s PolicyNotFoundException) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s PolicyNotFoundException) GoString() string {
+	return s.String()
+}
+
+func newErrorPolicyNotFoundException(v protocol.ResponseMetadata) error {
+	return &PolicyNotFoundException{
+		RespMetadata: v,
+	}
+}
+
+// Code returns the exception type name.
+func (s *PolicyNotFoundException) Code() string {
+	return "PolicyNotFoundException"
+}
+
+// Message returns the exception's message.
+func (s *PolicyNotFoundException) Message() string {
+	if s.Message_ != nil {
+		return *s.Message_
+	}
+	return ""
+}
+
+// OrigErr always returns nil, satisfies awserr.Error interface.
+func (s *PolicyNotFoundException) OrigErr() error {
+	return nil
+}
+
+func (s *PolicyNotFoundException) Error() string {
+	return fmt.Sprintf("%s: %s", s.Code(), s.Message())
+}
+
+// Status code returns the HTTP status code for the request's response error.
+func (s *PolicyNotFoundException) StatusCode() int {
+	return s.RespMetadata.StatusCode
+}
+
+// RequestID returns the service's response RequestID for request.
+func (s *PolicyNotFoundException) RequestID() string {
+	return s.RespMetadata.RequestID
+}
+
 // Represents attributes that are copied (projected) from the table into an
 // index. These are in addition to the primary key attributes and index key
 // attributes, which are automatically projected.
@@ -19020,6 +19968,8 @@ type Projection struct {
 	//    secondary index will include other non-key attributes that you specify.
 	//
 	//    * ALL - All of the table attributes are projected into the index.
+	//
+	// When using the DynamoDB console, ALL is selected by default.
 	ProjectionType *string `type:"string" enum:"ProjectionType"`
 }
 
@@ -19368,10 +20318,11 @@ type Put struct {
 	// are: NONE and ALL_OLD.
 	ReturnValuesOnConditionCheckFailure *string `type:"string" enum:"ReturnValuesOnConditionCheckFailure"`
 
-	// Name of the table in which to write the item.
+	// Name of the table in which to write the item. You can also provide the Amazon
+	// Resource Name (ARN) of the table in this parameter.
 	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -19401,8 +20352,8 @@ func (s *Put) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -19611,10 +20562,11 @@ type PutItemInput struct {
 	// No read capacity units are consumed.
 	ReturnValuesOnConditionCheckFailure *string `type:"string" enum:"ReturnValuesOnConditionCheckFailure"`
 
-	// The name of the table to contain the item.
+	// The name of the table to contain the item. You can also provide the Amazon
+	// Resource Name (ARN) of the table in this parameter.
 	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -19644,8 +20596,8 @@ func (s *PutItemInput) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -19733,7 +20685,7 @@ type PutItemOutput struct {
 	// the total provisioned throughput consumed, along with statistics for the
 	// table and any indexes involved in the operation. ConsumedCapacity is only
 	// returned if the ReturnConsumedCapacity parameter was specified. For more
-	// information, see Provisioned Throughput (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ProvisionedThroughputIntro.html)
+	// information, see Capacity unity consumption for write operations (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/read-write-operations.html#write-operation-consumption)
 	// in the Amazon DynamoDB Developer Guide.
 	ConsumedCapacity *ConsumedCapacity `type:"structure"`
 
@@ -19829,6 +20781,151 @@ func (s PutRequest) GoString() string {
 // SetItem sets the Item field's value.
 func (s *PutRequest) SetItem(v map[string]*AttributeValue) *PutRequest {
 	s.Item = v
+	return s
+}
+
+type PutResourcePolicyInput struct {
+	_ struct{} `type:"structure"`
+
+	// Set this parameter to true to confirm that you want to remove your permissions
+	// to change the policy of this resource in the future.
+	ConfirmRemoveSelfResourceAccess *bool `type:"boolean"`
+
+	// A string value that you can use to conditionally update your policy. You
+	// can provide the revision ID of your existing policy to make mutating requests
+	// against that policy.
+	//
+	// When you provide an expected revision ID, if the revision ID of the existing
+	// policy on the resource doesn't match or if there's no policy attached to
+	// the resource, your request will be rejected with a PolicyNotFoundException.
+	//
+	// To conditionally attach a policy when no policy exists for the resource,
+	// specify NO_POLICY for the revision ID.
+	ExpectedRevisionId *string `min:"1" type:"string"`
+
+	// An Amazon Web Services resource-based policy document in JSON format.
+	//
+	//    * The maximum size supported for a resource-based policy document is 20
+	//    KB. DynamoDB counts whitespaces when calculating the size of a policy
+	//    against this limit.
+	//
+	//    * Within a resource-based policy, if the action for a DynamoDB service-linked
+	//    role (SLR) to replicate data for a global table is denied, adding or deleting
+	//    a replica will fail with an error.
+	//
+	// For a full list of all considerations that apply while attaching a resource-based
+	// policy, see Resource-based policy considerations (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/rbac-considerations.html).
+	//
+	// Policy is a required field
+	Policy *string `type:"string" required:"true"`
+
+	// The Amazon Resource Name (ARN) of the DynamoDB resource to which the policy
+	// will be attached. The resources you can specify include tables and streams.
+	//
+	// You can control index permissions using the base table's policy. To specify
+	// the same permission level for your table and its indexes, you can provide
+	// both the table and index Amazon Resource Name (ARN)s in the Resource field
+	// of a given Statement in your policy document. Alternatively, to specify different
+	// permissions for your table, indexes, or both, you can define multiple Statement
+	// fields in your policy document.
+	//
+	// ResourceArn is a required field
+	ResourceArn *string `min:"1" type:"string" required:"true"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s PutResourcePolicyInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s PutResourcePolicyInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *PutResourcePolicyInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "PutResourcePolicyInput"}
+	if s.ExpectedRevisionId != nil && len(*s.ExpectedRevisionId) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("ExpectedRevisionId", 1))
+	}
+	if s.Policy == nil {
+		invalidParams.Add(request.NewErrParamRequired("Policy"))
+	}
+	if s.ResourceArn == nil {
+		invalidParams.Add(request.NewErrParamRequired("ResourceArn"))
+	}
+	if s.ResourceArn != nil && len(*s.ResourceArn) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("ResourceArn", 1))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetConfirmRemoveSelfResourceAccess sets the ConfirmRemoveSelfResourceAccess field's value.
+func (s *PutResourcePolicyInput) SetConfirmRemoveSelfResourceAccess(v bool) *PutResourcePolicyInput {
+	s.ConfirmRemoveSelfResourceAccess = &v
+	return s
+}
+
+// SetExpectedRevisionId sets the ExpectedRevisionId field's value.
+func (s *PutResourcePolicyInput) SetExpectedRevisionId(v string) *PutResourcePolicyInput {
+	s.ExpectedRevisionId = &v
+	return s
+}
+
+// SetPolicy sets the Policy field's value.
+func (s *PutResourcePolicyInput) SetPolicy(v string) *PutResourcePolicyInput {
+	s.Policy = &v
+	return s
+}
+
+// SetResourceArn sets the ResourceArn field's value.
+func (s *PutResourcePolicyInput) SetResourceArn(v string) *PutResourcePolicyInput {
+	s.ResourceArn = &v
+	return s
+}
+
+type PutResourcePolicyOutput struct {
+	_ struct{} `type:"structure"`
+
+	// A unique string that represents the revision ID of the policy. If you're
+	// comparing revision IDs, make sure to always use string comparison logic.
+	RevisionId *string `min:"1" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s PutResourcePolicyOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s PutResourcePolicyOutput) GoString() string {
+	return s.String()
+}
+
+// SetRevisionId sets the RevisionId field's value.
+func (s *PutResourcePolicyOutput) SetRevisionId(v string) *PutResourcePolicyOutput {
+	s.RevisionId = &v
 	return s
 }
 
@@ -19931,7 +21028,7 @@ type QueryInput struct {
 	// A FilterExpression is applied after the items have already been read; the
 	// process of filtering does not consume any additional read capacity units.
 	//
-	// For more information, see Filter Expressions (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/QueryAndScan.html#Query.FilterExpression)
+	// For more information, see Filter Expressions (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Query.FilterExpression.html)
 	// in the Amazon DynamoDB Developer Guide.
 	FilterExpression *string `type:"string"`
 
@@ -20118,10 +21215,11 @@ type QueryInput struct {
 	// error.
 	Select *string `type:"string" enum:"Select"`
 
-	// The name of the table containing the requested items.
+	// The name of the table containing the requested items. You can also provide
+	// the Amazon Resource Name (ARN) of the table in this parameter.
 	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -20157,8 +21255,8 @@ func (s *QueryInput) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 	if s.KeyConditions != nil {
 		for i, v := range s.KeyConditions {
@@ -20297,7 +21395,7 @@ type QueryOutput struct {
 	// the total provisioned throughput consumed, along with statistics for the
 	// table and any indexes involved in the operation. ConsumedCapacity is only
 	// returned if the ReturnConsumedCapacity parameter was specified. For more
-	// information, see Provisioned Throughput (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ProvisionedThroughputIntro.html)
+	// information, see Capacity unit consumption for read operations (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/read-write-operations.html#read-operation-consumption)
 	// in the Amazon DynamoDB Developer Guide.
 	ConsumedCapacity *ConsumedCapacity `type:"structure"`
 
@@ -20651,6 +21749,10 @@ type ReplicaDescription struct {
 	// The KMS key of the replica that will be used for KMS encryption.
 	KMSMasterKeyId *string `type:"string"`
 
+	// Overrides the maximum on-demand throughput settings for the specified replica
+	// table.
+	OnDemandThroughputOverride *OnDemandThroughputOverride `type:"structure"`
+
 	// Replica-specific provisioned throughput. If not described, uses the source
 	// table's provisioned throughput settings.
 	ProvisionedThroughputOverride *ProvisionedThroughputOverride `type:"structure"`
@@ -20726,6 +21828,12 @@ func (s *ReplicaDescription) SetKMSMasterKeyId(v string) *ReplicaDescription {
 	return s
 }
 
+// SetOnDemandThroughputOverride sets the OnDemandThroughputOverride field's value.
+func (s *ReplicaDescription) SetOnDemandThroughputOverride(v *OnDemandThroughputOverride) *ReplicaDescription {
+	s.OnDemandThroughputOverride = v
+	return s
+}
+
 // SetProvisionedThroughputOverride sets the ProvisionedThroughputOverride field's value.
 func (s *ReplicaDescription) SetProvisionedThroughputOverride(v *ProvisionedThroughputOverride) *ReplicaDescription {
 	s.ProvisionedThroughputOverride = v
@@ -20777,6 +21885,10 @@ type ReplicaGlobalSecondaryIndex struct {
 	// IndexName is a required field
 	IndexName *string `min:"3" type:"string" required:"true"`
 
+	// Overrides the maximum on-demand throughput settings for the specified global
+	// secondary index in the specified replica table.
+	OnDemandThroughputOverride *OnDemandThroughputOverride `type:"structure"`
+
 	// Replica table GSI-specific provisioned throughput. If not specified, uses
 	// the source table GSI's read capacity settings.
 	ProvisionedThroughputOverride *ProvisionedThroughputOverride `type:"structure"`
@@ -20824,6 +21936,12 @@ func (s *ReplicaGlobalSecondaryIndex) Validate() error {
 // SetIndexName sets the IndexName field's value.
 func (s *ReplicaGlobalSecondaryIndex) SetIndexName(v string) *ReplicaGlobalSecondaryIndex {
 	s.IndexName = &v
+	return s
+}
+
+// SetOnDemandThroughputOverride sets the OnDemandThroughputOverride field's value.
+func (s *ReplicaGlobalSecondaryIndex) SetOnDemandThroughputOverride(v *OnDemandThroughputOverride) *ReplicaGlobalSecondaryIndex {
+	s.OnDemandThroughputOverride = v
 	return s
 }
 
@@ -20972,6 +22090,10 @@ type ReplicaGlobalSecondaryIndexDescription struct {
 	// The name of the global secondary index.
 	IndexName *string `min:"3" type:"string"`
 
+	// Overrides the maximum on-demand throughput for the specified global secondary
+	// index in the specified replica table.
+	OnDemandThroughputOverride *OnDemandThroughputOverride `type:"structure"`
+
 	// If not described, uses the source table GSI's read capacity settings.
 	ProvisionedThroughputOverride *ProvisionedThroughputOverride `type:"structure"`
 }
@@ -20997,6 +22119,12 @@ func (s ReplicaGlobalSecondaryIndexDescription) GoString() string {
 // SetIndexName sets the IndexName field's value.
 func (s *ReplicaGlobalSecondaryIndexDescription) SetIndexName(v string) *ReplicaGlobalSecondaryIndexDescription {
 	s.IndexName = &v
+	return s
+}
+
+// SetOnDemandThroughputOverride sets the OnDemandThroughputOverride field's value.
+func (s *ReplicaGlobalSecondaryIndexDescription) SetOnDemandThroughputOverride(v *OnDemandThroughputOverride) *ReplicaGlobalSecondaryIndexDescription {
+	s.OnDemandThroughputOverride = v
 	return s
 }
 
@@ -21845,7 +22973,7 @@ type RestoreSummary struct {
 	SourceBackupArn *string `min:"37" type:"string"`
 
 	// The ARN of the source table of the backup that is being restored.
-	SourceTableArn *string `type:"string"`
+	SourceTableArn *string `min:"1" type:"string"`
 }
 
 // String returns the string representation.
@@ -21910,6 +23038,11 @@ type RestoreTableFromBackupInput struct {
 	// should match existing secondary indexes. You can choose to exclude some or
 	// all of the indexes at the time of restore.
 	LocalSecondaryIndexOverride []*LocalSecondaryIndex `type:"list"`
+
+	// Sets the maximum number of read and write units for the specified on-demand
+	// table. If you use this parameter, you must specify MaxReadRequestUnits, MaxWriteRequestUnits,
+	// or both.
+	OnDemandThroughputOverride *OnDemandThroughput `type:"structure"`
 
 	// Provisioned throughput settings for the restored table.
 	ProvisionedThroughputOverride *ProvisionedThroughput `type:"structure"`
@@ -22012,6 +23145,12 @@ func (s *RestoreTableFromBackupInput) SetLocalSecondaryIndexOverride(v []*LocalS
 	return s
 }
 
+// SetOnDemandThroughputOverride sets the OnDemandThroughputOverride field's value.
+func (s *RestoreTableFromBackupInput) SetOnDemandThroughputOverride(v *OnDemandThroughput) *RestoreTableFromBackupInput {
+	s.OnDemandThroughputOverride = v
+	return s
+}
+
 // SetProvisionedThroughputOverride sets the ProvisionedThroughputOverride field's value.
 func (s *RestoreTableFromBackupInput) SetProvisionedThroughputOverride(v *ProvisionedThroughput) *RestoreTableFromBackupInput {
 	s.ProvisionedThroughputOverride = v
@@ -22077,6 +23216,11 @@ type RestoreTableToPointInTimeInput struct {
 	// all of the indexes at the time of restore.
 	LocalSecondaryIndexOverride []*LocalSecondaryIndex `type:"list"`
 
+	// Sets the maximum number of read and write units for the specified on-demand
+	// table. If you use this parameter, you must specify MaxReadRequestUnits, MaxWriteRequestUnits,
+	// or both.
+	OnDemandThroughputOverride *OnDemandThroughput `type:"structure"`
+
 	// Provisioned throughput settings for the restored table.
 	ProvisionedThroughputOverride *ProvisionedThroughput `type:"structure"`
 
@@ -22088,7 +23232,7 @@ type RestoreTableToPointInTimeInput struct {
 
 	// The DynamoDB table that will be restored. This value is an Amazon Resource
 	// Name (ARN).
-	SourceTableArn *string `type:"string"`
+	SourceTableArn *string `min:"1" type:"string"`
 
 	// Name of the source table that is being restored.
 	SourceTableName *string `min:"3" type:"string"`
@@ -22124,6 +23268,9 @@ func (s RestoreTableToPointInTimeInput) GoString() string {
 // Validate inspects the fields of the type to determine if they are valid.
 func (s *RestoreTableToPointInTimeInput) Validate() error {
 	invalidParams := request.ErrInvalidParams{Context: "RestoreTableToPointInTimeInput"}
+	if s.SourceTableArn != nil && len(*s.SourceTableArn) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("SourceTableArn", 1))
+	}
 	if s.SourceTableName != nil && len(*s.SourceTableName) < 3 {
 		invalidParams.Add(request.NewErrParamMinLen("SourceTableName", 3))
 	}
@@ -22180,6 +23327,12 @@ func (s *RestoreTableToPointInTimeInput) SetGlobalSecondaryIndexOverride(v []*Gl
 // SetLocalSecondaryIndexOverride sets the LocalSecondaryIndexOverride field's value.
 func (s *RestoreTableToPointInTimeInput) SetLocalSecondaryIndexOverride(v []*LocalSecondaryIndex) *RestoreTableToPointInTimeInput {
 	s.LocalSecondaryIndexOverride = v
+	return s
+}
+
+// SetOnDemandThroughputOverride sets the OnDemandThroughputOverride field's value.
+func (s *RestoreTableToPointInTimeInput) SetOnDemandThroughputOverride(v *OnDemandThroughput) *RestoreTableToPointInTimeInput {
+	s.OnDemandThroughputOverride = v
 	return s
 }
 
@@ -22675,11 +23828,14 @@ type ScanInput struct {
 	// error.
 	Select *string `type:"string" enum:"Select"`
 
-	// The name of the table containing the requested items; or, if you provide
-	// IndexName, the name of the table to which that index belongs.
+	// The name of the table containing the requested items or if you provide IndexName,
+	// the name of the table to which that index belongs.
+	//
+	// You can also provide the Amazon Resource Name (ARN) of the table in this
+	// parameter.
 	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 
 	// For a parallel Scan request, TotalSegments represents the total number of
 	// segments into which the Scan operation will be divided. The value of TotalSegments
@@ -22728,8 +23884,8 @@ func (s *ScanInput) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 	if s.TotalSegments != nil && *s.TotalSegments < 1 {
 		invalidParams.Add(request.NewErrParamMinValue("TotalSegments", 1))
@@ -22855,7 +24011,7 @@ type ScanOutput struct {
 	// the total provisioned throughput consumed, along with statistics for the
 	// table and any indexes involved in the operation. ConsumedCapacity is only
 	// returned if the ReturnConsumedCapacity parameter was specified. For more
-	// information, see Provisioned Throughput (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ProvisionedThroughput.html#ItemSizeCalculations.Reads)
+	// information, see Capacity unit consumption for read operations (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/read-write-operations.html#read-operation-consumption)
 	// in the Amazon DynamoDB Developer Guide.
 	ConsumedCapacity *ConsumedCapacity `type:"structure"`
 
@@ -22964,13 +24120,18 @@ type SourceTableDetails struct {
 	// KeySchema is a required field
 	KeySchema []*KeySchemaElement `min:"1" type:"list" required:"true"`
 
+	// Sets the maximum number of read and write units for the specified on-demand
+	// table. If you use this parameter, you must specify MaxReadRequestUnits, MaxWriteRequestUnits,
+	// or both.
+	OnDemandThroughput *OnDemandThroughput `type:"structure"`
+
 	// Read IOPs and Write IOPS on the table when the backup was created.
 	//
 	// ProvisionedThroughput is a required field
 	ProvisionedThroughput *ProvisionedThroughput `type:"structure" required:"true"`
 
 	// ARN of the table for which backup was created.
-	TableArn *string `type:"string"`
+	TableArn *string `min:"1" type:"string"`
 
 	// Time when the source table was created.
 	//
@@ -23024,6 +24185,12 @@ func (s *SourceTableDetails) SetItemCount(v int64) *SourceTableDetails {
 // SetKeySchema sets the KeySchema field's value.
 func (s *SourceTableDetails) SetKeySchema(v []*KeySchemaElement) *SourceTableDetails {
 	s.KeySchema = v
+	return s
+}
+
+// SetOnDemandThroughput sets the OnDemandThroughput field's value.
+func (s *SourceTableDetails) SetOnDemandThroughput(v *OnDemandThroughput) *SourceTableDetails {
+	s.OnDemandThroughput = v
 	return s
 }
 
@@ -23394,6 +24561,11 @@ type TableCreationParameters struct {
 	// KeySchema is a required field
 	KeySchema []*KeySchemaElement `min:"1" type:"list" required:"true"`
 
+	// Sets the maximum number of read and write units for the specified on-demand
+	// table. If you use this parameter, you must specify MaxReadRequestUnits, MaxWriteRequestUnits,
+	// or both.
+	OnDemandThroughput *OnDemandThroughput `type:"structure"`
+
 	// Represents the provisioned throughput settings for a specified table or index.
 	// The settings can be modified using the UpdateTable operation.
 	//
@@ -23510,6 +24682,12 @@ func (s *TableCreationParameters) SetGlobalSecondaryIndexes(v []*GlobalSecondary
 // SetKeySchema sets the KeySchema field's value.
 func (s *TableCreationParameters) SetKeySchema(v []*KeySchemaElement) *TableCreationParameters {
 	s.KeySchema = v
+	return s
+}
+
+// SetOnDemandThroughput sets the OnDemandThroughput field's value.
+func (s *TableCreationParameters) SetOnDemandThroughput(v *OnDemandThroughput) *TableCreationParameters {
+	s.OnDemandThroughput = v
 	return s
 }
 
@@ -23694,6 +24872,11 @@ type TableDescription struct {
 	// be returned.
 	LocalSecondaryIndexes []*LocalSecondaryIndexDescription `type:"list"`
 
+	// The maximum number of read and write units for the specified on-demand table.
+	// If you use this parameter, you must specify MaxReadRequestUnits, MaxWriteRequestUnits,
+	// or both.
+	OnDemandThroughput *OnDemandThroughput `type:"structure"`
+
 	// The provisioned throughput settings for the table, consisting of read and
 	// write capacity units, along with data about increases and decreases.
 	ProvisionedThroughput *ProvisionedThroughputDescription `type:"structure"`
@@ -23838,6 +25021,12 @@ func (s *TableDescription) SetLatestStreamLabel(v string) *TableDescription {
 // SetLocalSecondaryIndexes sets the LocalSecondaryIndexes field's value.
 func (s *TableDescription) SetLocalSecondaryIndexes(v []*LocalSecondaryIndexDescription) *TableDescription {
 	s.LocalSecondaryIndexes = v
+	return s
+}
+
+// SetOnDemandThroughput sets the OnDemandThroughput field's value.
+func (s *TableDescription) SetOnDemandThroughput(v *OnDemandThroughput) *TableDescription {
+	s.OnDemandThroughput = v
 	return s
 }
 
@@ -25188,10 +26377,11 @@ type Update struct {
 	// values are: NONE and ALL_OLD.
 	ReturnValuesOnConditionCheckFailure *string `type:"string" enum:"ReturnValuesOnConditionCheckFailure"`
 
-	// Name of the table for the UpdateItem request.
+	// Name of the table for the UpdateItem request. You can also provide the Amazon
+	// Resource Name (ARN) of the table in this parameter.
 	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 
 	// An expression that defines one or more attributes to be updated, the action
 	// to be performed on them, and new value(s) for them.
@@ -25227,8 +26417,8 @@ func (s *Update) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 	if s.UpdateExpression == nil {
 		invalidParams.Add(request.NewErrParamRequired("UpdateExpression"))
@@ -25290,10 +26480,11 @@ type UpdateContinuousBackupsInput struct {
 	// PointInTimeRecoverySpecification is a required field
 	PointInTimeRecoverySpecification *PointInTimeRecoverySpecification `type:"structure" required:"true"`
 
-	// The name of the table.
+	// The name of the table. You can also provide the Amazon Resource Name (ARN)
+	// of the table in this parameter.
 	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -25323,8 +26514,8 @@ func (s *UpdateContinuousBackupsInput) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 	if s.PointInTimeRecoverySpecification != nil {
 		if err := s.PointInTimeRecoverySpecification.Validate(); err != nil {
@@ -25393,10 +26584,11 @@ type UpdateContributorInsightsInput struct {
 	// The global secondary index name, if applicable.
 	IndexName *string `min:"3" type:"string"`
 
-	// The name of the table.
+	// The name of the table. You can also provide the Amazon Resource Name (ARN)
+	// of the table in this parameter.
 	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -25429,8 +26621,8 @@ func (s *UpdateContributorInsightsInput) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -25516,15 +26708,18 @@ type UpdateGlobalSecondaryIndexAction struct {
 	// IndexName is a required field
 	IndexName *string `min:"3" type:"string" required:"true"`
 
+	// Updates the maximum number of read and write units for the specified global
+	// secondary index. If you use this parameter, you must specify MaxReadRequestUnits,
+	// MaxWriteRequestUnits, or both.
+	OnDemandThroughput *OnDemandThroughput `type:"structure"`
+
 	// Represents the provisioned throughput settings for the specified global secondary
 	// index.
 	//
 	// For current minimum and maximum provisioned throughput values, see Service,
 	// Account, and Table Quotas (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Limits.html)
 	// in the Amazon DynamoDB Developer Guide.
-	//
-	// ProvisionedThroughput is a required field
-	ProvisionedThroughput *ProvisionedThroughput `type:"structure" required:"true"`
+	ProvisionedThroughput *ProvisionedThroughput `type:"structure"`
 }
 
 // String returns the string representation.
@@ -25554,9 +26749,6 @@ func (s *UpdateGlobalSecondaryIndexAction) Validate() error {
 	if s.IndexName != nil && len(*s.IndexName) < 3 {
 		invalidParams.Add(request.NewErrParamMinLen("IndexName", 3))
 	}
-	if s.ProvisionedThroughput == nil {
-		invalidParams.Add(request.NewErrParamRequired("ProvisionedThroughput"))
-	}
 	if s.ProvisionedThroughput != nil {
 		if err := s.ProvisionedThroughput.Validate(); err != nil {
 			invalidParams.AddNested("ProvisionedThroughput", err.(request.ErrInvalidParams))
@@ -25572,6 +26764,12 @@ func (s *UpdateGlobalSecondaryIndexAction) Validate() error {
 // SetIndexName sets the IndexName field's value.
 func (s *UpdateGlobalSecondaryIndexAction) SetIndexName(v string) *UpdateGlobalSecondaryIndexAction {
 	s.IndexName = &v
+	return s
+}
+
+// SetOnDemandThroughput sets the OnDemandThroughput field's value.
+func (s *UpdateGlobalSecondaryIndexAction) SetOnDemandThroughput(v *OnDemandThroughput) *UpdateGlobalSecondaryIndexAction {
+	s.OnDemandThroughput = v
 	return s
 }
 
@@ -25692,10 +26890,11 @@ type UpdateGlobalTableSettingsInput struct {
 	// the global table defaults to PROVISIONED capacity billing mode.
 	//
 	//    * PROVISIONED - We recommend using PROVISIONED for predictable workloads.
-	//    PROVISIONED sets the billing mode to Provisioned Mode (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadWriteCapacityMode.html#HowItWorks.ProvisionedThroughput.Manual).
+	//    PROVISIONED sets the billing mode to Provisioned capacity mode (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/provisioned-capacity-mode.html).
 	//
 	//    * PAY_PER_REQUEST - We recommend using PAY_PER_REQUEST for unpredictable
-	//    workloads. PAY_PER_REQUEST sets the billing mode to On-Demand Mode (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadWriteCapacityMode.html#HowItWorks.OnDemand).
+	//    workloads. PAY_PER_REQUEST sets the billing mode to On-demand capacity
+	//    mode (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/on-demand-capacity-mode.html).
 	GlobalTableBillingMode *string `type:"string" enum:"BillingMode"`
 
 	// Represents the settings of a global secondary index for a global table that
@@ -26023,10 +27222,11 @@ type UpdateItemInput struct {
 	// No read capacity units are consumed.
 	ReturnValuesOnConditionCheckFailure *string `type:"string" enum:"ReturnValuesOnConditionCheckFailure"`
 
-	// The name of the table containing the item to update.
+	// The name of the table containing the item to update. You can also provide
+	// the Amazon Resource Name (ARN) of the table in this parameter.
 	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 
 	// An expression that defines one or more attributes to be updated, the action
 	// to be performed on them, and new values for them.
@@ -26115,8 +27315,8 @@ func (s *UpdateItemInput) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -26219,7 +27419,7 @@ type UpdateItemOutput struct {
 	// includes the total provisioned throughput consumed, along with statistics
 	// for the table and any indexes involved in the operation. ConsumedCapacity
 	// is only returned if the ReturnConsumedCapacity parameter was specified. For
-	// more information, see Provisioned Throughput (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ProvisionedThroughput.html#ItemSizeCalculations.Reads)
+	// more information, see Capacity unity consumption for write operations (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/read-write-operations.html#write-operation-consumption)
 	// in the Amazon DynamoDB Developer Guide.
 	ConsumedCapacity *ConsumedCapacity `type:"structure"`
 
@@ -26315,15 +27515,16 @@ func (s *UpdateKinesisStreamingConfiguration) SetApproximateCreationDateTimePrec
 type UpdateKinesisStreamingDestinationInput struct {
 	_ struct{} `type:"structure"`
 
-	// The ARN for the Kinesis stream input.
+	// The Amazon Resource Name (ARN) for the Kinesis stream input.
 	//
 	// StreamArn is a required field
 	StreamArn *string `min:"37" type:"string" required:"true"`
 
-	// The table name for the Kinesis streaming destination input.
+	// The table name for the Kinesis streaming destination input. You can also
+	// provide the ARN of the table in this parameter.
 	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 
 	// The command to update the Kinesis stream configuration.
 	UpdateKinesisStreamingConfiguration *UpdateKinesisStreamingConfiguration `type:"structure"`
@@ -26359,8 +27560,8 @@ func (s *UpdateKinesisStreamingDestinationInput) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 
 	if invalidParams.Len() > 0 {
@@ -26458,6 +27659,9 @@ type UpdateReplicationGroupMemberAction struct {
 	// from the default DynamoDB KMS key alias/aws/dynamodb.
 	KMSMasterKeyId *string `type:"string"`
 
+	// Overrides the maximum on-demand throughput for the replica table.
+	OnDemandThroughputOverride *OnDemandThroughputOverride `type:"structure"`
+
 	// Replica-specific provisioned throughput. If not specified, uses the source
 	// table's provisioned throughput settings.
 	ProvisionedThroughputOverride *ProvisionedThroughputOverride `type:"structure"`
@@ -26533,6 +27737,12 @@ func (s *UpdateReplicationGroupMemberAction) SetKMSMasterKeyId(v string) *Update
 	return s
 }
 
+// SetOnDemandThroughputOverride sets the OnDemandThroughputOverride field's value.
+func (s *UpdateReplicationGroupMemberAction) SetOnDemandThroughputOverride(v *OnDemandThroughputOverride) *UpdateReplicationGroupMemberAction {
+	s.OnDemandThroughputOverride = v
+	return s
+}
+
 // SetProvisionedThroughputOverride sets the ProvisionedThroughputOverride field's value.
 func (s *UpdateReplicationGroupMemberAction) SetProvisionedThroughputOverride(v *ProvisionedThroughputOverride) *UpdateReplicationGroupMemberAction {
 	s.ProvisionedThroughputOverride = v
@@ -26567,10 +27777,11 @@ type UpdateTableInput struct {
 	// table and global secondary indexes over the past 30 minutes.
 	//
 	//    * PROVISIONED - We recommend using PROVISIONED for predictable workloads.
-	//    PROVISIONED sets the billing mode to Provisioned Mode (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadWriteCapacityMode.html#HowItWorks.ProvisionedThroughput.Manual).
+	//    PROVISIONED sets the billing mode to Provisioned capacity mode (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/provisioned-capacity-mode.html).
 	//
 	//    * PAY_PER_REQUEST - We recommend using PAY_PER_REQUEST for unpredictable
-	//    workloads. PAY_PER_REQUEST sets the billing mode to On-Demand Mode (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadWriteCapacityMode.html#HowItWorks.OnDemand).
+	//    workloads. PAY_PER_REQUEST sets the billing mode to On-demand capacity
+	//    mode (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/on-demand-capacity-mode.html).
 	BillingMode *string `type:"string" enum:"BillingMode"`
 
 	// Indicates whether deletion protection is to be enabled (true) or disabled
@@ -26594,13 +27805,18 @@ type UpdateTableInput struct {
 	// in the Amazon DynamoDB Developer Guide.
 	GlobalSecondaryIndexUpdates []*GlobalSecondaryIndexUpdate `type:"list"`
 
+	// Updates the maximum number of read and write units for the specified table
+	// in on-demand capacity mode. If you use this parameter, you must specify MaxReadRequestUnits,
+	// MaxWriteRequestUnits, or both.
+	OnDemandThroughput *OnDemandThroughput `type:"structure"`
+
 	// The new provisioned throughput settings for the specified table or index.
 	ProvisionedThroughput *ProvisionedThroughput `type:"structure"`
 
 	// A list of replica update actions (create, delete, or update) for the table.
 	//
-	// This property only applies to Version 2019.11.21 (Current) (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables.V2.html)
-	// of global tables.
+	// For global tables, this property only applies to global tables using Version
+	// 2019.11.21 (Current version).
 	ReplicaUpdates []*ReplicationGroupUpdate `min:"1" type:"list"`
 
 	// The new server-side encryption settings for the specified table.
@@ -26617,10 +27833,11 @@ type UpdateTableInput struct {
 	// STANDARD_INFREQUENT_ACCESS.
 	TableClass *string `type:"string" enum:"TableClass"`
 
-	// The name of the table to be updated.
+	// The name of the table to be updated. You can also provide the Amazon Resource
+	// Name (ARN) of the table in this parameter.
 	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -26650,8 +27867,8 @@ func (s *UpdateTableInput) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 	if s.AttributeDefinitions != nil {
 		for i, v := range s.AttributeDefinitions {
@@ -26721,6 +27938,12 @@ func (s *UpdateTableInput) SetDeletionProtectionEnabled(v bool) *UpdateTableInpu
 // SetGlobalSecondaryIndexUpdates sets the GlobalSecondaryIndexUpdates field's value.
 func (s *UpdateTableInput) SetGlobalSecondaryIndexUpdates(v []*GlobalSecondaryIndexUpdate) *UpdateTableInput {
 	s.GlobalSecondaryIndexUpdates = v
+	return s
+}
+
+// SetOnDemandThroughput sets the OnDemandThroughput field's value.
+func (s *UpdateTableInput) SetOnDemandThroughput(v *OnDemandThroughput) *UpdateTableInput {
+	s.OnDemandThroughput = v
 	return s
 }
 
@@ -26807,10 +28030,11 @@ type UpdateTableReplicaAutoScalingInput struct {
 	// modified.
 	ReplicaUpdates []*ReplicaAutoScalingUpdate `min:"1" type:"list"`
 
-	// The name of the global table to be updated.
+	// The name of the global table to be updated. You can also provide the Amazon
+	// Resource Name (ARN) of the table in this parameter.
 	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 }
 
 // String returns the string representation.
@@ -26843,8 +28067,8 @@ func (s *UpdateTableReplicaAutoScalingInput) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 	if s.GlobalSecondaryIndexUpdates != nil {
 		for i, v := range s.GlobalSecondaryIndexUpdates {
@@ -26937,10 +28161,11 @@ func (s *UpdateTableReplicaAutoScalingOutput) SetTableAutoScalingDescription(v *
 type UpdateTimeToLiveInput struct {
 	_ struct{} `type:"structure"`
 
-	// The name of the table to be configured.
+	// The name of the table to be configured. You can also provide the Amazon Resource
+	// Name (ARN) of the table in this parameter.
 	//
 	// TableName is a required field
-	TableName *string `min:"3" type:"string" required:"true"`
+	TableName *string `min:"1" type:"string" required:"true"`
 
 	// Represents the settings used to enable or disable Time to Live for the specified
 	// table.
@@ -26973,8 +28198,8 @@ func (s *UpdateTimeToLiveInput) Validate() error {
 	if s.TableName == nil {
 		invalidParams.Add(request.NewErrParamRequired("TableName"))
 	}
-	if s.TableName != nil && len(*s.TableName) < 3 {
-		invalidParams.Add(request.NewErrParamMinLen("TableName", 3))
+	if s.TableName != nil && len(*s.TableName) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("TableName", 1))
 	}
 	if s.TimeToLiveSpecification == nil {
 		invalidParams.Add(request.NewErrParamRequired("TimeToLiveSpecification"))

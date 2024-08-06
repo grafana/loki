@@ -14,6 +14,7 @@
 package promql
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -210,14 +211,28 @@ func histogramRate(points []HPoint, isCounter bool, metricName string, pos posra
 	}
 
 	h := last.CopyToSchema(minSchema)
-	h.Sub(prev)
+	_, err := h.Sub(prev)
+	if err != nil {
+		if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
+			return nil, annotations.New().Add(annotations.NewMixedExponentialCustomHistogramsWarning(metricName, pos))
+		} else if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
+			return nil, annotations.New().Add(annotations.NewIncompatibleCustomBucketsHistogramsWarning(metricName, pos))
+		}
+	}
 
 	if isCounter {
 		// Second iteration to deal with counter resets.
 		for _, currPoint := range points[1:] {
 			curr := currPoint.H
 			if curr.DetectReset(prev) {
-				h.Add(prev)
+				_, err := h.Add(prev)
+				if err != nil {
+					if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
+						return nil, annotations.New().Add(annotations.NewMixedExponentialCustomHistogramsWarning(metricName, pos))
+					} else if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
+						return nil, annotations.New().Add(annotations.NewIncompatibleCustomBucketsHistogramsWarning(metricName, pos))
+					}
+				}
 			}
 			prev = curr
 		}
@@ -342,7 +357,6 @@ func funcHoltWinters(vals []parser.Value, args parser.Expressions, enh *EvalNode
 	// Run the smoothing operation.
 	var x, y float64
 	for i := 1; i < l; i++ {
-
 		// Scale the raw value against the smoothing factor.
 		x = sf * samples.Floats[i].F
 
@@ -514,10 +528,11 @@ func aggrOverTime(vals []parser.Value, enh *EvalNodeHelper, aggrFn func(Series) 
 	return append(enh.Out, Sample{F: aggrFn(el)})
 }
 
-func aggrHistOverTime(vals []parser.Value, enh *EvalNodeHelper, aggrFn func(Series) *histogram.FloatHistogram) Vector {
+func aggrHistOverTime(vals []parser.Value, enh *EvalNodeHelper, aggrFn func(Series) (*histogram.FloatHistogram, error)) (Vector, error) {
 	el := vals[0].(Matrix)[0]
+	res, err := aggrFn(el)
 
-	return append(enh.Out, Sample{H: aggrFn(el)})
+	return append(enh.Out, Sample{H: res}), err
 }
 
 // === avg_over_time(Matrix parser.ValueTypeMatrix) (Vector, Annotations)  ===
@@ -529,18 +544,33 @@ func funcAvgOverTime(vals []parser.Value, args parser.Expressions, enh *EvalNode
 	}
 	if len(firstSeries.Floats) == 0 {
 		// The passed values only contain histograms.
-		return aggrHistOverTime(vals, enh, func(s Series) *histogram.FloatHistogram {
+		vec, err := aggrHistOverTime(vals, enh, func(s Series) (*histogram.FloatHistogram, error) {
 			count := 1
 			mean := s.Histograms[0].H.Copy()
 			for _, h := range s.Histograms[1:] {
 				count++
 				left := h.H.Copy().Div(float64(count))
 				right := mean.Copy().Div(float64(count))
-				toAdd := left.Sub(right)
-				mean.Add(toAdd)
+				toAdd, err := left.Sub(right)
+				if err != nil {
+					return mean, err
+				}
+				_, err = mean.Add(toAdd)
+				if err != nil {
+					return mean, err
+				}
 			}
-			return mean
-		}), nil
+			return mean, nil
+		})
+		if err != nil {
+			metricName := firstSeries.Metric.Get(labels.MetricName)
+			if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
+				return enh.Out, annotations.New().Add(annotations.NewMixedExponentialCustomHistogramsWarning(metricName, args[0].PositionRange()))
+			} else if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
+				return enh.Out, annotations.New().Add(annotations.NewIncompatibleCustomBucketsHistogramsWarning(metricName, args[0].PositionRange()))
+			}
+		}
+		return vec, nil
 	}
 	return aggrOverTime(vals, enh, func(s Series) float64 {
 		var mean, count, c float64
@@ -674,13 +704,25 @@ func funcSumOverTime(vals []parser.Value, args parser.Expressions, enh *EvalNode
 	}
 	if len(firstSeries.Floats) == 0 {
 		// The passed values only contain histograms.
-		return aggrHistOverTime(vals, enh, func(s Series) *histogram.FloatHistogram {
+		vec, err := aggrHistOverTime(vals, enh, func(s Series) (*histogram.FloatHistogram, error) {
 			sum := s.Histograms[0].H.Copy()
 			for _, h := range s.Histograms[1:] {
-				sum.Add(h.H)
+				_, err := sum.Add(h.H)
+				if err != nil {
+					return sum, err
+				}
 			}
-			return sum
-		}), nil
+			return sum, nil
+		})
+		if err != nil {
+			metricName := firstSeries.Metric.Get(labels.MetricName)
+			if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
+				return enh.Out, annotations.New().Add(annotations.NewMixedExponentialCustomHistogramsWarning(metricName, args[0].PositionRange()))
+			} else if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
+				return enh.Out, annotations.New().Add(annotations.NewIncompatibleCustomBucketsHistogramsWarning(metricName, args[0].PositionRange()))
+			}
+		}
+		return vec, nil
 	}
 	return aggrOverTime(vals, enh, func(s Series) float64 {
 		var sum, c float64
@@ -949,21 +991,16 @@ func funcTimestamp(vals []parser.Value, args parser.Expressions, enh *EvalNodeHe
 	return enh.Out, nil
 }
 
-func kahanSum(samples []float64) float64 {
-	var sum, c float64
-
-	for _, v := range samples {
-		sum, c = kahanSumInc(v, sum, c)
-	}
-	return sum + c
-}
-
 func kahanSumInc(inc, sum, c float64) (newSum, newC float64) {
 	t := sum + inc
+	switch {
+	case math.IsInf(t, 0):
+		c = 0
+
 	// Using Neumaier improvement, swap if next term larger than sum.
-	if math.Abs(sum) >= math.Abs(inc) {
+	case math.Abs(sum) >= math.Abs(inc):
 		c += (sum - t) + inc
-	} else {
+	default:
 		c += (inc - t) + sum
 	}
 	return t, c
@@ -1111,11 +1148,17 @@ func funcHistogramStdDev(vals []parser.Value, args parser.Expressions, enh *Eval
 		it := sample.H.AllBucketIterator()
 		for it.Next() {
 			bucket := it.At()
+			if bucket.Count == 0 {
+				continue
+			}
 			var val float64
 			if bucket.Lower <= 0 && 0 <= bucket.Upper {
 				val = 0
 			} else {
 				val = math.Sqrt(bucket.Upper * bucket.Lower)
+				if bucket.Upper < 0 {
+					val = -val
+				}
 			}
 			delta := val - mean
 			variance, cVariance = kahanSumInc(bucket.Count*delta*delta, variance, cVariance)
@@ -1144,11 +1187,17 @@ func funcHistogramStdVar(vals []parser.Value, args parser.Expressions, enh *Eval
 		it := sample.H.AllBucketIterator()
 		for it.Next() {
 			bucket := it.At()
+			if bucket.Count == 0 {
+				continue
+			}
 			var val float64
 			if bucket.Lower <= 0 && 0 <= bucket.Upper {
 				val = 0
 			} else {
 				val = math.Sqrt(bucket.Upper * bucket.Lower)
+				if bucket.Upper < 0 {
+					val = -val
+				}
 			}
 			delta := val - mean
 			variance, cVariance = kahanSumInc(bucket.Count*delta*delta, variance, cVariance)
@@ -1228,7 +1277,6 @@ func funcHistogramQuantile(vals []parser.Value, args parser.Expressions, enh *Ev
 			enh.signatureToMetricWithBuckets[string(enh.lblBuf)] = mb
 		}
 		mb.buckets = append(mb.buckets, bucket{upperBound, sample.F})
-
 	}
 
 	// Now deal with the histograms.
@@ -1385,6 +1433,9 @@ func (ev *evaluator) evalLabelJoin(args parser.Expressions) (parser.Value, annot
 			panic(fmt.Errorf("invalid source label name in label_join(): %s", src))
 		}
 		srcLabels[i-3] = src
+	}
+	if !model.LabelName(dst).IsValid() {
+		panic(fmt.Errorf("invalid destination label name in label_join(): %s", dst))
 	}
 
 	val, ws := ev.eval(args[0])

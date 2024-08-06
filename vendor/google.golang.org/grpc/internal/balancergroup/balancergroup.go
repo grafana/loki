@@ -19,6 +19,7 @@
 package balancergroup
 
 import (
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -29,6 +30,7 @@ import (
 	"google.golang.org/grpc/internal/cache"
 	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/resolver"
+	"google.golang.org/grpc/serviceconfig"
 )
 
 // subBalancerWrapper is used to keep the configurations that will be used to start
@@ -148,20 +150,6 @@ func (sbc *subBalancerWrapper) resolverError(err error) {
 	b.ResolverError(err)
 }
 
-func (sbc *subBalancerWrapper) gracefulSwitch(builder balancer.Builder) {
-	sbc.builder = builder
-	b := sbc.balancer
-	// Even if you get an add and it persists builder but doesn't start
-	// balancer, this would leave graceful switch being nil, in which we are
-	// correctly overwriting with the recent builder here as well to use later.
-	// The graceful switch balancer's presence is an invariant of whether the
-	// balancer group is closed or not (if closed, nil, if started, present).
-	if sbc.balancer != nil {
-		sbc.group.logger.Infof("Switching child policy %v to type %v", sbc.id, sbc.builder.Name())
-		b.SwitchTo(sbc.builder)
-	}
-}
-
 func (sbc *subBalancerWrapper) stopBalancer() {
 	if sbc.balancer == nil {
 		return
@@ -170,7 +158,8 @@ func (sbc *subBalancerWrapper) stopBalancer() {
 	sbc.balancer = nil
 }
 
-// BalancerGroup takes a list of balancers, and make them into one balancer.
+// BalancerGroup takes a list of balancers, each behind a gracefulswitch
+// balancer, and make them into one balancer.
 //
 // Note that this struct doesn't implement balancer.Balancer, because it's not
 // intended to be used directly as a balancer. It's expected to be used as a
@@ -375,25 +364,6 @@ func (bg *BalancerGroup) AddWithClientConn(id, balancerName string, cc balancer.
 // Add adds a balancer built by builder to the group, with given id.
 func (bg *BalancerGroup) Add(id string, builder balancer.Builder) {
 	bg.AddWithClientConn(id, builder.Name(), bg.cc)
-}
-
-// UpdateBuilder updates the builder for a current child, starting the Graceful
-// Switch process for that child.
-//
-// TODO: update this API to take the name of the new builder instead.
-func (bg *BalancerGroup) UpdateBuilder(id string, builder balancer.Builder) {
-	bg.outgoingMu.Lock()
-	// This does not deal with the balancer cache because this call should come
-	// after an Add call for a given child balancer. If the child is removed,
-	// the caller will call Add if the child balancer comes back which would
-	// then deal with the balancer cache.
-	sbc := bg.idToBalancerConfig[id]
-	if sbc == nil {
-		// simply ignore it if not present, don't error
-		return
-	}
-	sbc.gracefulSwitch(builder)
-	bg.outgoingMu.Unlock()
 }
 
 // Remove removes the balancer with id from the group.
@@ -635,4 +605,15 @@ func (bg *BalancerGroup) ExitIdleOne(id string) {
 		}
 	}
 	bg.outgoingMu.Unlock()
+}
+
+// ParseConfig parses a child config list and returns a LB config for the
+// gracefulswitch Balancer.
+//
+// cfg is expected to be a json.RawMessage containing a JSON array of LB policy
+// names + configs as the format of the "loadBalancingConfig" field in
+// ServiceConfig.  It returns a type that should be passed to
+// UpdateClientConnState in the BalancerConfig field.
+func ParseConfig(cfg json.RawMessage) (serviceconfig.LoadBalancingConfig, error) {
+	return gracefulswitch.ParseConfig(cfg)
 }

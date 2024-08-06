@@ -171,6 +171,10 @@ func (rx *ResumableUpload) Upload(ctx context.Context) (resp *http.Response, err
 			if resp != nil && resp.Body != nil {
 				resp.Body.Close()
 			}
+			// If there were retries, indicate this in the error message and wrap the final error.
+			if rx.attempts > 1 {
+				return nil, fmt.Errorf("chunk upload failed after %d attempts;, final error: %w", rx.attempts, err)
+			}
 			return nil, err
 		}
 		// This case is very unlikely but possible only if rx.ChunkRetryDeadline is
