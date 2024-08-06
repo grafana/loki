@@ -330,7 +330,7 @@ Within the entrypoint section, the Loki data source is configured with the follo
 - `jsonData.httpHeaderName1: "X-Scope-OrgID"` (header name for the organization ID)
 - `secureJsonData.httpHeaderValue1: "tenant1"` (header value for the organization ID)
   
-It is important to note when Loki is configured in any other mode other than monolithic deployment, a tenant ID is required to be passed in the header. Without this, queries will return an authorization error.
+It is important to note when Loki is configured in any other mode other than monolithic deployment, you are required to pass a tenant ID in the header. Without this, queries will return an authorization error.
 
 <!-- INTERACTIVE page step2.md END -->
 
