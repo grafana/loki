@@ -48,6 +48,10 @@ The Docker Compose configuration runs the following components, each in its own 
 <!-- INTERACTIVE ignore START -->
 ## Before you begin
 
+Before you start, you need to have the following installed on your local system:
+- Install [Docker](https://docs.docker.com/install)
+- Install [Docker Compose](https://docs.docker.com/compose/install)
+
 {{< admonition type="tip" >}}
 Alternatively, you can try out this example in our interactive learning environment: [Loki Quickstart Sandbox](https://killercoda.com/grafana-labs/course/loki/loki-quickstart).
 
@@ -58,8 +62,7 @@ It's a fully configured environment with all the dependencies already installed.
 Provide feedback, report bugs, and raise issues in the [Grafana Killercoda repository](https://github.com/grafana/killercoda).
 {{< /admonition >}}
 
-- Install [Docker](https://docs.docker.com/install)
-- Install [Docker Compose](https://docs.docker.com/compose/install)
+
 <!-- INTERACTIVE ignore END -->
 
 <!-- INTERACTIVE page step1.md START -->
