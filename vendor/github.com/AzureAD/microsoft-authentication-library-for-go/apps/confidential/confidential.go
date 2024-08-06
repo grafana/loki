@@ -18,7 +18,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"net/url"
 
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/cache"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/base"
@@ -27,6 +26,7 @@ import (
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/accesstokens"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/authority"
+	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/options"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/shared"
 )
 
@@ -48,9 +48,8 @@ duplication.
 
 .Net People, Take note on X509:
 This uses x509.Certificates and private keys. x509 does not store private keys. .Net
-has some x509.Certificate2 thing that has private keys, but that is just some bullcrap that .Net
-added, it doesn't exist in real life.  Seriously, "x509.Certificate2", bahahahaha.  As such I've
-put a PEM decoder into here.
+has a x509.Certificate2 abstraction that has private keys, but that just a strange invention.
+As such I've put a PEM decoder into here.
 */
 
 // TODO(msal): This should have example code for each method on client using Go's example doc framework.
@@ -60,9 +59,11 @@ put a PEM decoder into here.
 // For details see https://aka.ms/msal-net-authenticationresult
 type AuthResult = base.AuthResult
 
+type AuthenticationScheme = authority.AuthenticationScheme
+
 type Account = shared.Account
 
-// CertFromPEM converts a PEM file (.pem or .key) for use with NewCredFromCert(). The file
+// CertFromPEM converts a PEM file (.pem or .key) for use with [NewCredFromCert]. The file
 // must contain the public certificate and the private key. If a PEM block is encrypted and
 // password is not an empty string, it attempts to decrypt the PEM blocks using the password.
 // Multiple certs are due to certificate chaining for use cases like TLS that sign from root to leaf.
@@ -178,33 +179,15 @@ func NewCredFromSecret(secret string) (Credential, error) {
 	return Credential{secret: secret}, nil
 }
 
-// NewCredFromAssertion creates a Credential from a signed assertion.
-//
-// Deprecated: a Credential created by this function can't refresh the
-// assertion when it expires. Use NewCredFromAssertionCallback instead.
-func NewCredFromAssertion(assertion string) (Credential, error) {
-	if assertion == "" {
-		return Credential{}, errors.New("assertion can't be empty string")
-	}
-	return NewCredFromAssertionCallback(func(context.Context, AssertionRequestOptions) (string, error) { return assertion, nil }), nil
-}
-
 // NewCredFromAssertionCallback creates a Credential that invokes a callback to get assertions
 // authenticating the application. The callback must be thread safe.
 func NewCredFromAssertionCallback(callback func(context.Context, AssertionRequestOptions) (string, error)) Credential {
 	return Credential{assertionCallback: callback}
 }
 
-// NewCredFromCert creates a Credential from an x509.Certificate and an RSA private key.
-// CertFromPEM() can be used to get these values from a PEM file.
-func NewCredFromCert(cert *x509.Certificate, key crypto.PrivateKey) Credential {
-	cred, _ := NewCredFromCertChain([]*x509.Certificate{cert}, key)
-	return cred
-}
-
-// NewCredFromCertChain creates a Credential from a chain of x509.Certificates and an RSA private key
-// as returned by CertFromPEM().
-func NewCredFromCertChain(certs []*x509.Certificate, key crypto.PrivateKey) (Credential, error) {
+// NewCredFromCert creates a Credential from a certificate or chain of certificates and an RSA private key
+// as returned by [CertFromPEM].
+func NewCredFromCert(certs []*x509.Certificate, key crypto.PrivateKey) (Credential, error) {
 	cred := Credential{key: key}
 	k, ok := key.(*rsa.PrivateKey)
 	if !ok {
@@ -254,77 +237,56 @@ func AutoDetectRegion() string {
 // For more information, visit https://docs.microsoft.com/azure/active-directory/develop/msal-client-applications
 type Client struct {
 	base base.Client
-
 	cred *accesstokens.Credential
-
-	// userID is some unique identifier for a user. It actually isn't used by us at all, it
-	// simply acts as another hint that a confidential.Client is for a single user.
-	userID string
 }
 
-// Options are optional settings for New(). These options are set using various functions
+// clientOptions are optional settings for New(). These options are set using various functions
 // returning Option calls.
-type Options struct {
-	// Accessor controls cache persistence.
-	// By default there is no cache persistence. This can be set using the WithAccessor() option.
-	Accessor cache.ExportReplace
-
-	// The host of the Azure Active Directory authority.
-	// The default is https://login.microsoftonline.com/common. This can be changed using the
-	// WithAuthority() option.
-	Authority string
-
-	// The HTTP client used for making requests.
-	// It defaults to a shared http.Client.
-	HTTPClient ops.HTTPClient
-
-	// SendX5C specifies if x5c claim(public key of the certificate) should be sent to STS.
-	SendX5C bool
-
-	// Instructs MSAL Go to use an Azure regional token service with sepcified AzureRegion.
-	AzureRegion string
-}
-
-func (o Options) validate() error {
-	u, err := url.Parse(o.Authority)
-	if err != nil {
-		return fmt.Errorf("the Authority(%s) does not parse as a valid URL", o.Authority)
-	}
-	if u.Scheme != "https" {
-		return fmt.Errorf("the Authority(%s) does not appear to use https", o.Authority)
-	}
-	return nil
+type clientOptions struct {
+	accessor                          cache.ExportReplace
+	authority, azureRegion            string
+	capabilities                      []string
+	disableInstanceDiscovery, sendX5C bool
+	httpClient                        ops.HTTPClient
 }
 
 // Option is an optional argument to New().
-type Option func(o *Options)
+type Option func(o *clientOptions)
 
-// WithAuthority allows you to provide a custom authority for use in the client.
-func WithAuthority(authority string) Option {
-	return func(o *Options) {
-		o.Authority = authority
+// WithCache provides an accessor that will read and write authentication data to an externally managed cache.
+func WithCache(accessor cache.ExportReplace) Option {
+	return func(o *clientOptions) {
+		o.accessor = accessor
 	}
 }
 
-// WithAccessor provides a cache accessor that will read and write to some externally managed cache
-// that may or may not be shared with other applications.
-func WithAccessor(accessor cache.ExportReplace) Option {
-	return func(o *Options) {
-		o.Accessor = accessor
+// WithClientCapabilities allows configuring one or more client capabilities such as "CP1"
+func WithClientCapabilities(capabilities []string) Option {
+	return func(o *clientOptions) {
+		// there's no danger of sharing the slice's underlying memory with the application because
+		// this slice is simply passed to base.WithClientCapabilities, which copies its data
+		o.capabilities = capabilities
 	}
 }
 
 // WithHTTPClient allows for a custom HTTP client to be set.
 func WithHTTPClient(httpClient ops.HTTPClient) Option {
-	return func(o *Options) {
-		o.HTTPClient = httpClient
+	return func(o *clientOptions) {
+		o.httpClient = httpClient
 	}
 }
 
 // WithX5C specifies if x5c claim(public key of the certificate) should be sent to STS to enable Subject Name Issuer Authentication.
 func WithX5C() Option {
-	return func(o *Options) {
-		o.SendX5C = true
+	return func(o *clientOptions) {
+		o.sendX5C = true
+	}
+}
+
+// WithInstanceDiscovery set to false to disable authority validation (to support private cloud scenarios)
+func WithInstanceDiscovery(enabled bool) Option {
+	return func(o *clientOptions) {
+		o.disableInstanceDiscovery = !enabled
 	}
 }
 
@@ -340,146 +302,376 @@ func WithX5C() Option {
 // If auto-detection fails, the non-regional endpoint will be used.
 // If an invalid region name is provided, the non-regional endpoint MIGHT be used or the token request MIGHT fail.
 func WithAzureRegion(val string) Option {
-	return func(o *Options) {
-		o.AzureRegion = val
+	return func(o *clientOptions) {
+		o.azureRegion = val
 	}
 }
 
-// New is the constructor for Client. userID is the unique identifier of the user this client
-// will store credentials for (a Client is per user). clientID is the Azure clientID and cred is
-// the type of credential to use.
-func New(clientID string, cred Credential, options ...Option) (Client, error) {
+// New is the constructor for Client. authority is the URL of a token authority such as "https://login.microsoftonline.com/<your tenant>".
+// If the Client will connect directly to AD FS, use "adfs" for the tenant. clientID is the application's client ID (also called its
+// "application ID").
+func New(authority, clientID string, cred Credential, options ...Option) (Client, error) {
 	internalCred, err := cred.toInternal()
 	if err != nil {
 		return Client{}, err
 	}
 
-	opts := Options{
-		Authority:  base.AuthorityPublicCloud,
-		HTTPClient: shared.DefaultClient,
+	opts := clientOptions{
+		authority: authority,
+		// if the caller specified a token provider, it will handle all details of authentication, using Client only as a token cache
+		disableInstanceDiscovery: cred.tokenProvider != nil,
+		httpClient:               shared.DefaultClient,
 	}
-
 	for _, o := range options {
 		o(&opts)
 	}
-	if err := opts.validate(); err != nil {
-		return Client{}, err
-	}
-
 	baseOpts := []base.Option{
-		base.WithCacheAccessor(opts.Accessor),
-		base.WithRegionDetection(opts.AzureRegion),
-		base.WithX5C(opts.SendX5C),
+		base.WithCacheAccessor(opts.accessor),
+		base.WithClientCapabilities(opts.capabilities),
+		base.WithInstanceDiscovery(!opts.disableInstanceDiscovery),
+		base.WithRegionDetection(opts.azureRegion),
+		base.WithX5C(opts.sendX5C),
 	}
-	if cred.tokenProvider != nil {
-		// The caller will handle all details of authentication, using Client only as a token cache.
-		// Declaring the authority host known prevents unnecessary metadata discovery requests. (The
-		// authority is irrelevant to Client and friends because the token provider is responsible
-		// for authentication.)
-		parsed, err := url.Parse(opts.Authority)
-		if err != nil {
-			return Client{}, errors.New("invalid authority")
-		}
-		baseOpts = append(baseOpts, base.WithKnownAuthorityHosts([]string{parsed.Hostname()}))
-	}
-	base, err := base.New(clientID, opts.Authority, oauth.New(opts.HTTPClient), baseOpts...)
+	base, err := base.New(clientID, opts.authority, oauth.New(opts.httpClient), baseOpts...)
 	if err != nil {
 		return Client{}, err
 	}
+	base.AuthParams.IsConfidentialClient = true
 
 	return Client{base: base, cred: internalCred}, nil
 }
 
-// UserID is the unique user identifier this client if for.
-func (cca Client) UserID() string {
-	return cca.userID
+// authCodeURLOptions contains options for AuthCodeURL
+type authCodeURLOptions struct {
+	claims, loginHint, tenantID, domainHint string
+}
+
+// AuthCodeURLOption is implemented by options for AuthCodeURL
+type AuthCodeURLOption interface {
+	authCodeURLOption()
 }
 
 // AuthCodeURL creates a URL used to acquire an authorization code. Users need to call CreateAuthorizationCodeURLParameters and pass it in.
-func (cca Client) AuthCodeURL(ctx context.Context, clientID, redirectURI string, scopes []string) (string, error) {
-	return cca.base.AuthCodeURL(ctx, clientID, redirectURI, scopes, cca.base.AuthParams)
+//
+// Options: [WithClaims], [WithDomainHint], [WithLoginHint], [WithTenantID]
+func (cca Client) AuthCodeURL(ctx context.Context, clientID, redirectURI string, scopes []string, opts ...AuthCodeURLOption) (string, error) {
+	o := authCodeURLOptions{}
+	if err := options.ApplyOptions(&o, opts); err != nil {
+		return "", err
+	}
+	ap, err := cca.base.AuthParams.WithTenant(o.tenantID)
+	if err != nil {
+		return "", err
+	}
+	ap.Claims = o.claims
+	ap.LoginHint = o.loginHint
+	ap.DomainHint = o.domainHint
+	return cca.base.AuthCodeURL(ctx, clientID, redirectURI, scopes, ap)
 }
 
-// AcquireTokenSilentOptions are all the optional settings to an AcquireTokenSilent() call.
+// WithLoginHint pre-populates the login prompt with a username.
+func WithLoginHint(username string) interface {
+	AuthCodeURLOption
+	options.CallOption
+} {
+	return struct {
+		AuthCodeURLOption
+		options.CallOption
+	}{
+		CallOption: options.NewCallOption(
+			func(a any) error {
+				switch t := a.(type) {
+				case *authCodeURLOptions:
+					t.loginHint = username
+				default:
+					return fmt.Errorf("unexpected options type %T", a)
+				}
+				return nil
+			},
+		),
+	}
+}
+
+// WithDomainHint adds the IdP domain as domain_hint query parameter in the auth url.
+func WithDomainHint(domain string) interface {
+	AuthCodeURLOption
+	options.CallOption
+} {
+	return struct {
+		AuthCodeURLOption
+		options.CallOption
+	}{
+		CallOption: options.NewCallOption(
+			func(a any) error {
+				switch t := a.(type) {
+				case *authCodeURLOptions:
+					t.domainHint = domain
+				default:
+					return fmt.Errorf("unexpected options type %T", a)
+				}
+				return nil
+			},
+		),
+	}
+}
+
+// WithClaims sets additional claims to request for the token, such as those required by conditional access policies.
+// Use this option when Azure AD returned a claims challenge for a prior request. The argument must be decoded.
+// This option is valid for any token acquisition method.
+func WithClaims(claims string) interface {
+	AcquireByAuthCodeOption
+	AcquireByCredentialOption
+	AcquireOnBehalfOfOption
+	AcquireSilentOption
+	AuthCodeURLOption
+	options.CallOption
+} {
+	return struct {
+		AcquireByAuthCodeOption
+		AcquireByCredentialOption
+		AcquireOnBehalfOfOption
+		AcquireSilentOption
+		AuthCodeURLOption
+		options.CallOption
+	}{
+		CallOption: options.NewCallOption(
+			func(a any) error {
+				switch t := a.(type) {
+				case *acquireTokenByAuthCodeOptions:
+					t.claims = claims
+				case *acquireTokenByCredentialOptions:
+					t.claims = claims
+				case *acquireTokenOnBehalfOfOptions:
+					t.claims = claims
+				case *acquireTokenSilentOptions:
+					t.claims = claims
+				case *authCodeURLOptions:
+					t.claims = claims
+				default:
+					return fmt.Errorf("unexpected options type %T", a)
+				}
+				return nil
+			},
+		),
+	}
+}
+
+// WithAuthenticationScheme is an extensibility mechanism designed to be used only by Azure Arc for proof of possession access tokens.
+func WithAuthenticationScheme(authnScheme AuthenticationScheme) interface {
+	AcquireSilentOption
+	AcquireByCredentialOption
+	options.CallOption
+} {
+	return struct {
+		AcquireSilentOption
+		AcquireByCredentialOption
+		options.CallOption
+	}{
+		CallOption: options.NewCallOption(
+			func(a any) error {
+				switch t := a.(type) {
+				case *acquireTokenSilentOptions:
+					t.authnScheme = authnScheme
+				case *acquireTokenByCredentialOptions:
+					t.authnScheme = authnScheme
+				default:
+					return fmt.Errorf("unexpected options type %T", a)
+				}
+				return nil
+			},
+		),
+	}
+}
+
+// WithTenantID specifies a tenant for a single authentication. It may be different than the tenant set in [New].
+// This option is valid for any token acquisition method.
+func WithTenantID(tenantID string) interface {
+	AcquireByAuthCodeOption
+	AcquireByCredentialOption
+	AcquireOnBehalfOfOption
+	AcquireSilentOption
+	AuthCodeURLOption
+	options.CallOption
+} {
+	return struct {
+		AcquireByAuthCodeOption
+		AcquireByCredentialOption
+		AcquireOnBehalfOfOption
+		AcquireSilentOption
+		AuthCodeURLOption
+		options.CallOption
+	}{
+		CallOption: options.NewCallOption(
+			func(a any) error {
+				switch t := a.(type) {
+				case *acquireTokenByAuthCodeOptions:
+					t.tenantID = tenantID
+				case *acquireTokenByCredentialOptions:
+					t.tenantID = tenantID
+				case *acquireTokenOnBehalfOfOptions:
+					t.tenantID = tenantID
+				case *acquireTokenSilentOptions:
+					t.tenantID = tenantID
+				case *authCodeURLOptions:
+					t.tenantID = tenantID
+				default:
+					return fmt.Errorf("unexpected options type %T", a)
+				}
+				return nil
+			},
+		),
+	}
+}
+
+// acquireTokenSilentOptions are all the optional settings to an AcquireTokenSilent() call.
 // These are set by using various AcquireTokenSilentOption functions.
-type AcquireTokenSilentOptions struct {
-	// Account represents the account to use. To set, use the WithSilentAccount() option.
-	Account Account
+type acquireTokenSilentOptions struct {
+	account          Account
+	claims, tenantID string
+	authnScheme      AuthenticationScheme
 }
 
-// AcquireTokenSilentOption changes options inside AcquireTokenSilentOptions used in .AcquireTokenSilent().
-type AcquireTokenSilentOption func(a *AcquireTokenSilentOptions)
+// AcquireSilentOption is implemented by options for AcquireTokenSilent
+type AcquireSilentOption interface {
+	acquireSilentOption()
+}
 
 // WithSilentAccount uses the passed account during an AcquireTokenSilent() call.
-func WithSilentAccount(account Account) AcquireTokenSilentOption {
-	return func(a *AcquireTokenSilentOptions) {
-		a.Account = account
+func WithSilentAccount(account Account) interface {
+	AcquireSilentOption
+	options.CallOption
+} {
+	return struct {
+		AcquireSilentOption
+		options.CallOption
+	}{
+		CallOption: options.NewCallOption(
+			func(a any) error {
+				switch t := a.(type) {
+				case *acquireTokenSilentOptions:
+					t.account = account
+				default:
+					return fmt.Errorf("unexpected options type %T", a)
+				}
+				return nil
+			},
+		),
 	}
 }
 
 // AcquireTokenSilent acquires a token from either the cache or using a refresh token.
-func (cca Client) AcquireTokenSilent(ctx context.Context, scopes []string, options ...AcquireTokenSilentOption) (AuthResult, error) {
-	opts := AcquireTokenSilentOptions{}
-	for _, o := range options {
-		o(&opts)
+//
+// Options: [WithClaims], [WithSilentAccount], [WithTenantID]
+func (cca Client) AcquireTokenSilent(ctx context.Context, scopes []string, opts ...AcquireSilentOption) (AuthResult, error) {
+	o := acquireTokenSilentOptions{}
+	if err := options.ApplyOptions(&o, opts); err != nil {
+		return AuthResult{}, err
 	}
-	var isAppCache bool
-	if opts.Account.IsZero() {
-		isAppCache = true
+
+	if o.claims != "" {
+		return AuthResult{}, errors.New("call another AcquireToken method to request a new token having these claims")
 	}
 
 	silentParameters := base.AcquireTokenSilentParameters{
 		Scopes:      scopes,
-		Account:     opts.Account,
+		Account:     o.account,
 		RequestType: accesstokens.ATConfidential,
 		Credential:  cca.cred,
-		IsAppCache:  isAppCache,
+		IsAppCache:  o.account.IsZero(),
+		TenantID:    o.tenantID,
+		AuthnScheme: o.authnScheme,
 	}
 
 	return cca.base.AcquireTokenSilent(ctx, silentParameters)
 }
 
-// AcquireTokenByAuthCodeOptions contains the optional parameters used to acquire an access token using the authorization code flow.
-type AcquireTokenByAuthCodeOptions struct {
-	Challenge string
+// acquireTokenByAuthCodeOptions contains the optional parameters used to acquire an access token using the authorization code flow.
+type acquireTokenByAuthCodeOptions struct {
+	challenge, claims, tenantID string
 }
 
-// AcquireTokenByAuthCodeOption changes options inside AcquireTokenByAuthCodeOptions used in .AcquireTokenByAuthCode().
-type AcquireTokenByAuthCodeOption func(a *AcquireTokenByAuthCodeOptions)
+// AcquireByAuthCodeOption is implemented by options for AcquireTokenByAuthCode
+type AcquireByAuthCodeOption interface {
+	acquireByAuthCodeOption()
+}
 
 // WithChallenge allows you to provide a challenge for the .AcquireTokenByAuthCode() call.
-func WithChallenge(challenge string) AcquireTokenByAuthCodeOption {
-	return func(a *AcquireTokenByAuthCodeOptions) {
-		a.Challenge = challenge
+func WithChallenge(challenge string) interface {
+	AcquireByAuthCodeOption
+	options.CallOption
+} {
+	return struct {
+		AcquireByAuthCodeOption
+		options.CallOption
+	}{
+		CallOption: options.NewCallOption(
+			func(a any) error {
+				switch t := a.(type) {
+				case *acquireTokenByAuthCodeOptions:
+					t.challenge = challenge
+				default:
+					return fmt.Errorf("unexpected options type %T", a)
+				}
+				return nil
+			},
+		),
 	}
 }
 
 // AcquireTokenByAuthCode is a request to acquire a security token from the authority, using an authorization code.
 // The specified redirect URI must be the same URI that was used when the authorization code was requested.
-func (cca Client) AcquireTokenByAuthCode(ctx context.Context, code string, redirectURI string, scopes []string, options ...AcquireTokenByAuthCodeOption) (AuthResult, error) {
-	opts := AcquireTokenByAuthCodeOptions{}
-	for _, o := range options {
-		o(&opts)
+//
+// Options: [WithChallenge], [WithClaims], [WithTenantID]
+func (cca Client) AcquireTokenByAuthCode(ctx context.Context, code string, redirectURI string, scopes []string, opts ...AcquireByAuthCodeOption) (AuthResult, error) {
+	o := acquireTokenByAuthCodeOptions{}
+	if err := options.ApplyOptions(&o, opts); err != nil {
+		return AuthResult{}, err
 	}
 
 	params := base.AcquireTokenAuthCodeParameters{
 		Scopes:      scopes,
 		Code:        code,
-		Challenge:   opts.Challenge,
+		Challenge:   o.challenge,
+		Claims:      o.claims,
 		AppType:     accesstokens.ATConfidential,
 		Credential:  cca.cred, // This setting differs from public.Client.AcquireTokenByAuthCode
 		RedirectURI: redirectURI,
+		TenantID:    o.tenantID,
 	}
 
 	return cca.base.AcquireTokenByAuthCode(ctx, params)
 }
 
+// acquireTokenByCredentialOptions contains optional configuration for AcquireTokenByCredential
+type acquireTokenByCredentialOptions struct {
+	claims, tenantID string
+	authnScheme      AuthenticationScheme
+}
+
+// AcquireByCredentialOption is implemented by options for AcquireTokenByCredential
+type AcquireByCredentialOption interface {
+	acquireByCredOption()
+}
+
 // AcquireTokenByCredential acquires a security token from the authority, using the client credentials grant.
-func (cca Client) AcquireTokenByCredential(ctx context.Context, scopes []string) (AuthResult, error) {
-	authParams := cca.base.AuthParams
+//
+// Options: [WithClaims], [WithTenantID]
+func (cca Client) AcquireTokenByCredential(ctx context.Context, scopes []string, opts ...AcquireByCredentialOption) (AuthResult, error) {
+	o := acquireTokenByCredentialOptions{}
+	err := options.ApplyOptions(&o, opts)
+	if err != nil {
+		return AuthResult{}, err
+	}
+	authParams, err := cca.base.AuthParams.WithTenant(o.tenantID)
+	if err != nil {
+		return AuthResult{}, err
+	}
 	authParams.Scopes = scopes
 	authParams.AuthorizationType = authority.ATClientCredentials
-
+	authParams.Claims = o.claims
+	if o.authnScheme != nil {
+		authParams.AuthnScheme = o.authnScheme
+	}
 	token, err := cca.base.Token.Credential(ctx, authParams, cca.cred)
 	if err != nil {
 		return AuthResult{}, err
@@ -487,24 +679,41 @@ func (cca Client) AcquireTokenByCredential(ctx context.Context, scopes []string)
 	return cca.base.AuthResultFromToken(ctx, authParams, token, true)
 }
 
+// acquireTokenOnBehalfOfOptions contains optional configuration for AcquireTokenOnBehalfOf
+type acquireTokenOnBehalfOfOptions struct {
+	claims, tenantID string
+}
+
+// AcquireOnBehalfOfOption is implemented by options for AcquireTokenOnBehalfOf
+type AcquireOnBehalfOfOption interface {
+	acquireOBOOption()
+}
+
 // AcquireTokenOnBehalfOf acquires a security token for an app using middle tier apps access token.
 // Refer https://docs.microsoft.com/en-us/azure/active-directory/develop/v2-oauth2-on-behalf-of-flow.
-func (cca Client) AcquireTokenOnBehalfOf(ctx context.Context, userAssertion string, scopes []string) (AuthResult, error) {
+//
+// Options: [WithClaims], [WithTenantID]
+func (cca Client) AcquireTokenOnBehalfOf(ctx context.Context, userAssertion string, scopes []string, opts ...AcquireOnBehalfOfOption) (AuthResult, error) {
+	o := acquireTokenOnBehalfOfOptions{}
+	if err := options.ApplyOptions(&o, opts); err != nil {
+		return AuthResult{}, err
+	}
 	params := base.AcquireTokenOnBehalfOfParameters{
 		Scopes:        scopes,
 		UserAssertion: userAssertion,
+		Claims:        o.claims,
 		Credential:    cca.cred,
+		TenantID:      o.tenantID,
 	}
 	return cca.base.AcquireTokenOnBehalfOf(ctx, params)
 }
 
 // Account gets the account in the token cache with the specified homeAccountID.
-func (cca Client) Account(homeAccountID string) Account {
-	return cca.base.Account(homeAccountID)
+func (cca Client) Account(ctx context.Context, accountID string) (Account, error) {
+	return cca.base.Account(ctx, accountID)
 }
 
 // RemoveAccount signs the account out and forgets account from token cache.
-func (cca Client) RemoveAccount(account Account) error {
-	cca.base.RemoveAccount(account)
-	return nil
+func (cca Client) RemoveAccount(ctx context.Context, account Account) error {
+	return cca.base.RemoveAccount(ctx, account)
 }
