@@ -57,6 +57,9 @@ func s2Decode(dst, src []byte) int {
 			}
 			length = int(x) + 1
 			if length > len(dst)-d || length > len(src)-s || (strconv.IntSize == 32 && length <= 0) {
+				if debug {
+					fmt.Println("corrupt: lit size", length)
+				}
 				return decodeErrCodeCorrupt
 			}
 			if debug {
@@ -109,6 +112,10 @@ func s2Decode(dst, src []byte) int {
 		}
 
 		if offset <= 0 || d < offset || length > len(dst)-d {
+			if debug {
+				fmt.Println("corrupt: match, length", length, "offset:", offset, "dst avail:", len(dst)-d, "dst pos:", d)
+			}
+
 			return decodeErrCodeCorrupt
 		}
 
@@ -175,6 +182,9 @@ func s2Decode(dst, src []byte) int {
 			}
 			length = int(x) + 1
 			if length > len(dst)-d || length > len(src)-s || (strconv.IntSize == 32 && length <= 0) {
+				if debug {
+					fmt.Println("corrupt: lit size", length)
+				}
 				return decodeErrCodeCorrupt
 			}
 			if debug {
@@ -241,6 +251,9 @@ func s2Decode(dst, src []byte) int {
 		}
 
 		if offset <= 0 || d < offset || length > len(dst)-d {
+			if debug {
+				fmt.Println("corrupt: match, length", length, "offset:", offset, "dst avail:", len(dst)-d, "dst pos:", d)
+			}
 			return decodeErrCodeCorrupt
 		}
 
