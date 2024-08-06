@@ -381,7 +381,7 @@ exclude k8s.io/client-go v8.0.0+incompatible
 replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20220714140823-09ffed8adbbe
 
 // Insist on the optimised version of grafana/regexp
-replace github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd
+replace github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
 
 replace github.com/grafana/loki/pkg/push => ./pkg/push
 

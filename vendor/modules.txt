@@ -1018,8 +1018,8 @@ github.com/grafana/loki/pkg/push
 github.com/grafana/pyroscope-go/godeltaprof
 github.com/grafana/pyroscope-go/godeltaprof/http/pprof
 github.com/grafana/pyroscope-go/godeltaprof/internal/pprof
-# github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc => github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd
-## explicit; go 1.17
+# github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc => github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
+## explicit; go 1.21
 github.com/grafana/regexp
 github.com/grafana/regexp/syntax
 # github.com/grafana/tail v0.0.0-20230510142333-77b18831edf0
@@ -2394,6 +2394,6 @@ sigs.k8s.io/yaml
 # github.com/hashicorp/consul => github.com/hashicorp/consul v1.14.5
 # github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
 # github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20220714140823-09ffed8adbbe
-# github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd
+# github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
 # github.com/grafana/loki/pkg/push => ./pkg/push
 # github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.1.0
