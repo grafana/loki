@@ -146,8 +146,9 @@ func buildClusterImplConfigForDNS(g *nameGenerator, addrStrs []string, mechanism
 		retAddrs = append(retAddrs, hierarchy.Set(resolver.Address{Addr: addrStr}, []string{pName}))
 	}
 	return pName, &clusterimpl.LBConfig{
-		Cluster:     mechanism.Cluster,
-		ChildPolicy: &internalserviceconfig.BalancerConfig{Name: childPolicy},
+		Cluster:         mechanism.Cluster,
+		TelemetryLabels: mechanism.TelemetryLabels,
+		ChildPolicy:     &internalserviceconfig.BalancerConfig{Name: childPolicy},
 	}, retAddrs
 }
 
@@ -283,6 +284,7 @@ func priorityLocalitiesToClusterImpl(localities []xdsresource.Locality, priority
 		EDSServiceName:        mechanism.EDSServiceName,
 		LoadReportingServer:   mechanism.LoadReportingServer,
 		MaxConcurrentRequests: mechanism.MaxConcurrentRequests,
+		TelemetryLabels:       mechanism.TelemetryLabels,
 		DropCategories:        drops,
 		ChildPolicy:           xdsLBPolicy,
 	}, addrs, nil

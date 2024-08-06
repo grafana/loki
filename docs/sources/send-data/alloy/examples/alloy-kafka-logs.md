@@ -392,7 +392,7 @@ Head back to where you started from to continue with the Loki documentation: [Lo
 
 For more information on Grafana Alloy, refer to the following resources:
 - [Grafana Alloy getting started examples](https://grafana.com/docs/alloy/latest/tutorials/)
-- [Grafana Alloy common task examples](https://grafana.com/docs/alloy/latest/tasks/)
+- [Grafana Alloy common task examples](https://grafana.com/docs/alloy/latest/collect/)
 - [Grafana Alloy component reference](https://grafana.com/docs/alloy/latest/reference/components/)
 
 ## Complete metrics, logs, traces, and profiling example

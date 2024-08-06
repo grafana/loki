@@ -27,11 +27,15 @@ import (
 
 	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/grpcsync"
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/xds/internal/xdsclient/load"
 	"google.golang.org/grpc/xds/internal/xdsclient/transport"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	v3adminpb "github.com/envoyproxy/go-control-plane/envoy/admin/v3"
+	v3statuspb "github.com/envoyproxy/go-control-plane/envoy/service/status/v3"
 )
 
 type watchState int
@@ -94,12 +98,6 @@ type authorityArgs struct {
 	// (although the former is part of the latter) is because authorities in the
 	// bootstrap config might contain an empty server config, and in this case,
 	// the top-level server config is to be used.
-	//
-	// There are two code paths from where a new authority struct might be
-	// created. One is when a watch is registered for a resource, and one is
-	// when load reporting needs to be started. We have the authority name in
-	// the first case, but do in the second. We only have the server config in
-	// the second case.
 	serverCfg          *bootstrap.ServerConfig
 	bootstrapCfg       *bootstrap.Config
 	serializer         *grpcsync.CallbackSerializer
@@ -156,7 +154,10 @@ func (a *authority) handleResourceUpdate(resourceUpdate transport.ResourceUpdate
 		return xdsresource.NewErrorf(xdsresource.ErrorTypeResourceTypeUnsupported, "Resource URL %v unknown in response from server", resourceUpdate.URL)
 	}
 
-	opts := &xdsresource.DecodeOptions{BootstrapConfig: a.bootstrapCfg}
+	opts := &xdsresource.DecodeOptions{
+		BootstrapConfig: a.bootstrapCfg,
+		ServerConfig:    a.serverCfg,
+	}
 	updates, md, err := decodeAllResources(opts, rType, resourceUpdate)
 	a.updateResourceStateAndScheduleCallbacks(rType, updates, md)
 	return err
@@ -184,7 +185,7 @@ func (a *authority) updateResourceStateAndScheduleCallbacks(rType xdsresource.Ty
 			//   server might respond with the requested resource before we send
 			//   out request for the same. If we don't check for `started` here,
 			//   and move the state to `received`, we will end up starting the
-			//   timer when the request gets sent out. And since the mangement
+			//   timer when the request gets sent out. And since the management
 			//   server already sent us the resource, there is a good chance
 			//   that it will not send it again. This would eventually lead to
 			//   the timer firing, even though we have the resource in the
@@ -369,7 +370,9 @@ func (a *authority) startWatchTimersLocked(rType xdsresource.Type, resourceNames
 				continue
 			}
 			state.wTimer = time.AfterFunc(a.watchExpiryTimeout, func() {
-				a.handleWatchTimerExpiry(rType, resourceName, state)
+				a.resourcesMu.Lock()
+				a.handleWatchTimerExpiryLocked(rType, resourceName, state)
+				a.resourcesMu.Unlock()
 			})
 			state.wState = watchStateRequested
 		}
@@ -482,7 +485,9 @@ func (a *authority) watchResource(rType xdsresource.Type, resourceName string, w
 
 	// If we have a cached copy of the resource, notify the new watcher.
 	if state.cache != nil {
-		a.logger.Debugf("Resource type %q with resource name %q found in cache: %s", rType.TypeName(), resourceName, state.cache.ToJSON())
+		if a.logger.V(2) {
+			a.logger.Infof("Resource type %q with resource name %q found in cache: %s", rType.TypeName(), resourceName, state.cache.ToJSON())
+		}
 		resource := state.cache
 		a.serializer.Schedule(func(context.Context) { watcher.OnUpdate(resource) })
 	}
@@ -511,10 +516,7 @@ func (a *authority) watchResource(rType xdsresource.Type, resourceName string, w
 	}
 }
 
-func (a *authority) handleWatchTimerExpiry(rType xdsresource.Type, resourceName string, state *resourceState) {
-	a.resourcesMu.Lock()
-	defer a.resourcesMu.Unlock()
-
+func (a *authority) handleWatchTimerExpiryLocked(rType xdsresource.Type, resourceName string, state *resourceState) {
 	if a.closed {
 		return
 	}
@@ -587,26 +589,54 @@ func (a *authority) reportLoad() (*load.Store, func()) {
 	return a.transport.ReportLoad()
 }
 
-func (a *authority) dumpResources() map[string]map[string]xdsresource.UpdateWithMD {
+func (a *authority) dumpResources() ([]*v3statuspb.ClientConfig_GenericXdsConfig, error) {
 	a.resourcesMu.Lock()
 	defer a.resourcesMu.Unlock()
 
-	dump := make(map[string]map[string]xdsresource.UpdateWithMD)
+	var ret []*v3statuspb.ClientConfig_GenericXdsConfig
 	for rType, resourceStates := range a.resources {
-		states := make(map[string]xdsresource.UpdateWithMD)
+		typeURL := rType.TypeURL()
 		for name, state := range resourceStates {
 			var raw *anypb.Any
 			if state.cache != nil {
 				raw = state.cache.Raw()
 			}
-			states[name] = xdsresource.UpdateWithMD{
-				MD:  state.md,
-				Raw: raw,
+			config := &v3statuspb.ClientConfig_GenericXdsConfig{
+				TypeUrl:      typeURL,
+				Name:         name,
+				VersionInfo:  state.md.Version,
+				XdsConfig:    raw,
+				LastUpdated:  timestamppb.New(state.md.Timestamp),
+				ClientStatus: serviceStatusToProto(state.md.Status),
 			}
+			if errState := state.md.ErrState; errState != nil {
+				config.ErrorState = &v3adminpb.UpdateFailureState{
+					LastUpdateAttempt: timestamppb.New(errState.Timestamp),
+					Details:           errState.Err.Error(),
+					VersionInfo:       errState.Version,
+				}
+			}
+			ret = append(ret, config)
 		}
-		dump[rType.TypeURL()] = states
 	}
-	return dump
+	return ret, nil
+}
+
+func serviceStatusToProto(serviceStatus xdsresource.ServiceStatus) v3adminpb.ClientResourceStatus {
+	switch serviceStatus {
+	case xdsresource.ServiceStatusUnknown:
+		return v3adminpb.ClientResourceStatus_UNKNOWN
+	case xdsresource.ServiceStatusRequested:
+		return v3adminpb.ClientResourceStatus_REQUESTED
+	case xdsresource.ServiceStatusNotExist:
+		return v3adminpb.ClientResourceStatus_DOES_NOT_EXIST
+	case xdsresource.ServiceStatusACKed:
+		return v3adminpb.ClientResourceStatus_ACKED
+	case xdsresource.ServiceStatusNACKed:
+		return v3adminpb.ClientResourceStatus_NACKED
+	default:
+		return v3adminpb.ClientResourceStatus_UNKNOWN
+	}
 }
 
 func combineErrors(rType string, topLevelErrors []error, perResourceErrors map[string]error) error {

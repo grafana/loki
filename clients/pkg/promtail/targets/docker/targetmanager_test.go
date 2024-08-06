@@ -50,7 +50,7 @@ func Test_TargetManager(t *testing.T) {
 		case strings.HasSuffix(path, "/networks"):
 			// Serve networks
 			w.Header().Set("Content-Type", "application/json")
-			err := json.NewEncoder(w).Encode([]types.NetworkResource{})
+			err := json.NewEncoder(w).Encode([]network.Inspect{})
 			require.NoError(t, err)
 		case strings.HasSuffix(path, "json"):
 			w.Header().Set("Content-Type", "application/json")

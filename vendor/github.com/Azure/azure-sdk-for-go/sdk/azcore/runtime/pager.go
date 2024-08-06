@@ -94,6 +94,10 @@ type FetcherForNextLinkOptions struct {
 	// NextReq is the func to be called when requesting subsequent pages.
 	// Used for paged operations that have a custom next link operation.
 	NextReq func(context.Context, string) (*policy.Request, error)
+
+	// StatusCodes contains additional HTTP status codes indicating success.
+	// The default value is http.StatusOK.
+	StatusCodes []int
 }
 
 // FetcherForNextLink is a helper containing boilerplate code to simplify creating a PagingHandler[T].Fetcher from a next link URL.
@@ -105,10 +109,13 @@ type FetcherForNextLinkOptions struct {
 func FetcherForNextLink(ctx context.Context, pl Pipeline, nextLink string, firstReq func(context.Context) (*policy.Request, error), options *FetcherForNextLinkOptions) (*http.Response, error) {
 	var req *policy.Request
 	var err error
+	if options == nil {
+		options = &FetcherForNextLinkOptions{}
+	}
 	if nextLink == "" {
 		req, err = firstReq(ctx)
 	} else if nextLink, err = EncodeQueryParams(nextLink); err == nil {
-		if options != nil && options.NextReq != nil {
+		if options.NextReq != nil {
 			req, err = options.NextReq(ctx, nextLink)
 		} else {
 			req, err = NewRequest(ctx, http.MethodGet, nextLink)
@@ -121,7 +128,9 @@ func FetcherForNextLink(ctx context.Context, pl Pipeline, nextLink string, first
 	if err != nil {
 		return nil, err
 	}
-	if !HasStatusCode(resp, http.StatusOK) {
+	successCodes := []int{http.StatusOK}
+	successCodes = append(successCodes, options.StatusCodes...)
+	if !HasStatusCode(resp, successCodes...) {
 		return nil, NewResponseError(resp)
 	}
 	return resp, nil

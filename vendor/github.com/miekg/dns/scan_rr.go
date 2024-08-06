@@ -51,25 +51,24 @@ func endingToTxtSlice(c *zlexer, errstr string) ([]string, *ParseError) {
 		switch l.value {
 		case zString:
 			empty = false
-			if len(l.token) > 255 {
-				// split up tokens that are larger than 255 into 255-chunks
-				sx := []string{}
-				p, i := 0, 255
-				for {
-					if i <= len(l.token) {
-						sx = append(sx, l.token[p:i])
-					} else {
-						sx = append(sx, l.token[p:])
-						break
-
-					}
-					p, i = p+255, i+255
+			// split up tokens that are larger than 255 into 255-chunks
+			sx := []string{}
+			p := 0
+			for {
+				i, ok := escapedStringOffset(l.token[p:], 255)
+				if !ok {
+					return nil, &ParseError{err: errstr, lex: l}
 				}
-				s = append(s, sx...)
-				break
-			}
+				if i != -1 && p+i != len(l.token) {
+					sx = append(sx, l.token[p:p+i])
+				} else {
+					sx = append(sx, l.token[p:])
+					break
 
-			s = append(s, l.token)
+				}
+				p += i
+			}
+			s = append(s, sx...)
 		case zBlank:
 			if quote {
 				// zBlank can only be seen in between txt parts.
@@ -1919,4 +1918,40 @@ func (rr *APL) parse(c *zlexer, o string) *ParseError {
 
 	rr.Prefixes = prefixes
 	return nil
+}
+
+// escapedStringOffset finds the offset within a string (which may contain escape
+// sequences) that corresponds to a certain byte offset. If the input offset is
+// out of bounds, -1 is returned (which is *not* considered an error).
+func escapedStringOffset(s string, desiredByteOffset int) (int, bool) {
+	if desiredByteOffset == 0 {
+		return 0, true
+	}
+
+	currentByteOffset, i := 0, 0
+
+	for i < len(s) {
+		currentByteOffset += 1
+
+		// Skip escape sequences
+		if s[i] != '\\' {
+			// Single plain byte, not an escape sequence.
+			i++
+		} else if isDDD(s[i+1:]) {
+			// Skip backslash and DDD.
+			i += 4
+		} else if len(s[i+1:]) < 1 {
+			// No character following the backslash; that's an error.
+			return 0, false
+		} else {
+			// Skip backslash and following byte.
+			i += 2
+		}
+
+		if currentByteOffset >= desiredByteOffset {
+			return i, true
+		}
+	}
+
+	return -1, true
 }
