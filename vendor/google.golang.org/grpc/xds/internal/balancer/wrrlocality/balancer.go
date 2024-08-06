@@ -103,7 +103,7 @@ func (bb) ParseConfig(s json.RawMessage) (serviceconfig.LoadBalancingConfig, err
 type attributeKey struct{}
 
 // Equal allows the values to be compared by Attributes.Equal.
-func (a AddrInfo) Equal(o interface{}) bool {
+func (a AddrInfo) Equal(o any) bool {
 	oa, ok := o.(AddrInfo)
 	return ok && oa.LocalityWeight == a.LocalityWeight
 }
@@ -192,8 +192,8 @@ func (b *wrrLocalityBalancer) ResolverError(err error) {
 	b.child.ResolverError(err)
 }
 
-func (b *wrrLocalityBalancer) UpdateSubConnState(sc balancer.SubConn, scState balancer.SubConnState) {
-	b.child.UpdateSubConnState(sc, scState)
+func (b *wrrLocalityBalancer) UpdateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
+	b.logger.Errorf("UpdateSubConnState(%v, %+v) called unexpectedly", sc, state)
 }
 
 func (b *wrrLocalityBalancer) Close() {
