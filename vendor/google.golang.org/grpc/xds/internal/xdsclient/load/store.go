@@ -277,7 +277,7 @@ func (ls *perClusterStore) stats() *Data {
 	}
 
 	sd := newData(ls.cluster, ls.service)
-	ls.drops.Range(func(key, val interface{}) bool {
+	ls.drops.Range(func(key, val any) bool {
 		d := atomic.SwapUint64(val.(*uint64), 0)
 		if d == 0 {
 			return true
@@ -291,7 +291,7 @@ func (ls *perClusterStore) stats() *Data {
 		}
 		return true
 	})
-	ls.localityRPCCount.Range(func(key, val interface{}) bool {
+	ls.localityRPCCount.Range(func(key, val any) bool {
 		countData := val.(*rpcCountData)
 		succeeded := countData.loadAndClearSucceeded()
 		inProgress := countData.loadInProgress()
@@ -308,7 +308,7 @@ func (ls *perClusterStore) stats() *Data {
 			},
 			LoadStats: make(map[string]ServerLoadData),
 		}
-		countData.serverLoads.Range(func(key, val interface{}) bool {
+		countData.serverLoads.Range(func(key, val any) bool {
 			sum, count := val.(*rpcLoadData).loadAndClear()
 			if count == 0 {
 				return true

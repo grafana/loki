@@ -89,9 +89,9 @@ type LoggerConfig interface {
 // decision meets the condition for audit, all the configured audit loggers'
 // Log() method will be invoked to log that event.
 //
-// TODO(lwge): Change the link to the merged gRFC once it's ready.
-// Please refer to https://github.com/grpc/proposal/pull/346 for more details
-// about audit logging.
+// Please refer to
+// https://github.com/grpc/proposal/blob/master/A59-audit-logging.md for more
+// details about audit logging.
 type Logger interface {
 	// Log performs audit logging for the provided audit event.
 	//
@@ -107,9 +107,9 @@ type Logger interface {
 // implement this interface, along with the Logger interface, and register
 // it by calling RegisterLoggerBuilder() at init time.
 //
-// TODO(lwge): Change the link to the merged gRFC once it's ready.
-// Please refer to https://github.com/grpc/proposal/pull/346 for more details
-// about audit logging.
+// Please refer to
+// https://github.com/grpc/proposal/blob/master/A59-audit-logging.md for more
+// details about audit logging.
 type LoggerBuilder interface {
 	// ParseLoggerConfig parses the given JSON bytes into a structured
 	// logger config this builder can use to build an audit logger.

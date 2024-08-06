@@ -32,7 +32,7 @@ import (
 )
 
 func init() {
-	internal.ResourceTypeMapForTesting = make(map[string]interface{})
+	internal.ResourceTypeMapForTesting = make(map[string]any)
 	internal.ResourceTypeMapForTesting[version.V3ListenerURL] = listenerType
 	internal.ResourceTypeMapForTesting[version.V3RouteConfigURL] = routeConfigType
 	internal.ResourceTypeMapForTesting[version.V3ClusterURL] = clusterType

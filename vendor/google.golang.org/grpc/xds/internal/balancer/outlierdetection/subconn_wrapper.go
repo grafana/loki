@@ -31,6 +31,7 @@ import (
 // whether or not this SubConn is ejected.
 type subConnWrapper struct {
 	balancer.SubConn
+	listener func(balancer.SubConnState)
 
 	// addressInfo is a pointer to the subConnWrapper's corresponding address
 	// map entry, if the map entry exists.

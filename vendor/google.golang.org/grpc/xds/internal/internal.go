@@ -47,7 +47,7 @@ func (l LocalityID) ToString() (string, error) {
 }
 
 // Equal allows the values to be compared by Attributes.Equal.
-func (l LocalityID) Equal(o interface{}) bool {
+func (l LocalityID) Equal(o any) bool {
 	ol, ok := o.(LocalityID)
 	if !ok {
 		return false
@@ -82,4 +82,4 @@ func SetLocalityID(addr resolver.Address, l LocalityID) resolver.Address {
 }
 
 // ResourceTypeMapForTesting maps TypeUrl to corresponding ResourceType.
-var ResourceTypeMapForTesting map[string]interface{}
+var ResourceTypeMapForTesting map[string]any

@@ -13,10 +13,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/containerd/log"
 	"github.com/docker/docker/daemon/logger"
 	"github.com/docker/docker/pkg/pools"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 )
 
 // rotateFileMetadata is a metadata of the gzip header of the compressed log file
@@ -219,7 +219,7 @@ func (w *LogFile) rotate() (retErr error) {
 		defer w.fsopMu.Unlock()
 
 		if err := rotate(fname, w.maxFiles, w.compress); err != nil {
-			logrus.WithError(err).Warn("Error rotating log file, log data may have been lost")
+			log.G(context.TODO()).WithError(err).Warn("Error rotating log file, log data may have been lost")
 		} else {
 			// We may have readers working their way through the
 			// current log file so we can't truncate it. We need to
@@ -228,11 +228,11 @@ func (w *LogFile) rotate() (retErr error) {
 			// current file out of the way.
 			if w.maxFiles < 2 {
 				if err := unlink(fname); err != nil && !errors.Is(err, fs.ErrNotExist) {
-					logrus.WithError(err).Error("Error unlinking current log file")
+					log.G(context.TODO()).WithError(err).Error("Error unlinking current log file")
 				}
 			} else {
 				if err := os.Rename(fname, fname+".1"); err != nil && !errors.Is(err, fs.ErrNotExist) {
-					logrus.WithError(err).Error("Error renaming current log file")
+					log.G(context.TODO()).WithError(err).Error("Error renaming current log file")
 				}
 			}
 		}
@@ -262,7 +262,7 @@ func (w *LogFile) rotate() (retErr error) {
 		// point during the compression process will a reader fail to
 		// open a complete copy of the file.
 		if err := compressFile(fname+".1", ts); err != nil {
-			logrus.WithError(err).Error("Error compressing log file after rotation")
+			log.G(context.TODO()).WithError(err).Error("Error compressing log file after rotation")
 		}
 	}()
 
@@ -289,7 +289,7 @@ func rotate(name string, maxFiles int, compress bool) error {
 		toPath := name + "." + strconv.Itoa(i) + extension
 		fromPath := name + "." + strconv.Itoa(i-1) + extension
 		err := os.Rename(fromPath, toPath)
-		logrus.WithError(err).WithField("source", fromPath).WithField("target", toPath).Trace("Rotating log file")
+		log.G(context.TODO()).WithError(err).WithField("source", fromPath).WithField("target", toPath).Trace("Rotating log file")
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
@@ -302,7 +302,7 @@ func compressFile(fileName string, lastTimestamp time.Time) (retErr error) {
 	file, err := open(fileName)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			logrus.WithField("file", fileName).WithError(err).Debug("Could not open log file to compress")
+			log.G(context.TODO()).WithField("file", fileName).WithError(err).Debug("Could not open log file to compress")
 			return nil
 		}
 		return errors.Wrap(err, "failed to open log file")
@@ -317,7 +317,7 @@ func compressFile(fileName string, lastTimestamp time.Time) (retErr error) {
 		}
 	}()
 
-	outFile, err := openFile(fileName+".gz", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0640)
+	outFile, err := openFile(fileName+".gz", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0o640)
 	if err != nil {
 		return errors.Wrap(err, "failed to open or create gzip log file")
 	}
@@ -325,7 +325,7 @@ func compressFile(fileName string, lastTimestamp time.Time) (retErr error) {
 		outFile.Close()
 		if retErr != nil {
 			if err := unlink(fileName + ".gz"); err != nil && !errors.Is(err, fs.ErrNotExist) {
-				logrus.WithError(err).Error("Error cleaning up after failed log compression")
+				log.G(context.TODO()).WithError(err).Error("Error cleaning up after failed log compression")
 			}
 		}
 	}()
@@ -339,7 +339,7 @@ func compressFile(fileName string, lastTimestamp time.Time) (retErr error) {
 	compressWriter.Header.Extra, err = json.Marshal(&extra)
 	if err != nil {
 		// Here log the error only and don't return since this is just an optimization.
-		logrus.Warningf("Failed to marshal gzip header as JSON: %v", err)
+		log.G(context.TODO()).Warningf("Failed to marshal gzip header as JSON: %v", err)
 	}
 
 	_, err = pools.Copy(compressWriter, file)
@@ -411,6 +411,7 @@ func (w *LogFile) readLogsLocked(currentPos logPos, config logger.ReadConfig, wa
 	defer dec.Close()
 
 	currentChunk := io.NewSectionReader(currentFile, 0, currentPos.size)
+	fwd := newForwarder(config)
 
 	if config.Tail != 0 {
 		// TODO(@cpuguy83): Instead of opening every file, only get the files which
@@ -449,7 +450,7 @@ func (w *LogFile) readLogsLocked(currentPos logPos, config logger.ReadConfig, wa
 			readers = append(readers, currentChunk)
 		}
 
-		ok := tailFiles(readers, watcher, dec, w.getTailReader, config)
+		ok := tailFiles(readers, watcher, dec, w.getTailReader, config.Tail, fwd)
 		closeFiles()
 		if !ok {
 			return
@@ -463,11 +464,10 @@ func (w *LogFile) readLogsLocked(currentPos logPos, config logger.ReadConfig, wa
 	}
 
 	(&follow{
-		LogFile: w,
-		Watcher: watcher,
-		Decoder: dec,
-		Since:   config.Since,
-		Until:   config.Until,
+		LogFile:   w,
+		Watcher:   watcher,
+		Decoder:   dec,
+		Forwarder: fwd,
 	}).Do(currentFile, currentPos)
 }
 
@@ -573,7 +573,7 @@ func decompress(dst io.WriteSeeker, src io.ReadSeeker) error {
 	return rc.Close()
 }
 
-func tailFiles(files []SizeReaderAt, watcher *logger.LogWatcher, dec Decoder, getTailReader GetTailReaderFunc, config logger.ReadConfig) (cont bool) {
+func tailFiles(files []SizeReaderAt, watcher *logger.LogWatcher, dec Decoder, getTailReader GetTailReaderFunc, nLines int, fwd *forwarder) (cont bool) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -583,20 +583,18 @@ func tailFiles(files []SizeReaderAt, watcher *logger.LogWatcher, dec Decoder, ge
 		select {
 		case <-ctx.Done():
 		case <-watcher.WatchConsumerGone():
-			cont = false
 			cancel()
 		}
 	}()
 
 	readers := make([]io.Reader, 0, len(files))
 
-	if config.Tail > 0 {
-		nLines := config.Tail
+	if nLines > 0 {
 		for i := len(files) - 1; i >= 0 && nLines > 0; i-- {
 			tail, n, err := getTailReader(ctx, files[i], nLines)
 			if err != nil {
 				watcher.Err <- errors.Wrap(err, "error finding file position to start log tailing")
-				return
+				return false
 			}
 			nLines -= n
 			readers = append([]io.Reader{tail}, readers...)
@@ -609,24 +607,47 @@ func tailFiles(files []SizeReaderAt, watcher *logger.LogWatcher, dec Decoder, ge
 
 	rdr := io.MultiReader(readers...)
 	dec.Reset(rdr)
+	return fwd.Do(watcher, dec)
+}
 
+type forwarder struct {
+	since, until time.Time
+}
+
+func newForwarder(config logger.ReadConfig) *forwarder {
+	return &forwarder{since: config.Since, until: config.Until}
+}
+
+// Do reads log messages from dec and sends the messages matching the filter
+// conditions to watcher. Do returns cont=true iff it has read all messages from
+// dec without encountering a message with a timestamp which is after the
+// configured until time.
+func (fwd *forwarder) Do(watcher *logger.LogWatcher, dec Decoder) (cont bool) {
 	for {
 		msg, err := dec.Decode()
 		if err != nil {
-			if !errors.Is(err, io.EOF) {
-				watcher.Err <- err
+			if errors.Is(err, io.EOF) {
+				return true
 			}
-			return
+			watcher.Err <- err
+			return false
 		}
-		if !config.Since.IsZero() && msg.Timestamp.Before(config.Since) {
-			continue
+		if !fwd.since.IsZero() {
+			if msg.Timestamp.Before(fwd.since) {
+				continue
+			}
+			// We've found our first message with a timestamp >= since. As message
+			// timestamps might not be monotonic, we need to skip the since check for all
+			// subsequent messages so we do not filter out later messages which happen to
+			// have timestamps before since.
+			fwd.since = time.Time{}
 		}
-		if !config.Until.IsZero() && msg.Timestamp.After(config.Until) {
-			return
+		if !fwd.until.IsZero() && msg.Timestamp.After(fwd.until) {
+			return false
 		}
 		select {
-		case <-ctx.Done():
-			return
+		case <-watcher.WatchConsumerGone():
+			return false
 		case watcher.Msg <- msg:
 		}
 	}

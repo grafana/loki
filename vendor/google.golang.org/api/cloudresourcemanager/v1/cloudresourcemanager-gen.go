@@ -8,6 +8,17 @@
 //
 // For product documentation, see: https://cloud.google.com/resource-manager
 //
+// # Library status
+//
+// These client libraries are officially supported by Google. However, this
+// library is considered complete and is in maintenance mode. This means
+// that we will address critical bugs and security issues but will not add
+// any new features.
+//
+// When possible, we recommend using our newer
+// [Cloud Client Libraries for Go](https://pkg.go.dev/cloud.google.com/go)
+// that are still actively being worked and iterated on.
+//
 // # Creating a client
 //
 // Usage example:
@@ -17,28 +28,31 @@
 //	ctx := context.Background()
 //	cloudresourcemanagerService, err := cloudresourcemanager.NewService(ctx)
 //
-// In this example, Google Application Default Credentials are used for authentication.
-//
-// For information on how to create and obtain Application Default Credentials, see https://developers.google.com/identity/protocols/application-default-credentials.
+// In this example, Google Application Default Credentials are used for
+// authentication. For information on how to create and obtain Application
+// Default Credentials, see https://developers.google.com/identity/protocols/application-default-credentials.
 //
 // # Other authentication options
 //
-// By default, all available scopes (see "Constants") are used to authenticate. To restrict scopes, use option.WithScopes:
+// By default, all available scopes (see "Constants") are used to authenticate.
+// To restrict scopes, use [google.golang.org/api/option.WithScopes]:
 //
 //	cloudresourcemanagerService, err := cloudresourcemanager.NewService(ctx, option.WithScopes(cloudresourcemanager.CloudPlatformReadOnlyScope))
 //
-// To use an API key for authentication (note: some APIs do not support API keys), use option.WithAPIKey:
+// To use an API key for authentication (note: some APIs do not support API
+// keys), use [google.golang.org/api/option.WithAPIKey]:
 //
 //	cloudresourcemanagerService, err := cloudresourcemanager.NewService(ctx, option.WithAPIKey("AIza..."))
 //
-// To use an OAuth token (e.g., a user token obtained via a three-legged OAuth flow), use option.WithTokenSource:
+// To use an OAuth token (e.g., a user token obtained via a three-legged OAuth
+// flow, use [google.golang.org/api/option.WithTokenSource]:
 //
 //	config := &oauth2.Config{...}
 //	// ...
 //	token, err := config.Exchange(ctx, ...)
 //	cloudresourcemanagerService, err := cloudresourcemanager.NewService(ctx, option.WithTokenSource(config.TokenSource(ctx, token)))
 //
-// See https://godoc.org/google.golang.org/api/option/ for details on options.
+// See [google.golang.org/api/option.ClientOption] for details on options.
 package cloudresourcemanager // import "google.golang.org/api/cloudresourcemanager/v1"
 
 import (
@@ -1649,8 +1663,8 @@ type Operation struct {
 	// `operations/{unique_id}`.
 	Name string `json:"name,omitempty"`
 
-	// Response: The normal response of the operation in case of success. If
-	// the original method returns no data on success, such as `Delete`, the
+	// Response: The normal, successful response of the operation. If the
+	// original method returns no data on success, such as `Delete`, the
 	// response is `google.protobuf.Empty`. If the original method is
 	// standard `Get`/`Create`/`Update`, the response should be the
 	// resource. For other methods, the response should have the type
@@ -1764,9 +1778,10 @@ type Organization struct {
 	CreationTime string `json:"creationTime,omitempty"`
 
 	// DisplayName: A human-readable string that refers to the Organization
-	// in the GCP Console UI. This string is set by the server and cannot be
-	// changed. The string will be set to the primary domain (for example,
-	// "google.com") of the G Suite customer that owns the organization.
+	// in the Google Cloud console. This string is set by the server and
+	// cannot be changed. The string will be set to the primary domain (for
+	// example, "google.com") of the G Suite customer that owns the
+	// organization.
 	DisplayName string `json:"displayName,omitempty"`
 
 	// LifecycleState: The organization's current lifecycle state. Assigned
@@ -1863,7 +1878,7 @@ func (s *OrganizationOwner) MarshalJSON() ([]byte, error) {
 // both. To learn which resources support conditions in their IAM
 // policies, see the IAM documentation
 // (https://cloud.google.com/iam/help/conditions/resource-policies).
-// **JSON example:** { "bindings": [ { "role":
+// **JSON example:** ``` { "bindings": [ { "role":
 // "roles/resourcemanager.organizationAdmin", "members": [
 // "user:mike@example.com", "group:admins@example.com",
 // "domain:google.com",
@@ -1872,17 +1887,17 @@ func (s *OrganizationOwner) MarshalJSON() ([]byte, error) {
 // "user:eve@example.com" ], "condition": { "title": "expirable access",
 // "description": "Does not grant access after Sep 2020", "expression":
 // "request.time < timestamp('2020-10-01T00:00:00.000Z')", } } ],
-// "etag": "BwWWja0YfJA=", "version": 3 } **YAML example:** bindings: -
-// members: - user:mike@example.com - group:admins@example.com -
-// domain:google.com -
+// "etag": "BwWWja0YfJA=", "version": 3 } ``` **YAML example:** ```
+// bindings: - members: - user:mike@example.com -
+// group:admins@example.com - domain:google.com -
 // serviceAccount:my-project-id@appspot.gserviceaccount.com role:
 // roles/resourcemanager.organizationAdmin - members: -
 // user:eve@example.com role: roles/resourcemanager.organizationViewer
 // condition: title: expirable access description: Does not grant access
 // after Sep 2020 expression: request.time <
 // timestamp('2020-10-01T00:00:00.000Z') etag: BwWWja0YfJA= version: 3
-// For a description of IAM and its features, see the IAM documentation
-// (https://cloud.google.com/iam/docs/).
+// ``` For a description of IAM and its features, see the IAM
+// documentation (https://cloud.google.com/iam/docs/).
 type Policy struct {
 	// AuditConfigs: Specifies cloud audit logging configuration for this
 	// policy.
@@ -5199,6 +5214,7 @@ type OrganizationsSearchCall struct {
 // in an unspecified order. New Organizations do not necessarily appear
 // at the end of the results. Search will only return organizations on
 // which the user has the permission `resourcemanager.organizations.get`
+// or has super admin privileges.
 func (r *OrganizationsService) Search(searchorganizationsrequest *SearchOrganizationsRequest) *OrganizationsSearchCall {
 	c := &OrganizationsSearchCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.searchorganizationsrequest = searchorganizationsrequest
@@ -5293,7 +5309,7 @@ func (c *OrganizationsSearchCall) Do(opts ...googleapi.CallOption) (*SearchOrgan
 	}
 	return ret, nil
 	// {
-	//   "description": "Searches Organization resources that are visible to the user and satisfy the specified filter. This method returns Organizations in an unspecified order. New Organizations do not necessarily appear at the end of the results. Search will only return organizations on which the user has the permission `resourcemanager.organizations.get`",
+	//   "description": "Searches Organization resources that are visible to the user and satisfy the specified filter. This method returns Organizations in an unspecified order. New Organizations do not necessarily appear at the end of the results. Search will only return organizations on which the user has the permission `resourcemanager.organizations.get` or has super admin privileges.",
 	//   "flatPath": "v1/organizations:search",
 	//   "httpMethod": "POST",
 	//   "id": "cloudresourcemanager.organizations.search",
@@ -7531,7 +7547,7 @@ type ProjectsSetIamPolicyCall struct {
 // role using `setIamPolicy()`. The user must be granted the owner role
 // using the Cloud Platform Console and must explicitly accept the
 // invitation. + You can only grant ownership of a project to a member
-// by using the GCP Console. Inviting a member will deliver an
+// by using the Google Cloud console. Inviting a member will deliver an
 // invitation email that they must accept. An invitation email is not
 // generated if you are granting a role other than owner, or if both the
 // member you are inviting and the project are part of your
@@ -7648,7 +7664,7 @@ func (c *ProjectsSetIamPolicyCall) Do(opts ...googleapi.CallOption) (*Policy, er
 	}
 	return ret, nil
 	// {
-	//   "description": "Sets the IAM access control policy for the specified Project. CAUTION: This method will replace the existing policy, and cannot be used to append additional IAM settings. NOTE: Removing service accounts from policies or changing their roles can render services completely inoperable. It is important to understand how the service account is being used before removing or updating its roles. For additional information about `resource` (e.g. my-project-id) structure and identification, see [Resource Names](https://cloud.google.com/apis/design/resource_names). The following constraints apply when using `setIamPolicy()`: + Project does not support `allUsers` and `allAuthenticatedUsers` as `members` in a `Binding` of a `Policy`. + The owner role can be granted to a `user`, `serviceAccount`, or a group that is part of an organization. For example, group@myownpersonaldomain.com could be added as an owner to a project in the myownpersonaldomain.com organization, but not the examplepetstore.com organization. + Service accounts can be made owners of a project directly without any restrictions. However, to be added as an owner, a user must be invited via Cloud Platform console and must accept the invitation. + A user cannot be granted the owner role using `setIamPolicy()`. The user must be granted the owner role using the Cloud Platform Console and must explicitly accept the invitation. + You can only grant ownership of a project to a member by using the GCP Console. Inviting a member will deliver an invitation email that they must accept. An invitation email is not generated if you are granting a role other than owner, or if both the member you are inviting and the project are part of your organization. + If the project is not part of an organization, there must be at least one owner who has accepted the Terms of Service (ToS) agreement in the policy. Calling `setIamPolicy()` to remove the last ToS-accepted owner from the policy will fail. This restriction also applies to legacy projects that no longer have owners who have accepted the ToS. Edits to IAM policies will be rejected until the lack of a ToS-accepting owner is rectified. If the project is part of an organization, you can remove all owners, potentially making the organization inaccessible. Authorization requires the Google IAM permission `resourcemanager.projects.setIamPolicy` on the project",
+	//   "description": "Sets the IAM access control policy for the specified Project. CAUTION: This method will replace the existing policy, and cannot be used to append additional IAM settings. NOTE: Removing service accounts from policies or changing their roles can render services completely inoperable. It is important to understand how the service account is being used before removing or updating its roles. For additional information about `resource` (e.g. my-project-id) structure and identification, see [Resource Names](https://cloud.google.com/apis/design/resource_names). The following constraints apply when using `setIamPolicy()`: + Project does not support `allUsers` and `allAuthenticatedUsers` as `members` in a `Binding` of a `Policy`. + The owner role can be granted to a `user`, `serviceAccount`, or a group that is part of an organization. For example, group@myownpersonaldomain.com could be added as an owner to a project in the myownpersonaldomain.com organization, but not the examplepetstore.com organization. + Service accounts can be made owners of a project directly without any restrictions. However, to be added as an owner, a user must be invited via Cloud Platform console and must accept the invitation. + A user cannot be granted the owner role using `setIamPolicy()`. The user must be granted the owner role using the Cloud Platform Console and must explicitly accept the invitation. + You can only grant ownership of a project to a member by using the Google Cloud console. Inviting a member will deliver an invitation email that they must accept. An invitation email is not generated if you are granting a role other than owner, or if both the member you are inviting and the project are part of your organization. + If the project is not part of an organization, there must be at least one owner who has accepted the Terms of Service (ToS) agreement in the policy. Calling `setIamPolicy()` to remove the last ToS-accepted owner from the policy will fail. This restriction also applies to legacy projects that no longer have owners who have accepted the ToS. Edits to IAM policies will be rejected until the lack of a ToS-accepting owner is rectified. If the project is part of an organization, you can remove all owners, potentially making the organization inaccessible. Authorization requires the Google IAM permission `resourcemanager.projects.setIamPolicy` on the project",
 	//   "flatPath": "v1/projects/{resource}:setIamPolicy",
 	//   "httpMethod": "POST",
 	//   "id": "cloudresourcemanager.projects.setIamPolicy",

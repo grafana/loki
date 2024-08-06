@@ -43,7 +43,7 @@ import (
 )
 
 // Name is the name of the weighted round robin balancer.
-const Name = "weighted_round_robin_experimental"
+const Name = "weighted_round_robin"
 
 func init() {
 	balancer.Register(bb{})
@@ -154,7 +154,12 @@ func (b *wrrBalancer) updateAddresses(addrs []resolver.Address) {
 			wsc = wsci.(*weightedSubConn)
 		} else {
 			// addr is a new address (not existing in b.subConns).
-			sc, err := b.cc.NewSubConn([]resolver.Address{addr}, balancer.NewSubConnOptions{})
+			var sc balancer.SubConn
+			sc, err := b.cc.NewSubConn([]resolver.Address{addr}, balancer.NewSubConnOptions{
+				StateListener: func(state balancer.SubConnState) {
+					b.updateSubConnState(sc, state)
+				},
+			})
 			if err != nil {
 				b.logger.Warningf("Failed to create new SubConn for address %v: %v", addr, err)
 				continue
@@ -187,7 +192,7 @@ func (b *wrrBalancer) updateAddresses(addrs []resolver.Address) {
 		// addr was removed by resolver.  Remove.
 		wsci, _ := b.subConns.Get(addr)
 		wsc := wsci.(*weightedSubConn)
-		b.cc.RemoveSubConn(wsc.SubConn)
+		wsc.SubConn.Shutdown()
 		b.subConns.Delete(addr)
 	}
 }
@@ -205,6 +210,10 @@ func (b *wrrBalancer) ResolverError(err error) {
 }
 
 func (b *wrrBalancer) UpdateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
+	b.logger.Errorf("UpdateSubConnState(%v, %+v) called unexpectedly", sc, state)
+}
+
+func (b *wrrBalancer) updateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
 	wsc := b.scMap[sc]
 	if wsc == nil {
 		b.logger.Errorf("UpdateSubConnState called with an unknown SubConn: %p, %v", sc, state)
@@ -360,6 +369,7 @@ func (p *picker) start(ctx context.Context) {
 	}
 	go func() {
 		ticker := time.NewTicker(time.Duration(p.cfg.WeightUpdatePeriod))
+		defer ticker.Stop()
 		for {
 			select {
 			case <-ctx.Done():

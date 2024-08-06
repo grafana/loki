@@ -22,6 +22,7 @@ package clustermanager
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/grpclog"
@@ -46,7 +47,13 @@ func (bb) Build(cc balancer.ClientConn, opts balancer.BuildOptions) balancer.Bal
 	b.logger = prefixLogger(b)
 	b.stateAggregator = newBalancerStateAggregator(cc, b.logger)
 	b.stateAggregator.start()
-	b.bg = balancergroup.New(cc, opts, b.stateAggregator, b.logger)
+	b.bg = balancergroup.New(balancergroup.Options{
+		CC:                      cc,
+		BuildOpts:               opts,
+		StateAggregator:         b.stateAggregator,
+		Logger:                  b.logger,
+		SubBalancerCloseTimeout: time.Duration(0), // Disable caching of removed child policies
+	})
 	b.bg.Start()
 	b.logger.Infof("Created")
 	return b
@@ -134,7 +141,7 @@ func (b *bal) ResolverError(err error) {
 }
 
 func (b *bal) UpdateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
-	b.bg.UpdateSubConnState(sc, state)
+	b.logger.Errorf("UpdateSubConnState(%v, %+v) called unexpectedly", sc, state)
 }
 
 func (b *bal) Close() {
