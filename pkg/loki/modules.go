@@ -1835,7 +1835,7 @@ func (t *Loki) initMetastore() (services.Service, error) {
 }
 
 func (t *Loki) initMetastoreClient() (services.Service, error) {
-	if !t.Cfg.IngesterRF1.Enabled {
+	if !t.Cfg.IngesterRF1.Enabled && !t.Cfg.QuerierRF1.Enabled {
 		return nil, nil
 	}
 	mc, err := metastoreclient.New(t.Cfg.MetastoreClient, prometheus.DefaultRegisterer)
