@@ -31,5 +31,8 @@ spec:
       targetPort: http-metrics
       protocol: TCP
   selector:
-    {{- include "loki.selectorLabels" . | nindent 4 }}
+    {{- include "loki.singleBinarySelectorLabels" . | nindent 4 }}
+    {{- with .Values.singleBinary.selectorLabels }}
+      {{- tpl (toYaml .) $ | nindent 4 }}
+    {{- end }}
 {{- end }}
