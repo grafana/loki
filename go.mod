@@ -68,7 +68,7 @@ require (
 	github.com/klauspost/pgzip v1.2.5
 	github.com/leodido/go-syslog/v4 v4.1.0
 	github.com/mattn/go-ieproxy v0.0.1
-	github.com/minio/minio-go/v7 v7.0.61
+	github.com/minio/minio-go/v7 v7.0.72
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/modern-go/reflect2 v1.0.2
@@ -101,8 +101,8 @@ require (
 	go.uber.org/goleak v1.3.0
 	golang.org/x/crypto v0.25.0
 	golang.org/x/net v0.27.0
-	golang.org/x/sync v0.7.0
-	golang.org/x/sys v0.22.0
+	golang.org/x/sync v0.8.0
+	golang.org/x/sys v0.23.0
 	golang.org/x/time v0.5.0
 	google.golang.org/api v0.188.0
 	google.golang.org/grpc v1.65.0
@@ -139,7 +139,7 @@ require (
 	github.com/richardartoul/molecule v1.0.0
 	github.com/schollz/progressbar/v3 v3.14.2
 	github.com/shirou/gopsutil/v4 v4.24.0-alpha.1
-	github.com/thanos-io/objstore v0.0.0-20230829152104-1b257a36f9a3
+	github.com/thanos-io/objstore v0.0.0-20240722162417-19b0c0f0ffd8
 	github.com/willf/bloom v2.0.3+incompatible
 	go.opentelemetry.io/collector/pdata v1.12.0
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
@@ -163,6 +163,7 @@ require (
 	github.com/dlclark/regexp2 v1.4.0 // indirect
 	github.com/go-kit/kit v0.12.0 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
+	github.com/goccy/go-json v0.10.3 // indirect
 	github.com/hashicorp/go-msgpack/v2 v2.1.1 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
@@ -185,7 +186,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.10.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v5 v5.7.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v4 v4.3.0 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v0.5.1 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.3.0 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/Azure/go-autorest v14.2.0+incompatible // indirect
 	github.com/Azure/go-autorest/autorest/azure/cli v0.4.5 // indirect
@@ -291,7 +292,7 @@ require (
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/julienschmidt/httprouter v1.3.0 // indirect
-	github.com/klauspost/cpuid/v2 v2.2.5 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.8 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
 	github.com/leodido/ragel-machinery v0.0.0-20190525184631-5f46317e436b // indirect
@@ -300,7 +301,6 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/miekg/dns v1.1.61 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect
-	github.com/minio/sha256-simd v1.0.1 // indirect
 	github.com/mitchellh/copystructure v1.0.0 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.1 // indirect
