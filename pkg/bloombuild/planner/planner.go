@@ -66,7 +66,7 @@ func New(
 ) (*Planner, error) {
 	utillog.WarnExperimentalUse("Bloom Planner", logger)
 
-	tsdbStore, err := common.NewTSDBStores(schemaCfg, storeCfg, storageMetrics, logger)
+	tsdbStore, err := common.NewTSDBStores("bloom-planner", schemaCfg, storeCfg, storageMetrics, logger, r)
 	if err != nil {
 		return nil, fmt.Errorf("error creating TSDB store: %w", err)
 	}

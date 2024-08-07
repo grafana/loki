@@ -4,6 +4,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/objstore"
+	"github.com/thanos-io/objstore/exthttp"
 	"github.com/thanos-io/objstore/providers/s3"
 )
 
@@ -38,6 +39,12 @@ func newS3Config(cfg Config) (s3.Config, error) {
 		return s3.Config{}, err
 	}
 
+	putUserMetadata := map[string]string{}
+
+	if cfg.StorageClass != "" {
+		putUserMetadata[awsStorageClassHeader] = cfg.StorageClass
+	}
+
 	return s3.Config{
 		Bucket:          cfg.BucketName,
 		Endpoint:        cfg.Endpoint,
@@ -46,8 +53,8 @@ func newS3Config(cfg Config) (s3.Config, error) {
 		SecretKey:       cfg.SecretAccessKey.String(),
 		SessionToken:    cfg.SessionToken.String(),
 		Insecure:        cfg.Insecure,
+		PutUserMetadata: putUserMetadata,
 		SSEConfig:       sseCfg,
-		PutUserMetadata: map[string]string{awsStorageClassHeader: cfg.StorageClass},
 		HTTPConfig: s3.HTTPConfig{
 			IdleConnTimeout:       model.Duration(cfg.HTTP.IdleConnTimeout),
 			ResponseHeaderTimeout: model.Duration(cfg.HTTP.ResponseHeaderTimeout),
@@ -58,6 +65,9 @@ func newS3Config(cfg Config) (s3.Config, error) {
 			MaxIdleConnsPerHost:   cfg.HTTP.MaxIdleConnsPerHost,
 			MaxConnsPerHost:       cfg.HTTP.MaxConnsPerHost,
 			Transport:             cfg.HTTP.Transport,
+			TLSConfig: exthttp.TLSConfig{
+				CAFile: cfg.HTTP.CAFile,
+			},
 		},
 	}, nil
 }
