@@ -86,7 +86,7 @@ func (c *ChainedTokenCredential) GetToken(ctx context.Context, opts policy.Token
 		errs                 []error
 		successfulCredential azcore.TokenCredential
 		token                azcore.AccessToken
-		unavailableErr       *credentialUnavailableError
+		unavailableErr       credentialUnavailable
 	)
 	for _, cred := range c.sources {
 		token, err = cred.GetToken(ctx, opts)
