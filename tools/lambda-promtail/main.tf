@@ -172,6 +172,7 @@ data "archive_file" "lambda" {
 }
 
 resource "aws_lambda_function" "this" {
+  filename      = local.archive_path
   function_name = var.name
   role          = aws_iam_role.this.arn
   kms_key_arn   = var.kms_key_arn
