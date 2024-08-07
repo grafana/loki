@@ -145,7 +145,7 @@ require (
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 	golang.org/x/exp v0.0.0-20240325151524-a685a6edb6d8
 	golang.org/x/oauth2 v0.21.0
-	golang.org/x/text v0.16.0
+	golang.org/x/text v0.17.0
 	google.golang.org/protobuf v1.34.2
 	gotest.tools v2.2.0+incompatible
 	k8s.io/apimachinery v0.29.3
