@@ -148,11 +148,37 @@ resource "aws_cloudwatch_log_group" "this" {
   retention_in_days = 14
 }
 
+locals {
+  binary_path  = "${path.module}/lambda-promtail/bootstrap"
+  archive_path = "${path.module}/lambda-promtail/${var.name}.zip"
+}
+
+resource "null_resource" "function_binary" {
+  triggers = {
+    always_run = timestamp()
+  }
+
+  provisioner "local-exec" {
+    command = "cd lambda-promtail && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 GOFLAGS=-trimpath go build -mod=readonly -ldflags='-s -w' -o bootstrap"
+  }
+}
+
+data "archive_file" "lambda" {
+  depends_on = [null_resource.function_binary]
+
+  type        = "zip"
+  source_file = local.binary_path
+  output_path = local.archive_path
+}
+
 resource "aws_lambda_function" "this" {
-  image_uri     = var.lambda_promtail_image
   function_name = var.name
   role          = aws_iam_role.this.arn
   kms_key_arn   = var.kms_key_arn
+
+  source_code_hash = data.archive_file.lambda.output_base64sha256
+  runtime          = "provided.al2023"
+  handler          = local.binary_path
 
   timeout      = 60
   memory_size  = 128
