@@ -1825,7 +1825,7 @@ func (t *Loki) initMetastore() (services.Service, error) {
 	if t.Cfg.isTarget(All) {
 		t.Cfg.MetastoreClient.MetastoreAddress = fmt.Sprintf("localhost:%d", t.Cfg.Server.GRPCListenPort)
 	}
-	m, err := metastore.New(t.Cfg.Metastore, log.With(util_log.Logger, "component", "metastore"), prometheus.DefaultRegisterer, t.health)
+	m, err := metastore.New(t.Cfg.Metastore, t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.ClientMetrics, log.With(util_log.Logger, "component", "metastore"), prometheus.DefaultRegisterer, t.health)
 	if err != nil {
 		return nil, err
 	}

@@ -9,6 +9,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"go.etcd.io/bbolt"
 
+	ingesterrf1 "github.com/grafana/loki/v3/pkg/ingester-rf1"
 	metastorepb "github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 )
 
@@ -18,14 +19,16 @@ type metastoreState struct {
 	segmentsMutex sync.Mutex
 	segments      map[string]*metastorepb.BlockMeta
 
-	db *boltdb
+	db    *boltdb
+	store ingesterrf1.Storage
 }
 
-func newMetastoreState(logger log.Logger, db *boltdb) *metastoreState {
+func newMetastoreState(logger log.Logger, db *boltdb, store ingesterrf1.Storage) *metastoreState {
 	return &metastoreState{
 		logger:   logger,
 		segments: make(map[string]*metastorepb.BlockMeta),
 		db:       db,
+		store:    store,
 	}
 }
 
