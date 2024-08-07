@@ -1829,6 +1829,7 @@ func (t *Loki) initMetastore() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Service methods have tenant auth disabled in the fakeauth.SetupAuthMiddleware call since this is a shared service
 	metastorepb.RegisterMetastoreServiceServer(t.Server.GRPC, m)
 
 	return m, nil
