@@ -70,6 +70,8 @@ func NewClient(cfg Config, addr string) (HealthAndIngesterClient, error) {
 	}
 
 	opts = append(opts, dialOpts...)
+
+	// nolint:staticcheck // grpc.Dial() has been deprecated; we'll address it before upgrading to gRPC 2.
 	conn, err := grpc.Dial(addr, opts...)
 	if err != nil {
 		return nil, err

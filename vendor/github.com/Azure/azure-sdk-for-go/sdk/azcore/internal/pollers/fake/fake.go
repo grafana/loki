@@ -124,7 +124,7 @@ func (p *Poller[T]) Result(ctx context.Context, out *T) error {
 		return exported.NewResponseError(p.resp)
 	}
 
-	return pollers.ResultHelper(p.resp, poller.Failed(p.FakeStatus), out)
+	return pollers.ResultHelper(p.resp, poller.Failed(p.FakeStatus), "", out)
 }
 
 // SanitizePollerPath removes any fake-appended suffix from a URL's path.

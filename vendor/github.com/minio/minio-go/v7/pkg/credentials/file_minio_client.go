@@ -22,7 +22,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	jsoniter "github.com/json-iterator/go"
+	"github.com/goccy/go-json"
 )
 
 // A FileMinioClient retrieves credentials from the current user's home
@@ -121,8 +121,6 @@ type config struct {
 // returned if it fails to read from the file.
 func loadAlias(filename, alias string) (hostConfig, error) {
 	cfg := &config{}
-	json := jsoniter.ConfigCompatibleWithStandardLibrary
-
 	configBytes, err := os.ReadFile(filename)
 	if err != nil {
 		return hostConfig{}, err

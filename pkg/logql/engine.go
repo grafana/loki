@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -442,11 +441,6 @@ func (q *query) JoinSampleVector(next bool, r StepResult, stepEvaluator StepEval
 			sort.Slice(vec, func(i, j int) bool { return labels.Compare(vec[i].Metric, vec[j].Metric) < 0 })
 		}
 		return vec, nil
-	}
-
-	stepCount := int(math.Ceil(float64(q.params.End().Sub(q.params.Start()).Nanoseconds()) / float64(q.params.Step().Nanoseconds())))
-	if stepCount <= 0 {
-		stepCount = 1
 	}
 
 	for next {

@@ -1,0 +1,9 @@
+steps:
+- name: 'gcr.io/cloud-builders/bazel:6.4.0'
+  entrypoint: bazel
+  args: ['test', '--test_output=errors', '...']
+  id: bazel-test
+  waitFor: ['-']
+timeout: 15m
+options:
+  machineType: 'N1_HIGHCPU_32'
