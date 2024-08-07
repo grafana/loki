@@ -7,14 +7,16 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
 
-type GapWithBlocks struct {
+type Gap struct {
 	Bounds v1.FingerprintBounds
+	Series []*v1.Series
 	Blocks []bloomshipper.BlockRef
 }
 
@@ -25,7 +27,7 @@ type Task struct {
 	Tenant          string
 	OwnershipBounds v1.FingerprintBounds
 	TSDB            tsdb.SingleTenantTSDBIdentifier
-	Gaps            []GapWithBlocks
+	Gaps            []Gap
 }
 
 func NewTask(
@@ -33,10 +35,10 @@ func NewTask(
 	tenant string,
 	bounds v1.FingerprintBounds,
 	tsdb tsdb.SingleTenantTSDBIdentifier,
-	gaps []GapWithBlocks,
+	gaps []Gap,
 ) *Task {
 	return &Task{
-		ID: fmt.Sprintf("%s-%s-%s-%d-%d", table.Addr(), tenant, bounds.String(), tsdb.Checksum, len(gaps)),
+		ID: fmt.Sprintf("%s-%s-%s-%d", table.Addr(), tenant, bounds.String(), len(gaps)),
 
 		Table:           table,
 		Tenant:          tenant,
@@ -56,12 +58,25 @@ func FromProtoTask(task *ProtoTask) (*Task, error) {
 		return nil, fmt.Errorf("failed to parse tsdb path %s", task.Tsdb)
 	}
 
-	gaps := make([]GapWithBlocks, 0, len(task.Gaps))
+	gaps := make([]Gap, 0, len(task.Gaps))
 	for _, gap := range task.Gaps {
 		bounds := v1.FingerprintBounds{
 			Min: gap.Bounds.Min,
 			Max: gap.Bounds.Max,
 		}
+
+		series := make([]*v1.Series, 0, len(gap.Series))
+		for _, s := range gap.Series {
+			chunks := make(v1.ChunkRefs, 0, len(s.Chunks))
+			for _, c := range s.Chunks {
+				chunks = append(chunks, v1.ChunkRef(*c))
+			}
+			series = append(series, &v1.Series{
+				Fingerprint: model.Fingerprint(s.Fingerprint),
+				Chunks:      chunks,
+			})
+		}
+
 		blocks := make([]bloomshipper.BlockRef, 0, len(gap.BlockRef))
 		for _, block := range gap.BlockRef {
 			b, err := bloomshipper.BlockRefFromKey(block)
@@ -71,8 +86,9 @@ func FromProtoTask(task *ProtoTask) (*Task, error) {
 
 			blocks = append(blocks, b)
 		}
-		gaps = append(gaps, GapWithBlocks{
+		gaps = append(gaps, Gap{
 			Bounds: bounds,
+			Series: series,
 			Blocks: blocks,
 		})
 	}
@@ -102,11 +118,26 @@ func (t *Task) ToProtoTask() *ProtoTask {
 			blockRefs = append(blockRefs, block.String())
 		}
 
+		series := make([]*ProtoSeries, 0, len(gap.Series))
+		for _, s := range gap.Series {
+			chunks := make([]*logproto.ShortRef, 0, len(s.Chunks))
+			for _, c := range s.Chunks {
+				chunk := logproto.ShortRef(c)
+				chunks = append(chunks, &chunk)
+			}
+
+			series = append(series, &ProtoSeries{
+				Fingerprint: uint64(s.Fingerprint),
+				Chunks:      chunks,
+			})
+		}
+
 		protoGaps = append(protoGaps, &ProtoGapWithBlocks{
 			Bounds: ProtoFingerprintBounds{
 				Min: gap.Bounds.Min,
 				Max: gap.Bounds.Max,
 			},
+			Series:   series,
 			BlockRef: blockRefs,
 		})
 	}

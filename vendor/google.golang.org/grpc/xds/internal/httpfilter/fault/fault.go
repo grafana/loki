@@ -24,12 +24,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"strconv"
 	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/internal/grpcrand"
 	iresolver "google.golang.org/grpc/internal/resolver"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -162,7 +162,7 @@ func (i *interceptor) NewStream(ctx context.Context, ri iresolver.RPCInfo, done 
 }
 
 // For overriding in tests
-var randIntn = grpcrand.Intn
+var randIntn = rand.Intn
 var newTimer = time.NewTimer
 
 func injectDelay(ctx context.Context, delayCfg *cpb.FaultDelay) error {

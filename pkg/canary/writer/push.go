@@ -88,9 +88,9 @@ func NewPush(
 	// setup tls transport
 	if tlsCfg != nil {
 		tlsSettings := config.TLSRoundTripperSettings{
-			CAFile:   caFile,
-			CertFile: certFile,
-			KeyFile:  keyFile,
+			CA:   config.NewFileSecret(caFile),
+			Cert: config.NewFileSecret(certFile),
+			Key:  config.NewFileSecret(keyFile),
 		}
 		rt, err := config.NewTLSRoundTripper(tlsCfg, tlsSettings, func(tls *tls.Config) (http.RoundTripper, error) {
 			return &http.Transport{TLSClientConfig: tls}, nil

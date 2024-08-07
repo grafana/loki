@@ -409,6 +409,30 @@ func TestTenantRemoteWriteConfigWithOverrideConcurrentAccess(t *testing.T) {
 	})
 }
 
+func TestAppenderConcurrentAccess(t *testing.T) {
+	require.NotPanics(t, func() {
+		reg := setupRegistry(t, cfg, newFakeLimits())
+		var wg sync.WaitGroup
+		for i := 0; i < 1000; i++ {
+			wg.Add(1)
+			go func(reg *walRegistry) {
+				defer wg.Done()
+
+				_ = reg.Appender(user.InjectOrgID(context.Background(), enabledRWTenant))
+			}(reg)
+
+			wg.Add(1)
+			go func(reg *walRegistry) {
+				defer wg.Done()
+
+				_ = reg.Appender(user.InjectOrgID(context.Background(), additionalHeadersRWTenant))
+			}(reg)
+		}
+
+		wg.Wait()
+	})
+}
+
 func TestTenantRemoteWriteConfigWithoutOverride(t *testing.T) {
 	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
 

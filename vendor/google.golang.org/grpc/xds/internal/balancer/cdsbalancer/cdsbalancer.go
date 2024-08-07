@@ -180,7 +180,7 @@ type cdsBalancer struct {
 
 // handleSecurityConfig processes the security configuration received from the
 // management server, creates appropriate certificate provider plugins, and
-// updates the HandhakeInfo which is added as an address attribute in
+// updates the HandshakeInfo which is added as an address attribute in
 // NewSubConn() calls.
 //
 // Only executed in the context of a serializer callback.
@@ -609,21 +609,7 @@ func (b *cdsBalancer) generateDMsForCluster(name string, depth int, dms []cluste
 			Cluster:               cluster.ClusterName,
 			EDSServiceName:        cluster.EDSServiceName,
 			MaxConcurrentRequests: cluster.MaxRequests,
-		}
-		if cluster.LRSServerConfig == xdsresource.ClusterLRSServerSelf {
-			bootstrapConfig := b.xdsClient.BootstrapConfig()
-			parsedName := xdsresource.ParseName(cluster.ClusterName)
-			if parsedName.Scheme == xdsresource.FederationScheme {
-				// Is a federation resource name, find the corresponding
-				// authority server config.
-				if cfg, ok := bootstrapConfig.Authorities[parsedName.Authority]; ok {
-					dm.LoadReportingServer = cfg.XDSServer
-				}
-			} else {
-				// Not a federation resource name, use the default
-				// authority.
-				dm.LoadReportingServer = bootstrapConfig.XDSServer
-			}
+			LoadReportingServer:   cluster.LRSServerConfig,
 		}
 	case xdsresource.ClusterTypeLogicalDNS:
 		dm = clusterresolver.DiscoveryMechanism{
@@ -644,6 +630,8 @@ func (b *cdsBalancer) generateDMsForCluster(name string, depth int, dms []cluste
 		odJSON = json.RawMessage(`{}`)
 	}
 	dm.OutlierDetection = odJSON
+
+	dm.TelemetryLabels = cluster.TelemetryLabels
 
 	return append(dms, dm), true, nil
 }

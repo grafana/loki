@@ -193,6 +193,7 @@ func DialQueryFrontend(cfg *QueryFrontendConfig) (httpgrpc.HTTPClient, error) {
 		tlsDialOptions...,
 	)
 
+	// nolint:staticcheck // grpc.Dial() has been deprecated; we'll address it before upgrading to gRPC 2.
 	conn, err := grpc.Dial(cfg.Address, dialOptions...)
 	if err != nil {
 		return nil, err

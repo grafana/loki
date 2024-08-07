@@ -21,8 +21,9 @@ import (
 	"google.golang.org/protobuf/encoding/protodelim"
 	"google.golang.org/protobuf/encoding/prototext"
 
-	"github.com/prometheus/common/internal/bitbucket.org/ww/goautoneg"
 	"github.com/prometheus/common/model"
+
+	"github.com/munnerz/goautoneg"
 
 	dto "github.com/prometheus/client_model/go"
 )

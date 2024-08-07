@@ -80,7 +80,7 @@ These HTTP endpoints are exposed by the `ingester`, `write`, and `all` component
 These HTTP endpoints are exposed by the `ruler` component:
 
 - [`GET /loki/api/v1/rules`](#list-rule-groups)
-- [`GET /loki/api/v1/rules/({namespace}`](#get-rule-groups-by-namespace)
+- [`GET /loki/api/v1/rules/{namespace}`](#get-rule-groups-by-namespace)
 - [`GET /loki/api/v1/rules/{namespace}/{groupName}`](#get-rule-group)
 - [`POST /loki/api/v1/rules/{namespace}`](#set-rule-group)
 - [`DELETE /loki/api/v1/rules/{namespace}/{groupName}`](#delete-rule-group)
@@ -1048,7 +1048,7 @@ GET /metrics
 ```
 
 `/metrics` returns exposed Prometheus metrics. See
-[Observing Loki]({{< relref "../operations/observability" >}})
+[Observing Loki]({{< relref "../operations/meta-monitoring" >}})
 for a list of exported metrics.
 
 In microservices mode, the `/metrics` endpoint is exposed by all components.

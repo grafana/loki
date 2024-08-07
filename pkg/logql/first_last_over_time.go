@@ -131,7 +131,7 @@ type mergeOverTimeStepEvaluator struct {
 
 // Next returns the first or last element within one step of each matrix.
 func (e *mergeOverTimeStepEvaluator) Next() (bool, int64, StepResult) {
-	var vec promql.Vector
+	vec := promql.Vector{}
 
 	e.ts = e.ts.Add(e.step)
 	if e.ts.After(e.end) {
@@ -142,7 +142,6 @@ func (e *mergeOverTimeStepEvaluator) Next() (bool, int64, StepResult) {
 	// Merge other results
 	for i, m := range e.matrices {
 		for j, series := range m {
-
 			if len(series.Floats) == 0 || !e.inRange(series.Floats[0].T, ts) {
 				continue
 			}
@@ -171,6 +170,10 @@ func (e *mergeOverTimeStepEvaluator) pop(r, s int) {
 
 // inRange returns true if t is in step range of ts.
 func (e *mergeOverTimeStepEvaluator) inRange(t, ts int64) bool {
+	// special case instant queries
+	if e.step.Milliseconds() == 0 {
+		return true
+	}
 	return (ts-e.step.Milliseconds()) <= t && t < ts
 }
 

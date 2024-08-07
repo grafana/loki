@@ -23,6 +23,7 @@ type ClientPool struct {
 //
 // Internally, it also instantiates a protobuf index gateway client and a health client.
 func NewClientPool(address string, opts []grpc.DialOption) (*ClientPool, error) {
+	// nolint:staticcheck // grpc.Dial() has been deprecated; we'll address it before upgrading to gRPC 2.
 	conn, err := grpc.Dial(address, opts...)
 	if err != nil {
 		return nil, errors.Wrap(err, "shipper new grpc pool dial")

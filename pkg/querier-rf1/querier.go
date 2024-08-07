@@ -34,6 +34,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/querier"
+	"github.com/grafana/loki/v3/pkg/querier-rf1/wal"
 	querier_limits "github.com/grafana/loki/v3/pkg/querier/limits"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage"
@@ -57,7 +58,7 @@ type Config struct {
 // RegisterFlags register flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Engine.RegisterFlagsWithPrefix("querier-rf1", f)
-	f.BoolVar(&cfg.Enabled, "querier-rf1.enabled", false, "Enable the RF1 querier. If set, replaces the usual querier with a RF-1 querier when using 'ALL' target.")
+	f.BoolVar(&cfg.Enabled, "querier-rf1.enabled", false, "Enable the RF1 querier. If set, replaces the usual querier with an RF-1 querier.")
 	f.DurationVar(&cfg.ExtraQueryDelay, "querier-rf1.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.IntVar(&cfg.MaxConcurrent, "querier-rf1.max-concurrent", 4, "The maximum number of queries that can be simultaneously processed by the querier.")
 	f.BoolVar(&cfg.PerRequestLimitsEnabled, "querier-rf1.per-request-limits-enabled", false, "When true, querier limits sent via a header are enforced.")
@@ -97,6 +98,7 @@ type Rf1Querier struct {
 	deleteGetter   deleteGetter
 	logger         log.Logger
 	patternQuerier PatterQuerier
+	walQuerier     logql.Querier
 }
 
 type deleteGetter interface {
@@ -104,12 +106,17 @@ type deleteGetter interface {
 }
 
 // New makes a new Querier for RF1 work.
-func New(cfg Config, store Store, limits Limits, d deleteGetter, logger log.Logger) (*Rf1Querier, error) {
+func New(cfg Config, store Store, limits Limits, d deleteGetter, metastore wal.Metastore, b wal.BlockStorage, logger log.Logger) (*Rf1Querier, error) {
+	querier, err := wal.New(metastore, b)
+	if err != nil {
+		return nil, err
+	}
 	return &Rf1Querier{
 		cfg:          cfg,
 		store:        store,
 		limits:       limits,
 		deleteGetter: d,
+		walQuerier:   querier,
 		logger:       logger,
 	}, nil
 }
@@ -134,7 +141,7 @@ func (q *Rf1Querier) SelectLogs(ctx context.Context, params logql.SelectLogParam
 			"msg", "querying rf1 store",
 			"params", params)
 	}
-	storeIter, err := q.store.SelectLogs(ctx, params)
+	storeIter, err := q.walQuerier.SelectLogs(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +171,7 @@ func (q *Rf1Querier) SelectSamples(ctx context.Context, params logql.SelectSampl
 			"msg", "querying rf1 store for samples",
 			"params", params)
 	}
-	storeIter, err := q.store.SelectSamples(ctx, params)
+	storeIter, err := q.walQuerier.SelectSamples(ctx, params)
 	if err != nil {
 		return nil, err
 	}

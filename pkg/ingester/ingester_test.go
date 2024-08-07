@@ -1432,6 +1432,8 @@ func createIngesterServer(t *testing.T, ingesterConfig Config) (ingesterClient, 
 			level.Error(ing.logger).Log(err)
 		}
 	}()
+
+	// nolint:staticcheck // grpc.DialContext() has been deprecated; we'll address it before upgrading to gRPC 2.
 	conn, err := grpc.DialContext(context.Background(), "", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
 		return listener.Dial()
 	}))

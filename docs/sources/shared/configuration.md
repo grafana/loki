@@ -115,8 +115,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [querier: <querier>]
 
 querier_rf1:
-  # Enable the RF1 querier. If set, replaces the usual querier with a RF-1
-  # querier when using 'ALL' target.
+  # Enable the RF1 querier. If set, replaces the usual querier with an RF-1
+  # querier.
   # CLI flag: -querier-rf1.enabled
   [enabled: <boolean> | default = false]
 
@@ -358,7 +358,7 @@ ingester_rf1:
   # The timeout for an individual flush. Will be retried up to
   # `flush-op-backoff-retries` times.
   # CLI flag: -ingester-rf1.flush-op-timeout
-  [flush_op_timeout: <duration> | default = 10m]
+  [flush_op_timeout: <duration> | default = 10s]
 
   # Forget about ingesters having heartbeat timestamps older than
   # `ring.kvstore.heartbeat_timeout`. This is equivalent to clicking on the
@@ -1174,6 +1174,10 @@ backoff_config:
   # Maximum number of times to retry when s3 get Object
   # CLI flag: -s3.max-retries
   [max_retries: <int> | default = 5]
+
+# Disable forcing S3 dualstack endpoint usage.
+# CLI flag: -s3.disable-dualstack
+[disable_dualstack: <boolean> | default = false]
 ```
 
 ### azure_storage_config
@@ -5093,6 +5097,10 @@ backoff_config:
   # Maximum number of times to retry when s3 get Object
   # CLI flag: -<prefix>.storage.s3.max-retries
   [max_retries: <int> | default = 5]
+
+# Disable forcing S3 dualstack endpoint usage.
+# CLI flag: -<prefix>.storage.s3.disable-dualstack
+[disable_dualstack: <boolean> | default = false]
 ```
 
 ### schema_config

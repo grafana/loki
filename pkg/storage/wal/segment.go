@@ -35,7 +35,7 @@ var (
 			}
 		},
 	}
-	tenantLabel = "__loki_tenant__"
+	Dir = "loki-v2/wal/anon/"
 )
 
 func init() {
@@ -140,6 +140,9 @@ func NewWalSegmentWriter() (*SegmentWriter, error) {
 
 // Age returns the age of the segment.
 func (b *SegmentWriter) Age(now time.Time) time.Duration {
+	if b.firstAppend.IsZero() {
+		return 0
+	}
 	return now.Sub(b.firstAppend)
 }
 
@@ -153,8 +156,8 @@ func (b *SegmentWriter) getOrCreateStream(id streamID, lbls labels.Labels) *stre
 	if ok {
 		return s
 	}
-	if lbls.Get(tenantLabel) == "" {
-		lbls = labels.NewBuilder(lbls).Set(tenantLabel, id.tenant).Labels()
+	if lbls.Get(index.TenantLabel) == "" {
+		lbls = labels.NewBuilder(lbls).Set(index.TenantLabel, id.tenant).Labels()
 	}
 	s = streamSegmentPool.Get().(*streamSegment)
 	s.lbls = lbls
