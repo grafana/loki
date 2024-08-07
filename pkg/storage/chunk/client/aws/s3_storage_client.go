@@ -17,9 +17,11 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/endpoints"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
+	"github.com/aws/aws-sdk-go/service/sts"
 	awscommon "github.com/grafana/dskit/aws"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
@@ -44,6 +46,7 @@ const (
 var (
 	supportedSignatureVersions     = []string{SignatureVersionV4}
 	errUnsupportedSignatureVersion = errors.New("unsupported signature version")
+	errInvalidSTSEndpoint          = errors.New("sts-endpoint must be a valid url")
 )
 
 var s3RequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -68,6 +71,7 @@ type S3Config struct {
 
 	BucketNames      string
 	Endpoint         string              `yaml:"endpoint"`
+	STSEndpoint      string              `yaml:"sts_endpoint"`
 	Region           string              `yaml:"region"`
 	AccessKeyID      string              `yaml:"access_key_id"`
 	SecretAccessKey  flagext.Secret      `yaml:"secret_access_key"`
@@ -109,6 +113,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.Var(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "AWS Secret Access Key")
 	f.Var(&cfg.SessionToken, prefix+"s3.session-token", "AWS Session Token")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "Disable https on s3 connection.")
+	f.StringVar(&cfg.STSEndpoint, prefix+"s3.sts-endpoint", "", "Accessing S3 resources using temporary, secure credentials provided by AWS Security Token Service.")
 
 	cfg.SSEConfig.RegisterFlagsWithPrefix(prefix+"s3.sse.", f)
 
@@ -131,7 +136,15 @@ func (cfg *S3Config) Validate() error {
 		return errUnsupportedSignatureVersion
 	}
 
-	return storageawscommon.ValidateStorageClass(cfg.StorageClass)
+	if cfg.STSEndpoint != "" && !util.IsValidURL(cfg.STSEndpoint) {
+		return errInvalidSTSEndpoint
+	}
+
+	if err := storageawscommon.ValidateStorageClass(cfg.StorageClass); err != nil {
+		return err
+	}
+
+	return cfg.SSEConfig.Validate()
 }
 
 type S3ObjectClient struct {
@@ -196,12 +209,26 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 		s3Config = s3Config.WithRegion("dummy")
 	}
 
+	customEndpointResolver := func(service, region string, optFns ...func(*endpoints.Options)) (endpoints.ResolvedEndpoint, error) {
+		if cfg.Endpoint != "" && service == s3.EndpointsID {
+			return endpoints.ResolvedEndpoint{
+				URL: cfg.Endpoint,
+			}, nil
+		}
+
+		if cfg.STSEndpoint != "" && service == sts.EndpointsID {
+			return endpoints.ResolvedEndpoint{
+				URL: cfg.STSEndpoint,
+			}, nil
+		}
+
+		return endpoints.DefaultResolver().EndpointFor(service, region, optFns...)
+	}
+
+	s3Config = s3Config.WithEndpointResolver(endpoints.ResolverFunc(customEndpointResolver))
+
 	s3Config = s3Config.WithMaxRetries(0)                          // We do our own retries, so we can monitor them
 	s3Config = s3Config.WithS3ForcePathStyle(cfg.S3ForcePathStyle) // support for Path Style S3 url if has the flag
-
-	if cfg.Endpoint != "" {
-		s3Config = s3Config.WithEndpoint(cfg.Endpoint)
-	}
 
 	if cfg.Insecure {
 		s3Config = s3Config.WithDisableSSL(true)
@@ -257,6 +284,7 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 	if cfg.Inject != nil {
 		transport = cfg.Inject(transport)
 	}
+
 	httpClient := &http.Client{
 		Transport: transport,
 		Timeout:   cfg.HTTPConfig.Timeout,
@@ -270,7 +298,6 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 	}
 
 	s3Config = s3Config.WithHTTPClient(httpClient)
-
 	sess, err := session.NewSession(s3Config)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create new s3 session")

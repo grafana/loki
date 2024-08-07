@@ -298,3 +298,12 @@ func FlagFromValues(values url.Values, key string, d bool) bool {
 		return d
 	}
 }
+
+func IsValidURL(endpoint string) bool {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return false
+	}
+
+	return u.Scheme != "" && u.Host != ""
+}
