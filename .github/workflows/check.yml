@@ -1,4 +1,9 @@
 "jobs":
+  "show-details":
+    runs-on: "ubuntu-latest"
+    steps:
+      - run: du -sh /opt/hostedtoolcache
+        name: check directory size
   "check":
     "uses": "grafana/loki-release/.github/workflows/check.yml@main"
     "with":
