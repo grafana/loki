@@ -1829,12 +1829,16 @@ func (t *Loki) initMetastore() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Service methods have tenant auth disabled in the fakeauth.SetupAuthMiddleware call since this is a shared service
 	metastorepb.RegisterMetastoreServiceServer(t.Server.GRPC, m)
 
 	return m, nil
 }
 
 func (t *Loki) initMetastoreClient() (services.Service, error) {
+	if !t.Cfg.IngesterRF1.Enabled && !t.Cfg.QuerierRF1.Enabled {
+		return nil, nil
+	}
 	mc, err := metastoreclient.New(t.Cfg.MetastoreClient, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
