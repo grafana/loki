@@ -132,5 +132,5 @@ aws cloudformation create-stack --stack-name lambda-promtail-stack --template-bo
 ```
 
 ## Limitations
-- Error handling: If promtail is unresponsive, `lambda-promtail` will drop logs after `retry_count`, which defaults to 2.
+- Error handling: If promtail is unresponsive, `lambda-promtail` will drop logs after `maxRetries`, which defaults to 10.
 - AWS CloudWatch [quotas](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/cloudwatch_limits_cwl.html) state that the event size is limited to 256kb. `256 KB (maximum). This quota can't be changed.`
