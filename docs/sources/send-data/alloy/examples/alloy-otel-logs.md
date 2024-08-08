@@ -123,7 +123,7 @@ Grafana Alloy requires a configuration file to define the components and their r
 
 You will copy all three of the following configuration snippets into the `config.alloy` file.
 
-### Recive OpenTelemetry logs via gRPC and HTTP
+### Receive OpenTelemetry logs via gRPC and HTTP
 
 First, we will configure the OpenTelemetry receiver. `otelcol.receiver.otlp` accepts logs in the OpenTelemetry format via HTTP and gRPC. We will use this receiver to receive logs from the Carnivorous Greenhouse application.
 
