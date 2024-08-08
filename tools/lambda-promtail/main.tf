@@ -172,14 +172,15 @@ data "archive_file" "lambda" {
 }
 
 resource "aws_lambda_function" "this" {
-  filename      = local.archive_path
   function_name = var.name
   role          = aws_iam_role.this.arn
   kms_key_arn   = var.kms_key_arn
 
-  source_code_hash = data.archive_file.lambda.output_base64sha256
-  runtime          = "provided.al2023"
-  handler          = local.binary_path
+  image_uri        = var.lambda_promtail_image != "" ? var.lambda_promtail_image : null
+  filename         = var.lambda_promtail_image == "" ? local.archive_path : null
+  source_code_hash = var.lambda_promtail_image == "" ? data.archive_file.lambda.output_base64sha256 : null
+  runtime          = var.lambda_promtail_image == "" ? "provided.al2023" : null
+  handler          = var.lambda_promtail_image == "" ? local.binary_path : null
 
   timeout      = 60
   memory_size  = 128
