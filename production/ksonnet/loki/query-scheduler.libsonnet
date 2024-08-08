@@ -1,3 +1,4 @@
+local loki = import 'github.com/grafana/loki/production/ksonnet/loki/loki.libsonnet';
 local k = import 'ksonnet-util/kausal.libsonnet';
 
 {
@@ -40,9 +41,10 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     container.withPorts($.query_scheduler_ports) +
     container.withArgsMixin(k.util.mapToFlags($.query_scheduler_args)) +
     $.jaeger_mixin +
-    k.util.resourcesRequests('2', '600Mi') +
-    k.util.resourcesLimits(null, '1200Mi') +
-    container.withEnvMixin($._config.commonEnvs)
+    k.util.resourcesRequests('2', '800Mi') +
+    k.util.resourcesLimits(null, '1600Mi') +
+    container.withEnvMixin($._config.commonEnvs) +
+    loki.util.readinessProbe
   else {},
 
   local deployment = k.apps.v1.deployment,
