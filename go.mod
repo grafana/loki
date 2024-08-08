@@ -118,7 +118,7 @@ require (
 	github.com/DmitriyVTitov/size v1.5.0
 	github.com/IBM/go-sdk-core/v5 v5.13.1
 	github.com/IBM/ibm-cos-sdk-go v1.10.0
-	github.com/axiomhq/hyperloglog v0.0.0-20240124082744-24bca3a5b39b
+	github.com/axiomhq/hyperloglog v0.0.0-20240507144631-af9851f82b27
 	github.com/buger/jsonparser v1.1.1
 	github.com/coder/quartz v0.1.0
 	github.com/d4l3k/messagediff v1.2.1
