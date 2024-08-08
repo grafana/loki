@@ -334,7 +334,7 @@ func NewBloomStore(
 	}
 
 	for _, periodicConfig := range periodicConfigs {
-		objectClient, err := storage.NewObjectClient(periodicConfig.ObjectType, storageConfig, clientMetrics)
+		objectClient, err := storage.NewObjectClient("bloom-store", periodicConfig.ObjectType, storageConfig, clientMetrics, prometheus.DefaultRegisterer)
 		if err != nil {
 			return nil, errors.Wrapf(err, "creating object client for period %s", periodicConfig.From)
 		}
