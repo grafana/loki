@@ -14,8 +14,15 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
                                hiddenRows:: [
                                  'Cassandra',
-                               ] + if !$._config.ssd.enabled then [] else [
-                                 'Ingester',
+                                 if $._config.ssd.enabled then 'Ingester',
+                                 if !$._config.operational.memcached then 'Memcached',
+                                 if !$._config.operational.consul then 'Consul',
+                                 if !$._config.operational.bigTable then 'Big Table',
+                                 if !$._config.operational.dynamo then 'Dynamo',
+                                 if !$._config.operational.gcs then 'GCS',
+                                 if !$._config.operational.s3 then 'S3',
+                                 if !$._config.operational.azureBlob then 'Azure Blob',
+                                 if !$._config.operational.boltDB then 'BoltDB Shipper',
                                ],
 
                                hiddenPanels:: if $._config.promtail.enabled then [] else [
