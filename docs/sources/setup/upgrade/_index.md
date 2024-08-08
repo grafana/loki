@@ -69,7 +69,7 @@ If you would like to see if your existing configuration will work with Loki 3.0:
 1. In an empty directory on your computer, copy you configuration into a file named `loki-config.yaml`.
 1. Run this command from that directory: 
 ```bash
-docker run --rm -t -v "${PWD}":/config grafana/loki:3.0.0 -config.file=/config/loki-config.yaml -verify-config=true`
+docker run --rm -t -v "${PWD}":/config grafana/loki:3.0.0 -config.file=/config/loki-config.yaml -verify-config=true
 ```
 
 {{< admonition type="note" >}}
@@ -504,7 +504,7 @@ only in 2.8 and forward releases does the zero value disable retention.
 
 The metrics.go log line emitted for every query had an entry called `subqueries` which was intended to represent the amount a query was parallelized on execution.
 
-In the current form it only displayed the count of subqueries generated with Loki's split by time logic and did not include counts for shards.
+In the current form it only displayed the count of subqueries generated with the Loki split by time logic and did not include counts for shards.
 
 There wasn't a clean way to update subqueries to include sharding information and there is value in knowing the difference between the subqueries generated when we split by time vs sharding factors, especially now that TSDB can do dynamic sharding.
 

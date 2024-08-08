@@ -65,11 +65,9 @@ spec:
               mountPath: {{ .Values.minio.configPathmc }}certs
           {{ end }}
         {{- end }}
-      {{- if .Values.imagePullSecrets }}
+      {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
-      {{- range .Values.imagePullSecrets }}
-        - name: {{ . }}
-      {{- end }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.adminApi.hostAliases }}
       hostAliases:

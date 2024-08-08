@@ -158,6 +158,7 @@ func (f *frontendSchedulerWorkers) connectToScheduler(ctx context.Context, addre
 		return nil, err
 	}
 
+	// nolint:staticcheck // grpc.DialContext() has been deprecated; we'll address it before upgrading to gRPC 2.
 	conn, err := grpc.DialContext(ctx, address, opts...)
 	if err != nil {
 		return nil, err

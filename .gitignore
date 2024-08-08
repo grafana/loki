@@ -56,3 +56,6 @@ nix/result
 
 # snyk
 .dccache
+
+# helm test
+production/helm/loki/src/helm-test/helm-test

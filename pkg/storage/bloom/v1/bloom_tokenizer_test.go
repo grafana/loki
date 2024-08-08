@@ -11,12 +11,13 @@ import (
 	logger "github.com/go-kit/log"
 	"github.com/grafana/dskit/multierror"
 
-	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/iter"
 	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
+
+	"github.com/grafana/loki/pkg/push"
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"

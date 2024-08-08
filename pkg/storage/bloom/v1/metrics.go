@@ -20,6 +20,8 @@ type Metrics struct {
 	insertsTotal        *prometheus.CounterVec
 	sourceBytesAdded    prometheus.Counter
 	blockSize           prometheus.Histogram
+	seriesPerBlock      prometheus.Histogram
+	chunksPerBlock      prometheus.Histogram
 	blockFlushReason    *prometheus.CounterVec
 
 	// reads
@@ -119,6 +121,18 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			Name:      "bloom_block_size",
 			Help:      "Size of the bloom block in bytes",
 			Buckets:   prometheus.ExponentialBucketsRange(1<<20, 1<<30, 8),
+		}),
+		seriesPerBlock: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "bloom_series_per_block",
+			Help:      "Number of series per block",
+			Buckets:   prometheus.ExponentialBuckets(1, 2, 9), // 2 --> 256
+		}),
+		chunksPerBlock: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "bloom_chunks_per_block",
+			Help:      "Number of chunks per block",
+			Buckets:   prometheus.ExponentialBuckets(1, 2, 15), // 2 --> 16384
 		}),
 		blockFlushReason: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,

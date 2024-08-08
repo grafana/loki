@@ -316,7 +316,7 @@ func (b *BloomClient) GetBlock(ctx context.Context, ref BlockRef) (BlockDirector
 
 	rc, _, err := b.client.GetObject(ctx, key)
 	if err != nil {
-		return BlockDirectory{}, fmt.Errorf("failed to get block file %s: %w", key, err)
+		return BlockDirectory{}, errors.Wrap(err, fmt.Sprintf("failed to get block file %s", key))
 	}
 	defer rc.Close()
 

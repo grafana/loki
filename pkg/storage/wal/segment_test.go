@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"sync"
 	"testing"
 	"time"
 
@@ -13,8 +12,10 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/storage/wal/index"
 	"github.com/grafana/loki/v3/pkg/storage/wal/testdata"
 
 	"github.com/grafana/loki/pkg/push"
@@ -104,14 +105,14 @@ func TestWalSegmentWriter_Append(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			// Create a new WalSegmentWriter
-			w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
+			w, err := NewWalSegmentWriter()
 			require.NoError(t, err)
 			// Append the entries
 			for _, batch := range tt.batches {
 				for _, stream := range batch {
 					labels, err := syntax.ParseLabels(stream.labels)
 					require.NoError(t, err)
-					w.Append(stream.tenant, stream.labels, labels, stream.entries)
+					w.Append(stream.tenant, stream.labels, labels, stream.entries, time.Now())
 				}
 			}
 			require.NotEmpty(t, tt.expected, "expected entries are empty")
@@ -121,7 +122,7 @@ func TestWalSegmentWriter_Append(t *testing.T) {
 				require.True(t, ok)
 				lbs, err := syntax.ParseLabels(expected.labels)
 				require.NoError(t, err)
-				lbs = append(lbs, labels.Label{Name: tenantLabel, Value: expected.tenant})
+				lbs = append(lbs, labels.Label{Name: index.TenantLabel, Value: expected.tenant})
 				sort.Sort(lbs)
 				require.Equal(t, lbs, stream.lbls)
 				require.Equal(t, expected.entries, stream.entries)
@@ -130,165 +131,8 @@ func TestWalSegmentWriter_Append(t *testing.T) {
 	}
 }
 
-func BenchmarkConcurrentAppends(t *testing.B) {
-	type appendArgs struct {
-		tenant  string
-		labels  labels.Labels
-		entries []*push.Entry
-	}
-
-	lbls := []labels.Labels{
-		labels.FromStrings("container", "foo", "namespace", "dev"),
-		labels.FromStrings("container", "bar", "namespace", "staging"),
-		labels.FromStrings("container", "bar", "namespace", "prod"),
-	}
-	characters := "abcdefghijklmnopqrstuvwxyz"
-	tenants := []string{}
-	// 676 unique tenants (26^2)
-	for i := 0; i < len(characters); i++ {
-		for j := 0; j < len(characters); j++ {
-			tenants = append(tenants, string(characters[i])+string(characters[j]))
-		}
-	}
-
-	workChan := make(chan *appendArgs)
-	var wg sync.WaitGroup
-	var w *SegmentWriter
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		go func(i int) {
-			for args := range workChan {
-				w.Append(args.tenant, args.labels.String(), args.labels, args.entries)
-			}
-			wg.Done()
-		}(i)
-	}
-
-	t.ResetTimer()
-	for i := 0; i < t.N; i++ {
-		var err error
-		w, err = NewWalSegmentWriter(NewSegmentMetrics(nil))
-		require.NoError(t, err)
-
-		for _, lbl := range lbls {
-			for _, r := range tenants {
-				for i := 0; i < 10; i++ {
-					workChan <- &appendArgs{
-						tenant: r,
-						labels: lbl,
-						entries: []*push.Entry{
-							{Timestamp: time.Unix(0, int64(i)), Line: fmt.Sprintf("log line %d", i)},
-						},
-					}
-				}
-			}
-		}
-	}
-	close(workChan)
-	wg.Wait()
-}
-
-func TestConcurrentAppends(t *testing.T) {
-	type appendArgs struct {
-		tenant  string
-		labels  labels.Labels
-		entries []*push.Entry
-	}
-	dst := bytes.NewBuffer(nil)
-
-	w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
-	require.NoError(t, err)
-	var wg sync.WaitGroup
-	workChan := make(chan *appendArgs, 100)
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		go func(i int) {
-			for args := range workChan {
-				w.Append(args.tenant, args.labels.String(), args.labels, args.entries)
-			}
-			wg.Done()
-		}(i)
-	}
-
-	lbls := []labels.Labels{
-		labels.FromStrings("container", "foo", "namespace", "dev"),
-		labels.FromStrings("container", "bar", "namespace", "staging"),
-		labels.FromStrings("container", "bar", "namespace", "prod"),
-	}
-	characters := "abcdefghijklmnopqrstuvwxyz"
-	tenants := []string{}
-	// 676 unique tenants (26^2)
-	for i := 0; i < len(characters); i++ {
-		for j := 0; j < len(characters); j++ {
-			for k := 0; k < len(characters); k++ {
-				tenants = append(tenants, string(characters[i])+string(characters[j])+string(characters[k]))
-			}
-		}
-	}
-
-	msgsPerSeries := 10
-	msgsGenerated := 0
-	for _, r := range tenants {
-		for _, lbl := range lbls {
-			for i := 0; i < msgsPerSeries; i++ {
-				msgsGenerated++
-				workChan <- &appendArgs{
-					tenant: r,
-					labels: lbl,
-					entries: []*push.Entry{
-						{Timestamp: time.Unix(0, int64(i)), Line: fmt.Sprintf("log line %d", i)},
-					},
-				}
-			}
-		}
-	}
-	close(workChan)
-	wg.Wait()
-
-	n, err := w.WriteTo(dst)
-	require.NoError(t, err)
-	require.True(t, n > 0)
-
-	r, err := NewReader(dst.Bytes())
-	require.NoError(t, err)
-
-	iter, err := r.Series(context.Background())
-	require.NoError(t, err)
-
-	var expectedSeries, actualSeries []string
-
-	for _, tenant := range tenants {
-		for _, lbl := range lbls {
-			expectedSeries = append(expectedSeries, labels.NewBuilder(lbl).Set(tenantLabel, tenant).Labels().String())
-		}
-	}
-
-	msgsRead := 0
-	for iter.Next() {
-		actualSeries = append(actualSeries, iter.At().String())
-		chk, err := iter.ChunkReader(nil)
-		require.NoError(t, err)
-		// verify all lines
-		var i int
-		for chk.Next() {
-			ts, line := chk.At()
-			require.Equal(t, int64(i), ts)
-			require.Equal(t, fmt.Sprintf("log line %d", i), string(line))
-			msgsRead++
-			i++
-		}
-		require.NoError(t, chk.Err())
-		require.NoError(t, chk.Close())
-		require.Equal(t, msgsPerSeries, i)
-	}
-	require.NoError(t, iter.Err())
-	require.ElementsMatch(t, expectedSeries, actualSeries)
-	require.Equal(t, msgsGenerated, msgsRead)
-	t.Logf("Generated %d messages between %d tenants", msgsGenerated, len(tenants))
-}
-
 func TestMultiTenantWrite(t *testing.T) {
-	w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
+	w, err := NewWalSegmentWriter()
 	require.NoError(t, err)
 	dst := bytes.NewBuffer(nil)
 
@@ -306,7 +150,7 @@ func TestMultiTenantWrite(t *testing.T) {
 			for i := 0; i < 10; i++ {
 				w.Append(tenant, lblString, lbl, []*push.Entry{
 					{Timestamp: time.Unix(0, int64(i)), Line: fmt.Sprintf("log line %d", i)},
-				})
+				}, time.Now())
 			}
 		}
 	}
@@ -324,7 +168,7 @@ func TestMultiTenantWrite(t *testing.T) {
 
 	for _, tenant := range tenants {
 		for _, lbl := range lbls {
-			expectedSeries = append(expectedSeries, labels.NewBuilder(lbl).Set(tenantLabel, tenant).Labels().String())
+			expectedSeries = append(expectedSeries, labels.NewBuilder(lbl).Set(index.TenantLabel, tenant).Labels().String())
 		}
 	}
 
@@ -358,7 +202,7 @@ func TestCompression(t *testing.T) {
 }
 
 func testCompression(t *testing.T, maxInputSize int64) {
-	w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
+	w, err := NewWalSegmentWriter()
 	require.NoError(t, err)
 	dst := bytes.NewBuffer(nil)
 	files := testdata.Files()
@@ -381,7 +225,7 @@ func testCompression(t *testing.T, maxInputSize int64) {
 			inputSize += int64(len(line))
 			w.Append("tenant", lbl.String(), lbl, []*push.Entry{
 				{Timestamp: time.Unix(0, int64(i*1e9)), Line: string(line)},
-			})
+			}, time.Now())
 		}
 	}
 
@@ -415,7 +259,7 @@ func testCompression(t *testing.T, maxInputSize int64) {
 }
 
 func TestReset(t *testing.T) {
-	w, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
+	w, err := NewWalSegmentWriter()
 	require.NoError(t, err)
 	dst := bytes.NewBuffer(nil)
 
@@ -423,7 +267,7 @@ func TestReset(t *testing.T) {
 		{Timestamp: time.Unix(0, 0), Line: "Entry 1"},
 		{Timestamp: time.Unix(1, 0), Line: "Entry 2"},
 		{Timestamp: time.Unix(2, 0), Line: "Entry 3"},
-	})
+	}, time.Now())
 
 	n, err := w.WriteTo(dst)
 	require.NoError(t, err)
@@ -436,13 +280,61 @@ func TestReset(t *testing.T) {
 		{Timestamp: time.Unix(0, 0), Line: "Entry 1"},
 		{Timestamp: time.Unix(1, 0), Line: "Entry 2"},
 		{Timestamp: time.Unix(2, 0), Line: "Entry 3"},
-	})
+	}, time.Now())
 
 	n, err = w.WriteTo(copyBuffer)
 	require.NoError(t, err)
 	require.True(t, n > 0)
 
 	require.Equal(t, dst.Bytes(), copyBuffer.Bytes())
+}
+
+func Test_Meta(t *testing.T) {
+	w, err := NewWalSegmentWriter()
+	buff := bytes.NewBuffer(nil)
+
+	require.NoError(t, err)
+
+	lbls := labels.FromStrings("container", "foo", "namespace", "dev")
+	w.Append("tenantb", lbls.String(), lbls, []*push.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "Entry 1"},
+		{Timestamp: time.Unix(2, 0), Line: "Entry 2"},
+		{Timestamp: time.Unix(3, 0), Line: "Entry 3"},
+	}, time.Now())
+	lbls = labels.FromStrings("container", "bar", "namespace", "dev")
+	w.Append("tenanta", lbls.String(), lbls, []*push.Entry{
+		{Timestamp: time.Unix(2, 0), Line: "Entry 1"},
+		{Timestamp: time.Unix(3, 0), Line: "Entry 2"},
+		{Timestamp: time.Unix(4, 0), Line: "Entry 3"},
+	}, time.Now())
+	_, err = w.WriteTo(buff)
+	require.NoError(t, err)
+	meta := w.Meta("bar")
+	indexReader, err := index.NewReader(index.RealByteSlice(buff.Bytes()[meta.IndexRef.Offset : meta.IndexRef.Offset+meta.IndexRef.Length]))
+	require.NoError(t, err)
+
+	defer indexReader.Close()
+
+	require.Equal(t, &metastorepb.BlockMeta{
+		FormatVersion:   1,
+		Id:              "bar",
+		MinTime:         time.Unix(1, 0).UnixNano(),
+		MaxTime:         time.Unix(4, 0).UnixNano(),
+		CompactionLevel: 0,
+		IndexRef:        meta.IndexRef,
+		TenantStreams: []*metastorepb.TenantStreams{
+			{
+				TenantId: "tenanta",
+				MinTime:  time.Unix(2, 0).UnixNano(),
+				MaxTime:  time.Unix(4, 0).UnixNano(),
+			},
+			{
+				TenantId: "tenantb",
+				MinTime:  time.Unix(1, 0).UnixNano(),
+				MaxTime:  time.Unix(3, 0).UnixNano(),
+			},
+		},
+	}, meta)
 }
 
 func BenchmarkWrites(b *testing.B) {
@@ -489,11 +381,11 @@ func BenchmarkWrites(b *testing.B) {
 
 	dst := bytes.NewBuffer(make([]byte, 0, inputSize))
 
-	writer, err := NewWalSegmentWriter(NewSegmentMetrics(nil))
+	writer, err := NewWalSegmentWriter()
 	require.NoError(b, err)
 
 	for _, d := range data {
-		writer.Append(d.tenant, d.labels, d.lbls, d.entries)
+		writer.Append(d.tenant, d.labels, d.lbls, d.entries, time.Now())
 	}
 
 	encodedLength, err := writer.WriteTo(dst)
