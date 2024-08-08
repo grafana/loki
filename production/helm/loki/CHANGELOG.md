@@ -64,6 +64,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.6.1
 
 - [BUGFIX] Fix query scheduler http-metrics targetPort
+- [ENHANCEMENT] Allow to customize `client_max_body_size` when using Loki Gateway. #12924
 
 ## 6.6.0
 
