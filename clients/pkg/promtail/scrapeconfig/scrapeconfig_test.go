@@ -142,3 +142,68 @@ func TestLoadConfig(t *testing.T) {
 
 	require.NotZero(t, len(config.PipelineStages))
 }
+
+func Test_validateJobName(t *testing.T) {
+	tests := []struct {
+		name    string
+		configs []Config
+		// Only validated against the first job in the provided scrape configs
+		expectedJob string
+		wantErr     bool
+	}{
+		{
+			name: "valid with spaces removed",
+			configs: []Config{
+				{
+					JobName: "jobby job job",
+				},
+			},
+			wantErr:     false,
+			expectedJob: "jobby_job_job",
+		},
+		{
+			name: "missing job",
+			configs: []Config{
+				{},
+			},
+			wantErr: true,
+		},
+		{
+			name: "duplicate job",
+			configs: []Config{
+				{
+					JobName: "job1",
+				},
+				{
+					JobName: "job1",
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "validate with special characters",
+			configs: []Config{
+				{
+					JobName: "job$1-2!3@4*job",
+				},
+			},
+			wantErr:     false,
+			expectedJob: "job_1_2_3_4_job",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateJobName(tt.configs)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateJobName() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr {
+				if tt.configs[0].JobName != tt.expectedJob {
+					t.Errorf("Expected to find a job with name %v but did not find it", tt.expectedJob)
+					return
+				}
+			}
+		})
+	}
+}

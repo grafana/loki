@@ -1,6 +1,7 @@
 package scrapeconfig
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"time"
@@ -26,6 +27,7 @@ import (
 	"github.com/prometheus/prometheus/discovery/triton"
 	"github.com/prometheus/prometheus/discovery/zookeeper"
 	"github.com/prometheus/prometheus/model/relabel"
+	"github.com/prometheus/prometheus/util/strutil"
 
 	"github.com/grafana/loki/v3/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/discovery/consulagent"
@@ -482,5 +484,24 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return fmt.Errorf("job_name is empty")
 	}
 
+	return nil
+}
+
+func ValidateJobName(scrapeConfigs []Config) error {
+	jobNames := map[string]struct{}{}
+	for i, cfg := range scrapeConfigs {
+		if cfg.JobName == "" {
+			return errors.New("`job_name` must be defined for the scrape_config with a " +
+				"unique name, " +
+				"at least one scrape_config has no `job_name` defined")
+		}
+		if _, ok := jobNames[cfg.JobName]; ok {
+			return fmt.Errorf("`job_name` must be unique for each scrape_config, "+
+				"a duplicate `job_name` of %s was found", cfg.JobName)
+		}
+		jobNames[cfg.JobName] = struct{}{}
+
+		scrapeConfigs[i].JobName = strutil.SanitizeLabelName(cfg.JobName)
+	}
 	return nil
 }
