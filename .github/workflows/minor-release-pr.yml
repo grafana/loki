@@ -101,6 +101,8 @@ jobs:
       version: "${{ needs.version.outputs.version }}"
     runs-on: "ubuntu-latest"
     steps:
+    - name: "clean up build tools cache"
+      run: "rm -rf /opt/hostedtoolcache"
     - name: "pull code to release"
       uses: "actions/checkout@v4"
       with:
