@@ -126,7 +126,7 @@ require (
 	github.com/efficientgo/core v1.0.0-rc.2
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/gogo/googleapis v1.4.0
-	github.com/grafana/jsonparser v0.0.0-20240209175146-098958973a2d
+	github.com/grafana/jsonparser v0.0.0-20240425183733-ea80629e1a32
 	github.com/grafana/loki/pkg/push v0.0.0-20231124142027-e52380921608
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/hashicorp/raft v1.7.0
