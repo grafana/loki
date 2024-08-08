@@ -1,8 +1,8 @@
 module github.com/grafana/loki/v3
 
-go 1.21.8
+go 1.22
 
-toolchain go1.22.4
+toolchain go1.22.6
 
 require (
 	cloud.google.com/go/bigtable v1.18.1
@@ -52,7 +52,7 @@ require (
 	github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
 	github.com/grafana/dskit v0.0.0-20240626184720-35810fdf1c6d
 	github.com/grafana/go-gelf/v2 v2.0.1
-	github.com/grafana/gomemcache v0.0.0-20240229205252-cd6a66d6fb56
+	github.com/grafana/gomemcache v0.0.0-20240805133030-fdaf6a95408e
 	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
 	github.com/grafana/tail v0.0.0-20230510142333-77b18831edf0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0

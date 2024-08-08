@@ -1015,8 +1015,8 @@ github.com/grafana/dskit/user
 # github.com/grafana/go-gelf/v2 v2.0.1
 ## explicit; go 1.17
 github.com/grafana/go-gelf/v2/gelf
-# github.com/grafana/gomemcache v0.0.0-20240229205252-cd6a66d6fb56
-## explicit; go 1.18
+# github.com/grafana/gomemcache v0.0.0-20240805133030-fdaf6a95408e
+## explicit; go 1.22
 github.com/grafana/gomemcache/memcache
 # github.com/grafana/jsonparser v0.0.0-20240425183733-ea80629e1a32
 ## explicit; go 1.13
