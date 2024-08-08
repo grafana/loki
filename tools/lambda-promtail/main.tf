@@ -154,6 +154,7 @@ locals {
 }
 
 resource "null_resource" "function_binary" {
+  count = var.lambda_promtail_image == "" ? 1 : 0
   triggers = {
     always_run = timestamp()
   }
@@ -164,7 +165,8 @@ resource "null_resource" "function_binary" {
 }
 
 data "archive_file" "lambda" {
-  depends_on = [null_resource.function_binary]
+  count      = var.lambda_promtail_image == "" ? 1 : 0
+  depends_on = [null_resource.function_binary[0]]
 
   type        = "zip"
   source_file = local.binary_path
@@ -178,7 +180,7 @@ resource "aws_lambda_function" "this" {
 
   image_uri        = var.lambda_promtail_image != "" ? var.lambda_promtail_image : null
   filename         = var.lambda_promtail_image == "" ? local.archive_path : null
-  source_code_hash = var.lambda_promtail_image == "" ? data.archive_file.lambda.output_base64sha256 : null
+  source_code_hash = var.lambda_promtail_image == "" ? data.archive_file.lambda[0].output_base64sha256 : null
   runtime          = var.lambda_promtail_image == "" ? "provided.al2023" : null
   handler          = var.lambda_promtail_image == "" ? local.binary_path : null
 
