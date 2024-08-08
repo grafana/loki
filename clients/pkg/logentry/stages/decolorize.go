@@ -1,7 +1,7 @@
 package stages
 
 import (
-	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 )
 
 type decolorizeStage struct{}
@@ -32,4 +32,9 @@ func (m *decolorizeStage) Run(in chan Entry) chan Entry {
 // Name implements Stage
 func (m *decolorizeStage) Name() string {
 	return StageTypeDecolorize
+}
+
+// Cleanup implements Stage.
+func (*decolorizeStage) Cleanup() {
+	// no-op
 }

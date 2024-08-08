@@ -7,15 +7,15 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
-	"github.com/grafana/loki/pkg/storage/stores/index"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	tsdb_index "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	tsdb_index "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 type ChunkWriter interface {
@@ -28,7 +28,14 @@ type ChunkFetcherProvider interface {
 }
 
 type ChunkFetcher interface {
-	GetChunks(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
+	GetChunks(
+		ctx context.Context,
+		userID string,
+		from,
+		through model.Time,
+		predicate chunk.Predicate,
+		storeChunksOverride *logproto.ChunkRefGroup,
+	) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
 }
 
 type Store interface {
@@ -142,10 +149,10 @@ func (c CompositeStore) LabelValuesForMetricName(ctx context.Context, userID str
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
-func (c CompositeStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
+func (c CompositeStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error) {
 	var result util.UniqueStrings
 	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
-		labelNames, err := store.LabelNamesForMetricName(innerCtx, userID, from, through, metricName)
+		labelNames, err := store.LabelNamesForMetricName(innerCtx, userID, from, through, metricName, matchers...)
 		if err != nil {
 			return err
 		}
@@ -155,11 +162,18 @@ func (c CompositeStore) LabelNamesForMetricName(ctx context.Context, userID stri
 	return result.Strings(), err
 }
 
-func (c CompositeStore) GetChunks(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (c CompositeStore) GetChunks(
+	ctx context.Context,
+	userID string,
+	from,
+	through model.Time,
+	predicate chunk.Predicate,
+	storeChunksOverride *logproto.ChunkRefGroup,
+) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	chunkIDs := [][]chunk.Chunk{}
 	fetchers := []*fetcher.Fetcher{}
-	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
-		ids, fetcher, err := store.GetChunks(innerCtx, userID, from, through, predicate)
+	err := c.forStores(ctx, from, through, func(innerCtx context.Context, innerFrom, innerThrough model.Time, store Store) error {
+		ids, fetcher, err := store.GetChunks(innerCtx, userID, innerFrom, innerThrough, predicate, storeChunksOverride)
 		if err != nil {
 			return err
 		}
@@ -183,10 +197,8 @@ func (c CompositeStore) Stats(ctx context.Context, userID string, from, through 
 		xs = append(xs, x)
 		return err
 	})
-
 	if err != nil {
 		return nil, err
-
 	}
 	res := stats.MergeStats(xs...)
 	return &res, err
@@ -199,7 +211,6 @@ func (c CompositeStore) Volume(ctx context.Context, userID string, from, through
 		volumes = append(volumes, volume)
 		return err
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +238,6 @@ func (c CompositeStore) GetShards(
 		groups = append(groups, shards)
 		return nil
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -328,13 +338,6 @@ func (c CompositeStore) forStores(ctx context.Context, from, through model.Time,
 	j := sort.Search(len(c.stores), func(j int) bool {
 		return c.stores[j].start > through
 	})
-
-	min := func(a, b model.Time) model.Time {
-		if a < b {
-			return a
-		}
-		return b
-	}
 
 	start := from
 	for ; i < j; i++ {

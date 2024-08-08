@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,9 +14,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func TestWriter_EntriesAreWrittenToWAL(t *testing.T) {
@@ -77,6 +78,8 @@ func TestWriter_OldSegmentsAreCleanedUp(t *testing.T) {
 
 	maxSegmentAge := time.Second * 2
 
+	var mu1 sync.Mutex
+	var mu2 sync.Mutex
 	subscriber1 := []int{}
 	subscriber2 := []int{}
 
@@ -92,10 +95,14 @@ func TestWriter_OldSegmentsAreCleanedUp(t *testing.T) {
 
 	// add writer events subscriber. Add multiple to test fanout
 	writer.SubscribeCleanup(notifySegmentsCleanedFunc(func(num int) {
+		mu1.Lock()
 		subscriber1 = append(subscriber1, num)
+		mu1.Unlock()
 	}))
 	writer.SubscribeCleanup(notifySegmentsCleanedFunc(func(num int) {
+		mu2.Lock()
 		subscriber2 = append(subscriber2, num)
+		mu2.Unlock()
 	}))
 
 	// write entries to wal and sync
@@ -148,11 +155,15 @@ func TestWriter_OldSegmentsAreCleanedUp(t *testing.T) {
 	require.ErrorIs(t, err, os.ErrNotExist, "expected file not exists error")
 
 	// assert all subscribers were notified
+	mu1.Lock()
 	require.Len(t, subscriber1, 1, "expected one segment reclaimed notification in subscriber1")
 	require.Equal(t, 0, subscriber1[0])
+	mu1.Unlock()
 
+	mu2.Lock()
 	require.Len(t, subscriber2, 1, "expected one segment reclaimed notification in subscriber2")
 	require.Equal(t, 0, subscriber2[0])
+	mu2.Unlock()
 
 	// Expect last, or "head" segment to still be alive
 	_, err = os.Stat(filepath.Join(dir, "00000001"))

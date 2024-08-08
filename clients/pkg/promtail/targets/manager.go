@@ -8,23 +8,24 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/positions"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/azureeventhubs"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/cloudflare"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/docker"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/file"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/gcplog"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/gelf"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/heroku"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/journal"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/kafka"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/lokipush"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/stdin"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/syslog"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/windows"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/limit"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/azureeventhubs"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/cloudflare"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/docker"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/file"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/gcplog"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/gelf"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/heroku"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/journal"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/kafka"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/lokipush"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/stdin"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/syslog"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/windows"
 )
 
 const (
@@ -76,6 +77,7 @@ func NewTargetManagers(
 	scrapeConfigs []scrapeconfig.Config,
 	targetConfig *file.Config,
 	watchConfig file.WatchConfig,
+	limitsConfig *limit.Config,
 ) (*TargetManagers, error) {
 	if targetConfig.Stdin {
 		level.Debug(logger).Log("msg", "configured to read from stdin")
@@ -273,7 +275,7 @@ func NewTargetManagers(
 			if err != nil {
 				return nil, err
 			}
-			cfTargetManager, err := docker.NewTargetManager(dockerMetrics, logger, pos, client, scrapeConfigs)
+			cfTargetManager, err := docker.NewTargetManager(dockerMetrics, logger, pos, client, scrapeConfigs, limitsConfig.MaxLineSize.Val())
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to make Docker service discovery target manager")
 			}

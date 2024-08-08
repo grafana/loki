@@ -13,11 +13,11 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
-	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/testutils"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 )
 
 const (
@@ -51,6 +51,7 @@ func (f *fixture) Clients() (
 	f.gcssrv = fakestorage.NewServer(nil)
 	f.gcssrv.CreateBucket("chunks")
 
+	// nolint:staticcheck // grpc.Dial() has been deprecated; we'll address it before upgrading to gRPC 2.
 	conn, err := grpc.Dial(f.btsrv.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return

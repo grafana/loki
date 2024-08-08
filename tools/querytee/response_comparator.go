@@ -12,8 +12,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // SamplesComparatorFunc helps with comparing different types of samples coming from /api/v1/query and /api/v1/query_range routes.
@@ -50,7 +50,7 @@ type SamplesComparator struct {
 	sampleTypesComparator map[string]SamplesComparatorFunc
 }
 
-// RegisterSamplesComparator helps with registering custom sample types
+// RegisterSamplesType helps with registering custom sample types
 func (s *SamplesComparator) RegisterSamplesType(samplesType string, comparator SamplesComparatorFunc) {
 	s.sampleTypesComparator[samplesType] = comparator
 }

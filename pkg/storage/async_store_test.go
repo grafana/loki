@@ -5,17 +5,21 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/go-kit/log"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 // storeMock is a mockable version of Loki's storage, used in querier unit tests
@@ -29,8 +33,8 @@ func newStoreMock() *storeMock {
 	return &storeMock{}
 }
 
-func (s *storeMock) GetChunks(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
-	args := s.Called(ctx, userID, from, through, predicate)
+func (s *storeMock) GetChunks(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate, overrides *logproto.ChunkRefGroup) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+	args := s.Called(ctx, userID, from, through, predicate, overrides)
 	return args.Get(0).([][]chunk.Chunk), args.Get(1).([]*fetcher.Fetcher), args.Error(2)
 }
 
@@ -233,7 +237,7 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := newStoreMock()
-			store.On("GetChunks", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(tc.storeChunks, tc.storeFetcher, nil)
+			store.On("GetChunks", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(tc.storeChunks, tc.storeFetcher, nil)
 			store.On("GetChunkFetcher", mock.Anything).Return(tc.ingesterFetcher)
 
 			ingesterQuerier := newIngesterQuerierMock()
@@ -242,7 +246,7 @@ func TestAsyncStore_mergeIngesterAndStoreChunks(t *testing.T) {
 			asyncStoreCfg := AsyncStoreCfg{IngesterQuerier: ingesterQuerier}
 			asyncStore := NewAsyncStore(asyncStoreCfg, store, config.SchemaConfig{})
 
-			chunks, fetchers, err := asyncStore.GetChunks(context.Background(), "fake", model.Now(), model.Now(), chunk.NewPredicate(nil, nil))
+			chunks, fetchers, err := asyncStore.GetChunks(context.Background(), "fake", model.Now(), model.Now(), chunk.NewPredicate(nil, nil), nil)
 			require.NoError(t, err)
 
 			require.Equal(t, tc.expectedChunks, chunks)
@@ -293,7 +297,7 @@ func TestAsyncStore_QueryIngestersWithin(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 
 			store := newStoreMock()
-			store.On("GetChunks", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([][]chunk.Chunk{}, []*fetcher.Fetcher{}, nil)
+			store.On("GetChunks", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([][]chunk.Chunk{}, []*fetcher.Fetcher{}, nil)
 
 			ingesterQuerier := newIngesterQuerierMock()
 			ingesterQuerier.On("GetChunkIDs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
@@ -304,7 +308,7 @@ func TestAsyncStore_QueryIngestersWithin(t *testing.T) {
 			}
 			asyncStore := NewAsyncStore(asyncStoreCfg, store, config.SchemaConfig{})
 
-			_, _, err := asyncStore.GetChunks(context.Background(), "fake", tc.queryFrom, tc.queryThrough, chunk.NewPredicate(nil, nil))
+			_, _, err := asyncStore.GetChunks(context.Background(), "fake", tc.queryFrom, tc.queryThrough, chunk.NewPredicate(nil, nil), nil)
 			require.NoError(t, err)
 
 			expectedNumCalls := 0
@@ -359,4 +363,81 @@ func convertChunksToChunkIDs(s config.SchemaConfig, chunks []chunk.Chunk) []stri
 	}
 
 	return chunkIDs
+}
+
+func TestMergeShardsFromIngestersAndStore(t *testing.T) {
+	mkStats := func(bytes, chks uint64) logproto.IndexStatsResponse {
+		return logproto.IndexStatsResponse{
+			Bytes:  bytes,
+			Chunks: chks,
+		}
+	}
+
+	// creates n shards with bytesPerShard * n bytes and chks chunks
+	mkShards := func(n int, bytesPerShard uint64, chks int64) logproto.ShardsResponse {
+		return logproto.ShardsResponse{
+			Shards: sharding.LinearShards(n, bytesPerShard*uint64(n)),
+			Statistics: stats.Result{
+				Index: stats.Index{
+					TotalChunks: chks,
+				},
+			},
+		}
+	}
+
+	targetBytesPerShard := 10
+
+	for _, tc := range []struct {
+		desc     string
+		ingester logproto.IndexStatsResponse
+		store    logproto.ShardsResponse
+		exp      logproto.ShardsResponse
+	}{
+		{
+			desc:     "zero bytes returns one full shard",
+			ingester: mkStats(0, 0),
+			store:    mkShards(0, 0, 0),
+			exp:      mkShards(1, 0, 0),
+		},
+		{
+			desc:     "zero ingester bytes honors store",
+			ingester: mkStats(0, 0),
+			store:    mkShards(10, uint64(targetBytesPerShard), 10),
+			exp:      mkShards(10, uint64(targetBytesPerShard), 10),
+		},
+		{
+			desc:     "zero store bytes honors ingester",
+			ingester: mkStats(uint64(targetBytesPerShard*10), 10),
+			store:    mkShards(0, 0, 0),
+			exp:      mkShards(10, uint64(targetBytesPerShard), 10),
+		},
+		{
+			desc:     "ingester bytes below threshold ignored",
+			ingester: mkStats(uint64(targetBytesPerShard*2), 10),    // 2 shards worth from ingesters
+			store:    mkShards(10, uint64(targetBytesPerShard), 10), // 10 shards worth from store
+			exp:      mkShards(10, uint64(targetBytesPerShard), 10), // use the store's resp
+		},
+		{
+			desc:     "ingester bytes above threshold recreate shards",
+			ingester: mkStats(uint64(targetBytesPerShard*4), 10),    // 4 shards worth from ingesters
+			store:    mkShards(10, uint64(targetBytesPerShard), 10), // 10 shards worth from store
+			exp:      mkShards(14, uint64(targetBytesPerShard), 20), // regenerate 14 shards
+		},
+	} {
+
+		t.Run(tc.desc, func(t *testing.T) {
+			got := mergeShardsFromIngestersAndStore(
+				log.NewNopLogger(),
+				&tc.store,
+				&tc.ingester,
+				uint64(targetBytesPerShard),
+			)
+			require.Equal(t, tc.exp.Statistics, got.Statistics)
+			require.Equal(t, tc.exp.ChunkGroups, got.ChunkGroups)
+			require.Equal(t, tc.exp.Statistics.Index.TotalChunks, got.Statistics.Index.TotalChunks)
+			for i, shard := range tc.exp.Shards {
+				require.Equal(t, shard, got.Shards[i], "shard %d", i)
+			}
+		})
+	}
 }

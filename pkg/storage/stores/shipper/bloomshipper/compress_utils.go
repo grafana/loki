@@ -6,7 +6,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 )
 
 func CompressBloomBlock(ref BlockRef, archivePath, localDst string, logger log.Logger) (Block, error) {

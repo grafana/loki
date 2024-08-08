@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
 )
 
 func TestHeaders(t *testing.T) {

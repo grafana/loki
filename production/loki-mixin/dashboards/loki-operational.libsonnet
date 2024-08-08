@@ -11,7 +11,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                showAnnotations:: true,
                                showLinks:: true,
                                showMultiCluster:: true,
-                               clusterLabel:: $._config.per_cluster_label,
 
                                hiddenRows:: [
                                  'Cassandra',
@@ -25,17 +24,31 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
                                jobMatchers:: {
                                  cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw(-internal)?')],
-                                 distributor: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'distributor'))],
-                                 ingester: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester.*'))],
-                                 querier: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'querier'))],
-                                 queryFrontend: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'query-frontend'))],
+                                 distributor: if $._config.meta_monitoring.enabled
+                                 then [utils.selector.re('job', '($namespace)/(distributor|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
+                                 else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'distributor'))],
+                                 ingester: if $._config.meta_monitoring.enabled
+                                 then [utils.selector.re('job', '($namespace)/(ingester|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
+                                 else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester.*'))],
+                                 querier: if $._config.meta_monitoring.enabled
+                                 then [utils.selector.re('job', '($namespace)/(querier|%s-read|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
+                                 else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'querier'))],
+                                 queryFrontend: if $._config.meta_monitoring.enabled
+                                 then [utils.selector.re('job', '($namespace)/(query-frontend|%s-read|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
+                                 else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'query-frontend'))],
                                },
 
                                podMatchers:: {
                                  cortexgateway: [utils.selector.re('pod', 'cortex-gw')],
-                                 distributor: [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-write.*' % $._config.ssd.pod_prefix_matcher else 'distributor.*'))],
-                                 ingester: [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-write.*' % $._config.ssd.pod_prefix_matcher else 'ingester.*'))],
-                                 querier: [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-read.*' % $._config.ssd.pod_prefix_matcher else 'querier.*'))],
+                                 distributor: if $._config.meta_monitoring.enabled
+                                 then [utils.selector.re('pod', '(distributor|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
+                                 else [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-write.*' % $._config.ssd.pod_prefix_matcher else 'distributor.*'))],
+                                 ingester: if $._config.meta_monitoring.enabled
+                                 then [utils.selector.re('pod', '(ingester|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
+                                 else [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-write.*' % $._config.ssd.pod_prefix_matcher else 'ingester.*'))],
+                                 querier: if $._config.meta_monitoring.enabled
+                                 then [utils.selector.re('pod', '(querier|%s-read|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
+                                 else [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-read.*' % $._config.ssd.pod_prefix_matcher else 'querier.*'))],
                                },
                              }
                              + lokiOperational + {
@@ -62,7 +75,22 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
                                local replaceClusterMatchers(expr) =
                                  if dashboards['loki-operational.json'].showMultiCluster
-                                 then expr
+                                 // Replace the recording rules cluster label with the per-cluster label
+                                 then std.strReplace(
+                                   // Replace the cluster label for equality matchers with the per-cluster label
+                                   std.strReplace(
+                                     // Replace the cluster label for regex matchers with the per-cluster label
+                                     std.strReplace(
+                                       expr,
+                                       'cluster=~"$cluster"',
+                                       $._config.per_cluster_label + '=~"$cluster"'
+                                     ),
+                                     'cluster="$cluster"',
+                                     $._config.per_cluster_label + '="$cluster"'
+                                   ),
+                                   'cluster_job',
+                                   $._config.per_cluster_label + '_job'
+                                 )
                                  else
                                    std.strReplace(
                                      std.strReplace(
@@ -143,7 +171,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
 
                                local replaceAllMatchers(expr) =
-                                 replaceMatchers(replaceClusterMatchers(expr)),
+                                 replaceMatchers(expr),
 
                                local selectDatasource(ds) =
                                  if ds == null || ds == '' then ds
@@ -179,7 +207,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                    datasource: selectDatasource(super.datasource),
                                    targets: if std.objectHas(p, 'targets') then [
                                      e {
-                                       expr: removeInternalComponents(p.title, e.expr),
+                                       expr: removeInternalComponents(p.title, replaceClusterMatchers(e.expr)),
                                      }
                                      for e in p.targets
                                    ] else [],
@@ -188,7 +216,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                        datasource: selectDatasource(super.datasource),
                                        targets: if std.objectHas(sp, 'targets') then [
                                          e {
-                                           expr: removeInternalComponents(p.title, e.expr),
+                                           expr: removeInternalComponents(p.title, replaceClusterMatchers(e.expr)),
                                          }
                                          for e in sp.targets
                                        ] else [],
@@ -197,7 +225,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                            datasource: selectDatasource(super.datasource),
                                            targets: if std.objectHas(ssp, 'targets') then [
                                              e {
-                                               expr: removeInternalComponents(p.title, e.expr),
+                                               expr: removeInternalComponents(p.title, replaceClusterMatchers(e.expr)),
                                              }
                                              for e in ssp.targets
                                            ] else [],

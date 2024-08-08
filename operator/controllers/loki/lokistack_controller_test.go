@@ -162,7 +162,7 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 		{
 			obj:           &routev1.Route{},
 			index:         10,
-			ownCallsCount: 12,
+			ownCallsCount: 11,
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
 					Enabled: true,
@@ -176,7 +176,8 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 			ownCallsCount: 12,
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
-					Enabled: true,
+					Enabled:         true,
+					TokenCCOAuthEnv: true,
 				},
 			},
 			pred: updateOrDeleteOnlyPred,

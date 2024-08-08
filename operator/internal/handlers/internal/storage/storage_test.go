@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -39,7 +40,7 @@ var (
 			Namespace: "some-ns",
 		},
 		Data: map[string][]byte{
-			"endpoint":          []byte("s3://your-endpoint"),
+			"endpoint":          []byte("https://s3.a-region.amazonaws.com"),
 			"region":            []byte("a-region"),
 			"bucketnames":       []byte("bucket1,bucket2"),
 			"access_key_id":     []byte("a-secret-id"),
@@ -559,4 +560,125 @@ func TestBuildOptions_WhenInvalidCAConfigMap_SetDegraded(t *testing.T) {
 	// make sure error is returned
 	require.Error(t, err)
 	require.Equal(t, degradedErr, err)
+}
+
+func TestAllowStructuredMetadata(t *testing.T) {
+	testTime := time.Date(2024, 7, 1, 1, 0, 0, 0, time.UTC)
+	tt := []struct {
+		desc      string
+		schemas   []lokiv1.ObjectStorageSchema
+		wantAllow bool
+	}{
+		{
+			desc:      "disallow - no schemas",
+			schemas:   []lokiv1.ObjectStorageSchema{},
+			wantAllow: false,
+		},
+		{
+			desc: "disallow - only v12",
+			schemas: []lokiv1.ObjectStorageSchema{
+				{
+					Version:       lokiv1.ObjectStorageSchemaV12,
+					EffectiveDate: "2024-07-01",
+				},
+			},
+			wantAllow: false,
+		},
+		{
+			desc: "allow - only v13",
+			schemas: []lokiv1.ObjectStorageSchema{
+				{
+					Version:       lokiv1.ObjectStorageSchemaV13,
+					EffectiveDate: "2024-07-01",
+				},
+			},
+			wantAllow: true,
+		},
+		{
+			desc: "disallow - v13 in future",
+			schemas: []lokiv1.ObjectStorageSchema{
+				{
+					Version:       lokiv1.ObjectStorageSchemaV12,
+					EffectiveDate: "2024-07-01",
+				},
+				{
+					Version:       lokiv1.ObjectStorageSchemaV13,
+					EffectiveDate: "2024-07-02",
+				},
+			},
+			wantAllow: false,
+		},
+		{
+			desc: "disallow - v13 in past",
+			schemas: []lokiv1.ObjectStorageSchema{
+				{
+					Version:       lokiv1.ObjectStorageSchemaV13,
+					EffectiveDate: "2024-06-01",
+				},
+				{
+					Version:       lokiv1.ObjectStorageSchemaV12,
+					EffectiveDate: "2024-07-01",
+				},
+			},
+			wantAllow: false,
+		},
+		{
+			desc: "disallow - v13 in past and future",
+			schemas: []lokiv1.ObjectStorageSchema{
+				{
+					Version:       lokiv1.ObjectStorageSchemaV13,
+					EffectiveDate: "2024-06-01",
+				},
+				{
+					Version:       lokiv1.ObjectStorageSchemaV12,
+					EffectiveDate: "2024-07-01",
+				},
+				{
+					Version:       lokiv1.ObjectStorageSchemaV13,
+					EffectiveDate: "2024-07-02",
+				},
+			},
+			wantAllow: false,
+		},
+		{
+			desc: "allow - v13 active",
+			schemas: []lokiv1.ObjectStorageSchema{
+				{
+					Version:       lokiv1.ObjectStorageSchemaV12,
+					EffectiveDate: "2024-06-01",
+				},
+				{
+					Version:       lokiv1.ObjectStorageSchemaV13,
+					EffectiveDate: "2024-07-01",
+				},
+			},
+			wantAllow: true,
+		},
+		{
+			desc: "allow - v13 active, v12 in future",
+			schemas: []lokiv1.ObjectStorageSchema{
+				{
+					Version:       lokiv1.ObjectStorageSchemaV13,
+					EffectiveDate: "2024-07-01",
+				},
+				{
+					Version:       lokiv1.ObjectStorageSchemaV12,
+					EffectiveDate: "2024-08-01",
+				},
+			},
+			wantAllow: true,
+		},
+	}
+
+	for _, tc := range tt {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+
+			allow := allowStructuredMetadata(tc.schemas, testTime)
+			if allow != tc.wantAllow {
+				t.Errorf("got %v, want %v", allow, tc.wantAllow)
+			}
+		})
+	}
 }

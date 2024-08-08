@@ -12,7 +12,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/ruler/storage/instance"
+	"github.com/grafana/loki/v3/pkg/ruler/storage/instance"
 )
 
 func TestWALCleaner_getAllStorageNoRoot(t *testing.T) {

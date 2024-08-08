@@ -8,9 +8,9 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/ingester/wal"
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/ingester/wal"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func fillChunk(t testing.TB, c chunkenc.Chunk) {
@@ -22,7 +22,9 @@ func fillChunk(t testing.TB, c chunkenc.Chunk) {
 	}
 
 	for c.SpaceFor(entry) {
-		require.NoError(t, c.Append(entry))
+		dup, err := c.Append(entry)
+		require.False(t, dup)
+		require.NoError(t, err)
 		i++
 		entry.Timestamp = time.Unix(0, i)
 		entry.Line = fmt.Sprintf("entry for line %d", i)
@@ -120,10 +122,12 @@ func Test_EncodingChunks(t *testing.T) {
 func Test_EncodingCheckpoint(t *testing.T) {
 	conf := dummyConf()
 	c := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncGZIP, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, conf.BlockSize, conf.TargetChunkSize)
-	require.Nil(t, c.Append(&logproto.Entry{
+	dup, err := c.Append(&logproto.Entry{
 		Timestamp: time.Unix(1, 0),
 		Line:      "hi there",
-	}))
+	})
+	require.False(t, dup)
+	require.Nil(t, err)
 	data, err := c.Bytes()
 	require.Nil(t, err)
 	from, to := c.Bounds()

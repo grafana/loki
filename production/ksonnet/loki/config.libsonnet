@@ -256,7 +256,34 @@
           interface_names: ['eth0'],
         },
       },
+      pattern_ingester: {
+        enabled: $._config.pattern_ingester.enabled,
+        lifecycler: {
+          ring: {
+            heartbeat_timeout: '1m',
+            replication_factor: 1,
+            kvstore: if $._config.memberlist_ring_enabled then {} else {
+              store: 'consul',
+              consul: {
+                host: 'consul.%s.svc.cluster.local:8500' % $._config.namespace,
+                http_client_timeout: '20s',
+                consistent_reads: true,
+              },
+            },
+          },
 
+          num_tokens: 512,
+          heartbeat_period: '5s',
+          join_after: '30s',
+          interface_names: ['eth0'],
+        },
+        client_config: {
+          grpc_client_config: {
+            max_recv_msg_size: 1024 * 1024 * 64,
+          },
+          remote_timeout: '1s',
+        },
+      },
       ingester_client: {
         grpc_client_config: {
           max_recv_msg_size: 1024 * 1024 * 64,

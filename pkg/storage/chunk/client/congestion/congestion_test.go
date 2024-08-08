@@ -9,11 +9,13 @@ import (
 
 func TestZeroValueConstruction(t *testing.T) {
 	cfg := Config{}
-	ctrl := NewController(cfg, log.NewNopLogger(), NewMetrics(t.Name(), cfg))
+	m := NewMetrics(t.Name(), cfg)
+	ctrl := NewController(cfg, log.NewNopLogger(), m)
 
 	require.IsType(t, &NoopController{}, ctrl)
 	require.IsType(t, &NoopRetrier{}, ctrl.getRetrier())
 	require.IsType(t, &NoopHedger{}, ctrl.getHedger())
+	m.Unregister()
 }
 
 func TestAIMDConstruction(t *testing.T) {
@@ -22,11 +24,13 @@ func TestAIMDConstruction(t *testing.T) {
 			Strategy: "aimd",
 		},
 	}
-	ctrl := NewController(cfg, log.NewNopLogger(), NewMetrics(t.Name(), cfg))
+	m := NewMetrics(t.Name(), cfg)
+	ctrl := NewController(cfg, log.NewNopLogger(), m)
 
 	require.IsType(t, &AIMDController{}, ctrl)
 	require.IsType(t, &NoopRetrier{}, ctrl.getRetrier())
 	require.IsType(t, &NoopHedger{}, ctrl.getHedger())
+	m.Unregister()
 }
 
 func TestRetrierConstruction(t *testing.T) {
@@ -35,11 +39,13 @@ func TestRetrierConstruction(t *testing.T) {
 			Strategy: "limited",
 		},
 	}
-	ctrl := NewController(cfg, log.NewNopLogger(), NewMetrics(t.Name(), cfg))
+	m := NewMetrics(t.Name(), cfg)
+	ctrl := NewController(cfg, log.NewNopLogger(), m)
 
 	require.IsType(t, &NoopController{}, ctrl)
 	require.IsType(t, &LimitedRetrier{}, ctrl.getRetrier())
 	require.IsType(t, &NoopHedger{}, ctrl.getHedger())
+	m.Unregister()
 }
 
 func TestCombinedConstruction(t *testing.T) {
@@ -51,11 +57,13 @@ func TestCombinedConstruction(t *testing.T) {
 			Strategy: "limited",
 		},
 	}
-	ctrl := NewController(cfg, log.NewNopLogger(), NewMetrics(t.Name(), cfg))
+	m := NewMetrics(t.Name(), cfg)
+	ctrl := NewController(cfg, log.NewNopLogger(), m)
 
 	require.IsType(t, &AIMDController{}, ctrl)
 	require.IsType(t, &LimitedRetrier{}, ctrl.getRetrier())
 	require.IsType(t, &NoopHedger{}, ctrl.getHedger())
+	m.Unregister()
 }
 
 func TestHedgerConstruction(t *testing.T) {

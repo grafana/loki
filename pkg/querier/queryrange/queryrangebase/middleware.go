@@ -7,7 +7,7 @@ import (
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 )
 
 const (

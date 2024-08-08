@@ -9,11 +9,11 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 )
 
 // NB(owen-d): mostly modeled off of the proto-generated `logproto.IndexGatewayClient`,
@@ -80,11 +80,12 @@ func (c *IndexGatewayClientStore) GetSeries(ctx context.Context, _ string, from,
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
-func (c *IndexGatewayClientStore) LabelNamesForMetricName(ctx context.Context, _ string, from, through model.Time, metricName string) ([]string, error) {
+func (c *IndexGatewayClientStore) LabelNamesForMetricName(ctx context.Context, _ string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error) {
 	resp, err := c.client.LabelNamesForMetricName(ctx, &logproto.LabelNamesForMetricNameRequest{
 		MetricName: metricName,
 		From:       from,
 		Through:    through,
+		Matchers:   (&syntax.MatchersExpr{Mts: matchers}).String(),
 	})
 	if err != nil {
 		return nil, err

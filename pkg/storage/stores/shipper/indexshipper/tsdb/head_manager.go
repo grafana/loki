@@ -21,10 +21,10 @@ import (
 	"github.com/prometheus/prometheus/tsdb/record"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	"github.com/grafana/loki/pkg/util/wal"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/util/wal"
 )
 
 /*

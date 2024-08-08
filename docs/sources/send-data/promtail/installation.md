@@ -9,56 +9,70 @@ weight:  100
 
 # Install Promtail
 
+{{< admonition type="note" >}}
+Promtail is feature complete.  All future feature development will occur in Grafana Alloy.
+{{< /admonition >}}
+
 Promtail is distributed as a binary, in a Docker container,
 or there is a Helm chart to install it in a Kubernetes cluster.
 
 ## Install the binary
 
 Every Grafana Loki release includes binaries for Promtail which can be found on the
-[Releases page](https://github.com/grafana/loki/releases) as part of the release assets. 
+[Releases page](https://github.com/grafana/loki/releases) as part of the release assets.
 
 ## Install using APT or RPM package manager
 
-See the instructions [here](https://grafana.com/docs/loki//setup/install/local/#install-using-apt-or-rpm-package-manager). 
+See the instructions [here](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/local/#install-using-apt-or-rpm-package-manager).
 
-## Install using Docker 
+## Install using Docker
 
-```bash
-# modify tag to most recent version
-docker pull grafana/promtail:2.9.2
-```
+1. Make sure to modify the tag to the most recent version.
+
+    ```bash
+    docker pull grafana/promtail:3.0.0
+    ```
+
+1. Create your Promtail configuration file in a file called `promtail-config.yaml`. Refer to the [Promtail configuration reference](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/configuration/) for more details.
+
+1. Note that you will need to replace `<local-path>` in the commands with your local path.
+
+    ```bash
+    docker run -v <local-path>:/mnt/config -v /var/log:/var/log --link loki grafana/promtail:3.0.0 --config.file=/mnt/config/promtail-config.yaml
+    ```
 
 ## Install using Helm
 
-Make sure that Helm is installed.
-See [Installing Helm](https://helm.sh/docs/intro/install/).
-Then you can add Grafana's chart repository to Helm:
+1. Make sure that Helm is installed. See [Installing Helm](https://helm.sh/docs/intro/install/).
 
-```bash
-helm repo add grafana https://grafana.github.io/helm-charts
-```
+1. Then you can add Grafana's chart repository to Helm:
 
-And the chart repository can be updated by running:
+    ```bash
+    helm repo add grafana https://grafana.github.io/helm-charts
+    ```
 
-```bash
-helm repo update
-```
+1. Update the chart repository:
 
-Create the configuration file `values.yaml`. The example below illustrates a connection to the locally deployed loki server:
-```yaml
-config:
-  # publish data to loki
-  clients:
-    - url: http://loki-gateway/loki/api/v1/push
-      tenant_id: 1
-```
+    ```bash
+    helm repo update
+    ```
 
-Finally, Promtail can be deployed with:
+1. Create the configuration file `values.yaml`. The example below illustrates a connection to the locally deployed loki server:
 
-```bash
-# The default helm configuration deploys promtail as a daemonSet (recommended)
-helm upgrade --values values.yaml --install promtail grafana/promtail
-```
+    ```yaml
+    config:
+    # publish data to loki
+      clients:
+        - url: http://loki-gateway/loki/api/v1/push
+          tenant_id: 1
+    ```
+
+1. Finally, Promtail can be deployed with:
+
+    ```bash
+    # The default helm configuration deploys promtail as a daemonSet (recommended)
+    helm upgrade --values values.yaml --install promtail grafana/promtail
+    ```
 
 ## Install as Kubernetes daemonSet (recommended)
 

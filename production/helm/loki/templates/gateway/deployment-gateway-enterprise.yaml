@@ -1,0 +1,142 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
+{{- if and .Values.gateway.enabled .Values.enterprise.enabled .Values.enterprise.gelGateway }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "loki.gatewayFullname" . }}
+  labels:
+    {{- include "loki.gatewayLabels" . | nindent 4 }}
+    {{- with .Values.enterpriseGateway.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    {{- with .Values.enterpriseGateway.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  replicas: {{ .Values.enterpriseGateway.replicas }}
+  selector:
+    matchLabels:
+      {{- include "loki.gatewaySelectorLabels" . | nindent 6 }}
+  strategy:
+    {{- toYaml .Values.enterpriseGateway.strategy | nindent 4 }}
+  template:
+    metadata:
+      labels:
+        {{- include "loki.gatewaySelectorLabels" . | nindent 8 }}
+        {{- with .Values.enterpriseGateway.labels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        {{- if .Values.useExternalConfig }}
+        checksum/config: {{ .Values.externalConfigVersion }}
+        {{- else }}
+        checksum/config: {{ include (print $.Template.BasePath "/config.yaml") . | sha256sum }}
+        {{- end}}
+        {{- with .Values.enterpriseGateway.annotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ template "loki.serviceAccountName" . }}
+      {{- if .Values.enterpriseGateway.priorityClassName }}
+      priorityClassName: {{ .Values.enterpriseGateway.priorityClassName }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.enterpriseGateway.podSecurityContext | nindent 8 }}
+      initContainers:
+        {{- toYaml .Values.enterpriseGateway.initContainers | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.enterpriseGateway.hostAliases }}
+      hostAliases:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: gateway
+          image: "{{ template "loki.image" . }}"
+          imagePullPolicy: {{ .Values.enterprise.image.pullPolicy }}
+          args:
+            - -target=gateway
+            - -config.file=/etc/loki/config/config.yaml
+            {{- if .Values.minio.enabled }}
+            - -admin.client.backend-type=s3
+            - -admin.client.s3.endpoint={{ template "loki.minio" . }}
+            - -admin.client.s3.bucket-name=enterprise-logs-admin
+            - -admin.client.s3.access-key-id={{ .Values.minio.accessKey }}
+            - -admin.client.s3.secret-access-key={{ .Values.minio.secretKey }}
+            - -admin.client.s3.insecure=true
+            {{- end }}
+            {{- if and $isDistributed .Values.enterpriseGateway.useDefaultProxyURLs }}
+            - -gateway.proxy.default.url=http://{{ template "loki.fullname" . }}-admin-api.{{ .Release.Namespace }}.svc:3100
+            - -gateway.proxy.admin-api.url=http://{{ template "loki.fullname" . }}-admin-api.{{ .Release.Namespace }}.svc:3100
+            - -gateway.proxy.distributor.url=dns:///{{ template "loki.fullname" . }}-distributor-headless.{{ .Release.Namespace }}.svc:9095
+            - -gateway.proxy.ingester.url=http://{{ template "loki.fullname" . }}-ingester.{{ .Release.Namespace }}.svc:3100
+            - -gateway.proxy.query-frontend.url=http://{{ template "loki.fullname" . }}-query-frontend.{{ .Release.Namespace }}.svc:3100
+            - -gateway.proxy.ruler.url=http://{{ template "loki.fullname" . }}-ruler.{{ .Release.Namespace }}.svc:3100
+            {{- end }}
+            {{- if and $isSimpleScalable .Values.enterpriseGateway.useDefaultProxyURLs }}
+            - -gateway.proxy.default.url=http://{{ template "enterprise-logs.adminApiFullname" . }}.{{ .Release.Namespace }}.svc:3100
+            - -gateway.proxy.admin-api.url=http://{{ template "enterprise-logs.adminApiFullname" . }}.{{ .Release.Namespace }}.svc:3100
+            - -gateway.proxy.compactor.url=http://{{ template "loki.backendFullname" . }}-headless.{{ .Release.Namespace }}.svc:3100
+            - -gateway.proxy.distributor.url=dns:///{{ template "loki.writeFullname" . }}-headless.{{ .Release.Namespace }}.svc:9095
+            - -gateway.proxy.ingester.url=http://{{ template "loki.writeFullname" . }}.{{ .Release.Namespace }}.svc:3100
+            - -gateway.proxy.query-frontend.url=http://{{ template "loki.readFullname" . }}.{{ .Release.Namespace }}.svc:3100
+            - -gateway.proxy.ruler.url=http://{{ template "loki.backendFullname" . }}-headless.{{ .Release.Namespace }}.svc:3100
+            - -gateway.proxy.query-scheduler.url=http://{{ template "loki.backendFullname" . }}-headless.{{ .Release.Namespace }}.svc:3100
+            {{- end }}
+            {{- range $key, $value := .Values.enterpriseGateway.extraArgs }}
+            - "-{{ $key }}={{ $value }}"
+            {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/loki/config
+            - name: license
+              mountPath: /etc/loki/license
+            - name: storage
+              mountPath: /data
+            {{- if .Values.enterpriseGateway.extraVolumeMounts }}
+            {{ toYaml .Values.enterpriseGateway.extraVolumeMounts | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http-metrics
+              containerPort: 3100
+              protocol: TCP
+          readinessProbe:
+            {{- toYaml .Values.enterpriseGateway.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.enterpriseGateway.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.enterpriseGateway.containerSecurityContext | nindent 12 }}
+          env:
+            {{- if .Values.enterpriseGateway.env }}
+            {{ toYaml .Values.enterpriseGateway.env | nindent 12 }}
+            {{- end }}
+        {{- with .Values.enterpriseGateway.extraContainers }}
+        {{ toYaml . | nindent 8 }}
+        {{- end }}
+      nodeSelector:
+        {{- toYaml .Values.enterpriseGateway.nodeSelector | nindent 8 }}
+      affinity:
+        {{- toYaml .Values.enterpriseGateway.affinity | nindent 8 }}
+      tolerations:
+        {{- toYaml .Values.enterpriseGateway.tolerations | nindent 8 }}
+      terminationGracePeriodSeconds: {{ .Values.enterpriseGateway.terminationGracePeriodSeconds }}
+      volumes:
+        - name: config
+          {{- include "loki.configVolume" . | nindent 10 }}
+        - name: license
+          secret:
+          {{- if .Values.enterprise.useExternalLicense }}
+            secretName: {{ .Values.enterprise.externalLicenseName }}
+          {{- else }}
+            secretName: enterprise-logs-license
+          {{- end }}
+        - name: storage
+          emptyDir: {}
+        {{- if .Values.enterpriseGateway.extraVolumes }}
+        {{ toYaml .Values.enterpriseGateway.extraVolumes | nindent 8 }}
+        {{- end }}
+{{- end }}

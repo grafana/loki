@@ -11,8 +11,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 func TestExtractChecksum(t *testing.T) {

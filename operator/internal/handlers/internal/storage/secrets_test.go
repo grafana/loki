@@ -9,6 +9,7 @@ import (
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
 func TestHashSecretData(t *testing.T) {
@@ -392,7 +393,8 @@ func TestS3Extract(t *testing.T) {
 			name: "missing access_key_id",
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
-					"endpoint":    []byte("here"),
+					"endpoint":    []byte("https://s3.test-region.amazonaws.com"),
+					"region":      []byte("test-region"),
 					"bucketnames": []byte("this,that"),
 				},
 			},
@@ -402,7 +404,8 @@ func TestS3Extract(t *testing.T) {
 			name: "missing access_key_secret",
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
-					"endpoint":      []byte("here"),
+					"endpoint":      []byte("https://s3.test-region.amazonaws.com"),
+					"region":        []byte("test-region"),
 					"bucketnames":   []byte("this,that"),
 					"access_key_id": []byte("id"),
 				},
@@ -413,7 +416,7 @@ func TestS3Extract(t *testing.T) {
 			name: "unsupported SSE type",
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
-					"endpoint":          []byte("here"),
+					"endpoint":          []byte("https://s3.REGION.amazonaws.com"),
 					"bucketnames":       []byte("this,that"),
 					"access_key_id":     []byte("id"),
 					"access_key_secret": []byte("secret"),
@@ -426,7 +429,8 @@ func TestS3Extract(t *testing.T) {
 			name: "missing SSE-KMS kms_key_id",
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
-					"endpoint":                   []byte("here"),
+					"endpoint":                   []byte("https://s3.test-region.amazonaws.com"),
+					"region":                     []byte("test-region"),
 					"bucketnames":                []byte("this,that"),
 					"access_key_id":              []byte("id"),
 					"access_key_secret":          []byte("secret"),
@@ -441,7 +445,8 @@ func TestS3Extract(t *testing.T) {
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"endpoint":          []byte("here"),
+					"endpoint":          []byte("https://s3.test-region.amazonaws.com"),
+					"region":            []byte("test-region"),
 					"bucketnames":       []byte("this,that"),
 					"access_key_id":     []byte("id"),
 					"access_key_secret": []byte("secret"),
@@ -456,7 +461,8 @@ func TestS3Extract(t *testing.T) {
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"endpoint":                   []byte("here"),
+					"endpoint":                   []byte("https://s3.test-region.amazonaws.com"),
+					"region":                     []byte("test-region"),
 					"bucketnames":                []byte("this,that"),
 					"access_key_id":              []byte("id"),
 					"access_key_secret":          []byte("secret"),
@@ -472,7 +478,8 @@ func TestS3Extract(t *testing.T) {
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"endpoint":          []byte("here"),
+					"endpoint":          []byte("https://s3.test-region.amazonaws.com"),
+					"region":            []byte("test-region"),
 					"bucketnames":       []byte("this,that"),
 					"access_key_id":     []byte("id"),
 					"access_key_secret": []byte("secret"),
@@ -486,7 +493,8 @@ func TestS3Extract(t *testing.T) {
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"endpoint":          []byte("here"),
+					"endpoint":          []byte("https://s3.test-region.amazonaws.com"),
+					"region":            []byte("test-region"),
 					"bucketnames":       []byte("this,that"),
 					"access_key_id":     []byte("id"),
 					"access_key_secret": []byte("secret"),
@@ -530,6 +538,62 @@ func TestS3Extract(t *testing.T) {
 			},
 			wantCredentialMode: lokiv1.CredentialModeToken,
 		},
+		{
+			name: "endpoint is just hostname",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":          []byte("hostname.example.com"),
+					"region":            []byte("region"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+				},
+			},
+			wantError: "endpoint for S3 must be an HTTP or HTTPS URL",
+		},
+		{
+			name: "endpoint unsupported scheme",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":          []byte("invalid://hostname"),
+					"region":            []byte("region"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+				},
+			},
+			wantError: "scheme of S3 endpoint URL is unsupported: invalid",
+		},
+		{
+			name: "s3 region used in endpoint URL is incorrect",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":          []byte("https://s3.wrong.amazonaws.com"),
+					"region":            []byte("region"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+				},
+			},
+			wantError: "endpoint for AWS S3 must include correct region: https://s3.region.amazonaws.com",
+		},
+		{
+			name: "s3 endpoint format is not a valid s3 URL",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":          []byte("http://region.amazonaws.com"),
+					"region":            []byte("region"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+				},
+			},
+			wantError: "endpoint for AWS S3 must include correct region: https://s3.region.amazonaws.com",
+		},
 	}
 	for _, tst := range table {
 		tst := tst
@@ -550,6 +614,62 @@ func TestS3Extract(t *testing.T) {
 			} else {
 				require.EqualError(t, err, tst.wantError)
 			}
+		})
+	}
+}
+
+func TestS3Extract_S3ForcePathStyle(t *testing.T) {
+	tt := []struct {
+		desc        string
+		secret      *corev1.Secret
+		wantOptions *storage.S3StorageConfig
+	}{
+		{
+			desc: "aws s3 endpoint",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":          []byte("https://s3.region.amazonaws.com"),
+					"region":            []byte("region"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+				},
+			},
+			wantOptions: &storage.S3StorageConfig{
+				Endpoint: "https://s3.region.amazonaws.com",
+				Region:   "region",
+				Buckets:  "this,that",
+			},
+		},
+		{
+			desc: "non-aws s3 endpoint",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":          []byte("https://test.default.svc.cluster.local:9000"),
+					"region":            []byte("region"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+				},
+			},
+			wantOptions: &storage.S3StorageConfig{
+				Endpoint:       "https://test.default.svc.cluster.local:9000",
+				Region:         "region",
+				Buckets:        "this,that",
+				ForcePathStyle: true,
+			},
+		},
+	}
+
+	for _, tc := range tt {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+			options, err := extractS3ConfigSecret(tc.secret, lokiv1.CredentialModeStatic)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantOptions, options)
 		})
 	}
 }

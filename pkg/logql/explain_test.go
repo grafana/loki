@@ -10,7 +10,7 @@ import (
 
 	"github.com/grafana/dskit/user"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 func TestExplain(t *testing.T) {

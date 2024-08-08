@@ -10,7 +10,7 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/prometheus/common/model"
 
-	utilsMath "github.com/grafana/loki/pkg/util/math"
+	utilsMath "github.com/grafana/loki/v3/pkg/util/math"
 )
 
 const (

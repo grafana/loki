@@ -95,7 +95,7 @@ curl -s http://localhost:3100/loki/api/v1/query_range?xxx \
 ```
 
 There is a limit to how deep a path and thus the queue tree can be. This is
-controlled by Loki's `-query-scheduler.max-queue-hierarchy-levels` CLI argument
+controlled by the Loki `-query-scheduler.max-queue-hierarchy-levels` CLI argument
 or its respective YAML configuration block:
 
 ```yaml

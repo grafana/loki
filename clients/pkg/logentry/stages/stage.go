@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/common/model"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
 )
 
 const (
@@ -62,6 +62,7 @@ type Entry struct {
 type Stage interface {
 	Name() string
 	Run(chan Entry) chan Entry
+	Cleanup()
 }
 
 func (entry *Entry) copy() *Entry {
@@ -227,4 +228,9 @@ func New(logger log.Logger, jobName *string, stageType string,
 		jobName:    jobName,
 	}
 	return creator(params)
+}
+
+// Cleanup implements Stage.
+func (*stageProcessor) Cleanup() {
+	// no-op
 }

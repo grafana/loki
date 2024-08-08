@@ -6,7 +6,7 @@ metadata:
     capabilities: Full Lifecycle
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
-    containerImage: docker.io/grafana/loki-operator:0.6.0
+    containerImage: docker.io/grafana/loki-operator:0.6.1
     createdAt: "2022-12-22T13:28:40+00:00"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
@@ -290,6 +290,12 @@ spec:
         path: limits.global.queries.maxQuerySeries
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: MaxVolumeSeries defines the maximum number of aggregated series
+          in a log-volume response
+        displayName: Max Volume Series
+        path: limits.global.queries.maxVolumeSeries
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
       - description: Timeout when querying ingesters or storage during the execution
           of a query request.
         displayName: Query Timeout
@@ -399,6 +405,12 @@ spec:
           by a metric query.
         displayName: Max Query Series
         path: limits.tenants.queries.maxQuerySeries
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: MaxVolumeSeries defines the maximum number of aggregated series
+          in a log-volume response
+        displayName: Max Volume Series
+        path: limits.tenants.queries.maxVolumeSeries
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
       - description: Timeout when querying ingesters or storage during the execution
@@ -1369,6 +1381,9 @@ spec:
       - description: The client-side certificate file path for the TLS configuration.
         displayName: Cert Path
         path: alertmanager.client.tls.certPath
+      - description: Skip validating server certificate.
+        displayName: Skip validating server certificate
+        path: alertmanager.client.tls.insecureSkipVerify
       - description: The client-side key file path for the TLS configuration.
         displayName: Key Path
         path: alertmanager.client.tls.keyPath
@@ -1518,6 +1533,9 @@ spec:
       - description: The client-side certificate file path for the TLS configuration.
         displayName: Cert Path
         path: overrides.alertmanager.client.tls.certPath
+      - description: Skip validating server certificate.
+        displayName: Skip validating server certificate
+        path: overrides.alertmanager.client.tls.insecureSkipVerify
       - description: The client-side key file path for the TLS configuration.
         displayName: Key Path
         path: overrides.alertmanager.client.tls.keyPath
@@ -2239,5 +2257,5 @@ spec:
   minKubeVersion: 1.21.1
   provider:
     name: Grafana Loki SIG Operator
-  replaces: loki-operator.v0.5.0
+  replaces: loki-operator.v0.6.0
   version: 0.0.0

@@ -151,30 +151,6 @@ local arch_image(arch, tags='') = {
   }],
 };
 
-local promtail_win() = pipeline('promtail-windows') {
-  platform: {
-    os: 'windows',
-    arch: 'amd64',
-    version: '1809',
-  },
-  steps: [
-    {
-      name: 'identify-runner',
-      image: 'golang:1.21.3-windowsservercore-1809',
-      commands: [
-        'Write-Output $env:DRONE_RUNNER_NAME',
-      ],
-    },
-    {
-      name: 'test',
-      image: 'golang:1.21.3-windowsservercore-1809',
-      commands: [
-        'go test .\\clients\\pkg\\promtail\\targets\\windows\\... -v',
-      ],
-    },
-  ],
-};
-
 local querytee() = pipeline('querytee-amd64') + arch_image('amd64', 'main') {
   steps+: [
     // publish for tag or main
@@ -400,7 +376,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   ],
 };
 
-local build_image_tag = '0.33.0';
+local build_image_tag = '0.33.2';
 [
   pipeline('loki-build-image-' + arch) {
     workspace: {
@@ -471,23 +447,6 @@ local build_image_tag = '0.33.0';
           password: { from_secret: docker_password_secret.name },
           dry_run: false,
         },
-      },
-    ],
-  },
-  pipeline('mixins') {
-    workspace: {
-      base: '/src',
-      path: 'loki',
-    },
-    steps: [
-      make('lint-jsonnet', container=false) {
-        // Docker image defined at https://github.com/grafana/jsonnet-libs/tree/master/build
-        image: 'grafana/jsonnet-build:c8b75df',
-        depends_on: ['clone'],
-      },
-      make('loki-mixin-check', container=false) {
-        depends_on: ['clone'],
-        when: onPRs + onPath('production/loki-mixin/**'),
       },
     ],
   },
@@ -654,7 +613,6 @@ local build_image_tag = '0.33.0';
       },
     ],
   },
-  promtail_win(),
   logql_analyzer(),
   pipeline('docker-driver') {
     trigger+: onTagOrMain,

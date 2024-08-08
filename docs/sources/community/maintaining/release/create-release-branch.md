@@ -22,7 +22,7 @@ branch is then used for all the Stable Releases, and all Patch Releases for that
     The name of the release branch should be `release-VERSION_PREFIX`, such as `release-2.9.x`.
 
 	{{% admonition type="note" %}}
-	Branches are only made for VERSION_PREFIX; do not create branches for the full VERSION such as `release-v2.9.1` or `release-2.9.1`.
+	Branches are only made for VERSION_PREFIX; do not create branches for the full VERSION such as `release-2.9.1`.
 	{{% /admonition %}}
 
 	{{% admonition type="note" %}}

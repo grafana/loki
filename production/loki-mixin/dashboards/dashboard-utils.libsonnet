@@ -151,32 +151,41 @@ local utils = import 'mixin-utils/utils.libsonnet';
       datasource: '$datasource',
     },
   CPUUsagePanel(title, matcher)::
-    $.panel(title) +
+    $.newQueryPanel(title) +
     $.queryPanel([
       'sum by(pod) (rate(container_cpu_usage_seconds_total{%s, %s}[$__rate_interval]))' % [$.namespaceMatcher(), matcher],
       'min(kube_pod_container_resource_requests{%s, %s, resource="cpu"} > 0)' % [$.namespaceMatcher(), matcher],
       'min(container_spec_cpu_quota{%s, %s} / container_spec_cpu_period{%s, %s})' % [$.namespaceMatcher(), matcher, $.namespaceMatcher(), matcher],
     ], ['{{pod}}', 'request', 'limit']) +
     {
-      seriesOverrides: [
-        {
-          alias: 'request',
-          color: '#FFC000',
-          fill: 0,
-        },
-        {
-          alias: 'limit',
-          color: '#E02F44',
-          fill: 0,
-        },
-      ],
       tooltip: { sort: 2 },  // Sort descending.
+    } + {
+      fieldConfig+: {
+        overrides+: [
+          $.colorOverride('request', '#FFC000') + {
+            properties+: [
+              {
+                id: 'custom.fillOpacity',
+                value: 0,
+              },
+            ],
+          },
+          $.colorOverride('limit', '#E02F44') + {
+            properties+: [
+              {
+                id: 'custom.fillOpacity',
+                value: 0,
+              },
+            ],
+          },
+        ],
+      },
     },
   containerCPUUsagePanel(title, containerName)::
     self.CPUUsagePanel(title, 'container=~"%s"' % containerName),
 
   memoryWorkingSetPanel(title, matcher)::
-    $.panel(title) +
+    $.newQueryPanel(title, 'bytes') +
     $.queryPanel([
       // We use "max" instead of "sum" otherwise during a rolling update of a statefulset we will end up
       // summing the memory of the old pod (whose metric will be stale for 5m) to the new pod.
@@ -185,32 +194,39 @@ local utils = import 'mixin-utils/utils.libsonnet';
       'min(container_spec_memory_limit_bytes{%s, %s} > 0)' % [$.namespaceMatcher(), matcher],
     ], ['{{pod}}', 'request', 'limit']) +
     {
-      seriesOverrides: [
-        {
-          alias: 'request',
-          color: '#FFC000',
-          fill: 0,
-        },
-        {
-          alias: 'limit',
-          color: '#E02F44',
-          fill: 0,
-        },
-      ],
-      yaxes: $.yaxes('bytes'),
       tooltip: { sort: 2 },  // Sort descending.
+    } + {
+      fieldConfig+: {
+        overrides+: [
+          $.colorOverride('request', '#FFC000') + {
+            properties+: [
+              {
+                id: 'custom.fillOpacity',
+                value: 0,
+              },
+            ],
+          },
+          $.colorOverride('limit', '#E02F44') + {
+            properties+: [
+              {
+                id: 'custom.fillOpacity',
+                value: 0,
+              },
+            ],
+          },
+        ],
+      },
     },
   containerMemoryWorkingSetPanel(title, containerName)::
     self.memoryWorkingSetPanel(title, 'container=~"%s"' % containerName),
 
   goHeapInUsePanel(title, jobName)::
-    $.panel(title) +
+    $.newQueryPanel(title, 'bytes') +
     $.queryPanel(
       'sum by(%s) (go_memstats_heap_inuse_bytes{%s})' % [$._config.per_instance_label, $.jobMatcher(jobName)],
       '{{%s}}' % $._config.per_instance_label
     ) +
     {
-      yaxes: $.yaxes('bytes'),
       tooltip: { sort: 2 },  // Sort descending.
     },
 
@@ -220,6 +236,69 @@ local utils = import 'mixin-utils/utils.libsonnet';
     ||| % [$._config.per_instance_label, $._config.per_node_label, $._config.per_instance_label, $.namespaceMatcher(), matcher],
   filterNodeDiskContainer(containerName)::
     self.filterNodeDisk('container="%s"' % containerName),
+
+  newQueryPanel(title, unit='short')::
+    super.timeseriesPanel(title) + {
+      fieldConfig+: {
+        defaults+: {
+          custom+: {
+            fillOpacity: 10,
+          },
+          unit: unit,
+        },
+      },
+    },
+
+  withStacking:: {
+    fieldConfig+: {
+      defaults+: {
+        custom+: {
+          fillOpacity: 100,
+          lineWidth: 0,
+          stacking: {
+            mode: 'normal',
+            group: 'A',
+          },
+        },
+      },
+    },
+  },
+
+  colorOverride(name, color):: {
+    matcher: {
+      id: 'byName',
+      options: name,
+    },
+    properties: [
+      {
+        id: 'color',
+        value: {
+          mode: 'fixed',
+          fixedColor: color,
+        },
+      },
+    ],
+  },
+
+  newQpsPanel(selector, statusLabelName='status_code')::
+    super.qpsPanel(selector, statusLabelName) + $.withStacking + {
+      fieldConfig+: {
+        defaults+: {
+          min: 0,
+        },
+        overrides: [
+          $.colorOverride('1xx', '#EAB839'),
+          $.colorOverride('2xx', '#7EB26D'),
+          $.colorOverride('3xx', '#6ED0E0'),
+          $.colorOverride('4xx', '#EF843C'),
+          $.colorOverride('5xx', '#E24D42'),
+          $.colorOverride('OK', '#7EB26D'),
+          $.colorOverride('cancel', '#A9A9A9'),
+          $.colorOverride('error', '#E24D42'),
+          $.colorOverride('success', '#7EB26D'),
+        ],
+      },
+    },
 
   newStatPanel(queries, legends='', unit='percentunit', decimals=1, thresholds=[], instant=false, novalue='')::
     super.queryPanel(queries, legends) + {
@@ -247,7 +326,25 @@ local utils = import 'mixin-utils/utils.libsonnet';
     },
 
   containerDiskSpaceUtilizationPanel(title, containerName)::
-    $.panel(title) +
-    $.queryPanel('max by(persistentvolumeclaim) (kubelet_volume_stats_used_bytes{%s} / kubelet_volume_stats_capacity_bytes{%s}) and count by(persistentvolumeclaim) (kube_persistentvolumeclaim_labels{%s,%s})' % [$.namespaceMatcher(), $.namespaceMatcher(), $.namespaceMatcher(), $.containerLabelMatcher(containerName)], '{{persistentvolumeclaim}}') +
-    { yaxes: $.yaxes('percentunit') },
+    $.newQueryPanel(title, 'percentunit') +
+    $.queryPanel('max by(persistentvolumeclaim) (kubelet_volume_stats_used_bytes{%s} / kubelet_volume_stats_capacity_bytes{%s}) and count by(persistentvolumeclaim) (kube_persistentvolumeclaim_labels{%s,%s})' % [$.namespaceMatcher(), $.namespaceMatcher(), $.namespaceMatcher(), $.containerLabelMatcher(containerName)], '{{persistentvolumeclaim}}'),
+
+  local latencyPanelWithExtraGrouping(metricName, selector, multiplier='1e3', extra_grouping='') = {
+    nullPointMode: 'null as zero',
+    targets: [
+      {
+        expr: 'histogram_quantile(0.99, sum(rate(%s_bucket%s[$__rate_interval])) by (le,%s)) * %s' % [metricName, selector, extra_grouping, multiplier],
+        format: 'time_series',
+        intervalFactor: 2,
+        refId: 'A',
+        step: 10,
+        interval: '1m',
+        legendFormat: '__auto',
+      },
+    ],
+  },
+
+  p99LatencyByPod(metric, selectorStr)::
+    $.newQueryPanel('Per Pod Latency (p99)', 'ms') +
+    latencyPanelWithExtraGrouping(metric, selectorStr, '1e3', 'pod'),
 }

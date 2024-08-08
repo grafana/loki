@@ -12,7 +12,7 @@ import (
 
 	"github.com/grafana/dskit/server"
 
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
 
 const (

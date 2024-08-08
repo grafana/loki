@@ -5,10 +5,6 @@ description: The 'structured_metadata' Promtail pipeline stage
 
 # structured_metadata
 
-{{% admonition type="warning" %}}
-Structured metadata is an experimental feature and is subject to change in future releases of Grafana Loki.
-{{% /admonition %}}
-
 The `structured_metadata` stage is an action stage that takes data from the extracted map and
 modifies the [structured metadata]({{< relref "../../../get-started/labels/structured-metadata" >}}) that is sent to Loki with the log entry.
 

@@ -4,9 +4,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/pkg/analytics"
-	"github.com/grafana/loki/pkg/util/constants"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 type ingesterMetrics struct {
@@ -47,8 +47,11 @@ type ingesterMetrics struct {
 	chunkSizePerTenant            *prometheus.CounterVec
 	chunkAge                      prometheus.Histogram
 	chunkEncodeTime               prometheus.Histogram
+	chunksFlushFailures           prometheus.Counter
 	chunksFlushedPerReason        *prometheus.CounterVec
 	chunkLifespan                 prometheus.Histogram
+	chunksEncoded                 *prometheus.CounterVec
+	chunkDecodeFailures           *prometheus.CounterVec
 	flushedChunksStats            *analytics.Counter
 	flushedChunksBytesStats       *analytics.Statistics
 	flushedChunksLinesStats       *analytics.Statistics
@@ -64,7 +67,9 @@ type ingesterMetrics struct {
 	// Shutdown marker for ingester scale down
 	shutdownMarker prometheus.Gauge
 
-	flushQueueLength prometheus.Gauge
+	flushQueueLength       prometheus.Gauge
+	duplicateLogBytesTotal *prometheus.CounterVec
+	streamsOwnershipCheck  prometheus.Histogram
 }
 
 // setRecoveryBytesInUse bounds the bytes reports to >= 0.
@@ -232,6 +237,11 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 			// 10ms to 10s.
 			Buckets: prometheus.ExponentialBuckets(0.01, 4, 6),
 		}),
+		chunksFlushFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingester_chunks_flush_failures_total",
+			Help:      "Total number of flush failures.",
+		}),
 		chunksFlushedPerReason: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "ingester_chunks_flushed_total",
@@ -244,12 +254,28 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 			// 1h -> 8hr
 			Buckets: prometheus.LinearBuckets(1, 1, 8),
 		}),
-		flushedChunksStats:            analytics.NewCounter("ingester_flushed_chunks"),
-		flushedChunksBytesStats:       analytics.NewStatistics("ingester_flushed_chunks_bytes"),
-		flushedChunksLinesStats:       analytics.NewStatistics("ingester_flushed_chunks_lines"),
-		flushedChunksAgeStats:         analytics.NewStatistics("ingester_flushed_chunks_age_seconds"),
-		flushedChunksLifespanStats:    analytics.NewStatistics("ingester_flushed_chunks_lifespan_seconds"),
-		flushedChunksUtilizationStats: analytics.NewStatistics("ingester_flushed_chunks_utilization"),
+		chunksEncoded: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingester_chunks_encoded_total",
+			Help:      "The total number of chunks encoded in the ingester.",
+		}, []string{"user"}),
+		chunkDecodeFailures: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingester_chunk_decode_failures_total",
+			Help:      "The number of freshly encoded chunks that failed to decode.",
+		}, []string{"user"}),
+		flushedChunksStats:      analytics.NewCounter("ingester_flushed_chunks"),
+		flushedChunksBytesStats: analytics.NewStatistics("ingester_flushed_chunks_bytes"),
+		flushedChunksLinesStats: analytics.NewStatistics("ingester_flushed_chunks_lines"),
+		flushedChunksAgeStats: analytics.NewStatistics(
+			"ingester_flushed_chunks_age_seconds",
+		),
+		flushedChunksLifespanStats: analytics.NewStatistics(
+			"ingester_flushed_chunks_lifespan_seconds",
+		),
+		flushedChunksUtilizationStats: analytics.NewStatistics(
+			"ingester_flushed_chunks_utilization",
+		),
 		chunksCreatedTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "ingester_chunks_created_total",
@@ -287,5 +313,20 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 			Name:      "flush_queue_length",
 			Help:      "The total number of series pending in the flush queue.",
 		}),
+
+		streamsOwnershipCheck: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "ingester_streams_ownership_check_duration_ms",
+			Help:      "Distribution of streams ownership check durations in milliseconds.",
+			// 100ms to 5s.
+			Buckets: []float64{100, 250, 350, 500, 750, 1000, 1500, 2000, 5000},
+		}),
+
+		duplicateLogBytesTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: "ingester",
+			Name:      "duplicate_log_bytes_total",
+			Help:      "The total number of bytes that were discarded for duplicate log lines.",
+		}, []string{"tenant"}),
 	}
 }

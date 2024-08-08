@@ -20,9 +20,9 @@ import (
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/ruler/config"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/ruler/config"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // Pusher is an ingester server that accepts pushes.

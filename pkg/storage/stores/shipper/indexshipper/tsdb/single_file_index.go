@@ -15,12 +15,12 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	"github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var ErrAlreadyOnDesiredVersion = errors.New("tsdb file already on desired version")

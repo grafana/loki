@@ -1,11 +1,11 @@
 ---
 title: LogCLI
-menuTItle:  
-description: Describes LogCLI, Grafana Loki's command-line interface.
+menuTItle:
+description: Describes LogCLI, the Grafana Loki command-line interface.
 aliases:
 - ../getting-started/logcli/
 - ../tools/logcli/
-weight: 700  
+weight: 700
 ---
 
 # LogCLI
@@ -229,7 +229,7 @@ Commands:
     For more information about log queries and metric queries, refer to the
     LogQL documentation:
 
-    https://grafana.com/docs/loki/latest/logql/
+    https://grafana.com/docs/loki/<LOKI_VERSION>/logql/
 
   labels [<flags>] [<label>]
     Find values for a given label.
@@ -246,7 +246,7 @@ Commands:
     streams. This is helpful to find high cardinality labels.
 ```
 
-### LogCLI query command reference
+### `query` command reference
 
 The output of `logcli help query`:
 
@@ -263,13 +263,14 @@ The "query" command is useful for querying for logs. Logs can be returned in a f
 
 The output of the log can be specified with the "-o" flag, for example, "-o raw" for the raw output format.
 
-The "query" command will output extra information about the query and its results, such as the API URL, set of common labels, and set of excluded labels. This extra information can be
-suppressed with the --quiet flag.
+The "query" command will output extra information about the query and its results, such as the API URL, set of common labels, and set of
+excluded labels. This extra information can be suppressed with the --quiet flag.
 
-By default we look over the last hour of data; use --since to modify or provide specific start and end times with --from and --to respectively.
+By default we look over the last hour of data; use --since to modify or provide specific start and end times with --from and --to
+respectively.
 
-Notice that when using --from and --to then ensure to use RFC3339Nano time format, but without timezone at the end. The local timezone will be added automatically or if using --timezone
-flag.
+Notice that when using --from and --to then ensure to use RFC3339Nano time format, but without timezone at the end. The local timezone will be
+added automatically or if using --timezone flag.
 
 Example:
 
@@ -282,9 +283,9 @@ Example:
 
 The output is limited to 30 entries by default; use --limit to increase.
 
-While "query" does support metrics queries, its output contains multiple data points between the start and end query time. This output is used to build graphs, similar to what is seen
-in the Grafana Explore graph view. If you are querying metrics and just want the most recent data point (like what is seen in the Grafana Explore table view), then you should use the
-"instant-query" command instead.
+While "query" does support metrics queries, its output contains multiple data points between the start and end query time. This output is used
+to build graphs, similar to what is seen in the Grafana Explore graph view. If you are querying metrics and just want the most recent data
+point (like what is seen in the Grafana Explore table view), then you should use the "instant-query" command instead.
 
 Parallelization:
 
@@ -312,26 +313,29 @@ Example:
      --merge-parts
      'my-query'
 
-This example will create a queue of jobs to execute, each being 15 minutes in duration. In this case, that means, for the 10-hour total duration, there will be forty 15-minute jobs.
-The --limit flag is ignored.
+This example will create a queue of jobs to execute, each being 15 minutes in duration. In this case, that means, for the 10-hour total
+duration, there will be forty 15-minute jobs. The --limit flag is ignored.
 
 It will start four workers, and they will each take a job to work on from the queue until all the jobs have been completed.
 
-Each job will save a "part" file to the location specified by the --part-path-prefix. Different prefixes can be used to run multiple queries at the same time. The timestamp of the start and
-end of the part is in the file name. While the part is being downloaded, the filename will end in ".part", when it is complete, the file will be renamed to remove this ".part" extension.
-By default, if a completed part file is found, that part will not be downloaded again. This can be overridden with the --overwrite-completed-parts flag.
+Each job will save a "part" file to the location specified by the --part-path-prefix. Different prefixes can be used to run multiple queries
+at the same time. The timestamp of the start and end of the part is in the file name. While the part is being downloaded, the filename will
+end in ".part", when it is complete, the file will be renamed to remove this ".part" extension. By default, if a completed part file is found,
+that part will not be downloaded again. This can be overridden with the `--overwrite-completed-parts` flag.
 
 Part file example using the previous command, adding --keep-parts so they are not deleted:
 
-Since we don't have the --forward flag, the parts will be downloaded in reverse. Two of the workers have finished their jobs (last two files), and have picked up the next jobs in the queue.
-Running ls, this is what we should expect to see.
+Since we don't have the --forward flag, the parts will be downloaded in reverse. Two of the workers have finished their jobs (last two files),
+and have picked up the next jobs in the queue. Running ls, this is what we should expect to see.
 
-$ ls -1 /tmp/my_query* /tmp/my_query_20210119T183000_20210119T184500.part.tmp /tmp/my_query_20210119T184500_20210119T190000.part.tmp /tmp/my_query_20210119T190000_20210119T191500.part.tmp
-/tmp/my_query_20210119T191500_20210119T193000.part.tmp /tmp/my_query_20210119T193000_20210119T194500.part /tmp/my_query_20210119T194500_20210119T200000.part
+$ ls -1 /tmp/my_query* /tmp/my_query_20210119T183000_20210119T184500.part.tmp /tmp/my_query_20210119T184500_20210119T190000.part.tmp
+/tmp/my_query_20210119T190000_20210119T191500.part.tmp /tmp/my_query_20210119T191500_20210119T193000.part.tmp
+/tmp/my_query_20210119T193000_20210119T194500.part /tmp/my_query_20210119T194500_20210119T200000.part
 
-If you do not specify the --merge-parts flag, the part files will be downloaded, and logcli will exit, and you can process the files as you wish. With the flag specified, the part files
-will be read in order, and the output printed to the terminal. The lines will be printed as soon as the next part is complete, you don't have to wait for all the parts to download before
-getting output. The --merge-parts flag will remove the part files when it is done reading each of them. To change this, you can use the --keep-parts flag, and the part files will not be
+If you do not specify the `--merge-parts` flag, the part files will be downloaded, and logcli will exit, and you can process the files as you
+wish. With the flag specified, the part files will be read in order, and the output printed to the terminal. The lines will be printed as
+soon as the next part is complete, you don't have to wait for all the parts to download before getting output. The `--merge-parts` flag will
+remove the part files when it is done reading each of them. To change this, you can use the `--keep-parts` flag, and the part files will not be
 removed.
 
 Flags:
@@ -352,13 +356,16 @@ Flags:
       --tls-skip-verify         Server certificate TLS skip verify. Can also be set using LOKI_TLS_SKIP_VERIFY env var.
       --cert=""                 Path to the client certificate. Can also be set using LOKI_CLIENT_CERT_PATH env var.
       --key=""                  Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.
-      --org-id=""               adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when bypassing an auth gateway. Can also be set using
-                                LOKI_ORG_ID env var.
-      --query-tags=""           adds X-Query-Tags http header to API requests. This header value will be part of `metrics.go` statistics. Useful for tracking the query. Can also be set
-                                using LOKI_QUERY_TAGS env var.
-      --bearer-token=""         adds the Authorization header to API requests for authentication purposes. Can also be set using LOKI_BEARER_TOKEN env var.
-      --bearer-token-file=""    adds the Authorization header to API requests for authentication purposes. Can also be set using LOKI_BEARER_TOKEN_FILE env var.
-      --retries=0               How many times to retry each query when getting an error response from Loki. Can also be set using LOKI_CLIENT_RETRIES env var.
+      --org-id=""               adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when
+                                bypassing an auth gateway. Can also be set using LOKI_ORG_ID env var.
+      --query-tags=""           adds X-Query-Tags http header to API requests. This header value will be part of `metrics.go` statistics.
+                                Useful for tracking the query. Can also be set using LOKI_QUERY_TAGS env var.
+      --bearer-token=""         adds the Authorization header to API requests for authentication purposes. Can also be set using
+                                LOKI_BEARER_TOKEN env var.
+      --bearer-token-file=""    adds the Authorization header to API requests for authentication purposes. Can also be set using
+                                LOKI_BEARER_TOKEN_FILE env var.
+      --retries=0               How many times to retry each query when getting an error response from Loki. Can also be set using
+                                LOKI_CLIENT_RETRIES env var.
       --min-backoff=0           Minimum backoff time between retries. Can also be set using LOKI_CLIENT_MIN_BACKOFF env var.
       --max-backoff=0           Maximum backoff time between retries. Can also be set using LOKI_CLIENT_MAX_BACKOFF env var.
       --auth-header="Authorization"
@@ -369,19 +376,24 @@ Flags:
       --from=FROM               Start looking for logs at this absolute time (inclusive)
       --to=TO                   Stop looking for logs at this absolute time (exclusive)
       --step=STEP               Query resolution step width, for metric queries. Evaluate the query at the specified step over the time range.
-      --interval=INTERVAL       Query interval, for log queries. Return entries at the specified interval, ignoring those between. **This parameter is experimental, see Issue 1779**
+      --interval=INTERVAL       Query interval, for log queries. Return entries at the specified interval, ignoring those between. **This
+                                parameter is experimental, please see Issue 1779**
       --batch=1000              Query batch size to use until 'limit' is reached
-      --parallel-duration=1h    Split the range into jobs of this length to download the logs in parallel. This will result in the logs being out of order. Use --part-path-prefix to create
-                                a file per job to maintain ordering.
-      --parallel-max-workers=1  Max number of workers to start up for parallel jobs. A value of 1 will not create any parallel workers. When using parallel workers, limit is ignored.
+      --parallel-duration=1h    Split the range into jobs of this length to download the logs in parallel. This will result in the logs being
+                                out of order. Use --part-path-prefix to create a file per job to maintain ordering.
+      --parallel-max-workers=1  Max number of workers to start up for parallel jobs. A value of 1 will not create any parallel workers.
+                                When using parallel workers, limit is ignored.
       --part-path-prefix=PART-PATH-PREFIX
-                                When set, each server response will be saved to a file with this prefix. Creates files in the format: 'prefix-utc_start-utc_end.part'. Intended to be used
-                                with the parallel-* flags so that you can combine the files to maintain ordering based on the filename. Default is to write to stdout.
+                                When set, each server response will be saved to a file with this prefix. Creates files in the format:
+                                'prefix-utc_start-utc_end.part'. Intended to be used with the parallel-* flags so that you can combine the
+                                files to maintain ordering based on the filename. Default is to write to stdout.
       --overwrite-completed-parts
-                                Overwrites completed part files. This will download the range again, and replace the original completed part file. Default will skip a range if it's part
-                                file is already downloaded.
-      --merge-parts             Reads the part files in order and writes the output to stdout. Original part files will be deleted with this option.
-      --keep-parts              Overrides the default behaviour of --merge-parts which will delete the part files once all the files have been read. This option will keep the part files.
+                                Overwrites completed part files. This will download the range again, and replace the original completed part
+                                file. Default will skip a range if it's part file is already downloaded.
+      --merge-parts             Reads the part files in order and writes the output to stdout. Original part files will be deleted with this
+                                option.
+      --keep-parts              Overrides the default behaviour of --merge-parts which will delete the part files once all the files have been
+                                read. This option will keep the part files.
       --forward                 Scan forwards through logs.
       --no-labels               Do not print any labels
       --exclude-label=EXCLUDE-LABEL ...
@@ -390,7 +402,8 @@ Flags:
                                 Include labels given the provided key during output.
       --labels-length=0         Set a fixed padding to labels
       --store-config=""         Execute the current query using a configured storage from a given Loki configuration file.
-      --remote-schema           Execute the current query using a remote schema retrieved using the configured storage in the given Loki configuration file.
+      --remote-schema           Execute the current query using a remote schema retrieved from the configured -schema-store.
+      --schema-store=""         Store used for retrieving remote schema.
       --colored-output          Show output with colored labels
   -t, --tail                    Tail the logs
   -f, --follow                  Alias for --tail
@@ -400,7 +413,77 @@ Args:
   <query>  eg '{foo="bar",baz=~".*blip"} |~ ".*error.*"'
 ```
 
-### LogCLI labels command reference
+### `instant-query` command reference
+
+The output of `logcli help instant-query`:
+
+```
+usage: logcli instant-query [<flags>] <query>
+
+Run an instant LogQL query.
+
+The "instant-query" command is useful for evaluating a metric query for a single point in time. This is equivalent to the Grafana Explore
+table view; if you want a metrics query that is used to build a Grafana graph, you should use the "query" command instead.
+
+This command does not produce useful output when querying for log lines; you should always use the "query" command when you are running log
+queries.
+
+For more information about log queries and metric queries, refer to the LogQL documentation:
+
+https://grafana.com/docs/loki/latest/logql/
+
+Flags:
+      --help                  Show context-sensitive help (also try --help-long and --help-man).
+      --version               Show application version.
+  -q, --quiet                 Suppress query metadata
+      --stats                 Show query statistics
+  -o, --output=default        Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.
+  -z, --timezone=Local        Specify the timezone to use when formatting output timestamps [Local, UTC]
+      --cpuprofile=""         Specify the location for writing a CPU profile.
+      --memprofile=""         Specify the location for writing a memory profile.
+      --stdin                 Take input logs from stdin
+      --addr="http://localhost:3100"
+                              Server address. Can also be set using LOKI_ADDR env var.
+      --username=""           Username for HTTP basic auth. Can also be set using LOKI_USERNAME env var.
+      --password=""           Password for HTTP basic auth. Can also be set using LOKI_PASSWORD env var.
+      --ca-cert=""            Path to the server Certificate Authority. Can also be set using LOKI_CA_CERT_PATH env var.
+      --tls-skip-verify       Server certificate TLS skip verify. Can also be set using LOKI_TLS_SKIP_VERIFY env var.
+      --cert=""               Path to the client certificate. Can also be set using LOKI_CLIENT_CERT_PATH env var.
+      --key=""                Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.
+      --org-id=""             adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when bypassing
+                              an auth gateway. Can also be set using LOKI_ORG_ID env var.
+      --query-tags=""         adds X-Query-Tags http header to API requests. This header value will be part of `metrics.go` statistics.
+                              Useful for tracking the query. Can also be set using LOKI_QUERY_TAGS env var.
+      --bearer-token=""       adds the Authorization header to API requests for authentication purposes. Can also be set using
+                              LOKI_BEARER_TOKEN env var.
+      --bearer-token-file=""  adds the Authorization header to API requests for authentication purposes. Can also be set using
+                              LOKI_BEARER_TOKEN_FILE env var.
+      --retries=0             How many times to retry each query when getting an error response from Loki. Can also be set using
+                              LOKI_CLIENT_RETRIES env var.
+      --min-backoff=0         Minimum backoff time between retries. Can also be set using LOKI_CLIENT_MIN_BACKOFF env var.
+      --max-backoff=0         Maximum backoff time between retries. Can also be set using LOKI_CLIENT_MAX_BACKOFF env var.
+      --auth-header="Authorization"
+                              The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.
+      --proxy-url=""          The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.
+      --limit=30              Limit on number of entries to print. Setting it to 0 will fetch all entries.
+      --now=NOW               Time at which to execute the instant query.
+      --forward               Scan forwards through logs.
+      --no-labels             Do not print any labels
+      --exclude-label=EXCLUDE-LABEL ...
+                              Exclude labels given the provided key during output.
+      --include-label=INCLUDE-LABEL ...
+                              Include labels given the provided key during output.
+      --labels-length=0       Set a fixed padding to labels
+      --store-config=""       Execute the current query using a configured storage from a given Loki configuration file.
+      --remote-schema         Execute the current query using a remote schema retrieved from the configured -schema-store.
+      --schema-store=""       Store used for retrieving remote schema.
+      --colored-output        Show output with colored labels
+
+Args:
+  <query>  eg 'rate({foo="bar"} |~ ".*error.*" [5m])'
+```
+
+### `labels` command reference
 
 The output of `logcli help labels`:
 
@@ -410,46 +493,47 @@ usage: logcli labels [<flags>] [<label>]
 Find values for a given label.
 
 Flags:
-      --help             Show context-sensitive help (also try --help-long and
-                         --help-man).
-      --version          Show application version.
-  -q, --quiet            Suppress query metadata
-      --stats            Show query statistics
-  -o, --output=default   Specify output mode [default, raw, jsonl]. raw
-                         suppresses log labels and timestamp.
-  -z, --timezone=Local   Specify the timezone to use when formatting output
-                         timestamps [Local, UTC]
-      --cpuprofile=""    Specify the location for writing a CPU profile.
-      --memprofile=""    Specify the location for writing a memory profile.
-      --stdin            Take input logs from stdin
+      --help                  Show context-sensitive help (also try --help-long and --help-man).
+      --version               Show application version.
+  -q, --quiet                 Suppress query metadata
+      --stats                 Show query statistics
+  -o, --output=default        Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.
+  -z, --timezone=Local        Specify the timezone to use when formatting output timestamps [Local, UTC]
+      --cpuprofile=""         Specify the location for writing a CPU profile.
+      --memprofile=""         Specify the location for writing a memory profile.
+      --stdin                 Take input logs from stdin
       --addr="http://localhost:3100"
-                         Server address. Can also be set using LOKI_ADDR env
-                         var.
-      --username=""      Username for HTTP basic auth. Can also be set using
-                         LOKI_USERNAME env var.
-      --password=""      Password for HTTP basic auth. Can also be set using
-                         LOKI_PASSWORD env var.
-      --ca-cert=""       Path to the server Certificate Authority. Can also be
-                         set using LOKI_CA_CERT_PATH env var.
-      --tls-skip-verify  Server certificate TLS skip verify.
-      --cert=""          Path to the client certificate. Can also be set using
-                         LOKI_CLIENT_CERT_PATH env var.
-      --key=""           Path to the client certificate key. Can also be set
-                         using LOKI_CLIENT_KEY_PATH env var.
-      --org-id=""        adds X-Scope-OrgID to API requests for representing
-                         tenant ID. Useful for requesting tenant data when
-                         bypassing an auth gateway.
-      --since=1h         Lookback window.
-      --from=FROM        Start looking for labels at this absolute time
-                         (inclusive)
-      --to=TO            Stop looking for labels at this absolute time
-                         (exclusive)
+                              Server address. Can also be set using LOKI_ADDR env var.
+      --username=""           Username for HTTP basic auth. Can also be set using LOKI_USERNAME env var.
+      --password=""           Password for HTTP basic auth. Can also be set using LOKI_PASSWORD env var.
+      --ca-cert=""            Path to the server Certificate Authority. Can also be set using LOKI_CA_CERT_PATH env var.
+      --tls-skip-verify       Server certificate TLS skip verify. Can also be set using LOKI_TLS_SKIP_VERIFY env var.
+      --cert=""               Path to the client certificate. Can also be set using LOKI_CLIENT_CERT_PATH env var.
+      --key=""                Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.
+      --org-id=""             adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when bypassing
+                              an auth gateway. Can also be set using LOKI_ORG_ID env var.
+      --query-tags=""         adds X-Query-Tags http header to API requests. This header value will be part of `metrics.go` statistics.
+                              Useful for tracking the query. Can also be set using LOKI_QUERY_TAGS env var.
+      --bearer-token=""       adds the Authorization header to API requests for authentication purposes. Can also be set using
+                              LOKI_BEARER_TOKEN env var.
+      --bearer-token-file=""  adds the Authorization header to API requests for authentication purposes. Can also be set using
+                              LOKI_BEARER_TOKEN_FILE env var.
+      --retries=0             How many times to retry each query when getting an error response from Loki. Can also be set using
+                              LOKI_CLIENT_RETRIES env var.
+      --min-backoff=0         Minimum backoff time between retries. Can also be set using LOKI_CLIENT_MIN_BACKOFF env var.
+      --max-backoff=0         Maximum backoff time between retries. Can also be set using LOKI_CLIENT_MAX_BACKOFF env var.
+      --auth-header="Authorization"
+                              The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.
+      --proxy-url=""          The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.
+      --since=1h              Lookback window.
+      --from=FROM             Start looking for labels at this absolute time (inclusive)
+      --to=TO                 Stop looking for labels at this absolute time (exclusive)
 
 Args:
   [<label>]  The name of the label.
 ```
 
-### LogCLI series command reference
+### `series` command reference
 
 The output of `logcli help series`:
 
@@ -458,57 +542,311 @@ usage: logcli series [<flags>] <matcher>
 
 Run series query.
 
-The "series" command will take the provided label matcher and return all the log
-streams found in the time window.
+The "series" command will take the provided label matcher and return all the log streams found in the time window.
 
 It is possible to send an empty label matcher '{}' to return all streams.
 
-Use the --analyze-labels flag to get a summary of the labels found in all
-streams. This is helpful to find high cardinality labels.
+Use the --analyze-labels flag to get a summary of the labels found in all streams. This is helpful to find high cardinality labels.
 
 Flags:
-      --help             Show context-sensitive help (also try --help-long and
-                         --help-man).
-      --version          Show application version.
-  -q, --quiet            Suppress query metadata
-      --stats            Show query statistics
-  -o, --output=default   Specify output mode [default, raw, jsonl]. raw
-                         suppresses log labels and timestamp.
-  -z, --timezone=Local   Specify the timezone to use when formatting output
-                         timestamps [Local, UTC]
-      --cpuprofile=""    Specify the location for writing a CPU profile.
-      --memprofile=""    Specify the location for writing a memory profile.
-      --stdin            Take input logs from stdin
+      --help                  Show context-sensitive help (also try --help-long and --help-man).
+      --version               Show application version.
+  -q, --quiet                 Suppress query metadata
+      --stats                 Show query statistics
+  -o, --output=default        Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.
+  -z, --timezone=Local        Specify the timezone to use when formatting output timestamps [Local, UTC]
+      --cpuprofile=""         Specify the location for writing a CPU profile.
+      --memprofile=""         Specify the location for writing a memory profile.
+      --stdin                 Take input logs from stdin
       --addr="http://localhost:3100"
-                         Server address. Can also be set using LOKI_ADDR env
-                         var.
-      --username=""      Username for HTTP basic auth. Can also be set using
-                         LOKI_USERNAME env var.
-      --password=""      Password for HTTP basic auth. Can also be set using
-                         LOKI_PASSWORD env var.
-      --ca-cert=""       Path to the server Certificate Authority. Can also be
-                         set using LOKI_CA_CERT_PATH env var.
-      --tls-skip-verify  Server certificate TLS skip verify.
-      --cert=""          Path to the client certificate. Can also be set using
-                         LOKI_CLIENT_CERT_PATH env var.
-      --key=""           Path to the client certificate key. Can also be set
-                         using LOKI_CLIENT_KEY_PATH env var.
-      --org-id=""        adds X-Scope-OrgID to API requests for representing
-                         tenant ID. Useful for requesting tenant data when
-                         bypassing an auth gateway.
-      --since=1h         Lookback window.
-      --from=FROM        Start looking for logs at this absolute time
-                         (inclusive)
-      --to=TO            Stop looking for logs at this absolute time (exclusive)
-      --analyze-labels   Printout a summary of labels including count of label
-                         value combinations, useful for debugging high
-                         cardinality series
+                              Server address. Can also be set using LOKI_ADDR env var.
+      --username=""           Username for HTTP basic auth. Can also be set using LOKI_USERNAME env var.
+      --password=""           Password for HTTP basic auth. Can also be set using LOKI_PASSWORD env var.
+      --ca-cert=""            Path to the server Certificate Authority. Can also be set using LOKI_CA_CERT_PATH env var.
+      --tls-skip-verify       Server certificate TLS skip verify. Can also be set using LOKI_TLS_SKIP_VERIFY env var.
+      --cert=""               Path to the client certificate. Can also be set using LOKI_CLIENT_CERT_PATH env var.
+      --key=""                Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.
+      --org-id=""             adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when bypassing
+                              an auth gateway. Can also be set using LOKI_ORG_ID env var.
+      --query-tags=""         adds X-Query-Tags http header to API requests. This header value will be part of `metrics.go` statistics.
+                              Useful for tracking the query. Can also be set using LOKI_QUERY_TAGS env var.
+      --bearer-token=""       adds the Authorization header to API requests for authentication purposes. Can also be set using
+                              LOKI_BEARER_TOKEN env var.
+      --bearer-token-file=""  adds the Authorization header to API requests for authentication purposes. Can also be set using
+                              LOKI_BEARER_TOKEN_FILE env var.
+      --retries=0             How many times to retry each query when getting an error response from Loki. Can also be set using
+                              LOKI_CLIENT_RETRIES env var.
+      --min-backoff=0         Minimum backoff time between retries. Can also be set using LOKI_CLIENT_MIN_BACKOFF env var.
+      --max-backoff=0         Maximum backoff time between retries. Can also be set using LOKI_CLIENT_MAX_BACKOFF env var.
+      --auth-header="Authorization"
+                              The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.
+      --proxy-url=""          The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.
+      --since=1h              Lookback window.
+      --from=FROM             Start looking for logs at this absolute time (inclusive)
+      --to=TO                 Stop looking for logs at this absolute time (exclusive)
+      --analyze-labels        Printout a summary of labels including count of label value combinations, useful for debugging high cardinality
+                              series
 
 Args:
   <matcher>  eg '{foo="bar",baz=~".*blip"}'
 ```
 
-### LogCLI `--stdin` usage
+### `fmt` command reference
+
+The output of `logcli help fmt`:
+
+```
+usage: logcli fmt
+
+Formats a LogQL query.
+
+Flags:
+      --help                  Show context-sensitive help (also try --help-long and --help-man).
+      --version               Show application version.
+  -q, --quiet                 Suppress query metadata
+      --stats                 Show query statistics
+  -o, --output=default        Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.
+  -z, --timezone=Local        Specify the timezone to use when formatting output timestamps [Local, UTC]
+      --cpuprofile=""         Specify the location for writing a CPU profile.
+      --memprofile=""         Specify the location for writing a memory profile.
+      --stdin                 Take input logs from stdin
+      --addr="http://localhost:3100"
+                              Server address. Can also be set using LOKI_ADDR env var.
+      --username=""           Username for HTTP basic auth. Can also be set using LOKI_USERNAME env var.
+      --password=""           Password for HTTP basic auth. Can also be set using LOKI_PASSWORD env var.
+      --ca-cert=""            Path to the server Certificate Authority. Can also be set using LOKI_CA_CERT_PATH env var.
+      --tls-skip-verify       Server certificate TLS skip verify. Can also be set using LOKI_TLS_SKIP_VERIFY env var.
+      --cert=""               Path to the client certificate. Can also be set using LOKI_CLIENT_CERT_PATH env var.
+      --key=""                Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.
+      --org-id=""             adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when bypassing
+                              an auth gateway. Can also be set using LOKI_ORG_ID env var.
+      --query-tags=""         adds X-Query-Tags http header to API requests. This header value will be part of `metrics.go` statistics.
+                              Useful for tracking the query. Can also be set using LOKI_QUERY_TAGS env var.
+      --bearer-token=""       adds the Authorization header to API requests for authentication purposes. Can also be set using
+                              LOKI_BEARER_TOKEN env var.
+      --bearer-token-file=""  adds the Authorization header to API requests for authentication purposes. Can also be set using
+                              LOKI_BEARER_TOKEN_FILE env var.
+      --retries=0             How many times to retry each query when getting an error response from Loki. Can also be set using
+                              LOKI_CLIENT_RETRIES env var.
+      --min-backoff=0         Minimum backoff time between retries. Can also be set using LOKI_CLIENT_MIN_BACKOFF env var.
+      --max-backoff=0         Maximum backoff time between retries. Can also be set using LOKI_CLIENT_MAX_BACKOFF env var.
+      --auth-header="Authorization"
+                              The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.
+      --proxy-url=""          The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.
+```
+
+### `stats` command reference
+
+The output of `logcli help stats`:
+
+```
+usage: logcli stats [<flags>] <query>
+
+Run a stats query.
+
+The "stats" command will take the provided query and return statistics from the index on how much data is contained in the matching stream(s).
+This only works against Loki instances using the TSDB index format.
+
+By default we look over the last hour of data; use --since to modify or provide specific start and end times with --from and --to
+respectively.
+
+Notice that when using --from and --to then ensure to use RFC3339Nano time format, but without timezone at the end. The local timezone will be
+added automatically or if using --timezone flag.
+
+Example:
+
+  logcli stats
+     --timezone=UTC
+     --from="2021-01-19T10:00:00Z"
+     --to="2021-01-19T20:00:00Z"
+     'my-query'
+
+Flags:
+      --help                  Show context-sensitive help (also try --help-long and --help-man).
+      --version               Show application version.
+  -q, --quiet                 Suppress query metadata
+      --stats                 Show query statistics
+  -o, --output=default        Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.
+  -z, --timezone=Local        Specify the timezone to use when formatting output timestamps [Local, UTC]
+      --cpuprofile=""         Specify the location for writing a CPU profile.
+      --memprofile=""         Specify the location for writing a memory profile.
+      --stdin                 Take input logs from stdin
+      --addr="http://localhost:3100"
+                              Server address. Can also be set using LOKI_ADDR env var.
+      --username=""           Username for HTTP basic auth. Can also be set using LOKI_USERNAME env var.
+      --password=""           Password for HTTP basic auth. Can also be set using LOKI_PASSWORD env var.
+      --ca-cert=""            Path to the server Certificate Authority. Can also be set using LOKI_CA_CERT_PATH env var.
+      --tls-skip-verify       Server certificate TLS skip verify. Can also be set using LOKI_TLS_SKIP_VERIFY env var.
+      --cert=""               Path to the client certificate. Can also be set using LOKI_CLIENT_CERT_PATH env var.
+      --key=""                Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.
+      --org-id=""             adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when bypassing
+                              an auth gateway. Can also be set using LOKI_ORG_ID env var.
+      --query-tags=""         adds X-Query-Tags http header to API requests. This header value will be part of `metrics.go` statistics.
+                              Useful for tracking the query. Can also be set using LOKI_QUERY_TAGS env var.
+      --bearer-token=""       adds the Authorization header to API requests for authentication purposes. Can also be set using
+                              LOKI_BEARER_TOKEN env var.
+      --bearer-token-file=""  adds the Authorization header to API requests for authentication purposes. Can also be set using
+                              LOKI_BEARER_TOKEN_FILE env var.
+      --retries=0             How many times to retry each query when getting an error response from Loki. Can also be set using
+                              LOKI_CLIENT_RETRIES env var.
+      --min-backoff=0         Minimum backoff time between retries. Can also be set using LOKI_CLIENT_MIN_BACKOFF env var.
+      --max-backoff=0         Maximum backoff time between retries. Can also be set using LOKI_CLIENT_MAX_BACKOFF env var.
+      --auth-header="Authorization"
+                              The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.
+      --proxy-url=""          The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.
+      --since=1h              Lookback window.
+      --from=FROM             Start looking for logs at this absolute time (inclusive)
+      --to=TO                 Stop looking for logs at this absolute time (exclusive)
+
+Args:
+  <query>  eg '{foo="bar",baz=~".*blip"} |~ ".*error.*"'
+```
+
+### `volume` command reference
+
+The output of `logcli help volume`:
+
+```
+usage: logcli volume [<flags>] <query>
+
+Run a volume query.
+
+The "volume" command will take the provided label selector(s) and return aggregate volumes for series matching those volumes. This only works
+against Loki instances using the TSDB index format.
+
+By default we look over the last hour of data; use --since to modify or provide specific start and end times with --from and --to
+respectively.
+
+Notice that when using --from and --to then ensure to use RFC3339Nano time format, but without timezone at the end. The local timezone will be
+added automatically or if using --timezone flag.
+
+Example:
+
+  logcli volume
+     --timezone=UTC
+     --from="2021-01-19T10:00:00Z"
+     --to="2021-01-19T20:00:00Z"
+     'my-query'
+
+Flags:
+      --help                  Show context-sensitive help (also try --help-long and --help-man).
+      --version               Show application version.
+  -q, --quiet                 Suppress query metadata
+      --stats                 Show query statistics
+  -o, --output=default        Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.
+  -z, --timezone=Local        Specify the timezone to use when formatting output timestamps [Local, UTC]
+      --cpuprofile=""         Specify the location for writing a CPU profile.
+      --memprofile=""         Specify the location for writing a memory profile.
+      --stdin                 Take input logs from stdin
+      --addr="http://localhost:3100"
+                              Server address. Can also be set using LOKI_ADDR env var.
+      --username=""           Username for HTTP basic auth. Can also be set using LOKI_USERNAME env var.
+      --password=""           Password for HTTP basic auth. Can also be set using LOKI_PASSWORD env var.
+      --ca-cert=""            Path to the server Certificate Authority. Can also be set using LOKI_CA_CERT_PATH env var.
+      --tls-skip-verify       Server certificate TLS skip verify. Can also be set using LOKI_TLS_SKIP_VERIFY env var.
+      --cert=""               Path to the client certificate. Can also be set using LOKI_CLIENT_CERT_PATH env var.
+      --key=""                Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.
+      --org-id=""             adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when bypassing
+                              an auth gateway. Can also be set using LOKI_ORG_ID env var.
+      --query-tags=""         adds X-Query-Tags http header to API requests. This header value will be part of `metrics.go` statistics.
+                              Useful for tracking the query. Can also be set using LOKI_QUERY_TAGS env var.
+      --bearer-token=""       adds the Authorization header to API requests for authentication purposes. Can also be set using
+                              LOKI_BEARER_TOKEN env var.
+      --bearer-token-file=""  adds the Authorization header to API requests for authentication purposes. Can also be set using
+                              LOKI_BEARER_TOKEN_FILE env var.
+      --retries=0             How many times to retry each query when getting an error response from Loki. Can also be set using
+                              LOKI_CLIENT_RETRIES env var.
+      --min-backoff=0         Minimum backoff time between retries. Can also be set using LOKI_CLIENT_MIN_BACKOFF env var.
+      --max-backoff=0         Maximum backoff time between retries. Can also be set using LOKI_CLIENT_MAX_BACKOFF env var.
+      --auth-header="Authorization"
+                              The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.
+      --proxy-url=""          The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.
+      --since=1h              Lookback window.
+      --from=FROM             Start looking for logs at this absolute time (inclusive)
+      --to=TO                 Stop looking for logs at this absolute time (exclusive)
+      --limit=30              Limit on number of series to return volumes for.
+      --targetLabels=TARGETLABELS ...
+                              List of labels to aggregate results into.
+      --aggregateByLabels     Whether to aggregate results by label name only.
+
+Args:
+  <query>  eg '{foo="bar",baz=~".*blip"}
+```
+
+### `volume_range` command reference
+
+The output of `logcli help volume_range`:
+
+```
+usage: logcli volume_range [<flags>] <query>
+
+Run a volume query and return timeseries data.
+
+The "volume_range" command will take the provided label selector(s) and return aggregate volumes for series matching those volumes, aggregated
+into buckets according to the step value. This only works against Loki instances using the TSDB index format.
+
+By default we look over the last hour of data; use --since to modify or provide specific start and end times with --from and --to
+respectively.
+
+Notice that when using --from and --to then ensure to use RFC3339Nano time format, but without timezone at the end. The local timezone will be
+added automatically or if using --timezone flag.
+
+Example:
+
+        logcli volume_range
+           --timezone=UTC
+           --from="2021-01-19T10:00:00Z"
+           --to="2021-01-19T20:00:00Z"
+       --step=1h
+           'my-query'
+
+Flags:
+      --help                  Show context-sensitive help (also try --help-long and --help-man).
+      --version               Show application version.
+  -q, --quiet                 Suppress query metadata
+      --stats                 Show query statistics
+  -o, --output=default        Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.
+  -z, --timezone=Local        Specify the timezone to use when formatting output timestamps [Local, UTC]
+      --cpuprofile=""         Specify the location for writing a CPU profile.
+      --memprofile=""         Specify the location for writing a memory profile.
+      --stdin                 Take input logs from stdin
+      --addr="http://localhost:3100"
+                              Server address. Can also be set using LOKI_ADDR env var.
+      --username=""           Username for HTTP basic auth. Can also be set using LOKI_USERNAME env var.
+      --password=""           Password for HTTP basic auth. Can also be set using LOKI_PASSWORD env var.
+      --ca-cert=""            Path to the server Certificate Authority. Can also be set using LOKI_CA_CERT_PATH env var.
+      --tls-skip-verify       Server certificate TLS skip verify. Can also be set using LOKI_TLS_SKIP_VERIFY env var.
+      --cert=""               Path to the client certificate. Can also be set using LOKI_CLIENT_CERT_PATH env var.
+      --key=""                Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.
+      --org-id=""             adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when bypassing
+                              an auth gateway. Can also be set using LOKI_ORG_ID env var.
+      --query-tags=""         adds X-Query-Tags http header to API requests. This header value will be part of `metrics.go` statistics.
+                              Useful for tracking the query. Can also be set using LOKI_QUERY_TAGS env var.
+      --bearer-token=""       adds the Authorization header to API requests for authentication purposes. Can also be set using
+                              LOKI_BEARER_TOKEN env var.
+      --bearer-token-file=""  adds the Authorization header to API requests for authentication purposes. Can also be set using
+                              LOKI_BEARER_TOKEN_FILE env var.
+      --retries=0             How many times to retry each query when getting an error response from Loki. Can also be set using
+                              LOKI_CLIENT_RETRIES env var.
+      --min-backoff=0         Minimum backoff time between retries. Can also be set using LOKI_CLIENT_MIN_BACKOFF env var.
+      --max-backoff=0         Maximum backoff time between retries. Can also be set using LOKI_CLIENT_MAX_BACKOFF env var.
+      --auth-header="Authorization"
+                              The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.
+      --proxy-url=""          The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.
+      --since=1h              Lookback window.
+      --from=FROM             Start looking for logs at this absolute time (inclusive)
+      --to=TO                 Stop looking for logs at this absolute time (exclusive)
+      --limit=30              Limit on number of series to return volumes for.
+      --targetLabels=TARGETLABELS ...
+                              List of labels to aggregate results into.
+      --aggregateByLabels     Whether to aggregate results by label name only.
+      --step=1h               Query resolution step width, roll up volumes into buckets cover step time each.
+
+Args:
+  <query>  eg '{foo="bar",baz=~".*blip"}
+```
+
+### `--stdin` usage
 
 You can consume log lines from your `stdin` instead of Loki servers.
 

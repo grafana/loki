@@ -5,7 +5,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -37,6 +37,34 @@ func Test_jsonParser_Parse(t *testing.T) {
 			labels.FromStrings("counter", "1",
 				"price__net_", "5.56909",
 			),
+			NoParserHints(),
+		},
+		{
+			"whitespace key value",
+			[]byte(`{" ": {"foo":"bar"}}`),
+			labels.EmptyLabels(),
+			labels.FromStrings("foo", "bar"),
+			NoParserHints(),
+		},
+		{
+			"whitespace key and whitespace subkey values",
+			[]byte(`{" ": {" ":"bar"}}`),
+			labels.EmptyLabels(),
+			labels.FromStrings("", "bar"),
+			NoParserHints(),
+		},
+		{
+			"whitespace key and empty subkey values",
+			[]byte(`{" ": {"":"bar"}}`),
+			labels.EmptyLabels(),
+			labels.FromStrings("", "bar"),
+			NoParserHints(),
+		},
+		{
+			"empty key and empty subkey values",
+			[]byte(`{"": {"":"bar"}}`),
+			labels.EmptyLabels(),
+			labels.FromStrings("", "bar"),
 			NoParserHints(),
 		},
 		{

@@ -2,8 +2,6 @@
 title: Configure Promtail
 menuTitle:  Configuration reference
 description: Configuration parameters for the Promtail agent.
-aliases: 
-- ../../clients/promtail/configuration/
 weight:  200
 ---
 
@@ -42,6 +40,13 @@ non-list parameters the value is set to the specified default.
 For more detailed information on configuring how to discover and scrape logs from
 targets, see [Scraping]({{< relref "./scraping" >}}). For more information on transforming logs
 from scraped targets, see [Pipelines]({{< relref "./pipelines" >}}).
+
+## Reload at runtime
+
+Promtail can reload its configuration at runtime. If the new configuration
+is not well-formed, the changes will not be applied.
+A configuration reload is triggered by sending a `SIGHUP` to the Promtail process or
+sending a HTTP POST request to the `/reload` endpoint (when the `--server.enable-runtime-reload` flag is enabled).
 
 ### Use environment variables in the configuration
 
@@ -681,7 +686,8 @@ The metrics stage allows for defining metrics from the extracted data.
 
 Created metrics are not pushed to Loki and are instead exposed via Promtail's
 `/metrics` endpoint. Prometheus should be configured to scrape Promtail to be
-able to retrieve the metrics configured by this stage.
+able to retrieve the metrics configured by this stage. 
+If Promtail's configuration is reloaded, all metrics will be reset.
 
 
 ```yaml
@@ -845,21 +851,60 @@ using the AMD64 Docker image, this is enabled by default.
 labels:
   [ <labelname>: <labelvalue> ... ]
 
+# Get labels from journal, when it is not empty
+relabel_configs:
+- source_labels: ['__journal__hostname']
+  target_label: host
+- source_labels: ['__journal__systemd_unit']
+  target_label: systemd_unit
+  regex: '(.+)'
+- source_labels: ['__journal__systemd_user_unit']
+  target_label: systemd_user_unit
+  regex: '(.+)'
+- source_labels: ['__journal__transport']
+  target_label: transport
+  regex: '(.+)'
+- source_labels: ['__journal_priority_keyword']
+  target_label: severity
+  regex: '(.+)'
+
 # Path to a directory to read entries from. Defaults to system
 # paths (/var/log/journal and /run/log/journal) when empty.
 [path: <string>]
 ```
+#### Available Labels
 
-{{% admonition type="note" %}}
-Priority label is available as both value and keyword. For example, if `priority` is `3` then the labels will be `__journal_priority` with a value `3` and `__journal_priority_keyword` with a corresponding keyword `err`.
-{{% /admonition %}}
+Labels are imported from systemd-journal fields. The label name is the field name set to lower case with **__journal_** prefix. See the man page [systemd.journal-fields](https://www.freedesktop.org/software/systemd/man/latest/systemd.journal-fields.html) for more information.
+
+For example:
+
+| journal field      | label                        |
+|--------------------|------------------------------|
+| _HOSTNAME          | __journal__hostname          |
+| _SYSTEMD_UNIT      | __journal__systemd_unit      |
+| _SYSTEMD_USER_UNIT | __journal__systemd_user_unit |
+| ERRNO              | __journal_errno              |
+
+In addition to `__journal_priority` (imported from `PRIORITY` journal field, where the value is an integer from 0 to 7), promtail adds `__journal_priority_keyword` label where the value is generated using the `makeJournalPriority` mapping function.
+
+| journal priority | keyword |
+|------------------|---------|
+| 0                | emerg   |
+| 1                | alert   |
+| 2                | crit    |
+| 3                | error   |
+| 4                | warning |
+| 5                | notice  |
+| 6                | info    |
+| 7                | debug   |
 
 ### syslog
 
 The `syslog` block configures a syslog listener allowing users to push
-logs to Promtail with the syslog protocol.
-Currently supported is [IETF Syslog (RFC5424)](https://tools.ietf.org/html/rfc5424)
-with and without octet counting.
+logs to Promtail with the syslog protocol. Currently supported both
+[BSD syslog Protocol](https://datatracker.ietf.org/doc/html/rfc3164) and
+[IETF Syslog (RFC5424)](https://tools.ietf.org/html/rfc5424) with and
+without octet counting.
 
 The recommended deployment is to have a dedicated syslog forwarder like **syslog-ng** or **rsyslog**
 in front of Promtail. The forwarder can take care of the various specifications
@@ -910,6 +955,13 @@ use_incoming_timestamp: <bool>
 
 # Sets the maximum limit to the length of syslog messages
 max_message_length: <int>
+
+# Defines used Sylog format at the target. 
+syslog_format:
+ [type: <string> | default = "rfc5424"]
+
+# Defines whether the full RFC5424 formatted syslog message should be pushed to Loki
+use_rfc5424_message: <bool>
 ```
 
 #### Available Labels
@@ -926,7 +978,7 @@ max_message_length: <int>
 
 ### loki_push_api
 
-The `loki_push_api` block configures Promtail to expose a [Loki push API]({{< relref "../../reference/api#ingest-logs" >}}) server.
+The `loki_push_api` block configures Promtail to expose a [Loki push API](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#ingest-logs) server.
 
 Each job configured with a `loki_push_api` will expose this API and will require a separate port.
 
@@ -1951,6 +2003,13 @@ or [journald](https://docs.docker.com/config/containers/logging/journald/) loggi
 Note that the discovery will not pick up finished containers. That means
 Promtail will not scrape the remaining logs from finished containers after a restart.
 
+The Docker target correctly joins log segments if a long line was split into different frames by Docker.
+To avoid hypothetically unlimited line size and out-of-memory errors in Promtail, this target applies
+a default soft line size limit of 256 kiB corresponding to the default max line size in Loki.
+If the buffer increases above this size, then the line will be sent to output immediately, and the rest
+of the line discarded. To change this behaviour, set `limits_config.max_line_size` to a non-zero value
+to apply a hard limit.
+
 The configuration is inherited from [Prometheus' Docker service discovery](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#docker_sd_config).
 
 ```yaml
@@ -2076,6 +2135,8 @@ The optional `limits_config` block configures global limits for this instance of
 [max_streams: <int> | default = 0]
 
 # Maximum log line byte size allowed without dropping. Example: 256kb, 2M. 0 to disable.
+# If disabled, targets may apply default buffer size safety limits. If a target implements
+# a default limit, this will be documented under the `scrape_configs` entry.
 [max_line_size: <int> | default = 0]
 # Whether to truncate lines that exceed max_line_size. No effect if max_line_size is disabled
 [max_line_size_truncate: <bool> | default = false]

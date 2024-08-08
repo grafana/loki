@@ -3,7 +3,7 @@ package loki
 import (
 	"github.com/grafana/dskit/services"
 
-	"github.com/grafana/loki/pkg/compactor/deletion"
+	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 )
 
 func deleteRequestsStoreListener(d deletion.DeleteRequestsClient) *listener {

@@ -14,9 +14,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/util/constants"
-	"github.com/grafana/loki/pkg/util/math"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/math"
 )
 
 // MemcachedConfig is config to make a Memcached
@@ -30,8 +30,8 @@ type MemcachedConfig struct {
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *MemcachedConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.Expiration, prefix+"memcached.expiration", 0, description+"How long keys stay in the memcache.")
-	f.IntVar(&cfg.BatchSize, prefix+"memcached.batchsize", 256, description+"How many keys to fetch in each batch.")
-	f.IntVar(&cfg.Parallelism, prefix+"memcached.parallelism", 10, description+"Maximum active requests to memcache.")
+	f.IntVar(&cfg.BatchSize, prefix+"memcached.batchsize", 4, description+"How many keys to fetch in each batch.")
+	f.IntVar(&cfg.Parallelism, prefix+"memcached.parallelism", 5, description+"Maximum active requests to memcache.")
 }
 
 // Memcached type caches chunks in memcached

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -17,8 +17,8 @@ import (
 
 	"github.com/grafana/regexp/syntax"
 
-	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 // Expr is the root expression which can be a SampleExpr or LogSelectorExpr
@@ -185,16 +185,22 @@ func (m MultiStageExpr) reorderStages() []StageExpr {
 func combineFilters(in []*LineFilterExpr) StageExpr {
 	result := in[len(in)-1]
 	for i := len(in) - 2; i >= 0; i-- {
-		leafNode(result).Left = in[i]
+		leaf := leafNode(result, in[i])
+		if leaf != nil {
+			leaf.Left = in[i]
+		}
 	}
 
 	return result
 }
 
-func leafNode(in *LineFilterExpr) *LineFilterExpr {
+func leafNode(in *LineFilterExpr, child *LineFilterExpr) *LineFilterExpr {
 	current := in
 	//nolint:revive
 	for ; current.Left != nil; current = current.Left {
+		if current == child || current.Left == child {
+			return nil
+		}
 	}
 	return current
 }
@@ -318,9 +324,14 @@ func (e *PipelineExpr) Pipeline() (log.Pipeline, error) {
 // HasFilter returns true if the pipeline contains stage that can filter out lines.
 func (e *PipelineExpr) HasFilter() bool {
 	for _, p := range e.MultiStages {
-		switch p.(type) {
-		case *LineFilterExpr, *LabelFilterExpr:
+		switch v := p.(type) {
+		case *LabelFilterExpr:
 			return true
+		case *LineFilterExpr:
+			// ignore empty matchers as they match everything
+			if !((v.Ty == log.LineMatchEqual || v.Ty == log.LineMatchRegexp) && v.Match == "") {
+				return true
+			}
 		default:
 			continue
 		}
@@ -329,20 +340,31 @@ func (e *PipelineExpr) HasFilter() bool {
 }
 
 type LineFilter struct {
-	Ty    labels.MatchType
+	Ty    log.LineMatchType
 	Match string
 	Op    string
 }
 
 type LineFilterExpr struct {
 	LineFilter
-	Left      *LineFilterExpr
+	Left *LineFilterExpr
+	// Or in LineFilterExpr works as follows.
+	//
+	// Case 1: With MatchEqual operators(|= or |~, etc)
+	// example: `{app="loki"} |= "test" |= "foo" or "bar"`
+	// expectation: match "test" AND (either "foo" OR "bar")
+	//
+	// Case 2: With NotMatchEqual operators (!= or !~, etc)
+	// example: `{app="loki"} != "test" != "foo" or "bar"`
+	// expectation: match !"test" AND !"foo" AND !"bar", Basically exactly as if `{app="loki"} != "test" != "foo" != "bar".
+
+	// See LineFilterExpr tests for more examples.
 	Or        *LineFilterExpr
 	IsOrChild bool
 	implicit
 }
 
-func newLineFilterExpr(ty labels.MatchType, op, match string) *LineFilterExpr {
+func newLineFilterExpr(ty log.LineMatchType, op, match string) *LineFilterExpr {
 	return &LineFilterExpr{
 		LineFilter: LineFilter{
 			Ty:    ty,
@@ -355,7 +377,18 @@ func newLineFilterExpr(ty labels.MatchType, op, match string) *LineFilterExpr {
 func newOrLineFilter(left, right *LineFilterExpr) *LineFilterExpr {
 	right.Ty = left.Ty
 
-	if left.Ty == labels.MatchEqual || left.Ty == labels.MatchRegexp {
+	// NOTE: Consider, we have chain of "or", != "foo" or "bar" or "baz"
+	// we parse from right to left, so first time left="bar", right="baz", and we don't know the actual `Ty` (equal: |=, notequal: !=, regex: |~, etc). So
+	// it will have default (0, LineMatchEqual).
+	// we only know real `Ty` in next stage, where left="foo", right="bar or baz", at this time, `Ty` is LineMatchNotEqual(!=).
+	// Now we need to update not just `right.Ty = left.Ty`, we also have to update all the `right.Or`  until `right.Or` is nil.
+	tmp := right
+	for tmp.Or != nil {
+		tmp.Or.Ty = left.Ty
+		tmp = tmp.Or
+	}
+
+	if left.Ty == log.LineMatchEqual || left.Ty == log.LineMatchRegexp || left.Ty == log.LineMatchPattern {
 		left.Or = right
 		right.IsOrChild = true
 		return left
@@ -366,6 +399,46 @@ func newOrLineFilter(left, right *LineFilterExpr) *LineFilterExpr {
 }
 
 func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineFilterExpr {
+	// NOTE: When parsing "or" chains in linefilter, particularly variations of NOT filters (!= or !~), we need to transform
+	// say (!= "foo" or "bar "baz") => (!="foo" != "bar" != "baz")
+	if right.Or != nil && !(right.Ty == log.LineMatchEqual || right.Ty == log.LineMatchRegexp || right.Ty == log.LineMatchPattern) {
+		right.Or.IsOrChild = false
+		tmp := right.Or
+		right.Or = nil
+		right = newNestedLineFilterExpr(right, tmp)
+	}
+
+	// NOTE: Before supporting `or` in linefilter, `right` will always be a leaf node (right.next == nil)
+	// After supporting `or` in linefilter, `right` may not be a leaf node (e.g: |= "a" or "b). Here "b".Left = "a")
+	// We traverse the tree recursively untile we make `right` leaf node.
+	// Consider the following expression. {app="loki"} != "test" != "foo" or "bar or "car""
+	// It first creates following tree on the left and transformed into the one on the right.
+	//                                                                              ┌────────────┐
+	//               ┌────────────┐                                                 │   root     │
+	//               │   root     │                                                 └──────┬─────┘
+	//               └──────┬─────┘                                                        │
+	//                      │                                                              │
+	//                      │                                                              │
+	//                      │                       ─────────►            ┌────────────────┴─────────────┐
+	//     ┌────────────────┴─────────────┐                               │                              │
+	//     │                              │                           ┌───┴────┐                         │
+	//     │                              │                           │ foo    │                      ┌──┴────┐
+	//     │                            ┌─┴────┐                      └───┬────┘                      │  bar  │
+	// ┌───┴────┐                       │ bar  │                          │                           └───────┘
+	// │  test  │                       └──┬───┘                          │
+	// └────────┘                          │                              │
+	//                                     │                     ┌────────┘
+	//                                     │                     │
+	//                           ┌─────────┘                     │
+	//                           │                               │
+	//                           │                           ┌───┴───┐
+	//                           │                           │  test │
+	//                         ┌─┴────┐                      └───────┘
+	//                         │ foo  │
+	//                         └──────┘
+	if right.Left != nil {
+		left = newNestedLineFilterExpr(left, right.Left)
+	}
 	return &LineFilterExpr{
 		Left:       left,
 		LineFilter: right.LineFilter,
@@ -389,7 +462,7 @@ func (e *LineFilterExpr) Accept(v RootVisitor) {
 }
 
 // AddFilterExpr adds a filter expression to a logselector expression.
-func AddFilterExpr(expr LogSelectorExpr, ty labels.MatchType, op, match string) (LogSelectorExpr, error) {
+func AddFilterExpr(expr LogSelectorExpr, ty log.LineMatchType, op, match string) (LogSelectorExpr, error) {
 	filter := newLineFilterExpr(ty, op, match)
 	switch e := expr.(type) {
 	case *MatchersExpr:
@@ -412,16 +485,7 @@ func (e *LineFilterExpr) String() string {
 	}
 
 	if !e.IsOrChild { // Only write the type when we're not chaining "or" filters
-		switch e.Ty {
-		case labels.MatchRegexp:
-			sb.WriteString("|~")
-		case labels.MatchNotRegexp:
-			sb.WriteString("!~")
-		case labels.MatchEqual:
-			sb.WriteString("|=")
-		case labels.MatchNotEqual:
-			sb.WriteString("!=")
-		}
+		sb.WriteString(e.Ty.String())
 		sb.WriteString(" ")
 	}
 
@@ -1188,7 +1252,9 @@ const (
 	// internal expressions not represented in LogQL. These are used to
 	// evaluate expressions differently resulting in intermediate formats
 	// that are not consumable by LogQL clients but are used for sharding.
-	OpRangeTypeQuantileSketch = "__quantile_sketch_over_time__"
+	OpRangeTypeQuantileSketch     = "__quantile_sketch_over_time__"
+	OpRangeTypeFirstWithTimestamp = "__first_over_time_ts__"
+	OpRangeTypeLastWithTimestamp  = "__last_over_time_ts__"
 )
 
 func IsComparisonOperator(op string) bool {
@@ -1292,7 +1358,9 @@ func (e *RangeAggregationExpr) MatcherGroups() ([]MatcherRange, error) {
 func (e RangeAggregationExpr) validate() error {
 	if e.Grouping != nil {
 		switch e.Operation {
-		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeQuantileSketch, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeFirst, OpRangeTypeLast:
+		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile,
+			OpRangeTypeQuantileSketch, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeFirst,
+			OpRangeTypeLast, OpRangeTypeFirstWithTimestamp, OpRangeTypeLastWithTimestamp:
 		default:
 			return fmt.Errorf("grouping not allowed for %s aggregation", e.Operation)
 		}
@@ -1301,7 +1369,8 @@ func (e RangeAggregationExpr) validate() error {
 		switch e.Operation {
 		case OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev,
 			OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeRate, OpRangeTypeRateCounter,
-			OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast, OpRangeTypeQuantileSketch:
+			OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast, OpRangeTypeQuantileSketch,
+			OpRangeTypeFirstWithTimestamp, OpRangeTypeLastWithTimestamp:
 			return nil
 		default:
 			return fmt.Errorf("invalid aggregation %s with unwrap", e.Operation)
@@ -2162,6 +2231,8 @@ var shardableOps = map[string]bool{
 	// range vector ops
 	OpRangeTypeAvg:       true,
 	OpRangeTypeCount:     true,
+	OpRangeTypeFirst:     true,
+	OpRangeTypeLast:      true,
 	OpRangeTypeRate:      true,
 	OpRangeTypeBytes:     true,
 	OpRangeTypeBytesRate: true,

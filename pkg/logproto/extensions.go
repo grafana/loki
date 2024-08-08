@@ -1,16 +1,19 @@
 package logproto
 
 import (
+	"encoding/json"
 	"sort"
 	"strings"
 	"sync/atomic" //lint:ignore faillint we can't use go.uber.org/atomic with a protobuf struct without wrapping it.
 
+	"github.com/buger/jsonparser"
 	"github.com/cespare/xxhash/v2"
 	"github.com/dustin/go-humanize"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 // This is the separator define in the Prometheus Labels.Hash function.
@@ -139,4 +142,95 @@ func (m *Shard) SpaceFor(stats *IndexStatsResponse, targetShardBytes uint64) boo
 	updated := m.Stats.Bytes + stats.Bytes
 	newDelta := max(updated, targetShardBytes) - min(updated, targetShardBytes)
 	return newDelta <= curDelta
+}
+
+type DetectedFieldType string
+
+const (
+	DetectedFieldString   DetectedFieldType = "string"
+	DetectedFieldInt      DetectedFieldType = "int"
+	DetectedFieldFloat    DetectedFieldType = "float"
+	DetectedFieldBoolean  DetectedFieldType = "boolean"
+	DetectedFieldDuration DetectedFieldType = "duration"
+	DetectedFieldBytes    DetectedFieldType = "bytes"
+)
+
+// UnmarshalJSON implements the json.Unmarshaler interface.
+// QueryPatternsResponse json representation is different from the proto
+//
+//	`{"status":"success","data":[{"pattern":"foo <*> bar","samples":[[1,1],[2,2]]},{"pattern":"foo <*> buzz","samples":[[3,1],[3,2]]}]}`
+func (r *QueryPatternsResponse) UnmarshalJSON(data []byte) error {
+	var v struct {
+		Status string `json:"status"`
+		Data   []struct {
+			Pattern string    `json:"pattern"`
+			Samples [][]int64 `json:"samples"`
+		} `json:"data"`
+	}
+	if err := jsoniter.ConfigFastest.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	r.Series = make([]*PatternSeries, 0, len(v.Data))
+	for _, d := range v.Data {
+		samples := make([]*PatternSample, 0, len(d.Samples))
+		for _, s := range d.Samples {
+			samples = append(samples, &PatternSample{Timestamp: model.TimeFromUnix(s[0]), Value: s[1]})
+		}
+		r.Series = append(r.Series, &PatternSeries{Pattern: d.Pattern, Samples: samples})
+	}
+	return nil
+}
+
+func (d DetectedFieldType) String() string {
+	return string(d)
+}
+
+func (m *ShardsResponse) Merge(other *ShardsResponse) {
+	m.Shards = append(m.Shards, other.Shards...)
+	m.ChunkGroups = append(m.ChunkGroups, other.ChunkGroups...)
+	m.Statistics.Merge(other.Statistics)
+}
+
+func NewPatternSeries(pattern string, samples []*PatternSample) *PatternSeries {
+	return &PatternSeries{Pattern: pattern, Samples: samples}
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface.
+// QuerySamplesResponse json representation is different from the proto
+func (r *QuerySamplesResponse) UnmarshalJSON(data []byte) error {
+	return jsonparser.ObjectEach(
+		data,
+		func(key, value []byte, dataType jsonparser.ValueType, offset int) error {
+			if string(key) == "data" {
+				var m []model.SampleStream
+				if err := json.Unmarshal(value, &m); err != nil {
+					return err
+				}
+				series := make([]Series, len(m))
+
+				for i, s := range m {
+					lbls := FromMetricsToLabels(s.Metric)
+
+					newSeries := Series{
+						Labels:     s.Metric.String(),
+						StreamHash: lbls.Hash(),
+						Samples:    make([]Sample, len(s.Values)),
+					}
+
+					for j, samplePair := range s.Values {
+						newSeries.Samples[j] = Sample{
+							Timestamp: samplePair.Timestamp.UnixNano(),
+							Value:     float64(samplePair.Value),
+						}
+					}
+
+					series[i] = newSeries
+				}
+
+				r.Series = series
+			}
+
+			return nil
+		},
+	)
 }

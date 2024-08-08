@@ -35,7 +35,7 @@ import (
 	tsdb_enc "github.com/prometheus/prometheus/tsdb/encoding"
 	"github.com/prometheus/prometheus/util/testutil"
 
-	"github.com/grafana/loki/pkg/util/encoding"
+	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
 
 func TestMain(m *testing.M) {

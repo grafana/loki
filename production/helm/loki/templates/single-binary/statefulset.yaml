@@ -135,7 +135,7 @@ spec:
         {{- end }}
       {{- with .Values.singleBinary.affinity }}
       affinity:
-        {{- tpl . $ | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.singleBinary.dnsConfig }}
       dnsConfig:
@@ -153,12 +153,7 @@ spec:
         - name: tmp
           emptyDir: {}
         - name: config
-          {{- if .Values.loki.existingSecretForConfig }}
-          secret:
-            secretName: {{ .Values.loki.existingSecretForConfig }}
-          {{- else }}
           {{- include "loki.configVolume" . | nindent 10 }}
-          {{- end }}
         - name: runtime-config
           configMap:
             name: {{ template "loki.name" . }}-runtime
@@ -180,6 +175,10 @@ spec:
       kind: PersistentVolumeClaim
       metadata:
         name: storage
+        {{- with .Values.singleBinary.persistence.annotations }}
+        annotations:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
       spec:
         accessModes:
           - ReadWriteOnce

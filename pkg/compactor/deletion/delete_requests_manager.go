@@ -12,10 +12,10 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/compactor/deletionmode"
-	"github.com/grafana/loki/pkg/compactor/retention"
-	"github.com/grafana/loki/pkg/util/filter"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
+	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	"github.com/grafana/loki/v3/pkg/util/filter"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -126,10 +126,25 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 		return err
 	}
 
+	reqCount := 0
 	for i := range deleteRequests {
 		deleteRequest := deleteRequests[i]
-		if i >= d.batchSize {
-			logBatchTruncation(i, len(deleteRequests))
+		maxRetentionInterval := getMaxRetentionInterval(deleteRequest.UserID, d.limits)
+		// retention interval 0 means retain the data forever
+		if maxRetentionInterval != 0 {
+			oldestRetainedLogTimestamp := model.Now().Add(-maxRetentionInterval)
+			if deleteRequest.StartTime.Before(oldestRetainedLogTimestamp) && deleteRequest.EndTime.Before(oldestRetainedLogTimestamp) {
+				level.Info(util_log.Logger).Log(
+					"msg", "Marking delete request with interval beyond retention period as processed",
+					"delete_request_id", deleteRequest.RequestID,
+					"user", deleteRequest.UserID,
+				)
+				d.markRequestAsProcessed(deleteRequest)
+				continue
+			}
+		}
+		if reqCount >= d.batchSize {
+			logBatchTruncation(reqCount, len(deleteRequests))
 			break
 		}
 
@@ -149,6 +164,7 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 		if deleteRequest.EndTime > ur.requestsInterval.End {
 			ur.requestsInterval.End = deleteRequest.EndTime
 		}
+		reqCount++
 	}
 
 	return nil
@@ -305,6 +321,28 @@ func (d *DeleteRequestsManager) MarkPhaseTimedOut() {
 	d.deleteRequestsToProcess = map[string]*userDeleteRequests{}
 }
 
+func (d *DeleteRequestsManager) markRequestAsProcessed(deleteRequest DeleteRequest) {
+	if err := d.deleteRequestsStore.UpdateStatus(context.Background(), deleteRequest, StatusProcessed); err != nil {
+		level.Error(util_log.Logger).Log(
+			"msg", "failed to mark delete request for user as processed",
+			"delete_request_id", deleteRequest.RequestID,
+			"sequence_num", deleteRequest.SequenceNum,
+			"user", deleteRequest.UserID,
+			"err", err,
+			"deleted_lines", deleteRequest.DeletedLines,
+		)
+	} else {
+		level.Info(util_log.Logger).Log(
+			"msg", "delete request for user marked as processed",
+			"delete_request_id", deleteRequest.RequestID,
+			"sequence_num", deleteRequest.SequenceNum,
+			"user", deleteRequest.UserID,
+			"deleted_lines", deleteRequest.DeletedLines,
+		)
+		d.metrics.deleteRequestsProcessedTotal.WithLabelValues(deleteRequest.UserID).Inc()
+	}
+}
+
 func (d *DeleteRequestsManager) MarkPhaseFinished() {
 	d.deleteRequestsToProcessMtx.Lock()
 	defer d.deleteRequestsToProcessMtx.Unlock()
@@ -315,25 +353,7 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 		}
 
 		for _, deleteRequest := range userDeleteRequests.requests {
-			if err := d.deleteRequestsStore.UpdateStatus(context.Background(), *deleteRequest, StatusProcessed); err != nil {
-				level.Error(util_log.Logger).Log(
-					"msg", "failed to mark delete request for user as processed",
-					"delete_request_id", deleteRequest.RequestID,
-					"sequence_num", deleteRequest.SequenceNum,
-					"user", deleteRequest.UserID,
-					"err", err,
-					"deleted_lines", deleteRequest.DeletedLines,
-				)
-			} else {
-				level.Info(util_log.Logger).Log(
-					"msg", "delete request for user marked as processed",
-					"delete_request_id", deleteRequest.RequestID,
-					"sequence_num", deleteRequest.SequenceNum,
-					"user", deleteRequest.UserID,
-					"deleted_lines", deleteRequest.DeletedLines,
-				)
-			}
-			d.metrics.deleteRequestsProcessedTotal.WithLabelValues(deleteRequest.UserID).Inc()
+			d.markRequestAsProcessed(*deleteRequest)
 		}
 	}
 }
@@ -354,4 +374,22 @@ func (d *DeleteRequestsManager) IntervalMayHaveExpiredChunks(_ model.Interval, u
 
 func (d *DeleteRequestsManager) DropFromIndex(_ retention.ChunkEntry, _ model.Time, _ model.Time) bool {
 	return false
+}
+
+func getMaxRetentionInterval(userID string, limits Limits) time.Duration {
+	maxRetention := model.Duration(limits.RetentionPeriod(userID))
+	if maxRetention == 0 {
+		return 0
+	}
+
+	for _, streamRetention := range limits.StreamRetention(userID) {
+		if streamRetention.Period == 0 {
+			return 0
+		}
+		if streamRetention.Period > maxRetention {
+			maxRetention = streamRetention.Period
+		}
+	}
+
+	return time.Duration(maxRetention)
 }

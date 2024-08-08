@@ -16,12 +16,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
 
-	"github.com/grafana/loki/pkg/loki"
-	"github.com/grafana/loki/pkg/util"
-	_ "github.com/grafana/loki/pkg/util/build"
-	"github.com/grafana/loki/pkg/util/cfg"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/loki"
+	loki_runtime "github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/util"
+	_ "github.com/grafana/loki/v3/pkg/util/build"
+	"github.com/grafana/loki/v3/pkg/util/cfg"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func exit(code int) {
@@ -49,6 +50,7 @@ func main() {
 	// call it atleast once, the defaults are set to an empty struct.
 	// We call it with the flag values so that the config file unmarshalling only overrides the values set in the config.
 	validation.SetDefaultLimitsForYAMLUnmarshalling(config.LimitsConfig)
+	loki_runtime.SetDefaultLimitsForYAMLUnmarshalling(config.OperationalConfig)
 
 	// Init the logger which will honor the log level set in config.Server
 	if reflect.DeepEqual(&config.Server.LogLevel, &log.Level{}) {
@@ -57,6 +59,10 @@ func main() {
 	}
 	serverCfg := &config.Server
 	serverCfg.Log = util_log.InitLogger(serverCfg, prometheus.DefaultRegisterer, false)
+
+	if config.InternalServer.Enable {
+		config.InternalServer.Log = serverCfg.Log
+	}
 
 	// Validate the config once both the config file has been loaded
 	// and CLI flags parsed.
@@ -100,6 +106,8 @@ func main() {
 		}()
 	}
 
+	setProfilingOptions(config.Profiling)
+
 	// Allocate a block of memory to reduce the frequency of garbage collection.
 	// The larger the ballast, the lower the garbage collection frequency.
 	// https://github.com/grafana/loki/issues/781
@@ -116,7 +124,20 @@ func main() {
 	}
 
 	level.Info(util_log.Logger).Log("msg", "Starting Loki", "version", version.Info())
+	level.Info(util_log.Logger).Log("msg", "Loading configuration file", "filename", config.ConfigFile)
 
 	err = t.Run(loki.RunOpts{StartTime: startTime})
 	util_log.CheckFatal("running loki", err, util_log.Logger)
+}
+
+func setProfilingOptions(cfg loki.ProfilingConfig) {
+	if cfg.BlockProfileRate > 0 {
+		runtime.SetBlockProfileRate(cfg.BlockProfileRate)
+	}
+	if cfg.CPUProfileRate > 0 {
+		runtime.SetCPUProfileRate(cfg.CPUProfileRate)
+	}
+	if cfg.MutexProfileFraction > 0 {
+		runtime.SetMutexProfileFraction(cfg.MutexProfileFraction)
+	}
 }

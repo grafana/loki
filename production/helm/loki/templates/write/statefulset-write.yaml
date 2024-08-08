@@ -20,7 +20,11 @@ metadata:
   {{- end }}
 spec:
 {{- if not .Values.write.autoscaling.enabled }}
+  {{- if eq .Values.deploymentMode "SingleBinary" }}
+  replicas: 0
+  {{- else }}
   replicas: {{ .Values.write.replicas }}
+  {{- end }}
 {{- end }}
   podManagementPolicy: {{ .Values.write.podManagementPolicy }}
   updateStrategy:
@@ -132,7 +136,7 @@ spec:
             {{- if .Values.enterprise.enabled }}
             - name: license
               mountPath: /etc/loki/license
-            {{- end}}
+            {{- end }}
             {{- with .Values.write.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -143,7 +147,7 @@ spec:
         {{- end }}
       {{- with .Values.write.affinity }}
       affinity:
-        {{- tpl . $ | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.write.dnsConfig }}
       dnsConfig:
@@ -167,12 +171,7 @@ spec:
         {{- toYaml .Values.write.persistence.dataVolumeParameters | nindent 10 }}
         {{- end}}
         - name: config
-          {{- if .Values.loki.existingSecretForConfig }}
-          secret:
-            secretName: {{ .Values.loki.existingSecretForConfig }}
-          {{- else }}
           {{- include "loki.configVolume" . | nindent 10 }}
-          {{- end }}
         - name: runtime-config
           configMap:
             name: {{ template "loki.name" . }}-runtime
@@ -194,6 +193,10 @@ spec:
       kind: PersistentVolumeClaim
       metadata:
         name: data
+        {{- with .Values.write.persistence.annotations }}
+        annotations:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
       spec:
         accessModes:
           - ReadWriteOnce

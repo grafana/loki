@@ -19,25 +19,32 @@ import (
 
 	"github.com/grafana/dskit/backoff"
 
-	"github.com/grafana/loki/pkg/logcli/volume"
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/build"
+	"github.com/grafana/loki/v3/pkg/logcli/volume"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/build"
 )
 
 const (
-	queryPath         = "/loki/api/v1/query"
-	queryRangePath    = "/loki/api/v1/query_range"
-	labelsPath        = "/loki/api/v1/labels"
-	labelValuesPath   = "/loki/api/v1/label/%s/values"
-	seriesPath        = "/loki/api/v1/series"
-	tailPath          = "/loki/api/v1/tail"
-	statsPath         = "/loki/api/v1/index/stats"
-	volumePath        = "/loki/api/v1/index/volume"
-	volumeRangePath   = "/loki/api/v1/index/volume_range"
-	defaultAuthHeader = "Authorization"
+	queryPath          = "/loki/api/v1/query"
+	queryRangePath     = "/loki/api/v1/query_range"
+	labelsPath         = "/loki/api/v1/labels"
+	labelValuesPath    = "/loki/api/v1/label/%s/values"
+	seriesPath         = "/loki/api/v1/series"
+	tailPath           = "/loki/api/v1/tail"
+	statsPath          = "/loki/api/v1/index/stats"
+	volumePath         = "/loki/api/v1/index/volume"
+	volumeRangePath    = "/loki/api/v1/index/volume_range"
+	detectedFieldsPath = "/loki/api/v1/detected_fields"
+	defaultAuthHeader  = "Authorization"
+
+	// HTTP header keys
+	HTTPScopeOrgID          = "X-Scope-OrgID"
+	HTTPQueryTags           = "X-Query-Tags"
+	HTTPCacheControl        = "Cache-Control"
+	HTTPCacheControlNoCache = "no-cache"
 )
 
 var userAgent = fmt.Sprintf("loki-logcli/%s", build.Version)
@@ -54,6 +61,7 @@ type Client interface {
 	GetStats(queryStr string, start, end time.Time, quiet bool) (*logproto.IndexStatsResponse, error)
 	GetVolume(query *volume.Query) (*loghttp.QueryResponse, error)
 	GetVolumeRange(query *volume.Query) (*loghttp.QueryResponse, error)
+	GetDetectedFields(queryStr string, fieldLimit, lineLimit int, start, end time.Time, step time.Duration, quiet bool) (*loghttp.DetectedFieldsResponse, error)
 }
 
 // Tripperware can wrap a roundtripper.
@@ -75,6 +83,7 @@ type DefaultClient struct {
 	BearerTokenFile string
 	Retries         int
 	QueryTags       string
+	NoCache         bool
 	AuthHeader      string
 	ProxyURL        string
 	BackoffConfig   BackoffConfig
@@ -224,7 +233,36 @@ func (c *DefaultClient) getVolume(path string, query *volume.Query) (*loghttp.Qu
 	return &resp, nil
 }
 
-func (c *DefaultClient) doQuery(path string, query string, quiet bool) (*loghttp.QueryResponse, error) {
+func (c *DefaultClient) GetDetectedFields(
+	queryStr string,
+	fieldLimit, lineLimit int,
+	start, end time.Time,
+	step time.Duration,
+	quiet bool,
+) (*loghttp.DetectedFieldsResponse, error) {
+	qsb := util.NewQueryStringBuilder()
+	qsb.SetString("query", queryStr)
+	qsb.SetInt("field_limit", int64(fieldLimit))
+	qsb.SetInt("line_limit", int64(lineLimit))
+	qsb.SetInt("start", start.UnixNano())
+	qsb.SetInt("end", end.UnixNano())
+	qsb.SetString("step", step.String())
+
+	var err error
+	var r loghttp.DetectedFieldsResponse
+
+	if err = c.doRequest(detectedFieldsPath, qsb.Encode(), quiet, &r); err != nil {
+		return nil, err
+	}
+
+	return &r, nil
+}
+
+func (c *DefaultClient) doQuery(
+	path string,
+	query string,
+	quiet bool,
+) (*loghttp.QueryResponse, error) {
 	var err error
 	var r loghttp.QueryResponse
 
@@ -341,11 +379,15 @@ func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 	h.Set("User-Agent", userAgent)
 
 	if c.OrgID != "" {
-		h.Set("X-Scope-OrgID", c.OrgID)
+		h.Set(HTTPScopeOrgID, c.OrgID)
+	}
+
+	if c.NoCache {
+		h.Set(HTTPCacheControl, HTTPCacheControlNoCache)
 	}
 
 	if c.QueryTags != "" {
-		h.Set("X-Query-Tags", c.QueryTags)
+		h.Set(HTTPQueryTags, c.QueryTags)
 	}
 
 	if (c.Username != "" || c.Password != "") && (len(c.BearerToken) > 0 || len(c.BearerTokenFile) > 0) {

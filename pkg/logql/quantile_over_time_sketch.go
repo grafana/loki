@@ -10,10 +10,10 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/sketch"
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/sketch"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 const (
@@ -448,8 +448,3 @@ func (e *QuantileSketchVectorStepEvaluator) Next() (bool, int64, StepResult) {
 func (*QuantileSketchVectorStepEvaluator) Close() error { return nil }
 
 func (*QuantileSketchVectorStepEvaluator) Error() error { return nil }
-
-func (e *QuantileSketchVectorStepEvaluator) Explain(parent Node) {
-	b := parent.Child("QuantileSketchVector")
-	e.inner.Explain(b)
-}

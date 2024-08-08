@@ -16,22 +16,22 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/logcli/client"
-	"github.com/grafana/loki/pkg/logcli/output"
-	"github.com/grafana/loki/pkg/logcli/print"
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/loki"
-	"github.com/grafana/loki/pkg/storage"
-	chunk "github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
-	"github.com/grafana/loki/pkg/util/cfg"
-	"github.com/grafana/loki/pkg/util/constants"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/marshal"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/logcli/client"
+	"github.com/grafana/loki/v3/pkg/logcli/output"
+	"github.com/grafana/loki/v3/pkg/logcli/print"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/loki"
+	"github.com/grafana/loki/v3/pkg/storage"
+	chunk "github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/v3/pkg/util/cfg"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/marshal"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const schemaConfigFilename = "schemaconfig"
@@ -490,6 +490,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 			q.resultsDirection(),
 			uint32(q.Limit),
 			nil,
+			nil,
 		)
 		if err != nil {
 			return err
@@ -505,6 +506,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 			q.Interval,
 			q.resultsDirection(),
 			uint32(q.Limit),
+			nil,
 			nil,
 		)
 		if err != nil {

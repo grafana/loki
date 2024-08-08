@@ -19,20 +19,27 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
-	"github.com/grafana/loki/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
 )
 
-func Test_DockerTarget(t *testing.T) {
-	h := func(w http.ResponseWriter, r *http.Request) {
+type urlContainToPath struct {
+	contains string
+	filePath string
+}
+
+func handlerForPath(t *testing.T, paths []urlContainToPath, tty bool) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch path := r.URL.Path; {
 		case strings.HasSuffix(path, "/logs"):
 			var filePath string
-			if strings.Contains(r.URL.RawQuery, "since=0") {
-				filePath = "testdata/flog.log"
-			} else {
-				filePath = "testdata/flog_after_restart.log"
+			for _, cf := range paths {
+				if strings.Contains(r.URL.RawQuery, cf.contains) {
+					filePath = cf.filePath
+					break
+				}
 			}
+			assert.NotEmpty(t, filePath, "Did not find appropriate filePath to serve request")
 			dat, err := os.ReadFile(filePath)
 			require.NoError(t, err)
 			_, err = w.Write(dat)
@@ -42,15 +49,19 @@ func Test_DockerTarget(t *testing.T) {
 			info := types.ContainerJSON{
 				ContainerJSONBase: &types.ContainerJSONBase{},
 				Mounts:            []types.MountPoint{},
-				Config:            &container.Config{Tty: false},
+				Config:            &container.Config{Tty: tty},
 				NetworkSettings:   &types.NetworkSettings{},
 			}
 			err := json.NewEncoder(w).Encode(info)
 			require.NoError(t, err)
 		}
-	}
+	})
+}
 
-	ts := httptest.NewServer(http.HandlerFunc(h))
+func Test_DockerTarget(t *testing.T) {
+	h := handlerForPath(t, []urlContainToPath{{"since=0", "testdata/flog.log"}, {"", "testdata/flog_after_restart.log"}}, false)
+
+	ts := httptest.NewServer(h)
 	defer ts.Close()
 
 	w := log.NewSyncWriter(os.Stderr)
@@ -74,6 +85,7 @@ func Test_DockerTarget(t *testing.T) {
 		model.LabelSet{"job": "docker"},
 		[]*relabel.Config{},
 		client,
+		0,
 	)
 	require.NoError(t, err)
 
@@ -103,6 +115,59 @@ func Test_DockerTarget(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		assertExpectedLog(c, entryHandler, expectedLinesAfterRestart)
 	}, 5*time.Second, 100*time.Millisecond, "Expected log lines after restart were not found within the time limit.")
+}
+
+func doTestPartial(t *testing.T, tty bool) {
+	var filePath string
+	if tty {
+		filePath = "testdata/partial-tty.log"
+	} else {
+		filePath = "testdata/partial.log"
+	}
+	h := handlerForPath(t, []urlContainToPath{{"", filePath}}, tty)
+
+	ts := httptest.NewServer(h)
+	defer ts.Close()
+
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+	entryHandler := fake.New(func() {})
+	client, err := client.NewClientWithOpts(client.WithHost(ts.URL))
+	require.NoError(t, err)
+
+	ps, err := positions.New(logger, positions.Config{
+		SyncPeriod:    10 * time.Second,
+		PositionsFile: t.TempDir() + "/positions.yml",
+	})
+	require.NoError(t, err)
+
+	target, err := NewTarget(
+		NewMetrics(prometheus.NewRegistry()),
+		logger,
+		entryHandler,
+		ps,
+		"flog",
+		model.LabelSet{"job": "docker"},
+		[]*relabel.Config{},
+		client,
+		0,
+	)
+	require.NoError(t, err)
+
+	expectedLines := []string{strings.Repeat("a", 16385)}
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		assertExpectedLog(c, entryHandler, expectedLines)
+	}, 10*time.Second, 100*time.Millisecond, "Expected log lines were not found within the time limit.")
+
+	target.Stop()
+	entryHandler.Clear()
+}
+
+func Test_DockerTargetPartial(t *testing.T) {
+	doTestPartial(t, false)
+}
+func Test_DockerTargetPartialTty(t *testing.T) {
+	doTestPartial(t, true)
 }
 
 // assertExpectedLog will verify that all expectedLines were received, in any order, without duplicates.

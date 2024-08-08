@@ -35,12 +35,13 @@ func TestOverridesExporter_noConfig(t *testing.T) {
 func TestOverridesExporter_withConfig(t *testing.T) {
 	tenantLimits := map[string]*Limits{
 		"tenant-a": {
-			MaxQueriersPerTenant: 5,
+			MaxQueriersPerTenant:  5,
+			BloomCompactorEnabled: true,
 		},
 	}
 	overrides, _ := NewOverrides(Limits{}, newMockTenantLimits(tenantLimits))
 	exporter := NewOverridesExporter(overrides)
 	count := testutil.CollectAndCount(exporter, "loki_overrides")
-	assert.Greater(t, count, 0)
+	assert.Equal(t, 2, count)
 	require.Greater(t, testutil.CollectAndCount(exporter, "loki_overrides_defaults"), 0)
 }

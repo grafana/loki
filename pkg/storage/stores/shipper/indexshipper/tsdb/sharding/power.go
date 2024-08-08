@@ -5,8 +5,8 @@ import (
 
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 )
 
 const (
@@ -22,21 +22,7 @@ type PowerOfTwoSharding struct {
 
 func (p PowerOfTwoSharding) ShardsFor(bytes uint64, maxBytesPerShard uint64) []logproto.Shard {
 	factor := GuessShardFactor(bytes, maxBytesPerShard, p.MaxShards)
-
-	if factor < 2 {
-		return []logproto.Shard{{
-			Bounds: logproto.FPBounds{
-				Min: 0,
-				Max: math.MaxUint64,
-			},
-			Stats: &stats.Stats{
-				Bytes: bytes,
-			},
-		}}
-	}
-
 	return LinearShards(factor, bytes)
-
 }
 
 // LinearShards is a sharding implementation that splits the data into
@@ -71,14 +57,13 @@ func LinearShards(n int, bytes uint64) []logproto.Shard {
 				Bytes: bytesPerShard,
 			},
 		}
-
-		// The last shard should have the remainder of the bytes
-		// and the max bound should be math.MaxUint64
-		// NB(owen-d): this can only happen when maxShards is used
-		// and the maxShards isn't a factor of 2
-		shards[len(shards)-1].Stats.Bytes += bytes % uint64(n)
-		shards[len(shards)-1].Bounds.Max = math.MaxUint64
 	}
+	// The last shard should have the remainder of the bytes
+	// and the max bound should be math.MaxUint64
+	// NB(owen-d): this can only happen when maxShards is used
+	// and the maxShards isn't a factor of 2
+	shards[len(shards)-1].Stats.Bytes += bytes % uint64(n)
+	shards[len(shards)-1].Bounds.Max = math.MaxUint64
 
 	return shards
 

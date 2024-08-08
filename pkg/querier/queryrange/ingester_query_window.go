@@ -3,8 +3,8 @@ package queryrange
 import (
 	"time"
 
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 // SplitIntervalForTimeRange returns the correct split interval to use. It accounts for the given upperBound value being

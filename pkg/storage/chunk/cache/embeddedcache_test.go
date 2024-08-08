@@ -203,6 +203,7 @@ func TestEmbeddedCacheExpiry(t *testing.T) {
 	_, ok = c.Get(ctx, key1)
 	require.False(t, ok)
 
+	c.lock.RLock()
 	assert.Equal(t, float64(4), testutil.ToFloat64(c.entriesAddedNew))
 	assert.Equal(t, float64(0), testutil.ToFloat64(c.entriesEvicted.WithLabelValues(expiredReason)))
 	assert.Equal(t, float64(1), testutil.ToFloat64(c.entriesEvicted.WithLabelValues(fullReason)))
@@ -211,12 +212,14 @@ func TestEmbeddedCacheExpiry(t *testing.T) {
 	assert.Equal(t, float64(c.lru.Len()), testutil.ToFloat64(c.entriesCurrent))
 	assert.Equal(t, float64(memorySz), testutil.ToFloat64(c.memoryBytes))
 	assert.Equal(t, int64(1), removedEntriesCount.Load(), "on removal callback had to be called for key1")
+	c.lock.RUnlock()
 
 	// Expire the item.
 	time.Sleep(2 * cfg.TTL)
 	_, ok = c.Get(ctx, key4)
 	require.False(t, ok)
 
+	c.lock.RLock()
 	assert.Equal(t, float64(4), testutil.ToFloat64(c.entriesAddedNew))
 	assert.Equal(t, float64(3), testutil.ToFloat64(c.entriesEvicted.WithLabelValues(expiredReason)))
 	assert.Equal(t, float64(1), testutil.ToFloat64(c.entriesEvicted.WithLabelValues(fullReason)))
@@ -225,6 +228,7 @@ func TestEmbeddedCacheExpiry(t *testing.T) {
 	assert.Equal(t, float64(c.lru.Len()), testutil.ToFloat64(c.entriesCurrent))
 	assert.Equal(t, float64(memorySz), testutil.ToFloat64(c.memoryBytes))
 	assert.Equal(t, int64(4), removedEntriesCount.Load(), "on removal callback had to be called for all 3 expired entries")
+	c.lock.RUnlock()
 
 	c.Stop()
 }

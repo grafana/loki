@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/storage/bucket/swift"
-	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/swift"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
 
 type RoundTripperFunc func(*http.Request) (*http.Response, error)

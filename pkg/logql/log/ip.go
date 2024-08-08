@@ -6,7 +6,6 @@ import (
 	"net/netip"
 	"unicode"
 
-	"github.com/prometheus/prometheus/model/labels"
 	"go4.org/netipx"
 )
 
@@ -27,14 +26,14 @@ type IPMatcher interface{}
 
 type IPLineFilter struct {
 	ip *ipFilter
-	ty labels.MatchType
+	ty LineMatchType
 }
 
 // NewIPLineFilter is used to construct ip filter as a `LineFilter`
-func NewIPLineFilter(pattern string, ty labels.MatchType) (*IPLineFilter, error) {
+func NewIPLineFilter(pattern string, ty LineMatchType) (*IPLineFilter, error) {
 	// check if `ty` supported in ip matcher.
 	switch ty {
-	case labels.MatchEqual, labels.MatchNotEqual:
+	case LineMatchEqual, LineMatchNotEqual:
 	default:
 		return nil, ErrIPFilterInvalidOperation
 	}
@@ -69,8 +68,8 @@ func (f *IPLineFilter) RequiredLabelNames() []string {
 	return []string{} // empty for line filter
 }
 
-func (f *IPLineFilter) filterTy(line []byte, ty labels.MatchType) bool {
-	if ty == labels.MatchNotEqual {
+func (f *IPLineFilter) filterTy(line []byte, ty LineMatchType) bool {
+	if ty == LineMatchNotEqual {
 		return !f.ip.filter(line)
 	}
 	return f.ip.filter(line)

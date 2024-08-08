@@ -6,10 +6,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/util/filter"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/util/filter"
 )
 
 const (
@@ -36,17 +36,18 @@ func (c *dumbChunk) SpaceFor(_ *logproto.Entry) bool {
 	return len(c.entries) < tmpNumEntries
 }
 
-func (c *dumbChunk) Append(entry *logproto.Entry) error {
+// The dumbChunk does not check for duplicates, and will always return false
+func (c *dumbChunk) Append(entry *logproto.Entry) (bool, error) {
 	if len(c.entries) == tmpNumEntries {
-		return ErrChunkFull
+		return false, ErrChunkFull
 	}
 
 	if len(c.entries) > 0 && c.entries[len(c.entries)-1].Timestamp.After(entry.Timestamp) {
-		return ErrOutOfOrder
+		return false, ErrOutOfOrder
 	}
 
 	c.entries = append(c.entries, *entry)
-	return nil
+	return false, nil
 }
 
 func (c *dumbChunk) Size() int {
@@ -146,7 +147,7 @@ func (i *dumbChunkIterator) Next() bool {
 	}
 }
 
-func (i *dumbChunkIterator) Entry() logproto.Entry {
+func (i *dumbChunkIterator) At() logproto.Entry {
 	return i.entries[i.i]
 }
 
@@ -158,7 +159,7 @@ func (i *dumbChunkIterator) StreamHash() uint64 {
 	return 0
 }
 
-func (i *dumbChunkIterator) Error() error {
+func (i *dumbChunkIterator) Err() error {
 	return nil
 }
 

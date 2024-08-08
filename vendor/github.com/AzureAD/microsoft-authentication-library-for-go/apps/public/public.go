@@ -217,11 +217,13 @@ func WithClaims(claims string) interface {
 func WithAuthenticationScheme(authnScheme AuthenticationScheme) interface {
 	AcquireSilentOption
 	AcquireInteractiveOption
+	AcquireByUsernamePasswordOption
 	options.CallOption
 } {
 	return struct {
 		AcquireSilentOption
 		AcquireInteractiveOption
+		AcquireByUsernamePasswordOption
 		options.CallOption
 	}{
 		CallOption: options.NewCallOption(
@@ -230,6 +232,8 @@ func WithAuthenticationScheme(authnScheme AuthenticationScheme) interface {
 				case *acquireTokenSilentOptions:
 					t.authnScheme = authnScheme
 				case *interactiveAuthOptions:
+					t.authnScheme = authnScheme
+				case *acquireTokenByUsernamePasswordOptions:
 					t.authnScheme = authnScheme
 				default:
 					return fmt.Errorf("unexpected options type %T", a)
@@ -349,6 +353,7 @@ func (pca Client) AcquireTokenSilent(ctx context.Context, scopes []string, opts 
 // acquireTokenByUsernamePasswordOptions contains optional configuration for AcquireTokenByUsernamePassword
 type acquireTokenByUsernamePasswordOptions struct {
 	claims, tenantID string
+	authnScheme      AuthenticationScheme
 }
 
 // AcquireByUsernamePasswordOption is implemented by options for AcquireTokenByUsernamePassword
@@ -374,6 +379,9 @@ func (pca Client) AcquireTokenByUsernamePassword(ctx context.Context, scopes []s
 	authParams.Claims = o.claims
 	authParams.Username = username
 	authParams.Password = password
+	if o.authnScheme != nil {
+		authParams.AuthnScheme = o.authnScheme
+	}
 
 	token, err := pca.base.Token.UsernamePassword(ctx, authParams)
 	if err != nil {

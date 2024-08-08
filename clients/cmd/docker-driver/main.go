@@ -12,8 +12,8 @@ import (
 	dslog "github.com/grafana/dskit/log"
 	"github.com/prometheus/common/version"
 
-	_ "github.com/grafana/loki/pkg/util/build"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	_ "github.com/grafana/loki/v3/pkg/util/build"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const socketAddress = "/run/docker/plugins/loki.sock"

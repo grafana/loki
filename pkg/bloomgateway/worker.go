@@ -8,12 +8,10 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/queue"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v3/pkg/queue"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 )
 
 const (
@@ -88,11 +86,9 @@ func (w *worker) running(_ context.Context) error {
 			continue
 		}
 
-		level.Debug(w.logger).Log("msg", "dequeued tasks", "count", len(items))
 		w.metrics.tasksDequeued.WithLabelValues(w.id, labelSuccess).Add(float64(len(items)))
 
 		tasks := make([]Task, 0, len(items))
-		var mb v1.MultiFingerprintBounds
 		for _, item := range items {
 			task, ok := item.(Task)
 			if !ok {
@@ -100,18 +96,14 @@ func (w *worker) running(_ context.Context) error {
 				w.queue.ReleaseRequests(items)
 				return errors.Errorf("failed to cast dequeued item to Task: %v", item)
 			}
-			level.Debug(w.logger).Log("msg", "dequeued task", "task", task.ID)
 			_ = w.pending.Dec()
 			w.metrics.queueDuration.WithLabelValues(w.id).Observe(time.Since(task.enqueueTime).Seconds())
 			FromContext(task.ctx).AddQueueTime(time.Since(task.enqueueTime))
 			tasks = append(tasks, task)
-
-			first, last := getFirstLast(task.series)
-			mb = mb.Union(v1.NewBounds(model.Fingerprint(first.Fingerprint), model.Fingerprint(last.Fingerprint)))
 		}
 
 		start = time.Now()
-		err = p.runWithBounds(taskCtx, tasks, mb)
+		err = p.processTasks(taskCtx, tasks)
 
 		if err != nil {
 			w.metrics.processDuration.WithLabelValues(w.id, labelFailure).Observe(time.Since(start).Seconds())

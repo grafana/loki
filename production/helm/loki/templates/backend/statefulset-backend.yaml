@@ -20,7 +20,11 @@ metadata:
   {{- end }}
 spec:
 {{- if not .Values.backend.autoscaling.enabled }}
+  {{- if eq .Values.deploymentMode "SingleBinary" }}
+  replicas: 0
+  {{- else }}
   replicas: {{ .Values.backend.replicas }}
+  {{- end }}
 {{- end }}
   podManagementPolicy: {{ .Values.backend.podManagementPolicy }}
   updateStrategy:
@@ -205,7 +209,7 @@ spec:
             {{- toYaml .Values.backend.resources | nindent 12 }}
       {{- with .Values.backend.affinity }}
       affinity:
-        {{- tpl . $ | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.backend.dnsConfig }}
       dnsConfig:
@@ -231,12 +235,7 @@ spec:
         {{- toYaml .Values.backend.persistence.dataVolumeParameters | nindent 10 }}
         {{- end}}
         - name: config
-          {{- if .Values.loki.existingSecretForConfig }}
-          secret:
-            secretName: {{ .Values.loki.existingSecretForConfig }}
-          {{- else }}
           {{- include "loki.configVolume" . | nindent 10 }}
-          {{- end }}
         - name: runtime-config
           configMap:
             name: {{ template "loki.name" . }}-runtime
@@ -267,6 +266,10 @@ spec:
       kind: PersistentVolumeClaim
       metadata:
         name: data
+        {{- with .Values.backend.persistence.annotations }}
+        annotations:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
       spec:
         accessModes:
           - ReadWriteOnce

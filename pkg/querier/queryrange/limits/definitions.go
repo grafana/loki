@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
 
 // Limits extends the cortex limits interface with support for per tenant splitby parameters

@@ -6,7 +6,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/grafana/loki/pkg/util/httpreq"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
 func getQueryTags(ctx context.Context) string {

@@ -11,8 +11,9 @@ import (
 	"github.com/prometheus/common/model"
 	"golang.org/x/exp/slices"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util/encoding"
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
 
 type BoundsCheck uint8
@@ -242,7 +243,7 @@ func (mb MultiFingerprintBounds) Union(target FingerprintBounds) MultiFingerprin
 
 // unused, but illustrative
 type BoundedIter[V any] struct {
-	Iterator[V]
+	iter.Iterator[V]
 	cmp func(V) BoundsCheck
 }
 
@@ -260,6 +261,6 @@ func (bi *BoundedIter[V]) Next() bool {
 	return false
 }
 
-func NewBoundedIter[V any](itr Iterator[V], cmp func(V) BoundsCheck) *BoundedIter[V] {
+func NewBoundedIter[V any](itr iter.Iterator[V], cmp func(V) BoundsCheck) *BoundedIter[V] {
 	return &BoundedIter[V]{Iterator: itr, cmp: cmp}
 }

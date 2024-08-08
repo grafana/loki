@@ -12,10 +12,10 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 func iterEq(t *testing.T, exp []entry, got iter.EntryIterator) {
@@ -25,7 +25,7 @@ func iterEq(t *testing.T, exp []entry, got iter.EntryIterator) {
 			Timestamp:          time.Unix(0, exp[i].t),
 			Line:               exp[i].s,
 			StructuredMetadata: logproto.FromLabelsToLabelAdapters(exp[i].structuredMetadata),
-		}, got.Entry())
+		}, got.At())
 		require.Equal(t, exp[i].structuredMetadata.String(), got.Labels())
 		i++
 	}
@@ -35,7 +35,9 @@ func iterEq(t *testing.T, exp []entry, got iter.EntryIterator) {
 func Test_forEntriesEarlyReturn(t *testing.T) {
 	hb := newUnorderedHeadBlock(UnorderedHeadBlockFmt, newSymbolizer())
 	for i := 0; i < 10; i++ {
-		require.Nil(t, hb.Append(int64(i), fmt.Sprint(i), labels.Labels{{Name: "i", Value: fmt.Sprint(i)}}))
+		dup, err := hb.Append(int64(i), fmt.Sprint(i), labels.Labels{{Name: "i", Value: fmt.Sprint(i)}})
+		require.False(t, dup)
+		require.Nil(t, err)
 	}
 
 	// forward
@@ -86,6 +88,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 		desc       string
 		input, exp []entry
 		dir        logproto.Direction
+		hasDup     bool
 	}{
 		{
 			desc: "simple forward",
@@ -152,7 +155,8 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 			exp: []entry{
 				{0, "a", nil}, {0, "b", nil}, {1, "c", nil},
 			},
-			dir: logproto.FORWARD,
+			dir:    logproto.FORWARD,
+			hasDup: true,
 		},
 		{
 			desc: "ts remove exact dupe backward",
@@ -162,7 +166,8 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 			exp: []entry{
 				{1, "c", nil}, {0, "b", nil}, {0, "a", nil},
 			},
-			dir: logproto.BACKWARD,
+			dir:    logproto.BACKWARD,
+			hasDup: true,
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
@@ -172,9 +177,17 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 			} {
 				t.Run(format.String(), func(t *testing.T) {
 					hb := newUnorderedHeadBlock(format, newSymbolizer())
+					dup := false
 					for _, e := range tc.input {
-						require.Nil(t, hb.Append(e.t, e.s, e.structuredMetadata))
+						tmpdup, err := hb.Append(e.t, e.s, e.structuredMetadata)
+						if !dup { // only set dup if it's not already true
+							if tmpdup { // can't examine duplicates until we start getting all the data
+								dup = true
+							}
+						}
+						require.Nil(t, err)
 					}
+					require.Equal(t, tc.hasDup, dup)
 
 					itr := hb.Iterator(
 						context.Background(),
@@ -250,7 +263,9 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 				t.Run(format.String(), func(t *testing.T) {
 					hb := newUnorderedHeadBlock(format, newSymbolizer())
 					for _, e := range tc.input {
-						require.Nil(t, hb.Append(e.t, e.s, e.structuredMetadata))
+						dup, err := hb.Append(e.t, e.s, e.structuredMetadata)
+						require.False(t, dup)
+						require.Nil(t, err)
 					}
 
 					itr := hb.Iterator(
@@ -281,9 +296,15 @@ func TestHeadBlockInterop(t *testing.T) {
 	unorderedWithStructuredMetadata := newUnorderedHeadBlock(UnorderedWithStructuredMetadataHeadBlockFmt, newSymbolizer())
 	for i := 0; i < 100; i++ {
 		metaLabels := labels.Labels{{Name: "foo", Value: fmt.Sprint(99 - i)}}
-		require.Nil(t, unordered.Append(int64(99-i), fmt.Sprint(99-i), metaLabels))
-		require.Nil(t, unorderedWithStructuredMetadata.Append(int64(99-i), fmt.Sprint(99-i), metaLabels))
-		require.Nil(t, ordered.Append(int64(i), fmt.Sprint(i), labels.Labels{{Name: "foo", Value: fmt.Sprint(i)}}))
+		dup, err := unordered.Append(int64(99-i), fmt.Sprint(99-i), metaLabels)
+		require.False(t, dup)
+		require.Nil(t, err)
+		dup, err = unorderedWithStructuredMetadata.Append(int64(99-i), fmt.Sprint(99-i), metaLabels)
+		require.False(t, dup)
+		require.Nil(t, err)
+		dup, err = ordered.Append(int64(i), fmt.Sprint(i), labels.Labels{{Name: "foo", Value: fmt.Sprint(i)}})
+		require.False(t, dup)
+		require.Nil(t, err)
 	}
 
 	// turn to bytes
@@ -359,14 +380,14 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 	headBlockFn := func() func(int64, string, labels.Labels) {
 		hb := &headBlock{}
 		return func(ts int64, line string, metaLabels labels.Labels) {
-			_ = hb.Append(ts, line, metaLabels)
+			_, _ = hb.Append(ts, line, metaLabels)
 		}
 	}
 
 	unorderedHeadBlockFn := func() func(int64, string, labels.Labels) {
 		hb := newUnorderedHeadBlock(UnorderedHeadBlockFmt, nil)
 		return func(ts int64, line string, metaLabels labels.Labels) {
-			_ = hb.Append(ts, line, metaLabels)
+			_, _ = hb.Append(ts, line, metaLabels)
 		}
 	}
 
@@ -432,10 +453,12 @@ func TestUnorderedChunkIterators(t *testing.T) {
 	c := NewMemChunk(ChunkFormatV4, EncSnappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
 	for i := 0; i < 100; i++ {
 		// push in reverse order
-		require.Nil(t, c.Append(&logproto.Entry{
+		dup, err := c.Append(&logproto.Entry{
 			Timestamp: time.Unix(int64(99-i), 0),
 			Line:      fmt.Sprint(99 - i),
-		}))
+		})
+		require.False(t, dup)
+		require.Nil(t, err)
 
 		// ensure we have a mix of cut blocks + head block.
 		if i%30 == 0 {
@@ -463,10 +486,10 @@ func TestUnorderedChunkIterators(t *testing.T) {
 		require.Equal(t, true, forward.Next())
 		require.Equal(t, true, backward.Next())
 		require.Equal(t, true, smpl.Next())
-		require.Equal(t, time.Unix(int64(i), 0), forward.Entry().Timestamp)
-		require.Equal(t, time.Unix(int64(99-i), 0), backward.Entry().Timestamp)
-		require.Equal(t, float64(1), smpl.Sample().Value)
-		require.Equal(t, time.Unix(int64(i), 0).UnixNano(), smpl.Sample().Timestamp)
+		require.Equal(t, time.Unix(int64(i), 0), forward.At().Timestamp)
+		require.Equal(t, time.Unix(int64(99-i), 0), backward.At().Timestamp)
+		require.Equal(t, float64(1), smpl.At().Value)
+		require.Equal(t, time.Unix(int64(i), 0).UnixNano(), smpl.At().Timestamp)
 	}
 	require.Equal(t, false, forward.Next())
 	require.Equal(t, false, backward.Next())
@@ -507,7 +530,7 @@ func BenchmarkUnorderedRead(b *testing.B) {
 						panic(err)
 					}
 					for iterator.Next() {
-						_ = iterator.Entry()
+						_ = iterator.At()
 					}
 					if err := iterator.Close(); err != nil {
 						b.Fatal(err)
@@ -523,7 +546,7 @@ func BenchmarkUnorderedRead(b *testing.B) {
 				for n := 0; n < b.N; n++ {
 					iterator := tc.c.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
 					for iterator.Next() {
-						_ = iterator.Sample()
+						_ = iterator.At()
 					}
 					if err := iterator.Close(); err != nil {
 						b.Fatal(err)
@@ -545,7 +568,7 @@ func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
 		panic(err)
 	}
 	for iterator.Next() {
-		next := iterator.Entry().Timestamp.UnixNano()
+		next := iterator.At().Timestamp.UnixNano()
 		require.GreaterOrEqual(t, next, i)
 		i = next
 		ct++
@@ -559,10 +582,10 @@ func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
 	i = 0
 	smpl := c.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
 	for smpl.Next() {
-		next := smpl.Sample().Timestamp
+		next := smpl.At().Timestamp
 		require.GreaterOrEqual(t, next, i)
 		i = next
-		ct += int(smpl.Sample().Value)
+		ct += int(smpl.At().Value)
 	}
 	require.Equal(t, c.Size(), ct)
 
@@ -574,7 +597,7 @@ func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
 func chunkFrom(xs []logproto.Entry) ([]byte, error) {
 	c := NewMemChunk(ChunkFormatV4, EncSnappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
 	for _, x := range xs {
-		if err := c.Append(&x); err != nil {
+		if _, err := c.Append(&x); err != nil {
 			return nil, err
 		}
 	}
@@ -634,7 +657,9 @@ func TestReorder(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			c := NewMemChunk(ChunkFormatV4, EncSnappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
 			for _, x := range tc.input {
-				require.Nil(t, c.Append(&x))
+				dup, err := c.Append(&x)
+				require.False(t, dup)
+				require.Nil(t, err)
 			}
 			require.Nil(t, c.Close())
 			b, err := c.Bytes()
@@ -657,10 +682,12 @@ func TestReorderAcrossBlocks(t *testing.T) {
 		{3, 7},
 	} {
 		for _, x := range batch {
-			require.Nil(t, c.Append(&logproto.Entry{
+			dup, err := c.Append(&logproto.Entry{
 				Timestamp: time.Unix(int64(x), 0),
 				Line:      fmt.Sprint(x),
-			}))
+			})
+			require.False(t, dup)
+			require.Nil(t, err)
 		}
 		require.Nil(t, c.cut())
 	}
@@ -705,7 +732,9 @@ func Test_HeadIteratorHash(t *testing.T) {
 		"ordered":                            &headBlock{},
 	} {
 		t.Run(name, func(t *testing.T) {
-			require.NoError(t, b.Append(1, "foo", labels.Labels{{Name: "foo", Value: "bar"}}))
+			dup, err := b.Append(1, "foo", labels.Labels{{Name: "foo", Value: "bar"}})
+			require.False(t, dup)
+			require.NoError(t, err)
 			eit := b.Iterator(context.Background(), logproto.BACKWARD, 0, 2, log.NewNoopPipeline().ForStream(lbs))
 
 			for eit.Next() {

@@ -6,23 +6,23 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/pkg/logql"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/v3/pkg/logql"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/astmapper"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 // implements stores.Index
@@ -170,8 +170,8 @@ func (c *IndexClient) LabelValuesForMetricName(ctx context.Context, userID strin
 }
 
 // tsdb no longer uses the __metric_name__="logs" hack, so we can ignore metric names!
-func (c *IndexClient) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, _ string) ([]string, error) {
-	return c.idx.LabelNames(ctx, userID, from, through)
+func (c *IndexClient) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, _ string, matchers ...*labels.Matcher) ([]string, error) {
+	return c.idx.LabelNames(ctx, userID, from, through, matchers...)
 }
 
 func (c *IndexClient) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
@@ -281,7 +281,6 @@ func (c *IndexClient) Volume(ctx context.Context, userID string, from, through m
 }
 
 func (c *IndexClient) GetShards(ctx context.Context, userID string, from, through model.Time, targetBytesPerShard uint64, predicate chunk.Predicate) (*logproto.ShardsResponse, error) {
-
 	// TODO(owen-d): perf, this is expensive :(
 	var mtx sync.Mutex
 

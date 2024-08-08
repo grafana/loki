@@ -53,7 +53,7 @@ for file in monitoring.coreos.com_alertmanagerconfigs.yaml \
 done
 
 # Apply CRDs needed for grafana agent
-agent_crd_base_url="https://raw.githubusercontent.com/grafana/agent/main/production/operator/crds"
+agent_crd_base_url="https://raw.githubusercontent.com/grafana/agent/7dbb39c70bbb67be40e528cb71a3541b59dbe93d/production/operator/crds"
 for file in monitoring.grafana.com_grafanaagents.yaml \
 	monitoring.grafana.com_integrations.yaml \
 	monitoring.grafana.com_logsinstances.yaml \

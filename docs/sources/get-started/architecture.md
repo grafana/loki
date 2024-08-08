@@ -1,8 +1,8 @@
 ---
 title: Loki architecture
 menutitle: Architecture
-description: Describes Grafana Loki's architecture.
-weight: 300
+description: Describes the Grafana Loki architecture.
+weight: 400
 aliases:
     - ../architecture/
     - ../fundamentals/architecture/
@@ -10,8 +10,8 @@ aliases:
 # Loki architecture
 
 Grafana Loki has a microservices-based architecture and is designed to run as a horizontally scalable, distributed system.
-The system has multiple components that can run separately and in parallel.
-Grafana Loki's design compiles the code for all components into a single binary or Docker image.
+The system has multiple components that can run separately and in parallel. The
+Grafana Loki design compiles the code for all components into a single binary or Docker image.
 The `-target` command-line flag controls which component(s) that binary will behave as.
 
 To get started easily, run Grafana Loki in "single binary" mode with all components running simultaneously in one process, or in "simple scalable deployment" mode, which groups components into read, write, and backend parts.
@@ -20,7 +20,7 @@ Grafana Loki is designed to easily redeploy a cluster under a different mode as 
 
 For more information, refer to [Deployment modes]({{< relref "./deployment-modes" >}}) and [Components]({{< relref "./components" >}}).
 
-![Loki's components](../loki_architecture_components.svg "Loki's components")
+![Loki components](../loki_architecture_components.svg "Loki components")
 
 ## Storage
 

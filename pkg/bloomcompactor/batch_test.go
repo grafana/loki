@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
+	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 )
 
 func TestBatchedLoader(t *testing.T) {
@@ -127,7 +127,7 @@ func TestBatchedLoader(t *testing.T) {
 				tc.batchSize,
 			)
 
-			got, err := v1.Collect[int](loader)
+			got, err := v2.Collect[int](loader)
 			if tc.err {
 				require.Error(t, err)
 				return

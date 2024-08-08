@@ -25,14 +25,6 @@ local k = import 'ksonnet-util/kausal.libsonnet';
       //   log_push_request_streams: true,
       // },
     },
-
-    defaultRuntimeConfigs: {
-      // override the default runtime configs. Useful to change a behavior globally across multiple tenants. See pkg/loki/runtime_config.go
-      //
-      // log_stream_creation: true,
-      // log_push_request: true,
-      // log_push_request_streams: true,
-    },
   },
   local configMap = k.core.v1.configMap,
 
@@ -43,7 +35,6 @@ local k = import 'ksonnet-util/kausal.libsonnet';
         {
           overrides: $._config.overrides,
           configs: $._config.runtimeConfigs,
-          default: $._config.defaultRuntimeConfigs,
         }
         + (if std.length($._config.multi_kv_config) > 0 then { multi_kv_config: $._config.multi_kv_config } else {}),
       ),

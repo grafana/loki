@@ -19,6 +19,7 @@
     imageBuildTimeoutMin=25,
     imageJobs={},
     imagePrefix='grafana',
+    releaseAs=null,
     releaseLibRef='main',
     releaseRepo='grafana/loki-release',
     skipArm=false,
@@ -53,7 +54,9 @@
       SKIP_VALIDATION: skipValidation,
       USE_GITHUB_APP_TOKEN: useGitHubAppToken,
       VERSIONING_STRATEGY: versioningStrategy,
-    },
+    } + if releaseAs != null then {
+      RELEASE_AS: releaseAs,
+    } else {},
     local validationSteps = ['check'],
     jobs: {
       check: {} + $.job.withUses(checkTemplate)

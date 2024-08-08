@@ -29,7 +29,12 @@
       enabled: false,
 
       // The prefix used to match the write and read pods on SSD mode.
-      pod_prefix_matcher: '(loki|enterprise-logs)',
+      pod_prefix_matcher: '(loki.*|enterprise-logs)',
+    },
+
+    // Meta-monitoring related configuration
+    meta_monitoring: {
+      enabled: false,
     },
   },
 }

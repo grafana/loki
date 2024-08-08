@@ -2,18 +2,19 @@ package index
 
 import (
 	"context"
+	"time"
 
 	"github.com/grafana/dskit/instrument"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
-	loki_instrument "github.com/grafana/loki/pkg/util/instrument"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	loki_instrument "github.com/grafana/loki/v3/pkg/util/instrument"
 )
 
 type Filterable interface {
@@ -24,7 +25,7 @@ type Filterable interface {
 type BaseReader interface {
 	GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error)
 	LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error)
-	LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error)
+	LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error)
 }
 
 type StatsReader interface {
@@ -111,11 +112,11 @@ func (m MonitoredReaderWriter) LabelValuesForMetricName(ctx context.Context, use
 	return values, nil
 }
 
-func (m MonitoredReaderWriter) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
+func (m MonitoredReaderWriter) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error) {
 	var values []string
 	if err := loki_instrument.TimeRequest(ctx, "label_names", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
-		values, err = m.rw.LabelNamesForMetricName(ctx, userID, from, through, metricName)
+		values, err = m.rw.LabelNamesForMetricName(ctx, userID, from, through, metricName, matchers...)
 		return err
 	}); err != nil {
 		return nil, err
@@ -160,7 +161,18 @@ func (m MonitoredReaderWriter) GetShards(
 	var shards *logproto.ShardsResponse
 	if err := loki_instrument.TimeRequest(ctx, "shards", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
+		start := time.Now()
 		shards, err = m.rw.GetShards(ctx, userID, from, through, targetBytesPerShard, predicate)
+
+		if err == nil {
+			// record duration here from caller to avoid needing to do this in two separate places:
+			// 1) when we resolve shards from the index alone
+			// 2) when we resolve shards from the index + blooms
+			// NB(owen-d): since this is measured by the callee, it does not include time in queue,
+			// over the wire, etc.
+			shards.Statistics.Index.ShardsDuration = int64(time.Since(start))
+		}
+
 		return err
 	}); err != nil {
 		return nil, err

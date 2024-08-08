@@ -12,6 +12,10 @@ Promtail is an agent which ships the contents of local logs to a private Grafana
 instance or [Grafana Cloud](/oss/loki). It is usually
 deployed to every machine that runs applications which need to be monitored.
 
+{{< admonition type="note" >}}
+Promtail is feature complete.  All future feature development will occur in Grafana Alloy.
+{{< /admonition >}}
+
 It primarily:
 
 - Discovers targets
@@ -19,7 +23,7 @@ It primarily:
 - Pushes them to the Loki instance.
 
 Currently, Promtail can tail logs from two sources: local log files and the
-systemd journal (on AMD64 machines only).
+systemd journal (on ARM and AMD64 machines).
 
 ## Log file discovery
 
@@ -95,7 +99,7 @@ Important details are:
   to resume work from the last scraped line and process the rest of the remaining 55%.
 * Since decompression and pushing can be very fast, depending on the size
   of your compressed file Loki will rate-limit your ingestion. In that case you
-  might configure Promtail's [`limits` stage]({{< relref "./stages/limit" >}}) to slow the pace or increase [ingestion limits on Loki]({{< relref "../../configure#limits_config" >}})
+  might configure Promtail's [`limits` stage](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/configuration/#limits_config) to slow the pace or increase [ingestion limits](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config) on Loki.
 
 * Log rotations on compressed files **are not supported as of now** (log rotation is fully supported for normal files), mostly because it requires us modifying Promtail to
   rely on file inodes instead of file names. If you'd like to see support for it, create a new
@@ -106,7 +110,7 @@ Important details are:
 
 ## Loki Push API
 
-Promtail can also be configured to receive logs from another Promtail or any Loki client by exposing the [Loki Push API]({{< relref "../../reference/api#ingest-logs" >}}) with the [loki_push_api]({{< relref "./configuration#loki_push_api" >}}) scrape config.
+Promtail can also be configured to receive logs from another Promtail or any Loki client by exposing the [Loki Push API](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#ingest-logs) with the [loki_push_api](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#loki_push_api) scrape config.
 
 There are a few instances where this might be helpful:
 
@@ -160,7 +164,7 @@ This endpoint returns 200 when Promtail is up and running, and there's at least 
 ### `GET /metrics`
 
 This endpoint returns Promtail metrics for Prometheus. Refer to
-[Observing Grafana Loki]({{< relref "../../operations/observability" >}}) for the list
+[Observing Grafana Loki]({{< relref "../../operations/meta-monitoring" >}}) for the list
 of exported metrics.
 
 ### Promtail web server config

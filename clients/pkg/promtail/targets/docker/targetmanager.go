@@ -9,13 +9,13 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery"
 
-	"github.com/grafana/loki/clients/pkg/logentry/stages"
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/positions"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+	"github.com/grafana/loki/v3/clients/pkg/logentry/stages"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
 
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 const (
@@ -43,6 +43,7 @@ func NewTargetManager(
 	positions positions.Positions,
 	pushClient api.EntryHandler,
 	scrapeConfigs []scrapeconfig.Config,
+	maxLineSize int,
 ) (*TargetManager, error) {
 	noopRegistry := util.NoopRegistry{}
 	noopSdMetrics, err := discovery.CreateAndRegisterSDMetrics(noopRegistry)
@@ -94,6 +95,7 @@ func NewTargetManager(
 						host:             sdConfig.Host,
 						httpClientConfig: sdConfig.HTTPClientConfig,
 						refreshInterval:  sdConfig.RefreshInterval,
+						maxLineSize:      maxLineSize,
 					}
 				}
 				configs[syncerKey] = append(configs[syncerKey], sdConfig)

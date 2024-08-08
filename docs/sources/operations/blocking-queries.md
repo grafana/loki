@@ -10,7 +10,7 @@ In certain situations, you may not be able to control the queries being sent to 
 may be intentionally or unintentionally expensive to run, and they may affect the overall stability or cost of running
 your service.
 
-You can block queries using [per-tenant overrides]({{< relref "../configure#runtime-configuration-file" >}}), like so:
+You can block queries using [per-tenant overrides](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#runtime-configuration-file), like so:
 
 ```yaml
 overrides:
@@ -36,7 +36,7 @@ overrides:
         types: filter,limited
 ```
 {{% admonition type="note" %}}
-Changes to these configurations **do not require a restart**; they are defined in the [runtime configuration file]({{< relref "../configure#runtime-configuration-file" >}}).
+Changes to these configurations **do not require a restart**; they are defined in the [runtime configuration file](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#runtime-configuration-file).
 {{% /admonition %}}
 
 The available query types are:

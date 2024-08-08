@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func Test_CachedIterator(t *testing.T) {
@@ -23,16 +23,16 @@ func Test_CachedIterator(t *testing.T) {
 
 	assert := func() {
 		require.Equal(t, "", c.Labels())
-		require.Equal(t, logproto.Entry{}, c.Entry())
+		require.Equal(t, logproto.Entry{}, c.At())
 		require.Equal(t, true, c.Next())
-		require.Equal(t, stream.Entries[0], c.Entry())
+		require.Equal(t, stream.Entries[0], c.At())
 		require.Equal(t, true, c.Next())
-		require.Equal(t, stream.Entries[1], c.Entry())
+		require.Equal(t, stream.Entries[1], c.At())
 		require.Equal(t, true, c.Next())
-		require.Equal(t, stream.Entries[2], c.Entry())
+		require.Equal(t, stream.Entries[2], c.At())
 		require.Equal(t, false, c.Next())
-		require.NoError(t, c.Error())
-		require.Equal(t, stream.Entries[2], c.Entry())
+		require.NoError(t, c.Err())
+		require.Equal(t, stream.Entries[2], c.At())
 		require.Equal(t, false, c.Next())
 	}
 
@@ -45,30 +45,30 @@ func Test_CachedIterator(t *testing.T) {
 }
 
 func Test_EmptyCachedIterator(t *testing.T) {
-	c := NewCachedIterator(NoopIterator, 0)
+	c := NewCachedIterator(NoopEntryIterator, 0)
 
 	require.Equal(t, "", c.Labels())
-	require.Equal(t, logproto.Entry{}, c.Entry())
+	require.Equal(t, logproto.Entry{}, c.At())
 	require.Equal(t, false, c.Next())
 	require.Equal(t, "", c.Labels())
-	require.Equal(t, logproto.Entry{}, c.Entry())
+	require.Equal(t, logproto.Entry{}, c.At())
 
 	require.Equal(t, nil, c.Close())
 
 	require.Equal(t, "", c.Labels())
-	require.Equal(t, logproto.Entry{}, c.Entry())
+	require.Equal(t, logproto.Entry{}, c.At())
 	require.Equal(t, false, c.Next())
 	require.Equal(t, "", c.Labels())
-	require.Equal(t, logproto.Entry{}, c.Entry())
+	require.Equal(t, logproto.Entry{}, c.At())
 }
 
 func Test_ErrorCachedIterator(t *testing.T) {
-	c := NewCachedIterator(&errorIter{}, 0)
+	c := NewCachedIterator(ErrorEntryIterator, 0)
 
 	require.Equal(t, false, c.Next())
 	require.Equal(t, "", c.Labels())
-	require.Equal(t, logproto.Entry{}, c.Entry())
-	require.Equal(t, errors.New("error"), c.Error())
+	require.Equal(t, logproto.Entry{}, c.At())
+	require.Equal(t, errors.New("error"), c.Err())
 	require.Equal(t, errors.New("close"), c.Close())
 }
 
@@ -84,19 +84,19 @@ func Test_CachedIteratorResetNotExhausted(t *testing.T) {
 	c := NewCachedIterator(NewStreamIterator(stream), 3)
 
 	require.Equal(t, true, c.Next())
-	require.Equal(t, stream.Entries[0], c.Entry())
+	require.Equal(t, stream.Entries[0], c.At())
 	require.Equal(t, true, c.Next())
-	require.Equal(t, stream.Entries[1], c.Entry())
+	require.Equal(t, stream.Entries[1], c.At())
 	c.Reset()
 	require.Equal(t, true, c.Next())
-	require.Equal(t, stream.Entries[0], c.Entry())
+	require.Equal(t, stream.Entries[0], c.At())
 	require.Equal(t, true, c.Next())
-	require.Equal(t, stream.Entries[1], c.Entry())
+	require.Equal(t, stream.Entries[1], c.At())
 	require.Equal(t, true, c.Next())
-	require.Equal(t, stream.Entries[2], c.Entry())
+	require.Equal(t, stream.Entries[2], c.At())
 	require.Equal(t, false, c.Next())
-	require.NoError(t, c.Error())
-	require.Equal(t, stream.Entries[2], c.Entry())
+	require.NoError(t, c.Err())
+	require.Equal(t, stream.Entries[2], c.At())
 	require.Equal(t, false, c.Next())
 
 	// Close the iterator reset it to the beginning.
@@ -114,14 +114,14 @@ func Test_CachedIteratorResetExhausted(t *testing.T) {
 	c := NewCachedIterator(NewStreamIterator(stream), 3)
 
 	require.Equal(t, true, c.Next())
-	require.Equal(t, stream.Entries[0], c.Entry())
+	require.Equal(t, stream.Entries[0], c.At())
 	require.Equal(t, true, c.Next())
-	require.Equal(t, stream.Entries[1], c.Entry())
+	require.Equal(t, stream.Entries[1], c.At())
 	c.Reset()
 	require.Equal(t, true, c.Next())
-	require.Equal(t, stream.Entries[0], c.Entry())
+	require.Equal(t, stream.Entries[0], c.At())
 	require.Equal(t, true, c.Next())
-	require.Equal(t, stream.Entries[1], c.Entry())
+	require.Equal(t, stream.Entries[1], c.At())
 	require.Equal(t, false, c.Next())
 
 	// Close the iterator reset it to the beginning.
@@ -141,16 +141,16 @@ func Test_CachedSampleIterator(t *testing.T) {
 
 	assert := func() {
 		require.Equal(t, "", c.Labels())
-		require.Equal(t, logproto.Sample{}, c.Sample())
+		require.Equal(t, logproto.Sample{}, c.At())
 		require.Equal(t, true, c.Next())
-		require.Equal(t, series.Samples[0], c.Sample())
+		require.Equal(t, series.Samples[0], c.At())
 		require.Equal(t, true, c.Next())
-		require.Equal(t, series.Samples[1], c.Sample())
+		require.Equal(t, series.Samples[1], c.At())
 		require.Equal(t, true, c.Next())
-		require.Equal(t, series.Samples[2], c.Sample())
+		require.Equal(t, series.Samples[2], c.At())
 		require.Equal(t, false, c.Next())
-		require.NoError(t, c.Error())
-		require.Equal(t, series.Samples[2], c.Sample())
+		require.NoError(t, c.Err())
+		require.Equal(t, series.Samples[2], c.At())
 		require.Equal(t, false, c.Next())
 	}
 
@@ -174,19 +174,19 @@ func Test_CachedSampleIteratorResetNotExhausted(t *testing.T) {
 	c := NewCachedSampleIterator(NewSeriesIterator(series), 3)
 
 	require.Equal(t, true, c.Next())
-	require.Equal(t, series.Samples[0], c.Sample())
+	require.Equal(t, series.Samples[0], c.At())
 	require.Equal(t, true, c.Next())
-	require.Equal(t, series.Samples[1], c.Sample())
+	require.Equal(t, series.Samples[1], c.At())
 	c.Reset()
 	require.Equal(t, true, c.Next())
-	require.Equal(t, series.Samples[0], c.Sample())
+	require.Equal(t, series.Samples[0], c.At())
 	require.Equal(t, true, c.Next())
-	require.Equal(t, series.Samples[1], c.Sample())
+	require.Equal(t, series.Samples[1], c.At())
 	require.Equal(t, true, c.Next())
-	require.Equal(t, series.Samples[2], c.Sample())
+	require.Equal(t, series.Samples[2], c.At())
 	require.Equal(t, false, c.Next())
-	require.NoError(t, c.Error())
-	require.Equal(t, series.Samples[2], c.Sample())
+	require.NoError(t, c.Err())
+	require.Equal(t, series.Samples[2], c.At())
 	require.Equal(t, false, c.Next())
 
 	// Close the iterator reset it to the beginning.
@@ -204,14 +204,14 @@ func Test_CachedSampleIteratorResetExhausted(t *testing.T) {
 	c := NewCachedSampleIterator(NewSeriesIterator(series), 3)
 
 	require.Equal(t, true, c.Next())
-	require.Equal(t, series.Samples[0], c.Sample())
+	require.Equal(t, series.Samples[0], c.At())
 	require.Equal(t, true, c.Next())
-	require.Equal(t, series.Samples[1], c.Sample())
+	require.Equal(t, series.Samples[1], c.At())
 	c.Reset()
 	require.Equal(t, true, c.Next())
-	require.Equal(t, series.Samples[0], c.Sample())
+	require.Equal(t, series.Samples[0], c.At())
 	require.Equal(t, true, c.Next())
-	require.Equal(t, series.Samples[1], c.Sample())
+	require.Equal(t, series.Samples[1], c.At())
 	require.Equal(t, false, c.Next())
 
 	// Close the iterator reset it to the beginning.
@@ -219,39 +219,29 @@ func Test_CachedSampleIteratorResetExhausted(t *testing.T) {
 }
 
 func Test_EmptyCachedSampleIterator(t *testing.T) {
-	c := NewCachedSampleIterator(NoopIterator, 0)
+	c := NewCachedSampleIterator(NoopSampleIterator, 0)
 
 	require.Equal(t, "", c.Labels())
-	require.Equal(t, logproto.Sample{}, c.Sample())
+	require.Equal(t, logproto.Sample{}, c.At())
 	require.Equal(t, false, c.Next())
 	require.Equal(t, "", c.Labels())
-	require.Equal(t, logproto.Sample{}, c.Sample())
+	require.Equal(t, logproto.Sample{}, c.At())
 
 	require.Equal(t, nil, c.Close())
 
 	require.Equal(t, "", c.Labels())
-	require.Equal(t, logproto.Sample{}, c.Sample())
+	require.Equal(t, logproto.Sample{}, c.At())
 	require.Equal(t, false, c.Next())
 	require.Equal(t, "", c.Labels())
-	require.Equal(t, logproto.Sample{}, c.Sample())
+	require.Equal(t, logproto.Sample{}, c.At())
 }
 
 func Test_ErrorCachedSampleIterator(t *testing.T) {
-	c := NewCachedSampleIterator(&errorIter{}, 0)
+	c := NewCachedSampleIterator(ErrorSampleIterator, 0)
 
 	require.Equal(t, false, c.Next())
 	require.Equal(t, "", c.Labels())
-	require.Equal(t, logproto.Sample{}, c.Sample())
-	require.Equal(t, errors.New("error"), c.Error())
+	require.Equal(t, logproto.Sample{}, c.At())
+	require.Equal(t, errors.New("error"), c.Err())
 	require.Equal(t, errors.New("close"), c.Close())
 }
-
-type errorIter struct{}
-
-func (errorIter) Next() bool              { return false }
-func (errorIter) Error() error            { return errors.New("error") }
-func (errorIter) Labels() string          { return "" }
-func (errorIter) StreamHash() uint64      { return 0 }
-func (errorIter) Entry() logproto.Entry   { return logproto.Entry{} }
-func (errorIter) Sample() logproto.Sample { return logproto.Sample{} }
-func (errorIter) Close() error            { return errors.New("close") }

@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 func TestNewPeekingSampleIterator(t *testing.T) {
@@ -43,7 +43,7 @@ func TestNewPeekingSampleIterator(t *testing.T) {
 	if !hasNext {
 		t.Fatal("should have next.")
 	}
-	if iter.Sample().Timestamp != 1 {
+	if iter.At().Timestamp != 1 {
 		t.Fatal("wrong peeked time.")
 	}
 
@@ -58,7 +58,7 @@ func TestNewPeekingSampleIterator(t *testing.T) {
 	if !hasNext {
 		t.Fatal("should have next.")
 	}
-	if iter.Sample().Timestamp != 2 {
+	if iter.At().Timestamp != 2 {
 		t.Fatal("wrong peeked time.")
 	}
 	_, peek, ok = iter.Peek()
@@ -72,7 +72,7 @@ func TestNewPeekingSampleIterator(t *testing.T) {
 	if !hasNext {
 		t.Fatal("should have next.")
 	}
-	if iter.Sample().Timestamp != 3 {
+	if iter.At().Timestamp != 3 {
 		t.Fatal("wrong peeked time.")
 	}
 	_, _, ok = iter.Peek()
@@ -80,7 +80,7 @@ func TestNewPeekingSampleIterator(t *testing.T) {
 		t.Fatal("should not be ok.")
 	}
 	require.NoError(t, iter.Close())
-	require.NoError(t, iter.Error())
+	require.NoError(t, iter.Err())
 }
 
 func sample(i int) logproto.Sample {
@@ -123,13 +123,13 @@ func TestNewMergeSampleIterator(t *testing.T) {
 		for i := 1; i < 4; i++ {
 			require.True(t, it.Next(), i)
 			require.Equal(t, `{foo="car"}`, it.Labels(), i)
-			require.Equal(t, sample(i), it.Sample(), i)
+			require.Equal(t, sample(i), it.At(), i)
 			require.True(t, it.Next(), i)
 			require.Equal(t, `{foo="var"}`, it.Labels(), i)
-			require.Equal(t, sample(i), it.Sample(), i)
+			require.Equal(t, sample(i), it.At(), i)
 		}
 		require.False(t, it.Next())
-		require.NoError(t, it.Error())
+		require.NoError(t, it.Err())
 		require.NoError(t, it.Close())
 	})
 	t.Run("no labels", func(t *testing.T) {
@@ -169,13 +169,13 @@ func TestNewMergeSampleIterator(t *testing.T) {
 		for i := 1; i < 4; i++ {
 			require.True(t, it.Next(), i)
 			require.Equal(t, ``, it.Labels(), i)
-			require.Equal(t, sample(i), it.Sample(), i)
+			require.Equal(t, sample(i), it.At(), i)
 			require.True(t, it.Next(), i)
 			require.Equal(t, ``, it.Labels(), i)
-			require.Equal(t, sample(i), it.Sample(), i)
+			require.Equal(t, sample(i), it.At(), i)
 		}
 		require.False(t, it.Next())
-		require.NoError(t, it.Error())
+		require.NoError(t, it.Err())
 		require.NoError(t, it.Close())
 	})
 }
@@ -208,15 +208,15 @@ func TestNewSampleQueryClientIterator(t *testing.T) {
 	for i := 1; i < 4; i++ {
 		require.True(t, it.Next(), i)
 		require.Equal(t, `{foo="var"}`, it.Labels(), i)
-		require.Equal(t, sample(i), it.Sample(), i)
+		require.Equal(t, sample(i), it.At(), i)
 	}
 	for i := 1; i < 4; i++ {
 		require.True(t, it.Next(), i)
 		require.Equal(t, `{foo="car"}`, it.Labels(), i)
-		require.Equal(t, sample(i), it.Sample(), i)
+		require.Equal(t, sample(i), it.At(), i)
 	}
 	require.False(t, it.Next())
-	require.NoError(t, it.Error())
+	require.NoError(t, it.Err())
 	require.NoError(t, it.Close())
 }
 
@@ -232,10 +232,10 @@ func TestNewNonOverlappingSampleIterator(t *testing.T) {
 	for i := 1; i < 6; i++ {
 		require.True(t, it.Next(), i)
 		require.Equal(t, `{foo="var"}`, it.Labels(), i)
-		require.Equal(t, sample(i), it.Sample(), i)
+		require.Equal(t, sample(i), it.At(), i)
 	}
 	require.False(t, it.Next())
-	require.NoError(t, it.Error())
+	require.NoError(t, it.Err())
 	require.NoError(t, it.Close())
 }
 
@@ -256,11 +256,11 @@ type CloseTestingSmplIterator struct {
 	s      logproto.Sample
 }
 
-func (i *CloseTestingSmplIterator) Next() bool              { return true }
-func (i *CloseTestingSmplIterator) Sample() logproto.Sample { return i.s }
-func (i *CloseTestingSmplIterator) StreamHash() uint64      { return 0 }
-func (i *CloseTestingSmplIterator) Labels() string          { return "" }
-func (i *CloseTestingSmplIterator) Error() error            { return nil }
+func (i *CloseTestingSmplIterator) Next() bool          { return true }
+func (i *CloseTestingSmplIterator) At() logproto.Sample { return i.s }
+func (i *CloseTestingSmplIterator) StreamHash() uint64  { return 0 }
+func (i *CloseTestingSmplIterator) Labels() string      { return "" }
+func (i *CloseTestingSmplIterator) Err() error          { return nil }
 func (i *CloseTestingSmplIterator) Close() error {
 	i.closed.Store(true)
 	return nil
@@ -287,8 +287,7 @@ func TestSampleIteratorWithClose_CloseIdempotent(t *testing.T) {
 		c++
 		return nil
 	}
-	ni := noOpIterator{}
-	it := SampleIteratorWithClose(ni, closeFn)
+	it := SampleIteratorWithClose(NoopSampleIterator, closeFn)
 	// Multiple calls to close should result in c only ever having been incremented one time from 0 to 1
 	err := it.Close()
 	assert.NoError(t, err)
@@ -301,25 +300,16 @@ func TestSampleIteratorWithClose_CloseIdempotent(t *testing.T) {
 	assert.EqualValues(t, 1, c)
 }
 
-type alwaysErrorIterator struct {
-	noOpIterator
-}
-
-func (alwaysErrorIterator) Close() error {
-	return errors.New("i always error")
-}
-
 func TestSampleIteratorWithClose_ReturnsError(t *testing.T) {
 	closeFn := func() error {
 		return errors.New("i broke")
 	}
-	ei := alwaysErrorIterator{}
-	it := SampleIteratorWithClose(ei, closeFn)
+	it := SampleIteratorWithClose(ErrorSampleIterator, closeFn)
 	err := it.Close()
 	// Verify that a proper multi error is returned when both the iterator and the close function return errors
 	if me, ok := err.(util.MultiError); ok {
 		assert.True(t, len(me) == 2, "Expected 2 errors, one from the iterator and one from the close function")
-		assert.EqualError(t, me[0], "i always error")
+		assert.EqualError(t, me[0], "close")
 		assert.EqualError(t, me[1], "i broke")
 	} else {
 		t.Error("Expected returned error to be of type util.MultiError")
@@ -362,7 +352,7 @@ func BenchmarkSortSampleIterator(b *testing.B) {
 			b.StartTimer()
 			it := NewMergeSampleIterator(ctx, itrs)
 			for it.Next() {
-				it.Sample()
+				it.At()
 			}
 			it.Close()
 		}
@@ -378,7 +368,7 @@ func BenchmarkSortSampleIterator(b *testing.B) {
 			b.StartTimer()
 			it := NewSortSampleIterator(itrs)
 			for it.Next() {
-				it.Sample()
+				it.At()
 			}
 			it.Close()
 		}
@@ -410,7 +400,7 @@ func Test_SampleSortIterator(t *testing.T) {
 		var i int64
 		defer it.Close()
 		for it.Next() {
-			require.Equal(t, i, it.Sample().Timestamp)
+			require.Equal(t, i, it.At().Timestamp)
 			i++
 		}
 	})
@@ -439,13 +429,13 @@ func Test_SampleSortIterator(t *testing.T) {
 
 		// The first entry appears in both so we expect it to be sorted by Labels.
 		require.True(t, it.Next())
-		require.Equal(t, int64(0), it.Sample().Timestamp)
+		require.Equal(t, int64(0), it.At().Timestamp)
 		require.Equal(t, `a`, it.Labels())
 
 		var i int64
 		defer it.Close()
 		for it.Next() {
-			require.Equal(t, i, it.Sample().Timestamp)
+			require.Equal(t, i, it.At().Timestamp)
 			i++
 		}
 	})
@@ -489,15 +479,15 @@ func TestDedupeMergeSampleIterator(t *testing.T) {
 		})
 
 	require.True(t, it.Next())
-	require.Equal(t, time.Unix(1, 0).UnixNano(), it.Sample().Timestamp)
-	require.Equal(t, 1., it.Sample().Value)
-	require.Equal(t, xxhash.Sum64String("1"), it.Sample().Hash)
+	require.Equal(t, time.Unix(1, 0).UnixNano(), it.At().Timestamp)
+	require.Equal(t, 1., it.At().Value)
+	require.Equal(t, xxhash.Sum64String("1"), it.At().Hash)
 	require.True(t, it.Next())
-	require.Equal(t, time.Unix(1, 0).UnixNano(), it.Sample().Timestamp)
-	require.Equal(t, 1., it.Sample().Value)
-	require.Equal(t, xxhash.Sum64String("2"), it.Sample().Hash)
+	require.Equal(t, time.Unix(1, 0).UnixNano(), it.At().Timestamp)
+	require.Equal(t, 1., it.At().Value)
+	require.Equal(t, xxhash.Sum64String("2"), it.At().Hash)
 	require.True(t, it.Next())
-	require.Equal(t, time.Unix(2, 0).UnixNano(), it.Sample().Timestamp)
-	require.Equal(t, 1., it.Sample().Value)
-	require.Equal(t, xxhash.Sum64String("3"), it.Sample().Hash)
+	require.Equal(t, time.Unix(2, 0).UnixNano(), it.At().Timestamp)
+	require.Equal(t, 1., it.At().Value)
+	require.Equal(t, xxhash.Sum64String("3"), it.At().Hash)
 }

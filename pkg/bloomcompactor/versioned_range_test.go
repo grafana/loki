@@ -6,9 +6,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
 
 func Test_TsdbTokenRange(t *testing.T) {
@@ -310,6 +310,35 @@ func Test_OutdatedMetas(t *testing.T) {
 				gen(v1.NewBounds(8, 10), 2),
 			},
 			exp: []bloomshipper.Meta{
+				gen(v1.NewBounds(0, 5), 0),
+			},
+		},
+		{
+			desc: "metas without sources are removed",
+			metas: []bloomshipper.Meta{
+				gen(v1.NewBounds(0, 5), 0),
+				gen(v1.NewBounds(6, 10), 0),
+				gen(v1.NewBounds(0, 10), 1),
+				gen(v1.NewBounds(11, 15)), // Meta without sources
+			},
+			exp: []bloomshipper.Meta{
+				gen(v1.NewBounds(11, 15)), // Meta without sources
+				gen(v1.NewBounds(6, 10), 0),
+				gen(v1.NewBounds(0, 5), 0),
+			},
+		},
+		{
+			desc: "metas without sources are interleaved",
+			metas: []bloomshipper.Meta{
+				gen(v1.NewBounds(0, 5), 0),
+				gen(v1.NewBounds(6, 10)), // Meta without sources
+				gen(v1.NewBounds(0, 10), 1),
+				gen(v1.NewBounds(11, 15)), // Meta without sources
+				gen(v1.NewBounds(16, 20), 2),
+			},
+			exp: []bloomshipper.Meta{
+				gen(v1.NewBounds(6, 10)),  // Meta without sources
+				gen(v1.NewBounds(11, 15)), // Meta without sources
 				gen(v1.NewBounds(0, 5), 0),
 			},
 		},

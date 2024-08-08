@@ -11,8 +11,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 type MultiIndex struct {
@@ -115,7 +115,7 @@ func (i *MultiIndex) forMatchingIndices(ctx context.Context, from, through model
 	queryBounds := newBounds(from, through)
 
 	return i.iter.For(ctx, i.maxParallel, func(ctx context.Context, idx Index) error {
-		if Overlap(queryBounds, idx) {
+		if Overlap(idx, queryBounds) {
 
 			if i.filterer != nil {
 				// TODO(owen-d): Find a nicer way

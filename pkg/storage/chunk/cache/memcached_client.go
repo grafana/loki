@@ -21,8 +21,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/sony/gobreaker"
 
-	"github.com/grafana/loki/pkg/util/constants"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/jumphash"
 )
 
 // MemcachedClient interface exists for mocking memcacheClient.
@@ -75,7 +75,7 @@ type memcachedClient struct {
 type MemcachedClientConfig struct {
 	Host           string        `yaml:"host"`
 	Service        string        `yaml:"service"`
-	Addresses      string        `yaml:"addresses"` // EXPERIMENTAL.
+	Addresses      string        `yaml:"addresses"`
 	Timeout        time.Duration `yaml:"timeout"`
 	MaxIdleConns   int           `yaml:"max_idle_conns"`
 	MaxItemSize    int           `yaml:"max_item_size"`
@@ -96,7 +96,7 @@ type MemcachedClientConfig struct {
 func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Host, prefix+"memcached.hostname", "", description+"Hostname for memcached service to use. If empty and if addresses is unset, no memcached will be used.")
 	f.StringVar(&cfg.Service, prefix+"memcached.service", "memcached", description+"SRV service used to discover memcache servers.")
-	f.StringVar(&cfg.Addresses, prefix+"memcached.addresses", "", description+"EXPERIMENTAL: Comma separated addresses list in DNS Service Discovery format: https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery")
+	f.StringVar(&cfg.Addresses, prefix+"memcached.addresses", "", description+"Comma separated addresses list in DNS Service Discovery format: https://grafana.com/docs/mimir/latest/configure/about-dns-service-discovery/#supported-discovery-modes")
 	f.IntVar(&cfg.MaxIdleConns, prefix+"memcached.max-idle-conns", 16, description+"Maximum number of idle connections in pool.")
 	f.DurationVar(&cfg.Timeout, prefix+"memcached.timeout", 100*time.Millisecond, description+"Maximum time to wait before giving up on memcached requests.")
 	f.DurationVar(&cfg.UpdateInterval, prefix+"memcached.update-interval", 1*time.Minute, description+"Period with which to poll DNS for memcache servers.")
@@ -114,7 +114,7 @@ func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(prefix, description st
 func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Registerer, logger log.Logger, metricsNamespace string) MemcachedClient {
 	var selector serverSelector
 	if cfg.ConsistentHash {
-		selector = DefaultMemcachedJumpHashSelector()
+		selector = jumphash.DefaultSelector()
 	} else {
 		selector = &memcache.ServerList{}
 	}
@@ -180,7 +180,6 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 	}
 
 	if len(cfg.Addresses) > 0 {
-		util_log.WarnExperimentalUse("DNS-based memcached service discovery", logger)
 		newClient.addresses = strings.Split(cfg.Addresses, ",")
 	}
 

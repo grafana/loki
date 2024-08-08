@@ -9,9 +9,9 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/loghttp/push"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const (
@@ -43,6 +43,8 @@ type validationContext struct {
 	maxLabelValueLength    int
 
 	incrementDuplicateTimestamps bool
+	discoverServiceName          []string
+	discoverLogLevels            bool
 
 	allowStructuredMetadata    bool
 	maxStructuredMetadataSize  int
@@ -63,6 +65,8 @@ func (v Validator) getValidationContextForTime(now time.Time, userID string) val
 		maxLabelNameLength:           v.MaxLabelNameLength(userID),
 		maxLabelValueLength:          v.MaxLabelValueLength(userID),
 		incrementDuplicateTimestamps: v.IncrementDuplicateTimestamps(userID),
+		discoverServiceName:          v.DiscoverServiceName(userID),
+		discoverLogLevels:            v.DiscoverLogLevels(userID),
 		allowStructuredMetadata:      v.AllowStructuredMetadata(userID),
 		maxStructuredMetadataSize:    v.MaxStructuredMetadataSize(userID),
 		maxStructuredMetadataCount:   v.MaxStructuredMetadataCount(userID),
@@ -153,7 +157,14 @@ func (v Validator) ValidateLabels(ctx validationContext, ls labels.Labels, strea
 		validation.DiscardedSamples.WithLabelValues(validation.MissingLabels, ctx.userID).Inc()
 		return fmt.Errorf(validation.MissingLabelsErrorMsg)
 	}
+
 	numLabelNames := len(ls)
+	// This is a special case that's often added by the Loki infrastructure. It may result in allowing one extra label
+	// if incoming requests already have a service_name
+	if ls.Has(push.LabelServiceName) {
+		numLabelNames--
+	}
+
 	if numLabelNames > ctx.maxLabelNamesPerSeries {
 		updateMetrics(validation.MaxLabelNamesPerSeries, ctx.userID, stream)
 		return fmt.Errorf(validation.MaxLabelNamesPerSeriesErrorMsg, stream.Labels, numLabelNames, ctx.maxLabelNamesPerSeries)

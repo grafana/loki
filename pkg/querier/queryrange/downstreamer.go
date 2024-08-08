@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
@@ -14,12 +13,11 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/querier/plan"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
 
 const (
@@ -45,6 +43,8 @@ func ParamsToLokiRequest(params logql.Params) queryrangebase.Request {
 			Plan: &plan.QueryPlan{
 				AST: params.GetExpression(),
 			},
+			StoreChunks:    params.GetStoreChunks(),
+			CachingOptions: params.CachingOptions(),
 		}
 	}
 	return &LokiRequest{
@@ -60,6 +60,8 @@ func ParamsToLokiRequest(params logql.Params) queryrangebase.Request {
 		Plan: &plan.QueryPlan{
 			AST: params.GetExpression(),
 		},
+		StoreChunks:    params.GetStoreChunks(),
+		CachingOptions: params.CachingOptions(),
 	}
 }
 
@@ -140,9 +142,7 @@ func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQue
 		}
 		sp, ctx := opentracing.StartSpanFromContext(ctx, "DownstreamHandler.instance")
 		defer sp.Finish()
-		logger := spanlogger.FromContext(ctx)
-		defer logger.Finish()
-		level.Debug(logger).Log("shards", fmt.Sprintf("%+v", qry.Params.Shards()), "query", req.GetQuery(), "step", req.GetStep(), "handler", reflect.TypeOf(in.handler), "engine", "downstream")
+		sp.LogKV("shards", fmt.Sprintf("%+v", qry.Params.Shards()), "query", req.GetQuery(), "step", req.GetStep(), "handler", reflect.TypeOf(in.handler), "engine", "downstream")
 
 		res, err := in.handler.Do(ctx, req)
 		if err != nil {

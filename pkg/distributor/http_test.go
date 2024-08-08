@@ -9,13 +9,13 @@ import (
 
 	"github.com/grafana/dskit/user"
 
-	"github.com/grafana/loki/pkg/loghttp/push"
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/logproto"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func TestDistributorRingHandler(t *testing.T) {
@@ -80,6 +80,38 @@ func TestRequestParserWrapping(t *testing.T) {
 	distributors[0].pushHandler(httptest.NewRecorder(), req, stubParser)
 
 	require.True(t, called)
+}
+
+func Test_OtelErrorHeaderInterceptor(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		inputCode    int
+		expectedCode int
+	}{
+		{
+			name:         "500",
+			inputCode:    http.StatusInternalServerError,
+			expectedCode: http.StatusServiceUnavailable,
+		},
+		{
+			name:         "400",
+			inputCode:    http.StatusBadRequest,
+			expectedCode: http.StatusBadRequest,
+		},
+		{
+			name:         "204",
+			inputCode:    http.StatusNoContent,
+			expectedCode: http.StatusNoContent,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRecorder()
+			i := newOtelErrorHeaderInterceptor(r)
+
+			http.Error(i, "error", tc.inputCode)
+			require.Equal(t, tc.expectedCode, r.Code)
+		})
+	}
 }
 
 func stubParser(_ string, _ *http.Request, _ push.TenantsRetention, _ push.Limits, _ push.UsageTracker) (*logproto.PushRequest, *push.Stats, error) {

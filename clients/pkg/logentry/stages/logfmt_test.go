@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v2"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var testLogfmtYamlSingleStageWithoutSource = `

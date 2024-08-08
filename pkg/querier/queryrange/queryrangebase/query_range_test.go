@@ -7,12 +7,15 @@ import (
 	"net/http"
 	"strconv"
 	"testing"
+	"time"
 
 	jsoniter "github.com/json-iterator/go"
+	"github.com/opentracing/opentracing-go/mocktracer"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func TestResponse(t *testing.T) {
@@ -33,7 +36,7 @@ func TestResponse(t *testing.T) {
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
 				Body:       io.NopCloser(bytes.NewBuffer([]byte(tc.body))),
 			}
-			resp, err := PrometheusCodec.DecodeResponse(context.Background(), response, nil)
+			resp, err := PrometheusCodecForRangeQueries.DecodeResponse(context.Background(), response, nil)
 			require.NoError(t, err)
 			assert.Equal(t, tc.expected, resp)
 
@@ -44,7 +47,7 @@ func TestResponse(t *testing.T) {
 				Body:          io.NopCloser(bytes.NewBuffer([]byte(tc.body))),
 				ContentLength: int64(len(tc.body)),
 			}
-			resp2, err := PrometheusCodec.EncodeResponse(context.Background(), nil, resp)
+			resp2, err := PrometheusCodecForRangeQueries.EncodeResponse(context.Background(), nil, resp)
 			require.NoError(t, err)
 			assert.Equal(t, response, resp2)
 		})
@@ -117,6 +120,7 @@ func TestMergeAPIResponses(t *testing.T) {
 			name: "Basic merging of two responses.",
 			input: []Response{
 				&PrometheusResponse{
+					Warnings: []string{"warning1", "warning2"},
 					Data: PrometheusData{
 						ResultType: matrix,
 						Result: []SampleStream{
@@ -131,6 +135,7 @@ func TestMergeAPIResponses(t *testing.T) {
 					},
 				},
 				&PrometheusResponse{
+					Warnings: []string{"warning2", "warning3"},
 					Data: PrometheusData{
 						ResultType: matrix,
 						Result: []SampleStream{
@@ -146,7 +151,8 @@ func TestMergeAPIResponses(t *testing.T) {
 				},
 			},
 			expected: &PrometheusResponse{
-				Status: StatusSuccess,
+				Status:   StatusSuccess,
+				Warnings: []string{"warning1", "warning2", "warning3"},
 				Data: PrometheusData{
 					ResultType: matrix,
 					Result: []SampleStream{
@@ -262,10 +268,33 @@ func TestMergeAPIResponses(t *testing.T) {
 			},
 		}} {
 		t.Run(tc.name, func(t *testing.T) {
-			output, err := PrometheusCodec.MergeResponse(tc.input...)
+			output, err := PrometheusCodecForRangeQueries.MergeResponse(tc.input...)
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, output)
 		})
+	}
+}
+
+func TestPrometheusRequestSpanLogging(t *testing.T) {
+	now := time.Now()
+	end := now.Add(1000 * time.Second)
+	req := PrometheusRequest{
+		Start: now,
+		End:   end,
+	}
+
+	span := mocktracer.MockSpan{}
+	req.LogToSpan(&span)
+
+	for _, l := range span.Logs() {
+		for _, field := range l.Fields {
+			if field.Key == "start" {
+				require.Equal(t, timestamp.Time(now.UnixMilli()).String(), field.ValueString)
+			}
+			if field.Key == "end" {
+				require.Equal(t, timestamp.Time(end.UnixMilli()).String(), field.ValueString)
+			}
+		}
 	}
 }
 

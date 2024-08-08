@@ -110,6 +110,13 @@ func (s *ScalableBloomFilter) K() uint {
 	return s.filters[len(s.filters)-1].K()
 }
 
+func (s *ScalableBloomFilter) Count() (ct int) {
+	for _, filter := range s.filters {
+		ct += int(filter.Count())
+	}
+	return
+}
+
 // FillRatio returns the average ratio of set bits across every filter.
 func (s *ScalableBloomFilter) FillRatio() float64 {
 	var sum, count float64
@@ -139,6 +146,14 @@ func (s *ScalableBloomFilter) Test(data []byte) bool {
 // Add will add the data to the Bloom filter. It returns the filter to allow
 // for chaining.
 func (s *ScalableBloomFilter) Add(data []byte) Filter {
+	s.AddWithMaxSize(data, 0)
+	return s
+}
+
+// addWithMaxSize adds a new element to the filter,
+// unless adding would require the filter to grow above a given maxSize (0 for unlimited).
+// returns true if the filter is full, in which case the key was not added
+func (s *ScalableBloomFilter) AddWithMaxSize(data []byte, maxSize int) (full bool) {
 	idx := len(s.filters) - 1
 
 	// If the last filter has reached its fill ratio, add a new one.
@@ -161,6 +176,10 @@ func (s *ScalableBloomFilter) Add(data []byte) Filter {
 		// calculate the actual fill ratio & update the estimated count for the filter. If the actual fill ratio
 		// is above the target fill ratio, add a new filter.
 		if ratio := s.filters[idx].UpdateCount(); ratio >= s.p {
+			nextCap, _ := s.nextFilterCapacity()
+			if maxSize > 0 && s.Capacity()+nextCap > uint(maxSize) {
+				return true
+			}
 			s.addFilter()
 			idx++
 		}
@@ -169,7 +188,7 @@ func (s *ScalableBloomFilter) Add(data []byte) Filter {
 
 	s.filters[idx].Add(data)
 	s.additionsSinceFillRatioCheck++
-	return s
+	return false
 }
 
 // TestAndAdd is equivalent to calling Test followed by Add. It returns true if
@@ -180,6 +199,14 @@ func (s *ScalableBloomFilter) TestAndAdd(data []byte) bool {
 	return member
 }
 
+// TestAndAdd is equivalent to calling Test followed by Add. It returns both if the key exists in the filter
+// already and if the filter is full. If full, the key was _not_ added.
+func (s *ScalableBloomFilter) TestAndAddWithMaxSize(data []byte, maxSize int) (exists, full bool) {
+	member := s.Test(data)
+	full = s.AddWithMaxSize(data, maxSize)
+	return member, full
+}
+
 // Reset restores the Bloom filter to its original state. It returns the filter
 // to allow for chaining.
 func (s *ScalableBloomFilter) Reset() *ScalableBloomFilter {
@@ -188,20 +215,25 @@ func (s *ScalableBloomFilter) Reset() *ScalableBloomFilter {
 	return s
 }
 
-// addFilter adds a new Bloom filter with a restricted false-positive rate to
-// the Scalable Bloom Filter
-func (s *ScalableBloomFilter) addFilter() {
-	fpRate := s.fp * math.Pow(s.r, float64(len(s.filters)))
-	var p *PartitionedBloomFilter
+func (s *ScalableBloomFilter) nextFilterCapacity() (m uint, fpRate float64) {
+	fpRate = s.fp * math.Pow(s.r, float64(len(s.filters)))
 
 	// first filter is created with a size determined by the hint.
 	// successive filters are created with a size determined by the
 	// previous filter's capacity and the space growth factor.
 	if len(s.filters) == 0 {
-		p = NewPartitionedBloomFilter(s.hint, fpRate)
+		m = OptimalM(s.hint, fpRate)
 	} else {
-		p = NewPartitionedBloomFilterWithCapacity(s.filters[len(s.filters)-1].Capacity()*s.s, fpRate)
+		m = s.filters[len(s.filters)-1].Capacity() * s.s
 	}
+	return
+}
+
+// addFilter adds a new Bloom filter with a restricted false-positive rate to
+// the Scalable Bloom Filter
+func (s *ScalableBloomFilter) addFilter() {
+	nextCap, fpRate := s.nextFilterCapacity()
+	p := NewPartitionedBloomFilterWithCapacity(nextCap, fpRate)
 
 	if len(s.filters) > 0 {
 		p.SetHash(s.filters[0].hash)

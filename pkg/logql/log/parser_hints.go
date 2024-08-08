@@ -3,7 +3,7 @@ package log
 import (
 	"strings"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 func NoParserHints() ParserHint {

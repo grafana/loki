@@ -11,10 +11,11 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/push"
-	"github.com/grafana/loki/pkg/validation"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 var (

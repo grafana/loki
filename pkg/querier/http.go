@@ -12,27 +12,28 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/middleware"
 	"github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	loghttp_legacy "github.com/grafana/loki/pkg/loghttp/legacy"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/queryrange"
-	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/util/httpreq"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/marshal"
-	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
-	serverutil "github.com/grafana/loki/pkg/util/server"
-	"github.com/grafana/loki/pkg/util/spanlogger"
-	util_validation "github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	loghttp_legacy "github.com/grafana/loki/v3/pkg/loghttp/legacy"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange"
+	index_stats "github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/marshal"
+	marshal_legacy "github.com/grafana/loki/v3/pkg/util/marshal/legacy"
+	serverutil "github.com/grafana/loki/v3/pkg/util/server"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
+	util_validation "github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 const (
@@ -84,6 +85,11 @@ func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.Loki
 
 // InstantQueryHandler is a http.HandlerFunc for instant queries.
 func (q *QuerierAPI) InstantQueryHandler(ctx context.Context, req *queryrange.LokiInstantRequest) (logqlmodel.Result, error) {
+	// do not allow log selector expression (aka log query) as instant query
+	if _, ok := req.Plan.AST.(syntax.SampleExpr); !ok {
+		return logqlmodel.Result{}, logqlmodel.ErrUnsupportedSyntaxForInstantQuery
+	}
+
 	if err := q.validateMaxEntriesLimits(ctx, req.Plan.AST, req.Limit); err != nil {
 		return logqlmodel.Result{}, err
 	}
@@ -112,15 +118,16 @@ func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelReques
 		resLength = len(resp.Values)
 	}
 	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
-	log := spanlogger.FromContext(ctx)
-	statResult.Log(level.Debug(log))
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV(statResult.KVList()...)
+	}
 
 	status := 200
 	if err != nil {
 		status, _ = serverutil.ClientHTTPStatusAndError(err)
 	}
 
-	logql.RecordLabelQueryMetrics(ctx, log, *req.Start, *req.End, req.Name, req.Query, strconv.Itoa(status), statResult)
+	logql.RecordLabelQueryMetrics(ctx, util_log.Logger, *req.Start, *req.End, req.Name, req.Query, strconv.Itoa(status), statResult)
 
 	return resp, err
 }
@@ -266,15 +273,16 @@ func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequ
 	}
 
 	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
-	log := spanlogger.FromContext(ctx)
-	statResult.Log(level.Debug(log))
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV(statResult.KVList()...)
+	}
 
 	status := 200
 	if err != nil {
 		status, _ = serverutil.ClientHTTPStatusAndError(err)
 	}
 
-	logql.RecordSeriesQueryMetrics(ctx, log, req.Start, req.End, req.Groups, strconv.Itoa(status), req.GetShards(), statResult)
+	logql.RecordSeriesQueryMetrics(ctx, util_log.Logger, req.Start, req.End, req.Groups, strconv.Itoa(status), req.GetShards(), statResult)
 
 	return resp, statResult, err
 }
@@ -296,15 +304,16 @@ func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQu
 
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 	statResult := statsCtx.Result(time.Since(start), queueTime, 1)
-	log := spanlogger.FromContext(ctx)
-	statResult.Log(level.Debug(log))
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV(statResult.KVList()...)
+	}
 
 	status := 200
 	if err != nil {
 		status, _ = serverutil.ClientHTTPStatusAndError(err)
 	}
 
-	logql.RecordStatsQueryMetrics(ctx, log, req.Start, req.End, req.Query, strconv.Itoa(status), statResult)
+	logql.RecordStatsQueryMetrics(ctx, util_log.Logger, req.Start, req.End, req.Query, strconv.Itoa(status), statResult)
 
 	return resp, err
 }
@@ -327,8 +336,9 @@ func (q *QuerierAPI) IndexShardsHandler(ctx context.Context, req *loghttp.RangeQ
 
 	statResult := statsCtx.Result(time.Since(start), queueTime, resLength)
 
-	log := spanlogger.FromContext(ctx)
-	statResult.Log(level.Debug(log))
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV(statResult.KVList()...)
+	}
 
 	status := 200
 	if err != nil {
@@ -336,7 +346,7 @@ func (q *QuerierAPI) IndexShardsHandler(ctx context.Context, req *loghttp.RangeQ
 	}
 
 	logql.RecordShardsQueryMetrics(
-		ctx, log, req.Start, req.End, req.Query, targetBytesPerShard, strconv.Itoa(status), resLength, statResult,
+		ctx, util_log.Logger, req.Start, req.End, req.Query, targetBytesPerShard, strconv.Itoa(status), resLength, statResult,
 	)
 
 	return resp, err
@@ -363,16 +373,60 @@ func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequ
 
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 	statResult := statsCtx.Result(time.Since(start), queueTime, 1)
-	log := spanlogger.FromContext(ctx)
-	statResult.Log(level.Debug(log))
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV(statResult.KVList()...)
+	}
 
 	status := 200
 	if err != nil {
 		status, _ = serverutil.ClientHTTPStatusAndError(err)
 	}
 
-	logql.RecordVolumeQueryMetrics(ctx, log, req.From.Time(), req.Through.Time(), req.GetQuery(), uint32(req.GetLimit()), time.Duration(req.GetStep()), strconv.Itoa(status), statResult)
+	logql.RecordVolumeQueryMetrics(ctx, util_log.Logger, req.From.Time(), req.Through.Time(), req.GetQuery(), uint32(req.GetLimit()), time.Duration(req.GetStep()), strconv.Itoa(status), statResult)
 
+	return resp, nil
+}
+
+func (q *QuerierAPI) DetectedFieldsHandler(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
+	resp, err := q.querier.DetectedFields(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil { // Some stores don't implement this
+		level.Debug(spanlogger.FromContext(ctx)).Log(
+			"msg", "queried store for detected fields that does not support it, no response from querier.DetectedFields",
+		)
+		return &logproto.DetectedFieldsResponse{
+			Fields:     []*logproto.DetectedField{},
+			FieldLimit: req.GetFieldLimit(),
+		}, nil
+	}
+	return resp, nil
+}
+
+func (q *QuerierAPI) PatternsHandler(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
+	resp, err := q.querier.Patterns(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil { // Some stores don't implement this
+		return &logproto.QueryPatternsResponse{
+			Series: []*logproto.PatternSeries{},
+		}, nil
+	}
+	return resp, nil
+}
+
+func (q *QuerierAPI) SamplesHandler(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error) {
+	resp, err := q.querier.SelectMetricSamples(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil { // Some stores don't implement this
+		return &logproto.QuerySamplesResponse{
+			Series: []logproto.Series{},
+		}, nil
+	}
 	return resp, nil
 }
 
@@ -396,6 +450,16 @@ func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, expr syntax.E
 	return nil
 }
 
+// DetectedLabelsHandler returns a response for detected labels
+func (q *QuerierAPI) DetectedLabelsHandler(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
+	resp, err := q.querier.DetectedLabels(ctx, req)
+
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 // WrapQuerySpanAndTimeout applies a context deadline and a span logger to a query call.
 //
 // The timeout is based on the per-tenant query timeout configuration.
@@ -416,7 +480,7 @@ func WrapQuerySpanAndTimeout(call string, limits Limits) middleware.Interface {
 
 			timeoutCapture := func(id string) time.Duration { return limits.QueryTimeout(ctx, id) }
 			timeout := util_validation.SmallestPositiveNonZeroDurationPerTenant(tenants, timeoutCapture)
-			newCtx, cancel := context.WithTimeout(ctx, timeout)
+			newCtx, cancel := context.WithTimeoutCause(ctx, timeout, errors.New("query timeout reached"))
 			defer cancel()
 
 			newReq := req.WithContext(newCtx)

@@ -9,7 +9,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // Notifications about address resolution. All notifications are sent on the same goroutine.

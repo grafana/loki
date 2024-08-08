@@ -3,17 +3,15 @@ package bloomgateway
 import (
 	"context"
 	"flag"
-	"sort"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
-	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 )
 
 const (
@@ -95,58 +93,21 @@ func newMerger() merger {
 // We merge all chunks grouped by their fingerprint.
 func (m merger) MergeResponse(responses ...resultscache.Response) (resultscache.Response, error) {
 	var size int
+
+	unmerged := make([][]*logproto.GroupedChunkRefs, 0, len(responses))
 	for _, r := range responses {
 		res := r.(*logproto.FilterChunkRefResponse)
+		unmerged = append(unmerged, res.ChunkRefs)
 		size += len(res.ChunkRefs)
 	}
 
-	chunkRefs := make([]*logproto.GroupedChunkRefs, 0, size)
-	for _, r := range responses {
-		res := r.(*logproto.FilterChunkRefResponse)
-		chunkRefs = append(chunkRefs, res.ChunkRefs...)
+	buf := make([]*logproto.GroupedChunkRefs, 0, size)
+	deduped, err := mergeSeries(unmerged, buf)
+	if err != nil {
+		return nil, err
 	}
 
-	return &logproto.FilterChunkRefResponse{
-		ChunkRefs: mergeGroupedChunkRefs(chunkRefs),
-	}, nil
-}
-
-// Merge duplicated fingerprints by:
-// 1. Sort the chunkRefs by their stream fingerprint
-// 2. Remove duplicated FPs appending all chunks into the first fingerprint's chunk list.
-func mergeGroupedChunkRefs(chunkRefs []*logproto.GroupedChunkRefs) []*logproto.GroupedChunkRefs {
-	if len(chunkRefs) <= 1 {
-		return chunkRefs
-	}
-
-	sort.Slice(chunkRefs, func(i, j int) bool {
-		return chunkRefs[i].Fingerprint < chunkRefs[j].Fingerprint
-	})
-
-	var lastDiffFP int
-	for i := 1; i < len(chunkRefs); i++ {
-		if chunkRefs[lastDiffFP].Fingerprint == chunkRefs[i].Fingerprint {
-			chunkRefs[lastDiffFP].Refs = mergeShortRefs(append(chunkRefs[lastDiffFP].Refs, chunkRefs[i].Refs...))
-		} else {
-			lastDiffFP++
-			chunkRefs[lastDiffFP] = chunkRefs[i]
-		}
-	}
-	return chunkRefs[:lastDiffFP+1]
-}
-
-// mergeShortRefs merges short-refs by removing duplicated checksums.
-func mergeShortRefs(refs []*logproto.ShortRef) []*logproto.ShortRef {
-	if len(refs) <= 1 {
-		return refs
-	}
-
-	sort.Slice(refs, func(i, j int) bool {
-		return refs[i].Checksum < refs[j].Checksum
-	})
-	return slices.CompactFunc(refs, func(a, b *logproto.ShortRef) bool {
-		return a.Checksum == b.Checksum
-	})
+	return &logproto.FilterChunkRefResponse{ChunkRefs: deduped}, nil
 }
 
 type ClientCache struct {

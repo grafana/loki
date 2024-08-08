@@ -7,9 +7,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 // BitPrefixInvertedIndex is another inverted index implementation
@@ -69,7 +69,7 @@ func (ii *BitPrefixInvertedIndex) getShards(shard *logql.Shard) ([]*indexShard, 
 
 	switch shard.Variant() {
 	case logql.PowerOfTwoVersion:
-		if shard.PowerOfTwo.Of <= len(ii.shards) {
+		if int(shard.PowerOfTwo.Of) <= len(ii.shards) {
 			filter = false
 		}
 	}
@@ -114,7 +114,7 @@ func (ii *BitPrefixInvertedIndex) validateShard(shard *logql.Shard) error {
 
 	switch shard.Variant() {
 	case logql.PowerOfTwoVersion:
-		return shard.PowerOfTwo.TSDB().Validate()
+		return shard.PowerOfTwo.Validate()
 	}
 	return nil
 

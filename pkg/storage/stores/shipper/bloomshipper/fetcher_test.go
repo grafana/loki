@@ -11,13 +11,14 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/config"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 func makeMetas(t *testing.T, schemaCfg config.SchemaConfig, ts model.Time, keyspaces []v1.FingerprintBounds) []Meta {
@@ -72,6 +73,7 @@ func TestMetasFetcher(t *testing.T) {
 		start []Meta // initial cache state
 		end   []Meta // final cache state
 		fetch []Meta // metas to fetch
+		err   error  // error that is returned when calling cache.Fetch()
 	}{
 		{
 			name:  "all metas found in cache",
@@ -94,13 +96,23 @@ func TestMetasFetcher(t *testing.T) {
 			end:   makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{Min: 0x0000, Max: 0xffff}, {Min: 0x10000, Max: 0x1ffff}}),
 			fetch: makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{Min: 0x0000, Max: 0xffff}, {Min: 0x10000, Max: 0x1ffff}}),
 		},
+		{
+			name:  "error fetching metas yields empty result",
+			err:   errors.New("failed to fetch"),
+			store: makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{Min: 0x0000, Max: 0xffff}, {Min: 0x10000, Max: 0x1ffff}}),
+			start: makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{Min: 0x0000, Max: 0xffff}}),
+			end:   makeMetas(t, schemaCfg, now, []v1.FingerprintBounds{{Min: 0x0000, Max: 0xffff}}),
+			fetch: []Meta{},
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := context.Background()
 			metasCache := cache.NewMockCache()
-			cfg := bloomStoreConfig{workingDir: t.TempDir(), numWorkers: 1}
+			metasCache.SetErr(nil, test.err)
+
+			cfg := bloomStoreConfig{workingDirs: []string{t.TempDir()}, numWorkers: 1}
 
 			oc, err := local.NewFSObjectClient(local.FSConfig{Directory: dir})
 			require.NoError(t, err)
@@ -255,11 +267,64 @@ func TestFetcher_DownloadQueue(t *testing.T) {
 		}
 
 	})
+
+	t.Run("download multiple items and return in order", func(t *testing.T) {
+		ctx := context.Background()
+
+		q, err := newDownloadQueue[bool, bool](
+			100,
+			1,
+			func(_ context.Context, r downloadRequest[bool, bool]) {
+				r.results <- downloadResponse[bool]{
+					key:  r.key,
+					idx:  r.idx,
+					item: true,
+				}
+			},
+			log.NewNopLogger(),
+		)
+		require.NoError(t, err)
+
+		count := 10
+		resultsCh := make(chan downloadResponse[bool], count)
+		errorsCh := make(chan error, count)
+
+		reqs := buildDownloadRequest(ctx, count, resultsCh, errorsCh)
+		for _, r := range reqs {
+			q.enqueue(r)
+		}
+
+		for i := 0; i < count; i++ {
+			select {
+			case err := <-errorsCh:
+				require.False(t, true, "got %+v should have received a response instead", err)
+			case res := <-resultsCh:
+				require.True(t, res.item)
+				require.Equal(t, reqs[i].key, res.key)
+				require.Equal(t, reqs[i].idx, res.idx)
+			}
+		}
+	})
+}
+
+func buildDownloadRequest(ctx context.Context, count int, resCh chan downloadResponse[bool], errCh chan error) []downloadRequest[bool, bool] {
+	requests := make([]downloadRequest[bool, bool], count)
+	for i := 0; i < count; i++ {
+		requests[i] = downloadRequest[bool, bool]{
+			ctx:     ctx,
+			item:    false,
+			key:     "test",
+			idx:     i,
+			results: resCh,
+			errors:  errCh,
+		}
+	}
+	return requests
 }
 
 func TestFetcher_LoadBlocksFromFS(t *testing.T) {
 	base := t.TempDir()
-	cfg := bloomStoreConfig{workingDir: base, numWorkers: 1}
+	cfg := bloomStoreConfig{workingDirs: []string{base}, numWorkers: 1}
 	resolver := NewPrefixedResolver(base, defaultKeyResolver{})
 
 	refs := []BlockRef{
@@ -312,9 +377,13 @@ func createBlockDir(t *testing.T, path string) {
 }
 
 func TestFetcher_IsBlockDir(t *testing.T) {
-	cfg := bloomStoreConfig{numWorkers: 1}
+	cfg := bloomStoreConfig{
+		numWorkers:  1,
+		workingDirs: []string{t.TempDir()},
+	}
 
-	fetcher, _ := NewFetcher(cfg, nil, nil, nil, nil, log.NewNopLogger(), v1.NewMetrics(nil))
+	fetcher, err := NewFetcher(cfg, nil, nil, nil, nil, log.NewNopLogger(), v1.NewMetrics(nil))
+	require.NoError(t, err)
 
 	t.Run("path does not exist", func(t *testing.T) {
 		base := t.TempDir()

@@ -190,7 +190,7 @@ func BenchmarkTokens(b *testing.B) {
 				{
 					desc: "v2",
 					f: func() func() {
-						buf, prefixLn := prefixedToken(v2Three.N, ChunkRef{}, nil)
+						buf, prefixLn := prefixedToken(v2Three.N(), ChunkRef{}, nil)
 						return func() {
 							itr := NewPrefixedTokenIter(buf, prefixLn, v2Three.Tokens(lorem))
 							for itr.Next() {
@@ -207,7 +207,7 @@ func BenchmarkTokens(b *testing.B) {
 				{
 					desc: "v2",
 					f: func() func() {
-						buf, prefixLn := prefixedToken(v2Three.N, ChunkRef{}, nil)
+						buf, prefixLn := prefixedToken(v2Three.N(), ChunkRef{}, nil)
 						return func() {
 							itr := NewPrefixedTokenIter(buf, prefixLn, v2ThreeSkip1.Tokens(lorem))
 							for itr.Next() {

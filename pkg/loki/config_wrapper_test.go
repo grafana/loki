@@ -9,25 +9,26 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/netutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/distributor"
-	"github.com/grafana/loki/pkg/loki/common"
-	"github.com/grafana/loki/pkg/storage/bucket/swift"
-	"github.com/grafana/loki/pkg/storage/chunk/client/alibaba"
-	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
-	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
-	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
-	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
-	"github.com/grafana/loki/pkg/storage/chunk/client/ibmcloud"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
-	"github.com/grafana/loki/pkg/util/cfg"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	loki_net "github.com/grafana/loki/pkg/util/net"
-	lokiring "github.com/grafana/loki/pkg/util/ring"
+	"github.com/grafana/loki/v3/pkg/distributor"
+	"github.com/grafana/loki/v3/pkg/loki/common"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/swift"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/alibaba"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/azure"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/baidubce"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/gcp"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/ibmcloud"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/openstack"
+	"github.com/grafana/loki/v3/pkg/util/cfg"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	loki_net "github.com/grafana/loki/v3/pkg/util/net"
+	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
 
 // Can't use a totally empty yaml file or it causes weird behavior in the unmarshalling.
@@ -100,7 +101,7 @@ common:
 			assert.EqualValues(t, "/opt/loki/rules-temp", config.Ruler.RulePath)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/compactor", config.CompactorConfig.WorkingDirectory)
-			assert.EqualValues(t, "/opt/loki/blooms", config.StorageConfig.BloomShipperConfig.WorkingDirectory)
+			assert.EqualValues(t, flagext.StringSliceCSV{"/opt/loki/blooms"}, config.StorageConfig.BloomShipperConfig.WorkingDirectory)
 		})
 
 		t.Run("accepts paths both with and without trailing slash", func(t *testing.T) {
@@ -112,7 +113,7 @@ common:
 			assert.EqualValues(t, "/opt/loki/rules-temp", config.Ruler.RulePath)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/compactor", config.CompactorConfig.WorkingDirectory)
-			assert.EqualValues(t, "/opt/loki/blooms", config.StorageConfig.BloomShipperConfig.WorkingDirectory)
+			assert.EqualValues(t, flagext.StringSliceCSV{"/opt/loki/blooms"}, config.StorageConfig.BloomShipperConfig.WorkingDirectory)
 		})
 
 		t.Run("does not rewrite custom (non-default) paths passed via config file", func(t *testing.T) {
@@ -254,6 +255,7 @@ memberlist:
       access_key_id: abc123
       secret_access_key: def789
       insecure: true
+      disable_dualstack: true
       http_config:
         response_header_timeout: 5m`
 
@@ -278,6 +280,7 @@ memberlist:
 				assert.Equal(t, "def789", actual.SecretAccessKey.String())
 				assert.Equal(t, "", actual.SessionToken.String())
 				assert.Equal(t, true, actual.Insecure)
+				assert.True(t, actual.DisableDualstack)
 				assert.Equal(t, 5*time.Minute, actual.HTTPConfig.ResponseHeaderTimeout)
 				assert.Equal(t, false, actual.HTTPConfig.InsecureSkipVerify)
 
@@ -312,6 +315,7 @@ memberlist:
       secret_access_key: def789
       session_token: 456abc
       insecure: true
+      disable_dualstack: false
       http_config:
         response_header_timeout: 5m`
 
@@ -336,6 +340,7 @@ memberlist:
 				assert.Equal(t, "def789", actual.SecretAccessKey.String())
 				assert.Equal(t, "456abc", actual.SessionToken.String())
 				assert.Equal(t, true, actual.Insecure)
+				assert.False(t, actual.DisableDualstack)
 				assert.Equal(t, 5*time.Minute, actual.HTTPConfig.ResponseHeaderTimeout)
 				assert.Equal(t, false, actual.HTTPConfig.InsecureSkipVerify)
 
@@ -798,6 +803,109 @@ query_range:
 		config, _ := testContext(configFileString, nil)
 		assert.True(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 	})
+
+	t.Run("querier worker grpc client behavior", func(t *testing.T) {
+		newConfigBothClientsSet := `---
+frontend_worker:
+  query_frontend_grpc_client:
+    tls_server_name: query-frontend
+  query_scheduler_grpc_client:
+    tls_server_name: query-scheduler
+`
+
+		oldConfig := `---
+frontend_worker:
+  grpc_client_config:
+    tls_server_name: query-frontend
+`
+
+		mixedConfig := `---
+frontend_worker:
+  grpc_client_config:
+    tls_server_name: query-frontend-old
+  query_frontend_grpc_client:
+    tls_server_name: query-frontend-new
+  query_scheduler_grpc_client:
+    tls_server_name: query-scheduler
+`
+		t.Run("new configs are used", func(t *testing.T) {
+			asserts := func(config ConfigWrapper) {
+				require.EqualValues(t, "query-frontend", config.Worker.NewQueryFrontendGRPCClientConfig.TLS.ServerName)
+				require.EqualValues(t, "query-scheduler", config.Worker.QuerySchedulerGRPCClientConfig.TLS.ServerName)
+				// we never want to use zero values by default.
+				require.NotEqualValues(t, 0, config.Worker.NewQueryFrontendGRPCClientConfig.MaxRecvMsgSize)
+				require.NotEqualValues(t, 0, config.Worker.QuerySchedulerGRPCClientConfig.MaxRecvMsgSize)
+			}
+
+			yamlConfig, _, err := configWrapperFromYAML(t, newConfigBothClientsSet, nil)
+			require.NoError(t, err)
+			asserts(yamlConfig)
+
+			// repeat the test using only cli flags.
+			cliFlags := []string{
+				"-querier.frontend-grpc-client.tls-server-name=query-frontend",
+				"-querier.scheduler-grpc-client.tls-server-name=query-scheduler",
+			}
+			cliConfig, _, err := configWrapperFromYAML(t, emptyConfigString, cliFlags)
+			require.NoError(t, err)
+			asserts(cliConfig)
+		})
+
+		t.Run("old config works the same way", func(t *testing.T) {
+			asserts := func(config ConfigWrapper) {
+				require.EqualValues(t, "query-frontend", config.Worker.NewQueryFrontendGRPCClientConfig.TLS.ServerName)
+				require.EqualValues(t, "query-frontend", config.Worker.QuerySchedulerGRPCClientConfig.TLS.ServerName)
+
+				// we never want to use zero values by default.
+				require.NotEqualValues(t, 0, config.Worker.NewQueryFrontendGRPCClientConfig.MaxRecvMsgSize)
+				require.NotEqualValues(t, 0, config.Worker.QuerySchedulerGRPCClientConfig.MaxRecvMsgSize)
+			}
+
+			yamlConfig, _, err := configWrapperFromYAML(t, oldConfig, nil)
+			require.NoError(t, err)
+			asserts(yamlConfig)
+
+			// repeat the test using only cli flags.
+			cliFlags := []string{
+				"-querier.frontend-client.tls-server-name=query-frontend",
+			}
+			cliConfig, _, err := configWrapperFromYAML(t, emptyConfigString, cliFlags)
+			require.NoError(t, err)
+			asserts(cliConfig)
+		})
+
+		t.Run("mixed frontend clients throws an error", func(t *testing.T) {
+			_, _, err := configWrapperFromYAML(t, mixedConfig, nil)
+			require.Error(t, err)
+
+			// repeat the test using only cli flags.
+			_, _, err = configWrapperFromYAML(t, emptyConfigString, []string{
+				"-querier.frontend-client.tls-server-name=query-frontend",
+				"-querier.frontend-grpc-client.tls-server-name=query-frontend",
+			})
+			require.Error(t, err)
+
+			// repeat the test mixing the YAML with cli flags.
+			_, _, err = configWrapperFromYAML(t, newConfigBothClientsSet, []string{
+				"-querier.frontend-client.tls-server-name=query-frontend",
+			})
+			require.Error(t, err)
+		})
+
+		t.Run("mix correct cli flags with YAML configs", func(t *testing.T) {
+			config, _, err := configWrapperFromYAML(t, newConfigBothClientsSet, []string{
+				"-querier.scheduler-grpc-client.tls-enabled=true",
+			})
+			require.NoError(t, err)
+
+			require.EqualValues(t, "query-frontend", config.Worker.NewQueryFrontendGRPCClientConfig.TLS.ServerName)
+			require.EqualValues(t, "query-scheduler", config.Worker.QuerySchedulerGRPCClientConfig.TLS.ServerName)
+			// we never want to use zero values by default.
+			require.NotEqualValues(t, 0, config.Worker.NewQueryFrontendGRPCClientConfig.MaxRecvMsgSize)
+			require.NotEqualValues(t, 0, config.Worker.QuerySchedulerGRPCClientConfig.MaxRecvMsgSize)
+			require.True(t, config.Worker.QuerySchedulerGRPCClientConfig.TLSEnabled)
+		})
+	})
 }
 
 const defaultResulsCacheString = `---
@@ -873,6 +981,15 @@ chunk_store_config:
 	t.Run("for the index queries cache config", func(t *testing.T) {
 		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
 			configFileString := `---
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v12
+      index:
+        prefix: index_
+        period: 24h
 storage_config:
   index_queries_cache_config:
     redis:
@@ -885,6 +1002,15 @@ storage_config:
 
 		t.Run("no embedded cache enabled by default if Memcache is set", func(t *testing.T) {
 			configFileString := `---
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v12
+      index:
+        prefix: index_
+        period: 24h
 storage_config:
   index_queries_cache_config:
     memcached_client:
@@ -1580,6 +1706,15 @@ func Test_applyChunkRetain(t *testing.T) {
 
 	t.Run("chunk retain is set to IndexCacheValidity + 1 minute", func(t *testing.T) {
 		yamlContent := `
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v12
+      index:
+        prefix: index_
+        period: 24h
 storage_config:
   index_cache_validity: 10m
   index_queries_cache_config:
@@ -1594,6 +1729,33 @@ storage_config:
 		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
 		assert.NoError(t, err)
 		assert.Equal(t, 11*time.Minute, config.Ingester.RetainPeriod)
+	})
+
+	t.Run("chunk retain is not changed for tsdb index type", func(t *testing.T) {
+		yamlContent := `
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: tsdb
+      object_store: filesystem
+      schema: v12
+      index:
+        prefix: index_
+        period: 24h
+storage_config:
+  index_cache_validity: 10m
+  index_queries_cache_config:
+    memcached:
+      batch_size: 256
+      parallelism: 10
+    memcached_client:
+      consistent_hash: true
+      host: memcached-index-queries.loki-bigtable.svc.cluster.local
+      service: memcached-client
+`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, time.Duration(0), config.Ingester.RetainPeriod)
 	})
 }
 

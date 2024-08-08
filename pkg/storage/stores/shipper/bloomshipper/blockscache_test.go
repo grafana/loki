@@ -11,9 +11,9 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
 )
 
 var (
@@ -197,8 +197,8 @@ func TestBlocksCache_TTLEviction(t *testing.T) {
 func TestBlocksCache_LRUEviction(t *testing.T) {
 	cfg := config.BlocksCacheConfig{
 		TTL:       time.Hour,
-		SoftLimit: flagext.Bytes(15),
-		HardLimit: flagext.Bytes(20),
+		SoftLimit: flagext.Bytes(25),
+		HardLimit: flagext.Bytes(50),
 		// no need for TTL evictions
 		PurgeInterval: time.Minute,
 	}
@@ -216,27 +216,32 @@ func TestBlocksCache_LRUEviction(t *testing.T) {
 	// oldest without refcount - will be evicted
 	err = cache.Put(ctx, "c", CacheValue("c", 4))
 	require.NoError(t, err)
+	err = cache.Put(ctx, "d", CacheValue("d", 4))
+	require.NoError(t, err)
+	err = cache.Put(ctx, "e", CacheValue("e", 4))
+	require.NoError(t, err)
+	err = cache.Put(ctx, "f", CacheValue("f", 4))
+	require.NoError(t, err)
 
 	// increase ref counter on "b"
 	_, found := cache.Get(ctx, "b")
 	require.True(t, found)
 
 	// exceed soft limit
-	err = cache.Put(ctx, "d", CacheValue("d", 4))
+	err = cache.Put(ctx, "g", CacheValue("g", 16))
 	require.NoError(t, err)
 
 	time.Sleep(time.Second)
 
 	l, ok := cache.len()
 	require.True(t, ok)
+
+	// expect 3 items in cache:
+	// * item a with size 4
+	// * item b with size 4
+	// * item g with size 16
 	require.Equal(t, 3, l)
-
-	// key "b" was evicted because it was the oldest
-	// and it had no ref counts
-	_, found = cache.Get(ctx, "c")
-	require.False(t, found)
-
-	require.Equal(t, int64(12), cache.currSizeBytes)
+	require.Equal(t, int64(24), cache.currSizeBytes)
 }
 
 func TestBlocksCache_RefCounter(t *testing.T) {

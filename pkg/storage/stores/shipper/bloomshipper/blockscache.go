@@ -15,9 +15,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper/config"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 const (
@@ -272,6 +272,10 @@ func (c *BlocksCache) put(key string, value BlockDirectory) (*Entry, error) {
 
 func (c *BlocksCache) evict(key string, element *list.Element, reason string) {
 	entry := element.Value.(*Entry)
+	if key != entry.Key {
+		level.Error(c.logger).Log("msg", "failed to remove entry: entry key and map key do not match", "map_key", key, "entry_key", entry.Key)
+		return
+	}
 	err := c.remove(entry)
 	if err != nil {
 		level.Error(c.logger).Log("msg", "failed to remove entry from disk", "err", err)
@@ -400,6 +404,7 @@ func (c *BlocksCache) evictLeastRecentlyUsedItems() {
 	)
 	elem := c.lru.Back()
 	for c.currSizeBytes >= int64(c.cfg.SoftLimit) && elem != nil {
+		nextElem := elem.Prev()
 		entry := elem.Value.(*Entry)
 		if entry.refCount.Load() == 0 {
 			level.Debug(c.logger).Log(
@@ -408,7 +413,7 @@ func (c *BlocksCache) evictLeastRecentlyUsedItems() {
 			)
 			c.evict(entry.Key, elem, reasonFull)
 		}
-		elem = elem.Prev()
+		elem = nextElem
 	}
 }
 

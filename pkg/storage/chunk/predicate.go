@@ -3,7 +3,7 @@ package chunk
 import (
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
 )
 
 // TODO(owen-d): rename. This is not a predicate and is confusing.

@@ -10,14 +10,14 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/promql"
 
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 /*
@@ -74,7 +74,7 @@ func (ng *DownstreamEngine) Query(ctx context.Context, p Params) Query {
 
 // DownstreamSampleExpr is a SampleExpr which signals downstream computation
 type DownstreamSampleExpr struct {
-	shard *Shard
+	shard *ShardWithChunkRefs
 	syntax.SampleExpr
 }
 
@@ -107,7 +107,7 @@ func (d DownstreamSampleExpr) Pretty(level int) string {
 
 // DownstreamLogSelectorExpr is a LogSelectorExpr which signals downstream computation
 type DownstreamLogSelectorExpr struct {
-	shard *Shard
+	shard *ShardWithChunkRefs
 	syntax.LogSelectorExpr
 }
 
@@ -301,6 +301,62 @@ func (e *QuantileSketchMergeExpr) Walk(f syntax.WalkFn) {
 	}
 }
 
+type MergeFirstOverTimeExpr struct {
+	syntax.SampleExpr
+	downstreams []DownstreamSampleExpr
+}
+
+func (e MergeFirstOverTimeExpr) String() string {
+	var sb strings.Builder
+	for i, d := range e.downstreams {
+		if i >= defaultMaxDepth {
+			break
+		}
+
+		if i > 0 {
+			sb.WriteString(" ++ ")
+		}
+
+		sb.WriteString(d.String())
+	}
+	return fmt.Sprintf("MergeFirstOverTime<%s>", sb.String())
+}
+
+func (e *MergeFirstOverTimeExpr) Walk(f syntax.WalkFn) {
+	f(e)
+	for _, d := range e.downstreams {
+		d.Walk(f)
+	}
+}
+
+type MergeLastOverTimeExpr struct {
+	syntax.SampleExpr
+	downstreams []DownstreamSampleExpr
+}
+
+func (e MergeLastOverTimeExpr) String() string {
+	var sb strings.Builder
+	for i, d := range e.downstreams {
+		if i >= defaultMaxDepth {
+			break
+		}
+
+		if i > 0 {
+			sb.WriteString(" ++ ")
+		}
+
+		sb.WriteString(d.String())
+	}
+	return fmt.Sprintf("MergeLastOverTime<%s>", sb.String())
+}
+
+func (e *MergeLastOverTimeExpr) Walk(f syntax.WalkFn) {
+	f(e)
+	for _, d := range e.downstreams {
+		d.Walk(f)
+	}
+}
+
 type Downstreamable interface {
 	Downstreamer(context.Context) Downstreamer
 }
@@ -353,6 +409,10 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 	}
 
 	for _, res := range results {
+		if err := metadata.AddWarnings(ctx, res.Warnings...); err != nil {
+			level.Warn(util_log.Logger).Log("msg", "unable to add headers to results context", "error", err)
+		}
+
 		if err := metadata.JoinHeaders(ctx, res.Headers); err != nil {
 			level.Warn(util_log.Logger).Log("msg", "unable to add headers to results context", "error", err)
 			break
@@ -390,15 +450,11 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 
 	case DownstreamSampleExpr:
 		// downstream to a querier
-		var shards Shards
-		if e.shard != nil {
-			shards = append(shards, *e.shard)
-		}
 		acc := NewBufferedAccumulator(1)
 		results, err := ev.Downstream(ctx, []DownstreamQuery{{
-			Params: ParamsWithShardsOverride{
-				Params:         ParamsWithExpressionOverride{Params: params, ExpressionOverride: e.SampleExpr},
-				ShardsOverride: shards.Encode(),
+			Params: ParamsWithExpressionOverride{
+				Params:             ParamOverridesFromShard(params, e.shard),
+				ExpressionOverride: e.SampleExpr,
 			},
 		}}, acc)
 		if err != nil {
@@ -411,10 +467,10 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		var queries []DownstreamQuery
 		for cur != nil {
 			qry := DownstreamQuery{
-				Params: ParamsWithExpressionOverride{Params: params, ExpressionOverride: cur.DownstreamSampleExpr.SampleExpr},
-			}
-			if shard := cur.DownstreamSampleExpr.shard; shard != nil {
-				qry.Params = ParamsWithShardsOverride{Params: qry.Params, ShardsOverride: Shards{*shard}.Encode()}
+				Params: ParamsWithExpressionOverride{
+					Params:             ParamOverridesFromShard(params, cur.DownstreamSampleExpr.shard),
+					ExpressionOverride: cur.DownstreamSampleExpr.SampleExpr,
+				},
 			}
 			queries = append(queries, qry)
 			cur = cur.next
@@ -447,15 +503,9 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			for _, d := range e.quantileMergeExpr.downstreams {
 				qry := DownstreamQuery{
 					Params: ParamsWithExpressionOverride{
-						Params:             params,
+						Params:             ParamOverridesFromShard(params, d.shard),
 						ExpressionOverride: d.SampleExpr,
 					},
-				}
-				if shard := d.shard; shard != nil {
-					qry.Params = ParamsWithShardsOverride{
-						Params:         qry.Params,
-						ShardsOverride: Shards{*shard}.Encode(),
-					}
 				}
 				queries = append(queries, qry)
 			}
@@ -477,7 +527,79 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		}
 		inner := NewQuantileSketchMatrixStepEvaluator(matrix, params)
 		return NewQuantileSketchVectorStepEvaluator(inner, *e.quantile), nil
+	case *MergeFirstOverTimeExpr:
+		queries := make([]DownstreamQuery, len(e.downstreams))
 
+		for i, d := range e.downstreams {
+			qry := DownstreamQuery{
+				Params: ParamsWithExpressionOverride{
+					Params:             params,
+					ExpressionOverride: d.SampleExpr,
+				},
+			}
+			if shard := d.shard; shard != nil {
+				qry.Params = ParamsWithShardsOverride{
+					Params:         qry.Params,
+					ShardsOverride: Shards{shard.Shard}.Encode(),
+				}
+			}
+			queries[i] = qry
+		}
+
+		acc := NewBufferedAccumulator(len(queries))
+		results, err := ev.Downstream(ctx, queries, acc)
+		if err != nil {
+			return nil, err
+		}
+
+		xs := make([]promql.Matrix, 0, len(queries))
+		for _, res := range results {
+
+			switch data := res.Data.(type) {
+			case promql.Matrix:
+				xs = append(xs, data)
+			default:
+				return nil, fmt.Errorf("unexpected type (%s) uncoercible to StepEvaluator", data.Type())
+			}
+		}
+
+		return NewMergeFirstOverTimeStepEvaluator(params, xs), nil
+	case *MergeLastOverTimeExpr:
+		queries := make([]DownstreamQuery, len(e.downstreams))
+
+		for i, d := range e.downstreams {
+			qry := DownstreamQuery{
+				Params: ParamsWithExpressionOverride{
+					Params:             params,
+					ExpressionOverride: d.SampleExpr,
+				},
+			}
+			if shard := d.shard; shard != nil {
+				qry.Params = ParamsWithShardsOverride{
+					Params:         qry.Params,
+					ShardsOverride: Shards{shard.Shard}.Encode(),
+				}
+			}
+			queries[i] = qry
+		}
+
+		acc := NewBufferedAccumulator(len(queries))
+		results, err := ev.Downstream(ctx, queries, acc)
+		if err != nil {
+			return nil, err
+		}
+
+		xs := make([]promql.Matrix, 0, len(queries))
+		for _, res := range results {
+
+			switch data := res.Data.(type) {
+			case promql.Matrix:
+				xs = append(xs, data)
+			default:
+				return nil, fmt.Errorf("unexpected type (%s) uncoercible to StepEvaluator", data.Type())
+			}
+		}
+		return NewMergeLastOverTimeStepEvaluator(params, xs), nil
 	default:
 		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params)
 	}
@@ -492,15 +614,11 @@ func (ev *DownstreamEvaluator) NewIterator(
 	switch e := expr.(type) {
 	case DownstreamLogSelectorExpr:
 		// downstream to a querier
-		var shards Shards
-		if e.shard != nil {
-			shards = append(shards, *e.shard)
-		}
 		acc := NewStreamAccumulator(params)
 		results, err := ev.Downstream(ctx, []DownstreamQuery{{
-			Params: ParamsWithShardsOverride{
-				Params:         ParamsWithExpressionOverride{Params: params, ExpressionOverride: e.LogSelectorExpr},
-				ShardsOverride: shards.Encode(),
+			Params: ParamsWithExpressionOverride{
+				Params:             ParamOverridesFromShard(params, e.shard),
+				ExpressionOverride: e.LogSelectorExpr,
 			},
 		}}, acc)
 		if err != nil {
@@ -513,10 +631,10 @@ func (ev *DownstreamEvaluator) NewIterator(
 		var queries []DownstreamQuery
 		for cur != nil {
 			qry := DownstreamQuery{
-				Params: ParamsWithExpressionOverride{Params: params, ExpressionOverride: cur.DownstreamLogSelectorExpr.LogSelectorExpr},
-			}
-			if shard := cur.DownstreamLogSelectorExpr.shard; shard != nil {
-				qry.Params = ParamsWithShardsOverride{Params: qry.Params, ShardsOverride: Shards{*shard}.Encode()}
+				Params: ParamsWithExpressionOverride{
+					Params:             ParamOverridesFromShard(params, cur.DownstreamLogSelectorExpr.shard),
+					ExpressionOverride: cur.DownstreamLogSelectorExpr.LogSelectorExpr,
+				},
 			}
 			queries = append(queries, qry)
 			cur = cur.next

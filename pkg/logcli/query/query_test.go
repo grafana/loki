@@ -17,17 +17,17 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logcli/output"
-	"github.com/grafana/loki/pkg/logcli/volume"
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/loki"
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util/marshal"
+	"github.com/grafana/loki/v3/pkg/logcli/output"
+	"github.com/grafana/loki/v3/pkg/logcli/volume"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/loki"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/util/marshal"
 )
 
 func Test_batch(t *testing.T) {
@@ -426,7 +426,7 @@ func (t *testQueryClient) Query(_ string, _ int, _ time.Time, _ logproto.Directi
 func (t *testQueryClient) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, step, interval time.Duration, _ bool) (*loghttp.QueryResponse, error) {
 	ctx := user.InjectOrgID(context.Background(), "fake")
 
-	params, err := logql.NewLiteralParams(queryStr, from, through, step, interval, direction, uint32(limit), nil)
+	params, err := logql.NewLiteralParams(queryStr, from, through, step, interval, direction, uint32(limit), nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -482,6 +482,16 @@ func (t *testQueryClient) GetVolume(_ *volume.Query) (*loghttp.QueryResponse, er
 }
 
 func (t *testQueryClient) GetVolumeRange(_ *volume.Query) (*loghttp.QueryResponse, error) {
+	panic("not implemented")
+}
+
+func (t *testQueryClient) GetDetectedFields(
+	_ string,
+	_, _ int,
+	_, _ time.Time,
+	_ time.Duration,
+	_ bool,
+) (*loghttp.DetectedFieldsResponse, error) {
 	panic("not implemented")
 }
 
@@ -550,7 +560,7 @@ func setupTestEnv(t *testing.T) (string, client.ObjectClient) {
 		},
 	}
 
-	client, err := GetObjectClient(config.StorageTypeFileSystem, conf, cm)
+	client, err := GetObjectClient(types.StorageTypeFileSystem, conf, cm)
 	require.NoError(t, err)
 	require.NotNil(t, client)
 

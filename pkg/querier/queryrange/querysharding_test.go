@@ -16,17 +16,18 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/plan"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 var (
@@ -167,6 +168,7 @@ func Test_astMapper(t *testing.T) {
 		},
 		testEngineOpts,
 		handler,
+		handler,
 		nil,
 		log.NewNopLogger(),
 		nilShardingMetrics,
@@ -301,10 +303,11 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 				ShardingConfigs{
 					config.PeriodConfig{
 						RowShards: 2,
-						IndexType: config.TSDBType,
+						IndexType: types.TSDBType,
 					},
 				},
 				testEngineOpts,
+				handler,
 				handler,
 				nil,
 				log.NewNopLogger(),
@@ -350,6 +353,7 @@ func Test_ShardingByPass(t *testing.T) {
 			},
 		},
 		testEngineOpts,
+		handler,
 		handler,
 		nil,
 		log.NewNopLogger(),
@@ -437,6 +441,7 @@ func Test_InstantSharding(t *testing.T) {
 			queryTimeout:        time.Second,
 		},
 		0,
+		nil,
 		nil,
 		[]string{},
 	)
@@ -717,6 +722,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 				confs,
 				testEngineOpts,
 				handler,
+				handler,
 				nil,
 				log.NewNopLogger(),
 				nilShardingMetrics,
@@ -851,6 +857,7 @@ func Test_ASTMapper_MaxLookBackPeriod(t *testing.T) {
 	mware := newASTMapperware(
 		testSchemasTSDB,
 		engineOpts,
+		queryHandler,
 		queryHandler,
 		statsHandler,
 		log.NewNopLogger(),

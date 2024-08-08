@@ -17,10 +17,10 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/client"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 var (

@@ -7,9 +7,10 @@ import (
 // Options is used to configure Loki to integrate with
 // supported object storages.
 type Options struct {
-	Schemas        []lokiv1.ObjectStorageSchema
-	SharedStore    lokiv1.ObjectStorageSecretType
-	CredentialMode lokiv1.CredentialMode
+	Schemas                 []lokiv1.ObjectStorageSchema
+	SharedStore             lokiv1.ObjectStorageSecretType
+	CredentialMode          lokiv1.CredentialMode
+	AllowStructuredMetadata bool
 
 	Azure        *AzureStorageConfig
 	GCS          *GCSStorageConfig
@@ -42,12 +43,13 @@ type GCSStorageConfig struct {
 
 // S3StorageConfig for S3 storage config
 type S3StorageConfig struct {
-	Endpoint string
-	Region   string
-	Buckets  string
-	Audience string
-	STS      bool
-	SSE      S3SSEConfig
+	Endpoint       string
+	Region         string
+	Buckets        string
+	Audience       string
+	STS            bool
+	SSE            S3SSEConfig
+	ForcePathStyle bool
 }
 
 type S3SSEType string

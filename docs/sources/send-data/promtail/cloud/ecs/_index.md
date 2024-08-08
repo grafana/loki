@@ -36,7 +36,9 @@ aws ecs create-cluster --cluster-name ecs-firelens-cluster
 
 We will also need an [IAM Role to run containers][ecs iam] with, let's create a new one and authorize [ECS][ECS] to endorse this role.
 
-> You might already have this `ecsTaskExecutionRole` role in your AWS account if that's the case you can skip this step.
+{{< admonition type="note" >}}
+You might already have this `ecsTaskExecutionRole` role in your AWS account if that's the case you can skip this step.
+{{< /admonition >}}
 
 ```bash
 curl https://raw.githubusercontent.com/grafana/loki/main/docs/sources/send-data/promtail/cloud/ecs/ecs-role.json > ecs-role.json
@@ -81,7 +83,9 @@ Amazon [Firelens][Firelens] is a log router (usually `fluentd` or `fluentbit`) y
 
 In this example we will use [fluentbit][fluentbit] with the [fluentbit output plugin][fluentbit loki] installed but if you prefer [fluentd][fluentd] make sure to check the [fluentd output plugin][fluentd loki] documentation.
 
-> We recommend you to use [fluentbit][fluentbit] as it's less resources consuming than [fluentd][fluentd].
+{{< admonition type="note" >}}
+We recommend you to use [fluentbit][fluentbit] as it's less resources consuming than [fluentd][fluentd].
+{{< /admonition >}}
 
 Our [task definition][task] will be made of two containers, the [Firelens][Firelens] log router to send logs to Loki (`log_router`) and a sample application to generate log with (`sample-app`).
 
@@ -117,7 +121,9 @@ curl https://raw.githubusercontent.com/grafana/loki/main/docs/sources/send-data/
 
 The `log_router` container image is the [Fluent bit Loki docker image][fluentbit loki image] which contains the Loki plugin pre-installed. As you can see the `firelensConfiguration` type is set to `fluentbit` and we've also added `options` to enable ECS log metadata. This will be useful when querying your logs with Loki LogQL label matchers.
 
-> The `logConfiguration` is mostly there for debugging the fluent-bit container, but feel free to remove that part when you're done testing and configuring.
+{{< admonition type="note" >}}
+The `logConfiguration` is mostly there for debugging the fluent-bit container, but feel free to remove that part when you're done testing and configuring.
+{{< /admonition >}}
 
 ```json
  {
@@ -169,7 +175,9 @@ All `options` of the `logConfiguration` will be automatically translated into [f
 This `OUTPUT` config will forward logs to [GrafanaCloud][GrafanaCloud] Loki, to learn more about those options make sure to read the [fluentbit output plugin][fluentbit loki] documentation.
 We've kept some interesting and useful labels such as `container_name`, `ecs_task_definition` , `source` and `ecs_cluster` but you can statically add more via the `Labels` option.
 
-> If you want run multiple containers in your task, all of them needs a `logConfiguration` section, this give you the opportunity to add different labels depending on the container.
+{{< admonition type="note" >}}
+If you want run multiple containers in your task, all of them needs a `logConfiguration` section, this give you the opportunity to add different labels depending on the container.
+{{< /admonition >}}
 
 ```json
 {
@@ -187,7 +195,7 @@ We've kept some interesting and useful labels such as `container_name`, `ecs_tas
 }
 ```
 
-Finally, you need to replace the `executionRoleArn` with the [ARN][arn] of the role we created in the [first section](#Setting-up-the-ECS-cluster).
+Finally, you need to replace the `executionRoleArn` with the [ARN][arn] of the role we created in the [first section](#setting-up-the-ecs-cluster).
 
 Once you've finished editing the task definition we can then run the command below to create the task:
 
@@ -209,15 +217,17 @@ aws ecs create-service --cluster ecs-firelens-cluster \
 --network-configuration "awsvpcConfiguration={subnets=[subnet-306ca97d],securityGroups=[sg-02c489bbdeffdca1d],assignPublicIp=ENABLED}"
 ```
 
-> Make sure public (`assignPublicIp`) is enabled otherwise ECS won't connect to the internet and you won't be able to pull external docker images.
+{{< admonition type="note" >}}
+Make sure public (`assignPublicIp`) is enabled otherwise ECS won't connect to the internet and you won't be able to pull external docker images.
+{{< /admonition >}}
 
 You can now access the ECS console and you should see your task running. Now let's open Grafana and use explore with the Loki data source to explore our task logs. Enter the query `{job="firelens"}` and you should see our `sample-app` logs showing up as shown below:
 
-![grafana logs firelens][grafana logs firelens]
+{{< figure alt="grafana logs firelens" align="center" src="./ecs-grafana.png" >}}
 
 Using the `Log Labels` dropdown you should be able to discover your workload via the ECS metadata, which is also visible if you expand a log line.
 
-That's it ! Make sure to checkout LogQL to learn more about Loki powerful query language.
+That's it. Make sure to checkout [LogQL][logql] to learn more about Loki powerful query language.
 
 [create an vpc]: https://docs.aws.amazon.com/vpc/latest/userguide/vpc-subnets-commands-example.html
 [ECS]: https://aws.amazon.com/ecs/
@@ -231,15 +241,12 @@ That's it ! Make sure to checkout LogQL to learn more about Loki powerful query 
 [ecs iam]: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html
 [arn]: https://docs.aws.amazon.com/general/latest/gr/aws-arns-and-namespaces.html
 [task]: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definitions.html
-[fluentd loki]: https://grafana.com/docs/loki/latest/send-data/fluentd/
-[fluentbit loki]: https://grafana.com/docs/loki/latest/send-data/fluentbit/
+[fluentd loki]: https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/fluentd/
+[fluentbit loki]: https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/fluentbit/
 [fluentbit]: https://fluentbit.io/
 [fluentd]: https://www.fluentd.org/
 [fluentbit loki image]: https://hub.docker.com/r/grafana/fluent-bit-plugin-loki
-[logql]: https://grafana.com/docs/loki/latest/logql/
+[logql]: https://grafana.com/docs/loki/<LOKI_VERSION>/logql/
 [alpine]:https://hub.docker.com/_/alpine
 [fluentbit output]: https://fluentbit.io/documentation/0.14/output/
-[routing]: https://fluentbit.io/documentation/0.13/getting_started/routing.html
 [grafanacloud account]: https://grafana.com/login
-[grafana logs firelens]: ./ecs-grafana.png
-[logql]: ../../../query

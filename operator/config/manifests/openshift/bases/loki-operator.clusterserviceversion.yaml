@@ -23,7 +23,7 @@ metadata:
     features.operators.openshift.io/token-auth-aws: "true"
     features.operators.openshift.io/token-auth-azure: "true"
     features.operators.openshift.io/token-auth-gcp: "false"
-    olm.skipRange: '>=5.7.0-0 <5.9.0'
+    olm.skipRange: '>=5.8.0-0 <6.0.0'
     operatorframework.io/cluster-monitoring: "true"
     operatorframework.io/suggested-namespace: openshift-operators-redhat
     operators.openshift.io/valid-subscription: '["OpenShift Container Platform", "OpenShift
@@ -309,6 +309,12 @@ spec:
         path: limits.global.queries.maxQuerySeries
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: MaxVolumeSeries defines the maximum number of aggregated series
+          in a log-volume response
+        displayName: Max Volume Series
+        path: limits.global.queries.maxVolumeSeries
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
       - description: Timeout when querying ingesters or storage during the execution
           of a query request.
         displayName: Query Timeout
@@ -418,6 +424,12 @@ spec:
           by a metric query.
         displayName: Max Query Series
         path: limits.tenants.queries.maxQuerySeries
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: MaxVolumeSeries defines the maximum number of aggregated series
+          in a log-volume response
+        displayName: Max Volume Series
+        path: limits.tenants.queries.maxVolumeSeries
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
       - description: Timeout when querying ingesters or storage during the execution
@@ -1388,6 +1400,9 @@ spec:
       - description: The client-side certificate file path for the TLS configuration.
         displayName: Cert Path
         path: alertmanager.client.tls.certPath
+      - description: Skip validating server certificate.
+        displayName: Skip validating server certificate
+        path: alertmanager.client.tls.insecureSkipVerify
       - description: The client-side key file path for the TLS configuration.
         displayName: Key Path
         path: alertmanager.client.tls.keyPath
@@ -1537,6 +1552,9 @@ spec:
       - description: The client-side certificate file path for the TLS configuration.
         displayName: Cert Path
         path: overrides.alertmanager.client.tls.certPath
+      - description: Skip validating server certificate.
+        displayName: Skip validating server certificate
+        path: overrides.alertmanager.client.tls.insecureSkipVerify
       - description: The client-side key file path for the TLS configuration.
         displayName: Key Path
         path: overrides.alertmanager.client.tls.keyPath

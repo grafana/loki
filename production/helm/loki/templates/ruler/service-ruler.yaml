@@ -1,0 +1,33 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if and $isDistributed .Values.ruler.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "loki.rulerFullname" . }}
+  labels:
+    {{- include "loki.rulerSelectorLabels" . | nindent 4 }}
+    {{- with .Values.ruler.serviceLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.loki.serviceAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: http-metrics
+      port: 3100
+      targetPort: http-metrics
+      protocol: TCP
+    - name: grpc
+      port: 9095
+      targetPort: grpc
+      protocol: TCP
+      {{- with .Values.ruler.appProtocol.grpc }}
+      appProtocol: {{ . }}
+      {{- end }}
+  selector:
+    {{- include "loki.rulerSelectorLabels" . | nindent 4 }}
+{{- end }}

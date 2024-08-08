@@ -1,15 +1,16 @@
 package index
 
 import (
+	"fmt"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 )
 
 type periodIndex struct {
@@ -34,11 +35,11 @@ func NewMultiInvertedIndex(periods []config.PeriodConfig, indexShards uint32) (*
 
 	for _, pd := range periods {
 		switch pd.IndexType {
-		case config.TSDBType:
+		case types.TSDBType:
 			if bitPrefixed == nil {
 				bitPrefixed, err = NewBitPrefixWithShards(indexShards)
 				if err != nil {
-					return nil, errors.Wrapf(err, "creating tsdb inverted index for period starting %v", pd.From)
+					return nil, fmt.Errorf("creating tsdb inverted index for period starting %v: %w", pd.From, err)
 				}
 			}
 			periodIndices = append(periodIndices, periodIndex{

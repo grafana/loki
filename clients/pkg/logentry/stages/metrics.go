@@ -15,7 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/clients/pkg/logentry/metric"
+	"github.com/grafana/loki/v3/clients/pkg/logentry/metric"
 )
 
 const (
@@ -128,11 +128,11 @@ func newMetricStage(logger log.Logger, config interface{}, registry prometheus.R
 			metrics[name] = collector
 		}
 	}
-	return toStage(&metricStage{
+	return &metricStage{
 		logger:  logger,
 		cfg:     *cfgs,
 		metrics: metrics,
-	}), nil
+	}, nil
 }
 
 // metricStage creates and updates prometheus metrics based on extracted pipeline data
@@ -140,6 +140,19 @@ type metricStage struct {
 	logger  log.Logger
 	cfg     MetricsConfig
 	metrics map[string]prometheus.Collector
+}
+
+func (m *metricStage) Run(in chan Entry) chan Entry {
+	out := make(chan Entry)
+	go func() {
+		defer close(out)
+
+		for e := range in {
+			m.Process(e.Labels, e.Extracted, &e.Timestamp, &e.Line)
+			out <- e
+		}
+	}()
+	return out
 }
 
 // Process implements Stage
@@ -176,6 +189,20 @@ func (m *metricStage) Process(labels model.LabelSet, extracted map[string]interf
 // Name implements Stage
 func (m *metricStage) Name() string {
 	return StageTypeMetric
+}
+
+// Cleanup implements Stage.
+func (m *metricStage) Cleanup() {
+	for _, collector := range m.metrics {
+		switch vec := collector.(type) {
+		case *metric.Counters:
+			vec.DeleteAll()
+		case *metric.Gauges:
+			vec.DeleteAll()
+		case *metric.Histograms:
+			vec.DeleteAll()
+		}
+	}
 }
 
 // recordCounter will update a counter metric

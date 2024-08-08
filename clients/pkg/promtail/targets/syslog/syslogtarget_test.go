@@ -12,16 +12,16 @@ import (
 	"unicode/utf8"
 
 	"github.com/go-kit/log"
-	"github.com/influxdata/go-syslog/v3"
+	"github.com/leodido/go-syslog/v4"
 	promconfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/syslog/syslogparser"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/syslog/syslogparser"
 )
 
 var (
@@ -916,7 +916,7 @@ func TestParseStream_WithAsyncPipe(t *testing.T) {
 		results = append(results, res)
 	}
 
-	err := syslogparser.ParseStream(pipe, cb, defaultMaxMessageLength)
+	err := syslogparser.ParseStream(false, pipe, cb, defaultMaxMessageLength)
 	require.NoError(t, err)
 	require.Equal(t, 3, len(results))
 }

@@ -19,18 +19,18 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/analytics"
-	"github.com/grafana/loki/pkg/compactor/deletion"
-	"github.com/grafana/loki/pkg/compactor/retention"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
-	"github.com/grafana/loki/pkg/util/filter"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	lokiring "github.com/grafana/loki/pkg/util/ring"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/compactor/deletion"
+	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	chunk_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
+	"github.com/grafana/loki/v3/pkg/util/filter"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 // Here is how the generic compactor works:
@@ -96,13 +96,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.CompactionInterval, "compactor.compaction-interval", 10*time.Minute, "Interval at which to re-run the compaction operation.")
 	f.DurationVar(&cfg.ApplyRetentionInterval, "compactor.apply-retention-interval", 0, "Interval at which to apply/enforce retention. 0 means run at same interval as compaction. If non-zero, it should always be a multiple of compaction interval.")
 	f.DurationVar(&cfg.RetentionDeleteDelay, "compactor.retention-delete-delay", 2*time.Hour, "Delay after which chunks will be fully deleted during retention.")
-	f.BoolVar(&cfg.RetentionEnabled, "compactor.retention-enabled", false, "(Experimental) Activate custom (per-stream,per-tenant) retention.")
+	f.BoolVar(&cfg.RetentionEnabled, "compactor.retention-enabled", false, "Activate custom (per-stream,per-tenant) retention.")
 	f.IntVar(&cfg.RetentionDeleteWorkCount, "compactor.retention-delete-worker-count", 150, "The total amount of worker to use to delete chunks.")
 	f.StringVar(&cfg.DeleteRequestStore, "compactor.delete-request-store", "", "Store used for managing delete requests.")
 	f.StringVar(&cfg.DeleteRequestStoreKeyPrefix, "compactor.delete-request-store.key-prefix", "index/", "Path prefix for storing delete requests.")
 	f.IntVar(&cfg.DeleteBatchSize, "compactor.delete-batch-size", 70, "The max number of delete requests to run per compaction cycle.")
 	f.DurationVar(&cfg.DeleteRequestCancelPeriod, "compactor.delete-request-cancel-period", 24*time.Hour, "Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.")
-	f.DurationVar(&cfg.DeleteMaxInterval, "compactor.delete-max-interval", 24*time.Hour, "Constrain the size of any single delete request. When a delete request > delete_max_interval is input, the request is sharded into smaller requests of no more than delete_max_interval")
+	f.DurationVar(&cfg.DeleteMaxInterval, "compactor.delete-max-interval", 24*time.Hour, "Constrain the size of any single delete request with line filters. When a delete request > delete_max_interval is input, the request is sharded into smaller requests of no more than delete_max_interval")
 	f.DurationVar(&cfg.RetentionTableTimeout, "compactor.retention-table-timeout", 0, "The maximum amount of time to spend running retention and deletion on any given table in the index.")
 	f.IntVar(&cfg.MaxCompactionParallelism, "compactor.max-compaction-parallelism", 1, "Maximum number of tables to compact in parallel. While increasing this value, please make sure compactor has enough disk space allocated to be able to store and compact as many tables.")
 	f.IntVar(&cfg.UploadParallelism, "compactor.upload-parallelism", 10, "Number of upload/remove operations to execute in parallel when finalizing a compaction. NOTE: This setting is per compaction operation, which can be executed in parallel. The upper bound on the number of concurrent uploads is upload_parallelism * max_compaction_parallelism.")

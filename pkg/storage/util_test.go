@@ -11,24 +11,24 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/querier/plan"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	chunkclient "github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores"
-	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
-	loki_util "github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/constants"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/astmapper"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	chunkclient "github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores"
+	index_stats "github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	loki_util "github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var (
@@ -110,7 +110,7 @@ func newChunk(chunkFormat byte, headBlockFmt chunkenc.HeadBlockFmt, stream logpr
 	from, through := loki_util.RoundToMilliseconds(stream.Entries[0].Timestamp, stream.Entries[len(stream.Entries)-1].Timestamp)
 	chk := chunkenc.NewMemChunk(chunkFormat, chunkenc.EncGZIP, headBlockFmt, 256*1024, 0)
 	for _, e := range stream.Entries {
-		_ = chk.Append(&e)
+		_, _ = chk.Append(&e)
 	}
 	chk.Close()
 	c := chunk.NewChunk("fake", client.Fingerprint(lbs), lbs, chunkenc.NewFacade(chk, 0, 0), from, through)
@@ -220,7 +220,7 @@ func (m *mockChunkStore) LabelValuesForMetricName(_ context.Context, _ string, _
 	return nil, nil
 }
 
-func (m *mockChunkStore) LabelNamesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string) ([]string, error) {
+func (m *mockChunkStore) LabelNamesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string, _ ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 
@@ -244,7 +244,7 @@ func (m *mockChunkStore) GetChunkFetcher(_ model.Time) *fetcher.Fetcher {
 	return nil
 }
 
-func (m *mockChunkStore) GetChunks(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (m *mockChunkStore) GetChunks(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate, _ *logproto.ChunkRefGroup) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	refs := make([]chunk.Chunk, 0, len(m.chunks))
 	// transform real chunks into ref chunks.
 	for _, c := range m.chunks {
@@ -260,7 +260,7 @@ func (m *mockChunkStore) GetChunks(_ context.Context, _ string, _, _ model.Time,
 		panic(err)
 	}
 
-	f, err := fetcher.New(cache, nil, false, m.schemas, m.client, 10, 100, 0)
+	f, err := fetcher.New(cache, nil, false, m.schemas, m.client, 0)
 	if err != nil {
 		panic(err)
 	}

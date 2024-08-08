@@ -15,13 +15,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/uber/jaeger-client-go"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/httpreq"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 func TestQueryType(t *testing.T) {
@@ -92,8 +92,8 @@ func TestLogSlowQuery(t *testing.T) {
 
 func TestLogLabelsQuery(t *testing.T) {
 	buf := bytes.NewBufferString("")
-	logger := log.NewLogfmtLogger(buf)
 	tr, c := jaeger.NewTracer("foo", jaeger.NewConstSampler(true), jaeger.NewInMemoryReporter())
+	logger := log.NewLogfmtLogger(buf)
 	defer c.Close()
 	opentracing.SetGlobalTracer(tr)
 	sp := opentracing.StartSpan("")

@@ -5,24 +5,23 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 
 	"github.com/go-kit/log/level"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
-	"github.com/grafana/loki/pkg/storage/errors"
-	"github.com/grafana/loki/pkg/storage/stores/index"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/spanlogger"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/v3/pkg/storage/errors"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 type StoreLimits interface {
@@ -43,7 +42,16 @@ type storeEntry struct {
 	ChunkWriter
 }
 
-func (c *storeEntry) GetChunks(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (c *storeEntry) GetChunks(
+	ctx context.Context,
+	userID string,
+	from,
+	through model.Time,
+	predicate chunk.Predicate,
+	storeChunksOverride *logproto.ChunkRefGroup,
+) ([][]chunk.Chunk,
+	[]*fetcher.Fetcher,
+	error) {
 	if ctx.Err() != nil {
 		return nil, nil, ctx.Err()
 	}
@@ -55,16 +63,42 @@ func (c *storeEntry) GetChunks(ctx context.Context, userID string, from, through
 		return nil, nil, nil
 	}
 
-	refs, err := c.indexReader.GetChunkRefs(ctx, userID, from, through, predicate)
-
-	chunks := make([]chunk.Chunk, len(refs))
-	for i, ref := range refs {
-		chunks[i] = chunk.Chunk{
-			ChunkRef: ref,
+	var refs []*logproto.ChunkRef
+	if storeChunksOverride != nil {
+		refs = storeChunksOverride.Refs
+	} else {
+		// TODO(owen-d): fix needless O(n) conversions that stem from difference in store impls (value)
+		// vs proto impls (reference)
+		var values []logproto.ChunkRef
+		values, err = c.indexReader.GetChunkRefs(ctx, userID, from, through, predicate)
+		// convert to refs
+		refs = make([]*logproto.ChunkRef, 0, len(values))
+		for i := range values {
+			refs = append(refs, &values[i])
 		}
 	}
 
+	// Store overrides are passed through from the parent and can reference chunks not owned by this particular store,
+	// so we filter them out based on the requested timerange passed, which is guaranteed to be within the store's timerange.
+	// Otherwise, we'd return chunks that do not belong to the store, which would error during fetching.
+	chunks := filterForTimeRange(refs, from, through)
+
 	return [][]chunk.Chunk{chunks}, []*fetcher.Fetcher{c.fetcher}, err
+}
+
+func filterForTimeRange(refs []*logproto.ChunkRef, from, through model.Time) []chunk.Chunk {
+	filtered := make([]chunk.Chunk, 0, len(refs))
+	for _, ref := range refs {
+		// Only include chunks where the query start time (from) is < the chunk end time (ref.Through)
+		// and the query end time (through) is >= the chunk start time (ref.From)
+		// A special case also exists where a chunk can contain a single log line which results in ref.From being equal to ref.Through, and that is equal to the from time.
+		if (through >= ref.From && from < ref.Through) || (ref.From == from && ref.Through == from) {
+			filtered = append(filtered, chunk.Chunk{
+				ChunkRef: *ref,
+			})
+		}
+	}
+	return filtered
 }
 
 func (c *storeEntry) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
@@ -76,11 +110,9 @@ func (c *storeEntry) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
-func (c *storeEntry) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
+func (c *storeEntry) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.LabelNamesForMetricName")
 	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
-	defer log.Span.Finish()
 
 	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
 	if err != nil {
@@ -88,16 +120,14 @@ func (c *storeEntry) LabelNamesForMetricName(ctx context.Context, userID string,
 	} else if shortcut {
 		return nil, nil
 	}
-	level.Debug(log).Log("metric", metricName)
+	sp.LogKV("metric", metricName)
 
-	return c.indexReader.LabelNamesForMetricName(ctx, userID, from, through, metricName)
+	return c.indexReader.LabelNamesForMetricName(ctx, userID, from, through, metricName, matchers...)
 }
 
 func (c *storeEntry) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.LabelValuesForMetricName")
 	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
-	defer log.Span.Finish()
 
 	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
 	if err != nil {

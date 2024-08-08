@@ -8,7 +8,9 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/dskit/multierror"
+
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 )
 
 const (
@@ -21,6 +23,8 @@ type BlockWriter interface {
 	Index() (io.WriteCloser, error)
 	Blooms() (io.WriteCloser, error)
 	Size() (int, error) // byte size of accumualted index & blooms
+	Full(maxSize uint64) (full bool, size int, err error)
+	Cleanup() error
 }
 
 // in memory impl
@@ -38,12 +42,32 @@ func NewMemoryBlockWriter(index, blooms *bytes.Buffer) MemoryBlockWriter {
 func (b MemoryBlockWriter) Index() (io.WriteCloser, error) {
 	return NewNoopCloser(b.index), nil
 }
+
 func (b MemoryBlockWriter) Blooms() (io.WriteCloser, error) {
 	return NewNoopCloser(b.blooms), nil
 }
 
 func (b MemoryBlockWriter) Size() (int, error) {
 	return b.index.Len() + b.blooms.Len(), nil
+}
+
+func (b MemoryBlockWriter) Full(maxSize uint64) (full bool, size int, err error) {
+	size, err = b.Size()
+	if err != nil {
+		return false, 0, errors.Wrap(err, "getting block size")
+	}
+
+	if maxSize == 0 {
+		return false, size, nil
+	}
+
+	return uint64(size) >= maxSize, size, nil
+}
+
+func (b MemoryBlockWriter) Cleanup() error {
+	b.index.Reset()
+	b.blooms.Reset()
+	return nil
 }
 
 // Directory based impl
@@ -111,4 +135,26 @@ func (b *DirectoryBlockWriter) Size() (int, error) {
 		size += int(info.Size())
 	}
 	return size, nil
+}
+
+func (b *DirectoryBlockWriter) Full(maxSize uint64) (full bool, size int, err error) {
+	size, err = b.Size()
+	if err != nil {
+		return false, 0, errors.Wrap(err, "getting block size")
+	}
+
+	if maxSize == 0 {
+		return false, size, nil
+	}
+
+	return uint64(size) >= maxSize, size, nil
+}
+
+func (b *DirectoryBlockWriter) Cleanup() error {
+	b.initialized = false
+	err := multierror.New()
+	err.Add(os.Remove(b.index.Name()))
+	err.Add(os.Remove(b.blooms.Name()))
+	err.Add(os.RemoveAll(b.dir))
+	return err.Err()
 }

@@ -1,6 +1,7 @@
 package ingester
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -22,22 +23,22 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/distributor/writefailures"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/ingester/wal"
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/runtime"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
-	"github.com/grafana/loki/pkg/util/constants"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
+	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/ingester/wal"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const (
@@ -100,6 +101,67 @@ func Benchmark_FlushLoop(b *testing.B) {
 		}
 		wg.Wait()
 	}
+}
+
+func Test_FlushOp(t *testing.T) {
+	t.Run("no error", func(t *testing.T) {
+		cfg := defaultIngesterTestConfig(t)
+		cfg.FlushOpBackoff.MinBackoff = time.Second
+		cfg.FlushOpBackoff.MaxBackoff = 10 * time.Second
+		cfg.FlushOpBackoff.MaxRetries = 1
+		cfg.FlushCheckPeriod = 100 * time.Millisecond
+
+		_, ing := newTestStore(t, cfg, nil)
+
+		ctx := user.InjectOrgID(context.Background(), "foo")
+		ins, err := ing.GetOrCreateInstance("foo")
+		require.NoError(t, err)
+
+		lbs := makeRandomLabels()
+		req := &logproto.PushRequest{Streams: []logproto.Stream{{
+			Labels:  lbs.String(),
+			Entries: entries(5, time.Now()),
+		}}}
+		require.NoError(t, ins.Push(ctx, req))
+
+		time.Sleep(cfg.FlushCheckPeriod)
+		require.NoError(t, ing.flushOp(gokitlog.NewNopLogger(), &flushOp{
+			immediate: true,
+			userID:    "foo",
+			fp:        ins.getHashForLabels(lbs),
+		}))
+	})
+
+	t.Run("max retries exceeded", func(t *testing.T) {
+		cfg := defaultIngesterTestConfig(t)
+		cfg.FlushOpBackoff.MinBackoff = time.Second
+		cfg.FlushOpBackoff.MaxBackoff = 10 * time.Second
+		cfg.FlushOpBackoff.MaxRetries = 1
+		cfg.FlushCheckPeriod = 100 * time.Millisecond
+
+		store, ing := newTestStore(t, cfg, nil)
+		store.onPut = func(_ context.Context, _ []chunk.Chunk) error {
+			return errors.New("failed to write chunks")
+		}
+
+		ctx := user.InjectOrgID(context.Background(), "foo")
+		ins, err := ing.GetOrCreateInstance("foo")
+		require.NoError(t, err)
+
+		lbs := makeRandomLabels()
+		req := &logproto.PushRequest{Streams: []logproto.Stream{{
+			Labels:  lbs.String(),
+			Entries: entries(5, time.Now()),
+		}}}
+		require.NoError(t, ins.Push(ctx, req))
+
+		time.Sleep(cfg.FlushCheckPeriod)
+		require.EqualError(t, ing.flushOp(gokitlog.NewNopLogger(), &flushOp{
+			immediate: true,
+			userID:    "foo",
+			fp:        ins.getHashForLabels(lbs),
+		}), "terminated after 1 retries")
+	})
 }
 
 func Test_Flush(t *testing.T) {
@@ -191,6 +253,56 @@ func TestFlushingCollidingLabels(t *testing.T) {
 	}
 }
 
+func Test_flush_not_owned_stream(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.FlushCheckPeriod = time.Millisecond * 100
+	cfg.MaxChunkAge = time.Minute
+	cfg.MaxChunkIdle = time.Hour
+
+	store, ing := newTestStore(t, cfg, nil)
+	defer store.Stop()
+
+	now := time.Unix(0, 0)
+
+	entries := []logproto.Entry{
+		{Timestamp: now.Add(time.Nanosecond), Line: "1"},
+		{Timestamp: now.Add(time.Minute), Line: "2"},
+	}
+
+	labelSet := model.LabelSet{"app": "l"}
+	req := &logproto.PushRequest{Streams: []logproto.Stream{
+		{Labels: labelSet.String(), Entries: entries},
+	}}
+
+	const userID = "testUser"
+	ctx := user.InjectOrgID(context.Background(), userID)
+
+	_, err := ing.Push(ctx, req)
+	require.NoError(t, err)
+
+	time.Sleep(2 * cfg.FlushCheckPeriod)
+
+	// ensure chunk is not flushed after flush period elapses
+	store.checkData(t, map[string][]logproto.Stream{})
+
+	instance, found := ing.getInstanceByID(userID)
+	require.True(t, found)
+	fingerprint := instance.getHashForLabels(labels.FromStrings("app", "l"))
+	require.Equal(t, model.Fingerprint(16794418009594958), fingerprint)
+	instance.ownedStreamsSvc.trackStreamOwnership(fingerprint, false)
+
+	time.Sleep(2 * cfg.FlushCheckPeriod)
+
+	// assert stream is now both batches
+	store.checkData(t, map[string][]logproto.Stream{
+		userID: {
+			{Labels: labelSet.String(), Entries: entries},
+		},
+	})
+
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
+}
+
 func TestFlushMaxAge(t *testing.T) {
 	cfg := defaultIngesterTestConfig(t)
 	cfg.FlushCheckPeriod = time.Millisecond * 100
@@ -275,10 +387,12 @@ func newTestStore(t require.TestingT, cfg Config, walOverride WAL) (*testStore, 
 		chunks: map[string][]chunk.Chunk{},
 	}
 
+	readRingMock := mockReadRingWithOneActiveIngester()
+
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
-	ing, err := New(cfg, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokitlog.NewNopLogger())
+	ing, err := New(cfg, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokitlog.NewNopLogger(), nil, readRingMock)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 
@@ -297,6 +411,10 @@ func defaultIngesterTestConfig(t testing.TB) Config {
 
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
+	cfg.FlushOpBackoff.MinBackoff = 100 * time.Millisecond
+	cfg.FlushOpBackoff.MaxBackoff = 10 * time.Second
+	cfg.FlushOpBackoff.MaxRetries = 1
+	cfg.FlushOpTimeout = 15 * time.Second
 	cfg.FlushCheckPeriod = 99999 * time.Hour
 	cfg.MaxChunkIdle = 99999 * time.Hour
 	cfg.ConcurrentFlushes = 1
@@ -310,6 +428,7 @@ func defaultIngesterTestConfig(t testing.TB) Config {
 	cfg.BlockSize = 256 * 1024
 	cfg.TargetChunkSize = 1500 * 1024
 	cfg.WAL.Enabled = false
+	cfg.OwnedStreamsCheckInterval = 1 * time.Second
 	return cfg
 }
 
@@ -361,7 +480,7 @@ func (s *testStore) SelectSeries(_ context.Context, _ logql.SelectLogParams) ([]
 	return nil, nil
 }
 
-func (s *testStore) GetChunks(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (s *testStore) GetChunks(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate, _ *logproto.ChunkRefGroup) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	return nil, nil, nil
 }
 
@@ -469,8 +588,8 @@ func buildStreamsFromChunk(t *testing.T, lbs string, chk chunkenc.Chunk) logprot
 		Labels: lbs,
 	}
 	for it.Next() {
-		stream.Entries = append(stream.Entries, it.Entry())
+		stream.Entries = append(stream.Entries, it.At())
 	}
-	require.NoError(t, it.Error())
+	require.NoError(t, it.Err())
 	return stream
 }

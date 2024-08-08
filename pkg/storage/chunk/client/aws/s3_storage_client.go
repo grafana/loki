@@ -27,13 +27,14 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	bucket_s3 "github.com/grafana/loki/pkg/storage/bucket/s3"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
-	storageawscommon "github.com/grafana/loki/pkg/storage/common/aws"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/constants"
-	loki_instrument "github.com/grafana/loki/pkg/util/instrument"
+	bucket_s3 "github.com/grafana/loki/v3/pkg/storage/bucket/s3"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
+	clientutil "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	storageawscommon "github.com/grafana/loki/v3/pkg/storage/common/aws"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	loki_instrument "github.com/grafana/loki/v3/pkg/util/instrument"
 )
 
 const (
@@ -77,6 +78,7 @@ type S3Config struct {
 	StorageClass     string              `yaml:"storage_class"`
 	SSEConfig        bucket_s3.SSEConfig `yaml:"sse"`
 	BackoffConfig    backoff.Config      `yaml:"backoff_config" doc:"description=Configures back off when S3 get Object."`
+	DisableDualstack bool                `yaml:"disable_dualstack"`
 
 	Inject InjectRequestMiddleware `yaml:"-"`
 }
@@ -108,6 +110,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.Var(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "AWS Secret Access Key")
 	f.Var(&cfg.SessionToken, prefix+"s3.session-token", "AWS Session Token")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "Disable https on s3 connection.")
+	f.BoolVar(&cfg.DisableDualstack, prefix+"s3.disable-dualstack", false, "Disable forcing S3 dualstack endpoint usage.")
 
 	cfg.SSEConfig.RegisterFlagsWithPrefix(prefix+"s3.sse.", f)
 
@@ -195,6 +198,9 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 		s3Config = s3Config.WithRegion("dummy")
 	}
 
+	if cfg.DisableDualstack {
+		s3Config = s3Config.WithUseDualStack(false)
+	}
 	s3Config = s3Config.WithMaxRetries(0)                          // We do our own retries, so we can monitor them
 	s3Config = s3Config.WithS3ForcePathStyle(cfg.S3ForcePathStyle) // support for Path Style S3 url if has the flag
 
@@ -242,7 +248,7 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 		DialContext: (&net.Dialer{
 			Timeout:   30 * time.Second,
 			KeepAlive: 30 * time.Second,
-			DualStack: true,
+			DualStack: !cfg.DisableDualstack,
 		}).DialContext,
 		MaxIdleConns:          200,
 		IdleConnTimeout:       cfg.HTTPConfig.IdleConnTimeout,
@@ -309,7 +315,6 @@ func (a *S3ObjectClient) ObjectExists(ctx context.Context, objectKey string) (bo
 		_, err := a.S3.HeadObject(headObjectInput)
 		return err
 	})
-
 	if err != nil {
 		return false, err
 	}
@@ -380,11 +385,49 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 	return nil, 0, errors.Wrap(lastErr, "failed to get s3 object")
 }
 
+// GetObject from the store
+func (a *S3ObjectClient) GetObjectRange(ctx context.Context, objectKey string, offset, length int64) (io.ReadCloser, error) {
+	var resp *s3.GetObjectOutput
+
+	// Map the key into a bucket
+	bucket := a.bucketFromKey(objectKey)
+
+	var lastErr error
+
+	retries := backoff.New(ctx, a.cfg.BackoffConfig)
+	for retries.Ongoing() {
+		if ctx.Err() != nil {
+			return nil, errors.Wrap(ctx.Err(), "ctx related error during s3 getObject")
+		}
+
+		lastErr = loki_instrument.TimeRequest(ctx, "S3.GetObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+			var requestErr error
+			resp, requestErr = a.hedgedS3.GetObjectWithContext(ctx, &s3.GetObjectInput{
+				Bucket: aws.String(bucket),
+				Key:    aws.String(objectKey),
+				Range:  aws.String(fmt.Sprintf("bytes=%d-%d", offset, offset+length-1)),
+			})
+			return requestErr
+		})
+
+		if lastErr == nil && resp.Body != nil {
+			return resp.Body, nil
+		}
+		retries.Wait()
+	}
+
+	return nil, errors.Wrap(lastErr, "failed to get s3 object")
+}
+
 // PutObject into the store
-func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object io.Reader) error {
 	return loki_instrument.TimeRequest(ctx, "S3.PutObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		readSeeker, err := clientutil.ReadSeeker(object)
+		if err != nil {
+			return err
+		}
 		putObjectInput := &s3.PutObjectInput{
-			Body:         object,
+			Body:         readSeeker,
 			Bucket:       aws.String(a.bucketFromKey(objectKey)),
 			Key:          aws.String(objectKey),
 			StorageClass: aws.String(a.cfg.StorageClass),
@@ -396,7 +439,7 @@ func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object
 			putObjectInput.SSEKMSEncryptionContext = a.sseConfig.KMSEncryptionContext
 		}
 
-		_, err := a.S3.PutObjectWithContext(ctx, putObjectInput)
+		_, err = a.S3.PutObjectWithContext(ctx, putObjectInput)
 		return err
 	})
 }
@@ -405,7 +448,7 @@ func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object
 func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	var storageObjects []client.StorageObject
 	var commonPrefixes []client.StorageCommonPrefix
-	var commonPrefixesSet = make(map[string]bool)
+	commonPrefixesSet := make(map[string]bool)
 
 	for i := range a.bucketNames {
 		err := loki_instrument.TimeRequest(ctx, "S3.List", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {

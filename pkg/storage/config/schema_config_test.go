@@ -12,8 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 	yaml "gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 )
 
 func TestChunkTableFor(t *testing.T) {
@@ -1017,8 +1018,8 @@ func TestGetIndexStoreTableRanges(t *testing.T) {
 		Configs: []PeriodConfig{
 			{
 				From:       DayTime{Time: now.Add(30 * 24 * time.Hour)},
-				IndexType:  BoltDBShipperType,
-				ObjectType: StorageTypeFileSystem,
+				IndexType:  types.BoltDBShipperType,
+				ObjectType: types.StorageTypeFileSystem,
 				Schema:     "v9",
 				IndexTables: IndexPeriodicTableConfig{
 					PeriodicTableConfig: PeriodicTableConfig{
@@ -1028,8 +1029,8 @@ func TestGetIndexStoreTableRanges(t *testing.T) {
 			},
 			{
 				From:       DayTime{Time: now.Add(20 * 24 * time.Hour)},
-				IndexType:  BoltDBShipperType,
-				ObjectType: StorageTypeFileSystem,
+				IndexType:  types.BoltDBShipperType,
+				ObjectType: types.StorageTypeFileSystem,
 				Schema:     "v11",
 				IndexTables: IndexPeriodicTableConfig{
 					PeriodicTableConfig: PeriodicTableConfig{
@@ -1040,8 +1041,8 @@ func TestGetIndexStoreTableRanges(t *testing.T) {
 			},
 			{
 				From:       DayTime{Time: now.Add(15 * 24 * time.Hour)},
-				IndexType:  TSDBType,
-				ObjectType: StorageTypeFileSystem,
+				IndexType:  types.TSDBType,
+				ObjectType: types.StorageTypeFileSystem,
 				Schema:     "v11",
 				IndexTables: IndexPeriodicTableConfig{
 					PeriodicTableConfig: PeriodicTableConfig{
@@ -1052,8 +1053,8 @@ func TestGetIndexStoreTableRanges(t *testing.T) {
 			},
 			{
 				From:       DayTime{Time: now.Add(10 * 24 * time.Hour)},
-				IndexType:  StorageTypeBigTable,
-				ObjectType: StorageTypeFileSystem,
+				IndexType:  types.StorageTypeBigTable,
+				ObjectType: types.StorageTypeFileSystem,
 				Schema:     "v11",
 				IndexTables: IndexPeriodicTableConfig{
 					PeriodicTableConfig: PeriodicTableConfig{
@@ -1064,8 +1065,8 @@ func TestGetIndexStoreTableRanges(t *testing.T) {
 			},
 			{
 				From:       DayTime{Time: now.Add(5 * 24 * time.Hour)},
-				IndexType:  TSDBType,
-				ObjectType: StorageTypeFileSystem,
+				IndexType:  types.TSDBType,
+				ObjectType: types.StorageTypeFileSystem,
 				Schema:     "v11",
 				IndexTables: IndexPeriodicTableConfig{
 					PeriodicTableConfig: PeriodicTableConfig{
@@ -1088,7 +1089,7 @@ func TestGetIndexStoreTableRanges(t *testing.T) {
 			End:          schemaConfig.Configs[2].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
 			PeriodConfig: &schemaConfig.Configs[1],
 		},
-	}, GetIndexStoreTableRanges(BoltDBShipperType, schemaConfig.Configs))
+	}, GetIndexStoreTableRanges(types.BoltDBShipperType, schemaConfig.Configs))
 
 	require.Equal(t, TableRanges{
 		{
@@ -1096,7 +1097,7 @@ func TestGetIndexStoreTableRanges(t *testing.T) {
 			End:          schemaConfig.Configs[4].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
 			PeriodConfig: &schemaConfig.Configs[3],
 		},
-	}, GetIndexStoreTableRanges(StorageTypeBigTable, schemaConfig.Configs))
+	}, GetIndexStoreTableRanges(types.StorageTypeBigTable, schemaConfig.Configs))
 
 	require.Equal(t, TableRanges{
 		{
@@ -1109,7 +1110,7 @@ func TestGetIndexStoreTableRanges(t *testing.T) {
 			End:          model.Time(math.MaxInt64).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
 			PeriodConfig: &schemaConfig.Configs[4],
 		},
-	}, GetIndexStoreTableRanges(TSDBType, schemaConfig.Configs))
+	}, GetIndexStoreTableRanges(types.TSDBType, schemaConfig.Configs))
 }
 
 const (

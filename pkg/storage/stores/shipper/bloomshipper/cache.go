@@ -8,10 +8,14 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/multierror"
 	"github.com/pkg/errors"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
 
 type CloseableBlockQuerier struct {
@@ -21,23 +25,52 @@ type CloseableBlockQuerier struct {
 }
 
 func (c *CloseableBlockQuerier) Close() error {
+	var err multierror.MultiError
+	err.Add(c.BlockQuerier.Reset())
 	if c.close != nil {
-		return c.close()
+		err.Add(c.close())
 	}
-	return nil
+	return err.Err()
 }
 
-func (c *CloseableBlockQuerier) SeriesIter() (v1.PeekingIterator[*v1.SeriesWithBloom], error) {
+func (c *CloseableBlockQuerier) SeriesIter() (iter.PeekIterator[*v1.SeriesWithBlooms], error) {
 	if err := c.Reset(); err != nil {
 		return nil, err
 	}
-	return v1.NewPeekingIter[*v1.SeriesWithBloom](c.BlockQuerier), nil
+	return iter.NewPeekIter[*v1.SeriesWithBlooms](c.BlockQuerier.Iter()), nil
 }
 
-func LoadBlocksDirIntoCache(path string, c Cache, logger log.Logger) error {
-	level.Debug(logger).Log("msg", "load bloomshipper working directory into cache", "path", path)
-	keys, values := loadBlockDirectories(path, logger)
-	return c.PutMany(context.Background(), keys, values)
+func LoadBlocksDirIntoCache(paths []string, c Cache, logger log.Logger) error {
+	var err util.MultiError
+	for _, path := range paths {
+		level.Debug(logger).Log("msg", "load bloomshipper working directory into cache", "path", path)
+		keys, values := loadBlockDirectories(path, logger)
+		err.Add(c.PutMany(context.Background(), keys, values))
+	}
+	return err.Err()
+}
+
+func removeRecursively(root, path string) error {
+	if path == root {
+		// stop when reached root directory
+		return nil
+	}
+
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		// stop in case of error
+		return err
+	}
+
+	if len(entries) == 0 {
+		base := filepath.Dir(path)
+		if err := os.RemoveAll(path); err != nil {
+			return err
+		}
+		return removeRecursively(root, base)
+	}
+
+	return nil
 }
 
 func loadBlockDirectories(root string, logger log.Logger) (keys []string, values []BlockDirectory) {
@@ -52,15 +85,27 @@ func loadBlockDirectories(root string, logger log.Logger) (keys []string, values
 			return nil
 		}
 
+		// Remove empty directories recursively
+		// filepath.WalkDir() does not support depth-first traversal,
+		// so this is not very efficient
+		err := removeRecursively(root, path)
+		if err != nil {
+			level.Warn(logger).Log("msg", "failed to remove directory", "path", path, "err", err)
+			return nil
+		}
+
 		ref, err := resolver.ParseBlockKey(key(path))
 		if err != nil {
 			return nil
 		}
 
 		if ok, clean := isBlockDir(path, logger); ok {
-			keys = append(keys, resolver.Block(ref).Addr())
+			// the cache key must not contain the directory prefix
+			// therefore we use the defaultKeyResolver to resolve the block's address
+			key := defaultKeyResolver{}.Block(ref).Addr()
+			keys = append(keys, key)
 			values = append(values, NewBlockDirectory(ref, path))
-			level.Debug(logger).Log("msg", "found block directory", "ref", ref, "path", path)
+			level.Debug(logger).Log("msg", "found block directory", "path", path, "key", key)
 		} else {
 			level.Warn(logger).Log("msg", "skip directory entry", "err", "not a block directory containing blooms and series", "path", path)
 			_ = clean(path)
@@ -120,15 +165,14 @@ func (b *BlockDirectory) resolveSize() error {
 
 // BlockQuerier returns a new block querier from the directory.
 // The passed function `close` is called when the the returned querier is closed.
-
 func (b BlockDirectory) BlockQuerier(
-	usePool bool,
+	alloc mempool.Allocator,
 	close func() error,
 	maxPageSize int,
 	metrics *v1.Metrics,
 ) *CloseableBlockQuerier {
 	return &CloseableBlockQuerier{
-		BlockQuerier: v1.NewBlockQuerier(b.Block(metrics), usePool, maxPageSize),
+		BlockQuerier: v1.NewBlockQuerier(b.Block(metrics), alloc, maxPageSize),
 		BlockRef:     b.BlockRef,
 		close:        close,
 	}

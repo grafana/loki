@@ -3,7 +3,6 @@ package queryrange
 import (
 	"context"
 	"fmt"
-	"net/http"
 	strings "strings"
 	"time"
 
@@ -12,21 +11,22 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
-	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	logqlstats "github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
-	"github.com/grafana/loki/pkg/util/spanlogger"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	logqlstats "github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	"github.com/grafana/loki/v3/pkg/storage/types"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 func shardResolverForConf(
@@ -37,21 +37,22 @@ func shardResolverForConf(
 	maxParallelism int,
 	maxShards int,
 	r queryrangebase.Request,
-	statsHandler, next queryrangebase.Handler,
+	statsHandler, next, retryNext queryrangebase.Handler,
 	limits Limits,
 ) (logql.ShardResolver, bool) {
-	if conf.IndexType == config.TSDBType {
+	if conf.IndexType == types.TSDBType {
 		return &dynamicShardResolver{
-			ctx:             ctx,
-			logger:          logger,
-			statsHandler:    statsHandler,
-			next:            next,
-			limits:          limits,
-			from:            model.Time(r.GetStart().UnixMilli()),
-			through:         model.Time(r.GetEnd().UnixMilli()),
-			maxParallelism:  maxParallelism,
-			maxShards:       maxShards,
-			defaultLookback: defaultLookback,
+			ctx:              ctx,
+			logger:           logger,
+			statsHandler:     statsHandler,
+			retryNextHandler: retryNext,
+			next:             next,
+			limits:           limits,
+			from:             model.Time(r.GetStart().UnixMilli()),
+			through:          model.Time(r.GetEnd().UnixMilli()),
+			maxParallelism:   maxParallelism,
+			maxShards:        maxShards,
+			defaultLookback:  defaultLookback,
 		}, true
 	}
 	if conf.RowShards < 2 {
@@ -64,10 +65,11 @@ type dynamicShardResolver struct {
 	ctx context.Context
 	// TODO(owen-d): shouldn't have to fork handlers here -- one should just transparently handle the right logic
 	// depending on the underlying type?
-	statsHandler queryrangebase.Handler // index stats handler (hooked up to results cache, etc)
-	next         queryrangebase.Handler // next handler in the chain (used for non-stats reqs)
-	logger       log.Logger
-	limits       Limits
+	statsHandler     queryrangebase.Handler // index stats handler (hooked up to results cache, etc)
+	retryNextHandler queryrangebase.Handler // next handler wrapped with retries
+	next             queryrangebase.Handler // next handler in the chain (used for non-stats reqs)
+	logger           log.Logger
+	limits           Limits
 
 	from, through   model.Time
 	maxParallelism  int
@@ -142,8 +144,6 @@ func getStatsForMatchers(
 func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
 	sp, ctx := opentracing.StartSpanFromContext(r.ctx, "dynamicShardResolver.GetStats")
 	defer sp.Finish()
-	log := spanlogger.FromContext(r.ctx)
-	defer log.Finish()
 
 	start := time.Now()
 
@@ -160,6 +160,7 @@ func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
 		grps = append(grps, syntax.MatcherRange{})
 	}
 
+	log := util_log.WithContext(ctx, util_log.Logger)
 	results, err := getStatsForMatchers(ctx, log, r.statsHandler, r.from, r.through, grps, r.maxParallelism, r.defaultLookback)
 	if err != nil {
 		return stats.Stats{}, err
@@ -217,11 +218,12 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, uint64, error) {
 	return factor, bytesPerShard, nil
 }
 
-func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerShard uint64) ([]logproto.Shard, error) {
-	sp, ctx := opentracing.StartSpanFromContext(r.ctx, "dynamicShardResolver.ShardingRanges")
-	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
-	defer log.Finish()
+func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerShard uint64) (
+	[]logproto.Shard,
+	[]logproto.ChunkRefGroup,
+	error,
+) {
+	log := spanlogger.FromContext(r.ctx)
 
 	adjustedFrom := r.from
 
@@ -230,7 +232,7 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 	// of binary ops, but I'm putting in the loop for completion
 	grps, err := syntax.MatcherGroups(expr)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	for _, grp := range grps {
@@ -251,7 +253,8 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 	exprStr := expr.String()
 	// try to get shards for the given expression
 	// if it fails, fallback to linearshards based on stats
-	resp, err := r.next.Do(ctx, &logproto.ShardsRequest{
+	// use the retry handler here to retry transient errors
+	resp, err := r.retryNextHandler.Do(r.ctx, &logproto.ShardsRequest{
 		From:                adjustedFrom,
 		Through:             r.through,
 		Query:               expr.String(),
@@ -259,33 +262,21 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 	})
 
 	if err != nil {
-		// check unimplemented to fallback
-		// TODO(owen-d): fix if this isn't right
-		if resp, ok := httpgrpc.HTTPResponseFromError(err); ok && (resp.Code == http.StatusNotFound) {
-			n, bytesPerShard, err := r.Shards(expr)
-			if err != nil {
-				return nil, errors.Wrap(err, "falling back to building linear shards from stats")
-			}
-			level.Debug(log).Log(
-				"msg", "falling back to building linear shards from stats",
-				"bytes_per_shard", bytesPerShard,
-				"shards", n,
-				"query", exprStr,
-			)
-			return sharding.LinearShards(n, uint64(n)*bytesPerShard), nil
-		}
-
-		return nil, errors.Wrapf(err, "failed to get shards for expression, got %T: %+v", err, err)
-
+		return nil, nil, errors.Wrapf(err, "failed to get shards for expression, got %T: %+v", err, err)
 	}
 
 	casted, ok := resp.(*ShardsResponse)
 	if !ok {
-		return nil, fmt.Errorf("expected *ShardsResponse while querying index, got %T", resp)
+		return nil, nil, fmt.Errorf("expected *ShardsResponse while querying index, got %T", resp)
 	}
 
 	// accumulate stats
-	logqlstats.JoinResults(ctx, casted.Response.Statistics)
+	logqlstats.JoinResults(r.ctx, casted.Response.Statistics)
+
+	var refs int
+	for _, x := range casted.Response.ChunkGroups {
+		refs += len(x.Refs)
+	}
 
 	level.Debug(log).Log(
 		"msg", "retrieved sharding ranges",
@@ -293,8 +284,9 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 		"shards", len(casted.Response.Shards),
 		"query", exprStr,
 		"total_chunks", casted.Response.Statistics.Index.TotalChunks,
-		"post_filter_chunks:", casted.Response.Statistics.Index.PostFilterChunks,
+		"post_filter_chunks", casted.Response.Statistics.Index.PostFilterChunks,
+		"precomputed_refs", refs,
 	)
 
-	return casted.Response.Shards, err
+	return casted.Response.Shards, casted.Response.ChunkGroups, err
 }

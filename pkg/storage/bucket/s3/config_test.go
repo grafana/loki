@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
-	bucket_http "github.com/grafana/loki/pkg/storage/bucket/http"
-	"github.com/grafana/loki/pkg/storage/common/aws"
+	bucket_http "github.com/grafana/loki/v3/pkg/storage/bucket/http"
+	"github.com/grafana/loki/v3/pkg/storage/common/aws"
 )
 
 // defaultConfig should match the default flag values defined in RegisterFlagsWithPrefix.
@@ -58,6 +58,7 @@ access_key_id: test-access-key-id
 insecure: true
 signature_version: test-signature-version
 storage_class: test-storage-class
+disable_dualstack: true
 sse:
   type: test-type
   kms_key_id: test-kms-key-id
@@ -81,6 +82,7 @@ http:
 				Insecure:         true,
 				SignatureVersion: "test-signature-version",
 				StorageClass:     "test-storage-class",
+				DisableDualstack: true,
 				SSE: SSEConfig{
 					Type:                 "test-type",
 					KMSKeyID:             "test-kms-key-id",

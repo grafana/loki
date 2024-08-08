@@ -1,11 +1,13 @@
 # This partial configuration uses Alibaba for chunk storage.
+common:
+  path_prefix: /tmp/loki
 
 schema_config:
   configs:
   - from: 2020-05-15
     store: tsdb
     object_store: alibabacloud
-    schema: v12
+    schema: v13
     index:
       prefix: index_
       period: 24h
