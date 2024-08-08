@@ -6,36 +6,36 @@
         rules: [
           {
             alert: 'LokiRequestErrors',
-            expr: |||
-              100 * sum(rate(loki_request_duration_seconds_count{status_code=~"5.."}[2m])) by (namespace, job, route)
+            expr: std.strReplace(|||
+              100 * sum(rate(loki_request_duration_seconds_count{status_code=~"5.."}[2m])) by (cluster, namespace, job, route)
                 /
-              sum(rate(loki_request_duration_seconds_count[2m])) by (namespace, job, route)
+              sum(rate(loki_request_duration_seconds_count[2m])) by (cluster, namespace, job, route)
                 > 10
-            |||,
+            |||, 'cluster', $._config.per_cluster_label),
             'for': '15m',
             labels: {
               severity: 'critical',
             },
             annotations: {
               summary: 'Loki request error rate is high.',
-              description: |||
-                {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}% errors.
-              |||,
+              description: std.strReplace(|||
+                {{ $labels.cluster }} {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}% errors.
+              |||, 'cluster', $._config.per_cluster_label),
             },
           },
           {
             alert: 'LokiRequestPanics',
             expr: |||
-              sum(increase(loki_panic_total[10m])) by (namespace, job) > 0
-            |||,
+              sum(increase(loki_panic_total[10m])) by (%s, namespace, job) > 0
+            ||| % $._config.per_cluster_label,
             labels: {
               severity: 'critical',
             },
             annotations: {
               summary: 'Loki requests are causing code panics.',
-              description: |||
-                {{ $labels.job }} is experiencing {{ printf "%.2f" $value }}% increase of panics.
-              |||,
+              description: std.strReplace(|||
+                {{ $labels.cluster }} {{ $labels.job }} is experiencing {{ printf "%.2f" $value }}% increase of panics.
+              |||, 'cluster', $._config.per_cluster_label),
             },
           },
           {
@@ -49,15 +49,15 @@
             },
             annotations: {
               summary: 'Loki request error latency is high.',
-              description: |||
-                {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}s 99th percentile latency.
-              |||,
+              description: std.strReplace(|||
+                {{ $labels.cluster }} {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}s 99th percentile latency.
+              |||, 'cluster', $._config.per_cluster_label),
             },
           },
           {
             alert: 'LokiTooManyCompactorsRunning',
             expr: |||
-              sum(loki_boltdb_shipper_compactor_running) by (namespace, %s) > 1
+              sum(loki_boltdb_shipper_compactor_running) by (%s, namespace) > 1
             ||| % $._config.per_cluster_label,
             'for': '5m',
             labels: {
