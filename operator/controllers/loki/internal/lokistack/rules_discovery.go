@@ -6,6 +6,7 @@ import (
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -24,13 +25,13 @@ func AnnotateForDiscoveredRules(ctx context.Context, k k8s.Client) error {
 	var stacks lokiv1.LokiStackList
 	err := k.List(ctx, &stacks, client.MatchingLabelsSelector{Selector: labels.Everything()})
 	if err != nil {
-		return kverrors.Wrap(err, "failed to list any lokistack instances", "req")
+		return kverrors.Wrap(err, "failed to list any lokistack instances")
 	}
 
 	for _, s := range stacks.Items {
 		ss := s.DeepCopy()
 		if err := updateAnnotation(ctx, k, ss, annotationRulesDiscoveredAt, timeStamp); err != nil {
-			return kverrors.Wrap(err, "failed to update lokistack `rulesDiscoveredAt` annotation", "name", ss.Name, "namespace", ss.Namespace)
+			return kverrors.Wrap(err, "failed to update lokistack `rulesDiscoveredAt` annotation", "lokistack", klog.KRef(ss.Namespace, ss.Name))
 		}
 	}
 

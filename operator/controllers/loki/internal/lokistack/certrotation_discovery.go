@@ -28,13 +28,13 @@ func AnnotateForRequiredCertRotation(ctx context.Context, k k8s.Client, name, na
 			return nil
 		}
 
-		return kverrors.Wrap(err, "failed to get lokistack", "key", key)
+		return kverrors.Wrap(err, "failed to get lokistack")
 	}
 
 	ss := s.DeepCopy()
 	timeStamp := time.Now().UTC().Format(time.RFC3339)
 	if err := updateAnnotation(ctx, k, ss, certRotationRequiredAtKey, timeStamp); err != nil {
-		return kverrors.Wrap(err, fmt.Sprintf("failed to update lokistack `%s` annotation", certRotationRequiredAtKey), "key", key)
+		return kverrors.Wrap(err, fmt.Sprintf("failed to update lokistack `%s` annotation", certRotationRequiredAtKey))
 	}
 
 	return nil

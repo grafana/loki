@@ -14,18 +14,17 @@ import (
 func TestCertRotationController_RegistersCustomResource_WithDefaultPredicates(t *testing.T) {
 	b := &k8sfakes.FakeBuilder{}
 	k := &k8sfakes.FakeClient{}
-	c := &CertRotationReconciler{Client: k, Scheme: scheme}
+	c := &CertRotationReconciler{Client: k, Log: logger, Scheme: scheme}
 
 	b.ForReturns(b)
 	b.OwnsReturns(b)
+	b.WithLogConstructorReturns(b)
 
 	err := c.buildController(b)
 	require.NoError(t, err)
 
-	// Require only one For-Call for the custom resource
 	require.Equal(t, 1, b.ForCallCount())
 
-	// Require For-call with LokiStack resource
 	obj, _ := b.ForArgsForCall(0)
 	require.Equal(t, &lokiv1.LokiStack{}, obj)
 }
@@ -33,10 +32,11 @@ func TestCertRotationController_RegistersCustomResource_WithDefaultPredicates(t 
 func TestCertRotationController_RegisterOwnedResources_WithDefaultPredicates(t *testing.T) {
 	b := &k8sfakes.FakeBuilder{}
 	k := &k8sfakes.FakeClient{}
-	c := &CertRotationReconciler{Client: k, Scheme: scheme}
+	c := &CertRotationReconciler{Client: k, Log: logger, Scheme: scheme}
 
 	b.ForReturns(b)
 	b.OwnsReturns(b)
+	b.WithLogConstructorReturns(b)
 
 	err := c.buildController(b)
 	require.NoError(t, err)
@@ -45,6 +45,21 @@ func TestCertRotationController_RegisterOwnedResources_WithDefaultPredicates(t *
 
 	obj, _ := b.OwnsArgsForCall(0)
 	require.Equal(t, &corev1.Secret{}, obj)
+}
+
+func TestCertRotationController_RegisterLokiStackLogContructor(t *testing.T) {
+	b := &k8sfakes.FakeBuilder{}
+	k := &k8sfakes.FakeClient{}
+	c := &CertRotationReconciler{Client: k, Log: logger, Scheme: scheme}
+
+	b.ForReturns(b)
+	b.OwnsReturns(b)
+	b.WithLogConstructorReturns(b)
+
+	err := c.buildController(b)
+	require.NoError(t, err)
+
+	require.Equal(t, 1, b.WithLogConstructorCallCount())
 }
 
 func TestCertRotationController_ExpiryRetryAfter(t *testing.T) {

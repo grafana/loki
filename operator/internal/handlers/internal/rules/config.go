@@ -5,6 +5,7 @@ import (
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -20,7 +21,7 @@ func getRulerConfig(ctx context.Context, k k8s.Client, key client.ObjectKey) (*l
 			return nil, nil
 		}
 
-		return nil, kverrors.Wrap(err, "failed to get rulerconfig", "key", key)
+		return nil, kverrors.Wrap(err, "failed to get rulerconfig", "rulerconfig", klog.KRef(key.Namespace, key.Name))
 	}
 
 	return &rc.Spec, nil

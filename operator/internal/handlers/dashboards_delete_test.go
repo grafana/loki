@@ -19,7 +19,7 @@ func TestDeleteDashboards(t *testing.T) {
 
 	k := &k8sfakes.FakeClient{}
 
-	err = DeleteDashboards(context.TODO(), k, "operator-ns")
+	err = DeleteDashboards(context.TODO(), logger, k, "operator-ns")
 	require.NoError(t, err)
 	require.Equal(t, k.DeleteCallCount(), len(objs))
 }
@@ -30,6 +30,6 @@ func TestDeleteDashboards_ReturnsNoError_WhenNotFound(t *testing.T) {
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
-	err := DeleteDashboards(context.TODO(), k, "operator-ns")
+	err := DeleteDashboards(context.TODO(), logger, k, "operator-ns")
 	require.NoError(t, err)
 }

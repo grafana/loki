@@ -6,6 +6,7 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -24,7 +25,7 @@ func AlertManagerSVCExists(ctx context.Context, stack lokiv1.LokiStackSpec, k k8
 
 	err := k.Get(ctx, key, &svc)
 	if err != nil && !apierrors.IsNotFound(err) {
-		return false, kverrors.Wrap(err, "failed to lookup alertmanager service", "name", key)
+		return false, kverrors.Wrap(err, "failed to lookup alertmanager service", "service", klog.KRef(key.Namespace, key.Name))
 	}
 
 	return err == nil, nil
@@ -41,7 +42,7 @@ func UserWorkloadAlertManagerSVCExists(ctx context.Context, stack lokiv1.LokiSta
 
 	err := k.Get(ctx, key, &svc)
 	if err != nil && !apierrors.IsNotFound(err) {
-		return false, kverrors.Wrap(err, "failed to lookup user workload alertmanager service", "name", key)
+		return false, kverrors.Wrap(err, "failed to lookup user workload alertmanager service", "service", klog.KRef(key.Namespace, key.Name))
 	}
 
 	return err == nil, nil
