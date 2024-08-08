@@ -71,7 +71,7 @@ func (p *processor) processTasksForDay(ctx context.Context, _ string, _ config.D
 	bqs, err := p.store.FetchBlocks(
 		ctx,
 		refs,
-		bloomshipper.WithFetchAsync(true),
+		bloomshipper.WithFetchAsync(false),
 		bloomshipper.WithIgnoreNotFound(true),
 		// NB(owen-d): we relinquish bloom pages to a pool
 		// after iteration for performance (alloc reduction).
