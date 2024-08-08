@@ -2,8 +2,12 @@
   "show-details":
     runs-on: "ubuntu-latest"
     steps:
-      - run: du -sh /opt/hostedtoolcache
-        name: check directory size
+      - run: df -h
+      - name: check directory size
+        run: du -sh /opt/hostedtoolcache
+      - name: clean up
+        run: rm -rf /opt/hostedtoolcache
+      - run: df -h
   "check":
     "uses": "grafana/loki-release/.github/workflows/check.yml@main"
     "with":
@@ -14,7 +18,7 @@
       "use_github_app_token": true
 "name": "check"
 "on":
-  "pull_request": {}
+  "pull_request": { }
   "push":
     "branches":
-    - "main"
+      - "main"
