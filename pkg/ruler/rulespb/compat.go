@@ -28,12 +28,13 @@ func formattedRuleToProto(rls []rulefmt.RuleNode) []*RuleDesc {
 	rules := make([]*RuleDesc, len(rls))
 	for i := range rls {
 		rules[i] = &RuleDesc{
-			Expr:        rls[i].Expr.Value,
-			Record:      rls[i].Record.Value,
-			Alert:       rls[i].Alert.Value,
-			For:         time.Duration(rls[i].For),
-			Labels:      logproto.FromLabelsToLabelAdapters(labels.FromMap(rls[i].Labels)),
-			Annotations: logproto.FromLabelsToLabelAdapters(labels.FromMap(rls[i].Annotations)),
+			Expr:          rls[i].Expr.Value,
+			Record:        rls[i].Record.Value,
+			Alert:         rls[i].Alert.Value,
+			For:           time.Duration(rls[i].For),
+			KeepFiringFor: time.Duration(rls[i].KeepFiringFor),
+			Labels:        logproto.FromLabelsToLabelAdapters(labels.FromMap(rls[i].Labels)),
+			Annotations:   logproto.FromLabelsToLabelAdapters(labels.FromMap(rls[i].Annotations)),
 		}
 	}
 
@@ -54,10 +55,11 @@ func FromProto(rg *RuleGroupDesc) rulefmt.RuleGroup {
 		exprNode.SetString(rl.GetExpr())
 
 		newRule := rulefmt.RuleNode{
-			Expr:        exprNode,
-			Labels:      logproto.FromLabelAdaptersToLabels(rl.Labels).Map(),
-			Annotations: logproto.FromLabelAdaptersToLabels(rl.Annotations).Map(),
-			For:         model.Duration(rl.GetFor()),
+			Expr:          exprNode,
+			Labels:        logproto.FromLabelAdaptersToLabels(rl.Labels).Map(),
+			Annotations:   logproto.FromLabelAdaptersToLabels(rl.Annotations).Map(),
+			For:           model.Duration(rl.GetFor()),
+			KeepFiringFor: model.Duration(rl.GetKeepFiringFor()),
 		}
 
 		if rl.GetRecord() != "" {
