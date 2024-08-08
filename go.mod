@@ -376,7 +376,6 @@ replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915
 
 exclude k8s.io/client-go v8.0.0+incompatible
 
-
 // Replace memberlist with our fork which includes some fixes that haven't been
 // merged upstream yet.
 replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20220714140823-09ffed8adbbe
