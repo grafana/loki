@@ -87,10 +87,10 @@ func (o *GetObjectOptions) Set(key, value string) {
 }
 
 // SetReqParam - set request query string parameter
-// supported key: see supportedQueryValues.
+// supported key: see supportedQueryValues and allowedCustomQueryPrefix.
 // If an unsupported key is passed in, it will be ignored and nothing will be done.
 func (o *GetObjectOptions) SetReqParam(key, value string) {
-	if !isStandardQueryValue(key) {
+	if !isCustomQueryValue(key) && !isStandardQueryValue(key) {
 		// do nothing
 		return
 	}
@@ -101,10 +101,10 @@ func (o *GetObjectOptions) SetReqParam(key, value string) {
 }
 
 // AddReqParam - add request query string parameter
-// supported key: see supportedQueryValues.
+// supported key: see supportedQueryValues and allowedCustomQueryPrefix.
 // If an unsupported key is passed in, it will be ignored and nothing will be done.
 func (o *GetObjectOptions) AddReqParam(key, value string) {
-	if !isStandardQueryValue(key) {
+	if !isCustomQueryValue(key) && !isStandardQueryValue(key) {
 		// do nothing
 		return
 	}
