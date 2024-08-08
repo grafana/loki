@@ -53,7 +53,7 @@ It is not recommended to run scalable mode with `filesystem` storage. For the pu
      loki:
        schemaConfig:
          configs:
-           - from: 2024-04-01
+           - from: "2024-04-01"
              store: tsdb
              object_store: s3
              schema: v13
@@ -138,7 +138,7 @@ When deploying Loki using S3 Storage **DO NOT** use the default bucket names;  `
 loki:
   schemaConfig:
     configs:
-      - from: 2024-04-01
+      - from: "2024-04-01"
         store: tsdb
         object_store: s3
         schema: v13
