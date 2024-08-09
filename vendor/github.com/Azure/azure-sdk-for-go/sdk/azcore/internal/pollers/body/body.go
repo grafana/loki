@@ -29,7 +29,7 @@ func Applicable(resp *http.Response) bool {
 }
 
 // CanResume returns true if the token can rehydrate this poller type.
-func CanResume(token map[string]interface{}) bool {
+func CanResume(token map[string]any) bool {
 	t, ok := token["type"]
 	if !ok {
 		return false
