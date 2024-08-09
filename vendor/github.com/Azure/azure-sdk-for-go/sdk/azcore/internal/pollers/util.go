@@ -74,7 +74,7 @@ func ExtractToken(token string) ([]byte, error) {
 
 // IsTokenValid returns an error if the specified token isn't applicable for generic type T.
 func IsTokenValid[T any](token string) error {
-	raw := map[string]interface{}{}
+	raw := map[string]any{}
 	if err := json.Unmarshal([]byte(token), &raw); err != nil {
 		return err
 	}
@@ -184,4 +184,17 @@ func ResultHelper[T any](resp *http.Response, failed bool, out *T) error {
 		return err
 	}
 	return nil
+}
+
+// IsNonTerminalHTTPStatusCode returns true if the HTTP status code should be
+// considered non-terminal thus eligible for retry.
+func IsNonTerminalHTTPStatusCode(resp *http.Response) bool {
+	return exported.HasStatusCode(resp,
+		http.StatusRequestTimeout,      // 408
+		http.StatusTooManyRequests,     // 429
+		http.StatusInternalServerError, // 500
+		http.StatusBadGateway,          // 502
+		http.StatusServiceUnavailable,  // 503
+		http.StatusGatewayTimeout,      // 504
+	)
 }
