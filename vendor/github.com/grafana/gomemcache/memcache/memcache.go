@@ -20,6 +20,7 @@ package memcache
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -79,6 +80,10 @@ const (
 	// idle connection to consider it "recently used". The default value has been
 	// set equal to the default TCP TIME_WAIT timeout in linux.
 	defaultRecentlyUsedConnsThreshold = 2 * time.Minute
+
+	// defaultReconnectCronTimeout is how often the client will attempt to reestablish
+	// connection to the server when initialized with NewWithBackgroundReconnect
+	defaultReconnectCronTimeout = 10 * time.Minute
 )
 
 const buffered = 8 // arbitrary buffered channel size, for readability
@@ -130,7 +135,35 @@ var (
 func New(server ...string) *Client {
 	ss := new(ServerList)
 	_ = ss.SetServers(server...)
-	return NewFromSelector(ss)
+	c := NewFromSelector(ss)
+	c.serverList = append(c.serverList, server...)
+
+	return c
+}
+
+// NewWithBackgroundReconnect returns the same thing as New(server ...string), but takes a context and timeout to initiate a bakground reconnect cron
+func NewWithBackgroundReconnect(ctx context.Context, interval time.Duration, server ...string) *Client {
+	c := New(server...)
+
+	if interval == 0 {
+		interval = defaultReconnectCronTimeout
+	}
+	ticker := time.NewTicker(interval)
+
+	// periodically ping the provided servers -- if there are timeouts, it will trigger a reconnect attempt
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				ticker.Stop()
+				return
+			case <-ticker.C:
+				_ = c.Ping()
+			}
+		}
+	}()
+
+	return c
 }
 
 // NewFromSelector returns a new Client using the provided ServerSelector.
@@ -199,6 +232,9 @@ type Client struct {
 
 	lk       sync.Mutex
 	freeconn map[string][]*conn
+
+	serverList    []string
+	reconnectLock sync.Mutex
 }
 
 // Item is an item to be got or stored in a memcached server.
@@ -403,6 +439,9 @@ func (c *Client) dial(addr net.Addr) (net.Conn, error) {
 	}
 
 	if ne, ok := err.(net.Error); ok && ne.Timeout() {
+		// In the case of a timeout, we might need to reestablish a connection to one or more servers, for example in case of an IP change
+		// Fire this off in a goroutine so it doesn't delay a response back to the client
+		c.backgroundReconnect()
 		return nil, &ConnectTimeoutError{addr}
 	}
 
@@ -420,6 +459,7 @@ func (c *Client) getConn(addr net.Addr) (*conn, error) {
 		cn.extendDeadline()
 		return cn, nil
 	}
+
 	nc, err := c.dial(addr)
 	if err != nil {
 		return nil, err
@@ -918,4 +958,27 @@ func (c *Client) incrDecr(verb, key string, delta uint64) (uint64, error) {
 		return nil
 	})
 	return val, err
+}
+
+// backgroundReconnect makes an asyncronous attempt to reconnect to the provided server list and reset all open connections
+func (c *Client) backgroundReconnect() {
+	go func() {
+		c.reconnectLock.Lock()
+		defer c.reconnectLock.Unlock()
+
+		if sl, ok := c.selector.(*ServerList); ok {
+			if err := sl.SetServers(c.serverList...); err == nil {
+				c.lk.Lock()
+				defer c.lk.Unlock()
+
+				// close all open connections before deleting them
+				for _, cs := range c.freeconn {
+					for _, conn := range cs {
+						conn.nc.Close()
+					}
+				}
+				c.freeconn = make(map[string][]*conn)
+			}
+		}
+	}()
 }
