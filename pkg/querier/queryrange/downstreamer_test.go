@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
+	"go.uber.org/goleak"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -221,6 +222,11 @@ func ensureParallelism(t *testing.T, in *instance, n int) {
 }
 
 func TestInstanceFor(t *testing.T) {
+	// Verify that no leaks exists after the test execution
+	defer goleak.VerifyNone(t,
+		goleak.IgnoreCurrent(),
+	)
+
 	mkIn := func() *instance {
 		return DownstreamHandler{
 			limits: fakeLimits{},
