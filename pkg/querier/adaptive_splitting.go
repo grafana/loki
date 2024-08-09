@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/grafana/loki/v3/pkg/util/math"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -57,12 +58,18 @@ func (d *AdaptiveShardDistributor) createBuckets(bucketCount int) {
 }
 
 func (d *AdaptiveShardDistributor) DistributeShards(query string, start, end model.Time, bucketCount int) []*logproto.SubQueryResult {
+	var subqueries []*logproto.SubQueryResult
 	sort.Slice(d.Shards, func(i, j int) bool {
 		return d.Shards[i].Volume > d.Shards[j].Volume
 	})
-	d.createBuckets(bucketCount)
+	b := math.Min(bucketCount, len(d.Shards))
+	if b <= 0 {
+		results := append(subqueries, &logproto.SubQueryResult{Query: query, Start: start.Time(), End: end.Time(), Shards: []string{}, Volume: 0, Id: "sub1"})
+		return results
+	}
 
-	var subqueries []*logproto.SubQueryResult
+	d.createBuckets(b)
+
 	for i, bucket := range d.Buckets {
 		subquery := d.createSubquery(query, start, end, bucket.Shards, i, bucket.Volume)
 		subqueries = append(subqueries, subquery)
@@ -72,11 +79,6 @@ func (d *AdaptiveShardDistributor) DistributeShards(query string, start, end mod
 }
 
 func (d *AdaptiveShardDistributor) createSubquery(originalQuery string, start, end model.Time, shards []string, bucketIndex int, vol uint64) *logproto.SubQueryResult {
-	// Convert shard IDs to strings and join them with '|'
-	//shardValues := make([]string, len(shards))
-	//for i, shard := range shards {
-	//	shardValues[i] = shard
-	//}
 	shardRegex := strings.Join(shards, "|")
 
 	// Parse the original query to insert the __stream_shard__ label matcher
