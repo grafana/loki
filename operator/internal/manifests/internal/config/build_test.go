@@ -6341,11 +6341,11 @@ overrides:
 							"bar.baz",
 						},
 						OTLPSpec: lokiv1.OTLPSpec{
-							ResourceAttributes: lokiv1.OTLPResourceAttributesSpec{
+							ResourceAttributes: &lokiv1.OTLPResourceAttributesSpec{
 								IgnoreDefaults: true,
 								Attributes: []lokiv1.OTLPAttributesSpec{
 									{
-										Action: lokiv1.IndexLabelAction,
+										Action: lokiv1.OTLPAttributeActionIndexLabel,
 										Attributes: []string{
 											"res.foo.bar",
 											"res.bar.baz",
@@ -6353,7 +6353,7 @@ overrides:
 										Regex: ".*",
 									},
 									{
-										Action: lokiv1.StructuredMetadataAction,
+										Action: lokiv1.OTLPAttributeActionStructuredMetadata,
 										Attributes: []string{
 											"res.service.env",
 										},
@@ -6363,7 +6363,7 @@ overrides:
 							},
 							ScopeAttributes: []lokiv1.OTLPAttributesSpec{
 								{
-									Action: lokiv1.IndexLabelAction,
+									Action: lokiv1.OTLPAttributeActionIndexLabel,
 									Attributes: []string{
 										"scope.foo.bar",
 										"scope.bar.baz",
@@ -6371,7 +6371,7 @@ overrides:
 									Regex: ".*",
 								},
 								{
-									Action: lokiv1.StructuredMetadataAction,
+									Action: lokiv1.OTLPAttributeActionStructuredMetadata,
 									Attributes: []string{
 										"scope.service.env",
 									},
@@ -6380,7 +6380,7 @@ overrides:
 							},
 							LogAttributes: []lokiv1.OTLPAttributesSpec{
 								{
-									Action: lokiv1.IndexLabelAction,
+									Action: lokiv1.OTLPAttributeActionIndexLabel,
 									Attributes: []string{
 										"log.foo.bar",
 										"log.bar.baz",
@@ -6388,7 +6388,7 @@ overrides:
 									Regex: ".*",
 								},
 								{
-									Action: lokiv1.StructuredMetadataAction,
+									Action: lokiv1.OTLPAttributeActionStructuredMetadata,
 									Attributes: []string{
 										"log.service.env",
 									},
@@ -6532,11 +6532,11 @@ overrides:
 			"test-a": {
 				Limits: lokiv1.PerTenantLimitsTemplateSpec{
 					OTLP: &lokiv1.OTLPSpec{
-						ResourceAttributes: lokiv1.OTLPResourceAttributesSpec{
+						ResourceAttributes: &lokiv1.OTLPResourceAttributesSpec{
 							IgnoreDefaults: true,
 							Attributes: []lokiv1.OTLPAttributesSpec{
 								{
-									Action: lokiv1.IndexLabelAction,
+									Action: lokiv1.OTLPAttributeActionIndexLabel,
 									Attributes: []string{
 										"res.foo.bar",
 										"res.bar.baz",
@@ -6544,7 +6544,7 @@ overrides:
 									Regex: ".*",
 								},
 								{
-									Action: lokiv1.StructuredMetadataAction,
+									Action: lokiv1.OTLPAttributeActionStructuredMetadata,
 									Attributes: []string{
 										"res.service.env",
 									},
@@ -6554,7 +6554,7 @@ overrides:
 						},
 						ScopeAttributes: []lokiv1.OTLPAttributesSpec{
 							{
-								Action: lokiv1.IndexLabelAction,
+								Action: lokiv1.OTLPAttributeActionIndexLabel,
 								Attributes: []string{
 									"scope.foo.bar",
 									"scope.bar.baz",
@@ -6562,7 +6562,7 @@ overrides:
 								Regex: ".*",
 							},
 							{
-								Action: lokiv1.StructuredMetadataAction,
+								Action: lokiv1.OTLPAttributeActionStructuredMetadata,
 								Attributes: []string{
 									"scope.service.env",
 								},
@@ -6571,7 +6571,7 @@ overrides:
 						},
 						LogAttributes: []lokiv1.OTLPAttributesSpec{
 							{
-								Action: lokiv1.IndexLabelAction,
+								Action: lokiv1.OTLPAttributeActionIndexLabel,
 								Attributes: []string{
 									"log.foo.bar",
 									"log.bar.baz",
@@ -6579,7 +6579,7 @@ overrides:
 								Regex: ".*",
 							},
 							{
-								Action: lokiv1.StructuredMetadataAction,
+								Action: lokiv1.OTLPAttributeActionStructuredMetadata,
 								Attributes: []string{
 									"log.service.env",
 								},

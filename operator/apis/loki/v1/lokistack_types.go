@@ -799,12 +799,12 @@ type IngestionLimitSpec struct {
 type OTLPAttributeAction string
 
 const (
-	// IndexLabelAction stores a Resource Attribute as a label in index to identify streams.
-	IndexLabelAction OTLPAttributeAction = "index_label"
-	// StructuredMetadataAction stores an Attribute as Structured Metadata with each log entry.
-	StructuredMetadataAction OTLPAttributeAction = "structured_metadata"
-	// DropAction drops Attributes for which the Attribute name does match the regex.
-	DropAction OTLPAttributeAction = "drop"
+	// OTLPAttributeActionIndexLabel stores a Resource Attribute as a label in index to identify streams.
+	OTLPAttributeActionIndexLabel OTLPAttributeAction = "index_label"
+	// OTLPAttributeActionStructuredMetadata stores an Attribute as Structured Metadata with each log entry.
+	OTLPAttributeActionStructuredMetadata OTLPAttributeAction = "structured_metadata"
+	// OTLPAttributeActionDrop drops Attributes for which the Attribute name does match the regex.
+	OTLPAttributeActionDrop OTLPAttributeAction = "drop"
 )
 
 // OTLPAttributesSpec contains the configuration for a set of attributes
@@ -812,8 +812,8 @@ const (
 type OTLPAttributesSpec struct {
 	// Action defines the indexing action for the selected attributes.
 	//
-	// +optional
-	// +kubebuilder:validation:Optional
+	// +required
+	// +kubebuilder:validation:Required
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Action"
 	Action OTLPAttributeAction `json:"action,omitempty"`
 
@@ -863,7 +863,7 @@ type GlobalOTLPSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Action"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Indexed Resource Attributes"
 	IndexedResourceAttributes []string `json:"indexedResourceAttributes,omitempty"`
 
 	OTLPSpec `json:",omitempty"`
@@ -878,7 +878,7 @@ type OTLPSpec struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Resource Attributes"
-	ResourceAttributes OTLPResourceAttributesSpec `json:"resourceAttributes,omitempty"`
+	ResourceAttributes *OTLPResourceAttributesSpec `json:"resourceAttributes,omitempty"`
 
 	// ScopeAttributes contains the configuration for scope attributes
 	// to store them as index labels or Structured Metadata or drop them altogether.

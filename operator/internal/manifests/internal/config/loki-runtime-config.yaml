@@ -82,11 +82,13 @@ overrides:
         attributes_config:
         {{- range . }}
         - action: {{ .Action }}
+          {{- with .Regex }}
+          regex: {{ . }}
+          {{- end }}
           attributes:
           {{- range .Attributes }}
           - {{ . }}
           {{- end }}
-          regex: {{ .Regex }}
         {{- end }}
         {{- end }}
       {{- end}}
@@ -94,22 +96,26 @@ overrides:
       scope_attributes:
       {{- range . }}
       - action: {{ .Action }}
+        {{- with .Regex }}
+        regex: {{ . }}
+        {{- end }}
         attributes:
         {{- range .Attributes }}
         - {{ . }}
         {{- end }}
-        regex: {{ .Regex }}
       {{- end }}
       {{- end }}
       {{- with $l.LogAttributes }}
       log_attributes:
       {{- range . }}
       - action: {{ .Action }}
+        {{- with .Regex }}
+        regex: {{ . }}
+        {{- end }}
         attributes:
         {{- range .Attributes }}
         - {{ . }}
         {{- end }}
-        regex: {{ .Regex }}
       {{- end }}
       {{- end }}
   {{- end }}
