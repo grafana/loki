@@ -976,9 +976,11 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		return req.WithContext(ctx), nil
 	case *DetectedLabelsRequest:
 		params := url.Values{
-			"start": []string{fmt.Sprintf("%d", request.Start.UnixNano())},
-			"end":   []string{fmt.Sprintf("%d", request.End.UnixNano())},
-			"query": []string{request.GetQuery()},
+			"start":          []string{fmt.Sprintf("%d", request.Start.UnixNano())},
+			"end":            []string{fmt.Sprintf("%d", request.End.UnixNano())},
+			"query":          []string{request.GetQuery()},
+			"minCardinality": []string{fmt.Sprintf("%d", request.MinCardinality)},
+			"maxCardinality": []string{fmt.Sprintf("%d", request.MaxCardinality)},
 		}
 
 		u := &url.URL{
