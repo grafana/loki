@@ -803,9 +803,10 @@ func (m *VolumeResponse) XXX_DiscardUnknown() {
 var xxx_messageInfo_VolumeResponse proto.InternalMessageInfo
 
 type TopKSketchesResponse struct {
-	Response *github_com_grafana_loki_v3_pkg_logproto.TopKMatrix                                                     `protobuf:"bytes,1,opt,name=response,proto3,customtype=github.com/grafana/loki/v3/pkg/logproto.TopKMatrix" json:"response,omitempty"`
-	Headers  []github_com_grafana_loki_v3_pkg_querier_queryrange_queryrangebase_definitions.PrometheusResponseHeader `protobuf:"bytes,2,rep,name=Headers,proto3,customtype=github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader" json:"-"`
-	Warnings []string                                                                                                `protobuf:"bytes,3,rep,name=warnings,proto3" json:"warnings,omitempty"`
+	Response   *github_com_grafana_loki_v3_pkg_logproto.TopKMatrix                                                     `protobuf:"bytes,1,opt,name=response,proto3,customtype=github.com/grafana/loki/v3/pkg/logproto.TopKMatrix" json:"response,omitempty"`
+	Headers    []github_com_grafana_loki_v3_pkg_querier_queryrange_queryrangebase_definitions.PrometheusResponseHeader `protobuf:"bytes,2,rep,name=Headers,proto3,customtype=github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader" json:"-"`
+	Warnings   []string                                                                                                `protobuf:"bytes,3,rep,name=warnings,proto3" json:"warnings,omitempty"`
+	Statistics stats.Result                                                                                            `protobuf:"bytes,4,opt,name=statistics,proto3" json:"statistics"`
 }
 
 func (m *TopKSketchesResponse) Reset()      { *m = TopKSketchesResponse{} }
@@ -847,10 +848,18 @@ func (m *TopKSketchesResponse) GetWarnings() []string {
 	return nil
 }
 
+func (m *TopKSketchesResponse) GetStatistics() stats.Result {
+	if m != nil {
+		return m.Statistics
+	}
+	return stats.Result{}
+}
+
 type QuantileSketchResponse struct {
-	Response *github_com_grafana_loki_v3_pkg_logproto.QuantileSketchMatrix                                           `protobuf:"bytes,1,opt,name=response,proto3,customtype=github.com/grafana/loki/v3/pkg/logproto.QuantileSketchMatrix" json:"response,omitempty"`
-	Headers  []github_com_grafana_loki_v3_pkg_querier_queryrange_queryrangebase_definitions.PrometheusResponseHeader `protobuf:"bytes,2,rep,name=Headers,proto3,customtype=github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader" json:"-"`
-	Warnings []string                                                                                                `protobuf:"bytes,3,rep,name=warnings,proto3" json:"warnings,omitempty"`
+	Response   *github_com_grafana_loki_v3_pkg_logproto.QuantileSketchMatrix                                           `protobuf:"bytes,1,opt,name=response,proto3,customtype=github.com/grafana/loki/v3/pkg/logproto.QuantileSketchMatrix" json:"response,omitempty"`
+	Headers    []github_com_grafana_loki_v3_pkg_querier_queryrange_queryrangebase_definitions.PrometheusResponseHeader `protobuf:"bytes,2,rep,name=Headers,proto3,customtype=github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader" json:"-"`
+	Warnings   []string                                                                                                `protobuf:"bytes,3,rep,name=warnings,proto3" json:"warnings,omitempty"`
+	Statistics stats.Result                                                                                            `protobuf:"bytes,4,opt,name=statistics,proto3" json:"statistics"`
 }
 
 func (m *QuantileSketchResponse) Reset()      { *m = QuantileSketchResponse{} }
@@ -890,6 +899,13 @@ func (m *QuantileSketchResponse) GetWarnings() []string {
 		return m.Warnings
 	}
 	return nil
+}
+
+func (m *QuantileSketchResponse) GetStatistics() stats.Result {
+	if m != nil {
+		return m.Statistics
+	}
+	return stats.Result{}
 }
 
 type ShardsResponse struct {
@@ -2131,6 +2147,9 @@ func (this *TopKSketchesResponse) Equal(that interface{}) bool {
 			return false
 		}
 	}
+	if !this.Statistics.Equal(&that1.Statistics) {
+		return false
+	}
 	return true
 }
 func (this *QuantileSketchResponse) Equal(that interface{}) bool {
@@ -2174,6 +2193,9 @@ func (this *QuantileSketchResponse) Equal(that interface{}) bool {
 		if this.Warnings[i] != that1.Warnings[i] {
 			return false
 		}
+	}
+	if !this.Statistics.Equal(&that1.Statistics) {
+		return false
 	}
 	return true
 }
@@ -3090,11 +3112,12 @@ func (this *TopKSketchesResponse) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 7)
+	s := make([]string, 0, 8)
 	s = append(s, "&queryrange.TopKSketchesResponse{")
 	s = append(s, "Response: "+fmt.Sprintf("%#v", this.Response)+",\n")
 	s = append(s, "Headers: "+fmt.Sprintf("%#v", this.Headers)+",\n")
 	s = append(s, "Warnings: "+fmt.Sprintf("%#v", this.Warnings)+",\n")
+	s = append(s, "Statistics: "+strings.Replace(this.Statistics.GoString(), `&`, ``, 1)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -3102,11 +3125,12 @@ func (this *QuantileSketchResponse) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 7)
+	s := make([]string, 0, 8)
 	s = append(s, "&queryrange.QuantileSketchResponse{")
 	s = append(s, "Response: "+fmt.Sprintf("%#v", this.Response)+",\n")
 	s = append(s, "Headers: "+fmt.Sprintf("%#v", this.Headers)+",\n")
 	s = append(s, "Warnings: "+fmt.Sprintf("%#v", this.Warnings)+",\n")
+	s = append(s, "Statistics: "+strings.Replace(this.Statistics.GoString(), `&`, ``, 1)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -4136,6 +4160,16 @@ func (m *TopKSketchesResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	{
+		size, err := m.Statistics.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = encodeVarintQueryrange(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x22
 	if len(m.Warnings) > 0 {
 		for iNdEx := len(m.Warnings) - 1; iNdEx >= 0; iNdEx-- {
 			i -= len(m.Warnings[iNdEx])
@@ -4194,6 +4228,16 @@ func (m *QuantileSketchResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) 
 	_ = i
 	var l int
 	_ = l
+	{
+		size, err := m.Statistics.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = encodeVarintQueryrange(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x22
 	if len(m.Warnings) > 0 {
 		for iNdEx := len(m.Warnings) - 1; iNdEx >= 0; iNdEx-- {
 			i -= len(m.Warnings[iNdEx])
@@ -5306,6 +5350,8 @@ func (m *TopKSketchesResponse) Size() (n int) {
 			n += 1 + l + sovQueryrange(uint64(l))
 		}
 	}
+	l = m.Statistics.Size()
+	n += 1 + l + sovQueryrange(uint64(l))
 	return n
 }
 
@@ -5331,6 +5377,8 @@ func (m *QuantileSketchResponse) Size() (n int) {
 			n += 1 + l + sovQueryrange(uint64(l))
 		}
 	}
+	l = m.Statistics.Size()
+	n += 1 + l + sovQueryrange(uint64(l))
 	return n
 }
 
@@ -5884,6 +5932,7 @@ func (this *TopKSketchesResponse) String() string {
 		`Response:` + fmt.Sprintf("%v", this.Response) + `,`,
 		`Headers:` + fmt.Sprintf("%v", this.Headers) + `,`,
 		`Warnings:` + fmt.Sprintf("%v", this.Warnings) + `,`,
+		`Statistics:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Statistics), "Result", "stats.Result", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -5896,6 +5945,7 @@ func (this *QuantileSketchResponse) String() string {
 		`Response:` + fmt.Sprintf("%v", this.Response) + `,`,
 		`Headers:` + fmt.Sprintf("%v", this.Headers) + `,`,
 		`Warnings:` + fmt.Sprintf("%v", this.Warnings) + `,`,
+		`Statistics:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Statistics), "Result", "stats.Result", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -8591,6 +8641,39 @@ func (m *TopKSketchesResponse) Unmarshal(dAtA []byte) error {
 			}
 			m.Warnings = append(m.Warnings, string(dAtA[iNdEx:postIndex]))
 			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Statistics", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQueryrange
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.Statistics.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipQueryrange(dAtA[iNdEx:])
@@ -8745,6 +8828,39 @@ func (m *QuantileSketchResponse) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.Warnings = append(m.Warnings, string(dAtA[iNdEx:postIndex]))
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Statistics", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQueryrange
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthQueryrange
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.Statistics.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
