@@ -2680,13 +2680,13 @@ to the index, the chunk structured metadata or enterily dropped.</p>
 </tr>
 </thead>
 <tbody><tr><td><p>&#34;drop&#34;</p></td>
-<td><p>DropAction drops Attributes for which the Attribute name does match the regex.</p>
+<td><p>OTLPAttributeActionDrop drops Attributes for which the Attribute name does match the regex.</p>
 </td>
 </tr><tr><td><p>&#34;index_label&#34;</p></td>
-<td><p>IndexLabelAction stores a Resource Attribute as a label in index to identify streams.</p>
+<td><p>OTLPAttributeActionIndexLabel stores a Resource Attribute as a label in index to identify streams.</p>
 </td>
 </tr><tr><td><p>&#34;structured_metadata&#34;</p></td>
-<td><p>StructuredMetadataAction stores an Attribute as Structured Metadata with each log entry.</p>
+<td><p>OTLPAttributeActionStructuredMetadata stores an Attribute as Structured Metadata with each log entry.</p>
 </td>
 </tr></tbody>
 </table>
@@ -2717,7 +2717,6 @@ OTLPAttributeAction
 </em>
 </td>
 <td>
-<em>(Optional)</em>
 <p>Action defines the indexing action for the selected attributes.</p>
 </td>
 </tr>
