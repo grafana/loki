@@ -12,48 +12,14 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"reflect"
-	"strings"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/exported"
+	azexported "github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/exported"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/log"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/shared"
+	"github.com/Azure/azure-sdk-for-go/sdk/internal/exported"
+	"github.com/Azure/azure-sdk-for-go/sdk/internal/poller"
 )
-
-// the well-known set of LRO status/provisioning state values.
-const (
-	StatusSucceeded  = "Succeeded"
-	StatusCanceled   = "Canceled"
-	StatusFailed     = "Failed"
-	StatusInProgress = "InProgress"
-)
-
-// IsTerminalState returns true if the LRO's state is terminal.
-func IsTerminalState(s string) bool {
-	return strings.EqualFold(s, StatusSucceeded) || strings.EqualFold(s, StatusFailed) || strings.EqualFold(s, StatusCanceled)
-}
-
-// Failed returns true if the LRO's state is terminal failure.
-func Failed(s string) bool {
-	return strings.EqualFold(s, StatusFailed) || strings.EqualFold(s, StatusCanceled)
-}
-
-// Succeeded returns true if the LRO's state is terminal success.
-func Succeeded(s string) bool {
-	return strings.EqualFold(s, StatusSucceeded)
-}
-
-// returns true if the LRO response contains a valid HTTP status code
-func StatusCodeValid(resp *http.Response) bool {
-	return exported.HasStatusCode(resp, http.StatusOK, http.StatusAccepted, http.StatusCreated, http.StatusNoContent)
-}
-
-// IsValidURL verifies that the URL is valid and absolute.
-func IsValidURL(s string) bool {
-	u, err := url.Parse(s)
-	return err == nil && u.IsAbs()
-}
 
 // getTokenTypeName creates a type name from the type parameter T.
 func getTokenTypeName[T any]() (string, error) {
@@ -108,7 +74,7 @@ func ExtractToken(token string) ([]byte, error) {
 
 // IsTokenValid returns an error if the specified token isn't applicable for generic type T.
 func IsTokenValid[T any](token string) error {
-	raw := map[string]interface{}{}
+	raw := map[string]any{}
 	if err := json.Unmarshal([]byte(token), &raw); err != nil {
 		return err
 	}
@@ -130,102 +96,6 @@ func IsTokenValid[T any](token string) error {
 	return nil
 }
 
-// ErrNoBody is returned if the response didn't contain a body.
-var ErrNoBody = errors.New("the response did not contain a body")
-
-// GetJSON reads the response body into a raw JSON object.
-// It returns ErrNoBody if there was no content.
-func GetJSON(resp *http.Response) (map[string]interface{}, error) {
-	body, err := exported.Payload(resp)
-	if err != nil {
-		return nil, err
-	}
-	if len(body) == 0 {
-		return nil, ErrNoBody
-	}
-	// unmarshall the body to get the value
-	var jsonBody map[string]interface{}
-	if err = json.Unmarshal(body, &jsonBody); err != nil {
-		return nil, err
-	}
-	return jsonBody, nil
-}
-
-// provisioningState returns the provisioning state from the response or the empty string.
-func provisioningState(jsonBody map[string]interface{}) string {
-	jsonProps, ok := jsonBody["properties"]
-	if !ok {
-		return ""
-	}
-	props, ok := jsonProps.(map[string]interface{})
-	if !ok {
-		return ""
-	}
-	rawPs, ok := props["provisioningState"]
-	if !ok {
-		return ""
-	}
-	ps, ok := rawPs.(string)
-	if !ok {
-		return ""
-	}
-	return ps
-}
-
-// status returns the status from the response or the empty string.
-func status(jsonBody map[string]interface{}) string {
-	rawStatus, ok := jsonBody["status"]
-	if !ok {
-		return ""
-	}
-	status, ok := rawStatus.(string)
-	if !ok {
-		return ""
-	}
-	return status
-}
-
-// GetStatus returns the LRO's status from the response body.
-// Typically used for Azure-AsyncOperation flows.
-// If there is no status in the response body the empty string is returned.
-func GetStatus(resp *http.Response) (string, error) {
-	jsonBody, err := GetJSON(resp)
-	if err != nil {
-		return "", err
-	}
-	return status(jsonBody), nil
-}
-
-// GetProvisioningState returns the LRO's state from the response body.
-// If there is no state in the response body the empty string is returned.
-func GetProvisioningState(resp *http.Response) (string, error) {
-	jsonBody, err := GetJSON(resp)
-	if err != nil {
-		return "", err
-	}
-	return provisioningState(jsonBody), nil
-}
-
-// GetResourceLocation returns the LRO's resourceLocation value from the response body.
-// Typically used for Operation-Location flows.
-// If there is no resourceLocation in the response body the empty string is returned.
-func GetResourceLocation(resp *http.Response) (string, error) {
-	jsonBody, err := GetJSON(resp)
-	if err != nil {
-		return "", err
-	}
-	v, ok := jsonBody["resourceLocation"]
-	if !ok {
-		// it might be ok if the field doesn't exist, the caller must make that determination
-		return "", nil
-	}
-	vv, ok := v.(string)
-	if !ok {
-		return "", fmt.Errorf("the resourceLocation value %v was not in string format", v)
-	}
-	return vv, nil
-}
-
 // used if the operation synchronously completed
 type NopPoller[T any] struct {
 	resp   *http.Response
@@ -239,7 +109,7 @@ func NewNopPoller[T any](resp *http.Response) (*NopPoller[T], error) {
 	if resp.StatusCode == http.StatusNoContent {
 		return np, nil
 	}
-	payload, err := exported.Payload(resp)
+	payload, err := exported.Payload(resp, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -269,8 +139,8 @@ func (p *NopPoller[T]) Result(ctx context.Context, out *T) error {
 // If the request fails, the update func is not called.
 // The update func returns the state of the operation for logging purposes or an error
 // if it fails to extract the required state from the response.
-func PollHelper(ctx context.Context, endpoint string, pl exported.Pipeline, update func(resp *http.Response) (string, error)) error {
-	req, err := exported.NewRequest(ctx, http.MethodGet, endpoint)
+func PollHelper(ctx context.Context, endpoint string, pl azexported.Pipeline, update func(resp *http.Response) (string, error)) error {
+	req, err := azexported.NewRequest(ctx, http.MethodGet, endpoint)
 	if err != nil {
 		return err
 	}
@@ -296,13 +166,13 @@ func ResultHelper[T any](resp *http.Response, failed bool, out *T) error {
 	}
 
 	defer resp.Body.Close()
-	if !StatusCodeValid(resp) || failed {
+	if !poller.StatusCodeValid(resp) || failed {
 		// the LRO failed.  unmarshall the error and update state
-		return exported.NewResponseError(resp)
+		return azexported.NewResponseError(resp)
 	}
 
 	// success case
-	payload, err := exported.Payload(resp)
+	payload, err := exported.Payload(resp, nil)
 	if err != nil {
 		return err
 	}
@@ -314,4 +184,17 @@ func ResultHelper[T any](resp *http.Response, failed bool, out *T) error {
 		return err
 	}
 	return nil
+}
+
+// IsNonTerminalHTTPStatusCode returns true if the HTTP status code should be
+// considered non-terminal thus eligible for retry.
+func IsNonTerminalHTTPStatusCode(resp *http.Response) bool {
+	return exported.HasStatusCode(resp,
+		http.StatusRequestTimeout,      // 408
+		http.StatusTooManyRequests,     // 429
+		http.StatusInternalServerError, // 500
+		http.StatusBadGateway,          // 502
+		http.StatusServiceUnavailable,  // 503
+		http.StatusGatewayTimeout,      // 504
+	)
 }

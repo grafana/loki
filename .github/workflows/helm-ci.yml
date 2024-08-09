@@ -60,7 +60,7 @@ jobs:
           python-version: 3.7
 
       - name: Set up chart-testing
-        uses: helm/chart-testing-action@v2.4.0
+        uses: helm/chart-testing-action@v2.6.0
 
       - name: Run chart-testing (list-changed)
         id: list-changed
@@ -72,6 +72,7 @@ jobs:
 
       - name: Run chart-testing (lint)
         run: ct lint --config "${CT_CONFIGFILE}" --check-version-increment=false
+        timeout-minutes: 10
 
       - name: Create kind cluster
         uses: helm/kind-action@v1.8.0
