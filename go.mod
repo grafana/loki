@@ -142,7 +142,7 @@ require (
 	github.com/thanos-io/objstore v0.0.0-20240722162417-19b0c0f0ffd8
 	github.com/willf/bloom v2.0.3+incompatible
 	go.opentelemetry.io/collector/pdata v1.12.0
-	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
+	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
 	golang.org/x/exp v0.0.0-20240325151524-a685a6edb6d8
 	golang.org/x/oauth2 v0.21.0
 	golang.org/x/text v0.17.0
