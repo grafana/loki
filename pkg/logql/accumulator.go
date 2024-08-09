@@ -41,6 +41,7 @@ func (a *BufferedAccumulator) Result() []logqlmodel.Result {
 
 type QuantileSketchAccumulator struct {
 	matrix ProbabilisticQuantileMatrix
+	stats  stats.Result // for accumulating statistics from downstream requests
 }
 
 // newQuantileSketchAccumulator returns an accumulator for sharded
@@ -64,11 +65,12 @@ func (a *QuantileSketchAccumulator) Accumulate(_ context.Context, res logqlmodel
 
 	var err error
 	a.matrix, err = a.matrix.Merge(data)
+	a.stats.Merge(res.Statistics)
 	return err
 }
 
 func (a *QuantileSketchAccumulator) Result() []logqlmodel.Result {
-	return []logqlmodel.Result{{Data: a.matrix}}
+	return []logqlmodel.Result{{Data: a.matrix, Statistics: a.stats}}
 }
 
 // heap impl for keeping only the top n results across m streams
