@@ -17,7 +17,7 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 const (
