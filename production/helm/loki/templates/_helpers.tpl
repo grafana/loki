@@ -238,6 +238,9 @@ s3:
   {{- end }}
   s3forcepathstyle: {{ .s3ForcePathStyle }}
   insecure: {{ .insecure }}
+  {{- with .disable_dualstack }}
+  disable_dualstack: {{ . }}
+  {{- end }}
   {{- with .http_config}}
   http_config:
 {{ toYaml . | indent 4 }}
