@@ -34,6 +34,7 @@ dist
 .aws-sam
 .idea
 pkg/loki/wal
+tools/lambda-promtail/main
 
 # Workspaces
 *.work
