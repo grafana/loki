@@ -23,6 +23,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/health"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/raftleader"
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/objstore"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 const metastoreRaftLeaderHealthServiceName = "metastorepb.MetastoreService.RaftLeader"
@@ -90,7 +93,11 @@ type Metastore struct {
 	wg   sync.WaitGroup
 }
 
-func New(config Config, logger log.Logger, reg prometheus.Registerer, hs health.Service) (*Metastore, error) {
+func New(config Config, periodConfigs []config.PeriodConfig, storageConfig storage.Config, clientMetrics storage.ClientMetrics, logger log.Logger, reg prometheus.Registerer, hs health.Service) (*Metastore, error) {
+	storage, err := objstore.New(periodConfigs, storageConfig, clientMetrics)
+	if err != nil {
+		return nil, err
+	}
 	m := &Metastore{
 		config: config,
 		logger: logger,
@@ -99,7 +106,7 @@ func New(config Config, logger log.Logger, reg prometheus.Registerer, hs health.
 		done:   make(chan struct{}),
 	}
 	m.leaderhealth = raftleader.NewRaftLeaderHealthObserver(hs, logger)
-	m.state = newMetastoreState(logger, m.db)
+	m.state = newMetastoreState(logger, m.db, storage)
 	m.Service = services.NewBasicService(m.starting, m.running, m.stopping)
 	return m, nil
 }
