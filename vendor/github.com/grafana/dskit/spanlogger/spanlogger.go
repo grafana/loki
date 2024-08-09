@@ -2,6 +2,8 @@ package spanlogger
 
 import (
 	"context"
+	"runtime"
+	"strings"
 
 	"go.uber.org/atomic" // Really just need sync/atomic but there is a lint rule preventing it.
 
@@ -160,6 +162,10 @@ func (s *SpanLogger) getLogger() log.Logger {
 	if ok {
 		logger = log.With(logger, "trace_id", traceID)
 	}
+
+	// Replace the default valuer for the 'caller' attribute with one that gets the caller of the methods in this file.
+	logger = log.With(logger, "caller", spanLoggerAwareCaller())
+
 	// If the value has been set by another goroutine, fetch that other value and discard the one we made.
 	if !s.logger.CompareAndSwap(nil, &logger) {
 		pLogger := s.logger.Load()
@@ -180,4 +186,48 @@ func (s *SpanLogger) SetSpanAndLogTag(key string, value interface{}) {
 	logger := s.getLogger()
 	wrappedLogger := log.With(logger, key, value)
 	s.logger.Store(&wrappedLogger)
+}
+
+// spanLoggerAwareCaller is like log.Caller, but ensures that the caller information is
+// that of the caller to SpanLogger, not SpanLogger itself.
+func spanLoggerAwareCaller() log.Valuer {
+	valuer := atomic.NewPointer[log.Valuer](nil)
+
+	return func() interface{} {
+		// If we've already determined the correct stack depth, use it.
+		existingValuer := valuer.Load()
+		if existingValuer != nil {
+			return (*existingValuer)()
+		}
+
+		// We haven't been called before, determine the correct stack depth to
+		// skip the configured logger's internals and the SpanLogger's internals too.
+		//
+		// Note that we can't do this in spanLoggerAwareCaller() directly because we
+		// need to do this when invoked by the configured logger - otherwise we cannot
+		// measure the stack depth of the logger's internals.
+
+		stackDepth := 3 // log.DefaultCaller uses a stack depth of 3, so start searching for the correct stack depth there.
+
+		for {
+			_, file, _, ok := runtime.Caller(stackDepth)
+			if !ok {
+				// We've run out of possible stack frames. Give up.
+				valuer.Store(&unknownCaller)
+				return unknownCaller()
+			}
+
+			if strings.HasSuffix(file, "spanlogger/spanlogger.go") {
+				stackValuer := log.Caller(stackDepth + 2) // Add one to skip the stack frame for the SpanLogger method, and another to skip the stack frame for the valuer which we'll invoke below.
+				valuer.Store(&stackValuer)
+				return stackValuer()
+			}
+
+			stackDepth++
+		}
+	}
+}
+
+var unknownCaller log.Valuer = func() interface{} {
+	return "<unknown>"
 }

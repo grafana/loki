@@ -24,9 +24,9 @@ var defaultPageTemplate = template.Must(template.New("webpage").Funcs(template.F
 		if t.IsZero() {
 			return ""
 		}
-		return t.Format(time.RFC3339Nano)
+		return t.Format(time.RFC3339)
 	},
-	"durationSince": func(t time.Time) string { return time.Since(t).Truncate(time.Millisecond).String() },
+	"durationSince": func(t time.Time) string { return time.Since(t).Truncate(time.Second).String() },
 }).Parse(defaultPageContent))
 
 type httpResponse struct {
@@ -36,15 +36,17 @@ type httpResponse struct {
 }
 
 type ingesterDesc struct {
-	ID                  string    `json:"id"`
-	State               string    `json:"state"`
-	Address             string    `json:"address"`
-	HeartbeatTimestamp  time.Time `json:"timestamp"`
-	RegisteredTimestamp time.Time `json:"registered_timestamp"`
-	Zone                string    `json:"zone"`
-	Tokens              []uint32  `json:"tokens"`
-	NumTokens           int       `json:"-"`
-	Ownership           float64   `json:"-"`
+	ID                       string    `json:"id"`
+	State                    string    `json:"state"`
+	Address                  string    `json:"address"`
+	HeartbeatTimestamp       time.Time `json:"timestamp"`
+	RegisteredTimestamp      time.Time `json:"registered_timestamp"`
+	ReadOnly                 bool      `json:"read_only"`
+	ReadOnlyUpdatedTimestamp time.Time `json:"read_only_updated_timestamp"`
+	Zone                     string    `json:"zone"`
+	Tokens                   []uint32  `json:"tokens"`
+	NumTokens                int       `json:"-"`
+	Ownership                float64   `json:"-"`
 }
 
 type ringAccess interface {
@@ -110,16 +112,20 @@ func (h *ringPageHandler) handle(w http.ResponseWriter, req *http.Request) {
 			state = "UNHEALTHY"
 		}
 
+		ro, rots := ing.GetReadOnlyState()
+
 		ingesters = append(ingesters, ingesterDesc{
-			ID:                  id,
-			State:               state,
-			Address:             ing.Addr,
-			HeartbeatTimestamp:  time.Unix(ing.Timestamp, 0).UTC(),
-			RegisteredTimestamp: ing.GetRegisteredAt().UTC(),
-			Tokens:              ing.Tokens,
-			Zone:                ing.Zone,
-			NumTokens:           len(ing.Tokens),
-			Ownership:           (float64(ownedTokens[id]) / float64(math.MaxUint32)) * 100,
+			ID:                       id,
+			State:                    state,
+			Address:                  ing.Addr,
+			HeartbeatTimestamp:       time.Unix(ing.Timestamp, 0).UTC(),
+			RegisteredTimestamp:      ing.GetRegisteredAt().UTC(),
+			ReadOnly:                 ro,
+			ReadOnlyUpdatedTimestamp: rots.UTC(),
+			Tokens:                   ing.Tokens,
+			Zone:                     ing.Zone,
+			NumTokens:                len(ing.Tokens),
+			Ownership:                (float64(ownedTokens[id]) / float64(math.MaxUint32)) * 100,
 		})
 	}
 

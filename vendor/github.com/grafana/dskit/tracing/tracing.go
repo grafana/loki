@@ -55,16 +55,30 @@ func NewFromEnv(serviceName string, options ...jaegercfg.Option) (io.Closer, err
 
 // ExtractTraceID extracts the trace id, if any from the context.
 func ExtractTraceID(ctx context.Context) (string, bool) {
+	if tid, _, ok := extractJaegerContext(ctx); ok {
+		return tid.String(), true
+	}
+	return "", false
+}
+
+// ExtractTraceSpanID extracts the trace id, span id if any from the context.
+func ExtractTraceSpanID(ctx context.Context) (string, string, bool) {
+	if tid, sid, ok := extractJaegerContext(ctx); ok {
+		return tid.String(), sid.String(), true
+	}
+	return "", "", false
+}
+
+func extractJaegerContext(ctx context.Context) (tid jaeger.TraceID, sid jaeger.SpanID, success bool) {
 	sp := opentracing.SpanFromContext(ctx)
 	if sp == nil {
-		return "", false
+		return
 	}
-	sctx, ok := sp.Context().(jaeger.SpanContext)
+	jsp, ok := sp.Context().(jaeger.SpanContext)
 	if !ok {
-		return "", false
+		return
 	}
-
-	return sctx.TraceID().String(), true
+	return jsp.TraceID(), jsp.SpanID(), true
 }
 
 // ExtractSampledTraceID works like ExtractTraceID but the returned bool is only
