@@ -92,7 +92,14 @@ func (t *Tee) run() {
 }
 
 func (t *Tee) sendStream(tenant string, stream distributor.KeyedStream) error {
-	err := t.sendOwnedStream(tenant, stream)
+  // Create the request once at the top to reduce allocations
+	req := &logproto.PushRequest{
+		Streams: []logproto.Stream{
+			stream.Stream,
+		},
+	}
+
+	err := t.sendOwnedStream(tenant, stream, req)
 	if err == nil {
 		t.ingesterMetricAppends.WithLabelValues("success").Inc()
 		// Success, return early
@@ -117,12 +124,6 @@ func (t *Tee) sendStream(tenant string, stream distributor.KeyedStream) error {
 		addr := instance.Addr
 		client, err := t.ringClient.Pool().GetClientFor(addr)
 		if err != nil {
-			req := &logproto.PushRequest{
-				Streams: []logproto.Stream{
-					stream.Stream,
-				},
-			}
-
 			ctx, cancel := context.WithTimeout(
 				user.InjectOrgID(context.Background(), tenant),
 				t.cfg.ClientConfig.RemoteTimeout,
@@ -144,7 +145,7 @@ func (t *Tee) sendStream(tenant string, stream distributor.KeyedStream) error {
 	return err
 }
 
-func (t *Tee) sendOwnedStream(tenant string, stream distributor.KeyedStream) error {
+func (t *Tee) sendOwnedStream(tenant string, stream distributor.KeyedStream, req *logproto.PushRequest) error {
 	var descs [1]ring.InstanceDesc
 	replicationSet, err := t.ringClient.Ring().Get(stream.HashKey, ring.WriteNoExtend, descs[:0], nil, nil)
 	if err != nil {
@@ -159,12 +160,6 @@ func (t *Tee) sendOwnedStream(tenant string, stream distributor.KeyedStream) err
 	if err != nil {
 		return err
 	}
-	req := &logproto.PushRequest{
-		Streams: []logproto.Stream{
-			stream.Stream,
-		},
-	}
-
 	ctx, cancel := context.WithTimeout(
 		user.InjectOrgID(context.Background(), tenant),
 		t.cfg.ClientConfig.RemoteTimeout,
