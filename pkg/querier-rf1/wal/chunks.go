@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 
@@ -309,14 +310,14 @@ func readChunkData(ctx context.Context, storage BlockStorage, chunk ChunkData) (
 	// together.
 	reader, err := storage.GetObjectRange(ctx, wal.Dir+chunk.id, int64(offset), int64(size))
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "could not get range reader for "+chunk.id)
 	}
 	defer reader.Close()
 
 	data := make([]byte, size)
 	_, err = reader.Read(data)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "could not read socket for "+chunk.id)
 	}
 
 	return data, nil
