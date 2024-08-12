@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sync"
 
 	"github.com/go-kit/log"
@@ -251,21 +252,45 @@ func (i *instance) Observe(stream string, entries []logproto.Entry) {
 	i.aggMetricsLock.Lock()
 	defer i.aggMetricsLock.Unlock()
 
-	metrics, ok := i.aggMetricsByStream[stream]
-	if !ok {
-		metrics = aggregatedMetrics{}
-	}
-
-	bytes := uint64(0)
-	count := uint64(len(entries))
 	for _, entry := range entries {
-		bytes += uint64(len(entry.Line))
+		lbls, err := syntax.ParseLabels(stream)
+		if err != nil {
+			continue
+		}
+
+		_, hasLevelLabel := distributor.HasAnyLevelLabels(lbls)
+		structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
+		var logLevel string
+		if !hasLevelLabel {
+			if levelFromMetadata, ok := distributor.HasAnyLevelLabels(structuredMetadata); ok {
+				logLevel = levelFromMetadata
+			} else {
+				logLevel = distributor.DetectLogLevelFromLogEntry(entry, structuredMetadata)
+			}
+			lbls = append(lbls, labels.Label{Name: "level", Value: logLevel})
+			slices.SortFunc(lbls, func(i, j labels.Label) int {
+				if i.Name < j.Name {
+					return -1
+				}
+
+				if i.Name > j.Name {
+					return 1
+				}
+
+				return 0
+			})
+		}
+
+		metrics, ok := i.aggMetricsByStream[lbls.String()]
+		if !ok {
+			metrics = aggregatedMetrics{}
+		}
+
+		metrics.bytes += uint64(len(entry.Line))
+		metrics.count++
+
+		i.aggMetricsByStream[lbls.String()] = metrics
 	}
-
-	metrics.bytes += bytes
-	metrics.count += count
-
-	i.aggMetricsByStream[stream] = metrics
 }
 
 func (i *instance) Downsample(now model.Time) {
@@ -295,8 +320,8 @@ func (i *instance) writeAggregatedMetrics(
 		service = push.ServiceUnknown
 	}
 
-	level := streamLbls.Get("level")
-	if level == "" {
+	level, hasLevelLabel := distributor.HasAnyLevelLabels(streamLbls)
+	if !hasLevelLabel {
 		level = distributor.LogLevelUnknown
 	}
 

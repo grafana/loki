@@ -392,7 +392,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			prevTs := stream.Entries[0].Timestamp
 
 			shouldDiscoverLevels := validationContext.allowStructuredMetadata && validationContext.discoverLogLevels
-			levelFromLabel, hasLevelLabel := hasAnyLevelLabels(lbs)
+			levelFromLabel, hasLevelLabel := HasAnyLevelLabels(lbs)
 			for _, entry := range stream.Entries {
 				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
@@ -405,10 +405,10 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 					var logLevel string
 					if hasLevelLabel {
 						logLevel = levelFromLabel
-					} else if levelFromMetadata, ok := hasAnyLevelLabels(structuredMetadata); ok {
+					} else if levelFromMetadata, ok := HasAnyLevelLabels(structuredMetadata); ok {
 						logLevel = levelFromMetadata
 					} else {
-						logLevel = detectLogLevelFromLogEntry(entry, structuredMetadata)
+						logLevel = DetectLogLevelFromLogEntry(entry, structuredMetadata)
 					}
 					if logLevel != LogLevelUnknown && logLevel != "" {
 						entry.StructuredMetadata = append(entry.StructuredMetadata, logproto.LabelAdapter{
@@ -566,7 +566,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 }
 
-func hasAnyLevelLabels(l labels.Labels) (string, bool) {
+func HasAnyLevelLabels(l labels.Labels) (string, bool) {
 	for lbl := range allowedLabelsForLevel {
 		if l.Has(lbl) {
 			return l.Get(lbl), true
@@ -881,7 +881,7 @@ func (d *Distributor) HealthyInstancesCount() int {
 	return int(d.healthyInstancesCount.Load())
 }
 
-func detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.Labels) string {
+func DetectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.Labels) string {
 	// otlp logs have a severity number, using which we are defining the log levels.
 	// Significance of severity number is explained in otel docs here https://opentelemetry.io/docs/specs/otel/logs/data-model/#field-severitynumber
 	if otlpSeverityNumberTxt := structuredMetadata.Get(push.OTLPSeverityNumber); otlpSeverityNumberTxt != "" {

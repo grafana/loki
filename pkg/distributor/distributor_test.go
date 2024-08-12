@@ -1690,7 +1690,7 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			detectedLogLevel := detectLogLevelFromLogEntry(tc.entry, logproto.FromLabelAdaptersToLabels(tc.entry.StructuredMetadata))
+			detectedLogLevel := etectLogLevelFromLogEntry(tc.entry, logproto.FromLabelAdaptersToLabels(tc.entry.StructuredMetadata))
 			require.Equal(t, tc.expectedLogLevel, detectedLogLevel)
 		})
 	}
@@ -1710,7 +1710,7 @@ func Benchmark_extractLogLevelFromLogLine(b *testing.B) {
 		"iUbswJNcwqcr6huw LAGrZS8NGlqqzcD2wFU rm Uqcrh3TKLUCkfkwLm  5CIQbxMCUz boBrEHxvCBrUo YJoF2iyif4xq3q yk "
 
 	for i := 0; i < b.N; i++ {
-		level := extractLogLevelFromLogLine(logLine)
+		level := ExtractLogLevelFromLogLine(logLine)
 		require.Equal(b, LogLevelUnknown, level)
 	}
 }
@@ -1719,7 +1719,7 @@ func Benchmark_optParseExtractLogLevelFromLogLineJson(b *testing.B) {
 	logLine := `{"msg": "something" , "level": "error", "id": "1"}`
 
 	for i := 0; i < b.N; i++ {
-		level := extractLogLevelFromLogLine(logLine)
+		level := ExtractLogLevelFromLogLine(logLine)
 		require.Equal(b, logLevelError, level)
 	}
 }
@@ -1728,7 +1728,7 @@ func Benchmark_optParseExtractLogLevelFromLogLineLogfmt(b *testing.B) {
 	logLine := `FOO=bar MSG="message with keyword error but it should not get picked up" LEVEL=inFO`
 
 	for i := 0; i < b.N; i++ {
-		level := extractLogLevelFromLogLine(logLine)
+		level := ExtractLogLevelFromLogLine(logLine)
 		require.Equal(b, logLevelInfo, level)
 	}
 }
