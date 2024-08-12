@@ -34,10 +34,7 @@ import (
 	internalgrpclog "google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/xds/internal/xdsclient"
-	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
-	v3adminpb "github.com/envoyproxy/go-control-plane/envoy/admin/v3"
 	v3statusgrpc "github.com/envoyproxy/go-control-plane/envoy/service/status/v3"
 	v3statuspb "github.com/envoyproxy/go-control-plane/envoy/service/status/v3"
 )
@@ -77,7 +74,7 @@ func NewClientStatusDiscoveryServer() (*ClientStatusDiscoveryServer, error) {
 	return s, nil
 }
 
-// StreamClientStatus implementations interface ClientStatusDiscoveryServiceServer.
+// StreamClientStatus implements interface ClientStatusDiscoveryServiceServer.
 func (s *ClientStatusDiscoveryServer) StreamClientStatus(stream v3statusgrpc.ClientStatusDiscoveryService_StreamClientStatusServer) error {
 	for {
 		req, err := stream.Recv()
@@ -97,13 +94,13 @@ func (s *ClientStatusDiscoveryServer) StreamClientStatus(stream v3statusgrpc.Cli
 	}
 }
 
-// FetchClientStatus implementations interface ClientStatusDiscoveryServiceServer.
+// FetchClientStatus implements interface ClientStatusDiscoveryServiceServer.
 func (s *ClientStatusDiscoveryServer) FetchClientStatus(_ context.Context, req *v3statuspb.ClientStatusRequest) (*v3statuspb.ClientStatusResponse, error) {
 	return s.buildClientStatusRespForReq(req)
 }
 
-// buildClientStatusRespForReq fetches the status from the client, and returns
-// the response to be sent back to xdsclient.
+// buildClientStatusRespForReq fetches the status of xDS resources from the
+// xdsclient, and returns the response to be sent back to the csds client.
 //
 // If it returns an error, the error is a status error.
 func (s *ClientStatusDiscoveryServer) buildClientStatusRespForReq(req *v3statuspb.ClientStatusRequest) (*v3statuspb.ClientStatusResponse, error) {
@@ -119,63 +116,12 @@ func (s *ClientStatusDiscoveryServer) buildClientStatusRespForReq(req *v3statusp
 		return nil, status.Errorf(codes.InvalidArgument, "node_matchers are not supported, request contains node_matchers: %v", req.NodeMatchers)
 	}
 
-	dump := s.xdsClient.DumpResources()
-	ret := &v3statuspb.ClientStatusResponse{
-		Config: []*v3statuspb.ClientConfig{
-			{
-				Node:              s.xdsClient.BootstrapConfig().NodeProto,
-				GenericXdsConfigs: dumpToGenericXdsConfig(dump),
-			},
-		},
-	}
-	return ret, nil
+	return s.xdsClient.DumpResources()
 }
 
 // Close cleans up the resources.
 func (s *ClientStatusDiscoveryServer) Close() {
 	if s.xdsClientClose != nil {
 		s.xdsClientClose()
-	}
-}
-
-func dumpToGenericXdsConfig(dump map[string]map[string]xdsresource.UpdateWithMD) []*v3statuspb.ClientConfig_GenericXdsConfig {
-	var ret []*v3statuspb.ClientConfig_GenericXdsConfig
-	for typeURL, updates := range dump {
-		for name, update := range updates {
-			config := &v3statuspb.ClientConfig_GenericXdsConfig{
-				TypeUrl:      typeURL,
-				Name:         name,
-				VersionInfo:  update.MD.Version,
-				XdsConfig:    update.Raw,
-				LastUpdated:  timestamppb.New(update.MD.Timestamp),
-				ClientStatus: serviceStatusToProto(update.MD.Status),
-			}
-			if errState := update.MD.ErrState; errState != nil {
-				config.ErrorState = &v3adminpb.UpdateFailureState{
-					LastUpdateAttempt: timestamppb.New(errState.Timestamp),
-					Details:           errState.Err.Error(),
-					VersionInfo:       errState.Version,
-				}
-			}
-			ret = append(ret, config)
-		}
-	}
-	return ret
-}
-
-func serviceStatusToProto(serviceStatus xdsresource.ServiceStatus) v3adminpb.ClientResourceStatus {
-	switch serviceStatus {
-	case xdsresource.ServiceStatusUnknown:
-		return v3adminpb.ClientResourceStatus_UNKNOWN
-	case xdsresource.ServiceStatusRequested:
-		return v3adminpb.ClientResourceStatus_REQUESTED
-	case xdsresource.ServiceStatusNotExist:
-		return v3adminpb.ClientResourceStatus_DOES_NOT_EXIST
-	case xdsresource.ServiceStatusACKed:
-		return v3adminpb.ClientResourceStatus_ACKED
-	case xdsresource.ServiceStatusNACKed:
-		return v3adminpb.ClientResourceStatus_NACKED
-	default:
-		return v3adminpb.ClientResourceStatus_UNKNOWN
 	}
 }

@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/efficientgo/core/logerrcapture"
 	"github.com/go-kit/log"
@@ -23,7 +22,6 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/version"
 	"gopkg.in/yaml.v2"
 
@@ -101,18 +99,12 @@ const (
 )
 
 var DefaultConfig = Config{
-	PutUserMetadata: map[string]string{},
-	HTTPConfig: exthttp.HTTPConfig{
-		IdleConnTimeout:       model.Duration(90 * time.Second),
-		ResponseHeaderTimeout: model.Duration(2 * time.Minute),
-		TLSHandshakeTimeout:   model.Duration(10 * time.Second),
-		ExpectContinueTimeout: model.Duration(1 * time.Second),
-		MaxIdleConns:          100,
-		MaxIdleConnsPerHost:   100,
-		MaxConnsPerHost:       0,
-	},
+	PutUserMetadata:  map[string]string{},
+	HTTPConfig:       exthttp.DefaultHTTPConfig,
+	DisableMultipart: false,
 	PartSize:         1024 * 1024 * 64, // 64MB.
 	BucketLookupType: AutoLookup,
+	SendContentMd5:   true, // Default to using MD5.
 }
 
 // HTTPConfig exists here only because Cortex depends on it, and we depend on Cortex.
@@ -125,6 +117,7 @@ type Config struct {
 	Bucket             string             `yaml:"bucket"`
 	Endpoint           string             `yaml:"endpoint"`
 	Region             string             `yaml:"region"`
+	DisableDualstack   bool               `yaml:"disable_dualstack"`
 	AWSSDKAuth         bool               `yaml:"aws_sdk_auth"`
 	AccessKey          string             `yaml:"access_key"`
 	Insecure           bool               `yaml:"insecure"`
@@ -136,6 +129,8 @@ type Config struct {
 	TraceConfig        TraceConfig        `yaml:"trace"`
 	ListObjectsVersion string             `yaml:"list_objects_version"`
 	BucketLookupType   BucketLookupType   `yaml:"bucket_lookup_type"`
+	SendContentMd5     bool               `yaml:"send_content_md5"`
+	DisableMultipart   bool               `yaml:"disable_multipart"`
 	// PartSize used for multipart upload. Only used if uploaded object size is known and larger than configured PartSize.
 	// NOTE we need to make sure this number does not produce more parts than 10 000.
 	PartSize    uint64    `yaml:"part_size"`
@@ -158,14 +153,16 @@ type TraceConfig struct {
 
 // Bucket implements the store.Bucket interface against s3-compatible APIs.
 type Bucket struct {
-	logger          log.Logger
-	name            string
-	client          *minio.Client
-	defaultSSE      encrypt.ServerSide
-	putUserMetadata map[string]string
-	storageClass    string
-	partSize        uint64
-	listObjectsV1   bool
+	logger           log.Logger
+	name             string
+	client           *minio.Client
+	defaultSSE       encrypt.ServerSide
+	putUserMetadata  map[string]string
+	storageClass     string
+	disableMultipart bool
+	partSize         uint64
+	listObjectsV1    bool
+	sendContentMd5   bool
 }
 
 // parseConfig unmarshals a buffer into a Config with default values.
@@ -306,6 +303,11 @@ func NewBucketWithConfig(logger log.Logger, config Config, component string) (*B
 		}
 	}
 
+	if config.DisableDualstack {
+		// The value in the config is inverted for backward compatibility
+		client.SetS3EnableDualstack(false)
+	}
+
 	if config.TraceConfig.Enable {
 		logWriter := log.NewStdlibAdapter(level.Debug(logger), log.MessageKey("s3TraceMsg"))
 		client.TraceOn(logWriter)
@@ -326,14 +328,16 @@ func NewBucketWithConfig(logger log.Logger, config Config, component string) (*B
 	}
 
 	bkt := &Bucket{
-		logger:          logger,
-		name:            config.Bucket,
-		client:          client,
-		defaultSSE:      sse,
-		putUserMetadata: config.PutUserMetadata,
-		storageClass:    storageClass,
-		partSize:        config.PartSize,
-		listObjectsV1:   config.ListObjectsVersion == "v1",
+		logger:           logger,
+		name:             config.Bucket,
+		client:           client,
+		defaultSSE:       sse,
+		putUserMetadata:  config.PutUserMetadata,
+		storageClass:     storageClass,
+		disableMultipart: config.DisableMultipart,
+		partSize:         config.PartSize,
+		listObjectsV1:    config.ListObjectsVersion == "v1",
+		sendContentMd5:   config.SendContentMd5,
 	}
 	return bkt, nil
 }
@@ -492,6 +496,13 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
 	if size < int64(partSize) {
 		partSize = 0
 	}
+
+	// Cloning map since minio may modify it
+	userMetadata := make(map[string]string, len(b.putUserMetadata))
+	for k, v := range b.putUserMetadata {
+		userMetadata[k] = v
+	}
+
 	if _, err := b.client.PutObject(
 		ctx,
 		b.name,
@@ -499,10 +510,12 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
 		r,
 		size,
 		minio.PutObjectOptions{
+			DisableMultipart:     b.disableMultipart,
 			PartSize:             partSize,
 			ServerSideEncryption: sse,
-			UserMetadata:         b.putUserMetadata,
+			UserMetadata:         userMetadata,
 			StorageClass:         b.storageClass,
+			SendContentMd5:       b.sendContentMd5,
 			// 4 is what minio-go have as the default. To be certain we do micro benchmark before any changes we
 			// ensure we pin this number to four.
 			// TODO(bwplotka): Consider adjusting this number to GOMAXPROCS or to expose this in config if it becomes bottleneck.

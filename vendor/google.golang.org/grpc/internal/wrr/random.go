@@ -19,9 +19,8 @@ package wrr
 
 import (
 	"fmt"
+	"math/rand"
 	"sort"
-
-	"google.golang.org/grpc/internal/grpcrand"
 )
 
 // weightedItem is a wrapped weighted item that is used to implement weighted random algorithm.
@@ -47,19 +46,19 @@ func NewRandom() WRR {
 	return &randomWRR{}
 }
 
-var grpcrandInt63n = grpcrand.Int63n
+var randInt63n = rand.Int63n
 
 func (rw *randomWRR) Next() (item any) {
 	if len(rw.items) == 0 {
 		return nil
 	}
 	if rw.equalWeights {
-		return rw.items[grpcrandInt63n(int64(len(rw.items)))].item
+		return rw.items[randInt63n(int64(len(rw.items)))].item
 	}
 
 	sumOfWeights := rw.items[len(rw.items)-1].accumulatedWeight
 	// Random number in [0, sumOfWeights).
-	randomWeight := grpcrandInt63n(sumOfWeights)
+	randomWeight := randInt63n(sumOfWeights)
 	// Item's accumulated weights are in ascending order, because item's weight >= 0.
 	// Binary search rw.items to find first item whose accumulatedWeight > randomWeight
 	// The return i is guaranteed to be in range [0, len(rw.items)) because randomWeight < last item's accumulatedWeight

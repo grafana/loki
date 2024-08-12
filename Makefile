@@ -37,8 +37,8 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` and `make release-workflows` after changing this
-BUILD_IMAGE_VERSION ?= 0.33.4
-GO_VERSION := 1.22.5
+BUILD_IMAGE_VERSION ?= 0.33.6
+GO_VERSION := 1.22.6
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
