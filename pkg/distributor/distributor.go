@@ -304,7 +304,9 @@ func (d *Distributor) running(ctx context.Context) error {
 }
 
 func (d *Distributor) stopping(_ error) error {
-	d.tee.Stop()
+	if d.tee != nil {
+		d.tee.Stop()
+	}
 
 	return services.StopManagerAndAwaitStopped(context.Background(), d.subservices)
 }
