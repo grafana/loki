@@ -63,7 +63,7 @@ func NewTee(
 		teeQueueSize: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "pattern_ingester_tee_queue_size",
 			Help: "Current number of requests in the pattern ingester tee queue.",
-		}, []string{"tenant", "status"}),
+		}, []string{"tenant"}),
 		cfg:        cfg,
 		ringClient: ringClient,
 		requestCh:  make(chan request, cfg.TeeQueueSize),
@@ -103,6 +103,10 @@ func (t *Tee) sendStream(ctx context.Context, stream distributor.KeyedStream) er
 		t.ingesterMetricAppends.WithLabelValues("success").Inc()
 		// Success, return early
 		return nil
+	}
+
+	if !t.cfg.MetricAggregation.Enabled {
+		return err
 	}
 
 	// Pattern ingesters serve 2 functions, processing patterns and aggregating metrics.
