@@ -84,21 +84,15 @@ func (t *Tee) run() {
 			return
 		case req := <-t.requestCh:
 			t.teeQueueSize.WithLabelValues(req.tenant).Dec()
-			ctx, cancel := context.WithTimeout(
-				user.InjectOrgID(context.Background(), req.tenant),
-				t.cfg.ClientConfig.RemoteTimeout,
-			)
-			defer cancel()
-
-			if err := t.sendStream(ctx, req.stream); err != nil {
+			if err := t.sendStream(req.tenant, req.stream); err != nil {
 				level.Error(t.logger).Log("msg", "failed to send stream to pattern ingester", "err", err)
 			}
 		}
 	}
 }
 
-func (t *Tee) sendStream(ctx context.Context, stream distributor.KeyedStream) error {
-	err := t.sendOwnedStream(ctx, stream)
+func (t *Tee) sendStream(tenant string, stream distributor.KeyedStream) error {
+	err := t.sendOwnedStream(tenant, stream)
 	if err == nil {
 		t.ingesterMetricAppends.WithLabelValues("success").Inc()
 		// Success, return early
@@ -129,6 +123,12 @@ func (t *Tee) sendStream(ctx context.Context, stream distributor.KeyedStream) er
 				},
 			}
 
+			ctx, cancel := context.WithTimeout(
+				user.InjectOrgID(context.Background(), tenant),
+				t.cfg.ClientConfig.RemoteTimeout,
+			)
+			defer cancel()
+
 			_, err = client.(logproto.PatternClient).Push(ctx, req)
 			if err != nil {
 				continue
@@ -144,7 +144,7 @@ func (t *Tee) sendStream(ctx context.Context, stream distributor.KeyedStream) er
 	return err
 }
 
-func (t *Tee) sendOwnedStream(ctx context.Context, stream distributor.KeyedStream) error {
+func (t *Tee) sendOwnedStream(tenant string, stream distributor.KeyedStream) error {
 	var descs [1]ring.InstanceDesc
 	replicationSet, err := t.ringClient.Ring().Get(stream.HashKey, ring.WriteNoExtend, descs[:0], nil, nil)
 	if err != nil {
@@ -165,6 +165,11 @@ func (t *Tee) sendOwnedStream(ctx context.Context, stream distributor.KeyedStrea
 		},
 	}
 
+	ctx, cancel := context.WithTimeout(
+		user.InjectOrgID(context.Background(), tenant),
+		t.cfg.ClientConfig.RemoteTimeout,
+	)
+	defer cancel()
 	_, err = client.(logproto.PatternClient).Push(ctx, req)
 	if err != nil {
 		t.ingesterAppends.WithLabelValues(addr, "fail").Inc()
