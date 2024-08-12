@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/pattern/drain"
 
 	"github.com/grafana/loki/pkg/push"
+	loghttp_push "github.com/grafana/loki/v3/pkg/loghttp/push"
 )
 
 func TestInstancePushQuery(t *testing.T) {
