@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -96,8 +97,6 @@ func TestInstancePushQuery(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 2, len(res.Series))
 }
-<<<<<<< HEAD
-=======
 
 func TestInstancePushAggregateMetrics(t *testing.T) {
 	lbs := labels.New(
