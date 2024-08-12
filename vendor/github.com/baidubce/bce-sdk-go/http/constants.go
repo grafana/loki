@@ -61,6 +61,7 @@ const (
 	BCE_USER_METADATA_PREFIX = "x-bce-meta-"
 	BCE_SECURITY_TOKEN       = "x-bce-security-token"
 	BCE_DATE                 = "x-bce-date"
+	BCE_TAG                  = "x-bce-tag-list"
 
 	// BOS HTTP Headers
 	BCE_COPY_METADATA_DIRECTIVE         = "x-bce-metadata-directive"
@@ -80,5 +81,8 @@ const (
 	BCE_RESTORE                         = "x-bce-restore"
 	BCE_FORBID_OVERWRITE                = "x-bce-forbid-overwrite"
 	BCE_SYMLINK_TARGET                  = "x-bce-symlink-target"
-	BCE_TRAFFIC_LIMIT					= "x-bce-traffic-limit"
+	BCE_SYMLINK_BUCKET                  = "x-bce-symlink-bucket"
+	BCE_TRAFFIC_LIMIT                   = "x-bce-traffic-limit"
+	BCE_BUCKET_TYPE                     = "x-bce-bucket-type"
+	BCE_OBJECT_TAGGING                  = "x-bce-tagging"
 )
