@@ -566,6 +566,8 @@ func (q *SingleTenantQuerier) SelectQueryPlan(ctx context.Context, req *logproto
 	}
 
 	var matchers []*labels.Matcher
+
+	// todo(shantanu): also do this for ingester queries
 	if req.Query != "" {
 		matchers, err = syntax.ParseMatchers(req.Query, true)
 		if err != nil {
@@ -577,6 +579,7 @@ func (q *SingleTenantQuerier) SelectQueryPlan(ctx context.Context, req *logproto
 	through := model.TimeFromUnixNano(storeQueryInterval.end.UnixNano())
 
 	streamShardValues, err := q.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", streamShardLabel, matchers...)
+
 	if err != nil {
 		return nil, err
 	}

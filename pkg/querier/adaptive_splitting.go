@@ -64,7 +64,7 @@ func (d *AdaptiveShardDistributor) DistributeShards(query string, start, end mod
 	})
 	b := math.Min(bucketCount, len(d.Shards))
 	if b <= 0 {
-		results := append(subqueries, &logproto.SubQueryResult{Query: query, Start: start.Time(), End: end.Time(), Shards: []string{}, Volume: 0, Id: "sub1"})
+		results := append(subqueries, &logproto.SubQueryResult{Query: query, Start: start.Time(), End: end.Time(), Volume: 0, Id: "sub1"})
 		return results
 	}
 
@@ -97,7 +97,6 @@ func (d *AdaptiveShardDistributor) createSubquery(originalQuery string, start, e
 		Query:  modifiedQuery,
 		Start:  start.Time(),
 		End:    end.Time(),
-		Shards: shards,
 		Volume: vol,
 		Id:     fmt.Sprintf("sub%d", bucketIndex+1)}
 }

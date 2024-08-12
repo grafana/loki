@@ -532,17 +532,16 @@ enum MergeStrategy {
 }
 
 message SubQueryResult {
-  google.protobuf.Timestamp start = 1 [
+  string id = 1;
+  google.protobuf.Timestamp start = 2 [
     (gogoproto.stdtime) = true,
     (gogoproto.nullable) = false
   ];
-  google.protobuf.Timestamp end = 2 [
+  google.protobuf.Timestamp end = 3 [
     (gogoproto.stdtime) = true,
     (gogoproto.nullable) = false
   ];
-  string query = 3;
-  uint32 limit = 4;
-  repeated string shards = 5 [(gogoproto.jsontag) = "shards,omitempty"];
+  string query = 4;
+  uint32 limit = 5;
   uint64 volume = 6;
-  string id = 7;
 }
