@@ -12,6 +12,10 @@ type mockedTee struct {
 	mock.Mock
 }
 
+func (m *mockedTee) Stop() {
+	// no-op
+}
+
 func (m *mockedTee) Duplicate(tenant string, streams []KeyedStream) {
 	m.Called(tenant, streams)
 }

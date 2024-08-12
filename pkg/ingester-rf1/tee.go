@@ -86,3 +86,7 @@ func (t *Tee) sendStream(tenant string, stream distributor.KeyedStream) error {
 	t.ingesterAppends.WithLabelValues(addr, "success").Inc()
 	return nil
 }
+
+func (t *Tee) Stop() {
+	// noop
+}

@@ -353,7 +353,7 @@ type Loki struct {
 	IngesterRF1               ingester_rf1.Interface
 	IngesterRF1RingClient     *ingester_rf1.RingClient
 	PatternIngester           *pattern.Ingester
-	PatternRingClient         *pattern.RingClient
+	PatternRingClient         pattern.RingClient
 	Querier                   querier.Querier
 	cacheGenerationLoader     queryrangebase.CacheGenNumberLoader
 	querierAPI                *querier.QuerierAPI
@@ -704,8 +704,8 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(QuerySchedulerRing, t.initQuerySchedulerRing, modules.UserInvisibleModule)
 	mm.RegisterModule(Analytics, t.initAnalytics)
 	mm.RegisterModule(CacheGenerationLoader, t.initCacheGenerationLoader)
-	mm.RegisterModule(PatternIngester, t.initPatternIngester)
 	mm.RegisterModule(PatternRingClient, t.initPatternRingClient, modules.UserInvisibleModule)
+	mm.RegisterModule(PatternIngester, t.initPatternIngester)
 	mm.RegisterModule(Metastore, t.initMetastore)
 	mm.RegisterModule(MetastoreClient, t.initMetastoreClient, modules.UserInvisibleModule)
 
@@ -739,8 +739,8 @@ func (t *Loki) setupModuleManager() error {
 		BloomPlanner:             {Server, BloomStore, Analytics, Store},
 		BloomBuilder:             {Server, BloomStore, Analytics, Store},
 		BloomStore:               {IndexGatewayRing},
-		PatternIngester:          {Server, MemberlistKV, Analytics},
 		PatternRingClient:        {Server, MemberlistKV, Analytics},
+		PatternIngester:          {Server, MemberlistKV, Analytics, PatternRingClient},
 		IngesterRF1RingClient:    {Server, MemberlistKV, Analytics},
 		Metastore:                {Server, MetastoreClient},
 		IngesterQuerier:          {Ring},
