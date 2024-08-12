@@ -7,12 +7,15 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/pattern/chunk"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
 )
 
 const (
+	TimeResolution = model.Time(int64(time.Second*10) / 1e6)
+
 	defaultVolumeSize = 500
+
+	maxChunkTime = 1 * time.Hour
 )
 
 type Chunks []Chunk
@@ -22,7 +25,7 @@ type Chunk struct {
 }
 
 func newChunk(ts model.Time) Chunk {
-	maxSize := int(chunk.MaxChunkTime.Nanoseconds()/chunk.TimeResolution.UnixNano()) + 1
+	maxSize := int(maxChunkTime.Nanoseconds()/TimeResolution.UnixNano()) + 1
 	v := Chunk{Samples: make([]logproto.PatternSample, 1, maxSize)}
 	v.Samples[0] = logproto.PatternSample{
 		Timestamp: ts,
@@ -36,7 +39,7 @@ func (c Chunk) spaceFor(ts model.Time) bool {
 		return true
 	}
 
-	return ts.Sub(c.Samples[0].Timestamp) < chunk.MaxChunkTime
+	return ts.Sub(c.Samples[0].Timestamp) < maxChunkTime
 }
 
 // ForRange returns samples with only the values
@@ -68,12 +71,12 @@ func (c Chunk) ForRange(start, end, step model.Time) []logproto.PatternSample {
 		return nil
 	}
 
-	if step == chunk.TimeResolution {
+	if step == TimeResolution {
 		return c.Samples[lo:hi]
 	}
 
 	// Re-scale samples into step-sized buckets
-	currentStep := chunk.TruncateTimestamp(c.Samples[lo].Timestamp, step)
+	currentStep := truncateTimestamp(c.Samples[lo].Timestamp, step)
 	aggregatedSamples := make([]logproto.PatternSample, 0, ((c.Samples[hi-1].Timestamp-currentStep)/step)+1)
 	aggregatedSamples = append(aggregatedSamples, logproto.PatternSample{
 		Timestamp: currentStep,
@@ -81,7 +84,7 @@ func (c Chunk) ForRange(start, end, step model.Time) []logproto.PatternSample {
 	})
 	for _, sample := range c.Samples[lo:hi] {
 		if sample.Timestamp >= currentStep+step {
-			stepForSample := chunk.TruncateTimestamp(sample.Timestamp, step)
+			stepForSample := truncateTimestamp(sample.Timestamp, step)
 			for i := currentStep + step; i <= stepForSample; i += step {
 				aggregatedSamples = append(aggregatedSamples, logproto.PatternSample{
 					Timestamp: i,
@@ -97,7 +100,7 @@ func (c Chunk) ForRange(start, end, step model.Time) []logproto.PatternSample {
 }
 
 func (c *Chunks) Add(ts model.Time) {
-	t := chunk.TruncateTimestamp(ts, chunk.TimeResolution)
+	t := truncateTimestamp(ts, TimeResolution)
 
 	if len(*c) == 0 {
 		*c = append(*c, newChunk(t))
@@ -202,3 +205,5 @@ func (c *Chunks) size() int {
 	}
 	return size
 }
+
+func truncateTimestamp(ts, step model.Time) model.Time { return ts - ts%step }
