@@ -82,11 +82,11 @@ func (m *metastoreState) applyTruncate(request *raftlogpb.TruncateCommand) (*any
 func (m *metastoreState) deleteSegment(ctx context.Context, bucket *bbolt.Bucket, segment *metastorepb.BlockMeta) error {
 	ctx, cancelFunc := context.WithTimeout(ctx, 15*time.Second)
 	defer cancelFunc()
-	if err := m.store.DeleteObject(ctx, path.Join(wal.Dir, segment.Id)); err != nil && !m.store.IsObjectNotFoundErr(err) {
-		return fmt.Errorf("failed to delete segment from object store: %w", err)
-	}
 	if err := bucket.Delete([]byte(segment.Id)); err != nil {
 		return fmt.Errorf("failed to delete segment from boltdb: %w", err)
+	}
+	if err := m.store.DeleteObject(ctx, path.Join(wal.Dir, segment.Id)); err != nil && !m.store.IsObjectNotFoundErr(err) {
+		return fmt.Errorf("failed to delete segment from object store: %w", err)
 	}
 	return nil
 }
