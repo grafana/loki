@@ -321,7 +321,7 @@ github.com/alicebob/miniredis/v2/geohash
 github.com/alicebob/miniredis/v2/hyperloglog
 github.com/alicebob/miniredis/v2/metro
 github.com/alicebob/miniredis/v2/server
-# github.com/aliyun/aliyun-oss-go-sdk v2.2.7+incompatible
+# github.com/aliyun/aliyun-oss-go-sdk v2.2.10+incompatible
 ## explicit
 github.com/aliyun/aliyun-oss-go-sdk/oss
 # github.com/armon/go-metrics v0.4.1
