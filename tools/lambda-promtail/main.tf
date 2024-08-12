@@ -251,7 +251,7 @@ resource "aws_s3_bucket_notification" "this" {
     lambda_function_arn = aws_lambda_function.this.arn
     events              = ["s3:ObjectCreated:*"]
     filter_prefix       = "AWSLogs/"
-    filter_suffix       = ".log.gz"
+    filter_suffix       = var.filter_suffix
   }
 
   depends_on = [

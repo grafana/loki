@@ -51,6 +51,7 @@ func (f *fixture) Clients() (
 	f.gcssrv = fakestorage.NewServer(nil)
 	f.gcssrv.CreateBucket("chunks")
 
+	// nolint:staticcheck // grpc.Dial() has been deprecated; we'll address it before upgrading to gRPC 2.
 	conn, err := grpc.Dial(f.btsrv.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return

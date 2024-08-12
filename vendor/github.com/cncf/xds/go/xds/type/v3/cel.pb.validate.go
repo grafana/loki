@@ -11,6 +11,7 @@ import (
 	"net/mail"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -31,21 +32,122 @@ var (
 	_ = (*url.URL)(nil)
 	_ = (*mail.Address)(nil)
 	_ = anypb.Any{}
+	_ = sort.Sort
 )
 
 // Validate checks the field values on CelExpression with the rules defined in
-// the proto definition for this message. If any rules are violated, an error
-// is returned.
+// the proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
 func (m *CelExpression) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on CelExpression with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in CelExpressionMultiError, or
+// nil if none found.
+func (m *CelExpression) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *CelExpression) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
-	switch m.ExprSpecifier.(type) {
+	var errors []error
 
+	if all {
+		switch v := interface{}(m.GetCelExprParsed()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, CelExpressionValidationError{
+					field:  "CelExprParsed",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, CelExpressionValidationError{
+					field:  "CelExprParsed",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetCelExprParsed()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return CelExpressionValidationError{
+				field:  "CelExprParsed",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if all {
+		switch v := interface{}(m.GetCelExprChecked()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, CelExpressionValidationError{
+					field:  "CelExprChecked",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, CelExpressionValidationError{
+					field:  "CelExprChecked",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetCelExprChecked()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return CelExpressionValidationError{
+				field:  "CelExprChecked",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	switch v := m.ExprSpecifier.(type) {
 	case *CelExpression_ParsedExpr:
+		if v == nil {
+			err := CelExpressionValidationError{
+				field:  "ExprSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
-		if v, ok := interface{}(m.GetParsedExpr()).(interface{ Validate() error }); ok {
+		if all {
+			switch v := interface{}(m.GetParsedExpr()).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, CelExpressionValidationError{
+						field:  "ParsedExpr",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, CelExpressionValidationError{
+						field:  "ParsedExpr",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(m.GetParsedExpr()).(interface{ Validate() error }); ok {
 			if err := v.Validate(); err != nil {
 				return CelExpressionValidationError{
 					field:  "ParsedExpr",
@@ -56,8 +158,37 @@ func (m *CelExpression) Validate() error {
 		}
 
 	case *CelExpression_CheckedExpr:
+		if v == nil {
+			err := CelExpressionValidationError{
+				field:  "ExprSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
-		if v, ok := interface{}(m.GetCheckedExpr()).(interface{ Validate() error }); ok {
+		if all {
+			switch v := interface{}(m.GetCheckedExpr()).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, CelExpressionValidationError{
+						field:  "CheckedExpr",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, CelExpressionValidationError{
+						field:  "CheckedExpr",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(m.GetCheckedExpr()).(interface{ Validate() error }); ok {
 			if err := v.Validate(); err != nil {
 				return CelExpressionValidationError{
 					field:  "CheckedExpr",
@@ -68,15 +199,32 @@ func (m *CelExpression) Validate() error {
 		}
 
 	default:
-		return CelExpressionValidationError{
-			field:  "ExprSpecifier",
-			reason: "value is required",
-		}
+		_ = v // ensures v is used
+	}
 
+	if len(errors) > 0 {
+		return CelExpressionMultiError(errors)
 	}
 
 	return nil
 }
+
+// CelExpressionMultiError is an error wrapping multiple validation errors
+// returned by CelExpression.ValidateAll() if the designated constraints
+// aren't met.
+type CelExpressionMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m CelExpressionMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m CelExpressionMultiError) AllErrors() []error { return m }
 
 // CelExpressionValidationError is the validation error returned by
 // CelExpression.Validate if the designated constraints aren't met.
@@ -133,21 +281,58 @@ var _ interface {
 } = CelExpressionValidationError{}
 
 // Validate checks the field values on CelExtractString with the rules defined
-// in the proto definition for this message. If any rules are violated, an
-// error is returned.
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
 func (m *CelExtractString) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on CelExtractString with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// CelExtractStringMultiError, or nil if none found.
+func (m *CelExtractString) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *CelExtractString) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
+	var errors []error
+
 	if m.GetExprExtract() == nil {
-		return CelExtractStringValidationError{
+		err := CelExtractStringValidationError{
 			field:  "ExprExtract",
 			reason: "value is required",
 		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
 	}
 
-	if v, ok := interface{}(m.GetExprExtract()).(interface{ Validate() error }); ok {
+	if all {
+		switch v := interface{}(m.GetExprExtract()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, CelExtractStringValidationError{
+					field:  "ExprExtract",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, CelExtractStringValidationError{
+					field:  "ExprExtract",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetExprExtract()).(interface{ Validate() error }); ok {
 		if err := v.Validate(); err != nil {
 			return CelExtractStringValidationError{
 				field:  "ExprExtract",
@@ -157,7 +342,26 @@ func (m *CelExtractString) Validate() error {
 		}
 	}
 
-	if v, ok := interface{}(m.GetDefaultValue()).(interface{ Validate() error }); ok {
+	if all {
+		switch v := interface{}(m.GetDefaultValue()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, CelExtractStringValidationError{
+					field:  "DefaultValue",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, CelExtractStringValidationError{
+					field:  "DefaultValue",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetDefaultValue()).(interface{ Validate() error }); ok {
 		if err := v.Validate(); err != nil {
 			return CelExtractStringValidationError{
 				field:  "DefaultValue",
@@ -167,8 +371,29 @@ func (m *CelExtractString) Validate() error {
 		}
 	}
 
+	if len(errors) > 0 {
+		return CelExtractStringMultiError(errors)
+	}
+
 	return nil
 }
+
+// CelExtractStringMultiError is an error wrapping multiple validation errors
+// returned by CelExtractString.ValidateAll() if the designated constraints
+// aren't met.
+type CelExtractStringMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m CelExtractStringMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m CelExtractStringMultiError) AllErrors() []error { return m }
 
 // CelExtractStringValidationError is the validation error returned by
 // CelExtractString.Validate if the designated constraints aren't met.

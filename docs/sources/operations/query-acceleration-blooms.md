@@ -34,6 +34,14 @@ The underlying blooms are built by the new [Bloom Compactor](#bloom-compactor) c
 and served by the new [Bloom Gateway](#bloom-gateway) component.
 
 ## Enable Query Acceleration with Blooms
+{{< admonition type="warning" >}}
+Building and querying bloom filters are by design not supported in single binary deployment.
+It can be used with Single Scalable deployment (SSD), but it is recommended to
+run bloom components only in fully distributed microservice mode.
+The reason is that bloom filters also come with a relatively high cost for both building
+and querying the bloom filters that only pays off at large scale deployments.
+{{< /admonition >}}
+
 To start building and using blooms you need to:
 - Deploy the [Bloom Compactor](#bloom-compactor) component and enable the component in the [Bloom Compactor config][compactor-cfg].
 - Deploy the [Bloom Gateway](#bloom-gateway) component (as a [microservice][microservices] or via the [SSD][ssd] Backend target) and enable the component in the [Bloom Gateway config][gateway-cfg].

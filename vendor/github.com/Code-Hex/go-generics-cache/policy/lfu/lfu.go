@@ -71,8 +71,10 @@ func (c *Cache[K, V]) Set(key K, val V) {
 	}
 
 	if len(c.items) == c.cap {
-		evictedEntry := heap.Pop(c.queue).(*entry[K, V])
-		delete(c.items, evictedEntry.key)
+		evictedEntry := heap.Pop(c.queue)
+		if evictedEntry != nil {
+			delete(c.items, evictedEntry.(*entry[K, V]).key)
+		}
 	}
 
 	e := newEntry(key, val)

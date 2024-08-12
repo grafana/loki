@@ -1,5 +1,29 @@
 # Release History
 
+## 1.7.0 (2024-06-20)
+
+### Features Added
+* `AzurePipelinesCredential` authenticates an Azure Pipelines service connection with
+  workload identity federation
+
+### Breaking Changes
+> These changes affect only code written against a beta version such as v1.7.0-beta.1
+* Removed the persistent token caching API. It will return in v1.8.0-beta.1
+
+## 1.7.0-beta.1 (2024-06-10)
+
+### Features Added
+* Restored `AzurePipelinesCredential` and persistent token caching API
+
+## Breaking Changes
+> These changes affect only code written against a beta version such as v1.6.0-beta.4
+* Values which `NewAzurePipelinesCredential` read from environment variables in
+  prior versions are now parameters
+* Renamed `AzurePipelinesServiceConnectionCredentialOptions` to `AzurePipelinesCredentialOptions`
+
+### Bugs Fixed
+* Managed identity bug fixes
+
 ## 1.6.0 (2024-06-10)
 
 ### Features Added

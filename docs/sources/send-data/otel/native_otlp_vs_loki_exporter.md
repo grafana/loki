@@ -103,5 +103,5 @@ Taking the above-ingested log line, let us look at how the querying experience w
 
 ## What do you need to do to switch from LokiExporter to native OTel ingestion format?
 
-- Point your OpenTelemetry Collector to Loki's native OTel ingestion endpoint as explained [here](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/otel/#loki-configuration).
+- Point your OpenTelemetry Collector to the Loki native OTel ingestion endpoint as explained [here](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/otel/#loki-configuration).
 - Rewrite your LogQL queries in various places, including dashboards, alerts, starred queries in Grafana Explore, etc. to query OTel logs as per the new format.

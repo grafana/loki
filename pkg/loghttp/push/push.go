@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+
 	"github.com/go-kit/log/level"
 
 	"github.com/grafana/loki/pkg/push"
@@ -25,7 +27,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/unmarshal"
@@ -57,7 +58,11 @@ var (
 	linesReceivedStats                   = analytics.NewCounter("distributor_lines_received")
 )
 
-const applicationJSON = "application/json"
+const (
+	applicationJSON  = "application/json"
+	LabelServiceName = "service_name"
+	ServiceUnknown   = "unknown_service"
+)
 
 type TenantsRetention interface {
 	RetentionPeriodFor(userID string, lbs labels.Labels) time.Duration
@@ -65,12 +70,17 @@ type TenantsRetention interface {
 
 type Limits interface {
 	OTLPConfig(userID string) OTLPConfig
+	DiscoverServiceName(userID string) []string
 }
 
 type EmptyLimits struct{}
 
 func (EmptyLimits) OTLPConfig(string) OTLPConfig {
 	return DefaultOTLPConfig(GlobalOTLPConfig{})
+}
+
+func (EmptyLimits) DiscoverServiceName(string) []string {
+	return nil
 }
 
 type RequestParser func(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker) (*logproto.PushRequest, *Stats, error)
@@ -148,7 +158,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 	return req, nil
 }
 
-func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, _ Limits, tracker UsageTracker) (*logproto.PushRequest, *Stats, error) {
+func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker) (*logproto.PushRequest, *Stats, error) {
 	// Body
 	var body io.Reader
 	// bodySize should always reflect the compressed size of the request body
@@ -217,16 +227,33 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 	pushStats.ContentType = contentType
 	pushStats.ContentEncoding = contentEncoding
 
-	for _, s := range req.Streams {
+	discoverServiceName := limits.DiscoverServiceName(userID)
+	for i := range req.Streams {
+		s := req.Streams[i]
 		pushStats.StreamLabelsSize += int64(len(s.Labels))
 
-		var lbs labels.Labels
-		if tenantsRetention != nil || tracker != nil {
-			lbs, err = syntax.ParseLabels(s.Labels)
-			if err != nil {
-				return nil, nil, fmt.Errorf("couldn't parse labels: %w", err)
-			}
+		lbs, err := syntax.ParseLabels(s.Labels)
+		if err != nil {
+			return nil, nil, fmt.Errorf("couldn't parse labels: %w", err)
 		}
+
+		if !lbs.Has(LabelServiceName) && len(discoverServiceName) > 0 {
+			serviceName := ServiceUnknown
+			for _, labelName := range discoverServiceName {
+				if labelVal := lbs.Get(labelName); labelVal != "" {
+					serviceName = labelVal
+					break
+				}
+			}
+
+			lb := labels.NewBuilder(lbs)
+			lbs = lb.Set(LabelServiceName, serviceName).Labels()
+			s.Labels = lbs.String()
+
+			// Remove the added label after it's added to the stream so it's not consumed by subsequent steps
+			lbs = lb.Del(LabelServiceName).Labels()
+		}
+
 		var retentionPeriod time.Duration
 		if tenantsRetention != nil {
 			retentionPeriod = tenantsRetention.RetentionPeriodFor(userID, lbs)
@@ -249,6 +276,8 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 				pushStats.MostRecentEntryTimestamp = e.Timestamp
 			}
 		}
+
+		req.Streams[i] = s
 	}
 
 	return &req, pushStats, nil

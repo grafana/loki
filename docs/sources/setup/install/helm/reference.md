@@ -664,7 +664,7 @@ null
 		<tr>
 			<td>backend.targetModule</td>
 			<td>string</td>
-			<td>Comma-separated list of Loki modules to load for the read</td>
+			<td>Comma-separated list of Loki modules to load for the backend</td>
 			<td><pre lang="json">
 "backend"
 </pre>
@@ -2640,7 +2640,7 @@ null
     "tolerations": []
   },
   "useExternalLicense": false,
-  "version": "3.1.0"
+  "version": "3.1.1"
 }
 </pre>
 </td>
@@ -5689,6 +5689,7 @@ null
   "s3": {
     "accessKeyId": null,
     "backoff_config": {},
+    "disable_dualstack": false,
     "endpoint": null,
     "http_config": {},
     "insecure": false,
