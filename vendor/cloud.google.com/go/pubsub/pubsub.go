@@ -29,6 +29,7 @@ import (
 	"cloud.google.com/go/pubsub/internal"
 	gax "github.com/googleapis/gax-go/v2"
 	"google.golang.org/api/option"
+	"google.golang.org/api/option/internaloption"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 )
@@ -143,12 +144,14 @@ func NewClientWithConfig(ctx context.Context, projectID string, config *ClientCo
 	// Environment variables for gcloud emulator:
 	// https://cloud.google.com/sdk/gcloud/reference/beta/emulators/pubsub/
 	if addr := os.Getenv("PUBSUB_EMULATOR_HOST"); addr != "" {
-		conn, err := grpc.Dial(addr, grpc.WithInsecure())
-		if err != nil {
-			return nil, fmt.Errorf("grpc.Dial: %w", err)
+		emulatorOpts := []option.ClientOption{
+			option.WithEndpoint(addr),
+			option.WithGRPCDialOption(grpc.WithInsecure()),
+			option.WithoutAuthentication(),
+			option.WithTelemetryDisabled(),
+			internaloption.SkipDialSettingsValidation(),
 		}
-		o = []option.ClientOption{option.WithGRPCConn(conn)}
-		o = append(o, option.WithTelemetryDisabled())
+		opts = append(emulatorOpts, opts...)
 	} else {
 		numConns := runtime.GOMAXPROCS(0)
 		if numConns > 4 {

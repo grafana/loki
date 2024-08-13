@@ -19,21 +19,20 @@ import (
 const (
 	credNameAzurePipelines = "AzurePipelinesCredential"
 	oidcAPIVersion         = "7.1"
-	systemAccessToken      = "SYSTEM_ACCESSTOKEN"
 	systemOIDCRequestURI   = "SYSTEM_OIDCREQUESTURI"
 )
 
-// azurePipelinesCredential authenticates with workload identity federation in an Azure Pipeline. See
+// AzurePipelinesCredential authenticates with workload identity federation in an Azure Pipeline. See
 // [Azure Pipelines documentation] for more information.
 //
 // [Azure Pipelines documentation]: https://learn.microsoft.com/azure/devops/pipelines/library/connect-to-azure?view=azure-devops#create-an-azure-resource-manager-service-connection-that-uses-workload-identity-federation
-type azurePipelinesCredential struct {
+type AzurePipelinesCredential struct {
 	connectionID, oidcURI, systemAccessToken string
 	cred                                     *ClientAssertionCredential
 }
 
-// azurePipelinesCredentialOptions contains optional parameters for AzurePipelinesCredential.
-type azurePipelinesCredentialOptions struct {
+// AzurePipelinesCredentialOptions contains optional parameters for AzurePipelinesCredential.
+type AzurePipelinesCredentialOptions struct {
 	azcore.ClientOptions
 
 	// AdditionallyAllowedTenants specifies additional tenants for which the credential may acquire tokens.
@@ -48,28 +47,39 @@ type azurePipelinesCredentialOptions struct {
 	DisableInstanceDiscovery bool
 }
 
-// newAzurePipelinesCredential is the constructor for AzurePipelinesCredential. In addition to its required arguments,
-// it reads a security token for the running build, which is required to authenticate the service connection, from the
-// environment variable SYSTEM_ACCESSTOKEN. See the [Azure Pipelines documentation] for an example showing how to set
-// this variable in build job YAML.
+// NewAzurePipelinesCredential is the constructor for AzurePipelinesCredential.
+//
+//   - tenantID: tenant ID of the service principal federated with the service connection
+//   - clientID: client ID of that service principal
+//   - serviceConnectionID: ID of the service connection to authenticate
+//   - systemAccessToken: security token for the running build. See [Azure Pipelines documentation] for
+//     an example showing how to get this value.
 //
 // [Azure Pipelines documentation]: https://learn.microsoft.com/azure/devops/pipelines/build/variables?view=azure-devops&tabs=yaml#systemaccesstoken
-func newAzurePipelinesCredential(tenantID, clientID, serviceConnectionID string, options *azurePipelinesCredentialOptions) (*azurePipelinesCredential, error) {
-	if options == nil {
-		options = &azurePipelinesCredentialOptions{}
+func NewAzurePipelinesCredential(tenantID, clientID, serviceConnectionID, systemAccessToken string, options *AzurePipelinesCredentialOptions) (*AzurePipelinesCredential, error) {
+	if !validTenantID(tenantID) {
+		return nil, errInvalidTenantID
+	}
+	if clientID == "" {
+		return nil, errors.New("no client ID specified")
+	}
+	if serviceConnectionID == "" {
+		return nil, errors.New("no service connection ID specified")
+	}
+	if systemAccessToken == "" {
+		return nil, errors.New("no system access token specified")
 	}
 	u := os.Getenv(systemOIDCRequestURI)
 	if u == "" {
 		return nil, fmt.Errorf("no value for environment variable %s. This should be set by Azure Pipelines", systemOIDCRequestURI)
 	}
-	sat := os.Getenv(systemAccessToken)
-	if sat == "" {
-		return nil, errors.New("no value for environment variable " + systemAccessToken)
-	}
-	a := azurePipelinesCredential{
+	a := AzurePipelinesCredential{
 		connectionID:      serviceConnectionID,
 		oidcURI:           u,
-		systemAccessToken: sat,
+		systemAccessToken: systemAccessToken,
+	}
+	if options == nil {
+		options = &AzurePipelinesCredentialOptions{}
 	}
 	caco := ClientAssertionCredentialOptions{
 		AdditionallyAllowedTenants: options.AdditionallyAllowedTenants,
@@ -86,7 +96,7 @@ func newAzurePipelinesCredential(tenantID, clientID, serviceConnectionID string,
 }
 
 // GetToken requests an access token from Microsoft Entra ID. Azure SDK clients call this method automatically.
-func (a *azurePipelinesCredential) GetToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
+func (a *AzurePipelinesCredential) GetToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
 	var err error
 	ctx, endSpan := runtime.StartSpan(ctx, credNameAzurePipelines+"."+traceOpGetToken, a.cred.client.azClient.Tracer(), nil)
 	defer func() { endSpan(err) }()
@@ -94,7 +104,7 @@ func (a *azurePipelinesCredential) GetToken(ctx context.Context, opts policy.Tok
 	return tk, err
 }
 
-func (a *azurePipelinesCredential) getAssertion(ctx context.Context) (string, error) {
+func (a *AzurePipelinesCredential) getAssertion(ctx context.Context) (string, error) {
 	url := a.oidcURI + "?api-version=" + oidcAPIVersion + "&serviceConnectionId=" + a.connectionID
 	url, err := runtime.EncodeQueryParams(url)
 	if err != nil {
