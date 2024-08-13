@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/go-kit/log"
@@ -268,17 +269,11 @@ func (i *instance) Observe(stream string, entries []logproto.Entry) {
 				logLevel = distributor.DetectLogLevelFromLogEntry(entry, structuredMetadata)
 			}
 			lbls = append(lbls, labels.Label{Name: "level", Value: logLevel})
-			slices.SortFunc(lbls, func(i, j labels.Label) int {
-				if i.Name < j.Name {
-					return -1
-				}
 
-				if i.Name > j.Name {
-					return 1
-				}
-
-				return 0
-			})
+			slices.SortFunc(
+				lbls,
+				func(i, j labels.Label) int { return strings.Compare(i.Name, j.Name) },
+			)
 		}
 
 		metrics, ok := i.aggMetricsByStream[lbls.String()]

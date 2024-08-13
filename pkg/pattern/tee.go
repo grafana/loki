@@ -12,7 +12,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/v3/pkg/distributor"
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 type Tee struct {
@@ -92,7 +94,7 @@ func (t *Tee) run() {
 }
 
 func (t *Tee) sendStream(tenant string, stream distributor.KeyedStream) error {
-  // Create the request once at the top to reduce allocations
+	// Create the request once at the top to reduce allocations
 	req := &logproto.PushRequest{
 		Streams: []logproto.Stream{
 			stream.Stream,
@@ -179,6 +181,11 @@ func (t *Tee) sendOwnedStream(tenant string, stream distributor.KeyedStream, req
 func (t *Tee) Duplicate(tenant string, streams []distributor.KeyedStream) {
 	for idx := range streams {
 		go func(stream distributor.KeyedStream) {
+			lbls, err := syntax.ParseLabels(stream.Stream.Labels)
+			if err != nil || lbls.Has(push.AggregatedMetricLabel) {
+				return
+			}
+
 			req := request{
 				tenant: tenant,
 				stream: stream,
