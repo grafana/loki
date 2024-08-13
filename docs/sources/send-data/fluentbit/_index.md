@@ -8,16 +8,11 @@ weight:  500
 ---
 # Fluent Bit client
 
-{{< admonition type="note" >}}
-It is now recommended to use the official [Fluent Bit Loki output plugin](https://docs.fluentbit.io/manual/pipeline/outputs/loki) rather than the [grafana-loki plugin](https://github.com/grafana/loki/tree/main/clients/cmd/fluent-bit).
-
-Both the documentation and the video will be updated accordingly.
-{{< /admonition >}}
-
-[Fluent Bit](https://fluentbit.io/) is a fast and lightweight logs and metrics processor and forwarder that comes with a built-in Loki output plugin. Fluent Bit can collect logs from various sources, parse and filter them, and send them to Loki.
-
+[Fluent Bit](https://fluentbit.io/) is a fast and lightweight logs and metrics processor and forwarder that can be configured with the Grafana Fluent Bit Plugin described here or with the [Fluent-bit Loki output plugin](https://docs.fluentbit.io/manual/pipeline/outputs/loki) to ship logs to Loki. 
+This plugin has more configuration options compared to the built-in Fluent Bit Loki plugin.
 You can define which log files you want to collect using the [`Tail`](https://docs.fluentbit.io/manual/pipeline/inputs/tail) or [`Stdin`](https://docs.fluentbit.io/manual/pipeline/inputs/standard-input) data pipeline input. Additionally, Fluent Bit supports multiple `Filter` and `Parser` plugins (`Kubernetes`, `JSON`, etc.) to structure and alter log lines.
 
+{{< youtube id="s43IBSVyTpQ" >}}
 
 ## Usage
 
@@ -26,8 +21,9 @@ You can define which log files you want to collect using the [`Tail`](https://do
 You can run a Fluent Bit container with Loki output plugin pre-installed using our [Docker Hub](https://hub.docker.com/r/grafana/fluent-bit-plugin-loki) image:
 
 ```bash
-docker run -v /var/log:/var/log  \
-    -e LOG_PATH="/var/log/*.log" 
+docker run -v /var/log:/var/log \
+    -e LOG_PATH="/var/log/*.log" -e LOKI_URL="http://localhost:3100/loki/api/v1/push" \
+    grafana/fluent-bit-plugin-loki:latest
 ```
 
 Or, an alternative is to run the fluent-bit container using [Docker Hub](https://hub.docker.com/r/fluent/fluent-bit) image:
@@ -80,6 +76,8 @@ image:
   tag: main-e2ed1c0
 
 args:
+  - "-e"
+  - "/fluent-bit/bin/out_grafana_loki.so"
   - --workdir=/fluent-bit/etc
   - --config=/fluent-bit/etc/conf/fluent-bit.conf
 
