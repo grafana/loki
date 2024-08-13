@@ -1,23 +1,16 @@
 ---
-title: Fluent Bit client
-menuTitle:  Fluent Bit
-description: Provides instructions for how to install, configure, and use the Fluent Bit client to send logs to Loki.
-aliases: 
-- ../clients/fluentbit/
+title: Fluent Bit Community Plugin
+menuTitle:  Fluent Bit Community Plugin
+description: Provides instructions for how to install, configure, and use the Fluent Bit Communty Plugin
 weight:  500
 ---
 # Fluent Bit client
 
 {{< admonition type="note" >}}
-It is now recommended to use the official [Fluent Bit Loki output plugin](https://docs.fluentbit.io/manual/pipeline/outputs/loki) rather than the [grafana-loki plugin](https://github.com/grafana/loki/tree/main/clients/cmd/fluent-bit).
-
-Both the documentation and the video will be updated accordingly.
+It is now recommended to use the offical [Fluent Bit Loki output plugin](https://docs.fluentbit.io/manual/pipeline/outputs/loki) rather than the [grafana-loki plugin](https://github.com/grafana/loki/tree/main/clients/cmd/fluent-bit).
 {{< /admonition >}}
 
-[Fluent Bit](https://fluentbit.io/) is a fast and lightweight logs and metrics processor and forwarder that comes with a built-in Loki output plugin. Fluent Bit can collect logs from various sources, parse and filter them, and send them to Loki.
-
-You can define which log files you want to collect using the [`Tail`](https://docs.fluentbit.io/manual/pipeline/inputs/tail) or [`Stdin`](https://docs.fluentbit.io/manual/pipeline/inputs/standard-input) data pipeline input. Additionally, Fluent Bit supports multiple `Filter` and `Parser` plugins (`Kubernetes`, `JSON`, etc.) to structure and alter log lines.
-
+The grafana-loki plugin is a Fluent Bit output plugin that sends logs to a Loki instance. It is a community plugin and is not officially supported by Grafana Labs. 
 
 ## Usage
 
@@ -26,8 +19,9 @@ You can define which log files you want to collect using the [`Tail`](https://do
 You can run a Fluent Bit container with Loki output plugin pre-installed using our [Docker Hub](https://hub.docker.com/r/grafana/fluent-bit-plugin-loki) image:
 
 ```bash
-docker run -v /var/log:/var/log  \
-    -e LOG_PATH="/var/log/*.log" 
+docker run -v /var/log:/var/log \
+    -e LOG_PATH="/var/log/*.log" -e LOKI_URL="http://localhost:3100/loki/api/v1/push" \
+    grafana/fluent-bit-plugin-loki:latest
 ```
 
 Or, an alternative is to run the fluent-bit container using [Docker Hub](https://hub.docker.com/r/fluent/fluent-bit) image:
@@ -39,11 +33,11 @@ To ship logs from Docker containers to Grafana Cloud using Fluent Bit, you can u
 #### Prerequisites
 
 - Docker is installed on your machine.
-- You have a Grafana Cloud account with access to Loki.
+- You a local instance of Loki installed.
 
 #### Configuration
 
-1. Create a Fluent Bit configuration file named `fluent-bit.conf` with the following content, which defines the input from Docker container logs and sets up the output to send logs to your Grafana Cloud Loki instance:
+1. Create a Fluent Bit configuration file named `fluent-bit.conf` with the following content, which defines the input from Docker container logs and sets up the output to send logs to your Grafana Loki instance:
 
    ```ini
    [SERVICE]
@@ -57,15 +51,11 @@ To ship logs from Docker containers to Grafana Cloud using Fluent Bit, you can u
        Tag      docker.*
 
    [OUTPUT]
-       Name         loki
-       Match        *
-       Host         logs-prod-006.grafana.net
-       Port         443
-       TLS          On
-       TLS.Verify   On
-       HTTP_User    478625
-       HTTP_Passwd  YOUR_GRAFANA_CLOUD_API_KEY
-       Labels       job=fluentbit
+       Name     grafana-loki
+       Match    *
+       Url      http://loki:3100/loki/api/v1/push
+       Labels   {job="fluent-bit"}
+    ```
 
 ### Kubernetes
 
@@ -80,6 +70,8 @@ image:
   tag: main-e2ed1c0
 
 args:
+  - "-e"
+  - "/fluent-bit/bin/out_grafana_loki.so"
   - --workdir=/fluent-bit/etc
   - --config=/fluent-bit/etc/conf/fluent-bit.conf
 

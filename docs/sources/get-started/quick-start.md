@@ -82,18 +82,12 @@ This quickstart assumes you are running Linux.
 1. Create a directory called `evaluate-loki` for the demo environment.
    Make `evaluate-loki` your current working directory:
 
-   <!-- INTERACTIVE exec START -->
-
    ```bash
    mkdir evaluate-loki
    cd evaluate-loki
    ```
 
-   <!-- INTERACTIVE exec END -->
-
-1. Download `loki-config.yaml`, `alloy-local-config.yaml`, and `docker-compose.yaml`:
-
-   <!-- INTERACTIVE exec START -->
+2. Download `loki-config.yaml`, `alloy-local-config.yaml`, and `docker-compose.yaml`:
 
    ```bash
    wget https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/loki-config.yaml -O loki-config.yaml
@@ -101,9 +95,7 @@ This quickstart assumes you are running Linux.
    wget https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/docker-compose.yaml -O docker-compose.yaml
    ```
 
-    <!-- INTERACTIVE exec END -->
-
-1. Deploy the sample Docker image.
+3. Deploy the sample Docker image.
 
    With `evaluate-loki` as the current working directory, start the demo environment using `docker compose`:
 
@@ -116,13 +108,10 @@ This quickstart assumes you are running Linux.
    <!-- INTERACTIVE ignore END -->
 
    {{< docs/ignore >}}
-   <!-- INTERACTIVE exec START -->
 
    ```bash
    docker-compose up -d
    ```
-
-   <!-- INTERACTIVE exec END -->
 
    {{< /docs/ignore >}}
 
@@ -141,22 +130,22 @@ This quickstart assumes you are running Linux.
    ```
 
 
-1. (Optional) Verify that the Loki cluster is up and running.
+4. (Optional) Verify that the Loki cluster is up and running.
 
    - The read component returns `ready` when you browse to [http://localhost:3101/ready](http://localhost:3101/ready).
      The message `Query Frontend not ready: not ready: number of schedulers this worker is connected to is 0` shows until the read component is ready.
    - The write component returns `ready` when you browse to [http://localhost:3102/ready](http://localhost:3102/ready).
      The message `Ingester not ready: waiting for 15s after being ready` shows until the write component is ready.
 
-1. (Optional) Verify that Grafana Alloy is running.
+5. (Optional) Verify that Grafana Alloy is running.
    - You can access the Grafana Alloy UI at [http://localhost:12345](http://localhost:12345).
 
-1. (Optional) You can check all the containers are running by running the following command:
-   <!-- INTERACTIVE exec START -->
+6. (Optional) You can check all the containers are running by running the following command:
+   
    ```bash
    docker ps -a 
    ```
-   <!-- INTERACTIVE exec END -->
+
 
 <!-- INTERACTIVE page step1.md END -->
 
@@ -205,11 +194,11 @@ You can view your logs using the command line interface, [LogCLI](/docs/loki/<LO
    After copying any of these queries into the query editor, click **Run Query** (4) to execute the query.
 
    1. View all the log lines which have the container label `evaluate-loki-flog-1`:
-
+      <!-- INTERACTIVE copy START -->
       ```bash
       {container="evaluate-loki-flog-1"}
       ```
-
+      <!-- INTERACTIVE copy END -->
       In Loki, this is a log stream.
 
       Loki uses [labels](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/) as metadata to describe log streams.
@@ -218,29 +207,29 @@ You can view your logs using the command line interface, [LogCLI](/docs/loki/<LO
       In the previous query, the label selector is `{container="evaluate-loki-flog-1"}`.
 
    1. To view all the log lines which have the container label `evaluate-loki-grafana-1`:
-
+      <!-- INTERACTIVE copy START -->
       ```bash
       {container="evaluate-loki-grafana-1"}
       ```
-
+      <!-- INTERACTIVE copy END -->
    1. Find all the log lines in the `{container="evaluate-loki-flog-1"}` stream that contain the string `status`:
-
+      <!-- INTERACTIVE copy START -->
       ```bash
       {container="evaluate-loki-flog-1"} |= `status`
       ```
-
+      <!-- INTERACTIVE copy END -->
    1. Find all the log lines in the `{container="evaluate-loki-flog-1"}` stream where the JSON field `status` has the value `404`:
-
+      <!-- INTERACTIVE copy START -->
       ```bash
       {container="evaluate-loki-flog-1"} | json | status=`404`
       ```
-
+      <!-- INTERACTIVE copy END -->
    1. Calculate the number of logs per second where the JSON field `status` has the value `404`:
-
+      <!-- INTERACTIVE copy START -->
       ```bash
       sum by(container) (rate({container="evaluate-loki-flog-1"} | json | status=`404` [$__auto]))
       ```
-
+      <!-- INTERACTIVE copy END -->
    The final query is a metric query which returns a time series.
    This makes Grafana draw a graph of the results.
 
@@ -260,37 +249,37 @@ For a thorough introduction to LogQL, refer to the [LogQL reference](https://gra
 Here are some more sample queries that you can run using the Flog sample data.
 
 To see all the log lines that flog has generated, enter the LogQL query:
-
+<!-- INTERACTIVE copy START -->
 ```bash
 {container="evaluate-loki-flog-1"}
 ```
-
+<!-- INTERACTIVE copy END -->
 The flog app generates log lines for simulated HTTP requests.
 
 To see all `GET` log lines, enter the LogQL query:
-
+<!-- INTERACTIVE copy START -->
 ```bash
 {container="evaluate-loki-flog-1"} |= "GET"
 ```
-
+<!-- INTERACTIVE copy END -->
 To see all `POST` methods, enter the LogQL query:
-
+<!-- INTERACTIVE copy START -->
 ```bash
 {container="evaluate-loki-flog-1"} |= "POST"
 ```
-
+<!-- INTERACTIVE copy END -->
 To see every log line with a 401 status (unauthorized error), enter the LogQL query:
-
+<!-- INTERACTIVE copy START -->
 ```bash
 {container="evaluate-loki-flog-1"} | json | status="401"
 ```
-
+<!-- INTERACTIVE copy END -->
 To see every log line that doesn't contain the text `401`:
-
+<!-- INTERACTIVE copy START -->
 ```bash
 {container="evaluate-loki-flog-1"} != "401"
 ```
-
+<!-- INTERACTIVE copy END -->
 For more examples, refer to the [query documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/query/query_examples/).
 
 ## Loki data source in Grafana
