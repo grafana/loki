@@ -83,6 +83,8 @@ func (e *AuthenticationFailedError) Error() string {
 		anchor = "azure-cli"
 	case credNameAzureDeveloperCLI:
 		anchor = "azd"
+	case credNameAzurePipelines:
+		anchor = "apc"
 	case credNameCert:
 		anchor = "client-cert"
 	case credNameSecret:

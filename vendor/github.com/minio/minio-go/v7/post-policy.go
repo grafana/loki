@@ -19,12 +19,14 @@ package minio
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/minio/minio-go/v7/pkg/encrypt"
+	"github.com/minio/minio-go/v7/pkg/tags"
 )
 
 // expirationDateFormat date format for expiration key in json policy.
@@ -150,6 +152,27 @@ func (p *PostPolicy) SetCondition(matchType, condition, value string) error {
 		return nil
 	}
 	return errInvalidArgument("Invalid condition in policy")
+}
+
+// SetTagging - Sets tagging for the object for this policy based upload.
+func (p *PostPolicy) SetTagging(tagging string) error {
+	if strings.TrimSpace(tagging) == "" || tagging == "" {
+		return errInvalidArgument("No tagging specified.")
+	}
+	_, err := tags.ParseObjectXML(strings.NewReader(tagging))
+	if err != nil {
+		return errors.New("The XML you provided was not well-formed or did not validate against our published schema.") //nolint
+	}
+	policyCond := policyCondition{
+		matchType: "eq",
+		condition: "$tagging",
+		value:     tagging,
+	}
+	if err := p.addNewPolicy(policyCond); err != nil {
+		return err
+	}
+	p.formData["tagging"] = tagging
+	return nil
 }
 
 // SetContentType - Sets content-type of the object for this policy

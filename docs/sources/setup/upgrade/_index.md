@@ -504,7 +504,7 @@ only in 2.8 and forward releases does the zero value disable retention.
 
 The metrics.go log line emitted for every query had an entry called `subqueries` which was intended to represent the amount a query was parallelized on execution.
 
-In the current form it only displayed the count of subqueries generated with Loki's split by time logic and did not include counts for shards.
+In the current form it only displayed the count of subqueries generated with the Loki split by time logic and did not include counts for shards.
 
 There wasn't a clean way to update subqueries to include sharding information and there is value in knowing the difference between the subqueries generated when we split by time vs sharding factors, especially now that TSDB can do dynamic sharding.
 

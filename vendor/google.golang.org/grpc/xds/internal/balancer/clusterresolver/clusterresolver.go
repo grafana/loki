@@ -136,7 +136,7 @@ func (bb) ParseConfig(j json.RawMessage) (serviceconfig.LoadBalancingConfig, err
 		// double validation is present because Unmarshalling and Validating are
 		// coupled into one json.Unmarshal operation). We will switch this in
 		// the future to two separate operations.
-		return nil, fmt.Errorf("error unmarshaling xDS LB Policy: %v", err)
+		return nil, fmt.Errorf("error unmarshalling xDS LB Policy: %v", err)
 	}
 	return cfg, nil
 }
@@ -242,7 +242,9 @@ func (b *clusterResolverBalancer) updateChildConfig() {
 		b.logger.Warningf("Failed to parse child policy config. This should never happen because the config was generated: %v", err)
 		return
 	}
-	b.logger.Infof("Built child policy config: %v", pretty.ToJSON(childCfg))
+	if b.logger.V(2) {
+		b.logger.Infof("Built child policy config: %s", pretty.ToJSON(childCfg))
+	}
 
 	endpoints := make([]resolver.Endpoint, len(addrs))
 	for i, a := range addrs {

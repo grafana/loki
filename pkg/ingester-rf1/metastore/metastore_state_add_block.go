@@ -7,7 +7,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"go.etcd.io/bbolt"
 
-	metastorepb "github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 )
 
 func (m *Metastore) AddBlock(_ context.Context, req *metastorepb.AddBlockRequest) (*metastorepb.AddBlockResponse, error) {
@@ -29,7 +29,7 @@ func (m *metastoreState) applyAddBlock(request *metastorepb.AddBlockRequest) (*m
 	if err != nil {
 		return nil, err
 	}
-	err = m.db.boltdb.Update(func(tx *bbolt.Tx) error {
+	err = m.db.boltdb.Batch(func(tx *bbolt.Tx) error {
 		return updateBlockMetadataBucket(tx, func(bucket *bbolt.Bucket) error {
 			return bucket.Put([]byte(request.Block.Id), value)
 		})
