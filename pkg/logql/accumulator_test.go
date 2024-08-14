@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/sketch"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
 )
 
@@ -163,7 +164,7 @@ func TestQuantileSketchDownstreamAccumulatorSimple(t *testing.T) {
 
 	require.Equal(t, res.Headers[0].Name, "HeaderA")
 	require.Equal(t, res.Warnings, []string{"warning"})
-	require.NotNil(t, res.Statistics)
+	require.Equal(t, int64(33), res.Statistics.Summary.Shards)
 }
 
 func BenchmarkAccumulator(b *testing.B) {
@@ -235,6 +236,9 @@ func newStreamResults() []logqlmodel.Result {
 
 func newQuantileSketchResults() []logqlmodel.Result {
 	results := make([]logqlmodel.Result, 100)
+	statistics := stats.Result{
+		Summary: stats.Summary{Shards: 33},
+	}
 
 	for r := range results {
 		vectors := make([]ProbabilisticQuantileVector, 10)
@@ -248,7 +252,7 @@ func newQuantileSketchResults() []logqlmodel.Result {
 				}
 			}
 		}
-		results[r] = logqlmodel.Result{Data: ProbabilisticQuantileMatrix(vectors), Headers: []*definitions.PrometheusResponseHeader{{Name: "HeaderA", Values: []string{"ValueA"}}}, Warnings: []string{"warning"}}
+		results[r] = logqlmodel.Result{Data: ProbabilisticQuantileMatrix(vectors), Headers: []*definitions.PrometheusResponseHeader{{Name: "HeaderA", Values: []string{"ValueA"}}}, Warnings: []string{"warning"}, Statistics: statistics}
 	}
 
 	return results
