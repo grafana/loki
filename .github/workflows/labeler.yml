@@ -1,9 +1,9 @@
 name: "Pull Request Labeler"
 on:
-- pull_request_target
+- pull_request_target:
 - push:
-  branches: 
-    - paul1r/update_labeler_v5_syntax
+    branches: 
+      - paul1r/update_labeler_v5_syntax
 
 jobs:
   triage:
