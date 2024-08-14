@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/sketch"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
 )
 
 func TestAccumulatedStreams(t *testing.T) {
@@ -149,6 +150,20 @@ func TestDownstreamAccumulatorMultiMerge(t *testing.T) {
 	}
 }
 
+func TestQuantileSketchDownstreamAccumulatorSimple(t *testing.T) {
+	acc := newQuantileSketchAccumulator()
+	downstreamResult := newQuantileSketchResults()[0]
+
+	require.Nil(t, acc.Accumulate(context.Background(), downstreamResult, 0))
+
+	res := acc.Result()[0]
+	got, ok := res.Data.(ProbabilisticQuantileMatrix)
+	require.Equal(t, true, ok)
+	require.Equal(t, 10, len(got), "correct number of vectors")
+
+	require.Equal(t, res.Headers[0].Name, "HeaderA")
+}
+
 func BenchmarkAccumulator(b *testing.B) {
 
 	// dummy params. Only need to populate direction & limit
@@ -231,7 +246,7 @@ func newQuantileSketchResults() []logqlmodel.Result {
 				}
 			}
 		}
-		results[r] = logqlmodel.Result{Data: ProbabilisticQuantileMatrix(vectors)}
+		results[r] = logqlmodel.Result{Data: ProbabilisticQuantileMatrix(vectors), Headers: []*definitions.PrometheusResponseHeader{{Name: "HeaderA", Values: []string{"ValueA"}}}}
 	}
 
 	return results

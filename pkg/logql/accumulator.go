@@ -40,13 +40,16 @@ func (a *BufferedAccumulator) Result() []logqlmodel.Result {
 }
 
 type QuantileSketchAccumulator struct {
-	matrix ProbabilisticQuantileMatrix
+	matrix  ProbabilisticQuantileMatrix
+	headers map[string][]string
 }
 
 // newQuantileSketchAccumulator returns an accumulator for sharded
 // probabilistic quantile queries that merges results as they come in.
 func newQuantileSketchAccumulator() *QuantileSketchAccumulator {
-	return &QuantileSketchAccumulator{}
+	return &QuantileSketchAccumulator{
+		headers: make(map[string][]string),
+	}
 }
 
 func (a *QuantileSketchAccumulator) Accumulate(_ context.Context, res logqlmodel.Result, _ int) error {
@@ -57,6 +60,9 @@ func (a *QuantileSketchAccumulator) Accumulate(_ context.Context, res logqlmodel
 	if !ok {
 		return fmt.Errorf("unexpected matrix type: got (%T), want (ProbabilisticQuantileMatrix)", res.Data)
 	}
+
+	metadata.ExtendHeaders(a.headers, res.Headers)
+
 	if a.matrix == nil {
 		a.matrix = data
 		return nil
@@ -68,7 +74,17 @@ func (a *QuantileSketchAccumulator) Accumulate(_ context.Context, res logqlmodel
 }
 
 func (a *QuantileSketchAccumulator) Result() []logqlmodel.Result {
-	return []logqlmodel.Result{{Data: a.matrix}}
+	headers := make([]*definitions.PrometheusResponseHeader, 0, len(a.headers))
+	for name, vals := range a.headers {
+		headers = append(
+			headers,
+			&definitions.PrometheusResponseHeader{
+				Name:   name,
+				Values: vals,
+			},
+		)
+	}
+	return []logqlmodel.Result{{Data: a.matrix, Headers: headers}}
 }
 
 // heap impl for keeping only the top n results across m streams
