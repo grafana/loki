@@ -1,7 +1,9 @@
 name: "Pull Request Labeler"
 on:
 - pull_request_target
-- workflow_dispatch:
+- push:
+  branches: 
+    - paul1r/update_labeler_v5_syntax
 
 jobs:
   triage:
