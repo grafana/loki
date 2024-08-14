@@ -162,6 +162,8 @@ func TestQuantileSketchDownstreamAccumulatorSimple(t *testing.T) {
 	require.Equal(t, 10, len(got), "correct number of vectors")
 
 	require.Equal(t, res.Headers[0].Name, "HeaderA")
+	require.Equal(t, res.Warnings, []string{"warning"})
+	require.NotNil(t, res.Statistics)
 }
 
 func BenchmarkAccumulator(b *testing.B) {
@@ -246,7 +248,7 @@ func newQuantileSketchResults() []logqlmodel.Result {
 				}
 			}
 		}
-		results[r] = logqlmodel.Result{Data: ProbabilisticQuantileMatrix(vectors), Headers: []*definitions.PrometheusResponseHeader{{Name: "HeaderA", Values: []string{"ValueA"}}}}
+		results[r] = logqlmodel.Result{Data: ProbabilisticQuantileMatrix(vectors), Headers: []*definitions.PrometheusResponseHeader{{Name: "HeaderA", Values: []string{"ValueA"}}}, Warnings: []string{"warning"}}
 	}
 
 	return results

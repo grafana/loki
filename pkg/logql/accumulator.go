@@ -40,15 +40,19 @@ func (a *BufferedAccumulator) Result() []logqlmodel.Result {
 }
 
 type QuantileSketchAccumulator struct {
-	matrix  ProbabilisticQuantileMatrix
-	headers map[string][]string
+	matrix ProbabilisticQuantileMatrix
+
+	stats    stats.Result        // for accumulating statistics from downstream requests
+	headers  map[string][]string // for accumulating headers from downstream requests
+	warnings map[string]struct{} // for accumulating warnings from downstream requests}
 }
 
 // newQuantileSketchAccumulator returns an accumulator for sharded
 // probabilistic quantile queries that merges results as they come in.
 func newQuantileSketchAccumulator() *QuantileSketchAccumulator {
 	return &QuantileSketchAccumulator{
-		headers: make(map[string][]string),
+		headers:  make(map[string][]string),
+		warnings: make(map[string]struct{}),
 	}
 }
 
@@ -61,7 +65,19 @@ func (a *QuantileSketchAccumulator) Accumulate(_ context.Context, res logqlmodel
 		return fmt.Errorf("unexpected matrix type: got (%T), want (ProbabilisticQuantileMatrix)", res.Data)
 	}
 
+	// TODO(owen-d/ewelch): Shard counts should be set by the querier
+	// so we don't have to do it in tricky ways in multiple places.
+	// See pkg/logql/downstream.go:DownstreamEvaluator.Downstream
+	// for another example.
+	if res.Statistics.Summary.Shards == 0 {
+		res.Statistics.Summary.Shards = 1
+	}
+	a.stats.Merge(res.Statistics)
 	metadata.ExtendHeaders(a.headers, res.Headers)
+
+	for _, w := range res.Warnings {
+		a.warnings[w] = struct{}{}
+	}
 
 	if a.matrix == nil {
 		a.matrix = data
@@ -84,7 +100,18 @@ func (a *QuantileSketchAccumulator) Result() []logqlmodel.Result {
 			},
 		)
 	}
-	return []logqlmodel.Result{{Data: a.matrix, Headers: headers}}
+
+	warnings := maps.Keys(a.warnings)
+	sort.Strings(warnings)
+
+	return []logqlmodel.Result{
+		{
+			Data:       a.matrix,
+			Headers:    headers,
+			Warnings:   warnings,
+			Statistics: a.stats,
+		},
+	}
 }
 
 // heap impl for keeping only the top n results across m streams
