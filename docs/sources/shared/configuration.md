@@ -890,6 +890,15 @@ metastore:
     # CLI flag: -metastore.raft.advertise-address
     [advertise_address: <string> | default = "localhost:9099"]
 
+  # CLI flag: -metastore.maintenance-interval
+  [maintenance_interval: <duration> | default = 5m]
+
+  # CLI flag: -metastore.retention-period
+  [retention_period: <duration> | default = 15m]
+
+  # CLI flag: -metastore.retention-grace-period
+  [retention_grace_period: <duration> | default = 15m]
+
 metastore_client:
   # CLI flag: -metastore.address
   [address: <string> | default = "localhost:9095"]
