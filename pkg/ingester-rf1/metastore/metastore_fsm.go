@@ -18,21 +18,21 @@ import (
 // The map is used to determine the type of the given command,
 // when the request is converted to a Raft log entry.
 var commandTypeMap = map[reflect.Type]raftlogpb.CommandType{
-	reflect.TypeOf(new(metastorepb.AddBlockRequest)): raftlogpb.CommandType_COMMAND_TYPE_ADD_BLOCK,
-	reflect.TypeOf(new(raftlogpb.MarkCommand)):       raftlogpb.CommandType_COMMAND_TYPE_MARK,
-	reflect.TypeOf(new(raftlogpb.SweepCommand)):      raftlogpb.CommandType_COMMAND_TYPE_SWEEP,
+	reflect.TypeOf(new(metastorepb.AddBlockRequest)): raftlogpb.COMMAND_TYPE_ADD_BLOCK,
+	reflect.TypeOf(new(raftlogpb.MarkCommand)):       raftlogpb.COMMAND_TYPE_MARK,
+	reflect.TypeOf(new(raftlogpb.SweepCommand)):      raftlogpb.COMMAND_TYPE_SWEEP,
 }
 
 // The map is used to determine the handler for the given command,
 // read from the Raft log entry.
 var commandHandlers = map[raftlogpb.CommandType]commandHandler{
-	raftlogpb.CommandType_COMMAND_TYPE_ADD_BLOCK: func(fsm *FSM, raw []byte) fsmResponse {
+	raftlogpb.COMMAND_TYPE_ADD_BLOCK: func(fsm *FSM, raw []byte) fsmResponse {
 		return handleCommand(raw, fsm.state.applyAddBlock)
 	},
-	raftlogpb.CommandType_COMMAND_TYPE_MARK: func(fsm *FSM, raw []byte) fsmResponse {
+	raftlogpb.COMMAND_TYPE_MARK: func(fsm *FSM, raw []byte) fsmResponse {
 		return handleCommand(raw, fsm.state.applyMark)
 	},
-	raftlogpb.CommandType_COMMAND_TYPE_SWEEP: func(fsm *FSM, raw []byte) fsmResponse {
+	raftlogpb.COMMAND_TYPE_SWEEP: func(fsm *FSM, raw []byte) fsmResponse {
 		return handleCommand(raw, fsm.state.applySweep)
 	},
 }
