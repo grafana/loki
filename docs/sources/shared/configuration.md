@@ -612,21 +612,6 @@ pattern_ingester:
   # CLI flag: -pattern-ingester.max-eviction-ratio
   [max_eviction_ratio: <float> | default = 0.25]
 
-  # Configures the metric aggregation and storage behavior of the pattern
-  # ingester.
-  metric_aggregation:
-    # Whether the pattern ingester metric aggregation is enabled.
-    # CLI flag: -pattern-ingester.metric-aggregation.enabled
-    [enabled: <boolean> | default = false]
-
-    # Whether to log push observations.
-    # CLI flag: -pattern-ingester.metric-aggregation.log-push-observations
-    [log_push_observations: <boolean> | default = false]
-
-    # How often to downsample metrics from raw push observations.
-    # CLI flag: -pattern-ingester.downsample-period
-    [downsample_period: <duration> | default = 10s]
-
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
 # object store.
@@ -1174,6 +1159,10 @@ backoff_config:
   # Maximum number of times to retry when s3 get Object
   # CLI flag: -s3.max-retries
   [max_retries: <int> | default = 5]
+
+# Disable forcing S3 dualstack endpoint usage.
+# CLI flag: -s3.disable-dualstack
+[disable_dualstack: <boolean> | default = false]
 ```
 
 ### azure_storage_config
@@ -5093,6 +5082,10 @@ backoff_config:
   # Maximum number of times to retry when s3 get Object
   # CLI flag: -<prefix>.storage.s3.max-retries
   [max_retries: <int> | default = 5]
+
+# Disable forcing S3 dualstack endpoint usage.
+# CLI flag: -<prefix>.storage.s3.disable-dualstack
+[disable_dualstack: <boolean> | default = false]
 ```
 
 ### schema_config
