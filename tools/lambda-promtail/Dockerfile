@@ -15,4 +15,4 @@ RUN go build -o /main -tags lambda.norpc -ldflags="-s -w" lambda-promtail/*.go
 # copy artifacts to a clean image
 FROM public.ecr.aws/lambda/provided:al2
 COPY --from=build-image /main /main
-ENTRYPOINT [ "/main" ]       
+ENTRYPOINT [ "/main" ]
