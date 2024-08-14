@@ -72,6 +72,18 @@ const (
 	logLevelTrace    = "trace"
 )
 
+var LogLevels = []string{
+	LevelLabel,
+	LogLevelUnknown,
+	logLevelDebug,
+	logLevelInfo,
+	logLevelWarn,
+	logLevelError,
+	logLevelFatal,
+	logLevelCritical,
+	logLevelTrace,
+}
+
 var (
 	maxLabelCacheSize = 100000
 	rfStats           = analytics.NewInt("distributor_replication_factor")

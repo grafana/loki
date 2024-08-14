@@ -54,7 +54,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(fs *flag.FlagSet, prefix string) {
 	fs.DurationVar(
 		&cfg.PushPeriod,
 		prefix+"metric-aggregation.push-period",
-		1*time.Minute,
+		30*time.Second,
 		"How long to wait write response from Loki",
 	)
 	fs.BoolVar(

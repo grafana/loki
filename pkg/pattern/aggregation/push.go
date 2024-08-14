@@ -78,7 +78,7 @@ type entry struct {
 }
 
 type entries struct {
-	lock    sync.RWMutex
+	lock    sync.Mutex
 	entries []entry
 }
 
@@ -88,10 +88,12 @@ func (e *entries) add(entry entry) {
 	e.entries = append(e.entries, entry)
 }
 
-func (e *entries) reset() {
+func (e *entries) reset() []entry {
 	e.lock.Lock()
 	defer e.lock.Unlock()
-	e.entries = e.entries[:0]
+	entries := e.entries
+	e.entries = make([]entry, 0, len(entries))
+	return entries
 }
 
 // NewPush creates an instance of `Push` which writes logs directly to given `lokiAddr`
@@ -159,11 +161,10 @@ func (p *Push) Stop() {
 
 // buildPayload creates the snappy compressed protobuf to send to Loki
 func (p *Push) buildPayload() ([]byte, error) {
-	p.entries.lock.RLock()
-	defer p.entries.lock.RUnlock()
+	entries := p.entries.reset()
 
 	entriesByStream := make(map[string][]logproto.Entry)
-	for _, e := range p.entries.entries {
+	for _, e := range entries {
 		stream := e.labels.String()
 		entries, ok := entriesByStream[stream]
 		if !ok {
@@ -234,8 +235,6 @@ func (p *Push) run(pushPeriod time.Duration) {
 				status := 0
 				status, err = p.send(ctx, payload)
 				if err == nil {
-					// reset entries on successful push
-					p.entries.reset()
 					pushTicker.Reset(pushPeriod)
 					break
 				}

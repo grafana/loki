@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"slices"
-	"strings"
 	"sync"
 
 	"github.com/go-kit/log"
@@ -44,8 +42,8 @@ type instance struct {
 	ringClient RingClient
 	ingesterID string
 
-	aggMetricsLock     sync.Mutex
-	aggMetricsByStream map[string]aggregatedMetrics
+	aggMetricsLock             sync.Mutex
+	aggMetricsByStreamAndLevel map[string]map[string]*aggregatedMetrics
 
 	writer aggregation.EntryWriter
 }
@@ -69,17 +67,17 @@ func newInstance(
 		return nil, err
 	}
 	i := &instance{
-		buf:                make([]byte, 0, 1024),
-		logger:             logger,
-		instanceID:         instanceID,
-		streams:            newStreamsMap(),
-		index:              index,
-		metrics:            metrics,
-		drainCfg:           drainCfg,
-		ringClient:         ringClient,
-		ingesterID:         ingesterID,
-		aggMetricsByStream: make(map[string]aggregatedMetrics),
-		writer:             writer,
+		buf:                        make([]byte, 0, 1024),
+		logger:                     logger,
+		instanceID:                 instanceID,
+		streams:                    newStreamsMap(),
+		index:                      index,
+		metrics:                    metrics,
+		drainCfg:                   drainCfg,
+		ringClient:                 ringClient,
+		ingesterID:                 ingesterID,
+		aggMetricsByStreamAndLevel: make(map[string]map[string]*aggregatedMetrics),
+		writer:                     writer,
 	}
 	i.mapper = ingester.NewFPMapper(i.getLabelsFromFingerprint)
 	return i, nil
@@ -92,6 +90,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 
 	for _, reqStream := range req.Streams {
 		// All streams are observed for metrics
+		// TODO(twhitney): this would be better as a queue that drops in response to backpressure
 		i.Observe(reqStream.Labels, reqStream.Entries)
 
 		// But only owned streamed are processed for patterns
@@ -254,70 +253,56 @@ func (i *instance) Observe(stream string, entries []logproto.Entry) {
 	defer i.aggMetricsLock.Unlock()
 
 	for _, entry := range entries {
-		lbls, err := syntax.ParseLabels(stream)
-		if err != nil {
-			continue
-		}
-
-		_, hasLevelLabel := distributor.HasAnyLevelLabels(lbls)
+		lvl := distributor.LogLevelUnknown
 		structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
-		var logLevel string
-		if !hasLevelLabel {
-			if levelFromMetadata, ok := distributor.HasAnyLevelLabels(structuredMetadata); ok {
-				logLevel = levelFromMetadata
-			} else {
-				logLevel = distributor.DetectLogLevelFromLogEntry(entry, structuredMetadata)
-			}
-			lbls = append(lbls, labels.Label{Name: "level", Value: logLevel})
-
-			slices.SortFunc(
-				lbls,
-				func(i, j labels.Label) int { return strings.Compare(i.Name, j.Name) },
-			)
+		if structuredMetadata.Has(distributor.LevelLabel) {
+			lvl = structuredMetadata.Get(distributor.LevelLabel)
 		}
 
-		metrics, ok := i.aggMetricsByStream[lbls.String()]
+		streamMetrics, ok := i.aggMetricsByStreamAndLevel[stream]
+
 		if !ok {
-			metrics = aggregatedMetrics{}
+			streamMetrics = make(map[string]*aggregatedMetrics, len(distributor.LogLevels))
+			for _, level := range distributor.LogLevels {
+				streamMetrics[level] = &aggregatedMetrics{}
+			}
 		}
 
-		metrics.bytes += uint64(len(entry.Line))
-		metrics.count++
+		streamMetrics[lvl].bytes += uint64(len(entry.Line))
+		streamMetrics[lvl].count++
 
-		i.aggMetricsByStream[lbls.String()] = metrics
+		i.aggMetricsByStreamAndLevel[stream] = streamMetrics
 	}
 }
 
 func (i *instance) Downsample(now model.Time) {
 	i.aggMetricsLock.Lock()
 	defer func() {
-		i.aggMetricsByStream = make(map[string]aggregatedMetrics)
+		i.aggMetricsByStreamAndLevel = make(map[string]map[string]*aggregatedMetrics)
 		i.aggMetricsLock.Unlock()
 	}()
 
-	for stream, metrics := range i.aggMetricsByStream {
+	for stream, metricsByLevel := range i.aggMetricsByStreamAndLevel {
 		lbls, err := syntax.ParseLabels(stream)
 		if err != nil {
 			continue
 		}
 
-		i.writeAggregatedMetrics(now, lbls, metrics.bytes, metrics.count)
+		for level, metrics := range metricsByLevel {
+			i.writeAggregatedMetrics(now, lbls, level, metrics.bytes, metrics.count)
+		}
 	}
 }
 
 func (i *instance) writeAggregatedMetrics(
 	now model.Time,
 	streamLbls labels.Labels,
+	level string,
 	totalBytes, totalCount uint64,
 ) {
 	service := streamLbls.Get(push.LabelServiceName)
 	if service == "" {
 		service = push.ServiceUnknown
-	}
-
-	level, hasLevelLabel := distributor.HasAnyLevelLabels(streamLbls)
-	if !hasLevelLabel {
-		level = distributor.LogLevelUnknown
 	}
 
 	newLbls := labels.Labels{
