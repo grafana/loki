@@ -1,6 +1,7 @@
 name: "Pull Request Labeler"
 on:
-- push
+  push:
+    branches: ['paul1r/update_labeler_v5_syntax']
 
 jobs:
   triage:
