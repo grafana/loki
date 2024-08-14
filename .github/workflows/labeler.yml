@@ -1,8 +1,6 @@
 name: "Pull Request Labeler"
 on:
-  pull_request_target:
-    branches: 
-     - 'paul1r/update_labeler_v5_syntax'
+  push:
 
 jobs:
   triage:
@@ -14,3 +12,4 @@ jobs:
     - uses: actions/labeler@v5
       with:
         repo-token: "${{ secrets.GITHUB_TOKEN }}"
+        pr-number: 13897
