@@ -41,8 +41,8 @@ type Config struct {
 	MaxClusters       int                   `yaml:"max_clusters,omitempty" doc:"description=The maximum number of detected pattern clusters that can be created by streams."`
 	MaxEvictionRatio  float64               `yaml:"max_eviction_ratio,omitempty" doc:"description=The maximum eviction ratio of patterns per stream. Once that ratio is reached, the stream will throttled pattern detection."`
 	MetricAggregation aggregation.Config    `yaml:"metric_aggregation,omitempty" doc:"description=Configures the metric aggregation and storage behavior of the pattern ingester."`
-	TeeParallelism    int                   `yaml:"tee_parallelism,omitempty"    doc:"description=The number of parallel goroutines to use for forwarding requests to the pattern ingester."`
-	TeeQueueSize      int                   `yaml:"tee_queue_size,omitempty"    doc:"Maxiumum number of pending teed request to pattern ingesters. If the queue is full the request is dropped."`
+	TeeConfig         PatternTeeConfig      `yaml:"tee_config,omitempty" doc:"description=Configures the pattern tee which forwards requests to the pattern ingester."`
+	ConnectionTimeout time.Duration         `yaml:"connection_timeout"`
 
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
@@ -53,6 +53,8 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("pattern-ingester.", fs, util_log.Logger)
 	cfg.ClientConfig.RegisterFlags(fs)
 	cfg.MetricAggregation.RegisterFlagsWithPrefix(fs, "pattern-ingester.")
+	cfg.TeeConfig.RegisterFlags(fs, "pattern-ingester.")
+
 	fs.BoolVar(
 		&cfg.Enabled,
 		"pattern-ingester.enabled",
@@ -83,17 +85,52 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 		drain.DefaultConfig().MaxEvictionRatio,
 		"The maximum eviction ratio of patterns per stream. Once that ratio is reached, the stream will be throttled for pattern detection.",
 	)
-	fs.IntVar(
-		&cfg.TeeParallelism,
-		"pattern-ingester.tee-parallelism",
-		5,
-		"The number of parallel goroutines to use for forwarding requests to the pattern ingester.",
+	fs.DurationVar(
+		&cfg.ConnectionTimeout,
+		"tee.connection-timeout",
+		2*time.Second,
+		"Timeout for connections between the Loki and the pattern ingester.",
 	)
-	fs.IntVar(
-		&cfg.TeeQueueSize,
-		"pattern-ingester.tee-queue-size",
+}
+
+type PatternTeeConfig struct {
+	BatchSize          int           `yaml:"batch_size"`
+	BatchFlushInterval time.Duration `yaml:"batch_flush_interval"`
+	FlushQueueSize     int           `yaml:"flush_queue_size"`
+	FlushWorkerCount   int           `yaml:"flush_worker_count"`
+	StopFlushTimeout   time.Duration `yaml:"stop_flush_timeout"`
+}
+
+func (cfg *PatternTeeConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
+	f.IntVar(
+		&cfg.BatchSize,
+		"tee.batch-size",
+		5000,
+		"The size of the batch of raw logs to send for template mining",
+	)
+	f.DurationVar(
+		&cfg.BatchFlushInterval,
+		"tee.batch-flush-interval",
+		time.Second,
+		"The max time between batches of raw logs to send for template mining",
+	)
+	f.IntVar(
+		&cfg.FlushQueueSize,
+		"tee.flush-queue-size",
+		1000,
+		"The number of log flushes to queue before dropping",
+	)
+	f.IntVar(
+		&cfg.FlushWorkerCount,
+		"logs-tee.flush-worker-count",
 		100,
-		"Maxiumum number of pending teed request to pattern ingesters. If the queue is full the request is dropped.",
+		"the number of concurrent workers sending logs to the template service",
+	)
+	f.DurationVar(
+		&cfg.StopFlushTimeout,
+		"tee.stop-flush-timeout",
+		30*time.Second,
+		"The max time we will try to flush any remaining logs to be mined when the service is stopped",
 	)
 }
 

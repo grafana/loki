@@ -3,7 +3,6 @@ package distributor
 // Tee implementations can duplicate the log streams to another endpoint.
 type Tee interface {
 	Duplicate(tenant string, streams []KeyedStream)
-	Stop()
 }
 
 // WrapTee wraps a new Tee around an existing Tee.
@@ -24,11 +23,5 @@ type multiTee struct {
 func (m *multiTee) Duplicate(tenant string, streams []KeyedStream) {
 	for _, tee := range m.tees {
 		tee.Duplicate(tenant, streams)
-	}
-}
-
-func (m *multiTee) Stop() {
-	for _, tee := range m.tees {
-		tee.Stop()
 	}
 }
