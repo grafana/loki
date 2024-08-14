@@ -3,6 +3,7 @@ package pattern
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,6 +21,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+
+	ring_client "github.com/grafana/dskit/ring/client"
 )
 
 type TeeService struct {
@@ -250,7 +253,7 @@ func (ts *TeeService) batchesForTenant(
 	}
 
 	streamCount := uint64(len(streams))
-	level.Info(ts.logger).Log(
+	level.Debug(ts.logger).Log(
 		"msg", "prepared pattern Tee batches for tenant",
 		"tenant", tenant,
 		"stream_count", streamCount,
@@ -268,12 +271,12 @@ type clientRequest struct {
 func (ts *TeeService) batchSender(ctx context.Context) {
 	for {
 		select {
-		case reqs, ok := <-ts.flushQueue:
+		case clientReq, ok := <-ts.flushQueue:
 			if !ok {
 				return // we are done, the queue was closed by Run()
 			}
-			ts.sendBatch(ctx, reqs)
-			ts.teeQueueSize.Sub(float64(len(reqs.reqs)))
+			ts.sendBatch(ctx, clientReq)
+			ts.teeQueueSize.Sub(float64(len(clientReq.reqs)))
 		case <-ctx.Done():
 			return
 		}
@@ -316,6 +319,7 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 
 				// The pattern ingester appends failed, but we can retry the metric append
 				ts.ingesterAppends.WithLabelValues(clientRequest.ingesterAddr, "fail").Inc()
+				level.Error(ts.logger).Log("msg", "failed to send patterns to pattern ingester", "err", err)
 
 				if !ts.cfg.MetricAggregation.Enabled {
 					return err
@@ -327,14 +331,23 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 				// try to forward request to any pattern ingester so we at least capture the metrics.
 				replicationSet, err := ts.ringClient.Ring().
 					GetReplicationSetForOperation(ring.WriteNoExtend)
-				if len(replicationSet.Instances) == 0 {
+				if err != nil || len(replicationSet.Instances) == 0 {
 					ts.ingesterMetricAppends.WithLabelValues("fail").Inc()
+					level.Error(ts.logger).Log(
+						"msg", "failed to send metrics to fallback pattern ingesters",
+						"num_instances", len(replicationSet.Instances),
+						"err", err,
+					)
 					return errors.New("no instances found for fallback")
 				}
 
+				fallbackAddrs := make([]string, 0, len(replicationSet.Instances))
 				for _, instance := range replicationSet.Instances {
 					addr := instance.Addr
-					client, err := ts.ringClient.Pool().GetClientFor(addr)
+					fallbackAddrs = append(fallbackAddrs, addr)
+
+					var client ring_client.PoolClient
+					client, err = ts.ringClient.Pool().GetClientFor(addr)
 					if err != nil {
 						ctx, cancel := context.WithTimeout(
 							user.InjectOrgID(context.Background(), clientRequest.tenant),
@@ -354,6 +367,11 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 				}
 
 				ts.ingesterMetricAppends.WithLabelValues("fail").Inc()
+				level.Error(ts.logger).Log(
+					"msg", "failed to send metrics to fallback pattern ingesters. exhausted all fallback instances",
+					"addressess", strings.Join(fallbackAddrs, ", "),
+					"err", err,
+				)
 				return err
 			})
 	}
