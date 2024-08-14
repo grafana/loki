@@ -19,9 +19,9 @@ func Benchmark_metastoreState_applyAddBlock(t *testing.B) {
 	workChan := make(chan struct{}, workers)
 	wg := sync.WaitGroup{}
 	m := &metastoreState{
-		logger:        util_log.Logger,
-		segmentsMutex: sync.Mutex{},
-		segments:      make(map[string]*metastorepb.BlockMeta),
+		logger: util_log.Logger,
+		mtx:    sync.Mutex{},
+		active: make(map[string]*metastorepb.BlockMeta),
 		db: &boltdb{
 			logger: util_log.Logger,
 			config: Config{

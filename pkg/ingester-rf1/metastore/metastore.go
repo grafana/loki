@@ -20,6 +20,7 @@ import (
 	raftwal "github.com/hashicorp/raft-wal"
 	"github.com/prometheus/client_golang/prometheus"
 
+	ingesterrf1 "github.com/grafana/loki/v3/pkg/ingester-rf1"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/health"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/raftleader"
@@ -31,8 +32,11 @@ import (
 const metastoreRaftLeaderHealthServiceName = "metastorepb.MetastoreService.RaftLeader"
 
 type Config struct {
-	DataDir string     `yaml:"data_dir"`
-	Raft    RaftConfig `yaml:"raft"`
+	DataDir              string        `yaml:"data_dir"`
+	Raft                 RaftConfig    `yaml:"raft"`
+	MaintenanceInterval  time.Duration `yaml:"maintenance_interval"`
+	RetentionPeriod      time.Duration `yaml:"retention_period"`
+	RetentionGracePeriod time.Duration `yaml:"retention_grace_period"`
 }
 
 type RaftConfig struct {
@@ -49,6 +53,9 @@ type RaftConfig struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	const prefix = "metastore."
 	f.StringVar(&cfg.DataDir, prefix+"data-dir", "./data-metastore/data", "")
+	f.DurationVar(&cfg.MaintenanceInterval, prefix+"maintenance-interval", 5*time.Minute, "")
+	f.DurationVar(&cfg.RetentionPeriod, prefix+"retention-period", 15*time.Minute, "")
+	f.DurationVar(&cfg.RetentionGracePeriod, prefix+"retention-grace-period", 15*time.Minute, "")
 	cfg.Raft.RegisterFlags(f)
 }
 
@@ -71,7 +78,8 @@ type Metastore struct {
 	reg    prometheus.Registerer
 
 	// In-memory state.
-	state *metastoreState
+	state   *metastoreState
+	storage ingesterrf1.Storage
 
 	// Persistent state.
 	db *boltdb
@@ -99,11 +107,12 @@ func New(config Config, periodConfigs []config.PeriodConfig, storageConfig stora
 		return nil, err
 	}
 	m := &Metastore{
-		config: config,
-		logger: logger,
-		reg:    reg,
-		db:     newDB(config, logger),
-		done:   make(chan struct{}),
+		config:  config,
+		logger:  logger,
+		reg:     reg,
+		db:      newDB(config, logger),
+		done:    make(chan struct{}),
+		storage: storage,
 	}
 	m.leaderhealth = raftleader.NewRaftLeaderHealthObserver(hs, logger)
 	m.state = newMetastoreState(logger, m.db, storage)
@@ -125,7 +134,10 @@ func (m *Metastore) starting(_ context.Context) error {
 		return fmt.Errorf("failed to initialize raft: %w", err)
 	}
 	m.wg.Add(1)
-	go m.cleanupLoop()
+	go func() {
+		defer m.wg.Done()
+		m.periodicMaintenance()
+	}()
 	return nil
 }
 

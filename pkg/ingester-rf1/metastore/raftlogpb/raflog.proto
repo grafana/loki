@@ -12,9 +12,14 @@ enum CommandType {
   COMMAND_TYPE_ADD_BLOCK = 1;
 
   // This is a temporary solution.
-  COMMAND_TYPE_TRUNCATE = 4196;
+  COMMAND_TYPE_MARK = 4195;
+  COMMAND_TYPE_SWEEP = 4196;
 }
 
-message TruncateCommand {
+message MarkCommand {
+  uint64 timestamp = 1;
+}
+
+message SweepCommand {
   uint64 timestamp = 1;
 }
