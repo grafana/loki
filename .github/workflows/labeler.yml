@@ -1,6 +1,6 @@
 name: "Pull Request Labeler"
 on:
-  push:
+  pull_request_target
 
 jobs:
   triage:
@@ -12,4 +12,3 @@ jobs:
     - uses: actions/labeler@v5
       with:
         repo-token: "${{ secrets.GITHUB_TOKEN }}"
-        pr-number: 13897
