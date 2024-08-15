@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/go-kit/log"
@@ -257,7 +258,7 @@ func (i *instance) Observe(stream string, entries []logproto.Entry) {
 		lvl := distributor.LogLevelUnknown
 		structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
 		if structuredMetadata.Has(distributor.LevelLabel) {
-			lvl = structuredMetadata.Get(distributor.LevelLabel)
+			lvl = strings.ToLower(structuredMetadata.Get(distributor.LevelLabel))
 		}
 
 		streamMetrics, ok := i.aggMetricsByStreamAndLevel[stream]
@@ -270,12 +271,13 @@ func (i *instance) Observe(stream string, entries []logproto.Entry) {
 		}
 
 		if _, ok := streamMetrics[lvl]; !ok {
-			level.Error(i.logger).Log(
-				"msg", "unable to observe stream, unknown log level",
+			level.Warn(i.logger).Log(
+				"msg", "unknown log level while observing stream",
 				"level", lvl,
 				"stream", stream,
 			)
-			continue
+
+			lvl = distributor.LogLevelUnknown
 		}
 
 		streamMetrics[lvl].bytes += uint64(len(entry.Line))
