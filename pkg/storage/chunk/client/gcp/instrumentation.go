@@ -34,7 +34,7 @@ var (
 
 		// 6 buckets from 5ms to 20s.
 		Buckets: prometheus.ExponentialBuckets(0.005, 4, 7),
-	}, []string{"operation", "status_code"})
+	}, []string{"operation", "status_code", "bucket"})
 )
 
 func bigtableInstrumentation() ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
@@ -48,11 +48,12 @@ func bigtableInstrumentation() ([]grpc.UnaryClientInterceptor, []grpc.StreamClie
 		}
 }
 
-func gcsInstrumentation(transport http.RoundTripper) *http.Client {
+func gcsInstrumentation(transport http.RoundTripper, bucket string) *http.Client {
 	client := &http.Client{
 		Transport: instrumentedTransport{
 			observer: gcsRequestDuration,
 			next:     transport,
+			bucket:   bucket,
 		},
 	}
 	return client
@@ -69,13 +70,14 @@ func toOptions(opts []grpc.DialOption) []option.ClientOption {
 type instrumentedTransport struct {
 	observer prometheus.ObserverVec
 	next     http.RoundTripper
+	bucket   string
 }
 
 func (i instrumentedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	start := time.Now()
 	resp, err := i.next.RoundTrip(req)
 	if err == nil {
-		i.observer.WithLabelValues(req.Method, strconv.Itoa(resp.StatusCode)).Observe(time.Since(start).Seconds())
+		i.observer.WithLabelValues(req.Method, strconv.Itoa(resp.StatusCode), i.bucket).Observe(time.Since(start).Seconds())
 	}
 	return resp, err
 }

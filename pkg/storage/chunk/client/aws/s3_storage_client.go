@@ -51,7 +51,7 @@ var s3RequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogram
 	Name:      "s3_request_duration_seconds",
 	Help:      "Time spent doing S3 requests.",
 	Buckets:   []float64{.025, .05, .1, .25, .5, 1, 2},
-}, []string{"operation", "status_code"}))
+}, []string{"operation", "status_code", "bucket"}))
 
 // InjectRequestMiddleware gives users of this client the ability to make arbitrary
 // changes to outgoing requests.

@@ -94,7 +94,7 @@ func newBucketHandle(ctx context.Context, cfg GCSConfig, hedgingCfg hedging.Conf
 	if err != nil {
 		return nil, err
 	}
-	httpClient := gcsInstrumentation(transport)
+	httpClient := gcsInstrumentation(transport, cfg.BucketName)
 
 	if hedging {
 		httpClient, err = hedgingCfg.ClientWithRegisterer(httpClient, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
