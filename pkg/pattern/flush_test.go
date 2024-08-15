@@ -16,6 +16,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
@@ -114,11 +116,8 @@ func defaultIngesterTestConfig(t testing.TB) Config {
 }
 
 type fakeRingClient struct {
-	ring ring.ReadRing
-}
-
-func (f *fakeRingClient) Pool() *ring_client.Pool {
-	panic("not implemented")
+	ring       ring.ReadRing
+	poolClient ring_client.PoolClient
 }
 
 func (f *fakeRingClient) StartAsync(_ context.Context) error {
@@ -151,6 +150,10 @@ func (f *fakeRingClient) AddListener(_ services.Listener) {
 
 func (f *fakeRingClient) Ring() ring.ReadRing {
 	return f.ring
+}
+
+func (f *fakeRingClient) GetClientFor(addr string) (ring_client.PoolClient, error) {
+	return f.poolClient, nil
 }
 
 type fakeRing struct {
@@ -243,4 +246,49 @@ func (f *fakeRing) CleanupShuffleShardCache(identifier string) {
 func (f *fakeRing) GetTokenRangesForInstance(identifier string) (ring.TokenRanges, error) {
 	args := f.Called(identifier)
 	return args.Get(0).(ring.TokenRanges), args.Error(1)
+}
+
+type mockPoolClient struct {
+	mock.Mock
+	ctx context.Context
+	req *logproto.PushRequest
+}
+
+func (m *mockPoolClient) Push(
+	ctx context.Context,
+	in *push.PushRequest,
+	opts ...grpc.CallOption,
+) (*push.PushResponse, error) {
+	m.ctx = ctx
+	m.req = in
+	args := m.Called(ctx, in)
+	return args.Get(0).(*push.PushResponse), args.Error(1)
+}
+
+func (m *mockPoolClient) Query(
+	ctx context.Context,
+	in *logproto.QueryPatternsRequest,
+	opts ...grpc.CallOption,
+) (logproto.Pattern_QueryClient, error) {
+	panic("not implemented")
+}
+
+func (m *mockPoolClient) Check(
+	ctx context.Context,
+	in *grpc_health_v1.HealthCheckRequest,
+	opts ...grpc.CallOption,
+) (*grpc_health_v1.HealthCheckResponse, error) {
+	panic("not implemented")
+}
+
+func (m *mockPoolClient) Watch(
+	ctx context.Context,
+	in *grpc_health_v1.HealthCheckRequest,
+	opts ...grpc.CallOption,
+) (grpc_health_v1.Health_WatchClient, error) {
+	panic("not implemented")
+}
+
+func (m *mockPoolClient) Close() error {
+	panic("not implemented")
 }

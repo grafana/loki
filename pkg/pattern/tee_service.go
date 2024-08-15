@@ -36,7 +36,6 @@ type TeeService struct {
 
 	teedStreams  *prometheus.CounterVec
 	teedRequests *prometheus.CounterVec
-	teeQueueSize prometheus.Gauge
 
 	sendDuration *instrument.HistogramCollector
 
@@ -74,10 +73,6 @@ func NewTeeService(
 			Name: "pattern_ingester_teed_requests_total",
 			Help: "The total number of batch appends sent to fallback pattern ingesters, for not owned streams.",
 		}, []string{"status"}),
-		teeQueueSize: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
-			Name: "pattern_ingester_tee_queue_size",
-			Help: "Current number of requests in the pattern ingester tee queue.",
-		}),
 		sendDuration: instrument.NewHistogramCollector(
 			promauto.With(registerer).NewHistogramVec(
 				prometheus.HistogramOpts{
@@ -210,7 +205,6 @@ func (ts *TeeService) flush() {
 				reqs:         reqs,
 			}:
 				ts.teedRequests.WithLabelValues("queued").Inc()
-				ts.teeQueueSize.Add(float64(len(reqs)))
 			default:
 				ts.teedRequests.WithLabelValues("dropped").Inc()
 			}
@@ -242,14 +236,14 @@ func (ts *TeeService) batchesForTenant(
 		addr := replicationSet.Instances[0].Addr
 		batch, ok := batches[tenant][addr]
 		if !ok {
-			batch = &logproto.PushRequest{
-				Streams: []logproto.Stream{stream.Stream},
-			}
+			batch = &logproto.PushRequest{}
 			batches[tenant][addr] = batch
 		}
 
-		batch.Streams = append(batch.Streams, stream.Stream)
-		ts.teedStreams.WithLabelValues("batched").Inc()
+		if len(stream.Stream.Entries) > 0 {
+			batch.Streams = append(batch.Streams, stream.Stream)
+			ts.teedStreams.WithLabelValues("batched").Inc()
+		}
 	}
 
 	streamCount := uint64(len(streams))
@@ -276,7 +270,6 @@ func (ts *TeeService) batchSender(ctx context.Context) {
 				return // we are done, the queue was closed by Run()
 			}
 			ts.sendBatch(ctx, clientReq)
-			ts.teeQueueSize.Sub(float64(len(clientReq.reqs)))
 		case <-ctx.Done():
 			return
 		}
@@ -290,6 +283,10 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 	for i := 0; i < len(clientRequest.reqs); i++ {
 		req := clientRequest.reqs[i]
 
+		if len(req.Streams) == 0 {
+			continue
+		}
+
 		// Nothing to do with this error. It's recorded in the metrics that
 		// are gathered by this request
 		_ = instrument.CollectedRequest(
@@ -298,12 +295,12 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 			ts.sendDuration,
 			instrument.ErrorCode,
 			func(ctx context.Context) error {
-				client, err := ts.ringClient.Pool().GetClientFor(clientRequest.ingesterAddr)
+				client, err := ts.ringClient.GetClientFor(clientRequest.ingesterAddr)
 				if err != nil {
 					return err
 				}
 				ctx, cancel := context.WithTimeout(
-					user.InjectOrgID(context.Background(), clientRequest.tenant),
+					user.InjectOrgID(ctx, clientRequest.tenant),
 					ts.cfg.ClientConfig.RemoteTimeout,
 				)
 
@@ -347,10 +344,10 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 					fallbackAddrs = append(fallbackAddrs, addr)
 
 					var client ring_client.PoolClient
-					client, err = ts.ringClient.Pool().GetClientFor(addr)
+					client, err = ts.ringClient.GetClientFor(addr)
 					if err != nil {
 						ctx, cancel := context.WithTimeout(
-							user.InjectOrgID(context.Background(), clientRequest.tenant),
+							user.InjectOrgID(ctx, clientRequest.tenant),
 							ts.cfg.ClientConfig.RemoteTimeout,
 						)
 						defer cancel()

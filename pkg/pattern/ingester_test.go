@@ -2,7 +2,6 @@ package pattern
 
 import (
 	"context"
-	"fmt"
 	"math"
 	"testing"
 	"time"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/grafana/dskit/ring"
 
+	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/pattern/aggregation"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
@@ -104,23 +104,15 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 	lbs := labels.New(
 		labels.Label{Name: "test", Value: "test"},
 		labels.Label{Name: "service_name", Value: "test_service"},
-		labels.Label{Name: "level", Value: "info"},
 	)
 	lbs2 := labels.New(
 		labels.Label{Name: "foo", Value: "bar"},
 		labels.Label{Name: "service_name", Value: "foo_service"},
-		labels.Label{Name: "lvl", Value: "error"},
 	)
 	lbs3 := labels.New(
 		labels.Label{Name: "foo", Value: "baz"},
 		labels.Label{Name: "service_name", Value: "baz_service"},
 	)
-	lbs3WithLevel := labels.New(
-		labels.Label{Name: "foo", Value: "baz"},
-		labels.Label{Name: "level", Value: "error"},
-		labels.Label{Name: "service_name", Value: "baz_service"},
-	)
-	lbs3String := lbs3WithLevel.String()
 
 	setup := func() (*instance, *mockEntryWriter) {
 		ingesterID := "foo"
@@ -162,6 +154,12 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 						{
 							Timestamp: time.Unix(20, 0),
 							Line:      "ts=1 msg=hello",
+							StructuredMetadata: push.LabelsAdapter{
+								push.LabelAdapter{
+									Name:  distributor.LevelLabel,
+									Value: "info",
+								},
+							},
 						},
 					},
 				},
@@ -171,6 +169,12 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 						{
 							Timestamp: time.Unix(20, 0),
 							Line:      "ts=1 msg=hello",
+							StructuredMetadata: push.LabelsAdapter{
+								push.LabelAdapter{
+									Name:  distributor.LevelLabel,
+									Value: "error",
+								},
+							},
 						},
 					},
 				},
@@ -180,6 +184,12 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 						{
 							Timestamp: time.Unix(20, 0),
 							Line:      "error error error",
+							StructuredMetadata: push.LabelsAdapter{
+								push.LabelAdapter{
+									Name:  distributor.LevelLabel,
+									Value: "error",
+								},
+							},
 						},
 					},
 				},
@@ -194,6 +204,12 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 							{
 								Timestamp: time.Unix(20, 0),
 								Line:      "foo bar foo bar",
+								StructuredMetadata: push.LabelsAdapter{
+									push.LabelAdapter{
+										Name:  distributor.LevelLabel,
+										Value: "info",
+									},
+								},
 							},
 						},
 					},
@@ -203,6 +219,12 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 							{
 								Timestamp: time.Unix(20, 0),
 								Line:      "foo bar foo bar",
+								StructuredMetadata: push.LabelsAdapter{
+									push.LabelAdapter{
+										Name:  distributor.LevelLabel,
+										Value: "error",
+									},
+								},
 							},
 						},
 					},
@@ -215,32 +237,32 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 		return inst, mockWriter
 	}
 
-	t.Run("correctly detects level", func(t *testing.T) {
+	t.Run("accumulates bytes and count for each stream and level on every push", func(t *testing.T) {
 		inst, _ := setup()
 
-		require.Len(t, inst.aggMetricsByStream, 3)
+		require.Len(t, inst.aggMetricsByStreamAndLevel, 3)
 
-		for stream := range inst.aggMetricsByStream {
-			fmt.Printf("lbls3String: %s\nstream: %s\n", lbs3String, stream)
-			if stream != lbs.String() && stream != lbs2.String() && stream != lbs3String {
-				require.Fail(t, fmt.Sprintf("stream %s should not be present", stream))
-			}
-		}
-	})
+		require.Equal(t, uint64(14+(15*30)), inst.aggMetricsByStreamAndLevel[lbs.String()]["info"].bytes)
+		require.Equal(t, uint64(14+(15*30)), inst.aggMetricsByStreamAndLevel[lbs2.String()]["error"].bytes)
+		require.Equal(t, uint64(17), inst.aggMetricsByStreamAndLevel[lbs3.String()]["error"].bytes)
 
-	t.Run("accumulates bytes and count on every push", func(t *testing.T) {
-		inst, _ := setup()
-
-		require.Len(t, inst.aggMetricsByStream, 3)
-
-		require.Equal(t, uint64(14+(15*30)), inst.aggMetricsByStream[lbs.String()].bytes)
-		require.Equal(t, uint64(14+(15*30)), inst.aggMetricsByStream[lbs2.String()].bytes)
-		require.Equal(t, uint64(17), inst.aggMetricsByStream[lbs3String].bytes)
-
-		require.Equal(t, uint64(31), inst.aggMetricsByStream[lbs.String()].count)
-		require.Equal(t, uint64(31), inst.aggMetricsByStream[lbs2.String()].count)
-		require.Equal(t, uint64(1), inst.aggMetricsByStream[lbs3String].count)
-	})
+		require.Equal(
+			t,
+			uint64(31),
+			inst.aggMetricsByStreamAndLevel[lbs.String()]["info"].count,
+		)
+		require.Equal(
+			t,
+			uint64(31),
+			inst.aggMetricsByStreamAndLevel[lbs2.String()]["error"].count,
+		)
+		require.Equal(
+			t,
+			uint64(1),
+			inst.aggMetricsByStreamAndLevel[lbs3.String()]["error"].count,
+		)
+	},
+	)
 
 	t.Run("downsamples aggregated metrics", func(t *testing.T) {
 		inst, mockWriter := setup()
@@ -290,7 +312,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 				uint64(17),
 				uint64(1),
 				"baz_service",
-				lbs3WithLevel,
+				lbs3,
 			),
 			labels.New(
 				labels.Label{Name: loghttp_push.AggregatedMetricLabel, Value: "baz_service"},
@@ -298,7 +320,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 			),
 		)
 
-		require.Equal(t, 0, len(inst.aggMetricsByStream))
+		require.Equal(t, 0, len(inst.aggMetricsByStreamAndLevel))
 	})
 }
 
