@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/ring"
@@ -263,9 +264,18 @@ func (i *instance) Observe(stream string, entries []logproto.Entry) {
 
 		if !ok {
 			streamMetrics = make(map[string]*aggregatedMetrics, len(distributor.LogLevels))
-			for _, level := range distributor.LogLevels {
-				streamMetrics[level] = &aggregatedMetrics{}
+			for _, l := range distributor.LogLevels {
+				streamMetrics[l] = &aggregatedMetrics{}
 			}
+		}
+
+		if _, ok := streamMetrics[lvl]; !ok {
+			level.Error(i.logger).Log(
+				"msg", "unable to observe stream, unknown log level",
+				"level", lvl,
+				"stream", stream,
+			)
+			continue
 		}
 
 		streamMetrics[lvl].bytes += uint64(len(entry.Line))
