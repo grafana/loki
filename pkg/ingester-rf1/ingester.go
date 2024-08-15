@@ -10,7 +10,10 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"regexp"
 	"runtime/pprof"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -62,6 +65,7 @@ var (
 	compressionStats   = analytics.NewString("ingester_compression")
 	targetSizeStats    = analytics.NewInt("ingester_target_size_bytes")
 	activeTenantsStats = analytics.NewInt("ingester_active_tenants")
+	ingesterIDRegexp   = regexp.MustCompile("ingester(-rf1)-([0-9]+)")
 )
 
 // Config for an ingester.
@@ -213,9 +217,9 @@ type Ingester struct {
 
 	customStreamsTracker push.UsageTracker
 
-	// recalculateOwnedStreams periodically checks the ring for changes and recalculates owned streams for each instance.
-	readRing ring.ReadRing
-	// recalculateOwnedStreams *recalculateOwnedStreams
+	readRing                ring.ReadRing
+	ingesterPartitionID     int32
+	partitionRingLifecycler *ring.PartitionInstanceLifecycler
 }
 
 // New makes a new Ingester.
@@ -279,6 +283,9 @@ func New(cfg Config, clientConfig client.Config,
 
 	i.lifecyclerWatcher = services.NewFailureWatcher()
 	i.lifecyclerWatcher.WatchService(i.lifecycler)
+	if i.partitionRingLifecycler != nil {
+		i.lifecyclerWatcher.WatchService(i.partitionRingLifecycler)
+	}
 
 	// Now that the lifecycler has been created, we can create the limiter
 	// which depends on it.
@@ -291,6 +298,25 @@ func New(cfg Config, clientConfig client.Config,
 	// i.recalculateOwnedStreams = newRecalculateOwnedStreams(i.getInstances, i.lifecycler.ID, i.readRing, cfg.OwnedStreamsCheckInterval, util_log.Logger)
 
 	return i, nil
+}
+
+// ingesterPartitionID returns the partition ID owner the the given ingester.
+func ingesterPartitionID(ingesterID string) (int32, error) {
+	if strings.Contains(ingesterID, "local") {
+		return 0, nil
+	}
+
+	match := ingesterIDRegexp.FindStringSubmatch(ingesterID)
+	if len(match) == 0 {
+		return 0, fmt.Errorf("ingester ID %s doesn't match regular expression %q", ingesterID, ingesterIDRegexp.String())
+	}
+	// Parse the ingester sequence number.
+	ingesterSeq, err := strconv.Atoi(match[1])
+	if err != nil {
+		return 0, fmt.Errorf("no ingester sequence number in ingester ID %s", ingesterID)
+	}
+
+	return int32(ingesterSeq), nil
 }
 
 // setupAutoForget looks for ring status if `AutoForgetUnhealthy` is enabled
@@ -398,11 +424,6 @@ func (i *Ingester) starting(ctx context.Context) error {
 	//if err != nil {
 	//	return fmt.Errorf("can not start recalculate owned streams service: %w", err)
 	//}
-
-	err = i.lifecycler.AwaitRunning(ctx)
-	if err != nil {
-		return fmt.Errorf("can not ensure recalculate owned streams service is running: %w", err)
-	}
 
 	go i.periodicStreamMaintenance()
 	return nil

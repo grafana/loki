@@ -30,6 +30,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/loki/v3/pkg/ingester-kafka/kafka"
+	"github.com/grafana/loki/v3/pkg/ingester-kafka/partitionring"
+
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloombuild"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
@@ -39,6 +42,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
+	ingesterkafka "github.com/grafana/loki/v3/pkg/ingester-kafka"
+	"github.com/grafana/loki/v3/pkg/ingester-kafka/kafka"
+	"github.com/grafana/loki/v3/pkg/ingester-kafka/partitionring"
 	ingester_rf1 "github.com/grafana/loki/v3/pkg/ingester-rf1"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore"
 	metastoreclient "github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/client"
@@ -94,7 +100,7 @@ type Config struct {
 	IngesterClient      ingester_client.Config     `yaml:"ingester_client,omitempty"`
 	IngesterRF1Client   ingester_client.Config     `yaml:"ingester_rf1_client,omitempty"`
 	Ingester            ingester.Config            `yaml:"ingester,omitempty"`
-	IngesterRF1         ingester_rf1.Config        `yaml:"ingester_rf1,omitempty"`
+	IngesterRF1         ingester_rf1.Config        `yaml:"ingester_rf1,omitempty" category:"experimental"`
 	Pattern             pattern.Config             `yaml:"pattern_ingester,omitempty"`
 	IndexGateway        indexgateway.Config        `yaml:"index_gateway"`
 	BloomBuild          bloombuild.Config          `yaml:"bloom_build,omitempty" category:"experimental"`
@@ -111,6 +117,9 @@ type Config struct {
 	MemberlistKV        memberlist.KVConfig        `yaml:"memberlist"`
 	Metastore           metastore.Config           `yaml:"metastore,omitempty"`
 	MetastoreClient     metastoreclient.Config     `yaml:"metastore_client"`
+	PartitionRingConfig partitionring.Config       `yaml:"partition_ring,omitempty" category:"experimental"`
+	KafkaConfig         kafka.Config               `yaml:"kafka_ingester,omitempty" category:"experimental"`
+	KafkaIngester       ingesterkafka.Config       `yaml:"kafka_ingester,omitempty" category:"experimental"`
 
 	RuntimeConfig     runtimeconfig.Config `yaml:"runtime_config,omitempty"`
 	OperationalConfig runtime.Config       `yaml:"operational_config,omitempty"`
@@ -193,6 +202,9 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Profiling.RegisterFlags(f)
 	c.Metastore.RegisterFlags(f)
 	c.MetastoreClient.RegisterFlags(f)
+	c.PartitionRingConfig.RegisterFlags(f)
+	c.KafkaConfig.RegisterFlags(f)
+	c.KafkaIngester.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -373,6 +385,9 @@ type Loki struct {
 	usageReport               *analytics.Reporter
 	indexGatewayRingManager   *lokiring.RingManager
 	MetastoreClient           *metastoreclient.Client
+	partitionRingWatcher      *ring.PartitionRingWatcher
+	partitionRing             *ring.PartitionInstanceRing
+	kafkaIngester             *ingesterkafka.Ingester
 
 	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -676,6 +691,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(IngesterRF1, t.initIngesterRF1)
+	mm.RegisterModule(IngesterKafka, t.initKafkaIngester)
 	mm.RegisterModule(IngesterRF1RingClient, t.initIngesterRF1RingClient, modules.UserInvisibleModule)
 	mm.RegisterModule(IngesterQuerier, t.initIngesterQuerier)
 	mm.RegisterModule(IngesterGRPCInterceptors, t.initIngesterGRPCInterceptors, modules.UserInvisibleModule)
@@ -702,6 +718,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(PatternIngester, t.initPatternIngester)
 	mm.RegisterModule(Metastore, t.initMetastore)
 	mm.RegisterModule(MetastoreClient, t.initMetastoreClient, modules.UserInvisibleModule)
+	mm.RegisterModule(PartitionRing, t.initPartitionRing, modules.UserInvisibleModule)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -715,9 +732,10 @@ func (t *Loki) setupModuleManager() error {
 		Overrides:                {RuntimeConfig},
 		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
-		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, IngesterRF1RingClient, Analytics},
+		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, IngesterRF1RingClient, Analytics, PartitionRing},
 		Store:                    {Overrides, IndexGatewayRing},
-		IngesterRF1:              {Store, Server, MemberlistKV, TenantConfigs, MetastoreClient, Analytics},
+		IngesterRF1:              {Store, Server, MemberlistKV, TenantConfigs, MetastoreClient, Analytics, PartitionRing},
+		IngesterKafka:            {PartitionRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics},
 		Querier:                  {Store, Ring, Server, IngesterQuerier, PatternRingClient, MetastoreClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
@@ -740,13 +758,14 @@ func (t *Loki) setupModuleManager() error {
 		IngesterQuerier:          {Ring},
 		QuerySchedulerRing:       {Overrides, MemberlistKV},
 		IndexGatewayRing:         {Overrides, MemberlistKV},
+		PartitionRing:            {MemberlistKV, Server, Ring},
 		MemberlistKV:             {Server},
 
 		Read:    {QueryFrontend, Querier},
-		Write:   {Ingester, IngesterRF1, Distributor, PatternIngester},
+		Write:   {Ingester, IngesterRF1, Distributor, PatternIngester, IngesterKafka},
 		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway, BloomGateway},
 
-		All: {QueryScheduler, QueryFrontend, Querier, Ingester, IngesterRF1, PatternIngester, Distributor, Ruler, Compactor, Metastore},
+		All: {QueryScheduler, QueryFrontend, Querier, Ingester, IngesterRF1, PatternIngester, Distributor, Ruler, Compactor, Metastore, IngesterKafka},
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {

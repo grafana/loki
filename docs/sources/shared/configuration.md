@@ -423,6 +423,43 @@ ingester_rf1:
     # pattern-ingester.client
     [grpc_client_config: <grpc_client>]
 
+  partition_ring:
+    # The key-value store used to share the hash ring across multiple instances.
+    # This option needs be set on ingesters, distributors, queriers, and rulers
+    # when running in microservices mode.
+    kvstore:
+      [store: <string> | default = ""]
+
+      [prefix: <string> | default = ""]
+
+      # Configuration for a Consul client. Only applies if the selected kvstore
+      # is consul.
+      # The CLI flags prefix for this block configuration is: pattern-ingester
+      [consul: <consul>]
+
+      # Configuration for an ETCD v3 client. Only applies if the selected
+      # kvstore is etcd.
+      # The CLI flags prefix for this block configuration is: pattern-ingester
+      [etcd: <etcd>]
+
+      multi:
+        [primary: <string> | default = ""]
+
+        [secondary: <string> | default = ""]
+
+        [mirror_enabled: <boolean>]
+
+        [mirror_timeout: <duration>]
+
+    [min_partition_owners_count: <int>]
+
+    [min_partition_owners_duration: <duration>]
+
+    [delete_inactive_partition_after: <duration>]
+
+  kafkaconfig:
+    [enabled: <boolean>]
+
 pattern_ingester:
   # Whether the pattern ingester is enabled.
   # CLI flag: -pattern-ingester.enabled
@@ -444,12 +481,14 @@ pattern_ingester:
 
         # Configuration for a Consul client. Only applies if the selected
         # kvstore is consul.
-        # The CLI flags prefix for this block configuration is: pattern-ingester
+        # The CLI flags prefix for this block configuration is:
+        # index-gateway.ring
         [consul: <consul>]
 
         # Configuration for an ETCD v3 client. Only applies if the selected
         # kvstore is etcd.
-        # The CLI flags prefix for this block configuration is: pattern-ingester
+        # The CLI flags prefix for this block configuration is:
+        # index-gateway.ring
         [etcd: <etcd>]
 
         multi:
@@ -1022,6 +1061,69 @@ metastore_client:
 
   # Configures the gRPC client used to communicate with the metastore.
   [grpc_client_config: <grpc_client>]
+
+partition_ring:
+  # The key-value store used to share the hash ring across multiple instances.
+  # This option needs be set on ingesters, distributors, queriers, and rulers
+  # when running in microservices mode.
+  kvstore:
+    # Backend storage to use for the ring. Supported values are: consul, etcd,
+    # inmemory, memberlist, multi.
+    # CLI flag: -ingester.partition-ring.store
+    [store: <string> | default = "memberlist"]
+
+    # The prefix for the keys in the store. Should end with a /.
+    # CLI flag: -ingester.partition-ring.prefix
+    [prefix: <string> | default = "collectors/"]
+
+    # Configuration for a Consul client. Only applies if the selected kvstore is
+    # consul.
+    # The CLI flags prefix for this block configuration is: common.storage.ring
+    [consul: <consul>]
+
+    # Configuration for an ETCD v3 client. Only applies if the selected kvstore
+    # is etcd.
+    # The CLI flags prefix for this block configuration is: common.storage.ring
+    [etcd: <etcd>]
+
+    multi:
+      # Primary backend storage used by multi-client.
+      # CLI flag: -ingester.partition-ring.multi.primary
+      [primary: <string> | default = ""]
+
+      # Secondary backend storage used by multi-client.
+      # CLI flag: -ingester.partition-ring.multi.secondary
+      [secondary: <string> | default = ""]
+
+      # Mirror writes to secondary store.
+      # CLI flag: -ingester.partition-ring.multi.mirror-enabled
+      [mirror_enabled: <boolean> | default = false]
+
+      # Timeout for storing value to secondary store.
+      # CLI flag: -ingester.partition-ring.multi.mirror-timeout
+      [mirror_timeout: <duration> | default = 2s]
+
+  # Minimum number of owners to wait before a PENDING partition gets switched to
+  # ACTIVE.
+  # CLI flag: -ingester.partition-ring.min-partition-owners-count
+  [min_partition_owners_count: <int> | default = 1]
+
+  # How long the minimum number of owners are enforced before a PENDING
+  # partition gets switched to ACTIVE.
+  # CLI flag: -ingester.partition-ring.min-partition-owners-duration
+  [min_partition_owners_duration: <duration> | default = 10s]
+
+  # How long to wait before an INACTIVE partition is eligible for deletion. The
+  # partition is deleted only if it has been in INACTIVE state for at least the
+  # configured duration and it has no owners registered. A value of 0 disables
+  # partitions deletion.
+  # CLI flag: -ingester.partition-ring.delete-inactive-partition-after
+  [delete_inactive_partition_after: <duration> | default = 13h]
+
+kafka_ingester:
+  # enables the use of the Kafka ingest path
+  # CLI flag: -enabled
+  [enabled: <boolean> | default = false]
 
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
@@ -1975,12 +2077,10 @@ ring:
 
     # Configuration for a Consul client. Only applies if the selected kvstore is
     # consul.
-    # The CLI flags prefix for this block configuration is: common.storage.ring
     [consul: <consul>]
 
     # Configuration for an ETCD v3 client. Only applies if the selected kvstore
     # is etcd.
-    # The CLI flags prefix for this block configuration is: common.storage.ring
     [etcd: <etcd>]
 
     multi:
@@ -2154,12 +2254,14 @@ compactor_ring:
 
     # Configuration for a Consul client. Only applies if the selected kvstore is
     # consul.
-    # The CLI flags prefix for this block configuration is: compactor.ring
+    # The CLI flags prefix for this block configuration is:
+    # ingester.partition-ring
     [consul: <consul>]
 
     # Configuration for an ETCD v3 client. Only applies if the selected kvstore
     # is etcd.
-    # The CLI flags prefix for this block configuration is: compactor.ring
+    # The CLI flags prefix for this block configuration is:
+    # ingester.partition-ring
     [etcd: <etcd>]
 
     multi:
@@ -2243,6 +2345,7 @@ Configuration for a Consul client. Only applies if the selected kvstore is `cons
 - `distributor.ring`
 - `index-gateway.ring`
 - `ingester-rf1`
+- `ingester.partition-ring`
 - `pattern-ingester`
 - `query-scheduler.ring`
 - `ruler.ring`
@@ -2463,6 +2566,7 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 - `distributor.ring`
 - `index-gateway.ring`
 - `ingester-rf1`
+- `ingester.partition-ring`
 - `pattern-ingester`
 - `query-scheduler.ring`
 - `ruler.ring`
@@ -2929,12 +3033,12 @@ ring:
 
     # Configuration for a Consul client. Only applies if the selected kvstore is
     # consul.
-    # The CLI flags prefix for this block configuration is: index-gateway.ring
+    # The CLI flags prefix for this block configuration is: compactor.ring
     [consul: <consul>]
 
     # Configuration for an ETCD v3 client. Only applies if the selected kvstore
     # is etcd.
-    # The CLI flags prefix for this block configuration is: index-gateway.ring
+    # The CLI flags prefix for this block configuration is: compactor.ring
     [etcd: <etcd>]
 
     multi:
@@ -3298,16 +3402,26 @@ The `ingester_client` block configures how the distributor will connect to inges
 ```yaml
 # Configures how connections are pooled.
 pool_config:
-  [client_cleanup_period: <duration>]
+  # How frequently to clean up clients for ingesters that have gone away.
+  # CLI flag: -distributor.client-cleanup-period
+  [client_cleanup_period: <duration> | default = 15s]
 
-  [health_check_ingesters: <boolean>]
+  # Run a health check on each ingester client during periodic cleanup.
+  # CLI flag: -distributor.health-check-ingesters
+  [health_check_ingesters: <boolean> | default = true]
 
-  [remote_timeout: <duration>]
+  # How quickly a dead client will be removed after it has been detected to
+  # disappear. Set this to a value to allow time for a secondary health check to
+  # recover the missing client.
+  # CLI flag: -ingester.client.healthcheck-timeout
+  [remote_timeout: <duration> | default = 1s]
 
-[remote_timeout: <duration>]
+# The remote request timeout on the client side.
+# CLI flag: -ingester.client.timeout
+[remote_timeout: <duration> | default = 5s]
 
 # Configures how the gRPC connection to ingesters work as a client.
-# The CLI flags prefix for this block configuration is: ingester-rf1.client
+# The CLI flags prefix for this block configuration is: ingester.client
 [grpc_client_config: <grpc_client>]
 ```
 
