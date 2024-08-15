@@ -301,7 +301,10 @@ func (i *instance) Downsample(now model.Time) {
 		}
 
 		for level, metrics := range metricsByLevel {
-			i.writeAggregatedMetrics(now, lbls, level, metrics.bytes, metrics.count)
+			// we start with an empty bucket for each level, so only write if we have metrics
+			if metrics.count > 0 {
+				i.writeAggregatedMetrics(now, lbls, level, metrics.bytes, metrics.count)
+			}
 		}
 	}
 }
