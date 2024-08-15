@@ -152,7 +152,7 @@ func (f *fakeRingClient) Ring() ring.ReadRing {
 	return f.ring
 }
 
-func (f *fakeRingClient) GetClientFor(addr string) (ring_client.PoolClient, error) {
+func (f *fakeRingClient) GetClientFor(_ string) (ring_client.PoolClient, error) {
 	return f.poolClient, nil
 }
 
@@ -261,7 +261,7 @@ func (m *mockPoolClient) Push(
 ) (*push.PushResponse, error) {
 	m.ctx = ctx
 	m.req = in
-	args := m.Called(ctx, in)
+	args := m.Called(ctx, in, opts)
 	return args.Get(0).(*push.PushResponse), args.Error(1)
 }
 
@@ -270,7 +270,8 @@ func (m *mockPoolClient) Query(
 	in *logproto.QueryPatternsRequest,
 	opts ...grpc.CallOption,
 ) (logproto.Pattern_QueryClient, error) {
-	panic("not implemented")
+	args := m.Called(ctx, in, opts)
+	return args.Get(0).(logproto.Pattern_QueryClient), args.Error(1)
 }
 
 func (m *mockPoolClient) Check(
@@ -278,7 +279,8 @@ func (m *mockPoolClient) Check(
 	in *grpc_health_v1.HealthCheckRequest,
 	opts ...grpc.CallOption,
 ) (*grpc_health_v1.HealthCheckResponse, error) {
-	panic("not implemented")
+	args := m.Called(ctx, in, opts)
+	return args.Get(0).(*grpc_health_v1.HealthCheckResponse), args.Error(1)
 }
 
 func (m *mockPoolClient) Watch(
@@ -286,9 +288,11 @@ func (m *mockPoolClient) Watch(
 	in *grpc_health_v1.HealthCheckRequest,
 	opts ...grpc.CallOption,
 ) (grpc_health_v1.Health_WatchClient, error) {
-	panic("not implemented")
+	args := m.Called(ctx, in, opts)
+	return args.Get(0).(grpc_health_v1.Health_WatchClient), args.Error(1)
 }
 
 func (m *mockPoolClient) Close() error {
-	panic("not implemented")
+	args := m.Called()
+	return args.Error(0)
 }

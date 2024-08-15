@@ -41,7 +41,7 @@ type Config struct {
 	MaxClusters       int                   `yaml:"max_clusters,omitempty" doc:"description=The maximum number of detected pattern clusters that can be created by streams."`
 	MaxEvictionRatio  float64               `yaml:"max_eviction_ratio,omitempty" doc:"description=The maximum eviction ratio of patterns per stream. Once that ratio is reached, the stream will throttled pattern detection."`
 	MetricAggregation aggregation.Config    `yaml:"metric_aggregation,omitempty" doc:"description=Configures the metric aggregation and storage behavior of the pattern ingester."`
-	TeeConfig         PatternTeeConfig      `yaml:"tee_config,omitempty" doc:"description=Configures the pattern tee which forwards requests to the pattern ingester."`
+	TeeConfig         TeeConfig             `yaml:"tee_config,omitempty" doc:"description=Configures the pattern tee which forwards requests to the pattern ingester."`
 	ConnectionTimeout time.Duration         `yaml:"connection_timeout"`
 
 	// For testing.
@@ -87,13 +87,13 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	)
 	fs.DurationVar(
 		&cfg.ConnectionTimeout,
-		"tee.connection-timeout",
+		"pattern-ingester.connection-timeout",
 		2*time.Second,
 		"Timeout for connections between the Loki and the pattern ingester.",
 	)
 }
 
-type PatternTeeConfig struct {
+type TeeConfig struct {
 	BatchSize          int           `yaml:"batch_size"`
 	BatchFlushInterval time.Duration `yaml:"batch_flush_interval"`
 	FlushQueueSize     int           `yaml:"flush_queue_size"`
@@ -101,34 +101,34 @@ type PatternTeeConfig struct {
 	StopFlushTimeout   time.Duration `yaml:"stop_flush_timeout"`
 }
 
-func (cfg *PatternTeeConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
+func (cfg *TeeConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
 	f.IntVar(
 		&cfg.BatchSize,
-		"tee.batch-size",
+		prefix+"tee.batch-size",
 		5000,
 		"The size of the batch of raw logs to send for template mining",
 	)
 	f.DurationVar(
 		&cfg.BatchFlushInterval,
-		"tee.batch-flush-interval",
+		prefix+"tee.batch-flush-interval",
 		time.Second,
 		"The max time between batches of raw logs to send for template mining",
 	)
 	f.IntVar(
 		&cfg.FlushQueueSize,
-		"tee.flush-queue-size",
+		prefix+"tee.flush-queue-size",
 		1000,
 		"The number of log flushes to queue before dropping",
 	)
 	f.IntVar(
 		&cfg.FlushWorkerCount,
-		"logs-tee.flush-worker-count",
+		prefix+"tee.flush-worker-count",
 		100,
 		"the number of concurrent workers sending logs to the template service",
 	)
 	f.DurationVar(
 		&cfg.StopFlushTimeout,
-		"tee.stop-flush-timeout",
+		prefix+"tee.stop-flush-timeout",
 		30*time.Second,
 		"The max time we will try to flush any remaining logs to be mined when the service is stopped",
 	)

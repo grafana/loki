@@ -788,28 +788,28 @@ pattern_ingester:
   # Configures the pattern tee which forwards requests to the pattern ingester.
   tee_config:
     # The size of the batch of raw logs to send for template mining
-    # CLI flag: -tee.batch-size
+    # CLI flag: -pattern-ingester.tee.batch-size
     [batch_size: <int> | default = 5000]
 
     # The max time between batches of raw logs to send for template mining
-    # CLI flag: -tee.batch-flush-interval
+    # CLI flag: -pattern-ingester.tee.batch-flush-interval
     [batch_flush_interval: <duration> | default = 1s]
 
     # The number of log flushes to queue before dropping
-    # CLI flag: -tee.flush-queue-size
+    # CLI flag: -pattern-ingester.tee.flush-queue-size
     [flush_queue_size: <int> | default = 1000]
 
     # the number of concurrent workers sending logs to the template service
-    # CLI flag: -logs-tee.flush-worker-count
+    # CLI flag: -pattern-ingester.tee.flush-worker-count
     [flush_worker_count: <int> | default = 100]
 
     # The max time we will try to flush any remaining logs to be mined when the
     # service is stopped
-    # CLI flag: -tee.stop-flush-timeout
+    # CLI flag: -pattern-ingester.tee.stop-flush-timeout
     [stop_flush_timeout: <duration> | default = 30s]
 
   # Timeout for connections between the Loki and the pattern ingester.
-  # CLI flag: -tee.connection-timeout
+  # CLI flag: -pattern-ingester.connection-timeout
   [connection_timeout: <duration> | default = 2s]
 
 # The index_gateway block configures the Loki index gateway server, responsible

@@ -10,11 +10,12 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/user"
-	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 func getTestTee(t *testing.T) (*TeeService, *mockPoolClient) {

@@ -366,7 +366,7 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 				ts.ingesterMetricAppends.WithLabelValues("fail").Inc()
 				level.Error(ts.logger).Log(
 					"msg", "failed to send metrics to fallback pattern ingesters. exhausted all fallback instances",
-					"addressess", strings.Join(fallbackAddrs, ", "),
+					"addresses", strings.Join(fallbackAddrs, ", "),
 					"err", err,
 				)
 				return err
@@ -375,8 +375,8 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 }
 
 // Duplicate Implements distributor.Tee which is used to tee distributor requests to pattern ingesters.
-func (t *TeeService) Duplicate(tenant string, streams []distributor.KeyedStream) {
-	if !t.cfg.Enabled {
+func (ts *TeeService) Duplicate(tenant string, streams []distributor.KeyedStream) {
+	if !ts.cfg.Enabled {
 		return
 	}
 
@@ -387,14 +387,14 @@ func (t *TeeService) Duplicate(tenant string, streams []distributor.KeyedStream)
 	for _, stream := range streams {
 		lbls, err := syntax.ParseLabels(stream.Stream.Labels)
 		if err != nil || lbls.Has(push.AggregatedMetricLabel) {
-			level.Error(t.logger).
+			level.Error(ts.logger).
 				Log("msg", "error parsing stream labels", "labels", stream.Stream.Labels, "err", err)
 
 			continue
 		}
 
-		t.buffersMutex.Lock()
-		t.buffers[tenant] = append(t.buffers[tenant], stream)
-		t.buffersMutex.Unlock()
+		ts.buffersMutex.Lock()
+		ts.buffers[tenant] = append(ts.buffers[tenant], stream)
+		ts.buffersMutex.Unlock()
 	}
 }
