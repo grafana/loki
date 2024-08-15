@@ -1,6 +1,7 @@
 package tokenization
 
 import (
+	"bytes"
 	"unsafe"
 )
 
@@ -28,7 +29,7 @@ type tokenizer struct {
 	tokens []string
 }
 
-func (t *tokenizer) countOrSaveToken(endTokenPos int) {
+func (t *tokenizer) countOrSaveToken(endTokenPos, skip int) {
 	if t.tokens != nil {
 		// Intentionally written like this and not with append(), so this can
 		// panic if we ever exceed the preallocated slice size, since that means
@@ -36,7 +37,7 @@ func (t *tokenizer) countOrSaveToken(endTokenPos int) {
 		t.tokens[t.tokenCount] = t.line[t.tpos:endTokenPos]
 	}
 	t.tokenCount++
-	t.tpos = endTokenPos
+	t.tpos = endTokenPos + skip
 }
 
 func (t *tokenizer) handleNextToken() bool {
@@ -54,7 +55,7 @@ func (t *tokenizer) handleNextToken() bool {
 		// outside of a quoted string.
 		case escaped:
 			if curQuotePos < 0 && delimiters[c] {
-				t.countOrSaveToken(p + 1)
+				t.countOrSaveToken(p, 1)
 				return true
 			} else {
 				escaped = false
@@ -88,7 +89,7 @@ func (t *tokenizer) handleNextToken() bool {
 		// If we encounter a delimiter outside of a quote, count or save the
 		// token and skip the delimiter.
 		case delimiters[c]:
-			t.countOrSaveToken(p + 1)
+			t.countOrSaveToken(p, 1)
 			return true
 
 		// Handle likely JSON object keys that have been serialized without
@@ -107,11 +108,11 @@ func (t *tokenizer) handleNextToken() bool {
 		// wasn't a delimiter right before the comma.
 		case t.maybeJSON && p > t.tpos && (c == ':' || c == ',') && p+1 < lineLen:
 			if c == ':' && t.line[p-1] == '"' && !delimiters[t.line[p+1]] {
-				t.countOrSaveToken(p + 1)
+				t.countOrSaveToken(p+1, 0)
 				return true
 			}
 			if c == ',' && t.line[p+1] == '"' {
-				t.countOrSaveToken(p)
+				t.countOrSaveToken(p, 0)
 				return true
 			}
 		}
@@ -125,12 +126,12 @@ func (t *tokenizer) handleNextToken() bool {
 	// unterminated quote and the quote itself as a single token, and continue
 	// fairly normally from there.
 	if curQuotePos > 0 {
-		t.countOrSaveToken(curQuotePos + 1)
+		t.countOrSaveToken(curQuotePos+1, 0)
 		return true
 	}
 
 	if t.tpos < len(t.line) {
-		t.countOrSaveToken(len(t.line))
+		t.countOrSaveToken(len(t.line), 0)
 		return true
 	}
 
@@ -192,6 +193,8 @@ func (t *tokenizer) tokenize() []string {
 }
 
 func PreprocessAndTokenize(content []byte) []string {
+	content = bytes.TrimSpace(content)
+
 	t := tokenizer{rawLine: content, maxTokens: 100} // TODO: parametrize maxTokens
 
 	return t.tokenize()
