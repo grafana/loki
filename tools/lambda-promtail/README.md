@@ -26,7 +26,7 @@ If you want to modify the lambda-promtail code you will also need:
 
 The provided Makefile has targets `build`, and `clean`.
 
-`build` builds the lambda-promtail as a Go static binary. To build the container image properly you should run `docker build . -f tools/lambda-promtail/Dockerfile` from the root of the Loki repository, you can upload this image to your AWS ECR and use via Lambda or if you don't pass a `lambda_promtail_image` value, the terraform will build it from the Loki reposiroty, zip it and use it via Lambda. `clean` will remove the built Go binary.
+`build` builds the lambda-promtail as a Go static binary. To build the container image properly you should run `docker build . -f tools/lambda-promtail/Dockerfile` from the root of the Loki repository, you can upload this image to your AWS ECR and use via Lambda or if you don't pass a `lambda_promtail_image` value, the terraform will build it from the Loki repository, zip it and use it via Lambda. `clean` will remove the built Go binary.
 
 ### Packaging and deployment
 
