@@ -633,7 +633,7 @@ pattern_ingester:
 
     # How long to wait in between pushes to Loki.
     # CLI flag: -pattern-ingester.metric-aggregation.push-period
-    [push_period: <duration> | default = 1m]
+    [push_period: <duration> | default = 30s]
 
     # The HTTP client configuration for pushing metrics to Loki.
     http_client_config:
@@ -785,15 +785,32 @@ pattern_ingester:
       # CLI flag: -pattern-ingester.metric-aggregation.backoff-retries
       [max_retries: <int> | default = 10]
 
-  # The number of parallel goroutines to use for forwarding requests to the
-  # pattern ingester.
-  # CLI flag: -pattern-ingester.tee-parallelism
-  [tee_parallelism: <int> | default = 5]
+  # Configures the pattern tee which forwards requests to the pattern ingester.
+  tee_config:
+    # The size of the batch of raw logs to send for template mining
+    # CLI flag: -tee.batch-size
+    [batch_size: <int> | default = 5000]
 
-  # Maxiumum number of pending teed request to pattern ingesters. If the queue
-  # is full the request is dropped.
-  # CLI flag: -pattern-ingester.tee-queue-size
-  [tee_queue_size: <int> | default = 100]
+    # The max time between batches of raw logs to send for template mining
+    # CLI flag: -tee.batch-flush-interval
+    [batch_flush_interval: <duration> | default = 1s]
+
+    # The number of log flushes to queue before dropping
+    # CLI flag: -tee.flush-queue-size
+    [flush_queue_size: <int> | default = 1000]
+
+    # the number of concurrent workers sending logs to the template service
+    # CLI flag: -logs-tee.flush-worker-count
+    [flush_worker_count: <int> | default = 100]
+
+    # The max time we will try to flush any remaining logs to be mined when the
+    # service is stopped
+    # CLI flag: -tee.stop-flush-timeout
+    [stop_flush_timeout: <duration> | default = 30s]
+
+  # Timeout for connections between the Loki and the pattern ingester.
+  # CLI flag: -tee.connection-timeout
+  [connection_timeout: <duration> | default = 2s]
 
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
