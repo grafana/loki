@@ -501,7 +501,13 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]
 
 // IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
 func (a *S3ObjectClient) IsObjectNotFoundErr(err error) bool {
-	if aerr, ok := errors.Cause(err).(awserr.Error); ok && aerr.Code() == s3.ErrCodeNoSuchKey {
+	aerr, ok := errors.Cause(err).(awserr.Error)
+	if !ok {
+		return false
+	}
+
+	code := aerr.Code()
+	if code == s3.ErrCodeNoSuchKey || code == "NotFound" {
 		return true
 	}
 
