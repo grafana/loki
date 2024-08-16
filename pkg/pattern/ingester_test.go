@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/pattern/aggregation"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 
 	"github.com/grafana/loki/v3/pkg/pattern/drain"
 
@@ -157,7 +158,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 							Line:      "ts=1 msg=hello",
 							StructuredMetadata: push.LabelsAdapter{
 								push.LabelAdapter{
-									Name:  distributor.LevelLabel,
+									Name:  constants.LevelLabel,
 									Value: "info",
 								},
 							},
@@ -172,7 +173,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 							Line:      "ts=1 msg=hello",
 							StructuredMetadata: push.LabelsAdapter{
 								push.LabelAdapter{
-									Name:  distributor.LevelLabel,
+									Name:  constants.LevelLabel,
 									Value: "error",
 								},
 							},
@@ -187,7 +188,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 							Line:      "error error error",
 							StructuredMetadata: push.LabelsAdapter{
 								push.LabelAdapter{
-									Name:  distributor.LevelLabel,
+									Name:  constants.LevelLabel,
 									Value: "error",
 								},
 							},
@@ -207,7 +208,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 								Line:      "foo bar foo bar",
 								StructuredMetadata: push.LabelsAdapter{
 									push.LabelAdapter{
-										Name:  distributor.LevelLabel,
+										Name:  constants.LevelLabel,
 										Value: "info",
 									},
 								},
@@ -222,7 +223,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 								Line:      "foo bar foo bar",
 								StructuredMetadata: push.LabelsAdapter{
 									push.LabelAdapter{
-										Name:  distributor.LevelLabel,
+										Name:  constants.LevelLabel,
 										Value: "error",
 									},
 								},

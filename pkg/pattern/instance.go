@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/pattern/drain"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
 
@@ -255,17 +256,17 @@ func (i *instance) Observe(stream string, entries []logproto.Entry) {
 	defer i.aggMetricsLock.Unlock()
 
 	for _, entry := range entries {
-		lvl := distributor.LogLevelUnknown
+		lvl := constants.LogLevelUnknown
 		structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
-		if structuredMetadata.Has(distributor.LevelLabel) {
-			lvl = strings.ToLower(structuredMetadata.Get(distributor.LevelLabel))
+		if structuredMetadata.Has(constants.LevelLabel) {
+			lvl = strings.ToLower(structuredMetadata.Get(constants.LevelLabel))
 		}
 
 		streamMetrics, ok := i.aggMetricsByStreamAndLevel[stream]
 
 		if !ok {
-			streamMetrics = make(map[string]*aggregatedMetrics, len(distributor.LogLevels))
-			for _, l := range distributor.LogLevels {
+			streamMetrics = make(map[string]*aggregatedMetrics, len(constants.LogLevels))
+			for _, l := range constants.LogLevels {
 				streamMetrics[l] = &aggregatedMetrics{}
 			}
 		}
@@ -277,7 +278,7 @@ func (i *instance) Observe(stream string, entries []logproto.Entry) {
 				"stream", stream,
 			)
 
-			lvl = distributor.LogLevelUnknown
+			lvl = constants.LogLevelUnknown
 		}
 
 		streamMetrics[lvl].bytes += uint64(len(entry.Line))
