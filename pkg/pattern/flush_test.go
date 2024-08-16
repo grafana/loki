@@ -257,11 +257,11 @@ type mockPoolClient struct {
 func (m *mockPoolClient) Push(
 	ctx context.Context,
 	in *push.PushRequest,
-	opts ...grpc.CallOption,
+	_ ...grpc.CallOption,
 ) (*push.PushResponse, error) {
 	m.ctx = ctx
 	m.req = in
-	args := m.Called(ctx, in, opts)
+	args := m.Called(ctx, in)
 	return args.Get(0).(*push.PushResponse), args.Error(1)
 }
 

@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/user"
+
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
