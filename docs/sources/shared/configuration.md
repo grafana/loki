@@ -612,6 +612,206 @@ pattern_ingester:
   # CLI flag: -pattern-ingester.max-eviction-ratio
   [max_eviction_ratio: <float> | default = 0.25]
 
+  # Configures the metric aggregation and storage behavior of the pattern
+  # ingester.
+  metric_aggregation:
+    # Whether the pattern ingester metric aggregation is enabled.
+    # CLI flag: -pattern-ingester.metric-aggregation.enabled
+    [enabled: <boolean> | default = false]
+
+    # How often to downsample metrics from raw push observations.
+    # CLI flag: -pattern-ingester.metric-aggregation.downsample-period
+    [downsample_period: <duration> | default = 10s]
+
+    # The address of the Loki instance to push aggregated metrics to.
+    # CLI flag: -pattern-ingester.metric-aggregation.loki-address
+    [loki_address: <string> | default = ""]
+
+    # The timeout for writing to Loki.
+    # CLI flag: -pattern-ingester.metric-aggregation.timeout
+    [timeout: <duration> | default = 10s]
+
+    # How long to wait in between pushes to Loki.
+    # CLI flag: -pattern-ingester.metric-aggregation.push-period
+    [push_period: <duration> | default = 30s]
+
+    # The HTTP client configuration for pushing metrics to Loki.
+    http_client_config:
+      basic_auth:
+        [username: <string> | default = ""]
+
+        [username_file: <string> | default = ""]
+
+        [username_ref: <string> | default = ""]
+
+        [password: <string> | default = ""]
+
+        [password_file: <string> | default = ""]
+
+        [password_ref: <string> | default = ""]
+
+      authorization:
+        [type: <string> | default = ""]
+
+        [credentials: <string> | default = ""]
+
+        [credentials_file: <string> | default = ""]
+
+        [credentials_ref: <string> | default = ""]
+
+      oauth2:
+        [client_id: <string> | default = ""]
+
+        [client_secret: <string> | default = ""]
+
+        [client_secret_file: <string> | default = ""]
+
+        [client_secret_ref: <string> | default = ""]
+
+        [scopes: <list of strings>]
+
+        [token_url: <string> | default = ""]
+
+        [endpoint_params: <map of string to string>]
+
+        tls_config:
+          [ca: <string> | default = ""]
+
+          [cert: <string> | default = ""]
+
+          [key: <string> | default = ""]
+
+          [ca_file: <string> | default = ""]
+
+          [cert_file: <string> | default = ""]
+
+          [key_file: <string> | default = ""]
+
+          [ca_ref: <string> | default = ""]
+
+          [cert_ref: <string> | default = ""]
+
+          [key_ref: <string> | default = ""]
+
+          [server_name: <string> | default = ""]
+
+          [insecure_skip_verify: <boolean>]
+
+          [min_version: <int>]
+
+          [max_version: <int>]
+
+        proxy_url:
+          [url: <url>]
+
+        [no_proxy: <string> | default = ""]
+
+        [proxy_from_environment: <boolean>]
+
+        [proxy_connect_header: <map of string to list of strings>]
+
+      [bearer_token: <string> | default = ""]
+
+      [bearer_token_file: <string> | default = ""]
+
+      tls_config:
+        [ca: <string> | default = ""]
+
+        [cert: <string> | default = ""]
+
+        [key: <string> | default = ""]
+
+        [ca_file: <string> | default = ""]
+
+        [cert_file: <string> | default = ""]
+
+        [key_file: <string> | default = ""]
+
+        [ca_ref: <string> | default = ""]
+
+        [cert_ref: <string> | default = ""]
+
+        [key_ref: <string> | default = ""]
+
+        [server_name: <string> | default = ""]
+
+        [insecure_skip_verify: <boolean>]
+
+        [min_version: <int>]
+
+        [max_version: <int>]
+
+      [follow_redirects: <boolean>]
+
+      [enable_http2: <boolean>]
+
+      proxy_url:
+        [url: <url>]
+
+      [no_proxy: <string> | default = ""]
+
+      [proxy_from_environment: <boolean>]
+
+      [proxy_connect_header: <map of string to list of strings>]
+
+      http_headers:
+        [: <map of string to Header>]
+
+    # Whether to use TLS for pushing metrics to Loki.
+    # CLI flag: -pattern-ingester.metric-aggregation.tls
+    [use_tls: <boolean> | default = false]
+
+    # The basic auth configuration for pushing metrics to Loki.
+    basic_auth:
+      # Basic auth username for sending aggregations back to Loki.
+      # CLI flag: -pattern-ingester.metric-aggregation.basic-auth.username
+      [username: <string> | default = ""]
+
+      # Basic auth password for sending aggregations back to Loki.
+      # CLI flag: -pattern-ingester.metric-aggregation.basic-auth.password
+      [password: <string> | default = ""]
+
+    # The backoff configuration for pushing metrics to Loki.
+    backoff_config:
+      # Minimum delay when backing off.
+      # CLI flag: -pattern-ingester.metric-aggregation.backoff-min-period
+      [min_period: <duration> | default = 100ms]
+
+      # Maximum delay when backing off.
+      # CLI flag: -pattern-ingester.metric-aggregation.backoff-max-period
+      [max_period: <duration> | default = 10s]
+
+      # Number of times to backoff and retry before failing.
+      # CLI flag: -pattern-ingester.metric-aggregation.backoff-retries
+      [max_retries: <int> | default = 10]
+
+  # Configures the pattern tee which forwards requests to the pattern ingester.
+  tee_config:
+    # The size of the batch of raw logs to send for template mining
+    # CLI flag: -pattern-ingester.tee.batch-size
+    [batch_size: <int> | default = 5000]
+
+    # The max time between batches of raw logs to send for template mining
+    # CLI flag: -pattern-ingester.tee.batch-flush-interval
+    [batch_flush_interval: <duration> | default = 1s]
+
+    # The number of log flushes to queue before dropping
+    # CLI flag: -pattern-ingester.tee.flush-queue-size
+    [flush_queue_size: <int> | default = 1000]
+
+    # the number of concurrent workers sending logs to the template service
+    # CLI flag: -pattern-ingester.tee.flush-worker-count
+    [flush_worker_count: <int> | default = 100]
+
+    # The max time we will try to flush any remaining logs to be mined when the
+    # service is stopped
+    # CLI flag: -pattern-ingester.tee.stop-flush-timeout
+    [stop_flush_timeout: <duration> | default = 30s]
+
+  # Timeout for connections between the Loki and the pattern ingester.
+  # CLI flag: -pattern-ingester.connection-timeout
+  [connection_timeout: <duration> | default = 2s]
+
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
 # object store.

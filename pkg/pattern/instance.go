@@ -2,22 +2,31 @@ package pattern
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
+	"strings"
+	"sync"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/multierror"
+	"github.com/grafana/dskit/ring"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/ingester/index"
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/pattern/aggregation"
 	"github.com/grafana/loki/v3/pkg/pattern/drain"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
 
 const indexShards = 32
@@ -32,21 +41,45 @@ type instance struct {
 	logger     log.Logger
 	metrics    *ingesterMetrics
 	drainCfg   *drain.Config
+	ringClient RingClient
+	ingesterID string
+
+	aggMetricsLock             sync.Mutex
+	aggMetricsByStreamAndLevel map[string]map[string]*aggregatedMetrics
+
+	writer aggregation.EntryWriter
 }
 
-func newInstance(instanceID string, logger log.Logger, metrics *ingesterMetrics, drainCfg *drain.Config) (*instance, error) {
+type aggregatedMetrics struct {
+	bytes uint64
+	count uint64
+}
+
+func newInstance(
+	instanceID string,
+	logger log.Logger,
+	metrics *ingesterMetrics,
+	drainCfg *drain.Config,
+	ringClient RingClient,
+	ingesterID string,
+	writer aggregation.EntryWriter,
+) (*instance, error) {
 	index, err := index.NewBitPrefixWithShards(indexShards)
 	if err != nil {
 		return nil, err
 	}
 	i := &instance{
-		buf:        make([]byte, 0, 1024),
-		logger:     logger,
-		instanceID: instanceID,
-		streams:    newStreamsMap(),
-		index:      index,
-		metrics:    metrics,
-		drainCfg:   drainCfg,
+		buf:                        make([]byte, 0, 1024),
+		logger:                     logger,
+		instanceID:                 instanceID,
+		streams:                    newStreamsMap(),
+		index:                      index,
+		metrics:                    metrics,
+		drainCfg:                   drainCfg,
+		ringClient:                 ringClient,
+		ingesterID:                 ingesterID,
+		aggMetricsByStreamAndLevel: make(map[string]map[string]*aggregatedMetrics),
+		writer:                     writer,
 	}
 	i.mapper = ingester.NewFPMapper(i.getLabelsFromFingerprint)
 	return i, nil
@@ -58,25 +91,67 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	appendErr := multierror.New()
 
 	for _, reqStream := range req.Streams {
-		if reqStream.Entries == nil || len(reqStream.Entries) == 0 {
-			continue
-		}
-		s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
-			func() (*stream, error) {
-				// add stream
-				return i.createStream(ctx, reqStream)
-			}, nil)
+		// All streams are observed for metrics
+		// TODO(twhitney): this would be better as a queue that drops in response to backpressure
+		i.Observe(reqStream.Labels, reqStream.Entries)
+
+		// But only owned streamed are processed for patterns
+		ownedStream, err := i.isOwnedStream(i.ingesterID, reqStream.Labels)
 		if err != nil {
 			appendErr.Add(err)
-			continue
 		}
-		err = s.Push(ctx, reqStream.Entries)
-		if err != nil {
-			appendErr.Add(err)
-			continue
+
+		if ownedStream {
+			if reqStream.Entries == nil || len(reqStream.Entries) == 0 {
+				continue
+			}
+			s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
+				func() (*stream, error) {
+					// add stream
+					return i.createStream(ctx, reqStream)
+				}, nil)
+			if err != nil {
+				appendErr.Add(err)
+				continue
+			}
+			err = s.Push(ctx, reqStream.Entries)
+			if err != nil {
+				appendErr.Add(err)
+				continue
+			}
 		}
 	}
+
 	return appendErr.Err()
+}
+
+func (i *instance) isOwnedStream(ingesterID string, stream string) (bool, error) {
+	var descs [1]ring.InstanceDesc
+	replicationSet, err := i.ringClient.Ring().Get(
+		lokiring.TokenFor(i.instanceID, stream),
+		ring.WriteNoExtend,
+		descs[:0],
+		nil,
+		nil,
+	)
+	if err != nil {
+		return false, fmt.Errorf(
+			"error getting replication set for stream %s: %v",
+			stream,
+			err,
+		)
+	}
+
+	if replicationSet.Instances == nil {
+		return false, errors.New("no instances found")
+	}
+
+	for _, instanceDesc := range replicationSet.Instances {
+		if instanceDesc.Id == ingesterID {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // Iterator returns an iterator of pattern samples matching the given query patterns request.
@@ -172,5 +247,91 @@ func (i *instance) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels 
 func (i *instance) removeStream(s *stream) {
 	if i.streams.Delete(s) {
 		i.index.Delete(s.labels, s.fp)
+	}
+}
+
+func (i *instance) Observe(stream string, entries []logproto.Entry) {
+	i.aggMetricsLock.Lock()
+	defer i.aggMetricsLock.Unlock()
+
+	for _, entry := range entries {
+		lvl := constants.LogLevelUnknown
+		structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
+		if structuredMetadata.Has(constants.LevelLabel) {
+			lvl = strings.ToLower(structuredMetadata.Get(constants.LevelLabel))
+		}
+
+		streamMetrics, ok := i.aggMetricsByStreamAndLevel[stream]
+
+		if !ok {
+			streamMetrics = make(map[string]*aggregatedMetrics, len(constants.LogLevels))
+			for _, l := range constants.LogLevels {
+				streamMetrics[l] = &aggregatedMetrics{}
+			}
+		}
+
+		if _, ok := streamMetrics[lvl]; !ok {
+			level.Warn(i.logger).Log(
+				"msg", "unknown log level while observing stream",
+				"level", lvl,
+				"stream", stream,
+			)
+
+			lvl = constants.LogLevelUnknown
+		}
+
+		streamMetrics[lvl].bytes += uint64(len(entry.Line))
+		streamMetrics[lvl].count++
+
+		i.aggMetricsByStreamAndLevel[stream] = streamMetrics
+	}
+}
+
+func (i *instance) Downsample(now model.Time) {
+	i.aggMetricsLock.Lock()
+	defer func() {
+		i.aggMetricsByStreamAndLevel = make(map[string]map[string]*aggregatedMetrics)
+		i.aggMetricsLock.Unlock()
+	}()
+
+	for stream, metricsByLevel := range i.aggMetricsByStreamAndLevel {
+		lbls, err := syntax.ParseLabels(stream)
+		if err != nil {
+			continue
+		}
+
+		for level, metrics := range metricsByLevel {
+			// we start with an empty bucket for each level, so only write if we have metrics
+			if metrics.count > 0 {
+				i.writeAggregatedMetrics(now, lbls, level, metrics.bytes, metrics.count)
+			}
+		}
+	}
+}
+
+func (i *instance) writeAggregatedMetrics(
+	now model.Time,
+	streamLbls labels.Labels,
+	level string,
+	totalBytes, totalCount uint64,
+) {
+	service := streamLbls.Get(push.LabelServiceName)
+	if service == "" {
+		service = push.ServiceUnknown
+	}
+
+	newLbls := labels.Labels{
+		labels.Label{Name: push.AggregatedMetricLabel, Value: service},
+		labels.Label{Name: "level", Value: level},
+	}
+
+	if i.writer != nil {
+		i.writer.WriteEntry(
+			now.Time(),
+			aggregation.AggregatedMetricEntry(now, totalBytes, totalCount, service, streamLbls),
+			newLbls,
+		)
+
+		i.metrics.samples.WithLabelValues(service).Inc()
 	}
 }
