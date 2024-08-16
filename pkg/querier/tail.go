@@ -87,8 +87,7 @@ func (t *Tailer) loop() {
 
 	droppedEntries := make([]loghttp.DroppedEntry, 0)
 
-	stopped := t.stopped.Load()
-	for !stopped {
+	for !t.stopped.Load() {
 		select {
 		case <-checkConnectionTicker.C:
 			// Try to reconnect dropped ingesters and connect to new ingesters
