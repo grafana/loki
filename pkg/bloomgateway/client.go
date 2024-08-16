@@ -47,6 +47,7 @@ type GRPCPool struct {
 // NewBloomGatewayGRPCPool instantiates a new pool of GRPC connections for the Bloom Gateway
 // Internally, it also instantiates a protobuf bloom gateway client and a health client.
 func NewBloomGatewayGRPCPool(address string, opts []grpc.DialOption) (*GRPCPool, error) {
+	// nolint:staticcheck // grpc.Dial() has been deprecated; we'll address it before upgrading to gRPC 2.
 	conn, err := grpc.Dial(address, opts...)
 	if err != nil {
 		return nil, errors.Wrap(err, "new grpc pool dial")

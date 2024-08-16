@@ -185,16 +185,22 @@ func (m MultiStageExpr) reorderStages() []StageExpr {
 func combineFilters(in []*LineFilterExpr) StageExpr {
 	result := in[len(in)-1]
 	for i := len(in) - 2; i >= 0; i-- {
-		leafNode(result).Left = in[i]
+		leaf := leafNode(result, in[i])
+		if leaf != nil {
+			leaf.Left = in[i]
+		}
 	}
 
 	return result
 }
 
-func leafNode(in *LineFilterExpr) *LineFilterExpr {
+func leafNode(in *LineFilterExpr, child *LineFilterExpr) *LineFilterExpr {
 	current := in
 	//nolint:revive
 	for ; current.Left != nil; current = current.Left {
+		if current == child || current.Left == child {
+			return nil
+		}
 	}
 	return current
 }
@@ -318,9 +324,14 @@ func (e *PipelineExpr) Pipeline() (log.Pipeline, error) {
 // HasFilter returns true if the pipeline contains stage that can filter out lines.
 func (e *PipelineExpr) HasFilter() bool {
 	for _, p := range e.MultiStages {
-		switch p.(type) {
-		case *LineFilterExpr, *LabelFilterExpr:
+		switch v := p.(type) {
+		case *LabelFilterExpr:
 			return true
+		case *LineFilterExpr:
+			// ignore empty matchers as they match everything
+			if !((v.Ty == log.LineMatchEqual || v.Ty == log.LineMatchRegexp) && v.Match == "") {
+				return true
+			}
 		default:
 			continue
 		}

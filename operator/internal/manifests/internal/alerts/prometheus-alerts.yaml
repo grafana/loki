@@ -175,6 +175,24 @@ groups:
     for: 15m
     labels:
       severity: warning
+  - alert: LokiDiscardedSamplesWarning
+    annotations:
+      message: |-
+        Loki in namespace {{ $labels.namespace }} is discarding samples in the "{{ $labels.tenant }}" tenant during ingestion.
+        Samples are discarded because of "{{ $labels.reason }}" at a rate of {{ .Value | humanize }} samples per second.
+      summary: Loki is discarding samples during ingestion because they fail validation.
+      runbook_url: "[[ .RunbookURL]]#Loki-Discarded-Samples-Warning"
+    expr: |
+      sum by(namespace, tenant, reason) (
+        irate(loki_discarded_samples_total{
+          reason!="rate_limited",
+          reason!="per_stream_rate_limit",
+          reason!="stream_limit"}[2m])
+      )
+      > 0
+    for: 15m
+    labels:
+      severity: warning
   - alert: LokistackSchemaUpgradesRequired
     annotations:
       message: |-

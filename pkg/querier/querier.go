@@ -3,7 +3,6 @@ package querier
 import (
 	"context"
 	"flag"
-	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -43,6 +42,8 @@ import (
 	listutil "github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 	util_validation "github.com/grafana/loki/v3/pkg/util/validation"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 const (
@@ -105,7 +106,7 @@ type Querier interface {
 	DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error)
 	Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error)
 	DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error)
-	SelectMetricSamples(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error)
+	WithPatternQuerier(patternQuerier PatterQuerier)
 }
 
 type Limits querier_limits.Limits
@@ -1040,7 +1041,6 @@ func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabel
 
 type PatterQuerier interface {
 	Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error)
-	Samples(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error)
 }
 
 func (q *SingleTenantQuerier) WithPatternQuerier(pq PatterQuerier) {
@@ -1052,22 +1052,6 @@ func (q *SingleTenantQuerier) Patterns(ctx context.Context, req *logproto.QueryP
 		return nil, httpgrpc.Errorf(http.StatusNotFound, "")
 	}
 	res, err := q.patternQuerier.Patterns(ctx, req)
-	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
-
-	return res, err
-}
-
-func (q *SingleTenantQuerier) SelectMetricSamples(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error) {
-	if q.patternQuerier == nil {
-		return nil, httpgrpc.Errorf(http.StatusNotFound, "")
-	}
-	res, err := q.patternQuerier.Samples(ctx, req)
-	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
-
 	return res, err
 }
 
@@ -1116,7 +1100,7 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 		return nil, err
 	}
 
-	detectedFields := parseDetectedFields(ctx, req.FieldLimit, streams)
+	detectedFields := parseDetectedFields(req.FieldLimit, streams)
 
 	fields := make([]*logproto.DetectedField, len(detectedFields))
 	fieldCount := 0
@@ -1209,16 +1193,39 @@ func determineType(value string) logproto.DetectedFieldType {
 	return logproto.DetectedFieldString
 }
 
-func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.Streams) map[string]*parsedFields {
+func parseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*parsedFields {
 	detectedFields := make(map[string]*parsedFields, limit)
 	fieldCount := uint32(0)
+	emtpyparser := ""
 
 	for _, stream := range streams {
-		level.Debug(spanlogger.FromContext(ctx)).Log(
-			"detected_fields", "true",
-			"msg", fmt.Sprintf("looking for detected fields in stream %d with %d lines", stream.Hash, len(stream.Entries)))
-
 		for _, entry := range stream.Entries {
+			structuredMetadata := getStructuredMetadata(entry)
+			for k, vals := range structuredMetadata {
+				df, ok := detectedFields[k]
+				if !ok && fieldCount < limit {
+					df = newParsedFields(&emtpyparser)
+					detectedFields[k] = df
+					fieldCount++
+				}
+
+				if df == nil {
+					continue
+				}
+
+				detectType := true
+				for _, v := range vals {
+					parsedFields := detectedFields[k]
+					if detectType {
+						// we don't want to determine the type for every line, so we assume the type in each stream will be the same, and re-detect the type for the next stream
+						parsedFields.DetermineType(v)
+						detectType = false
+					}
+
+					parsedFields.Insert(v)
+				}
+			}
+
 			detected, parser := parseLine(entry.Line)
 			for k, vals := range detected {
 				df, ok := detectedFields[k]
@@ -1247,15 +1254,33 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 
 					parsedFields.Insert(v)
 				}
-
-				level.Debug(spanlogger.FromContext(ctx)).Log(
-					"detected_fields", "true",
-					"msg", fmt.Sprintf("detected field %s with %d values", k, len(vals)))
 			}
 		}
 	}
 
 	return detectedFields
+}
+
+func getStructuredMetadata(entry push.Entry) map[string][]string {
+	labels := map[string]map[string]struct{}{}
+	for _, lbl := range entry.StructuredMetadata {
+		if values, ok := labels[lbl.Name]; ok {
+			values[lbl.Value] = struct{}{}
+		} else {
+			labels[lbl.Name] = map[string]struct{}{lbl.Value: {}}
+		}
+	}
+
+	result := make(map[string][]string, len(labels))
+	for lbl, values := range labels {
+		vals := make([]string, 0, len(values))
+		for v := range values {
+			vals = append(vals, v)
+		}
+		result[lbl] = vals
+	}
+
+	return result
 }
 
 func parseLine(line string) (map[string][]string, *string) {

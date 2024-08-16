@@ -40,6 +40,12 @@ func ExtractQueryTagsFromHTTP(req *http.Request) string {
 	return safeQueryTags.ReplaceAllString(tags, "_")
 }
 
+func ExtractQueryTagsFromContext(ctx context.Context) string {
+	// if the cast fails then v will be an empty string
+	v, _ := ctx.Value(QueryTagsHTTPHeader).(string)
+	return v
+}
+
 func InjectQueryTags(ctx context.Context, tags string) context.Context {
 	tags = safeQueryTags.ReplaceAllString(tags, "_")
 	return context.WithValue(ctx, QueryTagsHTTPHeader, tags)

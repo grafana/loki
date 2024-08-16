@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -15,7 +16,6 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"

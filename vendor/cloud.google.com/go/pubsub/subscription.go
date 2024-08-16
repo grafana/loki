@@ -27,6 +27,7 @@ import (
 	"cloud.google.com/go/internal/optional"
 	pb "cloud.google.com/go/pubsub/apiv1/pubsubpb"
 	"cloud.google.com/go/pubsub/internal/scheduler"
+	"github.com/google/uuid"
 	gax "github.com/googleapis/gax-go/v2"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/codes"
@@ -51,7 +52,10 @@ type Subscription struct {
 	mu            sync.Mutex
 	receiveActive bool
 
-	enableOrdering bool
+	// clientID to be used across all streaming pull connections that are created.
+	// This indicates to the server that any guarantees made for a stream that
+	// disconnected will be made for the stream that is created to replace it.
+	clientID string
 }
 
 // Subscription creates a reference to a subscription.
@@ -62,8 +66,9 @@ func (c *Client) Subscription(id string) *Subscription {
 // SubscriptionInProject creates a reference to a subscription in a given project.
 func (c *Client) SubscriptionInProject(id, projectID string) *Subscription {
 	return &Subscription{
-		c:    c,
-		name: fmt.Sprintf("projects/%s/subscriptions/%s", projectID, id),
+		c:        c,
+		name:     fmt.Sprintf("projects/%s/subscriptions/%s", projectID, id),
+		clientID: uuid.NewString(),
 	}
 }
 
@@ -1238,8 +1243,6 @@ func (s *Subscription) Receive(ctx context.Context, f func(context.Context, *Mes
 	s.mu.Unlock()
 	defer func() { s.mu.Lock(); s.receiveActive = false; s.mu.Unlock() }()
 
-	s.checkOrdering(ctx)
-
 	// TODO(hongalex): move settings check to a helper function to make it more testable
 	maxCount := s.ReceiveSettings.MaxOutstandingMessages
 	if maxCount == 0 {
@@ -1284,6 +1287,7 @@ func (s *Subscription) Receive(ctx context.Context, f func(context.Context, *Mes
 		maxOutstandingMessages: maxCount,
 		maxOutstandingBytes:    maxBytes,
 		useLegacyFlowControl:   s.ReceiveSettings.UseLegacyFlowControl,
+		clientID:               s.clientID,
 	}
 	fc := newSubscriptionFlowController(FlowControlSettings{
 		MaxOutstandingMessages: maxCount,
@@ -1392,11 +1396,14 @@ func (s *Subscription) Receive(ctx context.Context, f func(context.Context, *Mes
 					iter.eoMu.RUnlock()
 
 					wg.Add(1)
-					// Make sure the subscription has ordering enabled before adding to scheduler.
+					// Only schedule messages in order if an ordering key is present and the subscriber client
+					// received the ordering flag from a Streaming Pull response.
 					var key string
-					if s.enableOrdering {
+					iter.orderingMu.RLock()
+					if iter.enableOrdering {
 						key = msg.OrderingKey
 					}
+					iter.orderingMu.RUnlock()
 					msgLen := len(msg.Data)
 					if err := sched.Add(key, msg, func(msg interface{}) {
 						defer wg.Done()
@@ -1436,20 +1443,6 @@ func (s *Subscription) Receive(ctx context.Context, f func(context.Context, *Mes
 	return group.Wait()
 }
 
-// checkOrdering calls Config to check theEnableMessageOrdering field.
-// If this call fails (e.g. because the service account doesn't have
-// the roles/viewer or roles/pubsub.viewer role) we will assume
-// EnableMessageOrdering to be true.
-// See: https://github.com/googleapis/google-cloud-go/issues/3884
-func (s *Subscription) checkOrdering(ctx context.Context) {
-	cfg, err := s.Config(ctx)
-	if err != nil {
-		s.enableOrdering = true
-	} else {
-		s.enableOrdering = cfg.EnableMessageOrdering
-	}
-}
-
 type pullOptions struct {
 	maxExtension       time.Duration // the maximum time to extend a message's ack deadline in total
 	maxExtensionPeriod time.Duration // the maximum time to extend a message's ack deadline per modack rpc
@@ -1461,4 +1454,5 @@ type pullOptions struct {
 	maxOutstandingMessages int
 	maxOutstandingBytes    int
 	useLegacyFlowControl   bool
+	clientID               string
 }

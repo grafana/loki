@@ -23,9 +23,9 @@ import (
 	"fmt"
 
 	internalserviceconfig "google.golang.org/grpc/internal/serviceconfig"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/serviceconfig"
 	"google.golang.org/grpc/xds/internal/balancer/outlierdetection"
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
 )
 
 // DiscoveryMechanismType is the type of discovery mechanism.
@@ -103,6 +103,8 @@ type DiscoveryMechanism struct {
 	// OutlierDetection is the Outlier Detection LB configuration for this
 	// priority.
 	OutlierDetection json.RawMessage `json:"outlierDetection,omitempty"`
+	// TelemetryLabels are the telemetry labels associated with this cluster.
+	TelemetryLabels  map[string]string `json:"telemetryLabels,omitempty"`
 	outlierDetection outlierdetection.LBConfig
 }
 
