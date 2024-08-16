@@ -105,13 +105,14 @@ func (requestBuilder *RequestBuilder) WithContext(ctx context.Context) *RequestB
 // invalid URL string (e.g. ":<badscheme>").
 func (requestBuilder *RequestBuilder) ConstructHTTPURL(serviceURL string, pathSegments []string, pathParameters []string) (*RequestBuilder, error) {
 	if serviceURL == "" {
-		return requestBuilder, fmt.Errorf(ERRORMSG_SERVICE_URL_MISSING)
+		return requestBuilder, SDKErrorf(fmt.Errorf(ERRORMSG_SERVICE_URL_MISSING), "", "no-url", getComponentInfo())
 	}
 	var URL *url.URL
 
 	URL, err := url.Parse(serviceURL)
 	if err != nil {
-		return requestBuilder, fmt.Errorf(ERRORMSG_SERVICE_URL_INVALID, err.Error())
+		err := fmt.Errorf(ERRORMSG_SERVICE_URL_INVALID, err.Error())
+		return requestBuilder, SDKErrorf(err, "", "bad-url", getComponentInfo())
 	}
 
 	for i, pathSegment := range pathSegments {
@@ -121,7 +122,8 @@ func (requestBuilder *RequestBuilder) ConstructHTTPURL(serviceURL string, pathSe
 
 		if pathParameters != nil && i < len(pathParameters) {
 			if pathParameters[i] == "" {
-				return requestBuilder, fmt.Errorf(ERRORMSG_PATH_PARAM_EMPTY, fmt.Sprintf("[%d]", i))
+				err := fmt.Errorf(ERRORMSG_PATH_PARAM_EMPTY, fmt.Sprintf("[%d]", i))
+				return requestBuilder, SDKErrorf(err, "", "empty-path-param", getComponentInfo())
 			}
 			URL.Path += "/" + pathParameters[i]
 		}
@@ -141,7 +143,8 @@ func (requestBuilder *RequestBuilder) ConstructHTTPURL(serviceURL string, pathSe
 // The resulting request URL: "https://myservice.cloud.ibm.com/resource/res-123-456-789-abc/type/type-1"
 func (requestBuilder *RequestBuilder) ResolveRequestURL(serviceURL string, path string, pathParams map[string]string) (*RequestBuilder, error) {
 	if serviceURL == "" {
-		return requestBuilder, fmt.Errorf(ERRORMSG_SERVICE_URL_MISSING)
+		err := fmt.Errorf(ERRORMSG_SERVICE_URL_MISSING)
+		return requestBuilder, SDKErrorf(err, "", "service-url-missing", getComponentInfo())
 	}
 
 	urlString := serviceURL
@@ -149,12 +152,21 @@ func (requestBuilder *RequestBuilder) ResolveRequestURL(serviceURL string, path 
 	// If we have a non-empty "path" input parameter, then process it for possible path param references.
 	if path != "" {
 
+		// Encode the unresolved path string.  This will convert all special characters to their
+		// "%" encoding counterparts.  Then we need to revert the encodings for '/', '{' and '}' characters
+		// to retain the original path segments and to make it easy to insert the encoded path param values below.
+		path = url.PathEscape(path)
+		path = strings.ReplaceAll(path, "%2F", "/")
+		path = strings.ReplaceAll(path, "%7B", "{")
+		path = strings.ReplaceAll(path, "%7D", "}")
+
 		// If path parameter values were passed in, then for each one, replace any references to it
 		// within "path" with the path parameter's encoded value.
 		if len(pathParams) > 0 {
 			for k, v := range pathParams {
 				if v == "" {
-					return requestBuilder, fmt.Errorf(ERRORMSG_PATH_PARAM_EMPTY, k)
+					err := fmt.Errorf(ERRORMSG_PATH_PARAM_EMPTY, k)
+					return requestBuilder, SDKErrorf(err, "", "empty-path-param", getComponentInfo())
 				}
 				encodedValue := url.PathEscape(v)
 				ref := fmt.Sprintf("{%s}", k)
@@ -183,7 +195,8 @@ func (requestBuilder *RequestBuilder) ResolveRequestURL(serviceURL string, path 
 
 	URL, err := url.Parse(urlString)
 	if err != nil {
-		return requestBuilder, fmt.Errorf(ERRORMSG_SERVICE_URL_INVALID, err.Error())
+		err = fmt.Errorf(ERRORMSG_SERVICE_URL_INVALID, err.Error())
+		return requestBuilder, SDKErrorf(err, "", "bad-url", getComponentInfo())
 	}
 
 	requestBuilder.URL = URL
@@ -226,6 +239,10 @@ func (requestBuilder *RequestBuilder) AddFormData(fieldName string, fileName str
 func (requestBuilder *RequestBuilder) SetBodyContentJSON(bodyContent interface{}) (*RequestBuilder, error) {
 	requestBuilder.Body = new(bytes.Buffer)
 	err := json.NewEncoder(requestBuilder.Body.(io.Writer)).Encode(bodyContent)
+	if err != nil {
+		err = fmt.Errorf("Could not encode JSON body:\n%s", err.Error())
+		err = SDKErrorf(err, "", "bad-encode", getComponentInfo())
+	}
 	return requestBuilder, err
 }
 
@@ -255,7 +272,11 @@ func createFormFile(formWriter *multipart.Writer, fieldname string, filename str
 		h.Set(CONTENT_TYPE, contentType)
 	}
 
-	return formWriter.CreatePart(h)
+	res, err := formWriter.CreatePart(h)
+	if err != nil {
+		err = SDKErrorf(err, "", "create-part-error", getComponentInfo())
+	}
+	return res, err
 }
 
 // SetBodyContentForMultipart sets the body content for a part in a multi-part form.
@@ -263,17 +284,63 @@ func (requestBuilder *RequestBuilder) SetBodyContentForMultipart(contentType str
 	var err error
 	if stream, ok := content.(io.Reader); ok {
 		_, err = io.Copy(writer, stream)
+		if err != nil {
+			err = SDKErrorf(
+				nil,
+				fmt.Sprintf("Could not set body content in form:\n%s", err.Error()),
+				"reader-error",
+				getComponentInfo(),
+			)
+		}
 	} else if stream, ok := content.(*io.ReadCloser); ok {
 		_, err = io.Copy(writer, *stream)
+		if err != nil {
+			err = SDKErrorf(
+				nil,
+				fmt.Sprintf("Could not set body content in form:\n%s", err.Error()),
+				"readcloser-error",
+				getComponentInfo(),
+			)
+		}
 	} else if IsJSONMimeType(contentType) || IsJSONPatchMimeType(contentType) {
 		err = json.NewEncoder(writer).Encode(content)
+		if err != nil {
+			err = SDKErrorf(
+				nil,
+				fmt.Sprintf("Could not set body content in form:\n%s", err.Error()),
+				"json-error",
+				getComponentInfo(),
+			)
+		}
 	} else if str, ok := content.(string); ok {
 		_, err = writer.Write([]byte(str))
+		if err != nil {
+			err = SDKErrorf(
+				nil,
+				fmt.Sprintf("Could not set body content in form:\n%s", err.Error()),
+				"string-error",
+				getComponentInfo(),
+			)
+		}
 	} else if strPtr, ok := content.(*string); ok {
 		_, err = writer.Write([]byte(*strPtr))
+		if err != nil {
+			err = SDKErrorf(
+				nil,
+				fmt.Sprintf("Could not set body content in form:\n%s", err.Error()),
+				"string-ptr-error",
+				getComponentInfo(),
+			)
+		}
 	} else {
-		err = fmt.Errorf("Error: unable to determine the type of 'content' provided")
+		err = SDKErrorf(
+			nil,
+			"Error: unable to determine the type of 'content' provided",
+			"undetermined-type",
+			getComponentInfo(),
+		)
 	}
+
 	return err
 }
 
@@ -292,8 +359,10 @@ func (requestBuilder *RequestBuilder) Build() (req *http.Request, err error) {
 					data.Add(fieldName, v.contents.(string))
 				}
 			}
+			// This function cannot actually return an error but check anyway
 			_, err = requestBuilder.SetBodyContentString(data.Encode())
 			if err != nil {
+				err = RepurposeSDKProblem(err, "set-content-string-error")
 				return
 			}
 		} else {
@@ -301,6 +370,7 @@ func (requestBuilder *RequestBuilder) Build() (req *http.Request, err error) {
 			var formBody io.ReadCloser
 			formBody, contentType, err = requestBuilder.createMultipartFormRequestBody()
 			if err != nil {
+				err = RepurposeSDKProblem(err, "create-multipart-error")
 				return
 			}
 
@@ -315,6 +385,7 @@ func (requestBuilder *RequestBuilder) Build() (req *http.Request, err error) {
 		!SliceContains(requestBuilder.Header[CONTENT_ENCODING], "gzip") {
 		newBody, err := NewGzipCompressionReader(requestBuilder.Body)
 		if err != nil {
+			err = RepurposeSDKProblem(err, "gzip-reader-error")
 			return nil, err
 		}
 		requestBuilder.Body = newBody
@@ -324,6 +395,7 @@ func (requestBuilder *RequestBuilder) Build() (req *http.Request, err error) {
 	// Create the request
 	req, err = http.NewRequest(requestBuilder.Method, requestBuilder.URL.String(), requestBuilder.Body)
 	if err != nil {
+		err = SDKErrorf(err, fmt.Sprintf("Failed to build request:\n%s", err.Error()), "new-request-error", getComponentInfo())
 		return
 	}
 
@@ -399,6 +471,7 @@ func (requestBuilder *RequestBuilder) createMultipartFormRequestBody() (bodyRead
 
 		// We're done adding parts to the form, so close the form writer.
 		if err = formWriter.Close(); err != nil {
+			err = SDKErrorf(err, err.Error(), "form-close-error", getComponentInfo())
 			return
 		}
 
@@ -416,11 +489,13 @@ func (requestBuilder *RequestBuilder) SetBodyContent(contentType string, jsonCon
 	if !IsNil(jsonContent) {
 		builder, err = requestBuilder.SetBodyContentJSON(jsonContent)
 		if err != nil {
+			err = RepurposeSDKProblem(err, "set-json-body-error")
 			return
 		}
 	} else if !IsNil(jsonPatchContent) {
 		builder, err = requestBuilder.SetBodyContentJSON(jsonPatchContent)
 		if err != nil {
+			err = RepurposeSDKProblem(err, "set-json-patch-body-error")
 			return
 		}
 	} else if !IsNil(nonJSONContent) {
@@ -428,20 +503,27 @@ func (requestBuilder *RequestBuilder) SetBodyContent(contentType string, jsonCon
 		// which should be a "string", "*string" or an "io.Reader"
 		if str, ok := nonJSONContent.(string); ok {
 			builder, err = requestBuilder.SetBodyContentString(str)
+			err = RepurposeSDKProblem(err, "set-body-string-error")
 		} else if strPtr, ok := nonJSONContent.(*string); ok {
 			builder, err = requestBuilder.SetBodyContentString(*strPtr)
+			err = RepurposeSDKProblem(err, "set-body-strptr-error")
 		} else if stream, ok := nonJSONContent.(io.Reader); ok {
 			builder, err = requestBuilder.SetBodyContentStream(stream)
+			err = RepurposeSDKProblem(err, "set-body-reader-error")
 		} else if stream, ok := nonJSONContent.(*io.ReadCloser); ok {
 			builder, err = requestBuilder.SetBodyContentStream(*stream)
+			err = RepurposeSDKProblem(err, "set-body-readerptr-error")
 		} else {
 			builder = requestBuilder
 			err = fmt.Errorf("Invalid type for non-JSON body content: %s", reflect.TypeOf(nonJSONContent).String())
+			err = SDKErrorf(err, "", "bad-nonjson-body-content", getComponentInfo())
 		}
 	} else {
 		builder = requestBuilder
 		err = fmt.Errorf("No body content provided")
+		err = SDKErrorf(err, "", "no-body-content", getComponentInfo())
 	}
+
 	return
 }
 
@@ -451,6 +533,7 @@ func (requestBuilder *RequestBuilder) SetBodyContent(contentType string, jsonCon
 func (requestBuilder *RequestBuilder) AddQuerySlice(param string, slice interface{}) (err error) {
 	convertedSlice, err := ConvertSlice(slice)
 	if err != nil {
+		err = RepurposeSDKProblem(err, "convert-slice-error")
 		return
 	}
 
