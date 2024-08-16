@@ -14,7 +14,6 @@ import (
 
 	"github.com/grafana/dskit/ring"
 
-	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/pattern/aggregation"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
