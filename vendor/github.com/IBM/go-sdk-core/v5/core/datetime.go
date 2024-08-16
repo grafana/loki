@@ -82,6 +82,8 @@ func ParseDate(dateString string) (fmtDate strfmt.Date, err error) {
 	formattedTime, err := time.Parse(strfmt.RFC3339FullDate, dateString)
 	if err == nil {
 		fmtDate = strfmt.Date(formattedTime)
+	} else {
+		err = SDKErrorf(err, "", "date-parse-error", getComponentInfo())
 	}
 	return
 }
@@ -89,5 +91,9 @@ func ParseDate(dateString string) (fmtDate strfmt.Date, err error) {
 // ParseDateTime parses the specified date-time string and returns a strfmt.DateTime instance.
 // If the string is empty the return value will be the unix epoch (1970-01-01T00:00:00.000Z).
 func ParseDateTime(dateString string) (strfmt.DateTime, error) {
-	return strfmt.ParseDateTime(dateString)
+	dt, err := strfmt.ParseDateTime(dateString)
+	if err != nil {
+		err = SDKErrorf(err, "", "datetime-parse-error", getComponentInfo())
+	}
+	return dt, err
 }

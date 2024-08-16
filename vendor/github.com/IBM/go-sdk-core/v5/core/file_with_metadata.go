@@ -38,7 +38,7 @@ func NewFileWithMetadata(data io.ReadCloser) (model *FileWithMetadata, err error
 	model = &FileWithMetadata{
 		Data: data,
 	}
-	err = ValidateStruct(model, "required parameters")
+	err = RepurposeSDKProblem(ValidateStruct(model, "required parameters"), "validation-failed")
 	return
 }
 
@@ -52,22 +52,23 @@ func UnmarshalFileWithMetadata(m map[string]json.RawMessage, result interface{})
 	// then explicitly set the Data field to the contents of the file
 	var data io.ReadCloser
 	var pathToData string
-	err = UnmarshalPrimitive(m, "data", &pathToData)
+	err = RepurposeSDKProblem(UnmarshalPrimitive(m, "data", &pathToData), "unmarshal-fail")
 	if err != nil {
 		return
 	}
 	data, err = os.Open(pathToData) // #nosec G304
 	if err != nil {
+		err = SDKErrorf(err, "", "file-open-error", getComponentInfo())
 		return
 	}
 	obj.Data = data
 
 	// unmarshal the other fields as usual
-	err = UnmarshalPrimitive(m, "filename", &obj.Filename)
+	err = RepurposeSDKProblem(UnmarshalPrimitive(m, "filename", &obj.Filename), "unmarshal-file-fail")
 	if err != nil {
 		return
 	}
-	err = UnmarshalPrimitive(m, "content_type", &obj.ContentType)
+	err = RepurposeSDKProblem(UnmarshalPrimitive(m, "content_type", &obj.ContentType), "unmarshal-content-type-fail")
 	if err != nil {
 		return
 	}
