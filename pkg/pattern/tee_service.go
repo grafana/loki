@@ -387,10 +387,14 @@ func (ts *TeeService) Duplicate(tenant string, streams []distributor.KeyedStream
 
 	for _, stream := range streams {
 		lbls, err := syntax.ParseLabels(stream.Stream.Labels)
-		if err != nil || lbls.Has(push.AggregatedMetricLabel) {
+		if err != nil {
 			level.Error(ts.logger).
 				Log("msg", "error parsing stream labels", "labels", stream.Stream.Labels, "err", err)
 
+			continue
+		}
+
+		if lbls.Has(push.AggregatedMetricLabel) {
 			continue
 		}
 
