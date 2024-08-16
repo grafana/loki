@@ -1,4 +1,4 @@
-FROM ruby:3.2.0 as build
+FROM ruby:3.3.4 AS build
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -10,7 +10,7 @@ WORKDIR /src/loki
 RUN make BUILD_IN_CONTAINER=false fluentd-plugin
 
 FROM fluent/fluentd:v1.16-debian-1
-ENV LOKI_URL "https://logs-prod-us-central1.grafana.net"
+ENV LOKI_URL="https://logs-prod-us-central1.grafana.net"
 
 COPY --from=build /src/loki/clients/cmd/fluentd/lib/fluent/plugin/out_loki.rb /fluentd/plugins/out_loki.rb
 
