@@ -207,6 +207,18 @@ func TestParseRequest(t *testing.T) {
 			expectedLabels:                  labels.FromStrings("foo", "bar2"),
 		},
 		{
+			path:                            `/loki/api/v1/push`,
+			body:                            deflateString(`{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz", {"key": "multi\nline\nvalue"} ] ] }]}`),
+			contentType:                     `application/json; charset=utf-8`,
+			contentEncoding:                 `deflate`,
+			valid:                           true,
+			expectedStructuredMetadataBytes: len("key") + len("multi\nline\nvalue"),
+			expectedBytes:                   len("fizzbuzz") + len("key") + len("multi\nline\nvalue"),
+			expectedLines:                   1,
+			expectedBytesUsageTracker:       map[string]float64{`{foo="bar2"}`: float64(len("fizzbuzz") + len("key") + len("multi\nline\nvalue"))},
+			expectedLabels:                  labels.FromStrings("foo", "bar2"),
+		},
+		{
 			path:                      `/loki/api/v1/push`,
 			body:                      `{"streams": [{ "stream": { "foo": "bar2", "job": "stuff" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`,
 			contentType:               `application/json`,
