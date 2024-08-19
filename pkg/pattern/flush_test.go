@@ -144,7 +144,7 @@ func (f *fakeRingClient) State() services.State {
 	panic("not implemented")
 }
 
-func (f *fakeRingClient) AddListener(_ services.Listener) {
+func (f *fakeRingClient) AddListener(_ services.Listener) func() {
 	panic("not implemented")
 }
 
@@ -181,6 +181,18 @@ func (f *fakeRing) InstancesWithTokensInZoneCount(zone string) int {
 // ZonesCount returns the number of zones for which there's at least 1 instance registered in the ring.
 func (f *fakeRing) ZonesCount() int {
 	args := f.Called()
+	return args.Int(0)
+}
+
+// WritableInstancesWithTokensCount returns the number of writable instances in the ring that have tokens.
+func (f *fakeRing) WritableInstancesWithTokensCount() int {
+	args := f.Called()
+	return args.Int(0)
+}
+
+// WritableInstancesWithTokensInZoneCount returns the number of writable instances in the ring that are registered in given zone and have tokens.
+func (f *fakeRing) WritableInstancesWithTokensInZoneCount(zone string) int {
+	args := f.Called(zone)
 	return args.Int(0)
 }
 
