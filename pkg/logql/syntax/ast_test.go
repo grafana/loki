@@ -988,7 +988,7 @@ func Test_MergeBinOpVectors_Filter(t *testing.T) {
 	require.Equal(t, &promql.Sample{F: 2}, res)
 }
 
-func TestFilterReodering(t *testing.T) {
+func TestFilterReordering(t *testing.T) {
 	t.Run("it makes sure line filters are as early in the pipeline stages as possible", func(t *testing.T) {
 		logExpr := `{container_name="app"} |= "foo" |= "next" | logfmt |="bar" |="baz" | line_format "{{.foo}}" |="1" |="2" | logfmt |="3"`
 		l, err := ParseExpr(logExpr)
@@ -1007,6 +1007,36 @@ func TestFilterReodering(t *testing.T) {
 		stages := l.(*PipelineExpr).MultiStages.reorderStages()
 		require.Len(t, stages, 5)
 		require.Equal(t, `|= "06497595" | unpack != "message" | json | line_format "new log: {{.foo}}"`, MultiStageExpr(stages).String())
+	})
+
+	t.Run("it makes sure label filter order is kept", func(t *testing.T) {
+		logExpr := `{container_name="app"} | bar="next" |= "foo" | logfmt |="bar" |="baz" | line_format "{{.foo}}" |="1" |="2" | logfmt |="3"`
+		l, err := ParseExpr(logExpr)
+		require.NoError(t, err)
+
+		stages := l.(*PipelineExpr).MultiStages.reorderStages()
+		require.Len(t, stages, 6)
+		require.Equal(t, `| bar="next" |= "foo" |= "bar" |= "baz" | logfmt | line_format "{{.foo}}" |= "1" |= "2" |= "3" | logfmt`, MultiStageExpr(stages).String())
+	})
+
+	t.Run("it makes sure line filters before labels filters keeps correct ordering", func(t *testing.T) {
+		logExpr := `{container_name="app"} |= "foo" |bar="next"`
+		l, err := ParseExpr(logExpr)
+		require.NoError(t, err)
+
+		stages := l.(*PipelineExpr).MultiStages.reorderStages()
+		require.Len(t, stages, 2)
+		require.Equal(t, `|= "foo" | bar="next"`, MultiStageExpr(stages).String())
+	})
+
+	t.Run("it makes sure json before label filter keeps correct ordering", func(t *testing.T) {
+		logExpr := `{container_name="app"} | json | bar="next"`
+		l, err := ParseExpr(logExpr)
+		require.NoError(t, err)
+
+		stages := l.(*PipelineExpr).MultiStages.reorderStages()
+		require.Len(t, stages, 2)
+		require.Equal(t, `| json | bar="next"`, MultiStageExpr(stages).String())
 	})
 }
 
