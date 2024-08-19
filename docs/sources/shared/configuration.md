@@ -4181,6 +4181,14 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # CLI flag: -memberlist.leave-timeout
 [leave_timeout: <duration> | default = 20s]
 
+# Timeout for broadcasting all remaining locally-generated updates to other
+# nodes when shutting down. Only used if there are nodes left in the memberlist
+# cluster, and only applies to locally-generated updates, not to broadcast
+# messages that are result of incoming gossip updates. 0 = no timeout, wait
+# until all locally-generated updates are sent.
+# CLI flag: -memberlist.broadcast-timeout-for-local-updates-on-shutdown
+[broadcast_timeout_for_local_updates_on_shutdown: <duration> | default = 10s]
+
 # How much space to use for keeping received and sent messages in memory for
 # troubleshooting (two buffers). 0 to disable.
 # CLI flag: -memberlist.message-history-buffer-bytes
