@@ -5,9 +5,9 @@ local utils = import 'mixin-utils/utils.libsonnet';
     groups+: [{
       name: 'loki_rules',
       rules:
-        utils.histogramRules('loki_request_duration_seconds', [$._config.per_cluster_label, 'job']) +
-        utils.histogramRules('loki_request_duration_seconds', [$._config.per_cluster_label, 'job', 'route']) +
-        utils.histogramRules('loki_request_duration_seconds', [$._config.per_cluster_label, 'namespace', 'job', 'route']),
+        utils.histogramRules('loki_request_duration_seconds', [$._config.per_cluster_label, 'job'], $._config.recording_rules_range_interval) +
+        utils.histogramRules('loki_request_duration_seconds', [$._config.per_cluster_label, 'job', 'route'], $._config.recording_rules_range_interval) +
+        utils.histogramRules('loki_request_duration_seconds', [$._config.per_cluster_label, 'namespace', 'job', 'route'], $._config.recording_rules_range_interval),
     }],
   },
 }
