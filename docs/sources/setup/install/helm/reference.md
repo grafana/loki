@@ -5697,7 +5697,8 @@ null
     "s3": null,
     "s3ForcePathStyle": false,
     "secretAccessKey": null,
-    "signatureVersion": null
+    "signatureVersion": null,
+    "storageClass": null
   },
   "swift": {
     "auth_url": null,

@@ -240,6 +240,9 @@ s3:
   {{- with .disable_dualstack }}
   disable_dualstack: {{ . }}
   {{- end }}
+  {{- with .storageClass }}
+  storage_class: {{ . }}
+  {{- end }}
   {{- with .http_config}}
   http_config:
 {{ toYaml . | indent 4 }}
