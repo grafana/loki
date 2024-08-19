@@ -110,8 +110,8 @@ func (r *ringClient) State() services.State {
 	return r.ring.State()
 }
 
-func (r *ringClient) AddListener(listener services.Listener) {
-	r.ring.AddListener(listener)
+func (r *ringClient) AddListener(listener services.Listener) func() {
+	return r.ring.AddListener(listener)
 }
 
 func (r *ringClient) GetClientFor(addr string) (ring_client.PoolClient, error) {
