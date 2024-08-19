@@ -416,20 +416,6 @@ type VectorAggEvaluator struct {
 	lb            *labels.Builder
 }
 
-func NewVectorAggEvaluator(
-	nextEvaluator StepEvaluator,
-	expr *syntax.VectorAggregationExpr,
-	buf []byte,
-	lb *labels.Builder,
-) *VectorAggEvaluator {
-	return &VectorAggEvaluator{
-		nextEvaluator: nextEvaluator,
-		expr:          expr,
-		buf:           buf,
-		lb:            lb,
-	}
-}
-
 func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
 	next, ts, r := e.nextEvaluator.Next()
 
@@ -704,7 +690,9 @@ func newRangeAggEvaluator(
 			return nil, err
 		}
 
-		return NewRangeVectorEvaluator(iter), nil
+		return &RangeVectorEvaluator{
+			iter: iter,
+		}, nil
 	}
 }
 
@@ -712,12 +700,6 @@ type RangeVectorEvaluator struct {
 	iter RangeVectorIterator
 
 	err error
-}
-
-func NewRangeVectorEvaluator(iter RangeVectorIterator) *RangeVectorEvaluator {
-	return &RangeVectorEvaluator{
-		iter: iter,
-	}
 }
 
 func (r *RangeVectorEvaluator) Next() (bool, int64, StepResult) {

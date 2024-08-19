@@ -76,6 +76,9 @@ const (
 
 	// StorageColdArchive cold archive
 	StorageColdArchive StorageClassType = "ColdArchive"
+
+	// StorageDeepColdArchive deep cold archive
+	StorageDeepColdArchive StorageClassType = "DeepColdArchive"
 )
 
 //RedundancyType bucket data Redundancy type
@@ -242,7 +245,7 @@ const (
 
 	DefaultContentSha256 = "UNSIGNED-PAYLOAD" // for v4 signature
 
-	Version = "v2.2.7" // Go SDK version
+	Version = "v2.2.10" // Go SDK version
 )
 
 // FrameType
