@@ -13,9 +13,7 @@ RUN ls -al
 RUN go mod download
 RUN go build -o /main -tags lambda.norpc -ldflags="-s -w" lambda-promtail/*.go
 # copy artifacts to a clean image
-FROM public.ecr.aws/lambda/provided:al2023
-# dnf doesn't run with the current build image, but these are 
-# currently up to date in the al2023 image - 2024.08.20
-#RUN dnf -y upgrade openssl-libs ca-certificates
+FROM public.ecr.aws/lambda/provided:al2
+RUN yum -y update openssl-libs ca-certificates krb5-libs
 COPY --from=build-image /main /main
 ENTRYPOINT [ "/main" ]
