@@ -79,7 +79,7 @@ require (
 	github.com/opentracing-contrib/go-grpc v0.0.0-20210225150812-73cb765af46e
 	github.com/opentracing-contrib/go-stdlib v1.0.0
 	github.com/opentracing/opentracing-go v1.2.0
-	github.com/oschwald/geoip2-golang v1.9.0
+	github.com/oschwald/geoip2-golang v1.11.0
 	// github.com/pierrec/lz4 v2.0.5+incompatible
 	github.com/pierrec/lz4/v4 v4.1.18
 	github.com/pkg/errors v0.9.1
@@ -312,7 +312,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.0 // indirect
-	github.com/oschwald/maxminddb-golang v1.11.0 // indirect
+	github.com/oschwald/maxminddb-golang v1.13.0 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/exporter-toolkit v0.11.0 // indirect
