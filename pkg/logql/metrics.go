@@ -109,6 +109,7 @@ func RecordRangeAndInstantQueryMetrics(
 		level.Warn(logger).Log("msg", "error parsing query type", "err", err)
 	}
 
+	// datasample queries are executed with limited roundtripper
 	if queryType == QueryTypeFilter && strings.Contains(queryTags, "datasample") {
 		queryType = QueryTypeLimited
 	}
