@@ -1,5 +1,19 @@
 # Changes
 
+## [0.5.11](https://github.com/googleapis/google-cloud-go/compare/longrunning/v0.5.10...longrunning/v0.5.11) (2024-07-24)
+
+
+### Bug Fixes
+
+* **longrunning:** Update dependencies ([257c40b](https://github.com/googleapis/google-cloud-go/commit/257c40bd6d7e59730017cf32bda8823d7a232758))
+
+## [0.5.10](https://github.com/googleapis/google-cloud-go/compare/longrunning/v0.5.9...longrunning/v0.5.10) (2024-07-10)
+
+
+### Bug Fixes
+
+* **longrunning:** Bump google.golang.org/grpc@v1.64.1 ([8ecc4e9](https://github.com/googleapis/google-cloud-go/commit/8ecc4e9622e5bbe9b90384d5848ab816027226c5))
+
 ## [0.5.9](https://github.com/googleapis/google-cloud-go/compare/longrunning/v0.5.8...longrunning/v0.5.9) (2024-07-01)
 
 

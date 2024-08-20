@@ -44,6 +44,10 @@ var awsS3EndpointMap = map[string]awsS3Endpoint{
 		"s3.ca-central-1.amazonaws.com",
 		"s3.dualstack.ca-central-1.amazonaws.com",
 	},
+	"ca-west-1": {
+		"s3.ca-west-1.amazonaws.com",
+		"s3.dualstack.ca-west-1.amazonaws.com",
+	},
 	"eu-west-1": {
 		"s3.eu-west-1.amazonaws.com",
 		"s3.dualstack.eu-west-1.amazonaws.com",

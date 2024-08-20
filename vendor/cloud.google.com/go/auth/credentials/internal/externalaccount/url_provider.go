@@ -30,6 +30,7 @@ const (
 	fileTypeJSON             = "json"
 	urlProviderType          = "url"
 	programmaticProviderType = "programmatic"
+	x509ProviderType         = "x509"
 )
 
 type urlSubjectProvider struct {

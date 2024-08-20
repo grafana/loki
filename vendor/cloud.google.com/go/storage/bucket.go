@@ -116,6 +116,11 @@ func (b *BucketHandle) DefaultObjectACL() *ACLHandle {
 	return &b.defaultObjectACL
 }
 
+// BucketName returns the name of the bucket.
+func (b *BucketHandle) BucketName() string {
+	return b.name
+}
+
 // Object returns an ObjectHandle, which provides operations on the named object.
 // This call does not perform any network operations such as fetching the object or verifying its existence.
 // Use methods on ObjectHandle to perform network operations.
@@ -486,6 +491,13 @@ type BucketAttrs struct {
 	// 7 day retention duration. In order to fully disable soft delete, you need
 	// to set a policy with a RetentionDuration of 0.
 	SoftDeletePolicy *SoftDeletePolicy
+
+	// HierarchicalNamespace contains the bucket's hierarchical namespace
+	// configuration. Hierarchical namespace enabled buckets can contain
+	// [cloud.google.com/go/storage/control/apiv2/controlpb.Folder] resources.
+	// It cannot be modified after bucket creation time.
+	// UniformBucketLevelAccess must also also be enabled on the bucket.
+	HierarchicalNamespace *HierarchicalNamespace
 }
 
 // BucketPolicyOnly is an alias for UniformBucketLevelAccess.
@@ -767,6 +779,7 @@ type Autoclass struct {
 	// TerminalStorageClass: The storage class that objects in the bucket
 	// eventually transition to if they are not read for a certain length of
 	// time. Valid values are NEARLINE and ARCHIVE.
+	// To modify TerminalStorageClass, Enabled must be set to true.
 	TerminalStorageClass string
 	// TerminalStorageClassUpdateTime represents the time of the most recent
 	// update to "TerminalStorageClass".
@@ -784,6 +797,15 @@ type SoftDeletePolicy struct {
 	// RetentionDuration is the amount of time that soft-deleted objects in the
 	// bucket will be retained and cannot be permanently deleted.
 	RetentionDuration time.Duration
+}
+
+// HierarchicalNamespace contains the bucket's hierarchical namespace
+// configuration. Hierarchical namespace enabled buckets can contain
+// [cloud.google.com/go/storage/control/apiv2/controlpb.Folder] resources.
+type HierarchicalNamespace struct {
+	// Enabled indicates whether hierarchical namespace features are enabled on
+	// the bucket. This can only be set at bucket creation time currently.
+	Enabled bool
 }
 
 func newBucket(b *raw.Bucket) (*BucketAttrs, error) {
@@ -824,6 +846,7 @@ func newBucket(b *raw.Bucket) (*BucketAttrs, error) {
 		CustomPlacementConfig:    customPlacementFromRaw(b.CustomPlacementConfig),
 		Autoclass:                toAutoclassFromRaw(b.Autoclass),
 		SoftDeletePolicy:         toSoftDeletePolicyFromRaw(b.SoftDeletePolicy),
+		HierarchicalNamespace:    toHierarchicalNamespaceFromRaw(b.HierarchicalNamespace),
 	}, nil
 }
 
@@ -858,6 +881,7 @@ func newBucketFromProto(b *storagepb.Bucket) *BucketAttrs {
 		ProjectNumber:            parseProjectNumber(b.GetProject()), // this can return 0 the project resource name is ID based
 		Autoclass:                toAutoclassFromProto(b.GetAutoclass()),
 		SoftDeletePolicy:         toSoftDeletePolicyFromProto(b.SoftDeletePolicy),
+		HierarchicalNamespace:    toHierarchicalNamespaceFromProto(b.HierarchicalNamespace),
 	}
 }
 
@@ -914,6 +938,7 @@ func (b *BucketAttrs) toRawBucket() *raw.Bucket {
 		CustomPlacementConfig: b.CustomPlacementConfig.toRawCustomPlacement(),
 		Autoclass:             b.Autoclass.toRawAutoclass(),
 		SoftDeletePolicy:      b.SoftDeletePolicy.toRawSoftDeletePolicy(),
+		HierarchicalNamespace: b.HierarchicalNamespace.toRawHierarchicalNamespace(),
 	}
 }
 
@@ -975,6 +1000,7 @@ func (b *BucketAttrs) toProtoBucket() *storagepb.Bucket {
 		CustomPlacementConfig: b.CustomPlacementConfig.toProtoCustomPlacement(),
 		Autoclass:             b.Autoclass.toProtoAutoclass(),
 		SoftDeletePolicy:      b.SoftDeletePolicy.toProtoSoftDeletePolicy(),
+		HierarchicalNamespace: b.HierarchicalNamespace.toProtoHierarchicalNamespace(),
 	}
 }
 
@@ -1174,6 +1200,9 @@ type BucketAttrsToUpdate struct {
 	RPO RPO
 
 	// If set, updates the autoclass configuration of the bucket.
+	// To disable autoclass on the bucket, set to an empty &Autoclass{}.
+	// To update the configuration for Autoclass.TerminalStorageClass,
+	// Autoclass.Enabled must also be set to true.
 	// See https://cloud.google.com/storage/docs/using-autoclass for more information.
 	Autoclass *Autoclass
 
@@ -2133,6 +2162,42 @@ func toSoftDeletePolicyFromProto(p *storagepb.Bucket_SoftDeletePolicy) *SoftDele
 	return &SoftDeletePolicy{
 		EffectiveTime:     p.GetEffectiveTime().AsTime(),
 		RetentionDuration: p.GetRetentionDuration().AsDuration(),
+	}
+}
+
+func (hns *HierarchicalNamespace) toProtoHierarchicalNamespace() *storagepb.Bucket_HierarchicalNamespace {
+	if hns == nil {
+		return nil
+	}
+	return &storagepb.Bucket_HierarchicalNamespace{
+		Enabled: hns.Enabled,
+	}
+}
+
+func (hns *HierarchicalNamespace) toRawHierarchicalNamespace() *raw.BucketHierarchicalNamespace {
+	if hns == nil {
+		return nil
+	}
+	return &raw.BucketHierarchicalNamespace{
+		Enabled: hns.Enabled,
+	}
+}
+
+func toHierarchicalNamespaceFromProto(p *storagepb.Bucket_HierarchicalNamespace) *HierarchicalNamespace {
+	if p == nil {
+		return nil
+	}
+	return &HierarchicalNamespace{
+		Enabled: p.Enabled,
+	}
+}
+
+func toHierarchicalNamespaceFromRaw(r *raw.BucketHierarchicalNamespace) *HierarchicalNamespace {
+	if r == nil {
+		return nil
+	}
+	return &HierarchicalNamespace{
+		Enabled: r.Enabled,
 	}
 }
 
