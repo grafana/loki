@@ -469,7 +469,7 @@ github.com/aws/smithy-go/transport/http/internal/io
 # github.com/axiomhq/hyperloglog v0.0.0-20240507144631-af9851f82b27
 ## explicit; go 1.12
 github.com/axiomhq/hyperloglog
-# github.com/baidubce/bce-sdk-go v0.9.186
+# github.com/baidubce/bce-sdk-go v0.9.187
 ## explicit; go 1.11
 github.com/baidubce/bce-sdk-go/auth
 github.com/baidubce/bce-sdk-go/bce
@@ -1342,11 +1342,11 @@ github.com/opentracing/opentracing-go
 github.com/opentracing/opentracing-go/ext
 github.com/opentracing/opentracing-go/log
 github.com/opentracing/opentracing-go/mocktracer
-# github.com/oschwald/geoip2-golang v1.9.0
-## explicit; go 1.19
+# github.com/oschwald/geoip2-golang v1.11.0
+## explicit; go 1.21
 github.com/oschwald/geoip2-golang
-# github.com/oschwald/maxminddb-golang v1.11.0
-## explicit; go 1.19
+# github.com/oschwald/maxminddb-golang v1.13.0
+## explicit; go 1.21
 github.com/oschwald/maxminddb-golang
 # github.com/pierrec/lz4/v4 v4.1.18
 ## explicit; go 1.14

@@ -14,6 +14,6 @@ RUN go mod download
 RUN go build -o /main -tags lambda.norpc -ldflags="-s -w" lambda-promtail/*.go
 # copy artifacts to a clean image
 FROM public.ecr.aws/lambda/provided:al2
-RUN yum -y update openssl-libs ca-certificates
+RUN yum -y update openssl-libs ca-certificates krb5-libs
 COPY --from=build-image /main /main
 ENTRYPOINT [ "/main" ]
