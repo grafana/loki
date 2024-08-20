@@ -101,10 +101,16 @@ func RecordRangeAndInstantQueryMetrics(
 		rt            = string(rangeType)
 		latencyType   = latencyTypeFast
 		returnedLines = 0
+		queryTags, _  = ctx.Value(httpreq.QueryTagsHTTPHeader).(string) // it's ok to be empty.
 	)
+
 	queryType, err := QueryType(p.GetExpression())
 	if err != nil {
 		level.Warn(logger).Log("msg", "error parsing query type", "err", err)
+	}
+
+	if queryType == QueryTypeFilter && strings.Contains(queryTags, "datasample") {
+		queryType = QueryTypeLimited
 	}
 
 	resultCache := stats.Caches.Result
@@ -123,7 +129,6 @@ func RecordRangeAndInstantQueryMetrics(
 		returnedLines = int(result.(logqlmodel.Streams).Lines())
 	}
 
-	queryTags, _ := ctx.Value(httpreq.QueryTagsHTTPHeader).(string) // it's ok to be empty.
 	var (
 		query       = p.QueryString()
 		hashedQuery = util.HashedQuery(query)
