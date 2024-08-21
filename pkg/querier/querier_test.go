@@ -1484,6 +1484,44 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 		}
 	})
 
+	t.Run("store response is present, but value returned is nil", func(t *testing.T) {
+		ingesterClient := newQuerierClientMock()
+		storeClient := newStoreMock()
+
+		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, nil)
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return([]string{"storeLabel", "commonLabel"}, nil).
+			On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, "storeLabel", mock.Anything).
+			Return([]string{"val1", "val2"}, nil).
+			On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, "commonLabel", mock.Anything).
+			Return([]string{}, nil)
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			storeClient, limits)
+		require.NoError(t, err)
+
+		resp, err := querier.DetectedLabels(ctx, &request)
+		require.NoError(t, err)
+
+		calls := ingesterClient.GetMockedCallsByMethod("GetDetectedLabels")
+		assert.Equal(t, 1, len(calls))
+
+		detectedLabels := resp.DetectedLabels
+		assert.Len(t, detectedLabels, 4)
+
+		expectedCardinality := map[string]uint64{"storeLabel": 2, "ingesterLabel": 3, "cluster": 1, "commonLabel": 5}
+		for _, d := range detectedLabels {
+			card := expectedCardinality[d.Label]
+			assert.Equal(t, d.Cardinality, card, "Expected cardinality mismatch for: ", d.Label)
+		}
+	})
+
 	t.Run("returns a response when ingester data is empty", func(t *testing.T) {
 		ingesterClient := newQuerierClientMock()
 		storeClient := newStoreMock()

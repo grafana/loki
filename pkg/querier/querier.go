@@ -597,8 +597,8 @@ func (q *SingleTenantQuerier) SelectQueryPlan(ctx context.Context, req *logproto
 		}
 	}
 
-	d := NewAdaptiveShardDistributor(volumes)
-	subqueries := d.DistributeShards(req.Query, from, through, int(req.Buckets))
+	d := NewStreamShardSplitter(volumes)
+	subqueries := d.GetSubQueries(req.Query, from, through, int(req.Buckets))
 	return &logproto.QueryPlanResponse{
 		Results: subqueries,
 	}, nil

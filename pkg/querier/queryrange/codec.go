@@ -1046,7 +1046,8 @@ func (c Codec) Path(r queryrangebase.Request) string {
 		return "/loki/api/v1/patterns"
 	case *DetectedLabelsRequest:
 		return "/loki/api/v1/detected_labels"
-	// todo(shantanu): add missing api here.
+	case *logproto.QueryPlanRequest:
+		return "/loki/api/v1/query/plan"
 	}
 
 	return "other"
@@ -1175,6 +1176,12 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 			Headers:  httpResponseHeadersToPromResponseHeaders(headers),
 		}, nil
 	// todo (shantanu) another missing case here?
+	case *logproto.QueryPlanRequest:
+		var resp logproto.QueryPlanResponse
+		if err := json.Unmarshal(buf, &resp); err != nil {
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+		}
+		return &QueryPlanResponse{Response: &resp, Headers: httpResponseHeadersToPromResponseHeaders(headers)}, nil
 	default:
 		var resp loghttp.QueryResponse
 		if err := resp.UnmarshalJSON(buf); err != nil {

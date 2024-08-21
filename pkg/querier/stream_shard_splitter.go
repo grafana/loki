@@ -23,18 +23,18 @@ type Bucket struct {
 	Volume uint64
 }
 
-type AdaptiveShardDistributor struct {
+type StreamShardSplitter struct {
 	Shards  []Shard
 	Buckets []Bucket
 }
 
-func NewAdaptiveShardDistributor(volumes []Shard) *AdaptiveShardDistributor {
-	return &AdaptiveShardDistributor{
+func NewStreamShardSplitter(volumes []Shard) *StreamShardSplitter {
+	return &StreamShardSplitter{
 		Shards: volumes,
 	}
 }
 
-func (d *AdaptiveShardDistributor) createBuckets(bucketCount int) {
+func (d *StreamShardSplitter) createBuckets(bucketCount int) {
 	totalVolume := uint64(0)
 	for _, shard := range d.Shards {
 		totalVolume += shard.Volume
@@ -57,7 +57,7 @@ func (d *AdaptiveShardDistributor) createBuckets(bucketCount int) {
 	}
 }
 
-func (d *AdaptiveShardDistributor) DistributeShards(query string, start, end model.Time, bucketCount int) []*logproto.SubQueryResult {
+func (d *StreamShardSplitter) GetSubQueries(query string, start, end model.Time, bucketCount int) []*logproto.SubQueryResult {
 	var subqueries []*logproto.SubQueryResult
 	sort.Slice(d.Shards, func(i, j int) bool {
 		return d.Shards[i].Volume > d.Shards[j].Volume
@@ -78,7 +78,7 @@ func (d *AdaptiveShardDistributor) DistributeShards(query string, start, end mod
 	return subqueries
 }
 
-func (d *AdaptiveShardDistributor) createSubquery(originalQuery string, start, end model.Time, shards []string, bucketIndex int, vol uint64) *logproto.SubQueryResult {
+func (d *StreamShardSplitter) createSubquery(originalQuery string, start, end model.Time, shards []string, bucketIndex int, vol uint64) *logproto.SubQueryResult {
 	shardRegex := strings.Join(shards, "|")
 
 	// Parse the original query to insert the __stream_shard__ label matcher
