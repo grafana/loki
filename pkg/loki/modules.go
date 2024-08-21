@@ -52,6 +52,7 @@ import (
 	metastoreclient "github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/client"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/health"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/objstore"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -110,6 +111,7 @@ const (
 	IngesterRF1              string = "ingester-rf1"
 	IngesterRF1RingClient    string = "ingester-rf1-ring-client"
 	PatternIngester          string = "pattern-ingester"
+	PatternIngesterTee       string = "pattern-ingester-tee"
 	PatternRingClient        string = "pattern-ring-client"
 	IngesterQuerier          string = "ingester-querier"
 	IngesterGRPCInterceptors string = "ingester-query-tags-interceptors"
@@ -332,13 +334,6 @@ func (t *Loki) initTenantConfigs() (_ services.Service, err error) {
 }
 
 func (t *Loki) initDistributor() (services.Service, error) {
-	if t.Cfg.Pattern.Enabled {
-		patternTee, err := pattern.NewTee(t.Cfg.Pattern, t.PatternRingClient, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer, util_log.Logger)
-		if err != nil {
-			return nil, err
-		}
-		t.Tee = distributor.WrapTee(t.Tee, patternTee)
-	}
 	if t.Cfg.IngesterRF1.Enabled {
 		rf1Tee, err := ingester_rf1.NewTee(t.Cfg.IngesterRF1, t.IngesterRF1RingClient, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer, util_log.Logger)
 		if err != nil {
@@ -415,7 +410,11 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 	if t.Cfg.QuerierRF1.Enabled {
 		logger.Log("Using RF-1 querier implementation")
-		t.Querier, err = querierrf1.New(t.Cfg.QuerierRF1, t.Store, t.Overrides, deleteStore, logger)
+		store, err := objstore.New(t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.ClientMetrics)
+		if err != nil {
+			return nil, err
+		}
+		t.Querier, err = querierrf1.New(t.Cfg.QuerierRF1, t.Store, t.Overrides, deleteStore, t.MetastoreClient, store, logger)
 		if err != nil {
 			return nil, err
 		}
@@ -549,7 +548,6 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		router.Path("/loki/api/v1/index/volume").Methods("GET", "POST").Handler(volumeHTTPMiddleware.Wrap(httpHandler))
 		router.Path("/loki/api/v1/index/volume_range").Methods("GET", "POST").Handler(volumeRangeHTTPMiddleware.Wrap(httpHandler))
 		router.Path("/loki/api/v1/patterns").Methods("GET", "POST").Handler(httpHandler)
-		router.Path("/loki/api/v1/explore/query_range").Methods("GET", "POST").Handler(httpHandler)
 
 		router.Path("/api/prom/query").Methods("GET", "POST").Handler(
 			middleware.Merge(
@@ -710,7 +708,13 @@ func (t *Loki) initPatternIngester() (_ services.Service, err error) {
 		return nil, nil
 	}
 	t.Cfg.Pattern.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
-	t.PatternIngester, err = pattern.New(t.Cfg.Pattern, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer, util_log.Logger)
+	t.PatternIngester, err = pattern.New(
+		t.Cfg.Pattern,
+		t.PatternRingClient,
+		t.Cfg.MetricsNamespace,
+		prometheus.DefaultRegisterer,
+		util_log.Logger,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -734,6 +738,41 @@ func (t *Loki) initPatternRingClient() (_ services.Service, err error) {
 	}
 	t.PatternRingClient = ringClient
 	return ringClient, nil
+}
+
+func (t *Loki) initPatternIngesterTee() (services.Service, error) {
+	logger := util_log.Logger
+
+	if !t.Cfg.Pattern.Enabled {
+		_ = level.Debug(logger).Log("msg", " pattern ingester tee service disabled")
+		return nil, nil
+	}
+	_ = level.Debug(logger).Log("msg", "initializing pattern ingester tee service...")
+
+	svc, err := pattern.NewTeeService(
+		t.Cfg.Pattern,
+		t.PatternRingClient,
+		t.Cfg.MetricsNamespace,
+		prometheus.DefaultRegisterer,
+		logger,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	t.Tee = distributor.WrapTee(t.Tee, svc)
+
+	return services.NewBasicService(
+		svc.Start,
+		func(_ context.Context) error {
+			svc.WaitUntilDone()
+			return nil
+		},
+		func(_ error) error {
+			svc.WaitUntilDone()
+			return nil
+		},
+	), nil
 }
 
 func (t *Loki) initTableManager() (services.Service, error) {
@@ -1212,7 +1251,6 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.Server.HTTP.Path("/loki/api/v1/label/{name}/values").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/series").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/patterns").Methods("GET", "POST").Handler(frontendHandler)
-	t.Server.HTTP.Path("/loki/api/v1/explore/query_range").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/detected_labels").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/detected_fields").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/index/stats").Methods("GET", "POST").Handler(frontendHandler)
@@ -1819,18 +1857,22 @@ func (t *Loki) initMetastore() (services.Service, error) {
 		return nil, nil
 	}
 	if t.Cfg.isTarget(All) {
-		t.Cfg.MetastoreClient.MetastoreAddress = fmt.Sprintf("localhost:%s", t.Cfg.Server.GRPCListenAddress)
+		t.Cfg.MetastoreClient.MetastoreAddress = fmt.Sprintf("localhost:%d", t.Cfg.Server.GRPCListenPort)
 	}
 	m, err := metastore.New(t.Cfg.Metastore, log.With(util_log.Logger, "component", "metastore"), prometheus.DefaultRegisterer, t.health)
 	if err != nil {
 		return nil, err
 	}
+	// Service methods have tenant auth disabled in the fakeauth.SetupAuthMiddleware call since this is a shared service
 	metastorepb.RegisterMetastoreServiceServer(t.Server.GRPC, m)
 
 	return m, nil
 }
 
 func (t *Loki) initMetastoreClient() (services.Service, error) {
+	if !t.Cfg.IngesterRF1.Enabled && !t.Cfg.QuerierRF1.Enabled {
+		return nil, nil
+	}
 	mc, err := metastoreclient.New(t.Cfg.MetastoreClient, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err

@@ -145,6 +145,7 @@ func (b *Builder) connectAndBuild(
 		return fmt.Errorf("failed to create grpc dial options: %w", err)
 	}
 
+	// nolint:staticcheck // grpc.DialContext() has been deprecated; we'll address it before upgrading to gRPC 2.
 	conn, err := grpc.DialContext(ctx, b.cfg.PlannerAddress, opts...)
 	if err != nil {
 		return fmt.Errorf("failed to dial bloom planner: %w", err)

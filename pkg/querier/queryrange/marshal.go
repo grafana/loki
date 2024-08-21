@@ -233,8 +233,6 @@ func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
 		return concrete.DetectedLabels, nil
 	case *QueryResponse_DetectedFields:
 		return concrete.DetectedFields, nil
-	case *QueryResponse_SamplesResponse:
-		return concrete.SamplesResponse, nil
 	case *QueryResponse_QueryPlanResponse:
 		return concrete.QueryPlanResponse, nil
 	default:
@@ -278,8 +276,6 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 		p.Response = &QueryResponse_DetectedLabels{response}
 	case *DetectedFieldsResponse:
 		p.Response = &QueryResponse_DetectedFields{response}
-	case *QuerySamplesResponse:
-		p.Response = &QueryResponse_SamplesResponse{response}
 	case *QueryPlanResponse:
 		p.Response = &QueryResponse_QueryPlanResponse{response}
 	default:
@@ -380,8 +376,6 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 		return &DetectedFieldsRequest{
 			DetectedFieldsRequest: *concrete.DetectedFields,
 		}, ctx, nil
-	case *QueryRequest_SamplesRequest:
-		return concrete.SamplesRequest, ctx, nil
 	case *QueryRequest_QueryPlanRequest:
 		return concrete.QueryPlanRequest, ctx, nil
 	default:
@@ -415,8 +409,6 @@ func (Codec) QueryRequestWrap(ctx context.Context, r queryrangebase.Request) (*Q
 		result.Request = &QueryRequest_DetectedLabels{DetectedLabels: &req.DetectedLabelsRequest}
 	case *DetectedFieldsRequest:
 		result.Request = &QueryRequest_DetectedFields{DetectedFields: &req.DetectedFieldsRequest}
-	case *logproto.QuerySamplesRequest:
-		result.Request = &QueryRequest_SamplesRequest{SamplesRequest: req}
 	case *logproto.QueryPlanRequest:
 		result.Request = &QueryRequest_QueryPlanRequest{QueryPlanRequest: req}
 	default:

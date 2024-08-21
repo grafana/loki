@@ -417,18 +417,6 @@ func (q *QuerierAPI) PatternsHandler(ctx context.Context, req *logproto.QueryPat
 	return resp, nil
 }
 
-func (q *QuerierAPI) SamplesHandler(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error) {
-	resp, err := q.querier.SelectMetricSamples(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if resp == nil { // Some stores don't implement this
-		return &logproto.QuerySamplesResponse{
-			Series: []logproto.Series{},
-		}, nil
-	}
-	return resp, nil
-}
 
 func (q *QuerierAPI) QueryPlanHandler(ctx context.Context, req *logproto.QueryPlanRequest) (*logproto.QueryPlanResponse, error) {
 	resp, err := q.querier.SelectQueryPlan(ctx, req)

@@ -171,12 +171,12 @@ func (s *ShardLabelSeries) Labels() labels.Labels {
 }
 
 // LabelValues impls storage.Querier
-func (q *MockShardedQueryable) LabelValues(_ context.Context, _ string, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (q *MockShardedQueryable) LabelValues(_ context.Context, _ string, _ *storage.LabelHints, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, errors.Errorf("unimplemented")
 }
 
 // LabelNames returns all the unique label names present in the block in sorted order.
-func (q *MockShardedQueryable) LabelNames(_ context.Context, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (q *MockShardedQueryable) LabelNames(_ context.Context, _ *storage.LabelHints, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, errors.Errorf("unimplemented")
 }
 
