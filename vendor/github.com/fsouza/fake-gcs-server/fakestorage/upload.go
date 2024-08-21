@@ -249,7 +249,7 @@ func (s *Server) simpleUpload(bucketName string, r *http.Request) jsonResponse {
 		return errToJsonResponse(err)
 	}
 	obj.Close()
-	return jsonResponse{data: newObjectResponse(obj.ObjectAttrs, s.externalURL)}
+	return jsonResponse{data: newObjectResponse(obj.ObjectAttrs)}
 }
 
 type notImplementedSeeker struct {
@@ -297,7 +297,7 @@ func (s *Server) signedUpload(bucketName string, r *http.Request) jsonResponse {
 		return errToJsonResponse(err)
 	}
 	obj.Close()
-	return jsonResponse{data: newObjectResponse(obj.ObjectAttrs, s.externalURL)}
+	return jsonResponse{data: newObjectResponse(obj.ObjectAttrs)}
 }
 
 func getObjectACL(predefinedACL string) []storage.ACLRule {
@@ -386,7 +386,7 @@ func (s *Server) multipartUpload(bucketName string, r *http.Request) jsonRespons
 		return errToJsonResponse(err)
 	}
 	defer obj.Close()
-	return jsonResponse{data: newObjectResponse(obj.ObjectAttrs, s.externalURL)}
+	return jsonResponse{data: newObjectResponse(obj.ObjectAttrs)}
 }
 
 func parseContentTypeParams(requestContentType string) (map[string]string, error) {
@@ -446,7 +446,7 @@ func (s *Server) resumableUpload(bucketName string, r *http.Request) jsonRespons
 		header.Set("X-Goog-Upload-Status", "active")
 	}
 	return jsonResponse{
-		data:   newObjectResponse(obj.ObjectAttrs, s.externalURL),
+		data:   newObjectResponse(obj.ObjectAttrs),
 		header: header,
 	}
 }
@@ -504,7 +504,7 @@ func (s *Server) uploadFileContent(r *http.Request) jsonResponse {
 	obj.Content = append(obj.Content, content...)
 	obj.Crc32c = checksum.EncodedCrc32cChecksum(obj.Content)
 	obj.Md5Hash = checksum.EncodedMd5Hash(obj.Content)
-	obj.Etag = obj.Md5Hash
+	obj.Etag = fmt.Sprintf("%q", obj.Md5Hash)
 	contentTypeHeader := r.Header.Get(contentTypeHeader)
 	if contentTypeHeader != "" {
 		obj.ContentType = contentTypeHeader
@@ -553,7 +553,7 @@ func (s *Server) uploadFileContent(r *http.Request) jsonResponse {
 	}
 	return jsonResponse{
 		status: status,
-		data:   newObjectResponse(obj.ObjectAttrs, s.externalURL),
+		data:   newObjectResponse(obj.ObjectAttrs),
 		header: responseHeader,
 	}
 }

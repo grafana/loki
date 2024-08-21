@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -242,6 +241,21 @@ func (team *projectTeam) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type objectAttrsList []ObjectAttrs
+
+func (o objectAttrsList) Len() int {
+	return len(o)
+}
+
+func (o objectAttrsList) Less(i int, j int) bool {
+	return o[i].Name < o[j].Name
+}
+
+func (o *objectAttrsList) Swap(i int, j int) {
+	d := *o
+	d[i], d[j] = d[j], d[i]
+}
+
 // CreateObject is the non-streaming version of CreateObjectStreaming.
 //
 // In addition to streaming, CreateObjectStreaming returns an error instead of
@@ -330,12 +344,11 @@ func (s *Server) ListObjectsWithOptions(bucketName string, options ListOptions) 
 		return nil, nil, err
 	}
 	objects := fromBackendObjectsAttrs(backendObjects)
-	slices.SortFunc(objects, func(left, right ObjectAttrs) int {
-		return strings.Compare(left.Name, right.Name)
-	})
+	olist := objectAttrsList(objects)
+	sort.Sort(&olist)
 	var respObjects []ObjectAttrs
 	prefixes := make(map[string]bool)
-	for _, obj := range objects {
+	for _, obj := range olist {
 		if !strings.HasPrefix(obj.Name, options.Prefix) {
 			continue
 		}
@@ -556,7 +569,7 @@ func (s *Server) listObjects(r *http.Request) jsonResponse {
 	if err != nil {
 		return jsonResponse{status: http.StatusNotFound}
 	}
-	return jsonResponse{data: newListObjectsResponse(objs, prefixes, s.externalURL)}
+	return jsonResponse{data: newListObjectsResponse(objs, prefixes)}
 }
 
 func (s *Server) xmlListObjects(r *http.Request) xmlResponse {
@@ -622,21 +635,6 @@ func (s *Server) getObject(w http.ResponseWriter, r *http.Request) {
 	handler := jsonToHTTPHandler(func(r *http.Request) jsonResponse {
 		vars := unescapeMuxVars(mux.Vars(r))
 
-		projection := storage.ProjectionNoACL
-		if r.URL.Query().Has("projection") {
-			switch value := strings.ToLower(r.URL.Query().Get("projection")); value {
-			case "full":
-				projection = storage.ProjectionFull
-			case "noacl":
-				projection = storage.ProjectionNoACL
-			default:
-				return jsonResponse{
-					status:       http.StatusBadRequest,
-					errorMessage: fmt.Sprintf("invalid projection: %q", value),
-				}
-			}
-		}
-
 		obj, err := s.objectWithGenerationOnValidGeneration(vars["bucketName"], vars["objectName"], r.FormValue("generation"))
 		// Calling Close before checking err is okay on objects, and the object
 		// may need to be closed whether or not there's an error.
@@ -657,7 +655,7 @@ func (s *Server) getObject(w http.ResponseWriter, r *http.Request) {
 		header.Set("Accept-Ranges", "bytes")
 		return jsonResponse{
 			header: header,
-			data:   newProjectedObjectResponse(obj.ObjectAttrs, s.externalURL, projection),
+			data:   newObjectResponse(obj.ObjectAttrs),
 		}
 	})
 
@@ -789,9 +787,9 @@ func (s *Server) rewriteObject(r *http.Request) jsonResponse {
 	defer created.Close()
 
 	if vars["copyType"] == "copyTo" {
-		return jsonResponse{data: newObjectResponse(created.ObjectAttrs, s.externalURL)}
+		return jsonResponse{data: newObjectResponse(created.ObjectAttrs)}
 	}
-	return jsonResponse{data: newObjectRewriteResponse(created.ObjectAttrs, s.externalURL)}
+	return jsonResponse{data: newObjectRewriteResponse(created.ObjectAttrs)}
 }
 
 func (s *Server) downloadObject(w http.ResponseWriter, r *http.Request) {
@@ -869,7 +867,7 @@ func (s *Server) downloadObject(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Goog-Generation", strconv.FormatInt(obj.Generation, 10))
 	w.Header().Set("X-Goog-Hash", fmt.Sprintf("crc32c=%s,md5=%s", obj.Crc32c, obj.Md5Hash))
 	w.Header().Set("Last-Modified", obj.Updated.Format(http.TimeFormat))
-	w.Header().Set("ETag", fmt.Sprintf("%q", obj.Etag))
+	w.Header().Set("ETag", obj.Etag)
 	for name, value := range obj.Metadata {
 		w.Header().Set("X-Goog-Meta-"+name, value)
 	}
@@ -1154,5 +1152,5 @@ func (s *Server) composeObject(r *http.Request) jsonResponse {
 
 	s.eventManager.Trigger(&backendObj, notification.EventFinalize, nil)
 
-	return jsonResponse{data: newObjectResponse(obj.ObjectAttrs, s.externalURL)}
+	return jsonResponse{data: newObjectResponse(obj.ObjectAttrs)}
 }

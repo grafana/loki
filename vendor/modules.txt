@@ -742,8 +742,8 @@ github.com/fluent/fluent-bit-go/output
 # github.com/fsnotify/fsnotify v1.7.0
 ## explicit; go 1.17
 github.com/fsnotify/fsnotify
-# github.com/fsouza/fake-gcs-server v1.49.3
-## explicit; go 1.22
+# github.com/fsouza/fake-gcs-server v1.47.7
+## explicit; go 1.20
 github.com/fsouza/fake-gcs-server/fakestorage
 github.com/fsouza/fake-gcs-server/internal/backend
 github.com/fsouza/fake-gcs-server/internal/checksum

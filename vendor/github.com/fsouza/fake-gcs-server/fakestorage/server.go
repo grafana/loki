@@ -316,7 +316,6 @@ func (s *Server) buildMuxer() {
 	// Signed URLs (upload and download)
 	handler.MatcherFunc(s.publicHostMatcher).Path("/{bucketName}/{objectName:.+}").Methods(http.MethodPost, http.MethodPut).HandlerFunc(jsonToHTTPHandler(s.insertObject))
 	handler.MatcherFunc(s.publicHostMatcher).Path("/{bucketName}/{objectName:.+}").Methods(http.MethodGet, http.MethodHead).HandlerFunc(s.getObject)
-	handler.MatcherFunc(s.publicHostMatcher).Path("/{bucketName}/{objectName:.+}").Methods(http.MethodDelete).HandlerFunc(jsonToHTTPHandler(s.deleteObject))
 	handler.Host(bucketHost).Path("/{objectName:.+}").Methods(http.MethodPost, http.MethodPut).HandlerFunc(jsonToHTTPHandler(s.insertObject))
 	handler.Host("{bucketName:.+}").Path("/{objectName:.+}").Methods(http.MethodPost, http.MethodPut).HandlerFunc(jsonToHTTPHandler(s.insertObject))
 
