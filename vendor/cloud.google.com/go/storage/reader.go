@@ -72,6 +72,12 @@ type ReaderObjectAttrs struct {
 // ErrObjectNotExist will be returned if the object is not found.
 //
 // The caller must call Close on the returned Reader when done reading.
+//
+// By default, reads are made using the Cloud Storage XML API. We recommend
+// using the JSON API instead, which can be done by setting [WithJSONReads]
+// when calling [NewClient]. This ensures consistency with other client
+// operations, which all use JSON. JSON will become the default in a future
+// release.
 func (o *ObjectHandle) NewReader(ctx context.Context) (*Reader, error) {
 	return o.NewRangeReader(ctx, 0, -1)
 }
@@ -86,6 +92,12 @@ func (o *ObjectHandle) NewReader(ctx context.Context) (*Reader, error) {
 // decompressive transcoding per https://cloud.google.com/storage/docs/transcoding
 // that file will be served back whole, regardless of the requested range as
 // Google Cloud Storage dictates.
+//
+// By default, reads are made using the Cloud Storage XML API. We recommend
+// using the JSON API instead, which can be done by setting [WithJSONReads]
+// when calling [NewClient]. This ensures consistency with other client
+// operations, which all use JSON. JSON will become the default in a future
+// release.
 func (o *ObjectHandle) NewRangeReader(ctx context.Context, offset, length int64) (r *Reader, err error) {
 	// This span covers the life of the reader. It is closed via the context
 	// in Reader.Close.
