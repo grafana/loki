@@ -14,6 +14,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## Unreleased
 
 - [ENHANCEMENT] Expand `extraObjects` to have more flexibility in templating [#13252](https://github.com/grafana/loki/pull/13252)
+- [ENHANCEMENT] Use fsGroupChangePolicy=OnRootMismatch on loki to speed up pod starts [#13942](https://github.com/grafana/loki/pull/13942)
 
 ## 6.38.0
 
