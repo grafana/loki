@@ -2575,7 +2575,7 @@ type CopyBackupRequest struct {
 	unknownFields protoimpl.UnknownFields
 
 	// Required. The name of the destination cluster that will contain the backup
-	// copy. The cluster must already exists. Values are of the form:
+	// copy. The cluster must already exist. Values are of the form:
 	// `projects/{project}/instances/{instance}/clusters/{cluster}`.
 	Parent string `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
 	// Required. The id of the new backup. The `backup_id` along with `parent`
@@ -5378,7 +5378,7 @@ type BigtableTableAdminClient interface {
 	// returned table [long-running operation][google.longrunning.Operation] can
 	// be used to track the progress of the operation, and to cancel it.  The
 	// [metadata][google.longrunning.Operation.metadata] field type is
-	// [RestoreTableMetadata][google.bigtable.admin.RestoreTableMetadata].  The
+	// [RestoreTableMetadata][google.bigtable.admin.v2.RestoreTableMetadata].  The
 	// [response][google.longrunning.Operation.response] type is
 	// [Table][google.bigtable.admin.v2.Table], if successful.
 	RestoreTable(ctx context.Context, in *RestoreTableRequest, opts ...grpc.CallOption) (*longrunningpb.Operation, error)
@@ -5783,7 +5783,7 @@ type BigtableTableAdminServer interface {
 	// returned table [long-running operation][google.longrunning.Operation] can
 	// be used to track the progress of the operation, and to cancel it.  The
 	// [metadata][google.longrunning.Operation.metadata] field type is
-	// [RestoreTableMetadata][google.bigtable.admin.RestoreTableMetadata].  The
+	// [RestoreTableMetadata][google.bigtable.admin.v2.RestoreTableMetadata].  The
 	// [response][google.longrunning.Operation.response] type is
 	// [Table][google.bigtable.admin.v2.Table], if successful.
 	RestoreTable(context.Context, *RestoreTableRequest) (*longrunningpb.Operation, error)

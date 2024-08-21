@@ -60,6 +60,10 @@ const (
 	metricNameAttemptLatencies   = "attempt_latencies"
 	metricNameServerLatencies    = "server_latencies"
 	metricNameRetryCount         = "retry_count"
+
+	// Metric units
+	metricUnitMS    = "ms"
+	metricUnitCount = "1"
 )
 
 // These are effectively const, but for testing purposes they are mutable
@@ -207,7 +211,7 @@ func (tf *builtinMetricsTracerFactory) createInstruments(meter metric.Meter) err
 	tf.operationLatencies, err = meter.Float64Histogram(
 		metricNameOperationLatencies,
 		metric.WithDescription("Total time until final operation success or failure, including retries and backoff."),
-		metric.WithUnit("ms"),
+		metric.WithUnit(metricUnitMS),
 		metric.WithExplicitBucketBoundaries(bucketBounds...),
 	)
 	if err != nil {
@@ -218,7 +222,7 @@ func (tf *builtinMetricsTracerFactory) createInstruments(meter metric.Meter) err
 	tf.attemptLatencies, err = meter.Float64Histogram(
 		metricNameAttemptLatencies,
 		metric.WithDescription("Client observed latency per RPC attempt."),
-		metric.WithUnit("ms"),
+		metric.WithUnit(metricUnitMS),
 		metric.WithExplicitBucketBoundaries(bucketBounds...),
 	)
 	if err != nil {
@@ -229,7 +233,7 @@ func (tf *builtinMetricsTracerFactory) createInstruments(meter metric.Meter) err
 	tf.serverLatencies, err = meter.Float64Histogram(
 		metricNameServerLatencies,
 		metric.WithDescription("The latency measured from the moment that the RPC entered the Google data center until the RPC was completed."),
-		metric.WithUnit("ms"),
+		metric.WithUnit(metricUnitMS),
 		metric.WithExplicitBucketBoundaries(bucketBounds...),
 	)
 	if err != nil {
@@ -240,6 +244,7 @@ func (tf *builtinMetricsTracerFactory) createInstruments(meter metric.Meter) err
 	tf.retryCount, err = meter.Int64Counter(
 		metricNameRetryCount,
 		metric.WithDescription("The number of additional RPCs sent after the initial attempt."),
+		metric.WithUnit(metricUnitCount),
 	)
 	return err
 }
@@ -268,6 +273,8 @@ type builtinMetricsTracer struct {
 }
 
 // opTracer is used to record metrics for the entire operation, including retries.
+// Operation is a logical unit that represents a single method invocation on client.
+// The method might require multiple attempts/rpcs and backoff logic to complete
 type opTracer struct {
 	attemptCount int64
 
@@ -281,7 +288,6 @@ type opTracer struct {
 
 func (o *opTracer) setStartTime(t time.Time) {
 	o.startTime = t
-
 }
 
 func (o *opTracer) setStatus(status string) {
@@ -293,6 +299,7 @@ func (o *opTracer) incrementAttemptCount() {
 }
 
 // attemptTracer is used to record metrics for each individual attempt of the operation.
+// Attempt corresponds to an attempt of an RPC.
 type attemptTracer struct {
 	startTime time.Time
 	clusterID string

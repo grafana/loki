@@ -1531,28 +1531,25 @@ func (t *Table) newBuiltinMetricsTracer(ctx context.Context, isStreaming bool) *
 }
 
 // recordOperationCompletion records as many operation specific metrics as it can
+// Ignores error seen while creating metric attributes since metric can still
+// be recorded with rest of the attributes
 func recordOperationCompletion(mt *builtinMetricsTracer) {
 	if !mt.builtInEnabled {
 		return
 	}
 
 	// Calculate elapsed time
-	elapsedTimeMs := float64(time.Since(mt.currOp.startTime).Nanoseconds()) / 1000000
+	elapsedTimeMs := convertToMs(time.Since(mt.currOp.startTime))
 
-	// Attributes for operation_latencies
-	// Ignore error seen while creating metric attributes since metric can still
-	// be recorded with rest of the attributes
+	// Record operation_latencies
 	opLatAttrs, _ := mt.toOtelMetricAttrs(metricNameOperationLatencies)
 	mt.instrumentOperationLatencies.Record(mt.ctx, elapsedTimeMs, metric.WithAttributes(opLatAttrs...))
 
-	// Attributes for retry_count
-	// Ignore error seen while creating metric attributes since metric can still
-	// be recorded with rest of the attributes
+	// Record retry_count
 	retryCntAttrs, _ := mt.toOtelMetricAttrs(metricNameRetryCount)
-
-	// Only record when retry count is greater than 0 so the retry
-	// graph will be less confusing
 	if mt.currOp.attemptCount > 1 {
+		// Only record when retry count is greater than 0 so the retry
+		// graph will be less confusing
 		mt.instrumentRetryCount.Add(mt.ctx, mt.currOp.attemptCount-1, metric.WithAttributes(retryCntAttrs...))
 	}
 }
@@ -1604,23 +1601,21 @@ func gaxInvokeWithRecorder(ctx context.Context, mt *builtinMetricsTracer, method
 }
 
 // recordAttemptCompletion records as many attempt specific metrics as it can
+// Ignore errors seen while creating metric attributes since metric can still
+// be recorded with rest of the attributes
 func recordAttemptCompletion(mt *builtinMetricsTracer) {
 	if !mt.builtInEnabled {
 		return
 	}
 
 	// Calculate elapsed time
-	elapsedTime := float64(time.Since(mt.currOp.currAttempt.startTime).Nanoseconds()) / 1000000
+	elapsedTime := convertToMs(time.Since(mt.currOp.currAttempt.startTime))
 
-	// Attributes for attempt_latencies
-	// Ignore error seen while creating metric attributes since metric can still
-	// be recorded with rest of the attributes
+	// Record attempt_latencies
 	attemptLatAttrs, _ := mt.toOtelMetricAttrs(metricNameAttemptLatencies)
 	mt.instrumentAttemptLatencies.Record(mt.ctx, elapsedTime, metric.WithAttributes(attemptLatAttrs...))
 
-	// Attributes for server_latencies
-	// Ignore error seen while creating metric attributes since metric can still
-	// be recorded with rest of the attributes
+	// Record server_latencies
 	serverLatAttrs, _ := mt.toOtelMetricAttrs(metricNameServerLatencies)
 	if mt.currOp.currAttempt.serverLatencyErr == nil {
 		mt.instrumentServerLatencies.Record(mt.ctx, mt.currOp.currAttempt.serverLatency, metric.WithAttributes(serverLatAttrs...))

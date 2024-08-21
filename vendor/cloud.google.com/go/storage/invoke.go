@@ -132,7 +132,7 @@ func ShouldRetry(err error) bool {
 		// Retry socket-level errors ECONNREFUSED and ECONNRESET (from syscall).
 		// Unfortunately the error type is unexported, so we resort to string
 		// matching.
-		retriable := []string{"connection refused", "connection reset"}
+		retriable := []string{"connection refused", "connection reset", "broken pipe"}
 		for _, s := range retriable {
 			if strings.Contains(e.Error(), s) {
 				return true

@@ -29,6 +29,10 @@ import (
 	"cloud.google.com/go/pubsub/internal/distribution"
 	gax "github.com/googleapis/gax-go/v2"
 	"github.com/googleapis/gax-go/v2/apierror"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -67,6 +71,8 @@ type messageIterator struct {
 	po            *pullOptions
 	ps            *pullStream
 	subc          *vkit.SubscriberClient
+	projectID     string
+	subID         string
 	subName       string
 	kaTick        <-chan time.Time // keep-alive (deadline extensions)
 	ackTicker     *time.Ticker     // message acks
@@ -106,6 +112,13 @@ type messageIterator struct {
 	// by the response in StreamingPull and can change mid Receive. Must be accessed
 	// with the lock held.
 	enableOrdering bool
+
+	// enableTracing enables span creation for this subscriber iterator.
+	enableTracing bool
+	// This maps trace ackID (string) to root subscribe spans(trace.Span), used for otel tracing.
+	// Active ackIDs in this map should also exist 1:1 with ids in keepAliveDeadlines.
+	// Elements are removed when messages are acked, nacked, or expired in iterator.handleKeepAlives()
+	activeSpans sync.Map
 }
 
 // newMessageIterator starts and returns a new messageIterator.
@@ -134,12 +147,17 @@ func newMessageIterator(subc *vkit.SubscriberClient, subName string, po *pullOpt
 	receiptTicker := time.NewTicker(100 * time.Millisecond)
 	cctx, cancel := context.WithCancel(context.Background())
 	cctx = withSubscriptionKey(cctx, subName)
+
+	projectID, subID := parseResourceName(subName)
+
 	it := &messageIterator{
 		ctx:                cctx,
 		cancel:             cancel,
 		ps:                 ps,
 		po:                 po,
 		subc:               subc,
+		projectID:          projectID,
+		subID:              subID,
 		subName:            subName,
 		kaTick:             time.After(keepAlivePeriod),
 		ackTicker:          ackTicker,
@@ -269,7 +287,9 @@ func (it *messageIterator) receive(maxToPull int32) ([]*Message, error) {
 	if err != nil {
 		return nil, it.fail(err)
 	}
+
 	recordStat(it.ctx, PullCount, int64(len(rmsgs)))
+
 	now := time.Now()
 	msgs, err := convertMessages(rmsgs, now, it.done)
 	if err != nil {
@@ -309,6 +329,25 @@ func (it *messageIterator) receive(maxToPull int32) ([]*Message, error) {
 				pendingMessages[ackID] = m
 			}
 		}
+
+		if it.enableTracing {
+			ctx := context.Background()
+			if m.Attributes != nil {
+				ctx = propagation.TraceContext{}.Extract(ctx, newMessageCarrier(m))
+			}
+			attr := getSubscriberOpts(it.projectID, it.subID, m)
+			_, span := startSpan(ctx, subscribeSpanName, it.subID, attr...)
+			span.SetAttributes(
+				attribute.Bool(eosAttribute, it.enableExactlyOnceDelivery),
+				attribute.String(ackIDAttribute, ackID),
+				semconv.MessagingBatchMessageCount(len(msgs)),
+				semconv.CodeFunction("receive"),
+			)
+			// Always store the subscribe span, even if sampling isn't enabled.
+			// This is useful since we need to propagate the sampling flag
+			// to the callback in Receive, so traces have an unbroken sampling decision.
+			it.activeSpans.Store(ackID, span)
+		}
 	}
 	deadline := it.ackDeadline()
 	it.mu.Unlock()
@@ -328,7 +367,7 @@ func (it *messageIterator) receive(maxToPull int32) ([]*Message, error) {
 
 		// If exactly once is enabled, we should wait until modack responses are successes
 		// before attempting to process messages.
-		it.sendModAck(ackIDs, deadline, false)
+		it.sendModAck(ackIDs, deadline, false, true)
 		for ackID, ar := range ackIDs {
 			ctx := context.Background()
 			_, err := ar.Get(ctx)
@@ -498,16 +537,16 @@ func (it *messageIterator) sender() {
 		}
 		if sendNacks {
 			// Nack indicated by modifying the deadline to zero.
-			it.sendModAck(nacks, 0, false)
+			it.sendModAck(nacks, 0, false, false)
 		}
 		if sendModAcks {
-			it.sendModAck(modAcks, dl, true)
+			it.sendModAck(modAcks, dl, true, false)
 		}
 		if sendPing {
 			it.pingStream()
 		}
 		if sendReceipt {
-			it.sendModAck(receipts, dl, true)
+			it.sendModAck(receipts, dl, true, true)
 		}
 	}
 }
@@ -520,11 +559,23 @@ func (it *messageIterator) handleKeepAlives() {
 	now := time.Now()
 	for id, expiry := range it.keepAliveDeadlines {
 		if expiry.Before(now) {
+			// Message is now expired.
 			// This delete will not result in skipping any map items, as implied by
 			// the spec at https://golang.org/ref/spec#For_statements, "For
 			// statements with range clause", note 3, and stated explicitly at
 			// https://groups.google.com/forum/#!msg/golang-nuts/UciASUb03Js/pzSq5iVFAQAJ.
 			delete(it.keepAliveDeadlines, id)
+			if it.enableTracing {
+				// get the parent span context for this ackID for otel tracing.
+				// This message is now expired, so if the ackID is still valid,
+				// mark that span as expired and end the span.
+				s, ok := it.activeSpans.LoadAndDelete(id)
+				if ok {
+					span := s.(trace.Span)
+					span.SetAttributes(attribute.String(resultAttribute, resultExpired))
+					span.End()
+				}
+			}
 		} else {
 			// Use a success AckResult since we don't propagate ModAcks back to the user.
 			it.pendingModAcks[id] = newSuccessAckResult()
@@ -539,8 +590,8 @@ type retryAckFunc = func(toRetry map[string]*ipubsub.AckResult)
 
 func (it *messageIterator) sendAckWithFunc(m map[string]*AckResult, ackFunc ackFunc, retryAckFunc retryAckFunc, ackRecordStat ackRecordStat) {
 	ackIDs := make([]string, 0, len(m))
-	for k := range m {
-		ackIDs = append(ackIDs, k)
+	for ackID := range m {
+		ackIDs = append(ackIDs, ackID)
 	}
 	it.eoMu.RLock()
 	exactlyOnceDelivery := it.enableExactlyOnceDelivery
@@ -563,11 +614,10 @@ func (it *messageIterator) sendAckWithFunc(m map[string]*AckResult, ackFunc ackF
 				for _, ackID := range toSend {
 					resultsByAckID[ackID] = m[ackID]
 				}
-
 				st, md := extractMetadata(err)
 				_, toRetry := processResults(st, resultsByAckID, md)
 				if len(toRetry) > 0 {
-					// Retry modacks/nacks in a separate goroutine.
+					// Retry acks/modacks/nacks in a separate goroutine.
 					go func() {
 						retryAckFunc(toRetry)
 					}()
@@ -581,14 +631,57 @@ func (it *messageIterator) sendAckWithFunc(m map[string]*AckResult, ackFunc ackF
 // sendAck is used to confirm acknowledgement of a message. If exactly once delivery is
 // enabled, we'll retry these messages for a short duration in a goroutine.
 func (it *messageIterator) sendAck(m map[string]*AckResult) {
-	it.sendAckWithFunc(m, func(ctx context.Context, subName string, ackIds []string) error {
+	it.sendAckWithFunc(m, func(ctx context.Context, subName string, ackIDs []string) error {
+		// For each ackID (message), setup links to the main subscribe span.
+		// If this is a nack, also remove it from active spans.
+		// If the ackID is not found, don't create any more spans.
+		if it.enableTracing {
+			var links []trace.Link
+			subscribeSpans := make([]trace.Span, 0, len(ackIDs))
+			for _, ackID := range ackIDs {
+				// get the main subscribe span context for this ackID for otel tracing.
+				s, ok := it.activeSpans.LoadAndDelete(ackID)
+				if ok {
+					subscribeSpan := s.(trace.Span)
+					defer subscribeSpan.End()
+					defer subscribeSpan.SetAttributes(attribute.String(resultAttribute, resultAcked))
+					subscribeSpans = append(subscribeSpans, subscribeSpan)
+					subscribeSpan.AddEvent(eventAckStart, trace.WithAttributes(semconv.MessagingBatchMessageCount(len(ackIDs))))
+					defer subscribeSpan.AddEvent(eventAckEnd)
+					// Only add this link if the span is sampled, otherwise we're creating invalid links.
+					if subscribeSpan.SpanContext().IsSampled() {
+						links = append(links, trace.Link{SpanContext: subscribeSpan.SpanContext()})
+					}
+				}
+			}
+
+			// Create the single ack span for this request, and for each
+			// message, add Subscribe<->Ack links.
+			opts := getCommonOptions(it.projectID, it.subID)
+			opts = append(opts, trace.WithLinks(links...))
+			_, ackSpan := startSpan(context.Background(), ackSpanName, it.subID, opts...)
+			defer ackSpan.End()
+			ackSpan.SetAttributes(semconv.MessagingBatchMessageCount(len(ackIDs)),
+				semconv.CodeFunction("sendAck"))
+			if ackSpan.SpanContext().IsSampled() {
+				for _, s := range subscribeSpans {
+					s.AddLink(trace.Link{
+						SpanContext: ackSpan.SpanContext(),
+						Attributes: []attribute.KeyValue{
+							semconv.MessagingOperationName(ackSpanName),
+						},
+					})
+				}
+			}
+		}
 		return it.subc.Acknowledge(ctx, &pb.AcknowledgeRequest{
 			Subscription: it.subName,
-			AckIds:       ackIds,
+			AckIds:       ackIDs,
 		})
 	}, it.retryAcks, func(ctx context.Context, toSend []string) {
 		recordStat(it.ctx, AckCount, int64(len(toSend)))
 		addAcks(toSend)
+
 	})
 }
 
@@ -598,13 +691,80 @@ func (it *messageIterator) sendAck(m map[string]*AckResult) {
 // percentile in order to capture the highest amount of time necessary without
 // considering 1% outliers. If the ModAck RPC fails and exactly once delivery is
 // enabled, we retry it in a separate goroutine for a short duration.
-func (it *messageIterator) sendModAck(m map[string]*AckResult, deadline time.Duration, logOnInvalid bool) {
+func (it *messageIterator) sendModAck(m map[string]*AckResult, deadline time.Duration, logOnInvalid, isReceipt bool) {
 	deadlineSec := int32(deadline / time.Second)
-	it.sendAckWithFunc(m, func(ctx context.Context, subName string, ackIds []string) error {
+	isNack := deadline == 0
+	var spanName, eventStart, eventEnd string
+	if isNack {
+		spanName = nackSpanName
+		eventStart = eventNackStart
+		eventEnd = eventNackEnd
+	} else {
+		spanName = modackSpanName
+		eventStart = eventModackStart
+		eventEnd = eventModackEnd
+	}
+	it.sendAckWithFunc(m, func(ctx context.Context, subName string, ackIDs []string) error {
+		if it.enableTracing {
+			// For each ackID (message), link back to the main subscribe span.
+			// If this is a nack, also remove it from active spans.
+			// If the ackID is not found, don't create any more spans.
+			links := make([]trace.Link, 0, len(ackIDs))
+			subscribeSpans := make([]trace.Span, 0, len(ackIDs))
+			for _, ackID := range ackIDs {
+				// get the parent span context for this ackID for otel tracing.
+				var s any
+				var ok bool
+				if isNack {
+					s, ok = it.activeSpans.LoadAndDelete(ackID)
+				} else {
+					s, ok = it.activeSpans.Load(ackID)
+				}
+				if ok {
+					subscribeSpan := s.(trace.Span)
+					subscribeSpans = append(subscribeSpans, subscribeSpan)
+					if isNack {
+						defer subscribeSpan.End()
+						defer subscribeSpan.SetAttributes(attribute.String(resultAttribute, resultNacked))
+					}
+					subscribeSpan.AddEvent(eventStart, trace.WithAttributes(semconv.MessagingBatchMessageCount(len(ackIDs))))
+					defer subscribeSpan.AddEvent(eventEnd)
+
+					// Only add this link if the span is sampled, otherwise we're creating invalid links.
+					if subscribeSpan.SpanContext().IsSampled() {
+						links = append(links, trace.Link{SpanContext: subscribeSpan.SpanContext()})
+					}
+				}
+			}
+
+			// Create the single modack/nack span for this request, and for each
+			// message, add Subscribe<->Modack links.
+			opts := getCommonOptions(it.projectID, it.subID)
+			opts = append(opts, trace.WithLinks(links...))
+			_, mSpan := startSpan(context.Background(), spanName, it.subID, opts...)
+			defer mSpan.End()
+			if !isNack {
+				mSpan.SetAttributes(
+					semconv.MessagingGCPPubsubMessageAckDeadline(int(deadlineSec)),
+					attribute.Bool(receiptModackAttribute, isReceipt))
+			}
+			mSpan.SetAttributes(semconv.MessagingBatchMessageCount(len(ackIDs)),
+				semconv.CodeFunction("sendModAck"))
+			if mSpan.SpanContext().IsSampled() {
+				for _, s := range subscribeSpans {
+					s.AddLink(trace.Link{
+						SpanContext: mSpan.SpanContext(),
+						Attributes: []attribute.KeyValue{
+							semconv.MessagingOperationName(spanName),
+						},
+					})
+				}
+			}
+		}
 		return it.subc.ModifyAckDeadline(ctx, &pb.ModifyAckDeadlineRequest{
 			Subscription:       it.subName,
 			AckDeadlineSeconds: deadlineSec,
-			AckIds:             ackIds,
+			AckIds:             ackIDs,
 		})
 	}, func(toRetry map[string]*ipubsub.AckResult) {
 		it.retryModAcks(toRetry, deadlineSec, logOnInvalid)

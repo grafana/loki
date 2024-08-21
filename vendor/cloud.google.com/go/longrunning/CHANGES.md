@@ -1,5 +1,19 @@
 # Changes
 
+## [0.6.0](https://github.com/googleapis/google-cloud-go/compare/longrunning/v0.5.12...longrunning/v0.6.0) (2024-08-20)
+
+
+### Features
+
+* **longrunning:** Add support for Go 1.23 iterators ([84461c0](https://github.com/googleapis/google-cloud-go/commit/84461c0ba464ec2f951987ba60030e37c8a8fc18))
+
+## [0.5.12](https://github.com/googleapis/google-cloud-go/compare/longrunning/v0.5.11...longrunning/v0.5.12) (2024-08-08)
+
+
+### Bug Fixes
+
+* **longrunning:** Update google.golang.org/api to v0.191.0 ([5b32644](https://github.com/googleapis/google-cloud-go/commit/5b32644eb82eb6bd6021f80b4fad471c60fb9d73))
+
 ## [0.5.11](https://github.com/googleapis/google-cloud-go/compare/longrunning/v0.5.10...longrunning/v0.5.11) (2024-07-24)
 
 
