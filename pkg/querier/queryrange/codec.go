@@ -413,9 +413,9 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			Step:         0,
 			TargetLabels: req.TargetLabels,
 			AggregateBy:  req.AggregateBy,
-      CachingOptions: queryrangebase.CachingOptions{
-			  Disabled: disableCacheReq,
-		  },
+			CachingOptions: queryrangebase.CachingOptions{
+				Disabled: disableCacheReq,
+			},
 		}, err
 	case VolumeRangeOp:
 		req, err := loghttp.ParseVolumeRangeQuery(r)
@@ -431,9 +431,9 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			Step:         req.Step.Milliseconds(),
 			TargetLabels: req.TargetLabels,
 			AggregateBy:  req.AggregateBy,
-      CachingOptions: queryrangebase.CachingOptions{
-			  Disabled: disableCacheReq,
-		  },
+			CachingOptions: queryrangebase.CachingOptions{
+				Disabled: disableCacheReq,
+			},
 		}, err
 	case DetectedFieldsOp:
 		req, err := loghttp.ParseDetectedFieldsQuery(r)
