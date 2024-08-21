@@ -2615,6 +2615,7 @@ null
     "provisionedSecretPrefix": null,
     "securityContext": {
       "fsGroup": 10001,
+      "fsGroupChangePolicy": "OnRootMismatch",
       "runAsGroup": 10001,
       "runAsNonRoot": true,
       "runAsUser": 10001
@@ -2632,6 +2633,7 @@ null
     "priorityClassName": "",
     "securityContext": {
       "fsGroup": 10001,
+      "fsGroupChangePolicy": "OnRootMismatch",
       "runAsGroup": 10001,
       "runAsNonRoot": true,
       "runAsUser": 10001
@@ -2798,6 +2800,7 @@ null
   "provisionedSecretPrefix": null,
   "securityContext": {
     "fsGroup": 10001,
+    "fsGroupChangePolicy": "OnRootMismatch",
     "runAsGroup": 10001,
     "runAsNonRoot": true,
     "runAsUser": 10001
@@ -2945,6 +2948,7 @@ null
 			<td><pre lang="json">
 {
   "fsGroup": 10001,
+  "fsGroupChangePolicy": "OnRootMismatch",
   "runAsGroup": 10001,
   "runAsNonRoot": true,
   "runAsUser": 10001
@@ -2969,6 +2973,7 @@ null
   "priorityClassName": "",
   "securityContext": {
     "fsGroup": 10001,
+    "fsGroupChangePolicy": "OnRootMismatch",
     "runAsGroup": 10001,
     "runAsNonRoot": true,
     "runAsUser": 10001
@@ -3067,6 +3072,7 @@ true
 			<td><pre lang="json">
 {
   "fsGroup": 10001,
+  "fsGroupChangePolicy": "OnRootMismatch",
   "runAsGroup": 10001,
   "runAsNonRoot": true,
   "runAsUser": 10001
@@ -3129,6 +3135,7 @@ false
   "nodeSelector": {},
   "podSecurityContext": {
     "fsGroup": 10001,
+    "fsGroupChangePolicy": "OnRootMismatch",
     "runAsGroup": 10001,
     "runAsNonRoot": true,
     "runAsUser": 10001
@@ -3263,6 +3270,7 @@ false
 			<td><pre lang="json">
 {
   "fsGroup": 10001,
+  "fsGroupChangePolicy": "OnRootMismatch",
   "runAsGroup": 10001,
   "runAsNonRoot": true,
   "runAsUser": 10001
@@ -3853,6 +3861,7 @@ false
 			<td><pre lang="json">
 {
   "fsGroup": 101,
+  "fsGroupChangePolicy": "OnRootMismatch",
   "runAsGroup": 101,
   "runAsNonRoot": true,
   "runAsUser": 101
@@ -5558,6 +5567,7 @@ null
 			<td><pre lang="json">
 {
   "fsGroup": 10001,
+  "fsGroupChangePolicy": "OnRootMismatch",
   "runAsGroup": 10001,
   "runAsNonRoot": true,
   "runAsUser": 10001
@@ -9206,6 +9216,7 @@ null
   "enabled": false,
   "podSecurityContext": {
     "fsGroup": 10001,
+    "fsGroupChangePolicy": "OnRootMismatch",
     "runAsGroup": 10001,
     "runAsNonRoot": true,
     "runAsUser": 10001,
@@ -9229,10 +9240,11 @@ null
 		<tr>
 			<td>rollout_operator.podSecurityContext</td>
 			<td>object</td>
-			<td>podSecurityContext is the pod security context for the rollout operator. When installing on OpenShift, override podSecurityContext settings with  rollout_operator:   podSecurityContext:     fsGroup: null     runAsGroup: null     runAsUser: null</td>
+			<td>podSecurityContext is the pod security context for the rollout operator. When installing on OpenShift, override podSecurityContext settings with  rollout_operator:   podSecurityContext:     fsGroup: null     fsGroupChangePolicy: null     runAsGroup: null     runAsUser: null</td>
 			<td><pre lang="json">
 {
   "fsGroup": 10001,
+  "fsGroupChangePolicy": "OnRootMismatch",
   "runAsGroup": 10001,
   "runAsNonRoot": true,
   "runAsUser": 10001,
