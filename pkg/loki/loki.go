@@ -704,8 +704,9 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(QuerySchedulerRing, t.initQuerySchedulerRing, modules.UserInvisibleModule)
 	mm.RegisterModule(Analytics, t.initAnalytics)
 	mm.RegisterModule(CacheGenerationLoader, t.initCacheGenerationLoader)
-	mm.RegisterModule(PatternIngester, t.initPatternIngester)
 	mm.RegisterModule(PatternRingClient, t.initPatternRingClient, modules.UserInvisibleModule)
+	mm.RegisterModule(PatternIngesterTee, t.initPatternIngesterTee, modules.UserInvisibleModule)
+	mm.RegisterModule(PatternIngester, t.initPatternIngester)
 	mm.RegisterModule(Metastore, t.initMetastore)
 	mm.RegisterModule(MetastoreClient, t.initMetastoreClient, modules.UserInvisibleModule)
 
@@ -721,7 +722,7 @@ func (t *Loki) setupModuleManager() error {
 		Overrides:                {RuntimeConfig},
 		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
-		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, IngesterRF1RingClient, Analytics},
+		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, IngesterRF1RingClient, Analytics},
 		Store:                    {Overrides, IndexGatewayRing},
 		IngesterRF1:              {Store, Server, MemberlistKV, TenantConfigs, MetastoreClient, Analytics},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics},
@@ -739,8 +740,9 @@ func (t *Loki) setupModuleManager() error {
 		BloomPlanner:             {Server, BloomStore, Analytics, Store},
 		BloomBuilder:             {Server, BloomStore, Analytics, Store},
 		BloomStore:               {IndexGatewayRing},
-		PatternIngester:          {Server, MemberlistKV, Analytics},
 		PatternRingClient:        {Server, MemberlistKV, Analytics},
+		PatternIngesterTee:       {Server, MemberlistKV, Analytics, PatternRingClient},
+		PatternIngester:          {Server, MemberlistKV, Analytics, PatternRingClient, PatternIngesterTee},
 		IngesterRF1RingClient:    {Server, MemberlistKV, Analytics},
 		Metastore:                {Server, MetastoreClient},
 		IngesterQuerier:          {Ring},

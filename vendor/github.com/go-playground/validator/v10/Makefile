@@ -1,4 +1,4 @@
-GOCMD=GO111MODULE=on go
+GOCMD=go
 
 linters-install:
 	@golangci-lint --version >/dev/null 2>&1 || { \
@@ -13,6 +13,6 @@ test:
 	$(GOCMD) test -cover -race ./...
 
 bench:
-	$(GOCMD) test -bench=. -benchmem ./...
+	$(GOCMD) test -run=NONE -bench=. -benchmem ./...
 
 .PHONY: test lint linters-install

@@ -496,6 +496,16 @@ func (r *readRingMock) GetTokenRangesForInstance(_ string) (ring.TokenRanges, er
 	return tr, nil
 }
 
+// WritableInstancesWithTokensCount returns the number of writable instances in the ring that have tokens.
+func (r *readRingMock) WritableInstancesWithTokensCount() int {
+	return len(r.replicationSet.Instances)
+}
+
+// WritableInstancesWithTokensInZoneCount returns the number of writable instances in the ring that are registered in given zone and have tokens.
+func (r *readRingMock) WritableInstancesWithTokensInZoneCount(_ string) int {
+	return len(r.replicationSet.Instances)
+}
+
 func mockReadRingWithOneActiveIngester() *readRingMock {
 	return newReadRingMock([]ring.InstanceDesc{
 		{Addr: "test", Timestamp: time.Now().UnixNano(), State: ring.ACTIVE, Tokens: []uint32{1, 2, 3}},
@@ -720,21 +730,6 @@ func (q *querierMock) DetectedLabels(ctx context.Context, req *logproto.Detected
 	}
 
 	return resp.(*logproto.DetectedLabelsResponse), err
-}
-
-func (q *querierMock) SelectMetricSamples(
-	ctx context.Context,
-	req *logproto.QuerySamplesRequest,
-) (*logproto.QuerySamplesResponse, error) {
-	args := q.MethodCalled("SelectMetricSamples", ctx, req)
-
-	resp := args.Get(0)
-	err := args.Error(1)
-	if resp == nil {
-		return nil, err
-	}
-
-	return resp.(*logproto.QuerySamplesResponse), err
 }
 
 func (q *querierMock) WithPatternQuerier(_ PatterQuerier) {}
