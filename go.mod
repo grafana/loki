@@ -1,6 +1,6 @@
 module github.com/grafana/loki/v3
 
-go 1.21
+go 1.21.8
 
 require (
 	cloud.google.com/go/bigtable v1.29.0
@@ -33,7 +33,7 @@ require (
 	github.com/fatih/color v1.16.0
 	github.com/felixge/fgprof v0.9.4
 	github.com/fluent/fluent-bit-go v0.0.0-20230731091245-a7a013e2473c
-	github.com/fsouza/fake-gcs-server v1.49.3
+	github.com/fsouza/fake-gcs-server v1.47.7
 	github.com/go-kit/log v0.2.1
 	github.com/go-logfmt/logfmt v0.6.0
 	github.com/go-redis/redis/v8 v8.11.5
