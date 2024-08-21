@@ -25,10 +25,13 @@ import (
 
 	"cloud.google.com/go/iam"
 	"cloud.google.com/go/internal/optional"
+	ipubsub "cloud.google.com/go/internal/pubsub"
 	pb "cloud.google.com/go/pubsub/apiv1/pubsubpb"
 	"cloud.google.com/go/pubsub/internal/scheduler"
 	"github.com/google/uuid"
 	gax "github.com/googleapis/gax-go/v2"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -56,6 +59,10 @@ type Subscription struct {
 	// This indicates to the server that any guarantees made for a stream that
 	// disconnected will be made for the stream that is created to replace it.
 	clientID string
+	// enableTracing enable otel tracing of Pub/Sub messages on this subscription.
+	// This is configured at client instantiation, and allows
+	// disabling of tracing even when a tracer provider is detected.
+	enableTracing bool
 }
 
 // Subscription creates a reference to a subscription.
@@ -65,10 +72,16 @@ func (c *Client) Subscription(id string) *Subscription {
 
 // SubscriptionInProject creates a reference to a subscription in a given project.
 func (c *Client) SubscriptionInProject(id, projectID string) *Subscription {
+	return newSubscription(c, fmt.Sprintf("projects/%s/subscriptions/%s", projectID, id))
+}
+
+func newSubscription(c *Client, name string) *Subscription {
 	return &Subscription{
-		c:        c,
-		name:     fmt.Sprintf("projects/%s/subscriptions/%s", projectID, id),
-		clientID: uuid.NewString(),
+		c:               c,
+		name:            name,
+		clientID:        uuid.NewString(),
+		ReceiveSettings: DefaultReceiveSettings,
+		enableTracing:   c.enableTracing,
 	}
 }
 
@@ -118,7 +131,7 @@ func (subs *SubscriptionIterator) Next() (*Subscription, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Subscription{c: subs.c, name: subName}, nil
+	return newSubscription(subs.c, subName), nil
 }
 
 // NextConfig returns the next subscription config. If there are no more subscriptions,
@@ -1319,6 +1332,7 @@ func (s *Subscription) Receive(ctx context.Context, f func(context.Context, *Mes
 		// canceling that context would immediately stop the iterator without
 		// waiting for unacked messages.
 		iter := newMessageIterator(s.c.subc, s.name, po)
+		iter.enableTracing = s.enableTracing
 
 		// We cannot use errgroup from Receive here. Receive might already be
 		// calling group.Wait, and group.Wait cannot be called concurrently with
@@ -1363,6 +1377,7 @@ func (s *Subscription) Receive(ctx context.Context, f func(context.Context, *Mes
 					return nil
 				default:
 				}
+
 				msgs, err := iter.receive(maxToPull)
 				if err == io.EOF {
 					return nil
@@ -1380,9 +1395,34 @@ func (s *Subscription) Receive(ctx context.Context, f func(context.Context, *Mes
 					return nil
 				default:
 				}
+
 				for i, msg := range msgs {
 					msg := msg
-					// TODO(jba): call acquire closer to when the message is allocated.
+					iter.eoMu.RLock()
+					ackh, _ := msgAckHandler(msg, iter.enableExactlyOnceDelivery)
+					iter.eoMu.RUnlock()
+					// otelCtx is used to store the main subscribe span to the other child spans.
+					// We want this to derive from the main subscribe ctx, so the iterator remains
+					// cancellable.
+					// We cannot reassign into ctx2 directly since this ctx should be different per
+					// batch of messages and also per message iterator.
+					otelCtx := ctx2
+					// Stores the concurrency control span, which starts before the call to
+					// acquire is made, and ends immediately after. This used to be called
+					// flow control, but is more accurately describes as concurrency control
+					// since this limits the number of simultaneous callback invocations.
+					var ccSpan trace.Span
+					if iter.enableTracing {
+						c, ok := iter.activeSpans.Load(ackh.ackID)
+						if ok {
+							sc := c.(trace.Span)
+							otelCtx = trace.ContextWithSpanContext(otelCtx, sc.SpanContext())
+							// Don't override otelCtx here since the parent of subsequent spans
+							// should be the subscribe span still.
+							_, ccSpan = startSpan(otelCtx, ccSpanName, "")
+						}
+					}
+					// Use the original user defined ctx for this operation so the acquire operation can be cancelled.
 					if err := fc.acquire(ctx, len(msg.Data)); err != nil {
 						// TODO(jba): test that these "orphaned" messages are nacked immediately when ctx is done.
 						for _, m := range msgs[i:] {
@@ -1391,9 +1431,9 @@ func (s *Subscription) Receive(ctx context.Context, f func(context.Context, *Mes
 						// Return nil if the context is done, not err.
 						return nil
 					}
-					iter.eoMu.RLock()
-					msgAckHandler(msg, iter.enableExactlyOnceDelivery)
-					iter.eoMu.RUnlock()
+					if iter.enableTracing {
+						ccSpan.End()
+					}
 
 					wg.Add(1)
 					// Only schedule messages in order if an ordering key is present and the subscriber client
@@ -1403,14 +1443,44 @@ func (s *Subscription) Receive(ctx context.Context, f func(context.Context, *Mes
 					if iter.enableOrdering {
 						key = msg.OrderingKey
 					}
+					// TODO(deklerk): Can we have a generic handler at the
+					// constructor level?
+					var schedulerSpan trace.Span
+					if iter.enableTracing {
+						_, schedulerSpan = startSpan(otelCtx, scheduleSpanName, "")
+					}
 					iter.orderingMu.RUnlock()
 					msgLen := len(msg.Data)
 					if err := sched.Add(key, msg, func(msg interface{}) {
+						m := msg.(*Message)
 						defer wg.Done()
+						var ps trace.Span
+						if iter.enableTracing {
+							schedulerSpan.End()
+							// Start the process span, and augment the done function to end this span and record events.
+							otelCtx, ps = startSpan(otelCtx, processSpanName, s.ID())
+							old := ackh.doneFunc
+							ackh.doneFunc = func(ackID string, ack bool, r *ipubsub.AckResult, receiveTime time.Time) {
+								var eventString string
+								if ack {
+									eventString = eventAckCalled
+								} else {
+									eventString = eventNackCalled
+								}
+								ps.AddEvent(eventString)
+								// This is the process operation, but is currently named "Deliver". Replace once
+								// updated here: https://github.com/open-telemetry/opentelemetry-go/blob/eb6bd28f3288b173d148c67f9ed45390594abdc2/semconv/v1.26.0/attribute_group.go#L5240
+								ps.SetAttributes(semconv.MessagingOperationTypeDeliver)
+								ps.End()
+								old(ackID, ack, r, receiveTime)
+							}
+						}
 						defer fc.release(ctx, msgLen)
-						f(ctx2, msg.(*Message))
+						f(otelCtx, m)
 					}); err != nil {
 						wg.Done()
+						// TODO(hongalex): propagate these errors to an otel span.
+
 						// If there are any errors with scheduling messages,
 						// nack them so they can be redelivered.
 						msg.Nack()
