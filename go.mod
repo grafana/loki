@@ -91,7 +91,7 @@ require (
 	github.com/sony/gobreaker v0.5.0
 	github.com/spf13/afero v1.10.0
 	github.com/stretchr/testify v1.9.0
-	github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448
+	github.com/tonistiigi/fifo v1.1.0
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/xdg-go/scram v1.1.2
 	go.etcd.io/bbolt v1.3.10
