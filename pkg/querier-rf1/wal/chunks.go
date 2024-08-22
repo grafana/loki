@@ -2,7 +2,6 @@ package wal
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -316,8 +315,8 @@ func readChunkData(ctx context.Context, storage BlockStorage, chunk ChunkData) (
 	defer reader.Close()
 
 	data := make([]byte, size)
-	_, err = reader.Read(data)
-	if err != nil && !errors.Is(err, io.EOF) {
+	_, err = io.ReadFull(reader, data)
+	if err != nil {
 		return nil, fmt.Errorf("could not read socket for %s: %w", chunk.id, err)
 	}
 
