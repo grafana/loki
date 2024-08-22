@@ -46,6 +46,7 @@ func NewKafkaTee(
 		//commonKafkaClientOptions(kafkaCfg, metrics, logger),
 		kgo.RequiredAcks(kgo.AllISRAcks()),
 		kgo.DefaultProduceTopic("rf1"),
+		kgo.AllowAutoTopicCreation(),
 
 		// We set the partition field in each record.
 		kgo.RecordPartitioner(kgo.ManualPartitioner()),
