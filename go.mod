@@ -71,7 +71,6 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/modern-go/reflect2 v1.0.2
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
-	github.com/ncw/swift/v2 v2.0.2
 	github.com/oklog/run v1.1.0
 	github.com/oklog/ulid v1.3.1
 	github.com/opentracing-contrib/go-grpc v0.0.0-20210225150812-73cb765af46e
@@ -132,7 +131,7 @@ require (
 	github.com/heroku/x v0.0.61
 	github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db
-	github.com/ncw/swift v1.0.53
+	github.com/ncw/swift/v2 v2.0.2
 	github.com/prometheus/alertmanager v0.27.0
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/richardartoul/molecule v1.0.0
@@ -170,6 +169,7 @@ require (
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
+	github.com/ncw/swift v1.0.53 // indirect
 	github.com/pires/go-proxyproto v0.7.0 // indirect
 	github.com/pkg/xattr v0.4.10 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect

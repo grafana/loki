@@ -1334,6 +1334,7 @@ github.com/mwitkow/go-conntrack
 github.com/ncw/swift
 # github.com/ncw/swift/v2 v2.0.2
 ## explicit; go 1.15
+github.com/ncw/swift/v2
 # github.com/oklog/run v1.1.0
 ## explicit; go 1.13
 github.com/oklog/run
