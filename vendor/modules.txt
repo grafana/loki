@@ -1599,9 +1599,6 @@ github.com/tklauser/go-sysconf
 # github.com/tklauser/numcpus v0.6.1
 ## explicit; go 1.13
 github.com/tklauser/numcpus
-# github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448
-## explicit
-github.com/tonistiigi/fifo
 # github.com/uber/jaeger-client-go v2.30.0+incompatible
 ## explicit
 github.com/uber/jaeger-client-go
