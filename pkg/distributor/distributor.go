@@ -70,7 +70,8 @@ var (
 var allowedLabelsForLevel = map[string]struct{}{
 	"level": {}, "LEVEL": {}, "Level": {},
 	"severity": {}, "SEVERITY": {}, "Severity": {},
-	"lvl": {}, "LVL": {}, "Lvl": {},
+	"severity_text": {},
+	"lvl":           {}, "LVL": {}, "Lvl": {},
 }
 
 // Config for a Distributor.
