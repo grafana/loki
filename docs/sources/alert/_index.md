@@ -179,7 +179,7 @@ The Ruler's Prometheus compatibility further accentuates the marriage between me
 
 ### Black box monitoring
 
-We don't always control the source code of applications we run. Load balancers and a myriad of other components, both open source and closed third-party, support our applications while they don't expose the metrics we want. Some don't expose any metrics at all. Loki's alerting and recording rules can produce metrics and alert on the state of the system, bringing the components into our observability stack by using the logs. This is an incredibly powerful way to introduce advanced observability into legacy architectures.
+We don't always control the source code of applications we run. Load balancers and a myriad of other components, both open source and closed third-party, support our applications while they don't expose the metrics we want. Some don't expose any metrics at all. The Loki alerting and recording rules can produce metrics and alert on the state of the system, bringing the components into our observability stack by using the logs. This is an incredibly powerful way to introduce advanced observability into legacy architectures.
 
 ### Event alerting
 

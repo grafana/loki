@@ -49,9 +49,12 @@ func (f *fixture) Clients() (
 	}
 
 	f.gcssrv = fakestorage.NewServer(nil)
-	f.gcssrv.CreateBucket("chunks")
+	opts := fakestorage.CreateBucketOpts{
+		Name: "chunks",
+	}
+	f.gcssrv.CreateBucketWithOpts(opts)
 
-	conn, err := grpc.Dial(f.btsrv.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(f.btsrv.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return
 	}
@@ -67,7 +70,10 @@ func (f *fixture) Clients() (
 		client: adminClient,
 	}
 
-	c, err := bigtable.NewClient(ctx, proj, instance, option.WithGRPCConn(conn))
+	bigTableClientConfig := bigtable.ClientConfig{
+		MetricsProvider: bigtable.NoopMetricsProvider{},
+	}
+	c, err := bigtable.NewClientWithConfig(ctx, proj, instance, bigTableClientConfig, option.WithGRPCConn(conn))
 	if err != nil {
 		return
 	}

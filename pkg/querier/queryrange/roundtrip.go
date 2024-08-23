@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	logutil "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
@@ -400,8 +401,9 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 			}
 
-			// Only filter expressions are query sharded
-			if !e.HasFilter() {
+			// Some queries we don't want to parallelize as aggressively, like limited queries and `datasample` queries
+			tags := httpreq.ExtractQueryTagsFromContext(ctx)
+			if !e.HasFilter() || strings.Contains(tags, "datasample") {
 				return r.limited.Do(ctx, req)
 			}
 			return r.log.Do(ctx, req)
@@ -503,13 +505,10 @@ const (
 	DetectedFieldsOp = "detected_fields"
 	PatternsQueryOp  = "patterns"
 	DetectedLabelsOp = "detected_labels"
-	SamplesQueryOp   = "samples"
 )
 
 func getOperation(path string) string {
 	switch {
-	case path == "/loki/api/v1/explore/query_range":
-		return SamplesQueryOp
 	case strings.HasSuffix(path, "/query_range") || strings.HasSuffix(path, "/prom/query"):
 		return QueryRangeOp
 	case strings.HasSuffix(path, "/series"):

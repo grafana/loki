@@ -401,7 +401,7 @@ func TestAllServices(t *testing.T) {
 	<-ch
 }
 
-// targetgroup with no targets is emitted if no services were discovered.
+// TestNoTargets with no targets is emitted if no services were discovered.
 func TestNoTargets(t *testing.T) {
 	stub, config := newServer(t)
 	defer stub.Close()

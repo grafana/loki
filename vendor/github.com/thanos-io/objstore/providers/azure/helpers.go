@@ -63,18 +63,27 @@ func getContainerClient(conf Config) (*container.Client, error) {
 		return containerClient, nil
 	}
 
-	// Use MSI for authentication.
-	msiOpt := &azidentity.ManagedIdentityCredentialOptions{}
+	// Otherwise use a token credential
+	var cred azcore.TokenCredential
+
+	// Use Managed Identity Credential if a user assigned ID is set
 	if conf.UserAssignedID != "" {
+		msiOpt := &azidentity.ManagedIdentityCredentialOptions{}
 		msiOpt.ID = azidentity.ClientID(conf.UserAssignedID)
+		cred, err = azidentity.NewManagedIdentityCredential(msiOpt)
+	} else {
+		// Otherwise use Default Azure Credential
+		cred, err = azidentity.NewDefaultAzureCredential(nil)
 	}
-	cred, err := azidentity.NewManagedIdentityCredential(msiOpt)
+
 	if err != nil {
 		return nil, err
 	}
+
 	containerClient, err := container.NewClient(containerURL, cred, opt)
 	if err != nil {
 		return nil, err
 	}
+
 	return containerClient, nil
 }

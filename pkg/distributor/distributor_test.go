@@ -103,7 +103,6 @@ func TestDistributor(t *testing.T) {
 		t.Run(fmt.Sprintf("[%d](lines=%v)", i, tc.lines), func(t *testing.T) {
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
-			limits.DiscoverServiceName = nil
 			limits.IngestionRateMB = ingestionRateLimit
 			limits.IngestionBurstSizeMB = ingestionRateLimit
 			limits.MaxLineSize = fe.ByteSize(tc.maxLineSize)
@@ -140,20 +139,17 @@ func TestDistributor(t *testing.T) {
 func Test_IncrementTimestamp(t *testing.T) {
 	incrementingDisabled := &validation.Limits{}
 	flagext.DefaultValues(incrementingDisabled)
-	incrementingDisabled.DiscoverServiceName = nil
 	incrementingDisabled.RejectOldSamples = false
 	incrementingDisabled.DiscoverLogLevels = false
 
 	incrementingEnabled := &validation.Limits{}
 	flagext.DefaultValues(incrementingEnabled)
-	incrementingEnabled.DiscoverServiceName = nil
 	incrementingEnabled.RejectOldSamples = false
 	incrementingEnabled.IncrementDuplicateTimestamp = true
 	incrementingEnabled.DiscoverLogLevels = false
 
 	defaultLimits := &validation.Limits{}
 	flagext.DefaultValues(defaultLimits)
-	now := time.Now()
 	defaultLimits.DiscoverLogLevels = false
 
 	tests := map[string]struct {
@@ -401,34 +397,6 @@ func Test_IncrementTimestamp(t *testing.T) {
 				},
 			},
 		},
-		"default limit adding service_name label": {
-			limits: defaultLimits,
-			push: &logproto.PushRequest{
-				Streams: []logproto.Stream{
-					{
-						Labels: "{job=\"foo\"}",
-						Entries: []logproto.Entry{
-							{Timestamp: now.Add(-2 * time.Second), Line: "hey1"},
-							{Timestamp: now.Add(-time.Second), Line: "hey2"},
-							{Timestamp: now, Line: "hey3"},
-						},
-					},
-				},
-			},
-			expectedPush: &logproto.PushRequest{
-				Streams: []logproto.Stream{
-					{
-						Labels: "{job=\"foo\", service_name=\"foo\"}",
-						Hash:   0x86ca305b6d86e8b0,
-						Entries: []logproto.Entry{
-							{Timestamp: now.Add(-2 * time.Second), Line: "hey1"},
-							{Timestamp: now.Add(-time.Second), Line: "hey2"},
-							{Timestamp: now, Line: "hey3"},
-						},
-					},
-				},
-			},
-		},
 	}
 
 	for testName, testData := range tests {
@@ -448,7 +416,6 @@ func Test_IncrementTimestamp(t *testing.T) {
 func TestDistributorPushConcurrently(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
-	limits.DiscoverServiceName = nil
 
 	distributors, ingesters := prepare(t, 1, 5, limits, nil)
 
@@ -552,20 +519,6 @@ func Test_SortLabelsOnPush(t *testing.T) {
 		topVal := ingester.Peek()
 		require.Equal(t, `{a="b", buzz="f", service_name="foo"}`, topVal.Streams[0].Labels)
 	})
-
-	t.Run("with service_name added during ingestion", func(t *testing.T) {
-		limits := &validation.Limits{}
-		flagext.DefaultValues(limits)
-		ingester := &mockIngester{}
-		distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
-
-		request := makeWriteRequest(10, 10)
-		request.Streams[0].Labels = `{buzz="f", x="y", a="b"}`
-		_, err := distributors[0].Push(ctx, request)
-		require.NoError(t, err)
-		topVal := ingester.Peek()
-		require.Equal(t, `{a="b", buzz="f", service_name="unknown_service", x="y"}`, topVal.Streams[0].Labels)
-	})
 }
 
 func Test_TruncateLogLines(t *testing.T) {
@@ -603,7 +556,7 @@ func Test_DiscardEmptyStreamsAfterValidation(t *testing.T) {
 		distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
 
 		_, err := distributors[0].Push(ctx, makeWriteRequest(1, 10))
-		require.Equal(t, err, httpgrpc.Errorf(http.StatusBadRequest, fmt.Sprintf(validation.LineTooLongErrorMsg, 5, "{foo=\"bar\", service_name=\"unknown_service\"}", 10)))
+		require.Equal(t, err, httpgrpc.Errorf(http.StatusBadRequest, fmt.Sprintf(validation.LineTooLongErrorMsg, 5, "{foo=\"bar\"}", 10)))
 		topVal := ingester.Peek()
 		require.Nil(t, topVal)
 	})
@@ -886,52 +839,8 @@ func TestParseStreamLabels(t *testing.T) {
 		generateLimits func() *validation.Limits
 	}{
 		{
-			name: "service name label mapping disabled",
-			generateLimits: func() *validation.Limits {
-				limits := &validation.Limits{}
-				flagext.DefaultValues(limits)
-				limits.DiscoverServiceName = nil
-				return limits
-			},
-			origLabels: `{foo="bar"}`,
-			expectedLabels: labels.Labels{
-				{
-					Name:  "foo",
-					Value: "bar",
-				},
-			},
-		},
-		{
-			name: "no labels defined - service name label mapping disabled",
-			generateLimits: func() *validation.Limits {
-				limits := &validation.Limits{}
-				flagext.DefaultValues(limits)
-				limits.DiscoverServiceName = nil
-				return limits
-			},
-			origLabels:  `{}`,
-			expectedErr: fmt.Errorf(validation.MissingLabelsErrorMsg),
-		},
-		{
-			name:       "service name label enabled",
-			origLabels: `{foo="bar"}`,
-			generateLimits: func() *validation.Limits {
-				return defaultLimit
-			},
-			expectedLabels: labels.Labels{
-				{
-					Name:  "foo",
-					Value: "bar",
-				},
-				{
-					Name:  labelServiceName,
-					Value: serviceUnknown,
-				},
-			},
-		},
-		{
 			name:       "service name label should not get counted against max labels count",
-			origLabels: `{foo="bar"}`,
+			origLabels: `{foo="bar", service_name="unknown_service"}`,
 			generateLimits: func() *validation.Limits {
 				limits := &validation.Limits{}
 				flagext.DefaultValues(limits)
@@ -944,33 +853,8 @@ func TestParseStreamLabels(t *testing.T) {
 					Value: "bar",
 				},
 				{
-					Name:  labelServiceName,
-					Value: serviceUnknown,
-				},
-			},
-		},
-		{
-			name:       "use label service as service name",
-			origLabels: `{container="nginx", foo="bar", service="auth"}`,
-			generateLimits: func() *validation.Limits {
-				return defaultLimit
-			},
-			expectedLabels: labels.Labels{
-				{
-					Name:  "container",
-					Value: "nginx",
-				},
-				{
-					Name:  "foo",
-					Value: "bar",
-				},
-				{
-					Name:  "service",
-					Value: "auth",
-				},
-				{
-					Name:  labelServiceName,
-					Value: "auth",
+					Name:  loghttp_push.LabelServiceName,
+					Value: loghttp_push.ServiceUnknown,
 				},
 			},
 		},
@@ -1562,7 +1446,6 @@ func Test_DetectLogLevels(t *testing.T) {
 		flagext.DefaultValues(limits)
 
 		limits.DiscoverLogLevels = discoverLogLevels
-		limits.DiscoverServiceName = nil
 		limits.AllowStructuredMetadata = true
 		return limits, &mockIngester{}
 	}
@@ -1602,8 +1485,8 @@ func Test_DetectLogLevels(t *testing.T) {
 		require.Equal(t, `{foo="bar"}`, topVal.Streams[0].Labels)
 		require.Equal(t, push.LabelsAdapter{
 			{
-				Name:  levelLabel,
-				Value: logLevelWarn,
+				Name:  constants.LevelLabel,
+				Value: constants.LogLevelWarn,
 			},
 		}, topVal.Streams[0].Entries[0].StructuredMetadata)
 	})
@@ -1619,8 +1502,8 @@ func Test_DetectLogLevels(t *testing.T) {
 		require.Equal(t, `{foo="bar", level="debug"}`, topVal.Streams[0].Labels)
 		sm := topVal.Streams[0].Entries[0].StructuredMetadata
 		require.Len(t, sm, 1)
-		require.Equal(t, sm[0].Name, levelLabel)
-		require.Equal(t, sm[0].Value, logLevelDebug)
+		require.Equal(t, sm[0].Name, constants.LevelLabel)
+		require.Equal(t, sm[0].Value, constants.LogLevelDebug)
 	})
 
 	t.Run("log level detection enabled but log level already present as structured metadata", func(t *testing.T) {
@@ -1631,7 +1514,7 @@ func Test_DetectLogLevels(t *testing.T) {
 		writeReq.Streams[0].Entries[0].StructuredMetadata = push.LabelsAdapter{
 			{
 				Name:  "severity",
-				Value: logLevelWarn,
+				Value: constants.LogLevelWarn,
 			},
 		}
 		_, err := distributors[0].Push(ctx, writeReq)
@@ -1642,10 +1525,10 @@ func Test_DetectLogLevels(t *testing.T) {
 		require.Equal(t, push.LabelsAdapter{
 			{
 				Name:  "severity",
-				Value: logLevelWarn,
+				Value: constants.LogLevelWarn,
 			}, {
-				Name:  levelLabel,
-				Value: logLevelWarn,
+				Name:  constants.LevelLabel,
+				Value: constants.LogLevelWarn,
 			},
 		}, sm)
 	})
@@ -1668,7 +1551,7 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 					},
 				},
 			},
-			expectedLogLevel: logLevelDebug,
+			expectedLogLevel: constants.LogLevelDebug,
 		},
 		{
 			name: "invalid severity number should not cause any issues",
@@ -1680,126 +1563,126 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 					},
 				},
 			},
-			expectedLogLevel: logLevelInfo,
+			expectedLogLevel: constants.LogLevelInfo,
 		},
 		{
 			name: "non otlp without any of the log level keywords in log line",
 			entry: logproto.Entry{
 				Line: "foo",
 			},
-			expectedLogLevel: logLevelUnknown,
+			expectedLogLevel: constants.LogLevelUnknown,
 		},
 		{
 			name: "non otlp with log level keywords in log line",
 			entry: logproto.Entry{
 				Line: "this is a warning log",
 			},
-			expectedLogLevel: logLevelWarn,
+			expectedLogLevel: constants.LogLevelWarn,
 		},
 		{
 			name: "json log line with an error",
 			entry: logproto.Entry{
 				Line: `{"foo":"bar","msg":"message with keyword error but it should not get picked up","level":"critical"}`,
 			},
-			expectedLogLevel: logLevelCritical,
+			expectedLogLevel: constants.LogLevelCritical,
 		},
 		{
 			name: "json log line with an error",
 			entry: logproto.Entry{
 				Line: `{"FOO":"bar","MSG":"message with keyword error but it should not get picked up","LEVEL":"Critical"}`,
 			},
-			expectedLogLevel: logLevelCritical,
+			expectedLogLevel: constants.LogLevelCritical,
 		},
 		{
 			name: "json log line with an warning",
 			entry: logproto.Entry{
 				Line: `{"foo":"bar","msg":"message with keyword warn but it should not get picked up","level":"warn"}`,
 			},
-			expectedLogLevel: logLevelWarn,
+			expectedLogLevel: constants.LogLevelWarn,
 		},
 		{
 			name: "json log line with an warning",
 			entry: logproto.Entry{
 				Line: `{"foo":"bar","msg":"message with keyword warn but it should not get picked up","SEVERITY":"FATAL"}`,
 			},
-			expectedLogLevel: logLevelFatal,
+			expectedLogLevel: constants.LogLevelFatal,
 		},
 		{
 			name: "json log line with an error in block case",
 			entry: logproto.Entry{
 				Line: `{"foo":"bar","msg":"message with keyword warn but it should not get picked up","level":"ERR"}`,
 			},
-			expectedLogLevel: logLevelError,
+			expectedLogLevel: constants.LogLevelError,
 		},
 		{
 			name: "json log line with an INFO in block case",
 			entry: logproto.Entry{
 				Line: `{"foo":"bar","msg":"message with keyword INFO get picked up"}`,
 			},
-			expectedLogLevel: logLevelInfo,
+			expectedLogLevel: constants.LogLevelInfo,
 		},
 		{
 			name: "logfmt log line with an INFO and not level returns info log level",
 			entry: logproto.Entry{
 				Line: `foo=bar msg="message with info and not level should get picked up"`,
 			},
-			expectedLogLevel: logLevelInfo,
+			expectedLogLevel: constants.LogLevelInfo,
 		},
 		{
 			name: "logfmt log line with a warn",
 			entry: logproto.Entry{
 				Line: `foo=bar msg="message with keyword error but it should not get picked up" level=warn`,
 			},
-			expectedLogLevel: logLevelWarn,
+			expectedLogLevel: constants.LogLevelWarn,
 		},
 		{
 			name: "logfmt log line with a warn with camel case",
 			entry: logproto.Entry{
 				Line: `foo=bar msg="message with keyword error but it should not get picked up" level=Warn`,
 			},
-			expectedLogLevel: logLevelWarn,
+			expectedLogLevel: constants.LogLevelWarn,
 		},
 		{
 			name: "logfmt log line with a trace",
 			entry: logproto.Entry{
 				Line: `foo=bar msg="message with keyword error but it should not get picked up" level=Trace`,
 			},
-			expectedLogLevel: logLevelTrace,
+			expectedLogLevel: constants.LogLevelTrace,
 		},
 		{
 			name: "logfmt log line with some other level returns unknown log level",
 			entry: logproto.Entry{
 				Line: `foo=bar msg="message with keyword but it should not get picked up" level=NA`,
 			},
-			expectedLogLevel: logLevelUnknown,
+			expectedLogLevel: constants.LogLevelUnknown,
 		},
 		{
 			name: "logfmt log line with label Severity is allowed for level detection",
 			entry: logproto.Entry{
 				Line: `foo=bar msg="message with keyword but it should not get picked up" severity=critical`,
 			},
-			expectedLogLevel: logLevelCritical,
+			expectedLogLevel: constants.LogLevelCritical,
 		},
 		{
 			name: "logfmt log line with label Severity with camelcase is allowed for level detection",
 			entry: logproto.Entry{
 				Line: `Foo=bar MSG="Message with keyword but it should not get picked up" Severity=critical`,
 			},
-			expectedLogLevel: logLevelCritical,
+			expectedLogLevel: constants.LogLevelCritical,
 		},
 		{
 			name: "logfmt log line with a info with non standard case",
 			entry: logproto.Entry{
 				Line: `foo=bar msg="message with keyword error but it should not get picked up" level=inFO`,
 			},
-			expectedLogLevel: logLevelInfo,
+			expectedLogLevel: constants.LogLevelInfo,
 		},
 		{
 			name: "logfmt log line with a info with non block case for level",
 			entry: logproto.Entry{
 				Line: `FOO=bar MSG="message with keyword error but it should not get picked up" LEVEL=inFO`,
 			},
-			expectedLogLevel: logLevelInfo,
+			expectedLogLevel: constants.LogLevelInfo,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1824,7 +1707,7 @@ func Benchmark_extractLogLevelFromLogLine(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		level := extractLogLevelFromLogLine(logLine)
-		require.Equal(b, logLevelUnknown, level)
+		require.Equal(b, constants.LogLevelUnknown, level)
 	}
 }
 
@@ -1833,7 +1716,7 @@ func Benchmark_optParseExtractLogLevelFromLogLineJson(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		level := extractLogLevelFromLogLine(logLine)
-		require.Equal(b, logLevelError, level)
+		require.Equal(b, constants.LogLevelError, level)
 	}
 }
 
@@ -1842,6 +1725,6 @@ func Benchmark_optParseExtractLogLevelFromLogLineLogfmt(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		level := extractLogLevelFromLogLine(logLine)
-		require.Equal(b, logLevelInfo, level)
+		require.Equal(b, constants.LogLevelInfo, level)
 	}
 }

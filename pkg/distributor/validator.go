@@ -157,7 +157,19 @@ func (v Validator) ValidateLabels(ctx validationContext, ls labels.Labels, strea
 		validation.DiscardedSamples.WithLabelValues(validation.MissingLabels, ctx.userID).Inc()
 		return fmt.Errorf(validation.MissingLabelsErrorMsg)
 	}
+
+	// Skip validation for aggregated metric streams, as we create those for internal use
+	if ls.Has(push.AggregatedMetricLabel) {
+		return nil
+	}
+
 	numLabelNames := len(ls)
+	// This is a special case that's often added by the Loki infrastructure. It may result in allowing one extra label
+	// if incoming requests already have a service_name
+	if ls.Has(push.LabelServiceName) {
+		numLabelNames--
+	}
+
 	if numLabelNames > ctx.maxLabelNamesPerSeries {
 		updateMetrics(validation.MaxLabelNamesPerSeries, ctx.userID, stream)
 		return fmt.Errorf(validation.MaxLabelNamesPerSeriesErrorMsg, stream.Labels, numLabelNames, ctx.maxLabelNamesPerSeries)

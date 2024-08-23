@@ -60,18 +60,6 @@ const (
 	ringKey = "distributor"
 
 	ringAutoForgetUnhealthyPeriods = 2
-
-	labelServiceName = "service_name"
-	serviceUnknown   = "unknown_service"
-	levelLabel       = "detected_level"
-	logLevelDebug    = "debug"
-	logLevelInfo     = "info"
-	logLevelWarn     = "warn"
-	logLevelError    = "error"
-	logLevelFatal    = "fatal"
-	logLevelCritical = "critical"
-	logLevelTrace    = "trace"
-	logLevelUnknown  = "unknown"
 )
 
 var (
@@ -408,9 +396,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 					} else {
 						logLevel = detectLogLevelFromLogEntry(entry, structuredMetadata)
 					}
-					if logLevel != logLevelUnknown && logLevel != "" {
+					if logLevel != constants.LogLevelUnknown && logLevel != "" {
 						entry.StructuredMetadata = append(entry.StructuredMetadata, logproto.LabelAdapter{
-							Name:  levelLabel,
+							Name:  constants.LevelLabel,
 							Value: logLevel,
 						})
 					}
@@ -789,20 +777,6 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 		return nil, "", 0, err
 	}
 
-	// We do not want to count service_name added by us in the stream limit so adding it after validating original labels.
-	if !ls.Has(labelServiceName) && len(vContext.discoverServiceName) > 0 {
-		serviceName := serviceUnknown
-		for _, labelName := range vContext.discoverServiceName {
-			if labelVal := ls.Get(labelName); labelVal != "" {
-				serviceName = labelVal
-				break
-			}
-		}
-
-		ls = labels.NewBuilder(ls).Set(labelServiceName, serviceName).Labels()
-		stream.Labels = ls.String()
-	}
-
 	lsHash := ls.Hash()
 
 	d.labelCache.Add(key, labelData{ls, lsHash})
@@ -899,24 +873,24 @@ func detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.
 	if otlpSeverityNumberTxt := structuredMetadata.Get(push.OTLPSeverityNumber); otlpSeverityNumberTxt != "" {
 		otlpSeverityNumber, err := strconv.Atoi(otlpSeverityNumberTxt)
 		if err != nil {
-			return logLevelInfo
+			return constants.LogLevelInfo
 		}
 		if otlpSeverityNumber == int(plog.SeverityNumberUnspecified) {
-			return logLevelUnknown
+			return constants.LogLevelUnknown
 		} else if otlpSeverityNumber <= int(plog.SeverityNumberTrace4) {
-			return logLevelTrace
+			return constants.LogLevelTrace
 		} else if otlpSeverityNumber <= int(plog.SeverityNumberDebug4) {
-			return logLevelDebug
+			return constants.LogLevelDebug
 		} else if otlpSeverityNumber <= int(plog.SeverityNumberInfo4) {
-			return logLevelInfo
+			return constants.LogLevelInfo
 		} else if otlpSeverityNumber <= int(plog.SeverityNumberWarn4) {
-			return logLevelWarn
+			return constants.LogLevelWarn
 		} else if otlpSeverityNumber <= int(plog.SeverityNumberError4) {
-			return logLevelError
+			return constants.LogLevelError
 		} else if otlpSeverityNumber <= int(plog.SeverityNumberFatal4) {
-			return logLevelFatal
+			return constants.LogLevelFatal
 		}
-		return logLevelUnknown
+		return constants.LogLevelUnknown
 	}
 
 	return extractLogLevelFromLogLine(entry.Line)
@@ -933,19 +907,19 @@ func extractLogLevelFromLogLine(log string) string {
 
 	switch {
 	case bytes.EqualFold(v, []byte("trace")), bytes.EqualFold(v, []byte("trc")):
-		return logLevelTrace
+		return constants.LogLevelTrace
 	case bytes.EqualFold(v, []byte("debug")), bytes.EqualFold(v, []byte("dbg")):
-		return logLevelDebug
+		return constants.LogLevelDebug
 	case bytes.EqualFold(v, []byte("info")), bytes.EqualFold(v, []byte("inf")):
-		return logLevelInfo
+		return constants.LogLevelInfo
 	case bytes.EqualFold(v, []byte("warn")), bytes.EqualFold(v, []byte("wrn")):
-		return logLevelWarn
+		return constants.LogLevelWarn
 	case bytes.EqualFold(v, []byte("error")), bytes.EqualFold(v, []byte("err")):
-		return logLevelError
+		return constants.LogLevelError
 	case bytes.EqualFold(v, []byte("critical")):
-		return logLevelCritical
+		return constants.LogLevelCritical
 	case bytes.EqualFold(v, []byte("fatal")):
-		return logLevelFatal
+		return constants.LogLevelFatal
 	default:
 		return detectLevelFromLogLine(log)
 	}
@@ -1000,21 +974,21 @@ func isJSON(line string) bool {
 func detectLevelFromLogLine(log string) string {
 	if strings.Contains(log, "info:") || strings.Contains(log, "INFO:") ||
 		strings.Contains(log, "info") || strings.Contains(log, "INFO") {
-		return logLevelInfo
+		return constants.LogLevelInfo
 	}
 	if strings.Contains(log, "err:") || strings.Contains(log, "ERR:") ||
 		strings.Contains(log, "error") || strings.Contains(log, "ERROR") {
-		return logLevelError
+		return constants.LogLevelError
 	}
 	if strings.Contains(log, "warn:") || strings.Contains(log, "WARN:") ||
 		strings.Contains(log, "warning") || strings.Contains(log, "WARNING") {
-		return logLevelWarn
+		return constants.LogLevelWarn
 	}
 	if strings.Contains(log, "CRITICAL:") || strings.Contains(log, "critical:") {
-		return logLevelCritical
+		return constants.LogLevelCritical
 	}
 	if strings.Contains(log, "debug:") || strings.Contains(log, "DEBUG:") {
-		return logLevelDebug
+		return constants.LogLevelDebug
 	}
-	return logLevelUnknown
+	return constants.LogLevelUnknown
 }

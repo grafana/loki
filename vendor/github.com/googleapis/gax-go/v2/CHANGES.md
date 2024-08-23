@@ -1,5 +1,33 @@
 # Changelog
 
+## [2.13.0](https://github.com/googleapis/gax-go/compare/v2.12.5...v2.13.0) (2024-07-22)
+
+
+### Features
+
+* **iterator:** add package to help work with new iter.Seq types ([#358](https://github.com/googleapis/gax-go/issues/358)) ([6bccdaa](https://github.com/googleapis/gax-go/commit/6bccdaac011fe6fd147e4eb533a8e6520b7d4acc))
+
+## [2.12.5](https://github.com/googleapis/gax-go/compare/v2.12.4...v2.12.5) (2024-06-18)
+
+
+### Bug Fixes
+
+* **v2/apierror:** fix (*APIError).Error() for unwrapped Status ([#351](https://github.com/googleapis/gax-go/issues/351)) ([22c16e7](https://github.com/googleapis/gax-go/commit/22c16e7bff5402bdc4c25063771cdd01c650b500)), refs [#350](https://github.com/googleapis/gax-go/issues/350)
+
+## [2.12.4](https://github.com/googleapis/gax-go/compare/v2.12.3...v2.12.4) (2024-05-03)
+
+
+### Bug Fixes
+
+* provide unmarshal options for streams ([#343](https://github.com/googleapis/gax-go/issues/343)) ([ddf9a90](https://github.com/googleapis/gax-go/commit/ddf9a90bf180295d49875e15cb80b2136a49dbaf))
+
+## [2.12.3](https://github.com/googleapis/gax-go/compare/v2.12.2...v2.12.3) (2024-03-14)
+
+
+### Bug Fixes
+
+* bump protobuf dep to v1.33 ([#333](https://github.com/googleapis/gax-go/issues/333)) ([2892b22](https://github.com/googleapis/gax-go/commit/2892b22c1ae8a70dec3448d82e634643fe6c1be2))
+
 ## [2.12.2](https://github.com/googleapis/gax-go/compare/v2.12.1...v2.12.2) (2024-02-23)
 
 

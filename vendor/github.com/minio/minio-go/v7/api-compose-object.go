@@ -119,7 +119,7 @@ func (opts CopyDestOptions) Marshal(header http.Header) {
 	if opts.ReplaceMetadata {
 		header.Set("x-amz-metadata-directive", replaceDirective)
 		for k, v := range filterCustomMeta(opts.UserMetadata) {
-			if isAmzHeader(k) || isStandardHeader(k) || isStorageClassHeader(k) {
+			if isAmzHeader(k) || isStandardHeader(k) || isStorageClassHeader(k) || isMinioHeader(k) {
 				header.Set(k, v)
 			} else {
 				header.Set("x-amz-meta-"+k, v)
