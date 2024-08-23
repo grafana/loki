@@ -12,8 +12,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coder/quartz"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/gogo/protobuf/proto"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/services"
 	"github.com/hashicorp/raft"
@@ -99,6 +101,10 @@ type Metastore struct {
 
 	done chan struct{}
 	wg   sync.WaitGroup
+
+	// Used in tests.
+	clock    quartz.Clock
+	applyFSM func(log *raft.Raft, req proto.Message, timeout time.Duration) (raft.ApplyFuture, proto.Message, error)
 }
 
 func New(config Config, periodConfigs []config.PeriodConfig, storageConfig storage.Config, clientMetrics storage.ClientMetrics, logger log.Logger, reg prometheus.Registerer, hs health.Service) (*Metastore, error) {
@@ -107,15 +113,17 @@ func New(config Config, periodConfigs []config.PeriodConfig, storageConfig stora
 		return nil, err
 	}
 	m := &Metastore{
-		config:  config,
-		logger:  logger,
-		reg:     reg,
-		db:      newDB(config, logger),
-		done:    make(chan struct{}),
-		storage: storage,
+		config:   config,
+		logger:   logger,
+		reg:      reg,
+		db:       newDB(config, logger),
+		done:     make(chan struct{}),
+		storage:  storage,
+		applyFSM: applyCommand,
+		clock:    quartz.NewReal(),
 	}
 	m.leaderhealth = raftleader.NewRaftLeaderHealthObserver(hs, logger)
-	m.state = newMetastoreState(logger, m.db, storage)
+	m.state = newMetastoreState(logger, m.db)
 	m.Service = services.NewBasicService(m.starting, m.running, m.stopping)
 	return m, nil
 }

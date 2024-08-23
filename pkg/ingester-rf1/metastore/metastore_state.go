@@ -24,7 +24,7 @@ type metastoreState struct {
 	store ingesterrf1.Storage
 }
 
-func newMetastoreState(logger log.Logger, db *boltdb, store ingesterrf1.Storage) *metastoreState {
+func newMetastoreState(logger log.Logger, db *boltdb) *metastoreState {
 	return &metastoreState{
 		logger: logger,
 		active: make(map[string]*metastorepb.BlockMeta),

@@ -11,8 +11,8 @@ import (
 )
 
 func (m *Metastore) AddBlock(_ context.Context, req *metastorepb.AddBlockRequest) (*metastorepb.AddBlockResponse, error) {
-	_, resp, err := applyCommand[*metastorepb.AddBlockRequest, *metastorepb.AddBlockResponse](m.raft, req, m.config.Raft.ApplyTimeout)
-	return resp, err
+	_, resp, err := applyCommand(m.raft, req, m.config.Raft.ApplyTimeout)
+	return resp.(*metastorepb.AddBlockResponse), err
 }
 
 func (m *metastoreState) applyAddBlock(request *metastorepb.AddBlockRequest) (*metastorepb.AddBlockResponse, error) {
