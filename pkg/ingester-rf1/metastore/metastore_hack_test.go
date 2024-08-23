@@ -146,9 +146,9 @@ func TestMetastore_applySweep(t *testing.T) {
 	})
 	// Should delete ulid1.
 	_, ok := m.state.marked[ulid1]
-	require.True(t, ok)
+	require.False(t, ok)
 	// But not affect ulid2.
-	_, ok = m.state.active[ulid2]
+	_, ok = m.state.marked[ulid2]
 	require.True(t, ok)
 	// Should delete ulid2 from the metastore.
 	_, err = m.state.applySweep(&raftlogpb.SweepCommand{
@@ -161,10 +161,10 @@ func TestMetastore_applySweep(t *testing.T) {
 	})
 	// Should delete ulid2.
 	_, ok = m.state.marked[ulid2]
-	require.True(t, ok)
+	require.False(t, ok)
 	// ulid1 should still be deleted.
 	_, ok = m.state.marked[ulid1]
-	require.True(t, ok)
+	require.False(t, ok)
 }
 
 func TestMetastore_doSweep(t *testing.T) {
