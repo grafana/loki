@@ -407,6 +407,7 @@ func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]by
 			lbs.SetErrorDetails(err.Error())
 			continue
 		}
+		lbs.Del(f.Name) // Deleting to avoid duplication
 		lbs.Set(ParsedLabel, f.Name, lf.buf.String())
 	}
 	return l, true
