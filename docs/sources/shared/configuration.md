@@ -4065,9 +4065,9 @@ otlp_config:
 
 # HTTP status code to return when ingestion is blocked. If 200, the ingestion
 # will be blocked without returning an error to the client. By Default, a custom
-# error (460) is returned to the client along with an error message.
+# status code (260) is returned to the client along with an error message.
 # CLI flag: -limits.block-ingestion-status-code
-[block_ingestion_status_code: <int> | default = 460]
+[block_ingestion_status_code: <int> | default = 260]
 ```
 
 ### local_storage_config

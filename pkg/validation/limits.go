@@ -62,7 +62,7 @@ const (
 	defaultBloomCompactorMaxBlockSize = "200MB"
 	defaultBloomCompactorMaxBloomSize = "128MB"
 
-	defaultBlockedIngestionStatusCode = 460 // 460 is a custom status code to indicate blocked ingestion
+	defaultBlockedIngestionStatusCode = 260 // 260 is a custom status code to indicate blocked ingestion
 )
 
 // Limits describe all the limits for users; can be used to describe global default
@@ -418,7 +418,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.VolumeEnabled, "limits.volume-enabled", true, "Enable log volume endpoint.")
 
 	f.Var(&l.BlockIngestionUntil, "limits.block-ingestion-until", "Block ingestion until the configured date. The time should be in RFC3339 format.")
-	f.IntVar(&l.BlockIngestionStatusCode, "limits.block-ingestion-status-code", defaultBlockedIngestionStatusCode, "HTTP status code to return when ingestion is blocked. If 200, the ingestion will be blocked without returning an error to the client. By Default, a custom error (460) is returned to the client along with an error message.")
+	f.IntVar(&l.BlockIngestionStatusCode, "limits.block-ingestion-status-code", defaultBlockedIngestionStatusCode, "HTTP status code to return when ingestion is blocked. If 200, the ingestion will be blocked without returning an error to the client. By Default, a custom status code (260) is returned to the client along with an error message.")
 }
 
 // SetGlobalOTLPConfig set GlobalOTLPConfig which is used while unmarshaling per-tenant otlp config to use the default list of resource attributes picked as index labels.
