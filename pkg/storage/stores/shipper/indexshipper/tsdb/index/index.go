@@ -2209,25 +2209,50 @@ func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, chks *[]ChunkMeta)
 	fprint := d.Be64()
 	k := d.Uvarint()
 
-	for i := 0; i < k; i++ {
-		lno := uint32(d.Uvarint())
-		lvo := uint32(d.Uvarint())
+	// In case we don't have any labels received in the query
+	// we get only service_name label on lookup
+	if len(*lbls) == 0 {
+		for i := 0; i < k; i++ {
+			lno := uint32(d.Uvarint())
+			lvo := uint32(d.Uvarint())
 
-		if d.Err() != nil {
-			return nil, 0, errors.Wrap(d.Err(), "read series label offsets")
-		}
+			if d.Err() != nil {
+				return nil, 0, errors.Wrap(d.Err(), "read series label offsets")
+			}
 
-		ln, err := dec.LookupSymbol(lno)
-		if err != nil {
-			return nil, 0, errors.Wrap(err, "lookup label name")
-		}
-		lv, err := dec.LookupSymbol(lvo)
-		if err != nil {
-			return nil, 0, errors.Wrap(err, "lookup label value")
-		}
+			ln, err := dec.LookupSymbol(lno)
+			if err != nil {
+				return nil, 0, errors.Wrap(err, "lookup label name")
+			}
 
-		*lbls = append(*lbls, labels.Label{Name: ln, Value: lv})
+			if ln == "service_name" {
+				lv, err := dec.LookupSymbol(lvo)
+				if err != nil {
+					return nil, 0, errors.Wrap(err, "lookup label value")
+				}
+
+				*lbls = append(*lbls, labels.Label{Name: ln, Value: lv})
+				break
+			}
+		}
+	} else {
+		for i := 0; i < k; i++ {
+			lno := uint32(d.Uvarint())
+			lvo := uint32(d.Uvarint())
+
+			ln, err := dec.LookupSymbol(lno)
+			if err != nil {
+				return nil, 0, errors.Wrap(err, "lookup label name")
+			}
+			lv, err := dec.LookupSymbol(lvo)
+			if err != nil {
+				return nil, 0, errors.Wrap(err, "lookup label value")
+			}
+
+			*lbls = append(*lbls, labels.Label{Name: ln, Value: lv})
+		}
 	}
+
 	return &d, fprint, nil
 }
 
