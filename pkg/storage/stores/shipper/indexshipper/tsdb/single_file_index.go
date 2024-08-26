@@ -74,7 +74,6 @@ func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (shipp
 		}
 		return NewPrefixedIdentifier(id, parentDir, "")
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +194,6 @@ func (i *TSDBIndex) ForSeries(ctx context.Context, _ string, fpFilter index.Fing
 		}
 		return p.Err()
 	})
-
 }
 
 func (i *TSDBIndex) forPostings(
@@ -220,7 +218,6 @@ func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, throu
 
 	if err := i.ForSeries(ctx, "", fpFilter, from, through, func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
 		for _, chk := range chks {
-
 			res = append(res, ChunkRef{
 				User:        userID, // assumed to be the same, will be enforced by caller.
 				Fingerprint: fp,
@@ -298,7 +295,7 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 		}
 
 		for p.Next() {
-			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls)
+			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls, nil)
 			if err != nil {
 				return err
 			}
@@ -362,6 +359,24 @@ func (i *TSDBIndex) Volume(
 	seriesLabels := labels.Labels(make([]labels.Label, 0, len(labelsToMatch)))
 
 	aggregateBySeries := seriesvolume.AggregateBySeries(aggregateBy) || aggregateBy == ""
+	var by map[string]struct{}
+	if !includeAll && (aggregateBySeries || len(targetLabels) > 0) {
+		by = make(map[string]struct{}, len(labelsToMatch))
+		for k := range labelsToMatch {
+			by[k] = struct{}{}
+		}
+		if len(labelsToMatch) > 0 {
+			for k := range labelsToMatch {
+				by[k] = struct{}{}
+			}
+		}
+		// If we are aggregating by series, we need to include all labels in the series required for filtering chunks.
+		if i.chunkFilter != nil {
+			for _, k := range i.chunkFilter.ForRequest(ctx).RequiredLabelNames() {
+				by[k] = struct{}{}
+			}
+		}
+	}
 
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
 		var ls labels.Labels
@@ -371,7 +386,7 @@ func (i *TSDBIndex) Volume(
 		}
 
 		for p.Next() {
-			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls)
+			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls, by)
 			if err != nil {
 				return fmt.Errorf("series volume: %w", err)
 			}
