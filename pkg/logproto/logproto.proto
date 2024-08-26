@@ -486,6 +486,8 @@ message DetectedLabelsRequest {
     (gogoproto.nullable) = false
   ];
   string query = 3;
+  uint64 minCardinality = 4;
+  uint64 maxCardinality = 5;
 }
 
 message DetectedLabelsResponse {
