@@ -61,6 +61,8 @@ const (
 	defaultMaxStructuredMetadataCount = 128
 	defaultBloomCompactorMaxBlockSize = "200MB"
 	defaultBloomCompactorMaxBloomSize = "128MB"
+
+	defaultBlockedIngestionStatusCode = 460 // 460 is a custom status code to indicate blocked ingestion
 )
 
 // Limits describe all the limits for users; can be used to describe global default
@@ -222,6 +224,9 @@ type Limits struct {
 	MaxStructuredMetadataEntriesCount int                   `yaml:"max_structured_metadata_entries_count" json:"max_structured_metadata_entries_count" doc:"description=Maximum number of structured metadata entries per log line."`
 	OTLPConfig                        push.OTLPConfig       `yaml:"otlp_config" json:"otlp_config" doc:"description=OTLP log ingestion configurations"`
 	GlobalOTLPConfig                  push.GlobalOTLPConfig `yaml:"-" json:"-"`
+
+	BlockIngestionUntil      dskit_flagext.Time `yaml:"block_ingestion_until" json:"block_ingestion_until"`
+	BlockIngestionStatusCode int                `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
 }
 
 type StreamRetention struct {
@@ -411,6 +416,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.MaxStructuredMetadataSize, "limits.max-structured-metadata-size", "Maximum size accepted for structured metadata per entry. Default: 64 kb. Any log line exceeding this limit will be discarded. There is no limit when unset or set to 0.")
 	f.IntVar(&l.MaxStructuredMetadataEntriesCount, "limits.max-structured-metadata-entries-count", defaultMaxStructuredMetadataCount, "Maximum number of structured metadata entries per log line. Default: 128. Any log line exceeding this limit will be discarded. There is no limit when unset or set to 0.")
 	f.BoolVar(&l.VolumeEnabled, "limits.volume-enabled", true, "Enable log volume endpoint.")
+
+	f.Var(&l.BlockIngestionUntil, "limits.block-ingestion-until", "Block ingestion until the configured date. The time should be in RFC3339 format.")
+	f.IntVar(&l.BlockIngestionStatusCode, "limits.block-ingestion-status-code", defaultBlockedIngestionStatusCode, "HTTP status code to return when ingestion is blocked. If 200, the ingestion will be blocked without returning an error to the client. By Default, a custom error (460) is returned to the client along with an error message.")
 }
 
 // SetGlobalOTLPConfig set GlobalOTLPConfig which is used while unmarshaling per-tenant otlp config to use the default list of resource attributes picked as index labels.
@@ -1049,6 +1057,14 @@ func (o *Overrides) MaxStructuredMetadataCount(userID string) int {
 
 func (o *Overrides) OTLPConfig(userID string) push.OTLPConfig {
 	return o.getOverridesForUser(userID).OTLPConfig
+}
+
+func (o *Overrides) BlockIngestionUntil(userID string) time.Time {
+	return time.Time(o.getOverridesForUser(userID).BlockIngestionUntil)
+}
+
+func (o *Overrides) BlockIngestionStatusCode(userID string) int {
+	return o.getOverridesForUser(userID).BlockIngestionStatusCode
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {
