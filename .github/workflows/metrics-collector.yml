@@ -1,7 +1,5 @@
 name: Github repo and issue stats collection
 on:
-  schedule:
-    - cron: "*/30 * * * *"
 
 jobs:
   main:
