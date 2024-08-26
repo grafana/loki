@@ -2234,7 +2234,7 @@ func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, chks *[]ChunkMeta)
 // prepSeriesBy returns series labels and chunks for a series and only returning selected `by` label names.
 // If `by` is empty, it returns all labels for the series.
 func (dec *Decoder) prepSeriesBy(b []byte, lbls *labels.Labels, chks *[]ChunkMeta, by map[string]struct{}) (*encoding.Decbuf, uint64, error) {
-	if len(by) == 0 {
+	if by == nil {
 		return dec.prepSeries(b, lbls, chks)
 	}
 	*lbls = (*lbls)[:0]

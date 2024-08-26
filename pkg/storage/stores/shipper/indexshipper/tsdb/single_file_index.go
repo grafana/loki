@@ -290,12 +290,15 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 		// TODO(owen-d): use pool
 		var ls labels.Labels
 		var filterer chunk.Filterer
+		by := make(map[string]struct{})
 		if i.chunkFilter != nil {
 			filterer = i.chunkFilter.ForRequest(ctx)
+			for _, k := range i.chunkFilter.ForRequest(ctx).RequiredLabelNames() {
+				by[k] = struct{}{}
+			}
 		}
-
 		for p.Next() {
-			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls, nil)
+			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls, by)
 			if err != nil {
 				return err
 			}
@@ -365,11 +368,10 @@ func (i *TSDBIndex) Volume(
 		for k := range labelsToMatch {
 			by[k] = struct{}{}
 		}
-		if len(labelsToMatch) > 0 {
-			for k := range labelsToMatch {
-				by[k] = struct{}{}
-			}
+		for _, k := range targetLabels {
+			by[k] = struct{}{}
 		}
+
 		// If we are aggregating by series, we need to include all labels in the series required for filtering chunks.
 		if i.chunkFilter != nil {
 			for _, k := range i.chunkFilter.ForRequest(ctx).RequiredLabelNames() {
