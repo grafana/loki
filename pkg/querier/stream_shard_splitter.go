@@ -1,0 +1,102 @@
+package querier
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+
+	"github.com/grafana/loki/v3/pkg/util/math"
+	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
+)
+
+const streamShardLabel = "__stream_shard__"
+
+type Shard struct {
+	ID     string
+	Volume uint64
+}
+
+type Bucket struct {
+	Shards []string
+	Volume uint64
+}
+
+type StreamShardSplitter struct {
+	Shards  []Shard
+	Buckets []Bucket
+}
+
+func NewStreamShardSplitter(volumes []Shard) *StreamShardSplitter {
+	return &StreamShardSplitter{
+		Shards: volumes,
+	}
+}
+
+func (d *StreamShardSplitter) createBuckets(bucketCount int) {
+	totalVolume := uint64(0)
+	for _, shard := range d.Shards {
+		totalVolume += shard.Volume
+	}
+
+	targetVolumePerBucket := totalVolume / uint64(bucketCount)
+	d.Buckets = make([]Bucket, bucketCount)
+
+	bucketIndex := 0
+	for _, shard := range d.Shards {
+		if bucketIndex >= bucketCount {
+			bucketIndex = bucketCount - 1
+		}
+		d.Buckets[bucketIndex].Shards = append(d.Buckets[bucketIndex].Shards, shard.ID)
+		d.Buckets[bucketIndex].Volume += shard.Volume
+
+		if d.Buckets[bucketIndex].Volume >= targetVolumePerBucket && bucketIndex < bucketCount-1 {
+			bucketIndex++
+		}
+	}
+}
+
+func (d *StreamShardSplitter) GetSubQueries(query string, start, end model.Time, bucketCount int) []*logproto.SubQueryResult {
+	var subqueries []*logproto.SubQueryResult
+	sort.Slice(d.Shards, func(i, j int) bool {
+		return d.Shards[i].Volume > d.Shards[j].Volume
+	})
+	b := math.Min(bucketCount, len(d.Shards))
+	if b <= 0 {
+		results := append(subqueries, &logproto.SubQueryResult{Query: query, Start: start.Time(), End: end.Time(), Volume: 0, Id: "sub1"})
+		return results
+	}
+
+	d.createBuckets(b)
+
+	for i, bucket := range d.Buckets {
+		subquery := d.createSubquery(query, start, end, bucket.Shards, i, bucket.Volume)
+		subqueries = append(subqueries, subquery)
+	}
+
+	return subqueries
+}
+
+func (d *StreamShardSplitter) createSubquery(originalQuery string, start, end model.Time, shards []string, bucketIndex int, vol uint64) *logproto.SubQueryResult {
+	shardRegex := strings.Join(shards, "|")
+
+	// Parse the original query to insert the __stream_shard__ label matcher
+	var modifiedQuery string
+	if strings.Contains(originalQuery, "{") && strings.Contains(originalQuery, "}") {
+		// If the query already has label matchers, insert the __stream_shard__ matcher
+		parts := strings.SplitN(originalQuery, "}", 2)
+		modifiedQuery = fmt.Sprintf("%s, __stream_shard__=~\"%s\"}%s", parts[0], shardRegex, parts[1])
+	} else {
+		// If the query doesn't have label matchers, add them with the __stream_shard__ matcher
+		parts := strings.SplitN(originalQuery, "[", 2)
+		modifiedQuery = fmt.Sprintf("%s{__stream_shard__=~\"%s\"}[%s", parts[0], shardRegex, parts[1])
+	}
+
+	return &logproto.SubQueryResult{
+		Query:  modifiedQuery,
+		Start:  start.Time(),
+		End:    end.Time(),
+		Volume: vol,
+		Id:     fmt.Sprintf("sub%d", bucketIndex+1)}
+}

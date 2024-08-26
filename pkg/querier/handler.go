@@ -131,6 +131,12 @@ func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrang
 		}
 
 		return &queryrange.DetectedLabelsResponse{Response: result}, nil
+	case *logproto.QueryPlanRequest:
+		result, err := h.api.QueryPlanHandler(ctx, concrete)
+		if err != nil {
+			return nil, err
+		}
+		return &queryrange.QueryPlanResponse{Response: result}, nil
 	default:
 		return nil, fmt.Errorf("unsupported query type %T", req)
 	}
