@@ -3813,17 +3813,22 @@ shard_streams:
 # CLI flag: -bloom-gateway.cache-key-interval
 [bloom_gateway_cache_key_interval: <duration> | default = 15m]
 
-# Experimental. The maximum bloom block size. A value of 0 sets an unlimited
-# size. Default is 200MB. The actual block size might exceed this limit since
-# blooms will be added to blocks until the block exceeds the maximum block size.
-# CLI flag: -bloom-compactor.max-block-size
-[bloom_compactor_max_block_size: <int> | default = 200MB]
+# Experimental. Maximum number of builders to use when building blooms. 0 allows
+# unlimited builders.
+# CLI flag: -bloom-build.max-builders
+[bloom_build_max_builders: <int> | default = 0]
 
-# Experimental. The maximum bloom size per log stream. A log stream whose
-# generated bloom filter exceeds this size will be discarded. A value of 0 sets
-# an unlimited size. Default is 128MB.
-# CLI flag: -bloom-compactor.max-bloom-size
-[bloom_compactor_max_bloom_size: <int> | default = 128MB]
+# Experimental. Maximum number of retries for a failed task. If a task fails
+# more than this number of times, it is considered failed and will not be
+# retried. A value of 0 disables this limit.
+# CLI flag: -bloom-build.task-max-retries
+[bloom_build_task_max_retries: <int> | default = 3]
+
+# Experimental. Timeout for a builder to finish a task. If a builder does not
+# respond within this time, it is considered failed and the task will be
+# requeued. 0 disables the timeout.
+# CLI flag: -bloom-build.builder-response-timeout
+[bloom_build_builder_response_timeout: <duration> | default = 0s]
 
 # Experimental. Whether to create blooms for the tenant.
 # CLI flag: -bloom-build.enable
@@ -3834,23 +3839,6 @@ shard_streams:
 # creation.
 # CLI flag: -bloom-build.split-keyspace-by
 [bloom_split_series_keyspace_by: <int> | default = 256]
-
-# Experimental. Maximum number of builders to use when building blooms. 0 allows
-# unlimited builders.
-# CLI flag: -bloom-build.max-builders
-[bloom_build_max_builders: <int> | default = 0]
-
-# Experimental. Timeout for a builder to finish a task. If a builder does not
-# respond within this time, it is considered failed and the task will be
-# requeued. 0 disables the timeout.
-# CLI flag: -bloom-build.builder-response-timeout
-[bloom_build_builder_response_timeout: <duration> | default = 0s]
-
-# Experimental. Maximum number of retries for a failed task. If a task fails
-# more than this number of times, it is considered failed and will not be
-# retried. A value of 0 disables this limit.
-# CLI flag: -bloom-build.task-max-retries
-[bloom_build_task_max_retries: <int> | default = 3]
 
 # Experimental. Length of the n-grams created when computing blooms from log
 # lines.
@@ -3869,6 +3857,18 @@ shard_streams:
 # Experimental. Compression algorithm for bloom block pages.
 # CLI flag: -bloom-build.block-encoding
 [bloom_block_encoding: <string> | default = "none"]
+
+# Experimental. The maximum bloom block size. A value of 0 sets an unlimited
+# size. Default is 200MB. The actual block size might exceed this limit since
+# blooms will be added to blocks until the block exceeds the maximum block size.
+# CLI flag: -bloom-build.max-block-size
+[bloom_max_block_size: <int> | default = 200MB]
+
+# Experimental. The maximum bloom size per log stream. A log stream whose
+# generated bloom filter exceeds this size will be discarded. A value of 0 sets
+# an unlimited size. Default is 128MB.
+# CLI flag: -bloom-build.max-bloom-size
+[bloom_max_bloom_size: <int> | default = 128MB]
 
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata

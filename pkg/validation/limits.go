@@ -203,19 +203,19 @@ type Limits struct {
 	BloomGatewayEnabled          bool          `yaml:"bloom_gateway_enable_filtering" json:"bloom_gateway_enable_filtering" category:"experimental"`
 	BloomGatewayCacheKeyInterval time.Duration `yaml:"bloom_gateway_cache_key_interval" json:"bloom_gateway_cache_key_interval" category:"experimental"`
 
-	BloomBuildMaxBlockSize flagext.ByteSize `yaml:"bloom_compactor_max_block_size" json:"bloom_compactor_max_block_size" category:"experimental"`
-	BloomBuildMaxBloomSize flagext.ByteSize `yaml:"bloom_compactor_max_bloom_size" json:"bloom_compactor_max_bloom_size" category:"experimental"`
+	BloomBuildMaxBuilders       int           `yaml:"bloom_build_max_builders" json:"bloom_build_max_builders" category:"experimental"`
+	BloomBuildTaskMaxRetries    int           `yaml:"bloom_build_task_max_retries" json:"bloom_build_task_max_retries" category:"experimental"`
+	BloomBuilderResponseTimeout time.Duration `yaml:"bloom_build_builder_response_timeout" json:"bloom_build_builder_response_timeout" category:"experimental"`
 
-	BloomCreationEnabled       bool          `yaml:"bloom_creation_enabled" json:"bloom_creation_enabled" category:"experimental"`
-	BloomSplitSeriesKeyspaceBy int           `yaml:"bloom_split_series_keyspace_by" json:"bloom_split_series_keyspace_by" category:"experimental"`
-	BloomBuildMaxBuilders      int           `yaml:"bloom_build_max_builders" json:"bloom_build_max_builders" category:"experimental"`
-	BuilderResponseTimeout     time.Duration `yaml:"bloom_build_builder_response_timeout" json:"bloom_build_builder_response_timeout" category:"experimental"`
-	BloomTaskMaxRetries        int           `yaml:"bloom_build_task_max_retries" json:"bloom_build_task_max_retries" category:"experimental"`
+	BloomCreationEnabled       bool    `yaml:"bloom_creation_enabled" json:"bloom_creation_enabled" category:"experimental"`
+	BloomSplitSeriesKeyspaceBy int     `yaml:"bloom_split_series_keyspace_by" json:"bloom_split_series_keyspace_by" category:"experimental"`
+	BloomNGramLength           int     `yaml:"bloom_ngram_length" json:"bloom_ngram_length" category:"experimental"`
+	BloomNGramSkip             int     `yaml:"bloom_ngram_skip" json:"bloom_ngram_skip" category:"experimental"`
+	BloomFalsePositiveRate     float64 `yaml:"bloom_false_positive_rate" json:"bloom_false_positive_rate" category:"experimental"`
+	BloomBlockEncoding         string  `yaml:"bloom_block_encoding" json:"bloom_block_encoding" category:"experimental"`
 
-	BloomNGramLength       int     `yaml:"bloom_ngram_length" json:"bloom_ngram_length" category:"experimental"`
-	BloomNGramSkip         int     `yaml:"bloom_ngram_skip" json:"bloom_ngram_skip" category:"experimental"`
-	BloomFalsePositiveRate float64 `yaml:"bloom_false_positive_rate" json:"bloom_false_positive_rate" category:"experimental"`
-	BloomBlockEncoding     string  `yaml:"bloom_block_encoding" json:"bloom_block_encoding" category:"experimental"`
+	BloomMaxBlockSize flagext.ByteSize `yaml:"bloom_max_block_size" json:"bloom_max_block_size" category:"experimental"`
+	BloomMaxBloomSize flagext.ByteSize `yaml:"bloom_max_bloom_size" json:"bloom_max_bloom_size" category:"experimental"`
 
 	AllowStructuredMetadata           bool                  `yaml:"allow_structured_metadata,omitempty" json:"allow_structured_metadata,omitempty" doc:"description=Allow user to send structured metadata in push payload."`
 	MaxStructuredMetadataSize         flagext.ByteSize      `yaml:"max_structured_metadata_size" json:"max_structured_metadata_size" doc:"description=Maximum size accepted for structured metadata per log line."`
@@ -382,8 +382,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&l.BloomFalsePositiveRate, "bloom-build.false-positive-rate", 0.01, "Experimental. Scalable Bloom Filter desired false-positive rate.")
 	f.StringVar(&l.BloomBlockEncoding, "bloom-build.block-encoding", "none", "Experimental. Compression algorithm for bloom block pages.")
 
-	_ = l.BloomBuildMaxBlockSize.Set(defaultBloomBuildMaxBlockSize)
-	f.Var(&l.BloomBuildMaxBlockSize, "bloom-build.max-block-size",
+	_ = l.BloomMaxBlockSize.Set(defaultBloomBuildMaxBlockSize)
+	f.Var(&l.BloomMaxBlockSize, "bloom-build.max-block-size",
 		fmt.Sprintf(
 			"Experimental. The maximum bloom block size. A value of 0 sets an unlimited size. Default is %s. The actual block size might exceed this limit since blooms will be added to blocks until the block exceeds the maximum block size.",
 			defaultBloomBuildMaxBlockSize,
@@ -393,11 +393,11 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.BloomCreationEnabled, "bloom-build.enable", false, "Experimental. Whether to create blooms for the tenant.")
 	f.IntVar(&l.BloomSplitSeriesKeyspaceBy, "bloom-build.split-keyspace-by", 256, "Experimental. Number of splits to create for the series keyspace when building blooms. The series keyspace is split into this many parts to parallelize bloom creation.")
 	f.IntVar(&l.BloomBuildMaxBuilders, "bloom-build.max-builders", 0, "Experimental. Maximum number of builders to use when building blooms. 0 allows unlimited builders.")
-	f.DurationVar(&l.BuilderResponseTimeout, "bloom-build.builder-response-timeout", 0, "Experimental. Timeout for a builder to finish a task. If a builder does not respond within this time, it is considered failed and the task will be requeued. 0 disables the timeout.")
-	f.IntVar(&l.BloomTaskMaxRetries, "bloom-build.task-max-retries", 3, "Experimental. Maximum number of retries for a failed task. If a task fails more than this number of times, it is considered failed and will not be retried. A value of 0 disables this limit.")
+	f.DurationVar(&l.BloomBuilderResponseTimeout, "bloom-build.builder-response-timeout", 0, "Experimental. Timeout for a builder to finish a task. If a builder does not respond within this time, it is considered failed and the task will be requeued. 0 disables the timeout.")
+	f.IntVar(&l.BloomBuildTaskMaxRetries, "bloom-build.task-max-retries", 3, "Experimental. Maximum number of retries for a failed task. If a task fails more than this number of times, it is considered failed and will not be retried. A value of 0 disables this limit.")
 
-	_ = l.BloomBuildMaxBloomSize.Set(defaultBloomBuildMaxBloomSize)
-	f.Var(&l.BloomBuildMaxBloomSize, "bloom-build.max-bloom-size",
+	_ = l.BloomMaxBloomSize.Set(defaultBloomBuildMaxBloomSize)
+	f.Var(&l.BloomMaxBloomSize, "bloom-build.max-bloom-size",
 		fmt.Sprintf(
 			"Experimental. The maximum bloom size per log stream. A log stream whose generated bloom filter exceeds this size will be discarded. A value of 0 sets an unlimited size. Default is %s.",
 			defaultBloomBuildMaxBloomSize,
@@ -1001,11 +1001,11 @@ func (o *Overrides) BloomBuildMaxBuilders(userID string) int {
 }
 
 func (o *Overrides) BuilderResponseTimeout(userID string) time.Duration {
-	return o.getOverridesForUser(userID).BuilderResponseTimeout
+	return o.getOverridesForUser(userID).BloomBuilderResponseTimeout
 }
 
 func (o *Overrides) BloomTaskMaxRetries(userID string) int {
-	return o.getOverridesForUser(userID).BloomTaskMaxRetries
+	return o.getOverridesForUser(userID).BloomBuildTaskMaxRetries
 }
 
 func (o *Overrides) BloomNGramLength(userID string) int {
@@ -1017,11 +1017,11 @@ func (o *Overrides) BloomNGramSkip(userID string) int {
 }
 
 func (o *Overrides) BloomMaxBlockSize(userID string) int {
-	return o.getOverridesForUser(userID).BloomBuildMaxBlockSize.Val()
+	return o.getOverridesForUser(userID).BloomMaxBlockSize.Val()
 }
 
 func (o *Overrides) BloomMaxBloomSize(userID string) int {
-	return o.getOverridesForUser(userID).BloomBuildMaxBloomSize.Val()
+	return o.getOverridesForUser(userID).BloomMaxBloomSize.Val()
 }
 
 func (o *Overrides) BloomFalsePositiveRate(userID string) float64 {
