@@ -796,7 +796,3 @@ type filterAllFilterer struct{}
 func (f *filterAllFilterer) ShouldFilter(_ labels.Labels) bool {
 	return true
 }
-
-func (f *filterAllFilterer) RequiredLabelNames() []string {
-	return nil
-}

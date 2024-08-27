@@ -658,10 +658,6 @@ func (t *testFilter) ShouldFilter(lbs labels.Labels) bool {
 	return lbs.Get("log_stream") == "dispatcher"
 }
 
-func (t *testFilter) RequiredLabelNames() []string {
-	return []string{"log_stream"}
-}
-
 func Test_ChunkFilter(t *testing.T) {
 	instance := defaultInstance(t)
 	instance.chunkFilter = &testFilter{}

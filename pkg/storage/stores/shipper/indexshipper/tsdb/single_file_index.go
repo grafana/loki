@@ -290,16 +290,12 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 		// TODO(owen-d): use pool
 		var ls labels.Labels
 		var filterer chunk.Filterer
-		by := make(map[string]struct{})
 		if i.chunkFilter != nil {
-			if filterer = i.chunkFilter.ForRequest(ctx); filterer != nil {
-				for _, k := range filterer.RequiredLabelNames() {
-					by[k] = struct{}{}
-				}
-			}
+			filterer = i.chunkFilter.ForRequest(ctx)
 		}
+
 		for p.Next() {
-			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls, by)
+			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls, nil)
 			if err != nil {
 				return err
 			}

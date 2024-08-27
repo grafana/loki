@@ -867,10 +867,6 @@ func (f fakeChunkFilterer) ShouldFilter(metric labels.Labels) bool {
 	return metric.Get("foo") == "bazz"
 }
 
-func (f fakeChunkFilterer) RequiredLabelNames() []string {
-	return []string{"foo"}
-}
-
 func Test_ChunkFilterer(t *testing.T) {
 	s := &LokiStore{
 		Store: storeFixture,

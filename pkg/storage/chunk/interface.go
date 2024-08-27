@@ -67,5 +67,4 @@ type RequestChunkFilterer interface {
 // Filterer filters chunks based on the metric.
 type Filterer interface {
 	ShouldFilter(metric labels.Labels) bool
-	RequiredLabelNames() []string
 }
