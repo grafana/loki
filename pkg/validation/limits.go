@@ -383,7 +383,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&l.BloomBlockEncoding, "bloom-build.block-encoding", "none", "Experimental. Compression algorithm for bloom block pages.")
 
 	_ = l.BloomBuildMaxBlockSize.Set(defaultBloomBuildMaxBlockSize)
-	f.Var(&l.BloomBuildMaxBlockSize, "bloom-compactor.max-block-size",
+	f.Var(&l.BloomBuildMaxBlockSize, "bloom-build.max-block-size",
 		fmt.Sprintf(
 			"Experimental. The maximum bloom block size. A value of 0 sets an unlimited size. Default is %s. The actual block size might exceed this limit since blooms will be added to blocks until the block exceeds the maximum block size.",
 			defaultBloomBuildMaxBlockSize,
@@ -397,7 +397,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.BloomTaskMaxRetries, "bloom-build.task-max-retries", 3, "Experimental. Maximum number of retries for a failed task. If a task fails more than this number of times, it is considered failed and will not be retried. A value of 0 disables this limit.")
 
 	_ = l.BloomBuildMaxBloomSize.Set(defaultBloomBuildMaxBloomSize)
-	f.Var(&l.BloomBuildMaxBloomSize, "bloom-compactor.max-bloom-size",
+	f.Var(&l.BloomBuildMaxBloomSize, "bloom-build.max-bloom-size",
 		fmt.Sprintf(
 			"Experimental. The maximum bloom size per log stream. A log stream whose generated bloom filter exceeds this size will be discarded. A value of 0 sets an unlimited size. Default is %s.",
 			defaultBloomBuildMaxBloomSize,
