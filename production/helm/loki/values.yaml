@@ -1026,7 +1026,7 @@ gateway:
   readinessProbe:
     httpGet:
       path: /
-      port: http-metrics
+      port: http
     initialDelaySeconds: 15
     timeoutSeconds: 1
   nginxConfig:
