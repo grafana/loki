@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -173,10 +174,12 @@ type TSDBStores struct {
 }
 
 func NewTSDBStores(
+	component string,
 	schemaCfg config.SchemaConfig,
 	storeCfg baseStore.Config,
 	clientMetrics baseStore.ClientMetrics,
 	logger log.Logger,
+	reg prometheus.Registerer,
 ) (*TSDBStores, error) {
 	res := &TSDBStores{
 		schemaCfg: schemaCfg,
@@ -186,7 +189,7 @@ func NewTSDBStores(
 	for i, cfg := range schemaCfg.Configs {
 		if cfg.IndexType == types.TSDBType {
 
-			c, err := baseStore.NewObjectClient(cfg.ObjectType, storeCfg, clientMetrics)
+			c, err := baseStore.NewObjectClient(component, cfg.ObjectType, storeCfg, clientMetrics, reg)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to create object client")
 			}
