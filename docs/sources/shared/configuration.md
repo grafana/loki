@@ -817,11 +817,6 @@ pattern_ingester:
 # object store.
 [index_gateway: <index_gateway>]
 
-# Experimental: The bloom_compactor block configures the Loki bloom compactor
-# server, responsible for compacting stream indexes into bloom filters and
-# merging them as bloom blocks.
-[bloom_compactor: <bloom_compactor>]
-
 bloom_build:
   # Flag to enable or disable the usage of the bloom-planner and bloom-builder
   # components.
@@ -1464,154 +1459,6 @@ The `azure_storage_config` block configures the connection to Azure object stora
 # Maximum time to wait before retrying a request.
 # CLI flag: -<prefix>.azure.max-retry-delay
 [max_retry_delay: <duration> | default = 500ms]
-```
-
-### bloom_compactor
-
-Experimental: The `bloom_compactor` block configures the Loki bloom compactor server, responsible for compacting stream indexes into bloom filters and merging them as bloom blocks.
-
-```yaml
-# Defines the ring to be used by the bloom-compactor servers. In case this isn't
-# configured, this block supports inheriting configuration from the common ring
-# section.
-ring:
-  kvstore:
-    # Backend storage to use for the ring. Supported values are: consul, etcd,
-    # inmemory, memberlist, multi.
-    # CLI flag: -bloom-compactor.ring.store
-    [store: <string> | default = "consul"]
-
-    # The prefix for the keys in the store. Should end with a /.
-    # CLI flag: -bloom-compactor.ring.prefix
-    [prefix: <string> | default = "collectors/"]
-
-    # Configuration for a Consul client. Only applies if the selected kvstore is
-    # consul.
-    # The CLI flags prefix for this block configuration is: bloom-compactor.ring
-    [consul: <consul>]
-
-    # Configuration for an ETCD v3 client. Only applies if the selected kvstore
-    # is etcd.
-    # The CLI flags prefix for this block configuration is: bloom-compactor.ring
-    [etcd: <etcd>]
-
-    multi:
-      # Primary backend storage used by multi-client.
-      # CLI flag: -bloom-compactor.ring.multi.primary
-      [primary: <string> | default = ""]
-
-      # Secondary backend storage used by multi-client.
-      # CLI flag: -bloom-compactor.ring.multi.secondary
-      [secondary: <string> | default = ""]
-
-      # Mirror writes to secondary store.
-      # CLI flag: -bloom-compactor.ring.multi.mirror-enabled
-      [mirror_enabled: <boolean> | default = false]
-
-      # Timeout for storing value to secondary store.
-      # CLI flag: -bloom-compactor.ring.multi.mirror-timeout
-      [mirror_timeout: <duration> | default = 2s]
-
-  # Period at which to heartbeat to the ring. 0 = disabled.
-  # CLI flag: -bloom-compactor.ring.heartbeat-period
-  [heartbeat_period: <duration> | default = 15s]
-
-  # The heartbeat timeout after which compactors are considered unhealthy within
-  # the ring. 0 = never (timeout disabled).
-  # CLI flag: -bloom-compactor.ring.heartbeat-timeout
-  [heartbeat_timeout: <duration> | default = 1m]
-
-  # File path where tokens are stored. If empty, tokens are not stored at
-  # shutdown and restored at startup.
-  # CLI flag: -bloom-compactor.ring.tokens-file-path
-  [tokens_file_path: <string> | default = ""]
-
-  # True to enable zone-awareness and replicate blocks across different
-  # availability zones.
-  # CLI flag: -bloom-compactor.ring.zone-awareness-enabled
-  [zone_awareness_enabled: <boolean> | default = false]
-
-  # Number of tokens to use in the ring per compactor. Higher number of tokens
-  # will result in more and smaller files (metas and blocks.)
-  # CLI flag: -bloom-compactor.ring.num-tokens
-  [num_tokens: <int> | default = 10]
-
-  # Instance ID to register in the ring.
-  # CLI flag: -bloom-compactor.ring.instance-id
-  [instance_id: <string> | default = "<hostname>"]
-
-  # Name of network interface to read address from.
-  # CLI flag: -bloom-compactor.ring.instance-interface-names
-  [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
-
-  # Port to advertise in the ring (defaults to server.grpc-listen-port).
-  # CLI flag: -bloom-compactor.ring.instance-port
-  [instance_port: <int> | default = 0]
-
-  # IP address to advertise in the ring.
-  # CLI flag: -bloom-compactor.ring.instance-addr
-  [instance_addr: <string> | default = ""]
-
-  # The availability zone where this instance is running. Required if
-  # zone-awareness is enabled.
-  # CLI flag: -bloom-compactor.ring.instance-availability-zone
-  [instance_availability_zone: <string> | default = ""]
-
-  # Enable using a IPv6 instance address.
-  # CLI flag: -bloom-compactor.ring.instance-enable-ipv6
-  [instance_enable_ipv6: <boolean> | default = false]
-
-# Flag to enable or disable the usage of the bloom-compactor component.
-# CLI flag: -bloom-compactor.enabled
-[enabled: <boolean> | default = false]
-
-# Interval at which to re-run the compaction operation.
-# CLI flag: -bloom-compactor.compaction-interval
-[compaction_interval: <duration> | default = 10m]
-
-# Newest day-table offset (from today, inclusive) to compact. Increase to lower
-# cost by not re-writing data to object storage too frequently since recent data
-# changes more often at the cost of not having blooms available as quickly.
-# CLI flag: -bloom-compactor.min-table-offset
-[min_table_offset: <int> | default = 1]
-
-# Oldest day-table offset (from today, inclusive) to compact. This can be used
-# to lower cost by not trying to compact older data which doesn't change. This
-# can be optimized by aligning it with the maximum `reject_old_samples_max_age`
-# setting of any tenant.
-# CLI flag: -bloom-compactor.max-table-offset
-[max_table_offset: <int> | default = 2]
-
-# Number of workers to run in parallel for compaction.
-# CLI flag: -bloom-compactor.worker-parallelism
-[worker_parallelism: <int> | default = 1]
-
-# Minimum backoff time between retries.
-# CLI flag: -bloom-compactor.compaction-retries-min-backoff
-[compaction_retries_min_backoff: <duration> | default = 10s]
-
-# Maximum backoff time between retries.
-# CLI flag: -bloom-compactor.compaction-retries-max-backoff
-[compaction_retries_max_backoff: <duration> | default = 1m]
-
-# Number of retries to perform when compaction fails.
-# CLI flag: -bloom-compactor.compaction-retries
-[compaction_retries: <int> | default = 3]
-
-# Maximum number of tables to compact in parallel. While increasing this value,
-# please make sure compactor has enough disk space allocated to be able to store
-# and compact as many tables.
-# CLI flag: -bloom-compactor.max-compaction-parallelism
-[max_compaction_parallelism: <int> | default = 1]
-
-retention:
-  # Enable bloom retention.
-  # CLI flag: -bloom-compactor.retention.enabled
-  [enabled: <boolean> | default = false]
-
-  # Max lookback days for retention.
-  # CLI flag: -bloom-compactor.retention.max-lookback-days
-  [max_lookback_days: <int> | default = 365]
 ```
 
 ### bloom_gateway
@@ -2382,7 +2229,6 @@ compactor_ring:
 
 Configuration for a Consul client. Only applies if the selected kvstore is `consul`. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `bloom-compactor.ring`
 - `common.storage.ring`
 - `compactor.ring`
 - `distributor.ring`
@@ -2603,7 +2449,6 @@ otlp_config:
 
 Configuration for an ETCD v3 client. Only applies if the selected kvstore is `etcd`. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `bloom-compactor.ring`
 - `common.storage.ring`
 - `compactor.ring`
 - `distributor.ring`
@@ -3444,16 +3289,26 @@ The `ingester_client` block configures how the distributor will connect to inges
 ```yaml
 # Configures how connections are pooled.
 pool_config:
-  [client_cleanup_period: <duration>]
+  # How frequently to clean up clients for ingesters that have gone away.
+  # CLI flag: -distributor.client-cleanup-period
+  [client_cleanup_period: <duration> | default = 15s]
 
-  [health_check_ingesters: <boolean>]
+  # Run a health check on each ingester client during periodic cleanup.
+  # CLI flag: -distributor.health-check-ingesters
+  [health_check_ingesters: <boolean> | default = true]
 
-  [remote_timeout: <duration>]
+  # How quickly a dead client will be removed after it has been detected to
+  # disappear. Set this to a value to allow time for a secondary health check to
+  # recover the missing client.
+  # CLI flag: -ingester.client.healthcheck-timeout
+  [remote_timeout: <duration> | default = 1s]
 
-[remote_timeout: <duration>]
+# The remote request timeout on the client side.
+# CLI flag: -ingester.client.timeout
+[remote_timeout: <duration> | default = 5s]
 
 # Configures how the gRPC connection to ingesters work as a client.
-# The CLI flags prefix for this block configuration is: ingester-rf1.client
+# The CLI flags prefix for this block configuration is: ingester.client
 [grpc_client_config: <grpc_client>]
 ```
 
@@ -3959,16 +3814,6 @@ shard_streams:
 # CLI flag: -bloom-gateway.cache-key-interval
 [bloom_gateway_cache_key_interval: <duration> | default = 15m]
 
-# Experimental. The shard size defines how many bloom compactors should be used
-# by a tenant when computing blooms. If it's set to 0, shuffle sharding is
-# disabled.
-# CLI flag: -bloom-compactor.shard-size
-[bloom_compactor_shard_size: <int> | default = 0]
-
-# Experimental. Whether to compact chunks into bloom filters.
-# CLI flag: -bloom-compactor.enable-compaction
-[bloom_compactor_enable_compaction: <boolean> | default = false]
-
 # Experimental. The maximum bloom block size. A value of 0 sets an unlimited
 # size. Default is 200MB. The actual block size might exceed this limit since
 # blooms will be added to blocks until the block exceeds the maximum block size.
@@ -4010,20 +3855,20 @@ shard_streams:
 
 # Experimental. Length of the n-grams created when computing blooms from log
 # lines.
-# CLI flag: -bloom-compactor.ngram-length
+# CLI flag: -bloom-build.ngram-length
 [bloom_ngram_length: <int> | default = 4]
 
 # Experimental. Skip factor for the n-grams created when computing blooms from
 # log lines.
-# CLI flag: -bloom-compactor.ngram-skip
+# CLI flag: -bloom-build.ngram-skip
 [bloom_ngram_skip: <int> | default = 1]
 
 # Experimental. Scalable Bloom Filter desired false-positive rate.
-# CLI flag: -bloom-compactor.false-positive-rate
+# CLI flag: -bloom-build.false-positive-rate
 [bloom_false_positive_rate: <float> | default = 0.01]
 
 # Experimental. Compression algorithm for bloom block pages.
-# CLI flag: -bloom-compactor.block-encoding
+# CLI flag: -bloom-build.block-encoding
 [bloom_block_encoding: <string> | default = "none"]
 
 # Allow user to send structured metadata in push payload.

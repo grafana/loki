@@ -59,8 +59,8 @@ const (
 
 	defaultMaxStructuredMetadataSize  = "64kb"
 	defaultMaxStructuredMetadataCount = 128
-	defaultBloomCompactorMaxBlockSize = "200MB"
-	defaultBloomCompactorMaxBloomSize = "128MB"
+	defaultBloomBuildMaxBlockSize     = "200MB"
+	defaultBloomBuildMaxBloomSize     = "128MB"
 
 	defaultBlockedIngestionStatusCode = 260 // 260 is a custom status code to indicate blocked ingestion
 )
@@ -203,10 +203,8 @@ type Limits struct {
 	BloomGatewayEnabled          bool          `yaml:"bloom_gateway_enable_filtering" json:"bloom_gateway_enable_filtering" category:"experimental"`
 	BloomGatewayCacheKeyInterval time.Duration `yaml:"bloom_gateway_cache_key_interval" json:"bloom_gateway_cache_key_interval" category:"experimental"`
 
-	BloomCompactorShardSize    int              `yaml:"bloom_compactor_shard_size" json:"bloom_compactor_shard_size" category:"experimental"`
-	BloomCompactorEnabled      bool             `yaml:"bloom_compactor_enable_compaction" json:"bloom_compactor_enable_compaction" category:"experimental"`
-	BloomCompactorMaxBlockSize flagext.ByteSize `yaml:"bloom_compactor_max_block_size" json:"bloom_compactor_max_block_size" category:"experimental"`
-	BloomCompactorMaxBloomSize flagext.ByteSize `yaml:"bloom_compactor_max_bloom_size" json:"bloom_compactor_max_bloom_size" category:"experimental"`
+	BloomBuildMaxBlockSize flagext.ByteSize `yaml:"bloom_compactor_max_block_size" json:"bloom_compactor_max_block_size" category:"experimental"`
+	BloomBuildMaxBloomSize flagext.ByteSize `yaml:"bloom_compactor_max_bloom_size" json:"bloom_compactor_max_bloom_size" category:"experimental"`
 
 	BloomCreationEnabled       bool          `yaml:"bloom_creation_enabled" json:"bloom_creation_enabled" category:"experimental"`
 	BloomSplitSeriesKeyspaceBy int           `yaml:"bloom_split_series_keyspace_by" json:"bloom_split_series_keyspace_by" category:"experimental"`
@@ -377,19 +375,18 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.BloomGatewayShardSize, "bloom-gateway.shard-size", 0, "Experimental. The shard size defines how many bloom gateways should be used by a tenant for querying.")
 	f.BoolVar(&l.BloomGatewayEnabled, "bloom-gateway.enable-filtering", false, "Experimental. Whether to use the bloom gateway component in the read path to filter chunks.")
-
-	f.IntVar(&l.BloomCompactorShardSize, "bloom-compactor.shard-size", 0, "Experimental. The shard size defines how many bloom compactors should be used by a tenant when computing blooms. If it's set to 0, shuffle sharding is disabled.")
-	f.BoolVar(&l.BloomCompactorEnabled, "bloom-compactor.enable-compaction", false, "Experimental. Whether to compact chunks into bloom filters.")
-	f.IntVar(&l.BloomNGramLength, "bloom-compactor.ngram-length", 4, "Experimental. Length of the n-grams created when computing blooms from log lines.")
-	f.IntVar(&l.BloomNGramSkip, "bloom-compactor.ngram-skip", 1, "Experimental. Skip factor for the n-grams created when computing blooms from log lines.")
-	f.Float64Var(&l.BloomFalsePositiveRate, "bloom-compactor.false-positive-rate", 0.01, "Experimental. Scalable Bloom Filter desired false-positive rate.")
-	f.StringVar(&l.BloomBlockEncoding, "bloom-compactor.block-encoding", "none", "Experimental. Compression algorithm for bloom block pages.")
 	f.DurationVar(&l.BloomGatewayCacheKeyInterval, "bloom-gateway.cache-key-interval", 15*time.Minute, "Experimental. Interval for computing the cache key in the Bloom Gateway.")
-	_ = l.BloomCompactorMaxBlockSize.Set(defaultBloomCompactorMaxBlockSize)
-	f.Var(&l.BloomCompactorMaxBlockSize, "bloom-compactor.max-block-size",
+
+	f.IntVar(&l.BloomNGramLength, "bloom-build.ngram-length", 4, "Experimental. Length of the n-grams created when computing blooms from log lines.")
+	f.IntVar(&l.BloomNGramSkip, "bloom-build.ngram-skip", 1, "Experimental. Skip factor for the n-grams created when computing blooms from log lines.")
+	f.Float64Var(&l.BloomFalsePositiveRate, "bloom-build.false-positive-rate", 0.01, "Experimental. Scalable Bloom Filter desired false-positive rate.")
+	f.StringVar(&l.BloomBlockEncoding, "bloom-build.block-encoding", "none", "Experimental. Compression algorithm for bloom block pages.")
+
+	_ = l.BloomBuildMaxBlockSize.Set(defaultBloomBuildMaxBlockSize)
+	f.Var(&l.BloomBuildMaxBlockSize, "bloom-compactor.max-block-size",
 		fmt.Sprintf(
 			"Experimental. The maximum bloom block size. A value of 0 sets an unlimited size. Default is %s. The actual block size might exceed this limit since blooms will be added to blocks until the block exceeds the maximum block size.",
-			defaultBloomCompactorMaxBlockSize,
+			defaultBloomBuildMaxBlockSize,
 		),
 	)
 
@@ -399,11 +396,11 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&l.BuilderResponseTimeout, "bloom-build.builder-response-timeout", 0, "Experimental. Timeout for a builder to finish a task. If a builder does not respond within this time, it is considered failed and the task will be requeued. 0 disables the timeout.")
 	f.IntVar(&l.BloomTaskMaxRetries, "bloom-build.task-max-retries", 3, "Experimental. Maximum number of retries for a failed task. If a task fails more than this number of times, it is considered failed and will not be retried. A value of 0 disables this limit.")
 
-	_ = l.BloomCompactorMaxBloomSize.Set(defaultBloomCompactorMaxBloomSize)
-	f.Var(&l.BloomCompactorMaxBloomSize, "bloom-compactor.max-bloom-size",
+	_ = l.BloomBuildMaxBloomSize.Set(defaultBloomBuildMaxBloomSize)
+	f.Var(&l.BloomBuildMaxBloomSize, "bloom-compactor.max-bloom-size",
 		fmt.Sprintf(
 			"Experimental. The maximum bloom size per log stream. A log stream whose generated bloom filter exceeds this size will be discarded. A value of 0 sets an unlimited size. Default is %s.",
-			defaultBloomCompactorMaxBloomSize,
+			defaultBloomBuildMaxBloomSize,
 		),
 	)
 
@@ -991,14 +988,6 @@ func (o *Overrides) BloomGatewayEnabled(userID string) bool {
 	return o.getOverridesForUser(userID).BloomGatewayEnabled
 }
 
-func (o *Overrides) BloomCompactorShardSize(userID string) int {
-	return o.getOverridesForUser(userID).BloomCompactorShardSize
-}
-
-func (o *Overrides) BloomCompactorEnabled(userID string) bool {
-	return o.getOverridesForUser(userID).BloomCompactorEnabled
-}
-
 func (o *Overrides) BloomCreationEnabled(userID string) bool {
 	return o.getOverridesForUser(userID).BloomCreationEnabled
 }
@@ -1027,12 +1016,12 @@ func (o *Overrides) BloomNGramSkip(userID string) int {
 	return o.getOverridesForUser(userID).BloomNGramSkip
 }
 
-func (o *Overrides) BloomCompactorMaxBlockSize(userID string) int {
-	return o.getOverridesForUser(userID).BloomCompactorMaxBlockSize.Val()
+func (o *Overrides) BloomMaxBlockSize(userID string) int {
+	return o.getOverridesForUser(userID).BloomBuildMaxBlockSize.Val()
 }
 
-func (o *Overrides) BloomCompactorMaxBloomSize(userID string) int {
-	return o.getOverridesForUser(userID).BloomCompactorMaxBloomSize.Val()
+func (o *Overrides) BloomMaxBloomSize(userID string) int {
+	return o.getOverridesForUser(userID).BloomBuildMaxBloomSize.Val()
 }
 
 func (o *Overrides) BloomFalsePositiveRate(userID string) float64 {

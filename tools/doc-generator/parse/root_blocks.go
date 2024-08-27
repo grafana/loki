@@ -15,7 +15,6 @@ import (
 	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
-	"github.com/grafana/loki/v3/pkg/bloomcompactor"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
 	"github.com/grafana/loki/v3/pkg/compactor"
 	"github.com/grafana/loki/v3/pkg/distributor"
@@ -122,11 +121,6 @@ var (
 			Name:       "compactor",
 			StructType: []reflect.Type{reflect.TypeOf(compactor.Config{})},
 			Desc:       "The compactor block configures the compactor component, which compacts index shards for performance.",
-		},
-		{
-			Name:       "bloom_compactor",
-			StructType: []reflect.Type{reflect.TypeOf(bloomcompactor.Config{})},
-			Desc:       "Experimental: The bloom_compactor block configures the Loki bloom compactor server, responsible for compacting stream indexes into bloom filters and merging them as bloom blocks.",
 		},
 		{
 			Name:       "bloom_gateway",

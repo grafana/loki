@@ -310,8 +310,8 @@ func (b *Builder) processTask(
 		blockCt      int
 		nGramSize    = uint64(b.limits.BloomNGramLength(tenant))
 		nGramSkip    = uint64(b.limits.BloomNGramSkip(tenant))
-		maxBlockSize = uint64(b.limits.BloomCompactorMaxBlockSize(tenant))
-		maxBloomSize = uint64(b.limits.BloomCompactorMaxBloomSize(tenant))
+		maxBlockSize = uint64(b.limits.BloomMaxBlockSize(tenant))
+		maxBloomSize = uint64(b.limits.BloomMaxBloomSize(tenant))
 		blockOpts    = v1.NewBlockOptions(blockEnc, nGramSize, nGramSkip, maxBlockSize, maxBloomSize)
 		created      []bloomshipper.Meta
 		totalSeries  int
