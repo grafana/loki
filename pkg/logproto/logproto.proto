@@ -6,6 +6,7 @@ import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
 import "pkg/logqlmodel/stats/stats.proto";
 import "pkg/push/push.proto";
+import "pkg/storage/chunk/cache/resultscache/types.proto";
 
 option go_package = "github.com/grafana/loki/v3/pkg/logproto";
 
@@ -434,6 +435,7 @@ message VolumeRequest {
   int64 step = 5;
   repeated string targetLabels = 6;
   string aggregateBy = 7;
+  resultscache.CachingOptions cachingOptions = 8 [(gogoproto.nullable) = false];
 }
 
 message VolumeResponse {
