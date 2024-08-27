@@ -1193,7 +1193,7 @@ func TestBloomFiltersEndToEnd(t *testing.T) {
 	)
 	require.NoError(t, clu.Run())
 
-	now := time.Now()
+	now := time.Date(2024, time.January, 19, 12, 0, 0, 0, time.UTC)
 
 	cliDistributor := client.New(tenantID, "", tDistributor.HTTPURL())
 	cliDistributor.Now = now

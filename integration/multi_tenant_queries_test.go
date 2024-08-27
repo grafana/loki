@@ -38,6 +38,8 @@ func TestMultiTenantQuery(t *testing.T) {
 	require.NoError(t, cliTenant1.PushLogLine("lineA", cliTenant1.Now.Add(-45*time.Minute), nil, map[string]string{"job": "fake1"}))
 	require.NoError(t, cliTenant2.PushLogLine("lineB", cliTenant2.Now.Add(-45*time.Minute), nil, map[string]string{"job": "fake2"}))
 
+	_ = cliMultitenant.Flush()
+
 	// check that tenant1 only have access to log line A.
 	require.ElementsMatch(t, query(t, cliTenant1, `{job="fake2"}`), []string{})
 	require.ElementsMatch(t, query(t, cliTenant1, `{job=~"fake.*"}`), []string{"lineA"})
