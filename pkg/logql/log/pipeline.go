@@ -176,12 +176,13 @@ func NewPipeline(stages []Stage) Pipeline {
 }
 
 type streamPipeline struct {
-	stages  []Stage
-	builder *LabelsBuilder
+	stages     []Stage
+	builder    *LabelsBuilder
+	offsetsBuf []int
 }
 
 func NewStreamPipeline(stages []Stage, labelsBuilder *LabelsBuilder) StreamPipeline {
-	return &streamPipeline{stages, labelsBuilder}
+	return &streamPipeline{stages, labelsBuilder, make([]int, 0, 10)}
 }
 
 func (p *pipeline) ForStream(labels labels.Labels) StreamPipeline {
@@ -220,6 +221,11 @@ func (p *streamPipeline) ReferencedStructuredMetadata() bool {
 func (p *streamPipeline) Process(ts int64, line []byte, structuredMetadata ...labels.Label) ([]byte, LabelsResult, bool) {
 	var ok bool
 	p.builder.Reset()
+
+	for i, lb := range structuredMetadata {
+		structuredMetadata[i].Name = p.replaceChars(lb.Name)
+	}
+
 	p.builder.Add(StructuredMetadataLabel, structuredMetadata...)
 
 	for _, s := range p.stages {
@@ -380,4 +386,33 @@ func unsafeGetBytes(s string) []byte {
 
 func unsafeGetString(buf []byte) string {
 	return *((*string)(unsafe.Pointer(&buf)))
+}
+
+func (p *streamPipeline) replaceChars(str string) string {
+	p.offsetsBuf = p.offsetsBuf[:0]
+	for i, r := range str {
+		if !isDigit(r) && !isAlpha(r) {
+			p.offsetsBuf = append(p.offsetsBuf, i)
+		}
+	}
+
+	if len(p.offsetsBuf) > 0 {
+		runes := []rune(str)
+		for _, offset := range p.offsetsBuf {
+			runes[offset] = '_'
+		}
+
+		return string(runes)
+	}
+
+	return str
+}
+
+func isDigit(r rune) bool {
+	return '0' <= r && r <= '9'
+}
+
+// isAlpha reports whether r is an alphabetic or underscore.
+func isAlpha(r rune) bool {
+	return r == '_' || ('a' <= r && r <= 'z') || ('A' <= r && r <= 'Z')
 }
