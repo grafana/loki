@@ -292,8 +292,7 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 		var filterer chunk.Filterer
 		by := make(map[string]struct{})
 		if i.chunkFilter != nil {
-			filterer = i.chunkFilter.ForRequest(ctx)
-			if filterer != nil {
+			if filterer = i.chunkFilter.ForRequest(ctx); filterer != nil {
 				for _, k := range filterer.RequiredLabelNames() {
 					by[k] = struct{}{}
 				}
@@ -373,8 +372,10 @@ func (i *TSDBIndex) Volume(
 
 		// If we are aggregating by series, we need to include all labels in the series required for filtering chunks.
 		if i.chunkFilter != nil {
-			for _, k := range i.chunkFilter.ForRequest(ctx).RequiredLabelNames() {
-				by[k] = struct{}{}
+			if filterer := i.chunkFilter.ForRequest(ctx); filterer != nil {
+				for _, k := range filterer.RequiredLabelNames() {
+					by[k] = struct{}{}
+				}
 			}
 		}
 	}
