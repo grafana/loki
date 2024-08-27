@@ -62,7 +62,7 @@ bloom_gateway:
   client:
     addresses: dnssrvnoa+_bloom-gateway-grpc._tcp.bloom-gateway-headless.<namespace>.svc.cluster.local
 
-# Enable blooms creating and filtering for all tenants by default
+# Enable blooms creation and filtering for all tenants by default
 # or do it on a per-tenant basis.
 limits_config:
   bloom_creation_enabled: true
@@ -76,17 +76,17 @@ We strongly recommend reading the whole documentation for this experimental feat
 
 ## Bloom Planner and Builder
 Building bloom filters from the chunks in the object storage is done by two components: the Bloom Planner and the Bloom
-Builder, where the planner creates tasks for bloom building, and the builders pull the tasks from a queue to process and
+Builder, where the planner creates tasks for bloom building, and sends the tasks to the builders to process and
 upload the resulting blocks.
 Bloom filters are grouped in bloom blocks spanning multiple streams (also known as series) and chunks from a given day. 
 To learn more about how blocks and metadata files are organized, refer to the 
 [Building and querying blooms](#building-and-querying-blooms) section below.
 
 The Bloom Planner runs as a single instance and calculates the gaps in fingerprint ranges for a certain time period for
-a tenant for which bloom filters need to be built. It dispatches these tasks to its queue from which the builder can pull.
+a tenant for which bloom filters need to be built. It dispatches these tasks to its queue and later on, sends the tasks to the available builders.
 The planner also applies the [blooms retention](#retention). 
 
-The Bloom Builder is a horizontally scalable component and can be scaled independently of the planner to fulfill the
+The Bloom Builder is a stateless horizontally scalable component and can be scaled independently of the planner to fulfill the
 demand of the queue size.
 
 You can find all the configuration options for these components in the [Configure section for the Bloom Builder][bloom-build-cfg].
