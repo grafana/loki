@@ -188,7 +188,7 @@ func TestPipelineWithStructuredMetadata(t *testing.T) {
 	expectedStructuredMetadata := append(structuredMetadata, labels.Label{Name: "zsomething_bad", Value: "foo"})
 	expectedLabelsResults = append(lbs, expectedStructuredMetadata...)
 
-	l, lbr, matches = p.ForStream(lbs).Process(0, []byte(""), withBadLabel...)
+	_, lbr, matches = p.ForStream(lbs).Process(0, []byte(""), withBadLabel...)
 	require.Equal(t, NewLabelsResult(expectedLabelsResults.String(), expectedLabelsResults.Hash(), lbs, expectedStructuredMetadata, labels.EmptyLabels()), lbr)
 	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
 	require.Equal(t, expectedLabelsResults.String(), lbr.String())
