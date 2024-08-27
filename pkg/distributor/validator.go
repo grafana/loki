@@ -50,6 +50,9 @@ type validationContext struct {
 	maxStructuredMetadataSize  int
 	maxStructuredMetadataCount int
 
+	blockIngestionUntil      time.Time
+	blockIngestionStatusCode int
+
 	userID string
 }
 
@@ -70,6 +73,8 @@ func (v Validator) getValidationContextForTime(now time.Time, userID string) val
 		allowStructuredMetadata:      v.AllowStructuredMetadata(userID),
 		maxStructuredMetadataSize:    v.MaxStructuredMetadataSize(userID),
 		maxStructuredMetadataCount:   v.MaxStructuredMetadataCount(userID),
+		blockIngestionUntil:          v.BlockIngestionUntil(userID),
+		blockIngestionStatusCode:     v.BlockIngestionStatusCode(userID),
 	}
 }
 
@@ -190,6 +195,15 @@ func (v Validator) ValidateLabels(ctx validationContext, ls labels.Labels, strea
 		lastLabelName = l.Name
 	}
 	return nil
+}
+
+// ShouldBlockIngestion returns whether ingestion should be blocked, until when and the status code.
+func (v Validator) ShouldBlockIngestion(ctx validationContext, now time.Time) (bool, time.Time, int) {
+	if ctx.blockIngestionUntil.IsZero() {
+		return false, time.Time{}, 0
+	}
+
+	return now.Before(ctx.blockIngestionUntil), ctx.blockIngestionUntil, ctx.blockIngestionStatusCode
 }
 
 func updateMetrics(reason, userID string, stream logproto.Stream) {

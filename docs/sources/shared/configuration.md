@@ -4057,6 +4057,17 @@ otlp_config:
   # Configuration for log attributes to store them as Structured Metadata or
   # drop them altogether
   [log_attributes: <list of attributes_configs>]
+
+# Block ingestion until the configured date. The time should be in RFC3339
+# format.
+# CLI flag: -limits.block-ingestion-until
+[block_ingestion_until: <time> | default = 0]
+
+# HTTP status code to return when ingestion is blocked. If 200, the ingestion
+# will be blocked without returning an error to the client. By Default, a custom
+# status code (260) is returned to the client along with an error message.
+# CLI flag: -limits.block-ingestion-status-code
+[block_ingestion_status_code: <int> | default = 260]
 ```
 
 ### local_storage_config
