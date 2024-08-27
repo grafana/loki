@@ -83,11 +83,11 @@ To learn more about how blocks and metadata files are organized, refer to the
 [Building and querying blooms](#building-and-querying-blooms) section below.
 
 The Bloom Planner runs as a single instance and calculates the gaps in fingerprint ranges for a certain time period for
-a tenant for which bloom filters need to be built. It dispatches these tasks to its queue and later on, sends the tasks to the available builders.
+a tenant for which bloom filters need to be built. It dispatches these tasks to the available builders.
 The planner also applies the [blooms retention](#retention). 
 
-The Bloom Builder is a stateless horizontally scalable component and can be scaled independently of the planner to fulfill the
-demand of the queue size.
+The Bloom Builder is a stateless horizontally scalable component and can be scaled independently of the planner to fulfill
+the processing demand of the created tasks.
 
 You can find all the configuration options for these components in the [Configure section for the Bloom Builder][bloom-build-cfg].
 Refer to the [Enable Query Acceleration with Blooms](#enable-query-acceleration-with-blooms) section below for 
@@ -112,17 +112,15 @@ overrides:
               period: 40d
 ```
 
-### Sizing
+### Sizing and configuration
 The single planner instance runs the planning phase for bloom blocks for each tenant in the given interval
-and puts the created tasks to the internal task queue.
+and puts the created tasks to an internal task queue.
 Builders process tasks sequentially by pulling them from the queue. The amount of builder replicas required to complete
 all pending tasks before the next planning iteration depends on the value of `-bloom-build.planner.bloom_split_series_keyspace_by`,
-the amount of tenants and the log volume of the streams.
+the amount of tenants, and the log volume of the streams.
 
-The maximum bloom size of a stream is configured per tenant via `-bloom-compactor.max-bloom-size`.
 The maximum block size is configured per tenant via `-bloom-compactor.max-block-size`. 
-
-Note that the actual block size might exceed this limit given that we append streams blooms to the block until the 
+The actual block size might exceed this limit given that we append streams blooms to the block until the 
 block is larger than the configured maximum size. Blocks are created in memory and as soon as they are written to the 
 object store they are freed. Chunks and TSDB files are downloaded from the object store to the file system. 
 We estimate that builders are able to process 4MB worth of data per second per core.
@@ -141,7 +139,7 @@ and even distribution of the stream fingerprints across Bloom Gateway instances.
 You can find all the configuration options for this component in the Configure section for the [Bloom Gateways][gateway-cfg].
 Refer to the [Enable Query Acceleration with Blooms](#enable-query-acceleration-with-blooms) section below for a configuration snippet enabling this feature.
 
-### Sizing
+### Sizing and configuration
 Bloom Gateways use their local file system as a Least Recently Used (LRU) cache for blooms that are 
 downloaded from object storage. The size of the blooms depend on the ingest volume and the log content cardinality, 
 as well as on build settings of the blooms, namely n-gram length, skip-factor, and false-positive-rate.
@@ -184,8 +182,7 @@ Streams are assigned to blocks by their fingerprint, following the same ordering
 This gives a data locality benefit when querying as streams in the same shard are likely to be in the same block.
 
 In addition to blocks, builders maintain a list of metadata files containing references to bloom blocks and the 
-TSDB index files they were built from. They also contain tombstones for old blocks which are outdated and 
-can be deleted in future iterations. Gateways and the planner use these metadata files to discover existing blocks.
+TSDB index files they were built from. Gateways and the planner use these metadata files to discover existing blocks.
 
 Every `-bloom-build.planner.interval`, the planner will load the latest TSDB files for all tenants for
 which bloom building is enabled, and compares the TSDB files with the latest bloom metadata files. 
