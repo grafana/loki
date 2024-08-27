@@ -454,6 +454,23 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	now := time.Now()
+
+	if block, until, retStatusCode := d.validator.ShouldBlockIngestion(validationContext, now); block {
+		validation.DiscardedSamples.WithLabelValues(validation.BlockedIngestion, tenantID).Add(float64(validatedLineCount))
+		validation.DiscardedBytes.WithLabelValues(validation.BlockedIngestion, tenantID).Add(float64(validatedLineSize))
+
+		err = fmt.Errorf(validation.BlockedIngestionErrorMsg, tenantID, until.Format(time.RFC3339), retStatusCode)
+		d.writeFailuresManager.Log(tenantID, err)
+
+		// If the status code is 200, return success.
+		// Note that we still log the error and increment the metrics.
+		if retStatusCode == http.StatusOK {
+			return &logproto.PushResponse{}, nil
+		}
+
+		return nil, httpgrpc.Errorf(retStatusCode, err.Error())
+	}
+
 	if !d.ingestionRateLimiter.AllowN(now, tenantID, validatedLineSize) {
 		// Return a 429 to indicate to the client they are being rate limited
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineCount))
