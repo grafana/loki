@@ -219,8 +219,7 @@ func getLocalStore(path string, cm ClientMetrics) Store {
 					PeriodicTableConfig: config.PeriodicTableConfig{
 						Prefix: "index_",
 						Period: time.Hour * 168,
-					},
-				},
+					}},
 				RowShards: 16,
 			},
 		},
@@ -922,6 +921,7 @@ func Test_PipelineWrapper(t *testing.T) {
 	s.SetPipelineWrapper(wrapper)
 	ctx = user.InjectOrgID(context.Background(), "test-user")
 	logit, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), []astmapper.ShardAnnotation{{Shard: 1, Of: 5}}, nil)})
+
 	if err != nil {
 		t.Errorf("store.SelectLogs() error = %v", err)
 		return
@@ -952,6 +952,7 @@ func Test_PipelineWrapper_disabled(t *testing.T) {
 	ctx = user.InjectOrgID(context.Background(), "test-user")
 	ctx = httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, "true")
 	logit, err := s.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), []astmapper.ShardAnnotation{{Shard: 1, Of: 5}}, nil)})
+
 	if err != nil {
 		t.Errorf("store.SelectLogs() error = %v", err)
 		return
@@ -1291,8 +1292,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 			PeriodicTableConfig: config.PeriodicTableConfig{
 				Prefix: "index_",
 				Period: time.Hour * 24,
-			},
-		},
+			}},
 	}
 
 	schemaConfig := config.SchemaConfig{
@@ -1366,8 +1366,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 			PeriodicTableConfig: config.PeriodicTableConfig{
 				Prefix: "index_tsdb_",
 				Period: time.Hour * 24,
-			},
-		},
+			}},
 		RowShards: 2,
 	}
 	schemaConfig.Configs = append(schemaConfig.Configs, periodConfig2)
@@ -1472,8 +1471,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 					PeriodicTableConfig: config.PeriodicTableConfig{
 						Prefix: "index_",
 						Period: time.Hour * 24,
-					},
-				},
+					}},
 			}
 
 			periodConfigV11 := config.PeriodConfig{
@@ -1485,8 +1483,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 					PeriodicTableConfig: config.PeriodicTableConfig{
 						Prefix: "index_",
 						Period: time.Hour * 24,
-					},
-				},
+					}},
 				RowShards: 2,
 			}
 
@@ -1565,6 +1562,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 			}
 		})
 	}
+
 }
 
 func mustParseLabels(s string) []logproto.SeriesIdentifier_LabelsEntry {
@@ -1831,8 +1829,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 					PeriodicTableConfig: config.PeriodicTableConfig{
 						Prefix: "index_",
 						Period: time.Hour * 24,
-					},
-				},
+					}},
 				RowShards: 2,
 			},
 			{
@@ -1845,8 +1842,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 					PeriodicTableConfig: config.PeriodicTableConfig{
 						Prefix: "index_",
 						Period: time.Hour * 24,
-					},
-				},
+					}},
 			},
 		},
 	}
@@ -1984,8 +1980,7 @@ func TestStore_SyncStopInteraction(t *testing.T) {
 					PeriodicTableConfig: config.PeriodicTableConfig{
 						Prefix: "index_",
 						Period: time.Hour * 24,
-					},
-				},
+					}},
 				RowShards: 2,
 			},
 			{
@@ -1998,8 +1993,7 @@ func TestStore_SyncStopInteraction(t *testing.T) {
 					PeriodicTableConfig: config.PeriodicTableConfig{
 						Prefix: "index_",
 						Period: time.Hour * 24,
-					},
-				},
+					}},
 			},
 		},
 	}
