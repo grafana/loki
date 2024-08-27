@@ -4,15 +4,11 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"net/http"
 	"sort"
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
-	"github.com/grafana/dskit/httpgrpc"
 	"github.com/opentracing/opentracing-go"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -31,8 +27,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/wal/chunks"
 	"github.com/grafana/loki/v3/pkg/storage/wal/index"
 	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/pkg/util/spanlogger"
-	util_validation "github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 // TODO: Replace with the querier.Querier interface once we have support for all the methods.
@@ -394,28 +388,4 @@ func (q *Querier) forIndices(ctx context.Context, req *metastorepb.ListBlocksFor
 		})
 	}
 	return g.Wait()
-}
-
-func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits querier.TimeRangeLimits, from, through time.Time) (time.Time, time.Time, error) {
-	now := nowFunc()
-	// Clamp the time range based on the max query lookback.
-	maxQueryLookback := limits.MaxQueryLookback(ctx, userID)
-	if maxQueryLookback > 0 && from.Before(now.Add(-maxQueryLookback)) {
-		origStartTime := from
-		from = now.Add(-maxQueryLookback)
-
-		level.Debug(spanlogger.FromContext(ctx)).Log(
-			"msg", "the start time of the query has been manipulated because of the 'max query lookback' setting",
-			"original", origStartTime,
-			"updated", from)
-
-	}
-	maxQueryLength := limits.MaxQueryLength(ctx, userID)
-	if maxQueryLength > 0 && (through).Sub(from) > maxQueryLength {
-		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, util_validation.ErrQueryTooLong, (through).Sub(from), model.Duration(maxQueryLength))
-	}
-	if through.Before(from) {
-		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, util_validation.ErrQueryTooOld, model.Duration(maxQueryLookback))
-	}
-	return from, through, nil
 }
