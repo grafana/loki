@@ -50,6 +50,9 @@ type validationContext struct {
 	maxStructuredMetadataSize  int
 	maxStructuredMetadataCount int
 
+	blockIngestionUntil      time.Time
+	blockIngestionStatusCode int
+
 	userID string
 }
 
@@ -70,6 +73,8 @@ func (v Validator) getValidationContextForTime(now time.Time, userID string) val
 		allowStructuredMetadata:      v.AllowStructuredMetadata(userID),
 		maxStructuredMetadataSize:    v.MaxStructuredMetadataSize(userID),
 		maxStructuredMetadataCount:   v.MaxStructuredMetadataCount(userID),
+		blockIngestionUntil:          v.BlockIngestionUntil(userID),
+		blockIngestionStatusCode:     v.BlockIngestionStatusCode(userID),
 	}
 }
 
@@ -158,6 +163,11 @@ func (v Validator) ValidateLabels(ctx validationContext, ls labels.Labels, strea
 		return fmt.Errorf(validation.MissingLabelsErrorMsg)
 	}
 
+	// Skip validation for aggregated metric streams, as we create those for internal use
+	if ls.Has(push.AggregatedMetricLabel) {
+		return nil
+	}
+
 	numLabelNames := len(ls)
 	// This is a special case that's often added by the Loki infrastructure. It may result in allowing one extra label
 	// if incoming requests already have a service_name
@@ -185,6 +195,15 @@ func (v Validator) ValidateLabels(ctx validationContext, ls labels.Labels, strea
 		lastLabelName = l.Name
 	}
 	return nil
+}
+
+// ShouldBlockIngestion returns whether ingestion should be blocked, until when and the status code.
+func (v Validator) ShouldBlockIngestion(ctx validationContext, now time.Time) (bool, time.Time, int) {
+	if ctx.blockIngestionUntil.IsZero() {
+		return false, time.Time{}, 0
+	}
+
+	return now.Before(ctx.blockIngestionUntil), ctx.blockIngestionUntil, ctx.blockIngestionStatusCode
 }
 
 func updateMetrics(reason, userID string, stream logproto.Stream) {

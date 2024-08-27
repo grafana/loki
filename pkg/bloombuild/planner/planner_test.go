@@ -163,7 +163,7 @@ func Test_gapsBetweenTSDBsAndMetas(t *testing.T) {
 				require.Error(t, err)
 				return
 			}
-			require.Equal(t, tc.exp, gaps)
+			require.ElementsMatch(t, tc.exp, gaps)
 		})
 	}
 }
@@ -412,7 +412,7 @@ func Test_blockPlansForGaps(t *testing.T) {
 				require.Error(t, err)
 				return
 			}
-			require.Equal(t, tc.exp, plans)
+			require.ElementsMatch(t, tc.exp, plans)
 		})
 	}
 }

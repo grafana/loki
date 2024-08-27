@@ -34,6 +34,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/querier"
+	"github.com/grafana/loki/v3/pkg/querier-rf1/wal"
 	querier_limits "github.com/grafana/loki/v3/pkg/querier/limits"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage"
@@ -77,7 +78,6 @@ type Querier interface {
 	DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error)
 	Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error)
 	DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error)
-	SelectMetricSamples(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error)
 }
 
 type Limits querier_limits.Limits
@@ -97,6 +97,7 @@ type Rf1Querier struct {
 	deleteGetter   deleteGetter
 	logger         log.Logger
 	patternQuerier PatterQuerier
+	walQuerier     logql.Querier
 }
 
 type deleteGetter interface {
@@ -104,12 +105,17 @@ type deleteGetter interface {
 }
 
 // New makes a new Querier for RF1 work.
-func New(cfg Config, store Store, limits Limits, d deleteGetter, logger log.Logger) (*Rf1Querier, error) {
+func New(cfg Config, store Store, limits Limits, d deleteGetter, metastore wal.Metastore, b wal.BlockStorage, logger log.Logger) (*Rf1Querier, error) {
+	querier, err := wal.New(metastore, b)
+	if err != nil {
+		return nil, err
+	}
 	return &Rf1Querier{
 		cfg:          cfg,
 		store:        store,
 		limits:       limits,
 		deleteGetter: d,
+		walQuerier:   querier,
 		logger:       logger,
 	}, nil
 }
@@ -134,7 +140,7 @@ func (q *Rf1Querier) SelectLogs(ctx context.Context, params logql.SelectLogParam
 			"msg", "querying rf1 store",
 			"params", params)
 	}
-	storeIter, err := q.store.SelectLogs(ctx, params)
+	storeIter, err := q.walQuerier.SelectLogs(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +170,7 @@ func (q *Rf1Querier) SelectSamples(ctx context.Context, params logql.SelectSampl
 			"msg", "querying rf1 store for samples",
 			"params", params)
 	}
-	storeIter, err := q.store.SelectSamples(ctx, params)
+	storeIter, err := q.walQuerier.SelectSamples(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -906,7 +912,6 @@ func streamsForFieldDetection(i iter.EntryIterator, size uint32) (logqlmodel.Str
 
 type PatterQuerier interface {
 	Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error)
-	Samples(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error)
 }
 
 func (q *Rf1Querier) WithPatternQuerier(pq querier.PatterQuerier) {
@@ -923,8 +928,4 @@ func (q *Rf1Querier) Patterns(ctx context.Context, req *logproto.QueryPatternsRe
 	}
 
 	return res, err
-}
-
-func (q *Rf1Querier) SelectMetricSamples(_ context.Context, _ *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error) {
-	return nil, httpgrpc.Errorf(http.StatusBadRequest, "not implmented")
 }

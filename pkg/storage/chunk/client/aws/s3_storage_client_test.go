@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
@@ -32,6 +33,44 @@ type RoundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (f RoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
+}
+
+func TestIsObjectNotFoundErr(t *testing.T) {
+	tests := []struct {
+		err      error
+		expected bool
+		name     string
+	}{
+		{
+			name:     "no such key error is recognized as object not found",
+			err:      awserr.New(s3.ErrCodeNoSuchKey, "NoSuchKey", nil),
+			expected: true,
+		},
+		{
+			name:     "NotFound code is recognized as object not found",
+			err:      awserr.New("NotFound", "NotFound", nil),
+			expected: true,
+		},
+		{
+			name:     "Nil error isnt recognized as object not found",
+			err:      nil,
+			expected: false,
+		},
+		{
+			name:     "Other error isnt recognized as object not found",
+			err:      awserr.New(s3.ErrCodeNoSuchBucket, "NoSuchBucket", nil),
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, err := NewS3ObjectClient(S3Config{BucketNames: "mybucket"}, hedging.Config{})
+			require.NoError(t, err)
+
+			require.Equal(t, tt.expected, client.IsObjectNotFoundErr(tt.err))
+		})
+	}
 }
 
 func TestRequestMiddleware(t *testing.T) {

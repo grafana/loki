@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"slices"
 	"strconv"
+	"unsafe"
 
 	"github.com/prometheus/common/model"
 )
@@ -28,10 +29,11 @@ const (
 	BucketLabel  = "le"
 	InstanceName = "instance"
 
-	labelSep = '\xfe'
+	labelSep = '\xfe' // Used at beginning of `Bytes` return.
+	sep      = '\xff' // Used between labels in `Bytes` and `Hash`.
 )
 
-var seps = []byte{'\xff'}
+var seps = []byte{sep} // Used with Hash, which has no WriteByte method.
 
 // Label is a key/value pair of strings.
 type Label struct {
@@ -39,7 +41,8 @@ type Label struct {
 }
 
 func (ls Labels) String() string {
-	var b bytes.Buffer
+	var bytea [1024]byte // On stack to avoid memory allocation while building the output.
+	b := bytes.NewBuffer(bytea[:0])
 
 	b.WriteByte('{')
 	i := 0
@@ -50,7 +53,7 @@ func (ls Labels) String() string {
 		}
 		b.WriteString(l.Name)
 		b.WriteByte('=')
-		b.WriteString(strconv.Quote(l.Value))
+		b.Write(strconv.AppendQuote(b.AvailableBuffer(), l.Value))
 		i++
 	})
 	b.WriteByte('}')
@@ -213,4 +216,8 @@ func contains(s []Label, n string) bool {
 		}
 	}
 	return false
+}
+
+func yoloString(b []byte) string {
+	return *((*string)(unsafe.Pointer(&b)))
 }

@@ -350,6 +350,9 @@ func (s *storeMock) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) er
 
 func (s *storeMock) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, _ ...*labels.Matcher) ([]string, error) {
 	args := s.Called(ctx, userID, from, through, metricName, labelName)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
 	return args.Get(0).([]string), args.Error(1)
 }
 
@@ -494,6 +497,16 @@ func (r *readRingMock) GetInstanceState(_ string) (ring.InstanceState, error) {
 func (r *readRingMock) GetTokenRangesForInstance(_ string) (ring.TokenRanges, error) {
 	tr := ring.TokenRanges{0, math.MaxUint32}
 	return tr, nil
+}
+
+// WritableInstancesWithTokensCount returns the number of writable instances in the ring that have tokens.
+func (r *readRingMock) WritableInstancesWithTokensCount() int {
+	return len(r.replicationSet.Instances)
+}
+
+// WritableInstancesWithTokensInZoneCount returns the number of writable instances in the ring that are registered in given zone and have tokens.
+func (r *readRingMock) WritableInstancesWithTokensInZoneCount(_ string) int {
+	return len(r.replicationSet.Instances)
 }
 
 func mockReadRingWithOneActiveIngester() *readRingMock {
@@ -720,21 +733,6 @@ func (q *querierMock) DetectedLabels(ctx context.Context, req *logproto.Detected
 	}
 
 	return resp.(*logproto.DetectedLabelsResponse), err
-}
-
-func (q *querierMock) SelectMetricSamples(
-	ctx context.Context,
-	req *logproto.QuerySamplesRequest,
-) (*logproto.QuerySamplesResponse, error) {
-	args := q.MethodCalled("SelectMetricSamples", ctx, req)
-
-	resp := args.Get(0)
-	err := args.Error(1)
-	if resp == nil {
-		return nil, err
-	}
-
-	return resp.(*logproto.QuerySamplesResponse), err
 }
 
 func (q *querierMock) WithPatternQuerier(_ PatterQuerier) {}

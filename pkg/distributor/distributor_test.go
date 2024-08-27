@@ -1171,6 +1171,60 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 	}
 }
 
+func TestDistributor_PushIngestionBlocked(t *testing.T) {
+	for _, tc := range []struct {
+		name               string
+		blockUntil         time.Time
+		blockStatusCode    int
+		expectError        bool
+		expectedStatusCode int
+	}{
+		{
+			name:               "not configured",
+			expectedStatusCode: http.StatusOK,
+		},
+		{
+			name:               "not blocked",
+			blockUntil:         time.Now().Add(-1 * time.Hour),
+			expectedStatusCode: http.StatusOK,
+		},
+		{
+			name:               "blocked",
+			blockUntil:         time.Now().Add(1 * time.Hour),
+			blockStatusCode:    456,
+			expectError:        true,
+			expectedStatusCode: 456,
+		},
+		{
+			name:               "blocked with status code 200",
+			blockUntil:         time.Now().Add(1 * time.Hour),
+			blockStatusCode:    http.StatusOK,
+			expectError:        false,
+			expectedStatusCode: http.StatusOK,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			limits := &validation.Limits{}
+			flagext.DefaultValues(limits)
+			limits.BlockIngestionUntil = flagext.Time(tc.blockUntil)
+			limits.BlockIngestionStatusCode = tc.blockStatusCode
+
+			distributors, _ := prepare(t, 1, 5, limits, nil)
+			request := makeWriteRequest(1, 1024)
+			response, err := distributors[0].Push(ctx, request)
+
+			if tc.expectError {
+				expectedErr := fmt.Sprintf(validation.BlockedIngestionErrorMsg, "test", tc.blockUntil.Format(time.RFC3339), tc.blockStatusCode)
+				require.ErrorContains(t, err, expectedErr)
+				require.Nil(t, response)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, success, response)
+			}
+		})
+	}
+}
+
 func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation.Limits, factory func(addr string) (ring_client.PoolClient, error)) ([]*Distributor, []mockIngester) {
 	t.Helper()
 
@@ -1485,8 +1539,8 @@ func Test_DetectLogLevels(t *testing.T) {
 		require.Equal(t, `{foo="bar"}`, topVal.Streams[0].Labels)
 		require.Equal(t, push.LabelsAdapter{
 			{
-				Name:  levelLabel,
-				Value: logLevelWarn,
+				Name:  constants.LevelLabel,
+				Value: constants.LogLevelWarn,
 			},
 		}, topVal.Streams[0].Entries[0].StructuredMetadata)
 	})
@@ -1502,8 +1556,8 @@ func Test_DetectLogLevels(t *testing.T) {
 		require.Equal(t, `{foo="bar", level="debug"}`, topVal.Streams[0].Labels)
 		sm := topVal.Streams[0].Entries[0].StructuredMetadata
 		require.Len(t, sm, 1)
-		require.Equal(t, sm[0].Name, levelLabel)
-		require.Equal(t, sm[0].Value, logLevelDebug)
+		require.Equal(t, sm[0].Name, constants.LevelLabel)
+		require.Equal(t, sm[0].Value, constants.LogLevelDebug)
 	})
 
 	t.Run("log level detection enabled but log level already present as structured metadata", func(t *testing.T) {
@@ -1514,7 +1568,7 @@ func Test_DetectLogLevels(t *testing.T) {
 		writeReq.Streams[0].Entries[0].StructuredMetadata = push.LabelsAdapter{
 			{
 				Name:  "severity",
-				Value: logLevelWarn,
+				Value: constants.LogLevelWarn,
 			},
 		}
 		_, err := distributors[0].Push(ctx, writeReq)
@@ -1525,10 +1579,10 @@ func Test_DetectLogLevels(t *testing.T) {
 		require.Equal(t, push.LabelsAdapter{
 			{
 				Name:  "severity",
-				Value: logLevelWarn,
+				Value: constants.LogLevelWarn,
 			}, {
-				Name:  levelLabel,
-				Value: logLevelWarn,
+				Name:  constants.LevelLabel,
+				Value: constants.LogLevelWarn,
 			},
 		}, sm)
 	})
@@ -1551,7 +1605,7 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 					},
 				},
 			},
-			expectedLogLevel: logLevelDebug,
+			expectedLogLevel: constants.LogLevelDebug,
 		},
 		{
 			name: "invalid severity number should not cause any issues",
@@ -1563,126 +1617,126 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 					},
 				},
 			},
-			expectedLogLevel: logLevelInfo,
+			expectedLogLevel: constants.LogLevelInfo,
 		},
 		{
 			name: "non otlp without any of the log level keywords in log line",
 			entry: logproto.Entry{
 				Line: "foo",
 			},
-			expectedLogLevel: logLevelUnknown,
+			expectedLogLevel: constants.LogLevelUnknown,
 		},
 		{
 			name: "non otlp with log level keywords in log line",
 			entry: logproto.Entry{
 				Line: "this is a warning log",
 			},
-			expectedLogLevel: logLevelWarn,
+			expectedLogLevel: constants.LogLevelWarn,
 		},
 		{
 			name: "json log line with an error",
 			entry: logproto.Entry{
 				Line: `{"foo":"bar","msg":"message with keyword error but it should not get picked up","level":"critical"}`,
 			},
-			expectedLogLevel: logLevelCritical,
+			expectedLogLevel: constants.LogLevelCritical,
 		},
 		{
 			name: "json log line with an error",
 			entry: logproto.Entry{
 				Line: `{"FOO":"bar","MSG":"message with keyword error but it should not get picked up","LEVEL":"Critical"}`,
 			},
-			expectedLogLevel: logLevelCritical,
+			expectedLogLevel: constants.LogLevelCritical,
 		},
 		{
 			name: "json log line with an warning",
 			entry: logproto.Entry{
 				Line: `{"foo":"bar","msg":"message with keyword warn but it should not get picked up","level":"warn"}`,
 			},
-			expectedLogLevel: logLevelWarn,
+			expectedLogLevel: constants.LogLevelWarn,
 		},
 		{
 			name: "json log line with an warning",
 			entry: logproto.Entry{
 				Line: `{"foo":"bar","msg":"message with keyword warn but it should not get picked up","SEVERITY":"FATAL"}`,
 			},
-			expectedLogLevel: logLevelFatal,
+			expectedLogLevel: constants.LogLevelFatal,
 		},
 		{
 			name: "json log line with an error in block case",
 			entry: logproto.Entry{
 				Line: `{"foo":"bar","msg":"message with keyword warn but it should not get picked up","level":"ERR"}`,
 			},
-			expectedLogLevel: logLevelError,
+			expectedLogLevel: constants.LogLevelError,
 		},
 		{
 			name: "json log line with an INFO in block case",
 			entry: logproto.Entry{
 				Line: `{"foo":"bar","msg":"message with keyword INFO get picked up"}`,
 			},
-			expectedLogLevel: logLevelInfo,
+			expectedLogLevel: constants.LogLevelInfo,
 		},
 		{
 			name: "logfmt log line with an INFO and not level returns info log level",
 			entry: logproto.Entry{
 				Line: `foo=bar msg="message with info and not level should get picked up"`,
 			},
-			expectedLogLevel: logLevelInfo,
+			expectedLogLevel: constants.LogLevelInfo,
 		},
 		{
 			name: "logfmt log line with a warn",
 			entry: logproto.Entry{
 				Line: `foo=bar msg="message with keyword error but it should not get picked up" level=warn`,
 			},
-			expectedLogLevel: logLevelWarn,
+			expectedLogLevel: constants.LogLevelWarn,
 		},
 		{
 			name: "logfmt log line with a warn with camel case",
 			entry: logproto.Entry{
 				Line: `foo=bar msg="message with keyword error but it should not get picked up" level=Warn`,
 			},
-			expectedLogLevel: logLevelWarn,
+			expectedLogLevel: constants.LogLevelWarn,
 		},
 		{
 			name: "logfmt log line with a trace",
 			entry: logproto.Entry{
 				Line: `foo=bar msg="message with keyword error but it should not get picked up" level=Trace`,
 			},
-			expectedLogLevel: logLevelTrace,
+			expectedLogLevel: constants.LogLevelTrace,
 		},
 		{
 			name: "logfmt log line with some other level returns unknown log level",
 			entry: logproto.Entry{
 				Line: `foo=bar msg="message with keyword but it should not get picked up" level=NA`,
 			},
-			expectedLogLevel: logLevelUnknown,
+			expectedLogLevel: constants.LogLevelUnknown,
 		},
 		{
 			name: "logfmt log line with label Severity is allowed for level detection",
 			entry: logproto.Entry{
 				Line: `foo=bar msg="message with keyword but it should not get picked up" severity=critical`,
 			},
-			expectedLogLevel: logLevelCritical,
+			expectedLogLevel: constants.LogLevelCritical,
 		},
 		{
 			name: "logfmt log line with label Severity with camelcase is allowed for level detection",
 			entry: logproto.Entry{
 				Line: `Foo=bar MSG="Message with keyword but it should not get picked up" Severity=critical`,
 			},
-			expectedLogLevel: logLevelCritical,
+			expectedLogLevel: constants.LogLevelCritical,
 		},
 		{
 			name: "logfmt log line with a info with non standard case",
 			entry: logproto.Entry{
 				Line: `foo=bar msg="message with keyword error but it should not get picked up" level=inFO`,
 			},
-			expectedLogLevel: logLevelInfo,
+			expectedLogLevel: constants.LogLevelInfo,
 		},
 		{
 			name: "logfmt log line with a info with non block case for level",
 			entry: logproto.Entry{
 				Line: `FOO=bar MSG="message with keyword error but it should not get picked up" LEVEL=inFO`,
 			},
-			expectedLogLevel: logLevelInfo,
+			expectedLogLevel: constants.LogLevelInfo,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1707,7 +1761,7 @@ func Benchmark_extractLogLevelFromLogLine(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		level := extractLogLevelFromLogLine(logLine)
-		require.Equal(b, logLevelUnknown, level)
+		require.Equal(b, constants.LogLevelUnknown, level)
 	}
 }
 
@@ -1716,7 +1770,7 @@ func Benchmark_optParseExtractLogLevelFromLogLineJson(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		level := extractLogLevelFromLogLine(logLine)
-		require.Equal(b, logLevelError, level)
+		require.Equal(b, constants.LogLevelError, level)
 	}
 }
 
@@ -1725,6 +1779,6 @@ func Benchmark_optParseExtractLogLevelFromLogLineLogfmt(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		level := extractLogLevelFromLogLine(logLine)
-		require.Equal(b, logLevelInfo, level)
+		require.Equal(b, constants.LogLevelInfo, level)
 	}
 }

@@ -57,6 +57,7 @@ The following table indicates the state of in-memory and persistent caching in e
 |--------------------------------|---------------------------------------------------------------------|--------------------------|
 | `AzureCLICredential`           | Not Supported                                                       | Not Supported            |
 | `AzureDeveloperCLICredential`  | Not Supported                                                       | Not Supported            |
+| `AzurePipelinesCredential`     | Supported                                                           | Supported                |
 | `ClientAssertionCredential`    | Supported                                                           | Supported                |
 | `ClientCertificateCredential`  | Supported                                                           | Supported                |
 | `ClientSecretCredential`       | Supported                                                           | Supported                |
