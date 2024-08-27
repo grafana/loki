@@ -350,6 +350,9 @@ func (s *storeMock) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) er
 
 func (s *storeMock) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, _ ...*labels.Matcher) ([]string, error) {
 	args := s.Called(ctx, userID, from, through, metricName, labelName)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
 	return args.Get(0).([]string), args.Error(1)
 }
 
