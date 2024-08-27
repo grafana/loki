@@ -15,6 +15,7 @@ import (
 	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/bloombuild"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
 	"github.com/grafana/loki/v3/pkg/compactor"
 	"github.com/grafana/loki/v3/pkg/distributor"
@@ -126,6 +127,11 @@ var (
 			Name:       "bloom_gateway",
 			StructType: []reflect.Type{reflect.TypeOf(bloomgateway.Config{})},
 			Desc:       "Experimental: The bloom_gateway block configures the Loki bloom gateway server, responsible for serving queries for filtering chunks based on filter expressions.",
+		},
+		{
+			Name:       "bloom_build",
+			StructType: []reflect.Type{reflect.TypeOf(bloombuild.Config{})},
+			Desc:       "Experimental: The bloom_build block configures the Loki bloom planner and builder servers, responsible for building bloom filters.",
 		},
 		{
 			Name:       "limits_config",

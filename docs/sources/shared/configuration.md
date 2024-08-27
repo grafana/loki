@@ -817,63 +817,9 @@ pattern_ingester:
 # object store.
 [index_gateway: <index_gateway>]
 
-bloom_build:
-  # Flag to enable or disable the usage of the bloom-planner and bloom-builder
-  # components.
-  # CLI flag: -bloom-build.enabled
-  [enabled: <boolean> | default = false]
-
-  planner:
-    # Interval at which to re-run the bloom creation planning.
-    # CLI flag: -bloom-build.planner.interval
-    [planning_interval: <duration> | default = 8h]
-
-    # Newest day-table offset (from today, inclusive) to build blooms for.
-    # Increase to lower cost by not re-writing data to object storage too
-    # frequently since recent data changes more often at the cost of not having
-    # blooms available as quickly.
-    # CLI flag: -bloom-build.planner.min-table-offset
-    [min_table_offset: <int> | default = 1]
-
-    # Oldest day-table offset (from today, inclusive) to compact. This can be
-    # used to lower cost by not trying to compact older data which doesn't
-    # change. This can be optimized by aligning it with the maximum
-    # `reject_old_samples_max_age` setting of any tenant.
-    # CLI flag: -bloom-build.planner.max-table-offset
-    [max_table_offset: <int> | default = 2]
-
-    # Maximum number of tasks to queue per tenant.
-    # CLI flag: -bloom-build.planner.max-tasks-per-tenant
-    [max_queued_tasks_per_tenant: <int> | default = 30000]
-
-    retention:
-      # Enable bloom retention.
-      # CLI flag: -bloom-build.planner.retention.enabled
-      [enabled: <boolean> | default = false]
-
-  builder:
-    # The grpc_client block configures the gRPC client used to communicate
-    # between a client and server component in Loki.
-    # The CLI flags prefix for this block configuration is:
-    # bloom-gateway-client.grpc
-    [grpc_config: <grpc_client>]
-
-    # Hostname (and port) of the bloom planner
-    # CLI flag: -bloom-build.builder.planner-address
-    [planner_address: <string> | default = ""]
-
-    backoff_config:
-      # Minimum delay when backing off.
-      # CLI flag: -bloom-build.builder.backoff.backoff-min-period
-      [min_period: <duration> | default = 100ms]
-
-      # Maximum delay when backing off.
-      # CLI flag: -bloom-build.builder.backoff.backoff-max-period
-      [max_period: <duration> | default = 10s]
-
-      # Number of times to backoff and retry before failing.
-      # CLI flag: -bloom-build.builder.backoff.backoff-retries
-      [max_retries: <int> | default = 10]
+# Experimental: The bloom_build block configures the Loki bloom planner and
+# builder servers, responsible for building bloom filters.
+[bloom_build: <bloom_build>]
 
 # Experimental: The bloom_gateway block configures the Loki bloom gateway
 # server, responsible for serving queries for filtering chunks based on filter
@@ -1459,6 +1405,69 @@ The `azure_storage_config` block configures the connection to Azure object stora
 # Maximum time to wait before retrying a request.
 # CLI flag: -<prefix>.azure.max-retry-delay
 [max_retry_delay: <duration> | default = 500ms]
+```
+
+### bloom_build
+
+Experimental: The `bloom_build` block configures the Loki bloom planner and builder servers, responsible for building bloom filters.
+
+```yaml
+# Flag to enable or disable the usage of the bloom-planner and bloom-builder
+# components.
+# CLI flag: -bloom-build.enabled
+[enabled: <boolean> | default = false]
+
+planner:
+  # Interval at which to re-run the bloom creation planning.
+  # CLI flag: -bloom-build.planner.interval
+  [planning_interval: <duration> | default = 8h]
+
+  # Newest day-table offset (from today, inclusive) to build blooms for.
+  # Increase to lower cost by not re-writing data to object storage too
+  # frequently since recent data changes more often at the cost of not having
+  # blooms available as quickly.
+  # CLI flag: -bloom-build.planner.min-table-offset
+  [min_table_offset: <int> | default = 1]
+
+  # Oldest day-table offset (from today, inclusive) to compact. This can be used
+  # to lower cost by not trying to compact older data which doesn't change. This
+  # can be optimized by aligning it with the maximum
+  # `reject_old_samples_max_age` setting of any tenant.
+  # CLI flag: -bloom-build.planner.max-table-offset
+  [max_table_offset: <int> | default = 2]
+
+  # Maximum number of tasks to queue per tenant.
+  # CLI flag: -bloom-build.planner.max-tasks-per-tenant
+  [max_queued_tasks_per_tenant: <int> | default = 30000]
+
+  retention:
+    # Enable bloom retention.
+    # CLI flag: -bloom-build.planner.retention.enabled
+    [enabled: <boolean> | default = false]
+
+builder:
+  # The grpc_client block configures the gRPC client used to communicate between
+  # a client and server component in Loki.
+  # The CLI flags prefix for this block configuration is:
+  # bloom-gateway-client.grpc
+  [grpc_config: <grpc_client>]
+
+  # Hostname (and port) of the bloom planner
+  # CLI flag: -bloom-build.builder.planner-address
+  [planner_address: <string> | default = ""]
+
+  backoff_config:
+    # Minimum delay when backing off.
+    # CLI flag: -bloom-build.builder.backoff.backoff-min-period
+    [min_period: <duration> | default = 100ms]
+
+    # Maximum delay when backing off.
+    # CLI flag: -bloom-build.builder.backoff.backoff-max-period
+    [max_period: <duration> | default = 10s]
+
+    # Number of times to backoff and retry before failing.
+    # CLI flag: -bloom-build.builder.backoff.backoff-retries
+    [max_retries: <int> | default = 10]
 ```
 
 ### bloom_gateway
@@ -3289,26 +3298,16 @@ The `ingester_client` block configures how the distributor will connect to inges
 ```yaml
 # Configures how connections are pooled.
 pool_config:
-  # How frequently to clean up clients for ingesters that have gone away.
-  # CLI flag: -distributor.client-cleanup-period
-  [client_cleanup_period: <duration> | default = 15s]
+  [client_cleanup_period: <duration>]
 
-  # Run a health check on each ingester client during periodic cleanup.
-  # CLI flag: -distributor.health-check-ingesters
-  [health_check_ingesters: <boolean> | default = true]
+  [health_check_ingesters: <boolean>]
 
-  # How quickly a dead client will be removed after it has been detected to
-  # disappear. Set this to a value to allow time for a secondary health check to
-  # recover the missing client.
-  # CLI flag: -ingester.client.healthcheck-timeout
-  [remote_timeout: <duration> | default = 1s]
+  [remote_timeout: <duration>]
 
-# The remote request timeout on the client side.
-# CLI flag: -ingester.client.timeout
-[remote_timeout: <duration> | default = 5s]
+[remote_timeout: <duration>]
 
 # Configures how the gRPC connection to ingesters work as a client.
-# The CLI flags prefix for this block configuration is: ingester.client
+# The CLI flags prefix for this block configuration is: ingester-rf1.client
 [grpc_client_config: <grpc_client>]
 ```
 
