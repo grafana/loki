@@ -74,6 +74,7 @@ func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (shipp
 		}
 		return NewPrefixedIdentifier(id, parentDir, "")
 	})
+
 	if err != nil {
 		return nil, err
 	}
@@ -194,6 +195,7 @@ func (i *TSDBIndex) ForSeries(ctx context.Context, _ string, fpFilter index.Fing
 		}
 		return p.Err()
 	})
+
 }
 
 func (i *TSDBIndex) forPostings(
@@ -218,6 +220,7 @@ func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, throu
 
 	if err := i.ForSeries(ctx, "", fpFilter, from, through, func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
 		for _, chk := range chks {
+
 			res = append(res, ChunkRef{
 				User:        userID, // assumed to be the same, will be enforced by caller.
 				Fingerprint: fp,
@@ -292,12 +295,14 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 		var filterer chunk.Filterer
 		by := make(map[string]struct{})
 		if i.chunkFilter != nil {
-			if filterer = i.chunkFilter.ForRequest(ctx); filterer != nil {
+			filterer = i.chunkFilter.ForRequest(ctx)
+			if filterer != nil {
 				for _, k := range filterer.RequiredLabelNames() {
 					by[k] = struct{}{}
 				}
 			}
 		}
+
 		for p.Next() {
 			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls, by)
 			if err != nil {
@@ -364,6 +369,10 @@ func (i *TSDBIndex) Volume(
 
 	aggregateBySeries := seriesvolume.AggregateBySeries(aggregateBy) || aggregateBy == ""
 	var by map[string]struct{}
+	var filterer chunk.Filterer
+	if i.chunkFilter != nil {
+		filterer = i.chunkFilter.ForRequest(ctx)
+	}
 	if !includeAll && (aggregateBySeries || len(targetLabels) > 0) {
 		by = make(map[string]struct{}, len(labelsToMatch))
 		for k := range labelsToMatch {
@@ -371,22 +380,15 @@ func (i *TSDBIndex) Volume(
 		}
 
 		// If we are aggregating by series, we need to include all labels in the series required for filtering chunks.
-		if i.chunkFilter != nil {
-			if filterer := i.chunkFilter.ForRequest(ctx); filterer != nil {
-				for _, k := range filterer.RequiredLabelNames() {
-					by[k] = struct{}{}
-				}
+		if filterer != nil {
+			for _, k := range filterer.RequiredLabelNames() {
+				by[k] = struct{}{}
 			}
 		}
 	}
 
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
 		var ls labels.Labels
-		var filterer chunk.Filterer
-		if i.chunkFilter != nil {
-			filterer = i.chunkFilter.ForRequest(ctx)
-		}
-
 		for p.Next() {
 			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls, by)
 			if err != nil {
