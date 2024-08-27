@@ -98,15 +98,14 @@ The Bloom Planner applies bloom block retention on object storage. Retention is 
 When enabled, retention is applied to all tenants. The retention for each tenant is the longest of its [configured][tenant-limits] 
 general retention (`retention_period`) and the streams retention (`retention_stream`).
 
-For example, in the following example, tenant A has a bloom retention of 30 days, 
-and tenant B a bloom retention of 40 days.
+For example, in the following example, tenant A has a bloom retention of 30 days, and tenant B a bloom retention of 40 days.
 
 ```yaml
 overrides:
     "A": 
-        retention: 30d
+        retention_period: 30d
     "B":
-        retention: 30d
+        retention_period: 30d
         retention_stream:
             - selector: '{namespace="prod"}'
               priority: 1
