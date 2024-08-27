@@ -57,8 +57,8 @@ func TestNoopPipeline(t *testing.T) {
 	require.Equal(t, true, matches)
 
 	// test structured metadata with disallowed label names
-	structuredMetadata = append(labels.FromStrings("y", "1", "z", "2"), labels.Label{Name: "something-bad", Value: "foo"})
-	expectedStructuredMetadata := append(labels.FromStrings("y", "1", "z", "2"), labels.Label{Name: "something_bad", Value: "foo"})
+	structuredMetadata = append(labels.FromStrings("y", "1", "z", "2"), labels.Label{Name: "zsomething-bad", Value: "foo"})
+	expectedStructuredMetadata := append(labels.FromStrings("y", "1", "z", "2"), labels.Label{Name: "zsomething_bad", Value: "foo"})
 	expectedLabelsResults = append(lbs, expectedStructuredMetadata...)
 
 	l, lbr, matches = pipeline.ForStream(lbs).Process(0, []byte(""), structuredMetadata...)

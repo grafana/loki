@@ -67,7 +67,7 @@ func (n *noopPipeline) ForStream(labels labels.Labels) StreamPipeline {
 	}
 	n.mu.RUnlock()
 
-	sp := &noopStreamPipeline{n.baseBuilder.ForLabels(labels, h)}
+	sp := &noopStreamPipeline{n.baseBuilder.ForLabels(labels, h), make([]int, 0, 10)}
 
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -92,7 +92,8 @@ func IsNoopPipeline(p Pipeline) bool {
 }
 
 type noopStreamPipeline struct {
-	builder *LabelsBuilder
+	builder    *LabelsBuilder
+	offsetsBuf []int
 }
 
 func (n noopStreamPipeline) ReferencedStructuredMetadata() bool {
@@ -101,6 +102,9 @@ func (n noopStreamPipeline) ReferencedStructuredMetadata() bool {
 
 func (n noopStreamPipeline) Process(_ int64, line []byte, structuredMetadata ...labels.Label) ([]byte, LabelsResult, bool) {
 	n.builder.Reset()
+	for i, lb := range structuredMetadata {
+		structuredMetadata[i].Name = replaceChars(lb.Name, n.offsetsBuf)
+	}
 	n.builder.Add(StructuredMetadataLabel, structuredMetadata...)
 	return line, n.builder.LabelsResult(), true
 }
@@ -223,7 +227,7 @@ func (p *streamPipeline) Process(ts int64, line []byte, structuredMetadata ...la
 	p.builder.Reset()
 
 	for i, lb := range structuredMetadata {
-		structuredMetadata[i].Name = p.replaceChars(lb.Name)
+		structuredMetadata[i].Name = replaceChars(lb.Name, p.offsetsBuf)
 	}
 
 	p.builder.Add(StructuredMetadataLabel, structuredMetadata...)
@@ -388,17 +392,17 @@ func unsafeGetString(buf []byte) string {
 	return *((*string)(unsafe.Pointer(&buf)))
 }
 
-func (p *streamPipeline) replaceChars(str string) string {
-	p.offsetsBuf = p.offsetsBuf[:0]
+func replaceChars(str string, offsets []int) string {
+	offsets = offsets[:0]
 	for i, r := range str {
 		if !isDigit(r) && !isAlpha(r) {
-			p.offsetsBuf = append(p.offsetsBuf, i)
+			offsets = append(offsets, i)
 		}
 	}
 
-	if len(p.offsetsBuf) > 0 {
+	if len(offsets) > 0 {
 		runes := []rune(str)
-		for _, offset := range p.offsetsBuf {
+		for _, offset := range offsets {
 			runes[offset] = '_'
 		}
 
