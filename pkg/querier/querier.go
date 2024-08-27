@@ -597,6 +597,10 @@ func (q *SingleTenantQuerier) SelectQueryPlan(ctx context.Context, req *logproto
 		}
 	}
 
+	// split based on hierarchy - other labels within that stream
+	// split based on chunk id? but that's not a label, then how
+	// split only when the volume reaches beyond certain threshold
+	// dynamic label combination - frequently occurring labels for a tenant?
 	d := NewStreamShardSplitter(volumes)
 	subqueries := d.GetSubQueries(req.Query, from, through, int(req.Buckets))
 	return &logproto.QueryPlanResponse{
@@ -1042,7 +1046,7 @@ func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabel
 
 	if ingesterLabels != nil {
 		for label, val := range ingesterLabels.Labels {
-			if _, isStatic := staticLabels[label]; isStatic || !containsAllIDTypes(val.Values) {
+			if _, isStatic := staticLabels[label]; (isStatic && val.Values != nil) || !containsAllIDTypes(val.Values) {
 				_, ok := dlMap[label]
 				if !ok {
 					dlMap[label] = newParsedLabels()
@@ -1057,7 +1061,7 @@ func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabel
 	}
 
 	for label, values := range storeLabelsMap {
-		if _, isStatic := staticLabels[label]; isStatic || !containsAllIDTypes(values) {
+		if _, isStatic := staticLabels[label]; (isStatic && values != nil) || !containsAllIDTypes(values) {
 			_, ok := dlMap[label]
 			if !ok {
 				dlMap[label] = newParsedLabels()

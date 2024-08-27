@@ -15,7 +15,9 @@ import (
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/user"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -2002,6 +2004,56 @@ func BenchmarkQuerierDetectedFields(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		_, err := querier.DetectedFields(ctx, &request)
+		assert.NoError(b, err)
+	}
+}
+
+func Benchmark_QuerierSelectQueryPlan(b *testing.B) {
+	startTime := time.Now().Add(-1 * time.Minute)
+	endTime := time.Now()
+
+	limits, _ := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	conf := mockQuerierConfig()
+	ingesterClient := newQuerierClientMock()
+
+	request := logproto.QueryPlanRequest{
+		Query:     "{app=`test`, foo=`bar`}",
+		Limit:     10,
+		Start:     startTime,
+		End:       endTime,
+		Buckets:   3,
+		Direction: logproto.FORWARD,
+	}
+
+	appTestMatcher := labels.MustNewMatcher(labels.MatchEqual, "app", "test")
+	fooBarMatcher := labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")
+	s1 := labels.MustNewMatcher(labels.MatchEqual, "__stream_shard__", "1")
+	s2 := labels.MustNewMatcher(labels.MatchEqual, "__stream_shard__", "2")
+
+	store := newStoreMock()
+	store.
+		On("LabelValuesForMetricName", mock.Anything, "test", model.TimeFromUnixNano(startTime.UnixNano()), model.TimeFromUnixNano(endTime.UnixNano()), "logs", "__stream_shard__", mock.Anything).
+		Return([]string{"1", "2"}, nil)
+	store.On("Stats", mock.Anything, "test", model.TimeFromUnixNano(startTime.UnixNano()), model.TimeFromUnixNano(endTime.UnixNano()), appTestMatcher, fooBarMatcher, s1).
+		Return(&stats.Stats{Streams: 100, Chunks: 100, Bytes: 100, Entries: 100})
+	store.On("Stats", mock.Anything, "test", model.TimeFromUnixNano(startTime.UnixNano()), model.TimeFromUnixNano(endTime.UnixNano()), appTestMatcher, fooBarMatcher, s2).
+		Return(&stats.Stats{Streams: 200, Chunks: 200, Bytes: 200, Entries: 200})
+
+	querier, _ := newQuerier(
+		conf,
+		mockIngesterClientConfig(),
+		newIngesterClientMockFactory(ingesterClient),
+		mockReadRingWithOneActiveIngester(),
+		&mockDeleteGettter{},
+		store, limits)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_, err := querier.SelectQueryPlan(ctx, &request)
 		assert.NoError(b, err)
 	}
 }
