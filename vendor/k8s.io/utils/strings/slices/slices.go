@@ -20,21 +20,14 @@ limitations under the License.
 // replace "stringslices" if the "slices" package becomes standard.
 package slices
 
+import goslices "slices"
+
 // Equal reports whether two slices are equal: the same length and all
 // elements equal. If the lengths are different, Equal returns false.
 // Otherwise, the elements are compared in index order, and the
 // comparison stops at the first unequal pair.
-func Equal(s1, s2 []string) bool {
-	if len(s1) != len(s2) {
-		return false
-	}
-	for i, n := range s1 {
-		if n != s2[i] {
-			return false
-		}
-	}
-	return true
-}
+// Deprecated: use [slices.Equal] instead.
+var Equal = goslices.Equal[[]string, string]
 
 // Filter appends to d each element e of s for which keep(e) returns true.
 // It returns the modified d. d may be s[:0], in which case the kept
@@ -51,32 +44,14 @@ func Filter(d, s []string, keep func(string) bool) []string {
 }
 
 // Contains reports whether v is present in s.
-func Contains(s []string, v string) bool {
-	return Index(s, v) >= 0
-}
+// Deprecated: use [slices.Contains] instead.
+var Contains = goslices.Contains[[]string, string]
 
 // Index returns the index of the first occurrence of v in s, or -1 if
 // not present.
-func Index(s []string, v string) int {
-	// "Contains" may be replaced with "Index(s, v) >= 0":
-	// https://github.com/golang/go/issues/45955#issuecomment-873377947
-	for i, n := range s {
-		if n == v {
-			return i
-		}
-	}
-	return -1
-}
-
-// Functions below are not in https://github.com/golang/go/issues/45955
+// Deprecated: use [slices.Index] instead.
+var Index = goslices.Index[[]string, string]
 
 // Clone returns a new clone of s.
-func Clone(s []string) []string {
-	// https://github.com/go101/go101/wiki/There-is-not-a-perfect-way-to-clone-slices-in-Go
-	if s == nil {
-		return nil
-	}
-	c := make([]string, len(s))
-	copy(c, s)
-	return c
-}
+// Deprecated: use [slices.Clone] instead.
+var Clone = goslices.Clone[[]string, string]

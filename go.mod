@@ -147,7 +147,7 @@ require (
 	google.golang.org/protobuf v1.34.2
 	gotest.tools v2.2.0+incompatible
 	k8s.io/apimachinery v0.29.3
-	k8s.io/utils v0.0.0-20230726121419-3b25d923346b
+	k8s.io/utils v0.0.0-20240821151609-f90d01438635
 )
 
 require (
