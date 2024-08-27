@@ -590,6 +590,324 @@ func TestQuerier_matchingChunks(t *testing.T) {
 	}
 }
 
+func TestQuerier_matchingSeries(t *testing.T) {
+	storage := NewMockStorage()
+	metastore := NewMockMetastore()
+
+	querier, err := New(metastore, storage)
+	require.NoError(t, err)
+
+	tenantID := "test-tenant"
+	ctx := user.InjectOrgID(context.Background(), tenantID)
+
+	// Create test data
+	testData := []struct {
+		labels  labels.Labels
+		entries []*logproto.Entry
+	}{
+		{
+			labels:  labels.FromStrings("app", "app1", "env", "prod", "level", "info"),
+			entries: generateEntries(1000, 1050),
+		},
+		{
+			labels:  labels.FromStrings("app", "app2", "env", "staging", "level", "info"),
+			entries: generateEntries(1025, 1075),
+		},
+		{
+			labels:  labels.FromStrings("app", "app3", "env", "dev", "level", "warn"),
+			entries: generateEntries(1050, 1100),
+		},
+	}
+
+	// Setup test data
+	setupTestData(t, storage, metastore, tenantID, testData)
+
+	// Test cases
+	testCases := []struct {
+		name           string
+		matchers       []*labels.Matcher
+		start          int64
+		end            int64
+		expectedSeries []labels.Labels
+	}{
+		{
+			name: "Equality matcher",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "app1"),
+			},
+			start: time.Unix(1000, 0).UnixNano(),
+			end:   time.Unix(1100, 0).UnixNano(),
+			expectedSeries: []labels.Labels{
+				labels.FromStrings("app", "app1", "env", "prod", "level", "info"),
+			},
+		},
+		{
+			name: "Negative matcher",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchNotEqual, "app", "app1"),
+			},
+			start: time.Unix(1000, 0).UnixNano(),
+			end:   time.Unix(1100, 0).UnixNano(),
+			expectedSeries: []labels.Labels{
+				labels.FromStrings("app", "app2", "env", "staging", "level", "info"),
+				labels.FromStrings("app", "app3", "env", "dev", "level", "warn"),
+			},
+		},
+		{
+			name: "Regex matcher",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "app", "app[12]"),
+			},
+			start: time.Unix(1000, 0).UnixNano(),
+			end:   time.Unix(1100, 0).UnixNano(),
+			expectedSeries: []labels.Labels{
+				labels.FromStrings("app", "app1", "env", "prod", "level", "info"),
+				labels.FromStrings("app", "app2", "env", "staging", "level", "info"),
+			},
+		},
+		{
+			name: "Not regex matcher",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchNotRegexp, "app", "app[12]"),
+			},
+			start: time.Unix(1000, 0).UnixNano(),
+			end:   time.Unix(1100, 0).UnixNano(),
+			expectedSeries: []labels.Labels{
+				labels.FromStrings("app", "app3", "env", "dev", "level", "warn"),
+			},
+		},
+		{
+			name: "Multiple matchers",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "app", "app.*"),
+				labels.MustNewMatcher(labels.MatchNotEqual, "env", "prod"),
+			},
+			start: time.Unix(1000, 0).UnixNano(),
+			end:   time.Unix(1100, 0).UnixNano(),
+			expectedSeries: []labels.Labels{
+				labels.FromStrings("app", "app2", "env", "staging", "level", "info"),
+				labels.FromStrings("app", "app3", "env", "dev", "level", "warn"),
+			},
+		},
+		{
+			name: "Time range filter",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "app", "app.*"),
+			},
+			start: time.Unix(1080, 0).UnixNano(),
+			end:   time.Unix(1100, 0).UnixNano(),
+			expectedSeries: []labels.Labels{
+				labels.FromStrings("app", "app3", "env", "dev", "level", "warn"),
+			},
+		},
+		{
+			name: "Multiple matches for label",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "level", "info"),
+			},
+			start: time.Unix(1000, 0).UnixNano(),
+			end:   time.Unix(1100, 0).UnixNano(),
+			expectedSeries: []labels.Labels{
+				labels.FromStrings("app", "app1", "env", "prod", "level", "info"),
+				labels.FromStrings("app", "app2", "env", "staging", "level", "info"),
+			},
+		},
+		{
+			name:     "No matchers",
+			matchers: []*labels.Matcher{},
+			start:    time.Unix(1000, 0).UnixNano(),
+			end:      time.Unix(1100, 0).UnixNano(),
+			expectedSeries: []labels.Labels{
+				labels.FromStrings("app", "app1", "env", "prod", "level", "info"),
+				labels.FromStrings("app", "app2", "env", "staging", "level", "info"),
+				labels.FromStrings("app", "app3", "env", "dev", "level", "warn"),
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			series, err := querier.matchingSeries(ctx, tenantID, tc.start, tc.end, tc.matchers...)
+			require.NoError(t, err)
+
+			sort.Slice(tc.expectedSeries, func(i, j int) bool {
+				return tc.expectedSeries[i].String() < tc.expectedSeries[j].String()
+			})
+			sort.Slice(series, func(i, j int) bool {
+				return series[i].String() < series[j].String()
+			})
+			assert.Equal(t, len(tc.expectedSeries), len(series), "Unexpected number of matching chunks")
+
+			// Verify that all returned chunks match the expected chunks
+			for i, expectedSerie := range tc.expectedSeries {
+				if i < len(series) {
+					assert.Equal(t, expectedSerie, series[i], "Labels mismatch for chunk %d", i)
+				}
+			}
+
+			// Additional checks for time range and matchers
+			for _, serie := range series {
+				for _, matcher := range tc.matchers {
+					assert.True(t, matcher.Matches(serie.Get(matcher.Name)),
+						"Series labels %v do not match criteria %v", serie, matcher)
+				}
+			}
+		})
+	}
+}
+
+func TestQuerier_matchingLabels(t *testing.T) {
+	storage := NewMockStorage()
+	metastore := NewMockMetastore()
+
+	querier, err := New(metastore, storage)
+	require.NoError(t, err)
+
+	tenantID := "test-tenant"
+	ctx := user.InjectOrgID(context.Background(), tenantID)
+
+	// Create test data
+	testData := []struct {
+		labels  labels.Labels
+		entries []*logproto.Entry
+	}{
+		{
+			labels:  labels.FromStrings("app", "app1", "env", "prod", "level", "info"),
+			entries: generateEntries(1000, 1050),
+		},
+		{
+			labels:  labels.FromStrings("app", "app2", "env", "staging", "level", "info"),
+			entries: generateEntries(1025, 1075),
+		},
+		{
+			labels:  labels.FromStrings("app", "app3", "env", "dev"),
+			entries: generateEntries(1050, 1100),
+		},
+	}
+
+	// Setup test data
+	setupTestData(t, storage, metastore, tenantID, testData)
+
+	// Test cases
+	testCases := []struct {
+		name           string
+		matchers       []*labels.Matcher
+		start          int64
+		end            int64
+		expectedLabels []string
+	}{
+		{
+			name: "Equality matcher",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "app1"),
+			},
+			start: time.Unix(1000, 0).UnixNano(),
+			end:   time.Unix(1100, 0).UnixNano(),
+			expectedLabels: []string{
+				"app", "env", "level",
+			},
+		},
+		{
+			name: "Negative matcher",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchNotEqual, "app", "app1"),
+			},
+			start: time.Unix(1000, 0).UnixNano(),
+			end:   time.Unix(1100, 0).UnixNano(),
+			expectedLabels: []string{
+				"app", "env", "level",
+			},
+		},
+		{
+			name: "Regex matcher",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "app", "app[12]"),
+			},
+			start: time.Unix(1000, 0).UnixNano(),
+			end:   time.Unix(1100, 0).UnixNano(),
+			expectedLabels: []string{
+				"app", "env", "level",
+			},
+		},
+		{
+			name: "Not regex matcher",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchNotRegexp, "app", "app[12]"),
+			},
+			start: time.Unix(1000, 0).UnixNano(),
+			end:   time.Unix(1100, 0).UnixNano(),
+			expectedLabels: []string{
+				"app", "env",
+			},
+		},
+		{
+			name: "Multiple matchers",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "app", "app.*"),
+				labels.MustNewMatcher(labels.MatchNotEqual, "env", "prod"),
+			},
+			start: time.Unix(1000, 0).UnixNano(),
+			end:   time.Unix(1100, 0).UnixNano(),
+			expectedLabels: []string{
+				"app", "env", "level",
+			},
+		},
+		{
+			name: "Time range filter",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "app", "app.*"),
+			},
+			start: time.Unix(1080, 0).UnixNano(),
+			end:   time.Unix(1100, 0).UnixNano(),
+			expectedLabels: []string{
+				"app", "env",
+			},
+		},
+		{
+			name: "Multiple matches for label",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "level", "info"),
+			},
+			start: time.Unix(1000, 0).UnixNano(),
+			end:   time.Unix(1100, 0).UnixNano(),
+			expectedLabels: []string{
+				"app", "env", "level",
+			},
+		},
+		{
+			name:     "No matchers",
+			matchers: []*labels.Matcher{},
+			start:    time.Unix(1000, 0).UnixNano(),
+			end:      time.Unix(1100, 0).UnixNano(),
+			expectedLabels: []string{
+				"app", "env", "level",
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			lbls, err := querier.matchingLabels(ctx, tenantID, tc.start, tc.end, tc.matchers...)
+			require.NoError(t, err)
+
+			sort.Slice(tc.expectedLabels, func(i, j int) bool {
+				return tc.expectedLabels[i] < tc.expectedLabels[j]
+			})
+			sort.Slice(lbls, func(i, j int) bool {
+				return lbls[i] < lbls[j]
+			})
+			assert.Equal(t, len(tc.expectedLabels), len(lbls), "Unexpected number of matching labels")
+
+			// Verify that all returned chunks match the expected chunks
+			for i, expectedLabel := range tc.expectedLabels {
+				if i < len(lbls) {
+					assert.Equal(t, expectedLabel, lbls[i], "Labels mismatch for label %d", i)
+				}
+			}
+		})
+	}
+}
+
 func setupTestData(t *testing.T, storage *MockStorage, metastore *MockMetastore, tenantID string, testData []struct {
 	labels  labels.Labels
 	entries []*logproto.Entry

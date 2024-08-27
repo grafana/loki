@@ -97,7 +97,7 @@ type Rf1Querier struct {
 	deleteGetter   deleteGetter
 	logger         log.Logger
 	patternQuerier PatterQuerier
-	walQuerier     logql.Querier
+	walQuerier     querier.Querier
 }
 
 type deleteGetter interface {
@@ -214,17 +214,8 @@ func (q *Rf1Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*lo
 	if err != nil {
 		return nil, err
 	}
-
 	if *req.Start, *req.End, err = validateQueryTimeRangeLimits(ctx, userID, q.limits, *req.Start, *req.End); err != nil {
 		return nil, err
-	}
-
-	var matchers []*labels.Matcher
-	if req.Query != "" {
-		matchers, err = syntax.ParseMatchers(req.Query, true)
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	// Enforce the query timeout while querying backends
@@ -232,31 +223,7 @@ func (q *Rf1Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*lo
 	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
 	defer cancel()
 
-	g, ctx := errgroup.WithContext(ctx)
-
-	var storeValues []string
-	g.Go(func() error {
-		var (
-			err     error
-			from    = model.TimeFromUnixNano(req.Start.UnixNano())
-			through = model.TimeFromUnixNano(req.End.UnixNano())
-		)
-
-		if req.Values {
-			storeValues, err = q.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name, matchers...)
-		} else {
-			storeValues, err = q.store.LabelNamesForMetricName(ctx, userID, from, through, "logs", matchers...)
-		}
-		return err
-	})
-
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-
-	return &logproto.LabelResponse{
-		Values: storeValues,
-	}, nil
+	return q.walQuerier.Label(ctx, req)
 }
 
 // Check implements the grpc healthcheck
@@ -285,108 +252,7 @@ func (q *Rf1Querier) Series(ctx context.Context, req *logproto.SeriesRequest) (*
 	ctx, cancel := context.WithDeadlineCause(ctx, time.Now().Add(queryTimeout), errors.New("query timeout reached"))
 	defer cancel()
 
-	return q.awaitSeries(ctx, req)
-}
-
-func (q *Rf1Querier) awaitSeries(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
-	// buffer the channels to the # of calls they're expecting su
-	series := make(chan [][]logproto.SeriesIdentifier, 1)
-	errs := make(chan error, 1)
-
-	go func() {
-		storeValues, err := q.seriesForMatchers(ctx, req.Start, req.End, req.GetGroups(), req.Shards)
-		if err != nil {
-			errs <- err
-			return
-		}
-		series <- [][]logproto.SeriesIdentifier{storeValues}
-	}()
-
-	var sets [][]logproto.SeriesIdentifier
-	for i := 0; i < 2; i++ {
-		select {
-		case err := <-errs:
-			return nil, err
-		case s := <-series:
-			sets = append(sets, s...)
-		}
-	}
-
-	response := &logproto.SeriesResponse{
-		Series: make([]logproto.SeriesIdentifier, 0),
-	}
-	seen := make(map[uint64]struct{})
-	b := make([]byte, 0, 1024)
-	for _, set := range sets {
-		for _, s := range set {
-			key := s.Hash(b)
-			if _, exists := seen[key]; !exists {
-				seen[key] = struct{}{}
-				response.Series = append(response.Series, s)
-			}
-		}
-	}
-
-	return response, nil
-}
-
-// seriesForMatchers fetches series from the store for each matcher set
-// TODO: make efficient if/when the index supports labels so we don't have to read chunks
-func (q *Rf1Querier) seriesForMatchers(
-	ctx context.Context,
-	from, through time.Time,
-	groups []string,
-	shards []string,
-) ([]logproto.SeriesIdentifier, error) {
-	var results []logproto.SeriesIdentifier
-	// If no matchers were specified for the series query,
-	// we send a query with an empty matcher which will match every series.
-	if len(groups) == 0 {
-		var err error
-		results, err = q.seriesForMatcher(ctx, from, through, "", shards)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		for _, group := range groups {
-			ids, err := q.seriesForMatcher(ctx, from, through, group, shards)
-			if err != nil {
-				return nil, err
-			}
-			results = append(results, ids...)
-		}
-	}
-	return results, nil
-}
-
-// seriesForMatcher fetches series from the store for a given matcher
-func (q *Rf1Querier) seriesForMatcher(ctx context.Context, from, through time.Time, matcher string, shards []string) ([]logproto.SeriesIdentifier, error) {
-	var parsed syntax.Expr
-	var err error
-	if matcher != "" {
-		parsed, err = syntax.ParseExpr(matcher)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	ids, err := q.store.SelectSeries(ctx, logql.SelectLogParams{
-		QueryRequest: &logproto.QueryRequest{
-			Selector:  matcher,
-			Limit:     1,
-			Start:     from,
-			End:       through,
-			Direction: logproto.FORWARD,
-			Shards:    shards,
-			Plan: &plan.QueryPlan{
-				AST: parsed,
-			},
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
-	return ids, nil
+	return q.walQuerier.Series(ctx, req)
 }
 
 func (q *Rf1Querier) validateQueryRequest(ctx context.Context, req logql.QueryParams) (time.Time, time.Time, error) {

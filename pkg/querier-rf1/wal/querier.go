@@ -4,9 +4,15 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"net/http"
+	"sort"
 	"sync"
+	"time"
 
+	"github.com/go-kit/kit/log/level"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/opentracing/opentracing-go"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -15,13 +21,30 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/wal"
 	"github.com/grafana/loki/v3/pkg/storage/wal/chunks"
 	"github.com/grafana/loki/v3/pkg/storage/wal/index"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
+	util_validation "github.com/grafana/loki/v3/pkg/util/validation"
 )
 
-var _ logql.Querier = (*Querier)(nil)
+// TODO: Replace with the querier.Querier interface once we have support for all the methods.
+
+var nowFunc = func() time.Time { return time.Now() }
+
+type PartialQuerier interface {
+	logql.Querier
+	Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error)
+}
+
+var _ querier.Querier = (*Querier)(nil)
 
 type BlockStorage interface {
 	GetObjectRange(ctx context.Context, objectKey string, off, length int64) (io.ReadCloser, error)
@@ -112,6 +135,89 @@ func (q *Querier) SelectSamples(ctx context.Context, req logql.SelectSampleParam
 		req.End.UnixNano()), nil
 }
 
+func (q *Querier) Label(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var matchers []*labels.Matcher
+	if req.Query != "" {
+		matchers, err = syntax.ParseMatchers(req.Query, true)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	lbls, err := q.matchingLabels(ctx, userID, req.Start.UnixNano(), req.End.UnixNano(), matchers...)
+	return &logproto.LabelResponse{Values: lbls}, err
+}
+
+func (q *Querier) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
+	// todo request validation and delete markers.
+	tenantID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var matchers []*labels.Matcher
+	from, through := util.RoundToMilliseconds(req.Start, req.End)
+
+	matchers = []*labels.Matcher{}
+	series, err := q.matchingSeries(ctx, tenantID, from.UnixNano(), through.UnixNano(), matchers...)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]logproto.SeriesIdentifier, 0, len(series))
+	for _, lbls := range series {
+		result = append(result, logproto.SeriesIdentifierFromLabels(lbls))
+	}
+	return &logproto.SeriesResponse{
+		Series: result,
+	}, nil
+}
+
+func (q *Querier) Tail(ctx context.Context, req *logproto.TailRequest, categorizedLabels bool) (*querier.Tailer, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (q *Querier) IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (q *Querier) IndexShards(ctx context.Context, req *loghttp.RangeQuery, targetBytesPerShard uint64) (*logproto.ShardsResponse, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (q *Querier) Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (q *Querier) DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (q *Querier) Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (q *Querier) DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (q *Querier) WithPatternQuerier(patternQuerier querier.PatterQuerier) {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (q *Querier) matchingChunks(ctx context.Context, tenantID string, from, through int64, matchers ...*labels.Matcher) ([]ChunkData, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "matchingChunks")
 	defer sp.Finish()
@@ -138,6 +244,94 @@ func (q *Querier) matchingChunks(ctx context.Context, tenantID string, from, thr
 		sp.LogKV("matchedChunks", len(lazyChunks))
 	}
 	return lazyChunks, nil
+}
+
+func (q *Querier) matchingSeries(ctx context.Context, tenantID string, from, through int64, matchers ...*labels.Matcher) ([]labels.Labels, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "matchingSeries")
+	defer sp.Finish()
+	// todo support sharding
+	var (
+		series = make([]labels.Labels, 0, 1024)
+		found  = make(map[uint64]struct{})
+		mtx    sync.Mutex
+	)
+
+	err := q.forSeries(ctx, &metastorepb.ListBlocksForQueryRequest{
+		TenantId:  tenantID,
+		StartTime: from,
+		EndTime:   through,
+	}, func(id string, lbs *labels.ScratchBuilder, chk *chunks.Meta) error {
+		mtx.Lock()
+		defer mtx.Unlock()
+		lbls := lbs.Labels()
+		lblHash, _ := lbls.HashWithoutLabels([]byte(index.TenantLabel))
+		if _, ok := found[lblHash]; ok {
+			return nil
+		}
+		found[lblHash] = struct{}{}
+		// Remove tenant labels
+		lbs.Sort()
+		newLbs := lbs.Labels()
+		j := 0
+		for _, l := range newLbs {
+			if l.Name != index.TenantLabel {
+				newLbs[j] = l
+				j++
+			}
+		}
+		newLbs = newLbs[:j]
+		series = append(series, newLbs)
+		return nil
+	}, matchers...)
+	if err != nil {
+		return nil, err
+	}
+	if sp != nil {
+		sp.LogKV("matchedSeries", len(series))
+	}
+	sort.Slice(series, func(i, j int) bool {
+		return labels.Compare(series[i], series[j]) < 0
+	})
+	return series, nil
+}
+
+func (q *Querier) matchingLabels(ctx context.Context, tenantID string, from, through int64, matchers ...*labels.Matcher) ([]string, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "matchingChunks")
+	defer sp.Finish()
+	// todo support sharding
+	var (
+		uniqLabels = make([]string, 0, 32)
+		found      = make(map[string]struct{})
+		mtx        sync.Mutex
+	)
+
+	err := q.forSeries(ctx, &metastorepb.ListBlocksForQueryRequest{
+		TenantId:  tenantID,
+		StartTime: from,
+		EndTime:   through,
+	}, func(id string, lbs *labels.ScratchBuilder, chk *chunks.Meta) error {
+		mtx.Lock()
+		defer mtx.Unlock()
+		for _, lbl := range lbs.Labels() {
+			if lbl.Name == index.TenantLabel {
+				continue
+			}
+			if _, ok := found[lbl.Name]; ok {
+				continue
+			}
+			found[lbl.Name] = struct{}{}
+			uniqLabels = append(uniqLabels, lbl.Name)
+		}
+		return nil
+	}, matchers...)
+	if err != nil {
+		return nil, err
+	}
+	if sp != nil {
+		sp.LogKV("matchedLabels", len(uniqLabels))
+	}
+	sort.Strings(uniqLabels)
+	return uniqLabels, nil
 }
 
 func (q *Querier) forSeries(ctx context.Context, req *metastorepb.ListBlocksForQueryRequest, fn func(string, *labels.ScratchBuilder, *chunks.Meta) error, matchers ...*labels.Matcher) error {
@@ -200,4 +394,28 @@ func (q *Querier) forIndices(ctx context.Context, req *metastorepb.ListBlocksFor
 		})
 	}
 	return g.Wait()
+}
+
+func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits querier.TimeRangeLimits, from, through time.Time) (time.Time, time.Time, error) {
+	now := nowFunc()
+	// Clamp the time range based on the max query lookback.
+	maxQueryLookback := limits.MaxQueryLookback(ctx, userID)
+	if maxQueryLookback > 0 && from.Before(now.Add(-maxQueryLookback)) {
+		origStartTime := from
+		from = now.Add(-maxQueryLookback)
+
+		level.Debug(spanlogger.FromContext(ctx)).Log(
+			"msg", "the start time of the query has been manipulated because of the 'max query lookback' setting",
+			"original", origStartTime,
+			"updated", from)
+
+	}
+	maxQueryLength := limits.MaxQueryLength(ctx, userID)
+	if maxQueryLength > 0 && (through).Sub(from) > maxQueryLength {
+		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, util_validation.ErrQueryTooLong, (through).Sub(from), model.Duration(maxQueryLength))
+	}
+	if through.Before(from) {
+		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, util_validation.ErrQueryTooOld, model.Duration(maxQueryLookback))
+	}
+	return from, through, nil
 }
