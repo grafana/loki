@@ -6,6 +6,8 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
+
 	"github.com/prometheus/prometheus/model/labels"
 )
 
@@ -103,7 +105,7 @@ func (n noopStreamPipeline) ReferencedStructuredMetadata() bool {
 func (n noopStreamPipeline) Process(_ int64, line []byte, structuredMetadata ...labels.Label) ([]byte, LabelsResult, bool) {
 	n.builder.Reset()
 	for i, lb := range structuredMetadata {
-		structuredMetadata[i].Name = replaceChars(lb.Name, n.offsetsBuf)
+		structuredMetadata[i].Name = prometheus.NormalizeLabel(lb.Name)
 	}
 	n.builder.Add(StructuredMetadataLabel, structuredMetadata...)
 	return line, n.builder.LabelsResult(), true
@@ -227,7 +229,7 @@ func (p *streamPipeline) Process(ts int64, line []byte, structuredMetadata ...la
 	p.builder.Reset()
 
 	for i, lb := range structuredMetadata {
-		structuredMetadata[i].Name = replaceChars(lb.Name, p.offsetsBuf)
+		structuredMetadata[i].Name = prometheus.NormalizeLabel(lb.Name)
 	}
 
 	p.builder.Add(StructuredMetadataLabel, structuredMetadata...)
@@ -390,33 +392,4 @@ func unsafeGetBytes(s string) []byte {
 
 func unsafeGetString(buf []byte) string {
 	return *((*string)(unsafe.Pointer(&buf)))
-}
-
-func replaceChars(str string, offsets []int) string {
-	offsets = offsets[:0]
-	for i, r := range str {
-		if !isDigit(r) && !isAlpha(r) {
-			offsets = append(offsets, i)
-		}
-	}
-
-	if len(offsets) > 0 {
-		runes := []rune(str)
-		for _, offset := range offsets {
-			runes[offset] = '_'
-		}
-
-		return string(runes)
-	}
-
-	return str
-}
-
-func isDigit(r rune) bool {
-	return '0' <= r && r <= '9'
-}
-
-// isAlpha reports whether r is an alphabetic or underscore.
-func isAlpha(r rune) bool {
-	return r == '_' || ('a' <= r && r <= 'z') || ('A' <= r && r <= 'Z')
 }
