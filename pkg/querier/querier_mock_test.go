@@ -575,7 +575,7 @@ func mockStreamWithLabels(from int, quantity int, labels string) logproto.Stream
 }
 
 func mockLogfmtStream(from int, quantity int) logproto.Stream {
-	return mockLogfmtStreamWithLabels(from, quantity, `{type="test"}`)
+	return mockLogfmtStreamWithLabels(from, quantity, `{type="test", name="foo"}`)
 }
 
 func mockLogfmtStreamWithLabels(_ int, quantity int, labels string) logproto.Stream {
@@ -586,7 +586,7 @@ func mockLogfmtStreamWithLabels(_ int, quantity int, labels string) logproto.Str
 		entries = append(entries, logproto.Entry{
 			Timestamp: time.Unix(int64(i), 0),
 			Line: fmt.Sprintf(
-				`message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t`,
+				`message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t name=bar`,
 				i,
 				i,
 				(i * 10),

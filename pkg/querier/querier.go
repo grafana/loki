@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -1100,6 +1101,17 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 		return nil, err
 	}
 
+	indexedLabels := map[string]struct{}{}
+	for _, stream := range streams {
+		lbls, err := syntax.ParseLabels(stream.Labels)
+		if err != nil {
+			continue
+		}
+		for _, lbl := range lbls {
+			indexedLabels[lbl.Name] = struct{}{}
+		}
+	}
+
 	detectedFields := parseDetectedFields(req.FieldLimit, streams)
 
 	fields := make([]*logproto.DetectedField, len(detectedFields))
@@ -1111,8 +1123,13 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 			continue
 		}
 
+		name := k
+		if _, ok := indexedLabels[k]; ok {
+			name = fmt.Sprintf("%s_extracted", k)
+		}
+
 		fields[fieldCount] = &logproto.DetectedField{
-			Label:       k,
+			Label:       name,
 			Type:        v.fieldType,
 			Cardinality: v.Estimate(),
 			Sketch:      sketch,
