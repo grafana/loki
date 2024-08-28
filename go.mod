@@ -102,7 +102,7 @@ require (
 	golang.org/x/sys v0.24.0
 	golang.org/x/time v0.6.0
 	google.golang.org/api v0.193.0
-	google.golang.org/grpc v1.65.0
+	google.golang.org/grpc v1.66.0
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -137,7 +137,7 @@ require (
 	github.com/richardartoul/molecule v1.0.0
 	github.com/schollz/progressbar/v3 v3.14.6
 	github.com/shirou/gopsutil/v4 v4.24.0-alpha.1
-	github.com/thanos-io/objstore v0.0.0-20240722162417-19b0c0f0ffd8
+	github.com/thanos-io/objstore v0.0.0-20240828153123-de861b433240
 	github.com/willf/bloom v2.0.3+incompatible
 	go.opentelemetry.io/collector/pdata v1.12.0
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
