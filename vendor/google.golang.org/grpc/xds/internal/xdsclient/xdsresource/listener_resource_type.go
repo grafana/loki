@@ -60,12 +60,12 @@ func securityConfigValidator(bc *bootstrap.Config, sc *SecurityConfig) error {
 		return nil
 	}
 	if sc.IdentityInstanceName != "" {
-		if _, ok := bc.CertProviderConfigs[sc.IdentityInstanceName]; !ok {
+		if _, ok := bc.CertProviderConfigs()[sc.IdentityInstanceName]; !ok {
 			return fmt.Errorf("identity certificate provider instance name %q missing in bootstrap configuration", sc.IdentityInstanceName)
 		}
 	}
 	if sc.RootInstanceName != "" {
-		if _, ok := bc.CertProviderConfigs[sc.RootInstanceName]; !ok {
+		if _, ok := bc.CertProviderConfigs()[sc.RootInstanceName]; !ok {
 			return fmt.Errorf("root certificate provider instance name %q missing in bootstrap configuration", sc.RootInstanceName)
 		}
 	}
@@ -144,7 +144,10 @@ func (l *ListenerResourceData) Raw() *anypb.Any {
 // events corresponding to the listener resource being watched.
 type ListenerWatcher interface {
 	// OnUpdate is invoked to report an update for the resource being watched.
-	OnUpdate(*ListenerResourceData)
+	//
+	// The watcher is expected to call Done() on the DoneNotifier once it has
+	// processed the update.
+	OnUpdate(*ListenerResourceData, DoneNotifier)
 
 	// OnError is invoked under different error conditions including but not
 	// limited to the following:
@@ -154,28 +157,34 @@ type ListenerWatcher interface {
 	//	- resource validation error
 	//	- ADS stream failure
 	//	- connection failure
-	OnError(error)
+	//
+	// The watcher is expected to call Done() on the DoneNotifier once it has
+	// processed the update.
+	OnError(error, DoneNotifier)
 
 	// OnResourceDoesNotExist is invoked for a specific error condition where
 	// the requested resource is not found on the xDS management server.
-	OnResourceDoesNotExist()
+	//
+	// The watcher is expected to call Done() on the DoneNotifier once it has
+	// processed the update.
+	OnResourceDoesNotExist(DoneNotifier)
 }
 
 type delegatingListenerWatcher struct {
 	watcher ListenerWatcher
 }
 
-func (d *delegatingListenerWatcher) OnUpdate(data ResourceData) {
+func (d *delegatingListenerWatcher) OnUpdate(data ResourceData, done DoneNotifier) {
 	l := data.(*ListenerResourceData)
-	d.watcher.OnUpdate(l)
+	d.watcher.OnUpdate(l, done)
 }
 
-func (d *delegatingListenerWatcher) OnError(err error) {
-	d.watcher.OnError(err)
+func (d *delegatingListenerWatcher) OnError(err error, done DoneNotifier) {
+	d.watcher.OnError(err, done)
 }
 
-func (d *delegatingListenerWatcher) OnResourceDoesNotExist() {
-	d.watcher.OnResourceDoesNotExist()
+func (d *delegatingListenerWatcher) OnResourceDoesNotExist(done DoneNotifier) {
+	d.watcher.OnResourceDoesNotExist(done)
 }
 
 // WatchListener uses xDS to discover the configuration associated with the
