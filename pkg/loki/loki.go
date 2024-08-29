@@ -30,9 +30,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/v3/pkg/ingester-kafka/kafka"
-	"github.com/grafana/loki/v3/pkg/ingester-kafka/partitionring"
-
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloombuild"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"

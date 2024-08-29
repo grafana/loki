@@ -188,12 +188,14 @@ ingester_rf1:
 
         # Configuration for a Consul client. Only applies if the selected
         # kvstore is consul.
-        # The CLI flags prefix for this block configuration is: ingester-rf1
+        # The CLI flags prefix for this block configuration is:
+        # ingester-rf1.consul
         [consul: <consul>]
 
         # Configuration for an ETCD v3 client. Only applies if the selected
         # kvstore is etcd.
-        # The CLI flags prefix for this block configuration is: ingester-rf1
+        # The CLI flags prefix for this block configuration is:
+        # ingester-rf1.etcd
         [etcd: <etcd>]
 
         multi:
@@ -423,43 +425,6 @@ ingester_rf1:
     # pattern-ingester.client
     [grpc_client_config: <grpc_client>]
 
-  partition_ring:
-    # The key-value store used to share the hash ring across multiple instances.
-    # This option needs be set on ingesters, distributors, queriers, and rulers
-    # when running in microservices mode.
-    kvstore:
-      [store: <string> | default = ""]
-
-      [prefix: <string> | default = ""]
-
-      # Configuration for a Consul client. Only applies if the selected kvstore
-      # is consul.
-      # The CLI flags prefix for this block configuration is: pattern-ingester
-      [consul: <consul>]
-
-      # Configuration for an ETCD v3 client. Only applies if the selected
-      # kvstore is etcd.
-      # The CLI flags prefix for this block configuration is: pattern-ingester
-      [etcd: <etcd>]
-
-      multi:
-        [primary: <string> | default = ""]
-
-        [secondary: <string> | default = ""]
-
-        [mirror_enabled: <boolean>]
-
-        [mirror_timeout: <duration>]
-
-    [min_partition_owners_count: <int>]
-
-    [min_partition_owners_duration: <duration>]
-
-    [delete_inactive_partition_after: <duration>]
-
-  kafkaconfig:
-    [enabled: <boolean>]
-
 pattern_ingester:
   # Whether the pattern ingester is enabled.
   # CLI flag: -pattern-ingester.enabled
@@ -482,13 +447,13 @@ pattern_ingester:
         # Configuration for a Consul client. Only applies if the selected
         # kvstore is consul.
         # The CLI flags prefix for this block configuration is:
-        # index-gateway.ring
+        # pattern-ingester.consul
         [consul: <consul>]
 
         # Configuration for an ETCD v3 client. Only applies if the selected
         # kvstore is etcd.
         # The CLI flags prefix for this block configuration is:
-        # index-gateway.ring
+        # pattern-ingester.etcd
         [etcd: <etcd>]
 
         multi:
@@ -1078,12 +1043,14 @@ partition_ring:
 
     # Configuration for a Consul client. Only applies if the selected kvstore is
     # consul.
-    # The CLI flags prefix for this block configuration is: common.storage.ring
+    # The CLI flags prefix for this block configuration is:
+    # ingester.partition-ring.consul
     [consul: <consul>]
 
     # Configuration for an ETCD v3 client. Only applies if the selected kvstore
     # is etcd.
-    # The CLI flags prefix for this block configuration is: common.storage.ring
+    # The CLI flags prefix for this block configuration is:
+    # ingester.partition-ring.etcd
     [etcd: <etcd>]
 
     multi:
@@ -1121,9 +1088,199 @@ partition_ring:
   [delete_inactive_partition_after: <duration> | default = 13h]
 
 kafka_ingester:
-  # enables the use of the Kafka ingest path
-  # CLI flag: -enabled
+  # the kafka endpoint to connect to
+  # CLI flag: -kafka-config.address
+  [address: <string> | default = "localhost:9092"]
+
+kafka_ingester:
+  # Whether the kafka ingester is enabled.
+  # CLI flag: -kafka-ingester.enabled
   [enabled: <boolean> | default = false]
+
+  # Configures how the lifecycle of the ingester will operate and where it will
+  # register for discovery.
+  lifecycler:
+    ring:
+      kvstore:
+        # Backend storage to use for the ring. Supported values are: consul,
+        # etcd, inmemory, memberlist, multi.
+        # CLI flag: -kafka-ingesterstore
+        [store: <string> | default = "consul"]
+
+        # The prefix for the keys in the store. Should end with a /.
+        # CLI flag: -kafka-ingesterprefix
+        [prefix: <string> | default = "collectors/"]
+
+        # Configuration for a Consul client. Only applies if the selected
+        # kvstore is consul.
+        # The CLI flags prefix for this block configuration is:
+        # kafka-ingesterconsul
+        [consul: <consul>]
+
+        # Configuration for an ETCD v3 client. Only applies if the selected
+        # kvstore is etcd.
+        # The CLI flags prefix for this block configuration is:
+        # kafka-ingesteretcd
+        [etcd: <etcd>]
+
+        multi:
+          # Primary backend storage used by multi-client.
+          # CLI flag: -kafka-ingestermulti.primary
+          [primary: <string> | default = ""]
+
+          # Secondary backend storage used by multi-client.
+          # CLI flag: -kafka-ingestermulti.secondary
+          [secondary: <string> | default = ""]
+
+          # Mirror writes to secondary store.
+          # CLI flag: -kafka-ingestermulti.mirror-enabled
+          [mirror_enabled: <boolean> | default = false]
+
+          # Timeout for storing value to secondary store.
+          # CLI flag: -kafka-ingestermulti.mirror-timeout
+          [mirror_timeout: <duration> | default = 2s]
+
+      # The heartbeat timeout after which ingesters are skipped for
+      # reads/writes. 0 = never (timeout disabled).
+      # CLI flag: -kafka-ingesterring.heartbeat-timeout
+      [heartbeat_timeout: <duration> | default = 1m]
+
+      # The number of ingesters to write to and read from.
+      # CLI flag: -kafka-ingesterdistributor.replication-factor
+      [replication_factor: <int> | default = 3]
+
+      # True to enable the zone-awareness and replicate ingested samples across
+      # different availability zones.
+      # CLI flag: -kafka-ingesterdistributor.zone-awareness-enabled
+      [zone_awareness_enabled: <boolean> | default = false]
+
+      # Comma-separated list of zones to exclude from the ring. Instances in
+      # excluded zones will be filtered out from the ring.
+      # CLI flag: -kafka-ingesterdistributor.excluded-zones
+      [excluded_zones: <string> | default = ""]
+
+    # Number of tokens for each ingester.
+    # CLI flag: -kafka-ingesternum-tokens
+    [num_tokens: <int> | default = 128]
+
+    # Period at which to heartbeat to consul. 0 = disabled.
+    # CLI flag: -kafka-ingesterheartbeat-period
+    [heartbeat_period: <duration> | default = 5s]
+
+    # Heartbeat timeout after which instance is assumed to be unhealthy. 0 =
+    # disabled.
+    # CLI flag: -kafka-ingesterheartbeat-timeout
+    [heartbeat_timeout: <duration> | default = 1m]
+
+    # Observe tokens after generating to resolve collisions. Useful when using
+    # gossiping ring.
+    # CLI flag: -kafka-ingesterobserve-period
+    [observe_period: <duration> | default = 0s]
+
+    # Period to wait for a claim from another member; will join automatically
+    # after this.
+    # CLI flag: -kafka-ingesterjoin-after
+    [join_after: <duration> | default = 0s]
+
+    # Minimum duration to wait after the internal readiness checks have passed
+    # but before succeeding the readiness endpoint. This is used to slowdown
+    # deployment controllers (eg. Kubernetes) after an instance is ready and
+    # before they proceed with a rolling update, to give the rest of the cluster
+    # instances enough time to receive ring updates.
+    # CLI flag: -kafka-ingestermin-ready-duration
+    [min_ready_duration: <duration> | default = 15s]
+
+    # Name of network interface to read address from.
+    # CLI flag: -kafka-ingesterlifecycler.interface
+    [interface_names: <list of strings> | default = [<private network interfaces>]]
+
+    # Enable IPv6 support. Required to make use of IP addresses from IPv6
+    # interfaces.
+    # CLI flag: -kafka-ingesterenable-inet6
+    [enable_inet6: <boolean> | default = false]
+
+    # Duration to sleep for before exiting, to ensure metrics are scraped.
+    # CLI flag: -kafka-ingesterfinal-sleep
+    [final_sleep: <duration> | default = 0s]
+
+    # File path where tokens are stored. If empty, tokens are not stored at
+    # shutdown and restored at startup.
+    # CLI flag: -kafka-ingestertokens-file-path
+    [tokens_file_path: <string> | default = ""]
+
+    # The availability zone where this instance is running.
+    # CLI flag: -kafka-ingesteravailability-zone
+    [availability_zone: <string> | default = ""]
+
+    # Unregister from the ring upon clean shutdown. It can be useful to disable
+    # for rolling restarts with consistent naming in conjunction with
+    # -distributor.extend-writes=false.
+    # CLI flag: -kafka-ingesterunregister-on-shutdown
+    [unregister_on_shutdown: <boolean> | default = true]
+
+    # When enabled the readiness probe succeeds only after all instances are
+    # ACTIVE and healthy in the ring, otherwise only the instance itself is
+    # checked. This option should be disabled if in your cluster multiple
+    # instances can be rolled out simultaneously, otherwise rolling updates may
+    # be slowed down.
+    # CLI flag: -kafka-ingesterreadiness-check-ring-health
+    [readiness_check_ring_health: <boolean> | default = true]
+
+    # IP address to advertise in the ring.
+    # CLI flag: -kafka-ingesterlifecycler.addr
+    [address: <string> | default = ""]
+
+    # port to advertise in consul (defaults to server.grpc-listen-port).
+    # CLI flag: -kafka-ingesterlifecycler.port
+    [port: <int> | default = 0]
+
+    # ID to register in the ring.
+    # CLI flag: -kafka-ingesterlifecycler.ID
+    [id: <string> | default = "<hostname>"]
+
+  # Path where the shutdown marker file is stored. If not set and
+  # common.path_prefix is set then common.path_prefix will be used.
+  # CLI flag: -kafka-ingester.shutdown-marker-path
+  [shutdown_marker_path: <string> | default = ""]
+
+  partition_ring:
+    # The key-value store used to share the hash ring across multiple instances.
+    # This option needs be set on ingesters, distributors, queriers, and rulers
+    # when running in microservices mode.
+    kvstore:
+      [store: <string> | default = ""]
+
+      [prefix: <string> | default = ""]
+
+      # Configuration for a Consul client. Only applies if the selected kvstore
+      # is consul.
+      # The CLI flags prefix for this block configuration is:
+      # common.storage.ring.consul
+      [consul: <consul>]
+
+      # Configuration for an ETCD v3 client. Only applies if the selected
+      # kvstore is etcd.
+      # The CLI flags prefix for this block configuration is:
+      # common.storage.ring.etcd
+      [etcd: <etcd>]
+
+      multi:
+        [primary: <string> | default = ""]
+
+        [secondary: <string> | default = ""]
+
+        [mirror_enabled: <boolean>]
+
+        [mirror_timeout: <duration>]
+
+    [min_partition_owners_count: <int>]
+
+    [min_partition_owners_duration: <duration>]
+
+    [delete_inactive_partition_after: <duration>]
+
+  kafkaconfig:
+    [address: <string> | default = ""]
 
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
@@ -2255,13 +2412,12 @@ compactor_ring:
     # Configuration for a Consul client. Only applies if the selected kvstore is
     # consul.
     # The CLI flags prefix for this block configuration is:
-    # ingester.partition-ring
+    # compactor.ring.consul
     [consul: <consul>]
 
     # Configuration for an ETCD v3 client. Only applies if the selected kvstore
     # is etcd.
-    # The CLI flags prefix for this block configuration is:
-    # ingester.partition-ring
+    # The CLI flags prefix for this block configuration is: compactor.ring.etcd
     [etcd: <etcd>]
 
     multi:
@@ -2340,46 +2496,48 @@ compactor_ring:
 
 Configuration for a Consul client. Only applies if the selected kvstore is `consul`. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `common.storage.ring`
-- `compactor.ring`
-- `distributor.ring`
-- `index-gateway.ring`
-- `ingester-rf1`
-- `ingester.partition-ring`
-- `pattern-ingester`
-- `query-scheduler.ring`
-- `ruler.ring`
+- `common.storage.ring.consul`
+- `compactor.ring.consul`
+- `consul`
+- `distributor.ring.consul`
+- `index-gateway.ring.consul`
+- `ingester-rf1.consul`
+- `ingester.partition-ring.consul`
+- `kafka-ingesterconsul`
+- `pattern-ingester.consul`
+- `query-scheduler.ring.consul`
+- `ruler.ring.consul`
 
 &nbsp;
 
 ```yaml
 # Hostname and port of Consul.
-# CLI flag: -<prefix>.consul.hostname
+# CLI flag: -<prefix>.hostname
 [host: <string> | default = "localhost:8500"]
 
 # ACL Token used to interact with Consul.
-# CLI flag: -<prefix>.consul.acl-token
+# CLI flag: -<prefix>.acl-token
 [acl_token: <string> | default = ""]
 
 # HTTP timeout when talking to Consul
-# CLI flag: -<prefix>.consul.client-timeout
+# CLI flag: -<prefix>.client-timeout
 [http_client_timeout: <duration> | default = 20s]
 
 # Enable consistent reads to Consul.
-# CLI flag: -<prefix>.consul.consistent-reads
+# CLI flag: -<prefix>.consistent-reads
 [consistent_reads: <boolean> | default = false]
 
 # Rate limit when watching key or prefix in Consul, in requests per second. 0
 # disables the rate limit.
-# CLI flag: -<prefix>.consul.watch-rate-limit
+# CLI flag: -<prefix>.watch-rate-limit
 [watch_rate_limit: <float> | default = 1]
 
 # Burst size used in rate limit. Values less than 1 are treated as 1.
-# CLI flag: -<prefix>.consul.watch-burst-size
+# CLI flag: -<prefix>.watch-burst-size
 [watch_burst_size: <int> | default = 1]
 
 # Maximum duration to wait before retrying a Compare And Swap (CAS) operation.
-# CLI flag: -<prefix>.consul.cas-retry-delay
+# CLI flag: -<prefix>.cas-retry-delay
 [cas_retry_delay: <duration> | default = 1s]
 ```
 
@@ -2484,12 +2642,14 @@ ring:
 
     # Configuration for a Consul client. Only applies if the selected kvstore is
     # consul.
-    # The CLI flags prefix for this block configuration is: distributor.ring
+    # The CLI flags prefix for this block configuration is:
+    # distributor.ring.consul
     [consul: <consul>]
 
     # Configuration for an ETCD v3 client. Only applies if the selected kvstore
     # is etcd.
-    # The CLI flags prefix for this block configuration is: distributor.ring
+    # The CLI flags prefix for this block configuration is:
+    # distributor.ring.etcd
     [etcd: <etcd>]
 
     multi:
@@ -2561,56 +2721,58 @@ otlp_config:
 
 Configuration for an ETCD v3 client. Only applies if the selected kvstore is `etcd`. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `common.storage.ring`
-- `compactor.ring`
-- `distributor.ring`
-- `index-gateway.ring`
-- `ingester-rf1`
-- `ingester.partition-ring`
-- `pattern-ingester`
-- `query-scheduler.ring`
-- `ruler.ring`
+- `common.storage.ring.etcd`
+- `compactor.ring.etcd`
+- `distributor.ring.etcd`
+- `etcd`
+- `index-gateway.ring.etcd`
+- `ingester-rf1.etcd`
+- `ingester.partition-ring.etcd`
+- `kafka-ingesteretcd`
+- `pattern-ingester.etcd`
+- `query-scheduler.ring.etcd`
+- `ruler.ring.etcd`
 
 &nbsp;
 
 ```yaml
 # The etcd endpoints to connect to.
-# CLI flag: -<prefix>.etcd.endpoints
+# CLI flag: -<prefix>.endpoints
 [endpoints: <list of strings> | default = []]
 
 # The dial timeout for the etcd connection.
-# CLI flag: -<prefix>.etcd.dial-timeout
+# CLI flag: -<prefix>.dial-timeout
 [dial_timeout: <duration> | default = 10s]
 
 # The maximum number of retries to do for failed ops.
-# CLI flag: -<prefix>.etcd.max-retries
+# CLI flag: -<prefix>.max-retries
 [max_retries: <int> | default = 10]
 
 # Enable TLS.
-# CLI flag: -<prefix>.etcd.tls-enabled
+# CLI flag: -<prefix>.tls-enabled
 [tls_enabled: <boolean> | default = false]
 
 # Path to the client certificate, which will be used for authenticating with the
 # server. Also requires the key path to be configured.
-# CLI flag: -<prefix>.etcd.tls-cert-path
+# CLI flag: -<prefix>.tls-cert-path
 [tls_cert_path: <string> | default = ""]
 
 # Path to the key for the client certificate. Also requires the client
 # certificate to be configured.
-# CLI flag: -<prefix>.etcd.tls-key-path
+# CLI flag: -<prefix>.tls-key-path
 [tls_key_path: <string> | default = ""]
 
 # Path to the CA certificates to validate server certificate against. If not
 # set, the host's root CA certificates are used.
-# CLI flag: -<prefix>.etcd.tls-ca-path
+# CLI flag: -<prefix>.tls-ca-path
 [tls_ca_path: <string> | default = ""]
 
 # Override the expected name on the server certificate.
-# CLI flag: -<prefix>.etcd.tls-server-name
+# CLI flag: -<prefix>.tls-server-name
 [tls_server_name: <string> | default = ""]
 
 # Skip validating server certificate.
-# CLI flag: -<prefix>.etcd.tls-insecure-skip-verify
+# CLI flag: -<prefix>.tls-insecure-skip-verify
 [tls_insecure_skip_verify: <boolean> | default = false]
 
 # Override the default cipher suite list (separated by commas). Allowed values:
@@ -2643,20 +2805,20 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
 # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
 # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
-# CLI flag: -<prefix>.etcd.tls-cipher-suites
+# CLI flag: -<prefix>.tls-cipher-suites
 [tls_cipher_suites: <string> | default = ""]
 
 # Override the default minimum TLS version. Allowed values: VersionTLS10,
 # VersionTLS11, VersionTLS12, VersionTLS13
-# CLI flag: -<prefix>.etcd.tls-min-version
+# CLI flag: -<prefix>.tls-min-version
 [tls_min_version: <string> | default = ""]
 
 # Etcd username.
-# CLI flag: -<prefix>.etcd.username
+# CLI flag: -<prefix>.username
 [username: <string> | default = ""]
 
 # Etcd password.
-# CLI flag: -<prefix>.etcd.password
+# CLI flag: -<prefix>.password
 [password: <string> | default = ""]
 ```
 
@@ -3033,12 +3195,14 @@ ring:
 
     # Configuration for a Consul client. Only applies if the selected kvstore is
     # consul.
-    # The CLI flags prefix for this block configuration is: compactor.ring
+    # The CLI flags prefix for this block configuration is:
+    # index-gateway.ring.consul
     [consul: <consul>]
 
     # Configuration for an ETCD v3 client. Only applies if the selected kvstore
     # is etcd.
-    # The CLI flags prefix for this block configuration is: compactor.ring
+    # The CLI flags prefix for this block configuration is:
+    # index-gateway.ring.etcd
     [etcd: <etcd>]
 
     multi:
@@ -3130,10 +3294,12 @@ lifecycler:
 
       # Configuration for a Consul client. Only applies if the selected kvstore
       # is consul.
+      # The CLI flags prefix for this block configuration is: consul
       [consul: <consul>]
 
       # Configuration for an ETCD v3 client. Only applies if the selected
       # kvstore is etcd.
+      # The CLI flags prefix for this block configuration is: etcd
       [etcd: <etcd>]
 
       multi:
@@ -4618,12 +4784,14 @@ scheduler_ring:
 
     # Configuration for a Consul client. Only applies if the selected kvstore is
     # consul.
-    # The CLI flags prefix for this block configuration is: query-scheduler.ring
+    # The CLI flags prefix for this block configuration is:
+    # query-scheduler.ring.consul
     [consul: <consul>]
 
     # Configuration for an ETCD v3 client. Only applies if the selected kvstore
     # is etcd.
-    # The CLI flags prefix for this block configuration is: query-scheduler.ring
+    # The CLI flags prefix for this block configuration is:
+    # query-scheduler.ring.etcd
     [etcd: <etcd>]
 
     multi:
@@ -4924,12 +5092,12 @@ ring:
 
     # Configuration for a Consul client. Only applies if the selected kvstore is
     # consul.
-    # The CLI flags prefix for this block configuration is: ruler.ring
+    # The CLI flags prefix for this block configuration is: ruler.ring.consul
     [consul: <consul>]
 
     # Configuration for an ETCD v3 client. Only applies if the selected kvstore
     # is etcd.
-    # The CLI flags prefix for this block configuration is: ruler.ring
+    # The CLI flags prefix for this block configuration is: ruler.ring.etcd
     [etcd: <etcd>]
 
     multi:
