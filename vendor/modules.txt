@@ -1272,7 +1272,7 @@ github.com/miekg/dns
 # github.com/minio/md5-simd v1.1.2
 ## explicit; go 1.14
 github.com/minio/md5-simd
-# github.com/minio/minio-go/v7 v7.0.75
+# github.com/minio/minio-go/v7 v7.0.76
 ## explicit; go 1.21
 github.com/minio/minio-go/v7
 github.com/minio/minio-go/v7/pkg/cors
@@ -1520,8 +1520,8 @@ github.com/richardartoul/molecule/src/protowire
 # github.com/rivo/uniseg v0.4.7
 ## explicit; go 1.18
 github.com/rivo/uniseg
-# github.com/rs/xid v1.5.0
-## explicit; go 1.12
+# github.com/rs/xid v1.6.0
+## explicit; go 1.16
 github.com/rs/xid
 # github.com/schollz/progressbar/v3 v3.14.6
 ## explicit; go 1.13
