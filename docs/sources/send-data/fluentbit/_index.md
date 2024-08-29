@@ -1,12 +1,12 @@
 ---
-title: Fluent Bit client
-menuTitle:  Fluent Bit
+title: Fluent Bit Loki output plugin
+menuTitle:  Fluent Bit Loki output plugin
 description: Provides instructions for how to install, configure, and use the Fluent Bit client to send logs to Loki.
 aliases: 
 - ../clients/fluentbit/
 weight:  500
 ---
-# Fluent Bit client
+# Fluent Bit Loki output plugin
 
 [Fluent Bit](https://fluentbit.io/) is a fast and lightweight logs and metrics processor and forwarder that can be configured with the Grafana Fluent Bit Plugin described here or with the [Fluent-bit Loki output plugin](https://docs.fluentbit.io/manual/pipeline/outputs/loki) to ship logs to Loki. 
 
