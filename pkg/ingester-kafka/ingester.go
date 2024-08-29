@@ -233,7 +233,6 @@ func (i *Ingester) running(ctx context.Context) error {
 	// stop
 	case err := <-i.lifecyclerWatcher.Chan():
 		serviceError = fmt.Errorf("lifecycler failed: %w", err)
-		serviceError = fmt.Errorf("lifecycler failed: %w", err)
 	}
 
 	return serviceError
@@ -470,7 +469,7 @@ func (i *Ingester) handleShutdown(terminate, flush, del bool) error {
 }
 
 // Push implements logproto.Pusher.
-func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
+func (i *Ingester) Push(_ context.Context, _ *logproto.PushRequest) (*logproto.PushResponse, error) {
 	return &logproto.PushResponse{}, nil
 }
 

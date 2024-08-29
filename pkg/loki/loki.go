@@ -115,7 +115,7 @@ type Config struct {
 	Metastore           metastore.Config           `yaml:"metastore,omitempty"`
 	MetastoreClient     metastoreclient.Config     `yaml:"metastore_client"`
 	PartitionRingConfig partitionring.Config       `yaml:"partition_ring,omitempty" category:"experimental"`
-	KafkaConfig         kafka.Config               `yaml:"kafka_ingester,omitempty" category:"experimental"`
+	KafkaConfig         kafka.Config               `yaml:"kafka_config,omitempty" category:"experimental"`
 	KafkaIngester       ingesterkafka.Config       `yaml:"kafka_ingester,omitempty" category:"experimental"`
 
 	RuntimeConfig     runtimeconfig.Config `yaml:"runtime_config,omitempty"`
