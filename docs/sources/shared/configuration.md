@@ -1087,7 +1087,7 @@ partition_ring:
   # CLI flag: -ingester.partition-ring.delete-inactive-partition-after
   [delete_inactive_partition_after: <duration> | default = 13h]
 
-kafka_ingester:
+kafka_config:
   # the kafka endpoint to connect to
   # CLI flag: -kafka-config.address
   [address: <string> | default = "localhost:9092"]
