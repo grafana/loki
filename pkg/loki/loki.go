@@ -32,7 +32,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloombuild"
-	"github.com/grafana/loki/v3/pkg/bloomcompactor"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
 	"github.com/grafana/loki/v3/pkg/compactor"
 	compactorclient "github.com/grafana/loki/v3/pkg/compactor/client"
@@ -98,7 +97,6 @@ type Config struct {
 	IngesterRF1         ingester_rf1.Config        `yaml:"ingester_rf1,omitempty"`
 	Pattern             pattern.Config             `yaml:"pattern_ingester,omitempty"`
 	IndexGateway        indexgateway.Config        `yaml:"index_gateway"`
-	BloomCompactor      bloomcompactor.Config      `yaml:"bloom_compactor,omitempty" category:"experimental"`
 	BloomBuild          bloombuild.Config          `yaml:"bloom_build,omitempty" category:"experimental"`
 	BloomGateway        bloomgateway.Config        `yaml:"bloom_gateway,omitempty" category:"experimental"`
 	StorageConfig       storage.Config             `yaml:"storage_config,omitempty"`
@@ -188,7 +186,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.MemberlistKV.RegisterFlags(f)
 	c.Tracing.RegisterFlags(f)
 	c.CompactorConfig.RegisterFlags(f)
-	c.BloomCompactor.RegisterFlags(f)
 	c.BloomBuild.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
 	c.Analytics.RegisterFlags(f)
@@ -290,8 +287,8 @@ func (c *Config) Validate() error {
 	if err := c.QueryRange.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid query_range config"))
 	}
-	if err := c.BloomCompactor.Validate(); err != nil {
-		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid bloom_compactor config"))
+	if err := c.BloomBuild.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid bloom_build config"))
 	}
 	if err := c.BloomGateway.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid bloom_gateway config"))
@@ -375,8 +372,6 @@ type Loki struct {
 	querySchedulerRingManager *lokiring.RingManager
 	usageReport               *analytics.Reporter
 	indexGatewayRingManager   *lokiring.RingManager
-	bloomCompactorRingManager *lokiring.RingManager
-	bloomGatewayRingManager   *lokiring.RingManager
 	MetastoreClient           *metastoreclient.Client
 
 	ClientMetrics       storage.ClientMetrics
@@ -692,8 +687,6 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
 	mm.RegisterModule(BloomStore, t.initBloomStore, modules.UserInvisibleModule)
-	mm.RegisterModule(BloomCompactor, t.initBloomCompactor)
-	mm.RegisterModule(BloomCompactorRing, t.initBloomCompactorRing, modules.UserInvisibleModule)
 	mm.RegisterModule(BloomPlanner, t.initBloomPlanner)
 	mm.RegisterModule(BloomBuilder, t.initBloomBuilder)
 	mm.RegisterModule(IndexGateway, t.initIndexGateway)
@@ -736,7 +729,6 @@ func (t *Loki) setupModuleManager() error {
 		Compactor:                {Server, Overrides, MemberlistKV, Analytics},
 		IndexGateway:             {Server, Store, BloomStore, IndexGatewayRing, IndexGatewayInterceptors, Analytics},
 		BloomGateway:             {Server, BloomStore, Analytics},
-		BloomCompactor:           {Server, BloomStore, BloomCompactorRing, Analytics, Store},
 		BloomPlanner:             {Server, BloomStore, Analytics, Store},
 		BloomBuilder:             {Server, BloomStore, Analytics, Store},
 		BloomStore:               {IndexGatewayRing},
@@ -748,12 +740,11 @@ func (t *Loki) setupModuleManager() error {
 		IngesterQuerier:          {Ring},
 		QuerySchedulerRing:       {Overrides, MemberlistKV},
 		IndexGatewayRing:         {Overrides, MemberlistKV},
-		BloomCompactorRing:       {Overrides, MemberlistKV},
 		MemberlistKV:             {Server},
 
 		Read:    {QueryFrontend, Querier},
 		Write:   {Ingester, IngesterRF1, Distributor, PatternIngester},
-		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway, BloomGateway, BloomCompactor},
+		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway, BloomGateway},
 
 		All: {QueryScheduler, QueryFrontend, Querier, Ingester, IngesterRF1, PatternIngester, Distributor, Ruler, Compactor, Metastore},
 	}
