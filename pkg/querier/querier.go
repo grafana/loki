@@ -1199,6 +1199,11 @@ func parseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*p
 	emtpyparser := ""
 
 	for _, stream := range streams {
+		streamLbls, err := syntax.ParseLabels(stream.Labels)
+		if err != nil {
+			streamLbls = labels.EmptyLabels()
+		}
+
 		for _, entry := range stream.Entries {
 			structuredMetadata := getStructuredMetadata(entry)
 			for k, vals := range structuredMetadata {
@@ -1226,7 +1231,7 @@ func parseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*p
 				}
 			}
 
-			detected, parser := parseLine(entry.Line, stream)
+			detected, parser := parseLine(entry.Line, streamLbls)
 			for k, vals := range detected {
 				df, ok := detectedFields[k]
 				if !ok && fieldCount < limit {
@@ -1283,12 +1288,7 @@ func getStructuredMetadata(entry push.Entry) map[string][]string {
 	return result
 }
 
-func parseLine(line string, stream logproto.Stream) (map[string][]string, *string) {
-	streamLbls, err := syntax.ParseLabels(stream.Labels)
-	if err != nil {
-		streamLbls = labels.EmptyLabels()
-	}
-
+func parseLine(line string, streamLbls labels.Labels) (map[string][]string, *string) {
 	parser := "logfmt"
 	logFmtParser := logql_log.NewLogfmtParser(true, false)
 
