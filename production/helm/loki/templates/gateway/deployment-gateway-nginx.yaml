@@ -30,7 +30,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: {{ include (print .Template.BasePath "/gateway/configmap-gateway.yaml") . | sha256sum }}
+        checksum/config: {{ tpl .Values.gateway.nginxConfig.file . | sha256sum }}
         {{- with .Values.loki.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

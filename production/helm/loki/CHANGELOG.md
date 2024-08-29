@@ -13,6 +13,11 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+
+## 6.11.0
+
+- [ENHANCEMENT] Avoid unnecessary pod restart on each helm chart version
+
 ## 6.10.1
 
 - [CHANGE] Bumped version of `kiwigrid/k8s-sidecar` to 1.27.5; this remediates several CVE
