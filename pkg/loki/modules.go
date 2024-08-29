@@ -1708,6 +1708,10 @@ func (t *Loki) initBloomPlanner() (services.Service, error) {
 
 	logger := log.With(util_log.Logger, "component", "bloom-planner")
 
+	if t.Cfg.isTarget(Backend) && t.indexGatewayRingManager != nil {
+		level.Info(logger).Log("msg", "initializing bloom planner in ring mode as part of backend target")
+	}
+
 	p, err := planner.New(
 		t.Cfg.BloomBuild.Planner,
 		t.Overrides,
@@ -1717,6 +1721,11 @@ func (t *Loki) initBloomPlanner() (services.Service, error) {
 		t.BloomStore,
 		logger,
 		prometheus.DefaultRegisterer,
+		// Bloom planner and builder are part of the backend target in Simple Scalable Deployment mode.
+		// To avoid creating a new ring just for this special case, we can use the index gateway ring, which is already
+		// part of the backend target. The planner creates a watcher service that regularly checks which replica is
+		// the leader. Only the leader plans the tasks. Builders connect to the leader instance to pull tasks.
+		t.indexGatewayRingManager,
 	)
 	if err != nil {
 		return nil, err
@@ -1733,6 +1742,10 @@ func (t *Loki) initBloomBuilder() (services.Service, error) {
 
 	logger := log.With(util_log.Logger, "component", "bloom-builder")
 
+	if t.Cfg.isTarget(Backend) && t.indexGatewayRingManager != nil {
+		level.Info(logger).Log("msg", "initializing bloom builder in ring mode as part of backend target")
+	}
+
 	return builder.New(
 		t.Cfg.BloomBuild.Builder,
 		t.Overrides,
@@ -1743,6 +1756,11 @@ func (t *Loki) initBloomBuilder() (services.Service, error) {
 		t.BloomStore,
 		logger,
 		prometheus.DefaultRegisterer,
+		// Bloom planner and builder are part of the backend target in Simple Scalable Deployment mode.
+		// To avoid creating a new ring just for this special case, we can use the index gateway ring, which is already
+		// part of the backend target. The planner creates a watcher service that regularly checks which replica is
+		// the leader. Only the leader plans the tasks. Builders connect to the leader instance to pull tasks.
+		t.indexGatewayRingManager,
 	)
 }
 
