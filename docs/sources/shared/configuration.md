@@ -4638,6 +4638,21 @@ alertmanager_client:
   # CLI flag: -ruler.alertmanager-client.credentials-file
   [credentials_file: <string> | default = ""]
 
+  # HTTP proxy server to use to connect to the targets.
+  [proxy_url: <string> | default = ""]
+
+  # NoProxy contains addresses that should not use a proxy.
+  [no_proxy: <string> | default = ""]
+
+  # ProxyFromEnvironment makes use of net/http ProxyFromEnvironment function to determine proxies.
+  [proxy_from_environment: <boolean>]
+
+  # ProxyConnectHeader optionally specifies headers to send to
+  # proxies during CONNECT requests. Assume that at least _some_ of
+  # these headers are going to contain secrets and use Secret as the
+  # value type instead of string.
+  [proxy_connect_header: <map of string to list of strings>]
+
 # Max time to tolerate outage for restoring "for" state of alert.
 # CLI flag: -ruler.for-outage-tolerance
 [for_outage_tolerance: <duration> | default = 1h]

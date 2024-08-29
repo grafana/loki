@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/crypto/tls"
+	"github.com/prometheus/common/config"
 	"github.com/prometheus/prometheus/model/relabel"
 
 	"github.com/grafana/loki/v3/pkg/util"
@@ -30,9 +31,10 @@ type AlertManagerConfig struct {
 }
 
 type NotifierConfig struct {
-	TLS        tls.ClientConfig `yaml:",inline"`
-	BasicAuth  util.BasicAuth   `yaml:",inline"`
-	HeaderAuth util.HeaderAuth  `yaml:",inline"`
+	Proxy      config.ProxyConfig `yaml:",inline"`
+	TLS        tls.ClientConfig   `yaml:",inline"`
+	BasicAuth  util.BasicAuth     `yaml:",inline"`
+	HeaderAuth util.HeaderAuth    `yaml:",inline"`
 }
 
 func (cfg *NotifierConfig) RegisterFlags(f *flag.FlagSet) {
