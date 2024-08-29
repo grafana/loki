@@ -121,7 +121,7 @@ func (s *SimpleBloomGenerator) populator(ctx context.Context) v1.BloomPopulatorF
 			Chunks:      toAdd,
 		})
 
-		s.tokenizer.Populate(srcBlooms, chunkItersWithFP.itr, ch)
+		s.tokenizer.Populate(series.Fingerprint, srcBlooms, chunkItersWithFP.itr, ch)
 
 		if s.reporter != nil {
 			s.reporter(series.Fingerprint)
@@ -161,7 +161,7 @@ func (s *SimpleBloomGenerator) Generate(ctx context.Context) *LazyBlockBuilderIt
 		)
 	}
 
-	return NewLazyBlockBuilderIterator(ctx, s.opts, s.metrics, s.populator(ctx), s.writerReaderFunc, series, s.blocksIter)
+	return NewLazyBlockBuilderIterator(ctx, s.opts, s.metrics, s.logger, s.populator(ctx), s.writerReaderFunc, series, s.blocksIter)
 }
 
 // LazyBlockBuilderIterator is a lazy iterator over blocks that builds
@@ -170,6 +170,7 @@ type LazyBlockBuilderIterator struct {
 	ctx              context.Context
 	opts             v1.BlockOptions
 	metrics          *Metrics
+	logger           log.Logger
 	populate         v1.BloomPopulatorFunc
 	writerReaderFunc func() (v1.BlockWriter, v1.BlockReader)
 	series           iter.PeekIterator[*v1.Series]
@@ -184,6 +185,7 @@ func NewLazyBlockBuilderIterator(
 	ctx context.Context,
 	opts v1.BlockOptions,
 	metrics *Metrics,
+	logger log.Logger,
 	populate v1.BloomPopulatorFunc,
 	writerReaderFunc func() (v1.BlockWriter, v1.BlockReader),
 	series iter.PeekIterator[*v1.Series],
@@ -193,6 +195,7 @@ func NewLazyBlockBuilderIterator(
 		ctx:              ctx,
 		opts:             opts,
 		metrics:          metrics,
+		logger:           logger,
 		populate:         populate,
 		writerReaderFunc: writerReaderFunc,
 		series:           series,
@@ -220,7 +223,7 @@ func (b *LazyBlockBuilderIterator) Next() bool {
 		return false
 	}
 
-	mergeBuilder := v1.NewMergeBuilder(b.blocks, b.series, b.populate, b.metrics.bloomMetrics)
+	mergeBuilder := v1.NewMergeBuilder(b.blocks, b.series, b.populate, b.metrics.bloomMetrics, b.logger)
 	writer, reader := b.writerReaderFunc()
 	blockBuilder, err := v1.NewBlockBuilder(b.opts, writer)
 	if err != nil {

@@ -213,6 +213,7 @@ func TestTokenizerPopulateWontExceedMaxSize(t *testing.T) {
 	itr, err := chunkRefItrFromLines(line)
 	require.NoError(t, err)
 	go bt.Populate(
+		1,
 		v2.NewSliceIter([]*Bloom{
 			{
 				*filter.NewScalableBloomFilter(1024, 0.01, 0.8),
@@ -244,7 +245,7 @@ func populateAndConsumeBloom(
 ) (res []*Bloom, err error) {
 	var e multierror.MultiError
 	ch := make(chan *BloomCreation)
-	go bt.Populate(blooms, chks, ch)
+	go bt.Populate(1, blooms, chks, ch)
 	for x := range ch {
 		if x.Err != nil {
 			e = append(e, x.Err)
@@ -300,6 +301,7 @@ func TestTokenizerClearsCacheBetweenPopulateCalls(t *testing.T) {
 		itr, err := chunkRefItrFromLines(line)
 		require.NoError(t, err)
 		go bt.Populate(
+			1,
 			v2.NewEmptyIter[*Bloom](),
 			v2.NewSliceIter([]ChunkRefWithIter{
 				{
