@@ -5361,11 +5361,7 @@ grpc_tls_config:
 # CLI flag: -server.grpc.stats-tracking-enabled
 [grpc_server_stats_tracking_enabled: <boolean> | default = true]
 
-# If true, gGPC's buffer pools will be used to handle incoming requests.
-# Enabling this feature can reduce memory allocation, but also requires
-# disabling GRPC server stats tracking by setting
-# `server.grpc.stats-tracking-enabled=false`. This is an experimental gRPC
-# feature, so it might be removed in a future version of the gRPC library.
+# Deprecated option, has no effect and will be removed in a future version.
 # CLI flag: -server.grpc.recv-buffer-pools-enabled
 [grpc_server_recv_buffer_pools_enabled: <boolean> | default = false]
 

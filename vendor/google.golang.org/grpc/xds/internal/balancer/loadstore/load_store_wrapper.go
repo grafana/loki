@@ -36,7 +36,7 @@ func NewWrapper() *Wrapper {
 // update its internal perCluster store so that new stats will be added to the
 // correct perCluster.
 //
-// Note that this struct is a temporary walkaround before we implement graceful
+// Note that this struct is a temporary workaround before we implement graceful
 // switch for EDS. Any update to the clusterName and serviceName is too early,
 // the perfect timing is when the picker is updated with the new connection.
 // This early update could cause picks for the old SubConn being reported to the
