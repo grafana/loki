@@ -669,7 +669,7 @@ github.com/eapache/queue
 # github.com/edsrzf/mmap-go v1.1.0
 ## explicit; go 1.17
 github.com/edsrzf/mmap-go
-# github.com/efficientgo/core v1.0.0-rc.2
+# github.com/efficientgo/core v1.0.0-rc.3
 ## explicit; go 1.17
 github.com/efficientgo/core/errcapture
 github.com/efficientgo/core/errors

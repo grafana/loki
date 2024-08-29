@@ -120,7 +120,7 @@ require (
 	github.com/coder/quartz v0.1.0
 	github.com/d4l3k/messagediff v1.2.1
 	github.com/dolthub/swiss v0.2.1
-	github.com/efficientgo/core v1.0.0-rc.2
+	github.com/efficientgo/core v1.0.0-rc.3
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/gogo/googleapis v1.4.1
 	github.com/grafana/jsonparser v0.0.0-20240425183733-ea80629e1a32
