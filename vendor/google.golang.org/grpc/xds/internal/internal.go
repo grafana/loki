@@ -55,6 +55,11 @@ func (l LocalityID) Equal(o any) bool {
 	return l.Region == ol.Region && l.Zone == ol.Zone && l.SubZone == ol.SubZone
 }
 
+// Empty returns whether or not the locality ID is empty.
+func (l LocalityID) Empty() bool {
+	return l.Region == "" && l.Zone == "" && l.SubZone == ""
+}
+
 // LocalityIDFromString converts a json representation of locality, into a
 // LocalityID struct.
 func LocalityIDFromString(s string) (ret LocalityID, _ error) {
