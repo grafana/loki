@@ -49,8 +49,8 @@ const Scheme = "xds"
 // ClientConns at the same time.
 func newBuilderForTesting(config []byte) (resolver.Builder, error) {
 	return &xdsResolverBuilder{
-		newXDSClient: func() (xdsclient.XDSClient, func(), error) {
-			return xdsclient.NewForTesting(xdsclient.OptionsForTesting{Contents: config})
+		newXDSClient: func(name string) (xdsclient.XDSClient, func(), error) {
+			return xdsclient.NewForTesting(xdsclient.OptionsForTesting{Name: name, Contents: config})
 		},
 	}, nil
 }
@@ -64,7 +64,7 @@ func init() {
 }
 
 type xdsResolverBuilder struct {
-	newXDSClient func() (xdsclient.XDSClient, func(), error)
+	newXDSClient func(string) (xdsclient.XDSClient, func(), error)
 }
 
 // Build helps implement the resolver.Builder interface.
@@ -97,11 +97,11 @@ func (b *xdsResolverBuilder) Build(target resolver.Target, cc resolver.ClientCon
 	r.serializerCancel = cancel
 
 	// Initialize the xDS client.
-	newXDSClient := rinternal.NewXDSClient.(func() (xdsclient.XDSClient, func(), error))
+	newXDSClient := rinternal.NewXDSClient.(func(string) (xdsclient.XDSClient, func(), error))
 	if b.newXDSClient != nil {
 		newXDSClient = b.newXDSClient
 	}
-	client, close, err := newXDSClient()
+	client, close, err := newXDSClient(target.String())
 	if err != nil {
 		return nil, fmt.Errorf("xds: failed to create xds-client: %v", err)
 	}
@@ -139,9 +139,13 @@ func (r *xdsResolver) sanityChecksOnBootstrapConfig(target resolver.Target, opts
 	// Find the client listener template to use from the bootstrap config:
 	// - If authority is not set in the target, use the top level template
 	// - If authority is set, use the template from the authority map.
-	template := bootstrapConfig.ClientDefaultListenerResourceNameTemplate
+	template := bootstrapConfig.ClientDefaultListenerResourceNameTemplate()
 	if authority := target.URL.Host; authority != "" {
-		a := bootstrapConfig.Authorities[authority]
+		authorities := bootstrapConfig.Authorities()
+		if authorities == nil {
+			return "", fmt.Errorf("xds: authority %q specified in dial target %q is not found in the bootstrap file", authority, target)
+		}
+		a := authorities[authority]
 		if a == nil {
 			return "", fmt.Errorf("xds: authority %q specified in dial target %q is not found in the bootstrap file", authority, target)
 		}

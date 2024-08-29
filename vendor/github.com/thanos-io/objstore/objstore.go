@@ -400,11 +400,8 @@ type IsOpFailureExpectedFunc func(error) bool
 
 var _ InstrumentedBucket = &metricBucket{}
 
-// WrapWithMetrics takes a bucket and registers metrics with the given registry for
-// operations run against the bucket.
-func WrapWithMetrics(b Bucket, reg prometheus.Registerer, name string) *metricBucket {
-	bkt := &metricBucket{
-		bkt:                 b,
+func BucketMetrics(reg prometheus.Registerer, name string) *Metrics {
+	return &Metrics{
 		isOpFailureExpected: func(err error) bool { return false },
 		ops: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name:        "objstore_bucket_operations_total",
@@ -430,8 +427,8 @@ func WrapWithMetrics(b Bucket, reg prometheus.Registerer, name string) *metricBu
 			ConstLabels: prometheus.Labels{"bucket": name},
 			Buckets:     prometheus.ExponentialBuckets(2<<14, 2, 16), // 32KiB, 64KiB, ... 1GiB
 			// Use factor=2 for native histograms, which gives similar buckets as the original exponential buckets.
-			NativeHistogramBucketFactor: 2,
-			NativeHistogramMaxBucketNumber: 100,
+			NativeHistogramBucketFactor:     2,
+			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 1 * time.Hour,
 		}, []string{"operation"}),
 
@@ -441,8 +438,8 @@ func WrapWithMetrics(b Bucket, reg prometheus.Registerer, name string) *metricBu
 			ConstLabels: prometheus.Labels{"bucket": name},
 			Buckets:     []float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120},
 			// Use the recommended defaults for native histograms with 10% growth factor.
-			NativeHistogramBucketFactor: 1.1,
-			NativeHistogramMaxBucketNumber: 100,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 1 * time.Hour,
 		}, []string{"operation"}),
 
@@ -452,6 +449,27 @@ func WrapWithMetrics(b Bucket, reg prometheus.Registerer, name string) *metricBu
 			ConstLabels: prometheus.Labels{"bucket": name},
 		}),
 	}
+}
+
+// WrapWithMetrics takes a bucket and registers metrics with the given registry for
+// operations run against the bucket.
+func WrapWithMetrics(b Bucket, reg prometheus.Registerer, name string) *metricBucket {
+	metrics := BucketMetrics(reg, name)
+	return wrapWithMetrics(b, metrics)
+}
+
+// WrapWith takes a `bucket` and `metrics` that returns instrumented bucket.
+// Similar to WrapWithMetrics, but `metrics` can be passed separately as an argument.
+func WrapWith(b Bucket, metrics *Metrics) *metricBucket {
+	return wrapWithMetrics(b, metrics)
+}
+
+func wrapWithMetrics(b Bucket, metrics *Metrics) *metricBucket {
+	bkt := &metricBucket{
+		bkt:     b,
+		metrics: metrics,
+	}
+
 	for _, op := range []string{
 		OpIter,
 		OpGet,
@@ -461,10 +479,10 @@ func WrapWithMetrics(b Bucket, reg prometheus.Registerer, name string) *metricBu
 		OpDelete,
 		OpAttributes,
 	} {
-		bkt.ops.WithLabelValues(op)
-		bkt.opsFailures.WithLabelValues(op)
-		bkt.opsDuration.WithLabelValues(op)
-		bkt.opsFetchedBytes.WithLabelValues(op)
+		bkt.metrics.ops.WithLabelValues(op)
+		bkt.metrics.opsFailures.WithLabelValues(op)
+		bkt.metrics.opsDuration.WithLabelValues(op)
+		bkt.metrics.opsFetchedBytes.WithLabelValues(op)
 	}
 
 	// fetched bytes only relevant for get, getrange and upload
@@ -473,14 +491,12 @@ func WrapWithMetrics(b Bucket, reg prometheus.Registerer, name string) *metricBu
 		OpGetRange,
 		OpUpload,
 	} {
-		bkt.opsTransferredBytes.WithLabelValues(op)
+		bkt.metrics.opsTransferredBytes.WithLabelValues(op)
 	}
 	return bkt
 }
 
-type metricBucket struct {
-	bkt Bucket
-
+type Metrics struct {
 	ops                 *prometheus.CounterVec
 	opsFailures         *prometheus.CounterVec
 	isOpFailureExpected IsOpFailureExpectedFunc
@@ -491,16 +507,23 @@ type metricBucket struct {
 	lastSuccessfulUploadTime prometheus.Gauge
 }
 
+type metricBucket struct {
+	bkt     Bucket
+	metrics *Metrics
+}
+
 func (b *metricBucket) WithExpectedErrs(fn IsOpFailureExpectedFunc) Bucket {
 	return &metricBucket{
-		bkt:                      b.bkt,
-		ops:                      b.ops,
-		opsFailures:              b.opsFailures,
-		opsFetchedBytes:          b.opsFetchedBytes,
-		opsTransferredBytes:      b.opsTransferredBytes,
-		isOpFailureExpected:      fn,
-		opsDuration:              b.opsDuration,
-		lastSuccessfulUploadTime: b.lastSuccessfulUploadTime,
+		bkt: b.bkt,
+		metrics: &Metrics{
+			ops:                      b.metrics.ops,
+			opsFailures:              b.metrics.opsFailures,
+			opsFetchedBytes:          b.metrics.opsFetchedBytes,
+			opsTransferredBytes:      b.metrics.opsTransferredBytes,
+			isOpFailureExpected:      fn,
+			opsDuration:              b.metrics.opsDuration,
+			lastSuccessfulUploadTime: b.metrics.lastSuccessfulUploadTime,
+		},
 	}
 }
 
@@ -510,43 +533,43 @@ func (b *metricBucket) ReaderWithExpectedErrs(fn IsOpFailureExpectedFunc) Bucket
 
 func (b *metricBucket) Iter(ctx context.Context, dir string, f func(name string) error, options ...IterOption) error {
 	const op = OpIter
-	b.ops.WithLabelValues(op).Inc()
+	b.metrics.ops.WithLabelValues(op).Inc()
 
 	start := time.Now()
 	err := b.bkt.Iter(ctx, dir, f, options...)
 	if err != nil {
-		if !b.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
-			b.opsFailures.WithLabelValues(op).Inc()
+		if !b.metrics.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
+			b.metrics.opsFailures.WithLabelValues(op).Inc()
 		}
 	}
-	b.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
+	b.metrics.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
 	return err
 }
 
 func (b *metricBucket) Attributes(ctx context.Context, name string) (ObjectAttributes, error) {
 	const op = OpAttributes
-	b.ops.WithLabelValues(op).Inc()
+	b.metrics.ops.WithLabelValues(op).Inc()
 
 	start := time.Now()
 	attrs, err := b.bkt.Attributes(ctx, name)
 	if err != nil {
-		if !b.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
-			b.opsFailures.WithLabelValues(op).Inc()
+		if !b.metrics.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
+			b.metrics.opsFailures.WithLabelValues(op).Inc()
 		}
 		return attrs, err
 	}
-	b.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
+	b.metrics.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
 	return attrs, nil
 }
 
 func (b *metricBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
 	const op = OpGet
-	b.ops.WithLabelValues(op).Inc()
+	b.metrics.ops.WithLabelValues(op).Inc()
 
 	rc, err := b.bkt.Get(ctx, name)
 	if err != nil {
-		if !b.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
-			b.opsFailures.WithLabelValues(op).Inc()
+		if !b.metrics.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
+			b.metrics.opsFailures.WithLabelValues(op).Inc()
 		}
 		return nil, err
 	}
@@ -554,22 +577,22 @@ func (b *metricBucket) Get(ctx context.Context, name string) (io.ReadCloser, err
 		rc,
 		true,
 		op,
-		b.opsDuration,
-		b.opsFailures,
-		b.isOpFailureExpected,
-		b.opsFetchedBytes,
-		b.opsTransferredBytes,
+		b.metrics.opsDuration,
+		b.metrics.opsFailures,
+		b.metrics.isOpFailureExpected,
+		b.metrics.opsFetchedBytes,
+		b.metrics.opsTransferredBytes,
 	), nil
 }
 
 func (b *metricBucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
 	const op = OpGetRange
-	b.ops.WithLabelValues(op).Inc()
+	b.metrics.ops.WithLabelValues(op).Inc()
 
 	rc, err := b.bkt.GetRange(ctx, name, off, length)
 	if err != nil {
-		if !b.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
-			b.opsFailures.WithLabelValues(op).Inc()
+		if !b.metrics.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
+			b.metrics.opsFailures.WithLabelValues(op).Inc()
 		}
 		return nil, err
 	}
@@ -577,69 +600,69 @@ func (b *metricBucket) GetRange(ctx context.Context, name string, off, length in
 		rc,
 		true,
 		op,
-		b.opsDuration,
-		b.opsFailures,
-		b.isOpFailureExpected,
-		b.opsFetchedBytes,
-		b.opsTransferredBytes,
+		b.metrics.opsDuration,
+		b.metrics.opsFailures,
+		b.metrics.isOpFailureExpected,
+		b.metrics.opsFetchedBytes,
+		b.metrics.opsTransferredBytes,
 	), nil
 }
 
 func (b *metricBucket) Exists(ctx context.Context, name string) (bool, error) {
 	const op = OpExists
-	b.ops.WithLabelValues(op).Inc()
+	b.metrics.ops.WithLabelValues(op).Inc()
 
 	start := time.Now()
 	ok, err := b.bkt.Exists(ctx, name)
 	if err != nil {
-		if !b.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
-			b.opsFailures.WithLabelValues(op).Inc()
+		if !b.metrics.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
+			b.metrics.opsFailures.WithLabelValues(op).Inc()
 		}
 		return false, err
 	}
-	b.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
+	b.metrics.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
 	return ok, nil
 }
 
 func (b *metricBucket) Upload(ctx context.Context, name string, r io.Reader) error {
 	const op = OpUpload
-	b.ops.WithLabelValues(op).Inc()
+	b.metrics.ops.WithLabelValues(op).Inc()
 
 	trc := newTimingReader(
 		r,
 		false,
 		op,
-		b.opsDuration,
-		b.opsFailures,
-		b.isOpFailureExpected,
+		b.metrics.opsDuration,
+		b.metrics.opsFailures,
+		b.metrics.isOpFailureExpected,
 		nil,
-		b.opsTransferredBytes,
+		b.metrics.opsTransferredBytes,
 	)
 	defer trc.Close()
 	err := b.bkt.Upload(ctx, name, trc)
 	if err != nil {
-		if !b.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
-			b.opsFailures.WithLabelValues(op).Inc()
+		if !b.metrics.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
+			b.metrics.opsFailures.WithLabelValues(op).Inc()
 		}
 		return err
 	}
-	b.lastSuccessfulUploadTime.SetToCurrentTime()
+	b.metrics.lastSuccessfulUploadTime.SetToCurrentTime()
 
 	return nil
 }
 
 func (b *metricBucket) Delete(ctx context.Context, name string) error {
 	const op = OpDelete
-	b.ops.WithLabelValues(op).Inc()
+	b.metrics.ops.WithLabelValues(op).Inc()
 
 	start := time.Now()
 	if err := b.bkt.Delete(ctx, name); err != nil {
-		if !b.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
-			b.opsFailures.WithLabelValues(op).Inc()
+		if !b.metrics.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
+			b.metrics.opsFailures.WithLabelValues(op).Inc()
 		}
 		return err
 	}
-	b.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
+	b.metrics.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
 
 	return nil
 }
