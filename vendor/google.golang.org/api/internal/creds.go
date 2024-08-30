@@ -100,18 +100,12 @@ func credsNewAuth(ctx context.Context, settings *DialSettings) (*google.Credenti
 		aud = settings.DefaultAudience
 	}
 
-	tokenURL, oauth2Client, err := GetOAuth2Configuration(ctx, settings)
-	if err != nil {
-		return nil, err
-	}
 	creds, err := credentials.DetectDefault(&credentials.DetectOptions{
 		Scopes:           scopes,
 		Audience:         aud,
 		CredentialsFile:  settings.CredentialsFile,
 		CredentialsJSON:  settings.CredentialsJSON,
 		UseSelfSignedJWT: useSelfSignedJWT,
-		TokenURL:         tokenURL,
-		Client:           oauth2Client,
 	})
 	if err != nil {
 		return nil, err
@@ -301,15 +295,4 @@ func baseTransport() *http.Transport {
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 	}
-}
-
-// ErrUniverseNotMatch composes an error string from the provided universe
-// domain sources (DialSettings and Credentials, respectively).
-func ErrUniverseNotMatch(settingsUD, credsUD string) error {
-	return fmt.Errorf(
-		"the configured universe domain (%q) does not match the universe "+
-			"domain found in the credentials (%q). If you haven't configured "+
-			"WithUniverseDomain explicitly, \"googleapis.com\" is the default",
-		settingsUD,
-		credsUD)
 }

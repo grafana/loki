@@ -1,5 +1,12 @@
 # Changes
 
+## [0.5.0](https://github.com/googleapis/google-cloud-go/compare/compute/metadata/v0.4.0...compute/metadata/v0.5.0) (2024-07-10)
+
+
+### Features
+
+* **compute/metadata:** Add sys check for windows OnGCE ([#10521](https://github.com/googleapis/google-cloud-go/issues/10521)) ([3b9a830](https://github.com/googleapis/google-cloud-go/commit/3b9a83063960d2a2ac20beb47cc15818a68bd302))
+
 ## [0.4.0](https://github.com/googleapis/google-cloud-go/compare/compute/metadata/v0.3.0...compute/metadata/v0.4.0) (2024-07-01)
 
 

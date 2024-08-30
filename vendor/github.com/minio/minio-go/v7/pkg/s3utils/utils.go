@@ -226,7 +226,7 @@ func IsGoogleEndpoint(endpointURL url.URL) bool {
 	if endpointURL == sentinelURL {
 		return false
 	}
-	return endpointURL.Host == "storage.googleapis.com"
+	return endpointURL.Hostname() == "storage.googleapis.com"
 }
 
 // Expects ascii encoded strings - from output of urlEncodePath

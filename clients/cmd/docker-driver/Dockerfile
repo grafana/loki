@@ -4,7 +4,7 @@ ARG BUILD_IMAGE=grafana/loki-build-image:0.33.6
 # docker build -t grafana/loki -f cmd/loki/Dockerfile .
 
 # TODO: add cross-platform support
-FROM $BUILD_IMAGE as build
+FROM $BUILD_IMAGE AS build
 COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && make BUILD_IN_CONTAINER=false clients/cmd/docker-driver/docker-driver
