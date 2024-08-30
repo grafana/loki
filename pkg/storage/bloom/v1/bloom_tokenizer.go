@@ -9,7 +9,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	v2iter "github.com/grafana/loki/v3/pkg/iter/v2"
-	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 
@@ -139,7 +138,7 @@ func (bt *BloomTokenizer) Populate(
 
 	for chks.Next() {
 		chk := chks.At()
-		itr := newPeekingEntryIterAdapter(chk.Itr)
+		itr := v2iter.NewPeekIter(chk.Itr)
 
 		for {
 			full, newBytes := bt.addChunkToBloom(
@@ -287,20 +286,4 @@ outer:
 	bt.metrics.sourceBytesAdded.Add(float64(chunkBytes))
 
 	return full, chunkBytes
-}
-
-type entryIterAdapter struct {
-	iter.EntryIterator
-}
-
-func (a entryIterAdapter) At() logproto.Entry {
-	return a.EntryIterator.At()
-}
-
-func (a entryIterAdapter) Err() error {
-	return a.EntryIterator.Err()
-}
-
-func newPeekingEntryIterAdapter(itr iter.EntryIterator) *v2iter.PeekIter[logproto.Entry] {
-	return v2iter.NewPeekIter[logproto.Entry](entryIterAdapter{itr})
 }
