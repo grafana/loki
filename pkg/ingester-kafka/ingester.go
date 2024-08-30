@@ -488,19 +488,6 @@ func (i *Ingester) CheckReady(ctx context.Context) error {
 	return i.lifecycler.CheckReady(ctx)
 }
 
-func (i *Ingester) GetDetectedFields(_ context.Context, r *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
-	return &logproto.DetectedFieldsResponse{
-		Fields: []*logproto.DetectedField{
-			{
-				Label:       "foo",
-				Type:        logproto.DetectedFieldString,
-				Cardinality: 1,
-			},
-		},
-		FieldLimit: r.GetFieldLimit(),
-	}, nil
-}
-
 // Flush implements ring.FlushTransferer
 // Flush triggers a flush of all the chunks and closes the flush queues.
 // Called from the Lifecycler as part of the ingester shutdown.
