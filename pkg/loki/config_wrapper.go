@@ -276,6 +276,21 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.Pattern.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
 	}
 
+	if mergeWithExisting {
+		r.KafkaIngester.LifecyclerConfig.RingConfig.KVStore = rc.KVStore
+		r.KafkaIngester.LifecyclerConfig.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.KafkaIngester.LifecyclerConfig.RingConfig.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.KafkaIngester.LifecyclerConfig.TokensFilePath = rc.TokensFilePath
+		r.KafkaIngester.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.KafkaIngester.LifecyclerConfig.ID = rc.InstanceID
+		r.KafkaIngester.LifecyclerConfig.InfNames = rc.InstanceInterfaceNames
+		r.KafkaIngester.LifecyclerConfig.Port = rc.InstancePort
+		r.KafkaIngester.LifecyclerConfig.Addr = rc.InstanceAddr
+		r.KafkaIngester.LifecyclerConfig.Zone = rc.InstanceZone
+		r.KafkaIngester.LifecyclerConfig.ListenPort = rc.ListenPort
+		r.KafkaIngester.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
+	}
+
 	// Distributor
 	if mergeWithExisting || reflect.DeepEqual(r.Distributor.DistributorRing, defaults.Distributor.DistributorRing) {
 		r.Distributor.DistributorRing.HeartbeatTimeout = rc.HeartbeatTimeout
