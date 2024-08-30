@@ -46,6 +46,36 @@ parameter contains a log selector query instead of returning inconsistent result
 
 Loki changes the default value of `-ruler.alertmanager-use-v2` from `false` to `true`. Alertmanager APIv1 was deprecated in Alertmanager 0.16.0 and is removed as of 0.27.0.
 
+### Experimental Bloom Filters
+
+{{% admonition type="note" %}}
+Experimental features are subject to rapid change and/or removal, which can introduce breaking changes even between minor version.
+They also don't follow the deprecation lifecycle of regular features.
+{{% /admonition %}}
+
+The bloom compactor component, which builds bloom filter blocks for query acceleration, has been removed in favor of two new components: bloom planner and bloom builder.
+Please consult the [Query Acceleration with Blooms](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/query-acceleration-blooms/) docs for more information.
+
+CLI arguments (and their YAML counterparts) of per-tenant settings that have been removed as part of this change:
+
+* `-bloom-compactor.enable-compaction`
+* `-bloom-compactor.shard-size`
+* `-bloom-compactor.shard-size`
+* `-bloom-compactor.shard-size`
+
+CLI arguments of per-tenant settings that have been moved to a different prefix as part of this change:
+
+* `-bloom-compactor.max-page-size` changed to `-bloom-builder.max-page-size`
+* `-bloom-compactor.max-block-size` changed to `-bloom-builder.max-block-size`
+* `-bloom-compactor.ngram-length` changed to `-bloom-builder.ngram-length`
+* `-bloom-compactor.ngram-skip` changed to `-bloom-builder.ngram-skip`
+* `-bloom-compactor.false-positive-rate` changed to `-bloom-builder.false-positive-rate`
+* `-bloom-compactor.block-encoding` changed to `-bloom-builder.block-encoding`
+
+Their YAML counterparts in the `limits_config` block are kept identical.
+
+All other CLI arguments (and their YAML counterparts) prefixed with `-bloom-compactor.` have been removed.
+
 ## 3.0.0
 
 {{% admonition type="note" %}}

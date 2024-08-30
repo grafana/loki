@@ -3637,7 +3637,7 @@ null
 			<td>string</td>
 			<td>The gateway image tag</td>
 			<td><pre lang="json">
-"1.24-alpine"
+"1.27-alpine"
 </pre>
 </td>
 		</tr>
@@ -9679,7 +9679,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.24.3"
+"1.27.5"
 </pre>
 </td>
 		</tr>
