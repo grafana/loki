@@ -104,7 +104,7 @@ spec:
               name: client
           args:
             - -m {{ .allocatedMemory }}
-            - --extended=modern,track_sizes{{ with .extraExtendedOptions }},{{ . }}{{ end }}
+            - --extended=modern,track_sizes{{ if .persistence.enabled }},ext_path={{ .persistence.mountPath }}/file:{{ .persistence.storageSize }}{{ end }}{{ with .extraExtendedOptions }},{{ . }}{{ end }}
             - -I {{ .maxItemMemory }}m
             - -c {{ .connectionLimit }}
             - -v
