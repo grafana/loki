@@ -343,6 +343,7 @@ loki:
       userAssignedId: null
       requestTimeout: null
       endpointSuffix: null
+      chunkDelimiter: null
     swift:
       auth_version: null
       auth_url: null
