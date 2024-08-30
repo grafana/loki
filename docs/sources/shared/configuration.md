@@ -1089,8 +1089,12 @@ partition_ring:
 
 kafka_config:
   # the kafka endpoint to connect to
-  # CLI flag: -kafka-config.address
+  # CLI flag: -address
   [address: <string> | default = "localhost:9092"]
+
+  # The Kafka topic name.
+  # CLI flag: -.topic
+  [topic: <string> | default = "loki.push"]
 
 kafka_ingester:
   # Whether the kafka ingester is enabled.
@@ -1281,6 +1285,8 @@ kafka_ingester:
 
   kafkaconfig:
     [address: <string> | default = ""]
+
+    [topic: <string> | default = ""]
 
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.

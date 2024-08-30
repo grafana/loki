@@ -25,12 +25,17 @@ import (
 const writeTimeout = time.Minute
 
 type Config struct {
-	Address string `yaml:"address" docs:"whether the kafka ingest path is enabled"`
+	Address string `yaml:"address" docs:"the kafka endpoint to connect to"`
+	Topic   string `yaml:"topic" docs:"the kafka topic to write to"`
 }
 
-// RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.Address, "kafka-config.address", "localhost:9092", "the kafka endpoint to connect to")
+	cfg.RegisterFlagsWithPrefix("", f)
+}
+
+func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.StringVar(&cfg.Address, prefix+"address", "localhost:9092", "the kafka endpoint to connect to")
+	f.StringVar(&cfg.Topic, prefix+".topic", "loki.push", "The Kafka topic name.")
 }
 
 type Tee struct {
@@ -59,9 +64,9 @@ func NewTee(
 		kgo.SeedBrokers(cfg.Address),
 
 		kgo.WithHooks(metrics),
-		//commonKafkaClientOptions(kafkaCfg, metrics, logger),
+		// commonKafkaClientOptions(kafkaCfg, metrics, logger),
 		kgo.RequiredAcks(kgo.AllISRAcks()),
-		kgo.DefaultProduceTopic("rf1"),
+		kgo.DefaultProduceTopic(cfg.Topic),
 
 		kgo.AllowAutoTopicCreation(),
 		// We set the partition field in each record.
@@ -184,7 +189,7 @@ func marshalWriteRequestToRecords(partitionID int32, tenantID string, stream log
 	}
 	return nil, errors.New("large write requests are not supported yet")
 
-	//return marshalWriteRequestsToRecords(partitionID, tenantID, mimirpb.SplitWriteRequestByMaxMarshalSize(req, reqSize, maxSize))
+	// return marshalWriteRequestsToRecords(partitionID, tenantID, mimirpb.SplitWriteRequestByMaxMarshalSize(req, reqSize, maxSize))
 }
 
 func marshalWriteRequestToRecord(partitionID int32, tenantID string, stream logproto.Stream, reqSize int) (*kgo.Record, error) {
