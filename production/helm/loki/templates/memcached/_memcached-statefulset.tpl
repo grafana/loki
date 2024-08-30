@@ -122,6 +122,7 @@ spec:
             {{- end }}
           securityContext:
             {{- toYaml $.ctx.Values.memcached.containerSecurityContext | nindent 12 }}
+          {{- if or .persistence.enabled .extraVolumeMounts }}
           volumeMounts:
           {{- if .persistence.enabled }}
             - name: data
@@ -129,6 +130,7 @@ spec:
           {{- end }}
           {{- if .extraVolumeMounts }}
             {{- toYaml .extraVolumeMounts | nindent 12 }}
+          {{- end }}
           {{- end }}
 
       {{- if $.ctx.Values.memcachedExporter.enabled }}
