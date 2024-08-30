@@ -31,6 +31,7 @@ import (
 
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/connectivity"
+	"google.golang.org/grpc/internal"
 	"google.golang.org/grpc/internal/balancer/gracefulswitch"
 	"google.golang.org/grpc/internal/buffer"
 	"google.golang.org/grpc/internal/grpclog"
@@ -51,6 +52,8 @@ const (
 	Name                   = "xds_cluster_impl_experimental"
 	defaultRequestCountMax = 1024
 )
+
+var connectedAddress = internal.ConnectedAddress.(func(balancer.SubConnState) resolver.Address)
 
 func init() {
 	balancer.Register(bb{})
@@ -360,22 +363,35 @@ func (scw *scWrapper) localityID() xdsinternal.LocalityID {
 func (b *clusterImplBalancer) NewSubConn(addrs []resolver.Address, opts balancer.NewSubConnOptions) (balancer.SubConn, error) {
 	clusterName := b.getClusterName()
 	newAddrs := make([]resolver.Address, len(addrs))
-	var lID xdsinternal.LocalityID
 	for i, addr := range addrs {
 		newAddrs[i] = xds.SetXDSHandshakeClusterName(addr, clusterName)
-		lID = xdsinternal.GetLocalityID(newAddrs[i])
 	}
 	var sc balancer.SubConn
+	scw := &scWrapper{}
 	oldListener := opts.StateListener
-	opts.StateListener = func(state balancer.SubConnState) { b.updateSubConnState(sc, state, oldListener) }
+	opts.StateListener = func(state balancer.SubConnState) {
+		b.updateSubConnState(sc, state, oldListener)
+		if state.ConnectivityState != connectivity.Ready {
+			return
+		}
+		// Read connected address and call updateLocalityID() based on the connected
+		// address's locality. https://github.com/grpc/grpc-go/issues/7339
+		addr := connectedAddress(state)
+		lID := xdsinternal.GetLocalityID(addr)
+		if lID.Empty() {
+			if b.logger.V(2) {
+				b.logger.Infof("Locality ID for %s unexpectedly empty", addr)
+			}
+			return
+		}
+		scw.updateLocalityID(lID)
+	}
 	sc, err := b.ClientConn.NewSubConn(newAddrs, opts)
 	if err != nil {
 		return nil, err
 	}
-	// Wrap this SubConn in a wrapper, and add it to the map.
-	ret := &scWrapper{SubConn: sc}
-	ret.updateLocalityID(lID)
-	return ret, nil
+	scw.SubConn = sc
+	return scw, nil
 }
 
 func (b *clusterImplBalancer) RemoveSubConn(sc balancer.SubConn) {

@@ -234,11 +234,11 @@ func (f fakeLimits) BloomNGramSkip(_ string) int {
 	panic("implement me")
 }
 
-func (f fakeLimits) BloomCompactorMaxBlockSize(_ string) int {
+func (f fakeLimits) BloomMaxBlockSize(_ string) int {
 	panic("implement me")
 }
 
-func (f fakeLimits) BloomCompactorMaxBloomSize(_ string) int {
+func (f fakeLimits) BloomMaxBloomSize(_ string) int {
 	panic("implement me")
 }
 

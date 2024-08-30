@@ -188,12 +188,14 @@ ingester_rf1:
 
         # Configuration for a Consul client. Only applies if the selected
         # kvstore is consul.
-        # The CLI flags prefix for this block configuration is: ingester-rf1
+        # The CLI flags prefix for this block configuration is:
+        # ingester-rf1.consul
         [consul: <consul>]
 
         # Configuration for an ETCD v3 client. Only applies if the selected
         # kvstore is etcd.
-        # The CLI flags prefix for this block configuration is: ingester-rf1
+        # The CLI flags prefix for this block configuration is:
+        # ingester-rf1.etcd
         [etcd: <etcd>]
 
         multi:
@@ -444,12 +446,14 @@ pattern_ingester:
 
         # Configuration for a Consul client. Only applies if the selected
         # kvstore is consul.
-        # The CLI flags prefix for this block configuration is: pattern-ingester
+        # The CLI flags prefix for this block configuration is:
+        # pattern-ingester.consul
         [consul: <consul>]
 
         # Configuration for an ETCD v3 client. Only applies if the selected
         # kvstore is etcd.
-        # The CLI flags prefix for this block configuration is: pattern-ingester
+        # The CLI flags prefix for this block configuration is:
+        # pattern-ingester.etcd
         [etcd: <etcd>]
 
         multi:
@@ -817,68 +821,9 @@ pattern_ingester:
 # object store.
 [index_gateway: <index_gateway>]
 
-# Experimental: The bloom_compactor block configures the Loki bloom compactor
-# server, responsible for compacting stream indexes into bloom filters and
-# merging them as bloom blocks.
-[bloom_compactor: <bloom_compactor>]
-
-bloom_build:
-  # Flag to enable or disable the usage of the bloom-planner and bloom-builder
-  # components.
-  # CLI flag: -bloom-build.enabled
-  [enabled: <boolean> | default = false]
-
-  planner:
-    # Interval at which to re-run the bloom creation planning.
-    # CLI flag: -bloom-build.planner.interval
-    [planning_interval: <duration> | default = 8h]
-
-    # Newest day-table offset (from today, inclusive) to build blooms for.
-    # Increase to lower cost by not re-writing data to object storage too
-    # frequently since recent data changes more often at the cost of not having
-    # blooms available as quickly.
-    # CLI flag: -bloom-build.planner.min-table-offset
-    [min_table_offset: <int> | default = 1]
-
-    # Oldest day-table offset (from today, inclusive) to compact. This can be
-    # used to lower cost by not trying to compact older data which doesn't
-    # change. This can be optimized by aligning it with the maximum
-    # `reject_old_samples_max_age` setting of any tenant.
-    # CLI flag: -bloom-build.planner.max-table-offset
-    [max_table_offset: <int> | default = 2]
-
-    # Maximum number of tasks to queue per tenant.
-    # CLI flag: -bloom-build.planner.max-tasks-per-tenant
-    [max_queued_tasks_per_tenant: <int> | default = 30000]
-
-    retention:
-      # Enable bloom retention.
-      # CLI flag: -bloom-build.planner.retention.enabled
-      [enabled: <boolean> | default = false]
-
-  builder:
-    # The grpc_client block configures the gRPC client used to communicate
-    # between a client and server component in Loki.
-    # The CLI flags prefix for this block configuration is:
-    # bloom-gateway-client.grpc
-    [grpc_config: <grpc_client>]
-
-    # Hostname (and port) of the bloom planner
-    # CLI flag: -bloom-build.builder.planner-address
-    [planner_address: <string> | default = ""]
-
-    backoff_config:
-      # Minimum delay when backing off.
-      # CLI flag: -bloom-build.builder.backoff.backoff-min-period
-      [min_period: <duration> | default = 100ms]
-
-      # Maximum delay when backing off.
-      # CLI flag: -bloom-build.builder.backoff.backoff-max-period
-      [max_period: <duration> | default = 10s]
-
-      # Number of times to backoff and retry before failing.
-      # CLI flag: -bloom-build.builder.backoff.backoff-retries
-      [max_retries: <int> | default = 10]
+# Experimental: The bloom_build block configures the Loki bloom planner and
+# builder servers, responsible for building bloom filters.
+[bloom_build: <bloom_build>]
 
 # Experimental: The bloom_gateway block configures the Loki bloom gateway
 # server, responsible for serving queries for filtering chunks based on filter
@@ -1081,6 +1026,267 @@ metastore_client:
 
   # Configures the gRPC client used to communicate with the metastore.
   [grpc_client_config: <grpc_client>]
+
+partition_ring:
+  # The key-value store used to share the hash ring across multiple instances.
+  # This option needs be set on ingesters, distributors, queriers, and rulers
+  # when running in microservices mode.
+  kvstore:
+    # Backend storage to use for the ring. Supported values are: consul, etcd,
+    # inmemory, memberlist, multi.
+    # CLI flag: -ingester.partition-ring.store
+    [store: <string> | default = "memberlist"]
+
+    # The prefix for the keys in the store. Should end with a /.
+    # CLI flag: -ingester.partition-ring.prefix
+    [prefix: <string> | default = "collectors/"]
+
+    # Configuration for a Consul client. Only applies if the selected kvstore is
+    # consul.
+    # The CLI flags prefix for this block configuration is:
+    # ingester.partition-ring.consul
+    [consul: <consul>]
+
+    # Configuration for an ETCD v3 client. Only applies if the selected kvstore
+    # is etcd.
+    # The CLI flags prefix for this block configuration is:
+    # ingester.partition-ring.etcd
+    [etcd: <etcd>]
+
+    multi:
+      # Primary backend storage used by multi-client.
+      # CLI flag: -ingester.partition-ring.multi.primary
+      [primary: <string> | default = ""]
+
+      # Secondary backend storage used by multi-client.
+      # CLI flag: -ingester.partition-ring.multi.secondary
+      [secondary: <string> | default = ""]
+
+      # Mirror writes to secondary store.
+      # CLI flag: -ingester.partition-ring.multi.mirror-enabled
+      [mirror_enabled: <boolean> | default = false]
+
+      # Timeout for storing value to secondary store.
+      # CLI flag: -ingester.partition-ring.multi.mirror-timeout
+      [mirror_timeout: <duration> | default = 2s]
+
+  # Minimum number of owners to wait before a PENDING partition gets switched to
+  # ACTIVE.
+  # CLI flag: -ingester.partition-ring.min-partition-owners-count
+  [min_partition_owners_count: <int> | default = 1]
+
+  # How long the minimum number of owners are enforced before a PENDING
+  # partition gets switched to ACTIVE.
+  # CLI flag: -ingester.partition-ring.min-partition-owners-duration
+  [min_partition_owners_duration: <duration> | default = 10s]
+
+  # How long to wait before an INACTIVE partition is eligible for deletion. The
+  # partition is deleted only if it has been in INACTIVE state for at least the
+  # configured duration and it has no owners registered. A value of 0 disables
+  # partitions deletion.
+  # CLI flag: -ingester.partition-ring.delete-inactive-partition-after
+  [delete_inactive_partition_after: <duration> | default = 13h]
+
+kafka_config:
+  # the kafka endpoint to connect to
+  # CLI flag: -address
+  [address: <string> | default = "localhost:9092"]
+
+  # The Kafka topic name.
+  # CLI flag: -.topic
+  [topic: <string> | default = "loki.push"]
+
+kafka_ingester:
+  # Whether the kafka ingester is enabled.
+  # CLI flag: -kafka-ingester.enabled
+  [enabled: <boolean> | default = false]
+
+  # Configures how the lifecycle of the ingester will operate and where it will
+  # register for discovery.
+  lifecycler:
+    ring:
+      kvstore:
+        # Backend storage to use for the ring. Supported values are: consul,
+        # etcd, inmemory, memberlist, multi.
+        # CLI flag: -kafka-ingesterstore
+        [store: <string> | default = "consul"]
+
+        # The prefix for the keys in the store. Should end with a /.
+        # CLI flag: -kafka-ingesterprefix
+        [prefix: <string> | default = "collectors/"]
+
+        # Configuration for a Consul client. Only applies if the selected
+        # kvstore is consul.
+        # The CLI flags prefix for this block configuration is:
+        # kafka-ingesterconsul
+        [consul: <consul>]
+
+        # Configuration for an ETCD v3 client. Only applies if the selected
+        # kvstore is etcd.
+        # The CLI flags prefix for this block configuration is:
+        # kafka-ingesteretcd
+        [etcd: <etcd>]
+
+        multi:
+          # Primary backend storage used by multi-client.
+          # CLI flag: -kafka-ingestermulti.primary
+          [primary: <string> | default = ""]
+
+          # Secondary backend storage used by multi-client.
+          # CLI flag: -kafka-ingestermulti.secondary
+          [secondary: <string> | default = ""]
+
+          # Mirror writes to secondary store.
+          # CLI flag: -kafka-ingestermulti.mirror-enabled
+          [mirror_enabled: <boolean> | default = false]
+
+          # Timeout for storing value to secondary store.
+          # CLI flag: -kafka-ingestermulti.mirror-timeout
+          [mirror_timeout: <duration> | default = 2s]
+
+      # The heartbeat timeout after which ingesters are skipped for
+      # reads/writes. 0 = never (timeout disabled).
+      # CLI flag: -kafka-ingesterring.heartbeat-timeout
+      [heartbeat_timeout: <duration> | default = 1m]
+
+      # The number of ingesters to write to and read from.
+      # CLI flag: -kafka-ingesterdistributor.replication-factor
+      [replication_factor: <int> | default = 3]
+
+      # True to enable the zone-awareness and replicate ingested samples across
+      # different availability zones.
+      # CLI flag: -kafka-ingesterdistributor.zone-awareness-enabled
+      [zone_awareness_enabled: <boolean> | default = false]
+
+      # Comma-separated list of zones to exclude from the ring. Instances in
+      # excluded zones will be filtered out from the ring.
+      # CLI flag: -kafka-ingesterdistributor.excluded-zones
+      [excluded_zones: <string> | default = ""]
+
+    # Number of tokens for each ingester.
+    # CLI flag: -kafka-ingesternum-tokens
+    [num_tokens: <int> | default = 128]
+
+    # Period at which to heartbeat to consul. 0 = disabled.
+    # CLI flag: -kafka-ingesterheartbeat-period
+    [heartbeat_period: <duration> | default = 5s]
+
+    # Heartbeat timeout after which instance is assumed to be unhealthy. 0 =
+    # disabled.
+    # CLI flag: -kafka-ingesterheartbeat-timeout
+    [heartbeat_timeout: <duration> | default = 1m]
+
+    # Observe tokens after generating to resolve collisions. Useful when using
+    # gossiping ring.
+    # CLI flag: -kafka-ingesterobserve-period
+    [observe_period: <duration> | default = 0s]
+
+    # Period to wait for a claim from another member; will join automatically
+    # after this.
+    # CLI flag: -kafka-ingesterjoin-after
+    [join_after: <duration> | default = 0s]
+
+    # Minimum duration to wait after the internal readiness checks have passed
+    # but before succeeding the readiness endpoint. This is used to slowdown
+    # deployment controllers (eg. Kubernetes) after an instance is ready and
+    # before they proceed with a rolling update, to give the rest of the cluster
+    # instances enough time to receive ring updates.
+    # CLI flag: -kafka-ingestermin-ready-duration
+    [min_ready_duration: <duration> | default = 15s]
+
+    # Name of network interface to read address from.
+    # CLI flag: -kafka-ingesterlifecycler.interface
+    [interface_names: <list of strings> | default = [<private network interfaces>]]
+
+    # Enable IPv6 support. Required to make use of IP addresses from IPv6
+    # interfaces.
+    # CLI flag: -kafka-ingesterenable-inet6
+    [enable_inet6: <boolean> | default = false]
+
+    # Duration to sleep for before exiting, to ensure metrics are scraped.
+    # CLI flag: -kafka-ingesterfinal-sleep
+    [final_sleep: <duration> | default = 0s]
+
+    # File path where tokens are stored. If empty, tokens are not stored at
+    # shutdown and restored at startup.
+    # CLI flag: -kafka-ingestertokens-file-path
+    [tokens_file_path: <string> | default = ""]
+
+    # The availability zone where this instance is running.
+    # CLI flag: -kafka-ingesteravailability-zone
+    [availability_zone: <string> | default = ""]
+
+    # Unregister from the ring upon clean shutdown. It can be useful to disable
+    # for rolling restarts with consistent naming in conjunction with
+    # -distributor.extend-writes=false.
+    # CLI flag: -kafka-ingesterunregister-on-shutdown
+    [unregister_on_shutdown: <boolean> | default = true]
+
+    # When enabled the readiness probe succeeds only after all instances are
+    # ACTIVE and healthy in the ring, otherwise only the instance itself is
+    # checked. This option should be disabled if in your cluster multiple
+    # instances can be rolled out simultaneously, otherwise rolling updates may
+    # be slowed down.
+    # CLI flag: -kafka-ingesterreadiness-check-ring-health
+    [readiness_check_ring_health: <boolean> | default = true]
+
+    # IP address to advertise in the ring.
+    # CLI flag: -kafka-ingesterlifecycler.addr
+    [address: <string> | default = ""]
+
+    # port to advertise in consul (defaults to server.grpc-listen-port).
+    # CLI flag: -kafka-ingesterlifecycler.port
+    [port: <int> | default = 0]
+
+    # ID to register in the ring.
+    # CLI flag: -kafka-ingesterlifecycler.ID
+    [id: <string> | default = "<hostname>"]
+
+  # Path where the shutdown marker file is stored. If not set and
+  # common.path_prefix is set then common.path_prefix will be used.
+  # CLI flag: -kafka-ingester.shutdown-marker-path
+  [shutdown_marker_path: <string> | default = ""]
+
+  partition_ring:
+    # The key-value store used to share the hash ring across multiple instances.
+    # This option needs be set on ingesters, distributors, queriers, and rulers
+    # when running in microservices mode.
+    kvstore:
+      [store: <string> | default = ""]
+
+      [prefix: <string> | default = ""]
+
+      # Configuration for a Consul client. Only applies if the selected kvstore
+      # is consul.
+      # The CLI flags prefix for this block configuration is:
+      # common.storage.ring.consul
+      [consul: <consul>]
+
+      # Configuration for an ETCD v3 client. Only applies if the selected
+      # kvstore is etcd.
+      # The CLI flags prefix for this block configuration is:
+      # common.storage.ring.etcd
+      [etcd: <etcd>]
+
+      multi:
+        [primary: <string> | default = ""]
+
+        [secondary: <string> | default = ""]
+
+        [mirror_enabled: <boolean>]
+
+        [mirror_timeout: <duration>]
+
+    [min_partition_owners_count: <int>]
+
+    [min_partition_owners_duration: <duration>]
+
+    [delete_inactive_partition_after: <duration>]
+
+  kafkaconfig:
+    [address: <string> | default = ""]
+
+    [topic: <string> | default = ""]
 
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
@@ -1466,152 +1672,67 @@ The `azure_storage_config` block configures the connection to Azure object stora
 [max_retry_delay: <duration> | default = 500ms]
 ```
 
-### bloom_compactor
+### bloom_build
 
-Experimental: The `bloom_compactor` block configures the Loki bloom compactor server, responsible for compacting stream indexes into bloom filters and merging them as bloom blocks.
+Experimental: The `bloom_build` block configures the Loki bloom planner and builder servers, responsible for building bloom filters.
 
 ```yaml
-# Defines the ring to be used by the bloom-compactor servers. In case this isn't
-# configured, this block supports inheriting configuration from the common ring
-# section.
-ring:
-  kvstore:
-    # Backend storage to use for the ring. Supported values are: consul, etcd,
-    # inmemory, memberlist, multi.
-    # CLI flag: -bloom-compactor.ring.store
-    [store: <string> | default = "consul"]
-
-    # The prefix for the keys in the store. Should end with a /.
-    # CLI flag: -bloom-compactor.ring.prefix
-    [prefix: <string> | default = "collectors/"]
-
-    # Configuration for a Consul client. Only applies if the selected kvstore is
-    # consul.
-    # The CLI flags prefix for this block configuration is: bloom-compactor.ring
-    [consul: <consul>]
-
-    # Configuration for an ETCD v3 client. Only applies if the selected kvstore
-    # is etcd.
-    # The CLI flags prefix for this block configuration is: bloom-compactor.ring
-    [etcd: <etcd>]
-
-    multi:
-      # Primary backend storage used by multi-client.
-      # CLI flag: -bloom-compactor.ring.multi.primary
-      [primary: <string> | default = ""]
-
-      # Secondary backend storage used by multi-client.
-      # CLI flag: -bloom-compactor.ring.multi.secondary
-      [secondary: <string> | default = ""]
-
-      # Mirror writes to secondary store.
-      # CLI flag: -bloom-compactor.ring.multi.mirror-enabled
-      [mirror_enabled: <boolean> | default = false]
-
-      # Timeout for storing value to secondary store.
-      # CLI flag: -bloom-compactor.ring.multi.mirror-timeout
-      [mirror_timeout: <duration> | default = 2s]
-
-  # Period at which to heartbeat to the ring. 0 = disabled.
-  # CLI flag: -bloom-compactor.ring.heartbeat-period
-  [heartbeat_period: <duration> | default = 15s]
-
-  # The heartbeat timeout after which compactors are considered unhealthy within
-  # the ring. 0 = never (timeout disabled).
-  # CLI flag: -bloom-compactor.ring.heartbeat-timeout
-  [heartbeat_timeout: <duration> | default = 1m]
-
-  # File path where tokens are stored. If empty, tokens are not stored at
-  # shutdown and restored at startup.
-  # CLI flag: -bloom-compactor.ring.tokens-file-path
-  [tokens_file_path: <string> | default = ""]
-
-  # True to enable zone-awareness and replicate blocks across different
-  # availability zones.
-  # CLI flag: -bloom-compactor.ring.zone-awareness-enabled
-  [zone_awareness_enabled: <boolean> | default = false]
-
-  # Number of tokens to use in the ring per compactor. Higher number of tokens
-  # will result in more and smaller files (metas and blocks.)
-  # CLI flag: -bloom-compactor.ring.num-tokens
-  [num_tokens: <int> | default = 10]
-
-  # Instance ID to register in the ring.
-  # CLI flag: -bloom-compactor.ring.instance-id
-  [instance_id: <string> | default = "<hostname>"]
-
-  # Name of network interface to read address from.
-  # CLI flag: -bloom-compactor.ring.instance-interface-names
-  [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
-
-  # Port to advertise in the ring (defaults to server.grpc-listen-port).
-  # CLI flag: -bloom-compactor.ring.instance-port
-  [instance_port: <int> | default = 0]
-
-  # IP address to advertise in the ring.
-  # CLI flag: -bloom-compactor.ring.instance-addr
-  [instance_addr: <string> | default = ""]
-
-  # The availability zone where this instance is running. Required if
-  # zone-awareness is enabled.
-  # CLI flag: -bloom-compactor.ring.instance-availability-zone
-  [instance_availability_zone: <string> | default = ""]
-
-  # Enable using a IPv6 instance address.
-  # CLI flag: -bloom-compactor.ring.instance-enable-ipv6
-  [instance_enable_ipv6: <boolean> | default = false]
-
-# Flag to enable or disable the usage of the bloom-compactor component.
-# CLI flag: -bloom-compactor.enabled
+# Flag to enable or disable the usage of the bloom-planner and bloom-builder
+# components.
+# CLI flag: -bloom-build.enabled
 [enabled: <boolean> | default = false]
 
-# Interval at which to re-run the compaction operation.
-# CLI flag: -bloom-compactor.compaction-interval
-[compaction_interval: <duration> | default = 10m]
+planner:
+  # Interval at which to re-run the bloom creation planning.
+  # CLI flag: -bloom-build.planner.interval
+  [planning_interval: <duration> | default = 8h]
 
-# Newest day-table offset (from today, inclusive) to compact. Increase to lower
-# cost by not re-writing data to object storage too frequently since recent data
-# changes more often at the cost of not having blooms available as quickly.
-# CLI flag: -bloom-compactor.min-table-offset
-[min_table_offset: <int> | default = 1]
+  # Newest day-table offset (from today, inclusive) to build blooms for.
+  # Increase to lower cost by not re-writing data to object storage too
+  # frequently since recent data changes more often at the cost of not having
+  # blooms available as quickly.
+  # CLI flag: -bloom-build.planner.min-table-offset
+  [min_table_offset: <int> | default = 1]
 
-# Oldest day-table offset (from today, inclusive) to compact. This can be used
-# to lower cost by not trying to compact older data which doesn't change. This
-# can be optimized by aligning it with the maximum `reject_old_samples_max_age`
-# setting of any tenant.
-# CLI flag: -bloom-compactor.max-table-offset
-[max_table_offset: <int> | default = 2]
+  # Oldest day-table offset (from today, inclusive) to compact. This can be used
+  # to lower cost by not trying to compact older data which doesn't change. This
+  # can be optimized by aligning it with the maximum
+  # `reject_old_samples_max_age` setting of any tenant.
+  # CLI flag: -bloom-build.planner.max-table-offset
+  [max_table_offset: <int> | default = 2]
 
-# Number of workers to run in parallel for compaction.
-# CLI flag: -bloom-compactor.worker-parallelism
-[worker_parallelism: <int> | default = 1]
+  # Maximum number of tasks to queue per tenant.
+  # CLI flag: -bloom-build.planner.max-tasks-per-tenant
+  [max_queued_tasks_per_tenant: <int> | default = 30000]
 
-# Minimum backoff time between retries.
-# CLI flag: -bloom-compactor.compaction-retries-min-backoff
-[compaction_retries_min_backoff: <duration> | default = 10s]
+  retention:
+    # Enable bloom retention.
+    # CLI flag: -bloom-build.planner.retention.enabled
+    [enabled: <boolean> | default = false]
 
-# Maximum backoff time between retries.
-# CLI flag: -bloom-compactor.compaction-retries-max-backoff
-[compaction_retries_max_backoff: <duration> | default = 1m]
+builder:
+  # The grpc_client block configures the gRPC client used to communicate between
+  # a client and server component in Loki.
+  # The CLI flags prefix for this block configuration is:
+  # bloom-gateway-client.grpc
+  [grpc_config: <grpc_client>]
 
-# Number of retries to perform when compaction fails.
-# CLI flag: -bloom-compactor.compaction-retries
-[compaction_retries: <int> | default = 3]
+  # Hostname (and port) of the bloom planner
+  # CLI flag: -bloom-build.builder.planner-address
+  [planner_address: <string> | default = ""]
 
-# Maximum number of tables to compact in parallel. While increasing this value,
-# please make sure compactor has enough disk space allocated to be able to store
-# and compact as many tables.
-# CLI flag: -bloom-compactor.max-compaction-parallelism
-[max_compaction_parallelism: <int> | default = 1]
+  backoff_config:
+    # Minimum delay when backing off.
+    # CLI flag: -bloom-build.builder.backoff.backoff-min-period
+    [min_period: <duration> | default = 100ms]
 
-retention:
-  # Enable bloom retention.
-  # CLI flag: -bloom-compactor.retention.enabled
-  [enabled: <boolean> | default = false]
+    # Maximum delay when backing off.
+    # CLI flag: -bloom-build.builder.backoff.backoff-max-period
+    [max_period: <duration> | default = 10s]
 
-  # Max lookback days for retention.
-  # CLI flag: -bloom-compactor.retention.max-lookback-days
-  [max_lookback_days: <int> | default = 365]
+    # Number of times to backoff and retry before failing.
+    # CLI flag: -bloom-build.builder.backoff.backoff-retries
+    [max_retries: <int> | default = 10]
 ```
 
 ### bloom_gateway
@@ -2119,12 +2240,10 @@ ring:
 
     # Configuration for a Consul client. Only applies if the selected kvstore is
     # consul.
-    # The CLI flags prefix for this block configuration is: common.storage.ring
     [consul: <consul>]
 
     # Configuration for an ETCD v3 client. Only applies if the selected kvstore
     # is etcd.
-    # The CLI flags prefix for this block configuration is: common.storage.ring
     [etcd: <etcd>]
 
     multi:
@@ -2298,12 +2417,13 @@ compactor_ring:
 
     # Configuration for a Consul client. Only applies if the selected kvstore is
     # consul.
-    # The CLI flags prefix for this block configuration is: compactor.ring
+    # The CLI flags prefix for this block configuration is:
+    # compactor.ring.consul
     [consul: <consul>]
 
     # Configuration for an ETCD v3 client. Only applies if the selected kvstore
     # is etcd.
-    # The CLI flags prefix for this block configuration is: compactor.ring
+    # The CLI flags prefix for this block configuration is: compactor.ring.etcd
     [etcd: <etcd>]
 
     multi:
@@ -2382,46 +2502,48 @@ compactor_ring:
 
 Configuration for a Consul client. Only applies if the selected kvstore is `consul`. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `bloom-compactor.ring`
-- `common.storage.ring`
-- `compactor.ring`
-- `distributor.ring`
-- `index-gateway.ring`
-- `ingester-rf1`
-- `pattern-ingester`
-- `query-scheduler.ring`
-- `ruler.ring`
+- `common.storage.ring.consul`
+- `compactor.ring.consul`
+- `consul`
+- `distributor.ring.consul`
+- `index-gateway.ring.consul`
+- `ingester-rf1.consul`
+- `ingester.partition-ring.consul`
+- `kafka-ingesterconsul`
+- `pattern-ingester.consul`
+- `query-scheduler.ring.consul`
+- `ruler.ring.consul`
 
 &nbsp;
 
 ```yaml
 # Hostname and port of Consul.
-# CLI flag: -<prefix>.consul.hostname
+# CLI flag: -<prefix>.hostname
 [host: <string> | default = "localhost:8500"]
 
 # ACL Token used to interact with Consul.
-# CLI flag: -<prefix>.consul.acl-token
+# CLI flag: -<prefix>.acl-token
 [acl_token: <string> | default = ""]
 
 # HTTP timeout when talking to Consul
-# CLI flag: -<prefix>.consul.client-timeout
+# CLI flag: -<prefix>.client-timeout
 [http_client_timeout: <duration> | default = 20s]
 
 # Enable consistent reads to Consul.
-# CLI flag: -<prefix>.consul.consistent-reads
+# CLI flag: -<prefix>.consistent-reads
 [consistent_reads: <boolean> | default = false]
 
 # Rate limit when watching key or prefix in Consul, in requests per second. 0
 # disables the rate limit.
-# CLI flag: -<prefix>.consul.watch-rate-limit
+# CLI flag: -<prefix>.watch-rate-limit
 [watch_rate_limit: <float> | default = 1]
 
 # Burst size used in rate limit. Values less than 1 are treated as 1.
-# CLI flag: -<prefix>.consul.watch-burst-size
+# CLI flag: -<prefix>.watch-burst-size
 [watch_burst_size: <int> | default = 1]
 
 # Maximum duration to wait before retrying a Compare And Swap (CAS) operation.
-# CLI flag: -<prefix>.consul.cas-retry-delay
+# CLI flag: -<prefix>.cas-retry-delay
 [cas_retry_delay: <duration> | default = 1s]
 ```
 
@@ -2526,12 +2648,14 @@ ring:
 
     # Configuration for a Consul client. Only applies if the selected kvstore is
     # consul.
-    # The CLI flags prefix for this block configuration is: distributor.ring
+    # The CLI flags prefix for this block configuration is:
+    # distributor.ring.consul
     [consul: <consul>]
 
     # Configuration for an ETCD v3 client. Only applies if the selected kvstore
     # is etcd.
-    # The CLI flags prefix for this block configuration is: distributor.ring
+    # The CLI flags prefix for this block configuration is:
+    # distributor.ring.etcd
     [etcd: <etcd>]
 
     multi:
@@ -2603,56 +2727,58 @@ otlp_config:
 
 Configuration for an ETCD v3 client. Only applies if the selected kvstore is `etcd`. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `bloom-compactor.ring`
-- `common.storage.ring`
-- `compactor.ring`
-- `distributor.ring`
-- `index-gateway.ring`
-- `ingester-rf1`
-- `pattern-ingester`
-- `query-scheduler.ring`
-- `ruler.ring`
+- `common.storage.ring.etcd`
+- `compactor.ring.etcd`
+- `distributor.ring.etcd`
+- `etcd`
+- `index-gateway.ring.etcd`
+- `ingester-rf1.etcd`
+- `ingester.partition-ring.etcd`
+- `kafka-ingesteretcd`
+- `pattern-ingester.etcd`
+- `query-scheduler.ring.etcd`
+- `ruler.ring.etcd`
 
 &nbsp;
 
 ```yaml
 # The etcd endpoints to connect to.
-# CLI flag: -<prefix>.etcd.endpoints
+# CLI flag: -<prefix>.endpoints
 [endpoints: <list of strings> | default = []]
 
 # The dial timeout for the etcd connection.
-# CLI flag: -<prefix>.etcd.dial-timeout
+# CLI flag: -<prefix>.dial-timeout
 [dial_timeout: <duration> | default = 10s]
 
 # The maximum number of retries to do for failed ops.
-# CLI flag: -<prefix>.etcd.max-retries
+# CLI flag: -<prefix>.max-retries
 [max_retries: <int> | default = 10]
 
 # Enable TLS.
-# CLI flag: -<prefix>.etcd.tls-enabled
+# CLI flag: -<prefix>.tls-enabled
 [tls_enabled: <boolean> | default = false]
 
 # Path to the client certificate, which will be used for authenticating with the
 # server. Also requires the key path to be configured.
-# CLI flag: -<prefix>.etcd.tls-cert-path
+# CLI flag: -<prefix>.tls-cert-path
 [tls_cert_path: <string> | default = ""]
 
 # Path to the key for the client certificate. Also requires the client
 # certificate to be configured.
-# CLI flag: -<prefix>.etcd.tls-key-path
+# CLI flag: -<prefix>.tls-key-path
 [tls_key_path: <string> | default = ""]
 
 # Path to the CA certificates to validate server certificate against. If not
 # set, the host's root CA certificates are used.
-# CLI flag: -<prefix>.etcd.tls-ca-path
+# CLI flag: -<prefix>.tls-ca-path
 [tls_ca_path: <string> | default = ""]
 
 # Override the expected name on the server certificate.
-# CLI flag: -<prefix>.etcd.tls-server-name
+# CLI flag: -<prefix>.tls-server-name
 [tls_server_name: <string> | default = ""]
 
 # Skip validating server certificate.
-# CLI flag: -<prefix>.etcd.tls-insecure-skip-verify
+# CLI flag: -<prefix>.tls-insecure-skip-verify
 [tls_insecure_skip_verify: <boolean> | default = false]
 
 # Override the default cipher suite list (separated by commas). Allowed values:
@@ -2685,20 +2811,20 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
 # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
 # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
-# CLI flag: -<prefix>.etcd.tls-cipher-suites
+# CLI flag: -<prefix>.tls-cipher-suites
 [tls_cipher_suites: <string> | default = ""]
 
 # Override the default minimum TLS version. Allowed values: VersionTLS10,
 # VersionTLS11, VersionTLS12, VersionTLS13
-# CLI flag: -<prefix>.etcd.tls-min-version
+# CLI flag: -<prefix>.tls-min-version
 [tls_min_version: <string> | default = ""]
 
 # Etcd username.
-# CLI flag: -<prefix>.etcd.username
+# CLI flag: -<prefix>.username
 [username: <string> | default = ""]
 
 # Etcd password.
-# CLI flag: -<prefix>.etcd.password
+# CLI flag: -<prefix>.password
 [password: <string> | default = ""]
 ```
 
@@ -3075,12 +3201,14 @@ ring:
 
     # Configuration for a Consul client. Only applies if the selected kvstore is
     # consul.
-    # The CLI flags prefix for this block configuration is: index-gateway.ring
+    # The CLI flags prefix for this block configuration is:
+    # index-gateway.ring.consul
     [consul: <consul>]
 
     # Configuration for an ETCD v3 client. Only applies if the selected kvstore
     # is etcd.
-    # The CLI flags prefix for this block configuration is: index-gateway.ring
+    # The CLI flags prefix for this block configuration is:
+    # index-gateway.ring.etcd
     [etcd: <etcd>]
 
     multi:
@@ -3172,10 +3300,12 @@ lifecycler:
 
       # Configuration for a Consul client. Only applies if the selected kvstore
       # is consul.
+      # The CLI flags prefix for this block configuration is: consul
       [consul: <consul>]
 
       # Configuration for an ETCD v3 client. Only applies if the selected
       # kvstore is etcd.
+      # The CLI flags prefix for this block configuration is: etcd
       [etcd: <etcd>]
 
       multi:
@@ -3444,16 +3574,26 @@ The `ingester_client` block configures how the distributor will connect to inges
 ```yaml
 # Configures how connections are pooled.
 pool_config:
-  [client_cleanup_period: <duration>]
+  # How frequently to clean up clients for ingesters that have gone away.
+  # CLI flag: -distributor.client-cleanup-period
+  [client_cleanup_period: <duration> | default = 15s]
 
-  [health_check_ingesters: <boolean>]
+  # Run a health check on each ingester client during periodic cleanup.
+  # CLI flag: -distributor.health-check-ingesters
+  [health_check_ingesters: <boolean> | default = true]
 
-  [remote_timeout: <duration>]
+  # How quickly a dead client will be removed after it has been detected to
+  # disappear. Set this to a value to allow time for a secondary health check to
+  # recover the missing client.
+  # CLI flag: -ingester.client.healthcheck-timeout
+  [remote_timeout: <duration> | default = 1s]
 
-[remote_timeout: <duration>]
+# The remote request timeout on the client side.
+# CLI flag: -ingester.client.timeout
+[remote_timeout: <duration> | default = 5s]
 
 # Configures how the gRPC connection to ingesters work as a client.
-# The CLI flags prefix for this block configuration is: ingester-rf1.client
+# The CLI flags prefix for this block configuration is: ingester.client
 [grpc_client_config: <grpc_client>]
 ```
 
@@ -3959,27 +4099,22 @@ shard_streams:
 # CLI flag: -bloom-gateway.cache-key-interval
 [bloom_gateway_cache_key_interval: <duration> | default = 15m]
 
-# Experimental. The shard size defines how many bloom compactors should be used
-# by a tenant when computing blooms. If it's set to 0, shuffle sharding is
-# disabled.
-# CLI flag: -bloom-compactor.shard-size
-[bloom_compactor_shard_size: <int> | default = 0]
+# Experimental. Maximum number of builders to use when building blooms. 0 allows
+# unlimited builders.
+# CLI flag: -bloom-build.max-builders
+[bloom_build_max_builders: <int> | default = 0]
 
-# Experimental. Whether to compact chunks into bloom filters.
-# CLI flag: -bloom-compactor.enable-compaction
-[bloom_compactor_enable_compaction: <boolean> | default = false]
+# Experimental. Maximum number of retries for a failed task. If a task fails
+# more than this number of times, it is considered failed and will not be
+# retried. A value of 0 disables this limit.
+# CLI flag: -bloom-build.task-max-retries
+[bloom_build_task_max_retries: <int> | default = 3]
 
-# Experimental. The maximum bloom block size. A value of 0 sets an unlimited
-# size. Default is 200MB. The actual block size might exceed this limit since
-# blooms will be added to blocks until the block exceeds the maximum block size.
-# CLI flag: -bloom-compactor.max-block-size
-[bloom_compactor_max_block_size: <int> | default = 200MB]
-
-# Experimental. The maximum bloom size per log stream. A log stream whose
-# generated bloom filter exceeds this size will be discarded. A value of 0 sets
-# an unlimited size. Default is 128MB.
-# CLI flag: -bloom-compactor.max-bloom-size
-[bloom_compactor_max_bloom_size: <int> | default = 128MB]
+# Experimental. Timeout for a builder to finish a task. If a builder does not
+# respond within this time, it is considered failed and the task will be
+# requeued. 0 disables the timeout.
+# CLI flag: -bloom-build.builder-response-timeout
+[bloom_build_builder_response_timeout: <duration> | default = 0s]
 
 # Experimental. Whether to create blooms for the tenant.
 # CLI flag: -bloom-build.enable
@@ -3991,40 +4126,35 @@ shard_streams:
 # CLI flag: -bloom-build.split-keyspace-by
 [bloom_split_series_keyspace_by: <int> | default = 256]
 
-# Experimental. Maximum number of builders to use when building blooms. 0 allows
-# unlimited builders.
-# CLI flag: -bloom-build.max-builders
-[bloom_build_max_builders: <int> | default = 0]
-
-# Experimental. Timeout for a builder to finish a task. If a builder does not
-# respond within this time, it is considered failed and the task will be
-# requeued. 0 disables the timeout.
-# CLI flag: -bloom-build.builder-response-timeout
-[bloom_build_builder_response_timeout: <duration> | default = 0s]
-
-# Experimental. Maximum number of retries for a failed task. If a task fails
-# more than this number of times, it is considered failed and will not be
-# retried. A value of 0 disables this limit.
-# CLI flag: -bloom-build.task-max-retries
-[bloom_build_task_max_retries: <int> | default = 3]
-
 # Experimental. Length of the n-grams created when computing blooms from log
 # lines.
-# CLI flag: -bloom-compactor.ngram-length
+# CLI flag: -bloom-build.ngram-length
 [bloom_ngram_length: <int> | default = 4]
 
 # Experimental. Skip factor for the n-grams created when computing blooms from
 # log lines.
-# CLI flag: -bloom-compactor.ngram-skip
+# CLI flag: -bloom-build.ngram-skip
 [bloom_ngram_skip: <int> | default = 1]
 
 # Experimental. Scalable Bloom Filter desired false-positive rate.
-# CLI flag: -bloom-compactor.false-positive-rate
+# CLI flag: -bloom-build.false-positive-rate
 [bloom_false_positive_rate: <float> | default = 0.01]
 
 # Experimental. Compression algorithm for bloom block pages.
-# CLI flag: -bloom-compactor.block-encoding
+# CLI flag: -bloom-build.block-encoding
 [bloom_block_encoding: <string> | default = "none"]
+
+# Experimental. The maximum bloom block size. A value of 0 sets an unlimited
+# size. Default is 200MB. The actual block size might exceed this limit since
+# blooms will be added to blocks until the block exceeds the maximum block size.
+# CLI flag: -bloom-build.max-block-size
+[bloom_max_block_size: <int> | default = 200MB]
+
+# Experimental. The maximum bloom size per log stream. A log stream whose
+# generated bloom filter exceeds this size will be discarded. A value of 0 sets
+# an unlimited size. Default is 128MB.
+# CLI flag: -bloom-build.max-bloom-size
+[bloom_max_bloom_size: <int> | default = 128MB]
 
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata
@@ -4057,6 +4187,17 @@ otlp_config:
   # Configuration for log attributes to store them as Structured Metadata or
   # drop them altogether
   [log_attributes: <list of attributes_configs>]
+
+# Block ingestion until the configured date. The time should be in RFC3339
+# format.
+# CLI flag: -limits.block-ingestion-until
+[block_ingestion_until: <time> | default = 0]
+
+# HTTP status code to return when ingestion is blocked. If 200, the ingestion
+# will be blocked without returning an error to the client. By Default, a custom
+# status code (260) is returned to the client along with an error message.
+# CLI flag: -limits.block-ingestion-status-code
+[block_ingestion_status_code: <int> | default = 260]
 ```
 
 ### local_storage_config
@@ -4649,12 +4790,14 @@ scheduler_ring:
 
     # Configuration for a Consul client. Only applies if the selected kvstore is
     # consul.
-    # The CLI flags prefix for this block configuration is: query-scheduler.ring
+    # The CLI flags prefix for this block configuration is:
+    # query-scheduler.ring.consul
     [consul: <consul>]
 
     # Configuration for an ETCD v3 client. Only applies if the selected kvstore
     # is etcd.
-    # The CLI flags prefix for this block configuration is: query-scheduler.ring
+    # The CLI flags prefix for this block configuration is:
+    # query-scheduler.ring.etcd
     [etcd: <etcd>]
 
     multi:
@@ -4955,12 +5098,12 @@ ring:
 
     # Configuration for a Consul client. Only applies if the selected kvstore is
     # consul.
-    # The CLI flags prefix for this block configuration is: ruler.ring
+    # The CLI flags prefix for this block configuration is: ruler.ring.consul
     [consul: <consul>]
 
     # Configuration for an ETCD v3 client. Only applies if the selected kvstore
     # is etcd.
-    # The CLI flags prefix for this block configuration is: ruler.ring
+    # The CLI flags prefix for this block configuration is: ruler.ring.etcd
     [etcd: <etcd>]
 
     multi:
@@ -5506,11 +5649,7 @@ grpc_tls_config:
 # CLI flag: -server.grpc.stats-tracking-enabled
 [grpc_server_stats_tracking_enabled: <boolean> | default = true]
 
-# If true, gGPC's buffer pools will be used to handle incoming requests.
-# Enabling this feature can reduce memory allocation, but also requires
-# disabling GRPC server stats tracking by setting
-# `server.grpc.stats-tracking-enabled=false`. This is an experimental gRPC
-# feature, so it might be removed in a future version of the gRPC library.
+# Deprecated option, has no effect and will be removed in a future version.
 # CLI flag: -server.grpc.recv-buffer-pools-enabled
 [grpc_server_recv_buffer_pools_enabled: <boolean> | default = false]
 

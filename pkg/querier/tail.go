@@ -38,7 +38,7 @@ const (
 // Tailer manages complete lifecycle of a tail request
 type Tailer struct {
 	// openStreamIterator is for streams already open
-	openStreamIterator iter.HeapIterator
+	openStreamIterator iter.MergeEntryIterator
 	streamMtx          sync.Mutex // for synchronizing access to openStreamIterator
 
 	currEntry  logproto.Entry

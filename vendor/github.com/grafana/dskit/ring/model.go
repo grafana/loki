@@ -594,6 +594,29 @@ func (d *Desc) writableInstancesWithTokensCountPerZone() map[string]int {
 	return instancesCountPerZone
 }
 
+func (d *Desc) readOnlyInstancesAndOldestReadOnlyUpdatedTimestamp() (int, int64) {
+	readOnlyInstances := 0
+	oldestReadOnlyUpdatedTimestamp := int64(0)
+	first := true
+
+	if d != nil {
+		for _, ingester := range d.Ingesters {
+			if !ingester.ReadOnly {
+				continue
+			}
+
+			readOnlyInstances++
+			if first {
+				oldestReadOnlyUpdatedTimestamp = ingester.ReadOnlyUpdatedTimestamp
+			} else {
+				oldestReadOnlyUpdatedTimestamp = min(oldestReadOnlyUpdatedTimestamp, ingester.ReadOnlyUpdatedTimestamp)
+			}
+			first = false
+		}
+	}
+	return readOnlyInstances, oldestReadOnlyUpdatedTimestamp
+}
+
 type CompareResult int
 
 // CompareResult responses

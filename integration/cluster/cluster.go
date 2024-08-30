@@ -89,7 +89,7 @@ storage_config:
 bloom_gateway:
   enabled: false
 
-bloom_compactor:
+bloom_build:
   enabled: false
 
 compactor:

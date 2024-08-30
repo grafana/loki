@@ -415,6 +415,11 @@ func (i *Lifecycler) setReadOnlyState(readOnly bool, readOnlyLastUpdated time.Ti
 	defer i.stateMtx.Unlock()
 	i.readOnly = readOnly
 	i.readOnlyLastUpdated = readOnlyLastUpdated
+	if readOnly {
+		i.lifecyclerMetrics.readonly.Set(1)
+	} else {
+		i.lifecyclerMetrics.readonly.Set(0)
+	}
 }
 
 // ClaimTokensFor takes all the tokens for the supplied ingester and assigns them to this ingester.
@@ -678,8 +683,8 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 			now := time.Now()
 			// The instance doesn't exist in the ring, so it's safe to set the registered timestamp as of now.
 			i.setRegisteredAt(now)
-			// Clear read-only state, and set last update time to "now".
-			i.setReadOnlyState(false, now)
+			// Clear read-only state, and set last update time to "zero".
+			i.setReadOnlyState(false, time.Time{})
 
 			// We use the tokens from the file only if it does not exist in the ring yet.
 			if len(tokensFromFile) > 0 {
@@ -719,8 +724,8 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		}
 
 		tokens := Tokens(instanceDesc.Tokens)
-		level.Info(i.logger).Log("msg", "existing instance found in ring", "state", instanceDesc.State, "tokens",
-			len(tokens), "ring", i.RingName)
+		ro, rots := instanceDesc.GetReadOnlyState()
+		level.Info(i.logger).Log("msg", "existing instance found in ring", "state", instanceDesc.State, "tokens", len(tokens), "ring", i.RingName, "readOnly", ro, "readOnlyStateUpdate", rots)
 
 		// If the ingester fails to clean its ring entry up or unregister_on_shutdown=false, it can leave behind its
 		// ring state as LEAVING. Make sure to switch to the ACTIVE state.
