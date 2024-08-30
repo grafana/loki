@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"testing"
+	"time"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
 )
 
 func TestECSLogGroupParsing(t *testing.T) {
-	for taskName, expected := range logGroups {
+	for taskName, expected := range ecsLogGroups {
 		t.Run(taskName, func(t *testing.T) {
 			actual := parseECSTask(taskName)
 			if !expected.Equal(actual) {
@@ -18,9 +21,31 @@ func TestECSLogGroupParsing(t *testing.T) {
 	}
 }
 
+func TestSyslogParsing_WhenSyslogStream_ParsesJSON(t *testing.T) {
+	syslogStream := "/otel-collector/otc-1"
+	expected := model.LabelSet{
+		model.LabelName(LabelSource): model.LabelValue("syslog"),
+		model.LabelName(LabelHost):   model.LabelValue("otc-1"),
+	}
+
+	e := entry{
+		labels: model.LabelSet{},
+		entry: logproto.Entry{
+			Timestamp: time.Now().UnixNano(),
+			Line:      `{invalid JSON`,
+		},
+	}
+	batch := newBatch(context.Background(), e)
+	err := parseCWEvent(ctx, batch, ev)
+	if err != nil {
+		return err
+	}
+
+}
+
 // This is a subset of the log groups I found in production by running the following loki query:
 // sum by(cloudwatch_log_group, cloudwatch_owner)(rate({cloudwatch_log_group=~".+"} [15m]))
-var logGroups = map[string]model.LabelSet{
+var ecsLogGroups = map[string]model.LabelSet{
 	// These should not parse and should return an empty label set
 	"/aws/amazonmq/broker/b-7144cd02-e9b3-4209-b89d-8c19074b6290/connection": {},
 	"/networking/twingate/us-west-1-segshare-prod":                           {},
