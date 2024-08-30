@@ -5674,7 +5674,8 @@ null
     "requestTimeout": null,
     "useFederatedToken": false,
     "useManagedIdentity": false,
-    "userAssignedId": null
+    "userAssignedId": null,
+    "chunkDelimiter": null
   },
   "filesystem": {
     "admin_api_directory": "/var/loki/admin",
