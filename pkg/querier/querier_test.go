@@ -1164,7 +1164,7 @@ func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*quer
 	store.On("SelectLogs", mock.Anything, mock.Anything).Return(mockStreamIterator(0, 1), nil)
 	store.On("SelectSamples", mock.Anything, mock.Anything).Return(mockSampleIterator(querySampleClient), nil)
 	store.On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"1", "2", "3"}, nil)
-	store.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"foo"}, nil)
+	store.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"foo"}, nil)
 	store.On("SelectSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
 		{Labels: []logproto.SeriesIdentifier_LabelsEntry{{Key: "foo", Value: "1"}}},
 	}, nil)
@@ -1411,7 +1411,7 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 
 		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(&ingesterResponse, nil)
-		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]string{"storeLabel"}, nil).
 			On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, "storeLabel", mock.Anything).
 			Return([]string{"val1", "val2"}, nil)
@@ -1452,7 +1452,7 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 
 		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(&ingesterResponse, nil)
-		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]string{"storeLabel", "commonLabel"}, nil).
 			On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, "storeLabel", mock.Anything).
 			Return([]string{"val1", "val2"}, nil).
@@ -1490,7 +1490,7 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 
 		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(&logproto.LabelToValuesResponse{}, nil)
-		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]string{"storeLabel1", "storeLabel2"}, nil).
 			On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, "storeLabel1", mock.Anything).
 			Return([]string{"val1", "val2"}, nil).
@@ -1524,7 +1524,7 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 
 		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(&logproto.LabelToValuesResponse{}, nil)
-		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]string{"storeLabel1", "pod"}, nil).
 			On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, "storeLabel1", mock.Anything).
 			Return([]string{"val1", "val2"}, nil).
@@ -1563,7 +1563,7 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 
 		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(&ingesterResponse, nil)
-		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]string{}, nil)
 
 		querier, err := newQuerier(
@@ -1599,7 +1599,7 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 
 		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(&ingesterResponse, nil)
-		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]string{}, nil)
 
 		querier, err := newQuerier(
@@ -1630,7 +1630,7 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 
 		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(&ingesterResponse, nil)
-		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]string{}, nil)
 		request := logproto.DetectedLabelsRequest{
 			Start: now,
@@ -1665,7 +1665,7 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 
 		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, nil)
-		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]string{}, nil)
 		request := logproto.DetectedLabelsRequest{
 			Start: now,
@@ -1777,15 +1777,16 @@ func TestQuerier_DetectedFields(t *testing.T) {
 		detectedFields := resp.Fields
 		// log lines come from querier_mock_test.go
 		// message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t
-		assert.Len(t, detectedFields, 7)
+		assert.Len(t, detectedFields, 8)
 		expectedCardinality := map[string]uint64{
-			"message":  5,
-			"count":    5,
-			"fake":     1,
-			"bytes":    5,
-			"duration": 5,
-			"percent":  5,
-			"even":     2,
+			"message":        5,
+			"count":          5,
+			"fake":           1,
+			"bytes":          5,
+			"duration":       5,
+			"percent":        5,
+			"even":           2,
+			"name_extracted": 1,
 		}
 		for _, d := range detectedFields {
 			card := expectedCardinality[d.Label]
@@ -1821,17 +1822,18 @@ func TestQuerier_DetectedFields(t *testing.T) {
 		detectedFields := resp.Fields
 		// log lines come from querier_mock_test.go
 		// message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t
-		assert.Len(t, detectedFields, 9)
+		assert.Len(t, detectedFields, 10)
 		expectedCardinality := map[string]uint64{
-			"variable": 5,
-			"constant": 1,
-			"message":  5,
-			"count":    5,
-			"fake":     1,
-			"bytes":    5,
-			"duration": 5,
-			"percent":  5,
-			"even":     2,
+			"variable":       5,
+			"constant":       1,
+			"message":        5,
+			"count":          5,
+			"fake":           1,
+			"bytes":          5,
+			"duration":       5,
+			"percent":        5,
+			"even":           2,
+			"name_extracted": 1,
 		}
 		for _, d := range detectedFields {
 			card := expectedCardinality[d.Label]
@@ -1867,7 +1869,7 @@ func TestQuerier_DetectedFields(t *testing.T) {
 		detectedFields := resp.Fields
 		// log lines come from querier_mock_test.go
 		// message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t
-		assert.Len(t, detectedFields, 7)
+		assert.Len(t, detectedFields, 8)
 
 		var messageField, countField, bytesField, durationField, floatField, evenField *logproto.DetectedField
 		for _, field := range detectedFields {
@@ -1923,7 +1925,7 @@ func TestQuerier_DetectedFields(t *testing.T) {
 		detectedFields := resp.Fields
 		// log lines come from querier_mock_test.go
 		// message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t
-		assert.Len(t, detectedFields, 9)
+		assert.Len(t, detectedFields, 10)
 
 		var messageField, countField, bytesField, durationField, floatField, evenField, constantField, variableField *logproto.DetectedField
 		for _, field := range detectedFields {
@@ -1955,7 +1957,56 @@ func TestQuerier_DetectedFields(t *testing.T) {
 		assert.Equal(t, []string{"logfmt"}, evenField.Parsers)
 		assert.Equal(t, []string{""}, constantField.Parsers)
 		assert.Equal(t, []string{""}, variableField.Parsers)
-	})
+	},
+	)
+
+	t.Run(
+		"adds _extracted suffix to detected fields that conflict with indexed labels",
+		func(t *testing.T) {
+			store := newStoreMock()
+			store.On("SelectLogs", mock.Anything, mock.Anything).
+				Return(mockLogfmtStreamIterator(1, 2), nil)
+
+			queryClient := newQueryClientMock()
+			queryClient.On("Recv").
+				Return(mockQueryResponse([]logproto.Stream{mockLogfmtStreamWithStructuredMetadata(1, 2)}), nil)
+
+			ingesterClient := newQuerierClientMock()
+			ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).
+				Return(queryClient, nil)
+
+			querier, err := newQuerier(
+				conf,
+				mockIngesterClientConfig(),
+				newIngesterClientMockFactory(ingesterClient),
+				mockReadRingWithOneActiveIngester(),
+				&mockDeleteGettter{},
+				store, limits)
+			require.NoError(t, err)
+
+			resp, err := querier.DetectedFields(ctx, &request)
+			require.NoError(t, err)
+
+			detectedFields := resp.Fields
+			// log lines come from querier_mock_test.go
+			// message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t
+			assert.Len(t, detectedFields, 10)
+
+			var nameField *logproto.DetectedField
+			for _, field := range detectedFields {
+				switch field.Label {
+				case "name_extracted":
+					nameField = field
+				}
+			}
+
+			assert.NotNil(t, nameField)
+			assert.Equal(t, "name_extracted", nameField.Label)
+			assert.Equal(t, logproto.DetectedFieldString, nameField.Type)
+			assert.Equal(t, []string{"logfmt"}, nameField.Parsers)
+			assert.Equal(t, uint64(1), nameField.Cardinality)
+		},
+	)
 }
 
 func BenchmarkQuerierDetectedFields(b *testing.B) {
