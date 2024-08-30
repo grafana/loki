@@ -9,8 +9,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
 
-var SupportedVersions = []Version{V1, V2}
-
 func TestBloomOffsetEncoding(t *testing.T) {
 	for _, v := range SupportedVersions {
 		t.Run(v.String(), func(t *testing.T) {
@@ -28,9 +26,10 @@ func TestBloomOffsetEncoding(t *testing.T) {
 
 }
 
-func TestSeriesEncoding_V1(t *testing.T) {
+func TestSeriesEncoding_V3(t *testing.T) {
 	t.Parallel()
-	src := SeriesWithOffset{
+	version := V3
+	src := SeriesWithMeta{
 		Series: Series{
 			Fingerprint: model.Fingerprint(1),
 			Chunks: []ChunkRef{
@@ -46,91 +45,32 @@ func TestSeriesEncoding_V1(t *testing.T) {
 				},
 			},
 		},
-		Offset: BloomOffset{Page: 2, ByteOffset: 3},
-	}
-
-	enc := &encoding.Encbuf{}
-	src.Encode(enc, 0, BloomOffset{})
-
-	dec := encoding.DecWith(enc.Get())
-	var dst SeriesWithOffset
-	fp, offset, err := dst.Decode(&dec, 0, BloomOffset{})
-	require.Nil(t, err)
-	require.Equal(t, src.Fingerprint, fp)
-	require.Equal(t, src.Offset, offset)
-	require.Equal(t, src, dst)
-}
-
-func TestSeriesEncoding_V2(t *testing.T) {
-	t.Parallel()
-	src := SeriesWithOffsets{
-		Series: Series{
-			Fingerprint: model.Fingerprint(1),
-			Chunks: []ChunkRef{
-				{
-					From:     1,
-					Through:  2,
-					Checksum: 3,
-				},
-				{
-					From:     4,
-					Through:  5,
-					Checksum: 6,
-				},
+		Meta: Meta{
+			Offsets: []BloomOffset{
+				{Page: 0, ByteOffset: 0},
+				{Page: 0, ByteOffset: 100},
+				{Page: 1, ByteOffset: 2},
+				{Page: 2, ByteOffset: 1},
+			},
+			Fields: []Field{
+				Field("foo"),
+				Field("bar"),
 			},
 		},
-		Offsets: []BloomOffset{
-			{Page: 0, ByteOffset: 0},
-			{Page: 0, ByteOffset: 100},
-			{Page: 1, ByteOffset: 2},
-			{Page: 2, ByteOffset: 1},
-		},
 	}
 
 	enc := &encoding.Encbuf{}
-	src.Encode(enc, 0, BloomOffset{})
+	src.Encode(enc, version, 0, BloomOffset{})
 
 	dec := encoding.DecWith(enc.Get())
-	var dst SeriesWithOffsets
-	fp, offset, err := dst.Decode(V2, &dec, 0, BloomOffset{})
+	var dst SeriesWithMeta
+	fp, offset, err := dst.Decode(&dec, version, 0, BloomOffset{})
 	require.Nil(t, err)
 	require.Equal(t, src.Fingerprint, fp)
 	require.Equal(t, src.Offsets[len(src.Offsets)-1], offset)
+	require.Equal(t, src.Offsets, dst.Offsets)
+	require.Equal(t, src.Fields, dst.Fields)
 	require.Equal(t, src, dst)
-}
-
-func TestV2SeriesDecodesV1(t *testing.T) {
-	t.Parallel()
-	src := SeriesWithOffset{
-		Series: Series{
-			Fingerprint: model.Fingerprint(1),
-			Chunks: []ChunkRef{
-				{
-					From:     1,
-					Through:  2,
-					Checksum: 3,
-				},
-				{
-					From:     4,
-					Through:  5,
-					Checksum: 6,
-				},
-			},
-		},
-		Offset: BloomOffset{Page: 1, ByteOffset: 2},
-	}
-
-	enc := &encoding.Encbuf{}
-	src.Encode(enc, 0, BloomOffset{})
-
-	dec := encoding.DecWith(enc.Get())
-	var dst SeriesWithOffsets
-	fp, offset, err := dst.decodeV1(&dec, 0, BloomOffset{})
-	require.Nil(t, err)
-	require.Equal(t, src.Fingerprint, fp)
-	require.Equal(t, src.Offset, offset)
-	require.Equal(t, []BloomOffset{src.Offset}, dst.Offsets)
-	require.Equal(t, src.Series, dst.Series)
 }
 
 func TestChunkRefCmpLess(t *testing.T) {

@@ -1,7 +1,6 @@
 package v1
 
 import (
-	"fmt"
 	"hash"
 	"hash/crc32"
 	"io"
@@ -10,23 +9,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
 
-type Version byte
-
-func (v Version) String() string {
-	return fmt.Sprintf("v%d", v)
-}
-
 const (
 	magicNumber = uint32(0xCA7CAFE5)
-	// Add new versions below
-	V1 Version = iota
-	// V2 supports single series blooms encoded over multiple pages
-	// to accommodate larger single series
-	V2
-)
-
-const (
-	DefaultSchemaVersion = V2
 )
 
 var (

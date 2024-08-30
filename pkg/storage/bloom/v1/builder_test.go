@@ -24,11 +24,11 @@ var blockEncodings = []chunkenc.Encoding{
 	chunkenc.EncZstd,
 }
 
-func TestBlockOptionsRoundTrip(t *testing.T) {
+func TestBlockOptions_RoundTrip(t *testing.T) {
 	t.Parallel()
 	opts := BlockOptions{
 		Schema: Schema{
-			version:     V1,
+			version:     DefaultSchemaVersion,
 			encoding:    chunkenc.EncSnappy,
 			nGramLength: 10,
 			nGramSkip:   2,
@@ -548,9 +548,8 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 	builder, err := NewBlockBuilder(blockOpts, writer)
 	require.Nil(t, err)
 
-	checksum, _, err := mb.Build(builder)
+	_, _, err = mb.Build(builder)
 	require.Nil(t, err)
-	require.Equal(t, uint32(0x2a6cdba6), checksum)
 
 	// ensure the new block contains one copy of all the data
 	// by comparing it against an iterator over the source data

@@ -66,6 +66,18 @@ func (b BlockOptions) Encode(enc *encoding.Encbuf) {
 	enc.PutBE64(b.BlockSize)
 }
 
+// func NewDefaultBlockOptions(maxBlockSizeBytes, maxBloomSizeBytes uint64) BlockOptions {
+// 	opts := NewBlockOptionsFromSchema(Schema{
+// 		version:     DefaultSchemaVersion,
+// 		encoding:    chunkenc.EncNone,
+// 		nGramLength: 0,
+// 		nGramSkip:   0,
+// 	})
+// 	opts.BlockSize = maxBlockSizeBytes
+// 	opts.UnencodedBlockOptions.MaxBloomSizeBytes = maxBloomSizeBytes
+// 	return opts
+// }
+
 func NewBlockOptions(enc chunkenc.Encoding, nGramLength, nGramSkip, maxBlockSizeBytes, maxBloomSizeBytes uint64) BlockOptions {
 	opts := NewBlockOptionsFromSchema(Schema{
 		version:     DefaultSchemaVersion,
@@ -289,7 +301,7 @@ func (mb *MergeBuilder) processNextSeries(
 		bytesAdded += bloom.SourceBytesAdded
 	}
 
-	done, err := builder.AddSeries(*nextInStore, offsets)
+	done, err := builder.AddSeries(*nextInStore, offsets, []Field{Field("__line__")})
 	if err != nil {
 		return nil, bytesAdded, 0, false, false, errors.Wrap(err, "committing series")
 	}

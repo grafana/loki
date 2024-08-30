@@ -8,8 +8,8 @@ import (
 
 /*
 Each binary format (version) has it's own builder. This provides type-safe way to build the binary format
-while allowing reuse of underlying logic. As an example, the V2Builder will prevent encoding v1 series (only 1 bloom per series)
-as it only provides methods that are v2 compatible. The opposite is also true.
+while allowing reuse of underlying logic. As an example, the V3Builder will prevent encoding v1 and v2 series
+as it only provides methods that are v3 compatible. The opposite is also true.
 
 Builders provide the following methods:
 - [Convenience method] BuildFrom: builds the binary format from an iterator of the relevant type.
@@ -21,14 +21,14 @@ Builders provide the following methods:
 */
 
 // Convenience constructor targeting the most current version.
-func NewBlockBuilder(opts BlockOptions, writer BlockWriter) (*V2Builder, error) {
-	return NewBlockBuilderV2(opts, writer)
+func NewBlockBuilder(opts BlockOptions, writer BlockWriter) (*BlockBuilder, error) {
+	return NewBlockBuilderV3(opts, writer)
 }
 
 // Convenience alias for the most current version.
-type BlockBuilder = V2Builder
+type BlockBuilder = V3Builder
 
-type V2Builder struct {
+type V3Builder struct {
 	opts BlockOptions
 
 	writer BlockWriter
@@ -41,9 +41,9 @@ type SeriesWithBlooms struct {
 	Blooms iter.SizedIterator[*Bloom]
 }
 
-func NewBlockBuilderV2(opts BlockOptions, writer BlockWriter) (*V2Builder, error) {
-	if opts.Schema.version != V2 {
-		return nil, errors.Errorf("schema mismatch creating v2 builder, expected %v, got %v", V2, opts.Schema.version)
+func NewBlockBuilderV3(opts BlockOptions, writer BlockWriter) (*V3Builder, error) {
+	if opts.Schema.version != V3 {
+		return nil, errors.Errorf("schema mismatch creating builder, expected v3, got %v", opts.Schema.version)
 	}
 
 	index, err := writer.Index()
@@ -55,7 +55,7 @@ func NewBlockBuilderV2(opts BlockOptions, writer BlockWriter) (*V2Builder, error
 		return nil, errors.Wrap(err, "initializing blooms writer")
 	}
 
-	return &V2Builder{
+	return &V3Builder{
 		opts:   opts,
 		writer: writer,
 		index:  NewIndexBuilder(opts, index),
@@ -63,7 +63,7 @@ func NewBlockBuilderV2(opts BlockOptions, writer BlockWriter) (*V2Builder, error
 	}, nil
 }
 
-func (b *V2Builder) BuildFrom(itr iter.Iterator[SeriesWithBlooms]) (uint32, error) {
+func (b *V3Builder) BuildFrom(itr iter.Iterator[SeriesWithBlooms]) (uint32, error) {
 	for itr.Next() {
 		at := itr.At()
 		var offsets []BloomOffset
@@ -78,7 +78,7 @@ func (b *V2Builder) BuildFrom(itr iter.Iterator[SeriesWithBlooms]) (uint32, erro
 		if err := at.Blooms.Err(); err != nil {
 			return 0, errors.Wrap(err, "iterating blooms")
 		}
-		blockFull, err := b.AddSeries(*at.Series, offsets)
+		blockFull, err := b.AddSeries(*at.Series, offsets, []Field{Field("__line__")})
 		if err != nil {
 			return 0, errors.Wrapf(err, "writing series")
 		}
@@ -94,7 +94,7 @@ func (b *V2Builder) BuildFrom(itr iter.Iterator[SeriesWithBlooms]) (uint32, erro
 	return b.Close()
 }
 
-func (b *V2Builder) Close() (uint32, error) {
+func (b *V3Builder) Close() (uint32, error) {
 	bloomChecksum, err := b.blooms.Close()
 	if err != nil {
 		return 0, errors.Wrap(err, "closing bloom file")
@@ -106,109 +106,18 @@ func (b *V2Builder) Close() (uint32, error) {
 	return combineChecksums(indexCheckSum, bloomChecksum), nil
 }
 
-func (b *V2Builder) AddBloom(bloom *Bloom) (BloomOffset, error) {
+func (b *V3Builder) AddBloom(bloom *Bloom) (BloomOffset, error) {
 	return b.blooms.Append(bloom)
 }
 
 // AddSeries adds a series to the block. It returns true after adding the series, the block is full.
-func (b *V2Builder) AddSeries(series Series, offsets []BloomOffset) (bool, error) {
-	if err := b.index.AppendV2(SeriesWithOffsets{
-		Offsets: offsets,
-		Series:  series,
-	}); err != nil {
-		return false, errors.Wrapf(err, "writing index for series %v", series.Fingerprint)
-	}
-
-	full, _, err := b.writer.Full(b.opts.BlockSize)
-	if err != nil {
-		return false, errors.Wrap(err, "checking if block is full")
-	}
-
-	return full, nil
-}
-
-// Now the same for legacy V1
-type SeriesWithBloom struct {
-	Series *Series
-	Bloom  *Bloom
-}
-
-//nolint:revive
-type V1Builder struct {
-	opts BlockOptions
-
-	writer BlockWriter
-	index  *IndexBuilder
-	blooms *BloomBlockBuilder
-}
-
-func NewBlockBuilderV1(opts BlockOptions, writer BlockWriter) (*V1Builder, error) {
-	if opts.Schema.version != V1 {
-		return nil, errors.Errorf("schema mismatch creating v1 builder, expected %v, got %v", V1, opts.Schema.version)
-	}
-
-	index, err := writer.Index()
-	if err != nil {
-		return nil, errors.Wrap(err, "initializing index writer")
-	}
-	blooms, err := writer.Blooms()
-	if err != nil {
-		return nil, errors.Wrap(err, "initializing blooms writer")
-	}
-
-	return &V1Builder{
-		opts:   opts,
-		writer: writer,
-		index:  NewIndexBuilder(opts, index),
-		blooms: NewBloomBlockBuilder(opts, blooms),
-	}, nil
-}
-
-func (b *V1Builder) BuildFrom(itr iter.Iterator[SeriesWithBloom]) (uint32, error) {
-	for itr.Next() {
-		at := itr.At()
-		offset, err := b.AddBloom(at.Bloom)
-		if err != nil {
-			return 0, errors.Wrap(err, "writing bloom")
-		}
-
-		blockFull, err := b.AddSeries(*at.Series, offset)
-
-		if err != nil {
-			return 0, errors.Wrapf(err, "writing series")
-		}
-		if blockFull {
-			break
-		}
-	}
-
-	if err := itr.Err(); err != nil {
-		return 0, errors.Wrap(err, "iterating series")
-	}
-
-	return b.Close()
-}
-
-func (b *V1Builder) Close() (uint32, error) {
-	bloomChecksum, err := b.blooms.Close()
-	if err != nil {
-		return 0, errors.Wrap(err, "closing bloom file")
-	}
-	indexCheckSum, err := b.index.Close()
-	if err != nil {
-		return 0, errors.Wrap(err, "closing series file")
-	}
-	return combineChecksums(indexCheckSum, bloomChecksum), nil
-}
-
-func (b *V1Builder) AddBloom(bloom *Bloom) (BloomOffset, error) {
-	return b.blooms.Append(bloom)
-}
-
-func (b *V1Builder) AddSeries(series Series, offset BloomOffset) (bool, error) {
-	if err := b.index.AppendV1(SeriesWithOffset{
+func (b *V3Builder) AddSeries(series Series, offsets []BloomOffset, fields []Field) (bool, error) {
+	if err := b.index.Append(SeriesWithMeta{
 		Series: series,
-		Offset: offset,
+		Meta: Meta{
+			Offsets: offsets,
+			Fields:  fields,
+		},
 	}); err != nil {
 		return false, errors.Wrapf(err, "writing index for series %v", series.Fingerprint)
 	}
