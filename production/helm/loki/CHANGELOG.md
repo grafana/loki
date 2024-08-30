@@ -13,6 +13,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 6.10.3
+
+- [BUGFIX] Added missing `loki.storage.azure.chunkDelimiter` parameter to Helm chart.
+
 ## 6.10.2
 
 - [CHANGE] Bumped version of `nginxinc/nginx-unprivileged` to 1.27-alpine; this remediates several CVE
