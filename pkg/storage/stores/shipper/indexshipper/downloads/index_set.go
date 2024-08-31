@@ -20,7 +20,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
@@ -186,9 +185,6 @@ func (t *indexSet) ForEach(ctx context.Context, callback index.ForEachIndexCallb
 	}
 	defer t.indexMtx.rUnlock()
 
-	logger := util_log.WithContext(ctx, t.logger)
-	level.Debug(logger).Log("index-files-count", len(t.index))
-
 	for _, idx := range t.index {
 		if err := callback(t.userID == "", idx); err != nil {
 			return err
@@ -204,9 +200,6 @@ func (t *indexSet) ForEachConcurrent(ctx context.Context, callback index.ForEach
 		return err
 	}
 	defer t.indexMtx.rUnlock()
-
-	logger := util_log.WithContext(ctx, t.logger)
-	level.Debug(logger).Log("index-files-count", len(t.index))
 
 	if len(t.index) == 0 {
 		return nil
