@@ -91,13 +91,6 @@ func estimatedCount(m uint, p float64) uint {
 	return uint(-float64(m) * math.Log(1-p))
 }
 
-func (bt *BloomTokenizer) newBloom() *Bloom {
-	return &Bloom{
-		// TODO parameterise SBF options. fp_rate
-		ScalableBloomFilter: *filter.NewScalableBloomFilter(1024, 0.01, 0.8),
-	}
-}
-
 // Populates a bloom filter(s) with the tokens from the given chunks.
 // Called once per series
 func (bt *BloomTokenizer) Populate(
@@ -131,7 +124,7 @@ func (bt *BloomTokenizer) Populate(
 			)
 		}
 	} else {
-		bloom = bt.newBloom()
+		bloom = NewBloom()
 	}
 
 	var bytesAdded int
@@ -155,7 +148,7 @@ func (bt *BloomTokenizer) Populate(
 
 				// start a new bloom + reset bytesAdded counter
 				bytesAdded = 0
-				bloom = bt.newBloom()
+				bloom = NewBloom()
 
 				// cache _MUST_ be cleared when a new bloom is created to ensure that all tokens from
 				// each line are indexed into at least one bloom
