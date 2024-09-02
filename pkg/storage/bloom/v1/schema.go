@@ -30,8 +30,8 @@ const (
 var (
 	SupportedVersions = []Version{V3}
 
-	errInvalidSchemaVerunkion   = errors.New("invalid schema version")
-	errUnsupportedSchemaVersion = errors.New("unsupported schema version")
+	ErrInvalidSchemaVersion     = errors.New("invalid schema version")
+	ErrUnsupportedSchemaVersion = errors.New("unsupported schema version")
 )
 
 type Schema struct {
@@ -55,6 +55,10 @@ func (s Schema) String() string {
 
 func (s Schema) Compatible(other Schema) bool {
 	return s == other
+}
+
+func (s Schema) IsCurrentSchema() bool {
+	return s.version == DefaultSchemaVersion
 }
 
 func (s Schema) NGramLen() int {

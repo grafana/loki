@@ -341,7 +341,7 @@ func (s *SeriesWithMeta) Decode(
 	previousOffset BloomOffset,
 ) (model.Fingerprint, BloomOffset, error) {
 	if version < V3 {
-		return 0, BloomOffset{}, errUnsupportedSchemaVersion
+		return 0, BloomOffset{}, ErrUnsupportedSchemaVersion
 	}
 
 	s.Fingerprint = previousFp + model.Fingerprint(dec.Uvarint64())
