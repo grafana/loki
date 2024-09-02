@@ -19,6 +19,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/dns"
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/kv/codec"
 	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/middleware"
@@ -46,6 +47,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
+	ingesterkafka "github.com/grafana/loki/v3/pkg/ingester-kafka"
+	"github.com/grafana/loki/v3/pkg/ingester-kafka/kafka"
 	ingester_rf1 "github.com/grafana/loki/v3/pkg/ingester-rf1"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore"
 	metastoreclient "github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/client"
@@ -108,6 +111,7 @@ const (
 	CacheGenerationLoader    string = "cache-generation-loader"
 	Ingester                 string = "ingester"
 	IngesterRF1              string = "ingester-rf1"
+	IngesterKafka            string = "ingester-kafka"
 	IngesterRF1RingClient    string = "ingester-rf1-ring-client"
 	PatternIngester          string = "pattern-ingester"
 	PatternIngesterTee       string = "pattern-ingester-tee"
@@ -143,6 +147,7 @@ const (
 	InitCodec                string = "init-codec"
 	Metastore                string = "metastore"
 	MetastoreClient          string = "metastore-client"
+	PartitionRing            string = "partition-ring"
 )
 
 const (
@@ -335,6 +340,13 @@ func (t *Loki) initDistributor() (services.Service, error) {
 			return nil, err
 		}
 		t.Tee = distributor.WrapTee(t.Tee, rf1Tee)
+	}
+	if t.Cfg.KafkaIngester.Enabled {
+		kafkaTee, err := kafka.NewTee(t.Cfg.KafkaConfig, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer, util_log.Logger, t.partitionRing)
+		if err != nil {
+			return nil, err
+		}
+		t.Tee = distributor.WrapTee(t.Tee, kafkaTee)
 	}
 
 	var err error
@@ -635,6 +647,43 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.ShutdownHandler)),
 	)
 	return t.Ingester, nil
+}
+
+func (t *Loki) initKafkaIngester() (_ services.Service, err error) {
+	if !t.Cfg.KafkaIngester.Enabled {
+		return nil, nil
+	}
+
+	logger := log.With(util_log.Logger, "component", "ingester-kafka")
+	t.Cfg.KafkaIngester.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
+
+	if t.Cfg.KafkaIngester.ShutdownMarkerPath == "" && t.Cfg.Common.PathPrefix != "" {
+		t.Cfg.KafkaIngester.ShutdownMarkerPath = t.Cfg.Common.PathPrefix
+	}
+	if t.Cfg.KafkaIngester.ShutdownMarkerPath == "" {
+		level.Warn(util_log.Logger).Log("msg", "The config setting shutdown marker path is not set. The /ingester/prepare_shutdown endpoint won't work")
+	}
+
+	t.kafkaIngester, err = ingesterkafka.New(t.Cfg.KafkaIngester, prometheus.DefaultRegisterer, t.Cfg.MetricsNamespace, logger)
+	if err != nil {
+		fmt.Println("Error initializing ingester rf1", err)
+		return
+	}
+
+	// Not enabled for kafka ingester yet
+	//	fmt.Println("registered GRPC")
+	//	logproto.RegisterPusherRF1Server(t.Server.GRPC, t.IngesterRF1)
+
+	httpMiddleware := middleware.Merge(
+		serverutil.RecoveryHTTPMiddleware,
+	)
+	t.Server.HTTP.Methods("POST", "GET", "DELETE").Path("/ingester-rf1/prepare_shutdown").Handler(
+		httpMiddleware.Wrap(http.HandlerFunc(t.kafkaIngester.PrepareShutdown)),
+	)
+	t.Server.HTTP.Methods("POST", "GET").Path("/ingester-rf1/shutdown").Handler(
+		httpMiddleware.Wrap(http.HandlerFunc(t.kafkaIngester.ShutdownHandler)),
+	)
+	return t.kafkaIngester, nil
 }
 
 func (t *Loki) initIngesterRF1() (_ services.Service, err error) {
@@ -1827,6 +1876,27 @@ func (t *Loki) initMetastoreClient() (services.Service, error) {
 	}
 	t.MetastoreClient = mc
 	return mc.Service(), nil
+}
+
+// The Ingest Partition Ring is responsible for watching the available ingesters and assigning partitions to incoming requests.
+func (t *Loki) initPartitionRing() (services.Service, error) {
+	if !t.Cfg.KafkaIngester.Enabled { // TODO: New config flag
+		return nil, nil
+	}
+
+	// TODO: New config?
+	kvClient, err := kv.NewClient(t.Cfg.KafkaIngester.LifecyclerConfig.RingConfig.KVStore, ring.GetPartitionRingCodec(), kv.RegistererWithKVName(prometheus.DefaultRegisterer, ingesterkafka.PartitionRingName+"-watcher"), util_log.Logger)
+	if err != nil {
+		return nil, fmt.Errorf("creating KV store for partitions ring watcher: %w", err)
+	}
+
+	t.partitionRingWatcher = ring.NewPartitionRingWatcher(ingesterkafka.PartitionRingName, ingesterkafka.PartitionRingName+"-key", kvClient, util_log.Logger, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
+	t.partitionRing = ring.NewPartitionInstanceRing(t.partitionRingWatcher, t.ring, t.Cfg.Ingester.LifecyclerConfig.RingConfig.HeartbeatTimeout)
+
+	// Expose a web page to view the partitions ring state.
+	t.Server.HTTP.Path("/partition-ring").Methods("GET", "POST").Handler(ring.NewPartitionRingPageHandler(t.partitionRingWatcher, ring.NewPartitionRingEditor(ingesterkafka.PartitionRingName+"-key", kvClient)))
+
+	return t.partitionRingWatcher, nil
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLimits) (deletion.DeleteRequestsClient, error) {
