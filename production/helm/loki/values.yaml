@@ -2967,6 +2967,20 @@ resultsCache:
   service:
     annotations: {}
     labels: {}
+  # -- Persistence settings for the results-cache
+  persistence:
+    # -- Enable creating PVCs for the results-cache
+    enabled: false
+    # -- Size of persistent disk
+    storageSize: 10G
+    # -- Storage class to be used.
+    # If defined, storageClassName: <storageClass>.
+    # If set to "-", storageClassName: "", which disables dynamic provisioning.
+    # If empty or set to null, no storageClassName spec is
+    # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
+    storageClass: null
+    # -- Volume mount path
+    mountPath: /data
 chunksCache:
   # -- Specifies whether memcached based chunks-cache should be enabled
   enabled: true
@@ -3055,6 +3069,20 @@ chunksCache:
   service:
     annotations: {}
     labels: {}
+  # -- Persistence settings for the chunks-cache
+  persistence:
+    # -- Enable creating PVCs for the chunks-cache
+    enabled: false
+    # -- Size of persistent disk
+    storageSize: 10G
+    # -- Storage class to be used.
+    # If defined, storageClassName: <storageClass>.
+    # If set to "-", storageClassName: "", which disables dynamic provisioning.
+    # If empty or set to null, no storageClassName spec is
+    # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
+    storageClass: null
+    # -- Volume mount path
+    mountPath: /data
 ######################################################################################################################
 #
 # Subchart configurations
