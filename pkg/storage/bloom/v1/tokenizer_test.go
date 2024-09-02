@@ -4,6 +4,8 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/grafana/loki/pkg/push"
+	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/stretchr/testify/require"
 )
 
@@ -229,4 +231,16 @@ func BenchmarkTokens(b *testing.B) {
 			}
 		})
 	}
+}
+
+func TestStructuredMetadataTokenizer(t *testing.T) {
+	tokenizer := NewStructuredMetadataTokenizer("chunk")
+
+	metadata := push.LabelAdapter{Name: "pod", Value: "loki-1"}
+	expected := []string{"pod", "chunkpod", "loki-1", "chunkloki-1", "pod=loki-1", "chunkpod=loki-1"}
+
+	tokenIter := tokenizer.Tokens(metadata)
+	got, err := v2.Collect(tokenIter)
+	require.NoError(t, err)
+	require.Equal(t, expected, got)
 }

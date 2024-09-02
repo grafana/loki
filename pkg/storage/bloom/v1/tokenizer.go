@@ -1,14 +1,42 @@
 package v1
 
 import (
+	"fmt"
 	"unicode/utf8"
 
+	"github.com/grafana/loki/pkg/push"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 )
 
 const (
 	MaxRuneLen = 4
 )
+
+type StructuredMetadataTokenizer struct {
+	prefix string
+	buf    []string
+}
+
+func NewStructuredMetadataTokenizer(prefix string) *StructuredMetadataTokenizer {
+	return &StructuredMetadataTokenizer{
+		prefix: prefix,
+		buf:    make([]string, 6),
+	}
+}
+
+// Tokens implements the NGramBuilder interface
+func (t *StructuredMetadataTokenizer) Tokens(kv push.LabelAdapter) iter.Iterator[string] {
+	combined := fmt.Sprintf("%s=%s", kv.Name, kv.Value)
+	t.buf = append(t.buf[:0],
+		kv.Name,
+		t.prefix+kv.Name,
+		kv.Value,
+		t.prefix+kv.Value,
+		combined,
+		t.prefix+combined,
+	)
+	return iter.NewSliceIter(t.buf)
+}
 
 func reassemble(buf []rune, ln, pos int, result []byte) []byte {
 	result = result[:0] // Reset the result slice

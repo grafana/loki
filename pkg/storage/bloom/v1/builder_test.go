@@ -11,7 +11,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
-	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
@@ -248,9 +247,13 @@ func TestMergeBuilder(t *testing.T) {
 	pop := func(_ *Series, srcBlooms iter.SizedIterator[*Bloom], _ ChunkRefs, ch chan *BloomCreation) {
 		for srcBlooms.Next() {
 			bloom := srcBlooms.At()
+			stats := IndexingStats{
+				SourceBytes: int(bloom.Capacity()) / 8,
+				Fields:      NewSetFromLiteral[Field]("__all__"),
+			}
 			ch <- &BloomCreation{
-				Bloom:            bloom,
-				SourceBytesAdded: int(bloom.Capacity()) / 8,
+				Bloom: bloom,
+				Stats: stats,
 			}
 		}
 		close(ch)
@@ -353,11 +356,15 @@ func TestMergeBuilderFingerprintCollision(t *testing.T) {
 	}
 
 	// We're not testing the ability to extend a bloom in this test
-	pop := func(_ *Series, _ iter.SizedIterator[*Bloom], _ ChunkRefs, ch chan *BloomCreation) {
+	pop := func(s *Series, _ iter.SizedIterator[*Bloom], _ ChunkRefs, ch chan *BloomCreation) {
+		bloom := NewBloom()
+		stats := IndexingStats{
+			SourceBytes: int(bloom.Capacity()) / 8,
+			Fields:      NewSetFromLiteral[Field]("__all__"),
+		}
 		ch <- &BloomCreation{
-			Bloom: &Bloom{
-				ScalableBloomFilter: *filter.NewScalableBloomFilter(1024, 0.01, 0.8),
-			},
+			Bloom: bloom,
+			Stats: stats,
 		}
 		close(ch)
 	}
@@ -527,9 +534,13 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 	pop := func(_ *Series, srcBlooms iter.SizedIterator[*Bloom], _ ChunkRefs, ch chan *BloomCreation) {
 		for srcBlooms.Next() {
 			bloom := srcBlooms.At()
+			stats := IndexingStats{
+				SourceBytes: int(bloom.Capacity()) / 8,
+				Fields:      NewSetFromLiteral[Field]("__all__"),
+			}
 			ch <- &BloomCreation{
-				Bloom:            bloom,
-				SourceBytesAdded: int(bloom.Capacity()) / 8,
+				Bloom: bloom,
+				Stats: stats,
 			}
 		}
 		close(ch)
