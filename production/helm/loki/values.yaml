@@ -326,6 +326,7 @@ loki:
       signatureVersion: null
       s3ForcePathStyle: false
       insecure: false
+      storageClass: null
       http_config: {}
       # -- Check https://grafana.com/docs/loki/latest/configure/#s3_storage_config for more info on how to provide a backoff_config
       backoff_config: {}
