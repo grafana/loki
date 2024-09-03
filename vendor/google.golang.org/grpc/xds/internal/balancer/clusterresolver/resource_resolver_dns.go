@@ -27,6 +27,7 @@ import (
 	"google.golang.org/grpc/internal/pretty"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/serviceconfig"
+	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
 
 var (
@@ -65,7 +66,7 @@ type dnsDiscoveryMechanism struct {
 // propagated to the child policy which eventually move the channel to
 // transient failure.
 //
-// The `dnsR` field is unset if we run into erros in this function. Therefore, a
+// The `dnsR` field is unset if we run into errors in this function. Therefore, a
 // nil check is required wherever we access that field.
 func newDNSResolver(target string, topLevelResolver topLevelResolver, logger *grpclog.PrefixLogger) *dnsDiscoveryMechanism {
 	ret := &dnsDiscoveryMechanism{
@@ -79,7 +80,7 @@ func newDNSResolver(target string, topLevelResolver topLevelResolver, logger *gr
 			ret.logger.Infof("Failed to parse dns hostname %q in clusterresolver LB policy", target)
 		}
 		ret.updateReceived = true
-		ret.topLevelResolver.onUpdate()
+		ret.topLevelResolver.onUpdate(xdsresource.NopDoneNotifier{})
 		return ret
 	}
 
@@ -89,7 +90,7 @@ func newDNSResolver(target string, topLevelResolver topLevelResolver, logger *gr
 			ret.logger.Infof("Failed to build DNS resolver for target %q: %v", target, err)
 		}
 		ret.updateReceived = true
-		ret.topLevelResolver.onUpdate()
+		ret.topLevelResolver.onUpdate(xdsresource.NopDoneNotifier{})
 		return ret
 	}
 	ret.dnsR = r
@@ -153,7 +154,7 @@ func (dr *dnsDiscoveryMechanism) UpdateState(state resolver.State) error {
 	dr.updateReceived = true
 	dr.mu.Unlock()
 
-	dr.topLevelResolver.onUpdate()
+	dr.topLevelResolver.onUpdate(xdsresource.NopDoneNotifier{})
 	return nil
 }
 
@@ -176,7 +177,7 @@ func (dr *dnsDiscoveryMechanism) ReportError(err error) {
 	dr.updateReceived = true
 	dr.mu.Unlock()
 
-	dr.topLevelResolver.onUpdate()
+	dr.topLevelResolver.onUpdate(xdsresource.NopDoneNotifier{})
 }
 
 func (dr *dnsDiscoveryMechanism) NewAddress(addresses []resolver.Address) {

@@ -637,7 +637,9 @@ func (c *Client) putObjectMultipartStreamParallel(ctx context.Context, bucketNam
 	// Sort all completed parts.
 	sort.Sort(completedParts(complMultipartUpload.Parts))
 
-	opts = PutObjectOptions{}
+	opts = PutObjectOptions{
+		ServerSideEncryption: opts.ServerSideEncryption,
+	}
 	if len(crcBytes) > 0 {
 		// Add hash of hashes.
 		crc.Reset()

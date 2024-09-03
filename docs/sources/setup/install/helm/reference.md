@@ -1626,6 +1626,56 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>chunksCache.persistence</td>
+			<td>object</td>
+			<td>Persistence settings for the chunks-cache</td>
+			<td><pre lang="json">
+{
+  "enabled": false,
+  "mountPath": "/data",
+  "storageClass": null,
+  "storageSize": "10G"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.persistence.enabled</td>
+			<td>bool</td>
+			<td>Enable creating PVCs for the chunks-cache</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.persistence.mountPath</td>
+			<td>string</td>
+			<td>Volume mount path</td>
+			<td><pre lang="json">
+"/data"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.persistence.storageClass</td>
+			<td>string</td>
+			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.persistence.storageSize</td>
+			<td>string</td>
+			<td>Size of persistent disk</td>
+			<td><pre lang="json">
+"10G"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>chunksCache.podAnnotations</td>
 			<td>object</td>
 			<td>Annotations for chunks-cache pods</td>
@@ -2640,7 +2690,7 @@ null
     "tolerations": []
   },
   "useExternalLicense": false,
-  "version": "3.1.0"
+  "version": "3.1.1"
 }
 </pre>
 </td>
@@ -3637,7 +3687,7 @@ null
 			<td>string</td>
 			<td>The gateway image tag</td>
 			<td><pre lang="json">
-"1.24-alpine"
+"1.27-alpine"
 </pre>
 </td>
 		</tr>
@@ -5689,6 +5739,7 @@ null
   "s3": {
     "accessKeyId": null,
     "backoff_config": {},
+    "disable_dualstack": false,
     "endpoint": null,
     "http_config": {},
     "insecure": false,
@@ -9037,6 +9088,56 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>resultsCache.persistence</td>
+			<td>object</td>
+			<td>Persistence settings for the results-cache</td>
+			<td><pre lang="json">
+{
+  "enabled": false,
+  "mountPath": "/data",
+  "storageClass": null,
+  "storageSize": "10G"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.persistence.enabled</td>
+			<td>bool</td>
+			<td>Enable creating PVCs for the results-cache</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.persistence.mountPath</td>
+			<td>string</td>
+			<td>Volume mount path</td>
+			<td><pre lang="json">
+"/data"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.persistence.storageClass</td>
+			<td>string</td>
+			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.persistence.storageSize</td>
+			<td>string</td>
+			<td>Size of persistent disk</td>
+			<td><pre lang="json">
+"10G"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>resultsCache.podAnnotations</td>
 			<td>object</td>
 			<td>Annotations for results-cache pods</td>
@@ -9678,7 +9779,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.24.3"
+"1.27.5"
 </pre>
 </td>
 		</tr>

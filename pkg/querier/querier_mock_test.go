@@ -350,11 +350,14 @@ func (s *storeMock) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) er
 
 func (s *storeMock) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, _ ...*labels.Matcher) ([]string, error) {
 	args := s.Called(ctx, userID, from, through, metricName, labelName)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
 	return args.Get(0).([]string), args.Error(1)
 }
 
-func (s *storeMock) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, _ ...*labels.Matcher) ([]string, error) {
-	args := s.Called(ctx, userID, from, through, metricName)
+func (s *storeMock) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, m ...*labels.Matcher) ([]string, error) {
+	args := s.Called(ctx, userID, from, through, metricName, m)
 	return args.Get(0).([]string), args.Error(1)
 }
 
@@ -496,6 +499,16 @@ func (r *readRingMock) GetTokenRangesForInstance(_ string) (ring.TokenRanges, er
 	return tr, nil
 }
 
+// WritableInstancesWithTokensCount returns the number of writable instances in the ring that have tokens.
+func (r *readRingMock) WritableInstancesWithTokensCount() int {
+	return len(r.replicationSet.Instances)
+}
+
+// WritableInstancesWithTokensInZoneCount returns the number of writable instances in the ring that are registered in given zone and have tokens.
+func (r *readRingMock) WritableInstancesWithTokensInZoneCount(_ string) int {
+	return len(r.replicationSet.Instances)
+}
+
 func mockReadRingWithOneActiveIngester() *readRingMock {
 	return newReadRingMock([]ring.InstanceDesc{
 		{Addr: "test", Timestamp: time.Now().UnixNano(), State: ring.ACTIVE, Tokens: []uint32{1, 2, 3}},
@@ -562,7 +575,7 @@ func mockStreamWithLabels(from int, quantity int, labels string) logproto.Stream
 }
 
 func mockLogfmtStream(from int, quantity int) logproto.Stream {
-	return mockLogfmtStreamWithLabels(from, quantity, `{type="test"}`)
+	return mockLogfmtStreamWithLabels(from, quantity, `{type="test", name="foo"}`)
 }
 
 func mockLogfmtStreamWithLabels(_ int, quantity int, labels string) logproto.Stream {
@@ -573,7 +586,7 @@ func mockLogfmtStreamWithLabels(_ int, quantity int, labels string) logproto.Str
 		entries = append(entries, logproto.Entry{
 			Timestamp: time.Unix(int64(i), 0),
 			Line: fmt.Sprintf(
-				`message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t`,
+				`message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t name=bar`,
 				i,
 				i,
 				(i * 10),
@@ -720,21 +733,6 @@ func (q *querierMock) DetectedLabels(ctx context.Context, req *logproto.Detected
 	}
 
 	return resp.(*logproto.DetectedLabelsResponse), err
-}
-
-func (q *querierMock) SelectMetricSamples(
-	ctx context.Context,
-	req *logproto.QuerySamplesRequest,
-) (*logproto.QuerySamplesResponse, error) {
-	args := q.MethodCalled("SelectMetricSamples", ctx, req)
-
-	resp := args.Get(0)
-	err := args.Error(1)
-	if resp == nil {
-		return nil, err
-	}
-
-	return resp.(*logproto.QuerySamplesResponse), err
 }
 
 func (q *querierMock) WithPatternQuerier(_ PatterQuerier) {}

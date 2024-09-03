@@ -44,18 +44,9 @@ func (c *clientImpl) WatchResource(rType xdsresource.Type, resourceName string, 
 
 	if err := c.resourceTypes.maybeRegister(rType); err != nil {
 		logger.Warningf("Watch registered for name %q of type %q which is already registered", rType.TypeName(), resourceName)
-		c.serializer.Schedule(func(context.Context) { watcher.OnError(err) })
+		c.serializer.TrySchedule(func(context.Context) { watcher.OnError(err, xdsresource.NopDoneNotifier{}) })
 		return func() {}
 	}
-
-	// TODO: replace this with the code does the following when we have
-	// implemented generic watch API on the authority:
-	//  - Parse the resource name and extract the authority.
-	//  - Locate the corresponding authority object and acquire a reference to
-	//    it. If the authority is not found, error out.
-	//  - Call the watchResource() method on the authority.
-	//  - Return a cancel function to cancel the watch on the authority and to
-	//    release the reference.
 
 	// TODO: Make ParseName return an error if parsing fails, and
 	// schedule the OnError callback in that case.
@@ -63,7 +54,7 @@ func (c *clientImpl) WatchResource(rType xdsresource.Type, resourceName string, 
 	a, unref, err := c.findAuthority(n)
 	if err != nil {
 		logger.Warningf("Watch registered for name %q of type %q, authority %q is not found", rType.TypeName(), resourceName, n.Authority)
-		c.serializer.Schedule(func(context.Context) { watcher.OnError(err) })
+		c.serializer.TrySchedule(func(context.Context) { watcher.OnError(err, xdsresource.NopDoneNotifier{}) })
 		return func() {}
 	}
 	cancelF := a.watchResource(rType, n.String(), watcher)
@@ -105,7 +96,6 @@ func (r *resourceTypeRegistry) maybeRegister(rType xdsresource.Type) error {
 }
 
 func (c *clientImpl) triggerResourceNotFoundForTesting(rType xdsresource.Type, resourceName string) error {
-	// Return early if the client is already closed.
 	if c == nil || c.done.HasFired() {
 		return fmt.Errorf("attempt to trigger resource-not-found-error for resource %q of type %q, but client is closed", rType.TypeName(), resourceName)
 	}

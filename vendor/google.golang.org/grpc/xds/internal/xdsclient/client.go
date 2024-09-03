@@ -21,7 +21,7 @@
 package xdsclient
 
 import (
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/xds/internal/xdsclient/load"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
@@ -45,10 +45,6 @@ type XDSClient interface {
 	// cancel()), there's a small window where the callback can be called after
 	// the watcher is canceled. Callers need to handle this case.
 	WatchResource(rType xdsresource.Type, resourceName string, watcher xdsresource.ResourceWatcher) (cancel func())
-
-	// DumpResources returns the status of the xDS resources. Returns a map of
-	// resource type URLs to a map of resource names to resource state.
-	DumpResources() map[string]map[string]xdsresource.UpdateWithMD
 
 	ReportLoad(*bootstrap.ServerConfig) (*load.Store, func())
 

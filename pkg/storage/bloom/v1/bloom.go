@@ -167,7 +167,7 @@ type BloomPageDecoder struct {
 // perf optimization.
 // This can only safely be used when the underlying bloom
 // bytes don't escape the decoder:
-// on reads in the bloom-gw but not in the bloom-compactor
+// on reads in the bloom-gw but not in the bloom-builder
 func (d *BloomPageDecoder) Relinquish(alloc mempool.Allocator) {
 	if d == nil {
 		return

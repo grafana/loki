@@ -106,7 +106,6 @@ type Querier interface {
 	DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error)
 	Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error)
 	DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error)
-	SelectMetricSamples(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error)
 	WithPatternQuerier(patternQuerier PatterQuerier)
 }
 
@@ -964,7 +963,7 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 			var err error
 			start := model.TimeFromUnixNano(storeQueryInterval.start.UnixNano())
 			end := model.TimeFromUnixNano(storeQueryInterval.end.UnixNano())
-			storeLabels, err := q.store.LabelNamesForMetricName(ctx, userID, start, end, "logs")
+			storeLabels, err := q.store.LabelNamesForMetricName(ctx, userID, start, end, "logs", matchers...)
 			for _, label := range storeLabels {
 				values, err := q.store.LabelValuesForMetricName(ctx, userID, start, end, "logs", label, matchers...)
 				if err != nil {
@@ -996,7 +995,7 @@ func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabel
 
 	if ingesterLabels != nil {
 		for label, val := range ingesterLabels.Labels {
-			if _, isStatic := staticLabels[label]; isStatic || !containsAllIDTypes(val.Values) {
+			if _, isStatic := staticLabels[label]; (isStatic && val.Values != nil) || !containsAllIDTypes(val.Values) {
 				_, ok := dlMap[label]
 				if !ok {
 					dlMap[label] = newParsedLabels()
@@ -1011,7 +1010,7 @@ func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabel
 	}
 
 	for label, values := range storeLabelsMap {
-		if _, isStatic := staticLabels[label]; isStatic || !containsAllIDTypes(values) {
+		if _, isStatic := staticLabels[label]; (isStatic && values != nil) || !containsAllIDTypes(values) {
 			_, ok := dlMap[label]
 			if !ok {
 				dlMap[label] = newParsedLabels()
@@ -1042,7 +1041,6 @@ func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabel
 
 type PatterQuerier interface {
 	Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error)
-	Samples(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error)
 }
 
 func (q *SingleTenantQuerier) WithPatternQuerier(pq PatterQuerier) {
@@ -1054,22 +1052,6 @@ func (q *SingleTenantQuerier) Patterns(ctx context.Context, req *logproto.QueryP
 		return nil, httpgrpc.Errorf(http.StatusNotFound, "")
 	}
 	res, err := q.patternQuerier.Patterns(ctx, req)
-	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
-
-	return res, err
-}
-
-func (q *SingleTenantQuerier) SelectMetricSamples(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error) {
-	if q.patternQuerier == nil {
-		return nil, httpgrpc.Errorf(http.StatusNotFound, "")
-	}
-	res, err := q.patternQuerier.Samples(ctx, req)
-	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
-
 	return res, err
 }
 
@@ -1217,6 +1199,11 @@ func parseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*p
 	emtpyparser := ""
 
 	for _, stream := range streams {
+		streamLbls, err := syntax.ParseLabels(stream.Labels)
+		if err != nil {
+			streamLbls = labels.EmptyLabels()
+		}
+
 		for _, entry := range stream.Entries {
 			structuredMetadata := getStructuredMetadata(entry)
 			for k, vals := range structuredMetadata {
@@ -1244,7 +1231,7 @@ func parseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*p
 				}
 			}
 
-			detected, parser := parseLine(entry.Line)
+			detected, parser := parseLine(entry.Line, streamLbls)
 			for k, vals := range detected {
 				df, ok := detectedFields[k]
 				if !ok && fieldCount < limit {
@@ -1301,11 +1288,11 @@ func getStructuredMetadata(entry push.Entry) map[string][]string {
 	return result
 }
 
-func parseLine(line string) (map[string][]string, *string) {
+func parseLine(line string, streamLbls labels.Labels) (map[string][]string, *string) {
 	parser := "logfmt"
 	logFmtParser := logql_log.NewLogfmtParser(true, false)
 
-	lbls := logql_log.NewBaseLabelsBuilder().ForLabels(labels.EmptyLabels(), 0)
+	lbls := logql_log.NewBaseLabelsBuilder().ForLabels(streamLbls, 0)
 	_, logfmtSuccess := logFmtParser.Process(0, []byte(line), lbls)
 	if !logfmtSuccess || lbls.HasErr() {
 		parser = "json"
@@ -1319,6 +1306,10 @@ func parseLine(line string) (map[string][]string, *string) {
 
 	parsedLabels := map[string]map[string]struct{}{}
 	for _, lbl := range lbls.LabelsResult().Labels() {
+		// skip indexed labels, as we only want detected fields
+		if streamLbls.Has(lbl.Name) {
+			continue
+		}
 		if values, ok := parsedLabels[lbl.Name]; ok {
 			values[lbl.Value] = struct{}{}
 		} else {
