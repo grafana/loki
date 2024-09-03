@@ -440,6 +440,10 @@ loki:
   # -- Enable tracing
   tracing:
     enabled: false
+  bloom_build:
+    enabled: false
+  bloom_gateway:
+    enabled: false
 ######################################################################################################################
 #
 # Enterprise Loki Configs
@@ -2376,9 +2380,9 @@ compactor:
     annotations: {}
     # -- Set this toggle to false to opt out of automounting API credentials for the service account
     automountServiceAccountToken: true
-# -- Configuration for the bloom gateway
+# -- Configuration for the bloom-gateway
 bloomGateway:
-  # -- Number of replicas for the bloom gateway
+  # -- Number of replicas for the bloom-gateway
   replicas: 0
   # -- hostAliases to add
   hostAliases: []
@@ -2386,21 +2390,21 @@ bloomGateway:
   #    hostnames:
   #      - domain.tld
   image:
-    # -- The Docker registry for the bloom gateway image. Overrides `loki.image.registry`
+    # -- The Docker registry for the bloom-gateway image. Overrides `loki.image.registry`
     registry: null
-    # -- Docker image repository for the bloom gateway image. Overrides `loki.image.repository`
+    # -- Docker image repository for the bloom-gateway image. Overrides `loki.image.repository`
     repository: null
-    # -- Docker image tag for the bloom gateway image. Overrides `loki.image.tag`
+    # -- Docker image tag for the bloom-gateway image. Overrides `loki.image.tag`
     tag: null
   # -- Command to execute instead of defined in Docker image
   command: null
-  # -- The name of the PriorityClass for bloom gateway pods
+  # -- The name of the PriorityClass for bloom-gateway pods
   priorityClassName: null
-  # -- Labels for bloom gateway pods
+  # -- Labels for bloom-gateway pods
   podLabels: {}
-  # -- Annotations for bloom gateway pods
+  # -- Annotations for bloom-gateway pods
   podAnnotations: {}
-  # -- Affinity for bloom gateway pods.
+  # -- Affinity for bloom-gateway pods.
   # @default -- Hard node anti-affinity
   affinity:
     podAntiAffinity:
@@ -2409,39 +2413,39 @@ bloomGateway:
             matchLabels:
               app.kubernetes.io/component: bloom-gateway
           topologyKey: kubernetes.io/hostname
-  # -- Labels for bloom gateway service
+  # -- Labels for bloom-gateway service
   serviceLabels: {}
-  # -- Additional CLI args for the bloom gateway
+  # -- Additional CLI args for the bloom-gateway
   extraArgs: []
-  # -- Environment variables to add to the bloom gateway pods
+  # -- Environment variables to add to the bloom-gateway pods
   extraEnv: []
-  # -- Environment variables from secrets or configmaps to add to the bloom gateway pods
+  # -- Environment variables from secrets or configmaps to add to the bloom-gateway pods
   extraEnvFrom: []
-  # -- Volume mounts to add to the bloom gateway pods
+  # -- Volume mounts to add to the bloom-gateway pods
   extraVolumeMounts: []
-  # -- Volumes to add to the bloom gateway pods
+  # -- Volumes to add to the bloom-gateway pods
   extraVolumes: []
   # -- readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`
   readinessProbe: {}
   # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
-  # -- Resource requests and limits for the bloom gateway
+  # -- Resource requests and limits for the bloom-gateway
   resources: {}
-  # -- Containers to add to the bloom gateway pods
+  # -- Containers to add to the bloom-gateway pods
   extraContainers: []
-  # -- Init containers to add to the bloom gateway pods
+  # -- Init containers to add to the bloom-gateway pods
   initContainers: []
-  # -- Grace period to allow the bloom gateway to shutdown before it is killed
+  # -- Grace period to allow the bloom-gateway to shutdown before it is killed
   terminationGracePeriodSeconds: 30
-  # -- Node selector for bloom gateway pods
+  # -- Node selector for bloom-gateway pods
   nodeSelector: {}
-  # -- Tolerations for bloom gateway pods
+  # -- Tolerations for bloom-gateway pods
   tolerations: []
   # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
   appProtocol:
     grpc: ""
   persistence:
-    # -- Enable creating PVCs for the bloom gateway
+    # -- Enable creating PVCs for the bloom-gateway
     enabled: false
     # -- Size of persistent disk
     size: 10Gi
@@ -2451,9 +2455,9 @@ bloomGateway:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
-    # -- Annotations for bloom gateway PVCs
+    # -- Annotations for bloom-gateway PVCs
     annotations: {}
-    # -- List of the bloom gateway PVCs
+    # -- List of the bloom-gateway PVCs
     # @notationType -- list
     claims:
       - name: data
@@ -2472,19 +2476,19 @@ bloomGateway:
     whenScaled: Retain
   serviceAccount:
     create: false
-    # -- The name of the ServiceAccount to use for the bloom gateway.
+    # -- The name of the ServiceAccount to use for the bloom-gateway.
     # If not set and create is true, a name is generated by appending
     # "-bloom-gateway" to the common ServiceAccount.
     name: null
-    # -- Image pull secrets for the bloom gateway service account
+    # -- Image pull secrets for the bloom-gateway service account
     imagePullSecrets: []
-    # -- Annotations for the bloom gateway service account
+    # -- Annotations for the bloom-gateway service account
     annotations: {}
     # -- Set this toggle to false to opt out of automounting API credentials for the service account
     automountServiceAccountToken: true
-# -- Configuration for the bloom compactor
-bloomCompactor:
-  # -- Number of replicas for the bloom compactor
+# -- Configuration for the bloom-planner
+bloomPlanner:
+  # -- Number of replicas for the bloom-planner
   replicas: 0
   # -- hostAliases to add
   hostAliases: []
@@ -2492,62 +2496,62 @@ bloomCompactor:
   #    hostnames:
   #      - domain.tld
   image:
-    # -- The Docker registry for the bloom compactor image. Overrides `loki.image.registry`
+    # -- The Docker registry for the bloom-planner image. Overrides `loki.image.registry`
     registry: null
-    # -- Docker image repository for the bloom compactor image. Overrides `loki.image.repository`
+    # -- Docker image repository for the bloom-planner image. Overrides `loki.image.repository`
     repository: null
-    # -- Docker image tag for the bloom compactor image. Overrides `loki.image.tag`
+    # -- Docker image tag for the bloom-planner image. Overrides `loki.image.tag`
     tag: null
   # -- Command to execute instead of defined in Docker image
   command: null
-  # -- The name of the PriorityClass for bloom compactor pods
+  # -- The name of the PriorityClass for bloom-planner pods
   priorityClassName: null
-  # -- Labels for bloom compactor pods
+  # -- Labels for bloom-planner pods
   podLabels: {}
-  # -- Annotations for bloom compactor pods
+  # -- Annotations for bloom-planner pods
   podAnnotations: {}
-  # -- Affinity for bloom compactor pods.
+  # -- Affinity for bloom-planner pods.
   # @default -- Hard node anti-affinity
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
-              app.kubernetes.io/component: bloom-compactor
+              app.kubernetes.io/component: bloom-planner
           topologyKey: kubernetes.io/hostname
-  # -- Labels for bloom compactor service
+  # -- Labels for bloom-planner service
   serviceLabels: {}
-  # -- Additional CLI args for the bloom compactor
+  # -- Additional CLI args for the bloom-planner
   extraArgs: []
-  # -- Environment variables to add to the bloom compactor pods
+  # -- Environment variables to add to the bloom-planner pods
   extraEnv: []
-  # -- Environment variables from secrets or configmaps to add to the bloom compactor pods
+  # -- Environment variables from secrets or configmaps to add to the bloom-planner pods
   extraEnvFrom: []
-  # -- Volume mounts to add to the bloom compactor pods
+  # -- Volume mounts to add to the bloom-planner pods
   extraVolumeMounts: []
-  # -- Volumes to add to the bloom compactor pods
+  # -- Volumes to add to the bloom-planner pods
   extraVolumes: []
   # -- readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`
   readinessProbe: {}
   # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
-  # -- Resource requests and limits for the bloom compactor
+  # -- Resource requests and limits for the bloom-planner
   resources: {}
-  # -- Containers to add to the bloom compactor pods
+  # -- Containers to add to the bloom-planner pods
   extraContainers: []
-  # -- Init containers to add to the bloom compactor pods
+  # -- Init containers to add to the bloom-planner pods
   initContainers: []
-  # -- Grace period to allow the bloom compactor to shutdown before it is killed
+  # -- Grace period to allow the bloom-planner to shutdown before it is killed
   terminationGracePeriodSeconds: 30
-  # -- Node selector for bloom compactor pods
+  # -- Node selector for bloom-planner pods
   nodeSelector: {}
-  # -- Tolerations for bloom compactor pods
+  # -- Tolerations for bloom-planner pods
   tolerations: []
   # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
   appProtocol:
     grpc: ""
   persistence:
-    # -- Enable creating PVCs for the bloom compactor
+    # -- Enable creating PVCs for the bloom-planner
     enabled: false
     # -- Size of persistent disk
     size: 10Gi
@@ -2557,37 +2561,115 @@ bloomCompactor:
     # If empty or set to null, no storageClassName spec is
     # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
     storageClass: null
-    # -- Annotations for bloom compactor PVCs
+    # -- Annotations for bloom-planner PVCs
     annotations: {}
-    # -- List of the bloom compactor PVCs
+    # -- List of the bloom-planner PVCs
     # @notationType -- list
-    claims:
-      - name: data
-        size: 10Gi
-        #   -- Storage class to be used.
-        #   If defined, storageClassName: <storageClass>.
-        #   If set to "-", storageClassName: "", which disables dynamic provisioning.
-        #   If empty or set to null, no storageClassName spec is
-        #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
-        storageClass: null
-        # - name: wal
-        #   size: 150Gi
+    claims: []
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
     whenDeleted: Retain
     whenScaled: Retain
   serviceAccount:
     create: false
-    # -- The name of the ServiceAccount to use for the bloom compactor.
+    # -- The name of the ServiceAccount to use for the bloom-planner.
     # If not set and create is true, a name is generated by appending
-    # "-bloom-compactor" to the common ServiceAccount.
+    # "-bloom-planner" to the common ServiceAccount.
     name: null
-    # -- Image pull secrets for the bloom compactor service account
+    # -- Image pull secrets for the bloom-planner service account
     imagePullSecrets: []
-    # -- Annotations for the bloom compactor service account
+    # -- Annotations for the bloom-planner service account
     annotations: {}
     # -- Set this toggle to false to opt out of automounting API credentials for the service account
     automountServiceAccountToken: true
+# -- Configuration for the bloom-builder
+bloomBuilder:
+  # -- Number of replicas for the bloom-builder
+  replicas: 0
+  # -- hostAliases to add
+  hostAliases: []
+  #  - ip: 1.2.3.4
+  #    hostnames:
+  #      - domain.tld
+  autoscaling:
+    # -- Enable autoscaling for the bloom-builder
+    enabled: false
+    # -- Minimum autoscaling replicas for the bloom-builder
+    minReplicas: 1
+    # -- Maximum autoscaling replicas for the bloom-builder
+    maxReplicas: 3
+    # -- Target CPU utilisation percentage for the bloom-builder
+    targetCPUUtilizationPercentage: 60
+    # -- Target memory utilisation percentage for the bloom-builder
+    targetMemoryUtilizationPercentage: null
+    # -- Allows one to define custom metrics using the HPA/v2 schema (for example, Pods, Object or External metrics)
+    customMetrics: []
+    # - type: Pods
+    #   pods:
+    #     metric:
+    #       name: loki_query_rate
+    #     target:
+    #       type: AverageValue
+    #       averageValue: 100
+    behavior:
+      # -- Enable autoscaling behaviours
+      enabled: false
+      # -- define scale down policies, must conform to HPAScalingRules
+      scaleDown: {}
+      # -- define scale up policies, must conform to HPAScalingRules
+      scaleUp: {}
+  image:
+    # -- The Docker registry for the bloom-builder image. Overrides `loki.image.registry`
+    registry: null
+    # -- Docker image repository for the bloom-builder image. Overrides `loki.image.repository`
+    repository: null
+    # -- Docker image tag for the bloom-builder image. Overrides `loki.image.tag`
+    tag: null
+  # -- Command to execute instead of defined in Docker image
+  command: null
+  # -- The name of the PriorityClass for bloom-builder pods
+  priorityClassName: null
+  # -- Labels for bloom-builder pods
+  podLabels: {}
+  # -- Annotations for bloom-builder pods
+  podAnnotations: {}
+  # -- Labels for bloom-builder service
+  serviceLabels: {}
+  # -- Additional CLI args for the bloom-builder
+  extraArgs: []
+  # -- Environment variables to add to the bloom-builder pods
+  extraEnv: []
+  # -- Environment variables from secrets or configmaps to add to the bloom-builder pods
+  extraEnvFrom: []
+  # -- Volume mounts to add to the bloom-builder pods
+  extraVolumeMounts: []
+  # -- Volumes to add to the bloom-builder pods
+  extraVolumes: []
+  # -- Resource requests and limits for the bloom-builder
+  resources: {}
+  # -- Containers to add to the bloom-builder pods
+  extraContainers: []
+  # -- Grace period to allow the bloom-builder to shutdown before it is killed
+  terminationGracePeriodSeconds: 30
+  # -- Affinity for bloom-builder pods.
+  # @default -- Hard node anti-affinity
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/component: bloom-builder
+          topologyKey: kubernetes.io/hostname
+  # -- Pod Disruption Budget maxUnavailable
+  maxUnavailable: null
+  # -- Node selector for bloom-builder pods
+  nodeSelector: {}
+  # -- Tolerations for bloom-builder pods
+  tolerations: []
+  # -- Adds the appProtocol field to the queryFrontend service. This allows bloomBuilder to work with istio protocol selection.
+  appProtocol:
+    # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
+    grpc: ""
 # -- Configuration for the pattern ingester
 patternIngester:
   # -- Number of replicas for the pattern ingester
