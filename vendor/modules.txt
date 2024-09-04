@@ -1610,10 +1610,19 @@ github.com/twmb/franz-go/pkg/kgo
 github.com/twmb/franz-go/pkg/kgo/internal/sticky
 github.com/twmb/franz-go/pkg/kversion
 github.com/twmb/franz-go/pkg/sasl
+# github.com/twmb/franz-go/pkg/kadm v1.13.0
+## explicit; go 1.21
+github.com/twmb/franz-go/pkg/kadm
+# github.com/twmb/franz-go/pkg/kfake v0.0.0-20240821035758-b77dd13e2bfa
+## explicit; go 1.21
+github.com/twmb/franz-go/pkg/kfake
 # github.com/twmb/franz-go/pkg/kmsg v1.8.0
 ## explicit; go 1.19
 github.com/twmb/franz-go/pkg/kmsg
 github.com/twmb/franz-go/pkg/kmsg/internal/kbin
+# github.com/twmb/franz-go/plugin/kotel v1.5.0
+## explicit; go 1.21
+github.com/twmb/franz-go/plugin/kotel
 # github.com/twmb/franz-go/plugin/kprom v1.1.0
 ## explicit; go 1.18
 github.com/twmb/franz-go/plugin/kprom
@@ -1766,6 +1775,7 @@ go.opentelemetry.io/otel/internal/baggage
 go.opentelemetry.io/otel/internal/global
 go.opentelemetry.io/otel/propagation
 go.opentelemetry.io/otel/semconv/v1.17.0
+go.opentelemetry.io/otel/semconv/v1.18.0
 go.opentelemetry.io/otel/semconv/v1.20.0
 go.opentelemetry.io/otel/semconv/v1.21.0
 go.opentelemetry.io/otel/semconv/v1.24.0

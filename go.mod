@@ -139,6 +139,10 @@ require (
 	github.com/shirou/gopsutil/v4 v4.24.0-alpha.1
 	github.com/thanos-io/objstore v0.0.0-20240828153123-de861b433240
 	github.com/twmb/franz-go v1.17.1
+	github.com/twmb/franz-go/pkg/kadm v1.13.0
+	github.com/twmb/franz-go/pkg/kfake v0.0.0-20240821035758-b77dd13e2bfa
+	github.com/twmb/franz-go/pkg/kmsg v1.8.0
+	github.com/twmb/franz-go/plugin/kotel v1.5.0
 	github.com/twmb/franz-go/plugin/kprom v1.1.0
 	github.com/willf/bloom v2.0.3+incompatible
 	go.opentelemetry.io/collector/pdata v1.12.0
@@ -180,7 +184,6 @@ require (
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
-	github.com/twmb/franz-go/pkg/kmsg v1.8.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.opentelemetry.io/otel/sdk v1.28.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.28.0 // indirect
@@ -349,9 +352,9 @@ require (
 	go.opentelemetry.io/collector/semconv v0.105.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.53.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.53.0 // indirect
-	go.opentelemetry.io/otel v1.28.0 // indirect
+	go.opentelemetry.io/otel v1.28.0
 	go.opentelemetry.io/otel/metric v1.28.0 // indirect
-	go.opentelemetry.io/otel/trace v1.28.0 // indirect
+	go.opentelemetry.io/otel/trace v1.28.0
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.21.0 // indirect
 	golang.org/x/mod v0.19.0 // indirect

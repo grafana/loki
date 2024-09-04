@@ -1027,74 +1027,116 @@ metastore_client:
   # Configures the gRPC client used to communicate with the metastore.
   [grpc_client_config: <grpc_client>]
 
-partition_ring:
-  # The key-value store used to share the hash ring across multiple instances.
-  # This option needs be set on ingesters, distributors, queriers, and rulers
-  # when running in microservices mode.
-  kvstore:
-    # Backend storage to use for the ring. Supported values are: consul, etcd,
-    # inmemory, memberlist, multi.
-    # CLI flag: -ingester.partition-ring.store
-    [store: <string> | default = "memberlist"]
-
-    # The prefix for the keys in the store. Should end with a /.
-    # CLI flag: -ingester.partition-ring.prefix
-    [prefix: <string> | default = "collectors/"]
-
-    # Configuration for a Consul client. Only applies if the selected kvstore is
-    # consul.
-    # The CLI flags prefix for this block configuration is:
-    # ingester.partition-ring.consul
-    [consul: <consul>]
-
-    # Configuration for an ETCD v3 client. Only applies if the selected kvstore
-    # is etcd.
-    # The CLI flags prefix for this block configuration is:
-    # ingester.partition-ring.etcd
-    [etcd: <etcd>]
-
-    multi:
-      # Primary backend storage used by multi-client.
-      # CLI flag: -ingester.partition-ring.multi.primary
-      [primary: <string> | default = ""]
-
-      # Secondary backend storage used by multi-client.
-      # CLI flag: -ingester.partition-ring.multi.secondary
-      [secondary: <string> | default = ""]
-
-      # Mirror writes to secondary store.
-      # CLI flag: -ingester.partition-ring.multi.mirror-enabled
-      [mirror_enabled: <boolean> | default = false]
-
-      # Timeout for storing value to secondary store.
-      # CLI flag: -ingester.partition-ring.multi.mirror-timeout
-      [mirror_timeout: <duration> | default = 2s]
-
-  # Minimum number of owners to wait before a PENDING partition gets switched to
-  # ACTIVE.
-  # CLI flag: -ingester.partition-ring.min-partition-owners-count
-  [min_partition_owners_count: <int> | default = 1]
-
-  # How long the minimum number of owners are enforced before a PENDING
-  # partition gets switched to ACTIVE.
-  # CLI flag: -ingester.partition-ring.min-partition-owners-duration
-  [min_partition_owners_duration: <duration> | default = 10s]
-
-  # How long to wait before an INACTIVE partition is eligible for deletion. The
-  # partition is deleted only if it has been in INACTIVE state for at least the
-  # configured duration and it has no owners registered. A value of 0 disables
-  # partitions deletion.
-  # CLI flag: -ingester.partition-ring.delete-inactive-partition-after
-  [delete_inactive_partition_after: <duration> | default = 13h]
-
 kafka_config:
-  # the kafka endpoint to connect to
-  # CLI flag: -address
+  # The Kafka backend address.
+  # CLI flag: -.address
   [address: <string> | default = "localhost:9092"]
 
   # The Kafka topic name.
   # CLI flag: -.topic
-  [topic: <string> | default = "loki.push"]
+  [topic: <string> | default = ""]
+
+  # The Kafka client ID.
+  # CLI flag: -.client-id
+  [client_id: <string> | default = ""]
+
+  # The maximum time allowed to open a connection to a Kafka broker.
+  # CLI flag: -.dial-timeout
+  [dial_timeout: <duration> | default = 2s]
+
+  # How long to wait for an incoming write request to be successfully committed
+  # to the Kafka backend.
+  # CLI flag: -.write-timeout
+  [write_timeout: <duration> | default = 10s]
+
+  # The number of Kafka clients used by producers. When the configured number of
+  # clients is greater than 1, partitions are sharded among Kafka clients. A
+  # higher number of clients may provide higher write throughput at the cost of
+  # additional Metadata requests pressure to Kafka.
+  # CLI flag: -.write-clients
+  [write_clients: <int> | default = 1]
+
+  # The consumer group used by the consumer to track the last consumed offset.
+  # The consumer group must be different for each ingester. If the configured
+  # consumer group contains the '<partition>' placeholder, it is replaced with
+  # the actual partition ID owned by the ingester. When empty (recommended),
+  # Mimir uses the ingester instance ID to guarantee uniqueness.
+  # CLI flag: -.consumer-group
+  [consumer_group: <string> | default = ""]
+
+  # How frequently a consumer should commit the consumed offset to Kafka. The
+  # last committed offset is used at startup to continue the consumption from
+  # where it was left.
+  # CLI flag: -.consumer-group-offset-commit-interval
+  [consumer_group_offset_commit_interval: <duration> | default = 1s]
+
+  # How frequently to poll the last produced offset, used to enforce strong read
+  # consistency.
+  # CLI flag: -.last-produced-offset-poll-interval
+  [last_produced_offset_poll_interval: <duration> | default = 1s]
+
+  # How long to retry a failed request to get the last produced offset.
+  # CLI flag: -.last-produced-offset-retry-timeout
+  [last_produced_offset_retry_timeout: <duration> | default = 10s]
+
+  # From which position to start consuming the partition at startup. Supported
+  # options: last-offset, start, end, timestamp.
+  # CLI flag: -.consume-from-position-at-startup
+  [consume_from_position_at_startup: <string> | default = "last-offset"]
+
+  # Milliseconds timestamp after which the consumption of the partition starts
+  # at startup. Only applies when consume-from-position-at-startup is timestamp
+  # CLI flag: -.consume-from-timestamp-at-startup
+  [consume_from_timestamp_at_startup: <int> | default = 0]
+
+  # The best-effort maximum lag a consumer tries to achieve at startup. Set both
+  # -ingest-storage.kafka.target-consumer-lag-at-startup and
+  # -ingest-storage.kafka.max-consumer-lag-at-startup to 0 to disable waiting
+  # for maximum consumer lag being honored at startup.
+  # CLI flag: -ingest-storage.kafka.target-consumer-lag-at-startup
+  [target_consumer_lag_at_startup: <duration> | default = 2s]
+
+  # The guaranteed maximum lag before a consumer is considered to have caught up
+  # reading from a partition at startup, becomes ACTIVE in the hash ring and
+  # passes the readiness check. Set both
+  # -ingest-storage.kafka.target-consumer-lag-at-startup and
+  # -ingest-storage.kafka.max-consumer-lag-at-startup to 0 to disable waiting
+  # for maximum consumer lag being honored at startup.
+  # CLI flag: -ingest-storage.kafka.max-consumer-lag-at-startup
+  [max_consumer_lag_at_startup: <duration> | default = 15s]
+
+  # Enable auto-creation of Kafka topic if it doesn't exist.
+  # CLI flag: -.auto-create-topic-enabled
+  [auto_create_topic_enabled: <boolean> | default = true]
+
+  # When auto-creation of Kafka topic is enabled and this value is positive,
+  # Kafka's num.partitions configuration option is set on Kafka brokers with
+  # this value when Mimir component that uses Kafka starts. This configuration
+  # option specifies the default number of partitions that the Kafka broker uses
+  # for auto-created topics. Note that this is a Kafka-cluster wide setting, and
+  # applies to any auto-created topic. If the setting of num.partitions fails,
+  # Mimir proceeds anyways, but auto-created topics could have an incorrect
+  # number of partitions.
+  # CLI flag: -.auto-create-topic-default-partitions
+  [auto_create_topic_default_partitions: <int> | default = 0]
+
+  # The maximum size of a Kafka record data that should be generated by the
+  # producer. An incoming write request larger than this size is split into
+  # multiple Kafka records. We strongly recommend to not change this setting
+  # unless for testing purposes.
+  # CLI flag: -.producer-max-record-size-bytes
+  [producer_max_record_size_bytes: <int> | default = 15983616]
+
+  # The maximum size of (uncompressed) buffered and unacknowledged produced
+  # records sent to Kafka. The produce request fails once this limit is reached.
+  # This limit is per Kafka client. 0 to disable the limit.
+  # CLI flag: -.producer-max-buffered-bytes
+  [producer_max_buffered_bytes: <int> | default = 1073741824]
+
+  # The maximum allowed for a read requests processed by an ingester to wait
+  # until strong read consistency is enforced. 0 to disable the timeout.
+  # CLI flag: -.wait-strong-read-consistency-timeout
+  [wait_strong_read_consistency_timeout: <duration> | default = 20s]
 
 kafka_ingester:
   # Whether the kafka ingester is enabled.
@@ -1252,41 +1294,60 @@ kafka_ingester:
     # This option needs be set on ingesters, distributors, queriers, and rulers
     # when running in microservices mode.
     kvstore:
-      [store: <string> | default = ""]
+      # Backend storage to use for the ring. Supported values are: consul, etcd,
+      # inmemory, memberlist, multi.
+      # CLI flag: -ingester.partition-ring.store
+      [store: <string> | default = "memberlist"]
 
-      [prefix: <string> | default = ""]
+      # The prefix for the keys in the store. Should end with a /.
+      # CLI flag: -ingester.partition-ring.prefix
+      [prefix: <string> | default = "collectors/"]
 
       # Configuration for a Consul client. Only applies if the selected kvstore
       # is consul.
       # The CLI flags prefix for this block configuration is:
-      # common.storage.ring.consul
+      # ingester.partition-ring.consul
       [consul: <consul>]
 
       # Configuration for an ETCD v3 client. Only applies if the selected
       # kvstore is etcd.
       # The CLI flags prefix for this block configuration is:
-      # common.storage.ring.etcd
+      # ingester.partition-ring.etcd
       [etcd: <etcd>]
 
       multi:
+        # Primary backend storage used by multi-client.
+        # CLI flag: -ingester.partition-ring.multi.primary
         [primary: <string> | default = ""]
 
+        # Secondary backend storage used by multi-client.
+        # CLI flag: -ingester.partition-ring.multi.secondary
         [secondary: <string> | default = ""]
 
-        [mirror_enabled: <boolean>]
+        # Mirror writes to secondary store.
+        # CLI flag: -ingester.partition-ring.multi.mirror-enabled
+        [mirror_enabled: <boolean> | default = false]
 
-        [mirror_timeout: <duration>]
+        # Timeout for storing value to secondary store.
+        # CLI flag: -ingester.partition-ring.multi.mirror-timeout
+        [mirror_timeout: <duration> | default = 2s]
 
-    [min_partition_owners_count: <int>]
+    # Minimum number of owners to wait before a PENDING partition gets switched
+    # to ACTIVE.
+    # CLI flag: -ingester.partition-ring.min-partition-owners-count
+    [min_partition_owners_count: <int> | default = 1]
 
-    [min_partition_owners_duration: <duration>]
+    # How long the minimum number of owners are enforced before a PENDING
+    # partition gets switched to ACTIVE.
+    # CLI flag: -ingester.partition-ring.min-partition-owners-duration
+    [min_partition_owners_duration: <duration> | default = 10s]
 
-    [delete_inactive_partition_after: <duration>]
-
-  kafkaconfig:
-    [address: <string> | default = ""]
-
-    [topic: <string> | default = ""]
+    # How long to wait before an INACTIVE partition is eligible for deletion.
+    # The partition is deleted only if it has been in INACTIVE state for at
+    # least the configured duration and it has no owners registered. A value of
+    # 0 disables partitions deletion.
+    # CLI flag: -ingester.partition-ring.delete-inactive-partition-after
+    [delete_inactive_partition_after: <duration> | default = 13h]
 
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
@@ -2240,10 +2301,14 @@ ring:
 
     # Configuration for a Consul client. Only applies if the selected kvstore is
     # consul.
+    # The CLI flags prefix for this block configuration is:
+    # common.storage.ring.consul
     [consul: <consul>]
 
     # Configuration for an ETCD v3 client. Only applies if the selected kvstore
     # is etcd.
+    # The CLI flags prefix for this block configuration is:
+    # common.storage.ring.etcd
     [etcd: <etcd>]
 
     multi:
@@ -3574,26 +3639,16 @@ The `ingester_client` block configures how the distributor will connect to inges
 ```yaml
 # Configures how connections are pooled.
 pool_config:
-  # How frequently to clean up clients for ingesters that have gone away.
-  # CLI flag: -distributor.client-cleanup-period
-  [client_cleanup_period: <duration> | default = 15s]
+  [client_cleanup_period: <duration>]
 
-  # Run a health check on each ingester client during periodic cleanup.
-  # CLI flag: -distributor.health-check-ingesters
-  [health_check_ingesters: <boolean> | default = true]
+  [health_check_ingesters: <boolean>]
 
-  # How quickly a dead client will be removed after it has been detected to
-  # disappear. Set this to a value to allow time for a secondary health check to
-  # recover the missing client.
-  # CLI flag: -ingester.client.healthcheck-timeout
-  [remote_timeout: <duration> | default = 1s]
+  [remote_timeout: <duration>]
 
-# The remote request timeout on the client side.
-# CLI flag: -ingester.client.timeout
-[remote_timeout: <duration> | default = 5s]
+[remote_timeout: <duration>]
 
 # Configures how the gRPC connection to ingesters work as a client.
-# The CLI flags prefix for this block configuration is: ingester.client
+# The CLI flags prefix for this block configuration is: ingester-rf1.client
 [grpc_client_config: <grpc_client>]
 ```
 

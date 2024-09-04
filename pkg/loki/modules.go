@@ -47,14 +47,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
-	ingesterkafka "github.com/grafana/loki/v3/pkg/ingester-kafka"
-	"github.com/grafana/loki/v3/pkg/ingester-kafka/kafka"
 	ingester_rf1 "github.com/grafana/loki/v3/pkg/ingester-rf1"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore"
 	metastoreclient "github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/client"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/health"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/objstore"
+	ingesterkafka "github.com/grafana/loki/v3/pkg/kafka/ingester"
+	kafka_tee "github.com/grafana/loki/v3/pkg/kafka/tee"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -342,7 +342,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		t.Tee = distributor.WrapTee(t.Tee, rf1Tee)
 	}
 	if t.Cfg.KafkaIngester.Enabled {
-		kafkaTee, err := kafka.NewTee(t.Cfg.KafkaConfig, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer, util_log.Logger, t.partitionRing)
+		kafkaTee, err := kafka_tee.NewTee(t.Cfg.KafkaConfig, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer, util_log.Logger, t.partitionRing)
 		if err != nil {
 			return nil, err
 		}
@@ -653,7 +653,7 @@ func (t *Loki) initKafkaIngester() (_ services.Service, err error) {
 	if !t.Cfg.KafkaIngester.Enabled {
 		return nil, nil
 	}
-
+	t.Cfg.KafkaIngester.KafkaConfig = t.Cfg.KafkaConfig
 	logger := log.With(util_log.Logger, "component", "ingester-kafka")
 	t.Cfg.KafkaIngester.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
 
@@ -661,28 +661,22 @@ func (t *Loki) initKafkaIngester() (_ services.Service, err error) {
 		t.Cfg.KafkaIngester.ShutdownMarkerPath = t.Cfg.Common.PathPrefix
 	}
 	if t.Cfg.KafkaIngester.ShutdownMarkerPath == "" {
-		level.Warn(util_log.Logger).Log("msg", "The config setting shutdown marker path is not set. The /ingester/prepare_shutdown endpoint won't work")
+		return nil, errors.New("the config setting shutdown marker path is not set. The /ingester/prepare-partition-downscale endpoint won't work")
 	}
 
-	t.kafkaIngester, err = ingesterkafka.New(t.Cfg.KafkaIngester, prometheus.DefaultRegisterer, t.Cfg.MetricsNamespace, logger)
+	t.kafkaIngester, err = ingesterkafka.New(t.Cfg.KafkaIngester, prometheus.DefaultRegisterer, t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.ClientMetrics, t.MetastoreClient, t.Cfg.MetricsNamespace, logger)
 	if err != nil {
 		fmt.Println("Error initializing ingester rf1", err)
 		return
 	}
 
-	// Not enabled for kafka ingester yet
-	//	fmt.Println("registered GRPC")
-	//	logproto.RegisterPusherRF1Server(t.Server.GRPC, t.IngesterRF1)
-
 	httpMiddleware := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
 	)
-	t.Server.HTTP.Methods("POST", "GET", "DELETE").Path("/ingester-rf1/prepare_shutdown").Handler(
-		httpMiddleware.Wrap(http.HandlerFunc(t.kafkaIngester.PrepareShutdown)),
+	t.Server.HTTP.Methods("POST", "GET", "DELETE").Path("/ingester/prepare-partition-downscale").Handler(
+		httpMiddleware.Wrap(http.HandlerFunc(t.kafkaIngester.PreparePartitionDownscaleHandler)),
 	)
-	t.Server.HTTP.Methods("POST", "GET").Path("/ingester-rf1/shutdown").Handler(
-		httpMiddleware.Wrap(http.HandlerFunc(t.kafkaIngester.ShutdownHandler)),
-	)
+
 	return t.kafkaIngester, nil
 }
 
@@ -1849,7 +1843,7 @@ func (t *Loki) initAnalytics() (services.Service, error) {
 }
 
 func (t *Loki) initMetastore() (services.Service, error) {
-	if !t.Cfg.IngesterRF1.Enabled {
+	if !t.Cfg.IngesterRF1.Enabled && !t.Cfg.KafkaIngester.Enabled {
 		return nil, nil
 	}
 	if t.Cfg.isTarget(All) {
@@ -1866,7 +1860,7 @@ func (t *Loki) initMetastore() (services.Service, error) {
 }
 
 func (t *Loki) initMetastoreClient() (services.Service, error) {
-	if !t.Cfg.IngesterRF1.Enabled && !t.Cfg.QuerierRF1.Enabled {
+	if !t.Cfg.IngesterRF1.Enabled && !t.Cfg.QuerierRF1.Enabled && !t.Cfg.KafkaIngester.Enabled {
 		return nil, nil
 	}
 	mc, err := metastoreclient.New(t.Cfg.MetastoreClient, prometheus.DefaultRegisterer)
