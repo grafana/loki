@@ -189,6 +189,7 @@ func (authenticator *VpcInstanceAuthenticator) Authenticate(request *http.Reques
 	}
 
 	request.Header.Set("Authorization", "Bearer "+token)
+	GetLogger().Debug("Authenticated outbound request (type=%s)\n", authenticator.AuthenticationType())
 	return nil
 }
 
