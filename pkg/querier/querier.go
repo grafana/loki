@@ -1136,9 +1136,13 @@ func getParsersFromExpr(expr syntax.LogSelectorExpr) []string {
 	parsers := make([]string, 0)
 	expr.Walk(func(e syntax.Expr) {
 		switch concrete := e.(type) {
-		case *syntax.LogfmtParserExpr:
+		case *syntax.LogfmtParserExpr, *syntax.LogfmtExpressionParser:
 			if !slices.Contains(parsers, "logfmt") {
 				parsers = append(parsers, "logfmt")
+			}
+		case *syntax.JSONExpressionParser:
+			if !slices.Contains(parsers, "json") {
+				parsers = append(parsers, "json")
 			}
 		case *syntax.LabelParserExpr:
 			if concrete.Op == syntax.OpParserTypeJSON {
