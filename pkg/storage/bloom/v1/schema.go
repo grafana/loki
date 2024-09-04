@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/pkg/errors"
+
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
-	"github.com/pkg/errors"
 )
 
 type Version byte
