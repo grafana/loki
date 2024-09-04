@@ -320,7 +320,7 @@ func TestParseRequest(t *testing.T) {
 func Test_ServiceDetction(t *testing.T) {
 	tracker := NewMockTracker()
 
-	t.Run("detects servce from loki push requests", func(t *testing.T) {
+	t.Run("detects service from loki push requests", func(t *testing.T) {
 		body := `{"streams": [{ "stream": { "foo": "bar" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`
 		request := httptest.NewRequest(
 			"POST",
