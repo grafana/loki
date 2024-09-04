@@ -292,8 +292,6 @@ type Meta struct {
 	Offsets []BloomOffset
 }
 
-// SeriesWithMeta is a series with a a variable number of bloom offsets.
-// Used in v2+ to store blooms for larger series in parts
 type SeriesWithMeta struct {
 	Series
 	Meta
