@@ -206,7 +206,7 @@ github.com/DataDog/sketches-go/ddsketch/store
 # github.com/DmitriyVTitov/size v1.5.0
 ## explicit; go 1.14
 github.com/DmitriyVTitov/size
-# github.com/IBM/go-sdk-core/v5 v5.17.4
+# github.com/IBM/go-sdk-core/v5 v5.17.5
 ## explicit; go 1.20
 github.com/IBM/go-sdk-core/v5/core
 # github.com/IBM/ibm-cos-sdk-go v1.11.0
