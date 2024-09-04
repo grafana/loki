@@ -40,6 +40,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	listutil "github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 	util_validation "github.com/grafana/loki/v3/pkg/util/validation"
 
@@ -1075,6 +1076,8 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 	if err != nil {
 		return nil, err
 	}
+	// just incject the header to categorize labels
+	ctx = httpreq.InjectHeader(ctx, httpreq.LokiEncodingFlagsHeader, (string)(httpreq.FlagCategorizeLabels))
 	params := logql.SelectLogParams{
 		QueryRequest: &logproto.QueryRequest{
 			Start:     req.Start,
@@ -1099,8 +1102,9 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 	if err != nil {
 		return nil, err
 	}
+	parsers := getParsersFromExpr(expr)
 
-	detectedFields := parseDetectedFields(req.FieldLimit, streams)
+	detectedFields := parseDetectedFields(req.FieldLimit, streams, parsers)
 
 	fields := make([]*logproto.DetectedField, len(detectedFields))
 	fieldCount := 0
@@ -1128,21 +1132,40 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 	}, nil
 }
 
+func getParsersFromExpr(expr syntax.LogSelectorExpr) []string {
+	parsers := make([]string, 0)
+	expr.Walk(func(e syntax.Expr) {
+		switch concrete := e.(type) {
+		case *syntax.LogfmtParserExpr:
+			if !slices.Contains(parsers, "logfmt") {
+				parsers = append(parsers, "logfmt")
+			}
+		case *syntax.LabelParserExpr:
+			if concrete.Op == syntax.OpParserTypeJSON {
+				if !slices.Contains(parsers, "json") {
+					parsers = append(parsers, "json")
+				}
+			}
+		}
+		// bail if we found both parsers
+		if len(parsers) == 2 {
+			return
+		}
+	})
+	return parsers
+}
+
 type parsedFields struct {
 	sketch    *hyperloglog.Sketch
 	fieldType logproto.DetectedFieldType
 	parsers   []string
 }
 
-func newParsedFields(parser *string) *parsedFields {
-	p := ""
-	if parser != nil {
-		p = *parser
-	}
+func newParsedFields(parsers []string) *parsedFields {
 	return &parsedFields{
 		sketch:    hyperloglog.New(),
 		fieldType: logproto.DetectedFieldString,
-		parsers:   []string{p},
+		parsers:   parsers,
 	}
 }
 
@@ -1193,10 +1216,10 @@ func determineType(value string) logproto.DetectedFieldType {
 	return logproto.DetectedFieldString
 }
 
-func parseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*parsedFields {
+func parseDetectedFields(limit uint32, streams logqlmodel.Streams, queryParsers []string) map[string]*parsedFields {
 	detectedFields := make(map[string]*parsedFields, limit)
 	fieldCount := uint32(0)
-	emtpyparser := ""
+	emtpyparsers := []string{}
 
 	for _, stream := range streams {
 		streamLbls, err := syntax.ParseLabels(stream.Labels)
@@ -1209,7 +1232,7 @@ func parseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*p
 			for k, vals := range structuredMetadata {
 				df, ok := detectedFields[k]
 				if !ok && fieldCount < limit {
-					df = newParsedFields(&emtpyparser)
+					df = newParsedFields(emtpyparsers)
 					detectedFields[k] = df
 					fieldCount++
 				}
@@ -1231,11 +1254,15 @@ func parseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*p
 				}
 			}
 
-			detected, parser := parseLine(entry.Line, streamLbls)
-			for k, vals := range detected {
+			parsers := queryParsers
+			parsedLabels := getParsedLabels(entry)
+			if len(parsedLabels) == 0 {
+				parsedLabels, parsers = parseLine(entry.Line, streamLbls)
+			}
+			for k, vals := range parsedLabels {
 				df, ok := detectedFields[k]
 				if !ok && fieldCount < limit {
-					df = newParsedFields(parser)
+					df = newParsedFields(parsers)
 					detectedFields[k] = df
 					fieldCount++
 				}
@@ -1244,8 +1271,10 @@ func parseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*p
 					continue
 				}
 
-				if !slices.Contains(df.parsers, *parser) {
-					df.parsers = append(df.parsers, *parser)
+				for _, parser := range parsers {
+					if !slices.Contains(df.parsers, parser) {
+						df.parsers = append(df.parsers, parser)
+					}
 				}
 
 				detectType := true
@@ -1264,6 +1293,28 @@ func parseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*p
 	}
 
 	return detectedFields
+}
+
+func getParsedLabels(entry push.Entry) map[string][]string {
+	labels := map[string]map[string]struct{}{}
+	for _, lbl := range entry.Parsed {
+		if values, ok := labels[lbl.Name]; ok {
+			values[lbl.Value] = struct{}{}
+		} else {
+			labels[lbl.Name] = map[string]struct{}{lbl.Value: {}}
+		}
+	}
+
+	result := make(map[string][]string, len(labels))
+	for lbl, values := range labels {
+		vals := make([]string, 0, len(values))
+		for v := range values {
+			vals = append(vals, v)
+		}
+		result[lbl] = vals
+	}
+
+	return result
 }
 
 func getStructuredMetadata(entry push.Entry) map[string][]string {
@@ -1288,7 +1339,7 @@ func getStructuredMetadata(entry push.Entry) map[string][]string {
 	return result
 }
 
-func parseLine(line string, streamLbls labels.Labels) (map[string][]string, *string) {
+func parseLine(line string, streamLbls labels.Labels) (map[string][]string, []string) {
 	parser := "logfmt"
 	logFmtParser := logql_log.NewLogfmtParser(true, false)
 
@@ -1326,7 +1377,7 @@ func parseLine(line string, streamLbls labels.Labels) (map[string][]string, *str
 		result[lbl] = vals
 	}
 
-	return result, &parser
+	return result, []string{parser}
 }
 
 // streamsForFieldDetection reads the streams from the iterator and returns them sorted.
