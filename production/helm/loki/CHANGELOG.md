@@ -13,9 +13,17 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
-## 6.10.3
+## 6.12.1
 
 - [BUGFIX] Added missing `loki.storage.azure.chunkDelimiter` parameter to Helm chart.
+
+## 6.12.0
+
+- [ENHANCEMENT] Replace Bloom Compactor component with Bloom Planner and Bloom Builder. These are the new components to build bloom blocks.
+
+## 6.11.0
+
+- [FEATURE] Add support for configuring persistence for memcached.
 
 ## 6.10.2
 
@@ -30,7 +38,6 @@ Entries should include a reference to the pull request that introduced the chang
 - [CHANGE] Changed version of Grafana Enterprise Logs to 3.1.1
 - [CHANGE] Changed version of Grafana Loki to 3.1.1
 - [ENHANCEMENT] Added ability to disable AWS S3 dualstack endpoint usage.
-
 
 ## 6.9.0
 

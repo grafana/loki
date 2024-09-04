@@ -88,7 +88,7 @@ func Test_BuilderLoop(t *testing.T) {
 	}
 	flagext.DefaultValues(&cfg.GrpcConfig)
 
-	builder, err := New(cfg, limits, schemaCfg, storageCfg, storage.NewClientMetrics(), nil, fakeBloomStore{}, logger, prometheus.DefaultRegisterer)
+	builder, err := New(cfg, limits, schemaCfg, storageCfg, storage.NewClientMetrics(), nil, fakeBloomStore{}, logger, prometheus.DefaultRegisterer, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		err = services.StopAndAwaitTerminated(context.Background(), builder)

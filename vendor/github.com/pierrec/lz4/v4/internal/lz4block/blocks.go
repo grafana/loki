@@ -8,11 +8,8 @@ const (
 	Block256Kb
 	Block1Mb
 	Block4Mb
+	Block8Mb = 2 * Block4Mb
 )
-
-// In legacy mode all blocks are compressed regardless
-// of the compressed size: use the bound size.
-var Block8Mb = uint32(CompressBlockBound(8 << 20))
 
 var (
 	BlockPool64K  = sync.Pool{New: func() interface{} { return make([]byte, Block64Kb) }}
