@@ -336,7 +336,7 @@ func Test_ServiceDetction(t *testing.T) {
 		require.Equal(t, labels.FromStrings("foo", "bar", LabelServiceName, "bar").String(), data.Streams[0].Labels)
 	})
 
-	t.Run("detects servce from OTLP push requests using default indexing", func(t *testing.T) {
+	t.Run("detects service from OTLP push requests using default indexing", func(t *testing.T) {
 		now := time.Unix(0, time.Now().UnixNano())
 
 		tracker := NewMockTracker()
