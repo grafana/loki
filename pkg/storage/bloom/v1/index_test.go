@@ -52,10 +52,7 @@ func TestSeriesEncoding_V3(t *testing.T) {
 				{Page: 1, ByteOffset: 2},
 				{Page: 2, ByteOffset: 1},
 			},
-			Fields: []Field{
-				Field("foo"),
-				Field("bar"),
-			},
+			Fields: NewSetFromLiteral[Field]("foo", "bar"),
 		},
 	}
 

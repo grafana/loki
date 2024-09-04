@@ -301,7 +301,12 @@ func (mb *MergeBuilder) processNextSeries(
 		bytesAdded += bloom.SourceBytesAdded
 	}
 
-	done, err := builder.AddSeries(*nextInStore, offsets, []Field{Field("__line__")})
+	// TODO(chaudum): Use the indexed fields from bloom creation, however,
+	// currently we still build blooms from log lines.
+	fields := NewSet[Field](1)
+	fields.Add("__line__")
+
+	done, err := builder.AddSeries(*nextInStore, offsets, fields)
 	if err != nil {
 		return nil, bytesAdded, 0, false, false, errors.Wrap(err, "committing series")
 	}

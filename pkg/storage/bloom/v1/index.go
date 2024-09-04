@@ -288,7 +288,7 @@ type Series struct {
 }
 
 type Meta struct {
-	Fields  Fields
+	Fields  Set[Field]
 	Offsets []BloomOffset
 }
 
@@ -323,10 +323,9 @@ func (s *SeriesWithMeta) Encode(
 		lastEnd = chunk.Encode(enc, version, lastEnd)
 	}
 
-	enc.PutUvarint(len(s.Fields))
-	sort.Sort(s.Fields) // ensure order
-	for _, field := range s.Fields {
-		field.Encode(enc, version)
+	enc.PutUvarint(s.Fields.Len())
+	for _, f := range s.Fields.Items() {
+		f.Encode(enc, version)
 	}
 
 	return lastOffset
@@ -370,12 +369,15 @@ func (s *SeriesWithMeta) Decode(
 		}
 	}
 
-	s.Fields = make([]Field, dec.Uvarint())
-	for i := range s.Fields {
-		err = s.Fields[i].Decode(dec, version)
+	n := dec.Uvarint()
+	s.Fields = NewSet[Field](n)
+	for i := 0; i < n; i++ {
+		var f Field
+		err = f.Decode(dec, version)
 		if err != nil {
 			return 0, BloomOffset{}, errors.Wrapf(err, "decoding %dth field", i)
 		}
+		s.Fields.Add(f)
 	}
 
 	return s.Fingerprint, lastOffset, dec.Err()
@@ -383,38 +385,15 @@ func (s *SeriesWithMeta) Decode(
 
 // field encoding/decoding ---------------------------------------------------
 
-type Field []byte // key of an indexed structured metadata field
+type Field string
 
-func (f *Field) Encode(enc *encoding.Encbuf, _ Version) {
-	enc.PutUvarintBytes(*f)
+func (f Field) Encode(enc *encoding.Encbuf, _ Version) {
+	enc.PutUvarintBytes([]byte(f))
 }
 
 func (f *Field) Decode(dec *encoding.Decbuf, _ Version) error {
 	*f = Field(dec.UvarintBytes())
 	return dec.Err()
-}
-
-func (f *Field) String() string {
-	return string(*f)
-}
-
-func (f *Field) Less(other Field) bool {
-	// avoid string allocations
-	return string(*f) < string(other)
-}
-
-type Fields []Field
-
-func (f Fields) Len() int {
-	return len(f)
-}
-
-func (f Fields) Less(i, j int) bool {
-	return f[i].Less(f[j])
-}
-
-func (f Fields) Swap(i, j int) {
-	f[i], f[j] = f[j], f[i]
 }
 
 // chunk encoding/decoding ---------------------------------------------------

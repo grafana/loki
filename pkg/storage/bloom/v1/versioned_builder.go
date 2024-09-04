@@ -78,7 +78,13 @@ func (b *V3Builder) BuildFrom(itr iter.Iterator[SeriesWithBlooms]) (uint32, erro
 		if err := at.Blooms.Err(); err != nil {
 			return 0, errors.Wrap(err, "iterating blooms")
 		}
-		blockFull, err := b.AddSeries(*at.Series, offsets, []Field{Field("__line__")})
+
+		// TODO(chaudum): Use the indexed fields from bloom creation, however,
+		// currently we still build blooms from log lines.
+		fields := NewSet[Field](1)
+		fields.Add("__line__")
+
+		blockFull, err := b.AddSeries(*at.Series, offsets, fields)
 		if err != nil {
 			return 0, errors.Wrapf(err, "writing series")
 		}
@@ -111,7 +117,7 @@ func (b *V3Builder) AddBloom(bloom *Bloom) (BloomOffset, error) {
 }
 
 // AddSeries adds a series to the block. It returns true after adding the series, the block is full.
-func (b *V3Builder) AddSeries(series Series, offsets []BloomOffset, fields []Field) (bool, error) {
+func (b *V3Builder) AddSeries(series Series, offsets []BloomOffset, fields Set[Field]) (bool, error) {
 	if err := b.index.Append(SeriesWithMeta{
 		Series: series,
 		Meta: Meta{
