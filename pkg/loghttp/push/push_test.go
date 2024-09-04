@@ -352,7 +352,7 @@ func Test_ServiceDetction(t *testing.T) {
 		require.NoError(t, err)
 		request := httptest.NewRequest(
 			"POST",
-			`/loki/api/v1/push`,
+			`/otlp/v1/logs`,
 			bytes.NewReader(body),
 		)
 		request.Header.Add("Content-Type", "application/json")
