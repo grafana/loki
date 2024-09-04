@@ -1,33 +1,28 @@
 {{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
-{{- if $isDistributed }}
-{{- if (gt (int .Values.bloomCompactor.replicas) 0) -}}
+{{- if $isDistributed -}}
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
-  name: {{ include "loki.bloomCompactorFullname" . }}
+  name: {{ include "loki.bloomBuilderFullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "loki.bloomCompactorLabels" . | nindent 4 }}
+    {{- include "loki.bloomBuilderLabels" . | nindent 4 }}
   {{- with .Values.loki.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  replicas: {{ .Values.bloomCompactor.replicas }}
-  podManagementPolicy: Parallel
-  updateStrategy:
+{{- if not .Values.bloomBuilder.autoscaling.enabled }}
+  replicas: {{ .Values.bloomBuilder.replicas }}
+{{- end }}
+  strategy:
     rollingUpdate:
-      partition: 0
-  serviceName: {{ include "loki.bloomCompactorFullname" . }}-headless
+      maxSurge: 0
+      maxUnavailable: 1
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
-  {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.bloomCompactor.persistence.enableStatefulSetAutoDeletePVC)  }}
-  persistentVolumeClaimRetentionPolicy:
-    whenDeleted: {{ .Values.bloomCompactor.persistence.whenDeleted }}
-    whenScaled: {{ .Values.bloomCompactor.persistence.whenScaled }}
-  {{- end }}
   selector:
     matchLabels:
-      {{- include "loki.bloomCompactorSelectorLabels" . | nindent 6 }}
+      {{- include "loki.bloomBuilderSelectorLabels" . | nindent 6 }}
   template:
     metadata:
       annotations:
@@ -35,16 +30,16 @@ spec:
         {{- with .Values.loki.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-        {{- with .Values.bloomCompactor.podAnnotations }}
+        {{- with .Values.bloomBuilder.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "loki.bloomCompactorSelectorLabels" . | nindent 8 }}
+        {{- include "loki.bloomBuilderSelectorLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
         {{- with .Values.loki.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-        {{- with .Values.bloomCompactor.podLabels }}
+        {{- with .Values.bloomBuilder.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
@@ -53,30 +48,26 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.bloomCompactor.hostAliases }}
+      {{- with .Values.bloomBuilder.hostAliases }}
       hostAliases:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- include "loki.bloomCompactorPriorityClassName" . | nindent 6 }}
+      {{- include "loki.bloomBuilderPriorityClassName" . | nindent 6 }}
       securityContext:
         {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
-      terminationGracePeriodSeconds: {{ .Values.bloomCompactor.terminationGracePeriodSeconds }}
-      {{- with .Values.bloomCompactor.initContainers }}
-      initContainers:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.bloomBuilder.terminationGracePeriodSeconds }}
       containers:
-        - name: bloom-compactor
+        - name: bloom-builder
           image: {{ include "loki.image" . }}
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
-          {{- if or .Values.loki.command .Values.bloomCompactor.command }}
+          {{- if or .Values.loki.command .Values.bloomBuilder.command }}
           command:
-            - {{ coalesce .Values.bloomCompactor.command .Values.loki.command | quote }}
+            - {{ coalesce .Values.bloomBuilder.command .Values.loki.command | quote }}
           {{- end }}
           args:
             - -config.file=/etc/loki/config/config.yaml
-            - -target=bloom-compactor
-            {{- with .Values.bloomCompactor.extraArgs }}
+            - -target=bloom-builder
+            {{- with .Values.bloomBuilder.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
@@ -89,55 +80,48 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
-          {{- with .Values.bloomCompactor.extraEnv }}
+          {{- with .Values.bloomBuilder.extraEnv }}
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.bloomCompactor.extraEnvFrom }}
+          {{- with .Values.bloomBuilder.extraEnvFrom }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
-          {{- include "loki.bloomCompactor.readinessProbe" . | nindent 10 }}
+          readinessProbe:
+            {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
           volumeMounts:
-            - name: temp
-              mountPath: /tmp
             - name: config
               mountPath: /etc/loki/config
             - name: runtime-config
               mountPath: /etc/loki/runtime-config
-            - name: data
-              mountPath: /var/loki
             {{- if .Values.enterprise.enabled }}
             - name: license
               mountPath: /etc/loki/license
             {{- end }}
-            {{- with .Values.bloomCompactor.extraVolumeMounts }}
+            {{- with .Values.bloomBuilder.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
-          {{- with .Values.bloomCompactor.resources }}
           resources:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-        {{- if .Values.bloomCompactor.extraContainers }}
-        {{- toYaml .Values.bloomCompactor.extraContainers | nindent 8}}
+            {{- toYaml .Values.bloomBuilder.resources | nindent 12 }}
+        {{- if .Values.bloomBuilder.extraContainers }}
+        {{- toYaml .Values.bloomBuilder.extraContainers | nindent 8}}
         {{- end }}
-      {{- with .Values.bloomCompactor.affinity }}
+      {{- with .Values.bloomBuilder.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.bloomCompactor.nodeSelector }}
+      {{- with .Values.bloomBuilder.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.bloomCompactor.tolerations }}
+      {{- with .Values.bloomBuilder.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       volumes:
-        - name: temp
-          emptyDir: {}
         - name: config
           {{- include "loki.configVolume" . | nindent 10 }}
         - name: runtime-config
@@ -152,32 +136,7 @@ spec:
             secretName: enterprise-logs-license
           {{- end }}
         {{- end }}
-        {{- if not .Values.bloomCompactor.persistence.enabled }}
-        - name: data
-          emptyDir: {}
-        {{- end }}
-        {{- with .Values.bloomCompactor.extraVolumes }}
+        {{- with .Values.bloomBuilder.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-  {{- if .Values.bloomCompactor.persistence.enabled }}
-  volumeClaimTemplates:
-  {{- range .Values.bloomCompactor.persistence.claims }}
-    - metadata:
-        name: {{ .name }}
-        {{- with .annotations }}
-        annotations:
-          {{- . | toYaml | nindent 10 }}
-        {{- end }}
-      spec:
-        accessModes:
-          - ReadWriteOnce
-        {{- with .storageClass }}
-        storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
-        {{- end }}
-        resources:
-          requests:
-            storage: {{ .size | quote }}
-  {{- end }}
-  {{- end }}
-{{- end -}}
 {{- end -}}
