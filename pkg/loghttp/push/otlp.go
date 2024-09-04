@@ -130,8 +130,8 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, ten
 					streamLabels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
 
 					if !hasServiceName && len(discoverServiceName) > 0 && !stats.IsAggregatedMetric {
-						for _, labelName := range discoverServiceName {
-							if lbl.Name == labelName {
+						for _, serviceLabel := range discoverServiceName {
+							if lbl.Name == serviceLabel {
 								streamLabels[model.LabelName(LabelServiceName)] = model.LabelValue(lbl.Value)
 								hasServiceName = true
 								break
