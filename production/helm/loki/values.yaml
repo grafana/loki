@@ -2962,7 +2962,11 @@ memcached:
     # -- Memcached Docker image pull policy
     pullPolicy: IfNotPresent
   # -- The SecurityContext override for memcached pods
-  podSecurityContext: {}
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 11211
+    runAsGroup: 11211
+    fsGroup: 11211
   # -- The name of the PriorityClass for memcached pods
   priorityClassName: null
   # -- The SecurityContext for memcached containers
@@ -3085,7 +3089,7 @@ resultsCache:
   persistence:
     # -- Enable creating PVCs for the results-cache
     enabled: false
-    # -- Size of persistent disk
+    # -- Size of persistent disk, must be in G or Gi
     storageSize: 10G
     # -- Storage class to be used.
     # If defined, storageClassName: <storageClass>.
@@ -3187,7 +3191,7 @@ chunksCache:
   persistence:
     # -- Enable creating PVCs for the chunks-cache
     enabled: false
-    # -- Size of persistent disk
+    # -- Size of persistent disk, must be in G or Gi
     storageSize: 10G
     # -- Storage class to be used.
     # If defined, storageClassName: <storageClass>.
