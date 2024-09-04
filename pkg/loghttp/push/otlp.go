@@ -114,6 +114,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, ten
 		resourceAttributesAsStructuredMetadata := make(push.LabelsAdapter, 0, resAttrs.Len())
 		streamLabels := make(model.LabelSet, 30) // we have a default labels limit of 30 so just initialize the map of same size
 
+		shouldDiscoverServiceName := len(discoverServiceName) > 0 && !stats.IsAggregatedMetric
 		hasServiceName := false
 		if v, ok := resAttrs.Get(attrServiceName); ok && v.AsString() != "" {
 			hasServiceName = true
@@ -129,9 +130,9 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, ten
 				for _, lbl := range attributeAsLabels {
 					streamLabels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
 
-					if !hasServiceName && len(discoverServiceName) > 0 && !stats.IsAggregatedMetric {
-						for _, serviceLabel := range discoverServiceName {
-							if lbl.Name == serviceLabel {
+					if !hasServiceName && shouldDiscoverServiceName {
+						for _, labelName := range discoverServiceName {
+							if lbl.Name == labelName {
 								streamLabels[model.LabelName(LabelServiceName)] = model.LabelValue(lbl.Value)
 								hasServiceName = true
 								break
@@ -146,7 +147,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, ten
 			return true
 		})
 
-		if !hasServiceName && len(discoverServiceName) > 0 && !stats.IsAggregatedMetric {
+		if !hasServiceName && shouldDiscoverServiceName {
 			streamLabels[model.LabelName(LabelServiceName)] = model.LabelValue(ServiceUnknown)
 		}
 

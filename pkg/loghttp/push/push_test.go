@@ -6,7 +6,9 @@ import (
 	"compress/gzip"
 	"context"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -320,14 +322,36 @@ func TestParseRequest(t *testing.T) {
 func Test_ServiceDetction(t *testing.T) {
 	tracker := NewMockTracker()
 
-	t.Run("detects service from loki push requests", func(t *testing.T) {
-		body := `{"streams": [{ "stream": { "foo": "bar" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`
+	createOtlpLogs := func(labels ...string) []byte {
+		now := time.Unix(0, time.Now().UnixNano())
+		ld := plog.NewLogs()
+		for i := 0; i < len(labels); i += 2 {
+			ld.ResourceLogs().AppendEmpty().Resource().Attributes().PutStr(labels[i], labels[i+1])
+		}
+		ld.ResourceLogs().At(0).ScopeLogs().AppendEmpty().LogRecords().AppendEmpty().Body().SetStr("test body")
+		ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).SetTimestamp(pcommon.Timestamp(now.UnixNano()))
+
+		jsonMarshaller := plog.JSONMarshaler{}
+		body, err := jsonMarshaller.MarshalLogs(ld)
+
+		require.NoError(t, err)
+		return body
+	}
+
+	createRequest := func(path string, body io.Reader) *http.Request {
 		request := httptest.NewRequest(
 			"POST",
-			`/loki/api/v1/push`,
-			strings.NewReader(body),
+			path,
+			body,
 		)
 		request.Header.Add("Content-Type", "application/json")
+
+		return request
+	}
+
+	t.Run("detects servce from loki push requests", func(t *testing.T) {
+		body := `{"streams": [{ "stream": { "foo": "bar" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`
+		request := createRequest("/loki/api/v1/push", strings.NewReader(body))
 
 		limits := &fakeLimits{enabled: true, labels: []string{"foo"}}
 		data, err := ParseRequest(util_log.Logger, "fake", request, nil, limits, ParseLokiRequest, tracker)
@@ -336,26 +360,9 @@ func Test_ServiceDetction(t *testing.T) {
 		require.Equal(t, labels.FromStrings("foo", "bar", LabelServiceName, "bar").String(), data.Streams[0].Labels)
 	})
 
-	t.Run("detects service from OTLP push requests using default indexing", func(t *testing.T) {
-		now := time.Unix(0, time.Now().UnixNano())
-
-		tracker := NewMockTracker()
-
-		ld := plog.NewLogs()
-		ld.ResourceLogs().AppendEmpty().Resource().Attributes().PutStr("k8s.job.name", "bar")
-		ld.ResourceLogs().At(0).ScopeLogs().AppendEmpty().LogRecords().AppendEmpty().Body().SetStr("test body")
-		ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).SetTimestamp(pcommon.Timestamp(now.UnixNano()))
-
-		jsonMarshaller := plog.JSONMarshaler{}
-		body, err := jsonMarshaller.MarshalLogs(ld)
-
-		require.NoError(t, err)
-		request := httptest.NewRequest(
-			"POST",
-			`/otlp/v1/logs`,
-			bytes.NewReader(body),
-		)
-		request.Header.Add("Content-Type", "application/json")
+	t.Run("detects servce from OTLP push requests using default indexing", func(t *testing.T) {
+		body := createOtlpLogs("k8s.job.name", "bar")
+		request := createRequest("/otlp/v1/push", bytes.NewReader(body))
 
 		limits := &fakeLimits{enabled: true}
 		data, err := ParseRequest(util_log.Logger, "fake", request, limits, limits, ParseOTLPRequest, tracker)
@@ -363,26 +370,9 @@ func Test_ServiceDetction(t *testing.T) {
 		require.Equal(t, labels.FromStrings("k8s_job_name", "bar", LabelServiceName, "bar").String(), data.Streams[0].Labels)
 	})
 
-	t.Run("detects service from OTLP push requests using custom indexing", func(t *testing.T) {
-		now := time.Unix(0, time.Now().UnixNano())
-
-		tracker := NewMockTracker()
-
-		ld := plog.NewLogs()
-		ld.ResourceLogs().AppendEmpty().Resource().Attributes().PutStr("special", "sauce")
-		ld.ResourceLogs().At(0).ScopeLogs().AppendEmpty().LogRecords().AppendEmpty().Body().SetStr("test body")
-		ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(0).SetTimestamp(pcommon.Timestamp(now.UnixNano()))
-
-		jsonMarshaller := plog.JSONMarshaler{}
-		body, err := jsonMarshaller.MarshalLogs(ld)
-
-		require.NoError(t, err)
-		request := httptest.NewRequest(
-			"POST",
-			`/otlp/v1/logs`,
-			bytes.NewReader(body),
-		)
-		request.Header.Add("Content-Type", "application/json")
+	t.Run("detects servce from OTLP push requests using custom indexing", func(t *testing.T) {
+		body := createOtlpLogs("special", "sauce")
+		request := createRequest("/otlp/v1/push", bytes.NewReader(body))
 
 		limits := &fakeLimits{
 			enabled:         true,
@@ -392,6 +382,20 @@ func Test_ServiceDetction(t *testing.T) {
 		data, err := ParseRequest(util_log.Logger, "fake", request, limits, limits, ParseOTLPRequest, tracker)
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings("special", "sauce", LabelServiceName, "sauce").String(), data.Streams[0].Labels)
+	})
+
+	t.Run("only detects custom service label from indexed labels", func(t *testing.T) {
+		body := createOtlpLogs("special", "sauce")
+		request := createRequest("/otlp/v1/push", bytes.NewReader(body))
+
+		limits := &fakeLimits{
+			enabled:         true,
+			labels:          []string{"special"},
+			indexAttributes: []string{},
+		}
+		data, err := ParseRequest(util_log.Logger, "fake", request, limits, limits, ParseOTLPRequest, tracker)
+		require.NoError(t, err)
+		require.Equal(t, labels.FromStrings(LabelServiceName, ServiceUnknown).String(), data.Streams[0].Labels)
 	})
 }
 
