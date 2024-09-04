@@ -9,7 +9,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	v2iter "github.com/grafana/loki/v3/pkg/iter/v2"
-	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 
 	"github.com/grafana/loki/pkg/push"
