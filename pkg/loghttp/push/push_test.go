@@ -22,6 +22,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 
 	"github.com/grafana/dskit/flagext"
+
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -405,18 +406,18 @@ type fakeLimits struct {
 	indexAttributes []string
 }
 
-func (f *fakeLimits) RetentionPeriodFor(userID string, lbs labels.Labels) time.Duration {
+func (f *fakeLimits) RetentionPeriodFor(_ string, _ labels.Labels) time.Duration {
 	return time.Hour
 }
 
-func (l *fakeLimits) OTLPConfig(_ string) OTLPConfig {
-	if len(l.indexAttributes) > 0 {
+func (f *fakeLimits) OTLPConfig(_ string) OTLPConfig {
+	if len(f.indexAttributes) > 0 {
 		return OTLPConfig{
 			ResourceAttributes: ResourceAttributesConfig{
 				AttributesConfig: []AttributesConfig{
 					{
 						Action:     IndexLabel,
-						Attributes: l.indexAttributes,
+						Attributes: f.indexAttributes,
 					},
 				},
 			},
@@ -428,13 +429,13 @@ func (l *fakeLimits) OTLPConfig(_ string) OTLPConfig {
 	return DefaultOTLPConfig(defaultGlobalOTLPConfig)
 }
 
-func (l *fakeLimits) DiscoverServiceName(_ string) []string {
-	if !l.enabled {
+func (f *fakeLimits) DiscoverServiceName(_ string) []string {
+	if !f.enabled {
 		return nil
 	}
 
-	if len(l.labels) > 0 {
-		return l.labels
+	if len(f.labels) > 0 {
+		return f.labels
 	}
 
 	return []string{
