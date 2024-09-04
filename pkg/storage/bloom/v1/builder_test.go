@@ -28,7 +28,7 @@ func TestBlockOptions_RoundTrip(t *testing.T) {
 	t.Parallel()
 	opts := BlockOptions{
 		Schema: Schema{
-			version:     DefaultSchemaVersion,
+			version:     CurrentSchemaVersion,
 			encoding:    chunkenc.EncSnappy,
 			nGramLength: 10,
 			nGramSkip:   2,
@@ -89,7 +89,7 @@ func TestBlockBuilder_RoundTrip(t *testing.T) {
 			t.Run(desc, func(t *testing.T) {
 				blockOpts := BlockOptions{
 					Schema: Schema{
-						version:     DefaultSchemaVersion,
+						version:     CurrentSchemaVersion,
 						encoding:    enc,
 						nGramLength: 10,
 						nGramSkip:   2,
@@ -210,7 +210,7 @@ func TestMergeBuilder(t *testing.T) {
 	data, _ := MkBasicSeriesWithBlooms(numSeries, 0, 0xffff, 0, 10000)
 	blockOpts := BlockOptions{
 		Schema: Schema{
-			version:  DefaultSchemaVersion,
+			version:  CurrentSchemaVersion,
 			encoding: chunkenc.EncSnappy,
 		},
 		SeriesPageSize: 100,
@@ -306,7 +306,7 @@ func TestMergeBuilderFingerprintCollision(t *testing.T) {
 
 	blockOpts := BlockOptions{
 		Schema: Schema{
-			version:  DefaultSchemaVersion,
+			version:  CurrentSchemaVersion,
 			encoding: chunkenc.EncSnappy,
 		},
 		SeriesPageSize: 100,
@@ -399,7 +399,7 @@ func TestBlockReset(t *testing.T) {
 	reader := NewByteReader(indexBuf, bloomsBuf)
 
 	schema := Schema{
-		version:     DefaultSchemaVersion,
+		version:     CurrentSchemaVersion,
 		encoding:    chunkenc.EncSnappy,
 		nGramLength: 10,
 		nGramSkip:   2,
@@ -457,7 +457,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 
 	blockOpts := BlockOptions{
 		Schema: Schema{
-			version:     DefaultSchemaVersion,
+			version:     CurrentSchemaVersion,
 			encoding:    chunkenc.EncSnappy, // test with different encodings?
 			nGramLength: 4,                  // needs to match values from MkBasicSeriesWithBlooms
 			nGramSkip:   0,                  // needs to match values from MkBasicSeriesWithBlooms

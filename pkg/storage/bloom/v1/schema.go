@@ -24,7 +24,7 @@ const (
 	// V2 indicated schema for indexed structured metadata
 	V3
 
-	DefaultSchemaVersion = V3
+	CurrentSchemaVersion = V3
 )
 
 var (
@@ -42,7 +42,7 @@ type Schema struct {
 
 func NewSchema() Schema {
 	return Schema{
-		version:     DefaultSchemaVersion,
+		version:     CurrentSchemaVersion,
 		encoding:    chunkenc.EncNone,
 		nGramLength: 0,
 		nGramSkip:   0,
@@ -58,7 +58,7 @@ func (s Schema) Compatible(other Schema) bool {
 }
 
 func (s Schema) IsCurrentSchema() bool {
-	return s.version == DefaultSchemaVersion
+	return s.version == CurrentSchemaVersion
 }
 
 func (s Schema) NGramLen() int {

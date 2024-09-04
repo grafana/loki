@@ -80,7 +80,7 @@ func (b BlockOptions) Encode(enc *encoding.Encbuf) {
 
 func NewBlockOptions(enc chunkenc.Encoding, nGramLength, nGramSkip, maxBlockSizeBytes, maxBloomSizeBytes uint64) BlockOptions {
 	opts := NewBlockOptionsFromSchema(Schema{
-		version:     DefaultSchemaVersion,
+		version:     CurrentSchemaVersion,
 		encoding:    enc,
 		nGramLength: nGramLength,
 		nGramSkip:   nGramSkip,
