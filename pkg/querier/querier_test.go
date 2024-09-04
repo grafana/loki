@@ -1955,8 +1955,8 @@ func TestQuerier_DetectedFields(t *testing.T) {
 		assert.Equal(t, []string{"logfmt"}, durationField.Parsers)
 		assert.Equal(t, []string{"logfmt"}, floatField.Parsers)
 		assert.Equal(t, []string{"logfmt"}, evenField.Parsers)
-		assert.Equal(t, []string{""}, constantField.Parsers)
-		assert.Equal(t, []string{""}, variableField.Parsers)
+		assert.Equal(t, []string{}, constantField.Parsers)
+		assert.Equal(t, []string{}, variableField.Parsers)
 	},
 	)
 
