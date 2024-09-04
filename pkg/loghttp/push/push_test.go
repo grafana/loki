@@ -363,7 +363,7 @@ func Test_ServiceDetction(t *testing.T) {
 		require.Equal(t, labels.FromStrings("k8s_job_name", "bar", LabelServiceName, "bar").String(), data.Streams[0].Labels)
 	})
 
-	t.Run("detects servce from OTLP push requests using custom indexing", func(t *testing.T) {
+	t.Run("detects service from OTLP push requests using custom indexing", func(t *testing.T) {
 		now := time.Unix(0, time.Now().UnixNano())
 
 		tracker := NewMockTracker()
