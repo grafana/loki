@@ -319,7 +319,7 @@ func TestParseRequest(t *testing.T) {
 	}
 }
 
-func Test_ServiceDetction(t *testing.T) {
+func Test_ServiceDetection(t *testing.T) {
 	tracker := NewMockTracker()
 
 	createOtlpLogs := func(labels ...string) []byte {
