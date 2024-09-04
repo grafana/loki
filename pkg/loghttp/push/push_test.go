@@ -453,8 +453,6 @@ func (l *fakeLimits) DiscoverServiceName(_ string) []string {
 	}
 }
 
-// RetentionPeriodFor(userID string, lbs labels.Labels) time.Duration
-
 type MockCustomTracker struct {
 	receivedBytes  map[string]float64
 	discardedBytes map[string]float64
