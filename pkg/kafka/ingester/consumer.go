@@ -65,7 +65,7 @@ func newConsumer(
 	}, nil
 }
 
-func (c *consumer) Consume(ctx context.Context, partitionID int32, records []record) error {
+func (c *consumer) Consume(_ context.Context, _ int32, records []record) error {
 	for _, record := range records {
 		stream, labels, err := c.decoder.Decode(record.content)
 		if err != nil {

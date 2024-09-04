@@ -114,26 +114,26 @@ func (p *PartitionReader) run(ctx context.Context) error {
 	}
 }
 
-func (r *PartitionReader) flushAndCommit(ctx context.Context) error {
-	if r.lastFetchOffset == -1 {
+func (p *PartitionReader) flushAndCommit(ctx context.Context) error {
+	if p.lastFetchOffset == -1 {
 		return nil
 	}
-	err := r.consumer.Flush(ctx)
+	err := p.consumer.Flush(ctx)
 	if err != nil {
 		return err
 	}
-	if err := r.committer.commit(ctx, r.lastFetchOffset); err != nil {
+	if err := p.committer.commit(ctx, p.lastFetchOffset); err != nil {
 		return err
 	}
-	r.lastFetchOffset = -1
+	p.lastFetchOffset = -1
 	return nil
 }
 
-func (r *PartitionReader) getLastFetchOffset(fetches kgo.Fetches) int64 {
+func (p *PartitionReader) getLastFetchOffset(fetches kgo.Fetches) int64 {
 	lastOffset := int64(0)
 	fetches.EachPartition(func(partition kgo.FetchTopicPartition) {
-		if partition.Partition != r.partitionID {
-			level.Error(r.logger).Log("msg", "asked to commit wrong partition", "partition", partition.Partition, "expected_partition", r.partitionID)
+		if partition.Partition != p.partitionID {
+			level.Error(p.logger).Log("msg", "asked to commit wrong partition", "partition", partition.Partition, "expected_partition", p.partitionID)
 			return
 		}
 		lastOffset = partition.Records[len(partition.Records)-1].Offset
@@ -141,21 +141,21 @@ func (r *PartitionReader) getLastFetchOffset(fetches kgo.Fetches) int64 {
 	return lastOffset
 }
 
-func (r *PartitionReader) processNextFetches(ctx context.Context, delayObserver prometheus.Observer) error {
-	fetches := r.pollFetches(ctx)
-	r.recordFetchesMetrics(fetches, delayObserver)
-	r.logFetchErrors(fetches)
+func (p *PartitionReader) processNextFetches(ctx context.Context, delayObserver prometheus.Observer) error {
+	fetches := p.pollFetches(ctx)
+	p.recordFetchesMetrics(fetches, delayObserver)
+	p.logFetchErrors(fetches)
 	fetches = filterOutErrFetches(fetches)
 
-	err := r.consumeFetches(ctx, fetches)
+	err := p.consumeFetches(ctx, fetches)
 	if err != nil {
 		return fmt.Errorf("consume %d records: %w", fetches.NumRecords(), err)
 	}
-	r.lastFetchOffset = r.getLastFetchOffset(fetches)
+	p.lastFetchOffset = p.getLastFetchOffset(fetches)
 	return nil
 }
 
-func (r *PartitionReader) consumeFetches(ctx context.Context, fetches kgo.Fetches) error {
+func (p *PartitionReader) consumeFetches(ctx context.Context, fetches kgo.Fetches) error {
 	if fetches.NumRecords() == 0 {
 		return nil
 	}
@@ -190,12 +190,12 @@ func (r *PartitionReader) consumeFetches(ctx context.Context, fetches kgo.Fetche
 		// we expect the infrastructure (e.g. k8s) to eventually kill the process.
 		consumeCtx := context.WithoutCancel(ctx)
 		consumeStart := time.Now()
-		err := r.consumer.Consume(consumeCtx, r.partitionID, records)
-		r.metrics.consumeLatency.Observe(time.Since(consumeStart).Seconds())
+		err := p.consumer.Consume(consumeCtx, p.partitionID, records)
+		p.metrics.consumeLatency.Observe(time.Since(consumeStart).Seconds())
 		if err == nil {
 			return nil
 		}
-		level.Error(r.logger).Log(
+		level.Error(p.logger).Log(
 			"msg", "encountered error while ingesting data from Kafka; should retry",
 			"err", err,
 			"record_min_offset", minOffset,
@@ -208,7 +208,7 @@ func (r *PartitionReader) consumeFetches(ctx context.Context, fetches kgo.Fetche
 	return boff.ErrCause()
 }
 
-func (r *PartitionReader) logFetchErrors(fetches kgo.Fetches) {
+func (p *PartitionReader) logFetchErrors(fetches kgo.Fetches) {
 	mErr := multierror.New()
 	fetches.EachError(func(topic string, partition int32, err error) {
 		if errors.Is(err, context.Canceled) {
@@ -222,8 +222,8 @@ func (r *PartitionReader) logFetchErrors(fetches kgo.Fetches) {
 	if len(mErr) == 0 {
 		return
 	}
-	r.metrics.fetchesErrors.Add(float64(len(mErr)))
-	level.Error(r.logger).Log("msg", "encountered error while fetching", "err", mErr.Err())
+	p.metrics.fetchesErrors.Add(float64(len(mErr)))
+	level.Error(p.logger).Log("msg", "encountered error while fetching", "err", mErr.Err())
 }
 
 func (p *PartitionReader) pollFetches(ctx context.Context) kgo.Fetches {
@@ -233,7 +233,7 @@ func (p *PartitionReader) pollFetches(ctx context.Context) kgo.Fetches {
 	return p.client.PollFetches(ctx)
 }
 
-func (r *PartitionReader) recordFetchesMetrics(fetches kgo.Fetches, delayObserver prometheus.Observer) {
+func (p *PartitionReader) recordFetchesMetrics(fetches kgo.Fetches, delayObserver prometheus.Observer) {
 	var (
 		now        = time.Now()
 		numRecords = 0
@@ -244,8 +244,8 @@ func (r *PartitionReader) recordFetchesMetrics(fetches kgo.Fetches, delayObserve
 		delayObserver.Observe(now.Sub(record.Timestamp).Seconds())
 	})
 
-	r.metrics.fetchesTotal.Add(float64(len(fetches)))
-	r.metrics.recordsPerFetch.Observe(float64(numRecords))
+	p.metrics.fetchesTotal.Add(float64(len(fetches)))
+	p.metrics.recordsPerFetch.Observe(float64(numRecords))
 }
 
 func filterOutErrFetches(fetches kgo.Fetches) kgo.Fetches {

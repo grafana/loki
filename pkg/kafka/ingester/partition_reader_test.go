@@ -43,7 +43,8 @@ func TestPartitionReader(t *testing.T) {
 	producer, err := kafka.NewWriterClient(kafkaCfg, 100, log.NewNopLogger(), prometheus.DefaultRegisterer)
 	require.NoError(t, err)
 
-	services.StartAndAwaitRunning(context.Background(), partitionReader)
+	err = services.StartAndAwaitRunning(context.Background(), partitionReader)
+	require.NoError(t, err)
 
 	stream := logproto.Stream{
 		Labels:  labels.FromStrings("foo", "bar").String(),
