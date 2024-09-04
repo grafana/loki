@@ -1955,8 +1955,8 @@ func TestQuerier_DetectedFields(t *testing.T) {
 		assert.Equal(t, []string{"logfmt"}, durationField.Parsers)
 		assert.Equal(t, []string{"logfmt"}, floatField.Parsers)
 		assert.Equal(t, []string{"logfmt"}, evenField.Parsers)
-		assert.Equal(t, []string{""}, constantField.Parsers)
-		assert.Equal(t, []string{""}, variableField.Parsers)
+		assert.Equal(t, []string{}, constantField.Parsers)
+		assert.Equal(t, []string{}, variableField.Parsers)
 	},
 	)
 
@@ -2051,4 +2051,48 @@ func BenchmarkQuerierDetectedFields(b *testing.B) {
 		_, err := querier.DetectedFields(ctx, &request)
 		assert.NoError(b, err)
 	}
+}
+
+func Test_getParsersFromExpr(t *testing.T) {
+	t.Run("detects logfmt parser", func(t *testing.T) {
+		exprStr := `{foo="bar"} | logfmt`
+		expr, err := syntax.ParseLogSelector(exprStr, true)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"logfmt"}, getParsersFromExpr(expr))
+	})
+
+	t.Run("detects json parser", func(t *testing.T) {
+		exprStr := `{foo="bar"} | json`
+		expr, err := syntax.ParseLogSelector(exprStr, true)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"json"}, getParsersFromExpr(expr))
+	})
+
+	t.Run("detects multiple parsers", func(t *testing.T) {
+		exprStr := `{foo="bar"} | logfmt | json`
+		expr, err := syntax.ParseLogSelector(exprStr, true)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"logfmt", "json"}, getParsersFromExpr(expr))
+	})
+
+	t.Run("detects logfmt expression parser", func(t *testing.T) {
+		exprStr := `{foo="bar"} | logfmt msg="message"`
+		expr, err := syntax.ParseLogSelector(exprStr, true)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"logfmt"}, getParsersFromExpr(expr))
+	})
+
+	t.Run("detects json expression parser", func(t *testing.T) {
+		exprStr := `{foo="bar"} | json first_server="servers[0]"`
+		expr, err := syntax.ParseLogSelector(exprStr, true)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"json"}, getParsersFromExpr(expr))
+	})
+
+	t.Run("detects multiple expression parsers", func(t *testing.T) {
+		exprStr := `{foo="bar"} | logfmt msg="message" | json first_server="servers[0]"`
+		expr, err := syntax.ParseLogSelector(exprStr, true)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"logfmt", "json"}, getParsersFromExpr(expr))
+	})
 }
