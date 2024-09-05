@@ -64,7 +64,7 @@ type Config struct {
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.RegisterFlagsWithPrefix("", f)
+	cfg.RegisterFlagsWithPrefix("kafka", f)
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
