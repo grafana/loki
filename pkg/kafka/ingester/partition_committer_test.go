@@ -12,9 +12,10 @@ import (
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/plugin/kprom"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/testkafka"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 func TestPartitionCommitter(t *testing.T) {

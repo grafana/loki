@@ -7,10 +7,11 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
-	"github.com/grafana/loki/v3/pkg/distributor"
-	"github.com/grafana/loki/v3/pkg/kafka/testkafka"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/distributor"
+	"github.com/grafana/loki/v3/pkg/kafka/testkafka"
 
 	"github.com/grafana/loki/pkg/push"
 )

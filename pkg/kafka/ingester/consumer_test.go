@@ -7,11 +7,12 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/objstore"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/stretchr/testify/require"
 )
 
 func TestConsumer(t *testing.T) {
