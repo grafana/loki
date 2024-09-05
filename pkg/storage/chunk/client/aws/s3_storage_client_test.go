@@ -200,11 +200,13 @@ func Test_RetryLogic(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
 		maxRetries int
+		exists     bool
 		do         func(c *S3ObjectClient) error
 	}{
 		{
 			"get object with retries",
 			3,
+			true,
 			func(c *S3ObjectClient) error {
 				_, _, err := c.GetObject(context.Background(), "foo")
 				return err
@@ -213,6 +215,16 @@ func Test_RetryLogic(t *testing.T) {
 		{
 			"object exists with retries",
 			3,
+			true,
+			func(c *S3ObjectClient) error {
+				_, err := c.ObjectExists(context.Background(), "foo")
+				return err
+			},
+		},
+		{
+			"object doesn't exist with retries",
+			3,
+			false,
 			func(c *S3ObjectClient) error {
 				_, err := c.ObjectExists(context.Background(), "foo")
 				return err
@@ -231,6 +243,9 @@ func Test_RetryLogic(t *testing.T) {
 					return RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 						// Increment the call counter
 						callNum := callCount.Inc()
+						if !tc.exists {
+							return nil, awserr.New(s3.ErrCodeNoSuchKey, "NoSuchKey", nil)
+						}
 
 						// Fail the first set of calls
 						if int(callNum) <= tc.maxRetries-1 {
@@ -248,8 +263,13 @@ func Test_RetryLogic(t *testing.T) {
 			}, hedging.Config{})
 			require.NoError(t, err)
 			err = tc.do(c)
-			require.NoError(t, err)
-			require.Equal(t, tc.maxRetries, int(callCount.Load()))
+			if tc.exists {
+				require.NoError(t, err)
+				require.Equal(t, tc.maxRetries, int(callCount.Load()))
+			} else {
+				//require.True(t, errors.As(err, &notFoundErr))
+				require.Equal(t, 1, int(callCount.Load()))
+			}
 		})
 	}
 }

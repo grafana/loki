@@ -124,7 +124,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 	f.DurationVar(&cfg.BackoffConfig.MinBackoff, prefix+"s3.min-backoff", 100*time.Millisecond, "Minimum backoff time when s3 get Object")
 	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, prefix+"s3.max-backoff", 3*time.Second, "Maximum backoff time when s3 get Object")
-	f.IntVar(&cfg.BackoffConfig.MaxRetries, prefix+"s3.max-retries", 5, "Maximum number of times to retry when s3 get Object")
+	f.IntVar(&cfg.BackoffConfig.MaxRetries, prefix+"s3.max-retries", 5, "Maximum number of times to retry for s3 GetObject or ObjectExists")
 }
 
 // Validate config and returns error on failure
@@ -312,7 +312,7 @@ func (a *S3ObjectClient) ObjectExists(ctx context.Context, objectKey string) (bo
 	retries := backoff.New(ctx, a.cfg.BackoffConfig)
 	for retries.Ongoing() {
 		if ctx.Err() != nil {
-			return false, errors.Wrap(ctx.Err(), "ctx related error during s3 getObject")
+			return false, errors.Wrap(ctx.Err(), "ctx related error during s3 objectExists")
 		}
 		lastErr = instrument.CollectedRequest(ctx, "S3.ObjectExists", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			headObjectInput := &s3.HeadObjectInput{
