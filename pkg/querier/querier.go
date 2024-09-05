@@ -1259,10 +1259,15 @@ func parseDetectedFields(limit uint32, streams logqlmodel.Streams, queryParsers 
 			}
 
 			parsers := queryParsers
-			parsedLabels := getParsedLabels(entry)
-			if len(parsedLabels) == 0 {
-				parsedLabels, parsers = parseLine(entry.Line, streamLbls)
+			pl := getParsedLabels(entry)
+	        streamLbls := logql_log.NewBaseLabelsBuilder().ForLabels(streamLbls, 0)
+			for k := range pl {
+				streamLbls = streamLbls.Del(k)
 			}
+			for k := range structuredMetadata {
+				streamLbls = streamLbls.Del(k)
+			}
+			parsedLabels, parsers := parseLine(entry.Line, streamLbls)
 			for k, vals := range parsedLabels {
 				df, ok := detectedFields[k]
 				if !ok && fieldCount < limit {
@@ -1343,11 +1348,10 @@ func getStructuredMetadata(entry push.Entry) map[string][]string {
 	return result
 }
 
-func parseLine(line string, streamLbls labels.Labels) (map[string][]string, []string) {
+func parseLine(line string, lbls *logql_log.LabelsBuilder) (map[string][]string, []string) {
 	parser := "logfmt"
 	logFmtParser := logql_log.NewLogfmtParser(true, false)
 
-	lbls := logql_log.NewBaseLabelsBuilder().ForLabels(streamLbls, 0)
 	_, logfmtSuccess := logFmtParser.Process(0, []byte(line), lbls)
 	if !logfmtSuccess || lbls.HasErr() {
 		parser = "json"
@@ -1362,9 +1366,9 @@ func parseLine(line string, streamLbls labels.Labels) (map[string][]string, []st
 	parsedLabels := map[string]map[string]struct{}{}
 	for _, lbl := range lbls.LabelsResult().Labels() {
 		// skip indexed labels, as we only want detected fields
-		if streamLbls.Has(lbl.Name) {
-			continue
-		}
+		// if streamLbls.Has(lbl.Name) {
+		// 	continue
+		// }
 		if values, ok := parsedLabels[lbl.Name]; ok {
 			values[lbl.Value] = struct{}{}
 		} else {
