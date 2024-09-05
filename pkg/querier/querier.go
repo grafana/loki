@@ -1332,14 +1332,14 @@ func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]s
 	}
 
 	line := entry.Line
-	parser := "logfmt"
-	_, logfmtSuccess := logFmtParser.Process(0, []byte(line), lbls)
-	if !logfmtSuccess || lbls.HasErr() {
-		parser = "json"
-		jsonParser := logql_log.NewJSONParser()
+	parser := "json"
+	jsonParser := logql_log.NewJSONParser()
+	_, jsonSuccess := jsonParser.Process(0, []byte(line), lbls)
+	if !jsonSuccess || lbls.HasErr() {
+		parser = "logfmt"
 		lbls.Reset()
-		_, jsonSuccess := jsonParser.Process(0, []byte(line), lbls)
-		if !jsonSuccess || lbls.HasErr() {
+		_, logfmtSuccess := logFmtParser.Process(0, []byte(line), lbls)
+		if !logfmtSuccess || lbls.HasErr() {
 			return parsed, nil
 		}
 	}
