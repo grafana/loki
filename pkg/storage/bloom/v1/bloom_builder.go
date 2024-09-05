@@ -46,8 +46,6 @@ func (b *BloomBlockBuilder) Append(bloom *Bloom) (BloomOffset, error) {
 		}
 	}
 
-	// version := b.opts.Schema.version
-
 	b.scratch.Reset()
 	if err := bloom.Encode(b.scratch); err != nil {
 		return BloomOffset{}, errors.Wrap(err, "encoding bloom")

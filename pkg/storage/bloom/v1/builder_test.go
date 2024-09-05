@@ -550,6 +550,9 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 
 	_, _, err = mb.Build(builder)
 	require.Nil(t, err)
+	// checksum changes as soon as the contents of the block or the encoding change
+	// once the block format is stable, calculate the checksum and assert its correctness
+	// require.Equal(t, uint32(0x2a6cdba6), checksum)
 
 	// ensure the new block contains one copy of all the data
 	// by comparing it against an iterator over the source data

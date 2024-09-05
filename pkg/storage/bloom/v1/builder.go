@@ -66,18 +66,6 @@ func (b BlockOptions) Encode(enc *encoding.Encbuf) {
 	enc.PutBE64(b.BlockSize)
 }
 
-// func NewDefaultBlockOptions(maxBlockSizeBytes, maxBloomSizeBytes uint64) BlockOptions {
-// 	opts := NewBlockOptionsFromSchema(Schema{
-// 		version:     DefaultSchemaVersion,
-// 		encoding:    chunkenc.EncNone,
-// 		nGramLength: 0,
-// 		nGramSkip:   0,
-// 	})
-// 	opts.BlockSize = maxBlockSizeBytes
-// 	opts.UnencodedBlockOptions.MaxBloomSizeBytes = maxBloomSizeBytes
-// 	return opts
-// }
-
 func NewBlockOptions(enc chunkenc.Encoding, nGramLength, nGramSkip, maxBlockSizeBytes, maxBloomSizeBytes uint64) BlockOptions {
 	opts := NewBlockOptionsFromSchema(Schema{
 		version:     CurrentSchemaVersion,

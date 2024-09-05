@@ -17,6 +17,8 @@ func (v Version) String() string {
 }
 
 const (
+	magicNumber = uint32(0xCA7CAFE5)
+
 	// Add new versions below
 	V1 Version = iota
 	// V2 supports single series blooms encoded over multiple pages
@@ -58,8 +60,8 @@ func (s Schema) Compatible(other Schema) bool {
 	return s == other
 }
 
-func (s Schema) IsCurrentSchema() bool {
-	return s.version == CurrentSchemaVersion
+func (s Schema) Version() Version {
+	return s.version
 }
 
 func (s Schema) NGramLen() int {

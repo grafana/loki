@@ -9,10 +9,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
 
-const (
-	magicNumber = uint32(0xCA7CAFE5)
-)
-
 var (
 	castagnoliTable = crc32.MakeTable(crc32.Castagnoli)
 

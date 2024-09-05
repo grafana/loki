@@ -145,8 +145,8 @@ func (p *processor) processBlock(_ context.Context, bq *bloomshipper.CloseableBl
 		return err
 	}
 
-	// We require V3 schema
-	if !schema.IsCurrentSchema() {
+	// We require V3+ schema
+	if schema.Version() < v1.V3 {
 		return v1.ErrUnsupportedSchemaVersion
 	}
 
