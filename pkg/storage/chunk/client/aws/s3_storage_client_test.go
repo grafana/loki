@@ -196,6 +196,15 @@ func Test_Hedging(t *testing.T) {
 	}
 }
 
+type MockS3Client struct {
+	s3.S3
+	HeadObjectFunc func(*s3.HeadObjectInput) (*s3.HeadObjectOutput, error)
+}
+
+func (m *MockS3Client) HeadObject(input *s3.HeadObjectInput) (*s3.HeadObjectOutput, error) {
+	return m.HeadObjectFunc(input)
+}
+
 func Test_RetryLogic(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
@@ -234,6 +243,27 @@ func Test_RetryLogic(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			callCount := atomic.NewInt32(0)
 
+			mockS3 := &MockS3Client{
+				HeadObjectFunc: func(input *s3.HeadObjectInput) (*s3.HeadObjectOutput, error) {
+					callNum := callCount.Inc()
+					if !tc.exists {
+						rfIn := awserr.NewRequestFailure(
+							awserr.New("NotFound", "Not Found", nil), 404, "abc",
+						)
+						return nil, rfIn
+					}
+
+					// Fail the first set of calls
+					if int(callNum) <= tc.maxRetries-1 {
+						time.Sleep(200 * time.Millisecond) // Simulate latency
+						return nil, errors.New("simulated error on mock call")
+					}
+
+					// Succeed on the last call
+					return &s3.HeadObjectOutput{}, nil
+				},
+			}
+
 			c, err := NewS3ObjectClient(S3Config{
 				AccessKeyID:     "foo",
 				SecretAccessKey: flagext.SecretWithValue("bar"),
@@ -243,9 +273,6 @@ func Test_RetryLogic(t *testing.T) {
 					return RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
 						// Increment the call counter
 						callNum := callCount.Inc()
-						if !tc.exists {
-							return nil, awserr.New(s3.ErrCodeNoSuchKey, "NoSuchKey", nil)
-						}
 
 						// Fail the first set of calls
 						if int(callNum) <= tc.maxRetries-1 {
@@ -262,12 +289,13 @@ func Test_RetryLogic(t *testing.T) {
 				},
 			}, hedging.Config{})
 			require.NoError(t, err)
+			c.S3 = mockS3
 			err = tc.do(c)
 			if tc.exists {
 				require.NoError(t, err)
 				require.Equal(t, tc.maxRetries, int(callCount.Load()))
 			} else {
-				//require.True(t, errors.As(err, &notFoundErr))
+				require.True(t, c.IsObjectNotFoundErr(err))
 				require.Equal(t, 1, int(callCount.Load()))
 			}
 		})
