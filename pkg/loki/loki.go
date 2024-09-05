@@ -304,11 +304,13 @@ func (c *Config) Validate() error {
 	if err := c.Pattern.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid pattern_ingester config"))
 	}
-	if err := c.KafkaConfig.Validate(); err != nil {
-		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid kafka_config config"))
-	}
-	if err := c.KafkaIngester.Validate(); err != nil {
-		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid kafka_ingester config"))
+	if c.KafkaIngester.Enabled {
+		if err := c.KafkaConfig.Validate(); err != nil {
+			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid kafka_config config"))
+		}
+		if err := c.KafkaIngester.Validate(); err != nil {
+			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid kafka_ingester config"))
+		}
 	}
 
 	errs = append(errs, validateSchemaValues(c)...)

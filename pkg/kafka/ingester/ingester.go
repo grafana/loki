@@ -57,6 +57,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *Config) Validate() error {
+	if !cfg.Enabled {
+		return nil
+	}
 	if cfg.FlushInterval <= 0 {
 		return errors.New("kafka-ingester.flush-interval must be greater than 0")
 	}
