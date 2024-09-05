@@ -1370,12 +1370,28 @@ func streamsForFieldDetection(i iter.EntryIterator, size uint32) (logqlmodel.Str
 		// If lastEntry.Unix < 0 this is the first pass through the loop and we should output the line.
 		// Then check to see if the entry is equal to, or past a forward step
 		if lastEntry.Unix() < 0 || shouldOutput {
-			stream, ok := streams[streamLabels]
+			allLbls, err := syntax.ParseLabels(streamLabels)
+			if err != nil {
+				continue
+			}
+
+			parsedLbls := logproto.FromLabelAdaptersToLabels(entry.Parsed)
+			structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
+
+			onlyStreamLbls := logql_log.NewBaseLabelsBuilder().ForLabels(allLbls, 0)
+			allLbls.Range(func(l labels.Label) {
+				if parsedLbls.Has(l.Name) || structuredMetadata.Has(l.Name) {
+					onlyStreamLbls.Del(l.Name)
+				}
+			})
+
+			lblStr := onlyStreamLbls.LabelsResult().String()
+			stream, ok := streams[lblStr]
 			if !ok {
 				stream = &logproto.Stream{
-					Labels: streamLabels,
+					Labels: lblStr,
 				}
-				streams[streamLabels] = stream
+				streams[lblStr] = stream
 			}
 			stream.Entries = append(stream.Entries, entry)
 			lastEntry = i.At().Timestamp
