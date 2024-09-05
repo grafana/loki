@@ -1258,7 +1258,7 @@ func parseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*p
 			}
 
 			streamLbls := logql_log.NewBaseLabelsBuilder().ForLabels(streamLbls, streamLbls.Hash())
-			parsedLabels, parsers := parseLine(entry.Line, streamLbls)
+			parsedLabels, parsers := parseEntry(entry, streamLbls)
 			for k, vals := range parsedLabels {
 				df, ok := detectedFields[k]
 				if !ok && fieldCount < limit {
@@ -1317,10 +1317,22 @@ func getStructuredMetadata(entry push.Entry) map[string][]string {
 	return result
 }
 
-func parseLine(line string, lbls *logql_log.LabelsBuilder) (map[string][]string, []string) {
-	parser := "logfmt"
-	logFmtParser := logql_log.NewLogfmtParser(true, false)
+func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]string, []string) {
+	logFmtParser := logql_log.NewLogfmtParser(false, false)
 
+	origParsed := getParsedLabels(entry)
+	parsed := make(map[string][]string, len(origParsed))
+
+	for lbl, values := range origParsed {
+		if lbl == logqlmodel.ErrorLabel || lbl == logqlmodel.ErrorDetailsLabel || lbl == logqlmodel.PreserveErrorLabel {
+			continue
+		}
+
+		parsed[lbl] = values
+	}
+
+	line := entry.Line
+	parser := "logfmt"
 	_, logfmtSuccess := logFmtParser.Process(0, []byte(line), lbls)
 	if !logfmtSuccess || lbls.HasErr() {
 		parser = "json"
@@ -1328,11 +1340,24 @@ func parseLine(line string, lbls *logql_log.LabelsBuilder) (map[string][]string,
 		lbls.Reset()
 		_, jsonSuccess := jsonParser.Process(0, []byte(line), lbls)
 		if !jsonSuccess || lbls.HasErr() {
-			return map[string][]string{}, nil
+			return parsed, nil
 		}
 	}
 
 	parsedLabels := map[string]map[string]struct{}{}
+	for lbl, values := range parsed {
+		if vals, ok := parsedLabels[lbl]; ok {
+			for _, value := range values {
+				vals[value] = struct{}{}
+			}
+		} else {
+			parsedLabels[lbl] = map[string]struct{}{}
+			for _, value := range values {
+				parsedLabels[lbl][value] = struct{}{}
+			}
+		}
+	}
+
 	lblsResult := lbls.LabelsResult().Parsed()
 	for _, lbl := range lblsResult {
 		if values, ok := parsedLabels[lbl.Name]; ok {
@@ -1344,6 +1369,9 @@ func parseLine(line string, lbls *logql_log.LabelsBuilder) (map[string][]string,
 
 	result := make(map[string][]string, len(parsedLabels))
 	for lbl, values := range parsedLabels {
+		if lbl == logqlmodel.ErrorLabel || lbl == logqlmodel.ErrorDetailsLabel || lbl == logqlmodel.PreserveErrorLabel {
+			continue
+		}
 		vals := make([]string, 0, len(values))
 		for v := range values {
 			vals = append(vals, v)
@@ -1352,6 +1380,28 @@ func parseLine(line string, lbls *logql_log.LabelsBuilder) (map[string][]string,
 	}
 
 	return result, []string{parser}
+}
+
+func getParsedLabels(entry push.Entry) map[string][]string {
+	labels := map[string]map[string]struct{}{}
+	for _, lbl := range entry.Parsed {
+		if values, ok := labels[lbl.Name]; ok {
+			values[lbl.Value] = struct{}{}
+		} else {
+			labels[lbl.Name] = map[string]struct{}{lbl.Value: {}}
+		}
+	}
+
+	result := make(map[string][]string, len(labels))
+	for lbl, values := range labels {
+		vals := make([]string, 0, len(values))
+		for v := range values {
+			vals = append(vals, v)
+		}
+		result[lbl] = vals
+	}
+
+	return result
 }
 
 // streamsForFieldDetection reads the streams from the iterator and returns them sorted.
