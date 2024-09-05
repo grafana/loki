@@ -145,6 +145,11 @@ func (p *processor) processBlock(_ context.Context, bq *bloomshipper.CloseableBl
 		return err
 	}
 
+	// We require V3+ schema
+	if schema.Version() < v1.V3 {
+		return v1.ErrUnsupportedSchemaVersion
+	}
+
 	tokenizer := v1.NewNGramTokenizer(schema.NGramLen(), schema.NGramSkip())
 	iters := make([]iter.PeekIterator[v1.Request], 0, len(tasks))
 
