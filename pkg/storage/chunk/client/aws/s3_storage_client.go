@@ -307,16 +307,29 @@ func buckets(cfg S3Config) ([]string, error) {
 func (a *S3ObjectClient) Stop() {}
 
 func (a *S3ObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	err := instrument.CollectedRequest(ctx, "S3.ObjectExists", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
-		headObjectInput := &s3.HeadObjectInput{
-			Bucket: aws.String(a.bucketFromKey(objectKey)),
-			Key:    aws.String(objectKey),
+	var lastErr error
+
+	retries := backoff.New(ctx, a.cfg.BackoffConfig)
+	for retries.Ongoing() {
+		if ctx.Err() != nil {
+			return false, errors.Wrap(ctx.Err(), "ctx related error during s3 getObject")
 		}
-		_, err := a.S3.HeadObject(headObjectInput)
-		return err
-	})
-	if err != nil {
-		return false, err
+		lastErr = instrument.CollectedRequest(ctx, "S3.ObjectExists", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+			headObjectInput := &s3.HeadObjectInput{
+				Bucket: aws.String(a.bucketFromKey(objectKey)),
+				Key:    aws.String(objectKey),
+			}
+			_, requestErr := a.S3.HeadObject(headObjectInput)
+			return requestErr
+		})
+		if lastErr == nil {
+			return true, nil
+		}
+		retries.Wait()
+	}
+
+	if lastErr != nil {
+		return false, lastErr
 	}
 
 	return true, nil

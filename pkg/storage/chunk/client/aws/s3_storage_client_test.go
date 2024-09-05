@@ -196,6 +196,64 @@ func Test_Hedging(t *testing.T) {
 	}
 }
 
+func Test_RetryLogic(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		maxRetries int
+		do         func(c *S3ObjectClient) error
+	}{
+		{
+			"get object with retries",
+			3,
+			func(c *S3ObjectClient) error {
+				_, _, err := c.GetObject(context.Background(), "foo")
+				return err
+			},
+		},
+		{
+			"object exists with retries",
+			3,
+			func(c *S3ObjectClient) error {
+				_, err := c.ObjectExists(context.Background(), "foo")
+				return err
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			callCount := atomic.NewInt32(0)
+
+			c, err := NewS3ObjectClient(S3Config{
+				AccessKeyID:     "foo",
+				SecretAccessKey: flagext.SecretWithValue("bar"),
+				BackoffConfig:   backoff.Config{MaxRetries: tc.maxRetries},
+				BucketNames:     "foo",
+				Inject: func(next http.RoundTripper) http.RoundTripper {
+					return RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+						// Increment the call counter
+						callNum := callCount.Inc()
+
+						// Fail the first set of calls
+						if int(callNum) <= tc.maxRetries-1 {
+							time.Sleep(200 * time.Millisecond) // Simulate latency
+							return nil, errors.New("simulated error on call")
+						}
+
+						// Succeed on the last call
+						return &http.Response{
+							StatusCode: http.StatusOK,
+							Body:       io.NopCloser(bytes.NewReader([]byte("object content"))),
+						}, nil
+					})
+				},
+			}, hedging.Config{})
+			require.NoError(t, err)
+			err = tc.do(c)
+			require.NoError(t, err)
+			require.Equal(t, tc.maxRetries, int(callCount.Load()))
+		})
+	}
+}
+
 func Test_ConfigRedactsCredentials(t *testing.T) {
 	underTest := S3Config{
 		AccessKeyID:     "access key id",
