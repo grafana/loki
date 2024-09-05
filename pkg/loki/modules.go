@@ -663,11 +663,14 @@ func (t *Loki) initKafkaIngester() (_ services.Service, err error) {
 	if t.Cfg.KafkaIngester.ShutdownMarkerPath == "" {
 		return nil, errors.New("the config setting shutdown marker path is not set. The /ingester/prepare-partition-downscale endpoint won't work")
 	}
-
-	t.kafkaIngester, err = ingesterkafka.New(t.Cfg.KafkaIngester, prometheus.DefaultRegisterer, t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.ClientMetrics, t.MetastoreClient, t.Cfg.MetricsNamespace, logger)
+	storage, err := objstore.New(t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.ClientMetrics)
 	if err != nil {
-		fmt.Println("Error initializing ingester rf1", err)
-		return
+		return nil, err
+	}
+
+	t.kafkaIngester, err = ingesterkafka.New(t.Cfg.KafkaIngester, storage, t.MetastoreClient, logger, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer)
+	if err != nil {
+		return nil, err
 	}
 
 	httpMiddleware := middleware.Merge(

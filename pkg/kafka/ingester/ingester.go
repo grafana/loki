@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -18,13 +19,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
-	"github.com/grafana/loki/v3/pkg/ingester-rf1/objstore"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/ingester/shutdownmarker"
 	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
-	"github.com/grafana/loki/v3/pkg/storage"
-	"github.com/grafana/loki/v3/pkg/storage/config"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 
 	"github.com/grafana/loki/v3/pkg/util"
@@ -35,24 +32,19 @@ const (
 	PartitionRingName = "kafka-partition"
 )
 
-// ErrReadOnly is returned when the ingester is shutting down and a push was
-// attempted.
 var (
-	ErrReadOnly = errors.New("Ingester is shutting down")
-
-	ingesterIDRegexp = regexp.MustCompile("ingester(-rf1)-([0-9]+)")
+	ingesterIDRegexp     = regexp.MustCompile("-([0-9]+)$")
+	defaultFlushInterval = 15 * time.Second
 )
 
 // Config for an ingester.
 type Config struct {
-	Enabled bool `yaml:"enabled" doc:"description=Whether the kafka ingester is enabled."`
-
-	LifecyclerConfig   ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the ingester will operate and where it will register for discovery."`
-	ShutdownMarkerPath string                `yaml:"shutdown_marker_path"`
-
-	// Used for the kafka ingestion path
-	PartitionRingConfig partitionring.Config `yaml:"partition_ring" category:"experimental"`
-	KafkaConfig         kafka.Config         `yaml:"-"`
+	Enabled             bool                  `yaml:"enabled" doc:"description=Whether the kafka ingester is enabled."`
+	LifecyclerConfig    ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the ingester will operate and where it will register for discovery."`
+	ShutdownMarkerPath  string                `yaml:"shutdown_marker_path"`
+	FlushInterval       time.Duration         `yaml:"flush_interval" doc:"description=The interval at which the ingester will flush and commit offsets to Kafka. If not set, the default flush interval will be used."`
+	PartitionRingConfig partitionring.Config  `yaml:"partition_ring" category:"experimental"`
+	KafkaConfig         kafka.Config          `yaml:"-"`
 }
 
 // RegisterFlags registers the flags.
@@ -61,6 +53,18 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.PartitionRingConfig.RegisterFlags(f)
 	f.StringVar(&cfg.ShutdownMarkerPath, "kafka-ingester.shutdown-marker-path", "", "Path where the shutdown marker file is stored. If not set and common.path_prefix is set then common.path_prefix will be used.")
 	f.BoolVar(&cfg.Enabled, "kafka-ingester.enabled", false, "Whether the Kafka-based ingester path is enabled")
+	f.DurationVar(&cfg.FlushInterval, "kafka-ingester.flush-interval", defaultFlushInterval, "The interval at which the ingester will flush and commit offsets to Kafka. If not set, the default flush interval will be used.")
+}
+
+func (cfg *Config) Validate() error {
+	if cfg.FlushInterval <= 0 {
+		return errors.New("kafka-ingester.flush-interval must be greater than 0")
+	}
+	if cfg.LifecyclerConfig.RingConfig.ReplicationFactor != 1 {
+		cfg.LifecyclerConfig.RingConfig.ReplicationFactor = 1
+		level.Warn(util_log.Logger).Log("msg", "kafka-ingester.lifecycler.replication-factor has been set to 1. This is the only supported replication factor for the kafka-ingester.")
+	}
+	return nil
 }
 
 type Wrapper interface {
@@ -93,20 +97,15 @@ type Ingester struct {
 
 // New makes a new Ingester.
 func New(cfg Config,
-	registerer prometheus.Registerer,
-	periodConfigs []config.PeriodConfig,
-	storageConfig storage.Config,
-	clientMetrics storage.ClientMetrics,
-	metastoreClient metastorepb.MetastoreServiceClient,
-	metricsNamespace string,
+	objstore ObjectStorage,
+	metastoreClient MetadataStore,
 	logger log.Logger,
+	metricsNamespace string,
+	registerer prometheus.Registerer,
 ) (*Ingester, error) {
 	metrics := newIngesterMetrics(registerer)
-	storage, err := objstore.New(periodConfigs, storageConfig, clientMetrics)
-	if err != nil {
-		return nil, err
-	}
-	consumer, err := newConsumer(metastoreClient, storage, logger, registerer)
+
+	consumer, err := newConsumer(metastoreClient, objstore, logger, registerer)
 	if err != nil {
 		return nil, err
 	}
@@ -115,9 +114,9 @@ func New(cfg Config,
 		return nil, fmt.Errorf("calculating ingester partition ID: %w", err)
 	}
 
-	partitionRingKV := cfg.LifecyclerConfig.RingConfig.KVStore.Mock
+	partitionRingKV := cfg.PartitionRingConfig.KVStore.Mock
 	if partitionRingKV == nil {
-		partitionRingKV, err = kv.NewClient(cfg.LifecyclerConfig.RingConfig.KVStore, ring.GetPartitionRingCodec(), kv.RegistererWithKVName(registerer, PartitionRingName+"-lifecycler"), logger)
+		partitionRingKV, err = kv.NewClient(cfg.PartitionRingConfig.KVStore, ring.GetPartitionRingCodec(), kv.RegistererWithKVName(registerer, PartitionRingName+"-lifecycler"), logger)
 		if err != nil {
 			return nil, fmt.Errorf("creating KV store for ingester partition ring: %w", err)
 		}
@@ -142,7 +141,7 @@ func New(cfg Config,
 	if err != nil {
 		return nil, err
 	}
-	i.partitionReader, err = NewPartitionReader(cfg.KafkaConfig, ingesterPartitionID, cfg.LifecyclerConfig.ID, consumer, logger, registerer)
+	i.partitionReader, err = NewPartitionReader(cfg.KafkaConfig, ingesterPartitionID, cfg.LifecyclerConfig.ID, cfg.FlushInterval, consumer, logger, registerer)
 	if err != nil {
 		return nil, err
 	}

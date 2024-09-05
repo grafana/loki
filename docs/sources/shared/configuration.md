@@ -1289,6 +1289,11 @@ kafka_ingester:
   # CLI flag: -kafka-ingester.shutdown-marker-path
   [shutdown_marker_path: <string> | default = ""]
 
+  # The interval at which the ingester will flush and commit offsets to Kafka.
+  # If not set, the default flush interval will be used.
+  # CLI flag: -kafka-ingester.flush-interval
+  [flush_interval: <duration> | default = 15s]
+
   partition_ring:
     # The key-value store used to share the hash ring across multiple instances.
     # This option needs be set on ingesters, distributors, queriers, and rulers

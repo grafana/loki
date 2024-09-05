@@ -14,6 +14,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/kafka"
 )
 
+// partitionCommitter is responsible for committing offsets for a specific Kafka partition
+// to the Kafka broker. It also tracks metrics related to the commit process.
 type partitionCommitter struct {
 	commitRequestsTotal   prometheus.Counter
 	commitRequestsLatency prometheus.Histogram
@@ -28,6 +30,8 @@ type partitionCommitter struct {
 	consumerGroup string
 }
 
+// newPartitionCommitter creates and initializes a new partitionCommitter.
+// It sets up the necessary metrics and initializes the committer with the provided configuration.
 func newPartitionCommitter(kafkaCfg kafka.Config, admClient *kadm.Client, partitionID int32, consumerGroup string, logger log.Logger, reg prometheus.Registerer) *partitionCommitter {
 	c := &partitionCommitter{
 		logger:        logger,
@@ -36,17 +40,17 @@ func newPartitionCommitter(kafkaCfg kafka.Config, admClient *kadm.Client, partit
 		consumerGroup: consumerGroup,
 		admClient:     admClient,
 		commitRequestsTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name:        "cortex_ingest_storage_reader_offset_commit_requests_total",
+			Name:        "loki_ingest_storage_reader_offset_commit_requests_total",
 			Help:        "Total number of requests issued to commit the last consumed offset (includes both successful and failed requests).",
 			ConstLabels: prometheus.Labels{"partition": strconv.Itoa(int(partitionID))},
 		}),
 		commitFailuresTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name:        "cortex_ingest_storage_reader_offset_commit_failures_total",
+			Name:        "loki_ingest_storage_reader_offset_commit_failures_total",
 			Help:        "Total number of failed requests to commit the last consumed offset.",
 			ConstLabels: prometheus.Labels{"partition": strconv.Itoa(int(partitionID))},
 		}),
 		commitRequestsLatency: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Name:                            "cortex_ingest_storage_reader_offset_commit_request_duration_seconds",
+			Name:                            "loki_ingest_storage_reader_offset_commit_request_duration_seconds",
 			Help:                            "The duration of requests to commit the last consumed offset.",
 			ConstLabels:                     prometheus.Labels{"partition": strconv.Itoa(int(partitionID))},
 			NativeHistogramBucketFactor:     1.1,
@@ -55,7 +59,7 @@ func newPartitionCommitter(kafkaCfg kafka.Config, admClient *kadm.Client, partit
 			Buckets:                         prometheus.DefBuckets,
 		}),
 		lastCommittedOffset: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Name:        "cortex_ingest_storage_reader_last_committed_offset",
+			Name:        "loki_ingest_storage_reader_last_committed_offset",
 			Help:        "The last consumed offset successfully committed by the partition reader. Set to -1 if not offset has been committed yet.",
 			ConstLabels: prometheus.Labels{"partition": strconv.Itoa(int(partitionID))},
 		}),
@@ -67,6 +71,8 @@ func newPartitionCommitter(kafkaCfg kafka.Config, admClient *kadm.Client, partit
 	return c
 }
 
+// commit attempts to commit the given offset to Kafka for the partition this committer is responsible for.
+// It updates relevant metrics and logs the result of the commit operation.
 func (r *partitionCommitter) commit(ctx context.Context, offset int64) (returnErr error) {
 	startTime := time.Now()
 	r.commitRequestsTotal.Inc()
@@ -93,6 +99,5 @@ func (r *partitionCommitter) commit(ctx context.Context, offset int64) (returnEr
 	committedOffset, _ := committed.Lookup(r.kafkaCfg.Topic, r.partitionID)
 	level.Debug(r.logger).Log("msg", "last commit offset successfully committed to Kafka", "offset", committedOffset.At)
 	r.lastCommittedOffset.Set(float64(committedOffset.At))
-
 	return nil
 }

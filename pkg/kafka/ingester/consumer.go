@@ -20,26 +20,31 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/wal"
 )
 
+// ObjectStorage defines an interface for object storage operations
 type ObjectStorage interface {
 	PutObject(ctx context.Context, objectKey string, object io.Reader) error
 }
 
+// MetadataStore defines an interface for metadata storage operations
 type MetadataStore interface {
 	AddBlock(ctx context.Context, in *metastorepb.AddBlockRequest, opts ...grpc.CallOption) (*metastorepb.AddBlockResponse, error)
 }
 
+// consumer represents a Kafka consumer that processes and stores log entries
 type consumer struct {
-	logger          log.Logger
 	metastoreClient MetadataStore
 	storage         ObjectStorage
 	writer          *wal.SegmentWriter
-	buf             *bytes.Buffer
-	decoder         *kafka.Decoder
-	toStore         []*logproto.Entry
+
+	buf     *bytes.Buffer
+	decoder *kafka.Decoder
+	toStore []*logproto.Entry
 
 	metrics *consumerMetrics
+	logger  log.Logger
 }
 
+// newConsumer creates and initializes a new consumer instance
 func newConsumer(
 	metastoreClient MetadataStore,
 	storage ObjectStorage,
@@ -65,6 +70,7 @@ func newConsumer(
 	}, nil
 }
 
+// Consume processes a batch of Kafka records, decoding and storing them
 func (c *consumer) Consume(_ context.Context, _ int32, records []record) error {
 	for _, record := range records {
 		stream, labels, err := c.decoder.Decode(record.content)
@@ -91,6 +97,7 @@ func (c *consumer) Consume(_ context.Context, _ int32, records []record) error {
 	return nil
 }
 
+// Flush writes the accumulated data to storage and updates the metadata store
 func (c *consumer) Flush(ctx context.Context) error {
 	start := time.Now()
 	c.metrics.flushesTotal.Add(1)
@@ -121,6 +128,7 @@ func (c *consumer) Flush(ctx context.Context) error {
 	return nil
 }
 
+// consumerMetrics holds various Prometheus metrics for monitoring consumer operations
 type consumerMetrics struct {
 	flushesTotal       prometheus.Counter
 	flushFailuresTotal prometheus.Counter
@@ -128,6 +136,7 @@ type consumerMetrics struct {
 	segmentMetrics     *wal.SegmentMetrics
 }
 
+// newConsumerMetrics initializes and returns a new consumerMetrics instance
 func newConsumerMetrics(reg prometheus.Registerer) *consumerMetrics {
 	return &consumerMetrics{
 		flushesTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
@@ -135,11 +144,11 @@ func newConsumerMetrics(reg prometheus.Registerer) *consumerMetrics {
 			Help: "The total number of flushes.",
 		}),
 		flushFailuresTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "loki_ingester_rf1_flush_failures_total",
+			Name: "loki_kafka_ingester_flush_failures_total",
 			Help: "The total number of failed flushes.",
 		}),
 		flushDuration: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Name:                        "loki_ingester_rf1_flush_duration_seconds",
+			Name:                        "loki_kafka_ingester_flush_duration_seconds",
 			Help:                        "The flush duration (in seconds).",
 			Buckets:                     prometheus.ExponentialBuckets(0.001, 4, 8),
 			NativeHistogramBucketFactor: 1.1,

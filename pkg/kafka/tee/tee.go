@@ -20,6 +20,7 @@ import (
 
 const writeTimeout = time.Minute
 
+// Tee represents a component that duplicates log streams to Kafka.
 type Tee struct {
 	logger        log.Logger
 	kafkaClient   *kgo.Client
@@ -28,6 +29,17 @@ type Tee struct {
 	ingesterAppends *prometheus.CounterVec
 }
 
+// NewTee creates and initializes a new Tee instance.
+//
+// Parameters:
+// - cfg: Kafka configuration
+// - metricsNamespace: Namespace for Prometheus metrics
+// - registerer: Prometheus registerer for metrics
+// - logger: Logger instance
+// - partitionRing: Ring for managing partitions
+//
+// Returns:
+// - A new Tee instance and any error encountered during initialization
 func NewTee(
 	cfg kafka.Config,
 	metricsNamespace string,
@@ -39,7 +51,7 @@ func NewTee(
 
 	kafkaClient, err := kafka.NewWriterClient(cfg, 20, logger, registerer)
 	if err != nil {
-		panic("failed to start kafka client")
+		return nil, fmt.Errorf("failed to start kafka client: %w", err)
 	}
 
 	t := &Tee{
@@ -55,7 +67,13 @@ func NewTee(
 	return t, nil
 }
 
-// Duplicate Implements distributor.Tee which is used to tee distributor requests to pattern ingesters.
+// Duplicate implements the distributor.Tee interface, which is used to duplicate
+// distributor requests to pattern ingesters. It asynchronously sends each stream
+// to Kafka.
+//
+// Parameters:
+// - tenant: The tenant identifier
+// - streams: A slice of KeyedStream to be duplicated
 func (t *Tee) Duplicate(tenant string, streams []distributor.KeyedStream) {
 	for idx := range streams {
 		go func(stream distributor.KeyedStream) {
@@ -72,6 +90,14 @@ var encoderPool = sync.Pool{
 	},
 }
 
+// sendStream sends a single stream to Kafka.
+//
+// Parameters:
+// - tenant: The tenant identifier
+// - stream: The KeyedStream to be sent
+//
+// Returns:
+// - An error if the stream couldn't be sent successfully
 func (t *Tee) sendStream(tenant string, stream distributor.KeyedStream) error {
 	encoder := encoderPool.Get().(*kafka.Encoder)
 	defer encoderPool.Put(encoder)

@@ -224,6 +224,8 @@ func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
 
 		case "pattern-ingester.distributor.replication-factor":
 			_ = f.Value.Set("1")
+		case "kafka-ingester.distributor.replication-factor":
+			_ = f.Value.Set("1")
 		}
 
 		fs.Var(f.Value, f.Name, f.Usage)
@@ -303,6 +305,9 @@ func (c *Config) Validate() error {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid pattern_ingester config"))
 	}
 	if err := c.KafkaConfig.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid kafka_config config"))
+	}
+	if err := c.KafkaIngester.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid kafka_ingester config"))
 	}
 
