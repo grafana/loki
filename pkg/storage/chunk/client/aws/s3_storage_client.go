@@ -325,6 +325,12 @@ func (a *S3ObjectClient) ObjectExists(ctx context.Context, objectKey string) (bo
 		if lastErr == nil {
 			return true, nil
 		}
+		// AWS SDK v1 doesn't properly support error unwrapping, so we have to check the error message
+		// https://github.com/aws/aws-sdk-go/issues/2820#issuecomment-822767966
+		if strings.Contains(lastErr.Error(), "NoSuchKey") {
+			return false, lastErr
+		}
+
 		retries.Wait()
 	}
 
