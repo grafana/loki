@@ -1479,6 +1479,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
 		analytics.JSONCodec,
+		ring.GetPartitionRingCodec(),
 	}
 
 	dnsProviderReg := prometheus.WrapRegistererWithPrefix(
@@ -1500,6 +1501,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Pattern.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.IngesterRF1.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.KafkaIngester.PartitionRingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
 
 	if t.Cfg.InternalServer.Enable {
@@ -1898,8 +1900,7 @@ func (t *Loki) initPartitionRing() (services.Service, error) {
 		return nil, nil
 	}
 
-	// TODO: New config?
-	kvClient, err := kv.NewClient(t.Cfg.KafkaIngester.LifecyclerConfig.RingConfig.KVStore, ring.GetPartitionRingCodec(), kv.RegistererWithKVName(prometheus.DefaultRegisterer, ingesterkafka.PartitionRingName+"-watcher"), util_log.Logger)
+	kvClient, err := kv.NewClient(t.Cfg.KafkaIngester.PartitionRingConfig.KVStore, ring.GetPartitionRingCodec(), kv.RegistererWithKVName(prometheus.DefaultRegisterer, ingesterkafka.PartitionRingName+"-watcher"), util_log.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("creating KV store for partitions ring watcher: %w", err)
 	}

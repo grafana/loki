@@ -12,7 +12,6 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/kafka"
@@ -23,8 +22,9 @@ const writeTimeout = time.Minute
 // Tee represents a component that duplicates log streams to Kafka.
 type Tee struct {
 	logger        log.Logger
-	kafkaClient   *kgo.Client
-	partitionRing *ring.PartitionInstanceRing
+	producer      *kafka.Producer
+	partitionRing ring.PartitionRingReader
+	cfg           kafka.Config
 
 	ingesterAppends *prometheus.CounterVec
 }
@@ -45,7 +45,7 @@ func NewTee(
 	metricsNamespace string,
 	registerer prometheus.Registerer,
 	logger log.Logger,
-	partitionRing *ring.PartitionInstanceRing,
+	partitionRing ring.PartitionRingReader,
 ) (*Tee, error) {
 	registerer = prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", registerer)
 
@@ -53,15 +53,18 @@ func NewTee(
 	if err != nil {
 		return nil, fmt.Errorf("failed to start kafka client: %w", err)
 	}
+	producer := kafka.NewProducer(kafkaClient, cfg.ProducerMaxBufferedBytes,
+		prometheus.WrapRegistererWithPrefix(metricsNamespace+"_kafka_ingester_", registerer))
 
 	t := &Tee{
 		logger: log.With(logger, "component", "kafka-tee"),
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Name: "kafka_ingester_appends_total",
+			Name: "loki_kafka_ingester_appends_total",
 			Help: "The total number of appends sent to kafka ingest path.",
 		}, []string{"partition", "status"}),
-		kafkaClient:   kafkaClient,
+		producer:      producer,
 		partitionRing: partitionRing,
+		cfg:           cfg,
 	}
 
 	return t, nil
@@ -84,6 +87,10 @@ func (t *Tee) Duplicate(tenant string, streams []distributor.KeyedStream) {
 	}
 }
 
+func (t *Tee) Close() {
+	t.producer.Close()
+}
+
 var encoderPool = sync.Pool{
 	New: func() any {
 		return kafka.NewEncoder()
@@ -101,6 +108,7 @@ var encoderPool = sync.Pool{
 func (t *Tee) sendStream(tenant string, stream distributor.KeyedStream) error {
 	encoder := encoderPool.Get().(*kafka.Encoder)
 	defer encoderPool.Put(encoder)
+	encoder.SetMaxRecordSize(t.cfg.ProducerMaxRecordSizeBytes)
 
 	partitionID, err := t.partitionRing.PartitionRing().ActivePartitionForKey(stream.HashKey)
 	if err != nil {
@@ -115,7 +123,7 @@ func (t *Tee) sendStream(tenant string, stream distributor.KeyedStream) error {
 
 	ctx, cancel := context.WithTimeout(user.InjectOrgID(context.Background(), tenant), writeTimeout)
 	defer cancel()
-	produceResults := t.kafkaClient.ProduceSync(ctx, records...)
+	produceResults := t.producer.ProduceSync(ctx, records)
 
 	var finalErr error
 	for _, result := range produceResults {

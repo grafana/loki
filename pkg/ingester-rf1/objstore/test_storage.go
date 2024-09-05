@@ -10,12 +10,17 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-var metrics = storage.NewClientMetrics()
+var metrics *storage.ClientMetrics
 
 func NewTestStorage(t testing.TB) (*Multi, error) {
+	if metrics == nil {
+		m := storage.NewClientMetrics()
+		metrics = &m
+	}
 	dir := t.TempDir()
 	t.Cleanup(func() {
 		os.RemoveAll(dir)
+		metrics.Unregister()
 	})
 	cfg := storage.Config{
 		FSConfig: local.FSConfig{
@@ -27,5 +32,5 @@ func NewTestStorage(t testing.TB) (*Multi, error) {
 			From:       config.DayTime{Time: model.Now()},
 			ObjectType: "filesystem",
 		},
-	}, cfg, metrics)
+	}, cfg, *metrics)
 }

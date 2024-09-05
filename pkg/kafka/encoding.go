@@ -126,6 +126,10 @@ func (e *Encoder) Encode(partitionID int32, tenantID string, stream logproto.Str
 	return records, nil
 }
 
+func (e *Encoder) SetMaxRecordSize(maxSize int) {
+	e.maxSize = maxSize
+}
+
 func (e *Encoder) marshalWriteRequestToRecord(partitionID int32, tenantID string, stream logproto.Stream, size int) (*kgo.Record, error) {
 	// todo(cyriltovena): We could consider a better format to store the data avoiding all the allocations.
 	// Using Apache Arrow could be a good option.

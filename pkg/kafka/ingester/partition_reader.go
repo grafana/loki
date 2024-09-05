@@ -109,6 +109,7 @@ func (p *PartitionReader) start(_ context.Context) error {
 		return errors.Wrap(err, "creating kafka reader client")
 	}
 	p.committer = newPartitionCommitter(p.kafkaCfg, kadm.NewClient(p.client), p.partitionID, p.consumerGroup, p.logger, p.reg)
+
 	return nil
 }
 
