@@ -67,15 +67,11 @@ type ringEntry struct {
 //
 // Must be called with a non-empty subConns map.
 func newRing(subConns *resolver.AddressMap, minRingSize, maxRingSize uint64, logger *grpclog.PrefixLogger) *ring {
-	if logger.V(2) {
-		logger.Infof("newRing: number of subConns is %d, minRingSize is %d, maxRingSize is %d", subConns.Len(), minRingSize, maxRingSize)
-	}
+	logger.Debugf("newRing: number of subConns is %d, minRingSize is %d, maxRingSize is %d", subConns.Len(), minRingSize, maxRingSize)
 
 	// https://github.com/envoyproxy/envoy/blob/765c970f06a4c962961a0e03a467e165b276d50f/source/common/upstream/ring_hash_lb.cc#L114
 	normalizedWeights, minWeight := normalizeWeights(subConns)
-	if logger.V(2) {
-		logger.Infof("newRing: normalized subConn weights is %v", normalizedWeights)
-	}
+	logger.Debugf("newRing: normalized subConn weights is %v", normalizedWeights)
 
 	// Normalized weights for {3,3,4} is {0.3,0.3,0.4}.
 
@@ -86,9 +82,7 @@ func newRing(subConns *resolver.AddressMap, minRingSize, maxRingSize uint64, log
 	scale := math.Min(math.Ceil(minWeight*float64(minRingSize))/minWeight, float64(maxRingSize))
 	ringSize := math.Ceil(scale)
 	items := make([]*ringEntry, 0, int(ringSize))
-	if logger.V(2) {
-		logger.Infof("newRing: creating new ring of size %v", ringSize)
-	}
+	logger.Debugf("newRing: creating new ring of size %v", ringSize)
 
 	// For each entry, scale*weight nodes are generated in the ring.
 	//
