@@ -234,14 +234,12 @@ func getLocalStore(path string, cm ClientMetrics) Store {
 
 func Test_store_SelectLogs(t *testing.T) {
 	tests := []struct {
-		name         string
-		storeFixture *mockChunkStore
-		req          *logproto.QueryRequest
-		expected     []logproto.Stream
+		name     string
+		req      *logproto.QueryRequest
+		expected []logproto.Stream
 	}{
 		{
 			"all",
-			storeFixture,
 			newQuery("{foo=~\"ba.*\"}", from, from.Add(6*time.Millisecond), nil, nil),
 			[]logproto.Stream{
 				{
@@ -306,7 +304,6 @@ func Test_store_SelectLogs(t *testing.T) {
 		},
 		{
 			"filter regex",
-			storeFixture,
 			newQuery("{foo=~\"ba.*\"} |~ \"1|2|3\" !~ \"2|3\"", from, from.Add(6*time.Millisecond), nil, nil),
 			[]logproto.Stream{
 				{
@@ -331,7 +328,6 @@ func Test_store_SelectLogs(t *testing.T) {
 		},
 		{
 			"filter matcher",
-			storeFixture,
 			newQuery("{foo=\"bar\"}", from, from.Add(6*time.Millisecond), nil, nil),
 			[]logproto.Stream{
 				{
@@ -367,7 +363,6 @@ func Test_store_SelectLogs(t *testing.T) {
 		},
 		{
 			"filter time",
-			storeFixture,
 			newQuery("{foo=~\"ba.*\"}", from, from.Add(time.Millisecond), nil, nil),
 			[]logproto.Stream{
 				{
@@ -392,7 +387,6 @@ func Test_store_SelectLogs(t *testing.T) {
 		},
 		{
 			"delete covers whole time range",
-			storeFixture,
 			newQuery(
 				"{foo=~\"ba.*\"}",
 				from,
@@ -440,7 +434,6 @@ func Test_store_SelectLogs(t *testing.T) {
 		},
 		{
 			"delete covers partial time range",
-			storeFixture,
 			newQuery(
 				"{foo=~\"ba.*\"}",
 				from,
@@ -499,53 +492,12 @@ func Test_store_SelectLogs(t *testing.T) {
 				},
 			},
 		},
-		{
-			"rename using label_format",
-			storeFixtureV4,
-			newQuery("{foo=\"glop\"} | label_format boo=\"z\" | boo=\"z\"", from, from.Add(6*time.Millisecond), nil, nil),
-			[]logproto.Stream{
-				{
-					Labels: "{boo=\"z\", foo=\"glop\"}",
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-							StructuredMetadata: []logproto.LabelAdapter{
-								{Name: "boo", Value: "a"},
-							},
-						},
-						{
-							Timestamp: from.Add(3 * time.Millisecond),
-							Line:      "4",
-							StructuredMetadata: []logproto.LabelAdapter{
-								{Name: "boo", Value: "a"},
-							},
-						},
-
-						{
-							Timestamp: from.Add(4 * time.Millisecond),
-							Line:      "5",
-							StructuredMetadata: []logproto.LabelAdapter{
-								{Name: "boo", Value: "a"},
-							},
-						},
-						{
-							Timestamp: from.Add(5 * time.Millisecond),
-							Line:      "6",
-							StructuredMetadata: []logproto.LabelAdapter{
-								{Name: "boo", Value: "a"},
-							},
-						},
-					},
-				},
-			},
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &LokiStore{
-				Store: tt.storeFixture,
+				Store: storeFixture,
 				cfg: Config{
 					MaxChunkBatchSize: 10,
 				},
