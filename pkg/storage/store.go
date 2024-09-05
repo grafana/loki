@@ -6,6 +6,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 
@@ -55,6 +56,7 @@ type SelectStore interface {
 	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
 	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
 	SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
+	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers []*labels.Matcher, p *plan.QueryPlan) ([]*LazyChunk, error)
 }
 
 type SchemaConfigProvider interface {
@@ -607,4 +609,14 @@ func (f failingChunkWriter) Put(_ context.Context, _ []chunk.Chunk) error {
 
 func (f failingChunkWriter) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
 	return errWritingChunkUnsupported
+}
+
+func (s *LokiStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers []*labels.Matcher, p *plan.QueryPlan) ([]*LazyChunk, error) {
+	predicate := chunk.NewPredicate(matchers, p)
+	lazyChunks, err := s.lazyChunks(ctx, from, through, predicate, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return lazyChunks, nil
 }

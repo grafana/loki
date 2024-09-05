@@ -576,9 +576,27 @@ func (q *SingleTenantQuerier) SelectQueryPlan(ctx context.Context, req *logproto
 
 	from := model.TimeFromUnixNano(storeQueryInterval.start.UnixNano())
 	through := model.TimeFromUnixNano(storeQueryInterval.end.UnixNano())
+	subqueries := make([]*logproto.SubQueryResult, 0)
+	switch req.Strategy {
+	case "stream_shard_volume":
+		subqueries, err = q.breakIntoStreamShards(ctx, req, userID, from, through, matchers)
+		if err != nil {
+			return nil, err
+		}
+	case "chunkrefs":
+		subqueries, err = q.breakIntoChunkRefs(ctx, req, userID, from, through, matchers)
+		if err != nil {
+			return nil, err
+		}
+	}
 
+	return &logproto.QueryPlanResponse{
+		Results: subqueries,
+	}, nil
+}
+
+func (q *SingleTenantQuerier) breakIntoStreamShards(ctx context.Context, req *logproto.QueryPlanRequest, userID string, from model.Time, through model.Time, matchers []*labels.Matcher) ([]*logproto.SubQueryResult, error) {
 	streamShardValues, err := q.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", streamShardLabel, matchers...)
-
 	if err != nil {
 		return nil, err
 	}
@@ -603,9 +621,7 @@ func (q *SingleTenantQuerier) SelectQueryPlan(ctx context.Context, req *logproto
 	// dynamic label combination - frequently occurring labels for a tenant?
 	d := NewStreamShardSplitter(volumes)
 	subqueries := d.GetSubQueries(req.Query, from, through, int(req.Buckets))
-	return &logproto.QueryPlanResponse{
-		Results: subqueries,
-	}, nil
+	return subqueries, nil
 }
 
 func (q *SingleTenantQuerier) awaitSeries(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
@@ -1177,6 +1193,27 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 		Fields:     fields,
 		FieldLimit: req.GetFieldLimit(),
 	}, nil
+}
+
+func (q *SingleTenantQuerier) breakIntoChunkRefs(ctx context.Context, req *logproto.QueryPlanRequest, id string, from model.Time, through model.Time, matchers []*labels.Matcher) ([]*logproto.SubQueryResult, error) {
+	_, storeQueryInterval := q.buildQueryIntervals(req.Start, req.End)
+	parsed, err := syntax.ParseLogSelector(req.Query, true)
+	if err != nil {
+		return nil, err
+	}
+	p := &plan.QueryPlan{
+		AST: parsed,
+	}
+
+	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
+		lazyChunks, err := q.store.GetChunkRefs(ctx, id, from, through, matchers, p)
+		if err != nil {
+			return nil, err
+		}
+
+		level.Info(q.logger).Log("lazychunks", lazyChunks)
+	}
+	return nil, nil
 }
 
 type parsedFields struct {

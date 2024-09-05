@@ -1002,9 +1002,11 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		return req.WithContext(ctx), nil
 	case *logproto.QueryPlanRequest:
 		params := url.Values{
-			"query": []string{request.GetQuery()},
-			"start": []string{fmt.Sprintf("%d", request.Start.UnixNano())},
-			"end":   []string{fmt.Sprintf("%d", request.End.UnixNano())},
+			"query":    []string{request.GetQuery()},
+			"start":    []string{fmt.Sprintf("%d", request.Start.UnixNano())},
+			"end":      []string{fmt.Sprintf("%d", request.End.UnixNano())},
+			"strategy": []string{request.GetStrategy()},
+			"buckets":  []string{fmt.Sprintf("%d", request.GetBuckets())},
 		}
 
 		u := &url.URL{

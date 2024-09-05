@@ -28,6 +28,7 @@ func ParseQueryPlanRequest(r *http.Request) (*logproto.QueryPlanRequest, error) 
 		return nil, err
 	}
 	req.Buckets = b
+	req.Strategy = r.Form.Get("strategy")
 	return req, nil
 }
 

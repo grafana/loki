@@ -469,6 +469,17 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			"start", op.Start,
 		)
 		return r.detectedLabels.Do(ctx, req)
+	case *logproto.QueryPlanRequest:
+		level.Info(logger).Log(
+			"msg", "executing query",
+			"type", "query_plan",
+			"end", op.End,
+			"length", op.End.Sub(op.Start),
+			"query", op.Query,
+			"start", op.Start,
+			"buckets", op.Buckets,
+			"strategy", op.Strategy)
+		return r.next.Do(ctx, req)
 	default:
 		return r.next.Do(ctx, req)
 	}
