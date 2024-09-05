@@ -28,7 +28,7 @@ func MakeBlock(t testing.TB, nth int, fromFp, throughFp model.Fingerprint, fromT
 	builder, err := NewBlockBuilder(
 		BlockOptions{
 			Schema: Schema{
-				version:     DefaultSchemaVersion,
+				version:     CurrentSchemaVersion,
 				encoding:    chunkenc.EncSnappy,
 				nGramLength: 4, // see DefaultNGramLength in bloom_tokenizer_test.go
 				nGramSkip:   0, // see DefaultNGramSkip in bloom_tokenizer_test.go

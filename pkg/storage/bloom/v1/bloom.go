@@ -23,6 +23,13 @@ type Bloom struct {
 	filter.ScalableBloomFilter
 }
 
+func NewBloom() *Bloom {
+	return &Bloom{
+		// TODO parameterise SBF options. fp_rate
+		ScalableBloomFilter: *filter.NewScalableBloomFilter(1024, 0.01, 0.8),
+	}
+}
+
 func (b *Bloom) Encode(enc *encoding.Encbuf) error {
 	// divide by 8 b/c bloom capacity is measured in bits, but we want bytes
 	buf := bytes.NewBuffer(make([]byte, 0, int(b.Capacity()/8)))

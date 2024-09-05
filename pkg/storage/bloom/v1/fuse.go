@@ -253,7 +253,7 @@ func (fq *FusedQuerier) Run() error {
 	return nil
 }
 
-func (fq *FusedQuerier) runSeries(schema Schema, series *SeriesWithOffsets, reqs []Request) {
+func (fq *FusedQuerier) runSeries(schema Schema, series *SeriesWithMeta, reqs []Request) {
 	// For a given chunk|series to be removed, it must fail to match all blooms.
 	// Because iterating/loading blooms can be expensive, we iterate blooms one at a time, collecting
 	// the removals (failures) for each (bloom, chunk) pair.
