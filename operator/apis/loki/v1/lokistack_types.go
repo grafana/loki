@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"regexp"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -798,9 +799,9 @@ type OTLPAttributeAction string
 
 const (
 	// OTLPAttributeActionIndexLabel stores a resource attribute as a label, which is part of the index identifying streams.
-	OTLPAttributeActionIndexLabel OTLPAttributeAction = "index_label"
+	OTLPAttributeActionIndexLabel OTLPAttributeAction = "indexLabel"
 	// OTLPAttributeActionStructuredMetadata stores an attribute as structured metadata with each log entry.
-	OTLPAttributeActionStructuredMetadata OTLPAttributeAction = "structured_metadata"
+	OTLPAttributeActionStructuredMetadata OTLPAttributeAction = "structuredMetadata"
 	// OTLPAttributeActionDrop removes the matching attributes from the log entry.
 	OTLPAttributeActionDrop OTLPAttributeAction = "drop"
 )
@@ -1462,4 +1463,10 @@ func (t BlockedQueryTypes) String() string {
 	}
 
 	return strings.Join(res, ",")
+}
+
+func (a OTLPAttributeAction) CfgString() string {
+	re := regexp.MustCompile("([a-z0-9])([A-Z])")
+	str := re.ReplaceAllString(string(a), "${1}_${2}")
+	return strings.ToLower(str)
 }
