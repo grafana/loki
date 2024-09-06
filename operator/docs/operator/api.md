@@ -1173,7 +1173,7 @@ tenants.</p>
 <td>
 <em>(Optional)</em>
 <p>IndexedResourceAttributes contains the global configuration for resource attributes
-to store them as index labels or Structured Metadata or drop them altogether.</p>
+to store them as index labels or structured metadata or drop them altogether.</p>
 </td>
 </tr>
 <tr>
@@ -2665,12 +2665,12 @@ string
 ## OTLPAttributeAction { #loki-grafana-com-v1-OTLPAttributeAction }
 (<code>string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki-grafana-com-v1-OTLPAttributesSpec">OTLPAttributesSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-OTLPAttributesSpec">OTLPAttributesSpec</a>, <a href="#loki-grafana-com-v1-OTLPResourceAttributesConfigSpec">OTLPResourceAttributesConfigSpec</a>)
 </p>
 <div>
 <p>OTLPAttributeAction defines the action to executed when indexing
 OTLP resource attributes. Resource attributes can be either added
-to the index, the chunk structured metadata or enterily dropped.</p>
+to the index, the chunk structured metadata or entirely dropped.</p>
 </div>
 <table>
 <thead>
@@ -2680,24 +2680,24 @@ to the index, the chunk structured metadata or enterily dropped.</p>
 </tr>
 </thead>
 <tbody><tr><td><p>&#34;drop&#34;</p></td>
-<td><p>OTLPAttributeActionDrop drops Attributes for which the Attribute name does match the regex.</p>
+<td><p>OTLPAttributeActionDrop removes the matching attributes from the log entry.</p>
 </td>
 </tr><tr><td><p>&#34;index_label&#34;</p></td>
-<td><p>OTLPAttributeActionIndexLabel stores a Resource Attribute as a label in index to identify streams.</p>
+<td><p>OTLPAttributeActionIndexLabel stores a resource attribute as a label, which is part of the index identifying streams.</p>
 </td>
 </tr><tr><td><p>&#34;structured_metadata&#34;</p></td>
-<td><p>OTLPAttributeActionStructuredMetadata stores an Attribute as Structured Metadata with each log entry.</p>
+<td><p>OTLPAttributeActionStructuredMetadata stores an attribute as structured metadata with each log entry.</p>
 </td>
 </tr></tbody>
 </table>
 
 ## OTLPAttributesSpec { #loki-grafana-com-v1-OTLPAttributesSpec }
 <p>
-(<em>Appears on:</em><a href="#loki-grafana-com-v1-OTLPResourceAttributesSpec">OTLPResourceAttributesSpec</a>, <a href="#loki-grafana-com-v1-OTLPSpec">OTLPSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-OTLPSpec">OTLPSpec</a>)
 </p>
 <div>
 <p>OTLPAttributesSpec contains the configuration for a set of attributes
-to store them as index labels or Structured Metadata or drop them altogether.</p>
+to store them as index labels or structured metadata or drop them altogether.</p>
 </div>
 <table>
 <thead>
@@ -2717,7 +2717,65 @@ OTLPAttributeAction
 </em>
 </td>
 <td>
-<p>Action defines the indexing action for the selected attributes.</p>
+<p>Action defines the indexing action for the selected attributes. They
+can be either added to structured metadata or drop altogether.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>attributes</code><br/>
+<em>
+[]string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Attributes allows choosing the attributes by listing their names.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>regex</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Regex allows choosing the attributes by matching a regular expression.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## OTLPResourceAttributesConfigSpec { #loki-grafana-com-v1-OTLPResourceAttributesConfigSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-OTLPResourceAttributesSpec">OTLPResourceAttributesSpec</a>)
+</p>
+<div>
+<p>OTLPResourceAttributesConfigSpec contains the configuration for a set of resource attributes
+to store them as index labels or structured metadata or drop them altogether.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>action</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OTLPAttributeAction">
+OTLPAttributeAction
+</a>
+</em>
+</td>
+<td>
+<p>Action defines the indexing action for the selected resoure attributes. They
+can be either indexed as labels, added to structured metadata or drop altogether.</p>
 </td>
 </tr>
 <tr>
@@ -2742,8 +2800,7 @@ string
 </td>
 <td>
 <em>(Optional)</em>
-<p>Regex to choose attributes to configure indexing or drop them
-altogether.</p>
+<p>Regex allows choosing the attributes by matching a regular expression.</p>
 </td>
 </tr>
 </tbody>
@@ -2755,7 +2812,7 @@ altogether.</p>
 </p>
 <div>
 <p>OTLPResourceAttributesSpec contains the configuration for resource attributes
-to store them as index labels or Structured Metadata or drop them altogether.</p>
+to store them as index labels or structured metadata or drop them altogether.</p>
 </div>
 <table>
 <thead>
@@ -2774,23 +2831,24 @@ bool
 </td>
 <td>
 <em>(Optional)</em>
-<p>IgnoreDefaults whether to ignore the default global list of resource attributes
+<p>IgnoreDefaults controls whether to ignore the global configuration for resource attributes
 indexed as labels.</p>
+<p>If IgnoreDefaults is true, then this spec needs to contain at least one mapping to a index label.</p>
 </td>
 </tr>
 <tr>
 <td>
 <code>attributes</code><br/>
 <em>
-<a href="#loki-grafana-com-v1-OTLPAttributesSpec">
-[]OTLPAttributesSpec
+<a href="#loki-grafana-com-v1-OTLPResourceAttributesConfigSpec">
+[]OTLPResourceAttributesConfigSpec
 </a>
 </em>
 </td>
 <td>
 <em>(Optional)</em>
 <p>Attributes contains the configuration for resource attributes
-to store them as index labels or Structured Metadata or drop them altogether.</p>
+to store them as index labels or structured metadata or drop them altogether.</p>
 </td>
 </tr>
 </tbody>
@@ -2824,7 +2882,7 @@ OTLPResourceAttributesSpec
 <td>
 <em>(Optional)</em>
 <p>ResourceAttributes contains the configuration for resource attributes
-to store them as index labels or Structured Metadata or drop them altogether.</p>
+to store them as index labels or structured metadata or drop them altogether.</p>
 </td>
 </tr>
 <tr>
@@ -2839,7 +2897,7 @@ to store them as index labels or Structured Metadata or drop them altogether.</p
 <td>
 <em>(Optional)</em>
 <p>ScopeAttributes contains the configuration for scope attributes
-to store them as index labels or Structured Metadata or drop them altogether.</p>
+to store them as index labels or structured metadata or drop them altogether.</p>
 </td>
 </tr>
 <tr>
@@ -2854,7 +2912,7 @@ to store them as index labels or Structured Metadata or drop them altogether.</p
 <td>
 <em>(Optional)</em>
 <p>LogAttributes contains the configuration for log attributes
-to store them as index labels or Structured Metadata or drop them altogether.</p>
+to store them as index labels or structured metadata or drop them altogether.</p>
 </td>
 </tr>
 </tbody>
