@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/grafana/jsonparser"
@@ -200,12 +201,16 @@ func unescapeJSONString(b []byte) string {
 		return ""
 	}
 	res := string(bU)
-	// rune error is rejected by Prometheus
-	for _, r := range res {
+
+	// rune error is rejected by Prometheus hence replacing them with space
+	removeInvalidUtf := func(r rune) rune {
 		if r == utf8.RuneError {
-			return ""
+			return -1
 		}
+		return r
 	}
+	res = strings.Map(removeInvalidUtf, res)
+
 	return res
 }
 
@@ -339,10 +344,15 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 		}
 
 		val := l.dec.Value()
-		// the rune error replacement is rejected by Prometheus, so we skip it.
-		if bytes.ContainsRune(val, utf8.RuneError) {
-			val = nil
+
+		// the rune error replacement is rejected by Prometheus hence skiping them.
+		removeInvalidUtf := func(r rune) rune {
+			if r == utf8.RuneError {
+				return -1
+			}
+			return r
 		}
+		val = bytes.Map(removeInvalidUtf, val)
 
 		if !l.keepEmpty && len(val) == 0 {
 			continue
