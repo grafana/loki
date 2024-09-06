@@ -4,9 +4,10 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/pkg/push"
 	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
-	"github.com/stretchr/testify/require"
 )
 
 const BigFile = "../../../logql/sketch/testdata/war_peace.txt"
