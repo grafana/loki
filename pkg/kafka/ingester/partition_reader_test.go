@@ -53,7 +53,7 @@ func TestPartitionReader_BasicFunctionality(t *testing.T) {
 	}
 	encoder := kafka.NewEncoder()
 
-	records, err := encoder.Encode(0, "test-tenant", stream)
+	records, err := encoder.Encode(0, "test-tenant", stream, 10<<20)
 	require.NoError(t, err)
 	require.Len(t, records, 1)
 
@@ -89,7 +89,7 @@ func TestPartitionReader_ConsumerError(t *testing.T) {
 	}
 	encoder := kafka.NewEncoder()
 
-	records, err := encoder.Encode(0, "test-tenant", stream)
+	records, err := encoder.Encode(0, "test-tenant", stream, 10<<20)
 	require.NoError(t, err)
 
 	consumerError := errors.New("consumer error")
@@ -129,7 +129,7 @@ func TestPartitionReader_FlushAndCommit(t *testing.T) {
 	}
 	encoder := kafka.NewEncoder()
 
-	records, err := encoder.Encode(0, "test-tenant", stream)
+	records, err := encoder.Encode(0, "test-tenant", stream, 10<<20)
 	require.NoError(t, err)
 
 	consumer.On("Consume", mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -210,9 +210,9 @@ func TestPartitionReader_MultipleRecords(t *testing.T) {
 	}
 	encoder := kafka.NewEncoder()
 
-	records1, err := encoder.Encode(0, "test-tenant", stream1)
+	records1, err := encoder.Encode(0, "test-tenant", stream1, 10<<20)
 	require.NoError(t, err)
-	records2, err := encoder.Encode(0, "test-tenant", stream2)
+	records2, err := encoder.Encode(0, "test-tenant", stream2, 10<<20)
 	require.NoError(t, err)
 
 	consumer.On("Consume", mock.Anything, mock.Anything, mock.Anything).Return(nil)

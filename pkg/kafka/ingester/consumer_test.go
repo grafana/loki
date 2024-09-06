@@ -49,7 +49,7 @@ func TestConsumer(t *testing.T) {
 		var records []record
 		for i, stream := range streams {
 			// Encode the stream
-			encodedRecords, err := encoder.Encode(int32(i), fmt.Sprintf("tenant%d", i+1), stream)
+			encodedRecords, err := encoder.Encode(int32(i), fmt.Sprintf("tenant%d", i+1), stream, 10<<20)
 			require.NoError(t, err)
 
 			// Convert encoded records to our test record format

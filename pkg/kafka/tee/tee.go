@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/kafka"
@@ -26,7 +27,10 @@ type Tee struct {
 	partitionRing ring.PartitionRingReader
 	cfg           kafka.Config
 
-	ingesterAppends *prometheus.CounterVec
+	ingesterAppends   *prometheus.CounterVec
+	writeLatency      prometheus.Histogram
+	writeBytesTotal   prometheus.Counter
+	recordsPerRequest prometheus.Histogram
 }
 
 // NewTee creates and initializes a new Tee instance.
@@ -54,17 +58,35 @@ func NewTee(
 		return nil, fmt.Errorf("failed to start kafka client: %w", err)
 	}
 	producer := kafka.NewProducer(kafkaClient, cfg.ProducerMaxBufferedBytes,
-		prometheus.WrapRegistererWithPrefix(metricsNamespace+"_kafka_ingester_", registerer))
+		prometheus.WrapRegistererWithPrefix("_kafka_ingester_", registerer))
 
 	t := &Tee{
 		logger: log.With(logger, "component", "kafka-tee"),
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Name: "loki_kafka_ingester_appends_total",
+			Name: "kafka_ingester_appends_total",
 			Help: "The total number of appends sent to kafka ingest path.",
 		}, []string{"partition", "status"}),
 		producer:      producer,
 		partitionRing: partitionRing,
 		cfg:           cfg,
+		// Metrics.
+		writeLatency: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Name:                            "kafka_ingester_tee_latency_seconds",
+			Help:                            "Latency to write an incoming request to the ingest storage.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
+			NativeHistogramMaxBucketNumber:  100,
+			Buckets:                         prometheus.DefBuckets,
+		}),
+		writeBytesTotal: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Name: "kafka_ingester_tee_sent_bytes_total",
+			Help: "Total number of bytes sent to the ingest storage.",
+		}),
+		recordsPerRequest: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Name:    "kafka_ingester_tee_records_per_write_request",
+			Help:    "The number of records a single per-partition write request has been split into.",
+			Buckets: prometheus.ExponentialBuckets(1, 2, 8),
+		}),
 	}
 
 	return t, nil
@@ -106,24 +128,35 @@ var encoderPool = sync.Pool{
 // Returns:
 // - An error if the stream couldn't be sent successfully
 func (t *Tee) sendStream(tenant string, stream distributor.KeyedStream) error {
+	if len(stream.Stream.Entries) == 0 {
+		return nil
+	}
 	partitionID, err := t.partitionRing.PartitionRing().ActivePartitionForKey(stream.HashKey)
 	if err != nil {
 		t.ingesterAppends.WithLabelValues("partition_unknown", "fail").Inc()
 		return fmt.Errorf("failed to find active partition for stream: %w", err)
 	}
 
+	startTime := time.Now()
 	encoder := encoderPool.Get().(*kafka.Encoder)
-	encoder.SetMaxRecordSize(t.cfg.ProducerMaxRecordSizeBytes)
-	records, err := encoder.Encode(partitionID, tenant, stream.Stream)
+	records, err := encoder.Encode(partitionID, tenant, stream.Stream, t.cfg.ProducerMaxRecordSizeBytes)
 	if err != nil {
 		t.ingesterAppends.WithLabelValues(fmt.Sprintf("partition_%d", partitionID), "fail").Inc()
+		encoderPool.Put(encoder)
 		return fmt.Errorf("failed to marshal write request to records: %w", err)
 	}
 	encoderPool.Put(encoder)
 
+	t.recordsPerRequest.Observe(float64(len(records)))
+
 	ctx, cancel := context.WithTimeout(user.InjectOrgID(context.Background(), tenant), writeTimeout)
 	defer cancel()
 	produceResults := t.producer.ProduceSync(ctx, records)
+
+	if count, sizeBytes := successfulProduceRecordsStats(produceResults); count > 0 {
+		t.writeLatency.Observe(time.Since(startTime).Seconds())
+		t.writeBytesTotal.Add(float64(sizeBytes))
+	}
 
 	var finalErr error
 	for _, result := range produceResults {
@@ -136,4 +169,15 @@ func (t *Tee) sendStream(tenant string, stream distributor.KeyedStream) error {
 	}
 
 	return finalErr
+}
+
+func successfulProduceRecordsStats(results kgo.ProduceResults) (count, sizeBytes int) {
+	for _, res := range results {
+		if res.Err == nil && res.Record != nil {
+			count++
+			sizeBytes += len(res.Record.Value)
+		}
+	}
+
+	return
 }

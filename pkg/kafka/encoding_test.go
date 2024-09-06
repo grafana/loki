@@ -34,11 +34,11 @@ func TestEncoderDecoder(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			encoder := NewEncoderWithMaxSize(tt.maxSize)
+			encoder := NewEncoder()
 			decoder, err := NewDecoder()
 			require.NoError(t, err)
 
-			records, err := encoder.Encode(0, "test-tenant", tt.stream)
+			records, err := encoder.Encode(0, "test-tenant", tt.stream, tt.maxSize)
 			require.NoError(t, err)
 
 			if tt.expectSplit {
@@ -72,10 +72,10 @@ func TestEncoderDecoder(t *testing.T) {
 }
 
 func TestEncoderSingleEntryTooLarge(t *testing.T) {
-	encoder := NewEncoderWithMaxSize(100)
+	encoder := NewEncoder()
 	stream := generateStream(1, 1000)
 
-	_, err := encoder.Encode(0, "test-tenant", stream)
+	_, err := encoder.Encode(0, "test-tenant", stream, 100)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "single entry size")
 }
@@ -97,7 +97,7 @@ func TestEncoderDecoderEmptyStream(t *testing.T) {
 		Labels: `{app="test"}`,
 	}
 
-	records, err := encoder.Encode(0, "test-tenant", stream)
+	records, err := encoder.Encode(0, "test-tenant", stream, 10<<20)
 	require.NoError(t, err)
 	require.Len(t, records, 1)
 
@@ -114,7 +114,7 @@ func BenchmarkEncodeDecode(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		records, err := encoder.Encode(0, "test-tenant", stream)
+		records, err := encoder.Encode(0, "test-tenant", stream, 10<<20)
 		if err != nil {
 			b.Fatal(err)
 		}
