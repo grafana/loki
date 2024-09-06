@@ -106,20 +106,20 @@ var encoderPool = sync.Pool{
 // Returns:
 // - An error if the stream couldn't be sent successfully
 func (t *Tee) sendStream(tenant string, stream distributor.KeyedStream) error {
-	encoder := encoderPool.Get().(*kafka.Encoder)
-	defer encoderPool.Put(encoder)
-	encoder.SetMaxRecordSize(t.cfg.ProducerMaxRecordSizeBytes)
-
 	partitionID, err := t.partitionRing.PartitionRing().ActivePartitionForKey(stream.HashKey)
 	if err != nil {
 		t.ingesterAppends.WithLabelValues("partition_unknown", "fail").Inc()
 		return fmt.Errorf("failed to find active partition for stream: %w", err)
 	}
+
+	encoder := encoderPool.Get().(*kafka.Encoder)
+	encoder.SetMaxRecordSize(t.cfg.ProducerMaxRecordSizeBytes)
 	records, err := encoder.Encode(partitionID, tenant, stream.Stream)
 	if err != nil {
 		t.ingesterAppends.WithLabelValues(fmt.Sprintf("partition_%d", partitionID), "fail").Inc()
 		return fmt.Errorf("failed to marshal write request to records: %w", err)
 	}
+	encoderPool.Put(encoder)
 
 	ctx, cancel := context.WithTimeout(user.InjectOrgID(context.Background(), tenant), writeTimeout)
 	defer cancel()

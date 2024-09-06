@@ -105,7 +105,6 @@ func (e *Encoder) Encode(partitionID int32, tenantID string, stream logproto.Str
 			e.batch.Entries = e.batch.Entries[:0]
 			currentSize = labelsSize
 		}
-		fmt.Println("size", entrySize, "currentSize", currentSize, "maxSize", e.maxSize)
 		e.batch.Entries = append(e.batch.Entries, entry)
 		currentSize += entrySize
 	}
