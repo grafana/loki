@@ -1566,7 +1566,7 @@ backoff_config:
   # CLI flag: -s3.max-backoff
   [max_period: <duration> | default = 3s]
 
-  # Maximum number of times to retry when s3 get Object
+  # Maximum number of times to retry for s3 GetObject or ObjectExists
   # CLI flag: -s3.max-retries
   [max_retries: <int> | default = 5]
 
@@ -5434,7 +5434,7 @@ backoff_config:
   # CLI flag: -<prefix>.storage.s3.max-backoff
   [max_period: <duration> | default = 3s]
 
-  # Maximum number of times to retry when s3 get Object
+  # Maximum number of times to retry for s3 GetObject or ObjectExists
   # CLI flag: -<prefix>.storage.s3.max-retries
   [max_retries: <int> | default = 5]
 

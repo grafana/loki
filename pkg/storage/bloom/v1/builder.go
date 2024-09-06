@@ -68,7 +68,7 @@ func (b BlockOptions) Encode(enc *encoding.Encbuf) {
 
 func NewBlockOptions(enc chunkenc.Encoding, nGramLength, nGramSkip, maxBlockSizeBytes, maxBloomSizeBytes uint64) BlockOptions {
 	opts := NewBlockOptionsFromSchema(Schema{
-		version:     DefaultSchemaVersion,
+		version:     CurrentSchemaVersion,
 		encoding:    enc,
 		nGramLength: nGramLength,
 		nGramSkip:   nGramSkip,
@@ -289,7 +289,12 @@ func (mb *MergeBuilder) processNextSeries(
 		bytesAdded += bloom.SourceBytesAdded
 	}
 
-	done, err := builder.AddSeries(*nextInStore, offsets)
+	// TODO(chaudum): Use the indexed fields from bloom creation, however,
+	// currently we still build blooms from log lines.
+	fields := NewSet[Field](1)
+	fields.Add("__line__")
+
+	done, err := builder.AddSeries(*nextInStore, offsets, fields)
 	if err != nil {
 		return nil, bytesAdded, 0, false, false, errors.Wrap(err, "committing series")
 	}
