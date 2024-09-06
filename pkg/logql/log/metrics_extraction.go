@@ -22,7 +22,7 @@ const (
 type LineExtractor func([]byte) float64
 
 var (
-	CountExtractor LineExtractor = func(line []byte) float64 { return 1. }
+	CountExtractor LineExtractor = func(_ []byte) float64 { return 1. }
 	BytesExtractor LineExtractor = func(line []byte) float64 { return float64(len(line)) }
 )
 

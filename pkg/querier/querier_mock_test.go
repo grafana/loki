@@ -142,7 +142,7 @@ func (c *querierClientMock) Close() error {
 // newIngesterClientMockFactory creates a factory function always returning
 // the input querierClientMock
 func newIngesterClientMockFactory(c *querierClientMock) ring_client.PoolFactory {
-	return ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
+	return ring_client.PoolAddrFunc(func(_ string) (ring_client.PoolClient, error) {
 		return c, nil
 	})
 }
