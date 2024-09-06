@@ -136,7 +136,7 @@ func (v *LokiStackValidator) validateOTLPSpec(parent *field.Path, s *lokiv1.OTLP
 		default:
 			var indexLabelActionFound bool
 			for _, attr := range s.ResourceAttributes.Attributes {
-				if attr.Action == lokiv1.OTLPAttributeActionIndexLabel && (len(attr.Attributes) != 0 || attr.Regex != "") {
+				if attr.Action == lokiv1.OTLPAttributeActionIndexLabel {
 					indexLabelActionFound = true
 					break
 				}
@@ -150,6 +150,18 @@ func (v *LokiStackValidator) validateOTLPSpec(parent *field.Path, s *lokiv1.OTLP
 						lokiv1.ErrOTLPResourceAttributesIndexLabelActionMissing.Error(),
 					),
 				)
+			}
+
+			for idx, attr := range s.ResourceAttributes.Attributes {
+				if len(attr.Attributes) == 0 && attr.Regex == "" {
+					allErrs = append(allErrs,
+						field.Invalid(
+							parent.Child("otlp", "resourceAttributes").Index(idx),
+							[]string{},
+							lokiv1.ErrOTLPAttributesSpecInvalid.Error(),
+						),
+					)
+				}
 			}
 		}
 	}

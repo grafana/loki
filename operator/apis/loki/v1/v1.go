@@ -84,10 +84,10 @@ var (
 	// ErrIPv6InstanceAddrTypeNotAllowed when the default InstanceAddrType is used with enableIPv6.
 	ErrIPv6InstanceAddrTypeNotAllowed = errors.New(`instanceAddrType "default" cannot be used with enableIPv6 at the same time`)
 
-	// ErrOTLPResourceAttributesEmptyNotAllowed when the OTLP ResourceAttributes are empty when ingoreDefaults is enabled.
+	// ErrOTLPResourceAttributesEmptyNotAllowed when the OTLP ResourceAttributes are empty even though ignoreDefaults is enabled.
 	ErrOTLPResourceAttributesEmptyNotAllowed = errors.New(`resourceAttributes cannot be empty when ignoreDefaults is true`)
-	// ErrDescriptionAnnotationMissing when OTLP ResourceAttributes does not contain an OTLPAttributeActionIndexLabel action when ingnoreDefaults is enabled.a
-	ErrOTLPResourceAttributesIndexLabelActionMissing = errors.New(`resourceAttributes does not contain at least one action of type "index_label"`)
+	// ErrOTLPResourceAttributesIndexLabelActionMissing when OTLP ResourceAttributes does not contain at least one index label when ignoreDefaults is enabled.
+	ErrOTLPResourceAttributesIndexLabelActionMissing = errors.New(`resourceAttributes does not contain at least one attributed mapped to "index_label"`)
 	// ErrOTLPAttributesSpecInvalid when the OTLPAttributesSpec attibutes and regex fields are both empty.
 	ErrOTLPAttributesSpecInvalid = errors.New(`attributes and regex cannot be empty at the same time`)
 

@@ -6343,7 +6343,7 @@ overrides:
 						OTLPSpec: lokiv1.OTLPSpec{
 							ResourceAttributes: &lokiv1.OTLPResourceAttributesSpec{
 								IgnoreDefaults: true,
-								Attributes: []lokiv1.OTLPAttributesSpec{
+								Attributes: []lokiv1.OTLPResourceAttributesConfigSpec{
 									{
 										Action: lokiv1.OTLPAttributeActionIndexLabel,
 										Attributes: []string{
@@ -6534,7 +6534,7 @@ overrides:
 					OTLP: &lokiv1.OTLPSpec{
 						ResourceAttributes: &lokiv1.OTLPResourceAttributesSpec{
 							IgnoreDefaults: true,
-							Attributes: []lokiv1.OTLPAttributesSpec{
+							Attributes: []lokiv1.OTLPResourceAttributesConfigSpec{
 								{
 									Action: lokiv1.OTLPAttributeActionIndexLabel,
 									Attributes: []string{

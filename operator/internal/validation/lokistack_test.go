@@ -397,12 +397,8 @@ var ltt = []struct {
 				Storage: lokiv1.ObjectStorageSpec{
 					Schemas: []lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV11,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-11",
-						},
-						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
-							EffectiveDate: "2020-10-13",
 						},
 					},
 				},
@@ -438,12 +434,8 @@ var ltt = []struct {
 				Storage: lokiv1.ObjectStorageSpec{
 					Schemas: []lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV11,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-11",
-						},
-						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
-							EffectiveDate: "2020-10-13",
 						},
 					},
 				},
@@ -453,7 +445,106 @@ var ltt = []struct {
 							OTLPSpec: lokiv1.OTLPSpec{
 								ResourceAttributes: &lokiv1.OTLPResourceAttributesSpec{
 									IgnoreDefaults: true,
-									Attributes: []lokiv1.OTLPAttributesSpec{
+									Attributes: []lokiv1.OTLPResourceAttributesConfigSpec{
+										{
+											Action:     lokiv1.OTLPAttributeActionStructuredMetadata,
+											Attributes: []string{"test"},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
+			"testing-stack",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("spec", "limits", "global", "otlp", "resourceAttributes"),
+					[]lokiv1.OTLPResourceAttributesConfigSpec{
+						{
+							Action:     lokiv1.OTLPAttributeActionStructuredMetadata,
+							Attributes: []string{"test"},
+						},
+					},
+					lokiv1.ErrOTLPResourceAttributesIndexLabelActionMissing.Error(),
+				),
+			},
+		),
+	},
+	{
+		desc: "enabling global limits OTLP IgnoreDefaults with invalid resource attributes config",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV13,
+							EffectiveDate: "2020-10-11",
+						},
+					},
+				},
+				Limits: &lokiv1.LimitsSpec{
+					Global: &lokiv1.LimitsTemplateSpec{
+						OTLP: &lokiv1.GlobalOTLPSpec{
+							OTLPSpec: lokiv1.OTLPSpec{
+								ResourceAttributes: &lokiv1.OTLPResourceAttributesSpec{
+									IgnoreDefaults: true,
+									Attributes: []lokiv1.OTLPResourceAttributesConfigSpec{
+										{
+											Action: lokiv1.OTLPAttributeActionStructuredMetadata,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
+			"testing-stack",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("spec", "limits", "global", "otlp", "resourceAttributes"),
+					[]lokiv1.OTLPResourceAttributesConfigSpec{
+						{
+							Action: lokiv1.OTLPAttributeActionStructuredMetadata,
+						},
+					},
+					lokiv1.ErrOTLPResourceAttributesIndexLabelActionMissing.Error(),
+				),
+				field.Invalid(
+					field.NewPath("spec", "limits", "global", "otlp", "resourceAttributes").Index(0),
+					[]string{},
+					lokiv1.ErrOTLPAttributesSpecInvalid.Error(),
+				),
+			},
+		),
+	},
+	{
+		desc: "enabling global limits OTLP with invalid resource attributes config",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV13,
+							EffectiveDate: "2020-10-11",
+						},
+					},
+				},
+				Limits: &lokiv1.LimitsSpec{
+					Global: &lokiv1.LimitsTemplateSpec{
+						OTLP: &lokiv1.GlobalOTLPSpec{
+							OTLPSpec: lokiv1.OTLPSpec{
+								ResourceAttributes: &lokiv1.OTLPResourceAttributesSpec{
+									IgnoreDefaults: true,
+									Attributes: []lokiv1.OTLPResourceAttributesConfigSpec{
 										{
 											Action: lokiv1.OTLPAttributeActionIndexLabel,
 										},
@@ -470,13 +561,9 @@ var ltt = []struct {
 			"testing-stack",
 			field.ErrorList{
 				field.Invalid(
-					field.NewPath("spec", "limits", "global", "otlp", "resourceAttributes"),
-					[]lokiv1.OTLPAttributesSpec{
-						{
-							Action: lokiv1.OTLPAttributeActionIndexLabel,
-						},
-					},
-					lokiv1.ErrOTLPResourceAttributesIndexLabelActionMissing.Error(),
+					field.NewPath("spec", "limits", "global", "otlp", "resourceAttributes").Index(0),
+					[]string{},
+					lokiv1.ErrOTLPAttributesSpecInvalid.Error(),
 				),
 			},
 		),
@@ -488,12 +575,8 @@ var ltt = []struct {
 				Storage: lokiv1.ObjectStorageSpec{
 					Schemas: []lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV11,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-11",
-						},
-						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
-							EffectiveDate: "2020-10-13",
 						},
 					},
 				},
@@ -539,12 +622,8 @@ var ltt = []struct {
 				Storage: lokiv1.ObjectStorageSpec{
 					Schemas: []lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV11,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-11",
-						},
-						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
-							EffectiveDate: "2020-10-13",
 						},
 					},
 				},
@@ -590,12 +669,8 @@ var ltt = []struct {
 				Storage: lokiv1.ObjectStorageSpec{
 					Schemas: []lokiv1.ObjectStorageSchema{
 						{
-							Version:       lokiv1.ObjectStorageSchemaV11,
+							Version:       lokiv1.ObjectStorageSchemaV13,
 							EffectiveDate: "2020-10-11",
-						},
-						{
-							Version:       lokiv1.ObjectStorageSchemaV12,
-							EffectiveDate: "2020-10-13",
 						},
 					},
 				},
