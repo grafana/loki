@@ -85,9 +85,11 @@ overrides:
           {{- with .Regex }}
           regex: {{ . }}
           {{- end }}
+          {{- with .Attributes }}
           attributes:
-          {{- range .Attributes }}
+          {{- range . }}
           - {{ . }}
+          {{- end }}
           {{- end }}
         {{- end }}
         {{- end }}
@@ -99,9 +101,11 @@ overrides:
         {{- with .Regex }}
         regex: {{ . }}
         {{- end }}
+        {{- with .Attributes }}
         attributes:
-        {{- range .Attributes }}
+        {{- range . }}
         - {{ . }}
+        {{- end }}
         {{- end }}
       {{- end }}
       {{- end }}
@@ -112,9 +116,11 @@ overrides:
         {{- with .Regex }}
         regex: {{ . }}
         {{- end }}
+        {{- with .Attributes }}
         attributes:
-        {{- range .Attributes }}
+        {{- range . }}
         - {{ . }}
+        {{- end }}
         {{- end }}
       {{- end }}
       {{- end }}

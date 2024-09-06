@@ -245,10 +245,12 @@ limits_config:
         {{- with .Regex }}
         regex: {{ . }}
         {{- end }}
+        {{- with .Attributes }}
         attributes:
-        {{- range .Attributes }}
+        {{- range . }}
         - {{ . }}
-        {{- end}}
+        {{- end }}
+        {{- end }}
       {{- end }}
       {{- end }}
     {{- end }}
@@ -256,22 +258,30 @@ limits_config:
     scope_attributes:
     {{- range . }}
     - action: {{ .Action }}
+      {{- with .Regex }}
+      regex: {{ . }}
+      {{- end }}
+      {{- with .Attributes }}
       attributes:
-      {{- range .Attributes }}
+      {{- range . }}
       - {{ . }}
       {{- end }}
-      regex: {{ .Regex }}
+      {{- end }}
     {{- end }}
     {{- end }}
     {{- with .LogAttributes }}
     log_attributes:
     {{- range . }}
     - action: {{ .Action }}
+      {{- with .Regex }}
+      regex: {{ . }}
+      {{- end }}
+      {{- with .Attributes }}
       attributes:
-      {{- range .Attributes }}
+      {{- range . }}
       - {{ . }}
       {{- end }}
-      regex: {{ .Regex }}
+      {{- end }}
     {{- end }}
     {{- end }}
 {{- end }}
