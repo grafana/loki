@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strconv"
 	"testing"
-	"time"
 
 	"github.com/alicebob/miniredis/v2/hyperloglog"
 	"github.com/stretchr/testify/assert"
@@ -69,7 +68,6 @@ func TestTopK_Merge(t *testing.T) {
 		}
 	}
 
-	rand.Seed(time.Now().UnixNano()) //nolint:all
 	rand.Shuffle(len(events), func(i, j int) { events[i], events[j] = events[j], events[i] })
 
 	topk1, err := NewCMSTopkForCardinality(nil, k, nStreams)

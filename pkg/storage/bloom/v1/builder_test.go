@@ -24,11 +24,11 @@ var blockEncodings = []chunkenc.Encoding{
 	chunkenc.EncZstd,
 }
 
-func TestBlockOptionsRoundTrip(t *testing.T) {
+func TestBlockOptions_RoundTrip(t *testing.T) {
 	t.Parallel()
 	opts := BlockOptions{
 		Schema: Schema{
-			version:     V1,
+			version:     CurrentSchemaVersion,
 			encoding:    chunkenc.EncSnappy,
 			nGramLength: 10,
 			nGramSkip:   2,
@@ -89,7 +89,7 @@ func TestBlockBuilder_RoundTrip(t *testing.T) {
 			t.Run(desc, func(t *testing.T) {
 				blockOpts := BlockOptions{
 					Schema: Schema{
-						version:     DefaultSchemaVersion,
+						version:     CurrentSchemaVersion,
 						encoding:    enc,
 						nGramLength: 10,
 						nGramSkip:   2,
@@ -210,7 +210,7 @@ func TestMergeBuilder(t *testing.T) {
 	data, _ := MkBasicSeriesWithBlooms(numSeries, 0, 0xffff, 0, 10000)
 	blockOpts := BlockOptions{
 		Schema: Schema{
-			version:  DefaultSchemaVersion,
+			version:  CurrentSchemaVersion,
 			encoding: chunkenc.EncSnappy,
 		},
 		SeriesPageSize: 100,
@@ -306,7 +306,7 @@ func TestMergeBuilderFingerprintCollision(t *testing.T) {
 
 	blockOpts := BlockOptions{
 		Schema: Schema{
-			version:  DefaultSchemaVersion,
+			version:  CurrentSchemaVersion,
 			encoding: chunkenc.EncSnappy,
 		},
 		SeriesPageSize: 100,
@@ -399,7 +399,7 @@ func TestBlockReset(t *testing.T) {
 	reader := NewByteReader(indexBuf, bloomsBuf)
 
 	schema := Schema{
-		version:     DefaultSchemaVersion,
+		version:     CurrentSchemaVersion,
 		encoding:    chunkenc.EncSnappy,
 		nGramLength: 10,
 		nGramSkip:   2,
@@ -457,7 +457,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 
 	blockOpts := BlockOptions{
 		Schema: Schema{
-			version:     DefaultSchemaVersion,
+			version:     CurrentSchemaVersion,
 			encoding:    chunkenc.EncSnappy, // test with different encodings?
 			nGramLength: 4,                  // needs to match values from MkBasicSeriesWithBlooms
 			nGramSkip:   0,                  // needs to match values from MkBasicSeriesWithBlooms
@@ -548,9 +548,11 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 	builder, err := NewBlockBuilder(blockOpts, writer)
 	require.Nil(t, err)
 
-	checksum, _, err := mb.Build(builder)
+	_, _, err = mb.Build(builder)
 	require.Nil(t, err)
-	require.Equal(t, uint32(0x2a6cdba6), checksum)
+	// checksum changes as soon as the contents of the block or the encoding change
+	// once the block format is stable, calculate the checksum and assert its correctness
+	// require.Equal(t, uint32(0x2a6cdba6), checksum)
 
 	// ensure the new block contains one copy of all the data
 	// by comparing it against an iterator over the source data

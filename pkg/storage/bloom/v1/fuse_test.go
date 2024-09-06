@@ -58,7 +58,7 @@ func TestFusedQuerier(t *testing.T) {
 	builder, err := NewBlockBuilder(
 		BlockOptions{
 			Schema: Schema{
-				version:  DefaultSchemaVersion,
+				version:  CurrentSchemaVersion,
 				encoding: chunkenc.EncSnappy,
 			},
 			SeriesPageSize: 100,
@@ -152,7 +152,7 @@ func TestFuseMultiPage(t *testing.T) {
 	builder, err := NewBlockBuilder(
 		BlockOptions{
 			Schema: Schema{
-				version:     DefaultSchemaVersion,
+				version:     CurrentSchemaVersion,
 				encoding:    chunkenc.EncSnappy,
 				nGramLength: 3, // we test trigrams
 				nGramSkip:   0,
@@ -308,7 +308,7 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 	builder, err := NewBlockBuilder(
 		BlockOptions{
 			Schema: Schema{
-				version:  DefaultSchemaVersion,
+				version:  CurrentSchemaVersion,
 				encoding: chunkenc.EncSnappy,
 			},
 			SeriesPageSize: 100,
@@ -366,7 +366,7 @@ func TestFusedQuerierSkipsEmptyBlooms(t *testing.T) {
 	builder, err := NewBlockBuilder(
 		BlockOptions{
 			Schema: Schema{
-				version:  DefaultSchemaVersion,
+				version:  CurrentSchemaVersion,
 				encoding: chunkenc.EncNone,
 			},
 			SeriesPageSize: 100,
@@ -430,7 +430,7 @@ func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]Request, []chan Ou
 	builder, err := NewBlockBuilder(
 		BlockOptions{
 			Schema: Schema{
-				version:  DefaultSchemaVersion,
+				version:  CurrentSchemaVersion,
 				encoding: chunkenc.EncSnappy,
 			},
 			SeriesPageSize: 256 << 10, // 256k

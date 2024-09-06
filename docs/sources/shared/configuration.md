@@ -1562,7 +1562,7 @@ backoff_config:
   # CLI flag: -s3.max-backoff
   [max_period: <duration> | default = 3s]
 
-  # Maximum number of times to retry when s3 get Object
+  # Maximum number of times to retry for s3 GetObject or ObjectExists
   # CLI flag: -s3.max-retries
   [max_retries: <int> | default = 5]
 
@@ -3680,7 +3680,7 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # list to service_name. If none of the configured labels exist in the stream,
 # label is set to unknown_service. Empty list disables setting the label.
 # CLI flag: -validation.discover-service-name
-[discover_service_name: <list of strings> | default = [service app application name app_kubernetes_io_name container container_name component workload job]]
+[discover_service_name: <list of strings> | default = [service app application name app_kubernetes_io_name container container_name k8s_container_name component workload job k8s_job_name]]
 
 # Discover and add log levels during ingestion, if not present already. Levels
 # would be added to Structured Metadata with name
@@ -5430,7 +5430,7 @@ backoff_config:
   # CLI flag: -<prefix>.storage.s3.max-backoff
   [max_period: <duration> | default = 3s]
 
-  # Maximum number of times to retry when s3 get Object
+  # Maximum number of times to retry for s3 GetObject or ObjectExists
   # CLI flag: -<prefix>.storage.s3.max-retries
   [max_retries: <int> | default = 5]
 

@@ -255,6 +255,7 @@ func (authenticator *ContainerAuthenticator) Authenticate(request *http.Request)
 	}
 
 	request.Header.Set("Authorization", "Bearer "+token)
+	GetLogger().Debug("Authenticated outbound request (type=%s)\n", authenticator.AuthenticationType())
 	return nil
 }
 

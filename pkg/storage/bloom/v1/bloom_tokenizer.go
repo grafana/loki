@@ -9,8 +9,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	v2iter "github.com/grafana/loki/v3/pkg/iter/v2"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 
 	"github.com/grafana/loki/pkg/push"
@@ -92,13 +90,6 @@ func estimatedCount(m uint, p float64) uint {
 	return uint(-float64(m) * math.Log(1-p))
 }
 
-func (bt *BloomTokenizer) newBloom() *Bloom {
-	return &Bloom{
-		// TODO parameterise SBF options. fp_rate
-		ScalableBloomFilter: *filter.NewScalableBloomFilter(1024, 0.01, 0.8),
-	}
-}
-
 // Populates a bloom filter(s) with the tokens from the given chunks.
 // Called once per series
 func (bt *BloomTokenizer) Populate(
@@ -132,14 +123,14 @@ func (bt *BloomTokenizer) Populate(
 			)
 		}
 	} else {
-		bloom = bt.newBloom()
+		bloom = NewBloom()
 	}
 
 	var bytesAdded int
 
 	for chks.Next() {
 		chk := chks.At()
-		itr := newPeekingEntryIterAdapter(chk.Itr)
+		itr := v2iter.NewPeekIter(chk.Itr)
 
 		for {
 			full, newBytes := bt.addChunkToBloom(
@@ -156,7 +147,7 @@ func (bt *BloomTokenizer) Populate(
 
 				// start a new bloom + reset bytesAdded counter
 				bytesAdded = 0
-				bloom = bt.newBloom()
+				bloom = NewBloom()
 
 				// cache _MUST_ be cleared when a new bloom is created to ensure that all tokens from
 				// each line are indexed into at least one bloom
@@ -287,20 +278,4 @@ outer:
 	bt.metrics.sourceBytesAdded.Add(float64(chunkBytes))
 
 	return full, chunkBytes
-}
-
-type entryIterAdapter struct {
-	iter.EntryIterator
-}
-
-func (a entryIterAdapter) At() logproto.Entry {
-	return a.EntryIterator.At()
-}
-
-func (a entryIterAdapter) Err() error {
-	return a.EntryIterator.Err()
-}
-
-func newPeekingEntryIterAdapter(itr iter.EntryIterator) *v2iter.PeekIter[logproto.Entry] {
-	return v2iter.NewPeekIter[logproto.Entry](entryIterAdapter{itr})
 }

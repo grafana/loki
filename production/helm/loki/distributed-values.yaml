@@ -47,7 +47,10 @@ indexGateway:
   replicas: 2
   maxUnavailable: 1
 
-bloomCompactor:
+# optional experimental components
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
   replicas: 0
 bloomGateway:
   replicas: 0
@@ -66,5 +69,3 @@ write:
 
 singleBinary:
   replicas: 0
-
-
