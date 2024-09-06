@@ -147,8 +147,7 @@ type rdsWatcher struct {
 	canceled bool // eats callbacks if true
 }
 
-func (rw *rdsWatcher) OnUpdate(update *xdsresource.RouteConfigResourceData, onDone xdsresource.DoneNotifier) {
-	defer onDone.OnDone()
+func (rw *rdsWatcher) OnUpdate(update *xdsresource.RouteConfigResourceData) {
 	rw.mu.Lock()
 	if rw.canceled {
 		rw.mu.Unlock()
@@ -161,8 +160,7 @@ func (rw *rdsWatcher) OnUpdate(update *xdsresource.RouteConfigResourceData, onDo
 	rw.parent.handleRouteUpdate(rw.routeName, rdsWatcherUpdate{data: &update.Resource})
 }
 
-func (rw *rdsWatcher) OnError(err error, onDone xdsresource.DoneNotifier) {
-	defer onDone.OnDone()
+func (rw *rdsWatcher) OnError(err error) {
 	rw.mu.Lock()
 	if rw.canceled {
 		rw.mu.Unlock()
@@ -175,8 +173,7 @@ func (rw *rdsWatcher) OnError(err error, onDone xdsresource.DoneNotifier) {
 	rw.parent.handleRouteUpdate(rw.routeName, rdsWatcherUpdate{err: err})
 }
 
-func (rw *rdsWatcher) OnResourceDoesNotExist(onDone xdsresource.DoneNotifier) {
-	defer onDone.OnDone()
+func (rw *rdsWatcher) OnResourceDoesNotExist() {
 	rw.mu.Lock()
 	if rw.canceled {
 		rw.mu.Unlock()

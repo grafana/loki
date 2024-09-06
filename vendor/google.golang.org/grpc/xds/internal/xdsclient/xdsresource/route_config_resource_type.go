@@ -108,10 +108,7 @@ func (r *RouteConfigResourceData) Raw() *anypb.Any {
 // events corresponding to the route configuration resource being watched.
 type RouteConfigWatcher interface {
 	// OnUpdate is invoked to report an update for the resource being watched.
-	//
-	// The watcher is expected to call Done() on the DoneNotifier once it has
-	// processed the update.
-	OnUpdate(*RouteConfigResourceData, DoneNotifier)
+	OnUpdate(*RouteConfigResourceData)
 
 	// OnError is invoked under different error conditions including but not
 	// limited to the following:
@@ -121,34 +118,28 @@ type RouteConfigWatcher interface {
 	//	- resource validation error
 	//	- ADS stream failure
 	//	- connection failure
-	//
-	// The watcher is expected to call Done() on the DoneNotifier once it has
-	// processed the update.
-	OnError(error, DoneNotifier)
+	OnError(error)
 
 	// OnResourceDoesNotExist is invoked for a specific error condition where
 	// the requested resource is not found on the xDS management server.
-	//
-	// The watcher is expected to call Done() on the DoneNotifier once it has
-	// processed the update.
-	OnResourceDoesNotExist(DoneNotifier)
+	OnResourceDoesNotExist()
 }
 
 type delegatingRouteConfigWatcher struct {
 	watcher RouteConfigWatcher
 }
 
-func (d *delegatingRouteConfigWatcher) OnUpdate(data ResourceData, done DoneNotifier) {
+func (d *delegatingRouteConfigWatcher) OnUpdate(data ResourceData) {
 	rc := data.(*RouteConfigResourceData)
-	d.watcher.OnUpdate(rc, done)
+	d.watcher.OnUpdate(rc)
 }
 
-func (d *delegatingRouteConfigWatcher) OnError(err error, done DoneNotifier) {
-	d.watcher.OnError(err, done)
+func (d *delegatingRouteConfigWatcher) OnError(err error) {
+	d.watcher.OnError(err)
 }
 
-func (d *delegatingRouteConfigWatcher) OnResourceDoesNotExist(done DoneNotifier) {
-	d.watcher.OnResourceDoesNotExist(done)
+func (d *delegatingRouteConfigWatcher) OnResourceDoesNotExist() {
+	d.watcher.OnResourceDoesNotExist()
 }
 
 // WatchRouteConfig uses xDS to discover the configuration associated with the

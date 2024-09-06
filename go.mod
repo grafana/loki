@@ -49,7 +49,7 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
-	github.com/grafana/dskit v0.0.0-20240829123714-e455adb7444a
+	github.com/grafana/dskit v0.0.0-20240905221822-931a021fb06b
 	github.com/grafana/go-gelf/v2 v2.0.1
 	github.com/grafana/gomemcache v0.0.0-20240229205252-cd6a66d6fb56
 	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
@@ -102,7 +102,7 @@ require (
 	golang.org/x/sys v0.24.0
 	golang.org/x/time v0.6.0
 	google.golang.org/api v0.193.0
-	google.golang.org/grpc v1.66.0
+	google.golang.org/grpc v1.65.0
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -137,7 +137,7 @@ require (
 	github.com/richardartoul/molecule v1.0.0
 	github.com/schollz/progressbar/v3 v3.14.6
 	github.com/shirou/gopsutil/v4 v4.24.0-alpha.1
-	github.com/thanos-io/objstore v0.0.0-20240828153123-de861b433240
+	github.com/thanos-io/objstore v0.0.0-20240818203309-0363dadfdfb1
 	github.com/twmb/franz-go v1.17.1
 	github.com/twmb/franz-go/plugin/kprom v1.1.0
 	github.com/willf/bloom v2.0.3+incompatible
