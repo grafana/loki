@@ -1,7 +1,6 @@
 package v1
 
 import (
-	"regexp"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -1465,8 +1464,15 @@ func (t BlockedQueryTypes) String() string {
 	return strings.Join(res, ",")
 }
 
-func (a OTLPAttributeAction) CfgString() string {
-	re := regexp.MustCompile("([a-z0-9])([A-Z])")
-	str := re.ReplaceAllString(string(a), "${1}_${2}")
-	return strings.ToLower(str)
+func (a OTLPAttributeAction) Value() string {
+	switch a {
+	case OTLPAttributeActionIndexLabel:
+		return "index_label"
+	case OTLPAttributeActionStructuredMetadata:
+		return "structured_metadata"
+	case OTLPAttributeActionDrop:
+		return "drop"
+	default:
+		return string(a)
+	}
 }

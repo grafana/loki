@@ -241,7 +241,7 @@ limits_config:
       {{- with .Attributes}}
       attributes_config:
       {{- range . }}
-      - action: {{ .Action.CfgString }}
+      - action: {{ .Action.Value }}
         {{- with .Regex }}
         regex: {{ . }}
         {{- end }}
@@ -257,7 +257,7 @@ limits_config:
     {{- with .ScopeAttributes }}
     scope_attributes:
     {{- range . }}
-    - action: {{ .Action.CfgString }}
+    - action: {{ .Action.Value }}
       {{- with .Regex }}
       regex: {{ . }}
       {{- end }}
@@ -272,7 +272,7 @@ limits_config:
     {{- with .LogAttributes }}
     log_attributes:
     {{- range . }}
-    - action: {{ .Action.CfgString }}
+    - action: {{ .Action.Value }}
       {{- with .Regex }}
       regex: {{ . }}
       {{- end }}

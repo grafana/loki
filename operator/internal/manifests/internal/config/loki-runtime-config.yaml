@@ -81,7 +81,7 @@ overrides:
         {{- with .Attributes}}
         attributes_config:
         {{- range . }}
-        - action: {{ .Action.CfgString }}
+        - action: {{ .Action.Value }}
           {{- with .Regex }}
           regex: {{ . }}
           {{- end }}
@@ -97,7 +97,7 @@ overrides:
       {{- with $l.ScopeAttributes }}
       scope_attributes:
       {{- range . }}
-      - action: {{ .Action.CfgString }}
+      - action: {{ .Action.Value }}
         {{- with .Regex }}
         regex: {{ . }}
         {{- end }}
@@ -112,7 +112,7 @@ overrides:
       {{- with $l.LogAttributes }}
       log_attributes:
       {{- range . }}
-      - action: {{ .Action.CfgString }}
+      - action: {{ .Action.Value }}
         {{- with .Regex }}
         regex: {{ . }}
         {{- end }}
