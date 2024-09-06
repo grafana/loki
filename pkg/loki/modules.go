@@ -1166,7 +1166,7 @@ func (t *Loki) initCacheGenerationLoader() (_ services.Service, err error) {
 	}
 
 	t.cacheGenerationLoader = generationnumber.NewGenNumberLoader(client, prometheus.DefaultRegisterer)
-	return services.NewIdleService(nil, func(failureCase error) error {
+	return services.NewIdleService(nil, func(_ error) error {
 		t.cacheGenerationLoader.Stop()
 		return nil
 	}), nil
