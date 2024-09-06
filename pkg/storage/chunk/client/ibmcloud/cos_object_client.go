@@ -321,7 +321,7 @@ func (c *COSObjectClient) DeleteObject(ctx context.Context, objectKey string) er
 
 func (c *COSObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
 	bucket := c.bucketFromKey(objectKey)
-	err := instrument.CollectedRequest(ctx, "COS.GetObject", cosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	err := instrument.CollectedRequest(ctx, "COS.GetObject", cosRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 		var requestErr error
 		_, requestErr = c.hedgedCOS.HeadObject(&cos.HeadObjectInput{
 			Bucket: ibm.String(bucket),

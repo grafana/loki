@@ -312,14 +312,14 @@ func (d *Drain) pruneTree(node *Node) int {
 		}
 	}
 
-	validClusterIds := 0
+	validClusterIDs := 0
 	for _, clusterID := range node.clusterIDs {
 		cluster := d.idToCluster.Get(clusterID)
 		if cluster != nil {
-			validClusterIds++
+			validClusterIDs++
 		}
 	}
-	return len(node.keyToChildNode) + validClusterIds
+	return len(node.keyToChildNode) + validClusterIDs
 }
 
 func (d *Drain) Delete(cluster *LogCluster) {

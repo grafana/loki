@@ -791,6 +791,140 @@ type IngestionLimitSpec struct {
 	PerStreamRateLimitBurst int32 `json:"perStreamRateLimitBurst,omitempty"`
 }
 
+// OTLPAttributeAction defines the action to executed when indexing
+// OTLP resource attributes. Resource attributes can be either added
+// to the index, the chunk structured metadata or entirely dropped.
+type OTLPAttributeAction string
+
+const (
+	// OTLPAttributeActionIndexLabel stores a resource attribute as a label, which is part of the index identifying streams.
+	OTLPAttributeActionIndexLabel OTLPAttributeAction = "indexLabel"
+	// OTLPAttributeActionStructuredMetadata stores an attribute as structured metadata with each log entry.
+	OTLPAttributeActionStructuredMetadata OTLPAttributeAction = "structuredMetadata"
+	// OTLPAttributeActionDrop removes the matching attributes from the log entry.
+	OTLPAttributeActionDrop OTLPAttributeAction = "drop"
+)
+
+// OTLPAttributesSpec contains the configuration for a set of attributes
+// to store them as index labels or structured metadata or drop them altogether.
+type OTLPAttributesSpec struct {
+	// Action defines the indexing action for the selected attributes. They
+	// can be either added to structured metadata or drop altogether.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum=structured_metadata;drop
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Action"
+	Action OTLPAttributeAction `json:"action"`
+
+	// Attributes allows choosing the attributes by listing their names.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Attribute Names"
+	Attributes []string `json:"attributes,omitempty"`
+
+	// Regex allows choosing the attributes by matching a regular expression.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Regular Expression"
+	Regex string `json:"regex,omitempty"`
+}
+
+// OTLPResourceAttributesConfigSpec contains the configuration for a set of resource attributes
+// to store them as index labels or structured metadata or drop them altogether.
+type OTLPResourceAttributesConfigSpec struct {
+	// Action defines the indexing action for the selected resoure attributes. They
+	// can be either indexed as labels, added to structured metadata or drop altogether.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum=index_label;structured_metadata;drop
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Action"
+	Action OTLPAttributeAction `json:"action,omitempty"`
+
+	// Attributes is the list of attributes to configure indexing or drop them
+	// altogether.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Attribute Names"
+	Attributes []string `json:"attributes,omitempty"`
+
+	// Regex allows choosing the attributes by matching a regular expression.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Regular Expression"
+	Regex string `json:"regex,omitempty"`
+}
+
+// OTLPResourceAttributesSpec contains the configuration for resource attributes
+// to store them as index labels or structured metadata or drop them altogether.
+type OTLPResourceAttributesSpec struct {
+	// IgnoreDefaults controls whether to ignore the global configuration for resource attributes
+	// indexed as labels.
+	//
+	// If IgnoreDefaults is true, then this spec needs to contain at least one mapping to a index label.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch",displayName="Ignore Global Defaults"
+	IgnoreDefaults bool `json:"ignoreDefaults,omitempty"`
+
+	// Attributes contains the configuration for resource attributes
+	// to store them as index labels or structured metadata or drop them altogether.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Attributes"
+	Attributes []OTLPResourceAttributesConfigSpec `json:"attributes,omitempty"`
+}
+
+// GlobalOTLPSpec defines which resource, scope and log attributes to
+// be stored as index or structured metadata or drop altogether for all
+// tenants.
+type GlobalOTLPSpec struct {
+	// IndexedResourceAttributes contains the global configuration for resource attributes
+	// to store them as index labels or structured metadata or drop them altogether.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Indexed Resource Attributes"
+	IndexedResourceAttributes []string `json:"indexedResourceAttributes,omitempty"`
+
+	OTLPSpec `json:",omitempty"`
+}
+
+// OTLPSpec defines which resource, scope and log attributes to
+// be stored as index or structured metadata or drop altogether
+type OTLPSpec struct {
+	// ResourceAttributes contains the configuration for resource attributes
+	// to store them as index labels or structured metadata or drop them altogether.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Resource Attributes"
+	ResourceAttributes *OTLPResourceAttributesSpec `json:"resourceAttributes,omitempty"`
+
+	// ScopeAttributes contains the configuration for scope attributes
+	// to store them as index labels or structured metadata or drop them altogether.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Scope Attributes"
+	ScopeAttributes []OTLPAttributesSpec `json:"scopeAttributes,omitempty"`
+
+	// LogAttributes contains the configuration for log attributes
+	// to store them as index labels or structured metadata or drop them altogether.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Log Attributes"
+	LogAttributes []OTLPAttributesSpec `json:"logAttributes,omitempty"`
+}
+
 // RetentionStreamSpec defines a log stream with separate retention time.
 type RetentionStreamSpec struct {
 	// Days contains the number of days logs are kept.
@@ -844,6 +978,14 @@ type LimitsTemplateSpec struct {
 	// +kubebuilder:validation:Optional
 	QueryLimits *QueryLimitSpec `json:"queries,omitempty"`
 
+	// OTLP to configure which resource, scope and log attributes
+	// to store as labels or structured metadata or drop them altogether
+	// for all tenants.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	OTLP *GlobalOTLPSpec `json:"otlp,omitempty"`
+
 	// Retention defines how long logs are kept in storage.
 	//
 	// +optional
@@ -864,6 +1006,14 @@ type PerTenantLimitsTemplateSpec struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	QueryLimits *PerTenantQueryLimitSpec `json:"queries,omitempty"`
+
+	// OTLP to configure which resource, scope and log attributes
+	// to store as labels or structured metadata or drop them altogether
+	// for a single tenants.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	OTLP *OTLPSpec `json:"otlp,omitempty"`
 
 	// Retention defines how long logs are kept in storage.
 	//
@@ -1312,4 +1462,17 @@ func (t BlockedQueryTypes) String() string {
 	}
 
 	return strings.Join(res, ",")
+}
+
+func (a OTLPAttributeAction) Value() string {
+	switch a {
+	case OTLPAttributeActionIndexLabel:
+		return "index_label"
+	case OTLPAttributeActionStructuredMetadata:
+		return "structured_metadata"
+	case OTLPAttributeActionDrop:
+		return "drop"
+	default:
+		return string(a)
+	}
 }
