@@ -1318,13 +1318,12 @@ func getStructuredMetadata(entry push.Entry) map[string][]string {
 }
 
 func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]string, []string) {
-	logFmtParser := logql_log.NewLogfmtParser(false, false)
-
 	origParsed := getParsedLabels(entry)
 	parsed := make(map[string][]string, len(origParsed))
 
 	for lbl, values := range origParsed {
-		if lbl == logqlmodel.ErrorLabel || lbl == logqlmodel.ErrorDetailsLabel || lbl == logqlmodel.PreserveErrorLabel {
+		if lbl == logqlmodel.ErrorLabel || lbl == logqlmodel.ErrorDetailsLabel ||
+			lbl == logqlmodel.PreserveErrorLabel {
 			continue
 		}
 
@@ -1336,8 +1335,10 @@ func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]s
 	jsonParser := logql_log.NewJSONParser()
 	_, jsonSuccess := jsonParser.Process(0, []byte(line), lbls)
 	if !jsonSuccess || lbls.HasErr() {
-		parser = "logfmt"
 		lbls.Reset()
+
+		logFmtParser := logql_log.NewLogfmtParser(false, false)
+		parser = "logfmt"
 		_, logfmtSuccess := logFmtParser.Process(0, []byte(line), lbls)
 		if !logfmtSuccess || lbls.HasErr() {
 			return parsed, nil
@@ -1369,7 +1370,8 @@ func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]s
 
 	result := make(map[string][]string, len(parsedLabels))
 	for lbl, values := range parsedLabels {
-		if lbl == logqlmodel.ErrorLabel || lbl == logqlmodel.ErrorDetailsLabel || lbl == logqlmodel.PreserveErrorLabel {
+		if lbl == logqlmodel.ErrorLabel || lbl == logqlmodel.ErrorDetailsLabel ||
+			lbl == logqlmodel.PreserveErrorLabel {
 			continue
 		}
 		vals := make([]string, 0, len(values))
