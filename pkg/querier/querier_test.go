@@ -21,8 +21,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/push"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
+
+	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
@@ -2146,7 +2147,7 @@ func Test_parseDetectedFeilds(t *testing.T) {
 
 		nginxStream := push.Stream{
 			Labels:  nginxLbls,
-			Entries: nginxJsonLines,
+			Entries: nginxJSONLines,
 			Hash:    nginxMetric.Hash(),
 		}
 
@@ -2272,7 +2273,7 @@ func Test_parseDetectedFeilds(t *testing.T) {
 
 			nginxStream := push.Stream{
 				Labels:  nginxLbls,
-				Entries: nginxJsonLines,
+				Entries: nginxJSONLines,
 				Hash:    nginxMetric.Hash(),
 			}
 
@@ -2433,7 +2434,7 @@ func Test_parseDetectedFeilds(t *testing.T) {
 			}
 		}
 
-		nginxJsonLines := []push.Entry{
+		nginxJSONLines := []push.Entry{
 			{
 				Timestamp:          now,
 				Line:               `{"host":"100.117.38.203", "user-identifier":"nader3722", "datetime":"05/Sep/2024:16:13:56 +0000", "method": "PATCH", "request": "/api/loki/v1/push", "protocol":"HTTP/2.0", "status":200, "bytes":9664, "referer": "https://www.seniorbleeding-edge.net/exploit/robust/whiteboard"}`,
@@ -2460,7 +2461,7 @@ func Test_parseDetectedFeilds(t *testing.T) {
 
 		nginxStream := push.Stream{
 			Labels:  nginxLbls,
-			Entries: nginxJsonLines,
+			Entries: nginxJSONLines,
 			Hash:    nginxMetric.Hash(),
 		}
 
@@ -2586,7 +2587,7 @@ func Test_parseDetectedFeilds(t *testing.T) {
 
 			nginxStream := push.Stream{
 				Labels:  nginxLbls,
-				Entries: nginxJsonLines,
+				Entries: nginxJSONLines,
 				Hash:    nginxMetric.Hash(),
 			}
 
