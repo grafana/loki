@@ -816,6 +816,10 @@ pattern_ingester:
   # CLI flag: -pattern-ingester.connection-timeout
   [connection_timeout: <duration> | default = 2s]
 
+  # The maximum length of log lines that can be used for pattern detection.
+  # CLI flag: -pattern-ingester.max-allowed-line-length
+  [max_allowed_line_length: <int> | default = 3000]
+
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
 # object store.
