@@ -245,7 +245,7 @@ func TestMergeBuilder(t *testing.T) {
 	}
 
 	// We're not testing the ability to extend a bloom in this test
-	pop := func(s *Series, srcBlooms iter.SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation) {
+	pop := func(_ *Series, srcBlooms iter.SizedIterator[*Bloom], _ ChunkRefs, ch chan *BloomCreation) {
 		for srcBlooms.Next() {
 			bloom := srcBlooms.At()
 			ch <- &BloomCreation{
@@ -353,7 +353,7 @@ func TestMergeBuilderFingerprintCollision(t *testing.T) {
 	}
 
 	// We're not testing the ability to extend a bloom in this test
-	pop := func(s *Series, srcBlooms iter.SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation) {
+	pop := func(_ *Series, _ iter.SizedIterator[*Bloom], _ ChunkRefs, ch chan *BloomCreation) {
 		ch <- &BloomCreation{
 			Bloom: &Bloom{
 				ScalableBloomFilter: *filter.NewScalableBloomFilter(1024, 0.01, 0.8),
@@ -524,7 +524,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 	)
 
 	// We're not testing the ability to extend a bloom in this test
-	pop := func(s *Series, srcBlooms iter.SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation) {
+	pop := func(_ *Series, srcBlooms iter.SizedIterator[*Bloom], _ ChunkRefs, ch chan *BloomCreation) {
 		for srcBlooms.Next() {
 			bloom := srcBlooms.At()
 			ch <- &BloomCreation{

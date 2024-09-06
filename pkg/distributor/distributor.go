@@ -445,7 +445,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 	var validationErr error
 	if validationErrors.Err() != nil {
-		validationErr = httpgrpc.Errorf(http.StatusBadRequest, validationErrors.Error())
+		validationErr = httpgrpc.Errorf(http.StatusBadRequest, "%s", validationErrors.Error())
 	}
 
 	// Return early if none of the streams contained entries
@@ -468,7 +468,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			return &logproto.PushResponse{}, nil
 		}
 
-		return nil, httpgrpc.Errorf(retStatusCode, err.Error())
+		return nil, httpgrpc.Errorf(retStatusCode, "%s", err.Error())
 	}
 
 	if !d.ingestionRateLimiter.AllowN(now, tenantID, validatedLineSize) {
@@ -496,7 +496,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validatedLineCount, validatedLineSize)
 		d.writeFailuresManager.Log(tenantID, err)
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
 	}
 
 	// Nil check for performance reasons, to avoid dynamic lookup and/or no-op
