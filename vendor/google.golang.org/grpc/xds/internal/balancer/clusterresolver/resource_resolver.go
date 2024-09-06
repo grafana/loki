@@ -30,14 +30,8 @@ import (
 // resourceUpdate is a combined update from all the resources, in the order of
 // priority. For example, it can be {EDS, EDS, DNS}.
 type resourceUpdate struct {
-	// A discovery mechanism would return an empty update when it runs into
-	// errors, and this would result in the priority LB policy reporting
-	// TRANSIENT_FAILURE (if there was a single discovery mechanism), or would
-	// fallback to the next highest priority that is available.
 	priorities []priorityConfig
-	// To be invoked once the update is completely processed, or is dropped in
-	// favor of a newer update.
-	onDone xdsresource.DoneNotifier
+	err        error
 }
 
 // topLevelResolver is used by concrete endpointsResolver implementations for
@@ -45,11 +39,7 @@ type resourceUpdate struct {
 // interface and takes appropriate actions upon receipt of updates and errors
 // from underlying concrete resolvers.
 type topLevelResolver interface {
-	// onUpdate is called when a new update is received from the underlying
-	// endpointsResolver implementation. The onDone callback is to be invoked
-	// once the update is completely processed, or is dropped in favor of a
-	// newer update.
-	onUpdate(onDone xdsresource.DoneNotifier)
+	onUpdate()
 }
 
 // endpointsResolver wraps the functionality to resolve a given resource name to
@@ -215,7 +205,7 @@ func (rr *resourceResolver) updateMechanisms(mechanisms []DiscoveryMechanism) {
 	}
 	// Regenerate even if there's no change in discovery mechanism, in case
 	// priority order changed.
-	rr.generateLocked(xdsresource.NopDoneNotifier{})
+	rr.generateLocked()
 }
 
 // resolveNow is typically called to trigger re-resolve of DNS. The EDS
@@ -262,10 +252,7 @@ func (rr *resourceResolver) stop(closing bool) {
 	// after they are stopped. Therefore, we don't have to worry about another
 	// write to this channel happening at the same time as this one.
 	select {
-	case ru := <-rr.updateChannel:
-		if ru.onDone != nil {
-			ru.onDone.OnDone()
-		}
+	case <-rr.updateChannel:
 	default:
 	}
 	rr.updateChannel <- &resourceUpdate{}
@@ -275,20 +262,14 @@ func (rr *resourceResolver) stop(closing bool) {
 // result on the update channel if all child resolvers have received at least
 // one update. Otherwise it returns early.
 //
-// The onDone callback is invoked inline if not all child resolvers have
-// received at least one update. If all child resolvers have received at least
-// one update, onDone is invoked when the combined update is processed by the
-// clusterresolver LB policy.
-//
-// Caller must hold rr.mu.
-func (rr *resourceResolver) generateLocked(onDone xdsresource.DoneNotifier) {
+// caller must hold rr.mu.
+func (rr *resourceResolver) generateLocked() {
 	var ret []priorityConfig
 	for _, rDM := range rr.children {
 		u, ok := rDM.r.lastUpdate()
 		if !ok {
 			// Don't send updates to parent until all resolvers have update to
 			// send.
-			onDone.OnDone()
 			return
 		}
 		switch uu := u.(type) {
@@ -299,23 +280,16 @@ func (rr *resourceResolver) generateLocked(onDone xdsresource.DoneNotifier) {
 		}
 	}
 	select {
-	// A previously unprocessed update is dropped in favor of the new one, and
-	// the former's onDone callback is invoked to unblock the xDS client's
-	// receive path.
-	case ru := <-rr.updateChannel:
-		if ru.onDone != nil {
-			ru.onDone.OnDone()
-		}
+	case <-rr.updateChannel:
 	default:
 	}
-	rr.updateChannel <- &resourceUpdate{priorities: ret, onDone: onDone}
+	rr.updateChannel <- &resourceUpdate{priorities: ret}
 }
 
-func (rr *resourceResolver) onUpdate(onDone xdsresource.DoneNotifier) {
-	handleUpdate := func(context.Context) {
+func (rr *resourceResolver) onUpdate() {
+	rr.serializer.Schedule(func(context.Context) {
 		rr.mu.Lock()
-		rr.generateLocked(onDone)
+		rr.generateLocked()
 		rr.mu.Unlock()
-	}
-	rr.serializer.ScheduleOr(handleUpdate, func() { onDone.OnDone() })
+	})
 }
