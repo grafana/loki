@@ -142,10 +142,10 @@ func New(config *Config, format string, metrics *Metrics) *Drain {
 	config.maxNodeDepth = config.LogClusterDepth - 2
 
 	d := &Drain{
-		config:               config,
-		rootNode:             createNode(),
-		metrics:              metrics,
-		format:               format,
+		config:   config,
+		rootNode: createNode(),
+		metrics:  metrics,
+		format:   format,
 	}
 
 	limiter := newLimiter(config.MaxEvictionRatio)
@@ -181,17 +181,17 @@ func New(config *Config, format string, metrics *Metrics) *Drain {
 }
 
 type Drain struct {
-	config               *Config
-	rootNode             *Node
-	idToCluster          *LogClusterCache
-	clustersCounter      int
-	metrics              *Metrics
-	tokenizer            LineTokenizer
-	format               string
-	tokens               []string
-	state                interface{}
-	limiter              *limiter
-	pruning              bool
+	config          *Config
+	rootNode        *Node
+	idToCluster     *LogClusterCache
+	clustersCounter int
+	metrics         *Metrics
+	tokenizer       LineTokenizer
+	format          string
+	tokens          []string
+	state           interface{}
+	limiter         *limiter
+	pruning         bool
 }
 
 func (d *Drain) Clusters() []*LogCluster {
