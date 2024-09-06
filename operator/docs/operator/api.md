@@ -2682,10 +2682,10 @@ to the index, the chunk structured metadata or entirely dropped.</p>
 <tbody><tr><td><p>&#34;drop&#34;</p></td>
 <td><p>OTLPAttributeActionDrop removes the matching attributes from the log entry.</p>
 </td>
-</tr><tr><td><p>&#34;index_label&#34;</p></td>
+</tr><tr><td><p>&#34;indexLabel&#34;</p></td>
 <td><p>OTLPAttributeActionIndexLabel stores a resource attribute as a label, which is part of the index identifying streams.</p>
 </td>
-</tr><tr><td><p>&#34;structured_metadata&#34;</p></td>
+</tr><tr><td><p>&#34;structuredMetadata&#34;</p></td>
 <td><p>OTLPAttributeActionStructuredMetadata stores an attribute as structured metadata with each log entry.</p>
 </td>
 </tr></tbody>
