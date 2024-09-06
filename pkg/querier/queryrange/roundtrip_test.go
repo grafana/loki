@@ -1086,7 +1086,7 @@ func TestTripperware_RequiredLabels(t *testing.T) {
 
 			_, err = tpw.Wrap(h).Do(ctx, lreq)
 			if test.expectedError != "" {
-				require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, test.expectedError), err)
+				require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "%s", test.expectedError), err)
 			} else {
 				require.NoError(t, err)
 			}
@@ -1194,7 +1194,7 @@ func TestTripperware_RequiredNumberLabels(t *testing.T) {
 
 			_, err = tpw.Wrap(h).Do(ctx, lreq)
 			if tc.expectedError != noErr {
-				require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, tc.expectedError), err)
+				require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "%s", tc.expectedError), err)
 			} else {
 				require.NoError(t, err)
 			}
@@ -1543,7 +1543,7 @@ func (i ingesterQueryOpts) QueryIngestersWithin() time.Duration {
 func counter() (*int, base.Handler) {
 	count := 0
 	var lock sync.Mutex
-	return &count, base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
+	return &count, base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
 		lock.Lock()
 		defer lock.Unlock()
 		count++
@@ -1554,7 +1554,7 @@ func counter() (*int, base.Handler) {
 func counterWithError(err error) (*int, base.Handler) {
 	count := 0
 	var lock sync.Mutex
-	return &count, base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
+	return &count, base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
 		lock.Lock()
 		defer lock.Unlock()
 		count++
@@ -1565,7 +1565,7 @@ func counterWithError(err error) (*int, base.Handler) {
 func promqlResult(v parser.Value) (*int, base.Handler) {
 	count := 0
 	var lock sync.Mutex
-	return &count, base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
+	return &count, base.HandlerFunc(func(_ context.Context, r base.Request) (base.Response, error) {
 		lock.Lock()
 		defer lock.Unlock()
 		count++
@@ -1581,7 +1581,7 @@ func promqlResult(v parser.Value) (*int, base.Handler) {
 func seriesResult(v logproto.SeriesResponse) (*int, base.Handler) {
 	count := 0
 	var lock sync.Mutex
-	return &count, base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
+	return &count, base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
 		lock.Lock()
 		defer lock.Unlock()
 		count++

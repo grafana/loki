@@ -262,7 +262,7 @@ func (i *Instance) Run(ctx context.Context) error {
 				level.Info(i.logger).Log("msg", "truncation loop stopped")
 				return nil
 			},
-			func(err error) {
+			func(_ error) {
 				level.Info(i.logger).Log("msg", "stopping truncation loop...")
 				contextCancel()
 			},

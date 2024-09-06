@@ -52,12 +52,12 @@ func ExtractTestableLineFilters(expr syntax.Expr) []syntax.LineFilterExpr {
 	var filters []syntax.LineFilterExpr
 	var lineFmtFound bool
 	visitor := &syntax.DepthFirstTraversal{
-		VisitLineFilterFn: func(v syntax.RootVisitor, e *syntax.LineFilterExpr) {
+		VisitLineFilterFn: func(_ syntax.RootVisitor, e *syntax.LineFilterExpr) {
 			if e != nil && !lineFmtFound {
 				filters = append(filters, *e)
 			}
 		},
-		VisitLineFmtFn: func(v syntax.RootVisitor, e *syntax.LineFmtExpr) {
+		VisitLineFmtFn: func(_ syntax.RootVisitor, e *syntax.LineFmtExpr) {
 			if e != nil {
 				lineFmtFound = true
 			}
@@ -252,7 +252,7 @@ func (b stringMatcherFilter) Matches(test log.Checker) bool {
 }
 
 func newStringFilterFunc(b NGramBuilder) log.NewMatcherFiltererFunc {
-	return func(match []byte, caseInsensitive bool) log.MatcherFilterer {
+	return func(match []byte, _ bool) log.MatcherFilterer {
 		return log.WrapMatcher(stringMatcherFilter{
 			test: newStringTest(b, string(match)),
 		})

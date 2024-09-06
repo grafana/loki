@@ -177,8 +177,8 @@ func Test_Hedging(t *testing.T) {
 				SecretAccessKey: flagext.SecretWithValue("bar"),
 				BackoffConfig:   backoff.Config{MaxRetries: 1},
 				BucketNames:     "foo",
-				Inject: func(next http.RoundTripper) http.RoundTripper {
-					return RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+				Inject: func(_ http.RoundTripper) http.RoundTripper {
+					return RoundTripperFunc(func(_ *http.Request) (*http.Response, error) {
 						count.Inc()
 						time.Sleep(200 * time.Millisecond)
 						return nil, errors.New("foo")
@@ -244,7 +244,7 @@ func Test_RetryLogic(t *testing.T) {
 			callCount := atomic.NewInt32(0)
 
 			mockS3 := &MockS3Client{
-				HeadObjectFunc: func(input *s3.HeadObjectInput) (*s3.HeadObjectOutput, error) {
+				HeadObjectFunc: func(_ *s3.HeadObjectInput) (*s3.HeadObjectOutput, error) {
 					callNum := callCount.Inc()
 					if !tc.exists {
 						rfIn := awserr.NewRequestFailure(
@@ -269,8 +269,8 @@ func Test_RetryLogic(t *testing.T) {
 				SecretAccessKey: flagext.SecretWithValue("bar"),
 				BackoffConfig:   backoff.Config{MaxRetries: tc.maxRetries},
 				BucketNames:     "foo",
-				Inject: func(next http.RoundTripper) http.RoundTripper {
-					return RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+				Inject: func(_ http.RoundTripper) http.RoundTripper {
+					return RoundTripperFunc(func(_ *http.Request) (*http.Response, error) {
 						// Increment the call counter
 						callNum := callCount.Inc()
 
