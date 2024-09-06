@@ -3,7 +3,6 @@ package tee
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -113,12 +112,6 @@ func (t *Tee) Close() {
 	t.producer.Close()
 }
 
-var encoderPool = sync.Pool{
-	New: func() any {
-		return kafka.NewEncoder()
-	},
-}
-
 // sendStream sends a single stream to Kafka.
 //
 // Parameters:
@@ -138,14 +131,12 @@ func (t *Tee) sendStream(tenant string, stream distributor.KeyedStream) error {
 	}
 
 	startTime := time.Now()
-	encoder := encoderPool.Get().(*kafka.Encoder)
-	records, err := encoder.Encode(partitionID, tenant, stream.Stream, t.cfg.ProducerMaxRecordSizeBytes)
+
+	records, err := kafka.Encode(partitionID, tenant, stream.Stream, t.cfg.ProducerMaxRecordSizeBytes)
 	if err != nil {
 		t.ingesterAppends.WithLabelValues(fmt.Sprintf("partition_%d", partitionID), "fail").Inc()
-		encoderPool.Put(encoder)
 		return fmt.Errorf("failed to marshal write request to records: %w", err)
 	}
-	encoderPool.Put(encoder)
 
 	t.recordsPerRequest.Observe(float64(len(records)))
 

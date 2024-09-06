@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	math_bits "math/bits"
+	"sync"
 
 	"github.com/twmb/franz-go/pkg/kgo"
 
@@ -15,15 +16,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
-// Encoder is responsible for encoding logproto.Stream data into Kafka records.
-// It handles splitting of large streams into multiple records.
-type Encoder struct {
-	batch logproto.Stream
-}
-
-// NewEncoder creates a new Encoder.
-func NewEncoder() *Encoder {
-	return &Encoder{}
+var encoderPool = sync.Pool{
+	New: func() any {
+		return &logproto.Stream{}
+	},
 }
 
 // Encode converts a logproto.Stream into one or more Kafka records.
@@ -44,12 +40,12 @@ func NewEncoder() *Encoder {
 // - tenantID: The tenant ID for the stream
 // - stream: The logproto.Stream to be encoded
 // - maxSize: The maximum size of each Kafka record
-func (e *Encoder) Encode(partitionID int32, tenantID string, stream logproto.Stream, maxSize int) ([]*kgo.Record, error) {
+func Encode(partitionID int32, tenantID string, stream logproto.Stream, maxSize int) ([]*kgo.Record, error) {
 	reqSize := stream.Size()
 
 	// Fast path for small requests
 	if reqSize <= maxSize {
-		rec, err := e.marshalWriteRequestToRecord(partitionID, tenantID, stream)
+		rec, err := marshalWriteRequestToRecord(partitionID, tenantID, stream)
 		if err != nil {
 			return nil, err
 		}
@@ -57,14 +53,17 @@ func (e *Encoder) Encode(partitionID int32, tenantID string, stream logproto.Str
 	}
 
 	var records []*kgo.Record
-	e.batch.Labels = stream.Labels
-	e.batch.Hash = stream.Hash
+	batch := encoderPool.Get().(*logproto.Stream)
+	defer encoderPool.Put(batch)
 
-	if e.batch.Entries == nil {
-		e.batch.Entries = make([]logproto.Entry, 0, 1024)
+	batch.Labels = stream.Labels
+	batch.Hash = stream.Hash
+
+	if batch.Entries == nil {
+		batch.Entries = make([]logproto.Entry, 0, 1024)
 	}
-	e.batch.Entries = e.batch.Entries[:0]
-	labelsSize := e.batch.Size()
+	batch.Entries = batch.Entries[:0]
+	labelsSize := batch.Size()
 	currentSize := labelsSize
 
 	for i, entry := range stream.Entries {
@@ -79,24 +78,24 @@ func (e *Encoder) Encode(partitionID int32, tenantID string, stream logproto.Str
 
 		if currentSize+entrySize > maxSize {
 			// Current stream is full, create a record and start a new stream
-			if len(e.batch.Entries) > 0 {
-				rec, err := e.marshalWriteRequestToRecord(partitionID, tenantID, e.batch)
+			if len(batch.Entries) > 0 {
+				rec, err := marshalWriteRequestToRecord(partitionID, tenantID, *batch)
 				if err != nil {
 					return nil, err
 				}
 				records = append(records, rec)
 			}
 			// Reset currentStream
-			e.batch.Entries = e.batch.Entries[:0]
+			batch.Entries = batch.Entries[:0]
 			currentSize = labelsSize
 		}
-		e.batch.Entries = append(e.batch.Entries, entry)
+		batch.Entries = append(batch.Entries, entry)
 		currentSize += entrySize
 	}
 
 	// Handle any remaining entries
-	if len(e.batch.Entries) > 0 {
-		rec, err := e.marshalWriteRequestToRecord(partitionID, tenantID, e.batch)
+	if len(batch.Entries) > 0 {
+		rec, err := marshalWriteRequestToRecord(partitionID, tenantID, *batch)
 		if err != nil {
 			return nil, err
 		}
@@ -110,7 +109,7 @@ func (e *Encoder) Encode(partitionID int32, tenantID string, stream logproto.Str
 	return records, nil
 }
 
-func (e *Encoder) marshalWriteRequestToRecord(partitionID int32, tenantID string, stream logproto.Stream) (*kgo.Record, error) {
+func marshalWriteRequestToRecord(partitionID int32, tenantID string, stream logproto.Stream) (*kgo.Record, error) {
 	data, err := stream.Marshal()
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal stream: %w", err)

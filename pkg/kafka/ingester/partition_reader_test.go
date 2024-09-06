@@ -51,9 +51,8 @@ func TestPartitionReader_BasicFunctionality(t *testing.T) {
 		Labels:  labels.FromStrings("foo", "bar").String(),
 		Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "test"}},
 	}
-	encoder := kafka.NewEncoder()
 
-	records, err := encoder.Encode(0, "test-tenant", stream, 10<<20)
+	records, err := kafka.Encode(0, "test-tenant", stream, 10<<20)
 	require.NoError(t, err)
 	require.Len(t, records, 1)
 
@@ -87,9 +86,8 @@ func TestPartitionReader_ConsumerError(t *testing.T) {
 		Labels:  labels.FromStrings("foo", "bar").String(),
 		Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "test"}},
 	}
-	encoder := kafka.NewEncoder()
 
-	records, err := encoder.Encode(0, "test-tenant", stream, 10<<20)
+	records, err := kafka.Encode(0, "test-tenant", stream, 10<<20)
 	require.NoError(t, err)
 
 	consumerError := errors.New("consumer error")
@@ -127,9 +125,8 @@ func TestPartitionReader_FlushAndCommit(t *testing.T) {
 		Labels:  labels.FromStrings("foo", "bar").String(),
 		Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "test"}},
 	}
-	encoder := kafka.NewEncoder()
 
-	records, err := encoder.Encode(0, "test-tenant", stream, 10<<20)
+	records, err := kafka.Encode(0, "test-tenant", stream, 10<<20)
 	require.NoError(t, err)
 
 	consumer.On("Consume", mock.Anything, mock.Anything, mock.Anything).Return(nil)
@@ -208,11 +205,10 @@ func TestPartitionReader_MultipleRecords(t *testing.T) {
 		Labels:  labels.FromStrings("foo", "baz").String(),
 		Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "test2"}},
 	}
-	encoder := kafka.NewEncoder()
 
-	records1, err := encoder.Encode(0, "test-tenant", stream1, 10<<20)
+	records1, err := kafka.Encode(0, "test-tenant", stream1, 10<<20)
 	require.NoError(t, err)
-	records2, err := encoder.Encode(0, "test-tenant", stream2, 10<<20)
+	records2, err := kafka.Encode(0, "test-tenant", stream2, 10<<20)
 	require.NoError(t, err)
 
 	consumer.On("Consume", mock.Anything, mock.Anything, mock.Anything).Return(nil)
