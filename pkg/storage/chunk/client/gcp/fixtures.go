@@ -49,10 +49,18 @@ func (f *fixture) Clients() (
 	}
 
 	f.gcssrv = fakestorage.NewServer(nil)
-	opts := fakestorage.CreateBucketOpts{
-		Name: "chunks",
-	}
-	f.gcssrv.CreateBucketWithOpts(opts)
+	/*
+		// Note: fake-gcs-server upgrade does not work in the `dist` tooling builds.
+		// Leave at v1.7.0 until the issue is resolved.
+		// https://github.com/grafana/loki/actions/runs/10744853958/job/29802951861
+		// Once the issue is resolved, this code block can be used to replace the
+		// `CreateBucket` call below.
+		opts := fakestorage.CreateBucketOpts{
+			Name: "chunks",
+		}
+		f.gcssrv.CreateBucketWithOpts(opts)
+	*/
+	f.gcssrv.CreateBucket("chunks")
 
 	conn, err := grpc.NewClient(f.btsrv.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
