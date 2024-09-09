@@ -40,6 +40,14 @@ var (
 	errMissingCapture       = errors.New("at least one named capture must be supplied")
 	errFoundAllLabels       = errors.New("found all required labels")
 	errLabelDoesNotMatch    = errors.New("found a label with a matcher that didn't match")
+
+	// the rune error replacement is rejected by Prometheus hence replacing them with space.
+	removeInvalidUtf = func(r rune) rune {
+		if r == utf8.RuneError {
+			return 32 // rune value for space
+		}
+		return r
+	}
 )
 
 type JSONParser struct {
@@ -202,14 +210,9 @@ func unescapeJSONString(b []byte) string {
 	}
 	res := string(bU)
 
-	// rune error is rejected by Prometheus hence replacing them with space
-	removeInvalidUtf := func(r rune) rune {
-		if r == utf8.RuneError {
-			return -1
-		}
-		return r
+	if strings.ContainsRune(res, utf8.RuneError) {
+		res = strings.Map(removeInvalidUtf, res)
 	}
-	res = strings.Map(removeInvalidUtf, res)
 
 	return res
 }
@@ -345,14 +348,9 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 
 		val := l.dec.Value()
 
-		// the rune error replacement is rejected by Prometheus hence skiping them.
-		removeInvalidUtf := func(r rune) rune {
-			if r == utf8.RuneError {
-				return -1
-			}
-			return r
+		if bytes.ContainsRune(val, utf8.RuneError) {
+			val = bytes.Map(removeInvalidUtf, val)
 		}
-		val = bytes.Map(removeInvalidUtf, val)
 
 		if !l.keepEmpty && len(val) == 0 {
 			continue
