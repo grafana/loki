@@ -31,8 +31,6 @@ func main() {
 	fmt.Printf("Series:   %+v\n", md.Series)
 	fmt.Printf("Options:  %+v\n", md.Options)
 
-	fmt.Println("-----------------------------")
-
 	count := 0
 	for qIter.Next() {
 		swb := qIter.At()
@@ -41,34 +39,23 @@ func main() {
 		for swb.Blooms.Next() {
 			bloom := swb.Blooms.At()
 			fmt.Printf(
-				"fp=%s page=%d chunks=%d size=%vB fill=%v count=%v\n",
+				"fp=%s page=%d chunks=%d size=%v fill=%v count=%v fields=%+v\n",
 				series.Fingerprint,
 				p,
 				series.Chunks.Len(),
 				bloom.Capacity()/8,
 				bloom.FillRatio(),
 				bloom.Count(),
+				series.Meta.Fields.Items(),
 			)
 			p++
 		}
 		count++
 	}
-	fmt.Printf("Stream count: %4d\n", count)
 
-	// q.Reset()
-
-	// fmt.Println("-----------------------------")
-
-	// count = 0
-	// for q.Next() {
-	// 	swb := q.At()
-	// 	series := swb.Series
-	// 	fmt.Printf("%s (%3d) %v\n", series.Fingerprint, series.Chunks.Len(), swb.Meta.Fields.Items())
-	// 	count++
-	// }
-	// fmt.Printf("Stream count: %4d\n", count)
-
-	if q.Err() != nil {
+	if qIter.Err() != nil {
 		fmt.Printf("error: %s\n", q.Err())
 	}
+
+	fmt.Printf("Stream count: %4d\n", count)
 }

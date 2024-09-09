@@ -170,7 +170,7 @@ func (b *BlockQuerierIter) Next() bool {
 func (b *BlockQuerierIter) At() *SeriesWithBlooms {
 	s := b.LazySeriesIter.At()
 	res := &SeriesWithBlooms{
-		Series: &s.Series,
+		Series: s,
 		Blooms: newOffsetsIter(b.blooms, s.Offsets),
 	}
 	return res

@@ -134,7 +134,7 @@ func TestBlockBuilder_RoundTrip(t *testing.T) {
 					got := querier.At()
 					blooms, err := iter.Collect(got.Blooms)
 					require.Nil(t, err)
-					require.Equal(t, processedData[i].Series, got.Series)
+					require.Equal(t, *processedData[i].Series, got.Series.Series)
 					for _, key := range keys[i] {
 						found := false
 						for _, b := range blooms {
@@ -161,7 +161,7 @@ func TestBlockBuilder_RoundTrip(t *testing.T) {
 						got := querier.At()
 						blooms, err := iter.Collect(got.Blooms)
 						require.Nil(t, err)
-						require.Equal(t, halfData[j].Series, got.Series)
+						require.Equal(t, *halfData[j].Series, got.Series.Series)
 						for _, key := range halfKeys[j] {
 							found := false
 							for _, b := range blooms {
@@ -244,7 +244,7 @@ func TestMergeBuilder(t *testing.T) {
 	}
 
 	// We're not testing the ability to extend a bloom in this test
-	pop := func(_ *Series, srcBlooms iter.SizedIterator[*Bloom], _ ChunkRefs, ch chan *BloomCreation) {
+	populate := func(_ *Series, srcBlooms iter.SizedIterator[*Bloom], _ ChunkRefs, ch chan *BloomCreation) {
 		for srcBlooms.Next() {
 			bloom := srcBlooms.At()
 			stats := indexingInfo{
@@ -264,12 +264,12 @@ func TestMergeBuilder(t *testing.T) {
 	storeItr := iter.NewMapIter[SeriesWithBlooms, *Series](
 		iter.NewSliceIter[SeriesWithBlooms](data),
 		func(swb SeriesWithBlooms) *Series {
-			return swb.Series
+			return &swb.Series.Series
 		},
 	)
 
 	// Ensure that the merge builder combines all the blocks correctly
-	mergeBuilder := NewMergeBuilder(dedupedBlocks(blocks), storeItr, pop, NewMetrics(nil))
+	mergeBuilder := NewMergeBuilder(dedupedBlocks(blocks), storeItr, populate, NewMetrics(nil))
 	indexBuf := bytes.NewBuffer(nil)
 	bloomsBuf := bytes.NewBuffer(nil)
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
@@ -290,7 +290,10 @@ func TestMergeBuilder(t *testing.T) {
 	EqualIterators[*SeriesWithBlooms](
 		t,
 		func(a, b *SeriesWithBlooms) {
-			require.Equal(t, a.Series, b.Series, "expected %+v, got %+v", a, b)
+			t.Log("a ... original data")
+			t.Log("b ... querier")
+			require.Equal(t, a.Series.Series, b.Series.Series, "expected series %+v, got %+v", a.Series.Series, b.Series.Series)
+			require.Equal(t, a.Series.Meta, b.Series.Meta, "expected meta %+v, got %+v", a.Series.Meta, b.Series.Meta)
 		},
 		iter.NewSliceIter[*SeriesWithBlooms](PointerSlice(data)),
 		querier.Iter(),
@@ -519,11 +522,11 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 			return a.Series.Fingerprint == b.Fingerprint
 		},
 		func(swb *SeriesWithBlooms) *Series {
-			return swb.Series
+			return &swb.Series.Series
 		},
 		func(a *SeriesWithBlooms, b *Series) *Series {
 			if len(a.Series.Chunks) > len(b.Chunks) {
-				return a.Series
+				return &a.Series.Series
 			}
 			return b
 		},

@@ -137,7 +137,7 @@ func TestSimpleBloomGenerator(t *testing.T) {
 				storeItr := v2.NewMapIter[v1.SeriesWithBlooms, *v1.Series](
 					v2.NewSliceIter[v1.SeriesWithBlooms](data),
 					func(swb v1.SeriesWithBlooms) *v1.Series {
-						return swb.Series
+						return &swb.Series.Series
 					},
 				)
 

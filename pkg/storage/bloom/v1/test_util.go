@@ -54,9 +54,19 @@ type SeriesWithLiteralBlooms struct {
 }
 
 func (s *SeriesWithLiteralBlooms) SeriesWithBlooms() SeriesWithBlooms {
+	offsets := make([]BloomOffset, 0, len(s.Blooms))
+	for i := range s.Blooms {
+		offsets = append(offsets, BloomOffset{Page: i, ByteOffset: 0})
+	}
 	return SeriesWithBlooms{
-		Series: s.Series,
-		Blooms: iter.NewSliceIter[*Bloom](s.Blooms),
+		Series: &SeriesWithMeta{
+			Series: *s.Series,
+			Meta: Meta{
+				Fields:  NewSetFromLiteral(Field("__all__")),
+				Offsets: offsets,
+			},
+		},
+		Blooms: iter.NewSliceIter(s.Blooms),
 	}
 }
 
@@ -64,7 +74,8 @@ func MkBasicSeriesWithBlooms(nSeries int, fromFp, throughFp model.Fingerprint, f
 	series, keys := MkBasicSeriesWithLiteralBlooms(nSeries, fromFp, throughFp, fromTs, throughTs)
 	mapped := make([]SeriesWithBlooms, 0, len(series))
 	for _, s := range series {
-		mapped = append(mapped, s.SeriesWithBlooms())
+		v := s.SeriesWithBlooms()
+		mapped = append(mapped, v)
 	}
 
 	return mapped, keys
