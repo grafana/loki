@@ -124,7 +124,7 @@ func TestDistributor(t *testing.T) {
 			if len(tc.expectedErrors) > 0 {
 				for _, expectedError := range tc.expectedErrors {
 					if len(tc.expectedErrors) == 1 {
-						assert.Equal(t, err, expectedError)
+						assert.Equal(t, expectedError, err)
 					} else {
 						assert.Contains(t, err.Error(), expectedError.Error())
 					}

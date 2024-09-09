@@ -456,8 +456,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	now := time.Now()
 
 	if block, until, retStatusCode := d.validator.ShouldBlockIngestion(validationContext, now); block {
-		validation.DiscardedSamples.WithLabelValues(validation.BlockedIngestion, tenantID).Add(float64(validatedLineCount))
-		validation.DiscardedBytes.WithLabelValues(validation.BlockedIngestion, tenantID).Add(float64(validatedLineSize))
+		d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCount, validatedLineSize, validation.BlockedIngestion)
 
 		err = fmt.Errorf(validation.BlockedIngestionErrorMsg, tenantID, until.Format(time.RFC3339), retStatusCode)
 		d.writeFailuresManager.Log(tenantID, err)
@@ -472,30 +471,11 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	if !d.ingestionRateLimiter.AllowN(now, tenantID, validatedLineSize) {
-		// Return a 429 to indicate to the client they are being rate limited
-		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineCount))
-		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineSize))
-
-		if d.usageTracker != nil {
-			for _, stream := range req.Streams {
-				lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream)
-				if err != nil {
-					continue
-				}
-
-				discardedStreamBytes := 0
-				for _, e := range stream.Entries {
-					discardedStreamBytes += len(e.Line)
-				}
-
-				if d.usageTracker != nil {
-					d.usageTracker.DiscardedBytesAdd(ctx, tenantID, validation.RateLimited, lbs, float64(discardedStreamBytes))
-				}
-			}
-		}
+		d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCount, validatedLineSize, validation.RateLimited)
 
 		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validatedLineCount, validatedLineSize)
 		d.writeFailuresManager.Log(tenantID, err)
+		// Return a 429 to indicate to the client they are being rate limited
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
 	}
 
@@ -566,6 +546,37 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		return &logproto.PushResponse{}, validationErr
 	case <-ctx.Done():
 		return nil, ctx.Err()
+	}
+}
+
+func (d *Distributor) trackDiscardedData(
+	ctx context.Context,
+	req *logproto.PushRequest,
+	validationContext validationContext,
+	tenantID string,
+	validatedLineCount int,
+	validatedLineSize int,
+	reason string,
+) {
+	validation.DiscardedSamples.WithLabelValues(reason, tenantID).Add(float64(validatedLineCount))
+	validation.DiscardedBytes.WithLabelValues(reason, tenantID).Add(float64(validatedLineSize))
+
+	if d.usageTracker != nil {
+		for _, stream := range req.Streams {
+			lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream)
+			if err != nil {
+				continue
+			}
+
+			discardedStreamBytes := 0
+			for _, e := range stream.Entries {
+				discardedStreamBytes += len(e.Line)
+			}
+
+			if d.usageTracker != nil {
+				d.usageTracker.DiscardedBytesAdd(ctx, tenantID, reason, lbs, float64(discardedStreamBytes))
+			}
+		}
 	}
 }
 
