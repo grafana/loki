@@ -173,7 +173,7 @@ func (bt *BloomTokenizer) sendBloom(ch chan<- *BloomCreation, bloom *Bloom, stat
 }
 
 func prefixForChunkRef(chk ChunkRef) []byte {
-	enc := encoding.EncWith(make([]byte, 20))
+	enc := encoding.EncWith(make([]byte, 0, 20))
 	enc.PutBE64(uint64(chk.From))    // 8 bytes
 	enc.PutBE64(uint64(chk.Through)) // 8 bytes
 	enc.PutBE32(chk.Checksum)        // 4 bytes

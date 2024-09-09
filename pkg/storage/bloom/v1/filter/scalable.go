@@ -88,10 +88,9 @@ func NewScalableBloomFilter(hint uint, fpRate, r float64) *ScalableBloomFilter {
 	return s
 }
 
-// NewDefaultScalableBloomFilter creates a new Scalable Bloom Filter with the
-// specified target false-positive rate and an optimal tightening ratio.
-func NewDefaultScalableBloomFilter(fpRate float64) *ScalableBloomFilter {
-	return NewScalableBloomFilter(10000, fpRate, 0.8)
+// NewDefaultScalableBloomFilter creates a new Scalable Bloom Filter.
+func NewDefaultScalableBloomFilter() *ScalableBloomFilter {
+	return NewScalableBloomFilter(10e3, 0.1, 0.8)
 }
 
 // Capacity returns the current Scalable Bloom Filter capacity, which is the
