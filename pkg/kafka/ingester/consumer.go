@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/grafana/dskit/backoff"
+
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -190,6 +191,9 @@ func (c *consumer) appendRecords(records []record) error {
 
 // Flush writes the accumulated data to storage and updates the metadata store
 func (c *consumer) Flush() {
+	if c.writer.InputSize() == 0 {
+		return
+	}
 	if c.lastOffset == -1 {
 		return
 	}
