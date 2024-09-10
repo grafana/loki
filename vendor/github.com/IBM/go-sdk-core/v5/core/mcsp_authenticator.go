@@ -183,6 +183,7 @@ func (authenticator *MCSPAuthenticator) Authenticate(request *http.Request) erro
 	}
 
 	request.Header.Set("Authorization", "Bearer "+token)
+	GetLogger().Debug("Authenticated outbound request (type=%s)\n", authenticator.AuthenticationType())
 	return nil
 }
 
@@ -227,15 +228,19 @@ func (authenticator *MCSPAuthenticator) Validate() error {
 // or the existing token has expired), a new access token is fetched from the token server.
 func (authenticator *MCSPAuthenticator) GetToken() (string, error) {
 	if authenticator.getTokenData() == nil || !authenticator.getTokenData().isTokenValid() {
+		GetLogger().Debug("Performing synchronous token fetch...")
 		// synchronously request the token
 		err := authenticator.synchronizedRequestToken()
 		if err != nil {
 			return "", RepurposeSDKProblem(err, "request-token-fail")
 		}
 	} else if authenticator.getTokenData().needsRefresh() {
+		GetLogger().Debug("Performing background asynchronous token fetch...")
 		// If refresh needed, kick off a go routine in the background to get a new token.
 		//nolint: errcheck
 		go authenticator.invokeRequestTokenData()
+	} else {
+		GetLogger().Debug("Using cached access token...")
 	}
 
 	// return an error if the access token is not valid or was not fetched

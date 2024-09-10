@@ -1056,7 +1056,7 @@ func Test_WriteTailResponseJSON(t *testing.T) {
 				{Timestamp: time.Unix(0, 2), Labels: `{app="dropped"}`},
 			},
 		},
-			NewWebsocketJSONWriter(WebsocketWriterFunc(func(i int, b []byte) error {
+			NewWebsocketJSONWriter(WebsocketWriterFunc(func(_ int, b []byte) error {
 				require.Equal(t, `{"streams":[{"stream":{"app":"foo"},"values":[["1","foobar"]]}],"dropped_entries":[{"timestamp":"2","labels":{"app":"dropped"}}]}`, string(b))
 				return nil
 			})),

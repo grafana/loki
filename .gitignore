@@ -60,3 +60,6 @@ nix/result
 
 # helm test
 production/helm/loki/src/helm-test/helm-test
+
+# Go telemetry
+.config

@@ -474,7 +474,7 @@ message DetectedField {
   string label = 1;
   string type = 2 [(gogoproto.casttype) = "DetectedFieldType"];
   uint64 cardinality = 3;
-  repeated string parsers = 4;
+  repeated string parsers = 4 [(gogoproto.jsontag) = "parsers"];
   bytes sketch = 5 [(gogoproto.jsontag) = "sketch,omitempty"];
 }
 

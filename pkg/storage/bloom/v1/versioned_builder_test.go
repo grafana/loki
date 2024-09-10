@@ -38,57 +38,8 @@ func setup(v Version) (BlockOptions, []SeriesWithLiteralBlooms, BlockWriter, Blo
 	return smallBlockOpts(v, chunkenc.EncNone), data, writer, reader
 }
 
-// Tests v1 format by encoding a block into v1 then decoding it back and comparing the results
-// to the source data.
-// NB(owen-d): This also tests that the block querier can "up cast" the v1 format to the v2 format
-// in the sense that v1 uses a single bloom per series and v2 uses multiple blooms per series and therefore
-// v1 can be interpreted as v2 with a single bloom per series.
-func TestV1RoundTrip(t *testing.T) {
-	opts, data, writer, reader := setup(V1)
-	b, err := NewBlockBuilderV1(opts, writer)
-	require.NoError(t, err)
-
-	mapped := v2.NewMapIter[SeriesWithLiteralBlooms](
-		v2.NewSliceIter(data),
-		func(s SeriesWithLiteralBlooms) SeriesWithBloom {
-			return SeriesWithBloom{
-				Series: s.Series,
-				Bloom:  s.Blooms[0],
-			}
-		},
-	)
-
-	_, err = b.BuildFrom(mapped)
-	require.NoError(t, err)
-
-	// Ensure Equality
-	block := NewBlock(reader, NewMetrics(nil))
-	querier := NewBlockQuerier(block, &mempool.SimpleHeapAllocator{}, DefaultMaxPageSize).Iter()
-
-	CompareIterators[SeriesWithLiteralBlooms, *SeriesWithBlooms](
-		t,
-		func(t *testing.T, a SeriesWithLiteralBlooms, b *SeriesWithBlooms) {
-			require.Equal(t, a.Series, b.Series) // ensure series equality
-			bs, err := v2.Collect(b.Blooms)
-			require.NoError(t, err)
-
-			// ensure we only have one bloom in v1
-			require.Equal(t, 1, len(a.Blooms))
-			require.Equal(t, 1, len(bs))
-
-			var encA, encB encoding.Encbuf
-			require.NoError(t, a.Blooms[0].Encode(&encA))
-			require.NoError(t, bs[0].Encode(&encB))
-
-			require.Equal(t, encA.Get(), encB.Get())
-		},
-		v2.NewSliceIter(data),
-		querier,
-	)
-}
-
-func TestV2Roundtrip(t *testing.T) {
-	opts, data, writer, reader := setup(V2)
+func TestV3Roundtrip(t *testing.T) {
+	opts, data, writer, reader := setup(V3)
 
 	data, err := v2.Collect(
 		v2.NewMapIter[SeriesWithLiteralBlooms, SeriesWithLiteralBlooms](
@@ -105,7 +56,7 @@ func TestV2Roundtrip(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	b, err := NewBlockBuilderV2(opts, writer)
+	b, err := NewBlockBuilderV3(opts, writer)
 	require.NoError(t, err)
 
 	mapped := v2.NewMapIter[SeriesWithLiteralBlooms](

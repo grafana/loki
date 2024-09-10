@@ -353,7 +353,7 @@ func TestBloomStore_TenantFilesForInterval(t *testing.T) {
 		tenantFiles, err := store.TenantFilesForInterval(
 			ctx,
 			NewInterval(parseTime("2024-01-18 00:00"), parseTime("2024-02-12 00:00")),
-			func(tenant string, object client.StorageObject) bool {
+			func(tenant string, _ client.StorageObject) bool {
 				return tenant == "1"
 			},
 		)
