@@ -151,10 +151,29 @@ func (w *PageWriter) writePage(writer io.Writer, pool chunkenc.WriterPool, crc32
 	return decompressedLen, w.enc.Len(), nil
 }
 
+// indexingInfo is a datastructure that holds information about the indexing operation.
+type indexingInfo struct {
+	sourceBytes   int
+	indexedFields Set[Field]
+}
+
+func newIndexingInfo() indexingInfo {
+	return indexingInfo{
+		sourceBytes:   0,
+		indexedFields: NewSet[Field](16),
+	}
+}
+
+func (s indexingInfo) merge(other indexingInfo) indexingInfo {
+	s.sourceBytes += other.sourceBytes
+	s.indexedFields.Union(other.indexedFields)
+	return s
+}
+
 type BloomCreation struct {
-	Bloom            *Bloom
-	SourceBytesAdded int
-	Err              error
+	Bloom *Bloom
+	Info  indexingInfo
+	Err   error
 }
 
 // Simplistic implementation of a merge builder that builds a single block
@@ -222,7 +241,8 @@ func (mb *MergeBuilder) processNextSeries(
 	bool, // done building block
 	error, // error
 ) {
-	var blockSeriesIterated, chunksIndexed, chunksCopied, bytesAdded int
+	var blockSeriesIterated, chunksIndexed, chunksCopied int
+
 	defer func() {
 		mb.metrics.blockSeriesIterated.Add(float64(blockSeriesIterated))
 		mb.metrics.chunksIndexed.WithLabelValues(chunkIndexedTypeIterated).Add(float64(chunksIndexed))
@@ -260,6 +280,7 @@ func (mb *MergeBuilder) processNextSeries(
 		offsets           []BloomOffset
 		chunksToAdd                                  = nextInStore.Chunks
 		preExistingBlooms iter.SizedIterator[*Bloom] = iter.NewEmptyIter[*Bloom]()
+		info                                         = newIndexingInfo()
 	)
 
 	if nextInBlocks != nil && nextInBlocks.Series.Fingerprint == nextInStore.Fingerprint {
@@ -275,31 +296,26 @@ func (mb *MergeBuilder) processNextSeries(
 	ch := make(chan *BloomCreation)
 	go mb.populate(nextInStore, preExistingBlooms, chunksToAdd, ch)
 
-	for bloom := range ch {
-		if bloom.Err != nil {
-			return nil, bytesAdded, 0, false, false, errors.Wrap(bloom.Err, "populating bloom")
+	for creation := range ch {
+		if creation.Err != nil {
+			return nil, info.sourceBytes, 0, false, false, errors.Wrap(creation.Err, "populating bloom")
 		}
-		offset, err := builder.AddBloom(bloom.Bloom)
+		offset, err := builder.AddBloom(creation.Bloom)
 		if err != nil {
-			return nil, bytesAdded, 0, false, false, errors.Wrapf(
+			return nil, info.sourceBytes, 0, false, false, errors.Wrapf(
 				err, "adding bloom to block for fp (%s)", nextInStore.Fingerprint,
 			)
 		}
 		offsets = append(offsets, offset)
-		bytesAdded += bloom.SourceBytesAdded
+		info.merge(creation.Info)
 	}
 
-	// TODO(chaudum): Use the indexed fields from bloom creation, however,
-	// currently we still build blooms from log lines.
-	fields := NewSet[Field](1)
-	fields.Add("__line__")
-
-	done, err := builder.AddSeries(*nextInStore, offsets, fields)
+	done, err := builder.AddSeries(*nextInStore, offsets, info.indexedFields)
 	if err != nil {
-		return nil, bytesAdded, 0, false, false, errors.Wrap(err, "committing series")
+		return nil, info.sourceBytes, 0, false, false, errors.Wrap(err, "committing series")
 	}
 
-	return nextInBlocks, bytesAdded, chunksIndexed + chunksCopied, blocksFinished, done, nil
+	return nextInBlocks, info.sourceBytes, chunksIndexed + chunksCopied, blocksFinished, done, nil
 }
 
 func (mb *MergeBuilder) Build(builder *BlockBuilder) (checksum uint32, totalBytes int, err error) {
