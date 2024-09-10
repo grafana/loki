@@ -314,7 +314,7 @@ func (a *S3ObjectClient) ObjectExists(ctx context.Context, objectKey string) (bo
 		if ctx.Err() != nil {
 			return false, errors.Wrap(ctx.Err(), "ctx related error during s3 objectExists")
 		}
-		lastErr = instrument.CollectedRequest(ctx, "S3.ObjectExists", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		lastErr = instrument.CollectedRequest(ctx, "S3.ObjectExists", s3RequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 			headObjectInput := &s3.HeadObjectInput{
 				Bucket: aws.String(a.bucketFromKey(objectKey)),
 				Key:    aws.String(objectKey),

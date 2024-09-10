@@ -10,7 +10,7 @@ import (
 )
 
 func versionHandler() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, _ *http.Request) {
 		info := prom.PrometheusVersion{
 			Version:   build.Version,
 			Revision:  build.Revision,

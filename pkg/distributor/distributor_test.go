@@ -124,7 +124,7 @@ func TestDistributor(t *testing.T) {
 			if len(tc.expectedErrors) > 0 {
 				for _, expectedError := range tc.expectedErrors {
 					if len(tc.expectedErrors) == 1 {
-						assert.Equal(t, err, expectedError)
+						assert.Equal(t, expectedError, err)
 					} else {
 						assert.Contains(t, err.Error(), expectedError.Error())
 					}
@@ -404,7 +404,7 @@ func Test_IncrementTimestamp(t *testing.T) {
 
 		t.Run(testName, func(t *testing.T) {
 			ing := &mockIngester{}
-			distributors, _ := prepare(t, 1, 3, testData.limits, func(addr string) (ring_client.PoolClient, error) { return ing, nil })
+			distributors, _ := prepare(t, 1, 3, testData.limits, func(_ string) (ring_client.PoolClient, error) { return ing, nil })
 			_, err := distributors[0].Push(ctx, testData.push)
 			assert.NoError(t, err)
 			topVal := ing.Peek()
@@ -510,7 +510,7 @@ func Test_SortLabelsOnPush(t *testing.T) {
 		limits := &validation.Limits{}
 		flagext.DefaultValues(limits)
 		ingester := &mockIngester{}
-		distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
 
 		request := makeWriteRequest(10, 10)
 		request.Streams[0].Labels = `{buzz="f", service_name="foo", a="b"}`
@@ -533,7 +533,7 @@ func Test_TruncateLogLines(t *testing.T) {
 
 	t.Run("it truncates lines to MaxLineSize when MaxLineSizeTruncate is true", func(t *testing.T) {
 		limits, ingester := setup()
-		distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
 
 		_, err := distributors[0].Push(ctx, makeWriteRequest(1, 10))
 		require.NoError(t, err)
@@ -553,10 +553,10 @@ func Test_DiscardEmptyStreamsAfterValidation(t *testing.T) {
 
 	t.Run("it discards invalid entries and discards resulting empty streams completely", func(t *testing.T) {
 		limits, ingester := setup()
-		distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
 
 		_, err := distributors[0].Push(ctx, makeWriteRequest(1, 10))
-		require.Equal(t, err, httpgrpc.Errorf(http.StatusBadRequest, fmt.Sprintf(validation.LineTooLongErrorMsg, 5, "{foo=\"bar\"}", 10)))
+		require.Equal(t, err, httpgrpc.Errorf(http.StatusBadRequest, "%s", fmt.Sprintf(validation.LineTooLongErrorMsg, 5, "{foo=\"bar\"}", 10)))
 		topVal := ingester.Peek()
 		require.Nil(t, topVal)
 	})
@@ -1506,7 +1506,7 @@ func Test_DetectLogLevels(t *testing.T) {
 
 	t.Run("log level detection disabled", func(t *testing.T) {
 		limits, ingester := setup(false)
-		distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
 
 		writeReq := makeWriteRequestWithLabels(1, 10, []string{`{foo="bar"}`})
 		_, err := distributors[0].Push(ctx, writeReq)
@@ -1518,7 +1518,7 @@ func Test_DetectLogLevels(t *testing.T) {
 
 	t.Run("log level detection enabled but level cannot be detected", func(t *testing.T) {
 		limits, ingester := setup(true)
-		distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
 
 		writeReq := makeWriteRequestWithLabels(1, 10, []string{`{foo="bar"}`})
 		_, err := distributors[0].Push(ctx, writeReq)
@@ -1530,7 +1530,7 @@ func Test_DetectLogLevels(t *testing.T) {
 
 	t.Run("log level detection enabled and warn logs", func(t *testing.T) {
 		limits, ingester := setup(true)
-		distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
 
 		writeReq := makeWriteRequestWithLabelsWithLevel(1, 10, []string{`{foo="bar"}`}, "warn")
 		_, err := distributors[0].Push(ctx, writeReq)
@@ -1547,7 +1547,7 @@ func Test_DetectLogLevels(t *testing.T) {
 
 	t.Run("log level detection enabled but log level already present in stream", func(t *testing.T) {
 		limits, ingester := setup(true)
-		distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
 
 		writeReq := makeWriteRequestWithLabels(1, 10, []string{`{foo="bar", level="debug"}`})
 		_, err := distributors[0].Push(ctx, writeReq)
@@ -1562,7 +1562,7 @@ func Test_DetectLogLevels(t *testing.T) {
 
 	t.Run("log level detection enabled but log level already present as structured metadata", func(t *testing.T) {
 		limits, ingester := setup(true)
-		distributors, _ := prepare(t, 1, 5, limits, func(addr string) (ring_client.PoolClient, error) { return ingester, nil })
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
 
 		writeReq := makeWriteRequestWithLabels(1, 10, []string{`{foo="bar"}`})
 		writeReq.Streams[0].Entries[0].StructuredMetadata = push.LabelsAdapter{

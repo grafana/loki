@@ -7,14 +7,16 @@ package fakestorage
 import (
 	"net/http"
 	"net/http/httptest"
+
+	"github.com/gorilla/mux"
 )
 
 type muxTransport struct {
-	handler http.Handler
+	router *mux.Router
 }
 
 func (t *muxTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	w := httptest.NewRecorder()
-	t.handler.ServeHTTP(w, r)
+	t.router.ServeHTTP(w, r)
 	return w.Result(), nil
 }

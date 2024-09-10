@@ -78,6 +78,16 @@ func (v *LokiStackValidator) validate(ctx context.Context, obj runtime.Object) (
 		allErrs = append(allErrs, errors...)
 	}
 
+	if stack.Spec.Limits != nil {
+		if stack.Spec.Limits.Global != nil && stack.Spec.Limits.Global.OTLP != nil {
+			allErrs = append(allErrs, v.validateGlobalOTLPSpec(stack.Spec.Limits.Global.OTLP)...)
+		}
+
+		if stack.Spec.Limits.Tenants != nil {
+			allErrs = append(allErrs, v.validatePerTenantOTLPSpec(stack.Spec.Limits.Tenants)...)
+		}
+	}
+
 	if v.ExtendedValidator != nil {
 		allErrs = append(allErrs, v.ExtendedValidator(ctx, stack)...)
 	}
@@ -91,6 +101,100 @@ func (v *LokiStackValidator) validate(ctx context.Context, obj runtime.Object) (
 		stack.Name,
 		allErrs,
 	)
+}
+
+func (v *LokiStackValidator) validateGlobalOTLPSpec(s *lokiv1.GlobalOTLPSpec) field.ErrorList {
+	basePath := field.NewPath("spec", "limits", "global")
+
+	return v.validateOTLPSpec(basePath, &s.OTLPSpec)
+}
+
+func (v *LokiStackValidator) validatePerTenantOTLPSpec(tenants map[string]lokiv1.PerTenantLimitsTemplateSpec) field.ErrorList {
+	var allErrs field.ErrorList
+
+	for key, tenant := range tenants {
+		basePath := field.NewPath("spec", "limits", "tenants").Key(key)
+		allErrs = append(allErrs, v.validateOTLPSpec(basePath, tenant.OTLP)...)
+	}
+
+	return allErrs
+}
+
+func (v *LokiStackValidator) validateOTLPSpec(parent *field.Path, s *lokiv1.OTLPSpec) field.ErrorList {
+	var allErrs field.ErrorList
+
+	if s.ResourceAttributes != nil && s.ResourceAttributes.IgnoreDefaults {
+		switch {
+		case len(s.ResourceAttributes.Attributes) == 0:
+			allErrs = append(allErrs,
+				field.Invalid(
+					parent.Child("otlp", "resourceAttributes"),
+					[]lokiv1.OTLPAttributesSpec{},
+					lokiv1.ErrOTLPResourceAttributesEmptyNotAllowed.Error(),
+				),
+			)
+		default:
+			var indexLabelActionFound bool
+			for _, attr := range s.ResourceAttributes.Attributes {
+				if attr.Action == lokiv1.OTLPAttributeActionIndexLabel {
+					indexLabelActionFound = true
+					break
+				}
+			}
+
+			if !indexLabelActionFound {
+				allErrs = append(allErrs,
+					field.Invalid(
+						parent.Child("otlp", "resourceAttributes"),
+						s.ResourceAttributes.Attributes,
+						lokiv1.ErrOTLPResourceAttributesIndexLabelActionMissing.Error(),
+					),
+				)
+			}
+
+			for idx, attr := range s.ResourceAttributes.Attributes {
+				if len(attr.Attributes) == 0 && attr.Regex == "" {
+					allErrs = append(allErrs,
+						field.Invalid(
+							parent.Child("otlp", "resourceAttributes").Index(idx),
+							[]string{},
+							lokiv1.ErrOTLPAttributesSpecInvalid.Error(),
+						),
+					)
+				}
+			}
+		}
+	}
+
+	if len(s.ScopeAttributes) != 0 {
+		for idx, attr := range s.ScopeAttributes {
+			if len(attr.Attributes) == 0 && attr.Regex == "" {
+				allErrs = append(allErrs,
+					field.Invalid(
+						parent.Child("otlp", "scopeAttributes").Index(idx),
+						[]string{},
+						lokiv1.ErrOTLPAttributesSpecInvalid.Error(),
+					),
+				)
+			}
+		}
+	}
+
+	if len(s.LogAttributes) != 0 {
+		for idx, attr := range s.LogAttributes {
+			if len(attr.Attributes) == 0 && attr.Regex == "" {
+				allErrs = append(allErrs,
+					field.Invalid(
+						parent.Child("otlp", "logAttributes").Index(idx),
+						[]string{},
+						lokiv1.ErrOTLPAttributesSpecInvalid.Error(),
+					),
+				)
+			}
+		}
+	}
+
+	return allErrs
 }
 
 func (v *LokiStackValidator) validateHashRingSpec(s lokiv1.LokiStackSpec) field.ErrorList {

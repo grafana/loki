@@ -60,7 +60,7 @@ func ExtractLineFilters(e Expr) []LineFilterExpr {
 	}
 	var filters []LineFilterExpr
 	visitor := &DepthFirstTraversal{
-		VisitLineFilterFn: func(v RootVisitor, e *LineFilterExpr) {
+		VisitLineFilterFn: func(_ RootVisitor, e *LineFilterExpr) {
 			if e != nil {
 				filters = append(filters, *e)
 			}
