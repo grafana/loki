@@ -161,7 +161,7 @@ spec:
   volumeClaimTemplates:
     - apiVersion: v1
       kind: PersistentVolumeClaim
-	  metadata:
+      metadata:
         name: data
       spec:
         accessModes: [ "ReadWriteOnce" ]
