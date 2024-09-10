@@ -34,10 +34,10 @@ func (m *metastoreState) listBlocksForQuery(
 		return nil, status.Error(codes.InvalidArgument, "start_time must be less than or equal to end_time")
 	}
 	var resp metastorepb.ListBlocksForQueryResponse
-	m.segmentsMutex.Lock()
-	defer m.segmentsMutex.Unlock()
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
 
-	for _, segment := range m.segments {
+	for _, segment := range m.active {
 		for _, tenants := range segment.TenantStreams {
 			if tenants.TenantId == request.TenantId && inRange(segment.MinTime, segment.MaxTime, request.StartTime, request.EndTime) {
 				resp.Blocks = append(resp.Blocks, cloneBlockForQuery(segment))

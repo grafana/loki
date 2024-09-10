@@ -9,30 +9,34 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"go.etcd.io/bbolt"
 
+	ingesterrf1 "github.com/grafana/loki/v3/pkg/ingester-rf1"
 	metastorepb "github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 )
 
 type metastoreState struct {
 	logger log.Logger
 
-	segmentsMutex sync.Mutex
-	segments      map[string]*metastorepb.BlockMeta
+	active map[string]*metastorepb.BlockMeta
+	marked map[string]*metastorepb.BlockMeta
+	mtx    sync.Mutex
 
-	db *boltdb
+	db    *boltdb
+	store ingesterrf1.Storage
 }
 
 func newMetastoreState(logger log.Logger, db *boltdb) *metastoreState {
 	return &metastoreState{
-		logger:   logger,
-		segments: make(map[string]*metastorepb.BlockMeta),
-		db:       db,
+		logger: logger,
+		active: make(map[string]*metastorepb.BlockMeta),
+		marked: make(map[string]*metastorepb.BlockMeta),
+		db:     db,
 	}
 }
 
 func (m *metastoreState) reset() {
-	m.segmentsMutex.Lock()
-	clear(m.segments)
-	m.segmentsMutex.Unlock()
+	m.mtx.Lock()
+	clear(m.active)
+	m.mtx.Unlock()
 }
 
 func (m *metastoreState) restore(db *boltdb) error {
@@ -46,33 +50,43 @@ func (m *metastoreState) restore(db *boltdb) error {
 }
 
 func (m *metastoreState) restoreMetadata(tx *bbolt.Tx) error {
-	mdb, err := getBlockMetadataBucket(tx)
-	switch {
-	case err == nil:
-	case errors.Is(err, bbolt.ErrBucketNotFound):
-		return nil
-	default:
+	b, err := getBlockMetadataBuckets(tx)
+	if err != nil {
+		if errors.Is(err, bbolt.ErrBucketNotFound) {
+			return nil
+		}
 		return err
 	}
-	return m.loadSegments(mdb)
+	return m.loadMetadata(b)
 }
 
-func (m *metastoreState) putSegment(segment *metastorepb.BlockMeta) {
-	m.segmentsMutex.Lock()
-	m.segments[segment.Id] = segment
-	m.segmentsMutex.Unlock()
-}
+func (m *metastoreState) loadMetadata(b *metadataBuckets) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
 
-func (m *metastoreState) loadSegments(b *bbolt.Bucket) error {
-	m.segmentsMutex.Lock()
-	defer m.segmentsMutex.Unlock()
-	c := b.Cursor()
+	c := b.active.Cursor()
 	for k, v := c.First(); k != nil; k, v = c.Next() {
 		var md metastorepb.BlockMeta
 		if err := proto.Unmarshal(v, &md); err != nil {
 			return fmt.Errorf("failed to block %q: %w", string(k), err)
 		}
-		m.segments[md.Id] = &md
+		m.active[md.Id] = &md
 	}
+
+	c = b.marked.Cursor()
+	for k, v := c.First(); k != nil; k, v = c.Next() {
+		var md metastorepb.BlockMeta
+		if err := proto.Unmarshal(v, &md); err != nil {
+			return fmt.Errorf("failed to block %q: %w", string(k), err)
+		}
+		m.marked[md.Id] = &md
+	}
+
 	return nil
+}
+
+func (m *metastoreState) putSegment(segment *metastorepb.BlockMeta) {
+	m.mtx.Lock()
+	m.active[segment.Id] = segment
+	m.mtx.Unlock()
 }

@@ -51,7 +51,7 @@ func TestMetastore_ListBlocksForQuery(t *testing.T) {
 	}
 	m := &Metastore{
 		state: &metastoreState{
-			segments: map[string]*metastorepb.BlockMeta{
+			active: map[string]*metastorepb.BlockMeta{
 				"block1": block1,
 				"block2": block2,
 				"block3": block3,

@@ -187,22 +187,48 @@ func getOrCreateSubBucket(parent *bbolt.Bucket, name []byte) (*bbolt.Bucket, err
 	return bucket, nil
 }
 
-const blockMetadataBucketName = "block_metadata"
+const (
+	blockMetadataBucketName  = "block_metadata"
+	activeMetadataBucketName = "active"
+	markedMetadataBucketName = "marked"
+)
 
-var blockMetadataBucketNameBytes = []byte(blockMetadataBucketName)
+var (
+	blockMetadataBucketNameBytes  = []byte(blockMetadataBucketName)
+	activeMetadataBucketNameBytes = []byte(activeMetadataBucketName)
+	markedMetadataBucketNameBytes = []byte(markedMetadataBucketName)
+)
 
-func getBlockMetadataBucket(tx *bbolt.Tx) (*bbolt.Bucket, error) {
-	mdb := tx.Bucket(blockMetadataBucketNameBytes)
-	if mdb == nil {
+type metadataBuckets struct {
+	root   *bbolt.Bucket
+	active *bbolt.Bucket
+	marked *bbolt.Bucket
+}
+
+func getBlockMetadataBuckets(tx *bbolt.Tx) (*metadataBuckets, error) {
+	b := tx.Bucket(blockMetadataBucketNameBytes)
+	if b == nil {
 		return nil, bbolt.ErrBucketNotFound
 	}
-	return mdb, nil
+	active, err := b.CreateBucketIfNotExists(activeMetadataBucketNameBytes)
+	if err != nil {
+		return nil, err
+	}
+	marked, err := b.CreateBucketIfNotExists(markedMetadataBucketNameBytes)
+	if err != nil {
+		return nil, err
+	}
+	return &metadataBuckets{
+		root:   b,
+		active: active,
+		marked: marked,
+	}, nil
 }
 
 func updateBlockMetadataBucket(tx *bbolt.Tx, fn func(*bbolt.Bucket) error) error {
-	mdb, err := getBlockMetadataBucket(tx)
+	b, err := getBlockMetadataBuckets(tx)
 	if err != nil {
 		return err
 	}
-	return fn(mdb)
+	return fn(b.active)
 }

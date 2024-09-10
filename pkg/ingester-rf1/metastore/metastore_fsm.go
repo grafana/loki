@@ -19,7 +19,8 @@ import (
 // when the request is converted to a Raft log entry.
 var commandTypeMap = map[reflect.Type]raftlogpb.CommandType{
 	reflect.TypeOf(new(metastorepb.AddBlockRequest)): raftlogpb.COMMAND_TYPE_ADD_BLOCK,
-	reflect.TypeOf(new(raftlogpb.TruncateCommand)):   raftlogpb.COMMAND_TYPE_TRUNCATE,
+	reflect.TypeOf(new(raftlogpb.MarkCommand)):       raftlogpb.COMMAND_TYPE_MARK,
+	reflect.TypeOf(new(raftlogpb.SweepCommand)):      raftlogpb.COMMAND_TYPE_SWEEP,
 }
 
 // The map is used to determine the handler for the given command,
@@ -28,8 +29,11 @@ var commandHandlers = map[raftlogpb.CommandType]commandHandler{
 	raftlogpb.COMMAND_TYPE_ADD_BLOCK: func(fsm *FSM, raw []byte) fsmResponse {
 		return handleCommand(raw, fsm.state.applyAddBlock)
 	},
-	raftlogpb.COMMAND_TYPE_TRUNCATE: func(fsm *FSM, raw []byte) fsmResponse {
-		return handleCommand(raw, fsm.state.applyTruncate)
+	raftlogpb.COMMAND_TYPE_MARK: func(fsm *FSM, raw []byte) fsmResponse {
+		return handleCommand(raw, fsm.state.applyMark)
+	},
+	raftlogpb.COMMAND_TYPE_SWEEP: func(fsm *FSM, raw []byte) fsmResponse {
+		return handleCommand(raw, fsm.state.applySweep)
 	},
 }
 
@@ -158,13 +162,13 @@ func (fsm *FSM) Restore(snapshot io.ReadCloser) error {
 
 // applyCommand issues the command to the raft log based on the request type,
 // and returns the response of FSM.Apply.
-func applyCommand[Req, Resp proto.Message](
+func applyCommand(
 	log *raft.Raft,
-	req Req,
+	req proto.Message,
 	timeout time.Duration,
 ) (
 	future raft.ApplyFuture,
-	resp Resp,
+	resp proto.Message,
 	err error,
 ) {
 	defer func() {
@@ -182,12 +186,12 @@ func applyCommand[Req, Resp proto.Message](
 	}
 	fsmResp := future.Response().(fsmResponse)
 	if fsmResp.msg != nil {
-		resp, _ = fsmResp.msg.(Resp)
+		resp = fsmResp.msg
 	}
 	return future, resp, fsmResp.err
 }
 
-func marshallRequest[Req proto.Message](req Req) ([]byte, error) {
+func marshallRequest(req proto.Message) ([]byte, error) {
 	cmdType, ok := commandTypeMap[reflect.TypeOf(req)]
 	if !ok {
 		return nil, fmt.Errorf("unknown command type: %T", req)

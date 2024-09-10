@@ -32,19 +32,22 @@ const (
 	COMMAND_TYPE_UNKNOWN   CommandType = 0
 	COMMAND_TYPE_ADD_BLOCK CommandType = 1
 	// This is a temporary solution.
-	COMMAND_TYPE_TRUNCATE CommandType = 4196
+	COMMAND_TYPE_MARK  CommandType = 4195
+	COMMAND_TYPE_SWEEP CommandType = 4196
 )
 
 var CommandType_name = map[int32]string{
 	0:    "COMMAND_TYPE_UNKNOWN",
 	1:    "COMMAND_TYPE_ADD_BLOCK",
-	4196: "COMMAND_TYPE_TRUNCATE",
+	4195: "COMMAND_TYPE_MARK",
+	4196: "COMMAND_TYPE_SWEEP",
 }
 
 var CommandType_value = map[string]int32{
 	"COMMAND_TYPE_UNKNOWN":   0,
 	"COMMAND_TYPE_ADD_BLOCK": 1,
-	"COMMAND_TYPE_TRUNCATE":  4196,
+	"COMMAND_TYPE_MARK":      4195,
+	"COMMAND_TYPE_SWEEP":     4196,
 }
 
 func (CommandType) EnumDescriptor() ([]byte, []int) {
@@ -102,21 +105,21 @@ func (m *RaftLogEntry) GetPayload() []byte {
 	return nil
 }
 
-type TruncateCommand struct {
+type MarkCommand struct {
 	Timestamp uint64 `protobuf:"varint,1,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 }
 
-func (m *TruncateCommand) Reset()      { *m = TruncateCommand{} }
-func (*TruncateCommand) ProtoMessage() {}
-func (*TruncateCommand) Descriptor() ([]byte, []int) {
+func (m *MarkCommand) Reset()      { *m = MarkCommand{} }
+func (*MarkCommand) ProtoMessage() {}
+func (*MarkCommand) Descriptor() ([]byte, []int) {
 	return fileDescriptor_dd4a889a2dc1d0a7, []int{1}
 }
-func (m *TruncateCommand) XXX_Unmarshal(b []byte) error {
+func (m *MarkCommand) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *TruncateCommand) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *MarkCommand) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_TruncateCommand.Marshal(b, m, deterministic)
+		return xxx_messageInfo_MarkCommand.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -126,19 +129,62 @@ func (m *TruncateCommand) XXX_Marshal(b []byte, deterministic bool) ([]byte, err
 		return b[:n], nil
 	}
 }
-func (m *TruncateCommand) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_TruncateCommand.Merge(m, src)
+func (m *MarkCommand) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MarkCommand.Merge(m, src)
 }
-func (m *TruncateCommand) XXX_Size() int {
+func (m *MarkCommand) XXX_Size() int {
 	return m.Size()
 }
-func (m *TruncateCommand) XXX_DiscardUnknown() {
-	xxx_messageInfo_TruncateCommand.DiscardUnknown(m)
+func (m *MarkCommand) XXX_DiscardUnknown() {
+	xxx_messageInfo_MarkCommand.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_TruncateCommand proto.InternalMessageInfo
+var xxx_messageInfo_MarkCommand proto.InternalMessageInfo
 
-func (m *TruncateCommand) GetTimestamp() uint64 {
+func (m *MarkCommand) GetTimestamp() uint64 {
+	if m != nil {
+		return m.Timestamp
+	}
+	return 0
+}
+
+type SweepCommand struct {
+	Timestamp uint64 `protobuf:"varint,1,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+}
+
+func (m *SweepCommand) Reset()      { *m = SweepCommand{} }
+func (*SweepCommand) ProtoMessage() {}
+func (*SweepCommand) Descriptor() ([]byte, []int) {
+	return fileDescriptor_dd4a889a2dc1d0a7, []int{2}
+}
+func (m *SweepCommand) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *SweepCommand) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_SweepCommand.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *SweepCommand) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SweepCommand.Merge(m, src)
+}
+func (m *SweepCommand) XXX_Size() int {
+	return m.Size()
+}
+func (m *SweepCommand) XXX_DiscardUnknown() {
+	xxx_messageInfo_SweepCommand.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SweepCommand proto.InternalMessageInfo
+
+func (m *SweepCommand) GetTimestamp() uint64 {
 	if m != nil {
 		return m.Timestamp
 	}
@@ -148,7 +194,8 @@ func (m *TruncateCommand) GetTimestamp() uint64 {
 func init() {
 	proto.RegisterEnum("raftlogpb.CommandType", CommandType_name, CommandType_value)
 	proto.RegisterType((*RaftLogEntry)(nil), "raftlogpb.RaftLogEntry")
-	proto.RegisterType((*TruncateCommand)(nil), "raftlogpb.TruncateCommand")
+	proto.RegisterType((*MarkCommand)(nil), "raftlogpb.MarkCommand")
+	proto.RegisterType((*SweepCommand)(nil), "raftlogpb.SweepCommand")
 }
 
 func init() {
@@ -156,27 +203,28 @@ func init() {
 }
 
 var fileDescriptor_dd4a889a2dc1d0a7 = []byte{
-	// 306 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x54, 0x90, 0xc1, 0x4a, 0x02, 0x41,
-	0x18, 0xc7, 0x67, 0x42, 0x0a, 0x27, 0x29, 0x19, 0x4a, 0x16, 0x89, 0x0f, 0xf1, 0x24, 0x42, 0x2e,
-	0x56, 0x2f, 0xa0, 0xab, 0x27, 0x75, 0x8d, 0x65, 0x24, 0x3a, 0x2d, 0x63, 0x8e, 0x8b, 0xe4, 0xee,
-	0x0c, 0xe3, 0x74, 0xd8, 0x5b, 0x8f, 0xd0, 0x63, 0xf4, 0x28, 0x1d, 0x3d, 0x7a, 0xcc, 0xb1, 0x43,
-	0x47, 0x1f, 0x21, 0x5a, 0xca, 0xf2, 0xf6, 0x7d, 0xff, 0xff, 0xef, 0xfb, 0x1d, 0x3e, 0xd2, 0x54,
-	0x8f, 0x91, 0x3b, 0x4b, 0x22, 0xb1, 0x30, 0x42, 0x5f, 0xea, 0x69, 0xd3, 0x8d, 0x85, 0xe1, 0x0b,
-	0x23, 0xb5, 0x70, 0x35, 0x9f, 0x9a, 0xb9, 0x8c, 0xd4, 0xf8, 0x7b, 0x9a, 0xcb, 0xa8, 0xa1, 0xb4,
-	0x34, 0x92, 0xe6, 0x77, 0x79, 0x95, 0x91, 0x42, 0xc0, 0xa7, 0xa6, 0x2f, 0xa3, 0x6e, 0x62, 0x74,
-	0x4a, 0xeb, 0x24, 0x67, 0x52, 0x25, 0x1c, 0x5c, 0xc1, 0xb5, 0x93, 0xab, 0x52, 0x63, 0x47, 0x36,
-	0x3c, 0x19, 0xc7, 0x3c, 0x99, 0xb0, 0x54, 0x89, 0x20, 0x63, 0xa8, 0x43, 0x8e, 0x14, 0x4f, 0xe7,
-	0x92, 0x4f, 0x9c, 0x83, 0x0a, 0xae, 0x15, 0x82, 0xdf, 0xb5, 0xea, 0x92, 0x53, 0xa6, 0x9f, 0x92,
-	0x07, 0x6e, 0xc4, 0xcf, 0x19, 0xbd, 0x20, 0x79, 0x33, 0x8b, 0xc5, 0xc2, 0xf0, 0x58, 0x65, 0xf6,
-	0x5c, 0xf0, 0x17, 0xd4, 0x43, 0x72, 0xfc, 0xcf, 0x4f, 0x1d, 0x72, 0xe6, 0x0d, 0x07, 0x83, 0x96,
-	0xdf, 0x09, 0xd9, 0xfd, 0x6d, 0x37, 0x1c, 0xf9, 0x3d, 0x7f, 0x78, 0xe7, 0x17, 0x11, 0x2d, 0x93,
-	0xd2, 0x5e, 0xd3, 0xea, 0x74, 0xc2, 0x76, 0x7f, 0xe8, 0xf5, 0x8a, 0x98, 0x96, 0xc9, 0xf9, 0x5e,
-	0xc7, 0x82, 0x91, 0xef, 0xb5, 0x58, 0xb7, 0xf8, 0x51, 0x69, 0xdf, 0x2c, 0xd7, 0x80, 0x56, 0x6b,
-	0x40, 0xdb, 0x35, 0xe0, 0x67, 0x0b, 0xf8, 0xd5, 0x02, 0x7e, 0xb3, 0x80, 0x97, 0x16, 0xf0, 0xbb,
-	0x05, 0xfc, 0x69, 0x01, 0x6d, 0x2d, 0xe0, 0x97, 0x0d, 0xa0, 0xe5, 0x06, 0xd0, 0x6a, 0x03, 0x68,
-	0x7c, 0x98, 0xfd, 0xeb, 0xfa, 0x2b, 0x00, 0x00, 0xff, 0xff, 0x48, 0x2c, 0x6d, 0x12, 0x64, 0x01,
-	0x00, 0x00,
+	// 323 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x90, 0xcf, 0x4a, 0x02, 0x51,
+	0x14, 0x87, 0xef, 0x0d, 0x29, 0xbc, 0x4a, 0x4c, 0x97, 0xb0, 0x21, 0xe2, 0x30, 0xb8, 0x12, 0x2b,
+	0xc5, 0xea, 0x05, 0xfc, 0x33, 0x2b, 0x9d, 0x51, 0x46, 0x43, 0x5a, 0xc9, 0x15, 0xaf, 0x83, 0xe8,
+	0x78, 0x2f, 0xd7, 0x0b, 0x31, 0xbb, 0x1e, 0xa1, 0xc7, 0xe8, 0x51, 0x5a, 0xba, 0x74, 0x99, 0x77,
+	0x5a, 0xb4, 0xf4, 0x11, 0x22, 0x29, 0xcb, 0x5d, 0xbb, 0x73, 0xbe, 0xdf, 0x77, 0x0e, 0x87, 0x43,
+	0x2a, 0x72, 0x1a, 0x96, 0x27, 0xf3, 0x90, 0x2f, 0x34, 0x57, 0xd7, 0x6a, 0x5c, 0x29, 0x47, 0x5c,
+	0xb3, 0x85, 0x16, 0x8a, 0x97, 0x15, 0x1b, 0xeb, 0x99, 0x08, 0xe5, 0xf0, 0xab, 0x9a, 0x89, 0xb0,
+	0x24, 0x95, 0xd0, 0x82, 0xa6, 0x77, 0x3c, 0xdf, 0x23, 0xd9, 0x80, 0x8d, 0x75, 0x4b, 0x84, 0xee,
+	0x5c, 0xab, 0x98, 0x16, 0x49, 0x4a, 0xc7, 0x92, 0xdb, 0xd8, 0xc1, 0x85, 0xe3, 0x9b, 0x5c, 0x69,
+	0x67, 0x96, 0xea, 0x22, 0x8a, 0xd8, 0x7c, 0xd4, 0x8b, 0x25, 0x0f, 0xb6, 0x0e, 0xb5, 0xc9, 0x91,
+	0x64, 0xf1, 0x4c, 0xb0, 0x91, 0x7d, 0xe0, 0xe0, 0x42, 0x36, 0xf8, 0x69, 0xf3, 0x97, 0x24, 0xe3,
+	0x31, 0x35, 0xfd, 0x1e, 0xa1, 0x17, 0x24, 0xad, 0x27, 0x11, 0x5f, 0x68, 0x16, 0xc9, 0xed, 0xe6,
+	0x54, 0xf0, 0x0b, 0xf2, 0x57, 0x24, 0xdb, 0x7d, 0xe4, 0x5c, 0xfe, 0xcb, 0x2e, 0x6a, 0x92, 0xf9,
+	0x73, 0x09, 0xb5, 0xc9, 0x69, 0xbd, 0xed, 0x79, 0x55, 0xbf, 0x31, 0xe8, 0x3d, 0x74, 0xdc, 0xc1,
+	0xbd, 0xdf, 0xf4, 0xdb, 0x7d, 0xdf, 0x42, 0xf4, 0x9c, 0xe4, 0xf6, 0x92, 0x6a, 0xa3, 0x31, 0xa8,
+	0xb5, 0xda, 0xf5, 0xa6, 0x85, 0x69, 0x8e, 0x9c, 0xec, 0x65, 0x5e, 0x35, 0x68, 0x5a, 0x89, 0x43,
+	0xcf, 0x08, 0xdd, 0xe3, 0xdd, 0xbe, 0xeb, 0x76, 0xac, 0x77, 0xa7, 0x76, 0xb7, 0x5c, 0x03, 0x5a,
+	0xad, 0x01, 0x6d, 0xd6, 0x80, 0x9f, 0x0c, 0xe0, 0x17, 0x03, 0xf8, 0xd5, 0x00, 0x5e, 0x1a, 0xc0,
+	0x6f, 0x06, 0xf0, 0x87, 0x01, 0xb4, 0x31, 0x80, 0x9f, 0x13, 0x40, 0xcb, 0x04, 0xd0, 0x2a, 0x01,
+	0x34, 0x3c, 0xdc, 0xbe, 0xfb, 0xf6, 0x33, 0x00, 0x00, 0xff, 0xff, 0xd1, 0x11, 0xc6, 0xbf, 0xa3,
+	0x01, 0x00, 0x00,
 }
 
 func (x CommandType) String() string {
@@ -213,14 +261,38 @@ func (this *RaftLogEntry) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *TruncateCommand) Equal(that interface{}) bool {
+func (this *MarkCommand) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*TruncateCommand)
+	that1, ok := that.(*MarkCommand)
 	if !ok {
-		that2, ok := that.(TruncateCommand)
+		that2, ok := that.(MarkCommand)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Timestamp != that1.Timestamp {
+		return false
+	}
+	return true
+}
+func (this *SweepCommand) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*SweepCommand)
+	if !ok {
+		that2, ok := that.(SweepCommand)
 		if ok {
 			that1 = &that2
 		} else {
@@ -248,12 +320,22 @@ func (this *RaftLogEntry) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *TruncateCommand) GoString() string {
+func (this *MarkCommand) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 5)
-	s = append(s, "&raftlogpb.TruncateCommand{")
+	s = append(s, "&raftlogpb.MarkCommand{")
+	s = append(s, "Timestamp: "+fmt.Sprintf("%#v", this.Timestamp)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *SweepCommand) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 5)
+	s = append(s, "&raftlogpb.SweepCommand{")
 	s = append(s, "Timestamp: "+fmt.Sprintf("%#v", this.Timestamp)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
@@ -301,7 +383,7 @@ func (m *RaftLogEntry) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *TruncateCommand) Marshal() (dAtA []byte, err error) {
+func (m *MarkCommand) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -311,12 +393,40 @@ func (m *TruncateCommand) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *TruncateCommand) MarshalTo(dAtA []byte) (int, error) {
+func (m *MarkCommand) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *TruncateCommand) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *MarkCommand) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.Timestamp != 0 {
+		i = encodeVarintRaflog(dAtA, i, uint64(m.Timestamp))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *SweepCommand) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SweepCommand) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SweepCommand) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -356,7 +466,19 @@ func (m *RaftLogEntry) Size() (n int) {
 	return n
 }
 
-func (m *TruncateCommand) Size() (n int) {
+func (m *MarkCommand) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Timestamp != 0 {
+		n += 1 + sovRaflog(uint64(m.Timestamp))
+	}
+	return n
+}
+
+func (m *SweepCommand) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -385,11 +507,21 @@ func (this *RaftLogEntry) String() string {
 	}, "")
 	return s
 }
-func (this *TruncateCommand) String() string {
+func (this *MarkCommand) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&TruncateCommand{`,
+	s := strings.Join([]string{`&MarkCommand{`,
+		`Timestamp:` + fmt.Sprintf("%v", this.Timestamp) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *SweepCommand) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&SweepCommand{`,
 		`Timestamp:` + fmt.Sprintf("%v", this.Timestamp) + `,`,
 		`}`,
 	}, "")
@@ -509,7 +641,7 @@ func (m *RaftLogEntry) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *TruncateCommand) Unmarshal(dAtA []byte) error {
+func (m *MarkCommand) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -532,10 +664,82 @@ func (m *TruncateCommand) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: TruncateCommand: wiretype end group for non-group")
+			return fmt.Errorf("proto: MarkCommand: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: TruncateCommand: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: MarkCommand: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Timestamp", wireType)
+			}
+			m.Timestamp = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRaflog
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Timestamp |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipRaflog(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthRaflog
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthRaflog
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SweepCommand) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowRaflog
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SweepCommand: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SweepCommand: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:

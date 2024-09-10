@@ -12,24 +12,33 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coder/quartz"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/gogo/protobuf/proto"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/services"
 	"github.com/hashicorp/raft"
 	raftwal "github.com/hashicorp/raft-wal"
 	"github.com/prometheus/client_golang/prometheus"
 
+	ingesterrf1 "github.com/grafana/loki/v3/pkg/ingester-rf1"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/health"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/raftleader"
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/objstore"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 const metastoreRaftLeaderHealthServiceName = "metastorepb.MetastoreService.RaftLeader"
 
 type Config struct {
-	DataDir string     `yaml:"data_dir"`
-	Raft    RaftConfig `yaml:"raft"`
+	DataDir              string        `yaml:"data_dir"`
+	Raft                 RaftConfig    `yaml:"raft"`
+	MaintenanceInterval  time.Duration `yaml:"maintenance_interval"`
+	RetentionPeriod      time.Duration `yaml:"retention_period"`
+	RetentionGracePeriod time.Duration `yaml:"retention_grace_period"`
 }
 
 type RaftConfig struct {
@@ -46,6 +55,9 @@ type RaftConfig struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	const prefix = "metastore."
 	f.StringVar(&cfg.DataDir, prefix+"data-dir", "./data-metastore/data", "")
+	f.DurationVar(&cfg.MaintenanceInterval, prefix+"maintenance-interval", 5*time.Minute, "")
+	f.DurationVar(&cfg.RetentionPeriod, prefix+"retention-period", 15*time.Minute, "")
+	f.DurationVar(&cfg.RetentionGracePeriod, prefix+"retention-grace-period", 15*time.Minute, "")
 	cfg.Raft.RegisterFlags(f)
 }
 
@@ -68,7 +80,8 @@ type Metastore struct {
 	reg    prometheus.Registerer
 
 	// In-memory state.
-	state *metastoreState
+	state   *metastoreState
+	storage ingesterrf1.Storage
 
 	// Persistent state.
 	db *boltdb
@@ -88,15 +101,26 @@ type Metastore struct {
 
 	done chan struct{}
 	wg   sync.WaitGroup
+
+	// Used in tests.
+	clock    quartz.Clock
+	applyFSM func(log *raft.Raft, req proto.Message, timeout time.Duration) (raft.ApplyFuture, proto.Message, error)
 }
 
-func New(config Config, logger log.Logger, reg prometheus.Registerer, hs health.Service) (*Metastore, error) {
+func New(config Config, periodConfigs []config.PeriodConfig, storageConfig storage.Config, clientMetrics storage.ClientMetrics, logger log.Logger, reg prometheus.Registerer, hs health.Service) (*Metastore, error) {
+	storage, err := objstore.New(periodConfigs, storageConfig, clientMetrics)
+	if err != nil {
+		return nil, err
+	}
 	m := &Metastore{
-		config: config,
-		logger: logger,
-		reg:    reg,
-		db:     newDB(config, logger),
-		done:   make(chan struct{}),
+		config:   config,
+		logger:   logger,
+		reg:      reg,
+		db:       newDB(config, logger),
+		done:     make(chan struct{}),
+		storage:  storage,
+		applyFSM: applyCommand,
+		clock:    quartz.NewReal(),
 	}
 	m.leaderhealth = raftleader.NewRaftLeaderHealthObserver(hs, logger)
 	m.state = newMetastoreState(logger, m.db)
@@ -118,7 +142,10 @@ func (m *Metastore) starting(_ context.Context) error {
 		return fmt.Errorf("failed to initialize raft: %w", err)
 	}
 	m.wg.Add(1)
-	go m.cleanupLoop()
+	go func() {
+		defer m.wg.Done()
+		m.periodicMaintenance()
+	}()
 	return nil
 }
 

@@ -145,6 +145,8 @@ type Wrapper interface {
 
 // Storage is the store interface we need on the ingester.
 type Storage interface {
+	IsObjectNotFoundErr(err error) bool
+	DeleteObject(ctx context.Context, objectKey string) error
 	PutObject(ctx context.Context, objectKey string, object io.Reader) error
 	Stop()
 }
