@@ -13,29 +13,27 @@ const (
 )
 
 type StructuredMetadataTokenizer struct {
+	// prefix to add to tokens, typically the encoded chunkref
 	prefix string
-	buf    []string
+	tokens []string
 }
 
 func NewStructuredMetadataTokenizer(prefix string) *StructuredMetadataTokenizer {
 	return &StructuredMetadataTokenizer{
 		prefix: prefix,
-		buf:    make([]string, 6),
+		tokens: make([]string, 6),
 	}
 }
 
 // Tokens implements the NGramBuilder interface
 func (t *StructuredMetadataTokenizer) Tokens(kv push.LabelAdapter) iter.Iterator[string] {
 	combined := fmt.Sprintf("%s=%s", kv.Name, kv.Value)
-	t.buf = append(t.buf[:0],
-		kv.Name,
-		t.prefix+kv.Name,
-		kv.Value,
-		t.prefix+kv.Value,
-		combined,
-		t.prefix+combined,
+	t.tokens = append(t.tokens[:0],
+		kv.Name, t.prefix+kv.Name,
+		kv.Value, t.prefix+kv.Value,
+		combined, t.prefix+combined,
 	)
-	return iter.NewSliceIter(t.buf)
+	return iter.NewSliceIter(t.tokens)
 }
 
 func reassemble(buf []rune, ln, pos int, result []byte) []byte {
