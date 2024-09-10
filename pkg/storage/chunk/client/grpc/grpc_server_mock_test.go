@@ -155,7 +155,7 @@ func NewTestTableClient(cfg Config) (*TableClient, error) {
 	return client, nil
 }
 
-// newTestStorageServer returns a new StorageClient.
+// newTestStorageServer returns a new StorageServer.
 func newTestStorageServer(cfg Config) *server {
 	client := &server{
 		Cfg: cfg,
