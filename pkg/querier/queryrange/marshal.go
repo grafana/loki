@@ -332,7 +332,7 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 		if concrete.Instant.Plan == nil {
 			parsed, err := syntax.ParseExpr(concrete.Instant.GetQuery())
 			if err != nil {
-				return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+				return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 			}
 			concrete.Instant.Plan = &plan.QueryPlan{
 				AST: parsed,
@@ -350,7 +350,7 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 		if concrete.Streams.Plan == nil {
 			parsed, err := syntax.ParseExpr(concrete.Streams.GetQuery())
 			if err != nil {
-				return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+				return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 			}
 			concrete.Streams.Plan = &plan.QueryPlan{
 				AST: parsed,

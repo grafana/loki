@@ -39,14 +39,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
-	ingesterkafka "github.com/grafana/loki/v3/pkg/ingester-kafka"
-	"github.com/grafana/loki/v3/pkg/ingester-kafka/kafka"
-	"github.com/grafana/loki/v3/pkg/ingester-kafka/partitionring"
 	ingester_rf1 "github.com/grafana/loki/v3/pkg/ingester-rf1"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore"
 	metastoreclient "github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/client"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/health"
 	ingester_client "github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/kafka"
+	ingester_kafka "github.com/grafana/loki/v3/pkg/kafka/ingester"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/loki/common"
 	"github.com/grafana/loki/v3/pkg/lokifrontend"
@@ -114,9 +113,8 @@ type Config struct {
 	MemberlistKV        memberlist.KVConfig        `yaml:"memberlist"`
 	Metastore           metastore.Config           `yaml:"metastore,omitempty"`
 	MetastoreClient     metastoreclient.Config     `yaml:"metastore_client"`
-	PartitionRingConfig partitionring.Config       `yaml:"partition_ring,omitempty" category:"experimental"`
 	KafkaConfig         kafka.Config               `yaml:"kafka_config,omitempty" category:"experimental"`
-	KafkaIngester       ingesterkafka.Config       `yaml:"kafka_ingester,omitempty" category:"experimental"`
+	KafkaIngester       ingester_kafka.Config      `yaml:"kafka_ingester,omitempty" category:"experimental"`
 
 	RuntimeConfig     runtimeconfig.Config `yaml:"runtime_config,omitempty"`
 	OperationalConfig runtime.Config       `yaml:"operational_config,omitempty"`
@@ -199,7 +197,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Profiling.RegisterFlags(f)
 	c.Metastore.RegisterFlags(f)
 	c.MetastoreClient.RegisterFlags(f)
-	c.PartitionRingConfig.RegisterFlags(f)
 	c.KafkaConfig.RegisterFlags(f)
 	c.KafkaIngester.RegisterFlags(f)
 }
@@ -226,6 +223,8 @@ func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
 			_ = f.Value.Set("3100")
 
 		case "pattern-ingester.distributor.replication-factor":
+			_ = f.Value.Set("1")
+		case "kafka-ingester.distributor.replication-factor":
 			_ = f.Value.Set("1")
 		}
 
@@ -304,6 +303,14 @@ func (c *Config) Validate() error {
 	}
 	if err := c.Pattern.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid pattern_ingester config"))
+	}
+	if c.KafkaIngester.Enabled {
+		if err := c.KafkaConfig.Validate(); err != nil {
+			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid kafka_config config"))
+		}
+		if err := c.KafkaIngester.Validate(); err != nil {
+			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid kafka_ingester config"))
+		}
 	}
 
 	errs = append(errs, validateSchemaValues(c)...)
@@ -384,7 +391,7 @@ type Loki struct {
 	MetastoreClient           *metastoreclient.Client
 	partitionRingWatcher      *ring.PartitionRingWatcher
 	partitionRing             *ring.PartitionInstanceRing
-	kafkaIngester             *ingesterkafka.Ingester
+	kafkaIngester             *ingester_kafka.Ingester
 
 	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -732,7 +739,7 @@ func (t *Loki) setupModuleManager() error {
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, IngesterRF1RingClient, Analytics, PartitionRing},
 		Store:                    {Overrides, IndexGatewayRing},
 		IngesterRF1:              {Store, Server, MemberlistKV, TenantConfigs, MetastoreClient, Analytics, PartitionRing},
-		IngesterKafka:            {PartitionRing},
+		IngesterKafka:            {Store, Server, MemberlistKV, TenantConfigs, MetastoreClient, Analytics, PartitionRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics},
 		Querier:                  {Store, Ring, Server, IngesterQuerier, PatternRingClient, MetastoreClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},

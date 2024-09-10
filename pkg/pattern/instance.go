@@ -102,7 +102,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 		}
 
 		if ownedStream {
-			if reqStream.Entries == nil || len(reqStream.Entries) == 0 {
+			if len(reqStream.Entries) == 0 {
 				continue
 			}
 			s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
@@ -158,7 +158,7 @@ func (i *instance) isOwnedStream(ingesterID string, stream string) (bool, error)
 func (i *instance) Iterator(ctx context.Context, req *logproto.QueryPatternsRequest) (iter.Iterator, error) {
 	matchers, err := syntax.ParseMatchers(req.Query, true)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 	from, through := util.RoundToMilliseconds(req.Start, req.End)
 	step := model.Time(req.Step)
@@ -216,7 +216,7 @@ outer:
 func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream) (*stream, error) {
 	labels, err := syntax.ParseLabels(pushReqStream.Labels)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 	fp := i.getHashForLabels(labels)
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)

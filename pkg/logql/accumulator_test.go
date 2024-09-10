@@ -190,7 +190,7 @@ func BenchmarkAccumulator(b *testing.B) {
 		},
 		"quantile sketches": {
 			newQuantileSketchResults(),
-			func(p Params, _ []logqlmodel.Result) Accumulator {
+			func(_ Params, _ []logqlmodel.Result) Accumulator {
 				return newQuantileSketchAccumulator()
 			},
 			params,
