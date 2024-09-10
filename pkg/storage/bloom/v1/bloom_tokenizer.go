@@ -200,7 +200,6 @@ func (bt *BloomTokenizer) addChunkToBloom(bloom *Bloom, ref ChunkRef, entryIter 
 	tokenizer := NewStructuredMetadataTokenizer(string(prefixForChunkRef(ref)))
 
 	// We use a peeking iterator to avoid advancing the iterator until we're sure the bloom has accepted the line.
-outer:
 	for entry, ok := entryIter.Peek(); ok; entry, ok = entryIter.Peek() {
 		for _, kv := range entry.StructuredMetadata {
 			info.sourceBytes += len(kv.Name) + len(kv.Value)
@@ -235,21 +234,14 @@ outer:
 			}
 		}
 
-		// Only break out of the loop if the bloom filter is full after indexing all structured metadata of an entry.
-		if full {
-			// edge case: one line maxed out the bloom size -- retrying is futile
-			// (and will loop endlessly), so we'll just skip indexing it
-			// TODO(chaudum): Skipping a line will yield false negatives when querying the bloom.
-			if linesAdded == 0 {
-				_ = entryIter.Next()
-			}
-
-			break outer
-		}
-
 		// Only advance the iterator once we're sure the bloom has accepted the line
 		linesAdded++
 		_ = entryIter.Next()
+
+		// Only break out of the loop if the bloom filter is full after indexing all structured metadata of an entry.
+		if full {
+			break
+		}
 	}
 
 	// update metrics after each chunk added for more consistent reporting
