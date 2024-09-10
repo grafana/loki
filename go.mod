@@ -34,7 +34,7 @@ require (
 	github.com/fatih/color v1.16.0
 	github.com/felixge/fgprof v0.9.4
 	github.com/fluent/fluent-bit-go v0.0.0-20230731091245-a7a013e2473c
-	github.com/fsouza/fake-gcs-server v1.47.7
+	github.com/fsouza/fake-gcs-server v1.7.0
 	github.com/go-kit/log v0.2.1
 	github.com/go-logfmt/logfmt v0.6.0
 	github.com/go-redis/redis/v8 v8.11.5
@@ -166,14 +166,12 @@ require (
 	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/goccy/go-json v0.10.3 // indirect
-	github.com/gorilla/handlers v1.5.2 // indirect
 	github.com/hashicorp/go-msgpack/v2 v2.1.1 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/ncw/swift v1.0.53 // indirect
 	github.com/pires/go-proxyproto v0.7.0 // indirect
-	github.com/pkg/xattr v0.4.10 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
