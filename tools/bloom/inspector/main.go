@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/util/mempool"
@@ -13,8 +14,8 @@ func main() {
 		fmt.Println("Usage: go run main.go BLOCK_DIRECTORY")
 		os.Exit(2)
 	}
-
 	path := os.Args[1]
+
 	fmt.Printf("Block:    %s\n", path)
 
 	r := v1.NewDirectoryBlockReader(path)
@@ -30,23 +31,28 @@ func main() {
 	fmt.Printf("Checksum: 0x%x\n", md.Checksum)
 	fmt.Printf("Series:   %+v\n", md.Series)
 	fmt.Printf("Options:  %+v\n", md.Options)
+	fmt.Println("")
 
 	count := 0
 	for qIter.Next() {
 		swb := qIter.At()
 		series := swb.Series
+		fmt.Printf(
+			"%s chunks=%d fields=%+v\n",
+			series.Fingerprint,
+			series.Chunks.Len(),
+			series.Meta.Fields.Items(),
+		)
 		p := 0
 		for swb.Blooms.Next() {
 			bloom := swb.Blooms.At()
 			fmt.Printf(
-				"fp=%s page=%d chunks=%d size=%v fill=%v count=%v fields=%+v\n",
-				series.Fingerprint,
+				"%s page=%d size=%v count=%v fill=%v\n",
+				strings.Repeat(" ", 16), // padding
 				p,
-				series.Chunks.Len(),
 				bloom.Capacity()/8,
-				bloom.FillRatio(),
 				bloom.Count(),
-				series.Meta.Fields.Items(),
+				bloom.FillRatio(),
 			)
 			p++
 		}
@@ -57,5 +63,6 @@ func main() {
 		fmt.Printf("error: %s\n", q.Err())
 	}
 
+	fmt.Println("")
 	fmt.Printf("Stream count: %4d\n", count)
 }
