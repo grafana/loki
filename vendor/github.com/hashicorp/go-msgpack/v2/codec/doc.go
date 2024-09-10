@@ -61,11 +61,10 @@ Rich Feature Set includes:
   - Drop-in replacement for encoding/json. `json:` key in struct tag supported.
   - Provides a RPC Server and Client Codec for net/rpc communication protocol.
   - Handle unique idiosyncrasies of codecs e.g.
-    - For messagepack, configure how ambiguities in handling raw bytes are resolved
-    - For messagepack, provide rpc server/client codec to support
-      msgpack-rpc protocol defined at:
-      https://github.com/msgpack-rpc/msgpack-rpc/blob/master/spec.md
-
+  - For messagepack, configure how ambiguities in handling raw bytes are resolved
+  - For messagepack, provide rpc server/client codec to support
+    msgpack-rpc protocol defined at:
+    https://github.com/msgpack-rpc/msgpack-rpc/blob/master/spec.md
 
 ## Extension Support
 
@@ -75,18 +74,19 @@ custom types.
 There are no restrictions on what the custom type can be. Some examples:
 
 ```go
-    type BisSet   []int
-    type BitSet64 uint64
-    type UUID     string
-    type MyStructWithUnexportedFields struct { a int; b bool; c []int; }
-    type GifImage struct { ... }
+
+	type BisSet   []int
+	type BitSet64 uint64
+	type UUID     string
+	type MyStructWithUnexportedFields struct { a int; b bool; c []int; }
+	type GifImage struct { ... }
+
 ```
 
 As an illustration, MyStructWithUnexportedFields would normally be encoded
 as an empty map because it has no exported fields, while UUID would be
 encoded as a string. However, with extension support, you can encode any of
 these however you like.
-
 
 ## Custom Encoding and Decoding
 
@@ -108,12 +108,10 @@ Consequently, if a type only defines one-half of the symmetry (e.g. it
 implements UnmarshalJSON() but not MarshalJSON() ), then that type doesn't
 satisfy the check and we will continue walking down the decision tree.
 
-
 ## RPC
 
 RPC Client and Server Codecs are implemented, so the codecs can be used with
 the standard net/rpc package.
-
 
 ## Usage
 
@@ -135,84 +133,92 @@ Consequently, the usage model is basically:
 Sample usage model:
 
 ```go
-    // create and configure Handle
-    var (
-      mh codec.MsgpackHandle
-    )
 
-    mh.MapType = reflect.TypeOf(map[string]interface{}(nil))
+	// create and configure Handle
+	var (
+	  mh codec.MsgpackHandle
+	)
 
-    // configure extensions
-    // e.g. for msgpack, define functions and enable Time support for tag 1
-    mh.SetExt(reflect.TypeOf(time.Time{}), 1, myExt)
+	mh.MapType = reflect.TypeOf(map[string]interface{}(nil))
 
-    // create and use decoder/encoder
-    var (
-      r io.Reader
-      w io.Writer
-      b []byte
-      h = &mh
-    )
+	// configure extensions
+	// e.g. for msgpack, define functions and enable Time support for tag 1
+	mh.SetExt(reflect.TypeOf(time.Time{}), 1, myExt)
 
-    dec = codec.NewDecoder(r, h)
-    dec = codec.NewDecoderBytes(b, h)
-    err = dec.Decode(&v)
+	// create and use decoder/encoder
+	var (
+	  r io.Reader
+	  w io.Writer
+	  b []byte
+	  h = &mh
+	)
 
-    enc = codec.NewEncoder(w, h)
-    enc = codec.NewEncoderBytes(&b, h)
-    err = enc.Encode(v)
+	dec = codec.NewDecoder(r, h)
+	dec = codec.NewDecoderBytes(b, h)
+	err = dec.Decode(&v)
 
-    //RPC Server
-    go func() {
-        for {
-            conn, err := listener.Accept()
-            rpcCodec := codec.GoRpc.ServerCodec(conn, h)
-            //OR rpcCodec := codec.MsgpackSpecRpc.ServerCodec(conn, h)
-            rpc.ServeCodec(rpcCodec)
-        }
-    }()
+	enc = codec.NewEncoder(w, h)
+	enc = codec.NewEncoderBytes(&b, h)
+	err = enc.Encode(v)
 
-    //RPC Communication (client side)
-    conn, err = net.Dial("tcp", "localhost:5555")
-    rpcCodec := codec.GoRpc.ClientCodec(conn, h)
-    //OR rpcCodec := codec.MsgpackSpecRpc.ClientCodec(conn, h)
-    client := rpc.NewClientWithCodec(rpcCodec)
+	//RPC Server
+	go func() {
+	    for {
+	        conn, err := listener.Accept()
+	        rpcCodec := codec.GoRpc.ServerCodec(conn, h)
+	        //OR rpcCodec := codec.MsgpackSpecRpc.ServerCodec(conn, h)
+	        rpc.ServeCodec(rpcCodec)
+	    }
+	}()
+
+	//RPC Communication (client side)
+	conn, err = net.Dial("tcp", "localhost:5555")
+	rpcCodec := codec.GoRpc.ClientCodec(conn, h)
+	//OR rpcCodec := codec.MsgpackSpecRpc.ClientCodec(conn, h)
+	client := rpc.NewClientWithCodec(rpcCodec)
+
 ```
-
 
 ## Running Tests
 
 To run tests, use the following:
 
 ```
-    go test
+
+	go test
+
 ```
 
 To run the full suite of tests, use the following:
 
 ```
-    go test -tags alltests -run Suite
+
+	go test -tags alltests -run Suite
+
 ```
 
 You can run the tag 'safe' to run tests or build in safe mode. e.g.
 
 ```
-    go test -tags safe -run Json
-    go test -tags "alltests safe" -run Suite
+
+	go test -tags safe -run Json
+	go test -tags "alltests safe" -run Suite
+
 ```
 
 ## Running Benchmarks
 
 ```
-    cd codec/bench
-    ./bench.sh -d
-    ./bench.sh -c
-    ./bench.sh -s
-    go test -bench . -benchmem -benchtime 1s
+
+	cd codec/bench
+	./bench.sh -d
+	./bench.sh -c
+	./bench.sh -s
+	go test -bench . -benchmem -benchtime 1s
+
 ```
 
 Please see http://github.com/hashicorp/go-codec-bench .
-
 
 ## Caveats
 

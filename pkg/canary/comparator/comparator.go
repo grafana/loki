@@ -427,7 +427,7 @@ func (c *Comparator) spotCheckEntries(currTime time.Time) {
 		func(_ int, t *time.Time) bool {
 			return t.Before(currTime.Add(-c.spotCheckMax))
 		},
-		func(_ int, t *time.Time) {
+		func(_ int, _ *time.Time) {
 
 		})
 
@@ -513,7 +513,7 @@ func (c *Comparator) pruneEntries(currentTime time.Time) {
 		func(_ int, t *time.Time) bool {
 			return t.Before(currentTime.Add(-c.wait))
 		},
-		func(_ int, t *time.Time) {
+		func(_ int, _ *time.Time) {
 
 		})
 }

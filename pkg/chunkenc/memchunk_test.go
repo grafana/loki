@@ -1539,7 +1539,7 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 		{
 			name:         "no matches - chunk without structured metadata",
 			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkThroughPlus1, false),
-			filterFunc: func(_ time.Time, in string, structuredMetadata ...labels.Label) bool {
+			filterFunc: func(_ time.Time, _ string, structuredMetadata ...labels.Label) bool {
 				return labels.Labels(structuredMetadata).Get(lblPing) == lblPong
 			},
 			nrMatching:    0,
@@ -1548,7 +1548,7 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 		{
 			name:         "structured metadata not matching",
 			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkThroughPlus1, true),
-			filterFunc: func(_ time.Time, in string, structuredMetadata ...labels.Label) bool {
+			filterFunc: func(_ time.Time, _ string, structuredMetadata ...labels.Label) bool {
 				return labels.Labels(structuredMetadata).Get("ding") == "dong"
 			},
 			nrMatching:    0,
@@ -1557,7 +1557,7 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 		{
 			name:         "some lines removed - with structured metadata",
 			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkFromPlus5, true),
-			filterFunc: func(_ time.Time, in string, structuredMetadata ...labels.Label) bool {
+			filterFunc: func(_ time.Time, _ string, structuredMetadata ...labels.Label) bool {
 				return labels.Labels(structuredMetadata).Get(lblPing) == lblPong
 			},
 			nrMatching:    5,

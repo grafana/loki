@@ -124,7 +124,7 @@ type astMapperware struct {
 func (ast *astMapperware) checkQuerySizeLimit(ctx context.Context, bytesPerShard uint64, notShardable bool) error {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	maxQuerierBytesReadCapture := func(id string) int { return ast.limits.MaxQuerierBytesRead(ctx, id) }
@@ -323,7 +323,7 @@ type shardSplitter struct {
 func (splitter *shardSplitter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 	minShardingLookback := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, splitter.limits.MinShardingLookback)
 	if minShardingLookback == 0 {
@@ -456,7 +456,7 @@ func (ss *seriesShardingHandler) Do(ctx context.Context, r queryrangebase.Reques
 
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 	requestResponses, err := queryrangebase.DoRequests(
 		ctx,

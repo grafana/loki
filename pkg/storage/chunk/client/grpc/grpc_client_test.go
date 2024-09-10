@@ -157,7 +157,7 @@ func TestGrpcStore(t *testing.T) {
 		{TableName: "table", HashValue: "foo"},
 	}
 	results := 0
-	err = storageClient.QueryPages(context.Background(), queries, func(query index.Query, batch index.ReadBatchResult) bool {
+	err = storageClient.QueryPages(context.Background(), queries, func(_ index.Query, batch index.ReadBatchResult) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results++

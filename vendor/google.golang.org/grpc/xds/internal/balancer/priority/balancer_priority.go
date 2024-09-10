@@ -83,9 +83,7 @@ var (
 // Caller must hold b.mu.
 func (b *priorityBalancer) syncPriority(childUpdating string) {
 	if b.inhibitPickerUpdates {
-		if b.logger.V(2) {
-			b.logger.Infof("Skipping update from child policy %q", childUpdating)
-		}
+		b.logger.Debugf("Skipping update from child policy %q", childUpdating)
 		return
 	}
 	for p, name := range b.priorities {
@@ -101,16 +99,12 @@ func (b *priorityBalancer) syncPriority(childUpdating string) {
 			(child.state.ConnectivityState == connectivity.Connecting && child.initTimer != nil) ||
 			p == len(b.priorities)-1 {
 			if b.childInUse != child.name || child.name == childUpdating {
-				if b.logger.V(2) {
-					b.logger.Infof("childInUse, childUpdating: %q, %q", b.childInUse, child.name)
-				}
+				b.logger.Debugf("childInUse, childUpdating: %q, %q", b.childInUse, child.name)
 				// If we switch children or the child in use just updated its
 				// picker, push the child's picker to the parent.
 				b.cc.UpdateState(child.state)
 			}
-			if b.logger.V(2) {
-				b.logger.Infof("Switching to (%q, %v) in syncPriority", child.name, p)
-			}
+			b.logger.Debugf("Switching to (%q, %v) in syncPriority", child.name, p)
 			b.switchToChild(child, p)
 			break
 		}

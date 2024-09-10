@@ -118,7 +118,7 @@ func Test_deriveEndpoints(t *testing.T) {
 		{
 			name:      "single endpoint",
 			endpoints: fmt.Sprintf("%s:6379", upstream),
-			lookup: func(host string) ([]string, error) {
+			lookup: func(_ string) ([]string, error) {
 				return []string{upstream}, nil
 			},
 			want:    []string{fmt.Sprintf("%s:6379", upstream)},
@@ -136,7 +136,7 @@ func Test_deriveEndpoints(t *testing.T) {
 		{
 			name:      "all loopback",
 			endpoints: fmt.Sprintf("%s:6379", lookback),
-			lookup: func(host string) ([]string, error) {
+			lookup: func(_ string) ([]string, error) {
 				return []string{"::1", "127.0.0.1"}, nil
 			},
 			want:    []string{fmt.Sprintf("%s:6379", lookback)},
@@ -145,7 +145,7 @@ func Test_deriveEndpoints(t *testing.T) {
 		{
 			name:      "non-loopback address resolving to multiple addresses",
 			endpoints: fmt.Sprintf("%s:6379", upstream),
-			lookup: func(host string) ([]string, error) {
+			lookup: func(_ string) ([]string, error) {
 				return []string{upstream, downstream}, nil
 			},
 			want:    []string{fmt.Sprintf("%s:6379", upstream), fmt.Sprintf("%s:6379", downstream)},
@@ -154,7 +154,7 @@ func Test_deriveEndpoints(t *testing.T) {
 		{
 			name:      "no such host",
 			endpoints: fmt.Sprintf("%s:6379", upstream),
-			lookup: func(host string) ([]string, error) {
+			lookup: func(_ string) ([]string, error) {
 				return nil, fmt.Errorf("no such host")
 			},
 			want:    nil,
