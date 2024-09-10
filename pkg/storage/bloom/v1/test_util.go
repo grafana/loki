@@ -62,7 +62,7 @@ func (s *SeriesWithLiteralBlooms) SeriesWithBlooms() SeriesWithBlooms {
 		Series: &SeriesWithMeta{
 			Series: *s.Series,
 			Meta: Meta{
-				Fields:  NewSetFromLiteral(Field("__all__")),
+				Fields:  NewSetFromLiteral[Field]("trace_id"),
 				Offsets: offsets,
 			},
 		},
