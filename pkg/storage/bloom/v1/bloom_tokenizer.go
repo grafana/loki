@@ -99,7 +99,7 @@ func (bt *BloomTokenizer) Populate(blooms v2iter.SizedIterator[*Bloom], chks v2i
 	for next = blooms.Next(); next && blooms.Remaining() > 0; next = blooms.Next() {
 		ch <- &BloomCreation{
 			Bloom: blooms.At(),
-			Stats: newIndexingStats(),
+			Info:  newIndexingInfo(),
 		}
 	}
 
@@ -119,7 +119,7 @@ func (bt *BloomTokenizer) Populate(blooms v2iter.SizedIterator[*Bloom], chks v2i
 		bloom = NewBloom()
 	}
 
-	stats := newIndexingStats()
+	info := newIndexingInfo()
 
 	for chks.Next() {
 		chk := chks.At()
@@ -127,15 +127,15 @@ func (bt *BloomTokenizer) Populate(blooms v2iter.SizedIterator[*Bloom], chks v2i
 
 		for {
 			full, chunkStats := bt.addChunkToBloom(bloom, chk.Ref, itr)
-			stats = stats.Merge(chunkStats)
+			info = info.merge(chunkStats)
 
 			// If a bloom is full, the chunk wasn't completely added
 			// so we'll submit this bloom, start a new one, and continue indexing
 			if full {
-				bt.sendBloom(ch, bloom, stats)
+				bt.sendBloom(ch, bloom, info)
 
 				// start a new bloom + reset stats
-				stats = newIndexingStats()
+				info = newIndexingInfo()
 				bloom = NewBloom()
 
 				// cache _MUST_ be cleared when a new bloom is created to ensure that all tokens from
@@ -154,11 +154,11 @@ func (bt *BloomTokenizer) Populate(blooms v2iter.SizedIterator[*Bloom], chks v2i
 	}
 
 	// Send the last bloom
-	bt.sendBloom(ch, bloom, stats)
+	bt.sendBloom(ch, bloom, info)
 	close(ch)
 }
 
-func (bt *BloomTokenizer) sendBloom(ch chan<- *BloomCreation, bloom *Bloom, stats IndexingStats) {
+func (bt *BloomTokenizer) sendBloom(ch chan<- *BloomCreation, bloom *Bloom, info indexingInfo) {
 	fillRatio := bloom.ScalableBloomFilter.FillRatio()
 	bt.metrics.hammingWeightRatio.Observe(fillRatio)
 	bt.metrics.estimatedCount.Observe(
@@ -168,7 +168,7 @@ func (bt *BloomTokenizer) sendBloom(ch chan<- *BloomCreation, bloom *Bloom, stat
 	bt.metrics.bloomsTotal.Inc()
 	ch <- &BloomCreation{
 		Bloom: bloom,
-		Stats: stats,
+		Info:  info,
 	}
 }
 
@@ -183,7 +183,7 @@ func prefixForChunkRef(chk ChunkRef) []byte {
 // addChunkToBloom adds the values from structured metadata from the entries of the given chunk to the given bloom.
 // addChunkToBloom returns true if the bloom has been completely filled, and may not have consumed the entire iterator.
 // addChunkToBloom must be called multiple times until returning false with new blooms until the iterator has been fully consumed.
-func (bt *BloomTokenizer) addChunkToBloom(bloom *Bloom, ref ChunkRef, entryIter v2iter.PeekIterator[push.Entry]) (bool, IndexingStats) {
+func (bt *BloomTokenizer) addChunkToBloom(bloom *Bloom, ref ChunkRef, entryIter v2iter.PeekIterator[push.Entry]) (bool, indexingInfo) {
 	var (
 		tokens            int
 		successfulInserts int
@@ -195,7 +195,7 @@ func (bt *BloomTokenizer) addChunkToBloom(bloom *Bloom, ref ChunkRef, entryIter 
 	)
 
 	// return values
-	full, stats := false, newIndexingStats()
+	full, info := false, newIndexingInfo()
 
 	tokenizer := NewStructuredMetadataTokenizer(string(prefixForChunkRef(ref)))
 
@@ -203,8 +203,8 @@ func (bt *BloomTokenizer) addChunkToBloom(bloom *Bloom, ref ChunkRef, entryIter 
 outer:
 	for entry, ok := entryIter.Peek(); ok; entry, ok = entryIter.Peek() {
 		for _, kv := range entry.StructuredMetadata {
-			stats.SourceBytes += len(kv.Name) + len(kv.Value)
-			stats.Fields.Add(Field(kv.Name))
+			info.sourceBytes += len(kv.Name) + len(kv.Value)
+			info.indexedFields.Add(Field(kv.Name))
 
 			tokenItr := tokenizer.Tokens(kv)
 			for tokenItr.Next() {
@@ -257,7 +257,7 @@ outer:
 	bt.metrics.insertsTotal.WithLabelValues(collisionTypeFalse).Add(float64(successfulInserts))
 	bt.metrics.insertsTotal.WithLabelValues(collisionTypeCache).Add(float64(cachedInserts))
 	bt.metrics.insertsTotal.WithLabelValues(collisionTypeTrue).Add(float64(collisionInserts))
-	bt.metrics.sourceBytesAdded.Add(float64(stats.SourceBytes))
+	bt.metrics.sourceBytesAdded.Add(float64(info.sourceBytes))
 
-	return full, stats
+	return full, info
 }

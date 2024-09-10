@@ -151,27 +151,28 @@ func (w *PageWriter) writePage(writer io.Writer, pool chunkenc.WriterPool, crc32
 	return decompressedLen, w.enc.Len(), nil
 }
 
-type IndexingStats struct {
-	SourceBytes int
-	Fields      Set[Field]
+// indexingInfo is a datastructure that holds information about the indexing operation.
+type indexingInfo struct {
+	sourceBytes   int
+	indexedFields Set[Field]
 }
 
-func newIndexingStats() IndexingStats {
-	return IndexingStats{
-		SourceBytes: 0,
-		Fields:      NewSet[Field](16),
+func newIndexingInfo() indexingInfo {
+	return indexingInfo{
+		sourceBytes:   0,
+		indexedFields: NewSet[Field](16),
 	}
 }
 
-func (s IndexingStats) Merge(other IndexingStats) IndexingStats {
-	s.SourceBytes += other.SourceBytes
-	s.Fields.Union(other.Fields)
+func (s indexingInfo) merge(other indexingInfo) indexingInfo {
+	s.sourceBytes += other.sourceBytes
+	s.indexedFields.Union(other.indexedFields)
 	return s
 }
 
 type BloomCreation struct {
 	Bloom *Bloom
-	Stats IndexingStats
+	Info  indexingInfo
 	Err   error
 }
 
@@ -279,7 +280,7 @@ func (mb *MergeBuilder) processNextSeries(
 		offsets           []BloomOffset
 		chunksToAdd                                  = nextInStore.Chunks
 		preExistingBlooms iter.SizedIterator[*Bloom] = iter.NewEmptyIter[*Bloom]()
-		stats                                        = newIndexingStats()
+		info                                         = newIndexingInfo()
 	)
 
 	if nextInBlocks != nil && nextInBlocks.Series.Fingerprint == nextInStore.Fingerprint {
@@ -297,24 +298,24 @@ func (mb *MergeBuilder) processNextSeries(
 
 	for creation := range ch {
 		if creation.Err != nil {
-			return nil, stats.SourceBytes, 0, false, false, errors.Wrap(creation.Err, "populating bloom")
+			return nil, info.sourceBytes, 0, false, false, errors.Wrap(creation.Err, "populating bloom")
 		}
 		offset, err := builder.AddBloom(creation.Bloom)
 		if err != nil {
-			return nil, stats.SourceBytes, 0, false, false, errors.Wrapf(
+			return nil, info.sourceBytes, 0, false, false, errors.Wrapf(
 				err, "adding bloom to block for fp (%s)", nextInStore.Fingerprint,
 			)
 		}
 		offsets = append(offsets, offset)
-		stats.Merge(creation.Stats)
+		info.merge(creation.Info)
 	}
 
-	done, err := builder.AddSeries(*nextInStore, offsets, stats.Fields)
+	done, err := builder.AddSeries(*nextInStore, offsets, info.indexedFields)
 	if err != nil {
-		return nil, stats.SourceBytes, 0, false, false, errors.Wrap(err, "committing series")
+		return nil, info.sourceBytes, 0, false, false, errors.Wrap(err, "committing series")
 	}
 
-	return nextInBlocks, stats.SourceBytes, chunksIndexed + chunksCopied, blocksFinished, done, nil
+	return nextInBlocks, info.sourceBytes, chunksIndexed + chunksCopied, blocksFinished, done, nil
 }
 
 func (mb *MergeBuilder) Build(builder *BlockBuilder) (checksum uint32, totalBytes int, err error) {
