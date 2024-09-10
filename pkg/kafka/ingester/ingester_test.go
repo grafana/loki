@@ -27,7 +27,9 @@ func TestPreparePartitionDownscaleHandler(t *testing.T) {
 	// start ingester.
 	storage, err := objstore.NewTestStorage(t)
 	require.NoError(t, err)
-	ing, err := New(cfg, storage, NewTestMetastore(), gokitlog.NewNopLogger(), "test", prometheus.NewRegistry())
+	ing, err := New(cfg,
+		NewConsumerFactory(NewTestMetastore(), storage, cfg.FlushInterval, cfg.FlushSize, gokitlog.NewNopLogger(), prometheus.NewRegistry()),
+		gokitlog.NewNopLogger(), "test", prometheus.NewRegistry())
 	require.NoError(t, err)
 	err = services.StartAndAwaitRunning(context.Background(), ing)
 	require.NoError(t, err)

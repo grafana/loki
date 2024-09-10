@@ -33,8 +33,9 @@ const (
 )
 
 var (
-	ingesterIDRegexp     = regexp.MustCompile("-([0-9]+)$")
-	defaultFlushInterval = 15 * time.Second
+	ingesterIDRegexp           = regexp.MustCompile("-([0-9]+)$")
+	defaultFlushInterval       = 15 * time.Second
+	defaultFlushSize     int64 = 300 << 20 // 300 MB
 )
 
 // Config for an ingester.
@@ -43,6 +44,7 @@ type Config struct {
 	LifecyclerConfig    ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the ingester will operate and where it will register for discovery."`
 	ShutdownMarkerPath  string                `yaml:"shutdown_marker_path"`
 	FlushInterval       time.Duration         `yaml:"flush_interval" doc:"description=The interval at which the ingester will flush and commit offsets to Kafka. If not set, the default flush interval will be used."`
+	FlushSize           int64                 `yaml:"flush_size" doc:"description=The size at which the ingester will flush and commit offsets to Kafka. If not set, the default flush size will be used."`
 	PartitionRingConfig partitionring.Config  `yaml:"partition_ring" category:"experimental"`
 	KafkaConfig         kafka.Config          `yaml:"-"`
 }
@@ -54,6 +56,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.ShutdownMarkerPath, "kafka-ingester.shutdown-marker-path", "", "Path where the shutdown marker file is stored. If not set and common.path_prefix is set then common.path_prefix will be used.")
 	f.BoolVar(&cfg.Enabled, "kafka-ingester.enabled", false, "Whether the Kafka-based ingester path is enabled")
 	f.DurationVar(&cfg.FlushInterval, "kafka-ingester.flush-interval", defaultFlushInterval, "The interval at which the ingester will flush and commit offsets to Kafka. If not set, the default flush interval will be used.")
+	f.Int64Var(&cfg.FlushSize, "kafka-ingester.flush-size", defaultFlushSize, "The size at which the ingester will flush and commit offsets to Kafka. If not set, the default flush size will be used.")
 }
 
 func (cfg *Config) Validate() error {
@@ -100,18 +103,13 @@ type Ingester struct {
 
 // New makes a new Ingester.
 func New(cfg Config,
-	objstore ObjectStorage,
-	metastoreClient MetadataStore,
+	consumerFactory ConsumerFactory,
 	logger log.Logger,
 	metricsNamespace string,
 	registerer prometheus.Registerer,
 ) (*Ingester, error) {
 	metrics := newIngesterMetrics(registerer)
 
-	consumer, err := newConsumer(metastoreClient, objstore, logger, registerer)
-	if err != nil {
-		return nil, err
-	}
 	ingesterPartitionID, err := extractIngesterPartitionID(cfg.LifecyclerConfig.ID)
 	if err != nil {
 		return nil, fmt.Errorf("calculating ingester partition ID: %w", err)
@@ -144,7 +142,7 @@ func New(cfg Config,
 	if err != nil {
 		return nil, err
 	}
-	i.partitionReader, err = NewPartitionReader(cfg.KafkaConfig, ingesterPartitionID, cfg.LifecyclerConfig.ID, cfg.FlushInterval, consumer, logger, registerer)
+	i.partitionReader, err = NewPartitionReader(cfg.KafkaConfig, ingesterPartitionID, cfg.LifecyclerConfig.ID, consumerFactory, logger, registerer)
 	if err != nil {
 		return nil, err
 	}

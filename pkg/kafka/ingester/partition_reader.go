@@ -8,7 +8,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
@@ -24,31 +23,13 @@ import (
 // PartitionReader is responsible for reading data from a specific Kafka partition
 // and passing it to the consumer for processing. It is a core component of the
 // Loki ingester's Kafka-based ingestion pipeline.
-//
-// Key features:
-// 1. Reads data from a single Kafka partition.
-// 2. Periodically flushes processed data and commits offsets.
-// 3. Handles backpressure and retries on consumer errors.
-//
-// Flushing and Committing:
-// The PartitionReader implements a periodic flush and commit mechanism:
-//   - Every 10 seconds, it calls the consumer's Flush method to ensure all
-//     processed data is persisted.
-//   - After a successful flush, it commits the last processed offset to Kafka.
-//
-// This approach ensures that data is regularly persisted and that the ingester
-// can resume from the last committed offset in case of a restart or failure.
-//
-// Note: The flush interval is currently hardcoded but may be made configurable
-// in the future to allow fine-tuning based on specific deployment needs.
 type PartitionReader struct {
 	services.Service
 
 	kafkaCfg            kafka.Config
 	partitionID         int32
 	consumerGroup       string
-	flushInterval       time.Duration
-	consumer            Consumer
+	consumerFactory     ConsumerFactory
 	committer           *partitionCommitter
 	lastProcessedOffset int64
 
@@ -63,11 +44,13 @@ type record struct {
 	ctx      context.Context
 	tenantID string
 	content  []byte
+	offset   int64
 }
 
+type ConsumerFactory func(committer Committer) (Consumer, error)
+
 type Consumer interface {
-	Consume(ctx context.Context, partitionID int32, records []record) error
-	Flush(ctx context.Context) error
+	Start(ctx context.Context, recordsChan <-chan []record) func()
 }
 
 // NewPartitionReader creates and initializes a new PartitionReader.
@@ -76,8 +59,7 @@ func NewPartitionReader(
 	kafkaCfg kafka.Config,
 	partitionID int32,
 	instanceID string,
-	flushInterval time.Duration,
-	consumer Consumer,
+	consumerFactory ConsumerFactory,
 	logger log.Logger,
 	reg prometheus.Registerer,
 ) (*PartitionReader, error) {
@@ -85,12 +67,11 @@ func NewPartitionReader(
 		kafkaCfg:            kafkaCfg,
 		partitionID:         partitionID,
 		consumerGroup:       kafkaCfg.GetConsumerGroup(instanceID, partitionID),
-		flushInterval:       flushInterval,
-		consumer:            consumer,
 		logger:              logger,
 		metrics:             newReaderMetrics(reg),
 		reg:                 reg,
 		lastProcessedOffset: -1,
+		consumerFactory:     consumerFactory,
 	}
 	r.Service = services.NewBasicService(r.start, r.run, nil)
 	return r, nil
@@ -114,163 +95,37 @@ func (p *PartitionReader) start(_ context.Context) error {
 }
 
 // run is the main loop of the PartitionReader. It continuously fetches and processes
-// data from Kafka, and periodically flushes and commits offsets.
+// data from Kafka, and send it to the consumer.
 func (p *PartitionReader) run(ctx context.Context) error {
 	level.Info(p.logger).Log("msg", "starting partition reader", "partition", p.partitionID, "consumer_group", p.consumerGroup)
-
-	flushTicker := time.NewTicker(p.flushInterval)
-	defer flushTicker.Stop()
-
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	fetchesChan := p.startFetchLoop(ctx)
-	return p.loop(ctx, flushTicker.C, fetchesChan)
-}
 
-func (p *PartitionReader) loop(ctx context.Context, tickerChan <-chan time.Time, fetchesChan <-chan kgo.Fetches) error {
-	for {
-		select {
-		case <-tickerChan:
-			err := p.flushAndCommit(context.Background())
-			if err != nil {
-				return err
-			}
-		case <-ctx.Done():
-			level.Info(p.logger).Log("msg", "shutting down partition reader", "partition", p.partitionID, "consumer_group", p.consumerGroup)
-			err := p.flushAndCommit(context.Background())
-			if err != nil {
-				return err
-			}
-			return nil
-		case fetches := <-fetchesChan:
-			err := p.processNextFetches(ctx, fetches)
-			if err != nil {
-				if !errors.Is(err, context.Canceled) {
-					// Fail the whole service in case of a non-recoverable error.
-					return err
-				}
-			}
-		}
+	consumer, err := p.consumerFactory(p.committer)
+	if err != nil {
+		return errors.Wrap(err, "creating consumer")
 	}
+
+	recordsChan := p.startFetchLoop(ctx)
+	wait := consumer.Start(ctx, recordsChan)
+
+	wait()
+	return nil
 }
 
-func (p *PartitionReader) startFetchLoop(ctx context.Context) <-chan kgo.Fetches {
-	fetchesChan := make(chan kgo.Fetches)
+func (p *PartitionReader) startFetchLoop(ctx context.Context) <-chan []record {
+	records := make(chan []record)
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			default:
-				fetchesChan <- p.pollFetches(ctx)
+				records <- p.poll(ctx)
 			}
 		}
 	}()
-	return fetchesChan
-}
-
-// flushAndCommit flushes the consumer and commits the last fetched offset.
-// It's called periodically and when the PartitionReader is stopping.
-func (p *PartitionReader) flushAndCommit(ctx context.Context) error {
-	if p.lastProcessedOffset == -1 {
-		return nil
-	}
-	return p.retryWithBackoff(ctx, backoff.Config{
-		MinBackoff: 250 * time.Millisecond,
-		MaxBackoff: 10 * time.Second,
-		MaxRetries: 0, // retry forever
-	}, func(_ *backoff.Backoff) error {
-		err := p.consumer.Flush(ctx)
-		if err != nil {
-			level.Error(p.logger).Log("msg", "encountered error while flushing", "err", err)
-			return err
-		}
-		if err := p.committer.commit(ctx, p.lastProcessedOffset); err != nil {
-			level.Error(p.logger).Log("msg", "encountered error while committing", "err", err)
-			return err
-		}
-		p.lastProcessedOffset = -1
-		return nil
-	})
-}
-
-// getLastFetchOffset retrieves the last offset from the provided fetches.
-func (p *PartitionReader) getLastFetchOffset(fetches kgo.Fetches) int64 {
-	lastOffset := int64(0)
-	fetches.EachPartition(func(partition kgo.FetchTopicPartition) {
-		if partition.Partition != p.partitionID {
-			level.Error(p.logger).Log("msg", "asked to commit wrong partition", "partition", partition.Partition, "expected_partition", p.partitionID)
-			return
-		}
-		lastOffset = partition.Records[len(partition.Records)-1].Offset
-	})
-	return lastOffset
-}
-
-// processNextFetches fetches the next batch of records from Kafka, processes them,
-// and updates metrics. It's the core data processing function of the PartitionReader.
-func (p *PartitionReader) processNextFetches(ctx context.Context, fetches kgo.Fetches) error {
-	p.recordFetchesMetrics(fetches)
-	p.logFetchErrors(fetches)
-	fetches = filterOutErrFetches(fetches)
-
-	err := p.consumeFetches(ctx, fetches)
-	if err != nil {
-		return fmt.Errorf("consume %d records: %w", fetches.NumRecords(), err)
-	}
-	p.lastProcessedOffset = p.getLastFetchOffset(fetches)
-	return nil
-}
-
-// consumeFetches processes the fetched records by passing them to the consumer.
-// It implements a backoff retry mechanism for handling temporary failures.
-func (p *PartitionReader) consumeFetches(ctx context.Context, fetches kgo.Fetches) error {
-	if fetches.NumRecords() == 0 {
-		return nil
-	}
-	records := make([]record, 0, fetches.NumRecords())
-
-	var (
-		minOffset = math.MaxInt
-		maxOffset = 0
-	)
-	fetches.EachRecord(func(rec *kgo.Record) {
-		minOffset = min(minOffset, int(rec.Offset))
-		maxOffset = max(maxOffset, int(rec.Offset))
-		records = append(records, record{
-			// This context carries the tracing data for this individual record;
-			// kotel populates this data when it fetches the messages.
-			ctx:      rec.Context,
-			tenantID: string(rec.Key),
-			content:  rec.Value,
-		})
-	})
-	return p.retryWithBackoff(ctx, backoff.Config{
-		MinBackoff: 250 * time.Millisecond,
-		MaxBackoff: 2 * time.Second,
-		MaxRetries: 0, // retry forever
-	}, func(boff *backoff.Backoff) error {
-		// If the PartitionReader is stopping and the ctx was cancelled, we don't want to interrupt the in-flight
-		// processing midway. Instead, we let it finish, assuming it'll succeed.
-		// If the processing fails while stopping, we log the error and let the backoff stop and bail out.
-		// There is an edge-case when the processing gets stuck and doesn't let the stopping process. In such a case,
-		// we expect the infrastructure (e.g. k8s) to eventually kill the process.
-		consumeCtx := context.WithoutCancel(ctx)
-		consumeStart := time.Now()
-		err := p.consumer.Consume(consumeCtx, p.partitionID, records)
-		p.metrics.consumeLatency.Observe(time.Since(consumeStart).Seconds())
-		if err == nil {
-			return nil
-		}
-		level.Error(p.logger).Log(
-			"msg", "encountered error while ingesting data from Kafka; should retry",
-			"err", err,
-			"record_min_offset", minOffset,
-			"record_max_offset", maxOffset,
-			"num_retries", boff.NumRetries(),
-		)
-		return err
-	})
+	return records
 }
 
 // logFetchErrors logs any errors encountered during the fetch operation.
@@ -293,11 +148,30 @@ func (p *PartitionReader) logFetchErrors(fetches kgo.Fetches) {
 }
 
 // pollFetches retrieves the next batch of records from Kafka and measures the fetch duration.
-func (p *PartitionReader) pollFetches(ctx context.Context) kgo.Fetches {
+func (p *PartitionReader) poll(ctx context.Context) []record {
 	defer func(start time.Time) {
 		p.metrics.fetchWaitDuration.Observe(time.Since(start).Seconds())
 	}(time.Now())
-	return p.client.PollFetches(ctx)
+	fetches := p.client.PollFetches(ctx)
+	p.recordFetchesMetrics(fetches)
+	p.logFetchErrors(fetches)
+	fetches = filterOutErrFetches(fetches)
+	if fetches.NumRecords() == 0 {
+		return nil
+	}
+	records := make([]record, 0, fetches.NumRecords())
+	fetches.EachRecord(func(rec *kgo.Record) {
+		records = append(records, record{
+			// This context carries the tracing data for this individual record;
+			// kotel populates this data when it fetches the messages.
+			ctx:      rec.Context,
+			tenantID: string(rec.Key),
+			content:  rec.Value,
+			offset:   rec.Offset,
+		})
+	})
+	p.lastProcessedOffset = records[len(records)-1].offset
+	return records
 }
 
 // recordFetchesMetrics updates various metrics related to the fetch operation.
@@ -306,7 +180,6 @@ func (p *PartitionReader) recordFetchesMetrics(fetches kgo.Fetches) {
 		now        = time.Now()
 		numRecords = 0
 	)
-
 	fetches.EachRecord(func(record *kgo.Record) {
 		numRecords++
 		delay := now.Sub(record.Timestamp).Seconds()
@@ -319,22 +192,6 @@ func (p *PartitionReader) recordFetchesMetrics(fetches kgo.Fetches) {
 
 	p.metrics.fetchesTotal.Add(float64(len(fetches)))
 	p.metrics.recordsPerFetch.Observe(float64(numRecords))
-}
-
-func (p *PartitionReader) retryWithBackoff(ctx context.Context, cfg backoff.Config, fn func(boff *backoff.Backoff) error) error {
-	boff := backoff.New(ctx, cfg)
-	var err error
-	for boff.Ongoing() {
-		err = fn(boff)
-		if err == nil {
-			return nil
-		}
-		boff.Wait()
-	}
-	if err != nil {
-		return err
-	}
-	return boff.ErrCause()
 }
 
 // filterOutErrFetches removes any fetches that resulted in errors from the provided slice.
@@ -407,11 +264,6 @@ func newReaderMetrics(reg prometheus.Registerer) readerMetrics {
 		fetchesTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_ingest_storage_reader_fetches_total",
 			Help: "Total number of Kafka fetches received by the consumer.",
-		}),
-		consumeLatency: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Name:                        "loki_ingest_storage_reader_records_batch_process_duration_seconds",
-			Help:                        "How long a consumer spent processing a batch of records from Kafka.",
-			NativeHistogramBucketFactor: 1.1,
 		}),
 	}
 }

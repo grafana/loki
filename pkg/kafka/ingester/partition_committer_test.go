@@ -43,7 +43,7 @@ func TestPartitionCommitter(t *testing.T) {
 	defer cancel()
 
 	testOffset := int64(100)
-	err = committer.commit(ctx, testOffset)
+	err = committer.Commit(ctx, testOffset)
 	require.NoError(t, err)
 
 	// Verify metrics
@@ -60,7 +60,7 @@ func TestPartitionCommitter(t *testing.T) {
 
 	// Test committing a new offset
 	newTestOffset := int64(200)
-	err = committer.commit(ctx, newTestOffset)
+	err = committer.Commit(ctx, newTestOffset)
 	require.NoError(t, err)
 
 	// Verify updated metrics

@@ -73,7 +73,7 @@ func newPartitionCommitter(kafkaCfg kafka.Config, admClient *kadm.Client, partit
 
 // commit attempts to commit the given offset to Kafka for the partition this committer is responsible for.
 // It updates relevant metrics and logs the result of the commit operation.
-func (r *partitionCommitter) commit(ctx context.Context, offset int64) (returnErr error) {
+func (r *partitionCommitter) Commit(ctx context.Context, offset int64) (returnErr error) {
 	startTime := time.Now()
 	r.commitRequestsTotal.Inc()
 

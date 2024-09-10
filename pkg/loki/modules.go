@@ -668,7 +668,8 @@ func (t *Loki) initKafkaIngester() (_ services.Service, err error) {
 		return nil, err
 	}
 
-	t.kafkaIngester, err = ingesterkafka.New(t.Cfg.KafkaIngester, storage, t.MetastoreClient, logger, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer)
+	consumerFactory := ingesterkafka.NewConsumerFactory(t.MetastoreClient, storage, t.Cfg.KafkaIngester.FlushInterval, t.Cfg.KafkaIngester.FlushSize, logger, prometheus.DefaultRegisterer)
+	t.kafkaIngester, err = ingesterkafka.New(t.Cfg.KafkaIngester, consumerFactory, logger, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}

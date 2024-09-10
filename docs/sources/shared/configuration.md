@@ -1234,6 +1234,11 @@ kafka_ingester:
   # CLI flag: -kafka-ingester.flush-interval
   [flush_interval: <duration> | default = 15s]
 
+  # The size at which the ingester will flush and commit offsets to Kafka. If
+  # not set, the default flush size will be used.
+  # CLI flag: -kafka-ingester.flush-size
+  [flush_size: <int> | default = 314572800]
+
   partition_ring:
     # The key-value store used to share the hash ring across multiple instances.
     # This option needs be set on ingesters, distributors, queriers, and rulers
