@@ -1113,13 +1113,16 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 			level.Warn(q.logger).Log("msg", "failed to marshal hyperloglog sketch", "err", err)
 			continue
 		}
-
+		p := v.parsers
+		if len(p) == 0 {
+			p = nil
+		}
 		fields[fieldCount] = &logproto.DetectedField{
 			Label:       k,
 			Type:        v.fieldType,
 			Cardinality: v.Estimate(),
 			Sketch:      sketch,
-			Parsers:     v.parsers,
+			Parsers:     p,
 		}
 
 		fieldCount++
