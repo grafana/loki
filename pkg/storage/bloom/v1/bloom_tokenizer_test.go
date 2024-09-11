@@ -100,12 +100,15 @@ func TestTokenizerPopulate(t *testing.T) {
 	var testLine = "this is a log line"
 	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics, logger.NewNopLogger())
 
-	sbf := filter.NewScalableBloomFilter(1024, 0.01, 0.8)
-
+	metadata := push.LabelsAdapter{
+		{Name: "pod", Value: "loki-1"},
+		{Name: "trace_id", Value: "3bef3c91643bde73"},
+	}
 	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
 	_, _ = memChunk.Append(&push.Entry{
-		Timestamp: time.Unix(0, 1),
-		Line:      testLine,
+		Timestamp:          time.Unix(0, 1),
+		Line:               testLine,
+		StructuredMetadata: metadata,
 	})
 	itr, err := memChunk.Iterator(
 		context.Background(),
@@ -116,24 +119,25 @@ func TestTokenizerPopulate(t *testing.T) {
 	)
 	require.Nil(t, err)
 
-	bloom := Bloom{
-		ScalableBloomFilter: *sbf,
-	}
+	ref := ChunkRef{}
 
+	bloom := NewBloom()
 	blooms, err := populateAndConsumeBloom(
 		bt,
-		v2.NewSliceIter([]*Bloom{&bloom}),
-		v2.NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{},
-			Itr: itr}}),
+		v2.NewSliceIter([]*Bloom{bloom}),
+		v2.NewSliceIter([]ChunkRefWithIter{{Ref: ref, Itr: itr}}),
 	)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(blooms))
 
-	tokenizer := NewNGramTokenizer(DefaultNGramLength, DefaultNGramSkip)
-	toks := tokenizer.Tokens(testLine)
-	for toks.Next() {
-		token := toks.At()
-		require.True(t, blooms[0].Test(token))
+	tokenizer := NewStructuredMetadataTokenizer(string(prefixForChunkRef(ref)))
+
+	for _, kv := range metadata {
+		tokens := tokenizer.Tokens(kv)
+		for tokens.Next() {
+			token := tokens.At()
+			require.True(t, blooms[0].Test([]byte(token)))
+		}
 	}
 }
 
@@ -141,10 +145,15 @@ func TestBloomTokenizerPopulateWithoutPreexistingBloom(t *testing.T) {
 	var testLine = "this is a log line"
 	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics, logger.NewNopLogger())
 
+	metadata := push.LabelsAdapter{
+		{Name: "pod", Value: "loki-1"},
+		{Name: "trace_id", Value: "3bef3c91643bde73"},
+	}
 	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
 	_, _ = memChunk.Append(&push.Entry{
-		Timestamp: time.Unix(0, 1),
-		Line:      testLine,
+		Timestamp:          time.Unix(0, 1),
+		Line:               testLine,
+		StructuredMetadata: metadata,
 	})
 	itr, err := memChunk.Iterator(
 		context.Background(),
@@ -155,30 +164,34 @@ func TestBloomTokenizerPopulateWithoutPreexistingBloom(t *testing.T) {
 	)
 	require.Nil(t, err)
 
+	ref := ChunkRef{}
+
 	blooms, err := populateAndConsumeBloom(
 		bt,
 		v2.NewEmptyIter[*Bloom](),
-		v2.NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{},
-			Itr: itr}}),
+		v2.NewSliceIter([]ChunkRefWithIter{{Ref: ref, Itr: itr}}),
 	)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(blooms))
 
-	tokenizer := NewNGramTokenizer(DefaultNGramLength, DefaultNGramSkip)
-	toks := tokenizer.Tokens(testLine)
-	for toks.Next() {
-		token := toks.At()
-		require.True(t, blooms[0].Test(token))
-	}
+	tokenizer := NewStructuredMetadataTokenizer(string(prefixForChunkRef(ref)))
 
+	for _, kv := range metadata {
+		tokens := tokenizer.Tokens(kv)
+		for tokens.Next() {
+			token := tokens.At()
+			require.True(t, blooms[0].Test([]byte(token)))
+		}
+	}
 }
 
-func chunkRefItrFromLines(lines ...string) (iter.EntryIterator, error) {
+func chunkRefItrFromMetadata(metadata ...push.LabelsAdapter) (iter.EntryIterator, error) {
 	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
-	for i, line := range lines {
+	for i, md := range metadata {
 		if _, err := memChunk.Append(&push.Entry{
-			Timestamp: time.Unix(0, int64(i)),
-			Line:      line,
+			Timestamp:          time.Unix(0, int64(i)),
+			Line:               "line content",
+			StructuredMetadata: md,
 		}); err != nil {
 			return nil, err
 		}
@@ -195,7 +208,7 @@ func chunkRefItrFromLines(lines ...string) (iter.EntryIterator, error) {
 }
 
 func randomStr(ln int) string {
-	rng := rand.New(rand.NewSource(0))
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	charset := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_!@#$%^&*() ")
 
 	res := make([]rune, ln)
@@ -206,24 +219,20 @@ func randomStr(ln int) string {
 }
 
 func TestTokenizerPopulateWontExceedMaxSize(t *testing.T) {
-	maxSize := 2048
+	maxSize := 4 << 10
 	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, maxSize, NewMetrics(nil), logger.NewNopLogger())
 	ch := make(chan *BloomCreation)
-	line := randomStr(10e3)
-	itr, err := chunkRefItrFromLines(line)
+
+	metadata := make([]push.LabelsAdapter, 0, 4<<10)
+	for i := 0; i < cap(metadata); i++ {
+		metadata = append(metadata, push.LabelsAdapter{{Name: "trace_id", Value: randomStr(12)}})
+	}
+
+	itr, err := chunkRefItrFromMetadata(metadata...)
 	require.NoError(t, err)
 	go bt.Populate(
-		v2.NewSliceIter([]*Bloom{
-			{
-				*filter.NewScalableBloomFilter(1024, 0.01, 0.8),
-			},
-		}),
-		v2.NewSliceIter([]ChunkRefWithIter{
-			{
-				Ref: ChunkRef{},
-				Itr: itr,
-			},
-		}),
+		v2.NewEmptyIter[*Bloom](),
+		v2.NewSliceIter([]ChunkRefWithIter{{Ref: ChunkRef{}, Itr: itr}}),
 		ch,
 	)
 
@@ -231,10 +240,11 @@ func TestTokenizerPopulateWontExceedMaxSize(t *testing.T) {
 	for created := range ch {
 		ct++
 		capacity := created.Bloom.ScalableBloomFilter.Capacity() / 8
+		t.Log(ct, int(capacity), maxSize)
 		require.Less(t, int(capacity), maxSize)
 	}
 	// ensure we created two bloom filters from this dataset
-	require.Equal(t, 2, ct)
+	require.Greater(t, ct, 2)
 }
 
 func populateAndConsumeBloom(
@@ -292,21 +302,19 @@ func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 
 func TestTokenizerClearsCacheBetweenPopulateCalls(t *testing.T) {
 	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, NewMetrics(nil), logger.NewNopLogger())
-	line := "foobarbazz"
+	md := push.LabelsAdapter{
+		{Name: "trace_id", Value: "3bef3c91643bde73"},
+	}
 	var blooms []*Bloom
+	ref := ChunkRef{}
 
 	for i := 0; i < 2; i++ {
 		ch := make(chan *BloomCreation)
-		itr, err := chunkRefItrFromLines(line)
+		itr, err := chunkRefItrFromMetadata(md)
 		require.NoError(t, err)
 		go bt.Populate(
 			v2.NewEmptyIter[*Bloom](),
-			v2.NewSliceIter([]ChunkRefWithIter{
-				{
-					Ref: ChunkRef{},
-					Itr: itr,
-				},
-			}),
+			v2.NewSliceIter([]ChunkRefWithIter{{Ref: ref, Itr: itr}}),
 			ch,
 		)
 		var ct int
@@ -319,11 +327,12 @@ func TestTokenizerClearsCacheBetweenPopulateCalls(t *testing.T) {
 
 	}
 
+	tokenizer := NewStructuredMetadataTokenizer(string(prefixForChunkRef(ref)))
 	for _, bloom := range blooms {
-		toks := bt.lineTokenizer.Tokens(line)
+		toks := tokenizer.Tokens(md[0])
 		for toks.Next() {
 			token := toks.At()
-			require.True(t, bloom.Test(token))
+			require.True(t, bloom.Test([]byte(token)))
 		}
 		require.NoError(t, toks.Err())
 	}
