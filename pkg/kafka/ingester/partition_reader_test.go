@@ -56,7 +56,7 @@ func TestPartitionReader_BasicFunctionality(t *testing.T) {
 	_, kafkaCfg := testkafka.CreateCluster(t, 1, "test-topic")
 	consumer := newMockConsumer()
 
-	consumerFactory := func(committer Committer) (Consumer, error) {
+	consumerFactory := func(_ Committer) (Consumer, error) {
 		return consumer, nil
 	}
 

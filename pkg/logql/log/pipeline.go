@@ -2,7 +2,6 @@ package log
 
 import (
 	"context"
-	"reflect"
 	"sync"
 	"unsafe"
 
@@ -383,11 +382,7 @@ func ReduceStages(stages []Stage) Stage {
 }
 
 func unsafeGetBytes(s string) []byte {
-	var buf []byte
-	p := unsafe.Pointer(&buf)
-	*(*string)(p) = s
-	(*reflect.SliceHeader)(p).Cap = len(s)
-	return buf
+	return unsafe.Slice(unsafe.StringData(s), len(s))
 }
 
 func unsafeGetString(buf []byte) string {

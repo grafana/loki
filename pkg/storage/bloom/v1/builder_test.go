@@ -356,7 +356,7 @@ func TestMergeBuilderFingerprintCollision(t *testing.T) {
 	}
 
 	// We're not testing the ability to extend a bloom in this test
-	pop := func(s *Series, _ iter.SizedIterator[*Bloom], _ ChunkRefs, ch chan *BloomCreation) {
+	pop := func(_ *Series, _ iter.SizedIterator[*Bloom], _ ChunkRefs, ch chan *BloomCreation) {
 		bloom := NewBloom()
 		stats := indexingInfo{
 			sourceBytes:   int(bloom.Capacity()) / 8,
