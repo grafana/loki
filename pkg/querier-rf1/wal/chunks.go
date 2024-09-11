@@ -6,6 +6,7 @@ import (
 	"io"
 	"sort"
 
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 
@@ -19,7 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/push"
 )
 
-const defaultBatchSize = 16
+const defaultBatchSize = 64
 
 type ChunkData struct {
 	meta   *chunks.Meta
@@ -280,44 +281,115 @@ func isOverlapping(first, second ChunkData, direction logproto.Direction) bool {
 	return first.meta.MaxTime >= second.meta.MinTime
 }
 
+type fetchPlan struct {
+	start  int
+	length int
+	buf    []byte // Will be filled in later
+}
+
 func downloadChunks(ctx context.Context, storage BlockStorage, chks []ChunkData) ([][]byte, error) {
 	data := make([][]byte, len(chks))
 	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(64)
-	for i, chunk := range chks {
-		chunk := chunk
-		i := i
-		g.Go(func() error {
-			chunkData, err := readChunkData(ctx, storage, chunk)
-			if err != nil {
-				return fmt.Errorf("error reading chunk data: %w", err)
-			}
-			data[i] = chunkData
-			return nil
-		})
+
+	plan := map[string][]*fetchPlan{}
+	sort.Slice(chks, func(i, j int) bool {
+		offset, size := chks[i].meta.Ref.Unpack()
+		offsetj, sizej := chks[j].meta.Ref.Unpack()
+		if offset != offsetj {
+			return offset < offsetj
+		}
+		return size < sizej
+	})
+
+	for _, chunk := range chks {
+		offset, size := chunk.meta.Ref.Unpack()
+		plans, ok := plan[chunk.id]
+		if !ok {
+			plan[chunk.id] = []*fetchPlan{{start: offset, length: size}}
+			continue
+		}
+		previous := plans[len(plans)-1]
+		if (offset-previous.start)+size < 20<<20 { // 20MB requests
+			previous.length = max(previous.length, (offset-previous.start)+size)
+			continue
+		}
+		plan[chunk.id] = append(plans, &fetchPlan{start: offset, length: size})
+	}
+
+	g.SetLimit(128)
+	totalFetches := 0
+	for k, v := range plan {
+		totalFetches += len(v)
+		for _, fetch := range v {
+			fetch := fetch
+			id := k
+			g.Go(func() error {
+				chunkData, err := readChunkData(ctx, storage, id, fetch)
+				if err != nil {
+					return fmt.Errorf("error reading chunk data: %w", err)
+				}
+				fetch.buf = chunkData
+				return nil
+			})
+		}
 	}
 
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
+
+	for i, chunk := range chks {
+		for _, fetch := range plan[chunk.id] {
+			offset, size := chunk.meta.Ref.Unpack()
+			if fetch.start <= offset && fetch.start+fetch.length >= offset+size {
+				data[i] = fetch.buf[offset-fetch.start : offset-fetch.start+size]
+				break
+			}
+		}
+	}
+
+	sp := opentracing.SpanFromContext(ctx)
+	if sp != nil {
+		sp.LogKV("totalFetches", totalFetches, "totalChunks", len(chks))
+	}
 	return data, nil
 }
 
-func readChunkData(ctx context.Context, storage BlockStorage, chunk ChunkData) ([]byte, error) {
-	offset, size := chunk.meta.Ref.Unpack()
-	// todo: We should be able to avoid many IOPS to object storage
-	// if chunks are next to each other and we should be able to pack range request
-	// together.
-	reader, err := storage.GetObjectRange(ctx, wal.Dir+chunk.id, int64(offset), int64(size))
+// func downloadChunks(ctx context.Context, storage BlockStorage, chks []ChunkData) ([][]byte, error) {
+// 	data := make([][]byte, len(chks))
+// 	g, ctx := errgroup.WithContext(ctx)
+// 	g.SetLimit(64)
+// 	for i, chunk := range chks {
+// 		chunk := chunk
+// 		i := i
+// 		g.Go(func() error {
+// 			chunkData, err := readChunkData(ctx, storage, chunk)
+// 			if err != nil {
+// 				return fmt.Errorf("error reading chunk data: %w", err)
+// 			}
+// 			data[i] = chunkData
+// 			return nil
+// 		})
+// 	}
+
+// 	if err := g.Wait(); err != nil {
+// 		return nil, err
+// 	}
+// 	return data, nil
+// }
+
+func readChunkData(ctx context.Context, storage BlockStorage, id string, plan *fetchPlan) ([]byte, error) {
+	offset, size := plan.start, plan.length
+	reader, err := storage.GetObjectRange(ctx, wal.Dir+id, int64(offset), int64(size))
 	if err != nil {
-		return nil, fmt.Errorf("could not get range reader for %s: %w", chunk.id, err)
+		return nil, fmt.Errorf("could not get range reader for %s: %w", id, err)
 	}
 	defer reader.Close()
 
 	data := make([]byte, size)
 	_, err = io.ReadFull(reader, data)
 	if err != nil {
-		return nil, fmt.Errorf("could not read socket for %s: %w", chunk.id, err)
+		return nil, fmt.Errorf("could not read socket for %s: %w", id, err)
 	}
 
 	return data, nil
