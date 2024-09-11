@@ -6075,13 +6075,13 @@ null
   "azure": {
     "accountKey": null,
     "accountName": null,
+    "chunkDelimiter": null,
     "connectionString": null,
     "endpointSuffix": null,
     "requestTimeout": null,
     "useFederatedToken": false,
     "useManagedIdentity": false,
-    "userAssignedId": null,
-    "chunkDelimiter": null
+    "userAssignedId": null
   },
   "filesystem": {
     "admin_api_directory": "/var/loki/admin",
