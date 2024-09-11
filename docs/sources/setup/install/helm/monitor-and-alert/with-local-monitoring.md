@@ -65,8 +65,8 @@ Local mode by default will also enable Minio, which will act as the object stora
 
 ```bash
 kubectl create secret generic minio -n meta \
- --from-literal=<INSERT USERNAME OF CHOICE> \
- --from-literal=<INSERT PASSWORD OF CHOICE>
+ --from-literal=rootUser=<INSERT USERNAME OF CHOICE> \
+ --from-literal=rootPassword=<INSERT PASSWORD OF CHOICE>
 ```
 {{< admonition type="note" >}}
 Username and password must have a minimum of 8 characters.
