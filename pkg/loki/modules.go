@@ -1709,8 +1709,14 @@ func (t *Loki) initBloomPlanner() (services.Service, error) {
 
 	logger := log.With(util_log.Logger, "component", "bloom-planner")
 
+	var ringManager *lokiring.RingManager
 	if t.Cfg.isTarget(Backend) && t.indexGatewayRingManager != nil {
+		// Bloom planner and builder are part of the backend target in Simple Scalable Deployment mode.
+		// To avoid creating a new ring just for this special case, we can use the index gateway ring, which is already
+		// part of the backend target. The planner creates a watcher service that regularly checks which replica is
+		// the leader. Only the leader plans the tasks. Builders connect to the leader instance to pull tasks.
 		level.Info(logger).Log("msg", "initializing bloom planner in ring mode as part of backend target")
+		ringManager = t.indexGatewayRingManager
 	}
 
 	p, err := planner.New(
@@ -1722,11 +1728,7 @@ func (t *Loki) initBloomPlanner() (services.Service, error) {
 		t.BloomStore,
 		logger,
 		prometheus.DefaultRegisterer,
-		// Bloom planner and builder are part of the backend target in Simple Scalable Deployment mode.
-		// To avoid creating a new ring just for this special case, we can use the index gateway ring, which is already
-		// part of the backend target. The planner creates a watcher service that regularly checks which replica is
-		// the leader. Only the leader plans the tasks. Builders connect to the leader instance to pull tasks.
-		t.indexGatewayRingManager,
+		ringManager,
 	)
 	if err != nil {
 		return nil, err
@@ -1743,8 +1745,14 @@ func (t *Loki) initBloomBuilder() (services.Service, error) {
 
 	logger := log.With(util_log.Logger, "component", "bloom-builder")
 
+	var ringManager *lokiring.RingManager
 	if t.Cfg.isTarget(Backend) && t.indexGatewayRingManager != nil {
+		// Bloom planner and builder are part of the backend target in Simple Scalable Deployment mode.
+		// To avoid creating a new ring just for this special case, we can use the index gateway ring, which is already
+		// part of the backend target. The planner creates a watcher service that regularly checks which replica is
+		// the leader. Only the leader plans the tasks. Builders connect to the leader instance to pull tasks.
 		level.Info(logger).Log("msg", "initializing bloom builder in ring mode as part of backend target")
+		ringManager = t.indexGatewayRingManager
 	}
 
 	return builder.New(
@@ -1757,11 +1765,7 @@ func (t *Loki) initBloomBuilder() (services.Service, error) {
 		t.BloomStore,
 		logger,
 		prometheus.DefaultRegisterer,
-		// Bloom planner and builder are part of the backend target in Simple Scalable Deployment mode.
-		// To avoid creating a new ring just for this special case, we can use the index gateway ring, which is already
-		// part of the backend target. The planner creates a watcher service that regularly checks which replica is
-		// the leader. Only the leader plans the tasks. Builders connect to the leader instance to pull tasks.
-		t.indexGatewayRingManager,
+		ringManager,
 	)
 }
 
