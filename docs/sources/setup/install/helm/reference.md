@@ -6146,6 +6146,9 @@ null
 			<td>Additional storage config</td>
 			<td><pre lang="json">
 {
+  "bloom_shipper": {
+    "working_directory": "/var/loki/data/bloomshipper"
+  },
   "boltdb_shipper": {
     "index_gateway_client": {
       "server_address": "{{ include \"loki.indexGatewayAddress\" . }}"

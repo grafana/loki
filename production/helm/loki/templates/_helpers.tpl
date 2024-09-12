@@ -1047,6 +1047,34 @@ enableServiceLinks: false
 {{- printf "%s" $idxGatewayAddress }}
 {{- end }}
 
+{{/* Determine bloom-planner address */}}
+{{- define "loki.bloomPlannerAddress" -}}
+{{- $bloomPlannerAddress := ""}}
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- $isScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
+{{- if $isDistributed -}}
+{{- $bloomPlannerAddress = printf "%s-headless.%s.svc.%s:%s" (include "loki.bloomPlannerFullname" .) .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.grpc_listen_port | toString) -}}
+{{- end -}}
+{{- if $isScalable -}}
+{{- $bloomPlannerAddress = printf "%s-headless.%s.svc.%s:%s" (include "loki.backendFullname" .) .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.grpc_listen_port | toString) -}}
+{{- end -}}
+{{- printf "%s" $bloomPlannerAddress}}
+{{- end }}
+
+{{/* Determine bloom-gateway address */}}
+{{- define "loki.bloomGatewayAddresses" -}}
+{{- $bloomGatewayAddresses := ""}}
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- $isScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
+{{- if $isDistributed -}}
+{{- $bloomGatewayAddresses = printf "dnssrvnoa+_grpc._tcp.%s-headless.%s.svc.%s" (include "loki.bloomGatewayFullname" .) .Release.Namespace .Values.global.clusterDomain -}}
+{{- end -}}
+{{- if $isScalable -}}
+{{- $bloomGatewayAddresses = printf "dnssrvnoa+_grpc._tcp.%s-headless.%s.svc.%s" (include "loki.backendFullname" .) .Release.Namespace .Values.global.clusterDomain -}}
+{{- end -}}
+{{- printf "%s" $bloomGatewayAddresses}}
+{{- end }}
+
 {{- define "loki.config.checksum" -}}
 checksum/config: {{ include (print .Template.BasePath "/config.yaml") . | sha256sum }}
 {{- end -}}
