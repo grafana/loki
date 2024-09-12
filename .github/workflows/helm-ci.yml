@@ -42,33 +42,35 @@ jobs:
     name: Publish Rendered Helm Chart Diff
     runs-on: ubuntu-latest
     steps:
-      # Step 1: Set up Helm
       - name: Setup Helm
         uses: azure/setup-helm@v4
 
-      # Step 2: Prepare directories within workspace
+      - name: Add required Helm repositories
+        run: |
+          helm repo add minio https://charts.min.io/
+          helm repo add grafana https://grafana.github.io/helm-charts
+          helm repo add grafana-operator https://grafana.github.io/helm-charts
+          helm repo update
+
       - name: Prepare directories for base and PR branches
         run: |
           mkdir -p ${{ github.workspace }}/base
           mkdir -p ${{ github.workspace }}/pr
           mkdir -p ${{ github.workspace }}/output
 
-      # Step 3: Checkout base branch to 'base' folder within workspace
-      - name: Checkout base branch
+      - name: Checkout base branch to 'base' folder within workspace
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.base.ref }}
           path: ${{ github.workspace }}/base
 
-      # Step 4: Checkout PR branch to 'pr' folder within workspace
-      - name: Checkout PR branch
+      - name: Checkout PR branch to 'pr' folder within workspace
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.ref }}
           path: ${{ github.workspace }}/pr
 
-      # Step 5: Render Helm chart for each scenario in the base branch
-      - name: Render Helm chart in base branch
+      - name: Render Helm chart for each scenario in the base branch
         run: |
           cd ${{ github.workspace }}/base/production/helm/loki
           helm dependency build
@@ -76,8 +78,7 @@ jobs:
             helm template loki . -f $file > "${{ github.workspace }}/output/base-$(basename $file .yaml).yaml"
           done
 
-      # Step 6: Render Helm chart for each scenario in the PR branch
-      - name: Render Helm chart in PR branch
+      - name: Render Helm chart for each scenario in the PR branch
         run: |
           cd ${{ github.workspace }}/pr/production/helm/loki
           helm dependency build
@@ -85,8 +86,7 @@ jobs:
             helm template loki . -f $file > "${{ github.workspace }}/output/pr-$(basename $file .yaml).yaml"
           done
 
-      # Step 7: Calculate the diff between base and PR rendered manifests for each scenario
-      - name: Calculate manifest diffs
+      - name: Calculate the diff between base and PR rendered manifests for each scenario
         run: |
           for file in ${{ github.workspace }}/output/base-*.yaml; do
             scenario=$(basename $file base-)
@@ -106,7 +106,6 @@ jobs:
             fi
           done
 
-      # Step 8: Post diff as a PR comment
       - name: Post diff as PR comment
         uses: marocchino/sticky-pull-request-comment@v2
         with:
