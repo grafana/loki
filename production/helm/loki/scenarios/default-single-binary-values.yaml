@@ -1,7 +1,7 @@
 ---
 loki:
   commonConfig:
-    replication_factor: 1
+    replication_factor: 77
   useTestSchema: true
   storage:
     bucketNames:
