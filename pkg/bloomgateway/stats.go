@@ -9,7 +9,7 @@ import (
 
 type Stats struct {
 	Status                              string
-	NumTasks, NumFilters                int
+	NumTasks, NumFilters, NumMatchers   int
 	ChunksRequested, ChunksFiltered     int
 	SeriesRequested, SeriesFiltered     int
 	QueueTime                           *atomic.Duration
@@ -71,6 +71,7 @@ func (s *Stats) KVArgs() []any {
 		"status", s.Status,
 		"tasks", s.NumTasks,
 		"filters", s.NumFilters,
+		"matchers", s.NumMatchers,
 		"blocks_processed", s.ProcessedBlocks.Load(),
 		"series_requested", s.SeriesRequested,
 		"series_filtered", s.SeriesFiltered,

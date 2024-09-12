@@ -57,6 +57,7 @@ type serverMetrics struct {
 	requestedChunks  prometheus.Histogram
 	filteredChunks   prometheus.Histogram
 	receivedFilters  prometheus.Histogram
+	receivedMatchers prometheus.Histogram
 }
 
 func newMetrics(registerer prometheus.Registerer, namespace, subsystem string) *metrics {
@@ -110,6 +111,13 @@ func newServerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 			Subsystem: subsystem,
 			Name:      "request_filters",
 			Help:      "Number of filters per request.",
+			Buckets:   prometheus.ExponentialBuckets(1, 2, 9), // 1 -> 256
+		}),
+		receivedMatchers: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "request_matchers",
+			Help:      "Number of matchers per request.",
 			Buckets:   prometheus.ExponentialBuckets(1, 2, 9), // 1 -> 256
 		}),
 	}

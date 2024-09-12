@@ -157,7 +157,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 		chunkRefs := createQueryInputFromBlockData(t, tenantID, data, 100)
 
-		expr, err := syntax.ParseExpr(`{foo="bar"} |= "does not match"`)
+		expr, err := syntax.ParseExpr(`{foo="bar"} | trace_id="nomatch"`)
 		require.NoError(t, err)
 
 		req := &logproto.FilterChunkRefRequest{
@@ -196,7 +196,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		// saturate workers
 		// then send additional request
 		for i := 0; i < gw.cfg.WorkerConcurrency+1; i++ {
-			expr, err := syntax.ParseExpr(`{foo="bar"} |= "does not match"`)
+			expr, err := syntax.ParseExpr(`{foo="bar"} | trace_id="nomatch"`)
 			require.NoError(t, err)
 
 			req := &logproto.FilterChunkRefRequest{
@@ -240,7 +240,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		// saturate workers
 		// then send additional request
 		for i := 0; i < gw.cfg.WorkerConcurrency+1; i++ {
-			expr, err := syntax.ParseExpr(`{foo="bar"} |= "does not match"`)
+			expr, err := syntax.ParseExpr(`{foo="bar"} | trace_id="nomatch"`)
 			require.NoError(t, err)
 
 			req := &logproto.FilterChunkRefRequest{
@@ -341,7 +341,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 					Checksum:       uint32(idx),
 				},
 			}
-			expr, err := syntax.ParseExpr(`{foo="bar"} |= "foo"`)
+			expr, err := syntax.ParseExpr(`{foo="bar"} | trace_id="nomatch"`)
 			require.NoError(t, err)
 			req := &logproto.FilterChunkRefRequest{
 				From:    now.Add(-4 * time.Hour),
@@ -380,7 +380,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 		t.Run("no match - return empty response", func(t *testing.T) {
 			inputChunkRefs := groupRefs(t, chunkRefs)
-			expr, err := syntax.ParseExpr(`{foo="bar"} |= "does not match"`)
+			expr, err := syntax.ParseExpr(`{foo="bar"} | trace_id="nomatch"`)
 			require.NoError(t, err)
 			req := &logproto.FilterChunkRefRequest{
 				From:    now.Add(-8 * time.Hour),
