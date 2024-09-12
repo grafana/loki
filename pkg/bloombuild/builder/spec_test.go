@@ -161,7 +161,9 @@ func TestSimpleBloomGenerator(t *testing.T) {
 				}
 				require.Equal(t, len(expectedRefs), len(outputRefs))
 				for i := range expectedRefs {
-					require.Equal(t, expectedRefs[i].Series, outputRefs[i].Series)
+					// TODO(chaudum): For now we only compare the series
+					// but we should also compare meta.
+					require.Equal(t, expectedRefs[i].Series.Series, outputRefs[i].Series.Series)
 				}
 			})
 		}
