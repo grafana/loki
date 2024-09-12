@@ -183,12 +183,12 @@ type MergeBuilder struct {
 	blocks iter.Iterator[*SeriesWithBlooms]
 	// store
 	store iter.Iterator[*Series]
-	// Add chunks to a bloom
-	populate func(s *Series, srcBlooms iter.SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation)
+	// Add chunks of a single series to a bloom
+	populate BloomPopulatorFunc
 	metrics  *Metrics
 }
 
-type BloomPopulatorFunc = func(s *Series, srcBlooms iter.SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation)
+type BloomPopulatorFunc func(series *Series, preExistingBlooms iter.SizedIterator[*Bloom], chunksToAdd ChunkRefs, ch chan *BloomCreation)
 
 // NewMergeBuilder is a specific builder which does the following:
 //  1. merges multiple blocks into a single ordered querier,
@@ -277,7 +277,8 @@ func (mb *MergeBuilder) processNextSeries(
 	}
 
 	var (
-		offsets           []BloomOffset
+		offsets []BloomOffset
+
 		chunksToAdd                                  = nextInStore.Chunks
 		preExistingBlooms iter.SizedIterator[*Bloom] = iter.NewEmptyIter[*Bloom]()
 		info                                         = newIndexingInfo()
@@ -288,6 +289,8 @@ func (mb *MergeBuilder) processNextSeries(
 		chunksToAdd = nextInStore.Chunks.Unless(nextInBlocks.Series.Chunks)
 		chunksCopied += len(nextInStore.Chunks) - len(chunksToAdd)
 		preExistingBlooms = nextInBlocks.Blooms
+		// we also need to carry over existing indexed fields from the series metadata
+		info.indexedFields.Union(nextInBlocks.Series.Meta.Fields)
 	}
 
 	chunksIndexed += len(chunksToAdd)

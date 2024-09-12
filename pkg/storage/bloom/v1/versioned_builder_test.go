@@ -76,7 +76,7 @@ func TestV3Roundtrip(t *testing.T) {
 	CompareIterators[SeriesWithLiteralBlooms, *SeriesWithBlooms](
 		t,
 		func(t *testing.T, a SeriesWithLiteralBlooms, b *SeriesWithBlooms) {
-			require.Equal(t, a.Series, b.Series) // ensure series equality
+			require.Equal(t, *a.Series, b.Series.Series) // ensure series equality
 			bs, err := v2.Collect(b.Blooms)
 			require.NoError(t, err)
 
