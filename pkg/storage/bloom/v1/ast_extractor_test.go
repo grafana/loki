@@ -54,6 +54,14 @@ func TestExtractLabelMatchers(t *testing.T) {
 				v1.PlainLabelMatcher{Key: "key2", Value: "value2"},
 			},
 		},
+
+		{
+			name:  "unsupported label matchers",
+			input: `{app="foo"} | key1=~"value1"`,
+			expect: []v1.LabelMatcher{
+				v1.UnsupportedLabelMatcher{},
+			},
+		},
 	}
 
 	for _, tc := range tt {
