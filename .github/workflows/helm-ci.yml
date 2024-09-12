@@ -88,6 +88,7 @@ jobs:
 
       - name: Calculate the diff between base and PR rendered manifests for each scenario
         run: |
+          ls -lah ${{ github.workspace }}/output/
           for file in ${{ github.workspace }}/output/base-*.yaml; do
             scenario=$(basename $file base-)
             diff_output=$(diff "$file" "${{ github.workspace }}/output/pr-$scenario")
