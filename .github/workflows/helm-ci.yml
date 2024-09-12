@@ -90,7 +90,7 @@ jobs:
         run: |
           ls -lah ${{ github.workspace }}/output/
           for file in ${{ github.workspace }}/output/base-*.yaml; do
-            scenario=$(basename $file base-)
+            scenario=$(basename $file | sed 's/^base-//')
             diff_output=$(diff "$file" "${{ github.workspace }}/output/pr-$scenario")
             if [ -z "$diff_output" ]; then
               echo "### Scenario: $scenario" >> ${{ github.workspace }}/output/diff.txt
