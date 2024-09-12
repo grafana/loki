@@ -44,6 +44,9 @@ func (f *UnmarshaledDetectedField) Merge(df *logproto.DetectedField) error {
 	f.Parsers = append(f.Parsers, df.Parsers...)
 	slices.Sort(f.Parsers)
 	f.Parsers = slices.Compact(f.Parsers)
+	if len(f.Parsers) == 0 {
+		f.Parsers = nil
+	}
 
 	return f.Sketch.Merge(sketch)
 }

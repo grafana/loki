@@ -249,7 +249,7 @@ func (c *consumer) flush(ctx context.Context) error {
 	wal.ReportSegmentStats(stats, c.metrics.segmentMetrics)
 
 	id := ulid.MustNew(ulid.Timestamp(time.Now()), rand.Reader).String()
-	if err := c.storage.PutObject(ctx, fmt.Sprintf(wal.Dir+id), c.flushBuf); err != nil {
+	if err := c.storage.PutObject(ctx, wal.Dir+id, c.flushBuf); err != nil {
 		return fmt.Errorf("failed to put object to object storage: %w", err)
 	}
 
