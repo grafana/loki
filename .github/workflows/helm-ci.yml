@@ -49,58 +49,58 @@ jobs:
       # Step 2: Prepare directories within workspace
       - name: Prepare directories for base and PR branches
         run: |
-          mkdir -p base
-          mkdir -p pr
-          mkdir -p output
+          mkdir -p ${{ github.workspace }}/base
+          mkdir -p ${{ github.workspace }}/pr
+          mkdir -p ${{ github.workspace }}/output
 
       # Step 3: Checkout base branch to 'base' folder within workspace
       - name: Checkout base branch
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.base.ref }}
-          path: base
+          path: ${{ github.workspace }}/base
 
       # Step 4: Checkout PR branch to 'pr' folder within workspace
       - name: Checkout PR branch
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.ref }}
-          path: pr
+          path: ${{ github.workspace }}/pr
 
       # Step 5: Render Helm chart for each scenario in the base branch
       - name: Render Helm chart in base branch
         run: |
-          cd base/production/helm/loki
+          cd ${{ github.workspace }}/base/production/helm/loki
           for file in scenarios/*.yaml; do
-            helm template loki . -f $file > "../../output/base-$(basename $file .yaml).yaml"
+            helm template loki . -f $file > "${{ github.workspace }}/output/base-$(basename $file .yaml).yaml"
           done
 
       # Step 6: Render Helm chart for each scenario in the PR branch
       - name: Render Helm chart in PR branch
         run: |
-          cd pr/production/helm/loki
+          cd ${{ github.workspace }}/pr/production/helm/loki
           for file in scenarios/*.yaml; do
-            helm template loki . -f $file > "../../output/pr-$(basename $file .yaml).yaml"
+            helm template loki . -f $file > "${{ github.workspace }}/output/pr-$(basename $file .yaml).yaml"
           done
 
       # Step 7: Calculate the diff between base and PR rendered manifests for each scenario
       - name: Calculate manifest diffs
         run: |
-          for file in output/base-*.yaml; do
+          for file in ${{ github.workspace }}/output/base-*.yaml; do
             scenario=$(basename $file base-)
-            diff_output=$(diff "$file" "output/pr-$scenario")
+            diff_output=$(diff "$file" "${{ github.workspace }}/output/pr-$scenario")
             if [ -z "$diff_output" ]; then
-              echo "### Scenario: $scenario" >> output/diff.txt
-              echo "<details><summary>No changes</summary>" >> output/diff.txt
-              echo "No diff" >> output/diff.txt
-              echo "</details>" >> output/diff.txt
+              echo "### Scenario: $scenario" >> ${{ github.workspace }}/output/diff.txt
+              echo "<details><summary>No changes</summary>" >> ${{ github.workspace }}/output/diff.txt
+              echo "No diff" >> ${{ github.workspace }}/output/diff.txt
+              echo "</details>" >> ${{ github.workspace }}/output/diff.txt
             else
-              echo "### Scenario: $scenario" >> output/diff.txt
-              echo "<details><summary>Show diff</summary>" >> output/diff.txt
-              echo '```diff' >> output/diff.txt
-              echo "$diff_output" >> output/diff.txt
-              echo '```' >> output/diff.txt
-              echo "</details>" >> output/diff.txt
+              echo "### Scenario: $scenario" >> ${{ github.workspace }}/output/diff.txt
+              echo "<details><summary>Show diff</summary>" >> ${{ github.workspace }}/output/diff.txt
+              echo '```diff' >> ${{ github.workspace }}/output/diff.txt
+              echo "$diff_output" >> ${{ github.workspace }}/output/diff.txt
+              echo '```' >> ${{ github.workspace }}/output/diff.txt
+              echo "</details>" >> ${{ github.workspace }}/output/diff.txt
             fi
           done
 
@@ -108,7 +108,7 @@ jobs:
       - name: Post diff as PR comment
         uses: marocchino/sticky-pull-request-comment@v2
         with:
-          path: output/diff.txt
+          path: ${{ github.workspace }}/output/diff.txt
 
   call-test:
     name: Test Helm Chart
