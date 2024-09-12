@@ -71,6 +71,7 @@ jobs:
       - name: Render Helm chart in base branch
         run: |
           cd ${{ github.workspace }}/base/production/helm/loki
+          helm dependency build
           for file in scenarios/*.yaml; do
             helm template loki . -f $file > "${{ github.workspace }}/output/base-$(basename $file .yaml).yaml"
           done
@@ -79,6 +80,7 @@ jobs:
       - name: Render Helm chart in PR branch
         run: |
           cd ${{ github.workspace }}/pr/production/helm/loki
+          helm dependency build
           for file in scenarios/*.yaml; do
             helm template loki . -f $file > "${{ github.workspace }}/output/pr-$(basename $file .yaml).yaml"
           done
