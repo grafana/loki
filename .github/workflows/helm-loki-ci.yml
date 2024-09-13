@@ -89,7 +89,7 @@ jobs:
             # Check for modified and removed files
             for file in $base_branch_files; do
               if [[ -f "$pr_branch_dir/$file" ]]; then
-              # File exists in both directories, check if it is modified
+                # File exists in both directories, check if it is modified
                 if ! diff -q "$base_branch_dir/$file" "$pr_branch_dir/$file" >/dev/null; then
                   echo "modified file detected"
                   file_diff=$(diff -c "$base_branch_dir/$file" "$pr_branch_dir/$file" || true)
@@ -122,6 +122,7 @@ jobs:
                 added_files=$(echo "$added_files" | jq --argjson added_obj "$added_obj" '. += [$added_obj]')
               fi
             done
+          
             scenario_output_dir="${{ github.workspace }}/output/$scenario_name"
             mkdir $scenario_output_dir
             echo $added_files > $scenario_output_dir/added_files.json
