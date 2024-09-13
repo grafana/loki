@@ -500,7 +500,7 @@ func Test_splitQuery(t *testing.T) {
 						intervals.splitter = newDefaultSplitter(fakeLimits{}, nil)
 					}
 
-					splits, err := intervals.splitter.split(refTime, []string{tenantID}, req, intervals.splitInterval)
+					splits, err := intervals.splitter.split(context.Background(), refTime, []string{tenantID}, req, intervals.splitInterval)
 					require.NoError(t, err)
 					assertSplits(t, want, splits)
 				})
@@ -738,7 +738,7 @@ func Test_splitRecentMetadataQuery(t *testing.T) {
 						intervals.splitter = newDefaultSplitter(fakeLimits{}, nil)
 					}
 
-					splits, err := intervals.splitter.split(refTime, []string{tenantID}, req, intervals.splitInterval)
+					splits, err := intervals.splitter.split(context.Background(), refTime, []string{tenantID}, req, intervals.splitInterval)
 					require.NoError(t, err)
 					assertSplits(t, want, splits)
 				})
@@ -1349,7 +1349,7 @@ func Test_splitMetricQuery(t *testing.T) {
 				ms = tc.splitter.(*metricQuerySplitter)
 			}
 
-			splits, err := ms.split(refTime, []string{tenantID}, tc.input, tc.splitInterval)
+			splits, err := ms.split(context.Background(), refTime, []string{tenantID}, tc.input, tc.splitInterval)
 			require.NoError(t, err)
 			if !assert.Equal(t, tc.expected, splits) {
 				t.Logf("expected and actual do not match\n")
@@ -1660,7 +1660,8 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 						{Name: `{foo="bar"}`, Volume: 38},
 						{Name: `{bar="baz"}`, Volume: 28},
 					},
-					Limit: 2},
+					Limit: 2,
+				},
 				Headers: nil,
 			}, nil
 		})
@@ -1700,7 +1701,8 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 						{Name: `{foo="bar"}`, Volume: 38},
 						{Name: `{fizz="buzz"}`, Volume: 28},
 					},
-					Limit: 1},
+					Limit: 1,
+				},
 				Headers: nil,
 			}, nil
 		})
@@ -1740,7 +1742,8 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 						{Name: `{foo="bar"}`, Volume: 38},
 						{Name: `{bar="baz"}`, Volume: 28},
 					},
-					Limit: 2},
+					Limit: 2,
+				},
 				Headers: nil,
 			}, nil
 		})
