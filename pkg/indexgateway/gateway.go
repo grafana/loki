@@ -246,8 +246,9 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 		return result, nil
 	}
 
-	// Extract LineFiltersExpr from the plan. If there is none, we can short-circuit and return before making a req
-	// to the bloom-gateway (through the g.bloomQuerier)
+	// Extract testable LabelFilters from the plan. If there is none, we can
+	// short-circuit and return before making a req to the bloom-gateway (through
+	// the g.bloomQuerier)
 	if len(v1.ExtractTestableLabelMatchers(req.Plan.AST)) == 0 {
 		return result, nil
 	}
@@ -464,7 +465,7 @@ func (g *Gateway) boundedShards(
 	filtered := refs
 
 	// 2) filter via blooms if enabled
-	filters := syntax.ExtractLineFilters(p.Plan().AST)
+	filters := v1.ExtractTestableLabelMatchers(p.Plan().AST)
 	if g.bloomQuerier != nil && len(filters) > 0 {
 		xs, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, refs, p.Plan())
 		if err != nil {
