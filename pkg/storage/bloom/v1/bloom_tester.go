@@ -390,6 +390,9 @@ func (sm stringMatcherTest) Matches(bloom filter.Checker) bool {
 		// The structured metadata key wasn't indexed. We pass the bloom test
 		// since we can only filter data out if the key was indexed but the value
 		// wasn't.
+		//
+		// TODO(rfratto): The negative test here is a bit confusing, and the key
+		// presence test should likely be done higher up.
 		return true
 	}
 
@@ -408,6 +411,9 @@ func (sm stringMatcherTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byt
 		// The structured metadata key wasn't indexed for a prefix. We pass the
 		// bloom test since we can only filter data out if the key was indexed but
 		// the value wasn't.
+		//
+		// TODO(rfratto): The negative test here is a bit confusing, and the key
+		// presence test should likely be done higher up.
 		return true
 	}
 
