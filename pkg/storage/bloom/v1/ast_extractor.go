@@ -35,6 +35,10 @@ type AndLabelMatcher struct{ Left, Right LabelMatcher }
 // Unsupported LabelFilterExprs map to an UnsupportedLabelMatcher, for which
 // bloom tests should always pass.
 func ExtractTestableLabelMatchers(expr syntax.Expr) []LabelMatcher {
+	if expr == nil {
+		return nil
+	}
+
 	var (
 		exprs           []*syntax.LabelFilterExpr
 		foundParseStage bool
