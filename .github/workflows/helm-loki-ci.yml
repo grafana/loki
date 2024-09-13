@@ -83,7 +83,7 @@ jobs:
             echo "Comparing directories: $base_branch_dir and $pr_branch_dir"
 
             # Find all files in the left and right directories
-            base_branch_files=$(find "$base_branch_dir" -type f | sed "s|$base_branch_dir/||")
+            base_branch_files=$(if [[ -d "$base_branch_dir" ]]; then find "$base_branch_dir" -type f | sed "s|$base_branch_dir/||"; else echo ""; fi)
             pr_branch_files=$(find "$pr_branch_dir" -type f | sed "s|$pr_branch_dir/||")
 
             # Check for modified and removed files
@@ -201,7 +201,7 @@ jobs:
             fi
           
             # close <p> and <details>
-            echo -e "\n\n<\p>\n<\details>" >> $output_file
+            echo -e "\n\n</p>\n</details>" >> $output_file
           done
 
       - name: Post diff as PR comment
