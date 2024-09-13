@@ -1717,6 +1717,8 @@ ingester:
   # -- The name of the PriorityClass for ingester pods
   # -- Labels for ingestor service
   serviceLabels: {}
+  # -- Annotations for ingestor service
+  serviceAnnotations: {}
   # -- Additional CLI args for the ingester
   extraArgs: []
   # -- Environment variables to add to the ingester pods
@@ -1892,6 +1894,8 @@ distributor:
   podAnnotations: {}
   # -- Labels for distributor service
   serviceLabels: {}
+  # -- Annotations for distributor service
+  serviceAnnotations: {}
   # -- Additional CLI args for the distributor
   extraArgs: []
   # -- Environment variables to add to the distributor pods
@@ -1982,6 +1986,8 @@ querier:
   podAnnotations: {}
   # -- Labels for querier service
   serviceLabels: {}
+  # -- Annotations for querier service
+  serviceAnnotations: {}
   # -- Additional CLI args for the querier
   extraArgs: []
   # -- Environment variables to add to the querier pods
@@ -2098,6 +2104,8 @@ queryFrontend:
   podAnnotations: {}
   # -- Labels for query-frontend service
   serviceLabels: {}
+  # -- Annotations for query-frontend service
+  serviceAnnotations: {}
   # -- Additional CLI args for the query-frontend
   extraArgs: []
   # -- Environment variables to add to the query-frontend pods
@@ -2159,6 +2167,8 @@ queryScheduler:
   podAnnotations: {}
   # -- Labels for query-scheduler service
   serviceLabels: {}
+  # -- Annotations for query-scheduler service
+  serviceAnnotations: {}
   # -- Additional CLI args for the query-scheduler
   extraArgs: []
   # -- Environment variables to add to the query-scheduler pods
@@ -2219,6 +2229,8 @@ indexGateway:
   podAnnotations: {}
   # -- Labels for index-gateway service
   serviceLabels: {}
+  # -- Annotations for index-gateway service
+  serviceAnnotations: {}
   # -- Additional CLI args for the index-gateway
   extraArgs: []
   # -- Environment variables to add to the index-gateway pods
@@ -2309,6 +2321,8 @@ compactor:
           topologyKey: kubernetes.io/hostname
   # -- Labels for compactor service
   serviceLabels: {}
+  # -- Annotations for compactor service
+  serviceAnnotations: {}
   # -- Additional CLI args for the compactor
   extraArgs: []
   # -- Environment variables to add to the compactor pods
@@ -2415,6 +2429,8 @@ bloomGateway:
           topologyKey: kubernetes.io/hostname
   # -- Labels for bloom-gateway service
   serviceLabels: {}
+  # -- Annotations for bloom-gateway service
+  serviceAnnotations: {}
   # -- Additional CLI args for the bloom-gateway
   extraArgs: []
   # -- Environment variables to add to the bloom-gateway pods
@@ -2521,6 +2537,8 @@ bloomPlanner:
           topologyKey: kubernetes.io/hostname
   # -- Labels for bloom-planner service
   serviceLabels: {}
+  # -- Annotations for bloom-planner service
+  serviceAnnotations: {}
   # -- Additional CLI args for the bloom-planner
   extraArgs: []
   # -- Environment variables to add to the bloom-planner pods
@@ -2635,6 +2653,8 @@ bloomBuilder:
   podAnnotations: {}
   # -- Labels for bloom-builder service
   serviceLabels: {}
+  # -- Annotations for bloom-builder service
+  serviceAnnotations: {}
   # -- Additional CLI args for the bloom-builder
   extraArgs: []
   # -- Environment variables to add to the bloom-builder pods
@@ -2705,6 +2725,8 @@ patternIngester:
           topologyKey: kubernetes.io/hostname
   # -- Labels for pattern ingester service
   serviceLabels: {}
+  # -- Annotations for pattern ingester service
+  serviceAnnotations: {}
   # -- Additional CLI args for the pattern ingester
   extraArgs: []
   # -- Environment variables to add to the pattern ingester pods
@@ -2804,6 +2826,8 @@ ruler:
   podAnnotations: {}
   # -- Labels for ruler service
   serviceLabels: {}
+  # -- Annotations for ruler service
+  serviceAnnotations: {}
   # -- Additional CLI args for the ruler
   extraArgs: []
   # -- Environment variables to add to the ruler pods

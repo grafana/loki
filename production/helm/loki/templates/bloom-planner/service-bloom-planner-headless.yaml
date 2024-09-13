@@ -11,10 +11,13 @@ metadata:
     {{- with .Values.bloomPlanner.serviceLabels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
-  {{- with .Values.loki.serviceAnnotations }}
   annotations:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- with .Values.loki.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .Values.bloomPlanner.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
 spec:
   type: ClusterIP
   clusterIP: None
