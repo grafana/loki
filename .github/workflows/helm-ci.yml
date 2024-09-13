@@ -55,7 +55,7 @@ jobs:
 
       - name: Install required applications
         run: |
-          apt-get update && apt-get install -y jq
+          sudo apt-get update && sudo apt-get install -y jq
 
       - name: Prepare directories for base and PR branches
         run: |
