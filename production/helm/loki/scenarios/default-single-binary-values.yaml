@@ -1,7 +1,7 @@
 ---
 loki:
   commonConfig:
-    replication_factor: 1
+    replication_factor: 3
   useTestSchema: true
   storage:
     bucketNames:
@@ -10,7 +10,7 @@ loki:
       admin: admin
 deploymentMode: SingleBinary
 singleBinary:
-  replicas: 1
+  replicas: 3
 read:
   replicas: 0
 write:
