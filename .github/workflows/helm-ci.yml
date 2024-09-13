@@ -171,66 +171,70 @@ jobs:
 
           # Iterate over each scenario file
           for file in ${{ github.workspace }}/pr/production/helm/loki/scenarios/*.yaml; do
-          scenario=$(basename "$file" .yaml)
-          echo "Processing scenario: $scenario"
-
-          # Create a header for the scenario
-          echo -e "\n## Scenario: $scenario" >> $output_file
-
-          # Read JSON data for added, modified, and removed files
-          added_files=$(cat ${{ github.workspace }}/output/$scenario/added_files.json)
-          modified_files=$(cat ${{ github.workspace }}/output/$scenario/modified_files.json)
-          removed_files=$(cat ${{ github.workspace }}/output/$scenario/removed_files.json)
-
-          # Count the number of added, modified, and removed files
-          num_added=$(echo "$added_files" | jq length)
-          num_modified=$(echo "$modified_files" | jq length)
-          num_removed=$(echo "$removed_files" | jq length)
-
-          # Add summary counts
-          echo -e "\n**Summary:**" >> $output_file
-          echo -e "\n- **Added:** $num_added" >> $output_file
-          echo -e "\n- **Modified:** $num_modified" >> $output_file
-          echo -e "\n- **Removed:** $num_removed" >> $output_file
-
-          # Add details for added files
-          echo -e "\n### Added Files" >> $output_file
-          if [[ "$num_added" -gt 0 ]]; then
-           echo "$added_files" | jq -c '.[]' | while read -r obj; do
-             filename=$(echo "$obj" | jq -r '.filename')
-             content=$(echo "$obj" | jq -r '.content')
-             echo -e "\n<details><summary>$filename</summary>" >> $output_file
-             echo -e "\n\`\`\`yaml\n$content\n\`\`\`\n</details>" >> $output_file
-           done
-          else
-           echo -e "\n_No added files_\n" >> $output_file
-          fi
-
-          # Add details for modified files
-          echo -e "\n### Modified Files" >> $output_file
-          if [[ "$num_modified" -gt 0 ]]; then
-           echo "$modified_files" | jq -c '.[]' | while read -r obj; do
-             filename=$(echo "$obj" | jq -r '.filename')
-             diff=$(echo "$obj" | jq -r '.diff')
-             echo -e "\n<details><summary>$filename</summary>" >> $output_file
-             echo -e "\n\`\`\`diff\n$diff\n\`\`\`\n</details>" >> $output_file
-           done
-          else
-           echo -e "\n_No modified files_\n" >> $output_file
-          fi
-
-          # Add details for removed files
-          echo -e "\n### Removed Files" >> $output_file
-          if [[ "$num_removed" -gt 0 ]]; then
-           echo "$removed_files" | jq -c '.[]' | while read -r obj; do
-             filename=$(echo "$obj" | jq -r '.filename')
-             content=$(echo "$obj" | jq -r '.content')
-             echo -e "\n<details><summary>$filename</summary>" >> $output_file
-             echo -e "\n\`\`\`yaml\n$content\n\`\`\`\n</details>" >> $output_file
-           done
-          else
-           echo -e "\n_No removed files_\n" >> $output_file
-          fi
+            scenario=$(basename "$file" .yaml)
+            echo "Processing scenario: $scenario"
+  
+            # Create a header for the scenario
+            echo -e "\n<details><summary>Scenario: $scenario</summary>\n" >> $output_file
+            echo -e "<p>\n\n" >> $output_file
+  
+            # Read JSON data for added, modified, and removed files
+            added_files=$(cat ${{ github.workspace }}/output/$scenario/added_files.json)
+            modified_files=$(cat ${{ github.workspace }}/output/$scenario/modified_files.json)
+            removed_files=$(cat ${{ github.workspace }}/output/$scenario/removed_files.json)
+  
+            # Count the number of added, modified, and removed files
+            num_added=$(echo "$added_files" | jq length)
+            num_modified=$(echo "$modified_files" | jq length)
+            num_removed=$(echo "$removed_files" | jq length)
+  
+            # Add summary counts
+            echo -e "\n**Summary:**" >> $output_file
+            echo -e "\n- **Added:** $num_added" >> $output_file
+            echo -e "\n- **Modified:** $num_modified" >> $output_file
+            echo -e "\n- **Removed:** $num_removed" >> $output_file
+  
+            # Add details for added files
+            echo -e "\n### Added Files" >> $output_file
+            if [[ "$num_added" -gt 0 ]]; then
+             echo "$added_files" | jq -c '.[]' | while read -r obj; do
+               filename=$(echo "$obj" | jq -r '.filename')
+               content=$(echo "$obj" | jq -r '.content')
+               echo -e "\n<details><summary>$filename</summary>" >> $output_file
+               echo -e "\n\`\`\`yaml\n$content\n\`\`\`\n</details>" >> $output_file
+             done
+            else
+             echo -e "\n_No added files_\n" >> $output_file
+            fi
+  
+            # Add details for modified files
+            echo -e "\n### Modified Files" >> $output_file
+            if [[ "$num_modified" -gt 0 ]]; then
+             echo "$modified_files" | jq -c '.[]' | while read -r obj; do
+               filename=$(echo "$obj" | jq -r '.filename')
+               diff=$(echo "$obj" | jq -r '.diff')
+               echo -e "\n<details><summary>$filename</summary>" >> $output_file
+               echo -e "\n\`\`\`diff\n$diff\n\`\`\`\n</details>" >> $output_file
+             done
+            else
+             echo -e "\n_No modified files_\n" >> $output_file
+            fi
+  
+            # Add details for removed files
+            echo -e "\n### Removed Files" >> $output_file
+            if [[ "$num_removed" -gt 0 ]]; then
+             echo "$removed_files" | jq -c '.[]' | while read -r obj; do
+               filename=$(echo "$obj" | jq -r '.filename')
+               content=$(echo "$obj" | jq -r '.content')
+               echo -e "\n<details><summary>$filename</summary>" >> $output_file
+               echo -e "\n\`\`\`yaml\n$content\n\`\`\`\n</details>" >> $output_file
+             done
+            else
+             echo -e "\n_No removed files_\n" >> $output_file
+            fi
+          
+            # close <p> and <details>
+            echo -e "\n\n<\p>\n<\details>" >> $output_file
           done
 
       - name: Post diff as PR comment
