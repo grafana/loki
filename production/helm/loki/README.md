@@ -6,9 +6,9 @@ Helm chart for Grafana Loki and Grafana Enterprise Logs supporting both simple, 
 
 ## Source Code
 
-- <https://github.com/grafana/loki>
-- <https://grafana.com/oss/loki/>
-- <https://grafana.com/docs/loki/latest/>
+* <https://github.com/grafana/loki>
+* <https://grafana.com/oss/loki/>
+* <https://grafana.com/docs/loki/latest/>
 
 ## Requirements
 
