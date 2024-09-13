@@ -30,7 +30,6 @@ loki:
 enterprise:
   # Enable enterprise features, license must be provided
   enabled: true
-  version: 3.0.1
   # -- Grafana Enterprise Logs license
   license:
     contents: "content of licence"
