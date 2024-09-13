@@ -207,4 +207,6 @@ jobs:
       - name: Post diff as PR comment
         uses: marocchino/sticky-pull-request-comment@v2
         with:
+          hide_and_recreate: true
+          hide_classify: "OUTDATED"
           path: ${{ github.workspace }}/output/diff_summary.md
