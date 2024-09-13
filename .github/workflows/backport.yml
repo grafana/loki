@@ -7,6 +7,7 @@ on:
 
 jobs:
   main:
+    if: github.repository == 'grafana/loki'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Actions
@@ -21,6 +22,6 @@ jobs:
         uses: ./actions/backport
         with:
           metricsWriteAPIKey: ${{secrets.GRAFANA_MISC_STATS_API_KEY}}
-          token: ${{secrets.GH_BOT_ACCESS_TOKEN}}
+          token: ${{secrets.GH_TOKEN}}
           labelsToAdd: "backport"
           title: "chore: [{{base}}] {{originalTitle}}"
