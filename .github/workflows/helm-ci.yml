@@ -173,20 +173,20 @@ jobs:
           for file in ${{ github.workspace }}/pr/production/helm/loki/scenarios/*.yaml; do
             scenario=$(basename "$file" .yaml)
             echo "Processing scenario: $scenario"
-  
-            # Create a header for the scenario
-            echo -e "\n<details><summary>Scenario: $scenario</summary>\n" >> $output_file
-            echo -e "<p>\n\n" >> $output_file
-  
+          
             # Read JSON data for added, modified, and removed files
             added_files=$(cat ${{ github.workspace }}/output/$scenario/added_files.json)
             modified_files=$(cat ${{ github.workspace }}/output/$scenario/modified_files.json)
             removed_files=$(cat ${{ github.workspace }}/output/$scenario/removed_files.json)
-  
+          
             # Count the number of added, modified, and removed files
             num_added=$(echo "$added_files" | jq length)
             num_modified=$(echo "$modified_files" | jq length)
             num_removed=$(echo "$removed_files" | jq length)
+  
+            # Create a header for the scenario
+            echo -e "\n<details><summary>Scenario: $scenario (Added: $num_added, Modified: $num_modified, Removed: $num_removed) </summary>\n" >> $output_file
+            echo -e "<p>\n\n" >> $output_file
   
             # Add summary counts
             echo -e "\n**Summary:**" >> $output_file
