@@ -35,7 +35,7 @@ var (
 			}
 		},
 	}
-	tenantLabel = "__loki_tenant__"
+	Dir = "loki-v2/wal/anon/"
 )
 
 func init() {
@@ -156,8 +156,8 @@ func (b *SegmentWriter) getOrCreateStream(id streamID, lbls labels.Labels) *stre
 	if ok {
 		return s
 	}
-	if lbls.Get(tenantLabel) == "" {
-		lbls = labels.NewBuilder(lbls).Set(tenantLabel, id.tenant).Labels()
+	if lbls.Get(index.TenantLabel) == "" {
+		lbls = labels.NewBuilder(lbls).Set(index.TenantLabel, id.tenant).Labels()
 	}
 	s = streamSegmentPool.Get().(*streamSegment)
 	s.lbls = lbls
@@ -177,7 +177,7 @@ func (b *SegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels
 	b.lastAppend = now
 
 	for _, e := range entries {
-		b.inputSize.Add(int64(len(e.Line)))
+		b.inputSize.Add(int64(len(e.Line))) // todo(cyriltovena): should add the size of structured metadata
 	}
 	id := streamID{labels: labelsString, tenant: tenantID}
 	s := b.getOrCreateStream(id, lbls)

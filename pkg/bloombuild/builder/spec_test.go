@@ -137,7 +137,7 @@ func TestSimpleBloomGenerator(t *testing.T) {
 				storeItr := v2.NewMapIter[v1.SeriesWithBlooms, *v1.Series](
 					v2.NewSliceIter[v1.SeriesWithBlooms](data),
 					func(swb v1.SeriesWithBlooms) *v1.Series {
-						return swb.Series
+						return &swb.Series.Series
 					},
 				)
 
@@ -161,7 +161,9 @@ func TestSimpleBloomGenerator(t *testing.T) {
 				}
 				require.Equal(t, len(expectedRefs), len(outputRefs))
 				for i := range expectedRefs {
-					require.Equal(t, expectedRefs[i].Series, outputRefs[i].Series)
+					// TODO(chaudum): For now we only compare the series
+					// but we should also compare meta.
+					require.Equal(t, expectedRefs[i].Series.Series, outputRefs[i].Series.Series)
 				}
 			})
 		}

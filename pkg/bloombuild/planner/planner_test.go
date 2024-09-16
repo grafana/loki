@@ -163,7 +163,7 @@ func Test_gapsBetweenTSDBsAndMetas(t *testing.T) {
 				require.Error(t, err)
 				return
 			}
-			require.Equal(t, tc.exp, gaps)
+			require.ElementsMatch(t, tc.exp, gaps)
 		})
 	}
 }
@@ -412,7 +412,7 @@ func Test_blockPlansForGaps(t *testing.T) {
 				require.Error(t, err)
 				return
 			}
-			require.Equal(t, tc.exp, plans)
+			require.ElementsMatch(t, tc.exp, plans)
 		})
 	}
 }
@@ -532,7 +532,7 @@ func createPlanner(
 	bloomStore, err := bloomshipper.NewBloomStore(schemaCfg.Configs, storageCfg, storage.ClientMetrics{}, metasCache, blocksCache, &mempool.SimpleHeapAllocator{}, reg, logger)
 	require.NoError(t, err)
 
-	planner, err := New(cfg, limits, schemaCfg, storageCfg, storage.ClientMetrics{}, bloomStore, logger, reg)
+	planner, err := New(cfg, limits, schemaCfg, storageCfg, storage.ClientMetrics{}, bloomStore, logger, reg, nil)
 	require.NoError(t, err)
 
 	return planner

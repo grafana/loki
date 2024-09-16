@@ -80,6 +80,7 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 		})
 	}
 }
+
 func TestJSONSerializationParseTestCases(t *testing.T) {
 	for _, tc := range ParseTestCases {
 		if tc.err == nil {
@@ -98,7 +99,7 @@ func TestJSONSerializationParseTestCases(t *testing.T) {
 
 				t.Log(buf.String())
 
-				require.Equal(t, tc.exp, actual)
+				AssertExpressions(t, tc.exp, actual)
 			})
 		}
 	}

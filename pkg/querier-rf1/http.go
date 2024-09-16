@@ -297,23 +297,10 @@ func (q *QuerierAPI) PatternsHandler(ctx context.Context, req *logproto.QueryPat
 	return resp, nil
 }
 
-func (q *QuerierAPI) SamplesHandler(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error) {
-	resp, err := q.querier.SelectMetricSamples(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if resp == nil { // Some stores don't implement this
-		return &logproto.QuerySamplesResponse{
-			Series: []logproto.Series{},
-		}, nil
-	}
-	return resp, nil
-}
-
 func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, expr syntax.Expr, limit uint32) error {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	// entry limit does not apply to metric queries.
@@ -354,7 +341,7 @@ func WrapQuerySpanAndTimeout(call string, limits Limits) middleware.Interface {
 			tenants, err := tenant.TenantIDs(ctx)
 			if err != nil {
 				level.Error(log).Log("msg", "couldn't fetch tenantID", "err", err)
-				serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+				serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), w)
 				return
 			}
 

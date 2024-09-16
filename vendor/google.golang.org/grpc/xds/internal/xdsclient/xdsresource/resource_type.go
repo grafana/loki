@@ -25,11 +25,8 @@
 package xdsresource
 
 import (
-	"fmt"
-
-	"google.golang.org/grpc/internal"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	xdsinternal "google.golang.org/grpc/xds/internal"
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version"
 	"google.golang.org/protobuf/types/known/anypb"
 )
@@ -40,8 +37,6 @@ func init() {
 	xdsinternal.ResourceTypeMapForTesting[version.V3RouteConfigURL] = routeConfigType
 	xdsinternal.ResourceTypeMapForTesting[version.V3ClusterURL] = clusterType
 	xdsinternal.ResourceTypeMapForTesting[version.V3EndpointsURL] = endpointsType
-
-	internal.TriggerXDSResourceNameNotFoundForTesting = triggerResourceNotFoundForTesting
 }
 
 // Producer contains a single method to discover resource configuration from a
@@ -133,9 +128,13 @@ type ResourceData interface {
 // DecodeOptions wraps the options required by ResourceType implementation for
 // decoding configuration received from the xDS management server.
 type DecodeOptions struct {
-	// BootstrapConfig contains the bootstrap configuration passed to the
-	// top-level xdsClient. This contains useful data for resource validation.
+	// BootstrapConfig contains the complete bootstrap configuration passed to
+	// the xDS client. This contains useful data for resource validation.
 	BootstrapConfig *bootstrap.Config
+	// ServerConfig contains the server config (from the above bootstrap
+	// configuration) of the xDS server from which the current resource, for
+	// which Decode() is being invoked, was received.
+	ServerConfig *bootstrap.ServerConfig
 }
 
 // DecodeResult is the result of a decode operation.
@@ -166,21 +165,4 @@ func (r resourceTypeState) TypeName() string {
 
 func (r resourceTypeState) AllResourcesRequiredInSotW() bool {
 	return r.allResourcesRequiredInSotW
-}
-
-func triggerResourceNotFoundForTesting(cb func(Type, string) error, typeName, resourceName string) error {
-	var typ Type
-	switch typeName {
-	case ListenerResourceTypeName:
-		typ = listenerType
-	case RouteConfigTypeName:
-		typ = routeConfigType
-	case ClusterResourceTypeName:
-		typ = clusterType
-	case EndpointsResourceTypeName:
-		typ = endpointsType
-	default:
-		return fmt.Errorf("unknown type name %q", typeName)
-	}
-	return cb(typ, resourceName)
 }

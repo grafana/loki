@@ -116,6 +116,11 @@ func (b *BucketHandle) DefaultObjectACL() *ACLHandle {
 	return &b.defaultObjectACL
 }
 
+// BucketName returns the name of the bucket.
+func (b *BucketHandle) BucketName() string {
+	return b.name
+}
+
 // Object returns an ObjectHandle, which provides operations on the named object.
 // This call does not perform any network operations such as fetching the object or verifying its existence.
 // Use methods on ObjectHandle to perform network operations.
@@ -479,6 +484,20 @@ type BucketAttrs struct {
 	// cannot be modified once the bucket is created.
 	// ObjectRetention cannot be configured or reported through the gRPC API.
 	ObjectRetentionMode string
+
+	// SoftDeletePolicy contains the bucket's soft delete policy, which defines
+	// the period of time that soft-deleted objects will be retained, and cannot
+	// be permanently deleted. By default, new buckets will be created with a
+	// 7 day retention duration. In order to fully disable soft delete, you need
+	// to set a policy with a RetentionDuration of 0.
+	SoftDeletePolicy *SoftDeletePolicy
+
+	// HierarchicalNamespace contains the bucket's hierarchical namespace
+	// configuration. Hierarchical namespace enabled buckets can contain
+	// [cloud.google.com/go/storage/control/apiv2/controlpb.Folder] resources.
+	// It cannot be modified after bucket creation time.
+	// UniformBucketLevelAccess must also also be enabled on the bucket.
+	HierarchicalNamespace *HierarchicalNamespace
 }
 
 // BucketPolicyOnly is an alias for UniformBucketLevelAccess.
@@ -760,10 +779,33 @@ type Autoclass struct {
 	// TerminalStorageClass: The storage class that objects in the bucket
 	// eventually transition to if they are not read for a certain length of
 	// time. Valid values are NEARLINE and ARCHIVE.
+	// To modify TerminalStorageClass, Enabled must be set to true.
 	TerminalStorageClass string
 	// TerminalStorageClassUpdateTime represents the time of the most recent
 	// update to "TerminalStorageClass".
 	TerminalStorageClassUpdateTime time.Time
+}
+
+// SoftDeletePolicy contains the bucket's soft delete policy, which defines the
+// period of time that soft-deleted objects will be retained, and cannot be
+// permanently deleted.
+type SoftDeletePolicy struct {
+	// EffectiveTime indicates the time from which the policy, or one with a
+	// greater retention, was effective. This field is read-only.
+	EffectiveTime time.Time
+
+	// RetentionDuration is the amount of time that soft-deleted objects in the
+	// bucket will be retained and cannot be permanently deleted.
+	RetentionDuration time.Duration
+}
+
+// HierarchicalNamespace contains the bucket's hierarchical namespace
+// configuration. Hierarchical namespace enabled buckets can contain
+// [cloud.google.com/go/storage/control/apiv2/controlpb.Folder] resources.
+type HierarchicalNamespace struct {
+	// Enabled indicates whether hierarchical namespace features are enabled on
+	// the bucket. This can only be set at bucket creation time currently.
+	Enabled bool
 }
 
 func newBucket(b *raw.Bucket) (*BucketAttrs, error) {
@@ -803,6 +845,8 @@ func newBucket(b *raw.Bucket) (*BucketAttrs, error) {
 		RPO:                      toRPO(b),
 		CustomPlacementConfig:    customPlacementFromRaw(b.CustomPlacementConfig),
 		Autoclass:                toAutoclassFromRaw(b.Autoclass),
+		SoftDeletePolicy:         toSoftDeletePolicyFromRaw(b.SoftDeletePolicy),
+		HierarchicalNamespace:    toHierarchicalNamespaceFromRaw(b.HierarchicalNamespace),
 	}, nil
 }
 
@@ -836,6 +880,8 @@ func newBucketFromProto(b *storagepb.Bucket) *BucketAttrs {
 		CustomPlacementConfig:    customPlacementFromProto(b.GetCustomPlacementConfig()),
 		ProjectNumber:            parseProjectNumber(b.GetProject()), // this can return 0 the project resource name is ID based
 		Autoclass:                toAutoclassFromProto(b.GetAutoclass()),
+		SoftDeletePolicy:         toSoftDeletePolicyFromProto(b.SoftDeletePolicy),
+		HierarchicalNamespace:    toHierarchicalNamespaceFromProto(b.HierarchicalNamespace),
 	}
 }
 
@@ -891,6 +937,8 @@ func (b *BucketAttrs) toRawBucket() *raw.Bucket {
 		Rpo:                   b.RPO.String(),
 		CustomPlacementConfig: b.CustomPlacementConfig.toRawCustomPlacement(),
 		Autoclass:             b.Autoclass.toRawAutoclass(),
+		SoftDeletePolicy:      b.SoftDeletePolicy.toRawSoftDeletePolicy(),
+		HierarchicalNamespace: b.HierarchicalNamespace.toRawHierarchicalNamespace(),
 	}
 }
 
@@ -951,6 +999,8 @@ func (b *BucketAttrs) toProtoBucket() *storagepb.Bucket {
 		Rpo:                   b.RPO.String(),
 		CustomPlacementConfig: b.CustomPlacementConfig.toProtoCustomPlacement(),
 		Autoclass:             b.Autoclass.toProtoAutoclass(),
+		SoftDeletePolicy:      b.SoftDeletePolicy.toProtoSoftDeletePolicy(),
+		HierarchicalNamespace: b.HierarchicalNamespace.toProtoHierarchicalNamespace(),
 	}
 }
 
@@ -1032,6 +1082,7 @@ func (ua *BucketAttrsToUpdate) toProtoBucket() *storagepb.Bucket {
 		IamConfig:             bktIAM,
 		Rpo:                   ua.RPO.String(),
 		Autoclass:             ua.Autoclass.toProtoAutoclass(),
+		SoftDeletePolicy:      ua.SoftDeletePolicy.toProtoSoftDeletePolicy(),
 		Labels:                ua.setLabels,
 	}
 }
@@ -1149,8 +1200,14 @@ type BucketAttrsToUpdate struct {
 	RPO RPO
 
 	// If set, updates the autoclass configuration of the bucket.
+	// To disable autoclass on the bucket, set to an empty &Autoclass{}.
+	// To update the configuration for Autoclass.TerminalStorageClass,
+	// Autoclass.Enabled must also be set to true.
 	// See https://cloud.google.com/storage/docs/using-autoclass for more information.
 	Autoclass *Autoclass
+
+	// If set, updates the soft delete policy of the bucket.
+	SoftDeletePolicy *SoftDeletePolicy
 
 	// acl is the list of access control rules on the bucket.
 	// It is unexported and only used internally by the gRPC client.
@@ -1272,6 +1329,14 @@ func (ua *BucketAttrsToUpdate) toRawBucket() *raw.Bucket {
 			ForceSendFields:      []string{"Enabled"},
 		}
 		rb.ForceSendFields = append(rb.ForceSendFields, "Autoclass")
+	}
+	if ua.SoftDeletePolicy != nil {
+		if ua.SoftDeletePolicy.RetentionDuration == 0 {
+			rb.NullFields = append(rb.NullFields, "SoftDeletePolicy")
+			rb.SoftDeletePolicy = nil
+		} else {
+			rb.SoftDeletePolicy = ua.SoftDeletePolicy.toRawSoftDeletePolicy()
+		}
 	}
 	if ua.PredefinedACL != "" {
 		// Clear ACL or the call will fail.
@@ -2050,6 +2115,92 @@ func toAutoclassFromProto(a *storagepb.Bucket_Autoclass) *Autoclass {
 		ToggleTime:                     a.GetToggleTime().AsTime(),
 		TerminalStorageClass:           a.GetTerminalStorageClass(),
 		TerminalStorageClassUpdateTime: a.GetTerminalStorageClassUpdateTime().AsTime(),
+	}
+}
+
+func (p *SoftDeletePolicy) toRawSoftDeletePolicy() *raw.BucketSoftDeletePolicy {
+	if p == nil {
+		return nil
+	}
+	// Excluding read only field EffectiveTime.
+	// ForceSendFields must be set to send a zero value for RetentionDuration and disable
+	// soft delete.
+	return &raw.BucketSoftDeletePolicy{
+		RetentionDurationSeconds: int64(p.RetentionDuration.Seconds()),
+		ForceSendFields:          []string{"RetentionDurationSeconds"},
+	}
+}
+
+func (p *SoftDeletePolicy) toProtoSoftDeletePolicy() *storagepb.Bucket_SoftDeletePolicy {
+	if p == nil {
+		return nil
+	}
+	// Excluding read only field EffectiveTime.
+	return &storagepb.Bucket_SoftDeletePolicy{
+		RetentionDuration: durationpb.New(p.RetentionDuration),
+	}
+}
+
+func toSoftDeletePolicyFromRaw(p *raw.BucketSoftDeletePolicy) *SoftDeletePolicy {
+	if p == nil {
+		return nil
+	}
+
+	policy := &SoftDeletePolicy{
+		RetentionDuration: time.Duration(p.RetentionDurationSeconds) * time.Second,
+	}
+
+	// Return EffectiveTime only if parsed to a valid value.
+	if t, err := time.Parse(time.RFC3339, p.EffectiveTime); err == nil {
+		policy.EffectiveTime = t
+	}
+
+	return policy
+}
+
+func toSoftDeletePolicyFromProto(p *storagepb.Bucket_SoftDeletePolicy) *SoftDeletePolicy {
+	if p == nil {
+		return nil
+	}
+	return &SoftDeletePolicy{
+		EffectiveTime:     p.GetEffectiveTime().AsTime(),
+		RetentionDuration: p.GetRetentionDuration().AsDuration(),
+	}
+}
+
+func (hns *HierarchicalNamespace) toProtoHierarchicalNamespace() *storagepb.Bucket_HierarchicalNamespace {
+	if hns == nil {
+		return nil
+	}
+	return &storagepb.Bucket_HierarchicalNamespace{
+		Enabled: hns.Enabled,
+	}
+}
+
+func (hns *HierarchicalNamespace) toRawHierarchicalNamespace() *raw.BucketHierarchicalNamespace {
+	if hns == nil {
+		return nil
+	}
+	return &raw.BucketHierarchicalNamespace{
+		Enabled: hns.Enabled,
+	}
+}
+
+func toHierarchicalNamespaceFromProto(p *storagepb.Bucket_HierarchicalNamespace) *HierarchicalNamespace {
+	if p == nil {
+		return nil
+	}
+	return &HierarchicalNamespace{
+		Enabled: p.Enabled,
+	}
+}
+
+func toHierarchicalNamespaceFromRaw(r *raw.BucketHierarchicalNamespace) *HierarchicalNamespace {
+	if r == nil {
+		return nil
+	}
+	return &HierarchicalNamespace{
+		Enabled: r.Enabled,
 	}
 }
 

@@ -153,6 +153,8 @@ project's service account.
 Firestore project's service account.
 - `GCLOUD_TESTS_API_KEY`: API key for using the Translate API created above.
 - `GCLOUD_TESTS_GOLANG_SECONDARY_BIGTABLE_PROJECT_ID`: Developers Console project's ID (e.g. doorway-cliff-677) for Bigtable optional secondary project. This can be same as Firestore project or any project other than the general project.
+- `GCLOUD_TESTS_BIGTABLE_CLUSTER`: Cluster ID of Bigtable cluster in general project
+- `GCLOUD_TESTS_BIGTABLE_PRI_PROJ_SEC_CLUSTER`: Optional. Cluster ID of Bigtable secondary cluster in general project
 
 As part of the setup that follows, the following variables will be configured:
 

@@ -316,7 +316,7 @@ func DoUntilQuorumWithoutSuccessfulContextCancellation[T any](ctx context.Contex
 			ext.Error.Set(cfg.Logger.Span, true)
 		}
 
-		contextTracker.cancelAllContexts(cancellation.NewErrorf(cause))
+		contextTracker.cancelAllContexts(cancellation.NewError(errors.New(cause)))
 		cleanupResultsAlreadyReceived()
 		return nil, err
 	}

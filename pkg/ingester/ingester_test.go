@@ -1432,7 +1432,9 @@ func createIngesterServer(t *testing.T, ingesterConfig Config) (ingesterClient, 
 			level.Error(ing.logger).Log(err)
 		}
 	}()
-	conn, err := grpc.DialContext(context.Background(), "", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
+
+	// nolint:staticcheck // grpc.DialContext() has been deprecated; we'll address it before upgrading to gRPC 2.
+	conn, err := grpc.DialContext(context.Background(), "", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(func(_ context.Context, _ string) (net.Conn, error) {
 		return listener.Dial()
 	}))
 	require.NoError(t, err)
@@ -1605,6 +1607,16 @@ func (r *readRingMock) GetTokenRangesForInstance(instance string) (ring.TokenRan
 	}
 	tr := ring.TokenRanges{0, math.MaxUint32}
 	return tr, nil
+}
+
+// WritableInstancesWithTokensCount returns the number of writable instances in the ring that have tokens.
+func (r *readRingMock) WritableInstancesWithTokensCount() int {
+	return len(r.replicationSet.Instances)
+}
+
+// WritableInstancesWithTokensInZoneCount returns the number of writable instances in the ring that are registered in given zone and have tokens.
+func (r *readRingMock) WritableInstancesWithTokensInZoneCount(_ string) int {
+	return len(r.replicationSet.Instances)
 }
 
 func mockReadRingWithOneActiveIngester() *readRingMock {

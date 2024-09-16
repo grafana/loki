@@ -31,18 +31,18 @@ import (
 
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/connectivity"
-	"google.golang.org/grpc/internal"
 	"google.golang.org/grpc/internal/balancer/gracefulswitch"
 	"google.golang.org/grpc/internal/buffer"
 	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/internal/pretty"
+	"google.golang.org/grpc/internal/xds"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/serviceconfig"
 	xdsinternal "google.golang.org/grpc/xds/internal"
 	"google.golang.org/grpc/xds/internal/balancer/loadstore"
 	"google.golang.org/grpc/xds/internal/xdsclient"
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
 	"google.golang.org/grpc/xds/internal/xdsclient/load"
 )
 
@@ -123,6 +123,7 @@ type clusterImplBalancer struct {
 	requestCounterService string // The service name for the request counter.
 	requestCounter        *xdsclient.ClusterRequestsCounter
 	requestCountMax       uint32
+	telemetryLabels       map[string]string
 	pickerUpdateCh        *buffer.Unbounded
 }
 
@@ -210,7 +211,9 @@ func (b *clusterImplBalancer) UpdateClientConnState(s balancer.ClientConnState) 
 		return nil
 	}
 
-	b.logger.Infof("Received update from resolver, balancer config: %+v", pretty.ToJSON(s.BalancerConfig))
+	if b.logger.V(2) {
+		b.logger.Infof("Received update from resolver, balancer config: %s", pretty.ToJSON(s.BalancerConfig))
+	}
 	newConfig, ok := s.BalancerConfig.(*LBConfig)
 	if !ok {
 		return fmt.Errorf("unexpected balancer config with type: %T", s.BalancerConfig)
@@ -359,7 +362,7 @@ func (b *clusterImplBalancer) NewSubConn(addrs []resolver.Address, opts balancer
 	newAddrs := make([]resolver.Address, len(addrs))
 	var lID xdsinternal.LocalityID
 	for i, addr := range addrs {
-		newAddrs[i] = internal.SetXDSHandshakeClusterName(addr, clusterName)
+		newAddrs[i] = xds.SetXDSHandshakeClusterName(addr, clusterName)
 		lID = xdsinternal.GetLocalityID(newAddrs[i])
 	}
 	var sc balancer.SubConn
@@ -384,7 +387,7 @@ func (b *clusterImplBalancer) UpdateAddresses(sc balancer.SubConn, addrs []resol
 	newAddrs := make([]resolver.Address, len(addrs))
 	var lID xdsinternal.LocalityID
 	for i, addr := range addrs {
-		newAddrs[i] = internal.SetXDSHandshakeClusterName(addr, clusterName)
+		newAddrs[i] = xds.SetXDSHandshakeClusterName(addr, clusterName)
 		lID = xdsinternal.GetLocalityID(newAddrs[i])
 	}
 	if scw, ok := sc.(*scWrapper); ok {
@@ -465,18 +468,19 @@ func (b *clusterImplBalancer) run() {
 				b.childState = u
 				b.ClientConn.UpdateState(balancer.State{
 					ConnectivityState: b.childState.ConnectivityState,
-					Picker: newPicker(b.childState, &dropConfigs{
+					Picker: b.newPicker(&dropConfigs{
 						drops:           b.drops,
 						requestCounter:  b.requestCounter,
 						requestCountMax: b.requestCountMax,
-					}, b.loadWrapper),
+					}),
 				})
 			case *LBConfig:
+				b.telemetryLabels = u.TelemetryLabels
 				dc := b.handleDropAndRequestCount(u)
 				if dc != nil && b.childState.Picker != nil {
 					b.ClientConn.UpdateState(balancer.State{
 						ConnectivityState: b.childState.ConnectivityState,
-						Picker:            newPicker(b.childState, dc, b.loadWrapper),
+						Picker:            b.newPicker(dc),
 					})
 				}
 			}
