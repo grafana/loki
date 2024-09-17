@@ -19,16 +19,17 @@ jobs:
           ref: main
       - name: Install Actions
         run: npm install --production --prefix ./actions
-      - name: "Generate token"
-        id: generate_token
-        uses: tibdex/github-app-token@b62528385c34dbc9f38e5f4225ac829252d1ea92
+      - id: "get_github_app_token"
+        name: "get github app token"
+        uses: "actions/create-github-app-token@v1"
         with:
           app-id: "${{ secrets.APP_ID }}"
+          owner: "${{ github.repository_owner }}"
           private-key: "${{ secrets.APP_PRIVATE_KEY }}"
       - name: Run backport
         uses: ./actions/backport
         with:
           metricsWriteAPIKey: ${{secrets.GRAFANA_MISC_STATS_API_KEY}}
-          token: ${{ steps.generate_token.outputs.token }}
+          token: ${{ steps.get_github_app_token.outputs.token }}
           labelsToAdd: "backport"
           title: "chore: [{{base}}] {{originalTitle}}"
