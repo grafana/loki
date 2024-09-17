@@ -5,7 +5,7 @@ on:
 
 jobs:
   main:
-    if: github.owner == "grafana"
+    if: github.owner == 'grafana'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Actions

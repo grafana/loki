@@ -9,9 +9,10 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 // TODO(owen-d): this should probably be in it's own testing-util package
