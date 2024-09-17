@@ -5,8 +5,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 type fakeLineBloom []string
