@@ -448,8 +448,3 @@ func (e *QuantileSketchVectorStepEvaluator) Next() (bool, int64, StepResult) {
 func (*QuantileSketchVectorStepEvaluator) Close() error { return nil }
 
 func (*QuantileSketchVectorStepEvaluator) Error() error { return nil }
-
-func (e *QuantileSketchVectorStepEvaluator) Explain(parent Node) {
-	b := parent.Child("QuantileSketchVector")
-	e.inner.Explain(b)
-}

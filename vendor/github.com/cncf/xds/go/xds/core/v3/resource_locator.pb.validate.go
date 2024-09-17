@@ -11,6 +11,7 @@ import (
 	"net/mail"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -31,21 +32,40 @@ var (
 	_ = (*url.URL)(nil)
 	_ = (*mail.Address)(nil)
 	_ = anypb.Any{}
+	_ = sort.Sort
 )
 
 // Validate checks the field values on ResourceLocator with the rules defined
-// in the proto definition for this message. If any rules are violated, an
-// error is returned.
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
 func (m *ResourceLocator) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on ResourceLocator with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// ResourceLocatorMultiError, or nil if none found.
+func (m *ResourceLocator) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *ResourceLocator) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
+	var errors []error
+
 	if _, ok := ResourceLocator_Scheme_name[int32(m.GetScheme())]; !ok {
-		return ResourceLocatorValidationError{
+		err := ResourceLocatorValidationError{
 			field:  "Scheme",
 			reason: "value must be one of the defined enum values",
 		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
 	}
 
 	// no validation rules for Id
@@ -53,16 +73,39 @@ func (m *ResourceLocator) Validate() error {
 	// no validation rules for Authority
 
 	if utf8.RuneCountInString(m.GetResourceType()) < 1 {
-		return ResourceLocatorValidationError{
+		err := ResourceLocatorValidationError{
 			field:  "ResourceType",
 			reason: "value length must be at least 1 runes",
 		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
 	}
 
 	for idx, item := range m.GetDirectives() {
 		_, _ = idx, item
 
-		if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, ResourceLocatorValidationError{
+						field:  fmt.Sprintf("Directives[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, ResourceLocatorValidationError{
+						field:  fmt.Sprintf("Directives[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
 			if err := v.Validate(); err != nil {
 				return ResourceLocatorValidationError{
 					field:  fmt.Sprintf("Directives[%v]", idx),
@@ -74,11 +117,39 @@ func (m *ResourceLocator) Validate() error {
 
 	}
 
-	switch m.ContextParamSpecifier.(type) {
-
+	switch v := m.ContextParamSpecifier.(type) {
 	case *ResourceLocator_ExactContext:
+		if v == nil {
+			err := ResourceLocatorValidationError{
+				field:  "ContextParamSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
-		if v, ok := interface{}(m.GetExactContext()).(interface{ Validate() error }); ok {
+		if all {
+			switch v := interface{}(m.GetExactContext()).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, ResourceLocatorValidationError{
+						field:  "ExactContext",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, ResourceLocatorValidationError{
+						field:  "ExactContext",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(m.GetExactContext()).(interface{ Validate() error }); ok {
 			if err := v.Validate(); err != nil {
 				return ResourceLocatorValidationError{
 					field:  "ExactContext",
@@ -88,10 +159,33 @@ func (m *ResourceLocator) Validate() error {
 			}
 		}
 
+	default:
+		_ = v // ensures v is used
+	}
+
+	if len(errors) > 0 {
+		return ResourceLocatorMultiError(errors)
 	}
 
 	return nil
 }
+
+// ResourceLocatorMultiError is an error wrapping multiple validation errors
+// returned by ResourceLocator.ValidateAll() if the designated constraints
+// aren't met.
+type ResourceLocatorMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m ResourceLocatorMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m ResourceLocatorMultiError) AllErrors() []error { return m }
 
 // ResourceLocatorValidationError is the validation error returned by
 // ResourceLocator.Validate if the designated constraints aren't met.
@@ -149,17 +243,61 @@ var _ interface {
 
 // Validate checks the field values on ResourceLocator_Directive with the rules
 // defined in the proto definition for this message. If any rules are
-// violated, an error is returned.
+// violated, the first error encountered is returned, or nil if there are no violations.
 func (m *ResourceLocator_Directive) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on ResourceLocator_Directive with the
+// rules defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// ResourceLocator_DirectiveMultiError, or nil if none found.
+func (m *ResourceLocator_Directive) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *ResourceLocator_Directive) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
-	switch m.Directive.(type) {
+	var errors []error
 
+	oneofDirectivePresent := false
+	switch v := m.Directive.(type) {
 	case *ResourceLocator_Directive_Alt:
+		if v == nil {
+			err := ResourceLocator_DirectiveValidationError{
+				field:  "Directive",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofDirectivePresent = true
 
-		if v, ok := interface{}(m.GetAlt()).(interface{ Validate() error }); ok {
+		if all {
+			switch v := interface{}(m.GetAlt()).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, ResourceLocator_DirectiveValidationError{
+						field:  "Alt",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, ResourceLocator_DirectiveValidationError{
+						field:  "Alt",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(m.GetAlt()).(interface{ Validate() error }); ok {
 			if err := v.Validate(); err != nil {
 				return ResourceLocator_DirectiveValidationError{
 					field:  "Alt",
@@ -170,31 +308,77 @@ func (m *ResourceLocator_Directive) Validate() error {
 		}
 
 	case *ResourceLocator_Directive_Entry:
+		if v == nil {
+			err := ResourceLocator_DirectiveValidationError{
+				field:  "Directive",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofDirectivePresent = true
 
 		if utf8.RuneCountInString(m.GetEntry()) < 1 {
-			return ResourceLocator_DirectiveValidationError{
+			err := ResourceLocator_DirectiveValidationError{
 				field:  "Entry",
 				reason: "value length must be at least 1 runes",
 			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
 		}
 
 		if !_ResourceLocator_Directive_Entry_Pattern.MatchString(m.GetEntry()) {
-			return ResourceLocator_DirectiveValidationError{
+			err := ResourceLocator_DirectiveValidationError{
 				field:  "Entry",
 				reason: "value does not match regex pattern \"^[0-9a-zA-Z_\\\\-\\\\./~:]+$\"",
 			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
 		}
 
 	default:
-		return ResourceLocator_DirectiveValidationError{
+		_ = v // ensures v is used
+	}
+	if !oneofDirectivePresent {
+		err := ResourceLocator_DirectiveValidationError{
 			field:  "Directive",
 			reason: "value is required",
 		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
 
+	if len(errors) > 0 {
+		return ResourceLocator_DirectiveMultiError(errors)
 	}
 
 	return nil
 }
+
+// ResourceLocator_DirectiveMultiError is an error wrapping multiple validation
+// errors returned by ResourceLocator_Directive.ValidateAll() if the
+// designated constraints aren't met.
+type ResourceLocator_DirectiveMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m ResourceLocator_DirectiveMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m ResourceLocator_DirectiveMultiError) AllErrors() []error { return m }
 
 // ResourceLocator_DirectiveValidationError is the validation error returned by
 // ResourceLocator_Directive.Validate if the designated constraints aren't met.

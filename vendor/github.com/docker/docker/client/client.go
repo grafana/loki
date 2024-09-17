@@ -49,6 +49,8 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/docker/docker/api"
@@ -131,7 +133,10 @@ type Client struct {
 	negotiateVersion bool
 
 	// negotiated indicates that API version negotiation took place
-	negotiated bool
+	negotiated atomic.Bool
+
+	// negotiateLock is used to single-flight the version negotiation process
+	negotiateLock sync.Mutex
 
 	tp trace.TracerProvider
 
@@ -265,17 +270,31 @@ func (cli *Client) Close() error {
 // This allows for version-dependent code to use the same version as will
 // be negotiated when making the actual requests, and for which cases
 // we cannot do the negotiation lazily.
-func (cli *Client) checkVersion(ctx context.Context) {
-	if cli.negotiateVersion && !cli.negotiated {
-		cli.NegotiateAPIVersion(ctx)
+func (cli *Client) checkVersion(ctx context.Context) error {
+	if !cli.manualOverride && cli.negotiateVersion && !cli.negotiated.Load() {
+		// Ensure exclusive write access to version and negotiated fields
+		cli.negotiateLock.Lock()
+		defer cli.negotiateLock.Unlock()
+
+		// May have been set during last execution of critical zone
+		if cli.negotiated.Load() {
+			return nil
+		}
+
+		ping, err := cli.Ping(ctx)
+		if err != nil {
+			return err
+		}
+		cli.negotiateAPIVersionPing(ping)
 	}
+	return nil
 }
 
 // getAPIPath returns the versioned request path to call the API.
 // It appends the query parameters to the path if they are not empty.
 func (cli *Client) getAPIPath(ctx context.Context, p string, query url.Values) string {
 	var apiPath string
-	cli.checkVersion(ctx)
+	_ = cli.checkVersion(ctx)
 	if cli.version != "" {
 		v := strings.TrimPrefix(cli.version, "v")
 		apiPath = path.Join(cli.basePath, "/v"+v, p)
@@ -307,7 +326,15 @@ func (cli *Client) ClientVersion() string {
 // added (1.24).
 func (cli *Client) NegotiateAPIVersion(ctx context.Context) {
 	if !cli.manualOverride {
-		ping, _ := cli.Ping(ctx)
+		// Avoid concurrent modification of version-related fields
+		cli.negotiateLock.Lock()
+		defer cli.negotiateLock.Unlock()
+
+		ping, err := cli.Ping(ctx)
+		if err != nil {
+			// FIXME(thaJeztah): Ping returns an error when failing to connect to the API; we should not swallow the error here, and instead returning it.
+			return
+		}
 		cli.negotiateAPIVersionPing(ping)
 	}
 }
@@ -327,6 +354,10 @@ func (cli *Client) NegotiateAPIVersion(ctx context.Context) {
 // added (1.24).
 func (cli *Client) NegotiateAPIVersionPing(pingResponse types.Ping) {
 	if !cli.manualOverride {
+		// Avoid concurrent modification of version-related fields
+		cli.negotiateLock.Lock()
+		defer cli.negotiateLock.Unlock()
+
 		cli.negotiateAPIVersionPing(pingResponse)
 	}
 }
@@ -352,7 +383,7 @@ func (cli *Client) negotiateAPIVersionPing(pingResponse types.Ping) {
 	// Store the results, so that automatic API version negotiation (if enabled)
 	// won't be performed on the next request.
 	if cli.negotiateVersion {
-		cli.negotiated = true
+		cli.negotiated.Store(true)
 	}
 }
 

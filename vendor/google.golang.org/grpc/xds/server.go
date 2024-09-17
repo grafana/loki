@@ -31,11 +31,11 @@ import (
 	"google.golang.org/grpc/internal/grpcsync"
 	iresolver "google.golang.org/grpc/internal/resolver"
 	"google.golang.org/grpc/internal/transport"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/xds/internal/server"
 	"google.golang.org/grpc/xds/internal/xdsclient"
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
 
@@ -96,7 +96,7 @@ func NewGRPCServer(opts ...grpc.ServerOption) (*GRPCServer, error) {
 	if s.opts.bootstrapContentsForTesting != nil {
 		// Bootstrap file contents may be specified as a server option for tests.
 		newXDSClient = func() (xdsclient.XDSClient, func(), error) {
-			return xdsclient.NewWithBootstrapContentsForTesting(s.opts.bootstrapContentsForTesting)
+			return xdsclient.NewForTesting(xdsclient.OptionsForTesting{Contents: s.opts.bootstrapContentsForTesting})
 		}
 	}
 	xdsClient, xdsClientClose, err := newXDSClient()

@@ -15,7 +15,7 @@ import (
 	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
-	"github.com/grafana/loki/v3/pkg/bloomcompactor"
+	"github.com/grafana/loki/v3/pkg/bloombuild"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
 	"github.com/grafana/loki/v3/pkg/compactor"
 	"github.com/grafana/loki/v3/pkg/distributor"
@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester"
 	ingester_client "github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/loki"
 	"github.com/grafana/loki/v3/pkg/loki/common"
 	frontend "github.com/grafana/loki/v3/pkg/lokifrontend"
 	"github.com/grafana/loki/v3/pkg/querier"
@@ -123,14 +124,14 @@ var (
 			Desc:       "The compactor block configures the compactor component, which compacts index shards for performance.",
 		},
 		{
-			Name:       "bloom_compactor",
-			StructType: []reflect.Type{reflect.TypeOf(bloomcompactor.Config{})},
-			Desc:       "Experimental: The bloom_compactor block configures the Loki bloom compactor server, responsible for compacting stream indexes into bloom filters and merging them as bloom blocks.",
-		},
-		{
 			Name:       "bloom_gateway",
 			StructType: []reflect.Type{reflect.TypeOf(bloomgateway.Config{})},
 			Desc:       "Experimental: The bloom_gateway block configures the Loki bloom gateway server, responsible for serving queries for filtering chunks based on filter expressions.",
+		},
+		{
+			Name:       "bloom_build",
+			StructType: []reflect.Type{reflect.TypeOf(bloombuild.Config{})},
+			Desc:       "Experimental: The bloom_build block configures the Loki bloom planner and builder servers, responsible for building bloom filters.",
 		},
 		{
 			Name:       "limits_config",
@@ -167,6 +168,11 @@ var (
 			Name:       "analytics",
 			StructType: []reflect.Type{reflect.TypeOf(analytics.Config{})},
 			Desc:       "Configuration for analytics.",
+		},
+		{
+			Name:       "profiling",
+			StructType: []reflect.Type{reflect.TypeOf(loki.ProfilingConfig{})},
+			Desc:       "Configuration for profiling options.",
 		},
 
 		{

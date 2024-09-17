@@ -29,7 +29,7 @@ array. The contents look something like this:
 The relevant part of the log entry is the timestamp; the `p`s are just filler
 bytes to make the size of the log configurable.
 
-An agent (like Promtail) should be configured to read the log file and ship it
+An agent (like Grafana Alloy) should be configured to read the log file and ship it
 to Loki.
 
 Meanwhile, Loki Canary will open a WebSocket connection to Loki and will tail

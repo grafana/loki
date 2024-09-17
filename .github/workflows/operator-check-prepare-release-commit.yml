@@ -16,8 +16,9 @@ jobs:
     steps:
       - name: Extract release version
         id: pr_semver
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
-          PR_TITLE="${{ github.event.pull_request.title }}"
           SEMVER=$(echo "$PR_TITLE" | sed -n 's/^chore( operator): community release \([0-9]\+\.[0-9]\+\.[0-9]\+\)$/\1/p')
           echo "semver=$SEMVER" >> $GITHUB_OUTPUT
 

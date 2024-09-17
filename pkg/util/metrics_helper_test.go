@@ -1158,3 +1158,18 @@ func verifyLabels(t *testing.T, m prometheus.Collector, filter map[string]string
 
 	require.Equal(t, expectedLabels, result)
 }
+
+func TestHumanizeBytes(t *testing.T) {
+	tests := map[uint64]string{
+		1024:               "1.0kB",
+		1024 * 1000:        "1.0MB",
+		1024 * 1000 * 1000: "1.0GB",
+		10:                 "10B",
+	}
+
+	for bytes, humanizedBytes := range tests {
+		t.Run(fmt.Sprintf("%d", bytes), func(t *testing.T) {
+			require.Equal(t, humanizedBytes, HumanizeBytes(bytes))
+		})
+	}
+}

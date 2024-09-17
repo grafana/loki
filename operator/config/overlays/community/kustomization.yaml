@@ -22,8 +22,8 @@ labels:
     app.kubernetes.io/managed-by: operator-lifecycle-manager
   includeSelectors: true
 - pairs:
-    app.kubernetes.io/instance: loki-operator-v0.6.0
-    app.kubernetes.io/version: "0.6.0"
+    app.kubernetes.io/instance: loki-operator-v0.6.2
+    app.kubernetes.io/version: "0.6.2"
 
 generatorOptions:
   disableNameSuffixHash: true
@@ -43,7 +43,7 @@ patchesStrategicMerge:
 images:
 - name: controller
   newName: docker.io/grafana/loki-operator
-  newTag: 0.6.0
+  newTag: 0.6.2
 
 # the following config is for teaching kustomize how to do var substitution
 vars:

@@ -247,6 +247,21 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 	}
 
 	if mergeWithExisting {
+		r.IngesterRF1.LifecyclerConfig.RingConfig.KVStore = rc.KVStore
+		r.IngesterRF1.LifecyclerConfig.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.IngesterRF1.LifecyclerConfig.RingConfig.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.IngesterRF1.LifecyclerConfig.TokensFilePath = rc.TokensFilePath
+		r.IngesterRF1.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.IngesterRF1.LifecyclerConfig.ID = rc.InstanceID
+		r.IngesterRF1.LifecyclerConfig.InfNames = rc.InstanceInterfaceNames
+		r.IngesterRF1.LifecyclerConfig.Port = rc.InstancePort
+		r.IngesterRF1.LifecyclerConfig.Addr = rc.InstanceAddr
+		r.IngesterRF1.LifecyclerConfig.Zone = rc.InstanceZone
+		r.IngesterRF1.LifecyclerConfig.ListenPort = rc.ListenPort
+		r.IngesterRF1.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
+	}
+
+	if mergeWithExisting {
 		r.Pattern.LifecyclerConfig.RingConfig.KVStore = rc.KVStore
 		r.Pattern.LifecyclerConfig.HeartbeatPeriod = rc.HeartbeatPeriod
 		r.Pattern.LifecyclerConfig.RingConfig.HeartbeatTimeout = rc.HeartbeatTimeout
@@ -259,6 +274,21 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.Pattern.LifecyclerConfig.Zone = rc.InstanceZone
 		r.Pattern.LifecyclerConfig.ListenPort = rc.ListenPort
 		r.Pattern.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
+	}
+
+	if mergeWithExisting {
+		r.KafkaIngester.LifecyclerConfig.RingConfig.KVStore = rc.KVStore
+		r.KafkaIngester.LifecyclerConfig.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.KafkaIngester.LifecyclerConfig.RingConfig.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.KafkaIngester.LifecyclerConfig.TokensFilePath = rc.TokensFilePath
+		r.KafkaIngester.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.KafkaIngester.LifecyclerConfig.ID = rc.InstanceID
+		r.KafkaIngester.LifecyclerConfig.InfNames = rc.InstanceInterfaceNames
+		r.KafkaIngester.LifecyclerConfig.Port = rc.InstancePort
+		r.KafkaIngester.LifecyclerConfig.Addr = rc.InstanceAddr
+		r.KafkaIngester.LifecyclerConfig.Zone = rc.InstanceZone
+		r.KafkaIngester.LifecyclerConfig.ListenPort = rc.ListenPort
+		r.KafkaIngester.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
 	}
 
 	// Distributor
@@ -321,20 +351,6 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.IndexGateway.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.IndexGateway.Ring.KVStore = rc.KVStore
 	}
-
-	// BloomCompactor
-	if mergeWithExisting || reflect.DeepEqual(r.BloomCompactor.Ring, defaults.BloomCompactor.Ring) {
-		r.BloomCompactor.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
-		r.BloomCompactor.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
-		r.BloomCompactor.Ring.InstancePort = rc.InstancePort
-		r.BloomCompactor.Ring.InstanceAddr = rc.InstanceAddr
-		r.BloomCompactor.Ring.InstanceID = rc.InstanceID
-		r.BloomCompactor.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
-		r.BloomCompactor.Ring.InstanceZone = rc.InstanceZone
-		r.BloomCompactor.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-		r.BloomCompactor.Ring.KVStore = rc.KVStore
-		r.BloomCompactor.Ring.NumTokens = rc.NumTokens
-	}
 }
 
 func applyTokensFilePath(cfg *ConfigWrapper) error {
@@ -365,13 +381,6 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 		return err
 	}
 	cfg.IndexGateway.Ring.TokensFilePath = f
-
-	// Bloom-Compactor
-	f, err = tokensFile(cfg, "bloom-compactor.tokens")
-	if err != nil {
-		return err
-	}
-	cfg.BloomCompactor.Ring.TokensFilePath = f
 
 	// Pattern
 	f, err = tokensFile(cfg, "pattern.tokens")
@@ -465,10 +474,6 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 	if reflect.DeepEqual(cfg.IndexGateway.Ring.InstanceInterfaceNames, defaults.IndexGateway.Ring.InstanceInterfaceNames) {
 		cfg.IndexGateway.Ring.InstanceInterfaceNames = append(cfg.IndexGateway.Ring.InstanceInterfaceNames, loopbackIface)
 	}
-
-	if reflect.DeepEqual(cfg.BloomCompactor.Ring.InstanceInterfaceNames, defaults.BloomCompactor.Ring.InstanceInterfaceNames) {
-		cfg.BloomCompactor.Ring.InstanceInterfaceNames = append(cfg.BloomCompactor.Ring.InstanceInterfaceNames, loopbackIface)
-	}
 }
 
 // applyMemberlistConfig will change the default ingester, distributor, ruler, and query scheduler ring configurations to use memberlist.
@@ -483,7 +488,6 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
 	r.IndexGateway.Ring.KVStore.Store = memberlistStr
-	r.BloomCompactor.Ring.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")
@@ -669,6 +673,7 @@ func applyIngesterFinalSleep(cfg *ConfigWrapper) {
 
 func applyIngesterReplicationFactor(cfg *ConfigWrapper) {
 	cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor = cfg.Common.ReplicationFactor
+	cfg.IngesterRF1.LifecyclerConfig.RingConfig.ReplicationFactor = cfg.Common.ReplicationFactor
 }
 
 // applyChunkRetain is used to set chunk retain based on having an index query cache configured
@@ -689,21 +694,17 @@ func applyChunkRetain(cfg, defaults *ConfigWrapper) {
 }
 
 func applyCommonQuerierWorkerGRPCConfig(cfg, defaults *ConfigWrapper) error {
-	if !reflect.DeepEqual(cfg.Worker.OldQueryFrontendGRPCClientConfig, defaults.Worker.OldQueryFrontendGRPCClientConfig) {
-		// User is using the old grpc configuration.
+	usingNewFrontendCfg := !reflect.DeepEqual(cfg.Worker.NewQueryFrontendGRPCClientConfig, defaults.Worker.NewQueryFrontendGRPCClientConfig)
+	usingNewSchedulerCfg := !reflect.DeepEqual(cfg.Worker.QuerySchedulerGRPCClientConfig, defaults.Worker.QuerySchedulerGRPCClientConfig)
+	usingOldFrontendCfg := !reflect.DeepEqual(cfg.Worker.OldQueryFrontendGRPCClientConfig, defaults.Worker.OldQueryFrontendGRPCClientConfig)
 
-		if reflect.DeepEqual(cfg.Worker.NewQueryFrontendGRPCClientConfig, defaults.Worker.NewQueryFrontendGRPCClientConfig) {
-			// User is using the old grpc configuration only, we can just copy it to the new grpc client struct.
-			cfg.Worker.NewQueryFrontendGRPCClientConfig = cfg.Worker.OldQueryFrontendGRPCClientConfig
-		} else {
-			// User is using both, old and new way of configuring the grpc client, so we throw an error.
-			return fmt.Errorf("both `grpc_client_config` and `query_frontend_grpc_client` are set at the same time. Please use only one of them")
+	if usingOldFrontendCfg {
+		if usingNewFrontendCfg || usingNewSchedulerCfg {
+			return fmt.Errorf("both `grpc_client_config` and (`query_frontend_grpc_client` or `query_scheduler_grpc_client`) are set at the same time. Please use only `query_frontend_grpc_client` and `query_scheduler_grpc_client`")
 		}
-
-		if reflect.DeepEqual(cfg.Worker.QuerySchedulerGRPCClientConfig, defaults.Worker.QuerySchedulerGRPCClientConfig) {
-			// Since the scheduler grpc client is not set, we can just copy the old query frontend grpc client to the scheduler grpc client.
-			cfg.Worker.QuerySchedulerGRPCClientConfig = cfg.Worker.OldQueryFrontendGRPCClientConfig
-		}
+		cfg.Worker.NewQueryFrontendGRPCClientConfig = cfg.Worker.OldQueryFrontendGRPCClientConfig
+		cfg.Worker.QuerySchedulerGRPCClientConfig = cfg.Worker.OldQueryFrontendGRPCClientConfig
 	}
+
 	return nil
 }

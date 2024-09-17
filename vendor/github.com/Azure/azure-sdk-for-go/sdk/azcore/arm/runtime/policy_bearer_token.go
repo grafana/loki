@@ -64,6 +64,7 @@ func NewBearerTokenPolicy(cred azcore.TokenCredential, opts *armpolicy.BearerTok
 	p.scopes = make([]string, len(opts.Scopes))
 	copy(p.scopes, opts.Scopes)
 	p.btp = azruntime.NewBearerTokenPolicy(cred, opts.Scopes, &azpolicy.BearerTokenOptions{
+		InsecureAllowCredentialWithHTTP: opts.InsecureAllowCredentialWithHTTP,
 		AuthorizationHandler: azpolicy.AuthorizationHandler{
 			OnChallenge: p.onChallenge,
 			OnRequest:   p.onRequest,

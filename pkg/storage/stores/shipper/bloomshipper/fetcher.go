@@ -19,6 +19,7 @@ import (
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
@@ -30,7 +31,7 @@ type options struct {
 	// return bloom blocks to pool after iteration; default=false
 	// NB(owen-d): this can only be safely used when blooms are not captured outside
 	// of iteration or it can introduce use-after-free bugs
-	usePool bool
+	usePool mempool.Allocator
 }
 
 func (o *options) apply(opts ...FetchOption) {
@@ -53,7 +54,7 @@ func WithFetchAsync(v bool) FetchOption {
 	}
 }
 
-func WithPool(v bool) FetchOption {
+func WithPool(v mempool.Allocator) FetchOption {
 	return func(opts *options) {
 		opts.usePool = v
 	}
@@ -222,7 +223,7 @@ func (f *Fetcher) writeBackMetas(ctx context.Context, metas []Meta) error {
 // FetchBlocks implements fetcher
 func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...FetchOption) ([]*CloseableBlockQuerier, error) {
 	// apply fetch options
-	cfg := &options{ignoreNotFound: true, fetchAsync: false, usePool: false}
+	cfg := &options{ignoreNotFound: true, fetchAsync: false, usePool: &mempool.SimpleHeapAllocator{}}
 	cfg.apply(opts...)
 
 	// first, resolve blocks from cache and enqueue missing blocks to download queue
@@ -502,6 +503,7 @@ func newDownloadQueue[T any, R any](size, workers int, process processFunc[T, R]
 func (q *downloadQueue[T, R]) enqueue(t downloadRequest[T, R]) {
 	if !t.async {
 		q.queue <- t
+		return
 	}
 	// for async task we attempt to dedupe task already in progress.
 	q.enqueuedMutex.Lock()

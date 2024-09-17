@@ -25,7 +25,7 @@ type Limits interface {
 	DiscoverServiceName(userID string) []string
 	DiscoverLogLevels(userID string) bool
 
-	ShardStreams(userID string) *shardstreams.Config
+	ShardStreams(userID string) shardstreams.Config
 	IngestionRateStrategy() string
 	IngestionRateBytes(userID string) float64
 	IngestionBurstSizeBytes(userID string) int
@@ -33,4 +33,7 @@ type Limits interface {
 	MaxStructuredMetadataSize(userID string) int
 	MaxStructuredMetadataCount(userID string) int
 	OTLPConfig(userID string) push.OTLPConfig
+
+	BlockIngestionUntil(userID string) time.Time
+	BlockIngestionStatusCode(userID string) int
 }

@@ -40,10 +40,11 @@ func sanitizeLabelKey(key string, isPrefix bool) string {
 
 // appendSanitize appends the sanitized key to the slice.
 func appendSanitized(to, key []byte) []byte {
+	key = bytes.TrimSpace(key)
+
 	if len(key) == 0 {
 		return to
 	}
-	key = bytes.TrimSpace(key)
 
 	if len(to) == 0 && key[0] >= '0' && key[0] <= '9' {
 		to = append(to, '_')

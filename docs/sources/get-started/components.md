@@ -31,7 +31,7 @@ This page describes the responsibilities of each of these components.
 ## Distributor
 
 The **distributor** service is responsible for handling incoming push requests from
-clients. It's the first stop in the write path for log data. Once the
+clients. It's the first step in the write path for log data. Once the
 distributor receives a set of streams in an HTTP request, each stream is validated for correctness
 and to ensure that it is within the configured tenant (or global) limits. Each valid stream
 is then sent to `n` [ingesters](#ingester) in parallel, where `n` is the [replication factor](#replication-factor) for data.

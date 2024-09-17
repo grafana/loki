@@ -176,7 +176,6 @@ func (m *Metadata) EnsureBounds(from, through int64) {
 	if m.Through == 0 || through > m.Through {
 		m.Through = through
 	}
-
 }
 
 // NewTOCFromByteSlice return parsed TOC from given index byte slice.
@@ -1348,44 +1347,37 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 		// Earlier V1 formats don't have a sorted postings offset table, so
 		// load the whole offset table into memory.
 		r.postingsV1 = map[string]map[string]uint64{}
-		if err := ReadOffsetTable(r.b, r.toc.PostingsTable, func(key []string, off uint64, _ int) error {
-			if len(key) != 2 {
-				return errors.Errorf("unexpected key length for posting table %d", len(key))
+		if err := ReadOffsetTable(r.b, r.toc.PostingsTable, func(name, value []byte, off uint64, _ int) error {
+			if _, ok := r.postingsV1[string(name)]; !ok {
+				r.postingsV1[string(name)] = map[string]uint64{}
+				r.postings[string(name)] = nil // Used to get a list of labelnames in places.
 			}
-			if _, ok := r.postingsV1[key[0]]; !ok {
-				r.postingsV1[key[0]] = map[string]uint64{}
-				r.postings[key[0]] = nil // Used to get a list of labelnames in places.
-			}
-			r.postingsV1[key[0]][key[1]] = off
+			r.postingsV1[string(name)][string(value)] = off
 			return nil
 		}); err != nil {
 			return nil, errors.Wrap(err, "read postings table")
 		}
 	} else {
-		var lastKey []string
+		var lastName, lastValue []byte
 		lastOff := 0
 		valueCount := 0
 		// For the postings offset table we keep every label name but only every nth
 		// label value (plus the first and last one), to save memory.
-		if err := ReadOffsetTable(r.b, r.toc.PostingsTable, func(key []string, _ uint64, off int) error {
-			if len(key) != 2 {
-				return errors.Errorf("unexpected key length for posting table %d", len(key))
-			}
-			if _, ok := r.postings[key[0]]; !ok {
+		if err := ReadOffsetTable(r.b, r.toc.PostingsTable, func(name, value []byte, _ uint64, off int) error {
+			if _, ok := r.postings[string(name)]; !ok {
 				// Next label name.
-				r.postings[key[0]] = []postingOffset{}
-				if lastKey != nil {
+				r.postings[string(name)] = []postingOffset{}
+				if lastName != nil {
 					// Always include last value for each label name.
-					r.postings[lastKey[0]] = append(r.postings[lastKey[0]], postingOffset{value: lastKey[1], off: lastOff})
+					r.postings[string(lastName)] = append(r.postings[string(lastName)], postingOffset{value: string(lastValue), off: lastOff})
 				}
-				lastKey = nil
 				valueCount = 0
 			}
 			if valueCount%symbolFactor == 0 {
-				r.postings[key[0]] = append(r.postings[key[0]], postingOffset{value: key[1], off: off})
-				lastKey = nil
+				r.postings[string(name)] = append(r.postings[string(name)], postingOffset{value: string(value), off: off})
+				lastName, lastValue = nil, nil
 			} else {
-				lastKey = key
+				lastName, lastValue = name, value
 				lastOff = off
 			}
 			valueCount++
@@ -1393,8 +1385,8 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 		}); err != nil {
 			return nil, errors.Wrap(err, "read postings table")
 		}
-		if lastKey != nil {
-			r.postings[lastKey[0]] = append(r.postings[lastKey[0]], postingOffset{value: lastKey[1], off: lastOff})
+		if lastName != nil {
+			r.postings[string(lastName)] = append(r.postings[string(lastName)], postingOffset{value: string(lastValue), off: lastOff})
 		}
 		// Trim any extra space in the slices.
 		for k, v := range r.postings {
@@ -1444,15 +1436,12 @@ type Range struct {
 // for all postings lists.
 func (r *Reader) PostingsRanges() (map[labels.Label]Range, error) {
 	m := map[labels.Label]Range{}
-	if err := ReadOffsetTable(r.b, r.toc.PostingsTable, func(key []string, off uint64, _ int) error {
-		if len(key) != 2 {
-			return errors.Errorf("unexpected key length for posting table %d", len(key))
-		}
+	if err := ReadOffsetTable(r.b, r.toc.PostingsTable, func(name, value []byte, off uint64, _ int) error {
 		d := encoding.DecWrap(tsdb_enc.NewDecbufAt(r.b, int(off), castagnoliTable))
 		if d.Err() != nil {
 			return d.Err()
 		}
-		m[labels.Label{Name: key[0], Value: key[1]}] = Range{
+		m[labels.Label{Name: string(name), Value: string(value)}] = Range{
 			Start: int64(off) + 4,
 			End:   int64(off) + 4 + int64(d.Len()),
 		}
@@ -1607,27 +1596,24 @@ func (s symbolsIter) Err() error { return s.err }
 
 // ReadOffsetTable reads an offset table and at the given position calls f for each
 // found entry. If f returns an error it stops decoding and returns the received error.
-func ReadOffsetTable(bs ByteSlice, off uint64, f func([]string, uint64, int) error) error {
+func ReadOffsetTable(bs ByteSlice, off uint64, f func(name, value []byte, postingsOffset uint64, labelOffset int) error) error {
 	d := encoding.DecWrap(tsdb_enc.NewDecbufAt(bs, int(off), castagnoliTable))
 	startLen := d.Len()
 	cnt := d.Be32()
 
 	for d.Err() == nil && d.Len() > 0 && cnt > 0 {
 		offsetPos := startLen - d.Len()
-		keyCount := d.Uvarint()
-		// The Postings offset table takes only 2 keys per entry (name and value of label),
-		// and the LabelIndices offset table takes only 1 key per entry (a label name).
-		// Hence setting the size to max of both, i.e. 2.
-		keys := make([]string, 0, 2)
-
-		for i := 0; i < keyCount; i++ {
-			keys = append(keys, d.UvarintStr())
+		if keyCount := d.Uvarint(); keyCount != 2 {
+			return fmt.Errorf("unexpected number of keys for postings offset table %d", keyCount)
 		}
+
+		name := d.UvarintBytes()
+		value := d.UvarintBytes()
 		o := d.Uvarint64()
 		if d.Err() != nil {
 			break
 		}
-		if err := f(keys, o, offsetPos); err != nil {
+		if err := f(name, value, o, offsetPos); err != nil {
 			return err
 		}
 		cnt--
@@ -1646,7 +1632,6 @@ func readFingerprintOffsetsTable(bs ByteSlice, off uint64) (FingerprintOffsets, 
 	}
 
 	return res, d.Err()
-
 }
 
 // Close the reader and its underlying resources.
@@ -1834,7 +1819,7 @@ func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lbls *l
 	return fprint, nil
 }
 
-func (r *Reader) ChunkStats(id storage.SeriesRef, from, through int64, lbls *labels.Labels) (uint64, ChunkStats, error) {
+func (r *Reader) ChunkStats(id storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}) (uint64, ChunkStats, error) {
 	offset := id
 	// In version 2+ series IDs are no longer exact references but series are 16-byte padded
 	// and the ID is the multiple of 16 of the actual position.
@@ -1846,7 +1831,7 @@ func (r *Reader) ChunkStats(id storage.SeriesRef, from, through int64, lbls *lab
 		return 0, ChunkStats{}, d.Err()
 	}
 
-	return r.dec.ChunkStats(r.version, d.Get(), id, from, through, lbls)
+	return r.dec.ChunkStats(r.version, d.Get(), id, from, through, lbls, by)
 }
 
 func (r *Reader) Postings(name string, fpFilter FingerprintFilter, values ...string) (Postings, error) {
@@ -2074,7 +2059,7 @@ func (dec *Decoder) Postings(b []byte) (int, Postings, error) {
 	if len(l) != 4*n {
 		return 0, nil, fmt.Errorf("unexpected postings length, should be %d bytes for %d postings, got %d bytes", 4*n, n, len(l))
 	}
-	return n, newBigEndianPostings(l), nil
+	return n, NewBigEndianPostings(l), nil
 }
 
 // LabelNamesOffsetsFor decodes the offsets of the name symbols for a given series.
@@ -2218,7 +2203,7 @@ func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, chks *[]ChunkMeta)
 		if d.Err() != nil {
 			return nil, 0, errors.Wrap(d.Err(), "read series label offsets")
 		}
-
+		// todo(cyriltovena): we could cache this by user requests spanning multiple prepSeries calls.
 		ln, err := dec.LookupSymbol(lno)
 		if err != nil {
 			return nil, 0, errors.Wrap(err, "lookup label name")
@@ -2233,8 +2218,50 @@ func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, chks *[]ChunkMeta)
 	return &d, fprint, nil
 }
 
-func (dec *Decoder) ChunkStats(version int, b []byte, seriesRef storage.SeriesRef, from, through int64, lbls *labels.Labels) (uint64, ChunkStats, error) {
-	d, fp, err := dec.prepSeries(b, lbls, nil)
+// prepSeriesBy returns series labels and chunks for a series and only returning selected `by` label names.
+// If `by` is empty, it returns all labels for the series.
+func (dec *Decoder) prepSeriesBy(b []byte, lbls *labels.Labels, chks *[]ChunkMeta, by map[string]struct{}) (*encoding.Decbuf, uint64, error) {
+	if by == nil {
+		return dec.prepSeries(b, lbls, chks)
+	}
+	*lbls = (*lbls)[:0]
+	if chks != nil {
+		*chks = (*chks)[:0]
+	}
+
+	d := encoding.DecWrap(tsdb_enc.Decbuf{B: b})
+
+	fprint := d.Be64()
+	k := d.Uvarint()
+
+	for i := 0; i < k; i++ {
+		lno := uint32(d.Uvarint())
+		lvo := uint32(d.Uvarint())
+
+		if d.Err() != nil {
+			return nil, 0, errors.Wrap(d.Err(), "read series label offsets")
+		}
+		// todo(cyriltovena): we could cache this by user requests spanning multiple prepSeries calls.
+		ln, err := dec.LookupSymbol(lno)
+		if err != nil {
+			return nil, 0, errors.Wrap(err, "lookup label name")
+		}
+		if _, ok := by[ln]; !ok {
+			continue
+		}
+
+		lv, err := dec.LookupSymbol(lvo)
+		if err != nil {
+			return nil, 0, errors.Wrap(err, "lookup label value")
+		}
+
+		*lbls = append(*lbls, labels.Label{Name: ln, Value: lv})
+	}
+	return &d, fprint, nil
+}
+
+func (dec *Decoder) ChunkStats(version int, b []byte, seriesRef storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}) (uint64, ChunkStats, error) {
+	d, fp, err := dec.prepSeriesBy(b, lbls, nil, by)
 	if err != nil {
 		return 0, ChunkStats{}, err
 	}
@@ -2335,7 +2362,6 @@ func (dec *Decoder) readChunkStatsV3(d *encoding.Decbuf, from, through int64) (r
 	}
 
 	return res, d.Err()
-
 }
 
 func (dec *Decoder) accumulateChunkStats(d *encoding.Decbuf, nChunks int, from, through int64) (res ChunkStats, err error) {
@@ -2372,16 +2398,13 @@ func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.
 		} else if chk.MinTime >= through {
 			break
 		}
-
 	}
 
 	return res, nil
-
 }
 
 // Series decodes a series entry from the given byte slice into lset and chks.
 func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
-
 	d, fprint, err := dec.prepSeries(b, lbls, chks)
 	if err != nil {
 		return 0, err
@@ -2392,7 +2415,6 @@ func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, f
 		return 0, errors.Wrapf(err, "series %s", lbls.String())
 	}
 	return fprint, nil
-
 }
 
 func (dec *Decoder) readChunks(version int, d *encoding.Decbuf, seriesRef storage.SeriesRef, from int64, through int64, chks *[]ChunkMeta) error {

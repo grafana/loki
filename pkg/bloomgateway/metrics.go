@@ -56,7 +56,7 @@ type serverMetrics struct {
 	filteredSeries   prometheus.Histogram
 	requestedChunks  prometheus.Histogram
 	filteredChunks   prometheus.Histogram
-	receivedFilters  prometheus.Histogram
+	receivedMatchers prometheus.Histogram
 }
 
 func newMetrics(registerer prometheus.Registerer, namespace, subsystem string) *metrics {
@@ -105,23 +105,24 @@ func newServerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 			Help:      "Total amount of chunk refs filtered by bloom-gateway",
 			Buckets:   prometheus.ExponentialBucketsRange(1, 100e3, 10),
 		}),
-		receivedFilters: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+		receivedMatchers: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
-			Name:      "request_filters",
-			Help:      "Number of filters per request.",
+			Name:      "request_matchers",
+			Help:      "Number of matchers per request.",
 			Buckets:   prometheus.ExponentialBuckets(1, 2, 9), // 1 -> 256
 		}),
 	}
 }
 
 type workerMetrics struct {
-	dequeueDuration   *prometheus.HistogramVec
-	queueDuration     *prometheus.HistogramVec
-	processDuration   *prometheus.HistogramVec
-	tasksDequeued     *prometheus.CounterVec
-	tasksProcessed    *prometheus.CounterVec
-	blockQueryLatency *prometheus.HistogramVec
+	dequeueDuration    *prometheus.HistogramVec
+	queueDuration      *prometheus.HistogramVec
+	processDuration    *prometheus.HistogramVec
+	tasksDequeued      *prometheus.CounterVec
+	tasksProcessed     *prometheus.CounterVec
+	blocksNotAvailable *prometheus.CounterVec
+	blockQueryLatency  *prometheus.HistogramVec
 }
 
 func newWorkerMetrics(registerer prometheus.Registerer, namespace, subsystem string) *workerMetrics {
@@ -158,6 +159,12 @@ func newWorkerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 			Name:      "tasks_processed_total",
 			Help:      "Total amount of tasks that the worker processed",
 		}, append(labels, "status")),
+		blocksNotAvailable: r.NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "blocks_not_available_total",
+			Help:      "Total amount of blocks that have been skipped because they were not found or not downloaded yet",
+		}, labels),
 		blockQueryLatency: r.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,

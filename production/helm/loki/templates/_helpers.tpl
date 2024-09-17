@@ -237,32 +237,20 @@ s3:
   {{- end }}
   s3forcepathstyle: {{ .s3ForcePathStyle }}
   insecure: {{ .insecure }}
+  {{- with .disable_dualstack }}
+  disable_dualstack: {{ . }}
+  {{- end }}
   {{- with .http_config}}
   http_config:
-    {{- with .idle_conn_timeout }}
-    idle_conn_timeout: {{ . }}
-    {{- end}}
-    {{- with .response_header_timeout }}
-    response_header_timeout: {{ . }}
-    {{- end}}
-    {{- with .insecure_skip_verify }}
-    insecure_skip_verify: {{ . }}
-    {{- end}}
-    {{- with .ca_file}}
-    ca_file: {{ . }}
-    {{- end}}
+{{ toYaml . | indent 4 }}
   {{- end }}
   {{- with .backoff_config}}
   backoff_config:
-    {{- with .min_period }}
-    min_period: {{ . }}
-    {{- end}}
-    {{- with .max_period }}
-    max_period: {{ . }}
-    {{- end}}
-    {{- with .max_retries }}
-    max_retries: {{ . }}
-    {{- end}}
+{{ toYaml . | indent 4 }}
+  {{- end }}
+  {{- with .sse }}
+  sse:
+{{ toYaml . | indent 4 }}
   {{- end }}
 {{- end -}}
 
@@ -297,38 +285,18 @@ azure:
   endpoint_suffix: {{ . }}
   {{- end }}
 {{- end -}}
+{{- else if eq .Values.loki.storage.type "alibabacloud" -}}
+{{- with .Values.loki.storage.alibabacloud }}
+alibabacloud:
+  bucket: {{ $.Values.loki.storage.bucketNames.chunks }}
+  endpoint: {{ .endpoint }}
+  access_key_id: {{ .accessKeyId }}
+  secret_access_key: {{ .secretAccessKey }}
+{{- end -}}
 {{- else if eq .Values.loki.storage.type "swift" -}}
 {{- with .Values.loki.storage.swift }}
 swift:
-  {{- with .auth_version }}
-  auth_version: {{ . }}
-  {{- end }}
-  auth_url: {{ .auth_url }}
-  {{- with .internal }}
-  internal: {{ . }}
-  {{- end }}
-  username: {{ .username }}
-  user_domain_name: {{ .user_domain_name }}
-  {{- with .user_domain_id }}
-  user_domain_id: {{ . }}
-  {{- end }}
-  {{- with .user_id }}
-  user_id: {{ . }}
-  {{- end }}
-  password: {{ .password }}
-  {{- with .domain_id }}
-  domain_id: {{ . }}
-  {{- end }}
-  domain_name: {{ .domain_name }}
-  project_id: {{ .project_id }}
-  project_name: {{ .project_name }}
-  project_domain_id: {{ .project_domain_id }}
-  project_domain_name: {{ .project_domain_name }}
-  region_name: {{ .region_name }}
-  container_name: {{ .container_name }}
-  max_retries: {{ .max_retries | default 3 }}
-  connect_timeout: {{ .connect_timeout | default "10s" }}
-  request_timeout: {{ .request_timeout | default "5s" }}
+{{ toYaml . | indent 2 }}
 {{- end -}}
 {{- else -}}
 {{- with .Values.loki.storage.filesystem }}
@@ -454,6 +422,82 @@ ruler:
 {{- end }}
 {{- end }}
 
+{{/* Enterprise Logs Admin API storage config */}}
+{{- define "enterprise-logs.adminAPIStorageConfig" }}
+storage:
+  {{- if .Values.minio.enabled }}
+  backend: "s3"
+  s3:
+    bucket_name: admin
+  {{- else if eq .Values.loki.storage.type "s3" -}}
+  {{- with .Values.loki.storage.s3 }}
+  backend: "s3"
+  s3:
+    bucket_name: {{ $.Values.loki.storage.bucketNames.admin }}
+  {{- end -}}
+  {{- else if eq .Values.loki.storage.type "gcs" -}}
+  {{- with .Values.loki.storage.gcs }}
+  backend: "gcs"
+  gcs:
+    bucket_name: {{ $.Values.loki.storage.bucketNames.admin }}
+  {{- end -}}
+  {{- else if eq .Values.loki.storage.type "azure" -}}
+  {{- with .Values.loki.storage.azure }}
+  backend: "azure"
+  azure:
+    account_name: {{ .accountName }}
+    {{- with .accountKey }}
+    account_key: {{ . }}
+    {{- end }}
+    {{- with .connectionString }}
+    connection_string: {{ . }}
+    {{- end }}
+    container_name: {{ $.Values.loki.storage.bucketNames.admin }}
+    {{- with .endpointSuffix }}
+    endpoint_suffix: {{ . }}
+    {{- end }}
+  {{- end -}}
+  {{- else if eq .Values.loki.storage.type "swift" -}}
+  {{- with .Values.loki.storage.swift }}
+  backend: "swift"
+  swift:
+    {{- with .auth_version }}
+    auth_version: {{ . }}
+    {{- end }}
+    auth_url: {{ .auth_url }}
+    {{- with .internal }}
+    internal: {{ . }}
+    {{- end }}
+    username: {{ .username }}
+    user_domain_name: {{ .user_domain_name }}
+    {{- with .user_domain_id }}
+    user_domain_id: {{ . }}
+    {{- end }}
+    {{- with .user_id }}
+    user_id: {{ . }}
+    {{- end }}
+    password: {{ .password }}
+    {{- with .domain_id }}
+    domain_id: {{ . }}
+    {{- end }}
+    domain_name: {{ .domain_name }}
+    project_id: {{ .project_id }}
+    project_name: {{ .project_name }}
+    project_domain_id: {{ .project_domain_id }}
+    project_domain_name: {{ .project_domain_name }}
+    region_name: {{ .region_name }}
+    container_name: {{ .container_name }}
+    max_retries: {{ .max_retries | default 3 }}
+    connect_timeout: {{ .connect_timeout | default "10s" }}
+    request_timeout: {{ .request_timeout | default "5s" }}
+  {{- end -}}
+  {{- else }}
+  backend: "filesystem"
+  filesystem:
+    dir: {{ .Values.loki.storage.filesystem.admin_api_directory }}
+  {{- end -}}
+{{- end }}
+
 {{/*
 Calculate the config from structured and unstructured text input
 */}}
@@ -531,33 +575,68 @@ Return if ingress supports pathType.
 Generate list of ingress service paths based on deployment type
 */}}
 {{- define "loki.ingress.servicePaths" -}}
-{{- if (eq (include "loki.deployment.isScalable" .) "true") -}}
+{{- if (eq (include "loki.deployment.isSingleBinary" .) "true") -}}
+{{- include "loki.ingress.singleBinaryServicePaths" . }}
+{{- else if (eq (include "loki.deployment.isDistributed" .) "true") -}}
+{{- include "loki.ingress.distributedServicePaths" . }}
+{{- else if and (eq (include "loki.deployment.isScalable" .) "true") (not .Values.read.legacyReadTarget ) -}}
 {{- include "loki.ingress.scalableServicePaths" . }}
 {{- else -}}
-{{- include "loki.ingress.singleBinaryServicePaths" . }}
+{{- include "loki.ingress.legacyScalableServicePaths" . }}
 {{- end -}}
 {{- end -}}
 
+
 {{/*
-Ingress service paths for scalable deployment
+Ingress service paths for distributed deployment
+*/}}
+{{- define "loki.ingress.distributedServicePaths" -}}
+{{- $distributorServiceName := include "loki.distributorFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $distributorServiceName "paths" .Values.ingress.paths.distributor )}}
+{{- $queryFrontendServiceName := include "loki.queryFrontendFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $queryFrontendServiceName "paths" .Values.ingress.paths.queryFrontend )}}
+{{- $rulerServiceName := include "loki.rulerFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $rulerServiceName "paths" .Values.ingress.paths.ruler)}}
+{{- end -}}
+
+{{/*
+Ingress service paths for legacy simple scalable deployment when backend components were part of read component.
 */}}
 {{- define "loki.ingress.scalableServicePaths" -}}
-{{- include "loki.ingress.servicePath" (dict "ctx" . "svcName" "read" "paths" .Values.ingress.paths.read )}}
-{{- include "loki.ingress.servicePath" (dict "ctx" . "svcName" "write" "paths" .Values.ingress.paths.write )}}
+{{- $readServiceName := include "loki.readFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $readServiceName "paths" .Values.ingress.paths.queryFrontend )}}
+{{- $writeServiceName := include "loki.writeFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $writeServiceName "paths" .Values.ingress.paths.distributor )}}
+{{- $backendServiceName := include "loki.backendFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $backendServiceName "paths" .Values.ingress.paths.ruler )}}
+{{- end -}}
+
+{{/*
+Ingress service paths for legacy simple scalable deployment
+*/}}
+{{- define "loki.ingress.legacyScalableServicePaths" -}}
+{{- $readServiceName := include "loki.readFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $readServiceName "paths" .Values.ingress.paths.queryFrontend )}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $readServiceName "paths" .Values.ingress.paths.ruler )}}
+{{- $writeServiceName := include "loki.writeFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $writeServiceName "paths" .Values.ingress.paths.distributor )}}
 {{- end -}}
 
 {{/*
 Ingress service paths for single binary deployment
 */}}
 {{- define "loki.ingress.singleBinaryServicePaths" -}}
-{{- include "loki.ingress.servicePath" (dict "ctx" . "svcName" "singleBinary" "paths" .Values.ingress.paths.singleBinary )}}
+{{- $serviceName := include "loki.singleBinaryFullname" . }}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.distributor )}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.queryFrontend )}}
+{{- include "loki.ingress.servicePath" (dict "ctx" . "serviceName" $serviceName "paths" .Values.ingress.paths.ruler )}}
 {{- end -}}
 
 {{/*
 Ingress service path helper function
 Params:
   ctx = . context
-  svcName = service name without the "loki.fullname" part (ie. read, write)
+  serviceName = fully qualified k8s service name
   paths = list of url paths to allow ingress for
 */}}
 {{- define "loki.ingress.servicePath" -}}
@@ -569,30 +648,15 @@ Params:
   pathType: Prefix
   {{- end }}
   backend:
-    {{- $serviceName := include "loki.ingress.serviceName" (dict "ctx" $.ctx "svcName" $.svcName) }}
     {{- if $ingressApiIsStable }}
     service:
-      name: {{ $serviceName }}
+      name: {{ $.serviceName }}
       port:
         number: {{ $.ctx.Values.loki.server.http_listen_port }}
     {{- else }}
-    serviceName: {{ $serviceName }}
+    serviceName: {{ $.serviceName }}
     servicePort: {{ $.ctx.Values.loki.server.http_listen_port }}
     {{- end -}}
-{{- end -}}
-{{- end -}}
-
-{{/*
-Ingress service name helper function
-Params:
-  ctx = . context
-  svcName = service name without the "loki.fullname" part (ie. read, write)
-*/}}
-{{- define "loki.ingress.serviceName" -}}
-{{- if (eq .svcName "singleBinary") }}
-{{- printf "%s" (include "loki.singleBinaryFullname" .ctx) }}
-{{- else }}
-{{- printf "%s-%s" (include "loki.name" .ctx) .svcName }}
 {{- end -}}
 {{- end -}}
 
@@ -960,7 +1024,8 @@ enableServiceLinks: false
 {{/* Determine querier address */}}
 {{- define "loki.querierAddress" -}}
 {{- $querierAddress := "" }}
-{{- if "loki.deployment.isDistributed "}}
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if $isDistributed -}}
 {{- $querierHost := include "loki.querierFullname" .}}
 {{- $querierUrl := printf "http://%s.%s.svc.%s:3100" $querierHost .Release.Namespace .Values.global.clusterDomain }}
 {{- $querierAddress = $querierUrl }}

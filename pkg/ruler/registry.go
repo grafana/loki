@@ -128,8 +128,12 @@ func (r *walRegistry) get(tenant string) storage.Storage {
 }
 
 func (r *walRegistry) Appender(ctx context.Context) storage.Appender {
+	// concurrency-safe retrieval of remote-write config for this tenant, using the global remote-write for defaults
+	r.overridesMu.Lock()
 	tenant, _ := user.ExtractOrgID(ctx)
 	rwCfg, err := r.getTenantRemoteWriteConfig(tenant, r.config.RemoteWrite)
+	r.overridesMu.Unlock()
+
 	if err != nil {
 		level.Error(r.logger).Log("msg", "error retrieving remote-write config; discarding samples", "user", tenant, "err", err)
 		return discardingAppender{}

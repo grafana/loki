@@ -13,6 +13,7 @@ import "pkg/logqlmodel/stats/stats.proto";
 import "pkg/push/push.proto";
 import "pkg/querier/queryrange/queryrangebase/definitions/definitions.proto";
 import "pkg/querier/queryrange/queryrangebase/queryrange.proto";
+import "pkg/storage/chunk/cache/resultscache/types.proto";
 
 option go_package = "github.com/grafana/loki/v3/pkg/querier/queryrange";
 option (gogoproto.marshaler_all) = true;
@@ -39,6 +40,7 @@ message LokiRequest {
   // If populated, these represent the chunk references that the querier should
   // use to fetch the data, plus any other chunks reported by ingesters.
   logproto.ChunkRefGroup storeChunks = 11 [(gogoproto.jsontag) = "storeChunks"];
+  resultscache.CachingOptions cachingOptions = 12 [(gogoproto.nullable) = false];
 }
 
 message LokiInstantRequest {
@@ -55,6 +57,7 @@ message LokiInstantRequest {
   // If populated, these represent the chunk references that the querier should
   // use to fetch the data, plus any other chunks reported by ingesters.
   logproto.ChunkRefGroup storeChunks = 8 [(gogoproto.jsontag) = "storeChunks"];
+  resultscache.CachingOptions cachingOptions = 9 [(gogoproto.nullable) = false];
 }
 
 message Plan {

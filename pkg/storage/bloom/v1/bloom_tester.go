@@ -1,10 +1,13 @@
 package v1
 
 import (
+	"fmt"
 	"unicode/utf8"
+	"unsafe"
 
 	"github.com/grafana/regexp"
 
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -51,12 +54,12 @@ func ExtractTestableLineFilters(expr syntax.Expr) []syntax.LineFilterExpr {
 	var filters []syntax.LineFilterExpr
 	var lineFmtFound bool
 	visitor := &syntax.DepthFirstTraversal{
-		VisitLineFilterFn: func(v syntax.RootVisitor, e *syntax.LineFilterExpr) {
+		VisitLineFilterFn: func(_ syntax.RootVisitor, e *syntax.LineFilterExpr) {
 			if e != nil && !lineFmtFound {
 				filters = append(filters, *e)
 			}
 		},
-		VisitLineFmtFn: func(v syntax.RootVisitor, e *syntax.LineFmtExpr) {
+		VisitLineFmtFn: func(_ syntax.RootVisitor, e *syntax.LineFmtExpr) {
 			if e != nil {
 				lineFmtFound = true
 			}
@@ -176,7 +179,7 @@ func (n matchAllTest) MatchesWithPrefixBuf(_ filter.Checker, _ []byte, _ int) bo
 // Extracting this interface allows us to test the bloom filter without having to use the actual tokenizer
 // TODO: This should be moved to tokenizer.go
 type NGramBuilder interface {
-	Tokens(line string) Iterator[[]byte]
+	Tokens(line string) iter.Iterator[[]byte]
 	N() int
 	SkipFactor() int
 }
@@ -251,7 +254,7 @@ func (b stringMatcherFilter) Matches(test log.Checker) bool {
 }
 
 func newStringFilterFunc(b NGramBuilder) log.NewMatcherFiltererFunc {
-	return func(match []byte, caseInsensitive bool) log.MatcherFilterer {
+	return func(match []byte, _ bool) log.MatcherFilterer {
 		return log.WrapMatcher(stringMatcherFilter{
 			test: newStringTest(b, string(match)),
 		})
@@ -291,6 +294,25 @@ func (o orTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen
 	return o.left.MatchesWithPrefixBuf(bloom, buf, prefixLen) || o.right.MatchesWithPrefixBuf(bloom, buf, prefixLen)
 }
 
+type andTest struct {
+	left, right BloomTest
+}
+
+func newAndTest(left, right BloomTest) andTest {
+	return andTest{
+		left:  left,
+		right: right,
+	}
+}
+
+func (a andTest) Matches(bloom filter.Checker) bool {
+	return a.left.Matches(bloom) && a.right.Matches(bloom)
+}
+
+func (a andTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
+	return a.left.MatchesWithPrefixBuf(bloom, buf, prefixLen) && a.right.MatchesWithPrefixBuf(bloom, buf, prefixLen)
+}
+
 func newPatternTest(b NGramBuilder, match string) BloomTest {
 	lit, err := pattern.ParseLiterals(match)
 	if err != nil {
@@ -303,4 +325,104 @@ func newPatternTest(b NGramBuilder, match string) BloomTest {
 		res = append(res, newStringTest(b, string(l)))
 	}
 	return res
+}
+
+func LabelMatchersToBloomTest(matchers ...LabelMatcher) BloomTest {
+	tests := make(BloomTests, 0, len(matchers))
+	for _, matcher := range matchers {
+		tests = append(tests, matcherToBloomTest(matcher))
+	}
+	return tests
+}
+
+func matcherToBloomTest(matcher LabelMatcher) BloomTest {
+	switch matcher := matcher.(type) {
+	case UnsupportedLabelMatcher:
+		return matchAllTest{}
+
+	case PlainLabelMatcher:
+		return newStringMatcherTest(matcher)
+
+	case OrLabelMatcher:
+		return newOrTest(
+			matcherToBloomTest(matcher.Left),
+			matcherToBloomTest(matcher.Right),
+		)
+
+	case AndLabelMatcher:
+		return newAndTest(
+			matcherToBloomTest(matcher.Left),
+			matcherToBloomTest(matcher.Right),
+		)
+
+	default:
+		// Unhandled cases pass bloom tests by default.
+		return matchAllTest{}
+	}
+}
+
+type stringMatcherTest struct {
+	matcher PlainLabelMatcher
+}
+
+func newStringMatcherTest(matcher PlainLabelMatcher) stringMatcherTest {
+	return stringMatcherTest{matcher: matcher}
+}
+
+func (sm stringMatcherTest) Matches(bloom filter.Checker) bool {
+	// TODO(rfratto): reintroduce the use of a shared tokenizer here to avoid
+	// desyncing between how tokens are passed during building vs passed during
+	// querying.
+	//
+	// For a shared tokenizer to be ergonomic:
+	//
+	// 1. A prefix shouldn't be required until MatchesWithPrefixBuf is called
+	// 2. It should be possible to test for just the key
+
+	var (
+		combined = fmt.Sprintf("%s=%s", sm.matcher.Key, sm.matcher.Value)
+
+		rawKey      = unsafe.Slice(unsafe.StringData(sm.matcher.Key), len(sm.matcher.Key))
+		rawCombined = unsafe.Slice(unsafe.StringData(combined), len(combined))
+	)
+
+	if !bloom.Test(rawKey) {
+		// The structured metadata key wasn't indexed. We pass the bloom test
+		// since we can only filter data out if the key was indexed but the value
+		// wasn't.
+		//
+		// TODO(rfratto): The negative test here is a bit confusing, and the key
+		// presence test should likely be done higher up.
+		return true
+	}
+
+	return bloom.Test(rawCombined)
+}
+
+func (sm stringMatcherTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
+	var (
+		combined = fmt.Sprintf("%s=%s", sm.matcher.Key, sm.matcher.Value)
+
+		prefixedKey      = appendToBuf(buf, prefixLen, sm.matcher.Key)
+		prefixedCombined = appendToBuf(buf, prefixLen, combined)
+	)
+
+	if !bloom.Test(prefixedKey) {
+		// The structured metadata key wasn't indexed for a prefix. We pass the
+		// bloom test since we can only filter data out if the key was indexed but
+		// the value wasn't.
+		//
+		// TODO(rfratto): The negative test here is a bit confusing, and the key
+		// presence test should likely be done higher up.
+		return true
+	}
+
+	return bloom.Test(prefixedCombined)
+}
+
+// appendToBuf is the equivalent of append(buf[:prefixLen], str). len(buf) must
+// be greater than or equal to prefixLen+len(str) to avoid allocations.
+func appendToBuf(buf []byte, prefixLen int, str string) []byte {
+	rawString := unsafe.Slice(unsafe.StringData(str), len(str))
+	return append(buf[:prefixLen], rawString...)
 }

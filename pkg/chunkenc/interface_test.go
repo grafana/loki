@@ -31,7 +31,9 @@ func TestParseEncoding(t *testing.T) {
 }
 
 func TestIsOutOfOrderErr(t *testing.T) {
-	for _, err := range []error{ErrOutOfOrder, ErrTooFarBehind(time.Now())} {
+	now := time.Now()
+
+	for _, err := range []error{ErrOutOfOrder, ErrTooFarBehind(now, now)} {
 		require.Equal(t, true, IsOutOfOrderErr(err))
 	}
 }
