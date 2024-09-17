@@ -122,7 +122,7 @@ func (s splitByShardLabel) buildFactory(
 	}
 
 	return func(start, end time.Time) {
-    //leave the last bucket for streams without shards
+		//leave the last bucket for streams without shards
 		target := s.targetBuckets - 1
 
 		firstShard := 0
@@ -137,20 +137,19 @@ func (s splitByShardLabel) buildFactory(
 				lastShard = maxValue + 1
 			}
 
-
 			matcher := []byte{'('}
 			for j := firstShard; j < lastShard; j++ {
-        if j > maxValue {
-          break
-        }
+				if j > maxValue {
+					break
+				}
 				matcher = append(matcher, []byte(fmt.Sprintf("%d|", j))...)
 			}
 
-      if len(matcher) == 1 {
-        break
-      }
+			if len(matcher) == 1 {
+				break
+			}
 
-      //last character is '|', replace it with ')' to complete the regex
+			//last character is '|', replace it with ')' to complete the regex
 			matcher[len(matcher)-1] = ')'
 
 			iterationMatchers := append(matchers, &labels.Matcher{
