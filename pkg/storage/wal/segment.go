@@ -177,7 +177,7 @@ func (b *SegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels
 	b.lastAppend = now
 
 	for _, e := range entries {
-		b.inputSize.Add(int64(len(e.Line)))
+		b.inputSize.Add(int64(len(e.Line))) // todo(cyriltovena): should add the size of structured metadata
 	}
 	id := streamID{labels: labelsString, tenant: tenantID}
 	s := b.getOrCreateStream(id, lbls)

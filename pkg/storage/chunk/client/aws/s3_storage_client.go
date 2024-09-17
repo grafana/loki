@@ -78,6 +78,7 @@ type S3Config struct {
 	StorageClass     string              `yaml:"storage_class"`
 	SSEConfig        bucket_s3.SSEConfig `yaml:"sse"`
 	BackoffConfig    backoff.Config      `yaml:"backoff_config" doc:"description=Configures back off when S3 get Object."`
+	DisableDualstack bool                `yaml:"disable_dualstack"`
 
 	Inject InjectRequestMiddleware `yaml:"-"`
 }
@@ -109,6 +110,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.Var(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "AWS Secret Access Key")
 	f.Var(&cfg.SessionToken, prefix+"s3.session-token", "AWS Session Token")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "Disable https on s3 connection.")
+	f.BoolVar(&cfg.DisableDualstack, prefix+"s3.disable-dualstack", false, "Disable forcing S3 dualstack endpoint usage.")
 
 	cfg.SSEConfig.RegisterFlagsWithPrefix(prefix+"s3.sse.", f)
 
@@ -122,7 +124,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 	f.DurationVar(&cfg.BackoffConfig.MinBackoff, prefix+"s3.min-backoff", 100*time.Millisecond, "Minimum backoff time when s3 get Object")
 	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, prefix+"s3.max-backoff", 3*time.Second, "Maximum backoff time when s3 get Object")
-	f.IntVar(&cfg.BackoffConfig.MaxRetries, prefix+"s3.max-retries", 5, "Maximum number of times to retry when s3 get Object")
+	f.IntVar(&cfg.BackoffConfig.MaxRetries, prefix+"s3.max-retries", 5, "Maximum number of times to retry for s3 GetObject or ObjectExists")
 }
 
 // Validate config and returns error on failure
@@ -196,6 +198,9 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 		s3Config = s3Config.WithRegion("dummy")
 	}
 
+	if cfg.DisableDualstack {
+		s3Config = s3Config.WithUseDualStack(false)
+	}
 	s3Config = s3Config.WithMaxRetries(0)                          // We do our own retries, so we can monitor them
 	s3Config = s3Config.WithS3ForcePathStyle(cfg.S3ForcePathStyle) // support for Path Style S3 url if has the flag
 
@@ -243,7 +248,7 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 		DialContext: (&net.Dialer{
 			Timeout:   30 * time.Second,
 			KeepAlive: 30 * time.Second,
-			DualStack: true,
+			DualStack: !cfg.DisableDualstack,
 		}).DialContext,
 		MaxIdleConns:          200,
 		IdleConnTimeout:       cfg.HTTPConfig.IdleConnTimeout,
@@ -302,16 +307,34 @@ func buckets(cfg S3Config) ([]string, error) {
 func (a *S3ObjectClient) Stop() {}
 
 func (a *S3ObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	err := instrument.CollectedRequest(ctx, "S3.ObjectExists", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
-		headObjectInput := &s3.HeadObjectInput{
-			Bucket: aws.String(a.bucketFromKey(objectKey)),
-			Key:    aws.String(objectKey),
+	var lastErr error
+
+	retries := backoff.New(ctx, a.cfg.BackoffConfig)
+	for retries.Ongoing() {
+		if ctx.Err() != nil {
+			return false, errors.Wrap(ctx.Err(), "ctx related error during s3 objectExists")
 		}
-		_, err := a.S3.HeadObject(headObjectInput)
-		return err
-	})
-	if err != nil {
-		return false, err
+		lastErr = instrument.CollectedRequest(ctx, "S3.ObjectExists", s3RequestDuration, instrument.ErrorCode, func(_ context.Context) error {
+			headObjectInput := &s3.HeadObjectInput{
+				Bucket: aws.String(a.bucketFromKey(objectKey)),
+				Key:    aws.String(objectKey),
+			}
+			_, requestErr := a.S3.HeadObject(headObjectInput)
+			return requestErr
+		})
+		if lastErr == nil {
+			return true, nil
+		}
+
+		if a.IsObjectNotFoundErr(lastErr) {
+			return false, lastErr
+		}
+
+		retries.Wait()
+	}
+
+	if lastErr != nil {
+		return false, lastErr
 	}
 
 	return true, nil
@@ -496,7 +519,13 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]
 
 // IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
 func (a *S3ObjectClient) IsObjectNotFoundErr(err error) bool {
-	if aerr, ok := errors.Cause(err).(awserr.Error); ok && aerr.Code() == s3.ErrCodeNoSuchKey {
+	aerr, ok := errors.Cause(err).(awserr.Error)
+	if !ok {
+		return false
+	}
+
+	code := aerr.Code()
+	if code == s3.ErrCodeNoSuchKey || code == "NotFound" {
 		return true
 	}
 

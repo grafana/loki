@@ -60,16 +60,6 @@ const (
 	ringKey = "distributor"
 
 	ringAutoForgetUnhealthyPeriods = 2
-
-	levelLabel       = "detected_level"
-	logLevelDebug    = "debug"
-	logLevelInfo     = "info"
-	logLevelWarn     = "warn"
-	logLevelError    = "error"
-	logLevelFatal    = "fatal"
-	logLevelCritical = "critical"
-	logLevelTrace    = "trace"
-	logLevelUnknown  = "unknown"
 )
 
 var (
@@ -406,9 +396,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 					} else {
 						logLevel = detectLogLevelFromLogEntry(entry, structuredMetadata)
 					}
-					if logLevel != logLevelUnknown && logLevel != "" {
+					if logLevel != constants.LogLevelUnknown && logLevel != "" {
 						entry.StructuredMetadata = append(entry.StructuredMetadata, logproto.LabelAdapter{
-							Name:  levelLabel,
+							Name:  constants.LevelLabel,
 							Value: logLevel,
 						})
 					}
@@ -455,7 +445,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 	var validationErr error
 	if validationErrors.Err() != nil {
-		validationErr = httpgrpc.Errorf(http.StatusBadRequest, validationErrors.Error())
+		validationErr = httpgrpc.Errorf(http.StatusBadRequest, "%s", validationErrors.Error())
 	}
 
 	// Return early if none of the streams contained entries
@@ -464,32 +454,29 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	now := time.Now()
-	if !d.ingestionRateLimiter.AllowN(now, tenantID, validatedLineSize) {
-		// Return a 429 to indicate to the client they are being rate limited
-		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineCount))
-		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineSize))
 
-		if d.usageTracker != nil {
-			for _, stream := range req.Streams {
-				lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream)
-				if err != nil {
-					continue
-				}
+	if block, until, retStatusCode := d.validator.ShouldBlockIngestion(validationContext, now); block {
+		d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCount, validatedLineSize, validation.BlockedIngestion)
 
-				discardedStreamBytes := 0
-				for _, e := range stream.Entries {
-					discardedStreamBytes += len(e.Line)
-				}
+		err = fmt.Errorf(validation.BlockedIngestionErrorMsg, tenantID, until.Format(time.RFC3339), retStatusCode)
+		d.writeFailuresManager.Log(tenantID, err)
 
-				if d.usageTracker != nil {
-					d.usageTracker.DiscardedBytesAdd(ctx, tenantID, validation.RateLimited, lbs, float64(discardedStreamBytes))
-				}
-			}
+		// If the status code is 200, return success.
+		// Note that we still log the error and increment the metrics.
+		if retStatusCode == http.StatusOK {
+			return &logproto.PushResponse{}, nil
 		}
+
+		return nil, httpgrpc.Errorf(retStatusCode, "%s", err.Error())
+	}
+
+	if !d.ingestionRateLimiter.AllowN(now, tenantID, validatedLineSize) {
+		d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCount, validatedLineSize, validation.RateLimited)
 
 		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validatedLineCount, validatedLineSize)
 		d.writeFailuresManager.Log(tenantID, err)
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, err.Error())
+		// Return a 429 to indicate to the client they are being rate limited
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
 	}
 
 	// Nil check for performance reasons, to avoid dynamic lookup and/or no-op
@@ -559,6 +546,37 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		return &logproto.PushResponse{}, validationErr
 	case <-ctx.Done():
 		return nil, ctx.Err()
+	}
+}
+
+func (d *Distributor) trackDiscardedData(
+	ctx context.Context,
+	req *logproto.PushRequest,
+	validationContext validationContext,
+	tenantID string,
+	validatedLineCount int,
+	validatedLineSize int,
+	reason string,
+) {
+	validation.DiscardedSamples.WithLabelValues(reason, tenantID).Add(float64(validatedLineCount))
+	validation.DiscardedBytes.WithLabelValues(reason, tenantID).Add(float64(validatedLineSize))
+
+	if d.usageTracker != nil {
+		for _, stream := range req.Streams {
+			lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream)
+			if err != nil {
+				continue
+			}
+
+			discardedStreamBytes := 0
+			for _, e := range stream.Entries {
+				discardedStreamBytes += len(e.Line)
+			}
+
+			if d.usageTracker != nil {
+				d.usageTracker.DiscardedBytesAdd(ctx, tenantID, reason, lbs, float64(discardedStreamBytes))
+			}
+		}
 	}
 }
 
@@ -883,24 +901,24 @@ func detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.
 	if otlpSeverityNumberTxt := structuredMetadata.Get(push.OTLPSeverityNumber); otlpSeverityNumberTxt != "" {
 		otlpSeverityNumber, err := strconv.Atoi(otlpSeverityNumberTxt)
 		if err != nil {
-			return logLevelInfo
+			return constants.LogLevelInfo
 		}
 		if otlpSeverityNumber == int(plog.SeverityNumberUnspecified) {
-			return logLevelUnknown
+			return constants.LogLevelUnknown
 		} else if otlpSeverityNumber <= int(plog.SeverityNumberTrace4) {
-			return logLevelTrace
+			return constants.LogLevelTrace
 		} else if otlpSeverityNumber <= int(plog.SeverityNumberDebug4) {
-			return logLevelDebug
+			return constants.LogLevelDebug
 		} else if otlpSeverityNumber <= int(plog.SeverityNumberInfo4) {
-			return logLevelInfo
+			return constants.LogLevelInfo
 		} else if otlpSeverityNumber <= int(plog.SeverityNumberWarn4) {
-			return logLevelWarn
+			return constants.LogLevelWarn
 		} else if otlpSeverityNumber <= int(plog.SeverityNumberError4) {
-			return logLevelError
+			return constants.LogLevelError
 		} else if otlpSeverityNumber <= int(plog.SeverityNumberFatal4) {
-			return logLevelFatal
+			return constants.LogLevelFatal
 		}
-		return logLevelUnknown
+		return constants.LogLevelUnknown
 	}
 
 	return extractLogLevelFromLogLine(entry.Line)
@@ -917,19 +935,19 @@ func extractLogLevelFromLogLine(log string) string {
 
 	switch {
 	case bytes.EqualFold(v, []byte("trace")), bytes.EqualFold(v, []byte("trc")):
-		return logLevelTrace
+		return constants.LogLevelTrace
 	case bytes.EqualFold(v, []byte("debug")), bytes.EqualFold(v, []byte("dbg")):
-		return logLevelDebug
+		return constants.LogLevelDebug
 	case bytes.EqualFold(v, []byte("info")), bytes.EqualFold(v, []byte("inf")):
-		return logLevelInfo
+		return constants.LogLevelInfo
 	case bytes.EqualFold(v, []byte("warn")), bytes.EqualFold(v, []byte("wrn")):
-		return logLevelWarn
+		return constants.LogLevelWarn
 	case bytes.EqualFold(v, []byte("error")), bytes.EqualFold(v, []byte("err")):
-		return logLevelError
+		return constants.LogLevelError
 	case bytes.EqualFold(v, []byte("critical")):
-		return logLevelCritical
+		return constants.LogLevelCritical
 	case bytes.EqualFold(v, []byte("fatal")):
-		return logLevelFatal
+		return constants.LogLevelFatal
 	default:
 		return detectLevelFromLogLine(log)
 	}
@@ -984,21 +1002,21 @@ func isJSON(line string) bool {
 func detectLevelFromLogLine(log string) string {
 	if strings.Contains(log, "info:") || strings.Contains(log, "INFO:") ||
 		strings.Contains(log, "info") || strings.Contains(log, "INFO") {
-		return logLevelInfo
+		return constants.LogLevelInfo
 	}
 	if strings.Contains(log, "err:") || strings.Contains(log, "ERR:") ||
 		strings.Contains(log, "error") || strings.Contains(log, "ERROR") {
-		return logLevelError
+		return constants.LogLevelError
 	}
 	if strings.Contains(log, "warn:") || strings.Contains(log, "WARN:") ||
 		strings.Contains(log, "warning") || strings.Contains(log, "WARNING") {
-		return logLevelWarn
+		return constants.LogLevelWarn
 	}
 	if strings.Contains(log, "CRITICAL:") || strings.Contains(log, "critical:") {
-		return logLevelCritical
+		return constants.LogLevelCritical
 	}
 	if strings.Contains(log, "debug:") || strings.Contains(log, "DEBUG:") {
-		return logLevelDebug
+		return constants.LogLevelDebug
 	}
-	return logLevelUnknown
+	return constants.LogLevelUnknown
 }

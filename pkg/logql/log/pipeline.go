@@ -2,9 +2,10 @@ package log
 
 import (
 	"context"
-	"reflect"
 	"sync"
 	"unsafe"
+
+	"github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
 
 	"github.com/prometheus/prometheus/model/labels"
 )
@@ -67,7 +68,7 @@ func (n *noopPipeline) ForStream(labels labels.Labels) StreamPipeline {
 	}
 	n.mu.RUnlock()
 
-	sp := &noopStreamPipeline{n.baseBuilder.ForLabels(labels, h)}
+	sp := &noopStreamPipeline{n.baseBuilder.ForLabels(labels, h), make([]int, 0, 10)}
 
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -92,7 +93,8 @@ func IsNoopPipeline(p Pipeline) bool {
 }
 
 type noopStreamPipeline struct {
-	builder *LabelsBuilder
+	builder    *LabelsBuilder
+	offsetsBuf []int
 }
 
 func (n noopStreamPipeline) ReferencedStructuredMetadata() bool {
@@ -101,6 +103,9 @@ func (n noopStreamPipeline) ReferencedStructuredMetadata() bool {
 
 func (n noopStreamPipeline) Process(_ int64, line []byte, structuredMetadata ...labels.Label) ([]byte, LabelsResult, bool) {
 	n.builder.Reset()
+	for i, lb := range structuredMetadata {
+		structuredMetadata[i].Name = prometheus.NormalizeLabel(lb.Name)
+	}
 	n.builder.Add(StructuredMetadataLabel, structuredMetadata...)
 	return line, n.builder.LabelsResult(), true
 }
@@ -176,12 +181,13 @@ func NewPipeline(stages []Stage) Pipeline {
 }
 
 type streamPipeline struct {
-	stages  []Stage
-	builder *LabelsBuilder
+	stages     []Stage
+	builder    *LabelsBuilder
+	offsetsBuf []int
 }
 
 func NewStreamPipeline(stages []Stage, labelsBuilder *LabelsBuilder) StreamPipeline {
-	return &streamPipeline{stages, labelsBuilder}
+	return &streamPipeline{stages, labelsBuilder, make([]int, 0, 10)}
 }
 
 func (p *pipeline) ForStream(labels labels.Labels) StreamPipeline {
@@ -220,6 +226,11 @@ func (p *streamPipeline) ReferencedStructuredMetadata() bool {
 func (p *streamPipeline) Process(ts int64, line []byte, structuredMetadata ...labels.Label) ([]byte, LabelsResult, bool) {
 	var ok bool
 	p.builder.Reset()
+
+	for i, lb := range structuredMetadata {
+		structuredMetadata[i].Name = prometheus.NormalizeLabel(lb.Name)
+	}
+
 	p.builder.Add(StructuredMetadataLabel, structuredMetadata...)
 
 	for _, s := range p.stages {
@@ -371,11 +382,7 @@ func ReduceStages(stages []Stage) Stage {
 }
 
 func unsafeGetBytes(s string) []byte {
-	var buf []byte
-	p := unsafe.Pointer(&buf)
-	*(*string)(p) = s
-	(*reflect.SliceHeader)(p).Cap = len(s)
-	return buf
+	return unsafe.Slice(unsafe.StringData(s), len(s))
 }
 
 func unsafeGetString(buf []byte) string {
