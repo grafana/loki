@@ -253,7 +253,7 @@ func (fq *FusedQuerier) Run() error {
 	return nil
 }
 
-func (fq *FusedQuerier) runSeries(schema Schema, series *SeriesWithMeta, reqs []Request) {
+func (fq *FusedQuerier) runSeries(_ Schema, series *SeriesWithMeta, reqs []Request) {
 	// For a given chunk|series to be removed, it must fail to match all blooms.
 	// Because iterating/loading blooms can be expensive, we iterate blooms one at a time, collecting
 	// the removals (failures) for each (bloom, chunk) pair.
@@ -305,14 +305,18 @@ func (fq *FusedQuerier) runSeries(schema Schema, series *SeriesWithMeta, reqs []
 		// Test each bloom individually
 		bloom := fq.bq.blooms.At()
 
-		// TODO(owen-d): this is a stopgap to avoid filtering broken blooms until we find their cause.
+		// This is a stopgap to avoid filtering on empty blooms.
 		// In the case we don't have any data in the bloom, don't filter any chunks.
-		if bloom.ScalableBloomFilter.Count() == 0 {
-			level.Warn(fq.logger).Log(
-				"msg", "Found bloom with no data",
-				"offset_page", offset.Page,
-				"offset_bytes", offset.ByteOffset,
-			)
+		// Empty blooms are generated from chunks that do not have entries with structured metadata.
+		if bloom.IsEmpty() {
+			// To debug empty blooms, uncomment the following block. Note that this may produce *a lot* of logs.
+			// swb := fq.bq.At()
+			// level.Debug(fq.logger).Log(
+			// 	"msg", "empty bloom",
+			// 	"series", swb.Fingerprint,
+			// 	"offset_page", offset.Page,
+			// 	"offset_bytes", offset.ByteOffset,
+			// )
 
 			for j := range reqs {
 				for k := range inputs[j].InBlooms {
