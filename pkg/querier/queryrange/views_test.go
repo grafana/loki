@@ -185,7 +185,7 @@ func TestMergedViewDeduplication(t *testing.T) {
 	}
 
 	count := 0
-	err := view.ForEachUniqueSeries(func(s *SeriesIdentifierView) error {
+	err := view.ForEachUniqueSeries(func(_ *SeriesIdentifierView) error {
 		count++
 		return nil
 	})

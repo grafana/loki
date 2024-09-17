@@ -51,7 +51,7 @@ Use the key as the credential parameter to authenticate the client:
 	cred, err := azblob.NewSharedKeyCredential(accountName, accountKey)
 	handle(err)
 
-	serviceClient, err := azblob.NewServiceClientWithSharedKey(serviceURL, cred, nil)
+	serviceClient, err := azblob.NewClientWithSharedKeyCredential(serviceURL, cred, nil)
 	handle(err)
 
 	fmt.Println(serviceClient.URL())
@@ -59,11 +59,12 @@ Use the key as the credential parameter to authenticate the client:
 Using a Connection String
 
 Depending on your use case and authorization method, you may prefer to initialize a client instance with a connection string instead of providing the account URL and credential separately.
-To do this, pass the connection string to the service client's `NewServiceClientFromConnectionString` method.
+To do this, pass the connection string to the service client's `NewClientFromConnectionString` method.
 The connection string can be found in your storage account in the Azure Portal under the "Access Keys" section.
 
 	connStr := "DefaultEndpointsProtocol=https;AccountName=<my_account_name>;AccountKey=<my_account_key>;EndpointSuffix=core.windows.net"
-	serviceClient, err := azblob.NewServiceClientFromConnectionString(connStr, nil)
+	serviceClient, err := azblob.NewClientFromConnectionString(connStr, nil)
+	handle(err)
 
 Using a Shared Access Signature (SAS) Token
 
@@ -82,20 +83,20 @@ You can generate a SAS token from the Azure Portal under Shared Access Signature
 
 	cred, err := azblob.NewSharedKeyCredential(accountName, accountKey)
 	handle(err)
-	serviceClient, err := azblob.NewServiceClientWithSharedKey(serviceURL, cred, nil)
+	serviceClient, err := azblob.NewClientWithSharedKeyCredential(serviceURL, cred, nil)
 	handle(err)
 	fmt.Println(serviceClient.URL())
 
 	// Alternatively, you can create SAS on the fly
 
-	resources := azblob.AccountSASResourceTypes{Service: true}
-	permission := azblob.AccountSASPermissions{Read: true}
+	resources := sas.AccountResourceTypes{Service: true}
+	permission := sas.AccountPermissions{Read: true}
 	start := time.Now()
 	expiry := start.AddDate(0, 0, 1)
-	serviceURLWithSAS, err := serviceClient.GetSASURL(resources, permission, start, expiry)
+	serviceURLWithSAS, err := serviceClient.ServiceClient().GetSASURL(resources, permission, expiry, &service.GetSASURLOptions{StartTime: &start})
 	handle(err)
 
-	serviceClientWithSAS, err := azblob.NewServiceClientWithNoCredential(serviceURLWithSAS, nil)
+	serviceClientWithSAS, err := azblob.NewClientWithNoCredential(serviceURLWithSAS, nil)
 	handle(err)
 
 	fmt.Println(serviceClientWithSAS.URL())
@@ -135,13 +136,13 @@ Examples
 	handle(err)
 
 	// The service URL for blob endpoints is usually in the form: http(s)://<account>.blob.core.windows.net/
-	serviceClient, err := azblob.NewServiceClientWithSharedKey(fmt.Sprintf("https://%s.blob.core.windows.net/", accountName), cred, nil)
+	serviceClient, err := azblob.NewClientWithSharedKeyCredential(fmt.Sprintf("https://%s.blob.core.windows.net/", accountName), cred, nil)
 	handle(err)
 
 	// ===== 1. Create a container =====
 
 	// First, create a container client, and use the Create method to create a new container in your account
-	containerClient, err := serviceClient.NewContainerClient("testcontainer")
+	containerClient := serviceClient.ServiceClient().NewContainerClient("testcontainer")
 	handle(err)
 
 	// All APIs have an options' bag struct as a parameter.
@@ -154,13 +155,13 @@ Examples
 	uploadData := "Hello world!"
 
 	// Create a new blockBlobClient from the containerClient
-	blockBlobClient, err := containerClient.NewBlockBlobClient("HelloWorld.txt")
+	blockBlobClient := containerClient.NewBlockBlobClient("HelloWorld.txt")
 	handle(err)
 
 	// Upload data to the block blob
-	blockBlobUploadOptions := azblob.BlockBlobUploadOptions{
-		Metadata: map[string]string{"Foo": "Bar"},
-		TagsMap:  map[string]string{"Year": "2022"},
+	blockBlobUploadOptions := blockblob.UploadOptions{
+		Metadata: map[string]*string{"Foo": to.Ptr("Bar")},
+		Tags:     map[string]string{"Year": "2022"},
 	}
 	_, err = blockBlobClient.Upload(context.TODO(), streaming.NopCloser(strings.NewReader(uploadData)), &blockBlobUploadOptions)
 	handle(err)
@@ -175,9 +176,8 @@ Examples
 	downloadData, err := io.ReadAll(reader)
 	handle(err)
 	if string(downloadData) != uploadData {
-		handle(errors.New("Uploaded data should be same as downloaded data"))
+		handle(errors.New("uploaded data should be same as downloaded data"))
 	}
-
 
 	if err = reader.Close(); err != nil {
 		handle(err)
@@ -189,16 +189,13 @@ Examples
 	// To iterate over a page use the NextPage(context.Context) to fetch the next page of results.
 	// PageResponse() can be used to iterate over the results of the specific page.
 	// Always check the Err() method after paging to see if an error was returned by the pager. A pager will return either an error or the page of results.
-	pager := containerClient.ListBlobsFlat(nil)
-	for pager.NextPage(context.TODO()) {
-		resp := pager.PageResponse()
+	pager := containerClient.NewListBlobsFlatPager(nil)
+	for pager.More() {
+		resp, err := pager.NextPage(context.TODO())
+		handle(err)
 		for _, v := range resp.Segment.BlobItems {
 			fmt.Println(*v.Name)
 		}
-	}
-
-	if err = pager.Err(); err != nil {
-		handle(err)
 	}
 
 	// Delete the blob.

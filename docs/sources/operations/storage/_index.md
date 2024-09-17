@@ -1,7 +1,7 @@
 ---
 title: Manage storage
 menuTitle: Storage
-description: Describes Loki's storage needs and supported stores.
+description: Describes the Loki storage needs and supported stores.
 ---
 # Manage storage
 
@@ -17,7 +17,7 @@ they are compressed as **chunks** and saved in the chunks store. See [chunk
 format](#chunk-format) for how chunks are stored internally.
 
 The **index** stores each stream's label set and links them to the individual
-chunks. Refer to Loki's [configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/) for
+chunks. Refer to the Loki [configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/) for
 details on how to configure the storage and the index.
 
 For more information:

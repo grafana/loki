@@ -12,12 +12,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-const (
-	DefaultMaxAge         = 500 * time.Millisecond
-	DefaultMaxSegments    = 10
-	DefaultMaxSegmentSize = 8 * 1024 * 1024 // 8MB.
-)
-
 var (
 	// ErrClosed is returned when the WAL is closed. It is a permanent error
 	// as once closed, a WAL cannot be re-opened.
@@ -109,42 +103,24 @@ type Manager struct {
 	clock quartz.Clock
 }
 
-// segment is similar to PendingSegment, however it is an internal struct used
-// in the available and pending lists. It contains a single-use result that is
-// returned to callers appending to the WAL and a re-usable segment that is reset
-// after each flush.
+// segment is an internal struct used in the available and pending lists. It
+// contains a single-use result that is returned to callers appending to the
+// WAL and a re-usable segment that is reset after each flush.
 type segment struct {
 	r *AppendResult
 	w *SegmentWriter
-
-	// firstAppend is the time of the first append to the segment. It is used to
-	// know when the segment has exceeded the maximum age and should be moved to
-	// the pending list.
-	firstAppend time.Time
-
-	// moved is the time the segment was moved to the pending list. It is used
-	// to calculate the age of the segment. A segment is moved when it has
-	// exceeded the maximum age or the maximum size.
-	moved time.Time
 }
 
 // PendingSegment contains a result and the segment to be flushed.
 type PendingSegment struct {
-	Result      *AppendResult
-	Writer      *SegmentWriter
-	FirstAppend time.Time
-	Moved       time.Time
+	Result *AppendResult
+	Writer *SegmentWriter
 }
 
-// Age returns the age of the segment.
-func (p *PendingSegment) Age() time.Duration {
-	return p.Moved.Sub(p.FirstAppend)
-}
-
-func NewManager(cfg Config, metrics *Metrics) (*Manager, error) {
+func NewManager(cfg Config, metrics *ManagerMetrics) (*Manager, error) {
 	m := Manager{
 		cfg:       cfg,
-		metrics:   metrics.ManagerMetrics,
+		metrics:   metrics,
 		available: list.New(),
 		pending:   list.New(),
 		clock:     quartz.NewReal(),
@@ -153,7 +129,7 @@ func NewManager(cfg Config, metrics *Metrics) (*Manager, error) {
 	m.metrics.NumPending.Set(0)
 	m.metrics.NumFlushing.Set(0)
 	for i := int64(0); i < cfg.MaxSegments; i++ {
-		w, err := NewWalSegmentWriter(metrics.SegmentMetrics)
+		w, err := NewWalSegmentWriter()
 		if err != nil {
 			return nil, err
 		}
@@ -177,16 +153,10 @@ func (m *Manager) Append(r AppendRequest) (*AppendResult, error) {
 		return nil, ErrFull
 	}
 	s := el.Value.(*segment)
-	if s.firstAppend.IsZero() {
-		// This is the first append to the segment. This time will be used in
-		// know when the segment has exceeded its maximum age and should be
-		// moved to the pending list.
-		s.firstAppend = m.clock.Now()
-	}
-	s.w.Append(r.TenantID, r.LabelsStr, r.Labels, r.Entries)
+	s.w.Append(r.TenantID, r.LabelsStr, r.Labels, r.Entries, m.clock.Now())
 	// If the segment exceeded the maximum age or the maximum size, move s to
 	// the closed list to be flushed.
-	if m.clock.Since(s.firstAppend) >= m.cfg.MaxAge || s.w.InputSize() >= m.cfg.MaxSegmentSize {
+	if s.w.Age(m.clock.Now()) >= m.cfg.MaxAge || s.w.InputSize() >= m.cfg.MaxSegmentSize {
 		m.move(el, s)
 	}
 	return s.r, nil
@@ -222,12 +192,7 @@ func (m *Manager) NextPending() (*PendingSegment, error) {
 	m.pending.Remove(el)
 	m.metrics.NumPending.Dec()
 	m.metrics.NumFlushing.Inc()
-	return &PendingSegment{
-		Result:      s.r,
-		Writer:      s.w,
-		FirstAppend: s.firstAppend,
-		Moved:       s.moved,
-	}, nil
+	return &PendingSegment{Result: s.r, Writer: s.w}, nil
 }
 
 // Put resets the segment and puts it back in the available list to accept
@@ -247,7 +212,6 @@ func (m *Manager) Put(s *PendingSegment) {
 // move the element from the available list to the pending list and sets the
 // relevant metrics.
 func (m *Manager) move(el *list.Element, s *segment) {
-	s.moved = m.clock.Now()
 	m.pending.PushBack(s)
 	m.metrics.NumPending.Inc()
 	m.available.Remove(el)
@@ -260,7 +224,7 @@ func (m *Manager) move(el *list.Element, s *segment) {
 func (m *Manager) moveFrontIfExpired() bool {
 	if el := m.available.Front(); el != nil {
 		s := el.Value.(*segment)
-		if !s.firstAppend.IsZero() && m.clock.Since(s.firstAppend) >= m.cfg.MaxAge {
+		if s.w.Age(m.clock.Now()) >= m.cfg.MaxAge {
 			m.move(el, s)
 			return true
 		}

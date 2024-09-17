@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	logutil "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
@@ -318,9 +319,7 @@ func NewDetectedLabelsCardinalityFilter(rt queryrangebase.Handler) queryrangebas
 			var result []*logproto.DetectedLabel
 
 			for _, dl := range resp.Response.DetectedLabels {
-				if dl.Cardinality > 1 && dl.Cardinality < 50 {
-					result = append(result, &logproto.DetectedLabel{Label: dl.Label, Cardinality: dl.Cardinality})
-				}
+				result = append(result, &logproto.DetectedLabel{Label: dl.Label, Cardinality: dl.Cardinality})
 			}
 			return &DetectedLabelsResponse{
 				Response: &logproto.DetectedLabelsResponse{DetectedLabels: result},
@@ -389,21 +388,22 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 
 			for _, g := range groups {
 				if err := validateMatchers(ctx, r.limits, g.Matchers); err != nil {
-					return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+					return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 				}
 			}
 			return r.metric.Do(ctx, req)
 		case syntax.LogSelectorExpr:
 			if err := validateMaxEntriesLimits(ctx, op.Limit, r.limits); err != nil {
-				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 			}
 
 			if err := validateMatchers(ctx, r.limits, e.Matchers()); err != nil {
-				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 			}
 
-			// Only filter expressions are query sharded
-			if !e.HasFilter() {
+			// Some queries we don't want to parallelize as aggressively, like limited queries and `datasample` queries
+			tags := httpreq.ExtractQueryTagsFromContext(ctx)
+			if !e.HasFilter() || strings.Contains(tags, "datasample") {
 				return r.limited.Do(ctx, req)
 			}
 			return r.log.Do(ctx, req)
@@ -505,13 +505,10 @@ const (
 	DetectedFieldsOp = "detected_fields"
 	PatternsQueryOp  = "patterns"
 	DetectedLabelsOp = "detected_labels"
-	SamplesQueryOp   = "samples"
 )
 
 func getOperation(path string) string {
 	switch {
-	case path == "/loki/api/v1/explore/query_range":
-		return SamplesQueryOp
 	case strings.HasSuffix(path, "/query_range") || strings.HasSuffix(path, "/prom/query"):
 		return QueryRangeOp
 	case strings.HasSuffix(path, "/series"):

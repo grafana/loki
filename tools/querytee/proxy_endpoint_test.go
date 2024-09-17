@@ -189,8 +189,8 @@ func Test_ProxyEndpoint_Requests(t *testing.T) {
 				require.NoError(t, err)
 				return r
 			},
-			handler: func(t *testing.T) http.HandlerFunc {
-				return func(w http.ResponseWriter, r *http.Request) {
+			handler: func(_ *testing.T) http.HandlerFunc {
+				return func(w http.ResponseWriter, _ *http.Request) {
 					_, _ = w.Write([]byte("ok"))
 				}
 			},
@@ -224,7 +224,7 @@ func Test_ProxyEndpoint_Requests(t *testing.T) {
 			wg.Add(tc.counts)
 
 			if tc.handler == nil {
-				testHandler = func(w http.ResponseWriter, r *http.Request) {
+				testHandler = func(w http.ResponseWriter, _ *http.Request) {
 					_, _ = w.Write([]byte("ok"))
 				}
 
@@ -320,7 +320,7 @@ func Test_ProxyEndpoint_SummaryMetrics(t *testing.T) {
 			requestCount.Store(0)
 			wg.Add(tc.counts)
 
-			testHandler = func(w http.ResponseWriter, r *http.Request) {
+			testHandler = func(w http.ResponseWriter, _ *http.Request) {
 				_, _ = w.Write([]byte("ok"))
 			}
 

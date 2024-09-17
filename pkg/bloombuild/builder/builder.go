@@ -30,6 +30,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/ring"
 )
 
 type Builder struct {
@@ -47,6 +48,10 @@ type Builder struct {
 	chunkLoader ChunkLoader
 
 	client protos.PlannerForBuilderClient
+
+	// used only in SSD mode where a single planner of the backend replicas needs to create tasksQueue
+	// therefore is nil when planner is run in microservice mode (default)
+	ringWatcher *common.RingWatcher
 }
 
 func New(
@@ -59,6 +64,7 @@ func New(
 	bloomStore bloomshipper.Store,
 	logger log.Logger,
 	r prometheus.Registerer,
+	rm *ring.RingManager,
 ) (*Builder, error) {
 	utillog.WarnExperimentalUse("Bloom Builder", logger)
 
@@ -82,17 +88,32 @@ func New(
 		logger:      logger,
 	}
 
+	if rm != nil {
+		b.ringWatcher = common.NewRingWatcher(rm.RingLifecycler.GetInstanceID(), rm.Ring, time.Minute, logger)
+	}
+
 	b.Service = services.NewBasicService(b.starting, b.running, b.stopping)
 	return b, nil
 }
 
-func (b *Builder) starting(_ context.Context) error {
+func (b *Builder) starting(ctx context.Context) error {
+	if b.ringWatcher != nil {
+		if err := services.StartAndAwaitRunning(ctx, b.ringWatcher); err != nil {
+			return fmt.Errorf("error starting builder subservices: %w", err)
+		}
+	}
 	b.metrics.running.Set(1)
 	return nil
 }
 
 func (b *Builder) stopping(_ error) error {
 	defer b.metrics.running.Set(0)
+
+	if b.ringWatcher != nil {
+		if err := services.StopAndAwaitTerminated(context.Background(), b.ringWatcher); err != nil {
+			return fmt.Errorf("error stopping builder subservices: %w", err)
+		}
+	}
 
 	if b.client != nil {
 		// The gRPC server we use from dskit expects the orgID to be injected into the context when auth is enabled
@@ -137,15 +158,27 @@ func (b *Builder) running(ctx context.Context) error {
 	return nil
 }
 
-func (b *Builder) connectAndBuild(
-	ctx context.Context,
-) error {
+func (b *Builder) plannerAddress() string {
+	if b.ringWatcher == nil {
+		return b.cfg.PlannerAddress
+	}
+
+	addr, err := b.ringWatcher.GetLeaderAddress()
+	if err != nil {
+		return b.cfg.PlannerAddress
+	}
+
+	return addr
+}
+
+func (b *Builder) connectAndBuild(ctx context.Context) error {
 	opts, err := b.cfg.GrpcConfig.DialOption(nil, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create grpc dial options: %w", err)
 	}
 
-	conn, err := grpc.DialContext(ctx, b.cfg.PlannerAddress, opts...)
+	// nolint:staticcheck // grpc.DialContext() has been deprecated; we'll address it before upgrading to gRPC 2.
+	conn, err := grpc.DialContext(ctx, b.plannerAddress(), opts...)
 	if err != nil {
 		return fmt.Errorf("failed to dial bloom planner: %w", err)
 	}
@@ -309,8 +342,8 @@ func (b *Builder) processTask(
 		blockCt      int
 		nGramSize    = uint64(b.limits.BloomNGramLength(tenant))
 		nGramSkip    = uint64(b.limits.BloomNGramSkip(tenant))
-		maxBlockSize = uint64(b.limits.BloomCompactorMaxBlockSize(tenant))
-		maxBloomSize = uint64(b.limits.BloomCompactorMaxBloomSize(tenant))
+		maxBlockSize = uint64(b.limits.BloomMaxBlockSize(tenant))
+		maxBloomSize = uint64(b.limits.BloomMaxBloomSize(tenant))
 		blockOpts    = v1.NewBlockOptions(blockEnc, nGramSize, nGramSkip, maxBlockSize, maxBloomSize)
 		created      []bloomshipper.Meta
 		totalSeries  int
@@ -335,7 +368,7 @@ func (b *Builder) processTask(
 		// Fetch blocks that aren't up to date but are in the desired fingerprint range
 		// to try and accelerate bloom creation.
 		level.Debug(logger).Log("msg", "loading series and blocks for gap", "blocks", len(gap.Blocks))
-		seriesItr, blocksIter, err := b.loadWorkForGap(ctx, task.Table, tenant, task.TSDB, gap)
+		seriesItr, blocksIter, err := b.loadWorkForGap(ctx, task.Table, gap)
 		if err != nil {
 			level.Error(logger).Log("msg", "failed to get series and blocks", "err", err)
 			return nil, fmt.Errorf("failed to get series and blocks: %w", err)
@@ -454,15 +487,9 @@ func (b *Builder) processTask(
 func (b *Builder) loadWorkForGap(
 	ctx context.Context,
 	table config.DayTable,
-	tenant string,
-	id tsdb.Identifier,
-	gap protos.GapWithBlocks,
+	gap protos.Gap,
 ) (iter.Iterator[*v1.Series], iter.CloseResetIterator[*v1.SeriesWithBlooms], error) {
-	// load a series iterator for the gap
-	seriesItr, err := b.tsdbStore.LoadTSDB(ctx, table, tenant, id, gap.Bounds)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to load tsdb")
-	}
+	seriesItr := iter.NewCancelableIter[*v1.Series](ctx, iter.NewSliceIter[*v1.Series](gap.Series))
 
 	// load a blocks iterator for the gap
 	fetcher, err := b.bloomStore.Fetcher(table.ModelTime())

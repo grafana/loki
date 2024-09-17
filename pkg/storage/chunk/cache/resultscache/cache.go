@@ -105,7 +105,7 @@ func (s ResultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	defer sp.Finish()
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	if s.shouldCacheReq != nil && !s.shouldCacheReq(ctx, r) {
@@ -200,7 +200,7 @@ func (s ResultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return nil, nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 	reqResps, err = DoRequests(ctx, s.next, requests, s.parallelismForReq(ctx, tenantIDs, r))
 

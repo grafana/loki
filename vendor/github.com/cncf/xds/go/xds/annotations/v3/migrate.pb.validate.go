@@ -11,6 +11,7 @@ import (
 	"net/mail"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -31,20 +32,56 @@ var (
 	_ = (*url.URL)(nil)
 	_ = (*mail.Address)(nil)
 	_ = anypb.Any{}
+	_ = sort.Sort
 )
 
 // Validate checks the field values on MigrateAnnotation with the rules defined
-// in the proto definition for this message. If any rules are violated, an
-// error is returned.
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
 func (m *MigrateAnnotation) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on MigrateAnnotation with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// MigrateAnnotationMultiError, or nil if none found.
+func (m *MigrateAnnotation) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *MigrateAnnotation) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
+	var errors []error
+
 	// no validation rules for Rename
+
+	if len(errors) > 0 {
+		return MigrateAnnotationMultiError(errors)
+	}
 
 	return nil
 }
+
+// MigrateAnnotationMultiError is an error wrapping multiple validation errors
+// returned by MigrateAnnotation.ValidateAll() if the designated constraints
+// aren't met.
+type MigrateAnnotationMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m MigrateAnnotationMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m MigrateAnnotationMultiError) AllErrors() []error { return m }
 
 // MigrateAnnotationValidationError is the validation error returned by
 // MigrateAnnotation.Validate if the designated constraints aren't met.
@@ -104,18 +141,53 @@ var _ interface {
 
 // Validate checks the field values on FieldMigrateAnnotation with the rules
 // defined in the proto definition for this message. If any rules are
-// violated, an error is returned.
+// violated, the first error encountered is returned, or nil if there are no violations.
 func (m *FieldMigrateAnnotation) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on FieldMigrateAnnotation with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// FieldMigrateAnnotationMultiError, or nil if none found.
+func (m *FieldMigrateAnnotation) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *FieldMigrateAnnotation) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
+
+	var errors []error
 
 	// no validation rules for Rename
 
 	// no validation rules for OneofPromotion
 
+	if len(errors) > 0 {
+		return FieldMigrateAnnotationMultiError(errors)
+	}
+
 	return nil
 }
+
+// FieldMigrateAnnotationMultiError is an error wrapping multiple validation
+// errors returned by FieldMigrateAnnotation.ValidateAll() if the designated
+// constraints aren't met.
+type FieldMigrateAnnotationMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m FieldMigrateAnnotationMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m FieldMigrateAnnotationMultiError) AllErrors() []error { return m }
 
 // FieldMigrateAnnotationValidationError is the validation error returned by
 // FieldMigrateAnnotation.Validate if the designated constraints aren't met.
@@ -175,16 +247,51 @@ var _ interface {
 
 // Validate checks the field values on FileMigrateAnnotation with the rules
 // defined in the proto definition for this message. If any rules are
-// violated, an error is returned.
+// violated, the first error encountered is returned, or nil if there are no violations.
 func (m *FileMigrateAnnotation) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on FileMigrateAnnotation with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// FileMigrateAnnotationMultiError, or nil if none found.
+func (m *FileMigrateAnnotation) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *FileMigrateAnnotation) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
+	var errors []error
+
 	// no validation rules for MoveToPackage
+
+	if len(errors) > 0 {
+		return FileMigrateAnnotationMultiError(errors)
+	}
 
 	return nil
 }
+
+// FileMigrateAnnotationMultiError is an error wrapping multiple validation
+// errors returned by FileMigrateAnnotation.ValidateAll() if the designated
+// constraints aren't met.
+type FileMigrateAnnotationMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m FileMigrateAnnotationMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m FileMigrateAnnotationMultiError) AllErrors() []error { return m }
 
 // FileMigrateAnnotationValidationError is the validation error returned by
 // FileMigrateAnnotation.Validate if the designated constraints aren't met.

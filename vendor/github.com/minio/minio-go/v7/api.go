@@ -1,6 +1,6 @@
 /*
  * MinIO Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2015-2023 MinIO, Inc.
+ * Copyright 2015-2024 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"hash/crc32"
 	"io"
 	"math/rand"
 	"net"
@@ -80,6 +79,8 @@ type Client struct {
 
 	// S3 specific accelerated endpoint.
 	s3AccelerateEndpoint string
+	// S3 dual-stack endpoints are enabled by default.
+	s3DualstackEnabled bool
 
 	// Region endpoint
 	region string
@@ -127,7 +128,7 @@ type Options struct {
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "v7.0.61"
+	libraryVersion = "v7.0.76"
 )
 
 // User Agent should always following the below style.
@@ -158,13 +159,12 @@ func New(endpoint string, opts *Options) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Google cloud storage should be set to signature V2, force it if not.
-	if s3utils.IsGoogleEndpoint(*clnt.endpointURL) {
-		clnt.overrideSignerType = credentials.SignatureV2
-	}
-	// If Amazon S3 set to signature v4.
 	if s3utils.IsAmazonEndpoint(*clnt.endpointURL) {
+		// If Amazon S3 set to signature v4.
 		clnt.overrideSignerType = credentials.SignatureV4
+		// Amazon S3 endpoints are resolved into dual-stack endpoints by default
+		// for backwards compatibility.
+		clnt.s3DualstackEnabled = true
 	}
 
 	return clnt, nil
@@ -238,7 +238,7 @@ func privateNew(endpoint string, opts *Options) (*Client, error) {
 	clnt.httpClient = &http.Client{
 		Jar:       jar,
 		Transport: transport,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
 	}
@@ -331,6 +331,16 @@ func (c *Client) TraceOff() {
 func (c *Client) SetS3TransferAccelerate(accelerateEndpoint string) {
 	if s3utils.IsAmazonEndpoint(*c.endpointURL) {
 		c.s3AccelerateEndpoint = accelerateEndpoint
+	}
+}
+
+// SetS3EnableDualstack turns s3 dual-stack endpoints on or off for all requests.
+// The feature is only specific to S3 and is on by default. To read more about
+// Amazon S3 dual-stack endpoints visit -
+// https://docs.aws.amazon.com/AmazonS3/latest/userguide/dual-stack-endpoints.html
+func (c *Client) SetS3EnableDualstack(enabled bool) {
+	if s3utils.IsAmazonEndpoint(*c.endpointURL) {
+		c.s3DualstackEnabled = enabled
 	}
 }
 
@@ -460,7 +470,7 @@ type requestMetadata struct {
 	contentMD5Base64 string // carries base64 encoded md5sum
 	contentSHA256Hex string // carries hex encoded sha256sum
 	streamSha256     bool
-	addCrc           bool
+	addCrc           *ChecksumType
 	trailer          http.Header // (http.Request).Trailer. Requires v4 signature.
 }
 
@@ -605,6 +615,18 @@ func (c *Client) executeMethod(ctx context.Context, method string, metadata requ
 		}
 	}
 
+	if metadata.addCrc != nil && metadata.contentLength > 0 {
+		if metadata.trailer == nil {
+			metadata.trailer = make(http.Header, 1)
+		}
+		crc := metadata.addCrc.Hasher()
+		metadata.contentBody = newHashReaderWrapper(metadata.contentBody, crc, func(hash []byte) {
+			// Update trailer when done.
+			metadata.trailer.Set(metadata.addCrc.Key(), base64.StdEncoding.EncodeToString(hash))
+		})
+		metadata.trailer.Set(metadata.addCrc.Key(), base64.StdEncoding.EncodeToString(crc.Sum(nil)))
+	}
+
 	// Create cancel context to control 'newRetryTimer' go routine.
 	retryCtx, cancel := context.WithCancel(ctx)
 
@@ -624,17 +646,6 @@ func (c *Client) executeMethod(ctx context.Context, method string, metadata requ
 			}
 		}
 
-		if metadata.addCrc {
-			if metadata.trailer == nil {
-				metadata.trailer = make(http.Header, 1)
-			}
-			crc := crc32.New(crc32.MakeTable(crc32.Castagnoli))
-			metadata.contentBody = newHashReaderWrapper(metadata.contentBody, crc, func(hash []byte) {
-				// Update trailer when done.
-				metadata.trailer.Set("x-amz-checksum-crc32c", base64.StdEncoding.EncodeToString(hash))
-			})
-			metadata.trailer.Set("x-amz-checksum-crc32c", base64.StdEncoding.EncodeToString(crc.Sum(nil)))
-		}
 		// Instantiate a new request.
 		var req *http.Request
 		req, err = c.newRequest(ctx, method, metadata)
@@ -930,7 +941,7 @@ func (c *Client) makeTargetURL(bucketName, objectName, bucketLocation string, is
 			// Do not change the host if the endpoint URL is a FIPS S3 endpoint or a S3 PrivateLink interface endpoint
 			if !s3utils.IsAmazonFIPSEndpoint(*c.endpointURL) && !s3utils.IsAmazonPrivateLinkEndpoint(*c.endpointURL) {
 				// Fetch new host based on the bucket location.
-				host = getS3Endpoint(bucketLocation)
+				host = getS3Endpoint(bucketLocation, c.s3DualstackEnabled)
 			}
 		}
 	}

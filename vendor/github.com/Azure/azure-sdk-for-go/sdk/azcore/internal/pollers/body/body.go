@@ -131,5 +131,5 @@ func (p *Poller[T]) Poll(ctx context.Context) (*http.Response, error) {
 }
 
 func (p *Poller[T]) Result(ctx context.Context, out *T) error {
-	return pollers.ResultHelper(p.resp, poller.Failed(p.CurState), out)
+	return pollers.ResultHelper(p.resp, poller.Failed(p.CurState), "", out)
 }

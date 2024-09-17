@@ -23,7 +23,7 @@ func TestArchive(t *testing.T) {
 	builder, err := NewBlockBuilder(
 		BlockOptions{
 			Schema: Schema{
-				version:  DefaultSchemaVersion,
+				version:  CurrentSchemaVersion,
 				encoding: chunkenc.EncSnappy,
 			},
 			SeriesPageSize: 100,
