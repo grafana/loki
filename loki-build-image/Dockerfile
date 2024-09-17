@@ -15,7 +15,7 @@ RUN BIN=$([ "$TARGETARCH" = "arm64" ] && echo "helm-docs_Linux_arm64" || echo "h
     curl -L "https://github.com/norwoodj/helm-docs/releases/download/v1.11.2/$BIN.tar.gz" | tar zx && \
     install -t /usr/local/bin helm-docs
 
-FROM alpine:3.20.2 AS lychee
+FROM alpine:3.20.3 AS lychee
 ARG TARGETARCH
 ARG LYCHEE_VER="0.7.0"
 RUN apk add --no-cache curl && \
@@ -24,18 +24,18 @@ RUN apk add --no-cache curl && \
     mv /tmp/lychee /usr/bin/lychee && \
     rm -rf "/tmp/linux-$TARGETARCH" /tmp/lychee-$LYCHEE_VER.tgz
 
-FROM alpine:3.20.2 AS golangci
+FROM alpine:3.20.3 AS golangci
 RUN apk add --no-cache curl && \
     cd / && \
     curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.55.1
 
-FROM alpine:3.20.2 AS buf
+FROM alpine:3.20.3 AS buf
 ARG TARGETOS
 RUN apk add --no-cache curl && \
     curl -sSL "https://github.com/bufbuild/buf/releases/download/v1.4.0/buf-$TARGETOS-$(uname -m)" -o "/usr/bin/buf" && \
     chmod +x "/usr/bin/buf"
 
-FROM alpine:3.20.2 AS docker
+FROM alpine:3.20.3 AS docker
 RUN apk add --no-cache docker-cli docker-cli-buildx
 
 FROM golang:${GO_VERSION}-bookworm AS drone
