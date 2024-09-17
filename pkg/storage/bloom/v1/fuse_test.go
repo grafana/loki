@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math"
 	"sync"
 	"testing"
 
@@ -27,13 +28,14 @@ var BloomPagePool = mempool.New("test", []mempool.Bucket{
 // TODO(owen-d): this is unhinged from the data it represents. I'm leaving this solely so I don't
 // have to refactor tests here in order to fix this elsewhere, but it can/should be fixed --
 // the skip & n len are hardcoded based on data that's passed to it elsewhere.
+// TODO(chaudum): Can be removed once matching with structured metadata is implemented.
 type fakeNgramBuilder struct{}
 
-func (f fakeNgramBuilder) N() int          { return 4 }
+func (f fakeNgramBuilder) N() int          { return math.MaxInt } // do not tokenize
 func (f fakeNgramBuilder) SkipFactor() int { return 0 }
 
-func (f fakeNgramBuilder) Tokens(line string) v2.Iterator[[]byte] {
-	return v2.NewSliceIter[[]byte]([][]byte{[]byte(line)})
+func (f fakeNgramBuilder) Tokens(key string) v2.Iterator[[]byte] {
+	return v2.NewSliceIter[[]byte]([][]byte{[]byte(key)})
 }
 
 func keysToBloomTest(keys [][]byte) BloomTest {

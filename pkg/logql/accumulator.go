@@ -86,6 +86,7 @@ func (a *QuantileSketchAccumulator) Accumulate(_ context.Context, res logqlmodel
 
 	var err error
 	a.matrix, err = a.matrix.Merge(data)
+	a.stats.Merge(res.Statistics)
 	return err
 }
 

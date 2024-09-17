@@ -253,7 +253,7 @@ func (fq *FusedQuerier) Run() error {
 	return nil
 }
 
-func (fq *FusedQuerier) runSeries(schema Schema, series *SeriesWithMeta, reqs []Request) {
+func (fq *FusedQuerier) runSeries(_ Schema, series *SeriesWithMeta, reqs []Request) {
 	// For a given chunk|series to be removed, it must fail to match all blooms.
 	// Because iterating/loading blooms can be expensive, we iterate blooms one at a time, collecting
 	// the removals (failures) for each (bloom, chunk) pair.
@@ -331,23 +331,16 @@ func (fq *FusedQuerier) runSeries(schema Schema, series *SeriesWithMeta, reqs []
 				continue
 			}
 
-			// TODO(owen-d): copying this over, but they're going to be the same
-			// across any block schema because prefix len is determined by n-gram and
-			// all chunks have the same encoding length. tl;dr: it's weird/unnecessary to have
-			// these defined this way and recreated across each bloom
-			var (
-				tokenBuf  []byte
-				prefixLen int
-			)
 			for k, chk := range inputs[j].InBlooms {
 				// if we've already found this chunk in a previous bloom, skip testing it
 				if inputs[j].found[k] {
 					continue
 				}
 
-				// Get buf to concatenate the chunk and search token
-				tokenBuf, prefixLen = prefixedToken(schema.NGramLen(), chk, tokenBuf)
-				if matched := req.Search.MatchesWithPrefixBuf(bloom, tokenBuf, prefixLen); matched {
+				// TODO(rfratto): reuse buffer between multiple calls to
+				// prefixForChunkRef and MatchesWithPrefixBuf to avoid allocations.
+				tokenBuf := prefixForChunkRef(chk)
+				if matched := req.Search.MatchesWithPrefixBuf(bloom, tokenBuf, len(tokenBuf)); matched {
 					inputs[j].found[k] = true
 				}
 			}

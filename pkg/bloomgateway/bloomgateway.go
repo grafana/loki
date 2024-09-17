@@ -193,12 +193,12 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return nil, errors.New("from time must not be after through time")
 	}
 
-	filters := v1.ExtractTestableLineFilters(req.Plan.AST)
-	stats.NumFilters = len(filters)
-	g.metrics.receivedFilters.Observe(float64(len(filters)))
+	matchers := v1.ExtractTestableLabelMatchers(req.Plan.AST)
+	stats.NumMatchers = len(matchers)
+	g.metrics.receivedMatchers.Observe(float64(len(matchers)))
 
 	// Shortcut if request does not contain filters
-	if len(filters) == 0 {
+	if len(matchers) == 0 {
 		stats.Status = labelSuccess
 		return &logproto.FilterChunkRefResponse{
 			ChunkRefs: req.Refs,
@@ -227,7 +227,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	stats.NumTasks = len(seriesByDay)
 
 	sp.LogKV(
-		"filters", len(filters),
+		"matchers", len(matchers),
 		"days", len(seriesByDay),
 		"blocks", len(req.Blocks),
 		"series_requested", len(req.Refs),
@@ -239,7 +239,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	}
 
 	series := seriesByDay[0]
-	task := newTask(ctx, tenantID, series, filters, blocks)
+	task := newTask(ctx, tenantID, series, matchers, blocks)
 
 	// TODO(owen-d): include capacity in constructor?
 	task.responses = responsesPool.Get(len(series.series))

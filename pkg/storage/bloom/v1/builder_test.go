@@ -49,7 +49,6 @@ func TestBlockOptions_RoundTrip(t *testing.T) {
 
 func TestBlockBuilder_RoundTrip(t *testing.T) {
 	numSeries := 100
-	data, keys := MkBasicSeriesWithLiteralBlooms(numSeries, 0, 0xffff, 0, 10000)
 
 	for _, enc := range blockEncodings {
 		// references for linking in memory reader+writer
@@ -97,16 +96,12 @@ func TestBlockBuilder_RoundTrip(t *testing.T) {
 					BloomPageSize:  10 << 10,
 					BlockSize:      tc.maxBlockSize,
 				}
+				data, keys := MkBasicSeriesWithBlooms(numSeries, 0, 0xffff, 0, 10000)
 
 				builder, err := NewBlockBuilder(blockOpts, tc.writer)
 
 				require.Nil(t, err)
-				itr := iter.NewPeekIter[SeriesWithBlooms](
-					iter.NewMapIter(
-						iter.NewSliceIter[SeriesWithLiteralBlooms](data),
-						func(x SeriesWithLiteralBlooms) SeriesWithBlooms { return x.SeriesWithBlooms() },
-					),
-				)
+				itr := iter.NewPeekIter(iter.NewSliceIter(data))
 				_, err = builder.BuildFrom(itr)
 				require.Nil(t, err)
 
@@ -134,7 +129,7 @@ func TestBlockBuilder_RoundTrip(t *testing.T) {
 					got := querier.At()
 					blooms, err := iter.Collect(got.Blooms)
 					require.Nil(t, err)
-					require.Equal(t, *processedData[i].Series, got.Series.Series)
+					require.Equal(t, processedData[i].Series.Series, got.Series.Series)
 					for _, key := range keys[i] {
 						found := false
 						for _, b := range blooms {
@@ -161,7 +156,7 @@ func TestBlockBuilder_RoundTrip(t *testing.T) {
 						got := querier.At()
 						blooms, err := iter.Collect(got.Blooms)
 						require.Nil(t, err)
-						require.Equal(t, *halfData[j].Series, got.Series.Series)
+						require.Equal(t, halfData[j].Series.Series, got.Series.Series)
 						for _, key := range halfKeys[j] {
 							found := false
 							for _, b := range blooms {
