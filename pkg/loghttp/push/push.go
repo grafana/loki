@@ -247,8 +247,13 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 			pushStats.IsAggregatedMetric = true
 		}
 
+		var beforeServiceName string
+		if logPushRequestStreams {
+			beforeServiceName = lbs.String()
+		}
+
+		serviceName := ServiceUnknown
 		if !lbs.Has(LabelServiceName) && len(discoverServiceName) > 0 && !pushStats.IsAggregatedMetric {
-			serviceName := ServiceUnknown
 			for _, labelName := range discoverServiceName {
 				if labelVal := lbs.Get(labelName); labelVal != "" {
 					serviceName = labelVal
@@ -256,25 +261,20 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 				}
 			}
 
-			var beforeServiceName string
-			if logPushRequestStreams {
-				beforeServiceName = lbs.String()
-			}
-
 			lb := labels.NewBuilder(lbs)
 			lbs = lb.Set(LabelServiceName, serviceName).Labels()
 			s.Labels = lbs.String()
 
-			if logPushRequestStreams {
-				level.Debug(logger).Log(
-					"msg", "push request stream before service name discovery",
-					"labels", beforeServiceName,
-					"service_name", serviceName,
-				)
-			}
-
 			// Remove the added label after it's added to the stream so it's not consumed by subsequent steps
 			lbs = lb.Del(LabelServiceName).Labels()
+		}
+
+		if logPushRequestStreams {
+			level.Debug(logger).Log(
+				"msg", "push request stream before service name discovery",
+				"labels", beforeServiceName,
+				"service_name", serviceName,
+			)
 		}
 
 		var retentionPeriod time.Duration
