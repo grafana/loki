@@ -44,7 +44,7 @@ Kindly check our [contributing guide](https://github.com/axiomhq/hyperloglog/blo
 
 ## License
 
-&copy; Axiom, Inc., 2022
+&copy; Axiom, Inc., 2024
 
 Distributed under MIT License (`The MIT License`).
 

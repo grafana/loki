@@ -24,7 +24,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
         'loki_api_v1_query',
         'loki_api_v1_query_range',
         'loki_api_v1_series',
-        'otlp_v1_logs',
         'prometheus_api_v1_rules',
       ]
     ),
@@ -249,7 +248,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                            $.newQueryPanel('Latency', 'ms') +
                            utils.latencyRecordingRulePanel(
                              'loki_request_duration_seconds',
-                             dashboards['loki-reads.json'].clusterMatchers + dashboards['loki-reads.json'].matchers.bloomGateway + [utils.selector.re('route', grpc_routes)],
+                             dashboards['loki-reads.json'].clusterMatchers + dashboards['loki-reads.json'].matchers.indexGateway + [utils.selector.re('route', grpc_routes)],
                              sum_by=['route']
                            )
                          )

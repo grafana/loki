@@ -20,7 +20,6 @@ import (
 
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
-	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -53,7 +52,7 @@ func defaultConfig() *Config {
 		OwnedStreamsCheckInterval: 1 * time.Second,
 	}
 	if err := cfg.Validate(); err != nil {
-		panic(errors.Wrap(err, "error building default test config"))
+		panic(fmt.Errorf("error building default test config: %w", err))
 	}
 	return &cfg
 }
@@ -657,6 +656,10 @@ func (t *testFilter) ForRequest(_ context.Context) chunk.Filterer {
 
 func (t *testFilter) ShouldFilter(lbs labels.Labels) bool {
 	return lbs.Get("log_stream") == "dispatcher"
+}
+
+func (t *testFilter) RequiredLabelNames() []string {
+	return []string{"log_stream"}
 }
 
 func Test_ChunkFilter(t *testing.T) {

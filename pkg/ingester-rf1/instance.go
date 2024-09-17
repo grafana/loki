@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/prometheus/client_golang/prometheus"
@@ -17,12 +18,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
-	"github.com/grafana/loki/v3/pkg/ingester/index"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/wal"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -59,7 +60,6 @@ type instance struct {
 	buf     []byte // buffer used to compute fps.
 	streams *streamsMap
 
-	index  *index.Multi
 	mapper *FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
 
 	instanceID string
@@ -70,6 +70,7 @@ type instance struct {
 	// tailers   map[uint32]*tailer
 	tailerMtx sync.RWMutex
 
+	logger             log.Logger
 	limiter            *Limiter
 	streamCountLimiter *streamCountLimiter
 	ownedStreamsSvc    *ownedStreamService
@@ -87,28 +88,42 @@ type instance struct {
 	customStreamsTracker push.UsageTracker
 }
 
-func (i *instance) Push(ctx context.Context, req *logproto.PushRequest, flushCtx *flushCtx) error {
+func (i *instance) Push(ctx context.Context, w *wal.Manager, req *logproto.PushRequest) error {
 	rateLimitWholeStream := i.limiter.limits.ShardStreams(i.instanceID).Enabled
 
-	var appendErr error
+	results := make([]*wal.AppendResult, 0, len(req.Streams))
 	for _, reqStream := range req.Streams {
 		s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
 			func() (*stream, error) {
 				s, err := i.createStream(ctx, reqStream)
 				return s, err
 			},
-			func(s *stream) error {
+			func(_ *stream) error {
 				return nil
 			},
 		)
 		if err != nil {
-			appendErr = err
-			continue
+			return err
 		}
-
-		_, appendErr = s.Push(ctx, reqStream.Entries, rateLimitWholeStream, i.customStreamsTracker, flushCtx)
+		_, res, err := s.Push(ctx, w, reqStream.Entries, rateLimitWholeStream, i.customStreamsTracker)
+		if err != nil {
+			return err
+		}
+		results = append(results, res)
 	}
-	return appendErr
+
+	for _, result := range results {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-result.Done():
+			if err := result.Err(); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 func newInstance(
@@ -121,12 +136,8 @@ func newInstance(
 	streamRateCalculator *StreamRateCalculator,
 	writeFailures *writefailures.Manager,
 	customStreamsTracker push.UsageTracker,
+	logger log.Logger,
 ) (*instance, error) {
-	fmt.Println("new instance for", instanceID)
-	invertedIndex, err := index.NewMultiInvertedIndex(periodConfigs, uint32(cfg.IndexShards))
-	if err != nil {
-		return nil, err
-	}
 	streams := newStreamsMap()
 	ownedStreamsSvc := newOwnedStreamService(instanceID, limiter)
 	c := config.SchemaConfig{Configs: periodConfigs}
@@ -134,13 +145,13 @@ func newInstance(
 		cfg:        cfg,
 		streams:    streams,
 		buf:        make([]byte, 0, 1024),
-		index:      invertedIndex,
 		instanceID: instanceID,
 		//
 		streamsCreatedTotal: streamsCreatedTotal.WithLabelValues(instanceID),
 		streamsRemovedTotal: streamsRemovedTotal.WithLabelValues(instanceID),
 		//
 		//tailers:            map[uint32]*tailer{},
+		logger:             logger,
 		limiter:            limiter,
 		streamCountLimiter: newStreamCountLimiter(instanceID, streams.Len, limiter, ownedStreamsSvc),
 		ownedStreamsSvc:    ownedStreamsSvc,
@@ -164,7 +175,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 	// reducing the stream limits, for instance.
 	var err error
 
-	labels, err := syntax.ParseLabels(pushReqStream.Labels)
+	sortedLabels, err := syntax.ParseLabels(pushReqStream.Labels)
 	if err != nil {
 		if i.configs.LogStreamCreation(i.instanceID) {
 			level.Debug(util_log.Logger).Log(
@@ -174,16 +185,14 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 				"stream", pushReqStream.Labels,
 			)
 		}
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	if err != nil {
-		return i.onStreamCreationError(ctx, pushReqStream, err, labels)
+		return i.onStreamCreationError(ctx, pushReqStream, err, sortedLabels)
 	}
 
-	fp := i.getHashForLabels(labels)
-
-	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
+	fp := i.getHashForLabels(sortedLabels)
 
 	chunkfmt, headfmt, err := i.chunkFormatAt(minTs(&pushReqStream))
 	if err != nil {

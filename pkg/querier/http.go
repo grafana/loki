@@ -135,20 +135,20 @@ func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelReques
 // TailHandler is a http.HandlerFunc for handling tail queries.
 func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
-		CheckOrigin: func(r *http.Request) bool { return true },
+		CheckOrigin: func(_ *http.Request) bool { return true },
 	}
 	logger := util_log.WithContext(r.Context(), util_log.Logger)
 
 	req, err := loghttp.ParseTailQuery(r)
 	if err != nil {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), w)
 		return
 	}
 
 	tenantID, err := tenant.TenantID(r.Context())
 	if err != nil {
 		level.Warn(logger).Log("msg", "error getting tenant id", "err", err)
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), w)
 		return
 	}
 
@@ -417,23 +417,10 @@ func (q *QuerierAPI) PatternsHandler(ctx context.Context, req *logproto.QueryPat
 	return resp, nil
 }
 
-func (q *QuerierAPI) SamplesHandler(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error) {
-	resp, err := q.querier.SelectMetricSamples(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if resp == nil { // Some stores don't implement this
-		return &logproto.QuerySamplesResponse{
-			Series: []logproto.Series{},
-		}, nil
-	}
-	return resp, nil
-}
-
 func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, expr syntax.Expr, limit uint32) error {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	// entry limit does not apply to metric queries.
@@ -474,7 +461,7 @@ func WrapQuerySpanAndTimeout(call string, limits Limits) middleware.Interface {
 			tenants, err := tenant.TenantIDs(ctx)
 			if err != nil {
 				level.Error(log).Log("msg", "couldn't fetch tenantID", "err", err)
-				serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+				serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), w)
 				return
 			}
 

@@ -157,7 +157,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 		chunkRefs := createQueryInputFromBlockData(t, tenantID, data, 100)
 
-		expr, err := syntax.ParseExpr(`{foo="bar"} |= "does not match"`)
+		expr, err := syntax.ParseExpr(`{foo="bar"} | trace_id="nomatch"`)
 		require.NoError(t, err)
 
 		req := &logproto.FilterChunkRefRequest{
@@ -196,7 +196,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		// saturate workers
 		// then send additional request
 		for i := 0; i < gw.cfg.WorkerConcurrency+1; i++ {
-			expr, err := syntax.ParseExpr(`{foo="bar"} |= "does not match"`)
+			expr, err := syntax.ParseExpr(`{foo="bar"} | trace_id="nomatch"`)
 			require.NoError(t, err)
 
 			req := &logproto.FilterChunkRefRequest{
@@ -240,7 +240,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		// saturate workers
 		// then send additional request
 		for i := 0; i < gw.cfg.WorkerConcurrency+1; i++ {
-			expr, err := syntax.ParseExpr(`{foo="bar"} |= "does not match"`)
+			expr, err := syntax.ParseExpr(`{foo="bar"} | trace_id="nomatch"`)
 			require.NoError(t, err)
 
 			req := &logproto.FilterChunkRefRequest{
@@ -341,7 +341,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 					Checksum:       uint32(idx),
 				},
 			}
-			expr, err := syntax.ParseExpr(`{foo="bar"} |= "foo"`)
+			expr, err := syntax.ParseExpr(`{foo="bar"} | trace_id="nomatch"`)
 			require.NoError(t, err)
 			req := &logproto.FilterChunkRefRequest{
 				From:    now.Add(-4 * time.Hour),
@@ -380,7 +380,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 		t.Run("no match - return empty response", func(t *testing.T) {
 			inputChunkRefs := groupRefs(t, chunkRefs)
-			expr, err := syntax.ParseExpr(`{foo="bar"} |= "does not match"`)
+			expr, err := syntax.ParseExpr(`{foo="bar"} | trace_id="nomatch"`)
 			require.NoError(t, err)
 			req := &logproto.FilterChunkRefRequest{
 				From:    now.Add(-8 * time.Hour),
@@ -403,16 +403,14 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			inputChunkRefs := groupRefs(t, chunkRefs)
 			// Hack to get search string for a specific series
 			// see MkBasicSeriesWithBlooms() in pkg/storage/bloom/v1/test_util.go
-			// each series has 1 chunk
-			// each chunk has multiple strings, from int(fp) to int(nextFp)-1
-			x := rand.Intn(len(inputChunkRefs))
-			fp := inputChunkRefs[x].Fingerprint
-			chks := inputChunkRefs[x].Refs
-			line := fmt.Sprintf("%04x:%04x", int(fp), 0) // first line
+			rnd := rand.Intn(len(inputChunkRefs))
+			fp := inputChunkRefs[rnd].Fingerprint
+			chks := inputChunkRefs[rnd].Refs
+			key := fmt.Sprintf("%s:%04x", model.Fingerprint(fp), 0)
 
-			t.Log("x=", x, "fp=", fp, "line=", line)
+			t.Log("rnd=", rnd, "fp=", fp, "key=", key)
 
-			expr, err := syntax.ParseExpr(fmt.Sprintf(`{foo="bar"} |= "%s"`, line))
+			expr, err := syntax.ParseExpr(fmt.Sprintf(`{foo="bar"} | trace_id="%s"`, key))
 			require.NoError(t, err)
 
 			req := &logproto.FilterChunkRefRequest{

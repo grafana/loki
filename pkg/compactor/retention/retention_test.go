@@ -47,7 +47,7 @@ func (m *mockChunkClient) IsChunkNotFoundErr(_ error) bool {
 	return false
 }
 
-func (m *mockChunkClient) getDeletedChunkIds() []string {
+func (m *mockChunkClient) getDeletedChunkIDs() []string {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -166,7 +166,7 @@ func Test_Retention(t *testing.T) {
 			store.Stop()
 			if len(expectDeleted) != 0 {
 				require.Eventually(t, func() bool {
-					actual := chunkClient.getDeletedChunkIds()
+					actual := chunkClient.getDeletedChunkIDs()
 					sort.Strings(actual)
 					return assert.ObjectsAreEqual(expectDeleted, actual)
 				}, 10*time.Second, 1*time.Second)
@@ -301,7 +301,7 @@ func TestChunkRewriter(t *testing.T) {
 		{
 			name:  "no rewrites",
 			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(time.Hour)),
-			filterFunc: func(ts time.Time, s string, _ ...labels.Label) bool {
+			filterFunc: func(_ time.Time, _ string, _ ...labels.Label) bool {
 				return false
 			},
 			expectedRespByTables: map[string]tableResp{
@@ -311,7 +311,7 @@ func TestChunkRewriter(t *testing.T) {
 		{
 			name:  "no rewrites with chunk spanning multiple tables",
 			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.End.Add(-48*time.Hour), todaysTableInterval.End),
-			filterFunc: func(ts time.Time, s string, _ ...labels.Label) bool {
+			filterFunc: func(_ time.Time, _ string, _ ...labels.Label) bool {
 				return false
 			},
 			expectedRespByTables: map[string]tableResp{
@@ -672,7 +672,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expiry: []chunkExpiry{
 				{
 					isExpired: true,
-					filterFunc: func(ts time.Time, s string, _ ...labels.Label) bool {
+					filterFunc: func(_ time.Time, _ string, _ ...labels.Label) bool {
 						return false
 					},
 				},
@@ -814,7 +814,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expiry: []chunkExpiry{
 				{
 					isExpired: true,
-					filterFunc: func(ts time.Time, s string, _ ...labels.Label) bool {
+					filterFunc: func(ts time.Time, _ string, _ ...labels.Label) bool {
 						return ts.UnixNano() < todaysTableInterval.Start.UnixNano()
 					},
 				},
@@ -840,7 +840,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expiry: []chunkExpiry{
 				{
 					isExpired: true,
-					filterFunc: func(ts time.Time, s string, _ ...labels.Label) bool {
+					filterFunc: func(ts time.Time, _ string, _ ...labels.Label) bool {
 						return ts.UnixNano() < todaysTableInterval.Start.Add(-30*time.Minute).UnixNano()
 					},
 				},

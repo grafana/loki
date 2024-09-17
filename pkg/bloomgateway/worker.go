@@ -86,7 +86,6 @@ func (w *worker) running(_ context.Context) error {
 			continue
 		}
 
-		level.Debug(w.logger).Log("msg", "dequeued tasks", "count", len(items))
 		w.metrics.tasksDequeued.WithLabelValues(w.id, labelSuccess).Add(float64(len(items)))
 
 		tasks := make([]Task, 0, len(items))

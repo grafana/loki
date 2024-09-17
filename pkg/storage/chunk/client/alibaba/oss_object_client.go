@@ -74,7 +74,7 @@ func (s *OssObjectClient) Stop() {
 
 func (s *OssObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
 	var options []oss.Option
-	err := instrument.CollectedRequest(ctx, "OSS.ObjectExists", ossRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	err := instrument.CollectedRequest(ctx, "OSS.ObjectExists", ossRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 		_, requestErr := s.defaultBucket.GetObjectMeta(objectKey, options...)
 		return requestErr
 	})
@@ -89,7 +89,7 @@ func (s *OssObjectClient) ObjectExists(ctx context.Context, objectKey string) (b
 func (s *OssObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	var resp *oss.GetObjectResult
 	var options []oss.Option
-	err := instrument.CollectedRequest(ctx, "OSS.GetObject", ossRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	err := instrument.CollectedRequest(ctx, "OSS.GetObject", ossRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 		var requestErr error
 		resp, requestErr = s.defaultBucket.DoGetObject(&oss.GetObjectRequest{ObjectKey: objectKey}, options)
 		if requestErr != nil {
@@ -108,9 +108,29 @@ func (s *OssObjectClient) GetObject(ctx context.Context, objectKey string) (io.R
 	return resp.Response.Body, int64(size), err
 }
 
+// GetObject returns a reader and the size for the specified object key from the configured OSS bucket.
+func (s *OssObjectClient) GetObjectRange(ctx context.Context, objectKey string, offset, length int64) (io.ReadCloser, error) {
+	var resp *oss.GetObjectResult
+	options := []oss.Option{
+		oss.Range(offset, offset+length-1),
+	}
+	err := instrument.CollectedRequest(ctx, "OSS.GetObject", ossRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
+		var requestErr error
+		resp, requestErr = s.defaultBucket.DoGetObject(&oss.GetObjectRequest{ObjectKey: objectKey}, options)
+		if requestErr != nil {
+			return requestErr
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resp.Response.Body, err
+}
+
 // PutObject puts the specified bytes into the configured OSS bucket at the provided key
 func (s *OssObjectClient) PutObject(ctx context.Context, objectKey string, object io.Reader) error {
-	return instrument.CollectedRequest(ctx, "OSS.PutObject", ossRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	return instrument.CollectedRequest(ctx, "OSS.PutObject", ossRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 		if err := s.defaultBucket.PutObject(objectKey, object); err != nil {
 			return errors.Wrap(err, "failed to put oss object")
 		}
@@ -153,7 +173,7 @@ func (s *OssObjectClient) List(ctx context.Context, prefix, delimiter string) ([
 
 // DeleteObject deletes the specified object key from the configured OSS bucket.
 func (s *OssObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
-	return instrument.CollectedRequest(ctx, "OSS.DeleteObject", ossRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	return instrument.CollectedRequest(ctx, "OSS.DeleteObject", ossRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 		err := s.defaultBucket.DeleteObject(objectKey)
 		if err != nil {
 			return err

@@ -34,11 +34,13 @@ import (
 	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/pretty"
 	iserviceconfig "google.golang.org/grpc/internal/serviceconfig"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/internal/xds/matcher"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdslbregistry"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 // ValidateClusterAndConstructClusterUpdateForTesting exports the
@@ -49,7 +51,7 @@ var ValidateClusterAndConstructClusterUpdateForTesting = validateClusterAndConst
 // to this value by the management server.
 const transportSocketName = "envoy.transport_sockets.tls"
 
-func unmarshalClusterResource(r *anypb.Any) (string, ClusterUpdate, error) {
+func unmarshalClusterResource(r *anypb.Any, serverCfg *bootstrap.ServerConfig) (string, ClusterUpdate, error) {
 	r, err := UnwrapResource(r)
 	if err != nil {
 		return "", ClusterUpdate{}, fmt.Errorf("failed to unwrap resource: %v", err)
@@ -63,7 +65,7 @@ func unmarshalClusterResource(r *anypb.Any) (string, ClusterUpdate, error) {
 	if err := proto.Unmarshal(r.GetValue(), cluster); err != nil {
 		return "", ClusterUpdate{}, fmt.Errorf("failed to unmarshal resource: %v", err)
 	}
-	cu, err := validateClusterAndConstructClusterUpdate(cluster)
+	cu, err := validateClusterAndConstructClusterUpdate(cluster, serverCfg)
 	if err != nil {
 		return cluster.GetName(), ClusterUpdate{}, err
 	}
@@ -80,7 +82,34 @@ const (
 	defaultLeastRequestChoiceCount = 2
 )
 
-func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster) (ClusterUpdate, error) {
+func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster, serverCfg *bootstrap.ServerConfig) (ClusterUpdate, error) {
+	telemetryLabels := make(map[string]string)
+	if fmd := cluster.GetMetadata().GetFilterMetadata(); fmd != nil {
+		if val, ok := fmd["com.google.csm.telemetry_labels"]; ok {
+			if fields := val.GetFields(); fields != nil {
+				if val, ok := fields["service_name"]; ok {
+					if _, ok := val.GetKind().(*structpb.Value_StringValue); ok {
+						telemetryLabels["csm.service_name"] = val.GetStringValue()
+					}
+				}
+				if val, ok := fields["service_namespace"]; ok {
+					if _, ok := val.GetKind().(*structpb.Value_StringValue); ok {
+						telemetryLabels["csm.service_namespace_name"] = val.GetStringValue()
+					}
+				}
+			}
+		}
+	}
+	// "The values for the service labels csm.service_name and
+	// csm.service_namespace_name come from xDS, “unknown” if not present." -
+	// CSM Design.
+	if _, ok := telemetryLabels["csm.service_name"]; !ok {
+		telemetryLabels["csm.service_name"] = "unknown"
+	}
+	if _, ok := telemetryLabels["csm.service_namespace_name"]; !ok {
+		telemetryLabels["csm.service_namespace_name"] = "unknown"
+	}
+
 	var lbPolicy json.RawMessage
 	var err error
 	switch cluster.GetLbPolicy() {
@@ -160,23 +189,14 @@ func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster) (Clu
 		MaxRequests:      circuitBreakersFromCluster(cluster),
 		LBPolicy:         lbPolicy,
 		OutlierDetection: od,
+		TelemetryLabels:  telemetryLabels,
 	}
 
-	// Note that this is different from the gRFC (gRFC A47 says to include the
-	// full ServerConfig{URL,creds,server feature} here). This information is
-	// not available here, because this function doesn't have access to the
-	// xdsclient bootstrap information now (can be added if necessary). The
-	// ServerConfig will be read and populated by the CDS balancer when
-	// processing this field.
-	// According to A27:
-	// If the `lrs_server` field is set, it must have its `self` field set, in
-	// which case the client should use LRS for load reporting. Otherwise
-	// (the `lrs_server` field is not set), LRS load reporting will be disabled.
 	if lrs := cluster.GetLrsServer(); lrs != nil {
 		if lrs.GetSelf() == nil {
 			return ClusterUpdate{}, fmt.Errorf("unsupported config_source_specifier %T in lrs_server field", lrs.ConfigSourceSpecifier)
 		}
-		ret.LRSServerConfig = ClusterLRSServerSelf
+		ret.LRSServerConfig = serverCfg
 	}
 
 	// Validate and set cluster type from the response.

@@ -92,6 +92,7 @@ func TestBloomBuilding(t *testing.T) {
 		"-target=bloom-planner",
 		"-bloom-build.enabled=true",
 		"-bloom-build.enable=true",
+		"-bloom-build.builder.planner-address=localhost:9095", // hack to succeed config validation
 		"-bloom-build.planner.interval=15s",
 		"-bloom-build.planner.min-table-offset=0", // Disable table offset so we process today's data.
 		"-bloom.cache-list-ops=0",                 // Disable cache list operations to avoid caching issues.
@@ -170,7 +171,6 @@ func checkForTimestampMetric(t *testing.T, cliPlanner *client.Client, metricName
 
 func createBloomStore(t *testing.T, sharedPath string) *bloomshipper.BloomStore {
 	logger := log.NewNopLogger()
-	//logger := log.NewLogfmtLogger(os.Stdout)
 
 	schemaCfg := config.SchemaConfig{
 		Configs: []config.PeriodConfig{

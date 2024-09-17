@@ -50,6 +50,9 @@ func (q priorityQueue[K, V]) Less(i, j int) bool {
 }
 
 func (q priorityQueue[K, V]) Swap(i, j int) {
+	if len(q) < 2 {
+		return
+	}
 	q[i], q[j] = q[j], q[i]
 	q[i].index = i
 	q[j].index = j
@@ -64,13 +67,13 @@ func (q *priorityQueue[K, V]) Push(x interface{}) {
 func (q *priorityQueue[K, V]) Pop() interface{} {
 	old := *q
 	n := len(old)
+	if n == 0 {
+		return nil // Return nil if the queue is empty to prevent panic
+	}
 	entry := old[n-1]
 	old[n-1] = nil   // avoid memory leak
 	entry.index = -1 // for safety
 	new := old[0 : n-1]
-	for i := 0; i < len(new); i++ {
-		new[i].index = i
-	}
 	*q = new
 	return entry
 }

@@ -8,10 +8,11 @@ import (
 
 // Config configures the bloom-planner component.
 type Config struct {
-	PlanningInterval        time.Duration `yaml:"planning_interval"`
-	MinTableOffset          int           `yaml:"min_table_offset"`
-	MaxTableOffset          int           `yaml:"max_table_offset"`
-	MaxQueuedTasksPerTenant int           `yaml:"max_queued_tasks_per_tenant"`
+	PlanningInterval        time.Duration   `yaml:"planning_interval"`
+	MinTableOffset          int             `yaml:"min_table_offset"`
+	MaxTableOffset          int             `yaml:"max_table_offset"`
+	MaxQueuedTasksPerTenant int             `yaml:"max_queued_tasks_per_tenant"`
+	RetentionConfig         RetentionConfig `yaml:"retention"`
 }
 
 // RegisterFlagsWithPrefix registers flags for the bloom-planner configuration.
@@ -26,6 +27,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	// I'm doing it the simple way for now.
 	f.IntVar(&cfg.MaxTableOffset, prefix+".max-table-offset", 2, "Oldest day-table offset (from today, inclusive) to compact. This can be used to lower cost by not trying to compact older data which doesn't change. This can be optimized by aligning it with the maximum `reject_old_samples_max_age` setting of any tenant.")
 	f.IntVar(&cfg.MaxQueuedTasksPerTenant, prefix+".max-tasks-per-tenant", 30000, "Maximum number of tasks to queue per tenant.")
+	cfg.RetentionConfig.RegisterFlagsWithPrefix(prefix+".retention", f)
 }
 
 func (cfg *Config) Validate() error {
@@ -33,10 +35,15 @@ func (cfg *Config) Validate() error {
 		return fmt.Errorf("min-table-offset (%d) must be less than or equal to max-table-offset (%d)", cfg.MinTableOffset, cfg.MaxTableOffset)
 	}
 
+	if err := cfg.RetentionConfig.Validate(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
 type Limits interface {
+	RetentionLimits
 	BloomCreationEnabled(tenantID string) bool
 	BloomSplitSeriesKeyspaceBy(tenantID string) int
 	BloomBuildMaxBuilders(tenantID string) int
