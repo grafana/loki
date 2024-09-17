@@ -6,6 +6,7 @@ package fgprof
 import (
 	"fmt"
 	"io"
+	"math"
 	"runtime"
 	"sort"
 	"strings"
@@ -37,9 +38,10 @@ func Start(w io.Writer, format Format) func() error {
 	const hz = 99
 	ticker := time.NewTicker(time.Second / hz)
 	stopCh := make(chan struct{})
-
 	prof := &profiler{}
 	profile := newWallclockProfile()
+
+	var sampleCount int64
 
 	go func() {
 		defer ticker.Stop()
@@ -47,6 +49,8 @@ func Start(w io.Writer, format Format) func() error {
 		for {
 			select {
 			case <-ticker.C:
+				sampleCount++
+
 				stacks := prof.GoroutineProfile()
 				profile.Add(stacks)
 			case <-stopCh:
@@ -59,7 +63,14 @@ func Start(w io.Writer, format Format) func() error {
 		stopCh <- struct{}{}
 		endTime := time.Now()
 		profile.Ignore(prof.SelfFrames()...)
-		return profile.Export(w, format, hz, startTime, endTime)
+
+		// Compute actual sample rate in case, due to performance issues, we
+		// were not actually able to sample at the given hz. Converting
+		// everything to float avoids integers being rounded in the wrong
+		// direction and improves the correctness of times in profiles.
+		duration := endTime.Sub(startTime)
+		actualHz := float64(sampleCount) / (float64(duration) / 1e9)
+		return profile.Export(w, format, int(math.Round(actualHz)), startTime, endTime)
 	}
 }
 

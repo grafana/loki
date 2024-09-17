@@ -14,7 +14,8 @@ const (
 )
 
 type Metrics struct {
-	running prometheus.Gauge
+	running        prometheus.Gauge
+	processingTask prometheus.Gauge
 
 	taskStarted   prometheus.Counter
 	taskCompleted *prometheus.CounterVec
@@ -37,6 +38,12 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			Subsystem: metricsSubsystem,
 			Name:      "running",
 			Help:      "Value will be 1 if the bloom builder is currently running on this instance",
+		}),
+		processingTask: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "processing_task",
+			Help:      "Value will be 1 if the bloom builder is currently processing a task",
 		}),
 
 		taskStarted: promauto.With(r).NewCounter(prometheus.CounterOpts{

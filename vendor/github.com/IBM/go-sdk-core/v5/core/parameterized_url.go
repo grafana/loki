@@ -39,6 +39,7 @@ func ConstructServiceURL(
 	defaultUrlVariables map[string]string,
 	providedUrlVariables map[string]string,
 ) (string, error) {
+	GetLogger().Debug("Constructing service URL from parameterized URL: %s\n", parameterizedUrl)
 
 	// Verify the provided variable names.
 	for providedName := range providedUrlVariables {
@@ -70,5 +71,6 @@ func ConstructServiceURL(
 		}
 		formattedUrl = strings.Replace(formattedUrl, "{"+name+"}", providedValue, 1)
 	}
+	GetLogger().Debug("Returning service URL: %s\n", formattedUrl)
 	return formattedUrl, nil
 }

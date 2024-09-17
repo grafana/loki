@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 
+	humanize "github.com/dustin/go-humanize"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
@@ -840,4 +842,9 @@ func RegisterCounterVec(registerer prometheus.Registerer, namespace, name, help 
 		}
 	}
 	return vec
+}
+
+// HumanizeBytes returns a human readable string representation of the given byte value and removes all whitespaces.
+func HumanizeBytes(val uint64) string {
+	return strings.Replace(humanize.Bytes(val), " ", "", 1)
 }

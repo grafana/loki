@@ -23,6 +23,13 @@ type Bloom struct {
 	filter.ScalableBloomFilter
 }
 
+func NewBloom() *Bloom {
+	return &Bloom{
+		// TODO parameterise SBF options. fp_rate
+		ScalableBloomFilter: *filter.NewScalableBloomFilter(1024, 0.01, 0.8),
+	}
+}
+
 func (b *Bloom) Encode(enc *encoding.Encbuf) error {
 	// divide by 8 b/c bloom capacity is measured in bits, but we want bytes
 	buf := bytes.NewBuffer(make([]byte, 0, int(b.Capacity()/8)))
@@ -167,7 +174,7 @@ type BloomPageDecoder struct {
 // perf optimization.
 // This can only safely be used when the underlying bloom
 // bytes don't escape the decoder:
-// on reads in the bloom-gw but not in the bloom-compactor
+// on reads in the bloom-gw but not in the bloom-builder
 func (d *BloomPageDecoder) Relinquish(alloc mempool.Allocator) {
 	if d == nil {
 		return

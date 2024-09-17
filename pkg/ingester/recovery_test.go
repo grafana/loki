@@ -11,7 +11,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
-	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
@@ -142,7 +141,7 @@ func (r *MemRecoverer) SetStream(_ context.Context, userID string, series record
 	}
 
 	if _, exists := user[series.Ref]; exists {
-		return errors.Errorf("stream (%d) already exists for user (%s)", series.Ref, userID)
+		return fmt.Errorf("stream (%d) already exists for user (%s)", series.Ref, userID)
 	}
 
 	user[series.Ref] = make([]logproto.Entry, 0)
@@ -156,12 +155,12 @@ func (r *MemRecoverer) Push(userID string, entries wal.RefEntries) error {
 
 	user, ok := r.users[userID]
 	if !ok {
-		return errors.Errorf("unexpected user access (%s)", userID)
+		return fmt.Errorf("unexpected user access (%s)", userID)
 	}
 
 	stream, ok := user[entries.Ref]
 	if !ok {
-		return errors.Errorf("unexpected stream access")
+		return fmt.Errorf("unexpected stream access")
 	}
 
 	r.seriesCt += len(entries.Entries)

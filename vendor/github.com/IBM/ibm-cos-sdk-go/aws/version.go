@@ -7,6 +7,6 @@ package aws
 const SDKName = "ibm-cos-sdk-go"
 
 // SDKVersion is the version of this SDK
-const SDKVersion = "1.10.0"
+const SDKVersion = "1.11.0"
 
 // IBM COS SDK Code -- END

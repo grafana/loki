@@ -12,7 +12,7 @@ The usage of legacy storage for new installations is highly discouraged and docu
 purposes in case of upgrade to a single store.
 {{% /admonition %}}
 
-The **chunk store** is Loki's long-term data store, designed to support
+The **chunk store** is the Loki long-term data store, designed to support
 interactive querying and sustained writing without the need for background
 maintenance tasks. It consists of:
 

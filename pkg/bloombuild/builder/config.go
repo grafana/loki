@@ -40,6 +40,6 @@ type Limits interface {
 	BloomBlockEncoding(tenantID string) string
 	BloomNGramLength(tenantID string) int
 	BloomNGramSkip(tenantID string) int
-	BloomCompactorMaxBlockSize(tenantID string) int
-	BloomCompactorMaxBloomSize(tenantID string) int
+	BloomMaxBlockSize(tenantID string) int
+	BloomMaxBloomSize(tenantID string) int
 }
