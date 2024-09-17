@@ -4,6 +4,7 @@ on:
     types:
       - closed
       - labeled
+  pull_request:
 
 jobs:
   main:
