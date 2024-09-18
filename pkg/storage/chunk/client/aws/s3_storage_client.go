@@ -28,6 +28,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
+	amnet "k8s.io/apimachinery/pkg/util/net"
+
 	bucket_s3 "github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
@@ -36,7 +38,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	loki_instrument "github.com/grafana/loki/v3/pkg/util/instrument"
-	amnet "k8s.io/apimachinery/pkg/util/net"
 )
 
 const (
