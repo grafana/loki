@@ -14,6 +14,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/storage/types"
@@ -67,6 +69,10 @@ const (
 	RingKey = "ring"
 
 	shutdownMarkerFilename = "shutdown-requested.txt"
+
+	// PartitionRingKey is the key under which we store the partitions ring used by the "ingest storage".
+	PartitionRingKey  = "ingester-partitions-key"
+	PartitionRingName = "ingester-partitions"
 )
 
 // ErrReadOnly is returned when the ingester is shutting down and a push was
@@ -125,12 +131,15 @@ type Config struct {
 	ShutdownMarkerPath string `yaml:"shutdown_marker_path"`
 
 	OwnedStreamsCheckInterval time.Duration `yaml:"owned_streams_check_interval" doc:"description=Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams."`
+
+	KafkaIngestion KafkaIngestionConfig `yaml:"kafka_ingestion,omitempty"`
 }
 
 // RegisterFlags registers the flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f, util_log.Logger)
 	cfg.WAL.RegisterFlags(f)
+	cfg.KafkaIngestion.RegisterFlags(f)
 
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 32, "How many flushes can happen concurrently from each stream.")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "How often should the ingester see if there are any blocks to flush. The first flush check is delayed by a random time up to 0.8x the flush check period. Additionally, there is +/- 1% jitter added to the interval.")
@@ -180,6 +189,17 @@ func (cfg *Config) Validate() error {
 	}
 
 	return nil
+}
+
+type KafkaIngestionConfig struct {
+	Enabled             bool                 `yaml:"enabled" doc:"description=Whether the kafka ingester is enabled."`
+	PartitionRingConfig partitionring.Config `yaml:"partition_ring" category:"experimental"`
+	KafkaConfig         kafka.Config         `yaml:"-"`
+}
+
+func (cfg *KafkaIngestionConfig) RegisterFlags(f *flag.FlagSet) {
+	cfg.PartitionRingConfig.RegisterFlagsWithPrefix("ingester.", f)
+	f.BoolVar(&cfg.Enabled, "ingester.kafka-ingestion-enabled", false, "Whether the ingester will consume data from kafka.")
 }
 
 type Wrapper interface {
@@ -785,7 +805,7 @@ func createShutdownMarker(p string) error {
 		return err
 	}
 
-	dir, err := os.OpenFile(path.Dir(p), os.O_RDONLY, 0777)
+	dir, err := os.OpenFile(path.Dir(p), os.O_RDONLY, 0o777)
 	if err != nil {
 		return err
 	}
@@ -802,7 +822,7 @@ func removeShutdownMarker(p string) error {
 		return err
 	}
 
-	dir, err := os.OpenFile(path.Dir(p), os.O_RDONLY, 0777)
+	dir, err := os.OpenFile(path.Dir(p), os.O_RDONLY, 0o777)
 	if err != nil {
 		return err
 	}
@@ -1388,6 +1408,7 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 	err = server_util.ClientGrpcStatusAndError(err)
 	return err
 }
+
 func (i *Ingester) tail(req *logproto.TailRequest, queryServer logproto.Querier_TailServer) error {
 	select {
 	case <-i.tailersQuit:
@@ -1524,7 +1545,6 @@ func (i *Ingester) getDetectedLabels(ctx context.Context, req *logproto.Detected
 	}
 
 	labelMap, err := instance.LabelsWithValues(ctx, req.Start, matchers...)
-
 	if err != nil {
 		return nil, err
 	}

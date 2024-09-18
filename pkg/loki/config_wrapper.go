@@ -247,21 +247,6 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 	}
 
 	if mergeWithExisting {
-		r.IngesterRF1.LifecyclerConfig.RingConfig.KVStore = rc.KVStore
-		r.IngesterRF1.LifecyclerConfig.HeartbeatPeriod = rc.HeartbeatPeriod
-		r.IngesterRF1.LifecyclerConfig.RingConfig.HeartbeatTimeout = rc.HeartbeatTimeout
-		r.IngesterRF1.LifecyclerConfig.TokensFilePath = rc.TokensFilePath
-		r.IngesterRF1.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-		r.IngesterRF1.LifecyclerConfig.ID = rc.InstanceID
-		r.IngesterRF1.LifecyclerConfig.InfNames = rc.InstanceInterfaceNames
-		r.IngesterRF1.LifecyclerConfig.Port = rc.InstancePort
-		r.IngesterRF1.LifecyclerConfig.Addr = rc.InstanceAddr
-		r.IngesterRF1.LifecyclerConfig.Zone = rc.InstanceZone
-		r.IngesterRF1.LifecyclerConfig.ListenPort = rc.ListenPort
-		r.IngesterRF1.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
-	}
-
-	if mergeWithExisting {
 		r.Pattern.LifecyclerConfig.RingConfig.KVStore = rc.KVStore
 		r.Pattern.LifecyclerConfig.HeartbeatPeriod = rc.HeartbeatPeriod
 		r.Pattern.LifecyclerConfig.RingConfig.HeartbeatTimeout = rc.HeartbeatTimeout
@@ -274,21 +259,6 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.Pattern.LifecyclerConfig.Zone = rc.InstanceZone
 		r.Pattern.LifecyclerConfig.ListenPort = rc.ListenPort
 		r.Pattern.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
-	}
-
-	if mergeWithExisting {
-		r.KafkaIngester.LifecyclerConfig.RingConfig.KVStore = rc.KVStore
-		r.KafkaIngester.LifecyclerConfig.HeartbeatPeriod = rc.HeartbeatPeriod
-		r.KafkaIngester.LifecyclerConfig.RingConfig.HeartbeatTimeout = rc.HeartbeatTimeout
-		r.KafkaIngester.LifecyclerConfig.TokensFilePath = rc.TokensFilePath
-		r.KafkaIngester.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-		r.KafkaIngester.LifecyclerConfig.ID = rc.InstanceID
-		r.KafkaIngester.LifecyclerConfig.InfNames = rc.InstanceInterfaceNames
-		r.KafkaIngester.LifecyclerConfig.Port = rc.InstancePort
-		r.KafkaIngester.LifecyclerConfig.Addr = rc.InstanceAddr
-		r.KafkaIngester.LifecyclerConfig.Zone = rc.InstanceZone
-		r.KafkaIngester.LifecyclerConfig.ListenPort = rc.ListenPort
-		r.KafkaIngester.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
 	}
 
 	// Distributor
@@ -673,7 +643,6 @@ func applyIngesterFinalSleep(cfg *ConfigWrapper) {
 
 func applyIngesterReplicationFactor(cfg *ConfigWrapper) {
 	cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor = cfg.Common.ReplicationFactor
-	cfg.IngesterRF1.LifecyclerConfig.RingConfig.ReplicationFactor = cfg.Common.ReplicationFactor
 }
 
 // applyChunkRetain is used to set chunk retain based on having an index query cache configured
