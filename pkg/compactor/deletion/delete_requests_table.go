@@ -13,7 +13,7 @@ import (
 	"github.com/go-kit/log/level"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
@@ -117,8 +117,8 @@ func (t *deleteRequestsTable) uploadFile() error {
 	}()
 
 	err = t.db.View(func(tx *bbolt.Tx) (err error) {
-		compressedWriter := chunkenc.Gzip.GetWriter(f)
-		defer chunkenc.Gzip.PutWriter(compressedWriter)
+		compressedWriter := compression.Gzip.GetWriter(f)
+		defer compression.Gzip.PutWriter(compressedWriter)
 
 		defer func() {
 			cerr := compressedWriter.Close()

@@ -1,4 +1,4 @@
-package chunkenc
+package compression
 
 import (
 	"bytes"

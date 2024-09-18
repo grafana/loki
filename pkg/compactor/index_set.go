@@ -12,8 +12,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
@@ -229,8 +229,8 @@ func (is *indexSet) upload() error {
 		}
 	}()
 
-	compressedWriter := chunkenc.Gzip.GetWriter(f)
-	defer chunkenc.Gzip.PutWriter(compressedWriter)
+	compressedWriter := compression.Gzip.GetWriter(f)
+	defer compression.Gzip.PutWriter(compressedWriter)
 
 	idxReader, err := idx.Reader()
 	if err != nil {
