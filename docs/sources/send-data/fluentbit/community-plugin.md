@@ -8,7 +8,7 @@ weight:  500
 ---
 # Fluent Bit Community Plugin
 
-{{< admonition type="note" >}}
+{{< admonition type="warning" >}}
 
 We recommend using the official [Fluent Bit Loki plugin]({{< relref "./_index.md" >}}). The official plugin is more feature-rich and has better support for features such as structured meta data. The community plugin is still available for use, but it is no longer actively maintained.
 
