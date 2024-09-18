@@ -1,2 +1,2 @@
-{{- $args := dict "ctx" . "component" "ingester" "memberlist" true -}}
-{{- include "loki.componentSectionFromName" $args | fromYaml -}}
+{{- $componentSection := include "loki.componentSectionFromName" (dict "ctx" . "component" "ingester") | fromYaml -}}
+{
