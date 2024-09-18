@@ -1,6 +1,6 @@
 ---
 title: Fluent Bit Loki output plugin
-menuTitle:  Fluent Bit Loki output plugin
+menuTitle:  Fluent Bit
 description: Provides instructions for how to install, configure, and use the Fluent Bit client to send logs to Loki.
 aliases: 
 - ../clients/fluentbit/
@@ -13,7 +13,7 @@ weight:  500
 You can define which log files you want to collect using the [`Tail`](https://docs.fluentbit.io/manual/pipeline/inputs/tail) or [`Stdin`](https://docs.fluentbit.io/manual/pipeline/inputs/standard-input) data pipeline input. Additionally, Fluent Bit supports multiple `Filter` and `Parser` plugins (`Kubernetes`, `JSON`, etc.) to structure and alter log lines.
 
 {{< admonition type="note" >}}
-We now recommend using the official Fluent Bit Loki output plugin to send logs to Loki rather than the Grafana Fluent Bit Plugin. The official Fluent Bit Loki output plugin is more feature-rich and actively maintained. 
+We recommend using the official Fluent Bit Loki output plugin to send logs to Loki rather than the Grafana Fluent Bit Plugin. The official Fluent Bit Loki output plugin has native support for Loki, is more feature-rich, and is actively maintained. 
 
 For more information on the Fluent Bit Loki output plugin, see the [Fluent-bit Loki output plugin documentation](https://docs.fluentbit.io/manual/pipeline/outputs/loki).
 
@@ -30,7 +30,7 @@ Here is a generic example for connecting Fluent Bit to Loki hosted on Grafana Cl
     [OUTPUT]
         Name        loki
         Match       *
-        Host        logs-prod-eu-west-0.grafana.net
+        Host        YourHostname.company.com
         port        443
         tls         on
         tls.verify  on
@@ -47,7 +47,7 @@ Here are some examples of how to use Fluent Bit to send logs to Loki.
 
 ### Tail Docker logs
 
-Here is a quick start example to run Fluent Bit in a Docker container, collect Docker logs, and send them to a local Loki instance. 
+Here is an example to run Fluent Bit in a Docker container, collect Docker logs, and send them to a local Loki instance. 
 
 ```bash
 docker run -v /var/lib/docker/containers:/var/lib/docker/containers fluent/fluent-bit:latest /fluent-bit/bin/fluent-bit -i tail -p Path="/var/lib/docker/containers/*/*.log" -p Parser=docker -p Tag="docker.*"  -o loki -p host=loki -p port=3100 -p labels="agent=fluend-bit,env=docker"
@@ -80,9 +80,9 @@ Run Fluent Bit with the configuration file:
 docker run -v /var/lib/docker/containers:/var/lib/docker/containers -v $(pwd)/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf fluent/fluent-bit:latest /fluent-bit/bin/fluent-bit -c /fluent-bit/etc/fluent-bit.conf
 ```
 
-### Docker Events
+### Collect Docker events
 
-Here is a quick start example to run Fluent Bit in a Docker container, collect docker events, and send them to a local Loki instance. 
+Here is an example to run Fluent Bit in a Docker container, collect docker events, and send them to a local Loki instance. 
 
 ```bash
 docker run -v /var/run/docker.sock:/var/run/docker.sock fluent/fluent-bit:latest /fluent-bit/bin/fluent-bit -i docker_events -o loki -p host=loki -p port=3100 -p labels="agent=fluend-bit,env=docker"
@@ -112,13 +112,13 @@ Run Fluent Bit with the configuration file:
 docker run -v /var/run/docker.sock:/var/run/docker.sock -v $(pwd)/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf fluent/fluent-bit:latest /fluent-bit/bin/fluent-bit -c /fluent-bit/etc/fluent-bit.conf
 ```
 
-### Kubernetes
+### Collect Kubernetes logs
 
-The recommended way to collect logs from Kubernetes with Fluent Bit is to use the helm chart provided by the Fluent Bit project. The helm chart is available at [https://github.com/fluent/helm-charts](https://github.com/fluent/helm-charts).
+The recommended way to collect logs from Kubernetes with Fluent Bit is to use the Helm chart provided by the Fluent Bit project. The Helm chart is available at [https://github.com/fluent/helm-charts](https://github.com/fluent/helm-charts).
 
 Here is an example of how to deploy the Fluent Bit helm chart to collect logs from Kubernetes and send them to Loki:
 
-1. Add the Fluent Bit helm repository:
+1. Add the Fluent Bit Helm repository:
    
 ```bash
 helm repo add fluent https://fluent.github.io/helm-charts
@@ -131,7 +131,7 @@ config:
         [OUTPUT]
             Name        loki
             Match       *
-            Host        logs-prod-eu-west-0.grafana.net
+            Host        YourHost.Company.net
             port        443
             tls         on
             tls.verify  on
@@ -142,7 +142,7 @@ config:
 
 Note we are only updating the `outputs` section of the Fluent Bit configuration. This is to replace the default output plugin with the Loki output plugin. If you need to update other parts of the Fluent Bit configuration checkout the [Fluent Bit values file reference](https://github.com/fluent/helm-charts/blob/main/charts/fluent-bit/values.yaml).
 
-1. Deploy the Fluent Bit helm chart:
+1. Deploy the Fluent Bit Helm chart:
 
 ```bash
 helm install fluent-bit fluent/fluent-bit -f values.yaml
