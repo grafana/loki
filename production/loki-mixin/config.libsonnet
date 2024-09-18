@@ -20,8 +20,32 @@
       enabled: true,
     },
 
+    operational: {
+      // Whether or not to include memcached in the operational dashboard
+      memcached: true,
+      // Whether or not to include consul in the operational dashboard
+      consul: true,
+      // Whether or not to include big table in the operational dashboard
+      bigTable: true,
+      // Whether or not to include dynamo in the operational dashboard
+      dynamo: true,
+      // Whether or not to include gcs in the operational dashboard
+      gcs: true,
+      // Whether or not to include s3 in the operational dashboard
+      s3: true,
+      // Whether or not to include azure blob in the operational dashboard
+      azureBlob: true,
+      // Whether or not to include bolt db in the operational dashboard
+      boltDB: true,
+    },
+
     // Enable TSDB specific dashboards
     tsdb: true,
+
+    // Tunes histogram recording rules to aggregate over this interval.
+    // Set to at least twice the scrape interval; otherwise, recording rules will output no data.
+    // Set to four times the scrape interval to account for edge cases: https://www.robustperception.io/what-range-should-i-use-with-rate/
+    recording_rules_range_interval: '1m',
 
     // SSD related configuration for dashboards.
     ssd: {

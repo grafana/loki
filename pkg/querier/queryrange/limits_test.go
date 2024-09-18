@@ -248,7 +248,7 @@ func Test_MaxQueryParallelism(t *testing.T) {
 	_, _ = NewLimitedRoundTripper(h, fakeLimits{maxQueryParallelism: maxQueryParallelism},
 		testSchemas,
 		base.MiddlewareFunc(func(next base.Handler) base.Handler {
-			return base.HandlerFunc(func(c context.Context, r base.Request) (base.Response, error) {
+			return base.HandlerFunc(func(c context.Context, _ base.Request) (base.Response, error) {
 				var wg sync.WaitGroup
 				for i := 0; i < 10; i++ {
 					wg.Add(1)
@@ -306,7 +306,7 @@ func Test_MaxQueryParallelismDisable(t *testing.T) {
 	_, err := NewLimitedRoundTripper(h, fakeLimits{maxQueryParallelism: maxQueryParallelism},
 		testSchemas,
 		base.MiddlewareFunc(func(next base.Handler) base.Handler {
-			return base.HandlerFunc(func(c context.Context, r base.Request) (base.Response, error) {
+			return base.HandlerFunc(func(c context.Context, _ base.Request) (base.Response, error) {
 				for i := 0; i < 10; i++ {
 					go func() {
 						_, _ = next.Do(c, &LokiRequest{})
@@ -759,7 +759,7 @@ func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {
 			}
 
 			handler := tc.middleware.Wrap(
-				base.HandlerFunc(func(_ context.Context, req base.Request) (base.Response, error) {
+				base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
 					return &LokiResponse{}, nil
 				}),
 			)

@@ -109,11 +109,3 @@ func (r *Ring) IsHealthy(instance *InstanceDesc, op Operation, now time.Time) bo
 func (r *Ring) ReplicationFactor() int {
 	return r.cfg.ReplicationFactor
 }
-
-// InstancesCount returns the number of instances in the ring.
-func (r *Ring) InstancesCount() int {
-	r.mtx.RLock()
-	c := len(r.ringDesc.Ingesters)
-	r.mtx.RUnlock()
-	return c
-}

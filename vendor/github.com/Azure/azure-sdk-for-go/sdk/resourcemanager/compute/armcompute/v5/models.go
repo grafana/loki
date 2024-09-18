@@ -368,7 +368,7 @@ type CapacityReservationGroupInstanceView struct {
 	// READ-ONLY; List of instance view of the capacity reservations under the capacity reservation group.
 	CapacityReservations []*CapacityReservationInstanceViewWithName
 
-	// READ-ONLY; List of the subscriptions that the capacity reservation group is shared with. Note: Minimum api-version: 2023-09-01.
+	// READ-ONLY; List of the subscriptions that the capacity reservation group is shared with. Note: Minimum api-version: 2024-03-01.
 	// Please refer to https://aka.ms/computereservationsharing for more details.
 	SharedSubscriptionIDs []*SubResourceReadOnly
 }
@@ -388,7 +388,7 @@ type CapacityReservationGroupProperties struct {
 	// Specifies the settings to enable sharing across subscriptions for the capacity reservation group resource. Pls. keep in
 	// mind the capacity reservation group resource generally can be shared across
 	// subscriptions belonging to a single azure AAD tenant or cross AAD tenant if there is a trust relationship established between
-	// the AAD tenants. Note: Minimum api-version: 2023-09-01. Please refer to
+	// the AAD tenants. Note: Minimum api-version: 2024-03-01. Please refer to
 	// https://aka.ms/computereservationsharing for more details.
 	SharingProfile *ResourceSharingProfile
 
@@ -1064,11 +1064,13 @@ type CreationData struct {
 
 // DataDisk - Describes a data disk.
 type DataDisk struct {
-	// REQUIRED; Specifies how the virtual machine should be created. Possible values are: Attach. This value is used when you
-	// are using a specialized disk to create the virtual machine. FromImage. This value is used
-	// when you are using an image to create the virtual machine. If you are using a platform image, you should also use the imageReference
-	// element described above. If you are using a marketplace image, you
-	// should also use the plan element previously described.
+	// REQUIRED; Specifies how the virtual machine disk should be created. Possible values are Attach: This value is used when
+	// you are using a specialized disk to create the virtual machine. FromImage: This value is
+	// used when you are using an image to create the virtual machine data disk. If you are using a platform image, you should
+	// also use the imageReference element described above. If you are using a
+	// marketplace image, you should also use the plan element previously described. Empty: This value is used when creating an
+	// empty data disk. Copy: This value is used to create a data disk from a snapshot
+	// or another disk. Restore: This value is used to create a data disk from a disk restore point.
 	CreateOption *DiskCreateOptionTypes
 
 	// REQUIRED; Specifies the logical unit number of the data disk. This value is used to identify data disks within the VM and
@@ -1109,6 +1111,9 @@ type DataDisk struct {
 
 	// The disk name.
 	Name *string
+
+	// The source resource identifier. It can be a snapshot, or disk restore point from which to create a disk.
+	SourceResource *APIEntityReference
 
 	// Specifies whether the data disk is in process of detachment from the VirtualMachine/VirtualMachineScaleset
 	ToBeDetached *bool
@@ -1153,10 +1158,25 @@ type DataDisksToAttach struct {
 	// REQUIRED; ID of the managed data disk.
 	DiskID *string
 
+	// Specifies the caching requirements. Possible values are: None, ReadOnly, ReadWrite. The defaulting behavior is: None for
+	// Standard storage. ReadOnly for Premium storage.
+	Caching *CachingTypes
+
+	// Specifies whether data disk should be deleted or detached upon VM deletion. Possible values are: Delete. If this value
+	// is used, the data disk is deleted when VM is deleted. Detach. If this value is
+	// used, the data disk is retained after VM is deleted. The default value is set to Detach.
+	DeleteOption *DiskDeleteOptionTypes
+
+	// Specifies the customer managed disk encryption set resource id for the managed disk.
+	DiskEncryptionSet *DiskEncryptionSetParameters
+
 	// The logical unit number of the data disk. This value is used to identify data disks within the VM and therefore must be
 	// unique for each data disk attached to a VM. If not specified, lun would be auto
 	// assigned.
 	Lun *int32
+
+	// Specifies whether writeAccelerator should be enabled or disabled on the disk.
+	WriteAcceleratorEnabled *bool
 }
 
 // DataDisksToDetach - Describes the data disk to be detached.
@@ -1408,11 +1428,12 @@ type DiffDiskSettings struct {
 	// Specifies the ephemeral disk settings for operating system disk.
 	Option *DiffDiskOptions
 
-	// Specifies the ephemeral disk placement for operating system disk. Possible values are: CacheDisk, ResourceDisk. The defaulting
-	// behavior is: CacheDisk if one is configured for the VM size otherwise
-	// ResourceDisk is used. Refer to the VM size documentation for Windows VM at https://docs.microsoft.com/azure/virtual-machines/windows/sizes
+	// Specifies the ephemeral disk placement for operating system disk. Possible values are: CacheDisk, ResourceDisk, NvmeDisk.
+	// The defaulting behavior is: CacheDisk if one is configured for the VM size
+	// otherwise ResourceDisk or NvmeDisk is used. Refer to the VM size documentation for Windows VM at https://docs.microsoft.com/azure/virtual-machines/windows/sizes
 	// and Linux VM at
-	// https://docs.microsoft.com/azure/virtual-machines/linux/sizes to check which VM sizes exposes a cache disk.
+	// https://docs.microsoft.com/azure/virtual-machines/linux/sizes to check which VM sizes exposes a cache disk. Minimum api-version
+	// for NvmeDisk: 2024-03-01.
 	Placement *DiffDiskPlacement
 }
 
@@ -2075,6 +2096,12 @@ type EncryptionSettingsElement struct {
 	KeyEncryptionKey *KeyVaultAndKeyReference
 }
 
+// EventGridAndResourceGraph - Specifies eventGridAndResourceGraph related Scheduled Event related configurations.
+type EventGridAndResourceGraph struct {
+	// Specifies if event grid and resource graph is enabled for Scheduled event related configurations.
+	Enable *bool
+}
+
 // ExtendedLocation - The complex type of the extended location.
 type ExtendedLocation struct {
 	// The name of the extended location.
@@ -2385,13 +2412,17 @@ type GalleryArtifactVersionFullSource struct {
 	// The resource Id of the source Community Gallery Image. Only required when using Community Gallery Image as a source.
 	CommunityGalleryImageID *string
 
-	// The id of the gallery artifact version source. Can specify a disk uri, snapshot uri, user image or storage account resource.
+	// The id of the gallery artifact version source.
 	ID *string
+
+	// The resource Id of the source virtual machine. Only required when capturing a virtual machine to source this Gallery Image
+	// Version.
+	VirtualMachineID *string
 }
 
 // GalleryArtifactVersionSource - The gallery artifact version source.
 type GalleryArtifactVersionSource struct {
-	// The id of the gallery artifact version source. Can specify a disk uri, snapshot uri, user image or storage account resource.
+	// The id of the gallery artifact version source.
 	ID *string
 }
 
@@ -2426,7 +2457,7 @@ type GalleryDiskImage struct {
 
 // GalleryDiskImageSource - The source for the disk image.
 type GalleryDiskImageSource struct {
-	// The id of the gallery artifact version source. Can specify a disk uri, snapshot uri, user image or storage account resource.
+	// The id of the gallery artifact version source.
 	ID *string
 
 	// The Storage Account Id that contains the vhd blob being used as a source for this artifact version.
@@ -3445,11 +3476,11 @@ type NetworkProfile struct {
 // disks, see About disks and VHDs for Azure virtual machines
 // [https://docs.microsoft.com/azure/virtual-machines/managed-disks-overview].
 type OSDisk struct {
-	// REQUIRED; Specifies how the virtual machine should be created. Possible values are: Attach. This value is used when you
-	// are using a specialized disk to create the virtual machine. FromImage. This value is used
-	// when you are using an image to create the virtual machine. If you are using a platform image, you should also use the imageReference
-	// element described above. If you are using a marketplace image, you
-	// should also use the plan element previously described.
+	// REQUIRED; Specifies how the virtual machine disk should be created. Possible values are Attach: This value is used when
+	// you are using a specialized disk to create the virtual machine. FromImage: This value is
+	// used when you are using an image to create the virtual machine. If you are using a platform image, you should also use
+	// the imageReference element described above. If you are using a marketplace image,
+	// you should also use the plan element previously described.
 	CreateOption *DiskCreateOptionTypes
 
 	// Specifies the caching requirements. Possible values are: None, ReadOnly, ReadWrite. The defaulting behavior is: None for
@@ -4070,7 +4101,7 @@ type ProximityPlacementGroupUpdate struct {
 	Tags map[string]*string
 }
 
-// ProxyAgentSettings - Specifies ProxyAgent settings while creating the virtual machine. Minimum api-version: 2023-09-01.
+// ProxyAgentSettings - Specifies ProxyAgent settings while creating the virtual machine. Minimum api-version: 2024-03-01.
 type ProxyAgentSettings struct {
 	// Specifies whether ProxyAgent feature should be enabled on the virtual machine or virtual machine scale set.
 	Enabled *bool
@@ -4427,7 +4458,7 @@ type ResourceSKUsResult struct {
 
 type ResourceSharingProfile struct {
 	// Specifies an array of subscription resource IDs that capacity reservation group is shared with. Note: Minimum api-version:
-	// 2023-09-01. Please refer to https://aka.ms/computereservationsharing for more
+	// 2024-03-01. Please refer to https://aka.ms/computereservationsharing for more
 	// details.
 	SubscriptionIDs []*SubResource
 }
@@ -5117,6 +5148,24 @@ type ScaleInPolicy struct {
 	Rules []*VirtualMachineScaleSetScaleInRules
 }
 
+type ScheduledEventsAdditionalPublishingTargets struct {
+	// The configuration parameters used while creating eventGridAndResourceGraph Scheduled Event setting.
+	EventGridAndResourceGraph *EventGridAndResourceGraph
+}
+
+// ScheduledEventsPolicy - Specifies Redeploy, Reboot and ScheduledEventsAdditionalPublishingTargets Scheduled Event related
+// configurations.
+type ScheduledEventsPolicy struct {
+	// The configuration parameters used while publishing scheduledEventsAdditionalPublishingTargets.
+	ScheduledEventsAdditionalPublishingTargets *ScheduledEventsAdditionalPublishingTargets
+
+	// The configuration parameters used while creating userInitiatedReboot scheduled event setting creation.
+	UserInitiatedReboot *UserInitiatedReboot
+
+	// The configuration parameters used while creating userInitiatedRedeploy scheduled event setting creation.
+	UserInitiatedRedeploy *UserInitiatedRedeploy
+}
+
 type ScheduledEventsProfile struct {
 	// Specifies OS Image Scheduled Event related configurations.
 	OSImageNotificationProfile *OSImageNotificationProfile
@@ -5146,7 +5195,7 @@ type SecurityProfile struct {
 	// Specifies the Managed Identity used by ADE to get access token for keyvault operations.
 	EncryptionIdentity *EncryptionIdentity
 
-	// Specifies ProxyAgent settings while creating the virtual machine. Minimum api-version: 2023-09-01.
+	// Specifies ProxyAgent settings while creating the virtual machine. Minimum api-version: 2024-03-01.
 	ProxyAgentSettings *ProxyAgentSettings
 
 	// Specifies the SecurityType of the virtual machine. It has to be set to any specified value to enable UefiSettings. The
@@ -5936,6 +5985,18 @@ type UserAssignedIdentitiesValue struct {
 
 	// READ-ONLY; The principal id of user assigned identity.
 	PrincipalID *string
+}
+
+// UserInitiatedReboot - Specifies Reboot related Scheduled Event related configurations.
+type UserInitiatedReboot struct {
+	// Specifies Reboot Scheduled Event related configurations.
+	AutomaticallyApprove *bool
+}
+
+// UserInitiatedRedeploy - Specifies Redeploy related Scheduled Event related configurations.
+type UserInitiatedRedeploy struct {
+	// Specifies Redeploy Scheduled Event related configurations.
+	AutomaticallyApprove *bool
 }
 
 // VMDiskSecurityProfile - Specifies the security profile settings for the managed disk. Note: It can only be set for Confidential
@@ -6782,6 +6843,10 @@ type VirtualMachineProperties struct {
 	// 2018-04-01.
 	ProximityPlacementGroup *SubResource
 
+	// Specifies Redeploy, Reboot and ScheduledEventsAdditionalPublishingTargets Scheduled Event related configurations for the
+	// virtual machine.
+	ScheduledEventsPolicy *ScheduledEventsPolicy
+
 	// Specifies Scheduled Event related configurations.
 	ScheduledEventsProfile *ScheduledEventsProfile
 
@@ -7592,6 +7657,9 @@ type VirtualMachineScaleSetProperties struct {
 	// Specifies the policies applied when scaling in Virtual Machines in the Virtual Machine Scale Set.
 	ScaleInPolicy *ScaleInPolicy
 
+	// The ScheduledEventsPolicy.
+	ScheduledEventsPolicy *ScheduledEventsPolicy
+
 	// When true this limits the scale set to a single placement group, of max size 100 virtual machines. NOTE: If singlePlacementGroup
 	// is true, it may be modified to false. However, if singlePlacementGroup
 	// is false, it may not be modified to true.
@@ -7675,6 +7743,9 @@ type VirtualMachineScaleSetReimageParameters struct {
 	// Specifies in decimal number, the version the OS disk should be reimaged to. If exact version is not provided, the OS disk
 	// is reimaged to the existing version of OS Disk.
 	ExactVersion *string
+
+	// Parameter to force update ephemeral OS disk for a virtual machine scale set VM
+	ForceUpdateOSDiskForEphemeral *bool
 
 	// The virtual machine scale set instance ids. Omitting the virtual machine scale set instance ids will result in the operation
 	// being performed on all virtual machines in the virtual machine scale set.
@@ -7868,6 +7939,9 @@ type VirtualMachineScaleSetUpdateOSDisk struct {
 	// The default value is set to Delete. For an Ephemeral OS Disk, the default value is set to Delete. User cannot change the
 	// delete option for Ephemeral OS Disk.
 	DeleteOption *DiskDeleteOptionTypes
+
+	// Specifies the ephemeral disk Settings for the operating system disk used by the virtual machine scale set.
+	DiffDiskSettings *DiffDiskSettings
 
 	// Specifies the size of an empty data disk in gigabytes. This element can be used to overwrite the size of the disk in a
 	// virtual machine image.
@@ -8277,8 +8351,8 @@ type VirtualMachineScaleSetVMProfile struct {
 	UserData *string
 
 	// READ-ONLY; Specifies the time in which this VM profile for the Virtual Machine Scale Set was created. Minimum API version
-	// for this property is 2023-09-01. This value will be added to VMSS Flex VM tags when
-	// creating/updating the VMSS VM Profile with minimum api-version 2023-09-01.
+	// for this property is 2024-03-01. This value will be added to VMSS Flex VM tags when
+	// creating/updating the VMSS VM Profile with minimum api-version 2024-03-01.
 	TimeCreated *time.Time
 }
 
@@ -8374,6 +8448,9 @@ type VirtualMachineScaleSetVMReimageParameters struct {
 	// Specifies in decimal number, the version the OS disk should be reimaged to. If exact version is not provided, the OS disk
 	// is reimaged to the existing version of OS Disk.
 	ExactVersion *string
+
+	// Parameter to force update ephemeral OS disk for a virtual machine scale set VM
+	ForceUpdateOSDiskForEphemeral *bool
 
 	// Specifies information required for reimaging the non-ephemeral OS disk.
 	OSProfile *OSProfileProvisioningData

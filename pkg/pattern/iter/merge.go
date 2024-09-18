@@ -78,7 +78,7 @@ func (m *mergeIterator) At() logproto.PatternSample {
 	return m.current.sample
 }
 
-func (m *mergeIterator) Error() error {
+func (m *mergeIterator) Err() error {
 	return nil
 }
 

@@ -24,7 +24,7 @@ func TestStreamCountLimiter_AssertNewStreamAllowed(t *testing.T) {
 		expected                error
 		useOwnedStreamService   bool
 		fixedLimit              int32
-		ownedStreamCount        int64
+		ownedStreamCount        int
 	}{
 		"both local and global limit are disabled": {
 			maxLocalStreamsPerUser:  0,
@@ -147,7 +147,7 @@ func TestStreamCountLimiter_AssertNewStreamAllowed(t *testing.T) {
 
 			ownedStreamSvc := &ownedStreamService{
 				fixedLimit:       atomic.NewInt32(testData.fixedLimit),
-				ownedStreamCount: atomic.NewInt64(testData.ownedStreamCount),
+				ownedStreamCount: testData.ownedStreamCount,
 			}
 			limiter := NewLimiter(limits, NilMetrics, ring, testData.ringReplicationFactor)
 			defaultCountSupplier := func() int {
@@ -214,6 +214,14 @@ func (m *ringCountMock) HealthyInstancesCount() int {
 	return m.count
 }
 
+func (m *ringCountMock) ZonesCount() int {
+	return 1
+}
+
+func (m *ringCountMock) HealthyInstancesInZoneCount() int {
+	return m.count
+}
+
 // Assert some of the weirder (bug?) behavior of golang.org/x/time/rate
 func TestGoLimiter(t *testing.T) {
 	for _, tc := range []struct {
@@ -251,6 +259,62 @@ func TestGoLimiter(t *testing.T) {
 			tc.lim.SetBurstAt(tc.at, tc.burst)
 			tc.lim.SetLimitAt(tc.at, tc.limit)
 			require.Equal(t, tc.exp, tc.lim.AllowN(tc.at, tc.allow))
+		})
+	}
+}
+
+type MockRing struct {
+	zonesCount                  int
+	healthyInstancesCount       int
+	healthyInstancesInZoneCount int
+}
+
+func (m *MockRing) ZonesCount() int {
+	return m.zonesCount
+}
+
+func (m *MockRing) HealthyInstancesCount() int {
+	return m.healthyInstancesCount
+}
+
+func (m *MockRing) HealthyInstancesInZoneCount() int {
+	return m.healthyInstancesInZoneCount
+}
+
+func TestConvertGlobalToLocalLimit(t *testing.T) {
+	tests := []struct {
+		name                        string
+		globalLimit                 int
+		zonesCount                  int
+		healthyInstancesCount       int
+		healthyInstancesInZoneCount int
+		replicationFactor           int
+		expectedLocalLimit          int
+	}{
+		{"GlobalLimitZero", 0, 1, 1, 1, 3, 0},
+		{"SingleZoneMultipleIngesters", 100, 1, 10, 10, 3, 30},
+		{"MultipleZones", 200, 3, 30, 10, 3, 20},
+		{"MultipleZonesNoHealthyIngesters", 200, 2, 0, 0, 3, 0},
+		{"MultipleZonesNoHealthyIngestersInZone", 200, 3, 10, 0, 3, 0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mockRing := &MockRing{
+				zonesCount:                  tc.zonesCount,
+				healthyInstancesCount:       tc.healthyInstancesCount,
+				healthyInstancesInZoneCount: tc.healthyInstancesInZoneCount,
+			}
+
+			limiter := &Limiter{
+				ring:              mockRing,
+				replicationFactor: tc.replicationFactor,
+			}
+
+			localLimit := limiter.convertGlobalToLocalLimit(tc.globalLimit)
+			if localLimit != tc.expectedLocalLimit {
+				t.Errorf("expected %d, got %d", tc.expectedLocalLimit, localLimit)
+			}
 		})
 	}
 }

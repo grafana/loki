@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/x509"
+	"errors"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
@@ -24,7 +25,7 @@ const credNameOBO = "OnBehalfOfCredential"
 // is not an interactive authentication flow, an application using it must have admin consent for any delegated
 // permissions before requesting tokens for them. See [Microsoft Entra ID documentation] for more details.
 //
-// [Microsoft Entra ID documentation]: https://learn.microsoft.com/azure/active-directory/develop/v2-oauth2-on-behalf-of-flow
+// [Microsoft Entra ID documentation]: https://learn.microsoft.com/entra/identity-platform/v2-oauth2-on-behalf-of-flow
 type OnBehalfOfCredential struct {
 	client *confidentialClient
 }
@@ -57,6 +58,19 @@ func NewOnBehalfOfCredentialWithCertificate(tenantID, clientID, userAssertion st
 	if err != nil {
 		return nil, err
 	}
+	return newOnBehalfOfCredential(tenantID, clientID, userAssertion, cred, options)
+}
+
+// NewOnBehalfOfCredentialWithClientAssertions constructs an OnBehalfOfCredential that authenticates with client assertions.
+// userAssertion is the user's access token for the application. The getAssertion function should return client assertions
+// that authenticate the application to Microsoft Entra ID, such as federated credentials.
+func NewOnBehalfOfCredentialWithClientAssertions(tenantID, clientID, userAssertion string, getAssertion func(context.Context) (string, error), options *OnBehalfOfCredentialOptions) (*OnBehalfOfCredential, error) {
+	if getAssertion == nil {
+		return nil, errors.New("getAssertion can't be nil. It must be a function that returns client assertions")
+	}
+	cred := confidential.NewCredFromAssertionCallback(func(ctx context.Context, _ confidential.AssertionRequestOptions) (string, error) {
+		return getAssertion(ctx)
+	})
 	return newOnBehalfOfCredential(tenantID, clientID, userAssertion, cred, options)
 }
 

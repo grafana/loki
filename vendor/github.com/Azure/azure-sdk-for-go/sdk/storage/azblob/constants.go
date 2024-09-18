@@ -10,7 +10,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/generated"
 )
 
-// PublicAccessType defines values for AccessType - private (default) or blob or container
+// PublicAccessType defines values for AccessType - private (default) or blob or container.
 type PublicAccessType = generated.PublicAccessType
 
 const (
@@ -23,7 +23,7 @@ func PossiblePublicAccessTypeValues() []PublicAccessType {
 	return generated.PossiblePublicAccessTypeValues()
 }
 
-// DeleteSnapshotsOptionType defines values for DeleteSnapshotsOptionType
+// DeleteSnapshotsOptionType defines values for DeleteSnapshotsOptionType.
 type DeleteSnapshotsOptionType = generated.DeleteSnapshotsOptionType
 
 const (

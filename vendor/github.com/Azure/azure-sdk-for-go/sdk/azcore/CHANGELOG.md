@@ -1,5 +1,50 @@
 # Release History
 
+## 1.13.0 (2024-07-16)
+
+### Features Added
+
+- Added runtime.NewRequestFromRequest(), allowing for a policy.Request to be created from an existing *http.Request.
+
+## 1.12.0 (2024-06-06)
+
+### Features Added
+
+* Added field `StatusCodes` to `runtime.FetcherForNextLinkOptions` allowing for additional HTTP status codes indicating success.
+* Added func `NewUUID` to the `runtime` package for generating UUIDs.
+
+### Bugs Fixed
+
+* Fixed an issue that prevented pollers using the `Operation-Location` strategy from unmarshaling the final result in some cases.
+
+### Other Changes
+
+* Updated dependencies.
+
+## 1.11.1 (2024-04-02)
+
+### Bugs Fixed
+
+* Pollers that use the `Location` header won't consider `http.StatusRequestTimeout` a terminal failure.
+* `runtime.Poller[T].Result` won't consider non-terminal error responses as terminal.
+
+## 1.11.0 (2024-04-01)
+
+### Features Added
+
+* Added `StatusCodes` to `arm/policy.RegistrationOptions` to allow supporting non-standard HTTP status codes during registration.
+* Added field `InsecureAllowCredentialWithHTTP` to `azcore.ClientOptions` and dependent authentication pipeline policies.
+* Added type `MultipartContent` to the `streaming` package to support multipart/form payloads with custom Content-Type and file name.
+
+### Bugs Fixed
+
+* `runtime.SetMultipartFormData` won't try to stringify `[]byte` values.
+* Pollers that use the `Location` header won't consider `http.StatusTooManyRequests` a terminal failure.
+
+### Other Changes
+
+* Update dependencies.
+
 ## 1.10.0 (2024-02-29)
 
 ### Features Added

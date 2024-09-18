@@ -64,12 +64,19 @@ type ManagedIdentityCredentialOptions struct {
 	// instead of the hosting environment's default. The value may be the identity's client ID or resource ID, but note that
 	// some platforms don't accept resource IDs.
 	ID ManagedIDKind
+
+	// dac indicates whether the credential is part of DefaultAzureCredential. When true, and the environment doesn't have
+	// configuration for a specific managed identity API, the credential tries to determine whether IMDS is available before
+	// sending its first token request. It does this by sending a malformed request with a short timeout. Any response to that
+	// request is taken to mean IMDS is available, in which case the credential will send ordinary token requests thereafter
+	// with no special timeout. The purpose of this behavior is to prevent a very long timeout when IMDS isn't available.
+	dac bool
 }
 
 // ManagedIdentityCredential authenticates an Azure managed identity in any hosting environment supporting managed identities.
 // This credential authenticates a system-assigned identity by default. Use ManagedIdentityCredentialOptions.ID to specify a
 // user-assigned identity. See Microsoft Entra ID documentation for more information about managed identities:
-// https://learn.microsoft.com/azure/active-directory/managed-identities-azure-resources/overview
+// https://learn.microsoft.com/entra/identity/managed-identities-azure-resources/overview
 type ManagedIdentityCredential struct {
 	client *confidentialClient
 	mic    *managedIdentityClient

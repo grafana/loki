@@ -2,7 +2,7 @@
 title: Migrate to TSDB
 menuTitle: Migrate to TSDB
 description: Migration guide for moving from any of the older indexes to TSDB
-weight: 100
+weight: 300
 keywords:
   - migrate
   - tsdb

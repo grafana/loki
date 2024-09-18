@@ -14,7 +14,8 @@ import (
 // of a windowed aggregation.
 func newFirstWithTimestampIterator(
 	it iter.PeekingSampleIterator,
-	selRange, step, start, end, offset int64) RangeVectorIterator {
+	selRange, step, start, end, offset int64,
+) RangeVectorIterator {
 	inner := &batchRangeVectorIterator{
 		iter:     it,
 		step:     step,
@@ -67,7 +68,8 @@ func (r *firstWithTimestampBatchRangeVectorIterator) agg(samples []promql.FPoint
 
 func newLastWithTimestampIterator(
 	it iter.PeekingSampleIterator,
-	selRange, step, start, end, offset int64) RangeVectorIterator {
+	selRange, step, start, end, offset int64,
+) RangeVectorIterator {
 	inner := &batchRangeVectorIterator{
 		iter:     it,
 		step:     step,
@@ -129,10 +131,7 @@ type mergeOverTimeStepEvaluator struct {
 
 // Next returns the first or last element within one step of each matrix.
 func (e *mergeOverTimeStepEvaluator) Next() (bool, int64, StepResult) {
-
-	var (
-		vec promql.Vector
-	)
+	vec := promql.Vector{}
 
 	e.ts = e.ts.Add(e.step)
 	if e.ts.After(e.end) {
@@ -143,7 +142,6 @@ func (e *mergeOverTimeStepEvaluator) Next() (bool, int64, StepResult) {
 	// Merge other results
 	for i, m := range e.matrices {
 		for j, series := range m {
-
 			if len(series.Floats) == 0 || !e.inRange(series.Floats[0].T, ts) {
 				continue
 			}
@@ -156,10 +154,6 @@ func (e *mergeOverTimeStepEvaluator) Next() (bool, int64, StepResult) {
 	// Align vector timestamps with step
 	for i := range vec {
 		vec[i].T = ts
-	}
-
-	if len(vec) == 0 {
-		return e.hasNext(), ts, SampleVector(vec)
 	}
 
 	return true, ts, SampleVector(vec)
@@ -176,19 +170,11 @@ func (e *mergeOverTimeStepEvaluator) pop(r, s int) {
 
 // inRange returns true if t is in step range of ts.
 func (e *mergeOverTimeStepEvaluator) inRange(t, ts int64) bool {
-	return (ts-e.step.Milliseconds()) <= t && t < ts
-}
-
-func (e *mergeOverTimeStepEvaluator) hasNext() bool {
-	for _, m := range e.matrices {
-		for _, s := range m {
-			if len(s.Floats) != 0 {
-				return true
-			}
-		}
+	// special case instant queries
+	if e.step.Milliseconds() == 0 {
+		return true
 	}
-
-	return false
+	return (ts-e.step.Milliseconds()) <= t && t < ts
 }
 
 func (*mergeOverTimeStepEvaluator) Close() error { return nil }

@@ -2,11 +2,11 @@ package ingester
 
 import (
 	"flag"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log/level"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/tsdb/wlog"
 
@@ -33,7 +33,7 @@ type WALConfig struct {
 
 func (cfg *WALConfig) Validate() error {
 	if cfg.Enabled && cfg.CheckpointDuration < 1 {
-		return errors.Errorf("invalid checkpoint duration: %v", cfg.CheckpointDuration)
+		return fmt.Errorf("invalid checkpoint duration: %v", cfg.CheckpointDuration)
 	}
 	return nil
 }

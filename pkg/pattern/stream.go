@@ -5,6 +5,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
+
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/pattern/drain"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
@@ -20,6 +22,7 @@ type stream struct {
 	labelHash    uint64
 	patterns     *drain.Drain
 	mtx          sync.Mutex
+	logger       log.Logger
 
 	lastTs int64
 }
@@ -28,15 +31,23 @@ func newStream(
 	fp model.Fingerprint,
 	labels labels.Labels,
 	metrics *ingesterMetrics,
+	logger log.Logger,
+	guessedFormat string,
+	instanceID string,
+	drainCfg *drain.Config,
 ) (*stream, error) {
 	return &stream{
 		fp:           fp,
 		labels:       labels,
 		labelsString: labels.String(),
 		labelHash:    labels.Hash(),
-		patterns: drain.New(drain.DefaultConfig(), &drain.Metrics{
-			PatternsEvictedTotal:  metrics.patternsDiscardedTotal,
-			PatternsDetectedTotal: metrics.patternsDetectedTotal,
+		logger:       logger,
+		patterns: drain.New(drainCfg, guessedFormat, &drain.Metrics{
+			PatternsEvictedTotal:  metrics.patternsDiscardedTotal.WithLabelValues(instanceID, guessedFormat, "false"),
+			PatternsPrunedTotal:   metrics.patternsDiscardedTotal.WithLabelValues(instanceID, guessedFormat, "true"),
+			PatternsDetectedTotal: metrics.patternsDetectedTotal.WithLabelValues(instanceID, guessedFormat),
+			TokensPerLine:         metrics.tokensPerLine.WithLabelValues(instanceID, guessedFormat),
+			StatePerLine:          metrics.statePerLine.WithLabelValues(instanceID, guessedFormat),
 		}),
 	}, nil
 }
@@ -86,6 +97,8 @@ func (s *stream) prune(olderThan time.Duration) bool {
 			s.patterns.Delete(cluster)
 		}
 	}
+	// Clear empty branches after deleting chunks & clusters
+	s.patterns.Prune()
 
 	return len(s.patterns.Clusters()) == 0
 }

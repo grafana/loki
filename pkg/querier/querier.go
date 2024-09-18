@@ -3,7 +3,6 @@ package querier
 import (
 	"context"
 	"flag"
-	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -41,8 +40,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	listutil "github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 	util_validation "github.com/grafana/loki/v3/pkg/util/validation"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 const (
@@ -52,9 +54,7 @@ const (
 	tailerWaitEntryThrottle = time.Second / 2
 )
 
-var (
-	nowFunc = func() time.Time { return time.Now() }
-)
+var nowFunc = func() time.Time { return time.Now() }
 
 type interval struct {
 	start, end time.Time
@@ -107,6 +107,7 @@ type Querier interface {
 	DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error)
 	Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error)
 	DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error)
+	WithPatternQuerier(patternQuerier PatterQuerier)
 }
 
 type Limits querier_limits.Limits
@@ -162,6 +163,7 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
 
+	sp := opentracing.SpanFromContext(ctx)
 	iters := []iter.EntryIterator{}
 	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
 		// Make a copy of the request before modifying
@@ -172,9 +174,11 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 		}
 		newParams.Start = ingesterQueryInterval.start
 		newParams.End = ingesterQueryInterval.end
-		level.Debug(spanlogger.FromContext(ctx)).Log(
-			"msg", "querying ingester",
-			"params", newParams)
+		if sp != nil {
+			sp.LogKV(
+				"msg", "querying ingester",
+				"params", newParams)
+		}
 		ingesterIters, err := q.ingesterQuerier.SelectLogs(ctx, newParams)
 		if err != nil {
 			return nil, err
@@ -186,9 +190,11 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
 		params.Start = storeQueryInterval.start
 		params.End = storeQueryInterval.end
-		level.Debug(spanlogger.FromContext(ctx)).Log(
-			"msg", "querying store",
-			"params", params)
+		if sp != nil {
+			sp.LogKV(
+				"msg", "querying store",
+				"params", params)
+		}
 		storeIter, err := q.store.SelectLogs(ctx, params)
 		if err != nil {
 			return nil, err
@@ -431,7 +437,7 @@ func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequ
 			if req.Values {
 				storeValues, err = q.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name, matchers...)
 			} else {
-				storeValues, err = q.store.LabelNamesForMetricName(ctx, userID, from, through, "logs")
+				storeValues, err = q.store.LabelNamesForMetricName(ctx, userID, from, through, "logs", matchers...)
 			}
 			return err
 		})
@@ -545,7 +551,7 @@ func (q *SingleTenantQuerier) Series(ctx context.Context, req *logproto.SeriesRe
 
 	// Enforce the query timeout while querying backends
 	queryTimeout := q.limits.QueryTimeout(ctx, userID)
-	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
+	ctx, cancel := context.WithDeadlineCause(ctx, time.Now().Add(queryTimeout), errors.New("query timeout reached"))
 	defer cancel()
 
 	return q.awaitSeries(ctx, req)
@@ -958,7 +964,7 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 			var err error
 			start := model.TimeFromUnixNano(storeQueryInterval.start.UnixNano())
 			end := model.TimeFromUnixNano(storeQueryInterval.end.UnixNano())
-			storeLabels, err := q.store.LabelNamesForMetricName(ctx, userID, start, end, "logs")
+			storeLabels, err := q.store.LabelNamesForMetricName(ctx, userID, start, end, "logs", matchers...)
 			for _, label := range storeLabels {
 				values, err := q.store.LabelValuesForMetricName(ctx, userID, start, end, "logs", label, matchers...)
 				if err != nil {
@@ -990,7 +996,7 @@ func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabel
 
 	if ingesterLabels != nil {
 		for label, val := range ingesterLabels.Labels {
-			if _, isStatic := staticLabels[label]; isStatic || !containsAllIDTypes(val.Values) {
+			if _, isStatic := staticLabels[label]; (isStatic && val.Values != nil) || !containsAllIDTypes(val.Values) {
 				_, ok := dlMap[label]
 				if !ok {
 					dlMap[label] = newParsedLabels()
@@ -1005,7 +1011,7 @@ func countLabelsAndCardinality(storeLabelsMap map[string][]string, ingesterLabel
 	}
 
 	for label, values := range storeLabelsMap {
-		if _, isStatic := staticLabels[label]; isStatic || !containsAllIDTypes(values) {
+		if _, isStatic := staticLabels[label]; (isStatic && values != nil) || !containsAllIDTypes(values) {
 			_, ok := dlMap[label]
 			if !ok {
 				dlMap[label] = newParsedLabels()
@@ -1070,6 +1076,8 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 	if err != nil {
 		return nil, err
 	}
+	// just incject the header to categorize labels
+	ctx = httpreq.InjectHeader(ctx, httpreq.LokiEncodingFlagsHeader, (string)(httpreq.FlagCategorizeLabels))
 	params := logql.SelectLogParams{
 		QueryRequest: &logproto.QueryRequest{
 			Start:     req.Start,
@@ -1095,11 +1103,8 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 		return nil, err
 	}
 
-	detectedFields := parseDetectedFields(ctx, req.FieldLimit, streams)
+	detectedFields := parseDetectedFields(req.FieldLimit, streams)
 
-	//TODO: detected field needs to contain the sketch
-	// make sure response to frontend is GRPC
-	//only want cardinality in JSON
 	fields := make([]*logproto.DetectedField, len(detectedFields))
 	fieldCount := 0
 	for k, v := range detectedFields {
@@ -1108,23 +1113,52 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 			level.Warn(q.logger).Log("msg", "failed to marshal hyperloglog sketch", "err", err)
 			continue
 		}
-
+		p := v.parsers
+		if len(p) == 0 {
+			p = nil
+		}
 		fields[fieldCount] = &logproto.DetectedField{
 			Label:       k,
 			Type:        v.fieldType,
 			Cardinality: v.Estimate(),
 			Sketch:      sketch,
-			Parsers:     v.parsers,
+			Parsers:     p,
 		}
 
 		fieldCount++
 	}
 
-	//TODO: detected fields response needs to include the sketch
 	return &logproto.DetectedFieldsResponse{
 		Fields:     fields,
 		FieldLimit: req.GetFieldLimit(),
 	}, nil
+}
+
+func getParsersFromExpr(expr syntax.LogSelectorExpr) []string {
+	parsers := make([]string, 0)
+	expr.Walk(func(e syntax.Expr) {
+		switch concrete := e.(type) {
+		case *syntax.LogfmtParserExpr, *syntax.LogfmtExpressionParser:
+			if !slices.Contains(parsers, "logfmt") {
+				parsers = append(parsers, "logfmt")
+			}
+		case *syntax.JSONExpressionParser:
+			if !slices.Contains(parsers, "json") {
+				parsers = append(parsers, "json")
+			}
+		case *syntax.LabelParserExpr:
+			if concrete.Op == syntax.OpParserTypeJSON {
+				if !slices.Contains(parsers, "json") {
+					parsers = append(parsers, "json")
+				}
+			}
+		}
+		// bail if we found both parsers
+		if len(parsers) == 2 {
+			return
+		}
+	})
+	return parsers
 }
 
 type parsedFields struct {
@@ -1133,15 +1167,11 @@ type parsedFields struct {
 	parsers   []string
 }
 
-func newParsedFields(parser *string) *parsedFields {
-	p := ""
-	if parser != nil {
-		p = *parser
-	}
+func newParsedFields(parsers []string) *parsedFields {
 	return &parsedFields{
 		sketch:    hyperloglog.New(),
 		fieldType: logproto.DetectedFieldString,
-		parsers:   []string{p},
+		parsers:   parsers,
 	}
 }
 
@@ -1192,22 +1222,23 @@ func determineType(value string) logproto.DetectedFieldType {
 	return logproto.DetectedFieldString
 }
 
-func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.Streams) map[string]*parsedFields {
+func parseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*parsedFields {
 	detectedFields := make(map[string]*parsedFields, limit)
 	fieldCount := uint32(0)
+	emtpyparsers := []string{}
 
 	for _, stream := range streams {
-		detectType := true
-		level.Debug(spanlogger.FromContext(ctx)).Log(
-			"detected_fields", "true",
-			"msg", fmt.Sprintf("looking for detected fields in stream %d with %d lines", stream.Hash, len(stream.Entries)))
+		streamLbls, err := syntax.ParseLabels(stream.Labels)
+		if err != nil {
+			streamLbls = labels.EmptyLabels()
+		}
 
 		for _, entry := range stream.Entries {
-			detected, parser := parseLine(entry.Line)
-			for k, vals := range detected {
+			structuredMetadata := getStructuredMetadata(entry)
+			for k, vals := range structuredMetadata {
 				df, ok := detectedFields[k]
 				if !ok && fieldCount < limit {
-					df = newParsedFields(parser)
+					df = newParsedFields(emtpyparsers)
 					detectedFields[k] = df
 					fieldCount++
 				}
@@ -1216,10 +1247,7 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 					continue
 				}
 
-				if !slices.Contains(df.parsers, *parser) {
-					df.parsers = append(df.parsers, *parser)
-				}
-
+				detectType := true
 				for _, v := range vals {
 					parsedFields := detectedFields[k]
 					if detectType {
@@ -1230,10 +1258,39 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 
 					parsedFields.Insert(v)
 				}
+			}
 
-				level.Debug(spanlogger.FromContext(ctx)).Log(
-					"detected_fields", "true",
-					"msg", fmt.Sprintf("detected field %s with %d values", k, len(vals)))
+			streamLbls := logql_log.NewBaseLabelsBuilder().ForLabels(streamLbls, streamLbls.Hash())
+			parsedLabels, parsers := parseEntry(entry, streamLbls)
+			for k, vals := range parsedLabels {
+				df, ok := detectedFields[k]
+				if !ok && fieldCount < limit {
+					df = newParsedFields(parsers)
+					detectedFields[k] = df
+					fieldCount++
+				}
+
+				if df == nil {
+					continue
+				}
+
+				for _, parser := range parsers {
+					if !slices.Contains(df.parsers, parser) {
+						df.parsers = append(df.parsers, parser)
+					}
+				}
+
+				detectType := true
+				for _, v := range vals {
+					parsedFields := detectedFields[k]
+					if detectType {
+						// we don't want to determine the type for every line, so we assume the type in each stream will be the same, and re-detect the type for the next stream
+						parsedFields.DetermineType(v)
+						detectType = false
+					}
+
+					parsedFields.Insert(v)
+				}
 			}
 		}
 	}
@@ -1241,24 +1298,72 @@ func parseDetectedFields(ctx context.Context, limit uint32, streams logqlmodel.S
 	return detectedFields
 }
 
-func parseLine(line string) (map[string][]string, *string) {
-	parser := "logfmt"
-	logFmtParser := logql_log.NewLogfmtParser(true, false)
+func getStructuredMetadata(entry push.Entry) map[string][]string {
+	labels := map[string]map[string]struct{}{}
+	for _, lbl := range entry.StructuredMetadata {
+		if values, ok := labels[lbl.Name]; ok {
+			values[lbl.Value] = struct{}{}
+		} else {
+			labels[lbl.Name] = map[string]struct{}{lbl.Value: {}}
+		}
+	}
 
-	lbls := logql_log.NewBaseLabelsBuilder().ForLabels(labels.EmptyLabels(), 0)
-	_, logfmtSuccess := logFmtParser.Process(0, []byte(line), lbls)
-	if !logfmtSuccess || lbls.HasErr() {
-		parser = "json"
-		jsonParser := logql_log.NewJSONParser()
+	result := make(map[string][]string, len(labels))
+	for lbl, values := range labels {
+		vals := make([]string, 0, len(values))
+		for v := range values {
+			vals = append(vals, v)
+		}
+		result[lbl] = vals
+	}
+
+	return result
+}
+
+func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]string, []string) {
+	origParsed := getParsedLabels(entry)
+	parsed := make(map[string][]string, len(origParsed))
+
+	for lbl, values := range origParsed {
+		if lbl == logqlmodel.ErrorLabel || lbl == logqlmodel.ErrorDetailsLabel ||
+			lbl == logqlmodel.PreserveErrorLabel {
+			continue
+		}
+
+		parsed[lbl] = values
+	}
+
+	line := entry.Line
+	parser := "json"
+	jsonParser := logql_log.NewJSONParser()
+	_, jsonSuccess := jsonParser.Process(0, []byte(line), lbls)
+	if !jsonSuccess || lbls.HasErr() {
 		lbls.Reset()
-		_, jsonSuccess := jsonParser.Process(0, []byte(line), lbls)
-		if !jsonSuccess || lbls.HasErr() {
-			return map[string][]string{}, nil
+
+		logFmtParser := logql_log.NewLogfmtParser(false, false)
+		parser = "logfmt"
+		_, logfmtSuccess := logFmtParser.Process(0, []byte(line), lbls)
+		if !logfmtSuccess || lbls.HasErr() {
+			return parsed, nil
 		}
 	}
 
 	parsedLabels := map[string]map[string]struct{}{}
-	for _, lbl := range lbls.LabelsResult().Labels() {
+	for lbl, values := range parsed {
+		if vals, ok := parsedLabels[lbl]; ok {
+			for _, value := range values {
+				vals[value] = struct{}{}
+			}
+		} else {
+			parsedLabels[lbl] = map[string]struct{}{}
+			for _, value := range values {
+				parsedLabels[lbl][value] = struct{}{}
+			}
+		}
+	}
+
+	lblsResult := lbls.LabelsResult().Parsed()
+	for _, lbl := range lblsResult {
 		if values, ok := parsedLabels[lbl.Name]; ok {
 			values[lbl.Value] = struct{}{}
 		} else {
@@ -1268,6 +1373,10 @@ func parseLine(line string) (map[string][]string, *string) {
 
 	result := make(map[string][]string, len(parsedLabels))
 	for lbl, values := range parsedLabels {
+		if lbl == logqlmodel.ErrorLabel || lbl == logqlmodel.ErrorDetailsLabel ||
+			lbl == logqlmodel.PreserveErrorLabel {
+			continue
+		}
 		vals := make([]string, 0, len(values))
 		for v := range values {
 			vals = append(vals, v)
@@ -1275,13 +1384,32 @@ func parseLine(line string) (map[string][]string, *string) {
 		result[lbl] = vals
 	}
 
-	return result, &parser
+	return result, []string{parser}
+}
+
+func getParsedLabels(entry push.Entry) map[string][]string {
+	labels := map[string]map[string]struct{}{}
+	for _, lbl := range entry.Parsed {
+		if values, ok := labels[lbl.Name]; ok {
+			values[lbl.Value] = struct{}{}
+		} else {
+			labels[lbl.Name] = map[string]struct{}{lbl.Value: {}}
+		}
+	}
+
+	result := make(map[string][]string, len(labels))
+	for lbl, values := range labels {
+		vals := make([]string, 0, len(values))
+		for v := range values {
+			vals = append(vals, v)
+		}
+		result[lbl] = vals
+	}
+
+	return result
 }
 
 // streamsForFieldDetection reads the streams from the iterator and returns them sorted.
-// If categorizeLabels is true, the stream labels contains just the stream labels and entries inside each stream have their
-// structuredMetadata and parsed fields populated with structured metadata labels plus the parsed labels respectively.
-// Otherwise, the stream labels are the whole series labels including the stream labels, structured metadata labels and parsed labels.
 func streamsForFieldDetection(i iter.EntryIterator, size uint32) (logqlmodel.Streams, error) {
 	streams := map[string]*logproto.Stream{}
 	respSize := uint32(0)
@@ -1289,7 +1417,7 @@ func streamsForFieldDetection(i iter.EntryIterator, size uint32) (logqlmodel.Str
 	// value here because many unit tests start at time.Unix(0,0)
 	lastEntry := time.Unix(-100, 0)
 	for respSize < size && i.Next() {
-		streamLabels, entry := i.Labels(), i.Entry()
+		streamLabels, entry := i.Labels(), i.At()
 
 		// Always going backward as the direction for field detection is hard-coded to BACKWARD
 		shouldOutput := entry.Timestamp.Equal(lastEntry) || entry.Timestamp.Before(lastEntry)
@@ -1297,15 +1425,31 @@ func streamsForFieldDetection(i iter.EntryIterator, size uint32) (logqlmodel.Str
 		// If lastEntry.Unix < 0 this is the first pass through the loop and we should output the line.
 		// Then check to see if the entry is equal to, or past a forward step
 		if lastEntry.Unix() < 0 || shouldOutput {
-			stream, ok := streams[streamLabels]
+			allLbls, err := syntax.ParseLabels(streamLabels)
+			if err != nil {
+				continue
+			}
+
+			parsedLbls := logproto.FromLabelAdaptersToLabels(entry.Parsed)
+			structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
+
+			onlyStreamLbls := logql_log.NewBaseLabelsBuilder().ForLabels(allLbls, 0)
+			allLbls.Range(func(l labels.Label) {
+				if parsedLbls.Has(l.Name) || structuredMetadata.Has(l.Name) {
+					onlyStreamLbls.Del(l.Name)
+				}
+			})
+
+			lblStr := onlyStreamLbls.LabelsResult().String()
+			stream, ok := streams[lblStr]
 			if !ok {
 				stream = &logproto.Stream{
-					Labels: streamLabels,
+					Labels: lblStr,
 				}
-				streams[streamLabels] = stream
+				streams[lblStr] = stream
 			}
 			stream.Entries = append(stream.Entries, entry)
-			lastEntry = i.Entry().Timestamp
+			lastEntry = i.At().Timestamp
 			respSize++
 		}
 	}
@@ -1315,5 +1459,5 @@ func streamsForFieldDetection(i iter.EntryIterator, size uint32) (logqlmodel.Str
 		result = append(result, *stream)
 	}
 	sort.Sort(result)
-	return result, i.Error()
+	return result, i.Err()
 }

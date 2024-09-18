@@ -23,7 +23,7 @@ jobs:
       with:
         go-version: ${{ matrix.go }}
       id: go
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Install make
       run: sudo apt-get install make
     - name: make bundle

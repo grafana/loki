@@ -118,6 +118,7 @@ var retryableHTTPStatusCodes = map[int]struct{}{
 	http.StatusBadGateway:          {},
 	http.StatusServiceUnavailable:  {},
 	http.StatusGatewayTimeout:      {},
+	520:                            {}, // It is used by Cloudflare as a catch-all response for when the origin server sends something unexpected.
 	// Add more HTTP status codes here.
 }
 

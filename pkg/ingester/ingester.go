@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -9,9 +10,12 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime/pprof"
 	"sync"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/storage/types"
@@ -20,6 +24,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/modules"
 	"github.com/grafana/dskit/multierror"
@@ -27,11 +32,13 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"golang.org/x/time/rate"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	server_util "github.com/grafana/loki/v3/pkg/util/server"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
@@ -62,6 +69,10 @@ const (
 	RingKey = "ring"
 
 	shutdownMarkerFilename = "shutdown-requested.txt"
+
+	// PartitionRingKey is the key under which we store the partitions ring used by the "ingest storage".
+	PartitionRingKey  = "ingester-partitions-key"
+	PartitionRingName = "ingester-partitions"
 )
 
 // ErrReadOnly is returned when the ingester is shutting down and a push was
@@ -81,6 +92,7 @@ type Config struct {
 
 	ConcurrentFlushes   int               `yaml:"concurrent_flushes"`
 	FlushCheckPeriod    time.Duration     `yaml:"flush_check_period"`
+	FlushOpBackoff      backoff.Config    `yaml:"flush_op_backoff"`
 	FlushOpTimeout      time.Duration     `yaml:"flush_op_timeout"`
 	RetainPeriod        time.Duration     `yaml:"chunk_retain_period"`
 	MaxChunkIdle        time.Duration     `yaml:"chunk_idle_period"`
@@ -117,16 +129,24 @@ type Config struct {
 	MaxDroppedStreams int `yaml:"max_dropped_streams"`
 
 	ShutdownMarkerPath string `yaml:"shutdown_marker_path"`
+
+	OwnedStreamsCheckInterval time.Duration `yaml:"owned_streams_check_interval" doc:"description=Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams."`
+
+	KafkaIngestion KafkaIngestionConfig `yaml:"kafka_ingestion,omitempty"`
 }
 
 // RegisterFlags registers the flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f, util_log.Logger)
 	cfg.WAL.RegisterFlags(f)
+	cfg.KafkaIngestion.RegisterFlags(f)
 
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 32, "How many flushes can happen concurrently from each stream.")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "How often should the ingester see if there are any blocks to flush. The first flush check is delayed by a random time up to 0.8x the flush check period. Additionally, there is +/- 1% jitter added to the interval.")
-	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Minute, "The timeout before a flush is cancelled.")
+	f.DurationVar(&cfg.FlushOpBackoff.MinBackoff, "ingester.flush-op-backoff-min-period", 10*time.Second, "Minimum backoff period when a flush fails. Each concurrent flush has its own backoff, see `ingester.concurrent-flushes`.")
+	f.DurationVar(&cfg.FlushOpBackoff.MaxBackoff, "ingester.flush-op-backoff-max-period", time.Minute, "Maximum backoff period when a flush fails. Each concurrent flush has its own backoff, see `ingester.concurrent-flushes`.")
+	f.IntVar(&cfg.FlushOpBackoff.MaxRetries, "ingester.flush-op-backoff-retries", 10, "Maximum retries for failed flushes.")
+	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Minute, "The timeout for an individual flush. Will be retried up to `flush-op-backoff-retries` times.")
 	f.DurationVar(&cfg.RetainPeriod, "ingester.chunks-retain-period", 0, "How long chunks should be retained in-memory after they've been flushed.")
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.chunks-idle-period", 30*time.Minute, "How long chunks should sit in-memory with no updates before being flushed if they don't hit the max block size. This means that half-empty chunks will still be flushed after a certain period as long as they receive no further activity.")
 	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "The targeted _uncompressed_ size in bytes of a chunk block When this threshold is exceeded the head block will be cut and compressed inside the chunk.")
@@ -141,6 +161,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.IndexShards, "ingester.index-shards", index.DefaultIndexShards, "Shard factor used in the ingesters for the in process reverse index. This MUST be evenly divisible by ALL schema shard factors or Loki will not start.")
 	f.IntVar(&cfg.MaxDroppedStreams, "ingester.tailer.max-dropped-streams", 10, "Maximum number of dropped streams to keep in memory during tailing.")
 	f.StringVar(&cfg.ShutdownMarkerPath, "ingester.shutdown-marker-path", "", "Path where the shutdown marker file is stored. If not set and common.path_prefix is set then common.path_prefix will be used.")
+	f.DurationVar(&cfg.OwnedStreamsCheckInterval, "ingester.owned-streams-check-interval", 30*time.Second, "Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams.")
 }
 
 func (cfg *Config) Validate() error {
@@ -154,11 +175,31 @@ func (cfg *Config) Validate() error {
 		return err
 	}
 
+	if cfg.FlushOpBackoff.MinBackoff > cfg.FlushOpBackoff.MaxBackoff {
+		return errors.New("invalid flush op min backoff: cannot be larger than max backoff")
+	}
+	if cfg.FlushOpBackoff.MaxRetries <= 0 {
+		return fmt.Errorf("invalid flush op max retries: %d", cfg.FlushOpBackoff.MaxRetries)
+	}
+	if cfg.FlushOpTimeout <= 0 {
+		return fmt.Errorf("invalid flush op timeout: %s", cfg.FlushOpTimeout)
+	}
 	if cfg.IndexShards <= 0 {
 		return fmt.Errorf("invalid ingester index shard factor: %d", cfg.IndexShards)
 	}
 
 	return nil
+}
+
+type KafkaIngestionConfig struct {
+	Enabled             bool                 `yaml:"enabled" doc:"description=Whether the kafka ingester is enabled."`
+	PartitionRingConfig partitionring.Config `yaml:"partition_ring" category:"experimental"`
+	KafkaConfig         kafka.Config         `yaml:"-"`
+}
+
+func (cfg *KafkaIngestionConfig) RegisterFlags(f *flag.FlagSet) {
+	cfg.PartitionRingConfig.RegisterFlagsWithPrefix("ingester.", f)
+	f.BoolVar(&cfg.Enabled, "ingester.kafka-ingestion-enabled", false, "Whether the ingester will consume data from kafka.")
 }
 
 type Wrapper interface {
@@ -219,6 +260,9 @@ type Ingester struct {
 	flushQueues     []*util.PriorityQueue
 	flushQueuesDone sync.WaitGroup
 
+	// Spread out calls to the chunk store over the flush period
+	flushRateLimiter *rate.Limiter
+
 	limiter *Limiter
 
 	// Denotes whether the ingester should flush on shutdown.
@@ -245,10 +289,14 @@ type Ingester struct {
 	writeLogManager *writefailures.Manager
 
 	customStreamsTracker push.UsageTracker
+
+	// recalculateOwnedStreams periodically checks the ring for changes and recalculates owned streams for each instance.
+	readRing                ring.ReadRing
+	recalculateOwnedStreams *recalculateOwnedStreams
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg, metricsNamespace string, logger log.Logger, customStreamsTracker push.UsageTracker) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg, metricsNamespace string, logger log.Logger, customStreamsTracker push.UsageTracker, readRing ring.ReadRing) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -270,6 +318,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		periodicConfigs:       store.GetSchemaConfigs(),
 		loopQuit:              make(chan struct{}),
 		flushQueues:           make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
+		flushRateLimiter:      rate.NewLimiter(rate.Inf, 1),
 		tailersQuit:           make(chan struct{}),
 		metrics:               metrics,
 		flushOnShutdownSwitch: &OnceSwitch{},
@@ -277,6 +326,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		streamRateCalculator:  NewStreamRateCalculator(),
 		writeLogManager:       writefailures.NewManager(logger, registerer, writeFailuresCfg, configs, "ingester"),
 		customStreamsTracker:  customStreamsTracker,
+		readRing:              readRing,
 	}
 	i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 
@@ -325,6 +375,8 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	if i.cfg.SampleExtractorWrapper != nil {
 		i.SetExtractorWrapper(i.cfg.SampleExtractorWrapper)
 	}
+
+	i.recalculateOwnedStreams = newRecalculateOwnedStreams(i.getInstances, i.lifecycler.ID, i.readRing, cfg.OwnedStreamsCheckInterval, util_log.Logger)
 
 	return i, nil
 }
@@ -511,12 +563,22 @@ func (i *Ingester) starting(ctx context.Context) error {
 	shutdownMarkerPath := path.Join(i.cfg.ShutdownMarkerPath, shutdownMarkerFilename)
 	shutdownMarker, err := shutdownMarkerExists(shutdownMarkerPath)
 	if err != nil {
-		return errors.Wrap(err, "failed to check ingester shutdown marker")
+		return fmt.Errorf("failed to check ingester shutdown marker: %w", err)
 	}
 
 	if shutdownMarker {
 		level.Info(i.logger).Log("msg", "detected existing shutdown marker, setting unregister and flush on shutdown", "path", shutdownMarkerPath)
 		i.setPrepareShutdown()
+	}
+
+	err = i.recalculateOwnedStreams.StartAsync(ctx)
+	if err != nil {
+		return fmt.Errorf("can not start recalculate owned streams service: %w", err)
+	}
+
+	err = i.lifecycler.AwaitRunning(ctx)
+	if err != nil {
+		return fmt.Errorf("can not ensure recalculate owned streams service is running: %w", err)
 	}
 
 	// start our loop
@@ -743,7 +805,7 @@ func createShutdownMarker(p string) error {
 		return err
 	}
 
-	dir, err := os.OpenFile(path.Dir(p), os.O_RDONLY, 0777)
+	dir, err := os.OpenFile(path.Dir(p), os.O_RDONLY, 0o777)
 	if err != nil {
 		return err
 	}
@@ -760,7 +822,7 @@ func removeShutdownMarker(p string) error {
 		return err
 	}
 
-	dir, err := os.OpenFile(path.Dir(p), os.O_RDONLY, 0777)
+	dir, err := os.OpenFile(path.Dir(p), os.O_RDONLY, 0o777)
 	if err != nil {
 		return err
 	}
@@ -833,6 +895,11 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 		return nil, ErrReadOnly
 	}
 
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "write"))
+	pprof.SetGoroutineLabels(ctx)
+
 	instance, err := i.GetOrCreateInstance(instanceID)
 	if err != nil {
 		return &logproto.PushResponse{}, err
@@ -847,6 +914,11 @@ func (i *Ingester) GetStreamRates(ctx context.Context, _ *logproto.StreamRatesRe
 		sp.LogKV("event", "ingester started to handle GetStreamRates")
 		defer sp.LogKV("event", "ingester finished handling GetStreamRates")
 	}
+
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "write"))
+	pprof.SetGoroutineLabels(ctx)
 
 	allRates := i.streamRateCalculator.Rates()
 	rates := make([]*logproto.StreamRate, len(allRates))
@@ -897,6 +969,11 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 	if err != nil {
 		return err
 	}
+
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "log"))
+	pprof.SetGoroutineLabels(ctx)
 
 	instance, err := i.GetOrCreateInstance(instanceID)
 	if err != nil {
@@ -960,6 +1037,11 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 		return err
 	}
 
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "metric"))
+	pprof.SetGoroutineLabels(ctx)
+
 	instance, err := i.GetOrCreateInstance(instanceID)
 	if err != nil {
 		return err
@@ -1019,10 +1101,22 @@ func (i *Ingester) asyncStoreMaxLookBack() time.Duration {
 
 // GetChunkIDs is meant to be used only when using an async store like boltdb-shipper or tsdb.
 func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsRequest) (*logproto.GetChunkIDsResponse, error) {
+	gcr, err := i.getChunkIDs(ctx, req)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return gcr, err
+}
+
+// GetChunkIDs is meant to be used only when using an async store like boltdb-shipper or tsdb.
+func (i *Ingester) getChunkIDs(ctx context.Context, req *logproto.GetChunkIDsRequest) (*logproto.GetChunkIDsResponse, error) {
 	orgID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
+
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "chunkIDs"))
+	pprof.SetGoroutineLabels(ctx)
 
 	asyncStoreMaxLookBack := i.asyncStoreMaxLookBack()
 	if asyncStoreMaxLookBack == 0 {
@@ -1067,6 +1161,11 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	if err != nil {
 		return nil, err
 	}
+
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "labels"))
+	pprof.SetGoroutineLabels(ctx)
 
 	instance, err := i.GetOrCreateInstance(userID)
 	if err != nil {
@@ -1120,7 +1219,7 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 			return nil, err
 		}
 	} else {
-		storeValues, err = cs.LabelNamesForMetricName(ctx, userID, from, through, "logs")
+		storeValues, err = cs.LabelNamesForMetricName(ctx, userID, from, through, "logs", matchers...)
 		if err != nil {
 			return nil, err
 		}
@@ -1133,10 +1232,21 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 
 // Series queries the ingester for log stream identifiers (label sets) matching a set of matchers
 func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
+	sr, err := i.series(ctx, req)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return sr, err
+}
+
+func (i *Ingester) series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
+
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "series"))
+	pprof.SetGoroutineLabels(ctx)
 
 	instance, err := i.GetOrCreateInstance(instanceID)
 	if err != nil {
@@ -1152,6 +1262,11 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 	if err != nil {
 		return nil, err
 	}
+
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "stats"))
+	pprof.SetGoroutineLabels(ctx)
 
 	instance, err := i.GetOrCreateInstance(user)
 	if err != nil {
@@ -1209,6 +1324,11 @@ func (i *Ingester) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (
 	if err != nil {
 		return nil, err
 	}
+
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "volume"))
+	pprof.SetGoroutineLabels(ctx)
 
 	instance, err := i.GetOrCreateInstance(user)
 	if err != nil {
@@ -1284,6 +1404,12 @@ func (i *Ingester) getInstances() []*instance {
 
 // Tail logs matching given query
 func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_TailServer) error {
+	err := i.tail(req, queryServer)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return err
+}
+
+func (i *Ingester) tail(req *logproto.TailRequest, queryServer logproto.Querier_TailServer) error {
 	select {
 	case <-i.tailersQuit:
 		return errors.New("Ingester is stopping")
@@ -1329,6 +1455,12 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 
 // TailersCount returns count of active tail requests from a user
 func (i *Ingester) TailersCount(ctx context.Context, _ *logproto.TailersCountRequest) (*logproto.TailersCountResponse, error) {
+	tcr, err := i.tailersCount(ctx)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return tcr, err
+}
+
+func (i *Ingester) tailersCount(ctx context.Context) (*logproto.TailersCountResponse, error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1384,10 +1516,21 @@ func (i *Ingester) GetDetectedFields(_ context.Context, r *logproto.DetectedFiel
 
 // GetDetectedLabels returns map of detected labels and unique values from this ingester
 func (i *Ingester) GetDetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.LabelToValuesResponse, error) {
+	lvr, err := i.getDetectedLabels(ctx, req)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return lvr, err
+}
+
+func (i *Ingester) getDetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.LabelToValuesResponse, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
+
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "detectedLabels"))
+	pprof.SetGoroutineLabels(ctx)
 
 	instance, err := i.GetOrCreateInstance(userID)
 	if err != nil {
@@ -1402,7 +1545,6 @@ func (i *Ingester) GetDetectedLabels(ctx context.Context, req *logproto.Detected
 	}
 
 	labelMap, err := instance.LabelsWithValues(ctx, req.Start, matchers...)
-
 	if err != nil {
 		return nil, err
 	}

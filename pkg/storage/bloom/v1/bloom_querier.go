@@ -1,16 +1,20 @@
 package v1
 
-import "github.com/pkg/errors"
+import (
+	"github.com/pkg/errors"
+
+	"github.com/grafana/loki/v3/pkg/util/mempool"
+)
 
 type BloomQuerier interface {
 	Seek(BloomOffset) (*Bloom, error)
 }
 
 type LazyBloomIter struct {
-	usePool bool
-
 	b *Block
 	m int // max page size in bytes
+
+	alloc mempool.Allocator
 
 	// state
 	initialized  bool
@@ -24,11 +28,11 @@ type LazyBloomIter struct {
 // will be returned to the pool for efficiency.
 // This can only safely be used when the underlying bloom
 // bytes don't escape the decoder.
-func NewLazyBloomIter(b *Block, pool bool, maxSize int) *LazyBloomIter {
+func NewLazyBloomIter(b *Block, alloc mempool.Allocator, maxSize int) *LazyBloomIter {
 	return &LazyBloomIter{
-		usePool: pool,
-		b:       b,
-		m:       maxSize,
+		b:     b,
+		m:     maxSize,
+		alloc: alloc,
 	}
 }
 
@@ -53,16 +57,14 @@ func (it *LazyBloomIter) LoadOffset(offset BloomOffset) (skip bool) {
 
 		// drop the current page if it exists and
 		// we're using the pool
-		if it.curPage != nil && it.usePool {
-			it.curPage.Relinquish()
-		}
+		it.curPage.Relinquish(it.alloc)
 
 		r, err := it.b.reader.Blooms()
 		if err != nil {
 			it.err = errors.Wrap(err, "getting blooms reader")
 			return false
 		}
-		decoder, skip, err := it.b.blooms.BloomPageDecoder(r, offset.Page, it.m, it.b.metrics)
+		decoder, skip, err := it.b.blooms.BloomPageDecoder(r, it.alloc, offset.Page, it.m, it.b.metrics)
 		if err != nil {
 			it.err = errors.Wrap(err, "loading bloom page")
 			return false
@@ -106,6 +108,7 @@ func (it *LazyBloomIter) next() bool {
 			var skip bool
 			it.curPage, skip, err = it.b.blooms.BloomPageDecoder(
 				r,
+				it.alloc,
 				it.curPageIndex,
 				it.m,
 				it.b.metrics,
@@ -130,11 +133,8 @@ func (it *LazyBloomIter) next() bool {
 
 			// we've exhausted the current page, progress to next
 			it.curPageIndex++
-			// drop the current page if it exists and
-			// we're using the pool
-			if it.usePool {
-				it.curPage.Relinquish()
-			}
+			// drop the current page if it exists
+			it.curPage.Relinquish(it.alloc)
 			it.curPage = nil
 			continue
 		}
@@ -160,4 +160,13 @@ func (it *LazyBloomIter) Err() error {
 		}
 		return nil
 	}
+}
+
+func (it *LazyBloomIter) Reset() {
+	it.err = nil
+	it.curPageIndex = 0
+	if it.curPage != nil {
+		it.curPage.Relinquish(it.alloc)
+	}
+	it.curPage = nil
 }

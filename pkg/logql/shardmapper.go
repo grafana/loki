@@ -13,6 +13,8 @@ import (
 )
 
 const (
+	ShardLastOverTime     = "last_over_time"
+	ShardFirstOverTime    = "first_over_time"
 	ShardQuantileOverTime = "quantile_over_time"
 )
 
@@ -20,19 +22,30 @@ type ShardMapper struct {
 	shards                   ShardingStrategy
 	metrics                  *MapperMetrics
 	quantileOverTimeSharding bool
+	lastOverTimeSharding     bool
+	firstOverTimeSharding    bool
 }
 
 func NewShardMapper(strategy ShardingStrategy, metrics *MapperMetrics, shardAggregation []string) ShardMapper {
 	quantileOverTimeSharding := false
+	lastOverTimeSharding := false
+	firstOverTimeSharding := false
 	for _, a := range shardAggregation {
-		if a == ShardQuantileOverTime {
+		switch a {
+		case ShardQuantileOverTime:
 			quantileOverTimeSharding = true
+		case ShardLastOverTime:
+			lastOverTimeSharding = true
+		case ShardFirstOverTime:
+			firstOverTimeSharding = true
 		}
 	}
 	return ShardMapper{
 		shards:                   strategy,
 		metrics:                  metrics,
 		quantileOverTimeSharding: quantileOverTimeSharding,
+		firstOverTimeSharding:    firstOverTimeSharding,
+		lastOverTimeSharding:     lastOverTimeSharding,
 	}
 }
 
@@ -384,13 +397,18 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 			return m.mapSampleExpr(expr, r)
 		}
 
+		grouping := expr.Grouping
+		if grouping == nil {
+			grouping = &syntax.Grouping{Without: true}
+		}
+
 		// avg_over_time() by (foo) -> sum by (foo) (sum_over_time()) / sum by (foo) (count_over_time())
 		lhs, lhsBytesPerShard, err := m.mapVectorAggregationExpr(&syntax.VectorAggregationExpr{
 			Left: &syntax.RangeAggregationExpr{
 				Left:      expr.Left,
 				Operation: syntax.OpRangeTypeSum,
 			},
-			Grouping:  expr.Grouping,
+			Grouping:  grouping,
 			Operation: syntax.OpTypeSum,
 		}, r, false)
 		if err != nil {
@@ -403,12 +421,21 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 			return nil, 0, err
 		}
 
+		// labelSampleExtractor includes the unwrap identifier in without() list if no grouping is specified
+		// similar change is required for the RHS here to ensure the resulting label sets match
+		rhsGrouping := *grouping
+		if rhsGrouping.Without {
+			if expr.Left.Unwrap != nil {
+				rhsGrouping.Groups = append(rhsGrouping.Groups, expr.Left.Unwrap.Identifier)
+			}
+		}
+
 		rhs, rhsBytesPerShard, err := m.mapVectorAggregationExpr(&syntax.VectorAggregationExpr{
 			Left: &syntax.RangeAggregationExpr{
 				Left:      countOverTimeSelector,
 				Operation: syntax.OpRangeTypeCount,
 			},
-			Grouping:  expr.Grouping,
+			Grouping:  &rhsGrouping,
 			Operation: syntax.OpTypeSum,
 		}, r, false)
 		if err != nil {
@@ -472,6 +499,10 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		}, bytesPerShard, nil
 
 	case syntax.OpRangeTypeFirst:
+		if !m.firstOverTimeSharding {
+			return noOp(expr, m.shards.Resolver())
+		}
+
 		potentialConflict := syntax.ReducesLabels(expr)
 		if !potentialConflict && (expr.Grouping == nil || expr.Grouping.Noop()) {
 			return m.mapSampleExpr(expr, r)
@@ -499,6 +530,10 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 			downstreams: downstreams,
 		}, bytesPerShard, nil
 	case syntax.OpRangeTypeLast:
+		if !m.lastOverTimeSharding {
+			return noOp(expr, m.shards.Resolver())
+		}
+
 		potentialConflict := syntax.ReducesLabels(expr)
 		if !potentialConflict && (expr.Grouping == nil || expr.Grouping.Noop()) {
 			return m.mapSampleExpr(expr, r)

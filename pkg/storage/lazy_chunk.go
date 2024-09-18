@@ -46,7 +46,7 @@ func (c *LazyChunk) Iterator(
 	lokiChunk := c.Chunk.Data.(*chunkenc.Facade).LokiChunk()
 	blocks := lokiChunk.Blocks(from, through)
 	if len(blocks) == 0 {
-		return iter.NoopIterator, nil
+		return iter.NoopEntryIterator, nil
 	}
 	its := make([]iter.EntryIterator, 0, len(blocks))
 
@@ -126,7 +126,7 @@ func (c *LazyChunk) SampleIterator(
 	lokiChunk := c.Chunk.Data.(*chunkenc.Facade).LokiChunk()
 	blocks := lokiChunk.Blocks(from, through)
 	if len(blocks) == 0 {
-		return iter.NoopIterator, nil
+		return iter.NoopSampleIterator, nil
 	}
 	its := make([]iter.SampleIterator, 0, len(blocks))
 

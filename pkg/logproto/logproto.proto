@@ -6,6 +6,7 @@ import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
 import "pkg/logqlmodel/stats/stats.proto";
 import "pkg/push/push.proto";
+import "pkg/storage/chunk/cache/resultscache/types.proto";
 
 option go_package = "github.com/grafana/loki/v3/pkg/logproto";
 
@@ -320,6 +321,7 @@ message LabelNamesForMetricNameRequest {
     (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
     (gogoproto.nullable) = false
   ];
+  string matchers = 4;
 }
 
 // TODO(owen-d): fix. This will break rollouts as soon as the internal repr is changed.
@@ -433,6 +435,7 @@ message VolumeRequest {
   int64 step = 5;
   repeated string targetLabels = 6;
   string aggregateBy = 7;
+  resultscache.CachingOptions cachingOptions = 8 [(gogoproto.nullable) = false];
 }
 
 message VolumeResponse {
@@ -471,7 +474,7 @@ message DetectedField {
   string label = 1;
   string type = 2 [(gogoproto.casttype) = "DetectedFieldType"];
   uint64 cardinality = 3;
-  repeated string parsers = 4;
+  repeated string parsers = 4 [(gogoproto.jsontag) = "parsers"];
   bytes sketch = 5 [(gogoproto.jsontag) = "sketch,omitempty"];
 }
 

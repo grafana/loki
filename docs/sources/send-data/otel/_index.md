@@ -1,6 +1,6 @@
 ---
 title: Ingesting logs to Loki using OpenTelemetry Collector
-menuTitle:  OTEL Collector
+menuTitle:  OTel Collector
 description: Configuring the OpenTelemetry Collector to send logs to Loki.
 aliases: 
 - ../clients/k6/
@@ -11,6 +11,8 @@ weight:  250
 
 Loki natively supports ingesting OpenTelemetry logs over HTTP.
 For ingesting logs to Loki using the OpenTelemetry Collector, you must use the [`otlphttp` exporter](https://github.com/open-telemetry/opentelemetry-collector/tree/main/exporter/otlphttpexporter).
+
+{{< youtube id="snXhe1fDDa8" >}}
 
 ## Loki configuration
 
@@ -30,7 +32,7 @@ You need to make the following changes to the [OpenTelemetry Collector config](h
 ```yaml
 exporters:
   otlphttp:
-    endpoint: http://<loki-addr>:3100/otlp/v1/logs
+    endpoint: http://<loki-addr>:3100/otlp
 ```
 
 And enable it in `service.pipelines`:
@@ -57,7 +59,7 @@ exporters:
   otlphttp:
     auth:
       authenticator: basicauth/otlp
-    endpoint: http://<loki-addr>:3100/otlp/v1/logs
+    endpoint: http://<loki-addr>:3100/otlp
 
 service:
   extensions: [basicauth/otlp]
@@ -72,7 +74,7 @@ service:
 
 Since the OpenTelemetry protocol differs from the Loki storage model, here is how data in the OpenTelemetry format will be mapped by default to the Loki data model during ingestion, which can be changed as explained later:
 
-- Index labels: Resource attributes map well to index labels in Loki, since both usually identify the source of the logs. Because Loki has a limit of 30 index labels, we have selected the following resource attributes to be stored as index labels, while the remaining attributes are stored as [Structured Metadata]({{< relref "../../get-started/labels/structured-metadata" >}}) with each log entry:
+- Index labels: Resource attributes map well to index labels in Loki, since both usually identify the source of the logs. The default list of Resource Attributes to store as Index labels can be configured using `default_resource_attributes_as_index_labels` under [distributor's otlp_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#distributor). By default, the following resource attributes will be stored as index labels, while the remaining attributes are stored as [Structured Metadata]({{< relref "../../get-started/labels/structured-metadata" >}}) with each log entry:
   - cloud.availability_zone
   - cloud.region
   - container.name
@@ -91,9 +93,13 @@ Since the OpenTelemetry protocol differs from the Loki storage model, here is ho
   - service.name
   - service.namespace
 
+    {{% admonition type="note" %}}
+    Because Loki has a default limit of 15 index labels, we recommend storing only select resource attributes as index labels. Although the default config selects more than 15 Resource Attributes, it should be fine since a few are mutually exclusive.
+    {{% /admonition %}}
+
 - Timestamp: One of `LogRecord.TimeUnixNano` or `LogRecord.ObservedTimestamp`, based on which one is set. If both are not set, the ingestion timestamp will be used.
 
-- LogLine: `LogRecord.Body` holds the body of the log. However, since Loki only supports Log body in string format, we will stringify non-string values using the [AsString method from the OTEL collector lib](https://github.com/open-telemetry/opentelemetry-collector/blob/ab3d6c5b64701e690aaa340b0a63f443ff22c1f0/pdata/pcommon/value.go#L353).
+- LogLine: `LogRecord.Body` holds the body of the log. However, since Loki only supports Log body in string format, we will stringify non-string values using the [AsString method from the OTel collector lib](https://github.com/open-telemetry/opentelemetry-collector/blob/ab3d6c5b64701e690aaa340b0a63f443ff22c1f0/pdata/pcommon/value.go#L353).
 
 - [Structured Metadata]({{< relref "../../get-started/labels/structured-metadata" >}}): Anything which can’t be stored in Index labels and LogLine would be stored as Structured Metadata. Here is a non-exhaustive list of what will be stored in Structured Metadata to give a sense of what it will hold:
   - Resource Attributes not stored as Index labels is replicated and stored with each log entry.
@@ -105,7 +111,7 @@ Things to note before ingesting OpenTelemetry logs to Loki:
 - Dots (.) are converted to underscores (_).
 
   Loki does not support `.` or any other special characters other than `_` in label names. The unsupported characters are replaced with an `_` while converting Attributes to Index Labels or Structured Metadata.
-  Also, please note that while writing the queries, you must use the normalized format, i.e. use `_` instead of special characters while querying data using OTEL Attributes.
+  Also, please note that while writing the queries, you must use the normalized format, i.e. use `_` instead of special characters while querying data using OTel Attributes.
 
   For example, `service.name` in OTLP would become `service_name` in Loki.
 
@@ -116,7 +122,7 @@ Things to note before ingesting OpenTelemetry logs to Loki:
 
 - Stringification of non-string Attribute values
 
-  While converting Attribute values in OTLP to Index label values or Structured Metadata, any non-string values are converted to string using [AsString method from the OTEL collector lib](https://github.com/open-telemetry/opentelemetry-collector/blob/ab3d6c5b64701e690aaa340b0a63f443ff22c1f0/pdata/pcommon/value.go#L353).
+  While converting Attribute values in OTLP to Index label values or Structured Metadata, any non-string values are converted to string using [AsString method from the OTel collector lib](https://github.com/open-telemetry/opentelemetry-collector/blob/ab3d6c5b64701e690aaa340b0a63f443ff22c1f0/pdata/pcommon/value.go#L353).
 
 ### Changing the default mapping of OTLP to Loki Format
 

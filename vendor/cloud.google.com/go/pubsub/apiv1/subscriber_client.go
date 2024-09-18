@@ -19,6 +19,7 @@ package pubsub
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -818,7 +819,9 @@ func (c *subscriberGRPCClient) Connection() *grpc.ClientConn {
 func (c *subscriberGRPCClient) setGoogleClientInfo(keyval ...string) {
 	kv := append([]string{"gl-go", gax.GoVersion}, keyval...)
 	kv = append(kv, "gapic", getVersionClient(), "gax", gax.Version, "grpc", grpc.Version)
-	c.xGoogHeaders = []string{"x-goog-api-client", gax.XGoogHeader(kv...)}
+	c.xGoogHeaders = []string{
+		"x-goog-api-client", gax.XGoogHeader(kv...),
+	}
 }
 
 // Close closes the connection to the API service. The user should invoke this when
@@ -882,7 +885,9 @@ func defaultSubscriberRESTClientOptions() []option.ClientOption {
 func (c *subscriberRESTClient) setGoogleClientInfo(keyval ...string) {
 	kv := append([]string{"gl-go", gax.GoVersion}, keyval...)
 	kv = append(kv, "gapic", getVersionClient(), "gax", gax.Version, "rest", "UNKNOWN")
-	c.xGoogHeaders = []string{"x-goog-api-client", gax.XGoogHeader(kv...)}
+	c.xGoogHeaders = []string{
+		"x-goog-api-client", gax.XGoogHeader(kv...),
+	}
 }
 
 // Close closes the connection to the API service. The user should invoke this when
@@ -1795,7 +1800,7 @@ func (c *subscriberRESTClient) Pull(ctx context.Context, req *pubsubpb.PullReque
 //
 // This method is not supported for the REST transport.
 func (c *subscriberRESTClient) StreamingPull(ctx context.Context, opts ...gax.CallOption) (pubsubpb.Subscriber_StreamingPullClient, error) {
-	return nil, fmt.Errorf("StreamingPull not yet supported for REST clients")
+	return nil, errors.New("StreamingPull not yet supported for REST clients")
 }
 
 // ModifyPushConfig modifies the PushConfig for a specified subscription.

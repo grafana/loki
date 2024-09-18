@@ -1,8 +1,6 @@
 package types // import "github.com/docker/docker/api/types"
 
 import (
-	"io"
-	"os"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
@@ -72,14 +70,17 @@ type ImageInspect struct {
 
 	// Created is the date and time at which the image was created, formatted in
 	// RFC 3339 nano-seconds (time.RFC3339Nano).
-	Created string
+	//
+	// This information is only available if present in the image,
+	// and omitted otherwise.
+	Created string `json:",omitempty"`
 
 	// Container is the ID of the container that was used to create the image.
 	//
 	// Depending on how the image was created, this field may be empty.
 	//
 	// Deprecated: this field is omitted in API v1.45, but kept for backward compatibility.
-	Container string
+	Container string `json:",omitempty"`
 
 	// ContainerConfig is an optional field containing the configuration of the
 	// container that was last committed when creating the image.
@@ -88,7 +89,7 @@ type ImageInspect struct {
 	// and it is not in active use anymore.
 	//
 	// Deprecated: this field is omitted in API v1.45, but kept for backward compatibility.
-	ContainerConfig *container.Config
+	ContainerConfig *container.Config `json:",omitempty"`
 
 	// DockerVersion is the version of Docker that was used to build the image.
 	//
@@ -152,34 +153,11 @@ type Container struct {
 	State      string
 	Status     string
 	HostConfig struct {
-		NetworkMode string `json:",omitempty"`
+		NetworkMode string            `json:",omitempty"`
+		Annotations map[string]string `json:",omitempty"`
 	}
 	NetworkSettings *SummaryNetworkSettings
 	Mounts          []MountPoint
-}
-
-// CopyConfig contains request body of Engine API:
-// POST "/containers/"+containerID+"/copy"
-type CopyConfig struct {
-	Resource string
-}
-
-// ContainerPathStat is used to encode the header from
-// GET "/containers/{name:.*}/archive"
-// "Name" is the file or directory name.
-type ContainerPathStat struct {
-	Name       string      `json:"name"`
-	Size       int64       `json:"size"`
-	Mode       os.FileMode `json:"mode"`
-	Mtime      time.Time   `json:"mtime"`
-	LinkTarget string      `json:"linkTarget"`
-}
-
-// ContainerStats contains response of Engine API:
-// GET "/stats"
-type ContainerStats struct {
-	Body   io.ReadCloser `json:"body"`
-	OSType string        `json:"ostype"`
 }
 
 // Ping contains response of Engine API:
@@ -227,17 +205,6 @@ type Version struct {
 	BuildTime     string `json:",omitempty"`
 }
 
-// ExecStartCheck is a temp struct used by execStart
-// Config fields is part of ExecConfig in runconfig package
-type ExecStartCheck struct {
-	// ExecStart will first check if it's detached
-	Detach bool
-	// Check if there's a tty
-	Tty bool
-	// Terminal size [height, width], unused if Tty == false
-	ConsoleSize *[2]uint `json:",omitempty"`
-}
-
 // HealthcheckResult stores information about a single run of a healthcheck probe
 type HealthcheckResult struct {
 	Start    time.Time // Start is the time this check started
@@ -278,18 +245,6 @@ type ContainerState struct {
 	Health     *Health `json:",omitempty"`
 }
 
-// ContainerNode stores information about the node that a container
-// is running on.  It's only used by the Docker Swarm standalone API
-type ContainerNode struct {
-	ID        string
-	IPAddress string `json:"IP"`
-	Addr      string
-	Name      string
-	Cpus      int
-	Memory    int64
-	Labels    map[string]string
-}
-
 // ContainerJSONBase contains response of Engine API:
 // GET "/containers/{name:.*}/json"
 type ContainerJSONBase struct {
@@ -303,7 +258,7 @@ type ContainerJSONBase struct {
 	HostnamePath    string
 	HostsPath       string
 	LogPath         string
-	Node            *ContainerNode `json:",omitempty"` // Node is only propagated by Docker Swarm standalone API
+	Node            *ContainerNode `json:",omitempty"` // Deprecated: Node was only propagated by Docker Swarm standalone API. It sill be removed in the next release.
 	Name            string
 	RestartCount    int
 	Driver          string
@@ -420,84 +375,6 @@ type MountPoint struct {
 	Propagation mount.Propagation
 }
 
-// NetworkResource is the body of the "get network" http response message
-type NetworkResource struct {
-	Name       string                         // Name is the requested name of the network
-	ID         string                         `json:"Id"` // ID uniquely identifies a network on a single machine
-	Created    time.Time                      // Created is the time the network created
-	Scope      string                         // Scope describes the level at which the network exists (e.g. `swarm` for cluster-wide or `local` for machine level)
-	Driver     string                         // Driver is the Driver name used to create the network (e.g. `bridge`, `overlay`)
-	EnableIPv6 bool                           // EnableIPv6 represents whether to enable IPv6
-	IPAM       network.IPAM                   // IPAM is the network's IP Address Management
-	Internal   bool                           // Internal represents if the network is used internal only
-	Attachable bool                           // Attachable represents if the global scope is manually attachable by regular containers from workers in swarm mode.
-	Ingress    bool                           // Ingress indicates the network is providing the routing-mesh for the swarm cluster.
-	ConfigFrom network.ConfigReference        // ConfigFrom specifies the source which will provide the configuration for this network.
-	ConfigOnly bool                           // ConfigOnly networks are place-holder networks for network configurations to be used by other networks. ConfigOnly networks cannot be used directly to run containers or services.
-	Containers map[string]EndpointResource    // Containers contains endpoints belonging to the network
-	Options    map[string]string              // Options holds the network specific options to use for when creating the network
-	Labels     map[string]string              // Labels holds metadata specific to the network being created
-	Peers      []network.PeerInfo             `json:",omitempty"` // List of peer nodes for an overlay network
-	Services   map[string]network.ServiceInfo `json:",omitempty"`
-}
-
-// EndpointResource contains network resources allocated and used for a container in a network
-type EndpointResource struct {
-	Name        string
-	EndpointID  string
-	MacAddress  string
-	IPv4Address string
-	IPv6Address string
-}
-
-// NetworkCreate is the expected body of the "create network" http request message
-type NetworkCreate struct {
-	// Deprecated: CheckDuplicate is deprecated since API v1.44, but it defaults to true when sent by the client
-	// package to older daemons.
-	CheckDuplicate bool `json:",omitempty"`
-	Driver         string
-	Scope          string
-	EnableIPv6     bool
-	IPAM           *network.IPAM
-	Internal       bool
-	Attachable     bool
-	Ingress        bool
-	ConfigOnly     bool
-	ConfigFrom     *network.ConfigReference
-	Options        map[string]string
-	Labels         map[string]string
-}
-
-// NetworkCreateRequest is the request message sent to the server for network create call.
-type NetworkCreateRequest struct {
-	NetworkCreate
-	Name string
-}
-
-// NetworkCreateResponse is the response message sent by the server for network create call
-type NetworkCreateResponse struct {
-	ID      string `json:"Id"`
-	Warning string
-}
-
-// NetworkConnect represents the data to be used to connect a container to the network
-type NetworkConnect struct {
-	Container      string
-	EndpointConfig *network.EndpointSettings `json:",omitempty"`
-}
-
-// NetworkDisconnect represents the data to be used to disconnect a container from the network
-type NetworkDisconnect struct {
-	Container string
-	Force     bool
-}
-
-// NetworkInspectOptions holds parameters to inspect network
-type NetworkInspectOptions struct {
-	Scope   string
-	Verbose bool
-}
-
 // DiskUsageObject represents an object type used for disk usage query filtering.
 type DiskUsageObject string
 
@@ -530,38 +407,11 @@ type DiskUsage struct {
 	BuilderSize int64 `json:",omitempty"` // Deprecated: deprecated in API 1.38, and no longer used since API 1.40.
 }
 
-// ContainersPruneReport contains the response for Engine API:
-// POST "/containers/prune"
-type ContainersPruneReport struct {
-	ContainersDeleted []string
-	SpaceReclaimed    uint64
-}
-
-// VolumesPruneReport contains the response for Engine API:
-// POST "/volumes/prune"
-type VolumesPruneReport struct {
-	VolumesDeleted []string
-	SpaceReclaimed uint64
-}
-
-// ImagesPruneReport contains the response for Engine API:
-// POST "/images/prune"
-type ImagesPruneReport struct {
-	ImagesDeleted  []image.DeleteResponse
-	SpaceReclaimed uint64
-}
-
 // BuildCachePruneReport contains the response for Engine API:
 // POST "/build/prune"
 type BuildCachePruneReport struct {
 	CachesDeleted  []string
 	SpaceReclaimed uint64
-}
-
-// NetworksPruneReport contains the response for Engine API:
-// POST "/networks/prune"
-type NetworksPruneReport struct {
-	NetworksDeleted []string
 }
 
 // SecretCreateResponse contains the information returned to a client

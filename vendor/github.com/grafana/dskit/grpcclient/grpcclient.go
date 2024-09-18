@@ -108,7 +108,7 @@ func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientIntercep
 	streamClientInterceptors = append(streamClientInterceptors, cfg.StreamMiddleware...)
 
 	if cfg.BackoffOnRatelimits {
-		unaryClientInterceptors = append([]grpc.UnaryClientInterceptor{NewBackoffRetry(cfg.BackoffConfig)}, unaryClientInterceptors...)
+		unaryClientInterceptors = append([]grpc.UnaryClientInterceptor{NewRateLimitRetrier(cfg.BackoffConfig)}, unaryClientInterceptors...)
 	}
 
 	if cfg.RateLimit > 0 {
