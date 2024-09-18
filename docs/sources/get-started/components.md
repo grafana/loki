@@ -22,7 +22,8 @@ For more information see [Deployment modes]({{< relref "./deployment-modes" >}})
 | [Index Gateway](#index-gateway)                    | x            |   |   |   | x |
 | [Compactor](#compactor)                            | x            | x |   |   | x |
 | [Ruler](#ruler)                                    | x            | x |   |   | x |
-| [Bloom Compactor (Experimental)](#bloom-compactor) | x            |   |   |   | x |
+| [Bloom Planner (Experimental)](#bloom-planner)     | x            |   |   |   | x |
+| [Bloom Builder (Experimental)](#bloom-builder)     | x            |   |   |   | x |
 | [Bloom Gateway (Experimental)](#bloom-gateway)     | x            |   |   |   | x |
 
 This page describes the responsibilities of each of these components.
@@ -337,18 +338,28 @@ from the query frontend.
 
 When running multiple rulers, they use a consistent hash ring to distribute rule groups amongst available ruler instances.
 
-## Bloom Compactor
+## Bloom Planner
 {{% admonition type="warning" %}}
 This feature is an [experimental feature](/docs/release-life-cycle/). Engineering and on-call support is not available.  No SLA is provided.  
 {{% /admonition %}}
 
-The Bloom Compactor service is responsible for building blooms for chunks in the object store. 
+The Bloom Planner service is responsible for planning the tasks for blooms creation. It runs as a singleton and provides a queue
+from which tasks are pulled by the Bloom Builders. The planning runs periodically and takes into account what blooms have already
+been built for a given day and tenant and what series need to be newly added.
+
+This service is also used to apply blooms retention.
+
+## Bloom Builder
+{{% admonition type="warning" %}}
+This feature is an [experimental feature](/docs/release-life-cycle/). Engineering and on-call support is not available.  No SLA is provided.  
+{{% /admonition %}}
+
+The Bloom Builder service is responsible for processing the tasks created by the Bloom Planner.
+The Bloom Builder creates bloom blocks from structured metadata of log entries.
 The resulting blooms are grouped in bloom blocks spanning multiple series and chunks from a given day. 
 This component also builds metadata files to track which blocks are available for each series and TSDB index file.
 
-The service is horizontally scalable. When running multiple Bloom Compactors, they use a ring to shard tenants and 
-distribute series fingerprints among the available Bloom Compactor instances. 
-The ring is also used to decide which compactor should apply blooms retention.
+The service is stateless and horizontally scalable.
 
 ## Bloom Gateway
 {{% admonition type="warning" %}}
@@ -358,7 +369,7 @@ This feature is an [experimental feature](/docs/release-life-cycle/). Engineerin
 The Bloom Gateway service is responsible for handling and serving chunks filtering requests. 
 The index gateway queries the Bloom Gateway when computing chunk references, or when computing shards for a given query.
 The gateway service takes a list of chunks and a filtering expression and matches them against the blooms, 
-filtering out any chunks that do not match the given filter expression.
+filtering out any chunks that do not match the given label filter expression.
 
-The service is horizontally scalable. When running multiple instances, they use a ring to shard tenants and 
-distribute series fingerprints across instances.
+The service is horizontally scalable. When running multiple instances, the client (Index Gateway) shards requests
+across instances based on the hash of the bloom blocks that are referenced.
