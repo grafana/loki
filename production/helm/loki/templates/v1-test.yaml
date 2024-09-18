@@ -1,0 +1,2 @@
+{{- $args := dict "ctx" . "component" "ingester" "memberlist" true -}}
+{{- $zonesMap := include "loki.componentSectionFromName" $args | fromYaml -}}

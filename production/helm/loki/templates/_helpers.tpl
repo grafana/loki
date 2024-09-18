@@ -47,6 +47,30 @@ Params:
 {{- end -}}
 
 {{/*
+loki.componentSectionFromName returns the sections from the user .Values in YAML
+that corresponds to the requested component. loki.componentSectionFromName takes two arguments
+  .ctx = the root context of the chart
+  .component = the name of the component. mimir.componentSectionFromName uses an internal mapping to know
+                which component lives where in the values.yaml
+Examples:
+  $componentSection := include "loki.componentSectionFromName" (dict "ctx" . "component" "ingester") | fromYaml
+  $componentSection.podLabels ...
+*/}}
+{{- define "loki.componentSectionFromName" -}}
+{{- $componentsMap := dict
+  "ingester" "ingester"
+-}}
+{{- $componentSection := index $componentsMap .component -}}
+{{- if not $componentSection -}}{{- printf "No component section mapping for %s not found in values; submit a bug report if you are a user, edit loki.componentSectionFromName if you are a contributor" .component | fail -}}{{- end -}}
+{{- $section := .ctx.Values -}}
+{{- range regex Split "\\." $componentSection -1 -}}
+  {{- $section = index $section . -}}
+  {{- if not $section -}}{{- printf "Component section %s not found in values; values: %s" . ($.ctx.Values | toJson | abbrev 100) | fail -}}{{- end -}}
+{{- end -}}
+{{- $section | toYaml -}}
+{{- end -}}
+
+{{/*
 Return if deployment mode is simple scalable
 */}}
 {{- define "loki.deployment.isScalable" -}}
