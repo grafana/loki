@@ -38,11 +38,12 @@ If you are a Grafana Cloud user, you can access Explore Logs in the Grafana Clou
 1. Click the **+ Add new data source** button.
 1. Search for, or choose Loki from the list.
 1. On the **Settings** tab, the **URL** field should be the address of your Loki server.
-For example,when running locally or with Docker using port mapping, the address is likely `http://localhost:3100`.
+For example, when running locally or with Docker using port mapping, the address is likely `http://localhost:3100`.
 When running with docker-compose or Kubernetes, the address is likely `http://loki:3100`.
 When running Grafana (with Docker) and trying to connect to a locally built Loki instance, the address (for the URL field) is:
    On Mac: `docker.for.mac.localhost`
    On Windows: `docker.for.win.localhost`
+1. If your Loki server has [multi-tenancy](https://grafana.com/docs/loki/latest/operations/multi-tenancy/) enabled, then you must provide your tenant ID in the `X-Scope-OrgID` header. Click the **+ Add header** button under **HTTP headers**, enter `X-Scope-OrgID` in the **Header** field, and your tenant ID in the **Value** field. Multi-tenancy is enabled by default when running Loki with Helm on Kubernetes.
 1. To view your logs, click **Explore** in the main menu.
 1. Select the Loki datasource in the top-left menu.
 1. You can click **Kick start your query** to select from a list of common queries, or use the **Label filters** to start choosing labels that you want to query. For more information about the Loki query language, refer to the [LogQL section](https://grafana.com/docs/loki/<LOKI_VERSION>/query/).
