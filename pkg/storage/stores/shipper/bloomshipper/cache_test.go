@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
 )
 
@@ -99,7 +100,7 @@ func Test_LoadBlocksDirIntoCache(t *testing.T) {
 
 	require.Equal(t, 1, len(c.entries))
 
-	key := validDir + ".tar.gz" // cache key must not contain directory prefix
+	key := validDir + v1.ExtTarGz // cache key must not contain directory prefix
 	elem, found := c.entries[key]
 	require.True(t, found)
 	blockDir := elem.Value.(*Entry).Value
