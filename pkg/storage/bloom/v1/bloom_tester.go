@@ -374,45 +374,31 @@ func (sm stringMatcherTest) Matches(bloom filter.Checker) bool {
 	// desyncing between how tokens are passed during building vs passed during
 	// querying.
 	//
-	// For a shared tokenizer to be ergonomic:
-	//
-	// 1. A prefix shouldn't be required until MatchesWithPrefixBuf is called
-	// 2. It should be possible to test for just the key
+	// For a shared tokenizer to be ergonomic, a prefix shouldn't be required
+	// until MatchesWithPrefixBuf is called.
 
 	var (
-		combined = fmt.Sprintf("%s=%s", sm.matcher.Key, sm.matcher.Value)
-
-		rawKey      = unsafe.Slice(unsafe.StringData(sm.matcher.Key), len(sm.matcher.Key))
+		combined    = fmt.Sprintf("%s=%s", sm.matcher.Key, sm.matcher.Value)
 		rawCombined = unsafe.Slice(unsafe.StringData(combined), len(combined))
 	)
 
-	if !bloom.Test(rawKey) {
-		// The structured metadata key wasn't indexed, so we can safely filter out
-		// this data. Given that Matches is only called when a bloom exists, and
-		// blooms can't have false negatives, we can be confident that neither the
-		// key nor the key-value pair was indexed.
-		return false
-	}
-
+	// We only need to test for the combined key-value pair. Since blooms are
+	// only created against a complete set of data, and blooms don't have false
+	// negatives, we can be confident that if the key-value pair wasn't indexed,
+	// the key also doesn't exist in the bloom.
 	return bloom.Test(rawCombined)
 }
 
 func (sm stringMatcherTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
 	var (
-		combined = fmt.Sprintf("%s=%s", sm.matcher.Key, sm.matcher.Value)
-
-		prefixedKey      = appendToBuf(buf, prefixLen, sm.matcher.Key)
+		combined         = fmt.Sprintf("%s=%s", sm.matcher.Key, sm.matcher.Value)
 		prefixedCombined = appendToBuf(buf, prefixLen, combined)
 	)
 
-	if !bloom.Test(prefixedKey) {
-		// The structured metadata key wasn't indexed, so we can safely filter out
-		// this data. Given that Matches is only called when a bloom exists, and
-		// blooms can't have false negatives, we can be confident that neither the
-		// key nor the key-value pair was indexed.
-		return false
-	}
-
+	// We only need to test for the combined key-value pair. Since blooms are
+	// only created against a complete set of data, and blooms don't have false
+	// negatives, we can be confident that if the key-value pair wasn't indexed,
+	// the key also doesn't exist in the bloom.
 	return bloom.Test(prefixedCombined)
 }
 
