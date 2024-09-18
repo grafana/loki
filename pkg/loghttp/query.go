@@ -506,7 +506,7 @@ func ParseRangeQuery(r *http.Request) (*RangeQuery, error) {
 	if GetVersion(r.URL.Path) == VersionLegacy {
 		result.Query, err = parseRegexQuery(r)
 		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 
 		expr, err := syntax.ParseExpr(result.Query)

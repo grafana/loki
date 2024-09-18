@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 
 	"github.com/grafana/loki/pkg/push"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
+	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -142,7 +144,7 @@ func (c *querierClientMock) Close() error {
 // newIngesterClientMockFactory creates a factory function always returning
 // the input querierClientMock
 func newIngesterClientMockFactory(c *querierClientMock) ring_client.PoolFactory {
-	return ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
+	return ring_client.PoolAddrFunc(func(_ string) (ring_client.PoolClient, error) {
 		return c, nil
 	})
 }
@@ -356,8 +358,8 @@ func (s *storeMock) LabelValuesForMetricName(ctx context.Context, userID string,
 	return args.Get(0).([]string), args.Error(1)
 }
 
-func (s *storeMock) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, _ ...*labels.Matcher) ([]string, error) {
-	args := s.Called(ctx, userID, from, through, metricName)
+func (s *storeMock) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, m ...*labels.Matcher) ([]string, error) {
+	args := s.Called(ctx, userID, from, through, metricName, m)
 	return args.Get(0).([]string), args.Error(1)
 }
 
@@ -575,30 +577,44 @@ func mockStreamWithLabels(from int, quantity int, labels string) logproto.Stream
 }
 
 func mockLogfmtStream(from int, quantity int) logproto.Stream {
-	return mockLogfmtStreamWithLabels(from, quantity, `{type="test"}`)
+	return mockLogfmtStreamWithLabels(from, quantity, `{type="test", name="foo"}`)
 }
 
-func mockLogfmtStreamWithLabels(_ int, quantity int, labels string) logproto.Stream {
+func mockLogfmtStreamWithLabels(_ int, quantity int, lbls string) logproto.Stream {
 	entries := make([]logproto.Entry, 0, quantity)
+	streamLabels, err := syntax.ParseLabels(lbls)
+	if err != nil {
+		streamLabels = labels.EmptyLabels()
+	}
+
+	lblBuilder := logql_log.NewBaseLabelsBuilder().ForLabels(streamLabels, streamLabels.Hash())
+	logFmtParser := logql_log.NewLogfmtParser(false, false)
 
 	// used for detected fields queries which are always BACKWARD
 	for i := quantity; i > 0; i-- {
-		entries = append(entries, logproto.Entry{
+		line := fmt.Sprintf(
+			`message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t name=bar`,
+			i,
+			i,
+			(i * 10),
+			(i * 256),
+			float32(i*10.0),
+			(i%2 == 0))
+
+		entry := logproto.Entry{
 			Timestamp: time.Unix(int64(i), 0),
-			Line: fmt.Sprintf(
-				`message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t`,
-				i,
-				i,
-				(i * 10),
-				(i * 256),
-				float32(i*10.0),
-				(i%2 == 0)),
-		})
+			Line:      line,
+		}
+		_, logfmtSuccess := logFmtParser.Process(0, []byte(line), lblBuilder)
+		if logfmtSuccess {
+			entry.Parsed = logproto.FromLabelsToLabelAdapters(lblBuilder.LabelsResult().Parsed())
+		}
+		entries = append(entries, entry)
 	}
 
 	return logproto.Stream{
 		Entries: entries,
-		Labels:  labels,
+		Labels:  lblBuilder.LabelsResult().String(),
 	}
 }
 
@@ -609,7 +625,7 @@ func mockLogfmtStreamWithStructuredMetadata(from int, quantity int) logproto.Str
 func mockLogfmtStreamWithLabelsAndStructuredMetadata(
 	from int,
 	quantity int,
-	labels string,
+	lbls string,
 ) logproto.Stream {
 	var entries []logproto.Entry
 	metadata := push.LabelsAdapter{
@@ -626,15 +642,29 @@ func mockLogfmtStreamWithLabelsAndStructuredMetadata(
 		})
 	}
 
+	streamLabels, err := syntax.ParseLabels(lbls)
+	if err != nil {
+		streamLabels = labels.EmptyLabels()
+	}
+
+	lblBuilder := logql_log.NewBaseLabelsBuilder().ForLabels(streamLabels, streamLabels.Hash())
+	logFmtParser := logql_log.NewLogfmtParser(false, false)
+
 	for i := quantity; i > 0; i-- {
-		entries = append(entries, logproto.Entry{
+		line := fmt.Sprintf(`message="line %d" count=%d fake=true`, i, i)
+		entry := logproto.Entry{
 			Timestamp:          time.Unix(int64(i), 0),
-			Line:               fmt.Sprintf(`message="line %d" count=%d fake=true`, i, i),
+			Line:               line,
 			StructuredMetadata: metadata,
-		})
+		}
+		_, logfmtSuccess := logFmtParser.Process(0, []byte(line), lblBuilder)
+		if logfmtSuccess {
+			entry.Parsed = logproto.FromLabelsToLabelAdapters(lblBuilder.LabelsResult().Parsed())
+		}
+		entries = append(entries, entry)
 	}
 	return logproto.Stream{
-		Labels:  labels,
+		Labels:  lbls,
 		Entries: entries,
 	}
 }

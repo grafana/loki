@@ -98,7 +98,7 @@ func (i *instance) Push(ctx context.Context, w *wal.Manager, req *logproto.PushR
 				s, err := i.createStream(ctx, reqStream)
 				return s, err
 			},
-			func(s *stream) error {
+			func(_ *stream) error {
 				return nil
 			},
 		)
@@ -185,7 +185,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 				"stream", pushReqStream.Labels,
 			)
 		}
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	if err != nil {

@@ -19,6 +19,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/dns"
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/kv/codec"
 	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/middleware"
@@ -37,7 +38,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner"
 	bloomprotos "github.com/grafana/loki/v3/pkg/bloombuild/protos"
-	"github.com/grafana/loki/v3/pkg/bloomcompactor"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
 	"github.com/grafana/loki/v3/pkg/compactor"
 	compactorclient "github.com/grafana/loki/v3/pkg/compactor/client"
@@ -47,12 +47,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
-	ingester_rf1 "github.com/grafana/loki/v3/pkg/ingester-rf1"
-	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore"
-	metastoreclient "github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/client"
-	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/health"
-	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/objstore"
+	ingesterkafka "github.com/grafana/loki/v3/pkg/kafka/ingester"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -108,8 +104,6 @@ const (
 	Querier                  string = "querier"
 	CacheGenerationLoader    string = "cache-generation-loader"
 	Ingester                 string = "ingester"
-	IngesterRF1              string = "ingester-rf1"
-	IngesterRF1RingClient    string = "ingester-rf1-ring-client"
 	PatternIngester          string = "pattern-ingester"
 	PatternIngesterTee       string = "pattern-ingester-tee"
 	PatternRingClient        string = "pattern-ring-client"
@@ -133,8 +127,6 @@ const (
 	IndexGatewayInterceptors string = "index-gateway-interceptors"
 	QueryScheduler           string = "query-scheduler"
 	QuerySchedulerRing       string = "query-scheduler-ring"
-	BloomCompactor           string = "bloom-compactor"
-	BloomCompactorRing       string = "bloom-compactor-ring"
 	BloomPlanner             string = "bloom-planner"
 	BloomBuilder             string = "bloom-builder"
 	BloomStore               string = "bloom-store"
@@ -144,15 +136,13 @@ const (
 	Backend                  string = "backend"
 	Analytics                string = "analytics"
 	InitCodec                string = "init-codec"
-	Metastore                string = "metastore"
-	MetastoreClient          string = "metastore-client"
+	PartitionRing            string = "partition-ring"
 )
 
 const (
-	schedulerRingKey      = "scheduler"
-	indexGatewayRingKey   = "index-gateway"
-	bloomGatewayRingKey   = "bloom-gateway"
-	bloomCompactorRingKey = "bloom-compactor"
+	schedulerRingKey    = "scheduler"
+	indexGatewayRingKey = "index-gateway"
+	bloomGatewayRingKey = "bloom-gateway"
 )
 
 func (t *Loki) initServer() (services.Service, error) {
@@ -174,8 +164,6 @@ func (t *Loki) initServer() (services.Service, error) {
 	}
 
 	t.Server = serv
-
-	t.health = health.NewGRPCHealthService()
 
 	servicesToWaitFor := func() []services.Service {
 		svs := []services.Service(nil)
@@ -294,7 +282,6 @@ func (t *Loki) initRuntimeConfig() (services.Service, error) {
 	// By doing the initialization here instead of per-module init function, we avoid the problem
 	// of projects based on Loki forgetting the wiring if they override module's init method (they also don't have access to private symbols).
 	t.Cfg.CompactorConfig.CompactorRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
-	t.Cfg.BloomCompactor.Ring.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Distributor.DistributorRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.IndexGateway.Ring.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
@@ -334,14 +321,6 @@ func (t *Loki) initTenantConfigs() (_ services.Service, err error) {
 }
 
 func (t *Loki) initDistributor() (services.Service, error) {
-	if t.Cfg.IngesterRF1.Enabled {
-		rf1Tee, err := ingester_rf1.NewTee(t.Cfg.IngesterRF1, t.IngesterRF1RingClient, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer, util_log.Logger)
-		if err != nil {
-			return nil, err
-		}
-		t.Tee = distributor.WrapTee(t.Tee, rf1Tee)
-	}
-
 	var err error
 	logger := log.With(util_log.Logger, "component", "distributor")
 	t.distributor, err = distributor.New(
@@ -606,6 +585,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 func (t *Loki) initIngester() (_ services.Service, err error) {
 	logger := log.With(util_log.Logger, "component", "ingester")
 	t.Cfg.Ingester.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
+	t.Cfg.Ingester.KafkaIngestion.KafkaConfig = t.Cfg.KafkaConfig
 
 	if t.Cfg.Ingester.ShutdownMarkerPath == "" && t.Cfg.Common.PathPrefix != "" {
 		t.Cfg.Ingester.ShutdownMarkerPath = t.Cfg.Common.PathPrefix
@@ -640,67 +620,6 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.ShutdownHandler)),
 	)
 	return t.Ingester, nil
-}
-
-func (t *Loki) initIngesterRF1() (_ services.Service, err error) {
-	if !t.Cfg.IngesterRF1.Enabled {
-		return nil, nil
-	}
-
-	logger := log.With(util_log.Logger, "component", "ingester-rf1")
-	t.Cfg.IngesterRF1.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
-
-	if t.Cfg.IngesterRF1.ShutdownMarkerPath == "" && t.Cfg.Common.PathPrefix != "" {
-		t.Cfg.IngesterRF1.ShutdownMarkerPath = t.Cfg.Common.PathPrefix
-	}
-	if t.Cfg.IngesterRF1.ShutdownMarkerPath == "" {
-		level.Warn(util_log.Logger).Log("msg", "The config setting shutdown marker path is not set. The /ingester/prepare_shutdown endpoint won't work")
-	}
-
-	t.IngesterRF1, err = ingester_rf1.New(t.Cfg.IngesterRF1, t.Cfg.IngesterRF1Client, t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.ClientMetrics, t.Overrides, t.tenantConfigs, t.MetastoreClient, prometheus.DefaultRegisterer, t.Cfg.Distributor.WriteFailuresLogging, t.Cfg.MetricsNamespace, logger, t.UsageTracker, t.ring)
-	if err != nil {
-		fmt.Println("Error initializing ingester rf1", err)
-		return
-	}
-
-	if t.Cfg.IngesterRF1.Wrapper != nil {
-		t.IngesterRF1 = t.Cfg.IngesterRF1.Wrapper.Wrap(t.IngesterRF1)
-	}
-
-	fmt.Println("registered GRPC")
-	logproto.RegisterPusherRF1Server(t.Server.GRPC, t.IngesterRF1)
-
-	t.Server.HTTP.Path("/ingester-rf1/ring").Methods("GET", "POST").Handler(t.IngesterRF1)
-
-	if t.Cfg.InternalServer.Enable {
-		t.InternalServer.HTTP.Path("/ingester-rf1/ring").Methods("GET", "POST").Handler(t.IngesterRF1)
-	}
-
-	httpMiddleware := middleware.Merge(
-		serverutil.RecoveryHTTPMiddleware,
-	)
-	t.Server.HTTP.Methods("GET", "POST").Path("/flush").Handler(
-		httpMiddleware.Wrap(http.HandlerFunc(t.IngesterRF1.FlushHandler)),
-	)
-	t.Server.HTTP.Methods("POST", "GET", "DELETE").Path("/ingester-rf1/prepare_shutdown").Handler(
-		httpMiddleware.Wrap(http.HandlerFunc(t.IngesterRF1.PrepareShutdown)),
-	)
-	t.Server.HTTP.Methods("POST", "GET").Path("/ingester-rf1/shutdown").Handler(
-		httpMiddleware.Wrap(http.HandlerFunc(t.IngesterRF1.ShutdownHandler)),
-	)
-	return t.IngesterRF1, nil
-}
-
-func (t *Loki) initIngesterRF1RingClient() (_ services.Service, err error) {
-	if !t.Cfg.IngesterRF1.Enabled {
-		return nil, nil
-	}
-	ringClient, err := ingester_rf1.NewRingClient(t.Cfg.IngesterRF1, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer, util_log.Logger)
-	if err != nil {
-		return nil, err
-	}
-	t.IngesterRF1RingClient = ringClient
-	return ringClient, nil
 }
 
 func (t *Loki) initPatternIngester() (_ services.Service, err error) {
@@ -953,7 +872,7 @@ func (t *Loki) updateConfigForShipperStore() {
 		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeWriteOnly
 		t.Cfg.StorageConfig.TSDBShipperConfig.IngesterDBRetainPeriod = shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.IndexCacheValidity, t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval)
 
-	case t.Cfg.isTarget(IngesterRF1), t.Cfg.isTarget(Querier), t.Cfg.isTarget(Ruler), t.Cfg.isTarget(Read), t.Cfg.isTarget(Backend), t.isModuleActive(IndexGateway), t.Cfg.isTarget(BloomCompactor), t.Cfg.isTarget(BloomPlanner), t.Cfg.isTarget(BloomBuilder):
+	case t.Cfg.isTarget(Querier), t.Cfg.isTarget(Ruler), t.Cfg.isTarget(Read), t.Cfg.isTarget(Backend), t.isModuleActive(IndexGateway), t.Cfg.isTarget(BloomPlanner), t.Cfg.isTarget(BloomBuilder):
 		// We do not want query to do any updates to index
 		t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
 		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
@@ -1122,7 +1041,7 @@ func (t *Loki) initCacheGenerationLoader() (_ services.Service, err error) {
 	}
 
 	t.cacheGenerationLoader = generationnumber.NewGenNumberLoader(client, prometheus.DefaultRegisterer)
-	return services.NewIdleService(nil, func(failureCase error) error {
+	return services.NewIdleService(nil, func(_ error) error {
 		t.cacheGenerationLoader.Stop()
 		return nil
 	}), nil
@@ -1438,6 +1357,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
 		analytics.JSONCodec,
+		ring.GetPartitionRingCodec(),
 	}
 
 	dnsProviderReg := prometheus.WrapRegistererWithPrefix(
@@ -1457,9 +1377,8 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	t.Cfg.BloomCompactor.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Pattern.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	t.Cfg.IngesterRF1.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.Ingester.KafkaIngestion.PartitionRingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
 
 	if t.Cfg.InternalServer.Enable {
@@ -1597,7 +1516,7 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		}
 		resolver := bloomgateway.NewBlockResolver(t.BloomStore, logger)
 		querierCfg := bloomgateway.QuerierConfig{
-			MinTableOffset: t.Cfg.BloomCompactor.MinTableOffset,
+			MinTableOffset: t.Cfg.BloomBuild.Planner.MinTableOffset,
 		}
 		bloomQuerier = bloomgateway.NewQuerier(bloomGatewayClient, querierCfg, t.Overrides, resolver, prometheus.DefaultRegisterer, logger)
 	}
@@ -1658,58 +1577,22 @@ func (t *Loki) initIndexGatewayInterceptors() (services.Service, error) {
 	return nil, nil
 }
 
-func (t *Loki) initBloomCompactor() (services.Service, error) {
-	if !t.Cfg.BloomCompactor.Enabled {
-		return nil, nil
-	}
-	logger := log.With(util_log.Logger, "component", "bloom-compactor")
-
-	return bloomcompactor.New(
-		t.Cfg.BloomCompactor,
-		t.Cfg.SchemaConfig,
-		t.Cfg.StorageConfig,
-		t.ClientMetrics,
-		t.Store,
-		t.bloomCompactorRingManager.Ring,
-		t.bloomCompactorRingManager.RingLifecycler,
-		t.Overrides,
-		t.BloomStore,
-		logger,
-		prometheus.DefaultRegisterer,
-	)
-}
-
-func (t *Loki) initBloomCompactorRing() (services.Service, error) {
-	if !t.Cfg.BloomCompactor.Enabled {
-		return nil, nil
-	}
-	t.Cfg.BloomCompactor.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
-
-	// is LegacyMode needed?
-	// legacyReadMode := t.Cfg.LegacyReadTarget && t.isModuleActive(Read)
-
-	rm, err := lokiring.NewRingManager(bloomCompactorRingKey, lokiring.ServerMode, t.Cfg.BloomCompactor.Ring, 1, t.Cfg.BloomCompactor.Ring.NumTokens, util_log.Logger, prometheus.DefaultRegisterer)
-	if err != nil {
-		return nil, gerrors.Wrap(err, "error initializing bloom-compactor ring manager")
-	}
-
-	t.bloomCompactorRingManager = rm
-
-	t.Server.HTTP.Path("/bloomcompactor/ring").Methods("GET", "POST").Handler(t.bloomCompactorRingManager)
-
-	if t.Cfg.InternalServer.Enable {
-		t.InternalServer.HTTP.Path("/bloomcompactor/ring").Methods("GET", "POST").Handler(t.bloomCompactorRingManager)
-	}
-
-	return t.bloomCompactorRingManager, nil
-}
-
 func (t *Loki) initBloomPlanner() (services.Service, error) {
 	if !t.Cfg.BloomBuild.Enabled {
 		return nil, nil
 	}
 
 	logger := log.With(util_log.Logger, "component", "bloom-planner")
+
+	var ringManager *lokiring.RingManager
+	if t.Cfg.isTarget(Backend) && t.indexGatewayRingManager != nil {
+		// Bloom planner and builder are part of the backend target in Simple Scalable Deployment mode.
+		// To avoid creating a new ring just for this special case, we can use the index gateway ring, which is already
+		// part of the backend target. The planner creates a watcher service that regularly checks which replica is
+		// the leader. Only the leader plans the tasks. Builders connect to the leader instance to pull tasks.
+		level.Info(logger).Log("msg", "initializing bloom planner in ring mode as part of backend target")
+		ringManager = t.indexGatewayRingManager
+	}
 
 	p, err := planner.New(
 		t.Cfg.BloomBuild.Planner,
@@ -1720,6 +1603,7 @@ func (t *Loki) initBloomPlanner() (services.Service, error) {
 		t.BloomStore,
 		logger,
 		prometheus.DefaultRegisterer,
+		ringManager,
 	)
 	if err != nil {
 		return nil, err
@@ -1736,6 +1620,16 @@ func (t *Loki) initBloomBuilder() (services.Service, error) {
 
 	logger := log.With(util_log.Logger, "component", "bloom-builder")
 
+	var ringManager *lokiring.RingManager
+	if t.Cfg.isTarget(Backend) && t.indexGatewayRingManager != nil {
+		// Bloom planner and builder are part of the backend target in Simple Scalable Deployment mode.
+		// To avoid creating a new ring just for this special case, we can use the index gateway ring, which is already
+		// part of the backend target. The planner creates a watcher service that regularly checks which replica is
+		// the leader. Only the leader plans the tasks. Builders connect to the leader instance to pull tasks.
+		level.Info(logger).Log("msg", "initializing bloom builder in ring mode as part of backend target")
+		ringManager = t.indexGatewayRingManager
+	}
+
 	return builder.New(
 		t.Cfg.BloomBuild.Builder,
 		t.Overrides,
@@ -1746,6 +1640,7 @@ func (t *Loki) initBloomBuilder() (services.Service, error) {
 		t.BloomStore,
 		logger,
 		prometheus.DefaultRegisterer,
+		ringManager,
 	)
 }
 
@@ -1851,33 +1746,24 @@ func (t *Loki) initAnalytics() (services.Service, error) {
 	return ur, nil
 }
 
-func (t *Loki) initMetastore() (services.Service, error) {
-	if !t.Cfg.IngesterRF1.Enabled {
+// The Ingest Partition Ring is responsible for watching the available ingesters and assigning partitions to incoming requests.
+func (t *Loki) initPartitionRing() (services.Service, error) {
+	if !t.Cfg.Ingester.KafkaIngestion.Enabled {
 		return nil, nil
 	}
-	if t.Cfg.isTarget(All) {
-		t.Cfg.MetastoreClient.MetastoreAddress = fmt.Sprintf("localhost:%d", t.Cfg.Server.GRPCListenPort)
-	}
-	m, err := metastore.New(t.Cfg.Metastore, log.With(util_log.Logger, "component", "metastore"), prometheus.DefaultRegisterer, t.health)
-	if err != nil {
-		return nil, err
-	}
-	// Service methods have tenant auth disabled in the fakeauth.SetupAuthMiddleware call since this is a shared service
-	metastorepb.RegisterMetastoreServiceServer(t.Server.GRPC, m)
 
-	return m, nil
-}
-
-func (t *Loki) initMetastoreClient() (services.Service, error) {
-	if !t.Cfg.IngesterRF1.Enabled && !t.Cfg.QuerierRF1.Enabled {
-		return nil, nil
-	}
-	mc, err := metastoreclient.New(t.Cfg.MetastoreClient, prometheus.DefaultRegisterer)
+	kvClient, err := kv.NewClient(t.Cfg.Ingester.KafkaIngestion.PartitionRingConfig.KVStore, ring.GetPartitionRingCodec(), kv.RegistererWithKVName(prometheus.DefaultRegisterer, ingesterkafka.PartitionRingName+"-watcher"), util_log.Logger)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating KV store for partitions ring watcher: %w", err)
 	}
-	t.MetastoreClient = mc
-	return mc.Service(), nil
+
+	t.partitionRingWatcher = ring.NewPartitionRingWatcher(ingester.PartitionRingName, ingester.PartitionRingName, kvClient, util_log.Logger, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
+	t.partitionRing = ring.NewPartitionInstanceRing(t.partitionRingWatcher, t.ring, t.Cfg.Ingester.LifecyclerConfig.RingConfig.HeartbeatTimeout)
+
+	// Expose a web page to view the partitions ring state.
+	t.Server.HTTP.Path("/partition-ring").Methods("GET", "POST").Handler(ring.NewPartitionRingPageHandler(t.partitionRingWatcher, ring.NewPartitionRingEditor(ingesterkafka.PartitionRingName+"-key", kvClient)))
+
+	return t.partitionRingWatcher, nil
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLimits) (deletion.DeleteRequestsClient, error) {

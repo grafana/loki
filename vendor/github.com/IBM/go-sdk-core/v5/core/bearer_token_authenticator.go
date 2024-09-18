@@ -61,16 +61,17 @@ func (BearerTokenAuthenticator) AuthenticationType() string {
 // The bearer token will be added to the request's headers in the form:
 //
 //	Authorization: Bearer <bearer-token>
-func (this *BearerTokenAuthenticator) Authenticate(request *http.Request) error {
-	request.Header.Set("Authorization", fmt.Sprintf(`Bearer %s`, this.BearerToken))
+func (authenticator *BearerTokenAuthenticator) Authenticate(request *http.Request) error {
+	request.Header.Set("Authorization", fmt.Sprintf(`Bearer %s`, authenticator.BearerToken))
+	GetLogger().Debug("Authenticated outbound request (type=%s)\n", authenticator.AuthenticationType())
 	return nil
 }
 
 // Validate the authenticator's configuration.
 //
 // Ensures the bearer token is not Nil.
-func (this BearerTokenAuthenticator) Validate() error {
-	if this.BearerToken == "" {
+func (authenticator BearerTokenAuthenticator) Validate() error {
+	if authenticator.BearerToken == "" {
 		err := fmt.Errorf(ERRORMSG_PROP_MISSING, "BearerToken")
 		return SDKErrorf(err, "", "no-token", getComponentInfo())
 	}

@@ -43,9 +43,9 @@ and querying the bloom filters that only pays off at large scale deployments.
 {{< /admonition >}}
 
 To start building and using blooms you need to:
-- Deploy the [Bloom Planner and Builder](#bloom-planner-and-builder) components and enable the component in the [Bloom Build config][bloom-build-cfg].
-- Deploy the [Bloom Gateway](#bloom-gateway) component (as a [microservice][microservices] or via the [SSD][ssd] Backend target) and enable the component in the [Bloom Gateway config][bloom-gateway-cfg].
-- Enable blooms filtering and compaction for each tenant individually, or for all of them by default.
+- Deploy the [Bloom Planner and Builder](#bloom-planner-and-builder) components (as [microservices][microservices] or via the [SSD][ssd] `backend` target) and enable the components in the [Bloom Build config][bloom-build-cfg].
+- Deploy the [Bloom Gateway](#bloom-gateway) component (as a [microservice][microservices] or via the [SSD][ssd] `backend` target) and enable the component in the [Bloom Gateway config][bloom-gateway-cfg].
+- Enable blooms building and filtering for each tenant individually, or for all of them by default.
 
 ```yaml
 # Configuration block for the bloom creation.
@@ -119,7 +119,7 @@ Builders process tasks sequentially by pulling them from the queue. The amount o
 all pending tasks before the next planning iteration depends on the value of `-bloom-build.planner.bloom_split_series_keyspace_by`,
 the amount of tenants, and the log volume of the streams.
 
-The maximum block size is configured per tenant via `-bloom-compactor.max-block-size`. 
+The maximum block size is configured per tenant via `-bloom-build.max-block-size`.
 The actual block size might exceed this limit given that we append streams blooms to the block until the 
 block is larger than the configured maximum size. Blocks are created in memory and as soon as they are written to the 
 object store they are freed. Chunks and TSDB files are downloaded from the object store to the file system. 

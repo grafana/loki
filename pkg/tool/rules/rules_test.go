@@ -176,7 +176,7 @@ func TestAggregateBy(t *testing.T) {
 					},
 				},
 			},
-			applyTo: func(group rwrulefmt.RuleGroup, rule rulefmt.RuleNode) bool {
+			applyTo: func(group rwrulefmt.RuleGroup, _ rulefmt.RuleNode) bool {
 				return group.Name != "CountSkipped"
 			},
 			expectedExpr: []string{`count by (namespace, cluster) (test_series) > 1`, `count by (namespace) (test_series) > 1`},

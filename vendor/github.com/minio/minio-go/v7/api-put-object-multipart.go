@@ -24,7 +24,6 @@ import (
 	"encoding/hex"
 	"encoding/xml"
 	"fmt"
-	"hash/crc32"
 	"io"
 	"net/http"
 	"net/url"
@@ -87,7 +86,7 @@ func (c *Client) putObjectMultipartNoStream(ctx context.Context, bucketName, obj
 		if opts.UserMetadata == nil {
 			opts.UserMetadata = make(map[string]string, 1)
 		}
-		opts.UserMetadata["X-Amz-Checksum-Algorithm"] = "CRC32C"
+		opts.UserMetadata["X-Amz-Checksum-Algorithm"] = opts.AutoChecksum.String()
 	}
 
 	// Initiate a new multipart upload.
@@ -116,7 +115,7 @@ func (c *Client) putObjectMultipartNoStream(ctx context.Context, bucketName, obj
 	// CRC32C is ~50% faster on AMD64 @ 30GB/s
 	var crcBytes []byte
 	customHeader := make(http.Header)
-	crc := crc32.New(crc32.MakeTable(crc32.Castagnoli))
+	crc := opts.AutoChecksum.Hasher()
 	for partNumber <= totalPartsCount {
 		length, rErr := readFull(reader, buf)
 		if rErr == io.EOF && partNumber > 1 {
@@ -154,7 +153,7 @@ func (c *Client) putObjectMultipartNoStream(ctx context.Context, bucketName, obj
 			crc.Reset()
 			crc.Write(buf[:length])
 			cSum := crc.Sum(nil)
-			customHeader.Set("x-amz-checksum-crc32c", base64.StdEncoding.EncodeToString(cSum))
+			customHeader.Set(opts.AutoChecksum.Key(), base64.StdEncoding.EncodeToString(cSum))
 			crcBytes = append(crcBytes, cSum...)
 		}
 
@@ -202,12 +201,13 @@ func (c *Client) putObjectMultipartNoStream(ctx context.Context, bucketName, obj
 	sort.Sort(completedParts(complMultipartUpload.Parts))
 	opts = PutObjectOptions{
 		ServerSideEncryption: opts.ServerSideEncryption,
+		AutoChecksum:         opts.AutoChecksum,
 	}
 	if len(crcBytes) > 0 {
 		// Add hash of hashes.
 		crc.Reset()
 		crc.Write(crcBytes)
-		opts.UserMetadata = map[string]string{"X-Amz-Checksum-Crc32c": base64.StdEncoding.EncodeToString(crc.Sum(nil))}
+		opts.UserMetadata = map[string]string{opts.AutoChecksum.Key(): base64.StdEncoding.EncodeToString(crc.Sum(nil))}
 	}
 	uploadInfo, err := c.completeMultipartUpload(ctx, bucketName, objectName, uploadID, complMultipartUpload, opts)
 	if err != nil {
