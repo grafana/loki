@@ -1,1 +1,1 @@
-{{- include "loki.componentSectionFromName" (dict "ctx" . "component" "ingester") | fromYaml -}}
+{{ include "loki.componentSectionFromName" (dict "ctx" . "component" "ingester") | fromYaml }}
