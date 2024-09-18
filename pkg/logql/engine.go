@@ -265,10 +265,10 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	statResult := statsCtx.Result(time.Since(start), queueTime, q.resultLength(data))
 	sp.LogKV(statResult.KVList()...)
 
-  status := http.StatusOK
-  if err != nil {
-	  status, _ = server.ClientHTTPStatusAndError(err)
-  }
+	status := http.StatusOK
+	if err != nil {
+		status, _ = server.ClientHTTPStatusAndError(err)
+	}
 
 	if q.record {
 		RecordRangeAndInstantQueryMetrics(ctx, q.logger, q.params, strconv.Itoa(status), statResult, data)
