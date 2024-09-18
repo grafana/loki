@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -14,8 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 type splitByShardLabel struct {
@@ -186,10 +188,65 @@ func (s splitByShardLabel) split(
 		reqs: make([]definitions.Request, 0),
 	}
 
-	factory := s.buildFactory(ctx, req, &shardedReqs)
-	util.ForInterval(interval, req.GetStart(), req.GetEnd(), endTimeInclusive, factory)
+	var (
+		splitsBeforeRebound []queryrangebase.Request
+		origStart           = req.GetStart().UTC()
+		origEnd             = req.GetEnd().UTC()
+		start, end          = origStart, origEnd
 
-	return shardedReqs.reqs, nil
+		reboundOrigQuery           bool
+		splitIntervalBeforeRebound time.Duration
+	)
+
+	switch req.(type) {
+	case *logproto.IndexStatsRequest, *logproto.VolumeRequest:
+		var (
+			recentMetadataQueryWindow        = validation.MaxDurationOrZeroPerTenant(tenantIDs, s.limits.RecentMetadataQueryWindow)
+			recentMetadataQuerySplitInterval = validation.MaxDurationOrZeroPerTenant(tenantIDs, s.limits.RecentMetadataQuerySplitDuration)
+		)
+
+		// if either of them are not configured, we fallback to the default split interval for the entire query length.
+		if recentMetadataQueryWindow == 0 || recentMetadataQuerySplitInterval == 0 {
+			break
+		}
+
+		start, end, reboundOrigQuery = recentMetadataQueryBounds(execTime, recentMetadataQueryWindow, req)
+		splitIntervalBeforeRebound = recentMetadataQuerySplitInterval
+	default:
+		if ingesterQueryInterval := validation.MaxDurationOrZeroPerTenant(tenantIDs, s.limits.IngesterQuerySplitDuration); ingesterQueryInterval != 0 {
+			start, end, reboundOrigQuery = ingesterQueryBounds(execTime, s.iqo, req)
+			splitIntervalBeforeRebound = ingesterQueryInterval
+		}
+	}
+
+	factory := s.buildFactory(ctx, req, &shardedReqs)
+	if reboundOrigQuery {
+		util.ForInterval(splitIntervalBeforeRebound, start, end, endTimeInclusive, factory)
+
+		// rebound after query portion within ingester query window or recent metadata query window has been split out
+		end = start
+		start = origStart
+		if endTimeInclusive {
+			end = end.Add(-util.SplitGap)
+		}
+
+		// query only overlaps ingester query window or recent metadata query window, nothing more to do
+		if start.After(end) || start.Equal(end) {
+			return shardedReqs.reqs, nil
+		}
+
+		// copy the splits, reset the results
+		splitsBeforeRebound = shardedReqs.reqs
+		shardedReqs.reqs = nil
+	} else {
+		start = origStart
+		end = origEnd
+	}
+
+	util.ForInterval(interval, start, end, endTimeInclusive, factory)
+
+	reqs := append(shardedReqs.reqs, splitsBeforeRebound...)
+	return reqs, nil
 }
 
 type shardedRequests struct {

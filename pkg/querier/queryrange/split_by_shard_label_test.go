@@ -7,12 +7,14 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/user"
+
 	"github.com/grafana/loki/v3/pkg/logproto"
 
 	// "github.com/grafana/loki/v3/pkg/querier/queryrange"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
 
 func Test_SplitByShardLabel(t *testing.T) {
