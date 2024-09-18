@@ -71,7 +71,7 @@ const (
 	shutdownMarkerFilename = "shutdown-requested.txt"
 
 	// PartitionRingKey is the key under which we store the partitions ring used by the "ingest storage".
-	PartitionRingKey  = "ingester-partitions"
+	PartitionRingKey  = "ingester-partitions-key"
 	PartitionRingName = "ingester-partitions"
 )
 
