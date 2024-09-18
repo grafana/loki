@@ -1875,9 +1875,6 @@ func (t *Loki) initMetastore() (services.Service, error) {
 	if !t.Cfg.IngesterRF1.Enabled && !t.Cfg.KafkaIngester.Enabled {
 		return nil, nil
 	}
-	if t.Cfg.isTarget(All) {
-		t.Cfg.MetastoreClient.MetastoreAddress = fmt.Sprintf("localhost:%d", t.Cfg.Server.GRPCListenPort)
-	}
 	m, err := metastore.New(t.Cfg.Metastore, log.With(util_log.Logger, "component", "metastore"), prometheus.DefaultRegisterer, t.health)
 	if err != nil {
 		return nil, err
@@ -1891,6 +1888,9 @@ func (t *Loki) initMetastore() (services.Service, error) {
 func (t *Loki) initMetastoreClient() (services.Service, error) {
 	if !t.Cfg.IngesterRF1.Enabled && !t.Cfg.QuerierRF1.Enabled && !t.Cfg.KafkaIngester.Enabled {
 		return nil, nil
+	}
+	if t.Cfg.isTarget(All) {
+		t.Cfg.MetastoreClient.MetastoreAddress = fmt.Sprintf("localhost:%d", t.Cfg.Server.GRPCListenPort)
 	}
 	mc, err := metastoreclient.New(t.Cfg.MetastoreClient, prometheus.DefaultRegisterer)
 	if err != nil {
