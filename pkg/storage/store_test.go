@@ -866,6 +866,10 @@ func (f fakeChunkFilterer) ShouldFilter(metric labels.Labels) bool {
 	return metric.Get("foo") == "bazz"
 }
 
+func (f fakeChunkFilterer) RequiredLabelNames() []string {
+	return []string{"foo"}
+}
+
 func Test_ChunkFilterer(t *testing.T) {
 	s := &LokiStore{
 		Store: storeFixture,
@@ -1249,7 +1253,8 @@ func Test_store_decodeReq_Matchers(t *testing.T) {
 				t.Errorf("store.GetSeries() error = %v", err)
 				return
 			}
-			require.Equal(t, tt.matchers, ms)
+
+			syntax.AssertMatchers(t, tt.matchers, ms)
 		})
 	}
 }

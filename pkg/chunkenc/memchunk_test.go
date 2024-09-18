@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"hash"
 	"math"
 	"math/rand"
 	"sort"
@@ -1538,7 +1539,7 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 		{
 			name:         "no matches - chunk without structured metadata",
 			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkThroughPlus1, false),
-			filterFunc: func(_ time.Time, in string, structuredMetadata ...labels.Label) bool {
+			filterFunc: func(_ time.Time, _ string, structuredMetadata ...labels.Label) bool {
 				return labels.Labels(structuredMetadata).Get(lblPing) == lblPong
 			},
 			nrMatching:    0,
@@ -1547,7 +1548,7 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 		{
 			name:         "structured metadata not matching",
 			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkThroughPlus1, true),
-			filterFunc: func(_ time.Time, in string, structuredMetadata ...labels.Label) bool {
+			filterFunc: func(_ time.Time, _ string, structuredMetadata ...labels.Label) bool {
 				return labels.Labels(structuredMetadata).Get("ding") == "dong"
 			},
 			nrMatching:    0,
@@ -1556,7 +1557,7 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 		{
 			name:         "some lines removed - with structured metadata",
 			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkFromPlus5, true),
-			filterFunc: func(_ time.Time, in string, structuredMetadata ...labels.Label) bool {
+			filterFunc: func(_ time.Time, _ string, structuredMetadata ...labels.Label) bool {
 				return labels.Labels(structuredMetadata).Get(lblPing) == lblPong
 			},
 			nrMatching:    5,
@@ -2039,6 +2040,122 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 							require.Equal(t, int64(expectedStructuredMetadataBytes), resultStats.Summary.TotalStructuredMetadataBytesProcessed)
 						}
 					})
+				})
+			}
+		})
+	}
+}
+
+func TestDecodeChunkIncorrectBlockOffset(t *testing.T) {
+	// use small block size to build multiple blocks in the test chunk
+	blockSize := 10
+
+	for _, format := range allPossibleFormats {
+		t.Run(fmt.Sprintf("chunkFormat:%v headBlockFmt:%v", format.chunkFormat, format.headBlockFmt), func(t *testing.T) {
+			for incorrectOffsetBlockNum := 0; incorrectOffsetBlockNum < 3; incorrectOffsetBlockNum++ {
+				t.Run(fmt.Sprintf("inorrect offset block: %d", incorrectOffsetBlockNum), func(t *testing.T) {
+					chk := NewMemChunk(format.chunkFormat, EncNone, format.headBlockFmt, blockSize, testTargetSize)
+					ts := time.Now().Unix()
+					for i := 0; i < 3; i++ {
+						dup, err := chk.Append(&logproto.Entry{
+							Timestamp: time.Now(),
+							Line:      fmt.Sprintf("%d-%d", ts, i),
+							StructuredMetadata: []logproto.LabelAdapter{
+								{Name: "foo", Value: fmt.Sprintf("%d-%d", ts, i)},
+							},
+						})
+						require.NoError(t, err)
+						require.False(t, dup)
+					}
+
+					require.Len(t, chk.blocks, 3)
+
+					b, err := chk.Bytes()
+					require.NoError(t, err)
+
+					metasOffset := binary.BigEndian.Uint64(b[len(b)-8:])
+
+					w := bytes.NewBuffer(nil)
+					eb := EncodeBufferPool.Get().(*encbuf)
+					defer EncodeBufferPool.Put(eb)
+
+					crc32Hash := crc32HashPool.Get().(hash.Hash32)
+					defer crc32HashPool.Put(crc32Hash)
+
+					crc32Hash.Reset()
+					eb.reset()
+
+					// BEGIN - code copied from writeTo func starting from encoding of block metas to change offset of a block
+					eb.putUvarint(len(chk.blocks))
+
+					for i, b := range chk.blocks {
+						eb.putUvarint(b.numEntries)
+						eb.putVarint64(b.mint)
+						eb.putVarint64(b.maxt)
+						// change offset of one block
+						blockOffset := b.offset
+						if i == incorrectOffsetBlockNum {
+							blockOffset += 5
+						}
+						eb.putUvarint(blockOffset)
+						if chk.format >= ChunkFormatV3 {
+							eb.putUvarint(b.uncompressedSize)
+						}
+						eb.putUvarint(len(b.b))
+					}
+					metasLen := len(eb.get())
+					eb.putHash(crc32Hash)
+
+					_, err = w.Write(eb.get())
+					require.NoError(t, err)
+
+					if chk.format >= ChunkFormatV4 {
+						// Write structured metadata offset and length
+						eb.reset()
+
+						eb.putBE64int(int(binary.BigEndian.Uint64(b[len(b)-32:])))
+						eb.putBE64int(int(binary.BigEndian.Uint64(b[len(b)-24:])))
+						_, err = w.Write(eb.get())
+						require.NoError(t, err)
+					}
+
+					// Write the metasOffset.
+					eb.reset()
+					if chk.format >= ChunkFormatV4 {
+						eb.putBE64int(metasLen)
+					}
+					eb.putBE64int(int(metasOffset))
+					_, err = w.Write(eb.get())
+					require.NoError(t, err)
+					// END - code copied from writeTo func
+
+					// build chunk using pre-block meta section + rewritten remainder of the chunk with incorrect offset for a block
+					chkWithIncorrectOffset := make([]byte, int(metasOffset)+w.Len())
+					copy(chkWithIncorrectOffset, b[:metasOffset])
+					copy(chkWithIncorrectOffset[metasOffset:], w.Bytes())
+
+					// decoding the problematic chunk should succeed
+					decodedChkWithIncorrectOffset, err := newByteChunk(chkWithIncorrectOffset, blockSize, testTargetSize, false)
+					require.NoError(t, err)
+
+					require.Len(t, decodedChkWithIncorrectOffset.blocks, len(chk.blocks))
+
+					// both chunks should have same log lines
+					origChunkItr, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+					require.NoError(t, err)
+
+					corruptChunkItr, err := decodedChkWithIncorrectOffset.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+					require.NoError(t, err)
+
+					numEntriesFound := 0
+					for origChunkItr.Next() {
+						numEntriesFound++
+						require.True(t, corruptChunkItr.Next())
+						require.Equal(t, origChunkItr.At(), corruptChunkItr.At())
+					}
+
+					require.False(t, corruptChunkItr.Next())
+					require.Equal(t, 3, numEntriesFound)
 				})
 			}
 		})

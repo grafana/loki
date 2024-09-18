@@ -10,7 +10,7 @@ import (
 )
 
 type SeriesIterator interface {
-	iter.Iterator[*SeriesWithOffset]
+	iter.Iterator[*SeriesWithMeta]
 	Reset()
 }
 
@@ -138,7 +138,7 @@ func (it *LazySeriesIter) next() bool {
 	return false
 }
 
-func (it *LazySeriesIter) At() *SeriesWithOffsets {
+func (it *LazySeriesIter) At() *SeriesWithMeta {
 	return it.curPage.At()
 }
 

@@ -27,6 +27,10 @@ func (p PrefixedObjectClient) GetObject(ctx context.Context, objectKey string) (
 	return p.downstreamClient.GetObject(ctx, p.prefix+objectKey)
 }
 
+func (p PrefixedObjectClient) GetObjectRange(ctx context.Context, objectKey string, offset, length int64) (io.ReadCloser, error) {
+	return p.downstreamClient.GetObjectRange(ctx, p.prefix+objectKey, offset, length)
+}
+
 func (p PrefixedObjectClient) List(ctx context.Context, prefix, delimiter string) ([]StorageObject, []StorageCommonPrefix, error) {
 	objects, commonPrefixes, err := p.downstreamClient.List(ctx, p.prefix+prefix, delimiter)
 	if err != nil {

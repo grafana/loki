@@ -1,6 +1,6 @@
 package core
 
-// (C) Copyright IBM Corp. 2019, 2021.
+// (C) Copyright IBM Corp. 2019, 2024.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import (
 // GetAuthenticatorFromEnvironment instantiates an Authenticator using service properties
 // retrieved from external config sources.
 func GetAuthenticatorFromEnvironment(credentialKey string) (authenticator Authenticator, err error) {
+	GetLogger().Debug("Get authenticator from environment, key=%s\n", credentialKey)
 	properties, err := getServiceProperties(credentialKey)
 	if len(properties) == 0 {
 		return
@@ -58,10 +59,21 @@ func GetAuthenticatorFromEnvironment(credentialKey string) (authenticator Authen
 		authenticator, err = newVpcInstanceAuthenticatorFromMap(properties)
 	} else if strings.EqualFold(authType, AUTHTYPE_CP4D) {
 		authenticator, err = newCloudPakForDataAuthenticatorFromMap(properties)
+	} else if strings.EqualFold(authType, AUTHTYPE_MCSP) {
+		authenticator, err = newMCSPAuthenticatorFromMap(properties)
 	} else if strings.EqualFold(authType, AUTHTYPE_NOAUTH) {
 		authenticator, err = NewNoAuthAuthenticator()
 	} else {
-		err = fmt.Errorf(ERRORMSG_AUTHTYPE_UNKNOWN, authType)
+		err = SDKErrorf(
+			nil,
+			fmt.Sprintf(ERRORMSG_AUTHTYPE_UNKNOWN, authType),
+			"unknown-auth-type",
+			getComponentInfo(),
+		)
+	}
+
+	if authenticator != nil {
+		GetLogger().Debug("Returning authenticator, type=%s\n", authenticator.AuthenticationType())
 	}
 
 	return

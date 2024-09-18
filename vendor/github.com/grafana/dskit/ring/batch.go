@@ -131,7 +131,7 @@ func DoBatchWithOptions(ctx context.Context, op Operation, r DoBatchRing, keys [
 		// Get call below takes ~1 microsecond for ~500 instances.
 		// Checking every 10K calls would be every 10ms.
 		if i%10e3 == 0 {
-			if err := ctx.Err(); err != nil {
+			if err := context.Cause(ctx); err != nil {
 				o.Cleanup()
 				return err
 			}
@@ -161,7 +161,7 @@ func DoBatchWithOptions(ctx context.Context, op Operation, r DoBatchRing, keys [
 	}
 
 	// One last check before calling the callbacks: it doesn't make sense if context is canceled.
-	if err := ctx.Err(); err != nil {
+	if err := context.Cause(ctx); err != nil {
 		o.Cleanup()
 		return err
 	}
@@ -196,7 +196,7 @@ func DoBatchWithOptions(ctx context.Context, op Operation, r DoBatchRing, keys [
 	case <-tracker.done:
 		return nil
 	case <-ctx.Done():
-		return ctx.Err()
+		return context.Cause(ctx)
 	}
 }
 

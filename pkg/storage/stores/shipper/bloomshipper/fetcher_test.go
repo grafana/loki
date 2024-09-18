@@ -181,7 +181,7 @@ func TestFetcher_DownloadQueue(t *testing.T) {
 				_, err := newDownloadQueue[bool, bool](
 					tc.size,
 					tc.workers,
-					func(ctx context.Context, r downloadRequest[bool, bool]) {},
+					func(_ context.Context, _ downloadRequest[bool, bool]) {},
 					log.NewNopLogger(),
 				)
 				require.ErrorContains(t, err, tc.err)
