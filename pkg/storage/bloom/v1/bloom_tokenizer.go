@@ -112,7 +112,7 @@ func (bt *BloomTokenizer) Populate(blooms v2iter.SizedIterator[*Bloom], chks v2i
 		// We noticed some blooms are empty on the resulting blocks.
 		// We have the feeling that the empty blooms may be reused from old blocks.
 		// Here we log an error if we find an empty bloom.
-		if bloom.Count() == 0 {
+		if bloom.IsEmpty() {
 			level.Warn(bt.logger).Log("msg", "found existing empty bloom")
 		}
 	} else {
@@ -149,7 +149,7 @@ func (bt *BloomTokenizer) Populate(blooms v2iter.SizedIterator[*Bloom], chks v2i
 	}
 
 	// TODO(salvacorts): Delete this once we solve the correctness bug
-	if bloom.Count() == 0 {
+	if bloom.IsEmpty() {
 		level.Warn(bt.logger).Log("msg", "resulting bloom is empty")
 	}
 
