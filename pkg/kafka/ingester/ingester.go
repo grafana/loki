@@ -51,8 +51,8 @@ type Config struct {
 
 // RegisterFlags registers the flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("kafka-ingester", f, util_log.Logger)
-	cfg.PartitionRingConfig.RegisterFlags(f)
+	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("kafka-ingester.", f, util_log.Logger)
+	cfg.PartitionRingConfig.RegisterFlagsWithPrefix("kafka-ingester.", f)
 	f.StringVar(&cfg.ShutdownMarkerPath, "kafka-ingester.shutdown-marker-path", "", "Path where the shutdown marker file is stored. If not set and common.path_prefix is set then common.path_prefix will be used.")
 	f.BoolVar(&cfg.Enabled, "kafka-ingester.enabled", false, "Whether the Kafka-based ingester path is enabled")
 	f.DurationVar(&cfg.FlushInterval, "kafka-ingester.flush-interval", defaultFlushInterval, "The interval at which the ingester will flush and commit offsets to Kafka. If not set, the default flush interval will be used.")
