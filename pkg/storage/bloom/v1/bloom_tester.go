@@ -387,13 +387,11 @@ func (sm stringMatcherTest) Matches(bloom filter.Checker) bool {
 	)
 
 	if !bloom.Test(rawKey) {
-		// The structured metadata key wasn't indexed. We pass the bloom test
-		// since we can only filter data out if the key was indexed but the value
-		// wasn't.
-		//
-		// TODO(rfratto): The negative test here is a bit confusing, and the key
-		// presence test should likely be done higher up.
-		return true
+		// The structured metadata key wasn't indexed, so we can safely filter out
+		// this data. Given that Matches is only called when a bloom exists, and
+		// blooms can't have false negatives, we can be confident that neither the
+		// key nor the key-value pair was indexed.
+		return false
 	}
 
 	return bloom.Test(rawCombined)
@@ -408,13 +406,11 @@ func (sm stringMatcherTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byt
 	)
 
 	if !bloom.Test(prefixedKey) {
-		// The structured metadata key wasn't indexed for a prefix. We pass the
-		// bloom test since we can only filter data out if the key was indexed but
-		// the value wasn't.
-		//
-		// TODO(rfratto): The negative test here is a bit confusing, and the key
-		// presence test should likely be done higher up.
-		return true
+		// The structured metadata key wasn't indexed, so we can safely filter out
+		// this data. Given that Matches is only called when a bloom exists, and
+		// blooms can't have false negatives, we can be confident that neither the
+		// key nor the key-value pair was indexed.
+		return false
 	}
 
 	return bloom.Test(prefixedCombined)

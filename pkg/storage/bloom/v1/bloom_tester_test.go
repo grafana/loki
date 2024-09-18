@@ -166,7 +166,7 @@ func TestLabelMatchersToBloomTest(t *testing.T) {
 		{
 			name:  "ignore non-indexed key",
 			query: `{app="fake"} | noexist="noexist"`,
-			match: true,
+			match: false,
 		},
 		{
 			name:  "ignore unsupported operator",
