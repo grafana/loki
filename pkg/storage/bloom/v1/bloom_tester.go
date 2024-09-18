@@ -387,12 +387,12 @@ func (sm stringMatcherTest) Matches(bloom filter.Checker) bool {
 	)
 
 	if !bloom.Test(rawKey) {
-		// The structured metadata key wasn't indexed. We pass the bloom test
-		// since we can only filter data out if the key was indexed but the value
-		// wasn't.
+		// The structured metadata key wasn't indexed. However, sm.matcher might be
+		// checking against a label which *does* exist, so we can't safely filter
+		// out this chunk.
 		//
 		// TODO(rfratto): The negative test here is a bit confusing, and the key
-		// presence test should likely be done higher up.
+		// presence test should likely be done higher up within FuseQuerier.
 		return true
 	}
 
@@ -408,12 +408,12 @@ func (sm stringMatcherTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byt
 	)
 
 	if !bloom.Test(prefixedKey) {
-		// The structured metadata key wasn't indexed for a prefix. We pass the
-		// bloom test since we can only filter data out if the key was indexed but
-		// the value wasn't.
+		// The structured metadata key wasn't indexed for a prefix. However,
+		// sm.matcher might be checking against a label which *does* exist, so we
+		// can't safely filter out this chunk.
 		//
 		// TODO(rfratto): The negative test here is a bit confusing, and the key
-		// presence test should likely be done higher up.
+		// presence test should likely be done higher up within FuseQuerier.
 		return true
 	}
 
