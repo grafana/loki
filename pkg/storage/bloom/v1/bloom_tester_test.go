@@ -169,6 +169,11 @@ func TestLabelMatchersToBloomTest(t *testing.T) {
 			match: true,
 		},
 		{
+			name:  "ignore non-indexed key with empty value",
+			query: `{app="fake"} | noexist=""`,
+			match: true,
+		},
+		{
 			name:  "ignore unsupported operator",
 			query: `{app="fake"} | trace_id=~".*noexist.*"`,
 			match: true,
