@@ -1,2 +1,1 @@
 {{- $componentSection := include "loki.componentSectionFromName" (dict "ctx" . "component" "ingester") | fromYaml -}}
-{
