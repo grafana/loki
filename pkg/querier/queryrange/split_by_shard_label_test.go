@@ -160,7 +160,7 @@ func Test_SplitByShardLabel(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			lims := limits{
-				Limits:        nil,
+				Limits:        fakeLimits{},
 				splitDuration: &tc.splitDuration,
 			}
 
@@ -228,7 +228,7 @@ func Test_SplitByShardLabel(t *testing.T) {
 		func(t *testing.T) {
 			splitDuration := 30 * time.Minute
 			lims := limits{
-				Limits:        nil,
+				Limits:        fakeLimits{},
 				splitDuration: &splitDuration,
 			}
 
