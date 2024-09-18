@@ -63,7 +63,7 @@ Examples:
 {{- $componentSection := index $componentsMap .component -}}
 {{- if not $componentSection -}}{{- printf "No component section mapping for %s not found in values; submit a bug report if you are a user, edit loki.componentSectionFromName if you are a contributor" .component | fail -}}{{- end -}}
 {{- $section := .ctx.Values -}}
-{{- range regex Split "\\." $componentSection -1 -}}
+{{- range regexSplit "\\." $componentSection -1 -}}
   {{- $section = index $section . -}}
   {{- if not $section -}}{{- printf "Component section %s not found in values; values: %s" . ($.ctx.Values | toJson | abbrev 100) | fail -}}{{- end -}}
 {{- end -}}
