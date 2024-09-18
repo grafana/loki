@@ -13,11 +13,9 @@ weight:  500
 You can define which log files you want to collect using the [`Tail`](https://docs.fluentbit.io/manual/pipeline/inputs/tail) or [`Stdin`](https://docs.fluentbit.io/manual/pipeline/inputs/standard-input) data pipeline input. Additionally, Fluent Bit supports multiple `Filter` and `Parser` plugins (`Kubernetes`, `JSON`, etc.) to structure and alter log lines.
 
 {{< admonition type="note" >}}
-We recommend using the official Fluent Bit Loki output plugin to send logs to Loki rather than the Grafana Fluent Bit Plugin. The official Fluent Bit Loki output plugin has native support for Loki, is more feature-rich, and is actively maintained. 
+There are two Fluent Bit plugins for Loki: the officially maintained plugin `loki` described in this document and the `grafana-loki` plugin. We recommend using the `loki` plugin as it's officially maintained by the Fluent Bit project. 
 
-For more information on the Fluent Bit Loki output plugin, see the [Fluent-bit Loki output plugin documentation](https://docs.fluentbit.io/manual/pipeline/outputs/loki).
-
-Below you will find several examples on how to configure Fluent Bit to send logs to Loki using the official Fluent Bit Loki output plugin.
+For more information, see the [Fluent Bit Loki output plugin documentation](https://docs.fluentbit.io/manual/pipeline/outputs/loki).  Note that the `grafana-loki` plugin is no longer actively maintained.
 {{< /admonition >}}
 
 ## Configuration
