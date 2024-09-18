@@ -336,9 +336,9 @@ func TestFetcher_LoadBlocksFromFS(t *testing.T) {
 		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x2000, 0x2fff)}},
 	}
 	dirs := []string{
-		strings.TrimSuffix(resolver.Block(refs[0]).LocalPath(), v1.ExtTarGz),
-		strings.TrimSuffix(resolver.Block(refs[1]).LocalPath(), v1.ExtTarGz),
-		strings.TrimSuffix(resolver.Block(refs[2]).LocalPath(), v1.ExtTarGz),
+		strings.TrimSuffix(resolver.Block(refs[0]).LocalPath(), v1.ExtTar),
+		strings.TrimSuffix(resolver.Block(refs[1]).LocalPath(), v1.ExtTar),
+		strings.TrimSuffix(resolver.Block(refs[2]).LocalPath(), v1.ExtTar),
 	}
 
 	createBlockDir(t, dirs[1])

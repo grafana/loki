@@ -227,10 +227,10 @@ func BlockFrom(tenant, table string, blk *v1.Block) (Block, error) {
 
 	// TODO(owen-d): pool
 	buf := bytes.NewBuffer(nil)
-	err := v1.TarGz(buf, blk.Reader())
+	err := v1.Tar(buf, blk.Reader())
 
 	if err != nil {
-		return Block{}, errors.Wrap(err, "archiving+compressing block")
+		return Block{}, err
 	}
 
 	reader := bytes.NewReader(buf.Bytes())
@@ -321,14 +321,14 @@ func (b *BloomClient) GetBlock(ctx context.Context, ref BlockRef) (BlockDirector
 	defer rc.Close()
 
 	path := b.fsResolver.Block(ref).LocalPath()
-	// the block directory should not contain the .tar.gz extension
-	path = strings.TrimSuffix(path, v1.ExtTarGz)
+	// the block directory should not contain the .tar extension
+	path = strings.TrimSuffix(path, v1.ExtTar)
 	err = util.EnsureDirectory(path)
 	if err != nil {
 		return BlockDirectory{}, fmt.Errorf("failed to create block directory %s: %w", path, err)
 	}
 
-	err = v1.UnTarGz(path, rc)
+	err = v1.UnTar(path, rc)
 	if err != nil {
 		return BlockDirectory{}, fmt.Errorf("failed to extract block file %s: %w", key, err)
 	}

@@ -18,7 +18,7 @@ const (
 	BlocksPrefix = "blocks"
 
 	metaExtension  = ".json"
-	blockExtension = v1.ExtTarGz
+	blockExtension = v1.ExtTar
 )
 
 // KeyResolver is an interface for resolving keys to locations.

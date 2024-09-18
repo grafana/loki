@@ -64,7 +64,7 @@ func Test_LoadBlocksDirIntoCache(t *testing.T) {
 	wd := t.TempDir()
 
 	// plain file
-	fp, _ := os.Create(filepath.Join(wd, "regular-file.tar.gz"))
+	fp, _ := os.Create(filepath.Join(wd, "regular-file.tar"))
 	fp.Close()
 
 	// invalid directory
@@ -100,7 +100,7 @@ func Test_LoadBlocksDirIntoCache(t *testing.T) {
 
 	require.Equal(t, 1, len(c.entries))
 
-	key := validDir + v1.ExtTarGz // cache key must not contain directory prefix
+	key := validDir + v1.ExtTar // cache key must not contain directory prefix
 	elem, found := c.entries[key]
 	require.True(t, found)
 	blockDir := elem.Value.(*Entry).Value

@@ -201,13 +201,13 @@ func putBlock(t *testing.T, c *BloomClient, tenant string, start model.Time, min
 	day := start.Unix() / step
 
 	tmpDir := t.TempDir()
-	fp, _ := os.CreateTemp(t.TempDir(), "*.tar.gz")
+	fp, _ := os.CreateTemp(t.TempDir(), "*.tar")
 
 	blockWriter := v1.NewDirectoryBlockWriter(tmpDir)
 	err := blockWriter.Init()
 	require.NoError(t, err)
 
-	err = v1.TarGz(fp, v1.NewDirectoryBlockReader(tmpDir))
+	err = v1.Tar(fp, v1.NewDirectoryBlockReader(tmpDir))
 	require.NoError(t, err)
 
 	_, _ = fp.Seek(0, 0)
@@ -277,13 +277,13 @@ func TestBloomClient_PutBlock(t *testing.T) {
 	start := parseTime("2024-02-05 12:00")
 
 	tmpDir := t.TempDir()
-	fp, _ := os.CreateTemp(t.TempDir(), "*.tar.gz")
+	fp, _ := os.CreateTemp(t.TempDir(), "*.tar")
 
 	blockWriter := v1.NewDirectoryBlockWriter(tmpDir)
 	err := blockWriter.Init()
 	require.NoError(t, err)
 
-	err = v1.TarGz(fp, v1.NewDirectoryBlockReader(tmpDir))
+	err = v1.Tar(fp, v1.NewDirectoryBlockReader(tmpDir))
 	require.NoError(t, err)
 
 	block := Block{

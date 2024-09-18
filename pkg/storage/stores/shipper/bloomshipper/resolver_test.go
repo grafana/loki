@@ -46,7 +46,7 @@ func TestResolver_ParseBlockKey(t *testing.T) {
 	// encode block ref as string
 	loc := r.Block(ref)
 	path := loc.LocalPath()
-	require.Equal(t, "bloom/table_1/tenant/blocks/0000000000000000-000000000000ffff/0-3600000-abcd.tar.gz", path)
+	require.Equal(t, "bloom/table_1/tenant/blocks/0000000000000000-000000000000ffff/0-3600000-abcd.tar", path)
 
 	// parse encoded string into block ref
 	parsed, err := r.ParseBlockKey(key(path))
@@ -87,7 +87,7 @@ func TestResolver_ShardedPrefixedResolver(t *testing.T) {
 		loc := r.Meta(metaRef)
 		require.Equal(t, "prefix/bloom/table_1/tenant/metas/0000000000000000-000000000000ffff-abcd.json", loc.LocalPath())
 		loc = r.Block(blockRef)
-		require.Equal(t, "prefix/bloom/table_1/tenant/blocks/0000000000000000-000000000000ffff/0-3600000-bcde.tar.gz", loc.LocalPath())
+		require.Equal(t, "prefix/bloom/table_1/tenant/blocks/0000000000000000-000000000000ffff/0-3600000-bcde.tar", loc.LocalPath())
 	})
 
 	t.Run("multiple prefixes", func(t *testing.T) {
@@ -96,6 +96,6 @@ func TestResolver_ShardedPrefixedResolver(t *testing.T) {
 		loc := r.Meta(metaRef)
 		require.Equal(t, "b/bloom/table_1/tenant/metas/0000000000000000-000000000000ffff-abcd.json", loc.LocalPath())
 		loc = r.Block(blockRef)
-		require.Equal(t, "d/bloom/table_1/tenant/blocks/0000000000000000-000000000000ffff/0-3600000-bcde.tar.gz", loc.LocalPath())
+		require.Equal(t, "d/bloom/table_1/tenant/blocks/0000000000000000-000000000000ffff/0-3600000-bcde.tar", loc.LocalPath())
 	})
 }

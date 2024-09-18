@@ -109,13 +109,13 @@ func createMetaInStorage(store *BloomStore, tenant string, start model.Time, min
 
 func createBlockInStorage(t *testing.T, store *BloomStore, tenant string, start model.Time, minFp, maxFp model.Fingerprint) (Block, error) {
 	tmpDir := t.TempDir()
-	fp, _ := os.CreateTemp(t.TempDir(), "*.tar.gz")
+	fp, _ := os.CreateTemp(t.TempDir(), "*.tar")
 
 	blockWriter := v1.NewDirectoryBlockWriter(tmpDir)
 	err := blockWriter.Init()
 	require.NoError(t, err)
 
-	err = v1.TarGz(fp, v1.NewDirectoryBlockReader(tmpDir))
+	err = v1.Tar(fp, v1.NewDirectoryBlockReader(tmpDir))
 	require.NoError(t, err)
 
 	_, _ = fp.Seek(0, 0)

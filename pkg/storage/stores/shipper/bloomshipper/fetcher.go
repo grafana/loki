@@ -408,9 +408,9 @@ func (f *Fetcher) loadBlocksFromFS(_ context.Context, refs []BlockRef) ([]BlockD
 
 	for _, ref := range refs {
 		path := f.localFSResolver.Block(ref).LocalPath()
-		// the block directory does not contain the .tar.gz extension
+		// the block directory does not contain the .tar extension
 		// since it is stripped when the archive is extracted into a folder
-		path = strings.TrimSuffix(path, v1.ExtTarGz)
+		path = strings.TrimSuffix(path, v1.ExtTar)
 		if ok, clean := f.isBlockDir(path); ok {
 			blockDirs = append(blockDirs, NewBlockDirectory(ref, path))
 		} else {
