@@ -32,7 +32,7 @@ spec:
       appProtocol: {{ .Values.ingester.appProtocol.grpc }}
       {{- end }}
   selector:
-    {{- include "loki.ingesterSelectorLabels" . | nindent 4 }}
+    {{- include "loki.selectorLabels" $args | nindent 4 }}
 
 ---
 {{ end }}
