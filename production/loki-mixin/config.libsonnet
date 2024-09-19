@@ -15,6 +15,11 @@
     // Enable dashboard and panels for Grafana Labs internal components.
     internal_components: false,
 
+    blooms: {
+      // Whether or not to include blooms specific dashboards
+      enabled: true,
+    },
+
     promtail: {
       // Whether or not to include promtail specific dashboards
       enabled: true,
