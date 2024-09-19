@@ -13,6 +13,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/pkg/errors"
+	"golang.org/x/exp/maps"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
@@ -271,9 +272,18 @@ func (t *table) Sync(ctx context.Context) error {
 	level.Debug(t.logger).Log("msg", fmt.Sprintf("syncing files for table %s", t.name))
 
 	t.indexSetsMtx.RLock()
-	defer t.indexSetsMtx.RUnlock()
+	users := maps.Keys(t.indexSets)
+	t.indexSetsMtx.RUnlock()
 
-	for userID, indexSet := range t.indexSets {
+	for _, userID := range users {
+		t.indexSetsMtx.RLock()
+		indexSet, ok := t.indexSets[userID]
+		t.indexSetsMtx.RUnlock()
+
+		if !ok {
+			continue
+		}
+
 		if err := indexSet.Sync(ctx); err != nil {
 			return errors.Wrap(err, fmt.Sprintf("failed to sync index set %s for table %s", userID, t.name))
 		}
