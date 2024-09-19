@@ -115,6 +115,7 @@ func (t *Tee) Duplicate(tenant string, streams []distributor.KeyedStream) {
 // Parameters:
 // - tenant: The tenant identifier
 // - streams: A slice of KeyedStream to be duplicated
+// - tracker: A tracker object that returns emits when all streams are ack'd or on first error.
 func (t *Tee) DuplicateWithTracking(tenant string, streams []distributor.KeyedStream, tracker *distributor.PushTracker) {
 	for idx := range streams {
 		go func(stream distributor.KeyedStream) {

@@ -41,7 +41,6 @@ var (
 // Config for an ingester.
 type Config struct {
 	Enabled             bool                  `yaml:"enabled" doc:"description=Whether the kafka ingester is enabled."`
-	RequireAcks         bool                  `yaml:"require_acks" doc:"description=Whether the distributor should wait for acks from this ingester before accepting writes."`
 	LifecyclerConfig    ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the ingester will operate and where it will register for discovery."`
 	ShutdownMarkerPath  string                `yaml:"shutdown_marker_path"`
 	FlushInterval       time.Duration         `yaml:"flush_interval" doc:"description=The interval at which the ingester will flush and commit offsets to Kafka. If not set, the default flush interval will be used."`
