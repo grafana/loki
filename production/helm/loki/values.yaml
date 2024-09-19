@@ -1792,7 +1792,7 @@ ingester:
 
     # -- Enable StatefulSetAutoDeletePVC feature
     # https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#persistentvolumeclaim-retention
-    enableRetentionPolicy: false
+    enableStatefulSetAutoDeletePVC: false
     whenDeleted: Retain
     whenScaled: Retain
 
