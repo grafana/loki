@@ -15,46 +15,50 @@ import (
 )
 
 func TestPool(t *testing.T) {
-	var wg sync.WaitGroup
 	for _, enc := range supportedEncoding {
 		enc := enc
-		for i := 0; i < 200; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				var (
-					buf   = bytes.NewBuffer(nil)
-					res   = make([]byte, 1024)
-					wpool = GetWriterPool(enc)
-					rpool = GetReaderPool(enc)
-				)
+		t.Run(enc.String(), func(t *testing.T) {
+			var wg sync.WaitGroup
 
-				w := wpool.GetWriter(buf)
-				defer wpool.PutWriter(w)
-				_, err := w.Write([]byte("test"))
-				require.NoError(t, err)
-				require.NoError(t, w.Close())
+			for i := 0; i < 200; i++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					var (
+						buf   = bytes.NewBuffer(nil)
+						res   = make([]byte, 1024)
+						wpool = GetWriterPool(enc)
+						rpool = GetReaderPool(enc)
+					)
 
-				require.True(t, buf.Len() != 0, enc)
-				r, err := rpool.GetReader(bytes.NewBuffer(buf.Bytes()))
-				require.NoError(t, err)
-				defer rpool.PutReader(r)
-				n, err := r.Read(res)
-				if err != nil {
-					require.Error(t, err, io.EOF)
-				}
-				require.Equal(t, 4, n, enc.String())
-				require.Equal(t, []byte("test"), res[:n], enc)
-			}()
-		}
-	}
+					w := wpool.GetWriter(buf)
+					defer wpool.PutWriter(w)
+					_, err := w.Write([]byte("test"))
+					require.NoError(t, err)
+					require.NoError(t, w.Close())
 
-	wg.Wait()
+					require.True(t, buf.Len() != 0, enc)
+					r, err := rpool.GetReader(bytes.NewBuffer(buf.Bytes()))
+					require.NoError(t, err)
+					defer rpool.PutReader(r)
+					n, err := r.Read(res)
+					if err != nil {
+						require.Error(t, err, io.EOF)
+					}
+					require.Equal(t, 4, n, enc.String())
+					require.Equal(t, []byte("test"), res[:n], enc)
+				}()
+			}
 
-	if !assert.Eventually(t, func() bool {
-		runtime.GC()
-		return runtime.NumGoroutine() <= 50
-	}, 5*time.Second, 10*time.Millisecond) {
-		_ = pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
+			wg.Wait()
+
+			if !assert.Eventually(t, func() bool {
+				runtime.GC()
+				return runtime.NumGoroutine() <= 50
+			}, 5*time.Second, 10*time.Millisecond) {
+				_ = pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
+			}
+
+		})
 	}
 }
