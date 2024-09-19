@@ -239,7 +239,7 @@ Common labels
 */}}
 {{- define "loki.labels" -}}
 helm.sh/chart: {{ include "loki.chart" . }}
-{{ include "loki.selectorLabelsTest" . }}
+{{ include "loki.selectorLabels" . }}
 {{- if or (.Chart.AppVersion) (.Values.loki.image.tag) }}
 app.kubernetes.io/version: {{ include "loki.validLabelValue" (.Values.loki.image.tag | default .Chart.AppVersion) | quote }}
 {{- end }}
@@ -261,25 +261,19 @@ Params:
   component = name of the component
   rolloutZoneName = rollout zone name (optional)
 */}}
-{{- define "loki.selectorLabelsTest" -}}
-{{- if .ctx.Values.enterprise.legacyLabels }}
-{{- if .component -}}
-app: {{ include "loki.name" .ctx }}-{{ .component }}
-{{- end }}
-release: {{ .ctx.Release.Name }}
-{{- else -}}
-app.kubernetes.io/name: {{ include "loki.name" .ctx }}
-app.kubernetes.io/instance: {{ .ctx.Release.Name }}
+
+app.kubernetes.io/name: {{ include "loki.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
 {{- if .component }}
-app.kubernetes.io/component: {{ .component }}
+app.kubernetes.io/component: {{ ctx.component }}
 {{- end }}
 {{- end -}}
-{{- if .rolloutZoneName }}
+{{- if ctx.rolloutZoneName }}
 {{-   if not .component }}
-{{-     printf "Component name cannot be empty if rolloutZoneName (%s) is set" .rolloutZoneName | fail }}
+{{-     printf "Component name cannot be empty if rolloutZoneName (%s) is set" ctx.rolloutZoneName | fail }}
 {{-   end }}
-rollout-group: {{ .component }}
-zone: {{ .rolloutZoneName }}
+rollout-group: {{ ctx.component }}
+zone: {{ ctx.rolloutZoneName }}
 {{- end }}
 {{- end -}}
 
