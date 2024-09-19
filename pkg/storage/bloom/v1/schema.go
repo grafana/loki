@@ -63,8 +63,8 @@ func (s Schema) Version() Version {
 
 // byte length
 func (s Schema) Len() int {
-	// magic number + version + encoding + ngram length + ngram skip
-	return 4 + 1 + 1 + 8 + 8
+	// magic number + version + encoding
+	return 4 + 1 + 1
 }
 
 func (s *Schema) DecompressorPool() compression.ReaderPool {
@@ -80,9 +80,6 @@ func (s *Schema) Encode(enc *encoding.Encbuf) {
 	enc.PutBE32(magicNumber)
 	enc.PutByte(byte(s.version))
 	enc.PutByte(byte(s.encoding))
-	// kept to keep compatibility
-	enc.PutBE64(0) // previously n-gram length
-	enc.PutBE64(0) // previously n-gram skip
 
 }
 
@@ -112,10 +109,6 @@ func (s *Schema) Decode(dec *encoding.Decbuf) error {
 	if _, err := compression.ParseEncoding(s.encoding.String()); err != nil {
 		return errors.Wrap(err, "parsing encoding")
 	}
-
-	// kept to keep compatibility
-	_ = dec.Be64() // previously n-gram length
-	_ = dec.Be64() // previously n-gram skip
 
 	return dec.Err()
 }
