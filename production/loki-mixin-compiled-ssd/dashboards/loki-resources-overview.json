@@ -314,12 +314,6 @@
                      },
                      "overrides": [ ]
                   },
-                  "gridPos": {
-                     "h": 7,
-                     "w": 6,
-                     "x": 0,
-                     "y": 9
-                  },
                   "id": 4,
                   "links": [ ],
                   "options": {
@@ -331,7 +325,7 @@
                         "sort": "none"
                      }
                   },
-                  "span": 1,
+                  "span": 3,
                   "targets": [
                      {
                         "expr": "sum by(pod) (loki_write_memory_streams{cluster=~\"$cluster\", job=~\"($namespace)/(loki.*|enterprise-logs)-write\"})",
@@ -409,12 +403,6 @@
                         }
                      ]
                   },
-                  "gridPos": {
-                     "h": 7,
-                     "w": 8,
-                     "x": 0,
-                     "y": 9
-                  },
                   "id": 5,
                   "links": [ ],
                   "options": {
@@ -426,7 +414,7 @@
                         "sort": "none"
                      }
                   },
-                  "span": 1,
+                  "span": 3,
                   "targets": [
                      {
                         "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"loki\", pod=~\"(loki.*|enterprise-logs)-write.*\"}[$__rate_interval]))",
@@ -516,12 +504,6 @@
                         }
                      ]
                   },
-                  "gridPos": {
-                     "h": 7,
-                     "w": 8,
-                     "x": 8,
-                     "y": 9
-                  },
                   "id": 6,
                   "links": [ ],
                   "options": {
@@ -533,7 +515,7 @@
                         "sort": "none"
                      }
                   },
-                  "span": 1,
+                  "span": 3,
                   "targets": [
                      {
                         "expr": "max by(pod) (container_memory_working_set_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"loki\", pod=~\"(loki.*|enterprise-logs)-write.*\"})",
@@ -584,12 +566,6 @@
                      },
                      "overrides": [ ]
                   },
-                  "gridPos": {
-                     "h": 7,
-                     "w": 6,
-                     "x": 18,
-                     "y": 9
-                  },
                   "id": 7,
                   "links": [ ],
                   "options": {
@@ -601,7 +577,7 @@
                         "sort": "none"
                      }
                   },
-                  "span": 1,
+                  "span": 3,
                   "targets": [
                      {
                         "expr": "sum by(pod) (go_memstats_heap_inuse_bytes{cluster=~\"$cluster\", job=~\"($namespace)/(loki.*|enterprise-logs)-write\"})",
@@ -615,7 +591,19 @@
                      "sort": 2
                   },
                   "type": "timeseries"
-               },
+               }
+            ],
+            "repeat": null,
+            "repeatIteration": null,
+            "repeatRowId": null,
+            "showTitle": true,
+            "title": "Write path",
+            "titleSize": "h6"
+         },
+         {
+            "collapse": false,
+            "height": "250px",
+            "panels": [
                {
                   "datasource": "$datasource",
                   "fieldConfig": {
@@ -640,12 +628,6 @@
                      },
                      "overrides": [ ]
                   },
-                  "gridPos": {
-                     "h": 7,
-                     "w": 8,
-                     "x": 0,
-                     "y": 16
-                  },
                   "id": 8,
                   "links": [ ],
                   "options": {
@@ -657,7 +639,7 @@
                         "sort": "none"
                      }
                   },
-                  "span": 1,
+                  "span": 4,
                   "targets": [
                      {
                         "expr": "sum by(instance, pod, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + ignoring(pod) group_right() (label_replace(count by(instance, pod, device) (container_fs_writes_bytes_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"loki\", pod=~\"(loki.*|enterprise-logs)-write.*\", device!~\".*sda.*\"}), \"device\", \"$1\", \"device\", \"/dev/(.*)\") * 0)\n",
@@ -693,12 +675,6 @@
                      },
                      "overrides": [ ]
                   },
-                  "gridPos": {
-                     "h": 7,
-                     "w": 8,
-                     "x": 8,
-                     "y": 16
-                  },
                   "id": 9,
                   "links": [ ],
                   "options": {
@@ -710,7 +686,7 @@
                         "sort": "none"
                      }
                   },
-                  "span": 1,
+                  "span": 4,
                   "targets": [
                      {
                         "expr": "sum by(instance, pod, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + ignoring(pod) group_right() (label_replace(count by(instance, pod, device) (container_fs_writes_bytes_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"loki\", pod=~\"(loki.*|enterprise-logs)-write.*\", device!~\".*sda.*\"}), \"device\", \"$1\", \"device\", \"/dev/(.*)\") * 0)\n",
@@ -746,12 +722,6 @@
                      },
                      "overrides": [ ]
                   },
-                  "gridPos": {
-                     "h": 7,
-                     "w": 8,
-                     "x": 16,
-                     "y": 16
-                  },
                   "id": 10,
                   "links": [ ],
                   "options": {
@@ -763,7 +733,7 @@
                         "sort": "none"
                      }
                   },
-                  "span": 1,
+                  "span": 4,
                   "targets": [
                      {
                         "expr": "max by(persistentvolumeclaim) (kubelet_volume_stats_used_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", persistentvolumeclaim=~\".*(loki.*|enterprise-logs)-write.*\"} / kubelet_volume_stats_capacity_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", persistentvolumeclaim=~\".*(loki.*|enterprise-logs)-write.*\"})",
@@ -780,7 +750,7 @@
             "repeatIteration": null,
             "repeatRowId": null,
             "showTitle": true,
-            "title": "Write path",
+            "title": "",
             "titleSize": "h6"
          },
          {
@@ -850,12 +820,6 @@
                         }
                      ]
                   },
-                  "gridPos": {
-                     "h": 7,
-                     "w": 8,
-                     "x": 0,
-                     "y": 24
-                  },
                   "id": 11,
                   "links": [ ],
                   "options": {
@@ -867,7 +831,7 @@
                         "sort": "none"
                      }
                   },
-                  "span": 2,
+                  "span": 4,
                   "targets": [
                      {
                         "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"loki\", pod=~\"(loki.*|enterprise-logs)-backend.*\"}[$__rate_interval]))",
@@ -957,12 +921,6 @@
                         }
                      ]
                   },
-                  "gridPos": {
-                     "h": 7,
-                     "w": 8,
-                     "x": 8,
-                     "y": 24
-                  },
                   "id": 12,
                   "links": [ ],
                   "options": {
@@ -974,7 +932,7 @@
                         "sort": "none"
                      }
                   },
-                  "span": 2,
+                  "span": 4,
                   "targets": [
                      {
                         "expr": "max by(pod) (container_memory_working_set_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"loki\", pod=~\"(loki.*|enterprise-logs)-backend.*\"})",
@@ -1025,12 +983,6 @@
                      },
                      "overrides": [ ]
                   },
-                  "gridPos": {
-                     "h": 7,
-                     "w": 8,
-                     "x": 16,
-                     "y": 24
-                  },
                   "id": 13,
                   "links": [ ],
                   "options": {
@@ -1042,7 +994,7 @@
                         "sort": "none"
                      }
                   },
-                  "span": 2,
+                  "span": 4,
                   "targets": [
                      {
                         "expr": "sum by(pod) (go_memstats_heap_inuse_bytes{cluster=~\"$cluster\", job=~\"($namespace)/(loki.*|enterprise-logs)-backend\"})",
@@ -1056,7 +1008,19 @@
                      "sort": 2
                   },
                   "type": "timeseries"
-               },
+               }
+            ],
+            "repeat": null,
+            "repeatIteration": null,
+            "repeatRowId": null,
+            "showTitle": true,
+            "title": "Backend path",
+            "titleSize": "h6"
+         },
+         {
+            "collapse": false,
+            "height": "250px",
+            "panels": [
                {
                   "datasource": "$datasource",
                   "fieldConfig": {
@@ -1081,12 +1045,6 @@
                      },
                      "overrides": [ ]
                   },
-                  "gridPos": {
-                     "h": 7,
-                     "w": 8,
-                     "x": 0,
-                     "y": 31
-                  },
                   "id": 14,
                   "links": [ ],
                   "options": {
@@ -1098,7 +1056,7 @@
                         "sort": "none"
                      }
                   },
-                  "span": 2,
+                  "span": 4,
                   "targets": [
                      {
                         "expr": "sum by(instance, pod, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + ignoring(pod) group_right() (label_replace(count by(instance, pod, device) (container_fs_writes_bytes_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"loki\", pod=~\"(loki.*|enterprise-logs)-backend.*\", device!~\".*sda.*\"}), \"device\", \"$1\", \"device\", \"/dev/(.*)\") * 0)\n",
@@ -1134,12 +1092,6 @@
                      },
                      "overrides": [ ]
                   },
-                  "gridPos": {
-                     "h": 7,
-                     "w": 8,
-                     "x": 8,
-                     "y": 31
-                  },
                   "id": 15,
                   "links": [ ],
                   "options": {
@@ -1151,7 +1103,7 @@
                         "sort": "none"
                      }
                   },
-                  "span": 2,
+                  "span": 4,
                   "targets": [
                      {
                         "expr": "sum by(instance, pod, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + ignoring(pod) group_right() (label_replace(count by(instance, pod, device) (container_fs_writes_bytes_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"loki\", pod=~\"(loki.*|enterprise-logs)-backend.*\", device!~\".*sda.*\"}), \"device\", \"$1\", \"device\", \"/dev/(.*)\") * 0)\n",
@@ -1187,12 +1139,6 @@
                      },
                      "overrides": [ ]
                   },
-                  "gridPos": {
-                     "h": 7,
-                     "w": 8,
-                     "x": 16,
-                     "y": 31
-                  },
                   "id": 16,
                   "links": [ ],
                   "options": {
@@ -1204,7 +1150,7 @@
                         "sort": "none"
                      }
                   },
-                  "span": 2,
+                  "span": 4,
                   "targets": [
                      {
                         "expr": "max by(persistentvolumeclaim) (kubelet_volume_stats_used_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", persistentvolumeclaim=~\".*(loki.*|enterprise-logs)-backend.*\"} / kubelet_volume_stats_capacity_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", persistentvolumeclaim=~\".*(loki.*|enterprise-logs)-backend.*\"})",
@@ -1221,7 +1167,7 @@
             "repeatIteration": null,
             "repeatRowId": null,
             "showTitle": true,
-            "title": "Backend path",
+            "title": "",
             "titleSize": "h6"
          }
       ],

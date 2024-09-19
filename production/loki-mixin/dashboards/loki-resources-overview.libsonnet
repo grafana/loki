@@ -41,62 +41,27 @@
           ) +
           {
             tooltip: { sort: 2 },  // Sort descending.
-            gridPos: {
-              h: 7,
-              w: 6,
-              x: 0,
-              y: 9,
-            },
           }
         )
         .addPanel(
-          $.CPUUsagePanel('CPU', write_pod_matcher) +
-          {
-            gridPos: {
-              h: 7,
-              w: 8,
-              x: 0,
-              y: 9,
-            },
-          }
+          $.CPUUsagePanel('CPU', write_pod_matcher),
         )
         .addPanel(
-          $.memoryWorkingSetPanel('Memory (workingset)', write_pod_matcher) +
-          {
-            gridPos: {
-              h: 7,
-              w: 8,
-              x: 8,
-              y: 9,
-            },
-          }
+          $.memoryWorkingSetPanel('Memory (workingset)', write_pod_matcher),
         )
         .addPanel(
-          $.goHeapInUsePanel('Memory (go heap inuse)', write_job_matcher) +
-          {
-            gridPos: {
-              h: 7,
-              w: 6,
-              x: 18,
-              y: 9,
-            },
-          }
+          $.goHeapInUsePanel('Memory (go heap inuse)', write_job_matcher),
         )
+      )
+      .addRow(
+        $.row('')
         .addPanel(
           $.newQueryPanel('Disk Writes', 'Bps') +
           $.queryPanel(
             'sum by(%s, %s, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $._config.per_instance_label, $.filterNodeDisk(write_pod_matcher)],
             '{{%s}} - {{device}}' % $._config.per_instance_label
           ) +
-          $.withStacking +
-          {
-            gridPos: {
-              h: 7,
-              w: 8,
-              x: 0,
-              y: 16,
-            },
-          }
+          $.withStacking,
         )
         .addPanel(
           $.newQueryPanel('Disk Reads', 'Bps') +
@@ -104,78 +69,33 @@
             'sum by(%s, %s, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $._config.per_instance_label, $.filterNodeDisk(write_pod_matcher)],
             '{{%s}} - {{device}}' % $._config.per_instance_label
           ) +
-          $.withStacking +
-          {
-            gridPos: {
-              h: 7,
-              w: 8,
-              x: 8,
-              y: 16,
-            },
-          }
+          $.withStacking,
         )
         .addPanel(
-          $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', write_job_matcher) +
-          {
-            gridPos: {
-              h: 7,
-              w: 8,
-              x: 16,
-              y: 16,
-            },
-          }
+          $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', write_job_matcher),
         )
       )
       .addRow(
         $.row('Backend path')
         .addPanel(
-          $.CPUUsagePanel('CPU', backend_pod_matcher) +
-          {
-            gridPos: {
-              h: 7,
-              w: 8,
-              x: 0,
-              y: 24,
-            },
-          }
+          $.CPUUsagePanel('CPU', backend_pod_matcher),
         )
         .addPanel(
-          $.memoryWorkingSetPanel('Memory (workingset)', backend_pod_matcher) +
-          {
-            gridPos: {
-              h: 7,
-              w: 8,
-              x: 8,
-              y: 24,
-            },
-          }
+          $.memoryWorkingSetPanel('Memory (workingset)', backend_pod_matcher),
         )
         .addPanel(
-          $.goHeapInUsePanel('Memory (go heap inuse)', backend_job_matcher) +
-          {
-            gridPos: {
-              h: 7,
-              w: 8,
-              x: 16,
-              y: 24,
-            },
-          }
+          $.goHeapInUsePanel('Memory (go heap inuse)', backend_job_matcher),
         )
+      )
+      .addRow(
+        $.row('')
         .addPanel(
           $.newQueryPanel('Disk Writes', 'Bps') +
           $.queryPanel(
             'sum by(%s, %s, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $._config.per_instance_label, $.filterNodeDisk(backend_pod_matcher)],
             '{{%s}} - {{device}}' % $._config.per_instance_label
           ) +
-          $.withStacking +
-          {
-            gridPos: {
-              h: 7,
-              w: 8,
-              x: 0,
-              y: 31,
-            },
-          }
+          $.withStacking,
         )
         .addPanel(
           $.newQueryPanel('Disk Reads', 'Bps') +
@@ -183,26 +103,10 @@
             'sum by(%s, %s, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $._config.per_instance_label, $.filterNodeDisk(backend_pod_matcher)],
             '{{%s}} - {{device}}' % $._config.per_instance_label
           ) +
-          $.withStacking +
-          {
-            gridPos: {
-              h: 7,
-              w: 8,
-              x: 8,
-              y: 31,
-            },
-          }
+          $.withStacking,
         )
         .addPanel(
-          $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', backend_job_matcher) +
-          {
-            gridPos: {
-              h: 7,
-              w: 8,
-              x: 16,
-              y: 31,
-            },
-          }
+          $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', backend_job_matcher),
         )
       ),
   },
