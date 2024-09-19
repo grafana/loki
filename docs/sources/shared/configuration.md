@@ -3713,20 +3713,6 @@ shard_streams:
 # CLI flag: -bloom-build.split-keyspace-by
 [bloom_split_series_keyspace_by: <int> | default = 256]
 
-# Experimental. Length of the n-grams created when computing blooms from log
-# lines.
-# CLI flag: -bloom-build.ngram-length
-[bloom_ngram_length: <int> | default = 4]
-
-# Experimental. Skip factor for the n-grams created when computing blooms from
-# log lines.
-# CLI flag: -bloom-build.ngram-skip
-[bloom_ngram_skip: <int> | default = 1]
-
-# Experimental. Scalable Bloom Filter desired false-positive rate.
-# CLI flag: -bloom-build.false-positive-rate
-[bloom_false_positive_rate: <float> | default = 0.01]
-
 # Experimental. Compression algorithm for bloom block pages.
 # CLI flag: -bloom-build.block-encoding
 [bloom_block_encoding: <string> | default = "none"]
