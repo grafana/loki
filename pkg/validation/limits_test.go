@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logql"
 )
@@ -339,7 +339,7 @@ func TestLimitsValidation(t *testing.T) {
 		},
 		{
 			limits:   Limits{DeletionMode: "disabled", BloomBlockEncoding: "unknown"},
-			expected: fmt.Errorf("invalid encoding: unknown, supported: %s", chunkenc.SupportedEncoding()),
+			expected: fmt.Errorf("invalid encoding: unknown, supported: %s", compression.SupportedEncoding()),
 		},
 	} {
 		desc := fmt.Sprintf("%s/%s", tc.limits.DeletionMode, tc.limits.BloomBlockEncoding)

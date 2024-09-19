@@ -41,7 +41,7 @@
           ) +
           {
             tooltip: { sort: 2 },  // Sort descending.
-          },
+          }
         )
         .addPanel(
           $.CPUUsagePanel('CPU', write_pod_matcher),
@@ -52,6 +52,9 @@
         .addPanel(
           $.goHeapInUsePanel('Memory (go heap inuse)', write_job_matcher),
         )
+      )
+      .addRow(
+        $.row('')
         .addPanel(
           $.newQueryPanel('Disk Writes', 'Bps') +
           $.queryPanel(
@@ -83,6 +86,9 @@
         .addPanel(
           $.goHeapInUsePanel('Memory (go heap inuse)', backend_job_matcher),
         )
+      )
+      .addRow(
+        $.row('')
         .addPanel(
           $.newQueryPanel('Disk Writes', 'Bps') +
           $.queryPanel(

@@ -12,12 +12,14 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/kv"
-	"github.com/grafana/dskit/ring"
-	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/ring"
+	"github.com/grafana/dskit/services"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
@@ -77,6 +79,7 @@ type Config struct {
 	RetentionDeleteDelay        time.Duration       `yaml:"retention_delete_delay"`
 	RetentionDeleteWorkCount    int                 `yaml:"retention_delete_worker_count"`
 	RetentionTableTimeout       time.Duration       `yaml:"retention_table_timeout"`
+	RetentionBackoffConfig      backoff.Config      `yaml:"retention_backoff_config"`
 	DeleteRequestStore          string              `yaml:"delete_request_store"`
 	DeleteRequestStoreKeyPrefix string              `yaml:"delete_request_store_key_prefix"`
 	DeleteBatchSize             int                 `yaml:"delete_batch_size"`
@@ -110,6 +113,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.TablesToCompact, "compactor.tables-to-compact", 0, "Number of tables that compactor will try to compact. Newer tables are chosen when this is less than the number of tables available.")
 	f.IntVar(&cfg.SkipLatestNTables, "compactor.skip-latest-n-tables", 0, "Do not compact N latest tables. Together with -compactor.run-once and -compactor.tables-to-compact, this is useful when clearing compactor backlogs.")
 
+	cfg.RetentionBackoffConfig.RegisterFlagsWithPrefix("compactor.retention-backoff-config", f)
 	// Ring
 	skipFlags := []string{
 		"compactor.ring.num-tokens",
@@ -323,7 +327,7 @@ func (c *Compactor) init(objectStoreClients map[config.DayTime]client.ObjectClie
 			}
 			chunkClient := client.NewClient(objectClient, encoder, schemaConfig)
 
-			sc.sweeper, err = retention.NewSweeper(retentionWorkDir, chunkClient, c.cfg.RetentionDeleteWorkCount, c.cfg.RetentionDeleteDelay, r)
+			sc.sweeper, err = retention.NewSweeper(retentionWorkDir, chunkClient, c.cfg.RetentionDeleteWorkCount, c.cfg.RetentionDeleteDelay, c.cfg.RetentionBackoffConfig, r)
 			if err != nil {
 				return fmt.Errorf("failed to init sweeper: %w", err)
 			}

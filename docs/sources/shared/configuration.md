@@ -1900,6 +1900,19 @@ The `compactor` block configures the compactor component, which compacts index s
 # CLI flag: -compactor.retention-table-timeout
 [retention_table_timeout: <duration> | default = 0s]
 
+retention_backoff_config:
+  # Minimum delay when backing off.
+  # CLI flag: -compactor.retention-backoff-config.backoff-min-period
+  [min_period: <duration> | default = 100ms]
+
+  # Maximum delay when backing off.
+  # CLI flag: -compactor.retention-backoff-config.backoff-max-period
+  [max_period: <duration> | default = 10s]
+
+  # Number of times to backoff and retry before failing.
+  # CLI flag: -compactor.retention-backoff-config.backoff-retries
+  [max_retries: <int> | default = 10]
+
 # Store used for managing delete requests.
 # CLI flag: -compactor.delete-request-store
 [delete_request_store: <string> | default = ""]
@@ -3712,20 +3725,6 @@ shard_streams:
 # creation.
 # CLI flag: -bloom-build.split-keyspace-by
 [bloom_split_series_keyspace_by: <int> | default = 256]
-
-# Experimental. Length of the n-grams created when computing blooms from log
-# lines.
-# CLI flag: -bloom-build.ngram-length
-[bloom_ngram_length: <int> | default = 4]
-
-# Experimental. Skip factor for the n-grams created when computing blooms from
-# log lines.
-# CLI flag: -bloom-build.ngram-skip
-[bloom_ngram_skip: <int> | default = 1]
-
-# Experimental. Scalable Bloom Filter desired false-positive rate.
-# CLI flag: -bloom-build.false-positive-rate
-[bloom_false_positive_rate: <float> | default = 0.01]
 
 # Experimental. Compression algorithm for bloom block pages.
 # CLI flag: -bloom-build.block-encoding

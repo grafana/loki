@@ -454,6 +454,9 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&toStore[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(toStore[i].Line))}})
 			rateLimitedBytes += len(toStore[i].Line)
 		}
+
+		// Log the only last error to the write failures manager.
+		s.writeFailures.Log(s.tenant, failedEntriesWithError[len(failedEntriesWithError)-1].e)
 	}
 
 	s.streamRateCalculator.Record(s.tenant, s.labelHash, s.labelHashNoShard, totalBytes)

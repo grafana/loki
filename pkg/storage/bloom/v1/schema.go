@@ -6,7 +6,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
 
@@ -38,22 +38,19 @@ var (
 )
 
 type Schema struct {
-	version                Version
-	encoding               chunkenc.Encoding
-	nGramLength, nGramSkip uint64
+	version  Version
+	encoding compression.Encoding
 }
 
 func NewSchema() Schema {
 	return Schema{
-		version:     CurrentSchemaVersion,
-		encoding:    chunkenc.EncNone,
-		nGramLength: 0,
-		nGramSkip:   0,
+		version:  CurrentSchemaVersion,
+		encoding: compression.EncNone,
 	}
 }
 
 func (s Schema) String() string {
-	return fmt.Sprintf("%s,encoding=%s,ngram=%d,skip=%d", s.version, s.encoding, s.nGramLength, s.nGramSkip)
+	return fmt.Sprintf("%s,encoding=%s", s.version, s.encoding)
 }
 
 func (s Schema) Compatible(other Schema) bool {
@@ -64,26 +61,18 @@ func (s Schema) Version() Version {
 	return s.version
 }
 
-func (s Schema) NGramLen() int {
-	return int(s.nGramLength)
-}
-
-func (s Schema) NGramSkip() int {
-	return int(s.nGramSkip)
-}
-
 // byte length
 func (s Schema) Len() int {
-	// magic number + version + encoding + ngram length + ngram skip
-	return 4 + 1 + 1 + 8 + 8
+	// magic number + version + encoding
+	return 4 + 1 + 1
 }
 
-func (s *Schema) DecompressorPool() chunkenc.ReaderPool {
-	return chunkenc.GetReaderPool(s.encoding)
+func (s *Schema) DecompressorPool() compression.ReaderPool {
+	return compression.GetReaderPool(s.encoding)
 }
 
-func (s *Schema) CompressorPool() chunkenc.WriterPool {
-	return chunkenc.GetWriterPool(s.encoding)
+func (s *Schema) CompressorPool() compression.WriterPool {
+	return compression.GetWriterPool(s.encoding)
 }
 
 func (s *Schema) Encode(enc *encoding.Encbuf) {
@@ -91,8 +80,6 @@ func (s *Schema) Encode(enc *encoding.Encbuf) {
 	enc.PutBE32(magicNumber)
 	enc.PutByte(byte(s.version))
 	enc.PutByte(byte(s.encoding))
-	enc.PutBE64(s.nGramLength)
-	enc.PutBE64(s.nGramSkip)
 
 }
 
@@ -118,13 +105,10 @@ func (s *Schema) Decode(dec *encoding.Decbuf) error {
 		return errors.Errorf("invalid version. expected %d, got %d", 3, s.version)
 	}
 
-	s.encoding = chunkenc.Encoding(dec.Byte())
-	if _, err := chunkenc.ParseEncoding(s.encoding.String()); err != nil {
+	s.encoding = compression.Encoding(dec.Byte())
+	if _, err := compression.ParseEncoding(s.encoding.String()); err != nil {
 		return errors.Wrap(err, "parsing encoding")
 	}
-
-	s.nGramLength = dec.Be64()
-	s.nGramSkip = dec.Be64()
 
 	return dec.Err()
 }
