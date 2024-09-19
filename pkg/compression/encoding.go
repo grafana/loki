@@ -5,11 +5,11 @@ import (
 	"strings"
 )
 
-// Encoding is the identifier for a chunk encoding.
+// Encoding identifies an available compression type. 
 type Encoding byte
 
 // The different available encodings.
-// Make sure to preserve the order, as these numeric values are written to the chunks!
+// Make sure to preserve the order, as the numeric values are serialized!
 const (
 	EncNone Encoding = iota
 	EncGZIP
