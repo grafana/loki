@@ -195,8 +195,6 @@ spec:
           {{- toYaml .Values.ingester.persistentVolume.annotations | nindent 10 }}
         {{- end }}
       spec:
-        accessModes:
-          - ReadWriteOnce
         {{- $storageClass := default .Values.ingester.persistentVolume.storageClass $rolloutZone.storageClass }}
         {{- if $storageClass }}
         {{- if (eq "-" $storageClass) }}
@@ -205,6 +203,8 @@ spec:
         storageClassName: {{ $storageClass }}
         {{- end }}
         {{- end }}
+        accessModes:
+          {{- toYaml .Values.ingester.persistentVolume.accessModes | nindent 10 }}
         resources:
           requests:
             storage: "{{ .Values.ingester.persistentVolume.size }}"
