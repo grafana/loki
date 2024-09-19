@@ -314,6 +314,12 @@
                      },
                      "overrides": [ ]
                   },
+                  "gridPos": {
+                     "h": 7,
+                     "w": 6,
+                     "x": 0,
+                     "y": 9
+                  },
                   "id": 4,
                   "links": [ ],
                   "options": {
@@ -402,6 +408,12 @@
                            ]
                         }
                      ]
+                  },
+                  "gridPos": {
+                     "h": 7,
+                     "w": 8,
+                     "x": 0,
+                     "y": 9
                   },
                   "id": 5,
                   "links": [ ],
@@ -504,6 +516,12 @@
                         }
                      ]
                   },
+                  "gridPos": {
+                     "h": 7,
+                     "w": 8,
+                     "x": 8,
+                     "y": 9
+                  },
                   "id": 6,
                   "links": [ ],
                   "options": {
@@ -566,6 +584,12 @@
                      },
                      "overrides": [ ]
                   },
+                  "gridPos": {
+                     "h": 7,
+                     "w": 6,
+                     "x": 18,
+                     "y": 9
+                  },
                   "id": 7,
                   "links": [ ],
                   "options": {
@@ -616,6 +640,12 @@
                      },
                      "overrides": [ ]
                   },
+                  "gridPos": {
+                     "h": 7,
+                     "w": 8,
+                     "x": 0,
+                     "y": 16
+                  },
                   "id": 8,
                   "links": [ ],
                   "options": {
@@ -663,6 +693,12 @@
                      },
                      "overrides": [ ]
                   },
+                  "gridPos": {
+                     "h": 7,
+                     "w": 8,
+                     "x": 8,
+                     "y": 16
+                  },
                   "id": 9,
                   "links": [ ],
                   "options": {
@@ -709,6 +745,12 @@
                         "unit": "percentunit"
                      },
                      "overrides": [ ]
+                  },
+                  "gridPos": {
+                     "h": 7,
+                     "w": 8,
+                     "x": 16,
+                     "y": 16
                   },
                   "id": 10,
                   "links": [ ],
@@ -807,6 +849,12 @@
                            ]
                         }
                      ]
+                  },
+                  "gridPos": {
+                     "h": 7,
+                     "w": 8,
+                     "x": 0,
+                     "y": 24
                   },
                   "id": 11,
                   "links": [ ],
@@ -909,6 +957,12 @@
                         }
                      ]
                   },
+                  "gridPos": {
+                     "h": 7,
+                     "w": 8,
+                     "x": 8,
+                     "y": 24
+                  },
                   "id": 12,
                   "links": [ ],
                   "options": {
@@ -971,6 +1025,12 @@
                      },
                      "overrides": [ ]
                   },
+                  "gridPos": {
+                     "h": 7,
+                     "w": 8,
+                     "x": 16,
+                     "y": 24
+                  },
                   "id": 13,
                   "links": [ ],
                   "options": {
@@ -1021,6 +1081,12 @@
                      },
                      "overrides": [ ]
                   },
+                  "gridPos": {
+                     "h": 7,
+                     "w": 8,
+                     "x": 0,
+                     "y": 31
+                  },
                   "id": 14,
                   "links": [ ],
                   "options": {
@@ -1068,6 +1134,12 @@
                      },
                      "overrides": [ ]
                   },
+                  "gridPos": {
+                     "h": 7,
+                     "w": 8,
+                     "x": 8,
+                     "y": 31
+                  },
                   "id": 15,
                   "links": [ ],
                   "options": {
@@ -1114,6 +1186,12 @@
                         "unit": "percentunit"
                      },
                      "overrides": [ ]
+                  },
+                  "gridPos": {
+                     "h": 7,
+                     "w": 8,
+                     "x": 16,
+                     "y": 31
                   },
                   "id": 16,
                   "links": [ ],
