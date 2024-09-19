@@ -1,12 +1,12 @@
 {{- $args := dict "ctx" . "component" "ingester" "memberlist" true -}}
-{{- $zonesMap := include "mimir.zoneAwareReplicationMap" $args | fromYaml -}}
+{{- $zonesMap := include "loki.zoneAwareReplicationMap" $args | fromYaml -}}
 {{- range $zoneName, $rolloutZone := $zonesMap }}
 {{- with $ -}}
 {{- $_ := set $args "rolloutZoneName" $zoneName -}}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "mimir.resourceName" $args }}
+  name: {{ include "loki.resourceName" $args }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "loki.ingesterLabels" . | nindent 4 }}
