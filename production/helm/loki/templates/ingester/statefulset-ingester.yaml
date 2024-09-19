@@ -186,14 +186,14 @@ spec:
         {{- end }}
   {{- else }}
   volumeClaimTemplates:
-      {{- with $rolloutZone.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with $rolloutZone.affinity }}
-      affinity:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: storage
+        {{- if .Values.ingester.persistentVolume.annotations }}
+        annotations:
+          {{- toYaml .Values.ingester.persistentVolume.annotations | nindent 10 }}
+        {{- end }}
       spec:
         accessModes:
           - ReadWriteOnce
@@ -207,6 +207,7 @@ spec:
         {{- end }}
         resources:
           requests:
-            storage: "{{ .Values.ingester.persistentVolume.size }}"
+            storage: {{ .size | quote }}
+---
 {{ end }}
 {{ end }}
