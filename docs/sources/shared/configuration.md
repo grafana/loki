@@ -2383,6 +2383,19 @@ The `compactor` block configures the compactor component, which compacts index s
 # CLI flag: -compactor.retention-table-timeout
 [retention_table_timeout: <duration> | default = 0s]
 
+retention_backoff_config:
+  # Minimum delay when backing off.
+  # CLI flag: -compactor.retention-backoff-config.backoff-min-period
+  [min_period: <duration> | default = 100ms]
+
+  # Maximum delay when backing off.
+  # CLI flag: -compactor.retention-backoff-config.backoff-max-period
+  [max_period: <duration> | default = 10s]
+
+  # Number of times to backoff and retry before failing.
+  # CLI flag: -compactor.retention-backoff-config.backoff-retries
+  [max_retries: <int> | default = 10]
+
 # Store used for managing delete requests.
 # CLI flag: -compactor.delete-request-store
 [delete_request_store: <string> | default = ""]
