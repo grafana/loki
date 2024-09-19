@@ -271,6 +271,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 rollout-group: {{ .ctx.component }}
 zone: {{ .ctx.rolloutZoneName }}
 {{- end }}
+{{- end -}}
 
 
 {{/*
