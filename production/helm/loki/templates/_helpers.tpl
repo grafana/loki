@@ -273,7 +273,7 @@ app.kubernetes.io/component: {{ .ctx.component }}
 {{-     printf "Component name cannot be empty if rolloutZoneName (%s) is set" .ctx.rolloutZoneName | fail }}
 {{-   end }}
 rollout-group: {{ .ctx.component }}
-zone: {{ .ctx..rolloutZoneName }}
+zone: {{ .ctx.rolloutZoneName }}
 {{- end }}
 {{- end -}}
 
