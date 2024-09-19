@@ -33,5 +33,7 @@ spec:
       {{- end }}
   selector:
     {{- include "loki.ingesterSelectorLabels" . | nindent 4 }}
+
+---
 {{ end }}
 {{ end }}
