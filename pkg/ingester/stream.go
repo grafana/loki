@@ -452,6 +452,10 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		failedEntriesWithError = make([]entryWithError, 0, len(toStore))
 		for i := 0; i < len(toStore); i++ {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&toStore[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(toStore[i].Line))}})
+			if i == 0 {
+				// only report PSRL write failure once.
+				s.writeFailures.Log(s.tenant, failedEntriesWithError[len(failedEntriesWithError)-1].e)
+			}
 			rateLimitedBytes += len(toStore[i].Line)
 		}
 	}
