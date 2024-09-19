@@ -55,7 +55,7 @@
         .addPanel(
           $.newQueryPanel('Disk Writes', 'Bps') +
           $.queryPanel(
-            'sum by(%s, %s, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $._config.per_instance_label, $.filterNodeDisk(write_pod_matcher)],
+            'sum by(%s, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $.filterNodeDisk(write_pod_matcher)],
             '{{%s}} - {{device}}' % $._config.per_instance_label
           ) +
           $.withStacking,
@@ -63,7 +63,7 @@
         .addPanel(
           $.newQueryPanel('Disk Reads', 'Bps') +
           $.queryPanel(
-            'sum by(%s, %s, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $._config.per_instance_label, $.filterNodeDisk(write_pod_matcher)],
+            'sum by(%s, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $.filterNodeDisk(write_pod_matcher)],
             '{{%s}} - {{device}}' % $._config.per_instance_label
           ) +
           $.withStacking,
@@ -86,7 +86,7 @@
         .addPanel(
           $.newQueryPanel('Disk Writes', 'Bps') +
           $.queryPanel(
-            'sum by(%s, %s, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $._config.per_instance_label, $.filterNodeDisk(backend_pod_matcher)],
+            'sum by(%s, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $.filterNodeDisk(backend_pod_matcher)],
             '{{%s}} - {{device}}' % $._config.per_instance_label
           ) +
           $.withStacking,
@@ -94,7 +94,7 @@
         .addPanel(
           $.newQueryPanel('Disk Reads', 'Bps') +
           $.queryPanel(
-            'sum by(%s, %s, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $._config.per_instance_label, $.filterNodeDisk(backend_pod_matcher)],
+            'sum by(%s, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $.filterNodeDisk(backend_pod_matcher)],
             '{{%s}} - {{device}}' % $._config.per_instance_label
           ) +
           $.withStacking,
