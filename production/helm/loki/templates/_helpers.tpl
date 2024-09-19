@@ -129,6 +129,33 @@ which allows us to keep generating everything for the default zone.
 {{- end -}}
 
 {{/*
+Calculate anti-affinity for a zone
+Params:
+  component = component name
+  rolloutZoneName = name of the rollout zone
+  topologyKey = topology key
+*/}}
+{{- define "loki.zoneAntiAffinity" -}}
+{{- if .topologyKey -}}
+podAntiAffinity:
+  requiredDuringSchedulingIgnoredDuringExecution:
+    - labelSelector:
+        matchExpressions:
+          - key: rollout-group
+            operator: In
+            values:
+              - {{ .component }}
+          - key: zone
+            operator: NotIn
+            values:
+              - {{ .rolloutZoneName }}
+      topologyKey: {{ .topologyKey | quote }}
+{{- else -}}
+{}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Return if deployment mode is simple scalable
 */}}
 {{- define "loki.deployment.isScalable" -}}
