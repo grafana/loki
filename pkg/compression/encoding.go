@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// Encoding identifies an available compression type. 
+// Encoding identifies an available compression type.
 type Encoding byte
 
 // The different available encodings.
