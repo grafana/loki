@@ -6,11 +6,11 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/golang/snappy"
-	"github.com/klauspost/compress/flate"
-	"github.com/klauspost/compress/gzip"
-	"github.com/klauspost/compress/zstd"
-	"github.com/pierrec/lz4/v4"
+	snappylib "github.com/golang/snappy"
+	flatelib "github.com/klauspost/compress/flate"
+	gziplib "github.com/klauspost/compress/gzip"
+	zstdlib "github.com/klauspost/compress/zstd"
+	lz4lib "github.com/pierrec/lz4/v4"
 )
 
 // WriterPool is a pool of io.Writer
@@ -20,57 +20,71 @@ type WriterPool interface {
 	PutWriter(io.WriteCloser)
 }
 
+// ReaderPool is a pool of io.Reader
 // ReaderPool similar to WriterPool but for reading chunks.
 type ReaderPool interface {
 	GetReader(io.Reader) (io.Reader, error)
 	PutReader(io.Reader)
 }
 
+// ReaderPool is a pool of io.Reader and io.Writer
+type ReaderWriterPool interface {
+	ReaderPool
+	WriterPool
+}
+
 var (
-	// Gzip is the gnu zip compression pool
-	Gzip     = GzipPool{level: gzip.DefaultCompression}
-	Lz4_64k  = LZ4Pool{bufferSize: 1 << 16} // Lz4_64k is the l4z compression pool, with 64k buffer size
-	Lz4_256k = LZ4Pool{bufferSize: 1 << 18} // Lz4_256k uses 256k buffer
-	Lz4_1M   = LZ4Pool{bufferSize: 1 << 20} // Lz4_1M uses 1M buffer
-	Lz4_4M   = LZ4Pool{bufferSize: 1 << 22} // Lz4_4M uses 4M buffer
-	Flate    = FlatePool{}
-	Zstd     = ZstdPool{}
-	// Snappy is the snappy compression pool
-	Snappy SnappyPool
-	// Noop is the no compression pool
-	Noop NoopPool
+	// gzip is the gnu zip compression pool
+	gzip = GzipPool{level: gziplib.DefaultCompression}
+	// lz4_* are the lz4 compression pools
+	lz4_64k  = LZ4Pool{bufferSize: 1 << 16} // lz4_64k is the l4z compression pool, with 64k buffer size
+	lz4_256k = LZ4Pool{bufferSize: 1 << 18} // lz4_256k uses 256k buffer
+	lz4_1M   = LZ4Pool{bufferSize: 1 << 20} // lz4_1M uses 1M buffer
+	lz4_4M   = LZ4Pool{bufferSize: 1 << 22} // lz4_4M uses 4M buffer
+	// flate is the flate compression pool
+	flate = FlatePool{}
+	// zstd is the zstd compression pool
+	zstd = ZstdPool{}
+	// snappy is the snappy compression pool
+	snappy = SnappyPool{}
+	// noop is the no compression pool
+	noop = NoopPool{}
 )
 
 func GetWriterPool(enc Encoding) WriterPool {
-	return GetReaderPool(enc).(WriterPool)
+	return GetPool(enc).(WriterPool)
 }
 
 func GetReaderPool(enc Encoding) ReaderPool {
+	return GetPool(enc).(ReaderPool)
+}
+
+func GetPool(enc Encoding) ReaderWriterPool {
 	switch enc {
 	case EncGZIP:
-		return &Gzip
+		return &gzip
 	case EncLZ4_64k:
-		return &Lz4_64k
+		return &lz4_64k
 	case EncLZ4_256k:
-		return &Lz4_256k
+		return &lz4_256k
 	case EncLZ4_1M:
-		return &Lz4_1M
+		return &lz4_1M
 	case EncLZ4_4M:
-		return &Lz4_4M
+		return &lz4_4M
 	case EncSnappy:
-		return &Snappy
+		return &snappy
 	case EncNone:
-		return &Noop
+		return &noop
 	case EncFlate:
-		return &Flate
+		return &flate
 	case EncZstd:
-		return &Zstd
+		return &zstd
 	default:
 		panic("unknown encoding")
 	}
 }
 
-// GzipPool is a gun zip compression pool
+// GzipPool is a gnu zip compression pool
 type GzipPool struct {
 	readers sync.Pool
 	writers sync.Pool
@@ -81,7 +95,7 @@ type GzipPool struct {
 // We need to be able to see the underlying gzip.Reader to Reset it.
 type gzipBufferedReader struct {
 	*bufio.Reader
-	gzipReader *gzip.Reader
+	gzipReader *gziplib.Reader
 }
 
 // GetReader gets or creates a new CompressionReader and reset it to read from src
@@ -95,7 +109,7 @@ func (pool *GzipPool) GetReader(src io.Reader) (io.Reader, error) {
 		reader.Reader.Reset(reader.gzipReader)
 		return reader, nil
 	}
-	gzipReader, err := gzip.NewReader(src)
+	gzipReader, err := gziplib.NewReader(src)
 	if err != nil {
 		return nil, err
 	}
@@ -113,16 +127,16 @@ func (pool *GzipPool) PutReader(reader io.Reader) {
 // GetWriter gets or creates a new CompressionWriter and reset it to write to dst
 func (pool *GzipPool) GetWriter(dst io.Writer) io.WriteCloser {
 	if w := pool.writers.Get(); w != nil {
-		writer := w.(*gzip.Writer)
+		writer := w.(*gziplib.Writer)
 		writer.Reset(dst)
 		return writer
 	}
 
 	level := pool.level
 	if level == 0 {
-		level = gzip.DefaultCompression
+		level = gziplib.DefaultCompression
 	}
-	w, err := gzip.NewWriterLevel(dst, level)
+	w, err := gziplib.NewWriterLevel(dst, level)
 	if err != nil {
 		panic(err) // never happens, error is only returned on wrong compression level.
 	}
@@ -144,14 +158,14 @@ type FlatePool struct {
 // GetReader gets or creates a new CompressionReader and reset it to read from src
 func (pool *FlatePool) GetReader(src io.Reader) (io.Reader, error) {
 	if r := pool.readers.Get(); r != nil {
-		reader := r.(flate.Resetter)
+		reader := r.(flatelib.Resetter)
 		err := reader.Reset(src, nil)
 		if err != nil {
 			panic(err)
 		}
 		return reader.(io.Reader), nil
 	}
-	return flate.NewReader(src), nil
+	return flatelib.NewReader(src), nil
 }
 
 // PutReader places back in the pool a CompressionReader
@@ -162,16 +176,16 @@ func (pool *FlatePool) PutReader(reader io.Reader) {
 // GetWriter gets or creates a new CompressionWriter and reset it to write to dst
 func (pool *FlatePool) GetWriter(dst io.Writer) io.WriteCloser {
 	if w := pool.writers.Get(); w != nil {
-		writer := w.(*flate.Writer)
+		writer := w.(*flatelib.Writer)
 		writer.Reset(dst)
 		return writer
 	}
 
 	level := pool.level
 	if level == 0 {
-		level = flate.DefaultCompression
+		level = flatelib.DefaultCompression
 	}
-	w, err := flate.NewWriter(dst, level)
+	w, err := flatelib.NewWriter(dst, level)
 	if err != nil {
 		panic(err) // never happens, error is only returned on wrong compression level.
 	}
@@ -192,18 +206,18 @@ type ZstdPool struct {
 // GetReader gets or creates a new CompressionReader and reset it to read from src
 func (pool *ZstdPool) GetReader(src io.Reader) (io.Reader, error) {
 	if r := pool.readers.Get(); r != nil {
-		reader := r.(*zstd.Decoder)
+		reader := r.(*zstdlib.Decoder)
 		err := reader.Reset(src)
 		if err != nil {
 			return nil, err
 		}
 		return reader, nil
 	}
-	reader, err := zstd.NewReader(src)
+	reader, err := zstdlib.NewReader(src)
 	if err != nil {
 		return nil, err
 	}
-	runtime.SetFinalizer(reader, (*zstd.Decoder).Close)
+	runtime.SetFinalizer(reader, (*zstdlib.Decoder).Close)
 	return reader, nil
 }
 
@@ -215,12 +229,12 @@ func (pool *ZstdPool) PutReader(reader io.Reader) {
 // GetWriter gets or creates a new CompressionWriter and reset it to write to dst
 func (pool *ZstdPool) GetWriter(dst io.Writer) io.WriteCloser {
 	if w := pool.writers.Get(); w != nil {
-		writer := w.(*zstd.Encoder)
+		writer := w.(*zstdlib.Encoder)
 		writer.Reset(dst)
 		return writer
 	}
 
-	w, err := zstd.NewWriter(dst)
+	w, err := zstdlib.NewWriter(dst)
 	if err != nil {
 		panic(err) // never happens, error is only returned on wrong compression level.
 	}
@@ -241,7 +255,7 @@ type LZ4Pool struct {
 // We need to be able to see the underlying lz4.Reader to Reset it.
 type lz4BufferedReader struct {
 	*bufio.Reader
-	lz4Reader *lz4.Reader
+	lz4Reader *lz4lib.Reader
 }
 
 // GetReader gets or creates a new CompressionReader and reset it to read from src
@@ -252,7 +266,7 @@ func (pool *LZ4Pool) GetReader(src io.Reader) (io.Reader, error) {
 		r.lz4Reader.Reset(src)
 		r.Reader.Reset(r.lz4Reader)
 	} else {
-		lz4Reader := lz4.NewReader(src)
+		lz4Reader := lz4lib.NewReader(src)
 		r = &lz4BufferedReader{
 			lz4Reader: lz4Reader,
 			Reader:    bufio.NewReaderSize(lz4Reader, 4*1024),
@@ -268,17 +282,17 @@ func (pool *LZ4Pool) PutReader(reader io.Reader) {
 
 // GetWriter gets or creates a new CompressionWriter and reset it to write to dst
 func (pool *LZ4Pool) GetWriter(dst io.Writer) io.WriteCloser {
-	var w *lz4.Writer
+	var w *lz4lib.Writer
 	if fromPool := pool.writers.Get(); fromPool != nil {
-		w = fromPool.(*lz4.Writer)
+		w = fromPool.(*lz4lib.Writer)
 		w.Reset(dst)
 	} else {
-		w = lz4.NewWriter(dst)
+		w = lz4lib.NewWriter(dst)
 	}
 	err := w.Apply(
-		lz4.ChecksumOption(false),
-		lz4.BlockSizeOption(lz4.BlockSize(pool.bufferSize)),
-		lz4.CompressionLevelOption(lz4.Fast),
+		lz4lib.ChecksumOption(false),
+		lz4lib.BlockSizeOption(lz4lib.BlockSize(pool.bufferSize)),
+		lz4lib.CompressionLevelOption(lz4lib.Fast),
 	)
 	if err != nil {
 		panic(err)
@@ -299,16 +313,16 @@ type SnappyPool struct {
 // GetReader gets or creates a new CompressionReader and reset it to read from src
 func (pool *SnappyPool) GetReader(src io.Reader) (io.Reader, error) {
 	if r := pool.readers.Get(); r != nil {
-		reader := r.(*snappy.Reader)
+		reader := r.(*snappylib.Reader)
 		reader.Reset(src)
 		return reader, nil
 	}
-	return snappy.NewReader(src), nil
+	return snappylib.NewReader(src), nil
 }
 
 // PutReader places back in the pool a CompressionReader
 func (pool *SnappyPool) PutReader(reader io.Reader) {
-	r := reader.(*snappy.Reader)
+	r := reader.(*snappylib.Reader)
 	// Reset to free reference to the underlying reader
 	r.Reset(nil)
 	pool.readers.Put(reader)
@@ -317,11 +331,11 @@ func (pool *SnappyPool) PutReader(reader io.Reader) {
 // GetWriter gets or creates a new CompressionWriter and reset it to write to dst
 func (pool *SnappyPool) GetWriter(dst io.Writer) io.WriteCloser {
 	if w := pool.writers.Get(); w != nil {
-		writer := w.(*snappy.Writer)
+		writer := w.(*snappylib.Writer)
 		writer.Reset(dst)
 		return writer
 	}
-	return snappy.NewBufferedWriter(dst)
+	return snappylib.NewBufferedWriter(dst)
 }
 
 // PutWriter places back in the pool a CompressionWriter

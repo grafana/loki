@@ -117,8 +117,9 @@ func (t *deleteRequestsTable) uploadFile() error {
 	}()
 
 	err = t.db.View(func(tx *bbolt.Tx) (err error) {
-		compressedWriter := compression.Gzip.GetWriter(f)
-		defer compression.Gzip.PutWriter(compressedWriter)
+		gzipPool := compression.GetWriterPool(compression.EncGZIP)
+		compressedWriter := gzipPool.GetWriter(f)
+		defer gzipPool.PutWriter(compressedWriter)
 
 		defer func() {
 			cerr := compressedWriter.Close()

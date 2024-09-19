@@ -257,8 +257,9 @@ func uploadFile(idx shipperindex.Index, indexStorageClient shipperstorage.Client
 		}
 	}()
 
-	compressedWriter := compression.Gzip.GetWriter(f)
-	defer compression.Gzip.PutWriter(compressedWriter)
+	gzipPool := compression.GetWriterPool(compression.EncGZIP)
+	compressedWriter := gzipPool.GetWriter(f)
+	defer gzipPool.PutWriter(compressedWriter)
 
 	idxReader, err := idx.Reader()
 	if err != nil {
