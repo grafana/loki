@@ -248,31 +248,11 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 
 {{/*
 Selector labels
-{{- define "loki.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "loki.name" . }}
-app.kubernetes.io/instance: {{ .Release.Name }}
-{{- end }}
-*/}}
-
-{{/*
-Service selector labels
-Params:
-  ctx = . context
-  component = name of the component
-  rolloutZoneName = rollout zone name (optional)
 */}}
 {{- define "loki.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "loki.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
-{{- if .ctx.rolloutZoneName }}
-{{-   if not .ctxcomponent }}
-{{-     printf "Component name cannot be empty if rolloutZoneName (%s) is set" .ctx.rolloutZoneName | fail }}
-{{-   end }}
-rollout-group: {{ .ctx.component }}
-zone: {{ .ctx.rolloutZoneName }}
 {{- end }}
-{{- end -}}
-
 
 {{/*
 Create the name of the service account to use
