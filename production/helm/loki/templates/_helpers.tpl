@@ -239,7 +239,7 @@ Common labels
 */}}
 {{- define "loki.labels" -}}
 helm.sh/chart: {{ include "loki.chart" . }}
-{{ include "loki.selectorLabels" . }}
+{{ include "loki.selectorLabelsTest" . }}
 {{- if or (.Chart.AppVersion) (.Values.loki.image.tag) }}
 app.kubernetes.io/version: {{ include "loki.validLabelValue" (.Values.loki.image.tag | default .Chart.AppVersion) | quote }}
 {{- end }}
@@ -278,7 +278,7 @@ app.kubernetes.io/component: {{ .component }}
 {{-   if not .component }}
 {{-     printf "Component name cannot be empty if rolloutZoneName (%s) is set" .rolloutZoneName | fail }}
 {{-   end }}
-app.kubernetes.io/component: {{ .component }}
+rollout-group: {{ .component }}
 zone: {{ .rolloutZoneName }}
 {{- end }}
 {{- end -}}
