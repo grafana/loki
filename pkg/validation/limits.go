@@ -19,8 +19,8 @@ import (
 	"golang.org/x/time/rate"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -496,7 +496,7 @@ func (l *Limits) Validate() error {
 		return errors.Wrap(err, "invalid tsdb sharding strategy")
 	}
 
-	if _, err := chunkenc.ParseEncoding(l.BloomBlockEncoding); err != nil {
+	if _, err := compression.ParseEncoding(l.BloomBlockEncoding); err != nil {
 		return err
 	}
 

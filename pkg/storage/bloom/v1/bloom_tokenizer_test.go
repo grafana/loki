@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/dskit/multierror"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/iter"
 	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -104,7 +105,7 @@ func TestTokenizerPopulate(t *testing.T) {
 		{Name: "pod", Value: "loki-1"},
 		{Name: "trace_id", Value: "3bef3c91643bde73"},
 	}
-	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
+	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
 	_, _ = memChunk.Append(&push.Entry{
 		Timestamp:          time.Unix(0, 1),
 		Line:               testLine,
@@ -149,7 +150,7 @@ func TestBloomTokenizerPopulateWithoutPreexistingBloom(t *testing.T) {
 		{Name: "pod", Value: "loki-1"},
 		{Name: "trace_id", Value: "3bef3c91643bde73"},
 	}
-	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
+	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
 	_, _ = memChunk.Append(&push.Entry{
 		Timestamp:          time.Unix(0, 1),
 		Line:               testLine,
@@ -186,7 +187,7 @@ func TestBloomTokenizerPopulateWithoutPreexistingBloom(t *testing.T) {
 }
 
 func chunkRefItrFromMetadata(metadata ...push.LabelsAdapter) (iter.EntryIterator, error) {
-	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
+	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
 	for i, md := range metadata {
 		if _, err := memChunk.Append(&push.Entry{
 			Timestamp:          time.Unix(0, int64(i)),
@@ -272,7 +273,7 @@ func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 
 		sbf := filter.NewScalableBloomFilter(1024, 0.01, 0.8)
 
-		memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
+		memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
 		_, _ = memChunk.Append(&push.Entry{
 			Timestamp: time.Unix(0, 1),
 			Line:      testLine,
