@@ -9,18 +9,18 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
 
-var blockEncodings = []chunkenc.Encoding{
-	chunkenc.EncNone,
-	chunkenc.EncGZIP,
-	chunkenc.EncSnappy,
-	chunkenc.EncLZ4_256k,
-	chunkenc.EncZstd,
+var blockEncodings = []compression.Encoding{
+	compression.EncNone,
+	compression.EncGZIP,
+	compression.EncSnappy,
+	compression.EncLZ4_256k,
+	compression.EncZstd,
 }
 
 func TestBlockOptions_RoundTrip(t *testing.T) {
@@ -28,7 +28,7 @@ func TestBlockOptions_RoundTrip(t *testing.T) {
 	opts := BlockOptions{
 		Schema: Schema{
 			version:     CurrentSchemaVersion,
-			encoding:    chunkenc.EncSnappy,
+			encoding:    compression.EncSnappy,
 			nGramLength: 10,
 			nGramSkip:   2,
 		},
@@ -205,7 +205,7 @@ func TestMergeBuilder(t *testing.T) {
 	blockOpts := BlockOptions{
 		Schema: Schema{
 			version:  CurrentSchemaVersion,
-			encoding: chunkenc.EncSnappy,
+			encoding: compression.EncSnappy,
 		},
 		SeriesPageSize: 100,
 		BloomPageSize:  10 << 10,
@@ -302,7 +302,7 @@ func TestMergeBuilderFingerprintCollision(t *testing.T) {
 	blockOpts := BlockOptions{
 		Schema: Schema{
 			version:  CurrentSchemaVersion,
-			encoding: chunkenc.EncSnappy,
+			encoding: compression.EncSnappy,
 		},
 		SeriesPageSize: 100,
 		BloomPageSize:  10 << 10,
@@ -399,7 +399,7 @@ func TestBlockReset(t *testing.T) {
 
 	schema := Schema{
 		version:     CurrentSchemaVersion,
-		encoding:    chunkenc.EncSnappy,
+		encoding:    compression.EncSnappy,
 		nGramLength: 10,
 		nGramSkip:   2,
 	}
@@ -457,9 +457,9 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 	blockOpts := BlockOptions{
 		Schema: Schema{
 			version:     CurrentSchemaVersion,
-			encoding:    chunkenc.EncSnappy, // test with different encodings?
-			nGramLength: 4,                  // needs to match values from MkBasicSeriesWithBlooms
-			nGramSkip:   0,                  // needs to match values from MkBasicSeriesWithBlooms
+			encoding:    compression.EncSnappy, // test with different encodings?
+			nGramLength: 4,                     // needs to match values from MkBasicSeriesWithBlooms
+			nGramSkip:   0,                     // needs to match values from MkBasicSeriesWithBlooms
 		},
 		SeriesPageSize: 100,
 		BloomPageSize:  10 << 10,

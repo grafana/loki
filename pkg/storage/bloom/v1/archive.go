@@ -8,7 +8,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 )
 
 type TarEntry struct {
@@ -23,7 +23,7 @@ func TarGz(dst io.Writer, reader BlockReader) error {
 		return errors.Wrap(err, "error getting tar entries")
 	}
 
-	gzipper := chunkenc.GetWriterPool(chunkenc.EncGZIP).GetWriter(dst)
+	gzipper := compression.GetWriterPool(compression.EncGZIP).GetWriter(dst)
 	defer gzipper.Close()
 
 	tarballer := tar.NewWriter(gzipper)
@@ -50,7 +50,7 @@ func TarGz(dst io.Writer, reader BlockReader) error {
 }
 
 func UnTarGz(dst string, r io.Reader) error {
-	gzipper, err := chunkenc.GetReaderPool(chunkenc.EncGZIP).GetReader(r)
+	gzipper, err := compression.GetReaderPool(compression.EncGZIP).GetReader(r)
 	if err != nil {
 		return errors.Wrap(err, "error getting gzip reader")
 	}

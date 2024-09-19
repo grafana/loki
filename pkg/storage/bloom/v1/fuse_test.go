@@ -13,7 +13,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/v3/pkg/util/mempool"
@@ -61,7 +61,7 @@ func TestFusedQuerier(t *testing.T) {
 		BlockOptions{
 			Schema: Schema{
 				version:  CurrentSchemaVersion,
-				encoding: chunkenc.EncSnappy,
+				encoding: compression.EncSnappy,
 			},
 			SeriesPageSize: 100,
 			BloomPageSize:  10 << 10,
@@ -155,7 +155,7 @@ func TestFuseMultiPage(t *testing.T) {
 		BlockOptions{
 			Schema: Schema{
 				version:     CurrentSchemaVersion,
-				encoding:    chunkenc.EncSnappy,
+				encoding:    compression.EncSnappy,
 				nGramLength: 3, // we test trigrams
 				nGramSkip:   0,
 			},
@@ -312,7 +312,7 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 		BlockOptions{
 			Schema: Schema{
 				version:  CurrentSchemaVersion,
-				encoding: chunkenc.EncSnappy,
+				encoding: compression.EncSnappy,
 			},
 			SeriesPageSize: 100,
 			BloomPageSize:  10, // So we force one series per page
@@ -370,7 +370,7 @@ func TestFusedQuerierSkipsEmptyBlooms(t *testing.T) {
 		BlockOptions{
 			Schema: Schema{
 				version:  CurrentSchemaVersion,
-				encoding: chunkenc.EncNone,
+				encoding: compression.EncNone,
 			},
 			SeriesPageSize: 100,
 			BloomPageSize:  10 << 10,
@@ -431,7 +431,7 @@ func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]Request, []chan Ou
 		BlockOptions{
 			Schema: Schema{
 				version:  CurrentSchemaVersion,
-				encoding: chunkenc.EncSnappy,
+				encoding: compression.EncSnappy,
 			},
 			SeriesPageSize: 256 << 10, // 256k
 			BloomPageSize:  1 << 20,   // 1MB
