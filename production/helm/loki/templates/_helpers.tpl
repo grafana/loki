@@ -247,13 +247,21 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
 {{/*
+Selector labels
+*/}}
+{{- define "loki.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "loki.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
+{{/*
 Service selector labels
 Params:
   ctx = . context
   component = name of the component
   rolloutZoneName = rollout zone name (optional)
 */}}
-{{- define "loki.selectorLabels" -}}
+{{- define "loki.selectorLabelsTest" -}}
 {{- if .ctx.Values.enterprise.legacyLabels }}
 {{- if .component -}}
 app: {{ include "loki.name" .ctx }}-{{ .component }}
@@ -274,7 +282,6 @@ rollout-group: {{ .component }}
 zone: {{ .rolloutZoneName }}
 {{- end }}
 {{- end -}}
-
 
 {{/*
 Create the name of the service account to use
