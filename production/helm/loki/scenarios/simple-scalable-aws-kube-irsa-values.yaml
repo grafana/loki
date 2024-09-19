@@ -16,7 +16,7 @@ loki:
       - from: "2023-09-19"
         index:
           period: 1d
-          prefix: tsdb_index_
+          prefix: tsdbf_index_
         object_store: s3
         schema: v13
         store: tsdb

@@ -5,6 +5,9 @@ on:
     paths:
       - "production/helm/loki/**"
 
+permissions:
+  pull-requests: write
+
 jobs:
   publish-diff:
     name: Publish Rendered Helm Chart Diff
