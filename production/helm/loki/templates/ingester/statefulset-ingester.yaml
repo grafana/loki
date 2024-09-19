@@ -209,6 +209,7 @@ spec:
           requests:
             storage: "{{ .Values.ingester.persistentVolume.size }}"
   {{- end }}
+  {{- end }}
 ---
 {{ end }}
 {{ end }}
