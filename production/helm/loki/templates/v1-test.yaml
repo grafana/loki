@@ -1,2 +1,0 @@
-{{- $args := dict "ctx" . "component" "ingester" -}}
-{{- include "loki.componentSectionFromName" $args }}
