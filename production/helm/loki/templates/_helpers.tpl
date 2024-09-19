@@ -275,7 +275,7 @@ app.kubernetes.io/component: {{ .ctx.component }}
 rollout-group: {{ .ctx.component }}
 zone: {{ .ctx.rolloutZoneName }}
 {{- end }}
-{{- end -}}
+-
 
 {{/*
 Create the name of the service account to use
