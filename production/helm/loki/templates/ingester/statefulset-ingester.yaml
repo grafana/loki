@@ -208,6 +208,5 @@ spec:
         resources:
           requests:
             storage: {{ .size | quote }}
----
 {{ end }}
 {{ end }}
