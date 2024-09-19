@@ -14,6 +14,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"golang.org/x/exp/maps"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
@@ -214,7 +215,8 @@ func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
 
 func (tm *tableManager) syncTables(ctx context.Context) error {
 	tm.tablesMtx.RLock()
-	defer tm.tablesMtx.RUnlock()
+	tables := maps.Keys(tm.tables)
+	tm.tablesMtx.RUnlock()
 
 	start := time.Now()
 	var err error
@@ -231,11 +233,20 @@ func (tm *tableManager) syncTables(ctx context.Context) error {
 
 	level.Info(tm.logger).Log("msg", "syncing tables")
 
-	for name, table := range tm.tables {
+	for _, name := range tables {
 		level.Debug(tm.logger).Log("msg", "syncing table", "table", name)
 		start := time.Now()
+
+		tm.tablesMtx.RLock()
+		table, ok := tm.tables[name]
+		tm.tablesMtx.RUnlock()
+
+		if !ok {
+			continue
+		}
+
 		err := table.Sync(ctx)
-		duration := float64(time.Since(start))
+		duration := float64(time.Since(start).Seconds())
 		if err != nil {
 			tm.metrics.tableSyncLatency.WithLabelValues(name, statusFailure).Observe(duration)
 			return errors.Wrapf(err, "failed to sync table '%s'", name)
