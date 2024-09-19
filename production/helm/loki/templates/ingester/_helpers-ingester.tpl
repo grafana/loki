@@ -17,8 +17,8 @@ app.kubernetes.io/component: ingester
 ingester selector labels
 */}}
 {{- define "loki.ingesterSelectorLabels" -}}
-{{ include "loki.selectorLabels" . }}
-app.kubernetes.io/component: ingester
+{{ include "loki.selectorLabels" .ctx }}
+app.kubernetes.io/component: ingester 
 {{- if .rolloutZoneName }}
 {{-   if not .component }}
 {{-     printf "Component name cannot be empty if rolloutZoneName (%s) is set" .rolloutZoneName | fail }}
