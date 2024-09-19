@@ -33,7 +33,7 @@ spec:
       {{- end }}
   selector:
     zone: $rolloutZone
-    {{- include "loki.ingesterSelectorLabels" (dict . $args) | nindent 4 }}
+    {{- include "loki.ingesterSelectorLabels" . | nindent 4 }}
 
 ---
 {{ end }}
