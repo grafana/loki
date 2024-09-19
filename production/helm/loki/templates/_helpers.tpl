@@ -278,7 +278,7 @@ app.kubernetes.io/component: {{ .component }}
 {{-   if not .component }}
 {{-     printf "Component name cannot be empty if rolloutZoneName (%s) is set" .rolloutZoneName | fail }}
 {{-   end }}
-rollout-group: {{ .component }}
+app.kubernetes.io/component: {{ .component }}
 zone: {{ .rolloutZoneName }}
 {{- end }}
 {{- end -}}
