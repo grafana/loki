@@ -1763,28 +1763,48 @@ ingester:
   readinessProbe: {}
   # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
-  persistence:
-    # -- Enable creating PVCs which is required when using boltdb-shipper
-    enabled: false
-    # -- Use emptyDir with ramdisk for storage. **Please note that all data in ingester will be lost on pod restart**
-    inMemory: false
-    # -- List of the ingester PVCs
-    # @notationType -- list
-    claims:
-      - name: data
-        size: 10Gi
-        #   -- Storage class to be used.
-        #   If defined, storageClassName: <storageClass>.
-        #   If set to "-", storageClassName: "", which disables dynamic provisioning.
-        #   If empty or set to null, no storageClassName spec is
-        #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
-        storageClass: null
-        # - name: wal
-        #   size: 150Gi
+  
+  persistentVolume:
+    # If true and ingester.statefulSet.enabled is true,
+    # Ingester will create/use a Persistent Volume Claim
+    # If false, use emptyDir
+    # It is advisable to enable volume persistence in ingester to avoid losing metrics.
+    #
+    enabled: true
+
+    # Ingester data Persistent Volume Claim annotations
+    #
+    annotations: {}
+
+    # Ingester data Persistent Volume access modes
+    # Must match those of existing PV or dynamic provisioner
+    # Ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
+    accessModes:
+      - ReadWriteOnce
+
+    # Ingester data Persistent Volume size
+    size: 2Gi
+
+    # Subdirectory of Ingester data Persistent Volume to mount
+    # Useful if the volume's root directory is not empty
+    subPath: ""
+
     # -- Enable StatefulSetAutoDeletePVC feature
-    enableStatefulSetAutoDeletePVC: false
+    # https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#persistentvolumeclaim-retention
+    enableRetentionPolicy: false
     whenDeleted: Retain
     whenScaled: Retain
+
+    # Ingester data Persistent Volume Storage Class
+    # If defined, storageClassName: <storageClass>
+    # If set to "-", storageClassName: "", which disables dynamic provisioning
+    # If undefined (the default) or set to null, no storageClassName spec is
+    #   set, choosing the default provisioner.
+    #
+    # A per-zone storageClass configuration in `ingester.zoneAwareReplication.zones[*].storageClass` takes precedence over this field.
+    #
+    # storageClass: "-"
+
   # -- Adds the appProtocol field to the ingester service. This allows ingester to work with istio protocol selection.
   appProtocol:
     # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
