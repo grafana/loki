@@ -26,4 +26,4 @@ spec:
       appProtocol: {{ .Values.ingester.appProtocol.grpc }}
       {{- end }}
   selector:
-    {{- include "loki.ingesterSelectorLabels" (dict "ctx" . "component" "ingester" "memberlist" true) | nindent 4 }}
+    {{- include "loki.ingesterSelectorLabels" . | nindent 4 }}
