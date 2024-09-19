@@ -117,10 +117,6 @@ type Client struct {
 
 	// tc is the transport-agnostic client implemented with either gRPC or HTTP.
 	tc storageClient
-	// useGRPC flags whether the client uses gRPC. This is needed while the
-	// integration piece is only partially complete.
-	// TODO: remove before merging to main.
-	useGRPC bool
 }
 
 // NewClient creates a new Google Cloud Storage client using the HTTP transport.
@@ -237,7 +233,7 @@ func NewGRPCClient(ctx context.Context, opts ...option.ClientOption) (*Client, e
 		return nil, err
 	}
 
-	return &Client{tc: tc, useGRPC: true}, nil
+	return &Client{tc: tc}, nil
 }
 
 // Close closes the Client.
@@ -975,7 +971,8 @@ func (o *ObjectHandle) Update(ctx context.Context, uattrs ObjectAttrsToUpdate) (
 			gen:               o.gen,
 			encryptionKey:     o.encryptionKey,
 			conds:             o.conds,
-			overrideRetention: o.overrideRetention}, opts...)
+			overrideRetention: o.overrideRetention,
+		}, opts...)
 }
 
 // BucketName returns the name of the bucket.
@@ -2356,7 +2353,6 @@ func toProtoChecksums(sendCRC32C bool, attrs *ObjectAttrs) *storagepb.ObjectChec
 func (c *Client) ServiceAccount(ctx context.Context, projectID string) (string, error) {
 	o := makeStorageOpts(true, c.retry, "")
 	return c.tc.GetServiceAccount(ctx, projectID, o...)
-
 }
 
 // bucketResourceName formats the given project ID and bucketResourceName ID

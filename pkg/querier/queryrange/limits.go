@@ -156,7 +156,7 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	// Clamp the time range based on the max query lookback.
@@ -352,7 +352,7 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	limitFuncCapture := func(id string) int { return q.limitFunc(ctx, id) }
@@ -495,7 +495,7 @@ func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Reque
 
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	parallelism := MinWeightedParallelism(
@@ -508,7 +508,7 @@ func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Reque
 	)
 
 	if parallelism < 1 {
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, ErrMaxQueryParalellism.Error())
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", ErrMaxQueryParalellism.Error())
 	}
 
 	semWithTiming := NewSemaphoreWithTiming(int64(parallelism))
@@ -678,7 +678,7 @@ func MinWeightedParallelism(ctx context.Context, tenantIDs []string, configs []c
 func validateMaxEntriesLimits(ctx context.Context, reqLimit uint32, limits Limits) error {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	maxEntriesCapture := func(id string) int { return limits.MaxEntriesLimitPerQuery(ctx, id) }

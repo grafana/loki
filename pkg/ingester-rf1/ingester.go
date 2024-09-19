@@ -213,9 +213,7 @@ type Ingester struct {
 
 	customStreamsTracker push.UsageTracker
 
-	// recalculateOwnedStreams periodically checks the ring for changes and recalculates owned streams for each instance.
 	readRing ring.ReadRing
-	// recalculateOwnedStreams *recalculateOwnedStreams
 }
 
 // New makes a new Ingester.
@@ -398,11 +396,6 @@ func (i *Ingester) starting(ctx context.Context) error {
 	//if err != nil {
 	//	return fmt.Errorf("can not start recalculate owned streams service: %w", err)
 	//}
-
-	err = i.lifecycler.AwaitRunning(ctx)
-	if err != nil {
-		return fmt.Errorf("can not ensure recalculate owned streams service is running: %w", err)
-	}
 
 	go i.periodicStreamMaintenance()
 	return nil

@@ -346,7 +346,7 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/backupdr/latest/apiv1",
-    "release_level": "preview",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/baremetalsolution/apiv2": {
@@ -526,7 +526,7 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigquery/latest/migration/apiv2",
-    "release_level": "preview",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/bigquery/migration/apiv2alpha": {
@@ -588,6 +588,26 @@
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigtable/latest",
     "release_level": "stable",
     "library_type": "GAPIC_MANUAL"
+  },
+  "cloud.google.com/go/bigtable/admin/apiv2": {
+    "api_shortname": "bigtableadmin",
+    "distribution_name": "cloud.google.com/go/bigtable/admin/apiv2",
+    "description": "Cloud Bigtable Admin API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigtable/latest/admin/apiv2",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/bigtable/apiv2": {
+    "api_shortname": "bigtable",
+    "distribution_name": "cloud.google.com/go/bigtable/apiv2",
+    "description": "Cloud Bigtable API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigtable/latest/apiv2",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/billing/apiv1": {
     "api_shortname": "cloudbilling",
@@ -696,7 +716,7 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/cloudcontrolspartner/latest/apiv1",
-    "release_level": "preview",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/cloudcontrolspartner/apiv1beta": {
@@ -736,7 +756,7 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/cloudquotas/latest/apiv1",
-    "release_level": "preview",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/cloudtasks/apiv2": {
@@ -1166,7 +1186,7 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/edgenetwork/latest/apiv1",
-    "release_level": "preview",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/errorreporting": {
@@ -1959,6 +1979,16 @@
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/privilegedaccessmanager/apiv1": {
+    "api_shortname": "privilegedaccessmanager",
+    "distribution_name": "cloud.google.com/go/privilegedaccessmanager/apiv1",
+    "description": "Privileged Access Manager API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/privilegedaccessmanager/latest/apiv1",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/profiler": {
     "api_shortname": "cloudprofiler",
     "distribution_name": "cloud.google.com/go/profiler",
@@ -2226,7 +2256,7 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/securesourcemanager/latest/apiv1",
-    "release_level": "preview",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/security/privateca/apiv1": {
@@ -2316,7 +2346,7 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/securitycentermanagement/latest/apiv1",
-    "release_level": "preview",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/securityposture/apiv1": {
@@ -2606,7 +2636,7 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/storage/latest/control/apiv2",
-    "release_level": "preview",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/storage/internal/apiv2": {
@@ -2686,7 +2716,7 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/telcoautomation/latest/apiv1",
-    "release_level": "preview",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/texttospeech/apiv1": {

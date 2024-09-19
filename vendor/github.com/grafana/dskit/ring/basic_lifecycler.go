@@ -73,6 +73,8 @@ Rather, it's the delegate's responsibility to call [BasicLifecycler.ChangeState]
   - The lifecycler will then periodically, based on the [ring.BasicLifecyclerConfig.TokensObservePeriod], attempt to verify that its tokens have been added to the ring, after which it will call [ring.BasicLifecyclerDelegate.OnRingInstanceTokens].
   - The lifecycler will update they key/value store with heartbeats and state changes based on the [ring.BasicLifecyclerConfig.HeartbeatPeriod], calling [ring.BasicLifecyclerDelegate.OnRingInstanceHeartbeat] each time.
   - When the BasicLifecycler is stopped, it will call [ring.BasicLifecyclerDelegate.OnRingInstanceStopping].
+
+BasicLifecycler does not support read only instances for now.
 */
 type BasicLifecycler struct {
 	*services.BasicService
@@ -316,7 +318,7 @@ func (l *BasicLifecycler) registerInstance(ctx context.Context) error {
 		// Always overwrite the instance in the ring (even if already exists) because some properties
 		// may have changed (stated, tokens, zone, address) and even if they didn't the heartbeat at
 		// least did.
-		instanceDesc = ringDesc.AddIngester(l.cfg.ID, l.cfg.Addr, l.cfg.Zone, tokens, state, registeredAt)
+		instanceDesc = ringDesc.AddIngester(l.cfg.ID, l.cfg.Addr, l.cfg.Zone, tokens, state, registeredAt, false, time.Time{})
 		return ringDesc, true, nil
 	})
 
@@ -443,7 +445,7 @@ func (l *BasicLifecycler) updateInstance(ctx context.Context, update func(*Desc,
 			// a resharding of tenants among instances: to guarantee query correctness we need to update the
 			// registration timestamp to current time.
 			registeredAt := time.Now()
-			instanceDesc = ringDesc.AddIngester(l.cfg.ID, l.cfg.Addr, l.cfg.Zone, l.GetTokens(), l.GetState(), registeredAt)
+			instanceDesc = ringDesc.AddIngester(l.cfg.ID, l.cfg.Addr, l.cfg.Zone, l.GetTokens(), l.GetState(), registeredAt, false, time.Time{})
 		}
 
 		prevTimestamp := instanceDesc.Timestamp

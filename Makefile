@@ -37,8 +37,8 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` and `make release-workflows` after changing this
-BUILD_IMAGE_VERSION ?= 0.33.5
-GO_VERSION := 1.22.5
+BUILD_IMAGE_VERSION ?= 0.33.6
+GO_VERSION := 1.22.6
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -193,8 +193,8 @@ production/helm/loki/src/helm-test/helm-test:
 helm-lint: ## run helm linter
 	$(MAKE) -BC production/helm/loki lint
 
-helm-docs:
-	helm-docs -c production/helm/loki -g production/helm/loki
+helm-docs: ## generate reference documentation
+	$(MAKE) -BC docs sources/setup/install/helm/reference.md
 
 #################
 # Loki-QueryTee #
