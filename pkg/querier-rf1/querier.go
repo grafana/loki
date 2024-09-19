@@ -924,7 +924,7 @@ func (q *Rf1Querier) Patterns(ctx context.Context, req *logproto.QueryPatternsRe
 	}
 	res, err := q.patternQuerier.Patterns(ctx, req)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	return res, err

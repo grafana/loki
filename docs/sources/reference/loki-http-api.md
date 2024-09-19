@@ -251,6 +251,9 @@ The JSON object must be set immediately after the log line. Here is an example o
 
 In microservices mode, `/loki/api/v1/push` is exposed by the distributor.
 
+If [`block_ingestion_until`](/docs/loki/<LOKI_VERSION>/configuration/#limits_config) is configured and push requests are blocked, the endpoint will return the status code configured in `block_ingestion_status_code` (`260` by default)
+along with an error message. If the configured status code is `200`, no error message will be returned.
+
 ### Examples
 
 The following cURL command pushes a stream with the label "foo=bar2" and a single log line "fizzbuzz" using JSON encoding:

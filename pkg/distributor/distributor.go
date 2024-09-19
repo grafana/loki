@@ -445,7 +445,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 	var validationErr error
 	if validationErrors.Err() != nil {
-		validationErr = httpgrpc.Errorf(http.StatusBadRequest, validationErrors.Error())
+		validationErr = httpgrpc.Errorf(http.StatusBadRequest, "%s", validationErrors.Error())
 	}
 
 	// Return early if none of the streams contained entries
@@ -454,32 +454,29 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	now := time.Now()
-	if !d.ingestionRateLimiter.AllowN(now, tenantID, validatedLineSize) {
-		// Return a 429 to indicate to the client they are being rate limited
-		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineCount))
-		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineSize))
 
-		if d.usageTracker != nil {
-			for _, stream := range req.Streams {
-				lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream)
-				if err != nil {
-					continue
-				}
+	if block, until, retStatusCode := d.validator.ShouldBlockIngestion(validationContext, now); block {
+		d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCount, validatedLineSize, validation.BlockedIngestion)
 
-				discardedStreamBytes := 0
-				for _, e := range stream.Entries {
-					discardedStreamBytes += len(e.Line)
-				}
+		err = fmt.Errorf(validation.BlockedIngestionErrorMsg, tenantID, until.Format(time.RFC3339), retStatusCode)
+		d.writeFailuresManager.Log(tenantID, err)
 
-				if d.usageTracker != nil {
-					d.usageTracker.DiscardedBytesAdd(ctx, tenantID, validation.RateLimited, lbs, float64(discardedStreamBytes))
-				}
-			}
+		// If the status code is 200, return success.
+		// Note that we still log the error and increment the metrics.
+		if retStatusCode == http.StatusOK {
+			return &logproto.PushResponse{}, nil
 		}
+
+		return nil, httpgrpc.Errorf(retStatusCode, "%s", err.Error())
+	}
+
+	if !d.ingestionRateLimiter.AllowN(now, tenantID, validatedLineSize) {
+		d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCount, validatedLineSize, validation.RateLimited)
 
 		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validatedLineCount, validatedLineSize)
 		d.writeFailuresManager.Log(tenantID, err)
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, err.Error())
+		// Return a 429 to indicate to the client they are being rate limited
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
 	}
 
 	// Nil check for performance reasons, to avoid dynamic lookup and/or no-op
@@ -549,6 +546,37 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		return &logproto.PushResponse{}, validationErr
 	case <-ctx.Done():
 		return nil, ctx.Err()
+	}
+}
+
+func (d *Distributor) trackDiscardedData(
+	ctx context.Context,
+	req *logproto.PushRequest,
+	validationContext validationContext,
+	tenantID string,
+	validatedLineCount int,
+	validatedLineSize int,
+	reason string,
+) {
+	validation.DiscardedSamples.WithLabelValues(reason, tenantID).Add(float64(validatedLineCount))
+	validation.DiscardedBytes.WithLabelValues(reason, tenantID).Add(float64(validatedLineSize))
+
+	if d.usageTracker != nil {
+		for _, stream := range req.Streams {
+			lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream)
+			if err != nil {
+				continue
+			}
+
+			discardedStreamBytes := 0
+			for _, e := range stream.Entries {
+				discardedStreamBytes += len(e.Line)
+			}
+
+			if d.usageTracker != nil {
+				d.usageTracker.DiscardedBytesAdd(ctx, tenantID, reason, lbs, float64(discardedStreamBytes))
+			}
+		}
 	}
 }
 

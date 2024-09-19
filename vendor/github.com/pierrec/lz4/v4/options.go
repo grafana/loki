@@ -57,6 +57,13 @@ func BlockSizeOption(size BlockSize) Option {
 			}
 			w.frame.Descriptor.Flags.BlockSizeIndexSet(lz4block.Index(size))
 			return nil
+		case *CompressingReader:
+			size := uint32(size)
+			if !lz4block.IsValid(size) {
+				return fmt.Errorf("%w: %d", lz4errors.ErrOptionInvalidBlockSize, size)
+			}
+			w.frame.Descriptor.Flags.BlockSizeIndexSet(lz4block.Index(size))
+			return nil
 		}
 		return lz4errors.ErrOptionNotApplicable
 	}
@@ -70,6 +77,9 @@ func BlockChecksumOption(flag bool) Option {
 			s := fmt.Sprintf("BlockChecksumOption(%v)", flag)
 			return lz4errors.Error(s)
 		case *Writer:
+			w.frame.Descriptor.Flags.BlockChecksumSet(flag)
+			return nil
+		case *CompressingReader:
 			w.frame.Descriptor.Flags.BlockChecksumSet(flag)
 			return nil
 		}
@@ -87,6 +97,9 @@ func ChecksumOption(flag bool) Option {
 		case *Writer:
 			w.frame.Descriptor.Flags.ContentChecksumSet(flag)
 			return nil
+		case *CompressingReader:
+			w.frame.Descriptor.Flags.ContentChecksumSet(flag)
+			return nil
 		}
 		return lz4errors.ErrOptionNotApplicable
 	}
@@ -101,6 +114,10 @@ func SizeOption(size uint64) Option {
 			s := fmt.Sprintf("SizeOption(%d)", size)
 			return lz4errors.Error(s)
 		case *Writer:
+			w.frame.Descriptor.Flags.SizeSet(size > 0)
+			w.frame.Descriptor.ContentSize = size
+			return nil
+		case *CompressingReader:
 			w.frame.Descriptor.Flags.SizeSet(size > 0)
 			w.frame.Descriptor.ContentSize = size
 			return nil
@@ -162,6 +179,14 @@ func CompressionLevelOption(level CompressionLevel) Option {
 			}
 			w.level = lz4block.CompressionLevel(level)
 			return nil
+		case *CompressingReader:
+			switch level {
+			case Fast, Level1, Level2, Level3, Level4, Level5, Level6, Level7, Level8, Level9:
+			default:
+				return fmt.Errorf("%w: %d", lz4errors.ErrOptionInvalidCompressionLevel, level)
+			}
+			w.level = lz4block.CompressionLevel(level)
+			return nil
 		}
 		return lz4errors.ErrOptionNotApplicable
 	}
@@ -184,6 +209,9 @@ func OnBlockDoneOption(handler func(size int)) Option {
 			rw.handler = handler
 			return nil
 		case *Reader:
+			rw.handler = handler
+			return nil
+		case *CompressingReader:
 			rw.handler = handler
 			return nil
 		}

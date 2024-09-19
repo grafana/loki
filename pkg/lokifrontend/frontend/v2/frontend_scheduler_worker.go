@@ -325,7 +325,7 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 
 			case schedulerpb.ERROR:
 				req.enqueue <- enqueueResult{status: waitForResponse}
-				req.response <- ResponseTuple{nil, httpgrpc.Errorf(http.StatusInternalServerError, resp.Error)}
+				req.response <- ResponseTuple{nil, httpgrpc.Errorf(http.StatusInternalServerError, "%s", resp.Error)}
 			case schedulerpb.TOO_MANY_REQUESTS_PER_TENANT:
 				req.enqueue <- enqueueResult{status: waitForResponse}
 				req.response <- ResponseTuple{nil, httpgrpc.Errorf(http.StatusTooManyRequests, "too many outstanding requests")}

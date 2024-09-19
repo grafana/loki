@@ -128,7 +128,7 @@ func (o *Options3LO) client() *http.Client {
 	if o.Client != nil {
 		return o.Client
 	}
-	return internal.CloneDefaultClient()
+	return internal.DefaultClient()
 }
 
 // authCodeURL returns a URL that points to a OAuth2 consent page.

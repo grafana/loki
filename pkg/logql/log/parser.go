@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/grafana/jsonparser"
@@ -39,6 +40,14 @@ var (
 	errMissingCapture       = errors.New("at least one named capture must be supplied")
 	errFoundAllLabels       = errors.New("found all required labels")
 	errLabelDoesNotMatch    = errors.New("found a label with a matcher that didn't match")
+
+	// the rune error replacement is rejected by Prometheus hence replacing them with space.
+	removeInvalidUtf = func(r rune) rune {
+		if r == utf8.RuneError {
+			return 32 // rune value for space
+		}
+		return r
+	}
 )
 
 type JSONParser struct {
@@ -200,12 +209,11 @@ func unescapeJSONString(b []byte) string {
 		return ""
 	}
 	res := string(bU)
-	// rune error is rejected by Prometheus
-	for _, r := range res {
-		if r == utf8.RuneError {
-			return ""
-		}
+
+	if strings.ContainsRune(res, utf8.RuneError) {
+		res = strings.Map(removeInvalidUtf, res)
 	}
+
 	return res
 }
 
@@ -339,9 +347,9 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 		}
 
 		val := l.dec.Value()
-		// the rune error replacement is rejected by Prometheus, so we skip it.
+
 		if bytes.ContainsRune(val, utf8.RuneError) {
-			val = nil
+			val = bytes.Map(removeInvalidUtf, val)
 		}
 
 		if !l.keepEmpty && len(val) == 0 {
