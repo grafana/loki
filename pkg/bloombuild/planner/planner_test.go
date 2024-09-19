@@ -188,7 +188,7 @@ func genBlock(ref bloomshipper.BlockRef) (bloomshipper.Block, error) {
 	writer := v1.NewMemoryBlockWriter(indexBuf, bloomsBuf)
 	reader := v1.NewByteReader(indexBuf, bloomsBuf)
 
-	blockOpts := v1.NewBlockOptions(compression.EncNone, 4, 1, 0, 0)
+	blockOpts := v1.NewBlockOptions(compression.EncNone, 0, 0)
 
 	builder, err := v1.NewBlockBuilder(blockOpts, writer)
 	if err != nil {
