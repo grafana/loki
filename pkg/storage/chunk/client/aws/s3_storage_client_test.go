@@ -145,7 +145,7 @@ func TestIsRetryableErr(t *testing.T) {
 		},
 		{
 			name:     "IsStorageTimeoutErr - Context Deadline Exceeded",
-			err:      context.Canceled,
+			err:      context.DeadlineExceeded,
 			expected: false,
 		},
 		{
@@ -156,6 +156,13 @@ func TestIsRetryableErr(t *testing.T) {
 		{
 			name:     "Not a retryable error",
 			err:      syscall.EINVAL,
+			expected: false,
+		},
+		{
+			name: "Not found 404",
+			err: awserr.NewRequestFailure(
+				awserr.New("404", "404", nil), 404, "reqId",
+			),
 			expected: false,
 		},
 	}
