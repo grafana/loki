@@ -7,6 +7,8 @@ on:
 
 jobs:
   publish-diff:
+    # temporarily disable the workflow for the PRs where PRs branch is from fork.
+    if: github.event.pull_request.head.repo.full_name == github.repository
     name: Publish Rendered Helm Chart Diff
     runs-on: ubuntu-latest
     steps:
