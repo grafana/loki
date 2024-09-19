@@ -312,8 +312,8 @@ func (r *DetectedLabelsRequest) WithQuery(query string) queryrangebase.Request {
 
 func (r *DetectedLabelsRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
-		otlog.String("start", timestamp.Time(r.GetStart().UnixNano()).String()),
-		otlog.String("end", timestamp.Time(r.GetEnd().UnixNano()).String()),
+		otlog.String("start", timestamp.Time(r.GetStart().UnixMilli()).String()),
+		otlog.String("end", timestamp.Time(r.GetEnd().UnixMilli()).String()),
 	)
 }
 
@@ -2359,8 +2359,8 @@ func (r *DetectedFieldsRequest) WithQuery(query string) queryrangebase.Request {
 
 func (r *DetectedFieldsRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
-		otlog.String("start", timestamp.Time(r.GetStart().UnixNano()).String()),
-		otlog.String("end", timestamp.Time(r.GetEnd().UnixNano()).String()),
+		otlog.String("start", timestamp.Time(r.GetStart().UnixMilli()).String()),
+		otlog.String("end", timestamp.Time(r.GetEnd().UnixMilli()).String()),
 		otlog.String("query", r.GetQuery()),
 		otlog.Int64("step (ms)", r.GetStep()),
 		otlog.Int64("line_limit", int64(r.GetLineLimit())),
