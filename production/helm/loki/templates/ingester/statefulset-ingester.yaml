@@ -122,7 +122,7 @@ spec:
               mountPath: /etc/loki/config
             - name: runtime-config
               mountPath: /etc/loki/runtime-config
-            - name: data
+            - name: storage
               mountPath: /var/loki
             {{- if .Values.enterprise.enabled }}
             - name: license
