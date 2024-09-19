@@ -12,14 +12,9 @@ ingester common labels
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: ingester
 {{- if .rolloutZoneName }}
-{{-   if not .component }}
-{{-     printf "Component name cannot be empty if rolloutZoneName (%s) is set" .rolloutZoneName | fail }}
-{{-   end }}
-name: "{{ .component }}-{{ .rolloutZoneName }}" {{- /* Currently required for rollout-operator. https://github.com/grafana/rollout-operator/issues/15 */}}
-rollout-group: {{ .component }}
 zone: {{ .rolloutZoneName }}
 {{- end }}
-{{- end -}}
+{{- end }}
 
 {{/*
 ingester selector labels
@@ -28,13 +23,9 @@ ingester selector labels
 {{ include "loki.selectorLabels" . }}
 app.kubernetes.io/component: ingester
 {{- if .rolloutZoneName }}
-{{-   if not .component }}
-{{-     printf "Component name cannot be empty if rolloutZoneName (%s) is set" .rolloutZoneName | fail }}
-{{-   end }}
-rollout-group: {{ .component }}
 zone: {{ .rolloutZoneName }}
 {{- end }}
-{{- end -}}
+{{- end }}
 
 {{/*
 ingester priority class name
