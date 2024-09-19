@@ -32,7 +32,7 @@ spec:
       appProtocol: {{ .Values.ingester.appProtocol.grpc }}
       {{- end }}
   selector:
-    zone: $rolloutZone
+    zone: {{- with .Values.ingester.serviceLabels }}
     {{- include "loki.ingesterSelectorLabels" . | nindent 4 }}
 
 ---

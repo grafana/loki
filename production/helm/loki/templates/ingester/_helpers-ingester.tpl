@@ -22,9 +22,6 @@ ingester selector labels
 {{- define "loki.ingesterSelectorLabels" -}}
 {{ include "loki.selectorLabels" . }}
 app.kubernetes.io/component: ingester
-{{- if .rolloutZoneName }}
-zone: {{ .rolloutZoneName }}
-{{- end }}
 {{- end }}
 
 {{/*
