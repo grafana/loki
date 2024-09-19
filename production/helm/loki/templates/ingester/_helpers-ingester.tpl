@@ -11,9 +11,6 @@ ingester common labels
 {{- define "loki.ingesterLabels" -}}
 {{ include "loki.labels" . }}
 app.kubernetes.io/component: ingester
-{{- if .rolloutZoneName }}
-zone: {{ .rolloutZoneName }}
-{{- end }}
 {{- end }}
 
 {{/*
