@@ -21,11 +21,14 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	awscommon "github.com/grafana/dskit/aws"
+
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/instrument"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+
+	amnet "k8s.io/apimachinery/pkg/util/net"
 
 	bucket_s3 "github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -532,5 +535,61 @@ func (a *S3ObjectClient) IsObjectNotFoundErr(err error) bool {
 	return false
 }
 
-// TODO(dannyk): implement for client
-func (a *S3ObjectClient) IsRetryableErr(error) bool { return false }
+func isTimeoutError(err error) bool {
+	var netErr net.Error
+	return errors.As(err, &netErr) && netErr.Timeout()
+}
+
+func isContextErr(err error) bool {
+	return errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, context.Canceled)
+}
+
+// IsStorageTimeoutErr returns true if error means that object cannot be retrieved right now due to server-side timeouts.
+func (a *S3ObjectClient) IsStorageTimeoutErr(err error) bool {
+	// TODO(dannyk): move these out to be generic
+	// context errors are all client-side
+	if isContextErr(err) {
+		return false
+	}
+
+	// connection misconfiguration, or writing on a closed connection
+	// do NOT retry; this is not a server-side issue
+	if errors.Is(err, net.ErrClosed) || amnet.IsConnectionRefused(err) {
+		return false
+	}
+
+	// this is a server-side timeout
+	if isTimeoutError(err) {
+		return true
+	}
+
+	// connection closed (closed before established) or reset (closed after established)
+	// this is a server-side issue
+	if errors.Is(err, io.EOF) || amnet.IsConnectionReset(err) {
+		return true
+	}
+
+	if rerr, ok := err.(awserr.RequestFailure); ok {
+		// https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html
+		return rerr.StatusCode() == http.StatusRequestTimeout ||
+			rerr.StatusCode() == http.StatusGatewayTimeout
+	}
+
+	return false
+}
+
+// IsStorageThrottledErr returns true if error means that object cannot be retrieved right now due to throttling.
+func (a *S3ObjectClient) IsStorageThrottledErr(err error) bool {
+	if rerr, ok := err.(awserr.RequestFailure); ok {
+
+		// https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html
+		return rerr.StatusCode() == http.StatusTooManyRequests ||
+			(rerr.StatusCode()/100 == 5) // all 5xx errors are retryable
+	}
+
+	return false
+}
+func (a *S3ObjectClient) IsRetryableErr(err error) bool {
+	return a.IsStorageTimeoutErr(err) || a.IsStorageThrottledErr(err)
+}
