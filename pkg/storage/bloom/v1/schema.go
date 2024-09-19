@@ -38,22 +38,19 @@ var (
 )
 
 type Schema struct {
-	version                Version
-	encoding               compression.Encoding
-	nGramLength, nGramSkip uint64
+	version  Version
+	encoding compression.Encoding
 }
 
 func NewSchema() Schema {
 	return Schema{
-		version:     CurrentSchemaVersion,
-		encoding:    compression.EncNone,
-		nGramLength: 0,
-		nGramSkip:   0,
+		version:  CurrentSchemaVersion,
+		encoding: compression.EncNone,
 	}
 }
 
 func (s Schema) String() string {
-	return fmt.Sprintf("%s,encoding=%s,ngram=%d,skip=%d", s.version, s.encoding, s.nGramLength, s.nGramSkip)
+	return fmt.Sprintf("%s,encoding=%s", s.version, s.encoding)
 }
 
 func (s Schema) Compatible(other Schema) bool {
@@ -62,14 +59,6 @@ func (s Schema) Compatible(other Schema) bool {
 
 func (s Schema) Version() Version {
 	return s.version
-}
-
-func (s Schema) NGramLen() int {
-	return int(s.nGramLength)
-}
-
-func (s Schema) NGramSkip() int {
-	return int(s.nGramSkip)
 }
 
 // byte length
@@ -91,8 +80,9 @@ func (s *Schema) Encode(enc *encoding.Encbuf) {
 	enc.PutBE32(magicNumber)
 	enc.PutByte(byte(s.version))
 	enc.PutByte(byte(s.encoding))
-	enc.PutBE64(s.nGramLength)
-	enc.PutBE64(s.nGramSkip)
+	// kept to keep compatibility
+	enc.PutBE64(0) // previously n-gram length
+	enc.PutBE64(0) // previously n-gram skip
 
 }
 
@@ -123,8 +113,9 @@ func (s *Schema) Decode(dec *encoding.Decbuf) error {
 		return errors.Wrap(err, "parsing encoding")
 	}
 
-	s.nGramLength = dec.Be64()
-	s.nGramSkip = dec.Be64()
+	// kept to keep compatibility
+	_ = dec.Be64() // previously n-gram length
+	_ = dec.Be64() // previously n-gram skip
 
 	return dec.Err()
 }

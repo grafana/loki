@@ -154,10 +154,8 @@ func TestFuseMultiPage(t *testing.T) {
 	builder, err := NewBlockBuilder(
 		BlockOptions{
 			Schema: Schema{
-				version:     CurrentSchemaVersion,
-				encoding:    compression.EncSnappy,
-				nGramLength: 3, // we test trigrams
-				nGramSkip:   0,
+				version:  CurrentSchemaVersion,
+				encoding: compression.EncSnappy,
 			},
 			SeriesPageSize: 100,
 			BloomPageSize:  10, // So we force one bloom per page
