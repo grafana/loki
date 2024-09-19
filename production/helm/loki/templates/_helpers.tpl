@@ -254,7 +254,7 @@ Params:
   rolloutZoneName = rollout zone name (optional)
 */}}
 {{- define "loki.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "loki.name" .ctx }}
+app.kubernetes.io/name: {{ include "loki.name" . }}
 app.kubernetes.io/instance: {{ .ctx.Release.Name }}
 {{- if .component }}
 app.kubernetes.io/component: {{ .component }}
@@ -266,7 +266,7 @@ app.kubernetes.io/component: {{ .component }}
 {{-   end }}
 rollout-group: {{ .component }}
 zone: {{ .rolloutZoneName }}
-{{- end -}}
+{{- end }}
 
 {{/*
 Create the name of the service account to use
