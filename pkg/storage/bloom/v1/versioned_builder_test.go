@@ -17,10 +17,8 @@ import (
 func smallBlockOpts(v Version, enc compression.Encoding) BlockOptions {
 	return BlockOptions{
 		Schema: Schema{
-			version:     v,
-			encoding:    enc,
-			nGramLength: 4,
-			nGramSkip:   0,
+			version:  v,
+			encoding: enc,
 		},
 		SeriesPageSize: 100,
 		BloomPageSize:  2 << 10,

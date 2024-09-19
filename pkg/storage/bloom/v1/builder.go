@@ -66,12 +66,10 @@ func (b BlockOptions) Encode(enc *encoding.Encbuf) {
 	enc.PutBE64(b.BlockSize)
 }
 
-func NewBlockOptions(enc compression.Encoding, nGramLength, nGramSkip, maxBlockSizeBytes, maxBloomSizeBytes uint64) BlockOptions {
+func NewBlockOptions(enc compression.Encoding, maxBlockSizeBytes, maxBloomSizeBytes uint64) BlockOptions {
 	opts := NewBlockOptionsFromSchema(Schema{
-		version:     CurrentSchemaVersion,
-		encoding:    enc,
-		nGramLength: nGramLength,
-		nGramSkip:   nGramSkip,
+		version:  CurrentSchemaVersion,
+		encoding: enc,
 	})
 	opts.BlockSize = maxBlockSizeBytes
 	opts.UnencodedBlockOptions.MaxBloomSizeBytes = maxBloomSizeBytes
