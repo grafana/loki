@@ -116,6 +116,7 @@ type Distributor struct {
 	validator        *Validator
 	pool             *ring_client.Pool
 	tee              Tee
+	trackedTee       TrackedTee
 
 	rateStore    RateStore
 	shardTracker *ShardTracker
@@ -158,6 +159,7 @@ func New(
 	registerer prometheus.Registerer,
 	metricsNamespace string,
 	tee Tee,
+	trackedTee TrackedTee,
 	usageTracker push.UsageTracker,
 	logger log.Logger,
 ) (*Distributor, error) {
@@ -206,6 +208,7 @@ func New(
 		healthyInstancesCount: atomic.NewUint32(0),
 		rateLimitStrat:        rateLimitStrat,
 		tee:                   tee,
+		trackedTee:            trackedTee,
 		usageTracker:          usageTracker,
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
@@ -312,11 +315,11 @@ type streamTracker struct {
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
-type pushTracker struct {
-	streamsPending atomic.Int32
-	streamsFailed  atomic.Int32
-	done           chan struct{}
-	err            chan error
+type PushTracker struct {
+	StreamsPending atomic.Int32
+	StreamsFailed  atomic.Int32
+	Done           chan struct{}
+	Err            chan error
 }
 
 // Push a set of streams.
@@ -522,11 +525,15 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		return nil, err
 	}
 
-	tracker := pushTracker{
-		done: make(chan struct{}, 1), // buffer avoids blocking if caller terminates - sendSamples() only sends once on each
-		err:  make(chan error, 1),
+	tracker := PushTracker{
+		Done: make(chan struct{}, 1), // buffer avoids blocking if caller terminates - sendSamples() only sends once on each
+		Err:  make(chan error, 1),
 	}
-	tracker.streamsPending.Store(int32(len(streams)))
+	if d.trackedTee != nil {
+		d.trackedTee.DuplicateWithTracking(tenantID, streams, &tracker)
+	}
+
+	tracker.StreamsPending.Add(int32(len(streams)))
 	for ingester, streams := range streamsByIngester {
 		go func(ingester ring.InstanceDesc, samples []*streamTracker) {
 			// Use a background context to make sure all ingesters get samples even if we return early
@@ -540,9 +547,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		}(ingesterDescs[ingester], streams)
 	}
 	select {
-	case err := <-tracker.err:
+	case err := <-tracker.Err:
 		return nil, err
-	case <-tracker.done:
+	case <-tracker.Done:
 		return &logproto.PushResponse{}, validationErr
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -727,7 +734,7 @@ func (d *Distributor) truncateLines(vContext validationContext, stream *logproto
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
-func (d *Distributor) sendStreams(ctx context.Context, ingester ring.InstanceDesc, streamTrackers []*streamTracker, pushTracker *pushTracker) {
+func (d *Distributor) sendStreams(ctx context.Context, ingester ring.InstanceDesc, streamTrackers []*streamTracker, pushTracker *PushTracker) {
 	err := d.sendStreamsErr(ctx, ingester, streamTrackers)
 
 	// If we succeed, decrement each stream's pending count by one.
@@ -744,15 +751,15 @@ func (d *Distributor) sendStreams(ctx context.Context, ingester ring.InstanceDes
 			if streamTrackers[i].failed.Inc() <= int32(streamTrackers[i].maxFailures) {
 				continue
 			}
-			if pushTracker.streamsFailed.Inc() == 1 {
-				pushTracker.err <- err
+			if pushTracker.StreamsFailed.Inc() == 1 {
+				pushTracker.Err <- err
 			}
 		} else {
 			if streamTrackers[i].succeeded.Inc() != int32(streamTrackers[i].minSuccess) {
 				continue
 			}
-			if pushTracker.streamsPending.Dec() == 0 {
-				pushTracker.done <- struct{}{}
+			if pushTracker.StreamsPending.Dec() == 0 {
+				pushTracker.Done <- struct{}{}
 			}
 		}
 	}

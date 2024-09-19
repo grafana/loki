@@ -49,6 +49,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/objstore"
 	ingesterkafka "github.com/grafana/loki/v3/pkg/kafka/ingester"
+	kafka_tee "github.com/grafana/loki/v3/pkg/kafka/tee"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -321,6 +322,19 @@ func (t *Loki) initTenantConfigs() (_ services.Service, err error) {
 }
 
 func (t *Loki) initDistributor() (services.Service, error) {
+	var trackedTee distributor.TrackedTee
+	if t.Cfg.Ingester.KafkaIngestion.Enabled {
+		kafkaTee, err := kafka_tee.NewTee(t.Cfg.KafkaConfig, t.Cfg.MetricsNamespace, prometheus.DefaultRegisterer, util_log.Logger, t.partitionRing)
+		if err != nil {
+			return nil, err
+		}
+		if t.Cfg.Ingester.KafkaIngestion.Required {
+			trackedTee = distributor.WrapTrackedTee(trackedTee, kafkaTee)
+		} else {
+			t.Tee = distributor.WrapTee(t.Tee, kafkaTee)
+		}
+	}
+
 	var err error
 	logger := log.With(util_log.Logger, "component", "distributor")
 	t.distributor, err = distributor.New(
@@ -332,6 +346,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		prometheus.DefaultRegisterer,
 		t.Cfg.MetricsNamespace,
 		t.Tee,
+		trackedTee,
 		t.UsageTracker,
 		logger,
 	)

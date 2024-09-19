@@ -92,7 +92,7 @@ func NewTee(
 }
 
 // Duplicate implements the distributor.Tee interface, which is used to duplicate
-// distributor requests to pattern ingesters. It asynchronously sends each stream
+// distributor requests to different destinations. It asynchronously sends each stream
 // to Kafka.
 //
 // Parameters:
@@ -103,6 +103,30 @@ func (t *Tee) Duplicate(tenant string, streams []distributor.KeyedStream) {
 		go func(stream distributor.KeyedStream) {
 			if err := t.sendStream(tenant, stream); err != nil {
 				level.Error(t.logger).Log("msg", "failed to send stream to kafka", "err", err)
+			}
+		}(streams[idx])
+	}
+}
+
+// DuplicateWithTracking implements the distributor.TrackedTee interface, which is used to duplicate
+// distributor requests to different destinations. It sends each stream
+// to Kafka and requires all streams to be ack'd to the tracker.
+//
+// Parameters:
+// - tenant: The tenant identifier
+// - streams: A slice of KeyedStream to be duplicated
+func (t *Tee) DuplicateWithTracking(tenant string, streams []distributor.KeyedStream, tracker *distributor.PushTracker) {
+	for idx := range streams {
+		go func(stream distributor.KeyedStream) {
+			err := t.sendStream(tenant, stream)
+			if err != nil {
+				if tracker.StreamsFailed.Inc() == 1 {
+					tracker.Err <- err
+				}
+			} else {
+				if tracker.StreamsPending.Dec() == 0 {
+					tracker.Done <- struct{}{}
+				}
 			}
 		}(streams[idx])
 	}
