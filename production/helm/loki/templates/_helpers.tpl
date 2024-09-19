@@ -50,7 +50,7 @@ Params:
 loki.componentSectionFromName returns the sections from the user .Values in YAML
 that corresponds to the requested component. loki.componentSectionFromName takes two arguments
   .ctx = the root context of the chart
-  .component = the name of the component. mimir.componentSectionFromName uses an internal mapping to know
+  .component = the name of the component. loki.componentSectionFromName uses an internal mapping to know
                 which component lives where in the values.yaml
 Examples:
   $componentSection := include "loki.componentSectionFromName" (dict "ctx" . "component" "ingester") | fromYaml
@@ -108,7 +108,7 @@ which allows us to keep generating everything for the default zone.
 
 {{- range $idx, $rolloutZone := $componentSection.zoneAwareReplication.zones -}}
 {{- $_ := set $zonesMap $rolloutZone.name (dict
-  "affinity" (($rolloutZone.extraAffinity | default (dict)) | mergeOverwrite (include "mimir.zoneAntiAffinity" (dict "component" $.component "rolloutZoneName" $rolloutZone.name "topologyKey" $componentSection.zoneAwareReplication.topologyKey ) | fromYaml ) )
+  "affinity" (($rolloutZone.extraAffinity | default (dict)) | mergeOverwrite (include "loki.zoneAntiAffinity" (dict "component" $.component "rolloutZoneName" $rolloutZone.name "topologyKey" $componentSection.zoneAwareReplication.topologyKey ) | fromYaml ) )
   "nodeSelector" ($rolloutZone.nodeSelector | default (dict) )
   "replicas" $replicaPerZone
   "storageClass" $rolloutZone.storageClass
