@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"math"
 	"sync"
 	"testing"
 
@@ -25,26 +24,26 @@ var BloomPagePool = mempool.New("test", []mempool.Bucket{
 	{Size: 16, Capacity: 512 << 10},
 }, nil)
 
-// TODO(owen-d): this is unhinged from the data it represents. I'm leaving this solely so I don't
-// have to refactor tests here in order to fix this elsewhere, but it can/should be fixed --
-// the skip & n len are hardcoded based on data that's passed to it elsewhere.
-// TODO(chaudum): Can be removed once matching with structured metadata is implemented.
-type fakeNgramBuilder struct{}
+type singleKeyTest []byte
 
-func (f fakeNgramBuilder) N() int          { return math.MaxInt } // do not tokenize
-func (f fakeNgramBuilder) SkipFactor() int { return 0 }
-
-func (f fakeNgramBuilder) Tokens(key string) v2.Iterator[[]byte] {
-	return v2.NewSliceIter[[]byte]([][]byte{[]byte(key)})
+// Matches implements BloomTest.
+func (s singleKeyTest) Matches(bloom filter.Checker) bool {
+	return bloom.Test(s)
 }
 
+// MatchesWithPrefixBuf implements BloomTest.
+func (s singleKeyTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
+	return bloom.Test(append(buf[:prefixLen], s...))
+}
+
+// compiler check
+var _ BloomTest = singleKeyTest("")
+
 func keysToBloomTest(keys [][]byte) BloomTest {
-	var tokenizer fakeNgramBuilder
 	tests := make(BloomTests, 0, len(keys))
 	for _, key := range keys {
-		tests = append(tests, newStringTest(tokenizer, string(key)))
+		tests = append(tests, singleKeyTest(key))
 	}
-
 	return tests
 }
 
@@ -55,7 +54,7 @@ func TestFusedQuerier(t *testing.T) {
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
 	reader := NewByteReader(indexBuf, bloomsBuf)
 	numSeries := 1000
-	data, keys := MkBasicSeriesWithBlooms(numSeries, 0x0000, 0xffff, 0, 10000)
+	data, _ := MkBasicSeriesWithBlooms(numSeries, 0x0000, 0xffff, 0, 10000)
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
@@ -91,7 +90,7 @@ func TestFusedQuerier(t *testing.T) {
 				Fp:       data[idx].Series.Fingerprint,
 				Chks:     data[idx].Series.Chunks,
 				Response: ch,
-				Search:   keysToBloomTest(keys[idx]),
+				Search:   singleKeyTest("trace_id"),
 			})
 		}
 		inputs = append(inputs, reqs)
@@ -132,20 +131,13 @@ func TestFusedQuerier(t *testing.T) {
 	for i, input := range inputs {
 		for j, req := range input {
 			resp := resps[i][j]
-			require.Equal(
-				t,
-				Output{
-					Fp:       req.Fp,
-					Removals: nil,
-				},
-				resp,
-			)
+			require.Equal(t, Output{Fp: req.Fp, Removals: nil}, resp)
 		}
 	}
 }
 
 // Successfully query series across multiple pages as well as series that only occupy 1 bloom
-func TestFuseMultiPage(t *testing.T) {
+func TestFusedQuerier_MultiPage(t *testing.T) {
 	indexBuf := bytes.NewBuffer(nil)
 	bloomsBuf := bytes.NewBuffer(nil)
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
@@ -215,13 +207,11 @@ func TestFuseMultiPage(t *testing.T) {
 		chans[i] = make(chan Output, 1) // buffered once to not block in test
 	}
 
-	req := func(ngram []byte, ch chan Output) Request {
+	req := func(key []byte, ch chan Output) Request {
 		return Request{
-			Fp:   fp,
-			Chks: []ChunkRef{chk},
-			Search: stringTest{
-				ngrams: [][]byte{ngram},
-			},
+			Fp:       fp,
+			Chks:     []ChunkRef{chk},
+			Search:   singleKeyTest(key),
 			Response: ch,
 			Recorder: NewBloomRecorder(context.Background(), "unknown"),
 		}
@@ -357,7 +347,7 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 	}
 }
 
-func TestFusedQuerierSkipsEmptyBlooms(t *testing.T) {
+func TestFusedQuerier_SkipsEmptyBlooms(t *testing.T) {
 	// references for linking in memory reader+writer
 	indexBuf := bytes.NewBuffer(nil)
 	bloomsBuf := bytes.NewBuffer(nil)
