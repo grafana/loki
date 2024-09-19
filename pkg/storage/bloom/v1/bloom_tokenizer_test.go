@@ -20,7 +20,6 @@ import (
 
 	"github.com/grafana/loki/pkg/push"
 
-	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
@@ -28,54 +27,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-var (
-	four    = NewNGramTokenizer(4, 0)
-	metrics = NewMetrics(prometheus.DefaultRegisterer)
-)
-
-func TestPrefixedKeyCreation(t *testing.T) {
-	t.Parallel()
-	var ones uint64 = 0xffffffffffffffff
-
-	ref := ChunkRef{
-		From:     0,
-		Through:  model.Time(int64(ones)),
-		Checksum: 0xffffffff,
-	}
-	for _, tc := range []struct {
-		desc          string
-		ngram, expLen int
-	}{
-		{
-			desc:   "0-gram",
-			ngram:  0,
-			expLen: 20,
-		},
-		{
-			desc:   "4-gram",
-			ngram:  4,
-			expLen: 20 + 4*MaxRuneLen,
-		},
-	} {
-		t.Run(tc.desc, func(t *testing.T) {
-			token, prefixLn := prefixedToken(tc.ngram, ref, nil)
-			require.Equal(t, 20, prefixLn)
-			require.Equal(t, tc.expLen, len(token))
-			// first 8 bytes should be zeros from `from`
-			for i := 0; i < 8; i++ {
-				require.Equal(t, byte(0), token[i])
-			}
-			// next 8 bytes should be ones from `through`
-			for i := 8; i < 16; i++ {
-				require.Equal(t, byte(255), token[i])
-			}
-			// next 4 bytes should be ones from `checksum`
-			for i := 16; i < 20; i++ {
-				require.Equal(t, byte(255), token[i])
-			}
-		})
-	}
-}
+var metrics = NewMetrics(prometheus.DefaultRegisterer)
 
 func TestTokenizerPopulate(t *testing.T) {
 	t.Parallel()
@@ -249,7 +201,6 @@ func populateAndConsumeBloom(
 
 func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		var testLine = lorem + lorem + lorem
 		bt := NewBloomTokenizer(0, metrics, logger.NewNopLogger())
 
 		sbf := filter.NewScalableBloomFilter(1024, 0.01, 0.8)
@@ -257,7 +208,11 @@ func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 		memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
 		_, _ = memChunk.Append(&push.Entry{
 			Timestamp: time.Unix(0, 1),
-			Line:      testLine,
+			Line:      "",
+			StructuredMetadata: push.LabelsAdapter{
+				push.LabelAdapter{Name: "trace_id", Value: fmt.Sprintf("%04x", i)},
+				push.LabelAdapter{Name: "org_id", Value: fmt.Sprintf("%d", i%1000)},
+			},
 		})
 		itr, err := memChunk.Iterator(
 			context.Background(),

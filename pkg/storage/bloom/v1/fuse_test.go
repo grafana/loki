@@ -167,20 +167,20 @@ func TestFusedQuerier_MultiPage(t *testing.T) {
 		Chunks:      []ChunkRef{chk},
 	}
 
-	buf, prefixLn := prefixedToken(3, chk, nil)
+	buf := prefixForChunkRef(chk)
 
 	b1 := &Bloom{
 		*filter.NewScalableBloomFilter(1024, 0.01, 0.8),
 	}
 	key1, key2 := []byte("foo"), []byte("bar")
 	b1.Add(key1)
-	b1.Add(append(buf[:prefixLn], key1...))
+	b1.Add(append(buf, key1...))
 
 	b2 := &Bloom{
 		*filter.NewScalableBloomFilter(1024, 0.01, 0.8),
 	}
 	b2.Add(key2)
-	b2.Add(append(buf[:prefixLn], key2...))
+	b2.Add(append(buf, key2...))
 
 	_, err = builder.BuildFrom(v2.NewSliceIter([]SeriesWithBlooms{
 		{
@@ -257,7 +257,7 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 
 	numSeries := 4
 	data := make([]SeriesWithBlooms, 0, numSeries)
-	tokenizer := NewNGramTokenizer(4, 0)
+
 	for i := 0; i < numSeries; i++ {
 		var series Series
 		series.Fingerprint = model.Fingerprint(i)
@@ -280,12 +280,8 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 		}
 
 		for j := 0; j < nLines; j++ {
-			line := fmt.Sprintf("%04x:%04x", i, j)
-			it := tokenizer.Tokens(line)
-			for it.Next() {
-				key := it.At()
-				bloom.Add(key)
-			}
+			key := fmt.Sprintf("%04x:%04x", i, j)
+			bloom.Add([]byte(key))
 		}
 
 		data = append(data, SeriesWithBlooms{
