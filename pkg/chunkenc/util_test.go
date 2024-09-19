@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc/testdata"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -23,7 +24,7 @@ func logprotoEntryWithStructuredMetadata(ts int64, line string, structuredMetada
 	}
 }
 
-func generateData(enc Encoding, chunksCount, blockSize, targetSize int) ([]Chunk, uint64) {
+func generateData(enc compression.Encoding, chunksCount, blockSize, targetSize int) ([]Chunk, uint64) {
 	chunks := []Chunk{}
 	i := int64(0)
 	size := uint64(0)

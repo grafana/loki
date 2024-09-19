@@ -6,7 +6,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
 
@@ -39,14 +39,14 @@ var (
 
 type Schema struct {
 	version                Version
-	encoding               chunkenc.Encoding
+	encoding               compression.Encoding
 	nGramLength, nGramSkip uint64
 }
 
 func NewSchema() Schema {
 	return Schema{
 		version:     CurrentSchemaVersion,
-		encoding:    chunkenc.EncNone,
+		encoding:    compression.EncNone,
 		nGramLength: 0,
 		nGramSkip:   0,
 	}
@@ -78,12 +78,12 @@ func (s Schema) Len() int {
 	return 4 + 1 + 1 + 8 + 8
 }
 
-func (s *Schema) DecompressorPool() chunkenc.ReaderPool {
-	return chunkenc.GetReaderPool(s.encoding)
+func (s *Schema) DecompressorPool() compression.ReaderPool {
+	return compression.GetReaderPool(s.encoding)
 }
 
-func (s *Schema) CompressorPool() chunkenc.WriterPool {
-	return chunkenc.GetWriterPool(s.encoding)
+func (s *Schema) CompressorPool() compression.WriterPool {
+	return compression.GetWriterPool(s.encoding)
 }
 
 func (s *Schema) Encode(enc *encoding.Encbuf) {
@@ -118,8 +118,8 @@ func (s *Schema) Decode(dec *encoding.Decbuf) error {
 		return errors.Errorf("invalid version. expected %d, got %d", 3, s.version)
 	}
 
-	s.encoding = chunkenc.Encoding(dec.Byte())
-	if _, err := chunkenc.ParseEncoding(s.encoding.String()); err != nil {
+	s.encoding = compression.Encoding(dec.Byte())
+	if _, err := compression.ParseEncoding(s.encoding.String()); err != nil {
 		return errors.Wrap(err, "parsing encoding")
 	}
 

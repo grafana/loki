@@ -16,6 +16,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
@@ -131,7 +132,7 @@ type MemChunk struct {
 	head HeadBlock
 
 	format   byte
-	encoding Encoding
+	encoding compression.Encoding
 	headFmt  HeadBlockFmt
 
 	// compressed size of chunk. Set when chunk is cut or while decoding chunk from storage.
@@ -196,7 +197,7 @@ func (hb *headBlock) Append(ts int64, line string, _ labels.Labels) (bool, error
 	return false, nil
 }
 
-func (hb *headBlock) Serialise(pool WriterPool) ([]byte, error) {
+func (hb *headBlock) Serialise(pool compression.WriterPool) ([]byte, error) {
 	inBuf := serializeBytesBufferPool.Get().(*bytes.Buffer)
 	defer func() {
 		inBuf.Reset()
@@ -354,7 +355,7 @@ type entry struct {
 }
 
 // NewMemChunk returns a new in-mem chunk.
-func NewMemChunk(chunkFormat byte, enc Encoding, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
+func NewMemChunk(chunkFormat byte, enc compression.Encoding, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
 	return newMemChunkWithFormat(chunkFormat, enc, head, blockSize, targetSize)
 }
 
@@ -369,7 +370,7 @@ func panicIfInvalidFormat(chunkFmt byte, head HeadBlockFmt) {
 }
 
 // NewMemChunk returns a new in-mem chunk.
-func newMemChunkWithFormat(format byte, enc Encoding, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
+func newMemChunkWithFormat(format byte, enc compression.Encoding, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
 	panicIfInvalidFormat(format, head)
 
 	symbolizer := newSymbolizer()
@@ -413,10 +414,10 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 	bc.format = version
 	switch version {
 	case ChunkFormatV1:
-		bc.encoding = EncGZIP
+		bc.encoding = compression.EncGZIP
 	case ChunkFormatV2, ChunkFormatV3, ChunkFormatV4:
 		// format v2+ has a byte for block encoding.
-		enc := Encoding(db.byte())
+		enc := compression.Encoding(db.byte())
 		if db.err() != nil {
 			return nil, errors.Wrap(db.err(), "verifying encoding")
 		}
@@ -535,7 +536,7 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 		if fromCheckpoint {
 			bc.symbolizer = symbolizerFromCheckpoint(lb)
 		} else {
-			symbolizer, err := symbolizerFromEnc(lb, GetReaderPool(bc.encoding))
+			symbolizer, err := symbolizerFromEnc(lb, compression.GetReaderPool(bc.encoding))
 			if err != nil {
 				return nil, err
 			}
@@ -653,7 +654,7 @@ func (c *MemChunk) writeTo(w io.Writer, forCheckpoint bool) (int64, error) {
 			}
 		} else {
 			var err error
-			n, crcHash, err = c.symbolizer.SerializeTo(w, GetWriterPool(c.encoding))
+			n, crcHash, err = c.symbolizer.SerializeTo(w, compression.GetWriterPool(c.encoding))
 			if err != nil {
 				return offset, errors.Wrap(err, "write structured metadata")
 			}
@@ -776,7 +777,7 @@ func MemchunkFromCheckpoint(chk, head []byte, desiredIfNotUnordered HeadBlockFmt
 }
 
 // Encoding implements Chunk.
-func (c *MemChunk) Encoding() Encoding {
+func (c *MemChunk) Encoding() compression.Encoding {
 	return c.encoding
 }
 
@@ -941,7 +942,7 @@ func (c *MemChunk) cut() error {
 		return nil
 	}
 
-	b, err := c.head.Serialise(GetWriterPool(c.encoding))
+	b, err := c.head.Serialise(compression.GetWriterPool(c.encoding))
 	if err != nil {
 		return err
 	}
@@ -1172,7 +1173,7 @@ func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, err
 // then allows us to bind a decoding context to a block when requested, but otherwise helps reduce the
 // chances of chunk<>block encoding drift in the codebase as the latter is parameterized by the former.
 type encBlock struct {
-	enc        Encoding
+	enc        compression.Encoding
 	format     byte
 	symbolizer *symbolizer
 	block
@@ -1182,14 +1183,14 @@ func (b encBlock) Iterator(ctx context.Context, pipeline log.StreamPipeline) ite
 	if len(b.b) == 0 {
 		return iter.NoopEntryIterator
 	}
-	return newEntryIterator(ctx, GetReaderPool(b.enc), b.b, pipeline, b.format, b.symbolizer)
+	return newEntryIterator(ctx, compression.GetReaderPool(b.enc), b.b, pipeline, b.format, b.symbolizer)
 }
 
 func (b encBlock) SampleIterator(ctx context.Context, extractor log.StreamSampleExtractor) iter.SampleIterator {
 	if len(b.b) == 0 {
 		return iter.NoopSampleIterator
 	}
-	return newSampleIterator(ctx, GetReaderPool(b.enc), b.b, b.format, extractor, b.symbolizer)
+	return newSampleIterator(ctx, compression.GetReaderPool(b.enc), b.b, b.format, extractor, b.symbolizer)
 }
 
 func (b block) Offset() int {
@@ -1339,7 +1340,7 @@ type bufferedIterator struct {
 	stats     *stats.Context
 
 	reader     io.Reader
-	pool       ReaderPool
+	pool       compression.ReaderPool
 	symbolizer *symbolizer
 
 	err error
@@ -1358,7 +1359,7 @@ type bufferedIterator struct {
 	closed bool
 }
 
-func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte, format byte, symbolizer *symbolizer) *bufferedIterator {
+func newBufferedIterator(ctx context.Context, pool compression.ReaderPool, b []byte, format byte, symbolizer *symbolizer) *bufferedIterator {
 	stats := stats.FromContext(ctx)
 	stats.AddCompressedBytes(int64(len(b)))
 	return &bufferedIterator{
@@ -1619,7 +1620,7 @@ func (si *bufferedIterator) close() {
 	si.origBytes = nil
 }
 
-func newEntryIterator(ctx context.Context, pool ReaderPool, b []byte, pipeline log.StreamPipeline, format byte, symbolizer *symbolizer) iter.EntryIterator {
+func newEntryIterator(ctx context.Context, pool compression.ReaderPool, b []byte, pipeline log.StreamPipeline, format byte, symbolizer *symbolizer) iter.EntryIterator {
 	return &entryBufferedIterator{
 		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
 		pipeline:         pipeline,
@@ -1671,7 +1672,7 @@ func (e *entryBufferedIterator) Close() error {
 	return e.bufferedIterator.Close()
 }
 
-func newSampleIterator(ctx context.Context, pool ReaderPool, b []byte, format byte, extractor log.StreamSampleExtractor, symbolizer *symbolizer) iter.SampleIterator {
+func newSampleIterator(ctx context.Context, pool compression.ReaderPool, b []byte, format byte, extractor log.StreamSampleExtractor, symbolizer *symbolizer) iter.SampleIterator {
 	return &sampleBufferedIterator{
 		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
 		extractor:        extractor,

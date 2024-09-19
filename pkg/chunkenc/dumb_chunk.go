@@ -6,6 +6,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
@@ -69,7 +70,7 @@ func (c *dumbChunk) Utilization() float64 {
 	return float64(len(c.entries)) / float64(tmpNumEntries)
 }
 
-func (c *dumbChunk) Encoding() Encoding { return EncNone }
+func (c *dumbChunk) Encoding() compression.Encoding { return compression.EncNone }
 
 // Returns an iterator that goes from _most_ recent to _least_ recent (ie,
 // backwards).
