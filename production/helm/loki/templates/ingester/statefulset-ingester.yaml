@@ -1,9 +1,12 @@
-{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
-{{- if and $isDistributed (or (not .Values.ingester.zoneAwareReplication.enabled) .Values.ingester.zoneAwareReplication.migration.enabled) }}
+{{- $args := dict "ctx" . "component" "ingester" "memberlist" true -}}
+{{- $zonesMap := include "mimir.zoneAwareReplicationMap" $args | fromYaml -}}
+{{- range $zoneName, $rolloutZone := $zonesMap }}
+{{- with $ -}}
+{{- $_ := set $args "rolloutZoneName" $zoneName -}}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "loki.ingesterFullname" . }}
+  name: {{ include "loki.resourceName" $args }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "loki.ingesterLabels" . | nindent 4 }}
@@ -14,7 +17,7 @@ metadata:
   {{- end }}
 spec:
 {{- if not .Values.ingester.autoscaling.enabled }}
-  replicas: {{ .Values.ingester.replicas }}
+  replicas: {{  $rolloutZone.replicas }}
 {{- end }}
   podManagementPolicy: Parallel
   updateStrategy:
@@ -139,12 +142,12 @@ spec:
         {{- if .Values.ingester.extraContainers }}
         {{- toYaml .Values.ingester.extraContainers | nindent 8}}
         {{- end }}
-      {{- with .Values.ingester.affinity }}
-      affinity:
+      {{- with $rolloutZone.nodeSelector }}
+      nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.ingester.nodeSelector }}
-      nodeSelector:
+      {{- with $rolloutZone.affinity }}
+      affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.ingester.tolerations }}
@@ -183,22 +186,28 @@ spec:
         {{- end }}
   {{- else }}
   volumeClaimTemplates:
-  {{- range .Values.ingester.persistence.claims }}
-    - metadata:
-        name: {{ .name }}
-        {{- with .annotations }}
-        annotations:
-          {{- . | toYaml | nindent 10 }}
-        {{- end }}
+      {{- with $rolloutZone.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $rolloutZone.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       spec:
         accessModes:
           - ReadWriteOnce
-        {{- with .storageClass }}
-        storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
+        {{- $storageClass := default .Values.ingester.persistentVolume.storageClass $rolloutZone.storageClass }}
+        {{- if $storageClass }}
+        {{- if (eq "-" $storageClass) }}
+        storageClassName: ""
+        {{- else }}
+        storageClassName: {{ $storageClass }}
+        {{- end }}
         {{- end }}
         resources:
           requests:
             storage: {{ .size | quote }}
-  {{- end }}
-  {{- end }}
-{{- end }}
+---
+{{ end }}
+{{ end }}

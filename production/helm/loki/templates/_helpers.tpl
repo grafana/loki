@@ -71,6 +71,64 @@ Examples:
 {{- end -}}
 
 {{/*
+Creates dict for zone-aware replication configuration
+Params:
+  ctx = . context
+  component = component name
+Return value:
+  {
+    zoneName: {
+      affinity: <affinity>,
+      nodeSelector: <nodeSelector>,
+      replicas: <N>,
+      storageClass: <S>
+    },
+    ...
+  }
+During migration there is a special case where an extra "zone" is generated with zonaName == "" empty string.
+The empty string evaluates to false in boolean expressions so it is treated as the default (non zone-aware) zone,
+which allows us to keep generating everything for the default zone.
+*/}}
+{{- define "loki.zoneAwareReplicationMap" -}}
+{{- $zonesMap := (dict) -}}
+{{- $componentSection := include "loki.componentSectionFromName" . | fromYaml -}}
+{{- $defaultZone := (dict "affinity" $componentSection.affinity "nodeSelector" $componentSection.nodeSelector "replicas" $componentSection.replicas "storageClass" $componentSection.storageClass) -}}
+
+{{- if $componentSection.zoneAwareReplication.enabled -}}
+{{- $numberOfZones := len $componentSection.zoneAwareReplication.zones -}}
+{{- if lt $numberOfZones 3 -}}
+{{- fail "When zone-awareness is enabled, you must have at least 3 zones defined." -}}
+{{- end -}}
+
+{{- $requestedReplicas := $componentSection.replicas -}}
+{{- if and (has .component (list "ingester" )) $componentSection.zoneAwareReplication.migration.enabled (not $componentSection.zoneAwareReplication.migration.writePath) -}}
+{{- $requestedReplicas = $componentSection.zoneAwareReplication.migration.replicas }}
+{{- end -}}
+{{- $replicaPerZone := div (add $requestedReplicas $numberOfZones -1) $numberOfZones -}}
+
+{{- range $idx, $rolloutZone := $componentSection.zoneAwareReplication.zones -}}
+{{- $_ := set $zonesMap $rolloutZone.name (dict
+  "affinity" (($rolloutZone.extraAffinity | default (dict)) | mergeOverwrite (include "mimir.zoneAntiAffinity" (dict "component" $.component "rolloutZoneName" $rolloutZone.name "topologyKey" $componentSection.zoneAwareReplication.topologyKey ) | fromYaml ) )
+  "nodeSelector" ($rolloutZone.nodeSelector | default (dict) )
+  "replicas" $replicaPerZone
+  "storageClass" $rolloutZone.storageClass
+  ) -}}
+{{- end -}}
+{{- if $componentSection.zoneAwareReplication.migration.enabled -}}
+{{- if $componentSection.zoneAwareReplication.migration.scaleDownDefaultZone -}}
+{{- $_ := set $defaultZone "replicas" 0 -}}
+{{- end -}}
+{{- $_ := set $zonesMap "" $defaultZone -}}
+{{- end -}}
+
+{{- else -}}
+{{- $_ := set $zonesMap "" $defaultZone -}}
+{{- end -}}
+{{- $zonesMap | toYaml }}
+
+{{- end -}}
+
+{{/*
 Return if deployment mode is simple scalable
 */}}
 {{- define "loki.deployment.isScalable" -}}
