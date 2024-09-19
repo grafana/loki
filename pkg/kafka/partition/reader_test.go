@@ -1,4 +1,4 @@
-package ingester
+package partition
 
 import (
 	"context"
@@ -21,17 +21,17 @@ import (
 
 type mockConsumer struct {
 	mock.Mock
-	recordsChan chan []record
+	recordsChan chan []Record
 	wg          sync.WaitGroup
 }
 
 func newMockConsumer() *mockConsumer {
 	return &mockConsumer{
-		recordsChan: make(chan []record, 100),
+		recordsChan: make(chan []Record, 100),
 	}
 }
 
-func (m *mockConsumer) Start(ctx context.Context, recordsChan <-chan []record) func() {
+func (m *mockConsumer) Start(ctx context.Context, recordsChan <-chan []Record) func() {
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
@@ -60,7 +60,7 @@ func TestPartitionReader_BasicFunctionality(t *testing.T) {
 		return consumer, nil
 	}
 
-	partitionReader, err := NewPartitionReader(kafkaCfg, 0, "test-consumer-group", consumerFactory, log.NewNopLogger(), prometheus.NewRegistry())
+	partitionReader, err := NewReader(kafkaCfg, 0, "test-consumer-group", consumerFactory, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	producer, err := kafka.NewWriterClient(kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
@@ -90,8 +90,8 @@ func TestPartitionReader_BasicFunctionality(t *testing.T) {
 		select {
 		case receivedRecords := <-consumer.recordsChan:
 			require.Len(t, receivedRecords, 1)
-			assert.Equal(t, "test-tenant", receivedRecords[0].tenantID)
-			assert.Equal(t, records[0].Value, receivedRecords[0].content)
+			assert.Equal(t, "test-tenant", receivedRecords[0].TenantID)
+			assert.Equal(t, records[0].Value, receivedRecords[0].Content)
 		case <-time.After(1 * time.Second):
 			t.Fatal("Timeout waiting for records")
 		}

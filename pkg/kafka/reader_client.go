@@ -32,7 +32,9 @@ func NewReaderClient(cfg Config, metrics *kprom.Metrics, logger log.Logger, opts
 	if err != nil {
 		return nil, errors.Wrap(err, "creating kafka client")
 	}
-
+	if cfg.AutoCreateTopicEnabled {
+		cfg.SetDefaultNumberOfPartitionsForAutocreatedTopics(logger)
+	}
 	return client, nil
 }
 

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
@@ -26,6 +27,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/concurrency"
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/modules"
 	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/ring"
@@ -293,6 +295,10 @@ type Ingester struct {
 	// recalculateOwnedStreams periodically checks the ring for changes and recalculates owned streams for each instance.
 	readRing                ring.ReadRing
 	recalculateOwnedStreams *recalculateOwnedStreams
+
+	ingestPartitionID       int32
+	partitionRingLifecycler *ring.PartitionInstanceLifecycler
+	partitionReader         *partition.Reader
 }
 
 // New makes a new Ingester.
@@ -355,6 +361,34 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 
 	i.lifecyclerWatcher = services.NewFailureWatcher()
 	i.lifecyclerWatcher.WatchService(i.lifecycler)
+
+	if i.cfg.KafkaIngestion.Enabled {
+		i.ingestPartitionID, err = partitionring.ExtractIngesterPartitionID(cfg.LifecyclerConfig.ID)
+		if err != nil {
+			return nil, fmt.Errorf("calculating ingester partition ID: %w", err)
+		}
+		partitionRingKV := cfg.KafkaIngestion.PartitionRingConfig.KVStore.Mock
+		if partitionRingKV == nil {
+			partitionRingKV, err = kv.NewClient(cfg.KafkaIngestion.PartitionRingConfig.KVStore, ring.GetPartitionRingCodec(), kv.RegistererWithKVName(registerer, PartitionRingName+"-lifecycler"), logger)
+			if err != nil {
+				return nil, fmt.Errorf("creating KV store for ingester partition ring: %w", err)
+			}
+		}
+		i.partitionRingLifecycler = ring.NewPartitionInstanceLifecycler(
+			i.cfg.KafkaIngestion.PartitionRingConfig.ToLifecyclerConfig(i.ingestPartitionID, cfg.LifecyclerConfig.ID),
+			PartitionRingName,
+			PartitionRingKey,
+			partitionRingKV,
+			logger,
+			prometheus.WrapRegistererWithPrefix("loki_", registerer))
+
+		i.partitionReader, err = partition.NewReader(cfg.KafkaIngestion.KafkaConfig, i.ingestPartitionID, cfg.LifecyclerConfig.ID, NewKafkaConsumerFactory(i, logger), logger, registerer)
+		if err != nil {
+			return nil, err
+		}
+		i.lifecyclerWatcher.WatchService(i.partitionRingLifecycler)
+		i.lifecyclerWatcher.WatchService(i.partitionReader)
+	}
 
 	// Now that the lifecycler has been created, we can create the limiter
 	// which depends on it.

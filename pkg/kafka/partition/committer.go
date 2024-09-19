@@ -1,18 +1,24 @@
-package ingester
+package partition
 
 import (
 	"context"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/twmb/franz-go/pkg/kadm"
-
-	"github.com/grafana/loki/v3/pkg/kafka"
+	"go.uber.org/atomic"
 )
+
+// Committer defines an interface for committing offsets
+type Committer interface {
+	Commit(ctx context.Context, offset int64) error
+}
 
 // partitionCommitter is responsible for committing offsets for a specific Kafka partition
 // to the Kafka broker. It also tracks metrics related to the commit process.
@@ -28,11 +34,15 @@ type partitionCommitter struct {
 	kafkaCfg      kafka.Config
 	partitionID   int32
 	consumerGroup string
+
+	toCommit *atomic.Int64
+	wg       sync.WaitGroup
+	cancel   context.CancelFunc
 }
 
-// newPartitionCommitter creates and initializes a new partitionCommitter.
+// newCommitter creates and initializes a new partitionCommitter.
 // It sets up the necessary metrics and initializes the committer with the provided configuration.
-func newPartitionCommitter(kafkaCfg kafka.Config, admClient *kadm.Client, partitionID int32, consumerGroup string, logger log.Logger, reg prometheus.Registerer) *partitionCommitter {
+func newCommitter(kafkaCfg kafka.Config, admClient *kadm.Client, partitionID int32, consumerGroup string, logger log.Logger, reg prometheus.Registerer) *partitionCommitter {
 	c := &partitionCommitter{
 		logger:        logger,
 		kafkaCfg:      kafkaCfg,
@@ -63,12 +73,49 @@ func newPartitionCommitter(kafkaCfg kafka.Config, admClient *kadm.Client, partit
 			Help:        "The last consumed offset successfully committed by the partition reader. Set to -1 if not offset has been committed yet.",
 			ConstLabels: prometheus.Labels{"partition": strconv.Itoa(int(partitionID))},
 		}),
+		toCommit: atomic.NewInt64(-1),
 	}
 
 	// Initialise the last committed offset metric to -1 to signal no offset has been committed yet (0 is a valid offset).
 	c.lastCommittedOffset.Set(-1)
 
+	if kafkaCfg.ConsumerGroupOffsetCommitInterval > 0 {
+		c.wg.Add(1)
+		ctx, cancel := context.WithCancel(context.Background())
+		c.cancel = cancel
+		go c.autoCommitLoop(ctx)
+	}
+
 	return c
+}
+
+func (r *partitionCommitter) autoCommitLoop(ctx context.Context) {
+	defer r.wg.Done()
+	commitTicker := time.NewTicker(r.kafkaCfg.ConsumerGroupOffsetCommitInterval)
+	defer commitTicker.Stop()
+
+	previousOffset := r.toCommit.Load()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-commitTicker.C:
+			currOffset := r.toCommit.Load()
+			if currOffset == previousOffset {
+				continue
+			}
+
+			if err := r.Commit(ctx, currOffset); err == nil {
+				previousOffset = currOffset
+			}
+		}
+	}
+}
+
+func (r *partitionCommitter) enqueueOffset(o int64) {
+	if r.kafkaCfg.ConsumerGroupOffsetCommitInterval > 0 {
+		r.toCommit.Store(o)
+	}
 }
 
 // commit attempts to commit the given offset to Kafka for the partition this committer is responsible for.
@@ -100,4 +147,19 @@ func (r *partitionCommitter) Commit(ctx context.Context, offset int64) (returnEr
 	level.Debug(r.logger).Log("msg", "last commit offset successfully committed to Kafka", "offset", committedOffset.At)
 	r.lastCommittedOffset.Set(float64(committedOffset.At))
 	return nil
+}
+
+func (r *partitionCommitter) Stop() {
+	if r.kafkaCfg.ConsumerGroupOffsetCommitInterval <= 0 {
+		return
+	}
+	r.cancel()
+	r.wg.Wait()
+
+	offset := r.toCommit.Load()
+	if offset < 0 {
+		return
+	}
+	// Commit has internal timeouts, so this call shouldn't block for too long.
+	_ = r.Commit(context.Background(), offset)
 }
