@@ -1299,7 +1299,7 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 		overrides, err := validation.NewOverrides(*limits, nil)
 		require.NoError(t, err)
 
-		d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, nil, log.NewNopLogger())
+		d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, nil, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, log.NewNopLogger())
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 		distributors[i] = d

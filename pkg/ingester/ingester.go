@@ -193,7 +193,6 @@ func (cfg *Config) Validate() error {
 
 type KafkaIngestionConfig struct {
 	Enabled             bool                 `yaml:"enabled" doc:"description=Whether the kafka ingester is enabled."`
-	Required            bool                 `yaml:"required" doc:"description=Whether ingestion to kafka is required to succeed during a Push request or if they are best effort."`
 	PartitionRingConfig partitionring.Config `yaml:"partition_ring" category:"experimental"`
 	KafkaConfig         kafka.Config         `yaml:"-"`
 }

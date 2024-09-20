@@ -3,9 +3,8 @@ package distributor
 import (
 	"testing"
 
-	"github.com/stretchr/testify/mock"
-
 	"github.com/grafana/loki/pkg/push"
+	"github.com/stretchr/testify/mock"
 )
 
 type mockedTee struct {
