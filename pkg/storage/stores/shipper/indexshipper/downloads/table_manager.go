@@ -246,7 +246,7 @@ func (tm *tableManager) syncTables(ctx context.Context) error {
 		}
 
 		err := table.Sync(ctx)
-		duration := float64(time.Since(start).Seconds())
+		duration := time.Since(start).Seconds()
 		if err != nil {
 			tm.metrics.tableSyncLatency.WithLabelValues(name, statusFailure).Observe(duration)
 			return errors.Wrapf(err, "failed to sync table '%s'", name)
