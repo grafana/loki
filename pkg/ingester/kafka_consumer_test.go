@@ -7,16 +7,20 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/pkg/push"
-	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/kafka/partition"
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
+	"github.com/grafana/loki/v3/pkg/logproto"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 var (
+	tenantID  = "foo"
 	streamBar = logproto.Stream{
 		Labels: labels.Labels{labels.Label{Name: "stream", Value: "1"}}.String(),
 		Entries: []logproto.Entry{
@@ -47,9 +51,13 @@ var (
 
 type fakePusher struct {
 	pushes []*logproto.PushRequest
+	t      *testing.T
 }
 
 func (f *fakePusher) Push(ctx context.Context, in *logproto.PushRequest) (*logproto.PushResponse, error) {
+	tenant, err := tenant.TenantID(ctx)
+	require.NoError(f.t, err)
+	require.Equal(f.t, tenant, tenant)
 	// we need to copy in as it will be reused by the decoder.
 	req := &logproto.PushRequest{}
 	for _, s := range in.Streams {
@@ -70,10 +78,9 @@ func (noopCommitter) Commit(ctx context.Context, offset int64) error { return ni
 
 func TestConsumer(t *testing.T) {
 	var (
-		toPush   []partition.Record
-		offset   = int64(0)
-		pusher   = &fakePusher{}
-		tenantID = "foo"
+		toPush []partition.Record
+		offset = int64(0)
+		pusher = &fakePusher{t: t}
 	)
 
 	consumer, err := NewKafkaConsumerFactory(pusher, log.NewLogfmtLogger(os.Stdout), prometheus.NewRegistry())(&noopCommitter{})

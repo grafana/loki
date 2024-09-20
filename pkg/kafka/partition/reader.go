@@ -10,13 +10,14 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/services"
-	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/plugin/kprom"
+
+	"github.com/grafana/loki/v3/pkg/kafka"
 )
 
 // Reader is responsible for reading data from a specific Kafka partition
