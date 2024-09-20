@@ -102,9 +102,7 @@ func loadBlockDirectories(root string, logger log.Logger) (keys []string, values
 		}
 
 		if ok, clean := isBlockDir(path, logger); ok {
-			// the cache key must not contain the directory prefix
-			// therefore we use the defaultKeyResolver to resolve the block's address
-			key := defaultKeyResolver{}.Block(ref).Addr()
+			key := cacheKey(ref)
 			keys = append(keys, key)
 			values = append(values, NewBlockDirectory(ref, path))
 			level.Debug(logger).Log("msg", "found block directory", "path", path, "key", key)

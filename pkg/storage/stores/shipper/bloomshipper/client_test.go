@@ -238,7 +238,9 @@ func putBlock(t *testing.T, c *BloomClient, tenant string, start model.Time, min
 		},
 		Data: fp,
 	}
-	return block, c.client.PutObject(context.Background(), c.Block(block.BlockRef).Addr(), block.Data)
+	key := c.Block(block.BlockRef).Addr()
+	t.Logf("PUT block to storage: %s", key)
+	return block, c.client.PutObject(context.Background(), key, block.Data)
 }
 
 func TestBloomClient_GetBlock(t *testing.T) {

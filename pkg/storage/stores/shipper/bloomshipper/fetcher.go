@@ -239,7 +239,7 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 
 	var enqueueTime time.Duration
 	for i := 0; i < n; i++ {
-		key := f.client.Block(refs[i]).Addr()
+		key := cacheKey(refs[i])
 		dir, isFound, err := f.fromCache(ctx, key)
 		if err != nil {
 			return results, err
@@ -345,7 +345,7 @@ func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef
 		return
 	}
 
-	key := f.client.Block(result.BlockRef).Addr()
+	key := cacheKey(result.BlockRef)
 	if task.async {
 		// put item into cache
 		err = f.blocksCache.Put(ctx, key, result)

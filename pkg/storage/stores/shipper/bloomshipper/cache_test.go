@@ -101,8 +101,8 @@ func Test_LoadBlocksDirIntoCache(t *testing.T) {
 
 	require.Equal(t, 1, len(c.entries))
 
-	key := validDir + ext // cache key must not contain directory prefix
-	elem, found := c.entries[key]
+	// cache key does neither contain directory prefix nor file extension suffix
+	elem, found := c.entries[validDir]
 	require.True(t, found)
 	blockDir := elem.Value.(*Entry).Value
 	require.Equal(t, filepath.Join(wd, validDir), blockDir.Path)

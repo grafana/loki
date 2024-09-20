@@ -360,7 +360,7 @@ func TestFetcher_LoadBlocksFromFS(t *testing.T) {
 	require.Len(t, found, 1)
 	require.Len(t, missing, 2)
 
-	require.Equal(t, refs[2], found[0].BlockRef)
+	require.Equal(t, refs[2].Ref, found[0].Ref)
 	require.ElementsMatch(t, refs[0:2], missing)
 }
 
