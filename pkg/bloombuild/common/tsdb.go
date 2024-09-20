@@ -15,7 +15,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	baseStore "github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -105,7 +105,7 @@ func (b *BloomTSDBStore) LoadTSDB(
 	}
 	defer data.Close()
 
-	decompressorPool := chunkenc.GetReaderPool(chunkenc.EncGZIP)
+	decompressorPool := compression.GetReaderPool(compression.EncGZIP)
 	decompressor, err := decompressorPool.GetReader(data)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get decompressor")

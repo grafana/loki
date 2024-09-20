@@ -116,6 +116,10 @@ func (s *ScalableBloomFilter) Count() (ct int) {
 	return
 }
 
+func (s *ScalableBloomFilter) IsEmpty() bool {
+	return s.Count() == 0
+}
+
 // FillRatio returns the average ratio of set bits across every filter.
 func (s *ScalableBloomFilter) FillRatio() float64 {
 	var sum, count float64

@@ -21,7 +21,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/common"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -32,6 +32,9 @@ import (
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/ring"
 )
+
+// TODO(chaudum): Make configurable via (per-tenant?) setting.
+var blockCompressionAlgo = compression.EncNone
 
 type Builder struct {
 	services.Service
@@ -333,18 +336,16 @@ func (b *Builder) processTask(
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
 
-	blockEnc, err := chunkenc.ParseEncoding(b.limits.BloomBlockEncoding(task.Tenant))
+	blockEnc, err := compression.ParseEncoding(b.limits.BloomBlockEncoding(task.Tenant))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse block encoding: %w", err)
 	}
 
 	var (
 		blockCt      int
-		nGramSize    = uint64(b.limits.BloomNGramLength(tenant))
-		nGramSkip    = uint64(b.limits.BloomNGramSkip(tenant))
 		maxBlockSize = uint64(b.limits.BloomMaxBlockSize(tenant))
 		maxBloomSize = uint64(b.limits.BloomMaxBloomSize(tenant))
-		blockOpts    = v1.NewBlockOptions(blockEnc, nGramSize, nGramSkip, maxBlockSize, maxBloomSize)
+		blockOpts    = v1.NewBlockOptions(blockEnc, maxBlockSize, maxBloomSize)
 		created      []bloomshipper.Meta
 		totalSeries  int
 		bytesAdded   int
@@ -406,7 +407,7 @@ func (b *Builder) processTask(
 			blockCt++
 			blk := newBlocks.At()
 
-			built, err := bloomshipper.BlockFrom(tenant, task.Table.Addr(), blk)
+			built, err := bloomshipper.BlockFrom(blockCompressionAlgo, tenant, task.Table.Addr(), blk)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to build block", "err", err)
 				if err = blk.Reader().Cleanup(); err != nil {

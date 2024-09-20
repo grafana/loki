@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +14,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/compression"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
@@ -329,16 +329,16 @@ func TestFetcher_LoadBlocksFromFS(t *testing.T) {
 
 	refs := []BlockRef{
 		// no directory for block
-		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x0000, 0x0fff)}},
+		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x0000, 0x0fff)}, Encoding: compression.EncNone},
 		// invalid directory for block
-		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x1000, 0x1fff)}},
+		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x1000, 0x1fff)}, Encoding: compression.EncSnappy},
 		// valid directory for block
-		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x2000, 0x2fff)}},
+		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x2000, 0x2fff)}, Encoding: compression.EncGZIP},
 	}
 	dirs := []string{
-		strings.TrimSuffix(resolver.Block(refs[0]).LocalPath(), ".tar.gz"),
-		strings.TrimSuffix(resolver.Block(refs[1]).LocalPath(), ".tar.gz"),
-		strings.TrimSuffix(resolver.Block(refs[2]).LocalPath(), ".tar.gz"),
+		localFilePathWithoutExtension(refs[0], resolver),
+		localFilePathWithoutExtension(refs[1], resolver),
+		localFilePathWithoutExtension(refs[2], resolver),
 	}
 
 	createBlockDir(t, dirs[1])
@@ -360,7 +360,7 @@ func TestFetcher_LoadBlocksFromFS(t *testing.T) {
 	require.Len(t, found, 1)
 	require.Len(t, missing, 2)
 
-	require.Equal(t, refs[2], found[0].BlockRef)
+	require.Equal(t, refs[2].Ref, found[0].Ref)
 	require.ElementsMatch(t, refs[0:2], missing)
 }
 
