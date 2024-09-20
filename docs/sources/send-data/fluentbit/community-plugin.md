@@ -10,13 +10,11 @@ weight:  500
 
 {{< admonition type="warning" >}}
 
-We recommend using the official [Fluent Bit Loki plugin]({{< relref "./_index.md" >}}). The official plugin is more feature-rich and has better support for features such as structured meta data. The community plugin is still available for use, but it is no longer actively maintained.
+We recommend using the official [Fluent Bit Loki plugin]({{< relref "./fluent-bit-plugin.md" >}}). The official plugin is more feature-rich and has better support for features such as structured metadata. The community plugin is still available for use, but it's no longer actively maintained.
 
 {{< /admonition >}}
 
-[Fluent Bit](https://fluentbit.io/) is a fast and lightweight logs and metrics processor and forwarder that can be configured with the Grafana Fluent Bit Plugin described here or with the [Fluent-bit Loki output plugin](https://docs.fluentbit.io/manual/pipeline/outputs/loki) to ship logs to Loki. 
-This plugin has more configuration options compared to the built-in Fluent Bit Loki plugin.
-You can define which log files you want to collect using the [`Tail`](https://docs.fluentbit.io/manual/pipeline/inputs/tail) or [`Stdin`](https://docs.fluentbit.io/manual/pipeline/inputs/standard-input) data pipeline input. Additionally, Fluent Bit supports multiple `Filter` and `Parser` plugins (`Kubernetes`, `JSON`, etc.) to structure and alter log lines.
+The Fluent Bit Community plugin by Grafana Labs (`grafana-loki`) provided an alternative way to send logs to Loki. Although very similar to the [official plugin]({{< relref "./fluent-bit-plugin.md" >}}) there are some differences in the configuration options. This page provides instructions for how to install, configure, and use the Fluent Bit Community plugin to send logs to Loki. Although the plugin is no longer actively maintained, this documentation is still available for reference.
 
 {{< youtube id="s43IBSVyTpQ" >}}
 

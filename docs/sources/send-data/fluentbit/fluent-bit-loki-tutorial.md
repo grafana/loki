@@ -1,6 +1,6 @@
 ---
 title: Sending logs to Loki using Fluent Bit tutorial
-menuTitle: Sending logs to Loki using Fluent Bit tutorial
+menuTitle: Fluent Bit tutorial
 description: Sending logs to Loki using Fluent Bit using the official Fluent Bit Loki output plugin.
 weight: 250
 killercoda:
@@ -114,7 +114,7 @@ You will copy all of the configuration snippets into the `fluent-bit.conf` file.
 
 ### Receiving Fluent Bit protocal logs
 
-The first step is to configure Fluent Bit to receive logs from the Carnivorous Greenhouse application. Since the application is instrumented with Fluent Bit logging framework, it will send logs using the forward protocal (unique to Fluent Bit). We will use the `forward` input plugin to receive logs from the application.
+The first step is to configure Fluent Bit to receive logs from the Carnivorous Greenhouse application. Since the application is instrumented with Fluent Bit logging framework, it will send logs using the forward protocol (unique to Fluent Bit). We will use the `forward` input plugin to receive logs from the application.
 
 Now add the following configuration to the `fluent-bit.conf` file:
 ```conf
