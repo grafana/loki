@@ -1244,6 +1244,35 @@ func NewDetectedFieldsTripperware(
 			)
 		}
 
+		// detected fields is an approximation, so this is a hedge against failed requests to return
+		// an empty response instead of an error, in case other subqueries were successful
+		fallThroughMiddleware := base.MiddlewareFunc(func(next base.Handler) base.Handler {
+			return base.HandlerFunc(
+				func(ctx context.Context, r base.Request) (base.Response, error) {
+					resp, err := next.Do(ctx, r)
+					switch r := resp.(type) {
+					case *DetectedFieldsResponse:
+						if err != nil {
+							return &DetectedFieldsResponse{
+								Response: &logproto.DetectedFieldsResponse{
+									Fields:     []*logproto.DetectedField{},
+									FieldLimit: r.Response.FieldLimit,
+								},
+								Headers: r.Headers,
+							}, err
+						}
+					}
+
+					return resp, err
+				},
+			)
+		})
+
+		queryRangeMiddleware = append(
+			queryRangeMiddleware,
+			fallThroughMiddleware,
+		)
+
 		limitedRT := NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
 		return NewSketchRemovingHandler(limitedRT, limits, splitter)
 	}), nil
