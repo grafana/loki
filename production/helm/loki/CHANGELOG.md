@@ -15,7 +15,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 6.14.0
 
-- [ENHANCEMENT] Allow setting annotations memberlist and query-scheduler-discovery services
+- [ENHANCEMENT] Allow setting annotations for memberlist and query-scheduler-discovery services
 
 ## 6.13.0
 
