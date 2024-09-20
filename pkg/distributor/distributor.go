@@ -119,6 +119,11 @@ type RateStore interface {
 	RateFor(tenantID string, streamHash uint64) (int64, float64)
 }
 
+type KafkaProducer interface {
+	ProduceSync(ctx context.Context, records []*kgo.Record) kgo.ProduceResults
+	Close()
+}
+
 // Distributor coordinates replicates and distribution of log streams.
 type Distributor struct {
 	services.Service
@@ -164,7 +169,7 @@ type Distributor struct {
 	usageTracker push.UsageTracker
 
 	// kafka
-	kafkaWriter   *kafka.Producer
+	kafkaWriter   KafkaProducer
 	partitionRing ring.PartitionRingReader
 
 	// kafka metrics
@@ -223,7 +228,7 @@ func New(
 		return nil, fmt.Errorf("partition ring is required for kafka writes")
 	}
 
-	var kafkaWriter *kafka.Producer
+	var kafkaWriter KafkaProducer
 	if cfg.KafkaEnabled {
 		kafkaClient, err := kafka.NewWriterClient(cfg.KafkaConfig, 20, logger, registerer)
 		if err != nil {
@@ -358,6 +363,9 @@ func (d *Distributor) running(ctx context.Context) error {
 }
 
 func (d *Distributor) stopping(_ error) error {
+	if d.kafkaWriter != nil {
+		d.kafkaWriter.Close()
+	}
 	return services.StopManagerAndAwaitStopped(context.Background(), d.subservices)
 }
 
@@ -914,7 +922,7 @@ func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream,
 	for _, result := range produceResults {
 		if result.Err != nil {
 			d.kafkaAppends.WithLabelValues(fmt.Sprintf("partition_%d", partitionID), "fail").Inc()
-			finalErr = err
+			finalErr = result.Err
 		} else {
 			d.kafkaAppends.WithLabelValues(fmt.Sprintf("partition_%d", partitionID), "success").Inc()
 		}
