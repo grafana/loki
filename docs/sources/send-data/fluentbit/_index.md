@@ -1,5 +1,5 @@
 ---
-title: 
+title: Fluent Bit
 menuTitle:  Fluent Bit
 description: Provides instructions for how to install, configure, and use the Fluent Bit client to send logs to Loki.
 aliases: 
