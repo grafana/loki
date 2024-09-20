@@ -1237,12 +1237,12 @@ func NewDetectedFieldsTripperware(
 			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitter, metrics.SplitByMetrics),
 		}
 
-		if cfg.MaxRetries > 0 {
-			queryRangeMiddleware = append(
-				queryRangeMiddleware, base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
-				base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace),
-			)
-		}
+		// if cfg.MaxRetries > 0 {
+		// 	queryRangeMiddleware = append(
+		// 		queryRangeMiddleware, base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
+		// 		base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace),
+		// 	)
+		// }
 
 		// detected fields is an approximation, so this is a hedge against failed requests to return
 		// an empty response instead of an error, in case other subqueries were successful
