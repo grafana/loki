@@ -778,6 +778,7 @@ networkPolicy:
 memberlist:
   service:
     publishNotReadyAddresses: false
+    annotations: {}
 ######################################################################################################################
 #
 # adminAPI configuration, enterprise only.

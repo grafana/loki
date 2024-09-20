@@ -6440,6 +6440,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>memberlist.service.annotations</td>
+			<td>object</td>
+			<td>Additional annotations for the `memberlist` service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>memcached.containerSecurityContext</td>
 			<td>object</td>
 			<td>The SecurityContext for memcached containers</td>
