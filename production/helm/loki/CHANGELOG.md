@@ -13,6 +13,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 6.13.0
+
+- [CHANGE] Correctly wrap ClusterRoleBinding around `rbac/namespaced` conditional.
+
 ## 6.12.0
 
 - [ENHANCEMENT] Replace Bloom Compactor component with Bloom Planner and Bloom Builder. These are the new components to build bloom blocks.
