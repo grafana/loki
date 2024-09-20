@@ -382,7 +382,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 			logger,
 			prometheus.WrapRegistererWithPrefix("loki_", registerer))
 
-		i.partitionReader, err = partition.NewReader(cfg.KafkaIngestion.KafkaConfig, i.ingestPartitionID, cfg.LifecyclerConfig.ID, NewKafkaConsumerFactory(i, logger), logger, registerer)
+		i.partitionReader, err = partition.NewReader(cfg.KafkaIngestion.KafkaConfig, i.ingestPartitionID, cfg.LifecyclerConfig.ID, NewKafkaConsumerFactory(i, logger, registerer), logger, registerer)
 		if err != nil {
 			return nil, err
 		}

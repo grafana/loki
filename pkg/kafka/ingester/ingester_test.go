@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	gokitlog "github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv/consul"
 	"github.com/grafana/dskit/ring"
@@ -28,8 +27,8 @@ func TestPreparePartitionDownscaleHandler(t *testing.T) {
 	storage, err := objstore.NewTestStorage(t)
 	require.NoError(t, err)
 	ing, err := New(cfg,
-		NewConsumerFactory(NewTestMetastore(), storage, cfg.FlushInterval, cfg.FlushSize, gokitlog.NewNopLogger(), prometheus.NewRegistry()),
-		gokitlog.NewNopLogger(), "test", prometheus.NewRegistry())
+		NewConsumerFactory(NewTestMetastore(), storage, cfg.FlushInterval, cfg.FlushSize, log.NewNopLogger(), prometheus.NewRegistry()),
+		log.NewNopLogger(), "test", prometheus.NewRegistry())
 	require.NoError(t, err)
 	err = services.StartAndAwaitRunning(context.Background(), ing)
 	require.NoError(t, err)
