@@ -6213,6 +6213,20 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>lokiCanary.deployment</td>
+			<td>object</td>
+			<td>Used when `mode=deployment`</td>
+			<td><pre lang="json">
+{
+  "replicaCount": 3,
+  "strategy": {
+    "type": "RollingUpdate"
+  }
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>lokiCanary.dnsConfig</td>
 			<td>object</td>
 			<td>DNS config for canary pods</td>
@@ -6341,6 +6355,15 @@ null
 			<td>The name of the label to look for at loki when doing the checks.</td>
 			<td><pre lang="json">
 "pod"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.mode</td>
+			<td>string</td>
+			<td>Mode can be either `daemonset` or `deployment`</td>
+			<td><pre lang="json">
+"daemonset"
 </pre>
 </td>
 		</tr>
