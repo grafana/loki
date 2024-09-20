@@ -11,22 +11,34 @@ import (
 	"github.com/grafana/loki/v3/pkg/compression"
 )
 
+const (
+	ExtTar = ".tar"
+)
+
 type TarEntry struct {
 	Name string
 	Size int64
 	Body io.ReadSeeker
 }
 
-func TarGz(dst io.Writer, reader BlockReader) error {
+func TarCompress(enc compression.Encoding, dst io.Writer, reader BlockReader) error {
+	comprPool := compression.GetWriterPool(enc)
+	comprWriter := comprPool.GetWriter(dst)
+	defer func() {
+		comprWriter.Close()
+		comprPool.PutWriter(comprWriter)
+	}()
+
+	return Tar(comprWriter, reader)
+}
+
+func Tar(dst io.Writer, reader BlockReader) error {
 	itr, err := reader.TarEntries()
 	if err != nil {
 		return errors.Wrap(err, "error getting tar entries")
 	}
 
-	gzipper := compression.GetWriterPool(compression.EncGZIP).GetWriter(dst)
-	defer gzipper.Close()
-
-	tarballer := tar.NewWriter(gzipper)
+	tarballer := tar.NewWriter(dst)
 	defer tarballer.Close()
 
 	for itr.Next() {
@@ -49,13 +61,19 @@ func TarGz(dst io.Writer, reader BlockReader) error {
 	return itr.Err()
 }
 
-func UnTarGz(dst string, r io.Reader) error {
-	gzipper, err := compression.GetReaderPool(compression.EncGZIP).GetReader(r)
+func UnTarCompress(enc compression.Encoding, dst string, r io.Reader) error {
+	comprPool := compression.GetReaderPool(enc)
+	comprReader, err := comprPool.GetReader(r)
 	if err != nil {
-		return errors.Wrap(err, "error getting gzip reader")
+		return errors.Wrapf(err, "error getting %s reader", enc.String())
 	}
+	defer comprPool.PutReader(comprReader)
 
-	tarballer := tar.NewReader(gzipper)
+	return UnTar(dst, comprReader)
+}
+
+func UnTar(dst string, r io.Reader) error {
+	tarballer := tar.NewReader(r)
 
 	for {
 		header, err := tarballer.Next()

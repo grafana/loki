@@ -165,7 +165,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			Through: now,
 			Refs:    groupRefs(t, chunkRefs),
 			Plan:    plan.QueryPlan{AST: expr},
-			Blocks:  []string{"bloom/invalid/block.tar.gz"},
+			Blocks:  []string{"bloom/invalid/block.tar"},
 		}
 
 		ctx := user.InjectOrgID(context.Background(), tenantID)
