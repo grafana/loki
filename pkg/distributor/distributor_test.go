@@ -1474,7 +1474,7 @@ func (m *mockKafkaWriter) ProduceSync(_ context.Context, _ []*kgo.Record) kgo.Pr
 			},
 		}
 	}
-	m.pushed += 1
+	m.pushed++
 	return kgo.ProduceResults{
 		{
 			Err: nil,
