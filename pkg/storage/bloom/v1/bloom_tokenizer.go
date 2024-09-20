@@ -23,9 +23,8 @@ type BloomTokenizer struct {
 	metrics *Metrics
 	logger  log.Logger
 
-	maxBloomSize  int // size in bytes
-	lineTokenizer *NGramTokenizer
-	cache         map[string]interface{}
+	maxBloomSize int // size in bytes
+	cache        map[string]interface{}
 }
 
 const cacheSize = 150000
@@ -37,45 +36,13 @@ const eightBits = 8
 // 1) The token slices generated must not be mutated externally
 // 2) The token slice must not be used after the next call to `Tokens()` as it will repopulate the slice.
 // 2) This is not thread safe.
-func NewBloomTokenizer(nGramLen, nGramSkip int, maxBloomSize int, metrics *Metrics, logger log.Logger) *BloomTokenizer {
-	level.Info(logger).Log("msg", "create new bloom tokenizer", "ngram length", nGramLen, "ngram skip", nGramSkip)
+func NewBloomTokenizer(maxBloomSize int, metrics *Metrics, logger log.Logger) *BloomTokenizer {
 	return &BloomTokenizer{
-		metrics:       metrics,
-		logger:        logger,
-		cache:         make(map[string]interface{}, cacheSize),
-		lineTokenizer: NewNGramTokenizer(nGramLen, nGramSkip),
-		maxBloomSize:  maxBloomSize,
+		metrics:      metrics,
+		logger:       logger,
+		cache:        make(map[string]interface{}, cacheSize),
+		maxBloomSize: maxBloomSize,
 	}
-}
-
-func (bt *BloomTokenizer) N() uint64 {
-	return uint64(bt.lineTokenizer.N())
-}
-
-func (bt *BloomTokenizer) SkipFactor() uint64 {
-	return uint64(bt.lineTokenizer.SkipFactor())
-}
-
-// prefixedToken returns a byte slice with sufficient capacity for a chunk-ref prefixed token
-// of specific ngram length, along with the length of the prefix.
-// It ensures enough capacity for the prefix and the token so additional tokens can be created
-// without allocations by appending them to the prefix length
-// If the buffer is nil or too small, a new one is created. The buffer is returned for reuse.
-func prefixedToken(ngram int, chk ChunkRef, buf []byte) ([]byte, int) {
-	enc := encoding.EncWith(buf)
-	enc.Reset()
-	enc.PutBE64(uint64(chk.From))
-	enc.PutBE64(uint64(chk.Through))
-	enc.PutBE32(chk.Checksum)
-	prefixLn := enc.Len() // record the length of the prefix
-
-	// If the buffer is too small, ensure enough capacity for the ngram
-	if cap(enc.Get()) < prefixLn+ngram*MaxRuneLen {
-		enc.PutBytes(make([]byte, ngram*MaxRuneLen))
-	}
-
-	// return the underlying byte slice and the length of the prefix
-	return enc.Get(), prefixLn
 }
 
 // ChunkRefWithIter is a wrapper around a ChunkRef and an EntryIterator.

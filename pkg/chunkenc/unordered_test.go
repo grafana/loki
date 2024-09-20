@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
@@ -450,7 +451,7 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 }
 
 func TestUnorderedChunkIterators(t *testing.T) {
-	c := NewMemChunk(ChunkFormatV4, EncSnappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
+	c := NewMemChunk(ChunkFormatV4, compression.EncSnappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
 	for i := 0; i < 100; i++ {
 		// push in reverse order
 		dup, err := c.Append(&logproto.Entry{
@@ -496,11 +497,11 @@ func TestUnorderedChunkIterators(t *testing.T) {
 }
 
 func BenchmarkUnorderedRead(b *testing.B) {
-	legacy := NewMemChunk(ChunkFormatV3, EncSnappy, OrderedHeadBlockFmt, testBlockSize, testTargetSize)
+	legacy := NewMemChunk(ChunkFormatV3, compression.EncSnappy, OrderedHeadBlockFmt, testBlockSize, testTargetSize)
 	fillChunkClose(legacy, false)
-	ordered := NewMemChunk(ChunkFormatV3, EncSnappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
+	ordered := NewMemChunk(ChunkFormatV3, compression.EncSnappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
 	fillChunkClose(ordered, false)
-	unordered := NewMemChunk(ChunkFormatV3, EncSnappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
+	unordered := NewMemChunk(ChunkFormatV3, compression.EncSnappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
 	fillChunkRandomOrder(unordered, false)
 
 	tcs := []struct {
@@ -558,7 +559,7 @@ func BenchmarkUnorderedRead(b *testing.B) {
 }
 
 func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
-	c := NewMemChunk(ChunkFormatV4, EncSnappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
+	c := NewMemChunk(ChunkFormatV4, compression.EncSnappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
 	fillChunkRandomOrder(c, false)
 
 	ct := 0
@@ -595,7 +596,7 @@ func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
 }
 
 func chunkFrom(xs []logproto.Entry) ([]byte, error) {
-	c := NewMemChunk(ChunkFormatV4, EncSnappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
+	c := NewMemChunk(ChunkFormatV4, compression.EncSnappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
 	for _, x := range xs {
 		if _, err := c.Append(&x); err != nil {
 			return nil, err
@@ -655,7 +656,7 @@ func TestReorder(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			c := NewMemChunk(ChunkFormatV4, EncSnappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
+			c := NewMemChunk(ChunkFormatV4, compression.EncSnappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
 			for _, x := range tc.input {
 				dup, err := c.Append(&x)
 				require.False(t, dup)
@@ -674,7 +675,7 @@ func TestReorder(t *testing.T) {
 }
 
 func TestReorderAcrossBlocks(t *testing.T) {
-	c := NewMemChunk(ChunkFormatV4, EncSnappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
+	c := NewMemChunk(ChunkFormatV4, compression.EncSnappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
 	for _, batch := range [][]int{
 		// ensure our blocks have overlapping bounds and must be reordered
 		// before closing.

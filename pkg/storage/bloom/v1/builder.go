@@ -7,7 +7,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
@@ -66,12 +66,10 @@ func (b BlockOptions) Encode(enc *encoding.Encbuf) {
 	enc.PutBE64(b.BlockSize)
 }
 
-func NewBlockOptions(enc chunkenc.Encoding, nGramLength, nGramSkip, maxBlockSizeBytes, maxBloomSizeBytes uint64) BlockOptions {
+func NewBlockOptions(enc compression.Encoding, maxBlockSizeBytes, maxBloomSizeBytes uint64) BlockOptions {
 	opts := NewBlockOptionsFromSchema(Schema{
-		version:     CurrentSchemaVersion,
-		encoding:    enc,
-		nGramLength: nGramLength,
-		nGramSkip:   nGramSkip,
+		version:  CurrentSchemaVersion,
+		encoding: enc,
 	})
 	opts.BlockSize = maxBlockSizeBytes
 	opts.UnencodedBlockOptions.MaxBloomSizeBytes = maxBloomSizeBytes
@@ -122,7 +120,7 @@ func (w *PageWriter) Add(item []byte) (offset int) {
 	return offset
 }
 
-func (w *PageWriter) writePage(writer io.Writer, pool chunkenc.WriterPool, crc32Hash hash.Hash32) (int, int, error) {
+func (w *PageWriter) writePage(writer io.Writer, pool compression.WriterPool, crc32Hash hash.Hash32) (int, int, error) {
 	// write the number of blooms in this page, must not be varint
 	// so we can calculate it's position+len during decoding
 	w.enc.PutBE64(uint64(w.n))
