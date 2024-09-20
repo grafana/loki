@@ -388,6 +388,15 @@ func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequ
 }
 
 func (q *QuerierAPI) DetectedFieldsHandler(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
+  expr, err := syntax.ParseLogSelector(req.Query, true)
+  if err != nil {
+    return nil, err
+  }
+
+	if err := q.validateMaxEntriesLimits(ctx, expr, req.LineLimit); err != nil {
+		return nil, err
+	}
+
 	resp, err := q.querier.DetectedFields(ctx, req)
 	if err != nil {
 		return nil, err

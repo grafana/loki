@@ -43,6 +43,7 @@ import (
 	listutil "github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 	util_validation "github.com/grafana/loki/v3/pkg/util/validation"
 
 	"github.com/grafana/loki/pkg/push"
@@ -1073,6 +1074,17 @@ func containsAllIDTypes(values []string) bool {
 }
 
 func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
+	empty := logproto.DetectedFieldsResponse{
+		Fields:     []*logproto.DetectedField{},
+		FieldLimit: req.GetFieldLimit(),
+	}
+
+	tenants, _ := tenant.TenantIDs(ctx)
+	timeoutCapture := func(id string) time.Duration { return q.limits.QueryTimeout(ctx, id) }
+	queryTimeout := validation.SmallestPositiveNonZeroDurationPerTenant(tenants, timeoutCapture)
+	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
+	defer cancel()
+
 	expr, err := syntax.ParseLogSelector(req.Query, true)
 	if err != nil {
 		return nil, err
@@ -1134,13 +1146,10 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 		}
 	}
 
-  //return an empty response instead of an error, so if there are results in other splits, they can be returned
+	//return an empty response instead of an error, so if there are results in other splits, they can be returned
 	if len(iters) == 0 {
 		level.Warn(q.logger).Log("msg", "no detected field results from store or ingester", "error", errs.Err())
-		return &logproto.DetectedFieldsResponse{
-			Fields:     []*logproto.DetectedField{},
-			FieldLimit: req.GetFieldLimit(),
-		}, nil
+		return &empty, nil
 	}
 
 	mergedIter := iter.NewMergeEntryIterator(ctx, iters, logproto.BACKWARD)
