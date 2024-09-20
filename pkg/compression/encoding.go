@@ -56,7 +56,7 @@ func (e Encoding) String() string {
 	case EncZstd:
 		return "zstd"
 	default:
-		panic(fmt.Sprintf("invalid encoding: %d, supported: %s", e, SupportedEncoding()))
+		return "unknown"
 	}
 }
 
