@@ -32,10 +32,6 @@ func TarCompress(enc compression.Encoding, dst io.Writer, reader BlockReader) er
 	return Tar(comprWriter, reader)
 }
 
-func TarGz(dst io.Writer, reader BlockReader) error {
-	return TarCompress(compression.EncGZIP, dst, reader)
-}
-
 func Tar(dst io.Writer, reader BlockReader) error {
 	itr, err := reader.TarEntries()
 	if err != nil {
@@ -74,10 +70,6 @@ func UnTarCompress(enc compression.Encoding, dst string, r io.Reader) error {
 	defer comprPool.PutReader(comprReader)
 
 	return UnTar(dst, comprReader)
-}
-
-func UnTarGz(dst string, r io.Reader) error {
-	return UnTarCompress(compression.EncGZIP, dst, r)
 }
 
 func UnTar(dst string, r io.Reader) error {
