@@ -94,7 +94,9 @@ func loadBlockDirectories(root string, logger log.Logger) (keys []string, values
 			return nil
 		}
 
-		ref, err := resolver.ParseBlockKey(key(path))
+		// The block file extension (.tar) needs to be added so the key can be parsed.
+		// This is because the extension is stripped off when the tar archive is extracted.
+		ref, err := resolver.ParseBlockKey(key(path + blockExtension))
 		if err != nil {
 			return nil
 		}

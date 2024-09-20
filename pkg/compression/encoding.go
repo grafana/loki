@@ -13,7 +13,7 @@ type Encoding byte
 const (
 	EncNone Encoding = iota
 	EncGZIP
-	EncDumb
+	EncDumb // not supported
 	EncLZ4_64k
 	EncSnappy
 	EncLZ4_256k
@@ -41,8 +41,6 @@ func (e Encoding) String() string {
 		return "gzip"
 	case EncNone:
 		return "none"
-	case EncDumb:
-		return "dumb"
 	case EncLZ4_64k:
 		return "lz4-64k"
 	case EncLZ4_256k:
@@ -58,7 +56,7 @@ func (e Encoding) String() string {
 	case EncZstd:
 		return "zstd"
 	default:
-		return "unknown"
+		panic(fmt.Sprintf("invalid encoding: %d, supported: %s", e, SupportedEncoding()))
 	}
 }
 
@@ -70,7 +68,6 @@ func ParseEncoding(enc string) (Encoding, error) {
 		}
 	}
 	return 0, fmt.Errorf("invalid encoding: %s, supported: %s", enc, SupportedEncoding())
-
 }
 
 // SupportedEncoding returns the list of supported Encoding.

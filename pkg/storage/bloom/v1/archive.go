@@ -12,9 +12,7 @@ import (
 )
 
 const (
-	ExtTar   = ".tar"
-	ExtGz    = ".gz"
-	ExtTarGz = ExtTar + ExtGz
+	ExtTar = ".tar"
 )
 
 type TarEntry struct {
@@ -23,15 +21,19 @@ type TarEntry struct {
 	Body io.ReadSeeker
 }
 
-func TarGz(dst io.Writer, reader BlockReader) error {
-	gzipPool := compression.GetWriterPool(compression.EncGZIP)
-	gzipper := gzipPool.GetWriter(dst)
+func TarCompress(enc compression.Encoding, dst io.Writer, reader BlockReader) error {
+	comprPool := compression.GetWriterPool(enc)
+	comprWriter := comprPool.GetWriter(dst)
 	defer func() {
-		gzipper.Close()
-		gzipPool.PutWriter(gzipper)
+		comprWriter.Close()
+		comprPool.PutWriter(comprWriter)
 	}()
 
-	return Tar(gzipper, reader)
+	return Tar(comprWriter, reader)
+}
+
+func TarGz(dst io.Writer, reader BlockReader) error {
+	return TarCompress(compression.EncGZIP, dst, reader)
 }
 
 func Tar(dst io.Writer, reader BlockReader) error {
@@ -63,15 +65,19 @@ func Tar(dst io.Writer, reader BlockReader) error {
 	return itr.Err()
 }
 
-func UnTarGz(dst string, r io.Reader) error {
-	gzipPool := compression.GetReaderPool(compression.EncGZIP)
-	gzipper, err := gzipPool.GetReader(r)
+func UnTarCompress(enc compression.Encoding, dst string, r io.Reader) error {
+	comprPool := compression.GetReaderPool(enc)
+	comprReader, err := comprPool.GetReader(r)
 	if err != nil {
-		return errors.Wrap(err, "error getting gzip reader")
+		return errors.Wrapf(err, "error getting %s reader", enc.String())
 	}
-	defer gzipPool.PutReader(gzipper)
+	defer comprPool.PutReader(comprReader)
 
-	return UnTar(dst, gzipper)
+	return UnTar(dst, comprReader)
+}
+
+func UnTarGz(dst string, r io.Reader) error {
+	return UnTarCompress(compression.EncGZIP, dst, r)
 }
 
 func UnTar(dst string, r io.Reader) error {

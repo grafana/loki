@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/grafana/loki/v3/pkg/compression"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 )
 
@@ -80,28 +81,44 @@ func (defaultKeyResolver) ParseMetaKey(loc Location) (MetaRef, error) {
 }
 
 func (defaultKeyResolver) Block(ref BlockRef) Location {
+	ext := blockExtension + compression.ToFileExtension(ref.Encoding)
 	return simpleLocation{
 		BloomPrefix,
 		fmt.Sprintf("%v", ref.TableName),
 		ref.TenantID,
 		BlocksPrefix,
 		ref.Bounds.String(),
-		fmt.Sprintf("%d-%d-%x%s", ref.StartTimestamp, ref.EndTimestamp, ref.Checksum, blockExtension),
+		fmt.Sprintf("%d-%d-%x%s", ref.StartTimestamp, ref.EndTimestamp, ref.Checksum, ext),
 	}
 }
 
 func (defaultKeyResolver) ParseBlockKey(loc Location) (BlockRef, error) {
 	dir, fn := path.Split(loc.Addr())
+
+	ext, enc := path.Ext(fn), compression.EncNone
+	if ext != "" && ext != blockExtension {
+		// trim compression extension
+		fn = strings.TrimSuffix(fn, ext)
+		enc = compression.FromFileExtension(ext)
+		ext = path.Ext(fn)
+		if ext != "" && ext != blockExtension {
+			return BlockRef{}, fmt.Errorf("failed to parse block. invalid block extension: %s, expected %s", ext, blockExtension)
+		}
+	}
+	// trim tar extension
+	fn = strings.TrimSuffix(fn, ext)
+
 	fnParts := strings.Split(fn, "-")
 	if len(fnParts) != 3 {
 		return BlockRef{}, fmt.Errorf("failed to split filename parts of block key %s : len must be 3, but was %d", loc, len(fnParts))
 	}
+
 	interval, err := ParseIntervalFromParts(fnParts[0], fnParts[1])
 	if err != nil {
 		return BlockRef{}, fmt.Errorf("failed to parse bounds of meta key %s : %w", loc, err)
 	}
-	withoutExt := strings.TrimSuffix(fnParts[2], blockExtension)
-	checksum, err := strconv.ParseUint(withoutExt, 16, 64)
+
+	checksum, err := strconv.ParseUint(fnParts[2], 16, 64)
 	if err != nil {
 		return BlockRef{}, fmt.Errorf("failed to parse checksum of meta key %s : %w", loc, err)
 	}
@@ -125,6 +142,7 @@ func (defaultKeyResolver) ParseBlockKey(loc Location) (BlockRef, error) {
 			EndTimestamp:   interval.End,
 			Checksum:       uint32(checksum),
 		},
+		Encoding: enc,
 	}, nil
 }
 

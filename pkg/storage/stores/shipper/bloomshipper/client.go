@@ -18,6 +18,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/v3/pkg/compression"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
@@ -73,6 +74,7 @@ func (r Ref) Interval() Interval {
 
 type BlockRef struct {
 	Ref
+	compression.Encoding
 }
 
 func (r BlockRef) String() string {
