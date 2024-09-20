@@ -573,7 +573,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 		return fmt.Errorf("can not start recalculate owned streams service: %w", err)
 	}
 
-	err = i.lifecycler.AwaitRunning(ctx)
+	err = i.recalculateOwnedStreams.AwaitRunning(ctx)
 	if err != nil {
 		return fmt.Errorf("can not ensure recalculate owned streams service is running: %w", err)
 	}

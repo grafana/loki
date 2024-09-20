@@ -202,7 +202,7 @@ func genBlock(ref bloomshipper.BlockRef) (bloomshipper.Block, error) {
 	block := v1.NewBlock(reader, v1.NewMetrics(nil))
 
 	buf := bytes.NewBuffer(nil)
-	if err := v1.TarGz(buf, block.Reader()); err != nil {
+	if err := v1.TarCompress(ref.Encoding, buf, block.Reader()); err != nil {
 		return bloomshipper.Block{}, err
 	}
 
@@ -1019,7 +1019,7 @@ func Test_deleteOutdatedMetas(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			logger := log.NewNopLogger()
-			//logger := log.NewLogfmtLogger(os.Stdout)
+			// logger := log.NewLogfmtLogger(os.Stdout)
 
 			cfg := Config{
 				PlanningInterval:        1 * time.Hour,
