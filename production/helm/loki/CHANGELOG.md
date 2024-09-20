@@ -17,6 +17,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [FEATURE] Add additional service annotations for components in distributed mode.
 
+## 6.13.0
+
+- [CHANGE] Correctly wrap ClusterRoleBinding around `rbac/namespaced` conditional.
+
 ## 6.12.0
 
 - [ENHANCEMENT] Replace Bloom Compactor component with Bloom Planner and Bloom Builder. These are the new components to build bloom blocks.

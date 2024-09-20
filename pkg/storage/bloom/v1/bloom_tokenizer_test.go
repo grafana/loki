@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/dskit/multierror"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/iter"
 	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -19,7 +20,6 @@ import (
 
 	"github.com/grafana/loki/pkg/push"
 
-	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
@@ -27,84 +27,18 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-const (
-	DefaultNGramLength = 4
-	DefaultNGramSkip   = 0
-)
-
-var (
-	four    = NewNGramTokenizer(4, 0)
-	metrics = NewMetrics(prometheus.DefaultRegisterer)
-)
-
-func TestPrefixedKeyCreation(t *testing.T) {
-	t.Parallel()
-	var ones uint64 = 0xffffffffffffffff
-
-	ref := ChunkRef{
-		From:     0,
-		Through:  model.Time(int64(ones)),
-		Checksum: 0xffffffff,
-	}
-	for _, tc := range []struct {
-		desc          string
-		ngram, expLen int
-	}{
-		{
-			desc:   "0-gram",
-			ngram:  0,
-			expLen: 20,
-		},
-		{
-			desc:   "4-gram",
-			ngram:  4,
-			expLen: 20 + 4*MaxRuneLen,
-		},
-	} {
-		t.Run(tc.desc, func(t *testing.T) {
-			token, prefixLn := prefixedToken(tc.ngram, ref, nil)
-			require.Equal(t, 20, prefixLn)
-			require.Equal(t, tc.expLen, len(token))
-			// first 8 bytes should be zeros from `from`
-			for i := 0; i < 8; i++ {
-				require.Equal(t, byte(0), token[i])
-			}
-			// next 8 bytes should be ones from `through`
-			for i := 8; i < 16; i++ {
-				require.Equal(t, byte(255), token[i])
-			}
-			// next 4 bytes should be ones from `checksum`
-			for i := 16; i < 20; i++ {
-				require.Equal(t, byte(255), token[i])
-			}
-		})
-	}
-}
-
-func TestSetLineTokenizer(t *testing.T) {
-	t.Parallel()
-	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics, logger.NewNopLogger())
-
-	// Validate defaults
-	require.Equal(t, bt.lineTokenizer.N(), DefaultNGramLength)
-	require.Equal(t, bt.lineTokenizer.SkipFactor(), DefaultNGramSkip)
-
-	// Set new tokenizer, and validate against that
-	bt.lineTokenizer = NewNGramTokenizer(6, 7)
-	require.Equal(t, bt.lineTokenizer.N(), 6)
-	require.Equal(t, bt.lineTokenizer.SkipFactor(), 7)
-}
+var metrics = NewMetrics(prometheus.DefaultRegisterer)
 
 func TestTokenizerPopulate(t *testing.T) {
 	t.Parallel()
 	var testLine = "this is a log line"
-	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics, logger.NewNopLogger())
+	bt := NewBloomTokenizer(0, metrics, logger.NewNopLogger())
 
 	metadata := push.LabelsAdapter{
 		{Name: "pod", Value: "loki-1"},
 		{Name: "trace_id", Value: "3bef3c91643bde73"},
 	}
-	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
+	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
 	_, _ = memChunk.Append(&push.Entry{
 		Timestamp:          time.Unix(0, 1),
 		Line:               testLine,
@@ -143,13 +77,13 @@ func TestTokenizerPopulate(t *testing.T) {
 
 func TestBloomTokenizerPopulateWithoutPreexistingBloom(t *testing.T) {
 	var testLine = "this is a log line"
-	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics, logger.NewNopLogger())
+	bt := NewBloomTokenizer(0, metrics, logger.NewNopLogger())
 
 	metadata := push.LabelsAdapter{
 		{Name: "pod", Value: "loki-1"},
 		{Name: "trace_id", Value: "3bef3c91643bde73"},
 	}
-	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
+	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
 	_, _ = memChunk.Append(&push.Entry{
 		Timestamp:          time.Unix(0, 1),
 		Line:               testLine,
@@ -186,7 +120,7 @@ func TestBloomTokenizerPopulateWithoutPreexistingBloom(t *testing.T) {
 }
 
 func chunkRefItrFromMetadata(metadata ...push.LabelsAdapter) (iter.EntryIterator, error) {
-	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
+	memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
 	for i, md := range metadata {
 		if _, err := memChunk.Append(&push.Entry{
 			Timestamp:          time.Unix(0, int64(i)),
@@ -220,7 +154,7 @@ func randomStr(ln int) string {
 
 func TestTokenizerPopulateWontExceedMaxSize(t *testing.T) {
 	maxSize := 4 << 10
-	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, maxSize, NewMetrics(nil), logger.NewNopLogger())
+	bt := NewBloomTokenizer(maxSize, NewMetrics(nil), logger.NewNopLogger())
 	ch := make(chan *BloomCreation)
 
 	metadata := make([]push.LabelsAdapter, 0, 4<<10)
@@ -267,15 +201,18 @@ func populateAndConsumeBloom(
 
 func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		var testLine = lorem + lorem + lorem
-		bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics, logger.NewNopLogger())
+		bt := NewBloomTokenizer(0, metrics, logger.NewNopLogger())
 
 		sbf := filter.NewScalableBloomFilter(1024, 0.01, 0.8)
 
-		memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
+		memChunk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.EncSnappy, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), 256000, 1500000)
 		_, _ = memChunk.Append(&push.Entry{
 			Timestamp: time.Unix(0, 1),
-			Line:      testLine,
+			Line:      "",
+			StructuredMetadata: push.LabelsAdapter{
+				push.LabelAdapter{Name: "trace_id", Value: fmt.Sprintf("%04x", i)},
+				push.LabelAdapter{Name: "org_id", Value: fmt.Sprintf("%d", i%1000)},
+			},
 		})
 		itr, err := memChunk.Iterator(
 			context.Background(),
@@ -301,7 +238,7 @@ func BenchmarkPopulateSeriesWithBloom(b *testing.B) {
 }
 
 func TestTokenizerClearsCacheBetweenPopulateCalls(t *testing.T) {
-	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, NewMetrics(nil), logger.NewNopLogger())
+	bt := NewBloomTokenizer(0, NewMetrics(nil), logger.NewNopLogger())
 	md := push.LabelsAdapter{
 		{Name: "trace_id", Value: "3bef3c91643bde73"},
 	}
@@ -339,7 +276,7 @@ func TestTokenizerClearsCacheBetweenPopulateCalls(t *testing.T) {
 }
 
 func BenchmarkMapClear(b *testing.B) {
-	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics, logger.NewNopLogger())
+	bt := NewBloomTokenizer(0, metrics, logger.NewNopLogger())
 	for i := 0; i < b.N; i++ {
 		for k := 0; k < cacheSize; k++ {
 			bt.cache[fmt.Sprint(k)] = k
@@ -350,7 +287,7 @@ func BenchmarkMapClear(b *testing.B) {
 }
 
 func BenchmarkNewMap(b *testing.B) {
-	bt := NewBloomTokenizer(DefaultNGramLength, DefaultNGramSkip, 0, metrics, logger.NewNopLogger())
+	bt := NewBloomTokenizer(0, metrics, logger.NewNopLogger())
 	for i := 0; i < b.N; i++ {
 		for k := 0; k < cacheSize; k++ {
 			bt.cache[fmt.Sprint(k)] = k
