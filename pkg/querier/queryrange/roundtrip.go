@@ -240,14 +240,11 @@ func NewMiddleware(
 	}
 
 	detectedFieldsTripperware, err := NewDetectedFieldsTripperware(
-		cfg,
-		log,
 		limits,
 		schema,
-		codec,
-		iqo,
-		metrics,
-		metricsNamespace)
+		limitedTripperware,
+		logFilterTripperware,
+	)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1218,37 +1215,21 @@ func sharedIndexTripperware(
 
 // NewDetectedFieldsTripperware creates a new frontend tripperware responsible for handling detected field requests, which are basically log filter requests with a bit more processing.
 func NewDetectedFieldsTripperware(
-	cfg Config,
-	log log.Logger,
 	limits Limits,
 	schema config.SchemaConfig,
-	merger base.Merger,
-	iqo util.IngesterQueryOptions,
-	metrics *Metrics,
-	metricsNamespace string,
+	limitedTripperware base.Middleware,
+	logTripperware base.Middleware,
 ) (base.Middleware, error) {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
-		splitter := newDefaultSplitter(limits, iqo)
+		limitedHandler := limitedTripperware.Wrap(next)
+		logHandler := logTripperware.Wrap(next)
 
-		queryRangeMiddleware := []base.Middleware{
-			StatsCollectorMiddleware(),
-			NewLimitsMiddleware(limits),
-			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitter, metrics.SplitByMetrics),
-		}
-
-		if cfg.MaxRetries > 0 {
-			queryRangeMiddleware = append(
-				queryRangeMiddleware, base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
-				base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace),
-			)
-		}
-
-		limitedRT := NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
-		return NewSketchRemovingHandler(limitedRT, limits, splitter)
+		detectedFieldsHandler := NewDetectedFieldsHandler(limitedHandler, logHandler, limits)
+		return NewLimitedRoundTripper(next, limits, schema.Configs, detectedFieldsHandler)
 	}), nil
 }
 
+// TODO: delete me
 // NewSketchRemovingHandler returns a handler that removes sketches from detected fields responses before
 // returning them to the user. We only need sketches internally for calculating cardinality for split queries.
 // We're already doing this sanitization in the merge code, so this handler catches non-split queries
