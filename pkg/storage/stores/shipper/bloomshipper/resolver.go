@@ -284,3 +284,7 @@ func (ls locations) LocalPath() string {
 
 	return filepath.Join(xs...)
 }
+
+func localFilePathWithoutExtension(ref BlockRef, res KeyResolver) string {
+	return strings.TrimSuffix(res.Block(ref).LocalPath(), blockExtension+compression.ToFileExtension(ref.Encoding))
+}

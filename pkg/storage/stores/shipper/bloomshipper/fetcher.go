@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -407,10 +406,9 @@ func (f *Fetcher) loadBlocksFromFS(_ context.Context, refs []BlockRef) ([]BlockD
 	missing := make([]BlockRef, 0, len(refs))
 
 	for _, ref := range refs {
-		path := f.localFSResolver.Block(ref).LocalPath()
-		// the block directory does not contain the .tar extension
+		// the block directory does not contain the .tar(.compression) extension
 		// since it is stripped when the archive is extracted into a folder
-		path = strings.TrimSuffix(path, v1.ExtTar)
+		path := localFilePathWithoutExtension(ref, f.localFSResolver)
 		if ok, clean := f.isBlockDir(path); ok {
 			blockDirs = append(blockDirs, NewBlockDirectory(ref, path))
 		} else {

@@ -202,7 +202,7 @@ func genBlock(ref bloomshipper.BlockRef) (bloomshipper.Block, error) {
 	block := v1.NewBlock(reader, v1.NewMetrics(nil))
 
 	buf := bytes.NewBuffer(nil)
-	if err := v1.Tar(buf, block.Reader()); err != nil {
+	if err := v1.TarCompress(ref.Encoding, buf, block.Reader()); err != nil {
 		return bloomshipper.Block{}, err
 	}
 
