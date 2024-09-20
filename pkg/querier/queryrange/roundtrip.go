@@ -1237,12 +1237,34 @@ func NewDetectedFieldsTripperware(
 			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitter, metrics.SplitByMetrics),
 		}
 
-		if cfg.MaxRetries > 0 {
-			queryRangeMiddleware = append(
-				queryRangeMiddleware, base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
-				base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace),
+		// detected fields is an approximation, so this is a hedge against failed requests to return
+		// an empty response instead of an error, in case other subqueries were successful
+		fallThroughMiddleware := base.MiddlewareFunc(func(next base.Handler) base.Handler {
+			return base.HandlerFunc(
+				func(ctx context.Context, r base.Request) (base.Response, error) {
+					resp, err := next.Do(ctx, r)
+					switch r := resp.(type) {
+					case *DetectedFieldsResponse:
+						if err != nil {
+							return &DetectedFieldsResponse{
+								Response: &logproto.DetectedFieldsResponse{
+									Fields:     []*logproto.DetectedField{},
+									FieldLimit: r.Response.FieldLimit,
+								},
+								Headers: r.Headers,
+							}, err
+						}
+					}
+
+					return resp, err
+				},
 			)
-		}
+		})
+
+		queryRangeMiddleware = append(
+			queryRangeMiddleware,
+			fallThroughMiddleware,
+		)
 
 		limitedRT := NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
 		return NewSketchRemovingHandler(limitedRT, limits, splitter)
