@@ -114,7 +114,7 @@ docker run -v /var/run/docker.sock:/var/run/docker.sock -v $(pwd)/fluent-bit.con
 
 The recommended way to collect logs from Kubernetes with Fluent Bit is to use the Helm chart provided by the Fluent Bit project. The Helm chart is available at [https://github.com/fluent/helm-charts](https://github.com/fluent/helm-charts).
 
-Here is an example of how to deploy the Fluent Bit helm chart to collect logs from Kubernetes and send them to Loki:
+Here is an example of how to deploy the Fluent Bit Helm chart to collect logs from Kubernetes and send them to Loki:
 
 1. Add the Fluent Bit Helm repository:
    
