@@ -33,6 +33,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/ring"
 )
 
+// TODO(chaudum): Make configurable via (per-tenant?) setting.
+var blockCompressionAlgo = compression.EncNone
+
 type Builder struct {
 	services.Service
 
@@ -404,7 +407,7 @@ func (b *Builder) processTask(
 			blockCt++
 			blk := newBlocks.At()
 
-			built, err := bloomshipper.BlockFrom(tenant, task.Table.Addr(), blk)
+			built, err := bloomshipper.BlockFrom(blockCompressionAlgo, tenant, task.Table.Addr(), blk)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to build block", "err", err)
 				if err = blk.Reader().Cleanup(); err != nil {
