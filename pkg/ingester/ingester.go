@@ -230,6 +230,7 @@ type Interface interface {
 	GetOrCreateInstance(instanceID string) (*instance, error)
 	ShutdownHandler(w http.ResponseWriter, r *http.Request)
 	PrepareShutdown(w http.ResponseWriter, r *http.Request)
+	PreparePartitionDownscaleHandler(w http.ResponseWriter, r *http.Request)
 }
 
 // Ingester builds chunks for incoming log streams.
@@ -498,7 +499,15 @@ func (i *Ingester) setupAutoForget() {
 	}()
 }
 
-func (i *Ingester) starting(ctx context.Context) error {
+func (i *Ingester) starting(ctx context.Context) (err error) {
+	defer func() {
+		if err != nil {
+			// if starting() fails for any reason (e.g., context canceled),
+			// the lifecycler must be stopped.
+			_ = services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
+		}
+	}()
+
 	if i.cfg.WAL.Enabled {
 		start := time.Now()
 
@@ -583,17 +592,6 @@ func (i *Ingester) starting(ctx context.Context) error {
 
 	i.InitFlushQueues()
 
-	// pass new context to lifecycler, so that it doesn't stop automatically when Ingester's service context is done
-	err := i.lifecycler.StartAsync(context.Background())
-	if err != nil {
-		return err
-	}
-
-	err = i.lifecycler.AwaitRunning(ctx)
-	if err != nil {
-		return err
-	}
-
 	shutdownMarkerPath := path.Join(i.cfg.ShutdownMarkerPath, shutdownMarkerFilename)
 	shutdownMarker, err := shutdownMarkerExists(shutdownMarkerPath)
 	if err != nil {
@@ -605,16 +603,41 @@ func (i *Ingester) starting(ctx context.Context) error {
 		i.setPrepareShutdown()
 	}
 
+	// When kafka ingestion is enabled, we have to make sure that reader catches up replaying the partition
+	// BEFORE the ingester ring lifecycler is started, because once the ingester ring lifecycler will start
+	// it will switch the ingester state in the ring to ACTIVE.
+	if i.partitionReader != nil {
+		if err := services.StartAndAwaitRunning(ctx, i.partitionReader); err != nil {
+			return fmt.Errorf("failed to start partition reader: %w", err)
+		}
+	}
+
+	// pass new context to lifecycler, so that it doesn't stop automatically when Ingester's service context is done
+	err = i.lifecycler.StartAsync(context.Background())
+	if err != nil {
+		return err
+	}
+
+	err = i.lifecycler.AwaitRunning(ctx)
+	if err != nil {
+		return err
+	}
+
 	err = i.recalculateOwnedStreams.StartAsync(ctx)
 	if err != nil {
 		return fmt.Errorf("can not start recalculate owned streams service: %w", err)
 	}
 
-	err = i.lifecycler.AwaitRunning(ctx)
+	err = i.recalculateOwnedStreams.AwaitRunning(ctx)
 	if err != nil {
 		return fmt.Errorf("can not ensure recalculate owned streams service is running: %w", err)
 	}
 
+	if i.partitionRingLifecycler != nil {
+		if err := services.StartAndAwaitRunning(ctx, i.partitionRingLifecycler); err != nil {
+			return fmt.Errorf("failed to start partition ring lifecycler: %w", err)
+		}
+	}
 	// start our loop
 	i.loopDone.Add(1)
 	go i.loop()
@@ -647,6 +670,19 @@ func (i *Ingester) running(ctx context.Context) error {
 // At this point, loop no longer runs, but flushers are still running.
 func (i *Ingester) stopping(_ error) error {
 	i.stopIncomingRequests()
+
+	if i.partitionReader != nil {
+		if err := services.StopAndAwaitTerminated(context.Background(), i.partitionReader); err != nil {
+			level.Warn(i.logger).Log("msg", "failed to stop partition reader", "err", err)
+		}
+	}
+
+	if i.partitionRingLifecycler != nil {
+		if err := services.StopAndAwaitTerminated(context.Background(), i.partitionRingLifecycler); err != nil {
+			level.Warn(i.logger).Log("msg", "failed to stop partition ring lifecycler", "err", err)
+		}
+	}
+
 	var errs util.MultiError
 	errs.Add(i.wal.Stop())
 
@@ -803,6 +839,18 @@ func (i *Ingester) setPrepareShutdown() {
 	i.lifecycler.SetUnregisterOnShutdown(true)
 	i.terminateOnShutdown = true
 	i.metrics.shutdownMarker.Set(1)
+
+	if i.partitionRingLifecycler != nil {
+		// When the prepare shutdown endpoint is called there are two changes in the partitions ring behavior:
+		//
+		// 1. If setPrepareShutdown() is called at startup, because of the shutdown marker found on disk,
+		//    the ingester shouldn't create the partition if doesn't exist, because we expect the ingester will
+		//    be scaled down shortly after.
+		// 2. When the ingester will shutdown we'll have to remove the ingester from the partition owners,
+		//    because we expect the ingester to be scaled down.
+		i.partitionRingLifecycler.SetCreatePartitionOnStartup(false)
+		i.partitionRingLifecycler.SetRemoveOwnerOnShutdown(true)
+	}
 }
 
 func (i *Ingester) unsetPrepareShutdown() {
