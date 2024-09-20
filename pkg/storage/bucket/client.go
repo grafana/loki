@@ -68,6 +68,17 @@ type StorageBackendConfig struct {
 	ExtraBackends []string `yaml:"-"`
 }
 
+// Metrics holds metric related configuration for the objstore.
+type Metrics struct {
+	// Registerer is the prometheus registerer that will be used by the objstore
+	// to register bucket metrics.
+	Registerer prometheus.Registerer
+	// BucketMetrics are objstore metrics that are will wrap the bucket.
+	// This should be set when we create multiple buckets for the same component
+	// to avoid duplicate registration of metrics.
+	BucketMetrics *objstore.Metrics
+}
+
 // Returns the supportedBackends for the package and any custom backends injected into the config.
 func (cfg *StorageBackendConfig) supportedBackends() []string {
 	return append(SupportedBackends, cfg.ExtraBackends...)
@@ -143,7 +154,7 @@ func (cfg *Config) Validate() error {
 }
 
 // NewClient creates a new bucket client based on the configured backend
-func NewClient(ctx context.Context, cfg Config, name string, logger log.Logger, reg prometheus.Registerer) (objstore.InstrumentedBucket, error) {
+func NewClient(ctx context.Context, cfg Config, name string, logger log.Logger, metrics *Metrics) (objstore.InstrumentedBucket, error) {
 	var (
 		client objstore.Bucket
 		err    error
@@ -172,7 +183,16 @@ func NewClient(ctx context.Context, cfg Config, name string, logger log.Logger, 
 		client = NewPrefixedBucketClient(client, cfg.StoragePrefix)
 	}
 
-	instrumentedClient := objstoretracing.WrapWithTraces(bucketWithMetrics(client, name, reg))
+	if metrics.BucketMetrics != nil {
+		client = bucketWrapWith(client, metrics.BucketMetrics)
+	} else {
+		bucketMetrics := bucketMetrics(name, metrics.Registerer)
+		client = bucketWrapWith(client, bucketMetrics)
+		// Save metrics to be assigned to other buckets created with the same component name
+		metrics.BucketMetrics = bucketMetrics
+	}
+
+	instrumentedClient := objstoretracing.WrapWithTraces(client)
 
 	// Wrap the client with any provided middleware
 	for _, wrap := range cfg.Middlewares {
@@ -185,16 +205,16 @@ func NewClient(ctx context.Context, cfg Config, name string, logger log.Logger, 
 	return instrumentedClient, nil
 }
 
-func bucketWithMetrics(bucketClient objstore.Bucket, name string, reg prometheus.Registerer) objstore.Bucket {
-	if reg == nil {
+func bucketMetrics(name string, reg prometheus.Registerer) *objstore.Metrics {
+	reg = prometheus.WrapRegistererWithPrefix("loki_", reg)
+	reg = prometheus.WrapRegistererWith(prometheus.Labels{"component": name}, reg)
+	return objstore.BucketMetrics(reg, "")
+}
+
+func bucketWrapWith(bucketClient objstore.Bucket, metrics *objstore.Metrics) objstore.Bucket {
+	if metrics == nil {
 		return bucketClient
 	}
 
-	reg = prometheus.WrapRegistererWithPrefix("loki_", reg)
-	reg = prometheus.WrapRegistererWith(prometheus.Labels{"component": name}, reg)
-
-	return objstore.WrapWithMetrics(
-		bucketClient,
-		reg,
-		"")
+	return objstore.WrapWith(bucketClient, metrics)
 }

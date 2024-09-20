@@ -407,7 +407,8 @@ func NewIndexClient(component string, periodCfg config.PeriodConfig, tableRange 
 			var objectClient client.ObjectClient
 			var err error
 			if cfg.ThanosObjStore {
-				objectClient, err = NewObjectClientV2(component, periodCfg.ObjectType, cfg, cm, registerer)
+				metrics := &client.Metrics{Registerer: prometheus.DefaultRegisterer}
+				objectClient, err = NewObjectClientV2(component, periodCfg.ObjectType, cfg, metrics)
 			} else {
 				registerer = prometheus.WrapRegistererWith(prometheus.Labels{"component": component}, registerer)
 				objectClient, err = NewObjectClient(periodCfg.ObjectType, cfg, cm)
@@ -488,7 +489,8 @@ func NewChunkClient(component, name string, cfg Config, schemaCfg config.SchemaC
 			var c client.ObjectClient
 			var err error
 			if cfg.ThanosObjStore {
-				c, err = NewObjectClientV2(component, name, cfg, clientMetrics, registerer)
+				metrics := &client.Metrics{Registerer: prometheus.DefaultRegisterer}
+				c, err = NewObjectClientV2(component, name, cfg, metrics)
 			} else {
 				c, err = NewObjectClient(name, cfg, clientMetrics)
 			}
@@ -504,7 +506,8 @@ func NewChunkClient(component, name string, cfg Config, schemaCfg config.SchemaC
 			var c client.ObjectClient
 			var err error
 			if cfg.ThanosObjStore {
-				c, err = NewObjectClientV2(component, name, cfg, clientMetrics, registerer)
+				metrics := &client.Metrics{Registerer: prometheus.DefaultRegisterer}
+				c, err = NewObjectClientV2(component, name, cfg, metrics)
 			} else {
 				c, err = NewObjectClient(name, cfg, clientMetrics)
 			}
@@ -517,7 +520,8 @@ func NewChunkClient(component, name string, cfg Config, schemaCfg config.SchemaC
 			var c client.ObjectClient
 			var err error
 			if cfg.ThanosObjStore {
-				c, err = NewObjectClientV2(component, name, cfg, clientMetrics, registerer)
+				metrics := &client.Metrics{Registerer: prometheus.DefaultRegisterer}
+				c, err = NewObjectClientV2(component, name, cfg, metrics)
 			} else {
 				c, err = NewObjectClient(name, cfg, clientMetrics)
 			}
@@ -533,7 +537,8 @@ func NewChunkClient(component, name string, cfg Config, schemaCfg config.SchemaC
 			var c client.ObjectClient
 			var err error
 			if cfg.ThanosObjStore {
-				c, err = NewObjectClientV2(component, name, cfg, clientMetrics, registerer)
+				metrics := &client.Metrics{Registerer: prometheus.DefaultRegisterer}
+				c, err = NewObjectClientV2(component, name, cfg, metrics)
 			} else {
 				c, err = NewObjectClient(name, cfg, clientMetrics)
 			}
@@ -589,7 +594,8 @@ func NewTableClient(component, name string, periodCfg config.PeriodConfig, cfg C
 		var objectClient client.ObjectClient
 		var err error
 		if cfg.ThanosObjStore {
-			objectClient, err = NewObjectClientV2(component, periodCfg.ObjectType, cfg, cm, registerer)
+			metrics := &client.Metrics{Registerer: prometheus.DefaultRegisterer}
+			objectClient, err = NewObjectClientV2(component, periodCfg.ObjectType, cfg, metrics)
 		} else {
 			objectClient, err = NewObjectClient(periodCfg.ObjectType, cfg, cm)
 		}
@@ -648,7 +654,10 @@ func (c *ClientMetrics) Unregister() {
 
 // NewObjectClient makes a new StorageClient with the prefix in the front.
 func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
-	actual, err := internalNewObjectClient("", name, cfg, clientMetrics, prometheus.DefaultRegisterer)
+	metrics := &client.Metrics{
+		Registerer: prometheus.DefaultRegisterer,
+	}
+	actual, err := internalNewObjectClient("", name, cfg, clientMetrics, metrics)
 	if err != nil {
 		return nil, err
 	}
@@ -662,8 +671,11 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 }
 
 // NewObjectClient makes a new StorageClient with the prefix in the front.
-func NewObjectClientV2(component, name string, cfg Config, clientMetrics ClientMetrics, reg prometheus.Registerer) (client.ObjectClient, error) {
-	actual, err := internalNewObjectClient(component, name, cfg, clientMetrics, reg)
+func NewObjectClientV2(component, name string, cfg Config, metrics *client.Metrics) (client.ObjectClient, error) {
+	// Statify internalNewObjectClient signature to be removed once the old objstore is removed
+	clientMetrics := ClientMetrics{}
+
+	actual, err := internalNewObjectClient(component, name, cfg, clientMetrics, metrics)
 	if err != nil {
 		return nil, err
 	}
@@ -677,7 +689,7 @@ func NewObjectClientV2(component, name string, cfg Config, clientMetrics ClientM
 }
 
 // internalNewObjectClient makes the underlying StorageClient of the desired types.
-func internalNewObjectClient(component, name string, cfg Config, clientMetrics ClientMetrics, reg prometheus.Registerer) (client.ObjectClient, error) {
+func internalNewObjectClient(component, name string, cfg Config, clientMetrics ClientMetrics, metrics *client.Metrics) (client.ObjectClient, error) {
 	var (
 		namedStore string
 		storeType  = name
@@ -732,7 +744,7 @@ func internalNewObjectClient(component, name string, cfg Config, clientMetrics C
 			gcsCfg.EnableRetries = false
 		}
 		if cfg.ThanosObjStore {
-			return gcp.NewGCSThanosObjectClient(context.Background(), cfg.ObjStoreConf, component, util_log.Logger, cfg.Hedging, reg)
+			return gcp.NewGCSThanosObjectClient(context.Background(), cfg.ObjStoreConf, component, util_log.Logger, cfg.Hedging, metrics)
 		}
 		return gcp.NewGCSObjectClient(context.Background(), gcsCfg, cfg.Hedging)
 

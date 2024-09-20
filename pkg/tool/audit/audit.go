@@ -56,7 +56,8 @@ func GetObjectClient(cfg Config) (client.ObjectClient, error) {
 	var objClient client.ObjectClient
 	var err error
 	if cfg.StorageConfig.ThanosObjStore {
-		objClient, err = storage.NewObjectClientV2("audit", periodCfg.ObjectType, cfg.StorageConfig, storage.NewClientMetrics(), prometheus.DefaultRegisterer)
+		metrics := &client.Metrics{Registerer: prometheus.DefaultRegisterer}
+		objClient, err = storage.NewObjectClientV2("audit", periodCfg.ObjectType, cfg.StorageConfig, metrics)
 	} else {
 		objClient, err = storage.NewObjectClient(periodCfg.ObjectType, cfg.StorageConfig, storage.NewClientMetrics())
 	}

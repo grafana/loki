@@ -24,32 +24,45 @@ type GCSThanosObjectClient struct {
 	hedgedClient objstore.Bucket
 }
 
-func NewGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, hedgingCfg hedging.Config, reg prometheus.Registerer) (*GCSThanosObjectClient, error) {
-	client, err := newGCSThanosObjectClient(ctx, cfg, component, logger, false, hedgingCfg, prometheus.WrapRegistererWith(prometheus.Labels{"hedging": "false"}, reg))
+func NewGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, hedgingCfg hedging.Config, metrics *client.Metrics) (*GCSThanosObjectClient, error) {
+	objMetrics := &bucket.Metrics{
+		Registerer:    prometheus.WrapRegistererWith(prometheus.Labels{"hedging": "false"}, metrics.Registerer),
+		BucketMetrics: metrics.BucketMetrics,
+	}
+	client, err := newGCSThanosObjectClient(ctx, cfg, component, logger, false, hedgingCfg, objMetrics)
 	if err != nil {
 		return nil, err
 	}
-	hedgedClient, err := newGCSThanosObjectClient(ctx, cfg, component, logger, true, hedgingCfg, prometheus.WrapRegistererWith(prometheus.Labels{"hedging": "true"}, reg))
+	// Save metrics in case we need to create more buckets
+	metrics.BucketMetrics = objMetrics.BucketMetrics
+
+	hedgingObjMetrics := &bucket.Metrics{
+		Registerer:    prometheus.WrapRegistererWith(prometheus.Labels{"hedging": "true"}, metrics.Registerer),
+		BucketMetrics: metrics.HedgingBucketMetrics,
+	}
+	hedgedClient, err := newGCSThanosObjectClient(ctx, cfg, component, logger, true, hedgingCfg, hedgingObjMetrics)
 	if err != nil {
 		return nil, err
 	}
+	// Save metrics in case we need to create more buckets
+	metrics.HedgingBucketMetrics = objMetrics.BucketMetrics
+
 	return &GCSThanosObjectClient{
 		client:       client,
 		hedgedClient: hedgedClient,
 	}, nil
 }
 
-func newGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, hedging bool, hedgingCfg hedging.Config, reg prometheus.Registerer) (objstore.Bucket, error) {
+func newGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, hedging bool, hedgingCfg hedging.Config, metrics *bucket.Metrics) (objstore.Bucket, error) {
 	if hedging {
-		hedgedTrasport, err := hedgingCfg.RoundTripperWithRegisterer(nil, reg)
+		hedgedTrasport, err := hedgingCfg.RoundTripperWithRegisterer(nil, prometheus.WrapRegistererWith(prometheus.Labels{"hedging": "true"}, metrics.Registerer))
 		if err != nil {
 			return nil, err
 		}
 
 		cfg.GCS.HTTP.Transport = hedgedTrasport
 	}
-
-	return bucket.NewClient(ctx, cfg, component, logger, reg)
+	return bucket.NewClient(ctx, cfg, component, logger, metrics)
 }
 
 func (s *GCSThanosObjectClient) Stop() {}

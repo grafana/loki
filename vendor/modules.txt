@@ -1578,7 +1578,7 @@ github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
 github.com/stretchr/testify/suite
-# github.com/thanos-io/objstore v0.0.0-20240818203309-0363dadfdfb1
+# github.com/thanos-io/objstore v0.0.0-20240913165201-fd105025a2e5
 ## explicit; go 1.21
 github.com/thanos-io/objstore
 github.com/thanos-io/objstore/exthttp
@@ -1981,7 +1981,7 @@ google.golang.org/genproto/googleapis/api/monitoredres
 google.golang.org/genproto/googleapis/rpc/code
 google.golang.org/genproto/googleapis/rpc/errdetails
 google.golang.org/genproto/googleapis/rpc/status
-# google.golang.org/grpc v1.65.0
+# google.golang.org/grpc v1.66.0
 ## explicit; go 1.21
 google.golang.org/grpc
 google.golang.org/grpc/attributes
@@ -2023,8 +2023,9 @@ google.golang.org/grpc/credentials/tls/certprovider/pemfile
 google.golang.org/grpc/encoding
 google.golang.org/grpc/encoding/gzip
 google.golang.org/grpc/encoding/proto
-google.golang.org/grpc/experimental
+google.golang.org/grpc/experimental/stats
 google.golang.org/grpc/grpclog
+google.golang.org/grpc/grpclog/internal
 google.golang.org/grpc/health
 google.golang.org/grpc/health/grpc_health_v1
 google.golang.org/grpc/internal
@@ -2068,6 +2069,7 @@ google.golang.org/grpc/internal/xds/bootstrap/tlscreds
 google.golang.org/grpc/internal/xds/matcher
 google.golang.org/grpc/internal/xds/rbac
 google.golang.org/grpc/keepalive
+google.golang.org/grpc/mem
 google.golang.org/grpc/metadata
 google.golang.org/grpc/orca
 google.golang.org/grpc/orca/internal
@@ -2105,8 +2107,10 @@ google.golang.org/grpc/xds/internal/resolver
 google.golang.org/grpc/xds/internal/resolver/internal
 google.golang.org/grpc/xds/internal/server
 google.golang.org/grpc/xds/internal/xdsclient
+google.golang.org/grpc/xds/internal/xdsclient/internal
 google.golang.org/grpc/xds/internal/xdsclient/load
 google.golang.org/grpc/xds/internal/xdsclient/transport
+google.golang.org/grpc/xds/internal/xdsclient/transport/internal
 google.golang.org/grpc/xds/internal/xdsclient/xdslbregistry
 google.golang.org/grpc/xds/internal/xdsclient/xdslbregistry/converter
 google.golang.org/grpc/xds/internal/xdsclient/xdsresource

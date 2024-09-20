@@ -541,7 +541,8 @@ func GetObjectClient(store string, conf loki.Config, cm storage.ClientMetrics) (
 	var c chunk.ObjectClient
 	var err error
 	if conf.StorageConfig.ThanosObjStore {
-		c, err = storage.NewObjectClientV2("log-cli-query", store, conf.StorageConfig, cm, prometheus.DefaultRegisterer)
+		metrics := &chunk.Metrics{Registerer: prometheus.DefaultRegisterer}
+		c, err = storage.NewObjectClientV2("log-cli-query", store, conf.StorageConfig, metrics)
 	} else {
 		c, err = storage.NewObjectClient(store, conf.StorageConfig, cm)
 	}

@@ -287,7 +287,8 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 		var objectClient client.ObjectClient
 		var err error
 		if s.cfg.ThanosObjStore {
-			objectClient, err = NewObjectClientV2(component, p.ObjectType, s.cfg, s.clientMetrics, s.registerer)
+			metrics := &client.Metrics{Registerer: prometheus.DefaultRegisterer}
+			objectClient, err = NewObjectClientV2(component, p.ObjectType, s.cfg, metrics)
 		} else {
 			objectClient, err = NewObjectClient(p.ObjectType, s.cfg, s.clientMetrics)
 		}
