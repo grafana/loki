@@ -38,7 +38,7 @@ func newConsumerMetrics(reg prometheus.Registerer) *consumerMetrics {
 
 func NewKafkaConsumerFactory(pusher logproto.PusherServer, logger log.Logger, reg prometheus.Registerer) partition.ConsumerFactory {
 	metrics := newConsumerMetrics(reg)
-	return func(committer partition.Committer) (partition.Consumer, error) {
+	return func(_ partition.Committer) (partition.Consumer, error) {
 		decoder, err := kafka.NewDecoder()
 		if err != nil {
 			return nil, err
