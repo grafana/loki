@@ -388,17 +388,17 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 
 			for _, g := range groups {
 				if err := validateMatchers(ctx, r.limits, g.Matchers); err != nil {
-					return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+					return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 				}
 			}
 			return r.metric.Do(ctx, req)
 		case syntax.LogSelectorExpr:
 			if err := validateMaxEntriesLimits(ctx, op.Limit, r.limits); err != nil {
-				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 			}
 
 			if err := validateMatchers(ctx, r.limits, e.Matchers()); err != nil {
-				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 			}
 
 			// Some queries we don't want to parallelize as aggressively, like limited queries and `datasample` queries
@@ -505,13 +505,10 @@ const (
 	DetectedFieldsOp = "detected_fields"
 	PatternsQueryOp  = "patterns"
 	DetectedLabelsOp = "detected_labels"
-	SamplesQueryOp   = "samples"
 )
 
 func getOperation(path string) string {
 	switch {
-	case path == "/loki/api/v1/explore/query_range":
-		return SamplesQueryOp
 	case strings.HasSuffix(path, "/query_range") || strings.HasSuffix(path, "/prom/query"):
 		return QueryRangeOp
 	case strings.HasSuffix(path, "/series"):

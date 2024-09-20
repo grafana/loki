@@ -314,7 +314,7 @@ func NewBloomStore(
 
 	// sort by From time
 	sort.Slice(periodicConfigs, func(i, j int) bool {
-		return periodicConfigs[i].From.Time.Before(periodicConfigs[i].From.Time)
+		return periodicConfigs[i].From.Time.Before(periodicConfigs[j].From.Time)
 	})
 
 	// TODO(chaudum): Remove wrapper

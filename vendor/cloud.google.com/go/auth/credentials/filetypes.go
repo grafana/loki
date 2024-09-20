@@ -174,6 +174,7 @@ func handleExternalAccount(f *credsfile.ExternalAccountFile, opts *DetectOptions
 		Scopes:                         opts.scopes(),
 		WorkforcePoolUserProject:       f.WorkforcePoolUserProject,
 		Client:                         opts.client(),
+		IsDefaultClient:                opts.Client == nil,
 	}
 	if f.ServiceAccountImpersonation != nil {
 		externalOpts.ServiceAccountImpersonationLifetimeSeconds = f.ServiceAccountImpersonation.TokenLifetimeSeconds

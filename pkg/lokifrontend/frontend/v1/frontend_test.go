@@ -46,7 +46,7 @@ const (
 )
 
 func TestFrontend(t *testing.T) {
-	handler := queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	handler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		return &queryrange.LokiLabelNamesResponse{Data: []string{"Hello", "world"}, Version: uint32(loghttp.VersionV1)}, nil
 	})
 	test := func(addr string, _ *Frontend) {
@@ -77,7 +77,7 @@ func TestFrontendPropagateTrace(t *testing.T) {
 
 	observedTraceID := make(chan string, 2)
 
-	handler := queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	handler := queryrangebase.HandlerFunc(func(ctx context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		sp := opentracing.SpanFromContext(ctx)
 		defer sp.Finish()
 
@@ -157,7 +157,7 @@ func TestFrontendCheckReady(t *testing.T) {
 // the underlying query is correctly cancelled _and not retried_.
 func TestFrontendCancel(t *testing.T) {
 	var tries atomic.Int32
-	handler := queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	handler := queryrangebase.HandlerFunc(func(ctx context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		<-ctx.Done()
 		tries.Inc()
 		return nil, ctx.Err()
@@ -188,7 +188,7 @@ func TestFrontendCancel(t *testing.T) {
 }
 
 func TestFrontendMetricsCleanup(t *testing.T) {
-	handler := queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	handler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		return &queryrange.LokiLabelNamesResponse{Data: []string{"Hello", "world"}, Version: uint32(loghttp.VersionV1)}, nil
 	})
 

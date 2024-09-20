@@ -90,8 +90,6 @@ func NewSimpleBloomGenerator(
 		reporter:         reporter,
 
 		tokenizer: v1.NewBloomTokenizer(
-			opts.Schema.NGramLen(),
-			opts.Schema.NGramSkip(),
 			int(opts.UnencodedBlockOptions.MaxBloomSizeBytes),
 			metrics,
 			log.With(

@@ -204,8 +204,7 @@ func (ds *DialSettings) IsUniverseDomainGDU() bool {
 }
 
 // GetUniverseDomain returns the default service domain for a given Cloud
-// universe, from google.Credentials, for comparison with the value returned by
-// (*DialSettings).GetUniverseDomain. This wrapper function should be removed
+// universe, from google.Credentials. This wrapper function should be removed
 // to close https://github.com/googleapis/google-api-go-client/issues/2399.
 func GetUniverseDomain(creds *google.Credentials) (string, error) {
 	timer := time.NewTimer(time.Second)

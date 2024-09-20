@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
 )
 
@@ -23,8 +23,8 @@ func TestArchive(t *testing.T) {
 	builder, err := NewBlockBuilder(
 		BlockOptions{
 			Schema: Schema{
-				version:  DefaultSchemaVersion,
-				encoding: chunkenc.EncSnappy,
+				version:  CurrentSchemaVersion,
+				encoding: compression.EncSnappy,
 			},
 			SeriesPageSize: 100,
 			BloomPageSize:  10 << 10,

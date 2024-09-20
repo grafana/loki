@@ -23,7 +23,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"hash/crc32"
 	"io"
 	"math/rand"
 	"net"
@@ -129,7 +128,7 @@ type Options struct {
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "v7.0.72"
+	libraryVersion = "v7.0.76"
 )
 
 // User Agent should always following the below style.
@@ -471,7 +470,7 @@ type requestMetadata struct {
 	contentMD5Base64 string // carries base64 encoded md5sum
 	contentSHA256Hex string // carries hex encoded sha256sum
 	streamSha256     bool
-	addCrc           bool
+	addCrc           *ChecksumType
 	trailer          http.Header // (http.Request).Trailer. Requires v4 signature.
 }
 
@@ -616,16 +615,16 @@ func (c *Client) executeMethod(ctx context.Context, method string, metadata requ
 		}
 	}
 
-	if metadata.addCrc && metadata.contentLength > 0 {
+	if metadata.addCrc != nil && metadata.contentLength > 0 {
 		if metadata.trailer == nil {
 			metadata.trailer = make(http.Header, 1)
 		}
-		crc := crc32.New(crc32.MakeTable(crc32.Castagnoli))
+		crc := metadata.addCrc.Hasher()
 		metadata.contentBody = newHashReaderWrapper(metadata.contentBody, crc, func(hash []byte) {
 			// Update trailer when done.
-			metadata.trailer.Set("x-amz-checksum-crc32c", base64.StdEncoding.EncodeToString(hash))
+			metadata.trailer.Set(metadata.addCrc.Key(), base64.StdEncoding.EncodeToString(hash))
 		})
-		metadata.trailer.Set("x-amz-checksum-crc32c", base64.StdEncoding.EncodeToString(crc.Sum(nil)))
+		metadata.trailer.Set(metadata.addCrc.Key(), base64.StdEncoding.EncodeToString(crc.Sum(nil)))
 	}
 
 	// Create cancel context to control 'newRetryTimer' go routine.

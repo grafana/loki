@@ -79,6 +79,7 @@ const (
 func UnmarshalPrimitive(rawInput map[string]json.RawMessage, propertyName string, result interface{}) (err error) {
 	if propertyName == "" {
 		err = fmt.Errorf(errorPropertyNameMissing)
+		err = SDKErrorf(err, "", "no-prop-name", getComponentInfo())
 	}
 
 	rawMsg, foundIt := rawInput[propertyName]
@@ -86,6 +87,7 @@ func UnmarshalPrimitive(rawInput map[string]json.RawMessage, propertyName string
 		err = json.Unmarshal(rawMsg, result)
 		if err != nil {
 			err = fmt.Errorf(errorUnmarshalPrimitive, propertyName, err.Error())
+			err = SDKErrorf(err, "", "json-unmarshal-error", getComponentInfo())
 		}
 	}
 	return
@@ -188,6 +190,7 @@ func UnmarshalModel(rawInput interface{}, propertyName string, result interface{
 	// Make sure some input is provided. Otherwise return an error.
 	if IsNil(rawInput) {
 		err = fmt.Errorf(errorUnmarshallInputIsNil)
+		err = SDKErrorf(err, "", "no-input", getComponentInfo())
 		return
 	}
 
@@ -221,10 +224,12 @@ func UnmarshalModel(rawInput interface{}, propertyName string, result interface{
 
 			default:
 				err = fmt.Errorf(errorUnsupportedResultType, rResultType.String())
+				err = SDKErrorf(err, "", "bad-slice-elem-slice-type", getComponentInfo())
 			}
 
 		default:
 			err = fmt.Errorf(errorUnsupportedResultType, rResultType.String())
+			err = SDKErrorf(err, "", "bad-slice-elem-type", getComponentInfo())
 			return
 		}
 
@@ -246,17 +251,23 @@ func UnmarshalModel(rawInput interface{}, propertyName string, result interface{
 
 			default:
 				err = fmt.Errorf(errorUnsupportedResultType, rResultType.String())
+				err = SDKErrorf(err, "", "bad-slice-elem-map-type", getComponentInfo())
 				return
 			}
 		default:
 			err = fmt.Errorf(errorUnsupportedResultType, rResultType.String())
+			err = SDKErrorf(err, "", "bad-map-entry-type", getComponentInfo())
 			return
 		}
 
 	default:
 		err = fmt.Errorf(errorUnsupportedResultType, rResultType.String())
+		err = SDKErrorf(err, "", "bad-model-type", getComponentInfo())
 		return
 	}
+
+	err = RepurposeSDKProblem(err, "unmarshal-fail")
+
 	return
 }
 
@@ -282,6 +293,7 @@ func unmarshalModelInstance(rawInput interface{}, propertyName string, result in
 	foundInput, rawMap, err = getUnmarshalInputSourceMap(rawInput, propertyName)
 	if err != nil {
 		err = fmt.Errorf(errorUnmarshalModel, propInsert(propertyName), getModelResultType(result), err.Error())
+		err = SDKErrorf(err, "", "input-source-error", getComponentInfo())
 		return
 	}
 
@@ -299,6 +311,7 @@ func unmarshalModelInstance(rawInput interface{}, propertyName string, result in
 		err = unmarshaller(rawMap, result)
 		if err != nil {
 			err = fmt.Errorf(errorUnmarshalModel, propInsert(propertyName), getModelResultType(result), err.Error())
+			err = SDKErrorf(err, "", "unmarshaller-error", getComponentInfo())
 			return
 		}
 	}
@@ -336,6 +349,7 @@ func unmarshalModelSlice(rawInput interface{}, propertyName string, result inter
 	if err != nil {
 		err = fmt.Errorf(errorUnmarshalModel, propInsert(propertyName),
 			reflect.TypeOf(result).Elem().String(), err.Error())
+		err = SDKErrorf(err, "", "input-source-error", getComponentInfo())
 		return
 	}
 
@@ -363,6 +377,7 @@ func unmarshalModelSlice(rawInput interface{}, propertyName string, result inter
 		if err != nil {
 			err = fmt.Errorf(errorUnmarshalModel, propInsert(propertyName),
 				reflect.TypeOf(result).Elem().String(), err.Error())
+			err = SDKErrorf(err, "", "result-type-error", getComponentInfo())
 			return
 		}
 
@@ -373,6 +388,7 @@ func unmarshalModelSlice(rawInput interface{}, propertyName string, result inter
 			if err != nil {
 				err = fmt.Errorf(errorUnmarshalModel, propInsert(propertyName),
 					reflect.TypeOf(result).Elem().String(), err.Error())
+				err = SDKErrorf(err, "", "json-unmarshal-error", getComponentInfo())
 				return
 			}
 
@@ -384,6 +400,7 @@ func unmarshalModelSlice(rawInput interface{}, propertyName string, result inter
 			if err != nil {
 				err = fmt.Errorf(errorUnmarshalModel, propInsert(propertyName),
 					reflect.TypeOf(result).Elem().String(), err.Error())
+				err = SDKErrorf(err, "", "unmarshaller-error", getComponentInfo())
 				return
 			}
 
@@ -425,6 +442,7 @@ func unmarshalModelSliceSlice(rawInput interface{}, propertyName string, result 
 	if err != nil {
 		err = fmt.Errorf(errorUnmarshalModel, propInsert(propertyName),
 			reflect.TypeOf(result).Elem().String(), err.Error())
+		err = SDKErrorf(err, "", "input-source-error", getComponentInfo())
 		return
 	}
 
@@ -455,6 +473,7 @@ func unmarshalModelSliceSlice(rawInput interface{}, propertyName string, result 
 			if err != nil {
 				err = fmt.Errorf(errorUnmarshalModel, propInsert(propertyName),
 					reflect.TypeOf(result).Elem().String(), err.Error())
+				err = SDKErrorf(err, "", "json-unmarshal-error", getComponentInfo())
 				return
 			}
 
@@ -466,6 +485,7 @@ func unmarshalModelSliceSlice(rawInput interface{}, propertyName string, result 
 			if err != nil {
 				err = fmt.Errorf(errorUnmarshalModel, propInsert(propertyName),
 					reflect.TypeOf(result).Elem().String(), err.Error())
+				err = SDKErrorf(err, "", "unmarshaller-error", getComponentInfo())
 				return
 			}
 
@@ -500,6 +520,7 @@ func unmarshalModelMap(rawInput interface{}, propertyName string, result interfa
 	if err != nil {
 		err = fmt.Errorf(errorUnmarshalModel, propInsert(propertyName),
 			reflect.TypeOf(result).Elem().String(), err.Error())
+		err = SDKErrorf(err, "", "input-source-error", getComponentInfo())
 		return
 	}
 
@@ -520,6 +541,7 @@ func unmarshalModelMap(rawInput interface{}, propertyName string, result interfa
 		if err != nil {
 			err = fmt.Errorf(errorUnmarshalModel, propInsert(propertyName),
 				reflect.TypeOf(result).Elem().String(), err.Error())
+			err = SDKErrorf(err, "", "result-type-error", getComponentInfo())
 			return
 		}
 
@@ -531,6 +553,7 @@ func unmarshalModelMap(rawInput interface{}, propertyName string, result interfa
 			if err != nil {
 				err = fmt.Errorf(errorUnmarshalModel, propInsert(propertyName),
 					reflect.TypeOf(result).Elem().String(), err.Error())
+				err = SDKErrorf(err, "", "json-unmarshal-error", getComponentInfo())
 				return
 			}
 
@@ -542,6 +565,7 @@ func unmarshalModelMap(rawInput interface{}, propertyName string, result interfa
 			if err != nil {
 				err = fmt.Errorf(errorUnmarshalModel, propInsert(propertyName),
 					reflect.TypeOf(result).Elem().String(), err.Error())
+				err = SDKErrorf(err, "", "unmarshaller-error", getComponentInfo())
 				return
 			}
 
@@ -577,6 +601,7 @@ func unmarshalModelSliceMap(rawInput interface{}, propertyName string, result in
 	if err != nil {
 		err = fmt.Errorf(errorUnmarshalModel, propInsert(propertyName),
 			reflect.TypeOf(result).Elem().String(), err.Error())
+		err = SDKErrorf(err, "", "input-source-error", getComponentInfo())
 		return
 	}
 
@@ -601,6 +626,7 @@ func unmarshalModelSliceMap(rawInput interface{}, propertyName string, result in
 				if err != nil {
 					err = fmt.Errorf(errorUnmarshalModel, propInsert(propertyName),
 						reflect.TypeOf(result).Elem().String(), err.Error())
+					err = SDKErrorf(err, "", "json-unmarshal-error", getComponentInfo())
 					return
 				}
 
@@ -612,6 +638,7 @@ func unmarshalModelSliceMap(rawInput interface{}, propertyName string, result in
 				if err != nil {
 					err = fmt.Errorf(errorUnmarshalModel, propInsert(propertyName),
 						reflect.TypeOf(result).Elem().String(), err.Error())
+					err = SDKErrorf(err, "", "unmarshaller-error", getComponentInfo())
 					return
 				}
 
@@ -639,6 +666,7 @@ func getUnmarshalInputSourceMap(rawInput interface{}, propertyName string) (foun
 	if !ok {
 		foundInput = false
 		err = fmt.Errorf(errorIncorrectInputType, "map[string]json.RawMessage", reflect.TypeOf(rawInput).String())
+		err = SDKErrorf(err, "", "non-json-source-map", getComponentInfo())
 		return
 	}
 
@@ -654,6 +682,7 @@ func getUnmarshalInputSourceMap(rawInput interface{}, propertyName string) (foun
 			err = json.Unmarshal(rawMsg, &rawMap)
 			if err != nil {
 				foundInput = false
+				err = SDKErrorf(err, "", "json-unmarshal-error", getComponentInfo())
 				return
 			}
 		}
@@ -681,6 +710,7 @@ func getUnmarshalInputSourceSlice(rawInput interface{}, propertyName string) (fo
 		rawMap, ok := rawInput.(map[string]json.RawMessage)
 		if !ok {
 			err = fmt.Errorf(errorIncorrectInputType, "map[string]json.RawMessage", reflect.TypeOf(rawInput).String())
+			err = SDKErrorf(err, "", "raw-input-error", getComponentInfo())
 			return
 		}
 
@@ -696,6 +726,7 @@ func getUnmarshalInputSourceSlice(rawInput interface{}, propertyName string) (fo
 			err = json.Unmarshal(rawMsg, &rawSlice)
 			if err != nil {
 				err = fmt.Errorf(errorIncorrectInputType, "map[string][]json.RawMessage", reflect.TypeOf(rawInput).String())
+				err = SDKErrorf(err, "", "json-unmarshal-error", getComponentInfo())
 				return
 			}
 
@@ -708,6 +739,7 @@ func getUnmarshalInputSourceSlice(rawInput interface{}, propertyName string) (fo
 		rawSlice, ok := rawInput.([]json.RawMessage)
 		if !ok {
 			err = fmt.Errorf(errorIncorrectInputType, "[]json.RawMessage", reflect.TypeOf(rawInput).String())
+			err = SDKErrorf(err, "", "no-name-raw-input-error", getComponentInfo())
 			return
 		}
 
@@ -748,6 +780,7 @@ func getUnmarshalResultType(result interface{}) (ptrType reflect.Type, err error
 
 	default:
 		err = fmt.Errorf(errorUnsupportedResultType, rResultType.String())
+		err = SDKErrorf(err, "", "unsupported-type", getComponentInfo())
 	}
 	return
 }

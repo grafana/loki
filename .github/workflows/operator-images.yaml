@@ -19,7 +19,7 @@ jobs:
  publish-manager:
    runs-on: ubuntu-latest
    steps:
-     - uses: actions/checkout@v3
+     - uses: actions/checkout@v4
 
      - name: Set up QEMU
        uses: docker/setup-qemu-action@v3
@@ -57,7 +57,7 @@ jobs:
  publish-bundle:
    runs-on: ubuntu-latest
    steps:
-     - uses: actions/checkout@v3
+     - uses: actions/checkout@v4
 
      - name: Set up QEMU
        uses: docker/setup-qemu-action@v3
@@ -96,7 +96,7 @@ jobs:
  publish-size-calculator:
    runs-on: ubuntu-latest
    steps:
-     - uses: actions/checkout@v3
+     - uses: actions/checkout@v4
 
      - name: Set up QEMU
        uses: docker/setup-qemu-action@v3
