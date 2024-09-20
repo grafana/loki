@@ -12,8 +12,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
 )
 
@@ -64,7 +64,8 @@ func Test_LoadBlocksDirIntoCache(t *testing.T) {
 	wd := t.TempDir()
 
 	// plain file
-	fp, _ := os.Create(filepath.Join(wd, "regular-file.tar"))
+	ext := blockExtension + compression.ExtGZIP
+	fp, _ := os.Create(filepath.Join(wd, "regular-file"+ext))
 	fp.Close()
 
 	// invalid directory
@@ -100,7 +101,7 @@ func Test_LoadBlocksDirIntoCache(t *testing.T) {
 
 	require.Equal(t, 1, len(c.entries))
 
-	key := validDir + v1.ExtTar // cache key must not contain directory prefix
+	key := validDir + ext // cache key must not contain directory prefix
 	elem, found := c.entries[key]
 	require.True(t, found)
 	blockDir := elem.Value.(*Entry).Value
