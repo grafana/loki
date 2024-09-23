@@ -28,123 +28,124 @@ func NewDetectedFieldsHandler(
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		return base.HandlerFunc(
 			func(ctx context.Context, req base.Request) (base.Response, error) {
-				var resp base.Response
-				var err error
-				switch r := req.(type) {
-				case *DetectedFieldsRequest:
-					expr, err := syntax.ParseLogSelector(r.Query, true)
-					if err != nil {
-						return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
-					}
-
-					if err := validateMaxEntriesLimits(ctx, r.LineLimit, limits); err != nil {
-						return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
-					}
-
-					if err := validateMatchers(ctx, limits, expr.Matchers()); err != nil {
-						return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
-					}
-
-					lokiReq := &LokiRequest{
-						Query:     r.GetQuery(),
-						Step:      r.GetStep(),
-						StartTs:   r.GetStartTs(),
-						EndTs:     r.GetEndTs(),
-						Direction: logproto.BACKWARD,
-						Limit:     r.GetLineLimit(),
-						Path:      "/loki/api/v1/query_range",
-					}
-
-					lokiReq.Plan = &plan.QueryPlan{
-						AST: expr,
-					}
-
-					if !expr.HasFilter() {
-						resp, err = limitedHandler.Do(ctx, lokiReq)
-					}
-					resp, err = logHandler.Do(ctx, lokiReq)
-					if err != nil {
-						return nil, err
-					}
-
-					switch re := resp.(type) {
-					case *LokiResponse:
-						if re.Status != "success" {
-							return resp, nil
-						}
-
-						detectedFields := ParseDetectedFields(r.FieldLimit, re.Data.Result)
-
-						fields := make([]*logproto.DetectedField, len(detectedFields))
-						fieldCount := 0
-						for k, v := range detectedFields {
-							p := v.Parsers
-							if len(p) == 0 {
-								p = nil
-							}
-							fields[fieldCount] = &logproto.DetectedField{
-								Label:       k,
-								Type:        v.FieldType,
-								Cardinality: v.Estimate(),
-								Parsers:     p,
-							}
-
-							fieldCount++
-						}
-
-						return &DetectedFieldsResponse{
-							Response: &logproto.DetectedFieldsResponse{
-								Fields:     fields,
-								FieldLimit: r.GetFieldLimit(),
-							},
-							Headers: re.Headers,
-						}, nil
-					}
-				default:
-					resp, err = next.Do(ctx, req)
+				r, ok := req.(*DetectedFieldsRequest)
+				if !ok {
+					return next.Do(ctx, req)
 				}
 
-				return resp, err
-			},
-		)
+				resp, err := makeDownstreamRequest(ctx, limits, limitedHandler, logHandler, r)
+				if err != nil {
+					return nil, err
+				}
+
+				re, ok := resp.(*LokiResponse)
+				if !ok || re.Status != "success" {
+					return resp, nil
+				}
+
+				detectedFields := parseDetectedFields(r.FieldLimit, re.Data.Result)
+				fields := make([]*logproto.DetectedField, len(detectedFields))
+				fieldCount := 0
+				for k, v := range detectedFields {
+					p := v.parsers
+					if len(p) == 0 {
+						p = nil
+					}
+					fields[fieldCount] = &logproto.DetectedField{
+						Label:       k,
+						Type:        v.fieldType,
+						Cardinality: v.Estimate(),
+						Parsers:     p,
+					}
+
+					fieldCount++
+				}
+
+				return &DetectedFieldsResponse{
+					Response: &logproto.DetectedFieldsResponse{
+						Fields:     fields,
+						FieldLimit: r.GetFieldLimit(),
+					},
+					Headers: re.Headers,
+				}, nil
+			})
 	})
 }
 
-type ParsedFields struct {
-	Sketch    *hyperloglog.Sketch
-	FieldType logproto.DetectedFieldType
-	Parsers   []string
+func makeDownstreamRequest(
+	ctx context.Context,
+	limits Limits,
+	limitedHandler, logHandler base.Handler,
+	req *DetectedFieldsRequest,
+) (base.Response, error) {
+	expr, err := syntax.ParseLogSelector(req.Query, true)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+	}
+
+	if err := validateMaxEntriesLimits(ctx, req.LineLimit, limits); err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+	}
+
+	if err := validateMatchers(ctx, limits, expr.Matchers()); err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+	}
+
+	lokiReq := &LokiRequest{
+		Query:     req.GetQuery(),
+		Step:      req.GetStep(),
+		StartTs:   req.GetStartTs(),
+		EndTs:     req.GetEndTs(),
+		Direction: logproto.BACKWARD,
+		Limit:     req.GetLineLimit(),
+		Path:      "/loki/api/v1/query_range",
+	}
+
+	lokiReq.Plan = &plan.QueryPlan{
+		AST: expr,
+	}
+
+	if expr.HasFilter() {
+		return logHandler.Do(ctx, lokiReq)
+	}
+	return limitedHandler.Do(ctx, lokiReq)
 }
 
-func newParsedFields(parsers []string) *ParsedFields {
-	return &ParsedFields{
-		Sketch:    hyperloglog.New(),
-		FieldType: logproto.DetectedFieldString,
-		Parsers:   parsers,
+type parsedFields struct {
+	sketch    *hyperloglog.Sketch
+	fieldType logproto.DetectedFieldType
+	parsers   []string
+}
+
+func newParsedFields(parsers []string) *parsedFields {
+	return &parsedFields{
+		sketch:    hyperloglog.New(),
+		fieldType: logproto.DetectedFieldString,
+		parsers:   parsers,
 	}
 }
 
-func newParsedLabels() *ParsedFields {
-	return &ParsedFields{
-		Sketch:    hyperloglog.New(),
-		FieldType: logproto.DetectedFieldString,
+func newParsedLabels() *parsedFields {
+	return &parsedFields{
+		sketch:    hyperloglog.New(),
+		fieldType: logproto.DetectedFieldString,
 	}
 }
 
-func (p *ParsedFields) Insert(value string) {
-	p.Sketch.Insert([]byte(value))
+func (p *parsedFields) Insert(value string) {
+	p.sketch.Insert([]byte(value))
 }
 
-func (p *ParsedFields) Estimate() uint64 {
-	return p.Sketch.Estimate()
+func (p *parsedFields) Estimate() uint64 {
+	return p.sketch.Estimate()
 }
 
-func (p *ParsedFields) Marshal() ([]byte, error) {
-	return p.Sketch.MarshalBinary()
+func (p *parsedFields) Marshal() ([]byte, error) {
+	return p.sketch.MarshalBinary()
 }
 
-func (p *ParsedFields) DetermineType(value string) {
-	p.FieldType = determineType(value)
+func (p *parsedFields) DetermineType(value string) {
+	p.fieldType = determineType(value)
 }
 
 func determineType(value string) logproto.DetectedFieldType {
@@ -171,8 +172,8 @@ func determineType(value string) logproto.DetectedFieldType {
 	return logproto.DetectedFieldString
 }
 
-func ParseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*ParsedFields {
-	detectedFields := make(map[string]*ParsedFields, limit)
+func parseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*parsedFields {
+	detectedFields := make(map[string]*parsedFields, limit)
 	fieldCount := uint32(0)
 	emtpyparsers := []string{}
 
@@ -209,8 +210,8 @@ func ParseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*P
 				}
 			}
 
-			streamLbls := logql_log.NewBaseLabelsBuilder().ForLabels(streamLbls, streamLbls.Hash())
-			parsedLabels, parsers := parseEntry(entry, streamLbls)
+			entryLbls := logql_log.NewBaseLabelsBuilder().ForLabels(streamLbls, streamLbls.Hash())
+			parsedLabels, parsers := parseEntry(entry, entryLbls)
 			for k, vals := range parsedLabels {
 				df, ok := detectedFields[k]
 				if !ok && fieldCount < limit {
@@ -224,8 +225,8 @@ func ParseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*P
 				}
 
 				for _, parser := range parsers {
-					if !slices.Contains(df.Parsers, parser) {
-						df.Parsers = append(df.Parsers, parser)
+					if !slices.Contains(df.parsers, parser) {
+						df.parsers = append(df.parsers, parser)
 					}
 				}
 
@@ -271,8 +272,16 @@ func getStructuredMetadata(entry push.Entry) map[string][]string {
 
 func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]string, []string) {
 	origParsed := getParsedLabels(entry)
-	parsed := make(map[string][]string, len(origParsed))
 
+	// if the original query has any parser expressions, then we need to differentiate the
+	// original stream labels from any parsed labels
+	for name := range origParsed {
+		lbls.Del(name)
+	}
+	streamLbls := lbls.LabelsResult().Stream()
+	lblBuilder := lbls.ForLabels(streamLbls, streamLbls.Hash())
+
+	parsed := make(map[string][]string, len(origParsed))
 	for lbl, values := range origParsed {
 		if lbl == logqlmodel.ErrorLabel || lbl == logqlmodel.ErrorDetailsLabel ||
 			lbl == logqlmodel.PreserveErrorLabel {
@@ -285,14 +294,14 @@ func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]s
 	line := entry.Line
 	parser := "json"
 	jsonParser := logql_log.NewJSONParser()
-	_, jsonSuccess := jsonParser.Process(0, []byte(line), lbls)
-	if !jsonSuccess || lbls.HasErr() {
-		lbls.Reset()
+	_, jsonSuccess := jsonParser.Process(0, []byte(line), lblBuilder)
+	if !jsonSuccess || lblBuilder.HasErr() {
+		lblBuilder.Reset()
 
 		logFmtParser := logql_log.NewLogfmtParser(false, false)
 		parser = "logfmt"
-		_, logfmtSuccess := logFmtParser.Process(0, []byte(line), lbls)
-		if !logfmtSuccess || lbls.HasErr() {
+		_, logfmtSuccess := logFmtParser.Process(0, []byte(line), lblBuilder)
+		if !logfmtSuccess || lblBuilder.HasErr() {
 			return parsed, nil
 		}
 	}
@@ -311,7 +320,7 @@ func parseEntry(entry push.Entry, lbls *logql_log.LabelsBuilder) (map[string][]s
 		}
 	}
 
-	lblsResult := lbls.LabelsResult().Parsed()
+	lblsResult := lblBuilder.LabelsResult().Parsed()
 	for _, lbl := range lblsResult {
 		if values, ok := parsedLabels[lbl.Name]; ok {
 			values[lbl.Value] = struct{}{}
