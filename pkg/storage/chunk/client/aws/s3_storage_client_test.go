@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -69,6 +71,108 @@ func TestIsObjectNotFoundErr(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Equal(t, tt.expected, client.IsObjectNotFoundErr(tt.err))
+		})
+	}
+}
+
+func TestIsRetryableErr(t *testing.T) {
+	tests := []struct {
+		err      error
+		expected bool
+		name     string
+	}{
+		{
+			name: "IsStorageThrottledErr - Too Many Requests",
+			err: awserr.NewRequestFailure(
+				awserr.New("TooManyRequests", "TooManyRequests", nil), 429, "reqId",
+			),
+			expected: true,
+		},
+		{
+			name: "IsStorageThrottledErr - 500",
+			err: awserr.NewRequestFailure(
+				awserr.New("500", "500", nil), 500, "reqId",
+			),
+			expected: true,
+		},
+		{
+			name: "IsStorageThrottledErr - 5xx",
+			err: awserr.NewRequestFailure(
+				awserr.New("501", "501", nil), 501, "reqId",
+			),
+			expected: true,
+		},
+		{
+			name: "IsStorageTimeoutErr - Request Timeout",
+			err: awserr.NewRequestFailure(
+				awserr.New("Request Timeout", "Request Timeout", nil), 408, "reqId",
+			),
+			expected: true,
+		},
+		{
+			name: "IsStorageTimeoutErr - Gateway Timeout",
+			err: awserr.NewRequestFailure(
+				awserr.New("Gateway Timeout", "Gateway Timeout", nil), 504, "reqId",
+			),
+			expected: true,
+		},
+		{
+			name:     "IsStorageTimeoutErr - EOF",
+			err:      io.EOF,
+			expected: true,
+		},
+		{
+			name:     "IsStorageTimeoutErr - Connection Reset",
+			err:      syscall.ECONNRESET,
+			expected: true,
+		},
+		{
+			name: "IsStorageTimeoutErr - Timeout Error",
+			err: awserr.NewRequestFailure(
+				awserr.New("RequestCanceled", "request canceled due to timeout", nil), 408, "request-id",
+			),
+			expected: true,
+		},
+		{
+			name:     "IsStorageTimeoutErr - Closed",
+			err:      net.ErrClosed,
+			expected: false,
+		},
+		{
+			name:     "IsStorageTimeoutErr - Connection Refused",
+			err:      syscall.ECONNREFUSED,
+			expected: false,
+		},
+		{
+			name:     "IsStorageTimeoutErr - Context Deadline Exceeded",
+			err:      context.DeadlineExceeded,
+			expected: false,
+		},
+		{
+			name:     "IsStorageTimeoutErr - Context Canceled",
+			err:      context.Canceled,
+			expected: false,
+		},
+		{
+			name:     "Not a retryable error",
+			err:      syscall.EINVAL,
+			expected: false,
+		},
+		{
+			name: "Not found 404",
+			err: awserr.NewRequestFailure(
+				awserr.New("404", "404", nil), 404, "reqId",
+			),
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, err := NewS3ObjectClient(S3Config{BucketNames: "mybucket"}, hedging.Config{})
+			require.NoError(t, err)
+
+			require.Equal(t, tt.expected, client.IsRetryableErr(tt.err))
 		})
 	}
 }

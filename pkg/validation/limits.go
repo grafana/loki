@@ -19,8 +19,8 @@ import (
 	"golang.org/x/time/rate"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -207,12 +207,9 @@ type Limits struct {
 	BloomBuildTaskMaxRetries    int           `yaml:"bloom_build_task_max_retries" json:"bloom_build_task_max_retries" category:"experimental"`
 	BloomBuilderResponseTimeout time.Duration `yaml:"bloom_build_builder_response_timeout" json:"bloom_build_builder_response_timeout" category:"experimental"`
 
-	BloomCreationEnabled       bool    `yaml:"bloom_creation_enabled" json:"bloom_creation_enabled" category:"experimental"`
-	BloomSplitSeriesKeyspaceBy int     `yaml:"bloom_split_series_keyspace_by" json:"bloom_split_series_keyspace_by" category:"experimental"`
-	BloomNGramLength           int     `yaml:"bloom_ngram_length" json:"bloom_ngram_length" category:"experimental"`
-	BloomNGramSkip             int     `yaml:"bloom_ngram_skip" json:"bloom_ngram_skip" category:"experimental"`
-	BloomFalsePositiveRate     float64 `yaml:"bloom_false_positive_rate" json:"bloom_false_positive_rate" category:"experimental"`
-	BloomBlockEncoding         string  `yaml:"bloom_block_encoding" json:"bloom_block_encoding" category:"experimental"`
+	BloomCreationEnabled       bool   `yaml:"bloom_creation_enabled" json:"bloom_creation_enabled" category:"experimental"`
+	BloomSplitSeriesKeyspaceBy int    `yaml:"bloom_split_series_keyspace_by" json:"bloom_split_series_keyspace_by" category:"experimental"`
+	BloomBlockEncoding         string `yaml:"bloom_block_encoding" json:"bloom_block_encoding" category:"experimental"`
 
 	BloomMaxBlockSize flagext.ByteSize `yaml:"bloom_max_block_size" json:"bloom_max_block_size" category:"experimental"`
 	BloomMaxBloomSize flagext.ByteSize `yaml:"bloom_max_bloom_size" json:"bloom_max_bloom_size" category:"experimental"`
@@ -379,9 +376,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.BloomGatewayEnabled, "bloom-gateway.enable-filtering", false, "Experimental. Whether to use the bloom gateway component in the read path to filter chunks.")
 	f.DurationVar(&l.BloomGatewayCacheKeyInterval, "bloom-gateway.cache-key-interval", 15*time.Minute, "Experimental. Interval for computing the cache key in the Bloom Gateway.")
 
-	f.IntVar(&l.BloomNGramLength, "bloom-build.ngram-length", 4, "Experimental. Length of the n-grams created when computing blooms from log lines.")
-	f.IntVar(&l.BloomNGramSkip, "bloom-build.ngram-skip", 1, "Experimental. Skip factor for the n-grams created when computing blooms from log lines.")
-	f.Float64Var(&l.BloomFalsePositiveRate, "bloom-build.false-positive-rate", 0.01, "Experimental. Scalable Bloom Filter desired false-positive rate.")
 	f.StringVar(&l.BloomBlockEncoding, "bloom-build.block-encoding", "none", "Experimental. Compression algorithm for bloom block pages.")
 
 	_ = l.BloomMaxBlockSize.Set(defaultBloomBuildMaxBlockSize)
@@ -496,7 +490,7 @@ func (l *Limits) Validate() error {
 		return errors.Wrap(err, "invalid tsdb sharding strategy")
 	}
 
-	if _, err := chunkenc.ParseEncoding(l.BloomBlockEncoding); err != nil {
+	if _, err := compression.ParseEncoding(l.BloomBlockEncoding); err != nil {
 		return err
 	}
 
@@ -1010,24 +1004,12 @@ func (o *Overrides) BloomTaskMaxRetries(userID string) int {
 	return o.getOverridesForUser(userID).BloomBuildTaskMaxRetries
 }
 
-func (o *Overrides) BloomNGramLength(userID string) int {
-	return o.getOverridesForUser(userID).BloomNGramLength
-}
-
-func (o *Overrides) BloomNGramSkip(userID string) int {
-	return o.getOverridesForUser(userID).BloomNGramSkip
-}
-
 func (o *Overrides) BloomMaxBlockSize(userID string) int {
 	return o.getOverridesForUser(userID).BloomMaxBlockSize.Val()
 }
 
 func (o *Overrides) BloomMaxBloomSize(userID string) int {
 	return o.getOverridesForUser(userID).BloomMaxBloomSize.Val()
-}
-
-func (o *Overrides) BloomFalsePositiveRate(userID string) float64 {
-	return o.getOverridesForUser(userID).BloomFalsePositiveRate
 }
 
 func (o *Overrides) BloomBlockEncoding(userID string) string {

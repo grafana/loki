@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 
 	"github.com/grafana/loki/pkg/push"
@@ -29,10 +29,8 @@ func MakeBlock(t testing.TB, nth int, fromFp, throughFp model.Fingerprint, fromT
 	builder, err := NewBlockBuilder(
 		BlockOptions{
 			Schema: Schema{
-				version:     CurrentSchemaVersion,
-				encoding:    chunkenc.EncSnappy,
-				nGramLength: 4, // see DefaultNGramLength in bloom_tokenizer_test.go
-				nGramSkip:   0, // see DefaultNGramSkip in bloom_tokenizer_test.go
+				version:  CurrentSchemaVersion,
+				encoding: compression.EncSnappy,
 			},
 			SeriesPageSize: 100,
 			BloomPageSize:  10 << 10,

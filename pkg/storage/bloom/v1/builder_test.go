@@ -9,28 +9,26 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
 
-var blockEncodings = []chunkenc.Encoding{
-	chunkenc.EncNone,
-	chunkenc.EncGZIP,
-	chunkenc.EncSnappy,
-	chunkenc.EncLZ4_256k,
-	chunkenc.EncZstd,
+var blockEncodings = []compression.Encoding{
+	compression.EncNone,
+	compression.EncGZIP,
+	compression.EncSnappy,
+	compression.EncLZ4_256k,
+	compression.EncZstd,
 }
 
 func TestBlockOptions_RoundTrip(t *testing.T) {
 	t.Parallel()
 	opts := BlockOptions{
 		Schema: Schema{
-			version:     CurrentSchemaVersion,
-			encoding:    chunkenc.EncSnappy,
-			nGramLength: 10,
-			nGramSkip:   2,
+			version:  CurrentSchemaVersion,
+			encoding: compression.EncSnappy,
 		},
 		SeriesPageSize: 100,
 		BloomPageSize:  10 << 10,
@@ -87,10 +85,8 @@ func TestBlockBuilder_RoundTrip(t *testing.T) {
 			t.Run(desc, func(t *testing.T) {
 				blockOpts := BlockOptions{
 					Schema: Schema{
-						version:     CurrentSchemaVersion,
-						encoding:    enc,
-						nGramLength: 10,
-						nGramSkip:   2,
+						version:  CurrentSchemaVersion,
+						encoding: enc,
 					},
 					SeriesPageSize: 100,
 					BloomPageSize:  10 << 10,
@@ -205,7 +201,7 @@ func TestMergeBuilder(t *testing.T) {
 	blockOpts := BlockOptions{
 		Schema: Schema{
 			version:  CurrentSchemaVersion,
-			encoding: chunkenc.EncSnappy,
+			encoding: compression.EncSnappy,
 		},
 		SeriesPageSize: 100,
 		BloomPageSize:  10 << 10,
@@ -302,7 +298,7 @@ func TestMergeBuilderFingerprintCollision(t *testing.T) {
 	blockOpts := BlockOptions{
 		Schema: Schema{
 			version:  CurrentSchemaVersion,
-			encoding: chunkenc.EncSnappy,
+			encoding: compression.EncSnappy,
 		},
 		SeriesPageSize: 100,
 		BloomPageSize:  10 << 10,
@@ -398,10 +394,8 @@ func TestBlockReset(t *testing.T) {
 	reader := NewByteReader(indexBuf, bloomsBuf)
 
 	schema := Schema{
-		version:     CurrentSchemaVersion,
-		encoding:    chunkenc.EncSnappy,
-		nGramLength: 10,
-		nGramSkip:   2,
+		version:  CurrentSchemaVersion,
+		encoding: compression.EncSnappy,
 	}
 
 	builder, err := NewBlockBuilder(
@@ -456,10 +450,8 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 
 	blockOpts := BlockOptions{
 		Schema: Schema{
-			version:     CurrentSchemaVersion,
-			encoding:    chunkenc.EncSnappy, // test with different encodings?
-			nGramLength: 4,                  // needs to match values from MkBasicSeriesWithBlooms
-			nGramSkip:   0,                  // needs to match values from MkBasicSeriesWithBlooms
+			version:  CurrentSchemaVersion,
+			encoding: compression.EncSnappy, // test with different encodings?
 		},
 		SeriesPageSize: 100,
 		BloomPageSize:  10 << 10,

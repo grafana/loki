@@ -23,7 +23,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/common"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -188,7 +188,7 @@ func genBlock(ref bloomshipper.BlockRef) (bloomshipper.Block, error) {
 	writer := v1.NewMemoryBlockWriter(indexBuf, bloomsBuf)
 	reader := v1.NewByteReader(indexBuf, bloomsBuf)
 
-	blockOpts := v1.NewBlockOptions(chunkenc.EncNone, 4, 1, 0, 0)
+	blockOpts := v1.NewBlockOptions(compression.EncNone, 0, 0)
 
 	builder, err := v1.NewBlockBuilder(blockOpts, writer)
 	if err != nil {
@@ -202,7 +202,7 @@ func genBlock(ref bloomshipper.BlockRef) (bloomshipper.Block, error) {
 	block := v1.NewBlock(reader, v1.NewMetrics(nil))
 
 	buf := bytes.NewBuffer(nil)
-	if err := v1.TarGz(buf, block.Reader()); err != nil {
+	if err := v1.TarCompress(ref.Encoding, buf, block.Reader()); err != nil {
 		return bloomshipper.Block{}, err
 	}
 
@@ -1019,7 +1019,7 @@ func Test_deleteOutdatedMetas(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			logger := log.NewNopLogger()
-			//logger := log.NewLogfmtLogger(os.Stdout)
+			// logger := log.NewLogfmtLogger(os.Stdout)
 
 			cfg := Config{
 				PlanningInterval:        1 * time.Hour,

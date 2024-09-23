@@ -14,12 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/loghttp/push"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/v3/pkg/storage/types"
-
-	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
@@ -36,17 +30,20 @@ import (
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	server_util "github.com/grafana/loki/v3/pkg/util/server"
-
 	"github.com/grafana/loki/v3/pkg/analytics"
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/ingester/index"
 	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/runtime"
@@ -57,8 +54,10 @@ import (
 	indexstore "github.com/grafana/loki/v3/pkg/storage/stores/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	index_stats "github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	server_util "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/util/wal"
 )
 
@@ -67,6 +66,10 @@ const (
 	RingKey = "ring"
 
 	shutdownMarkerFilename = "shutdown-requested.txt"
+
+	// PartitionRingKey is the key under which we store the partitions ring used by the "ingest storage".
+	PartitionRingKey  = "ingester-partitions-key"
+	PartitionRingName = "ingester-partitions"
 )
 
 // ErrReadOnly is returned when the ingester is shutting down and a push was
@@ -84,18 +87,18 @@ var (
 type Config struct {
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the ingester will operate and where it will register for discovery."`
 
-	ConcurrentFlushes   int               `yaml:"concurrent_flushes"`
-	FlushCheckPeriod    time.Duration     `yaml:"flush_check_period"`
-	FlushOpBackoff      backoff.Config    `yaml:"flush_op_backoff"`
-	FlushOpTimeout      time.Duration     `yaml:"flush_op_timeout"`
-	RetainPeriod        time.Duration     `yaml:"chunk_retain_period"`
-	MaxChunkIdle        time.Duration     `yaml:"chunk_idle_period"`
-	BlockSize           int               `yaml:"chunk_block_size"`
-	TargetChunkSize     int               `yaml:"chunk_target_size"`
-	ChunkEncoding       string            `yaml:"chunk_encoding"`
-	parsedEncoding      chunkenc.Encoding `yaml:"-"` // placeholder for validated encoding
-	MaxChunkAge         time.Duration     `yaml:"max_chunk_age"`
-	AutoForgetUnhealthy bool              `yaml:"autoforget_unhealthy"`
+	ConcurrentFlushes   int                  `yaml:"concurrent_flushes"`
+	FlushCheckPeriod    time.Duration        `yaml:"flush_check_period"`
+	FlushOpBackoff      backoff.Config       `yaml:"flush_op_backoff"`
+	FlushOpTimeout      time.Duration        `yaml:"flush_op_timeout"`
+	RetainPeriod        time.Duration        `yaml:"chunk_retain_period"`
+	MaxChunkIdle        time.Duration        `yaml:"chunk_idle_period"`
+	BlockSize           int                  `yaml:"chunk_block_size"`
+	TargetChunkSize     int                  `yaml:"chunk_target_size"`
+	ChunkEncoding       string               `yaml:"chunk_encoding"`
+	parsedEncoding      compression.Encoding `yaml:"-"` // placeholder for validated encoding
+	MaxChunkAge         time.Duration        `yaml:"max_chunk_age"`
+	AutoForgetUnhealthy bool                 `yaml:"autoforget_unhealthy"`
 
 	// Synchronization settings. Used to make sure that ingesters cut their chunks at the same moments.
 	SyncPeriod         time.Duration `yaml:"sync_period"`
@@ -125,12 +128,15 @@ type Config struct {
 	ShutdownMarkerPath string `yaml:"shutdown_marker_path"`
 
 	OwnedStreamsCheckInterval time.Duration `yaml:"owned_streams_check_interval" doc:"description=Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams."`
+
+	KafkaIngestion KafkaIngestionConfig `yaml:"kafka_ingestion,omitempty"`
 }
 
 // RegisterFlags registers the flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f, util_log.Logger)
 	cfg.WAL.RegisterFlags(f)
+	cfg.KafkaIngestion.RegisterFlags(f)
 
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 32, "How many flushes can happen concurrently from each stream.")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "How often should the ingester see if there are any blocks to flush. The first flush check is delayed by a random time up to 0.8x the flush check period. Additionally, there is +/- 1% jitter added to the interval.")
@@ -142,7 +148,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.chunks-idle-period", 30*time.Minute, "How long chunks should sit in-memory with no updates before being flushed if they don't hit the max block size. This means that half-empty chunks will still be flushed after a certain period as long as they receive no further activity.")
 	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "The targeted _uncompressed_ size in bytes of a chunk block When this threshold is exceeded the head block will be cut and compressed inside the chunk.")
 	f.IntVar(&cfg.TargetChunkSize, "ingester.chunk-target-size", 1572864, "A target _compressed_ size in bytes for chunks. This is a desired size not an exact size, chunks may be slightly bigger or significantly smaller if they get flushed for other reasons (e.g. chunk_idle_period). A value of 0 creates chunks with a fixed 10 blocks, a non zero value will create chunks with a variable number of blocks to meet the target size.") // 1.5 MB
-	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", chunkenc.EncGZIP.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", chunkenc.SupportedEncoding()))
+	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", compression.EncGZIP.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", compression.SupportedEncoding()))
 	f.DurationVar(&cfg.SyncPeriod, "ingester.sync-period", 1*time.Hour, "Parameters used to synchronize ingesters to cut chunks at the same moment. Sync period is used to roll over incoming entry to a new chunk. If chunk's utilization isn't high enough (eg. less than 50% when sync_min_utilization is set to 0.5), then this chunk rollover doesn't happen.")
 	f.Float64Var(&cfg.SyncMinUtilization, "ingester.sync-min-utilization", 0.1, "Minimum utilization of chunk when doing synchronization.")
 	f.IntVar(&cfg.MaxReturnedErrors, "ingester.max-ignored-stream-errors", 10, "The maximum number of errors a stream will report to the user when a push fails. 0 to make unlimited.")
@@ -156,7 +162,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *Config) Validate() error {
-	enc, err := chunkenc.ParseEncoding(cfg.ChunkEncoding)
+	enc, err := compression.ParseEncoding(cfg.ChunkEncoding)
 	if err != nil {
 		return err
 	}
@@ -180,6 +186,17 @@ func (cfg *Config) Validate() error {
 	}
 
 	return nil
+}
+
+type KafkaIngestionConfig struct {
+	Enabled             bool                 `yaml:"enabled" doc:"description=Whether the kafka ingester is enabled."`
+	PartitionRingConfig partitionring.Config `yaml:"partition_ring" category:"experimental"`
+	KafkaConfig         kafka.Config         `yaml:"-"`
+}
+
+func (cfg *KafkaIngestionConfig) RegisterFlags(f *flag.FlagSet) {
+	cfg.PartitionRingConfig.RegisterFlagsWithPrefix("ingester.", f)
+	f.BoolVar(&cfg.Enabled, "ingester.kafka-ingestion-enabled", false, "Whether the ingester will consume data from kafka.")
 }
 
 type Wrapper interface {
@@ -556,7 +573,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 		return fmt.Errorf("can not start recalculate owned streams service: %w", err)
 	}
 
-	err = i.lifecycler.AwaitRunning(ctx)
+	err = i.recalculateOwnedStreams.AwaitRunning(ctx)
 	if err != nil {
 		return fmt.Errorf("can not ensure recalculate owned streams service is running: %w", err)
 	}
@@ -785,7 +802,7 @@ func createShutdownMarker(p string) error {
 		return err
 	}
 
-	dir, err := os.OpenFile(path.Dir(p), os.O_RDONLY, 0777)
+	dir, err := os.OpenFile(path.Dir(p), os.O_RDONLY, 0o777)
 	if err != nil {
 		return err
 	}
@@ -802,7 +819,7 @@ func removeShutdownMarker(p string) error {
 		return err
 	}
 
-	dir, err := os.OpenFile(path.Dir(p), os.O_RDONLY, 0777)
+	dir, err := os.OpenFile(path.Dir(p), os.O_RDONLY, 0o777)
 	if err != nil {
 		return err
 	}
@@ -1388,6 +1405,7 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 	err = server_util.ClientGrpcStatusAndError(err)
 	return err
 }
+
 func (i *Ingester) tail(req *logproto.TailRequest, queryServer logproto.Querier_TailServer) error {
 	select {
 	case <-i.tailersQuit:
@@ -1524,7 +1542,6 @@ func (i *Ingester) getDetectedLabels(ctx context.Context, req *logproto.Detected
 	}
 
 	labelMap, err := instance.LabelsWithValues(ctx, req.Start, matchers...)
-
 	if err != nil {
 		return nil, err
 	}
