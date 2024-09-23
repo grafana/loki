@@ -41,7 +41,7 @@ type partitionCommitter struct {
 	cancel   context.CancelFunc
 }
 
-// newCommitter creates and initializes a new partitionCommitter.
+// newCommitter creates and initializes a new Committer.
 // It sets up the necessary metrics and initializes the committer with the provided configuration.
 func newCommitter(kafkaCfg kafka.Config, admClient *kadm.Client, partitionID int32, consumerGroup string, logger log.Logger, reg prometheus.Registerer) *partitionCommitter {
 	c := &partitionCommitter{
