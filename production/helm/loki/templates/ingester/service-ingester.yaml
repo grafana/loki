@@ -33,6 +33,7 @@ spec:
       {{- end }}
   selector:
     {{- include "loki.ingesterSelectorLabels" . | nindent 4 }}
+    test: {{ include "mimir.resourceName" $args }}
 
 ---
 {{ end }}
