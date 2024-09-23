@@ -18,7 +18,7 @@ Loki evaluates a LogQL query from left to right, in the order that it is written
 
 ## Narrow down your time range first
 
-Reduce the number of logs Loki needs to look through by specifying a period of time that you'd like to search through. Loki creates one index file per day, so queries that span over multiple days fetches multiple index files. The fewer files are searched, the faster the query results are returned.
+Reduce the number of logs Loki needs to look through by specifying a period of time that you'd like to search through. Loki creates one index file per day, so queries that span over multiple days fetches multiple index files. The fewer files Loki has to search, the faster the query results are returned.
 
 Time ranges are typically not part of the query, but you can set a time range through your visualization tool or through [the Loki API]({{< relref "../reference/loki-http-api/" >}}).
 
