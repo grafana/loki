@@ -11,7 +11,7 @@ weight: 700
 The way you write queries in Loki affects how quickly you get results returned from those queries. Understanding the way Loki parses queries can help you write queries that are efficient and performant.
 
 {{< admonition type="tip" >}}
-Before you start optimizing queries, read the [labels best practices]({{< relref "../get-started/labels/bp-labels" >}}) page to understand what makes a good label. Choosing the right labels is the first step towards writing efficient queries.
+Before you start optimizing queries, read the [labels best practices](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/bp-labels/) page to understand what makes a good label. Choosing the right labels is the first step towards writing efficient queries.
 {{< /admonition >}}
 
 Loki evaluates a LogQL query from left to right, in the order that it is written. To get the best possible query performance, eliminate as many potential results as you can earlier in the query and then continue to progressively narrow your search as you continue writing the query. This page describes the recommended order for writing queries that efficiently filter out unwanted results.
@@ -20,7 +20,7 @@ Loki evaluates a LogQL query from left to right, in the order that it is written
 
 Reduce the number of logs Loki needs to look through by specifying a period of time that you'd like to search through. Loki creates one index file per day, so queries that span over multiple days fetches multiple index files. The fewer files Loki has to search, the faster the query results are returned.
 
-Time ranges are typically not part of the query, but you can set a time range through your visualization tool or through [the Loki API]({{< relref "../reference/loki-http-api" >}}).
+Time ranges are typically not part of the query, but you can set a time range through your visualization tool or through [the Loki API](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/).
 
 
 ### In Grafana
@@ -31,7 +31,7 @@ If you're using Loki with Grafana, you can use the dropdown menu on the upper ri
 
 ### Through Loki API
 
-If you're querying Loki through [the Loki API]({{< relref "../reference/loki-http-api" >}}), you can use the [`query_range` endpoint]({{< relref "../reference/loki-http-api/#query-logs-within-a-range-of-time" >}}) to add `start` and `end` timestamps for your query as parameters to the HTTP call rather than as part of the query itself.
+If you're querying Loki through [the Loki API](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/), you can use the [`query_range` endpoint]({{https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#query-logs-within-a-range-of-time" >}}) to add `start` and `end` timestamps for your query as parameters to the HTTP call rather than as part of the query itself.
 
 ```bash
 http://<loki-instance>/loki/api/v1/query_range?query={job="app"}&start=1633017600000000000&end=1633104000000000000
@@ -52,7 +52,7 @@ Using the most specific label selector has the added benefit of reducing the len
 
 ## Use simple line filter expressions over regular expressions
 
-When using [line filter expressions]({{< relref "../query/log_queries/#line-filter-expression" >}}), prefer the simpler filter operators such as:
+When using [line filter expressions](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#line-filter-expression), prefer the simpler filter operators such as:
 - `|=` (contains string) and 
 - `!=` (does not contain string)
 over the regular expression filter operators:
@@ -65,16 +65,16 @@ Line filter expressions are more efficient than parser expressions.
 
 ## Avoid using complex text parsers
 
-Use [parser expressions]({{< relref "../query/log_queries/#parser-expression" >}}) only after line filter expressions. Parser expressions are ways to look through the log line and extract labels in different formats, which can be useful but are also more intensive for Loki to do than line filter expressions. Using them after line filter expressions means that Loki only needs to evaluate parser expressions for log lines that match the line filter expression, reducing the amount of logs that Loki needs to search through.
+Use [parser expressions](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#parser-expression) only after line filter expressions. Parser expressions are ways to look through the log line and extract labels in different formats, which can be useful but are also more intensive for Loki to do than line filter expressions. Using them after line filter expressions means that Loki only needs to evaluate parser expressions for log lines that match the line filter expression, reducing the amount of logs that Loki needs to search through.
 
-Parser expressions include [JSON]({{< relref "../query/log_queries/#json" >}}), [logfmt]({{< relref "../query/log_queries/#logfmt" >}}), [pattern]({{< relref "../query/log_queries/#pattern" >}}), [regexp]({{< relref "../query/log_queries/#regular-expression" >}}), and [unpack]({{< relref "../query/log_queries/#unpack" >}}) parsers.
+Parser expressions include [JSON](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#json, [logfmt](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#logfmt), [pattern](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#pattern), [regexp](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#regular-expression), and [unpack](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#unpack) parsers.
 
 ## Use recording rules
 
-Some queries are sufficiently complex, or some datasets sufficiently large, that there is a limit as to how much query performance can be optimized. If you're following the tips on this page and are still experiencing slow query times, consider creating a [recording rule]({{< relref "../operations/recording-rules/" >}}) for them. A recording rule runs a query at a predetermined time and also precomputes the results of that query, saving those results for faster retrieval later.
+Some queries are sufficiently complex, or some datasets sufficiently large, that there is a limit as to how much query performance can be optimized. If you're following the tips on this page and are still experiencing slow query times, consider creating a [recording rule](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/recording-rules/) for them. A recording rule runs a query at a predetermined time and also precomputes the results of that query, saving those results for faster retrieval later.
 
 ## Further resources
 
 - [Watch: 5 tips for improving Grafana Loki query performance](https://grafana.com/blog/2023/01/10/watch-5-tips-for-improving-grafana-loki-query-performance/)
 - [Grafana Loki Design Basics with Ed Welch (Grafana Office Hours #27)](https://www.youtube.com/live/3uFMJLufgSo?feature=shared&t=3385)
-- [Labels best practices]({{< relref "../get-started/labels/bp-labels" >}})
+- [Labels best practices](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/bp-labels/)
