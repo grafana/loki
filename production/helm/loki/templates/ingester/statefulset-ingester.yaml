@@ -9,7 +9,7 @@ metadata:
   name: {{ include "loki.resourceName" $args }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "loki.ingesterLabels" $args | nindent 4 }}
+    {{- include "loki.ingesterLabels" $rolloutZone | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
   {{- with .Values.loki.annotations }}
   annotations:
@@ -36,7 +36,7 @@ spec:
   {{- end }}
   selector:
     matchLabels:
-      {{- include "loki.ingesterSelectorLabels" $args | nindent 6 }}
+      {{- include "loki.ingesterSelectorLabels" $rolloutZone | nindent 6 }}
   template:
     metadata:
       annotations:
@@ -48,7 +48,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "loki.ingesterSelectorLabels" $args | nindent 8 }}
+        {{- include "loki.ingesterSelectorLabels" $rolloutZone | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
         {{- with .Values.loki.podLabels }}
         {{- toYaml . | nindent 8 }}
