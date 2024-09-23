@@ -41,13 +41,13 @@ http://<loki-instance>/loki/api/v1/query_range?query={job="app"}&start=163301760
 
 ## Use precise label selectors
 
-Next, write your label selectors. Identify the most specific label you can use within the log line and search based on that first. For example, if the logs contain the labels `org_id` and `employee_uid` and the latter is a smaller subset of data, start your query by selecting based on `employee_uid`:
+Next, write your label selectors. Identify the most specific label you can use within the log line and search based on that first. For example, if the logs contain the labels `namespace` and `app_name` and the latter is a smaller subset of data, start your query by selecting based on `app_name`:
 
 ```bash
-{employee_uid="PGJ1Fr4Zz"}
+{app_name="carnivorousgreenhouse"}
 ```
 
-Using the most specific label selector has the added benefit of reducing the length of your query. Since `employee_uid` is more specific than `org_id`, you don't need to add a selector for `org_id`. Adding more general label selectors has no further effect on the query.
+Using the most specific label selector has the added benefit of reducing the length of your query. Since `app_name` is more specific than `namespace`, you don't need to add a selector for `namespace`. Adding more general label selectors has no further effect on the query.
 
 
 ## Use simple line filter expressions over regular expressions
