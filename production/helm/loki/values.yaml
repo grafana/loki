@@ -1765,10 +1765,7 @@ ingester:
   livenessProbe: {}
 
   persistentVolume:
-    # If true and ingester.statefulSet.enabled is true,
-    # Ingester will create/use a Persistent Volume Claim
-    # If false, use emptyDir
-    # It is advisable to enable volume persistence in ingester to avoid losing metrics.
+    # -- Enable creating PVCs which is required when using boltdb-shipper
     enabled: true
     # -- Use emptyDir with ramdisk for storage. **Please note that all data in ingester will be lost on pod restart**
     inMemory: false
@@ -1786,12 +1783,7 @@ ingester:
     # Ingester data Persistent Volume size
     size: 2Gi
 
-    # Subdirectory of Ingester data Persistent Volume to mount
-    # Useful if the volume's root directory is not empty
-    subPath: ""
-
     # -- Enable StatefulSetAutoDeletePVC feature
-    # https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#persistentvolumeclaim-retention
     enableStatefulSetAutoDeletePVC: false
     whenDeleted: Retain
     whenScaled: Retain
