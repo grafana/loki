@@ -20,6 +20,9 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.13.0
 
 - [CHANGE] Correctly wrap ClusterRoleBinding around `rbac/namespaced` conditional.
+- [FIX] Do not create bloom planner, bloom builder, bloom gateway Deployment/Statefulset if their replica count is 0.
+- [FIX] Configure (ephemeral) storage for bloom builder working directory
+- [ENHANCEMENT] Automatically configure bloom planner address for bloom builders and bloom gateway addresses for bloom gateway clients.
 
 ## 6.12.0
 

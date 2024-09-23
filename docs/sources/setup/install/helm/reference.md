@@ -1109,8 +1109,6 @@ null
     ],
     "enableStatefulSetAutoDeletePVC": false,
     "enabled": false,
-    "size": "10Gi",
-    "storageClass": null,
     "whenDeleted": "Retain",
     "whenScaled": "Retain"
   },
@@ -1299,6 +1297,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomGateway.persistence.claims[0].size</td>
+			<td>string</td>
+			<td>Size of persistent disk</td>
+			<td><pre lang="json">
+"10Gi"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomGateway.persistence.enableStatefulSetAutoDeletePVC</td>
 			<td>bool</td>
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
@@ -1313,24 +1320,6 @@ false
 			<td>Enable creating PVCs for the bloom-gateway</td>
 			<td><pre lang="json">
 false
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>bloomGateway.persistence.size</td>
-			<td>string</td>
-			<td>Size of persistent disk</td>
-			<td><pre lang="json">
-"10Gi"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>bloomGateway.persistence.storageClass</td>
-			<td>string</td>
-			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
-			<td><pre lang="json">
-null
 </pre>
 </td>
 		</tr>
@@ -1492,11 +1481,15 @@ null
   "nodeSelector": {},
   "persistence": {
     "annotations": {},
-    "claims": [],
+    "claims": [
+      {
+        "name": "data",
+        "size": "10Gi",
+        "storageClass": null
+      }
+    ],
     "enableStatefulSetAutoDeletePVC": false,
     "enabled": false,
-    "size": "10Gi",
-    "storageClass": null,
     "whenDeleted": "Retain",
     "whenScaled": "Retain"
   },
@@ -1680,7 +1673,16 @@ null
 			<td>list</td>
 			<td>List of the bloom-planner PVCs</td>
 			<td><pre lang="list">
-[]
+
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.persistence.claims[0].size</td>
+			<td>string</td>
+			<td>Size of persistent disk</td>
+			<td><pre lang="json">
+"10Gi"
 </pre>
 </td>
 		</tr>
@@ -1699,24 +1701,6 @@ false
 			<td>Enable creating PVCs for the bloom-planner</td>
 			<td><pre lang="json">
 false
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>bloomPlanner.persistence.size</td>
-			<td>string</td>
-			<td>Size of persistent disk</td>
-			<td><pre lang="json">
-"10Gi"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>bloomPlanner.persistence.storageClass</td>
-			<td>string</td>
-			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
-			<td><pre lang="json">
-null
 </pre>
 </td>
 		</tr>
@@ -6146,6 +6130,9 @@ null
 			<td>Additional storage config</td>
 			<td><pre lang="json">
 {
+  "bloom_shipper": {
+    "working_directory": "/var/loki/data/bloomshipper"
+  },
   "boltdb_shipper": {
     "index_gateway_client": {
       "server_address": "{{ include \"loki.indexGatewayAddress\" . }}"
