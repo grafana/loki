@@ -74,7 +74,7 @@ func (f *fakePusher) Push(ctx context.Context, in *logproto.PushRequest) (*logpr
 
 type noopCommitter struct{}
 
-func (noopCommitter) Commit(ctx context.Context, offset int64) error { return nil }
+func (noopCommitter) Commit(_ context.Context, _ int64) error { return nil }
 
 func TestConsumer(t *testing.T) {
 	var (
