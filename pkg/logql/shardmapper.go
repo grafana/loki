@@ -185,7 +185,6 @@ func (m ShardMapper) mapLogSelectorExpr(expr syntax.LogSelectorExpr, r *downstre
 func (m ShardMapper) mapSampleExpr(expr syntax.SampleExpr, r *downstreamRecorder) (syntax.SampleExpr, uint64, error) {
 	var head *ConcatSampleExpr
 	shards, maxBytesPerShard, err := m.shards.Shards(expr)
-
 	if err != nil {
 		return nil, 0, err
 	}
@@ -233,7 +232,6 @@ func (m ShardMapper) wrappedShardedVectorAggr(expr *syntax.VectorAggregationExpr
 // in descendent nodes in the AST. This optimization is currently avoided for simplicity.
 func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr, r *downstreamRecorder, topLevel bool) (syntax.SampleExpr, uint64, error) {
 	if expr.Shardable(topLevel) {
-
 		switch expr.Operation {
 
 		case syntax.OpTypeSum:
@@ -286,6 +284,56 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 				Grouping:  expr.Grouping,
 				Operation: syntax.OpTypeSum,
 			}, bytesPerShard, nil
+		case syntax.OpTypeApproxTopK:
+			if !m.approxTopkSharding {
+				return noOp(expr, m.shards.Resolver())
+			}
+
+			// TODO(owen-d): integrate bounded sharding with quantile over time
+			// I'm not doing this now because it uses a separate code path and may not handle
+			// bounded shards in the same way
+			shards, bytesPerShard, err := m.shards.Resolver().Shards(expr)
+			if err != nil {
+				return nil, 0, err
+			}
+			if shards == 0 {
+				return noOp(expr, m.shards.Resolver())
+			}
+
+			// ptopk(k, inner) ->
+			// topk(
+			//   k,
+			//   eval_cms(
+			//     __count_min_sketch__(inner, shard=1) ++ __count_min_sketch__(inner, shard=2)...
+			//   )
+			// )
+
+			countMinSketchExpr := syntax.MustClone(expr)
+			countMinSketchExpr.Operation = syntax.OpTypeCountMinSketch
+
+			downstreams := make([]DownstreamSampleExpr, 0, shards)
+			for shard := shards - 1; shard >= 0; shard-- {
+				s := NewPowerOfTwoShard(index.ShardAnnotation{
+					Shard: uint32(shard),
+					Of:    uint32(shards),
+				})
+				downstreams = append(downstreams, DownstreamSampleExpr{
+					shard: &ShardWithChunkRefs{
+						Shard: s,
+					},
+					SampleExpr: countMinSketchExpr,
+				})
+			}
+
+			sharded := &CountMinSketchEvalExpr{
+				downstreams: downstreams,
+			}
+
+			return &syntax.VectorAggregationExpr{
+				Left:      sharded,
+				Grouping:  expr.Grouping,
+				Operation: syntax.OpTypeTopK,
+			}, bytesPerShard, nil
 		default:
 			// this should not be reachable. If an operation is shardable it should
 			// have an optimization listed. Nonetheless, we log this as a warning
@@ -300,7 +348,6 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 			}
 			return expr, exprStats.Bytes, nil
 		}
-
 	}
 
 	// if this AST contains unshardable operations, don't shard this at this level,
@@ -320,7 +367,6 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 		Params:    expr.Params,
 		Operation: expr.Operation,
 	}, bytesPerShard, nil
-
 }
 
 func (m ShardMapper) mapLabelReplaceExpr(expr *syntax.LabelReplaceExpr, r *downstreamRecorder, topLevel bool) (syntax.SampleExpr, uint64, error) {

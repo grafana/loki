@@ -47,7 +47,7 @@ func Clone[T Expr](e T) (T, error) {
 }
 
 func MustClone[T Expr](e T) T {
-	copied, err := Clone[T](e)
+	copied, err := Clone(e)
 	if err != nil {
 		panic(err)
 	}
@@ -800,6 +800,7 @@ func (e *DecolorizeExpr) Shardable(_ bool) bool { return true }
 func (e *DecolorizeExpr) Stage() (log.Stage, error) {
 	return log.NewDecolorizer()
 }
+
 func (e *DecolorizeExpr) String() string {
 	return fmt.Sprintf("%s %s", OpPipe, OpDecolorize)
 }
@@ -823,6 +824,7 @@ func (e *DropLabelsExpr) Shardable(_ bool) bool { return true }
 func (e *DropLabelsExpr) Stage() (log.Stage, error) {
 	return log.NewDropLabels(e.dropLabels), nil
 }
+
 func (e *DropLabelsExpr) String() string {
 	var sb strings.Builder
 
@@ -1234,7 +1236,7 @@ const (
 	OpRangeTypeLast        = "last_over_time"
 	OpRangeTypeAbsent      = "absent_over_time"
 
-	//vector
+	// vector
 	OpTypeVector = "vector"
 
 	// binops - logical/set
@@ -1305,6 +1307,8 @@ const (
 	OpRangeTypeQuantileSketch     = "__quantile_sketch_over_time__"
 	OpRangeTypeFirstWithTimestamp = "__first_over_time_ts__"
 	OpRangeTypeLastWithTimestamp  = "__last_over_time_ts__"
+
+	OpTypeCountMinSketch = "__count_min_sketch__"
 )
 
 func IsComparisonOperator(op string) bool {

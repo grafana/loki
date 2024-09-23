@@ -48,6 +48,17 @@ message CountMinSketch {
   repeated uint32 counters = 3;
 }
 
+message CountMinSketchVector {
+  int64 timestamp_ms = 1;
+  CountMinSketch sketch = 2;
+
+  repeated Labels metrics = 3;
+}
+
+message Labels {
+  repeated LabelPair metric = 1;
+}
+
 message TopK {
   CountMinSketch cms = 1;
 

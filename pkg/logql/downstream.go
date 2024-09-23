@@ -357,6 +357,34 @@ func (e *MergeLastOverTimeExpr) Walk(f syntax.WalkFn) {
 	}
 }
 
+type CountMinSketchEvalExpr struct {
+	syntax.SampleExpr
+	downstreams []DownstreamSampleExpr
+}
+
+func (e CountMinSketchEvalExpr) String() string {
+	var sb strings.Builder
+	for i, d := range e.downstreams {
+		if i >= defaultMaxDepth {
+			break
+		}
+
+		if i > 0 {
+			sb.WriteString(" ++ ")
+		}
+
+		sb.WriteString(d.String())
+	}
+	return fmt.Sprintf("CountMinSketchEval<%s>", sb.String())
+}
+
+func (e *CountMinSketchEvalExpr) Walk(f syntax.WalkFn) {
+	f(e)
+	for _, d := range e.downstreams {
+		d.Walk(f)
+	}
+}
+
 type Downstreamable interface {
 	Downstreamer(context.Context) Downstreamer
 }
@@ -554,7 +582,6 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 
 		xs := make([]promql.Matrix, 0, len(queries))
 		for _, res := range results {
-
 			switch data := res.Data.(type) {
 			case promql.Matrix:
 				xs = append(xs, data)
@@ -591,7 +618,6 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 
 		xs := make([]promql.Matrix, 0, len(queries))
 		for _, res := range results {
-
 			switch data := res.Data.(type) {
 			case promql.Matrix:
 				xs = append(xs, data)
@@ -600,6 +626,40 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			}
 		}
 		return NewMergeLastOverTimeStepEvaluator(params, xs), nil
+	case *CountMinSketchEvalExpr:
+		queries := make([]DownstreamQuery, len(e.downstreams))
+
+		for i, d := range e.downstreams {
+			qry := DownstreamQuery{
+				Params: ParamsWithExpressionOverride{
+					Params:             params,
+					ExpressionOverride: d.SampleExpr,
+				},
+			}
+			if shard := d.shard; shard != nil {
+				qry.Params = ParamsWithShardsOverride{
+					Params:         qry.Params,
+					ShardsOverride: Shards{shard.Shard}.Encode(),
+				}
+			}
+			queries[i] = qry
+		}
+
+		acc := newCountMinSketchAccumulator()
+		results, err := ev.Downstream(ctx, queries, acc)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(results) != 1 {
+			return nil, fmt.Errorf("unexpected results length for sharded quantile: got (%d), want (1)", len(results))
+		}
+
+		vector, ok := results[0].Data.(*CountMinSketchVector)
+		if !ok {
+			return nil, fmt.Errorf("unexpected matrix type: got (%T), want (CountMinSketchVector)", results[0].Data)
+		}
+		return NewCountMinSketchVectorStepEvaluator(vector), nil
 	default:
 		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params)
 	}

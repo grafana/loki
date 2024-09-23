@@ -391,7 +391,7 @@ func newVectorAggEvaluator(
 	evFactory SampleEvaluatorFactory,
 	expr *syntax.VectorAggregationExpr,
 	q Params,
-) (*VectorAggEvaluator, error) {
+) (StepEvaluator, error) {
 	if expr.Grouping == nil {
 		return nil, errors.Errorf("aggregation operator '%q' without grouping", expr.Operation)
 	}
@@ -400,6 +400,10 @@ func newVectorAggEvaluator(
 		return nil, err
 	}
 	sort.Strings(expr.Grouping.Groups)
+
+	if expr.Operation == syntax.OpTypeCountMinSketch {
+		return newCountMinSketchVectorAggEvaluator(nextEvaluator, expr)
+	}
 
 	return &VectorAggEvaluator{
 		nextEvaluator: nextEvaluator,
@@ -1198,7 +1202,8 @@ type VectorIterator struct {
 }
 
 func newVectorIterator(val float64,
-	stepMs, startMs, endMs int64) *VectorIterator {
+	stepMs, startMs, endMs int64,
+) *VectorIterator {
 	if stepMs == 0 {
 		stepMs = 1
 	}
@@ -1294,6 +1299,7 @@ func (e *LabelReplaceEvaluator) Next() (bool, int64, StepResult) {
 func (e *LabelReplaceEvaluator) Close() error {
 	return e.nextEvaluator.Close()
 }
+
 func (e *LabelReplaceEvaluator) Error() error {
 	return e.nextEvaluator.Error()
 }
