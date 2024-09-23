@@ -20,7 +20,7 @@ Loki evaluates a LogQL query from left to right, in the order that it is written
 
 Reduce the number of logs Loki needs to look through by specifying a period of time that you'd like to search through. Loki creates one index file per day, so queries that span over multiple days fetches multiple index files. The fewer files Loki has to search, the faster the query results are returned.
 
-Time ranges are typically not part of the query, but you can set a time range through your visualization tool or through [the Loki API]({{< relref "../reference/loki-http-api/" >}}).
+Time ranges are typically not part of the query, but you can set a time range through your visualization tool or through [the Loki API]({{< relref "../reference/loki-http-api" >}}).
 
 
 ### In Grafana
@@ -31,7 +31,7 @@ If you're using Loki with Grafana, you can use the dropdown menu on the upper ri
 
 ### Through Loki API
 
-If you're querying Loki through [the Loki API]({{< relref "../reference/loki-http-api/" >}}), you can use the [`query_range` endpoint]({{< relref "../reference/loki-http-api/#query-logs-within-a-range-of-time" >}}) to add `start` and `end` timestamps for your query as parameters to the HTTP call rather than as part of the query itself.
+If you're querying Loki through [the Loki API]({{< relref "../reference/loki-http-api" >}}), you can use the [`query_range` endpoint]({{< relref "../reference/loki-http-api/#query-logs-within-a-range-of-time" >}}) to add `start` and `end` timestamps for your query as parameters to the HTTP call rather than as part of the query itself.
 
 ```bash
 http://<loki-instance>/loki/api/v1/query_range?query={job="app"}&start=1633017600000000000&end=1633104000000000000
