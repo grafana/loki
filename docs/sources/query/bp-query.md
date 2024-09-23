@@ -14,7 +14,7 @@ The way you write queries in Loki affects how quickly you get results returned f
 Before you start optimizing queries, read the [labels best practices]({{< relref "../get-started/labels/bp-labels" >}}) page to understand what makes a good label. Choosing the right labels is the first step towards writing efficient queries.
 {{< /admonition >}}
 
-Loki evaluates a LogQL query from left to right, in the order that it is written. To get the best possible query performance, eliminate as many potential results as you can earlier in the query and then continue to progressively narrow your search as you continue writing the query. On this page is the recommended order for how to filter efficiently in your query.
+Loki evaluates a LogQL query from left to right, in the order that it is written. To get the best possible query performance, eliminate as many potential results as you can earlier in the query and then continue to progressively narrow your search as you continue writing the query. This page describes the recommended order for writing queries that efficiently filter out unwanted results.
 
 ## Narrow down your time range first
 
