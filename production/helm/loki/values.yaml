@@ -1766,7 +1766,7 @@ ingester:
 
   persistentVolume:
     # -- Enable creating PVCs which is required when using boltdb-shipper
-    enabled: true
+    enabled: false
     # -- Use emptyDir with ramdisk for storage. **Please note that all data in ingester will be lost on pod restart**
     inMemory: false
 
