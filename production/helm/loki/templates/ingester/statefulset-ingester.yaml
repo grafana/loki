@@ -11,6 +11,7 @@ metadata:
   labels:
     {{- include "loki.ingesterLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
+    name: {{ include "loki.resourceName" $args }}
   {{- with .Values.loki.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
