@@ -1,5 +1,5 @@
 {{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
-{{- if $isDistributed -}}
+{{- if (and $isDistributed (gt (int .Values.bloomBuilder.replicas) 0)) -}}
 apiVersion: v1
 kind: Service
 metadata:

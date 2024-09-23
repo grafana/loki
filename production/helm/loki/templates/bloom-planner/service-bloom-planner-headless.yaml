@@ -1,6 +1,5 @@
 {{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
-{{- if $isDistributed -}}
-{{- if (gt (int .Values.bloomPlanner.replicas) 0) -}}
+{{- if (and $isDistributed (gt (int .Values.bloomPlanner.replicas) 0)) -}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -32,5 +31,4 @@ spec:
       {{- end }}
   selector:
     {{- include "loki.bloomPlannerSelectorLabels" . | nindent 4 }}
-{{- end -}}
 {{- end -}}
