@@ -915,5 +915,5 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 else
 	@$(MAKE) release-workflows
 	@echo "Checking diff"
-	@git diff --exit-code -- ".github/workflows/*release*" || (echo "Please build release workflows by running 'make release-workflows'" && false)
+	@git diff --exit-code --ignore-space-at-eol -- ".github/workflows/*release*" || (echo "Please build release workflows by running 'make release-workflows'" && false)
 endif

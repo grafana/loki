@@ -1,6 +1,5 @@
 {{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
-{{- if $isDistributed }}
-{{- if (gt (int .Values.bloomGateway.replicas) 0) -}}
+{{- if (and $isDistributed (gt (int .Values.bloomGateway.replicas) 0)) -}}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -179,5 +178,4 @@ spec:
             storage: {{ .size | quote }}
   {{- end }}
   {{- end }}
-{{- end -}}
 {{- end -}}
