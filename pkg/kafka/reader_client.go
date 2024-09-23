@@ -13,10 +13,10 @@ import (
 )
 
 // NewReaderClient returns the kgo.Client that should be used by the Reader.
-func NewReaderClient(cfg Config, metrics *kprom.Metrics, logger log.Logger, opts ...kgo.Opt) (*kgo.Client, error) {
+func NewReaderClient(kafkaCfg Config, metrics *kprom.Metrics, logger log.Logger, opts ...kgo.Opt) (*kgo.Client, error) {
 	const fetchMaxBytes = 100_000_000
 
-	opts = append(opts, commonKafkaClientOptions(cfg, metrics, logger)...)
+	opts = append(opts, commonKafkaClientOptions(kafkaCfg, metrics, logger)...)
 	opts = append(opts,
 		kgo.FetchMinBytes(1),
 		kgo.FetchMaxBytes(fetchMaxBytes),
@@ -32,8 +32,8 @@ func NewReaderClient(cfg Config, metrics *kprom.Metrics, logger log.Logger, opts
 	if err != nil {
 		return nil, errors.Wrap(err, "creating kafka client")
 	}
-	if cfg.AutoCreateTopicEnabled {
-		cfg.SetDefaultNumberOfPartitionsForAutocreatedTopics(logger)
+	if kafkaCfg.AutoCreateTopicEnabled {
+		kafkaCfg.SetDefaultNumberOfPartitionsForAutocreatedTopics(logger)
 	}
 	return client, nil
 }

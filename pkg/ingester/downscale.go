@@ -24,7 +24,7 @@ import (
 //     INACTIVE state happened.
 //
 //   - DELETE
-//     Sets partition back from INACTIVE to ACTIVE state.
+//     Sets partition back from INACTIVE to ACTIVE state, and returns 0 signalling the partition is not in INACTIVE state
 func (i *Ingester) PreparePartitionDownscaleHandler(w http.ResponseWriter, r *http.Request) {
 	logger := log.With(i.logger, "partition", i.ingestPartitionID)
 

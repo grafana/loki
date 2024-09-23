@@ -817,11 +817,11 @@ kafka_config:
 
   # When auto-creation of Kafka topic is enabled and this value is positive,
   # Kafka's num.partitions configuration option is set on Kafka brokers with
-  # this value when Mimir component that uses Kafka starts. This configuration
+  # this value when Loki component that uses Kafka starts. This configuration
   # option specifies the default number of partitions that the Kafka broker uses
   # for auto-created topics. Note that this is a Kafka-cluster wide setting, and
   # applies to any auto-created topic. If the setting of num.partitions fails,
-  # Mimir proceeds anyways, but auto-created topics could have an incorrect
+  # Loki proceeds anyways, but auto-created topics could have an incorrect
   # number of partitions.
   # CLI flag: -kafka.auto-create-topic-default-partitions
   [auto_create_topic_default_partitions: <int> | default = 1000]
