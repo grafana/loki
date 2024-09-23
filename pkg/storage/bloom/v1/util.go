@@ -1,32 +1,12 @@
 package v1
 
 import (
-	"fmt"
 	"hash"
 	"hash/crc32"
 	"io"
 	"sync"
 
 	"github.com/grafana/loki/v3/pkg/util/mempool"
-)
-
-type Version byte
-
-func (v Version) String() string {
-	return fmt.Sprintf("v%d", v)
-}
-
-const (
-	magicNumber = uint32(0xCA7CAFE5)
-	// Add new versions below
-	V1 Version = iota
-	// V2 supports single series blooms encoded over multiple pages
-	// to accommodate larger single series
-	V2
-)
-
-const (
-	DefaultSchemaVersion = V2
 )
 
 var (
@@ -82,4 +62,46 @@ func PointerSlice[T any](xs []T) []*T {
 		out[i] = &xs[i]
 	}
 	return out
+}
+
+type Set[V comparable] struct {
+	internal map[V]struct{}
+}
+
+func NewSet[V comparable](size int) Set[V] {
+	return Set[V]{make(map[V]struct{}, size)}
+}
+
+func NewSetFromLiteral[V comparable](v ...V) Set[V] {
+	set := NewSet[V](len(v))
+	for _, elem := range v {
+		set.Add(elem)
+	}
+	return set
+}
+
+func (s Set[V]) Add(v V) bool {
+	_, ok := s.internal[v]
+	if !ok {
+		s.internal[v] = struct{}{}
+	}
+	return !ok
+}
+
+func (s Set[V]) Len() int {
+	return len(s.internal)
+}
+
+func (s Set[V]) Items() []V {
+	set := make([]V, 0, s.Len())
+	for k := range s.internal {
+		set = append(set, k)
+	}
+	return set
+}
+
+func (s Set[V]) Union(other Set[V]) {
+	for _, v := range other.Items() {
+		s.Add(v)
+	}
 }

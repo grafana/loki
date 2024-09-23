@@ -101,6 +101,20 @@ func (t *Token) IsValid() bool {
 	return t.isValidWithEarlyExpiry(defaultExpiryDelta)
 }
 
+// MetadataString is a convenience method for accessing string values in the
+// token's metadata. Returns an empty string if the metadata is nil or the value
+// for the given key cannot be cast to a string.
+func (t *Token) MetadataString(k string) string {
+	if t.Metadata == nil {
+		return ""
+	}
+	s, ok := t.Metadata[k].(string)
+	if !ok {
+		return ""
+	}
+	return s
+}
+
 func (t *Token) isValidWithEarlyExpiry(earlyExpiry time.Duration) bool {
 	if t.isEmpty() {
 		return false
@@ -479,7 +493,7 @@ func (o *Options2LO) client() *http.Client {
 	if o.Client != nil {
 		return o.Client
 	}
-	return internal.CloneDefaultClient()
+	return internal.DefaultClient()
 }
 
 func (o *Options2LO) validate() error {

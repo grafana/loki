@@ -1,5 +1,3 @@
-local utils = import 'mixin-utils/utils.libsonnet';
-
 (import 'dashboard-utils.libsonnet') {
   local compactor_pod_matcher = if $._config.meta_monitoring.enabled
   then 'pod=~"(compactor.*|%s-backend.*|loki-single-binary)"' % $._config.ssd.pod_prefix_matcher

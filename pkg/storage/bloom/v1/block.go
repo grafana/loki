@@ -116,7 +116,7 @@ type BlockQuerier struct {
 // whether the underlying byte slice of the bloom page will be returned to the
 // pool for efficiency or not. Returning to the pool can only safely be used
 // when the underlying bloom bytes don't escape the decoder, i.e. when loading
-// blooms for querying (bloom-gateway), but not for writing (bloom-compactor).
+// blooms for querying (bloom-gateway), but not for writing (bloom-builder).
 // Therefore, when calling NewBlockQuerier on the write path, you should always
 // pass the SimpleHeapAllocator implementation of the Allocator interface.
 func NewBlockQuerier(b *Block, alloc mempool.Allocator, maxPageSize int) *BlockQuerier {
@@ -170,7 +170,7 @@ func (b *BlockQuerierIter) Next() bool {
 func (b *BlockQuerierIter) At() *SeriesWithBlooms {
 	s := b.LazySeriesIter.At()
 	res := &SeriesWithBlooms{
-		Series: &s.Series,
+		Series: s,
 		Blooms: newOffsetsIter(b.blooms, s.Offsets),
 	}
 	return res

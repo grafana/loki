@@ -26,7 +26,7 @@ import (
 	"strings"
 	"time"
 
-	ini "gopkg.in/ini.v1"
+	"github.com/go-ini/ini"
 )
 
 // A externalProcessCredentials stores the output of a credential_process

@@ -501,12 +501,12 @@ func (c *IndexReaderWriter) lookupSeriesByMetricNameMatchers(ctx context.Context
 }
 
 func (c *IndexReaderWriter) lookupSeriesByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, shard *astmapper.ShardAnnotation) ([]string, error) {
-	return c.lookupIdsByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, func(queries []series_index.Query) []series_index.Query {
+	return c.lookupIDsByMetricNameMatcher(ctx, from, through, userID, metricName, matcher, func(queries []series_index.Query) []series_index.Query {
 		return c.schema.FilterReadQueries(queries, shard)
 	})
 }
 
-func (c *IndexReaderWriter) lookupIdsByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, filter func([]series_index.Query) []series_index.Query) ([]string, error) {
+func (c *IndexReaderWriter) lookupIDsByMetricNameMatcher(ctx context.Context, from, through model.Time, userID, metricName string, matcher *labels.Matcher, filter func([]series_index.Query) []series_index.Query) ([]string, error) {
 	var err error
 	var queries []series_index.Query
 	var labelName string

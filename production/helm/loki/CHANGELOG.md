@@ -13,6 +13,35 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 6.13.0
+
+- [CHANGE] Correctly wrap ClusterRoleBinding around `rbac/namespaced` conditional.
+- [FIX] Do not create bloom planner, bloom builder, bloom gateway Deployment/Statefulset if their replica count is 0.
+- [FIX] Configure (ephemeral) storage for bloom builder working directory
+- [ENHANCEMENT] Automatically configure bloom planner address for bloom builders and bloom gateway addresses for bloom gateway clients.
+
+## 6.12.0
+
+- [ENHANCEMENT] Replace Bloom Compactor component with Bloom Planner and Bloom Builder. These are the new components to build bloom blocks.
+
+## 6.11.0
+
+- [FEATURE] Add support for configuring persistence for memcached.
+
+## 6.10.2
+
+- [CHANGE] Bumped version of `nginxinc/nginx-unprivileged` to 1.27-alpine; this remediates several CVE
+
+## 6.10.1
+
+- [CHANGE] Bumped version of `kiwigrid/k8s-sidecar` to 1.27.5; this remediates several CVE
+
+## 6.10.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to 3.1.1
+- [CHANGE] Changed version of Grafana Loki to 3.1.1
+- [ENHANCEMENT] Added ability to disable AWS S3 dualstack endpoint usage.
+
 ## 6.9.0
 
 - [BUGFIX] Fixed how we set imagePullSecrets for the memcached and provisioner.

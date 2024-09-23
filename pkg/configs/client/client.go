@@ -96,7 +96,7 @@ func (c ConfigDBClient) GetRules(ctx context.Context, since userconfig.ID) (map[
 	}
 	endpoint := fmt.Sprintf("%s/private/api/prom/configs/rules%s", c.URL.String(), suffix)
 	var response *ConfigsResponse
-	err := instrument.CollectedRequest(ctx, "GetRules", configsRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	err := instrument.CollectedRequest(ctx, "GetRules", configsRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 		var err error
 		response, err = doRequest(endpoint, c.Timeout, c.TLSConfig, since)
 		return err
@@ -122,7 +122,7 @@ func (c ConfigDBClient) GetAlerts(ctx context.Context, since userconfig.ID) (*Co
 	}
 	endpoint := fmt.Sprintf("%s/private/api/prom/configs/alertmanager%s", c.URL.String(), suffix)
 	var response *ConfigsResponse
-	err := instrument.CollectedRequest(ctx, "GetAlerts", configsRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	err := instrument.CollectedRequest(ctx, "GetAlerts", configsRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 		var err error
 		response, err = doRequest(endpoint, c.Timeout, c.TLSConfig, since)
 		return err

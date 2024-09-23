@@ -237,6 +237,9 @@ s3:
   {{- end }}
   s3forcepathstyle: {{ .s3ForcePathStyle }}
   insecure: {{ .insecure }}
+  {{- with .disable_dualstack }}
+  disable_dualstack: {{ . }}
+  {{- end }}
   {{- with .http_config}}
   http_config:
 {{ toYaml . | indent 4 }}
@@ -1042,6 +1045,34 @@ enableServiceLinks: false
 {{- $idxGatewayAddress = printf "dns+%s-headless.%s.svc.%s:%s" (include "loki.backendFullname" .) .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.grpc_listen_port | toString) -}}
 {{- end -}}
 {{- printf "%s" $idxGatewayAddress }}
+{{- end }}
+
+{{/* Determine bloom-planner address */}}
+{{- define "loki.bloomPlannerAddress" -}}
+{{- $bloomPlannerAddress := ""}}
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- $isScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
+{{- if $isDistributed -}}
+{{- $bloomPlannerAddress = printf "%s-headless.%s.svc.%s:%s" (include "loki.bloomPlannerFullname" .) .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.grpc_listen_port | toString) -}}
+{{- end -}}
+{{- if $isScalable -}}
+{{- $bloomPlannerAddress = printf "%s-headless.%s.svc.%s:%s" (include "loki.backendFullname" .) .Release.Namespace .Values.global.clusterDomain (.Values.loki.server.grpc_listen_port | toString) -}}
+{{- end -}}
+{{- printf "%s" $bloomPlannerAddress}}
+{{- end }}
+
+{{/* Determine bloom-gateway address */}}
+{{- define "loki.bloomGatewayAddresses" -}}
+{{- $bloomGatewayAddresses := ""}}
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- $isScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
+{{- if $isDistributed -}}
+{{- $bloomGatewayAddresses = printf "dnssrvnoa+_grpc._tcp.%s-headless.%s.svc.%s" (include "loki.bloomGatewayFullname" .) .Release.Namespace .Values.global.clusterDomain -}}
+{{- end -}}
+{{- if $isScalable -}}
+{{- $bloomGatewayAddresses = printf "dnssrvnoa+_grpc._tcp.%s-headless.%s.svc.%s" (include "loki.backendFullname" .) .Release.Namespace .Values.global.clusterDomain -}}
+{{- end -}}
+{{- printf "%s" $bloomGatewayAddresses}}
 {{- end }}
 
 {{- define "loki.config.checksum" -}}

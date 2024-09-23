@@ -39,7 +39,7 @@ type FileMinioClient struct {
 	Filename string
 
 	// MinIO Alias to extract credentials from the shared credentials file. If empty
-	// will default to environment variable "MINIO_ALIAS" or "default" if
+	// will default to environment variable "MINIO_ALIAS" or "s3" if
 	// environment variable is also not set.
 	Alias string
 

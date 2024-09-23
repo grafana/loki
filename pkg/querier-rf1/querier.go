@@ -78,7 +78,6 @@ type Querier interface {
 	DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error)
 	Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error)
 	DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error)
-	SelectMetricSamples(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error)
 }
 
 type Limits querier_limits.Limits
@@ -913,7 +912,6 @@ func streamsForFieldDetection(i iter.EntryIterator, size uint32) (logqlmodel.Str
 
 type PatterQuerier interface {
 	Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error)
-	Samples(ctx context.Context, req *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error)
 }
 
 func (q *Rf1Querier) WithPatternQuerier(pq querier.PatterQuerier) {
@@ -926,12 +924,8 @@ func (q *Rf1Querier) Patterns(ctx context.Context, req *logproto.QueryPatternsRe
 	}
 	res, err := q.patternQuerier.Patterns(ctx, req)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	return res, err
-}
-
-func (q *Rf1Querier) SelectMetricSamples(_ context.Context, _ *logproto.QuerySamplesRequest) (*logproto.QuerySamplesResponse, error) {
-	return nil, httpgrpc.Errorf(http.StatusBadRequest, "not implmented")
 }
