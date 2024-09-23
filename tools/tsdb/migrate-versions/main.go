@@ -17,7 +17,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/loki"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
@@ -257,8 +257,9 @@ func uploadFile(idx shipperindex.Index, indexStorageClient shipperstorage.Client
 		}
 	}()
 
-	compressedWriter := chunkenc.Gzip.GetWriter(f)
-	defer chunkenc.Gzip.PutWriter(compressedWriter)
+	gzipPool := compression.GetWriterPool(compression.EncGZIP)
+	compressedWriter := gzipPool.GetWriter(f)
+	defer gzipPool.PutWriter(compressedWriter)
 
 	idxReader, err := idx.Reader()
 	if err != nil {

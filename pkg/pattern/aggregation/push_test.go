@@ -229,6 +229,9 @@ func Test_Push(t *testing.T) {
 				stream2.Entries[2].Line,
 			)
 
+			// sanity check that bytes are logged in humanized form without whitespaces
+			assert.Contains(t, stream1.Entries[0].Line, "bytes=1B")
+
 		case <-time.After(5 * time.Second):
 			t.Fatal("timeout")
 		}

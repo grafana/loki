@@ -279,6 +279,16 @@ loki:
 
     tracing:
       enabled: {{ .Values.loki.tracing.enabled }}
+
+    {{- with .Values.loki.bloom_build }}
+    bloom_build:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
+    {{- with .Values.loki.bloom_gateway }}
+    bloom_gateway:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
   # Should authentication be enabled
   auth_enabled: true
   # -- memberlist configuration (overrides embedded default)
@@ -410,6 +420,8 @@ loki:
     tsdb_shipper:
       index_gateway_client:
         server_address: '{{ include "loki.indexGatewayAddress" . }}'
+    bloom_shipper:
+      working_directory: /var/loki/data/bloomshipper
     hedging:
       at: "250ms"
       max_per_second: 20
@@ -442,8 +454,12 @@ loki:
     enabled: false
   bloom_build:
     enabled: false
+    builder:
+      planner_address: '{{ include "loki.bloomPlannerAddress" . }}'
   bloom_gateway:
     enabled: false
+    client:
+      addresses: '{{ include "loki.bloomGatewayAddresses" . }}'
 ######################################################################################################################
 #
 # Enterprise Loki Configs
@@ -2447,20 +2463,13 @@ bloomGateway:
   persistence:
     # -- Enable creating PVCs for the bloom-gateway
     enabled: false
-    # -- Size of persistent disk
-    size: 10Gi
-    # -- Storage class to be used.
-    # If defined, storageClassName: <storageClass>.
-    # If set to "-", storageClassName: "", which disables dynamic provisioning.
-    # If empty or set to null, no storageClassName spec is
-    # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
-    storageClass: null
     # -- Annotations for bloom-gateway PVCs
     annotations: {}
     # -- List of the bloom-gateway PVCs
     # @notationType -- list
     claims:
       - name: data
+        # -- Size of persistent disk
         size: 10Gi
         #   -- Storage class to be used.
         #   If defined, storageClassName: <storageClass>.
@@ -2468,8 +2477,6 @@ bloomGateway:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
-        # - name: wal
-        #   size: 150Gi
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
     whenDeleted: Retain
@@ -2553,19 +2560,20 @@ bloomPlanner:
   persistence:
     # -- Enable creating PVCs for the bloom-planner
     enabled: false
-    # -- Size of persistent disk
-    size: 10Gi
-    # -- Storage class to be used.
-    # If defined, storageClassName: <storageClass>.
-    # If set to "-", storageClassName: "", which disables dynamic provisioning.
-    # If empty or set to null, no storageClassName spec is
-    # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
-    storageClass: null
     # -- Annotations for bloom-planner PVCs
     annotations: {}
     # -- List of the bloom-planner PVCs
     # @notationType -- list
-    claims: []
+    claims:
+      - name: data
+        # -- Size of persistent disk
+        size: 10Gi
+        #   -- Storage class to be used.
+        #   If defined, storageClassName: <storageClass>.
+        #   If set to "-", storageClassName: "", which disables dynamic provisioning.
+        #   If empty or set to null, no storageClassName spec is
+        #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
+        storageClass: null
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
     whenDeleted: Retain

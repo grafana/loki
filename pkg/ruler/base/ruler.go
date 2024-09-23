@@ -417,7 +417,7 @@ func grafanaLinkForExpression(expr, datasourceUID string) string {
 //
 // Copied from Prometheus's main.go.
 func SendAlerts(n sender, externalURL, datasourceUID string) promRules.NotifyFunc {
-	return func(ctx context.Context, expr string, alerts ...*promRules.Alert) {
+	return func(_ context.Context, expr string, alerts ...*promRules.Alert) {
 		var res []*notifier.Alert
 
 		for _, alert := range alerts {

@@ -169,6 +169,7 @@ message TopKSketchesResponse {
     (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
   ];
   repeated string warnings = 3 [(gogoproto.jsontag) = "warnings,omitempty"];
+  stats.Result statistics = 4 [(gogoproto.nullable) = false];
 }
 
 message QuantileSketchResponse {
@@ -178,6 +179,7 @@ message QuantileSketchResponse {
     (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
   ];
   repeated string warnings = 3 [(gogoproto.jsontag) = "warnings,omitempty"];
+  stats.Result statistics = 4 [(gogoproto.nullable) = false];
 }
 
 message ShardsResponse {

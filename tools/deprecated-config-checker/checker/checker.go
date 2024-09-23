@@ -35,7 +35,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 
 func (c *Config) Validate() error {
 	if c.ConfigFile == "" && c.RuntimeConfigFile == "" {
-		return fmt.Errorf(configRequiredErrorMsg)
+		return fmt.Errorf("%s", configRequiredErrorMsg)
 	}
 	return nil
 }

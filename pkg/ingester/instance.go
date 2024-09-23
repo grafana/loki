@@ -289,7 +289,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 				"stream", pushReqStream.Labels,
 			)
 		}
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	if record != nil {
