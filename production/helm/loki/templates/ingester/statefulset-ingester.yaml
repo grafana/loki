@@ -51,6 +51,7 @@ spec:
       labels:
         {{- include "loki.ingesterSelectorLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
+        name: {{ include "loki.resourceName" $args }}
         {{- with .Values.loki.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
