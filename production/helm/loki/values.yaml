@@ -42,7 +42,7 @@ loki:
     httpGet:
       path: /ready
       port: http-metrics
-    initialDelaySeconds: 60
+    initialDelaySeconds: 30
     timeoutSeconds: 1
   image:
     # -- The Docker registry
