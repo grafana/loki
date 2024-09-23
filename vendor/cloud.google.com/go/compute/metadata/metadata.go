@@ -28,7 +28,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -188,20 +187,6 @@ func testOnGCE() bool {
 	// metaClient's Transport.ResponseHeaderTimeout or
 	// Transport.Dial.Timeout fires (in two seconds).
 	return <-resc
-}
-
-// systemInfoSuggestsGCE reports whether the local system (without
-// doing network requests) suggests that we're running on GCE. If this
-// returns true, testOnGCE tries a bit harder to reach its metadata
-// server.
-func systemInfoSuggestsGCE() bool {
-	if runtime.GOOS != "linux" {
-		// We don't have any non-Linux clues available, at least yet.
-		return false
-	}
-	slurp, _ := os.ReadFile("/sys/class/dmi/id/product_name")
-	name := strings.TrimSpace(string(slurp))
-	return name == "Google" || name == "Google Compute Engine"
 }
 
 // Subscribe calls Client.SubscribeWithContext on the default client.

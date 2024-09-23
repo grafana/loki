@@ -306,9 +306,6 @@ func (m *VolumeRequest) GetQuery() string {
 	return m.Matchers
 }
 
-// GetCachingOptions returns the caching options.
-func (m *VolumeRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
-
 // WithStartEnd clone the current request with different start and end timestamp.
 func (m *VolumeRequest) WithStartEnd(start, end time.Time) definitions.Request {
 	clone := *m

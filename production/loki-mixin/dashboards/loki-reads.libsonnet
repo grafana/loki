@@ -24,7 +24,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
         'loki_api_v1_query',
         'loki_api_v1_query_range',
         'loki_api_v1_series',
-        'otlp_v1_logs',
         'prometheus_api_v1_rules',
       ]
     ),

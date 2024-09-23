@@ -349,7 +349,7 @@ func (s *GatewayClient) GetShards(
 
 			return nil
 		},
-		func(err error) bool {
+		func(_ error) bool {
 			errCt++
 			return errCt <= maxErrs
 		},

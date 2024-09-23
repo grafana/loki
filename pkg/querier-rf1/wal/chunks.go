@@ -3,6 +3,7 @@ package wal
 import (
 	"context"
 	"fmt"
+	"io"
 	"sort"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -309,14 +310,14 @@ func readChunkData(ctx context.Context, storage BlockStorage, chunk ChunkData) (
 	// together.
 	reader, err := storage.GetObjectRange(ctx, wal.Dir+chunk.id, int64(offset), int64(size))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could not get range reader for %s: %w", chunk.id, err)
 	}
 	defer reader.Close()
 
 	data := make([]byte, size)
-	_, err = reader.Read(data)
+	_, err = io.ReadFull(reader, data)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could not read socket for %s: %w", chunk.id, err)
 	}
 
 	return data, nil

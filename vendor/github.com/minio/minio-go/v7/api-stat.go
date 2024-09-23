@@ -61,10 +61,18 @@ func (c *Client) BucketExists(ctx context.Context, bucketName string) (bool, err
 func (c *Client) StatObject(ctx context.Context, bucketName, objectName string, opts StatObjectOptions) (ObjectInfo, error) {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
-		return ObjectInfo{}, err
+		return ObjectInfo{}, ErrorResponse{
+			StatusCode: http.StatusBadRequest,
+			Code:       "InvalidBucketName",
+			Message:    err.Error(),
+		}
 	}
 	if err := s3utils.CheckValidObjectName(objectName); err != nil {
-		return ObjectInfo{}, err
+		return ObjectInfo{}, ErrorResponse{
+			StatusCode: http.StatusBadRequest,
+			Code:       "XMinioInvalidObjectName",
+			Message:    err.Error(),
+		}
 	}
 	headers := opts.Header()
 	if opts.Internal.ReplicationDeleteMarker {

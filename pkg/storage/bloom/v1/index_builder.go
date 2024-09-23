@@ -46,18 +46,20 @@ func (b *IndexBuilder) WriteOpts() error {
 	return nil
 }
 
-func (b *IndexBuilder) AppendV2(series SeriesWithOffsets) error {
+func (b *IndexBuilder) Append(series SeriesWithMeta) error {
 	if !b.writtenSchema {
 		if err := b.WriteOpts(); err != nil {
 			return errors.Wrap(err, "appending series")
 		}
 	}
 
+	version := b.opts.Schema.version
+
 	b.scratch.Reset()
 	// we don't want to update the previous pointers yet in case
 	// we need to flush the page first which would
 	// be passed the incorrect final fp/offset
-	lastOffset := series.Encode(b.scratch, b.previousFp, b.previousOffset)
+	lastOffset := series.Encode(b.scratch, version, b.previousFp, b.previousOffset)
 
 	if !b.page.SpaceFor(b.scratch.Len()) && b.page.Count() > 0 {
 		if err := b.flushPage(); err != nil {
@@ -66,7 +68,7 @@ func (b *IndexBuilder) AppendV2(series SeriesWithOffsets) error {
 
 		// re-encode now that a new page has been cut and we use delta-encoding
 		b.scratch.Reset()
-		lastOffset = series.Encode(b.scratch, b.previousFp, b.previousOffset)
+		lastOffset = series.Encode(b.scratch, version, b.previousFp, b.previousOffset)
 	}
 
 	switch {
@@ -92,57 +94,6 @@ func (b *IndexBuilder) AppendV2(series SeriesWithOffsets) error {
 	_ = b.page.Add(b.scratch.Get())
 	b.previousFp = series.Fingerprint
 	b.previousOffset = lastOffset
-	return nil
-}
-
-func (b *IndexBuilder) AppendV1(series SeriesWithOffset) error {
-	if !b.writtenSchema {
-		if err := b.WriteOpts(); err != nil {
-			return errors.Wrap(err, "appending series")
-		}
-	}
-
-	b.scratch.Reset()
-	// we don't want to update the previous pointers yet in case
-	// we need to flush the page first which would
-	// be passed the incorrect final fp/offset
-	previousFp, previousOffset := series.Encode(b.scratch, b.previousFp, b.previousOffset)
-
-	if !b.page.SpaceFor(b.scratch.Len()) {
-		if err := b.flushPage(); err != nil {
-			return errors.Wrap(err, "flushing series page")
-		}
-
-		// re-encode now that a new page has been cut and we use delta-encoding
-		b.scratch.Reset()
-		previousFp, previousOffset = series.Encode(b.scratch, b.previousFp, b.previousOffset)
-	}
-	b.previousFp = previousFp
-	b.previousOffset = previousOffset
-
-	switch {
-	case b.page.Count() == 0:
-		// Special case: this is the first series in a page
-		if len(series.Chunks) < 1 {
-			return fmt.Errorf("series with zero chunks for fingerprint %v", series.Fingerprint)
-		}
-		b.fromFp = series.Fingerprint
-		b.fromTs, b.throughTs = chkBounds(series.Chunks)
-	case b.previousFp > series.Fingerprint:
-		return fmt.Errorf("out of order series fingerprint for series %v", series.Fingerprint)
-	default:
-		from, through := chkBounds(series.Chunks)
-		if b.fromTs.After(from) {
-			b.fromTs = from
-		}
-		if b.throughTs.Before(through) {
-			b.throughTs = through
-		}
-	}
-
-	_ = b.page.Add(b.scratch.Get())
-	b.previousFp = series.Fingerprint
-	b.previousOffset = series.Offset
 	return nil
 }
 

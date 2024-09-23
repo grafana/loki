@@ -234,7 +234,7 @@ func (i *blockLoadingIter) init() {
 
 	// set "match all" filter function if not present
 	if i.filter == nil {
-		i.filter = func(cbq *bloomshipper.CloseableBlockQuerier) bool { return true }
+		i.filter = func(_ *bloomshipper.CloseableBlockQuerier) bool { return true }
 	}
 
 	// done

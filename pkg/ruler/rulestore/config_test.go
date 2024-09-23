@@ -19,7 +19,7 @@ func TestIsDefaults(t *testing.T) {
 			expected: true,
 		},
 		"should return false if the config contains zero values": {
-			setup:    func(cfg *Config) {},
+			setup:    func(_ *Config) {},
 			expected: false,
 		},
 		"should return false if the config contains default values and some overrides": {

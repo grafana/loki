@@ -16,7 +16,18 @@ import (
 //
 //nolint:revive
 func TenantID(ctx context.Context) (string, error) {
-	orgIDs, err := TenantIDs(ctx)
+	//lint:ignore faillint wrapper around upstream method
+	orgID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return "", err
+	}
+	if !strings.Contains(orgID, tenantIDsSeparator) {
+		if err := ValidTenantID(orgID); err != nil {
+			return "", err
+		}
+		return orgID, nil
+	}
+	orgIDs, err := tenantIDsFromString(orgID)
 	if err != nil {
 		return "", err
 	}
@@ -42,6 +53,10 @@ func TenantIDs(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 
+	return tenantIDsFromString(orgID)
+}
+
+func tenantIDsFromString(orgID string) ([]string, error) {
 	orgIDs := strings.Split(orgID, tenantIDsSeparator)
 	for _, id := range orgIDs {
 		if err := ValidTenantID(id); err != nil {

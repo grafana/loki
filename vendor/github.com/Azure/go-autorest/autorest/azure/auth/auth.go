@@ -21,7 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"os"
 	"strings"
@@ -325,7 +325,7 @@ func GetSettingsFromFile() (FileSettings, error) {
 		return s, errors.New("environment variable AZURE_AUTH_LOCATION is not set")
 	}
 
-	contents, err := ioutil.ReadFile(fileLocation)
+	contents, err := os.ReadFile(fileLocation)
 	if err != nil {
 		return s, err
 	}
@@ -488,7 +488,7 @@ func decode(b []byte) ([]byte, error) {
 		}
 		return []byte(string(utf16.Decode(u16))), nil
 	}
-	return ioutil.ReadAll(reader)
+	return io.ReadAll(reader)
 }
 
 func (settings FileSettings) getResourceForToken(baseURI string) (string, error) {
@@ -636,7 +636,7 @@ func (ccc ClientCertificateConfig) ServicePrincipalToken() (*adal.ServicePrincip
 	if err != nil {
 		return nil, err
 	}
-	certData, err := ioutil.ReadFile(ccc.CertificatePath)
+	certData, err := os.ReadFile(ccc.CertificatePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read the certificate file (%s): %v", ccc.CertificatePath, err)
 	}
@@ -653,7 +653,7 @@ func (ccc ClientCertificateConfig) MultiTenantServicePrincipalToken() (*adal.Mul
 	if err != nil {
 		return nil, err
 	}
-	certData, err := ioutil.ReadFile(ccc.CertificatePath)
+	certData, err := os.ReadFile(ccc.CertificatePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read the certificate file (%s): %v", ccc.CertificatePath, err)
 	}

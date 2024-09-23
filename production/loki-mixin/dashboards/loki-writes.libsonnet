@@ -52,7 +52,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           $.row('Frontend (cortex_gw)')
                           .addPanel(
                             $.newQueryPanel('QPS') +
-                            $.newQpsPanel('loki_request_duration_seconds_count{%s route=~"api_prom_push|loki_api_v1_push"}' % dashboards['loki-writes.json'].cortexGwSelector)
+                            $.newQpsPanel('loki_request_duration_seconds_count{%s route=~"api_prom_push|loki_api_v1_push|otlp_v1_logs"}' % dashboards['loki-writes.json'].cortexGwSelector)
                           )
                           .addPanel(
                             $.newQueryPanel('Latency', 'ms') +
@@ -60,7 +60,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                               'loki_request_duration_seconds',
                               dashboards['loki-writes.json'].clusterMatchers +
                               dashboards['loki-writes.json'].matchers.cortexgateway +
-                              [utils.selector.re('route', 'api_prom_push|loki_api_v1_push')],
+                              [utils.selector.re('route', 'api_prom_push|loki_api_v1_push|otlp_v1_logs')],
                             )
                           )
                           .addPanel(
@@ -69,7 +69,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                               $.toPrometheusSelector(
                                 dashboards['loki-writes.json'].clusterMatchers +
                                 dashboards['loki-writes.json'].matchers.cortexgateway +
-                                [utils.selector.re('route', 'api_prom_push|loki_api_v1_push')],
+                                [utils.selector.re('route', 'api_prom_push|loki_api_v1_push|otlp_v1_logs')],
                               ),
                             )
                           )
@@ -78,7 +78,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           $.row(if $._config.ssd.enabled then 'Write Path' else 'Distributor')
                           .addPanel(
                             $.newQueryPanel('QPS') +
-                            $.newQpsPanel('loki_request_duration_seconds_count{%s, route=~"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle"}' % std.rstripChars(dashboards['loki-writes.json'].distributorSelector, ','))
+                            $.newQpsPanel('loki_request_duration_seconds_count{%s, route=~"api_prom_push|loki_api_v1_push|otlp_v1_logs|/httpgrpc.HTTP/Handle"}' % std.rstripChars(dashboards['loki-writes.json'].distributorSelector, ','))
                           )
                           .addPanel(
                             $.newQueryPanel('Latency', 'ms') +
@@ -86,7 +86,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                               'loki_request_duration_seconds',
                               dashboards['loki-writes.json'].clusterMatchers +
                               dashboards['loki-writes.json'].matchers.distributor +
-                              [utils.selector.re('route', 'api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle')],
+                              [utils.selector.re('route', 'api_prom_push|loki_api_v1_push|otlp_v1_logs|/httpgrpc.HTTP/Handle')],
                             )
                           )
                           .addPanel(
@@ -95,7 +95,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                               $.toPrometheusSelector(
                                 dashboards['loki-writes.json'].clusterMatchers +
                                 dashboards['loki-writes.json'].matchers.distributor +
-                                [utils.selector.re('route', 'api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle')],
+                                [utils.selector.re('route', 'api_prom_push|loki_api_v1_push|otlp_v1_logs|/httpgrpc.HTTP/Handle')],
                               ),
                             )
                           )

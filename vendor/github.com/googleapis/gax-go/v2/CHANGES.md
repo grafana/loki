@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.13.0](https://github.com/googleapis/gax-go/compare/v2.12.5...v2.13.0) (2024-07-22)
+
+
+### Features
+
+* **iterator:** add package to help work with new iter.Seq types ([#358](https://github.com/googleapis/gax-go/issues/358)) ([6bccdaa](https://github.com/googleapis/gax-go/commit/6bccdaac011fe6fd147e4eb533a8e6520b7d4acc))
+
 ## [2.12.5](https://github.com/googleapis/gax-go/compare/v2.12.4...v2.12.5) (2024-06-18)
 
 

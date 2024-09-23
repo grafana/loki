@@ -27,7 +27,7 @@ type IngesterQuerier struct {
 	cfg    Config
 	logger log.Logger
 
-	ringClient *RingClient
+	ringClient RingClient
 
 	registerer             prometheus.Registerer
 	ingesterQuerierMetrics *ingesterQuerierMetrics
@@ -35,7 +35,7 @@ type IngesterQuerier struct {
 
 func NewIngesterQuerier(
 	cfg Config,
-	ringClient *RingClient,
+	ringClient RingClient,
 	metricsNamespace string,
 	registerer prometheus.Registerer,
 	logger log.Logger,
@@ -52,7 +52,7 @@ func NewIngesterQuerier(
 func (q *IngesterQuerier) Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
 	_, err := syntax.ParseMatchers(req.Query, true)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.PatternClient) (interface{}, error) {
 		return client.Query(ctx, req)
@@ -128,7 +128,7 @@ func prunePatterns(resp *logproto.QueryPatternsResponse, minClusterSize int64, m
 
 // ForAllIngesters runs f, in parallel, for all ingesters
 func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(context.Context, logproto.PatternClient) (interface{}, error)) ([]ResponseFromIngesters, error) {
-	replicationSet, err := q.ringClient.ring.GetAllHealthy(ring.Read)
+	replicationSet, err := q.ringClient.Ring().GetAllHealthy(ring.Read)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +149,7 @@ func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet 
 		ingester := ingester
 		i := i
 		g.Go(func() error {
-			client, err := q.ringClient.pool.GetClientFor(ingester.Addr)
+			client, err := q.ringClient.GetClientFor(ingester.Addr)
 			if err != nil {
 				return err
 			}

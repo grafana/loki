@@ -100,6 +100,10 @@ type Options struct {
 	AwsSecurityCredentialsProvider AwsSecurityCredentialsProvider
 	// Client for token request.
 	Client *http.Client
+	// IsDefaultClient marks whether the client passed in is a default client that can be overriden.
+	// This is important for X509 credentials which should create a new client if the default was used
+	// but should respect a client explicitly passed in by the user.
+	IsDefaultClient bool
 }
 
 // SubjectTokenProvider can be used to supply a subject token to exchange for a
@@ -181,6 +185,26 @@ func (o *Options) validate() error {
 	return nil
 }
 
+// client returns the http client that should be used for the token exchange. If a non-default client
+// is provided, then the client configured in the options will always be returned. If a default client
+// is provided and the options are configured for X509 credentials, a new client will be created.
+func (o *Options) client() (*http.Client, error) {
+	// If a client was provided and no override certificate config location was provided, use the provided client.
+	if o.CredentialSource == nil || o.CredentialSource.Certificate == nil || (!o.IsDefaultClient && o.CredentialSource.Certificate.CertificateConfigLocation == "") {
+		return o.Client, nil
+	}
+
+	// If a new client should be created, validate and use the certificate source to create a new mTLS client.
+	cert := o.CredentialSource.Certificate
+	if !cert.UseDefaultCertificateConfig && cert.CertificateConfigLocation == "" {
+		return nil, errors.New("credentials: \"certificate\" object must either specify a certificate_config_location or use_default_certificate_config should be true")
+	}
+	if cert.UseDefaultCertificateConfig && cert.CertificateConfigLocation != "" {
+		return nil, errors.New("credentials: \"certificate\" object cannot specify both a certificate_config_location and use_default_certificate_config=true")
+	}
+	return createX509Client(cert.CertificateConfigLocation)
+}
+
 // resolveTokenURL sets the default STS token endpoint with the configured
 // universe domain.
 func (o *Options) resolveTokenURL() {
@@ -204,11 +228,18 @@ func NewTokenProvider(opts *Options) (auth.TokenProvider, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	client, err := opts.client()
+	if err != nil {
+		return nil, err
+	}
+
 	tp := &tokenProvider{
-		client: opts.Client,
+		client: client,
 		opts:   opts,
 		stp:    stp,
 	}
+
 	if opts.ServiceAccountImpersonationURL == "" {
 		return auth.NewCachedTokenProvider(tp, nil), nil
 	}
@@ -218,7 +249,7 @@ func NewTokenProvider(opts *Options) (auth.TokenProvider, error) {
 	// needed for impersonation
 	tp.opts.Scopes = []string{"https://www.googleapis.com/auth/cloud-platform"}
 	imp, err := impersonate.NewTokenProvider(&impersonate.Options{
-		Client:               opts.Client,
+		Client:               client,
 		URL:                  opts.ServiceAccountImpersonationURL,
 		Scopes:               scopes,
 		Tp:                   auth.NewCachedTokenProvider(tp, nil),
@@ -353,6 +384,15 @@ func newSubjectTokenProvider(o *Options) (subjectTokenProvider, error) {
 		execProvider.opts = o
 		execProvider.env = runtimeEnvironment{}
 		return execProvider, nil
+	} else if o.CredentialSource.Certificate != nil {
+		cert := o.CredentialSource.Certificate
+		if !cert.UseDefaultCertificateConfig && cert.CertificateConfigLocation == "" {
+			return nil, errors.New("credentials: \"certificate\" object must either specify a certificate_config_location or use_default_certificate_config should be true")
+		}
+		if cert.UseDefaultCertificateConfig && cert.CertificateConfigLocation != "" {
+			return nil, errors.New("credentials: \"certificate\" object cannot specify both a certificate_config_location and use_default_certificate_config=true")
+		}
+		return &x509Provider{}, nil
 	}
 	return nil, errors.New("credentials: unable to parse credential source")
 }
