@@ -250,7 +250,7 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 Selector labels
 */}}
 {{- define "loki.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "loki.name" . }}
+app.kubernetes.io/name: {{ include "loki.name" .ctx }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
