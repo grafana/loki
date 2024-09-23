@@ -391,6 +391,21 @@ type pushTracker struct {
 	err            chan error
 }
 
+// doneWithResult records the result of a stream push.
+// If err is nil, the stream push is considered successful.
+// If err is not nil, the stream push is considered failed.
+func (p *pushTracker) doneWithResult(err error) {
+	if err == nil {
+		if p.streamsPending.Dec() == 0 {
+			p.done <- struct{}{}
+		}
+	} else {
+		if p.streamsFailed.Inc() == 1 {
+			p.err <- err
+		}
+	}
+}
+
 // Push a set of streams.
 // The returned error is the last one seen.
 func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
@@ -833,16 +848,12 @@ func (d *Distributor) sendStreams(ctx context.Context, ingester ring.InstanceDes
 			if streamTrackers[i].failed.Inc() <= int32(streamTrackers[i].maxFailures) {
 				continue
 			}
-			if pushTracker.streamsFailed.Inc() == 1 {
-				pushTracker.err <- err
-			}
+			pushTracker.doneWithResult(err)
 		} else {
 			if streamTrackers[i].succeeded.Inc() != int32(streamTrackers[i].minSuccess) {
 				continue
 			}
-			if pushTracker.streamsPending.Dec() == 0 {
-				pushTracker.done <- struct{}{}
-			}
+			pushTracker.doneWithResult(nil)
 		}
 	}
 }
@@ -879,14 +890,9 @@ func (d *Distributor) sendStreamsToKafka(ctx context.Context, streams []KeyedStr
 		go func(s KeyedStream) {
 			err := d.sendStreamToKafka(ctx, s, tenant)
 			if err != nil {
-				if tracker.streamsFailed.Inc() == 1 {
-					tracker.err <- fmt.Errorf("failed to write stream to kafka: %w", err)
-				}
-			} else {
-				if tracker.streamsPending.Dec() == 0 {
-					tracker.done <- struct{}{}
-				}
+				err = fmt.Errorf("failed to write stream to kafka: %w", err)
 			}
+			tracker.doneWithResult(err)
 		}(s)
 	}
 }
@@ -895,11 +901,12 @@ func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream,
 	if len(stream.Stream.Entries) == 0 {
 		return nil
 	}
-	partitionID, err := d.partitionRing.PartitionRing().ActivePartitionForKey(stream.HashKey)
-	if err != nil {
-		d.kafkaAppends.WithLabelValues("kafka", "fail").Inc()
-		return fmt.Errorf("failed to find active partition for stream: %w", err)
-	}
+	/*	partitionID, err := d.partitionRing.PartitionRing().ActivePartitionForKey(stream.HashKey)
+		if err != nil {
+			d.kafkaAppends.WithLabelValues("kafka", "fail").Inc()
+			return fmt.Errorf("failed to find active partition for stream: %w", err)
+		}*/
+	partitionID := int32(0)
 
 	startTime := time.Now()
 
