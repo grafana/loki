@@ -34,7 +34,6 @@ spec:
   selector:
     {{- include "loki.ingesterSelectorLabels" . | nindent 4 }}
     statefulset.kubernetes.io/pod-name: {{ include "loki.resourceName" $args }}-[0-9]
-
 ---
 {{ end }}
 {{ end }}
