@@ -285,9 +285,11 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 				Operation: syntax.OpTypeSum,
 			}, bytesPerShard, nil
 		case syntax.OpTypeApproxTopK:
+			/* TODO
 			if !m.approxTopkSharding {
 				return noOp(expr, m.shards.Resolver())
 			}
+			*/
 
 			// TODO(owen-d): integrate bounded sharding with quantile over time
 			// I'm not doing this now because it uses a separate code path and may not handle

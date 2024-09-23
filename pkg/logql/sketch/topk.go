@@ -108,13 +108,13 @@ func newCMSTopK(k int, w, d uint32) (*Topk, error) {
 
 func TopkFromProto(t *logproto.TopK) (*Topk, error) {
 	cms := &CountMinSketch{
-		depth: t.Cms.Depth,
-		width: t.Cms.Width,
+		Depth: t.Cms.Depth,
+		Width: t.Cms.Width,
 	}
-	for row := uint32(0); row < cms.depth; row++ {
-		s := row * cms.width
-		e := s + cms.width
-		cms.counters = append(cms.counters, t.Cms.Counters[s:e])
+	for row := uint32(0); row < cms.Depth; row++ {
+		s := row * cms.Width
+		e := s + cms.Width
+		cms.Counters = append(cms.Counters, t.Cms.Counters[s:e])
 	}
 
 	hll := hyperloglog.New()
@@ -143,12 +143,12 @@ func TopkFromProto(t *logproto.TopK) (*Topk, error) {
 
 func (t *Topk) ToProto() (*logproto.TopK, error) {
 	cms := &logproto.CountMinSketch{
-		Depth: t.sketch.depth,
-		Width: t.sketch.width,
+		Depth: t.sketch.Depth,
+		Width: t.sketch.Width,
 	}
 	cms.Counters = make([]uint32, 0, cms.Depth*cms.Width)
 	for row := uint32(0); row < cms.Depth; row++ {
-		cms.Counters = append(cms.Counters, t.sketch.counters[row]...)
+		cms.Counters = append(cms.Counters, t.sketch.Counters[row]...)
 	}
 
 	hllBytes, err := t.hll.MarshalBinary()
@@ -269,7 +269,7 @@ func (t *Topk) Observe(event string) {
 	if estimate > t.heap.Peek().(*node).count {
 		if len(*t.heap) == t.max {
 			e := t.heap.Peek().(*node).event
-			//r1, r2 := hashn(e)
+			// r1, r2 := hashn(e)
 			t.heapMinReplace(event, estimate, e)
 			return
 		}

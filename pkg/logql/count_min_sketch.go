@@ -3,6 +3,7 @@ package logql
 import (
 	"fmt"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/sketch"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/prometheus/prometheus/model/labels"
@@ -49,6 +50,36 @@ func (CountMinSketchVector) String() string {
 }
 
 func (CountMinSketchVector) Type() promql_parser.ValueType { return CountMinSketchVectorType }
+
+func (v CountMinSketchVector) ToProto() *logproto.CountMinSketchVector {
+	p := &logproto.CountMinSketchVector{
+		TimestampMs: v.T,
+		Metrics:     make([]*logproto.Labels, len(v.Metrics)),
+		Sketch: &logproto.CountMinSketch{
+			Depth: v.F.Depth,
+			Width: v.F.Width,
+		},
+	}
+
+	// Serialize CMs
+	p.Sketch.Counters = make([]uint32, 0, v.F.Depth*v.F.Width)
+	for row := uint32(0); row < v.F.Depth; row++ {
+		p.Sketch.Counters = append(p.Sketch.Counters, v.F.Counters[row]...)
+	}
+
+	// Serialize metric labels
+	for i, metric := range v.Metrics {
+		p.Metrics[i] = &logproto.Labels{
+			Metric: make([]*logproto.LabelPair, len(metric)),
+		}
+		for j, pair := range metric {
+			p.Metrics[i].Metric[j].Name = pair.Name
+			p.Metrics[i].Metric[j].Value = pair.Value
+		}
+	}
+
+	return p
+}
 
 // JoinCountMinSketchVector joins the results from stepEvaluator into a CountMinSketchVector.
 func JoinCountMinSketchVector(_ bool, r StepResult, stepEvaluator StepEvaluator, params Params) (promql_parser.Value, error) {

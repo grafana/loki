@@ -90,6 +90,7 @@ import (
 %type <Selector>              selector
 %type <VectorAggregationExpr> vectorAggregationExpr
 %type <VectorOp>              vectorOp
+%type <VectorOp>              approxVectorOp
 %type <VectorExpr>            vectorExpr
 %type <Vector>                vector
 %type <FilterOp>              filterOp
@@ -135,7 +136,8 @@ import (
 %token <str>      IDENTIFIER STRING NUMBER PARSER_FLAG
 %token <duration> DURATION RANGE
 %token <val>      MATCHERS LABELS EQ RE NRE NPA OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT PIPE_PATTERN
-                  OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE RATE_COUNTER SUM SORT SORT_DESC AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
+                  OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE RATE_COUNTER SUM SORT SORT_DESC AVG
+		  MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK APPROX_TOPK
                   BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
                   MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
                   FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME VECTOR LABEL_REPLACE UNPACK OFFSET PATTERN IP ON IGNORING GROUP_LEFT GROUP_RIGHT
@@ -231,6 +233,8 @@ vectorAggregationExpr:
     | vectorOp OPEN_PARENTHESIS NUMBER COMMA metricExpr CLOSE_PARENTHESIS                 { $$ = mustNewVectorAggregationExpr($5, $1, nil, &$3) }
     | vectorOp OPEN_PARENTHESIS NUMBER COMMA metricExpr CLOSE_PARENTHESIS grouping        { $$ = mustNewVectorAggregationExpr($5, $1, $7, &$3) }
     | vectorOp grouping OPEN_PARENTHESIS NUMBER COMMA metricExpr CLOSE_PARENTHESIS        { $$ = mustNewVectorAggregationExpr($6, $1, $2, &$4) }
+    // approx_topk does not support grouping
+    | approxVectorOp OPEN_PARENTHESIS NUMBER COMMA metricExpr CLOSE_PARENTHESIS           { $$ = mustNewVectorAggregationExpr($5, $1, nil, &$3) }
     ;
 
 labelReplaceExpr:
@@ -546,6 +550,10 @@ vectorOp:
       | SORT    { $$ = OpTypeSort }
       | SORT_DESC    { $$ = OpTypeSortDesc }
       ;
+
+approxVectorOp:
+       APPROX_TOPK    { $$ = OpTypeApproxTopK }
+     ;
 
 rangeOp:
       COUNT_OVER_TIME    { $$ = OpRangeTypeCount }

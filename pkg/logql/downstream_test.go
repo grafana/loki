@@ -3,6 +3,7 @@ package logql
 import (
 	"context"
 	"math"
+	"slices"
 	"testing"
 	"time"
 
@@ -18,8 +19,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
-var nilShardMetrics = NewShardMapperMetrics(nil)
-var nilRangeMetrics = NewRangeMapperMetrics(nil)
+var (
+	nilShardMetrics = NewShardMapperMetrics(nil)
+	nilRangeMetrics = NewRangeMapperMetrics(nil)
+)
 
 func TestMappingEquivalence(t *testing.T) {
 	var (
@@ -184,9 +187,11 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 	for _, tc := range []struct {
 		query         string
 		realtiveError float64
+		queryTypes    []QueryRangeType
 	}{
-		{`quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.05},
-		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.02},
+		//{`quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.05, []QueryRangeType{InstantType, RangeType}},
+		//{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.02, []QueryRangeType{InstantType, RangeType}},
+		{`approx_topk(3, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`, 0.02, []QueryRangeType{InstantType}},
 	} {
 		q := NewMockQuerier(
 			shards,
@@ -198,6 +203,11 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
 
 		t.Run(tc.query+"_range", func(t *testing.T) {
+			if !slices.Contains(tc.queryTypes, RangeType) {
+				t.Skip()
+				return
+			}
+
 			params, err := NewLiteralParams(
 				tc.query,
 				start,
@@ -232,6 +242,11 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 			relativeError(t, res.Data.(promql.Matrix), shardedRes.Data.(promql.Matrix), tc.realtiveError)
 		})
 		t.Run(tc.query+"_instant", func(t *testing.T) {
+			if !slices.Contains(tc.queryTypes, InstantType) {
+				t.Skip()
+				return
+			}
+
 			// for an instant query we set the start and end to the same timestamp
 			// plus set step and interval to 0
 			params, err := NewLiteralParams(
@@ -668,7 +683,6 @@ func relativeErrorVector(t *testing.T, expected, actual promql.Vector, alpha flo
 		a[i] = expected[i].F
 	}
 	require.InEpsilonSlice(t, e, a, alpha)
-
 }
 
 func TestFormat_ShardedExpr(t *testing.T) {

@@ -1309,6 +1309,9 @@ const (
 	OpRangeTypeLastWithTimestamp  = "__last_over_time_ts__"
 
 	OpTypeCountMinSketch = "__count_min_sketch__"
+
+	// probabilistic aggregations
+	OpTypeApproxTopK = "approx_topk"
 )
 
 func IsComparisonOperator(op string) bool {
@@ -1537,7 +1540,7 @@ func mustNewVectorAggregationExpr(left SampleExpr, operation string, gr *Groupin
 	var p int
 	var err error
 	switch operation {
-	case OpTypeBottomK, OpTypeTopK:
+	case OpTypeBottomK, OpTypeTopK, OpTypeApproxTopK:
 		if params == nil {
 			return &VectorAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("parameter required for operation %s", operation), 0, 0)}
 		}
@@ -1613,7 +1616,7 @@ func (e *VectorAggregationExpr) String() string {
 	var params []string
 	switch e.Operation {
 	// bottomK and topk can have first parameter as 0
-	case OpTypeBottomK, OpTypeTopK:
+	case OpTypeBottomK, OpTypeTopK, OpTypeApproxTopK:
 		params = []string{fmt.Sprintf("%d", e.Params), e.Left.String()}
 	default:
 		if e.Params != 0 {

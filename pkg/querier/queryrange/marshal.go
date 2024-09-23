@@ -136,7 +136,7 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 			Warnings:   result.Warnings,
 			Statistics: result.Statistics,
 		}, nil
-	case logql.CountMinSketchMatrix:
+	case logql.CountMinSketchVector:
 		r := data.ToProto()
 		return &CountMinSketchResponse{
 			Response:   r,
