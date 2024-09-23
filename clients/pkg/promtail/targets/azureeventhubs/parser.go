@@ -8,11 +8,12 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
-	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
-	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
+
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 type azureMonitorResourceLogs struct {
