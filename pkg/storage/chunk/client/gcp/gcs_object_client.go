@@ -271,7 +271,7 @@ func (s *GCSObjectClient) IsStorageTimeoutErr(err error) bool {
 	// context errors are all client-side
 	if isContextErr(err) {
 		// Go 1.23 changed the type of the error returned by the http client when a timeout occurs
-		// while waiting for headers.  This is a server side timeout that can be retried.
+		// while waiting for headers.  This is a server side timeout.
 		return strings.Contains(err.Error(), "Client.Timeout exceeded while awaiting header")
 	}
 
