@@ -235,7 +235,7 @@ func New(
 			return nil, fmt.Errorf("failed to start kafka client: %w", err)
 		}
 		kafkaWriter = kafka.NewProducer(kafkaClient, cfg.KafkaConfig.ProducerMaxBufferedBytes,
-			prometheus.WrapRegistererWithPrefix("_kafka_ingester_", registerer))
+			prometheus.WrapRegistererWithPrefix("_kafka_", registerer))
 	}
 
 	d := &Distributor{
