@@ -321,6 +321,8 @@ func (t *Loki) initTenantConfigs() (_ services.Service, err error) {
 }
 
 func (t *Loki) initDistributor() (services.Service, error) {
+	t.Cfg.Distributor.KafkaConfig = t.Cfg.KafkaConfig
+
 	var err error
 	logger := log.With(util_log.Logger, "component", "distributor")
 	t.distributor, err = distributor.New(
@@ -328,6 +330,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		t.Cfg.IngesterClient,
 		t.tenantConfigs,
 		t.ring,
+		t.partitionRing,
 		t.Overrides,
 		prometheus.DefaultRegisterer,
 		t.Cfg.MetricsNamespace,

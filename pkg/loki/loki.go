@@ -300,6 +300,9 @@ func (c *Config) Validate() error {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid kafka_config config"))
 		}
 	}
+	if err := c.Distributor.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid distributor config"))
+	}
 
 	errs = append(errs, validateSchemaValues(c)...)
 	errs = append(errs, ValidateConfigCompatibility(*c)...)
