@@ -9,16 +9,18 @@ ingester fullname
 ingester common labels
 */}}
 {{- define "loki.ingesterLabels" -}}
-{{ include "loki.labels" . }}
+{{ include "loki.labels" .ctx. }}
 app.kubernetes.io/component: ingester
+zone: {{ .rolloutZoneName }}
 {{- end }}
 
 {{/*
 ingester selector labels
 */}}
 {{- define "loki.ingesterSelectorLabels" -}}
-{{ include "loki.selectorLabels" . }}
+{{ include "loki.selectorLabels" .ctx. }}
 app.kubernetes.io/component: ingester
+zone: {{ .rolloutZoneName }}
 {{- end }}
 
 {{/*
