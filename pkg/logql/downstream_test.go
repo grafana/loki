@@ -191,7 +191,7 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 	}{
 		//{`quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.05, []QueryRangeType{InstantType, RangeType}},
 		//{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.02, []QueryRangeType{InstantType, RangeType}},
-		{`approx_topk(3, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`, 0.02, []QueryRangeType{InstantType}},
+		{`approx_topk(3, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [100s])))`, 0.02, []QueryRangeType{InstantType}},
 	} {
 		q := NewMockQuerier(
 			shards,
