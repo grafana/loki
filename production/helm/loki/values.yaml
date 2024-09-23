@@ -42,7 +42,7 @@ loki:
     httpGet:
       path: /ready
       port: http-metrics
-    initialDelaySeconds: 30
+    initialDelaySeconds: 60
     timeoutSeconds: 1
   image:
     # -- The Docker registry
@@ -1760,8 +1760,7 @@ ingester:
   # -- Tolerations for ingester pods
   tolerations: []
   # -- readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`
-  readinessProbe: 
-    initialDelaySeconds: 60
+  readinessProbe: {}
   # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
 
