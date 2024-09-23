@@ -253,3 +253,23 @@ func readFile(t *testing.T, filename string) []byte {
 	assert.NoError(t, err)
 	return data
 }
+
+func Test_parseMessage_message_without_time_with_time_stamp(t *testing.T) {
+	messageParser := &messageParser{
+		disallowCustomMessages: true,
+	}
+
+	message := &sarama.ConsumerMessage{
+		Value:     readFile(t, "testdata/message_without_time_with_time_stamp.json"),
+		Timestamp: time.Date(2023, time.March, 17, 8, 44, 02, 0, time.UTC),
+	}
+
+	entries, err := messageParser.Parse(message, nil, nil, true)
+	assert.NoError(t, err)
+	assert.Len(t, entries, 1)
+
+	expectedLine1 := "{\n      \"timeStamp\": \"2024-09-18T00:45:09+00:00\",\n      \"resourceId\": \"/RESOURCE_ID\",\n      \"operationName\": \"ApplicationGatewayAccess\",\n      \"category\": \"ApplicationGatewayAccessLog\"\n    }"
+	assert.Equal(t, expectedLine1, entries[0].Line)
+
+	assert.Equal(t, time.Date(2024, time.September, 18, 00, 45, 9, 0, time.UTC), entries[0].Timestamp)
+}
