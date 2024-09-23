@@ -69,14 +69,16 @@ func (l azureMonitorResourceLog) getTime() (time.Time, error) {
 
 	if len(l.TimeStamp) != 0 {
 		t, err = time.Parse(time.RFC3339, l.TimeStamp)
+		if err != nil {
+			return t, err
+		}
 	}
 
 	if len(l.Time) != 0 {
 		t, err = time.Parse(time.RFC3339, l.Time)
-	}
-
-	if err != nil {
-		return t, err
+		if err != nil {
+			return t, err
+		}
 	}
 
 	return t.UTC(), nil
