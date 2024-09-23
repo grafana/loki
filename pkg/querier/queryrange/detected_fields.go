@@ -10,14 +10,16 @@ import (
 	"github.com/axiomhq/hyperloglog"
 	"github.com/dustin/go-humanize"
 	"github.com/grafana/dskit/httpgrpc"
-	"github.com/grafana/loki/pkg/push"
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/v3/pkg/logproto"
 	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 func NewDetectedFieldsHandler(

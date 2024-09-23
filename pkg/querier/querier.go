@@ -1071,7 +1071,7 @@ func containsAllIDTypes(values []string) bool {
 	return true
 }
 
-//TODO(twhitney): Delete this method and the GRPC service signature. This is now handled in the query frontend.
+// TODO(twhitney): Delete this method and the GRPC service signature. This is now handled in the query frontend.
 func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
 	expr, err := syntax.ParseLogSelector(req.Query, true)
 	if err != nil {

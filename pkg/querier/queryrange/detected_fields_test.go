@@ -8,7 +8,11 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/user"
-	"github.com/grafana/loki/pkg/push"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
@@ -16,10 +20,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 func Test_parseDetectedFeilds(t *testing.T) {
