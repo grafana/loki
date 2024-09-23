@@ -18,7 +18,7 @@ metadata:
   {{- end }}
 spec:
 {{- if not .Values.ingester.autoscaling.enabled }}
-  replicas: {{  include "loki.ingester.replicaCount" . }}
+  replicas: {{  $rolloutZone.replicas }}
 {{- end }}
   podManagementPolicy: Parallel
   updateStrategy:
