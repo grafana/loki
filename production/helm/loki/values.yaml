@@ -1760,7 +1760,8 @@ ingester:
   # -- Tolerations for ingester pods
   tolerations: []
   # -- readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`
-  readinessProbe: {}
+  readinessProbe: 
+    initialDelaySeconds: 60
   # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
 
