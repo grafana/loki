@@ -8,6 +8,8 @@ aliases:
 ---
 # Loki components
 
+{{< youtube id="_hv4i84Z68s" >}}
+
 Loki is a modular system that contains many components that can either be run together (in "single binary" mode with target `all`),
 in logical groups (in "simple scalable deployment" mode with targets `read`, `write`, `backend`), or individually (in "microservice" mode).
 For more information see [Deployment modes]({{< relref "./deployment-modes" >}}).
