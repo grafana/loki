@@ -3,19 +3,20 @@ package logql
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/sketch"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/sketch"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 const (
 	CountMinSketchVectorType = "CountMinSketchVector"
 
 	epsilon = 0.0001
-	delta = 0.05
+	delta   = 0.05
 )
 
 type CountMinSketchVector struct {

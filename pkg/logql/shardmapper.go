@@ -302,7 +302,7 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 				return noOp(expr, m.shards.Resolver())
 			}
 
-			// ptopk(k, inner) ->
+			// approx_topk(k, inner) ->
 			// topk(
 			//   k,
 			//   eval_cms(

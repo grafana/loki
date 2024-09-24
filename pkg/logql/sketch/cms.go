@@ -21,7 +21,7 @@ func NewCountMinSketch(w, d uint32) (*CountMinSketch, error) {
 
 func NewCountMinSketchFromErroAndProbability(epsilon float64, delta float64) (*CountMinSketch, error) {
 	width := math.Ceil(math.E / epsilon)
-	depth := math.Ceil(math.Log( 1.0 / delta))
+	depth := math.Ceil(math.Log(1.0 / delta))
 	return NewCountMinSketch(uint32(width), uint32(depth))
 }
 
