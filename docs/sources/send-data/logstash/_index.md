@@ -24,7 +24,7 @@ Our experience over the years has found numerous significant challenges using Lo
   
 Please strongly consider using any alternative mechanism to sending logs to Loki. We recommend using [Grafana Alloy](/docs/loki/latest/send-data/alloy/).  This is the tool we build and where we can offer the best experience and most support.
 
-{{% /admonition %}}
+{{< /admonition >}}
 
 ## Installation
 
