@@ -39,7 +39,6 @@ func (b *Batch) Iter(yield func(int64, []byte) bool) {
 			return
 		}
 	}
-	return
 }
 
 func (b *Batch) Append(ts int64, line []byte) {
