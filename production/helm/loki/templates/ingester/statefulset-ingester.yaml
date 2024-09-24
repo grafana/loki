@@ -26,14 +26,14 @@ spec:
       partition: 0
   serviceName: {{ include "loki.resourceName" $args }}-headless
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
-  {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.ingester.persistentVolume.enableStatefulSetAutoDeletePVC)  }}
+  {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.ingester.persistence.enableStatefulSetAutoDeletePVC)  }}
   {{/*
     Data on the read nodes is easy to replace, so we want to always delete PVCs to make
     operation easier, and will rely on re-fetching data when needed.
   */}}
   persistentVolumeClaimRetentionPolicy:
-    whenDeleted: {{ .Values.ingester.persistentVolume.whenDeleted }}
-    whenScaled: {{ .Values.ingester.persistentVolume.whenScaled }}
+    whenDeleted: {{ .Values.ingester.persistence.whenDeleted }}
+    whenScaled: {{ .Values.ingester.persistence.whenScaled }}
   {{- end }}
   selector:
     matchLabels:
@@ -174,17 +174,17 @@ spec:
         {{- with .Values.ingester.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-  {{- if not .Values.ingester.persistentVolume.enabled }}
+  {{- if not .Values.ingester.persistence.enabled }}
         - name: data
           emptyDir: { }
-  {{- else if .Values.ingester.persistentVolume.inMemory }}
+  {{- else if .Values.ingester.persistence.inMemory }}
         - name: data
-        {{- if .Values.ingester.persistentVolume.inMemory }}
+        {{- if .Values.ingester.persistence.inMemory }}
           emptyDir:
             medium: Memory
         {{- end }}
-        {{- if .Values.ingester.persistentVolume.size }}
-            sizeLimit: {{ .Values.ingester.persistentVolume.size }}
+        {{- if .Values.ingester.persistence.size }}
+            sizeLimit: {{ .Values.ingester.persistence.size }}
         {{- end }}
   {{- else }}
   volumeClaimTemplates:
@@ -192,12 +192,12 @@ spec:
       kind: PersistentVolumeClaim
       metadata:
         name: storage
-        {{- if .Values.ingester.persistentVolume.annotations }}
+        {{- if .Values.ingester.persistence.annotations }}
         annotations:
-          {{- toYaml .Values.ingester.persistentVolume.annotations | nindent 10 }}
+          {{- toYaml .Values.ingester.persistence.annotations | nindent 10 }}
         {{- end }}
       spec:
-        {{- $storageClass := default .Values.ingester.persistentVolume.storageClass $rolloutZone.storageClass }}
+        {{- $storageClass := default .Values.ingester.persistence.storageClass $rolloutZone.storageClass }}
         {{- if $storageClass }}
         {{- if (eq "-" $storageClass) }}
         storageClassName: ""
@@ -206,10 +206,10 @@ spec:
         {{- end }}
         {{- end }}
         accessModes:
-          {{- toYaml .Values.ingester.persistentVolume.accessModes | nindent 10 }}
+          {{- toYaml .Values.ingester.persistence.accessModes | nindent 10 }}
         resources:
           requests:
-            storage: "{{ .Values.ingester.persistentVolume.size }}"
+            storage: "{{ .Values.ingester.persistence.size }}"
   {{- end }}
 ---
 {{ end }}
