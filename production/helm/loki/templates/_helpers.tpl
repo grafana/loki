@@ -58,7 +58,24 @@ Examples:
 */}}
 {{- define "loki.componentSectionFromName" -}}
 {{- $componentsMap := dict
+  "admin-api" "adminApi"
+  "bloom-compactor" "bloomCompactor"
+  "bloom-gateway" "bloomGateway"
+  "chunks-cache" "chunksCache"
+  "compactor" "compactor"
+  "distributor" "distributor"
+  "gateway" "gateway"
+  "index-gateway" "indexGateway"
   "ingester" "ingester"
+  "memcached" "memcached"
+  "pattern-ingester" "patternIngester"
+  "querier" "querier"
+  "query-frontend" "queryFrontend"
+  "query-scheduler" "queryScheduler"
+  "results-cache" "resultsCache"
+  "ruler" "ruler"
+  "single-binary" "singleBinary"
+  
 -}}
 {{- $componentSection := index $componentsMap .component -}}
 {{- if not $componentSection -}}{{- printf "No component section mapping for %s not found in values; submit a bug report if you are a user, edit loki.componentSectionFromName if you are a contributor" .component | fail -}}{{- end -}}
