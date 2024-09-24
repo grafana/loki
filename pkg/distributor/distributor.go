@@ -651,12 +651,18 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				if sp := opentracing.SpanFromContext(ctx); sp != nil {
 					localCtx = opentracing.ContextWithSpan(localCtx, sp)
 				}
-				d.ingesterTasks <- pushIngesterTask{
+				select {
+				case <-ctx.Done():
+					cancel()
+					return
+				case d.ingesterTasks <- pushIngesterTask{
 					ingester:      ingester,
 					streamTracker: samples,
 					pushTracker:   &tracker,
 					ctx:           localCtx,
 					cancel:        cancel,
+				}:
+					return
 				}
 			}(ingesterDescs[ingester], streams)
 		}
