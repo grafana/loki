@@ -6090,6 +6090,9 @@ null
     "signatureVersion": null
   },
   "swift": {
+    "application_credential_id": null,
+    "application_credential_name": null,
+    "application_credential_secret": null,
     "auth_url": null,
     "auth_version": null,
     "connect_timeout": null,

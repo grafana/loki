@@ -19,6 +19,9 @@ Entries should include a reference to the pull request that introduced the chang
 - [FIX] Do not create bloom planner, bloom builder, bloom gateway Deployment/Statefulset if their replica count is 0.
 - [FIX] Configure (ephemeral) storage for bloom builder working directory
 - [ENHANCEMENT] Automatically configure bloom planner address for bloom builders and bloom gateway addresses for bloom gateway clients.
+## 6.12.1
+
+- [ENHANCEMENT] Add support for OpenStack application credentials when using Swift for storage
 
 ## 6.12.0
 

@@ -354,6 +354,9 @@ loki:
       requestTimeout: null
       endpointSuffix: null
     swift:
+      application_credential_id: null
+      application_credential_name: null
+      application_credential_secret: null
       auth_version: null
       auth_url: null
       internal: null
