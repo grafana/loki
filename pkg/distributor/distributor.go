@@ -355,18 +355,19 @@ func New(
 }
 
 func (d *Distributor) starting(ctx context.Context) error {
-	d.ingesterTaskWg.Add(d.cfg.PushWorkerCount)
-	for i := 0; i < d.cfg.PushWorkerCount; i++ {
-		go d.pushIngesterWorker()
-	}
 	return services.StartManagerAndAwaitHealthy(ctx, d.subservices)
 }
 
 func (d *Distributor) running(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
 	defer func() {
-		close(d.ingesterTasks)
+		cancel()
 		d.ingesterTaskWg.Wait()
 	}()
+	d.ingesterTaskWg.Add(d.cfg.PushWorkerCount)
+	for i := 0; i < d.cfg.PushWorkerCount; i++ {
+		go d.pushIngesterWorker(ctx)
+	}
 	select {
 	case <-ctx.Done():
 		return nil
@@ -856,10 +857,15 @@ type pushIngesterTask struct {
 	cancel        context.CancelFunc
 }
 
-func (d *Distributor) pushIngesterWorker() {
+func (d *Distributor) pushIngesterWorker(ctx context.Context) {
 	defer d.ingesterTaskWg.Done()
-	for task := range d.ingesterTasks {
-		d.sendStreams(task)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case task := <-d.ingesterTasks:
+			d.sendStreams(task)
+		}
 	}
 }
 
