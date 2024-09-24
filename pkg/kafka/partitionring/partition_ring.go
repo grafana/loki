@@ -2,11 +2,17 @@ package partitionring
 
 import (
 	"flag"
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
 )
+
+var ingesterIDRegexp = regexp.MustCompile("-([0-9]+)$")
 
 type Config struct {
 	KVStore kv.Config `yaml:"kvstore" doc:"description=The key-value store used to share the hash ring across multiple instances. This option needs be set on ingesters, distributors, queriers, and rulers when running in microservices mode."`
@@ -44,4 +50,23 @@ func (cfg *Config) ToLifecyclerConfig(partitionID int32, instanceID string) ring
 		DeleteInactivePartitionAfterDuration: cfg.DeleteInactivePartitionAfter,
 		PollingInterval:                      cfg.lifecyclerPollingInterval,
 	}
+}
+
+// ExtractIngesterPartitionID returns the partition ID owner the the given ingester.
+func ExtractIngesterPartitionID(ingesterID string) (int32, error) {
+	if strings.Contains(ingesterID, "local") {
+		return 0, nil
+	}
+
+	match := ingesterIDRegexp.FindStringSubmatch(ingesterID)
+	if len(match) == 0 {
+		return 0, fmt.Errorf("ingester ID %s doesn't match regular expression %q", ingesterID, ingesterIDRegexp.String())
+	}
+	// Parse the ingester sequence number.
+	ingesterSeq, err := strconv.Atoi(match[1])
+	if err != nil {
+		return 0, fmt.Errorf("no ingester sequence number in ingester ID %s", ingesterID)
+	}
+
+	return int32(ingesterSeq), nil
 }
