@@ -283,16 +283,16 @@ func (t *indexSet) cleanupDB(fileName string) error {
 }
 
 func (t *indexSet) Sync(ctx context.Context) (err error) {
-	return t.syncWithRetry(ctx, true, false)
-}
-
-// syncWithRetry runs a sync with upto maxSyncRetries on failure
-func (t *indexSet) syncWithRetry(ctx context.Context, lock, bypassListCache bool) error {
 	if !t.indexMtx.isReady() {
 		level.Info(t.logger).Log("msg", "skip sync since the index set is not ready")
 		return nil
 	}
 
+	return t.syncWithRetry(ctx, true, false)
+}
+
+// syncWithRetry runs a sync with upto maxSyncRetries on failure
+func (t *indexSet) syncWithRetry(ctx context.Context, lock, bypassListCache bool) error {
 	var err error
 	for i := 0; i <= maxSyncRetries; i++ {
 		err = t.sync(ctx, lock, bypassListCache)
