@@ -215,3 +215,40 @@ func TestQueryHashing(t *testing.T) {
 	// check that it evaluate same queries as same hashes, even if evaluated at different timestamps.
 	require.Equal(t, h1, h3)
 }
+
+func TestHasMatchEqualLabelFilterBeforeParser(t *testing.T) {
+	cases := []struct {
+		query  string
+		result bool
+	}{
+		{
+			query:  `{env="prod"} |= "id"`,
+			result: false,
+		},
+		{
+			query:  `{env="prod"} |= "id" | level="debug"`,
+			result: true,
+		},
+		{
+			query:  `{env="prod"} |= "id" | logfmt | level="debug"`,
+			result: false,
+		},
+		{
+			query:  `{env="prod"} | level="debug" or level="info"`,
+			result: true,
+		},
+		{
+			query:  `{env="prod"} | level="debug" and level!="info"`,
+			result: false,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(fmt.Sprintf("%s => %v", c.query, c.result), func(t *testing.T) {
+			p := LiteralParams{
+				queryExpr: syntax.MustParseExpr(c.query),
+			}
+			assert.Equal(t, c.result, hasMatchEqualLabelFilterBeforeParser(p))
+		})
+	}
+}
