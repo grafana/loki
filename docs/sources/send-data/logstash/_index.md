@@ -13,7 +13,7 @@ Grafana Loki has a [Logstash](https://www.elastic.co/logstash) output plugin cal
 instance or [Grafana Cloud](/products/cloud/).
 
 {{% admonition type="warning" %}}
-The Logstash plugin is not recommended for new deployments. Even as a mechanism for quickly testing Loki with your existing Beats/Logstash infrastructure we highly discourage the use of this plugin.
+Grafana Labs does not recommend using the Logstash plugin for new deployments. Even as a mechanism for quickly testing Loki with your existing Beats/Logstash infrastructure we highly discourage the use of this plugin.
 
 Our experience over the years has found numerous significant challenges using Logstash and this plugin:
 
