@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 
 	"github.com/grafana/loki/pkg/push"
 )
@@ -32,7 +33,10 @@ func NewDetectedFieldsHandler(
 			func(ctx context.Context, req base.Request) (base.Response, error) {
 				r, ok := req.(*DetectedFieldsRequest)
 				if !ok {
-					return next.Do(ctx, req)
+					return nil, httpgrpc.Errorf(
+						http.StatusBadRequest,
+						"invalid request type, expected *DetectedFieldsRequest",
+					)
 				}
 
 				resp, err := makeDownstreamRequest(ctx, limits, limitedHandler, logHandler, r)
@@ -107,6 +111,15 @@ func makeDownstreamRequest(
 		AST: expr,
 	}
 
+	// Note(twhitney): The logic for parsing detected fields relies on the Entry.Parsed field being populated.
+	// The behavior of populating Entry.Parsed is different in ingesters and stores.
+	// We need to set this header to make sure Entry.Parsed is populated when getting logs from the store.
+	// Entries from the head block in the ingester always have the Parsed field populated.
+	ctx = httpreq.InjectHeader(
+		ctx,
+		httpreq.LokiEncodingFlagsHeader,
+		(string)(httpreq.FlagCategorizeLabels),
+	)
 	if expr.HasFilter() {
 		return logHandler.Do(ctx, lokiReq)
 	}
