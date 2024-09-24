@@ -13,6 +13,9 @@ import (
 
 const (
 	CountMinSketchVectorType = "CountMinSketchVector"
+
+	epsilon = 0.0001
+	delta = 0.05
 )
 
 type CountMinSketchVector struct {
@@ -123,7 +126,7 @@ func (e *countMinSketchVectorAggEvaluator) Next() (bool, int64, StepResult) {
 	}
 	vec := r.SampleVector()
 
-	f, _ := sketch.NewCountMinSketch(0, 0) // TODO: handle error and size sketch
+	f, _ := sketch.NewCountMinSketchFromErroAndProbability(epsilon, delta)
 
 	result := CountMinSketchVector{
 		T:       ts,
