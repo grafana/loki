@@ -941,12 +941,11 @@ func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream,
 	if len(stream.Stream.Entries) == 0 {
 		return nil
 	}
-	/*	partitionID, err := d.partitionRing.PartitionRing().ActivePartitionForKey(stream.HashKey)
-		if err != nil {
-			d.kafkaAppends.WithLabelValues("kafka", "fail").Inc()
-			return fmt.Errorf("failed to find active partition for stream: %w", err)
-		}*/
-	partitionID := int32(0)
+	partitionID, err := d.partitionRing.PartitionRing().ActivePartitionForKey(stream.HashKey)
+	if err != nil {
+		d.kafkaAppends.WithLabelValues("kafka", "fail").Inc()
+		return fmt.Errorf("failed to find active partition for stream: %w", err)
+	}
 
 	startTime := time.Now()
 
