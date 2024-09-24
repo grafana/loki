@@ -75,7 +75,6 @@ Examples:
   "results-cache" "resultsCache"
   "ruler" "ruler"
   "single-binary" "singleBinary"
-  
 -}}
 {{- $componentSection := index $componentsMap .component -}}
 {{- if not $componentSection -}}{{- printf "No component section mapping for %s not found in values; submit a bug report if you are a user, edit loki.componentSectionFromName if you are a contributor" .component | fail -}}{{- end -}}
