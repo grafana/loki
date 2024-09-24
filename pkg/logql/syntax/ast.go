@@ -2285,6 +2285,8 @@ var shardableOps = map[string]bool{
 	OpTypeMax:   true,
 	OpTypeMin:   true,
 
+	OpTypeApproxTopK: true,
+
 	// range vector ops
 	OpRangeTypeAvg:       true,
 	OpRangeTypeCount:     true,

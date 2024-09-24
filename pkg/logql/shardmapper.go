@@ -335,6 +335,7 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 				Left:      sharded,
 				Grouping:  expr.Grouping,
 				Operation: syntax.OpTypeTopK,
+				Params:    expr.Params,
 			}, bytesPerShard, nil
 		default:
 			// this should not be reachable. If an operation is shardable it should

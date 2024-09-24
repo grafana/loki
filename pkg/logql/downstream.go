@@ -652,7 +652,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		}
 
 		if len(results) != 1 {
-			return nil, fmt.Errorf("unexpected results length for sharded quantile: got (%d), want (1)", len(results))
+			return nil, fmt.Errorf("unexpected results length for sharded count min sketch: got (%d), want (1)", len(results))
 		}
 
 		vector, ok := results[0].Data.(*CountMinSketchVector)

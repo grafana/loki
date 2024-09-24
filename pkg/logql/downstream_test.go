@@ -191,7 +191,7 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 	}{
 		//{`quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.05, []QueryRangeType{InstantType, RangeType}},
 		//{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.02, []QueryRangeType{InstantType, RangeType}},
-		{`approx_topk(3, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [100s])))`, 0.02, []QueryRangeType{InstantType}},
+		{`topk(3, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`, 0.002, []QueryRangeType{InstantType}},
 	} {
 		q := NewMockQuerier(
 			shards,
@@ -251,8 +251,8 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 			// plus set step and interval to 0
 			params, err := NewLiteralParams(
 				tc.query,
-				time.Unix(0, int64(rounds+1)),
-				time.Unix(0, int64(rounds+1)),
+				time.Unix(1, 0),
+				time.Unix(1, 0),
 				0,
 				0,
 				logproto.FORWARD,
@@ -261,11 +261,18 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 				nil,
 			)
 			require.NoError(t, err)
-			qry := regular.Query(params)
+			qry := regular.Query(params.Copy())
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
 			strategy := NewPowerOfTwoStrategy(ConstantShards(shards))
 			mapper := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime})
+
+			// TODO: use different test
+			// Use approximated topk
+			params.queryString = "approx_" + params.queryString
+			params.queryExpr, err = syntax.ParseExpr(params.queryString)
+			require.NoError(t, err)
+
 			_, _, mapped, err := mapper.Parse(params.GetExpression())
 			require.NoError(t, err)
 
@@ -276,6 +283,7 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 
 			res, err := qry.Exec(ctx)
 			require.NoError(t, err)
+			require.NotEmpty(t, res.Data.(promql.Vector))
 
 			shardedRes, err := shardedQry.Exec(ctx)
 			require.NoError(t, err)
@@ -680,7 +688,7 @@ func relativeErrorVector(t *testing.T, expected, actual promql.Vector, alpha flo
 		require.Equal(t, expected[i].Metric, actual[i].Metric)
 
 		e[i] = expected[i].F
-		a[i] = expected[i].F
+		a[i] = actual[i].F
 	}
 	require.InEpsilonSlice(t, e, a, alpha)
 }
