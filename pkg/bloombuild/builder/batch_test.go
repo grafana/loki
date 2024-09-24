@@ -16,7 +16,7 @@ import (
 func TestBatchedLoader(t *testing.T) {
 	t.Parallel()
 
-	errMapper := func(i int) (int, error) {
+	errMapper := func(_ int) (int, error) {
 		return 0, errors.New("bzzt")
 	}
 	successMapper := func(i int) (int, error) {

@@ -13,6 +13,7 @@ import (
 	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
@@ -311,7 +312,7 @@ func makeChunks(now time.Time, tpls ...c) []chunk.Chunk {
 		from := int(chk.from) / int(time.Hour)
 		// This is only here because it's helpful for debugging.
 		// This isn't even the write format for Loki but we dont' care for the sake of these tests.
-		memChk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncNone, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 256*1024, 0)
+		memChk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.EncNone, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 256*1024, 0)
 		// To make sure the fetcher doesn't swap keys and buffers each chunk is built with different, but deterministic data
 		for i := 0; i < from; i++ {
 			_, _ = memChk.Append(&logproto.Entry{

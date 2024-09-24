@@ -32,10 +32,18 @@ import (
 func (c *Client) GetObject(ctx context.Context, bucketName, objectName string, opts GetObjectOptions) (*Object, error) {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
-		return nil, err
+		return nil, ErrorResponse{
+			StatusCode: http.StatusBadRequest,
+			Code:       "InvalidBucketName",
+			Message:    err.Error(),
+		}
 	}
 	if err := s3utils.CheckValidObjectName(objectName); err != nil {
-		return nil, err
+		return nil, ErrorResponse{
+			StatusCode: http.StatusBadRequest,
+			Code:       "XMinioInvalidObjectName",
+			Message:    err.Error(),
+		}
 	}
 
 	gctx, cancel := context.WithCancel(ctx)
@@ -649,10 +657,18 @@ func newObject(ctx context.Context, cancel context.CancelFunc, reqCh chan<- getR
 func (c *Client) getObject(ctx context.Context, bucketName, objectName string, opts GetObjectOptions) (io.ReadCloser, ObjectInfo, http.Header, error) {
 	// Validate input arguments.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
-		return nil, ObjectInfo{}, nil, err
+		return nil, ObjectInfo{}, nil, ErrorResponse{
+			StatusCode: http.StatusBadRequest,
+			Code:       "InvalidBucketName",
+			Message:    err.Error(),
+		}
 	}
 	if err := s3utils.CheckValidObjectName(objectName); err != nil {
-		return nil, ObjectInfo{}, nil, err
+		return nil, ObjectInfo{}, nil, ErrorResponse{
+			StatusCode: http.StatusBadRequest,
+			Code:       "XMinioInvalidObjectName",
+			Message:    err.Error(),
+		}
 	}
 
 	// Execute GET on objectName.

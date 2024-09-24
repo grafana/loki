@@ -306,6 +306,9 @@
         "privatecatalog": {
             "component": "privatecatalog"
         },
+        "privilegedaccessmanager": {
+            "component": "privilegedaccessmanager"
+        },
         "rapidmigrationassessment": {
             "component": "rapidmigrationassessment"
         },
