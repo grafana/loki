@@ -18,7 +18,7 @@ Grafana Labs does not recommend using the Logstash plugin for new deployments. E
 Our experience over the years has found numerous significant challenges using Logstash and this plugin:
 
   * It is very difficult to configure labels correctly.  Conceptually Elasticsearch is a very different database from Loki and users almost always end up sending too many high cardinality labels to Loki, which makes getting started with Loki unnecessarily complicated and confusing vs. using other clients.
-  * Logstash and the upstream Beats components implement backoff and flow control which we've found hard to observe leading to ingestion delays into Loki which are hard or impossible to address.
+  * Logstash and the upstream Beats components implement backoff and flow control which we've found hard to observe, leading to ingestion delays into Loki which are extremely difficult to address.
   * We at Grafana Labs have no expertise at configuring Logstash or understanding its configuration language, so we can't help you with it.
   * It's very hard to troubleshoot and debug, our experience has shown that in nearly every case where it was assumed this would be the fast path to getting logs to Loki that was not the case and it ended up being a significant time sink.
   
