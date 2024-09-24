@@ -179,6 +179,10 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 					responseStats = &stats.Result{} // TODO: support stats in query patterns
 					totalEntries = len(r.Response.Series)
 					queryType = queryTypeQueryPatterns
+				case *DetectedLabelsResponse:
+					responseStats = &stats.Result{}
+					totalEntries = 1
+					queryType = queryTypeDetectedLabels
 				default:
 					level.Warn(logger).Log("msg", fmt.Sprintf("cannot compute stats, unexpected type: %T", resp))
 				}
@@ -191,7 +195,9 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 				// Re-calculate the summary: the queueTime result is already merged so should not be updated
 				// Log and record metrics for the current query
 				responseStats.ComputeSummary(time.Since(start), 0, totalEntries)
-				responseStats.Log(level.Debug(logger))
+				if logger.Span != nil {
+					logger.Span.LogKV(responseStats.KVList()...)
+				}
 			}
 			ctxValue := ctx.Value(ctxKey)
 			if data, ok := ctxValue.(*queryData); ok {

@@ -83,3 +83,10 @@ func SetLocalityID(addr resolver.Address, l LocalityID) resolver.Address {
 
 // ResourceTypeMapForTesting maps TypeUrl to corresponding ResourceType.
 var ResourceTypeMapForTesting map[string]any
+
+// UnknownCSMLabels are TelemetryLabels emitted from CDS if CSM Telemetry Label
+// data is not present in the CDS Resource.
+var UnknownCSMLabels = map[string]string{
+	"csm.service_name":           "unknown",
+	"csm.service_namespace_name": "unknown",
+}

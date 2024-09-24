@@ -15,7 +15,7 @@ func NewPrefixedObjectClient(downstreamClient ObjectClient, prefix string) Objec
 	return PrefixedObjectClient{downstreamClient: downstreamClient, prefix: prefix}
 }
 
-func (p PrefixedObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+func (p PrefixedObjectClient) PutObject(ctx context.Context, objectKey string, object io.Reader) error {
 	return p.downstreamClient.PutObject(ctx, p.prefix+objectKey, object)
 }
 
@@ -25,6 +25,10 @@ func (p PrefixedObjectClient) ObjectExists(ctx context.Context, objectKey string
 
 func (p PrefixedObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	return p.downstreamClient.GetObject(ctx, p.prefix+objectKey)
+}
+
+func (p PrefixedObjectClient) GetObjectRange(ctx context.Context, objectKey string, offset, length int64) (io.ReadCloser, error) {
+	return p.downstreamClient.GetObjectRange(ctx, p.prefix+objectKey, offset, length)
 }
 
 func (p PrefixedObjectClient) List(ctx context.Context, prefix, delimiter string) ([]StorageObject, []StorageCommonPrefix, error) {

@@ -31,6 +31,7 @@ func TestStreamsMap(t *testing.T) {
 			NewStreamRateCalculator(),
 			NilMetrics,
 			nil,
+			nil,
 		),
 		newStream(
 			chunkfmt,
@@ -45,6 +46,7 @@ func TestStreamsMap(t *testing.T) {
 			true,
 			NewStreamRateCalculator(),
 			NilMetrics,
+			nil,
 			nil,
 		),
 	}

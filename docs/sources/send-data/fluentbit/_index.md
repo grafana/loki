@@ -12,6 +12,8 @@ weight:  500
 This plugin has more configuration options compared to the built-in Fluent Bit Loki plugin.
 You can define which log files you want to collect using the [`Tail`](https://docs.fluentbit.io/manual/pipeline/inputs/tail) or [`Stdin`](https://docs.fluentbit.io/manual/pipeline/inputs/standard-input) data pipeline input. Additionally, Fluent Bit supports multiple `Filter` and `Parser` plugins (`Kubernetes`, `JSON`, etc.) to structure and alter log lines.
 
+{{< youtube id="s43IBSVyTpQ" >}}
+
 ## Usage
 
 ### Docker
@@ -128,7 +130,7 @@ For more information about this see our [AWS documentation]({{< relref "../promt
 
 First, you need to follow the [instructions](https://github.com/grafana/loki/blob/main/clients/cmd/fluent-bit/README.md) in order to build the plugin dynamic library.
 
-The assuming you have Fluent Bit installed in your `$PATH` you can run the plugin using:
+Assuming you have Fluent Bit installed in your `$PATH`, you can run the plugin using:
 
 ```bash
 fluent-bit -e /path/to/built/out_grafana_loki.so -c fluent-bit.conf

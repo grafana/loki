@@ -38,7 +38,7 @@ const (
 // Tailer manages complete lifecycle of a tail request
 type Tailer struct {
 	// openStreamIterator is for streams already open
-	openStreamIterator iter.HeapIterator
+	openStreamIterator iter.MergeEntryIterator
 	streamMtx          sync.Mutex // for synchronizing access to openStreamIterator
 
 	currEntry  logproto.Entry
@@ -87,8 +87,7 @@ func (t *Tailer) loop() {
 
 	droppedEntries := make([]loghttp.DroppedEntry, 0)
 
-	stopped := t.stopped.Load()
-	for !stopped {
+	for !t.stopped.Load() {
 		select {
 		case <-checkConnectionTicker.C:
 			// Try to reconnect dropped ingesters and connect to new ingesters
@@ -259,7 +258,7 @@ func (t *Tailer) next() bool {
 		return false
 	}
 
-	t.currEntry = t.openStreamIterator.Entry()
+	t.currEntry = t.openStreamIterator.At()
 	t.currLabels = t.openStreamIterator.Labels()
 	t.recordStream(t.openStreamIterator.StreamHash())
 

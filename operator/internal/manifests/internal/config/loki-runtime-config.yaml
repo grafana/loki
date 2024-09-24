@@ -54,6 +54,9 @@ overrides:
     {{- if $spec.QueryLimits.CardinalityLimit }}
     cardinality_limit: {{ $spec.QueryLimits.CardinalityLimit }}
     {{- end }}
+    {{- if $spec.QueryLimits.MaxVolumeSeries }}
+    max_volume_series: {{ $spec.QueryLimits.MaxVolumeSeries }}
+    {{- end }}
     {{- with $l.Blocked }}
     blocked_queries:
     {{- range $blockedQuery := . }}
@@ -70,6 +73,58 @@ overrides:
     {{- end }}
     {{- end}}
   {{- end -}}
+  {{- if $l := $spec.OTLP }}
+    otlp_config:
+      {{- with $l.ResourceAttributes }}
+      resource_attributes:
+        ignore_defaults: {{ .IgnoreDefaults }}
+        {{- with .Attributes}}
+        attributes_config:
+        {{- range . }}
+        - action: {{ .Action.Value }}
+          {{- with .Regex }}
+          regex: {{ . }}
+          {{- end }}
+          {{- with .Attributes }}
+          attributes:
+          {{- range . }}
+          - {{ . }}
+          {{- end }}
+          {{- end }}
+        {{- end }}
+        {{- end }}
+      {{- end}}
+      {{- with $l.ScopeAttributes }}
+      scope_attributes:
+      {{- range . }}
+      - action: {{ .Action.Value }}
+        {{- with .Regex }}
+        regex: {{ . }}
+        {{- end }}
+        {{- with .Attributes }}
+        attributes:
+        {{- range . }}
+        - {{ . }}
+        {{- end }}
+        {{- end }}
+      {{- end }}
+      {{- end }}
+      {{- with $l.LogAttributes }}
+      log_attributes:
+      {{- range . }}
+      - action: {{ .Action.Value }}
+        {{- with .Regex }}
+        regex: {{ . }}
+        {{- end }}
+        {{- with .Attributes }}
+        attributes:
+        {{- range . }}
+        - {{ . }}
+        {{- end }}
+        {{- end }}
+      {{- end }}
+      {{- end }}
+  {{- end }}
   {{- with $spec.Retention }}
     retention_period: {{ .Days }}d
     {{- with .Streams }}

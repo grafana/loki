@@ -248,10 +248,11 @@ func alertManagerConfig(spec *lokiv1.AlertManagerSpec) *config.AlertManagerConfi
 		conf.Notifier = &config.NotifierConfig{}
 		if tls := clt.TLS; tls != nil {
 			conf.Notifier.TLS = config.TLSConfig{
-				CAPath:     tls.CAPath,
-				ServerName: tls.ServerName,
-				CertPath:   tls.CertPath,
-				KeyPath:    tls.KeyPath,
+				CAPath:             tls.CAPath,
+				ServerName:         tls.ServerName,
+				InsecureSkipVerify: tls.InsecureSkipVerify,
+				CertPath:           tls.CertPath,
+				KeyPath:            tls.KeyPath,
 			}
 		}
 

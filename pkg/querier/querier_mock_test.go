@@ -8,12 +8,16 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+
+	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
+	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -118,7 +122,6 @@ func (c *querierClientMock) GetDetectedLabels(ctx context.Context, in *logproto.
 		return (*logproto.LabelToValuesResponse)(nil), args.Error(1)
 	}
 	return res.(*logproto.LabelToValuesResponse), args.Error(1)
-
 }
 
 func (c *querierClientMock) GetVolume(ctx context.Context, in *logproto.VolumeRequest, opts ...grpc.CallOption) (*logproto.VolumeResponse, error) {
@@ -141,7 +144,7 @@ func (c *querierClientMock) Close() error {
 // newIngesterClientMockFactory creates a factory function always returning
 // the input querierClientMock
 func newIngesterClientMockFactory(c *querierClientMock) ring_client.PoolFactory {
-	return ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
+	return ring_client.PoolAddrFunc(func(_ string) (ring_client.PoolClient, error) {
 		return c, nil
 	})
 }
@@ -349,11 +352,14 @@ func (s *storeMock) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) er
 
 func (s *storeMock) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, _ ...*labels.Matcher) ([]string, error) {
 	args := s.Called(ctx, userID, from, through, metricName, labelName)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
 	return args.Get(0).([]string), args.Error(1)
 }
 
-func (s *storeMock) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
-	args := s.Called(ctx, userID, from, through, metricName)
+func (s *storeMock) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, m ...*labels.Matcher) ([]string, error) {
+	args := s.Called(ctx, userID, from, through, metricName, m)
 	return args.Get(0).([]string), args.Error(1)
 }
 
@@ -451,6 +457,22 @@ func (r *readRingMock) InstancesCount() int {
 	return len(r.replicationSet.Instances)
 }
 
+func (r *readRingMock) InstancesInZoneCount(_ string) int {
+	return len(r.replicationSet.Instances)
+}
+
+func (r *readRingMock) InstancesWithTokensCount() int {
+	return len(r.replicationSet.Instances)
+}
+
+func (r *readRingMock) InstancesWithTokensInZoneCount(_ string) int {
+	return len(r.replicationSet.Instances)
+}
+
+func (r *readRingMock) ZonesCount() int {
+	return 1
+}
+
 func (r *readRingMock) Subring(_ uint32, _ int) ring.ReadRing {
 	return r
 }
@@ -479,6 +501,16 @@ func (r *readRingMock) GetTokenRangesForInstance(_ string) (ring.TokenRanges, er
 	return tr, nil
 }
 
+// WritableInstancesWithTokensCount returns the number of writable instances in the ring that have tokens.
+func (r *readRingMock) WritableInstancesWithTokensCount() int {
+	return len(r.replicationSet.Instances)
+}
+
+// WritableInstancesWithTokensInZoneCount returns the number of writable instances in the ring that are registered in given zone and have tokens.
+func (r *readRingMock) WritableInstancesWithTokensInZoneCount(_ string) int {
+	return len(r.replicationSet.Instances)
+}
+
 func mockReadRingWithOneActiveIngester() *readRingMock {
 	return newReadRingMock([]ring.InstanceDesc{
 		{Addr: "test", Timestamp: time.Now().UnixNano(), State: ring.ACTIVE, Tokens: []uint32{1, 2, 3}},
@@ -499,6 +531,20 @@ func mockInstanceDesc(addr string, state ring.InstanceState) ring.InstanceDesc {
 // starting at from
 func mockStreamIterator(from int, quantity int) iter.EntryIterator {
 	return iter.NewStreamIterator(mockStream(from, quantity))
+}
+
+// mockLogfmtStreamIterator returns an iterator with 1 stream and quantity entries,
+// where entries timestamp and line string are constructed as sequential numbers
+// starting at from, and the line is in logfmt format with the fields message, count and fake
+func mockLogfmtStreamIterator(from int, quantity int) iter.EntryIterator {
+	return iter.NewStreamIterator(mockLogfmtStream(from, quantity))
+}
+
+// mockLogfmtStreamIterator returns an iterator with 1 stream and quantity entries,
+// where entries timestamp and line string are constructed as sequential numbers
+// starting at from, and the line is in logfmt format with the fields message, count and fake
+func mockLogfmtStreamIteratorWithStructuredMetadata(from int, quantity int) iter.EntryIterator {
+	return iter.NewStreamIterator(mockLogfmtStreamWithStructuredMetadata(from, quantity))
 }
 
 // mockSampleIterator returns an iterator with 1 stream and quantity entries,
@@ -527,6 +573,99 @@ func mockStreamWithLabels(from int, quantity int, labels string) logproto.Stream
 	return logproto.Stream{
 		Entries: entries,
 		Labels:  labels,
+	}
+}
+
+func mockLogfmtStream(from int, quantity int) logproto.Stream {
+	return mockLogfmtStreamWithLabels(from, quantity, `{type="test", name="foo"}`)
+}
+
+func mockLogfmtStreamWithLabels(_ int, quantity int, lbls string) logproto.Stream {
+	entries := make([]logproto.Entry, 0, quantity)
+	streamLabels, err := syntax.ParseLabels(lbls)
+	if err != nil {
+		streamLabels = labels.EmptyLabels()
+	}
+
+	lblBuilder := logql_log.NewBaseLabelsBuilder().ForLabels(streamLabels, streamLabels.Hash())
+	logFmtParser := logql_log.NewLogfmtParser(false, false)
+
+	// used for detected fields queries which are always BACKWARD
+	for i := quantity; i > 0; i-- {
+		line := fmt.Sprintf(
+			`message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t name=bar`,
+			i,
+			i,
+			(i * 10),
+			(i * 256),
+			float32(i*10.0),
+			(i%2 == 0))
+
+		entry := logproto.Entry{
+			Timestamp: time.Unix(int64(i), 0),
+			Line:      line,
+		}
+		_, logfmtSuccess := logFmtParser.Process(0, []byte(line), lblBuilder)
+		if logfmtSuccess {
+			entry.Parsed = logproto.FromLabelsToLabelAdapters(lblBuilder.LabelsResult().Parsed())
+		}
+		entries = append(entries, entry)
+	}
+
+	return logproto.Stream{
+		Entries: entries,
+		Labels:  lblBuilder.LabelsResult().String(),
+	}
+}
+
+func mockLogfmtStreamWithStructuredMetadata(from int, quantity int) logproto.Stream {
+	return mockLogfmtStreamWithLabelsAndStructuredMetadata(from, quantity, `{type="test"}`)
+}
+
+func mockLogfmtStreamWithLabelsAndStructuredMetadata(
+	from int,
+	quantity int,
+	lbls string,
+) logproto.Stream {
+	var entries []logproto.Entry
+	metadata := push.LabelsAdapter{
+		{
+			Name:  "constant",
+			Value: "constant",
+		},
+	}
+
+	for i := from; i < from+quantity; i++ {
+		metadata = append(metadata, push.LabelAdapter{
+			Name:  "variable",
+			Value: fmt.Sprintf("value%d", i),
+		})
+	}
+
+	streamLabels, err := syntax.ParseLabels(lbls)
+	if err != nil {
+		streamLabels = labels.EmptyLabels()
+	}
+
+	lblBuilder := logql_log.NewBaseLabelsBuilder().ForLabels(streamLabels, streamLabels.Hash())
+	logFmtParser := logql_log.NewLogfmtParser(false, false)
+
+	for i := quantity; i > 0; i-- {
+		line := fmt.Sprintf(`message="line %d" count=%d fake=true`, i, i)
+		entry := logproto.Entry{
+			Timestamp:          time.Unix(int64(i), 0),
+			Line:               line,
+			StructuredMetadata: metadata,
+		}
+		_, logfmtSuccess := logFmtParser.Process(0, []byte(line), lblBuilder)
+		if logfmtSuccess {
+			entry.Parsed = logproto.FromLabelsToLabelAdapters(lblBuilder.LabelsResult().Parsed())
+		}
+		entries = append(entries, entry)
+	}
+	return logproto.Stream{
+		Labels:  lbls,
+		Entries: entries,
 	}
 }
 
@@ -625,6 +764,8 @@ func (q *querierMock) DetectedLabels(ctx context.Context, req *logproto.Detected
 
 	return resp.(*logproto.DetectedLabelsResponse), err
 }
+
+func (q *querierMock) WithPatternQuerier(_ PatterQuerier) {}
 
 type engineMock struct {
 	util.ExtendedMock

@@ -23,6 +23,8 @@ type Interface[K comparable, V any] interface {
 	Keys() []K
 	// Delete deletes the item with provided key from the cache.
 	Delete(key K)
+	// Len returns the number of items in the cache.
+	Len() int
 }
 
 var (
@@ -44,9 +46,13 @@ type Item[K comparable, V any] struct {
 	InitialReferenceCount int
 }
 
+func (item *Item[K, V]) hasExpiration() bool {
+	return !item.Expiration.IsZero()
+}
+
 // Expired returns true if the item has expired.
 func (item *Item[K, V]) Expired() bool {
-	if item.Expiration.IsZero() {
+	if !item.hasExpiration() {
 		return false
 	}
 	return nowFunc().After(item.Expiration)
@@ -105,8 +111,9 @@ func newItem[K comparable, V any](key K, val V, opts ...ItemOption) *Item[K, V] 
 type Cache[K comparable, V any] struct {
 	cache Interface[K, *Item[K, V]]
 	// mu is used to do lock in some method process.
-	mu      sync.Mutex
-	janitor *janitor
+	mu         sync.Mutex
+	janitor    *janitor
+	expManager *expirationManager[K]
 }
 
 // Option is an option for cache.
@@ -188,15 +195,16 @@ func NewContext[K comparable, V any](ctx context.Context, opts ...Option[K, V]) 
 		optFunc(o)
 	}
 	cache := &Cache[K, V]{
-		cache:   o.cache,
-		janitor: newJanitor(ctx, o.janitorInterval),
+		cache:      o.cache,
+		janitor:    newJanitor(ctx, o.janitorInterval),
+		expManager: newExpirationManager[K](),
 	}
 	cache.janitor.run(cache.DeleteExpired)
 	return cache
 }
 
 // Get looks up a key's value from the cache.
-func (c *Cache[K, V]) Get(key K) (value V, ok bool) {
+func (c *Cache[K, V]) Get(key K) (zero V, ok bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	item, ok := c.cache.Get(key)
@@ -208,7 +216,24 @@ func (c *Cache[K, V]) Get(key K) (value V, ok bool) {
 	// Returns nil if the item has been expired.
 	// Do not delete here and leave it to an external process such as Janitor.
 	if item.Expired() {
-		return value, false
+		return zero, false
+	}
+
+	return item.Value, true
+}
+
+// GetOrSet atomically gets a key's value from the cache, or if the
+// key is not present, sets the given value.
+// The loaded result is true if the value was loaded, false if stored.
+func (c *Cache[K, V]) GetOrSet(key K, val V, opts ...ItemOption) (actual V, loaded bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	item, ok := c.cache.Get(key)
+
+	if !ok || item.Expired() {
+		item := newItem(key, val, opts...)
+		c.cache.Set(key, item)
+		return val, false
 	}
 
 	return item.Value, true
@@ -217,17 +242,30 @@ func (c *Cache[K, V]) Get(key K) (value V, ok bool) {
 // DeleteExpired all expired items from the cache.
 func (c *Cache[K, V]) DeleteExpired() {
 	c.mu.Lock()
-	keys := c.cache.Keys()
+	l := c.expManager.len()
 	c.mu.Unlock()
 
-	for _, key := range keys {
-		c.mu.Lock()
+	evict := func() bool {
+		key := c.expManager.pop()
 		// if is expired, delete it and return nil instead
 		item, ok := c.cache.Get(key)
-		if ok && item.Expired() {
-			c.cache.Delete(key)
+		if ok {
+			if item.Expired() {
+				c.cache.Delete(key)
+				return false
+			}
+			c.expManager.update(key, item.Expiration)
 		}
+		return true
+	}
+
+	for i := 0; i < l; i++ {
+		c.mu.Lock()
+		shouldBreak := evict()
 		c.mu.Unlock()
+		if shouldBreak {
+			break
+		}
 	}
 }
 
@@ -236,6 +274,9 @@ func (c *Cache[K, V]) Set(key K, val V, opts ...ItemOption) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	item := newItem(key, val, opts...)
+	if item.hasExpiration() {
+		c.expManager.update(key, item.Expiration)
+	}
 	c.cache.Set(key, item)
 }
 
@@ -251,6 +292,14 @@ func (c *Cache[K, V]) Delete(key K) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.cache.Delete(key)
+	c.expManager.remove(key)
+}
+
+// Len returns the number of items in the cache.
+func (c *Cache[K, V]) Len() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.cache.Len()
 }
 
 // Contains reports whether key is within cache.

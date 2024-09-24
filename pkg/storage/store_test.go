@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 
@@ -126,7 +127,7 @@ func Benchmark_store_SelectSample(b *testing.B) {
 				}
 
 				for iter.Next() {
-					_ = iter.Sample()
+					_ = iter.At()
 					sampleCount++
 				}
 				iter.Close()
@@ -168,7 +169,7 @@ func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {
 		for iter.Next() {
 			j++
 			printHeap(b, false)
-			res = append(res, iter.Entry())
+			res = append(res, iter.At())
 			// limit result like the querier would do.
 			if j == query.Limit {
 				break
@@ -866,6 +867,10 @@ func (f fakeChunkFilterer) ShouldFilter(metric labels.Labels) bool {
 	return metric.Get("foo") == "bazz"
 }
 
+func (f fakeChunkFilterer) RequiredLabelNames() []string {
+	return []string{"foo"}
+}
+
 func Test_ChunkFilterer(t *testing.T) {
 	s := &LokiStore{
 		Store: storeFixture,
@@ -928,7 +933,7 @@ func Test_PipelineWrapper(t *testing.T) {
 	}
 	defer logit.Close()
 	for logit.Next() {
-		require.NoError(t, logit.Error()) // consume the iterator
+		require.NoError(t, logit.Err()) // consume the iterator
 	}
 
 	require.Equal(t, "test-user", wrapper.tenant)
@@ -959,7 +964,7 @@ func Test_PipelineWrapper_disabled(t *testing.T) {
 	}
 	defer logit.Close()
 	for logit.Next() {
-		require.NoError(t, logit.Error()) // consume the iterator
+		require.NoError(t, logit.Err()) // consume the iterator
 	}
 
 	require.Equal(t, "", wrapper.tenant)
@@ -1044,7 +1049,7 @@ func Test_SampleWrapper(t *testing.T) {
 	}
 	defer it.Close()
 	for it.Next() {
-		require.NoError(t, it.Error()) // consume the iterator
+		require.NoError(t, it.Err()) // consume the iterator
 	}
 
 	require.Equal(t, "test-user", wrapper.tenant)
@@ -1074,7 +1079,7 @@ func Test_SampleWrapper_disabled(t *testing.T) {
 	}
 	defer it.Close()
 	for it.Next() {
-		require.NoError(t, it.Error()) // consume the iterator
+		require.NoError(t, it.Err()) // consume the iterator
 	}
 
 	require.Equal(t, "", wrapper.tenant)
@@ -1249,7 +1254,8 @@ func Test_store_decodeReq_Matchers(t *testing.T) {
 				t.Errorf("store.GetSeries() error = %v", err)
 				return
 			}
-			require.Equal(t, tt.matchers, ms)
+
+			syntax.AssertMatchers(t, tt.matchers, ms)
 		})
 	}
 }
@@ -1656,13 +1662,13 @@ func Test_OverlappingChunks(t *testing.T) {
 	}
 	defer it.Close()
 	require.True(t, it.Next())
-	require.Equal(t, "4", it.Entry().Line)
+	require.Equal(t, "4", it.At().Line)
 	require.True(t, it.Next())
-	require.Equal(t, "3", it.Entry().Line)
+	require.Equal(t, "3", it.At().Line)
 	require.True(t, it.Next())
-	require.Equal(t, "2", it.Entry().Line)
+	require.Equal(t, "2", it.At().Line)
 	require.True(t, it.Next())
-	require.Equal(t, "1", it.Entry().Line)
+	require.Equal(t, "1", it.At().Line)
 	require.False(t, it.Next())
 }
 
@@ -2030,7 +2036,7 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 		metric := labelsBuilder.Labels()
 		fp := client.Fingerprint(lbs)
 
-		chunkEnc := chunkenc.NewMemChunk(chunkfmt, chunkenc.EncLZ4_4M, headfmt, 262144, 1572864)
+		chunkEnc := chunkenc.NewMemChunk(chunkfmt, compression.EncLZ4_4M, headfmt, 262144, 1572864)
 		for ts := chkFrom; !ts.After(chkThrough); ts = ts.Add(time.Second) {
 			entry := logproto.Entry{
 				Timestamp: ts,
@@ -2049,7 +2055,9 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 					},
 				}
 			}
-			require.NoError(t, chunkEnc.Append(&entry))
+			dup, err := chunkEnc.Append(&entry)
+			require.False(t, dup)
+			require.NoError(t, err)
 		}
 
 		require.NoError(t, chunkEnc.Close())
@@ -2092,7 +2100,7 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 					},
 				}
 			}
-			require.Equal(t, expectedEntry, it.Entry())
+			require.Equal(t, expectedEntry, it.At())
 		}
 
 		require.False(t, it.Next())

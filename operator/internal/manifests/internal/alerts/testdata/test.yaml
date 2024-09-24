@@ -63,6 +63,9 @@ tests:
       - series: 'loki_logql_querystats_latency_seconds_bucket{namespace="my-ns", job="querier", route="my-route", le="+Inf"}'
         values: '0+100x20'
 
+      - series: 'loki_discarded_samples_total{namespace="my-ns", tenant="application", reason="line_too_long"}'
+        values: '0x5 0+120x25 3000'
+
     alert_rule_test:
       - eval_time: 16m
         alertname: LokiRequestErrors
@@ -177,3 +180,17 @@ tests:
               summary: "The read path has high volume of queries, causing longer response times."
               message: "The read path is experiencing high load."
               runbook_url: "[[ .RunbookURL ]]#Loki-Read-Path-High-Load"
+      - eval_time: 22m
+        alertname: LokiDiscardedSamplesWarning
+        exp_alerts:
+          - exp_labels:
+              namespace: my-ns
+              tenant: application
+              severity: warning
+              reason: line_too_long
+            exp_annotations:
+              message: |-
+                Loki in namespace my-ns is discarding samples in the "application" tenant during ingestion.
+                Samples are discarded because of "line_too_long" at a rate of 2 samples per second.
+              summary: Loki is discarding samples during ingestion because they fail validation.
+              runbook_url: "[[ .RunbookURL]]#Loki-Discarded-Samples-Warning"

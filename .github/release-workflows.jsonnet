@@ -70,7 +70,7 @@ local imagePrefix = 'grafana';
       imagePrefix='grafana',
       releaseLibRef=releaseLibRef,
       releaseRepo='grafana/loki',
-      useGitHubAppToken=false,
+      useGitHubAppToken=true,
     ), false, false
   ),
   'check.yml': std.manifestYamlDoc({

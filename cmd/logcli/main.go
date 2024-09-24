@@ -450,7 +450,7 @@ func newQueryClient(app *kingpin.Application) client.Client {
 	}
 
 	// extract host
-	addressAction := func(c *kingpin.ParseContext) error {
+	addressAction := func(_ *kingpin.ParseContext) error {
 		// If a proxy is to be used do not set TLS ServerName. In the case of HTTPS proxy this ensures
 		// the http client validates both the proxy's cert and the cert used by loki behind the proxy
 		// using the ServerName's from the provided --addr and --proxy-url flags.
@@ -475,6 +475,7 @@ func newQueryClient(app *kingpin.Application) client.Client {
 	app.Flag("key", "Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.").Default("").Envar("LOKI_CLIENT_KEY_PATH").StringVar(&client.TLSConfig.KeyFile)
 	app.Flag("org-id", "adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when bypassing an auth gateway. Can also be set using LOKI_ORG_ID env var.").Default("").Envar("LOKI_ORG_ID").StringVar(&client.OrgID)
 	app.Flag("query-tags", "adds X-Query-Tags http header to API requests. This header value will be part of `metrics.go` statistics. Useful for tracking the query. Can also be set using LOKI_QUERY_TAGS env var.").Default("").Envar("LOKI_QUERY_TAGS").StringVar(&client.QueryTags)
+	app.Flag("nocache", "adds Cache-Control: no-cache http header to API requests. Can also be set using LOKI_NO_CACHE env var.").Default("false").Envar("LOKI_NO_CACHE").BoolVar(&client.NoCache)
 	app.Flag("bearer-token", "adds the Authorization header to API requests for authentication purposes. Can also be set using LOKI_BEARER_TOKEN env var.").Default("").Envar("LOKI_BEARER_TOKEN").StringVar(&client.BearerToken)
 	app.Flag("bearer-token-file", "adds the Authorization header to API requests for authentication purposes. Can also be set using LOKI_BEARER_TOKEN_FILE env var.").Default("").Envar("LOKI_BEARER_TOKEN_FILE").StringVar(&client.BearerTokenFile)
 	app.Flag("retries", "How many times to retry each query when getting an error response from Loki. Can also be set using LOKI_CLIENT_RETRIES env var.").Default("0").Envar("LOKI_CLIENT_RETRIES").IntVar(&client.Retries)
@@ -493,7 +494,7 @@ func newLabelQuery(cmd *kingpin.CmdClause) *labelquery.LabelQuery {
 	q := &labelquery.LabelQuery{}
 
 	// executed after all command flags are parsed
-	cmd.Action(func(c *kingpin.ParseContext) error {
+	cmd.Action(func(_ *kingpin.ParseContext) error {
 
 		defaultEnd := time.Now()
 		defaultStart := defaultEnd.Add(-since)
@@ -521,7 +522,7 @@ func newSeriesQuery(cmd *kingpin.CmdClause) *seriesquery.SeriesQuery {
 	q := &seriesquery.SeriesQuery{}
 
 	// executed after all command flags are parsed
-	cmd.Action(func(c *kingpin.ParseContext) error {
+	cmd.Action(func(_ *kingpin.ParseContext) error {
 
 		defaultEnd := time.Now()
 		defaultStart := defaultEnd.Add(-since)
@@ -549,7 +550,7 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 	q := &query.Query{}
 
 	// executed after all command flags are parsed
-	cmd.Action(func(c *kingpin.ParseContext) error {
+	cmd.Action(func(_ *kingpin.ParseContext) error {
 
 		if instant {
 			q.SetInstant(mustParse(now, time.Now()))
@@ -697,7 +698,7 @@ func newDetectedFieldsQuery(cmd *kingpin.CmdClause) *detected.FieldsQuery {
 	q := &detected.FieldsQuery{}
 
 	// executed after all command flags are parsed
-	cmd.Action(func(c *kingpin.ParseContext) error {
+	cmd.Action(func(_ *kingpin.ParseContext) error {
 		defaultEnd := time.Now()
 		defaultStart := defaultEnd.Add(-since)
 

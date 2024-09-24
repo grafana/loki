@@ -24,7 +24,7 @@ type blockWithSeries struct {
 }
 
 type defaultBlockResolver struct {
-	store  bloomshipper.Store
+	store  bloomshipper.StoreBase
 	logger log.Logger
 }
 
@@ -123,7 +123,7 @@ func unassignedSeries(mapped []blockWithSeries, series []*logproto.GroupedChunkR
 	return skipped
 }
 
-func NewBlockResolver(store bloomshipper.Store, logger log.Logger) BlockResolver {
+func NewBlockResolver(store bloomshipper.StoreBase, logger log.Logger) BlockResolver {
 	return &defaultBlockResolver{
 		store:  store,
 		logger: logger,

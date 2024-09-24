@@ -24,6 +24,7 @@ Authorization needs to be done separately, for example, using an open-source loa
 These endpoints are exposed by the `distributor`, `write`, and `all` components:
 
 - [`POST /loki/api/v1/push`](#ingest-logs)
+- [`POST /otlp/v1/logs`](#ingest-logs-using-otlp)
 
 A [list of clients]({{< relref "../send-data" >}}) can be found in the clients documentation.
 
@@ -79,7 +80,7 @@ These HTTP endpoints are exposed by the `ingester`, `write`, and `all` component
 These HTTP endpoints are exposed by the `ruler` component:
 
 - [`GET /loki/api/v1/rules`](#list-rule-groups)
-- [`GET /loki/api/v1/rules/({namespace}`](#get-rule-groups-by-namespace)
+- [`GET /loki/api/v1/rules/{namespace}`](#get-rule-groups-by-namespace)
 - [`GET /loki/api/v1/rules/{namespace}/{groupName}`](#get-rule-group)
 - [`POST /loki/api/v1/rules/{namespace}`](#set-rule-group)
 - [`DELETE /loki/api/v1/rules/{namespace}/{groupName}`](#delete-rule-group)
@@ -250,6 +251,9 @@ The JSON object must be set immediately after the log line. Here is an example o
 
 In microservices mode, `/loki/api/v1/push` is exposed by the distributor.
 
+If [`block_ingestion_until`](/docs/loki/<LOKI_VERSION>/configuration/#limits_config) is configured and push requests are blocked, the endpoint will return the status code configured in `block_ingestion_status_code` (`260` by default)
+along with an error message. If the configured status code is `200`, no error message will be returned.
+
 ### Examples
 
 The following cURL command pushes a stream with the label "foo=bar2" and a single log line "fizzbuzz" using JSON encoding:
@@ -260,6 +264,22 @@ curl -H "Content-Type: application/json" \
   --data-raw '{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}'
 ```
 
+## Ingest logs using OTLP
+
+```bash
+POST /otlp/v1/logs
+```
+
+`/otlp/v1/logs` lets the OpenTelemetry Collector send logs to Loki using `otlphttp` protocol.
+
+For information on how to configure Loki, refer to the [OTel Collector topic](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/otel/).
+
+<!-- vale Google.Will = NO -->
+{{< admonition type="note" >}}
+When configuring the OpenTelemetry Collector, you must use `endpoint: http://<loki-addr>:3100/otlp`, as the collector automatically completes the endpoint.  Entering the full endpoint will generate an error.
+{{< /admonition >}}
+<!-- vale Google.Will = YES -->
+
 ## Query logs at a single point in time
 
 ```bash
@@ -267,8 +287,9 @@ GET /loki/api/v1/query
 ```
 
 `/loki/api/v1/query` allows for doing queries against a single point in time.
-This type of query is often referred to as an instant query. Instant queries are mostly used for metric type LogQL queries.
-It accepts the following query parameters in the URL:
+This type of query is often referred to as an instant query. Instant queries are only used for metric type LogQL queries
+and will return a 400 (Bad Request) in case a log type query is provided.
+The endpoint accepts the following query parameters in the URL:
 
 - `query`: The [LogQL]({{< relref "../query" >}}) query to perform. Requests that do not use valid LogQL syntax will return errors.
 - `limit`: The max number of entries to return. It defaults to `100`. Only applies to query types which produce a stream (log lines) response.
@@ -616,6 +637,7 @@ It accepts the following query parameters in the URL:
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
 - `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now. Any value specified for `start` supersedes this parameter.
+- `query`: Log stream selector that selects the streams to match and return label names. Example: `{app="myapp", environment="dev"}`
 
 In microservices mode, `/loki/api/v1/labels` is exposed by the querier.
 
@@ -665,7 +687,7 @@ It accepts the following query parameters in the URL:
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to 6 hours ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.
 - `since`: A `duration` used to calculate `start` relative to `end`. If `end` is in the future, `start` is calculated as this duration before now. Any value specified for `start` supersedes this parameter.
-- `query`: A set of log stream selector that selects the streams to match and return label values for `<name>`. Example: `{"app": "myapp", "environment": "dev"}`
+- `query`: Log stream selector that selects the streams to match and return label values for `<name>`. Example: `{app="myapp", environment="dev"}`
 
 In microservices mode, `/loki/api/v1/label/<name>/values` is exposed by the querier.
 
@@ -786,7 +808,7 @@ gave this response:
 ## Query log statistics
 
 ```bash
-GET `/loki/api/v1/index/stats`
+GET /loki/api/v1/index/stats
 ```
 
 The `/loki/api/v1/index/stats` endpoint can be used to query the index for the number of `streams`, `chunks`, `entries`, and `bytes` that a query resolves to.
@@ -1029,7 +1051,7 @@ GET /metrics
 ```
 
 `/metrics` returns exposed Prometheus metrics. See
-[Observing Loki]({{< relref "../operations/observability" >}})
+[Observing Loki]({{< relref "../operations/meta-monitoring" >}})
 for a list of exported metrics.
 
 In microservices mode, the `/metrics` endpoint is exposed by all components.
@@ -1327,7 +1349,7 @@ PUT /loki/api/v1/delete
 Create a new delete request for the authenticated tenant.
 The [log entry deletion]({{< relref "../operations/storage/logs-deletion" >}}) documentation has configuration details.
 
-Log entry deletion is supported _only_ when the BoltDB Shipper is configured for the index store.
+Log entry deletion is supported _only_ when TSDB or BoltDB Shipper is configured for the index store.
 
 Query parameters:
 
@@ -1367,7 +1389,7 @@ GET /loki/api/v1/delete
 List the existing delete requests for the authenticated tenant.
 The [log entry deletion]({{< relref "../operations/storage/logs-deletion" >}}) documentation has configuration details.
 
-Log entry deletion is supported _only_ when the BoltDB Shipper is configured for the index store.
+Log entry deletion is supported _only_ when TSDB or BoltDB Shipper is configured for the index store.
 
 List the existing delete requests using the following API:
 
@@ -1406,7 +1428,7 @@ The [log entry deletion]({{< relref "../operations/storage/logs-deletion" >}}) d
 
 Loki allows cancellation of delete requests until the requests are picked up for processing. It is controlled by the `delete_request_cancel_period` YAML configuration or the equivalent command line option when invoking Loki. To cancel a delete request that has been picked up for processing or is partially complete, pass the `force=true` query parameter to the API.
 
-Log entry deletion is supported _only_ when the BoltDB Shipper is configured for the index store.
+Log entry deletion is supported _only_ when TSDB or BoltDB Shipper is configured for the index store.
 
 Cancel a delete request using this compactor endpoint:
 

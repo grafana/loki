@@ -5,11 +5,11 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.14.0
   creationTimestamp: null
   labels:
-    app.kubernetes.io/instance: loki-operator-v0.6.0
+    app.kubernetes.io/instance: loki-operator-v0.6.2
     app.kubernetes.io/managed-by: operator-lifecycle-manager
     app.kubernetes.io/name: loki-operator
     app.kubernetes.io/part-of: loki-operator
-    app.kubernetes.io/version: 0.6.0
+    app.kubernetes.io/version: 0.6.2
   name: lokistacks.loki.grafana.com
 spec:
   conversion:
@@ -164,6 +164,127 @@ spec:
                             format: int32
                             type: integer
                         type: object
+                      otlp:
+                        description: |-
+                          OTLP to configure which resource, scope and log attributes
+                          to store as labels or structured metadata or drop them altogether
+                          for all tenants.
+                        properties:
+                          indexedResourceAttributes:
+                            description: |-
+                              IndexedResourceAttributes contains the global configuration for resource attributes
+                              to store them as index labels or structured metadata or drop them altogether.
+                            items:
+                              type: string
+                            type: array
+                          logAttributes:
+                            description: |-
+                              LogAttributes contains the configuration for log attributes
+                              to store them as index labels or structured metadata or drop them altogether.
+                            items:
+                              description: |-
+                                OTLPAttributesSpec contains the configuration for a set of attributes
+                                to store them as index labels or structured metadata or drop them altogether.
+                              properties:
+                                action:
+                                  description: |-
+                                    Action defines the indexing action for the selected attributes. They
+                                    can be either added to structured metadata or drop altogether.
+                                  enum:
+                                  - structured_metadata
+                                  - drop
+                                  type: string
+                                attributes:
+                                  description: Attributes allows choosing the attributes
+                                    by listing their names.
+                                  items:
+                                    type: string
+                                  type: array
+                                regex:
+                                  description: Regex allows choosing the attributes
+                                    by matching a regular expression.
+                                  type: string
+                              required:
+                              - action
+                              type: object
+                            type: array
+                          resourceAttributes:
+                            description: |-
+                              ResourceAttributes contains the configuration for resource attributes
+                              to store them as index labels or structured metadata or drop them altogether.
+                            properties:
+                              attributes:
+                                description: |-
+                                  Attributes contains the configuration for resource attributes
+                                  to store them as index labels or structured metadata or drop them altogether.
+                                items:
+                                  description: |-
+                                    OTLPResourceAttributesConfigSpec contains the configuration for a set of resource attributes
+                                    to store them as index labels or structured metadata or drop them altogether.
+                                  properties:
+                                    action:
+                                      description: |-
+                                        Action defines the indexing action for the selected resoure attributes. They
+                                        can be either indexed as labels, added to structured metadata or drop altogether.
+                                      enum:
+                                      - index_label
+                                      - structured_metadata
+                                      - drop
+                                      type: string
+                                    attributes:
+                                      description: |-
+                                        Attributes is the list of attributes to configure indexing or drop them
+                                        altogether.
+                                      items:
+                                        type: string
+                                      type: array
+                                    regex:
+                                      description: Regex allows choosing the attributes
+                                        by matching a regular expression.
+                                      type: string
+                                  type: object
+                                type: array
+                              ignoreDefaults:
+                                description: |-
+                                  IgnoreDefaults controls whether to ignore the global configuration for resource attributes
+                                  indexed as labels.
+
+
+                                  If IgnoreDefaults is true, then this spec needs to contain at least one mapping to a index label.
+                                type: boolean
+                            type: object
+                          scopeAttributes:
+                            description: |-
+                              ScopeAttributes contains the configuration for scope attributes
+                              to store them as index labels or structured metadata or drop them altogether.
+                            items:
+                              description: |-
+                                OTLPAttributesSpec contains the configuration for a set of attributes
+                                to store them as index labels or structured metadata or drop them altogether.
+                              properties:
+                                action:
+                                  description: |-
+                                    Action defines the indexing action for the selected attributes. They
+                                    can be either added to structured metadata or drop altogether.
+                                  enum:
+                                  - structured_metadata
+                                  - drop
+                                  type: string
+                                attributes:
+                                  description: Attributes allows choosing the attributes
+                                    by listing their names.
+                                  items:
+                                    type: string
+                                  type: array
+                                regex:
+                                  description: Regex allows choosing the attributes
+                                    by matching a regular expression.
+                                  type: string
+                              required:
+                              - action
+                              type: object
+                            type: array
+                        type: object
                       queries:
                         description: QueryLimits defines the limit applied on querying
                           log streams.
@@ -189,6 +310,11 @@ spec:
                             description: |-
                               MaxQuerySeries defines the maximum of unique series
                               that is returned by a metric query.
+                            format: int32
+                            type: integer
+                          maxVolumeSeries:
+                            description: MaxVolumeSeries defines the maximum number
+                              of aggregated series in a log-volume response
                             format: int32
                             type: integer
                           queryTimeout:
@@ -302,6 +428,120 @@ spec:
                               format: int32
                               type: integer
                           type: object
+                        otlp:
+                          description: |-
+                            OTLP to configure which resource, scope and log attributes
+                            to store as labels or structured metadata or drop them altogether
+                            for a single tenants.
+                          properties:
+                            logAttributes:
+                              description: |-
+                                LogAttributes contains the configuration for log attributes
+                                to store them as index labels or structured metadata or drop them altogether.
+                              items:
+                                description: |-
+                                  OTLPAttributesSpec contains the configuration for a set of attributes
+                                  to store them as index labels or structured metadata or drop them altogether.
+                                properties:
+                                  action:
+                                    description: |-
+                                      Action defines the indexing action for the selected attributes. They
+                                      can be either added to structured metadata or drop altogether.
+                                    enum:
+                                    - structured_metadata
+                                    - drop
+                                    type: string
+                                  attributes:
+                                    description: Attributes allows choosing the attributes
+                                      by listing their names.
+                                    items:
+                                      type: string
+                                    type: array
+                                  regex:
+                                    description: Regex allows choosing the attributes
+                                      by matching a regular expression.
+                                    type: string
+                                required:
+                                - action
+                                type: object
+                              type: array
+                            resourceAttributes:
+                              description: |-
+                                ResourceAttributes contains the configuration for resource attributes
+                                to store them as index labels or structured metadata or drop them altogether.
+                              properties:
+                                attributes:
+                                  description: |-
+                                    Attributes contains the configuration for resource attributes
+                                    to store them as index labels or structured metadata or drop them altogether.
+                                  items:
+                                    description: |-
+                                      OTLPResourceAttributesConfigSpec contains the configuration for a set of resource attributes
+                                      to store them as index labels or structured metadata or drop them altogether.
+                                    properties:
+                                      action:
+                                        description: |-
+                                          Action defines the indexing action for the selected resoure attributes. They
+                                          can be either indexed as labels, added to structured metadata or drop altogether.
+                                        enum:
+                                        - index_label
+                                        - structured_metadata
+                                        - drop
+                                        type: string
+                                      attributes:
+                                        description: |-
+                                          Attributes is the list of attributes to configure indexing or drop them
+                                          altogether.
+                                        items:
+                                          type: string
+                                        type: array
+                                      regex:
+                                        description: Regex allows choosing the attributes
+                                          by matching a regular expression.
+                                        type: string
+                                    type: object
+                                  type: array
+                                ignoreDefaults:
+                                  description: |-
+                                    IgnoreDefaults controls whether to ignore the global configuration for resource attributes
+                                    indexed as labels.
+
+
+                                    If IgnoreDefaults is true, then this spec needs to contain at least one mapping to a index label.
+                                  type: boolean
+                              type: object
+                            scopeAttributes:
+                              description: |-
+                                ScopeAttributes contains the configuration for scope attributes
+                                to store them as index labels or structured metadata or drop them altogether.
+                              items:
+                                description: |-
+                                  OTLPAttributesSpec contains the configuration for a set of attributes
+                                  to store them as index labels or structured metadata or drop them altogether.
+                                properties:
+                                  action:
+                                    description: |-
+                                      Action defines the indexing action for the selected attributes. They
+                                      can be either added to structured metadata or drop altogether.
+                                    enum:
+                                    - structured_metadata
+                                    - drop
+                                    type: string
+                                  attributes:
+                                    description: Attributes allows choosing the attributes
+                                      by listing their names.
+                                    items:
+                                      type: string
+                                    type: array
+                                  regex:
+                                    description: Regex allows choosing the attributes
+                                      by matching a regular expression.
+                                    type: string
+                                required:
+                                - action
+                                type: object
+                              type: array
+                          type: object
                         queries:
                           description: QueryLimits defines the limit applied on querying
                             log streams.
@@ -364,6 +604,11 @@ spec:
                               description: |-
                                 MaxQuerySeries defines the maximum of unique series
                                 that is returned by a metric query.
+                              format: int32
+                              type: integer
+                            maxVolumeSeries:
+                              description: MaxVolumeSeries defines the maximum number
+                                of aggregated series in a log-volume response
                               format: int32
                               type: integer
                             queryTimeout:
@@ -598,15 +843,18 @@ spec:
                       version: v11
                     description: Schemas for reading and writing logs.
                     items:
-                      description: |-
-                        ObjectStorageSchema defines the requirements needed to configure a new
-                        storage schema.
+                      description: ObjectStorageSchema defines a schema version and
+                        the date when it will become effective.
                       properties:
                         effectiveDate:
                           description: |-
-                            EffectiveDate is the date in UTC that the schema will be applied on.
-                            To ensure readibility of logs, this date should be before the current
-                            date in UTC.
+                            EffectiveDate contains a date in YYYY-MM-DD format which is interpreted in the UTC time zone.
+
+
+                            The configuration always needs at least one schema that is currently valid. This means that when creating a new
+                            LokiStack it is recommended to add a schema with the latest available version and an effective date of "yesterday".
+                            New schema versions added to the configuration always needs to be placed "in the future", so that Loki can start
+                            using it once the day rolls over.
                           pattern: ^([0-9]{4,})([-]([0-9]{2})){2}$
                           type: string
                         version:
@@ -3826,15 +4074,18 @@ spec:
                       Schemas is a list of schemas which have been applied
                       to the LokiStack.
                     items:
-                      description: |-
-                        ObjectStorageSchema defines the requirements needed to configure a new
-                        storage schema.
+                      description: ObjectStorageSchema defines a schema version and
+                        the date when it will become effective.
                       properties:
                         effectiveDate:
                           description: |-
-                            EffectiveDate is the date in UTC that the schema will be applied on.
-                            To ensure readibility of logs, this date should be before the current
-                            date in UTC.
+                            EffectiveDate contains a date in YYYY-MM-DD format which is interpreted in the UTC time zone.
+
+
+                            The configuration always needs at least one schema that is currently valid. This means that when creating a new
+                            LokiStack it is recommended to add a schema with the latest available version and an effective date of "yesterday".
+                            New schema versions added to the configuration always needs to be placed "in the future", so that Loki can start
+                            using it once the day rolls over.
                           pattern: ^([0-9]{4,})([-]([0-9]{2})){2}$
                           type: string
                         version:

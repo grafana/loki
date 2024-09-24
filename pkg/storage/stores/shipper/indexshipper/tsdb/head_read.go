@@ -146,14 +146,23 @@ func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int6
 	return s.fp, nil
 }
 
-func (h *headIndexReader) ChunkStats(ref storage.SeriesRef, from, through int64, lbls *labels.Labels) (uint64, index.ChunkStats, error) {
+func (h *headIndexReader) ChunkStats(ref storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}) (uint64, index.ChunkStats, error) {
 	s := h.head.series.getByID(uint64(ref))
 
 	if s == nil {
 		h.head.metrics.seriesNotFound.Inc()
 		return 0, index.ChunkStats{}, storage.ErrNotFound
 	}
-	*lbls = append((*lbls)[:0], s.ls...)
+	if len(by) == 0 {
+		*lbls = append((*lbls)[:0], s.ls...)
+	} else {
+		*lbls = (*lbls)[:0]
+		for _, l := range s.ls {
+			if _, ok := by[l.Name]; ok {
+				*lbls = append(*lbls, l)
+			}
+		}
+	}
 
 	queryBounds := newBounds(model.Time(from), model.Time(through))
 

@@ -104,6 +104,12 @@ func generateBlocksMarkdown(blocks []*parse.ConfigBlock) string {
 			return 1
 		}
 
+		if a.FlagsPrefix < b.FlagsPrefix {
+			return -1
+		}
+		if a.FlagsPrefix < b.FlagsPrefix {
+			return 1
+		}
 		return 0
 	})
 

@@ -5,10 +5,12 @@ import (
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/common/model"
+
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 )
 
 type SeriesIterator interface {
-	Iterator[*SeriesWithOffset]
+	iter.Iterator[*SeriesWithMeta]
 	Reset()
 }
 
@@ -136,7 +138,7 @@ func (it *LazySeriesIter) next() bool {
 	return false
 }
 
-func (it *LazySeriesIter) At() *SeriesWithOffset {
+func (it *LazySeriesIter) At() *SeriesWithMeta {
 	return it.curPage.At()
 }
 

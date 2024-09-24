@@ -9,6 +9,7 @@ package pmetric
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
 	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
+	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
 // Metric represents one metric as a collection of datapoints.
@@ -77,6 +78,11 @@ func (ms Metric) Unit() string {
 func (ms Metric) SetUnit(v string) {
 	ms.state.AssertMutable()
 	ms.orig.Unit = v
+}
+
+// Metadata returns the Metadata associated with this Metric.
+func (ms Metric) Metadata() pcommon.Map {
+	return pcommon.Map(internal.NewMap(&ms.orig.Metadata, ms.state))
 }
 
 // Type returns the type of the data for this Metric.
@@ -233,6 +239,7 @@ func (ms Metric) CopyTo(dest Metric) {
 	dest.SetName(ms.Name())
 	dest.SetDescription(ms.Description())
 	dest.SetUnit(ms.Unit())
+	ms.Metadata().CopyTo(dest.Metadata())
 	switch ms.Type() {
 	case MetricTypeGauge:
 		ms.Gauge().CopyTo(dest.SetEmptyGauge())

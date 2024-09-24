@@ -2,42 +2,14 @@ package types // import "github.com/docker/docker/api/types"
 
 import (
 	"bufio"
+	"context"
 	"io"
 	"net"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/registry"
-	units "github.com/docker/go-units"
 )
-
-// ContainerExecInspect holds information returned by exec inspect.
-type ContainerExecInspect struct {
-	ExecID      string `json:"ID"`
-	ContainerID string
-	Running     bool
-	ExitCode    int
-	Pid         int
-}
-
-// CopyToContainerOptions holds information
-// about files to copy into a container
-type CopyToContainerOptions struct {
-	AllowOverwriteDirWithFile bool
-	CopyUIDGID                bool
-}
-
-// EventsOptions holds parameters to filter events with.
-type EventsOptions struct {
-	Since   string
-	Until   string
-	Filters filters.Args
-}
-
-// NetworkListOptions holds parameters to filter the list of networks with.
-type NetworkListOptions struct {
-	Filters filters.Args
-}
 
 // NewHijackedResponse intializes a HijackedResponse type
 func NewHijackedResponse(conn net.Conn, mediaType string) HijackedResponse {
@@ -101,7 +73,7 @@ type ImageBuildOptions struct {
 	NetworkMode    string
 	ShmSize        int64
 	Dockerfile     string
-	Ulimits        []*units.Ulimit
+	Ulimits        []*container.Ulimit
 	// BuildArgs needs to be a *string instead of just a string so that
 	// we can tell the difference between "" (empty string) and no value
 	// at all (nil). See the parsing of buildArgs in
@@ -122,7 +94,7 @@ type ImageBuildOptions struct {
 	Target      string
 	SessionID   string
 	Platform    string
-	// Version specifies the version of the unerlying builder to use
+	// Version specifies the version of the underlying builder to use
 	Version BuilderVersion
 	// BuildID is an optional identifier that can be passed together with the
 	// build request. The same identifier can be used to gracefully cancel the
@@ -157,81 +129,13 @@ type ImageBuildResponse struct {
 	OSType string
 }
 
-// ImageCreateOptions holds information to create images.
-type ImageCreateOptions struct {
-	RegistryAuth string // RegistryAuth is the base64 encoded credentials for the registry.
-	Platform     string // Platform is the target platform of the image if it needs to be pulled from the registry.
-}
-
-// ImageImportSource holds source information for ImageImport
-type ImageImportSource struct {
-	Source     io.Reader // Source is the data to send to the server to create this image from. You must set SourceName to "-" to leverage this.
-	SourceName string    // SourceName is the name of the image to pull. Set to "-" to leverage the Source attribute.
-}
-
-// ImageImportOptions holds information to import images from the client host.
-type ImageImportOptions struct {
-	Tag      string   // Tag is the name to tag this image with. This attribute is deprecated.
-	Message  string   // Message is the message to tag the image with
-	Changes  []string // Changes are the raw changes to apply to this image
-	Platform string   // Platform is the target platform of the image
-}
-
-// ImageListOptions holds parameters to list images with.
-type ImageListOptions struct {
-	// All controls whether all images in the graph are filtered, or just
-	// the heads.
-	All bool
-
-	// Filters is a JSON-encoded set of filter arguments.
-	Filters filters.Args
-
-	// SharedSize indicates whether the shared size of images should be computed.
-	SharedSize bool
-
-	// ContainerCount indicates whether container count should be computed.
-	ContainerCount bool
-}
-
-// ImageLoadResponse returns information to the client about a load process.
-type ImageLoadResponse struct {
-	// Body must be closed to avoid a resource leak
-	Body io.ReadCloser
-	JSON bool
-}
-
-// ImagePullOptions holds information to pull images.
-type ImagePullOptions struct {
-	All           bool
-	RegistryAuth  string // RegistryAuth is the base64 encoded credentials for the registry
-	PrivilegeFunc RequestPrivilegeFunc
-	Platform      string
-}
-
 // RequestPrivilegeFunc is a function interface that
 // clients can supply to retry operations after
 // getting an authorization error.
 // This function returns the registry authentication
 // header value in base 64 format, or an error
 // if the privilege request fails.
-type RequestPrivilegeFunc func() (string, error)
-
-// ImagePushOptions holds information to push images.
-type ImagePushOptions ImagePullOptions
-
-// ImageRemoveOptions holds parameters to remove images.
-type ImageRemoveOptions struct {
-	Force         bool
-	PruneChildren bool
-}
-
-// ImageSearchOptions holds parameters to search images with.
-type ImageSearchOptions struct {
-	RegistryAuth  string
-	PrivilegeFunc RequestPrivilegeFunc
-	Filters       filters.Args
-	Limit         int
-}
+type RequestPrivilegeFunc func(context.Context) (string, error)
 
 // NodeListOptions holds parameters to list nodes with.
 type NodeListOptions struct {
@@ -336,7 +240,7 @@ type PluginInstallOptions struct {
 	RegistryAuth          string // RegistryAuth is the base64 encoded credentials for the registry
 	RemoteRef             string // RemoteRef is the plugin name on the registry
 	PrivilegeFunc         RequestPrivilegeFunc
-	AcceptPermissionsFunc func(PluginPrivileges) (bool, error)
+	AcceptPermissionsFunc func(context.Context, PluginPrivileges) (bool, error)
 	Args                  []string
 }
 

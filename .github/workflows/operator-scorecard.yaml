@@ -26,7 +26,7 @@ jobs:
     - uses: engineerd/setup-kind@v0.5.0
       with:
         version: "v0.17.0"
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Install make
       run: sudo apt-get install make
     - name: Run scorecard

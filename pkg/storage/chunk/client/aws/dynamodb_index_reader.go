@@ -93,7 +93,7 @@ func (r *dynamodbIndexReader) ReadIndexEntries(ctx context.Context, tableName st
 			withRetrys := func(req *request.Request) {
 				req.Retryer = client.DefaultRetryer{NumMaxRetries: r.maxRetries}
 			}
-			err := r.DynamoDB.ScanPagesWithContext(ctx, input, func(page *dynamodb.ScanOutput, lastPage bool) bool {
+			err := r.DynamoDB.ScanPagesWithContext(ctx, input, func(page *dynamodb.ScanOutput, _ bool) bool {
 				if cc := page.ConsumedCapacity; cc != nil {
 					r.metrics.dynamoConsumedCapacity.WithLabelValues("DynamoDB.ScanTable", *cc.TableName).
 						Add(*cc.CapacityUnits)

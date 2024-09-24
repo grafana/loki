@@ -176,6 +176,7 @@ local releaseLibStep = common.releaseLibStep;
   dist: function(buildImage, skipArm=true, useGCR=false, makeTargets=['dist', 'packages'])
     job.new()
     + job.withSteps([
+      common.cleanUpBuildCache,
       common.fetchReleaseRepo,
       common.googleAuth,
       common.setupGoogleCloudSdk,

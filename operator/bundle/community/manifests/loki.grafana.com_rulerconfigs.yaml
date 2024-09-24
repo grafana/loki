@@ -5,11 +5,11 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.14.0
   creationTimestamp: null
   labels:
-    app.kubernetes.io/instance: loki-operator-v0.6.0
+    app.kubernetes.io/instance: loki-operator-v0.6.2
     app.kubernetes.io/managed-by: operator-lifecycle-manager
     app.kubernetes.io/name: loki-operator
     app.kubernetes.io/part-of: loki-operator
-    app.kubernetes.io/version: 0.6.0
+    app.kubernetes.io/version: 0.6.2
   name: rulerconfigs.loki.grafana.com
 spec:
   conversion:
@@ -107,6 +107,9 @@ spec:
                             description: The client-side certificate file path for
                               the TLS configuration.
                             type: string
+                          insecureSkipVerify:
+                            description: Skip validating server certificate.
+                            type: boolean
                           keyPath:
                             description: The client-side key file path for the TLS
                               configuration.
@@ -310,6 +313,9 @@ spec:
                                   description: The client-side certificate file path
                                     for the TLS configuration.
                                   type: string
+                                insecureSkipVerify:
+                                  description: Skip validating server certificate.
+                                  type: boolean
                                 keyPath:
                                   description: The client-side key file path for the
                                     TLS configuration.
