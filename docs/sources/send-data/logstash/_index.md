@@ -22,9 +22,7 @@ Our experience over the years has found numerous significant challenges using Lo
   * We at Grafana Labs have no expertise at configuring Logstash or understanding its configuration language, so we cannot provide support for it.
   * It's very hard to troubleshoot and debug. Our experience has shown that in nearly every case where it was assumed this would be the fast path to getting logs to Loki, that was not the case and it ended up taking far longer than anticipated.
   
-Please... strongly consider using any alternative mechanism to sending logs to Loki.
-
-We recommend using [Grafana Alloy](/docs/loki/latest/send-data/alloy/), this is the tool we build and the tool for which we can offer the best experience and most support.
+Please strongly consider using any alternative mechanism to sending logs to Loki. We recommend using [Grafana Alloy](/docs/loki/latest/send-data/alloy/).  This is the tool we build and where we can offer the best experience and most support.
 
 {{% /admonition %}}
 
