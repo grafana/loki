@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 	"github.com/grafana/loki/v3/pkg/util/mempool"
@@ -14,13 +14,11 @@ import (
 
 // smallBlockOpts returns a set of block options that are suitable for testing
 // characterized by small page sizes
-func smallBlockOpts(v Version, enc chunkenc.Encoding) BlockOptions {
+func smallBlockOpts(v Version, enc compression.Encoding) BlockOptions {
 	return BlockOptions{
 		Schema: Schema{
-			version:     v,
-			encoding:    enc,
-			nGramLength: 4,
-			nGramSkip:   0,
+			version:  v,
+			encoding: enc,
 		},
 		SeriesPageSize: 100,
 		BloomPageSize:  2 << 10,
@@ -35,7 +33,7 @@ func setup(v Version) (BlockOptions, []SeriesWithBlooms, BlockWriter, BlockReade
 	bloomsBuf := bytes.NewBuffer(nil)
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
 	reader := NewByteReader(indexBuf, bloomsBuf)
-	return smallBlockOpts(v, chunkenc.EncNone), data, writer, reader
+	return smallBlockOpts(v, compression.EncNone), data, writer, reader
 }
 
 func TestV3Roundtrip(t *testing.T) {

@@ -1900,6 +1900,19 @@ The `compactor` block configures the compactor component, which compacts index s
 # CLI flag: -compactor.retention-table-timeout
 [retention_table_timeout: <duration> | default = 0s]
 
+retention_backoff_config:
+  # Minimum delay when backing off.
+  # CLI flag: -compactor.retention-backoff-config.backoff-min-period
+  [min_period: <duration> | default = 100ms]
+
+  # Maximum delay when backing off.
+  # CLI flag: -compactor.retention-backoff-config.backoff-max-period
+  [max_period: <duration> | default = 10s]
+
+  # Number of times to backoff and retry before failing.
+  # CLI flag: -compactor.retention-backoff-config.backoff-retries
+  [max_retries: <int> | default = 10]
+
 # Store used for managing delete requests.
 # CLI flag: -compactor.delete-request-store
 [delete_request_store: <string> | default = ""]
@@ -2251,6 +2264,14 @@ otlp_config:
   # List of default otlp resource attributes to be picked as index labels
   # CLI flag: -distributor.otlp.default_resource_attributes_as_index_labels
   [default_resource_attributes_as_index_labels: <list of strings> | default = [service.name service.namespace service.instance.id deployment.environment cloud.region cloud.availability_zone k8s.cluster.name k8s.namespace.name k8s.pod.name k8s.container.name container.name k8s.replicaset.name k8s.deployment.name k8s.statefulset.name k8s.daemonset.name k8s.cronjob.name k8s.job.name]]
+
+# Enable writes to Kafka during Push requests.
+# CLI flag: -distributor.kafka-writes-enabled
+[kafka_writes_enabled: <boolean> | default = false]
+
+# Enable writes to Ingesters during Push requests. Defaults to true.
+# CLI flag: -distributor.ingester-writes-enabled
+[ingester_writes_enabled: <boolean> | default = true]
 ```
 
 ### etcd
@@ -3712,20 +3733,6 @@ shard_streams:
 # creation.
 # CLI flag: -bloom-build.split-keyspace-by
 [bloom_split_series_keyspace_by: <int> | default = 256]
-
-# Experimental. Length of the n-grams created when computing blooms from log
-# lines.
-# CLI flag: -bloom-build.ngram-length
-[bloom_ngram_length: <int> | default = 4]
-
-# Experimental. Skip factor for the n-grams created when computing blooms from
-# log lines.
-# CLI flag: -bloom-build.ngram-skip
-[bloom_ngram_skip: <int> | default = 1]
-
-# Experimental. Scalable Bloom Filter desired false-positive rate.
-# CLI flag: -bloom-build.false-positive-rate
-[bloom_false_positive_rate: <float> | default = 0.01]
 
 # Experimental. Compression algorithm for bloom block pages.
 # CLI flag: -bloom-build.block-encoding

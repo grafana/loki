@@ -14,6 +14,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
@@ -28,7 +29,7 @@ type HeadBlock interface {
 	CheckpointBytes(b []byte) ([]byte, error)
 	CheckpointSize() int
 	LoadBytes(b []byte) error
-	Serialise(pool WriterPool) ([]byte, error)
+	Serialise(pool compression.WriterPool) ([]byte, error)
 	Reset()
 	Bounds() (mint, maxt int64)
 	Entries() int
@@ -373,7 +374,7 @@ func (hb *unorderedHeadBlock) SampleIterator(
 
 // nolint:unused
 // serialise is used in creating an ordered, compressed block from an unorderedHeadBlock
-func (hb *unorderedHeadBlock) Serialise(pool WriterPool) ([]byte, error) {
+func (hb *unorderedHeadBlock) Serialise(pool compression.WriterPool) ([]byte, error) {
 	inBuf := serializeBytesBufferPool.Get().(*bytes.Buffer)
 	defer func() {
 		inBuf.Reset()
