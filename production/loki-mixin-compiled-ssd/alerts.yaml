@@ -43,3 +43,15 @@ groups:
           for: 5m
           labels:
             severity: warning
+        - alert: LokiCompactorHasNotSuccessfullyRunCompaction
+          annotations:
+            description: |
+                {{ $labels.cluster }} {{ $labels.namespace }} has not run compaction in the last 24 hours. This may indicate a problem with the compactor.
+            summary: Loki compaction has not run in the last 24 hours.
+          expr: |
+            # The "last successful run" metric is updated even if the compactor owns no tenants,
+            # so this alert correctly doesn't fire if compactor has nothing to do.
+            (time() - loki_compactor_apply_retention_last_successful_run_timestamp_seconds > 60 * 60 * 24)
+          for: 1h
+          labels:
+            severity: critical
