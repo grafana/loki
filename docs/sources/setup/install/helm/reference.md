@@ -6488,20 +6488,20 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>memberlist.service.annotations</td>
+			<td>object</td>
+			<td></td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>memberlist.service.publishNotReadyAddresses</td>
 			<td>bool</td>
 			<td></td>
 			<td><pre lang="json">
 false
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>memberlist.service.annotations</td>
-			<td>object</td>
-			<td>Additional annotations for the `memberlist` service</td>
-			<td><pre lang="json">
-{}
 </pre>
 </td>
 		</tr>
