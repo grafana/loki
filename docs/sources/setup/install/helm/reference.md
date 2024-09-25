@@ -278,20 +278,7 @@ This is the generated reference for the Loki Helm Chart values.
 			<td>Configuration for the backend pod(s)</td>
 			<td><pre lang="json">
 {
-  "affinity": {
-    "podAntiAffinity": {
-      "requiredDuringSchedulingIgnoredDuringExecution": [
-        {
-          "labelSelector": {
-            "matchLabels": {
-              "app.kubernetes.io/component": "backend"
-            }
-          },
-          "topologyKey": "kubernetes.io/hostname"
-        }
-      ]
-    }
-  },
+  "affinity": {},
   "annotations": {},
   "autoscaling": {
     "behavior": {},
@@ -348,8 +335,8 @@ This is the generated reference for the Loki Helm Chart values.
 			<td>backend.affinity</td>
 			<td>object</td>
 			<td>Affinity for backend pods.</td>
-			<td><pre lang="">
-Hard node anti-affinity
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -703,20 +690,7 @@ null
 			<td>Configuration for the bloom-builder</td>
 			<td><pre lang="json">
 {
-  "affinity": {
-    "podAntiAffinity": {
-      "requiredDuringSchedulingIgnoredDuringExecution": [
-        {
-          "labelSelector": {
-            "matchLabels": {
-              "app.kubernetes.io/component": "bloom-builder"
-            }
-          },
-          "topologyKey": "kubernetes.io/hostname"
-        }
-      ]
-    }
-  },
+  "affinity": {},
   "appProtocol": {
     "grpc": ""
   },
@@ -765,8 +739,8 @@ null
 			<td>bloomBuilder.affinity</td>
 			<td>object</td>
 			<td>Affinity for bloom-builder pods.</td>
-			<td><pre lang="">
-Hard node anti-affinity
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -1075,20 +1049,7 @@ null
 			<td>Configuration for the bloom-gateway</td>
 			<td><pre lang="json">
 {
-  "affinity": {
-    "podAntiAffinity": {
-      "requiredDuringSchedulingIgnoredDuringExecution": [
-        {
-          "labelSelector": {
-            "matchLabels": {
-              "app.kubernetes.io/component": "bloom-gateway"
-            }
-          },
-          "topologyKey": "kubernetes.io/hostname"
-        }
-      ]
-    }
-  },
+  "affinity": {},
   "appProtocol": {
     "grpc": ""
   },
@@ -1146,9 +1107,9 @@ null
 		<tr>
 			<td>bloomGateway.affinity</td>
 			<td>object</td>
-			<td>Affinity for bloom-gateway pods.</td>
-			<td><pre lang="">
-Hard node anti-affinity
+			<td>Affinity for bloom gateway pods.</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -1466,20 +1427,7 @@ null
 			<td>Configuration for the bloom-planner</td>
 			<td><pre lang="json">
 {
-  "affinity": {
-    "podAntiAffinity": {
-      "requiredDuringSchedulingIgnoredDuringExecution": [
-        {
-          "labelSelector": {
-            "matchLabels": {
-              "app.kubernetes.io/component": "bloom-planner"
-            }
-          },
-          "topologyKey": "kubernetes.io/hostname"
-        }
-      ]
-    }
-  },
+  "affinity": {},
   "appProtocol": {
     "grpc": ""
   },
@@ -1538,8 +1486,8 @@ null
 			<td>bloomPlanner.affinity</td>
 			<td>object</td>
 			<td>Affinity for bloom-planner pods.</td>
-			<td><pre lang="">
-Hard node anti-affinity
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -2220,20 +2168,7 @@ null
 			<td>Configuration for the compactor</td>
 			<td><pre lang="json">
 {
-  "affinity": {
-    "podAntiAffinity": {
-      "requiredDuringSchedulingIgnoredDuringExecution": [
-        {
-          "labelSelector": {
-            "matchLabels": {
-              "app.kubernetes.io/component": "compactor"
-            }
-          },
-          "topologyKey": "kubernetes.io/hostname"
-        }
-      ]
-    }
-  },
+  "affinity": {},
   "appProtocol": {
     "grpc": ""
   },
@@ -2294,8 +2229,8 @@ null
 			<td>compactor.affinity</td>
 			<td>object</td>
 			<td>Affinity for compactor pods.</td>
-			<td><pre lang="">
-Hard node anti-affinity
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -2631,20 +2566,7 @@ null
 			<td>Configuration for the distributor</td>
 			<td><pre lang="json">
 {
-  "affinity": {
-    "podAntiAffinity": {
-      "requiredDuringSchedulingIgnoredDuringExecution": [
-        {
-          "labelSelector": {
-            "matchLabels": {
-              "app.kubernetes.io/component": "distributor"
-            }
-          },
-          "topologyKey": "kubernetes.io/hostname"
-        }
-      ]
-    }
-  },
+  "affinity": {},
   "appProtocol": {
     "grpc": ""
   },
@@ -2694,8 +2616,8 @@ null
 			<td>distributor.affinity</td>
 			<td>object</td>
 			<td>Affinity for distributor pods.</td>
-			<td><pre lang="">
-Hard node anti-affinity
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -3816,8 +3738,8 @@ null
 			<td>gateway.affinity</td>
 			<td>object</td>
 			<td>Affinity for gateway pods.</td>
-			<td><pre lang="">
-Hard node anti-affinity
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -4522,20 +4444,7 @@ null
 			<td>Configuration for the index-gateway</td>
 			<td><pre lang="json">
 {
-  "affinity": {
-    "podAntiAffinity": {
-      "requiredDuringSchedulingIgnoredDuringExecution": [
-        {
-          "labelSelector": {
-            "matchLabels": {
-              "app.kubernetes.io/component": "index-gateway"
-            }
-          },
-          "topologyKey": "kubernetes.io/hostname"
-        }
-      ]
-    }
-  },
+  "affinity": {},
   "appProtocol": {
     "grpc": ""
   },
@@ -4582,8 +4491,8 @@ null
 			<td>indexGateway.affinity</td>
 			<td>object</td>
 			<td>Affinity for index-gateway pods.</td>
-			<td><pre lang="">
-Hard node anti-affinity
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -4865,20 +4774,7 @@ null
 			<td>Configuration for the ingester</td>
 			<td><pre lang="json">
 {
-  "affinity": {
-    "podAntiAffinity": {
-      "requiredDuringSchedulingIgnoredDuringExecution": [
-        {
-          "labelSelector": {
-            "matchLabels": {
-              "app.kubernetes.io/component": "ingester"
-            }
-          },
-          "topologyKey": "kubernetes.io/hostname"
-        }
-      ]
-    }
-  },
+  "affinity": {},
   "appProtocol": {
     "grpc": ""
   },
@@ -4985,8 +4881,8 @@ null
 			<td>ingester.affinity</td>
 			<td>object</td>
 			<td>Affinity for ingester pods. Ignored if zoneAwareReplication is enabled.</td>
-			<td><pre lang="">
-Hard node anti-affinity
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -7465,20 +7361,7 @@ false
 			<td>Configuration for the pattern ingester</td>
 			<td><pre lang="json">
 {
-  "affinity": {
-    "podAntiAffinity": {
-      "requiredDuringSchedulingIgnoredDuringExecution": [
-        {
-          "labelSelector": {
-            "matchLabels": {
-              "app.kubernetes.io/component": "pattern-ingester"
-            }
-          },
-          "topologyKey": "kubernetes.io/hostname"
-        }
-      ]
-    }
-  },
+  "affinity": {},
   "appProtocol": {
     "grpc": ""
   },
@@ -7539,8 +7422,8 @@ false
 			<td>patternIngester.affinity</td>
 			<td>object</td>
 			<td>Affinity for pattern ingester pods.</td>
-			<td><pre lang="">
-Hard node anti-affinity
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -7867,20 +7750,7 @@ null
 			<td>Configuration for the querier</td>
 			<td><pre lang="json">
 {
-  "affinity": {
-    "podAntiAffinity": {
-      "requiredDuringSchedulingIgnoredDuringExecution": [
-        {
-          "labelSelector": {
-            "matchLabels": {
-              "app.kubernetes.io/component": "querier"
-            }
-          },
-          "topologyKey": "kubernetes.io/hostname"
-        }
-      ]
-    }
-  },
+  "affinity": {},
   "appProtocol": {
     "grpc": ""
   },
@@ -7950,8 +7820,8 @@ null
 			<td>querier.affinity</td>
 			<td>object</td>
 			<td>Affinity for querier pods.</td>
-			<td><pre lang="">
-Hard node anti-affinity
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -8332,20 +8202,7 @@ Defaults to allow skew no more then 1 node
 			<td>Configuration for the query-frontend</td>
 			<td><pre lang="json">
 {
-  "affinity": {
-    "podAntiAffinity": {
-      "requiredDuringSchedulingIgnoredDuringExecution": [
-        {
-          "labelSelector": {
-            "matchLabels": {
-              "app.kubernetes.io/component": "query-frontend"
-            }
-          },
-          "topologyKey": "kubernetes.io/hostname"
-        }
-      ]
-    }
-  },
+  "affinity": {},
   "appProtocol": {
     "grpc": ""
   },
@@ -8394,8 +8251,8 @@ Defaults to allow skew no more then 1 node
 			<td>queryFrontend.affinity</td>
 			<td>object</td>
 			<td>Affinity for query-frontend pods.</td>
-			<td><pre lang="">
-Hard node anti-affinity
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -8704,20 +8561,7 @@ null
 			<td>Configuration for the query-scheduler</td>
 			<td><pre lang="json">
 {
-  "affinity": {
-    "podAntiAffinity": {
-      "requiredDuringSchedulingIgnoredDuringExecution": [
-        {
-          "labelSelector": {
-            "matchLabels": {
-              "app.kubernetes.io/component": "query-scheduler"
-            }
-          },
-          "topologyKey": "kubernetes.io/hostname"
-        }
-      ]
-    }
-  },
+  "affinity": {},
   "appProtocol": {
     "grpc": ""
   },
@@ -8752,8 +8596,8 @@ null
 			<td>queryScheduler.affinity</td>
 			<td>object</td>
 			<td>Affinity for query-scheduler pods.</td>
-			<td><pre lang="">
-Hard node anti-affinity
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -8999,20 +8843,7 @@ false
 			<td>Configuration for the read pod(s)</td>
 			<td><pre lang="json">
 {
-  "affinity": {
-    "podAntiAffinity": {
-      "requiredDuringSchedulingIgnoredDuringExecution": [
-        {
-          "labelSelector": {
-            "matchLabels": {
-              "app.kubernetes.io/component": "read"
-            }
-          },
-          "topologyKey": "kubernetes.io/hostname"
-        }
-      ]
-    }
-  },
+  "affinity": {},
   "annotations": {},
   "autoscaling": {
     "behavior": {},
@@ -9067,8 +8898,8 @@ false
 			<td>read.affinity</td>
 			<td>object</td>
 			<td>Affinity for read pods.</td>
-			<td><pre lang="">
-Hard node anti-affinity
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -9802,20 +9633,7 @@ null
 			<td>Configuration for the ruler</td>
 			<td><pre lang="json">
 {
-  "affinity": {
-    "podAntiAffinity": {
-      "requiredDuringSchedulingIgnoredDuringExecution": [
-        {
-          "labelSelector": {
-            "matchLabels": {
-              "app.kubernetes.io/component": "ruler"
-            }
-          },
-          "topologyKey": "kubernetes.io/hostname"
-        }
-      ]
-    }
-  },
+  "affinity": {},
   "appProtocol": {
     "grpc": ""
   },
@@ -9861,8 +9679,8 @@ null
 			<td>ruler.affinity</td>
 			<td>object</td>
 			<td>Affinity for ruler pods.</td>
-			<td><pre lang="">
-Hard node anti-affinity
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -10394,8 +10212,8 @@ false
 			<td>singleBinary.affinity</td>
 			<td>object</td>
 			<td>Affinity for single binary pods.</td>
-			<td><pre lang="">
-Hard node anti-affinity
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -10720,20 +10538,7 @@ null
 			<td>DEPRECATED Configuration for the table-manager. The table-manager is only necessary when using a deprecated index type such as Cassandra, Bigtable, or DynamoDB, it has not been necessary since loki introduced self- contained index types like 'boltdb-shipper' and 'tsdb'. This will be removed in a future helm chart.</td>
 			<td><pre lang="json">
 {
-  "affinity": {
-    "podAntiAffinity": {
-      "requiredDuringSchedulingIgnoredDuringExecution": [
-        {
-          "labelSelector": {
-            "matchLabels": {
-              "app.kubernetes.io/component": "table-manager"
-            }
-          },
-          "topologyKey": "kubernetes.io/hostname"
-        }
-      ]
-    }
-  },
+  "affinity": {},
   "annotations": {},
   "command": null,
   "dnsConfig": {},
@@ -10770,8 +10575,8 @@ null
 			<td>tableManager.affinity</td>
 			<td>object</td>
 			<td>Affinity for table-manager pods.</td>
-			<td><pre lang="">
-Hard node and anti-affinity
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -11123,8 +10928,8 @@ null
 			<td>write.affinity</td>
 			<td>object</td>
 			<td>Affinity for write pods.</td>
-			<td><pre lang="">
-Hard node anti-affinity
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>

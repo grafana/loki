@@ -963,14 +963,7 @@ gateway:
   # -- Grace period to allow the gateway to shutdown before it is killed
   terminationGracePeriodSeconds: 30
   # -- Affinity for gateway pods.
-  # @default -- Hard node anti-affinity
-  affinity:
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchLabels:
-              app.kubernetes.io/component: gateway
-          topologyKey: kubernetes.io/hostname
+  affinity: {}
   # -- DNS config for gateway pods
   dnsConfig: {}
   # -- Node selector for gateway pods
@@ -1292,14 +1285,7 @@ singleBinary:
   # -- Grace period to allow the single binary to shutdown before it is killed
   terminationGracePeriodSeconds: 30
   # -- Affinity for single binary pods.
-  # @default -- Hard node anti-affinity
-  affinity:
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchLabels:
-              app.kubernetes.io/component: single-binary
-          topologyKey: kubernetes.io/hostname
+  affinity: {}
   # -- DNS config for single binary pods
   dnsConfig: {}
   # -- Node selector for single binary pods
@@ -1414,14 +1400,7 @@ write:
   # all data and to successfully leave the member ring on shutdown.
   terminationGracePeriodSeconds: 300
   # -- Affinity for write pods.
-  # @default -- Hard node anti-affinity
-  affinity:
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchLabels:
-              app.kubernetes.io/component: write
-          topologyKey: kubernetes.io/hostname
+  affinity: {}
   # -- DNS config for write pods
   dnsConfig: {}
   # -- Node selector for write pods
@@ -1528,14 +1507,7 @@ read:
   # -- Grace period to allow the read to shutdown before it is killed
   terminationGracePeriodSeconds: 30
   # -- Affinity for read pods.
-  # @default -- Hard node anti-affinity
-  affinity:
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchLabels:
-              app.kubernetes.io/component: read
-          topologyKey: kubernetes.io/hostname
+  affinity: {}
   # -- DNS config for read pods
   dnsConfig: {}
   # -- Node selector for read pods
@@ -1633,14 +1605,7 @@ backend:
   # all data and to successfully leave the member ring on shutdown.
   terminationGracePeriodSeconds: 300
   # -- Affinity for backend pods.
-  # @default -- Hard node anti-affinity
-  affinity:
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchLabels:
-              app.kubernetes.io/component: backend
-          topologyKey: kubernetes.io/hostname
+  affinity: {}
   # -- DNS config for backend pods
   dnsConfig: {}
   # -- Node selector for backend pods
@@ -1767,14 +1732,7 @@ ingester:
         matchLabels:
           app.kubernetes.io/component: ingester
   # -- Affinity for ingester pods. Ignored if zoneAwareReplication is enabled.
-  # @default -- Hard node anti-affinity
-  affinity:
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchLabels:
-              app.kubernetes.io/component: ingester
-          topologyKey: kubernetes.io/hostname
+  affinity: {}
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: 1
   # -- Node selector for ingester pods
@@ -1929,14 +1887,7 @@ distributor:
   # -- Grace period to allow the distributor to shutdown before it is killed
   terminationGracePeriodSeconds: 30
   # -- Affinity for distributor pods.
-  # @default -- Hard node anti-affinity
-  affinity:
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchLabels:
-              app.kubernetes.io/component: distributor
-          topologyKey: kubernetes.io/hostname
+  affinity: {}
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
   # -- Max Surge for distributor pods
@@ -2032,14 +1983,7 @@ querier:
         matchLabels:
           app.kubernetes.io/component: querier
   # -- Affinity for querier pods.
-  # @default -- Hard node anti-affinity
-  affinity:
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchLabels:
-              app.kubernetes.io/component: querier
-          topologyKey: kubernetes.io/hostname
+  affinity: {}
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
   # -- Max Surge for querier pods
@@ -2139,14 +2083,7 @@ queryFrontend:
   # -- Grace period to allow the query-frontend to shutdown before it is killed
   terminationGracePeriodSeconds: 30
   # -- Affinity for query-frontend pods.
-  # @default -- Hard node anti-affinity
-  affinity:
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchLabels:
-              app.kubernetes.io/component: query-frontend
-          topologyKey: kubernetes.io/hostname
+  affinity: {}
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
   # -- Node selector for query-frontend pods
@@ -2202,14 +2139,7 @@ queryScheduler:
   # -- Grace period to allow the query-scheduler to shutdown before it is killed
   terminationGracePeriodSeconds: 30
   # -- Affinity for query-scheduler pods.
-  # @default -- Hard node anti-affinity
-  affinity:
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchLabels:
-              app.kubernetes.io/component: query-scheduler
-          topologyKey: kubernetes.io/hostname
+  affinity: {}
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: 1
   # -- Node selector for query-scheduler pods
@@ -2266,14 +2196,7 @@ indexGateway:
   # -- Grace period to allow the index-gateway to shutdown before it is killed.
   terminationGracePeriodSeconds: 300
   # -- Affinity for index-gateway pods.
-  # @default -- Hard node anti-affinity
-  affinity:
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchLabels:
-              app.kubernetes.io/component: index-gateway
-          topologyKey: kubernetes.io/hostname
+  affinity: {}
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
   # -- Node selector for index-gateway pods
@@ -2327,14 +2250,7 @@ compactor:
   # -- Annotations for compactor pods
   podAnnotations: {}
   # -- Affinity for compactor pods.
-  # @default -- Hard node anti-affinity
-  affinity:
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchLabels:
-              app.kubernetes.io/component: compactor
-          topologyKey: kubernetes.io/hostname
+  affinity: {}
   # -- Labels for compactor service
   serviceLabels: {}
   # -- Annotations for compactor service
@@ -2434,15 +2350,8 @@ bloomGateway:
   podLabels: {}
   # -- Annotations for bloom-gateway pods
   podAnnotations: {}
-  # -- Affinity for bloom-gateway pods.
-  # @default -- Hard node anti-affinity
-  affinity:
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchLabels:
-              app.kubernetes.io/component: bloom-gateway
-          topologyKey: kubernetes.io/hostname
+  # -- Affinity for bloom gateway pods.
+  affinity: {}
   # -- Labels for bloom-gateway service
   serviceLabels: {}
   # -- Annotations for bloom-gateway service
@@ -2534,14 +2443,7 @@ bloomPlanner:
   # -- Annotations for bloom-planner pods
   podAnnotations: {}
   # -- Affinity for bloom-planner pods.
-  # @default -- Hard node anti-affinity
-  affinity:
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchLabels:
-              app.kubernetes.io/component: bloom-planner
-          topologyKey: kubernetes.io/hostname
+  affinity: {}
   # -- Labels for bloom-planner service
   serviceLabels: {}
   # -- Annotations for bloom-planner service
@@ -2680,14 +2582,7 @@ bloomBuilder:
   # -- Grace period to allow the bloom-builder to shutdown before it is killed
   terminationGracePeriodSeconds: 30
   # -- Affinity for bloom-builder pods.
-  # @default -- Hard node anti-affinity
-  affinity:
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchLabels:
-              app.kubernetes.io/component: bloom-builder
-          topologyKey: kubernetes.io/hostname
+  affinity: {}
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
   # -- Node selector for bloom-builder pods
@@ -2723,14 +2618,7 @@ patternIngester:
   # -- Annotations for pattern ingester pods
   podAnnotations: {}
   # -- Affinity for pattern ingester pods.
-  # @default -- Hard node anti-affinity
-  affinity:
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchLabels:
-              app.kubernetes.io/component: pattern-ingester
-          topologyKey: kubernetes.io/hostname
+  affinity: {}
   # -- Labels for pattern ingester service
   serviceLabels: {}
   # -- Annotations for pattern ingester service
@@ -2855,14 +2743,7 @@ ruler:
   # -- Grace period to allow the ruler to shutdown before it is killed
   terminationGracePeriodSeconds: 300
   # -- Affinity for ruler pods.
-  # @default -- Hard node anti-affinity
-  affinity:
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchLabels:
-              app.kubernetes.io/component: ruler
-          topologyKey: kubernetes.io/hostname
+  affinity: {}
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
   # -- Node selector for ruler pods
@@ -3539,14 +3420,7 @@ tableManager:
   # -- Grace period to allow the table-manager to shutdown before it is killed
   terminationGracePeriodSeconds: 30
   # -- Affinity for table-manager pods.
-  # @default -- Hard node and anti-affinity
-  affinity:
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchLabels:
-              app.kubernetes.io/component: table-manager
-          topologyKey: kubernetes.io/hostname
+  affinity: {}
   # -- DNS config table-manager pods
   dnsConfig: {}
   # -- Node selector for table-manager pods
