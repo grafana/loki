@@ -260,6 +260,11 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 		}
 	}
 
+	// handle the case where there are no matchers
+	if adjustedThrough == 0 {
+		adjustedThrough = r.through
+	}
+
 	exprStr := expr.String()
 	// try to get shards for the given expression
 	// if it fails, fallback to linearshards based on stats
