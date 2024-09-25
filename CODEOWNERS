@@ -16,4 +16,9 @@
 CHANGELOG.md
 
 # Mixins
-/production/loki-mixin/ @cstyan @QuentinBisson
+/production/loki-mixin/ @cstyan
+
+# Helm and compiled Mixins
+/production/helm/ @trevorwhitney
+/production/loki-mixin-compiled/ @trevorwhitney
+/production/loki-mixin-compiled-ssh/ @trevorwhitney
