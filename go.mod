@@ -124,7 +124,7 @@ require (
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/gogo/googleapis v1.4.1
 	github.com/grafana/jsonparser v0.0.0-20240425183733-ea80629e1a32
-	github.com/grafana/loki/pkg/push v0.0.0-20240923094301-8ebb2b5300f0
+	github.com/grafana/loki/pkg/push v0.0.0-20240924133635-758364c7775f
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/hashicorp/raft v1.7.1
 	github.com/hashicorp/raft-wal v0.4.1
