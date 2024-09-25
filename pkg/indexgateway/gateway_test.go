@@ -446,7 +446,7 @@ func TestAccumulateChunksToShards(t *testing.T) {
 	fsImpl := func(series [][]refWithSizingInfo) sharding.ForSeriesFunc {
 		return sharding.ForSeriesFunc(
 			func(
-				ctx context.Context,
+				_ context.Context,
 				_ string,
 				_ tsdb_index.FingerprintFilter,
 				_, _ model.Time,
@@ -454,7 +454,7 @@ func TestAccumulateChunksToShards(t *testing.T) {
 					_ labels.Labels,
 					fp model.Fingerprint,
 					chks []tsdb_index.ChunkMeta,
-				) (stop bool), matchers ...*labels.Matcher) error {
+				) (stop bool), _ ...*labels.Matcher) error {
 
 				for _, s := range series {
 					chks := []tsdb_index.ChunkMeta{}

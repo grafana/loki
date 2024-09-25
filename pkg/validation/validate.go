@@ -67,6 +67,8 @@ const (
 	StructuredMetadataTooLargeErrorMsg   = "stream '%s' has structured metadata too large: '%d' bytes, limit: '%d' bytes. Please see `limits_config.max_structured_metadata_size` or contact your Loki administrator to increase it."
 	StructuredMetadataTooMany            = "structured_metadata_too_many"
 	StructuredMetadataTooManyErrorMsg    = "stream '%s' has too many structured metadata labels: '%d', limit: '%d'. Please see `limits_config.max_structured_metadata_entries_count` or contact your Loki administrator to increase it."
+	BlockedIngestion                     = "blocked_ingestion"
+	BlockedIngestionErrorMsg             = "ingestion blocked for user %s until '%s' with status code '%d'"
 )
 
 type ErrStreamRateLimit struct {

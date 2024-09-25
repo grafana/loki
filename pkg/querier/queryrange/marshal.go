@@ -124,15 +124,17 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 	case sketch.TopKMatrix:
 		sk, err := data.ToProto()
 		return &TopKSketchesResponse{
-			Response: sk,
-			Warnings: result.Warnings,
+			Response:   sk,
+			Warnings:   result.Warnings,
+			Statistics: result.Statistics,
 		}, err
 	case logql.ProbabilisticQuantileMatrix:
 		r := data.ToProto()
 		data.Release()
 		return &QuantileSketchResponse{
-			Response: r,
-			Warnings: result.Warnings,
+			Response:   r,
+			Warnings:   result.Warnings,
+			Statistics: result.Statistics,
 		}, nil
 	}
 
@@ -184,9 +186,10 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 		}
 
 		return logqlmodel.Result{
-			Data:     matrix,
-			Headers:  resp.GetHeaders(),
-			Warnings: r.Warnings,
+			Data:       matrix,
+			Headers:    resp.GetHeaders(),
+			Warnings:   r.Warnings,
+			Statistics: r.Statistics,
 		}, nil
 	case *QuantileSketchResponse:
 		matrix, err := logql.ProbabilisticQuantileMatrixFromProto(r.Response)
@@ -194,9 +197,10 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 			return logqlmodel.Result{}, fmt.Errorf("cannot decode quantile sketch: %w", err)
 		}
 		return logqlmodel.Result{
-			Data:     matrix,
-			Headers:  resp.GetHeaders(),
-			Warnings: r.Warnings,
+			Data:       matrix,
+			Headers:    resp.GetHeaders(),
+			Warnings:   r.Warnings,
+			Statistics: r.Statistics,
 		}, nil
 	default:
 		return logqlmodel.Result{}, fmt.Errorf("cannot decode (%T)", resp)
@@ -332,7 +336,7 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 		if concrete.Instant.Plan == nil {
 			parsed, err := syntax.ParseExpr(concrete.Instant.GetQuery())
 			if err != nil {
-				return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+				return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 			}
 			concrete.Instant.Plan = &plan.QueryPlan{
 				AST: parsed,
@@ -350,7 +354,7 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 		if concrete.Streams.Plan == nil {
 			parsed, err := syntax.ParseExpr(concrete.Streams.GetQuery())
 			if err != nil {
-				return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+				return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 			}
 			concrete.Streams.Plan = &plan.QueryPlan{
 				AST: parsed,

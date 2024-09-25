@@ -60,7 +60,7 @@ func ExtractLineFilters(e Expr) []LineFilterExpr {
 	}
 	var filters []LineFilterExpr
 	visitor := &DepthFirstTraversal{
-		VisitLineFilterFn: func(v RootVisitor, e *LineFilterExpr) {
+		VisitLineFilterFn: func(_ RootVisitor, e *LineFilterExpr) {
 			if e != nil {
 				filters = append(filters, *e)
 			}
@@ -68,6 +68,55 @@ func ExtractLineFilters(e Expr) []LineFilterExpr {
 	}
 	e.Accept(visitor)
 	return filters
+}
+
+func ExtractLabelFiltersBeforeParser(e Expr) []*LabelFilterExpr {
+	if e == nil {
+		return nil
+	}
+	var (
+		filters         []*LabelFilterExpr
+		foundParseStage bool
+	)
+
+	visitor := &DepthFirstTraversal{
+		VisitLabelFilterFn: func(v RootVisitor, e *LabelFilterExpr) {
+			if !foundParseStage {
+				filters = append(filters, e)
+			}
+		},
+
+		// TODO(rfratto): Find a way to generically represent or test for an
+		// expression that modifies extracted labels (parsers, keep, drop, etc.).
+		//
+		// As the AST is now, we can't prove at compile time that the list of
+		// visitors below is complete. For example, if a new parser stage
+		// expression is added without updating this list, blooms can silently
+		// misbehave.
+
+		VisitLogfmtParserFn:           func(v RootVisitor, e *LogfmtParserExpr) { foundParseStage = true },
+		VisitLabelParserFn:            func(v RootVisitor, e *LabelParserExpr) { foundParseStage = true },
+		VisitJSONExpressionParserFn:   func(v RootVisitor, e *JSONExpressionParser) { foundParseStage = true },
+		VisitLogfmtExpressionParserFn: func(v RootVisitor, e *LogfmtExpressionParser) { foundParseStage = true },
+		VisitLabelFmtFn:               func(v RootVisitor, e *LabelFmtExpr) { foundParseStage = true },
+		VisitKeepLabelFn:              func(v RootVisitor, e *KeepLabelsExpr) { foundParseStage = true },
+		VisitDropLabelsFn:             func(v RootVisitor, e *DropLabelsExpr) { foundParseStage = true },
+	}
+	e.Accept(visitor)
+	return filters
+}
+
+func IsMatchEqualFilterer(filterer log.LabelFilterer) bool {
+	switch filter := filterer.(type) {
+	case *log.LineFilterLabelFilter:
+		return filter.Type == labels.MatchEqual
+	case *log.StringLabelFilter:
+		return filter.Type == labels.MatchEqual
+	case *log.BinaryLabelFilter:
+		return IsMatchEqualFilterer(filter.Left) && IsMatchEqualFilterer(filter.Right)
+	default:
+		return false
+	}
 }
 
 // implicit holds default implementations

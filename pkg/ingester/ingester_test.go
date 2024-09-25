@@ -32,7 +32,7 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/ingester/index"
@@ -697,7 +697,7 @@ func TestValidate(t *testing.T) {
 	}{
 		{
 			in: Config{
-				ChunkEncoding: chunkenc.EncGZIP.String(),
+				ChunkEncoding: compression.EncGZIP.String(),
 				FlushOpBackoff: backoff.Config{
 					MinBackoff: 100 * time.Millisecond,
 					MaxBackoff: 10 * time.Second,
@@ -708,7 +708,7 @@ func TestValidate(t *testing.T) {
 				MaxChunkAge:    time.Minute,
 			},
 			expected: Config{
-				ChunkEncoding: chunkenc.EncGZIP.String(),
+				ChunkEncoding: compression.EncGZIP.String(),
 				FlushOpBackoff: backoff.Config{
 					MinBackoff: 100 * time.Millisecond,
 					MaxBackoff: 10 * time.Second,
@@ -717,12 +717,12 @@ func TestValidate(t *testing.T) {
 				FlushOpTimeout: 15 * time.Second,
 				IndexShards:    index.DefaultIndexShards,
 				MaxChunkAge:    time.Minute,
-				parsedEncoding: chunkenc.EncGZIP,
+				parsedEncoding: compression.EncGZIP,
 			},
 		},
 		{
 			in: Config{
-				ChunkEncoding: chunkenc.EncSnappy.String(),
+				ChunkEncoding: compression.EncSnappy.String(),
 				FlushOpBackoff: backoff.Config{
 					MinBackoff: 100 * time.Millisecond,
 					MaxBackoff: 10 * time.Second,
@@ -732,7 +732,7 @@ func TestValidate(t *testing.T) {
 				IndexShards:    index.DefaultIndexShards,
 			},
 			expected: Config{
-				ChunkEncoding: chunkenc.EncSnappy.String(),
+				ChunkEncoding: compression.EncSnappy.String(),
 				FlushOpBackoff: backoff.Config{
 					MinBackoff: 100 * time.Millisecond,
 					MaxBackoff: 10 * time.Second,
@@ -740,7 +740,7 @@ func TestValidate(t *testing.T) {
 				},
 				FlushOpTimeout: 15 * time.Second,
 				IndexShards:    index.DefaultIndexShards,
-				parsedEncoding: chunkenc.EncSnappy,
+				parsedEncoding: compression.EncSnappy,
 			},
 		},
 		{
@@ -758,7 +758,7 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			in: Config{
-				ChunkEncoding: chunkenc.EncGZIP.String(),
+				ChunkEncoding: compression.EncGZIP.String(),
 				FlushOpBackoff: backoff.Config{
 					MinBackoff: 100 * time.Millisecond,
 					MaxBackoff: 10 * time.Second,
@@ -771,7 +771,7 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			in: Config{
-				ChunkEncoding: chunkenc.EncGZIP.String(),
+				ChunkEncoding: compression.EncGZIP.String(),
 				FlushOpBackoff: backoff.Config{
 					MinBackoff: 100 * time.Millisecond,
 					MaxBackoff: 10 * time.Second,
@@ -784,7 +784,7 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			in: Config{
-				ChunkEncoding: chunkenc.EncGZIP.String(),
+				ChunkEncoding: compression.EncGZIP.String(),
 				FlushOpBackoff: backoff.Config{
 					MinBackoff: 100 * time.Millisecond,
 					MaxBackoff: 10 * time.Second,
@@ -1434,7 +1434,7 @@ func createIngesterServer(t *testing.T, ingesterConfig Config) (ingesterClient, 
 	}()
 
 	// nolint:staticcheck // grpc.DialContext() has been deprecated; we'll address it before upgrading to gRPC 2.
-	conn, err := grpc.DialContext(context.Background(), "", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
+	conn, err := grpc.DialContext(context.Background(), "", grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithContextDialer(func(_ context.Context, _ string) (net.Conn, error) {
 		return listener.Dial()
 	}))
 	require.NoError(t, err)

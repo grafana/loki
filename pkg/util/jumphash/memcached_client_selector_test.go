@@ -47,7 +47,7 @@ var ips = map[string][]byte{
 	"microsoft.com:80":  net.ParseIP("172.12.34.56"),
 }
 
-var mockTCPResolver = func(network, address string) (*net.TCPAddr, error) {
+var mockTCPResolver = func(_, address string) (*net.TCPAddr, error) {
 	return &net.TCPAddr{
 		IP:   ips[address],
 		Port: 0,

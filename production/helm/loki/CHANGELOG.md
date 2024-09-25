@@ -16,6 +16,32 @@ Entries should include a reference to the pull request that introduced the chang
 ## 7.0.0
 
 - [BUGFIX] Removed affinity defaults to solve object merge problem
+## 6.14.0
+
+- [FEATURE] Add additional service annotations for components in distributed mode
+
+## 6.13.0
+
+- [CHANGE] Correctly wrap ClusterRoleBinding around `rbac/namespaced` conditional.
+- [FIX] Do not create bloom planner, bloom builder, bloom gateway Deployment/Statefulset if their replica count is 0.
+- [FIX] Configure (ephemeral) storage for bloom builder working directory
+- [ENHANCEMENT] Automatically configure bloom planner address for bloom builders and bloom gateway addresses for bloom gateway clients.
+
+## 6.12.0
+
+- [ENHANCEMENT] Replace Bloom Compactor component with Bloom Planner and Bloom Builder. These are the new components to build bloom blocks.
+
+## 6.11.0
+
+- [FEATURE] Add support for configuring persistence for memcached.
+
+## 6.10.2
+
+- [CHANGE] Bumped version of `nginxinc/nginx-unprivileged` to 1.27-alpine; this remediates several CVE
+
+## 6.10.1
+
+- [CHANGE] Bumped version of `kiwigrid/k8s-sidecar` to 1.27.5; this remediates several CVE
 
 ## 6.10.0
 

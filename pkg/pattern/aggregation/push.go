@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/golang/snappy"
@@ -22,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/build"
 
 	"github.com/grafana/dskit/backoff"
@@ -312,9 +312,9 @@ func AggregatedMetricEntry(
 	service string,
 	lbls labels.Labels,
 ) string {
-	byteString := humanize.Bytes(totalBytes)
+	byteString := util.HumanizeBytes(totalBytes)
 	base := fmt.Sprintf(
-		"ts=%d bytes=%s count=%d %s=%s",
+		"ts=%d bytes=%s count=%d %s=\"%s\"",
 		ts.UnixNano(),
 		byteString,
 		totalCount,
@@ -322,7 +322,7 @@ func AggregatedMetricEntry(
 	)
 
 	for _, l := range lbls {
-		base += fmt.Sprintf(" %s=%s", l.Name, l.Value)
+		base += fmt.Sprintf(" %s=\"%s\"", l.Name, l.Value)
 	}
 
 	return base
