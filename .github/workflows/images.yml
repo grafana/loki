@@ -427,7 +427,6 @@
     "branches":
     - "k[0-9]+*"
     - "main"
-    - "remove-drone"
 "permissions":
   "contents": "write"
   "id-token": "write"

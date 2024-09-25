@@ -113,7 +113,6 @@ local imagePrefix = 'grafana';
         branches: [
           'k[0-9]+*',  // This is a weird glob pattern, not a regexp, do not use ".*", see https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#filter-pattern-cheat-sheet
           'main',
-          'remove-drone',
         ],
       },
     },
