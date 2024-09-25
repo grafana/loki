@@ -9,7 +9,7 @@
       "use_github_app_token": true
   "fluent-bit":
     "env":
-      "BUILD_TIMEOUT": 40
+      "BUILD_TIMEOUT": 60
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
       "RELEASE_REPO": "grafana/loki"
@@ -55,7 +55,7 @@
         "tags": "${{ env.IMAGE_PREFIX }}/fluent-bit-plugin-loki:${{ steps.weekly-version.outputs.version }}"
   "fluentd":
     "env":
-      "BUILD_TIMEOUT": 40
+      "BUILD_TIMEOUT": 60
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
       "RELEASE_REPO": "grafana/loki"
@@ -101,7 +101,7 @@
         "tags": "${{ env.IMAGE_PREFIX }}/fluent-plugin-loki:${{ steps.weekly-version.outputs.version }}"
   "logcli":
     "env":
-      "BUILD_TIMEOUT": 40
+      "BUILD_TIMEOUT": 60
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
       "RELEASE_REPO": "grafana/loki"
@@ -147,7 +147,7 @@
         "tags": "${{ env.IMAGE_PREFIX }}/logcli:${{ steps.weekly-version.outputs.version }}"
   "logstash":
     "env":
-      "BUILD_TIMEOUT": 40
+      "BUILD_TIMEOUT": 60
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
       "RELEASE_REPO": "grafana/loki"
@@ -193,7 +193,7 @@
         "tags": "${{ env.IMAGE_PREFIX }}/logstash-output-loki:${{ steps.weekly-version.outputs.version }}"
   "loki":
     "env":
-      "BUILD_TIMEOUT": 40
+      "BUILD_TIMEOUT": 60
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
       "RELEASE_REPO": "grafana/loki"
@@ -239,7 +239,7 @@
         "tags": "${{ env.IMAGE_PREFIX }}/loki:${{ steps.weekly-version.outputs.version }}"
   "loki-canary":
     "env":
-      "BUILD_TIMEOUT": 40
+      "BUILD_TIMEOUT": 60
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
       "RELEASE_REPO": "grafana/loki"
@@ -285,7 +285,7 @@
         "tags": "${{ env.IMAGE_PREFIX }}/loki-canary:${{ steps.weekly-version.outputs.version }}"
   "loki-canary-boringcrypto":
     "env":
-      "BUILD_TIMEOUT": 40
+      "BUILD_TIMEOUT": 60
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
       "RELEASE_REPO": "grafana/loki"
@@ -331,7 +331,7 @@
         "tags": "${{ env.IMAGE_PREFIX }}/loki-canary-boringcrypto:${{ steps.weekly-version.outputs.version }}"
   "promtail":
     "env":
-      "BUILD_TIMEOUT": 40
+      "BUILD_TIMEOUT": 60
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
       "RELEASE_REPO": "grafana/loki"
@@ -377,7 +377,7 @@
         "tags": "${{ env.IMAGE_PREFIX }}/promtail:${{ steps.weekly-version.outputs.version }}"
   "querytee":
     "env":
-      "BUILD_TIMEOUT": 40
+      "BUILD_TIMEOUT": 60
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
       "RELEASE_REPO": "grafana/loki"

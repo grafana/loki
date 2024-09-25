@@ -2,7 +2,7 @@ concurrency:
   group: "create-release-pr-${{ github.sha }}"
 env:
   BUILD_ARTIFACTS_BUCKET: "loki-build-artifacts"
-  BUILD_TIMEOUT: 40
+  BUILD_TIMEOUT: 60
   CHANGELOG_PATH: "CHANGELOG.md"
   DOCKER_USERNAME: "grafana"
   DRY_RUN: false
