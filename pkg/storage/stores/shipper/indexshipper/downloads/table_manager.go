@@ -181,6 +181,10 @@ func (tm *tableManager) ForEach(ctx context.Context, tableName, userID string, c
 }
 
 func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
+	if tm.ctx.Err() != nil {
+		return nil, errors.New("table manager is stopping")
+	}
+
 	// if table is already there, use it.
 	start := time.Now()
 	tm.tablesMtx.RLock()
@@ -234,6 +238,10 @@ func (tm *tableManager) syncTables(ctx context.Context) error {
 	level.Info(tm.logger).Log("msg", "syncing tables")
 
 	for _, name := range tables {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
 		level.Debug(tm.logger).Log("msg", "syncing table", "table", name)
 		start := time.Now()
 
