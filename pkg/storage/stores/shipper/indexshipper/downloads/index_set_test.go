@@ -31,6 +31,16 @@ func buildTestIndexSet(t *testing.T, userID, path string) (*indexSet, stopFunc) 
 	return idxSet.(*indexSet), idxSet.Close
 }
 
+func TestErrorWrapping(t *testing.T) {
+	tempDir := t.TempDir()
+	is, stop := buildTestIndexSet(t, userID, tempDir)
+	defer stop()
+
+	ctx := context.Background()
+	_, err := is.downloadFileFromStorage(ctx, "myfile", "pathh")
+	require.True(t, is.baseIndexSet.IsFileNotFoundErr(err), err)
+}
+
 func TestIndexSet_Init(t *testing.T) {
 	tempDir := t.TempDir()
 	objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
