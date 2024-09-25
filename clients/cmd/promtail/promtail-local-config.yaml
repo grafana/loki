@@ -1,9 +1,13 @@
 server:
   http_listen_port: 9080
   grpc_listen_port: 0
+  log_level: debug
 
 positions:
   filename: /tmp/positions.yaml
+  sync_period: 10s
+target_config:
+  sync_period: 10s
 
 clients:
   - url: http://localhost:3100/loki/api/v1/push
