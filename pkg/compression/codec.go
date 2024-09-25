@@ -5,64 +5,64 @@ import (
 	"strings"
 )
 
-// Codec identifies an available compression type.
+// Codec identifies an available compression codec.
 type Codec byte
 
-// The different available encodings.
+// The different available codecs
 // Make sure to preserve the order, as the numeric values are serialized!
 const (
-	EncNone Codec = iota
-	EncGZIP
-	EncDumb // not supported
-	EncLZ4_64k
-	EncSnappy
-	EncLZ4_256k
-	EncLZ4_1M
-	EncLZ4_4M
-	EncFlate
-	EncZstd
+	None Codec = iota
+	GZIP
+	Dumb // not supported
+	LZ4_64k
+	Snappy
+	LZ4_256k
+	LZ4_1M
+	LZ4_4M
+	Flate
+	Zstd
 )
 
-var supportedEncoding = []Codec{
-	EncNone,
-	EncGZIP,
-	EncLZ4_64k,
-	EncSnappy,
-	EncLZ4_256k,
-	EncLZ4_1M,
-	EncLZ4_4M,
-	EncFlate,
-	EncZstd,
+var supportedCodecs = []Codec{
+	None,
+	GZIP,
+	LZ4_64k,
+	Snappy,
+	LZ4_256k,
+	LZ4_1M,
+	LZ4_4M,
+	Flate,
+	Zstd,
 }
 
 func (e Codec) String() string {
 	switch e {
-	case EncGZIP:
+	case GZIP:
 		return "gzip"
-	case EncNone:
+	case None:
 		return "none"
-	case EncLZ4_64k:
+	case LZ4_64k:
 		return "lz4-64k"
-	case EncLZ4_256k:
+	case LZ4_256k:
 		return "lz4-256k"
-	case EncLZ4_1M:
+	case LZ4_1M:
 		return "lz4-1M"
-	case EncLZ4_4M:
+	case LZ4_4M:
 		return "lz4"
-	case EncSnappy:
+	case Snappy:
 		return "snappy"
-	case EncFlate:
+	case Flate:
 		return "flate"
-	case EncZstd:
+	case Zstd:
 		return "zstd"
 	default:
 		return "unknown"
 	}
 }
 
-// ParseCodec parses an chunk encoding (compression algorithm) by its name.
+// ParseCodec parses a chunk encoding (compression codec) by its name.
 func ParseCodec(enc string) (Codec, error) {
-	for _, e := range supportedEncoding {
+	for _, e := range supportedCodecs {
 		if strings.EqualFold(e.String(), enc) {
 			return e, nil
 		}
@@ -73,9 +73,9 @@ func ParseCodec(enc string) (Codec, error) {
 // SupportedCodecs returns the list of supported Encoding.
 func SupportedCodecs() string {
 	var sb strings.Builder
-	for i := range supportedEncoding {
-		sb.WriteString(supportedEncoding[i].String())
-		if i != len(supportedEncoding)-1 {
+	for i := range supportedCodecs {
+		sb.WriteString(supportedCodecs[i].String())
+		if i != len(supportedCodecs)-1 {
 			sb.WriteString(", ")
 		}
 	}

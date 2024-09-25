@@ -95,7 +95,7 @@ func (defaultKeyResolver) Block(ref BlockRef) Location {
 func (defaultKeyResolver) ParseBlockKey(loc Location) (BlockRef, error) {
 	dir, fn := path.Split(loc.Addr())
 
-	ext, enc := path.Ext(fn), compression.EncNone
+	ext, enc := path.Ext(fn), compression.None
 	if ext != "" && ext != blockExtension {
 		// trim compression extension
 		fn = strings.TrimSuffix(fn, ext)

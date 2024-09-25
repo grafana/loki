@@ -13,17 +13,17 @@ const (
 
 func ToFileExtension(e Codec) string {
 	switch e {
-	case EncNone:
+	case None:
 		return ExtNone
-	case EncGZIP:
+	case GZIP:
 		return ExtGZIP
-	case EncLZ4_64k, EncLZ4_256k, EncLZ4_1M, EncLZ4_4M:
+	case LZ4_64k, LZ4_256k, LZ4_1M, LZ4_4M:
 		return ExtLZ4
-	case EncSnappy:
+	case Snappy:
 		return ExtSnappy
-	case EncFlate:
+	case Flate:
 		return ExtFlate
-	case EncZstd:
+	case Zstd:
 		return ExtZstd
 	default:
 		panic(fmt.Sprintf("invalid codec: %d, supported: %s", e, SupportedCodecs()))
@@ -33,17 +33,17 @@ func ToFileExtension(e Codec) string {
 func FromFileExtension(ext string) Codec {
 	switch ext {
 	case ExtNone:
-		return EncNone
+		return None
 	case ExtGZIP:
-		return EncGZIP
+		return GZIP
 	case ExtLZ4:
-		return EncLZ4_4M
+		return LZ4_4M
 	case ExtSnappy:
-		return EncSnappy
+		return Snappy
 	case ExtFlate:
-		return EncFlate
+		return Flate
 	case ExtZstd:
-		return EncZstd
+		return Zstd
 	default:
 		panic(fmt.Sprintf("invalid file extension: %s", ext))
 	}

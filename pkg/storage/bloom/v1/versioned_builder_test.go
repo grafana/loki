@@ -33,7 +33,7 @@ func setup(v Version) (BlockOptions, []SeriesWithBlooms, BlockWriter, BlockReade
 	bloomsBuf := bytes.NewBuffer(nil)
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
 	reader := NewByteReader(indexBuf, bloomsBuf)
-	return smallBlockOpts(v, compression.EncNone), data, writer, reader
+	return smallBlockOpts(v, compression.None), data, writer, reader
 }
 
 func TestV3Roundtrip(t *testing.T) {

@@ -414,7 +414,7 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 	bc.format = version
 	switch version {
 	case ChunkFormatV1:
-		bc.encoding = compression.EncGZIP
+		bc.encoding = compression.GZIP
 	case ChunkFormatV2, ChunkFormatV3, ChunkFormatV4:
 		// format v2+ has a byte for block encoding.
 		enc := compression.Codec(db.byte())

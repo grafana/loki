@@ -35,15 +35,15 @@ func TestResolver_ParseBlockKey(t *testing.T) {
 	for _, tc := range []struct {
 		srcEnc, dstEnc compression.Codec
 	}{
-		{compression.EncNone, compression.EncNone},
-		{compression.EncGZIP, compression.EncGZIP},
-		{compression.EncSnappy, compression.EncSnappy},
-		{compression.EncLZ4_64k, compression.EncLZ4_4M},
-		{compression.EncLZ4_256k, compression.EncLZ4_4M},
-		{compression.EncLZ4_1M, compression.EncLZ4_4M},
-		{compression.EncLZ4_4M, compression.EncLZ4_4M},
-		{compression.EncFlate, compression.EncFlate},
-		{compression.EncZstd, compression.EncZstd},
+		{compression.None, compression.None},
+		{compression.GZIP, compression.GZIP},
+		{compression.Snappy, compression.Snappy},
+		{compression.LZ4_64k, compression.LZ4_4M},
+		{compression.LZ4_256k, compression.LZ4_4M},
+		{compression.LZ4_1M, compression.LZ4_4M},
+		{compression.LZ4_4M, compression.LZ4_4M},
+		{compression.Flate, compression.Flate},
+		{compression.Zstd, compression.Zstd},
 	} {
 		t.Run(tc.srcEnc.String(), func(t *testing.T) {
 			r := defaultKeyResolver{}

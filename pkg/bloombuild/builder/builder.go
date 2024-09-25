@@ -34,7 +34,7 @@ import (
 )
 
 // TODO(chaudum): Make configurable via (per-tenant?) setting.
-var blockCompressionAlgo = compression.EncNone
+var blockCompressionAlgo = compression.None
 
 type Builder struct {
 	services.Service

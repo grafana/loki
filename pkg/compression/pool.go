@@ -61,23 +61,23 @@ func GetReaderPool(enc Codec) ReaderPool {
 
 func GetPool(enc Codec) ReaderWriterPool {
 	switch enc {
-	case EncGZIP:
+	case GZIP:
 		return &gzip
-	case EncLZ4_64k:
+	case LZ4_64k:
 		return &lz4_64k
-	case EncLZ4_256k:
+	case LZ4_256k:
 		return &lz4_256k
-	case EncLZ4_1M:
+	case LZ4_1M:
 		return &lz4_1M
-	case EncLZ4_4M:
+	case LZ4_4M:
 		return &lz4_4M
-	case EncSnappy:
+	case Snappy:
 		return &snappy
-	case EncNone:
+	case None:
 		return &noop
-	case EncFlate:
+	case Flate:
 		return &flate
-	case EncZstd:
+	case Zstd:
 		return &zstd
 	default:
 		panic("unknown encoding")

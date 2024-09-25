@@ -45,7 +45,7 @@ type Schema struct {
 func NewSchema() Schema {
 	return Schema{
 		version:  CurrentSchemaVersion,
-		encoding: compression.EncNone,
+		encoding: compression.None,
 	}
 }
 

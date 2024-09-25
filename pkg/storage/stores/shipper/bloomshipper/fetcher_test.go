@@ -329,11 +329,11 @@ func TestFetcher_LoadBlocksFromFS(t *testing.T) {
 
 	refs := []BlockRef{
 		// no directory for block
-		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x0000, 0x0fff)}, Codec: compression.EncNone},
+		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x0000, 0x0fff)}, Codec: compression.None},
 		// invalid directory for block
-		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x1000, 0x1fff)}, Codec: compression.EncSnappy},
+		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x1000, 0x1fff)}, Codec: compression.Snappy},
 		// valid directory for block
-		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x2000, 0x2fff)}, Codec: compression.EncGZIP},
+		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x2000, 0x2fff)}, Codec: compression.GZIP},
 	}
 	dirs := []string{
 		localFilePathWithoutExtension(refs[0], resolver),

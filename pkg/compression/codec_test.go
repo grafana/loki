@@ -8,7 +8,7 @@ func TestParseEncoding(t *testing.T) {
 		want    Codec
 		wantErr bool
 	}{
-		{"gzip", EncGZIP, false},
+		{"gzip", GZIP, false},
 		{"bad", 0, true},
 	}
 	for _, tt := range tests {
