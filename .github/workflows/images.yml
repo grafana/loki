@@ -45,7 +45,7 @@
       "working-directory": "release"
     - "name": "Build and push"
       "timeout-minutes": "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      "uses": "docker/build-push-action@v5"
+      "uses": "docker/build-push-action@v6"
       "with":
         "build-args": "IMAGE_TAG=${{ steps.weekly-version.outputs.version }}"
         "context": "release"
@@ -91,7 +91,7 @@
       "working-directory": "release"
     - "name": "Build and push"
       "timeout-minutes": "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      "uses": "docker/build-push-action@v5"
+      "uses": "docker/build-push-action@v6"
       "with":
         "build-args": "IMAGE_TAG=${{ steps.weekly-version.outputs.version }}"
         "context": "release"
@@ -137,7 +137,7 @@
       "working-directory": "release"
     - "name": "Build and push"
       "timeout-minutes": "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      "uses": "docker/build-push-action@v5"
+      "uses": "docker/build-push-action@v6"
       "with":
         "build-args": "IMAGE_TAG=${{ steps.weekly-version.outputs.version }}"
         "context": "release"
@@ -183,7 +183,7 @@
       "working-directory": "release"
     - "name": "Build and push"
       "timeout-minutes": "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      "uses": "docker/build-push-action@v5"
+      "uses": "docker/build-push-action@v6"
       "with":
         "build-args": "IMAGE_TAG=${{ steps.weekly-version.outputs.version }}"
         "context": "release"
@@ -229,7 +229,7 @@
       "working-directory": "release"
     - "name": "Build and push"
       "timeout-minutes": "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      "uses": "docker/build-push-action@v5"
+      "uses": "docker/build-push-action@v6"
       "with":
         "build-args": "IMAGE_TAG=${{ steps.weekly-version.outputs.version }}"
         "context": "release"
@@ -275,7 +275,7 @@
       "working-directory": "release"
     - "name": "Build and push"
       "timeout-minutes": "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      "uses": "docker/build-push-action@v5"
+      "uses": "docker/build-push-action@v6"
       "with":
         "build-args": "IMAGE_TAG=${{ steps.weekly-version.outputs.version }}"
         "context": "release"
@@ -321,7 +321,7 @@
       "working-directory": "release"
     - "name": "Build and push"
       "timeout-minutes": "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      "uses": "docker/build-push-action@v5"
+      "uses": "docker/build-push-action@v6"
       "with":
         "build-args": "IMAGE_TAG=${{ steps.weekly-version.outputs.version }}"
         "context": "release"
@@ -367,7 +367,7 @@
       "working-directory": "release"
     - "name": "Build and push"
       "timeout-minutes": "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      "uses": "docker/build-push-action@v5"
+      "uses": "docker/build-push-action@v6"
       "with":
         "build-args": "IMAGE_TAG=${{ steps.weekly-version.outputs.version }}"
         "context": "release"
@@ -413,7 +413,7 @@
       "working-directory": "release"
     - "name": "Build and push"
       "timeout-minutes": "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      "uses": "docker/build-push-action@v5"
+      "uses": "docker/build-push-action@v6"
       "with":
         "build-args": "IMAGE_TAG=${{ steps.weekly-version.outputs.version }}"
         "context": "release"
