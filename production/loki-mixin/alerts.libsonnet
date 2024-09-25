@@ -71,21 +71,45 @@
             },
           },
           {
-            // Alert if the compactor has not successfully run compaction in the last 24h.
+            // Alert if the compactor has not successfully run compaction in the last 24h since the last compaction.
             alert: 'LokiCompactorHasNotSuccessfullyRunCompaction',
             expr: |||
               # The "last successful run" metric is updated even if the compactor owns no tenants,
               # so this alert correctly doesn't fire if compactor has nothing to do.
-              (time() - loki_compactor_apply_retention_last_successful_run_timestamp_seconds > 60 * 60 * 24)
+              (time() - (loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds{} > 0) > 60 * 60 * 24)
             |||,
             'for': '1h',
             labels: {
               severity: 'critical',
             },
             annotations: {
-              summary: 'Loki compaction has not run in the last 24 hours.',
+              summary: 'Loki compaction has not run in the last 24 hours since the last compaction.',
               description: std.strReplace(|||
-                {{ $labels.cluster }} {{ $labels.namespace }} has not run compaction in the last 24 hours. This may indicate a problem with the compactor.
+                {{ $labels.cluster }} {{ $labels.namespace }} has not run compaction in the last 24 hours since the last compaction. This may indicate a problem with the compactor.
+              |||, 'cluster', $._config.per_cluster_label),
+            },
+          },
+          {
+            // Alert if the compactor has not successfully run compaction in the last 24h since startup.
+            alert: 'LokiCompactorHasNotSuccessfullyRunCompaction',
+            expr: |||
+              # The "last successful run" metric is updated even if the compactor owns no tenants,
+              # so this alert correctly doesn't fire if compactor has nothing to do.
+              max(
+                max_over_time(
+                  loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds{}[24h]
+                )
+              ) by (%s, namespace)
+              == 0
+            ||| % $._config.per_cluster_label,
+            'for': '1h',
+            labels: {
+              severity: 'critical',
+            },
+            annotations: {
+              summary: 'Loki compaction has not run in the last 24h since startup.',
+              description: std.strReplace(|||
+                {{ $labels.cluster }} {{ $labels.namespace }} has not run compaction in the last 24h since startup. This may indicate a problem with the compactor.
               |||, 'cluster', $._config.per_cluster_label),
             },
           },
