@@ -24,11 +24,9 @@ func (t testObjClient) ObjectExistsWithSize(_ context.Context, object string) (b
 	return true, 0, nil
 }
 
-func (t testObjClient) ObjectExists(_ context.Context, object string) (bool, error) {
-	if strings.Contains(object, "missing") {
-		return false, nil
-	}
-	return true, nil
+func (t testObjClient) ObjectExists(ctx context.Context, object string) (bool, error) {
+	exists, _, err := t.ObjectExistsWithSize(ctx, object)
+	return exists, err
 }
 
 type testCompactedIdx struct {

@@ -125,12 +125,8 @@ func (s *SwiftObjectClient) Stop() {
 }
 
 func (s *SwiftObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	_, _, err := s.hedgingConn.Object(ctx, s.cfg.Config.ContainerName, objectKey)
-	if err != nil {
-		return false, err
-	}
-
-	return true, nil
+	exists, _, err := s.ObjectExistsWithSize(ctx, objectKey)
+	return exists, err
 }
 
 func (s *SwiftObjectClient) ObjectExistsWithSize(ctx context.Context, objectKey string) (bool, int64, error) {
