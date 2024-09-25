@@ -79,7 +79,9 @@ func NewWriterClient(kafkaCfg Config, maxInflightProduceRequests int, logger log
 		kgo.MaxBufferedRecords(math.MaxInt), // Use a high value to set it as unlimited, because the client doesn't support "0 as unlimited".
 		kgo.MaxBufferedBytes(0),
 	)
-
+	if kafkaCfg.AutoCreateTopicEnabled {
+		kafkaCfg.SetDefaultNumberOfPartitionsForAutocreatedTopics(logger)
+	}
 	return kgo.NewClient(opts...)
 }
 
