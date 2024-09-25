@@ -82,7 +82,7 @@ func TestArchive(t *testing.T) {
 func TestArchiveCompression(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		enc compression.Encoding
+		enc compression.Codec
 	}{
 		{compression.EncNone},
 		{compression.EncGZIP},

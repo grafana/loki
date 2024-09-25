@@ -21,7 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
-var supportedCompressions = []compression.Encoding{
+var supportedCompressions = []compression.Codec{
 	compression.EncNone,
 	compression.EncGZIP,
 	compression.EncSnappy,
@@ -209,7 +209,7 @@ func TestBloomClient_DeleteMetas(t *testing.T) {
 	})
 }
 
-func putBlock(t *testing.T, c *BloomClient, tenant string, start model.Time, minFp, maxFp model.Fingerprint, enc compression.Encoding) (Block, error) {
+func putBlock(t *testing.T, c *BloomClient, tenant string, start model.Time, minFp, maxFp model.Fingerprint, enc compression.Codec) (Block, error) {
 	step := int64((24 * time.Hour).Seconds())
 	day := start.Unix() / step
 
@@ -234,7 +234,7 @@ func putBlock(t *testing.T, c *BloomClient, tenant string, start model.Time, min
 				StartTimestamp: start,
 				EndTimestamp:   start.Add(12 * time.Hour),
 			},
-			Encoding: enc,
+			Codec: enc,
 		},
 		Data: fp,
 	}
@@ -318,7 +318,7 @@ func TestBloomClient_PutBlock(t *testing.T) {
 						StartTimestamp: start,
 						EndTimestamp:   start.Add(12 * time.Hour),
 					},
-					Encoding: enc,
+					Codec: enc,
 				},
 				Data: fp,
 			}

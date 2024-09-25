@@ -11,7 +11,7 @@ const (
 	ExtZstd   = ".zst"
 )
 
-func ToFileExtension(e Encoding) string {
+func ToFileExtension(e Codec) string {
 	switch e {
 	case EncNone:
 		return ExtNone
@@ -26,11 +26,11 @@ func ToFileExtension(e Encoding) string {
 	case EncZstd:
 		return ExtZstd
 	default:
-		panic(fmt.Sprintf("invalid encoding: %d, supported: %s", e, SupportedEncoding()))
+		panic(fmt.Sprintf("invalid codec: %d, supported: %s", e, SupportedCodecs()))
 	}
 }
 
-func FromFileExtension(ext string) Encoding {
+func FromFileExtension(ext string) Codec {
 	switch ext {
 	case ExtNone:
 		return EncNone

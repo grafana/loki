@@ -81,7 +81,7 @@ func (defaultKeyResolver) ParseMetaKey(loc Location) (MetaRef, error) {
 }
 
 func (defaultKeyResolver) Block(ref BlockRef) Location {
-	ext := blockExtension + compression.ToFileExtension(ref.Encoding)
+	ext := blockExtension + compression.ToFileExtension(ref.Codec)
 	return simpleLocation{
 		BloomPrefix,
 		fmt.Sprintf("%v", ref.TableName),
@@ -142,7 +142,7 @@ func (defaultKeyResolver) ParseBlockKey(loc Location) (BlockRef, error) {
 			EndTimestamp:   interval.End,
 			Checksum:       uint32(checksum),
 		},
-		Encoding: enc,
+		Codec: enc,
 	}, nil
 }
 
@@ -286,9 +286,9 @@ func (ls locations) LocalPath() string {
 }
 
 func cacheKey(ref BlockRef) string {
-	return strings.TrimSuffix(defaultKeyResolver{}.Block(ref).Addr(), blockExtension+compression.ToFileExtension(ref.Encoding))
+	return strings.TrimSuffix(defaultKeyResolver{}.Block(ref).Addr(), blockExtension+compression.ToFileExtension(ref.Codec))
 }
 
 func localFilePathWithoutExtension(ref BlockRef, res KeyResolver) string {
-	return strings.TrimSuffix(res.Block(ref).LocalPath(), blockExtension+compression.ToFileExtension(ref.Encoding))
+	return strings.TrimSuffix(res.Block(ref).LocalPath(), blockExtension+compression.ToFileExtension(ref.Codec))
 }

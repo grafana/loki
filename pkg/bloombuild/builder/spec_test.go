@@ -115,7 +115,7 @@ func dummyBloomGen(t *testing.T, opts v1.BlockOptions, store v2.Iterator[*v1.Ser
 
 func TestSimpleBloomGenerator(t *testing.T) {
 	const maxBlockSize = 100 << 20 // 100MB
-	for _, enc := range []compression.Encoding{compression.EncNone, compression.EncGZIP, compression.EncSnappy} {
+	for _, enc := range []compression.Codec{compression.EncNone, compression.EncGZIP, compression.EncSnappy} {
 		for _, tc := range []struct {
 			desc                 string
 			fromSchema, toSchema v1.BlockOptions

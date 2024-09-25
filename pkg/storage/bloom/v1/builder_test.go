@@ -15,7 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
 
-var blockEncodings = []compression.Encoding{
+var blockEncodings = []compression.Codec{
 	compression.EncNone,
 	compression.EncGZIP,
 	compression.EncSnappy,

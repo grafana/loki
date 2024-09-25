@@ -5,13 +5,13 @@ import (
 	"strings"
 )
 
-// Encoding identifies an available compression type.
-type Encoding byte
+// Codec identifies an available compression type.
+type Codec byte
 
 // The different available encodings.
 // Make sure to preserve the order, as the numeric values are serialized!
 const (
-	EncNone Encoding = iota
+	EncNone Codec = iota
 	EncGZIP
 	EncDumb // not supported
 	EncLZ4_64k
@@ -23,7 +23,7 @@ const (
 	EncZstd
 )
 
-var supportedEncoding = []Encoding{
+var supportedEncoding = []Codec{
 	EncNone,
 	EncGZIP,
 	EncLZ4_64k,
@@ -35,7 +35,7 @@ var supportedEncoding = []Encoding{
 	EncZstd,
 }
 
-func (e Encoding) String() string {
+func (e Codec) String() string {
 	switch e {
 	case EncGZIP:
 		return "gzip"
@@ -60,18 +60,18 @@ func (e Encoding) String() string {
 	}
 }
 
-// ParseEncoding parses an chunk encoding (compression algorithm) by its name.
-func ParseEncoding(enc string) (Encoding, error) {
+// ParseCodec parses an chunk encoding (compression algorithm) by its name.
+func ParseCodec(enc string) (Codec, error) {
 	for _, e := range supportedEncoding {
 		if strings.EqualFold(e.String(), enc) {
 			return e, nil
 		}
 	}
-	return 0, fmt.Errorf("invalid encoding: %s, supported: %s", enc, SupportedEncoding())
+	return 0, fmt.Errorf("invalid encoding: %s, supported: %s", enc, SupportedCodecs())
 }
 
-// SupportedEncoding returns the list of supported Encoding.
-func SupportedEncoding() string {
+// SupportedCodecs returns the list of supported Encoding.
+func SupportedCodecs() string {
 	var sb strings.Builder
 	for i := range supportedEncoding {
 		sb.WriteString(supportedEncoding[i].String())

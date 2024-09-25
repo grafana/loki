@@ -70,7 +70,7 @@ func (c *dumbChunk) Utilization() float64 {
 	return float64(len(c.entries)) / float64(tmpNumEntries)
 }
 
-func (c *dumbChunk) Encoding() compression.Encoding { return compression.EncNone }
+func (c *dumbChunk) Encoding() compression.Codec { return compression.EncNone }
 
 // Returns an iterator that goes from _most_ recent to _least_ recent (ie,
 // backwards).

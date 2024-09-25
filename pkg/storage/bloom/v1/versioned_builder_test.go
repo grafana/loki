@@ -14,7 +14,7 @@ import (
 
 // smallBlockOpts returns a set of block options that are suitable for testing
 // characterized by small page sizes
-func smallBlockOpts(v Version, enc compression.Encoding) BlockOptions {
+func smallBlockOpts(v Version, enc compression.Codec) BlockOptions {
 	return BlockOptions{
 		Schema: Schema{
 			version:  v,

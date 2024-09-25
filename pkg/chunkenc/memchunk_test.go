@@ -32,7 +32,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/filter"
 )
 
-var testEncodings = []compression.Encoding{
+var testEncodings = []compression.Codec{
 	compression.EncNone,
 	compression.EncGZIP,
 	compression.EncLZ4_64k,
@@ -391,7 +391,7 @@ func TestRoundtripV2(t *testing.T) {
 	}
 }
 
-func testNameWithFormats(enc compression.Encoding, chunkFormat byte, headBlockFmt HeadBlockFmt) string {
+func testNameWithFormats(enc compression.Codec, chunkFormat byte, headBlockFmt HeadBlockFmt) string {
 	return fmt.Sprintf("encoding:%v chunkFormat:%v headBlockFmt:%v", enc, chunkFormat, headBlockFmt)
 }
 

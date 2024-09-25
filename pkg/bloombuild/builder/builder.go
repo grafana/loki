@@ -336,7 +336,7 @@ func (b *Builder) processTask(
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
 
-	blockEnc, err := compression.ParseEncoding(b.limits.BloomBlockEncoding(task.Tenant))
+	blockEnc, err := compression.ParseCodec(b.limits.BloomBlockEncoding(task.Tenant))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse block encoding: %w", err)
 	}

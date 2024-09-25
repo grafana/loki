@@ -51,15 +51,15 @@ var (
 	noop = NoopPool{}
 )
 
-func GetWriterPool(enc Encoding) WriterPool {
+func GetWriterPool(enc Codec) WriterPool {
 	return GetPool(enc).(WriterPool)
 }
 
-func GetReaderPool(enc Encoding) ReaderPool {
+func GetReaderPool(enc Codec) ReaderPool {
 	return GetPool(enc).(ReaderPool)
 }
 
-func GetPool(enc Encoding) ReaderWriterPool {
+func GetPool(enc Codec) ReaderWriterPool {
 	switch enc {
 	case EncGZIP:
 		return &gzip

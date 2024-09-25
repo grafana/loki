@@ -132,7 +132,7 @@ type MemChunk struct {
 	head HeadBlock
 
 	format   byte
-	encoding compression.Encoding
+	encoding compression.Codec
 	headFmt  HeadBlockFmt
 
 	// compressed size of chunk. Set when chunk is cut or while decoding chunk from storage.
@@ -355,7 +355,7 @@ type entry struct {
 }
 
 // NewMemChunk returns a new in-mem chunk.
-func NewMemChunk(chunkFormat byte, enc compression.Encoding, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
+func NewMemChunk(chunkFormat byte, enc compression.Codec, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
 	return newMemChunkWithFormat(chunkFormat, enc, head, blockSize, targetSize)
 }
 
@@ -370,7 +370,7 @@ func panicIfInvalidFormat(chunkFmt byte, head HeadBlockFmt) {
 }
 
 // NewMemChunk returns a new in-mem chunk.
-func newMemChunkWithFormat(format byte, enc compression.Encoding, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
+func newMemChunkWithFormat(format byte, enc compression.Codec, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
 	panicIfInvalidFormat(format, head)
 
 	symbolizer := newSymbolizer()
@@ -417,7 +417,7 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 		bc.encoding = compression.EncGZIP
 	case ChunkFormatV2, ChunkFormatV3, ChunkFormatV4:
 		// format v2+ has a byte for block encoding.
-		enc := compression.Encoding(db.byte())
+		enc := compression.Codec(db.byte())
 		if db.err() != nil {
 			return nil, errors.Wrap(db.err(), "verifying encoding")
 		}
@@ -777,7 +777,7 @@ func MemchunkFromCheckpoint(chk, head []byte, desiredIfNotUnordered HeadBlockFmt
 }
 
 // Encoding implements Chunk.
-func (c *MemChunk) Encoding() compression.Encoding {
+func (c *MemChunk) Encoding() compression.Codec {
 	return c.encoding
 }
 
@@ -1173,7 +1173,7 @@ func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, err
 // then allows us to bind a decoding context to a block when requested, but otherwise helps reduce the
 // chances of chunk<>block encoding drift in the codebase as the latter is parameterized by the former.
 type encBlock struct {
-	enc        compression.Encoding
+	enc        compression.Codec
 	format     byte
 	symbolizer *symbolizer
 	block
