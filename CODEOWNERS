@@ -14,3 +14,6 @@
 
 # No owners - allows sub-maintainers to merge changes.
 CHANGELOG.md
+
+# Mixins
+/production/loki-mixin/ @cstyan @QuentinBisson
