@@ -27,6 +27,14 @@ jobs:
       - name: Lint Yaml
         run: make helm-lint
 
+      - id: "get_github_app_token"
+        name: "get github app token"
+        uses: "actions/create-github-app-token@v1"
+        with:
+          app-id: "${{ secrets.APP_ID }}"
+          owner: "${{ github.repository_owner }}"
+          private-key: "${{ secrets.APP_PRIVATE_KEY }}"
+
       - name: Lint Code Base
         uses: docker://github/super-linter:v3.12.0
         env:
@@ -37,7 +45,7 @@ jobs:
           VALIDATE_YAML: false
           VALIDATE_GO: false
           DEFAULT_BRANCH: main
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.get_github_app_token.outputs.token }}
   call-test:
     name: Test Helm Chart
     runs-on: ubuntu-latest
