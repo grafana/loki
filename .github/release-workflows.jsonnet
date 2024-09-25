@@ -139,7 +139,7 @@ local imagePrefix = 'grafana';
       + {
         env: {
           BUILD_TIMEOUT: imageBuildTimeoutMin,
-          RELEASE_REPO: 'grafana/enterprise-logs',
+          RELEASE_REPO: 'grafana/loki',
           RELEASE_LIB_REF: releaseLibRef,
           IMAGE_PREFIX: imagePrefix,
         },

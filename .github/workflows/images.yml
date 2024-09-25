@@ -12,7 +12,7 @@
       "BUILD_TIMEOUT": 40
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
-      "RELEASE_REPO": "grafana/enterprise-logs"
+      "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
     "runs-on": "ubuntu-latest"
@@ -58,7 +58,7 @@
       "BUILD_TIMEOUT": 40
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
-      "RELEASE_REPO": "grafana/enterprise-logs"
+      "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
     "runs-on": "ubuntu-latest"
@@ -104,7 +104,7 @@
       "BUILD_TIMEOUT": 40
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
-      "RELEASE_REPO": "grafana/enterprise-logs"
+      "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
     "runs-on": "ubuntu-latest"
@@ -150,7 +150,7 @@
       "BUILD_TIMEOUT": 40
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
-      "RELEASE_REPO": "grafana/enterprise-logs"
+      "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
     "runs-on": "ubuntu-latest"
@@ -196,7 +196,7 @@
       "BUILD_TIMEOUT": 40
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
-      "RELEASE_REPO": "grafana/enterprise-logs"
+      "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
     "runs-on": "ubuntu-latest"
@@ -242,7 +242,7 @@
       "BUILD_TIMEOUT": 40
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
-      "RELEASE_REPO": "grafana/enterprise-logs"
+      "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
     "runs-on": "ubuntu-latest"
@@ -288,7 +288,7 @@
       "BUILD_TIMEOUT": 40
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
-      "RELEASE_REPO": "grafana/enterprise-logs"
+      "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
     "runs-on": "ubuntu-latest"
@@ -334,7 +334,7 @@
       "BUILD_TIMEOUT": 40
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
-      "RELEASE_REPO": "grafana/enterprise-logs"
+      "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
     "runs-on": "ubuntu-latest"
@@ -380,7 +380,7 @@
       "BUILD_TIMEOUT": 40
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
-      "RELEASE_REPO": "grafana/enterprise-logs"
+      "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
     "runs-on": "ubuntu-latest"
