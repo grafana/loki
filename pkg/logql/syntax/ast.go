@@ -60,7 +60,7 @@ func ExtractLineFilters(e Expr) []LineFilterExpr {
 	}
 	var filters []LineFilterExpr
 	visitor := &DepthFirstTraversal{
-		VisitLineFilterFn: func(v RootVisitor, e *LineFilterExpr) {
+		VisitLineFilterFn: func(_ RootVisitor, e *LineFilterExpr) {
 			if e != nil {
 				filters = append(filters, *e)
 			}
@@ -68,6 +68,55 @@ func ExtractLineFilters(e Expr) []LineFilterExpr {
 	}
 	e.Accept(visitor)
 	return filters
+}
+
+func ExtractLabelFiltersBeforeParser(e Expr) []*LabelFilterExpr {
+	if e == nil {
+		return nil
+	}
+	var (
+		filters         []*LabelFilterExpr
+		foundParseStage bool
+	)
+
+	visitor := &DepthFirstTraversal{
+		VisitLabelFilterFn: func(v RootVisitor, e *LabelFilterExpr) {
+			if !foundParseStage {
+				filters = append(filters, e)
+			}
+		},
+
+		// TODO(rfratto): Find a way to generically represent or test for an
+		// expression that modifies extracted labels (parsers, keep, drop, etc.).
+		//
+		// As the AST is now, we can't prove at compile time that the list of
+		// visitors below is complete. For example, if a new parser stage
+		// expression is added without updating this list, blooms can silently
+		// misbehave.
+
+		VisitLogfmtParserFn:           func(v RootVisitor, e *LogfmtParserExpr) { foundParseStage = true },
+		VisitLabelParserFn:            func(v RootVisitor, e *LabelParserExpr) { foundParseStage = true },
+		VisitJSONExpressionParserFn:   func(v RootVisitor, e *JSONExpressionParser) { foundParseStage = true },
+		VisitLogfmtExpressionParserFn: func(v RootVisitor, e *LogfmtExpressionParser) { foundParseStage = true },
+		VisitLabelFmtFn:               func(v RootVisitor, e *LabelFmtExpr) { foundParseStage = true },
+		VisitKeepLabelFn:              func(v RootVisitor, e *KeepLabelsExpr) { foundParseStage = true },
+		VisitDropLabelsFn:             func(v RootVisitor, e *DropLabelsExpr) { foundParseStage = true },
+	}
+	e.Accept(visitor)
+	return filters
+}
+
+func IsMatchEqualFilterer(filterer log.LabelFilterer) bool {
+	switch filter := filterer.(type) {
+	case *log.LineFilterLabelFilter:
+		return filter.Type == labels.MatchEqual
+	case *log.StringLabelFilter:
+		return filter.Type == labels.MatchEqual
+	case *log.BinaryLabelFilter:
+		return IsMatchEqualFilterer(filter.Left) && IsMatchEqualFilterer(filter.Right)
+	default:
+		return false
+	}
 }
 
 // implicit holds default implementations
@@ -133,68 +182,75 @@ func (m MultiStageExpr) stages() ([]log.Stage, error) {
 // are as close to the front of the filter as possible.
 func (m MultiStageExpr) reorderStages() []StageExpr {
 	var (
-		result  = make([]StageExpr, 0, len(m))
-		filters = make([]*LineFilterExpr, 0, len(m))
-		rest    = make([]StageExpr, 0, len(m))
+		result         = make([]StageExpr, 0, len(m))
+		lineFilters    = make([]*LineFilterExpr, 0, len(m))
+		notLineFilters = make([]StageExpr, 0, len(m))
 	)
+
+	combineFilters := func() {
+		if len(lineFilters) > 0 {
+			result = append(result, combineFilters(lineFilters))
+		}
+
+		result = append(result, notLineFilters...)
+
+		lineFilters = lineFilters[:0]
+		notLineFilters = notLineFilters[:0]
+	}
 
 	for _, s := range m {
 		switch f := s.(type) {
+		case *LabelFilterExpr:
+			combineFilters()
+			result = append(result, f)
 		case *LineFilterExpr:
-			filters = append(filters, f)
+			lineFilters = append(lineFilters, f)
 		case *LineFmtExpr:
 			// line_format modifies the contents of the line so any line filter
 			// originally after a line_format must still be after the same
 			// line_format.
 
-			rest = append(rest, f)
+			notLineFilters = append(notLineFilters, f)
 
-			if len(filters) > 0 {
-				result = append(result, combineFilters(filters))
-			}
-			result = append(result, rest...)
-
-			filters = filters[:0]
-			rest = rest[:0]
+			combineFilters()
 		case *LabelParserExpr:
-			rest = append(rest, f)
+			notLineFilters = append(notLineFilters, f)
 
 			// unpack modifies the contents of the line so any line filter
 			// originally after an unpack must still be after the same
 			// unpack.
 			if f.Op == OpParserTypeUnpack {
-				if len(filters) > 0 {
-					result = append(result, combineFilters(filters))
-				}
-				result = append(result, rest...)
-
-				filters = filters[:0]
-				rest = rest[:0]
+				combineFilters()
 			}
 		default:
-			rest = append(rest, f)
+			notLineFilters = append(notLineFilters, f)
 		}
 	}
 
-	if len(filters) > 0 {
-		result = append(result, combineFilters(filters))
-	}
-	return append(result, rest...)
+	combineFilters()
+
+	return result
 }
 
 func combineFilters(in []*LineFilterExpr) StageExpr {
 	result := in[len(in)-1]
 	for i := len(in) - 2; i >= 0; i-- {
-		leafNode(result).Left = in[i]
+		leaf := leafNode(result, in[i])
+		if leaf != nil {
+			leaf.Left = in[i]
+		}
 	}
 
 	return result
 }
 
-func leafNode(in *LineFilterExpr) *LineFilterExpr {
+func leafNode(in *LineFilterExpr, child *LineFilterExpr) *LineFilterExpr {
 	current := in
 	//nolint:revive
 	for ; current.Left != nil; current = current.Left {
+		if current == child || current.Left == child {
+			return nil
+		}
 	}
 	return current
 }

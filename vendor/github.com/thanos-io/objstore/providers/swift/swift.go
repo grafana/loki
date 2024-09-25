@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -21,6 +22,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/objstore"
+	"github.com/thanos-io/objstore/exthttp"
 	"gopkg.in/yaml.v2"
 )
 
@@ -37,33 +39,35 @@ var DefaultConfig = Config{
 	Retries:        3,
 	ConnectTimeout: model.Duration(10 * time.Second),
 	Timeout:        model.Duration(5 * time.Minute),
+	HTTPConfig:     exthttp.DefaultHTTPConfig,
 }
 
 type Config struct {
-	AuthVersion                 int            `yaml:"auth_version"`
-	AuthUrl                     string         `yaml:"auth_url"`
-	Username                    string         `yaml:"username"`
-	UserDomainName              string         `yaml:"user_domain_name"`
-	UserDomainID                string         `yaml:"user_domain_id"`
-	UserId                      string         `yaml:"user_id"`
-	Password                    string         `yaml:"password"`
-	DomainId                    string         `yaml:"domain_id"`
-	DomainName                  string         `yaml:"domain_name"`
-	ApplicationCredentialID     string         `yaml:"application_credential_id"`
-	ApplicationCredentialName   string         `yaml:"application_credential_name"`
-	ApplicationCredentialSecret string         `yaml:"application_credential_secret"`
-	ProjectID                   string         `yaml:"project_id"`
-	ProjectName                 string         `yaml:"project_name"`
-	ProjectDomainID             string         `yaml:"project_domain_id"`
-	ProjectDomainName           string         `yaml:"project_domain_name"`
-	RegionName                  string         `yaml:"region_name"`
-	ContainerName               string         `yaml:"container_name"`
-	ChunkSize                   int64          `yaml:"large_object_chunk_size"`
-	SegmentContainerName        string         `yaml:"large_object_segments_container_name"`
-	Retries                     int            `yaml:"retries"`
-	ConnectTimeout              model.Duration `yaml:"connect_timeout"`
-	Timeout                     model.Duration `yaml:"timeout"`
-	UseDynamicLargeObjects      bool           `yaml:"use_dynamic_large_objects"`
+	AuthVersion                 int                `yaml:"auth_version"`
+	AuthUrl                     string             `yaml:"auth_url"`
+	Username                    string             `yaml:"username"`
+	UserDomainName              string             `yaml:"user_domain_name"`
+	UserDomainID                string             `yaml:"user_domain_id"`
+	UserId                      string             `yaml:"user_id"`
+	Password                    string             `yaml:"password"`
+	DomainId                    string             `yaml:"domain_id"`
+	DomainName                  string             `yaml:"domain_name"`
+	ApplicationCredentialID     string             `yaml:"application_credential_id"`
+	ApplicationCredentialName   string             `yaml:"application_credential_name"`
+	ApplicationCredentialSecret string             `yaml:"application_credential_secret"`
+	ProjectID                   string             `yaml:"project_id"`
+	ProjectName                 string             `yaml:"project_name"`
+	ProjectDomainID             string             `yaml:"project_domain_id"`
+	ProjectDomainName           string             `yaml:"project_domain_name"`
+	RegionName                  string             `yaml:"region_name"`
+	ContainerName               string             `yaml:"container_name"`
+	ChunkSize                   int64              `yaml:"large_object_chunk_size"`
+	SegmentContainerName        string             `yaml:"large_object_segments_container_name"`
+	Retries                     int                `yaml:"retries"`
+	ConnectTimeout              model.Duration     `yaml:"connect_timeout"`
+	Timeout                     model.Duration     `yaml:"timeout"`
+	UseDynamicLargeObjects      bool               `yaml:"use_dynamic_large_objects"`
+	HTTPConfig                  exthttp.HTTPConfig `yaml:"http_config"`
 }
 
 func parseConfig(conf []byte) (*Config, error) {
@@ -101,6 +105,7 @@ func configFromEnv() (*Config, error) {
 		ConnectTimeout:              model.Duration(c.ConnectTimeout),
 		Timeout:                     model.Duration(c.Timeout),
 		UseDynamicLargeObjects:      false,
+		HTTPConfig:                  DefaultConfig.HTTPConfig,
 	}
 	if os.Getenv("SWIFT_CHUNK_SIZE") != "" {
 		var err error
@@ -115,7 +120,7 @@ func configFromEnv() (*Config, error) {
 	return &config, nil
 }
 
-func connectionFromConfig(sc *Config) *swift.Connection {
+func connectionFromConfig(sc *Config, rt http.RoundTripper) *swift.Connection {
 	connection := swift.Connection{
 		AuthVersion:                 sc.AuthVersion,
 		AuthUrl:                     sc.AuthUrl,
@@ -135,6 +140,7 @@ func connectionFromConfig(sc *Config) *swift.Connection {
 		Retries:                     sc.Retries,
 		ConnectTimeout:              time.Duration(sc.ConnectTimeout),
 		Timeout:                     time.Duration(sc.Timeout),
+		Transport:                   rt,
 	}
 	return &connection
 }
@@ -173,7 +179,21 @@ func ensureContainer(connection *swift.Connection, name string, createIfNotExist
 }
 
 func NewContainerFromConfig(logger log.Logger, sc *Config, createContainer bool) (*Container, error) {
-	connection := connectionFromConfig(sc)
+
+	// Check if a roundtripper has been set in the config
+	// otherwise build the default transport.
+	var rt http.RoundTripper
+	if sc.HTTPConfig.Transport != nil {
+		rt = sc.HTTPConfig.Transport
+	} else {
+		var err error
+		rt, err = exthttp.DefaultTransport(sc.HTTPConfig)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	connection := connectionFromConfig(sc, rt)
 	if err := connection.Authenticate(); err != nil {
 		return nil, errors.Wrap(err, "authentication")
 	}

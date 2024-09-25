@@ -34,6 +34,8 @@ const (
 	databasePromoteReplicaToPrimaryPath = databaseReplicaPath + "/promote"
 	databaseTopicPath                   = databaseBasePath + "/%s/topics/%s"
 	databaseTopicsPath                  = databaseBasePath + "/%s/topics"
+	databaseMetricsCredentialsPath      = databaseBasePath + "/metrics/credentials"
+	databaseEvents                      = databaseBasePath + "/%s/events"
 )
 
 // SQL Mode constants allow for MySQL-specific SQL flavor configuration.
@@ -154,6 +156,9 @@ type DatabasesService interface {
 	GetTopic(context.Context, string, string) (*DatabaseTopic, *Response, error)
 	DeleteTopic(context.Context, string, string) (*Response, error)
 	UpdateTopic(context.Context, string, string, *DatabaseUpdateTopicRequest) (*Response, error)
+	GetMetricsCredentials(context.Context) (*DatabaseMetricsCredentials, *Response, error)
+	UpdateMetricsCredentials(context.Context, *DatabaseUpdateMetricsCredentialsRequest) (*Response, error)
+	ListDatabaseEvents(context.Context, string, *ListOptions) ([]DatabaseEvent, *Response, error)
 }
 
 // DatabasesServiceOp handles communication with the Databases related methods
@@ -175,6 +180,7 @@ type Database struct {
 	EngineSlug               string                     `json:"engine,omitempty"`
 	VersionSlug              string                     `json:"version,omitempty"`
 	Connection               *DatabaseConnection        `json:"connection,omitempty"`
+	UIConnection             *DatabaseConnection        `json:"ui_connection,omitempty"`
 	PrivateConnection        *DatabaseConnection        `json:"private_connection,omitempty"`
 	StandbyConnection        *DatabaseConnection        `json:"standby_connection,omitempty"`
 	StandbyPrivateConnection *DatabaseConnection        `json:"standby_private_connection,omitempty"`
@@ -190,6 +196,7 @@ type Database struct {
 	Tags                     []string                   `json:"tags,omitempty"`
 	ProjectID                string                     `json:"project_id,omitempty"`
 	StorageSizeMib           uint64                     `json:"storage_size_mib,omitempty"`
+	MetricsEndpoints         []*ServiceAddress          `json:"metrics_endpoints,omitempty"`
 }
 
 // DatabaseCA represents a database ca.
@@ -208,6 +215,12 @@ type DatabaseConnection struct {
 	Password         string            `json:"password,omitempty"`
 	SSL              bool              `json:"ssl,omitempty"`
 	ApplicationPorts map[string]uint32 `json:"application_ports,omitempty"`
+}
+
+// ServiceAddress represents a host:port for a generic service (e.g. metrics endpoint)
+type ServiceAddress struct {
+	Host string `json:"host"`
+	Port int    `json:"port"`
 }
 
 // DatabaseUser represents a user in the database
@@ -666,6 +679,19 @@ type databaseTopicsRoot struct {
 	Topics []DatabaseTopic `json:"topics"`
 }
 
+type databaseMetricsCredentialsRoot struct {
+	Credentials *DatabaseMetricsCredentials `json:"credentials"`
+}
+
+type DatabaseMetricsCredentials struct {
+	BasicAuthUsername string `json:"basic_auth_username"`
+	BasicAuthPassword string `json:"basic_auth_password"`
+}
+
+type DatabaseUpdateMetricsCredentialsRequest struct {
+	Credentials *DatabaseMetricsCredentials `json:"credentials"`
+}
+
 // DatabaseOptions represents the available database engines
 type DatabaseOptions struct {
 	MongoDBOptions     DatabaseEngineOptions `json:"mongodb"`
@@ -673,6 +699,7 @@ type DatabaseOptions struct {
 	PostgresSQLOptions DatabaseEngineOptions `json:"pg"`
 	RedisOptions       DatabaseEngineOptions `json:"redis"`
 	KafkaOptions       DatabaseEngineOptions `json:"kafka"`
+	OpensearchOptions  DatabaseEngineOptions `json:"opensearch"`
 }
 
 // DatabaseEngineOptions represents the configuration options that are available for a given database engine
@@ -686,6 +713,23 @@ type DatabaseEngineOptions struct {
 type DatabaseLayout struct {
 	NodeNum int      `json:"num_nodes"`
 	Sizes   []string `json:"sizes"`
+}
+
+// ListDatabaseEvents contains a list of project events.
+type ListDatabaseEvents struct {
+	Events []DatabaseEvent `json:"events"`
+}
+
+// DatbaseEvent contains the information about a Datbase event.
+type DatabaseEvent struct {
+	ID          string `json:"id"`
+	ServiceName string `json:"cluster_name"`
+	EventType   string `json:"event_type"`
+	CreateTime  string `json:"create_time"`
+}
+
+type ListDatabaseEventsRoot struct {
+	Events []DatabaseEvent `json:"events"`
 }
 
 // URN returns a URN identifier for the database
@@ -1465,4 +1509,53 @@ func (svc *DatabasesServiceOp) DeleteTopic(ctx context.Context, databaseID, name
 		return resp, err
 	}
 	return resp, nil
+}
+
+// GetMetricsCredentials gets the credentials required to access a user's metrics endpoints
+func (svc *DatabasesServiceOp) GetMetricsCredentials(ctx context.Context) (*DatabaseMetricsCredentials, *Response, error) {
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, databaseMetricsCredentialsPath, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(databaseMetricsCredentialsRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Credentials, resp, nil
+}
+
+// UpdateMetricsAuth updates the credentials required to access a user's metrics endpoints
+func (svc *DatabasesServiceOp) UpdateMetricsCredentials(ctx context.Context, updateCreds *DatabaseUpdateMetricsCredentialsRequest) (*Response, error) {
+	req, err := svc.client.NewRequest(ctx, http.MethodPut, databaseMetricsCredentialsPath, updateCreds)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
+}
+
+// ListDatabaseEvents returns all the events for a given cluster
+func (svc *DatabasesServiceOp) ListDatabaseEvents(ctx context.Context, databaseID string, opts *ListOptions) ([]DatabaseEvent, *Response, error) {
+	path := fmt.Sprintf(databaseEvents, databaseID)
+	path, err := addOptions(path, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(ListDatabaseEventsRoot)
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return root.Events, resp, nil
 }

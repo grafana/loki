@@ -20,7 +20,7 @@ import (
 // Ensures that NewDefaultScalableBloomFilter creates a Scalable Bloom Filter
 // with hint = 10000 and r = 0.8.
 func TestNewDefaultScalableBloomFilter(t *testing.T) {
-	f := NewDefaultScalableBloomFilter(0.1)
+	f := NewDefaultScalableBloomFilter()
 
 	if f.fp != 0.1 {
 		t.Errorf("Expected 0.1, got %f", f.fp)

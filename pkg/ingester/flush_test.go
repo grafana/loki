@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/ingester/wal"
@@ -188,7 +189,7 @@ func buildChunkDecs(t testing.TB) []*chunkDesc {
 	for i := range res {
 		res[i] = &chunkDesc{
 			closed: true,
-			chunk:  chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, dummyConf().BlockSize, dummyConf().TargetChunkSize),
+			chunk:  chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.EncSnappy, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, dummyConf().BlockSize, dummyConf().TargetChunkSize),
 		}
 		fillChunk(t, res[i].chunk)
 		require.NoError(t, res[i].chunk.Close())

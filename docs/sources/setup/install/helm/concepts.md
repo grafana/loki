@@ -28,7 +28,7 @@ By default, the chart installs in [Simple Scalable]({{< relref "./install-scalab
 
 The Loki Helm chart does not deploy self-monitoring by default. Loki clusters can be monitored using the meta-monitoring stack, which monitors the logs, metrics, and traces of the Loki cluster. There are two deployment options for this stack, see the installation instructions within [Monitoring]({{< relref "./monitor-and-alert" >}}).
 
-{{< admonition type="Note" >}}
+{{< admonition type="note" >}}
 The meta-monitoring stack replaces the monitoring section of the Loki helm chart which is now **DEPRECATED**. See the [Monitoring]({{< relref "./monitor-and-alert" >}}) section for more information.
 {{< /admonition >}}
 
@@ -40,7 +40,7 @@ This chart installs the [Loki Canary app]({{< relref "../../../operations/loki-c
 ## Gateway
 
 By default and inspired by Grafana's [Tanka setup](https://github.com/grafana/loki/blob/main/production/ksonnet/loki), the chart
-installs the gateway component which is an NGINX that exposes Loki's API and automatically proxies requests to the correct
+installs the gateway component which is an NGINX that exposes the Loki API and automatically proxies requests to the correct
 Loki components (read or write, or single instance in the case of filesystem storage).
 The gateway must be enabled if an Ingress is required, since the Ingress exposes the gateway only.
 If the gateway is enabled, Grafana and log shipping agents, such as Promtail, should be configured to use the gateway.

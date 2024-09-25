@@ -149,7 +149,11 @@ func (r *Request) SetParam(key, value string) {
 func (r *Request) QueryString() string {
 	buf := make([]string, 0, len(r.params))
 	for k, v := range r.params {
-		buf = append(buf, util.UriEncode(k, true)+"="+util.UriEncode(v, true))
+		if len(v) == 0 {
+			buf = append(buf, util.UriEncode(k, true))
+		} else {
+			buf = append(buf, util.UriEncode(k, true)+"="+util.UriEncode(v, true))
+		}
 	}
 	return strings.Join(buf, "&")
 }

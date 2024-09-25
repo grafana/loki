@@ -24,6 +24,8 @@ import (
 	"math"
 	"slices"
 	"sort"
+	"strings"
+	"unicode/utf8"
 	"unsafe"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -51,7 +53,23 @@ const (
 
 	// checkContextEveryNIterations is used in some tight loops to check if the context is done.
 	checkContextEveryNIterations = 128
+
+	TenantLabel = "__loki_tenant__"
 )
+
+// Bitmap used by func isRegexMetaCharacter to check whether a character needs to be escaped.
+var regexMetaCharacterBytes [16]byte
+
+// isRegexMetaCharacter reports whether byte b needs to be escaped.
+func isRegexMetaCharacter(b byte) bool {
+	return b < utf8.RuneSelf && regexMetaCharacterBytes[b%16]&(1<<(b/16)) != 0
+}
+
+func init() {
+	for _, b := range []byte(`.+*?()|[]{}^$`) {
+		regexMetaCharacterBytes[b%16] |= 1 << (b / 16)
+	}
+}
 
 var AllPostingsKey = labels.Label{}
 
@@ -1907,4 +1925,257 @@ func (dec *Decoder) Series(b []byte, builder *labels.ScratchBuilder, chks *[]chu
 
 func yoloString(b []byte) string {
 	return *((*string)(unsafe.Pointer(&b)))
+}
+
+// PostingsForMatchers assembles a single postings iterator against the index reader
+// based on the given matchers. The resulting postings are not ordered by series.
+func (r *Reader) PostingsForMatchers(ctx context.Context, ms ...*labels.Matcher) (index.Postings, error) {
+	var its, notIts []index.Postings
+	// See which label must be non-empty.
+	// Optimization for case like {l=~".", l!="1"}.
+	labelMustBeSet := make(map[string]bool, len(ms))
+	for _, m := range ms {
+		if !m.Matches("") {
+			labelMustBeSet[m.Name] = true
+		}
+	}
+	isSubtractingMatcher := func(m *labels.Matcher) bool {
+		if !labelMustBeSet[m.Name] {
+			return true
+		}
+		return (m.Type == labels.MatchNotEqual || m.Type == labels.MatchNotRegexp) && m.Matches("")
+	}
+	hasSubtractingMatchers, hasIntersectingMatchers := false, false
+	for _, m := range ms {
+		if isSubtractingMatcher(m) {
+			hasSubtractingMatchers = true
+		} else {
+			hasIntersectingMatchers = true
+		}
+	}
+
+	if hasSubtractingMatchers && !hasIntersectingMatchers {
+		// If there's nothing to subtract from, add in everything and remove the notIts later.
+		// We prefer to get AllPostings so that the base of subtraction (i.e. allPostings)
+		// doesn't include series that may be added to the index reader during this function call.
+		k, v := index.AllPostingsKey()
+		allPostings, err := r.Postings(ctx, k, v)
+		if err != nil {
+			return nil, err
+		}
+		its = append(its, allPostings)
+	}
+
+	// Sort matchers to have the intersecting matchers first.
+	// This way the base for subtraction is smaller and
+	// there is no chance that the set we subtract from
+	// contains postings of series that didn't exist when
+	// we constructed the set we subtract by.
+	slices.SortStableFunc(ms, func(i, j *labels.Matcher) int {
+		if !isSubtractingMatcher(i) && isSubtractingMatcher(j) {
+			return -1
+		}
+
+		return +1
+	})
+
+	for _, m := range ms {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		switch {
+		case m.Name == "" && m.Value == "": // Special-case for AllPostings, used in tests at least.
+			k, v := index.AllPostingsKey()
+			allPostings, err := r.Postings(ctx, k, v)
+			if err != nil {
+				return nil, err
+			}
+			its = append(its, allPostings)
+		case labelMustBeSet[m.Name]:
+			// If this matcher must be non-empty, we can be smarter.
+			matchesEmpty := m.Matches("")
+			isNot := m.Type == labels.MatchNotEqual || m.Type == labels.MatchNotRegexp
+			switch {
+			case isNot && matchesEmpty: // l!="foo"
+				// If the label can't be empty and is a Not and the inner matcher
+				// doesn't match empty, then subtract it out at the end.
+				inverse, err := m.Inverse()
+				if err != nil {
+					return nil, err
+				}
+
+				it, err := postingsForMatcher(ctx, r, inverse)
+				if err != nil {
+					return nil, err
+				}
+				notIts = append(notIts, it)
+			case isNot && !matchesEmpty: // l!=""
+				// If the label can't be empty and is a Not, but the inner matcher can
+				// be empty we need to use inversePostingsForMatcher.
+				inverse, err := m.Inverse()
+				if err != nil {
+					return nil, err
+				}
+
+				it, err := inversePostingsForMatcher(ctx, r, inverse)
+				if err != nil {
+					return nil, err
+				}
+				if index.IsEmptyPostingsType(it) {
+					return index.EmptyPostings(), nil
+				}
+				its = append(its, it)
+			default: // l="a"
+				// Non-Not matcher, use normal postingsForMatcher.
+				it, err := postingsForMatcher(ctx, r, m)
+				if err != nil {
+					return nil, err
+				}
+				if index.IsEmptyPostingsType(it) {
+					return index.EmptyPostings(), nil
+				}
+				its = append(its, it)
+			}
+		default: // l=""
+			// If the matchers for a labelname selects an empty value, it selects all
+			// the series which don't have the label name set too. See:
+			// https://github.com/prometheus/prometheus/issues/3575 and
+			// https://github.com/prometheus/prometheus/pull/3578#issuecomment-351653555
+			it, err := inversePostingsForMatcher(ctx, r, m)
+			if err != nil {
+				return nil, err
+			}
+			notIts = append(notIts, it)
+		}
+	}
+
+	it := index.Intersect(its...)
+
+	for _, n := range notIts {
+		it = index.Without(it, n)
+	}
+
+	return it, nil
+}
+
+// inversePostingsForMatcher returns the postings for the series with the label name set but not matching the matcher.
+func inversePostingsForMatcher(ctx context.Context, ix *Reader, m *labels.Matcher) (index.Postings, error) {
+	// Fast-path for MatchNotRegexp matching.
+	// Inverse of a MatchNotRegexp is MatchRegexp (double negation).
+	// Fast-path for set matching.
+	if m.Type == labels.MatchNotRegexp {
+		setMatches := findSetMatches(m.GetRegexString())
+		if len(setMatches) > 0 {
+			return ix.Postings(ctx, m.Name, setMatches...)
+		}
+	}
+
+	// Fast-path for MatchNotEqual matching.
+	// Inverse of a MatchNotEqual is MatchEqual (double negation).
+	if m.Type == labels.MatchNotEqual {
+		return ix.Postings(ctx, m.Name, m.Value)
+	}
+
+	vals, err := ix.LabelValues(ctx, m.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	var res []string
+	// If the inverse match is ="", we just want all the values.
+	if m.Type == labels.MatchEqual && m.Value == "" {
+		res = vals
+	} else {
+		for _, val := range vals {
+			if !m.Matches(val) {
+				res = append(res, val)
+			}
+		}
+	}
+
+	return ix.Postings(ctx, m.Name, res...)
+}
+
+func postingsForMatcher(ctx context.Context, ix *Reader, m *labels.Matcher) (index.Postings, error) {
+	// This method will not return postings for missing labels.
+
+	// Fast-path for equal matching.
+	if m.Type == labels.MatchEqual {
+		return ix.Postings(ctx, m.Name, m.Value)
+	}
+
+	// Fast-path for set matching.
+	if m.Type == labels.MatchRegexp {
+		setMatches := findSetMatches(m.GetRegexString())
+		if len(setMatches) > 0 {
+			return ix.Postings(ctx, m.Name, setMatches...)
+		}
+	}
+
+	vals, err := ix.LabelValues(ctx, m.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	var res []string
+	for _, val := range vals {
+		if m.Matches(val) {
+			res = append(res, val)
+		}
+	}
+
+	if len(res) == 0 {
+		return index.EmptyPostings(), nil
+	}
+
+	return ix.Postings(ctx, m.Name, res...)
+}
+
+func findSetMatches(pattern string) []string {
+	// Return empty matches if the wrapper from Prometheus is missing.
+	if len(pattern) < 6 || pattern[:4] != "^(?:" || pattern[len(pattern)-2:] != ")$" {
+		return nil
+	}
+	escaped := false
+	sets := []*strings.Builder{{}}
+	init := 4
+	end := len(pattern) - 2
+	// If the regex is wrapped in a group we can remove the first and last parentheses
+	if pattern[init] == '(' && pattern[end-1] == ')' {
+		init++
+		end--
+	}
+	for i := init; i < end; i++ {
+		if escaped {
+			switch {
+			case isRegexMetaCharacter(pattern[i]):
+				sets[len(sets)-1].WriteByte(pattern[i])
+			case pattern[i] == '\\':
+				sets[len(sets)-1].WriteByte('\\')
+			default:
+				return nil
+			}
+			escaped = false
+		} else {
+			switch {
+			case isRegexMetaCharacter(pattern[i]):
+				if pattern[i] == '|' {
+					sets = append(sets, &strings.Builder{})
+				} else {
+					return nil
+				}
+			case pattern[i] == '\\':
+				escaped = true
+			default:
+				sets[len(sets)-1].WriteByte(pattern[i])
+			}
+		}
+	}
+	matches := make([]string, 0, len(sets))
+	for _, s := range sets {
+		if s.Len() > 0 {
+			matches = append(matches, s.String())
+		}
+	}
+	return matches
 }

@@ -9,12 +9,11 @@ import (
 	"strings"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	baseStore "github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -30,6 +29,11 @@ const (
 	gzipExtension = ".gz"
 )
 
+type ClosableForSeries interface {
+	sharding.ForSeries
+	Close() error
+}
+
 type TSDBStore interface {
 	UsersForPeriod(ctx context.Context, table config.DayTable) ([]string, error)
 	ResolveTSDBs(ctx context.Context, table config.DayTable, tenant string) ([]tsdb.SingleTenantTSDBIdentifier, error)
@@ -38,8 +42,7 @@ type TSDBStore interface {
 		table config.DayTable,
 		tenant string,
 		id tsdb.Identifier,
-		bounds v1.FingerprintBounds,
-	) (iter.Iterator[*v1.Series], error)
+	) (ClosableForSeries, error)
 }
 
 // BloomTSDBStore is a wrapper around the storage.Client interface which
@@ -90,8 +93,7 @@ func (b *BloomTSDBStore) LoadTSDB(
 	table config.DayTable,
 	tenant string,
 	id tsdb.Identifier,
-	bounds v1.FingerprintBounds,
-) (iter.Iterator[*v1.Series], error) {
+) (ClosableForSeries, error) {
 	withCompression := id.Name() + gzipExtension
 
 	data, err := b.storage.GetUserFile(ctx, table.Addr(), tenant, withCompression)
@@ -100,7 +102,7 @@ func (b *BloomTSDBStore) LoadTSDB(
 	}
 	defer data.Close()
 
-	decompressorPool := chunkenc.GetReaderPool(chunkenc.EncGZIP)
+	decompressorPool := compression.GetReaderPool(compression.EncGZIP)
 	decompressor, err := decompressorPool.GetReader(data)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get decompressor")
@@ -118,13 +120,8 @@ func (b *BloomTSDBStore) LoadTSDB(
 	}
 
 	idx := tsdb.NewTSDBIndex(reader)
-	defer func() {
-		if err := idx.Close(); err != nil {
-			level.Error(b.logger).Log("msg", "failed to close index", "err", err)
-		}
-	}()
 
-	return NewTSDBSeriesIter(ctx, tenant, idx, bounds)
+	return idx, nil
 }
 
 func NewTSDBSeriesIter(ctx context.Context, user string, f sharding.ForSeries, bounds v1.FingerprintBounds) (iter.Iterator[*v1.Series], error) {
@@ -251,12 +248,11 @@ func (s *TSDBStores) LoadTSDB(
 	table config.DayTable,
 	tenant string,
 	id tsdb.Identifier,
-	bounds v1.FingerprintBounds,
-) (iter.Iterator[*v1.Series], error) {
+) (ClosableForSeries, error) {
 	store, err := s.storeForPeriod(table.DayTime)
 	if err != nil {
 		return nil, err
 	}
 
-	return store.LoadTSDB(ctx, table, tenant, id, bounds)
+	return store.LoadTSDB(ctx, table, tenant, id)
 }
