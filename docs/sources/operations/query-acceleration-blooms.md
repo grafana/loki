@@ -152,7 +152,7 @@ Example calculation for storage requirements of blooms for a single tenant.
 
 Since reading blooms depends heavily on disk IOPS, Bloom Gateways should make use of multiple, 
 locally attached SSD disks (NVMe) to increase i/o throughput. 
-Multiple directories on different disk mounts can be specified using the `-bloom.shipper.working-directory` [setting]storage-config-cfg] 
+Multiple directories on different disk mounts can be specified using the `-bloom.shipper.working-directory` [setting][storage-config-cfg] 
 when using a comma separated list of mount points, for example:
 ```
 -bloom.shipper.working-directory="/mnt/data0,/mnt/data1,/mnt/data2,/mnt/data3"
