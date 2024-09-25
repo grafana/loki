@@ -77,6 +77,16 @@ func (f *FSObjectClient) ObjectExists(_ context.Context, objectKey string) (bool
 	return true, nil
 }
 
+func (f *FSObjectClient) ObjectExistsWithSize(_ context.Context, objectKey string) (bool, int64, error) {
+	fullPath := filepath.Join(f.cfg.Directory, filepath.FromSlash(objectKey))
+	fi, err := os.Lstat(fullPath)
+	if err != nil {
+		return false, 0, err
+	}
+
+	return true, fi.Size(), nil
+}
+
 // GetObject from the store
 func (f *FSObjectClient) GetObject(_ context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	fl, err := os.Open(filepath.Join(f.cfg.Directory, filepath.FromSlash(objectKey)))

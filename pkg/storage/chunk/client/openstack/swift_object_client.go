@@ -133,6 +133,15 @@ func (s *SwiftObjectClient) ObjectExists(ctx context.Context, objectKey string) 
 	return true, nil
 }
 
+func (s *SwiftObjectClient) ObjectExistsWithSize(ctx context.Context, objectKey string) (bool, int64, error) {
+	info, _, err := s.hedgingConn.Object(ctx, s.cfg.Config.ContainerName, objectKey)
+	if err != nil {
+		return false, 0, err
+	}
+
+	return true, info.Bytes, nil
+}
+
 // GetObject returns a reader and the size for the specified object key from the configured swift container.
 func (s *SwiftObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	var buf bytes.Buffer

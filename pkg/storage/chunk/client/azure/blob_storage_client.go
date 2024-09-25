@@ -236,6 +236,33 @@ func (b *BlobStorage) ObjectExists(ctx context.Context, objectKey string) (bool,
 	return true, nil
 }
 
+func (b *BlobStorage) ObjectExistsWithSize(ctx context.Context, objectKey string) (bool, int64, error) {
+	var objectSize int64
+	err := loki_instrument.TimeRequest(ctx, "azure.ObjectExists", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
+		blockBlobURL, err := b.getBlobURL(objectKey, false)
+		if err != nil {
+			return err
+		}
+
+		response, err := blockBlobURL.GetProperties(ctx, azblob.BlobAccessConditions{}, azblob.ClientProvidedKeyOptions{})
+		if err != nil {
+			return err
+		}
+		if response != nil {
+			rawResponse := response.Response()
+			if rawResponse != nil {
+				objectSize = rawResponse.ContentLength
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return false, 0, err
+	}
+
+	return true, objectSize, nil
+}
+
 // GetObject returns a reader and the size for the specified object key.
 func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	var cancel context.CancelFunc = func() {}

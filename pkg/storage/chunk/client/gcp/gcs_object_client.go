@@ -135,6 +135,18 @@ func (s *GCSObjectClient) ObjectExists(ctx context.Context, objectKey string) (b
 	return true, nil
 }
 
+func (s *GCSObjectClient) ObjectExistsWithSize(ctx context.Context, objectKey string) (bool, int64, error) {
+	attrs, err := s.getsBuckets.Object(objectKey).Attrs(ctx)
+	if err != nil {
+		return false, 0, err
+	}
+
+	if attrs != nil {
+		return true, attrs.Size, nil
+	}
+	return true, 0, nil
+}
+
 // GetObject returns a reader and the size for the specified object key from the configured GCS bucket.
 func (s *GCSObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	var cancel context.CancelFunc = func() {}

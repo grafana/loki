@@ -336,6 +336,29 @@ func (c *COSObjectClient) ObjectExists(ctx context.Context, objectKey string) (b
 	return true, nil
 }
 
+func (c *COSObjectClient) ObjectExistsWithSize(ctx context.Context, objectKey string) (bool, int64, error) {
+	bucket := c.bucketFromKey(objectKey)
+	var objectSize int64
+	err := instrument.CollectedRequest(ctx, "COS.GetObject", cosRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
+		headOutput, requestErr := c.hedgedCOS.HeadObject(&cos.HeadObjectInput{
+			Bucket: ibm.String(bucket),
+			Key:    ibm.String(objectKey),
+		})
+		if requestErr != nil {
+			return requestErr
+		}
+		if headOutput != nil && headOutput.ContentLength != nil {
+			objectSize = *headOutput.ContentLength
+		}
+		return nil
+	})
+	if err != nil {
+		return false, 0, err
+	}
+
+	return true, objectSize, nil
+}
+
 // GetObject returns a reader and the size for the specified object key from the configured S3 bucket.
 func (c *COSObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	var resp *cos.GetObjectOutput

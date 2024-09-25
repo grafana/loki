@@ -17,6 +17,13 @@ type testObjClient struct {
 	client.ObjectClient
 }
 
+func (t testObjClient) ObjectExistsWithSize(_ context.Context, object string) (bool, int64, error) {
+	if strings.Contains(object, "missing") {
+		return false, 0, nil
+	}
+	return true, 0, nil
+}
+
 func (t testObjClient) ObjectExists(_ context.Context, object string) (bool, error) {
 	if strings.Contains(object, "missing") {
 		return false, nil

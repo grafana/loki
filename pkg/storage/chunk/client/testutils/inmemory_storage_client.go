@@ -408,6 +408,22 @@ func (m *InMemoryObjectClient) ObjectExists(_ context.Context, objectKey string)
 	return true, nil
 }
 
+func (m *InMemoryObjectClient) ObjectExistsWithSize(_ context.Context, objectKey string) (bool, int64, error) {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	if m.mode == MockStorageModeWriteOnly {
+		return false, 0, errPermissionDenied
+	}
+
+	_, ok := m.objects[objectKey]
+	if !ok {
+		return false, 0, nil
+	}
+	objectSize := len(m.objects[objectKey])
+	return true, int64(objectSize), nil
+}
+
 // GetObject implements client.ObjectClient.
 func (m *InMemoryObjectClient) GetObject(_ context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	m.mtx.RLock()

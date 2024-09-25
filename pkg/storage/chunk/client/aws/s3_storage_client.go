@@ -343,6 +343,47 @@ func (a *S3ObjectClient) ObjectExists(ctx context.Context, objectKey string) (bo
 	return true, nil
 }
 
+func (a *S3ObjectClient) ObjectExistsWithSize(ctx context.Context, objectKey string) (bool, int64, error) {
+	var lastErr error
+	var objectSize int64
+
+	retries := backoff.New(ctx, a.cfg.BackoffConfig)
+	for retries.Ongoing() {
+		if ctx.Err() != nil {
+			return false, 0, errors.Wrap(ctx.Err(), "ctx related error during s3 objectExists")
+		}
+		lastErr = instrument.CollectedRequest(ctx, "S3.ObjectExists", s3RequestDuration, instrument.ErrorCode, func(_ context.Context) error {
+			headObjectInput := &s3.HeadObjectInput{
+				Bucket: aws.String(a.bucketFromKey(objectKey)),
+				Key:    aws.String(objectKey),
+			}
+			headOutput, requestErr := a.S3.HeadObject(headObjectInput)
+			if requestErr != nil {
+				return requestErr
+			}
+			if headOutput != nil && headOutput.ContentLength != nil {
+				objectSize = *headOutput.ContentLength
+			}
+			return nil
+		})
+		if lastErr == nil {
+			return true, 0, nil
+		}
+
+		if a.IsObjectNotFoundErr(lastErr) {
+			return false, 0, lastErr
+		}
+
+		retries.Wait()
+	}
+
+	if lastErr != nil {
+		return false, 0, lastErr
+	}
+
+	return true, objectSize, nil
+}
+
 // DeleteObject deletes the specified objectKey from the appropriate S3 bucket
 func (a *S3ObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
 	return instrument.CollectedRequest(ctx, "S3.DeleteObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
