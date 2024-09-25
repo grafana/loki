@@ -276,6 +276,10 @@ func (t *table) Sync(ctx context.Context) error {
 	t.indexSetsMtx.RUnlock()
 
 	for _, userID := range users {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
 		t.indexSetsMtx.RLock()
 		indexSet, ok := t.indexSets[userID]
 		t.indexSetsMtx.RUnlock()
