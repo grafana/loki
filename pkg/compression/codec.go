@@ -10,6 +10,8 @@ type Codec byte
 
 // The different available codecs
 // Make sure to preserve the order, as the numeric values are serialized!
+//
+//nolint:revive
 const (
 	None Codec = iota
 	GZIP
