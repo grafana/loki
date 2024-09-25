@@ -133,6 +133,10 @@ spec:
             - name: LOG_LEVEL
               value: "{{ .Values.sidecar.rules.logLevel }}"
             {{- end }}
+          {{- if .Values.sidecar.containerSecurityContext }}
+          containerSecurityContext:
+          {{- toYaml .Values.sidecar.containerSecurityContext | nindent 12 }}
+          {{- end }}
           {{- if .Values.sidecar.livenessProbe }}
           livenessProbe:
           {{- toYaml .Values.sidecar.livenessProbe | nindent 12 }}
