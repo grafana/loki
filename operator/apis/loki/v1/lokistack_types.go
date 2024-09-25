@@ -887,7 +887,7 @@ type OTLPResourceAttributesSpec struct {
 // tenants.
 type GlobalOTLPSpec struct {
 	// IndexedResourceAttributes contains the global configuration for resource attributes
-	// to store them as index labels or structured metadata or drop them altogether.
+	// to store them as index labels.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
@@ -909,7 +909,7 @@ type OTLPSpec struct {
 	ResourceAttributes *OTLPResourceAttributesSpec `json:"resourceAttributes,omitempty"`
 
 	// ScopeAttributes contains the configuration for scope attributes
-	// to store them as index labels or structured metadata or drop them altogether.
+	// to store them as structured metadata or drop them altogether.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
@@ -917,7 +917,7 @@ type OTLPSpec struct {
 	ScopeAttributes []OTLPAttributesSpec `json:"scopeAttributes,omitempty"`
 
 	// LogAttributes contains the configuration for log attributes
-	// to store them as index labels or structured metadata or drop them altogether.
+	// to store them as structured metadata or drop them altogether.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
