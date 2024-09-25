@@ -225,8 +225,10 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 ) {
 	log := spanlogger.FromContext(r.ctx)
 
-	adjustedFrom := r.from
-	adjustedThrough := r.through
+	var (
+		adjustedFrom    = r.from
+		adjustedThrough model.Time
+	)
 
 	// NB(owen-d): there should only ever be 1 matcher group passed
 	// to this call as we call it separately for different legs
@@ -252,6 +254,7 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 			adjustedFrom = r.from.Add(-diff)
 		}
 
+		// use the latest adjustedThrough
 		if r.through.Add(-grp.Offset).After(adjustedThrough) {
 			adjustedThrough = r.through.Add(-grp.Offset)
 		}
