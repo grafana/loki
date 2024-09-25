@@ -2352,7 +2352,7 @@ bloomGateway:
   podAnnotations: {}
   # -- Affinity for bloom gateway pods.
   affinity: {}
-  # -- Labels for bloom gateway service
+  # -- Labels for bloom-gateway service
   serviceLabels: {}
   # -- Annotations for bloom-gateway service
   serviceAnnotations: {}
@@ -2442,9 +2442,9 @@ bloomPlanner:
   podLabels: {}
   # -- Annotations for bloom-planner pods
   podAnnotations: {}
-  # -- Affinity for bloom compactor pods.
+  # -- Affinity for bloom-planner pods.
   affinity: {}
-  # -- Labels for bloom compactor service
+  # -- Labels for bloom-planner service
   serviceLabels: {}
   # -- Annotations for bloom-planner service
   serviceAnnotations: {}
@@ -2582,14 +2582,7 @@ bloomBuilder:
   # -- Grace period to allow the bloom-builder to shutdown before it is killed
   terminationGracePeriodSeconds: 30
   # -- Affinity for bloom-builder pods.
-  # @default -- Hard node anti-affinity
-  affinity:
-    podAntiAffinity:
-      requiredDuringSchedulingIgnoredDuringExecution:
-        - labelSelector:
-            matchLabels:
-              app.kubernetes.io/component: bloom-builder
-          topologyKey: kubernetes.io/hostname
+  affinity: {}
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
   # -- Node selector for bloom-builder pods

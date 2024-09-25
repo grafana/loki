@@ -739,8 +739,8 @@ null
 			<td>bloomBuilder.affinity</td>
 			<td>object</td>
 			<td>Affinity for bloom-builder pods.</td>
-			<td><pre lang="">
-Hard node anti-affinity
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -1107,9 +1107,9 @@ null
 		<tr>
 			<td>bloomGateway.affinity</td>
 			<td>object</td>
-			<td>Affinity for bloom-gateway pods.</td>
-			<td><pre lang="">
-Hard node anti-affinity
+			<td>Affinity for bloom gateway pods.</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -1427,20 +1427,7 @@ null
 			<td>Configuration for the bloom-planner</td>
 			<td><pre lang="json">
 {
-  "affinity": {
-    "podAntiAffinity": {
-      "requiredDuringSchedulingIgnoredDuringExecution": [
-        {
-          "labelSelector": {
-            "matchLabels": {
-              "app.kubernetes.io/component": "bloom-planner"
-            }
-          },
-          "topologyKey": "kubernetes.io/hostname"
-        }
-      ]
-    }
-  },
+  "affinity": {},
   "appProtocol": {
     "grpc": ""
   },
@@ -1499,8 +1486,8 @@ null
 			<td>bloomPlanner.affinity</td>
 			<td>object</td>
 			<td>Affinity for bloom-planner pods.</td>
-			<td><pre lang="">
-Hard node anti-affinity
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
