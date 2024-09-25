@@ -2039,7 +2039,7 @@ null
 		<tr>
 			<td>chunksCache.persistence.storageSize</td>
 			<td>string</td>
-			<td>Size of persistent disk</td>
+			<td>Size of persistent disk, must be in G or Gi</td>
 			<td><pre lang="json">
 "10G"
 </pre>
@@ -6554,7 +6554,12 @@ false
 			<td>object</td>
 			<td>The SecurityContext override for memcached pods</td>
 			<td><pre lang="json">
-{}
+{
+  "fsGroup": 11211,
+  "runAsGroup": 11211,
+  "runAsNonRoot": true,
+  "runAsUser": 11211
+}
 </pre>
 </td>
 		</tr>
@@ -9593,7 +9598,7 @@ null
 		<tr>
 			<td>resultsCache.persistence.storageSize</td>
 			<td>string</td>
-			<td>Size of persistent disk</td>
+			<td>Size of persistent disk, must be in G or Gi</td>
 			<td><pre lang="json">
 "10G"
 </pre>
