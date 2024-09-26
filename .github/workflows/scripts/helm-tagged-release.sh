@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: AGPL-3.0-only
+
+set -exo pipefail
+
+# This generates a new file where the yaml node is updated.
+# The problem is that yq strips new lines when you update the file.
+# So we use a workaround from https://github.com/mikefarah/yq/issues/515 which:
+# generates the new file, diffs it with the original, removes all non-whitespace changes, and applies that to the original file.
+update_yaml_node() {
+  local filename=$1
+  local yaml_node=$2
+  local new_value=$3
+  patch "$filename" <<<$(diff -U0 -w -b --ignore-blank-lines $filename <(yq eval "$yaml_node = \"$new_value\"" $filename))
+}
+
+get_yaml_node() {
+  local filename=$1
+  local yaml_node=$2
+  echo $(yq $yaml_node $filename)
+}
+
+# Increments the part of the semver string
+# $1: version itself
+# $2: number of part: 0 – major, 1 – minor, 2 – patch
+increment_semver() {
+  local delimiter=.
+  local array=($(echo "$1" | tr $delimiter '\n'))
+  array[$2]=$((array[$2] + 1))
+  echo $(
+    local IFS=$delimiter
+    echo "${array[*]}"
+  )
+}
+
+# Sets the patch segment of a semver to 0
+# $1: version itself
+set_semver_patch_to_zero() {
+  local delimiter=.
+  local array=($(echo "$1" | tr $delimiter '\n'))
+  array[2]="0"
+  echo $(
+    local IFS=$delimiter
+    echo "${array[*]}"
+  )
+}
+
+calculate_next_chart_version() {
+  local current_chart_version=$1
+
+  local current_chart_semver=$(echo $current_chart_version | grep -P -o '^(\d+.){2}\d+')
+  local new_chart_semver=$current_chart_semver
+  new_chart_semver=$(increment_semver $current_chart_semver 1)
+  new_chart_semver=$(set_semver_patch_to_zero $new_chart_semver)
+  echo "$new_chart_semver"
+}
+
+validate_version_update() {
+  local new_chart_version=$1
+  local current_chart_version=$2
+  local latest_loki_tag=$3
+
+  if [[ "$new_chart_version" == "$current_chart_version" ]]; then
+    echo "New chart version ($new_chart_version) is the same as current version ($current_chart_version); not submitting PR"
+    exit 1
+  fi
+}
+
+
+latest_loki_tag=$(sed -E "s/v(.*)/\1/g" <<< $1)
+
+values_file=production/helm/loki/values.yaml
+chart_file=production/helm/loki/Chart.yaml
+
+current_chart_version=$(get_yaml_node $chart_file .version)
+new_chart_version=$(calculate_next_chart_version $current_chart_version)
+
+validate_version_update $new_chart_version $current_chart_version $latest_loki_tag
+
+update_yaml_node $values_file .loki.image.tag $latest_loki_tag
+
+update_yaml_node $values_file .enterprise.image.tag $latest_loki_tag
+update_yaml_node $chart_file .appVersion $latest_loki_tag
+update_yaml_node $chart_file .version $new_chart_version
+
+make TTY='' helm-docs
+
+echo "::set-output name=new_chart_version::$new_chart_version"

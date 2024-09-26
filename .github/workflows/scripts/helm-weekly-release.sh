@@ -10,7 +10,7 @@ find_latest_image_tag() {
   echo $(crane ls "${docker_hub_repo}" | grep -P "${regExp}" | sed -E "s/([weekly-]*k[[:digit:]]*)-([^-]*).*/\1-\2/g" | uniq | sort -Vur | head -1)
 }
 
-# takes r197-abcdef and returns r197
+# takes k197-abcdef and returns r197, k197-abcdef-arm64 and returns k197, weekly-k197-abcdef and returns k197
 extract_k_version() {
   echo $(sed -E "s/[weekly-]*(k[[:digit:]]*).*/\1/g" <<<$1)
 }
@@ -60,7 +60,6 @@ set_semver_patch_to_zero() {
 calculate_next_chart_version() {
   local current_chart_version=$1
   local latest_image_tag=$2
-  local prefix=$3
 
   local current_chart_semver=$(echo $current_chart_version | grep -P -o '^(\d+.){2}\d+')
   local new_chart_weekly=$(extract_k_version $latest_image_tag | grep -P -o '\d+')
