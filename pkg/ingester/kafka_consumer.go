@@ -152,5 +152,5 @@ func retryWithBackoff(ctx context.Context, fn func(attempts int) error) error {
 		}
 		backoff.Wait()
 	}
-	return b.Err()
+	return backoff.Err()
 }
