@@ -359,9 +359,7 @@ func TestLabelsBuilder_UnsortedLabels(t *testing.T) {
 	b.add[ParsedLabel] = labels.FromStrings("pzz", "pvzz")
 	expected := labels.FromStrings("cluster", "us-central1", "namespace", "loki", "fzz", "bzz", "toreplace", "buzz", "pzz", "pvzz")
 	actual := b.UnsortedLabels(nil)
-	sort.Sort(expected)
-	sort.Sort(actual)
-	assert.Equal(t, expected, actual)
+	require.ElementsMatch(t, expected, actual)
 
 	b.Reset()
 	b.add[StructuredMetadataLabel] = labels.FromStrings("fzz", "bzz")

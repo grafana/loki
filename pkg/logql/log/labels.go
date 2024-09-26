@@ -345,12 +345,19 @@ func (b *LabelsBuilder) deleteWithCategory(category LabelCategory, n string) {
 }
 
 // Set the name/value pair as a label.
+// The value `v` may not be set if a category with higher preference already contains `n`.
+// Category preference goes as Parsed > Structured Metadata > Stream.
 func (b *LabelsBuilder) Set(category LabelCategory, n, v string) *LabelsBuilder {
+	// Parsed takes precedence over Structured Metadata and Stream labels.
+	// If category is Parsed, we delete `n` from the structured metadata and stream labels.
 	if category == ParsedLabel {
 		b.deleteWithCategory(StructuredMetadataLabel, n)
 		b.deleteWithCategory(StreamLabel, n)
 	}
 
+	// Structured Metadata takes precedence over Stream labels.
+	// If category is `StructuredMetadataLabel`,we delete `n` from the stream labels.
+	// If `n` exists in the parsed labels, we won't overwrite it's value and we just return what we have.
 	if category == StructuredMetadataLabel {
 		b.deleteWithCategory(StreamLabel, n)
 		if labelsContain(b.add[ParsedLabel], n) {
@@ -358,6 +365,8 @@ func (b *LabelsBuilder) Set(category LabelCategory, n, v string) *LabelsBuilder 
 		}
 	}
 
+	// Finally, if category is `StreamLabel` and `n` already exists in either the structured metadata or
+	// parsed labels, the `Set` operation is a noop and we return the unmodified labels builder.
 	if category == StreamLabel {
 		if labelsContain(b.add[StructuredMetadataLabel], n) || labelsContain(b.add[ParsedLabel], n) {
 			return b
