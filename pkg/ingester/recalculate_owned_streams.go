@@ -15,7 +15,12 @@ import (
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
 
-type recalculateOwnedStreams struct {
+type ownershipStrategy interface {
+	checkRingForChanges() (bool, error)
+	isOwnedStream(*stream) (bool, error)
+}
+
+type recalculateOwnedStreamsSvc struct {
 	services.Service
 
 	logger log.Logger
@@ -25,13 +30,8 @@ type recalculateOwnedStreams struct {
 	ticker            *time.Ticker
 }
 
-type ownershipStrategy interface {
-	checkRingForChanges() (bool, error)
-	isOwnedStream(*stream) (bool, error)
-}
-
-func newRecalculateOwnedStreamsSvc(instancesSupplier func() []*instance, ownershipStrategy ownershipStrategy, ringPollInterval time.Duration, logger log.Logger) *recalculateOwnedStreams {
-	svc := &recalculateOwnedStreams{
+func newRecalculateOwnedStreamsSvc(instancesSupplier func() []*instance, ownershipStrategy ownershipStrategy, ringPollInterval time.Duration, logger log.Logger) *recalculateOwnedStreamsSvc {
+	svc := &recalculateOwnedStreamsSvc{
 		instancesSupplier: instancesSupplier,
 		logger:            logger,
 		ownershipStrategy: ownershipStrategy,
@@ -40,12 +40,12 @@ func newRecalculateOwnedStreamsSvc(instancesSupplier func() []*instance, ownersh
 	return svc
 }
 
-func (s *recalculateOwnedStreams) iteration(_ context.Context) error {
+func (s *recalculateOwnedStreamsSvc) iteration(_ context.Context) error {
 	s.recalculate()
 	return nil
 }
 
-func (s *recalculateOwnedStreams) recalculate() {
+func (s *recalculateOwnedStreamsSvc) recalculate() {
 	level.Info(s.logger).Log("msg", "starting recalculate owned streams job")
 	defer func() {
 		s.updateFixedLimitForAll()
@@ -75,7 +75,7 @@ func (s *recalculateOwnedStreams) recalculate() {
 	}
 }
 
-func (s *recalculateOwnedStreams) updateFixedLimitForAll() {
+func (s *recalculateOwnedStreamsSvc) updateFixedLimitForAll() {
 	for _, instance := range s.instancesSupplier() {
 		oldLimit, newLimit := instance.ownedStreamsSvc.updateFixedLimit()
 		if oldLimit != newLimit {
