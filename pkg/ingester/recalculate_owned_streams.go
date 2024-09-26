@@ -2,12 +2,17 @@ package ingester
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"golang.org/x/exp/slices"
+
+	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
 
 type recalculateOwnedStreams struct {
@@ -15,19 +20,21 @@ type recalculateOwnedStreams struct {
 
 	logger log.Logger
 
+	ownershipStrategy ownershipStrategy
 	instancesSupplier func() []*instance
-	ingesterID        string
-	previousRing      ring.ReplicationSet
-	ingestersRing     ring.ReadRing
 	ticker            *time.Ticker
 }
 
-func newRecalculateOwnedStreams(instancesSupplier func() []*instance, ingesterID string, ring ring.ReadRing, ringPollInterval time.Duration, logger log.Logger) *recalculateOwnedStreams {
+type ownershipStrategy interface {
+	checkRingForChanges() (bool, error)
+	isOwnedStream(*stream) (bool, error)
+}
+
+func newRecalculateOwnedStreamsSvc(instancesSupplier func() []*instance, ownershipStrategy ownershipStrategy, ringPollInterval time.Duration, logger log.Logger) *recalculateOwnedStreams {
 	svc := &recalculateOwnedStreams{
-		ingestersRing:     ring,
 		instancesSupplier: instancesSupplier,
-		ingesterID:        ingesterID,
 		logger:            logger,
+		ownershipStrategy: ownershipStrategy,
 	}
 	svc.Service = services.NewTimerService(ringPollInterval, nil, svc.iteration, nil)
 	return svc
@@ -44,7 +51,7 @@ func (s *recalculateOwnedStreams) recalculate() {
 		s.updateFixedLimitForAll()
 		level.Info(s.logger).Log("msg", "completed recalculate owned streams job")
 	}()
-	ringChanged, err := s.checkRingForChanges()
+	ringChanged, err := s.ownershipStrategy.checkRingForChanges()
 	if err != nil {
 		level.Error(s.logger).Log("msg", "failed to check ring for changes", "err", err)
 		return
@@ -61,7 +68,7 @@ func (s *recalculateOwnedStreams) recalculate() {
 		}
 
 		level.Info(s.logger).Log("msg", "updating streams ownership", "tenant", instance.instanceID)
-		err := instance.updateOwnedStreams(s.ingestersRing, s.ingesterID)
+		err := instance.updateOwnedStreams(s.ownershipStrategy.isOwnedStream)
 		if err != nil {
 			level.Error(s.logger).Log("msg", "failed to re-evaluate streams ownership", "tenant", instance.instanceID, "err", err)
 		}
@@ -77,7 +84,36 @@ func (s *recalculateOwnedStreams) updateFixedLimitForAll() {
 	}
 }
 
-func (s *recalculateOwnedStreams) checkRingForChanges() (bool, error) {
+type ownedStreamsIngesterStrategy struct {
+	logger log.Logger
+
+	ingesterID    string
+	previousRing  ring.ReplicationSet
+	ingestersRing ring.ReadRing
+
+	descsBufPool sync.Pool
+	hostsBufPool sync.Pool
+	zoneBufPool  sync.Pool
+}
+
+func newOwnedStreamsIngesterStrategy(ingesterID string, ingestersRing ring.ReadRing, logger log.Logger) *ownedStreamsIngesterStrategy {
+	return &ownedStreamsIngesterStrategy{
+		ingesterID:    ingesterID,
+		ingestersRing: ingestersRing,
+		logger:        logger,
+		descsBufPool: sync.Pool{New: func() interface{} {
+			return make([]ring.InstanceDesc, ingestersRing.ReplicationFactor()+1)
+		}},
+		hostsBufPool: sync.Pool{New: func() interface{} {
+			return make([]string, ingestersRing.ReplicationFactor()+1)
+		}},
+		zoneBufPool: sync.Pool{New: func() interface{} {
+			return make([]string, ingestersRing.ZonesCount()+1)
+		}},
+	}
+}
+
+func (s *ownedStreamsIngesterStrategy) checkRingForChanges() (bool, error) {
 	rs, err := s.ingestersRing.GetAllHealthy(ring.WriteNoExtend)
 	if err != nil {
 		return false, err
@@ -86,4 +122,69 @@ func (s *recalculateOwnedStreams) checkRingForChanges() (bool, error) {
 	ringChanged := ring.HasReplicationSetChangedWithoutStateOrAddr(s.previousRing, rs)
 	s.previousRing = rs
 	return ringChanged, nil
+}
+
+func (s *ownedStreamsIngesterStrategy) isOwnedStream(str *stream) (bool, error) {
+	descsBuf := s.descsBufPool.Get().([]ring.InstanceDesc)
+	hostsBuf := s.hostsBufPool.Get().([]string)
+	zoneBuf := s.zoneBufPool.Get().([]string)
+	defer func() {
+		s.descsBufPool.Put(descsBuf)
+		s.hostsBufPool.Put(hostsBuf)
+		s.zoneBufPool.Put(zoneBuf)
+	}()
+
+	replicationSet, err := s.ingestersRing.Get(lokiring.TokenFor(str.tenant, str.labelsString), ring.WriteNoExtend, descsBuf, hostsBuf, zoneBuf)
+	if err != nil {
+		return false, fmt.Errorf("error getting replication set for stream %s: %v", str.labelsString, err)
+	}
+	return s.isOwnedStreamInner(replicationSet, s.ingesterID), nil
+}
+
+func (s *ownedStreamsIngesterStrategy) isOwnedStreamInner(replicationSet ring.ReplicationSet, ingesterID string) bool {
+	for _, instanceDesc := range replicationSet.Instances {
+		if instanceDesc.Id == ingesterID {
+			return true
+		}
+	}
+	return false
+}
+
+type ownedStreamsPartitionStrategy struct {
+	logger log.Logger
+
+	partitionID              int32
+	partitionRingWatcher     ring.PartitionRingReader
+	previousActivePartitions []int32
+	getPartitionShardSize    func(user string) int
+}
+
+func newOwnedStreamsPartitionStrategy(partitionID int32, ring ring.PartitionRingReader, logger log.Logger) *ownedStreamsPartitionStrategy {
+	return &ownedStreamsPartitionStrategy{
+		partitionID:          partitionID,
+		partitionRingWatcher: ring,
+		logger:               logger,
+	}
+}
+
+func (s *ownedStreamsPartitionStrategy) checkRingForChanges() (bool, error) {
+	// When using partitions ring, we consider ring to be changed if active partitions have changed.
+	r := s.partitionRingWatcher.PartitionRing()
+	if r.PartitionsCount() == 0 {
+		return false, ring.ErrEmptyRing
+	}
+
+	activePartitions := r.ActivePartitionIDs()
+	ringChanged := !slices.Equal(s.previousActivePartitions, activePartitions)
+	s.previousActivePartitions = activePartitions
+	return ringChanged, nil
+}
+
+func (s *ownedStreamsPartitionStrategy) isOwnedStream(str *stream) (bool, error) {
+	partitionForStream, err := s.partitionRingWatcher.PartitionRing().ActivePartitionForKey(lokiring.TokenFor(str.tenant, str.labelsString))
+	if err != nil {
+		return false, fmt.Errorf("failed to find active partition for stream: %w", err)
+	}
+
+	return partitionForStream == s.partitionID, nil
 }
