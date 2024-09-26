@@ -124,14 +124,15 @@ func (s *ownedStreamsIngesterStrategy) checkRingForChanges() (bool, error) {
 	return ringChanged, nil
 }
 
+//nolint:staticcheck
 func (s *ownedStreamsIngesterStrategy) isOwnedStream(str *stream) (bool, error) {
 	descsBuf := s.descsBufPool.Get().([]ring.InstanceDesc)
 	hostsBuf := s.hostsBufPool.Get().([]string)
 	zoneBuf := s.zoneBufPool.Get().([]string)
 	defer func() {
-		s.descsBufPool.Put(&descsBuf)
-		s.hostsBufPool.Put(&hostsBuf)
-		s.zoneBufPool.Put(&zoneBuf)
+		s.descsBufPool.Put(descsBuf[:0])
+		s.hostsBufPool.Put(hostsBuf[:0])
+		s.zoneBufPool.Put(zoneBuf[:0])
 	}()
 
 	replicationSet, err := s.ingestersRing.Get(lokiring.TokenFor(str.tenant, str.labelsString), ring.WriteNoExtend, descsBuf, hostsBuf, zoneBuf)
