@@ -39,24 +39,26 @@ func newConsumerMetrics(reg prometheus.Registerer) *consumerMetrics {
 
 func NewKafkaConsumerFactory(pusher logproto.PusherServer, logger log.Logger, reg prometheus.Registerer) partition.ConsumerFactory {
 	metrics := newConsumerMetrics(reg)
-	return func(_ partition.Committer) (partition.Consumer, error) {
+	return func(committer partition.Committer) (partition.Consumer, error) {
 		decoder, err := kafka.NewDecoder()
 		if err != nil {
 			return nil, err
 		}
 		return &kafkaConsumer{
-			pusher:  pusher,
-			logger:  logger,
-			decoder: decoder,
-			metrics: metrics,
+			pusher:    pusher,
+			logger:    logger,
+			decoder:   decoder,
+			metrics:   metrics,
+			committer: committer,
 		}, nil
 	}
 }
 
 type kafkaConsumer struct {
-	pusher  logproto.PusherServer
-	logger  log.Logger
-	decoder *kafka.Decoder
+	pusher    logproto.PusherServer
+	logger    log.Logger
+	decoder   *kafka.Decoder
+	committer partition.Committer
 
 	metrics *consumerMetrics
 }
@@ -107,6 +109,7 @@ func (kc *kafkaConsumer) consume(records []partition.Record) {
 		}); err != nil {
 			level.Error(kc.logger).Log("msg", "failed to push records", "error", err)
 		}
+		kc.committer.EnqueueOffset(record.Offset)
 	}
 	kc.metrics.consumeLatency.Observe(time.Since(consumeStart).Seconds())
 	kc.metrics.currentOffset.Set(float64(maxOffset))
