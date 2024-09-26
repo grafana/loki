@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - helm-5.48
+      - force-loki-helm-publish
     paths:
       - 'production/helm/loki/Chart.yaml'
 
