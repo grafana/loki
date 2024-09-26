@@ -48,7 +48,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/objstore"
-	ingesterkafka "github.com/grafana/loki/v3/pkg/kafka/ingester"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -597,7 +596,7 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 		level.Warn(util_log.Logger).Log("msg", "The config setting shutdown marker path is not set. The /ingester/prepare_shutdown endpoint won't work")
 	}
 
-	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Store, t.Overrides, t.tenantConfigs, prometheus.DefaultRegisterer, t.Cfg.Distributor.WriteFailuresLogging, t.Cfg.MetricsNamespace, logger, t.UsageTracker, t.ring)
+	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Store, t.Overrides, t.tenantConfigs, prometheus.DefaultRegisterer, t.Cfg.Distributor.WriteFailuresLogging, t.Cfg.MetricsNamespace, logger, t.UsageTracker, t.ring, t.partitionRingWatcher)
 	if err != nil {
 		return
 	}
@@ -1758,16 +1757,16 @@ func (t *Loki) initPartitionRing() (services.Service, error) {
 		return nil, nil
 	}
 
-	kvClient, err := kv.NewClient(t.Cfg.Ingester.KafkaIngestion.PartitionRingConfig.KVStore, ring.GetPartitionRingCodec(), kv.RegistererWithKVName(prometheus.DefaultRegisterer, ingesterkafka.PartitionRingName+"-watcher"), util_log.Logger)
+	kvClient, err := kv.NewClient(t.Cfg.Ingester.KafkaIngestion.PartitionRingConfig.KVStore, ring.GetPartitionRingCodec(), kv.RegistererWithKVName(prometheus.DefaultRegisterer, ingester.PartitionRingName+"-watcher"), util_log.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("creating KV store for partitions ring watcher: %w", err)
 	}
 
-	t.partitionRingWatcher = ring.NewPartitionRingWatcher(ingester.PartitionRingName, ingester.PartitionRingName, kvClient, util_log.Logger, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
+	t.partitionRingWatcher = ring.NewPartitionRingWatcher(ingester.PartitionRingName, ingester.PartitionRingKey, kvClient, util_log.Logger, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
 	t.partitionRing = ring.NewPartitionInstanceRing(t.partitionRingWatcher, t.ring, t.Cfg.Ingester.LifecyclerConfig.RingConfig.HeartbeatTimeout)
 
 	// Expose a web page to view the partitions ring state.
-	t.Server.HTTP.Path("/partition-ring").Methods("GET", "POST").Handler(ring.NewPartitionRingPageHandler(t.partitionRingWatcher, ring.NewPartitionRingEditor(ingesterkafka.PartitionRingName+"-key", kvClient)))
+	t.Server.HTTP.Path("/partition-ring").Methods("GET", "POST").Handler(ring.NewPartitionRingPageHandler(t.partitionRingWatcher, ring.NewPartitionRingEditor(ingester.PartitionRingKey, kvClient)))
 
 	return t.partitionRingWatcher, nil
 }

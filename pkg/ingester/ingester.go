@@ -292,7 +292,7 @@ type Ingester struct {
 
 	// recalculateOwnedStreams periodically checks the ring for changes and recalculates owned streams for each instance.
 	readRing                ring.ReadRing
-	recalculateOwnedStreams *recalculateOwnedStreams
+	recalculateOwnedStreams *recalculateOwnedStreamsSvc
 
 	ingestPartitionID       int32
 	partitionRingLifecycler *ring.PartitionInstanceLifecycler
@@ -300,7 +300,7 @@ type Ingester struct {
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg, metricsNamespace string, logger log.Logger, customStreamsTracker push.UsageTracker, readRing ring.ReadRing) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg, metricsNamespace string, logger log.Logger, customStreamsTracker push.UsageTracker, readRing ring.ReadRing, partitionRingWatcher *ring.PartitionRingWatcher) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -408,7 +408,13 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		i.SetExtractorWrapper(i.cfg.SampleExtractorWrapper)
 	}
 
-	i.recalculateOwnedStreams = newRecalculateOwnedStreams(i.getInstances, i.lifecycler.ID, i.readRing, cfg.OwnedStreamsCheckInterval, util_log.Logger)
+	var ownedStreamsStrategy ownershipStrategy
+	if i.cfg.KafkaIngestion.Enabled {
+		ownedStreamsStrategy = newOwnedStreamsPartitionStrategy(i.ingestPartitionID, partitionRingWatcher, util_log.Logger)
+	} else {
+		ownedStreamsStrategy = newOwnedStreamsIngesterStrategy(i.lifecycler.ID, i.readRing, util_log.Logger)
+	}
+	i.recalculateOwnedStreams = newRecalculateOwnedStreamsSvc(i.getInstances, ownedStreamsStrategy, cfg.OwnedStreamsCheckInterval, util_log.Logger)
 
 	return i, nil
 }
