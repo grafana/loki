@@ -115,7 +115,6 @@ local validationJob = _validationJob(false);
       validationMakeStep('validate dev cluster config', 'validate-dev-cluster-config'),
       validationMakeStep('check example config docs', 'check-example-config-doc'),
       validationMakeStep('check helm reference doc', 'documentation-helm-reference-check'),
-      validationMakeStep('check drone drift', 'check-drone-drift'),
     ]) + {
       steps+: [
         step.new('build docs website')
