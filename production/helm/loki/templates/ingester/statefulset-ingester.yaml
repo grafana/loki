@@ -124,7 +124,7 @@ spec:
               mountPath: /etc/loki/config
             - name: runtime-config
               mountPath: /etc/loki/runtime-config
-            - name: storage
+            - name: data
               mountPath: /var/loki
             {{- if .Values.enterprise.enabled }}
             - name: license
@@ -144,12 +144,12 @@ spec:
         {{- if .Values.ingester.extraContainers }}
         {{- toYaml .Values.ingester.extraContainers | nindent 8}}
         {{- end }}
-      {{- with $rolloutZone.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
       {{- with $rolloutZone.affinity }}
       affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $rolloutZone.nodeSelector }}
+      nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.ingester.tolerations }}
@@ -191,7 +191,7 @@ spec:
     - apiVersion: v1
       kind: PersistentVolumeClaim
       metadata:
-        name: storage
+        name: data
         {{- if .Values.ingester.persistence.annotations }}
         annotations:
           {{- toYaml .Values.ingester.persistence.annotations | nindent 10 }}
