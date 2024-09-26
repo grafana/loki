@@ -107,6 +107,16 @@ compactor:
 {{- end }}
   delete_request_store: {{.ObjectStorage.SharedStore}}
 {{- end }}
+{{- if $l := .Stack.Limits.Global }}
+{{- with $l.OTLP }}{{- with .IndexedResourceAttributes }}
+distributor:
+  otlp_config:
+    default_resource_attributes_as_index_labels:
+    {{- range . }}
+    - {{ . }}
+    {{- end }}
+{{- end }}
+{{- end }}{{- end }}
 frontend:
   tail_proxy_url: {{ .Querier.Protocol }}://{{ .Querier.FQDN }}:{{ .Querier.Port }}
 {{- if .Gates.HTTPEncryption }}
@@ -222,6 +232,58 @@ limits_config:
   shard_streams:
     enabled: true
     desired_rate: {{ . }}MB
+{{- end }}
+{{- with .Stack.Limits.Global.OTLP }}
+  otlp_config:
+    {{- with .ResourceAttributes }}
+    resource_attributes:
+      ignore_defaults: {{ .IgnoreDefaults }}
+      {{- with .Attributes}}
+      attributes_config:
+      {{- range . }}
+      - action: {{ .Action.Value }}
+        {{- with .Regex }}
+        regex: {{ . }}
+        {{- end }}
+        {{- with .Attributes }}
+        attributes:
+        {{- range . }}
+        - {{ . }}
+        {{- end }}
+        {{- end }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
+    {{- with .ScopeAttributes }}
+    scope_attributes:
+    {{- range . }}
+    - action: {{ .Action.Value }}
+      {{- with .Regex }}
+      regex: {{ . }}
+      {{- end }}
+      {{- with .Attributes }}
+      attributes:
+      {{- range . }}
+      - {{ . }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
+    {{- end }}
+    {{- with .LogAttributes }}
+    log_attributes:
+    {{- range . }}
+    - action: {{ .Action.Value }}
+      {{- with .Regex }}
+      regex: {{ . }}
+      {{- end }}
+      {{- with .Attributes }}
+      attributes:
+      {{- range . }}
+      - {{ . }}
+      {{- end }}
+      {{- end }}
+    {{- end }}
+    {{- end }}
 {{- end }}
   allow_structured_metadata: {{ .ObjectStorage.AllowStructuredMetadata }}
 {{- with .GossipRing }}

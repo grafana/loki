@@ -80,7 +80,7 @@ func NewBOSObjectStorage(cfg *BOSStorageConfig) (*BOSObjectStorage, error) {
 }
 
 func (b *BOSObjectStorage) PutObject(ctx context.Context, objectKey string, object io.Reader) error {
-	return instrument.CollectedRequest(ctx, "BOS.PutObject", bosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	return instrument.CollectedRequest(ctx, "BOS.PutObject", bosRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 		body, err := bce.NewBodyFromSizedReader(object, -1)
 		if err != nil {
 			return err
@@ -91,7 +91,7 @@ func (b *BOSObjectStorage) PutObject(ctx context.Context, objectKey string, obje
 }
 
 func (b *BOSObjectStorage) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	err := instrument.CollectedRequest(ctx, "BOS.ObjectExists", bosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	err := instrument.CollectedRequest(ctx, "BOS.ObjectExists", bosRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 		var requestErr error
 		_, requestErr = b.client.GetObjectMeta(b.cfg.BucketName, objectKey)
 		return requestErr
@@ -105,7 +105,7 @@ func (b *BOSObjectStorage) ObjectExists(ctx context.Context, objectKey string) (
 
 func (b *BOSObjectStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	var res *api.GetObjectResult
-	err := instrument.CollectedRequest(ctx, "BOS.GetObject", bosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	err := instrument.CollectedRequest(ctx, "BOS.GetObject", bosRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 		var requestErr error
 		res, requestErr = b.client.BasicGetObject(b.cfg.BucketName, objectKey)
 		return requestErr
@@ -119,7 +119,7 @@ func (b *BOSObjectStorage) GetObject(ctx context.Context, objectKey string) (io.
 
 func (b *BOSObjectStorage) GetObjectRange(ctx context.Context, objectKey string, offset, length int64) (io.ReadCloser, error) {
 	var res *api.GetObjectResult
-	err := instrument.CollectedRequest(ctx, "BOS.GetObject", bosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	err := instrument.CollectedRequest(ctx, "BOS.GetObject", bosRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 		var requestErr error
 		res, requestErr = b.client.GetObject(b.cfg.BucketName, objectKey, nil, offset, offset+length-1)
 		return requestErr
@@ -134,7 +134,7 @@ func (b *BOSObjectStorage) List(ctx context.Context, prefix string, delimiter st
 	var storageObjects []client.StorageObject
 	var commonPrefixes []client.StorageCommonPrefix
 
-	err := instrument.CollectedRequest(ctx, "BOS.List", bosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	err := instrument.CollectedRequest(ctx, "BOS.List", bosRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 		args := new(api.ListObjectsArgs)
 		args.Prefix = prefix
 		args.Delimiter = delimiter
@@ -172,7 +172,7 @@ func (b *BOSObjectStorage) List(ctx context.Context, prefix string, delimiter st
 }
 
 func (b *BOSObjectStorage) DeleteObject(ctx context.Context, objectKey string) error {
-	return instrument.CollectedRequest(ctx, "BOS.DeleteObject", bosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	return instrument.CollectedRequest(ctx, "BOS.DeleteObject", bosRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 		err := b.client.DeleteObject(b.cfg.BucketName, objectKey)
 		return err
 	})

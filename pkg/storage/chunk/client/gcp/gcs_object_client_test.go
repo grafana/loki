@@ -80,7 +80,7 @@ func Test_Hedging(t *testing.T) {
 }
 
 func fakeServer(t *testing.T, returnIn time.Duration, counter *atomic.Int32) *httptest.Server {
-	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		counter.Inc()
 		time.Sleep(returnIn)
 		_, _ = w.Write([]byte(`{}`))
@@ -236,7 +236,7 @@ func TestTCPErrs(t *testing.T) {
 }
 
 func fakeHTTPRespondingServer(t *testing.T, code int) *httptest.Server {
-	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(code)
 	}))
 	server.StartTLS()
@@ -246,7 +246,7 @@ func fakeHTTPRespondingServer(t *testing.T, code int) *httptest.Server {
 }
 
 func fakeSleepingServer(t *testing.T, responseSleep, connectSleep time.Duration, closeOnNew, closeOnActive bool) *httptest.Server {
-	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		// sleep on response to mimic server overload
 		time.Sleep(responseSleep)
 	}))

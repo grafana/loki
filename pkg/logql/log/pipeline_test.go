@@ -546,6 +546,42 @@ func TestKeepLabelsPipeline(t *testing.T) {
 
 }
 
+func TestUnsafeGetBytes(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  []byte
+	}{
+		{
+			name:  "empty string",
+			input: "",
+			want:  nil,
+		},
+		{
+			name:  "simple string",
+			input: "hello",
+			want:  []byte{'h', 'e', 'l', 'l', 'o'},
+		},
+		{
+			name:  "string with spaces",
+			input: "hello world",
+			want:  []byte{'h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd'},
+		},
+		{
+			name:  "string with special characters",
+			input: "hello\nworld\t!",
+			want:  []byte{'h', 'e', 'l', 'l', 'o', '\n', 'w', 'o', 'r', 'l', 'd', '\t', '!'},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := unsafeGetBytes(tt.input)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func Benchmark_Pipeline(b *testing.B) {
 	b.ReportAllocs()
 

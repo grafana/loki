@@ -16,17 +16,21 @@ import (
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 
+	"github.com/grafana/loki/pkg/push"
+
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -254,7 +258,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 		{
 			"ingester error",
 			mkReq([]string{`{a="1"}`}),
-			func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
+			func(store *storeMock, _ *queryClientMock, ingester *querierClientMock, _ validation.Limits, req *logproto.SeriesRequest) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(nil, errors.New("tst-err"))
 
 				store.On("SelectSeries", mock.Anything, mock.Anything).Return(nil, nil)
@@ -268,7 +272,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 		{
 			"store error",
 			mkReq([]string{`{a="1"}`}),
-			func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
+			func(store *storeMock, _ *queryClientMock, ingester *querierClientMock, _ validation.Limits, req *logproto.SeriesRequest) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(mockSeriesResponse([]map[string]string{
 					{"a": "1"},
 				}), nil)
@@ -284,7 +288,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 		{
 			"no matches",
 			mkReq([]string{`{a="1"}`}),
-			func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
+			func(store *storeMock, _ *queryClientMock, ingester *querierClientMock, _ validation.Limits, req *logproto.SeriesRequest) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(mockSeriesResponse(nil), nil)
 				store.On("SelectSeries", mock.Anything, mock.Anything).Return(nil, nil)
 			},
@@ -298,7 +302,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 		{
 			"returns series",
 			mkReq([]string{`{a="1"}`}),
-			func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
+			func(store *storeMock, _ *queryClientMock, ingester *querierClientMock, _ validation.Limits, req *logproto.SeriesRequest) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(mockSeriesResponse([]map[string]string{
 					{"a": "1", "b": "2"},
 					{"a": "1", "b": "3"},
@@ -344,7 +348,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 		{
 			"dedupes",
 			mkReq([]string{`{a="1"}`}),
-			func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
+			func(store *storeMock, _ *queryClientMock, ingester *querierClientMock, _ validation.Limits, req *logproto.SeriesRequest) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(mockSeriesResponse([]map[string]string{
 					{"a": "1", "b": "2"},
 				}), nil)
@@ -1955,8 +1959,8 @@ func TestQuerier_DetectedFields(t *testing.T) {
 		assert.Equal(t, []string{"logfmt"}, durationField.Parsers)
 		assert.Equal(t, []string{"logfmt"}, floatField.Parsers)
 		assert.Equal(t, []string{"logfmt"}, evenField.Parsers)
-		assert.Equal(t, []string{""}, constantField.Parsers)
-		assert.Equal(t, []string{""}, variableField.Parsers)
+		assert.Equal(t, []string(nil), constantField.Parsers)
+		assert.Equal(t, []string(nil), variableField.Parsers)
 	},
 	)
 
@@ -2051,4 +2055,616 @@ func BenchmarkQuerierDetectedFields(b *testing.B) {
 		_, err := querier.DetectedFields(ctx, &request)
 		assert.NoError(b, err)
 	}
+}
+
+func Test_getParsersFromExpr(t *testing.T) {
+	t.Run("detects logfmt parser", func(t *testing.T) {
+		exprStr := `{foo="bar"} | logfmt`
+		expr, err := syntax.ParseLogSelector(exprStr, true)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"logfmt"}, getParsersFromExpr(expr))
+	})
+
+	t.Run("detects json parser", func(t *testing.T) {
+		exprStr := `{foo="bar"} | json`
+		expr, err := syntax.ParseLogSelector(exprStr, true)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"json"}, getParsersFromExpr(expr))
+	})
+
+	t.Run("detects multiple parsers", func(t *testing.T) {
+		exprStr := `{foo="bar"} | logfmt | json`
+		expr, err := syntax.ParseLogSelector(exprStr, true)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"logfmt", "json"}, getParsersFromExpr(expr))
+	})
+
+	t.Run("detects logfmt expression parser", func(t *testing.T) {
+		exprStr := `{foo="bar"} | logfmt msg="message"`
+		expr, err := syntax.ParseLogSelector(exprStr, true)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"logfmt"}, getParsersFromExpr(expr))
+	})
+
+	t.Run("detects json expression parser", func(t *testing.T) {
+		exprStr := `{foo="bar"} | json first_server="servers[0]"`
+		expr, err := syntax.ParseLogSelector(exprStr, true)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"json"}, getParsersFromExpr(expr))
+	})
+
+	t.Run("detects multiple expression parsers", func(t *testing.T) {
+		exprStr := `{foo="bar"} | logfmt msg="message" | json first_server="servers[0]"`
+		expr, err := syntax.ParseLogSelector(exprStr, true)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"logfmt", "json"}, getParsersFromExpr(expr))
+	})
+}
+
+func Test_parseDetectedFeilds(t *testing.T) {
+	now := time.Now()
+
+	t.Run("when no parsers are supplied", func(t *testing.T) {
+		infoDetectdFiledMetadata := []push.LabelAdapter{
+			{
+				Name:  "detected_level",
+				Value: "info",
+			},
+		}
+
+		rulerLines := []push.Entry{
+			{Timestamp: now, Line: "ts=2024-09-05T15:36:38.757788067Z caller=grpc_logging.go:66 tenant=2419 level=info method=/cortex.Ingester/Push duration=19.098s msg=gRPC", StructuredMetadata: infoDetectdFiledMetadata},
+			{Timestamp: now, Line: "ts=2024-09-05T15:36:38.698375619Z caller=grpc_logging.go:66 tenant=29 level=info method=/cortex.Ingester/Push duration=5.471s msg=gRPC", StructuredMetadata: infoDetectdFiledMetadata},
+			{Timestamp: now, Line: "ts=2024-09-05T15:36:38.629424175Z caller=grpc_logging.go:66 tenant=2919 level=info method=/cortex.Ingester/Push duration=29.234s msg=gRPC", StructuredMetadata: infoDetectdFiledMetadata},
+		}
+
+		rulerLbls := `{cluster="us-east-1", namespace="mimir-dev", pod="mimir-ruler-nfb37", service_name="mimir-ruler"}`
+		rulerMetric, err := parser.ParseMetric(rulerLbls)
+		require.NoError(t, err)
+
+		rulerStream := push.Stream{
+			Labels:  rulerLbls,
+			Entries: rulerLines,
+			Hash:    rulerMetric.Hash(),
+		}
+
+		debugDetectedFieldMetadata := []push.LabelAdapter{
+			{
+				Name:  "detected_level",
+				Value: "debug",
+			},
+		}
+
+		nginxJSONLines := []push.Entry{
+			{Timestamp: now, Line: `{"host":"100.117.38.203", "user-identifier":"nader3722", "datetime":"05/Sep/2024:16:13:56 +0000", "method": "PATCH", "request": "/api/loki/v1/push", "protocol":"HTTP/2.0", "status":200, "bytes":9664, "referer": "https://www.seniorbleeding-edge.net/exploit/robust/whiteboard"}`, StructuredMetadata: debugDetectedFieldMetadata},
+			{Timestamp: now, Line: `{"host":"66.134.9.30", "user-identifier":"-", "datetime":"05/Sep/2024:16:13:55 +0000", "method": "DELETE", "request": "/api/mimir/v1/push", "protocol":"HTTP/1.1", "status":200, "bytes":18688, "referer": "https://www.districtiterate.biz/synergistic/next-generation/extend"}`, StructuredMetadata: debugDetectedFieldMetadata},
+			{Timestamp: now, Line: `{"host":"66.134.9.30", "user-identifier":"-", "datetime":"05/Sep/2024:16:13:55 +0000", "method": "GET", "request": "/api/loki/v1/label/names", "protocol":"HTTP/1.1", "status":200, "bytes":9314, "referer": "https://www.dynamicimplement.info/enterprise/distributed/incentivize/strategic"}`, StructuredMetadata: debugDetectedFieldMetadata},
+		}
+
+		nginxLbls := `{ cluster="eu-west-1", level="debug", namespace="gateway", pod="nginx-json-oghco", service_name="nginx-json" }`
+		nginxMetric, err := parser.ParseMetric(nginxLbls)
+		require.NoError(t, err)
+
+		nginxStream := push.Stream{
+			Labels:  nginxLbls,
+			Entries: nginxJSONLines,
+			Hash:    nginxMetric.Hash(),
+		}
+
+		t.Run("detect logfmt fields when with no supplied parsers", func(t *testing.T) {
+			df := parseDetectedFields(uint32(15), logqlmodel.Streams([]push.Stream{rulerStream}))
+			for _, expected := range []string{"ts", "caller", "tenant", "level", "method", "duration", "msg"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 1)
+				require.Equal(t, "logfmt", parsers[0])
+			}
+
+			// no parsers for structed metadata
+			for _, expected := range []string{"detected_level"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 0)
+			}
+		})
+
+		t.Run("detect json fields when with no supplied parsers", func(t *testing.T) {
+			df := parseDetectedFields(uint32(15), logqlmodel.Streams([]push.Stream{nginxStream}))
+			for _, expected := range []string{"host", "user_identifier", "datetime", "method", "request", "protocol", "status", "bytes", "referer"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 1)
+				require.Equal(t, "json", parsers[0])
+			}
+
+			// no parsers for structed metadata
+			for _, expected := range []string{"detected_level"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 0)
+			}
+		})
+
+		t.Run("detect mixed fields when with no supplied parsers", func(t *testing.T) {
+			df := parseDetectedFields(uint32(20), logqlmodel.Streams([]push.Stream{rulerStream, nginxStream}))
+
+			for _, expected := range []string{"ts", "caller", "tenant", "level", "duration", "msg"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 1, "expected only logfmt parser for %s", expected)
+				require.Equal(t, "logfmt", parsers[0], "expected only logfmt parser for %s", expected)
+			}
+
+			for _, expected := range []string{"host", "user_identifier", "datetime", "request", "protocol", "status", "bytes", "referer"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 1, "expected only json parser for %s", expected)
+				require.Equal(t, "json", parsers[0], "expected only json parser for %s", expected)
+			}
+
+			// multiple parsers for fields that exist in both streams
+			for _, expected := range []string{"method"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 2, "expected logfmt and json parser for %s", expected)
+				require.Contains(t, parsers, "logfmt", "expected logfmt parser for %s", expected)
+				require.Contains(t, parsers, "json", "expected json parser for %s", expected)
+			}
+
+			// no parsers for structed metadata
+			for _, expected := range []string{"detected_level"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 0)
+			}
+		})
+
+		t.Run("correctly applies _extracted for a single stream", func(t *testing.T) {
+			rulerLbls := `{cluster="us-east-1", namespace="mimir-dev", pod="mimir-ruler-nfb37", service_name="mimir-ruler", tenant="42", caller="inside-the-house"}`
+			rulerMetric, err := parser.ParseMetric(rulerLbls)
+			require.NoError(t, err)
+
+			rulerStream := push.Stream{
+				Labels:  rulerLbls,
+				Entries: rulerLines,
+				Hash:    rulerMetric.Hash(),
+			}
+
+			df := parseDetectedFields(uint32(15), logqlmodel.Streams([]push.Stream{rulerStream}))
+			for _, expected := range []string{"ts", "caller_extracted", "tenant_extracted", "level", "method", "duration", "msg"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 1)
+				require.Equal(t, "logfmt", parsers[0])
+			}
+
+			// no parsers for structed metadata
+			for _, expected := range []string{"detected_level"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 0)
+			}
+		})
+
+		t.Run("correctly applies _extracted for multiple streams", func(t *testing.T) {
+			rulerLbls := `{cluster="us-east-1", namespace="mimir-dev", pod="mimir-ruler-nfb37", service_name="mimir-ruler", tenant="42", caller="inside-the-house"}`
+			rulerMetric, err := parser.ParseMetric(rulerLbls)
+			require.NoError(t, err)
+
+			rulerStream := push.Stream{
+				Labels:  rulerLbls,
+				Entries: rulerLines,
+				Hash:    rulerMetric.Hash(),
+			}
+
+			nginxLbls := `{ cluster="eu-west-1", level="debug", namespace="gateway", pod="nginx-json-oghco", service_name="nginx-json", host="localhost"}`
+			nginxMetric, err := parser.ParseMetric(nginxLbls)
+			require.NoError(t, err)
+
+			nginxStream := push.Stream{
+				Labels:  nginxLbls,
+				Entries: nginxJSONLines,
+				Hash:    nginxMetric.Hash(),
+			}
+
+			df := parseDetectedFields(uint32(20), logqlmodel.Streams([]push.Stream{rulerStream, nginxStream}))
+			for _, expected := range []string{"ts", "caller_extracted", "tenant_extracted", "level", "duration", "msg"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 1)
+				require.Equal(t, "logfmt", parsers[0])
+			}
+
+			for _, expected := range []string{"host_extracted", "user_identifier", "datetime", "request", "protocol", "status", "bytes", "referer"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 1, "expected only json parser for %s", expected)
+				require.Equal(t, "json", parsers[0], "expected only json parser for %s", expected)
+			}
+
+			// multiple parsers for fields that exist in both streams
+			for _, expected := range []string{"method"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 2, "expected logfmt and json parser for %s", expected)
+				require.Contains(t, parsers, "logfmt", "expected logfmt parser for %s", expected)
+				require.Contains(t, parsers, "json", "expected json parser for %s", expected)
+			}
+
+			// no parsers for structed metadata
+			for _, expected := range []string{"detected_level"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 0)
+			}
+		})
+	})
+
+	t.Run("when parsers are supplied", func(t *testing.T) {
+		infoDetectdFiledMetadata := []push.LabelAdapter{
+			{
+				Name:  "detected_level",
+				Value: "info",
+			},
+		}
+
+		parsedRulerFields := func(ts, tenant, duration string) []push.LabelAdapter {
+			return []push.LabelAdapter{
+				{
+					Name:  "ts",
+					Value: ts,
+				},
+				{
+					Name:  "caller",
+					Value: "grpc_logging.go:66",
+				},
+				{
+					Name:  "tenant",
+					Value: tenant,
+				},
+				{
+					Name:  "level",
+					Value: "info",
+				},
+				{
+					Name:  "method",
+					Value: "/cortex.Ingester/Push",
+				},
+				{
+					Name:  "duration",
+					Value: duration,
+				},
+				{
+					Name:  "msg",
+					Value: "gRPC",
+				},
+			}
+		}
+
+		rulerLines := []push.Entry{
+			{
+				Timestamp:          now,
+				Line:               "ts=2024-09-05T15:36:38.757788067Z caller=grpc_logging.go:66 tenant=2419 level=info method=/cortex.Ingester/Push duration=19.098s msg=gRPC",
+				StructuredMetadata: infoDetectdFiledMetadata,
+				Parsed:             parsedRulerFields("2024-09-05T15:36:38.757788067Z", "2419", "19.098s"),
+			},
+			{
+				Timestamp:          now,
+				Line:               "ts=2024-09-05T15:36:38.698375619Z caller=grpc_logging.go:66 tenant=29 level=info method=/cortex.Ingester/Push duration=5.471s msg=gRPC",
+				StructuredMetadata: infoDetectdFiledMetadata,
+				Parsed:             parsedRulerFields("2024-09-05T15:36:38.698375619Z", "29", "5.471s"),
+			},
+			{
+				Timestamp:          now,
+				Line:               "ts=2024-09-05T15:36:38.629424175Z caller=grpc_logging.go:66 tenant=2919 level=info method=/cortex.Ingester/Push duration=29.234s msg=gRPC",
+				StructuredMetadata: infoDetectdFiledMetadata,
+				Parsed:             parsedRulerFields("2024-09-05T15:36:38.629424175Z", "2919", "29.234s"),
+			},
+		}
+
+		rulerLbls := `{cluster="us-east-1", namespace="mimir-dev", pod="mimir-ruler-nfb37", service_name="mimir-ruler"}`
+		rulerMetric, err := parser.ParseMetric(rulerLbls)
+		require.NoError(t, err)
+
+		rulerStream := push.Stream{
+			Labels:  rulerLbls,
+			Entries: rulerLines,
+			Hash:    rulerMetric.Hash(),
+		}
+
+		debugDetectedFieldMetadata := []push.LabelAdapter{
+			{
+				Name:  "detected_level",
+				Value: "debug",
+			},
+		}
+
+		parsedNginxFields := func(host, userIdentifier, datetime, method, request, protocol, status, bytes, referer string) []push.LabelAdapter {
+			return []push.LabelAdapter{
+				{
+					Name:  "host",
+					Value: host,
+				},
+				{
+					Name:  "user_identifier",
+					Value: userIdentifier,
+				},
+				{
+					Name:  "datetime",
+					Value: datetime,
+				},
+				{
+					Name:  "method",
+					Value: method,
+				},
+				{
+					Name:  "request",
+					Value: request,
+				},
+				{
+					Name:  "protocol",
+					Value: protocol,
+				},
+				{
+					Name:  "status",
+					Value: status,
+				},
+				{
+					Name:  "bytes",
+					Value: bytes,
+				},
+				{
+					Name:  "referer",
+					Value: referer,
+				},
+			}
+		}
+
+		nginxJSONLines := []push.Entry{
+			{
+				Timestamp:          now,
+				Line:               `{"host":"100.117.38.203", "user-identifier":"nader3722", "datetime":"05/Sep/2024:16:13:56 +0000", "method": "PATCH", "request": "/api/loki/v1/push", "protocol":"HTTP/2.0", "status":200, "bytes":9664, "referer": "https://www.seniorbleeding-edge.net/exploit/robust/whiteboard"}`,
+				StructuredMetadata: debugDetectedFieldMetadata,
+				Parsed:             parsedNginxFields("100.117.38.203", "nadre3722", "05/Sep/2024:16:13:56 +0000", "PATCH", "/api/loki/v1/push", "HTTP/2.0", "200", "9664", "https://www.seniorbleeding-edge.net/exploit/robust/whiteboard"),
+			},
+			{
+				Timestamp:          now,
+				Line:               `{"host":"66.134.9.30", "user-identifier":"-", "datetime":"05/Sep/2024:16:13:55 +0000", "method": "DELETE", "request": "/api/mimir/v1/push", "protocol":"HTTP/1.1", "status":200, "bytes":18688, "referer": "https://www.districtiterate.biz/synergistic/next-generation/extend"}`,
+				StructuredMetadata: debugDetectedFieldMetadata,
+				Parsed:             parsedNginxFields("66.134.9.30", "-", "05/Sep/2024:16:13:55 +0000", "DELETE", "/api/mimir/v1/push", "HTTP/1.1", "200", "18688", "https://www.districtiterate.biz/synergistic/next-generation/extend"),
+			},
+			{
+				Timestamp:          now,
+				Line:               `{"host":"66.134.9.30", "user-identifier":"-", "datetime":"05/Sep/2024:16:13:55 +0000", "method": "GET", "request": "/api/loki/v1/label/names", "protocol":"HTTP/1.1", "status":200, "bytes":9314, "referer": "https://www.dynamicimplement.info/enterprise/distributed/incentivize/strategic"}`,
+				StructuredMetadata: debugDetectedFieldMetadata,
+				Parsed:             parsedNginxFields("66.134.9.30", "-", "05/Sep/2024:16:13:55 +0000", "GET", "/api/loki/v1/label/names", "HTTP/1.1", "200", "9314", "https://www.dynamicimplement.info/enterprise/distributed/incentivize/strategic"),
+			},
+		}
+
+		nginxLbls := `{ cluster="eu-west-1", level="debug", namespace="gateway", pod="nginx-json-oghco", service_name="nginx-json" }`
+		nginxMetric, err := parser.ParseMetric(nginxLbls)
+		require.NoError(t, err)
+
+		nginxStream := push.Stream{
+			Labels:  nginxLbls,
+			Entries: nginxJSONLines,
+			Hash:    nginxMetric.Hash(),
+		}
+
+		t.Run("detect logfmt fields", func(t *testing.T) {
+			df := parseDetectedFields(uint32(15), logqlmodel.Streams([]push.Stream{rulerStream}))
+			for _, expected := range []string{"ts", "caller", "tenant", "level", "method", "duration", "msg"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 1)
+				require.Equal(t, "logfmt", parsers[0])
+			}
+
+			// no parsers for structed metadata
+			for _, expected := range []string{"detected_level"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 0)
+			}
+		})
+
+		t.Run("detect json fields", func(t *testing.T) {
+			df := parseDetectedFields(uint32(15), logqlmodel.Streams([]push.Stream{nginxStream}))
+			for _, expected := range []string{"host", "user_identifier", "datetime", "method", "request", "protocol", "status", "bytes", "referer"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 1)
+				require.Equal(t, "json", parsers[0])
+			}
+
+			// no parsers for structed metadata
+			for _, expected := range []string{"detected_level"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 0)
+			}
+		})
+
+		t.Run("detect mixed fields", func(t *testing.T) {
+			df := parseDetectedFields(uint32(20), logqlmodel.Streams([]push.Stream{rulerStream, nginxStream}))
+
+			for _, expected := range []string{"ts", "caller", "tenant", "level", "duration", "msg"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 1, "expected only logfmt parser for %s", expected)
+				require.Equal(t, "logfmt", parsers[0], "expected only logfmt parser for %s", expected)
+			}
+
+			for _, expected := range []string{"host", "user_identifier", "datetime", "request", "protocol", "status", "bytes", "referer"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 1, "expected only json parser for %s", expected)
+				require.Equal(t, "json", parsers[0], "expected only json parser for %s", expected)
+			}
+
+			// multiple parsers for fields that exist in both streams
+			for _, expected := range []string{"method"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 2, "expected logfmt and json parser for %s", expected)
+				require.Contains(t, parsers, "logfmt", "expected logfmt parser for %s", expected)
+				require.Contains(t, parsers, "json", "expected json parser for %s", expected)
+			}
+
+			// no parsers for structed metadata
+			for _, expected := range []string{"detected_level"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 0)
+			}
+		})
+
+		t.Run("correctly applies _extracted for a single stream", func(t *testing.T) {
+			rulerLbls := `{cluster="us-east-1", namespace="mimir-dev", pod="mimir-ruler-nfb37", service_name="mimir-ruler", tenant="42", caller="inside-the-house"}`
+			rulerMetric, err := parser.ParseMetric(rulerLbls)
+			require.NoError(t, err)
+
+			rulerStream := push.Stream{
+				Labels:  rulerLbls,
+				Entries: rulerLines,
+				Hash:    rulerMetric.Hash(),
+			}
+
+			df := parseDetectedFields(uint32(15), logqlmodel.Streams([]push.Stream{rulerStream}))
+			for _, expected := range []string{"ts", "caller_extracted", "tenant_extracted", "level", "method", "duration", "msg"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 1)
+				require.Equal(t, "logfmt", parsers[0])
+			}
+
+			// no parsers for structed metadata
+			for _, expected := range []string{"detected_level"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 0)
+			}
+		})
+
+		t.Run("correctly applies _extracted for multiple streams", func(t *testing.T) {
+			rulerLbls := `{cluster="us-east-1", namespace="mimir-dev", pod="mimir-ruler-nfb37", service_name="mimir-ruler", tenant="42", caller="inside-the-house"}`
+			rulerMetric, err := parser.ParseMetric(rulerLbls)
+			require.NoError(t, err)
+
+			rulerStream := push.Stream{
+				Labels:  rulerLbls,
+				Entries: rulerLines,
+				Hash:    rulerMetric.Hash(),
+			}
+
+			nginxLbls := `{ cluster="eu-west-1", level="debug", namespace="gateway", pod="nginx-json-oghco", service_name="nginx-json", host="localhost"}`
+			nginxMetric, err := parser.ParseMetric(nginxLbls)
+			require.NoError(t, err)
+
+			nginxStream := push.Stream{
+				Labels:  nginxLbls,
+				Entries: nginxJSONLines,
+				Hash:    nginxMetric.Hash(),
+			}
+
+			df := parseDetectedFields(uint32(20), logqlmodel.Streams([]push.Stream{rulerStream, nginxStream}))
+			for _, expected := range []string{"ts", "caller_extracted", "tenant_extracted", "level", "duration", "msg"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 1)
+				require.Equal(t, "logfmt", parsers[0])
+			}
+
+			for _, expected := range []string{"host_extracted", "user_identifier", "datetime", "request", "protocol", "status", "bytes", "referer"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 1, "expected only json parser for %s", expected)
+				require.Equal(t, "json", parsers[0], "expected only json parser for %s", expected)
+			}
+
+			// multiple parsers for fields that exist in both streams
+			for _, expected := range []string{"method"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 2, "expected logfmt and json parser for %s", expected)
+				require.Contains(t, parsers, "logfmt", "expected logfmt parser for %s", expected)
+				require.Contains(t, parsers, "json", "expected json parser for %s", expected)
+			}
+
+			// no parsers for structed metadata
+			for _, expected := range []string{"detected_level"} {
+				require.Contains(t, df, expected)
+				parsers := df[expected].parsers
+
+				require.Len(t, parsers, 0)
+			}
+		})
+	})
+
+	t.Run("handles level in all the places", func(t *testing.T) {
+		rulerLbls := `{cluster="us-east-1", namespace="mimir-dev", pod="mimir-ruler-nfb37", service_name="mimir-ruler", tenant="42", caller="inside-the-house", level="debug"}`
+		rulerMetric, err := parser.ParseMetric(rulerLbls)
+		require.NoError(t, err)
+
+		rulerStream := push.Stream{
+			Labels: rulerLbls,
+			Entries: []push.Entry{
+				{
+					Timestamp: now,
+					Line:      "ts=2024-09-05T15:36:38.757788067Z caller=grpc_logging.go:66 tenant=2419 level=info method=/cortex.Ingester/Push duration=19.098s msg=gRPC",
+					StructuredMetadata: []push.LabelAdapter{
+						{
+							Name:  "detected_level",
+							Value: "debug",
+						},
+					},
+					Parsed: []push.LabelAdapter{
+						{
+							Name:  "level",
+							Value: "info",
+						},
+					},
+				},
+			},
+			Hash: rulerMetric.Hash(),
+		}
+
+		df := parseDetectedFields(uint32(20), logqlmodel.Streams([]push.Stream{rulerStream, rulerStream}))
+
+		detectedLevelField := df["detected_level"]
+		require.Len(t, detectedLevelField.parsers, 0)
+		require.Equal(t, uint64(1), detectedLevelField.sketch.Estimate())
+
+		levelField := df["level_extracted"]
+		require.Len(t, levelField.parsers, 1)
+		require.Contains(t, levelField.parsers, "logfmt")
+		require.Equal(t, uint64(1), levelField.sketch.Estimate())
+	})
 }
