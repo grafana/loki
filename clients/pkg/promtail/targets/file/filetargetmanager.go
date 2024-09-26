@@ -264,13 +264,13 @@ func (tm *FileTargetManager) fulfillKubePodSelector(selectors []kubernetes.Selec
 		return []kubernetes.SelectorConfig{{Role: kubernetes.RolePod, Field: nodeSelector}}
 	}
 
-	for _, selector := range selectors {
-		if selector.Field == "" {
-			selector.Field = nodeSelector
-		} else if !strings.Contains(selector.Field, nodeSelector) {
-			selector.Field += "," + nodeSelector
+	for i := range selectors {
+		if selectors[i].Field == "" {
+			selectors[i].Field = nodeSelector
+		} else if !strings.Contains(selectors[i].Field, nodeSelector) {
+			selectors[i].Field += "," + nodeSelector
 		}
-		selector.Role = kubernetes.RolePod
+		selectors[i].Role = kubernetes.RolePod
 	}
 
 	return selectors
