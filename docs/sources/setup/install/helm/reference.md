@@ -753,6 +753,7 @@ null
   "priorityClassName": null,
   "replicas": 0,
   "resources": {},
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
@@ -1033,6 +1034,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomBuilder.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for bloom-builder service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomBuilder.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for bloom-builder service</td>
@@ -1125,6 +1135,7 @@ null
     "imagePullSecrets": [],
     "name": null
   },
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
@@ -1414,6 +1425,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomGateway.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for bloom-gateway service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomGateway.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for bloom-gateway service</td>
@@ -1506,6 +1526,7 @@ null
     "imagePullSecrets": [],
     "name": null
   },
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
@@ -1795,6 +1816,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomPlanner.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for bloom-planner service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomPlanner.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for bloom-planner service</td>
@@ -2009,7 +2039,7 @@ null
 		<tr>
 			<td>chunksCache.persistence.storageSize</td>
 			<td>string</td>
-			<td>Size of persistent disk</td>
+			<td>Size of persistent disk, must be in G or Gi</td>
 			<td><pre lang="json">
 "10G"
 </pre>
@@ -2252,6 +2282,7 @@ null
     "imagePullSecrets": [],
     "name": null
   },
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
@@ -2550,6 +2581,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>compactor.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for compactor service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>compactor.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for compactor service</td>
@@ -2642,6 +2682,7 @@ null
   "priorityClassName": null,
   "replicas": 0,
   "resources": {},
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
@@ -2925,6 +2966,15 @@ null
 			<td>distributor.resources</td>
 			<td>object</td>
 			<td>Resource requests and limits for the distributor</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for distributor service</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -4520,6 +4570,7 @@ null
   "priorityClassName": null,
   "replicas": 0,
   "resources": {},
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 300,
   "tolerations": []
@@ -4773,6 +4824,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>indexGateway.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for index-gateway service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>indexGateway.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for index-gateway service</td>
@@ -4873,6 +4933,7 @@ null
   "readinessProbe": {},
   "replicas": 0,
   "resources": {},
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 300,
   "tolerations": [],
@@ -5250,6 +5311,15 @@ false
 			<td>ingester.resources</td>
 			<td>object</td>
 			<td>Resource requests and limits for the ingester</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for ingestor service</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -6475,7 +6545,12 @@ false
 			<td>object</td>
 			<td>The SecurityContext override for memcached pods</td>
 			<td><pre lang="json">
-{}
+{
+  "fsGroup": 11211,
+  "runAsGroup": 11211,
+  "runAsNonRoot": true,
+  "runAsUser": 11211
+}
 </pre>
 </td>
 		</tr>
@@ -7457,6 +7532,7 @@ false
     "imagePullSecrets": [],
     "name": null
   },
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
@@ -7755,6 +7831,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>patternIngester.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for pattern ingester service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>patternIngester.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for pattern ingester service</td>
@@ -7846,6 +7931,7 @@ null
   "priorityClassName": null,
   "replicas": 0,
   "resources": {},
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
@@ -8201,6 +8287,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>querier.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for querier service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>querier.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for querier service</td>
@@ -8292,6 +8387,7 @@ Defaults to allow skew no more then 1 node
   "priorityClassName": null,
   "replicas": 0,
   "resources": {},
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
@@ -8572,6 +8668,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>queryFrontend.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for query-frontend service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>queryFrontend.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for query-frontend service</td>
@@ -8640,6 +8745,7 @@ null
   "priorityClassName": null,
   "replicas": 0,
   "resources": {},
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
@@ -8815,6 +8921,15 @@ null
 			<td>queryScheduler.resources</td>
 			<td>object</td>
 			<td>Resource requests and limits for the query-scheduler</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for query-scheduler service</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -9474,7 +9589,7 @@ null
 		<tr>
 			<td>resultsCache.persistence.storageSize</td>
 			<td>string</td>
-			<td>Size of persistent disk</td>
+			<td>Size of persistent disk, must be in G or Gi</td>
 			<td><pre lang="json">
 "10G"
 </pre>
@@ -9739,6 +9854,7 @@ null
   "priorityClassName": null,
   "replicas": 0,
   "resources": {},
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 300,
   "tolerations": []
@@ -9995,6 +10111,15 @@ null
 			<td>ruler.resources</td>
 			<td>object</td>
 			<td>Resource requests and limits for the ruler</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for ruler service</td>
 			<td><pre lang="json">
 {}
 </pre>

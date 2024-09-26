@@ -155,14 +155,14 @@ spec:
                           indexedResourceAttributes:
                             description: |-
                               IndexedResourceAttributes contains the global configuration for resource attributes
-                              to store them as index labels or structured metadata or drop them altogether.
+                              to store them as index labels.
                             items:
                               type: string
                             type: array
                           logAttributes:
                             description: |-
                               LogAttributes contains the configuration for log attributes
-                              to store them as index labels or structured metadata or drop them altogether.
+                              to store them as structured metadata or drop them altogether.
                             items:
                               description: |-
                                 OTLPAttributesSpec contains the configuration for a set of attributes
@@ -238,7 +238,7 @@ spec:
                           scopeAttributes:
                             description: |-
                               ScopeAttributes contains the configuration for scope attributes
-                              to store them as index labels or structured metadata or drop them altogether.
+                              to store them as structured metadata or drop them altogether.
                             items:
                               description: |-
                                 OTLPAttributesSpec contains the configuration for a set of attributes
@@ -419,7 +419,7 @@ spec:
                             logAttributes:
                               description: |-
                                 LogAttributes contains the configuration for log attributes
-                                to store them as index labels or structured metadata or drop them altogether.
+                                to store them as structured metadata or drop them altogether.
                               items:
                                 description: |-
                                   OTLPAttributesSpec contains the configuration for a set of attributes
@@ -495,7 +495,7 @@ spec:
                             scopeAttributes:
                               description: |-
                                 ScopeAttributes contains the configuration for scope attributes
-                                to store them as index labels or structured metadata or drop them altogether.
+                                to store them as structured metadata or drop them altogether.
                               items:
                                 description: |-
                                   OTLPAttributesSpec contains the configuration for a set of attributes
