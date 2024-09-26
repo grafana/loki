@@ -12,7 +12,7 @@ func ReadSeeker(r io.Reader) (io.ReadSeeker, error) {
 	}
 	data, err := io.ReadAll(r)
 	if err != nil {
-		return nil, fmt.Errorf("Error in ReadSeeker readAll(): %w", err)
+		return nil, fmt.Errorf("Error in ReadSeeker ReadAll(): %w", err)
 	}
 	return bytes.NewReader(data), nil
 }
