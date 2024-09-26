@@ -38,8 +38,13 @@
             <td>{{ .State }}</td>
             <td>{{ .Address }}</td>
             <td>{{ .RegisteredTimestamp | timeOrEmptyString }}</td>
+            {{ if .ReadOnly }}
             <td>{{ .ReadOnly }}</td>
+            <td>{{ .ReadOnlyUpdatedTimestamp | durationSince }} ago ({{ .ReadOnlyUpdatedTimestamp.Format "15:04:05.999" }})</td>
+            {{ else }}
+            <td></td>
             <td>{{ .ReadOnlyUpdatedTimestamp | timeOrEmptyString }}</td>
+            {{ end }}
             <td>{{ .HeartbeatTimestamp | durationSince }} ago ({{ .HeartbeatTimestamp.Format "15:04:05.999" }})</td>
             <td>{{ .NumTokens }}</td>
             <td>{{ .Ownership | humanFloat }}%</td>
