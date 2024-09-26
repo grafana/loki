@@ -129,9 +129,9 @@ func (s *ownedStreamsIngesterStrategy) isOwnedStream(str *stream) (bool, error) 
 	hostsBuf := s.hostsBufPool.Get().([]string)
 	zoneBuf := s.zoneBufPool.Get().([]string)
 	defer func() {
-		s.descsBufPool.Put(descsBuf)
-		s.hostsBufPool.Put(hostsBuf)
-		s.zoneBufPool.Put(zoneBuf)
+		s.descsBufPool.Put(&descsBuf)
+		s.hostsBufPool.Put(&hostsBuf)
+		s.zoneBufPool.Put(&zoneBuf)
 	}()
 
 	replicationSet, err := s.ingestersRing.Get(lokiring.TokenFor(str.tenant, str.labelsString), ring.WriteNoExtend, descsBuf, hostsBuf, zoneBuf)
