@@ -76,8 +76,12 @@
             expr: |||
               # The "last successful run" metric is updated even if the compactor owns no tenants,
               # so this alert correctly doesn't fire if compactor has nothing to do.
-              (time() - (loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds{} > 0) > 60 * 60 * 24)
-            |||,
+              min (
+                time() - (loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds{} > 0
+              )
+              by (%s, namespace)
+              > 60 * 60 * 24)
+            ||| % $._config.per_cluster_label,
             'for': '1h',
             labels: {
               severity: 'critical',
