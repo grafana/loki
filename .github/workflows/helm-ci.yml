@@ -28,7 +28,7 @@ jobs:
         run: make helm-lint
 
       - id: "get_github_app_token"
-        name: "get github app token"
+        name: "Get Github app token"
         uses: "actions/create-github-app-token@v1"
         with:
           app-id: "${{ secrets.APP_ID }}"
