@@ -1801,72 +1801,72 @@ ingester:
     #
     # storageClass: "-"
 
-    # -- Options to configure zone-aware replication for ingester
-    # Example configuration with full geographical redundancy:
-    # rollout_operator:
-    #   enabled: true
-    # ingester:
-    #   zoneAwareReplication:
-    #     enabled: true
-    #     topologyKey: 'kubernetes.io/hostname'  # This generates default anti-affinity rules
-    #     zones:  # Zone list has to be fully redefined for modification. Update with you actual zones or skip to use logical zones only.
-    #     - name: zone-a
-    #       nodeSelector:
-    #         topology.kubernetes.io/zone: us-central1-a
-    #       storageClass: storage-class-us-central1-a
-    #     - name: zone-a
-    #       nodeSelector:
-    #         topology.kubernetes.io/zone: us-central1-b
-    #       storageClass: storage-class-us-central1-b
-    #     - name: zone-c
-    #       nodeSelector:
-    #         topology.kubernetes.io/zone: us-central1-c
-    #       storageClass: storage-class-us-central1-c
-    #
-    zoneAwareReplication:
-      # -- Enable zone-aware replication for ingester
-      enabled: true
-      # -- Zone definitions for ingester zones. Note: you have to redefine the whole list to change parts as YAML does not allow to modify parts of a list.
-      zones:
-        # -- Name of the zone, used in labels and selectors. Must follow Kubernetes naming restrictions: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
-        - name: zone-a
-          # -- nodeselector to restrict where pods of this zone can be placed. E.g.:
-          # nodeSelector:
-          #   topology.kubernetes.io/zone: zone-a
-          nodeSelector: null
-          # -- extraAffinity adds user defined custom affinity rules (merged with generated rules)
-          extraAffinity: {}
-          # -- Ingester data Persistent Volume Storage Class
-          # If defined, storageClassName: <storageClass>
-          # If set to "-", then use `storageClassName: ""`, which disables dynamic provisioning
-          # If undefined or set to null (the default), then fall back to the value of `ingester.persistentVolume.storageClass`.
-          storageClass: null
-        # -- Name of the zone, used in labels and selectors. Must follow Kubernetes naming restrictions: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
-        - name: zone-b
-          # -- nodeselector to restrict where pods of this zone can be placed. E.g.:
-          # nodeSelector:
-          #   topology.kubernetes.io/zone: zone-b
-          nodeSelector: null
-          # -- extraAffinity adds user defined custom affinity rules (merged with generated rules)
-          extraAffinity: {}
-          # -- Ingester data Persistent Volume Storage Class
-          # If defined, storageClassName: <storageClass>
-          # If set to "-", then use `storageClassName: ""`, which disables dynamic provisioning
-          # If undefined or set to null (the default), then fall back to the value of `ingester.persistentVolume.storageClass`.
-          storageClass: null
-        # -- Name of the zone, used in labels and selectors. Must follow Kubernetes naming restrictions: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
-        - name: zone-c
-          # -- nodeselector to restrict where pods of this zone can be placed. E.g.:
-          # nodeSelector:
-          #   topology.kubernetes.io/zone: zone-c
-          nodeSelector: null
-          # -- extraAffinity adds user defined custom affinity rules (merged with generated rules)
-          extraAffinity: {}
-          # -- Ingester data Persistent Volume Storage Class
-          # If defined, storageClassName: <storageClass>
-          # If set to "-", then use `storageClassName: ""`, which disables dynamic provisioning
-          # If undefined or set to null (the default), then fall back to the value of `ingester.persistentVolume.storageClass`.
-          storageClass: null
+  # -- Options to configure zone-aware replication for ingester
+  # Example configuration with full geographical redundancy:
+  # rollout_operator:
+  #   enabled: true
+  # ingester:
+  #   zoneAwareReplication:
+  #     enabled: true
+  #     topologyKey: 'kubernetes.io/hostname'  # This generates default anti-affinity rules
+  #     zones:  # Zone list has to be fully redefined for modification. Update with you actual zones or skip to use logical zones only.
+  #     - name: zone-a
+  #       nodeSelector:
+  #         topology.kubernetes.io/zone: us-central1-a
+  #       storageClass: storage-class-us-central1-a
+  #     - name: zone-a
+  #       nodeSelector:
+  #         topology.kubernetes.io/zone: us-central1-b
+  #       storageClass: storage-class-us-central1-b
+  #     - name: zone-c
+  #       nodeSelector:
+  #         topology.kubernetes.io/zone: us-central1-c
+  #       storageClass: storage-class-us-central1-c
+  #
+  zoneAwareReplication:
+    # -- Enable zone-aware replication for ingester
+    enabled: true
+    # -- Zone definitions for ingester zones. Note: you have to redefine the whole list to change parts as YAML does not allow to modify parts of a list.
+    zones:
+      # -- Name of the zone, used in labels and selectors. Must follow Kubernetes naming restrictions: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+      - name: zone-a
+        # -- nodeselector to restrict where pods of this zone can be placed. E.g.:
+        # nodeSelector:
+        #   topology.kubernetes.io/zone: zone-a
+        nodeSelector: null
+        # -- extraAffinity adds user defined custom affinity rules (merged with generated rules)
+        extraAffinity: {}
+        # -- Ingester data Persistent Volume Storage Class
+        # If defined, storageClassName: <storageClass>
+        # If set to "-", then use `storageClassName: ""`, which disables dynamic provisioning
+        # If undefined or set to null (the default), then fall back to the value of `ingester.persistentVolume.storageClass`.
+        storageClass: null
+      # -- Name of the zone, used in labels and selectors. Must follow Kubernetes naming restrictions: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+      - name: zone-b
+        # -- nodeselector to restrict where pods of this zone can be placed. E.g.:
+        # nodeSelector:
+        #   topology.kubernetes.io/zone: zone-b
+        nodeSelector: null
+        # -- extraAffinity adds user defined custom affinity rules (merged with generated rules)
+        extraAffinity: {}
+        # -- Ingester data Persistent Volume Storage Class
+        # If defined, storageClassName: <storageClass>
+        # If set to "-", then use `storageClassName: ""`, which disables dynamic provisioning
+        # If undefined or set to null (the default), then fall back to the value of `ingester.persistentVolume.storageClass`.
+        storageClass: null
+      # -- Name of the zone, used in labels and selectors. Must follow Kubernetes naming restrictions: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+      - name: zone-c
+        # -- nodeselector to restrict where pods of this zone can be placed. E.g.:
+        # nodeSelector:
+        #   topology.kubernetes.io/zone: zone-c
+        nodeSelector: null
+        # -- extraAffinity adds user defined custom affinity rules (merged with generated rules)
+        extraAffinity: {}
+        # -- Ingester data Persistent Volume Storage Class
+        # If defined, storageClassName: <storageClass>
+        # If set to "-", then use `storageClassName: ""`, which disables dynamic provisioning
+        # If undefined or set to null (the default), then fall back to the value of `ingester.persistentVolume.storageClass`.
+        storageClass: null
 
   # -- Adds the appProtocol field to the ingester service. This allows ingester to work with istio protocol selection.
   appProtocol:
