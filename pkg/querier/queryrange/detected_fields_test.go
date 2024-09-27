@@ -969,7 +969,7 @@ func TestQuerier_DetectedFields(t *testing.T) {
 
 	limitedHandler := func(stream logproto.Stream) base.Handler {
 		return base.HandlerFunc(
-			func(ctx context.Context, req base.Request) (base.Response, error) {
+			func(_ context.Context, _ base.Request) (base.Response, error) {
 				return &LokiResponse{
 					Status: "success",
 					Data: LokiData{
@@ -985,7 +985,7 @@ func TestQuerier_DetectedFields(t *testing.T) {
 
 	logHandler := func(stream logproto.Stream) base.Handler {
 		return base.HandlerFunc(
-			func(ctx context.Context, req base.Request) (base.Response, error) {
+			func(_ context.Context, _ base.Request) (base.Response, error) {
 				return &LokiResponse{
 					Status: "success",
 					Data: LokiData{
@@ -1028,7 +1028,7 @@ func TestQuerier_DetectedFields(t *testing.T) {
 			limitedHandler(mockLogfmtStreamWithLabels(1, 5, `{type="test", name="foo"}`)),
 			logHandler(mockLogfmtStreamWithLabels(1, 5, `{type="test", name="foo"}`)),
 			limits,
-		).Wrap(base.HandlerFunc(func(ctx context.Context, req base.Request) (base.Response, error) {
+		).Wrap(base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
 			t.Fatal("should not be called")
 			return nil, nil
 		}))
@@ -1058,7 +1058,7 @@ func TestQuerier_DetectedFields(t *testing.T) {
 			limitedHandler(mockLogfmtStreamWithLabelsAndStructuredMetadata(1, 5, `{type="test", name="bob"}`)),
 			logHandler(mockLogfmtStreamWithLabelsAndStructuredMetadata(1, 5, `{type="test", name="bob"}`)),
 			limits,
-		).Wrap(base.HandlerFunc(func(ctx context.Context, req base.Request) (base.Response, error) {
+		).Wrap(base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
 			t.Fatal("should not be called")
 			return nil, nil
 		}))
@@ -1090,7 +1090,7 @@ func TestQuerier_DetectedFields(t *testing.T) {
 			limitedHandler(mockLogfmtStreamWithLabels(1, 2, `{type="test", name="foo"}`)),
 			logHandler(mockLogfmtStreamWithLabels(1, 2, `{type="test", name="foo"}`)),
 			limits,
-		).Wrap(base.HandlerFunc(func(ctx context.Context, req base.Request) (base.Response, error) {
+		).Wrap(base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
 			t.Fatal("should not be called")
 			return nil, nil
 		}))
@@ -1136,7 +1136,7 @@ func TestQuerier_DetectedFields(t *testing.T) {
 				),
 				logHandler(mockLogfmtStreamWithLabelsAndStructuredMetadata(1, 2, `{type="test"}`)),
 				limits,
-			).Wrap(base.HandlerFunc(func(ctx context.Context, req base.Request) (base.Response, error) {
+			).Wrap(base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
 				t.Fatal("should not be called")
 				return nil, nil
 			}))
@@ -1188,7 +1188,7 @@ func TestQuerier_DetectedFields(t *testing.T) {
 				),
 				logHandler(mockLogfmtStreamWithLabelsAndStructuredMetadata(1, 2, `{type="test", name="bob"}`)),
 				limits,
-			).Wrap(base.HandlerFunc(func(ctx context.Context, req base.Request) (base.Response, error) {
+			).Wrap(base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
 				t.Fatal("should not be called")
 				return nil, nil
 			}))

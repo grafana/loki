@@ -327,20 +327,52 @@ func (b *LabelsBuilder) Get(key string) (string, bool) {
 // Del deletes the label of the given name.
 func (b *LabelsBuilder) Del(ns ...string) *LabelsBuilder {
 	for _, n := range ns {
-		for category, lbls := range b.add {
-			for i, a := range lbls {
-				if a.Name == n {
-					b.add[category] = append(lbls[:i], lbls[i+1:]...)
-				}
-			}
+		for category := range b.add {
+			b.deleteWithCategory(LabelCategory(category), n)
 		}
 		b.del = append(b.del, n)
 	}
 	return b
 }
 
+// deleteWithCategory removes the label from the specified category
+func (b *LabelsBuilder) deleteWithCategory(category LabelCategory, n string) {
+	for i, l := range b.add[category] {
+		if l.Name == n {
+			b.add[category] = append(b.add[category][:i], b.add[category][i+1:]...)
+		}
+	}
+}
+
 // Set the name/value pair as a label.
+// The value `v` may not be set if a category with higher preference already contains `n`.
+// Category preference goes as Parsed > Structured Metadata > Stream.
 func (b *LabelsBuilder) Set(category LabelCategory, n, v string) *LabelsBuilder {
+	// Parsed takes precedence over Structured Metadata and Stream labels.
+	// If category is Parsed, we delete `n` from the structured metadata and stream labels.
+	if category == ParsedLabel {
+		b.deleteWithCategory(StructuredMetadataLabel, n)
+		b.deleteWithCategory(StreamLabel, n)
+	}
+
+	// Structured Metadata takes precedence over Stream labels.
+	// If category is `StructuredMetadataLabel`,we delete `n` from the stream labels.
+	// If `n` exists in the parsed labels, we won't overwrite it's value and we just return what we have.
+	if category == StructuredMetadataLabel {
+		b.deleteWithCategory(StreamLabel, n)
+		if labelsContain(b.add[ParsedLabel], n) {
+			return b
+		}
+	}
+
+	// Finally, if category is `StreamLabel` and `n` already exists in either the structured metadata or
+	// parsed labels, the `Set` operation is a noop and we return the unmodified labels builder.
+	if category == StreamLabel {
+		if labelsContain(b.add[StructuredMetadataLabel], n) || labelsContain(b.add[ParsedLabel], n) {
+			return b
+		}
+	}
+
 	for i, a := range b.add[category] {
 		if a.Name == n {
 			b.add[category][i].Value = v
@@ -430,6 +462,7 @@ func (b *LabelsBuilder) UnsortedLabels(buf labels.Labels, categories ...LabelCat
 	} else {
 		buf = buf[:0]
 	}
+
 	if categoriesContain(categories, StreamLabel) {
 	Outer:
 		for _, l := range b.base {
@@ -439,20 +472,38 @@ func (b *LabelsBuilder) UnsortedLabels(buf labels.Labels, categories ...LabelCat
 					continue Outer
 				}
 			}
-			// Skip stream labels which value will be replaced
-			for _, lbls := range b.add {
-				for _, la := range lbls {
-					if l.Name == la.Name {
-						continue Outer
-					}
-				}
+
+			// Skip stream labels which value will be replaced by structured metadata
+			if labelsContain(b.add[StructuredMetadataLabel], l.Name) {
+				continue
 			}
+
+			// Skip stream labels which value will be replaced by parsed labels
+			if labelsContain(b.add[ParsedLabel], l.Name) {
+				continue
+			}
+
+			// Take value from stream label if present
+			if labelsContain(b.add[StreamLabel], l.Name) {
+				buf = append(buf, labels.Label{Name: l.Name, Value: b.add[StreamLabel].Get(l.Name)})
+			} else {
+				buf = append(buf, l)
+			}
+		}
+	}
+
+	if categoriesContain(categories, StructuredMetadataLabel) {
+		for _, l := range b.add[StructuredMetadataLabel] {
+			if labelsContain(b.add[ParsedLabel], l.Name) {
+				continue
+			}
+
 			buf = append(buf, l)
 		}
 	}
 
-	for _, category := range categories {
-		buf = append(buf, b.add[category]...)
+	if categoriesContain(categories, ParsedLabel) {
+		buf = append(buf, b.add[ParsedLabel]...)
 	}
 	if (b.HasErr() || b.HasErrorDetails()) && categoriesContain(categories, ParsedLabel) {
 		buf = b.appendErrors(buf)
@@ -564,6 +615,15 @@ func flattenLabels(buf labels.Labels, many ...labels.Labels) labels.Labels {
 	}
 	sort.Sort(buf)
 	return buf
+}
+
+func labelsContain(labels labels.Labels, name string) bool {
+	for _, l := range labels {
+		if l.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 func (b *BaseLabelsBuilder) toUncategorizedResult(buf labels.Labels) LabelsResult {
