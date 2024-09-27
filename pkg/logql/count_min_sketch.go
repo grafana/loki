@@ -25,7 +25,6 @@ type CountMinSketchVector struct {
 	T int64
 	F *sketch.CountMinSketch
 
-	// TODO: keep only a maximum of labels. Drop the smalles on insert.
 	Metrics []labels.Labels
 }
 
