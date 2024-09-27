@@ -375,7 +375,7 @@ All options:
   -wait duration
     	Duration to wait for log entries on websocket before querying loki for them (default 1m0s)
   -write-addr string
-      The write target of Loki server URL:Port, e.g. loki-writer:3100. Loki write address can also be set using the environment variable LOKI_WRITE_ADDRESS. If not set, the read address will be used. This is useful when using push mode with distributed Loki setup.
+    	The write target of Loki server URL:Port, e.g. loki-writer:3100. Loki write address can also be set using the environment variable LOKI_WRITE_ADDRESS. If not set, the read address will be used. This is useful when using push mode with distributed Loki setup.
   -write-max-backoff duration
     	Maximum backoff time between retries  (default 5m0s)
   -write-max-retries int
