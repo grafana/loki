@@ -91,16 +91,27 @@ func (b *BOSObjectStorage) PutObject(ctx context.Context, objectKey string, obje
 }
 
 func (b *BOSObjectStorage) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
+	exists, _, err := b.ObjectExistsWithSize(ctx, objectKey)
+	return exists, err
+}
+
+func (b *BOSObjectStorage) ObjectExistsWithSize(ctx context.Context, objectKey string) (bool, int64, error) {
+	var objectSize int64
 	err := instrument.CollectedRequest(ctx, "BOS.ObjectExists", bosRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
-		var requestErr error
-		_, requestErr = b.client.GetObjectMeta(b.cfg.BucketName, objectKey)
-		return requestErr
+		metaResult, requestErr := b.client.GetObjectMeta(b.cfg.BucketName, objectKey)
+		if requestErr != nil {
+			return requestErr
+		}
+		if metaResult != nil {
+			objectSize = metaResult.ContentLength
+		}
+		return nil
 	})
 	if err != nil {
-		return false, err
+		return false, 0, err
 	}
 
-	return true, nil
+	return true, objectSize, nil
 }
 
 func (b *BOSObjectStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
