@@ -31,7 +31,7 @@ local weeklyImageJobs = {
 
 local buildImageVersion = std.extVar('BUILD_IMAGE_VERSION');
 local buildImage = 'grafana/loki-build-image:%s' % buildImageVersion;
-local golangCiLintVersion = 'v1.55.1';
+local golangCiLintVersion = 'v1.60.3';
 
 local imageBuildTimeoutMin = 60;
 local imagePrefix = 'grafana';
