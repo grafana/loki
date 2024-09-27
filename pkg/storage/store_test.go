@@ -1894,6 +1894,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 
 	// recreate the store because boltdb-shipper now runs queriers on snapshots which are created every 1 min and during startup.
 	store.Stop()
+	ResetBoltDBIndexClientsWithShipper()
 
 	// there should be 2 index tables in the object storage
 	indexTables, err := os.ReadDir(filepath.Join(cfg.FSConfig.Directory, "index"))
