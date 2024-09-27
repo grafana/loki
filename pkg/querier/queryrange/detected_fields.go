@@ -27,55 +27,59 @@ func NewDetectedFieldsHandler(
 	limitedHandler base.Handler,
 	logHandler base.Handler,
 	limits Limits,
-) base.Middleware {
-	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
-		return base.HandlerFunc(
-			func(ctx context.Context, req base.Request) (base.Response, error) {
-				r, ok := req.(*DetectedFieldsRequest)
-				if !ok {
-					return nil, httpgrpc.Errorf(
-						http.StatusBadRequest,
-						"invalid request type, expected *DetectedFieldsRequest",
-					)
+) base.Handler {
+	return base.HandlerFunc(
+		func(ctx context.Context, req base.Request) (base.Response, error) {
+			r, ok := req.(*DetectedFieldsRequest)
+			if !ok {
+				return nil, httpgrpc.Errorf(
+					http.StatusBadRequest,
+					"invalid request type, expected *DetectedFieldsRequest",
+				)
+			}
+
+			resp, err := makeDownstreamRequest(ctx, limits, limitedHandler, logHandler, r)
+			if err != nil {
+				return nil, err
+			}
+
+			re, ok := resp.(*LokiResponse)
+			if !ok || re.Status != "success" {
+				return resp, nil
+			}
+
+			detectedFields := parseDetectedFields(r.FieldLimit, re.Data.Result)
+			fields := make([]*logproto.DetectedField, len(detectedFields))
+			fieldCount := 0
+			for k, v := range detectedFields {
+				p := v.parsers
+				if len(p) == 0 {
+					p = nil
+				}
+				fields[fieldCount] = &logproto.DetectedField{
+					Label:       k,
+					Type:        v.fieldType,
+					Cardinality: v.Estimate(),
+					Parsers:     p,
 				}
 
-				resp, err := makeDownstreamRequest(ctx, limits, limitedHandler, logHandler, r)
-				if err != nil {
-					return nil, err
-				}
+				fieldCount++
+			}
 
-				re, ok := resp.(*LokiResponse)
-				if !ok || re.Status != "success" {
-					return resp, nil
-				}
+			dfResp := DetectedFieldsResponse{
+				Response: &logproto.DetectedFieldsResponse{
+					Fields: fields,
+				},
+				Headers: re.Headers,
+			}
 
-				detectedFields := parseDetectedFields(r.FieldLimit, re.Data.Result)
-				fields := make([]*logproto.DetectedField, len(detectedFields))
-				fieldCount := 0
-				for k, v := range detectedFields {
-					p := v.parsers
-					if len(p) == 0 {
-						p = nil
-					}
-					fields[fieldCount] = &logproto.DetectedField{
-						Label:       k,
-						Type:        v.fieldType,
-						Cardinality: v.Estimate(),
-						Parsers:     p,
-					}
+			// Otherwise all they get is the field limit, which is a bit confusing
+			if len(fields) > 0 {
+				dfResp.Response.FieldLimit = r.GetFieldLimit()
+			}
 
-					fieldCount++
-				}
-
-				return &DetectedFieldsResponse{
-					Response: &logproto.DetectedFieldsResponse{
-						Fields:     fields,
-						FieldLimit: r.GetFieldLimit(),
-					},
-					Headers: re.Headers,
-				}, nil
-			})
-	})
+			return &dfResp, nil
+		})
 }
 
 func makeDownstreamRequest(
