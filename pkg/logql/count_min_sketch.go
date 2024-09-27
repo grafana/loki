@@ -88,8 +88,8 @@ func (v CountMinSketchVector) ToProto() *logproto.CountMinSketchVector {
 	return p
 }
 
-// LimitedLabelVector is a CountMinSketchVector that keeps the number of metrics to a defined maximum.
-type LimitedLabelVector struct {
+// HeapCountMinSketchVector is a CountMinSketchVector that keeps the number of metrics to a defined maximum.
+type HeapCountMinSketchVector struct {
 	CountMinSketchVector
 
 	// internal set of observed events
@@ -97,7 +97,7 @@ type LimitedLabelVector struct {
 	maxLabels int
 }
 
-func NewLimitedLabelVector(ts int64, vec promql.Vector) LimitedLabelVector {
+func NewHeapCountMinSketchVector(ts int64, vec promql.Vector) HeapCountMinSketchVector {
 	f, _ := sketch.NewCountMinSketchFromErroAndProbability(epsilon, delta)
 
 	matricsLength := len(vec)
@@ -105,7 +105,7 @@ func NewLimitedLabelVector(ts int64, vec promql.Vector) LimitedLabelVector {
 		matricsLength = maxLabels
 	}
 
-	return LimitedLabelVector{
+	return HeapCountMinSketchVector{
 		CountMinSketchVector: CountMinSketchVector{
 			T:       ts,
 			F:       f,
@@ -116,7 +116,7 @@ func NewLimitedLabelVector(ts int64, vec promql.Vector) LimitedLabelVector {
 	}
 }
 
-func (v *LimitedLabelVector) Add(metric labels.Labels, value float64) {
+func (v *HeapCountMinSketchVector) Add(metric labels.Labels, value float64) {
 	// TODO: we save a lot of allocations by reusing the buffer inside metric.String
 	metricString := metric.String()
 	v.F.Add(metricString, int(value))
@@ -137,25 +137,25 @@ func (v *LimitedLabelVector) Add(metric labels.Labels, value float64) {
 	}
 }
 
-func (v LimitedLabelVector) Len() int {
+func (v HeapCountMinSketchVector) Len() int {
 	return len(v.Metrics)
 }
 
-func (v LimitedLabelVector) Less(i, j int) bool {
+func (v HeapCountMinSketchVector) Less(i, j int) bool {
 	left := v.F.Count(v.Metrics[i].String())
 	right := v.F.Count(v.Metrics[j].String())
 	return left < right
 }
 
-func (v LimitedLabelVector) Swap(i, j int) {
+func (v HeapCountMinSketchVector) Swap(i, j int) {
 	v.Metrics[i], v.Metrics[j] = v.Metrics[j], v.Metrics[i]
 }
 
-func (v *LimitedLabelVector) Push(x any) {
+func (v *HeapCountMinSketchVector) Push(x any) {
 	v.Metrics = append(v.Metrics, x.(labels.Labels))
 }
 
-func (v *LimitedLabelVector) Pop() any {
+func (v *HeapCountMinSketchVector) Pop() any {
 	old := v.Metrics
 	n := len(old)
 	x := old[n-1]
@@ -205,7 +205,7 @@ func (e *countMinSketchVectorAggEvaluator) Next() (bool, int64, StepResult) {
 	}
 	vec := r.SampleVector()
 
-	result := NewLimitedLabelVector(ts, vec)
+	result := NewHeapCountMinSketchVector(ts, vec)
 	for _, s := range vec {
 		result.Add(s.Metric, s.F)
 	}
