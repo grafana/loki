@@ -2,7 +2,7 @@ concurrency:
   group: "create-release-pr-${{ github.sha }}"
 env:
   BUILD_ARTIFACTS_BUCKET: "loki-build-artifacts"
-  BUILD_TIMEOUT: 40
+  BUILD_TIMEOUT: 60
   CHANGELOG_PATH: "CHANGELOG.md"
   DOCKER_USERNAME: "grafana"
   DRY_RUN: false
@@ -198,7 +198,7 @@ jobs:
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
+      uses: "docker/build-push-action@v6"
       with:
         build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
@@ -260,7 +260,7 @@ jobs:
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
+      uses: "docker/build-push-action@v6"
       with:
         build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
@@ -322,7 +322,7 @@ jobs:
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
+      uses: "docker/build-push-action@v6"
       with:
         build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
@@ -386,7 +386,7 @@ jobs:
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
+      uses: "docker/build-push-action@v6"
       with:
         build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
@@ -448,7 +448,7 @@ jobs:
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
+      uses: "docker/build-push-action@v6"
       with:
         build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
@@ -512,7 +512,7 @@ jobs:
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
+      uses: "docker/build-push-action@v6"
       with:
         build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
@@ -576,7 +576,7 @@ jobs:
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
+      uses: "docker/build-push-action@v6"
       with:
         build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
@@ -640,7 +640,7 @@ jobs:
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
+      uses: "docker/build-push-action@v6"
       with:
         build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"
@@ -704,7 +704,7 @@ jobs:
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      uses: "docker/build-push-action@v5"
+      uses: "docker/build-push-action@v6"
       with:
         build-args: "IMAGE_TAG=${{ needs.version.outputs.version }}"
         context: "release"

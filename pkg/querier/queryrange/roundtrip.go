@@ -1222,7 +1222,6 @@ func NewDetectedFieldsTripperware(
 		limitedHandler := limitedTripperware.Wrap(next)
 		logHandler := logTripperware.Wrap(next)
 
-		detectedFieldsHandler := NewDetectedFieldsHandler(limitedHandler, logHandler, limits)
-		return NewLimitedRoundTripper(next, limits, schema.Configs, detectedFieldsHandler)
+		return NewDetectedFieldsHandler(limitedHandler, logHandler, limits)
 	}), nil
 }
