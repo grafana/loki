@@ -1,6 +1,7 @@
 package logql
 
 import (
+	"container/heap"
 	"fmt"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -15,14 +16,16 @@ import (
 const (
 	CountMinSketchVectorType = "CountMinSketchVector"
 
-	epsilon = 0.0001
-	delta   = 0.05
+	epsilon   = 0.0001
+	delta     = 0.05
+	maxLabels = 10_000
 )
 
 type CountMinSketchVector struct {
 	T int64
 	F *sketch.CountMinSketch
 
+	// TODO: keep only a maximum of labels. Drop the smalles on insert.
 	Metrics []labels.Labels
 }
 
@@ -85,6 +88,79 @@ func (v CountMinSketchVector) ToProto() *logproto.CountMinSketchVector {
 	return p
 }
 
+// LimitedLabelVector is a CountMinSketchVector that keeps the number of metrics to a defined maximum.
+type LimitedLabelVector struct {
+	CountMinSketchVector
+
+	// internal set of observed events
+	observed  map[string]struct{}
+	maxLabels int
+}
+
+func NewLimitedLabelVector(ts int64, vec promql.Vector) LimitedLabelVector {
+	f, _ := sketch.NewCountMinSketchFromErroAndProbability(epsilon, delta)
+
+	matricsLength := len(vec)
+	if matricsLength >= maxLabels {
+		matricsLength = maxLabels
+	}
+
+	return LimitedLabelVector{
+		CountMinSketchVector: CountMinSketchVector{
+			T:       ts,
+			F:       f,
+			Metrics: make([]labels.Labels, 0, matricsLength),
+		},
+		observed:  make(map[string]struct{}),
+		maxLabels: maxLabels,
+	}
+}
+
+func (v *LimitedLabelVector) Add(metric labels.Labels, value float64) {
+	v.F.Add(metric.String(), int(value))
+
+	// Add our metric if we haven't seen it
+	if _, ok := v.observed[metric.String()]; !ok {
+		heap.Push(v, metric)
+		v.observed[metric.String()] = struct{}{}
+	} else if v.Metrics[0].String() == metric.String() {
+		// The smalles element has been updated to fix the heap.
+		heap.Fix(v, 0)
+	}
+
+	// The maximum number of labels has been reached, so drop the smalles element.
+	if len(v.Metrics) > v.maxLabels {
+		metric := heap.Pop(v).(labels.Labels)
+		delete(v.observed, metric.String())
+	}
+}
+
+func (v LimitedLabelVector) Len() int {
+	return len(v.Metrics)
+}
+
+func (v LimitedLabelVector) Less(i, j int) bool {
+	left := v.F.Count(v.Metrics[i].String())
+	right := v.F.Count(v.Metrics[j].String())
+	return left < right
+}
+
+func (v LimitedLabelVector) Swap(i, j int) {
+	v.Metrics[i], v.Metrics[j] = v.Metrics[j], v.Metrics[i]
+}
+
+func (v *LimitedLabelVector) Push(x any) {
+	v.Metrics = append(v.Metrics, x.(labels.Labels))
+}
+
+func (v *LimitedLabelVector) Pop() any {
+	old := v.Metrics
+	n := len(old)
+	x := old[n-1]
+	v.Metrics = old[0 : n-1]
+	return x
+}
+
 // JoinCountMinSketchVector joins the results from stepEvaluator into a CountMinSketchVector.
 func JoinCountMinSketchVector(_ bool, r StepResult, stepEvaluator StepEvaluator, params Params) (promql_parser.Value, error) {
 	vec := r.CountMinSketchVec()
@@ -127,18 +203,9 @@ func (e *countMinSketchVectorAggEvaluator) Next() (bool, int64, StepResult) {
 	}
 	vec := r.SampleVector()
 
-	f, _ := sketch.NewCountMinSketchFromErroAndProbability(epsilon, delta)
-
-	result := CountMinSketchVector{
-		T:       ts,
-		F:       f,
-		Metrics: make([]labels.Labels, 0, len(vec)),
-	}
+	result := NewLimitedLabelVector(ts, vec)
 	for _, s := range vec {
-		metric := s.Metric
-
-		result.F.Add(metric.String(), int(s.F))
-		result.Metrics = append(result.Metrics, metric) // TODO: this should be sorted and unique
+		result.Add(s.Metric, s.F)
 	}
 	return next, ts, result
 }
