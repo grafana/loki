@@ -1,14 +1,14 @@
 ---
 title: Loki Canary
-menuTitle:  
+menuTitle:
 description: Describes how to use Loki Canary to audit the log-capturing performance of a Grafana Loki cluster to ensure Loki is ingesting logs without data loss.
-weight: 
+weight:
 ---
 # Loki Canary
 
-Loki Canary is a standalone app that audits the log-capturing performance of a Grafana Loki cluster.  
+Loki Canary is a standalone app that audits the log-capturing performance of a Grafana Loki cluster.
 This component emits and periodically queries for logs, making sure that Loki is ingesting logs without any data loss.
-When something is wrong with Loki, the Canary often provides the first indication. 
+When something is wrong with Loki, the Canary often provides the first indication.
 
 Loki Canary generates artificial log lines.
 These log lines are sent to the Loki cluster.
@@ -311,7 +311,7 @@ All options:
 
 ```
   -addr string
-    	The Loki server URL:Port, e.g. loki:3100. Loki address can also be set using the environment variable LOKI_ADDRESS.
+    	The read target of Loki server URL:Port, e.g. loki:3100. Loki address can also be set using the environment variable LOKI_ADDRESS.
   -buckets int
     	Number of buckets in the response_latency histogram (default 10)
   -ca-file string
@@ -374,6 +374,8 @@ All options:
     	Print this builds version information
   -wait duration
     	Duration to wait for log entries on websocket before querying loki for them (default 1m0s)
+  -write-addr string
+      The write target of Loki server URL:Port, e.g. loki-writer:3100. Loki write address can also be set using the environment variable LOKI_WRITE_ADDRESS. If not set, the read address will be used. This is useful when using push mode with distributed Loki setup.
   -write-max-backoff duration
     	Maximum backoff time between retries  (default 5m0s)
   -write-max-retries int
