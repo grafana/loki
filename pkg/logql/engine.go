@@ -389,6 +389,8 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 			return JoinQuantileSketchVector(next, vec, stepEvaluator, q.params)
 		case CountMinSketchVector:
 			return JoinCountMinSketchVector(next, vec, stepEvaluator, q.params)
+		case LimitedLabelVector:
+			return JoinCountMinSketchVector(next, vec.CountMinSketchVector, stepEvaluator, q.params)
 		default:
 			return nil, fmt.Errorf("unsupported result type: %T", r)
 		}
