@@ -80,7 +80,7 @@ func ExtractLabelFiltersBeforeParser(e Expr) []*LabelFilterExpr {
 	)
 
 	visitor := &DepthFirstTraversal{
-		VisitLabelFilterFn: func(v RootVisitor, e *LabelFilterExpr) {
+		VisitLabelFilterFn: func(_ RootVisitor, e *LabelFilterExpr) {
 			if !foundParseStage {
 				filters = append(filters, e)
 			}
@@ -94,13 +94,13 @@ func ExtractLabelFiltersBeforeParser(e Expr) []*LabelFilterExpr {
 		// expression is added without updating this list, blooms can silently
 		// misbehave.
 
-		VisitLogfmtParserFn:           func(v RootVisitor, e *LogfmtParserExpr) { foundParseStage = true },
-		VisitLabelParserFn:            func(v RootVisitor, e *LabelParserExpr) { foundParseStage = true },
-		VisitJSONExpressionParserFn:   func(v RootVisitor, e *JSONExpressionParser) { foundParseStage = true },
-		VisitLogfmtExpressionParserFn: func(v RootVisitor, e *LogfmtExpressionParser) { foundParseStage = true },
-		VisitLabelFmtFn:               func(v RootVisitor, e *LabelFmtExpr) { foundParseStage = true },
-		VisitKeepLabelFn:              func(v RootVisitor, e *KeepLabelsExpr) { foundParseStage = true },
-		VisitDropLabelsFn:             func(v RootVisitor, e *DropLabelsExpr) { foundParseStage = true },
+		VisitLogfmtParserFn:           func(_ RootVisitor, _ *LogfmtParserExpr) { foundParseStage = true },
+		VisitLabelParserFn:            func(_ RootVisitor, _ *LabelParserExpr) { foundParseStage = true },
+		VisitJSONExpressionParserFn:   func(_ RootVisitor, _ *JSONExpressionParser) { foundParseStage = true },
+		VisitLogfmtExpressionParserFn: func(_ RootVisitor, _ *LogfmtExpressionParser) { foundParseStage = true },
+		VisitLabelFmtFn:               func(_ RootVisitor, _ *LabelFmtExpr) { foundParseStage = true },
+		VisitKeepLabelFn:              func(_ RootVisitor, _ *KeepLabelsExpr) { foundParseStage = true },
+		VisitDropLabelsFn:             func(_ RootVisitor, _ *DropLabelsExpr) { foundParseStage = true },
 	}
 	e.Accept(visitor)
 	return filters

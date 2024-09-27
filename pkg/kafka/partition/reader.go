@@ -123,7 +123,6 @@ func (p *Reader) startFetchLoop(ctx context.Context) <-chan []Record {
 				return
 			default:
 				records <- p.poll(ctx)
-				p.committer.enqueueOffset(p.lastProcessedOffset)
 			}
 		}
 	}()
