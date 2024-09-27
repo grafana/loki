@@ -117,13 +117,15 @@ func NewLimitedLabelVector(ts int64, vec promql.Vector) LimitedLabelVector {
 }
 
 func (v *LimitedLabelVector) Add(metric labels.Labels, value float64) {
-	v.F.Add(metric.String(), int(value))
+	// TODO: we save a lot of allocations by reusing the buffer inside metric.String
+	metricString := metric.String()
+	v.F.Add(metricString, int(value))
 
 	// Add our metric if we haven't seen it
-	if _, ok := v.observed[metric.String()]; !ok {
+	if _, ok := v.observed[metricString]; !ok {
 		heap.Push(v, metric)
-		v.observed[metric.String()] = struct{}{}
-	} else if v.Metrics[0].String() == metric.String() {
+		v.observed[metricString] = struct{}{}
+	} else if v.Metrics[0].String() == metricString {
 		// The smalles element has been updated to fix the heap.
 		heap.Fix(v, 0)
 	}
