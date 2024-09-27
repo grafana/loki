@@ -3,6 +3,9 @@
 
 set -exo pipefail
 
+script_dir=$(cd "$(dirname "$0")" && pwd)
+source "${script_dir}/common.sh"
+
 # Uses docker hub image tags to figure out what is the latest image tag
 find_latest_image_tag() {
   local docker_hub_repo=$1
@@ -13,48 +16,6 @@ find_latest_image_tag() {
 # takes k197-abcdef and returns r197, k197-abcdef-arm64 and returns k197, weekly-k197-abcdef and returns k197
 extract_k_version() {
   echo $(sed -E "s/[weekly-]*(k[[:digit:]]*).*/\1/g" <<<$1)
-}
-
-# This generates a new file where the yaml node is updated.
-# The problem is that yq strips new lines when you update the file.
-# So we use a workaround from https://github.com/mikefarah/yq/issues/515 which:
-# generates the new file, diffs it with the original, removes all non-whitespace changes, and applies that to the original file.
-update_yaml_node() {
-  local filename=$1
-  local yaml_node=$2
-  local new_value=$3
-  patch "$filename" <<<$(diff -U0 -w -b --ignore-blank-lines $filename <(yq eval "$yaml_node = \"$new_value\"" $filename))
-}
-
-get_yaml_node() {
-  local filename=$1
-  local yaml_node=$2
-  echo $(yq $yaml_node $filename)
-}
-
-# Increments the part of the semver string
-# $1: version itself
-# $2: number of part: 0 – major, 1 – minor, 2 – patch
-increment_semver() {
-  local delimiter=.
-  local array=($(echo "$1" | tr $delimiter '\n'))
-  array[$2]=$((array[$2] + 1))
-  echo $(
-    local IFS=$delimiter
-    echo "${array[*]}"
-  )
-}
-
-# Sets the patch segment of a semver to 0
-# $1: version itself
-set_semver_patch_to_zero() {
-  local delimiter=.
-  local array=($(echo "$1" | tr $delimiter '\n'))
-  array[2]="0"
-  echo $(
-    local IFS=$delimiter
-    echo "${array[*]}"
-  )
 }
 
 calculate_next_chart_version() {
@@ -108,6 +69,10 @@ update_yaml_node $values_file .loki.image.tag $latest_loki_tag
 update_yaml_node $values_file .enterprise.image.tag $latest_gel_tag
 update_yaml_node $chart_file .appVersion $(extract_k_version $latest_loki_tag)
 update_yaml_node $chart_file .version $new_chart_version
+
+sed --in-place \
+  --regexp-extended \
+  "s/(.*\<AUTOMATED_UPDATES_LOCATOR\>.*)/\1\n\n## ${new_chart_version}\n\n- \[CHANGE\] Changed version of Grafana Loki to ${latest_loki_tag}\n- \[CHANGE\] Changed version of Grafana Enterprise Logs to ${latest_gel_tag}/g" production/helm/loki/CHANGELOG.md
 
 make TTY='' helm-docs
 
