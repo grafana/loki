@@ -39,13 +39,13 @@ type canary struct {
 }
 
 func main() {
-
 	lName := flag.String("labelname", "name", "The label name for this instance of loki-canary to use in the log selector")
 	lVal := flag.String("labelvalue", "loki-canary", "The unique label value for this instance of loki-canary to use in the log selector")
 	sName := flag.String("streamname", "stream", "The stream name for this instance of loki-canary to use in the log selector")
 	sValue := flag.String("streamvalue", "stdout", "The unique stream value for this instance of loki-canary to use in the log selector")
 	port := flag.Int("port", 3500, "Port which loki-canary should expose metrics")
-	addr := flag.String("addr", "", "The Loki server URL:Port, e.g. loki:3100")
+	addr := flag.String("addr", "", "The read target of Loki server URL:Port, e.g. loki:3100")
+	writeAddr := flag.String("write-addr", "", "The write target of Loki server URL:Port, e.g. loki:3100, if not set it will use the same value as addr")
 	push := flag.Bool("push", false, "Push the logs directly to given Loki address")
 	useTLS := flag.Bool("tls", false, "Does the loki connection use TLS?")
 	certFile := flag.String("cert-file", "", "Client PEM encoded X.509 certificate for optional use with TLS connection to Loki")
@@ -98,14 +98,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	if *addr == "" {
-		*addr = os.Getenv("LOKI_ADDRESS")
-	}
-
-	if *addr == "" {
-		_, _ = fmt.Fprintf(os.Stderr, "Must specify a Loki address with -addr or set the environment variable LOKI_ADDRESS\n")
-		os.Exit(1)
-	}
+	rAddr, wAddr := getLokiAddr(*addr, *writeAddr)
 
 	if *outOfOrderPercentage < 0 || *outOfOrderPercentage > 100 {
 		_, _ = fmt.Fprintf(os.Stderr, "Out of order percentage must be between 0 and 100\n")
@@ -163,7 +156,7 @@ func main() {
 				MaxRetries: *writeMaxRetries,
 			}
 			push, err := writer.NewPush(
-				*addr,
+				wAddr,
 				*tenantID,
 				*writeTimeout,
 				config.DefaultHTTPClientConfig,
@@ -188,7 +181,7 @@ func main() {
 
 		c.writer = writer.NewWriter(entryWriter, sentChan, *interval, *outOfOrderMin, *outOfOrderMax, *outOfOrderPercentage, *size, logger)
 		var err error
-		c.reader, err = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *certFile, *keyFile, *addr, *user, *pass, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval, *queryAppend)
+		c.reader, err = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *certFile, *keyFile, rAddr, *user, *pass, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval, *queryAppend)
 		if err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "Unable to create reader for Loki querier, check config: %s", err)
 			os.Exit(1)
@@ -239,4 +232,29 @@ func (c *canary) stop() {
 	c.writer = nil
 	c.reader = nil
 	c.comparator = nil
+}
+
+func getLokiAddr(readAddrInput, writeAddrInput string) (string, string) {
+	var readAddr, writeAddr string
+
+	if readAddrInput == "" {
+		readAddr = os.Getenv("LOKI_ADDRESS")
+		if readAddr == "" {
+			_, _ = fmt.Fprintf(os.Stderr, "Must specify a Loki address with -addr or set the environment variable LOKI_ADDRESS\n")
+			os.Exit(1)
+		}
+	} else {
+		readAddr = readAddrInput
+	}
+
+	if writeAddrInput == "" {
+		writeAddr = os.Getenv("LOKI_WRITE_ADDRESS")
+		if writeAddr == "" {
+			writeAddr = readAddr
+		}
+	} else {
+		writeAddr = writeAddrInput
+	}
+
+	return readAddr, writeAddr
 }
