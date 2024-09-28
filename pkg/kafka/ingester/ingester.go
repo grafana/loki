@@ -6,9 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
-	"regexp"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -21,6 +18,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/ingester/shutdownmarker"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 
@@ -33,7 +31,6 @@ const (
 )
 
 var (
-	ingesterIDRegexp           = regexp.MustCompile("-([0-9]+)$")
 	defaultFlushInterval       = 15 * time.Second
 	defaultFlushSize     int64 = 300 << 20 // 300 MB
 )
@@ -51,8 +48,8 @@ type Config struct {
 
 // RegisterFlags registers the flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("kafka-ingester", f, util_log.Logger)
-	cfg.PartitionRingConfig.RegisterFlags(f)
+	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("kafka-ingester.", f, util_log.Logger)
+	cfg.PartitionRingConfig.RegisterFlagsWithPrefix("kafka-ingester.", f)
 	f.StringVar(&cfg.ShutdownMarkerPath, "kafka-ingester.shutdown-marker-path", "", "Path where the shutdown marker file is stored. If not set and common.path_prefix is set then common.path_prefix will be used.")
 	f.BoolVar(&cfg.Enabled, "kafka-ingester.enabled", false, "Whether the Kafka-based ingester path is enabled")
 	f.DurationVar(&cfg.FlushInterval, "kafka-ingester.flush-interval", defaultFlushInterval, "The interval at which the ingester will flush and commit offsets to Kafka. If not set, the default flush interval will be used.")
@@ -98,19 +95,19 @@ type Ingester struct {
 	lifecyclerWatcher       *services.FailureWatcher
 	ingesterPartitionID     int32
 	partitionRingLifecycler *ring.PartitionInstanceLifecycler
-	partitionReader         *PartitionReader
+	partitionReader         *partition.Reader
 }
 
 // New makes a new Ingester.
 func New(cfg Config,
-	consumerFactory ConsumerFactory,
+	consumerFactory partition.ConsumerFactory,
 	logger log.Logger,
 	metricsNamespace string,
 	registerer prometheus.Registerer,
 ) (*Ingester, error) {
 	metrics := newIngesterMetrics(registerer)
 
-	ingesterPartitionID, err := extractIngesterPartitionID(cfg.LifecyclerConfig.ID)
+	ingesterPartitionID, err := partitionring.ExtractIngesterPartitionID(cfg.LifecyclerConfig.ID)
 	if err != nil {
 		return nil, fmt.Errorf("calculating ingester partition ID: %w", err)
 	}
@@ -142,7 +139,7 @@ func New(cfg Config,
 	if err != nil {
 		return nil, err
 	}
-	i.partitionReader, err = NewPartitionReader(cfg.KafkaConfig, ingesterPartitionID, cfg.LifecyclerConfig.ID, consumerFactory, logger, registerer)
+	i.partitionReader, err = partition.NewReader(cfg.KafkaConfig, ingesterPartitionID, cfg.LifecyclerConfig.ID, consumerFactory, logger, registerer)
 	if err != nil {
 		return nil, err
 	}
@@ -155,25 +152,6 @@ func New(cfg Config,
 	i.Service = services.NewBasicService(i.starting, i.running, i.stopping)
 
 	return i, nil
-}
-
-// ingesterPartitionID returns the partition ID owner the the given ingester.
-func extractIngesterPartitionID(ingesterID string) (int32, error) {
-	if strings.Contains(ingesterID, "local") {
-		return 0, nil
-	}
-
-	match := ingesterIDRegexp.FindStringSubmatch(ingesterID)
-	if len(match) == 0 {
-		return 0, fmt.Errorf("ingester ID %s doesn't match regular expression %q", ingesterID, ingesterIDRegexp.String())
-	}
-	// Parse the ingester sequence number.
-	ingesterSeq, err := strconv.Atoi(match[1])
-	if err != nil {
-		return 0, fmt.Errorf("no ingester sequence number in ingester ID %s", ingesterID)
-	}
-
-	return int32(ingesterSeq), nil
 }
 
 // ServeHTTP implements the pattern ring status page.

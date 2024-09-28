@@ -22,6 +22,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/wal"
 )
@@ -36,17 +37,12 @@ type MetadataStore interface {
 	AddBlock(ctx context.Context, in *metastorepb.AddBlockRequest, opts ...grpc.CallOption) (*metastorepb.AddBlockResponse, error)
 }
 
-// Committer defines an interface for committing offsets
-type Committer interface {
-	Commit(ctx context.Context, offset int64) error
-}
-
 // consumer represents a Kafka consumer that processes and stores log entries
 type consumer struct {
 	metastoreClient MetadataStore
 	storage         ObjectStorage
 	writer          *wal.SegmentWriter
-	committer       Committer
+	committer       partition.Committer
 	flushInterval   time.Duration
 	maxFlushSize    int64
 	lastOffset      int64
@@ -67,8 +63,8 @@ func NewConsumerFactory(
 	maxFlushSize int64,
 	logger log.Logger,
 	reg prometheus.Registerer,
-) ConsumerFactory {
-	return func(committer Committer) (Consumer, error) {
+) partition.ConsumerFactory {
+	return func(committer partition.Committer) (partition.Consumer, error) {
 		writer, err := wal.NewWalSegmentWriter()
 		if err != nil {
 			return nil, err
@@ -95,7 +91,7 @@ func NewConsumerFactory(
 
 // Start starts the consumer and returns a function to wait for it to finish
 // It consumes records from the recordsChan, and flushes them to storage periodically.
-func (c *consumer) Start(ctx context.Context, recordsChan <-chan []record) func() {
+func (c *consumer) Start(ctx context.Context, recordsChan <-chan []partition.Record) func() {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -127,7 +123,7 @@ func (c *consumer) Start(ctx context.Context, recordsChan <-chan []record) func(
 }
 
 // consume processes a batch of Kafka records, decoding and storing them
-func (c *consumer) consume(records []record) error {
+func (c *consumer) consume(records []partition.Record) error {
 	if len(records) == 0 {
 		return nil
 	}
@@ -136,8 +132,8 @@ func (c *consumer) consume(records []record) error {
 		maxOffset = int64(0)
 	)
 	for _, record := range records {
-		minOffset = min(minOffset, record.offset)
-		maxOffset = max(maxOffset, record.offset)
+		minOffset = min(minOffset, record.Offset)
+		maxOffset = max(maxOffset, record.Offset)
 	}
 	level.Debug(c.logger).Log("msg", "consuming records", "min_offset", minOffset, "max_offset", maxOffset)
 	return c.retryWithBackoff(context.Background(), backoff.Config{
@@ -163,9 +159,9 @@ func (c *consumer) consume(records []record) error {
 	})
 }
 
-func (c *consumer) appendRecords(records []record) error {
+func (c *consumer) appendRecords(records []partition.Record) error {
 	for _, record := range records {
-		stream, labels, err := c.decoder.Decode(record.content)
+		stream, labels, err := c.decoder.Decode(record.Content)
 		if err != nil {
 			return fmt.Errorf("failed to decode record: %w", err)
 		}
@@ -184,7 +180,7 @@ func (c *consumer) appendRecords(records []record) error {
 				Parsed:             entry.Parsed,
 			})
 		}
-		c.writer.Append(record.tenantID, stream.Labels, labels, c.toStore, time.Now())
+		c.writer.Append(record.TenantID, stream.Labels, labels, c.toStore, time.Now())
 	}
 	return nil
 }
@@ -249,7 +245,7 @@ func (c *consumer) flush(ctx context.Context) error {
 	wal.ReportSegmentStats(stats, c.metrics.segmentMetrics)
 
 	id := ulid.MustNew(ulid.Timestamp(time.Now()), rand.Reader).String()
-	if err := c.storage.PutObject(ctx, fmt.Sprintf(wal.Dir+id), c.flushBuf); err != nil {
+	if err := c.storage.PutObject(ctx, wal.Dir+id, c.flushBuf); err != nil {
 		return fmt.Errorf("failed to put object to object storage: %w", err)
 	}
 

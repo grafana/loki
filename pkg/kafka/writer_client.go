@@ -68,7 +68,7 @@ func NewWriterClient(kafkaCfg Config, maxInflightProduceRequests int, logger log
 		// When a Produce request to Kafka fail, the client will retry up until the RecordDeliveryTimeout is reached.
 		// Once the timeout is reached, the Produce request will fail and all other buffered requests in the client
 		// (for the same partition) will fail too. See kgo.RecordDeliveryTimeout() documentation for more info.
-		kgo.RecordRetries(math.MaxInt64),
+		kgo.RecordRetries(math.MaxInt),
 		kgo.RecordDeliveryTimeout(kafkaCfg.WriteTimeout),
 		kgo.ProduceRequestTimeout(kafkaCfg.WriteTimeout),
 		kgo.RequestTimeoutOverhead(writerRequestTimeoutOverhead),
@@ -79,7 +79,9 @@ func NewWriterClient(kafkaCfg Config, maxInflightProduceRequests int, logger log
 		kgo.MaxBufferedRecords(math.MaxInt), // Use a high value to set it as unlimited, because the client doesn't support "0 as unlimited".
 		kgo.MaxBufferedBytes(0),
 	)
-
+	if kafkaCfg.AutoCreateTopicEnabled {
+		kafkaCfg.SetDefaultNumberOfPartitionsForAutocreatedTopics(logger)
+	}
 	return kgo.NewClient(opts...)
 }
 

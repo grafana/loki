@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
 	"github.com/grafana/loki/v3/pkg/util/mempool"
@@ -24,25 +24,26 @@ var BloomPagePool = mempool.New("test", []mempool.Bucket{
 	{Size: 16, Capacity: 512 << 10},
 }, nil)
 
-// TODO(owen-d): this is unhinged from the data it represents. I'm leaving this solely so I don't
-// have to refactor tests here in order to fix this elsewhere, but it can/should be fixed --
-// the skip & n len are hardcoded based on data that's passed to it elsewhere.
-type fakeNgramBuilder struct{}
+type singleKeyTest []byte
 
-func (f fakeNgramBuilder) N() int          { return 4 }
-func (f fakeNgramBuilder) SkipFactor() int { return 0 }
-
-func (f fakeNgramBuilder) Tokens(line string) v2.Iterator[[]byte] {
-	return v2.NewSliceIter[[]byte]([][]byte{[]byte(line)})
+// Matches implements BloomTest.
+func (s singleKeyTest) Matches(bloom filter.Checker) bool {
+	return bloom.Test(s)
 }
 
+// MatchesWithPrefixBuf implements BloomTest.
+func (s singleKeyTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
+	return bloom.Test(append(buf[:prefixLen], s...))
+}
+
+// compiler check
+var _ BloomTest = singleKeyTest("")
+
 func keysToBloomTest(keys [][]byte) BloomTest {
-	var tokenizer fakeNgramBuilder
 	tests := make(BloomTests, 0, len(keys))
 	for _, key := range keys {
-		tests = append(tests, newStringTest(tokenizer, string(key)))
+		tests = append(tests, singleKeyTest(key))
 	}
-
 	return tests
 }
 
@@ -53,13 +54,13 @@ func TestFusedQuerier(t *testing.T) {
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
 	reader := NewByteReader(indexBuf, bloomsBuf)
 	numSeries := 1000
-	data, keys := MkBasicSeriesWithBlooms(numSeries, 0x0000, 0xffff, 0, 10000)
+	data, _ := MkBasicSeriesWithBlooms(numSeries, 0x0000, 0xffff, 0, 10000)
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
 			Schema: Schema{
 				version:  CurrentSchemaVersion,
-				encoding: chunkenc.EncSnappy,
+				encoding: compression.EncSnappy,
 			},
 			SeriesPageSize: 100,
 			BloomPageSize:  10 << 10,
@@ -89,7 +90,7 @@ func TestFusedQuerier(t *testing.T) {
 				Fp:       data[idx].Series.Fingerprint,
 				Chks:     data[idx].Series.Chunks,
 				Response: ch,
-				Search:   keysToBloomTest(keys[idx]),
+				Search:   singleKeyTest("trace_id"),
 			})
 		}
 		inputs = append(inputs, reqs)
@@ -130,20 +131,13 @@ func TestFusedQuerier(t *testing.T) {
 	for i, input := range inputs {
 		for j, req := range input {
 			resp := resps[i][j]
-			require.Equal(
-				t,
-				Output{
-					Fp:       req.Fp,
-					Removals: nil,
-				},
-				resp,
-			)
+			require.Equal(t, Output{Fp: req.Fp, Removals: nil}, resp)
 		}
 	}
 }
 
 // Successfully query series across multiple pages as well as series that only occupy 1 bloom
-func TestFuseMultiPage(t *testing.T) {
+func TestFusedQuerier_MultiPage(t *testing.T) {
 	indexBuf := bytes.NewBuffer(nil)
 	bloomsBuf := bytes.NewBuffer(nil)
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
@@ -152,10 +146,8 @@ func TestFuseMultiPage(t *testing.T) {
 	builder, err := NewBlockBuilder(
 		BlockOptions{
 			Schema: Schema{
-				version:     CurrentSchemaVersion,
-				encoding:    chunkenc.EncSnappy,
-				nGramLength: 3, // we test trigrams
-				nGramSkip:   0,
+				version:  CurrentSchemaVersion,
+				encoding: compression.EncSnappy,
 			},
 			SeriesPageSize: 100,
 			BloomPageSize:  10, // So we force one bloom per page
@@ -170,32 +162,32 @@ func TestFuseMultiPage(t *testing.T) {
 		Through:  10,
 		Checksum: 0,
 	}
-	series := &Series{
+	series := Series{
 		Fingerprint: fp,
 		Chunks:      []ChunkRef{chk},
 	}
 
-	buf, prefixLn := prefixedToken(3, chk, nil)
+	buf := prefixForChunkRef(chk)
 
 	b1 := &Bloom{
 		*filter.NewScalableBloomFilter(1024, 0.01, 0.8),
 	}
 	key1, key2 := []byte("foo"), []byte("bar")
 	b1.Add(key1)
-	b1.Add(append(buf[:prefixLn], key1...))
+	b1.Add(append(buf, key1...))
 
 	b2 := &Bloom{
 		*filter.NewScalableBloomFilter(1024, 0.01, 0.8),
 	}
 	b2.Add(key2)
-	b2.Add(append(buf[:prefixLn], key2...))
+	b2.Add(append(buf, key2...))
 
 	_, err = builder.BuildFrom(v2.NewSliceIter([]SeriesWithBlooms{
 		{
-			series,
-			v2.NewSliceIter([]*Bloom{
-				b1, b2,
-			}),
+			Series: &SeriesWithMeta{
+				Series: series,
+			},
+			Blooms: v2.NewSliceIter([]*Bloom{b1, b2}),
 		},
 	}))
 	require.NoError(t, err)
@@ -215,13 +207,11 @@ func TestFuseMultiPage(t *testing.T) {
 		chans[i] = make(chan Output, 1) // buffered once to not block in test
 	}
 
-	req := func(ngram []byte, ch chan Output) Request {
+	req := func(key []byte, ch chan Output) Request {
 		return Request{
-			Fp:   fp,
-			Chks: []ChunkRef{chk},
-			Search: stringTest{
-				ngrams: [][]byte{ngram},
-			},
+			Fp:       fp,
+			Chks:     []ChunkRef{chk},
+			Search:   singleKeyTest(key),
 			Response: ch,
 			Recorder: NewBloomRecorder(context.Background(), "unknown"),
 		}
@@ -267,7 +257,7 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 
 	numSeries := 4
 	data := make([]SeriesWithBlooms, 0, numSeries)
-	tokenizer := NewNGramTokenizer(4, 0)
+
 	for i := 0; i < numSeries; i++ {
 		var series Series
 		series.Fingerprint = model.Fingerprint(i)
@@ -279,8 +269,7 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 			},
 		}
 
-		var bloom Bloom
-		bloom.ScalableBloomFilter = *filter.NewScalableBloomFilter(1024, 0.01, 0.8)
+		bloom := NewBloom()
 
 		nLines := 10
 		// all even series will have a larger bloom (more than 1 filter)
@@ -291,17 +280,15 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 		}
 
 		for j := 0; j < nLines; j++ {
-			line := fmt.Sprintf("%04x:%04x", i, j)
-			it := tokenizer.Tokens(line)
-			for it.Next() {
-				key := it.At()
-				bloom.Add(key)
-			}
+			key := fmt.Sprintf("%04x:%04x", i, j)
+			bloom.Add([]byte(key))
 		}
 
 		data = append(data, SeriesWithBlooms{
-			Series: &series,
-			Blooms: v2.NewSliceIter([]*Bloom{&bloom}),
+			Series: &SeriesWithMeta{
+				Series: series,
+			},
+			Blooms: v2.NewSliceIter([]*Bloom{bloom}),
 		})
 	}
 
@@ -309,7 +296,7 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 		BlockOptions{
 			Schema: Schema{
 				version:  CurrentSchemaVersion,
-				encoding: chunkenc.EncSnappy,
+				encoding: compression.EncSnappy,
 			},
 			SeriesPageSize: 100,
 			BloomPageSize:  10, // So we force one series per page
@@ -356,7 +343,7 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 	}
 }
 
-func TestFusedQuerierSkipsEmptyBlooms(t *testing.T) {
+func TestFusedQuerier_SkipsEmptyBlooms(t *testing.T) {
 	// references for linking in memory reader+writer
 	indexBuf := bytes.NewBuffer(nil)
 	bloomsBuf := bytes.NewBuffer(nil)
@@ -367,7 +354,7 @@ func TestFusedQuerierSkipsEmptyBlooms(t *testing.T) {
 		BlockOptions{
 			Schema: Schema{
 				version:  CurrentSchemaVersion,
-				encoding: chunkenc.EncNone,
+				encoding: compression.EncNone,
 			},
 			SeriesPageSize: 100,
 			BloomPageSize:  10 << 10,
@@ -377,22 +364,19 @@ func TestFusedQuerierSkipsEmptyBlooms(t *testing.T) {
 	require.Nil(t, err)
 
 	data := SeriesWithBlooms{
-		Series: &Series{
-			Fingerprint: 0,
-			Chunks: []ChunkRef{
-				{
-					From:     0,
-					Through:  10,
-					Checksum: 0x1234,
+		Series: &SeriesWithMeta{
+			Series: Series{
+				Fingerprint: 0,
+				Chunks: []ChunkRef{
+					{
+						From:     0,
+						Through:  10,
+						Checksum: 0x1234,
+					},
 				},
 			},
 		},
-		Blooms: v2.NewSliceIter([]*Bloom{
-			// simulate empty bloom
-			{
-				*filter.NewScalableBloomFilter(1024, 0.01, 0.8),
-			},
-		}),
+		Blooms: v2.NewSliceIter([]*Bloom{NewBloom()}),
 	}
 
 	itr := v2.NewSliceIter[SeriesWithBlooms]([]SeriesWithBlooms{data})
@@ -431,7 +415,7 @@ func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]Request, []chan Ou
 		BlockOptions{
 			Schema: Schema{
 				version:  CurrentSchemaVersion,
-				encoding: chunkenc.EncSnappy,
+				encoding: compression.EncSnappy,
 			},
 			SeriesPageSize: 256 << 10, // 256k
 			BloomPageSize:  1 << 20,   // 1MB

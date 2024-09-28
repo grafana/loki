@@ -1071,6 +1071,7 @@ func containsAllIDTypes(values []string) bool {
 	return true
 }
 
+// TODO(twhitney): Delete this method and the GRPC service signature. This is now handled in the query frontend.
 func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
 	expr, err := syntax.ParseLogSelector(req.Query, true)
 	if err != nil {
@@ -1113,13 +1114,16 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 			level.Warn(q.logger).Log("msg", "failed to marshal hyperloglog sketch", "err", err)
 			continue
 		}
-
+		p := v.parsers
+		if len(p) == 0 {
+			p = nil
+		}
 		fields[fieldCount] = &logproto.DetectedField{
 			Label:       k,
 			Type:        v.fieldType,
 			Cardinality: v.Estimate(),
 			Sketch:      sketch,
-			Parsers:     v.parsers,
+			Parsers:     p,
 		}
 
 		fieldCount++
@@ -1129,33 +1133,6 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 		Fields:     fields,
 		FieldLimit: req.GetFieldLimit(),
 	}, nil
-}
-
-func getParsersFromExpr(expr syntax.LogSelectorExpr) []string {
-	parsers := make([]string, 0)
-	expr.Walk(func(e syntax.Expr) {
-		switch concrete := e.(type) {
-		case *syntax.LogfmtParserExpr, *syntax.LogfmtExpressionParser:
-			if !slices.Contains(parsers, "logfmt") {
-				parsers = append(parsers, "logfmt")
-			}
-		case *syntax.JSONExpressionParser:
-			if !slices.Contains(parsers, "json") {
-				parsers = append(parsers, "json")
-			}
-		case *syntax.LabelParserExpr:
-			if concrete.Op == syntax.OpParserTypeJSON {
-				if !slices.Contains(parsers, "json") {
-					parsers = append(parsers, "json")
-				}
-			}
-		}
-		// bail if we found both parsers
-		if len(parsers) == 2 {
-			return
-		}
-	})
-	return parsers
 }
 
 type parsedFields struct {
