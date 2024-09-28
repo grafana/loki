@@ -194,8 +194,10 @@ func (tm *FileTargetManager) watchFsEvents(ctx context.Context) {
 					s.sendFileCreateEvent(event)
 				}
 			}
-		case err := <-tm.watcher.Errors:
-			level.Error(tm.log).Log("msg", "error from fswatch", "error", err)
+		case _,ok := <-tm.watcher.Errors:
+			if !ok{
+				return
+				}
 		case <-ctx.Done():
 			return
 		}
