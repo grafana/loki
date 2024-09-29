@@ -410,7 +410,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 
 	var ownedStreamsStrategy ownershipStrategy
 	if i.cfg.KafkaIngestion.Enabled {
-		ownedStreamsStrategy = newOwnedStreamsPartitionStrategy(i.ingestPartitionID, partitionRingWatcher, util_log.Logger)
+		ownedStreamsStrategy = newOwnedStreamsPartitionStrategy(i.ingestPartitionID, partitionRingWatcher, limits.IngestionPartitionsTenantShardSize, util_log.Logger)
 	} else {
 		ownedStreamsStrategy = newOwnedStreamsIngesterStrategy(i.lifecycler.ID, i.readRing, util_log.Logger)
 	}
