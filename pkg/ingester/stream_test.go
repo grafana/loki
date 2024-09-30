@@ -9,12 +9,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
+	gokitlog "github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/loki/v3/pkg/compression"
+	"github.com/grafana/loki/v3/pkg/runtime"
+
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
@@ -69,6 +78,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 				NewStreamRateCalculator(),
 				NilMetrics,
 				nil,
+				nil,
 			)
 
 			_, err := s.Push(context.Background(), []logproto.Entry{
@@ -92,7 +102,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 			}
 
 			fmt.Fprintf(&expected, "user 'fake', total ignored: %d out of %d for stream: {foo=\"bar\"}", numLogs, numLogs)
-			expectErr := httpgrpc.Errorf(http.StatusBadRequest, expected.String())
+			expectErr := httpgrpc.Errorf(http.StatusBadRequest, "%s", expected.String())
 
 			_, err = s.Push(context.Background(), newLines, recordPool.GetRecord(), 0, true, false, nil)
 			require.Error(t, err)
@@ -122,6 +132,7 @@ func TestPushDeduplication(t *testing.T) {
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
+		nil,
 	)
 
 	written, err := s.Push(context.Background(), []logproto.Entry{
@@ -134,6 +145,76 @@ func TestPushDeduplication(t *testing.T) {
 	require.Equal(t, s.chunks[0].chunk.Size(), 2,
 		"expected exact duplicate to be dropped and newer content with same timestamp to be appended")
 	require.Equal(t, len("test"+"newer, better test"), written)
+}
+
+func TestPushDeduplicationExtraMetrics(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+
+	chunkfmt, headfmt := defaultChunkFormat(t)
+
+	buf := bytes.NewBuffer(nil)
+	logger := gokitlog.NewLogfmtLogger(buf)
+
+	provider := &providerMock{
+		tenantConfig: func(tenantID string) *runtime.Config {
+			if tenantID == "fake" {
+				return &runtime.Config{
+					LogDuplicateMetrics:    true,
+					LogDuplicateStreamInfo: true,
+				}
+			}
+
+			return &runtime.Config{}
+		},
+	}
+
+	runtimeCfg, err := runtime.NewTenantConfigs(provider)
+
+	registry := prometheus.NewRegistry()
+	manager := writefailures.NewManager(logger, registry, writefailures.Cfg{LogRate: flagext.ByteSize(1000), AddInsightsLabel: true}, runtimeCfg, "ingester")
+
+	require.NoError(t, err)
+	metrics := newIngesterMetrics(registry, "loki")
+
+	s := newStream(
+		chunkfmt,
+		headfmt,
+		defaultConfig(),
+		limiter,
+		"fake",
+		model.Fingerprint(0),
+		labels.Labels{
+			{Name: "foo", Value: "bar"},
+		},
+		true,
+		NewStreamRateCalculator(),
+		metrics,
+		manager,
+		runtimeCfg,
+	)
+
+	_, err = s.Push(context.Background(), []logproto.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "test"},
+	}, recordPool.GetRecord(), 0, true, false, nil)
+	require.NoError(t, err)
+	_, err = s.Push(context.Background(), []logproto.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "not a test"},
+	}, recordPool.GetRecord(), 0, true, false, nil)
+	require.NoError(t, err)
+	_, err = s.Push(context.Background(), []logproto.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "test"},
+	}, recordPool.GetRecord(), 0, true, false, nil)
+	require.NoError(t, err)
+	require.Len(t, s.chunks, 1)
+	require.Equal(t, 2, s.chunks[0].chunk.Size(), "expected exact duplicate to be dropped and newer content with same timestamp to be appended")
+	require.Equal(t, float64(4), testutil.ToFloat64(metrics.duplicateLogBytesTotal.WithLabelValues("fake")))
+
+	content := buf.String()
+	require.NotEmpty(t, content)
+	require.Contains(t, content, "insight")
+	require.Contains(t, content, "duplicate")
 }
 
 func TestPushRejectOldCounter(t *testing.T) {
@@ -156,6 +237,7 @@ func TestPushRejectOldCounter(t *testing.T) {
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
+		nil,
 		nil,
 	)
 
@@ -195,7 +277,7 @@ func TestStreamIterator(t *testing.T) {
 		{"gzipChunk", func() *chunkenc.MemChunk {
 			chunkfmt, headfmt := defaultChunkFormat(t)
 
-			return chunkenc.NewMemChunk(chunkfmt, chunkenc.EncGZIP, headfmt, 256*1024, 0)
+			return chunkenc.NewMemChunk(chunkfmt, compression.GZIP, headfmt, 256*1024, 0)
 		}},
 	} {
 		t.Run(chk.name, func(t *testing.T) {
@@ -204,10 +286,11 @@ func TestStreamIterator(t *testing.T) {
 				chunk := chk.new()
 				for j := int64(0); j < entries; j++ {
 					k := i*entries + j
-					err := chunk.Append(&logproto.Entry{
+					dup, err := chunk.Append(&logproto.Entry{
 						Timestamp: time.Unix(k, 0),
 						Line:      fmt.Sprintf("line %d", k),
 					})
+					require.False(t, dup)
 					require.NoError(t, err)
 				}
 				s.chunks = append(s.chunks, chunkDesc{chunk: chunk})
@@ -263,6 +346,7 @@ func TestEntryErrorCorrectlyReported(t *testing.T) {
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
+		nil,
 	)
 	s.highestTs = time.Now()
 
@@ -300,6 +384,7 @@ func TestUnorderedPush(t *testing.T) {
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
+		nil,
 		nil,
 	)
 
@@ -372,8 +457,8 @@ func TestUnorderedPush(t *testing.T) {
 	require.Nil(t, err)
 	for _, x := range exp {
 		require.Equal(t, true, sItr.Next())
-		require.Equal(t, x.Timestamp, time.Unix(0, sItr.Sample().Timestamp))
-		require.Equal(t, float64(1), sItr.Sample().Value)
+		require.Equal(t, x.Timestamp, time.Unix(0, sItr.At().Timestamp))
+		require.Equal(t, float64(1), sItr.At().Value)
 	}
 	require.Equal(t, false, sItr.Next())
 }
@@ -402,6 +487,7 @@ func TestPushRateLimit(t *testing.T) {
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
+		nil,
 		nil,
 	)
 
@@ -443,6 +529,7 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
+		nil,
 	)
 
 	entries := []logproto.Entry{
@@ -482,6 +569,7 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
+		nil,
 	)
 
 	base := time.Now()
@@ -512,8 +600,8 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 func iterEq(t *testing.T, exp []logproto.Entry, got iter.EntryIterator) {
 	var i int
 	for got.Next() {
-		require.Equal(t, exp[i].Timestamp, got.Entry().Timestamp, "failed on the (%d) ts", i)
-		require.Equal(t, exp[i].Line, got.Entry().Line)
+		require.Equal(t, exp[i].Timestamp, got.At().Timestamp, "failed on the (%d) ts", i)
+		require.Equal(t, exp[i].Line, got.At().Line)
 		i++
 	}
 	require.Equal(t, i, len(exp), "incorrect number of entries expected")
@@ -532,7 +620,7 @@ func Benchmark_PushStream(b *testing.B) {
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 	chunkfmt, headfmt := defaultChunkFormat(b)
 
-	s := newStream(chunkfmt, headfmt, &Config{MaxChunkAge: 24 * time.Hour}, limiter, "fake", model.Fingerprint(0), ls, true, NewStreamRateCalculator(), NilMetrics, nil)
+	s := newStream(chunkfmt, headfmt, &Config{MaxChunkAge: 24 * time.Hour}, limiter, "fake", model.Fingerprint(0), ls, true, NewStreamRateCalculator(), NilMetrics, nil, nil)
 	expr, err := syntax.ParseLogSelector(`{namespace="loki-dev"}`, true)
 	require.NoError(b, err)
 	t, err := newTailer("foo", expr, &fakeTailServer{}, 10)
@@ -565,4 +653,12 @@ func defaultChunkFormat(t testing.TB) (byte, chunkenc.HeadBlockFmt) {
 	require.NoError(t, err)
 
 	return chunkfmt, headfmt
+}
+
+type providerMock struct {
+	tenantConfig func(string) *runtime.Config
+}
+
+func (m *providerMock) TenantConfig(userID string) *runtime.Config {
+	return m.tenantConfig(userID)
 }

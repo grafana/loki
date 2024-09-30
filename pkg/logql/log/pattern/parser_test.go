@@ -47,6 +47,11 @@ func Test_Parse(t *testing.T) {
 			expr{capture("ip"), literals(" - "), capture("user"), literals(" ["), capture("_"), literals(`] "`), capture("method"), literals(" "), capture("path"), literals(" "), capture('_'), literals(`" `), capture("status"), literals(" "), capture("size"), literals(" "), capture("url"), literals(" "), capture("user_agent")},
 			nil,
 		},
+		{
+			"▶",
+			expr{literals("▶")},
+			nil,
+		},
 	} {
 		tc := tc
 		actual, err := parseExpr(tc.input)

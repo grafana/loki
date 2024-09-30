@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"fmt"
 	"io"
 	"strings"
 	"time"
@@ -18,10 +19,12 @@ import (
 // ObjectClient is used to store arbitrary data in Object Store (S3/GCS/Azure/...)
 type ObjectClient interface {
 	ObjectExists(ctx context.Context, objectKey string) (bool, error)
+	ObjectExistsWithSize(ctx context.Context, objectKey string) (bool, int64, error)
 
-	PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error
+	PutObject(ctx context.Context, objectKey string, object io.Reader) error
 	// NOTE: The consumer of GetObject should always call the Close method when it is done reading which otherwise could cause a resource leak.
 	GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error)
+	GetObjectRange(ctx context.Context, objectKey string, off, length int64) (io.ReadCloser, error)
 
 	// List objects with given prefix.
 	//
@@ -185,7 +188,14 @@ func (o *client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 	}
 
 	if err := c.Decode(decodeContext, buf.Bytes()); err != nil {
-		return chunk.Chunk{}, errors.WithStack(err)
+		return chunk.Chunk{}, errors.WithStack(
+			fmt.Errorf(
+				"failed to decode chunk '%s' for tenant `%s`: %w",
+				key,
+				c.ChunkRef.UserID,
+				err,
+			),
+		)
 	}
 	return c, nil
 }

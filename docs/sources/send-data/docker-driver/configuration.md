@@ -110,7 +110,7 @@ Stack name and service name for each swarm service and project name and service 
 
 ## Labels
 
-Loki can received a set of labels along with log line. These labels are used to index log entries and query back logs using [LogQL stream selector]({{< relref "../../query/log_queries#log-stream-selector" >}}).
+Loki can receive a set of labels along with log line. These labels are used to index log entries and query back logs using [LogQL stream selector]({{< relref "../../query/log_queries#log-stream-selector" >}}).
 
 By default, the Docker driver will add the following labels to each log line:
 
@@ -128,7 +128,7 @@ next section for all supported options.
 ## Pipeline stages
 
 While you can provide `loki-pipeline-stage-file` it can be hard to mount the configuration file to the driver root filesystem.
-This is why another option `loki-pipeline-stages` is available allowing your to pass a list of stages inlined. Pipeline stages are run at last on every lines.
+This is why another option `loki-pipeline-stages` is available allowing you to pass a list of stages inlined. Pipeline stages are run at last on every lines.
 
 The example [docker-compose](https://github.com/grafana/loki/blob/main/clients/cmd/docker-driver/docker-compose.yaml) below configures 2 stages, one to extract level values and one to set it as a label:
 

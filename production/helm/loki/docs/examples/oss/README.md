@@ -13,7 +13,7 @@ Deploy the secrets file to your k8s cluster.
 `kubectl apply -f loki-secrets.yaml`
 
 ### Configure the Helm Chart
-Open examples/enterprise/overides-oss-gcs.yaml and replace `{YOUR_GCS_BUCKET}` with the name of your GCS bucket. If there are other things you'd like to configure, view the core [Values.yaml file](https://github.com/grafana/helm-charts/blob/main/charts/loki-simple-scalable/values.yaml) and override anything else you need to within the overrides-enterprise-gcs.yaml file.
+Open examples/enterprise/overides-oss-gcs.yaml and replace `{YOUR_GCS_BUCKET}` with the name of your GCS bucket. If there are other things you'd like to configure, view the core [Values.yaml file](https://github.com/grafana/loki/blob/main/production/helm/loki/values.yaml) and override anything else you need to within the overrides-enterprise-gcs.yaml file.
 
 ### Install the Helm chart
 

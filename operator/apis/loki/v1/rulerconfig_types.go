@@ -221,6 +221,13 @@ type AlertManagerClientTLSConfig struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Key Path"
 	KeyPath *string `json:"keyPath,omitempty"`
+
+	// Skip validating server certificate.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Skip validating server certificate"
+	InsecureSkipVerify *bool `json:"insecureSkipVerify,omitempty"`
 }
 
 // RemoteWriteAuthType defines the type of authorization to use to access the remote write endpoint.

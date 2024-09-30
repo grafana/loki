@@ -71,7 +71,7 @@ func newSketch(precision uint8, sparse bool) (*Sketch, error) {
 	}
 	if sparse {
 		s.tmpSet = set{}
-		s.sparseList = newCompressedList()
+		s.sparseList = newCompressedList(0)
 	} else {
 		s.regs = newRegisters(m)
 	}
@@ -253,9 +253,9 @@ func (sk *Sketch) Estimate() uint64 {
 	}
 
 	if sk.b == 0 {
-		est = (sk.alpha * m * (m - ez) / (sum + beta(ez)))
+		est = sk.alpha * m * (m - ez) / (sum + beta(ez))
 	} else {
-		est = (sk.alpha * m * m / sum)
+		est = sk.alpha * m * m / sum
 	}
 
 	return uint64(est + 0.5)
@@ -272,7 +272,7 @@ func (sk *Sketch) mergeSparse() {
 	}
 	sort.Sort(keys)
 
-	newList := newCompressedList()
+	newList := newCompressedList(4*len(sk.tmpSet) + len(sk.sparseList.b))
 	for iter, i := sk.sparseList.Iter(), 0; iter.HasNext() || i < len(keys); {
 		if !iter.HasNext() {
 			newList.Append(keys[i])

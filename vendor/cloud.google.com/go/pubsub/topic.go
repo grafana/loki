@@ -33,9 +33,13 @@ import (
 	gax "github.com/googleapis/gax-go/v2"
 	"go.opencensus.io/stats"
 	"go.opencensus.io/tag"
+	"go.opentelemetry.io/otel/attribute"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/api/support/bundler"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/encoding/gzip"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -82,6 +86,11 @@ type Topic struct {
 
 	// EnableMessageOrdering enables delivery of ordered keys.
 	EnableMessageOrdering bool
+
+	// enableTracing enables OTel tracing of Pub/Sub messages on this topic.
+	// This is configured at client instantiation, and allows
+	// disabling tracing even when a tracer provider is detectd.
+	enableTracing bool
 }
 
 // PublishSettings control the bundling of published messages.
@@ -117,6 +126,17 @@ type PublishSettings struct {
 
 	// FlowControlSettings defines publisher flow control settings.
 	FlowControlSettings FlowControlSettings
+
+	// EnableCompression enables transport compression for Publish operations
+	EnableCompression bool
+
+	// CompressionBytesThreshold defines the threshold (in bytes) above which messages
+	// are compressed for transport. Only takes effect if EnableCompression is true.
+	CompressionBytesThreshold int
+}
+
+func (ps *PublishSettings) shouldCompress(batchSize int) bool {
+	return ps.EnableCompression && batchSize > ps.CompressionBytesThreshold
 }
 
 // DefaultPublishSettings holds the default values for topics' PublishSettings.
@@ -134,6 +154,10 @@ var DefaultPublishSettings = PublishSettings{
 		MaxOutstandingBytes:    -1,
 		LimitExceededBehavior:  FlowControlIgnore,
 	},
+	// Publisher compression defaults matches Java's defaults
+	// https://github.com/googleapis/java-pubsub/blob/7d33e7891db1b2e32fd523d7655b6c11ea140a8b/google-cloud-pubsub/src/main/java/com/google/cloud/pubsub/v1/Publisher.java#L717-L718
+	EnableCompression:         false,
+	CompressionBytesThreshold: 240,
 }
 
 // CreateTopic creates a new topic.
@@ -199,8 +223,26 @@ func newTopic(c *Client, name string) *Topic {
 		c:               c,
 		name:            name,
 		PublishSettings: DefaultPublishSettings,
+		enableTracing:   c.enableTracing,
 	}
 }
+
+// TopicState denotes the possible states for a topic.
+type TopicState int
+
+const (
+	// TopicStateUnspecified is the default value. This value is unused.
+	TopicStateUnspecified = iota
+
+	// TopicStateActive means the topic does not have any persistent errors.
+	TopicStateActive
+
+	// TopicStateIngestionResourceError means ingestion from the data source
+	// has encountered a permanent error.
+	// See the more detailed error state in the corresponding ingestion
+	// source configuration.
+	TopicStateIngestionResourceError
+)
 
 // TopicConfig describes the configuration of a topic.
 type TopicConfig struct {
@@ -232,6 +274,13 @@ type TopicConfig struct {
 	//
 	// For more information, see https://cloud.google.com/pubsub/docs/replay-overview#topic_message_retention.
 	RetentionDuration optional.Duration
+
+	// State is an output-only field indicating the state of the topic.
+	State TopicState
+
+	// IngestionDataSourceSettings are settings for ingestion from a
+	// data source into this topic.
+	IngestionDataSourceSettings *IngestionDataSourceSettings
 }
 
 // String returns the printable globally unique name for the topic config.
@@ -260,11 +309,12 @@ func (tc *TopicConfig) toProto() *pb.Topic {
 		retDur = durationpb.New(optional.ToDuration(tc.RetentionDuration))
 	}
 	pbt := &pb.Topic{
-		Labels:                   tc.Labels,
-		MessageStoragePolicy:     messageStoragePolicyToProto(&tc.MessageStoragePolicy),
-		KmsKeyName:               tc.KMSKeyName,
-		SchemaSettings:           schemaSettingsToProto(tc.SchemaSettings),
-		MessageRetentionDuration: retDur,
+		Labels:                      tc.Labels,
+		MessageStoragePolicy:        messageStoragePolicyToProto(&tc.MessageStoragePolicy),
+		KmsKeyName:                  tc.KMSKeyName,
+		SchemaSettings:              schemaSettingsToProto(tc.SchemaSettings),
+		MessageRetentionDuration:    retDur,
+		IngestionDataSourceSettings: tc.IngestionDataSourceSettings.toProto(),
 	}
 	return pbt
 }
@@ -296,15 +346,23 @@ type TopicConfigToUpdate struct {
 	//
 	// Use the zero value &SchemaSettings{} to remove the schema from the topic.
 	SchemaSettings *SchemaSettings
+
+	// IngestionDataSourceSettings are settings for ingestion from a
+	// data source into this topic.
+	//
+	// Use the zero value &IngestionDataSourceSettings{} to remove the ingestion settings from the topic.
+	IngestionDataSourceSettings *IngestionDataSourceSettings
 }
 
 func protoToTopicConfig(pbt *pb.Topic) TopicConfig {
 	tc := TopicConfig{
-		name:                 pbt.Name,
-		Labels:               pbt.Labels,
-		MessageStoragePolicy: protoToMessageStoragePolicy(pbt.MessageStoragePolicy),
-		KMSKeyName:           pbt.KmsKeyName,
-		SchemaSettings:       protoToSchemaSettings(pbt.SchemaSettings),
+		name:                        pbt.Name,
+		Labels:                      pbt.Labels,
+		MessageStoragePolicy:        protoToMessageStoragePolicy(pbt.MessageStoragePolicy),
+		KMSKeyName:                  pbt.KmsKeyName,
+		SchemaSettings:              protoToSchemaSettings(pbt.SchemaSettings),
+		State:                       TopicState(pbt.State),
+		IngestionDataSourceSettings: protoToIngestionDataSourceSettings(pbt.IngestionDataSourceSettings),
 	}
 	if pbt.GetMessageRetentionDuration() != nil {
 		tc.RetentionDuration = pbt.GetMessageRetentionDuration().AsDuration()
@@ -362,6 +420,122 @@ func messageStoragePolicyToProto(msp *MessageStoragePolicy) *pb.MessageStoragePo
 		return nil
 	}
 	return &pb.MessageStoragePolicy{AllowedPersistenceRegions: msp.AllowedPersistenceRegions}
+}
+
+// IngestionDataSourceSettings enables ingestion from a data source into this topic.
+type IngestionDataSourceSettings struct {
+	Source IngestionDataSource
+}
+
+// IngestionDataSource is the kind of ingestion source to be used.
+type IngestionDataSource interface {
+	isIngestionDataSource() bool
+}
+
+// AWSKinesisState denotes the possible states for ingestion from Amazon Kinesis Data Streams.
+type AWSKinesisState int
+
+const (
+	// AWSKinesisStateUnspecified is the default value. This value is unused.
+	AWSKinesisStateUnspecified = iota
+
+	// AWSKinesisStateActive means ingestion is active.
+	AWSKinesisStateActive
+
+	// AWSKinesisStatePermissionDenied means encountering an error while consumign data from Kinesis.
+	// This can happen if:
+	//   - The provided `aws_role_arn` does not exist or does not have the
+	//     appropriate permissions attached.
+	//   - The provided `aws_role_arn` is not set up properly for Identity
+	//     Federation using `gcp_service_account`.
+	//   - The Pub/Sub SA is not granted the
+	//     `iam.serviceAccounts.getOpenIdToken` permission on
+	//     `gcp_service_account`.
+	AWSKinesisStatePermissionDenied
+
+	// AWSKinesisStatePublishPermissionDenied means permission denied encountered while publishing to the topic.
+	// This can happen due to Pub/Sub SA has not been granted the appropriate publish
+	// permissions https://cloud.google.com/pubsub/docs/access-control#pubsub.publisher
+	AWSKinesisStatePublishPermissionDenied
+
+	// AWSKinesisStateStreamNotFound means the Kinesis stream does not exist.
+	AWSKinesisStateStreamNotFound
+
+	// AWSKinesisStateConsumerNotFound means the Kinesis consumer does not exist.
+	AWSKinesisStateConsumerNotFound
+)
+
+// IngestionDataSourceAWSKinesis are ingestion settings for Amazon Kinesis Data Streams.
+type IngestionDataSourceAWSKinesis struct {
+	// State is an output-only field indicating the state of the kinesis connection.
+	State AWSKinesisState
+
+	// StreamARN is the Kinesis stream ARN to ingest data from.
+	StreamARN string
+
+	// ConsumerARn is the Kinesis consumer ARN to used for ingestion in Enhanced
+	// Fan-Out mode. The consumer must be already created and ready to be used.
+	ConsumerARN string
+
+	// AWSRoleARn is the AWS role ARN to be used for Federated Identity authentication
+	// with Kinesis. Check the Pub/Sub docs for how to set up this role and the
+	// required permissions that need to be attached to it.
+	AWSRoleARN string
+
+	// GCPServiceAccount is the GCP service account to be used for Federated Identity
+	// authentication with Kinesis (via a `AssumeRoleWithWebIdentity` call for
+	// the provided role). The `aws_role_arn` must be set up with
+	// `accounts.google.com:sub` equals to this service account number.
+	GCPServiceAccount string
+}
+
+var _ IngestionDataSource = (*IngestionDataSourceAWSKinesis)(nil)
+
+func (i *IngestionDataSourceAWSKinesis) isIngestionDataSource() bool {
+	return true
+}
+
+func protoToIngestionDataSourceSettings(pbs *pb.IngestionDataSourceSettings) *IngestionDataSourceSettings {
+	if pbs == nil {
+		return nil
+	}
+
+	s := &IngestionDataSourceSettings{}
+	if k := pbs.GetAwsKinesis(); k != nil {
+		s.Source = &IngestionDataSourceAWSKinesis{
+			State:             AWSKinesisState(k.State),
+			StreamARN:         k.GetStreamArn(),
+			ConsumerARN:       k.GetConsumerArn(),
+			AWSRoleARN:        k.GetAwsRoleArn(),
+			GCPServiceAccount: k.GetGcpServiceAccount(),
+		}
+	}
+	return s
+}
+
+func (i *IngestionDataSourceSettings) toProto() *pb.IngestionDataSourceSettings {
+	if i == nil {
+		return nil
+	}
+	// An empty/zero-valued config is treated the same as nil and clearing this setting.
+	if (IngestionDataSourceSettings{}) == *i {
+		return nil
+	}
+	pbs := &pb.IngestionDataSourceSettings{}
+	if out := i.Source; out != nil {
+		if k, ok := out.(*IngestionDataSourceAWSKinesis); ok {
+			pbs.Source = &pb.IngestionDataSourceSettings_AwsKinesis_{
+				AwsKinesis: &pb.IngestionDataSourceSettings_AwsKinesis{
+					State:             pb.IngestionDataSourceSettings_AwsKinesis_State(k.State),
+					StreamArn:         k.StreamARN,
+					ConsumerArn:       k.ConsumerARN,
+					AwsRoleArn:        k.AWSRoleARN,
+					GcpServiceAccount: k.GCPServiceAccount,
+				},
+			}
+		}
+	}
+	return pbs
 }
 
 // Config returns the TopicConfig for the topic.
@@ -436,6 +610,10 @@ func (t *Topic) updateRequest(cfg TopicConfigToUpdate) *pb.UpdateTopicRequest {
 			paths = append(paths, "schema_settings")
 			pt.SchemaSettings = nil
 		}
+	}
+	if cfg.IngestionDataSourceSettings != nil {
+		pt.IngestionDataSourceSettings = cfg.IngestionDataSourceSettings.toProto()
+		paths = append(paths, "ingestion_data_source_settings")
 	}
 	return &pb.UpdateTopicRequest{
 		Topic:      pt,
@@ -567,6 +745,12 @@ var errTopicOrderingNotEnabled = errors.New("Topic.EnableMessageOrdering=false, 
 // need to be stopped by calling t.Stop(). Once stopped, future calls to Publish
 // will immediately return a PublishResult with an error.
 func (t *Topic) Publish(ctx context.Context, msg *Message) *PublishResult {
+	var createSpan trace.Span
+	if t.enableTracing {
+		opts := getPublishSpanAttributes(t.c.projectID, t.ID(), msg)
+		ctx, createSpan = startSpan(ctx, createSpanName, t.ID(), opts...)
+		createSpan.SetAttributes(semconv.CodeFunction("Publish"))
+	}
 	ctx, err := tag.New(ctx, tag.Insert(keyStatus, "OK"), tag.Upsert(keyTopic, t.name))
 	if err != nil {
 		log.Printf("pubsub: cannot create context with tag in Publish: %v", err)
@@ -575,6 +759,7 @@ func (t *Topic) Publish(ctx context.Context, msg *Message) *PublishResult {
 	r := ipubsub.NewPublishResult()
 	if !t.EnableMessageOrdering && msg.OrderingKey != "" {
 		ipubsub.SetPublishResult(r, "", errTopicOrderingNotEnabled)
+		spanRecordError(createSpan, errTopicOrderingNotEnabled)
 		return r
 	}
 
@@ -585,25 +770,57 @@ func (t *Topic) Publish(ctx context.Context, msg *Message) *PublishResult {
 		Attributes:  msg.Attributes,
 		OrderingKey: msg.OrderingKey,
 	})
+	if t.enableTracing {
+		createSpan.SetAttributes(semconv.MessagingMessageBodySize(len(msg.Data)))
+	}
 
 	t.initBundler()
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	if t.stopped {
 		ipubsub.SetPublishResult(r, "", ErrTopicStopped)
+		spanRecordError(createSpan, ErrTopicStopped)
 		return r
 	}
 
+	var batcherSpan trace.Span
+	var fcSpan trace.Span
+
+	if t.enableTracing {
+		_, fcSpan = startSpan(ctx, publishFCSpanName, "")
+	}
 	if err := t.flowController.acquire(ctx, msgSize); err != nil {
 		t.scheduler.Pause(msg.OrderingKey)
 		ipubsub.SetPublishResult(r, "", err)
+		spanRecordError(fcSpan, err)
 		return r
 	}
-	err = t.scheduler.Add(msg.OrderingKey, &bundledMessage{msg, r, msgSize}, msgSize)
-	if err != nil {
+	if t.enableTracing {
+		fcSpan.End()
+	}
+
+	_, batcherSpan = startSpan(ctx, batcherSpanName, "")
+
+	bmsg := &bundledMessage{
+		msg:        msg,
+		res:        r,
+		size:       msgSize,
+		createSpan: createSpan,
+	}
+
+	if t.enableTracing {
+		bmsg.batcherSpan = batcherSpan
+
+		// Inject the context from the first publish span rather than from flow control / batching.
+		injectPropagation(ctx, msg)
+	}
+
+	if err := t.scheduler.Add(msg.OrderingKey, bmsg, msgSize); err != nil {
 		t.scheduler.Pause(msg.OrderingKey)
 		ipubsub.SetPublishResult(r, "", err)
+		spanRecordError(createSpan, err)
 	}
+
 	return r
 }
 
@@ -633,6 +850,10 @@ type bundledMessage struct {
 	msg  *Message
 	res  *PublishResult
 	size int
+	// createSpan is the entire publish createSpan (from user calling Publish to the publish RPC resolving).
+	createSpan trace.Span
+	// batcherSpan traces the message batching operation in publish scheduler.
+	batcherSpan trace.Span
 }
 
 func (t *Topic) initBundler() {
@@ -660,14 +881,23 @@ func (t *Topic) initBundler() {
 	}
 
 	t.scheduler = scheduler.NewPublishScheduler(workers, func(bundle interface{}) {
-		// TODO(jba): use a context detached from the one passed to NewClient.
-		ctx := context.TODO()
+		// Use a context detached from the one passed to NewClient.
+		ctx := context.Background()
 		if timeout != 0 {
 			var cancel func()
 			ctx, cancel = context.WithTimeout(ctx, timeout)
 			defer cancel()
 		}
-		t.publishMessageBundle(ctx, bundle.([]*bundledMessage))
+		bmsgs := bundle.([]*bundledMessage)
+		if t.enableTracing {
+			for _, m := range bmsgs {
+				m.batcherSpan.End()
+				m.createSpan.AddEvent(eventPublishStart, trace.WithAttributes(semconv.MessagingBatchMessageCount(len(bmsgs))))
+				defer m.createSpan.End()
+				defer m.createSpan.AddEvent(eventPublishEnd)
+			}
+		}
+		t.publishMessageBundle(ctx, bmsgs)
 	})
 	t.scheduler.DelayThreshold = t.PublishSettings.DelayThreshold
 	t.scheduler.BundleCountThreshold = t.PublishSettings.CountThreshold
@@ -720,17 +950,56 @@ func (t *Topic) publishMessageBundle(ctx context.Context, bms []*bundledMessage)
 	if err != nil {
 		log.Printf("pubsub: cannot create context with tag in publishMessageBundle: %v", err)
 	}
-	pbMsgs := make([]*pb.PubsubMessage, len(bms))
+	numMsgs := len(bms)
+	pbMsgs := make([]*pb.PubsubMessage, numMsgs)
 	var orderingKey string
+	if numMsgs != 0 {
+		// extract the ordering key for this batch. since
+		// messages in the same batch share the same ordering
+		// key, it doesn't matter which we read from.
+		orderingKey = bms[0].msg.OrderingKey
+	}
+
+	if t.enableTracing {
+		links := make([]trace.Link, 0, numMsgs)
+		for _, bm := range bms {
+			if bm.createSpan.SpanContext().IsSampled() {
+				links = append(links, trace.Link{SpanContext: bm.createSpan.SpanContext()})
+			}
+		}
+
+		projectID, topicID := parseResourceName(t.name)
+		var pSpan trace.Span
+		opts := getCommonOptions(projectID, topicID)
+		// Add link to publish RPC span of createSpan(s).
+		opts = append(opts, trace.WithLinks(links...))
+		ctx, pSpan = startSpan(ctx, publishRPCSpanName, topicID, opts...)
+		pSpan.SetAttributes(semconv.MessagingBatchMessageCount(numMsgs), semconv.CodeFunction("publishMessageBundle"))
+		defer pSpan.End()
+
+		// Add the reverse link to createSpan(s) of publish RPC span.
+		if pSpan.SpanContext().IsSampled() {
+			for _, bm := range bms {
+				bm.createSpan.AddLink(trace.Link{
+					SpanContext: pSpan.SpanContext(),
+					Attributes: []attribute.KeyValue{
+						semconv.MessagingOperationName(publishRPCSpanName),
+					},
+				})
+			}
+		}
+	}
+	var batchSize int
 	for i, bm := range bms {
-		orderingKey = bm.msg.OrderingKey
 		pbMsgs[i] = &pb.PubsubMessage{
 			Data:        bm.msg.Data,
 			Attributes:  bm.msg.Attributes,
 			OrderingKey: bm.msg.OrderingKey,
 		}
+		batchSize = batchSize + proto.Size(pbMsgs[i])
 		bm.msg = nil // release bm.msg for GC
 	}
+
 	var res *pb.PublishResponse
 	start := time.Now()
 	if orderingKey != "" && t.scheduler.IsPaused(orderingKey) {
@@ -744,11 +1013,17 @@ func (t *Topic) publishMessageBundle(ctx context.Context, bms []*bundledMessage)
 			opt.Resolve(&settings)
 		}
 		r := &publishRetryer{defaultRetryer: settings.Retry()}
+		gaxOpts := []gax.CallOption{
+			gax.WithGRPCOptions(grpc.MaxCallSendMsgSize(maxSendRecvBytes)),
+			gax.WithRetry(func() gax.Retryer { return r }),
+		}
+		if t.PublishSettings.shouldCompress(batchSize) {
+			gaxOpts = append(gaxOpts, gax.WithGRPCOptions(grpc.UseCompressor(gzip.Name)))
+		}
 		res, err = t.c.pubc.Publish(ctx, &pb.PublishRequest{
 			Topic:    t.name,
 			Messages: pbMsgs,
-		}, gax.WithGRPCOptions(grpc.MaxCallSendMsgSize(maxSendRecvBytes)),
-			gax.WithRetry(func() gax.Retryer { return r }))
+		}, gaxOpts...)
 	}
 	end := time.Now()
 	if err != nil {
@@ -765,8 +1040,12 @@ func (t *Topic) publishMessageBundle(ctx context.Context, bms []*bundledMessage)
 		t.flowController.release(ctx, bm.size)
 		if err != nil {
 			ipubsub.SetPublishResult(bm.res, "", err)
+			spanRecordError(bm.createSpan, err)
 		} else {
 			ipubsub.SetPublishResult(bm.res, res.MessageIds[i], nil)
+			if t.enableTracing {
+				bm.createSpan.SetAttributes(semconv.MessagingMessageIDKey.String(res.MessageIds[i]))
+			}
 		}
 	}
 }

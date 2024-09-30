@@ -17,6 +17,10 @@ service PlannerForBuilder {
 
 message BuilderToPlanner {
   string builderID = 1;
+  ProtoTaskResult result = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "result"
+  ];
 }
 
 message PlannerToBuilder {

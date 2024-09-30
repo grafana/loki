@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +14,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/compression"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
@@ -181,7 +181,7 @@ func TestFetcher_DownloadQueue(t *testing.T) {
 				_, err := newDownloadQueue[bool, bool](
 					tc.size,
 					tc.workers,
-					func(ctx context.Context, r downloadRequest[bool, bool]) {},
+					func(_ context.Context, _ downloadRequest[bool, bool]) {},
 					log.NewNopLogger(),
 				)
 				require.ErrorContains(t, err, tc.err)
@@ -267,6 +267,59 @@ func TestFetcher_DownloadQueue(t *testing.T) {
 		}
 
 	})
+
+	t.Run("download multiple items and return in order", func(t *testing.T) {
+		ctx := context.Background()
+
+		q, err := newDownloadQueue[bool, bool](
+			100,
+			1,
+			func(_ context.Context, r downloadRequest[bool, bool]) {
+				r.results <- downloadResponse[bool]{
+					key:  r.key,
+					idx:  r.idx,
+					item: true,
+				}
+			},
+			log.NewNopLogger(),
+		)
+		require.NoError(t, err)
+
+		count := 10
+		resultsCh := make(chan downloadResponse[bool], count)
+		errorsCh := make(chan error, count)
+
+		reqs := buildDownloadRequest(ctx, count, resultsCh, errorsCh)
+		for _, r := range reqs {
+			q.enqueue(r)
+		}
+
+		for i := 0; i < count; i++ {
+			select {
+			case err := <-errorsCh:
+				require.False(t, true, "got %+v should have received a response instead", err)
+			case res := <-resultsCh:
+				require.True(t, res.item)
+				require.Equal(t, reqs[i].key, res.key)
+				require.Equal(t, reqs[i].idx, res.idx)
+			}
+		}
+	})
+}
+
+func buildDownloadRequest(ctx context.Context, count int, resCh chan downloadResponse[bool], errCh chan error) []downloadRequest[bool, bool] {
+	requests := make([]downloadRequest[bool, bool], count)
+	for i := 0; i < count; i++ {
+		requests[i] = downloadRequest[bool, bool]{
+			ctx:     ctx,
+			item:    false,
+			key:     "test",
+			idx:     i,
+			results: resCh,
+			errors:  errCh,
+		}
+	}
+	return requests
 }
 
 func TestFetcher_LoadBlocksFromFS(t *testing.T) {
@@ -276,16 +329,16 @@ func TestFetcher_LoadBlocksFromFS(t *testing.T) {
 
 	refs := []BlockRef{
 		// no directory for block
-		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x0000, 0x0fff)}},
+		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x0000, 0x0fff)}, Codec: compression.None},
 		// invalid directory for block
-		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x1000, 0x1fff)}},
+		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x1000, 0x1fff)}, Codec: compression.Snappy},
 		// valid directory for block
-		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x2000, 0x2fff)}},
+		{Ref: Ref{TenantID: "tenant", TableName: "12345", Bounds: v1.NewBounds(0x2000, 0x2fff)}, Codec: compression.GZIP},
 	}
 	dirs := []string{
-		strings.TrimSuffix(resolver.Block(refs[0]).LocalPath(), ".tar.gz"),
-		strings.TrimSuffix(resolver.Block(refs[1]).LocalPath(), ".tar.gz"),
-		strings.TrimSuffix(resolver.Block(refs[2]).LocalPath(), ".tar.gz"),
+		localFilePathWithoutExtension(refs[0], resolver),
+		localFilePathWithoutExtension(refs[1], resolver),
+		localFilePathWithoutExtension(refs[2], resolver),
 	}
 
 	createBlockDir(t, dirs[1])
@@ -307,7 +360,7 @@ func TestFetcher_LoadBlocksFromFS(t *testing.T) {
 	require.Len(t, found, 1)
 	require.Len(t, missing, 2)
 
-	require.Equal(t, refs[2], found[0].BlockRef)
+	require.Equal(t, refs[2].Ref, found[0].Ref)
 	require.ElementsMatch(t, refs[0:2], missing)
 }
 

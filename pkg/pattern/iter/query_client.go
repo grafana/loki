@@ -42,7 +42,7 @@ func (i *queryClientIterator) At() logproto.PatternSample {
 	return i.curr.At()
 }
 
-func (i *queryClientIterator) Error() error {
+func (i *queryClientIterator) Err() error {
 	return i.err
 }
 

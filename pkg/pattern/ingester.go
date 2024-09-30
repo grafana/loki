@@ -16,12 +16,15 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	ring_client "github.com/grafana/dskit/ring/client"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/pattern/aggregation"
 	"github.com/grafana/loki/v3/pkg/pattern/clientpool"
+	"github.com/grafana/loki/v3/pkg/pattern/drain"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -30,11 +33,17 @@ import (
 const readBatchSize = 1024
 
 type Config struct {
-	Enabled           bool                  `yaml:"enabled,omitempty" doc:"description=Whether the pattern ingester is enabled."`
-	LifecyclerConfig  ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the pattern ingester will operate and where it will register for discovery."`
-	ClientConfig      clientpool.Config     `yaml:"client_config,omitempty" doc:"description=Configures how the pattern ingester will connect to the ingesters."`
-	ConcurrentFlushes int                   `yaml:"concurrent_flushes"`
-	FlushCheckPeriod  time.Duration         `yaml:"flush_check_period"`
+	Enabled              bool                  `yaml:"enabled,omitempty" doc:"description=Whether the pattern ingester is enabled."`
+	LifecyclerConfig     ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the pattern ingester will operate and where it will register for discovery."`
+	ClientConfig         clientpool.Config     `yaml:"client_config,omitempty" doc:"description=Configures how the pattern ingester will connect to the ingesters."`
+	ConcurrentFlushes    int                   `yaml:"concurrent_flushes"`
+	FlushCheckPeriod     time.Duration         `yaml:"flush_check_period"`
+	MaxClusters          int                   `yaml:"max_clusters,omitempty" doc:"description=The maximum number of detected pattern clusters that can be created by streams."`
+	MaxEvictionRatio     float64               `yaml:"max_eviction_ratio,omitempty" doc:"description=The maximum eviction ratio of patterns per stream. Once that ratio is reached, the stream will throttled pattern detection."`
+	MetricAggregation    aggregation.Config    `yaml:"metric_aggregation,omitempty" doc:"description=Configures the metric aggregation and storage behavior of the pattern ingester."`
+	TeeConfig            TeeConfig             `yaml:"tee_config,omitempty" doc:"description=Configures the pattern tee which forwards requests to the pattern ingester."`
+	ConnectionTimeout    time.Duration         `yaml:"connection_timeout"`
+	MaxAllowedLineLength int                   `yaml:"max_allowed_line_length,omitempty" doc:"description=The maximum length of log lines that can be used for pattern detection."`
 
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
@@ -44,9 +53,92 @@ type Config struct {
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlagsWithPrefix("pattern-ingester.", fs, util_log.Logger)
 	cfg.ClientConfig.RegisterFlags(fs)
-	fs.BoolVar(&cfg.Enabled, "pattern-ingester.enabled", false, "Flag to enable or disable the usage of the pattern-ingester component.")
-	fs.IntVar(&cfg.ConcurrentFlushes, "pattern-ingester.concurrent-flushes", 32, "How many flushes can happen concurrently from each stream.")
-	fs.DurationVar(&cfg.FlushCheckPeriod, "pattern-ingester.flush-check-period", 30*time.Second, "How often should the ingester see if there are any blocks to flush. The first flush check is delayed by a random time up to 0.8x the flush check period. Additionally, there is +/- 1% jitter added to the interval.")
+	cfg.MetricAggregation.RegisterFlagsWithPrefix(fs, "pattern-ingester.")
+	cfg.TeeConfig.RegisterFlags(fs, "pattern-ingester.")
+
+	fs.BoolVar(
+		&cfg.Enabled,
+		"pattern-ingester.enabled",
+		false,
+		"Flag to enable or disable the usage of the pattern-ingester component.",
+	)
+	fs.IntVar(
+		&cfg.ConcurrentFlushes,
+		"pattern-ingester.concurrent-flushes",
+		32,
+		"How many flushes can happen concurrently from each stream.",
+	)
+	fs.DurationVar(
+		&cfg.FlushCheckPeriod,
+		"pattern-ingester.flush-check-period",
+		1*time.Minute,
+		"How often should the ingester see if there are any blocks to flush. The first flush check is delayed by a random time up to 0.8x the flush check period. Additionally, there is +/- 1% jitter added to the interval.",
+	)
+	fs.IntVar(
+		&cfg.MaxClusters,
+		"pattern-ingester.max-clusters",
+		drain.DefaultConfig().MaxClusters,
+		"The maximum number of detected pattern clusters that can be created by the pattern ingester.",
+	)
+	fs.Float64Var(
+		&cfg.MaxEvictionRatio,
+		"pattern-ingester.max-eviction-ratio",
+		drain.DefaultConfig().MaxEvictionRatio,
+		"The maximum eviction ratio of patterns per stream. Once that ratio is reached, the stream will be throttled for pattern detection.",
+	)
+	fs.DurationVar(
+		&cfg.ConnectionTimeout,
+		"pattern-ingester.connection-timeout",
+		2*time.Second,
+		"Timeout for connections between the Loki and the pattern ingester.",
+	)
+	fs.IntVar(
+		&cfg.MaxAllowedLineLength,
+		"pattern-ingester.max-allowed-line-length",
+		drain.DefaultConfig().MaxAllowedLineLength,
+		"The maximum length of log lines that can be used for pattern detection.",
+	)
+}
+
+type TeeConfig struct {
+	BatchSize          int           `yaml:"batch_size"`
+	BatchFlushInterval time.Duration `yaml:"batch_flush_interval"`
+	FlushQueueSize     int           `yaml:"flush_queue_size"`
+	FlushWorkerCount   int           `yaml:"flush_worker_count"`
+	StopFlushTimeout   time.Duration `yaml:"stop_flush_timeout"`
+}
+
+func (cfg *TeeConfig) RegisterFlags(f *flag.FlagSet, prefix string) {
+	f.IntVar(
+		&cfg.BatchSize,
+		prefix+"tee.batch-size",
+		5000,
+		"The size of the batch of raw logs to send for template mining",
+	)
+	f.DurationVar(
+		&cfg.BatchFlushInterval,
+		prefix+"tee.batch-flush-interval",
+		time.Second,
+		"The max time between batches of raw logs to send for template mining",
+	)
+	f.IntVar(
+		&cfg.FlushQueueSize,
+		prefix+"tee.flush-queue-size",
+		1000,
+		"The number of log flushes to queue before dropping",
+	)
+	f.IntVar(
+		&cfg.FlushWorkerCount,
+		prefix+"tee.flush-worker-count",
+		100,
+		"the number of concurrent workers sending logs to the template service",
+	)
+	f.DurationVar(
+		&cfg.StopFlushTimeout,
+		prefix+"tee.stop-flush-timeout",
+		30*time.Second,
+		"The max time we will try to flush any remaining logs to be mined when the service is stopped",
+	)
 }
 
 func (cfg *Config) Validate() error {
@@ -59,6 +151,7 @@ func (cfg *Config) Validate() error {
 type Ingester struct {
 	services.Service
 	lifecycler *ring.Lifecycler
+	ringClient RingClient
 
 	lifecyclerWatcher *services.FailureWatcher
 
@@ -76,11 +169,13 @@ type Ingester struct {
 	loopDone        sync.WaitGroup
 	loopQuit        chan struct{}
 
-	metrics *ingesterMetrics
+	metrics  *ingesterMetrics
+	drainCfg *drain.Config
 }
 
 func New(
 	cfg Config,
+	ringClient RingClient,
 	metricsNamespace string,
 	registerer prometheus.Registerer,
 	logger log.Logger,
@@ -88,14 +183,20 @@ func New(
 	metrics := newIngesterMetrics(registerer, metricsNamespace)
 	registerer = prometheus.WrapRegistererWithPrefix(metricsNamespace+"_", registerer)
 
+	drainCfg := drain.DefaultConfig()
+	drainCfg.MaxClusters = cfg.MaxClusters
+	drainCfg.MaxEvictionRatio = cfg.MaxEvictionRatio
+
 	i := &Ingester{
 		cfg:         cfg,
+		ringClient:  ringClient,
 		logger:      log.With(logger, "component", "pattern-ingester"),
 		registerer:  registerer,
 		metrics:     metrics,
 		instances:   make(map[string]*instance),
 		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
 		loopQuit:    make(chan struct{}),
+		drainCfg:    drainCfg,
 	}
 	i.Service = services.NewBasicService(i.starting, i.running, i.stopping)
 	var err error
@@ -154,6 +255,7 @@ func (i *Ingester) stopping(_ error) error {
 		flushQueue.Close()
 	}
 	i.flushQueuesDone.Wait()
+	i.stopWriters()
 	return err
 }
 
@@ -185,13 +287,29 @@ func (i *Ingester) loop() {
 	flushTicker := util.NewTickerWithJitter(i.cfg.FlushCheckPeriod, j)
 	defer flushTicker.Stop()
 
-	for {
-		select {
-		case <-flushTicker.C:
-			i.sweepUsers(false, true)
-
-		case <-i.loopQuit:
-			return
+	if i.cfg.MetricAggregation.Enabled {
+		downsampleTicker := time.NewTimer(i.cfg.MetricAggregation.DownsamplePeriod)
+		defer downsampleTicker.Stop()
+		for {
+			select {
+			case <-flushTicker.C:
+				i.sweepUsers(false, true)
+			case t := <-downsampleTicker.C:
+				downsampleTicker.Reset(i.cfg.MetricAggregation.DownsamplePeriod)
+				now := model.TimeFromUnixNano(t.UnixNano())
+				i.downsampleMetrics(now)
+			case <-i.loopQuit:
+				return
+			}
+		}
+	} else {
+		for {
+			select {
+			case <-flushTicker.C:
+				i.sweepUsers(false, true)
+			case <-i.loopQuit:
+				return
+			}
 		}
 	}
 }
@@ -273,7 +391,35 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 	inst, ok = i.instances[instanceID]
 	if !ok {
 		var err error
-		inst, err = newInstance(instanceID, i.logger, i.metrics)
+		var writer aggregation.EntryWriter
+
+		aggCfg := i.cfg.MetricAggregation
+		if aggCfg.Enabled {
+			writer, err = aggregation.NewPush(
+				aggCfg.LokiAddr,
+				instanceID,
+				aggCfg.WriteTimeout,
+				aggCfg.PushPeriod,
+				aggCfg.HTTPClientConfig,
+				aggCfg.BasicAuth.Username,
+				string(aggCfg.BasicAuth.Password),
+				aggCfg.UseTLS,
+				&aggCfg.BackoffConfig,
+				i.logger,
+			)
+			if err != nil {
+				return nil, err
+			}
+		}
+		inst, err = newInstance(
+			instanceID,
+			i.logger,
+			i.metrics,
+			i.drainCfg,
+			i.ringClient,
+			i.lifecycler.ID,
+			writer,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -299,4 +445,22 @@ func (i *Ingester) getInstances() []*instance {
 		instances = append(instances, instance)
 	}
 	return instances
+}
+
+func (i *Ingester) stopWriters() {
+	instances := i.getInstances()
+
+	for _, instance := range instances {
+		if instance.writer != nil {
+			instance.writer.Stop()
+		}
+	}
+}
+
+func (i *Ingester) downsampleMetrics(ts model.Time) {
+	instances := i.getInstances()
+
+	for _, instance := range instances {
+		instance.Downsample(ts)
+	}
 }

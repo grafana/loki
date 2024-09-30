@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -19,6 +18,7 @@ import (
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
@@ -30,7 +30,7 @@ type options struct {
 	// return bloom blocks to pool after iteration; default=false
 	// NB(owen-d): this can only be safely used when blooms are not captured outside
 	// of iteration or it can introduce use-after-free bugs
-	usePool bool
+	usePool mempool.Allocator
 }
 
 func (o *options) apply(opts ...FetchOption) {
@@ -53,7 +53,7 @@ func WithFetchAsync(v bool) FetchOption {
 	}
 }
 
-func WithPool(v bool) FetchOption {
+func WithPool(v mempool.Allocator) FetchOption {
 	return func(opts *options) {
 		opts.usePool = v
 	}
@@ -222,7 +222,7 @@ func (f *Fetcher) writeBackMetas(ctx context.Context, metas []Meta) error {
 // FetchBlocks implements fetcher
 func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...FetchOption) ([]*CloseableBlockQuerier, error) {
 	// apply fetch options
-	cfg := &options{ignoreNotFound: true, fetchAsync: false, usePool: false}
+	cfg := &options{ignoreNotFound: true, fetchAsync: false, usePool: &mempool.SimpleHeapAllocator{}}
 	cfg.apply(opts...)
 
 	// first, resolve blocks from cache and enqueue missing blocks to download queue
@@ -239,7 +239,7 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 
 	var enqueueTime time.Duration
 	for i := 0; i < n; i++ {
-		key := f.client.Block(refs[i]).Addr()
+		key := cacheKey(refs[i])
 		dir, isFound, err := f.fromCache(ctx, key)
 		if err != nil {
 			return results, err
@@ -345,7 +345,7 @@ func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef
 		return
 	}
 
-	key := f.client.Block(result.BlockRef).Addr()
+	key := cacheKey(result.BlockRef)
 	if task.async {
 		// put item into cache
 		err = f.blocksCache.Put(ctx, key, result)
@@ -406,10 +406,9 @@ func (f *Fetcher) loadBlocksFromFS(_ context.Context, refs []BlockRef) ([]BlockD
 	missing := make([]BlockRef, 0, len(refs))
 
 	for _, ref := range refs {
-		path := f.localFSResolver.Block(ref).LocalPath()
-		// the block directory does not contain the .tar.gz extension
+		// the block directory does not contain the .tar(.compression) extension
 		// since it is stripped when the archive is extracted into a folder
-		path = strings.TrimSuffix(path, ".tar.gz")
+		path := localFilePathWithoutExtension(ref, f.localFSResolver)
 		if ok, clean := f.isBlockDir(path); ok {
 			blockDirs = append(blockDirs, NewBlockDirectory(ref, path))
 		} else {
@@ -502,6 +501,7 @@ func newDownloadQueue[T any, R any](size, workers int, process processFunc[T, R]
 func (q *downloadQueue[T, R]) enqueue(t downloadRequest[T, R]) {
 	if !t.async {
 		q.queue <- t
+		return
 	}
 	// for async task we attempt to dedupe task already in progress.
 	q.enqueuedMutex.Lock()

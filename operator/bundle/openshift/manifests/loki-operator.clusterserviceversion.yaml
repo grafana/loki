@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: quay.io/openshift-logging/loki-operator:0.1.0
-    createdAt: "2024-05-03T11:49:50Z"
+    createdAt: "2024-09-25T09:56:44Z"
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
@@ -374,6 +374,65 @@ spec:
         path: limits.global.ingestion.perStreamRateLimitBurst
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: IndexedResourceAttributes contains the global configuration for
+          resource attributes to store them as index labels.
+        displayName: Indexed Resource Attributes
+        path: limits.global.otlp.indexedResourceAttributes
+      - description: LogAttributes contains the configuration for log attributes to
+          store them as structured metadata or drop them altogether.
+        displayName: Log Attributes
+        path: limits.global.otlp.logAttributes
+      - description: Action defines the indexing action for the selected attributes.
+          They can be either added to structured metadata or drop altogether.
+        displayName: Action
+        path: limits.global.otlp.logAttributes[0].action
+      - description: Attributes allows choosing the attributes by listing their names.
+        displayName: Attribute Names
+        path: limits.global.otlp.logAttributes[0].attributes
+      - description: Regex allows choosing the attributes by matching a regular expression.
+        displayName: Regular Expression
+        path: limits.global.otlp.logAttributes[0].regex
+      - description: ResourceAttributes contains the configuration for resource attributes
+          to store them as index labels or structured metadata or drop them altogether.
+        displayName: Resource Attributes
+        path: limits.global.otlp.resourceAttributes
+      - description: Attributes contains the configuration for resource attributes
+          to store them as index labels or structured metadata or drop them altogether.
+        displayName: Attributes
+        path: limits.global.otlp.resourceAttributes.attributes
+      - description: Action defines the indexing action for the selected resoure attributes.
+          They can be either indexed as labels, added to structured metadata or drop
+          altogether.
+        displayName: Action
+        path: limits.global.otlp.resourceAttributes.attributes[0].action
+      - description: Attributes is the list of attributes to configure indexing or
+          drop them altogether.
+        displayName: Attribute Names
+        path: limits.global.otlp.resourceAttributes.attributes[0].attributes
+      - description: Regex allows choosing the attributes by matching a regular expression.
+        displayName: Regular Expression
+        path: limits.global.otlp.resourceAttributes.attributes[0].regex
+      - description: "IgnoreDefaults controls whether to ignore the global configuration
+          for resource attributes indexed as labels. \n If IgnoreDefaults is true,
+          then this spec needs to contain at least one mapping to a index label."
+        displayName: Ignore Global Defaults
+        path: limits.global.otlp.resourceAttributes.ignoreDefaults
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - description: ScopeAttributes contains the configuration for scope attributes
+          to store them as structured metadata or drop them altogether.
+        displayName: Scope Attributes
+        path: limits.global.otlp.scopeAttributes
+      - description: Action defines the indexing action for the selected attributes.
+          They can be either added to structured metadata or drop altogether.
+        displayName: Action
+        path: limits.global.otlp.scopeAttributes[0].action
+      - description: Attributes allows choosing the attributes by listing their names.
+        displayName: Attribute Names
+        path: limits.global.otlp.scopeAttributes[0].attributes
+      - description: Regex allows choosing the attributes by matching a regular expression.
+        displayName: Regular Expression
+        path: limits.global.otlp.scopeAttributes[0].regex
       - description: CardinalityLimit defines the cardinality limit for index queries.
         displayName: Cardinality Limit
         path: limits.global.queries.cardinalityLimit
@@ -395,6 +454,12 @@ spec:
           by a metric query.
         displayName: Max Query Series
         path: limits.global.queries.maxQuerySeries
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: MaxVolumeSeries defines the maximum number of aggregated series
+          in a log-volume response
+        displayName: Max Volume Series
+        path: limits.global.queries.maxVolumeSeries
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
       - description: Timeout when querying ingesters or storage during the execution
@@ -464,6 +529,61 @@ spec:
         path: limits.tenants.ingestion.perStreamRateLimitBurst
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: LogAttributes contains the configuration for log attributes to
+          store them as structured metadata or drop them altogether.
+        displayName: Log Attributes
+        path: limits.tenants.otlp.logAttributes
+      - description: Action defines the indexing action for the selected attributes.
+          They can be either added to structured metadata or drop altogether.
+        displayName: Action
+        path: limits.tenants.otlp.logAttributes[0].action
+      - description: Attributes allows choosing the attributes by listing their names.
+        displayName: Attribute Names
+        path: limits.tenants.otlp.logAttributes[0].attributes
+      - description: Regex allows choosing the attributes by matching a regular expression.
+        displayName: Regular Expression
+        path: limits.tenants.otlp.logAttributes[0].regex
+      - description: ResourceAttributes contains the configuration for resource attributes
+          to store them as index labels or structured metadata or drop them altogether.
+        displayName: Resource Attributes
+        path: limits.tenants.otlp.resourceAttributes
+      - description: Attributes contains the configuration for resource attributes
+          to store them as index labels or structured metadata or drop them altogether.
+        displayName: Attributes
+        path: limits.tenants.otlp.resourceAttributes.attributes
+      - description: Action defines the indexing action for the selected resoure attributes.
+          They can be either indexed as labels, added to structured metadata or drop
+          altogether.
+        displayName: Action
+        path: limits.tenants.otlp.resourceAttributes.attributes[0].action
+      - description: Attributes is the list of attributes to configure indexing or
+          drop them altogether.
+        displayName: Attribute Names
+        path: limits.tenants.otlp.resourceAttributes.attributes[0].attributes
+      - description: Regex allows choosing the attributes by matching a regular expression.
+        displayName: Regular Expression
+        path: limits.tenants.otlp.resourceAttributes.attributes[0].regex
+      - description: "IgnoreDefaults controls whether to ignore the global configuration
+          for resource attributes indexed as labels. \n If IgnoreDefaults is true,
+          then this spec needs to contain at least one mapping to a index label."
+        displayName: Ignore Global Defaults
+        path: limits.tenants.otlp.resourceAttributes.ignoreDefaults
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - description: ScopeAttributes contains the configuration for scope attributes
+          to store them as structured metadata or drop them altogether.
+        displayName: Scope Attributes
+        path: limits.tenants.otlp.scopeAttributes
+      - description: Action defines the indexing action for the selected attributes.
+          They can be either added to structured metadata or drop altogether.
+        displayName: Action
+        path: limits.tenants.otlp.scopeAttributes[0].action
+      - description: Attributes allows choosing the attributes by listing their names.
+        displayName: Attribute Names
+        path: limits.tenants.otlp.scopeAttributes[0].attributes
+      - description: Regex allows choosing the attributes by matching a regular expression.
+        displayName: Regular Expression
+        path: limits.tenants.otlp.scopeAttributes[0].regex
       - description: Blocked defines the list of rules to block matching queries.
         displayName: Blocked
         path: limits.tenants.queries.blocked
@@ -506,6 +626,12 @@ spec:
           by a metric query.
         displayName: Max Query Series
         path: limits.tenants.queries.maxQuerySeries
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: MaxVolumeSeries defines the maximum number of aggregated series
+          in a log-volume response
+        displayName: Max Volume Series
+        path: limits.tenants.queries.maxVolumeSeries
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
       - description: Timeout when querying ingesters or storage during the execution
@@ -1008,6 +1134,9 @@ spec:
       - description: The client-side certificate file path for the TLS configuration.
         displayName: Cert Path
         path: alertmanager.client.tls.certPath
+      - description: Skip validating server certificate.
+        displayName: Skip validating server certificate
+        path: alertmanager.client.tls.insecureSkipVerify
       - description: The client-side key file path for the TLS configuration.
         displayName: Key Path
         path: alertmanager.client.tls.keyPath
@@ -1157,6 +1286,9 @@ spec:
       - description: The client-side certificate file path for the TLS configuration.
         displayName: Cert Path
         path: overrides.alertmanager.client.tls.certPath
+      - description: Skip validating server certificate.
+        displayName: Skip validating server certificate
+        path: overrides.alertmanager.client.tls.insecureSkipVerify
       - description: The client-side key file path for the TLS configuration.
         displayName: Key Path
         path: overrides.alertmanager.client.tls.keyPath
@@ -1699,7 +1831,7 @@ spec:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI
-                  value: quay.io/openshift-logging/loki:v2.9.8
+                  value: quay.io/openshift-logging/loki:v3.1.1
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
@@ -1823,7 +1955,7 @@ spec:
   provider:
     name: Red Hat
   relatedImages:
-  - image: quay.io/openshift-logging/loki:v2.9.8
+  - image: quay.io/openshift-logging/loki:v3.1.1
     name: loki
   - image: quay.io/observatorium/api:latest
     name: gateway
