@@ -24,7 +24,7 @@ func logprotoEntryWithStructuredMetadata(ts int64, line string, structuredMetada
 	}
 }
 
-func generateData(enc compression.Encoding, chunksCount, blockSize, targetSize int) ([]Chunk, uint64) {
+func generateData(enc compression.Codec, chunksCount, blockSize, targetSize int) ([]Chunk, uint64) {
 	chunks := []Chunk{}
 	i := int64(0)
 	size := uint64(0)

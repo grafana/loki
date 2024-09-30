@@ -1,4 +1,4 @@
-package ingester
+package partition
 
 import (
 	"context"
@@ -20,10 +20,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/kafka"
 )
 
-// PartitionReader is responsible for reading data from a specific Kafka partition
+// Reader is responsible for reading data from a specific Kafka partition
 // and passing it to the consumer for processing. It is a core component of the
 // Loki ingester's Kafka-based ingestion pipeline.
-type PartitionReader struct {
+type Reader struct {
 	services.Service
 
 	kafkaCfg            kafka.Config
@@ -39,31 +39,31 @@ type PartitionReader struct {
 	reg     prometheus.Registerer
 }
 
-type record struct {
+type Record struct {
 	// Context holds the tracing (and potentially other) info, that the record was enriched with on fetch from Kafka.
-	ctx      context.Context
-	tenantID string
-	content  []byte
-	offset   int64
+	Ctx      context.Context
+	TenantID string
+	Content  []byte
+	Offset   int64
 }
 
 type ConsumerFactory func(committer Committer) (Consumer, error)
 
 type Consumer interface {
-	Start(ctx context.Context, recordsChan <-chan []record) func()
+	Start(ctx context.Context, recordsChan <-chan []Record) func()
 }
 
-// NewPartitionReader creates and initializes a new PartitionReader.
+// NewReader creates and initializes a new PartitionReader.
 // It sets up the basic service and initializes the reader with the provided configuration.
-func NewPartitionReader(
+func NewReader(
 	kafkaCfg kafka.Config,
 	partitionID int32,
 	instanceID string,
 	consumerFactory ConsumerFactory,
 	logger log.Logger,
 	reg prometheus.Registerer,
-) (*PartitionReader, error) {
-	r := &PartitionReader{
+) (*Reader, error) {
+	r := &Reader{
 		kafkaCfg:            kafkaCfg,
 		partitionID:         partitionID,
 		consumerGroup:       kafkaCfg.GetConsumerGroup(instanceID, partitionID),
@@ -79,7 +79,7 @@ func NewPartitionReader(
 
 // start initializes the Kafka client and committer for the PartitionReader.
 // This method is called when the PartitionReader service starts.
-func (p *PartitionReader) start(_ context.Context) error {
+func (p *Reader) start(_ context.Context) error {
 	var err error
 	p.client, err = kafka.NewReaderClient(p.kafkaCfg, p.metrics.kprom, p.logger,
 		kgo.ConsumePartitions(map[string]map[int32]kgo.Offset{
@@ -89,14 +89,14 @@ func (p *PartitionReader) start(_ context.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "creating kafka reader client")
 	}
-	p.committer = newPartitionCommitter(p.kafkaCfg, kadm.NewClient(p.client), p.partitionID, p.consumerGroup, p.logger, p.reg)
-
+	p.committer = newCommitter(p.kafkaCfg, kadm.NewClient(p.client), p.partitionID, p.consumerGroup, p.logger, p.reg)
+	// todo: attempt to ensure max lag timestamp on startup.
 	return nil
 }
 
 // run is the main loop of the PartitionReader. It continuously fetches and processes
 // data from Kafka, and send it to the consumer.
-func (p *PartitionReader) run(ctx context.Context) error {
+func (p *Reader) run(ctx context.Context) error {
 	level.Info(p.logger).Log("msg", "starting partition reader", "partition", p.partitionID, "consumer_group", p.consumerGroup)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -110,11 +110,12 @@ func (p *PartitionReader) run(ctx context.Context) error {
 	wait := consumer.Start(ctx, recordsChan)
 
 	wait()
+	p.committer.Stop()
 	return nil
 }
 
-func (p *PartitionReader) startFetchLoop(ctx context.Context) <-chan []record {
-	records := make(chan []record)
+func (p *Reader) startFetchLoop(ctx context.Context) <-chan []Record {
+	records := make(chan []Record)
 	go func() {
 		for {
 			select {
@@ -129,7 +130,7 @@ func (p *PartitionReader) startFetchLoop(ctx context.Context) <-chan []record {
 }
 
 // logFetchErrors logs any errors encountered during the fetch operation.
-func (p *PartitionReader) logFetchErrors(fetches kgo.Fetches) {
+func (p *Reader) logFetchErrors(fetches kgo.Fetches) {
 	mErr := multierror.New()
 	fetches.EachError(func(topic string, partition int32, err error) {
 		if errors.Is(err, context.Canceled) {
@@ -148,7 +149,7 @@ func (p *PartitionReader) logFetchErrors(fetches kgo.Fetches) {
 }
 
 // pollFetches retrieves the next batch of records from Kafka and measures the fetch duration.
-func (p *PartitionReader) poll(ctx context.Context) []record {
+func (p *Reader) poll(ctx context.Context) []Record {
 	defer func(start time.Time) {
 		p.metrics.fetchWaitDuration.Observe(time.Since(start).Seconds())
 	}(time.Now())
@@ -159,23 +160,27 @@ func (p *PartitionReader) poll(ctx context.Context) []record {
 	if fetches.NumRecords() == 0 {
 		return nil
 	}
-	records := make([]record, 0, fetches.NumRecords())
+	records := make([]Record, 0, fetches.NumRecords())
 	fetches.EachRecord(func(rec *kgo.Record) {
-		records = append(records, record{
+		if rec.Partition != p.partitionID {
+			level.Error(p.logger).Log("msg", "wrong partition record received", "partition", rec.Partition, "expected_partition", p.partitionID)
+			return
+		}
+		records = append(records, Record{
 			// This context carries the tracing data for this individual record;
 			// kotel populates this data when it fetches the messages.
-			ctx:      rec.Context,
-			tenantID: string(rec.Key),
-			content:  rec.Value,
-			offset:   rec.Offset,
+			Ctx:      rec.Context,
+			TenantID: string(rec.Key),
+			Content:  rec.Value,
+			Offset:   rec.Offset,
 		})
 	})
-	p.lastProcessedOffset = records[len(records)-1].offset
+	p.lastProcessedOffset = records[len(records)-1].Offset
 	return records
 }
 
 // recordFetchesMetrics updates various metrics related to the fetch operation.
-func (p *PartitionReader) recordFetchesMetrics(fetches kgo.Fetches) {
+func (p *Reader) recordFetchesMetrics(fetches kgo.Fetches) {
 	var (
 		now        = time.Now()
 		numRecords = 0

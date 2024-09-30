@@ -1173,7 +1173,7 @@ tenants.</p>
 <td>
 <em>(Optional)</em>
 <p>IndexedResourceAttributes contains the global configuration for resource attributes
-to store them as index labels or structured metadata or drop them altogether.</p>
+to store them as index labels.</p>
 </td>
 </tr>
 <tr>
@@ -2897,7 +2897,7 @@ to store them as index labels or structured metadata or drop them altogether.</p
 <td>
 <em>(Optional)</em>
 <p>ScopeAttributes contains the configuration for scope attributes
-to store them as index labels or structured metadata or drop them altogether.</p>
+to store them as structured metadata or drop them altogether.</p>
 </td>
 </tr>
 <tr>
@@ -2912,7 +2912,7 @@ to store them as index labels or structured metadata or drop them altogether.</p
 <td>
 <em>(Optional)</em>
 <p>LogAttributes contains the configuration for log attributes
-to store them as index labels or structured metadata or drop them altogether.</p>
+to store them as structured metadata or drop them altogether.</p>
 </td>
 </tr>
 </tbody>

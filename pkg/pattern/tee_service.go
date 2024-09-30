@@ -21,7 +21,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/util/constants"
 
 	ring_client "github.com/grafana/dskit/ring/client"
 )
@@ -77,10 +76,9 @@ func NewTeeService(
 		sendDuration: instrument.NewHistogramCollector(
 			promauto.With(registerer).NewHistogramVec(
 				prometheus.HistogramOpts{
-					Namespace: constants.Loki,
-					Name:      "pattern_ingester_tee_send_duration_seconds",
-					Help:      "Time spent sending batches from the tee to the pattern ingester",
-					Buckets:   prometheus.DefBuckets,
+					Name:    "pattern_ingester_tee_send_duration_seconds",
+					Help:    "Time spent sending batches from the tee to the pattern ingester",
+					Buckets: prometheus.DefBuckets,
 				}, instrument.HistogramCollectorBuckets,
 			),
 		),
