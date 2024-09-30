@@ -14,7 +14,7 @@ import (
 
 // smallBlockOpts returns a set of block options that are suitable for testing
 // characterized by small page sizes
-func smallBlockOpts(v Version, enc compression.Encoding) BlockOptions {
+func smallBlockOpts(v Version, enc compression.Codec) BlockOptions {
 	return BlockOptions{
 		Schema: Schema{
 			version:  v,
@@ -33,7 +33,7 @@ func setup(v Version) (BlockOptions, []SeriesWithBlooms, BlockWriter, BlockReade
 	bloomsBuf := bytes.NewBuffer(nil)
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
 	reader := NewByteReader(indexBuf, bloomsBuf)
-	return smallBlockOpts(v, compression.EncNone), data, writer, reader
+	return smallBlockOpts(v, compression.None), data, writer, reader
 }
 
 func TestV3Roundtrip(t *testing.T) {

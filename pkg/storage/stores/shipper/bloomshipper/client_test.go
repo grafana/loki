@@ -21,16 +21,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
-var supportedCompressions = []compression.Encoding{
-	compression.EncNone,
-	compression.EncGZIP,
-	compression.EncSnappy,
-	compression.EncLZ4_64k,
-	compression.EncLZ4_256k,
-	compression.EncLZ4_1M,
-	compression.EncLZ4_4M,
-	compression.EncFlate,
-	compression.EncZstd,
+var supportedCompressions = []compression.Codec{
+	compression.None,
+	compression.GZIP,
+	compression.Snappy,
+	compression.LZ4_64k,
+	compression.LZ4_256k,
+	compression.LZ4_1M,
+	compression.LZ4_4M,
+	compression.Flate,
+	compression.Zstd,
 }
 
 func parseTime(s string) model.Time {
@@ -209,7 +209,7 @@ func TestBloomClient_DeleteMetas(t *testing.T) {
 	})
 }
 
-func putBlock(t *testing.T, c *BloomClient, tenant string, start model.Time, minFp, maxFp model.Fingerprint, enc compression.Encoding) (Block, error) {
+func putBlock(t *testing.T, c *BloomClient, tenant string, start model.Time, minFp, maxFp model.Fingerprint, enc compression.Codec) (Block, error) {
 	step := int64((24 * time.Hour).Seconds())
 	day := start.Unix() / step
 
@@ -234,7 +234,7 @@ func putBlock(t *testing.T, c *BloomClient, tenant string, start model.Time, min
 				StartTimestamp: start,
 				EndTimestamp:   start.Add(12 * time.Hour),
 			},
-			Encoding: enc,
+			Codec: enc,
 		},
 		Data: fp,
 	}
@@ -273,9 +273,9 @@ func TestBloomClient_GetBlocks(t *testing.T) {
 	c, _ := newMockBloomClient(t)
 	ctx := context.Background()
 
-	b1, err := putBlock(t, c, "tenant", parseTime("2024-02-05 00:00"), 0x0000, 0x0fff, compression.EncGZIP)
+	b1, err := putBlock(t, c, "tenant", parseTime("2024-02-05 00:00"), 0x0000, 0x0fff, compression.GZIP)
 	require.NoError(t, err)
-	b2, err := putBlock(t, c, "tenant", parseTime("2024-02-05 00:00"), 0x1000, 0xffff, compression.EncNone)
+	b2, err := putBlock(t, c, "tenant", parseTime("2024-02-05 00:00"), 0x1000, 0xffff, compression.None)
 	require.NoError(t, err)
 
 	t.Run("exists", func(t *testing.T) {
@@ -318,7 +318,7 @@ func TestBloomClient_PutBlock(t *testing.T) {
 						StartTimestamp: start,
 						EndTimestamp:   start.Add(12 * time.Hour),
 					},
-					Encoding: enc,
+					Codec: enc,
 				},
 				Data: fp,
 			}
@@ -343,11 +343,11 @@ func TestBloomClient_DeleteBlocks(t *testing.T) {
 	c, _ := newMockBloomClient(t)
 	ctx := context.Background()
 
-	b1, err := putBlock(t, c, "tenant", parseTime("2024-02-05 00:00"), 0x0000, 0xffff, compression.EncNone)
+	b1, err := putBlock(t, c, "tenant", parseTime("2024-02-05 00:00"), 0x0000, 0xffff, compression.None)
 	require.NoError(t, err)
-	b2, err := putBlock(t, c, "tenant", parseTime("2024-02-06 00:00"), 0x0000, 0xffff, compression.EncGZIP)
+	b2, err := putBlock(t, c, "tenant", parseTime("2024-02-06 00:00"), 0x0000, 0xffff, compression.GZIP)
 	require.NoError(t, err)
-	b3, err := putBlock(t, c, "tenant", parseTime("2024-02-07 00:00"), 0x0000, 0xffff, compression.EncSnappy)
+	b3, err := putBlock(t, c, "tenant", parseTime("2024-02-07 00:00"), 0x0000, 0xffff, compression.Snappy)
 	require.NoError(t, err)
 
 	oc := c.client.(*testutils.InMemoryObjectClient)
