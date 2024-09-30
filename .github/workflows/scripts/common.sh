@@ -10,13 +10,13 @@ update_yaml_node() {
   local filename=$1
   local yaml_node=$2
   local new_value=$3
-  patch "$filename" <<<$(diff -U0 -w -b --ignore-blank-lines $filename <(yq eval "$yaml_node = \"$new_value\"" $filename))
+  patch "${filename}" <<<"$(diff -U0 -w -b --ignore-blank-lines "${filename}" <(yq eval "${yaml_node} = \"${new_value}\"" "${filename}"))"
 }
 
 get_yaml_node() {
   local filename=$1
   local yaml_node=$2
-  echo $(yq $yaml_node $filename)
+  yq "${yaml_node}" "${filename}"
 }
 
 # Increments the part of the semver string
@@ -24,22 +24,22 @@ get_yaml_node() {
 # $2: number of part: 0 – major, 1 – minor, 2 – patch
 increment_semver() {
   local delimiter=.
-  local array=($(echo "$1" | tr $delimiter '\n'))
+  local array=("$(echo "$1" | tr "${delimiter}" '\n')")
   array[$2]=$((array[$2] + 1))
-  echo $(
-    local IFS=$delimiter
+  echo "$(
+    local IFS=${delimiter}
     echo "${array[*]}"
-  )
+  )"
 }
 
 # Sets the patch segment of a semver to 0
 # $1: version itself
 set_semver_patch_to_zero() {
   local delimiter=.
-  local array=($(echo "$1" | tr $delimiter '\n'))
+  local array=("$(echo "$1" | tr "${delimiter}" '\n')")
   array[2]="0"
-  echo $(
-    local IFS=$delimiter
+  echo "$(
+    local IFS=${delimiter}
     echo "${array[*]}"
-  )
+  )"
 }
