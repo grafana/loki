@@ -95,14 +95,20 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
-          {{- with .Values.compactor.extraEnv }}
           env:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- with .Values.compactor.extraEnvFrom }}
+            {{- with .Values.global.extraEnv }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- with .Values.compactor.extraEnv }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
           envFrom:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{- with .Values.global.extraEnvFrom }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- with .Values.compactor.extraEnvFrom }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
           {{- include "loki.compactor.readinessProbe" . | nindent 10 }}

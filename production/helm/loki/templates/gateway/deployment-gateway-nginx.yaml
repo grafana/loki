@@ -64,11 +64,20 @@ spec:
             - name: http-metrics
               containerPort: {{ .Values.gateway.containerPort }}
               protocol: TCP
-          {{- with .Values.gateway.extraEnv }}
           env:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- with .Values.gateway.extraEnvFrom }}
+            {{- with .Values.global.extraEnv }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- with .Values.gateway.extraEnv }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
+          envFrom:
+            {{- with .Values.global.extraEnvFrom }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- with .Values.gateway.extraEnvFrom }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}

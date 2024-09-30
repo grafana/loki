@@ -10,6 +10,16 @@ global:
   dnsService: "kube-dns"
   # -- configures DNS service namespace
   dnsNamespace: "kube-system"
+  # -- Common environment variables to add to all pods directly managed by this chart.
+  # scope: backend, bloom-builder, bloom-gateway, bloom-planner, compactor, distributor, gateway, index-gateway, ingester, pattern-ingester, querier, query-frontend, query-scheduler, read, ruler, single-binary, table-manager, write
+  extraEnv: []
+  # -- Common environment injections to add to all pods directly managed by this chart.
+  # scope: backend, bloom-builder, bloom-gateway, bloom-planner, compactor, distributor, gateway, index-gateway, ingester, pattern-ingester, querier, query-frontend, query-scheduler, read, ruler, single-binary, table-manager, write
+  # For example to inject values from a Secret, use:
+  # extraEnvFrom:
+  #   - secretRef:
+  #       name: mysecret
+  extraEnvFrom: []
 # -- Overrides the chart's name
 nameOverride: null
 # -- Overrides the chart's computed fullname

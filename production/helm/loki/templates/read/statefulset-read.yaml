@@ -98,14 +98,20 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
-          {{- with .Values.read.extraEnv }}
           env:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- with .Values.read.extraEnvFrom }}
+            {{- with .Values.global.extraEnv }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- with .Values.read.extraEnv }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
           envFrom:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{- with .Values.global.extraEnvFrom }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- with .Values.read.extraEnvFrom }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
           readinessProbe:
