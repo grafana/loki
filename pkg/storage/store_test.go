@@ -1894,6 +1894,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 
 	// recreate the store because boltdb-shipper now runs queriers on snapshots which are created every 1 min and during startup.
 	store.Stop()
+	ResetBoltDBIndexClientsWithShipper()
 
 	// there should be 2 index tables in the object storage
 	indexTables, err := os.ReadDir(filepath.Join(cfg.FSConfig.Directory, "index"))
@@ -2036,7 +2037,7 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 		metric := labelsBuilder.Labels()
 		fp := client.Fingerprint(lbs)
 
-		chunkEnc := chunkenc.NewMemChunk(chunkfmt, compression.EncLZ4_4M, headfmt, 262144, 1572864)
+		chunkEnc := chunkenc.NewMemChunk(chunkfmt, compression.LZ4_4M, headfmt, 262144, 1572864)
 		for ts := chkFrom; !ts.After(chkThrough); ts = ts.Add(time.Second) {
 			entry := logproto.Entry{
 				Timestamp: ts,

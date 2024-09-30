@@ -37,8 +37,8 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make release-workflows` after changing this
-BUILD_IMAGE_VERSION ?= 0.33.6
-GO_VERSION := 1.22.6
+BUILD_IMAGE_VERSION ?= 0.34.0
+GO_VERSION := 1.23.1
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
