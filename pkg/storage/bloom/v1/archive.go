@@ -21,7 +21,7 @@ type TarEntry struct {
 	Body io.ReadSeeker
 }
 
-func TarCompress(enc compression.Encoding, dst io.Writer, reader BlockReader) error {
+func TarCompress(enc compression.Codec, dst io.Writer, reader BlockReader) error {
 	comprPool := compression.GetWriterPool(enc)
 	comprWriter := comprPool.GetWriter(dst)
 	defer func() {
@@ -61,7 +61,7 @@ func Tar(dst io.Writer, reader BlockReader) error {
 	return itr.Err()
 }
 
-func UnTarCompress(enc compression.Encoding, dst string, r io.Reader) error {
+func UnTarCompress(enc compression.Codec, dst string, r io.Reader) error {
 	comprPool := compression.GetReaderPool(enc)
 	comprReader, err := comprPool.GetReader(r)
 	if err != nil {

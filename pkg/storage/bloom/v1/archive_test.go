@@ -24,7 +24,7 @@ func TestArchive(t *testing.T) {
 		BlockOptions{
 			Schema: Schema{
 				version:  CurrentSchemaVersion,
-				encoding: compression.EncNone,
+				encoding: compression.None,
 			},
 			SeriesPageSize: 100,
 			BloomPageSize:  10 << 10,
@@ -82,17 +82,17 @@ func TestArchive(t *testing.T) {
 func TestArchiveCompression(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		enc compression.Encoding
+		enc compression.Codec
 	}{
-		{compression.EncNone},
-		{compression.EncGZIP},
-		{compression.EncSnappy},
-		{compression.EncLZ4_64k},
-		{compression.EncLZ4_256k},
-		{compression.EncLZ4_1M},
-		{compression.EncLZ4_4M},
-		{compression.EncFlate},
-		{compression.EncZstd},
+		{compression.None},
+		{compression.GZIP},
+		{compression.Snappy},
+		{compression.LZ4_64k},
+		{compression.LZ4_256k},
+		{compression.LZ4_1M},
+		{compression.LZ4_4M},
+		{compression.Flate},
+		{compression.Zstd},
 	} {
 		t.Run(tc.enc.String(), func(t *testing.T) {
 			// for writing files to two dirs for comparison and ensuring they're equal
@@ -106,7 +106,7 @@ func TestArchiveCompression(t *testing.T) {
 				BlockOptions{
 					Schema: Schema{
 						version:  CurrentSchemaVersion,
-						encoding: compression.EncNone,
+						encoding: compression.None,
 					},
 					SeriesPageSize: 100,
 					BloomPageSize:  10 << 10,

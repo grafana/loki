@@ -540,6 +540,10 @@ enterprise:
     labels: {}
     # -- Additional annotations for the `tokengen` Job
     annotations: {}
+    # -- Affinity for tokengen Pods
+    affinity: {}
+    # -- Node selector for tokengen Pods
+    nodeSelector: {}
     # -- Tolerations for tokengen Job
     tolerations: []
     # -- Additional volumes for Pods
@@ -575,6 +579,12 @@ enterprise:
     labels: {}
     # -- Additional annotations for the `provisioner` Job
     annotations: {}
+    # -- Affinity for tokengen Pods
+    affinity: {}
+    # -- Node selector for tokengen Pods
+    nodeSelector: {}
+    # -- Tolerations for tokengen Pods
+    tolerations: []
     # -- The name of the PriorityClass for provisioner Job
     priorityClassName: null
     # -- Run containers as user `enterprise-logs(uid=10001)`

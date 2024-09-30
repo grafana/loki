@@ -145,7 +145,7 @@ func (t *indexSet) uploadIndex(ctx context.Context, idx index.Index) error {
 		}
 	}()
 
-	gzipPool := compression.GetWriterPool(compression.EncGZIP)
+	gzipPool := compression.GetWriterPool(compression.GZIP)
 	compressedWriter := gzipPool.GetWriter(f)
 	defer gzipPool.PutWriter(compressedWriter)
 

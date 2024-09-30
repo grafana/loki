@@ -9,13 +9,13 @@
   releasePRWorkflow: function(
     branches=['release-[0-9]+.[0-9]+.x', 'k[0-9]+'],
     buildArtifactsBucket='loki-build-artifacts',
-    buildImage='grafana/loki-build-image:0.33.0',
+    buildImage='grafana/loki-build-image:0.34.0',
     changelogPath='CHANGELOG.md',
     checkTemplate='./.github/workflows/check.yml',
     distMakeTargets=['dist', 'packages'],
     dryRun=false,
     dockerUsername='grafana',
-    golangCiLintVersion='v1.55.1',
+    golangCiLintVersion='v1.60.3',
     imageBuildTimeoutMin=25,
     imageJobs={},
     imagePrefix='grafana',
@@ -139,7 +139,7 @@
             type: 'boolean',
           },
           golang_ci_lint_version: {
-            default: 'v1.55.1',
+            default: 'v1.60.3',
             description: 'version of golangci-lint to use',
             required: false,
             type: 'string',
@@ -190,7 +190,7 @@
             type: 'boolean',
           },
           golang_ci_lint_version: {
-            default: 'v1.55.1',
+            default: 'v1.60.3',
             description: 'version of golangci-lint to use',
             required: false,
             type: 'string',

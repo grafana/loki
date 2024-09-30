@@ -490,7 +490,7 @@ func (l *Limits) Validate() error {
 		return errors.Wrap(err, "invalid tsdb sharding strategy")
 	}
 
-	if _, err := compression.ParseEncoding(l.BloomBlockEncoding); err != nil {
+	if _, err := compression.ParseCodec(l.BloomBlockEncoding); err != nil {
 		return err
 	}
 

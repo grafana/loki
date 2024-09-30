@@ -339,7 +339,7 @@ func TestLimitsValidation(t *testing.T) {
 		},
 		{
 			limits:   Limits{DeletionMode: "disabled", BloomBlockEncoding: "unknown"},
-			expected: fmt.Errorf("invalid encoding: unknown, supported: %s", compression.SupportedEncoding()),
+			expected: fmt.Errorf("invalid encoding: unknown, supported: %s", compression.SupportedCodecs()),
 		},
 	} {
 		desc := fmt.Sprintf("%s/%s", tc.limits.DeletionMode, tc.limits.BloomBlockEncoding)
