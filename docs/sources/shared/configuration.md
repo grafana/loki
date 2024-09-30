@@ -2248,6 +2248,10 @@ ring:
   # CLI flag: -distributor.ring.instance-interface-names
   [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
 
+# Number of workers to push batches to ingesters.
+# CLI flag: -distributor.push-worker-count
+[push_worker_count: <int> | default = 256]
+
 rate_store:
   # The max number of concurrent requests to make to ingester stream apis
   # CLI flag: -distributor.rate-store.max-request-parallelism
