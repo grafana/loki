@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "production/helm/**"
+      - ".github/workflows/helm-ci.yml"
 
 env:
   CT_CONFIGFILE: production/helm/ct.yaml
