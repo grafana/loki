@@ -1818,6 +1818,10 @@ storage:
       # CLI flag: -common.storage.thanos.s3.insecure
       [insecure: <boolean> | default = false]
 
+      # Disable forcing S3 dualstack endpoint usage.
+      # CLI flag: -common.storage.thanos.s3.disable-dualstack
+      [disable_dualstack: <boolean> | default = false]
+
       # The signature version to use for authenticating against S3. Supported
       # values are: v4.
       # CLI flag: -common.storage.thanos.s3.signature-version
@@ -4916,6 +4920,8 @@ storage:
 
       [insecure: <boolean>]
 
+      [disable_dualstack: <boolean>]
+
       [signature_version: <string> | default = ""]
 
       [storage_class: <string> | default = ""]
@@ -6210,6 +6216,10 @@ objstore_config:
     # S3-compatible backend storage, like Minio.
     # CLI flag: -thanos.s3.insecure
     [insecure: <boolean> | default = false]
+
+    # Disable forcing S3 dualstack endpoint usage.
+    # CLI flag: -thanos.s3.disable-dualstack
+    [disable_dualstack: <boolean> | default = false]
 
     # The signature version to use for authenticating against S3. Supported
     # values are: v4.

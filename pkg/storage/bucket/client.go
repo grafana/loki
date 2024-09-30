@@ -183,16 +183,7 @@ func NewClient(ctx context.Context, cfg Config, name string, logger log.Logger, 
 		client = NewPrefixedBucketClient(client, cfg.StoragePrefix)
 	}
 
-	if metrics.BucketMetrics != nil {
-		client = bucketWrapWith(client, metrics.BucketMetrics)
-	} else {
-		bucketMetrics := bucketMetrics(name, metrics.Registerer)
-		client = bucketWrapWith(client, bucketMetrics)
-		// Save metrics to be assigned to other buckets created with the same component name
-		metrics.BucketMetrics = bucketMetrics
-	}
-
-	instrumentedClient := objstoretracing.WrapWithTraces(client)
+	instrumentedClient := objstoretracing.WrapWithTraces(bucketWithMetrics(client, name, metrics))
 
 	// Wrap the client with any provided middleware
 	for _, wrap := range cfg.Middlewares {
@@ -205,16 +196,18 @@ func NewClient(ctx context.Context, cfg Config, name string, logger log.Logger, 
 	return instrumentedClient, nil
 }
 
-func bucketMetrics(name string, reg prometheus.Registerer) *objstore.Metrics {
-	reg = prometheus.WrapRegistererWithPrefix("loki_", reg)
-	reg = prometheus.WrapRegistererWith(prometheus.Labels{"component": name}, reg)
-	return objstore.BucketMetrics(reg, "")
-}
-
-func bucketWrapWith(bucketClient objstore.Bucket, metrics *objstore.Metrics) objstore.Bucket {
+func bucketWithMetrics(bucketClient objstore.Bucket, name string, metrics *Metrics) objstore.Bucket {
 	if metrics == nil {
 		return bucketClient
 	}
 
-	return objstore.WrapWith(bucketClient, metrics)
+	if metrics.BucketMetrics == nil {
+		reg := metrics.Registerer
+		reg = prometheus.WrapRegistererWithPrefix("loki_", reg)
+		reg = prometheus.WrapRegistererWith(prometheus.Labels{"component": name}, reg)
+		// Save metrics to be assigned to other buckets created with the same component name
+		metrics.BucketMetrics = objstore.BucketMetrics(reg, "")
+	}
+
+	return objstore.WrapWith(bucketClient, metrics.BucketMetrics)
 }
