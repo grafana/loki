@@ -109,7 +109,7 @@ func newChunk(chunkFormat byte, headBlockFmt chunkenc.HeadBlockFmt, stream logpr
 		lbs = builder.Labels()
 	}
 	from, through := loki_util.RoundToMilliseconds(stream.Entries[0].Timestamp, stream.Entries[len(stream.Entries)-1].Timestamp)
-	chk := chunkenc.NewMemChunk(chunkFormat, compression.EncGZIP, headBlockFmt, 256*1024, 0)
+	chk := chunkenc.NewMemChunk(chunkFormat, compression.GZIP, headBlockFmt, 256*1024, 0)
 	for _, e := range stream.Entries {
 		_, _ = chk.Append(&e)
 	}

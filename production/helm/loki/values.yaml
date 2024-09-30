@@ -50,8 +50,6 @@ loki:
     # -- Docker image repository
     repository: grafana/loki
     # -- Overrides the image tag whose default is the chart's appVersion
-    # TODO: needed for 3rd target backend functionality
-    # revert to null or latest once this behavior is relased
     tag: null
     # -- Overrides the image tag with an image digest
     digest: null
@@ -541,6 +539,10 @@ enterprise:
     labels: {}
     # -- Additional annotations for the `tokengen` Job
     annotations: {}
+    # -- Affinity for tokengen Pods
+    affinity: {}
+    # -- Node selector for tokengen Pods
+    nodeSelector: {}
     # -- Tolerations for tokengen Job
     tolerations: []
     # -- Additional volumes for Pods
@@ -576,6 +578,12 @@ enterprise:
     labels: {}
     # -- Additional annotations for the `provisioner` Job
     annotations: {}
+    # -- Affinity for tokengen Pods
+    affinity: {}
+    # -- Node selector for tokengen Pods
+    nodeSelector: {}
+    # -- Tolerations for tokengen Pods
+    tolerations: []
     # -- The name of the PriorityClass for provisioner Job
     priorityClassName: null
     # -- Run containers as user `enterprise-logs(uid=10001)`
