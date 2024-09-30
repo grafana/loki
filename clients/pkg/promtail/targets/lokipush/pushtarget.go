@@ -153,7 +153,8 @@ func (t *PushTarget) handleLoki(w http.ResponseWriter, r *http.Request) {
 			e := api.Entry{
 				Labels: filtered.Clone(),
 				Entry: logproto.Entry{
-					Line: entry.Line,
+					Line:               entry.Line,
+					StructuredMetadata: entry.StructuredMetadata,
 				},
 			}
 			if t.config.KeepTimestamp {
