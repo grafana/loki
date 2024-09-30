@@ -189,7 +189,7 @@ func buildChunkDecs(t testing.TB) []*chunkDesc {
 	for i := range res {
 		res[i] = &chunkDesc{
 			closed: true,
-			chunk:  chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.EncSnappy, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, dummyConf().BlockSize, dummyConf().TargetChunkSize),
+			chunk:  chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.Snappy, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, dummyConf().BlockSize, dummyConf().TargetChunkSize),
 		}
 		fillChunk(t, res[i].chunk)
 		require.NoError(t, res[i].chunk.Close())

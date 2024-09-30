@@ -2037,7 +2037,7 @@ func TestQueryReferencingStructuredMetadata(t *testing.T) {
 		metric := labelsBuilder.Labels()
 		fp := client.Fingerprint(lbs)
 
-		chunkEnc := chunkenc.NewMemChunk(chunkfmt, compression.EncLZ4_4M, headfmt, 262144, 1572864)
+		chunkEnc := chunkenc.NewMemChunk(chunkfmt, compression.LZ4_4M, headfmt, 262144, 1572864)
 		for ts := chkFrom; !ts.After(chkThrough); ts = ts.Add(time.Second) {
 			entry := logproto.Entry{
 				Timestamp: ts,
