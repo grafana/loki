@@ -20,9 +20,7 @@ func AlertingRuleTenantLabels(ar *lokiv1.AlertingRule) {
 
 func appendAlertingRuleLabels(ar *lokiv1.AlertingRule, labels map[string]string) {
 	for groupIdx, group := range ar.Spec.Groups {
-		group := group
 		for ruleIdx, rule := range group.Rules {
-			rule := rule
 			if rule.Labels == nil {
 				rule.Labels = map[string]string{}
 			}

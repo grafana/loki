@@ -20,9 +20,7 @@ func RecordingRuleTenantLabels(r *lokiv1.RecordingRule) {
 
 func appendRecordingRuleLabels(ar *lokiv1.RecordingRule, labels map[string]string) {
 	for groupIdx, group := range ar.Spec.Groups {
-		group := group
 		for ruleIdx, rule := range group.Rules {
-			rule := rule
 			if rule.Labels == nil {
 				rule.Labels = map[string]string{}
 			}
