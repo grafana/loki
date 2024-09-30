@@ -1,0 +1,37 @@
+name: helm-weekly-release-pr
+
+on:
+  schedule:
+    - cron: '0 10 * * 1-5' # 10 UTC on weekdays; if we miss published images one day, they should align the day after
+
+  workflow_dispatch: # for manual testing
+
+jobs:
+  weekly-release-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: imjasonh/setup-crane@v0.4
+
+      - id: "get_github_app_token"
+        name: "get github app token"
+        uses: "actions/create-github-app-token@v1"
+        with:
+          app-id: "${{ secrets.APP_ID }}"
+          owner: "${{ github.repository_owner }}"
+          private-key: "${{ secrets.APP_PRIVATE_KEY }}"
+
+      - name: Update/regenerate files
+        id: update
+        run: bash .github/workflows/scripts/helm-weekly-release.sh
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ steps.get_github_app_token.outputs.token }}
+          title: Release loki Helm chart ${{ steps.update.outputs.new_chart_version }}
+          body: Automated PR created by [helm-weekly-release-pr.yaml](https://github.com/grafana/loki/blob/main/.github/workflows/helm-weekly-release-pr.yaml)
+          commit-message: Update loki chart to ${{ steps.update.outputs.new_chart_version }}
+          branch: helm-chart-weekly-${{ steps.update.outputs.new_chart_version }}
+          base: main
+          labels: helm
