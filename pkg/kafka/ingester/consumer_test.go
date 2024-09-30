@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/objstore"
 	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -32,6 +33,11 @@ func (m *mockCommitter) Commit(_ context.Context, offset int64) error {
 	return nil
 }
 
+func (m *mockCommitter) EnqueueOffset(offset int64) {
+	// For testing purposes, we'll just set the committed offset directly
+	m.committed = offset
+}
+
 func TestConsumer_PeriodicFlush(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -45,12 +51,12 @@ func TestConsumer_PeriodicFlush(t *testing.T) {
 	flushInterval := 100 * time.Millisecond
 	maxFlushSize := int64(1000)
 
-	committer := &mockCommitter{}
+	committer := newMockCommitter()
 	consumerFactory := NewConsumerFactory(metastore, storage, flushInterval, maxFlushSize, log.NewLogfmtLogger(os.Stdout), reg)
 	consumer, err := consumerFactory(committer)
 	require.NoError(t, err)
 
-	recordsChan := make(chan []record)
+	recordsChan := make(chan []partition.Record)
 	_ = consumer.Start(ctx, recordsChan)
 
 	stream := logproto.Stream{
@@ -63,10 +69,10 @@ func TestConsumer_PeriodicFlush(t *testing.T) {
 	encodedRecords, err := kafka.Encode(0, "tenant1", stream, 10<<20)
 	require.NoError(t, err)
 
-	records := []record{{
-		tenantID: "tenant1",
-		content:  encodedRecords[0].Value,
-		offset:   0,
+	records := []partition.Record{{
+		TenantID: "tenant1",
+		Content:  encodedRecords[0].Value,
+		Offset:   0,
 	}}
 
 	recordsChan <- records
@@ -98,12 +104,12 @@ func TestConsumer_ShutdownFlush(t *testing.T) {
 	flushInterval := 1 * time.Hour
 	maxFlushSize := int64(1000)
 
-	committer := &mockCommitter{}
+	committer := newMockCommitter()
 	consumerFactory := NewConsumerFactory(metastore, storage, flushInterval, maxFlushSize, log.NewLogfmtLogger(os.Stdout), reg)
 	consumer, err := consumerFactory(committer)
 	require.NoError(t, err)
 
-	recordsChan := make(chan []record)
+	recordsChan := make(chan []partition.Record)
 	wait := consumer.Start(ctx, recordsChan)
 
 	stream := logproto.Stream{
@@ -116,10 +122,10 @@ func TestConsumer_ShutdownFlush(t *testing.T) {
 	encodedRecords, err := kafka.Encode(0, "tenant1", stream, 10<<20)
 	require.NoError(t, err)
 
-	records := []record{{
-		tenantID: "tenant1",
-		content:  encodedRecords[0].Value,
-		offset:   0,
+	records := []partition.Record{{
+		TenantID: "tenant1",
+		Content:  encodedRecords[0].Value,
+		Offset:   0,
 	}}
 
 	recordsChan <- records
@@ -152,12 +158,12 @@ func TestConsumer_MaxFlushSize(t *testing.T) {
 	flushInterval := 1 * time.Hour
 	maxFlushSize := int64(10)
 
-	committer := &mockCommitter{}
+	committer := newMockCommitter()
 	consumerFactory := NewConsumerFactory(metastore, storage, flushInterval, maxFlushSize, log.NewLogfmtLogger(os.Stdout), reg)
 	consumer, err := consumerFactory(committer)
 	require.NoError(t, err)
 
-	recordsChan := make(chan []record)
+	recordsChan := make(chan []partition.Record)
 	_ = consumer.Start(ctx, recordsChan)
 
 	stream := logproto.Stream{
@@ -170,10 +176,10 @@ func TestConsumer_MaxFlushSize(t *testing.T) {
 	encodedRecords, err := kafka.Encode(0, "tenant1", stream, 10<<20)
 	require.NoError(t, err)
 
-	records := []record{{
-		tenantID: "tenant1",
-		content:  encodedRecords[0].Value,
-		offset:   0,
+	records := []partition.Record{{
+		TenantID: "tenant1",
+		Content:  encodedRecords[0].Value,
+		Offset:   0,
 	}}
 
 	recordsChan <- records

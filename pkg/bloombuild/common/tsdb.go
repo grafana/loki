@@ -105,7 +105,7 @@ func (b *BloomTSDBStore) LoadTSDB(
 	}
 	defer data.Close()
 
-	decompressorPool := compression.GetReaderPool(compression.EncGZIP)
+	decompressorPool := compression.GetReaderPool(compression.GZIP)
 	decompressor, err := decompressorPool.GetReader(data)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get decompressor")

@@ -34,7 +34,7 @@ import (
 )
 
 // TODO(chaudum): Make configurable via (per-tenant?) setting.
-var blockCompressionAlgo = compression.EncNone
+var defaultBlockCompressionCodec = compression.None
 
 type Builder struct {
 	services.Service
@@ -336,7 +336,7 @@ func (b *Builder) processTask(
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
 
-	blockEnc, err := compression.ParseEncoding(b.limits.BloomBlockEncoding(task.Tenant))
+	blockEnc, err := compression.ParseCodec(b.limits.BloomBlockEncoding(task.Tenant))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse block encoding: %w", err)
 	}
@@ -407,7 +407,7 @@ func (b *Builder) processTask(
 			blockCt++
 			blk := newBlocks.At()
 
-			built, err := bloomshipper.BlockFrom(blockCompressionAlgo, tenant, task.Table.Addr(), blk)
+			built, err := bloomshipper.BlockFrom(defaultBlockCompressionCodec, tenant, task.Table.Addr(), blk)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to build block", "err", err)
 				if err = blk.Reader().Cleanup(); err != nil {

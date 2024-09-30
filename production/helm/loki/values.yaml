@@ -279,6 +279,16 @@ loki:
 
     tracing:
       enabled: {{ .Values.loki.tracing.enabled }}
+
+    {{- with .Values.loki.bloom_build }}
+    bloom_build:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
+    {{- with .Values.loki.bloom_gateway }}
+    bloom_gateway:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
   # Should authentication be enabled
   auth_enabled: true
   # -- memberlist configuration (overrides embedded default)
@@ -410,6 +420,8 @@ loki:
     tsdb_shipper:
       index_gateway_client:
         server_address: '{{ include "loki.indexGatewayAddress" . }}'
+    bloom_shipper:
+      working_directory: /var/loki/data/bloomshipper
     hedging:
       at: "250ms"
       max_per_second: 20
@@ -442,8 +454,12 @@ loki:
     enabled: false
   bloom_build:
     enabled: false
+    builder:
+      planner_address: '{{ include "loki.bloomPlannerAddress" . }}'
   bloom_gateway:
     enabled: false
+    client:
+      addresses: '{{ include "loki.bloomGatewayAddresses" . }}'
 ######################################################################################################################
 #
 # Enterprise Loki Configs
@@ -778,6 +794,7 @@ networkPolicy:
 memberlist:
   service:
     publishNotReadyAddresses: false
+    annotations: {}
 ######################################################################################################################
 #
 # adminAPI configuration, enterprise only.
@@ -1717,6 +1734,8 @@ ingester:
   # -- The name of the PriorityClass for ingester pods
   # -- Labels for ingestor service
   serviceLabels: {}
+  # -- Annotations for ingestor service
+  serviceAnnotations: {}
   # -- Additional CLI args for the ingester
   extraArgs: []
   # -- Environment variables to add to the ingester pods
@@ -1892,6 +1911,8 @@ distributor:
   podAnnotations: {}
   # -- Labels for distributor service
   serviceLabels: {}
+  # -- Annotations for distributor service
+  serviceAnnotations: {}
   # -- Additional CLI args for the distributor
   extraArgs: []
   # -- Environment variables to add to the distributor pods
@@ -1982,6 +2003,8 @@ querier:
   podAnnotations: {}
   # -- Labels for querier service
   serviceLabels: {}
+  # -- Annotations for querier service
+  serviceAnnotations: {}
   # -- Additional CLI args for the querier
   extraArgs: []
   # -- Environment variables to add to the querier pods
@@ -2098,6 +2121,8 @@ queryFrontend:
   podAnnotations: {}
   # -- Labels for query-frontend service
   serviceLabels: {}
+  # -- Annotations for query-frontend service
+  serviceAnnotations: {}
   # -- Additional CLI args for the query-frontend
   extraArgs: []
   # -- Environment variables to add to the query-frontend pods
@@ -2159,6 +2184,8 @@ queryScheduler:
   podAnnotations: {}
   # -- Labels for query-scheduler service
   serviceLabels: {}
+  # -- Annotations for query-scheduler service
+  serviceAnnotations: {}
   # -- Additional CLI args for the query-scheduler
   extraArgs: []
   # -- Environment variables to add to the query-scheduler pods
@@ -2219,6 +2246,8 @@ indexGateway:
   podAnnotations: {}
   # -- Labels for index-gateway service
   serviceLabels: {}
+  # -- Annotations for index-gateway service
+  serviceAnnotations: {}
   # -- Additional CLI args for the index-gateway
   extraArgs: []
   # -- Environment variables to add to the index-gateway pods
@@ -2309,6 +2338,8 @@ compactor:
           topologyKey: kubernetes.io/hostname
   # -- Labels for compactor service
   serviceLabels: {}
+  # -- Annotations for compactor service
+  serviceAnnotations: {}
   # -- Additional CLI args for the compactor
   extraArgs: []
   # -- Environment variables to add to the compactor pods
@@ -2415,6 +2446,8 @@ bloomGateway:
           topologyKey: kubernetes.io/hostname
   # -- Labels for bloom-gateway service
   serviceLabels: {}
+  # -- Annotations for bloom-gateway service
+  serviceAnnotations: {}
   # -- Additional CLI args for the bloom-gateway
   extraArgs: []
   # -- Environment variables to add to the bloom-gateway pods
@@ -2447,20 +2480,13 @@ bloomGateway:
   persistence:
     # -- Enable creating PVCs for the bloom-gateway
     enabled: false
-    # -- Size of persistent disk
-    size: 10Gi
-    # -- Storage class to be used.
-    # If defined, storageClassName: <storageClass>.
-    # If set to "-", storageClassName: "", which disables dynamic provisioning.
-    # If empty or set to null, no storageClassName spec is
-    # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
-    storageClass: null
     # -- Annotations for bloom-gateway PVCs
     annotations: {}
     # -- List of the bloom-gateway PVCs
     # @notationType -- list
     claims:
       - name: data
+        # -- Size of persistent disk
         size: 10Gi
         #   -- Storage class to be used.
         #   If defined, storageClassName: <storageClass>.
@@ -2468,8 +2494,6 @@ bloomGateway:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
-        # - name: wal
-        #   size: 150Gi
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
     whenDeleted: Retain
@@ -2521,6 +2545,8 @@ bloomPlanner:
           topologyKey: kubernetes.io/hostname
   # -- Labels for bloom-planner service
   serviceLabels: {}
+  # -- Annotations for bloom-planner service
+  serviceAnnotations: {}
   # -- Additional CLI args for the bloom-planner
   extraArgs: []
   # -- Environment variables to add to the bloom-planner pods
@@ -2553,19 +2579,20 @@ bloomPlanner:
   persistence:
     # -- Enable creating PVCs for the bloom-planner
     enabled: false
-    # -- Size of persistent disk
-    size: 10Gi
-    # -- Storage class to be used.
-    # If defined, storageClassName: <storageClass>.
-    # If set to "-", storageClassName: "", which disables dynamic provisioning.
-    # If empty or set to null, no storageClassName spec is
-    # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
-    storageClass: null
     # -- Annotations for bloom-planner PVCs
     annotations: {}
     # -- List of the bloom-planner PVCs
     # @notationType -- list
-    claims: []
+    claims:
+      - name: data
+        # -- Size of persistent disk
+        size: 10Gi
+        #   -- Storage class to be used.
+        #   If defined, storageClassName: <storageClass>.
+        #   If set to "-", storageClassName: "", which disables dynamic provisioning.
+        #   If empty or set to null, no storageClassName spec is
+        #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
+        storageClass: null
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
     whenDeleted: Retain
@@ -2635,6 +2662,8 @@ bloomBuilder:
   podAnnotations: {}
   # -- Labels for bloom-builder service
   serviceLabels: {}
+  # -- Annotations for bloom-builder service
+  serviceAnnotations: {}
   # -- Additional CLI args for the bloom-builder
   extraArgs: []
   # -- Environment variables to add to the bloom-builder pods
@@ -2705,6 +2734,8 @@ patternIngester:
           topologyKey: kubernetes.io/hostname
   # -- Labels for pattern ingester service
   serviceLabels: {}
+  # -- Annotations for pattern ingester service
+  serviceAnnotations: {}
   # -- Additional CLI args for the pattern ingester
   extraArgs: []
   # -- Environment variables to add to the pattern ingester pods
@@ -2804,6 +2835,8 @@ ruler:
   podAnnotations: {}
   # -- Labels for ruler service
   serviceLabels: {}
+  # -- Annotations for ruler service
+  serviceAnnotations: {}
   # -- Additional CLI args for the ruler
   extraArgs: []
   # -- Environment variables to add to the ruler pods
@@ -2930,7 +2963,11 @@ memcached:
     # -- Memcached Docker image pull policy
     pullPolicy: IfNotPresent
   # -- The SecurityContext override for memcached pods
-  podSecurityContext: {}
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 11211
+    runAsGroup: 11211
+    fsGroup: 11211
   # -- The name of the PriorityClass for memcached pods
   priorityClassName: null
   # -- The SecurityContext for memcached containers
@@ -3053,7 +3090,7 @@ resultsCache:
   persistence:
     # -- Enable creating PVCs for the results-cache
     enabled: false
-    # -- Size of persistent disk
+    # -- Size of persistent disk, must be in G or Gi
     storageSize: 10G
     # -- Storage class to be used.
     # If defined, storageClassName: <storageClass>.
@@ -3155,7 +3192,7 @@ chunksCache:
   persistence:
     # -- Enable creating PVCs for the chunks-cache
     enabled: false
-    # -- Size of persistent disk
+    # -- Size of persistent disk, must be in G or Gi
     storageSize: 10G
     # -- Storage class to be used.
     # If defined, storageClassName: <storageClass>.
