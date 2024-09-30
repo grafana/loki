@@ -50,8 +50,6 @@ loki:
     # -- Docker image repository
     repository: grafana/loki
     # -- Overrides the image tag whose default is the chart's appVersion
-    # TODO: needed for 3rd target backend functionality
-    # revert to null or latest once this behavior is relased
     tag: null
     # -- Overrides the image tag with an image digest
     digest: null
