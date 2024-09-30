@@ -23,6 +23,7 @@ import (
 // with consistent DNS names where the naturally sorted order
 // is predictable.
 type Selector struct {
+	name            string
 	mu              sync.RWMutex
 	addrs           []net.Addr
 	resolveUnixAddr UnixResolver
@@ -33,15 +34,17 @@ type UnixResolver func(network, address string) (*net.UnixAddr, error)
 
 type TCPResolver func(network, address string) (*net.TCPAddr, error)
 
-func NewSelector(resolveUnixAddr UnixResolver, resolveTCPAddr TCPResolver) *Selector {
+func NewSelector(name string, resolveUnixAddr UnixResolver, resolveTCPAddr TCPResolver) *Selector {
 	return &Selector{
+		name:            name,
 		resolveUnixAddr: resolveUnixAddr,
 		resolveTCPAddr:  resolveTCPAddr,
 	}
 }
 
-func DefaultSelector() *Selector {
+func DefaultSelector(name string) *Selector {
 	return &Selector{
+		name:            name,
 		resolveUnixAddr: net.ResolveUnixAddr,
 		resolveTCPAddr:  net.ResolveTCPAddr,
 	}
@@ -102,7 +105,7 @@ func (s *Selector) SetServers(servers ...string) error {
 		}
 	}
 
-	level.Debug(util_log.Logger).Log("msg", "updating memcached servers", "servers", strings.Join(addresses(naddrs), ","), "count", len(naddrs))
+	level.Debug(util_log.Logger).Log("msg", "updating servers", "name", s.name, "servers", strings.Join(addresses(naddrs), ","), "count", len(naddrs))
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
