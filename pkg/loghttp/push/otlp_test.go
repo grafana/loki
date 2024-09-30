@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
@@ -508,7 +509,18 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			stats := newPushStats()
 			tracker := NewMockTracker()
-			pushReq := otlpToLokiPushRequest(context.Background(), tc.generateLogs(), "foo", fakeRetention{}, tc.otlpConfig, defaultServiceDetection, tracker, stats)
+			pushReq := otlpToLokiPushRequest(
+				context.Background(),
+				tc.generateLogs(),
+				"foo",
+				fakeRetention{},
+				tc.otlpConfig,
+				defaultServiceDetection,
+				tracker,
+				stats,
+				false,
+				log.NewNopLogger(),
+			)
 			require.Equal(t, tc.expectedPushRequest, *pushReq)
 			require.Equal(t, tc.expectedStats, *stats)
 
