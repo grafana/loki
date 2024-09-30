@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "production/helm/**"
+      - ".github/workflows/helm-ci.yml"
 
 env:
   CT_CONFIGFILE: production/helm/ct.yaml
@@ -27,14 +28,6 @@ jobs:
       - name: Lint Yaml
         run: make helm-lint
 
-      - id: "get_github_app_token"
-        name: "Get Github app token"
-        uses: "actions/create-github-app-token@v1"
-        with:
-          app-id: "${{ secrets.APP_ID }}"
-          owner: "${{ github.repository_owner }}"
-          private-key: "${{ secrets.APP_PRIVATE_KEY }}"
-
       - name: Lint Code Base
         uses: docker://github/super-linter:v3.12.0
         env:
@@ -45,7 +38,7 @@ jobs:
           VALIDATE_YAML: false
           VALIDATE_GO: false
           DEFAULT_BRANCH: main
-          GITHUB_TOKEN: ${{ steps.get_github_app_token.outputs.token }}
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
   call-test:
     name: Test Helm Chart
     runs-on: ubuntu-latest
