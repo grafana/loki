@@ -13,9 +13,14 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 6.16.0
+
+- [ENHANCEMENT] Allow setting nodeSelector, tolerations and affinity to enterprise components (tokengen and provisioner).
+
 ## 6.15.0
 
 - [ENHANCEMENT] Allow setting annotations for memberlist and query-scheduler-discovery services
+
 ## 6.14.1
 
 - [BUGFIX] Fixed Memcached persistence options.
