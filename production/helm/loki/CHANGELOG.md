@@ -17,6 +17,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [CHANGE] Changed version of Grafana Loki to 3.2.0
 
+## 6.16.0
+
+- [ENHANCEMENT] Allow setting nodeSelector, tolerations and affinity to enterprise components (tokengen and provisioner).
+
 ## 6.15.0
 
 - [ENHANCEMENT] Allow setting annotations for memberlist and query-scheduler-discovery services
