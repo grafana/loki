@@ -3,7 +3,7 @@ package ingester
 import (
 	"context"
 	"errors"
-	math "math"
+	"math"
 	"sync"
 	"time"
 
@@ -137,8 +137,8 @@ func retryWithBackoff(ctx context.Context, fn func(attempts int) error) error {
 		return err
 	}
 	backoff := backoff.New(ctx, backoff.Config{
-		MinBackoff: 100 * time.Millisecond,
-		MaxBackoff: 5 * time.Second,
+		MinBackoff: 0 * time.Millisecond,
+		MaxBackoff: 1 * time.Second,
 		MaxRetries: 0, // Retry infinitely
 	})
 	backoff.Wait()
