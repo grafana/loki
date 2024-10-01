@@ -31,4 +31,4 @@ jobs:
           metricsWriteAPIKey: ${{secrets.GRAFANA_MISC_STATS_API_KEY}}
           token: ${{ steps.get_github_app_token.outputs.token }}
           labelsToAdd: "backport"
-          title: "chore: [{{base}}] {{originalTitle}}"
+          title: "{{originalTitle}} (backport {{base}})"

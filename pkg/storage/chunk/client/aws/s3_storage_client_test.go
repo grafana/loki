@@ -335,11 +335,29 @@ func Test_RetryLogic(t *testing.T) {
 			},
 		},
 		{
+			"object exists with size with retries",
+			3,
+			true,
+			func(c *S3ObjectClient) error {
+				_, _, err := c.ObjectExistsWithSize(context.Background(), "foo")
+				return err
+			},
+		},
+		{
 			"object doesn't exist with retries",
 			3,
 			false,
 			func(c *S3ObjectClient) error {
 				_, err := c.ObjectExists(context.Background(), "foo")
+				return err
+			},
+		},
+		{
+			"object doesn't exist (with size) with retries",
+			3,
+			false,
+			func(c *S3ObjectClient) error {
+				_, _, err := c.ObjectExistsWithSize(context.Background(), "foo")
 				return err
 			},
 		},

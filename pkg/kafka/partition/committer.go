@@ -19,6 +19,7 @@ import (
 // Committer defines an interface for committing offsets
 type Committer interface {
 	Commit(ctx context.Context, offset int64) error
+	EnqueueOffset(offset int64)
 }
 
 // partitionCommitter is responsible for committing offsets for a specific Kafka partition
@@ -113,7 +114,7 @@ func (r *partitionCommitter) autoCommitLoop(ctx context.Context) {
 	}
 }
 
-func (r *partitionCommitter) enqueueOffset(o int64) {
+func (r *partitionCommitter) EnqueueOffset(o int64) {
 	if r.kafkaCfg.ConsumerGroupOffsetCommitInterval > 0 {
 		r.toCommit.Store(o)
 	}

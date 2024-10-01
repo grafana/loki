@@ -13,14 +13,15 @@ import (
 )
 
 const (
-	envRelatedImageOPA      = "RELATED_IMAGE_OPA"
-	defaultOPAImage         = "quay.io/observatorium/opa-openshift:latest"
-	opaContainerName        = "opa"
-	opaDefaultPackage       = "lokistack"
-	opaDefaultAPIGroup      = "loki.grafana.com"
-	opaMetricsPortName      = "opa-metrics"
-	opaDefaultLabelMatcher  = "kubernetes_namespace_name"
-	opaNetworkLabelMatchers = "SrcK8S_Namespace,DstK8S_Namespace"
+	envRelatedImageOPA        = "RELATED_IMAGE_OPA"
+	defaultOPAImage           = "quay.io/observatorium/opa-openshift:latest"
+	opaContainerName          = "opa"
+	opaDefaultPackage         = "lokistack"
+	opaDefaultAPIGroup        = "loki.grafana.com"
+	opaMetricsPortName        = "opa-metrics"
+	opaDefaultLabelMatcher    = "kubernetes_namespace_name"
+	opaNetworkLabelMatchers   = "SrcK8S_Namespace,DstK8S_Namespace"
+	ocpMonitoringGroupByLabel = "namespace"
 )
 
 func newOPAOpenShiftContainer(mode lokiv1.ModeType, secretVolumeName, tlsDir, minTLSVersion, ciphers string, withTLS bool, adminGroups []string) corev1.Container {

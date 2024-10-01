@@ -188,7 +188,7 @@ func genBlock(ref bloomshipper.BlockRef) (bloomshipper.Block, error) {
 	writer := v1.NewMemoryBlockWriter(indexBuf, bloomsBuf)
 	reader := v1.NewByteReader(indexBuf, bloomsBuf)
 
-	blockOpts := v1.NewBlockOptions(compression.EncNone, 0, 0)
+	blockOpts := v1.NewBlockOptions(compression.None, 0, 0)
 
 	builder, err := v1.NewBlockBuilder(blockOpts, writer)
 	if err != nil {
@@ -202,7 +202,7 @@ func genBlock(ref bloomshipper.BlockRef) (bloomshipper.Block, error) {
 	block := v1.NewBlock(reader, v1.NewMetrics(nil))
 
 	buf := bytes.NewBuffer(nil)
-	if err := v1.TarCompress(ref.Encoding, buf, block.Reader()); err != nil {
+	if err := v1.TarCompress(ref.Codec, buf, block.Reader()); err != nil {
 		return bloomshipper.Block{}, err
 	}
 
