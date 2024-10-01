@@ -92,7 +92,7 @@ eksctl utils associate-iam-oidc-provider --cluster loki --approve
 
 ## Create an S3 bucket
 
-Before deploying Loki, you need to create an S3 bucket to store the logs. You can create the bucket using the AWS Management Console or the AWS CLI. The bucket name must be globally unique. For this guide, we will use the bucket name `loki-aws-bucket`.
+Before deploying Loki, you need to create an S3 bucket to store the logs. You can create the bucket using the AWS Management Console or the AWS CLI. The bucket name must be globally unique. For this guide, we will use the bucket name `loki-aws-bucket` but you should choose your own unique name when creating your own bucket.
 
 ```bash
 aws s3api create-bucket --bucket loki-aws-bucket --region eu-west-2 --create-bucket-configuration LocationConstraint=eu-west-2
