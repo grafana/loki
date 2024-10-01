@@ -113,9 +113,8 @@ func TestPartitionReader_ProcessCatchUpAtStartup(t *testing.T) {
 		if consumerStarting == nil {
 			consumerStarting = newMockConsumer()
 			return consumerStarting, nil
-		} else {
-			return newMockConsumer(), nil
 		}
+		return newMockConsumer(), nil
 	}
 
 	partitionReader, err := NewReader(kafkaCfg, 0, "test-consumer-group", consumerFactory, log.NewNopLogger(), prometheus.NewRegistry())
