@@ -113,7 +113,7 @@ To configure the Collector to ingest OpenTelemetry logs from our application, we
 
 ### Open your code editor and locate the `otel-config.yaml` file
 
-The configuration file is written using yaml configuration syntax.To start, we will open the `otel-config.yaml` file in the code editor:
+The configuration file is written using **YAML** configuration syntax. To start, we will open the `otel-config.yaml` file in the code editor:
 
 {{< docs/ignore >}}
 **Note: Killercoda has an inbuilt Code editor which can be accessed via the `Editor` tab.**
