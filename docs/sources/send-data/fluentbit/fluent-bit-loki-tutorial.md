@@ -93,7 +93,7 @@ Once we have finished configuring the Fluent Bit agent and sending logs to Loki,
 
 To configure Fluent Bit to receive logs from our application, we need to provide a configuration file. This configuration file will define the components and their relationships. We will build the entire observability pipeline within this configuration file.
 
-### Open your Code Editor and Locate the `fluent-bit.conf` file
+### Open your code editor and locate the `fluent-bit.conf` file
 
 Fluent Bit requires a configuration file to define the components and their relationships. The configuration file is written using Fluent Bit configuration syntax. We will build the entire observability pipeline within this configuration file. To start, we will open the `fluent-bit.conf` file in the code editor:
 
