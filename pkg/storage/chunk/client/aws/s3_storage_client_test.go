@@ -312,8 +312,7 @@ func (m *MockS3Client) HeadObject(input *s3.HeadObjectInput) (*s3.HeadObjectOutp
 func Test_GetAttributes(t *testing.T) {
 	mockS3 := &MockS3Client{
 		HeadObjectFunc: func(_ *s3.HeadObjectInput) (*s3.HeadObjectOutput, error) {
-			var size int64
-			size = 128
+			var size int64 = 128
 			return &s3.HeadObjectOutput{ContentLength: &size}, nil
 		},
 	}

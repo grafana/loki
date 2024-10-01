@@ -79,11 +79,7 @@ func (s *OssObjectClient) ObjectExists(ctx context.Context, objectKey string) (b
 
 func (s *OssObjectClient) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
 	_, size, err := s.objectAttributes(ctx, objectKey, "OSS.GetAttributes")
-	if err != nil {
-		return client.ObjectAttributes{}, err
-	}
-
-	return client.ObjectAttributes{Size: size}, nil
+	return client.ObjectAttributes{Size: size}, err
 }
 
 func (s *OssObjectClient) objectAttributes(ctx context.Context, objectKey, operation string) (bool, int64, error) {

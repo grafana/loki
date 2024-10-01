@@ -26,7 +26,7 @@ func (t testObjClient) ObjectExists(ctx context.Context, object string) (bool, e
 	return true, nil
 }
 
-func (t testObjClient) GetAttributes(ctx context.Context, object string) (client.ObjectAttributes, error) {
+func (t testObjClient) GetAttributes(_ context.Context, object string) (client.ObjectAttributes, error) {
 	if strings.Contains(object, "missing") {
 		return client.ObjectAttributes{}, fmt.Errorf("object %s not found", object)
 	}
