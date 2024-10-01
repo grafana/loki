@@ -116,7 +116,7 @@ Once we have finished configuring the OpenTelemetry Collector and sending logs t
 
 To configure the Collector to ingest OpenTelemetry logs from our application, we need to provide a configuration file. This configuration file will define the components and their relationships. We will build the entire observability pipeline within this configuration file.
 
-### Open your Code Editor and Locate the `otel-config.yaml` file
+### Open your code editor and locate the `otel-config.yaml` file
 
 The configuration file is written using yaml configuration syntax.To start, we will open the `otel-config.yaml` file in the code editor:
 
