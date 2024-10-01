@@ -223,7 +223,7 @@ In this configuration:
 
 ### Load the Configuration
 
-Before you load the configuration, into the OpenTelemetry Collector compare your configuration with the completed configuration below:
+Before you load the configuration into the OpenTelemetry Collector, compare your configuration with the completed configuration below:
 
 ```yaml
 # Receivers
