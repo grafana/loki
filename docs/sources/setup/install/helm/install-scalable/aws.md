@@ -404,7 +404,7 @@ loki-write-headless              ClusterIP      None             <none>         
 
 k6 is one of the fastest way to test your Loki deployment. This will allow you to both write and query logs to Loki. To get started with k6, follow the steps below:
 
-1. Install k6 with the Loki extension on your local machine. Refer to [Installing k6 and the xk6-loki extension]({{< relref "../../../../send-data/k6/" >}}).
+1. Install k6 with the Loki extension on your local machine. Refer to [Installing k6 and the xk6-loki extension]({{< relref "../../../../send-data/k6" >}}).
 
 2. Create a `aws-test.js` file with the following content:
 
@@ -485,7 +485,7 @@ k6 is one of the fastest way to test your Loki deployment. This will allow you t
 
 - **IAM Role:** The IAM role created in this guide is a basic role that allows Loki to read and write to the S3 bucket. You may wish to add more granular permissions based on your requirements.
 
-- **Authentication:** Grafana Loki doesn't come with any included authentication layer. Within the simple scalable mode, the Loki gateway (NGINX) is exposed to the internet. It is advised to add a username and password via the `basicAuth` section in the `values.yaml` file. NGINX can also be replaced with other open-source reverse proxies. Refer to [Authentication]({{< relref "../../../../operations/authentication/" >}}) for more information.
+- **Authentication:** Grafana Loki doesn't come with any included authentication layer. Within the simple scalable mode, the Loki gateway (NGINX) is exposed to the internet. It is advised to add a username and password via the `basicAuth` section in the `values.yaml` file. NGINX can also be replaced with other open-source reverse proxies. Refer to [Authentication]({{< relref "../../../../operations/authentication" >}}) for more information.
 
 - **Retention:** The retention period is set to 28 days in the `values.yaml` file. You may wish to adjust this based on your requirements.
 
@@ -497,6 +497,6 @@ k6 is one of the fastest way to test your Loki deployment. This will allow you t
 
 If you have successfully deployed Loki in simple scalable mode on AWS, you may wish to explore the following:
 
-- [Sanding data to Loki]({{< relref "../../../../send-data/" >}})
-- [Querying Loki]({{< relref "../../../../query/" >}})
-- [Operations]({{< relref "../../../../operations/" >}})
+- [Sanding data to Loki]({{< relref "../../../../send-data" >}})
+- [Querying Loki]({{< relref "../../../../query" >}})
+- [Operations]({{< relref "../../../../operations" >}})
