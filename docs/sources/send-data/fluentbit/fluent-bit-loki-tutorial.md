@@ -149,12 +149,12 @@ Add the following configuration to the `fluent-bit.conf` file:
 ```
 
 In this configuration:
-- `Name`: The name of the output plugin. In this case, we are using the `loki` output plugin.
-- `Match`: The tag to match. In this case, we are matching all logs with the tag `service.**`.
-- `Host`: The hostname of the Loki service. In this case, we are using the hostname `loki`.
-- `Port`: The port of the Loki service. In this case, we are using port `3100`.
-- `Labels`: Additional labels to add to the logs. In this case, we are adding the label `agent=fluent-bit`.
-- `Label_map_path`: The path to the label map file. In this case, we are using the file `logmap.json`.
+- `name`: The name of the output plugin. In this case, we are using the `loki` output plugin.
+- `match`: The tag to match. In this case, we are matching all logs with the tag `service.**`.
+- `host`: The hostname of the Loki service. In this case, we are using the hostname `loki`.
+- `port`: The port of the Loki service. In this case, we are using port `3100`.
+- `labels`: Additional labels to add to the logs. In this case, we are adding the label `agent=fluent-bit`.
+- `label_map_path`: The path to the label map file. In this case, we are using the file `logmap.json`.
 
 For more information on the `loki` output plugin, see the [Fluent Bit Loki documentation](https://docs.fluentbit.io/manual/pipeline/outputs/loki).
 
