@@ -378,7 +378,7 @@ func (q *QuerierAPI) DetectedFieldsHandler(ctx context.Context, req *logproto.De
 		)
 		return &logproto.DetectedFieldsResponse{
 			Fields:     []*logproto.DetectedField{},
-			FieldLimit: req.GetFieldLimit(),
+			Limit: req.GetLimit(),
 		}, nil
 	}
 	return resp, nil

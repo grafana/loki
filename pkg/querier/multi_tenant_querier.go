@@ -304,7 +304,7 @@ func (q *MultiTenantQuerier) DetectedFields(ctx context.Context, req *logproto.D
 
 	return &logproto.DetectedFieldsResponse{
 		Fields:     []*logproto.DetectedField{},
-		FieldLimit: req.GetFieldLimit(),
+		Limit: req.GetLimit(),
 	}, nil
 }
 

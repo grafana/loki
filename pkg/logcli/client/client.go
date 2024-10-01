@@ -28,17 +28,18 @@ import (
 )
 
 const (
-	queryPath          = "/loki/api/v1/query"
-	queryRangePath     = "/loki/api/v1/query_range"
-	labelsPath         = "/loki/api/v1/labels"
-	labelValuesPath    = "/loki/api/v1/label/%s/values"
-	seriesPath         = "/loki/api/v1/series"
-	tailPath           = "/loki/api/v1/tail"
-	statsPath          = "/loki/api/v1/index/stats"
-	volumePath         = "/loki/api/v1/index/volume"
-	volumeRangePath    = "/loki/api/v1/index/volume_range"
-	detectedFieldsPath = "/loki/api/v1/detected_fields"
-	defaultAuthHeader  = "Authorization"
+	queryPath               = "/loki/api/v1/query"
+	queryRangePath          = "/loki/api/v1/query_range"
+	labelsPath              = "/loki/api/v1/labels"
+	labelValuesPath         = "/loki/api/v1/label/%s/values"
+	seriesPath              = "/loki/api/v1/series"
+	tailPath                = "/loki/api/v1/tail"
+	statsPath               = "/loki/api/v1/index/stats"
+	volumePath              = "/loki/api/v1/index/volume"
+	volumeRangePath         = "/loki/api/v1/index/volume_range"
+	detectedFieldsPath      = "/loki/api/v1/detected_fields"
+	detectedFieldValuesPath = "/loki/api/v1/detected_field/%s/values"
+	defaultAuthHeader       = "Authorization"
 
 	// HTTP header keys
 	HTTPScopeOrgID          = "X-Scope-OrgID"

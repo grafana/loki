@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"slices"
 	"testing"
 	"time"
 
@@ -958,6 +959,38 @@ func mockLogfmtStreamWithLabelsAndStructuredMetadata(
 	}
 }
 
+func limitedHandler(stream logproto.Stream) base.Handler {
+	return base.HandlerFunc(
+		func(_ context.Context, _ base.Request) (base.Response, error) {
+			return &LokiResponse{
+				Status: "success",
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+					Result: []logproto.Stream{
+						stream,
+					},
+				},
+				Direction: logproto.BACKWARD,
+			}, nil
+		})
+}
+
+func logHandler(stream logproto.Stream) base.Handler {
+	return base.HandlerFunc(
+		func(_ context.Context, _ base.Request) (base.Response, error) {
+			return &LokiResponse{
+				Status: "success",
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+					Result: []logproto.Stream{
+						stream,
+					},
+				},
+				Direction: logproto.BACKWARD,
+			}, nil
+		})
+}
+
 func TestQuerier_DetectedFields(t *testing.T) {
 	limits := fakeLimits{
 		maxSeries:               math.MaxInt32,
@@ -967,50 +1000,18 @@ func TestQuerier_DetectedFields(t *testing.T) {
 		maxQuerierBytesRead:     100,
 	}
 
-	limitedHandler := func(stream logproto.Stream) base.Handler {
-		return base.HandlerFunc(
-			func(_ context.Context, _ base.Request) (base.Response, error) {
-				return &LokiResponse{
-					Status: "success",
-					Data: LokiData{
-						ResultType: loghttp.ResultTypeStream,
-						Result: []logproto.Stream{
-							stream,
-						},
-					},
-					Direction: logproto.BACKWARD,
-				}, nil
-			})
-	}
-
-	logHandler := func(stream logproto.Stream) base.Handler {
-		return base.HandlerFunc(
-			func(_ context.Context, _ base.Request) (base.Response, error) {
-				return &LokiResponse{
-					Status: "success",
-					Data: LokiData{
-						ResultType: loghttp.ResultTypeStream,
-						Result: []logproto.Stream{
-							stream,
-						},
-					},
-					Direction: logproto.BACKWARD,
-				}, nil
-			})
-	}
-
 	request := DetectedFieldsRequest{
 		logproto.DetectedFieldsRequest{
-			Start:      time.Now().Add(-1 * time.Minute),
-			End:        time.Now(),
-			Query:      `{type="test"} | logfmt | json`,
-			LineLimit:  1000,
-			FieldLimit: 1000,
+			Start:     time.Now().Add(-1 * time.Minute),
+			End:       time.Now(),
+			Query:     `{type="test"} | logfmt | json`,
+			LineLimit: 1000,
+			Limit:     1000,
 		},
 		"/loki/api/v1/detected_fields",
 	}
 
-	handleRequest := func(handler base.Handler, request DetectedFieldsRequest) []*logproto.DetectedField {
+	handleRequest := func(handler base.Handler, request DetectedFieldsRequest) *logproto.DetectedFieldsResponse {
 		ctx := context.Background()
 		ctx = user.InjectOrgID(ctx, "test-tenant")
 
@@ -1020,7 +1021,7 @@ func TestQuerier_DetectedFields(t *testing.T) {
 		r, ok := resp.(*DetectedFieldsResponse)
 		require.True(t, ok)
 
-		return r.Response.Fields
+		return r.Response
 	}
 
 	t.Run("returns detected fields from queried logs", func(t *testing.T) {
@@ -1030,7 +1031,7 @@ func TestQuerier_DetectedFields(t *testing.T) {
 			limits,
 		)
 
-		detectedFields := handleRequest(handler, request)
+		detectedFields := handleRequest(handler, request).Fields
 		// log lines come from querier_mock_test.go
 		// message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t
 		assert.Len(t, detectedFields, 8)
@@ -1057,7 +1058,7 @@ func TestQuerier_DetectedFields(t *testing.T) {
 			limits,
 		)
 
-		detectedFields := handleRequest(handler, request)
+		detectedFields := handleRequest(handler, request).Fields
 		// log lines come from querier_mock_test.go
 		// message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t
 		assert.Len(t, detectedFields, 10)
@@ -1086,7 +1087,7 @@ func TestQuerier_DetectedFields(t *testing.T) {
 			limits,
 		)
 
-		detectedFields := handleRequest(handler, request)
+		detectedFields := handleRequest(handler, request).Fields
 		// log lines come from querier_mock_test.go
 		// message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t
 		assert.Len(t, detectedFields, 8)
@@ -1129,7 +1130,7 @@ func TestQuerier_DetectedFields(t *testing.T) {
 				limits,
 			)
 
-			detectedFields := handleRequest(handler, request)
+			detectedFields := handleRequest(handler, request).Fields
 			// log lines come from querier_mock_test.go
 			// message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t
 			assert.Len(t, detectedFields, 10)
@@ -1178,7 +1179,7 @@ func TestQuerier_DetectedFields(t *testing.T) {
 				limits,
 			)
 
-			detectedFields := handleRequest(handler, request)
+			detectedFields := handleRequest(handler, request).Fields
 			// log lines come from querier_mock_test.go
 			// message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t
 			assert.Len(t, detectedFields, 10)
@@ -1198,48 +1199,85 @@ func TestQuerier_DetectedFields(t *testing.T) {
 			assert.Equal(t, uint64(1), nameField.Cardinality)
 		},
 	)
+
+	t.Run("returns values for a detected fields", func(t *testing.T) {
+		handler := NewDetectedFieldsHandler(
+			limitedHandler(
+				mockLogfmtStreamWithLabelsAndStructuredMetadata(1, 5, `{type="test", name="bob"}`),
+			),
+			logHandler(
+				mockLogfmtStreamWithLabelsAndStructuredMetadata(1, 5, `{type="test", name="bob"}`),
+			),
+			limits,
+		)
+
+		request := DetectedFieldsRequest{
+			logproto.DetectedFieldsRequest{
+				Start:     time.Now().Add(-1 * time.Minute),
+				End:       time.Now(),
+				Query:     `{type="test"} | logfmt | json`,
+				LineLimit: 1000,
+				Limit:     1000,
+				Values:    true,
+				Name:      "message",
+			},
+			"/loki/api/v1/detected_field/message/values",
+		}
+
+		detectedFieldValues := handleRequest(handler, request).Values
+		// log lines come from querier_mock_test.go
+		// message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t
+		assert.Len(t, detectedFieldValues, 5)
+
+		slices.Sort(detectedFieldValues)
+		assert.Equal(t, []string{
+			"line 1",
+			"line 2",
+			"line 3",
+			"line 4",
+			"line 5",
+		}, detectedFieldValues)
+	})
 }
 
-// func BenchmarkQuerierDetectedFields(b *testing.B) {
-// 	limits, _ := validation.NewOverrides(defaultLimitsTestConfig(), nil)
-// 	ctx := user.InjectOrgID(context.Background(), "test")
+func BenchmarkQuerierDetectedFields(b *testing.B) {
+	limits := fakeLimits{
+		maxSeries:               math.MaxInt32,
+		maxQueryParallelism:     1,
+		tsdbMaxQueryParallelism: 1,
+		maxQueryBytesRead:       1000,
+		maxQuerierBytesRead:     100,
+	}
 
-// 	conf := mockQuerierConfig()
-// 	conf.IngesterQueryStoreMaxLookback = 0
+	request := logproto.DetectedFieldsRequest{
+		Start:     time.Now().Add(-1 * time.Minute),
+		End:       time.Now(),
+		Query:     `{type="test"}`,
+		LineLimit: 1000,
+		Limit:     1000,
+	}
 
-// 	request := logproto.DetectedFieldsRequest{
-// 		Start:      time.Now().Add(-1 * time.Minute),
-// 		End:        time.Now(),
-// 		Query:      `{type="test"}`,
-// 		LineLimit:  1000,
-// 		FieldLimit: 1000,
-// 	}
+	b.ReportAllocs()
+	b.ResetTimer()
 
-// 	store := newStoreMock()
-// 	store.On("SelectLogs", mock.Anything, mock.Anything).
-// 		Return(mockLogfmtStreamIterator(1, 2), nil)
+	handler := NewDetectedFieldsHandler(
+		limitedHandler(
+			mockLogfmtStreamWithLabelsAndStructuredMetadata(1, 5, `{type="test", name="bob"}`),
+		),
+		logHandler(
+			mockLogfmtStreamWithLabelsAndStructuredMetadata(1, 5, `{type="test", name="bob"}`),
+		),
+		limits,
+	)
 
-// 	queryClient := newQueryClientMock()
-// 	queryClient.On("Recv").
-// 		Return(mockQueryResponse([]logproto.Stream{mockLogfmtStream(1, 2)}), nil)
+	for i := 0; i < b.N; i++ {
+		ctx := context.Background()
+		ctx = user.InjectOrgID(ctx, "test-tenant")
 
-// 	ingesterClient := newQuerierClientMock()
-// 	ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).
-// 		Return(queryClient, nil)
+		resp, err := handler.Do(ctx, &request)
+		assert.NoError(b, err)
 
-// 	querier, _ := newQuerier(
-// 		conf,
-// 		mockIngesterClientConfig(),
-// 		newIngesterClientMockFactory(ingesterClient),
-// 		mockReadRingWithOneActiveIngester(),
-// 		&mockDeleteGettter{},
-// 		store, limits)
-
-// 	b.ReportAllocs()
-// 	b.ResetTimer()
-
-// 	for i := 0; i < b.N; i++ {
-// 		_, err := querier.DetectedFields(ctx, &request)
-// 		assert.NoError(b, err)
-// 	}
-// }
+		_, ok := resp.(*DetectedFieldsResponse)
+		require.True(b, ok)
+	}
+}

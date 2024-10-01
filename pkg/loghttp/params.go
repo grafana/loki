@@ -47,10 +47,17 @@ func lineLimit(r *http.Request) (uint32, error) {
 }
 
 func fieldLimit(r *http.Request) (uint32, error) {
-	l, err := parseInt(r.Form.Get("field_limit"), defaultFieldLimit)
+  limit := r.Form.Get("limit")
+  if limit == "" {
+    // for backwards compatability
+    limit = r.Form.Get("field_limit")
+  }
+
+	l, err := parseInt(limit, defaultFieldLimit)
 	if err != nil {
 		return 0, err
 	}
+
 	if l <= 0 {
 		return 0, errors.New("limit must be a positive value")
 	}
