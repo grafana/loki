@@ -69,13 +69,19 @@ spec:
             - name: license
               mountPath: /etc/loki/license
           env:
+            {{- with .Values.global.extraEnv }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
             {{- if .Values.enterprise.tokengen.env }}
               {{ toYaml .Values.enterprise.tokengen.env | nindent 12 }}
             {{- end }}
-          {{- with .Values.enterprise.tokengen.extraEnvFrom }}
           envFrom:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{- with .Values.global.extraEnvFrom }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- with .Values.enterprise.tokengen.extraEnvFrom }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
       containers:
         - name: create-secret
           image: {{ include "loki.kubectlImage" . }}

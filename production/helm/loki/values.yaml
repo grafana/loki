@@ -20,6 +20,12 @@ global:
   #   - secretRef:
   #       name: mysecret
   extraEnvFrom: []
+  # -- Pod annotations for all pods directly managed by this chart. Usable for example to associate a version to 'global.extraEnv' and 'global.extraEnvFrom' and trigger a restart of the affected services.
+  # scope:
+  podAnnotations: {}
+  # -- Pod labels for all pods directly managed by this chart.
+  # scope: 
+  podLabels: {}
 # -- Overrides the chart's name
 nameOverride: null
 # -- Overrides the chart's computed fullname
