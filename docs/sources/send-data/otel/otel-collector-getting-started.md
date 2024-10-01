@@ -95,7 +95,7 @@ In this step, we will set up our environment by cloning the repository that cont
     ```console
     ✔ Container loki-fundamentals-grafana-1          Started                                                        
     ✔ Container loki-fundamentals-loki-1             Started                        
-    ✔ Container loki-fundamentals-otel-collector-1   Started
+    ✔ Container loki-fundamentals-otel-collector-1   Stopped
     ```
     <!-- INTERACTIVE ignore START -->
     {{< admonition type="note" >}}
