@@ -19,7 +19,7 @@ import (
 
 const (
 	defaultQueryLimit = 100
-	defaultFieldLimit = 1000
+	defaultLimit      = 1000
 	defaultSince      = 1 * time.Hour
 	defaultDirection  = logproto.BACKWARD
 )
@@ -46,14 +46,14 @@ func lineLimit(r *http.Request) (uint32, error) {
 	return uint32(l), nil
 }
 
-func fieldLimit(r *http.Request) (uint32, error) {
+func detectedFieldsLimit(r *http.Request) (uint32, error) {
   limit := r.Form.Get("limit")
   if limit == "" {
     // for backwards compatability
     limit = r.Form.Get("field_limit")
   }
 
-	l, err := parseInt(limit, defaultFieldLimit)
+	l, err := parseInt(limit, defaultLimit)
 	if err != nil {
 		return 0, err
 	}

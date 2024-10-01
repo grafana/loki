@@ -666,7 +666,7 @@ func ParseDetectedFieldsQuery(r *http.Request) (*logproto.DetectedFieldsRequest,
 		return nil, err
 	}
 
-	result.Limit, err = fieldLimit(r)
+	result.Limit, err = detectedFieldsLimit(r)
 	if err != nil {
 		return nil, err
 	}
