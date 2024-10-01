@@ -135,7 +135,7 @@ func (p *Reader) start(ctx context.Context) error {
 // data from Kafka, and send it to the consumer.
 func (p *Reader) run(ctx context.Context) error {
 	level.Info(p.logger).Log("msg", "starting partition reader", "partition", p.partitionID, "consumer_group", p.consumerGroup)
-	cancelCtx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	consumer, err := p.consumerFactory(p.committer)
@@ -143,7 +143,7 @@ func (p *Reader) run(ctx context.Context) error {
 		return errors.Wrap(err, "creating consumer")
 	}
 
-	recordsChan := p.startFetchLoop(cancelCtx)
+	recordsChan := p.startFetchLoop(ctx)
 	wait := consumer.Start(ctx, recordsChan)
 
 	wait()
