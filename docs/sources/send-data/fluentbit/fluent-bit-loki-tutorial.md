@@ -247,7 +247,7 @@ In this tutorial, you learned how to send logs to Loki using Fluent Bit. You con
 {{< docs/ignore >}}
 
 ### Back to Docs
-Head back to where you started from to continue with the Loki documentation: [Loki documentation](https://grafana.com/docs/loki/latest/send-data/alloy)
+Head back to where you started from to continue with the [Loki documentation](https://grafana.com/docs/loki/latest/send-data/alloy).
 
 {{< /docs/ignore >}}
 
