@@ -1,6 +1,6 @@
 ---
 title: Getting started with the OpenTelemetry Collector and Loki tutorial
-menuTitle: Getting started with the OpenTelemetry Collector and Loki tutorial
+menuTitle: OTel Collector tutorial
 description: A Tutorial configuring the OpenTelemetry Collector to send OpenTelemetry logs to Loki
 weight: 250
 killercoda:
