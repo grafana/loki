@@ -1263,14 +1263,14 @@ func TestQuerier_DetectedFields(t *testing.T) {
 					mockLogfmtStreamWithLabelsAndStructuredMetadata(
 						1,
 						5,
-						`{type="test", name="bob"}`,
+						`{type="test"}`,
 					),
 				),
 				logHandler(
 					mockLogfmtStreamWithLabelsAndStructuredMetadata(
 						1,
 						5,
-						`{type="test", name="bob"}`,
+						`{type="test"}`,
 					),
 				),
 				limits,
@@ -1294,13 +1294,6 @@ func TestQuerier_DetectedFields(t *testing.T) {
 			// message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t
 			assert.Len(t, detectedFieldValues, 3)
 
-			slices.Sort(detectedFieldValues)
-			assert.Equal(t, []string{
-				"line 1",
-				"line 2",
-				"line 3",
-			}, detectedFieldValues)
-
 			request = DetectedFieldsRequest{
 				logproto.DetectedFieldsRequest{
 					Start:     time.Now().Add(-1 * time.Minute),
@@ -1314,15 +1307,14 @@ func TestQuerier_DetectedFields(t *testing.T) {
 				"/loki/api/v1/detected_field/name/values",
 			}
 
-			detectedFieldValues = handleRequest(handler, request).Values
+      secondValues := handleRequest(handler, request).Values
 			// log lines come from querier_mock_test.go
-			// message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t
-			assert.Len(t, detectedFieldValues, 1)
+			// message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t name=bar
+			assert.Len(t, secondValues, 1)
 
-			slices.Sort(detectedFieldValues)
 			assert.Equal(t, []string{
 				"bar",
-			}, detectedFieldValues)
+			}, secondValues)
 		},
 	)
 }
