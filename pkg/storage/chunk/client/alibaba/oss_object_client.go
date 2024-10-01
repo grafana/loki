@@ -78,7 +78,7 @@ func (s *OssObjectClient) ObjectExists(ctx context.Context, objectKey string) (b
 }
 
 func (s *OssObjectClient) ObjectSize(ctx context.Context, objectKey string) (int64, error) {
-	_, size, err := s.objectAttributes(ctx, objectKey, "OSS.ObjectExists")
+	_, size, err := s.objectAttributes(ctx, objectKey, "OSS.ObjectSize")
 	return size, err
 }
 
