@@ -66,7 +66,7 @@ To ship logs from Docker containers to Grafana Cloud using Fluent Bit, you can u
 
 You can run Fluent Bit as a [daemonset](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/) to collect all your Kubernetes workload logs.
 
-To do so you can use the [Fluent Bit helm chart](https://github.com/fluent/helm-charts) with the following `values.yaml` changing the value of `FLUENT_LOKI_URL`:
+To do so you can use the [Fluent Bit Helm chart](https://github.com/fluent/helm-charts) with the following `values.yaml` changing the value of `FLUENT_LOKI_URL`:
 
 ```yaml
 image:
