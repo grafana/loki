@@ -225,7 +225,7 @@ func (b *BlobStorage) ObjectExists(ctx context.Context, objectKey string) (bool,
 }
 
 func (b *BlobStorage) ObjectSize(ctx context.Context, objectKey string) (int64, error) {
-	_, size, err := b.objectAttributes(ctx, objectKey, "azure.ObjectExists")
+	_, size, err := b.objectAttributes(ctx, objectKey, "azure.ObjectSize")
 	return size, err
 }
 
