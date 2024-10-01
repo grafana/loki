@@ -116,7 +116,7 @@ helm repo update
 helm install fluent-bit fluent/fluent-bit -f values.yaml
 ```
 
-By default it will collect all containers logs and extract labels from Kubernetes API (`container_name`, `namespace`, etc..).
+By default it will collect all containers logs and extract labels from Kubernetes API (`container_name`, `namespace`, etc.).
 
 If you also want to host your Loki instance inside the cluster install the [official Loki helm chart](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/).
 
