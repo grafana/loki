@@ -1557,7 +1557,7 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		values := []string{}
 		for _, r := range responses {
 			fields = append(fields, r.(*DetectedFieldsResponse).Response.Fields...)
-      values = append(values, r.(*DetectedFieldsResponse).Response.Values...)
+			values = append(values, r.(*DetectedFieldsResponse).Response.Values...)
 		}
 
 		mergedFields, err := detected.MergeFields(fields, limit)

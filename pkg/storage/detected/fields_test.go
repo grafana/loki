@@ -134,7 +134,7 @@ func Test_MergeValues(t *testing.T) {
 		assert.Equal(t, 4, len(result))
 		assert.ElementsMatch(t, []string{"foo", "bar", "baz", "qux"}, result)
 	})
-  
+
 	t.Run("enforces the limit", func(t *testing.T) {
 		values := []string{"foo", "bar", "baz", "qux", "foo", "bar", "baz", "qux"}
 		limit := uint32(2)

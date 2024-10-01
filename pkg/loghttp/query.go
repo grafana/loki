@@ -651,7 +651,7 @@ func ParseDetectedFieldsQuery(r *http.Request) (*logproto.DetectedFieldsRequest,
 	result := &logproto.DetectedFieldsRequest{}
 
 	result.Query = query(r)
-  result.Values, result.Name = values(r)
+	result.Values, result.Name = values(r)
 	result.Start, result.End, err = bounds(r)
 	if err != nil {
 		return nil, err

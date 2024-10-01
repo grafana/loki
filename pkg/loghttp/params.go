@@ -47,11 +47,11 @@ func lineLimit(r *http.Request) (uint32, error) {
 }
 
 func detectedFieldsLimit(r *http.Request) (uint32, error) {
-  limit := r.Form.Get("limit")
-  if limit == "" {
-    // for backwards compatability
-    limit = r.Form.Get("field_limit")
-  }
+	limit := r.Form.Get("limit")
+	if limit == "" {
+		// for backwards compatability
+		limit = r.Form.Get("field_limit")
+	}
 
 	l, err := parseInt(limit, defaultLimit)
 	if err != nil {

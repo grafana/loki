@@ -303,8 +303,8 @@ func (q *MultiTenantQuerier) DetectedFields(ctx context.Context, req *logproto.D
 	)
 
 	return &logproto.DetectedFieldsResponse{
-		Fields:     []*logproto.DetectedField{},
-		Limit: req.GetLimit(),
+		Fields: []*logproto.DetectedField{},
+		Limit:  req.GetLimit(),
 	}, nil
 }
 

@@ -112,11 +112,11 @@ func MergeValues(
 			continue
 		}
 
-    if len(mergedValues) >= int(limit) {
-      break
-    }
+		if len(mergedValues) >= int(limit) {
+			break
+		}
 
-    mergedValues[value] = struct{}{}
+		mergedValues[value] = struct{}{}
 	}
 
 	result := make([]string, 0, limit)

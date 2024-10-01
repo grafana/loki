@@ -714,8 +714,8 @@ func (q *Rf1Querier) DetectedFields(ctx context.Context, req *logproto.DetectedF
 	}
 
 	return &logproto.DetectedFieldsResponse{
-		Fields:     fields,
-		Limit: req.GetLimit(),
+		Fields: fields,
+		Limit:  req.GetLimit(),
 	}, nil
 }
 
