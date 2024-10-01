@@ -255,7 +255,7 @@ func (c *DefaultClient) GetDetectedFields(
 
 	path := detectedFieldsPath
 	if fieldName != "" {
-		path = fmt.Sprintf(labelValuesPath, url.PathEscape(fieldName))
+		path = fmt.Sprintf(detectedFieldValuesPath, url.PathEscape(fieldName))
 	}
 
 	if err = c.doRequest(path, qsb.Encode(), quiet, &r); err != nil {

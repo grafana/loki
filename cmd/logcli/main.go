@@ -712,7 +712,6 @@ func newDetectedFieldsQuery(cmd *kingpin.CmdClause) *detected.FieldsQuery {
 		return nil
 	})
 
-	cmd.Arg("field", "The name of the field.").Default("").StringVar(&fieldName)
 	cmd.Flag("limit", "Limit on number of fields or values to return.").
 		Default("100").
 		IntVar(&q.Limit)
@@ -722,10 +721,12 @@ func newDetectedFieldsQuery(cmd *kingpin.CmdClause) *detected.FieldsQuery {
 	cmd.Arg("query", "eg '{foo=\"bar\",baz=~\".*blip\"} |~ \".*error.*\"'").
 		Required().
 		StringVar(&q.QueryString)
+	cmd.Arg("field", "The name of the field.").Default("").StringVar(&fieldName)
 	cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
 	cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").StringVar(&from)
 	cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
 	cmd.Flag("step", "Query resolution step width, for metric queries. Evaluate the query at the specified step over the time range.").
+    Default("10s").
 		DurationVar(&q.Step)
 
 	return q

@@ -16,7 +16,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/log"
 	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -355,7 +354,10 @@ func Test_parseDetectedFeilds(t *testing.T) {
 					duration = field
 				}
 
-				streamLbls.Add(log.ParsedLabel, labels.Label{Name: field.Name, Value: field.Value})
+				streamLbls.Add(
+					logql_log.ParsedLabel,
+					labels.Label{Name: field.Name, Value: field.Value},
+				)
 			}
 
 			rulerStreams = append(rulerStreams, push.Stream{
@@ -496,7 +498,7 @@ func Test_parseDetectedFeilds(t *testing.T) {
 				}
 
 				nginxStreamLbls.Add(
-					log.ParsedLabel,
+					logql_log.ParsedLabel,
 					labels.Label{Name: field.Name, Value: field.Value},
 				)
 			}
@@ -1053,8 +1055,12 @@ func TestQuerier_DetectedFields(t *testing.T) {
 
 	t.Run("returns detected fields with structured metadata from queried logs", func(t *testing.T) {
 		handler := NewDetectedFieldsHandler(
-			limitedHandler(mockLogfmtStreamWithLabelsAndStructuredMetadata(1, 5, `{type="test", name="bob"}`)),
-			logHandler(mockLogfmtStreamWithLabelsAndStructuredMetadata(1, 5, `{type="test", name="bob"}`)),
+			limitedHandler(
+				mockLogfmtStreamWithLabelsAndStructuredMetadata(1, 5, `{type="test", name="bob"}`),
+			),
+			logHandler(
+				mockLogfmtStreamWithLabelsAndStructuredMetadata(1, 5, `{type="test", name="bob"}`),
+			),
 			limits,
 		)
 
@@ -1173,9 +1179,19 @@ func TestQuerier_DetectedFields(t *testing.T) {
 		func(t *testing.T) {
 			handler := NewDetectedFieldsHandler(
 				limitedHandler(
-					mockLogfmtStreamWithLabelsAndStructuredMetadata(1, 2, `{type="test", name="bob"}`),
+					mockLogfmtStreamWithLabelsAndStructuredMetadata(
+						1,
+						2,
+						`{type="test", name="bob"}`,
+					),
 				),
-				logHandler(mockLogfmtStreamWithLabelsAndStructuredMetadata(1, 2, `{type="test", name="bob"}`)),
+				logHandler(
+					mockLogfmtStreamWithLabelsAndStructuredMetadata(
+						1,
+						2,
+						`{type="test", name="bob"}`,
+					),
+				),
 				limits,
 			)
 
@@ -1238,6 +1254,77 @@ func TestQuerier_DetectedFields(t *testing.T) {
 			"line 5",
 		}, detectedFieldValues)
 	})
+
+	t.Run(
+		"returns values for a detected fields, enforcing the limit and removing duplicates",
+		func(t *testing.T) {
+			handler := NewDetectedFieldsHandler(
+				limitedHandler(
+					mockLogfmtStreamWithLabelsAndStructuredMetadata(
+						1,
+						5,
+						`{type="test", name="bob"}`,
+					),
+				),
+				logHandler(
+					mockLogfmtStreamWithLabelsAndStructuredMetadata(
+						1,
+						5,
+						`{type="test", name="bob"}`,
+					),
+				),
+				limits,
+			)
+
+			request := DetectedFieldsRequest{
+				logproto.DetectedFieldsRequest{
+					Start:     time.Now().Add(-1 * time.Minute),
+					End:       time.Now(),
+					Query:     `{type="test"} | logfmt | json`,
+					LineLimit: 1000,
+					Limit:     3,
+					Values:    true,
+					Name:      "message",
+				},
+				"/loki/api/v1/detected_field/message/values",
+			}
+
+			detectedFieldValues := handleRequest(handler, request).Values
+			// log lines come from querier_mock_test.go
+			// message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t
+			assert.Len(t, detectedFieldValues, 3)
+
+			slices.Sort(detectedFieldValues)
+			assert.Equal(t, []string{
+				"line 1",
+				"line 2",
+				"line 3",
+			}, detectedFieldValues)
+
+			request = DetectedFieldsRequest{
+				logproto.DetectedFieldsRequest{
+					Start:     time.Now().Add(-1 * time.Minute),
+					End:       time.Now(),
+					Query:     `{type="test"} | logfmt | json`,
+					LineLimit: 1000,
+					Limit:     3,
+					Values:    true,
+					Name:      "name",
+				},
+				"/loki/api/v1/detected_field/name/values",
+			}
+
+			detectedFieldValues = handleRequest(handler, request).Values
+			// log lines come from querier_mock_test.go
+			// message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t
+			assert.Len(t, detectedFieldValues, 1)
+
+			slices.Sort(detectedFieldValues)
+			assert.Equal(t, []string{
+				"bar",
+			}, detectedFieldValues)
+		},
+	)
 }
 
 func BenchmarkQuerierDetectedFields(b *testing.B) {

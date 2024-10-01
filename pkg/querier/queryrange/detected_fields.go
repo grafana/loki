@@ -91,7 +91,7 @@ func NewDetectedFieldsHandler(
 }
 
 func parseDetectedFieldValues(limit uint32, streams []push.Stream, name string) []string {
-	values := []string{}
+	values := map[string]struct{}{}
 	for _, stream := range streams {
 		streamLbls, err := syntax.ParseLabels(stream.Labels)
 		if err != nil {
@@ -100,23 +100,32 @@ func parseDetectedFieldValues(limit uint32, streams []push.Stream, name string) 
 
 		for _, entry := range stream.Entries {
 			if len(values) >= int(limit) {
-				return values
+				break
 			}
 
 			structuredMetadata := getStructuredMetadata(entry)
 			if vals, ok := structuredMetadata[name]; ok {
-				values = append(values, vals...)
+				for _, v := range vals {
+					values[v] = struct{}{}
+				}
 			}
 
 			entryLbls := logql_log.NewBaseLabelsBuilder().ForLabels(streamLbls, streamLbls.Hash())
 			parsedLabels, _ := parseEntry(entry, entryLbls)
 			if vals, ok := parsedLabels[name]; ok {
-				values = append(values, vals...)
+				for _, v := range vals {
+					values[v] = struct{}{}
+				}
 			}
 		}
 	}
 
-	return values
+	response := make([]string, 0, len(values))
+	for v := range values {
+		response = append(response, v)
+	}
+
+	return response
 }
 
 func makeDownstreamRequest(
