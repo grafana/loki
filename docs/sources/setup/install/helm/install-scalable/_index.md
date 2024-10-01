@@ -1,5 +1,5 @@
 ---
-title: Install the simple scalable Helm chart 
+title: Loki Simple Scalable Helm chart 
 menuTitle: Install scalable Loki
 description: Installing Loki in simple scalable mode using the Helm chart.
 aliases:
@@ -9,7 +9,7 @@ weight: 300
 keywords: 
 ---
 
-# Loki simple scalable Helm chart
+# Loki Simple Scalable Helm chart
 
 This Helm Chart deploys Grafana Loki on Kubernetes in simple scalable mode.
 
