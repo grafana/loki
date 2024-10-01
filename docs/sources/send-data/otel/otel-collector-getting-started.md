@@ -40,14 +40,14 @@ It's a fully configured environment with all the dependencies already installed.
 
 ![Interactive](/media/docs/loki/loki-ile.svg)
 
-Provide feedback, report bugs, and raise issues in the [Grafana Killercoda repository](https://github.com/grafana/killercoda).
+Provide feedback, report bugs, and raise issues for the tutorial in the [Grafana Killercoda repository](https://github.com/grafana/killercoda).
 {{< /admonition >}}
 
 <!-- INTERACTIVE ignore END -->
 
 ## Scenario
 
-In this scenario, we have a microservices application called the Carnivourse Greenhouse. This application consists of the following services:
+In this scenario, we have a microservices application called the Carnivorous Greenhouse. This application consists of the following services:
 
 - **User Service:** Manages user data and authentication for the application. Such as creating users and logging in.
 - **Plant Service:** Manages the creation of new plants and updates other services when a new plant is created.
@@ -57,7 +57,7 @@ In this scenario, we have a microservices application called the Carnivourse Gre
 - **Main App:** The main application that ties all the services together.
 - **Database:** A database that stores user and plant data.
 
-Each service generates logs using the OpenTelemetry SDK and exports to the OpenTelemetry Collector in the OpenTelemetry format (otlp). The collector then ingests the logs and sends them to Loki.
+Each service generates logs using the OpenTelemetry SDK and exports to the OpenTelemetry Collector in the OpenTelemetry format (OTLP). The collector then ingests the logs and sends them to Loki.
 
 <!-- INTERACTIVE page intro.md END -->
 
@@ -91,23 +91,18 @@ In this step, we will set up our environment by cloning the repository that cont
 
     {{< /docs/ignore >}}
 
-    This will spin up the following services:
-    ```console
-    ✔ Container loki-fundamentals-grafana-1          Started                                                        
-    ✔ Container loki-fundamentals-loki-1             Started                        
-    ✔ Container loki-fundamentals-otel-collector-1   Stopped
+    To check the status of services we can run the following command:
+    ```bash
+    docker ps -a
     ```
     <!-- INTERACTIVE ignore START -->
     {{< admonition type="note" >}}
-    The OpenTelemetry Collector container will show as `Stopped`. This is expected as we have provided an empty configuration file. We will update this file in the next step.
+    The OpenTelemetry Collector container will show as `Stopped` or `Exited (1) About a minute ago`. This is expected as we have provided an empty configuration file. We will update this file in the next step.
     {{< /admonition >}}
     <!-- INTERACTIVE ignore END -->
 
-  {{< docs/ignore >}}
-  **Note:** The OpenTelemetry Collector container will show as `Stopped`. This is expected as we have provided an empty configuration file. We will update this file in the next step.
-  {{< /docs/ignore >}}
 
-Once we have finished configuring the OpenTelemetry Collector and sending logs to Loki, we will be able to view the logs in Grafana. To check if Grafana is up and running, navigate to the following URL: [http://localhost:3000](http://localhost:3000)
+After we've finished configuring the OpenTelemetry Collector and sending logs to Loki, we will be able to view the logs in Grafana. To check if Grafana is up and running, navigate to the following URL: [http://localhost:3000](http://localhost:3000)
 <!-- INTERACTIVE page step1.md END -->
 
 <!-- INTERACTIVE page step2.md START -->
@@ -123,7 +118,7 @@ The configuration file is written using yaml configuration syntax.To start, we w
 {{< docs/ignore >}}
 **Note: Killercoda has an inbuilt Code editor which can be accessed via the `Editor` tab.**
 1. Expand the `loki-fundamentals` directory in the file explorer of the `Editor` tab.
-2. Locate the `otel-config.yaml` file in the top level directory, `loki-fundamentals'.
+2. Locate the `otel-config.yaml` file in the top level directory, `loki-fundamentals`.
 3. Click on the `otel-config.yaml` file to open it in the code editor.
 {{< /docs/ignore >}}
 
@@ -135,7 +130,7 @@ The configuration file is written using yaml configuration syntax.To start, we w
 
 You will copy all three of the following configuration snippets into the `otel-config.yaml` file.
 
-### Recive OpenTelemetry logs via gRPC and HTTP
+### Receive OpenTelemetry logs via gRPC and HTTP
 
 First, we will configure the OpenTelemetry receiver. `otlp:` accepts logs in the OpenTelemetry format via HTTP and gRPC. We will use this receiver to receive logs from the Carnivorous Greenhouse application.
 
@@ -155,8 +150,8 @@ In this configuration:
 - `receivers`: The list of receivers to receive telemetry data. In this case, we are using the `otlp` receiver.
 - `otlp`: The OpenTelemetry receiver that accepts logs in the OpenTelemetry format.
 - `protocols`: The list of protocols that the receiver supports. In this case, we are using `grpc` and `http`.
-- `grpc`: The gRPC protocol configuration. The receiver will accept logs via gRPC on `
-- `http`: The HTTP protocol configuration. The receiver will accept logs via HTTP on `
+- `grpc`: The gRPC protocol configuration. The receiver will accept logs via gRPC on `4317`
+- `http`: The HTTP protocol configuration. The receiver will accept logs via HTTP on `4318`
 - `endpoint`: The IP address and port number to listen on. In this case, we are listening on all IP addresses on port `4317` for gRPC and port `4318` for HTTP.
 
 For more information on the `otlp` receiver configuration, see the [OpenTelemetry Receiver OTLP documentation](https://github.com/open-telemetry/opentelemetry-collector/blob/main/receiver/otlpreceiver/README.md).
@@ -164,9 +159,7 @@ For more information on the `otlp` receiver configuration, see the [OpenTelemetr
 
 ### Create batches of logs using a OpenTelemetry Processor
 
-Next, we will configure a OpenTelemetry processor. `batch:` accepts telemetry data from other `otelcol` components and places them into batches. Batching improves the compression of data and reduces the number of outgoing network requests required to transmit data. This processor supports both size and time based batching.
-
-Now add the following configuration to the `otel-config.yaml` file:
+Next add the following configuration to the `otel-config.yaml` file:
 ```yaml
 # Processors
 processors:
@@ -181,9 +174,7 @@ For more information on the `batch` processor configuration, see the [OpenTeleme
 
 ### Export logs to Loki using a OpenTelemetry Exporter
 
-Lastly, we will configure the OpenTelemetry exporter. `otlphttp/logs:` accepts telemetry data from other `otelcol` components and writes them over the network using the OTLP HTTP protocol. We will use this exporter to send the logs to the Loki native OTLP endpoint.
-
-Now add the following configuration to the `otel-config.yaml` file:
+We will use the `otlphttp/logs` exporter to send the logs to the Loki native OTLP endpoint. Add the following configuration to the `otel-config.yaml` file:
 ```yaml
 # Exporters
 exporters:
@@ -332,10 +323,10 @@ This will start the following services:
 
 Once started, you can access the Carnivorous Greenhouse application at [http://localhost:5005](http://localhost:5005). Generate some logs by interacting with the application in the following ways:
 
-- Create a user
-- Log in
-- Create a few plants to monitor
-- Enable bug mode to activate the bug service. This will cause services to fail and generate additional logs.
+1. Create a user
+1. Log in
+1. Create a few plants to monitor
+1. Enable bug mode to activate the bug service. This will cause services to fail and generate additional logs.
 
 Finally to view the logs in Loki, navigate to the Loki Logs Explore view in Grafana at [http://localhost:3000/a/grafana-lokiexplore-app/explore](http://localhost:3000/a/grafana-lokiexplore-app/explore).
 
