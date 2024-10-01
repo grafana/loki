@@ -320,16 +320,15 @@ func (c *COSObjectClient) DeleteObject(ctx context.Context, objectKey string) er
 }
 
 func (c *COSObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	exists, _, err := c.objectAttributes(ctx, objectKey, "COS.ObjectExists")
-	return exists, err
+	_, err := c.objectAttributes(ctx, objectKey, "COS.ObjectExists")
+	return err == nil, err
 }
 
 func (c *COSObjectClient) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
-	_, size, err := c.objectAttributes(ctx, objectKey, "COS.GetAttributes")
-	return client.ObjectAttributes{Size: size}, err
+	return c.objectAttributes(ctx, objectKey, "COS.GetAttributes")
 }
 
-func (c *COSObjectClient) objectAttributes(ctx context.Context, objectKey, source string) (bool, int64, error) {
+func (c *COSObjectClient) objectAttributes(ctx context.Context, objectKey, source string) (client.ObjectAttributes, error) {
 	bucket := c.bucketFromKey(objectKey)
 	var objectSize int64
 	err := instrument.CollectedRequest(ctx, source, cosRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
@@ -346,10 +345,10 @@ func (c *COSObjectClient) objectAttributes(ctx context.Context, objectKey, sourc
 		return nil
 	})
 	if err != nil {
-		return false, 0, err
+		return client.ObjectAttributes{}, err
 	}
 
-	return true, objectSize, nil
+	return client.ObjectAttributes{Size: objectSize}, nil
 }
 
 // GetObject returns a reader and the size for the specified object key from the configured S3 bucket.

@@ -73,16 +73,15 @@ func (s *OssObjectClient) Stop() {
 }
 
 func (s *OssObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	exists, _, err := s.objectAttributes(ctx, objectKey, "OSS.ObjectExists")
-	return exists, err
+	_, err := s.objectAttributes(ctx, objectKey, "OSS.ObjectExists")
+	return err == nil, err
 }
 
 func (s *OssObjectClient) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
-	_, size, err := s.objectAttributes(ctx, objectKey, "OSS.GetAttributes")
-	return client.ObjectAttributes{Size: size}, err
+	return s.objectAttributes(ctx, objectKey, "OSS.GetAttributes")
 }
 
-func (s *OssObjectClient) objectAttributes(ctx context.Context, objectKey, operation string) (bool, int64, error) {
+func (s *OssObjectClient) objectAttributes(ctx context.Context, objectKey, operation string) (client.ObjectAttributes, error) {
 	var options []oss.Option
 	var objectSize int64
 	err := instrument.CollectedRequest(ctx, operation, ossRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
@@ -95,10 +94,10 @@ func (s *OssObjectClient) objectAttributes(ctx context.Context, objectKey, opera
 		return nil
 	})
 	if err != nil {
-		return false, 0, err
+		return client.ObjectAttributes{}, err
 	}
 
-	return true, objectSize, nil
+	return client.ObjectAttributes{Size: objectSize}, nil
 }
 
 // GetObject returns a reader and the size for the specified object key from the configured OSS bucket.

@@ -310,23 +310,22 @@ func buckets(cfg S3Config) ([]string, error) {
 func (a *S3ObjectClient) Stop() {}
 
 func (a *S3ObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	exists, _, err := a.objectAttributes(ctx, objectKey, "S3.ObjectExists")
-	return exists, err
+	_, err := a.objectAttributes(ctx, objectKey, "S3.ObjectExists")
+	return err == nil, err
 }
 
 func (a *S3ObjectClient) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
-	_, size, err := a.objectAttributes(ctx, objectKey, "S3.GetAttributes")
-	return client.ObjectAttributes{Size: size}, err
+	return a.objectAttributes(ctx, objectKey, "S3.GetAttributes")
 }
 
-func (a *S3ObjectClient) objectAttributes(ctx context.Context, objectKey, method string) (bool, int64, error) {
+func (a *S3ObjectClient) objectAttributes(ctx context.Context, objectKey, method string) (client.ObjectAttributes, error) {
 	var lastErr error
 	var objectSize int64
 
 	retries := backoff.New(ctx, a.cfg.BackoffConfig)
 	for retries.Ongoing() {
 		if ctx.Err() != nil {
-			return false, 0, errors.Wrap(ctx.Err(), "ctx related error during s3 objectExists")
+			return client.ObjectAttributes{}, errors.Wrap(ctx.Err(), "ctx related error during s3 objectExists")
 		}
 		lastErr = instrument.CollectedRequest(ctx, method, s3RequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 			headObjectInput := &s3.HeadObjectInput{
@@ -343,17 +342,17 @@ func (a *S3ObjectClient) objectAttributes(ctx context.Context, objectKey, method
 			return nil
 		})
 		if lastErr == nil {
-			return true, objectSize, nil
+			return client.ObjectAttributes{Size: objectSize}, nil
 		}
 
 		if a.IsObjectNotFoundErr(lastErr) {
-			return false, 0, lastErr
+			return client.ObjectAttributes{}, lastErr
 		}
 
 		retries.Wait()
 	}
 
-	return false, 0, lastErr
+	return client.ObjectAttributes{}, lastErr
 }
 
 // DeleteObject deletes the specified objectKey from the appropriate S3 bucket
