@@ -309,7 +309,7 @@ func (m *MockS3Client) HeadObject(input *s3.HeadObjectInput) (*s3.HeadObjectOutp
 	return m.HeadObjectFunc(input)
 }
 
-func Test_ExistsWithSize(t *testing.T) {
+func Test_ObjectSize(t *testing.T) {
 	mockS3 := &MockS3Client{
 		HeadObjectFunc: func(_ *s3.HeadObjectInput) (*s3.HeadObjectOutput, error) {
 			var size int64
@@ -335,10 +335,9 @@ func Test_ExistsWithSize(t *testing.T) {
 	require.NoError(t, err)
 	c.S3 = mockS3
 
-	exists, size, err := c.ObjectExistsWithSize(context.Background(), "abc")
+	size, err := c.ObjectSize(context.Background(), "abc")
 	require.NoError(t, err)
 	require.EqualValues(t, 128, size)
-	require.True(t, exists)
 }
 
 func Test_RetryLogic(t *testing.T) {
@@ -371,7 +370,7 @@ func Test_RetryLogic(t *testing.T) {
 			3,
 			true,
 			func(c *S3ObjectClient) error {
-				_, _, err := c.ObjectExistsWithSize(context.Background(), "foo")
+				_, err := c.ObjectExists(context.Background(), "foo")
 				return err
 			},
 		},
@@ -389,7 +388,7 @@ func Test_RetryLogic(t *testing.T) {
 			3,
 			false,
 			func(c *S3ObjectClient) error {
-				_, _, err := c.ObjectExistsWithSize(context.Background(), "foo")
+				_, err := c.ObjectSize(context.Background(), "foo")
 				return err
 			},
 		},

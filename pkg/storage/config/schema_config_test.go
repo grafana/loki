@@ -1184,3 +1184,32 @@ func TestChunkKeys(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkExternalKey(b *testing.B) {
+	c := chunk.Chunk{
+		ChunkRef: logproto.ChunkRef{
+			Fingerprint: 100,
+			UserID:      "fake",
+			From:        model.TimeFromUnix(1000),
+			Through:     model.TimeFromUnix(5000),
+			Checksum:    12345,
+		},
+	}
+	sch := SchemaConfig{
+		Configs: []PeriodConfig{
+			{
+				From:      DayTime{Time: 0},
+				Schema:    "v12",
+				RowShards: 16,
+			},
+		},
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.Run("testtt", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			sch.ExternalKey(c.ChunkRef)
+		}
+	})
+}

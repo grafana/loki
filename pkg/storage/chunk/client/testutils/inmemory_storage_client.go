@@ -393,11 +393,16 @@ func (m *MockStorage) query(ctx context.Context, query index.Query, callback fun
 
 // ObjectExists implments client.ObjectClient
 func (m *InMemoryObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	exists, _, err := m.ObjectExistsWithSize(ctx, objectKey)
+	exists, _, err := m.objectAttributes(ctx, objectKey)
 	return exists, err
 }
 
-func (m *InMemoryObjectClient) ObjectExistsWithSize(_ context.Context, objectKey string) (bool, int64, error) {
+func (m *InMemoryObjectClient) ObjectSize(ctx context.Context, objectKey string) (int64, error) {
+	_, size, err := m.objectAttributes(ctx, objectKey)
+	return size, err
+}
+
+func (m *InMemoryObjectClient) objectAttributes(_ context.Context, objectKey string) (bool, int64, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 

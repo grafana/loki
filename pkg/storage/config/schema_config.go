@@ -764,7 +764,18 @@ func newExternalKey(ref logproto.ChunkRef) string {
 
 // v12+
 func newerExternalKey(ref logproto.ChunkRef) string {
-	return fmt.Sprintf("%s/%x/%x:%x:%x", ref.UserID, ref.Fingerprint, int64(ref.From), int64(ref.Through), ref.Checksum)
+	b := strings.Builder{}
+	b.Grow(21 + len(ref.UserID))
+	b.WriteString(ref.UserID)
+	b.WriteRune('/')
+	b.WriteString(strconv.FormatUint(ref.Fingerprint, 16))
+	b.WriteRune('/')
+	b.WriteString(strconv.FormatInt((int64)(ref.From), 16))
+	b.WriteRune(':')
+	b.WriteString(strconv.FormatInt((int64)(ref.Through), 16))
+	b.WriteRune(':')
+	b.WriteString(strconv.FormatUint((uint64)(ref.Checksum), 16))
+	return b.String()
 }
 
 func GetIndexStoreTableRanges(indexType string, periodicConfigs []PeriodConfig) TableRanges {

@@ -17,16 +17,21 @@ type testObjClient struct {
 	client.ObjectClient
 }
 
-func (t testObjClient) ObjectExistsWithSize(_ context.Context, object string) (bool, int64, error) {
+func (t testObjClient) ObjectSize(ctx context.Context, object string) (int64, error) {
+	_, size, err := t.objectAttributes(ctx, object)
+	return size, err
+}
+
+func (t testObjClient) ObjectExists(ctx context.Context, object string) (bool, error) {
+	exists, _, err := t.objectAttributes(ctx, object)
+	return exists, err
+}
+
+func (t testObjClient) objectAttributes(_ context.Context, object string) (bool, int64, error) {
 	if strings.Contains(object, "missing") {
 		return false, 0, nil
 	}
 	return true, 0, nil
-}
-
-func (t testObjClient) ObjectExists(ctx context.Context, object string) (bool, error) {
-	exists, _, err := t.ObjectExistsWithSize(ctx, object)
-	return exists, err
 }
 
 type testCompactedIdx struct {

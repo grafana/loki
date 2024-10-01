@@ -310,11 +310,16 @@ func buckets(cfg S3Config) ([]string, error) {
 func (a *S3ObjectClient) Stop() {}
 
 func (a *S3ObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	exists, _, err := a.ObjectExistsWithSize(ctx, objectKey)
+	exists, _, err := a.objectAttributes(ctx, objectKey, "S3.ObjectExists")
 	return exists, err
 }
 
-func (a *S3ObjectClient) ObjectExistsWithSize(ctx context.Context, objectKey string) (bool, int64, error) {
+func (a *S3ObjectClient) ObjectSize(ctx context.Context, objectKey string) (int64, error) {
+	_, size, err := a.objectAttributes(ctx, objectKey, "S3.ObjectSize")
+	return size, err
+}
+
+func (a *S3ObjectClient) objectAttributes(ctx context.Context, objectKey, method string) (bool, int64, error) {
 	var lastErr error
 	var objectSize int64
 
@@ -323,7 +328,7 @@ func (a *S3ObjectClient) ObjectExistsWithSize(ctx context.Context, objectKey str
 		if ctx.Err() != nil {
 			return false, 0, errors.Wrap(ctx.Err(), "ctx related error during s3 objectExists")
 		}
-		lastErr = instrument.CollectedRequest(ctx, "S3.ObjectExists", s3RequestDuration, instrument.ErrorCode, func(_ context.Context) error {
+		lastErr = instrument.CollectedRequest(ctx, method, s3RequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 			headObjectInput := &s3.HeadObjectInput{
 				Bucket: aws.String(a.bucketFromKey(objectKey)),
 				Key:    aws.String(objectKey),

@@ -127,11 +127,16 @@ func (s *GCSObjectClient) Stop() {
 }
 
 func (s *GCSObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	exists, _, err := s.ObjectExistsWithSize(ctx, objectKey)
+	exists, _, err := s.objectAttributes(ctx, objectKey)
 	return exists, err
 }
 
-func (s *GCSObjectClient) ObjectExistsWithSize(ctx context.Context, objectKey string) (bool, int64, error) {
+func (s *GCSObjectClient) ObjectSize(ctx context.Context, objectKey string) (int64, error) {
+	_, size, err := s.objectAttributes(ctx, objectKey)
+	return size, err
+}
+
+func (s *GCSObjectClient) objectAttributes(ctx context.Context, objectKey string) (bool, int64, error) {
 	attrs, err := s.getsBuckets.Object(objectKey).Attrs(ctx)
 	if err != nil {
 		return false, 0, err

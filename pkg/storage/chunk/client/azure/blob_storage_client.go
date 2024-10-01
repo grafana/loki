@@ -220,13 +220,18 @@ func NewBlobStorage(cfg *BlobStorageConfig, metrics BlobStorageMetrics, hedgingC
 func (b *BlobStorage) Stop() {}
 
 func (b *BlobStorage) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	exists, _, err := b.ObjectExistsWithSize(ctx, objectKey)
+	exists, _, err := b.objectAttributes(ctx, objectKey, "azure.ObjectExists")
 	return exists, err
 }
 
-func (b *BlobStorage) ObjectExistsWithSize(ctx context.Context, objectKey string) (bool, int64, error) {
+func (b *BlobStorage) ObjectSize(ctx context.Context, objectKey string) (int64, error) {
+	_, size, err := b.objectAttributes(ctx, objectKey, "azure.ObjectExists")
+	return size, err
+}
+
+func (b *BlobStorage) objectAttributes(ctx context.Context, objectKey, source string) (bool, int64, error) {
 	var objectSize int64
-	err := loki_instrument.TimeRequest(ctx, "azure.ObjectExists", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
+	err := loki_instrument.TimeRequest(ctx, source, instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
 		blockBlobURL, err := b.getBlobURL(objectKey, false)
 		if err != nil {
 			return err

@@ -68,11 +68,16 @@ func NewFSObjectClient(cfg FSConfig) (*FSObjectClient, error) {
 func (FSObjectClient) Stop() {}
 
 func (f *FSObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	exists, _, err := f.ObjectExistsWithSize(ctx, objectKey)
+	exists, _, err := f.objectAttributes(ctx, objectKey)
 	return exists, err
 }
 
-func (f *FSObjectClient) ObjectExistsWithSize(_ context.Context, objectKey string) (bool, int64, error) {
+func (f *FSObjectClient) ObjectSize(ctx context.Context, objectKey string) (int64, error) {
+	_, size, err := f.objectAttributes(ctx, objectKey)
+	return size, err
+}
+
+func (f *FSObjectClient) objectAttributes(_ context.Context, objectKey string) (bool, int64, error) {
 	fullPath := filepath.Join(f.cfg.Directory, filepath.FromSlash(objectKey))
 	fi, err := os.Lstat(fullPath)
 	if err != nil {

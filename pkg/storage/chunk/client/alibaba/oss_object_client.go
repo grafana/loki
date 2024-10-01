@@ -73,14 +73,19 @@ func (s *OssObjectClient) Stop() {
 }
 
 func (s *OssObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	exists, _, err := s.ObjectExistsWithSize(ctx, objectKey)
+	exists, _, err := s.objectAttributes(ctx, objectKey, "OSS.ObjectExists")
 	return exists, err
 }
 
-func (s *OssObjectClient) ObjectExistsWithSize(ctx context.Context, objectKey string) (bool, int64, error) {
+func (s *OssObjectClient) ObjectSize(ctx context.Context, objectKey string) (int64, error) {
+	_, size, err := s.objectAttributes(ctx, objectKey, "OSS.ObjectExists")
+	return size, err
+}
+
+func (s *OssObjectClient) objectAttributes(ctx context.Context, objectKey, operation string) (bool, int64, error) {
 	var options []oss.Option
 	var objectSize int64
-	err := instrument.CollectedRequest(ctx, "OSS.ObjectExists", ossRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
+	err := instrument.CollectedRequest(ctx, operation, ossRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 		headers, requestErr := s.defaultBucket.GetObjectMeta(objectKey, options...)
 		if requestErr != nil {
 			return requestErr
