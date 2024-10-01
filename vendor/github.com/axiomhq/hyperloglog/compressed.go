@@ -103,9 +103,9 @@ func (v *compressedList) UnmarshalBinary(data []byte) error {
 	return nil
 }
 
-func newCompressedList() *compressedList {
+func newCompressedList(capacity int) *compressedList {
 	v := &compressedList{}
-	v.b = make(variableLengthList, 0)
+	v.b = make(variableLengthList, 0, capacity)
 	return v
 }
 

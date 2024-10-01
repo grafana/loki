@@ -7,9 +7,9 @@ go: true
 clear-output-folder: false
 version: "^3.0.0"
 license-header: MICROSOFT_MIT_NO_VERSION
-input-file: "https://raw.githubusercontent.com/Azure/azure-rest-api-specs/e515b6251fdc21015282d2e84b85beec7c091763/specification/storage/data-plane/Microsoft.BlobStorage/preview/2020-10-02/blob.json"
+input-file: "https://raw.githubusercontent.com/Azure/azure-rest-api-specs/a32d0b2423d19835246bb2ef92941503bfd5e734/specification/storage/data-plane/Microsoft.BlobStorage/preview/2021-12-02/blob.json"
 credential-scope: "https://storage.azure.com/.default"
-output-folder: .
+output-folder: ../generated
 file-prefix: "zz_"
 openapi-type: "data-plane"
 verbose: true
@@ -19,7 +19,43 @@ modelerfour:
   seal-single-value-enum-by-default: true
   lenient-model-deduplication: true
 export-clients: true
-use: "@autorest/go@4.0.0-preview.43"
+use: "@autorest/go@4.0.0-preview.61"
+```
+
+### Updating service version to 2023-11-03
+```yaml
+directive:
+- from: 
+  - zz_appendblob_client.go
+  - zz_blob_client.go
+  - zz_blockblob_client.go
+  - zz_container_client.go
+  - zz_pageblob_client.go
+  - zz_service_client.go
+  where: $
+  transform: >-
+    return $.
+      replaceAll(`[]string{"2021-12-02"}`, `[]string{ServiceVersion}`).
+      replaceAll(`2021-12-02`, `2023-11-03`);
+```
+
+### Undo breaking change with BlobName 
+``` yaml
+directive:
+- from: zz_models.go
+  where: $
+  transform: >-
+    return $.
+      replace(/Name\s+\*BlobName/g, `Name *string`);
+```
+
+### Removing UnmarshalXML for BlobItems to create customer UnmarshalXML function
+```yaml
+directive:
+- from: swagger-document
+  where: $.definitions
+  transform: >
+    $.BlobItemInternal["x-ms-go-omit-serde-methods"] = true;
 ```
 
 ### Remove pager methods and export various generated methods in container client
@@ -30,7 +66,7 @@ directive:
     where: $
     transform: >-
       return $.
-        replace(/func \(client \*ContainerClient\) NewListBlobFlatSegmentPager\(.+\/\/ listBlobFlatSegmentCreateRequest creates the ListBlobFlatSegment request/s, `// listBlobFlatSegmentCreateRequest creates the ListBlobFlatSegment request`).
+        replace(/func \(client \*ContainerClient\) NewListBlobFlatSegmentPager\(.+\/\/ listBlobFlatSegmentCreateRequest creates the ListBlobFlatSegment request/s, `//\n// listBlobFlatSegmentCreateRequest creates the ListBlobFlatSegment request`).
         replace(/\(client \*ContainerClient\) listBlobFlatSegmentCreateRequest\(/, `(client *ContainerClient) ListBlobFlatSegmentCreateRequest(`).
         replace(/\(client \*ContainerClient\) listBlobFlatSegmentHandleResponse\(/, `(client *ContainerClient) ListBlobFlatSegmentHandleResponse(`);
 ```
@@ -43,7 +79,7 @@ directive:
     where: $
     transform: >-
       return $.
-        replace(/func \(client \*ServiceClient\) NewListContainersSegmentPager\(.+\/\/ listContainersSegmentCreateRequest creates the ListContainersSegment request/s, `// listContainersSegmentCreateRequest creates the ListContainersSegment request`).
+        replace(/func \(client \*ServiceClient\) NewListContainersSegmentPager\(.+\/\/ listContainersSegmentCreateRequest creates the ListContainersSegment request/s, `//\n// listContainersSegmentCreateRequest creates the ListContainersSegment request`).
         replace(/\(client \*ServiceClient\) listContainersSegmentCreateRequest\(/, `(client *ServiceClient) ListContainersSegmentCreateRequest(`).
         replace(/\(client \*ServiceClient\) listContainersSegmentHandleResponse\(/, `(client *ServiceClient) ListContainersSegmentHandleResponse(`);
 ```
@@ -244,7 +280,9 @@ directive:
 
 ``` yaml
 directive:
-- from: zz_models.go
+- from:
+  - zz_models.go
+  - zz_options.go
   where: $
   transform: >-
     return $.
@@ -299,6 +337,139 @@ directive:
   where: $
   transform: >-
     return $.
-      replace(/StorageErrorCodeIncrementalCopyOfEralierVersionSnapshotNotAllowed\t+\StorageErrorCode\s+=\s+\"IncrementalCopyOfEralierVersionSnapshotNotAllowed"\n, /StorageErrorCodeIncrementalCopyOfEarlierVersionSnapshotNotAllowed\t+\StorageErrorCode\s+=\s+\"IncrementalCopyOfEarlierVersionSnapshotNotAllowed"\
-      replace(/StorageErrorCodeIncrementalCopyOfEarlierVersionSnapshotNotAllowed/g, /StorageErrorCodeIncrementalCopyOfEarlierVersionSnapshotNotAllowed/g)
+      replace(/IncrementalCopyOfEralierVersionSnapshotNotAllowed/g, "IncrementalCopyOfEarlierVersionSnapshotNotAllowed");
 ```
+
+### Fix up x-ms-content-crc64 header response name
+
+``` yaml
+directive:
+- from: swagger-document
+  where: $.x-ms-paths.*.*.responses.*.headers.x-ms-content-crc64
+  transform: >
+    $["x-ms-client-name"] = "ContentCRC64"
+```
+
+``` yaml
+directive:
+- rename-model:
+    from: BlobItemInternal
+    to: BlobItem
+- rename-model:
+    from: BlobPropertiesInternal
+    to: BlobProperties
+```
+
+### Updating encoding URL, Golang adds '+' which disrupts encoding with service
+
+``` yaml
+directive:
+  - from: zz_service_client.go
+    where: $
+    transform: >-
+      return $.
+        replace(/req.Raw\(\).URL.RawQuery \= reqQP.Encode\(\)/, `req.Raw().URL.RawQuery = strings.Replace(reqQP.Encode(), "+", "%20", -1)`)
+```
+
+### Change `where` parameter in blob filtering to be required
+
+``` yaml
+directive:
+- from: swagger-document
+  where: $.parameters.FilterBlobsWhere
+  transform: >
+    $.required = true;
+```
+
+### Change `Duration` parameter in leases to be required
+
+``` yaml
+directive:
+- from: swagger-document
+  where: $.parameters.LeaseDuration
+  transform: >
+    $.required = true;
+```
+
+### Change CPK acronym to be all caps
+
+``` yaml
+directive:
+  - from: source-file-go
+    where: $
+    transform: >-
+      return $.
+        replace(/Cpk/g, "CPK");
+```
+
+### Change CORS acronym to be all caps
+
+``` yaml
+directive:
+  - from: source-file-go
+    where: $
+    transform: >-
+      return $.
+        replace(/Cors/g, "CORS");
+```
+
+### Change cors xml to be correct
+
+``` yaml
+directive:
+  - from: source-file-go
+    where: $
+    transform: >-
+      return $.
+        replace(/xml:"CORS>CORSRule"/g, "xml:\"Cors>CorsRule\"");
+```
+
+### Fix Content-Type header in submit batch request
+
+``` yaml
+directive:
+- from: 
+  - zz_container_client.go
+  - zz_service_client.go
+  where: $
+  transform: >-
+    return $.
+      replace (/req.SetBody\(body\,\s+\"application\/xml\"\)/g, `req.SetBody(body, multipartContentType)`);
+```
+
+### Fix response status code check in submit batch request
+
+``` yaml
+directive:
+- from: zz_service_client.go
+  where: $
+  transform: >-
+    return $.
+      replace(/if\s+!runtime\.HasStatusCode\(httpResp,\s+http\.StatusOK\)\s+\{\s+err\s+=\s+runtime\.NewResponseError\(httpResp\)\s+return ServiceClientSubmitBatchResponse\{\}\,\s+err\s+}/g, 
+      `if !runtime.HasStatusCode(httpResp, http.StatusAccepted) {\n\t\terr = runtime.NewResponseError(httpResp)\n\t\treturn ServiceClientSubmitBatchResponse{}, err\n\t}`);
+```
+
+### Convert time to GMT for If-Modified-Since and If-Unmodified-Since request headers
+
+``` yaml
+directive:
+- from: 
+  - zz_container_client.go
+  - zz_blob_client.go
+  - zz_appendblob_client.go
+  - zz_blockblob_client.go
+  - zz_pageblob_client.go
+  where: $
+  transform: >-
+    return $.
+      replace (/req\.Raw\(\)\.Header\[\"If-Modified-Since\"\]\s+=\s+\[\]string\{modifiedAccessConditions\.IfModifiedSince\.Format\(time\.RFC1123\)\}/g, 
+      `req.Raw().Header["If-Modified-Since"] = []string{(*modifiedAccessConditions.IfModifiedSince).In(gmt).Format(time.RFC1123)}`).
+      replace (/req\.Raw\(\)\.Header\[\"If-Unmodified-Since\"\]\s+=\s+\[\]string\{modifiedAccessConditions\.IfUnmodifiedSince\.Format\(time\.RFC1123\)\}/g, 
+      `req.Raw().Header["If-Unmodified-Since"] = []string{(*modifiedAccessConditions.IfUnmodifiedSince).In(gmt).Format(time.RFC1123)}`).
+      replace (/req\.Raw\(\)\.Header\[\"x-ms-source-if-modified-since\"\]\s+=\s+\[\]string\{sourceModifiedAccessConditions\.SourceIfModifiedSince\.Format\(time\.RFC1123\)\}/g, 
+      `req.Raw().Header["x-ms-source-if-modified-since"] = []string{(*sourceModifiedAccessConditions.SourceIfModifiedSince).In(gmt).Format(time.RFC1123)}`).
+      replace (/req\.Raw\(\)\.Header\[\"x-ms-source-if-unmodified-since\"\]\s+=\s+\[\]string\{sourceModifiedAccessConditions\.SourceIfUnmodifiedSince\.Format\(time\.RFC1123\)\}/g, 
+      `req.Raw().Header["x-ms-source-if-unmodified-since"] = []string{(*sourceModifiedAccessConditions.SourceIfUnmodifiedSince).In(gmt).Format(time.RFC1123)}`).
+      replace (/req\.Raw\(\)\.Header\[\"x-ms-immutability-policy-until-date\"\]\s+=\s+\[\]string\{options\.ImmutabilityPolicyExpiry\.Format\(time\.RFC1123\)\}/g, 
+      `req.Raw().Header["x-ms-immutability-policy-until-date"] = []string{(*options.ImmutabilityPolicyExpiry).In(gmt).Format(time.RFC1123)}`);
+      

@@ -2,6 +2,7 @@ package oss
 
 import (
 	"bytes"
+	"context"
 	"crypto/md5"
 	"encoding/base64"
 	"encoding/xml"
@@ -29,11 +30,11 @@ type Bucket struct {
 // objectKey    the object key in UTF-8 encoding. The length must be between 1 and 1023, and cannot start with "/" or "\".
 // reader    io.Reader instance for reading the data for uploading
 // options    the options for uploading the object. The valid options here are CacheControl, ContentDisposition, ContentEncoding
-//            Expires, ServerSideEncryption, ObjectACL and Meta. Refer to the link below for more details.
-//            https://www.alibabacloud.com/help/en/object-storage-service/latest/putobject
+//
+//	Expires, ServerSideEncryption, ObjectACL and Meta. Refer to the link below for more details.
+//	https://www.alibabacloud.com/help/en/object-storage-service/latest/putobject
 //
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) PutObject(objectKey string, reader io.Reader, options ...Option) error {
 	opts := AddContentType(options, objectKey)
 
@@ -57,7 +58,6 @@ func (bucket Bucket) PutObject(objectKey string, reader io.Reader, options ...Op
 // options    the options for uploading the object. Refer to the parameter options in PutObject for more details.
 //
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) PutObjectFromFile(objectKey, filePath string, options ...Option) error {
 	fd, err := os.Open(filePath)
 	if err != nil {
@@ -87,7 +87,6 @@ func (bucket Bucket) PutObjectFromFile(objectKey, filePath string, options ...Op
 //
 // Response    the response from OSS.
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) DoPutObject(request *PutObjectRequest, options []Option) (*Response, error) {
 	isOptSet, _, _ := IsOptionSet(options, HTTPHeaderContentType)
 	if !isOptSet {
@@ -101,16 +100,26 @@ func (bucket Bucket) DoPutObject(request *PutObjectRequest, options []Option) (*
 	if err != nil {
 		return nil, err
 	}
-
 	if bucket.GetConfig().IsEnableCRC {
 		err = CheckCRC(resp, "DoPutObject")
 		if err != nil {
 			return resp, err
 		}
 	}
-
 	err = CheckRespCode(resp.StatusCode, []int{http.StatusOK})
-
+	body, _ := ioutil.ReadAll(resp.Body)
+	if len(body) > 0 {
+		if err != nil {
+			err = tryConvertServiceError(body, resp, err)
+		} else {
+			rb, _ := FindOption(options, responseBody, nil)
+			if rb != nil {
+				if rbody, ok := rb.(*[]byte); ok {
+					*rbody = body
+				}
+			}
+		}
+	}
 	return resp, err
 }
 
@@ -118,12 +127,12 @@ func (bucket Bucket) DoPutObject(request *PutObjectRequest, options []Option) (*
 //
 // objectKey    the object key.
 // options    the options for downloading the object. The valid values are: Range, IfModifiedSince, IfUnmodifiedSince, IfMatch,
-//            IfNoneMatch, AcceptEncoding. For more details, please check out:
-//            https://www.alibabacloud.com/help/en/object-storage-service/latest/getobject
+//
+//	IfNoneMatch, AcceptEncoding. For more details, please check out:
+//	https://www.alibabacloud.com/help/en/object-storage-service/latest/getobject
 //
 // io.ReadCloser    reader instance for reading data from response. It must be called close() after the usage and only valid when error is nil.
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) GetObject(objectKey string, options ...Option) (io.ReadCloser, error) {
 	result, err := bucket.DoGetObject(&GetObjectRequest{objectKey}, options)
 	if err != nil {
@@ -140,7 +149,6 @@ func (bucket Bucket) GetObject(objectKey string, options ...Option) (io.ReadClos
 // options    the options for downloading the object. Refer to the parameter options in method GetObject for more details.
 //
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) GetObjectToFile(objectKey, filePath string, options ...Option) error {
 	tempFilePath := filePath + TempFileSuffix
 
@@ -190,7 +198,6 @@ func (bucket Bucket) GetObjectToFile(objectKey, filePath string, options ...Opti
 //
 // GetObjectResult    the result instance of getting the object.
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) DoGetObject(request *GetObjectRequest, options []Option) (*GetObjectResult, error) {
 	params, _ := GetRawParams(options)
 	resp, err := bucket.do("GET", request.ObjectKey, params, options, nil, nil)
@@ -225,13 +232,13 @@ func (bucket Bucket) DoGetObject(request *GetObjectRequest, options []Option) (*
 // srcObjectKey    the source object to copy.
 // destObjectKey    the target object to copy.
 // options    options for copying an object. You can specify the conditions of copy. The valid conditions are CopySourceIfMatch,
-//            CopySourceIfNoneMatch, CopySourceIfModifiedSince, CopySourceIfUnmodifiedSince, MetadataDirective.
-//            Also you can specify the target object's attributes, such as CacheControl, ContentDisposition, ContentEncoding, Expires,
-//            ServerSideEncryption, ObjectACL, Meta. Refer to the link below for more details :
-//            https://www.alibabacloud.com/help/en/object-storage-service/latest/copyobject
+//
+//	CopySourceIfNoneMatch, CopySourceIfModifiedSince, CopySourceIfUnmodifiedSince, MetadataDirective.
+//	Also you can specify the target object's attributes, such as CacheControl, ContentDisposition, ContentEncoding, Expires,
+//	ServerSideEncryption, ObjectACL, Meta. Refer to the link below for more details :
+//	https://www.alibabacloud.com/help/en/object-storage-service/latest/copyobject
 //
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) CopyObject(srcObjectKey, destObjectKey string, options ...Option) (CopyObjectResult, error) {
 	var out CopyObjectResult
 
@@ -264,12 +271,10 @@ func (bucket Bucket) CopyObject(srcObjectKey, destObjectKey string, options ...O
 // options    copy options, check out parameter options in function CopyObject for more details.
 //
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) CopyObjectTo(destBucketName, destObjectKey, srcObjectKey string, options ...Option) (CopyObjectResult, error) {
 	return bucket.copy(srcObjectKey, destBucketName, destObjectKey, options...)
 }
 
-//
 // CopyObjectFrom copies the object to another bucket.
 //
 // srcBucketName    source bucket name.
@@ -278,7 +283,6 @@ func (bucket Bucket) CopyObjectTo(destBucketName, destObjectKey, srcObjectKey st
 // options    copy options. Check out parameter options in function CopyObject.
 //
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) CopyObjectFrom(srcBucketName, srcObjectKey, destObjectKey string, options ...Option) (CopyObjectResult, error) {
 	destBucketName := bucket.BucketName
 	var out CopyObjectResult
@@ -309,7 +313,11 @@ func (bucket Bucket) copy(srcObjectKey, destBucketName, destObjectKey string, op
 		return out, err
 	}
 	params := map[string]interface{}{}
-	resp, err := bucket.Client.Conn.Do("PUT", destBucketName, destObjectKey, params, headers, nil, 0, nil)
+
+	ctxArg, _ := FindOption(options, contextArg, nil)
+	ctx, _ := ctxArg.(context.Context)
+
+	resp, err := bucket.Client.Conn.DoWithContext(ctx, "PUT", destBucketName, destObjectKey, params, headers, nil, 0, nil)
 
 	// get response header
 	respHeader, _ := FindOption(options, responseHeader, nil)
@@ -340,11 +348,11 @@ func (bucket Bucket) copy(srcObjectKey, destBucketName, destObjectKey string, op
 // reader    io.Reader. The read instance for reading the data to append.
 // appendPosition    the start position to append.
 // destObjectProperties    the options for the first appending, such as CacheControl, ContentDisposition, ContentEncoding,
-//                         Expires, ServerSideEncryption, ObjectACL.
+//
+//	Expires, ServerSideEncryption, ObjectACL.
 //
 // int64    the next append position, it's valid when error is nil.
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) AppendObject(objectKey string, reader io.Reader, appendPosition int64, options ...Option) (int64, error) {
 	request := &AppendObjectRequest{
 		ObjectKey: objectKey,
@@ -367,7 +375,6 @@ func (bucket Bucket) AppendObject(objectKey string, reader io.Reader, appendPosi
 //
 // AppendObjectResult    the result object for appending object.
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) DoAppendObject(request *AppendObjectRequest, options []Option) (*AppendObjectResult, error) {
 	params := map[string]interface{}{}
 	params["append"] = nil
@@ -386,7 +393,11 @@ func (bucket Bucket) DoAppendObject(request *AppendObjectRequest, options []Opti
 	listener := GetProgressListener(options)
 
 	handleOptions(headers, opts)
-	resp, err := bucket.Client.Conn.Do("POST", bucket.BucketName, request.ObjectKey, params, headers,
+
+	ctxArg, _ := FindOption(options, contextArg, nil)
+	ctx, _ := ctxArg.(context.Context)
+
+	resp, err := bucket.Client.Conn.DoWithContext(ctx, "POST", bucket.BucketName, request.ObjectKey, params, headers,
 		request.Reader, initCRC, listener)
 
 	// get response header
@@ -424,7 +435,6 @@ func (bucket Bucket) DoAppendObject(request *AppendObjectRequest, options []Opti
 // objectKey    the object key to delete.
 //
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) DeleteObject(objectKey string, options ...Option) error {
 	params, _ := GetRawParams(options)
 	resp, err := bucket.do("DELETE", objectKey, params, options, nil, nil)
@@ -439,11 +449,11 @@ func (bucket Bucket) DeleteObject(objectKey string, options ...Option) error {
 //
 // objectKeys    the object keys to delete.
 // options    the options for deleting objects.
-//            Supported option is DeleteObjectsQuiet which means it will not return error even deletion failed (not recommended). By default it's not used.
+//
+//	Supported option is DeleteObjectsQuiet which means it will not return error even deletion failed (not recommended). By default it's not used.
 //
 // DeleteObjectsResult    the result object.
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) DeleteObjects(objectKeys []string, options ...Option) (DeleteObjectsResult, error) {
 	out := DeleteObjectsResult{}
 	dxml := deleteXML{}
@@ -475,11 +485,11 @@ func (bucket Bucket) DeleteObjects(objectKeys []string, options ...Option) (Dele
 //
 // objectVersions    the object keys and versions to delete.
 // options    the options for deleting objects.
-//            Supported option is DeleteObjectsQuiet which means it will not return error even deletion failed (not recommended). By default it's not used.
+//
+//	Supported option is DeleteObjectsQuiet which means it will not return error even deletion failed (not recommended). By default it's not used.
 //
 // DeleteObjectVersionsResult    the result object.
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) DeleteObjectVersions(objectVersions []DeleteObject, options ...Option) (DeleteObjectVersionsResult, error) {
 	out := DeleteObjectVersionsResult{}
 	dxml := deleteXML{}
@@ -506,7 +516,6 @@ func (bucket Bucket) DeleteObjectVersions(objectVersions []DeleteObject, options
 //
 // string the result response body.
 // error    it's nil if no error, otherwise it's an error.
-//
 func (bucket Bucket) DeleteMultipleObjectsXml(xmlData string, options ...Option) (string, error) {
 	buffer := new(bytes.Buffer)
 	bs := []byte(xmlData)
@@ -534,7 +543,6 @@ func (bucket Bucket) DeleteMultipleObjectsXml(xmlData string, options ...Option)
 // bool    flag of object's existence (true:exists; false:non-exist) when error is nil.
 //
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) IsObjectExist(objectKey string, options ...Option) (bool, error) {
 	_, err := bucket.GetObjectMeta(objectKey, options...)
 	if err == nil {
@@ -554,23 +562,23 @@ func (bucket Bucket) IsObjectExist(objectKey string, options ...Option) (bool, e
 // ListObjects lists the objects under the current bucket.
 //
 // options    it contains all the filters for listing objects.
-//            It could specify a prefix filter on object keys,  the max keys count to return and the object key marker and the delimiter for grouping object names.
-//            The key marker means the returned objects' key must be greater than it in lexicographic order.
 //
-//            For example, if the bucket has 8 objects, my-object-1, my-object-11, my-object-2, my-object-21,
-//            my-object-22, my-object-3, my-object-31, my-object-32. If the prefix is my-object-2 (no other filters), then it returns
-//            my-object-2, my-object-21, my-object-22 three objects. If the marker is my-object-22 (no other filters), then it returns
-//            my-object-3, my-object-31, my-object-32 three objects. If the max keys is 5, then it returns 5 objects.
-//            The three filters could be used together to achieve filter and paging functionality.
-//            If the prefix is the folder name, then it could list all files under this folder (including the files under its subfolders).
-//            But if the delimiter is specified with '/', then it only returns that folder's files (no subfolder's files). The direct subfolders are in the commonPrefixes properties.
-//            For example, if the bucket has three objects fun/test.jpg, fun/movie/001.avi, fun/movie/007.avi. And if the prefix is "fun/", then it returns all three objects.
-//            But if the delimiter is '/', then only "fun/test.jpg" is returned as files and fun/movie/ is returned as common prefix.
+//	It could specify a prefix filter on object keys,  the max keys count to return and the object key marker and the delimiter for grouping object names.
+//	The key marker means the returned objects' key must be greater than it in lexicographic order.
 //
-//            For common usage scenario, check out sample/list_object.go.
+//	For example, if the bucket has 8 objects, my-object-1, my-object-11, my-object-2, my-object-21,
+//	my-object-22, my-object-3, my-object-31, my-object-32. If the prefix is my-object-2 (no other filters), then it returns
+//	my-object-2, my-object-21, my-object-22 three objects. If the marker is my-object-22 (no other filters), then it returns
+//	my-object-3, my-object-31, my-object-32 three objects. If the max keys is 5, then it returns 5 objects.
+//	The three filters could be used together to achieve filter and paging functionality.
+//	If the prefix is the folder name, then it could list all files under this folder (including the files under its subfolders).
+//	But if the delimiter is specified with '/', then it only returns that folder's files (no subfolder's files). The direct subfolders are in the commonPrefixes properties.
+//	For example, if the bucket has three objects fun/test.jpg, fun/movie/001.avi, fun/movie/007.avi. And if the prefix is "fun/", then it returns all three objects.
+//	But if the delimiter is '/', then only "fun/test.jpg" is returned as files and fun/movie/ is returned as common prefix.
+//
+//	For common usage scenario, check out sample/list_object.go.
 //
 // ListObjectsResult    the return value after operation succeeds (only valid when error is nil).
-//
 func (bucket Bucket) ListObjects(options ...Option) (ListObjectsResult, error) {
 	var out ListObjectsResult
 
@@ -653,10 +661,10 @@ func (bucket Bucket) ListObjectVersions(options ...Option) (ListObjectVersionsRe
 //
 // objectKey    object
 // options    options for setting the metadata. The valid options are CacheControl, ContentDisposition, ContentEncoding, Expires,
-//            ServerSideEncryption, and custom metadata.
+//
+//	ServerSideEncryption, and custom metadata.
 //
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) SetObjectMeta(objectKey string, options ...Option) error {
 	options = append(options, MetadataDirective(MetaReplace))
 	_, err := bucket.CopyObject(objectKey, objectKey, options...)
@@ -667,11 +675,11 @@ func (bucket Bucket) SetObjectMeta(objectKey string, options ...Option) error {
 //
 // objectKey    object key.
 // options    the constraints of the object. Only when the object meets the requirements this method will return the metadata. Otherwise returns error. Valid options are IfModifiedSince, IfUnmodifiedSince,
-//            IfMatch, IfNoneMatch. For more details check out https://www.alibabacloud.com/help/en/object-storage-service/latest/headobject
+//
+//	IfMatch, IfNoneMatch. For more details check out https://www.alibabacloud.com/help/en/object-storage-service/latest/headobject
 //
 // http.Header    object meta when error is nil.
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) GetObjectDetailedMeta(objectKey string, options ...Option) (http.Header, error) {
 	params, _ := GetRawParams(options)
 	resp, err := bucket.do("HEAD", objectKey, params, options, nil, nil)
@@ -692,7 +700,6 @@ func (bucket Bucket) GetObjectDetailedMeta(objectKey string, options ...Option) 
 //
 // http.Header    the object's metadata, valid when error is nil.
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) GetObjectMeta(objectKey string, options ...Option) (http.Header, error) {
 	params, _ := GetRawParams(options)
 	params["objectMeta"] = nil
@@ -721,7 +728,6 @@ func (bucket Bucket) GetObjectMeta(objectKey string, options ...Option) (http.He
 // objectAcl    object ACL. Valid options are PrivateACL, PublicReadACL, PublicReadWriteACL.
 //
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) SetObjectACL(objectKey string, objectACL ACLType, options ...Option) error {
 	options = append(options, ObjectACL(objectACL))
 	params, _ := GetRawParams(options)
@@ -740,7 +746,6 @@ func (bucket Bucket) SetObjectACL(objectKey string, objectACL ACLType, options .
 //
 // GetObjectACLResult    the result object when error is nil. GetObjectACLResult.Acl is the object ACL.
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) GetObjectACL(objectKey string, options ...Option) (GetObjectACLResult, error) {
 	var out GetObjectACLResult
 	params, _ := GetRawParams(options)
@@ -767,7 +772,6 @@ func (bucket Bucket) GetObjectACL(objectKey string, options ...Option) (GetObjec
 // targetObjectKey    the target object key to point to.
 //
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) PutSymlink(symObjectKey string, targetObjectKey string, options ...Option) error {
 	options = append(options, symlinkTarget(url.QueryEscape(targetObjectKey)))
 	params, _ := GetRawParams(options)
@@ -786,8 +790,8 @@ func (bucket Bucket) PutSymlink(symObjectKey string, targetObjectKey string, opt
 // objectKey    the symlink object's key.
 //
 // error    it's nil if no error, otherwise it's an error object.
-//          When error is nil, the target file key is in the X-Oss-Symlink-Target header of the returned object.
 //
+//	When error is nil, the target file key is in the X-Oss-Symlink-Target header of the returned object.
 func (bucket Bucket) GetSymlink(objectKey string, options ...Option) (http.Header, error) {
 	params, _ := GetRawParams(options)
 	params["symlink"] = nil
@@ -817,7 +821,6 @@ func (bucket Bucket) GetSymlink(objectKey string, options ...Option) (http.Heade
 // objectKey    object key to restore.
 //
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) RestoreObject(objectKey string, options ...Option) error {
 	params, _ := GetRawParams(options)
 	params["restore"] = nil
@@ -888,7 +891,6 @@ func (bucket Bucket) RestoreObjectXML(objectKey, configXML string, options ...Op
 //
 // string    returns the signed URL, when error is nil.
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) SignURL(objectKey string, method HTTPMethod, expiredInSec int64, options ...Option) (string, error) {
 	err := CheckObjectName(objectKey)
 	if err != nil {
@@ -920,11 +922,11 @@ func (bucket Bucket) SignURL(objectKey string, method HTTPMethod, expiredInSec i
 // signedURL    signed URL.
 // reader    io.Reader the read instance for reading the data for the upload.
 // options    the options for uploading the data. The valid options are CacheControl, ContentDisposition, ContentEncoding,
-//            Expires, ServerSideEncryption, ObjectACL and custom metadata. Check out the following link for details:
-//            https://www.alibabacloud.com/help/en/object-storage-service/latest/putobject
+//
+//	Expires, ServerSideEncryption, ObjectACL and custom metadata. Check out the following link for details:
+//	https://www.alibabacloud.com/help/en/object-storage-service/latest/putobject
 //
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) PutObjectWithURL(signedURL string, reader io.Reader, options ...Option) error {
 	resp, err := bucket.DoPutObjectWithURL(signedURL, reader, options)
 	if err != nil {
@@ -943,7 +945,6 @@ func (bucket Bucket) PutObjectWithURL(signedURL string, reader io.Reader, option
 // options    options for uploading, same as the options in PutObject function.
 //
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) PutObjectFromFileWithURL(signedURL, filePath string, options ...Option) error {
 	fd, err := os.Open(filePath)
 	if err != nil {
@@ -968,7 +969,6 @@ func (bucket Bucket) PutObjectFromFileWithURL(signedURL, filePath string, option
 //
 // Response    the response object which contains the HTTP response.
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) DoPutObjectWithURL(signedURL string, reader io.Reader, options []Option) (*Response, error) {
 	listener := GetProgressListener(options)
 
@@ -994,12 +994,12 @@ func (bucket Bucket) DoPutObjectWithURL(signedURL string, reader io.Reader, opti
 //
 // signedURL    the signed URL.
 // options    options for downloading the object. Valid options are IfModifiedSince, IfUnmodifiedSince, IfMatch,
-//            IfNoneMatch, AcceptEncoding. For more information, check out the following link:
-//            https://www.alibabacloud.com/help/en/object-storage-service/latest/getobject
+//
+//	IfNoneMatch, AcceptEncoding. For more information, check out the following link:
+//	https://www.alibabacloud.com/help/en/object-storage-service/latest/getobject
 //
 // io.ReadCloser    the reader object for getting the data from response. It needs be closed after the usage. It's only valid when error is nil.
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) GetObjectWithURL(signedURL string, options ...Option) (io.ReadCloser, error) {
 	result, err := bucket.DoGetObjectWithURL(signedURL, options)
 	if err != nil {
@@ -1015,7 +1015,6 @@ func (bucket Bucket) GetObjectWithURL(signedURL string, options ...Option) (io.R
 // options    the options for downloading object. Check out the parameter options in function GetObject for the reference.
 //
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) GetObjectToFileWithURL(signedURL, filePath string, options ...Option) error {
 	tempFilePath := filePath + TempFileSuffix
 
@@ -1066,7 +1065,6 @@ func (bucket Bucket) GetObjectToFileWithURL(signedURL, filePath string, options 
 //
 // GetObjectResult    the result object when the error is nil.
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) DoGetObjectWithURL(signedURL string, options []Option) (*GetObjectResult, error) {
 	params, _ := GetRawParams(options)
 	resp, err := bucket.doURL("GET", signedURL, params, options, nil, nil)
@@ -1096,18 +1094,15 @@ func (bucket Bucket) DoGetObjectWithURL(signedURL string, options []Option) (*Ge
 	return result, nil
 }
 
-//
 // ProcessObject apply process on the specified image file.
 //
 // The supported process includes resize, rotate, crop, watermark, format,
 // udf, customized style, etc.
 //
-//
 // objectKey	object key to process.
 // process	process string, such as "image/resize,w_100|sys/saveas,o_dGVzdC5qcGc,b_dGVzdA"
 //
 // error    it's nil if no error, otherwise it's an error object.
-//
 func (bucket Bucket) ProcessObject(objectKey string, process string, options ...Option) (ProcessObjectResult, error) {
 	var out ProcessObjectResult
 	params, _ := GetRawParams(options)
@@ -1124,14 +1119,38 @@ func (bucket Bucket) ProcessObject(objectKey string, process string, options ...
 	return out, err
 }
 
+// AsyncProcessObject apply async process on the specified image file.
 //
+// The supported process includes resize, rotate, crop, watermark, format,
+// udf, customized style, etc.
+//
+// objectKey	object key to process.
+// asyncProcess	process string, such as "image/resize,w_100|sys/saveas,o_dGVzdC5qcGc,b_dGVzdA"
+//
+// error    it's nil if no error, otherwise it's an error object.
+func (bucket Bucket) AsyncProcessObject(objectKey string, asyncProcess string, options ...Option) (AsyncProcessObjectResult, error) {
+	var out AsyncProcessObjectResult
+	params, _ := GetRawParams(options)
+	params["x-oss-async-process"] = nil
+	processData := fmt.Sprintf("%v=%v", "x-oss-async-process", asyncProcess)
+	data := strings.NewReader(processData)
+
+	resp, err := bucket.do("POST", objectKey, params, nil, data, nil)
+	if err != nil {
+		return out, err
+	}
+	defer resp.Body.Close()
+
+	err = jsonUnmarshal(resp.Body, &out)
+	return out, err
+}
+
 // PutObjectTagging add tagging to object
 //
 // objectKey  object key to add tagging
 // tagging    tagging to be added
 //
 // error        nil if success, otherwise error
-//
 func (bucket Bucket) PutObjectTagging(objectKey string, tagging Tagging, options ...Option) error {
 	bs, err := xml.Marshal(tagging)
 	if err != nil {
@@ -1175,13 +1194,11 @@ func (bucket Bucket) GetObjectTagging(objectKey string, options ...Option) (GetO
 	return out, err
 }
 
-//
 // DeleteObjectTagging delete object taggging
 //
 // objectKey  object key to delete tagging
 //
 // error      nil if success, otherwise error
-//
 func (bucket Bucket) DeleteObjectTagging(objectKey string, options ...Option) error {
 	params, _ := GetRawParams(options)
 	params["tagging"] = nil
@@ -1224,7 +1241,11 @@ func (bucket Bucket) doInner(method, objectName string, params map[string]interf
 	if len(bucket.BucketName) > 0 && err != nil {
 		return nil, err
 	}
-	resp, err := bucket.Client.Conn.Do(method, bucket.BucketName, objectName,
+
+	ctxArg, _ := FindOption(options, contextArg, nil)
+	ctx, _ := ctxArg.(context.Context)
+
+	resp, err := bucket.Client.Conn.DoWithContext(ctx, method, bucket.BucketName, objectName,
 		params, headers, data, 0, listener)
 
 	// get response header
@@ -1252,13 +1273,17 @@ func (bucket Bucket) do(method, objectName string, params map[string]interface{}
 
 func (bucket Bucket) doURL(method HTTPMethod, signedURL string, params map[string]interface{}, options []Option,
 	data io.Reader, listener ProgressListener) (*Response, error) {
+
 	headers := make(map[string]string)
 	err := handleOptions(headers, options)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := bucket.Client.Conn.DoURL(method, signedURL, headers, data, 0, listener)
+	ctxArg, _ := FindOption(options, contextArg, nil)
+	ctx, _ := ctxArg.(context.Context)
+
+	resp, err := bucket.Client.Conn.DoURLWithContext(ctx, method, signedURL, headers, data, 0, listener)
 
 	// get response header
 	respHeader, _ := FindOption(options, responseHeader, nil)

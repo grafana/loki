@@ -172,3 +172,22 @@ func Execute(request *Request) (*Response, error) {
 	response := &Response{httpResponse, end.Sub(start)}
 	return response, nil
 }
+func SetResponseHeaderTimeout(t int) {
+	transport = &http.Transport{
+		MaxIdleConnsPerHost:   defaultMaxIdleConnsPerHost,
+		ResponseHeaderTimeout: time.Duration(t) * time.Second,
+		Dial: func(network, address string) (net.Conn, error) {
+			conn, err := net.DialTimeout(network, address, defaultDialTimeout)
+			if err != nil {
+				return nil, err
+			}
+			tc := &timeoutConn{conn, defaultSmallInterval, defaultLargeInterval}
+			err = tc.SetReadDeadline(time.Now().Add(defaultLargeInterval))
+			if err != nil {
+				return nil, err
+			}
+			return tc, nil
+		},
+	}
+	httpClient.Transport = transport
+}

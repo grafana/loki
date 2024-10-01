@@ -21,11 +21,14 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	awscommon "github.com/grafana/dskit/aws"
+
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/instrument"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+
+	amnet "k8s.io/apimachinery/pkg/util/net"
 
 	bucket_s3 "github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -78,6 +81,7 @@ type S3Config struct {
 	StorageClass     string              `yaml:"storage_class"`
 	SSEConfig        bucket_s3.SSEConfig `yaml:"sse"`
 	BackoffConfig    backoff.Config      `yaml:"backoff_config" doc:"description=Configures back off when S3 get Object."`
+	DisableDualstack bool                `yaml:"disable_dualstack"`
 
 	Inject InjectRequestMiddleware `yaml:"-"`
 }
@@ -109,6 +113,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.Var(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "AWS Secret Access Key")
 	f.Var(&cfg.SessionToken, prefix+"s3.session-token", "AWS Session Token")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "Disable https on s3 connection.")
+	f.BoolVar(&cfg.DisableDualstack, prefix+"s3.disable-dualstack", false, "Disable forcing S3 dualstack endpoint usage.")
 
 	cfg.SSEConfig.RegisterFlagsWithPrefix(prefix+"s3.sse.", f)
 
@@ -122,7 +127,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 	f.DurationVar(&cfg.BackoffConfig.MinBackoff, prefix+"s3.min-backoff", 100*time.Millisecond, "Minimum backoff time when s3 get Object")
 	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, prefix+"s3.max-backoff", 3*time.Second, "Maximum backoff time when s3 get Object")
-	f.IntVar(&cfg.BackoffConfig.MaxRetries, prefix+"s3.max-retries", 5, "Maximum number of times to retry when s3 get Object")
+	f.IntVar(&cfg.BackoffConfig.MaxRetries, prefix+"s3.max-retries", 5, "Maximum number of times to retry for s3 GetObject or ObjectExists")
 }
 
 // Validate config and returns error on failure
@@ -196,6 +201,9 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 		s3Config = s3Config.WithRegion("dummy")
 	}
 
+	if cfg.DisableDualstack {
+		s3Config = s3Config.WithUseDualStack(false)
+	}
 	s3Config = s3Config.WithMaxRetries(0)                          // We do our own retries, so we can monitor them
 	s3Config = s3Config.WithS3ForcePathStyle(cfg.S3ForcePathStyle) // support for Path Style S3 url if has the flag
 
@@ -243,7 +251,7 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 		DialContext: (&net.Dialer{
 			Timeout:   30 * time.Second,
 			KeepAlive: 30 * time.Second,
-			DualStack: true,
+			DualStack: !cfg.DisableDualstack,
 		}).DialContext,
 		MaxIdleConns:          200,
 		IdleConnTimeout:       cfg.HTTPConfig.IdleConnTimeout,
@@ -302,19 +310,49 @@ func buckets(cfg S3Config) ([]string, error) {
 func (a *S3ObjectClient) Stop() {}
 
 func (a *S3ObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	err := instrument.CollectedRequest(ctx, "S3.ObjectExists", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
-		headObjectInput := &s3.HeadObjectInput{
-			Bucket: aws.String(a.bucketFromKey(objectKey)),
-			Key:    aws.String(objectKey),
+	exists, _, err := a.ObjectExistsWithSize(ctx, objectKey)
+	return exists, err
+}
+
+func (a *S3ObjectClient) ObjectExistsWithSize(ctx context.Context, objectKey string) (bool, int64, error) {
+	var lastErr error
+	var objectSize int64
+
+	retries := backoff.New(ctx, a.cfg.BackoffConfig)
+	for retries.Ongoing() {
+		if ctx.Err() != nil {
+			return false, 0, errors.Wrap(ctx.Err(), "ctx related error during s3 objectExists")
 		}
-		_, err := a.S3.HeadObject(headObjectInput)
-		return err
-	})
-	if err != nil {
-		return false, err
+		lastErr = instrument.CollectedRequest(ctx, "S3.ObjectExists", s3RequestDuration, instrument.ErrorCode, func(_ context.Context) error {
+			headObjectInput := &s3.HeadObjectInput{
+				Bucket: aws.String(a.bucketFromKey(objectKey)),
+				Key:    aws.String(objectKey),
+			}
+			headOutput, requestErr := a.S3.HeadObject(headObjectInput)
+			if requestErr != nil {
+				return requestErr
+			}
+			if headOutput != nil && headOutput.ContentLength != nil {
+				objectSize = *headOutput.ContentLength
+			}
+			return nil
+		})
+		if lastErr == nil {
+			return true, 0, nil
+		}
+
+		if a.IsObjectNotFoundErr(lastErr) {
+			return false, 0, lastErr
+		}
+
+		retries.Wait()
 	}
 
-	return true, nil
+	if lastErr != nil {
+		return false, 0, lastErr
+	}
+
+	return true, objectSize, nil
 }
 
 // DeleteObject deletes the specified objectKey from the appropriate S3 bucket
@@ -496,12 +534,76 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]
 
 // IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
 func (a *S3ObjectClient) IsObjectNotFoundErr(err error) bool {
-	if aerr, ok := errors.Cause(err).(awserr.Error); ok && aerr.Code() == s3.ErrCodeNoSuchKey {
+	aerr, ok := errors.Cause(err).(awserr.Error)
+	if !ok {
+		return false
+	}
+
+	code := aerr.Code()
+	if code == s3.ErrCodeNoSuchKey || code == "NotFound" {
 		return true
 	}
 
 	return false
 }
 
-// TODO(dannyk): implement for client
-func (a *S3ObjectClient) IsRetryableErr(error) bool { return false }
+func isTimeoutError(err error) bool {
+	var netErr net.Error
+	return errors.As(err, &netErr) && netErr.Timeout()
+}
+
+func isContextErr(err error) bool {
+	return errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, context.Canceled)
+}
+
+// IsStorageTimeoutErr returns true if error means that object cannot be retrieved right now due to server-side timeouts.
+func (a *S3ObjectClient) IsStorageTimeoutErr(err error) bool {
+	// TODO(dannyk): move these out to be generic
+	// context errors are all client-side
+	if isContextErr(err) {
+		// Go 1.23 changed the type of the error returned by the http client when a timeout occurs
+		// while waiting for headers.  This is a server side timeout.
+		return strings.Contains(err.Error(), "Client.Timeout")
+	}
+
+	// connection misconfiguration, or writing on a closed connection
+	// do NOT retry; this is not a server-side issue
+	if errors.Is(err, net.ErrClosed) || amnet.IsConnectionRefused(err) {
+		return false
+	}
+
+	// this is a server-side timeout
+	if isTimeoutError(err) {
+		return true
+	}
+
+	// connection closed (closed before established) or reset (closed after established)
+	// this is a server-side issue
+	if errors.Is(err, io.EOF) || amnet.IsConnectionReset(err) {
+		return true
+	}
+
+	if rerr, ok := err.(awserr.RequestFailure); ok {
+		// https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html
+		return rerr.StatusCode() == http.StatusRequestTimeout ||
+			rerr.StatusCode() == http.StatusGatewayTimeout
+	}
+
+	return false
+}
+
+// IsStorageThrottledErr returns true if error means that object cannot be retrieved right now due to throttling.
+func (a *S3ObjectClient) IsStorageThrottledErr(err error) bool {
+	if rerr, ok := err.(awserr.RequestFailure); ok {
+
+		// https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html
+		return rerr.StatusCode() == http.StatusTooManyRequests ||
+			(rerr.StatusCode()/100 == 5) // all 5xx errors are retryable
+	}
+
+	return false
+}
+func (a *S3ObjectClient) IsRetryableErr(err error) bool {
+	return a.IsStorageTimeoutErr(err) || a.IsStorageThrottledErr(err)
+}

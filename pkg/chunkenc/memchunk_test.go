@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"hash"
 	"math"
 	"math/rand"
 	"sort"
@@ -21,6 +22,7 @@ import (
 	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc/testdata"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
@@ -30,16 +32,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/filter"
 )
 
-var testEncoding = []Encoding{
-	EncNone,
-	EncGZIP,
-	EncLZ4_64k,
-	EncLZ4_256k,
-	EncLZ4_1M,
-	EncLZ4_4M,
-	EncSnappy,
-	EncFlate,
-	EncZstd,
+var testEncodings = []compression.Codec{
+	compression.None,
+	compression.GZIP,
+	compression.LZ4_64k,
+	compression.LZ4_256k,
+	compression.LZ4_1M,
+	compression.LZ4_4M,
+	compression.Snappy,
+	compression.Flate,
+	compression.Zstd,
 }
 
 var (
@@ -83,7 +85,7 @@ const (
 )
 
 func TestBlocksInclusive(t *testing.T) {
-	for _, enc := range testEncoding {
+	for _, enc := range testEncodings {
 		enc := enc
 		for _, format := range allPossibleFormats {
 			chunkfmt, headfmt := format.chunkFormat, format.headBlockFmt
@@ -102,7 +104,7 @@ func TestBlocksInclusive(t *testing.T) {
 }
 
 func TestBlock(t *testing.T) {
-	for _, enc := range testEncoding {
+	for _, enc := range testEncodings {
 		enc := enc
 		for _, format := range allPossibleFormats {
 			chunkFormat, headBlockFmt := format.chunkFormat, format.headBlockFmt
@@ -257,7 +259,7 @@ func TestBlock(t *testing.T) {
 }
 
 func TestCorruptChunk(t *testing.T) {
-	for _, enc := range testEncoding {
+	for _, enc := range testEncodings {
 		enc := enc
 		for _, format := range allPossibleFormats {
 			chunkfmt, headfmt := format.chunkFormat, format.headBlockFmt
@@ -297,7 +299,7 @@ func TestCorruptChunk(t *testing.T) {
 func TestReadFormatV1(t *testing.T) {
 	t.Parallel()
 
-	c := NewMemChunk(ChunkFormatV3, EncGZIP, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize)
+	c := NewMemChunk(ChunkFormatV3, compression.GZIP, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize)
 	fillChunk(c)
 	// overrides to v1 for testing that specific version.
 	c.format = ChunkFormatV1
@@ -334,7 +336,7 @@ func TestReadFormatV1(t *testing.T) {
 // 2) []byte loaded chunks <-> []byte loaded chunks
 func TestRoundtripV2(t *testing.T) {
 	for _, testData := range allPossibleFormats {
-		for _, enc := range testEncoding {
+		for _, enc := range testEncodings {
 			enc := enc
 			t.Run(testNameWithFormats(enc, testData.chunkFormat, testData.headBlockFmt), func(t *testing.T) {
 				t.Parallel()
@@ -389,12 +391,12 @@ func TestRoundtripV2(t *testing.T) {
 	}
 }
 
-func testNameWithFormats(enc Encoding, chunkFormat byte, headBlockFmt HeadBlockFmt) string {
+func testNameWithFormats(enc compression.Codec, chunkFormat byte, headBlockFmt HeadBlockFmt) string {
 	return fmt.Sprintf("encoding:%v chunkFormat:%v headBlockFmt:%v", enc, chunkFormat, headBlockFmt)
 }
 
 func TestRoundtripV3(t *testing.T) {
-	for _, enc := range testEncoding {
+	for _, enc := range testEncodings {
 		enc := enc
 		for _, format := range allPossibleFormats {
 			chunkfmt, headfmt := format.chunkFormat, format.headBlockFmt
@@ -419,7 +421,7 @@ func TestRoundtripV3(t *testing.T) {
 
 func TestSerialization(t *testing.T) {
 	for _, testData := range allPossibleFormats {
-		for _, enc := range testEncoding {
+		for _, enc := range testEncodings {
 			enc := enc
 			// run tests with and without structured metadata since it is optional
 			for _, appendWithStructuredMetadata := range []bool{false, true} {
@@ -508,7 +510,7 @@ func TestSerialization(t *testing.T) {
 
 func TestChunkFilling(t *testing.T) {
 	for _, testData := range allPossibleFormats {
-		for _, enc := range testEncoding {
+		for _, enc := range testEncodings {
 			enc := enc
 			t.Run(testNameWithFormats(enc, testData.chunkFormat, testData.headBlockFmt), func(t *testing.T) {
 				t.Parallel()
@@ -556,7 +558,7 @@ func TestChunkFilling(t *testing.T) {
 func TestGZIPChunkTargetSize(t *testing.T) {
 	t.Parallel()
 
-	chk := NewMemChunk(ChunkFormatV3, EncGZIP, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize)
+	chk := NewMemChunk(ChunkFormatV3, compression.GZIP, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize)
 
 	lineSize := 512
 	entry := &logproto.Entry{
@@ -679,7 +681,7 @@ func TestMemChunk_AppendOutOfOrder(t *testing.T) {
 			t.Run(testName, func(t *testing.T) {
 				t.Parallel()
 
-				tester(t, NewMemChunk(ChunkFormatV3, EncGZIP, f, testBlockSize, testTargetSize))
+				tester(t, NewMemChunk(ChunkFormatV3, compression.GZIP, f, testBlockSize, testTargetSize))
 			})
 		}
 	}
@@ -695,7 +697,7 @@ func TestChunkSize(t *testing.T) {
 	var result []res
 	for _, bs := range testBlockSizes {
 		for _, f := range allPossibleFormats {
-			for _, enc := range testEncoding {
+			for _, enc := range testEncodings {
 				name := fmt.Sprintf("%s_%s", enc.String(), humanize.Bytes(uint64(bs)))
 				t.Run(name, func(t *testing.T) {
 					c := newMemChunkWithFormat(f.chunkFormat, enc, f.headBlockFmt, bs, testTargetSize)
@@ -724,7 +726,7 @@ func TestChunkSize(t *testing.T) {
 }
 
 func TestChunkStats(t *testing.T) {
-	c := NewMemChunk(ChunkFormatV4, EncSnappy, DefaultTestHeadBlockFmt, testBlockSize, 0)
+	c := NewMemChunk(ChunkFormatV4, compression.Snappy, DefaultTestHeadBlockFmt, testBlockSize, 0)
 	first := time.Now()
 	entry := &logproto.Entry{
 		Timestamp: first,
@@ -796,7 +798,7 @@ func TestChunkStats(t *testing.T) {
 
 func TestIteratorClose(t *testing.T) {
 	for _, f := range allPossibleFormats {
-		for _, enc := range testEncoding {
+		for _, enc := range testEncodings {
 			t.Run(enc.String(), func(t *testing.T) {
 				for _, test := range []func(iter iter.EntryIterator, t *testing.T){
 					func(iter iter.EntryIterator, t *testing.T) {
@@ -845,7 +847,7 @@ func BenchmarkWrite(b *testing.B) {
 	i := int64(0)
 
 	for _, f := range HeadBlockFmts {
-		for _, enc := range testEncoding {
+		for _, enc := range testEncodings {
 			for _, withStructuredMetadata := range []bool{false, true} {
 				name := fmt.Sprintf("%v-%v", f, enc)
 				if withStructuredMetadata {
@@ -895,7 +897,7 @@ func (nomatchPipeline) ReferencedStructuredMetadata() bool {
 
 func BenchmarkRead(b *testing.B) {
 	for _, bs := range testBlockSizes {
-		for _, enc := range testEncoding {
+		for _, enc := range testEncodings {
 			name := fmt.Sprintf("%s_%s", enc.String(), humanize.Bytes(uint64(bs)))
 			b.Run(name, func(b *testing.B) {
 				chunks, size := generateData(enc, 5, bs, testTargetSize)
@@ -922,7 +924,7 @@ func BenchmarkRead(b *testing.B) {
 	}
 
 	for _, bs := range testBlockSizes {
-		for _, enc := range testEncoding {
+		for _, enc := range testEncodings {
 			name := fmt.Sprintf("sample_%s_%s", enc.String(), humanize.Bytes(uint64(bs)))
 			b.Run(name, func(b *testing.B) {
 				chunks, size := generateData(enc, 5, bs, testTargetSize)
@@ -966,7 +968,7 @@ func BenchmarkBackwardIterator(b *testing.B) {
 	for _, bs := range testBlockSizes {
 		b.Run(humanize.Bytes(uint64(bs)), func(b *testing.B) {
 			b.ReportAllocs()
-			c := NewMemChunk(ChunkFormatV4, EncSnappy, DefaultTestHeadBlockFmt, bs, testTargetSize)
+			c := NewMemChunk(ChunkFormatV4, compression.Snappy, DefaultTestHeadBlockFmt, bs, testTargetSize)
 			_ = fillChunk(c)
 			b.ResetTimer()
 			for n := 0; n < b.N; n++ {
@@ -987,7 +989,7 @@ func BenchmarkBackwardIterator(b *testing.B) {
 }
 
 func TestGenerateDataSize(t *testing.T) {
-	for _, enc := range testEncoding {
+	for _, enc := range testEncodings {
 		t.Run(enc.String(), func(t *testing.T) {
 			chunks, size := generateData(enc, 50, testBlockSize, testTargetSize)
 
@@ -1080,7 +1082,7 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 func TestMemChunk_IteratorBounds(t *testing.T) {
 	createChunk := func() *MemChunk {
 		t.Helper()
-		c := NewMemChunk(ChunkFormatV3, EncNone, DefaultTestHeadBlockFmt, 1e6, 1e6)
+		c := NewMemChunk(ChunkFormatV3, compression.None, DefaultTestHeadBlockFmt, 1e6, 1e6)
 
 		if _, err := c.Append(&logproto.Entry{
 			Timestamp: time.Unix(0, 1),
@@ -1140,7 +1142,7 @@ func TestMemChunk_IteratorBounds(t *testing.T) {
 }
 
 func TestMemchunkLongLine(t *testing.T) {
-	for _, enc := range testEncoding {
+	for _, enc := range testEncodings {
 		enc := enc
 		t.Run(enc.String(), func(t *testing.T) {
 			t.Parallel()
@@ -1166,9 +1168,9 @@ func TestMemchunkLongLine(t *testing.T) {
 func TestBytesWith(t *testing.T) {
 	t.Parallel()
 
-	exp, err := NewMemChunk(ChunkFormatV3, EncNone, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize).BytesWith(nil)
+	exp, err := NewMemChunk(ChunkFormatV3, compression.None, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize).BytesWith(nil)
 	require.Nil(t, err)
-	out, err := NewMemChunk(ChunkFormatV3, EncNone, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize).BytesWith([]byte{1, 2, 3})
+	out, err := NewMemChunk(ChunkFormatV3, compression.None, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize).BytesWith([]byte{1, 2, 3})
 	require.Nil(t, err)
 
 	require.Equal(t, exp, out)
@@ -1179,8 +1181,8 @@ func TestCheckpointEncoding(t *testing.T) {
 
 	blockSize, targetSize := 256*1024, 1500*1024
 	for _, f := range allPossibleFormats {
-		t.Run(testNameWithFormats(EncSnappy, f.chunkFormat, f.headBlockFmt), func(t *testing.T) {
-			c := newMemChunkWithFormat(f.chunkFormat, EncSnappy, f.headBlockFmt, blockSize, targetSize)
+		t.Run(testNameWithFormats(compression.Snappy, f.chunkFormat, f.headBlockFmt), func(t *testing.T) {
+			c := newMemChunkWithFormat(f.chunkFormat, compression.Snappy, f.headBlockFmt, blockSize, targetSize)
 
 			// add a few entries
 			for i := 0; i < 5; i++ {
@@ -1265,7 +1267,7 @@ var (
 func BenchmarkBufferedIteratorLabels(b *testing.B) {
 	for _, f := range HeadBlockFmts {
 		b.Run(f.String(), func(b *testing.B) {
-			c := NewMemChunk(ChunkFormatV3, EncSnappy, f, testBlockSize, testTargetSize)
+			c := NewMemChunk(ChunkFormatV3, compression.Snappy, f, testBlockSize, testTargetSize)
 			_ = fillChunk(c)
 
 			labelsSet := []labels.Labels{
@@ -1365,8 +1367,8 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 
 func Test_HeadIteratorReverse(t *testing.T) {
 	for _, testData := range allPossibleFormats {
-		t.Run(testNameWithFormats(EncSnappy, testData.chunkFormat, testData.headBlockFmt), func(t *testing.T) {
-			c := newMemChunkWithFormat(testData.chunkFormat, EncSnappy, testData.headBlockFmt, testBlockSize, testTargetSize)
+		t.Run(testNameWithFormats(compression.Snappy, testData.chunkFormat, testData.headBlockFmt), func(t *testing.T) {
+			c := newMemChunkWithFormat(testData.chunkFormat, compression.Snappy, testData.headBlockFmt, testBlockSize, testTargetSize)
 			genEntry := func(i int64) *logproto.Entry {
 				return &logproto.Entry{
 					Timestamp: time.Unix(0, i),
@@ -1481,7 +1483,7 @@ func TestMemChunk_Rebound(t *testing.T) {
 }
 
 func buildTestMemChunk(t *testing.T, from, through time.Time) *MemChunk {
-	chk := NewMemChunk(ChunkFormatV3, EncGZIP, DefaultTestHeadBlockFmt, defaultBlockSize, 0)
+	chk := NewMemChunk(ChunkFormatV3, compression.GZIP, DefaultTestHeadBlockFmt, defaultBlockSize, 0)
 	for ; from.Before(through); from = from.Add(time.Second) {
 		_, err := chk.Append(&logproto.Entry{
 			Line:      from.String(),
@@ -1538,7 +1540,7 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 		{
 			name:         "no matches - chunk without structured metadata",
 			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkThroughPlus1, false),
-			filterFunc: func(_ time.Time, in string, structuredMetadata ...labels.Label) bool {
+			filterFunc: func(_ time.Time, _ string, structuredMetadata ...labels.Label) bool {
 				return labels.Labels(structuredMetadata).Get(lblPing) == lblPong
 			},
 			nrMatching:    0,
@@ -1547,7 +1549,7 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 		{
 			name:         "structured metadata not matching",
 			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkThroughPlus1, true),
-			filterFunc: func(_ time.Time, in string, structuredMetadata ...labels.Label) bool {
+			filterFunc: func(_ time.Time, _ string, structuredMetadata ...labels.Label) bool {
 				return labels.Labels(structuredMetadata).Get("ding") == "dong"
 			},
 			nrMatching:    0,
@@ -1556,7 +1558,7 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 		{
 			name:         "some lines removed - with structured metadata",
 			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkFromPlus5, true),
-			filterFunc: func(_ time.Time, in string, structuredMetadata ...labels.Label) bool {
+			filterFunc: func(_ time.Time, _ string, structuredMetadata ...labels.Label) bool {
 				return labels.Labels(structuredMetadata).Get(lblPing) == lblPong
 			},
 			nrMatching:    5,
@@ -1602,7 +1604,7 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 }
 
 func buildFilterableTestMemChunk(t *testing.T, from, through time.Time, matchingFrom, matchingTo *time.Time, withStructuredMetadata bool) *MemChunk {
-	chk := NewMemChunk(ChunkFormatV4, EncGZIP, DefaultTestHeadBlockFmt, defaultBlockSize, 0)
+	chk := NewMemChunk(ChunkFormatV4, compression.GZIP, DefaultTestHeadBlockFmt, defaultBlockSize, 0)
 	t.Logf("from   : %v", from.String())
 	t.Logf("through: %v", through.String())
 	var structuredMetadata push.LabelsAdapter
@@ -1751,7 +1753,7 @@ func TestMemChunk_SpaceFor(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			for _, format := range allPossibleFormats {
 				t.Run(fmt.Sprintf("chunk_v%d_head_%s", format.chunkFormat, format.headBlockFmt), func(t *testing.T) {
-					chk := newMemChunkWithFormat(format.chunkFormat, EncNone, format.headBlockFmt, 1024, tc.targetSize)
+					chk := newMemChunkWithFormat(format.chunkFormat, compression.None, format.headBlockFmt, 1024, tc.targetSize)
 
 					chk.blocks = make([]block, tc.nBlocks)
 					chk.cutBlockSize = tc.cutBlockSize
@@ -1774,7 +1776,7 @@ func TestMemChunk_SpaceFor(t *testing.T) {
 }
 
 func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
-	for _, enc := range testEncoding {
+	for _, enc := range testEncodings {
 		enc := enc
 		t.Run(enc.String(), func(t *testing.T) {
 			streamLabels := labels.Labels{
@@ -2039,6 +2041,122 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 							require.Equal(t, int64(expectedStructuredMetadataBytes), resultStats.Summary.TotalStructuredMetadataBytesProcessed)
 						}
 					})
+				})
+			}
+		})
+	}
+}
+
+func TestDecodeChunkIncorrectBlockOffset(t *testing.T) {
+	// use small block size to build multiple blocks in the test chunk
+	blockSize := 10
+
+	for _, format := range allPossibleFormats {
+		t.Run(fmt.Sprintf("chunkFormat:%v headBlockFmt:%v", format.chunkFormat, format.headBlockFmt), func(t *testing.T) {
+			for incorrectOffsetBlockNum := 0; incorrectOffsetBlockNum < 3; incorrectOffsetBlockNum++ {
+				t.Run(fmt.Sprintf("inorrect offset block: %d", incorrectOffsetBlockNum), func(t *testing.T) {
+					chk := NewMemChunk(format.chunkFormat, compression.None, format.headBlockFmt, blockSize, testTargetSize)
+					ts := time.Now().Unix()
+					for i := 0; i < 3; i++ {
+						dup, err := chk.Append(&logproto.Entry{
+							Timestamp: time.Now(),
+							Line:      fmt.Sprintf("%d-%d", ts, i),
+							StructuredMetadata: []logproto.LabelAdapter{
+								{Name: "foo", Value: fmt.Sprintf("%d-%d", ts, i)},
+							},
+						})
+						require.NoError(t, err)
+						require.False(t, dup)
+					}
+
+					require.Len(t, chk.blocks, 3)
+
+					b, err := chk.Bytes()
+					require.NoError(t, err)
+
+					metasOffset := binary.BigEndian.Uint64(b[len(b)-8:])
+
+					w := bytes.NewBuffer(nil)
+					eb := EncodeBufferPool.Get().(*encbuf)
+					defer EncodeBufferPool.Put(eb)
+
+					crc32Hash := crc32HashPool.Get().(hash.Hash32)
+					defer crc32HashPool.Put(crc32Hash)
+
+					crc32Hash.Reset()
+					eb.reset()
+
+					// BEGIN - code copied from writeTo func starting from encoding of block metas to change offset of a block
+					eb.putUvarint(len(chk.blocks))
+
+					for i, b := range chk.blocks {
+						eb.putUvarint(b.numEntries)
+						eb.putVarint64(b.mint)
+						eb.putVarint64(b.maxt)
+						// change offset of one block
+						blockOffset := b.offset
+						if i == incorrectOffsetBlockNum {
+							blockOffset += 5
+						}
+						eb.putUvarint(blockOffset)
+						if chk.format >= ChunkFormatV3 {
+							eb.putUvarint(b.uncompressedSize)
+						}
+						eb.putUvarint(len(b.b))
+					}
+					metasLen := len(eb.get())
+					eb.putHash(crc32Hash)
+
+					_, err = w.Write(eb.get())
+					require.NoError(t, err)
+
+					if chk.format >= ChunkFormatV4 {
+						// Write structured metadata offset and length
+						eb.reset()
+
+						eb.putBE64int(int(binary.BigEndian.Uint64(b[len(b)-32:])))
+						eb.putBE64int(int(binary.BigEndian.Uint64(b[len(b)-24:])))
+						_, err = w.Write(eb.get())
+						require.NoError(t, err)
+					}
+
+					// Write the metasOffset.
+					eb.reset()
+					if chk.format >= ChunkFormatV4 {
+						eb.putBE64int(metasLen)
+					}
+					eb.putBE64int(int(metasOffset))
+					_, err = w.Write(eb.get())
+					require.NoError(t, err)
+					// END - code copied from writeTo func
+
+					// build chunk using pre-block meta section + rewritten remainder of the chunk with incorrect offset for a block
+					chkWithIncorrectOffset := make([]byte, int(metasOffset)+w.Len())
+					copy(chkWithIncorrectOffset, b[:metasOffset])
+					copy(chkWithIncorrectOffset[metasOffset:], w.Bytes())
+
+					// decoding the problematic chunk should succeed
+					decodedChkWithIncorrectOffset, err := newByteChunk(chkWithIncorrectOffset, blockSize, testTargetSize, false)
+					require.NoError(t, err)
+
+					require.Len(t, decodedChkWithIncorrectOffset.blocks, len(chk.blocks))
+
+					// both chunks should have same log lines
+					origChunkItr, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+					require.NoError(t, err)
+
+					corruptChunkItr, err := decodedChkWithIncorrectOffset.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+					require.NoError(t, err)
+
+					numEntriesFound := 0
+					for origChunkItr.Next() {
+						numEntriesFound++
+						require.True(t, corruptChunkItr.Next())
+						require.Equal(t, origChunkItr.At(), corruptChunkItr.At())
+					}
+
+					require.False(t, corruptChunkItr.Next())
+					require.Equal(t, 3, numEntriesFound)
 				})
 			}
 		})

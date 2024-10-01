@@ -131,14 +131,6 @@ func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrang
 		}
 
 		return &queryrange.DetectedLabelsResponse{Response: result}, nil
-	case *logproto.QuerySamplesRequest:
-		result, err := h.api.SamplesHandler(ctx, concrete)
-		if err != nil {
-			return nil, err
-		}
-		return &queryrange.QuerySamplesResponse{
-			Response: result,
-		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported query type %T", req)
 	}

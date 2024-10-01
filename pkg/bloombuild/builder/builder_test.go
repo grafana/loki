@@ -88,7 +88,7 @@ func Test_BuilderLoop(t *testing.T) {
 	}
 	flagext.DefaultValues(&cfg.GrpcConfig)
 
-	builder, err := New(cfg, limits, schemaCfg, storageCfg, storage.NewClientMetrics(), nil, fakeBloomStore{}, logger, prometheus.DefaultRegisterer)
+	builder, err := New(cfg, limits, schemaCfg, storageCfg, storage.NewClientMetrics(), nil, fakeBloomStore{}, logger, prometheus.DefaultRegisterer, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		err = services.StopAndAwaitTerminated(context.Background(), builder)
@@ -234,11 +234,11 @@ func (f fakeLimits) BloomNGramSkip(_ string) int {
 	panic("implement me")
 }
 
-func (f fakeLimits) BloomCompactorMaxBlockSize(_ string) int {
+func (f fakeLimits) BloomMaxBlockSize(_ string) int {
 	panic("implement me")
 }
 
-func (f fakeLimits) BloomCompactorMaxBloomSize(_ string) int {
+func (f fakeLimits) BloomMaxBloomSize(_ string) int {
 	panic("implement me")
 }
 

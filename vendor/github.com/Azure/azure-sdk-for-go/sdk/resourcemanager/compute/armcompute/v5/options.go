@@ -84,6 +84,13 @@ type CapacityReservationGroupsClientListBySubscriptionOptions struct {
 	// VM Instance or both resource Ids which are associated to capacity
 	// reservation group in the response.
 	Expand *ExpandTypesForGetCapacityReservationGroups
+
+	// The query option to fetch Capacity Reservation Group Resource Ids.
+	// 'CreatedInSubscription' enables fetching Resource Ids for all capacity reservation group resources created in the subscription.
+	// 'SharedWithSubscription' enables fetching Resource Ids for all capacity reservation group resources shared with the subscription.
+	// 'All' enables fetching Resource Ids for all capacity reservation group resources shared with the subscription and created
+	// in the subscription.
+	ResourceIDsOnly *ResourceIDOptionsForGetCapacityReservationGroups
 }
 
 // CapacityReservationGroupsClientUpdateOptions contains the optional parameters for the CapacityReservationGroupsClient.Update

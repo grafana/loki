@@ -10,7 +10,6 @@ import (
 	"github.com/IBM/ibm-cos-sdk-go/aws/request"
 )
 
-
 func resolveCredentials(cfg *aws.Config,
 	envCfg envConfig, sharedCfg sharedConfig,
 	handlers request.Handlers,
@@ -19,7 +18,7 @@ func resolveCredentials(cfg *aws.Config,
 
 	switch {
 	case len(sessOpts.Profile) != 0:
-		// User explicitly provided an Profile in the session's configuration
+		// User explicitly provided a Profile in the session's configuration
 		// so load that profile from shared config first.
 		// Github(aws/aws-sdk-go#2727)
 		return resolveCredsFromProfile(cfg, envCfg, sharedCfg, handlers, sessOpts)
