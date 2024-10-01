@@ -705,7 +705,7 @@ func newDetectedFieldsQuery(cmd *kingpin.CmdClause) *detected.FieldsQuery {
 		q.Start = mustParse(from, defaultStart)
 		q.End = mustParse(to, defaultEnd)
 
-    q.FieldName = fieldName
+		q.FieldName = fieldName
 
 		q.Quiet = *quiet
 
@@ -726,7 +726,7 @@ func newDetectedFieldsQuery(cmd *kingpin.CmdClause) *detected.FieldsQuery {
 	cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").StringVar(&from)
 	cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
 	cmd.Flag("step", "Query resolution step width, for metric queries. Evaluate the query at the specified step over the time range.").
-    Default("10s").
+		Default("10s").
 		DurationVar(&q.Step)
 
 	return q
