@@ -338,7 +338,7 @@ func (a *S3ObjectClient) ObjectExistsWithSize(ctx context.Context, objectKey str
 			return nil
 		})
 		if lastErr == nil {
-			return true, 0, nil
+			return true, objectSize, nil
 		}
 
 		if a.IsObjectNotFoundErr(lastErr) {
@@ -348,11 +348,7 @@ func (a *S3ObjectClient) ObjectExistsWithSize(ctx context.Context, objectKey str
 		retries.Wait()
 	}
 
-	if lastErr != nil {
-		return false, 0, lastErr
-	}
-
-	return true, objectSize, nil
+	return false, 0, lastErr
 }
 
 // DeleteObject deletes the specified objectKey from the appropriate S3 bucket
