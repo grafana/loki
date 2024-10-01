@@ -49,7 +49,7 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
-	github.com/grafana/dskit v0.0.0-20240905221822-931a021fb06b
+	github.com/grafana/dskit v0.0.0-20240930165212-f52de24af9bc
 	github.com/grafana/go-gelf/v2 v2.0.1
 	github.com/grafana/gomemcache v0.0.0-20240229205252-cd6a66d6fb56
 	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
@@ -124,7 +124,7 @@ require (
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/gogo/googleapis v1.4.1
 	github.com/grafana/jsonparser v0.0.0-20240425183733-ea80629e1a32
-	github.com/grafana/loki/pkg/push v0.0.0-20231124142027-e52380921608
+	github.com/grafana/loki/pkg/push v0.0.0-20240924133635-758364c7775f
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/hashicorp/raft v1.7.1
 	github.com/hashicorp/raft-wal v0.4.1

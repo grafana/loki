@@ -32,16 +32,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/filter"
 )
 
-var testEncodings = []compression.Encoding{
-	compression.EncNone,
-	compression.EncGZIP,
-	compression.EncLZ4_64k,
-	compression.EncLZ4_256k,
-	compression.EncLZ4_1M,
-	compression.EncLZ4_4M,
-	compression.EncSnappy,
-	compression.EncFlate,
-	compression.EncZstd,
+var testEncodings = []compression.Codec{
+	compression.None,
+	compression.GZIP,
+	compression.LZ4_64k,
+	compression.LZ4_256k,
+	compression.LZ4_1M,
+	compression.LZ4_4M,
+	compression.Snappy,
+	compression.Flate,
+	compression.Zstd,
 }
 
 var (
@@ -299,7 +299,7 @@ func TestCorruptChunk(t *testing.T) {
 func TestReadFormatV1(t *testing.T) {
 	t.Parallel()
 
-	c := NewMemChunk(ChunkFormatV3, compression.EncGZIP, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize)
+	c := NewMemChunk(ChunkFormatV3, compression.GZIP, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize)
 	fillChunk(c)
 	// overrides to v1 for testing that specific version.
 	c.format = ChunkFormatV1
@@ -391,7 +391,7 @@ func TestRoundtripV2(t *testing.T) {
 	}
 }
 
-func testNameWithFormats(enc compression.Encoding, chunkFormat byte, headBlockFmt HeadBlockFmt) string {
+func testNameWithFormats(enc compression.Codec, chunkFormat byte, headBlockFmt HeadBlockFmt) string {
 	return fmt.Sprintf("encoding:%v chunkFormat:%v headBlockFmt:%v", enc, chunkFormat, headBlockFmt)
 }
 
@@ -558,7 +558,7 @@ func TestChunkFilling(t *testing.T) {
 func TestGZIPChunkTargetSize(t *testing.T) {
 	t.Parallel()
 
-	chk := NewMemChunk(ChunkFormatV3, compression.EncGZIP, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize)
+	chk := NewMemChunk(ChunkFormatV3, compression.GZIP, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize)
 
 	lineSize := 512
 	entry := &logproto.Entry{
@@ -681,7 +681,7 @@ func TestMemChunk_AppendOutOfOrder(t *testing.T) {
 			t.Run(testName, func(t *testing.T) {
 				t.Parallel()
 
-				tester(t, NewMemChunk(ChunkFormatV3, compression.EncGZIP, f, testBlockSize, testTargetSize))
+				tester(t, NewMemChunk(ChunkFormatV3, compression.GZIP, f, testBlockSize, testTargetSize))
 			})
 		}
 	}
@@ -726,7 +726,7 @@ func TestChunkSize(t *testing.T) {
 }
 
 func TestChunkStats(t *testing.T) {
-	c := NewMemChunk(ChunkFormatV4, compression.EncSnappy, DefaultTestHeadBlockFmt, testBlockSize, 0)
+	c := NewMemChunk(ChunkFormatV4, compression.Snappy, DefaultTestHeadBlockFmt, testBlockSize, 0)
 	first := time.Now()
 	entry := &logproto.Entry{
 		Timestamp: first,
@@ -968,7 +968,7 @@ func BenchmarkBackwardIterator(b *testing.B) {
 	for _, bs := range testBlockSizes {
 		b.Run(humanize.Bytes(uint64(bs)), func(b *testing.B) {
 			b.ReportAllocs()
-			c := NewMemChunk(ChunkFormatV4, compression.EncSnappy, DefaultTestHeadBlockFmt, bs, testTargetSize)
+			c := NewMemChunk(ChunkFormatV4, compression.Snappy, DefaultTestHeadBlockFmt, bs, testTargetSize)
 			_ = fillChunk(c)
 			b.ResetTimer()
 			for n := 0; n < b.N; n++ {
@@ -1082,7 +1082,7 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 func TestMemChunk_IteratorBounds(t *testing.T) {
 	createChunk := func() *MemChunk {
 		t.Helper()
-		c := NewMemChunk(ChunkFormatV3, compression.EncNone, DefaultTestHeadBlockFmt, 1e6, 1e6)
+		c := NewMemChunk(ChunkFormatV3, compression.None, DefaultTestHeadBlockFmt, 1e6, 1e6)
 
 		if _, err := c.Append(&logproto.Entry{
 			Timestamp: time.Unix(0, 1),
@@ -1168,9 +1168,9 @@ func TestMemchunkLongLine(t *testing.T) {
 func TestBytesWith(t *testing.T) {
 	t.Parallel()
 
-	exp, err := NewMemChunk(ChunkFormatV3, compression.EncNone, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize).BytesWith(nil)
+	exp, err := NewMemChunk(ChunkFormatV3, compression.None, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize).BytesWith(nil)
 	require.Nil(t, err)
-	out, err := NewMemChunk(ChunkFormatV3, compression.EncNone, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize).BytesWith([]byte{1, 2, 3})
+	out, err := NewMemChunk(ChunkFormatV3, compression.None, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize).BytesWith([]byte{1, 2, 3})
 	require.Nil(t, err)
 
 	require.Equal(t, exp, out)
@@ -1181,8 +1181,8 @@ func TestCheckpointEncoding(t *testing.T) {
 
 	blockSize, targetSize := 256*1024, 1500*1024
 	for _, f := range allPossibleFormats {
-		t.Run(testNameWithFormats(compression.EncSnappy, f.chunkFormat, f.headBlockFmt), func(t *testing.T) {
-			c := newMemChunkWithFormat(f.chunkFormat, compression.EncSnappy, f.headBlockFmt, blockSize, targetSize)
+		t.Run(testNameWithFormats(compression.Snappy, f.chunkFormat, f.headBlockFmt), func(t *testing.T) {
+			c := newMemChunkWithFormat(f.chunkFormat, compression.Snappy, f.headBlockFmt, blockSize, targetSize)
 
 			// add a few entries
 			for i := 0; i < 5; i++ {
@@ -1267,7 +1267,7 @@ var (
 func BenchmarkBufferedIteratorLabels(b *testing.B) {
 	for _, f := range HeadBlockFmts {
 		b.Run(f.String(), func(b *testing.B) {
-			c := NewMemChunk(ChunkFormatV3, compression.EncSnappy, f, testBlockSize, testTargetSize)
+			c := NewMemChunk(ChunkFormatV3, compression.Snappy, f, testBlockSize, testTargetSize)
 			_ = fillChunk(c)
 
 			labelsSet := []labels.Labels{
@@ -1367,8 +1367,8 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 
 func Test_HeadIteratorReverse(t *testing.T) {
 	for _, testData := range allPossibleFormats {
-		t.Run(testNameWithFormats(compression.EncSnappy, testData.chunkFormat, testData.headBlockFmt), func(t *testing.T) {
-			c := newMemChunkWithFormat(testData.chunkFormat, compression.EncSnappy, testData.headBlockFmt, testBlockSize, testTargetSize)
+		t.Run(testNameWithFormats(compression.Snappy, testData.chunkFormat, testData.headBlockFmt), func(t *testing.T) {
+			c := newMemChunkWithFormat(testData.chunkFormat, compression.Snappy, testData.headBlockFmt, testBlockSize, testTargetSize)
 			genEntry := func(i int64) *logproto.Entry {
 				return &logproto.Entry{
 					Timestamp: time.Unix(0, i),
@@ -1483,7 +1483,7 @@ func TestMemChunk_Rebound(t *testing.T) {
 }
 
 func buildTestMemChunk(t *testing.T, from, through time.Time) *MemChunk {
-	chk := NewMemChunk(ChunkFormatV3, compression.EncGZIP, DefaultTestHeadBlockFmt, defaultBlockSize, 0)
+	chk := NewMemChunk(ChunkFormatV3, compression.GZIP, DefaultTestHeadBlockFmt, defaultBlockSize, 0)
 	for ; from.Before(through); from = from.Add(time.Second) {
 		_, err := chk.Append(&logproto.Entry{
 			Line:      from.String(),
@@ -1604,7 +1604,7 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 }
 
 func buildFilterableTestMemChunk(t *testing.T, from, through time.Time, matchingFrom, matchingTo *time.Time, withStructuredMetadata bool) *MemChunk {
-	chk := NewMemChunk(ChunkFormatV4, compression.EncGZIP, DefaultTestHeadBlockFmt, defaultBlockSize, 0)
+	chk := NewMemChunk(ChunkFormatV4, compression.GZIP, DefaultTestHeadBlockFmt, defaultBlockSize, 0)
 	t.Logf("from   : %v", from.String())
 	t.Logf("through: %v", through.String())
 	var structuredMetadata push.LabelsAdapter
@@ -1753,7 +1753,7 @@ func TestMemChunk_SpaceFor(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			for _, format := range allPossibleFormats {
 				t.Run(fmt.Sprintf("chunk_v%d_head_%s", format.chunkFormat, format.headBlockFmt), func(t *testing.T) {
-					chk := newMemChunkWithFormat(format.chunkFormat, compression.EncNone, format.headBlockFmt, 1024, tc.targetSize)
+					chk := newMemChunkWithFormat(format.chunkFormat, compression.None, format.headBlockFmt, 1024, tc.targetSize)
 
 					chk.blocks = make([]block, tc.nBlocks)
 					chk.cutBlockSize = tc.cutBlockSize
@@ -2055,7 +2055,7 @@ func TestDecodeChunkIncorrectBlockOffset(t *testing.T) {
 		t.Run(fmt.Sprintf("chunkFormat:%v headBlockFmt:%v", format.chunkFormat, format.headBlockFmt), func(t *testing.T) {
 			for incorrectOffsetBlockNum := 0; incorrectOffsetBlockNum < 3; incorrectOffsetBlockNum++ {
 				t.Run(fmt.Sprintf("inorrect offset block: %d", incorrectOffsetBlockNum), func(t *testing.T) {
-					chk := NewMemChunk(format.chunkFormat, compression.EncNone, format.headBlockFmt, blockSize, testTargetSize)
+					chk := NewMemChunk(format.chunkFormat, compression.None, format.headBlockFmt, blockSize, testTargetSize)
 					ts := time.Now().Unix()
 					for i := 0; i < 3; i++ {
 						dup, err := chk.Append(&logproto.Entry{

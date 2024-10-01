@@ -18,6 +18,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/concurrency"
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/modules"
 	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/ring"
@@ -37,6 +38,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester/index"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -87,18 +89,18 @@ var (
 type Config struct {
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the ingester will operate and where it will register for discovery."`
 
-	ConcurrentFlushes   int                  `yaml:"concurrent_flushes"`
-	FlushCheckPeriod    time.Duration        `yaml:"flush_check_period"`
-	FlushOpBackoff      backoff.Config       `yaml:"flush_op_backoff"`
-	FlushOpTimeout      time.Duration        `yaml:"flush_op_timeout"`
-	RetainPeriod        time.Duration        `yaml:"chunk_retain_period"`
-	MaxChunkIdle        time.Duration        `yaml:"chunk_idle_period"`
-	BlockSize           int                  `yaml:"chunk_block_size"`
-	TargetChunkSize     int                  `yaml:"chunk_target_size"`
-	ChunkEncoding       string               `yaml:"chunk_encoding"`
-	parsedEncoding      compression.Encoding `yaml:"-"` // placeholder for validated encoding
-	MaxChunkAge         time.Duration        `yaml:"max_chunk_age"`
-	AutoForgetUnhealthy bool                 `yaml:"autoforget_unhealthy"`
+	ConcurrentFlushes   int               `yaml:"concurrent_flushes"`
+	FlushCheckPeriod    time.Duration     `yaml:"flush_check_period"`
+	FlushOpBackoff      backoff.Config    `yaml:"flush_op_backoff"`
+	FlushOpTimeout      time.Duration     `yaml:"flush_op_timeout"`
+	RetainPeriod        time.Duration     `yaml:"chunk_retain_period"`
+	MaxChunkIdle        time.Duration     `yaml:"chunk_idle_period"`
+	BlockSize           int               `yaml:"chunk_block_size"`
+	TargetChunkSize     int               `yaml:"chunk_target_size"`
+	ChunkEncoding       string            `yaml:"chunk_encoding"`
+	parsedEncoding      compression.Codec `yaml:"-"` // placeholder for validated encoding
+	MaxChunkAge         time.Duration     `yaml:"max_chunk_age"`
+	AutoForgetUnhealthy bool              `yaml:"autoforget_unhealthy"`
 
 	// Synchronization settings. Used to make sure that ingesters cut their chunks at the same moments.
 	SyncPeriod         time.Duration `yaml:"sync_period"`
@@ -148,7 +150,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.chunks-idle-period", 30*time.Minute, "How long chunks should sit in-memory with no updates before being flushed if they don't hit the max block size. This means that half-empty chunks will still be flushed after a certain period as long as they receive no further activity.")
 	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "The targeted _uncompressed_ size in bytes of a chunk block When this threshold is exceeded the head block will be cut and compressed inside the chunk.")
 	f.IntVar(&cfg.TargetChunkSize, "ingester.chunk-target-size", 1572864, "A target _compressed_ size in bytes for chunks. This is a desired size not an exact size, chunks may be slightly bigger or significantly smaller if they get flushed for other reasons (e.g. chunk_idle_period). A value of 0 creates chunks with a fixed 10 blocks, a non zero value will create chunks with a variable number of blocks to meet the target size.") // 1.5 MB
-	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", compression.EncGZIP.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", compression.SupportedEncoding()))
+	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", compression.GZIP.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", compression.SupportedCodecs()))
 	f.DurationVar(&cfg.SyncPeriod, "ingester.sync-period", 1*time.Hour, "Parameters used to synchronize ingesters to cut chunks at the same moment. Sync period is used to roll over incoming entry to a new chunk. If chunk's utilization isn't high enough (eg. less than 50% when sync_min_utilization is set to 0.5), then this chunk rollover doesn't happen.")
 	f.Float64Var(&cfg.SyncMinUtilization, "ingester.sync-min-utilization", 0.1, "Minimum utilization of chunk when doing synchronization.")
 	f.IntVar(&cfg.MaxReturnedErrors, "ingester.max-ignored-stream-errors", 10, "The maximum number of errors a stream will report to the user when a push fails. 0 to make unlimited.")
@@ -162,7 +164,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *Config) Validate() error {
-	enc, err := compression.ParseEncoding(cfg.ChunkEncoding)
+	enc, err := compression.ParseCodec(cfg.ChunkEncoding)
 	if err != nil {
 		return err
 	}
@@ -225,6 +227,7 @@ type Interface interface {
 	GetOrCreateInstance(instanceID string) (*instance, error)
 	ShutdownHandler(w http.ResponseWriter, r *http.Request)
 	PrepareShutdown(w http.ResponseWriter, r *http.Request)
+	PreparePartitionDownscaleHandler(w http.ResponseWriter, r *http.Request)
 }
 
 // Ingester builds chunks for incoming log streams.
@@ -289,11 +292,15 @@ type Ingester struct {
 
 	// recalculateOwnedStreams periodically checks the ring for changes and recalculates owned streams for each instance.
 	readRing                ring.ReadRing
-	recalculateOwnedStreams *recalculateOwnedStreams
+	recalculateOwnedStreams *recalculateOwnedStreamsSvc
+
+	ingestPartitionID       int32
+	partitionRingLifecycler *ring.PartitionInstanceLifecycler
+	partitionReader         *partition.Reader
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg, metricsNamespace string, logger log.Logger, customStreamsTracker push.UsageTracker, readRing ring.ReadRing) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg, metricsNamespace string, logger log.Logger, customStreamsTracker push.UsageTracker, readRing ring.ReadRing, partitionRingWatcher *ring.PartitionRingWatcher) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -353,6 +360,34 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	i.lifecyclerWatcher = services.NewFailureWatcher()
 	i.lifecyclerWatcher.WatchService(i.lifecycler)
 
+	if i.cfg.KafkaIngestion.Enabled {
+		i.ingestPartitionID, err = partitionring.ExtractIngesterPartitionID(cfg.LifecyclerConfig.ID)
+		if err != nil {
+			return nil, fmt.Errorf("calculating ingester partition ID: %w", err)
+		}
+		partitionRingKV := cfg.KafkaIngestion.PartitionRingConfig.KVStore.Mock
+		if partitionRingKV == nil {
+			partitionRingKV, err = kv.NewClient(cfg.KafkaIngestion.PartitionRingConfig.KVStore, ring.GetPartitionRingCodec(), kv.RegistererWithKVName(registerer, PartitionRingName+"-lifecycler"), logger)
+			if err != nil {
+				return nil, fmt.Errorf("creating KV store for ingester partition ring: %w", err)
+			}
+		}
+		i.partitionRingLifecycler = ring.NewPartitionInstanceLifecycler(
+			i.cfg.KafkaIngestion.PartitionRingConfig.ToLifecyclerConfig(i.ingestPartitionID, cfg.LifecyclerConfig.ID),
+			PartitionRingName,
+			PartitionRingKey,
+			partitionRingKV,
+			logger,
+			prometheus.WrapRegistererWithPrefix("loki_", registerer))
+
+		i.partitionReader, err = partition.NewReader(cfg.KafkaIngestion.KafkaConfig, i.ingestPartitionID, cfg.LifecyclerConfig.ID, NewKafkaConsumerFactory(i, logger, registerer), logger, registerer)
+		if err != nil {
+			return nil, err
+		}
+		i.lifecyclerWatcher.WatchService(i.partitionRingLifecycler)
+		i.lifecyclerWatcher.WatchService(i.partitionReader)
+	}
+
 	// Now that the lifecycler has been created, we can create the limiter
 	// which depends on it.
 	i.limiter = NewLimiter(limits, metrics, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor)
@@ -373,7 +408,13 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		i.SetExtractorWrapper(i.cfg.SampleExtractorWrapper)
 	}
 
-	i.recalculateOwnedStreams = newRecalculateOwnedStreams(i.getInstances, i.lifecycler.ID, i.readRing, cfg.OwnedStreamsCheckInterval, util_log.Logger)
+	var ownedStreamsStrategy ownershipStrategy
+	if i.cfg.KafkaIngestion.Enabled {
+		ownedStreamsStrategy = newOwnedStreamsPartitionStrategy(i.ingestPartitionID, partitionRingWatcher, util_log.Logger)
+	} else {
+		ownedStreamsStrategy = newOwnedStreamsIngesterStrategy(i.lifecycler.ID, i.readRing, util_log.Logger)
+	}
+	i.recalculateOwnedStreams = newRecalculateOwnedStreamsSvc(i.getInstances, ownedStreamsStrategy, cfg.OwnedStreamsCheckInterval, util_log.Logger)
 
 	return i, nil
 }
@@ -461,7 +502,15 @@ func (i *Ingester) setupAutoForget() {
 	}()
 }
 
-func (i *Ingester) starting(ctx context.Context) error {
+func (i *Ingester) starting(ctx context.Context) (err error) {
+	defer func() {
+		if err != nil {
+			// if starting() fails for any reason (e.g., context canceled),
+			// the lifecycler must be stopped.
+			_ = services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
+		}
+	}()
+
 	if i.cfg.WAL.Enabled {
 		start := time.Now()
 
@@ -546,17 +595,6 @@ func (i *Ingester) starting(ctx context.Context) error {
 
 	i.InitFlushQueues()
 
-	// pass new context to lifecycler, so that it doesn't stop automatically when Ingester's service context is done
-	err := i.lifecycler.StartAsync(context.Background())
-	if err != nil {
-		return err
-	}
-
-	err = i.lifecycler.AwaitRunning(ctx)
-	if err != nil {
-		return err
-	}
-
 	shutdownMarkerPath := path.Join(i.cfg.ShutdownMarkerPath, shutdownMarkerFilename)
 	shutdownMarker, err := shutdownMarkerExists(shutdownMarkerPath)
 	if err != nil {
@@ -568,16 +606,41 @@ func (i *Ingester) starting(ctx context.Context) error {
 		i.setPrepareShutdown()
 	}
 
+	// When kafka ingestion is enabled, we have to make sure that reader catches up replaying the partition
+	// BEFORE the ingester ring lifecycler is started, because once the ingester ring lifecycler will start
+	// it will switch the ingester state in the ring to ACTIVE.
+	if i.partitionReader != nil {
+		if err := services.StartAndAwaitRunning(ctx, i.partitionReader); err != nil {
+			return fmt.Errorf("failed to start partition reader: %w", err)
+		}
+	}
+
+	// pass new context to lifecycler, so that it doesn't stop automatically when Ingester's service context is done
+	err = i.lifecycler.StartAsync(context.Background())
+	if err != nil {
+		return err
+	}
+
+	err = i.lifecycler.AwaitRunning(ctx)
+	if err != nil {
+		return err
+	}
+
 	err = i.recalculateOwnedStreams.StartAsync(ctx)
 	if err != nil {
 		return fmt.Errorf("can not start recalculate owned streams service: %w", err)
 	}
 
-	err = i.lifecycler.AwaitRunning(ctx)
+	err = i.recalculateOwnedStreams.AwaitRunning(ctx)
 	if err != nil {
 		return fmt.Errorf("can not ensure recalculate owned streams service is running: %w", err)
 	}
 
+	if i.partitionRingLifecycler != nil {
+		if err := services.StartAndAwaitRunning(ctx, i.partitionRingLifecycler); err != nil {
+			return fmt.Errorf("failed to start partition ring lifecycler: %w", err)
+		}
+	}
 	// start our loop
 	i.loopDone.Add(1)
 	go i.loop()
@@ -610,6 +673,19 @@ func (i *Ingester) running(ctx context.Context) error {
 // At this point, loop no longer runs, but flushers are still running.
 func (i *Ingester) stopping(_ error) error {
 	i.stopIncomingRequests()
+
+	if i.partitionReader != nil {
+		if err := services.StopAndAwaitTerminated(context.Background(), i.partitionReader); err != nil {
+			level.Warn(i.logger).Log("msg", "failed to stop partition reader", "err", err)
+		}
+	}
+
+	if i.partitionRingLifecycler != nil {
+		if err := services.StopAndAwaitTerminated(context.Background(), i.partitionRingLifecycler); err != nil {
+			level.Warn(i.logger).Log("msg", "failed to stop partition ring lifecycler", "err", err)
+		}
+	}
+
 	var errs util.MultiError
 	errs.Add(i.wal.Stop())
 
@@ -766,6 +842,18 @@ func (i *Ingester) setPrepareShutdown() {
 	i.lifecycler.SetUnregisterOnShutdown(true)
 	i.terminateOnShutdown = true
 	i.metrics.shutdownMarker.Set(1)
+
+	if i.partitionRingLifecycler != nil {
+		// When the prepare shutdown endpoint is called there are two changes in the partitions ring behavior:
+		//
+		// 1. If setPrepareShutdown() is called at startup, because of the shutdown marker found on disk,
+		//    the ingester shouldn't create the partition if doesn't exist, because we expect the ingester will
+		//    be scaled down shortly after.
+		// 2. When the ingester will shutdown we'll have to remove the ingester from the partition owners,
+		//    because we expect the ingester to be scaled down.
+		i.partitionRingLifecycler.SetCreatePartitionOnStartup(false)
+		i.partitionRingLifecycler.SetRemoveOwnerOnShutdown(true)
+	}
 }
 
 func (i *Ingester) unsetPrepareShutdown() {
