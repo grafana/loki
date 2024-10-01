@@ -122,7 +122,7 @@ If you also want to host your Loki instance inside the cluster install the [offi
 
 ### AWS Elastic Container Service (ECS)
 
-You can use fluent-bit Loki Docker image as a Firelens log router in AWS ECS.
+You can use the fluent-bit Loki Docker image as a Firelens log router in AWS ECS.
 For more information about this see our [AWS documentation]({{< relref "../promtail/cloud/ecs" >}})
 
 ### Local
