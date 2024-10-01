@@ -224,9 +224,13 @@ func (b *BlobStorage) ObjectExists(ctx context.Context, objectKey string) (bool,
 	return exists, err
 }
 
-func (b *BlobStorage) ObjectSize(ctx context.Context, objectKey string) (int64, error) {
-	_, size, err := b.objectAttributes(ctx, objectKey, "azure.ObjectSize")
-	return size, err
+func (b *BlobStorage) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
+	_, size, err := b.objectAttributes(ctx, objectKey, "azure.GetAttributes")
+	if err != nil {
+		return client.ObjectAttributes{}, err
+	}
+
+	return client.ObjectAttributes{Size: size}, nil
 }
 
 func (b *BlobStorage) objectAttributes(ctx context.Context, objectKey, source string) (bool, int64, error) {

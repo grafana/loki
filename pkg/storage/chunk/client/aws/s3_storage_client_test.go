@@ -309,7 +309,7 @@ func (m *MockS3Client) HeadObject(input *s3.HeadObjectInput) (*s3.HeadObjectOutp
 	return m.HeadObjectFunc(input)
 }
 
-func Test_ObjectSize(t *testing.T) {
+func Test_GetAttributes(t *testing.T) {
 	mockS3 := &MockS3Client{
 		HeadObjectFunc: func(_ *s3.HeadObjectInput) (*s3.HeadObjectOutput, error) {
 			var size int64
@@ -335,9 +335,9 @@ func Test_ObjectSize(t *testing.T) {
 	require.NoError(t, err)
 	c.S3 = mockS3
 
-	size, err := c.ObjectSize(context.Background(), "abc")
+	attrs, err := c.GetAttributes(context.Background(), "abc")
 	require.NoError(t, err)
-	require.EqualValues(t, 128, size)
+	require.EqualValues(t, 128, attrs.Size)
 }
 
 func Test_RetryLogic(t *testing.T) {
@@ -388,7 +388,7 @@ func Test_RetryLogic(t *testing.T) {
 			3,
 			false,
 			func(c *S3ObjectClient) error {
-				_, err := c.ObjectSize(context.Background(), "foo")
+				_, err := c.GetAttributes(context.Background(), "foo")
 				return err
 			},
 		},

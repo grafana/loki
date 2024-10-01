@@ -324,9 +324,12 @@ func (c *COSObjectClient) ObjectExists(ctx context.Context, objectKey string) (b
 	return exists, err
 }
 
-func (c *COSObjectClient) ObjectSize(ctx context.Context, objectKey string) (int64, error) {
-	_, size, err := c.objectAttributes(ctx, objectKey, "COS.ObjectSize")
-	return size, err
+func (c *COSObjectClient) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
+	_, size, err := c.objectAttributes(ctx, objectKey, "COS.GetAttributes")
+	if err != nil {
+		return client.ObjectAttributes{}, err
+	}
+	return client.ObjectAttributes{Size: size}, nil
 }
 
 func (c *COSObjectClient) objectAttributes(ctx context.Context, objectKey, source string) (bool, int64, error) {

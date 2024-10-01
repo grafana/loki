@@ -393,29 +393,27 @@ func (m *MockStorage) query(ctx context.Context, query index.Query, callback fun
 
 // ObjectExists implments client.ObjectClient
 func (m *InMemoryObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	exists, _, err := m.objectAttributes(ctx, objectKey)
-	return exists, err
+	_, err := m.GetAttributes(ctx, objectKey)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
-func (m *InMemoryObjectClient) ObjectSize(ctx context.Context, objectKey string) (int64, error) {
-	_, size, err := m.objectAttributes(ctx, objectKey)
-	return size, err
-}
-
-func (m *InMemoryObjectClient) objectAttributes(_ context.Context, objectKey string) (bool, int64, error) {
+func (m *InMemoryObjectClient) GetAttributes(_ context.Context, objectKey string) (client.ObjectAttributes, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
 	if m.mode == MockStorageModeWriteOnly {
-		return false, 0, errPermissionDenied
+		return client.ObjectAttributes{}, errPermissionDenied
 	}
 
 	_, ok := m.objects[objectKey]
 	if !ok {
-		return false, 0, nil
+		return client.ObjectAttributes{}, errStorageObjectNotFound
 	}
 	objectSize := len(m.objects[objectKey])
-	return true, int64(objectSize), nil
+	return client.ObjectAttributes{Size: int64(objectSize)}, nil
 }
 
 // GetObject implements client.ObjectClient.

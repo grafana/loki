@@ -2,6 +2,7 @@ package audit
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -17,21 +18,19 @@ type testObjClient struct {
 	client.ObjectClient
 }
 
-func (t testObjClient) ObjectSize(ctx context.Context, object string) (int64, error) {
-	_, size, err := t.objectAttributes(ctx, object)
-	return size, err
-}
-
 func (t testObjClient) ObjectExists(ctx context.Context, object string) (bool, error) {
-	exists, _, err := t.objectAttributes(ctx, object)
-	return exists, err
+	_, err := t.GetAttributes(ctx, object)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
-func (t testObjClient) objectAttributes(_ context.Context, object string) (bool, int64, error) {
+func (t testObjClient) GetAttributes(ctx context.Context, object string) (client.ObjectAttributes, error) {
 	if strings.Contains(object, "missing") {
-		return false, 0, nil
+		return client.ObjectAttributes{}, fmt.Errorf("object %s not found", object)
 	}
-	return true, 0, nil
+	return client.ObjectAttributes{}, nil
 }
 
 type testCompactedIdx struct {

@@ -314,9 +314,9 @@ func (a *S3ObjectClient) ObjectExists(ctx context.Context, objectKey string) (bo
 	return exists, err
 }
 
-func (a *S3ObjectClient) ObjectSize(ctx context.Context, objectKey string) (int64, error) {
-	_, size, err := a.objectAttributes(ctx, objectKey, "S3.ObjectSize")
-	return size, err
+func (a *S3ObjectClient) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
+	_, size, err := a.objectAttributes(ctx, objectKey, "S3.GetAttributes")
+	return client.ObjectAttributes{Size: size}, err
 }
 
 func (a *S3ObjectClient) objectAttributes(ctx context.Context, objectKey, method string) (bool, int64, error) {

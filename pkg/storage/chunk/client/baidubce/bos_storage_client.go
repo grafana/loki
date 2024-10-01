@@ -95,9 +95,13 @@ func (b *BOSObjectStorage) ObjectExists(ctx context.Context, objectKey string) (
 	return exists, err
 }
 
-func (b *BOSObjectStorage) ObjectSize(ctx context.Context, objectKey string) (int64, error) {
+func (b *BOSObjectStorage) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
 	_, size, err := b.objectAttributes(ctx, objectKey, "BOS.ObjectSize")
-	return size, err
+	if err != nil {
+		return client.ObjectAttributes{}, err
+	}
+
+	return client.ObjectAttributes{Size: size}, nil
 }
 
 func (b *BOSObjectStorage) objectAttributes(ctx context.Context, objectKey, source string) (bool, int64, error) {
