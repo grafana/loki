@@ -491,7 +491,7 @@ k6 is one of the fastest way to test your Loki deployment. This will allow you t
 
 - **Costs:** Running Loki on AWS will incur costs. Make sure to monitor your usage and costs to avoid any unexpected bills. In this guide we have used a simple EKS cluster with 3 nodes and m5.xlarge instances. You may wish to adjust the instance types and number of nodes based on your workload.
 
-- **Guide:** Note that this guide was created on the first `1st of October 2024`. Cloud providers are constantly updating their services and offerings. This may mean that some of the steps require updating.
+- **Guide:** Note that this guide was **last updated on 1st October 2024**. As cloud providers frequently update their services and offerings, some steps in this guide may need adjustments over time.
 
 ## Next steps
 
