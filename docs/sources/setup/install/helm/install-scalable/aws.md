@@ -321,7 +321,7 @@ Create a `values.yaml` file with the following content:
 It is critical to define a valid `values.yaml` file for the Loki deployment. To remove the risk of misconfiguration, let's break down the configuration options to keep in mind when deploying to AWS:
 
 - **Loki Config vs. Values Config:**
-  - The `values.yaml` file contains a section called `loki`, which is a direct representation of the Loki configuration file.
+  - The `values.yaml` file contains a section called `loki`, which contains a direct representation of the Loki configuration file.
   - This section defines the Loki configuration, including the schema, storage, and querier configuration.
   - The key configuration to focus on is the `storage_config` section, where you define the S3 bucket region and name.
 

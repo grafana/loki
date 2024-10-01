@@ -1,12 +1,12 @@
 ---
-title: Install the microservice Helm chart 
+title: Loki Microservice Helm chart 
 menuTitle: Install microservice Loki
 description: Installing Loki in microservice (distributed) mode using the Helm chart.
 weight: 300
 keywords: 
 ---
 
-# Install the microservice Helm chart
+# Loki Microservice Helm chart
 
 This Helm Chart deploys Grafana Loki on Kubernetes.
 
@@ -21,16 +21,17 @@ The default Helm chart deploys the following components:
 - **QueryFrontend component** (2 replicas, maxUnavailable: 1): Manages frontend queries. Up to 1 replica can be unavailable during updates.
 - **QueryScheduler component** (2 replicas): Schedules queries.
 
+{{< admonition type="note" >}}
 It is not recommended to run scalable mode with `filesystem` storage. For the purpose of this guide, we will use MinIO as the object storage to provide a complete example. 
+{{< /admonition >}}
 
-**Prerequisites**
+## Prerequisites
 
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).
 - A running Kubernetes cluster.
-- (Optional) A Memcached deployment for better query performance. For information on configuring Memcached, refer to the [caching section](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/caching/).
 
 
-**To deploy Loki in microservice mode (with MinIO):**
+## Deploying the Helm chart for development and testing
 
 
 1. Add [Grafana's chart repository](https://github.com/grafana/helm-charts) to Helm:
@@ -49,31 +50,30 @@ It is not recommended to run scalable mode with `filesystem` storage. For the pu
 
      ```yaml
      loki:
-       schemaConfig:
-         configs:
-           - from: 2024-04-01
-             store: tsdb
-             object_store: s3
-             schema: v13
-             index:
-               prefix: loki_index_
-               period: 24h
-       ingester:
-         chunk_encoding: snappy
-       tracing:
-         enabled: true
-       querier:
-         # Default is 4, if you have enough memory and CPU you can increase, reduce if OOMing
-         max_concurrent: 4
+        schemaConfig:
+          configs:
+            - from: 2024-04-01
+              store: tsdb
+              object_store: s3
+              schema: v13
+              index:
+                prefix: loki_index_
+                period: 24h
+        ingester:
+          chunk_encoding: snappy
+        querier:
+          # Default is 4, if you have enough memory and CPU you can increase, reduce if OOMing
+          max_concurrent: 4
+        pattern_ingester:
+          enabled: true
+        limits_config:
+          allow_structured_metadata: true
+          volume_enabled: true
+          retention_period: 672h
+        compactor:
+          retention_enabled: true 
+          delete_request_store: s3
 
-     #gateway:
-     #  ingress:
-     #    enabled: true
-     #    hosts:
-     #      - host: FIXME
-     #        paths:
-     #          - path: /
-     #            pathType: Prefix
 
      deploymentMode: Distributed
 
@@ -101,20 +101,15 @@ It is not recommended to run scalable mode with `filesystem` storage. For the pu
      bloomGateway:
        replicas: 0
 
+      # This exposes the Loki gateway so it can be written to and queried externaly
+     gateway:
+        service:
+          type: LoadBalancer
+
+
      # Enable minio for storage
      minio:
        enabled: true
-
-     # Zero out replica counts of other deployment modes
-     backend:
-       replicas: 0
-     read:
-       replicas: 0
-     write:
-       replicas: 0
-
-     singleBinary:
-       replicas: 0 
      ```
 
 4. Install or upgrade the Loki deployment.
@@ -138,7 +133,7 @@ It is not recommended to run scalable mode with `filesystem` storage. For the pu
       loki-canary-8thrx                      1/1     Running   0          167m
       loki-canary-h965l                      1/1     Running   0          167m
       loki-canary-th8kb                      1/1     Running   0          167m
-      loki-chunks-cache-0                    0/2     Pending   0          167m
+      loki-chunks-cache-0                    2/2     Running   0          167m
       loki-compactor-0                       1/1     Running   0          167m
       loki-compactor-1                       1/1     Running   0          167m
       loki-distributor-7c9bb8f4dd-bcwc5      1/1     Running   0          167m
@@ -165,7 +160,7 @@ It is not recommended to run scalable mode with `filesystem` storage. For the pu
 
 ## Object Storage Configuration
 
-After testing Loki with MinIO, it is recommended to configure Loki with an object storage provider. The following examples shows how to configure Loki with different object storage providers:
+After testing Loki with MinIO, we recommended to configure Loki with an object storage provider. The following examples shows how to configure Loki with different object storage providers:
 
 {{< admonition type="caution" >}}
 When deploying Loki using S3 Storage **DO NOT** use the default bucket names;  `chunk`, `ruler` and `admin`. Choose a unique name for each bucket. For more information see the following [security update](https://grafana.com/blog/2024/06/27/grafana-security-update-grafana-loki-and-unintended-data-write-attempts-to-amazon-s3-buckets/). This caution does not apply when you are using MinIO. When using MinIO we recommend using the default bucket names.
@@ -176,48 +171,55 @@ When deploying Loki using S3 Storage **DO NOT** use the default bucket names;  `
 ```s3
 # Example configuration for Loki with S3 storage
 
-  loki:
-    schemaConfig:
-      configs:
-        - from: 2024-04-01
-          store: tsdb
-          object_store: s3
-          schema: v13
-          index:
-            prefix: loki_index_
-            period: 24h
-    ingester:
-      chunk_encoding: snappy
-    tracing:
+loki:
+  schemaConfig:
+    configs:
+      - from: 2024-04-01
+        store: tsdb
+        object_store: s3
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+  storage_config:
+    aws:
+      region: eu-west-2
+      bucketnames: loki-aws-bucket # Define your AWS bucket here
+      s3forcepathstyle: false
+  pattern_ingester:
       enabled: true
-    querier:
+  limits_config:
+    allow_structured_metadata: true
+    volume_enabled: true
+    retention_period: 672h # 28 days retention
+  querier:
       max_concurrent: 4
 
-    storage:
+  storage:
       type: s3
       bucketNames:
         chunks: "<INSERT BUCKET NAME>"
         ruler: "<INSERT BUCKET NAME>"
         admin: "<INSERT BUCKET NAME>"
-      s3:
-        # s3 URL can be used to specify the endpoint, access key, secret key, and bucket name
-        s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name
-        # AWS endpoint URL
-        endpoint: <your-endpoint>
-        # AWS region where the S3 bucket is located
-        region: <your-region>
-        # AWS secret access key
-        secretAccessKey: <your-secret-access-key>
-        # AWS access key ID
-        accessKeyId: <your-access-key-id>
-        # AWS signature version (e.g., v2 or v4)
-        signatureVersion: <your-signature-version>
-        # Forces the path style for S3 (true/false)
-        s3ForcePathStyle: false
-        # Allows insecure (HTTP) connections (true/false)
-        insecure: false
-        # HTTP configuration settings
-        http_config: {}
+    s3:
+      # s3 URL can be used to specify the endpoint, access key, secret key, and bucket name this works well for S3 compatible storages or are hosting Loki on-premises and want to use S3 as the storage backend. Either use the s3 URL or the individual fields below (AWS endpoint, region, secret).
+      s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name
+      # AWS endpoint URL
+      endpoint: <your-endpoint>
+      # AWS region where the S3 bucket is located
+      region: <your-region>
+      # AWS secret access key
+      secretAccessKey: <your-secret-access-key>
+      # AWS access key ID
+      accessKeyId: <your-access-key-id>
+      # AWS signature version (e.g., v2 or v4)
+      signatureVersion: <your-signature-version>
+      # Forces the path style for S3 (true/false)
+      s3ForcePathStyle: false
+      # Allows insecure (HTTP) connections (true/false)
+      insecure: false
+      # HTTP configuration settings
+      http_config: {}
 
   deploymentMode: Distributed
 

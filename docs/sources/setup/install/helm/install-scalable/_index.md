@@ -128,10 +128,17 @@ loki:
         index:
           prefix: loki_index_
           period: 24h
-  ingester:
-    chunk_encoding: snappy
-  tracing:
-    enabled: true
+  storage_config:
+    aws:
+      region: eu-west-2
+      bucketnames: loki-aws-bucket # Define your AWS bucket here
+      s3forcepathstyle: false
+  pattern_ingester:
+      enabled: true
+  limits_config:
+    allow_structured_metadata: true
+    volume_enabled: true
+    retention_period: 672h # 28 days retention
   querier:
     max_concurrent: 4
 
