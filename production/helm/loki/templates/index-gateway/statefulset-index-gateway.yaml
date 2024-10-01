@@ -91,14 +91,14 @@ spec:
               protocol: TCP
             {{- end }}
           env:
-            {{- with .Values.global.extraEnv }}
+            {{- with .Values.loki.extraEnv }}
               {{- toYaml . | nindent 12 }}
             {{- end }}
             {{- with .Values.indexGateway.extraEnv }}
               {{- toYaml . | nindent 12 }}
             {{- end }}
           envFrom:
-            {{- with .Values.global.extraEnvFrom }}
+            {{- with .Values.loki.extraEnvFrom }}
               {{- toYaml . | nindent 12 }}
             {{- end }}
             {{- with .Values.indexGateway.extraEnvFrom }}

@@ -69,14 +69,14 @@ spec:
             - name: license
               mountPath: /etc/loki/license
           env:
-            {{- with .Values.global.extraEnv }}
+            {{- with .Values.loki.extraEnv }}
               {{- toYaml . | nindent 12 }}
             {{- end }}
             {{- if .Values.enterprise.tokengen.env }}
               {{ toYaml .Values.enterprise.tokengen.env | nindent 12 }}
             {{- end }}
           envFrom:
-            {{- with .Values.global.extraEnvFrom }}
+            {{- with .Values.loki.extraEnvFrom }}
               {{- toYaml . | nindent 12 }}
             {{- end }}
             {{- with .Values.enterprise.tokengen.extraEnvFrom }}

@@ -64,14 +64,14 @@ spec:
               containerPort: {{ .Values.loki.server.grpc_listen_port }}
               protocol: TCP
           env:
-            {{- with .Values.global.extraEnv }}
+            {{- with .Values.loki.extraEnv }}
               {{- toYaml . | nindent 12 }}
             {{- end }}
             {{- with .Values.tableManager.extraEnv }}
               {{- toYaml . | nindent 12 }}
             {{- end }}
           envFrom:
-            {{- with .Values.global.extraEnvFrom }}
+            {{- with .Values.loki.extraEnvFrom }}
               {{- toYaml . | nindent 12 }}
             {{- end }}
             {{- with .Values.tableManager.extraEnvFrom }}

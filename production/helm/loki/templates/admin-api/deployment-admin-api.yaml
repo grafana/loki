@@ -118,6 +118,9 @@ spec:
           securityContext:
             {{- toYaml .Values.adminApi.containerSecurityContext | nindent 12 }}
           env:
+            {{- if .Values.loki.extraEnv }}
+            {{ toYaml .Values.loki.extraEnv | nindent 12 }}
+            {{- end }}
             {{- if .Values.adminApi.env }}
             {{ toYaml .Values.adminApi.env | nindent 12 }}
             {{- end }}
