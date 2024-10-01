@@ -95,6 +95,7 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
+  discover_service_name: []
   max_entries_limit_per_query: 5000
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
@@ -352,6 +353,7 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
+  discover_service_name: []
   max_entries_limit_per_query: 5000
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
@@ -778,6 +780,7 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
+  discover_service_name: []
   max_entries_limit_per_query: 5000
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
@@ -1136,6 +1139,7 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
+  discover_service_name: []
   max_entries_limit_per_query: 5000
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
@@ -1495,6 +1499,7 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
+  discover_service_name: []
   max_entries_limit_per_query: 5000
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
@@ -1888,6 +1893,7 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
+  discover_service_name: []
   max_entries_limit_per_query: 5000
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
@@ -2223,6 +2229,7 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
+  discover_service_name: []
   max_entries_limit_per_query: 5000
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
@@ -2662,6 +2669,7 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
+  discover_service_name: []
   max_entries_limit_per_query: 5000
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
@@ -2986,6 +2994,7 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
+  discover_service_name: []
   max_entries_limit_per_query: 5000
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
@@ -3483,6 +3492,7 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
+  discover_service_name: []
   max_entries_limit_per_query: 5000
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
@@ -3744,6 +3754,7 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
+  discover_service_name: []
   max_entries_limit_per_query: 5000
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
@@ -4006,6 +4017,7 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
+  discover_service_name: []
   max_entries_limit_per_query: 5000
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
@@ -4269,6 +4281,7 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
+  discover_service_name: []
   max_entries_limit_per_query: 5000
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
@@ -4568,6 +4581,7 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
+  discover_service_name: []
   max_entries_limit_per_query: 5000
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
@@ -4865,6 +4879,7 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
+  discover_service_name: []
   max_entries_limit_per_query: 5000
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
@@ -5363,6 +5378,7 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
+  discover_service_name: []
   max_entries_limit_per_query: 5000
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
@@ -5539,6 +5555,7 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
+  discover_service_name: []
   max_entries_limit_per_query: 5000
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
@@ -5708,6 +5725,7 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
+  discover_service_name: []
   max_entries_limit_per_query: 5000
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
@@ -6100,6 +6118,7 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
+  discover_service_name: []
   max_entries_limit_per_query: 5000
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
@@ -6128,31 +6147,19 @@ limits_config:
         attributes:
         - res.foo.bar
         - res.bar.baz
-        regex: .*
       - action: structured_metadata
         attributes:
         - res.service.env
-        regex: .*
     scope_attributes:
-    - action: index_label
+    - action: structured_metadata
       attributes:
       - scope.foo.bar
       - scope.bar.baz
-      regex: .*
-    - action: structured_metadata
-      attributes:
-      - scope.service.env
-      regex: .*
     log_attributes:
-    - action: index_label
+    - action: structured_metadata
       attributes:
       - log.foo.bar
       - log.bar.baz
-      regex: .*
-    - action: structured_metadata
-      attributes:
-      - log.service.env
-      regex: .*
 memberlist:
   abort_if_cluster_join_fails: true
   advertise_port: 7946
@@ -6290,31 +6297,19 @@ overrides:
           attributes:
           - res.foo.bar
           - res.bar.baz
-          regex: .*
         - action: structured_metadata
           attributes:
           - res.service.env
-          regex: .*
       scope_attributes:
-      - action: index_label
+      - action: structured_metadata
         attributes:
         - scope.foo.bar
         - scope.bar.baz
-        regex: .*
-      - action: structured_metadata
-        attributes:
-        - scope.service.env
-        regex: .*
       log_attributes:
-      - action: index_label
+      - action: structured_metadata
         attributes:
         - log.foo.bar
         - log.bar.baz
-        regex: .*
-      - action: structured_metadata
-        attributes:
-        - log.service.env
-        regex: .*
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
@@ -6334,68 +6329,6 @@ overrides:
 						PerStreamRateLimit:        5,
 						PerStreamRateLimitBurst:   15,
 						PerStreamDesiredRate:      3,
-					},
-					OTLP: &lokiv1.GlobalOTLPSpec{
-						IndexedResourceAttributes: []string{
-							"foo.bar",
-							"bar.baz",
-						},
-						OTLPSpec: lokiv1.OTLPSpec{
-							ResourceAttributes: &lokiv1.OTLPResourceAttributesSpec{
-								IgnoreDefaults: true,
-								Attributes: []lokiv1.OTLPResourceAttributesConfigSpec{
-									{
-										Action: lokiv1.OTLPAttributeActionIndexLabel,
-										Attributes: []string{
-											"res.foo.bar",
-											"res.bar.baz",
-										},
-										Regex: ".*",
-									},
-									{
-										Action: lokiv1.OTLPAttributeActionStructuredMetadata,
-										Attributes: []string{
-											"res.service.env",
-										},
-										Regex: ".*",
-									},
-								},
-							},
-							ScopeAttributes: []lokiv1.OTLPAttributesSpec{
-								{
-									Action: lokiv1.OTLPAttributeActionIndexLabel,
-									Attributes: []string{
-										"scope.foo.bar",
-										"scope.bar.baz",
-									},
-									Regex: ".*",
-								},
-								{
-									Action: lokiv1.OTLPAttributeActionStructuredMetadata,
-									Attributes: []string{
-										"scope.service.env",
-									},
-									Regex: ".*",
-								},
-							},
-							LogAttributes: []lokiv1.OTLPAttributesSpec{
-								{
-									Action: lokiv1.OTLPAttributeActionIndexLabel,
-									Attributes: []string{
-										"log.foo.bar",
-										"log.bar.baz",
-									},
-									Regex: ".*",
-								},
-								{
-									Action: lokiv1.OTLPAttributeActionStructuredMetadata,
-									Attributes: []string{
-										"log.service.env",
-									},
-									Regex: ".*",
-								},
-							},
-						},
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
@@ -6531,59 +6464,107 @@ overrides:
 		Overrides: map[string]LokiOverrides{
 			"test-a": {
 				Limits: lokiv1.PerTenantLimitsTemplateSpec{
-					OTLP: &lokiv1.OTLPSpec{
-						ResourceAttributes: &lokiv1.OTLPResourceAttributesSpec{
-							IgnoreDefaults: true,
-							Attributes: []lokiv1.OTLPResourceAttributesConfigSpec{
-								{
-									Action: lokiv1.OTLPAttributeActionIndexLabel,
-									Attributes: []string{
-										"res.foo.bar",
-										"res.bar.baz",
-									},
-									Regex: ".*",
-								},
-								{
-									Action: lokiv1.OTLPAttributeActionStructuredMetadata,
-									Attributes: []string{
-										"res.service.env",
-									},
-									Regex: ".*",
+					OTLP: &lokiv1.TenantOTLPSpec{
+						IgnoreGlobalStreamLabels: true,
+						OTLPSpec: lokiv1.OTLPSpec{
+							StreamLabels: &lokiv1.OTLPStreamLabelSpec{
+								ResourceAttributes: []string{
+									"res.foo.bar",
+									"res.bar.baz",
 								},
 							},
-						},
-						ScopeAttributes: []lokiv1.OTLPAttributesSpec{
-							{
-								Action: lokiv1.OTLPAttributeActionIndexLabel,
-								Attributes: []string{
+							StructuredMetadata: &lokiv1.OTLPMetadataSpec{
+								ResourceAttributes: []string{
+									"res.service.env",
+								},
+								ScopeAttributes: []string{
 									"scope.foo.bar",
 									"scope.bar.baz",
 								},
-								Regex: ".*",
-							},
-							{
-								Action: lokiv1.OTLPAttributeActionStructuredMetadata,
-								Attributes: []string{
-									"scope.service.env",
-								},
-								Regex: ".*",
-							},
-						},
-						LogAttributes: []lokiv1.OTLPAttributesSpec{
-							{
-								Action: lokiv1.OTLPAttributeActionIndexLabel,
-								Attributes: []string{
+								LogAttributes: []string{
 									"log.foo.bar",
 									"log.bar.baz",
 								},
-								Regex: ".*",
 							},
-							{
-								Action: lokiv1.OTLPAttributeActionStructuredMetadata,
-								Attributes: []string{
-									"log.service.env",
-								},
-								Regex: ".*",
+						},
+					},
+				},
+			},
+		},
+		OTLPAttributes: OTLPAttributeConfig{
+			DefaultIndexLabels: []string{
+				"foo.bar",
+				"bar.baz",
+			},
+			Global: &OTLPTenantAttributeConfig{
+				IgnoreGlobalStreamLabels: true,
+				ResourceAttributes: []OTLPAttribute{
+					{
+						Action: OTLPAttributeActionStreamLabel,
+						Names: []string{
+							"res.foo.bar",
+							"res.bar.baz",
+						},
+					},
+					{
+						Action: OTLPAttributeActionMetadata,
+						Names: []string{
+							"res.service.env",
+						},
+					},
+				},
+				ScopeAttributes: []OTLPAttribute{
+					{
+						Action: OTLPAttributeActionMetadata,
+						Names: []string{
+							"scope.foo.bar",
+							"scope.bar.baz",
+						},
+					},
+				},
+				LogAttributes: []OTLPAttribute{
+					{
+						Action: OTLPAttributeActionMetadata,
+						Names: []string{
+							"log.foo.bar",
+							"log.bar.baz",
+						},
+					},
+				},
+			},
+			Tenants: map[string]*OTLPTenantAttributeConfig{
+				"test-a": {
+					IgnoreGlobalStreamLabels: true,
+					ResourceAttributes: []OTLPAttribute{
+						{
+							Action: OTLPAttributeActionStreamLabel,
+							Names: []string{
+								"res.foo.bar",
+								"res.bar.baz",
+							},
+						},
+						{
+							Action: OTLPAttributeActionMetadata,
+							Names: []string{
+								"res.service.env",
+							},
+						},
+					},
+					ScopeAttributes: []OTLPAttribute{
+						{
+							Action: OTLPAttributeActionMetadata,
+							Names: []string{
+								"scope.foo.bar",
+								"scope.bar.baz",
+							},
+						},
+					},
+					LogAttributes: []OTLPAttribute{
+						{
+							Action: OTLPAttributeActionMetadata,
+							Names: []string{
+								"log.foo.bar",
+								"log.bar.baz",
 							},
 						},
 					},

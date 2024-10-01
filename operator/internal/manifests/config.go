@@ -202,8 +202,9 @@ func ConfigOptions(opt Options) config.Options {
 			AlertManager:          amConfig,
 			RemoteWrite:           rwConfig,
 		},
-		Retention: retentionConfig(&opt.Stack),
-		Overrides: overrides,
+		Retention:      retentionConfig(&opt.Stack),
+		OTLPAttributes: otlpAttributeConfig(&opt.Stack),
+		Overrides:      overrides,
 	}
 }
 
@@ -394,4 +395,124 @@ func retentionConfig(ls *lokiv1.LokiStackSpec) config.RetentionOptions {
 		Enabled:           true,
 		DeleteWorkerCount: deleteWorkerCountMap[ls.Size],
 	}
+}
+
+func defaultOTLPAttrbuteConfig(ts *lokiv1.TenantsSpec) config.OTLPAttributeConfig {
+	if ts == nil || ts.Mode != lokiv1.OpenshiftLogging {
+		return config.OTLPAttributeConfig{}
+	}
+
+	result := config.OTLPAttributeConfig{
+		DefaultIndexLabels: []string{
+			"log_type",
+			"kubernetes_namespace_name",
+			"kubernetes_pod_name",
+			"kubernetes_container_name",
+			"k8s.namespace.name",
+		},
+	}
+
+	if ts.Openshift == nil || ts.Openshift.OTLP == nil || !ts.Openshift.OTLP.DisableRecommendedLabels {
+		result.DefaultIndexLabels = append(result.DefaultIndexLabels, []string{
+			"service.name",
+			"k8s.cluster.uid",
+			"k8s.pod.name",
+			"k8s.container.name",
+			"openshift.log.source",
+			"k8s.deployment.name",
+			"k8s.statefulset.name",
+			"k8s.daemonset.name",
+			"k8s.cronjob.name",
+		}...)
+
+		result.Global = &config.OTLPTenantAttributeConfig{
+			ResourceAttributes: []config.OTLPAttribute{
+				{
+					Action: config.OTLPAttributeActionMetadata,
+					Names: []string{
+						"k8s.replicaset.name",
+						"k8s.job.name",
+					},
+				},
+			},
+			LogAttributes: []config.OTLPAttribute{
+				{
+					Action: config.OTLPAttributeActionMetadata,
+					Names: []string{
+						"k8s.node.name",
+						"service.name",
+						"host.name",
+						"process.command",
+						"node.name",
+						"url.path",
+						"http.request.method_original",
+						"http.response.status.code",
+					},
+				},
+			},
+		}
+	}
+
+	return result
+}
+
+func otlpAttributeConfig(ls *lokiv1.LokiStackSpec) config.OTLPAttributeConfig {
+	// TODO provide default stream labels
+	result := defaultOTLPAttrbuteConfig(ls.Tenants)
+
+	if ls.Limits != nil {
+		if ls.Limits.Global != nil && ls.Limits.Global.OTLP != nil {
+			globalOTLP := ls.Limits.Global.OTLP
+
+			if globalOTLP.StreamLabels != nil {
+				result.DefaultIndexLabels = append(result.DefaultIndexLabels, globalOTLP.StreamLabels.ResourceAttributes...)
+			}
+
+			if globalOTLP.StructuredMetadata != nil {
+				result.Global = &config.OTLPTenantAttributeConfig{}
+
+				if len(globalOTLP.StructuredMetadata.ResourceAttributes) > 0 {
+					result.Global.ResourceAttributes = []config.OTLPAttribute{
+						{
+							Action: config.OTLPAttributeActionMetadata,
+							Names:  globalOTLP.StructuredMetadata.ResourceAttributes,
+						},
+					}
+				}
+
+				if len(globalOTLP.StructuredMetadata.ScopeAttributes) > 0 {
+					result.Global.ScopeAttributes = []config.OTLPAttribute{
+						{
+							Action: config.OTLPAttributeActionMetadata,
+							Names:  globalOTLP.StructuredMetadata.ScopeAttributes,
+						},
+					}
+				}
+
+				if len(globalOTLP.StructuredMetadata.LogAttributes) > 0 {
+					result.Global.LogAttributes = []config.OTLPAttribute{
+						{
+							Action: config.OTLPAttributeActionMetadata,
+							Names:  globalOTLP.StructuredMetadata.LogAttributes,
+						},
+					}
+				}
+			}
+		}
+
+		for tenant, tenantLimits := range ls.Limits.Tenants {
+			if tenantLimits.OTLP != nil {
+				tenantOTLP := tenantLimits.OTLP
+				tenantResult := &config.OTLPTenantAttributeConfig{
+					IgnoreGlobalStreamLabels: tenantOTLP.IgnoreGlobalStreamLabels,
+				}
+
+				// TODO stream labels and metadata for tenant
+
+				result.Tenants[tenant] = tenantResult
+			}
+		}
+	}
+
+	return result
 }

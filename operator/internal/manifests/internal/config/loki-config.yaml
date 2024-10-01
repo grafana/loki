@@ -107,16 +107,14 @@ compactor:
 {{- end }}
   delete_request_store: {{.ObjectStorage.SharedStore}}
 {{- end }}
-{{- if $l := .Stack.Limits.Global }}
-{{- with $l.OTLP }}{{- with .IndexedResourceAttributes }}
+{{- with .OTLPAttributes.DefaultIndexLabels }}
 distributor:
   otlp_config:
     default_resource_attributes_as_index_labels:
     {{- range . }}
-    - {{ . }}
+      - {{ . }}
     {{- end }}
 {{- end }}
-{{- end }}{{- end }}
 frontend:
   tail_proxy_url: {{ .Querier.Protocol }}://{{ .Querier.FQDN }}:{{ .Querier.Port }}
 {{- if .Gates.HTTPEncryption }}
@@ -201,6 +199,7 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: {{ .Stack.Limits.Global.IngestionLimits.MaxLineSize }}
+  discover_service_name: []
   max_entries_limit_per_query: {{ .Stack.Limits.Global.QueryLimits.MaxEntriesLimitPerQuery }}
   max_global_streams_per_user: {{ .Stack.Limits.Global.IngestionLimits.MaxGlobalStreamsPerTenant }}
   max_chunks_per_query: {{ .Stack.Limits.Global.QueryLimits.MaxChunksPerQuery }}
@@ -233,19 +232,18 @@ limits_config:
     enabled: true
     desired_rate: {{ . }}MB
 {{- end }}
-{{- with .Stack.Limits.Global.OTLP }}
+{{- with .OTLPAttributes.Global }}
   otlp_config:
-    {{- with .ResourceAttributes }}
+    {{- if .ResourceAttributes }}
     resource_attributes:
-      ignore_defaults: {{ .IgnoreDefaults }}
-      {{- with .Attributes}}
+      {{- if .IgnoreGlobalStreamLabels }}
+      ignore_defaults: true
+      {{- end }}
+      {{- with .ResourceAttributes}}
       attributes_config:
       {{- range . }}
-      - action: {{ .Action.Value }}
-        {{- with .Regex }}
-        regex: {{ . }}
-        {{- end }}
-        {{- with .Attributes }}
+      - action: {{ .Action }}
+        {{- with .Names }}
         attributes:
         {{- range . }}
         - {{ . }}
@@ -257,11 +255,8 @@ limits_config:
     {{- with .ScopeAttributes }}
     scope_attributes:
     {{- range . }}
-    - action: {{ .Action.Value }}
-      {{- with .Regex }}
-      regex: {{ . }}
-      {{- end }}
-      {{- with .Attributes }}
+    - action: {{ .Action }}
+      {{- with .Names }}
       attributes:
       {{- range . }}
       - {{ . }}
@@ -272,11 +267,8 @@ limits_config:
     {{- with .LogAttributes }}
     log_attributes:
     {{- range . }}
-    - action: {{ .Action.Value }}
-      {{- with .Regex }}
-      regex: {{ . }}
-      {{- end }}
-      {{- with .Attributes }}
+    - action: {{ .Action }}
+      {{- with .Names }}
       attributes:
       {{- range . }}
       - {{ . }}
