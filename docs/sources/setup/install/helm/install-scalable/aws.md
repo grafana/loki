@@ -83,7 +83,7 @@ The following plugins are also required to be installed within the EKS cluster:
 - CoreDNS
 - kube-proxy
 
-You must also install an OIDC provider on the EKS cluster. This is required for the IAM roles and policies to work correctly. If you are using EKSctl, you can install the OIDC provider using a command like this:
+You must also install an OIDC provider on the EKS cluster. This is required for the IAM roles and policies to work correctly. If you are using EKSctl, you can install the OIDC provider using the following command:
 
 ```bash
 eksctl utils associate-iam-oidc-provider --cluster loki --approve
