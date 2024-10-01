@@ -252,8 +252,8 @@ github.com/HdrHistogram/hdrhistogram-go v1.1.2 h1:5IcZpTvzydCQeHzK4Ef/D5rrSqwxob
 github.com/HdrHistogram/hdrhistogram-go v1.1.2/go.mod h1:yDgFjdqOqDEKOvasDdhWNXYg9BVp4O+o5f6V/ehm6Oo=
 github.com/IBM/go-sdk-core/v5 v5.17.5 h1:AjGC7xNee5tgDIjndekBDW5AbypdERHSgib3EZ1KNsA=
 github.com/IBM/go-sdk-core/v5 v5.17.5/go.mod h1:KsAAI7eStAWwQa4F96MLy+whYSh39JzNjklZRbN/8ns=
-github.com/IBM/ibm-cos-sdk-go v1.11.0 h1:Jp55NLN3OvBwucMGpP5wNybyjncsmTZ9+GPHai/1cE8=
-github.com/IBM/ibm-cos-sdk-go v1.11.0/go.mod h1:FnWOym0CvrPM0nHoXvceClOEvGVXecPpmVIO5RFjlFk=
+github.com/IBM/ibm-cos-sdk-go v1.11.1 h1:Pye61hmWA4ZVCfOfFLTJBjPka4HIGrLqmpZ2d2KlrCE=
+github.com/IBM/ibm-cos-sdk-go v1.11.1/go.mod h1:d8vET3w8wgmGwCsCVs+0y4V8+1hRNT6+pbpGaEHvSCI=
 github.com/Knetic/govaluate v3.0.1-0.20171022003610-9aa49832a739+incompatible/go.mod h1:r7JcOSlj0wfOMncg0iLm8Leh48TZaKVeNIfJntJ2wa0=
 github.com/MasslessParticle/azure-storage-blob-go v0.14.1-0.20240322194317-344980fda573 h1:DCPjdUAi+jcGnL7iN+A7uNY8xG584oMRuisYh/VE21E=
 github.com/MasslessParticle/azure-storage-blob-go v0.14.1-0.20240322194317-344980fda573/go.mod h1:SMqIBi+SuiQH32bvyjngEewEeXoPfKMgWlBDaYf6fck=
