@@ -9,9 +9,9 @@ weight: 300
 keywords: 
 ---
 
-# Install the simple scalable Helm chart
+# Loki simple scalable Helm chart
 
-This Helm Chart deploys Grafana Loki on Kubernetes.
+This Helm Chart deploys Grafana Loki on Kubernetes in simple scalable mode.
 
 This chart configures Loki to run `read`, `write`, and `backend` targets in a [scalable mode]({{< relref "../../../../get-started/deployment-modes#simple-scalable" >}}). Loki’s simple scalable deployment mode separates execution paths into read, write, and backend targets.
 
@@ -22,17 +22,21 @@ The default Helm chart deploys the following components:
 - Loki Canary (1 DaemonSet)
 - Gateway (1 NGINX replica)
 - Minio (optional, if `minio.enabled=true`)
+- Index and Chunk cache (1 replica)
 
+{{< admonition type="note" >}}
 It is not recommended to run scalable mode with `filesystem` storage. For the purpose of this guide, we will use MinIO as the object storage to provide a complete example. 
+{{< /admonition >}}
 
-**Prerequisites**
+## Prerequisites
 
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).
 - A running Kubernetes cluster.
-- (Optional) A Memcached deployment for better query performance. For information on configuring Memcached, refer to [caching section]({{< relref "../../../../operations/caching" >}}).
 
 
-**To deploy Loki in simple scalable mode:**
+## Deploying the Helm chart for development and testing
+
+The following steps show how to deploy the Loki Helm chart in simple scalable mode using the included MinIO as the storage backend. Our recommendation is to start here for development and testing purposes. Then configure Loki with an object storage provider when moving to production.
 
 
 1. Add [Grafana's chart repository](https://github.com/grafana/helm-charts) to Helm:
@@ -49,72 +53,51 @@ It is not recommended to run scalable mode with `filesystem` storage. For the pu
 
 3. Create the configuration file `values.yaml`. The example below illustrates how to deploy Loki in test mode using MinIO as storage:
 
-     ```yaml
-     loki:
-       schemaConfig:
-         configs:
-           - from: 2024-04-01
-             store: tsdb
-             object_store: s3
-             schema: v13
-             index:
-               prefix: loki_index_
-               period: 24h
-       ingester:
-         chunk_encoding: snappy
-       tracing:
-         enabled: true
-       querier:
-         # Default is 4, if you have enough memory and CPU you can increase, reduce if OOMing
-         max_concurrent: 4
+    ```yaml
+      loki:
+        schemaConfig:
+          configs:
+            - from: 2024-04-01
+              store: tsdb
+              object_store: s3
+              schema: v13
+              index:
+                prefix: loki_index_
+                period: 24h
+        ingester:
+          chunk_encoding: snappy
+        querier:
+          # Default is 4, if you have enough memory and CPU you can increase, reduce if OOMing
+          max_concurrent: 4
+        pattern_ingester:
+          enabled: true
+        limits_config:
+          allow_structured_metadata: true
+          volume_enabled: true
+          retention_period: 672h
+        compactor:
+          retention_enabled: true 
+          delete_request_store: s3
 
-     #gateway:
-     #  ingress:
-     #    enabled: true
-     #    hosts:
-     #      - host: FIXME
-     #        paths:
-     #          - path: /
-     #            pathType: Prefix
+      deploymentMode: SimpleScalable
 
-     deploymentMode: SimpleScalable
+      backend:
+        replicas: 2
+      read:
+        replicas: 2
+      write:
+        replicas: 3
 
-     backend:
-       replicas: 3
-     read:
-       replicas: 3
-     write:
-       replicas: 3
+      # Enable minio for storage
+      minio:
+        enabled: true
 
-     # Enable minio for storage
-     minio:
-       enabled: true
+      gateway:
+        service:
+          type: LoadBalancer
+    ```
 
-     # Zero out replica counts of other deployment modes
-     singleBinary:
-       replicas: 0
-
-     ingester:
-       replicas: 0
-     querier:
-       replicas: 0
-     queryFrontend:
-       replicas: 0
-     queryScheduler:
-       replicas: 0
-     distributor:
-       replicas: 0
-     compactor:
-       replicas: 0
-     indexGateway:
-       replicas: 0
-     bloomCompactor:
-       replicas: 0
-     bloomGateway:
-       replicas: 0
-     ```
-
-4. Install or upgrade the Loki deployment.
+1. Install or upgrade the Loki deployment.
      - To install:
         ```bash
        helm install --values values.yaml loki grafana/loki
@@ -155,11 +138,11 @@ loki:
   storage:
     type: s3
     bucketNames:
-      chunks: "<INSERT BUCKET NAME>"
+      chunks: "<INSERT BUCKET NAME>" # 
       ruler: "<INSERT BUCKET NAME>"
       admin: "<INSERT BUCKET NAME>"
     s3:
-      # s3 URL can be used to specify the endpoint, access key, secret key, and bucket name
+      # s3 URL can be used to specify the endpoint, access key, secret key, and bucket name this works well for S3 compatible storages or are hosting Loki on-premises and want to use S3 as the storage backend. Either use the s3 URL or the individual fields below (AWS endpoint, region, secret).
       s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name
       # AWS endpoint URL
       endpoint: <your-endpoint>
@@ -190,29 +173,6 @@ write:
 # Disable minio storage
 minio:
   enabled: false
-
-# Zero out replica counts of other deployment modes
-singleBinary:
-  replicas: 0
-
-ingester:
-  replicas: 0
-querier:
-  replicas: 0
-queryFrontend:
-  replicas: 0
-queryScheduler:
-  replicas: 0
-distributor:
-  replicas: 0
-compactor:
-  replicas: 0
-indexGateway:
-  replicas: 0
-bloomCompactor:
-  replicas: 0
-bloomGateway:
-  replicas: 0
 ```
 ```azure
 loki:
@@ -269,33 +229,20 @@ write:
 minio:
   enabled: false
 
-# Zero out replica counts of other deployment modes
-singleBinary:
-  replicas: 0
-
-ingester:
-  replicas: 0
-querier:
-  replicas: 0
-queryFrontend:
-  replicas: 0
-queryScheduler:
-  replicas: 0
-distributor:
-  replicas: 0
-compactor:
-  replicas: 0
-indexGateway:
-  replicas: 0
-bloomCompactor:
-  replicas: 0
-bloomGateway:
-  replicas: 0
-```
-
 {{< /code >}}
 
 To configure other storage providers, refer to the [Helm Chart Reference]({{< relref "../reference" >}}).
+
+## Deploying the Loki Helm chart to a Production Environment
+
+{{< admonition type="note" >}}
+We are activley working on providing more guides for deploying Loki in production. 
+{{< /admonition >}}
+
+It is recommended to run Loki at scale within in a cloud enviroment like AWS, Azure, or GCP. The below guides will show you how to deploy a minimally viable production environment.
+- [Deploy Loki on AWS]({{< relref "./aws" >}})
+
+
 
 ## Next Steps 
 * Configure an agent to [send log data to Loki](/docs/loki/<LOKI_VERSION>/send-data/).
