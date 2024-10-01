@@ -43,7 +43,7 @@ Example:
 `{{ if contains .err "ErrTimeout" }} timeout {{else if contains "he" "hello"}} yes {{else}} no {{end}}`
 ```
 
-## Built-in variables for Log line properties
+## Built-in variables for log line properties
 
 These variables provide a way of referencing something from the log line when writing a template expression.
 
@@ -57,7 +57,7 @@ All labels from the Log line are added as variables in the template engine. They
 
 ### __line__
 
-The `__line__` function returns the current log line.
+The `__line__` function returns the original log line without any modifications.
 
 Signature: `line() string`
 
@@ -302,7 +302,7 @@ Examples:
 
 Enables outputting a default value if the source string is otherwise empty. If the 'src' parameter is not empty, this function returns the value of 'src'. Useful for JSON fields that can be missing, like HTTP headers in a log line that aren't required, as in the following example:
 
-```json
+```logql
 {job="access_log"} | json | line_format `{{.http_request_headers_x_forwarded_for | default "-"}}`
 ```
 
