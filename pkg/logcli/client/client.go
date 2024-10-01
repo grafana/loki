@@ -449,7 +449,7 @@ func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Co
 	}
 
 	if c.ProxyURL != "" {
-		ws.Proxy = func(req *http.Request) (*url.URL, error) {
+		ws.Proxy = func(_ *http.Request) (*url.URL, error) {
 			return url.Parse(c.ProxyURL)
 		}
 	}

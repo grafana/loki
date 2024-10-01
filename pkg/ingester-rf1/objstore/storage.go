@@ -6,6 +6,7 @@ import (
 	"io"
 	"sort"
 
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/storage"
@@ -36,7 +37,7 @@ func New(
 	}
 	// sort by From time
 	sort.Slice(periodicConfigs, func(i, j int) bool {
-		return periodicConfigs[i].From.Time.Before(periodicConfigs[i].From.Time)
+		return periodicConfigs[i].From.Time.Before(periodicConfigs[j].From.Time)
 	})
 	for _, periodicConfig := range periodicConfigs {
 		objectClient, err := storage.NewObjectClient(periodicConfig.ObjectType, storageConfig, clientMetrics)
@@ -69,6 +70,14 @@ func (m *Multi) GetStoreFor(ts model.Time) (client.ObjectClient, error) {
 	return nil, fmt.Errorf("no store found for timestamp %s", ts)
 }
 
+func (m *Multi) ObjectExistsWithSize(ctx context.Context, objectKey string) (bool, int64, error) {
+	s, err := m.GetStoreFor(model.Now())
+	if err != nil {
+		return false, 0, err
+	}
+	return s.ObjectExistsWithSize(ctx, objectKey)
+}
+
 func (m *Multi) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
 	s, err := m.GetStoreFor(model.Now())
 	if err != nil {
@@ -94,6 +103,11 @@ func (m *Multi) GetObject(ctx context.Context, objectKey string) (io.ReadCloser,
 }
 
 func (m *Multi) GetObjectRange(ctx context.Context, objectKey string, off, length int64) (io.ReadCloser, error) {
+	sp, _ := opentracing.StartSpanFromContext(ctx, "GetObjectRange")
+	if sp != nil {
+		sp.LogKV("objectKey", objectKey, "off", off, "length", length)
+	}
+	defer sp.Finish()
 	s, err := m.GetStoreFor(model.Now())
 	if err != nil {
 		return nil, err

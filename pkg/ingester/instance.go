@@ -13,7 +13,6 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
-	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -47,7 +46,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	mathutil "github.com/grafana/loki/v3/pkg/util/math"
-	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 	server_util "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -289,7 +287,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 				"stream", pushReqStream.Labels,
 			)
 		}
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	if record != nil {
@@ -1175,35 +1173,24 @@ func minTs(stream *logproto.Stream) model.Time {
 }
 
 // For each stream, we check if the stream is owned by the ingester or not and increment/decrement the owned stream count.
-func (i *instance) updateOwnedStreams(ingesterRing ring.ReadRing, ingesterID string) error {
+func (i *instance) updateOwnedStreams(isOwnedStream func(*stream) (bool, error)) error {
 	start := time.Now()
 	defer func() {
 		i.metrics.streamsOwnershipCheck.Observe(float64(time.Since(start).Milliseconds()))
 	}()
-	var descsBuf = make([]ring.InstanceDesc, ingesterRing.ReplicationFactor()+1)
-	var hostsBuf = make([]string, ingesterRing.ReplicationFactor()+1)
-	var zoneBuf = make([]string, ingesterRing.ZonesCount()+1)
+
 	var err error
 	i.streams.WithLock(func() {
 		i.ownedStreamsSvc.resetStreamCounts()
 		err = i.streams.ForEach(func(s *stream) (bool, error) {
-			replicationSet, err := ingesterRing.Get(lokiring.TokenFor(i.instanceID, s.labelsString), ring.WriteNoExtend, descsBuf, hostsBuf, zoneBuf)
+			ownedStream, err := isOwnedStream(s)
 			if err != nil {
-				return false, fmt.Errorf("error getting replication set for stream %s: %v", s.labelsString, err)
+				return false, err
 			}
-			ownedStream := i.isOwnedStream(replicationSet, ingesterID)
+
 			i.ownedStreamsSvc.trackStreamOwnership(s.fp, ownedStream)
 			return true, nil
 		})
 	})
 	return err
-}
-
-func (i *instance) isOwnedStream(replicationSet ring.ReplicationSet, ingesterID string) bool {
-	for _, instanceDesc := range replicationSet.Instances {
-		if instanceDesc.Id == ingesterID {
-			return true
-		}
-	}
-	return false
 }

@@ -156,7 +156,7 @@ func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through mod
 		ctx,
 		len(jobs),
 		len(jobs),
-		func(ctx context.Context, i int) error {
+		func(_ context.Context, i int) error {
 			resp, err := jobs[i]()
 			resps[i] = resp
 			return err
@@ -208,7 +208,7 @@ func (a *AsyncStore) Volume(ctx context.Context, userID string, from, through mo
 		ctx,
 		len(jobs),
 		len(jobs),
-		func(ctx context.Context, i int) error {
+		func(_ context.Context, i int) error {
 			resp, err := jobs[i]()
 			resps[i] = resp
 			return err
@@ -324,7 +324,7 @@ func (a *AsyncStore) GetShards(
 		ctx,
 		len(jobs),
 		len(jobs),
-		func(ctx context.Context, i int) error {
+		func(_ context.Context, i int) error {
 			return jobs[i]()
 		},
 	); err != nil {

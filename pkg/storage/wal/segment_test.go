@@ -122,7 +122,7 @@ func TestWalSegmentWriter_Append(t *testing.T) {
 				require.True(t, ok)
 				lbs, err := syntax.ParseLabels(expected.labels)
 				require.NoError(t, err)
-				lbs = append(lbs, labels.Label{Name: tenantLabel, Value: expected.tenant})
+				lbs = append(lbs, labels.Label{Name: index.TenantLabel, Value: expected.tenant})
 				sort.Sort(lbs)
 				require.Equal(t, lbs, stream.lbls)
 				require.Equal(t, expected.entries, stream.entries)
@@ -168,7 +168,7 @@ func TestMultiTenantWrite(t *testing.T) {
 
 	for _, tenant := range tenants {
 		for _, lbl := range lbls {
-			expectedSeries = append(expectedSeries, labels.NewBuilder(lbl).Set(tenantLabel, tenant).Labels().String())
+			expectedSeries = append(expectedSeries, labels.NewBuilder(lbl).Set(index.TenantLabel, tenant).Labels().String())
 		}
 	}
 

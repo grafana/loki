@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/coder/quartz"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
@@ -88,6 +89,9 @@ type Metastore struct {
 
 	done chan struct{}
 	wg   sync.WaitGroup
+
+	// Used in tests.
+	clock quartz.Clock
 }
 
 func New(config Config, logger log.Logger, reg prometheus.Registerer, hs health.Service) (*Metastore, error) {
@@ -97,6 +101,7 @@ func New(config Config, logger log.Logger, reg prometheus.Registerer, hs health.
 		reg:    reg,
 		db:     newDB(config, logger),
 		done:   make(chan struct{}),
+		clock:  quartz.NewReal(),
 	}
 	m.leaderhealth = raftleader.NewRaftLeaderHealthObserver(hs, logger)
 	m.state = newMetastoreState(logger, m.db)

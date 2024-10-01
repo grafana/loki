@@ -103,7 +103,7 @@ func testRuleEval(t *testing.T, mode string) {
 
 	// this is the function that will be called when the remote-write receiver receives a request.
 	// it tests that the expected payload is received.
-	expectedResults := func(w http.ResponseWriter, r *http.Request) {
+	expectedResults := func(_ http.ResponseWriter, r *http.Request) {
 		wr, err := remote.DecodeWriteRequest(r.Body)
 		require.NoError(t, err)
 

@@ -241,11 +241,21 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 
 	if q.logExecQuery {
 		queryHash := util.HashedQuery(q.params.QueryString())
-		if GetRangeType(q.params) == InstantType {
-			level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "instant", "query", q.params.QueryString(), "query_hash", queryHash)
-		} else {
-			level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "range", "query", q.params.QueryString(), "length", q.params.End().Sub(q.params.Start()), "step", q.params.Step(), "query_hash", queryHash)
+
+		logValues := []interface{}{
+			"msg", "executing query",
+			"query", q.params.QueryString(),
+			"query_hash", queryHash,
 		}
+		tags := httpreq.ExtractQueryTagsFromContext(ctx)
+		tagValues := tagsToKeyValues(tags)
+		if GetRangeType(q.params) == InstantType {
+			logValues = append(logValues, "type", "instant")
+		} else {
+			logValues = append(logValues, "type", "range", "length", q.params.End().Sub(q.params.Start()), "step", q.params.Step())
+		}
+		logValues = append(logValues, tagValues...)
+		level.Info(logutil.WithContext(ctx, q.logger)).Log(logValues...)
 	}
 
 	rangeType := GetRangeType(q.params)
