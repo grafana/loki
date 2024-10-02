@@ -2,6 +2,7 @@ package util
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 )
 
@@ -11,7 +12,7 @@ func ReadSeeker(r io.Reader) (io.ReadSeeker, error) {
 	}
 	data, err := io.ReadAll(r)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error in ReadSeeker ReadAll(): %w", err)
 	}
 	return bytes.NewReader(data), nil
 }

@@ -73,6 +73,15 @@ func appendPodStatus(ctx context.Context, k k8s.Client, component, stack, ns str
 		status := podStatus(&pod)
 		psm[status] = append(psm[status], pod.Name)
 	}
+
+	if len(psm) == 0 {
+		psm = lokiv1.PodStatusMap{
+			lokiv1.PodFailed:  []string{},
+			lokiv1.PodPending: []string{},
+			lokiv1.PodRunning: []string{},
+			lokiv1.PodReady:   []string{},
+		}
+	}
 	return psm, nil
 }
 

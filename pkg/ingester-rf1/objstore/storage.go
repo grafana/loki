@@ -70,6 +70,14 @@ func (m *Multi) GetStoreFor(ts model.Time) (client.ObjectClient, error) {
 	return nil, fmt.Errorf("no store found for timestamp %s", ts)
 }
 
+func (m *Multi) ObjectExistsWithSize(ctx context.Context, objectKey string) (bool, int64, error) {
+	s, err := m.GetStoreFor(model.Now())
+	if err != nil {
+		return false, 0, err
+	}
+	return s.ObjectExistsWithSize(ctx, objectKey)
+}
+
 func (m *Multi) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
 	s, err := m.GetStoreFor(model.Now())
 	if err != nil {

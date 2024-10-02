@@ -300,6 +300,35 @@ func SendRequest(cli bce.Client, req *bce.BceRequest, resp *bce.BceResponse, ctx
 	return err
 }
 
+func SendRequestFromBytes(cli bce.Client, req *bce.BceRequest, resp *bce.BceResponse, ctx *BosContext, content []byte) error {
+	var (
+		err        error
+		need_retry bool
+	)
+	setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().Endpoint)
+	if err = cli.SendRequestFromBytes(req, resp, content); err != nil {
+		if serviceErr, isServiceErr := err.(*bce.BceServiceError); isServiceErr {
+			if serviceErr.StatusCode == net_http.StatusInternalServerError ||
+				serviceErr.StatusCode == net_http.StatusBadGateway ||
+				serviceErr.StatusCode == net_http.StatusServiceUnavailable ||
+				(serviceErr.StatusCode == net_http.StatusBadRequest && serviceErr.Code == "Http400") {
+				need_retry = true
+			}
+		}
+		if _, isClientErr := err.(*bce.BceClientError); isClientErr {
+			need_retry = true
+		}
+		// retry backup endpoint
+		if need_retry && cli.GetBceClientConfig().BackupEndpoint != "" {
+			setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().BackupEndpoint)
+			if err = cli.SendRequestFromBytes(req, resp, content); err != nil {
+				return err
+			}
+		}
+	}
+	return err
+}
+
 func isVirtualHost(host string) bool {
 	domain := getDomainWithoutPort(host)
 	arr := strings.Split(domain, ".")
