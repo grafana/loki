@@ -287,6 +287,7 @@ loki:
     bloom_gateway:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
+
   # Should authentication be enabled
   auth_enabled: true
   # -- memberlist configuration (overrides embedded default)
@@ -2962,6 +2963,284 @@ ruler:
   #         - alert: HighThroughputLogStreams
   #           expr: sum by(container) (rate({job=~"loki-dev/.*"}[1m])) > 1000
   #           for: 2m
+
+  remoteEvaluationDedicatedQueryPath: false
+
+# --  Configuration for the parallel ruler querier
+# -- Only deployed if .Values.ruler.remoteEvaluationDedicatedQueryPath
+rulerQuerier:
+  # -- Number of replicas for the querier
+  replicas: 2
+  # -- hostAliases to add
+  hostAliases: []
+  #  - ip: 1.2.3.4
+  #    hostnames:
+  #      - domain.tld
+  autoscaling:
+    # -- Enable autoscaling for the querier, this is only used if `indexGateway.enabled: true`
+    enabled: false
+    # -- Minimum autoscaling replicas for the querier
+    minReplicas: 1
+    # -- Maximum autoscaling replicas for the querier
+    maxReplicas: 3
+    # -- Target CPU utilisation percentage for the querier
+    targetCPUUtilizationPercentage: 60
+    # -- Target memory utilisation percentage for the querier
+    targetMemoryUtilizationPercentage: null
+    # -- Allows one to define custom metrics using the HPA/v2 schema (for example, Pods, Object or External metrics)
+    customMetrics: []
+    # - type: External
+    #   external:
+    #     metric:
+    #       name: loki_inflight_queries
+    #     target:
+    #       type: AverageValue
+    #       averageValue: 12
+    behavior:
+      # -- Enable autoscaling behaviours
+      enabled: false
+      # -- define scale down policies, must conform to HPAScalingRules
+      scaleDown: {}
+      # -- define scale up policies, must conform to HPAScalingRules
+      scaleUp: {}
+  image:
+    # -- The Docker registry for the querier image. Overrides `loki.image.registry`
+    registry: null
+    # -- Docker image repository for the querier image. Overrides `loki.image.repository`
+    repository: null
+    # -- Docker image tag for the querier image. Overrides `loki.image.tag`
+    tag: null
+  # -- Command to execute instead of defined in Docker image
+  command: null
+  # -- The name of the PriorityClass for querier pods
+  priorityClassName: null
+  # -- Labels for querier pods
+  podLabels: {}
+  # -- Annotations for querier pods
+  podAnnotations: {}
+  # -- Labels for querier service
+  serviceLabels: {}
+  # -- Annotations for querier service
+  serviceAnnotations: {}
+  # -- Additional CLI args for the querier
+  extraArgs: []
+  # -- Environment variables to add to the querier pods
+  extraEnv: []
+  # -- Environment variables from secrets or configmaps to add to the querier pods
+  extraEnvFrom: []
+  # -- Volume mounts to add to the querier pods
+  extraVolumeMounts: []
+  # -- Volumes to add to the querier pods
+  extraVolumes: []
+  # -- Resource requests and limits for the querier
+  resources: {}
+  # -- Containers to add to the querier pods
+  extraContainers: []
+  # -- Init containers to add to the querier pods
+  initContainers: []
+  # -- Grace period to allow the querier to shutdown before it is killed
+  terminationGracePeriodSeconds: 30
+  # -- topologySpread for querier pods.
+  # @default -- Defaults to allow skew no more then 1 node
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/component: querier
+  # -- Affinity for querier pods.
+  # @default -- Hard node anti-affinity
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/component: querier
+          topologyKey: kubernetes.io/hostname
+  # -- Pod Disruption Budget maxUnavailable
+  maxUnavailable: null
+  # -- Max Surge for querier pods
+  maxSurge: 0
+  # -- Node selector for querier pods
+  nodeSelector: {}
+  # -- Tolerations for querier pods
+  tolerations: []
+  # -- DNSConfig for querier pods
+  dnsConfig: {}
+  persistence:
+    # -- Enable creating PVCs for the querier cache
+    enabled: false
+    # -- Size of persistent disk
+    size: 10Gi
+    # -- Storage class to be used.
+    # If defined, storageClassName: <storageClass>.
+    # If set to "-", storageClassName: "", which disables dynamic provisioning.
+    # If empty or set to null, no storageClassName spec is
+    # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
+    storageClass: null
+    # -- Annotations for querier PVCs
+    annotations: {}
+  # -- Adds the appProtocol field to the querier service. This allows querier to work with istio protocol selection.
+  appProtocol:
+    # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
+    grpc: ""
+
+# -- Configuration for the parallel ruler query-frontend
+# -- Only deployed if .Values.ruler.remoteEvaluationDedicatedQueryPath
+rulerQueryFrontend:
+  # -- Number of replicas for the query-frontend
+  replicas: 2
+  # -- hostAliases to add
+  hostAliases: []
+  #  - ip: 1.2.3.4
+  #    hostnames:
+  #      - domain.tld
+  autoscaling:
+    # -- Enable autoscaling for the query-frontend
+    enabled: false
+    # -- Minimum autoscaling replicas for the query-frontend
+    minReplicas: 1
+    # -- Maximum autoscaling replicas for the query-frontend
+    maxReplicas: 3
+    # -- Target CPU utilisation percentage for the query-frontend
+    targetCPUUtilizationPercentage: 60
+    # -- Target memory utilisation percentage for the query-frontend
+    targetMemoryUtilizationPercentage: null
+    # -- Allows one to define custom metrics using the HPA/v2 schema (for example, Pods, Object or External metrics)
+    customMetrics: []
+    # - type: Pods
+    #   pods:
+    #     metric:
+    #       name: loki_query_rate
+    #     target:
+    #       type: AverageValue
+    #       averageValue: 100
+    behavior:
+      # -- Enable autoscaling behaviours
+      enabled: false
+      # -- define scale down policies, must conform to HPAScalingRules
+      scaleDown: {}
+      # -- define scale up policies, must conform to HPAScalingRules
+      scaleUp: {}
+  image:
+    # -- The Docker registry for the query-frontend image. Overrides `loki.image.registry`
+    registry: null
+    # -- Docker image repository for the query-frontend image. Overrides `loki.image.repository`
+    repository: null
+    # -- Docker image tag for the query-frontend image. Overrides `loki.image.tag`
+    tag: null
+  # -- Command to execute instead of defined in Docker image
+  command: null
+  # -- The name of the PriorityClass for query-frontend pods
+  priorityClassName: null
+  # -- Labels for query-frontend pods
+  podLabels: {}
+  # -- Annotations for query-frontend pods
+  podAnnotations: {}
+  # -- Labels for query-frontend service
+  serviceLabels: {}
+  # -- Annotations for query-frontend service
+  serviceAnnotations: {}
+  # -- Additional CLI args for the query-frontend
+  extraArgs: []
+  # -- Environment variables to add to the query-frontend pods
+  extraEnv: []
+  # -- Environment variables from secrets or configmaps to add to the query-frontend pods
+  extraEnvFrom: []
+  # -- Volume mounts to add to the query-frontend pods
+  extraVolumeMounts: []
+  # -- Volumes to add to the query-frontend pods
+  extraVolumes: []
+  # -- Resource requests and limits for the query-frontend
+  resources: {}
+  # -- Containers to add to the query-frontend pods
+  extraContainers: []
+  # -- Grace period to allow the query-frontend to shutdown before it is killed
+  terminationGracePeriodSeconds: 30
+  # -- Affinity for query-frontend pods.
+  # @default -- Hard node anti-affinity
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/component: query-frontend
+          topologyKey: kubernetes.io/hostname
+  # -- Pod Disruption Budget maxUnavailable
+  maxUnavailable: 1
+  # -- Node selector for query-frontend pods
+  nodeSelector: {}
+  # -- Tolerations for query-frontend pods
+  tolerations: []
+  # -- Adds the appProtocol field to the queryFrontend service. This allows queryFrontend to work with istio protocol selection.
+  appProtocol:
+    # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
+    grpc: ""
+
+
+rulerQueryScheduler:
+  # -- Number of replicas for the query-scheduler.
+  # It should be lower than `-querier.max-concurrent` to avoid generating back-pressure in queriers;
+  # it's also recommended that this value evenly divides the latter
+  replicas: 0
+  # -- hostAliases to add
+  hostAliases: []
+  #  - ip: 1.2.3.4
+  #    hostnames:
+  #      - domain.tld
+  image:
+    # -- The Docker registry for the query-scheduler image. Overrides `loki.image.registry`
+    registry: null
+    # -- Docker image repository for the query-scheduler image. Overrides `loki.image.repository`
+    repository: null
+    # -- Docker image tag for the query-scheduler image. Overrides `loki.image.tag`
+    tag: null
+  # -- The name of the PriorityClass for query-scheduler pods
+  priorityClassName: null
+  # -- Labels for query-scheduler pods
+  podLabels: {}
+  # -- Annotations for query-scheduler pods
+  podAnnotations: {}
+  # -- Labels for query-scheduler service
+  serviceLabels: {}
+  # -- Annotations for query-scheduler service
+  serviceAnnotations: {}
+  # -- Additional CLI args for the query-scheduler
+  extraArgs: []
+  # -- Environment variables to add to the query-scheduler pods
+  extraEnv: []
+  # -- Environment variables from secrets or configmaps to add to the query-scheduler pods
+  extraEnvFrom: []
+  # -- Volume mounts to add to the query-scheduler pods
+  extraVolumeMounts: []
+  # -- Volumes to add to the query-scheduler pods
+  extraVolumes: []
+  # -- Resource requests and limits for the query-scheduler
+  resources: {}
+  # -- Containers to add to the query-scheduler pods
+  extraContainers: []
+  # -- Grace period to allow the query-scheduler to shutdown before it is killed
+  terminationGracePeriodSeconds: 30
+  # -- Affinity for query-scheduler pods.
+  # @default -- Hard node anti-affinity
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/component: query-scheduler
+          topologyKey: kubernetes.io/hostname
+  # -- Pod Disruption Budget maxUnavailable
+  maxUnavailable: 1
+  # -- Node selector for query-scheduler pods
+  nodeSelector: {}
+  # -- Tolerations for query-scheduler pods
+  tolerations: []
+  # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
+  appProtocol:
+    grpc: ""
+
 memcached:
   image:
     # -- Memcached Docker image repository
