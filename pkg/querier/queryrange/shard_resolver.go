@@ -23,7 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
-	"github.com/grafana/loki/v3/pkg/storage/types"
+	//"github.com/grafana/loki/v3/pkg/storage/types"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 	"github.com/grafana/loki/v3/pkg/util/validation"
@@ -40,6 +40,7 @@ func shardResolverForConf(
 	statsHandler, next, retryNext queryrangebase.Handler,
 	limits Limits,
 ) (logql.ShardResolver, bool) {
+	/*
 	if conf.IndexType == types.TSDBType {
 		return &dynamicShardResolver{
 			ctx:              ctx,
@@ -58,6 +59,7 @@ func shardResolverForConf(
 	if conf.RowShards < 2 {
 		return nil, false
 	}
+		*/
 	return logql.ConstantShards(conf.RowShards), true
 }
 

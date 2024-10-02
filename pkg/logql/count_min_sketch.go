@@ -21,6 +21,8 @@ const (
 	maxLabels = 10_000
 )
 
+// CountMinSketchVector tracks the count or sum of values of a metric, ie list of label value pairs. It's storage for
+// the values is upper bound bu delta and epsilon. To limit the storage for labels see HeapCountMinSketchVector.
 type CountMinSketchVector struct {
 	T int64
 	F *sketch.CountMinSketch
@@ -46,7 +48,18 @@ func (v *CountMinSketchVector) Merge(right *CountMinSketchVector) (*CountMinSket
 		return v, err
 	}
 
-	// TODO: merge labels
+	// Merge labels without duplication. Note: the CMS does not limit the number of labels as the
+	// HeapCountMinSketchVector does.
+	processed := map[string]struct{}{}
+	for _, l := range v.Metrics {
+		processed[l.String()] = struct{}{}
+	}
+
+	for _, r := range right.Metrics {
+		if _, duplicate := processed[r.String()]; !duplicate {
+			processed[r.String()] = struct{}{}
+		}
+	}
 
 	return v, nil
 }
@@ -67,7 +80,7 @@ func (v CountMinSketchVector) ToProto() *logproto.CountMinSketchVector {
 		},
 	}
 
-	// Serialize CMs
+	// Serialize CMS
 	p.Sketch.Counters = make([]uint32, 0, v.F.Depth*v.F.Width)
 	for row := uint32(0); row < v.F.Depth; row++ {
 		p.Sketch.Counters = append(p.Sketch.Counters, v.F.Counters[row]...)
@@ -79,12 +92,46 @@ func (v CountMinSketchVector) ToProto() *logproto.CountMinSketchVector {
 			Metric: make([]*logproto.LabelPair, len(metric)),
 		}
 		for j, pair := range metric {
-			p.Metrics[i].Metric[j].Name = pair.Name
-			p.Metrics[i].Metric[j].Value = pair.Value
+			p.Metrics[i].Metric[j] = &logproto.LabelPair{
+				Name:  pair.Name,
+				Value: pair.Value,
+			}
 		}
 	}
 
 	return p
+}
+
+func CountMinSketchVectorFromProto(p *logproto.CountMinSketchVector) (CountMinSketchVector, error) {
+	vec := CountMinSketchVector{
+		T:       p.TimestampMs,
+		Metrics: make([]labels.Labels, len(p.Metrics)),
+	}
+
+	// Deserialize CMS
+	var err error
+	vec.F, err = sketch.NewCountMinSketch(p.Sketch.Width, p.Sketch.Depth)
+	if err != nil {
+		return vec, err
+	}
+
+	for row := 0; row < int(vec.F.Depth); row++ {
+		s := row * int(vec.F.Width)
+		e := s + int(vec.F.Width)
+		copy(vec.F.Counters[row], p.Sketch.Counters[s:e])
+	}
+
+	// Deserialize metric labels
+	for i, in := range p.Metrics {
+		lbls := make(labels.Labels, len(in.Metric))
+		for j, labelPair := range in.Metric {
+			lbls[j].Name = labelPair.Name
+			lbls[j].Value = labelPair.Value
+		}
+		vec.Metrics[i] = lbls
+	}
+
+	return vec, nil
 }
 
 // HeapCountMinSketchVector is a CountMinSketchVector that keeps the number of metrics to a defined maximum.
