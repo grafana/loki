@@ -1,6 +1,7 @@
 package queryrange
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -16,7 +17,7 @@ import (
 )
 
 type splitter interface {
-	split(execTime time.Time, tenantIDs []string, request queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error)
+	split(ctx context.Context, execTime time.Time, tenantIDs []string, request queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error)
 }
 
 type defaultSplitter struct {
@@ -28,7 +29,7 @@ func newDefaultSplitter(limits Limits, iqo util.IngesterQueryOptions) *defaultSp
 	return &defaultSplitter{limits, iqo}
 }
 
-func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error) {
+func (s *defaultSplitter) split(_ context.Context, execTime time.Time, tenantIDs []string, req queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error) {
 	var (
 		reqs             []queryrangebase.Request
 		factory          func(start, end time.Time)
@@ -229,7 +230,7 @@ func (s *metricQuerySplitter) nextIntervalBoundary(t time.Time, step int64, inte
 	return time.Unix(0, target)
 }
 
-func (s *metricQuerySplitter) split(execTime time.Time, tenantIDs []string, r queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error) {
+func (s *metricQuerySplitter) split(_ context.Context, execTime time.Time, tenantIDs []string, r queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error) {
 	var reqs []queryrangebase.Request
 
 	lokiReq := r.(*LokiRequest)

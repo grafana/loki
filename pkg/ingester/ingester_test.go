@@ -697,7 +697,7 @@ func TestValidate(t *testing.T) {
 	}{
 		{
 			in: Config{
-				ChunkEncoding: compression.EncGZIP.String(),
+				ChunkEncoding: compression.GZIP.String(),
 				FlushOpBackoff: backoff.Config{
 					MinBackoff: 100 * time.Millisecond,
 					MaxBackoff: 10 * time.Second,
@@ -708,7 +708,7 @@ func TestValidate(t *testing.T) {
 				MaxChunkAge:    time.Minute,
 			},
 			expected: Config{
-				ChunkEncoding: compression.EncGZIP.String(),
+				ChunkEncoding: compression.GZIP.String(),
 				FlushOpBackoff: backoff.Config{
 					MinBackoff: 100 * time.Millisecond,
 					MaxBackoff: 10 * time.Second,
@@ -717,12 +717,12 @@ func TestValidate(t *testing.T) {
 				FlushOpTimeout: 15 * time.Second,
 				IndexShards:    index.DefaultIndexShards,
 				MaxChunkAge:    time.Minute,
-				parsedEncoding: compression.EncGZIP,
+				parsedEncoding: compression.GZIP,
 			},
 		},
 		{
 			in: Config{
-				ChunkEncoding: compression.EncSnappy.String(),
+				ChunkEncoding: compression.Snappy.String(),
 				FlushOpBackoff: backoff.Config{
 					MinBackoff: 100 * time.Millisecond,
 					MaxBackoff: 10 * time.Second,
@@ -732,7 +732,7 @@ func TestValidate(t *testing.T) {
 				IndexShards:    index.DefaultIndexShards,
 			},
 			expected: Config{
-				ChunkEncoding: compression.EncSnappy.String(),
+				ChunkEncoding: compression.Snappy.String(),
 				FlushOpBackoff: backoff.Config{
 					MinBackoff: 100 * time.Millisecond,
 					MaxBackoff: 10 * time.Second,
@@ -740,7 +740,7 @@ func TestValidate(t *testing.T) {
 				},
 				FlushOpTimeout: 15 * time.Second,
 				IndexShards:    index.DefaultIndexShards,
-				parsedEncoding: compression.EncSnappy,
+				parsedEncoding: compression.Snappy,
 			},
 		},
 		{
@@ -758,7 +758,7 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			in: Config{
-				ChunkEncoding: compression.EncGZIP.String(),
+				ChunkEncoding: compression.GZIP.String(),
 				FlushOpBackoff: backoff.Config{
 					MinBackoff: 100 * time.Millisecond,
 					MaxBackoff: 10 * time.Second,
@@ -771,7 +771,7 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			in: Config{
-				ChunkEncoding: compression.EncGZIP.String(),
+				ChunkEncoding: compression.GZIP.String(),
 				FlushOpBackoff: backoff.Config{
 					MinBackoff: 100 * time.Millisecond,
 					MaxBackoff: 10 * time.Second,
@@ -784,7 +784,7 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			in: Config{
-				ChunkEncoding: compression.EncGZIP.String(),
+				ChunkEncoding: compression.GZIP.String(),
 				FlushOpBackoff: backoff.Config{
 					MinBackoff: 100 * time.Millisecond,
 					MaxBackoff: 10 * time.Second,

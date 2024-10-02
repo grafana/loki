@@ -1607,10 +1607,21 @@ func indexStatsResult(v logproto.IndexStatsResponse) (*int, base.Handler) {
 func seriesVolumeResult(v logproto.VolumeResponse) (*int, base.Handler) {
 	count := 0
 	var lock sync.Mutex
-	return &count, base.HandlerFunc(func(_ context.Context, _ base.Request) (base.Response, error) {
+	return &count, base.HandlerFunc(func(_ context.Context, req base.Request) (base.Response, error) {
 		lock.Lock()
 		defer lock.Unlock()
-		count++
+
+		switch req.(type) {
+		case *logproto.VolumeRequest:
+			count++
+			// Split by label middleware makes a labels call for __stream_shard__. Pretend there's never
+			// and stream shards to keep the tests simpler.
+		case *LabelRequest:
+			return &LokiLabelNamesResponse{
+				Status: "success",
+				Data:   []string{},
+			}, nil
+		}
 		return &VolumeResponse{Response: &v}, nil
 	})
 }
