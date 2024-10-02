@@ -47,7 +47,7 @@ type AddressProvider interface {
 }
 
 func NewJumpHashClientPool(pool *client.Pool, dnsProvider AddressProvider, updateInterval time.Duration, logger log.Logger) *JumpHashClientPool {
-	selector := jumphash.DefaultSelector()
+	selector := jumphash.DefaultSelector("bloomgateway")
 	err := selector.SetServers(dnsProvider.Addresses()...)
 	if err != nil {
 		level.Warn(logger).Log("msg", "error updating servers", "err", err)

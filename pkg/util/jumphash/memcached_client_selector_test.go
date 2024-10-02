@@ -57,6 +57,7 @@ var mockTCPResolver = func(_, address string) (*net.TCPAddr, error) {
 
 func TestMemcachedJumpHashSelector_PickSever(t *testing.T) {
 	s := NewSelector(
+		"test",
 		mockUnixResolver,
 		mockTCPResolver,
 	)
@@ -84,6 +85,7 @@ func TestMemcachedJumpHashSelector_PickSever(t *testing.T) {
 
 func TestMemcachedJumpHashSelector_PickSever_ErrNoServers(t *testing.T) {
 	s := NewSelector(
+		"test",
 		mockUnixResolver,
 		mockTCPResolver,
 	)
