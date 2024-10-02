@@ -213,7 +213,7 @@
                "stack": true,
                "targets": [
                   {
-                     "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_request_duration_seconds_count{namespace=\"$namespace\",job=~\".+-distributor-http\", route=~\"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))\n",
+                     "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_request_duration_seconds_count{namespace=\"$namespace\",job=~\".+-distributor-http\", route=~\"api_prom_push|loki_api_v1_push|otlp_v1_logs|/httpgrpc.HTTP/Handle\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))\n",
                      "format": "time_series",
                      "intervalFactor": 2,
                      "legendFormat": "{{status}}",
@@ -263,7 +263,7 @@
                "span": 4,
                "targets": [
                   {
-                     "expr": "histogram_quantile(0.99, sum by (le) (namespace_job_route:loki_request_duration_seconds_bucket:sum_rate{namespace=\"$namespace\", job=~\".+-distributor-http\", route=~\"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle\"})) * 1e3",
+                     "expr": "histogram_quantile(0.99, sum by (le) (namespace_job_route:loki_request_duration_seconds_bucket:sum_rate{namespace=\"$namespace\", job=~\".+-distributor-http\", route=~\"api_prom_push|loki_api_v1_push|otlp_v1_logs|/httpgrpc.HTTP/Handle\"})) * 1e3",
                      "format": "time_series",
                      "intervalFactor": 2,
                      "legendFormat": "99th Percentile",
@@ -271,7 +271,7 @@
                      "step": 10
                   },
                   {
-                     "expr": "histogram_quantile(0.50, sum by (le) (namespace_job_route:loki_request_duration_seconds_bucket:sum_rate{namespace=\"$namespace\", job=~\".+-distributor-http\", route=~\"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle\"})) * 1e3",
+                     "expr": "histogram_quantile(0.50, sum by (le) (namespace_job_route:loki_request_duration_seconds_bucket:sum_rate{namespace=\"$namespace\", job=~\".+-distributor-http\", route=~\"api_prom_push|loki_api_v1_push|otlp_v1_logs|/httpgrpc.HTTP/Handle\"})) * 1e3",
                      "format": "time_series",
                      "intervalFactor": 2,
                      "legendFormat": "50th Percentile",
@@ -279,7 +279,7 @@
                      "step": 10
                   },
                   {
-                     "expr": "1e3 * sum(namespace_job_route:loki_request_duration_seconds_sum:sum_rate{namespace=\"$namespace\", job=~\".+-distributor-http\", route=~\"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle\"}) / sum(namespace_job_route:loki_request_duration_seconds_count:sum_rate{namespace=\"$namespace\", job=~\".+-distributor-http\", route=~\"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle\"})",
+                     "expr": "1e3 * sum(namespace_job_route:loki_request_duration_seconds_sum:sum_rate{namespace=\"$namespace\", job=~\".+-distributor-http\", route=~\"api_prom_push|loki_api_v1_push|otlp_v1_logs|/httpgrpc.HTTP/Handle\"}) / sum(namespace_job_route:loki_request_duration_seconds_count:sum_rate{namespace=\"$namespace\", job=~\".+-distributor-http\", route=~\"api_prom_push|loki_api_v1_push|otlp_v1_logs|/httpgrpc.HTTP/Handle\"})",
                      "format": "time_series",
                      "intervalFactor": 2,
                      "legendFormat": "Average",
@@ -347,7 +347,7 @@
                "span": 4,
                "targets": [
                   {
-                     "expr": "histogram_quantile(0.99, sum(rate(loki_request_duration_seconds_bucket{namespace=\"$namespace\", job=~\".+-distributor-http\", route=~\"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle\"}[$__rate_interval])) by (le,pod)) * 1e3",
+                     "expr": "histogram_quantile(0.99, sum(rate(loki_request_duration_seconds_bucket{namespace=\"$namespace\", job=~\".+-distributor-http\", route=~\"api_prom_push|loki_api_v1_push|otlp_v1_logs|/httpgrpc.HTTP/Handle\"}[$__rate_interval])) by (le,pod)) * 1e3",
                      "format": "time_series",
                      "interval": "1m",
                      "intervalFactor": 2,
