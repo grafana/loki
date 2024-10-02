@@ -19,8 +19,10 @@ type testObjClient struct {
 }
 
 func (t testObjClient) ObjectExists(ctx context.Context, object string) (bool, error) {
-	_, err := t.GetAttributes(ctx, object)
-	if err != nil {
+	if _, err := t.GetAttributes(ctx, object); err != nil {
+		if t.IsObjectNotFoundErr(err) {
+			return false, nil
+		}
 		return false, err
 	}
 	return true, nil

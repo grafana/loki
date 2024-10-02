@@ -310,8 +310,13 @@ func buckets(cfg S3Config) ([]string, error) {
 func (a *S3ObjectClient) Stop() {}
 
 func (a *S3ObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	_, err := a.objectAttributes(ctx, objectKey, "S3.ObjectExists")
-	return err == nil, err
+	if _, err := a.objectAttributes(ctx, objectKey, "S3.ObjectExists"); err != nil {
+		if a.IsObjectNotFoundErr(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func (a *S3ObjectClient) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {

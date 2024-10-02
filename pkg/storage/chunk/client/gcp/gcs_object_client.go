@@ -127,8 +127,10 @@ func (s *GCSObjectClient) Stop() {
 }
 
 func (s *GCSObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	_, err := s.GetAttributes(ctx, objectKey)
-	if err != nil {
+	if _, err := s.GetAttributes(ctx, objectKey); err != nil {
+		if s.IsObjectNotFoundErr(err) {
+			return false, nil
+		}
 		return false, err
 	}
 	return true, nil

@@ -220,8 +220,13 @@ func NewBlobStorage(cfg *BlobStorageConfig, metrics BlobStorageMetrics, hedgingC
 func (b *BlobStorage) Stop() {}
 
 func (b *BlobStorage) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	_, err := b.objectAttributes(ctx, objectKey, "azure.ObjectExists")
-	return err == nil, err
+	if _, err := b.objectAttributes(ctx, objectKey, "azure.ObjectExists"); err != nil {
+		if b.IsObjectNotFoundErr(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func (b *BlobStorage) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {

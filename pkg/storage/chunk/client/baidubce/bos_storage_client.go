@@ -91,8 +91,13 @@ func (b *BOSObjectStorage) PutObject(ctx context.Context, objectKey string, obje
 }
 
 func (b *BOSObjectStorage) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	_, err := b.objectAttributes(ctx, objectKey, "BOS.ObjectExists")
-	return err == nil, err
+	if _, err := b.objectAttributes(ctx, objectKey, "BOS.ObjectExists"); err != nil {
+		if b.IsObjectNotFoundErr(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func (b *BOSObjectStorage) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {

@@ -393,8 +393,10 @@ func (m *MockStorage) query(ctx context.Context, query index.Query, callback fun
 
 // ObjectExists implments client.ObjectClient
 func (m *InMemoryObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	_, err := m.GetAttributes(ctx, objectKey)
-	if err != nil {
+	if _, err := m.GetAttributes(ctx, objectKey); err != nil {
+		if m.IsObjectNotFoundErr(err) {
+			return false, nil
+		}
 		return false, err
 	}
 	return true, nil

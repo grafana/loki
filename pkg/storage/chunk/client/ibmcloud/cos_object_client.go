@@ -320,8 +320,13 @@ func (c *COSObjectClient) DeleteObject(ctx context.Context, objectKey string) er
 }
 
 func (c *COSObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	_, err := c.objectAttributes(ctx, objectKey, "COS.ObjectExists")
-	return err == nil, err
+	if _, err := c.objectAttributes(ctx, objectKey, "COS.ObjectExists"); err != nil {
+		if c.IsObjectNotFoundErr(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func (c *COSObjectClient) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {

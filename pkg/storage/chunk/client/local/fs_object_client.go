@@ -68,8 +68,10 @@ func NewFSObjectClient(cfg FSConfig) (*FSObjectClient, error) {
 func (FSObjectClient) Stop() {}
 
 func (f *FSObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	_, err := f.GetAttributes(ctx, objectKey)
-	if err != nil {
+	if _, err := f.GetAttributes(ctx, objectKey); err != nil {
+		if f.IsObjectNotFoundErr(err) {
+			return false, nil
+		}
 		return false, err
 	}
 	return true, nil

@@ -73,8 +73,14 @@ func (s *OssObjectClient) Stop() {
 }
 
 func (s *OssObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	_, err := s.objectAttributes(ctx, objectKey, "OSS.ObjectExists")
-	return err == nil, err
+	if _, err := s.objectAttributes(ctx, objectKey, "OSS.ObjectExists"); err != nil {
+		if s.IsObjectNotFoundErr(err) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return true, nil
 }
 
 func (s *OssObjectClient) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
