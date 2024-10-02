@@ -378,7 +378,12 @@ func Test_RetryLogic(t *testing.T) {
 			3,
 			false,
 			func(c *S3ObjectClient) error {
-				_, err := c.ObjectExists(context.Background(), "foo")
+				exists, err := c.ObjectExists(context.Background(), "foo")
+				if err == nil && !exists {
+					return awserr.NewRequestFailure(
+						awserr.New("NotFound", "Not Found", nil), 404, "abc",
+					)
+				}
 				return err
 			},
 		},
