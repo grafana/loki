@@ -1307,7 +1307,7 @@ func TestQuerier_DetectedFields(t *testing.T) {
 				"/loki/api/v1/detected_field/name/values",
 			}
 
-      secondValues := handleRequest(handler, request).Values
+			secondValues := handleRequest(handler, request).Values
 			// log lines come from querier_mock_test.go
 			// message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t name=bar
 			assert.Len(t, secondValues, 1)
