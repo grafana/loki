@@ -1,6 +1,8 @@
 module github.com/grafana/loki/v3
 
-go 1.21.8
+go 1.22
+
+toolchain go1.23.2
 
 require (
 	cloud.google.com/go/bigtable v1.29.0
@@ -93,7 +95,7 @@ require (
 	github.com/stretchr/testify v1.9.0
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/xdg-go/scram v1.1.2
-	go.etcd.io/bbolt v1.3.10
+	go.etcd.io/bbolt v1.3.11
 	go.uber.org/atomic v1.11.0
 	go.uber.org/goleak v1.3.0
 	golang.org/x/crypto v0.27.0
