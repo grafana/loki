@@ -463,6 +463,8 @@ type Bucket struct {
 	Etag string `json:"etag,omitempty"`
 	// Generation: The generation of this bucket.
 	Generation int64 `json:"generation,omitempty,string"`
+	// HardDeleteTime: The hard delete time of the bucket in RFC 3339 format.
+	HardDeleteTime string `json:"hardDeleteTime,omitempty"`
 	// HierarchicalNamespace: The bucket's hierarchical namespace configuration.
 	HierarchicalNamespace *BucketHierarchicalNamespace `json:"hierarchicalNamespace,omitempty"`
 	// IamConfiguration: The bucket's IAM configuration.
@@ -525,6 +527,8 @@ type Bucket struct {
 	// of time that soft-deleted objects will be retained, and cannot be
 	// permanently deleted.
 	SoftDeletePolicy *BucketSoftDeletePolicy `json:"softDeletePolicy,omitempty"`
+	// SoftDeleteTime: The soft delete time of the bucket in RFC 3339 format.
+	SoftDeleteTime string `json:"softDeleteTime,omitempty"`
 	// StorageClass: The bucket's default storage class, used whenever no
 	// storageClass is specified for a newly-created object. This defines how
 	// objects in the bucket are stored and determines the SLA and the cost of

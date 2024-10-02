@@ -31,13 +31,17 @@ type scheduler interface {
 // len(scWeights)-1 are zero or there is only a single subconn, otherwise it
 // will return an Earliest Deadline First (EDF) scheduler implementation that
 // selects the subchannels according to their weights.
-func newScheduler(scWeights []float64, inc func() uint32) scheduler {
+func (p *picker) newScheduler(recordMetrics bool) scheduler {
+	scWeights := p.scWeights(recordMetrics)
 	n := len(scWeights)
 	if n == 0 {
 		return nil
 	}
 	if n == 1 {
-		return &rrScheduler{numSCs: 1, inc: inc}
+		if recordMetrics {
+			rrFallbackMetric.Record(p.metricsRecorder, 1, p.target, p.locality)
+		}
+		return &rrScheduler{numSCs: 1, inc: p.inc}
 	}
 	sum := float64(0)
 	numZero := 0
@@ -51,8 +55,12 @@ func newScheduler(scWeights []float64, inc func() uint32) scheduler {
 			numZero++
 		}
 	}
+
 	if numZero >= n-1 {
-		return &rrScheduler{numSCs: uint32(n), inc: inc}
+		if recordMetrics {
+			rrFallbackMetric.Record(p.metricsRecorder, 1, p.target, p.locality)
+		}
+		return &rrScheduler{numSCs: uint32(n), inc: p.inc}
 	}
 	unscaledMean := sum / float64(n-numZero)
 	scalingFactor := maxWeight / max
@@ -74,11 +82,11 @@ func newScheduler(scWeights []float64, inc func() uint32) scheduler {
 	}
 
 	if allEqual {
-		return &rrScheduler{numSCs: uint32(n), inc: inc}
+		return &rrScheduler{numSCs: uint32(n), inc: p.inc}
 	}
 
 	logger.Infof("using edf scheduler with weights: %v", weights)
-	return &edfScheduler{weights: weights, inc: inc}
+	return &edfScheduler{weights: weights, inc: p.inc}
 }
 
 const maxWeight = math.MaxUint16

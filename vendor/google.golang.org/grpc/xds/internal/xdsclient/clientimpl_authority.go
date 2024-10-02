@@ -45,14 +45,18 @@ func (c *clientImpl) findAuthority(n *xdsresource.Name) (*authority, func(), err
 		return nil, nil, errors.New("the xds-client is closed")
 	}
 
-	config := c.config.XDSServer
+	config := c.config.XDSServers()[0]
 	if scheme == xdsresource.FederationScheme {
-		cfg, ok := c.config.Authorities[authority]
+		authorities := c.config.Authorities()
+		if authorities == nil {
+			return nil, nil, fmt.Errorf("xds: failed to find authority %q", authority)
+		}
+		cfg, ok := authorities[authority]
 		if !ok {
 			return nil, nil, fmt.Errorf("xds: failed to find authority %q", authority)
 		}
-		if cfg.XDSServer != nil {
-			config = cfg.XDSServer
+		if len(cfg.XDSServers) >= 1 {
+			config = cfg.XDSServers[0]
 		}
 	}
 
@@ -110,7 +114,7 @@ func (c *clientImpl) newAuthorityLocked(config *bootstrap.ServerConfig) (_ *auth
 		serializer:         c.serializer,
 		resourceTypeGetter: c.resourceTypes.get,
 		watchExpiryTimeout: c.watchExpiryTimeout,
-		logger:             grpclog.NewPrefixLogger(logger, authorityPrefix(c, config.ServerURI)),
+		logger:             grpclog.NewPrefixLogger(logger, authorityPrefix(c, config.ServerURI())),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating new authority for config %q: %v", config.String(), err)
