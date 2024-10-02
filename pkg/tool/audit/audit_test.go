@@ -2,7 +2,7 @@ package audit
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"strings"
 	"testing"
 
@@ -13,6 +13,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 )
+
+var errObjectNotFound = errors.New("object not found")
 
 type testObjClient struct {
 	client.ObjectClient
@@ -28,9 +30,13 @@ func (t testObjClient) ObjectExists(ctx context.Context, object string) (bool, e
 	return true, nil
 }
 
+func (t testObjClient) IsObjectNotFoundErr(err error) bool {
+	return errors.Is(err, errObjectNotFound)
+}
+
 func (t testObjClient) GetAttributes(_ context.Context, object string) (client.ObjectAttributes, error) {
 	if strings.Contains(object, "missing") {
-		return client.ObjectAttributes{}, fmt.Errorf("object %s not found", object)
+		return client.ObjectAttributes{}, errObjectNotFound
 	}
 	return client.ObjectAttributes{}, nil
 }
