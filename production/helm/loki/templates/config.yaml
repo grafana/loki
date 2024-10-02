@@ -9,6 +9,7 @@ metadata:
   name: {{ tpl .Values.loki.generatedConfigObjectName . }}
   namespace: {{ $.Release.Namespace }}
   labels:
+    supra89kren: true
     {{- include "loki.labels" . | nindent 4 }}
 {{- if eq .Values.loki.configStorageType "Secret" }}
 data:
