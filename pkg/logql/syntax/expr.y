@@ -90,7 +90,6 @@ import (
 %type <Selector>              selector
 %type <VectorAggregationExpr> vectorAggregationExpr
 %type <VectorOp>              vectorOp
-%type <VectorOp>              approxVectorOp
 %type <VectorExpr>            vectorExpr
 %type <Vector>                vector
 %type <FilterOp>              filterOp
@@ -233,8 +232,6 @@ vectorAggregationExpr:
     | vectorOp OPEN_PARENTHESIS NUMBER COMMA metricExpr CLOSE_PARENTHESIS                 { $$ = mustNewVectorAggregationExpr($5, $1, nil, &$3) }
     | vectorOp OPEN_PARENTHESIS NUMBER COMMA metricExpr CLOSE_PARENTHESIS grouping        { $$ = mustNewVectorAggregationExpr($5, $1, $7, &$3) }
     | vectorOp grouping OPEN_PARENTHESIS NUMBER COMMA metricExpr CLOSE_PARENTHESIS        { $$ = mustNewVectorAggregationExpr($6, $1, $2, &$4) }
-    // approx_topk does not support grouping
-    | approxVectorOp OPEN_PARENTHESIS NUMBER COMMA metricExpr CLOSE_PARENTHESIS           { $$ = mustNewVectorAggregationExpr($5, $1, nil, &$3) }
     ;
 
 labelReplaceExpr:
@@ -549,11 +546,8 @@ vectorOp:
       | TOPK    { $$ = OpTypeTopK }
       | SORT    { $$ = OpTypeSort }
       | SORT_DESC    { $$ = OpTypeSortDesc }
+      | APPROX_TOPK  { $$ = OpTypeApproxTopK }
       ;
-
-approxVectorOp:
-       APPROX_TOPK    { $$ = OpTypeApproxTopK }
-     ;
 
 rangeOp:
       COUNT_OVER_TIME    { $$ = OpRangeTypeCount }

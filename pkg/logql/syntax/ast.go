@@ -1551,6 +1551,9 @@ func mustNewVectorAggregationExpr(left SampleExpr, operation string, gr *Groupin
 		if p <= 0 {
 			return &VectorAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("invalid parameter (must be greater than 0) %s(%s", operation, *params), 0, 0)}
 		}
+		if operation == OpTypeApproxTopK && gr != nil {
+			return &VectorAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("grouping not allowed for %s aggregation", operation), 0, 0)}
+		}
 
 	default:
 		if params != nil {

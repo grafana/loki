@@ -363,7 +363,10 @@ var ParseTestCases = []struct {
 	{
 		in:  `absent_over_time({ foo = "bar" }[5h]) by (foo)`,
 		err: logqlmodel.NewParseError("grouping not allowed for absent_over_time aggregation", 0, 0),
-		// TODO: add same error for approx_topk
+	},
+	{
+		in:  `approx_topk(2, count_over_time({ foo = "bar" }[5h])) by (foo)`,
+		err: logqlmodel.NewParseError("grouping not allowed for approx_topk aggregation", 0, 0),
 	},
 	{
 		in:  `rate({ foo = "bar" }[5minutes])`,
