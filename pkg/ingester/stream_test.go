@@ -56,7 +56,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1))
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
@@ -114,7 +114,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 func TestPushDeduplication(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1))
 
 	chunkfmt, headfmt := defaultChunkFormat(t)
 
@@ -150,7 +150,7 @@ func TestPushDeduplication(t *testing.T) {
 func TestPushDeduplicationExtraMetrics(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1))
 
 	chunkfmt, headfmt := defaultChunkFormat(t)
 
@@ -220,7 +220,7 @@ func TestPushDeduplicationExtraMetrics(t *testing.T) {
 func TestPushRejectOldCounter(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1))
 
 	chunkfmt, headfmt := defaultChunkFormat(t)
 
@@ -328,7 +328,7 @@ func TestEntryErrorCorrectlyReported(t *testing.T) {
 	}
 	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1))
 
 	chunkfmt, headfmt := defaultChunkFormat(t)
 
@@ -367,7 +367,7 @@ func TestUnorderedPush(t *testing.T) {
 	cfg.MaxChunkAge = 10 * time.Second
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1))
 
 	chunkfmt, headfmt := defaultChunkFormat(t)
 
@@ -470,7 +470,7 @@ func TestPushRateLimit(t *testing.T) {
 	}
 	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1))
 
 	chunkfmt, headfmt := defaultChunkFormat(t)
 
@@ -510,7 +510,7 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 	}
 	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1))
 
 	cfg := defaultConfig()
 	chunkfmt, headfmt := defaultChunkFormat(t)
@@ -549,7 +549,7 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1))
 
 	cfg := defaultConfig()
 	cfg.MaxChunkAge = time.Minute
@@ -617,7 +617,7 @@ func Benchmark_PushStream(b *testing.B) {
 
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(b, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1))
 	chunkfmt, headfmt := defaultChunkFormat(b)
 
 	s := newStream(chunkfmt, headfmt, &Config{MaxChunkAge: 24 * time.Hour}, limiter, "fake", model.Fingerprint(0), ls, true, NewStreamRateCalculator(), NilMetrics, nil, nil)

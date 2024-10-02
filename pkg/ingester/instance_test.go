@@ -78,7 +78,8 @@ var NilMetrics = newIngesterMetrics(nil, constants.Loki)
 func TestLabelsCollisions(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	strategy := newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, strategy)
 
 	i, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
 	require.Nil(t, err)
@@ -106,7 +107,8 @@ func TestLabelsCollisions(t *testing.T) {
 func TestConcurrentPushes(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	strategy := newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, strategy)
 
 	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
 	require.Nil(t, err)
@@ -158,7 +160,8 @@ func TestConcurrentPushes(t *testing.T) {
 func TestGetStreamRates(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	strategy := newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, strategy)
 
 	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
 	require.NoError(t, err)
@@ -245,7 +248,8 @@ func labelHashNoShard(l labels.Labels) uint64 {
 func TestSyncPeriod(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	strategy := newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, strategy)
 
 	const (
 		syncPeriod = 1 * time.Minute
@@ -290,7 +294,8 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 	t.Helper()
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	strategy := newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, strategy)
 	indexShards := 2
 
 	// just some random values
@@ -507,7 +512,8 @@ func makeRandomLabels() labels.Labels {
 func Benchmark_PushInstance(b *testing.B) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(b, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	strategy := newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, strategy)
 
 	i, _ := newInstance(&Config{IndexShards: 1}, defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
 	ctx := context.Background()
@@ -549,7 +555,8 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 	l.MaxLocalStreamsPerUser = 100000
 	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(b, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	strategy := newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, strategy)
 
 	ctx := context.Background()
 
@@ -1089,7 +1096,8 @@ func TestStreamShardingUsage(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), limitsDefinition)
 	require.NoError(t, err)
 
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	strategy := newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, strategy)
 
 	defaultShardStreamsCfg := limiter.limits.ShardStreams("fake")
 	tenantShardStreamsCfg := limiter.limits.ShardStreams(customTenant1)
@@ -1454,7 +1462,7 @@ func defaultInstance(t *testing.T) *instance {
 		&ingesterConfig,
 		defaultPeriodConfigs,
 		"fake",
-		NewLimiter(overrides, NilMetrics, &ringCountMock{count: 1}, 1),
+		NewLimiter(overrides, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1)),
 		loki_runtime.DefaultTenantConfigs(),
 		noopWAL{},
 		NilMetrics,

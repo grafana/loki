@@ -447,7 +447,7 @@ var (
 	}
 )
 
-func Test_SeriesIterator(t *testing.T) {
+func Test_SeriesIterator_IngesterStrategy(t *testing.T) {
 	var instances []*instance
 
 	// NB (owen-d): Not sure why we have these overrides
@@ -458,7 +458,9 @@ func Test_SeriesIterator(t *testing.T) {
 
 	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+
+	strategy := newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, strategy)
 
 	for i := 0; i < 3; i++ {
 		inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, fmt.Sprintf("%d", i), limiter, runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
@@ -499,13 +501,14 @@ func Test_SeriesIterator(t *testing.T) {
 	require.Nil(t, iter.Error())
 }
 
-func Benchmark_SeriesIterator(b *testing.B) {
+func Benchmark_SeriesIterator_IngesterStrategy(b *testing.B) {
 	streams := buildStreams()
 	instances := make([]*instance, 10)
 
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(b, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	strategy := newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, strategy)
 
 	for i := range instances {
 		inst, _ := newInstance(defaultConfig(), defaultPeriodConfigs, fmt.Sprintf("instance %d", i), limiter, runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
