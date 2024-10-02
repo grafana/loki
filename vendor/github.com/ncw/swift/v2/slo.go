@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/url"
 	"os"
 )
@@ -160,7 +160,7 @@ func (c *Connection) getAllSLOSegments(ctx context.Context, container, path stri
 		return "", nil, err
 	}
 
-	content, err := ioutil.ReadAll(file)
+	content, err := io.ReadAll(file)
 	if err != nil {
 		return "", nil, err
 	}
