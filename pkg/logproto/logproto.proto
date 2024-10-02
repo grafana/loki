@@ -436,6 +436,7 @@ message VolumeRequest {
   repeated string targetLabels = 6;
   string aggregateBy = 7;
   resultscache.CachingOptions cachingOptions = 8 [(gogoproto.nullable) = false];
+  bool aggregatedMetrics = 9;
 }
 
 message VolumeResponse {

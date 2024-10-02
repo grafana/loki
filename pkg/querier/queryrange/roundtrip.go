@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -16,12 +17,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	logqllog "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
 	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -232,7 +234,20 @@ func NewMiddleware(
 		return nil, nil, err
 	}
 
-	seriesVolumeTripperware, err := NewVolumeTripperware(cfg, log, limits, schema, codec, iqo, volumeCache, cacheGenNumLoader, retentionEnabled, metrics, metricsNamespace)
+	seriesVolumeTripperware, err := NewVolumeTripperware(
+		cfg,
+		log,
+		limits,
+		schema,
+		codec,
+		iqo,
+		volumeCache,
+		cacheGenNumLoader,
+		retentionEnabled,
+		metrics,
+		metricsNamespace,
+		logFilterTripperware,
+	)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -298,9 +313,9 @@ func NewDetectedLabelsTripperware(cfg Config, logger log.Logger, l Limits, schem
 	}), nil
 }
 
-func NewDetectedLabelsCardinalityFilter(rt queryrangebase.Handler) queryrangebase.Handler {
-	return queryrangebase.HandlerFunc(
-		func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+func NewDetectedLabelsCardinalityFilter(rt base.Handler) base.Handler {
+	return base.HandlerFunc(
+		func(ctx context.Context, req base.Request) (base.Response, error) {
 			res, err := rt.Do(ctx, req)
 			if err != nil {
 				return nil, err
@@ -545,7 +560,7 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Lo
 		if cfg.MaxRetries > 0 {
 			tr := base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics)
 			rm := base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace)
-			retryNextHandler = queryrangebase.MergeMiddlewares(tr, rm).Wrap(next)
+			retryNextHandler = base.MergeMiddlewares(tr, rm).Wrap(next)
 		}
 
 		queryRangeMiddleware := []base.Middleware{
@@ -617,7 +632,7 @@ func NewLimitedTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logg
 		if cfg.MaxRetries > 0 {
 			tr := base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics)
 			rm := base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace)
-			retryNextHandler = queryrangebase.MergeMiddlewares(tr, rm).Wrap(next)
+			retryNextHandler = base.MergeMiddlewares(tr, rm).Wrap(next)
 		}
 
 		queryRangeMiddleware := []base.Middleware{
@@ -860,7 +875,7 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logge
 		if cfg.MaxRetries > 0 {
 			tr := base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics)
 			rm := base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace)
-			retryNextHandler = queryrangebase.MergeMiddlewares(tr, rm).Wrap(next)
+			retryNextHandler = base.MergeMiddlewares(tr, rm).Wrap(next)
 		}
 
 		queryRangeMiddleware := []base.Middleware{
@@ -989,7 +1004,7 @@ func NewInstantMetricTripperware(
 		if cfg.MaxRetries > 0 {
 			tr := base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics)
 			rm := base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace)
-			retryNextHandler = queryrangebase.MergeMiddlewares(tr, rm).Wrap(next)
+			retryNextHandler = base.MergeMiddlewares(tr, rm).Wrap(next)
 		}
 
 		queryRangeMiddleware := []base.Middleware{
@@ -1028,7 +1043,12 @@ func NewInstantMetricTripperware(
 			queryRangeMiddleware = append(
 				queryRangeMiddleware,
 				base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
-				base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace),
+				base.NewRetryMiddleware(
+					log,
+					cfg.MaxRetries,
+					metrics.RetryMiddlewareMetrics,
+					metricsNamespace,
+				),
 			)
 		}
 
@@ -1039,7 +1059,79 @@ func NewInstantMetricTripperware(
 	}), nil
 }
 
-func NewVolumeTripperware(cfg Config, log log.Logger, limits Limits, schema config.SchemaConfig, merger base.Merger, iqo util.IngesterQueryOptions, c cache.Cache, cacheGenNumLoader base.CacheGenNumberLoader, retentionEnabled bool, metrics *Metrics, metricsNamespace string) (base.Middleware, error) {
+func NewVolumeTripperware(
+	cfg Config,
+	log log.Logger,
+	limits Limits,
+	schema config.SchemaConfig,
+	merger base.Merger,
+	iqo util.IngesterQueryOptions,
+	c cache.Cache,
+	cacheGenNumLoader base.CacheGenNumberLoader,
+	retentionEnabled bool,
+	metrics *Metrics,
+	metricsNamespace string,
+	logTripperware base.Middleware,
+) (base.Middleware, error) {
+	indexTw, err := indexVolumeQueryTripperware(
+		c,
+		cacheGenNumLoader,
+		cfg,
+		iqo,
+		limits,
+		log,
+		merger,
+		metrics,
+		metricsNamespace,
+		retentionEnabled,
+		schema,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	indexTw = volumeFeatureFlagRoundTripper(
+		volumeRangeTripperware(indexTw),
+		limits,
+	)
+
+	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
+		logHandler := logTripperware.Wrap(next)
+
+		return base.HandlerFunc(func(ctx context.Context, req base.Request) (base.Response, error) {
+			r, ok := req.(*logproto.VolumeRequest)
+			if !ok {
+				return nil, httpgrpc.Errorf(
+					http.StatusBadRequest,
+					"invalid request type, expected *logproto.VolumeRequest",
+				)
+			}
+
+			// idxVolumeHandler gets volume from metadata in the index
+			idxVolumeHandler := indexTw.Wrap(next)
+			if !r.AggregatedMetrics || !cfg.AggregatedMetrics {
+				return idxVolumeHandler.Do(ctx, req)
+			}
+
+			return aggMetricsVolumeHandler(ctx, r, limits, logHandler, idxVolumeHandler)
+		})
+	}), nil
+}
+
+// indexVolumeQueryTripperware gets volume from metadata in the index
+func indexVolumeQueryTripperware(
+	c cache.Cache,
+	cacheGenNumLoader base.CacheGenNumberLoader,
+	cfg Config,
+	iqo util.IngesterQueryOptions,
+	limits Limits,
+	log log.Logger,
+	merger base.Merger,
+	metrics *Metrics,
+	metricsNamespace string,
+	retentionEnabled bool,
+	schema config.SchemaConfig,
+) (base.Middleware, error) {
 	// Parallelize the volume requests, so it doesn't send a huge request to a single index-gw (i.e. {app=~".+"} for 30d).
 	// Indices are sharded by 24 hours, so we split the volume request in 24h intervals.
 	limits = WithSplitByLimits(limits, indexStatsQuerySplitInterval)
@@ -1089,11 +1181,108 @@ func NewVolumeTripperware(cfg Config, log log.Logger, limits Limits, schema conf
 	if err != nil {
 		return nil, err
 	}
+	return indexTw, nil
+}
 
-	return volumeFeatureFlagRoundTripper(
-		volumeRangeTripperware(indexTw),
-		limits,
-	), nil
+// aggMetricsVolumeHandler gets aggregated metrics using aggregated metrics and an aggregated metric log query
+func aggMetricsVolumeHandler(
+	ctx context.Context,
+	r *logproto.VolumeRequest,
+	limits Limits,
+	logHandler, idxVolumeHandler base.Handler,
+) (base.Response, error) {
+	matchers, err := syntax.ParseMatchers(r.GetQuery(), true)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+	}
+
+	if err := validateMatchers(ctx, limits, matchers); err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+	}
+
+	aggMetricQry := &aggregatedMetricQuery{
+		matchers:    matchers,
+		start:       r.GetStart(),
+		end:         r.GetEnd(),
+		aggregateBy: strings.Join(r.GetTargetLabels(), ","),
+	}
+
+	qryStr := aggMetricQry.BuildQuery()
+	expr, err := syntax.ParseExpr(qryStr)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+	}
+
+	lokiReq := &LokiInstantRequest{
+		Query:     expr.String(),
+		Limit:     1000,
+		Direction: logproto.BACKWARD,
+		TimeTs:    r.GetEnd().UTC(),
+		Path:      "/loki/api/v1/query",
+		Plan: &plan.QueryPlan{
+			AST: expr,
+		},
+	}
+
+	resp, err := logHandler.Do(ctx, lokiReq)
+	if err != nil {
+		return nil, err
+	}
+
+	re, ok := resp.(*LokiPromResponse)
+	if !ok || re.Response.Status != "success" {
+		return idxVolumeHandler.Do(ctx, r)
+	}
+
+	result := re.Response.Data.Result
+	sortableResult := make([]sortableSampleStream, 0, len(result))
+	resultType := loghttp.ResultTypeVector
+
+  // sort the response to match the index volume respsone
+	for _, stream := range result {
+		if resultType == loghttp.ResultTypeVector && len(stream.Samples) > 1 {
+			resultType = loghttp.ResultTypeMatrix
+		}
+
+		lbls := logproto.FromLabelAdaptersToLabels(stream.Labels)
+		sortableResult = append(sortableResult, sortableSampleStream{
+			name:    lbls.String(),
+			labels:  lbls,
+			samples: stream.Samples,
+		})
+	}
+
+	sort.Slice(sortableResult, func(i, j int) bool {
+		// Sorting by value only helps instant queries so just grab the first value
+		if sortableResult[i].samples[0].Value == sortableResult[j].samples[0].Value {
+			return sortableResult[i].name < sortableResult[j].name
+		}
+		return sortableResult[i].samples[0].Value > sortableResult[j].samples[0].Value
+	})
+
+	respStreams := make([]base.SampleStream, 0, len(sortableResult))
+	for _, r := range sortableResult {
+		respStreams = append(respStreams, base.SampleStream{
+			Labels:  logproto.FromLabelsToLabelAdapters(r.labels),
+			Samples: r.samples,
+		})
+	}
+
+	
+
+	
+
+	return &LokiPromResponse{
+		Response:   &base.PrometheusResponse{
+		Status:  loghttp.QueryStatusSuccess,
+		Data:    base.PrometheusData{
+		ResultType: resultType,
+		Result:     respStreams,
+	},
+		Headers: re.Response.Headers,
+	},
+		Statistics: re.Statistics,
+	}, nil
 }
 
 func volumeRangeTripperware(nextTW base.Middleware) base.Middleware {

@@ -2,7 +2,9 @@ package queryrange
 
 import (
 	"context"
+	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/grafana/dskit/concurrency"
@@ -10,6 +12,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -211,4 +214,76 @@ func toPrometheusData(series map[string][]logproto.LegacySample, aggregateBySeri
 		ResultType: resultType,
 		Result:     result,
 	}
+}
+
+type aggregatedMetricQuery struct {
+	matchers    []*labels.Matcher
+	aggregateBy string
+	start       time.Time
+	end         time.Time
+}
+
+func (a *aggregatedMetricQuery) buildBaseQueryString(
+	idxKey string,
+	idxMatch string,
+	idxVal string,
+	serviceNamePresent bool,
+) string {
+	aggBy := a.aggregateBy
+	if aggBy == "" {
+		if serviceNamePresent {
+			aggBy = push.LabelServiceName
+		} else {
+			aggBy = idxKey
+		}
+	}
+
+	if serviceNamePresent {
+		return fmt.Sprintf(
+			`sum by (%s) (sum_over_time({%s%s"%s"} | logfmt`,
+			aggBy,
+			idxKey,
+			idxMatch,
+			idxVal,
+		)
+	} else {
+		return fmt.Sprintf(
+			`sum by (%s) (sum_over_time({%s=~".+"} | logfmt`,
+			aggBy,
+			push.AggregatedMetricLabel,
+		)
+	}
+}
+
+func (a *aggregatedMetricQuery) BuildQuery() string {
+	var idxKey, idxVal, idxMatch string
+	filters := []string{}
+	serviceNamePresent := false
+
+	for i, matcher := range a.matchers {
+		if i == 0 {
+			idxKey = matcher.Name
+			idxVal = matcher.Value
+			idxMatch = matcher.Type.String()
+		}
+
+		if matcher.Name == push.LabelServiceName {
+			serviceNamePresent = true
+			idxKey = push.AggregatedMetricLabel
+			idxVal = matcher.Value
+			idxMatch = matcher.Type.String()
+		} else {
+			filters = append(filters, matcher.String())
+		}
+	}
+
+	query := a.buildBaseQueryString(idxKey, idxMatch, idxVal, serviceNamePresent)
+
+	if len(filters) > 0 {
+		query = query + " | " + strings.Join(filters, " | ")
+	}
+
+	lookBack := a.end.Sub(a.start).Truncate(time.Second)
+	query = query + fmt.Sprintf(` | unwrap bytes(bytes) | __error__=""[%s]))`, lookBack)
+	return query
 }

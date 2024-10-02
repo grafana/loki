@@ -566,12 +566,13 @@ func NewVolumeInstantQueryWithDefaults(matchers string) *logproto.VolumeRequest 
 }
 
 type VolumeInstantQuery struct {
-	Start        time.Time
-	End          time.Time
-	Query        string
-	Limit        uint32
-	TargetLabels []string
-	AggregateBy  string
+	Start             time.Time
+	End               time.Time
+	Query             string
+	Limit             uint32
+	TargetLabels      []string
+	AggregateBy       string
+	AggregatedMetrics bool
 }
 
 func ParseVolumeInstantQuery(r *http.Request) (*VolumeInstantQuery, error) {
@@ -590,11 +591,14 @@ func ParseVolumeInstantQuery(r *http.Request) (*VolumeInstantQuery, error) {
 		return nil, err
 	}
 
+	aggregatedMetrics := volumeAggregatedMetrics(r)
+
 	svInstantQuery := VolumeInstantQuery{
-		Query:        result.Query,
-		Limit:        result.Limit,
-		TargetLabels: targetLabels(r),
-		AggregateBy:  aggregateBy,
+		Query:             result.Query,
+		Limit:             result.Limit,
+		TargetLabels:      targetLabels(r),
+		AggregateBy:       aggregateBy,
+		AggregatedMetrics: aggregatedMetrics,
 	}
 
 	svInstantQuery.Start, svInstantQuery.End, err = bounds(r)
@@ -610,13 +614,14 @@ func ParseVolumeInstantQuery(r *http.Request) (*VolumeInstantQuery, error) {
 }
 
 type VolumeRangeQuery struct {
-	Start        time.Time
-	End          time.Time
-	Step         time.Duration
-	Query        string
-	Limit        uint32
-	TargetLabels []string
-	AggregateBy  string
+	Start             time.Time
+	End               time.Time
+	Step              time.Duration
+	Query             string
+	Limit             uint32
+	TargetLabels      []string
+	AggregateBy       string
+	AggregatedMetrics bool
 }
 
 func ParseVolumeRangeQuery(r *http.Request) (*VolumeRangeQuery, error) {
@@ -635,14 +640,17 @@ func ParseVolumeRangeQuery(r *http.Request) (*VolumeRangeQuery, error) {
 		return nil, err
 	}
 
+	aggregatedMetrics := volumeAggregatedMetrics(r)
+
 	return &VolumeRangeQuery{
-		Start:        result.Start,
-		End:          result.End,
-		Step:         result.Step,
-		Query:        result.Query,
-		Limit:        result.Limit,
-		TargetLabels: targetLabels(r),
-		AggregateBy:  aggregateBy,
+		Start:             result.Start,
+		End:               result.End,
+		Step:              result.Step,
+		Query:             result.Query,
+		Limit:             result.Limit,
+		TargetLabels:      targetLabels(r),
+		AggregateBy:       aggregateBy,
+		AggregatedMetrics: aggregatedMetrics,
 	}, nil
 }
 
@@ -733,4 +741,9 @@ func volumeAggregateBy(r *http.Request) (string, error) {
 	}
 
 	return "", errors.New("invalid aggregation option")
+}
+
+func volumeAggregatedMetrics(r *http.Request) bool {
+	l := r.Form.Get("aggregatedMetrics")
+	return l == "true"
 }

@@ -405,13 +405,14 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 		}
 		from, through := util.RoundToMilliseconds(req.Start, req.End)
 		return &logproto.VolumeRequest{
-			From:         from,
-			Through:      through,
-			Matchers:     req.Query,
-			Limit:        int32(req.Limit),
-			Step:         0,
-			TargetLabels: req.TargetLabels,
-			AggregateBy:  req.AggregateBy,
+			From:              from,
+			Through:           through,
+			Matchers:          req.Query,
+			Limit:             int32(req.Limit),
+			Step:              0,
+			TargetLabels:      req.TargetLabels,
+			AggregateBy:       req.AggregateBy,
+			AggregatedMetrics: req.AggregatedMetrics,
 			CachingOptions: queryrangebase.CachingOptions{
 				Disabled: disableCacheReq,
 			},
@@ -423,13 +424,14 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 		}
 		from, through := util.RoundToMilliseconds(req.Start, req.End)
 		return &logproto.VolumeRequest{
-			From:         from,
-			Through:      through,
-			Matchers:     req.Query,
-			Limit:        int32(req.Limit),
-			Step:         req.Step.Milliseconds(),
-			TargetLabels: req.TargetLabels,
-			AggregateBy:  req.AggregateBy,
+			From:              from,
+			Through:           through,
+			Matchers:          req.Query,
+			Limit:             int32(req.Limit),
+			Step:              req.Step.Milliseconds(),
+			TargetLabels:      req.TargetLabels,
+			AggregateBy:       req.AggregateBy,
+			AggregatedMetrics: req.AggregatedMetrics,
 			CachingOptions: queryrangebase.CachingOptions{
 				Disabled: disableCacheReq,
 			},

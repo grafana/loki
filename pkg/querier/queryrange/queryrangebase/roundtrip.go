@@ -41,6 +41,7 @@ type Config struct {
 	MaxRetries           int                    `yaml:"max_retries"`
 	ShardedQueries       bool                   `yaml:"parallelise_shardable_queries"`
 	ShardAggregations    flagext.StringSliceCSV `yaml:"shard_aggregations"`
+	AggregatedMetrics    bool                   `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.

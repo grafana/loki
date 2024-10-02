@@ -292,13 +292,13 @@ func Test_QueryResponseUnmarshal(t *testing.T) {
 }
 
 func Test_ParseVolumeInstantQuery(t *testing.T) {
+	url := `?query={foo="bar"}` +
+		`&start=2017-06-10T21:42:24.760738998Z` +
+		`&end=2017-07-10T21:42:24.760738998Z` +
+		`&limit=1000` +
+		`&targetLabels=foo,bar`
 	req := &http.Request{
-		URL: mustParseURL(`?query={foo="bar"}` +
-			`&start=2017-06-10T21:42:24.760738998Z` +
-			`&end=2017-07-10T21:42:24.760738998Z` +
-			`&limit=1000` +
-			`&targetLabels=foo,bar`,
-		),
+		URL: mustParseURL(url),
 	}
 
 	err := req.ParseForm()
@@ -318,7 +318,7 @@ func Test_ParseVolumeInstantQuery(t *testing.T) {
 	require.Equal(t, expected, actual)
 
 	t.Run("aggregate by", func(t *testing.T) {
-		url := `?query={foo="bar"}` +
+		url = `?query={foo="bar"}` +
 			`&start=2017-06-10T21:42:24.760738998Z` +
 			`&end=2017-07-10T21:42:24.760738998Z` +
 			`&limit=1000` +
@@ -347,17 +347,47 @@ func Test_ParseVolumeInstantQuery(t *testing.T) {
 			require.EqualError(t, err, "invalid aggregation option")
 		})
 	})
+
+	t.Run("aggregated metrics", func(t *testing.T) {
+		req := &http.Request{URL: mustParseURL(url)}
+
+		err := req.ParseForm()
+		require.NoError(t, err)
+
+		actual, err = ParseVolumeInstantQuery(req)
+		require.NoError(t, err)
+
+		require.False(t, actual.AggregatedMetrics)
+
+		req = &http.Request{URL: mustParseURL(url + `&aggregatedMetrics=true`)}
+		err = req.ParseForm()
+		require.NoError(t, err)
+
+		actual, err = ParseVolumeInstantQuery(req)
+		require.NoError(t, err)
+
+		require.True(t, actual.AggregatedMetrics)
+
+		req = &http.Request{URL: mustParseURL(url + `&aggregatedMetrics=false`)}
+		err = req.ParseForm()
+		require.NoError(t, err)
+
+		actual, err = ParseVolumeInstantQuery(req)
+		require.NoError(t, err)
+
+		require.False(t, actual.AggregatedMetrics)
+	})
 }
 
 func Test_ParseVolumeRangeQuery(t *testing.T) {
+	url := `?query={foo="bar"}` +
+		`&start=2017-06-10T21:42:24.760738998Z` +
+		`&end=2017-07-10T21:42:24.760738998Z` +
+		`&limit=1000` +
+		`&step=3600` +
+		`&targetLabels=foo,bar`
 	req := &http.Request{
-		URL: mustParseURL(`?query={foo="bar"}` +
-			`&start=2017-06-10T21:42:24.760738998Z` +
-			`&end=2017-07-10T21:42:24.760738998Z` +
-			`&limit=1000` +
-			`&step=3600` +
-			`&targetLabels=foo,bar`,
-		),
+		URL: mustParseURL(url),
 	}
 
 	err := req.ParseForm()
@@ -378,13 +408,6 @@ func Test_ParseVolumeRangeQuery(t *testing.T) {
 	require.Equal(t, expected, actual)
 
 	t.Run("aggregate by", func(t *testing.T) {
-		url := `?query={foo="bar"}` +
-			`&start=2017-06-10T21:42:24.760738998Z` +
-			`&end=2017-07-10T21:42:24.760738998Z` +
-			`&limit=1000` +
-			`&step=3600` +
-			`&targetLabels=foo,bar`
-
 		t.Run("labels", func(t *testing.T) {
 			req := &http.Request{URL: mustParseURL(url + `&aggregateBy=labels`)}
 
@@ -405,6 +428,36 @@ func Test_ParseVolumeRangeQuery(t *testing.T) {
 
 			_, err = ParseVolumeRangeQuery(req)
 			require.EqualError(t, err, "invalid aggregation option")
+		})
+
+		t.Run("aggregated metrics", func(t *testing.T) {
+			req := &http.Request{URL: mustParseURL(url)}
+
+			err := req.ParseForm()
+			require.NoError(t, err)
+
+			actual, err = ParseVolumeRangeQuery(req)
+			require.NoError(t, err)
+
+			require.False(t, actual.AggregatedMetrics)
+
+			req = &http.Request{URL: mustParseURL(url + `&aggregatedMetrics=true`)}
+			err = req.ParseForm()
+			require.NoError(t, err)
+
+			actual, err = ParseVolumeRangeQuery(req)
+			require.NoError(t, err)
+
+			require.True(t, actual.AggregatedMetrics)
+
+			req = &http.Request{URL: mustParseURL(url + `&aggregatedMetrics=false`)}
+			err = req.ParseForm()
+			require.NoError(t, err)
+
+			actual, err = ParseVolumeRangeQuery(req)
+			require.NoError(t, err)
+
+			require.False(t, actual.AggregatedMetrics)
 		})
 	})
 }

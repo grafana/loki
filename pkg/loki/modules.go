@@ -1007,6 +1007,12 @@ func (i ingesterQueryOptions) QueryIngestersWithin() time.Duration {
 func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
+	if t.Cfg.Pattern.Enabled {
+		t.Cfg.QueryRange.AggregatedMetrics = t.Cfg.Pattern.MetricAggregation.Enabled
+	} else {
+		t.Cfg.QueryRange.AggregatedMetrics = false
+	}
+
 	middleware, stopper, err := queryrange.NewMiddleware(
 		t.Cfg.QueryRange,
 		t.Cfg.Querier.Engine,

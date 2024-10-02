@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
@@ -20,6 +21,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -809,6 +811,251 @@ func TestVolumeTripperware(t *testing.T) {
 		require.Equal(t, true, ok)
 		require.Equal(t, "success", res.Response.Status)
 		require.Equal(t, expected, res.Response.Data)
+	})
+}
+
+func TestAggregateMetricVolumeTripperware(t *testing.T) {
+	logMiddleware := func(promResponse *LokiPromResponse) base.Middleware {
+		return base.MiddlewareFunc(func(next base.Handler) base.Handler {
+			return base.HandlerFunc(
+				func(_ context.Context, _ base.Request) (base.Response, error) {
+					return promResponse, nil
+				})
+		})
+	}
+
+	now := model.Now()
+	buildRequest := func(aggMetrics bool) *logproto.VolumeRequest {
+		return &logproto.VolumeRequest{
+			From:              now.Add(-5 * time.Hour),
+			Through:           now,
+			Matchers:          `{service_name=~".+"}`,
+			AggregateBy:       seriesvolume.DefaultAggregateBy,
+			AggregatedMetrics: aggMetrics,
+		}
+	}
+
+	mockDownstreamIdxVolumeHandler := base.HandlerFunc(
+		func(ctx context.Context, request base.Request) (base.Response, error) {
+			return &VolumeResponse{
+				Response: &logproto.VolumeResponse{
+					Volumes: []logproto.Volume{
+						{
+							Name:   `{service_name="bar"}`,
+							Volume: 1234,
+						},
+					},
+					Limit: 10,
+				},
+			}, nil
+		})
+
+	setup := func(lokiPromResponse *LokiPromResponse, testConfig Config) base.Middleware {
+		limits := fakeLimits{
+			maxSeries:               math.MaxInt32,
+			maxQueryParallelism:     1,
+			tsdbMaxQueryParallelism: 1,
+			maxQueryBytesRead:       1000,
+			maxQuerierBytesRead:     100,
+			volumeEnabled:           true,
+		}
+
+		logger := log.NewNopLogger()
+		volumeCache, err := newResultsCacheFromConfig(
+			testConfig.VolumeCacheConfig.ResultsCacheConfig,
+			nil,
+			logger,
+			stats.VolumeResultCache,
+		)
+		require.NoError(t, err)
+
+		metrics := NewMetrics(nil, constants.Loki)
+
+		middleware, err := NewVolumeTripperware(
+			testConfig,
+			logger,
+			limits,
+			config.SchemaConfig{Configs: testSchemas},
+			DefaultCodec,
+			nil,
+			volumeCache,
+			nil,
+			true,
+			metrics,
+			constants.Loki,
+			logMiddleware(lokiPromResponse),
+		)
+		require.NoError(t, err)
+
+		return middleware
+	}
+
+	t.Run("returns volume from an aggregated metrics query", func(t *testing.T) {
+		lokiPromResponse := &LokiPromResponse{
+			Response: &base.PrometheusResponse{
+				Status: "success",
+				Data: base.PrometheusData{
+					ResultType: "vector",
+					Result: []base.SampleStream{
+						{
+							Labels: []push.LabelAdapter{
+								{
+									Name:  "service_name",
+									Value: "foo",
+								},
+							},
+							Samples: []logproto.LegacySample{
+								{Value: 82931, TimestampMs: 1728080816871},
+							},
+						},
+					},
+				},
+			},
+		}
+		testConfig.AggregatedMetrics = true
+		middleware := setup(lokiPromResponse, testConfig)
+
+		ctx := user.InjectOrgID(context.Background(), "1")
+		resp, err := middleware.Wrap(mockDownstreamIdxVolumeHandler).Do(ctx, buildRequest(true))
+		require.NoError(t, err)
+
+		lokiResponse, ok := resp.(*LokiPromResponse)
+		require.True(t, ok)
+		result := lokiResponse.Response.Data.Result
+		require.Equal(t, 1, len(result))
+
+		require.Equal(t, "service_name", result[0].Labels[0].Name)
+		require.Equal(t, "foo", result[0].Labels[0].Value)
+		require.Equal(t, float64(82931), result[0].Samples[0].Value)
+	})
+
+	t.Run("sorts downstream prometheus response by volume", func(t *testing.T) {
+		lokiPromResponse := &LokiPromResponse{
+			Response: &base.PrometheusResponse{
+				Status: "success",
+				Data: base.PrometheusData{
+					ResultType: "vector",
+					Result: []base.SampleStream{
+						{
+							Labels: []push.LabelAdapter{
+								{
+									Name:  "service_name",
+									Value: "big",
+								},
+							},
+							Samples: []logproto.LegacySample{
+								{Value: 987600, TimestampMs: 1728080816871},
+							},
+						},
+						{
+							Labels: []push.LabelAdapter{
+								{
+									Name:  "service_name",
+									Value: "small",
+								},
+							},
+							Samples: []logproto.LegacySample{
+								{Value: 1234, TimestampMs: 1728080816871},
+							},
+						},
+					},
+				},
+			},
+		}
+		testConfig.AggregatedMetrics = true
+		middleware := setup(lokiPromResponse, testConfig)
+
+		ctx := user.InjectOrgID(context.Background(), "1")
+		resp, err := middleware.Wrap(mockDownstreamIdxVolumeHandler).Do(ctx, buildRequest(true))
+		require.NoError(t, err)
+
+		lokiResponse, ok := resp.(*LokiPromResponse)
+		require.True(t, ok)
+		result := lokiResponse.Response.Data.Result
+		require.Equal(t, 2, len(result))
+
+		require.Equal(t, "service_name", result[0].Labels[0].Name)
+		require.Equal(t, "big", result[0].Labels[0].Value)
+		require.Equal(t, "small", result[1].Labels[0].Value)
+	})
+
+	t.Run("uses index tripperware if aggregated metrics are disabled", func(t *testing.T) {
+		lokiPromResponse := &LokiPromResponse{
+			Response: &base.PrometheusResponse{
+				Status: "success",
+				Data: base.PrometheusData{
+					ResultType: "vector",
+					Result: []base.SampleStream{
+						{
+							Labels: []push.LabelAdapter{
+								{
+									Name:  "service_name",
+									Value: "foo",
+								},
+							},
+							Samples: []logproto.LegacySample{
+								{Value: 82931, TimestampMs: 1728080816871},
+							},
+						},
+					},
+				},
+			},
+		}
+		testConfig.AggregatedMetrics = false
+		middleware := setup(lokiPromResponse, testConfig)
+
+		ctx := user.InjectOrgID(context.Background(), "1")
+		resp, err := middleware.Wrap(mockDownstreamIdxVolumeHandler).Do(ctx, buildRequest(true))
+		require.NoError(t, err)
+
+		lokiResponse, ok := resp.(*LokiPromResponse)
+		require.True(t, ok)
+		result := lokiResponse.Response.Data.Result
+		require.Equal(t, 1, len(result))
+
+		require.Equal(t, "service_name", result[0].Labels[0].Name)
+		require.Equal(t, "bar", result[0].Labels[0].Value)
+		require.Equal(t, float64(1234), result[0].Samples[0].Value)
+	})
+
+	t.Run("uses index tripperware if aggregated metrics are not requested", func(t *testing.T) {
+		lokiPromResponse := &LokiPromResponse{
+			Response: &base.PrometheusResponse{
+				Status: "success",
+				Data: base.PrometheusData{
+					ResultType: "vector",
+					Result: []base.SampleStream{
+						{
+							Labels: []push.LabelAdapter{
+								{
+									Name:  "service_name",
+									Value: "foo",
+								},
+							},
+							Samples: []logproto.LegacySample{
+								{Value: 82931, TimestampMs: 1728080816871},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		testConfig.AggregatedMetrics = true
+		middleware := setup(lokiPromResponse, testConfig)
+
+		ctx := user.InjectOrgID(context.Background(), "1")
+		resp, err := middleware.Wrap(mockDownstreamIdxVolumeHandler).Do(ctx, buildRequest(false))
+		require.NoError(t, err)
+
+		lokiResponse, ok := resp.(*LokiPromResponse)
+		require.True(t, ok)
+		result := lokiResponse.Response.Data.Result
+		require.Equal(t, 1, len(result))
+
+		require.Equal(t, "service_name", result[0].Labels[0].Name)
+		require.Equal(t, "bar", result[0].Labels[0].Value)
+		require.Equal(t, float64(1234), result[0].Samples[0].Value)
 	})
 }
 
