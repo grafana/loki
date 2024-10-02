@@ -552,7 +552,7 @@ func (m *KV) fastJoinMembersOnStartup(ctx context.Context) {
 	for toJoin > 0 && len(nodes) > 0 && ctx.Err() == nil {
 		reached, err := m.memberlist.Join(nodes[0:1]) // Try to join single node only.
 		if err != nil {
-			level.Debug(m.logger).Log("msg", "fast-joining node failed", "node", nodes[0], "err", err)
+			level.Info(m.logger).Log("msg", "fast-joining node failed", "node", nodes[0], "err", err)
 		}
 
 		totalJoined += reached
@@ -1018,14 +1018,16 @@ func (m *KV) trySingleCas(key string, codec codec.Codec, f func(in interface{}) 
 	}
 
 	// Don't even try
-	r, ok := out.(Mergeable)
-	if !ok || r == nil {
+	incomingValue, ok := out.(Mergeable)
+	if !ok || incomingValue == nil {
 		return nil, 0, retry, fmt.Errorf("invalid type: %T, expected Mergeable", out)
 	}
 
 	// To support detection of removed items from value, we will only allow CAS operation to
 	// succeed if version hasn't changed, i.e. state hasn't changed since running 'f'.
-	change, newver, err := m.mergeValueForKey(key, r, ver, codec)
+	// Supplied function may have kept a reference to the returned "incoming value".
+	// If KV store will keep this value as well, it needs to make a clone.
+	change, newver, err := m.mergeValueForKey(key, incomingValue, true, ver, codec)
 	if err == errVersionMismatch {
 		return nil, 0, retry, err
 	}
@@ -1379,14 +1381,15 @@ func (m *KV) mergeBytesValueForKey(key string, incomingData []byte, codec codec.
 		return nil, 0, fmt.Errorf("expected Mergeable, got: %T", decodedValue)
 	}
 
-	return m.mergeValueForKey(key, incomingValue, 0, codec)
+	// No need to clone this "incomingValue", since we have just decoded it from bytes, and won't be using it.
+	return m.mergeValueForKey(key, incomingValue, false, 0, codec)
 }
 
 // Merges incoming value with value we have in our store. Returns "a change" that can be sent to other
 // cluster members to update their state, and new version of the value.
 // If CAS version is specified, then merging will fail if state has changed already, and errVersionMismatch is reported.
 // If no modification occurred, new version is 0.
-func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, casVersion uint, codec codec.Codec) (Mergeable, uint, error) {
+func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, incomingValueRequiresClone bool, casVersion uint, codec codec.Codec) (Mergeable, uint, error) {
 	m.storeMu.Lock()
 	defer m.storeMu.Unlock()
 
@@ -1398,7 +1401,7 @@ func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, casVersion ui
 	if casVersion > 0 && curr.Version != casVersion {
 		return nil, 0, errVersionMismatch
 	}
-	result, change, err := computeNewValue(incomingValue, curr.value, casVersion > 0)
+	result, change, err := computeNewValue(incomingValue, incomingValueRequiresClone, curr.value, casVersion > 0)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1441,8 +1444,16 @@ func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, casVersion ui
 }
 
 // returns [result, change, error]
-func computeNewValue(incoming Mergeable, oldVal Mergeable, cas bool) (Mergeable, Mergeable, error) {
+func computeNewValue(incoming Mergeable, incomingValueRequiresClone bool, oldVal Mergeable, cas bool) (Mergeable, Mergeable, error) {
 	if oldVal == nil {
+		// It's OK to return the same value twice (once as result, once as change), because "change" will be cloned
+		// in mergeValueForKey if needed.
+
+		if incomingValueRequiresClone {
+			clone := incoming.Clone()
+			return clone, clone, nil
+		}
+
 		return incoming, incoming, nil
 	}
 

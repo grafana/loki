@@ -39,13 +39,13 @@ var (
 
 type Schema struct {
 	version  Version
-	encoding compression.Encoding
+	encoding compression.Codec
 }
 
 func NewSchema() Schema {
 	return Schema{
 		version:  CurrentSchemaVersion,
-		encoding: compression.EncNone,
+		encoding: compression.None,
 	}
 }
 
@@ -105,8 +105,8 @@ func (s *Schema) Decode(dec *encoding.Decbuf) error {
 		return errors.Errorf("invalid version. expected %d, got %d", 3, s.version)
 	}
 
-	s.encoding = compression.Encoding(dec.Byte())
-	if _, err := compression.ParseEncoding(s.encoding.String()); err != nil {
+	s.encoding = compression.Codec(dec.Byte())
+	if _, err := compression.ParseCodec(s.encoding.String()); err != nil {
 		return errors.Wrap(err, "parsing encoding")
 	}
 

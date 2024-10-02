@@ -17,7 +17,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.30.4
 	github.com/aliyun/aliyun-oss-go-sdk v2.2.10+incompatible
 	github.com/aws/aws-sdk-go v1.54.19
-	github.com/baidubce/bce-sdk-go v0.9.189
+	github.com/baidubce/bce-sdk-go v0.9.192
 	github.com/bmatcuk/doublestar v1.3.4
 	github.com/c2h5oh/datasize v0.0.0-20231215233829-aa82cc1e6500
 	github.com/cespare/xxhash v1.1.0
@@ -32,7 +32,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
 	github.com/fatih/color v1.16.0
-	github.com/felixge/fgprof v0.9.4
+	github.com/felixge/fgprof v0.9.5
 	github.com/fluent/fluent-bit-go v0.0.0-20230731091245-a7a013e2473c
 	github.com/fsouza/fake-gcs-server v1.7.0
 	github.com/go-kit/log v0.2.1
@@ -49,7 +49,7 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
-	github.com/grafana/dskit v0.0.0-20240905221822-931a021fb06b
+	github.com/grafana/dskit v0.0.0-20240930165212-f52de24af9bc
 	github.com/grafana/go-gelf/v2 v2.0.1
 	github.com/grafana/gomemcache v0.0.0-20240229205252-cd6a66d6fb56
 	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
@@ -96,10 +96,10 @@ require (
 	go.etcd.io/bbolt v1.3.10
 	go.uber.org/atomic v1.11.0
 	go.uber.org/goleak v1.3.0
-	golang.org/x/crypto v0.26.0
-	golang.org/x/net v0.28.0
+	golang.org/x/crypto v0.27.0
+	golang.org/x/net v0.29.0
 	golang.org/x/sync v0.8.0
-	golang.org/x/sys v0.24.0
+	golang.org/x/sys v0.25.0
 	golang.org/x/time v0.6.0
 	google.golang.org/api v0.193.0
 	google.golang.org/grpc v1.65.0
@@ -114,7 +114,7 @@ require (
 	github.com/DataDog/sketches-go v1.4.6
 	github.com/DmitriyVTitov/size v1.5.0
 	github.com/IBM/go-sdk-core/v5 v5.17.5
-	github.com/IBM/ibm-cos-sdk-go v1.11.0
+	github.com/IBM/ibm-cos-sdk-go v1.11.1
 	github.com/axiomhq/hyperloglog v0.0.0-20240507144631-af9851f82b27
 	github.com/buger/jsonparser v1.1.1
 	github.com/coder/quartz v0.1.0
@@ -149,7 +149,7 @@ require (
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 	golang.org/x/exp v0.0.0-20240325151524-a685a6edb6d8
 	golang.org/x/oauth2 v0.22.0
-	golang.org/x/text v0.17.0
+	golang.org/x/text v0.18.0
 	google.golang.org/protobuf v1.34.2
 	gotest.tools v2.2.0+incompatible
 	k8s.io/apimachinery v0.29.3
@@ -356,7 +356,7 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.21.0 // indirect
 	golang.org/x/mod v0.19.0 // indirect
-	golang.org/x/term v0.23.0 // indirect
+	golang.org/x/term v0.24.0 // indirect
 	golang.org/x/tools v0.23.0 // indirect
 	google.golang.org/genproto v0.0.0-20240820151423-278611b39280 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240820151423-278611b39280 // indirect

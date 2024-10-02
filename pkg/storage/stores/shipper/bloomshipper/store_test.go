@@ -116,7 +116,7 @@ func createBlockInStorage(t *testing.T, store *BloomStore, tenant string, start 
 	err := blockWriter.Init()
 	require.NoError(t, err)
 
-	enc := compression.EncGZIP
+	enc := compression.GZIP
 	err = v1.TarCompress(enc, fp, v1.NewDirectoryBlockReader(tmpDir))
 	require.NoError(t, err)
 
@@ -130,7 +130,7 @@ func createBlockInStorage(t *testing.T, store *BloomStore, tenant string, start 
 				StartTimestamp: start,
 				EndTimestamp:   start.Add(12 * time.Hour),
 			},
-			Encoding: enc,
+			Codec: enc,
 		},
 		Data: fp,
 	}

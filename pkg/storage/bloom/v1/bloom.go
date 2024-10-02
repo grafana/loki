@@ -316,7 +316,7 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, alloc mempool.Allocator, 
 		return nil, false, errors.Wrap(err, "seeking to bloom page")
 	}
 
-	if b.schema.encoding == compression.EncNone {
+	if b.schema.encoding == compression.None {
 		res, err = LazyDecodeBloomPageNoCompression(r, alloc, page)
 	} else {
 		res, err = LazyDecodeBloomPage(r, alloc, b.schema.DecompressorPool(), page)

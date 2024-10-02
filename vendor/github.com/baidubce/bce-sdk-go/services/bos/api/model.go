@@ -394,6 +394,7 @@ type EndMessage struct {
 type FetchObjectArgs struct {
 	FetchMode    string
 	StorageClass string
+	FetchCallBackAddress string
 }
 
 // FetchObjectResult defines the result json structure for the fetch object api.

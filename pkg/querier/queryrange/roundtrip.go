@@ -1214,7 +1214,7 @@ func sharedIndexTripperware(
 // NewDetectedFieldsTripperware creates a new frontend tripperware responsible for handling detected field requests, which are basically log filter requests with a bit more processing.
 func NewDetectedFieldsTripperware(
 	limits Limits,
-	schema config.SchemaConfig,
+	_ config.SchemaConfig,
 	limitedTripperware base.Middleware,
 	logTripperware base.Middleware,
 ) (base.Middleware, error) {
@@ -1222,7 +1222,6 @@ func NewDetectedFieldsTripperware(
 		limitedHandler := limitedTripperware.Wrap(next)
 		logHandler := logTripperware.Wrap(next)
 
-		detectedFieldsHandler := NewDetectedFieldsHandler(limitedHandler, logHandler, limits)
-		return NewLimitedRoundTripper(next, limits, schema.Configs, detectedFieldsHandler)
+		return NewDetectedFieldsHandler(limitedHandler, logHandler, limits)
 	}), nil
 }
