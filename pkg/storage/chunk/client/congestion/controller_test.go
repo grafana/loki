@@ -267,7 +267,7 @@ func (m *mockObjectClient) ObjectExists(context.Context, string) (bool, error) {
 	panic("not implemented")
 }
 
-func (m *mockObjectClient) ObjectExistsWithSize(context.Context, string) (bool, int64, error) {
+func (m *mockObjectClient) GetAttributes(context.Context, string) (client.ObjectAttributes, error) {
 	panic("not implemented")
 }
 

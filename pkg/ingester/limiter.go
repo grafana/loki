@@ -31,6 +31,7 @@ type Limits interface {
 	MaxGlobalStreamsPerUser(userID string) int
 	PerStreamRateLimit(userID string) validation.RateLimit
 	ShardStreams(userID string) shardstreams.Config
+	IngestionPartitionsTenantShardSize(userID string) int
 }
 
 // Limiter implements primitives to get the maximum number of streams
