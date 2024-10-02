@@ -58,6 +58,7 @@ func (v *CountMinSketchVector) Merge(right *CountMinSketchVector) (*CountMinSket
 	for _, r := range right.Metrics {
 		if _, duplicate := processed[r.String()]; !duplicate {
 			processed[r.String()] = struct{}{}
+			v.Metrics = append(v.Metrics, r)
 		}
 	}
 
