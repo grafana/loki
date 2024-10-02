@@ -301,6 +301,25 @@ func (p *PostPolicy) SetUserMetadata(key, value string) error {
 	return nil
 }
 
+// SetUserMetadataStartsWith - Set how an user metadata should starts with.
+// Can be retrieved through a HEAD request or an event.
+func (p *PostPolicy) SetUserMetadataStartsWith(key, value string) error {
+	if strings.TrimSpace(key) == "" || key == "" {
+		return errInvalidArgument("Key is empty")
+	}
+	headerName := fmt.Sprintf("x-amz-meta-%s", key)
+	policyCond := policyCondition{
+		matchType: "starts-with",
+		condition: fmt.Sprintf("$%s", headerName),
+		value:     value,
+	}
+	if err := p.addNewPolicy(policyCond); err != nil {
+		return err
+	}
+	p.formData[headerName] = value
+	return nil
+}
+
 // SetChecksum sets the checksum of the request.
 func (p *PostPolicy) SetChecksum(c Checksum) {
 	if c.IsSet() {
