@@ -219,6 +219,13 @@ func RecordRangeAndInstantQueryMetrics(
 		logValues = append(logValues, "disable_pipeline_wrappers", "false")
 	}
 
+	// Query is eligible for bloom filtering
+	if hasMatchEqualLabelFilterBeforeParser(p) {
+		logValues = append(logValues, "has_labelfilter_before_parser", "true")
+	} else {
+		logValues = append(logValues, "has_labelfilter_before_parser", "false")
+	}
+
 	level.Info(logger).Log(
 		logValues...,
 	)
@@ -240,6 +247,19 @@ func RecordRangeAndInstantQueryMetrics(
 	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
 
 	recordUsageStats(queryType, stats)
+}
+
+func hasMatchEqualLabelFilterBeforeParser(p Params) bool {
+	filters := syntax.ExtractLabelFiltersBeforeParser(p.GetExpression())
+	if len(filters) == 0 {
+		return false
+	}
+	for _, f := range filters {
+		if !syntax.IsMatchEqualFilterer(f.LabelFilterer) {
+			return false
+		}
+	}
+	return true
 }
 
 func RecordLabelQueryMetrics(

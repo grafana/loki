@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "production/helm/**"
+      - ".github/workflows/helm-ci.yml"
 
 env:
   CT_CONFIGFILE: production/helm/ct.yaml
@@ -37,7 +38,7 @@ jobs:
           VALIDATE_YAML: false
           VALIDATE_GO: false
           DEFAULT_BRANCH: main
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
   call-test:
     name: Test Helm Chart
     runs-on: ubuntu-latest

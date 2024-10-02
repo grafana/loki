@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	gokitlog "github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv/consul"
 	"github.com/grafana/dskit/ring"
@@ -28,8 +27,8 @@ func TestPreparePartitionDownscaleHandler(t *testing.T) {
 	storage, err := objstore.NewTestStorage(t)
 	require.NoError(t, err)
 	ing, err := New(cfg,
-		NewConsumerFactory(NewTestMetastore(), storage, cfg.FlushInterval, cfg.FlushSize, gokitlog.NewNopLogger(), prometheus.NewRegistry()),
-		gokitlog.NewNopLogger(), "test", prometheus.NewRegistry())
+		NewConsumerFactory(NewTestMetastore(), storage, cfg.FlushInterval, cfg.FlushSize, log.NewNopLogger(), prometheus.NewRegistry()),
+		log.NewNopLogger(), "test", prometheus.NewRegistry())
 	require.NoError(t, err)
 	err = services.StartAndAwaitRunning(context.Background(), ing)
 	require.NoError(t, err)
@@ -97,53 +96,6 @@ func defaultIngesterTestConfig(t testing.TB) Config {
 	cfg.LifecyclerConfig.MinReadyDuration = 0
 
 	return cfg
-}
-
-func TestExtractIngesterPartitionID(t *testing.T) {
-	tests := []struct {
-		name       string
-		ingesterID string
-		want       int32
-		wantErr    bool
-	}{
-		{
-			name:       "Valid ingester ID",
-			ingesterID: "ingester-5",
-			want:       5,
-			wantErr:    false,
-		},
-		{
-			name:       "Local ingester ID",
-			ingesterID: "ingester-local",
-			want:       0,
-			wantErr:    false,
-		},
-		{
-			name:       "Invalid ingester ID format",
-			ingesterID: "invalid-format",
-			want:       0,
-			wantErr:    true,
-		},
-		{
-			name:       "Invalid sequence number",
-			ingesterID: "ingester-abc",
-			want:       0,
-			wantErr:    true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := extractIngesterPartitionID(tt.ingesterID)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("extractIngesterPartitionID() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if got != tt.want {
-				t.Errorf("extractIngesterPartitionID() = %v, want %v", got, tt.want)
-			}
-		})
-	}
 }
 
 // TestMetastore is a simple in-memory metastore for testing
