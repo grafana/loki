@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -752,7 +753,7 @@ func dummyChunkWithFormat(t testing.TB, now model.Time, metric labels.Labels, fo
 	samples := 1
 	chunkStart := now.Add(-time.Hour)
 
-	chk := chunkenc.NewMemChunk(format, chunkenc.EncGZIP, headfmt, 256*1024, 0)
+	chk := chunkenc.NewMemChunk(format, compression.GZIP, headfmt, 256*1024, 0)
 	for i := 0; i < samples; i++ {
 		ts := time.Duration(i) * 15 * time.Second
 		dup, err := chk.Append(&logproto.Entry{Timestamp: chunkStart.Time().Add(ts), Line: fmt.Sprintf("line %d", i)})

@@ -11,7 +11,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
-	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -30,7 +29,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	logutil "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 const (
@@ -338,14 +336,11 @@ func NewMiddleware(
 	}
 
 	detectedFieldsTripperware, err := NewDetectedFieldsTripperware(
-		cfg,
-		log,
 		limits,
 		schema,
-		codec,
-		iqo,
-		metrics,
-		metricsNamespace)
+		limitedTripperware,
+		logFilterTripperware,
+	)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1357,88 +1352,15 @@ func sharedIndexTripperware(
 
 // NewDetectedFieldsTripperware creates a new frontend tripperware responsible for handling detected field requests, which are basically log filter requests with a bit more processing.
 func NewDetectedFieldsTripperware(
-	cfg Config,
-	log log.Logger,
 	limits Limits,
-	schema config.SchemaConfig,
-	merger base.Merger,
-	iqo util.IngesterQueryOptions,
-	metrics *Metrics,
-	metricsNamespace string,
+	_ config.SchemaConfig,
+	limitedTripperware base.Middleware,
+	logTripperware base.Middleware,
 ) (base.Middleware, error) {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
-		splitter := newDefaultSplitter(limits, iqo)
+		limitedHandler := limitedTripperware.Wrap(next)
+		logHandler := logTripperware.Wrap(next)
 
-		queryRangeMiddleware := []base.Middleware{
-			StatsCollectorMiddleware(),
-			NewLimitsMiddleware(limits),
-			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitter, metrics.SplitByMetrics),
-		}
-
-		if cfg.MaxRetries > 0 {
-			queryRangeMiddleware = append(
-				queryRangeMiddleware, base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
-				base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace),
-			)
-		}
-
-		limitedRT := NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
-		return NewSketchRemovingHandler(limitedRT, limits, splitter)
+		return NewDetectedFieldsHandler(limitedHandler, logHandler, limits)
 	}), nil
-}
-
-// NewSketchRemovingHandler returns a handler that removes sketches from detected fields responses before
-// returning them to the user. We only need sketches internally for calculating cardinality for split queries.
-// We're already doing this sanitization in the merge code, so this handler catches non-split queries
-// to make sure their sketches are also removed.
-func NewSketchRemovingHandler(next queryrangebase.Handler, limits Limits, splitter splitter) queryrangebase.Handler {
-	return queryrangebase.HandlerFunc(
-		func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-			res, err := next.Do(ctx, req)
-			if err != nil {
-				return nil, err
-			}
-
-			resp, ok := res.(*DetectedFieldsResponse)
-			if !ok {
-				return res, nil
-			}
-
-			tenantIDs, err := tenant.TenantIDs(ctx)
-			if err != nil {
-				return resp, nil
-			}
-
-			interval := validation.SmallestPositiveNonZeroDurationPerTenant(
-				tenantIDs,
-				limits.QuerySplitDuration,
-			)
-
-			// sketeches get cleaned up in the merge code, so we only need catch the cases
-			// where no splitting happened
-			if interval == 0 {
-				return removeSketches(resp), nil
-			}
-
-			intervals, err := splitter.split(ctx, time.Now().UTC(), tenantIDs, req, interval)
-			if err != nil || len(intervals) < 2 {
-				return removeSketches(resp), nil
-			}
-
-			// must have been splits, so sketches are already removed
-			return resp, nil
-		},
-	)
-}
-
-// removeSketches removes sketches and field limit from a detected fields response.
-// this is only needed for queries that were not split.
-func removeSketches(resp *DetectedFieldsResponse) *DetectedFieldsResponse {
-	for i := range resp.Response.Fields {
-		resp.Response.Fields[i].Sketch = nil
-	}
-
-	resp.Response.FieldLimit = 0
-	return resp
 }
