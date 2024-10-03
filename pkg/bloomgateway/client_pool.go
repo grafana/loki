@@ -3,7 +3,6 @@ package bloomgateway
 import (
 	"context"
 	"flag"
-	"sort"
 	"sync"
 	"time"
 
