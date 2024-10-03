@@ -310,7 +310,7 @@ func (p *Reader) processNextFetchesUntilTargetOrMaxLagHonored(ctx context.Contex
 		}
 		if currLag <= targetLag {
 			level.Info(logger).Log(
-				"msg", "partition reader consumed partition and current lag is lower than configured target consumer lag",
+				"msg", "partition reader consumed partition and current lag is lower or equal to configured target consumer lag",
 				"last_consumed_offset", p.committer.lastCommittedOffset,
 				"current_lag", currLag,
 			)
