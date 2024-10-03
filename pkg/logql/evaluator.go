@@ -282,15 +282,17 @@ func EvaluatorUnsupportedType(expr syntax.Expr, ev EvaluatorFactory) error {
 }
 
 type DefaultEvaluator struct {
-	maxLookBackPeriod time.Duration
-	querier           Querier
+	maxLookBackPeriod         time.Duration
+	maxCountMinSketchHeapSize int
+	querier                   Querier
 }
 
 // NewDefaultEvaluator constructs a DefaultEvaluator
-func NewDefaultEvaluator(querier Querier, maxLookBackPeriod time.Duration) *DefaultEvaluator {
+func NewDefaultEvaluator(querier Querier, maxLookBackPeriod time.Duration, maxCountMinSketchHeapSize int) *DefaultEvaluator {
 	return &DefaultEvaluator{
-		querier:           querier,
-		maxLookBackPeriod: maxLookBackPeriod,
+		querier:                   querier,
+		maxLookBackPeriod:         maxLookBackPeriod,
+		maxCountMinSketchHeapSize: maxCountMinSketchHeapSize,
 	}
 }
 
@@ -350,7 +352,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 				return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset)
 			})
 		}
-		return newVectorAggEvaluator(ctx, nextEvFactory, e, q)
+		return newVectorAggEvaluator(ctx, nextEvFactory, e, q, ev.maxCountMinSketchHeapSize)
 	case *syntax.RangeAggregationExpr:
 		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 			&logproto.SampleQueryRequest{
@@ -391,6 +393,7 @@ func newVectorAggEvaluator(
 	evFactory SampleEvaluatorFactory,
 	expr *syntax.VectorAggregationExpr,
 	q Params,
+	maxCountMinSketchHeapSize int,
 ) (StepEvaluator, error) {
 	if expr.Grouping == nil {
 		return nil, errors.Errorf("aggregation operator '%q' without grouping", expr.Operation)
@@ -402,7 +405,7 @@ func newVectorAggEvaluator(
 	sort.Strings(expr.Grouping.Groups)
 
 	if expr.Operation == syntax.OpTypeCountMinSketch {
-		return newCountMinSketchVectorAggEvaluator(nextEvaluator, expr)
+		return newCountMinSketchVectorAggEvaluator(nextEvaluator, expr, maxCountMinSketchHeapSize)
 	}
 
 	return &VectorAggEvaluator{

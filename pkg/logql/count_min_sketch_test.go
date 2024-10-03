@@ -9,8 +9,7 @@ import (
 )
 
 func TestHeapCountMinSketchVectorHeap(t *testing.T) {
-	v := NewHeapCountMinSketchVector(0, promql.Vector{})
-	v.maxLabels = 3
+	v := NewHeapCountMinSketchVector(0, promql.Vector{}, 3)
 
 	a := labels.Labels{{Name: "event", Value: "a"}}
 	b := labels.Labels{{Name: "event", Value: "b"}}

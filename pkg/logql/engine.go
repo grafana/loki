@@ -146,10 +146,15 @@ type EngineOpts struct {
 
 	// LogExecutingQuery will control if we log the query when Exec is called.
 	LogExecutingQuery bool `yaml:"-"`
+
+	// MaxCountMinSketchHeapSize is the maximum number of labels the heap for a topk query using a count min sketch
+	// can track. This impacts the memory usage and accuracy of a sharded probabilistic topk query.
+	MaxCountMinSketchHeapSize int `yaml:"max_count_min_sketch_heap_size"`
 }
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+".engine.max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
+	f.IntVar(&opts.MaxCountMinSketchHeapSize, prefix+".engine.max-count-min-sketch-heap-size", 10_000, "The maximum number of labels the heap of a topk query using a count min sketch can track.")
 	// Log executing query by default
 	opts.LogExecutingQuery = true
 }
@@ -176,7 +181,7 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine 
 	}
 	return &Engine{
 		logger:           logger,
-		evaluatorFactory: NewDefaultEvaluator(q, opts.MaxLookBackPeriod),
+		evaluatorFactory: NewDefaultEvaluator(q, opts.MaxLookBackPeriod, opts.MaxCountMinSketchHeapSize),
 		limits:           l,
 		opts:             opts,
 	}

@@ -130,6 +130,11 @@ querier_rf1:
     # CLI flag: -querier-rf1.engine.max-lookback-period
     [max_look_back_period: <duration> | default = 30s]
 
+    # The maximum number of labels the heap of a topk query using a count min
+    # sketch can track.
+    # CLI flag: -querier-rf1.engine.max-count-min-sketch-heap-size
+    [max_count_min_sketch_heap_size: <int> | default = 10000]
+
   # The maximum number of queries that can be simultaneously processed by the
   # querier.
   # CLI flag: -querier-rf1.max-concurrent
@@ -4197,6 +4202,11 @@ engine:
   # log queries.
   # CLI flag: -querier.engine.max-lookback-period
   [max_look_back_period: <duration> | default = 30s]
+
+  # The maximum number of labels the heap of a topk query using a count min
+  # sketch can track.
+  # CLI flag: -querier.engine.max-count-min-sketch-heap-size
+  [max_count_min_sketch_heap_size: <int> | default = 10000]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.

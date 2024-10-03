@@ -16,9 +16,8 @@ import (
 const (
 	CountMinSketchVectorType = "CountMinSketchVector"
 
-	epsilon   = 0.0001
-	delta     = 0.05
-	maxLabels = 10_000
+	epsilon = 0.0001
+	delta   = 0.05
 )
 
 // CountMinSketchVector tracks the count or sum of values of a metric, ie list of label value pairs. It's storage for
@@ -144,7 +143,7 @@ type HeapCountMinSketchVector struct {
 	maxLabels int
 }
 
-func NewHeapCountMinSketchVector(ts int64, vec promql.Vector) HeapCountMinSketchVector {
+func NewHeapCountMinSketchVector(ts int64, vec promql.Vector, maxLabels int) HeapCountMinSketchVector {
 	f, _ := sketch.NewCountMinSketchFromErroAndProbability(epsilon, delta)
 
 	matricsLength := len(vec)
@@ -224,7 +223,7 @@ func JoinCountMinSketchVector(_ bool, r StepResult, stepEvaluator StepEvaluator,
 	return vec, nil
 }
 
-func newCountMinSketchVectorAggEvaluator(nextEvaluator StepEvaluator, expr *syntax.VectorAggregationExpr) (*countMinSketchVectorAggEvaluator, error) {
+func newCountMinSketchVectorAggEvaluator(nextEvaluator StepEvaluator, expr *syntax.VectorAggregationExpr, maxLabels int) (*countMinSketchVectorAggEvaluator, error) {
 	if expr.Grouping.Groups != nil {
 		return nil, fmt.Errorf("count min sketch vector aggregation does not support any grouping")
 	}
@@ -234,6 +233,7 @@ func newCountMinSketchVectorAggEvaluator(nextEvaluator StepEvaluator, expr *synt
 		expr:          expr,
 		buf:           make([]byte, 0, 1024),
 		lb:            labels.NewBuilder(nil),
+		maxLabels:     maxLabels,
 	}, nil
 }
 
@@ -242,6 +242,7 @@ type countMinSketchVectorAggEvaluator struct {
 	expr          *syntax.VectorAggregationExpr
 	buf           []byte
 	lb            *labels.Builder
+	maxLabels     int
 }
 
 func (e *countMinSketchVectorAggEvaluator) Next() (bool, int64, StepResult) {
@@ -252,7 +253,7 @@ func (e *countMinSketchVectorAggEvaluator) Next() (bool, int64, StepResult) {
 	}
 	vec := r.SampleVector()
 
-	result := NewHeapCountMinSketchVector(ts, vec)
+	result := NewHeapCountMinSketchVector(ts, vec, e.maxLabels)
 	for _, s := range vec {
 		result.Add(s.Metric, s.F)
 	}

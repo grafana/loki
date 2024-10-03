@@ -463,7 +463,7 @@ func (errorQuerier) SelectSamples(_ context.Context, _ SelectSampleParams) (iter
 func NewDownstreamEvaluator(downstreamer Downstreamer) *DownstreamEvaluator {
 	return &DownstreamEvaluator{
 		Downstreamer:     downstreamer,
-		defaultEvaluator: NewDefaultEvaluator(&errorQuerier{}, 0),
+		defaultEvaluator: NewDefaultEvaluator(&errorQuerier{}, 0, 0),
 	}
 }
 
