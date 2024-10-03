@@ -807,7 +807,6 @@ func TestMapping(t *testing.T) {
 										Interval: 5 * time.Minute,
 									},
 								},
-								Grouping: nil,
 							},
 						},
 						{
@@ -826,7 +825,6 @@ func TestMapping(t *testing.T) {
 										Interval: 5 * time.Minute,
 									},
 								},
-								Grouping: nil,
 							},
 						},
 					},
