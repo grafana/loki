@@ -94,12 +94,7 @@ func (p *JumpHashClientPool) Addr(key string) (string, error) {
 }
 
 func (p *JumpHashClientPool) updateLoop(_ context.Context) error {
-	servers := p.provider.Addresses()
-	// ServerList deterministically maps keys to _index_ of the server list.
-	// Since DNS returns records in different order each time, we sort to
-	// guarantee best possible match between nodes.
-	sort.Strings(servers)
-	err := p.SetServers(servers...)
+	err := p.SetServers(p.provider.Addresses()...)
 	if err != nil {
 		level.Warn(p.logger).Log("msg", "error updating servers", "err", err)
 	}
