@@ -3,10 +3,11 @@ package logql
 import (
 	"testing"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/sketch"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/sketch"
 )
 
 func TestHeapCountMinSketchVectorHeap(t *testing.T) {
