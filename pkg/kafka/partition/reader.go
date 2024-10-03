@@ -24,7 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/kafka"
 )
 
-var errWaitTargetLagDeadlineExceeded = fmt.Errorf("waiting for target lag deadline exceeded")
+var errWaitTargetLagDeadlineExceeded = errors.New("waiting for target lag deadline exceeded")
 
 const (
 	kafkaStartOffset = -2
@@ -271,7 +271,7 @@ func (p *Reader) processNextFetchesUntilTargetOrMaxLagHonored(ctx context.Contex
 	logger := log.With(p.logger, "target_lag", targetLag, "max_lag", maxLag)
 	level.Info(logger).Log("msg", "partition reader is starting to consume partition until target and max consumer lag is honored")
 
-	attempts := []func() (currLag time.Duration, _ error){
+	attempts := []func() (time.Duration, error){
 		// First process fetches until at least the max lag is honored.
 		func() (time.Duration, error) {
 			return p.processNextFetchesUntilLagHonored(ctx, maxLag, logger, recordsChan)
