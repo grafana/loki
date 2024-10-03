@@ -1104,7 +1104,7 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 		return nil, err
 	}
 
-	detectedFields := parseDetectedFields(req.FieldLimit, streams)
+	detectedFields := parseDetectedFields(req.Limit, streams)
 
 	fields := make([]*logproto.DetectedField, len(detectedFields))
 	fieldCount := 0
@@ -1130,8 +1130,8 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 	}
 
 	return &logproto.DetectedFieldsResponse{
-		Fields:     fields,
-		FieldLimit: req.GetFieldLimit(),
+		Fields: fields,
+		Limit:  req.GetLimit(),
 	}, nil
 }
 

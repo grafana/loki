@@ -1595,7 +1595,7 @@ func (i *Ingester) GetDetectedFields(_ context.Context, r *logproto.DetectedFiel
 				Cardinality: 1,
 			},
 		},
-		FieldLimit: r.GetFieldLimit(),
+		Limit: r.GetLimit(),
 	}, nil
 }
 

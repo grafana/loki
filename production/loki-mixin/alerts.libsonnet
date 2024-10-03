@@ -6,12 +6,12 @@
         rules: [
           {
             alert: 'LokiRequestErrors',
-            expr: std.strReplace(|||
-              100 * sum(rate(loki_request_duration_seconds_count{status_code=~"5.."}[2m])) by (cluster, namespace, job, route)
+            expr: |||
+              100 * sum(rate(loki_request_duration_seconds_count{status_code=~"5.."}[2m])) by (%(group_by_cluster)s, job, route)
                 /
-              sum(rate(loki_request_duration_seconds_count[2m])) by (cluster, namespace, job, route)
+              sum(rate(loki_request_duration_seconds_count[2m])) by (%(group_by_cluster)s, job, route)
                 > 10
-            |||, 'cluster', $._config.per_cluster_label),
+            ||| % $._config,
             'for': '15m',
             labels: {
               severity: 'critical',
@@ -26,8 +26,8 @@
           {
             alert: 'LokiRequestPanics',
             expr: |||
-              sum(increase(loki_panic_total[10m])) by (%s, namespace, job) > 0
-            ||| % $._config.per_cluster_label,
+              sum(increase(loki_panic_total[10m])) by (%(group_by_cluster)s, job) > 0
+            ||| % $._config,
             labels: {
               severity: 'critical',
             },
@@ -41,8 +41,8 @@
           {
             alert: 'LokiRequestLatency',
             expr: |||
-              %s_namespace_job_route:loki_request_duration_seconds:99quantile{route!~"(?i).*tail.*|/schedulerpb.SchedulerForQuerier/QuerierLoop"} > 1
-            ||| % $._config.per_cluster_label,
+              %(group_prefix_jobs)s_route:loki_request_duration_seconds:99quantile{route!~"(?i).*tail.*|/schedulerpb.SchedulerForQuerier/QuerierLoop"} > 1
+            ||| % $._config,
             'for': '15m',
             labels: {
               severity: 'critical',
@@ -57,8 +57,8 @@
           {
             alert: 'LokiTooManyCompactorsRunning',
             expr: |||
-              sum(loki_boltdb_shipper_compactor_running) by (%s, namespace) > 1
-            ||| % $._config.per_cluster_label,
+              sum(loki_boltdb_shipper_compactor_running) by (%(group_by_cluster)s) > 1
+            ||| % $._config,
             'for': '5m',
             labels: {
               severity: 'warning',

@@ -18,10 +18,11 @@ type FieldsQuery struct {
 	QueryString   string
 	Start         time.Time
 	End           time.Time
-	FieldLimit    int
+	Limit         int
 	LineLimit     int
 	Step          time.Duration
 	Quiet         bool
+	FieldName     string
 	ColoredOutput bool
 }
 
@@ -30,7 +31,16 @@ func (q *FieldsQuery) Do(c client.Client, outputMode string) {
 	var resp *loghttp.DetectedFieldsResponse
 	var err error
 
-	resp, err = c.GetDetectedFields(q.QueryString, q.FieldLimit, q.LineLimit, q.Start, q.End, q.Step, q.Quiet)
+	resp, err = c.GetDetectedFields(
+		q.QueryString,
+		q.FieldName,
+		q.Limit,
+		q.LineLimit,
+		q.Start,
+		q.End,
+		q.Step,
+		q.Quiet,
+	)
 	if err != nil {
 		log.Fatalf("Error doing request: %+v", err)
 	}
@@ -43,12 +53,17 @@ func (q *FieldsQuery) Do(c client.Client, outputMode string) {
 		}
 		fmt.Println(string(out))
 	default:
-		output := make([]string, len(resp.Fields))
-		for i, field := range resp.Fields {
-			bold := color.New(color.Bold)
-			output[i] = fmt.Sprintf("label: %s\t\t", bold.Sprintf("%s", field.Label)) +
-				fmt.Sprintf("type: %s\t\t", bold.Sprintf("%s", field.Type)) +
-				fmt.Sprintf("cardinality: %s", bold.Sprintf("%d", field.Cardinality))
+		var output []string
+		if len(resp.Fields) > 0 {
+			output = make([]string, len(resp.Fields))
+			for i, field := range resp.Fields {
+				bold := color.New(color.Bold)
+				output[i] = fmt.Sprintf("label: %s\t\t", bold.Sprintf("%s", field.Label)) +
+					fmt.Sprintf("type: %s\t\t", bold.Sprintf("%s", field.Type)) +
+					fmt.Sprintf("cardinality: %s", bold.Sprintf("%d", field.Cardinality))
+			}
+		} else if len(resp.Values) > 0 {
+			output = resp.Values
 		}
 
 		slices.Sort(output)

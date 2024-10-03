@@ -5640,6 +5640,7 @@ null
       "/loki/api/v1/index/volume",
       "/loki/api/v1/index/volume_range",
       "/loki/api/v1/format_query",
+      "/loki/api/v1/detected_field",
       "/loki/api/v1/detected_fields",
       "/loki/api/v1/detected_labels",
       "/loki/api/v1/patterns"
@@ -5702,6 +5703,7 @@ null
   "/loki/api/v1/index/volume",
   "/loki/api/v1/index/volume_range",
   "/loki/api/v1/format_query",
+  "/loki/api/v1/detected_field",
   "/loki/api/v1/detected_fields",
   "/loki/api/v1/detected_labels",
   "/loki/api/v1/patterns"
