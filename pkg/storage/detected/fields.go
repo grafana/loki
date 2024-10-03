@@ -53,9 +53,9 @@ func (f *UnmarshaledDetectedField) Merge(df *logproto.DetectedField) error {
 
 func MergeFields(
 	fields []*logproto.DetectedField,
-	fieldLimit uint32,
+	limit uint32,
 ) ([]*logproto.DetectedField, error) {
-	mergedFields := make(map[string]*UnmarshaledDetectedField, fieldLimit)
+	mergedFields := make(map[string]*UnmarshaledDetectedField, limit)
 	foundFields := uint32(0)
 
 	for _, field := range fields {
@@ -66,7 +66,7 @@ func MergeFields(
 		// TODO(twhitney): this will take the first N up to limit, is there a better
 		// way to rank the fields to make sure we get the most interesting ones?
 		f, ok := mergedFields[field.Label]
-		if !ok && foundFields < fieldLimit {
+		if !ok && foundFields < limit {
 			unmarshaledField, err := UnmarshalDetectedField(field)
 			if err != nil {
 				return nil, err
@@ -86,7 +86,7 @@ func MergeFields(
 		}
 	}
 
-	result := make([]*logproto.DetectedField, 0, fieldLimit)
+	result := make([]*logproto.DetectedField, 0, limit)
 	for _, field := range mergedFields {
 		detectedField := &logproto.DetectedField{
 			Label:       field.Label,
@@ -96,6 +96,32 @@ func MergeFields(
 			Sketch:      nil,
 		}
 		result = append(result, detectedField)
+	}
+
+	return result, nil
+}
+
+func MergeValues(
+	values []string,
+	limit uint32,
+) ([]string, error) {
+	mergedValues := make(map[string]struct{}, limit)
+
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+
+		if len(mergedValues) >= int(limit) {
+			break
+		}
+
+		mergedValues[value] = struct{}{}
+	}
+
+	result := make([]string, 0, limit)
+	for value := range mergedValues {
+		result = append(result, value)
 	}
 
 	return result, nil
