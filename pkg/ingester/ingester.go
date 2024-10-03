@@ -407,7 +407,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	var limiterStrategy limiterRingStrategy
 	var ownedStreamsStrategy ownershipStrategy
 	if i.cfg.KafkaIngestion.Enabled {
-		limiterStrategy = newPartitionRingLimiterStrategy(partitionRingWatcher)
+		limiterStrategy = newPartitionRingLimiterStrategy(partitionRingWatcher, limits.IngestionPartitionsTenantShardSize)
 		ownedStreamsStrategy = newOwnedStreamsPartitionStrategy(i.ingestPartitionID, partitionRingWatcher, limits.IngestionPartitionsTenantShardSize, util_log.Logger)
 	} else {
 		limiterStrategy = newIngesterRingLimiterStrategy(i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor)

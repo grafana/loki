@@ -19,7 +19,7 @@ type fixedStrategy struct {
 	localLimit int
 }
 
-func (strategy *fixedStrategy) convertGlobalToLocalLimit(_ int) int {
+func (strategy *fixedStrategy) convertGlobalToLocalLimit(_ int, _ string) int {
 	return strategy.localLimit
 }
 func TestStreamCountLimiter_AssertNewStreamAllowed(t *testing.T) {
@@ -294,7 +294,7 @@ func TestConvertGlobalToLocalLimit_IngesterRing(t *testing.T) {
 
 			strategy := newIngesterRingLimiterStrategy(mockRing, tc.replicationFactor)
 
-			localLimit := strategy.convertGlobalToLocalLimit(tc.globalLimit)
+			localLimit := strategy.convertGlobalToLocalLimit(tc.globalLimit, "test")
 			if localLimit != tc.expectedLocalLimit {
 				t.Errorf("expected %d, got %d", tc.expectedLocalLimit, localLimit)
 			}
@@ -339,14 +339,18 @@ func TestConvertGlobalToLocalLimit_PartitionRing(t *testing.T) {
 		globalLimit        int
 		activePartitions   int
 		inactivePartitions int
+		shardsPerUser      int
 		expectedLocalLimit int
 	}{
-		{"GlobalLimitZero", 0, 1, 0, 0},
-		{"SinglePartition", 100, 1, 0, 100},
-		{"MultiplePartitions", 200, 3, 0, 66},
-		{"NoActivePartitions", 200, 0, 3, 0},
-		{"PartialActivePartitions", 60, 3, 3, 20},
-		{"LimitLessThanActivePartitions", 3, 10, 0, 0},
+		{"GlobalLimitZero", 0, 1, 0, 0, 0},
+		{"SinglePartition", 100, 1, 0, 0, 100},
+		{"MultiplePartitions", 200, 3, 0, 0, 66},
+		{"NoActivePartitions", 200, 0, 3, 0, 0},
+		{"PartialActivePartitions", 60, 3, 3, 0, 20},
+		{"LimitLessThanActivePartitions", 3, 10, 0, 0, 0},
+		{"LimitLessThanActivePartitions", 3, 10, 0, 0, 0},
+		{"MultiplePartitionsWithLimitedShardsPerUser", 200, 3, 0, 2, 100},
+		{"MultiplePartitionsWithMoreShardsPerUserThanPartitions", 200, 3, 0, 10, 66},
 	}
 
 	for _, tc := range tests {
@@ -355,9 +359,13 @@ func TestConvertGlobalToLocalLimit_PartitionRing(t *testing.T) {
 				ring: newMockPartitionRingWithPartitions(tc.activePartitions, tc.inactivePartitions),
 			}
 
-			strategy := newPartitionRingLimiterStrategy(ringReader)
+			getPartitionsForUser := func(_ string) int {
+				return tc.shardsPerUser
+			}
 
-			localLimit := strategy.convertGlobalToLocalLimit(tc.globalLimit)
+			strategy := newPartitionRingLimiterStrategy(ringReader, getPartitionsForUser)
+
+			localLimit := strategy.convertGlobalToLocalLimit(tc.globalLimit, "test")
 			if localLimit != tc.expectedLocalLimit {
 				t.Errorf("expected %d, got %d", tc.expectedLocalLimit, localLimit)
 			}

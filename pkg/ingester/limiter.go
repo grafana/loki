@@ -61,7 +61,7 @@ func (l *Limiter) Enable() {
 }
 
 type limiterRingStrategy interface {
-	convertGlobalToLocalLimit(int) int
+	convertGlobalToLocalLimit(int, string) int
 }
 
 // NewLimiter makes a new limiter
@@ -90,7 +90,7 @@ func (l *Limiter) GetStreamCountLimit(tenantID string) (calculatedLimit, localLi
 	// We can assume that streams are evenly distributed across ingesters
 	// so we do convert the global limit into a local limit
 	globalLimit = l.limits.MaxGlobalStreamsPerUser(tenantID)
-	adjustedGlobalLimit = l.ringStrategy.convertGlobalToLocalLimit(globalLimit)
+	adjustedGlobalLimit = l.ringStrategy.convertGlobalToLocalLimit(globalLimit, tenantID)
 
 	// Set the calculated limit to the lesser of the local limit or the new calculated global limit
 	calculatedLimit = l.minNonZero(localLimit, adjustedGlobalLimit)
@@ -123,7 +123,7 @@ func newIngesterRingLimiterStrategy(ring RingCount, replicationFactor int) *inge
 	}
 }
 
-func (l *ingesterRingLimiterStrategy) convertGlobalToLocalLimit(globalLimit int) int {
+func (l *ingesterRingLimiterStrategy) convertGlobalToLocalLimit(globalLimit int, _ string) int {
 	if globalLimit == 0 || l.replicationFactor == 0 {
 		return 0
 	}
@@ -153,23 +153,25 @@ func (l *ingesterRingLimiterStrategy) calculateLimitForMultipleZones(globalLimit
 }
 
 type partitionRingLimiterStrategy struct {
-	ring ring.PartitionRingReader
+	ring                  ring.PartitionRingReader
+	getPartitionShardSize func(user string) int
 }
 
-func newPartitionRingLimiterStrategy(ring ring.PartitionRingReader) *partitionRingLimiterStrategy {
+func newPartitionRingLimiterStrategy(ring ring.PartitionRingReader, getPartitionShardSize func(user string) int) *partitionRingLimiterStrategy {
 	return &partitionRingLimiterStrategy{
-		ring: ring,
+		ring:                  ring,
+		getPartitionShardSize: getPartitionShardSize,
 	}
 }
 
-func (l *partitionRingLimiterStrategy) convertGlobalToLocalLimit(globalLimit int) int {
+func (l *partitionRingLimiterStrategy) convertGlobalToLocalLimit(globalLimit int, tenantID string) int {
 	if globalLimit == 0 {
 		return 0
 	}
 
-	// TODO: implement this for when shuffle sharding is enabled. This is just the total number of active partitions when shuffle sharding is not enabled.
-	userShardSize := l.ring.PartitionRing().ActivePartitionsCount()
+	userShardSize := l.getPartitionShardSize(tenantID)
 
+	// ShuffleShardSize correctly handles cases when user has no shard config or more shards than number of active partitions in the ring.
 	activePartitionsForUser := l.ring.PartitionRing().ShuffleShardSize(userShardSize)
 
 	if activePartitionsForUser == 0 {
