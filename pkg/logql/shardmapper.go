@@ -312,7 +312,6 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 			countMinSketchExpr := syntax.MustClone(expr)
 			countMinSketchExpr.Operation = syntax.OpTypeCountMinSketch
 			countMinSketchExpr.Params = 0
-			countMinSketchExpr.Grouping = nil
 
 			// Even if this query is not sharded the user wants an approximation. This is helpful if some
 			// inferred label has a very high cardinality. Note that the querier does not support CountMinSketchEvalExpr
