@@ -16,7 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
-func TestProbabilisticMQuantileMatrixSerialization(t *testing.T) {
+func TestProbabilisticQuantileMatrixSerialization(t *testing.T) {
 	emptySketch := sketch.NewDDSketch()
 	ddsketchBytes := make([]byte, 0)
 	emptySketch.Encode(&ddsketchBytes, false)

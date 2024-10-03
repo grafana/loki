@@ -3,13 +3,14 @@ package logql
 import (
 	"testing"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/sketch"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 )
 
 func TestHeapCountMinSketchVectorHeap(t *testing.T) {
-	v := NewHeapCountMinSketchVector(0, promql.Vector{}, 3)
+	v := NewHeapCountMinSketchVector(0, 0, 3)
 
 	a := labels.Labels{{Name: "event", Value: "a"}}
 	b := labels.Labels{{Name: "event", Value: "b"}}
@@ -43,4 +44,40 @@ func TestHeapCountMinSketchVectorHeap(t *testing.T) {
 		final[i] = metric[0].Value
 	}
 	require.ElementsMatch(t, []string{"a", "d", "c"}, final)
+}
+
+func TestCountMinSketchSerialization(t *testing.T) {
+	metric := []labels.Label{{Name: "foo", Value: "bar"}}
+	cms, err := sketch.NewCountMinSketch(4, 2)
+	require.NoError(t, err)
+	vec := HeapCountMinSketchVector{
+		CountMinSketchVector: CountMinSketchVector{
+			T: 42,
+			F: cms,
+		},
+		observed:  make(map[string]struct{}, 0),
+		maxLabels: 10_000,
+	}
+	vec.Add(metric, 42.0)
+
+	proto := &logproto.CountMinSketchVector{
+		TimestampMs: 42,
+		Sketch: &logproto.CountMinSketch{
+			Depth:    2,
+			Width:    4,
+			Counters: []uint32{0, 0, 0, 42, 0, 42, 0, 0},
+		},
+		Metrics: []*logproto.Labels{
+			{Metric: []*logproto.LabelPair{{Name: "foo", Value: "bar"}}},
+		},
+	}
+
+	actual := vec.ToProto()
+	require.Equal(t, proto, actual)
+
+	round, err := CountMinSketchVectorFromProto(actual)
+	require.NoError(t, err)
+
+	// The HeapCountMinSketchVector is serialized to a CountMinSketchVector.
+	require.Equal(t, round, vec.CountMinSketchVector)
 }

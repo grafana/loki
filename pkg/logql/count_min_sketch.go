@@ -144,19 +144,18 @@ type HeapCountMinSketchVector struct {
 	maxLabels int
 }
 
-func NewHeapCountMinSketchVector(ts int64, vec promql.Vector, maxLabels int) HeapCountMinSketchVector {
+func NewHeapCountMinSketchVector(ts int64, metricsLength, maxLabels int) HeapCountMinSketchVector {
 	f, _ := sketch.NewCountMinSketchFromErroAndProbability(epsilon, delta)
 
-	matricsLength := len(vec)
-	if matricsLength >= maxLabels {
-		matricsLength = maxLabels
+	if metricsLength >= maxLabels {
+		metricsLength = maxLabels
 	}
 
 	return HeapCountMinSketchVector{
 		CountMinSketchVector: CountMinSketchVector{
 			T:       ts,
 			F:       f,
-			Metrics: make([]labels.Labels, 0, matricsLength),
+			Metrics: make([]labels.Labels, 0, metricsLength),
 		},
 		observed:  make(map[string]struct{}),
 		maxLabels: maxLabels,
@@ -255,7 +254,7 @@ func (e *countMinSketchVectorAggEvaluator) Next() (bool, int64, StepResult) {
 	}
 	vec := r.SampleVector()
 
-	result := NewHeapCountMinSketchVector(ts, vec, e.maxLabels)
+	result := NewHeapCountMinSketchVector(ts, len(vec), e.maxLabels)
 	for _, s := range vec {
 		result.Add(s.Metric, s.F)
 	}
