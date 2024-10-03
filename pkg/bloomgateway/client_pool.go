@@ -72,6 +72,7 @@ func NewJumpHashClientPool(clientFactory ClientFactory, dnsProvider AddressProvi
 		clientFactory: clientFactory,
 		provider:      dnsProvider,
 		logger:        logger,
+		clients:       make(map[string]client.PoolClient, len(dnsProvider.Addresses())),
 	}
 
 	p.Service = services.NewTimerService(updateInterval, nil, p.updateLoop, nil)
