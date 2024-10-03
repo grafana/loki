@@ -1298,18 +1298,9 @@ Experimental: The `bloom_gateway` block configures the Loki bloom gateway server
 client:
   # Configures the behavior of the connection pool.
   pool_config:
-    # How frequently to clean up clients for servers that have gone away or are
-    # unhealthy.
+    # How frequently to update the list of servers.
     # CLI flag: -bloom-gateway-client.pool.check-interval
-    [check_interval: <duration> | default = 10s]
-
-    # Run a health check on each server during periodic cleanup.
-    # CLI flag: -bloom-gateway-client.pool.enable-health-check
-    [enable_health_check: <boolean> | default = true]
-
-    # Timeout for the health check if health check is enabled.
-    # CLI flag: -bloom-gateway-client.pool.health-check-timeout
-    [health_check_timeout: <duration> | default = 1s]
+    [check_interval: <duration> | default = 15s]
 
   # The grpc_client block configures the gRPC client used to communicate between
   # a client and server component in Loki.
