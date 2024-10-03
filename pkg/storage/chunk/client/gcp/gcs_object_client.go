@@ -127,20 +127,25 @@ func (s *GCSObjectClient) Stop() {
 }
 
 func (s *GCSObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	exists, _, err := s.ObjectExistsWithSize(ctx, objectKey)
-	return exists, err
+	if _, err := s.GetAttributes(ctx, objectKey); err != nil {
+		if s.IsObjectNotFoundErr(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
-func (s *GCSObjectClient) ObjectExistsWithSize(ctx context.Context, objectKey string) (bool, int64, error) {
+func (s *GCSObjectClient) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
 	attrs, err := s.getsBuckets.Object(objectKey).Attrs(ctx)
 	if err != nil {
-		return false, 0, err
+		return client.ObjectAttributes{}, err
 	}
 
 	if attrs != nil {
-		return true, attrs.Size, nil
+		return client.ObjectAttributes{Size: attrs.Size}, nil
 	}
-	return true, 0, nil
+	return client.ObjectAttributes{}, nil
 }
 
 // GetObject returns a reader and the size for the specified object key from the configured GCS bucket.

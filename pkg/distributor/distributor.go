@@ -604,8 +604,12 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	tracker.streamsPending.Store(int32(streamsToWrite))
 
 	if d.cfg.KafkaEnabled {
+		subring, err := d.partitionRing.PartitionRing().ShuffleShard(tenantID, d.validator.IngestionPartitionsTenantShardSize(tenantID))
+		if err != nil {
+			return nil, err
+		}
 		// We don't need to create a new context like the ingester writes, because we don't return unless all writes have succeeded.
-		d.sendStreamsToKafka(ctx, streams, tenantID, &tracker)
+		d.sendStreamsToKafka(ctx, streams, tenantID, &tracker, subring)
 	}
 
 	if d.cfg.IngesterEnabled {
@@ -931,10 +935,10 @@ func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.Instance
 	return err
 }
 
-func (d *Distributor) sendStreamsToKafka(ctx context.Context, streams []KeyedStream, tenant string, tracker *pushTracker) {
+func (d *Distributor) sendStreamsToKafka(ctx context.Context, streams []KeyedStream, tenant string, tracker *pushTracker, subring *ring.PartitionRing) {
 	for _, s := range streams {
 		go func(s KeyedStream) {
-			err := d.sendStreamToKafka(ctx, s, tenant)
+			err := d.sendStreamToKafka(ctx, s, tenant, subring)
 			if err != nil {
 				err = fmt.Errorf("failed to write stream to kafka: %w", err)
 			}
@@ -943,11 +947,11 @@ func (d *Distributor) sendStreamsToKafka(ctx context.Context, streams []KeyedStr
 	}
 }
 
-func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream, tenant string) error {
+func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream, tenant string, subring *ring.PartitionRing) error {
 	if len(stream.Stream.Entries) == 0 {
 		return nil
 	}
-	partitionID, err := d.partitionRing.PartitionRing().ActivePartitionForKey(stream.HashKey)
+	partitionID, err := subring.ActivePartitionForKey(stream.HashKey)
 	if err != nil {
 		d.kafkaAppends.WithLabelValues("kafka", "fail").Inc()
 		return fmt.Errorf("failed to find active partition for stream: %w", err)

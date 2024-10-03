@@ -23,6 +23,22 @@ var blockEncodings = []compression.Codec{
 	compression.Zstd,
 }
 
+func TestBlockOptions_BloomPageSize(t *testing.T) {
+	t.Parallel()
+
+	var (
+		maxBlockSizeBytes = uint64(50 << 10)
+		maxBloomSizeBytes = uint64(10 << 10)
+	)
+
+	opts := NewBlockOptions(compression.None, maxBlockSizeBytes, maxBloomSizeBytes)
+
+	require.GreaterOrEqual(
+		t, opts.BloomPageSize, maxBloomSizeBytes,
+		"opts.BloomPageSize should be greater or equal to the maximum bloom size to avoid having too many overfilled pages",
+	)
+}
+
 func TestBlockOptions_RoundTrip(t *testing.T) {
 	t.Parallel()
 	opts := BlockOptions{

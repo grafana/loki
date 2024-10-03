@@ -331,7 +331,6 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 	}
 
 	disableCacheReq := false
-
 	if strings.ToLower(strings.TrimSpace(r.Header.Get(cacheControlHeader))) == noCacheVal {
 		disableCacheReq = true
 	}
@@ -920,11 +919,11 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		return req.WithContext(ctx), nil
 	case *DetectedFieldsRequest:
 		params := url.Values{
-			"query":       []string{request.GetQuery()},
-			"start":       []string{fmt.Sprintf("%d", request.Start.UnixNano())},
-			"end":         []string{fmt.Sprintf("%d", request.End.UnixNano())},
-			"line_limit":  []string{fmt.Sprintf("%d", request.GetLineLimit())},
-			"field_limit": []string{fmt.Sprintf("%d", request.GetFieldLimit())},
+			"query":      []string{request.GetQuery()},
+			"start":      []string{fmt.Sprintf("%d", request.Start.UnixNano())},
+			"end":        []string{fmt.Sprintf("%d", request.End.UnixNano())},
+			"line_limit": []string{fmt.Sprintf("%d", request.GetLineLimit())},
+			"limit":      []string{fmt.Sprintf("%d", request.GetLimit())},
 		}
 
 		if request.Step != 0 {
@@ -932,7 +931,7 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		}
 
 		u := &url.URL{
-			Path:     "/loki/api/v1/detected_fields",
+			Path:     request.Path(),
 			RawQuery: params.Encode(),
 		}
 		req := &http.Request{
@@ -1014,6 +1013,10 @@ func (c Codec) Path(r queryrangebase.Request) string {
 	case *logproto.VolumeRequest:
 		return "/loki/api/v1/index/volume_range"
 	case *DetectedFieldsRequest:
+		if request.Values {
+			// This request contains user-generated input in the URL, which is not safe to reflect in the route path.
+			return "loki/api/v1/detected_field/values"
+		}
 		return "/loki/api/v1/detected_fields"
 	case *logproto.QueryPatternsRequest:
 		return "/loki/api/v1/patterns"
@@ -1548,23 +1551,30 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 	case *DetectedFieldsResponse:
 		resp0 := responses[0].(*DetectedFieldsResponse)
 		headers := resp0.Headers
-		fieldLimit := resp0.Response.GetFieldLimit()
+		limit := resp0.Response.GetLimit()
 
 		fields := []*logproto.DetectedField{}
+		values := []string{}
 		for _, r := range responses {
 			fields = append(fields, r.(*DetectedFieldsResponse).Response.Fields...)
+			values = append(values, r.(*DetectedFieldsResponse).Response.Values...)
 		}
 
-		mergedFields, err := detected.MergeFields(fields, fieldLimit)
+		mergedFields, err := detected.MergeFields(fields, limit)
+		if err != nil {
+			return nil, err
+		}
 
+		mergedValues, err := detected.MergeValues(values, limit)
 		if err != nil {
 			return nil, err
 		}
 
 		return &DetectedFieldsResponse{
 			Response: &logproto.DetectedFieldsResponse{
-				Fields:     mergedFields,
-				FieldLimit: 0,
+				Fields: mergedFields,
+				Values: mergedValues,
+				Limit:  limit,
 			},
 			Headers: headers,
 		}, nil
@@ -2292,12 +2302,12 @@ type DetectedFieldsRequest struct {
 func NewDetectedFieldsRequest(start, end time.Time, lineLimit, fieldLimit uint32, step int64, query, path string) *DetectedFieldsRequest {
 	return &DetectedFieldsRequest{
 		DetectedFieldsRequest: logproto.DetectedFieldsRequest{
-			Start:      start,
-			End:        end,
-			Query:      query,
-			LineLimit:  lineLimit,
-			FieldLimit: fieldLimit,
-			Step:       step,
+			Start:     start,
+			End:       end,
+			Query:     query,
+			LineLimit: lineLimit,
+			Limit:     fieldLimit,
+			Step:      step,
 		},
 		path: path,
 	}
@@ -2331,8 +2341,8 @@ func (r *DetectedFieldsRequest) GetLineLimit() uint32 {
 	return r.LineLimit
 }
 
-func (r *DetectedFieldsRequest) GetFieldLimit() uint32 {
-	return r.FieldLimit
+func (r *DetectedFieldsRequest) GetLimit() uint32 {
+	return r.Limit
 }
 
 func (r *DetectedFieldsRequest) Path() string {
@@ -2364,7 +2374,7 @@ func (r *DetectedFieldsRequest) LogToSpan(sp opentracing.Span) {
 		otlog.String("query", r.GetQuery()),
 		otlog.Int64("step (ms)", r.GetStep()),
 		otlog.Int64("line_limit", int64(r.GetLineLimit())),
-		otlog.Int64("field_limit", int64(r.GetFieldLimit())),
+		otlog.Int64("limit", int64(r.GetLimit())),
 		otlog.String("step", fmt.Sprintf("%d", r.GetStep())),
 	)
 }

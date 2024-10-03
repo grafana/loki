@@ -48,38 +48,84 @@ func NewDetectedFieldsHandler(
 				return resp, nil
 			}
 
-			detectedFields := parseDetectedFields(r.FieldLimit, re.Data.Result)
-			fields := make([]*logproto.DetectedField, len(detectedFields))
-			fieldCount := 0
-			for k, v := range detectedFields {
-				p := v.parsers
-				if len(p) == 0 {
-					p = nil
-				}
-				fields[fieldCount] = &logproto.DetectedField{
-					Label:       k,
-					Type:        v.fieldType,
-					Cardinality: v.Estimate(),
-					Parsers:     p,
-				}
+			var fields []*logproto.DetectedField
+			var values []string
 
-				fieldCount++
+			if r.Values && r.Name != "" {
+				values = parseDetectedFieldValues(r.Limit, re.Data.Result, r.Name)
+			} else {
+				detectedFields := parseDetectedFields(r.Limit, re.Data.Result)
+				fields = make([]*logproto.DetectedField, len(detectedFields))
+				fieldCount := 0
+				for k, v := range detectedFields {
+					p := v.parsers
+					if len(p) == 0 {
+						p = nil
+					}
+					fields[fieldCount] = &logproto.DetectedField{
+						Label:       k,
+						Type:        v.fieldType,
+						Cardinality: v.Estimate(),
+						Parsers:     p,
+					}
+
+					fieldCount++
+				}
 			}
 
 			dfResp := DetectedFieldsResponse{
 				Response: &logproto.DetectedFieldsResponse{
 					Fields: fields,
+					Values: values,
 				},
 				Headers: re.Headers,
 			}
 
 			// Otherwise all they get is the field limit, which is a bit confusing
-			if len(fields) > 0 {
-				dfResp.Response.FieldLimit = r.GetFieldLimit()
+			if len(fields) > 0 || len(values) > 0 {
+				dfResp.Response.Limit = r.GetLimit()
 			}
 
 			return &dfResp, nil
 		})
+}
+
+func parseDetectedFieldValues(limit uint32, streams []push.Stream, name string) []string {
+	values := map[string]struct{}{}
+	for _, stream := range streams {
+		streamLbls, err := syntax.ParseLabels(stream.Labels)
+		if err != nil {
+			streamLbls = labels.EmptyLabels()
+		}
+
+		for _, entry := range stream.Entries {
+			if len(values) >= int(limit) {
+				break
+			}
+
+			structuredMetadata := getStructuredMetadata(entry)
+			if vals, ok := structuredMetadata[name]; ok {
+				for _, v := range vals {
+					values[v] = struct{}{}
+				}
+			}
+
+			entryLbls := logql_log.NewBaseLabelsBuilder().ForLabels(streamLbls, streamLbls.Hash())
+			parsedLabels, _ := parseEntry(entry, entryLbls)
+			if vals, ok := parsedLabels[name]; ok {
+				for _, v := range vals {
+					values[v] = struct{}{}
+				}
+			}
+		}
+	}
+
+	response := make([]string, 0, len(values))
+	for v := range values {
+		response = append(response, v)
+	}
+
+	return response
 }
 
 func makeDownstreamRequest(
