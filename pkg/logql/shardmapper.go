@@ -298,9 +298,6 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 			if err != nil {
 				return nil, 0, err
 			}
-			if shards == 0 {
-				return noOp(expr, m.shards.Resolver())
-			}
 
 			// approx_topk(k, inner) ->
 			// topk(
@@ -312,6 +309,22 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 
 			countMinSketchExpr := syntax.MustClone(expr)
 			countMinSketchExpr.Operation = syntax.OpTypeCountMinSketch
+
+			// Even if this query is not sharded the user wants an approximation. This is helpful if some
+			// inferred label has a very high cardinality. Note that the querier does not support CountMinSketchEvalExpr
+			// which is why it's evaluated on the front end.
+			if shards == 0 {
+				return &syntax.VectorAggregationExpr{
+					Left: &CountMinSketchEvalExpr{
+						downstreams: []DownstreamSampleExpr{{
+							SampleExpr: countMinSketchExpr,
+						}},
+					},
+					Grouping:  expr.Grouping,
+					Operation: syntax.OpTypeTopK,
+					Params:    expr.Params,
+				}, bytesPerShard, nil
+			}
 
 			downstreams := make([]DownstreamSampleExpr, 0, shards)
 			for shard := shards - 1; shard >= 0; shard-- {
