@@ -290,7 +290,7 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 			}, bytesPerShard, nil
 		case syntax.OpTypeApproxTopK:
 			if !m.approxTopkSupport {
-				return nil, 0, fmt.Errorf("approx_topk is not enabled. See -limits.shard_aggregations.")
+				return nil, 0, fmt.Errorf("approx_topk is not enabled. See -limits.shard_aggregations")
 			}
 
 			// TODO(owen-d): integrate bounded sharding with approx_topk
