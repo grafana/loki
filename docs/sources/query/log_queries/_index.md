@@ -4,7 +4,7 @@ menuTItle:
 description: Overview of how log queries are constructed and parsed.
 aliases: 
 - ../logql/log_queries/
-weight: 10 
+weight: 300 
 ---
 
 # Log queries
