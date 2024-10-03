@@ -3813,6 +3813,12 @@ otlp_config:
 # status code (260) is returned to the client along with an error message.
 # CLI flag: -limits.block-ingestion-status-code
 [block_ingestion_status_code: <int> | default = 260]
+
+# The number of partitions a tenant's data should be sharded to when using kafka
+# ingestion. Tenants are sharded across partitions using shuffle-sharding. 0
+# disables shuffle sharding and tenant is sharded across all partitions.
+# CLI flag: -limits.ingestion-partition-tenant-shard-size
+[ingestion_partitions_tenant_shard_size: <int> | default = 0]
 ```
 
 ### local_storage_config
