@@ -355,7 +355,7 @@ Now that you have created the `values.yaml` file, you can deploy Loki using the 
 1. Deploy using the newly created `values.yaml` file:
 
     ```bash
-    helm install --values values.yaml loki grafana/loki
+    helm install --values values.yaml loki grafana/loki -n loki
     ```
     **Note: this may take a few minutes to complete.**
 
