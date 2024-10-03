@@ -36,8 +36,8 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
 
-# ensure you run `make drone` and `make release-workflows` after changing this
-BUILD_IMAGE_VERSION ?= 0.33.6
+# ensure you run `make release-workflows` after changing this
+BUILD_IMAGE_VERSION ?= 0.34.1
 GO_VERSION := 1.22.6
 
 # Docker image info
@@ -664,7 +664,7 @@ else
 endif
 
 build-image: ensure-buildx-builder
-	$(SUDO) $(BUILD_OCI) --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) ./loki-build-image
+	$(SUDO) $(BUILD_OCI) --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) ./loki-build-image
 build-image-push: build-image ## push the docker build image
 ifneq (,$(findstring WIP,$(IMAGE_TAG)))
 	@echo "Cannot push a WIP image, commit changes first"; \
