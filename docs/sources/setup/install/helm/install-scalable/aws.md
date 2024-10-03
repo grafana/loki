@@ -34,7 +34,7 @@ These EKS requirements are the minimum specification needed to deploy Loki using
 In this guide, we deploy Loki using `m5.xlarge` instances. This is a middle-of-the-road instance type that should work for most scenarios. However, you can modify the instance types and count based on your specific needs.
 {{< /admonition >}}
 
-Since EKS is manged and maintained by AWS, we can't provide a definitive method to deploying a cluster on EKS. However, we can provide you with the minimum requirements for deploying Loki on EKS: 
+The minimum requirements for deploying Loki on EKS are: 
 
 - Kubernetes version `1.30` or above.
 - `3` nodes for the EKS cluster.
