@@ -3,7 +3,6 @@ package logql
 import (
 	"context"
 	"math"
-	"slices"
 	"testing"
 	"time"
 
@@ -187,27 +186,22 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 	for _, tc := range []struct {
 		query         string
 		realtiveError float64
-		queryTypes    []QueryRangeType
 	}{
-		//{`quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.05, []QueryRangeType{InstantType, RangeType}},
-		//{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.02, []QueryRangeType{InstantType, RangeType}},
-		{`topk(3, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`, 0.002, []QueryRangeType{InstantType}},
+		{`quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.05},
+		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.02},
 	} {
 		q := NewMockQuerier(
 			shards,
 			streams,
 		)
 
-		opts := EngineOpts{}
+		opts := EngineOpts{
+			MaxCountMinSketchHeapSize: 10_000,
+		}
 		regular := NewEngine(opts, q, NoLimits, log.NewNopLogger())
 		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
 
 		t.Run(tc.query+"_range", func(t *testing.T) {
-			if !slices.Contains(tc.queryTypes, RangeType) {
-				t.Skip()
-				return
-			}
-
 			params, err := NewLiteralParams(
 				tc.query,
 				start,
@@ -242,11 +236,6 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 			relativeError(t, res.Data.(promql.Matrix), shardedRes.Data.(promql.Matrix), tc.realtiveError)
 		})
 		t.Run(tc.query+"_instant", func(t *testing.T) {
-			if !slices.Contains(tc.queryTypes, InstantType) {
-				t.Skip()
-				return
-			}
-
 			// for an instant query we set the start and end to the same timestamp
 			// plus set step and interval to 0
 			params, err := NewLiteralParams(
@@ -265,11 +254,81 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
 			strategy := NewPowerOfTwoStrategy(ConstantShards(shards))
-			mapper := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime})
+			mapper := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime, SupportApproxTopk})
 
-			// TODO: use different test
-			// Use approximated topk
-			params.queryString = "approx_" + params.queryString
+			_, _, mapped, err := mapper.Parse(params.GetExpression())
+			require.NoError(t, err)
+
+			shardedQry := sharded.Query(ctx, ParamsWithExpressionOverride{
+				Params:             params,
+				ExpressionOverride: mapped,
+			})
+
+			res, err := qry.Exec(ctx)
+			require.NoError(t, err)
+			require.NotEmpty(t, res.Data.(promql.Vector))
+
+			shardedRes, err := shardedQry.Exec(ctx)
+			require.NoError(t, err)
+
+			relativeErrorVector(t, res.Data.(promql.Vector), shardedRes.Data.(promql.Vector), tc.realtiveError)
+		})
+	}
+}
+
+func TestApproxTopkSketches(t *testing.T) {
+	var (
+		shards   = 3
+		nStreams = 10_000
+		rounds   = 20
+		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"}, true)
+		limit    = 100
+	)
+
+	for _, tc := range []struct {
+		shardedQuery  string
+		regularQuery  string
+		realtiveError float64
+	}{
+		{
+			shardedQuery:  `approx_topk(3, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
+			regularQuery:  `topk(3, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
+			realtiveError: 0.002,
+		},
+	} {
+		q := NewMockQuerier(
+			shards,
+			streams,
+		)
+
+		opts := EngineOpts{
+			MaxCountMinSketchHeapSize: 10_000,
+		}
+		regular := NewEngine(opts, q, NoLimits, log.NewNopLogger())
+		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
+
+		t.Run(tc.shardedQuery, func(t *testing.T) {
+			// for an instant query we set the start and end to the same timestamp
+			// plus set step and interval to 0
+			params, err := NewLiteralParams(
+				tc.regularQuery,
+				time.Unix(1, 0),
+				time.Unix(1, 0),
+				0,
+				0,
+				logproto.FORWARD,
+				uint32(limit),
+				nil,
+				nil,
+			)
+			require.NoError(t, err)
+			qry := regular.Query(params.Copy())
+			ctx := user.InjectOrgID(context.Background(), "fake")
+
+			strategy := NewPowerOfTwoStrategy(ConstantShards(shards))
+			mapper := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime, SupportApproxTopk})
+
+			params.queryString = tc.shardedQuery
 			params.queryExpr, err = syntax.ParseExpr(params.queryString)
 			require.NoError(t, err)
 
