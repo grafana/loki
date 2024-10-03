@@ -133,7 +133,7 @@ Create a new directory and navigate to it. Make sure to create the files in this
     }
     ```
 
-    Make sure to replace the placeholder with the name of the bucket you created earlier.
+    **Make sure to replace the placeholder with the name of the bucket you created earlier.**
 
 1. Create the IAM policy using the AWS CLI:
 
@@ -207,9 +207,9 @@ To allow the IAM role to access the S3 bucket, you need to add the policy to the
         ]
     }
     ```
-    **Note: Make sure to replace the placeholders with your AWS account ID and the bucket name.**
+    **Make sure to replace the placeholders with your AWS account ID and the bucket name.**
 
-1. Add the policy to the bucket:
+2. Add the policy to the bucket:
 
     ```bash
     aws s3api put-bucket-policy --bucket loki-aws-bucket --policy file://bucket-policy.json
