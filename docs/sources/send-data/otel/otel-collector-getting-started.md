@@ -57,7 +57,7 @@ In this scenario, we have a microservices application called the Carnivorous Gre
 - **Main App:** The main application that ties all the services together.
 - **Database:** A database that stores user and plant data.
 
-Each service generates logs using the OpenTelemetry SDK and exports to the OpenTelemetry Collector in the OpenTelemetry format (OTLP). The collector then ingests the logs and sends them to Loki.
+Each service generates logs using the OpenTelemetry SDK and exports to the OpenTelemetry Collector in the OpenTelemetry format (OTLP). The Collector then ingests the logs and sends them to Loki.
 
 <!-- INTERACTIVE page intro.md END -->
 
@@ -150,8 +150,8 @@ In this configuration:
 - `receivers`: The list of receivers to receive telemetry data. In this case, we are using the `otlp` receiver.
 - `otlp`: The OpenTelemetry receiver that accepts logs in the OpenTelemetry format.
 - `protocols`: The list of protocols that the receiver supports. In this case, we are using `grpc` and `http`.
-- `grpc`: The gRPC protocol configuration. The receiver will accept logs via gRPC on `4317`
-- `http`: The HTTP protocol configuration. The receiver will accept logs via HTTP on `4318`
+- `grpc`: The gRPC protocol configuration. The receiver will accept logs via gRPC on `4317`.
+- `http`: The HTTP protocol configuration. The receiver will accept logs via HTTP on `4318`.
 - `endpoint`: The IP address and port number to listen on. In this case, we are listening on all IP addresses on port `4317` for gRPC and port `4318` for HTTP.
 
 For more information on the `otlp` receiver configuration, see the [OpenTelemetry Receiver OTLP documentation](https://github.com/open-telemetry/opentelemetry-collector/blob/main/receiver/otlpreceiver/README.md).
@@ -323,9 +323,9 @@ This will start the following services:
 
 Once started, you can access the Carnivorous Greenhouse application at [http://localhost:5005](http://localhost:5005). Generate some logs by interacting with the application in the following ways:
 
-1. Create a user
-1. Log in
-1. Create a few plants to monitor
+1. Create a user.
+1. Log in.
+1. Create a few plants to monitor.
 1. Enable bug mode to activate the bug service. This will cause services to fail and generate additional logs.
 
 Finally to view the logs in Loki, navigate to the Loki Logs Explore view in Grafana at [http://localhost:3000/a/grafana-lokiexplore-app/explore](http://localhost:3000/a/grafana-lokiexplore-app/explore).
