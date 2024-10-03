@@ -360,7 +360,7 @@ func TestInstantQueryTripperwareResultCaching(t *testing.T) {
 	testLocal.CacheResults = false
 	testLocal.CacheIndexStatsResults = false
 	testLocal.CacheInstantMetricResults = false
-	var l = fakeLimits{
+	l := fakeLimits{
 		maxQueryParallelism:     1,
 		tsdbMaxQueryParallelism: 1,
 		maxQueryBytesRead:       1000,
@@ -1043,7 +1043,6 @@ func TestTripperware_EntriesLimit(t *testing.T) {
 }
 
 func TestTripperware_RequiredLabels(t *testing.T) {
-
 	const noErr = ""
 
 	for _, test := range []struct {
@@ -1095,7 +1094,6 @@ func TestTripperware_RequiredLabels(t *testing.T) {
 }
 
 func TestTripperware_RequiredNumberLabels(t *testing.T) {
-
 	const noErr = ""
 
 	for _, tc := range []struct {
@@ -1523,8 +1521,13 @@ func (f fakeLimits) VolumeEnabled(_ string) bool {
 func (f fakeLimits) TSDBMaxBytesPerShard(_ string) int {
 	return valid.DefaultTSDBMaxBytesPerShard
 }
+
 func (f fakeLimits) TSDBShardingStrategy(string) string {
 	return logql.PowerOfTwoVersion.String()
+}
+
+func (f fakeLimits) ShardAggregations(string) []string {
+	return nil
 }
 
 type ingesterQueryOpts struct {

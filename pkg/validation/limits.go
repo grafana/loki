@@ -222,6 +222,8 @@ type Limits struct {
 
 	BlockIngestionUntil      dskit_flagext.Time `yaml:"block_ingestion_until" json:"block_ingestion_until"`
 	BlockIngestionStatusCode int                `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
+
+	ShardAggregations []string `yaml:"shard_aggregations,omitempty" json:"shard_aggregations,omitempty" doc:"description=List of LogQL vector and range aggregations that should be sharded."`
 }
 
 type StreamRetention struct {
@@ -1038,6 +1040,10 @@ func (o *Overrides) BlockIngestionUntil(userID string) time.Time {
 
 func (o *Overrides) BlockIngestionStatusCode(userID string) int {
 	return o.getOverridesForUser(userID).BlockIngestionStatusCode
+}
+
+func (o *Overrides) ShardAggregations(userID string) []string {
+	return o.getOverridesForUser(userID).ShardAggregations
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

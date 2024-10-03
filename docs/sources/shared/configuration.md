@@ -3813,6 +3813,9 @@ otlp_config:
 # status code (260) is returned to the client along with an error message.
 # CLI flag: -limits.block-ingestion-status-code
 [block_ingestion_status_code: <int> | default = 260]
+
+# List of LogQL vector and range aggregations that should be sharded.
+[shard_aggregations: <list of strings>]
 ```
 
 ### local_storage_config

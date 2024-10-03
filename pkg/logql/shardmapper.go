@@ -16,6 +16,7 @@ const (
 	ShardLastOverTime     = "last_over_time"
 	ShardFirstOverTime    = "first_over_time"
 	ShardQuantileOverTime = "quantile_over_time"
+	SupportApproxTopk     = "approx_topk"
 )
 
 type ShardMapper struct {
@@ -24,29 +25,32 @@ type ShardMapper struct {
 	quantileOverTimeSharding bool
 	lastOverTimeSharding     bool
 	firstOverTimeSharding    bool
+	approxTopkSupport        bool
 }
 
 func NewShardMapper(strategy ShardingStrategy, metrics *MapperMetrics, shardAggregation []string) ShardMapper {
-	quantileOverTimeSharding := false
-	lastOverTimeSharding := false
-	firstOverTimeSharding := false
+	mapper := ShardMapper{
+		shards:                   strategy,
+		metrics:                  metrics,
+		quantileOverTimeSharding: false,
+		lastOverTimeSharding:     false,
+		firstOverTimeSharding:    false,
+		approxTopkSupport:        false,
+	}
 	for _, a := range shardAggregation {
 		switch a {
 		case ShardQuantileOverTime:
-			quantileOverTimeSharding = true
+			mapper.quantileOverTimeSharding = true
 		case ShardLastOverTime:
-			lastOverTimeSharding = true
+			mapper.lastOverTimeSharding = true
 		case ShardFirstOverTime:
-			firstOverTimeSharding = true
+			mapper.firstOverTimeSharding = true
+		case SupportApproxTopk:
+			mapper.approxTopkSupport = true
 		}
 	}
-	return ShardMapper{
-		shards:                   strategy,
-		metrics:                  metrics,
-		quantileOverTimeSharding: quantileOverTimeSharding,
-		firstOverTimeSharding:    firstOverTimeSharding,
-		lastOverTimeSharding:     lastOverTimeSharding,
-	}
+
+	return mapper
 }
 
 func NewShardMapperMetrics(registerer prometheus.Registerer) *MapperMetrics {
@@ -285,13 +289,11 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 				Operation: syntax.OpTypeSum,
 			}, bytesPerShard, nil
 		case syntax.OpTypeApproxTopK:
-			/* TODO
-			if !m.approxTopkSharding {
-				return noOp(expr, m.shards.Resolver())
+			if !m.approxTopkSupport {
+				return nil, 0, fmt.Errorf("approx_topk is not enabled. See -limits.shard_aggregations.")
 			}
-			*/
 
-			// TODO(owen-d): integrate bounded sharding with quantile over time
+			// TODO(owen-d): integrate bounded sharding with approx_topk
 			// I'm not doing this now because it uses a separate code path and may not handle
 			// bounded shards in the same way
 			shards, bytesPerShard, err := m.shards.Resolver().Shards(expr)
