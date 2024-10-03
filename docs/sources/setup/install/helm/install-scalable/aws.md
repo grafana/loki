@@ -78,10 +78,10 @@ managedNodeGroups:
 
 
 The following plugins are also required to be installed within the EKS cluster:
-- Amazon EBS CSI driver
-- Amazon EKS Pod Identity Agent
-- CoreDNS
-- kube-proxy
+- Amazon EBS CSI Driver: Enables Kubernetes to dynamically provision and manage EBS volumes as persistent storage for applications. We use this to provision the node volumes for Loki.
+- Amazon EKS Pod Identity Agent: Manages AWS IAM roles for pods, allowing fine-grained access control to AWS resources without needing to store credentials in containers. This is how Loki will access the S3 bucket.
+- CoreDNS: Provides internal DNS service for Kubernetes clusters, ensuring that services and pods can communicate with each other using DNS names. 
+- kube-proxy: Maintains network rules on nodes, enabling communication between pods and services within the cluster.
 
 You must also install an OIDC provider on the EKS cluster. This is required for the IAM roles and policies to work correctly. If you are using EKSctl, you can install the OIDC provider using the following command:
 
@@ -104,6 +104,10 @@ Make sure to replace the region and bucket name with your desired values. We wil
 ## Defining IAM roles and policies
 
 The recommended method for connecting Loki to AWS S3 is to use an IAM role. This method is more secure than using access keys and secret keys which are directly stored in the Loki configuration. The role and policy can be created using the AWS CLI or the AWS Management Console. The below steps show how to create the role and policy using the AWS CLI.
+
+{{< admonition type="tip" >}}
+Create a new directory and navigate to it. Make sure to create the files in this directory. All commands in this guide assume you are in this directory.
+{{< /admonition >}}
 
 1. Create a `loki-s3-policy.json` file with the following content:
 
@@ -158,7 +162,7 @@ The recommended method for connecting Loki to AWS S3 is to use an IAM role. This
         ]
     }
     ```
-    **Note: that you need to replace the placeholders with your AWS account ID, region, and the OIDC ID (you can find this in the EKS cluster configuration).**
+   **Make sure to replace the placeholders with your AWS account ID, region, and the OIDC ID (you can find this in the EKS cluster configuration).**
 
 1. Create the IAM role using the AWS CLI:
 
@@ -171,7 +175,7 @@ The recommended method for connecting Loki to AWS S3 is to use an IAM role. This
     ```bash
     aws iam attach-role-policy --role-name LokiServiceAccountRole --policy-arn arn:aws:iam::<Account ID>:policy/LokiS3AccessPolicy
     ```
-    Make sure to replace the placeholder with your AWS account ID.
+    **Make sure to replace the placeholder with your AWS account ID.**
 
 ### Adding the policy to our S3 bucket
 
@@ -203,7 +207,7 @@ To allow the IAM role to access the S3 bucket, you need to add the policy to the
         ]
     }
     ```
-    **Note: that you need to replace the placeholders with your AWS account ID and the bucket name.**
+    **Note: Make sure to replace the placeholders with your AWS account ID and the bucket name.**
 
 1. Add the policy to the bucket:
 
@@ -324,6 +328,7 @@ It is critical to define a valid `values.yaml` file for the Loki deployment. To 
   - The `values.yaml` file contains a section called `loki`, which contains a direct representation of the Loki configuration file.
   - This section defines the Loki configuration, including the schema, storage, and querier configuration.
   - The key configuration to focus on is the `storage_config` section, where you define the S3 bucket region and name.
+  - For the full Loki configuration, refer to the [Loki Configuration]({{< relref "../../../../configure" >}}) documentation.
 
 - **Storage:**
   - Defines where the Helm chart stores data.
@@ -339,8 +344,9 @@ It is critical to define a valid `values.yaml` file for the Loki deployment. To 
   - Defines how the Loki gateway will be exposed.
   - We are using a `LoadBalancer` service type in this configuration.
 
-**Important:** 
-  - Make sure to replace the placeholders with your actual values.
+{{< admonition type="warning" >}}
+Make sure to replace the placeholders with your actual values.
+{{< /admonition >}}
 
 ### Deploy Loki
 
@@ -377,6 +383,12 @@ Now that you have created the `values.yaml` file, you can deploy Loki using the 
   
 ### Find the Loki Gateway Service
 
+The Loki Gateway service is a LoadBalancer service that exposes the Loki gateway to the internet. This is where you will write logs to and query logs from. By default NGINX is used as the gateway.
+
+{{< admonition type="note" >}}
+The Loki Gateway service is exposed to the internet. It is recommended to secure the gateway with authentication. Refer to the [Authentication]({{< relref "../../../../operations/authentication" >}}) documentation for more information.
+{{< /admonition >}}
+
 To find the Loki Gateway service, run the following command:
 
 ```bash
@@ -399,6 +411,8 @@ loki-results-cache               ClusterIP      None             <none>         
 loki-write                       ClusterIP      10.100.217.163   <none>                                                                    3100/TCP,9095/TCP    46m
 loki-write-headless              ClusterIP      None             <none>                                                                    3100/TCP,9095/TCP    46m
 ```
+
+Congratulations! You have successfully deployed Loki in simple scalable mode on AWS using the Helm chart. Before we finish, let's test the deployment.
 
 ## Testing You're Loki Deployment
 
@@ -479,7 +493,19 @@ k6 is one of the fastest way to test your Loki deployment. This will allow you t
     }
     ```
 
-    Replace `<EXTERNAL-IP>` with the external IP address of the Loki Gateway service.
+   **Replace `<EXTERNAL-IP>` with the external IP address of the Loki Gateway service.**
+
+   This script will write logs to Loki and query logs from Loki. It will write logs in a random format between 800KB and 2MB and query logs in a random format over the last 5 minutes.
+  
+3. Run the test:
+
+    ```bash
+    ./k6 run aws-test.js
+    ```
+
+    This will run the test and output the results. You should see the test writing logs to Loki and querying logs from Loki.
+
+
 
 ## Considerations
 
