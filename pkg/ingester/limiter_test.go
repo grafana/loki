@@ -131,8 +131,6 @@ func TestStreamCountLimiter_AssertNewStreamAllowed(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			// Mock the ring
 			ring := &ringCountMock{count: testData.ringIngesterCount}
@@ -197,8 +195,6 @@ func TestLimiter_minNonZero(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			limiter := NewLimiter(nil, NilMetrics, nil, 0)
 			assert.Equal(t, testData.expected, limiter.minNonZero(testData.first, testData.second))

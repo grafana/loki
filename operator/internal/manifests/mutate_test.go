@@ -227,7 +227,6 @@ func TestGetMutateFunc_MutateServiceAccountObjectMeta(t *testing.T) {
 	}
 
 	for _, tt := range table {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			f := MutateFuncFor(tt.got, tt.want, nil)

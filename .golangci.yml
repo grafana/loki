@@ -63,7 +63,7 @@ linters:
     - govet
     - typecheck
     - depguard
-    - exportloopref
+    - copyloopvar
     - gofmt
     - goimports
     - gosimple

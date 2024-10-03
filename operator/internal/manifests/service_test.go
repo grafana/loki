@@ -715,7 +715,6 @@ func TestServices_WithEncryption(t *testing.T) {
 		},
 	}
 	for _, test := range tt {
-		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			t.Parallel()
 			objs, err := test.buildFunc(opts)

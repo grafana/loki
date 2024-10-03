@@ -194,8 +194,6 @@ func TestPipeline_Process(t *testing.T) {
 	}
 
 	for tName, tt := range tests {
-		tt := tt
-
 		t.Run(tName, func(t *testing.T) {
 			var config map[string]interface{}
 
@@ -304,7 +302,6 @@ func TestPipeline_Wrap(t *testing.T) {
 	}
 
 	for tName, tt := range tests {
-		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
 			c := fake.New(func() {})

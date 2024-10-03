@@ -176,7 +176,6 @@ func TestFetcher_DownloadQueue(t *testing.T) {
 				size: 1, workers: 0, err: "queue requires at least 1 worker",
 			},
 		} {
-			tc := tc
 			t.Run(tc.err, func(t *testing.T) {
 				_, err := newDownloadQueue[bool, bool](
 					tc.size,
