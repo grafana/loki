@@ -151,13 +151,6 @@ func (r *partitionCommitter) Commit(ctx context.Context, offset int64) (returnEr
 	return nil
 }
 
-func (r *partitionCommitter) Sync() {
-	_, err := r.admClient.ListCommittedOffsets(context.Background(), r.consumerGroup, r.kafkaCfg.Topic)
-	if err != nil {
-		level.Error(r.logger).Log("msg", "failed to list committed offsets", "err", err, "consumer_group", r.consumerGroup, "topic", r.kafkaCfg.Topic)
-	}
-}
-
 func (r *partitionCommitter) Stop() {
 	if r.kafkaCfg.ConsumerGroupOffsetCommitInterval <= 0 {
 		return
