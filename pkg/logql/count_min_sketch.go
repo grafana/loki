@@ -22,6 +22,7 @@ const (
 
 // CountMinSketchVector tracks the count or sum of values of a metric, ie list of label value pairs. It's storage for
 // the values is upper bound bu delta and epsilon. To limit the storage for labels see HeapCountMinSketchVector.
+// The main use case is for a topk approximation.
 type CountMinSketchVector struct {
 	T int64
 	F *sketch.CountMinSketch
@@ -237,6 +238,7 @@ func newCountMinSketchVectorAggEvaluator(nextEvaluator StepEvaluator, expr *synt
 	}, nil
 }
 
+// countMinSketchVectorAggEvaluator processes sample vectors and aggregates them in a count min sketch with a heap.
 type countMinSketchVectorAggEvaluator struct {
 	nextEvaluator StepEvaluator
 	expr          *syntax.VectorAggregationExpr
