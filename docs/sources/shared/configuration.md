@@ -3819,6 +3819,12 @@ otlp_config:
 # CLI flag: -limits.block-ingestion-status-code
 [block_ingestion_status_code: <int> | default = 260]
 
+# The number of partitions a tenant's data should be sharded to when using kafka
+# ingestion. Tenants are sharded across partitions using shuffle-sharding. 0
+# disables shuffle sharding and tenant is sharded across all partitions.
+# CLI flag: -limits.ingestion-partition-tenant-shard-size
+[ingestion_partitions_tenant_shard_size: <int> | default = 0]
+
 # List of LogQL vector and range aggregations that should be sharded.
 [shard_aggregations: <list of strings>]
 ```

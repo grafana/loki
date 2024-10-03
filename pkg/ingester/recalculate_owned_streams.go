@@ -160,11 +160,12 @@ type ownedStreamsPartitionStrategy struct {
 	getPartitionShardSize    func(user string) int
 }
 
-func newOwnedStreamsPartitionStrategy(partitionID int32, ring ring.PartitionRingReader, logger log.Logger) *ownedStreamsPartitionStrategy {
+func newOwnedStreamsPartitionStrategy(partitionID int32, ring ring.PartitionRingReader, getPartitionShardSize func(user string) int, logger log.Logger) *ownedStreamsPartitionStrategy {
 	return &ownedStreamsPartitionStrategy{
-		partitionID:          partitionID,
-		partitionRingWatcher: ring,
-		logger:               logger,
+		partitionID:           partitionID,
+		partitionRingWatcher:  ring,
+		logger:                logger,
+		getPartitionShardSize: getPartitionShardSize,
 	}
 }
 
@@ -174,7 +175,7 @@ func (s *ownedStreamsPartitionStrategy) checkRingForChanges() (bool, error) {
 	if r.PartitionsCount() == 0 {
 		return false, ring.ErrEmptyRing
 	}
-
+	// todo(ctovena): We might need to consider partition shard size changes as well.
 	activePartitions := r.ActivePartitionIDs()
 	ringChanged := !slices.Equal(s.previousActivePartitions, activePartitions)
 	s.previousActivePartitions = activePartitions
@@ -182,7 +183,11 @@ func (s *ownedStreamsPartitionStrategy) checkRingForChanges() (bool, error) {
 }
 
 func (s *ownedStreamsPartitionStrategy) isOwnedStream(str *stream) (bool, error) {
-	partitionForStream, err := s.partitionRingWatcher.PartitionRing().ActivePartitionForKey(lokiring.TokenFor(str.tenant, str.labelsString))
+	subring, err := s.partitionRingWatcher.PartitionRing().ShuffleShard(str.tenant, s.getPartitionShardSize(str.tenant))
+	if err != nil {
+		return false, fmt.Errorf("failed to get shuffle shard for stream: %w", err)
+	}
+	partitionForStream, err := subring.ActivePartitionForKey(lokiring.TokenFor(str.tenant, str.labelsString))
 	if err != nil {
 		return false, fmt.Errorf("failed to find active partition for stream: %w", err)
 	}
