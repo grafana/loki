@@ -17,7 +17,8 @@ const (
 	CountMinSketchVectorType = "CountMinSketchVector"
 
 	epsilon = 0.0001
-	delta   = 0.05
+	// delta of 0.05 results in a sketch size of 325KB, 0.01 gives a sketch size of 543KB
+	delta = 0.05
 )
 
 // CountMinSketchVector tracks the count or sum of values of a metric, ie list of label value pairs. It's storage for
@@ -145,7 +146,7 @@ type HeapCountMinSketchVector struct {
 }
 
 func NewHeapCountMinSketchVector(ts int64, metricsLength, maxLabels int) HeapCountMinSketchVector {
-	f, _ := sketch.NewCountMinSketchFromErroAndProbability(epsilon, delta)
+	f, _ := sketch.NewCountMinSketchFromErrorAndProbability(epsilon, delta)
 
 	if metricsLength >= maxLabels {
 		metricsLength = maxLabels
@@ -176,7 +177,7 @@ func (v *HeapCountMinSketchVector) Add(metric labels.Labels, value float64) {
 		heap.Fix(v, 0)
 	}
 
-	// The maximum number of labels has been reached, so drop the smalles element.
+	// The maximum number of labels has been reached, so drop the smallest element.
 	if len(v.Metrics) > v.maxLabels {
 		metric := heap.Pop(v).(labels.Labels)
 		delete(v.observed, metric.String())

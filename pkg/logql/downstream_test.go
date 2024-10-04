@@ -2,6 +2,7 @@ package logql
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"testing"
 	"time"
@@ -278,36 +279,77 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 
 func TestApproxTopkSketches(t *testing.T) {
 	var (
-		shards   = 3
-		nStreams = 10_000
-		rounds   = 20
-		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"}, true)
-		limit    = 100
+		rounds = 20
+		limit  = 100
 	)
 
 	for _, tc := range []struct {
+		labelShards   int
+		totalStreams  int
 		shardedQuery  string
 		regularQuery  string
 		realtiveError float64
 	}{
+		// Note:our data generation results in less spread between topk things for 10k streams than for 100k streams
+		// if we have 1k streams, we can get much more accurate results for topk 10 than topk 100
 		{
+			labelShards:   3,
+			totalStreams:  100,
 			shardedQuery:  `approx_topk(3, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
 			regularQuery:  `topk(3, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
-			realtiveError: 0.002,
+			realtiveError: 0.0012,
+		},
+		{
+			labelShards:   10,
+			totalStreams:  100,
+			shardedQuery:  `approx_topk(3, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
+			regularQuery:  `topk(3, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
+			realtiveError: 0.005,
+		},
+		{
+			labelShards:   10,
+			totalStreams:  1_000,
+			shardedQuery:  `approx_topk(100, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
+			regularQuery:  `topk(100, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
+			realtiveError: 0.0015,
+		},
+		{
+			labelShards:   100,
+			totalStreams:  1_000,
+			shardedQuery:  `approx_topk(100, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
+			regularQuery:  `topk(100, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
+			realtiveError: 0.022,
+		},
+		{
+			labelShards:   100,
+			totalStreams:  10_000,
+			shardedQuery:  `approx_topk(100, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
+			regularQuery:  `topk(100, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
+			realtiveError: 0.008,
+		},
+		{
+			labelShards:   100,
+			totalStreams:  100_000,
+			shardedQuery:  `approx_topk(100, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
+			regularQuery:  `topk(100, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
+			realtiveError: 0.0015,
 		},
 	} {
-		q := NewMockQuerier(
-			shards,
-			streams,
-		)
 
-		opts := EngineOpts{
-			MaxCountMinSketchHeapSize: 10_000,
-		}
-		regular := NewEngine(opts, q, NoLimits, log.NewNopLogger())
-		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
+		t.Run(fmt.Sprintf("%s/%d/%d", tc.shardedQuery, tc.labelShards, tc.totalStreams), func(t *testing.T) {
+			streams := randomStreams(tc.totalStreams, rounds+1, tc.labelShards, []string{"a", "b", "c", "d"}, true)
 
-		t.Run(tc.shardedQuery, func(t *testing.T) {
+			q := NewMockQuerier(
+				tc.labelShards,
+				streams,
+			)
+
+			opts := EngineOpts{
+				MaxCountMinSketchHeapSize: 10_000,
+			}
+			regular := NewEngine(opts, q, NoLimits, log.NewNopLogger())
+			sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
+
 			// for an instant query we set the start and end to the same timestamp
 			// plus set step and interval to 0
 			params, err := NewLiteralParams(
@@ -325,7 +367,7 @@ func TestApproxTopkSketches(t *testing.T) {
 			qry := regular.Query(params.Copy())
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
-			strategy := NewPowerOfTwoStrategy(ConstantShards(shards))
+			strategy := NewPowerOfTwoStrategy(ConstantShards(tc.labelShards))
 			mapper := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime, SupportApproxTopk})
 
 			params.queryString = tc.shardedQuery
@@ -346,7 +388,6 @@ func TestApproxTopkSketches(t *testing.T) {
 
 			shardedRes, err := shardedQry.Exec(ctx)
 			require.NoError(t, err)
-
 			relativeErrorVector(t, res.Data.(promql.Vector), shardedRes.Data.(promql.Vector), tc.realtiveError)
 		})
 	}
@@ -743,12 +784,15 @@ func relativeErrorVector(t *testing.T, expected, actual promql.Vector, alpha flo
 
 	e := make([]float64, len(expected))
 	a := make([]float64, len(expected))
+	inTopk := 0
 	for i := 0; i < len(expected); i++ {
-		require.Equal(t, expected[i].Metric, actual[i].Metric)
-
-		e[i] = expected[i].F
-		a[i] = actual[i].F
+		if labels.Equal(expected[i].Metric, actual[i].Metric) {
+			e[i] = expected[i].F
+			a[i] = actual[i].F
+			inTopk++
+		}
 	}
+	require.True(t, float64(inTopk/len(expected)) > 0.9, "not enough of the real topk elements were in the output %f", float64(inTopk/len(expected)))
 	require.InEpsilonSlice(t, e, a, alpha)
 }
 
