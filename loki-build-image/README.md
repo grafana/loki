@@ -2,6 +2,22 @@
 
 ## Versions
 
+### 0.33.7
+
+- Revert Golang base image to Debian Bullseye
+
+### 0.33.6
+
+- Update to go 1.22.6
+
+### 0.33.5
+
+- Update to alpine 3.20.2
+
+### 0.33.4
+
+- Update to go 1.22.5
+
 ### 0.33.2
 
 - Update to go 1.22.2
