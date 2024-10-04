@@ -322,6 +322,10 @@ func (t *Loki) initTenantConfigs() (_ services.Service, err error) {
 func (t *Loki) initDistributor() (services.Service, error) {
 	t.Cfg.Distributor.KafkaConfig = t.Cfg.KafkaConfig
 
+	if t.Cfg.Distributor.KafkaEnabled && !t.Cfg.Ingester.KafkaIngestion.Enabled {
+		return nil, errors.New("kafka is enabled in distributor but not in ingester")
+	}
+
 	var err error
 	logger := log.With(util_log.Logger, "component", "distributor")
 	t.distributor, err = distributor.New(
@@ -1754,7 +1758,7 @@ func (t *Loki) initAnalytics() (services.Service, error) {
 
 // The Ingest Partition Ring is responsible for watching the available ingesters and assigning partitions to incoming requests.
 func (t *Loki) initPartitionRing() (services.Service, error) {
-	if !t.Cfg.Ingester.KafkaIngestion.Enabled && !t.Cfg.Distributor.KafkaEnabled {
+	if !t.Cfg.Ingester.KafkaIngestion.Enabled {
 		return nil, nil
 	}
 
