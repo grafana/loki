@@ -206,7 +206,7 @@ func TestPartitionReader_ProcessCommits(t *testing.T) {
 	producer.ProduceSync(context.Background(), records...)
 	// timeSince acts as a hook for when we check if we've honoured the lag or not. We modify it to respond "no" initially, to force a re-loop, and then "yes" after `iterations`.
 	// We also inject a new kafka record each time so there is more to consume.
-	timeSince := func(t time.Time) time.Duration {
+	timeSince := func(time.Time) time.Duration {
 		i++
 		if i < iterations {
 			producer.ProduceSync(context.Background(), records...)
