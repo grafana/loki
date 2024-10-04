@@ -106,7 +106,6 @@ func TestBatchedLoader(t *testing.T) {
 			inputs:    [][]int{{0}},
 		},
 	} {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			fetchers := make([]Fetcher[int, int], 0, len(tc.inputs))
 			for range tc.inputs {
@@ -193,7 +192,6 @@ func TestOverlappingBlocksIter(t *testing.T) {
 			exp: 2,
 		},
 	} {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			it := overlappingBlocksIter(tc.inp)
 			var overlapping [][]bloomshipper.BlockRef

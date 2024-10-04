@@ -837,7 +837,6 @@ func Test_codec_DecodeProtobufResponseParity(t *testing.T) {
 	}
 	codec := RequestProtobufCodec{}
 	for i, queryTest := range queryTests {
-		i := i
 		t.Run(queryTest.name, func(t *testing.T) {
 			params := url.Values{
 				"query": []string{`{app="foo"}`},

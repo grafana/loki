@@ -119,8 +119,6 @@ func TestStreamCountLimiter_AssertNewStreamAllowed(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			// Mock limits
 			limits, err := validation.NewOverrides(validation.Limits{
@@ -183,8 +181,6 @@ func TestLimiter_minNonZero(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			limiter := NewLimiter(nil, NilMetrics, nil)
 			assert.Equal(t, testData.expected, limiter.minNonZero(testData.first, testData.second))

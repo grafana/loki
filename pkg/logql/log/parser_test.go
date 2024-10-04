@@ -1406,7 +1406,6 @@ func Test_PatternParser(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.pattern, func(t *testing.T) {
 			t.Parallel()
 			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
