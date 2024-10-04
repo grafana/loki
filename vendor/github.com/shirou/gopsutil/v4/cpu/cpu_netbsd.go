@@ -9,9 +9,10 @@ import (
 	"runtime"
 	"unsafe"
 
-	"github.com/shirou/gopsutil/v4/internal/common"
 	"github.com/tklauser/go-sysconf"
 	"golang.org/x/sys/unix"
+
+	"github.com/shirou/gopsutil/v4/internal/common"
 )
 
 const (

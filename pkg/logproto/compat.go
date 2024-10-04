@@ -524,7 +524,7 @@ func (m *DetectedFieldsRequest) LogToSpan(sp opentracing.Span) {
 		otlog.String("start", m.Start.String()),
 		otlog.String("end", m.End.String()),
 		otlog.String("step", time.Duration(m.Step).String()),
-		otlog.String("field_limit", fmt.Sprintf("%d", m.FieldLimit)),
+		otlog.String("field_limit", fmt.Sprintf("%d", m.Limit)),
 		otlog.String("line_limit", fmt.Sprintf("%d", m.LineLimit)),
 	}
 	sp.LogFields(fields...)

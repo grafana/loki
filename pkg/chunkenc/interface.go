@@ -68,7 +68,7 @@ type Chunk interface {
 	UncompressedSize() int
 	CompressedSize() int
 	Close() error
-	Encoding() compression.Encoding
+	Encoding() compression.Codec
 	Rebound(start, end time.Time, filter filter.Func) (Chunk, error)
 }
 

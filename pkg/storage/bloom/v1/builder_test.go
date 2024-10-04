@@ -15,12 +15,28 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
 
-var blockEncodings = []compression.Encoding{
-	compression.EncNone,
-	compression.EncGZIP,
-	compression.EncSnappy,
-	compression.EncLZ4_256k,
-	compression.EncZstd,
+var blockEncodings = []compression.Codec{
+	compression.None,
+	compression.GZIP,
+	compression.Snappy,
+	compression.LZ4_256k,
+	compression.Zstd,
+}
+
+func TestBlockOptions_BloomPageSize(t *testing.T) {
+	t.Parallel()
+
+	var (
+		maxBlockSizeBytes = uint64(50 << 10)
+		maxBloomSizeBytes = uint64(10 << 10)
+	)
+
+	opts := NewBlockOptions(compression.None, maxBlockSizeBytes, maxBloomSizeBytes)
+
+	require.GreaterOrEqual(
+		t, opts.BloomPageSize, maxBloomSizeBytes,
+		"opts.BloomPageSize should be greater or equal to the maximum bloom size to avoid having too many overfilled pages",
+	)
 }
 
 func TestBlockOptions_RoundTrip(t *testing.T) {
@@ -28,7 +44,7 @@ func TestBlockOptions_RoundTrip(t *testing.T) {
 	opts := BlockOptions{
 		Schema: Schema{
 			version:  CurrentSchemaVersion,
-			encoding: compression.EncSnappy,
+			encoding: compression.Snappy,
 		},
 		SeriesPageSize: 100,
 		BloomPageSize:  10 << 10,
@@ -201,7 +217,7 @@ func TestMergeBuilder(t *testing.T) {
 	blockOpts := BlockOptions{
 		Schema: Schema{
 			version:  CurrentSchemaVersion,
-			encoding: compression.EncSnappy,
+			encoding: compression.Snappy,
 		},
 		SeriesPageSize: 100,
 		BloomPageSize:  10 << 10,
@@ -298,7 +314,7 @@ func TestMergeBuilderFingerprintCollision(t *testing.T) {
 	blockOpts := BlockOptions{
 		Schema: Schema{
 			version:  CurrentSchemaVersion,
-			encoding: compression.EncSnappy,
+			encoding: compression.Snappy,
 		},
 		SeriesPageSize: 100,
 		BloomPageSize:  10 << 10,
@@ -395,7 +411,7 @@ func TestBlockReset(t *testing.T) {
 
 	schema := Schema{
 		version:  CurrentSchemaVersion,
-		encoding: compression.EncSnappy,
+		encoding: compression.Snappy,
 	}
 
 	builder, err := NewBlockBuilder(
@@ -451,7 +467,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 	blockOpts := BlockOptions{
 		Schema: Schema{
 			version:  CurrentSchemaVersion,
-			encoding: compression.EncSnappy, // test with different encodings?
+			encoding: compression.Snappy, // test with different encodings?
 		},
 		SeriesPageSize: 100,
 		BloomPageSize:  10 << 10,

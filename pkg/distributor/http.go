@@ -58,7 +58,8 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		pushRequestParser = d.RequestParserWrapper(pushRequestParser)
 	}
 
-	req, err := push.ParseRequest(logger, tenantID, r, d.tenantsRetention, d.validator.Limits, pushRequestParser, d.usageTracker)
+	logPushRequestStreams := d.tenantConfigs.LogPushRequestStreams(tenantID)
+	req, err := push.ParseRequest(logger, tenantID, r, d.tenantsRetention, d.validator.Limits, pushRequestParser, d.usageTracker, logPushRequestStreams)
 	if err != nil {
 		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
@@ -73,7 +74,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		return
 	}
 
-	if d.tenantConfigs.LogPushRequestStreams(tenantID) {
+	if logPushRequestStreams {
 		var sb strings.Builder
 		for _, s := range req.Streams {
 			sb.WriteString(s.Labels)

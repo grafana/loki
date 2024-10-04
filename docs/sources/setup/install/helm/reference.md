@@ -3039,6 +3039,7 @@ null
   },
   "provisioner": {
     "additionalTenants": [],
+    "affinity": {},
     "annotations": {},
     "enabled": true,
     "env": [],
@@ -3051,6 +3052,7 @@ null
       "tag": null
     },
     "labels": {},
+    "nodeSelector": {},
     "priorityClassName": null,
     "provisionedSecretPrefix": null,
     "securityContext": {
@@ -3058,9 +3060,11 @@ null
       "runAsGroup": 10001,
       "runAsNonRoot": true,
       "runAsUser": 10001
-    }
+    },
+    "tolerations": []
   },
   "tokengen": {
+    "affinity": {},
     "annotations": {},
     "enabled": true,
     "env": [],
@@ -3069,6 +3073,7 @@ null
     "extraVolumeMounts": [],
     "extraVolumes": [],
     "labels": {},
+    "nodeSelector": {},
     "priorityClassName": "",
     "securityContext": {
       "fsGroup": 10001,
@@ -3222,6 +3227,7 @@ null
 			<td><pre lang="json">
 {
   "additionalTenants": [],
+  "affinity": {},
   "annotations": {},
   "enabled": true,
   "env": [],
@@ -3234,6 +3240,7 @@ null
     "tag": null
   },
   "labels": {},
+  "nodeSelector": {},
   "priorityClassName": null,
   "provisionedSecretPrefix": null,
   "securityContext": {
@@ -3241,7 +3248,8 @@ null
     "runAsGroup": 10001,
     "runAsNonRoot": true,
     "runAsUser": 10001
-  }
+  },
+  "tolerations": []
 }
 </pre>
 </td>
@@ -3252,6 +3260,15 @@ null
 			<td>Additional tenants to be created. Each tenant will get a read and write policy and associated token. Tenant must have a name and a namespace for the secret containting the token to be created in. For example additionalTenants:   - name: loki     secretNamespace: grafana</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.provisioner.affinity</td>
+			<td>object</td>
+			<td>Affinity for tokengen Pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -3361,6 +3378,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>enterprise.provisioner.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for tokengen Pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise.provisioner.priorityClassName</td>
 			<td>string</td>
 			<td>The name of the PriorityClass for provisioner Job</td>
@@ -3393,11 +3419,21 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>enterprise.provisioner.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for tokengen Pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise.tokengen</td>
 			<td>object</td>
 			<td>Configuration for `tokengen` target</td>
 			<td><pre lang="json">
 {
+  "affinity": {},
   "annotations": {},
   "enabled": true,
   "env": [],
@@ -3406,6 +3442,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "labels": {},
+  "nodeSelector": {},
   "priorityClassName": "",
   "securityContext": {
     "fsGroup": 10001,
@@ -3416,6 +3453,15 @@ null
   "targetModule": "tokengen",
   "tolerations": []
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.tokengen.affinity</td>
+			<td>object</td>
+			<td>Affinity for tokengen Pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -3486,6 +3532,15 @@ true
 			<td>enterprise.tokengen.labels</td>
 			<td>object</td>
 			<td>Additional labels for the `tokengen` Job</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.tokengen.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for tokengen Pods</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -5585,6 +5640,7 @@ null
       "/loki/api/v1/index/volume",
       "/loki/api/v1/index/volume_range",
       "/loki/api/v1/format_query",
+      "/loki/api/v1/detected_field",
       "/loki/api/v1/detected_fields",
       "/loki/api/v1/detected_labels",
       "/loki/api/v1/patterns"
@@ -5647,6 +5703,7 @@ null
   "/loki/api/v1/index/volume",
   "/loki/api/v1/index/volume_range",
   "/loki/api/v1/format_query",
+  "/loki/api/v1/detected_field",
   "/loki/api/v1/detected_fields",
   "/loki/api/v1/detected_labels",
   "/loki/api/v1/patterns"
@@ -5907,7 +5964,7 @@ null
 		<tr>
 			<td>loki.image.tag</td>
 			<td>string</td>
-			<td>Overrides the image tag whose default is the chart's appVersion TODO: needed for 3rd target backend functionality revert to null or latest once this behavior is relased</td>
+			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -6129,6 +6186,7 @@ null
   "azure": {
     "accountKey": null,
     "accountName": null,
+    "chunkDelimiter": null,
     "connectionString": null,
     "endpointSuffix": null,
     "requestTimeout": null,

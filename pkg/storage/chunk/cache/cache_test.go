@@ -35,7 +35,7 @@ func fillCache(t *testing.T, scfg config.SchemaConfig, cache cache.Cache) ([]str
 	for i := 0; i < 111; i++ {
 		ts := model.TimeFromUnix(int64(i * chunkLen))
 
-		cs := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.EncGZIP, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 256*1024, 0)
+		cs := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.GZIP, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 256*1024, 0)
 
 		_, err := cs.Append(&logproto.Entry{
 			Timestamp: ts.Time(),

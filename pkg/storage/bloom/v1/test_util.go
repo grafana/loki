@@ -30,7 +30,7 @@ func MakeBlock(t testing.TB, nth int, fromFp, throughFp model.Fingerprint, fromT
 		BlockOptions{
 			Schema: Schema{
 				version:  CurrentSchemaVersion,
-				encoding: compression.EncSnappy,
+				encoding: compression.Snappy,
 			},
 			SeriesPageSize: 100,
 			BloomPageSize:  10 << 10,

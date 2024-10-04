@@ -202,7 +202,7 @@ func UploadPartFromBytes(cli bce.Client, bucket, object, uploadId string, partNu
 	}
 	// Send request and get the result
 	resp := &bce.BceResponse{}
-	if err := cli.SendRequestFromBytes(req, resp, content); err != nil {
+	if err := SendRequestFromBytes(cli, req, resp, ctx, content); err != nil {
 		return "", err
 	}
 	if resp.IsFail() {

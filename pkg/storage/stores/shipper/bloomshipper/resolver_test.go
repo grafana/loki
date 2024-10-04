@@ -33,17 +33,17 @@ func TestResolver_ParseMetaKey(t *testing.T) {
 
 func TestResolver_ParseBlockKey(t *testing.T) {
 	for _, tc := range []struct {
-		srcEnc, dstEnc compression.Encoding
+		srcEnc, dstEnc compression.Codec
 	}{
-		{compression.EncNone, compression.EncNone},
-		{compression.EncGZIP, compression.EncGZIP},
-		{compression.EncSnappy, compression.EncSnappy},
-		{compression.EncLZ4_64k, compression.EncLZ4_4M},
-		{compression.EncLZ4_256k, compression.EncLZ4_4M},
-		{compression.EncLZ4_1M, compression.EncLZ4_4M},
-		{compression.EncLZ4_4M, compression.EncLZ4_4M},
-		{compression.EncFlate, compression.EncFlate},
-		{compression.EncZstd, compression.EncZstd},
+		{compression.None, compression.None},
+		{compression.GZIP, compression.GZIP},
+		{compression.Snappy, compression.Snappy},
+		{compression.LZ4_64k, compression.LZ4_4M},
+		{compression.LZ4_256k, compression.LZ4_4M},
+		{compression.LZ4_1M, compression.LZ4_4M},
+		{compression.LZ4_4M, compression.LZ4_4M},
+		{compression.Flate, compression.Flate},
+		{compression.Zstd, compression.Zstd},
 	} {
 		t.Run(tc.srcEnc.String(), func(t *testing.T) {
 			r := defaultKeyResolver{}
@@ -56,7 +56,7 @@ func TestResolver_ParseBlockKey(t *testing.T) {
 					EndTimestamp:   3600000,
 					Checksum:       43981,
 				},
-				Encoding: tc.srcEnc,
+				Codec: tc.srcEnc,
 			}
 
 			// encode block ref as string
@@ -69,8 +69,8 @@ func TestResolver_ParseBlockKey(t *testing.T) {
 			parsed, err := r.ParseBlockKey(key(path))
 			require.NoError(t, err)
 			expected := BlockRef{
-				Ref:      ref.Ref,
-				Encoding: tc.dstEnc,
+				Ref:   ref.Ref,
+				Codec: tc.dstEnc,
 			}
 			require.Equal(t, expected, parsed)
 		})

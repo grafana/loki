@@ -60,7 +60,7 @@ func TestFusedQuerier(t *testing.T) {
 		BlockOptions{
 			Schema: Schema{
 				version:  CurrentSchemaVersion,
-				encoding: compression.EncSnappy,
+				encoding: compression.Snappy,
 			},
 			SeriesPageSize: 100,
 			BloomPageSize:  10 << 10,
@@ -147,7 +147,7 @@ func TestFusedQuerier_MultiPage(t *testing.T) {
 		BlockOptions{
 			Schema: Schema{
 				version:  CurrentSchemaVersion,
-				encoding: compression.EncSnappy,
+				encoding: compression.Snappy,
 			},
 			SeriesPageSize: 100,
 			BloomPageSize:  10, // So we force one bloom per page
@@ -296,7 +296,7 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 		BlockOptions{
 			Schema: Schema{
 				version:  CurrentSchemaVersion,
-				encoding: compression.EncSnappy,
+				encoding: compression.Snappy,
 			},
 			SeriesPageSize: 100,
 			BloomPageSize:  10, // So we force one series per page
@@ -354,7 +354,7 @@ func TestFusedQuerier_SkipsEmptyBlooms(t *testing.T) {
 		BlockOptions{
 			Schema: Schema{
 				version:  CurrentSchemaVersion,
-				encoding: compression.EncNone,
+				encoding: compression.None,
 			},
 			SeriesPageSize: 100,
 			BloomPageSize:  10 << 10,
@@ -415,7 +415,7 @@ func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]Request, []chan Ou
 		BlockOptions{
 			Schema: Schema{
 				version:  CurrentSchemaVersion,
-				encoding: compression.EncSnappy,
+				encoding: compression.Snappy,
 			},
 			SeriesPageSize: 256 << 10, // 256k
 			BloomPageSize:  1 << 20,   // 1MB
