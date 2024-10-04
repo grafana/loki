@@ -284,6 +284,9 @@ azure:
   {{- with .endpointSuffix }}
   endpoint_suffix: {{ . }}
   {{- end }}
+  {{- with .chunkDelimiter }}
+  chunk_delimiter: {{ . }}
+  {{- end }}
 {{- end -}}
 {{- else if eq .Values.loki.storage.type "alibabacloud" -}}
 {{- with .Values.loki.storage.alibabacloud }}

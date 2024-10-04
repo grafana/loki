@@ -39,7 +39,10 @@ func (m *mockConsumer) Start(ctx context.Context, recordsChan <-chan []Record) f
 			select {
 			case <-ctx.Done():
 				return
-			case records := <-recordsChan:
+			case records, ok := <-recordsChan:
+				if !ok {
+					return
+				}
 				m.recordsChan <- records
 			}
 		}
@@ -96,6 +99,64 @@ func TestPartitionReader_BasicFunctionality(t *testing.T) {
 			t.Fatal("Timeout waiting for records")
 		}
 	}
+
+	err = services.StopAndAwaitTerminated(context.Background(), partitionReader)
+	require.NoError(t, err)
+}
+
+func TestPartitionReader_ProcessCatchUpAtStartup(t *testing.T) {
+	_, kafkaCfg := testkafka.CreateCluster(t, 1, "test-topic")
+	var consumerStarting *mockConsumer
+
+	consumerFactory := func(_ Committer) (Consumer, error) {
+		// Return two consumers to ensure we are processing requests during service `start()` and not during `run()`.
+		if consumerStarting == nil {
+			consumerStarting = newMockConsumer()
+			return consumerStarting, nil
+		}
+		return newMockConsumer(), nil
+	}
+
+	partitionReader, err := NewReader(kafkaCfg, 0, "test-consumer-group", consumerFactory, log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+	producer, err := kafka.NewWriterClient(kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+
+	stream := logproto.Stream{
+		Labels:  labels.FromStrings("foo", "bar").String(),
+		Entries: []logproto.Entry{{Timestamp: time.Now(), Line: "test"}},
+	}
+
+	records, err := kafka.Encode(0, "test-tenant", stream, 10<<20)
+	require.NoError(t, err)
+	require.Len(t, records, 1)
+
+	producer.ProduceSync(context.Background(), records...)
+	producer.ProduceSync(context.Background(), records...)
+
+	// Enable the catch up logic so starting the reader will read any existing records.
+	kafkaCfg.TargetConsumerLagAtStartup = time.Second * 1
+	kafkaCfg.MaxConsumerLagAtStartup = time.Second * 2
+
+	err = services.StartAndAwaitRunning(context.Background(), partitionReader)
+	require.NoError(t, err)
+
+	// This message should not be processed by the startingConsumer
+	producer.ProduceSync(context.Background(), records...)
+
+	// Wait for records to be processed
+	require.Eventually(t, func() bool {
+		return len(consumerStarting.recordsChan) == 1 // All pending messages will be received in one batch
+	}, 10*time.Second, 10*time.Millisecond)
+
+	receivedRecords := <-consumerStarting.recordsChan
+	require.Len(t, receivedRecords, 2)
+	assert.Equal(t, "test-tenant", receivedRecords[0].TenantID)
+	assert.Equal(t, records[0].Value, receivedRecords[0].Content)
+	assert.Equal(t, "test-tenant", receivedRecords[1].TenantID)
+	assert.Equal(t, records[0].Value, receivedRecords[1].Content)
+
+	assert.Equal(t, 0, len(consumerStarting.recordsChan))
 
 	err = services.StopAndAwaitTerminated(context.Background(), partitionReader)
 	require.NoError(t, err)

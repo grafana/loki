@@ -94,6 +94,13 @@ type PutObjectOptions struct {
 	// If none is specified CRC32C is used, since it is generally the fastest.
 	AutoChecksum ChecksumType
 
+	// Checksum will force a checksum of the specific type.
+	// This requires that the client was created with "TrailingHeaders:true" option,
+	// and that the destination server supports it.
+	// Unavailable with V2 signatures & Google endpoints.
+	// This will disable content MD5 checksums if set.
+	Checksum ChecksumType
+
 	// ConcurrentStreamParts will create NumThreads buffers of PartSize bytes,
 	// fill them serially and upload them in parallel.
 	// This can be used for faster uploads on non-seekable or slow-to-seek input.
@@ -240,7 +247,7 @@ func (opts PutObjectOptions) Header() (header http.Header) {
 }
 
 // validate() checks if the UserMetadata map has standard headers or and raises an error if so.
-func (opts PutObjectOptions) validate() (err error) {
+func (opts PutObjectOptions) validate(c *Client) (err error) {
 	for k, v := range opts.UserMetadata {
 		if !httpguts.ValidHeaderFieldName(k) || isStandardHeader(k) || isSSEHeader(k) || isStorageClassHeader(k) || isMinioHeader(k) {
 			return errInvalidArgument(k + " unsupported user defined metadata name")
@@ -255,6 +262,17 @@ func (opts PutObjectOptions) validate() (err error) {
 	if opts.LegalHold != "" && !opts.LegalHold.IsValid() {
 		return errInvalidArgument(opts.LegalHold.String() + " unsupported legal-hold status")
 	}
+	if opts.Checksum.IsSet() {
+		switch {
+		case !c.trailingHeaderSupport:
+			return errInvalidArgument("Checksum requires Client with TrailingHeaders enabled")
+		case c.overrideSignerType.IsV2():
+			return errInvalidArgument("Checksum cannot be used with v2 signatures")
+		case s3utils.IsGoogleEndpoint(*c.endpointURL):
+			return errInvalidArgument("Checksum cannot be used with GCS endpoints")
+		}
+	}
+
 	return nil
 }
 
@@ -291,7 +309,7 @@ func (c *Client) PutObject(ctx context.Context, bucketName, objectName string, r
 		return UploadInfo{}, errors.New("object size must be provided with disable multipart upload")
 	}
 
-	err = opts.validate()
+	err = opts.validate(c)
 	if err != nil {
 		return UploadInfo{}, err
 	}
@@ -333,7 +351,7 @@ func (c *Client) putObjectCommon(ctx context.Context, bucketName, objectName str
 		return c.putObjectMultipartStreamNoLength(ctx, bucketName, objectName, reader, opts)
 	}
 
-	if size < int64(partSize) || opts.DisableMultipart {
+	if size <= int64(partSize) || opts.DisableMultipart {
 		return c.putObject(ctx, bucketName, objectName, reader, size, opts)
 	}
 
@@ -362,6 +380,10 @@ func (c *Client) putObjectMultipartStreamNoLength(ctx context.Context, bucketNam
 		return UploadInfo{}, err
 	}
 
+	if opts.Checksum.IsSet() {
+		opts.SendContentMd5 = false
+		opts.AutoChecksum = opts.Checksum
+	}
 	if !opts.SendContentMd5 {
 		if opts.UserMetadata == nil {
 			opts.UserMetadata = make(map[string]string, 1)
