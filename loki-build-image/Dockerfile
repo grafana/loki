@@ -4,9 +4,9 @@
 # tag of the Docker image in `../.drone/drone.jsonnet` and run `make drone`.
 # See ../docs/sources/community/maintaining/release-loki-build-image.md for instructions
 # on how to publish a new build image.
-ARG GO_VERSION=1.22
+ARG GO_VERSION=1.22.6
 # Install helm (https://helm.sh/) and helm-docs (https://github.com/norwoodj/helm-docs) for generating Helm Chart reference.
-FROM golang:${GO_VERSION}-bookworm AS helm
+FROM golang:${GO_VERSION}-bullseye AS helm
 ARG TARGETARCH
 ARG HELM_VER="v3.2.3"
 RUN curl -L "https://get.helm.sh/helm-${HELM_VER}-linux-$TARGETARCH.tar.gz" | tar zx && \
@@ -38,7 +38,7 @@ RUN apk add --no-cache curl && \
 FROM alpine:3.20.2 AS docker
 RUN apk add --no-cache docker-cli docker-cli-buildx
 
-FROM golang:${GO_VERSION}-bookworm AS drone
+FROM golang:${GO_VERSION}-bullseye AS drone
 ARG TARGETARCH
 RUN curl -L "https://github.com/drone/drone-cli/releases/download/v1.7.0/drone_linux_$TARGETARCH".tar.gz | tar zx && \
     install -t /usr/local/bin drone
@@ -48,35 +48,35 @@ RUN curl -L "https://github.com/drone/drone-cli/releases/download/v1.7.0/drone_l
 # Error:
 # github.com/fatih/faillint@v1.5.0 requires golang.org/x/tools@v0.0.0-20200207224406-61798d64f025
 #   (not golang.org/x/tools@v0.0.0-20190918214920-58d531046acd from golang.org/x/tools/cmd/goyacc@58d531046acdc757f177387bc1725bfa79895d69)
-FROM golang:${GO_VERSION}-bookworm AS faillint
+FROM golang:${GO_VERSION}-bullseye AS faillint
 RUN GO111MODULE=on go install github.com/fatih/faillint@v1.12.0
 RUN GO111MODULE=on go install golang.org/x/tools/cmd/goimports@v0.7.0
 
-FROM golang:${GO_VERSION}-bookworm AS delve
+FROM golang:${GO_VERSION}-bullseye AS delve
 RUN GO111MODULE=on go install github.com/go-delve/delve/cmd/dlv@latest
 
 # Install ghr used to push binaries and template the release
 # This collides with the version of go tools used in the base image, thus we install it in its own image and copy it over.
-FROM golang:${GO_VERSION}-bookworm AS ghr
+FROM golang:${GO_VERSION}-bullseye AS ghr
 RUN GO111MODULE=on go install github.com/tcnksm/ghr@9349474
 
 # Install nfpm (https://nfpm.goreleaser.com) for creating .deb and .rpm packages.
-FROM golang:${GO_VERSION}-bookworm AS nfpm
+FROM golang:${GO_VERSION}-bullseye AS nfpm
 RUN GO111MODULE=on go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.11.3
 
 # Install gotestsum
-FROM golang:${GO_VERSION}-bookworm AS gotestsum
+FROM golang:${GO_VERSION}-bullseye AS gotestsum
 RUN GO111MODULE=on go install gotest.tools/gotestsum@v1.8.2
 
 # Install tools used to compile jsonnet.
-FROM golang:${GO_VERSION}-bookworm AS jsonnet
+FROM golang:${GO_VERSION}-bullseye AS jsonnet
 RUN GO111MODULE=on go install github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@v0.5.1
 RUN GO111MODULE=on go install github.com/monitoring-mixins/mixtool/cmd/mixtool@16dc166166d91e93475b86b9355a4faed2400c18
 RUN GO111MODULE=on go install github.com/google/go-jsonnet/cmd/jsonnet@v0.20.0
 
 FROM aquasec/trivy AS trivy
 
-FROM golang:${GO_VERSION}-bookworm
+FROM golang:${GO_VERSION}-bullseye
 RUN apt-get update && \
     apt-get install -qy \
     musl gnupg ragel \
