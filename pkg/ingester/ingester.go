@@ -388,10 +388,6 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		i.lifecyclerWatcher.WatchService(i.partitionReader)
 	}
 
-	// Now that the lifecycler has been created, we can create the limiter
-	// which depends on it.
-	i.limiter = NewLimiter(limits, metrics, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor)
-
 	i.Service = services.NewBasicService(i.starting, i.running, i.stopping)
 
 	i.setupAutoForget()
@@ -408,12 +404,18 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		i.SetExtractorWrapper(i.cfg.SampleExtractorWrapper)
 	}
 
+	var limiterStrategy limiterRingStrategy
 	var ownedStreamsStrategy ownershipStrategy
 	if i.cfg.KafkaIngestion.Enabled {
+		limiterStrategy = newPartitionRingLimiterStrategy(partitionRingWatcher, limits.IngestionPartitionsTenantShardSize)
 		ownedStreamsStrategy = newOwnedStreamsPartitionStrategy(i.ingestPartitionID, partitionRingWatcher, limits.IngestionPartitionsTenantShardSize, util_log.Logger)
 	} else {
+		limiterStrategy = newIngesterRingLimiterStrategy(i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor)
 		ownedStreamsStrategy = newOwnedStreamsIngesterStrategy(i.lifecycler.ID, i.readRing, util_log.Logger)
 	}
+	// Now that the lifecycler has been created, we can create the limiter
+	// which depends on it.
+	i.limiter = NewLimiter(limits, metrics, limiterStrategy)
 	i.recalculateOwnedStreams = newRecalculateOwnedStreamsSvc(i.getInstances, ownedStreamsStrategy, cfg.OwnedStreamsCheckInterval, util_log.Logger)
 
 	return i, nil
