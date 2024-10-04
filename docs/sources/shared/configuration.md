@@ -839,6 +839,20 @@ kafka_config:
   # CLI flag: -kafka.producer-max-buffered-bytes
   [producer_max_buffered_bytes: <int> | default = 1073741824]
 
+  # The best-effort maximum lag a consumer tries to achieve at startup. Set both
+  # -kafka.target-consumer-lag-at-startup and -kafka.max-consumer-lag-at-startup
+  # to 0 to disable waiting for maximum consumer lag being honored at startup.
+  # CLI flag: -kafka.target-consumer-lag-at-startup
+  [target_consumer_lag_at_startup: <duration> | default = 2s]
+
+  # The guaranteed maximum lag before a consumer is considered to have caught up
+  # reading from a partition at startup, becomes ACTIVE in the hash ring and
+  # passes the readiness check. Set both -kafka.target-consumer-lag-at-startup
+  # and -kafka.max-consumer-lag-at-startup to 0 to disable waiting for maximum
+  # consumer lag being honored at startup.
+  # CLI flag: -kafka.max-consumer-lag-at-startup
+  [max_consumer_lag_at_startup: <duration> | default = 15s]
+
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
 [runtime_config: <runtime_config>]
