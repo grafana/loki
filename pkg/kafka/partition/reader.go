@@ -110,7 +110,7 @@ func (p *Reader) start(ctx context.Context) error {
 	if targetLag, maxLag := p.kafkaCfg.TargetConsumerLagAtStartup, p.kafkaCfg.MaxConsumerLagAtStartup; targetLag > 0 && maxLag > 0 {
 		consumer, err := p.consumerFactory(p.committer)
 		if err != nil {
-			return errors.Wrap(err, "creating consumer")
+			return fmt.Errorf("creating consumer: %w", err)
 		}
 
 		cancelCtx, cancel := context.WithCancel(ctx)
@@ -164,8 +164,8 @@ func (p *Reader) fetchLastCommittedOffset(ctx context.Context) int64 {
 	resps := p.client.RequestSharded(ctx, req)
 
 	// Since we issued a request for only 1 partition, we expect exactly 1 response.
-	if expected := 1; len(resps) != expected {
-		level.Error(p.logger).Log("msg", "unexpected number of responses", "expected", 1, "actual", len(resps))
+	if expected, actual := 1, len(resps); actual != expected {
+		level.Error(p.logger).Log("msg", fmt.Sprintf("unexpected number of responses (expected: %d, got: %d)", expected, actual), "expected", expected, "actual", len(resps))
 		return kafkaStartOffset
 	}
 	// Ensure no error occurred.
@@ -230,7 +230,7 @@ func (p *Reader) fetchPartitionOffset(ctx context.Context, position int64) (int6
 	resps := p.client.RequestSharded(ctx, req)
 
 	// Since we issued a request for only 1 partition, we expect exactly 1 response.
-	if expected := 1; len(resps) != expected {
+	if expected := 1; len(resps) != 1 {
 		return 0, fmt.Errorf("unexpected number of responses (expected: %d, got: %d)", expected, len(resps))
 	}
 
@@ -290,7 +290,7 @@ func (p *Reader) processNextFetchesUntilTargetOrMaxLagHonored(ctx context.Contex
 			return p.processNextFetchesUntilLagHonored(timedCtx, targetLag, logger, recordsChan)
 		},
 
-		// If the target lag hasn't been reached with the previous attempt that we'll move on. However,
+		// If the target lag hasn't been reached with the previous attempt then we'll move on. However,
 		// we still need to guarantee that in the meanwhile the lag didn't increase and max lag is still honored.
 		func() (time.Duration, error) {
 			return p.processNextFetchesUntilLagHonored(ctx, maxLag, logger, recordsChan)
