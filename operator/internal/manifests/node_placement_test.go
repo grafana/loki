@@ -446,6 +446,7 @@ func TestDefaultPodAntiAffinity(t *testing.T) {
 	}
 
 	for _, tc := range podAntiAffinityTestTable {
+		tc := tc
 		t.Run(tc.component, func(t *testing.T) {
 			t.Parallel()
 
@@ -516,6 +517,7 @@ func TestCustomPodAntiAffinity(t *testing.T) {
 	}
 
 	for _, tc := range podAntiAffinityTestTable {
+		tc := tc
 		t.Run(tc.component, func(t *testing.T) {
 			t.Parallel()
 

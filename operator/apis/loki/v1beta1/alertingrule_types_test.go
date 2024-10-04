@@ -152,6 +152,7 @@ func TestConvertToV1_AlertingRule(t *testing.T) {
 	}
 
 	for _, tc := range tt {
+		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			dst := v1.AlertingRule{}
@@ -305,6 +306,7 @@ func TestConvertFromV1_AlertingRule(t *testing.T) {
 	}
 
 	for _, tc := range tt {
+		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 

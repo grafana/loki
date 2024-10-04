@@ -628,6 +628,7 @@ func TestConvertToV1_LokiStack(t *testing.T) {
 	}
 
 	for _, tc := range tt {
+		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			dst := v1.LokiStack{}
@@ -1255,6 +1256,7 @@ func TestConvertFromV1_LokiStack(t *testing.T) {
 	}
 
 	for _, tc := range tt {
+		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 

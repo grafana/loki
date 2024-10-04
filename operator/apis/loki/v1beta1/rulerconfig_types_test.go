@@ -513,6 +513,7 @@ func TestConvertToV1_RulerConfig(t *testing.T) {
 	}
 
 	for _, tc := range tt {
+		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			dst := v1.RulerConfig{}
@@ -1026,6 +1027,7 @@ func TestConvertFromV1_RulerConfig(t *testing.T) {
 	}
 
 	for _, tc := range tt {
+		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			dst := v1beta1.RulerConfig{}

@@ -188,6 +188,7 @@ var rtt = []struct {
 
 func TestRecordingRuleValidationWebhook_ValidateCreate(t *testing.T) {
 	for _, tc := range rtt {
+		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
@@ -212,6 +213,7 @@ func TestRecordingRuleValidationWebhook_ValidateCreate(t *testing.T) {
 
 func TestRecordingRuleValidationWebhook_ValidateUpdate(t *testing.T) {
 	for _, tc := range rtt {
+		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 

@@ -549,6 +549,7 @@ func TestBuildGateway_WithTLSProfile(t *testing.T) {
 		},
 	}
 	for _, tc := range tt {
+		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			objs, err := BuildGateway(tc.options)
@@ -763,6 +764,7 @@ func TestBuildGateway_WithRulesEnabled(t *testing.T) {
 		},
 	}
 	for _, tc := range tt {
+		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			objs, err := BuildGateway(tc.opts)

@@ -145,6 +145,7 @@ lokistack_status_condition{condition="Warning",reason="StorageNeedsSchemaUpdate"
 	}
 
 	for _, tc := range tt {
+		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 

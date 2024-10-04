@@ -47,6 +47,8 @@ func TestHashSecretData(t *testing.T) {
 	}
 
 	for _, tc := range tt {
+		tc := tc
+
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
@@ -662,6 +664,7 @@ func TestS3Extract_S3ForcePathStyle(t *testing.T) {
 	}
 
 	for _, tc := range tt {
+		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			options, err := extractS3ConfigSecret(tc.secret, lokiv1.CredentialModeStatic)

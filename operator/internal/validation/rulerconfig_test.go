@@ -169,6 +169,7 @@ var rctt = []struct {
 
 func TestRulerConfigValidationWebhook_ValidateCreate(t *testing.T) {
 	for _, tc := range rctt {
+		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
@@ -193,6 +194,7 @@ func TestRulerConfigValidationWebhook_ValidateCreate(t *testing.T) {
 
 func TestRulerConfigValidationWebhook_ValidateUpdate(t *testing.T) {
 	for _, tc := range rctt {
+		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 

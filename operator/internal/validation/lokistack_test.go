@@ -703,6 +703,7 @@ var ltt = []struct {
 
 func TestLokiStackValidationWebhook_ValidateCreate(t *testing.T) {
 	for _, tc := range ltt {
+		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			l := &lokiv1.LokiStack{
@@ -726,6 +727,7 @@ func TestLokiStackValidationWebhook_ValidateCreate(t *testing.T) {
 
 func TestLokiStackValidationWebhook_ValidateUpdate(t *testing.T) {
 	for _, tc := range ltt {
+		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			l := &lokiv1.LokiStack{

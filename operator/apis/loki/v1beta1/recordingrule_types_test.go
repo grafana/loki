@@ -116,6 +116,7 @@ func TestConvertToV1_RecordingRule(t *testing.T) {
 	}
 
 	for _, tc := range tt {
+		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			dst := v1.RecordingRule{}
@@ -233,6 +234,7 @@ func TestConvertFromV1_RecordingRule(t *testing.T) {
 	}
 
 	for _, tc := range tt {
+		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
