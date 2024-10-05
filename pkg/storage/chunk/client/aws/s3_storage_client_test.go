@@ -272,7 +272,6 @@ func Test_Hedging(t *testing.T) {
 			},
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			count := atomic.NewInt32(0)
 
@@ -309,6 +308,36 @@ func (m *MockS3Client) HeadObject(input *s3.HeadObjectInput) (*s3.HeadObjectOutp
 	return m.HeadObjectFunc(input)
 }
 
+func Test_GetAttributes(t *testing.T) {
+	mockS3 := &MockS3Client{
+		HeadObjectFunc: func(_ *s3.HeadObjectInput) (*s3.HeadObjectOutput, error) {
+			var size int64 = 128
+			return &s3.HeadObjectOutput{ContentLength: &size}, nil
+		},
+	}
+
+	c, err := NewS3ObjectClient(S3Config{
+		AccessKeyID:     "foo",
+		SecretAccessKey: flagext.SecretWithValue("bar"),
+		BackoffConfig:   backoff.Config{MaxRetries: 3},
+		BucketNames:     "foo",
+		Inject: func(_ http.RoundTripper) http.RoundTripper {
+			return RoundTripperFunc(func(_ *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader([]byte("object content"))),
+				}, nil
+			})
+		},
+	}, hedging.Config{})
+	require.NoError(t, err)
+	c.S3 = mockS3
+
+	attrs, err := c.GetAttributes(context.Background(), "abc")
+	require.NoError(t, err)
+	require.EqualValues(t, 128, attrs.Size)
+}
+
 func Test_RetryLogic(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
@@ -339,7 +368,7 @@ func Test_RetryLogic(t *testing.T) {
 			3,
 			true,
 			func(c *S3ObjectClient) error {
-				_, _, err := c.ObjectExistsWithSize(context.Background(), "foo")
+				_, err := c.ObjectExists(context.Background(), "foo")
 				return err
 			},
 		},
@@ -348,7 +377,12 @@ func Test_RetryLogic(t *testing.T) {
 			3,
 			false,
 			func(c *S3ObjectClient) error {
-				_, err := c.ObjectExists(context.Background(), "foo")
+				exists, err := c.ObjectExists(context.Background(), "foo")
+				if err == nil && !exists {
+					return awserr.NewRequestFailure(
+						awserr.New("NotFound", "Not Found", nil), 404, "abc",
+					)
+				}
 				return err
 			},
 		},
@@ -357,7 +391,7 @@ func Test_RetryLogic(t *testing.T) {
 			3,
 			false,
 			func(c *S3ObjectClient) error {
-				_, _, err := c.ObjectExistsWithSize(context.Background(), "foo")
+				_, err := c.GetAttributes(context.Background(), "foo")
 				return err
 			},
 		},

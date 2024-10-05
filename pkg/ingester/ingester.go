@@ -89,18 +89,18 @@ var (
 type Config struct {
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the ingester will operate and where it will register for discovery."`
 
-	ConcurrentFlushes   int                  `yaml:"concurrent_flushes"`
-	FlushCheckPeriod    time.Duration        `yaml:"flush_check_period"`
-	FlushOpBackoff      backoff.Config       `yaml:"flush_op_backoff"`
-	FlushOpTimeout      time.Duration        `yaml:"flush_op_timeout"`
-	RetainPeriod        time.Duration        `yaml:"chunk_retain_period"`
-	MaxChunkIdle        time.Duration        `yaml:"chunk_idle_period"`
-	BlockSize           int                  `yaml:"chunk_block_size"`
-	TargetChunkSize     int                  `yaml:"chunk_target_size"`
-	ChunkEncoding       string               `yaml:"chunk_encoding"`
-	parsedEncoding      compression.Encoding `yaml:"-"` // placeholder for validated encoding
-	MaxChunkAge         time.Duration        `yaml:"max_chunk_age"`
-	AutoForgetUnhealthy bool                 `yaml:"autoforget_unhealthy"`
+	ConcurrentFlushes   int               `yaml:"concurrent_flushes"`
+	FlushCheckPeriod    time.Duration     `yaml:"flush_check_period"`
+	FlushOpBackoff      backoff.Config    `yaml:"flush_op_backoff"`
+	FlushOpTimeout      time.Duration     `yaml:"flush_op_timeout"`
+	RetainPeriod        time.Duration     `yaml:"chunk_retain_period"`
+	MaxChunkIdle        time.Duration     `yaml:"chunk_idle_period"`
+	BlockSize           int               `yaml:"chunk_block_size"`
+	TargetChunkSize     int               `yaml:"chunk_target_size"`
+	ChunkEncoding       string            `yaml:"chunk_encoding"`
+	parsedEncoding      compression.Codec `yaml:"-"` // placeholder for validated encoding
+	MaxChunkAge         time.Duration     `yaml:"max_chunk_age"`
+	AutoForgetUnhealthy bool              `yaml:"autoforget_unhealthy"`
 
 	// Synchronization settings. Used to make sure that ingesters cut their chunks at the same moments.
 	SyncPeriod         time.Duration `yaml:"sync_period"`
@@ -150,7 +150,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.chunks-idle-period", 30*time.Minute, "How long chunks should sit in-memory with no updates before being flushed if they don't hit the max block size. This means that half-empty chunks will still be flushed after a certain period as long as they receive no further activity.")
 	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "The targeted _uncompressed_ size in bytes of a chunk block When this threshold is exceeded the head block will be cut and compressed inside the chunk.")
 	f.IntVar(&cfg.TargetChunkSize, "ingester.chunk-target-size", 1572864, "A target _compressed_ size in bytes for chunks. This is a desired size not an exact size, chunks may be slightly bigger or significantly smaller if they get flushed for other reasons (e.g. chunk_idle_period). A value of 0 creates chunks with a fixed 10 blocks, a non zero value will create chunks with a variable number of blocks to meet the target size.") // 1.5 MB
-	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", compression.EncGZIP.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", compression.SupportedEncoding()))
+	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", compression.GZIP.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", compression.SupportedCodecs()))
 	f.DurationVar(&cfg.SyncPeriod, "ingester.sync-period", 1*time.Hour, "Parameters used to synchronize ingesters to cut chunks at the same moment. Sync period is used to roll over incoming entry to a new chunk. If chunk's utilization isn't high enough (eg. less than 50% when sync_min_utilization is set to 0.5), then this chunk rollover doesn't happen.")
 	f.Float64Var(&cfg.SyncMinUtilization, "ingester.sync-min-utilization", 0.1, "Minimum utilization of chunk when doing synchronization.")
 	f.IntVar(&cfg.MaxReturnedErrors, "ingester.max-ignored-stream-errors", 10, "The maximum number of errors a stream will report to the user when a push fails. 0 to make unlimited.")
@@ -164,7 +164,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *Config) Validate() error {
-	enc, err := compression.ParseEncoding(cfg.ChunkEncoding)
+	enc, err := compression.ParseCodec(cfg.ChunkEncoding)
 	if err != nil {
 		return err
 	}
@@ -300,7 +300,7 @@ type Ingester struct {
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg, metricsNamespace string, logger log.Logger, customStreamsTracker push.UsageTracker, readRing ring.ReadRing, partitionRingWatcher *ring.PartitionRingWatcher) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg, metricsNamespace string, logger log.Logger, customStreamsTracker push.UsageTracker, readRing ring.ReadRing, partitionRingWatcher ring.PartitionRingReader) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -388,10 +388,6 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		i.lifecyclerWatcher.WatchService(i.partitionReader)
 	}
 
-	// Now that the lifecycler has been created, we can create the limiter
-	// which depends on it.
-	i.limiter = NewLimiter(limits, metrics, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor)
-
 	i.Service = services.NewBasicService(i.starting, i.running, i.stopping)
 
 	i.setupAutoForget()
@@ -408,12 +404,18 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		i.SetExtractorWrapper(i.cfg.SampleExtractorWrapper)
 	}
 
+	var limiterStrategy limiterRingStrategy
 	var ownedStreamsStrategy ownershipStrategy
 	if i.cfg.KafkaIngestion.Enabled {
-		ownedStreamsStrategy = newOwnedStreamsPartitionStrategy(i.ingestPartitionID, partitionRingWatcher, util_log.Logger)
+		limiterStrategy = newPartitionRingLimiterStrategy(partitionRingWatcher, limits.IngestionPartitionsTenantShardSize)
+		ownedStreamsStrategy = newOwnedStreamsPartitionStrategy(i.ingestPartitionID, partitionRingWatcher, limits.IngestionPartitionsTenantShardSize, util_log.Logger)
 	} else {
+		limiterStrategy = newIngesterRingLimiterStrategy(i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor)
 		ownedStreamsStrategy = newOwnedStreamsIngesterStrategy(i.lifecycler.ID, i.readRing, util_log.Logger)
 	}
+	// Now that the lifecycler has been created, we can create the limiter
+	// which depends on it.
+	i.limiter = NewLimiter(limits, metrics, limiterStrategy)
 	i.recalculateOwnedStreams = newRecalculateOwnedStreamsSvc(i.getInstances, ownedStreamsStrategy, cfg.OwnedStreamsCheckInterval, util_log.Logger)
 
 	return i, nil
@@ -1595,7 +1597,7 @@ func (i *Ingester) GetDetectedFields(_ context.Context, r *logproto.DetectedFiel
 				Cardinality: 1,
 			},
 		},
-		FieldLimit: r.GetFieldLimit(),
+		Limit: r.GetLimit(),
 	}, nil
 }
 

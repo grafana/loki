@@ -285,8 +285,6 @@ func downloadChunks(ctx context.Context, storage BlockStorage, chks []ChunkData)
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(64)
 	for i, chunk := range chks {
-		chunk := chunk
-		i := i
 		g.Go(func() error {
 			chunkData, err := readChunkData(ctx, storage, chunk)
 			if err != nil {

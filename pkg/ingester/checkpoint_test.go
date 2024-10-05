@@ -458,7 +458,8 @@ func Test_SeriesIterator(t *testing.T) {
 
 	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1))
 
 	for i := 0; i < 3; i++ {
 		inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, fmt.Sprintf("%d", i), limiter, runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
@@ -505,7 +506,7 @@ func Benchmark_SeriesIterator(b *testing.B) {
 
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(b, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1))
 
 	for i := range instances {
 		inst, _ := newInstance(defaultConfig(), defaultPeriodConfigs, fmt.Sprintf("instance %d", i), limiter, runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
@@ -566,7 +567,7 @@ func buildChunks(t testing.TB, size int) []Chunk {
 
 	for i := 0; i < size; i++ {
 		// build chunks of 256k blocks, 1.5MB target size. Same as default config.
-		c := chunkenc.NewMemChunk(chunkenc.ChunkFormatV3, compression.EncGZIP, chunkenc.UnorderedHeadBlockFmt, 256*1024, 1500*1024)
+		c := chunkenc.NewMemChunk(chunkenc.ChunkFormatV3, compression.GZIP, chunkenc.UnorderedHeadBlockFmt, 256*1024, 1500*1024)
 		fillChunk(t, c)
 		descs = append(descs, chunkDesc{
 			chunk: c,

@@ -10,7 +10,7 @@ require (
 	github.com/go-kit/log v0.2.1
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/snappy v0.0.4
-	github.com/grafana/dskit v0.0.0-20240925193654-7c41a4057319
+	github.com/grafana/dskit v0.0.0-20241004175247-687ec485facf
 	github.com/grafana/loki/v3 v3.0.0-20240809103847-9315b3d03d79
 	github.com/prometheus/common v0.55.0
 	github.com/stretchr/testify v1.9.0

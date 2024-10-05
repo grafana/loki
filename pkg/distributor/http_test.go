@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
 
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
@@ -114,6 +115,14 @@ func Test_OtelErrorHeaderInterceptor(t *testing.T) {
 	}
 }
 
-func stubParser(_ string, _ *http.Request, _ push.TenantsRetention, _ push.Limits, _ push.UsageTracker) (*logproto.PushRequest, *push.Stats, error) {
+func stubParser(
+	_ string,
+	_ *http.Request,
+	_ push.TenantsRetention,
+	_ push.Limits,
+	_ push.UsageTracker,
+	_ bool,
+	_ log.Logger,
+) (*logproto.PushRequest, *push.Stats, error) {
 	return &logproto.PushRequest{}, &push.Stats{}, nil
 }

@@ -44,8 +44,6 @@ func BenchmarkGetNextRequest(b *testing.B) {
 	}
 
 	for _, benchCase := range benchCases {
-		benchCase := benchCase
-
 		b.Run(benchCase.name, func(b *testing.B) {
 
 			queues := make([]*RequestQueue, 0, b.N)
