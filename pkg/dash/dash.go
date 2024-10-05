@@ -15,30 +15,44 @@ import (
 	prom "github.com/prometheus/client_golang/prometheus"
 )
 
-func forceTpl(name, s string) *template.Template {
-	res, _ := template.New(name).Parse(s)
-	return res
-}
+func ReadsDashboard(requestDuration *prom.HistogramVec) {
+	var statusMap map[string]string = nil
 
-func foo() {
+	// TODO: parameterize so caller can pass it's own scheme
+	// (not everyone may use our k8s style)
+	topologyFilters := []string{`namespace=~".*loki.*"`}
+
+	distributorRED := NewRedMethodBuilder(
+		"Distributor",
+		requestDuration,
+		statusMap,
+		topologyFilters,
+		[]string{`container="distributor"`},
+		"pod",
+	)
+
+	ingesterRED := NewRedMethodBuilder(
+		"Ingester",
+		requestDuration,
+		statusMap,
+		topologyFilters,
+		[]string{`container="ingester"`},
+		"pod",
+	)
+
 	builder := dashboard.NewDashboardBuilder("Sample dashboard").
 		Uid("generated-from-go").
 		Tags([]string{"generated", "from", "go"}).
 		Refresh("1m").
 		Time("now-30m", "now").
-		Timezone(common.TimeZoneBrowser).
-		WithRow(dashboard.NewRowBuilder("Overview")).
-		WithPanel(
-			timeseries.NewPanelBuilder().
-				Title("Network Received").
-				Unit("bps").
-				Min(0).
-				WithTarget(
-					prometheus.NewDataqueryBuilder().
-						Expr(`rate(node_network_receive_bytes_total{job="integrations/raspberrypi-node", device!="lo"}[$__rate_interval]) * 8`).
-						LegendFormat("{{ device }}"),
-				),
-		)
+		Timezone(common.TimeZoneUtc)
+
+	for _, red := range []*RedMethodBuilder{
+		distributorRED,
+		ingesterRED,
+	} {
+		builder = builder.WithRow(red.Row())
+	}
 
 	sampleDashboard, err := builder.Build()
 	if err != nil {
@@ -52,6 +66,11 @@ func foo() {
 	fmt.Println(string(dashboardJson))
 }
 
+func forceTpl(name, s string) *template.Template {
+	res, _ := template.New(name).Parse(s)
+	return res
+}
+
 type RedMethodBuilder struct {
 	// * loki_request_duration_seconds
 	// 1st panel = request rates, partitioned by status
@@ -59,7 +78,7 @@ type RedMethodBuilder struct {
 	// * loki_request_duration_seconds_
 	// 3rd panel = per-pod request latency distributions, partitioned by route.
 
-	// panel title
+	// row title
 	title string
 
 	// histogramvec
@@ -68,9 +87,9 @@ type RedMethodBuilder struct {
 	// status(required)
 	status map[string]string
 
-	// topologyLabels(optional) are filters to limit metric selection,
+	// topologyFilters(optional) are filters to limit metric selection,
 	// e.g. `cluster=~"foo.*"` or `namespace="loki"`
-	topologyLabels []string
+	topologyFilters []string
 
 	// partitionFields(optional)
 	// e.g. "route"
@@ -92,7 +111,7 @@ func NewRedMethodBuilder(
 		title:           title,
 		metric:          metric,
 		status:          status,
-		topologyLabels:  topologyLabels,
+		topologyFilters: topologyLabels,
 		partitionFields: partitions,
 		drilldown:       drilldown,
 	}
@@ -116,7 +135,7 @@ func extractFQDN(desc *prom.Desc) string {
 func (b *RedMethodBuilder) TemplateArgs() TemplateArgs {
 	return TemplateArgs{
 		BaseName:        b.baseMetricName(),
-		TopologyLabels:  strings.Join(b.topologyLabels, ", "),
+		TopologyLabels:  strings.Join(b.topologyFilters, ", "),
 		PartitionFields: strings.Join(b.partitionFields, ", "),
 	}
 }
@@ -199,58 +218,84 @@ func (b *RedMethodBuilder) QPSPanel() *timeseries.PanelBuilder {
 		// TODO: how to assign predefined colors by status?
 
 	return timeseries.NewPanelBuilder().
-		Title(b.title).
-		Unit("qps").
+		Title("qps").
+		Unit("seconds").
 		Min(0).
 		WithTarget(qry)
 }
 
-func (b *RedMethodBuilder) LatencyPanel() *timeseries.PanelBuilder {
-	args := b.TemplateArgs()
+func (b *RedMethodBuilder) LatencyPanels() (res []*timeseries.PanelBuilder) {
+	rounds := []TemplateArgs{
+		b.TemplateArgs(),
+	}
 
-	var queries []*prometheus.DataqueryBuilder
-
-	for _, q := range []string{"50,90,99"} {
-		extended := args.Map()
-
-		// append the le field appropriately to the partition fields
-		// we use in the queries
-		extended["Quantile"] = "0." + q
-		if extended["PartitionFields"] == "" {
-			extended["PartitionFields"] = "le"
+	if b.drilldown != "" {
+		next := b.TemplateArgs()
+		if next.PartitionFields == "" {
+			next.PartitionFields = b.drilldown
 		} else {
-			extended["PartitionFields"] = extended["PartitionFields"] + ", le"
+			next.PartitionFields = next.PartitionFields + ", " + b.drilldown
 		}
 
-		legend := "p" + q
-		// if partition fields are in use, we'll want to include them
-		// in our legend
-		if args.PartitionFields != "" {
-			legend = args.PartitionFields + ", " + legend
+		rounds = append(rounds, next)
+	}
+
+	for _, args := range rounds {
+
+		var queries []*prometheus.DataqueryBuilder
+
+		for _, q := range []string{"50,90,99"} {
+			extended := args.Map()
+
+			// append the le field appropriately to the partition fields
+			// we use in the queries
+			extended["Quantile"] = "0." + q
+			if extended["PartitionFields"] == "" {
+				extended["PartitionFields"] = "le"
+			} else {
+				extended["PartitionFields"] = extended["PartitionFields"] + ", le"
+			}
+
+			legend := "p" + q
+			// if partition fields are in use, we'll want to include them
+			// in our legend
+			if args.PartitionFields != "" {
+				legend = args.PartitionFields + ", " + legend
+			}
+
+			qry := prometheus.NewDataqueryBuilder().
+				Expr(
+					RunTemplate(latencyTemplate, extended),
+				).
+				LegendFormat(
+					fmt.Sprintf(
+						`{{ %s }}`,
+						legend,
+					),
+				)
+
+			queries = append(queries, qry)
 		}
 
-		qry := prometheus.NewDataqueryBuilder().
-			Expr(
-				RunTemplate(latencyTemplate, extended),
-			).
-			LegendFormat(
-				fmt.Sprintf(
-					`{{ %s }}`,
-					legend,
-				),
-			)
+		panel := timeseries.NewPanelBuilder().
+			Title("latency").
+			Unit("seconds").
+			Min(0)
 
-		queries = append(queries, qry)
+		for _, qry := range queries {
+			panel = panel.WithTarget(qry)
+		}
+
+		res = append(res, panel)
 	}
 
-	panel := timeseries.NewPanelBuilder().
-		Title(b.title).
-		Unit("latency").
-		Min(0)
+	return
+}
 
-	for _, qry := range queries {
-		panel = panel.WithTarget(qry)
+func (b *RedMethodBuilder) Row() *dashboard.RowBuilder {
+	row := dashboard.NewRowBuilder(b.title).WithPanel(b.QPSPanel())
+	for _, p := range b.LatencyPanels() {
+		row = row.WithPanel(p)
 	}
-
-	return panel
+	return row
 }
