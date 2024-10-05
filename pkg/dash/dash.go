@@ -155,14 +155,14 @@ var qpsTemplate = forceTpl(
 	`
 	sum(
 		rate(
-			{{.BaseName}}_sum{{{.TopologyLabels}}}
+			{{.BaseName}}_sum{ {{.TopologyLabels}} }
 			[$__rate_interval]
 		)
 	) by ({{.PartitionFields}})
 	/
 	sum(
 		rate(
-			{{.BaseName}}_count{{{.TopologyLabels}}}
+			{{.BaseName}}_count{ {{.TopologyLabels}} }
 			[$__rate_interval]
 		)
 	) by ({{.PartitionFields}})
@@ -176,10 +176,10 @@ var latencyTemplate = forceTpl(
 	  {{.Quantile}},
 		sum(
 			rate(
-			  <>
+			  {{.BaseName}}_bucket{ {{.TopologyLabels}} }
 				[$__rate_interval]
 			)
-		)
+		) by ({{.PartitionFields}})
 	)
 	`,
 )
@@ -203,4 +203,54 @@ func (b *RedMethodBuilder) QPSPanel() *timeseries.PanelBuilder {
 		Unit("qps").
 		Min(0).
 		WithTarget(qry)
+}
+
+func (b *RedMethodBuilder) LatencyPanel() *timeseries.PanelBuilder {
+	args := b.TemplateArgs()
+
+	var queries []*prometheus.DataqueryBuilder
+
+	for _, q := range []string{"50,90,99"} {
+		extended := args.Map()
+
+		// append the le field appropriately to the partition fields
+		// we use in the queries
+		extended["Quantile"] = "0." + q
+		if extended["PartitionFields"] == "" {
+			extended["PartitionFields"] = "le"
+		} else {
+			extended["PartitionFields"] = extended["PartitionFields"] + ", le"
+		}
+
+		legend := "p" + q
+		// if partition fields are in use, we'll want to include them
+		// in our legend
+		if args.PartitionFields != "" {
+			legend = args.PartitionFields + ", " + legend
+		}
+
+		qry := prometheus.NewDataqueryBuilder().
+			Expr(
+				RunTemplate(latencyTemplate, extended),
+			).
+			LegendFormat(
+				fmt.Sprintf(
+					`{{ %s }}`,
+					legend,
+				),
+			)
+
+		queries = append(queries, qry)
+	}
+
+	panel := timeseries.NewPanelBuilder().
+		Title(b.title).
+		Unit("latency").
+		Min(0)
+
+	for _, qry := range queries {
+		panel = panel.WithTarget(qry)
+	}
+
+	return panel
 }
