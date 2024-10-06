@@ -151,7 +151,7 @@ spec:
             {{- with .Values.loki.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
-            {{- with $ctx.Values.memcachedExporter.extraArgs }}
+            {{- with $.ctx.Values.memcachedExporter.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           resources:
