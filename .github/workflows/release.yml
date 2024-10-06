@@ -6,7 +6,7 @@ env:
   PUBLISH_TO_GCS: false
   RELEASE_LIB_REF: "main"
   RELEASE_REPO: "grafana/loki"
-  USE_GITHUB_APP_TOKEN: false
+  USE_GITHUB_APP_TOKEN: true
 jobs:
   createRelease:
     if: "${{ fromJSON(needs.shouldRelease.outputs.shouldRelease) }}"

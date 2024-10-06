@@ -267,6 +267,10 @@ func (m *mockObjectClient) ObjectExists(context.Context, string) (bool, error) {
 	panic("not implemented")
 }
 
+func (m *mockObjectClient) GetAttributes(context.Context, string) (client.ObjectAttributes, error) {
+	panic("not implemented")
+}
+
 func (m *mockObjectClient) List(context.Context, string, string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	panic("not implemented")
 }

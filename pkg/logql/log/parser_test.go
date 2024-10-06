@@ -369,6 +369,26 @@ func TestJSONExpressionParser(t *testing.T) {
 			NoParserHints(),
 		},
 		{
+			"object element not present",
+			testLine,
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("undefined", `pod[""]`),
+			},
+			labels.EmptyLabels(),
+			labels.FromStrings("undefined", ""),
+			NoParserHints(),
+		},
+		{
+			"accessing invalid array index",
+			testLine,
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("param", `pod.deployment.params[""]`),
+			},
+			labels.EmptyLabels(),
+			labels.FromStrings("param", ""),
+			NoParserHints(),
+		},
+		{
 			"array string element",
 			testLine,
 			[]LabelExtractionExpr{
@@ -1386,7 +1406,6 @@ func Test_PatternParser(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.pattern, func(t *testing.T) {
 			t.Parallel()
 			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())

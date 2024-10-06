@@ -29,3 +29,4 @@ The versions of Loki compatible to be run with the Loki Operator are:
 
 * v3.1.0
 * v3.1.1
+* v3.2.0

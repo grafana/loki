@@ -850,7 +850,7 @@ func (c *Client) PutObject(bucket, object string, body *bce.Body,
 //     - string: etag of the uploaded object
 //     - error: the uploaded error if any occurs
 func (c *Client) BasicPutObject(bucket, object string, body *bce.Body) (string, error) {
- 	etag , _, err := api.PutObject(c, bucket, object, body, nil, c.BosContext)
+	etag, _, err := api.PutObject(c, bucket, object, body, nil, c.BosContext)
 	return etag, err
 }
 
@@ -891,7 +891,7 @@ func (c *Client) PutObjectFromString(bucket, object, content string,
 	if err != nil {
 		return "", err
 	}
-	etag , _, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
+	etag, _, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
 	return etag, err
 
 }
@@ -912,7 +912,7 @@ func (c *Client) PutObjectFromFile(bucket, object, fileName string,
 	if err != nil {
 		return "", err
 	}
-	etag , _, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
+	etag, _, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
 	return etag, err
 }
 
@@ -932,7 +932,7 @@ func (c *Client) PutObjectFromStream(bucket, object string, reader io.Reader,
 	if err != nil {
 		return "", err
 	}
-	etag , _, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
+	etag, _, err := api.PutObject(c, bucket, object, body, args, c.BosContext)
 	return etag, err
 }
 
@@ -1113,7 +1113,7 @@ func (c *Client) BasicFetchObject(bucket, object, source string) (*api.FetchObje
 //     - error: any error if it occurs
 func (c *Client) SimpleFetchObject(bucket, object, source, mode,
 	storageClass string) (*api.FetchObjectResult, error) {
-	args := &api.FetchObjectArgs{mode, storageClass}
+	args := &api.FetchObjectArgs{mode, storageClass, ""}
 	return api.FetchObject(c, bucket, object, source, args, c.BosContext)
 }
 

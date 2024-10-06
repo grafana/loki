@@ -530,6 +530,9 @@ func FetchObject(cli bce.Client, bucket, object, source string,
 					args.StorageClass)
 			}
 		}
+		if len(args.FetchCallBackAddress) != 0 {
+			req.SetHeader(http.BCE_FETCH_CALLBACK_ADDRESS, args.FetchCallBackAddress)
+		}
 	}
 
 	// Send request and get the result
