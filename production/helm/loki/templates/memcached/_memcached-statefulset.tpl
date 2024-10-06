@@ -109,7 +109,7 @@ spec:
             - -c {{ .connectionLimit }}
             - -v
             - -u {{ .port }}
-            {{- with .Values.loki.extraArgs }}
+            {{- with $.ctx.Values.loki.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
             {{- with .extraArgs }}
