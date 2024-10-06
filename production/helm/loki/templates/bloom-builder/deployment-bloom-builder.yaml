@@ -1,6 +1,4 @@
 {{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
-{{- if $isDistributed -}}
-{{- if (gt (int .Values.bloomBuilder.replicas) 0) -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -140,5 +138,4 @@ spec:
         {{- with .Values.bloomBuilder.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-{{- end -}}
 {{- end -}}
