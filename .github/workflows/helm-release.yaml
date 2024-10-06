@@ -1,12 +1,7 @@
 name: helm-release
 
 on:
-  push:
-    branches:
-      - main
-      - helm-5.48
-    paths:
-      - 'production/helm/loki/Chart.yaml'
+  workflow_dispatch: # must be invoked manually
 
 jobs:
   call-update-helm-repo:
@@ -16,5 +11,6 @@ jobs:
       cr_configfile: production/helm/cr.yaml
       ct_configfile: production/helm/ct.yaml
       helm_tag_prefix: helm
-    secrets:
-      helm_repo_token: ${{ secrets.GH_BOT_ACCESS_TOKEN }}
+    secrets:   
+      github_app_id: ${{ secrets.APP_ID }}
+      github_app_pem: ${{ secrets.APP_PRIVATE_KEY }}

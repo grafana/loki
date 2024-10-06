@@ -38,38 +38,8 @@ func ExtractTestableLabelMatchers(expr syntax.Expr) []LabelMatcher {
 	if expr == nil {
 		return nil
 	}
-
-	var (
-		exprs           []*syntax.LabelFilterExpr
-		foundParseStage bool
-	)
-
-	visitor := &syntax.DepthFirstTraversal{
-		VisitLabelFilterFn: func(v syntax.RootVisitor, e *syntax.LabelFilterExpr) {
-			if !foundParseStage {
-				exprs = append(exprs, e)
-			}
-		},
-
-		// TODO(rfratto): Find a way to generically represent or test for an
-		// expression that modifies extracted labels (parsers, keep, drop, etc.).
-		//
-		// As the AST is now, we can't prove at compile time that the list of
-		// visitors below is complete. For example, if a new parser stage
-		// expression is added without updating this list, blooms can silently
-		// misbehave.
-
-		VisitLogfmtParserFn:           func(v syntax.RootVisitor, e *syntax.LogfmtParserExpr) { foundParseStage = true },
-		VisitLabelParserFn:            func(v syntax.RootVisitor, e *syntax.LabelParserExpr) { foundParseStage = true },
-		VisitJSONExpressionParserFn:   func(v syntax.RootVisitor, e *syntax.JSONExpressionParser) { foundParseStage = true },
-		VisitLogfmtExpressionParserFn: func(v syntax.RootVisitor, e *syntax.LogfmtExpressionParser) { foundParseStage = true },
-		VisitLabelFmtFn:               func(v syntax.RootVisitor, e *syntax.LabelFmtExpr) { foundParseStage = true },
-		VisitKeepLabelFn:              func(v syntax.RootVisitor, e *syntax.KeepLabelsExpr) { foundParseStage = true },
-		VisitDropLabelsFn:             func(v syntax.RootVisitor, e *syntax.DropLabelsExpr) { foundParseStage = true },
-	}
-	expr.Accept(visitor)
-
-	return buildLabelMatchers(exprs)
+	filters := syntax.ExtractLabelFiltersBeforeParser(expr)
+	return buildLabelMatchers(filters)
 }
 
 func buildLabelMatchers(exprs []*syntax.LabelFilterExpr) []LabelMatcher {

@@ -1,7 +1,9 @@
 ---
 name: helm-loki-ci
 on:
-  pull_request:
+  # It runs with the configuration from base branch, so the changes of this file from the PR won't be taken into account until they are merged into main. see: https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#pull_request_target .
+  # This change is required to allow this CI to be run on Pull Requests opened from a fork repository
+  pull_request_target:
     paths:
       - "production/helm/loki/**"
 
@@ -32,12 +34,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.base.ref }}
+          repository: ${{ github.event.pull_request.base.repo.full_name }}
           path: ${{ github.workspace }}/base
 
       - name: Checkout PR branch to 'pr' folder within workspace
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
           path: ${{ github.workspace }}/pr
 
       - name: Render Helm chart for each scenario in the base branch

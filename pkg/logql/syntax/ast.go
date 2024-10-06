@@ -70,6 +70,55 @@ func ExtractLineFilters(e Expr) []LineFilterExpr {
 	return filters
 }
 
+func ExtractLabelFiltersBeforeParser(e Expr) []*LabelFilterExpr {
+	if e == nil {
+		return nil
+	}
+	var (
+		filters         []*LabelFilterExpr
+		foundParseStage bool
+	)
+
+	visitor := &DepthFirstTraversal{
+		VisitLabelFilterFn: func(_ RootVisitor, e *LabelFilterExpr) {
+			if !foundParseStage {
+				filters = append(filters, e)
+			}
+		},
+
+		// TODO(rfratto): Find a way to generically represent or test for an
+		// expression that modifies extracted labels (parsers, keep, drop, etc.).
+		//
+		// As the AST is now, we can't prove at compile time that the list of
+		// visitors below is complete. For example, if a new parser stage
+		// expression is added without updating this list, blooms can silently
+		// misbehave.
+
+		VisitLogfmtParserFn:           func(_ RootVisitor, _ *LogfmtParserExpr) { foundParseStage = true },
+		VisitLabelParserFn:            func(_ RootVisitor, _ *LabelParserExpr) { foundParseStage = true },
+		VisitJSONExpressionParserFn:   func(_ RootVisitor, _ *JSONExpressionParser) { foundParseStage = true },
+		VisitLogfmtExpressionParserFn: func(_ RootVisitor, _ *LogfmtExpressionParser) { foundParseStage = true },
+		VisitLabelFmtFn:               func(_ RootVisitor, _ *LabelFmtExpr) { foundParseStage = true },
+		VisitKeepLabelFn:              func(_ RootVisitor, _ *KeepLabelsExpr) { foundParseStage = true },
+		VisitDropLabelsFn:             func(_ RootVisitor, _ *DropLabelsExpr) { foundParseStage = true },
+	}
+	e.Accept(visitor)
+	return filters
+}
+
+func IsMatchEqualFilterer(filterer log.LabelFilterer) bool {
+	switch filter := filterer.(type) {
+	case *log.LineFilterLabelFilter:
+		return filter.Type == labels.MatchEqual
+	case *log.StringLabelFilter:
+		return filter.Type == labels.MatchEqual
+	case *log.BinaryLabelFilter:
+		return IsMatchEqualFilterer(filter.Left) && IsMatchEqualFilterer(filter.Right)
+	default:
+		return false
+	}
+}
+
 // implicit holds default implementations
 type implicit struct{}
 

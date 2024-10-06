@@ -113,3 +113,35 @@ func Test_MergeFields(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+func Test_MergeValues(t *testing.T) {
+	t.Run("merges different values", func(t *testing.T) {
+		values := []string{"foo", "bar", "baz", "qux"}
+		limit := uint32(50)
+
+		result, err := MergeValues(values, limit)
+		require.NoError(t, err)
+		assert.Equal(t, 4, len(result))
+		assert.ElementsMatch(t, []string{"foo", "bar", "baz", "qux"}, result)
+	})
+
+	t.Run("merges repeating values", func(t *testing.T) {
+		values := []string{"foo", "bar", "baz", "qux", "foo", "bar", "baz", "qux"}
+		limit := uint32(50)
+
+		result, err := MergeValues(values, limit)
+		require.NoError(t, err)
+		assert.Equal(t, 4, len(result))
+		assert.ElementsMatch(t, []string{"foo", "bar", "baz", "qux"}, result)
+	})
+
+	t.Run("enforces the limit", func(t *testing.T) {
+		values := []string{"foo", "bar", "baz", "qux", "foo", "bar", "baz", "qux"}
+		limit := uint32(2)
+
+		result, err := MergeValues(values, limit)
+		require.NoError(t, err)
+		assert.Equal(t, 2, len(result))
+		assert.ElementsMatch(t, []string{"foo", "bar"}, result)
+	})
+}

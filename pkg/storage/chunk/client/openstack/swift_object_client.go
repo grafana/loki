@@ -125,12 +125,22 @@ func (s *SwiftObjectClient) Stop() {
 }
 
 func (s *SwiftObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	_, _, err := s.hedgingConn.Object(ctx, s.cfg.Config.ContainerName, objectKey)
-	if err != nil {
+	if _, err := s.GetAttributes(ctx, objectKey); err != nil {
+		if s.IsObjectNotFoundErr(err) {
+			return false, nil
+		}
 		return false, err
 	}
-
 	return true, nil
+}
+
+func (s *SwiftObjectClient) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
+	info, _, err := s.hedgingConn.Object(ctx, s.cfg.Config.ContainerName, objectKey)
+	if err != nil {
+		return client.ObjectAttributes{}, nil
+	}
+
+	return client.ObjectAttributes{Size: info.Bytes}, nil
 }
 
 // GetObject returns a reader and the size for the specified object key from the configured swift container.
