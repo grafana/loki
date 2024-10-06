@@ -82,6 +82,9 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=compactor
+            {{- with .Values.loki.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
             {{- with .Values.compactor.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

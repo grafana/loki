@@ -53,6 +53,9 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=table-manager
+            {{- with .Values.loki.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
             {{- with .Values.tableManager.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

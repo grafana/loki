@@ -81,6 +81,9 @@ spec:
             - -distributor.zone-awareness-enabled=true
             {{- end }}
             {{- end }}
+            {{- with .Values.loki.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
             {{- with .Values.querier.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

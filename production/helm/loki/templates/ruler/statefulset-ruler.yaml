@@ -62,6 +62,9 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=ruler
+            {{- with .Values.loki.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
             {{- with .Values.ruler.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

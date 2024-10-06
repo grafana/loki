@@ -104,6 +104,9 @@ spec:
             - -ingester.unregister-on-shutdown=false
             - -ingester.tokens-file-path=/var/loki/ring-tokens
             - -target=ingester
+            {{- with .Values.loki.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
             {{- with .Values.ingester.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

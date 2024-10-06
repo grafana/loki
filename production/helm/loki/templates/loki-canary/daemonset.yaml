@@ -56,6 +56,9 @@ spec:
             {{- if .push }}
             - -push=true
             {{- end }}
+            {{- with .Values.loki.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
             {{- with .extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

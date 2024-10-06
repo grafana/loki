@@ -67,6 +67,9 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=bloom-builder
+            {{- with .Values.loki.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
             {{- with .Values.bloomBuilder.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

@@ -61,6 +61,9 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=query-scheduler
+            {{- with .Values.loki.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
             {{- with .Values.queryScheduler.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

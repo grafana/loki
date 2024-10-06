@@ -109,6 +109,9 @@ spec:
             - -c {{ .connectionLimit }}
             - -v
             - -u {{ .port }}
+            {{- with .Values.loki.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
             {{- with .extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -145,6 +148,9 @@ spec:
           args:
             - "--memcached.address=localhost:{{ .port }}"
             - "--web.listen-address=0.0.0.0:9150"
+            {{- with .Values.loki.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
             {{- with $ctx.Values.memcachedExporter.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

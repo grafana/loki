@@ -53,6 +53,9 @@ spec:
             - -config.file=/etc/loki/config/config.yaml
             - -target={{ .Values.enterprise.tokengen.targetModule }}
             - -tokengen.token-file=/shared/admin-token
+            {{- with .Values.loki.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
             {{- with .Values.enterprise.tokengen.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

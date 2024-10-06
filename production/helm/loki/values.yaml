@@ -65,6 +65,8 @@ loki:
   #   - secretRef:
   #       name: mysecret
   extraEnvFrom: []
+  # -- Common additional CLI arguments for all components
+  extraArgs: []
   # -- Common annotations for all deployments/StatefulSets
   annotations: {}
   # -- Common annotations for all pods

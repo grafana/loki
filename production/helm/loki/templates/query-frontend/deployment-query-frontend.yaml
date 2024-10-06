@@ -67,6 +67,9 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=query-frontend
+            {{- with .Values.loki.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
             {{- with .Values.queryFrontend.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

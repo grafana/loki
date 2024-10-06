@@ -89,6 +89,9 @@ spec:
             - -config.file=/etc/loki/config/config.yaml
             - -ingester.availability-zone=zone-default
             - -target=ingester
+            {{- with .Values.loki.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
             {{- with .Values.ingester.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
