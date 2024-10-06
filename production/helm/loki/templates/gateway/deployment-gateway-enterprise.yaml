@@ -87,8 +87,8 @@ spec:
             - -gateway.proxy.ruler.url=http://{{ template "loki.backendFullname" . }}-headless.{{ .Release.Namespace }}.svc:3100
             - -gateway.proxy.query-scheduler.url=http://{{ template "loki.backendFullname" . }}-headless.{{ .Release.Namespace }}.svc:3100
             {{- end }}
-            {{- range $key, $value := .Values.enterpriseGateway.extraArgs }}
-            - "-{{ $key }}={{ $value }}"
+            {{- with .Values.enterpriseGateway.extraArgs }}
+            {{- toYaml . | nindent 12 }}
             {{- end }}
           volumeMounts:
             - name: config

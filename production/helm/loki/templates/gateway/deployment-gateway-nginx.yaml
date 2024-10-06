@@ -78,9 +78,6 @@ spec:
             {{- with .Values.gateway.extraEnvFrom }}
               {{- toYaml . | nindent 12 }}
             {{- end }}
-          envFrom:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
           readinessProbe:
             {{- toYaml .Values.gateway.readinessProbe | nindent 12 }}
           securityContext:
