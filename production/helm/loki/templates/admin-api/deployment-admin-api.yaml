@@ -87,13 +87,8 @@ spec:
             - -admin.client.s3.access-key-id={{ .Values.minio.accessKey }}
             - -admin.client.s3.secret-access-key={{ .Values.minio.secretKey }}
             - -admin.client.s3.insecure=true
-            {{- end }}
-            {{- with .Values.loki.extraArgs }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
-            {{- with .Values.adminApi.extraArgs }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
+            {{ include "loki.templateArgs" .Values.loki.extraArgs }}
+            {{ include "loki.templateArgs" .Values.adminApi.extraArgs }}
           volumeMounts:
             - name: config
               mountPath: /etc/loki/config
@@ -121,12 +116,8 @@ spec:
           securityContext:
             {{- toYaml .Values.adminApi.containerSecurityContext | nindent 12 }}
           env:
-            {{- if .Values.loki.extraEnv }}
-            {{ toYaml .Values.loki.extraEnv | nindent 12 }}
-            {{- end }}
-            {{- if .Values.adminApi.env }}
-            {{ toYaml .Values.adminApi.env | nindent 12 }}
-            {{- end }}
+            {{ include "loki.templateEnv" .Values.loki.extraEnv }}
+            {{ include "loki.templateEnv" .Values.adminApi.extraEnv }}
         {{- with .Values.adminApi.extraContainers }}
         {{ toYaml . | nindent 8 }}
         {{- end }}

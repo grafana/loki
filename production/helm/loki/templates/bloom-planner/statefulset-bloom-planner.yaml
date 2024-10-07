@@ -76,12 +76,8 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=bloom-planner
-            {{- with .Values.loki.extraArgs }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
-            {{- with .Values.bloomPlanner.extraArgs }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
+            {{ include "loki.templateArgs" .Values.loki.extraArgs }}
+            {{ include "loki.templateArgs" .Values.bloomPlanner.extraArgs }}
           ports:
             - name: http-metrics
               containerPort: 3100
@@ -93,19 +89,11 @@ spec:
               containerPort: 7946
               protocol: TCP
           env:
-            {{- with .Values.loki.extraEnv }}
-              {{- toYaml . | nindent 12 }}
-            {{- end }}
-            {{- with .Values.bloomPlanner.extraEnv }}
-              {{- toYaml . | nindent 12 }}
-            {{- end }}
+            {{ include "loki.templateEnv" .Values.loki.extraEnv }}
+            {{ include "loki.templateEnv" .Values.bloomPlanner.extraEnv }}
           envFrom:
-            {{- with .Values.loki.extraEnvFrom }}
-              {{- toYaml . | nindent 12 }}
-            {{- end }}
-            {{- with .Values.bloomPlanner.extraEnvFrom }}
-              {{- toYaml . | nindent 12 }}
-            {{- end }}
+            {{ include "loki.templateEnv" .Values.loki.extraEnvFrom }}
+            {{ include "loki.templateEnv" .Values.bloomPlanner.extraEnvFrom }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
           {{- include "loki.bloomPlanner.readinessProbe" . | nindent 10 }}

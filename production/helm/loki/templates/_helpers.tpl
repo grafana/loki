@@ -1089,20 +1089,29 @@ Return the appropriate apiVersion for HorizontalPodAutoscaler.
 {{/*
 Return the templated list for extraEnv and extraEnvFrom
 Params:
-  envList = extraEnv/extraEnvFrom list
+  . = extraEnv/extraEnvFrom list
 */}}
 {{- define "loki.templateEnv" -}}
-{{- with $envList }}
+{{- $extraEnv := . }}
+{{- with .extraEnv }}
 {{- toYaml . | nindent 12 }}
 {{- end }}
 {{- end -}}
 
 {{/*
-Return the templated dict for extraArgs
+Return the templated dict/list for extraArgs
 Params:
-  argsDict = extraArgs dict
+  . = extraArgs dict/list
 */}}
 {{- define "loki.templateArgs" -}}
-{{- range $key, $value := $argsDict }}
-- "-{{ $key }}={{ $value }}"
+{{- $extraArgs := . }}
+{{- if and .extraArgs (kindIs "slice" .extraArgs) }}
+  {{- with .extraArgs }}
+  {{- toYaml . | nindent 12 }}
+  {{- end }}
+{{- else if and .extraArgs (kindIs "map" .extraArgs) -}}
+  {{- range $key, $value := .extraArgs }}
+  - "-{{ $key }}={{ $value }}"
+  {{- end -}}
+{{- end -}}
 {{- end -}}

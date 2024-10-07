@@ -87,12 +87,8 @@ spec:
             - -gateway.proxy.ruler.url=http://{{ template "loki.backendFullname" . }}-headless.{{ .Release.Namespace }}.svc:3100
             - -gateway.proxy.query-scheduler.url=http://{{ template "loki.backendFullname" . }}-headless.{{ .Release.Namespace }}.svc:3100
             {{- end }}
-            {{- with .Values.loki.extraArgs }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
-            {{- with .Values.enterpriseGateway.extraArgs }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
+            {{ include "loki.templateArgs" .Values.loki.extraArgs }}
+            {{ include "loki.templateArgs" .Values.enterpriseGateway.extraArgs }}
           volumeMounts:
             - name: config
               mountPath: /etc/loki/config
@@ -114,9 +110,8 @@ spec:
           securityContext:
             {{- toYaml .Values.enterpriseGateway.containerSecurityContext | nindent 12 }}
           env:
-            {{- if .Values.enterpriseGateway.env }}
-            {{ toYaml .Values.enterpriseGateway.env | nindent 12 }}
-            {{- end }}
+            {{ include "loki.templateEnv" .Values.loki.extraEnv }}
+            {{ include "loki.templateEnv" .Values.enterpriseGateway.extraEnv }}
         {{- with .Values.enterpriseGateway.extraContainers }}
         {{ toYaml . | nindent 8 }}
         {{- end }}

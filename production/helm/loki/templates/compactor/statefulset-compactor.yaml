@@ -82,12 +82,8 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=compactor
-            {{- with .Values.loki.extraArgs }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
-            {{- with .Values.compactor.extraArgs }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
+            {{ include "loki.templateArgs" .Values.loki.extraArgs }}
+            {{ include "loki.templateArgs" .Values.compactor.extraArgs }}
           ports:
             - name: http-metrics
               containerPort: 3100
@@ -99,19 +95,11 @@ spec:
               containerPort: 7946
               protocol: TCP
           env:
-            {{- with .Values.loki.extraEnv }}
-              {{- toYaml . | nindent 12 }}
-            {{- end }}
-            {{- with .Values.compactor.extraEnv }}
-              {{- toYaml . | nindent 12 }}
-            {{- end }}
+            {{ include "loki.templateEnv" .Values.loki.extraEnv }}
+            {{ include "loki.templateEnv" .Values.compactor.extraEnv }}
           envFrom:
-            {{- with .Values.loki.extraEnvFrom }}
-              {{- toYaml . | nindent 12 }}
-            {{- end }}
-            {{- with .Values.compactor.extraEnvFrom }}
-              {{- toYaml . | nindent 12 }}
-            {{- end }}
+            {{ include "loki.templateEnv" .Values.loki.extraEnvFrom }}
+            {{ include "loki.templateEnv" .Values.compactor.extraEnvFrom }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
           {{- include "loki.compactor.readinessProbe" . | nindent 10 }}

@@ -53,12 +53,8 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=table-manager
-            {{- with .Values.loki.extraArgs }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
-            {{- with .Values.tableManager.extraArgs }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
+            {{ include "loki.templateArgs" .Values.loki.extraArgs }}
+            {{ include "loki.templateArgs" .Values.tableManager.extraArgs }}
           ports:
             - name: http-metrics
               containerPort: {{ .Values.loki.server.http_listen_port }}
@@ -67,19 +63,11 @@ spec:
               containerPort: {{ .Values.loki.server.grpc_listen_port }}
               protocol: TCP
           env:
-            {{- with .Values.loki.extraEnv }}
-              {{- toYaml . | nindent 12 }}
-            {{- end }}
-            {{- with .Values.tableManager.extraEnv }}
-              {{- toYaml . | nindent 12 }}
-            {{- end }}
+            {{ include "loki.templateEnv" .Values.loki.extraEnv }}
+            {{ include "loki.templateEnv" .Values.tableManager.extraEnv }}
           envFrom:
-            {{- with .Values.loki.extraEnvFrom }}
-              {{- toYaml . | nindent 12 }}
-            {{- end }}
-            {{- with .Values.tableManager.extraEnvFrom }}
-              {{- toYaml . | nindent 12 }}
-            {{- end }}
+            {{ include "loki.templateEnv" .Values.loki.extraEnvFrom }}
+            {{ include "loki.templateEnv" .Values.tableManager.extraEnvFrom }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
           readinessProbe:
