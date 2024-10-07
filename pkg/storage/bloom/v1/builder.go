@@ -7,7 +7,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
@@ -66,24 +66,29 @@ func (b BlockOptions) Encode(enc *encoding.Encbuf) {
 	enc.PutBE64(b.BlockSize)
 }
 
-func NewBlockOptions(enc chunkenc.Encoding, nGramLength, nGramSkip, maxBlockSizeBytes, maxBloomSizeBytes uint64) BlockOptions {
+func NewBlockOptions(enc compression.Codec, maxBlockSizeBytes, maxBloomSizeBytes uint64) BlockOptions {
 	opts := NewBlockOptionsFromSchema(Schema{
-		version:     CurrentSchemaVersion,
-		encoding:    enc,
-		nGramLength: nGramLength,
-		nGramSkip:   nGramSkip,
-	})
+		version:  CurrentSchemaVersion,
+		encoding: enc,
+	}, maxBloomSizeBytes)
 	opts.BlockSize = maxBlockSizeBytes
 	opts.UnencodedBlockOptions.MaxBloomSizeBytes = maxBloomSizeBytes
 	return opts
 }
 
-func NewBlockOptionsFromSchema(s Schema) BlockOptions {
+func NewBlockOptionsFromSchema(s Schema, maxBloomSizeBytes uint64) BlockOptions {
 	return BlockOptions{
 		Schema: s,
 		// TODO(owen-d): benchmark and find good defaults
-		SeriesPageSize: 4 << 10,   // 4KB, typical page size
-		BloomPageSize:  256 << 10, // 256KB, no idea what to make this
+		SeriesPageSize: 4 << 10, // 4KB, typical page size
+
+		// Allow one bloom page to fit either several small blooms or one large
+		// bloom at max size.
+		//
+		// Previously this value was fixed at 256KB, which is smaller than most
+		// blooms. Setting this value less than maxBloomSizeBytes means that most
+		// pages will consist of a single oversized bloom.
+		BloomPageSize: maxBloomSizeBytes,
 	}
 }
 
@@ -122,7 +127,7 @@ func (w *PageWriter) Add(item []byte) (offset int) {
 	return offset
 }
 
-func (w *PageWriter) writePage(writer io.Writer, pool chunkenc.WriterPool, crc32Hash hash.Hash32) (int, int, error) {
+func (w *PageWriter) writePage(writer io.Writer, pool compression.WriterPool, crc32Hash hash.Hash32) (int, int, error) {
 	// write the number of blooms in this page, must not be varint
 	// so we can calculate it's position+len during decoding
 	w.enc.PutBE64(uint64(w.n))

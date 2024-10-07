@@ -130,7 +130,7 @@ For more information about this see our [AWS documentation]({{< relref "../promt
 
 First, you need to follow the [instructions](https://github.com/grafana/loki/blob/main/clients/cmd/fluent-bit/README.md) in order to build the plugin dynamic library.
 
-The assuming you have Fluent Bit installed in your `$PATH` you can run the plugin using:
+Assuming you have Fluent Bit installed in your `$PATH`, you can run the plugin using:
 
 ```bash
 fluent-bit -e /path/to/built/out_grafana_loki.so -c fluent-bit.conf

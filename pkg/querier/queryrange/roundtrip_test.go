@@ -360,7 +360,7 @@ func TestInstantQueryTripperwareResultCaching(t *testing.T) {
 	testLocal.CacheResults = false
 	testLocal.CacheIndexStatsResults = false
 	testLocal.CacheInstantMetricResults = false
-	var l = fakeLimits{
+	l := fakeLimits{
 		maxQueryParallelism:     1,
 		tsdbMaxQueryParallelism: 1,
 		maxQueryBytesRead:       1000,
@@ -1043,7 +1043,6 @@ func TestTripperware_EntriesLimit(t *testing.T) {
 }
 
 func TestTripperware_RequiredLabels(t *testing.T) {
-
 	const noErr = ""
 
 	for _, test := range []struct {
@@ -1095,7 +1094,6 @@ func TestTripperware_RequiredLabels(t *testing.T) {
 }
 
 func TestTripperware_RequiredNumberLabels(t *testing.T) {
-
 	const noErr = ""
 
 	for _, tc := range []struct {
@@ -1262,6 +1260,16 @@ func Test_getOperation(t *testing.T) {
 			name:       "label_values_query_prom",
 			path:       "/prom/label/__name__/values",
 			expectedOp: LabelNamesOp,
+		},
+		{
+			name:       "detected_fields",
+			path:       "/loki/api/v1/detected_fields",
+			expectedOp: DetectedFieldsOp,
+		},
+		{
+			name:       "detected_fields_values",
+			path:       "/loki/api/v1/detected_field/foo/values",
+			expectedOp: DetectedFieldsOp,
 		},
 	}
 
@@ -1523,6 +1531,7 @@ func (f fakeLimits) VolumeEnabled(_ string) bool {
 func (f fakeLimits) TSDBMaxBytesPerShard(_ string) int {
 	return valid.DefaultTSDBMaxBytesPerShard
 }
+
 func (f fakeLimits) TSDBShardingStrategy(string) string {
 	return logql.PowerOfTwoVersion.String()
 }

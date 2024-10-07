@@ -178,8 +178,6 @@ func (q *Querier) forIndices(ctx context.Context, req *metastorepb.ListBlocksFor
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(32)
 	for _, meta := range metas {
-
-		meta := meta
 		g.Go(func() error {
 			reader, err := q.blockStorage.GetObjectRange(ctx, wal.Dir+meta.Id, meta.IndexRef.Offset, meta.IndexRef.Length)
 			if err != nil {

@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -69,6 +71,108 @@ func TestIsObjectNotFoundErr(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Equal(t, tt.expected, client.IsObjectNotFoundErr(tt.err))
+		})
+	}
+}
+
+func TestIsRetryableErr(t *testing.T) {
+	tests := []struct {
+		err      error
+		expected bool
+		name     string
+	}{
+		{
+			name: "IsStorageThrottledErr - Too Many Requests",
+			err: awserr.NewRequestFailure(
+				awserr.New("TooManyRequests", "TooManyRequests", nil), 429, "reqId",
+			),
+			expected: true,
+		},
+		{
+			name: "IsStorageThrottledErr - 500",
+			err: awserr.NewRequestFailure(
+				awserr.New("500", "500", nil), 500, "reqId",
+			),
+			expected: true,
+		},
+		{
+			name: "IsStorageThrottledErr - 5xx",
+			err: awserr.NewRequestFailure(
+				awserr.New("501", "501", nil), 501, "reqId",
+			),
+			expected: true,
+		},
+		{
+			name: "IsStorageTimeoutErr - Request Timeout",
+			err: awserr.NewRequestFailure(
+				awserr.New("Request Timeout", "Request Timeout", nil), 408, "reqId",
+			),
+			expected: true,
+		},
+		{
+			name: "IsStorageTimeoutErr - Gateway Timeout",
+			err: awserr.NewRequestFailure(
+				awserr.New("Gateway Timeout", "Gateway Timeout", nil), 504, "reqId",
+			),
+			expected: true,
+		},
+		{
+			name:     "IsStorageTimeoutErr - EOF",
+			err:      io.EOF,
+			expected: true,
+		},
+		{
+			name:     "IsStorageTimeoutErr - Connection Reset",
+			err:      syscall.ECONNRESET,
+			expected: true,
+		},
+		{
+			name: "IsStorageTimeoutErr - Timeout Error",
+			err: awserr.NewRequestFailure(
+				awserr.New("RequestCanceled", "request canceled due to timeout", nil), 408, "request-id",
+			),
+			expected: true,
+		},
+		{
+			name:     "IsStorageTimeoutErr - Closed",
+			err:      net.ErrClosed,
+			expected: false,
+		},
+		{
+			name:     "IsStorageTimeoutErr - Connection Refused",
+			err:      syscall.ECONNREFUSED,
+			expected: false,
+		},
+		{
+			name:     "IsStorageTimeoutErr - Context Deadline Exceeded",
+			err:      context.DeadlineExceeded,
+			expected: false,
+		},
+		{
+			name:     "IsStorageTimeoutErr - Context Canceled",
+			err:      context.Canceled,
+			expected: false,
+		},
+		{
+			name:     "Not a retryable error",
+			err:      syscall.EINVAL,
+			expected: false,
+		},
+		{
+			name: "Not found 404",
+			err: awserr.NewRequestFailure(
+				awserr.New("404", "404", nil), 404, "reqId",
+			),
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, err := NewS3ObjectClient(S3Config{BucketNames: "mybucket"}, hedging.Config{})
+			require.NoError(t, err)
+
+			require.Equal(t, tt.expected, client.IsRetryableErr(tt.err))
 		})
 	}
 }
@@ -168,7 +272,6 @@ func Test_Hedging(t *testing.T) {
 			},
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			count := atomic.NewInt32(0)
 
@@ -205,6 +308,36 @@ func (m *MockS3Client) HeadObject(input *s3.HeadObjectInput) (*s3.HeadObjectOutp
 	return m.HeadObjectFunc(input)
 }
 
+func Test_GetAttributes(t *testing.T) {
+	mockS3 := &MockS3Client{
+		HeadObjectFunc: func(_ *s3.HeadObjectInput) (*s3.HeadObjectOutput, error) {
+			var size int64 = 128
+			return &s3.HeadObjectOutput{ContentLength: &size}, nil
+		},
+	}
+
+	c, err := NewS3ObjectClient(S3Config{
+		AccessKeyID:     "foo",
+		SecretAccessKey: flagext.SecretWithValue("bar"),
+		BackoffConfig:   backoff.Config{MaxRetries: 3},
+		BucketNames:     "foo",
+		Inject: func(_ http.RoundTripper) http.RoundTripper {
+			return RoundTripperFunc(func(_ *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader([]byte("object content"))),
+				}, nil
+			})
+		},
+	}, hedging.Config{})
+	require.NoError(t, err)
+	c.S3 = mockS3
+
+	attrs, err := c.GetAttributes(context.Background(), "abc")
+	require.NoError(t, err)
+	require.EqualValues(t, 128, attrs.Size)
+}
+
 func Test_RetryLogic(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
@@ -231,11 +364,34 @@ func Test_RetryLogic(t *testing.T) {
 			},
 		},
 		{
+			"object exists with size with retries",
+			3,
+			true,
+			func(c *S3ObjectClient) error {
+				_, err := c.ObjectExists(context.Background(), "foo")
+				return err
+			},
+		},
+		{
 			"object doesn't exist with retries",
 			3,
 			false,
 			func(c *S3ObjectClient) error {
-				_, err := c.ObjectExists(context.Background(), "foo")
+				exists, err := c.ObjectExists(context.Background(), "foo")
+				if err == nil && !exists {
+					return awserr.NewRequestFailure(
+						awserr.New("NotFound", "Not Found", nil), 404, "abc",
+					)
+				}
+				return err
+			},
+		},
+		{
+			"object doesn't exist (with size) with retries",
+			3,
+			false,
+			func(c *S3ObjectClient) error {
+				_, err := c.GetAttributes(context.Background(), "foo")
 				return err
 			},
 		},

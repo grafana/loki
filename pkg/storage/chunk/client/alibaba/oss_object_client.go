@@ -73,16 +73,37 @@ func (s *OssObjectClient) Stop() {
 }
 
 func (s *OssObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	var options []oss.Option
-	err := instrument.CollectedRequest(ctx, "OSS.ObjectExists", ossRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
-		_, requestErr := s.defaultBucket.GetObjectMeta(objectKey, options...)
-		return requestErr
-	})
-	if err != nil {
+	if _, err := s.objectAttributes(ctx, objectKey, "OSS.ObjectExists"); err != nil {
+		if s.IsObjectNotFoundErr(err) {
+			return false, nil
+		}
 		return false, err
 	}
 
 	return true, nil
+}
+
+func (s *OssObjectClient) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
+	return s.objectAttributes(ctx, objectKey, "OSS.GetAttributes")
+}
+
+func (s *OssObjectClient) objectAttributes(ctx context.Context, objectKey, operation string) (client.ObjectAttributes, error) {
+	var options []oss.Option
+	var objectSize int64
+	err := instrument.CollectedRequest(ctx, operation, ossRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
+		headers, requestErr := s.defaultBucket.GetObjectMeta(objectKey, options...)
+		if requestErr != nil {
+			return requestErr
+		}
+
+		objectSize, _ = strconv.ParseInt(headers.Get(oss.HTTPHeaderContentLength), 10, 64)
+		return nil
+	})
+	if err != nil {
+		return client.ObjectAttributes{}, err
+	}
+
+	return client.ObjectAttributes{Size: objectSize}, nil
 }
 
 // GetObject returns a reader and the size for the specified object key from the configured OSS bucket.
