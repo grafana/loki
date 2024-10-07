@@ -21,4 +21,4 @@ We recommend using the `loki` plugin as this provides the most complete feature 
 
 ## Tutorial
 
-To get started with the `loki` plugin, follow the [Sending logs to Loki using Fluent Bit tutorial]({{< relref "./fluent-bit-loki-tutorial.md" >}}). 
+To get started with the `loki` plugin, follow the [Sending logs to Loki using Fluent Bit tutorial](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/fluentbit/fluent-bit-loki-tutorial/). 
