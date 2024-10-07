@@ -15,7 +15,7 @@ When using Fluent Bit to ship logs to Loki, you can define which log files you w
 There are two Fluent Bit plugins for Loki: 
 
 1. The integrated `loki` [plugin](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/fluentbit/fluent-bit-plugin/), which is officially maintained by the Fluent Bit project.
-2. The `grafana-loki` [plugin]({{< relref "./community-plugin.md" >}}), an alternative community plugin by Grafana Labs.
+2. The `grafana-loki` [plugin](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/fluentbit/community-plugin/), an alternative community plugin by Grafana Labs.
 
 We recommend using the `loki` plugin as this provides the most complete feature set and is actively maintained by the Fluent Bit project.
 
