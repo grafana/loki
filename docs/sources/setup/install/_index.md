@@ -7,7 +7,7 @@ aliases:
 weight: 200
 ---
 
-# Install Loki and Alloy
+# Install Loki
 
 There are several methods of installing Loki:
 
