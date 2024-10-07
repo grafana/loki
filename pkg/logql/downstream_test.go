@@ -726,7 +726,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 
 			rangeQry := downstreamEngine.Query(ctx, ParamsWithExpressionOverride{Params: params, ExpressionOverride: rangeExpr})
 			rangeRes, err := rangeQry.Exec(ctx)
-			require.Nil(t, err)
+			require.NoError(t, err)
 
 			require.Equal(t, res.Data, rangeRes.Data)
 		})
