@@ -100,7 +100,7 @@ Fluent Bit requires a configuration file to define the components and their rela
 {{< docs/ignore >}}
 > Note: Killercoda has an inbuilt Code editor which can be accessed via the `Editor` tab.
 1. Expand the `loki-fundamentals` directory in the file explorer of the `Editor` tab.
-1. Locate the `fluent-bit.conf` file in the top level directory, `loki-fundamentals'.
+1. Locate the `fluent-bit.conf` file in the top level directory, `loki-fundamentals`.
 1. Click on the `fluent-bit.conf` file to open it in the code editor.
 {{< /docs/ignore >}}
 
