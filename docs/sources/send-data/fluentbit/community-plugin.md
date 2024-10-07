@@ -14,7 +14,7 @@ We recommend using the official [Fluent Bit Loki plugin](https://grafana.com/doc
 
 {{< /admonition >}}
 
-The Fluent Bit Community plugin by Grafana Labs (`grafana-loki`) provided an alternative way to send logs to Loki. Although very similar to the [official plugin]({{< relref "./fluent-bit-plugin.md" >}}) there are some differences in the configuration options. This page provides instructions for how to install, configure, and use the Fluent Bit Community plugin to send logs to Loki. Although the plugin is no longer actively maintained, this documentation is still available for reference.
+The Fluent Bit Community plugin by Grafana Labs (`grafana-loki`) provided an alternative way to send logs to Loki. Although very similar to the [official plugin](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/fluentbit/fluent-bit-plugin/) there are some differences in the configuration options. This page provides instructions for how to install, configure, and use the Fluent Bit Community plugin to send logs to Loki. Although the plugin is no longer actively maintained, this documentation is still available for reference.
 
 {{< youtube id="s43IBSVyTpQ" >}}
 
