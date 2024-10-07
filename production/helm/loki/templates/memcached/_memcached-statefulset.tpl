@@ -109,8 +109,8 @@ spec:
             - -c {{ .connectionLimit }}
             - -v
             - -u {{ .port }}
-            {{- with .extraArgs }}
-            {{- toYaml . | nindent 12 }}
+            {{- range $key, $value := .extraArgs }}
+            - "-{{ $key }}{{ if $value }} {{ $value }}{{ end }}"
             {{- end }}
           env:
             {{- with $.ctx.Values.global.extraEnv }}
@@ -145,8 +145,8 @@ spec:
           args:
             - "--memcached.address=localhost:{{ .port }}"
             - "--web.listen-address=0.0.0.0:9150"
-            {{- with $.ctx.Values.memcachedExporter.extraArgs }}
-            {{- toYaml . | nindent 12 }}
+            {{- range $key, $value := $.ctx.Values.memcachedExporter.extraArgs }}
+            - "--{{ $key }}{{ if $value }}={{ $value }}{{ end }}"
             {{- end }}
           resources:
             {{- toYaml $.ctx.Values.memcachedExporter.resources | nindent 12 }}
