@@ -413,7 +413,7 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 	return g.boundedShards(ctx, request, server, instanceID, p, forSeries)
 }
 
-// boundedShards handles bounded shard requests, optionally using blooms and/or returning precomputed chunks.
+// boundedShards handles bounded shard requests, optionally returning precomputed chunks.
 func (g *Gateway) boundedShards(
 	ctx context.Context,
 	req *logproto.ShardsRequest,
@@ -466,18 +466,20 @@ func (g *Gateway) boundedShards(
 
 	// 2) filter via blooms if enabled
 	filters := v1.ExtractTestableLabelMatchers(p.Plan().AST)
-	if g.bloomQuerier != nil && len(filters) > 0 {
-		xs, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, refs, p.Plan())
-		if err != nil {
-			level.Error(logger).Log("msg", "failed to filter chunk refs", "err", err)
-		} else {
-			filtered = xs
-		}
-		sp.LogKV(
-			"stage", "queried bloom gateway",
-			"err", err,
-		)
-	}
+	// NOTE(chaudum): Temporarily disable bloom filtering of chunk refs,
+	// as this doubles the load on bloom gateways.
+	// if g.bloomQuerier != nil && len(filters) > 0 {
+	// 	xs, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, refs, p.Plan())
+	// 	if err != nil {
+	// 		level.Error(logger).Log("msg", "failed to filter chunk refs", "err", err)
+	// 	} else {
+	// 		filtered = xs
+	// 	}
+	// 	sp.LogKV(
+	// 		"stage", "queried bloom gateway",
+	// 		"err", err,
+	// 	)
+	// }
 
 	g.metrics.preFilterChunks.WithLabelValues(routeShards).Observe(float64(ct))
 	g.metrics.postFilterChunks.WithLabelValues(routeShards).Observe(float64(len(filtered)))

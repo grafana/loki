@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:0.6.2
-    createdAt: "2024-09-09T09:16:56Z"
+    createdAt: "2024-10-03T12:34:33Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -355,12 +355,11 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
       - description: IndexedResourceAttributes contains the global configuration for
-          resource attributes to store them as index labels or structured metadata
-          or drop them altogether.
+          resource attributes to store them as index labels.
         displayName: Indexed Resource Attributes
         path: limits.global.otlp.indexedResourceAttributes
       - description: LogAttributes contains the configuration for log attributes to
-          store them as index labels or structured metadata or drop them altogether.
+          store them as structured metadata or drop them altogether.
         displayName: Log Attributes
         path: limits.global.otlp.logAttributes
       - description: Action defines the indexing action for the selected attributes.
@@ -401,7 +400,7 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
       - description: ScopeAttributes contains the configuration for scope attributes
-          to store them as index labels or structured metadata or drop them altogether.
+          to store them as structured metadata or drop them altogether.
         displayName: Scope Attributes
         path: limits.global.otlp.scopeAttributes
       - description: Action defines the indexing action for the selected attributes.
@@ -511,7 +510,7 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
       - description: LogAttributes contains the configuration for log attributes to
-          store them as index labels or structured metadata or drop them altogether.
+          store them as structured metadata or drop them altogether.
         displayName: Log Attributes
         path: limits.tenants.otlp.logAttributes
       - description: Action defines the indexing action for the selected attributes.
@@ -552,7 +551,7 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
       - description: ScopeAttributes contains the configuration for scope attributes
-          to store them as index labels or structured metadata or drop them altogether.
+          to store them as structured metadata or drop them altogether.
         displayName: Scope Attributes
         path: limits.tenants.otlp.scopeAttributes
       - description: Action defines the indexing action for the selected attributes.
@@ -1827,7 +1826,7 @@ spec:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI
-                  value: docker.io/grafana/loki:3.1.1
+                  value: docker.io/grafana/loki:3.2.0
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
@@ -1939,7 +1938,7 @@ spec:
   provider:
     name: Grafana Loki SIG Operator
   relatedImages:
-  - image: docker.io/grafana/loki:3.1.1
+  - image: docker.io/grafana/loki:3.2.0
     name: loki
   - image: quay.io/observatorium/api:latest
     name: gateway

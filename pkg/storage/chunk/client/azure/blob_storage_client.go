@@ -220,20 +220,44 @@ func NewBlobStorage(cfg *BlobStorageConfig, metrics BlobStorageMetrics, hedgingC
 func (b *BlobStorage) Stop() {}
 
 func (b *BlobStorage) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	err := loki_instrument.TimeRequest(ctx, "azure.ObjectExists", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
+	if _, err := b.objectAttributes(ctx, objectKey, "azure.ObjectExists"); err != nil {
+		if b.IsObjectNotFoundErr(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func (b *BlobStorage) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
+	return b.objectAttributes(ctx, objectKey, "azure.GetAttributes")
+}
+
+func (b *BlobStorage) objectAttributes(ctx context.Context, objectKey, source string) (client.ObjectAttributes, error) {
+	var objectSize int64
+	err := loki_instrument.TimeRequest(ctx, source, instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
 		blockBlobURL, err := b.getBlobURL(objectKey, false)
 		if err != nil {
 			return err
 		}
 
-		_, err = blockBlobURL.GetProperties(ctx, azblob.BlobAccessConditions{}, azblob.ClientProvidedKeyOptions{})
-		return err
+		response, err := blockBlobURL.GetProperties(ctx, azblob.BlobAccessConditions{}, azblob.ClientProvidedKeyOptions{})
+		if err != nil {
+			return err
+		}
+		if response != nil {
+			rawResponse := response.Response()
+			if rawResponse != nil {
+				objectSize = rawResponse.ContentLength
+			}
+		}
+		return nil
 	})
 	if err != nil {
-		return false, err
+		return client.ObjectAttributes{}, err
 	}
 
-	return true, nil
+	return client.ObjectAttributes{Size: objectSize}, nil
 }
 
 // GetObject returns a reader and the size for the specified object key.

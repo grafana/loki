@@ -38,8 +38,6 @@ func TestLazyChunkIterator(t *testing.T) {
 	}
 
 	for _, periodConfig := range periodConfigs {
-		periodConfig := periodConfig
-
 		chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 		require.NoError(t, err)
 

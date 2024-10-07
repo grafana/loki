@@ -72,7 +72,6 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 
 	for testName, testData := range tests {
 		for _, retErr := range []bool{true, false} {
-			testName, testData, retErr := testName, testData, retErr
 			if retErr {
 				testName += " call should return early on breaching max errors"
 			} else {
@@ -168,7 +167,6 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 
 	for testName, testData := range tests {
 		for _, retErr := range []bool{true, false} {
-			testName, testData, retErr := testName, testData, retErr
 			if retErr {
 				testName += " call should not return early on breaching max errors"
 			} else {
@@ -277,8 +275,6 @@ func TestQuerier_tailDisconnectedIngesters(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			req := logproto.TailRequest{
 				Query:    "{type=\"test\"}",

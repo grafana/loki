@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -240,7 +239,7 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 
 	var enqueueTime time.Duration
 	for i := 0; i < n; i++ {
-		key := f.client.Block(refs[i]).Addr()
+		key := cacheKey(refs[i])
 		dir, isFound, err := f.fromCache(ctx, key)
 		if err != nil {
 			return results, err
@@ -346,7 +345,7 @@ func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef
 		return
 	}
 
-	key := f.client.Block(result.BlockRef).Addr()
+	key := cacheKey(result.BlockRef)
 	if task.async {
 		// put item into cache
 		err = f.blocksCache.Put(ctx, key, result)
@@ -407,10 +406,9 @@ func (f *Fetcher) loadBlocksFromFS(_ context.Context, refs []BlockRef) ([]BlockD
 	missing := make([]BlockRef, 0, len(refs))
 
 	for _, ref := range refs {
-		path := f.localFSResolver.Block(ref).LocalPath()
-		// the block directory does not contain the .tar.gz extension
+		// the block directory does not contain the .tar(.compression) extension
 		// since it is stripped when the archive is extracted into a folder
-		path = strings.TrimSuffix(path, ".tar.gz")
+		path := localFilePathWithoutExtension(ref, f.localFSResolver)
 		if ok, clean := f.isBlockDir(path); ok {
 			blockDirs = append(blockDirs, NewBlockDirectory(ref, path))
 		} else {

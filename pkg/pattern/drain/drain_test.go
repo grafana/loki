@@ -426,7 +426,6 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.inputFile, func(t *testing.T) {
 			file, err := os.Open(tt.inputFile)
 			require.NoError(t, err)
@@ -529,7 +528,6 @@ func TestDrain_TrainGeneratesPatternsMatchableByLokiPatternFilter(t *testing.T) 
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			for _, line := range tt.inputLines {
 				tt.drain.Train(line, 0)
@@ -630,7 +628,6 @@ func TestDrain_PruneTreeClearsOldBranches(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			now := time.Now()
 			for i, line := range tt.inputLines {

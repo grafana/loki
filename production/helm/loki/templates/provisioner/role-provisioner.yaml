@@ -1,4 +1,4 @@
-{{ if and .Values.enterprise.provisioner.enabled .Values.enterprise.enabled }}
+{{ if and (and .Values.enterprise.provisioner.enabled .Values.enterprise.enabled) (not .Values.rbac.namespaced)}}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
