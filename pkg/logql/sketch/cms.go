@@ -19,9 +19,12 @@ func NewCountMinSketch(w, d uint32) (*CountMinSketch, error) {
 	}, nil
 }
 
+// NewCountMinSketchFromErrorAndProbability creates a new CMS for a given epsilon and delta. The sketch width and depth
+// are calculated according to the RedisBloom implementation.
+// See https://github.com/RedisBloom/RedisBloom/blob/7bc047d1ea4113419b60eb6446ac3d4e61877a7b/src/cms.c#L38-L39
 func NewCountMinSketchFromErrorAndProbability(epsilon float64, delta float64) (*CountMinSketch, error) {
 	width := math.Ceil(math.E / epsilon)
-	depth := math.Ceil(math.Log(1.0 / delta))
+	depth := math.Ceil(math.Log(delta) / math.Log(0.5))
 	return NewCountMinSketch(uint32(width), uint32(depth))
 }
 

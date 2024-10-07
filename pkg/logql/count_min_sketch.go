@@ -17,8 +17,8 @@ const (
 	CountMinSketchVectorType = "CountMinSketchVector"
 
 	epsilon = 0.0001
-	// delta of 0.05 results in a sketch size of 325KB, 0.01 gives a sketch size of 543KB
-	delta = 0.05
+	// delta of 0.01 results in a sketch size of 27183 * 7 * 4 bytes = 761,124 bytes, 0.05 would yield 543,660 bytes
+	delta = 0.01
 )
 
 // CountMinSketchVector tracks the count or sum of values of a metric, ie list of label value pairs. It's storage for

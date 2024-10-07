@@ -283,6 +283,12 @@ func TestApproxTopkSketches(t *testing.T) {
 		limit  = 100
 	)
 
+	limits := &fakeLimits{
+		maxSeries: math.MaxInt64,
+		// timeout:   5 * time.Minute,
+		timeout: time.Hour,
+	}
+
 	for _, tc := range []struct {
 		labelShards   int
 		totalStreams  int
@@ -334,8 +340,14 @@ func TestApproxTopkSketches(t *testing.T) {
 			regularQuery:  `topk(100, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
 			realtiveError: 0.0015,
 		},
+		{
+			labelShards:   10, // increasing this will make the test too slow
+			totalStreams:  1_000_000,
+			shardedQuery:  `approx_topk(100, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
+			regularQuery:  `topk(100, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
+			realtiveError: 0.0015,
+		},
 	} {
-
 		t.Run(fmt.Sprintf("%s/%d/%d", tc.shardedQuery, tc.labelShards, tc.totalStreams), func(t *testing.T) {
 			streams := randomStreams(tc.totalStreams, rounds+1, tc.labelShards, []string{"a", "b", "c", "d"}, true)
 
@@ -347,8 +359,8 @@ func TestApproxTopkSketches(t *testing.T) {
 			opts := EngineOpts{
 				MaxCountMinSketchHeapSize: 10_000,
 			}
-			regular := NewEngine(opts, q, NoLimits, log.NewNopLogger())
-			sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
+			regular := NewEngine(opts, q, limits, log.NewNopLogger())
+			sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, limits, log.NewNopLogger())
 
 			// for an instant query we set the start and end to the same timestamp
 			// plus set step and interval to 0
@@ -365,7 +377,9 @@ func TestApproxTopkSketches(t *testing.T) {
 			)
 			require.NoError(t, err)
 			qry := regular.Query(params.Copy())
-			ctx := user.InjectOrgID(context.Background(), "fake")
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+			ctx = user.InjectOrgID(ctx, "fake")
 
 			strategy := NewPowerOfTwoStrategy(ConstantShards(tc.labelShards))
 			mapper := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime, SupportApproxTopk})
