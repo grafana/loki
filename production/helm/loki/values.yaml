@@ -804,7 +804,7 @@ adminApi:
   #    hostnames:
   #      - domain.tld
   # -- Additional CLI arguments for the `admin-api` target
-  extraArgs: []
+  extraArgs: {}
   # -- Additional labels for the `admin-api` Deployment
   labels: {}
   # -- Additional annotations for the `admin-api` Deployment
@@ -1082,7 +1082,7 @@ enterpriseGateway:
   #    hostnames:
   #      - domain.tld
   # -- Additional CLI arguments for the `gateway` target
-  extraArgs: []
+  extraArgs: {}
   # -- Additional labels for the `gateway` Pod
   labels: {}
   # -- Additional annotations for the `gateway` Pod
@@ -2974,7 +2974,7 @@ memcachedExporter:
   #   memcached.tls.ca-file: /certs/ca.crt
   #   memcached.tls.insecure-skip-verify: false
   #   memcached.tls.server-name: memcached
-  extraArgs: []
+  extraArgs: {}
 resultsCache:
   # -- Specifies whether memcached based results-cache should be enabled
   enabled: true
@@ -3035,7 +3035,7 @@ resultsCache:
   # extraExtendedOptions: 'tls,modern,track_sizes'
   extraExtendedOptions: ""
   # -- Additional CLI args for results-cache
-  extraArgs: []
+  extraArgs: {}
   # -- Additional containers to be added to the results-cache pod.
   extraContainers: []
   # -- Additional volumes to be added to the results-cache pod (applies to both memcached and exporter containers).
@@ -3137,7 +3137,7 @@ chunksCache:
   # extraExtendedOptions: 'tls,no_hashexpand'
   extraExtendedOptions: ""
   # -- Additional CLI args for chunks-cache
-  extraArgs: []
+  extraArgs: {}
   # -- Additional containers to be added to the chunks-cache pod.
   extraContainers: []
   # -- Additional volumes to be added to the chunks-cache pod (applies to both memcached and exporter containers).
