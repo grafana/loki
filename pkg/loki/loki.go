@@ -704,6 +704,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(PatternIngesterTee, t.initPatternIngesterTee, modules.UserInvisibleModule)
 	mm.RegisterModule(PatternIngester, t.initPatternIngester)
 	mm.RegisterModule(PartitionRing, t.initPartitionRing, modules.UserInvisibleModule)
+	mm.RegisterModule(Dashboards, t.initDashboards, modules.UserInvisibleModule)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -720,8 +721,8 @@ func (t *Loki) setupModuleManager() error {
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, Analytics, PartitionRing},
 		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics, PartitionRing},
-		Querier:                  {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
-		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
+		Querier:                  {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing, Dashboards},
+		QueryFrontendTripperware: {Server, Overrides, TenantConfigs, Dashboards},
 		QueryFrontend:            {QueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing},
 		QueryScheduler:           {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing},
 		Ruler:                    {Ring, Server, RulerStorage, RuleEvaluator, Overrides, TenantConfigs, Analytics},
@@ -741,6 +742,7 @@ func (t *Loki) setupModuleManager() error {
 		IndexGatewayRing:         {Overrides, MemberlistKV},
 		PartitionRing:            {MemberlistKV, Server, Ring},
 		MemberlistKV:             {Server},
+		Dashboards:               {Server},
 
 		Read:    {QueryFrontend, Querier},
 		Write:   {Ingester, Distributor, PatternIngester},

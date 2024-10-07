@@ -3,19 +3,55 @@ package dash
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"reflect"
 	"strings"
 	"text/template"
 
+	"github.com/grafana/dskit/server"
 	"github.com/grafana/grafana-foundation-sdk/go/common"
 	"github.com/grafana/grafana-foundation-sdk/go/dashboard"
 	"github.com/grafana/grafana-foundation-sdk/go/prometheus"
 	"github.com/grafana/grafana-foundation-sdk/go/timeseries"
-
 	prom "github.com/prometheus/client_golang/prometheus"
 )
 
-func ReadsDashboard(requestDuration *prom.HistogramVec) {
+type DashboardLoader struct {
+	server *server.Metrics
+
+	// individual dashboards, pre-rendered at initialization and
+	// accessed by http handlers via corresponding CamelCase methods
+	reads []byte
+}
+
+func NewDashboardLoader(server *server.Metrics) (*DashboardLoader, error) {
+
+	reads, err := ReadsDashboard(server.RequestDuration)
+	if err != nil {
+		return nil, err
+	}
+
+	dashboardJson, err := json.MarshalIndent(reads, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+
+	return &DashboardLoader{
+		server: server,
+
+		reads: dashboardJson,
+	}, nil
+}
+
+func (l *DashboardLoader) Reads() http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// TODO(owen-d): versioning
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(l.reads)
+	})
+}
+
+func ReadsDashboard(requestDuration *prom.HistogramVec) (dashboard.Dashboard, error) {
 	var statusMap map[string]string = nil
 
 	// TODO: parameterize so caller can pass it's own scheme
@@ -54,16 +90,7 @@ func ReadsDashboard(requestDuration *prom.HistogramVec) {
 		builder = builder.WithRow(red.Row())
 	}
 
-	sampleDashboard, err := builder.Build()
-	if err != nil {
-		panic(err)
-	}
-	dashboardJson, err := json.MarshalIndent(sampleDashboard, "", "  ")
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println(string(dashboardJson))
+	return builder.Build()
 }
 
 func forceTpl(name, s string) *template.Template {
