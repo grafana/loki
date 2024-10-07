@@ -1961,15 +1961,22 @@ DO NOT USE THIS IN PRODUCTION!</p>
 </td>
 </tr><tr><td><p>&#34;1x.extra-small&#34;</p></td>
 <td><p>SizeOneXExtraSmall defines the size of a single Loki deployment
-with extra small resources/limits requirements and without HA support.
-This size is ultimately dedicated for development and demo purposes.
-DO NOT USE THIS IN PRODUCTION!</p>
+with extra small resources/limits requirements and HA support for all
+Loki components. This size is dedicated for setup <strong>without</strong> the
+requirement for single replication factor and auto-compaction.</p>
 <p>FIXME: Add clear description of ingestion/query performance expectations.</p>
 </td>
 </tr><tr><td><p>&#34;1x.medium&#34;</p></td>
 <td><p>SizeOneXMedium defines the size of a single Loki deployment
 with small resources/limits requirements and HA support for all
 Loki components. This size is dedicated for setup <strong>with</strong> the
+requirement for single replication factor and auto-compaction.</p>
+<p>FIXME: Add clear description of ingestion/query performance expectations.</p>
+</td>
+</tr><tr><td><p>&#34;1x.pico&#34;</p></td>
+<td><p>SizeOneXPico defines the size of a single Loki deployment
+with extra small resources/limits requirements and HA support for all
+Loki components. This size is dedicated for setup <strong>without</strong> the
 requirement for single replication factor and auto-compaction.</p>
 <p>FIXME: Add clear description of ingestion/query performance expectations.</p>
 </td>
