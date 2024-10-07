@@ -858,7 +858,7 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 							BearerTokenFile: BearerTokenFile,
 							TLSConfig: &monitoringv1.TLSConfig{
 								SafeTLSConfig: monitoringv1.SafeTLSConfig{
-									ServerName: "loki-test.some-ns.svc.cluster.local",
+									ServerName: ptr.To("loki-test.some-ns.svc.cluster.local"),
 								},
 								CAFile: PrometheusCAFile,
 							},
@@ -885,7 +885,7 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 							BearerTokenFile: BearerTokenFile,
 							TLSConfig: &monitoringv1.TLSConfig{
 								SafeTLSConfig: monitoringv1.SafeTLSConfig{
-									ServerName: "loki-test.some-ns.svc.cluster.local",
+									ServerName: ptr.To("loki-test.some-ns.svc.cluster.local"),
 								},
 								CAFile: PrometheusCAFile,
 							},
@@ -897,7 +897,7 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 							BearerTokenFile: BearerTokenFile,
 							TLSConfig: &monitoringv1.TLSConfig{
 								SafeTLSConfig: monitoringv1.SafeTLSConfig{
-									ServerName: "loki-test.some-ns.svc.cluster.local",
+									ServerName: ptr.To("loki-test.some-ns.svc.cluster.local"),
 								},
 								CAFile: PrometheusCAFile,
 							},
@@ -929,7 +929,7 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 							BearerTokenFile: BearerTokenFile,
 							TLSConfig: &monitoringv1.TLSConfig{
 								SafeTLSConfig: monitoringv1.SafeTLSConfig{
-									ServerName: "loki-test.some-ns.svc.cluster.local",
+									ServerName: ptr.To("loki-test.some-ns.svc.cluster.local"),
 								},
 								CAFile: PrometheusCAFile,
 							},
@@ -961,7 +961,7 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 							BearerTokenFile: BearerTokenFile,
 							TLSConfig: &monitoringv1.TLSConfig{
 								SafeTLSConfig: monitoringv1.SafeTLSConfig{
-									ServerName: "loki-test.some-ns.svc.cluster.local",
+									ServerName: ptr.To("loki-test.some-ns.svc.cluster.local"),
 								},
 								CAFile: PrometheusCAFile,
 							},
@@ -973,7 +973,7 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 							BearerTokenFile: BearerTokenFile,
 							TLSConfig: &monitoringv1.TLSConfig{
 								SafeTLSConfig: monitoringv1.SafeTLSConfig{
-									ServerName: "loki-test.some-ns.svc.cluster.local",
+									ServerName: ptr.To("loki-test.some-ns.svc.cluster.local"),
 								},
 								CAFile: PrometheusCAFile,
 							},

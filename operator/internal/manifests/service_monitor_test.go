@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/utils/ptr"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -294,7 +295,7 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 									Key: caFile,
 								},
 							},
-							ServerName: "test-gateway-http.test.svc.cluster.local",
+							ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
 						},
 					},
 				},
@@ -381,7 +382,7 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 									Key: caFile,
 								},
 							},
-							ServerName: "test-gateway-http.test.svc.cluster.local",
+							ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
 						},
 					},
 				},
@@ -408,7 +409,7 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 									Key: caFile,
 								},
 							},
-							ServerName: "test-gateway-http.test.svc.cluster.local",
+							ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
 						},
 					},
 				},
@@ -495,7 +496,7 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 									Key: caFile,
 								},
 							},
-							ServerName: "test-gateway-http.test.svc.cluster.local",
+							ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
 						},
 					},
 				},
@@ -522,7 +523,7 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 									Key: caFile,
 								},
 							},
-							ServerName: "test-gateway-http.test.svc.cluster.local",
+							ServerName: ptr.To("test-gateway-http.test.svc.cluster.local"),
 						},
 					},
 				},
