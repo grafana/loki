@@ -1213,15 +1213,33 @@ func aggMetricsVolumeHandler(
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
-	lokiReq := &LokiInstantRequest{
-		Query:     expr.String(),
-		Limit:     1000,
-		Direction: logproto.BACKWARD,
-		TimeTs:    r.GetEnd().UTC(),
-		Path:      "/loki/api/v1/query",
-		Plan: &plan.QueryPlan{
-			AST: expr,
-		},
+	var lokiReq base.Request
+	if r.GetStep() <= 0 {
+		lokiReq = &LokiInstantRequest{
+			Query:     expr.String(),
+			Limit:     1000,
+			Direction: logproto.BACKWARD,
+			TimeTs:    r.GetEnd().UTC(),
+			Path:      "/loki/api/v1/query",
+			Plan: &plan.QueryPlan{
+				AST: expr,
+			},
+			CachingOptions: r.GetCachingOptions(),
+		}
+	} else {
+		lokiReq = &LokiRequest{
+			Query:     expr.String(),
+			Limit:     1000,
+			Step:      r.GetStep(),
+			StartTs:   r.GetStart().UTC(),
+			EndTs:     r.GetEnd().UTC(),
+			Direction: logproto.BACKWARD,
+			Path:      "/loki/api/v1/query_range",
+			Plan: &plan.QueryPlan{
+				AST: expr,
+			},
+			CachingOptions: r.GetCachingOptions(),
+		}
 	}
 
 	resp, err := logHandler.Do(ctx, lokiReq)
@@ -1238,7 +1256,7 @@ func aggMetricsVolumeHandler(
 	sortableResult := make([]sortableSampleStream, 0, len(result))
 	resultType := loghttp.ResultTypeVector
 
-  // sort the response to match the index volume respsone
+	// sort the response to match the index volume respsone
 	for _, stream := range result {
 		if resultType == loghttp.ResultTypeVector && len(stream.Samples) > 1 {
 			resultType = loghttp.ResultTypeMatrix
@@ -1268,19 +1286,15 @@ func aggMetricsVolumeHandler(
 		})
 	}
 
-	
-
-	
-
 	return &LokiPromResponse{
-		Response:   &base.PrometheusResponse{
-		Status:  loghttp.QueryStatusSuccess,
-		Data:    base.PrometheusData{
-		ResultType: resultType,
-		Result:     respStreams,
-	},
-		Headers: re.Response.Headers,
-	},
+		Response: &base.PrometheusResponse{
+			Status: loghttp.QueryStatusSuccess,
+			Data: base.PrometheusData{
+				ResultType: resultType,
+				Result:     respStreams,
+			},
+			Headers: re.Response.Headers,
+		},
 		Statistics: re.Statistics,
 	}, nil
 }
