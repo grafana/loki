@@ -90,12 +90,17 @@ eksctl utils associate-iam-oidc-provider --cluster loki --approve
 ```
 **This may be installed by default when creating the EKS cluster using EKSctl.**
 
-## Create an S3 bucket
+## Create three S3 buckets
 
-Before deploying Loki, you need to create an S3 bucket to store the logs. You can create the bucket using the AWS Management Console or the AWS CLI. The bucket name must be globally unique. For this guide, we will use the bucket name `loki-aws-bucket` but you should choose your own unique name when creating your own bucket.
+Before deploying Loki, you need to create two S3 buckets; one to store logs (chunks), the second to store alert rules. You can create the bucket using the AWS Management Console or the AWS CLI. The bucket name must be globally unique. For this guide, we will use the bucket names `loki-aws-dev-chunks` and `loki-aws-dev-ruler` **but you should choose your own unique names when creating your own buckets**.
+
+{{<admonition type="note">}}
+GEL customers will require a third bucket to store the admin data. This bucket is not required for OSS users.
+{{</admonition>}}
 
 ```bash
-aws s3api create-bucket --bucket loki-aws-bucket --region eu-west-2 --create-bucket-configuration LocationConstraint=eu-west-2
+aws s3api create-bucket --bucket loki-aws-dev-chunks --region eu-west-2 --create-bucket-configuration LocationConstraint=eu-west-2 \
+aws s3api create-bucket --bucket loki-aws-dev-ruler --region eu-west-2 --create-bucket-configuration LocationConstraint=eu-west-2 \
 ```
 Make sure to replace the region and bucket name with your desired values. We will revisit the bucket policy later in this guide.
 
@@ -125,15 +130,17 @@ Create a new directory and navigate to it. Make sure to create the files in this
                     "s3:DeleteObject"
                 ],
                 "Resource": [
-                    "arn:aws:s3:::< Name of the bucket >",
-                    "arn:aws:s3:::< Name of the bucket >/*"
+                    "arn:aws:s3:::< Name of the chunk bucket >",
+                    "arn:aws:s3:::< Name of the chunk bucket >/*",
+                    "arn:aws:s3:::< Name of the ruler bucket >",
+                    "arn:aws:s3:::< Name of the ruler bucket >/*"
                 ]
             }
         ]
     }
     ```
 
-    **Make sure to replace the placeholder with the name of the bucket you created earlier.**
+    **Make sure to replace the placeholder with the name of the buckets you created earlier.**
 
 1. Create the IAM policy using the AWS CLI:
 
@@ -177,11 +184,11 @@ Create a new directory and navigate to it. Make sure to create the files in this
     ```
     **Make sure to replace the placeholder with your AWS account ID.**
 
-### Adding the policy to our S3 bucket
+### Adding the policy to the S3 buckets
 
-To allow the IAM role to access the S3 bucket, you need to add the policy to the bucket. You can do this using the AWS Management Console or the AWS CLI. The below steps show how to add the policy using the AWS CLI.
+To allow the IAM role to access the S3 buckets, you need to add the policy to the bucket. You can do this using the AWS Management Console or the AWS CLI. The below steps show how to add the policy using the AWS CLI.
 
-1. Create a bucket policy file named `bucket-policy.json` with the following content:
+1. Create a bucket policy file named `bucket-policy-chunk.json` with the following content:
 
     ```json
     {
@@ -200,8 +207,8 @@ To allow the IAM role to access the S3 bucket, you need to add the policy to the
                     "s3:ListBucket"
                 ],
                 "Resource": [
-                    "arn:aws:s3:::<bucket name>",
-                    "arn:aws:s3:::<bucket name>/*"
+                    "arn:aws:s3:::<chunk bucket name>",
+                    "arn:aws:s3:::<chunk bucket name>/*"
                 ]
             }
         ]
@@ -209,10 +216,43 @@ To allow the IAM role to access the S3 bucket, you need to add the policy to the
     ```
     **Make sure to replace the placeholders with your AWS account ID and the bucket name.**
 
-2. Add the policy to the bucket:
+1. Add the policy to the bucket:
 
     ```bash
-    aws s3api put-bucket-policy --bucket loki-aws-bucket --policy file://bucket-policy.json
+    aws s3api put-bucket-policy --bucket loki-aws-dev-chunk --policy file://bucket-policy-chunk.json
+    ```
+1. Create a bucket policy file named `bucket-policy-ruler.json` with the following content:
+
+    ```json
+    {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Sid": "Statement1",
+                "Effect": "Allow",
+                "Principal": {
+                    "AWS": "arn:aws:iam::<account id>:role/LokiServiceAccountRole"
+                },
+                "Action": [
+                    "s3:PutObject",
+                    "s3:GetObject",
+                    "s3:DeleteObject",
+                    "s3:ListBucket"
+                ],
+                "Resource": [
+                    "arn:aws:s3:::<ruler bucket name>",
+                    "arn:aws:s3:::<ruler bucket name>/*"
+                ]
+            }
+        ]
+    }
+    ```
+    **Make sure to replace the placeholders with your AWS account ID and the bucket name.**
+
+1. Add the policy to the bucket:
+
+    ```bash
+    aws s3api put-bucket-policy --bucket loki-aws-dev-ruler --policy file://bucket-policy-ruler.json
     ```
 
 ## Deploying the Helm chart
@@ -253,7 +293,7 @@ Create a `values.yaml` file with the following content:
    storage_config:
      aws:
        region: <Insert s3 bucket region> # eu-west-2
-       bucketnames: <Insert s3 bucket name> # Your actual S3 bucket name (loki-aws-bucket)
+       bucketnames: <Insert s3 bucket name> # Your actual S3 bucket name (loki-aws-dev-chunks)
        s3forcepathstyle: false
    pattern_ingester:
        enabled: true
@@ -264,6 +304,17 @@ Create a `values.yaml` file with the following content:
    compactor:
      retention_enabled: true 
      delete_request_store: s3
+   ruler:
+    enable_api: true
+    storage:
+      type: s3
+      s3:
+        region: eu-west-2
+        bucketnames: <Insert s3 bucket name> # Your actual S3 bucket name (loki-aws-dev-ruler)
+        s3forcepathstyle: false
+      alertmanager_url: http://prom:9093 # The URL of the Alertmanager to send alerts (Prometheus, Mimir, etc.)
+
+
      
        
    querier:
@@ -272,9 +323,9 @@ Create a `values.yaml` file with the following content:
    storage:
      type: s3
      bucketNames:
-       chunks: "<Insert s3 bucket name>" # Your actual S3 bucket name (loki-aws-bucket)
-       ruler: "<Insert s3 bucket name>" # Your actual S3 bucket name (loki-aws-bucket)
-       admin: "<Insert s3 bucket name>" # Your actual S3 bucket name (loki-aws-bucket)
+       chunks: "<Insert s3 bucket name>" # Your actual S3 bucket name (loki-aws-dev-chunks)
+       ruler: "<Insert s3 bucket name>" # Your actual S3 bucket name (loki-aws-dev-ruler)
+       # admin: "<Insert s3 bucket name>" # Your actual S3 bucket name (loki-aws-dev-admin) - GEL customers only
      s3:
        region: <Insert s3 bucket region> # eu-west-2
        #insecure: false
@@ -327,13 +378,14 @@ It is critical to define a valid `values.yaml` file for the Loki deployment. To 
 - **Loki Config vs. Values Config:**
   - The `values.yaml` file contains a section called `loki`, which contains a direct representation of the Loki configuration file.
   - This section defines the Loki configuration, including the schema, storage, and querier configuration.
-  - The key configuration to focus on is the `storage_config` section, where you define the S3 bucket region and name.
+  - The key configuration to focus on for chunks is the `storage_config` section, where you define the S3 bucket region and name. This tells Loki where to store the chunks.
+  - The `ruler` section defines the configuration for the ruler, including the S3 bucket region and name. This tells Loki where to store the alert and recording rules.
   - For the full Loki configuration, refer to the [Loki Configuration]({{< relref "../../../../configure" >}}) documentation.
 
 - **Storage:**
   - Defines where the Helm chart stores data.
   - Set the type to `s3` since we are using Amazon S3.
-  - Configure the bucket names for the chunks, ruler, and admin to match the bucket name created earlier.
+  - Configure the bucket names for the chunks and ruler to match the buckets created earlier.
   - The `s3` section specifies the region of the bucket.
 
 - **Service Account:**
