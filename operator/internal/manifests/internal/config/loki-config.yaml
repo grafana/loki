@@ -243,6 +243,9 @@ limits_config:
       attributes_config:
       {{- range . }}
       - action: {{ .Action }}
+        {{- with .Regex }}
+        regex: {{ . }}
+        {{- end }}
         {{- with .Names }}
         attributes:
         {{- range . }}
@@ -256,6 +259,9 @@ limits_config:
     scope_attributes:
     {{- range . }}
     - action: {{ .Action }}
+      {{- with .Regex }}
+      regex: {{ . }}
+      {{- end }}
       {{- with .Names }}
       attributes:
       {{- range . }}
@@ -268,6 +274,9 @@ limits_config:
     log_attributes:
     {{- range . }}
     - action: {{ .Action }}
+      {{- with .Regex }}
+      regex: {{ . }}
+      {{- end }}
       {{- with .Names }}
       attributes:
       {{- range . }}

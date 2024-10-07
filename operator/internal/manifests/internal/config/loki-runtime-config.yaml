@@ -85,6 +85,9 @@ overrides:
         attributes_config:
         {{- range . }}
         - action: {{ .Action }}
+          {{- with .Regex }}
+          regex: {{ . }}
+          {{- end }}
           {{- with .Names }}
           attributes:
           {{- range . }}
@@ -98,6 +101,9 @@ overrides:
       scope_attributes:
       {{- range . }}
       - action: {{ .Action }}
+        {{- with .Regex }}
+        regex: {{ . }}
+        {{- end }}
         {{- with .Names }}
         attributes:
         {{- range . }}
@@ -110,6 +116,9 @@ overrides:
       log_attributes:
       {{- range . }}
       - action: {{ .Action }}
+        {{- with .Regex }}
+        regex: {{ . }}
+        {{- end }}
         {{- with .Names }}
         attributes:
         {{- range . }}

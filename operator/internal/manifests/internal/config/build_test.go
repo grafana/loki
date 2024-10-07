@@ -6466,26 +6466,9 @@ overrides:
 				Limits: lokiv1.PerTenantLimitsTemplateSpec{
 					OTLP: &lokiv1.TenantOTLPSpec{
 						IgnoreGlobalStreamLabels: true,
-						OTLPSpec: lokiv1.OTLPSpec{
-							StreamLabels: &lokiv1.OTLPStreamLabelSpec{
-								ResourceAttributes: []string{
-									"res.foo.bar",
-									"res.bar.baz",
-								},
-							},
-							StructuredMetadata: &lokiv1.OTLPMetadataSpec{
-								ResourceAttributes: []string{
-									"res.service.env",
-								},
-								ScopeAttributes: []string{
-									"scope.foo.bar",
-									"scope.bar.baz",
-								},
-								LogAttributes: []string{
-									"log.foo.bar",
-									"log.bar.baz",
-								},
-							},
+						OTLPSpec:                 lokiv1.OTLPSpec{
+							// This part of the spec is not actually used in this step.
+							// It has already been pre-processed into the OTLPAttributes below.
 						},
 					},
 				},

@@ -275,6 +275,7 @@ const (
 type OTLPAttribute struct {
 	Action OTLPAttributeAction
 	Names  []string
+	Regex  string
 }
 
 type TLSOptions struct {

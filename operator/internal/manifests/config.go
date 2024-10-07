@@ -465,36 +465,75 @@ func otlpAttributeConfig(ls *lokiv1.LokiStackSpec) config.OTLPAttributeConfig {
 			globalOTLP := ls.Limits.Global.OTLP
 
 			if globalOTLP.StreamLabels != nil {
-				result.DefaultIndexLabels = append(result.DefaultIndexLabels, globalOTLP.StreamLabels.ResourceAttributes...)
+				regularExpressions := []string{}
+				for _, attr := range globalOTLP.StreamLabels.ResourceAttributes {
+					if attr.Regex {
+						regularExpressions = append(regularExpressions, attr.Name)
+						continue
+					}
+
+					result.DefaultIndexLabels = append(result.DefaultIndexLabels, attr.Name)
+				}
+
+				if len(regularExpressions) > 0 {
+					result.Global = &config.OTLPTenantAttributeConfig{}
+
+					for _, re := range regularExpressions {
+						result.Global.ResourceAttributes = append(result.Global.ResourceAttributes, config.OTLPAttribute{
+							Action: config.OTLPAttributeActionStreamLabel,
+							Regex:  re,
+						})
+					}
+				}
 			}
 
-			if globalOTLP.StructuredMetadata != nil {
-				result.Global = &config.OTLPTenantAttributeConfig{}
+			if structuredMetadata := globalOTLP.StructuredMetadata; structuredMetadata != nil {
+				if result.Global == nil {
+					result.Global = &config.OTLPTenantAttributeConfig{}
+				}
 
-				if len(globalOTLP.StructuredMetadata.ResourceAttributes) > 0 {
-					result.Global.ResourceAttributes = []config.OTLPAttribute{
-						{
+				if resAttr := structuredMetadata.ResourceAttributes; len(resAttr) > 0 {
+					regularExpressions, names := collectAttributes(resAttr)
+					result.Global.ResourceAttributes = append(result.Global.ResourceAttributes, config.OTLPAttribute{
+						Action: config.OTLPAttributeActionMetadata,
+						Names:  names,
+					})
+
+					for _, re := range regularExpressions {
+						result.Global.ResourceAttributes = append(result.Global.ResourceAttributes, config.OTLPAttribute{
 							Action: config.OTLPAttributeActionMetadata,
-							Names:  globalOTLP.StructuredMetadata.ResourceAttributes,
-						},
+							Regex:  re,
+						})
 					}
 				}
 
-				if len(globalOTLP.StructuredMetadata.ScopeAttributes) > 0 {
-					result.Global.ScopeAttributes = []config.OTLPAttribute{
-						{
+				if scopeAttr := structuredMetadata.ScopeAttributes; len(scopeAttr) > 0 {
+					regularExpressions, names := collectAttributes(scopeAttr)
+					result.Global.ScopeAttributes = append(result.Global.ScopeAttributes, config.OTLPAttribute{
+						Action: config.OTLPAttributeActionMetadata,
+						Names:  names,
+					})
+
+					for _, re := range regularExpressions {
+						result.Global.ScopeAttributes = append(result.Global.ScopeAttributes, config.OTLPAttribute{
 							Action: config.OTLPAttributeActionMetadata,
-							Names:  globalOTLP.StructuredMetadata.ScopeAttributes,
-						},
+							Regex:  re,
+						})
 					}
 				}
 
-				if len(globalOTLP.StructuredMetadata.LogAttributes) > 0 {
-					result.Global.LogAttributes = []config.OTLPAttribute{
-						{
+				if logAttr := structuredMetadata.LogAttributes; len(logAttr) > 0 {
+					regularExpressions, names := collectAttributes(logAttr)
+					result.Global.LogAttributes = append(result.Global.LogAttributes, config.OTLPAttribute{
+						Action: config.OTLPAttributeActionMetadata,
+						Names:  names,
+					})
+
+					for _, re := range regularExpressions {
+						result.Global.LogAttributes = append(result.Global.LogAttributes, config.OTLPAttribute{
 							Action: config.OTLPAttributeActionMetadata,
-							Names:  globalOTLP.StructuredMetadata.LogAttributes,
-						},
+							Regex:  re,
+						})
 					}
 				}
 			}
@@ -515,4 +554,17 @@ func otlpAttributeConfig(ls *lokiv1.LokiStackSpec) config.OTLPAttributeConfig {
 	}
 
 	return result
+}
+
+func collectAttributes(attrs []lokiv1.OTLPAttributeReference) (regularExpressions, names []string) {
+	for _, attr := range attrs {
+		if attr.Regex {
+			regularExpressions = append(regularExpressions, attr.Name)
+			continue
+		}
+
+		names = append(names, attr.Name)
+	}
+
+	return regularExpressions, names
 }
