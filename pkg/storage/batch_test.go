@@ -100,7 +100,6 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 	var tests map[string]testCase
 
 	for _, periodConfig := range periodConfigs {
-		periodConfig := periodConfig
 		chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 		require.NoError(t, err)
 
@@ -1000,7 +999,6 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 	for _, schemaConfig := range schemaConfigs {
 		s := schemaConfig
 		for name, tt := range tests {
-			tt := tt
 			t.Run(name, func(t *testing.T) {
 				it, err := newLogBatchIterator(context.Background(), s, NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), log.NewNoopPipeline(), tt.direction, tt.start, tt.end, nil)
 				require.NoError(t, err)
@@ -1416,7 +1414,6 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 	}
 
 	for name, tt := range tests {
-		tt := tt
 		t.Run(name, func(t *testing.T) {
 			ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
 			require.NoError(t, err)

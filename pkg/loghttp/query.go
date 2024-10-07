@@ -9,6 +9,7 @@ import (
 	"unsafe"
 
 	"github.com/c2h5oh/datasize"
+	"github.com/gorilla/mux"
 	"github.com/grafana/jsonparser"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
@@ -650,6 +651,7 @@ func ParseDetectedFieldsQuery(r *http.Request) (*logproto.DetectedFieldsRequest,
 	result := &logproto.DetectedFieldsRequest{}
 
 	result.Query = query(r)
+	result.Values, result.Name = values(r)
 	result.Start, result.End, err = bounds(r)
 	if err != nil {
 		return nil, err
@@ -664,7 +666,7 @@ func ParseDetectedFieldsQuery(r *http.Request) (*logproto.DetectedFieldsRequest,
 		return nil, err
 	}
 
-	result.FieldLimit, err = fieldLimit(r)
+	result.Limit, err = detectedFieldsLimit(r)
 	if err != nil {
 		return nil, err
 	}
@@ -684,7 +686,13 @@ func ParseDetectedFieldsQuery(r *http.Request) (*logproto.DetectedFieldsRequest,
 	if (result.End.Sub(result.Start) / step) > 11000 {
 		return nil, errStepTooSmall
 	}
+
 	return result, nil
+}
+
+func values(r *http.Request) (bool, string) {
+	name, ok := mux.Vars(r)["name"]
+	return ok, name
 }
 
 func targetLabels(r *http.Request) []string {

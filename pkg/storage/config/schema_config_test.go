@@ -384,8 +384,6 @@ func TestSchemaConfig_Validate(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			actual := testData.config.Validate()
 			assert.ErrorIs(t, actual, testData.err)

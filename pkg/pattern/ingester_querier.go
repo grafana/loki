@@ -146,8 +146,6 @@ func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet 
 	responses := make([]ResponseFromIngesters, len(replicationSet.Instances))
 
 	for i, ingester := range replicationSet.Instances {
-		ingester := ingester
-		i := i
 		g.Go(func() error {
 			client, err := q.ringClient.GetClientFor(ingester.Addr)
 			if err != nil {

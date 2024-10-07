@@ -147,7 +147,6 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 			promql.Vector{promql.Sample{T: 60 * 1000, F: 0.46666766666666665, Metric: labels.FromStrings("app", "foo")}},
 		},
 	} {
-		test := test
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
 			t.Parallel()
 
@@ -954,7 +953,6 @@ func TestEngine_InstantQuery(t *testing.T) {
 			},
 		},
 	} {
-		test := test
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
 			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params), NoLimits, log.NewNopLogger())
 
@@ -2256,7 +2254,6 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 	} {
-		test := test
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
 			t.Parallel()
 
@@ -2425,7 +2422,6 @@ func TestStepEvaluator_Error(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			eng := NewEngine(EngineOpts{}, tc.querier, NoLimits, log.NewNopLogger())
 

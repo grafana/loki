@@ -322,6 +322,10 @@ func (t *Loki) initTenantConfigs() (_ services.Service, err error) {
 func (t *Loki) initDistributor() (services.Service, error) {
 	t.Cfg.Distributor.KafkaConfig = t.Cfg.KafkaConfig
 
+	if t.Cfg.Distributor.KafkaEnabled && !t.Cfg.Ingester.KafkaIngestion.Enabled {
+		return nil, errors.New("kafka is enabled in distributor but not in ingester")
+	}
+
 	var err error
 	logger := log.With(util_log.Logger, "component", "distributor")
 	t.distributor, err = distributor.New(
@@ -1177,6 +1181,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.Server.HTTP.Path("/loki/api/v1/patterns").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/detected_labels").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/detected_fields").Methods("GET", "POST").Handler(frontendHandler)
+	t.Server.HTTP.Path("/loki/api/v1/detected_field/{name}/values").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/index/stats").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/index/shards").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/index/volume").Methods("GET", "POST").Handler(frontendHandler)
@@ -1479,8 +1484,6 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 
 	var indexClients []indexgateway.IndexClientWithRange
 	for i, period := range t.Cfg.SchemaConfig.Configs {
-		period := period
-
 		if period.IndexType != types.BoltDBShipperType {
 			continue
 		}
