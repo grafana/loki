@@ -148,4 +148,4 @@ helm install fluent-bit fluent/fluent-bit -f values.yaml
 
 ## Where next?
 
-- [Sending logs to Loki using Fluent Bit tutorial]({{< relref "./fluent-bit-loki-tutorial.md" >}})
+- [Sending logs to Loki using Fluent Bit tutorial](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/fluentbit/fluent-bit-loki-tutorial/)
