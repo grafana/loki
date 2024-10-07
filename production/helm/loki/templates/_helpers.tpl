@@ -1093,7 +1093,7 @@ Params:
 */}}
 {{- define "loki.templateEnv" -}}
 {{- $extraEnv := . }}
-{{- with .extraEnv }}
+{{- with $extraEnv }}
 {{- toYaml . | nindent 12 }}
 {{- end }}
 {{- end -}}
@@ -1105,12 +1105,12 @@ Params:
 */}}
 {{- define "loki.templateArgs" -}}
 {{- $extraArgs := . }}
-{{- if and .extraArgs (kindIs "slice" .extraArgs) }}
-  {{- with .extraArgs }}
+{{- if and $extraArgs (kindIs "slice" $extraArgs) }}
+  {{- with $extraArgs }}
   {{- toYaml . | nindent 12 }}
   {{- end }}
-{{- else if and .extraArgs (kindIs "map" .extraArgs) -}}
-  {{- range $key, $value := .extraArgs }}
+{{- else if and $extraArgs (kindIs "map" $extraArgs) -}}
+  {{- range $key, $value := $extraArgs }}
   - "-{{ $key }}={{ $value }}"
   {{- end -}}
 {{- end -}}

@@ -87,6 +87,7 @@ spec:
             - -admin.client.s3.access-key-id={{ .Values.minio.accessKey }}
             - -admin.client.s3.secret-access-key={{ .Values.minio.secretKey }}
             - -admin.client.s3.insecure=true
+            {{- end }}
             {{ include "loki.templateArgs" .Values.loki.extraArgs }}
             {{ include "loki.templateArgs" .Values.adminApi.extraArgs }}
           volumeMounts:

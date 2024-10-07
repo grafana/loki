@@ -67,8 +67,8 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=query-frontend
-            {{ include "loki.templateEnv" .Values.loki.extraEnvFrom }}
-            {{ include "loki.templateEnv" .Values.queryFrontend.extraEnvFrom }}
+            {{ include "loki.templateEnv" .Values.loki.extraArgs }}
+            {{ include "loki.templateEnv" .Values.queryFrontend.extraArgs }}
           ports:
             - name: http-metrics
               containerPort: 3100

@@ -81,8 +81,8 @@ spec:
             - -distributor.zone-awareness-enabled=true
             {{- end }}
             {{- end }}
-            {{ include "loki.templateEnv" .Values.loki.extraEnvFrom }}
-            {{ include "loki.templateEnv" .Values.querier.extraEnvFrom }}
+            {{ include "loki.templateEnv" .Values.loki.extraArgs }}
+            {{ include "loki.templateEnv" .Values.querier.extraArgs }}
           ports:
             - name: http-metrics
               containerPort: 3100
