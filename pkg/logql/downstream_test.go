@@ -377,9 +377,7 @@ func TestApproxTopkSketches(t *testing.T) {
 			)
 			require.NoError(t, err)
 			qry := regular.Query(params.Copy())
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-			defer cancel()
-			ctx = user.InjectOrgID(ctx, "fake")
+			ctx := user.InjectOrgID(context.Background(), "fake")
 
 			strategy := NewPowerOfTwoStrategy(ConstantShards(tc.labelShards))
 			mapper := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime, SupportApproxTopk})

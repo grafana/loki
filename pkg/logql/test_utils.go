@@ -23,7 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
-const CON_CURRENCY = 100
+const ConCurrency = 100
 
 func NewMockQuerier(shards int, streams []logproto.Stream) MockQuerier {
 	return MockQuerier{
@@ -172,7 +172,7 @@ func processSeries(in []logproto.Stream, ex log.SampleExtractor) ([]logproto.Ser
 	return series, nil
 }
 
-func (q MockQuerier) SelectSamples(ctx context.Context, req SelectSampleParams) (iter.SampleIterator, error) {
+func (q MockQuerier) SelectSamples(_ context.Context, req SelectSampleParams) (iter.SampleIterator, error) {
 	selector, err := req.LogSelector()
 	if err != nil {
 		return nil, err
@@ -237,7 +237,7 @@ func (m MockDownstreamer) Downstreamer(_ context.Context) Downstreamer { return 
 
 func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQuery, acc Accumulator) ([]logqlmodel.Result, error) {
 	mu := sync.Mutex{}
-	err := concurrency.ForEachJob(ctx, len(queries), CON_CURRENCY, func(ctx context.Context, idx int) error {
+	err := concurrency.ForEachJob(ctx, len(queries), ConCurrency, func(ctx context.Context, idx int) error {
 		res, err := m.Query(queries[idx].Params).Exec(ctx)
 		if err != nil {
 			return err
