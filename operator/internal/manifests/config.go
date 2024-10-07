@@ -397,7 +397,7 @@ func retentionConfig(ls *lokiv1.LokiStackSpec) config.RetentionOptions {
 	}
 }
 
-func defaultOTLPAttrbuteConfig(ts *lokiv1.TenantsSpec) config.OTLPAttributeConfig {
+func defaultOTLPAttributeConfig(ts *lokiv1.TenantsSpec) config.OTLPAttributeConfig {
 	if ts == nil || ts.Mode != lokiv1.OpenshiftLogging {
 		return config.OTLPAttributeConfig{}
 	}
@@ -458,7 +458,7 @@ func defaultOTLPAttrbuteConfig(ts *lokiv1.TenantsSpec) config.OTLPAttributeConfi
 
 func otlpAttributeConfig(ls *lokiv1.LokiStackSpec) config.OTLPAttributeConfig {
 	// TODO provide default stream labels
-	result := defaultOTLPAttrbuteConfig(ls.Tenants)
+	result := defaultOTLPAttributeConfig(ls.Tenants)
 
 	if ls.Limits != nil {
 		if ls.Limits.Global != nil && ls.Limits.Global.OTLP != nil {
