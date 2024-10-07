@@ -300,17 +300,20 @@ type OpenshiftTenantSpec struct {
 
 // OpenshiftOTLPConfig defines configuration specific to users using OTLP together with an OpenShift tenancy mode.
 type OpenshiftOTLPConfig struct {
-	// DisableRecommendedLabels can be used to remove the set of "recommended labels" from the generated Loki configuration.
-	// This will cause meta information to not be available as stream labels or structured metadata, potentially making
-	// queries more expensive and less performant.
+	// DisableRecommendedAttributes can be used to reduce the number of attributes used for stream labels and structured
+	// metadata.
+
+	// Enabling this setting removes the "recommended attributes" from the generated Loki configuration. This will cause
+	// meta information to not be available as stream labels or structured metadata,
+	// potentially making queries more expensive and less performant.
 	//
 	// This option is supposed to be combined with a custom label configuration customizing the labels for the specific
 	// usecase.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Disable recommended OTLP labels"
-	DisableRecommendedLabels bool `json:"disableRecommendedLabels,omitempty"`
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Disable recommended OTLP attributes"
+	DisableRecommendedAttributes bool `json:"disableRecommendedAttributes,omitempty"`
 }
 
 // LokiComponentSpec defines the requirements to configure scheduling
@@ -849,7 +852,7 @@ type OTLPStreamLabelSpec struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Resource Attributes"
-	ResourceAttributes []string `json:"resourceAttributes,omitempty"`
+	ResourceAttributes []OTLPAttributeReference `json:"resourceAttributes,omitempty"`
 }
 
 type OTLPMetadataSpec struct {
@@ -858,21 +861,37 @@ type OTLPMetadataSpec struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Resource Attributes"
-	ResourceAttributes []string `json:"resourceAttributes,omitempty"`
+	ResourceAttributes []OTLPAttributeReference `json:"resourceAttributes,omitempty"`
 
 	// ScopeAttributes lists the names of scope attributes that should be included in structured metadata.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Scope Attributes"
-	ScopeAttributes []string `json:"scopeAttributes,omitempty"`
+	ScopeAttributes []OTLPAttributeReference `json:"scopeAttributes,omitempty"`
 
 	// LogAttributes lists the names of log attributes that should be included in structured metadata.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Log Attributes"
-	LogAttributes []string `json:"logAttributes,omitempty"`
+	LogAttributes []OTLPAttributeReference `json:"logAttributes,omitempty"`
+}
+
+type OTLPAttributeReference struct {
+	// Name contains either a verbatim name of an attribute or a regular expression matching many attributes.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Name"
+	Name string `json:"name"`
+
+	// If Regex is true, then Name is treated as a regular expression instead of as a verbatim attribute name.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Treat name as regular expression"
+	Regex bool `json:"regex,omitempty"`
 }
 
 // RetentionStreamSpec defines a log stream with separate retention time.

@@ -179,7 +179,20 @@ spec:
                                   the resource attributes that should be converted
                                   into Loki stream labels.
                                 items:
-                                  type: string
+                                  properties:
+                                    name:
+                                      description: Name contains either a verbatim
+                                        name of an attribute or a regular expression
+                                        matching many attributes.
+                                      type: string
+                                    regex:
+                                      description: If Regex is true, then Name is
+                                        treated as a regular expression instead of
+                                        as a verbatim attribute name.
+                                      type: boolean
+                                  required:
+                                  - name
+                                  type: object
                                 type: array
                             type: object
                           structuredMetadata:
@@ -191,21 +204,60 @@ spec:
                                   attributes that should be included in structured
                                   metadata.
                                 items:
-                                  type: string
+                                  properties:
+                                    name:
+                                      description: Name contains either a verbatim
+                                        name of an attribute or a regular expression
+                                        matching many attributes.
+                                      type: string
+                                    regex:
+                                      description: If Regex is true, then Name is
+                                        treated as a regular expression instead of
+                                        as a verbatim attribute name.
+                                      type: boolean
+                                  required:
+                                  - name
+                                  type: object
                                 type: array
                               resourceAttributes:
                                 description: ResourceAttributes lists the names of
                                   resource attributes that should be included in structured
                                   metadata.
                                 items:
-                                  type: string
+                                  properties:
+                                    name:
+                                      description: Name contains either a verbatim
+                                        name of an attribute or a regular expression
+                                        matching many attributes.
+                                      type: string
+                                    regex:
+                                      description: If Regex is true, then Name is
+                                        treated as a regular expression instead of
+                                        as a verbatim attribute name.
+                                      type: boolean
+                                  required:
+                                  - name
+                                  type: object
                                 type: array
                               scopeAttributes:
                                 description: ScopeAttributes lists the names of scope
                                   attributes that should be included in structured
                                   metadata.
                                 items:
-                                  type: string
+                                  properties:
+                                    name:
+                                      description: Name contains either a verbatim
+                                        name of an attribute or a regular expression
+                                        matching many attributes.
+                                      type: string
+                                    regex:
+                                      description: If Regex is true, then Name is
+                                        treated as a regular expression instead of
+                                        as a verbatim attribute name.
+                                      type: boolean
+                                  required:
+                                  - name
+                                  type: object
                                 type: array
                             type: object
                         type: object
@@ -372,7 +424,20 @@ spec:
                                     of the resource attributes that should be converted
                                     into Loki stream labels.
                                   items:
-                                    type: string
+                                    properties:
+                                      name:
+                                        description: Name contains either a verbatim
+                                          name of an attribute or a regular expression
+                                          matching many attributes.
+                                        type: string
+                                      regex:
+                                        description: If Regex is true, then Name is
+                                          treated as a regular expression instead
+                                          of as a verbatim attribute name.
+                                        type: boolean
+                                    required:
+                                    - name
+                                    type: object
                                   type: array
                               type: object
                             structuredMetadata:
@@ -384,21 +449,60 @@ spec:
                                     attributes that should be included in structured
                                     metadata.
                                   items:
-                                    type: string
+                                    properties:
+                                      name:
+                                        description: Name contains either a verbatim
+                                          name of an attribute or a regular expression
+                                          matching many attributes.
+                                        type: string
+                                      regex:
+                                        description: If Regex is true, then Name is
+                                          treated as a regular expression instead
+                                          of as a verbatim attribute name.
+                                        type: boolean
+                                    required:
+                                    - name
+                                    type: object
                                   type: array
                                 resourceAttributes:
                                   description: ResourceAttributes lists the names
                                     of resource attributes that should be included
                                     in structured metadata.
                                   items:
-                                    type: string
+                                    properties:
+                                      name:
+                                        description: Name contains either a verbatim
+                                          name of an attribute or a regular expression
+                                          matching many attributes.
+                                        type: string
+                                      regex:
+                                        description: If Regex is true, then Name is
+                                          treated as a regular expression instead
+                                          of as a verbatim attribute name.
+                                        type: boolean
+                                    required:
+                                    - name
+                                    type: object
                                   type: array
                                 scopeAttributes:
                                   description: ScopeAttributes lists the names of
                                     scope attributes that should be included in structured
                                     metadata.
                                   items:
-                                    type: string
+                                    properties:
+                                      name:
+                                        description: Name contains either a verbatim
+                                          name of an attribute or a regular expression
+                                          matching many attributes.
+                                        type: string
+                                      regex:
+                                        description: If Regex is true, then Name is
+                                          treated as a regular expression instead
+                                          of as a verbatim attribute name.
+                                        type: boolean
+                                    required:
+                                    - name
+                                    type: object
                                   type: array
                               type: object
                           type: object
@@ -3768,11 +3872,11 @@ spec:
                         description: OTLP contains settings for ingesting data using
                           OTLP in an OpenShift context.
                         properties:
-                          disableRecommendedLabels:
+                          disableRecommendedAttributes:
                             description: |-
-                              DisableRecommendedLabels can be used to remove the set of "recommended labels" from the generated Loki configuration.
-                              This will cause meta information to not be available as stream labels or structured metadata, potentially making
-                              queries more expensive and less performant.
+                              Enabling this setting removes the "recommended attributes" from the generated Loki configuration. This will cause
+                              meta information to not be available as stream labels or structured metadata,
+                              potentially making queries more expensive and less performant.
 
 
                               This option is supposed to be combined with a custom label configuration customizing the labels for the specific

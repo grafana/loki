@@ -282,6 +282,14 @@ spec:
           that should be converted into Loki stream labels.
         displayName: Resource Attributes
         path: limits.global.otlp.streamLabels.resourceAttributes
+      - description: Name contains either a verbatim name of an attribute or a regular
+          expression matching many attributes.
+        displayName: Name
+        path: limits.global.otlp.streamLabels.resourceAttributes[0].name
+      - description: If Regex is true, then Name is treated as a regular expression
+          instead of as a verbatim attribute name.
+        displayName: Treat name as regular expression
+        path: limits.global.otlp.streamLabels.resourceAttributes[0].regex
       - description: StructuredMetadata configures which attributes are included in
           structured metadata.
         displayName: Structured Metadata
@@ -290,14 +298,38 @@ spec:
           included in structured metadata.
         displayName: Log Attributes
         path: limits.global.otlp.structuredMetadata.logAttributes
+      - description: Name contains either a verbatim name of an attribute or a regular
+          expression matching many attributes.
+        displayName: Name
+        path: limits.global.otlp.structuredMetadata.logAttributes[0].name
+      - description: If Regex is true, then Name is treated as a regular expression
+          instead of as a verbatim attribute name.
+        displayName: Treat name as regular expression
+        path: limits.global.otlp.structuredMetadata.logAttributes[0].regex
       - description: ResourceAttributes lists the names of resource attributes that
           should be included in structured metadata.
         displayName: Resource Attributes
         path: limits.global.otlp.structuredMetadata.resourceAttributes
+      - description: Name contains either a verbatim name of an attribute or a regular
+          expression matching many attributes.
+        displayName: Name
+        path: limits.global.otlp.structuredMetadata.resourceAttributes[0].name
+      - description: If Regex is true, then Name is treated as a regular expression
+          instead of as a verbatim attribute name.
+        displayName: Treat name as regular expression
+        path: limits.global.otlp.structuredMetadata.resourceAttributes[0].regex
       - description: ScopeAttributes lists the names of scope attributes that should
           be included in structured metadata.
         displayName: Scope Attributes
         path: limits.global.otlp.structuredMetadata.scopeAttributes
+      - description: Name contains either a verbatim name of an attribute or a regular
+          expression matching many attributes.
+        displayName: Name
+        path: limits.global.otlp.structuredMetadata.scopeAttributes[0].name
+      - description: If Regex is true, then Name is treated as a regular expression
+          instead of as a verbatim attribute name.
+        displayName: Treat name as regular expression
+        path: limits.global.otlp.structuredMetadata.scopeAttributes[0].regex
       - description: CardinalityLimit defines the cardinality limit for index queries.
         displayName: Cardinality Limit
         path: limits.global.queries.cardinalityLimit
@@ -406,6 +438,14 @@ spec:
           that should be converted into Loki stream labels.
         displayName: Resource Attributes
         path: limits.tenants.otlp.streamLabels.resourceAttributes
+      - description: Name contains either a verbatim name of an attribute or a regular
+          expression matching many attributes.
+        displayName: Name
+        path: limits.tenants.otlp.streamLabels.resourceAttributes[0].name
+      - description: If Regex is true, then Name is treated as a regular expression
+          instead of as a verbatim attribute name.
+        displayName: Treat name as regular expression
+        path: limits.tenants.otlp.streamLabels.resourceAttributes[0].regex
       - description: StructuredMetadata configures which attributes are included in
           structured metadata.
         displayName: Structured Metadata
@@ -414,14 +454,38 @@ spec:
           included in structured metadata.
         displayName: Log Attributes
         path: limits.tenants.otlp.structuredMetadata.logAttributes
+      - description: Name contains either a verbatim name of an attribute or a regular
+          expression matching many attributes.
+        displayName: Name
+        path: limits.tenants.otlp.structuredMetadata.logAttributes[0].name
+      - description: If Regex is true, then Name is treated as a regular expression
+          instead of as a verbatim attribute name.
+        displayName: Treat name as regular expression
+        path: limits.tenants.otlp.structuredMetadata.logAttributes[0].regex
       - description: ResourceAttributes lists the names of resource attributes that
           should be included in structured metadata.
         displayName: Resource Attributes
         path: limits.tenants.otlp.structuredMetadata.resourceAttributes
+      - description: Name contains either a verbatim name of an attribute or a regular
+          expression matching many attributes.
+        displayName: Name
+        path: limits.tenants.otlp.structuredMetadata.resourceAttributes[0].name
+      - description: If Regex is true, then Name is treated as a regular expression
+          instead of as a verbatim attribute name.
+        displayName: Treat name as regular expression
+        path: limits.tenants.otlp.structuredMetadata.resourceAttributes[0].regex
       - description: ScopeAttributes lists the names of scope attributes that should
           be included in structured metadata.
         displayName: Scope Attributes
         path: limits.tenants.otlp.structuredMetadata.scopeAttributes
+      - description: Name contains either a verbatim name of an attribute or a regular
+          expression matching many attributes.
+        displayName: Name
+        path: limits.tenants.otlp.structuredMetadata.scopeAttributes[0].name
+      - description: If Regex is true, then Name is treated as a regular expression
+          instead of as a verbatim attribute name.
+        displayName: Treat name as regular expression
+        path: limits.tenants.otlp.structuredMetadata.scopeAttributes[0].regex
       - description: Blocked defines the list of rules to block matching queries.
         displayName: Blocked
         path: limits.tenants.queries.blocked
@@ -818,14 +882,14 @@ spec:
           context.
         displayName: OpenTelemetry Protocol
         path: tenants.openshift.otlp
-      - description: "DisableRecommendedLabels can be used to remove the set of \"recommended
-          labels\" from the generated Loki configuration. This will cause meta information
+      - description: "Enabling this setting removes the \"recommended attributes\"
+          from the generated Loki configuration. This will cause meta information
           to not be available as stream labels or structured metadata, potentially
           making queries more expensive and less performant. \n This option is supposed
           to be combined with a custom label configuration customizing the labels
           for the specific usecase."
-        displayName: Disable recommended OTLP labels
-        path: tenants.openshift.otlp.disableRecommendedLabels
+        displayName: Disable recommended OTLP attributes
+        path: tenants.openshift.otlp.disableRecommendedAttributes
       statusDescriptors:
       - description: Distributor is a map to the per pod status of the distributor
           deployment

@@ -412,7 +412,7 @@ func defaultOTLPAttrbuteConfig(ts *lokiv1.TenantsSpec) config.OTLPAttributeConfi
 		},
 	}
 
-	if ts.Openshift == nil || ts.Openshift.OTLP == nil || !ts.Openshift.OTLP.DisableRecommendedLabels {
+	if ts.Openshift == nil || ts.Openshift.OTLP == nil || !ts.Openshift.OTLP.DisableRecommendedAttributes {
 		result.DefaultIndexLabels = append(result.DefaultIndexLabels, []string{
 			"service.name",
 			"k8s.cluster.uid",
