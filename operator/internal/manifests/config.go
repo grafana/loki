@@ -402,36 +402,50 @@ func defaultOTLPAttributeConfig(ts *lokiv1.TenantsSpec) config.OTLPAttributeConf
 		return config.OTLPAttributeConfig{}
 	}
 
+	// TODO decide which of these can be disabled by using "disableRecommendedAttributes"
+	// TODO decide whether we want to split the default configuration by tenant
 	result := config.OTLPAttributeConfig{
 		DefaultIndexLabels: []string{
-			"log_type",
-			"kubernetes_namespace_name",
-			"kubernetes_pod_name",
-			"kubernetes_container_name",
-			"k8s.namespace.name",
-		},
-	}
-
-	if ts.Openshift == nil || ts.Openshift.OTLP == nil || !ts.Openshift.OTLP.DisableRecommendedAttributes {
-		result.DefaultIndexLabels = append(result.DefaultIndexLabels, []string{
-			"service.name",
-			"k8s.cluster.uid",
-			"k8s.pod.name",
-			"k8s.container.name",
+			"openshift.cluster.uid",
 			"openshift.log.source",
-			"k8s.deployment.name",
-			"k8s.statefulset.name",
-			"k8s.daemonset.name",
-			"k8s.cronjob.name",
-		}...)
+			"log_source",
+			"openshift.log.type",
+			"log_type",
 
-		result.Global = &config.OTLPTenantAttributeConfig{
+			"k8s.node.name",
+			"k8s.node.uid",
+			"k8s.namespace.name",
+			"kubernetes.namespace_name",
+			"k8s.container.name",
+			"kubernetes.container_name",
+			"k8s.pod.name",
+			"k8s.pod.uid",
+			"kubernetes.pod_name",
+		},
+		Global: &config.OTLPTenantAttributeConfig{
 			ResourceAttributes: []config.OTLPAttribute{
+				{
+					Action: config.OTLPAttributeActionStreamLabel,
+					Regex:  "openshift\\.labels\\..+",
+				},
+				{
+					Action: config.OTLPAttributeActionMetadata,
+					Regex:  "k8s\\.pod\\.labels\\..+",
+				},
 				{
 					Action: config.OTLPAttributeActionMetadata,
 					Names: []string{
-						"k8s.replicaset.name",
+						"k8s.cronjob.name",
+						"k8s.daemonset.name",
+						"k8s.deployment.name",
 						"k8s.job.name",
+						"k8s.replicaset.name",
+						"k8s.statefulset.name",
+						"process.executable.name",
+						"process.executable.path",
+						"process.command_line",
+						"process.pid",
+						"service.name",
 					},
 				},
 			},
@@ -439,18 +453,34 @@ func defaultOTLPAttributeConfig(ts *lokiv1.TenantsSpec) config.OTLPAttributeConf
 				{
 					Action: config.OTLPAttributeActionMetadata,
 					Names: []string{
-						"k8s.node.name",
-						"service.name",
-						"host.name",
-						"process.command",
-						"node.name",
-						"url.path",
-						"http.request.method_original",
-						"http.response.status.code",
+						"log.iostream",
+						"k8s.event.level",
+						"k8s.event.stage",
+						"k8s.event.user_agent",
+						"k8s.event.request.uri",
+						"k8s.event.response.code",
+						"k8s.event.object_ref.resource",
+						"k8s.event.object_ref.name",
+						"k8s.event.object_ref.api.group",
+						"k8s.event.object_ref.api.version",
+						"k8s.user.username",
+						"k8s.user.groups",
 					},
 				},
+				{
+					Action: config.OTLPAttributeActionMetadata,
+					Regex:  "k8s\\.event\\.annotations\\..+",
+				},
+				{
+					Action: config.OTLPAttributeActionMetadata,
+					Regex:  "systemd\\.t\\..+",
+				},
+				{
+					Action: config.OTLPAttributeActionMetadata,
+					Regex:  "systemd\\.u\\..+",
+				},
 			},
-		}
+		},
 	}
 
 	return result
