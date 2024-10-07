@@ -1782,7 +1782,10 @@ func (t *Loki) initDashboards() (services.Service, error) {
 		return nil, err
 	}
 	t.Server.HTTP.Path("/grafana/dashboards/reads").Methods("GET").Handler(loader.Reads())
-	return services.NewBasicService(nil, nil, nil), nil
+	return services.NewBasicService(nil, func(serviceContext context.Context) error {
+		<-serviceContext.Done()
+		return nil
+	}, nil), nil
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLimits) (deletion.DeleteRequestsClient, error) {

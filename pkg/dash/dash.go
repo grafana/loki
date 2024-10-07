@@ -76,8 +76,7 @@ func ReadsDashboard(requestDuration *prom.HistogramVec) (dashboard.Dashboard, er
 		"pod",
 	)
 
-	builder := dashboard.NewDashboardBuilder("Sample dashboard").
-		Uid("generated-from-go").
+	builder := dashboard.NewDashboardBuilder("Loki Reads (generated)").
 		Tags([]string{"generated", "from", "go"}).
 		Refresh("1m").
 		Time("now-30m", "now").
