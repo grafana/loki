@@ -228,9 +228,9 @@ This will start the following services:
 
 Once started, you can access the Carnivorous Greenhouse application at [http://localhost:5005](http://localhost:5005). Generate some logs by interacting with the application in the following ways:
 
-1. Create a user
-1. Log in
-1. Create a few plants to monitor
+1. Create a user.
+1. Log in.
+1. Create a few plants to monitor.
 1. Enable bug mode to activate the bug service. This will cause services to fail and generate additional logs.
 
 Finally to view the logs in Loki, navigate to the Loki Logs Explore view in Grafana at [http://localhost:3000/a/grafana-lokiexplore-app/explore](http://localhost:3000/a/grafana-lokiexplore-app/explore).
