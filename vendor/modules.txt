@@ -1037,6 +1037,14 @@ github.com/grafana/go-gelf/v2/gelf
 # github.com/grafana/gomemcache v0.0.0-20240229205252-cd6a66d6fb56
 ## explicit; go 1.18
 github.com/grafana/gomemcache/memcache
+# github.com/grafana/grafana-foundation-sdk/go v0.0.0-20241004101720-a4e051875fa7
+## explicit; go 1.21
+github.com/grafana/grafana-foundation-sdk/go/cog
+github.com/grafana/grafana-foundation-sdk/go/cog/variants
+github.com/grafana/grafana-foundation-sdk/go/common
+github.com/grafana/grafana-foundation-sdk/go/dashboard
+github.com/grafana/grafana-foundation-sdk/go/prometheus
+github.com/grafana/grafana-foundation-sdk/go/timeseries
 # github.com/grafana/jsonparser v0.0.0-20241004153430-023329977675
 ## explicit; go 1.13
 github.com/grafana/jsonparser
