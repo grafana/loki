@@ -2617,6 +2617,46 @@ string
 </tbody>
 </table>
 
+## OTLPAttributeReference { #loki-grafana-com-v1-OTLPAttributeReference }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-OTLPMetadataSpec">OTLPMetadataSpec</a>, <a href="#loki-grafana-com-v1-OTLPStreamLabelSpec">OTLPStreamLabelSpec</a>)
+</p>
+<div>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>name</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>Name contains either a verbatim name of an attribute or a regular expression matching many attributes.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>regex</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>If Regex is true, then Name is treated as a regular expression instead of as a verbatim attribute name.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
 ## OTLPMetadataSpec { #loki-grafana-com-v1-OTLPMetadataSpec }
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-OTLPSpec">OTLPSpec</a>)
@@ -2635,7 +2675,9 @@ string
 <td>
 <code>resourceAttributes</code><br/>
 <em>
-[]string
+<a href="#loki-grafana-com-v1-OTLPAttributeReference">
+[]OTLPAttributeReference
+</a>
 </em>
 </td>
 <td>
@@ -2647,7 +2689,9 @@ string
 <td>
 <code>scopeAttributes</code><br/>
 <em>
-[]string
+<a href="#loki-grafana-com-v1-OTLPAttributeReference">
+[]OTLPAttributeReference
+</a>
 </em>
 </td>
 <td>
@@ -2659,7 +2703,9 @@ string
 <td>
 <code>logAttributes</code><br/>
 <em>
-[]string
+<a href="#loki-grafana-com-v1-OTLPAttributeReference">
+[]OTLPAttributeReference
+</a>
 </em>
 </td>
 <td>
@@ -2735,7 +2781,9 @@ OTLPMetadataSpec
 <td>
 <code>resourceAttributes</code><br/>
 <em>
-[]string
+<a href="#loki-grafana-com-v1-OTLPAttributeReference">
+[]OTLPAttributeReference
+</a>
 </em>
 </td>
 <td>
@@ -3035,16 +3083,16 @@ It needs to be in the same namespace as the LokiStack custom resource.</p>
 <tbody>
 <tr>
 <td>
-<code>disableRecommendedLabels</code><br/>
+<code>disableRecommendedAttributes</code><br/>
 <em>
 bool
 </em>
 </td>
 <td>
 <em>(Optional)</em>
-<p>DisableRecommendedLabels can be used to remove the set of &ldquo;recommended labels&rdquo; from the generated Loki configuration.
-This will cause meta information to not be available as stream labels or structured metadata, potentially making
-queries more expensive and less performant.</p>
+<p>Enabling this setting removes the &ldquo;recommended attributes&rdquo; from the generated Loki configuration. This will cause
+meta information to not be available as stream labels or structured metadata,
+potentially making queries more expensive and less performant.</p>
 <p>This option is supposed to be combined with a custom label configuration customizing the labels for the specific
 usecase.</p>
 </td>
