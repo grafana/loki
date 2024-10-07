@@ -72,19 +72,16 @@ func (s *GCSThanosObjectClient) ObjectExists(ctx context.Context, objectKey stri
 	return s.client.Exists(ctx, objectKey)
 }
 
-// ObjectExistsWithSize checks if a given objectKey exists and it's size in the GCS bucket
-func (s *GCSThanosObjectClient) ObjectExistsWithSize(ctx context.Context, objectKey string) (bool, int64, error) {
-	_, err := s.client.Get(ctx, objectKey)
+// GetAttributes returns the attributes of the specified object key from the configured GCS bucket.
+func (s *GCSThanosObjectClient) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
+	attr := client.ObjectAttributes{}
+	thanosAttr, err := s.client.Attributes(ctx, objectKey)
 	if err != nil {
-		return false, 0, err
+		return attr, err
 	}
+	attr.Size = thanosAttr.Size
 
-	attr, err := s.client.Attributes(ctx, objectKey)
-	if err != nil {
-		return true, 0, nil
-	}
-
-	return true, attr.Size, nil
+	return attr, nil
 }
 
 // PutObject puts the specified bytes into the configured GCS bucket at the provided key
