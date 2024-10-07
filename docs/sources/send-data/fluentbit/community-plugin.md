@@ -10,7 +10,7 @@ weight:  500
 
 {{< admonition type="warning" >}}
 
-We recommend using the official [Fluent Bit Loki plugin]({{< relref "./fluent-bit-plugin.md" >}}). The official plugin is more feature-rich and has better support for features such as structured metadata. The community plugin is still available for use, but it's no longer actively maintained.
+We recommend using the official [Fluent Bit Loki plugin](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/fluentbit/fluent-bit-plugin/). The official plugin is more feature-rich and has better support for features such as structured metadata. The community plugin is still available for use, but it's no longer actively maintained.
 
 {{< /admonition >}}
 
