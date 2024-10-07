@@ -12,12 +12,13 @@ import (
 
 	"github.com/grafana/loki/pkg/push"
 
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	loghttp_push "github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
-	"github.com/prometheus/prometheus/model/labels"
 )
 
 const forRangeQuery = false
@@ -381,7 +382,7 @@ func Test_aggregatedMetricQuery(t *testing.T) {
 		require.Equal(t, expected, query.BuildQuery())
 	})
 
-	t.Run("it includes addtional matchers as line filters", func(t *testing.T) {
+	t.Run("it includes additional matchers as line filters", func(t *testing.T) {
 		query := &aggregatedMetricQuery{
 			matchers: []*labels.Matcher{serviceMatcher, fruitMatcher},
 			start:    now.Add(-30 * time.Minute),

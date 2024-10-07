@@ -246,13 +246,13 @@ func (a *aggregatedMetricQuery) buildBaseQueryString(
 			idxMatch,
 			idxVal,
 		)
-	} else {
-		return fmt.Sprintf(
-			`sum by (%s) (sum_over_time({%s=~".+"} | logfmt`,
-			aggBy,
-			push.AggregatedMetricLabel,
-		)
 	}
+
+	return fmt.Sprintf(
+		`sum by (%s) (sum_over_time({%s=~".+"} | logfmt`,
+		aggBy,
+		push.AggregatedMetricLabel,
+	)
 }
 
 func (a *aggregatedMetricQuery) BuildQuery() string {

@@ -21,7 +21,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -39,6 +38,8 @@ import (
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 	valid "github.com/grafana/loki/v3/pkg/validation"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 var (
@@ -816,7 +817,7 @@ func TestVolumeTripperware(t *testing.T) {
 
 func TestAggregateMetricVolumeTripperware(t *testing.T) {
 	logMiddleware := func(promResponse *LokiPromResponse) base.Middleware {
-		return base.MiddlewareFunc(func(next base.Handler) base.Handler {
+		return base.MiddlewareFunc(func(_ base.Handler) base.Handler {
 			return base.HandlerFunc(
 				func(_ context.Context, _ base.Request) (base.Response, error) {
 					return promResponse, nil
@@ -836,7 +837,7 @@ func TestAggregateMetricVolumeTripperware(t *testing.T) {
 	}
 
 	mockDownstreamIdxVolumeHandler := base.HandlerFunc(
-		func(ctx context.Context, request base.Request) (base.Response, error) {
+		func(_ context.Context, _ base.Request) (base.Response, error) {
 			return &VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{
