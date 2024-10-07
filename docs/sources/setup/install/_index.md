@@ -19,7 +19,7 @@ There are several methods of installing Loki:
 
 Alloy:
 - [Install Alloy](https://grafana.com/docs/alloy/latest/set-up/install/)
-- [Ingest Logs with Alloy]({{< relref "../../send-data/alloy/" >}})
+- [Ingest Logs with Alloy]({{< relref "../../send-data/alloy" >}})
 
 ## General process
 
