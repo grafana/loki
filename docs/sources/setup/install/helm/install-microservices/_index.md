@@ -193,7 +193,7 @@ loki:
           period: 24h
   storage_config:
     aws:
-      region: eu-west-2
+      region: <AWS region your bucket is in eg. `eu-west-2`>
       bucketnames: loki-aws-bucket # Define your AWS bucket here
       s3forcepathstyle: false
   pattern_ingester:
