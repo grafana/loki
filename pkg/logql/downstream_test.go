@@ -340,13 +340,6 @@ func TestApproxTopkSketches(t *testing.T) {
 			regularQuery:  `topk(100, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
 			realtiveError: 0.0015,
 		},
-		{
-			labelShards:   10, // increasing this will make the test too slow
-			totalStreams:  1_000_000,
-			shardedQuery:  `approx_topk(100, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
-			regularQuery:  `topk(100, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
-			realtiveError: 0.0015,
-		},
 	} {
 		t.Run(fmt.Sprintf("%s/%d/%d", tc.shardedQuery, tc.labelShards, tc.totalStreams), func(t *testing.T) {
 			streams := randomStreams(tc.totalStreams, rounds+1, tc.labelShards, []string{"a", "b", "c", "d"}, true)

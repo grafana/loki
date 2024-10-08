@@ -233,7 +233,7 @@ func TestIntersectionPerTenant(t *testing.T) {
 		{
 			name:      "no tenants",
 			tenantIDs: []string{},
-			f: func(tenantID string) []string {
+			f: func(_ string) []string {
 				return nil
 			},
 			expected: []string{},
