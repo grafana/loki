@@ -227,7 +227,6 @@ func TestGetMutateFunc_MutateServiceAccountObjectMeta(t *testing.T) {
 	}
 
 	for _, tt := range table {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			f := MutateFuncFor(tt.got, tt.want, nil)
@@ -626,7 +625,6 @@ func TestMutateFuncFor_MutateDeploymentSpec(t *testing.T) {
 		},
 	}
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 			f := MutateFuncFor(tst.got, tst.want, nil)
@@ -816,7 +814,6 @@ func TestMutateFuncFor_MutateStatefulSetSpec(t *testing.T) {
 		},
 	}
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 			f := MutateFuncFor(tst.got, tst.want, nil)
@@ -993,7 +990,6 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 		},
 	}
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 			f := MutateFuncFor(tst.got, tst.want, nil)

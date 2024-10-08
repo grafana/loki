@@ -51,8 +51,8 @@ jobs:
     - name: Lint
       uses: golangci/golangci-lint-action@v3
       with:
-        version: v1.54.2
-        args: --timeout=4m
+        version: v1.61.0
+        args: --timeout=5m
         working-directory: ./operator
     - name: Check prometheus rules
       working-directory: ./operator
