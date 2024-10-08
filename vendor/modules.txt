@@ -1037,7 +1037,7 @@ github.com/grafana/go-gelf/v2/gelf
 # github.com/grafana/gomemcache v0.0.0-20240229205252-cd6a66d6fb56
 ## explicit; go 1.18
 github.com/grafana/gomemcache/memcache
-# github.com/grafana/grafana-foundation-sdk/go v0.0.0-20241004101720-a4e051875fa7
+# github.com/grafana/grafana-foundation-sdk/go v0.0.0-20241007125225-1d0a62ae3d55
 ## explicit; go 1.21
 github.com/grafana/grafana-foundation-sdk/go/cog
 github.com/grafana/grafana-foundation-sdk/go/cog/variants

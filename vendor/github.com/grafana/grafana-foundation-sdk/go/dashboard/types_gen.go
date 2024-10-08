@@ -856,7 +856,6 @@ const (
 	VariableTypeTextbox    VariableType = "textbox"
 	VariableTypeCustom     VariableType = "custom"
 	VariableTypeSystem     VariableType = "system"
-	VariableTypeSnapshot   VariableType = "snapshot"
 )
 
 // Color mode for a field. You can specify a single color, or select a continuous (gradient) color schemes, based on a value.

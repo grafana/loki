@@ -1785,10 +1785,9 @@ const (
 type BarGaugeNamePlacement string
 
 const (
-	BarGaugeNamePlacementAuto   BarGaugeNamePlacement = "auto"
-	BarGaugeNamePlacementTop    BarGaugeNamePlacement = "top"
-	BarGaugeNamePlacementLeft   BarGaugeNamePlacement = "left"
-	BarGaugeNamePlacementHidden BarGaugeNamePlacement = "hidden"
+	BarGaugeNamePlacementAuto BarGaugeNamePlacement = "auto"
+	BarGaugeNamePlacementTop  BarGaugeNamePlacement = "top"
+	BarGaugeNamePlacementLeft BarGaugeNamePlacement = "left"
 )
 
 // Allows for the bar gauge size to be set explicitly
