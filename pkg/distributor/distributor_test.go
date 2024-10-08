@@ -401,8 +401,6 @@ func Test_IncrementTimestamp(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			ing := &mockIngester{}
 			distributors, _ := prepare(t, 1, 3, testData.limits, func(_ string) (ring_client.PoolClient, error) { return ing, nil })
@@ -1216,8 +1214,6 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)

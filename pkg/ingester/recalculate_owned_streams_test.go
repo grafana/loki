@@ -70,7 +70,7 @@ func Test_recalculateOwnedStreams_recalculateWithIngesterStrategy(t *testing.T) 
 				UseOwnedStreamCount:     testData.featureEnabled,
 			}, nil)
 			require.NoError(t, err)
-			limiter := NewLimiter(limits, NilMetrics, mockRing, 1)
+			limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(mockRing, 1))
 
 			tenant, err := newInstance(
 				defaultConfig(),
@@ -108,7 +108,7 @@ func Test_recalculateOwnedStreams_recalculateWithIngesterStrategy(t *testing.T) 
 
 			strategy := newOwnedStreamsIngesterStrategy(currentIngesterName, mockRing, log.NewNopLogger())
 			service := newRecalculateOwnedStreamsSvc(mockTenantsSupplier.get, strategy, 50*time.Millisecond, log.NewNopLogger())
-			//change the limit to assert that fixed limit is updated after the recalculation
+			// change the limit to assert that fixed limit is updated after the recalculation
 			limits.DefaultLimits().MaxGlobalStreamsPerUser = 50
 
 			service.recalculate()
@@ -120,7 +120,6 @@ func Test_recalculateOwnedStreams_recalculateWithIngesterStrategy(t *testing.T) 
 			require.Len(t, tenant.ownedStreamsSvc.notOwnedStreams, testData.expectedNotOwnedStreamCount)
 		})
 	}
-
 }
 
 type mockStreamsOwnershipRing struct {
@@ -203,7 +202,7 @@ func Test_ownedStreamsPartitionStrategy_checkRingForChanges(t *testing.T) {
 	ringReader := &mockPartitionRingReader{
 		ring: newMockPartitionRingWithActivePartitions(1),
 	}
-	service := newOwnedStreamsPartitionStrategy(1, ringReader, log.NewNopLogger())
+	service := newOwnedStreamsPartitionStrategy(1, ringReader, func(string) int { return 1 }, log.NewNopLogger())
 
 	ringChanged, err := service.checkRingForChanges()
 	require.NoError(t, err)
@@ -226,12 +225,12 @@ func Test_ownedStreamsPartitionStrategy_isOwnedStream(t *testing.T) {
 	}
 	stream := &stream{tenant: "test1", labelsString: "mock=1"} // has a hashkey mapping to partition 1
 
-	service1 := newOwnedStreamsPartitionStrategy(1, ringReader, log.NewNopLogger())
+	service1 := newOwnedStreamsPartitionStrategy(1, ringReader, func(string) int { return 1 }, log.NewNopLogger())
 	owned, err := service1.isOwnedStream(stream)
 	require.NoError(t, err)
 	require.True(t, owned)
 
-	service2 := newOwnedStreamsPartitionStrategy(2, ringReader, log.NewNopLogger())
+	service2 := newOwnedStreamsPartitionStrategy(2, ringReader, func(string) int { return 1 }, log.NewNopLogger())
 	owned, err = service2.isOwnedStream(stream)
 	require.NoError(t, err)
 	require.False(t, owned)

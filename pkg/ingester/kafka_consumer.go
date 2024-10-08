@@ -3,7 +3,7 @@ package ingester
 import (
 	"context"
 	"errors"
-	math "math"
+	"math"
 	"sync"
 	"time"
 

@@ -49,7 +49,6 @@ func Test_NewTopicManager(t *testing.T) {
 			false,
 		},
 	} {
-		tt := tt
 		t.Run(strings.Join(tt.in, ","), func(t *testing.T) {
 			t.Parallel()
 			_, err := newTopicManager(&mockKafkaClient{}, tt.in)
@@ -86,7 +85,6 @@ func Test_Topics(t *testing.T) {
 			false,
 		},
 	} {
-		tt := tt
 		t.Run("", func(t *testing.T) {
 			t.Parallel()
 

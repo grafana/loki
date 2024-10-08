@@ -157,10 +157,10 @@ func TestFSObjectClient_List_and_ObjectExists(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok)
 
-	ok, objectSize, err := bucketClient.ObjectExistsWithSize(context.Background(), "outer-file2")
+	attrs, err := bucketClient.GetAttributes(context.Background(), "outer-file2")
 	require.NoError(t, err)
 	require.True(t, ok)
-	require.EqualValues(t, len("outer-file2"), objectSize)
+	require.EqualValues(t, len("outer-file2"), attrs.Size)
 }
 
 func TestFSObjectClient_DeleteObject(t *testing.T) {

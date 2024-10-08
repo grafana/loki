@@ -53,7 +53,6 @@ func Test_logSelectorExpr_String(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.selector, func(t *testing.T) {
 			t.Parallel()
 			expr, err := ParseLogSelector(tt.selector, true)
@@ -588,7 +587,6 @@ func Test_FilterMatcher(t *testing.T) {
 			[]linecheck{{"counter=1", false}, {"counter=0", false}, {"counter=-1", true}, {"counter=-2", true}},
 		},
 	} {
-		tt := tt
 		t.Run(tt.q, func(t *testing.T) {
 			t.Parallel()
 			expr, err := ParseLogSelector(tt.q, true)

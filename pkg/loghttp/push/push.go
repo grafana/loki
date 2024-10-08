@@ -84,7 +84,7 @@ func (EmptyLimits) DiscoverServiceName(string) []string {
 }
 
 type (
-	RequestParser        func(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker) (*logproto.PushRequest, *Stats, error)
+	RequestParser        func(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error)
 	RequestParserWrapper func(inner RequestParser) RequestParser
 )
 
@@ -106,8 +106,8 @@ type Stats struct {
 	IsAggregatedMetric bool
 }
 
-func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, pushRequestParser RequestParser, tracker UsageTracker) (*logproto.PushRequest, error) {
-	req, pushStats, err := pushRequestParser(userID, r, tenantsRetention, limits, tracker)
+func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, pushRequestParser RequestParser, tracker UsageTracker, logPushRequestStreams bool) (*logproto.PushRequest, error) {
+	req, pushStats, err := pushRequestParser(userID, r, tenantsRetention, limits, tracker, logPushRequestStreams, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +164,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 	return req, nil
 }
 
-func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker) (*logproto.PushRequest, *Stats, error) {
+func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
 	// Body
 	var body io.Reader
 	// bodySize should always reflect the compressed size of the request body
@@ -247,8 +247,13 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 			pushStats.IsAggregatedMetric = true
 		}
 
+		var beforeServiceName string
+		if logPushRequestStreams {
+			beforeServiceName = lbs.String()
+		}
+
+		serviceName := ServiceUnknown
 		if !lbs.Has(LabelServiceName) && len(discoverServiceName) > 0 && !pushStats.IsAggregatedMetric {
-			serviceName := ServiceUnknown
 			for _, labelName := range discoverServiceName {
 				if labelVal := lbs.Get(labelName); labelVal != "" {
 					serviceName = labelVal
@@ -262,6 +267,14 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 
 			// Remove the added label after it's added to the stream so it's not consumed by subsequent steps
 			lbs = lb.Del(LabelServiceName).Labels()
+		}
+
+		if logPushRequestStreams {
+			level.Debug(logger).Log(
+				"msg", "push request stream before service name discovery",
+				"labels", beforeServiceName,
+				"service_name", serviceName,
+			)
 		}
 
 		var retentionPeriod time.Duration
