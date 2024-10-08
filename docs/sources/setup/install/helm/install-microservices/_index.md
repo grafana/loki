@@ -88,7 +88,7 @@ We do not recommended to run Microservice mode with `filesystem` storage. For th
      queryScheduler:
        replicas: 2
      distributor:
-       replicas: 3 # To ensure data durability with replication
+       replicas: 3 
        maxUnavailable: 2
      compactor:
        replicas: 1
@@ -196,6 +196,8 @@ loki:
       region: <AWS region your bucket is in eg. `eu-west-2`>
       bucketnames: loki-aws-bucket # Define your AWS bucket here
       s3forcepathstyle: false
+  ingester:
+      chunk_encoding: snappy
   pattern_ingester:
       enabled: true
   limits_config:

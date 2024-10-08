@@ -92,19 +92,19 @@ eksctl utils associate-iam-oidc-provider --cluster loki --approve
 
 ## Create three S3 buckets
 
-{{< admonition type="WARNING" >}}
+{{< admonition type="warning" >}}
  **DO NOT** use the default bucket names;  `chunk`, `ruler` and `admin`. Choose a **unique** name for each bucket. For more information see the following [security update](https://grafana.com/blog/2024/06/27/grafana-security-update-grafana-loki-and-unintended-data-write-attempts-to-amazon-s3-buckets/).
 {{< /admonition >}}
 
-Before deploying Loki, you need to create two S3 buckets; one to store logs (chunks), the second to store alert rules. You can create the bucket using the AWS Management Console or the AWS CLI. The bucket name must be globally unique. For this guide, we will use the bucket names `loki-aws-dev-chunks` and `loki-aws-dev-ruler` **but you should choose your own unique names when creating your own buckets**.
+Before deploying Loki, you need to create two S3 buckets; one to store logs (chunks), the second to store alert rules. You can create the bucket using the AWS Management Console or the AWS CLI. The bucket name must be globally unique.
 
 {{<admonition type="note">}}
 GEL customers will require a third bucket to store the admin data. This bucket is not required for OSS users.
 {{</admonition>}}
 
 ```bash
-aws s3api create-bucket --bucket loki-aws-dev-chunks --region eu-west-2 --create-bucket-configuration LocationConstraint=eu-west-2 \
-aws s3api create-bucket --bucket loki-aws-dev-ruler --region eu-west-2 --create-bucket-configuration LocationConstraint=eu-west-2 
+aws s3api create-bucket --bucket  <Your S3 bucket eg. `loki-aws-dev-chunks`> --region <S3 region your account is on, eg `eu-west-2`> --create-bucket-configuration LocationConstraint=<S3 region your account is on, eg `eu-west-2`> \
+aws s3api create-bucket --bucket  <Your S3 bucket eg. `loki-aws-dev-ruler`> --region <S3 region your account is on, eg `eu-west-2`> --create-bucket-configuration LocationConstraint=<S3 region your account is on, eg `eu-west-2`>
 ```
 Make sure to replace the region and bucket name with your desired values. We will revisit the bucket policy later in this guide.
 
@@ -223,7 +223,7 @@ To allow the IAM role to access the S3 buckets, you need to add the policy to th
 1. Add the policy to the bucket:
 
     ```bash
-    aws s3api put-bucket-policy --bucket loki-aws-dev-chunk --policy file://bucket-policy-chunk.json
+    aws s3api put-bucket-policy --bucket <Your S3 bucket eg. `loki-aws-dev-chunks`> --policy file://bucket-policy-chunk.json
     ```
 1. Create a bucket policy file named `bucket-policy-ruler.json` with the following content:
 
@@ -256,7 +256,7 @@ To allow the IAM role to access the S3 buckets, you need to add the policy to th
 1. Add the policy to the bucket:
 
     ```bash
-    aws s3api put-bucket-policy --bucket loki-aws-dev-ruler --policy file://bucket-policy-ruler.json
+    aws s3api put-bucket-policy --bucket <Your S3 bucket eg. `loki-aws-dev-ruler`> --policy file://bucket-policy-ruler.json
     ```
 
 ## Deploying the Helm chart
@@ -293,6 +293,8 @@ Create a `values.yaml` file with the following content:
        region: <Insert s3 bucket region> # eu-west-2
        bucketnames: <Insert s3 bucket name> # Your actual S3 bucket name (loki-aws-dev-chunks)
        s3forcepathstyle: false
+   ingester:
+       chunk_encoding: snappy
    pattern_ingester:
        enabled: true
    limits_config:
@@ -433,7 +435,7 @@ Now that you have created the `values.yaml` file, you can deploy Loki using the 
 
 The Loki Gateway service is a LoadBalancer service that exposes the Loki gateway to the internet. This is where you will write logs to and query logs from. By default NGINX is used as the gateway.
 
-{{< admonition type="note" >}}
+{{< admonition type="caution" >}}
 The Loki Gateway service is exposed to the internet. It is recommended to secure the gateway with authentication. Refer to the [Authentication]({{< relref "../../../../operations/authentication" >}}) documentation for more information.
 {{< /admonition >}}
 
