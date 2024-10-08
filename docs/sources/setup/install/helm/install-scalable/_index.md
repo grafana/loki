@@ -25,7 +25,7 @@ The default Helm chart deploys the following components:
 - Index and Chunk cache (1 replica)
 
 {{< admonition type="note" >}}
-It is not recommended to run scalable mode with `filesystem` storage. For the purpose of this guide, we will use MinIO as the object storage to provide a complete example. 
+We do not recommended to run scalable mode with `filesystem` storage. For the purpose of this guide, we will use MinIO as the object storage to provide a complete example. 
 {{< /admonition >}}
 
 ## Prerequisites
@@ -86,7 +86,7 @@ The following steps show how to deploy the Loki Helm chart in simple scalable mo
       read:
         replicas: 2
       write:
-        replicas: 3
+        replicas: 3 # To ensure data durability with replication
 
       # Enable minio for storage
       minio:
@@ -131,7 +131,7 @@ loki:
   storage_config:
     aws:
       region: eu-west-2
-      bucketnames: loki-aws-bucket # Define your AWS bucket here
+      bucketnames: loki-aws-dev-chunk # Define your AWS bucket here (Must be unique)
       s3forcepathstyle: false
   pattern_ingester:
       enabled: true
@@ -145,8 +145,8 @@ loki:
   storage:
     type: s3
     bucketNames:
-      chunks: "<INSERT BUCKET NAME>" # 
-      ruler: "<INSERT BUCKET NAME>"
+      chunks: "<INSERT BUCKET NAME>" # The S3 bucket name for storing chunks (Must be unique)
+      ruler: "<INSERT BUCKET NAME>" # The S3 bucket name for storing ruler data (Must be unique)
       admin: "<INSERT BUCKET NAME>"
     s3:
       # s3 URL can be used to specify the endpoint, access key, secret key, and bucket name this works well for S3 compatible storages or are hosting Loki on-premises and want to use S3 as the storage backend. Either use the s3 URL or the individual fields below (AWS endpoint, region, secret).

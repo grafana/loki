@@ -28,7 +28,7 @@ There are two methods for authenticating and connecting Loki to AWS S3. We will 
   
 ### EKS Minimum Requirements
 
-{{< admonition type="warning" >}}
+{{< admonition type="caution" >}}
 These EKS requirements are the minimum specification needed to deploy Loki using this guide. You may wish to adjust plugins and instance types based on your AWS environment and workload. **If you choose to do so, this may invalidate the guide.**
 
 In this guide, we deploy Loki using `m5.xlarge` instances. This is a middle-of-the-road instance type that should work for most scenarios. However, you can modify the instance types and count based on your specific needs.
@@ -78,19 +78,23 @@ managedNodeGroups:
 
 
 The following plugins are also required to be installed within the EKS cluster:
-- Amazon EBS CSI Driver: Enables Kubernetes to dynamically provision and manage EBS volumes as persistent storage for applications. We use this to provision the node volumes for Loki.
-- Amazon EKS Pod Identity Agent: Manages AWS IAM roles for pods, allowing fine-grained access control to AWS resources without needing to store credentials in containers. This is how Loki will access the S3 bucket.
-- CoreDNS: Provides internal DNS service for Kubernetes clusters, ensuring that services and pods can communicate with each other using DNS names. 
-- kube-proxy: Maintains network rules on nodes, enabling communication between pods and services within the cluster.
+- **Amazon EBS CSI Driver**: Enables Kubernetes to dynamically provision and manage EBS volumes as persistent storage for applications. We use this to provision the node volumes for Loki.
+- **Amazon EKS Pod Identity Agent**: Manages AWS IAM roles for pods, allowing fine-grained access control to AWS resources without needing to store credentials in containers. This is how Loki will access the S3 bucket.
+- **CoreDNS**: Provides internal DNS service for Kubernetes clusters, ensuring that services and pods can communicate with each other using DNS names. 
+- **kube-proxy**: Maintains network rules on nodes, enabling communication between pods and services within the cluster.
 
-You must also install an OIDC provider on the EKS cluster. This is required for the IAM roles and policies to work correctly. If you are using EKSctl, you can install the OIDC provider using the following command:
+You must also install an **OIDC (OpenID Connect) provider** on the EKS cluster. This is required for the IAM roles and policies to work correctly. If you are using EKSctl, you can install the OIDC provider using the following command:
 
 ```bash
 eksctl utils associate-iam-oidc-provider --cluster loki --approve
 ```
-**This may be installed by default when creating the EKS cluster using EKSctl.**
+**This may be installed by default when creating the EKS cluster using EKSctl and the above config.**
 
 ## Create three S3 buckets
+
+{{< admonition type="WARNING" >}}
+ **DO NOT** use the default bucket names;  `chunk`, `ruler` and `admin`. Choose a **unique** name for each bucket. For more information see the following [security update](https://grafana.com/blog/2024/06/27/grafana-security-update-grafana-loki-and-unintended-data-write-attempts-to-amazon-s3-buckets/).
+{{< /admonition >}}
 
 Before deploying Loki, you need to create two S3 buckets; one to store logs (chunks), the second to store alert rules. You can create the bucket using the AWS Management Console or the AWS CLI. The bucket name must be globally unique. For this guide, we will use the bucket names `loki-aws-dev-chunks` and `loki-aws-dev-ruler` **but you should choose your own unique names when creating your own buckets**.
 
@@ -100,7 +104,7 @@ GEL customers will require a third bucket to store the admin data. This bucket i
 
 ```bash
 aws s3api create-bucket --bucket loki-aws-dev-chunks --region eu-west-2 --create-bucket-configuration LocationConstraint=eu-west-2 \
-aws s3api create-bucket --bucket loki-aws-dev-ruler --region eu-west-2 --create-bucket-configuration LocationConstraint=eu-west-2 \
+aws s3api create-bucket --bucket loki-aws-dev-ruler --region eu-west-2 --create-bucket-configuration LocationConstraint=eu-west-2 
 ```
 Make sure to replace the region and bucket name with your desired values. We will revisit the bucket policy later in this guide.
 
@@ -267,13 +271,7 @@ To allow the IAM role to access the S3 buckets, you need to add the policy to th
     ```bash
     helm repo update
     ```
-
-1. Create the `loki` namespace:
-
-    ```bash
-    kubectl create namespace loki
-    ```
-    **This is important as our trust policy is set to allow the role to be used by the `loki` service account in the `loki` namespace.**
+    
 
 ### Loki Helm chart configuration
 
@@ -314,9 +312,6 @@ Create a `values.yaml` file with the following content:
         s3forcepathstyle: false
       alertmanager_url: http://prom:9093 # The URL of the Alertmanager to send alerts (Prometheus, Mimir, etc.)
 
-
-     
-       
    querier:
      max_concurrent: 4
 
@@ -373,6 +368,10 @@ Create a `values.yaml` file with the following content:
  
 ```
 
+{{< admonition type="caution" >}}
+Make sure to replace the placeholders with your actual values.
+{{< /admonition >}}
+
 It is critical to define a valid `values.yaml` file for the Loki deployment. To remove the risk of misconfiguration, let's break down the configuration options to keep in mind when deploying to AWS:
 
 - **Loki Config vs. Values Config:**
@@ -396,9 +395,6 @@ It is critical to define a valid `values.yaml` file for the Loki deployment. To 
   - Defines how the Loki gateway will be exposed.
   - We are using a `LoadBalancer` service type in this configuration.
 
-{{< admonition type="warning" >}}
-Make sure to replace the placeholders with your actual values.
-{{< /admonition >}}
 
 ### Deploy Loki
 
@@ -407,9 +403,9 @@ Now that you have created the `values.yaml` file, you can deploy Loki using the 
 1. Deploy using the newly created `values.yaml` file:
 
     ```bash
-    helm install --values values.yaml loki grafana/loki -n loki
+    helm install --values values.yaml loki grafana/loki -n loki --create-namespace
     ```
-    **Note: this may take a few minutes to complete.**
+    **It is important to create a namespace called `loki` as our trust policy is set to allow the IAM role to be used by the `loki` service account in the `loki` namespace. This is configurable but make sure to update your service account**
 
 1. Verify the deployment:
 

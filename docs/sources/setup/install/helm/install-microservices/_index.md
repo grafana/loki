@@ -22,7 +22,7 @@ The default Helm chart deploys the following components:
 - **QueryScheduler component** (2 replicas): Schedules queries.
 
 {{< admonition type="note" >}}
-It is not recommended to run scalable mode with `filesystem` storage. For the purpose of this guide, we will use MinIO as the object storage to provide a complete example. 
+We do not recommended to run Microservice mode with `filesystem` storage. For the purpose of this guide, we will use MinIO as the object storage to provide a complete example. 
 {{< /admonition >}}
 
 ## Prerequisites
@@ -78,9 +78,9 @@ It is not recommended to run scalable mode with `filesystem` storage. For the pu
      deploymentMode: Distributed
 
      ingester:
-       replicas: 3
+       replicas: 3 # To ensure data durability with replication
      querier:
-       replicas: 3
+       replicas: 3 # Improve query performance via parallelism
        maxUnavailable: 2
      queryFrontend:
        replicas: 2
@@ -88,7 +88,7 @@ It is not recommended to run scalable mode with `filesystem` storage. For the pu
      queryScheduler:
        replicas: 2
      distributor:
-       replicas: 3
+       replicas: 3 # To ensure data durability with replication
        maxUnavailable: 2
      compactor:
        replicas: 1
@@ -100,6 +100,16 @@ It is not recommended to run scalable mode with `filesystem` storage. For the pu
        replicas: 0
      bloomGateway:
        replicas: 0
+    
+     backend:
+        replicas: 0
+     read:
+        replicas: 0
+     write:
+        replicas: 0
+
+     singleBinary:
+        replicas: 0
 
       # This exposes the Loki gateway so it can be written to and queried externaly
      gateway:
