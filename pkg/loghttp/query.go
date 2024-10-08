@@ -586,12 +586,11 @@ func ParseVolumeInstantQuery(r *http.Request) (*VolumeInstantQuery, error) {
 		return nil, err
 	}
 
-	aggregateBy, err := volumeAggregateBy(r)
+	aggregatedMetrics := volumeAggregatedMetrics(r)
+	aggregateBy, err := volumeAggregateBy(r, aggregatedMetrics)
 	if err != nil {
 		return nil, err
 	}
-
-	aggregatedMetrics := volumeAggregatedMetrics(r)
 
 	svInstantQuery := VolumeInstantQuery{
 		Query:             result.Query,
@@ -635,12 +634,11 @@ func ParseVolumeRangeQuery(r *http.Request) (*VolumeRangeQuery, error) {
 		return nil, err
 	}
 
-	aggregateBy, err := volumeAggregateBy(r)
+	aggregatedMetrics := volumeAggregatedMetrics(r)
+	aggregateBy, err := volumeAggregateBy(r, aggregatedMetrics)
 	if err != nil {
 		return nil, err
 	}
-
-	aggregatedMetrics := volumeAggregatedMetrics(r)
 
 	return &VolumeRangeQuery{
 		Start:             result.Start,
@@ -730,17 +728,18 @@ func volumeLimit(r *http.Request) error {
 	return nil
 }
 
-func volumeAggregateBy(r *http.Request) (string, error) {
+func volumeAggregateBy(r *http.Request, aggregatedMetrics bool) (string, error) {
 	l := r.Form.Get("aggregateBy")
 	if l == "" {
 		return seriesvolume.DefaultAggregateBy, nil
 	}
 
-	if seriesvolume.ValidateAggregateBy(l) {
-		return l, nil
+	err := seriesvolume.ValidateAggregateBy(l, aggregatedMetrics)
+	if err != nil {
+		return "", err
 	}
 
-	return "", errors.New("invalid aggregation option")
+	return l, nil
 }
 
 func volumeAggregatedMetrics(r *http.Request) bool {

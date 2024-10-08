@@ -357,16 +357,9 @@ func Test_VolumeMiddleware(t *testing.T) {
 
 func Test_aggregatedMetricQuery(t *testing.T) {
 	now := time.Now()
-	serviceMatcher, err := labels.NewMatcher(
-		labels.MatchEqual,
-		loghttp_push.LabelServiceName,
-		"foo",
-	)
-	require.NoError(t, err)
-	fruitMatcher, err := labels.NewMatcher(labels.MatchNotEqual, "fruit", "apple")
-	require.NoError(t, err)
-	colorMatcher, err := labels.NewMatcher(labels.MatchRegexp, "color", "green")
-	require.NoError(t, err)
+	serviceMatcher := labels.MustNewMatcher(labels.MatchEqual, loghttp_push.LabelServiceName, "foo")
+	fruitMatcher := labels.MustNewMatcher(labels.MatchNotEqual, "fruit", "apple")
+	colorMatcher := labels.MustNewMatcher(labels.MatchRegexp, "color", "green")
 
 	t.Run("it uses service name if present in original matcher", func(t *testing.T) {
 		query := &aggregatedMetricQuery{
@@ -376,7 +369,7 @@ func Test_aggregatedMetricQuery(t *testing.T) {
 		}
 
 		expected := fmt.Sprintf(
-			`sum by (service_name) (sum_over_time({%s="foo"} | logfmt | unwrap bytes(bytes) | __error__=""[1h0m0s]))`,
+			`sum by (service_name) (sum_over_time({%s="foo"} | logfmt | service_name="foo" | unwrap bytes(bytes) | __error__=""[1h0m0s]))`,
 			loghttp_push.AggregatedMetricLabel,
 		)
 		require.Equal(t, expected, query.BuildQuery())
@@ -390,19 +383,19 @@ func Test_aggregatedMetricQuery(t *testing.T) {
 		}
 
 		expected := fmt.Sprintf(
-			`sum by (service_name) (sum_over_time({%s="foo"} | logfmt | fruit!="apple" | unwrap bytes(bytes) | __error__=""[30m0s]))`,
+			`sum by (service_name) (sum_over_time({%s="foo"} | logfmt | service_name="foo" | fruit!="apple" | unwrap bytes(bytes) | __error__=""[30m0s]))`,
 			loghttp_push.AggregatedMetricLabel,
 		)
 		require.Equal(t, expected, query.BuildQuery())
 	})
 
 	t.Run("preserves the matcher type for service name", func(t *testing.T) {
-		serviceMatcher, err := labels.NewMatcher(
+		serviceMatcher := labels.MustNewMatcher(
 			labels.MatchRegexp,
 			loghttp_push.LabelServiceName,
 			"foo",
 		)
-		require.NoError(t, err)
+
 		query := &aggregatedMetricQuery{
 			matchers: []*labels.Matcher{serviceMatcher},
 			start:    now.Add(-1 * time.Hour),
@@ -410,7 +403,7 @@ func Test_aggregatedMetricQuery(t *testing.T) {
 		}
 
 		expected := fmt.Sprintf(
-			`sum by (service_name) (sum_over_time({%s=~"foo"} | logfmt | unwrap bytes(bytes) | __error__=""[1h0m0s]))`,
+			`sum by (service_name) (sum_over_time({%s=~"foo"} | logfmt | service_name=~"foo" | unwrap bytes(bytes) | __error__=""[1h0m0s]))`,
 			loghttp_push.AggregatedMetricLabel,
 		)
 		require.Equal(t, expected, query.BuildQuery())
@@ -424,7 +417,7 @@ func Test_aggregatedMetricQuery(t *testing.T) {
 		}
 
 		expected := fmt.Sprintf(
-			`sum by (service_name) (sum_over_time({%s="foo"} | logfmt | fruit!="apple" | color=~"green" | unwrap bytes(bytes) | __error__=""[5m0s]))`,
+			`sum by (service_name) (sum_over_time({%s="foo"} | logfmt | service_name="foo" | fruit!="apple" | color=~"green" | unwrap bytes(bytes) | __error__=""[5m0s]))`,
 			loghttp_push.AggregatedMetricLabel,
 		)
 		require.Equal(t, expected, query.BuildQuery())
@@ -469,7 +462,7 @@ func Test_aggregatedMetricQuery(t *testing.T) {
 		}
 
 		expected = fmt.Sprintf(
-			`sum by (fruit) (sum_over_time({%s="foo"} | logfmt | unwrap bytes(bytes) | __error__=""[5s]))`,
+			`sum by (fruit) (sum_over_time({%s="foo"} | logfmt | service_name="foo" | unwrap bytes(bytes) | __error__=""[5s]))`,
 			loghttp_push.AggregatedMetricLabel,
 		)
 		require.Equal(t, expected, query.BuildQuery())

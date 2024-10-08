@@ -225,26 +225,25 @@ type aggregatedMetricQuery struct {
 
 func (a *aggregatedMetricQuery) buildBaseQueryString(
 	idxKey string,
-	idxMatch string,
-	idxVal string,
-	serviceNamePresent bool,
+	serviceMatchType string,
+	serviceName string,
 ) string {
 	aggBy := a.aggregateBy
 	if aggBy == "" {
-		if serviceNamePresent {
+		if serviceName != "" {
 			aggBy = push.LabelServiceName
 		} else {
 			aggBy = idxKey
 		}
 	}
 
-	if serviceNamePresent {
+	if serviceName != "" {
 		return fmt.Sprintf(
 			`sum by (%s) (sum_over_time({%s%s"%s"} | logfmt`,
 			aggBy,
-			idxKey,
-			idxMatch,
-			idxVal,
+			push.AggregatedMetricLabel,
+			serviceMatchType,
+			serviceName,
 		)
 	}
 
@@ -256,28 +255,33 @@ func (a *aggregatedMetricQuery) buildBaseQueryString(
 }
 
 func (a *aggregatedMetricQuery) BuildQuery() string {
-	var idxKey, idxVal, idxMatch string
-	filters := []string{}
-	serviceNamePresent := false
+	// by this point query as been validated and we can assume that there is at least one matcher
+	firstMatcher := a.matchers[0]
 
-	for i, matcher := range a.matchers {
-		if i == 0 {
-			idxKey = matcher.Name
-			idxVal = matcher.Value
-			idxMatch = matcher.Type.String()
-		}
-
-		if matcher.Name == push.LabelServiceName {
-			serviceNamePresent = true
-			idxKey = push.AggregatedMetricLabel
-			idxVal = matcher.Value
-			idxMatch = matcher.Type.String()
-		} else {
-			filters = append(filters, matcher.String())
-		}
+	// idxKey will be the label to aggregate by, which is the first matcher's name
+	// when service_name is not provided
+	var serviceName, serviceMatchType string
+	idxKey := firstMatcher.Name
+	if idxKey == push.LabelServiceName {
+		idxKey = push.AggregatedMetricLabel
+		serviceName = firstMatcher.Value
+		serviceMatchType = firstMatcher.Type.String()
 	}
 
-	query := a.buildBaseQueryString(idxKey, idxMatch, idxVal, serviceNamePresent)
+	filters := make([]string, 0, len(a.matchers))
+	filters = append(filters, firstMatcher.String())
+
+	for _, matcher := range a.matchers[1:] {
+		// always index by service name if present anywhere in the matchers
+		if matcher.Name == push.LabelServiceName {
+			idxKey = push.AggregatedMetricLabel
+			serviceName = matcher.Value
+			serviceMatchType = matcher.Type.String()
+		}
+		filters = append(filters, matcher.String())
+	}
+
+	query := a.buildBaseQueryString(idxKey, serviceMatchType, serviceName)
 
 	if len(filters) > 0 {
 		query = query + " | " + strings.Join(filters, " | ")

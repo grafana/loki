@@ -97,14 +97,21 @@ func MapToVolumeResponse(mergedVolumes map[string]uint64, limit int) *logproto.V
 	}
 }
 
-func ValidateAggregateBy(aggregateBy string) bool {
+func ValidateAggregateBy(aggregateBy string, aggregatedMetrics bool) error {
 	switch aggregateBy {
 	case Labels:
-		return true
+		if aggregatedMetrics {
+			return fmt.Errorf(
+				"aggregating by %s is not supported when using aggregated metrics",
+				Labels,
+			)
+		}
+
+		return nil
 	case Series:
-		return true
+		return nil
 	default:
-		return false
+		return fmt.Errorf("invalid aggregateBy value: %s", aggregateBy)
 	}
 }
 
