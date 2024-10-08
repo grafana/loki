@@ -154,7 +154,7 @@ func newIngesterClientMockFactory(c *querierClientMock) ring_client.PoolFactory 
 func mockIngesterClientConfig() client.Config {
 	return client.Config{
 		PoolConfig: clientpool.PoolConfig{
-			ClientCleanupPeriod:  1 * time.Hour,
+			ClientCleanupPeriod:  1 * time.Minute,
 			HealthCheckIngesters: false,
 			RemoteTimeout:        1 * time.Second,
 		},
