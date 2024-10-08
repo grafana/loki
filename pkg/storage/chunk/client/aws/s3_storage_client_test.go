@@ -91,6 +91,31 @@ func TestRequestMiddleware(t *testing.T) {
 	}
 }
 
+func TestS3ObjectClient_GetObject_CanceledContext(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintln(w, r.Header.Get("echo-me"))
+	}))
+	defer ts.Close()
+
+	cfg := S3Config{
+		Endpoint:         ts.URL,
+		BucketNames:      "buck-o",
+		S3ForcePathStyle: true,
+		Insecure:         true,
+		AccessKeyID:      "key",
+		SecretAccessKey:  flagext.SecretWithValue("secret"),
+	}
+
+	client, err := NewS3ObjectClient(cfg, hedging.Config{})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, _, err = client.GetObject(ctx, "key")
+	require.Error(t, err, "GetObject should fail when given a canceled context")
+}
+
 func Test_Hedging(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
