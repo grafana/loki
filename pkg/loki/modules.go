@@ -1781,7 +1781,7 @@ func (t *Loki) initDashboards() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	t.Server.HTTP.Path("/grafana/dashboards/reads").Methods("GET").Handler(loader.Reads())
+	t.Server.HTTP.Path("/grafana/dashboards/writes").Methods("GET").Handler(loader.Writes())
 	return services.NewBasicService(nil, func(serviceContext context.Context) error {
 		<-serviceContext.Done()
 		return nil

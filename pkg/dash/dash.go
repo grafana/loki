@@ -21,17 +21,17 @@ type DashboardLoader struct {
 
 	// individual dashboards, pre-rendered at initialization and
 	// accessed by http handlers via corresponding CamelCase methods
-	reads []byte
+	writes []byte
 }
 
 func NewDashboardLoader(server *server.Metrics) (*DashboardLoader, error) {
 
-	reads, err := ReadsDashboard(server.RequestDuration)
+	writes, err := WritesDashboard(server.RequestDuration)
 	if err != nil {
 		return nil, err
 	}
 
-	dashboardJson, err := json.MarshalIndent(reads, "", "  ")
+	dashboardJson, err := json.MarshalIndent(writes, "", "  ")
 	if err != nil {
 		return nil, err
 	}
@@ -39,19 +39,19 @@ func NewDashboardLoader(server *server.Metrics) (*DashboardLoader, error) {
 	return &DashboardLoader{
 		server: server,
 
-		reads: dashboardJson,
+		writes: dashboardJson,
 	}, nil
 }
 
-func (l *DashboardLoader) Reads() http.HandlerFunc {
+func (l *DashboardLoader) Writes() http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// TODO(owen-d): versioning
 		w.Header().Set("Content-Type", "application/json")
-		w.Write(l.reads)
+		w.Write(l.writes)
 	})
 }
 
-func ReadsDashboard(requestDuration *prom.HistogramVec) (dashboard.Dashboard, error) {
+func WritesDashboard(requestDuration *prom.HistogramVec) (dashboard.Dashboard, error) {
 	var statusMap map[string]string = nil
 
 	// TODO: parameterize so caller can pass it's own scheme
@@ -76,7 +76,7 @@ func ReadsDashboard(requestDuration *prom.HistogramVec) (dashboard.Dashboard, er
 		"pod",
 	)
 
-	builder := dashboard.NewDashboardBuilder("Loki Reads (generated)").
+	builder := dashboard.NewDashboardBuilder("Loki Writes (generated)").
 		Tags([]string{"generated", "from", "go"}).
 		Refresh("1m").
 		Time("now-30m", "now").
