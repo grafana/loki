@@ -5,8 +5,6 @@ package mem
 
 import (
 	"context"
-
-	"github.com/shirou/gopsutil/v4/internal/common"
 )
 
 func VirtualMemory() (*VirtualMemoryStat, error) {
@@ -15,8 +13,4 @@ func VirtualMemory() (*VirtualMemoryStat, error) {
 
 func SwapMemory() (*SwapMemoryStat, error) {
 	return SwapMemoryWithContext(context.Background())
-}
-
-func SwapDevices() ([]*SwapDevice, error) {
-	return nil, common.ErrNotImplementedError
 }

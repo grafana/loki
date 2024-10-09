@@ -117,7 +117,7 @@ func parseNetstatAddr(local string, remote string, family uint32) (laddr Addr, r
 				return Addr{}, fmt.Errorf("unknown family, %d", family)
 			}
 		}
-		lport, err := strconv.ParseInt(port, 10, 32)
+		lport, err := strconv.Atoi(port)
 		if err != nil {
 			return Addr{}, err
 		}
@@ -286,11 +286,11 @@ func ConnectionsWithContext(ctx context.Context, kind string) ([]ConnectionStat,
 	return ret, nil
 }
 
-func ConnectionsMax(kind string, maxConn int) ([]ConnectionStat, error) {
-	return ConnectionsMaxWithContext(context.Background(), kind, maxConn)
+func ConnectionsMax(kind string, max int) ([]ConnectionStat, error) {
+	return ConnectionsMaxWithContext(context.Background(), kind, max)
 }
 
-func ConnectionsMaxWithContext(ctx context.Context, kind string, maxConn int) ([]ConnectionStat, error) {
+func ConnectionsMaxWithContext(ctx context.Context, kind string, max int) ([]ConnectionStat, error) {
 	return []ConnectionStat{}, common.ErrNotImplementedError
 }
 
@@ -305,8 +305,8 @@ func ConnectionsWithoutUidsWithContext(ctx context.Context, kind string) ([]Conn
 	return ConnectionsMaxWithoutUidsWithContext(ctx, kind, 0)
 }
 
-func ConnectionsMaxWithoutUidsWithContext(ctx context.Context, kind string, maxConn int) ([]ConnectionStat, error) {
-	return ConnectionsPidMaxWithoutUidsWithContext(ctx, kind, 0, maxConn)
+func ConnectionsMaxWithoutUidsWithContext(ctx context.Context, kind string, max int) ([]ConnectionStat, error) {
+	return ConnectionsPidMaxWithoutUidsWithContext(ctx, kind, 0, max)
 }
 
 func ConnectionsPidWithoutUids(kind string, pid int32) ([]ConnectionStat, error) {
@@ -317,14 +317,14 @@ func ConnectionsPidWithoutUidsWithContext(ctx context.Context, kind string, pid 
 	return ConnectionsPidMaxWithoutUidsWithContext(ctx, kind, pid, 0)
 }
 
-func ConnectionsPidMaxWithoutUids(kind string, pid int32, maxConn int) ([]ConnectionStat, error) {
-	return ConnectionsPidMaxWithoutUidsWithContext(context.Background(), kind, pid, maxConn)
+func ConnectionsPidMaxWithoutUids(kind string, pid int32, max int) ([]ConnectionStat, error) {
+	return ConnectionsPidMaxWithoutUidsWithContext(context.Background(), kind, pid, max)
 }
 
-func ConnectionsPidMaxWithoutUidsWithContext(ctx context.Context, kind string, pid int32, maxConn int) ([]ConnectionStat, error) {
-	return connectionsPidMaxWithoutUidsWithContext(ctx, kind, pid, maxConn)
+func ConnectionsPidMaxWithoutUidsWithContext(ctx context.Context, kind string, pid int32, max int) ([]ConnectionStat, error) {
+	return connectionsPidMaxWithoutUidsWithContext(ctx, kind, pid, max)
 }
 
-func connectionsPidMaxWithoutUidsWithContext(ctx context.Context, kind string, pid int32, maxConn int) ([]ConnectionStat, error) {
+func connectionsPidMaxWithoutUidsWithContext(ctx context.Context, kind string, pid int32, max int) ([]ConnectionStat, error) {
 	return []ConnectionStat{}, common.ErrNotImplementedError
 }

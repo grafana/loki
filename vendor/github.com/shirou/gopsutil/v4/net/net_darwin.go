@@ -143,8 +143,8 @@ func newMapInterfaceNameUsage(ifaces []netstatInterface) mapInterfaceNameUsage {
 	return output
 }
 
-func (mapi mapInterfaceNameUsage) isTruncated() bool {
-	for _, usage := range mapi {
+func (min mapInterfaceNameUsage) isTruncated() bool {
+	for _, usage := range min {
 		if usage > 1 {
 			return true
 		}
@@ -152,9 +152,9 @@ func (mapi mapInterfaceNameUsage) isTruncated() bool {
 	return false
 }
 
-func (mapi mapInterfaceNameUsage) notTruncated() []string {
+func (min mapInterfaceNameUsage) notTruncated() []string {
 	output := make([]string, 0)
-	for ifaceName, usage := range mapi {
+	for ifaceName, usage := range min {
 		if usage == 1 {
 			output = append(output, ifaceName)
 		}
@@ -247,7 +247,7 @@ func IOCountersWithContext(ctx context.Context, pernic bool) ([]IOCountersStat, 
 		}
 	}
 
-	if !pernic {
+	if pernic == false {
 		return getIOCountersAll(ret)
 	}
 	return ret, nil

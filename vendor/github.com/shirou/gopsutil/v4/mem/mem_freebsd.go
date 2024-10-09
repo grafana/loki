@@ -8,9 +8,8 @@ import (
 	"errors"
 	"unsafe"
 
-	"golang.org/x/sys/unix"
-
 	"github.com/shirou/gopsutil/v4/internal/common"
+	"golang.org/x/sys/unix"
 )
 
 func VirtualMemory() (*VirtualMemoryStat, error) {
@@ -86,6 +85,7 @@ func SwapMemory() (*SwapMemoryStat, error) {
 }
 
 // Constants from vm/vm_param.h
+// nolint: golint
 const (
 	XSWDEV_VERSION11 = 1
 	XSWDEV_VERSION   = 2

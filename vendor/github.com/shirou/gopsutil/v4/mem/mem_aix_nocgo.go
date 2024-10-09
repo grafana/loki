@@ -12,7 +12,7 @@ import (
 )
 
 func VirtualMemoryWithContext(ctx context.Context) (*VirtualMemoryStat, error) {
-	vmem, swap, err := callSVMon(ctx, true)
+	vmem, swap, err := callSVMon(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -25,7 +25,7 @@ func VirtualMemoryWithContext(ctx context.Context) (*VirtualMemoryStat, error) {
 }
 
 func SwapMemoryWithContext(ctx context.Context) (*SwapMemoryStat, error) {
-	_, swap, err := callSVMon(ctx, false)
+	_, swap, err := callSVMon(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +35,7 @@ func SwapMemoryWithContext(ctx context.Context) (*SwapMemoryStat, error) {
 	return swap, nil
 }
 
-func callSVMon(ctx context.Context, virt bool) (*VirtualMemoryStat, *SwapMemoryStat, error) {
+func callSVMon(ctx context.Context) (*VirtualMemoryStat, *SwapMemoryStat, error) {
 	out, err := invoke.CommandWithContext(ctx, "svmon", "-G")
 	if err != nil {
 		return nil, nil, err
@@ -45,7 +45,7 @@ func callSVMon(ctx context.Context, virt bool) (*VirtualMemoryStat, *SwapMemoryS
 	vmem := &VirtualMemoryStat{}
 	swap := &SwapMemoryStat{}
 	for _, line := range strings.Split(string(out), "\n") {
-		if virt && strings.HasPrefix(line, "memory") {
+		if strings.HasPrefix(line, "memory") {
 			p := strings.Fields(line)
 			if len(p) > 2 {
 				if t, err := strconv.ParseUint(p[1], 10, 64); err == nil {

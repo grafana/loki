@@ -7,7 +7,7 @@ import (
 )
 
 // Sleep awaits for provided interval.
-// Can be interrupted by context cancellation.
+// Can be interrupted by context cancelation.
 func Sleep(ctx context.Context, interval time.Duration) error {
 	timer := time.NewTimer(interval)
 	select {
