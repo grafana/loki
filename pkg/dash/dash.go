@@ -9,6 +9,7 @@ import (
 	"text/template"
 
 	"github.com/grafana/dskit/server"
+	"github.com/grafana/grafana-foundation-sdk/go/cog"
 	"github.com/grafana/grafana-foundation-sdk/go/common"
 	"github.com/grafana/grafana-foundation-sdk/go/dashboard"
 	"github.com/grafana/grafana-foundation-sdk/go/prometheus"
@@ -43,11 +44,15 @@ func NewDashboardLoader(server *server.Metrics) (*DashboardLoader, error) {
 	}, nil
 }
 
+func (l *DashboardLoader) WritesDashboard() []byte {
+	return l.writes
+}
+
 func (l *DashboardLoader) Writes() http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// TODO(owen-d): versioning
 		w.Header().Set("Content-Type", "application/json")
-		w.Write(l.writes)
+		w.Write(l.WritesDashboard())
 	})
 }
 
@@ -86,7 +91,7 @@ func WritesDashboard(requestDuration *prom.HistogramVec) (dashboard.Dashboard, e
 		distributorRED,
 		ingesterRED,
 	} {
-		builder = builder.WithRow(red.Row())
+		red.Build(builder)
 	}
 
 	return builder.Build()
@@ -250,7 +255,7 @@ func (b *RedMethodBuilder) QPSPanel() *timeseries.PanelBuilder {
 		WithTarget(qry)
 }
 
-func (b *RedMethodBuilder) LatencyPanels() (res []*timeseries.PanelBuilder) {
+func (b *RedMethodBuilder) LatencyPanels() (res []cog.Builder[dashboard.Panel]) {
 	rounds := []TemplateArgs{
 		b.TemplateArgs(),
 	}
@@ -319,9 +324,18 @@ func (b *RedMethodBuilder) LatencyPanels() (res []*timeseries.PanelBuilder) {
 }
 
 func (b *RedMethodBuilder) Row() *dashboard.RowBuilder {
-	row := dashboard.NewRowBuilder(b.title).WithPanel(b.QPSPanel())
-	for _, p := range b.LatencyPanels() {
-		row = row.WithPanel(p)
+	return dashboard.NewRowBuilder(b.title)
+}
+
+func (b *RedMethodBuilder) Panels() []cog.Builder[dashboard.Panel] {
+	return append([]cog.Builder[dashboard.Panel]{
+		b.QPSPanel(),
+	}, b.LatencyPanels()...)
+}
+
+func (b *RedMethodBuilder) Build(builder *dashboard.DashboardBuilder) {
+	builder.WithRow(b.Row())
+	for _, panel := range b.Panels() {
+		builder.WithPanel(panel)
 	}
-	return row
 }
