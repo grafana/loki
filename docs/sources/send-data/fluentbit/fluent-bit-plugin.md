@@ -118,9 +118,8 @@ Here is an example of how to deploy the Fluent Bit helm chart to collect logs fr
 
 1. Add the Fluent Bit Helm repository:
    
-```bash
-helm repo add fluent https://fluent.github.io/helm-charts
-```
+   ```bash
+   helm repo add fluent https://fluent.github.io/helm-charts
 1. Create a `values.yaml` file with the following content:
 
 ```yaml
