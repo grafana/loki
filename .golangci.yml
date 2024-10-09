@@ -24,7 +24,7 @@ run:
     - cgo
     - promtail_journal_enabled
     - integration
-    
+
 # output configuration options
 output:
   formats:
