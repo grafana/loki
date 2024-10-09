@@ -4228,6 +4228,11 @@ engine:
 # When true, querier limits sent via a header are enforced.
 # CLI flag: -querier.per-request-limits-enabled
 [per_request_limits_enabled: <boolean> | default = false]
+
+# When true, querier directs ingester queries to the partition-ingesters instead
+# of the normal ingesters.
+# CLI flag: -querier.query_partition_ingesters
+[query_partition_ingesters: <boolean> | default = false]
 ```
 
 ### query_range
