@@ -3908,7 +3908,6 @@ spec:
                 - mode
                 type: object
             required:
-            - managementState
             - size
             - storage
             - storageClassName
