@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 )
 
@@ -34,4 +35,32 @@ func TestArgsMap(t *testing.T) {
 	require.Equal(t, "base", out["BaseName"])
 	require.Equal(t, "top", out["TopologyLabels"])
 	require.Equal(t, "part", out["PartitionFields"])
+}
+
+func TestBaseMetricName(t *testing.T) {
+	require := require.New(t)
+
+	cases := []struct {
+		name     string
+		builder  *RedMethodBuilder
+		expected string
+	}{
+		{
+			name: "simple case",
+			builder: &RedMethodBuilder{
+				metric: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+					Name: "test_metric",
+				}, []string{}),
+			},
+			expected: "test_metric",
+		},
+		// Add more test cases here
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := tc.builder.baseMetricName()
+			require.Equal(tc.expected, actual)
+		})
+	}
 }

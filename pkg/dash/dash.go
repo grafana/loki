@@ -56,6 +56,8 @@ func (l *DashboardLoader) Writes() http.HandlerFunc {
 	})
 }
 
+// TODO(owen-d): add a help panel describing the necessary labels present (e.g. "cluster", "namespace")
+// and some instant queries that show whether they exist or not to help debug.
 func (l *DashboardLoader) writesDashboard() (dashboard.Dashboard, error) {
 	// TODO(owen-d): map statuses to colors here
 	var statusMap map[string]string
@@ -72,24 +74,24 @@ func (l *DashboardLoader) writesDashboard() (dashboard.Dashboard, error) {
 			"Distributor",
 			server.RequestDuration,
 			statusMap,
-			topologyFilters,
-			[]string{`container="distributor"`},
+			append([]string{`container="distributor", route="loki_api_v1_push"`}, topologyFilters...),
+			[]string{"status_code"},
 			"pod",
 		),
 		NewRedMethodBuilder(
 			"Ingester",
 			server.RequestDuration,
 			statusMap,
-			topologyFilters,
-			[]string{`container="ingester"`},
+			append([]string{`container="ingester"`}, topologyFilters...),
+			[]string{"status_code"},
 			"pod",
 		),
 		NewRedMethodBuilder(
 			"Index",
 			index.IndexQueryLatency,
 			statusMap,
-			topologyFilters,
-			[]string{`container="ingester"`, `operation="index_chunk"`},
+			append([]string{`container="ingester"`, `operation="index_chunk"`}, topologyFilters...),
+			[]string{"status_code"},
 			"pod",
 		),
 	}
@@ -167,12 +169,16 @@ func (b *RedMethodBuilder) baseMetricName() string {
 	return extractFQDN(<-ch)
 }
 
+// extracts the metric name from help string:
+// `Desc{fqName: "test_metric", help: "", constLabels: {}, variableLabels: {}}`
+// ->
+// `test_metric`
 func extractFQDN(desc *prom.Desc) string {
 	s := desc.String()
 	// trim unrelated
-	after, _ := strings.CutPrefix(s, "Desc{fqName: ")
+	after, _ := strings.CutPrefix(s, `Desc{fqName: "`)
 	// find where target ends
-	n := strings.Index(after, ", help:")
+	n := strings.Index(after, `", help:`)
 	return after[:n]
 }
 
@@ -220,17 +226,10 @@ var qpsTemplate = forceTpl(
 	`
 	sum(
 		rate(
-			{{.BaseName}}_sum{ {{.TopologyLabels}} }
-			[$__rate_interval]
-		)
-	) by ({{.PartitionFields}})
-	/
-	sum(
-		rate(
 			{{.BaseName}}_count{ {{.TopologyLabels}} }
 			[$__rate_interval]
 		)
-	) by ({{.PartitionFields}})
+	) by ( {{.PartitionFields}} )
 	`,
 )
 
@@ -244,8 +243,9 @@ var latencyTemplate = forceTpl(
 			  {{.BaseName}}_bucket{ {{.TopologyLabels}} }
 				[$__rate_interval]
 			)
-		) by ({{.PartitionFields}})
+		) by (le)
 	)
+	* 1e3
 	`,
 )
 
@@ -265,13 +265,16 @@ func (b *RedMethodBuilder) QPSPanel() (*timeseries.PanelBuilder, error) {
 				args.PartitionFields,
 			),
 		)
-		// TODO: how to assign predefined colors by status?
 
+		// TODO: how to assign predefined colors by status?
 	return timeseries.NewPanelBuilder().
 		Title("qps").
-		Unit("seconds").
 		Min(0).
-		WithTarget(qry), nil
+		Unit("short").
+		WithTarget(qry).
+		Legend(
+			common.NewVizLegendOptionsBuilder().ShowLegend(true).DisplayMode(common.LegendDisplayModeList).Placement(common.LegendPlacementBottom),
+		), nil
 }
 
 func (b *RedMethodBuilder) LatencyPanels() (res []cog.Builder[dashboard.Panel], err error) {
@@ -294,7 +297,7 @@ func (b *RedMethodBuilder) LatencyPanels() (res []cog.Builder[dashboard.Panel], 
 
 		var queries []*prometheus.DataqueryBuilder
 
-		for _, q := range []string{"50,90,99"} {
+		for _, q := range []string{"50", "90", "99"} {
 			extended := args.Map()
 
 			// append the le field appropriately to the partition fields
@@ -306,13 +309,6 @@ func (b *RedMethodBuilder) LatencyPanels() (res []cog.Builder[dashboard.Panel], 
 				extended["PartitionFields"] = extended["PartitionFields"] + ", le"
 			}
 
-			legend := "p" + q
-			// if partition fields are in use, we'll want to include them
-			// in our legend
-			if args.PartitionFields != "" {
-				legend = args.PartitionFields + ", " + legend
-			}
-
 			gen, err := RunTemplate(latencyTemplate, extended)
 			if err != nil {
 				return nil, err
@@ -322,20 +318,18 @@ func (b *RedMethodBuilder) LatencyPanels() (res []cog.Builder[dashboard.Panel], 
 				Expr(
 					gen,
 				).
-				LegendFormat(
-					fmt.Sprintf(
-						`{{ %s }}`,
-						legend,
-					),
-				)
+				LegendFormat("p" + q)
 
 			queries = append(queries, qry)
 		}
 
 		panel := timeseries.NewPanelBuilder().
 			Title("latency").
-			Unit("seconds").
-			Min(0)
+			Unit("ms").
+			Min(0).
+			Legend(
+				common.NewVizLegendOptionsBuilder().ShowLegend(true).DisplayMode(common.LegendDisplayModeList).Placement(common.LegendPlacementBottom),
+			)
 
 		for _, qry := range queries {
 			panel = panel.WithTarget(qry)
