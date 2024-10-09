@@ -1,7 +1,7 @@
 ---
 title: Simple LogQL simulator
-menuTitle: LogQL Simulator
-description: The LogQL Simulator is an online educational tool for experimenting with writing simple LogQL queries.
+menuTitle: LogQL simulator
+description: The LogQL simulator is an online educational tool for experimenting with writing simple LogQL queries.
 aliases:
 - ../logql/analyzer/
 weight: 200
@@ -13,9 +13,9 @@ weight: 200
 
 # Simple LogQL simulator
 
-The LogQL Simulator is an online tool that you can use to experiment with writing simple LogQL queries and seeing the results, without needing to run an instance of Loki.
+The LogQL simulator is an online tool that you can use to experiment with writing simple LogQL queries and seeing the results, without needing to run an instance of Loki.
 
-A set of example log lines are included for each of Loki's primary supported log parsers:
+A set of example log lines are included for each of the primary log parsers supported by Loki:
 
 - [Logfmt](https://brandur.org/logfmt)
 - [JSON](https://www.json.org/json-en.html)
@@ -245,19 +245,19 @@ level=info ts=2022-03-23T11:55:45.221254326Z caller=loki.go:355 msg="Loki starte
 
 <script src="../analyzer/script.js"> </script>
 
-## Additional Sample Queries
+## Additional sample queries
 
 These are some additional sample queries that you can use in the LogQL simulator.
 
 ### Logfmt
 
-```logQL
+```logql
 | logfmt | level = "debug"
 ```
 
 Parses logfmt-formatted logs and returns only log lines where the "level" field is equal to "debug".
 
-```logQL
+```logql
 | logfmt | msg="server listening on addresses"
 ```
 
@@ -265,13 +265,13 @@ Parses logfmt-formatted logs and returns only log lines with the message “serv
 
 ### JSON
 
-```logQL
+```logql
 | json | level="INFO" | file="SpringApplication.java" | line_format `{{.class}}`
 ```
 
 Parses JSON-formatted logs, filtering for lines where the 'level' field is "INFO" and the 'file field is "SpringApplication.java", then formats the line to return only the 'class' field.
 
-```logQL
+```logql
 |~ `(T|t)omcat`
 ```
 
@@ -279,13 +279,13 @@ Performs a regular expression filter for the string 'tomcat' or 'Tomcat', withou
 
 ### Unstructured text
 
-```logQL
+```logql
 | pattern "<_> - <_> <_> \"<method> <url> <protocol>\" <status> <_> <_> \"<_>\" <_>" | method="GET"
 ```
 
 Parses unstructured logs with the pattern parser, filtering for lines where the HTTP method is "GET".
 
-```logQL
+```logql
 | pattern "<_> - <user> <_> \"<method> <url> <protocol>\" <status> <_> <_> \"<_>\" <_>" | user=~"kling.*"
 ```
 
