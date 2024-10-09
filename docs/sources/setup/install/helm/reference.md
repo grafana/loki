@@ -4629,7 +4629,9 @@ null
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 300,
   "tolerations": [],
-  "updateStrategy": "RollingUpdate"
+  "updateStrategy": {
+    "type": "RollingUpdate"
+  }
 }
 </pre>
 </td>
@@ -4917,8 +4919,19 @@ null
 		</tr>
 		<tr>
 			<td>indexGateway.updateStrategy</td>
+			<td>object</td>
+			<td>UpdateStrategy for the indexGateway StatefulSet.</td>
+			<td><pre lang="json">
+{
+  "type": "RollingUpdate"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.updateStrategy.type</td>
 			<td>string</td>
-			<td>UpdateStrategy for the StatefulSet. One of 'OnDelete' or 'RollingUpdate'.</td>
+			<td>One of  'OnDelete' or 'RollingUpdate'</td>
 			<td><pre lang="json">
 "RollingUpdate"
 </pre>
@@ -5014,7 +5027,9 @@ null
       "whenUnsatisfiable": "ScheduleAnyway"
     }
   ],
-  "updateStrategy": "RollingUpdate",
+  "updateStrategy": {
+    "type": "RollingUpdate"
+  },
   "zoneAwareReplication": {
     "enabled": true,
     "maxUnavailablePct": 33,
@@ -5429,8 +5444,19 @@ Defaults to allow skew no more than 1 node
 		</tr>
 		<tr>
 			<td>ingester.updateStrategy</td>
+			<td>object</td>
+			<td>UpdateStrategy for the ingester StatefulSets.</td>
+			<td><pre lang="json">
+{
+  "type": "RollingUpdate"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.updateStrategy.type</td>
 			<td>string</td>
-			<td>UpdateStrategy for the ingester StatefulSets. One of 'RollingUpdate' or 'OnDelete'.</td>
+			<td>One of  'OnDelete' or 'RollingUpdate'</td>
 			<td><pre lang="json">
 "RollingUpdate"
 </pre>
