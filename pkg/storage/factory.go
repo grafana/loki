@@ -295,7 +295,7 @@ type Config struct {
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
 	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
 
-	UseThanosObjstore bool          `yaml:"thanos_objstore"`
+	UseThanosObjstore bool          `yaml:"use_thanos_objstore"`
 	ObjectStore       bucket.Config `yaml:"object_store"`
 
 	MaxChunkBatchSize   int                       `yaml:"max_chunk_batch_size"`
@@ -547,7 +547,7 @@ func NewChunkClient(component, name string, cfg Config, schemaCfg config.SchemaC
 }
 
 // NewTableClient makes a new table client based on the configuration.
-func NewTableClient(component, name string, periodCfg config.PeriodConfig, cfg Config, cm ClientMetrics, registerer prometheus.Registerer, logger log.Logger) (index.TableClient, error) {
+func NewTableClient(name, component string, periodCfg config.PeriodConfig, cfg Config, cm ClientMetrics, registerer prometheus.Registerer, logger log.Logger) (index.TableClient, error) {
 	switch true {
 	case util.StringsContain(types.TestingStorageTypes, name):
 		switch name {

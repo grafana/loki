@@ -1909,46 +1909,46 @@ storage:
 
       http:
         # The time an idle connection will remain idle before closing.
-        # CLI flag: -common.storage.object-store.s3.http.idle-conn-timeout
+        # CLI flag: -common.storage.object-store.gcs.http.idle-conn-timeout
         [idle_conn_timeout: <duration> | default = 1m30s]
 
         # The amount of time the client will wait for a servers response
         # headers.
-        # CLI flag: -common.storage.object-store.s3.http.response-header-timeout
+        # CLI flag: -common.storage.object-store.gcs.http.response-header-timeout
         [response_header_timeout: <duration> | default = 2m]
 
         # If the client connects via HTTPS and this option is enabled, the
         # client will accept any certificate and hostname.
-        # CLI flag: -common.storage.object-store.s3.http.insecure-skip-verify
+        # CLI flag: -common.storage.object-store.gcs.http.insecure-skip-verify
         [insecure_skip_verify: <boolean> | default = false]
 
         # Maximum time to wait for a TLS handshake. 0 means no limit.
-        # CLI flag: -common.storage.object-store.s3.http.tls-handshake-timeout
+        # CLI flag: -common.storage.object-store.gcs.http.tls-handshake-timeout
         [tls_handshake_timeout: <duration> | default = 10s]
 
         # The time to wait for a server's first response headers after fully
         # writing the request headers if the request has an Expect header. 0 to
         # send the request body immediately.
-        # CLI flag: -common.storage.object-store.s3.http.expect-continue-timeout
+        # CLI flag: -common.storage.object-store.gcs.http.expect-continue-timeout
         [expect_continue_timeout: <duration> | default = 1s]
 
         # Maximum number of idle (keep-alive) connections across all hosts. 0
         # means no limit.
-        # CLI flag: -common.storage.object-store.s3.http.max-idle-connections
+        # CLI flag: -common.storage.object-store.gcs.http.max-idle-connections
         [max_idle_connections: <int> | default = 100]
 
         # Maximum number of idle (keep-alive) connections to keep per-host. If
         # 0, a built-in default value is used.
-        # CLI flag: -common.storage.object-store.s3.http.max-idle-connections-per-host
+        # CLI flag: -common.storage.object-store.gcs.http.max-idle-connections-per-host
         [max_idle_connections_per_host: <int> | default = 100]
 
         # Maximum number of connections per host. 0 means no limit.
-        # CLI flag: -common.storage.object-store.s3.http.max-connections-per-host
+        # CLI flag: -common.storage.object-store.gcs.http.max-connections-per-host
         [max_connections_per_host: <int> | default = 0]
 
         # Path to the trusted CA file that signed the SSL certificate of the
         # object storage endpoint.
-        # CLI flag: -common.storage.object-store.s3.http.ca-file
+        # CLI flag: -common.storage.object-store.gcs.http.ca-file
         [ca_file: <string> | default = ""]
 
     azure:
@@ -5974,7 +5974,7 @@ congestion_control:
 
 # Enable the thanos.io/objstore to be the backend for object storage
 # CLI flag: -use-thanos-objstore
-[thanos_objstore: <boolean> | default = false]
+[use_thanos_objstore: <boolean> | default = false]
 
 object_store:
   # Backend storage to use. Supported backends are: s3, gcs, azure, swift,
@@ -6105,45 +6105,45 @@ object_store:
 
     http:
       # The time an idle connection will remain idle before closing.
-      # CLI flag: -object-store.s3.http.idle-conn-timeout
+      # CLI flag: -object-store.gcs.http.idle-conn-timeout
       [idle_conn_timeout: <duration> | default = 1m30s]
 
       # The amount of time the client will wait for a servers response headers.
-      # CLI flag: -object-store.s3.http.response-header-timeout
+      # CLI flag: -object-store.gcs.http.response-header-timeout
       [response_header_timeout: <duration> | default = 2m]
 
       # If the client connects via HTTPS and this option is enabled, the client
       # will accept any certificate and hostname.
-      # CLI flag: -object-store.s3.http.insecure-skip-verify
+      # CLI flag: -object-store.gcs.http.insecure-skip-verify
       [insecure_skip_verify: <boolean> | default = false]
 
       # Maximum time to wait for a TLS handshake. 0 means no limit.
-      # CLI flag: -object-store.s3.http.tls-handshake-timeout
+      # CLI flag: -object-store.gcs.http.tls-handshake-timeout
       [tls_handshake_timeout: <duration> | default = 10s]
 
       # The time to wait for a server's first response headers after fully
       # writing the request headers if the request has an Expect header. 0 to
       # send the request body immediately.
-      # CLI flag: -object-store.s3.http.expect-continue-timeout
+      # CLI flag: -object-store.gcs.http.expect-continue-timeout
       [expect_continue_timeout: <duration> | default = 1s]
 
       # Maximum number of idle (keep-alive) connections across all hosts. 0
       # means no limit.
-      # CLI flag: -object-store.s3.http.max-idle-connections
+      # CLI flag: -object-store.gcs.http.max-idle-connections
       [max_idle_connections: <int> | default = 100]
 
       # Maximum number of idle (keep-alive) connections to keep per-host. If 0,
       # a built-in default value is used.
-      # CLI flag: -object-store.s3.http.max-idle-connections-per-host
+      # CLI flag: -object-store.gcs.http.max-idle-connections-per-host
       [max_idle_connections_per_host: <int> | default = 100]
 
       # Maximum number of connections per host. 0 means no limit.
-      # CLI flag: -object-store.s3.http.max-connections-per-host
+      # CLI flag: -object-store.gcs.http.max-connections-per-host
       [max_connections_per_host: <int> | default = 0]
 
       # Path to the trusted CA file that signed the SSL certificate of the
       # object storage endpoint.
-      # CLI flag: -object-store.s3.http.ca-file
+      # CLI flag: -object-store.gcs.http.ca-file
       [ca_file: <string> | default = ""]
 
   azure:
