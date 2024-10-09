@@ -1801,73 +1801,114 @@ ingester:
     enabled: false
     # -- Use emptyDir with ramdisk for storage. **Please note that all data in ingester will be lost on pod restart**
     inMemory: false
-    # -- List of the ingester PVCs
-    # @notationType -- list
-    claims:
-      - name: data
-        size: 10Gi
-        #   -- Storage class to be used.
-        #   If defined, storageClassName: <storageClass>.
-        #   If set to "-", storageClassName: "", which disables dynamic provisioning.
-        #   If empty or set to null, no storageClassName spec is
-        #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
-        storageClass: null
-        # - name: wal
-        #   size: 150Gi
+
+    # Ingester data Persistent Volume Claim annotations
+    #
+    annotations: {}
+
+    # Ingester data Persistent Volume access modes
+    # Must match those of existing PV or dynamic provisioner
+    # Ref: http://kubernetes.io/docs/user-guide/persistent-volumes/
+    accessModes:
+      - ReadWriteOnce
+
+    # Ingester data Persistent Volume size
+    size: 2Gi
+
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
     whenDeleted: Retain
     whenScaled: Retain
+
+    # Ingester data Persistent Volume Storage Class
+    # If defined, storageClassName: <storageClass>
+    # If set to "-", storageClassName: "", which disables dynamic provisioning
+    # If undefined (the default) or set to null, no storageClassName spec is
+    #   set, choosing the default provisioner.
+    #
+    # A per-zone storageClass configuration in `ingester.zoneAwareReplication.zones[*].storageClass` takes precedence over this field.
+    #
+    # storageClass: "-"
+
   # -- Adds the appProtocol field to the ingester service. This allows ingester to work with istio protocol selection.
   appProtocol:
     # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
     grpc: ""
-  # -- Enabling zone awareness on ingesters will create 3 statefulests where all writes will send a replica to each zone.
-  # This is primarily intended to accelerate rollout operations by allowing for multiple ingesters within a single
-  # zone to be shutdown and restart simultaneously (the remaining 2 zones will be guaranteed to have at least one copy
-  # of the data).
-  # Note: This can be used to run Loki over multiple cloud provider availability zones however this is not currently
-  # recommended as Loki is not optimized for this and cross zone network traffic costs can become extremely high
-  # extremely quickly. Even with zone awareness enabled, it is recommended to run Loki in a single availability zone.
+
+  # -- Options to configure zone-aware replication for ingester
+  # Example configuration with full geographical redundancy:
+  # rollout_operator:
+  #   enabled: true
+  # ingester:
+  #   zoneAwareReplication:
+  #     enabled: true
+  #     topologyKey: 'kubernetes.io/hostname'  # This generates default anti-affinity rules
+  #     zones:  # Zone list has to be fully redefined for modification. Update with you actual zones or skip to use logical zones only.
+  #     - name: zone-a
+  #       nodeSelector:
+  #         topology.kubernetes.io/zone: us-central1-a
+  #       storageClass: storage-class-us-central1-a
+  #     - name: zone-a
+  #       nodeSelector:
+  #         topology.kubernetes.io/zone: us-central1-b
+  #       storageClass: storage-class-us-central1-b
+  #     - name: zone-c
+  #       nodeSelector:
+  #         topology.kubernetes.io/zone: us-central1-c
+  #       storageClass: storage-class-us-central1-c
+  #
   zoneAwareReplication:
     # -- Enable zone awareness.
     enabled: true
     # -- The percent of replicas in each zone that will be restarted at once. In a value of 0-100
     maxUnavailablePct: 33
-    # -- zoneA configuration
-    zoneA:
-      # -- optionally define a node selector for this zone
-      nodeSelector: null
-      # -- optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host
-      extraAffinity: {}
-      # -- Specific annotations to add to zone A statefulset
-      annotations: {}
-      # -- Specific annotations to add to zone A pods
-      podAnnotations: {}
-    zoneB:
-      # -- optionally define a node selector for this zone
-      nodeSelector: null
-      # -- optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host
-      extraAffinity: {}
-      # -- Specific annotations to add to zone B statefulset
-      annotations: {}
-      # -- Specific annotations to add to zone B pods
-      podAnnotations: {}
-    zoneC:
-      # -- optionally define a node selector for this zone
-      nodeSelector: null
-      # -- optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host
-      extraAffinity: {}
-      # -- Specific annotations to add to zone C statefulset
-      annotations: {}
-      # -- Specific annotations to add to zone C pods
-      podAnnotations: {}
-    # -- The migration block allows migrating non zone aware ingesters to zone aware ingesters.
     migration:
       enabled: false
       excludeDefaultZone: false
       readPath: false
       writePath: false
+    # -- Zone definitions for ingester zones. Note: you have to redefine the whole list to change parts as YAML does not allow to modify parts of a list.
+    zones:
+      # -- Name of the zone, used in labels and selectors. Must follow Kubernetes naming restrictions: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+      - name: zone-a
+        # -- nodeselector to restrict where pods of this zone can be placed. E.g.:
+        # nodeSelector:
+        #   topology.kubernetes.io/zone: zone-a
+        nodeSelector: null
+        # -- extraAffinity adds user defined custom affinity rules (merged with generated rules)
+        extraAffinity: {}
+        # -- Ingester data Persistent Volume Storage Class
+        # If defined, storageClassName: <storageClass>
+        # If set to "-", then use `storageClassName: ""`, which disables dynamic provisioning
+        # If undefined or set to null (the default), then fall back to the value of `ingester.persistentVolume.storageClass`.
+        storageClass: null
+      # -- Name of the zone, used in labels and selectors. Must follow Kubernetes naming restrictions: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+      - name: zone-b
+        # -- nodeselector to restrict where pods of this zone can be placed. E.g.:
+        # nodeSelector:
+        #   topology.kubernetes.io/zone: zone-b
+        nodeSelector: null
+        # -- extraAffinity adds user defined custom affinity rules (merged with generated rules)
+        extraAffinity: {}
+        # -- Ingester data Persistent Volume Storage Class
+        # If defined, storageClassName: <storageClass>
+        # If set to "-", then use `storageClassName: ""`, which disables dynamic provisioning
+        # If undefined or set to null (the default), then fall back to the value of `ingester.persistentVolume.storageClass`.
+        storageClass: null
+      # -- Name of the zone, used in labels and selectors. Must follow Kubernetes naming restrictions: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
+      - name: zone-c
+        # -- nodeselector to restrict where pods of this zone can be placed. E.g.:
+        # nodeSelector:
+        #   topology.kubernetes.io/zone: zone-c
+        nodeSelector: null
+        # -- extraAffinity adds user defined custom affinity rules (merged with generated rules)
+        extraAffinity: {}
+        # -- Ingester data Persistent Volume Storage Class
+        # If defined, storageClassName: <storageClass>
+        # If set to "-", then use `storageClassName: ""`, which disables dynamic provisioning
+        # If undefined or set to null (the default), then fall back to the value of `ingester.persistentVolume.storageClass`.
+        storageClass: null
+
 # --  Configuration for the distributor
 distributor:
   # -- Number of replicas for the distributor
