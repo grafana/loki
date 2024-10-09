@@ -2313,6 +2313,8 @@ indexGateway:
   # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
   appProtocol:
     grpc: ""
+  # -- UpdateStrategy for the StatefulSet. One of 'OnDelete' or 'RollingUpdate'.
+  updateStrategy: RollingUpdate
 # -- Configuration for the compactor
 compactor:
   # -- Number of replicas for the compactor
