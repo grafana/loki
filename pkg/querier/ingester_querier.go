@@ -92,6 +92,9 @@ func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(context.Co
 			return nil, err
 		}
 		replicationSets, err := subring.GetReplicationSetsForOperation(ring.Read)
+		if err != nil {
+			return nil, err
+		}
 		return q.forGivenIngesterSets(ctx, replicationSets, f)
 	}
 

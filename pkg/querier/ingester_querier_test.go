@@ -304,8 +304,6 @@ func TestIngesterQuerierFetchesResponsesFromPartitionIngesters(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testName, testData := testName, testData
-
 		cnt := atomic.NewInt32(0)
 
 		t.Run(testName, func(t *testing.T) {
