@@ -12,11 +12,12 @@ import (
 )
 
 const (
-	labelConsoleDashboard  = "console.openshift.io/dashboard"
-	managedConfigNamespace = "openshift-config-managed"
+	labelConsoleDashboard        = "console.openshift.io/dashboard"
+	managedConfigNamespace       = "openshift-config-managed"
+	openshiftMonitoringNamespace = "openshift-monitoring"
 )
 
-func BuildDashboards(operatorNs string) ([]client.Object, error) {
+func BuildDashboards() ([]client.Object, error) {
 	ds, rules := dashboards.Content()
 
 	var objs []client.Object
@@ -24,7 +25,7 @@ func BuildDashboards(operatorNs string) ([]client.Object, error) {
 		objs = append(objs, newDashboardConfigMap(name, content))
 	}
 
-	promRule, err := newDashboardPrometheusRule(operatorNs, rules)
+	promRule, err := newDashboardPrometheusRule(rules)
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +55,7 @@ func newDashboardConfigMap(filename string, content []byte) *corev1.ConfigMap {
 	}
 }
 
-func newDashboardPrometheusRule(namespace string, spec *monitoringv1.PrometheusRuleSpec) (*monitoringv1.PrometheusRule, error) {
+func newDashboardPrometheusRule(spec *monitoringv1.PrometheusRuleSpec) (*monitoringv1.PrometheusRule, error) {
 	return &monitoringv1.PrometheusRule{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PrometheusRule",
@@ -62,7 +63,7 @@ func newDashboardPrometheusRule(namespace string, spec *monitoringv1.PrometheusR
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      dashboardPrometheusRulesName,
-			Namespace: namespace,
+			Namespace: openshiftMonitoringNamespace,
 		},
 		Spec: *spec,
 	}, nil

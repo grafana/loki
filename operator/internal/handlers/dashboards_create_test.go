@@ -53,7 +53,7 @@ func TestCreateDashboards_ReturnsResourcesInManagedNamespaces(t *testing.T) {
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := CreateDashboards(context.TODO(), logger, "test", k, scheme)
+	err := CreateDashboards(context.TODO(), logger, k, scheme)
 	require.NoError(t, err)
 
 	// make sure create was called

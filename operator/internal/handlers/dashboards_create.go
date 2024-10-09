@@ -17,8 +17,8 @@ import (
 )
 
 // CreateDashboards handles the LokiStack dashboards create events.
-func CreateDashboards(ctx context.Context, log logr.Logger, operatorNs string, k k8s.Client, s *runtime.Scheme) error {
-	objs, err := openshift.BuildDashboards(operatorNs)
+func CreateDashboards(ctx context.Context, log logr.Logger, k k8s.Client, s *runtime.Scheme) error {
+	objs, err := openshift.BuildDashboards()
 	if err != nil {
 		return kverrors.Wrap(err, "failed to build dashboard manifests")
 	}

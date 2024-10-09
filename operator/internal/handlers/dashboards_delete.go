@@ -12,8 +12,8 @@ import (
 )
 
 // DeleteDashboards removes all cluster-scoped dashboard resources.
-func DeleteDashboards(ctx context.Context, k k8s.Client, operatorNs string) error {
-	objs, err := openshift.BuildDashboards(operatorNs)
+func DeleteDashboards(ctx context.Context, k k8s.Client) error {
+	objs, err := openshift.BuildDashboards()
 	if err != nil {
 		return kverrors.Wrap(err, "failed to build dashboards manifests")
 	}

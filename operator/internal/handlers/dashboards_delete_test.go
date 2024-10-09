@@ -14,12 +14,12 @@ import (
 )
 
 func TestDeleteDashboards(t *testing.T) {
-	objs, err := openshift.BuildDashboards("operator-ns")
+	objs, err := openshift.BuildDashboards()
 	require.NoError(t, err)
 
 	k := &k8sfakes.FakeClient{}
 
-	err = DeleteDashboards(context.TODO(), k, "operator-ns")
+	err = DeleteDashboards(context.TODO(), k)
 	require.NoError(t, err)
 	require.Equal(t, k.DeleteCallCount(), len(objs))
 }
@@ -30,6 +30,6 @@ func TestDeleteDashboards_ReturnsNoError_WhenNotFound(t *testing.T) {
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
-	err := DeleteDashboards(context.TODO(), k, "operator-ns")
+	err := DeleteDashboards(context.TODO(), k)
 	require.NoError(t, err)
 }

@@ -9,7 +9,7 @@ import (
 )
 
 func TestBuildDashboards_ReturnsDashboardConfigMaps(t *testing.T) {
-	objs, err := BuildDashboards("test")
+	objs, err := BuildDashboards()
 	require.NoError(t, err)
 
 	for _, d := range objs {
@@ -22,11 +22,11 @@ func TestBuildDashboards_ReturnsDashboardConfigMaps(t *testing.T) {
 }
 
 func TestBuildDashboards_ReturnsPrometheusRules(t *testing.T) {
-	objs, err := BuildDashboards("test")
+	objs, err := BuildDashboards()
 	require.NoError(t, err)
 
 	rules := objs[len(objs)-1].(*monitoringv1.PrometheusRule)
 	require.Equal(t, rules.GetName(), dashboardPrometheusRulesName)
-	require.Equal(t, rules.GetNamespace(), "test")
+	require.Equal(t, rules.GetNamespace(), "openshift-monitoring")
 	require.NotNil(t, rules.Spec)
 }
