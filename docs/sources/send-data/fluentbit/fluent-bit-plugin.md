@@ -140,9 +140,8 @@ Here is an example of how to deploy the Fluent Bit helm chart to collect logs fr
 
 1. Deploy the Fluent Bit Helm chart:
 
-```bash
-helm install fluent-bit fluent/fluent-bit -f values.yaml
-```
+   ```bash
+   helm install fluent-bit fluent/fluent-bit -f values.yaml
 
 ## Where next?
 
