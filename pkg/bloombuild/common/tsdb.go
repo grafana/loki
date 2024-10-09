@@ -173,6 +173,7 @@ type TSDBStores struct {
 }
 
 func NewTSDBStores(
+	component string,
 	schemaCfg config.SchemaConfig,
 	storeCfg baseStore.Config,
 	clientMetrics baseStore.ClientMetrics,
@@ -185,8 +186,7 @@ func NewTSDBStores(
 
 	for i, cfg := range schemaCfg.Configs {
 		if cfg.IndexType == types.TSDBType {
-
-			c, err := baseStore.NewObjectClient(cfg.ObjectType, storeCfg, clientMetrics)
+			c, err := baseStore.NewObjectClient(cfg.ObjectType, component, storeCfg, clientMetrics)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to create object client")
 			}

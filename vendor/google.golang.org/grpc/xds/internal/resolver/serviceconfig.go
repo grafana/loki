@@ -182,7 +182,7 @@ func (cs *configSelector) SelectConfig(rpcInfo iresolver.RPCInfo) (*iresolver.RP
 			if v := atomic.AddInt32(ref, -1); v == 0 {
 				// This entry will be removed from activeClusters when
 				// producing the service config for the empty update.
-				cs.r.serializer.Schedule(func(context.Context) {
+				cs.r.serializer.TrySchedule(func(context.Context) {
 					cs.r.onClusterRefDownToZero()
 				})
 			}
@@ -326,7 +326,7 @@ func (cs *configSelector) stop() {
 	// selector; we need another update to delete clusters from the config (if
 	// we don't have another update pending already).
 	if needUpdate {
-		cs.r.serializer.Schedule(func(context.Context) {
+		cs.r.serializer.TrySchedule(func(context.Context) {
 			cs.r.onClusterRefDownToZero()
 		})
 	}

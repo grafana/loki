@@ -128,7 +128,7 @@ type testObjectClient struct {
 }
 
 func newTestObjectClient(path string, clientMetrics storage.ClientMetrics) client.ObjectClient {
-	c, err := storage.NewObjectClient("filesystem", storage.Config{
+	c, err := storage.NewObjectClient("filesystem", "test", storage.Config{
 		FSConfig: local.FSConfig{
 			Directory: path,
 		},

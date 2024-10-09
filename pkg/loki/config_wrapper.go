@@ -566,6 +566,14 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 		}
 	}
 
+	if !reflect.DeepEqual(cfg.Common.Storage.ObjectStore, defaults.StorageConfig.ObjectStore) {
+		configsFound++
+
+		applyConfig = func(r *ConfigWrapper) {
+			r.StorageConfig.ObjectStore = r.Common.Storage.ObjectStore
+		}
+	}
+
 	if configsFound > 1 {
 		return ErrTooManyStorageConfigs
 	}

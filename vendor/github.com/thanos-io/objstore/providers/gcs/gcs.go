@@ -22,9 +22,7 @@ import (
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	htransport "google.golang.org/api/transport/http"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/experimental"
 	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v2"
 
@@ -155,7 +153,6 @@ func newBucket(ctx context.Context, logger log.Logger, gc Config, opts []option.
 	)
 	if gc.UseGRPC {
 		opts = append(opts,
-			option.WithGRPCDialOption(experimental.WithRecvBufferPool(grpc.NewSharedBufferPool())),
 			option.WithGRPCConnectionPool(gc.GRPCConnPoolSize),
 		)
 		gcsClient, err = storage.NewGRPCClient(ctx, opts...)

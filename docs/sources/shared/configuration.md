@@ -1779,6 +1779,342 @@ storage:
       # CLI flag: -common.storage.congestion-control.hedge.strategy
       [strategy: <string> | default = ""]
 
+  object_store:
+    # Backend storage to use. Supported backends are: s3, gcs, azure, swift,
+    # filesystem.
+    # CLI flag: -common.storage.object-store.backend
+    [backend: <string> | default = "filesystem"]
+
+    s3:
+      # The S3 bucket endpoint. It could be an AWS S3 endpoint listed at
+      # https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of
+      # an S3-compatible service in hostname:port format.
+      # CLI flag: -common.storage.object-store.s3.endpoint
+      [endpoint: <string> | default = ""]
+
+      # S3 region. If unset, the client will issue a S3 GetBucketLocation API
+      # call to autodetect it.
+      # CLI flag: -common.storage.object-store.s3.region
+      [region: <string> | default = ""]
+
+      # S3 bucket name
+      # CLI flag: -common.storage.object-store.s3.bucket-name
+      [bucket_name: <string> | default = ""]
+
+      # S3 secret access key
+      # CLI flag: -common.storage.object-store.s3.secret-access-key
+      [secret_access_key: <string> | default = ""]
+
+      # S3 session token
+      # CLI flag: -common.storage.object-store.s3.session-token
+      [session_token: <string> | default = ""]
+
+      # S3 access key ID
+      # CLI flag: -common.storage.object-store.s3.access-key-id
+      [access_key_id: <string> | default = ""]
+
+      # If enabled, use http:// for the S3 endpoint instead of https://. This
+      # could be useful in local dev/test environments while using an
+      # S3-compatible backend storage, like Minio.
+      # CLI flag: -common.storage.object-store.s3.insecure
+      [insecure: <boolean> | default = false]
+
+      # Disable forcing S3 dualstack endpoint usage.
+      # CLI flag: -common.storage.object-store.s3.disable-dualstack
+      [disable_dualstack: <boolean> | default = false]
+
+      # The signature version to use for authenticating against S3. Supported
+      # values are: v4.
+      # CLI flag: -common.storage.object-store.s3.signature-version
+      [signature_version: <string> | default = "v4"]
+
+      # The S3 storage class to use. Details can be found at
+      # https://aws.amazon.com/s3/storage-classes/.
+      # CLI flag: -common.storage.object-store.s3.storage-class
+      [storage_class: <string> | default = "STANDARD"]
+
+      sse:
+        # Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.
+        # CLI flag: -common.storage.object-store.s3.sse.type
+        [type: <string> | default = ""]
+
+        # KMS Key ID used to encrypt objects in S3
+        # CLI flag: -common.storage.object-store.s3.sse.kms-key-id
+        [kms_key_id: <string> | default = ""]
+
+        # KMS Encryption Context used for object encryption. It expects JSON
+        # formatted string.
+        # CLI flag: -common.storage.object-store.s3.sse.kms-encryption-context
+        [kms_encryption_context: <string> | default = ""]
+
+      http:
+        # The time an idle connection will remain idle before closing.
+        # CLI flag: -common.storage.object-store.s3.idle-conn-timeout
+        [idle_conn_timeout: <duration> | default = 1m30s]
+
+        # The amount of time the client will wait for a servers response
+        # headers.
+        # CLI flag: -common.storage.object-store.s3.response-header-timeout
+        [response_header_timeout: <duration> | default = 2m]
+
+        # If the client connects via HTTPS and this option is enabled, the
+        # client will accept any certificate and hostname.
+        # CLI flag: -common.storage.object-store.s3.insecure-skip-verify
+        [insecure_skip_verify: <boolean> | default = false]
+
+        # Maximum time to wait for a TLS handshake. 0 means no limit.
+        # CLI flag: -common.storage.object-store.s3.tls-handshake-timeout
+        [tls_handshake_timeout: <duration> | default = 10s]
+
+        # The time to wait for a server's first response headers after fully
+        # writing the request headers if the request has an Expect header. 0 to
+        # send the request body immediately.
+        # CLI flag: -common.storage.object-store.s3.expect-continue-timeout
+        [expect_continue_timeout: <duration> | default = 1s]
+
+        # Maximum number of idle (keep-alive) connections across all hosts. 0
+        # means no limit.
+        # CLI flag: -common.storage.object-store.s3.max-idle-connections
+        [max_idle_connections: <int> | default = 100]
+
+        # Maximum number of idle (keep-alive) connections to keep per-host. If
+        # 0, a built-in default value is used.
+        # CLI flag: -common.storage.object-store.s3.max-idle-connections-per-host
+        [max_idle_connections_per_host: <int> | default = 100]
+
+        # Maximum number of connections per host. 0 means no limit.
+        # CLI flag: -common.storage.object-store.s3.max-connections-per-host
+        [max_connections_per_host: <int> | default = 0]
+
+        # Path to the trusted CA file that signed the SSL certificate of the
+        # object storage endpoint.
+        # CLI flag: -common.storage.object-store.s3.ca-file
+        [ca_file: <string> | default = ""]
+
+    gcs:
+      # GCS bucket name
+      # CLI flag: -common.storage.object-store.gcs.bucket-name
+      [bucket_name: <string> | default = ""]
+
+      # JSON representing either a Google Developers Console
+      # client_credentials.json file or a Google Developers service account key
+      # file. If empty, fallback to Google default logic.
+      # CLI flag: -common.storage.object-store.gcs.service-account
+      [service_account: <string> | default = ""]
+
+      # The size of the buffer that GCS client for each PUT request. 0 to
+      # disable buffering.
+      # CLI flag: -common.storage.object-store.gcs.chunk-buffer-size
+      [chunk_buffer_size: <int> | default = 0]
+
+      http:
+        # The time an idle connection will remain idle before closing.
+        # CLI flag: -common.storage.object-store.gcs.http.idle-conn-timeout
+        [idle_conn_timeout: <duration> | default = 1m30s]
+
+        # The amount of time the client will wait for a servers response
+        # headers.
+        # CLI flag: -common.storage.object-store.gcs.http.response-header-timeout
+        [response_header_timeout: <duration> | default = 2m]
+
+        # If the client connects via HTTPS and this option is enabled, the
+        # client will accept any certificate and hostname.
+        # CLI flag: -common.storage.object-store.gcs.http.insecure-skip-verify
+        [insecure_skip_verify: <boolean> | default = false]
+
+        # Maximum time to wait for a TLS handshake. 0 means no limit.
+        # CLI flag: -common.storage.object-store.gcs.http.tls-handshake-timeout
+        [tls_handshake_timeout: <duration> | default = 10s]
+
+        # The time to wait for a server's first response headers after fully
+        # writing the request headers if the request has an Expect header. 0 to
+        # send the request body immediately.
+        # CLI flag: -common.storage.object-store.gcs.http.expect-continue-timeout
+        [expect_continue_timeout: <duration> | default = 1s]
+
+        # Maximum number of idle (keep-alive) connections across all hosts. 0
+        # means no limit.
+        # CLI flag: -common.storage.object-store.gcs.http.max-idle-connections
+        [max_idle_connections: <int> | default = 100]
+
+        # Maximum number of idle (keep-alive) connections to keep per-host. If
+        # 0, a built-in default value is used.
+        # CLI flag: -common.storage.object-store.gcs.http.max-idle-connections-per-host
+        [max_idle_connections_per_host: <int> | default = 100]
+
+        # Maximum number of connections per host. 0 means no limit.
+        # CLI flag: -common.storage.object-store.gcs.http.max-connections-per-host
+        [max_connections_per_host: <int> | default = 0]
+
+        # Path to the trusted CA file that signed the SSL certificate of the
+        # object storage endpoint.
+        # CLI flag: -common.storage.object-store.gcs.http.ca-file
+        [ca_file: <string> | default = ""]
+
+    azure:
+      # Azure storage account name
+      # CLI flag: -common.storage.object-store.azure.account-name
+      [account_name: <string> | default = ""]
+
+      # Azure storage account key
+      # CLI flag: -common.storage.object-store.azure.account-key
+      [account_key: <string> | default = ""]
+
+      # If `connection-string` is set, the values of `account-name` and
+      # `endpoint-suffix` values will not be used. Use this method over
+      # `account-key` if you need to authenticate via a SAS token. Or if you use
+      # the Azurite emulator.
+      # CLI flag: -common.storage.object-store.azure.connection-string
+      [connection_string: <string> | default = ""]
+
+      # Azure storage container name
+      # CLI flag: -common.storage.object-store.azure.container-name
+      [container_name: <string> | default = "loki"]
+
+      # Azure storage endpoint suffix without schema. The account name will be
+      # prefixed to this value to create the FQDN
+      # CLI flag: -common.storage.object-store.azure.endpoint-suffix
+      [endpoint_suffix: <string> | default = ""]
+
+      # Number of retries for recoverable errors
+      # CLI flag: -common.storage.object-store.azure.max-retries
+      [max_retries: <int> | default = 20]
+
+      http:
+        # The time an idle connection will remain idle before closing.
+        # CLI flag: -common.storage.object-store.azure.idle-conn-timeout
+        [idle_conn_timeout: <duration> | default = 1m30s]
+
+        # The amount of time the client will wait for a servers response
+        # headers.
+        # CLI flag: -common.storage.object-store.azure.response-header-timeout
+        [response_header_timeout: <duration> | default = 2m]
+
+        # If the client connects via HTTPS and this option is enabled, the
+        # client will accept any certificate and hostname.
+        # CLI flag: -common.storage.object-store.azure.insecure-skip-verify
+        [insecure_skip_verify: <boolean> | default = false]
+
+        # Maximum time to wait for a TLS handshake. 0 means no limit.
+        # CLI flag: -common.storage.object-store.azure.tls-handshake-timeout
+        [tls_handshake_timeout: <duration> | default = 10s]
+
+        # The time to wait for a server's first response headers after fully
+        # writing the request headers if the request has an Expect header. 0 to
+        # send the request body immediately.
+        # CLI flag: -common.storage.object-store.azure.expect-continue-timeout
+        [expect_continue_timeout: <duration> | default = 1s]
+
+        # Maximum number of idle (keep-alive) connections across all hosts. 0
+        # means no limit.
+        # CLI flag: -common.storage.object-store.azure.max-idle-connections
+        [max_idle_connections: <int> | default = 100]
+
+        # Maximum number of idle (keep-alive) connections to keep per-host. If
+        # 0, a built-in default value is used.
+        # CLI flag: -common.storage.object-store.azure.max-idle-connections-per-host
+        [max_idle_connections_per_host: <int> | default = 100]
+
+        # Maximum number of connections per host. 0 means no limit.
+        # CLI flag: -common.storage.object-store.azure.max-connections-per-host
+        [max_connections_per_host: <int> | default = 0]
+
+        # Path to the trusted CA file that signed the SSL certificate of the
+        # object storage endpoint.
+        # CLI flag: -common.storage.object-store.azure.ca-file
+        [ca_file: <string> | default = ""]
+
+    swift:
+      # OpenStack Swift authentication API version. 0 to autodetect.
+      # CLI flag: -common.storage.object-store.swift.auth-version
+      [auth_version: <int> | default = 0]
+
+      # OpenStack Swift authentication URL
+      # CLI flag: -common.storage.object-store.swift.auth-url
+      [auth_url: <string> | default = ""]
+
+      # Set this to true to use the internal OpenStack Swift endpoint URL
+      # CLI flag: -common.storage.object-store.swift.internal
+      [internal: <boolean> | default = false]
+
+      # OpenStack Swift username.
+      # CLI flag: -common.storage.object-store.swift.username
+      [username: <string> | default = ""]
+
+      # OpenStack Swift user's domain name.
+      # CLI flag: -common.storage.object-store.swift.user-domain-name
+      [user_domain_name: <string> | default = ""]
+
+      # OpenStack Swift user's domain ID.
+      # CLI flag: -common.storage.object-store.swift.user-domain-id
+      [user_domain_id: <string> | default = ""]
+
+      # OpenStack Swift user ID.
+      # CLI flag: -common.storage.object-store.swift.user-id
+      [user_id: <string> | default = ""]
+
+      # OpenStack Swift API key.
+      # CLI flag: -common.storage.object-store.swift.password
+      [password: <string> | default = ""]
+
+      # OpenStack Swift user's domain ID.
+      # CLI flag: -common.storage.object-store.swift.domain-id
+      [domain_id: <string> | default = ""]
+
+      # OpenStack Swift user's domain name.
+      # CLI flag: -common.storage.object-store.swift.domain-name
+      [domain_name: <string> | default = ""]
+
+      # OpenStack Swift project ID (v2,v3 auth only).
+      # CLI flag: -common.storage.object-store.swift.project-id
+      [project_id: <string> | default = ""]
+
+      # OpenStack Swift project name (v2,v3 auth only).
+      # CLI flag: -common.storage.object-store.swift.project-name
+      [project_name: <string> | default = ""]
+
+      # ID of the OpenStack Swift project's domain (v3 auth only), only needed
+      # if it differs the from user domain.
+      # CLI flag: -common.storage.object-store.swift.project-domain-id
+      [project_domain_id: <string> | default = ""]
+
+      # Name of the OpenStack Swift project's domain (v3 auth only), only needed
+      # if it differs from the user domain.
+      # CLI flag: -common.storage.object-store.swift.project-domain-name
+      [project_domain_name: <string> | default = ""]
+
+      # OpenStack Swift Region to use (v2,v3 auth only).
+      # CLI flag: -common.storage.object-store.swift.region-name
+      [region_name: <string> | default = ""]
+
+      # Name of the OpenStack Swift container to put chunks in.
+      # CLI flag: -common.storage.object-store.swift.container-name
+      [container_name: <string> | default = ""]
+
+      # Max retries on requests error.
+      # CLI flag: -common.storage.object-store.swift.max-retries
+      [max_retries: <int> | default = 3]
+
+      # Time after which a connection attempt is aborted.
+      # CLI flag: -common.storage.object-store.swift.connect-timeout
+      [connect_timeout: <duration> | default = 10s]
+
+      # Time after which an idle request is aborted. The timeout watchdog is
+      # reset each time some data is received, so the timeout triggers after X
+      # time no data is received on a request.
+      # CLI flag: -common.storage.object-store.swift.request-timeout
+      [request_timeout: <duration> | default = 5s]
+
+    filesystem:
+      # Local filesystem storage directory.
+      # CLI flag: -common.storage.object-store.filesystem.dir
+      [dir: <string> | default = ""]
+
+    # Prefix for all objects stored in the backend storage. For simplicity, it
+    # may only contain digits and English alphabet letters.
+    # CLI flag: -common.storage.object-store.storage-prefix
+    [storage_prefix: <string> | default = ""]
+
 [persist_tokens: <boolean>]
 
 [replication_factor: <int>]
@@ -3684,6 +4020,20 @@ ruler_remote_write_sigv4_config:
 # -runtime-config.reload-period (runtime_config.period in YAML).
 # CLI flag: -limits.per-user-override-period
 [per_tenant_override_period: <duration> | default = 10s]
+
+# S3 server-side encryption type. Required to enable server-side encryption
+# overrides for a specific tenant. If not set, the default S3 client settings
+# are used.
+[s3_sse_type: <string> | default = ""]
+
+# S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not
+# set.
+[s3_sse_kms_key_id: <string> | default = ""]
+
+# S3 server-side encryption KMS encryption context. If unset and the key ID
+# override is set, the encryption context will not be provided to S3. Ignored if
+# the SSE type override is not set.
+[s3_sse_kms_encryption_context: <string> | default = ""]
 
 # Deprecated: Use deletion_mode per tenant configuration instead.
 [allow_deletes: <boolean>]
@@ -5626,6 +5976,343 @@ congestion_control:
 # Maximum number of parallel chunk reads.
 # CLI flag: -store.max-parallel-get-chunk
 [max_parallel_get_chunk: <int> | default = 150]
+
+# Enable the thanos.io/objstore to be the backend for object storage
+# CLI flag: -use-thanos-objstore
+[use_thanos_objstore: <boolean> | default = false]
+
+object_store:
+  # Backend storage to use. Supported backends are: s3, gcs, azure, swift,
+  # filesystem.
+  # CLI flag: -object-store.backend
+  [backend: <string> | default = "filesystem"]
+
+  s3:
+    # The S3 bucket endpoint. It could be an AWS S3 endpoint listed at
+    # https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of an
+    # S3-compatible service in hostname:port format.
+    # CLI flag: -object-store.s3.endpoint
+    [endpoint: <string> | default = ""]
+
+    # S3 region. If unset, the client will issue a S3 GetBucketLocation API call
+    # to autodetect it.
+    # CLI flag: -object-store.s3.region
+    [region: <string> | default = ""]
+
+    # S3 bucket name
+    # CLI flag: -object-store.s3.bucket-name
+    [bucket_name: <string> | default = ""]
+
+    # S3 secret access key
+    # CLI flag: -object-store.s3.secret-access-key
+    [secret_access_key: <string> | default = ""]
+
+    # S3 session token
+    # CLI flag: -object-store.s3.session-token
+    [session_token: <string> | default = ""]
+
+    # S3 access key ID
+    # CLI flag: -object-store.s3.access-key-id
+    [access_key_id: <string> | default = ""]
+
+    # If enabled, use http:// for the S3 endpoint instead of https://. This
+    # could be useful in local dev/test environments while using an
+    # S3-compatible backend storage, like Minio.
+    # CLI flag: -object-store.s3.insecure
+    [insecure: <boolean> | default = false]
+
+    # Disable forcing S3 dualstack endpoint usage.
+    # CLI flag: -object-store.s3.disable-dualstack
+    [disable_dualstack: <boolean> | default = false]
+
+    # The signature version to use for authenticating against S3. Supported
+    # values are: v4.
+    # CLI flag: -object-store.s3.signature-version
+    [signature_version: <string> | default = "v4"]
+
+    # The S3 storage class to use. Details can be found at
+    # https://aws.amazon.com/s3/storage-classes/.
+    # CLI flag: -object-store.s3.storage-class
+    [storage_class: <string> | default = "STANDARD"]
+
+    sse:
+      # Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.
+      # CLI flag: -object-store.s3.sse.type
+      [type: <string> | default = ""]
+
+      # KMS Key ID used to encrypt objects in S3
+      # CLI flag: -object-store.s3.sse.kms-key-id
+      [kms_key_id: <string> | default = ""]
+
+      # KMS Encryption Context used for object encryption. It expects JSON
+      # formatted string.
+      # CLI flag: -object-store.s3.sse.kms-encryption-context
+      [kms_encryption_context: <string> | default = ""]
+
+    http:
+      # The time an idle connection will remain idle before closing.
+      # CLI flag: -object-store.s3.idle-conn-timeout
+      [idle_conn_timeout: <duration> | default = 1m30s]
+
+      # The amount of time the client will wait for a servers response headers.
+      # CLI flag: -object-store.s3.response-header-timeout
+      [response_header_timeout: <duration> | default = 2m]
+
+      # If the client connects via HTTPS and this option is enabled, the client
+      # will accept any certificate and hostname.
+      # CLI flag: -object-store.s3.insecure-skip-verify
+      [insecure_skip_verify: <boolean> | default = false]
+
+      # Maximum time to wait for a TLS handshake. 0 means no limit.
+      # CLI flag: -object-store.s3.tls-handshake-timeout
+      [tls_handshake_timeout: <duration> | default = 10s]
+
+      # The time to wait for a server's first response headers after fully
+      # writing the request headers if the request has an Expect header. 0 to
+      # send the request body immediately.
+      # CLI flag: -object-store.s3.expect-continue-timeout
+      [expect_continue_timeout: <duration> | default = 1s]
+
+      # Maximum number of idle (keep-alive) connections across all hosts. 0
+      # means no limit.
+      # CLI flag: -object-store.s3.max-idle-connections
+      [max_idle_connections: <int> | default = 100]
+
+      # Maximum number of idle (keep-alive) connections to keep per-host. If 0,
+      # a built-in default value is used.
+      # CLI flag: -object-store.s3.max-idle-connections-per-host
+      [max_idle_connections_per_host: <int> | default = 100]
+
+      # Maximum number of connections per host. 0 means no limit.
+      # CLI flag: -object-store.s3.max-connections-per-host
+      [max_connections_per_host: <int> | default = 0]
+
+      # Path to the trusted CA file that signed the SSL certificate of the
+      # object storage endpoint.
+      # CLI flag: -object-store.s3.ca-file
+      [ca_file: <string> | default = ""]
+
+  gcs:
+    # GCS bucket name
+    # CLI flag: -object-store.gcs.bucket-name
+    [bucket_name: <string> | default = ""]
+
+    # JSON representing either a Google Developers Console
+    # client_credentials.json file or a Google Developers service account key
+    # file. If empty, fallback to Google default logic.
+    # CLI flag: -object-store.gcs.service-account
+    [service_account: <string> | default = ""]
+
+    # The size of the buffer that GCS client for each PUT request. 0 to disable
+    # buffering.
+    # CLI flag: -object-store.gcs.chunk-buffer-size
+    [chunk_buffer_size: <int> | default = 0]
+
+    http:
+      # The time an idle connection will remain idle before closing.
+      # CLI flag: -object-store.gcs.http.idle-conn-timeout
+      [idle_conn_timeout: <duration> | default = 1m30s]
+
+      # The amount of time the client will wait for a servers response headers.
+      # CLI flag: -object-store.gcs.http.response-header-timeout
+      [response_header_timeout: <duration> | default = 2m]
+
+      # If the client connects via HTTPS and this option is enabled, the client
+      # will accept any certificate and hostname.
+      # CLI flag: -object-store.gcs.http.insecure-skip-verify
+      [insecure_skip_verify: <boolean> | default = false]
+
+      # Maximum time to wait for a TLS handshake. 0 means no limit.
+      # CLI flag: -object-store.gcs.http.tls-handshake-timeout
+      [tls_handshake_timeout: <duration> | default = 10s]
+
+      # The time to wait for a server's first response headers after fully
+      # writing the request headers if the request has an Expect header. 0 to
+      # send the request body immediately.
+      # CLI flag: -object-store.gcs.http.expect-continue-timeout
+      [expect_continue_timeout: <duration> | default = 1s]
+
+      # Maximum number of idle (keep-alive) connections across all hosts. 0
+      # means no limit.
+      # CLI flag: -object-store.gcs.http.max-idle-connections
+      [max_idle_connections: <int> | default = 100]
+
+      # Maximum number of idle (keep-alive) connections to keep per-host. If 0,
+      # a built-in default value is used.
+      # CLI flag: -object-store.gcs.http.max-idle-connections-per-host
+      [max_idle_connections_per_host: <int> | default = 100]
+
+      # Maximum number of connections per host. 0 means no limit.
+      # CLI flag: -object-store.gcs.http.max-connections-per-host
+      [max_connections_per_host: <int> | default = 0]
+
+      # Path to the trusted CA file that signed the SSL certificate of the
+      # object storage endpoint.
+      # CLI flag: -object-store.gcs.http.ca-file
+      [ca_file: <string> | default = ""]
+
+  azure:
+    # Azure storage account name
+    # CLI flag: -object-store.azure.account-name
+    [account_name: <string> | default = ""]
+
+    # Azure storage account key
+    # CLI flag: -object-store.azure.account-key
+    [account_key: <string> | default = ""]
+
+    # If `connection-string` is set, the values of `account-name` and
+    # `endpoint-suffix` values will not be used. Use this method over
+    # `account-key` if you need to authenticate via a SAS token. Or if you use
+    # the Azurite emulator.
+    # CLI flag: -object-store.azure.connection-string
+    [connection_string: <string> | default = ""]
+
+    # Azure storage container name
+    # CLI flag: -object-store.azure.container-name
+    [container_name: <string> | default = "loki"]
+
+    # Azure storage endpoint suffix without schema. The account name will be
+    # prefixed to this value to create the FQDN
+    # CLI flag: -object-store.azure.endpoint-suffix
+    [endpoint_suffix: <string> | default = ""]
+
+    # Number of retries for recoverable errors
+    # CLI flag: -object-store.azure.max-retries
+    [max_retries: <int> | default = 20]
+
+    http:
+      # The time an idle connection will remain idle before closing.
+      # CLI flag: -object-store.azure.idle-conn-timeout
+      [idle_conn_timeout: <duration> | default = 1m30s]
+
+      # The amount of time the client will wait for a servers response headers.
+      # CLI flag: -object-store.azure.response-header-timeout
+      [response_header_timeout: <duration> | default = 2m]
+
+      # If the client connects via HTTPS and this option is enabled, the client
+      # will accept any certificate and hostname.
+      # CLI flag: -object-store.azure.insecure-skip-verify
+      [insecure_skip_verify: <boolean> | default = false]
+
+      # Maximum time to wait for a TLS handshake. 0 means no limit.
+      # CLI flag: -object-store.azure.tls-handshake-timeout
+      [tls_handshake_timeout: <duration> | default = 10s]
+
+      # The time to wait for a server's first response headers after fully
+      # writing the request headers if the request has an Expect header. 0 to
+      # send the request body immediately.
+      # CLI flag: -object-store.azure.expect-continue-timeout
+      [expect_continue_timeout: <duration> | default = 1s]
+
+      # Maximum number of idle (keep-alive) connections across all hosts. 0
+      # means no limit.
+      # CLI flag: -object-store.azure.max-idle-connections
+      [max_idle_connections: <int> | default = 100]
+
+      # Maximum number of idle (keep-alive) connections to keep per-host. If 0,
+      # a built-in default value is used.
+      # CLI flag: -object-store.azure.max-idle-connections-per-host
+      [max_idle_connections_per_host: <int> | default = 100]
+
+      # Maximum number of connections per host. 0 means no limit.
+      # CLI flag: -object-store.azure.max-connections-per-host
+      [max_connections_per_host: <int> | default = 0]
+
+      # Path to the trusted CA file that signed the SSL certificate of the
+      # object storage endpoint.
+      # CLI flag: -object-store.azure.ca-file
+      [ca_file: <string> | default = ""]
+
+  swift:
+    # OpenStack Swift authentication API version. 0 to autodetect.
+    # CLI flag: -object-store.swift.auth-version
+    [auth_version: <int> | default = 0]
+
+    # OpenStack Swift authentication URL
+    # CLI flag: -object-store.swift.auth-url
+    [auth_url: <string> | default = ""]
+
+    # Set this to true to use the internal OpenStack Swift endpoint URL
+    # CLI flag: -object-store.swift.internal
+    [internal: <boolean> | default = false]
+
+    # OpenStack Swift username.
+    # CLI flag: -object-store.swift.username
+    [username: <string> | default = ""]
+
+    # OpenStack Swift user's domain name.
+    # CLI flag: -object-store.swift.user-domain-name
+    [user_domain_name: <string> | default = ""]
+
+    # OpenStack Swift user's domain ID.
+    # CLI flag: -object-store.swift.user-domain-id
+    [user_domain_id: <string> | default = ""]
+
+    # OpenStack Swift user ID.
+    # CLI flag: -object-store.swift.user-id
+    [user_id: <string> | default = ""]
+
+    # OpenStack Swift API key.
+    # CLI flag: -object-store.swift.password
+    [password: <string> | default = ""]
+
+    # OpenStack Swift user's domain ID.
+    # CLI flag: -object-store.swift.domain-id
+    [domain_id: <string> | default = ""]
+
+    # OpenStack Swift user's domain name.
+    # CLI flag: -object-store.swift.domain-name
+    [domain_name: <string> | default = ""]
+
+    # OpenStack Swift project ID (v2,v3 auth only).
+    # CLI flag: -object-store.swift.project-id
+    [project_id: <string> | default = ""]
+
+    # OpenStack Swift project name (v2,v3 auth only).
+    # CLI flag: -object-store.swift.project-name
+    [project_name: <string> | default = ""]
+
+    # ID of the OpenStack Swift project's domain (v3 auth only), only needed if
+    # it differs the from user domain.
+    # CLI flag: -object-store.swift.project-domain-id
+    [project_domain_id: <string> | default = ""]
+
+    # Name of the OpenStack Swift project's domain (v3 auth only), only needed
+    # if it differs from the user domain.
+    # CLI flag: -object-store.swift.project-domain-name
+    [project_domain_name: <string> | default = ""]
+
+    # OpenStack Swift Region to use (v2,v3 auth only).
+    # CLI flag: -object-store.swift.region-name
+    [region_name: <string> | default = ""]
+
+    # Name of the OpenStack Swift container to put chunks in.
+    # CLI flag: -object-store.swift.container-name
+    [container_name: <string> | default = ""]
+
+    # Max retries on requests error.
+    # CLI flag: -object-store.swift.max-retries
+    [max_retries: <int> | default = 3]
+
+    # Time after which a connection attempt is aborted.
+    # CLI flag: -object-store.swift.connect-timeout
+    [connect_timeout: <duration> | default = 10s]
+
+    # Time after which an idle request is aborted. The timeout watchdog is reset
+    # each time some data is received, so the timeout triggers after X time no
+    # data is received on a request.
+    # CLI flag: -object-store.swift.request-timeout
+    [request_timeout: <duration> | default = 5s]
+
+  filesystem:
+    # Local filesystem storage directory.
+    # CLI flag: -object-store.filesystem.dir
+    [dir: <string> | default = ""]
+
+  # Prefix for all objects stored in the backend storage. For simplicity, it may
+  # only contain digits and English alphabet letters.
+  # CLI flag: -object-store.storage-prefix
+  [storage_prefix: <string> | default = ""]
 
 # The maximum number of chunks to fetch per batch.
 # CLI flag: -store.max-chunk-batch-size
