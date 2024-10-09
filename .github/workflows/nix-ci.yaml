@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "flake.nix"
+      - "go.mod"
       - "nix/**"
 jobs:
   lint:
