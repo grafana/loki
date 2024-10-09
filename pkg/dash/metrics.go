@@ -2,9 +2,10 @@ package dash
 
 import (
 	"github.com/grafana/dskit/server"
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/grafana/loki/v3/pkg/storage/stores/index"
 	"github.com/grafana/loki/v3/pkg/util/constants"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // MetricLoader is an interface for how different metric categories used in dashboards are loaded.
