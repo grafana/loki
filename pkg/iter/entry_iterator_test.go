@@ -178,8 +178,6 @@ func TestMergeIteratorPrefetch(t *testing.T) {
 	}
 
 	for testName, testFunc := range tests {
-		testFunc := testFunc
-
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 

@@ -24,7 +24,7 @@ run:
     - cgo
     - promtail_journal_enabled
     - integration
-    
+
 # output configuration options
 output:
   formats:
@@ -63,7 +63,7 @@ linters:
     - govet
     - typecheck
     - depguard
-    - exportloopref
+    - copyloopvar
     - gofmt
     - goimports
     - gosimple

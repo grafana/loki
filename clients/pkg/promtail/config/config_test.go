@@ -175,7 +175,6 @@ func TestConfig_Setup(t *testing.T) {
 			},
 		},
 	} {
-		tt := tt
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			tt.in.Setup(log.NewNopLogger())
 			require.Equal(t, tt.expected, tt.in)

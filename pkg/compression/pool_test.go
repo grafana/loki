@@ -16,7 +16,6 @@ import (
 
 func TestPool(t *testing.T) {
 	for _, enc := range supportedCodecs {
-		enc := enc
 		t.Run(enc.String(), func(t *testing.T) {
 			var wg sync.WaitGroup
 

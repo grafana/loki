@@ -193,24 +193,24 @@ func convertCPUTimes(s string) (ret float64, err error) {
 		_t := strings.Split(s, ":")
 		switch len(_t) {
 		case 3:
-			hour, err := strconv.Atoi(_t[0])
+			hour, err := strconv.ParseInt(_t[0], 10, 32)
 			if err != nil {
 				return ret, err
 			}
-			t += hour * 60 * 60 * clockTicks
+			t += int(hour) * 60 * 60 * clockTicks
 
-			mins, err := strconv.Atoi(_t[1])
+			mins, err := strconv.ParseInt(_t[1], 10, 32)
 			if err != nil {
 				return ret, err
 			}
-			t += mins * 60 * clockTicks
+			t += int(mins) * 60 * clockTicks
 			_tmp = _t[2]
 		case 2:
-			mins, err := strconv.Atoi(_t[0])
+			mins, err := strconv.ParseInt(_t[0], 10, 32)
 			if err != nil {
 				return ret, err
 			}
-			t += mins * 60 * clockTicks
+			t += int(mins) * 60 * clockTicks
 			_tmp = _t[1]
 		case 1, 0:
 			_tmp = s
@@ -225,10 +225,10 @@ func convertCPUTimes(s string) (ret float64, err error) {
 	if err != nil {
 		return ret, err
 	}
-	h, err := strconv.Atoi(_t[0])
-	t += h * clockTicks
-	h, err = strconv.Atoi(_t[1])
-	t += h
+	h, err := strconv.ParseInt(_t[0], 10, 32)
+	t += int(h) * clockTicks
+	h, err = strconv.ParseInt(_t[1], 10, 32)
+	t += int(h)
 	return float64(t) / float64(clockTicks), nil
 }
 
@@ -252,8 +252,8 @@ func (p *Process) ConnectionsWithContext(ctx context.Context) ([]net.ConnectionS
 	return net.ConnectionsPidWithContext(ctx, "all", p.Pid)
 }
 
-func (p *Process) ConnectionsMaxWithContext(ctx context.Context, max int) ([]net.ConnectionStat, error) {
-	return net.ConnectionsPidMaxWithContext(ctx, "all", p.Pid, max)
+func (p *Process) ConnectionsMaxWithContext(ctx context.Context, maxConn int) ([]net.ConnectionStat, error) {
+	return net.ConnectionsPidMaxWithContext(ctx, "all", p.Pid, maxConn)
 }
 
 func ProcessesWithContext(ctx context.Context) ([]*Process, error) {
