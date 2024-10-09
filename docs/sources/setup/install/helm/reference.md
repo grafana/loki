@@ -4628,7 +4628,8 @@ null
   "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 300,
-  "tolerations": []
+  "tolerations": [],
+  "updateStrategy": "RollingUpdate"
 }
 </pre>
 </td>
@@ -4915,6 +4916,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>indexGateway.updateStrategy</td>
+			<td>string</td>
+			<td>UpdateStrategy for the StatefulSet. One of 'OnDelete' or 'RollingUpdate'.</td>
+			<td><pre lang="json">
+"RollingUpdate"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>ingester</td>
 			<td>object</td>
 			<td>Configuration for the ingester</td>
@@ -5004,6 +5014,7 @@ null
       "whenUnsatisfiable": "ScheduleAnyway"
     }
   ],
+  "updateStrategy": "RollingUpdate",
   "zoneAwareReplication": {
     "enabled": true,
     "maxUnavailablePct": 33,
@@ -5413,6 +5424,15 @@ false
 			<td>topologySpread for ingester pods.</td>
 			<td><pre lang="">
 Defaults to allow skew no more than 1 node
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.updateStrategy</td>
+			<td>string</td>
+			<td>UpdateStrategy for the ingester StatefulSets. One of 'RollingUpdate' or 'OnDelete'.</td>
+			<td><pre lang="json">
+"RollingUpdate"
 </pre>
 </td>
 		</tr>
