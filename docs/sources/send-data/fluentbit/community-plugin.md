@@ -202,7 +202,7 @@ Considering the record below :
 }
 ```
 
-and a LabelMap file as follow :
+and a LabelMap file as follows :
 
 ```json
 {
