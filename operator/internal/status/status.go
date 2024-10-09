@@ -23,7 +23,7 @@ func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request, now time.Time,
 		if apierrors.IsNotFound(err) {
 			return nil
 		}
-		return kverrors.Wrap(err, "failed to lookup lokistack", "name", req.NamespacedName)
+		return kverrors.Wrap(err, "failed to lookup lokistack")
 	}
 
 	cs, err := generateComponentStatus(ctx, k, &stack)

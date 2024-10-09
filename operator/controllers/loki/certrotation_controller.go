@@ -39,12 +39,14 @@ type CertRotationReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.7.0/pkg/reconcile
 func (r *CertRotationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	ll := logWithLokiStackRef(r.Log, req, CertRotationCtrlName)
+
 	managed, err := state.IsManaged(ctx, req, r.Client)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 	if !managed {
-		r.Log.Info("Skipping reconciliation for unmanaged LokiStack resource", "name", req.String())
+		ll.Info("skipping reconciliation for unmanaged LokiStack resource")
 		// Stop requeueing for unmanaged LokiStack custom resources
 		return ctrl.Result{}, nil
 	}
@@ -55,27 +57,26 @@ func (r *CertRotationReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	checkExpiryAfter := expiryRetryAfter(rt.TargetCertRefresh)
-	r.Log.Info("Checking if LokiStack certificates expired", "name", req.String(), "interval", checkExpiryAfter.String())
+	ll.Info("checking if certificates expired", "interval", checkExpiryAfter.String())
 
 	var expired *certrotation.CertExpiredError
 
-	err = handlers.CheckCertExpiry(ctx, r.Log, req, r.Client, r.FeatureGates)
+	err = handlers.CheckCertExpiry(ctx, ll, req, r.Client, r.FeatureGates)
 	switch {
 	case errors.As(err, &expired):
-		r.Log.Info("Certificate expired", "msg", expired.Error())
+		ll.Info("certificate expired", "msg", expired.Error())
 	case err != nil:
 		return ctrl.Result{}, err
 	default:
-		r.Log.Info("Skipping cert rotation, all LokiStack certificates still valid", "name", req.String())
+		ll.Info("skipping rotation, all certificates still valid")
 		return ctrl.Result{
 			RequeueAfter: checkExpiryAfter,
 		}, nil
 	}
 
-	r.Log.Error(err, "LokiStack certificates expired", "name", req.String())
+	ll.Error(err, "certificates expired")
 	err = lokistack.AnnotateForRequiredCertRotation(ctx, r.Client, req.Name, req.Namespace)
 	if err != nil {
-		r.Log.Error(err, "failed to annotate required cert rotation", "name", req.String())
 		return ctrl.Result{}, err
 	}
 
@@ -94,6 +95,7 @@ func (r *CertRotationReconciler) buildController(bld k8s.Builder) error {
 	return bld.
 		For(&lokiv1.LokiStack{}).
 		Owns(&corev1.Secret{}).
+		WithLogConstructor(lokiStackLogConstructor(r.Log, CertRotationCtrlName)).
 		Complete(r)
 }
 

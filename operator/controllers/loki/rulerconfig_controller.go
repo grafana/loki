@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 
+	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -10,11 +11,13 @@ import (
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/controllers/loki/internal/lokistack"
+	"github.com/grafana/loki/operator/internal/external/k8s"
 )
 
 // RulerConfigReconciler reconciles a RulerConfig object
 type RulerConfigReconciler struct {
 	client.Client
+	Log    logr.Logger
 	Scheme *runtime.Scheme
 }
 
@@ -54,7 +57,13 @@ func (r *RulerConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *RulerConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	b := ctrl.NewControllerManagedBy(mgr)
+	return r.buildController(k8s.NewCtrlBuilder(b))
+}
+
+func (r *RulerConfigReconciler) buildController(bld k8s.Builder) error {
+	return bld.
 		For(&lokiv1.RulerConfig{}).
+		WithLogConstructor(genericLogConstructor(r.Log, RulerConfigCtrlName)).
 		Complete(r)
 }

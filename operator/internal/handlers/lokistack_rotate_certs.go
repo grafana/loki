@@ -25,16 +25,16 @@ import (
 // including the signing CA and a ca bundle or else returns an error. It returns only a degrade-condition-worthy
 // error if building the manifests fails for any reason.
 func CreateOrRotateCertificates(ctx context.Context, log logr.Logger, req ctrl.Request, k k8s.Client, s *runtime.Scheme, fg configv1.FeatureGates) error {
-	ll := log.WithValues("lokistack", req.String(), "event", "createOrRotateCerts")
+	ll := log.WithValues("event", eventCreateOrRotateCertificates)
 
 	var stack lokiv1.LokiStack
 	if err := k.Get(ctx, req.NamespacedName, &stack); err != nil {
 		if apierrors.IsNotFound(err) {
 			// maybe the user deleted it before we could react? Either way this isn't an issue
-			ll.Error(err, "could not find the requested LokiStack", "name", req.String())
+			ll.Error(err, "could not find the requested LokiStack")
 			return nil
 		}
-		return kverrors.Wrap(err, "failed to lookup LokiStack", "name", req.String())
+		return kverrors.Wrap(err, "failed to lookup LokiStack")
 	}
 
 	var mode lokiv1.ModeType
@@ -44,7 +44,7 @@ func CreateOrRotateCertificates(ctx context.Context, log logr.Logger, req ctrl.R
 
 	opts, err := certificates.GetOptions(ctx, k, req, mode)
 	if err != nil {
-		return kverrors.Wrap(err, "failed to lookup certificates secrets", "name", req.String())
+		return kverrors.Wrap(err, "failed to lookup certificates secrets")
 	}
 
 	ll.Info("begin building certificate manifests")
@@ -102,7 +102,7 @@ func CreateOrRotateCertificates(ctx context.Context, log logr.Logger, req ctrl.R
 	}
 
 	if errCount > 0 {
-		return kverrors.New("failed to create or rotate LokiStack certificates", "name", req.String())
+		return kverrors.New("failed to create or rotate LokiStack certificates")
 	}
 
 	return nil

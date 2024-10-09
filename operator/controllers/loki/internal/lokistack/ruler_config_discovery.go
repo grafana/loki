@@ -6,6 +6,7 @@ import (
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -28,7 +29,7 @@ func AnnotateForRulerConfig(ctx context.Context, k k8s.Client, name, namespace s
 
 	timeStamp := time.Now().UTC().Format(time.RFC3339)
 	if err := updateAnnotation(ctx, k, ss, annotationRulerConfigDiscoveredAt, timeStamp); err != nil {
-		return kverrors.Wrap(err, "failed to update lokistack `rulerConfigDiscoveredAt` annotation", "key", key)
+		return kverrors.Wrap(err, "failed to update lokistack `rulerConfigDiscoveredAt` annotation", "lokistack", klog.KRef(ss.Namespace, ss.Name))
 	}
 
 	return nil
@@ -45,7 +46,7 @@ func RemoveRulerConfigAnnotation(ctx context.Context, k k8s.Client, name, namesp
 	}
 
 	if err := removeAnnotation(ctx, k, ss, annotationRulerConfigDiscoveredAt); err != nil {
-		return kverrors.Wrap(err, "failed to update lokistack `rulerConfigDiscoveredAt` annotation", "key", key)
+		return kverrors.Wrap(err, "failed to update lokistack `rulerConfigDiscoveredAt` annotation", "lokistack", klog.KRef(ss.Namespace, ss.Name))
 	}
 
 	return nil
@@ -60,7 +61,7 @@ func getLokiStack(ctx context.Context, k k8s.Client, key client.ObjectKey) (*lok
 			return nil, nil
 		}
 
-		return nil, kverrors.Wrap(err, "failed to get lokistack", "key", key)
+		return nil, kverrors.Wrap(err, "failed to get lokistack", "lokistack", klog.KRef(key.Namespace, key.Name))
 	}
 
 	return s.DeepCopy(), nil

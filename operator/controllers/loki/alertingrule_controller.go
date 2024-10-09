@@ -13,6 +13,7 @@ import (
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/controllers/loki/internal/lokistack"
+	"github.com/grafana/loki/operator/internal/external/k8s"
 )
 
 // AlertingRuleReconciler reconciles a AlertingRule object
@@ -46,8 +47,14 @@ func (r *AlertingRuleReconciler) Reconcile(ctx context.Context, _ ctrl.Request) 
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *AlertingRuleReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	b := ctrl.NewControllerManagedBy(mgr)
+	return r.buildController(k8s.NewCtrlBuilder(b))
+}
+
+func (r *AlertingRuleReconciler) buildController(bld k8s.Builder) error {
+	return bld.
 		For(&lokiv1.AlertingRule{}).
 		Watches(&corev1.Namespace{}, &handler.EnqueueRequestForObject{}, builder.OnlyMetadata).
+		WithLogConstructor(genericLogConstructor(r.Log, AlertingRuleCtrlName)).
 		Complete(r)
 }
