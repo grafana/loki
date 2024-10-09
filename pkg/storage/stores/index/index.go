@@ -62,20 +62,20 @@ type ReaderWriter interface {
 
 type MonitoredReaderWriter struct {
 	rw      ReaderWriter
-	metrics *metrics
+	metrics *Metrics
 }
 
 func NewMonitoredReaderWriter(rw ReaderWriter, reg prometheus.Registerer) *MonitoredReaderWriter {
 	return &MonitoredReaderWriter{
 		rw:      rw,
-		metrics: newMetrics(reg),
+		metrics: NewMetrics(reg),
 	}
 }
 
 func (m MonitoredReaderWriter) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRef, error) {
 	var chunks []logproto.ChunkRef
 
-	if err := loki_instrument.TimeRequest(ctx, "chunk_refs", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
+	if err := loki_instrument.TimeRequest(ctx, "chunk_refs", instrument.NewHistogramCollector(m.metrics.IndexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		chunks, err = m.rw.GetChunkRefs(ctx, userID, from, through, predicate)
 		return err
@@ -88,7 +88,7 @@ func (m MonitoredReaderWriter) GetChunkRefs(ctx context.Context, userID string, 
 
 func (m MonitoredReaderWriter) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
 	var lbls []labels.Labels
-	if err := loki_instrument.TimeRequest(ctx, "series", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
+	if err := loki_instrument.TimeRequest(ctx, "series", instrument.NewHistogramCollector(m.metrics.IndexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		lbls, err = m.rw.GetSeries(ctx, userID, from, through, matchers...)
 		return err
@@ -101,7 +101,7 @@ func (m MonitoredReaderWriter) GetSeries(ctx context.Context, userID string, fro
 
 func (m MonitoredReaderWriter) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
 	var values []string
-	if err := loki_instrument.TimeRequest(ctx, "label_values", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
+	if err := loki_instrument.TimeRequest(ctx, "label_values", instrument.NewHistogramCollector(m.metrics.IndexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		values, err = m.rw.LabelValuesForMetricName(ctx, userID, from, through, metricName, labelName, matchers...)
 		return err
@@ -114,7 +114,7 @@ func (m MonitoredReaderWriter) LabelValuesForMetricName(ctx context.Context, use
 
 func (m MonitoredReaderWriter) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error) {
 	var values []string
-	if err := loki_instrument.TimeRequest(ctx, "label_names", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
+	if err := loki_instrument.TimeRequest(ctx, "label_names", instrument.NewHistogramCollector(m.metrics.IndexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		values, err = m.rw.LabelNamesForMetricName(ctx, userID, from, through, metricName, matchers...)
 		return err
@@ -127,7 +127,7 @@ func (m MonitoredReaderWriter) LabelNamesForMetricName(ctx context.Context, user
 
 func (m MonitoredReaderWriter) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
 	var sts *stats.Stats
-	if err := loki_instrument.TimeRequest(ctx, "stats", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
+	if err := loki_instrument.TimeRequest(ctx, "stats", instrument.NewHistogramCollector(m.metrics.IndexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		sts, err = m.rw.Stats(ctx, userID, from, through, matchers...)
 		return err
@@ -140,7 +140,7 @@ func (m MonitoredReaderWriter) Stats(ctx context.Context, userID string, from, t
 
 func (m MonitoredReaderWriter) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	var vol *logproto.VolumeResponse
-	if err := loki_instrument.TimeRequest(ctx, "volume", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
+	if err := loki_instrument.TimeRequest(ctx, "volume", instrument.NewHistogramCollector(m.metrics.IndexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		vol, err = m.rw.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)
 		return err
@@ -159,7 +159,7 @@ func (m MonitoredReaderWriter) GetShards(
 	predicate chunk.Predicate,
 ) (*logproto.ShardsResponse, error) {
 	var shards *logproto.ShardsResponse
-	if err := loki_instrument.TimeRequest(ctx, "shards", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
+	if err := loki_instrument.TimeRequest(ctx, "shards", instrument.NewHistogramCollector(m.metrics.IndexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		start := time.Now()
 		shards, err = m.rw.GetShards(ctx, userID, from, through, targetBytesPerShard, predicate)
@@ -185,7 +185,7 @@ func (m MonitoredReaderWriter) SetChunkFilterer(chunkFilter chunk.RequestChunkFi
 }
 
 func (m MonitoredReaderWriter) IndexChunk(ctx context.Context, from, through model.Time, chk chunk.Chunk) error {
-	return loki_instrument.TimeRequest(ctx, "index_chunk", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
+	return loki_instrument.TimeRequest(ctx, "index_chunk", instrument.NewHistogramCollector(m.metrics.IndexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		return m.rw.IndexChunk(ctx, from, through, chk)
 	})
 }
@@ -206,7 +206,7 @@ func (m MonitoredReaderWriter) HasForSeries(from, through model.Time) (sharding.
 				) (stop bool),
 				matchers ...*labels.Matcher,
 			) error {
-				return loki_instrument.TimeRequest(ctx, "for_series", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
+				return loki_instrument.TimeRequest(ctx, "for_series", instrument.NewHistogramCollector(m.metrics.IndexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
 					return impl.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...)
 				})
 			},
