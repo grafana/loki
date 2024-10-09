@@ -8,7 +8,6 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/grafana/dskit/server"
 	"github.com/grafana/grafana-foundation-sdk/go/cog"
 	"github.com/grafana/grafana-foundation-sdk/go/common"
 	"github.com/grafana/grafana-foundation-sdk/go/dashboard"
@@ -18,16 +17,19 @@ import (
 )
 
 type DashboardLoader struct {
-	server *server.Metrics
+	ml MetricLoader
 
 	// individual dashboards, pre-rendered at initialization and
 	// accessed by http handlers via corresponding CamelCase methods
 	writes []byte
 }
 
-func NewDashboardLoader(server *server.Metrics) (*DashboardLoader, error) {
+func NewDashboardLoader(ml MetricLoader) (*DashboardLoader, error) {
+	dl := &DashboardLoader{
+		ml: ml,
+	}
 
-	writes, err := WritesDashboard(server.RequestDuration)
+	writes, err := dl.writesDashboard()
 	if err != nil {
 		return nil, err
 	}
@@ -37,11 +39,9 @@ func NewDashboardLoader(server *server.Metrics) (*DashboardLoader, error) {
 		return nil, err
 	}
 
-	return &DashboardLoader{
-		server: server,
+	dl.writes = dashboardJson
 
-		writes: dashboardJson,
-	}, nil
+	return dl, nil
 }
 
 func (l *DashboardLoader) WritesDashboard() []byte {
@@ -56,7 +56,7 @@ func (l *DashboardLoader) Writes() http.HandlerFunc {
 	})
 }
 
-func WritesDashboard(requestDuration *prom.HistogramVec) (dashboard.Dashboard, error) {
+func (l *DashboardLoader) writesDashboard() (dashboard.Dashboard, error) {
 	// TODO(owen-d): map statuses to colors here
 	var statusMap map[string]string
 
@@ -64,23 +64,35 @@ func WritesDashboard(requestDuration *prom.HistogramVec) (dashboard.Dashboard, e
 	// (not everyone may use our k8s style)
 	topologyFilters := []string{`namespace=~".*loki.*"`}
 
-	distributorRED := NewRedMethodBuilder(
-		"Distributor",
-		requestDuration,
-		statusMap,
-		topologyFilters,
-		[]string{`container="distributor"`},
-		"pod",
-	)
+	server := l.ml.Server()
+	index := l.ml.Index()
 
-	ingesterRED := NewRedMethodBuilder(
-		"Ingester",
-		requestDuration,
-		statusMap,
-		topologyFilters,
-		[]string{`container="ingester"`},
-		"pod",
-	)
+	reds := []*RedMethodBuilder{
+		NewRedMethodBuilder(
+			"Distributor",
+			server.RequestDuration,
+			statusMap,
+			topologyFilters,
+			[]string{`container="distributor"`},
+			"pod",
+		),
+		NewRedMethodBuilder(
+			"Ingester",
+			server.RequestDuration,
+			statusMap,
+			topologyFilters,
+			[]string{`container="ingester"`},
+			"pod",
+		),
+		NewRedMethodBuilder(
+			"Index",
+			index.IndexQueryLatency,
+			statusMap,
+			topologyFilters,
+			[]string{`container="ingester"`, `operation="index_chunk"`},
+			"pod",
+		),
+	}
 
 	builder := dashboard.NewDashboardBuilder("Loki Writes (generated)").
 		Tags([]string{"generated", "from", "go"}).
@@ -88,10 +100,7 @@ func WritesDashboard(requestDuration *prom.HistogramVec) (dashboard.Dashboard, e
 		Time("now-30m", "now").
 		Timezone(common.TimeZoneUtc)
 
-	for _, red := range []*RedMethodBuilder{
-		distributorRED,
-		ingesterRED,
-	} {
+	for _, red := range reds {
 		if err := red.Build(builder); err != nil {
 			return dashboard.Dashboard{}, err
 		}
