@@ -92,7 +92,9 @@ func WritesDashboard(requestDuration *prom.HistogramVec) (dashboard.Dashboard, e
 		distributorRED,
 		ingesterRED,
 	} {
-		red.Build(builder)
+		if err := red.Build(builder); err != nil {
+			return dashboard.Dashboard{}, err
+		}
 	}
 
 	return builder.Build()
@@ -191,14 +193,16 @@ func (a TemplateArgs) Map() map[string]string {
 	return res
 }
 
-func (a TemplateArgs) Run(tpl *template.Template) string {
+func (a TemplateArgs) Run(tpl *template.Template) (string, error) {
 	return RunTemplate(tpl, a)
 }
 
-func RunTemplate(tpl *template.Template, args any) string {
+func RunTemplate(tpl *template.Template, args any) (string, error) {
 	var b strings.Builder
-	tpl.Execute(&b, args)
-	return b.String()
+	if err := tpl.Execute(&b, args); err != nil {
+		return "", err
+	}
+	return b.String(), nil
 }
 
 var qpsTemplate = forceTpl(
@@ -235,11 +239,15 @@ var latencyTemplate = forceTpl(
 	`,
 )
 
-func (b *RedMethodBuilder) QPSPanel() *timeseries.PanelBuilder {
+func (b *RedMethodBuilder) QPSPanel() (*timeseries.PanelBuilder, error) {
 	args := b.TemplateArgs()
+	gen, err := args.Run(qpsTemplate)
+	if err != nil {
+		return nil, err
+	}
 	qry := prometheus.NewDataqueryBuilder().
 		Expr(
-			args.Run(qpsTemplate),
+			gen,
 		).
 		LegendFormat(
 			fmt.Sprintf(
@@ -253,10 +261,10 @@ func (b *RedMethodBuilder) QPSPanel() *timeseries.PanelBuilder {
 		Title("qps").
 		Unit("seconds").
 		Min(0).
-		WithTarget(qry)
+		WithTarget(qry), nil
 }
 
-func (b *RedMethodBuilder) LatencyPanels() (res []cog.Builder[dashboard.Panel]) {
+func (b *RedMethodBuilder) LatencyPanels() (res []cog.Builder[dashboard.Panel], err error) {
 	rounds := []TemplateArgs{
 		b.TemplateArgs(),
 	}
@@ -295,9 +303,14 @@ func (b *RedMethodBuilder) LatencyPanels() (res []cog.Builder[dashboard.Panel]) 
 				legend = args.PartitionFields + ", " + legend
 			}
 
+			gen, err := RunTemplate(latencyTemplate, extended)
+			if err != nil {
+				return nil, err
+			}
+
 			qry := prometheus.NewDataqueryBuilder().
 				Expr(
-					RunTemplate(latencyTemplate, extended),
+					gen,
 				).
 				LegendFormat(
 					fmt.Sprintf(
@@ -321,22 +334,35 @@ func (b *RedMethodBuilder) LatencyPanels() (res []cog.Builder[dashboard.Panel]) 
 		res = append(res, panel)
 	}
 
-	return
+	return res, nil
 }
 
 func (b *RedMethodBuilder) Row() *dashboard.RowBuilder {
 	return dashboard.NewRowBuilder(b.title)
 }
 
-func (b *RedMethodBuilder) Panels() []cog.Builder[dashboard.Panel] {
-	return append([]cog.Builder[dashboard.Panel]{
-		b.QPSPanel(),
-	}, b.LatencyPanels()...)
+func (b *RedMethodBuilder) Panels() ([]cog.Builder[dashboard.Panel], error) {
+	qpsPanel, err := b.QPSPanel()
+	if err != nil {
+		return nil, err
+	}
+
+	latencyPanels, err := b.LatencyPanels()
+	if err != nil {
+		return nil, err
+	}
+
+	return append([]cog.Builder[dashboard.Panel]{qpsPanel}, latencyPanels...), nil
 }
 
-func (b *RedMethodBuilder) Build(builder *dashboard.DashboardBuilder) {
+func (b *RedMethodBuilder) Build(builder *dashboard.DashboardBuilder) error {
 	builder.WithRow(b.Row())
-	for _, panel := range b.Panels() {
+	panels, err := b.Panels()
+	if err != nil {
+		return err
+	}
+	for _, panel := range panels {
 		builder.WithPanel(panel)
 	}
+	return nil
 }
