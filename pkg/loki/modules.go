@@ -1777,7 +1777,7 @@ func (t *Loki) initPartitionRing() (services.Service, error) {
 }
 
 func (t *Loki) initDashboards() (services.Service, error) {
-	loader, err := dash.NewDashboardLoader(t.Metrics)
+	loader, err := dash.NewDashboardLoader(&dash.SimpleMetricLoader{})
 	if err != nil {
 		return nil, err
 	}

@@ -95,6 +95,7 @@ func (l *DashboardLoader) writesDashboard() (dashboard.Dashboard, error) {
 	}
 
 	builder := dashboard.NewDashboardBuilder("Loki Writes (generated)").
+		Uid("loki-writes-generated").
 		Tags([]string{"generated", "from", "go"}).
 		Refresh("1m").
 		Time("now-30m", "now").
