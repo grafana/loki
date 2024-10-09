@@ -16,14 +16,14 @@ type Request interface {
 type HeadersCarrier weaveworks_httpgrpc.HTTPRequest
 
 func (c *HeadersCarrier) Set(key, val string) {
-	c.Headers = append(c.Headers, &weaveworks_httpgrpc.Header{
+	c.Headers = append((*c).Headers, &weaveworks_httpgrpc.Header{
 		Key:    key,
 		Values: []string{val},
 	})
 }
 
 func (c *HeadersCarrier) ForeachKey(handler func(key, val string) error) error {
-	for _, h := range c.Headers {
+	for _, h := range (*c).Headers {
 		for _, v := range h.Values {
 			if err := handler(h.Key, v); err != nil {
 				return err
