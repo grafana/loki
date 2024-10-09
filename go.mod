@@ -138,7 +138,7 @@ require (
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/richardartoul/molecule v1.0.0
 	github.com/schollz/progressbar/v3 v3.14.6
-	github.com/shirou/gopsutil/v4 v4.24.0-alpha.1
+	github.com/shirou/gopsutil/v4 v4.24.8
 	github.com/thanos-io/objstore v0.0.0-20240818203309-0363dadfdfb1
 	github.com/twmb/franz-go v1.17.1
 	github.com/twmb/franz-go/pkg/kadm v1.13.0

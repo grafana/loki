@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -68,7 +69,12 @@ func (p *Process) NameWithContext(ctx context.Context) (string, error) {
 }
 
 func (p *Process) CwdWithContext(ctx context.Context) (string, error) {
-	return "", common.ErrNotImplementedError
+	mib := []int32{CTLKern, KernProcCwd, p.Pid}
+	buf, _, err := common.CallSyscall(mib)
+	if err != nil {
+		return "", err
+	}
+	return common.ByteToString(buf), nil
 }
 
 func (p *Process) ExeWithContext(ctx context.Context) (string, error) {
@@ -299,7 +305,7 @@ func (p *Process) ConnectionsWithContext(ctx context.Context) ([]net.ConnectionS
 	return nil, common.ErrNotImplementedError
 }
 
-func (p *Process) ConnectionsMaxWithContext(ctx context.Context, max int) ([]net.ConnectionStat, error) {
+func (p *Process) ConnectionsMaxWithContext(ctx context.Context, maxConn int) ([]net.ConnectionStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
@@ -338,7 +344,7 @@ func (p *Process) getKProc() (*KinfoProc, error) {
 		return nil, err
 	}
 	if length != sizeOfKinfoProc {
-		return nil, err
+		return nil, errors.New("unexpected size of KinfoProc")
 	}
 
 	k, err := parseKinfoProc(buf)
