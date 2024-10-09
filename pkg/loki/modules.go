@@ -322,10 +322,6 @@ func (t *Loki) initTenantConfigs() (_ services.Service, err error) {
 func (t *Loki) initDistributor() (services.Service, error) {
 	t.Cfg.Distributor.KafkaConfig = t.Cfg.KafkaConfig
 
-	if t.Cfg.Distributor.KafkaEnabled && !t.Cfg.Ingester.KafkaIngestion.Enabled {
-		return nil, errors.New("kafka is enabled in distributor but not in ingester")
-	}
-
 	var err error
 	logger := log.With(util_log.Logger, "component", "distributor")
 	t.distributor, err = distributor.New(

@@ -86,7 +86,6 @@ func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(context.Co
 			return nil, err
 		}
 		tenantShards := q.getShardCountForTenant(tenantID)
-		// TODO: Confirm the shuffle-shard lookback period == query-ingesters-within
 		subring, err := q.partitionRing.ShuffleShardWithLookback(tenantID, tenantShards, q.querierConfig.QueryIngestersWithin, time.Now())
 		if err != nil {
 			return nil, err
