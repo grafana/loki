@@ -193,7 +193,6 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 }
 
 func (s *LokiStore) init() error {
-	metrics := &client.Metrics{Registerer: prometheus.DefaultRegisterer}
 	for i, p := range s.schemaCfg.Configs {
 		p := p
 		chunkClient, err := s.chunkClientForPeriod(p)
@@ -209,7 +208,7 @@ func (s *LokiStore) init() error {
 		if i < len(s.schemaCfg.Configs)-1 {
 			periodEndTime = config.DayTime{Time: s.schemaCfg.Configs[i+1].From.Time.Add(-time.Millisecond)}
 		}
-		w, idx, stop, err := s.storeForPeriod(p, p.GetIndexTableNumberRange(periodEndTime), chunkClient, f, metrics)
+		w, idx, stop, err := s.storeForPeriod(p, p.GetIndexTableNumberRange(periodEndTime), chunkClient, f)
 		if err != nil {
 			return err
 		}
@@ -265,7 +264,7 @@ func shouldUseIndexGatewayClient(cfg indexshipper.Config) bool {
 	return true
 }
 
-func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.TableRange, chunkClient client.Client, f *fetcher.Fetcher, metrics *client.Metrics) (stores.ChunkWriter, index.ReaderWriter, func(), error) {
+func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.TableRange, chunkClient client.Client, f *fetcher.Fetcher) (stores.ChunkWriter, index.ReaderWriter, func(), error) {
 	component := fmt.Sprintf("index-store-%s-%s", p.IndexType, p.From.String())
 	indexClientReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": component}, s.registerer)
 	indexClientLogger := log.With(s.logger, "index-store", fmt.Sprintf("%s-%s", p.IndexType, p.From.String()))
@@ -287,8 +286,8 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 
 		var objectClient client.ObjectClient
 		var err error
-		if s.cfg.ThanosObjStore {
-			objectClient, err = NewObjectClientV2(component, p.ObjectType, s.cfg, metrics)
+		if s.cfg.UseThanosObjstore {
+			objectClient, err = NewObjectClientV2(component, p.ObjectType, s.cfg)
 		} else {
 			objectClient, err = NewObjectClient(p.ObjectType, s.cfg, s.clientMetrics)
 		}

@@ -27,7 +27,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/ibmcloud"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/openstack"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // RuleStoreConfig configures a rule store.
@@ -44,9 +43,6 @@ type RuleStoreConfig struct {
 	Swift        openstack.SwiftConfig     `yaml:"swift" doc:"description=Configures backend rule storage for Swift."`
 	COS          ibmcloud.COSConfig        `yaml:"cos" doc:"description=Configures backend rule storage for IBM Cloud Object Storage (COS)."`
 	Local        local.Config              `yaml:"local" doc:"description=Configures backend rule storage for a local file system directory."`
-
-	ThanosObjStore bool             `yaml:"thanos_objstore"`
-	ObjStoreConf   rulestore.Config `yaml:"objstore_config"`
 
 	mock rulestore.RuleStore `yaml:"-"`
 }
@@ -86,7 +82,7 @@ func (cfg *RuleStoreConfig) IsDefaults() bool {
 // NewLegacyRuleStore returns a rule store backend client based on the provided cfg.
 // The client used by the function is based a legacy object store clients that shouldn't
 // be used anymore.
-func NewLegacyRuleStore(cfg RuleStoreConfig, cfgProvider bucket.TenantConfigProvider, hedgeCfg hedging.Config, clientMetrics storage.ClientMetrics, loader promRules.GroupLoader, logger log.Logger) (rulestore.RuleStore, error) {
+func NewLegacyRuleStore(cfg RuleStoreConfig, hedgeCfg hedging.Config, clientMetrics storage.ClientMetrics, loader promRules.GroupLoader, logger log.Logger) (rulestore.RuleStore, error) {
 	if cfg.mock != nil {
 		return cfg.mock, nil
 	}
@@ -97,10 +93,6 @@ func NewLegacyRuleStore(cfg RuleStoreConfig, cfgProvider bucket.TenantConfigProv
 
 	var err error
 	var client client.ObjectClient
-
-	if cfg.ThanosObjStore {
-		return NewRuleStore(context.Background(), cfg.ObjStoreConf, cfgProvider, loader, util_log.Logger, prometheus.DefaultRegisterer)
-	}
 
 	switch cfg.Type {
 	case "azure":
@@ -144,8 +136,7 @@ func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.
 	if cfg.Backend == local.Name {
 		return local.NewLocalRulesClient(cfg.Local, loader)
 	}
-	metrics := &bucket.Metrics{Registerer: reg}
-	bucketClient, err := bucket.NewClient(ctx, cfg.Config, "ruler-storage", logger, metrics)
+	bucketClient, err := bucket.NewClient(ctx, cfg.Config, "ruler-storage", logger)
 	if err != nil {
 		return nil, err
 	}

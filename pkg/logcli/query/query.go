@@ -540,9 +540,8 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 func GetObjectClient(store string, conf loki.Config, cm storage.ClientMetrics) (chunk.ObjectClient, error) {
 	var c chunk.ObjectClient
 	var err error
-	if conf.StorageConfig.ThanosObjStore {
-		metrics := &chunk.Metrics{Registerer: prometheus.DefaultRegisterer}
-		c, err = storage.NewObjectClientV2("log-cli-query", store, conf.StorageConfig, metrics)
+	if conf.StorageConfig.UseThanosObjstore {
+		c, err = storage.NewObjectClientV2("log-cli-query", store, conf.StorageConfig)
 	} else {
 		c, err = storage.NewObjectClient(store, conf.StorageConfig, cm)
 	}

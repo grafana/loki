@@ -188,13 +188,12 @@ func NewTSDBStores(
 		stores:    make([]TSDBStore, len(schemaCfg.Configs)),
 	}
 
-	metrics := &client.Metrics{Registerer: reg}
 	for i, cfg := range schemaCfg.Configs {
 		if cfg.IndexType == types.TSDBType {
 			var c client.ObjectClient
 			var err error
-			if storeCfg.ThanosObjStore {
-				c, err = baseStore.NewObjectClientV2(component, cfg.ObjectType, storeCfg, metrics)
+			if storeCfg.UseThanosObjstore {
+				c, err = baseStore.NewObjectClientV2(component, cfg.ObjectType, storeCfg)
 			} else {
 				c, err = baseStore.NewObjectClient(cfg.ObjectType, storeCfg, clientMetrics)
 			}

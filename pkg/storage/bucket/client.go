@@ -46,6 +46,9 @@ var (
 
 	ErrUnsupportedStorageBackend        = errors.New("unsupported storage backend")
 	ErrInvalidCharactersInStoragePrefix = errors.New("storage prefix contains invalid characters, it may only contain digits and English alphabet letters")
+
+	// TODO: Remove this global if we can tag all clients with component name
+	metrics = objstore.BucketMetrics(prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer), "")
 )
 
 // StorageBackendConfig holds configuration for accessing long-term storage.
@@ -154,12 +157,13 @@ func (cfg *Config) Validate() error {
 }
 
 // NewClient creates a new bucket client based on the configured backend
-func NewClient(ctx context.Context, cfg Config, name string, logger log.Logger, metrics *Metrics) (objstore.InstrumentedBucket, error) {
+func NewClient(ctx context.Context, cfg Config, name string, logger log.Logger) (objstore.InstrumentedBucket, error) {
 	var (
 		client objstore.Bucket
 		err    error
 	)
 
+	// TODO: add support for other backends that loki already supports
 	switch cfg.Backend {
 	case S3:
 		client, err = s3.NewBucketClient(cfg.S3, name, logger)
@@ -183,7 +187,7 @@ func NewClient(ctx context.Context, cfg Config, name string, logger log.Logger, 
 		client = NewPrefixedBucketClient(client, cfg.StoragePrefix)
 	}
 
-	instrumentedClient := objstoretracing.WrapWithTraces(bucketWithMetrics(client, name, metrics))
+	instrumentedClient := objstoretracing.WrapWithTraces(objstore.WrapWith(client, metrics))
 
 	// Wrap the client with any provided middleware
 	for _, wrap := range cfg.Middlewares {
@@ -194,20 +198,4 @@ func NewClient(ctx context.Context, cfg Config, name string, logger log.Logger, 
 	}
 
 	return instrumentedClient, nil
-}
-
-func bucketWithMetrics(bucketClient objstore.Bucket, name string, metrics *Metrics) objstore.Bucket {
-	if metrics == nil {
-		return bucketClient
-	}
-
-	if metrics.BucketMetrics == nil {
-		reg := metrics.Registerer
-		reg = prometheus.WrapRegistererWithPrefix("loki_", reg)
-		reg = prometheus.WrapRegistererWith(prometheus.Labels{"component": name}, reg)
-		// Save metrics to be assigned to other buckets created with the same component name
-		metrics.BucketMetrics = objstore.BucketMetrics(reg, "")
-	}
-
-	return objstore.WrapWith(bucketClient, metrics.BucketMetrics)
 }

@@ -333,12 +333,11 @@ func NewBloomStore(
 		}
 	}
 
-	metrics := &client.Metrics{Registerer: prometheus.DefaultRegisterer}
 	for _, periodicConfig := range periodicConfigs {
 		var objectClient client.ObjectClient
 		var err error
-		if storageConfig.ThanosObjStore {
-			objectClient, err = storage.NewObjectClientV2("bloom-store", periodicConfig.ObjectType, storageConfig, metrics)
+		if storageConfig.UseThanosObjstore {
+			objectClient, err = storage.NewObjectClientV2("bloom-store", periodicConfig.ObjectType, storageConfig)
 		} else {
 			objectClient, err = storage.NewObjectClient(periodicConfig.ObjectType, storageConfig, clientMetrics)
 		}

@@ -4,9 +4,6 @@ import (
 	"context"
 	"errors"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/thanos-io/objstore"
-
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 )
@@ -32,24 +29,4 @@ type Client interface {
 // Only used by DynamoDB (dynamodbIndexReader and dynamoDBStorageClient)
 type ObjectAndIndexClient interface {
 	PutChunksAndIndex(ctx context.Context, chunks []chunk.Chunk, index index.WriteBatch) error
-}
-
-// Metrics holds metric related configuration for the objstore.
-type Metrics struct {
-	// Registerer is the prometheus registerer that will be used by the objstore
-	// to register bucket metrics.
-	Registerer prometheus.Registerer
-	// BucketMetrics are objstore metrics that are will wrap the bucket.
-	// This field is used to share metrics among buckets with from the same
-	// component.
-	// This should only be set by the function that interfaces with the bucket
-	// package.
-	BucketMetrics *objstore.Metrics
-	// HedgingBucketMetrics are objstore metrics that are will wrap the
-	// heding bucket.
-	// This field is used to share metrics among buckets with from the same
-	// component.
-	// This should only be set by the function that interfaces with the bucket
-	// package.
-	HedgingBucketMetrics *objstore.Metrics
 }

@@ -295,8 +295,8 @@ type Config struct {
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
 	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
 
-	ThanosObjStore bool          `yaml:"thanos_objstore"`
-	ObjStoreConf   bucket.Config `yaml:"objstore_config"`
+	UseThanosObjstore bool          `yaml:"thanos_objstore"`
+	ObjectStore       bucket.Config `yaml:"object_store"`
 
 	MaxChunkBatchSize   int                       `yaml:"max_chunk_batch_size"`
 	BoltDBShipperConfig boltdb.IndexCfg           `yaml:"boltdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in the form of boltdb files. Required fields only required when boltdb-shipper is defined in config."`
@@ -325,8 +325,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Hedging.RegisterFlagsWithPrefix("store.", f)
 	cfg.CongestionControl.RegisterFlagsWithPrefix("store.", f)
 
-	f.BoolVar(&cfg.ThanosObjStore, "thanos.enable", false, "Enable the thanos.io/objstore to be the backend for object storage")
-	cfg.ObjStoreConf.RegisterFlagsWithPrefix("thanos.", f)
+	f.BoolVar(&cfg.UseThanosObjstore, "use-thanos-objstore", false, "Enable the thanos.io/objstore to be the backend for object storage")
+	cfg.ObjectStore.RegisterFlagsWithPrefix("object-store.", f)
 
 	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "", f)
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")
@@ -365,7 +365,7 @@ func (cfg *Config) Validate() error {
 	if err := cfg.BloomShipperConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid bloom shipper config")
 	}
-	if err := cfg.ObjStoreConf.Validate(); err != nil {
+	if err := cfg.ObjectStore.Validate(); err != nil {
 		return err
 	}
 
@@ -406,9 +406,8 @@ func NewIndexClient(component string, periodCfg config.PeriodConfig, tableRange 
 
 			var objectClient client.ObjectClient
 			var err error
-			if cfg.ThanosObjStore {
-				metrics := &client.Metrics{Registerer: prometheus.DefaultRegisterer}
-				objectClient, err = NewObjectClientV2(component, periodCfg.ObjectType, cfg, metrics)
+			if cfg.UseThanosObjstore {
+				objectClient, err = NewObjectClientV2(component, periodCfg.ObjectType, cfg)
 			} else {
 				registerer = prometheus.WrapRegistererWith(prometheus.Labels{"component": component}, registerer)
 				objectClient, err = NewObjectClient(periodCfg.ObjectType, cfg, cm)
@@ -488,9 +487,8 @@ func NewChunkClient(component, name string, cfg Config, schemaCfg config.SchemaC
 		case types.StorageTypeInMemory:
 			var c client.ObjectClient
 			var err error
-			if cfg.ThanosObjStore {
-				metrics := &client.Metrics{Registerer: prometheus.DefaultRegisterer}
-				c, err = NewObjectClientV2(component, name, cfg, metrics)
+			if cfg.UseThanosObjstore {
+				c, err = NewObjectClientV2(component, name, cfg)
 			} else {
 				c, err = NewObjectClient(name, cfg, clientMetrics)
 			}
@@ -505,9 +503,8 @@ func NewChunkClient(component, name string, cfg Config, schemaCfg config.SchemaC
 		case types.StorageTypeFileSystem:
 			var c client.ObjectClient
 			var err error
-			if cfg.ThanosObjStore {
-				metrics := &client.Metrics{Registerer: prometheus.DefaultRegisterer}
-				c, err = NewObjectClientV2(component, name, cfg, metrics)
+			if cfg.UseThanosObjstore {
+				c, err = NewObjectClientV2(component, name, cfg)
 			} else {
 				c, err = NewObjectClient(name, cfg, clientMetrics)
 			}
@@ -519,9 +516,8 @@ func NewChunkClient(component, name string, cfg Config, schemaCfg config.SchemaC
 		case types.StorageTypeAWS, types.StorageTypeS3, types.StorageTypeAzure, types.StorageTypeBOS, types.StorageTypeSwift, types.StorageTypeCOS, types.StorageTypeAlibabaCloud:
 			var c client.ObjectClient
 			var err error
-			if cfg.ThanosObjStore {
-				metrics := &client.Metrics{Registerer: prometheus.DefaultRegisterer}
-				c, err = NewObjectClientV2(component, name, cfg, metrics)
+			if cfg.UseThanosObjstore {
+				c, err = NewObjectClientV2(component, name, cfg)
 			} else {
 				c, err = NewObjectClient(name, cfg, clientMetrics)
 			}
@@ -536,9 +532,8 @@ func NewChunkClient(component, name string, cfg Config, schemaCfg config.SchemaC
 		case types.StorageTypeGCS:
 			var c client.ObjectClient
 			var err error
-			if cfg.ThanosObjStore {
-				metrics := &client.Metrics{Registerer: prometheus.DefaultRegisterer}
-				c, err = NewObjectClientV2(component, name, cfg, metrics)
+			if cfg.UseThanosObjstore {
+				c, err = NewObjectClientV2(component, name, cfg)
 			} else {
 				c, err = NewObjectClient(name, cfg, clientMetrics)
 			}
@@ -593,9 +588,8 @@ func NewTableClient(component, name string, periodCfg config.PeriodConfig, cfg C
 	case util.StringsContain(types.SupportedIndexTypes, name):
 		var objectClient client.ObjectClient
 		var err error
-		if cfg.ThanosObjStore {
-			metrics := &client.Metrics{Registerer: prometheus.DefaultRegisterer}
-			objectClient, err = NewObjectClientV2(component, periodCfg.ObjectType, cfg, metrics)
+		if cfg.UseThanosObjstore {
+			objectClient, err = NewObjectClientV2(component, periodCfg.ObjectType, cfg)
 		} else {
 			objectClient, err = NewObjectClient(periodCfg.ObjectType, cfg, cm)
 		}
@@ -654,10 +648,7 @@ func (c *ClientMetrics) Unregister() {
 
 // NewObjectClient makes a new StorageClient with the prefix in the front.
 func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
-	metrics := &client.Metrics{
-		Registerer: prometheus.DefaultRegisterer,
-	}
-	actual, err := internalNewObjectClient("", name, cfg, clientMetrics, metrics)
+	actual, err := internalNewObjectClient("", name, cfg, clientMetrics)
 	if err != nil {
 		return nil, err
 	}
@@ -671,11 +662,10 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 }
 
 // NewObjectClient makes a new StorageClient with the prefix in the front.
-func NewObjectClientV2(component, name string, cfg Config, metrics *client.Metrics) (client.ObjectClient, error) {
-	// Statify internalNewObjectClient signature to be removed once the old objstore is removed
+func NewObjectClientV2(component, name string, cfg Config) (client.ObjectClient, error) {
+	// TODO: Statify internalNewObjectClient signature to be removed once the old objstore is removed
 	clientMetrics := ClientMetrics{}
-
-	actual, err := internalNewObjectClient(component, name, cfg, clientMetrics, metrics)
+	actual, err := internalNewObjectClient(component, name, cfg, clientMetrics)
 	if err != nil {
 		return nil, err
 	}
@@ -689,7 +679,7 @@ func NewObjectClientV2(component, name string, cfg Config, metrics *client.Metri
 }
 
 // internalNewObjectClient makes the underlying StorageClient of the desired types.
-func internalNewObjectClient(component, name string, cfg Config, clientMetrics ClientMetrics, metrics *client.Metrics) (client.ObjectClient, error) {
+func internalNewObjectClient(component, name string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
 	var (
 		namedStore string
 		storeType  = name
@@ -743,8 +733,8 @@ func internalNewObjectClient(component, name string, cfg Config, clientMetrics C
 		if cfg.CongestionControl.Enabled {
 			gcsCfg.EnableRetries = false
 		}
-		if cfg.ThanosObjStore {
-			return gcp.NewGCSThanosObjectClient(context.Background(), cfg.ObjStoreConf, component, util_log.Logger, cfg.Hedging, metrics)
+		if cfg.UseThanosObjstore {
+			return gcp.NewGCSThanosObjectClient(context.Background(), cfg.ObjectStore, component, util_log.Logger, cfg.Hedging)
 		}
 		return gcp.NewGCSObjectClient(context.Background(), gcsCfg, cfg.Hedging)
 

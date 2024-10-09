@@ -1237,12 +1237,8 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 			return nil, err
 		}
 	}
-	overrides, err := validation.NewOverrides(t.Cfg.LimitsConfig, t.TenantLimits)
-	if err != nil {
-		return nil, err
-	}
 
-	t.RulerStorage, err = base_ruler.NewLegacyRuleStore(t.Cfg.Ruler.StoreConfig, overrides, t.Cfg.StorageConfig.Hedging, t.ClientMetrics, ruler.GroupLoader{}, util_log.Logger)
+	t.RulerStorage, err = base_ruler.NewLegacyRuleStore(t.Cfg.Ruler.StoreConfig, t.Cfg.StorageConfig.Hedging, t.ClientMetrics, ruler.GroupLoader{}, util_log.Logger)
 
 	return
 }
@@ -1411,7 +1407,6 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	}
 
 	objectClients := make(map[config.DayTime]client.ObjectClient)
-	metrics := &client.Metrics{Registerer: prometheus.DefaultRegisterer}
 	for _, periodConfig := range t.Cfg.SchemaConfig.Configs {
 		if !config.IsObjectStorageIndex(periodConfig.IndexType) {
 			continue
@@ -1419,8 +1414,8 @@ func (t *Loki) initCompactor() (services.Service, error) {
 
 		var objectClient client.ObjectClient
 		var err error
-		if t.Cfg.StorageConfig.ThanosObjStore {
-			objectClient, err = storage.NewObjectClientV2("compactor", periodConfig.ObjectType, t.Cfg.StorageConfig, metrics)
+		if t.Cfg.StorageConfig.UseThanosObjstore {
+			objectClient, err = storage.NewObjectClientV2("compactor", periodConfig.ObjectType, t.Cfg.StorageConfig)
 		} else {
 			objectClient, err = storage.NewObjectClient(periodConfig.ObjectType, t.Cfg.StorageConfig, t.ClientMetrics)
 		}
@@ -1434,9 +1429,8 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	var deleteRequestStoreClient client.ObjectClient
 	if t.Cfg.CompactorConfig.RetentionEnabled {
 		if deleteStore := t.Cfg.CompactorConfig.DeleteRequestStore; deleteStore != "" {
-			if t.Cfg.StorageConfig.ThanosObjStore {
-				metrics := &client.Metrics{Registerer: prometheus.DefaultRegisterer}
-				deleteRequestStoreClient, err = storage.NewObjectClientV2("compactor", deleteStore, t.Cfg.StorageConfig, metrics)
+			if t.Cfg.StorageConfig.UseThanosObjstore {
+				deleteRequestStoreClient, err = storage.NewObjectClientV2("compactor", deleteStore, t.Cfg.StorageConfig)
 			} else {
 				deleteRequestStoreClient, err = storage.NewObjectClient(deleteStore, t.Cfg.StorageConfig, t.ClientMetrics)
 			}
@@ -1754,9 +1748,8 @@ func (t *Loki) initAnalytics() (services.Service, error) {
 	}
 
 	var objectClient client.ObjectClient
-	if t.Cfg.StorageConfig.ThanosObjStore {
-		metrics := &client.Metrics{Registerer: prometheus.DefaultRegisterer}
-		objectClient, err = storage.NewObjectClientV2("analytics", period.ObjectType, t.Cfg.StorageConfig, metrics)
+	if t.Cfg.StorageConfig.UseThanosObjstore {
+		objectClient, err = storage.NewObjectClientV2("analytics", period.ObjectType, t.Cfg.StorageConfig)
 	} else {
 		objectClient, err = storage.NewObjectClient(period.ObjectType, t.Cfg.StorageConfig, t.ClientMetrics)
 	}

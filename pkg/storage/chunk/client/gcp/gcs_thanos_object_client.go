@@ -24,28 +24,16 @@ type GCSThanosObjectClient struct {
 	hedgedClient objstore.Bucket
 }
 
-func NewGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, hedgingCfg hedging.Config, metrics *client.Metrics) (*GCSThanosObjectClient, error) {
-	objMetrics := &bucket.Metrics{
-		Registerer:    prometheus.WrapRegistererWith(prometheus.Labels{"hedging": "false"}, metrics.Registerer),
-		BucketMetrics: metrics.BucketMetrics,
-	}
-	client, err := newGCSThanosObjectClient(ctx, cfg, component, logger, false, hedgingCfg, objMetrics)
+func NewGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, hedgingCfg hedging.Config) (*GCSThanosObjectClient, error) {
+	client, err := newGCSThanosObjectClient(ctx, cfg, component, logger, false, hedgingCfg)
 	if err != nil {
 		return nil, err
 	}
-	// Save metrics in case we need to create more buckets
-	metrics.BucketMetrics = objMetrics.BucketMetrics
 
-	hedgingObjMetrics := &bucket.Metrics{
-		Registerer:    prometheus.WrapRegistererWith(prometheus.Labels{"hedging": "true"}, metrics.Registerer),
-		BucketMetrics: metrics.HedgingBucketMetrics,
-	}
-	hedgedClient, err := newGCSThanosObjectClient(ctx, cfg, component, logger, true, hedgingCfg, hedgingObjMetrics)
+	hedgedClient, err := newGCSThanosObjectClient(ctx, cfg, component, logger, true, hedgingCfg)
 	if err != nil {
 		return nil, err
 	}
-	// Save metrics in case we need to create more buckets
-	metrics.HedgingBucketMetrics = objMetrics.BucketMetrics
 
 	return &GCSThanosObjectClient{
 		client:       client,
@@ -53,16 +41,16 @@ func NewGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, component 
 	}, nil
 }
 
-func newGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, hedging bool, hedgingCfg hedging.Config, metrics *bucket.Metrics) (objstore.Bucket, error) {
+func newGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, hedging bool, hedgingCfg hedging.Config) (objstore.Bucket, error) {
 	if hedging {
-		hedgedTrasport, err := hedgingCfg.RoundTripperWithRegisterer(nil, prometheus.WrapRegistererWith(prometheus.Labels{"hedging": "true"}, metrics.Registerer))
+		hedgedTrasport, err := hedgingCfg.RoundTripperWithRegisterer(nil, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
 		if err != nil {
 			return nil, err
 		}
 
 		cfg.GCS.HTTP.Transport = hedgedTrasport
 	}
-	return bucket.NewClient(ctx, cfg, component, logger, metrics)
+	return bucket.NewClient(ctx, cfg, component, logger)
 }
 
 func (s *GCSThanosObjectClient) Stop() {}
@@ -75,7 +63,7 @@ func (s *GCSThanosObjectClient) ObjectExists(ctx context.Context, objectKey stri
 // GetAttributes returns the attributes of the specified object key from the configured GCS bucket.
 func (s *GCSThanosObjectClient) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
 	attr := client.ObjectAttributes{}
-	thanosAttr, err := s.client.Attributes(ctx, objectKey)
+	thanosAttr, err := s.hedgedClient.Attributes(ctx, objectKey)
 	if err != nil {
 		return attr, err
 	}
@@ -91,12 +79,12 @@ func (s *GCSThanosObjectClient) PutObject(ctx context.Context, objectKey string,
 
 // GetObject returns a reader and the size for the specified object key from the configured GCS bucket.
 func (s *GCSThanosObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
-	reader, err := s.client.Get(ctx, objectKey)
+	reader, err := s.hedgedClient.Get(ctx, objectKey)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	attr, err := s.client.Attributes(ctx, objectKey)
+	attr, err := s.hedgedClient.Attributes(ctx, objectKey)
 	if err != nil {
 		return nil, 0, errors.Wrapf(err, "failed to get attributes for %s", objectKey)
 	}
@@ -105,7 +93,7 @@ func (s *GCSThanosObjectClient) GetObject(ctx context.Context, objectKey string)
 }
 
 func (s *GCSThanosObjectClient) GetObjectRange(ctx context.Context, objectKey string, offset, length int64) (io.ReadCloser, error) {
-	reader, err := s.client.GetRange(ctx, objectKey, offset, length)
+	reader, err := s.hedgedClient.GetRange(ctx, objectKey, offset, length)
 	if err != nil {
 		return nil, err
 	}
