@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/grafana/dskit/server"
+
 	"github.com/grafana/loki/v3/pkg/dash"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
