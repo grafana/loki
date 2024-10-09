@@ -2,7 +2,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   creationTimestamp: null
   labels:
     app.kubernetes.io/instance: loki-operator-v0.6.2
@@ -69,7 +69,6 @@ spec:
                       enableIPv6:
                         description: |-
                           EnableIPv6 enables IPv6 support for the memberlist based hash ring.
-
 
                           Currently this also forces the instanceAddrType to podIP to avoid local address lookup
                           for the memberlist.
@@ -242,13 +241,14 @@ spec:
                                       description: Regex allows choosing the attributes
                                         by matching a regular expression.
                                       type: string
+                                  required:
+                                  - action
                                   type: object
                                 type: array
                               ignoreDefaults:
                                 description: |-
                                   IgnoreDefaults controls whether to ignore the global configuration for resource attributes
                                   indexed as labels.
-
 
                                   If IgnoreDefaults is true, then this spec needs to contain at least one mapping to a index label.
                                 type: boolean
@@ -499,13 +499,14 @@ spec:
                                         description: Regex allows choosing the attributes
                                           by matching a regular expression.
                                         type: string
+                                    required:
+                                    - action
                                     type: object
                                   type: array
                                 ignoreDefaults:
                                   description: |-
                                     IgnoreDefaults controls whether to ignore the global configuration for resource attributes
                                     indexed as labels.
-
 
                                     If IgnoreDefaults is true, then this spec needs to contain at least one mapping to a index label.
                                   type: boolean
@@ -849,7 +850,6 @@ spec:
                         effectiveDate:
                           description: |-
                             EffectiveDate contains a date in YYYY-MM-DD format which is interpreted in the UTC time zone.
-
 
                             The configuration always needs at least one schema that is currently valid. This means that when creating a new
                             LokiStack it is recommended to add a schema with the latest available version and an effective date of "yesterday".
@@ -3896,7 +3896,6 @@ spec:
                           AdminGroups defines a list of groups, whose members are considered to have admin-privileges by the Loki Operator.
                           Setting this to an empty array disables admin groups.
 
-
                           By default the following groups are considered admin-groups:
                            - system:cluster-admins
                            - cluster-admin
@@ -3989,16 +3988,8 @@ spec:
               conditions:
                 description: Conditions of the Loki deployment health.
                 items:
-                  description: "Condition contains details for one aspect of the current
-                    state of this API Resource.\n---\nThis struct is intended for
-                    direct use as an array at the field path .status.conditions.  For
-                    example,\n\n\n\ttype FooStatus struct{\n\t    // Represents the
-                    observations of a foo's current state.\n\t    // Known .status.conditions.type
-                    are: \"Available\", \"Progressing\", and \"Degraded\"\n\t    //
-                    +patchMergeKey=type\n\t    // +patchStrategy=merge\n\t    // +listType=map\n\t
-                    \   // +listMapKey=type\n\t    Conditions []metav1.Condition `json:\"conditions,omitempty\"
-                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`\n\n\n\t
-                    \   // other fields\n\t}"
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
                   properties:
                     lastTransitionTime:
                       description: |-
@@ -4039,12 +4030,7 @@ spec:
                       - Unknown
                       type: string
                     type:
-                      description: |-
-                        type of condition in CamelCase or in foo.example.com/CamelCase.
-                        ---
-                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
-                        useful (see .node.status.conditions), the ability to deconflict is important.
-                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -4080,7 +4066,6 @@ spec:
                         effectiveDate:
                           description: |-
                             EffectiveDate contains a date in YYYY-MM-DD format which is interpreted in the UTC time zone.
-
 
                             The configuration always needs at least one schema that is currently valid. This means that when creating a new
                             LokiStack it is recommended to add a schema with the latest available version and an effective date of "yesterday".
@@ -5102,6 +5087,7 @@ spec:
                 - mode
                 type: object
             required:
+            - managementState
             - size
             - storage
             - storageClassName
@@ -5182,16 +5168,8 @@ spec:
               conditions:
                 description: Conditions of the Loki deployment health.
                 items:
-                  description: "Condition contains details for one aspect of the current
-                    state of this API Resource.\n---\nThis struct is intended for
-                    direct use as an array at the field path .status.conditions.  For
-                    example,\n\n\n\ttype FooStatus struct{\n\t    // Represents the
-                    observations of a foo's current state.\n\t    // Known .status.conditions.type
-                    are: \"Available\", \"Progressing\", and \"Degraded\"\n\t    //
-                    +patchMergeKey=type\n\t    // +patchStrategy=merge\n\t    // +listType=map\n\t
-                    \   // +listMapKey=type\n\t    Conditions []metav1.Condition `json:\"conditions,omitempty\"
-                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`\n\n\n\t
-                    \   // other fields\n\t}"
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
                   properties:
                     lastTransitionTime:
                       description: |-
@@ -5232,12 +5210,7 @@ spec:
                       - Unknown
                       type: string
                     type:
-                      description: |-
-                        type of condition in CamelCase or in foo.example.com/CamelCase.
-                        ---
-                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
-                        useful (see .node.status.conditions), the ability to deconflict is important.
-                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string

@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:0.6.2
-    createdAt: "2024-10-03T12:34:33Z"
+    createdAt: "2024-10-09T06:51:08Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -1608,83 +1608,8 @@ spec:
           - loki.grafana.com
           resources:
           - alertingrules
-          verbs:
-          - create
-          - delete
-          - get
-          - list
-          - patch
-          - update
-          - watch
-        - apiGroups:
-          - loki.grafana.com
-          resources:
-          - alertingrules/finalizers
-          verbs:
-          - update
-        - apiGroups:
-          - loki.grafana.com
-          resources:
-          - alertingrules/status
-          verbs:
-          - get
-          - patch
-          - update
-        - apiGroups:
-          - loki.grafana.com
-          resources:
           - lokistacks
-          verbs:
-          - create
-          - delete
-          - get
-          - list
-          - patch
-          - update
-          - watch
-        - apiGroups:
-          - loki.grafana.com
-          resources:
-          - lokistacks/finalizers
-          verbs:
-          - update
-        - apiGroups:
-          - loki.grafana.com
-          resources:
-          - lokistacks/status
-          verbs:
-          - get
-          - patch
-          - update
-        - apiGroups:
-          - loki.grafana.com
-          resources:
           - recordingrules
-          verbs:
-          - create
-          - delete
-          - get
-          - list
-          - patch
-          - update
-          - watch
-        - apiGroups:
-          - loki.grafana.com
-          resources:
-          - recordingrules/finalizers
-          verbs:
-          - update
-        - apiGroups:
-          - loki.grafana.com
-          resources:
-          - recordingrules/status
-          verbs:
-          - get
-          - patch
-          - update
-        - apiGroups:
-          - loki.grafana.com
-          resources:
           - rulerconfigs
           verbs:
           - create
@@ -1697,12 +1622,18 @@ spec:
         - apiGroups:
           - loki.grafana.com
           resources:
+          - alertingrules/finalizers
+          - lokistacks/finalizers
+          - recordingrules/finalizers
           - rulerconfigs/finalizers
           verbs:
           - update
         - apiGroups:
           - loki.grafana.com
           resources:
+          - alertingrules/status
+          - lokistacks/status
+          - recordingrules/status
           - rulerconfigs/status
           verbs:
           - get
