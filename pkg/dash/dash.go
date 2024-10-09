@@ -34,12 +34,12 @@ func NewDashboardLoader(ml MetricLoader) (*DashboardLoader, error) {
 		return nil, err
 	}
 
-	dashboardJson, err := json.MarshalIndent(writes, "", "  ")
+	dashboardJSON, err := json.MarshalIndent(writes, "", "  ")
 	if err != nil {
 		return nil, err
 	}
 
-	dl.writes = dashboardJson
+	dl.writes = dashboardJSON
 
 	return dl, nil
 }
