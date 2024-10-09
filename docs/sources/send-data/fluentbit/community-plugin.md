@@ -6,7 +6,7 @@ aliases:
 - ../clients/fluentbit/
 weight:  500
 ---
-# Fluent Bit Community Plugin
+# Fluent Bit community plugin
 
 {{< admonition type="warning" >}}
 
