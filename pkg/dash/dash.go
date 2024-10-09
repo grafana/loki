@@ -49,15 +49,16 @@ func (l *DashboardLoader) WritesDashboard() []byte {
 }
 
 func (l *DashboardLoader) Writes() http.HandlerFunc {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		// TODO(owen-d): versioning
 		w.Header().Set("Content-Type", "application/json")
-		w.Write(l.WritesDashboard())
+		_, _ = w.Write(l.WritesDashboard())
 	})
 }
 
 func WritesDashboard(requestDuration *prom.HistogramVec) (dashboard.Dashboard, error) {
-	var statusMap map[string]string = nil
+	// TODO(owen-d): map statuses to colors here
+	var statusMap map[string]string
 
 	// TODO: parameterize so caller can pass it's own scheme
 	// (not everyone may use our k8s style)
