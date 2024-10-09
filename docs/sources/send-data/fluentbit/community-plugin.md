@@ -171,7 +171,7 @@ You can also adapt your plugins.conf, removing the need to change the command li
 
 ### Labels
 
-Labels are used to [query logs](https://grafana.com/docs/loki/<LOKI_VERSION>/query/) `{container_name="nginx", cluster="us-west1"}`, they are usually metadata about the workload producing the log stream (`instance`, `container_name`, `region`, `cluster`, `level`). In Loki labels are indexed, so you should be cautious when choosing them. High cardinality label values can have drastic impact on performance.
+Labels, for example `{container_name="nginx", cluster="us-west1"}`, are used to [query logs](https://grafana.com/docs/loki/<LOKI_VERSION>/query/).  Labels are usually metadata about the workload producing the log stream (`instance`, `container_name`, `region`, `cluster`, `level`). In Loki labels are indexed, so you should be cautious when choosing them. High cardinality label values can have drastic impact on query performance.
 
 You can use `Labels`, `RemoveKeys` , `LabelKeys` and `LabelMapPath` to how the output plugin will perform labels extraction.
 
