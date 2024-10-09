@@ -1,5 +1,5 @@
 ---
-title: Fluent Bit Community Plugin
+title: Fluent Bit community plugin
 menuTitle:  Fluent Bit Community Plugin
 description: Provides instructions for how to install, configure, and use the Fluent Bit Community plugin to send logs to Loki.
 aliases: 
