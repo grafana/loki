@@ -40,7 +40,7 @@ func New(
 		return periodicConfigs[i].From.Time.Before(periodicConfigs[j].From.Time)
 	})
 	for _, periodicConfig := range periodicConfigs {
-		objectClient, err := storage.NewObjectClient(periodicConfig.ObjectType, storageConfig, clientMetrics)
+		objectClient, err := storage.NewObjectClient(periodicConfig.ObjectType, "storage-rf1", storageConfig, clientMetrics)
 		if err != nil {
 			return nil, fmt.Errorf("creating object client for period %s: %w ", periodicConfig.From, err)
 		}

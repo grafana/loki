@@ -1779,344 +1779,340 @@ storage:
       # CLI flag: -common.storage.congestion-control.hedge.strategy
       [strategy: <string> | default = ""]
 
-  # Enable the thanos.io/objstore to be the backend for object storage
-  # CLI flag: -common.thanos.enable
-  [thanos_objstore: <boolean> | default = false]
-
-  objstore_config:
+  object_store:
     # Backend storage to use. Supported backends are: s3, gcs, azure, swift,
     # filesystem.
-    # CLI flag: -common.storage.thanos.backend
+    # CLI flag: -common.storage.object-store.backend
     [backend: <string> | default = "filesystem"]
 
     s3:
       # The S3 bucket endpoint. It could be an AWS S3 endpoint listed at
       # https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of
       # an S3-compatible service in hostname:port format.
-      # CLI flag: -common.storage.thanos.s3.endpoint
+      # CLI flag: -common.storage.object-store.s3.endpoint
       [endpoint: <string> | default = ""]
 
       # S3 region. If unset, the client will issue a S3 GetBucketLocation API
       # call to autodetect it.
-      # CLI flag: -common.storage.thanos.s3.region
+      # CLI flag: -common.storage.object-store.s3.region
       [region: <string> | default = ""]
 
       # S3 bucket name
-      # CLI flag: -common.storage.thanos.s3.bucket-name
+      # CLI flag: -common.storage.object-store.s3.bucket-name
       [bucket_name: <string> | default = ""]
 
       # S3 secret access key
-      # CLI flag: -common.storage.thanos.s3.secret-access-key
+      # CLI flag: -common.storage.object-store.s3.secret-access-key
       [secret_access_key: <string> | default = ""]
 
       # S3 session token
-      # CLI flag: -common.storage.thanos.s3.session-token
+      # CLI flag: -common.storage.object-store.s3.session-token
       [session_token: <string> | default = ""]
 
       # S3 access key ID
-      # CLI flag: -common.storage.thanos.s3.access-key-id
+      # CLI flag: -common.storage.object-store.s3.access-key-id
       [access_key_id: <string> | default = ""]
 
       # If enabled, use http:// for the S3 endpoint instead of https://. This
       # could be useful in local dev/test environments while using an
       # S3-compatible backend storage, like Minio.
-      # CLI flag: -common.storage.thanos.s3.insecure
+      # CLI flag: -common.storage.object-store.s3.insecure
       [insecure: <boolean> | default = false]
 
       # Disable forcing S3 dualstack endpoint usage.
-      # CLI flag: -common.storage.thanos.s3.disable-dualstack
+      # CLI flag: -common.storage.object-store.s3.disable-dualstack
       [disable_dualstack: <boolean> | default = false]
 
       # The signature version to use for authenticating against S3. Supported
       # values are: v4.
-      # CLI flag: -common.storage.thanos.s3.signature-version
+      # CLI flag: -common.storage.object-store.s3.signature-version
       [signature_version: <string> | default = "v4"]
 
       # The S3 storage class to use. Details can be found at
       # https://aws.amazon.com/s3/storage-classes/.
-      # CLI flag: -common.storage.thanos.s3.storage-class
+      # CLI flag: -common.storage.object-store.s3.storage-class
       [storage_class: <string> | default = "STANDARD"]
 
       sse:
         # Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.
-        # CLI flag: -common.storage.thanos.s3.sse.type
+        # CLI flag: -common.storage.object-store.s3.sse.type
         [type: <string> | default = ""]
 
         # KMS Key ID used to encrypt objects in S3
-        # CLI flag: -common.storage.thanos.s3.sse.kms-key-id
+        # CLI flag: -common.storage.object-store.s3.sse.kms-key-id
         [kms_key_id: <string> | default = ""]
 
         # KMS Encryption Context used for object encryption. It expects JSON
         # formatted string.
-        # CLI flag: -common.storage.thanos.s3.sse.kms-encryption-context
+        # CLI flag: -common.storage.object-store.s3.sse.kms-encryption-context
         [kms_encryption_context: <string> | default = ""]
 
       http:
         # The time an idle connection will remain idle before closing.
-        # CLI flag: -common.storage.thanos.s3.idle-conn-timeout
+        # CLI flag: -common.storage.object-store.s3.idle-conn-timeout
         [idle_conn_timeout: <duration> | default = 1m30s]
 
         # The amount of time the client will wait for a servers response
         # headers.
-        # CLI flag: -common.storage.thanos.s3.response-header-timeout
+        # CLI flag: -common.storage.object-store.s3.response-header-timeout
         [response_header_timeout: <duration> | default = 2m]
 
         # If the client connects via HTTPS and this option is enabled, the
         # client will accept any certificate and hostname.
-        # CLI flag: -common.storage.thanos.s3.insecure-skip-verify
+        # CLI flag: -common.storage.object-store.s3.insecure-skip-verify
         [insecure_skip_verify: <boolean> | default = false]
 
         # Maximum time to wait for a TLS handshake. 0 means no limit.
-        # CLI flag: -common.storage.thanos.s3.tls-handshake-timeout
+        # CLI flag: -common.storage.object-store.s3.tls-handshake-timeout
         [tls_handshake_timeout: <duration> | default = 10s]
 
         # The time to wait for a server's first response headers after fully
         # writing the request headers if the request has an Expect header. 0 to
         # send the request body immediately.
-        # CLI flag: -common.storage.thanos.s3.expect-continue-timeout
+        # CLI flag: -common.storage.object-store.s3.expect-continue-timeout
         [expect_continue_timeout: <duration> | default = 1s]
 
         # Maximum number of idle (keep-alive) connections across all hosts. 0
         # means no limit.
-        # CLI flag: -common.storage.thanos.s3.max-idle-connections
+        # CLI flag: -common.storage.object-store.s3.max-idle-connections
         [max_idle_connections: <int> | default = 100]
 
         # Maximum number of idle (keep-alive) connections to keep per-host. If
         # 0, a built-in default value is used.
-        # CLI flag: -common.storage.thanos.s3.max-idle-connections-per-host
+        # CLI flag: -common.storage.object-store.s3.max-idle-connections-per-host
         [max_idle_connections_per_host: <int> | default = 100]
 
         # Maximum number of connections per host. 0 means no limit.
-        # CLI flag: -common.storage.thanos.s3.max-connections-per-host
+        # CLI flag: -common.storage.object-store.s3.max-connections-per-host
         [max_connections_per_host: <int> | default = 0]
 
         # Path to the trusted CA file that signed the SSL certificate of the
         # object storage endpoint.
-        # CLI flag: -common.storage.thanos.s3.ca-file
+        # CLI flag: -common.storage.object-store.s3.ca-file
         [ca_file: <string> | default = ""]
 
     gcs:
       # GCS bucket name
-      # CLI flag: -common.storage.thanos.gcs.bucket-name
+      # CLI flag: -common.storage.object-store.gcs.bucket-name
       [bucket_name: <string> | default = ""]
 
       # JSON representing either a Google Developers Console
       # client_credentials.json file or a Google Developers service account key
       # file. If empty, fallback to Google default logic.
-      # CLI flag: -common.storage.thanos.gcs.service-account
+      # CLI flag: -common.storage.object-store.gcs.service-account
       [service_account: <string> | default = ""]
 
       # The size of the buffer that GCS client for each PUT request. 0 to
       # disable buffering.
-      # CLI flag: -common.storage.thanos.gcs.chunk-buffer-size
+      # CLI flag: -common.storage.object-store.gcs.chunk-buffer-size
       [chunk_buffer_size: <int> | default = 0]
 
       http:
         # The time an idle connection will remain idle before closing.
-        # CLI flag: -common.storage.thanos.s3.http.idle-conn-timeout
+        # CLI flag: -common.storage.object-store.s3.http.idle-conn-timeout
         [idle_conn_timeout: <duration> | default = 1m30s]
 
         # The amount of time the client will wait for a servers response
         # headers.
-        # CLI flag: -common.storage.thanos.s3.http.response-header-timeout
+        # CLI flag: -common.storage.object-store.s3.http.response-header-timeout
         [response_header_timeout: <duration> | default = 2m]
 
         # If the client connects via HTTPS and this option is enabled, the
         # client will accept any certificate and hostname.
-        # CLI flag: -common.storage.thanos.s3.http.insecure-skip-verify
+        # CLI flag: -common.storage.object-store.s3.http.insecure-skip-verify
         [insecure_skip_verify: <boolean> | default = false]
 
         # Maximum time to wait for a TLS handshake. 0 means no limit.
-        # CLI flag: -common.storage.thanos.s3.http.tls-handshake-timeout
+        # CLI flag: -common.storage.object-store.s3.http.tls-handshake-timeout
         [tls_handshake_timeout: <duration> | default = 10s]
 
         # The time to wait for a server's first response headers after fully
         # writing the request headers if the request has an Expect header. 0 to
         # send the request body immediately.
-        # CLI flag: -common.storage.thanos.s3.http.expect-continue-timeout
+        # CLI flag: -common.storage.object-store.s3.http.expect-continue-timeout
         [expect_continue_timeout: <duration> | default = 1s]
 
         # Maximum number of idle (keep-alive) connections across all hosts. 0
         # means no limit.
-        # CLI flag: -common.storage.thanos.s3.http.max-idle-connections
+        # CLI flag: -common.storage.object-store.s3.http.max-idle-connections
         [max_idle_connections: <int> | default = 100]
 
         # Maximum number of idle (keep-alive) connections to keep per-host. If
         # 0, a built-in default value is used.
-        # CLI flag: -common.storage.thanos.s3.http.max-idle-connections-per-host
+        # CLI flag: -common.storage.object-store.s3.http.max-idle-connections-per-host
         [max_idle_connections_per_host: <int> | default = 100]
 
         # Maximum number of connections per host. 0 means no limit.
-        # CLI flag: -common.storage.thanos.s3.http.max-connections-per-host
+        # CLI flag: -common.storage.object-store.s3.http.max-connections-per-host
         [max_connections_per_host: <int> | default = 0]
 
         # Path to the trusted CA file that signed the SSL certificate of the
         # object storage endpoint.
-        # CLI flag: -common.storage.thanos.s3.http.ca-file
+        # CLI flag: -common.storage.object-store.s3.http.ca-file
         [ca_file: <string> | default = ""]
 
     azure:
       # Azure storage account name
-      # CLI flag: -common.storage.thanos.azure.account-name
+      # CLI flag: -common.storage.object-store.azure.account-name
       [account_name: <string> | default = ""]
 
       # Azure storage account key
-      # CLI flag: -common.storage.thanos.azure.account-key
+      # CLI flag: -common.storage.object-store.azure.account-key
       [account_key: <string> | default = ""]
 
       # If `connection-string` is set, the values of `account-name` and
       # `endpoint-suffix` values will not be used. Use this method over
       # `account-key` if you need to authenticate via a SAS token. Or if you use
       # the Azurite emulator.
-      # CLI flag: -common.storage.thanos.azure.connection-string
+      # CLI flag: -common.storage.object-store.azure.connection-string
       [connection_string: <string> | default = ""]
 
       # Azure storage container name
-      # CLI flag: -common.storage.thanos.azure.container-name
+      # CLI flag: -common.storage.object-store.azure.container-name
       [container_name: <string> | default = "loki"]
 
       # Azure storage endpoint suffix without schema. The account name will be
       # prefixed to this value to create the FQDN
-      # CLI flag: -common.storage.thanos.azure.endpoint-suffix
+      # CLI flag: -common.storage.object-store.azure.endpoint-suffix
       [endpoint_suffix: <string> | default = ""]
 
       # Number of retries for recoverable errors
-      # CLI flag: -common.storage.thanos.azure.max-retries
+      # CLI flag: -common.storage.object-store.azure.max-retries
       [max_retries: <int> | default = 20]
 
       http:
         # The time an idle connection will remain idle before closing.
-        # CLI flag: -common.storage.thanos.azure.idle-conn-timeout
+        # CLI flag: -common.storage.object-store.azure.idle-conn-timeout
         [idle_conn_timeout: <duration> | default = 1m30s]
 
         # The amount of time the client will wait for a servers response
         # headers.
-        # CLI flag: -common.storage.thanos.azure.response-header-timeout
+        # CLI flag: -common.storage.object-store.azure.response-header-timeout
         [response_header_timeout: <duration> | default = 2m]
 
         # If the client connects via HTTPS and this option is enabled, the
         # client will accept any certificate and hostname.
-        # CLI flag: -common.storage.thanos.azure.insecure-skip-verify
+        # CLI flag: -common.storage.object-store.azure.insecure-skip-verify
         [insecure_skip_verify: <boolean> | default = false]
 
         # Maximum time to wait for a TLS handshake. 0 means no limit.
-        # CLI flag: -common.storage.thanos.azure.tls-handshake-timeout
+        # CLI flag: -common.storage.object-store.azure.tls-handshake-timeout
         [tls_handshake_timeout: <duration> | default = 10s]
 
         # The time to wait for a server's first response headers after fully
         # writing the request headers if the request has an Expect header. 0 to
         # send the request body immediately.
-        # CLI flag: -common.storage.thanos.azure.expect-continue-timeout
+        # CLI flag: -common.storage.object-store.azure.expect-continue-timeout
         [expect_continue_timeout: <duration> | default = 1s]
 
         # Maximum number of idle (keep-alive) connections across all hosts. 0
         # means no limit.
-        # CLI flag: -common.storage.thanos.azure.max-idle-connections
+        # CLI flag: -common.storage.object-store.azure.max-idle-connections
         [max_idle_connections: <int> | default = 100]
 
         # Maximum number of idle (keep-alive) connections to keep per-host. If
         # 0, a built-in default value is used.
-        # CLI flag: -common.storage.thanos.azure.max-idle-connections-per-host
+        # CLI flag: -common.storage.object-store.azure.max-idle-connections-per-host
         [max_idle_connections_per_host: <int> | default = 100]
 
         # Maximum number of connections per host. 0 means no limit.
-        # CLI flag: -common.storage.thanos.azure.max-connections-per-host
+        # CLI flag: -common.storage.object-store.azure.max-connections-per-host
         [max_connections_per_host: <int> | default = 0]
 
         # Path to the trusted CA file that signed the SSL certificate of the
         # object storage endpoint.
-        # CLI flag: -common.storage.thanos.azure.ca-file
+        # CLI flag: -common.storage.object-store.azure.ca-file
         [ca_file: <string> | default = ""]
 
     swift:
       # OpenStack Swift authentication API version. 0 to autodetect.
-      # CLI flag: -common.storage.thanos.swift.auth-version
+      # CLI flag: -common.storage.object-store.swift.auth-version
       [auth_version: <int> | default = 0]
 
       # OpenStack Swift authentication URL
-      # CLI flag: -common.storage.thanos.swift.auth-url
+      # CLI flag: -common.storage.object-store.swift.auth-url
       [auth_url: <string> | default = ""]
 
       # Set this to true to use the internal OpenStack Swift endpoint URL
-      # CLI flag: -common.storage.thanos.swift.internal
+      # CLI flag: -common.storage.object-store.swift.internal
       [internal: <boolean> | default = false]
 
       # OpenStack Swift username.
-      # CLI flag: -common.storage.thanos.swift.username
+      # CLI flag: -common.storage.object-store.swift.username
       [username: <string> | default = ""]
 
       # OpenStack Swift user's domain name.
-      # CLI flag: -common.storage.thanos.swift.user-domain-name
+      # CLI flag: -common.storage.object-store.swift.user-domain-name
       [user_domain_name: <string> | default = ""]
 
       # OpenStack Swift user's domain ID.
-      # CLI flag: -common.storage.thanos.swift.user-domain-id
+      # CLI flag: -common.storage.object-store.swift.user-domain-id
       [user_domain_id: <string> | default = ""]
 
       # OpenStack Swift user ID.
-      # CLI flag: -common.storage.thanos.swift.user-id
+      # CLI flag: -common.storage.object-store.swift.user-id
       [user_id: <string> | default = ""]
 
       # OpenStack Swift API key.
-      # CLI flag: -common.storage.thanos.swift.password
+      # CLI flag: -common.storage.object-store.swift.password
       [password: <string> | default = ""]
 
       # OpenStack Swift user's domain ID.
-      # CLI flag: -common.storage.thanos.swift.domain-id
+      # CLI flag: -common.storage.object-store.swift.domain-id
       [domain_id: <string> | default = ""]
 
       # OpenStack Swift user's domain name.
-      # CLI flag: -common.storage.thanos.swift.domain-name
+      # CLI flag: -common.storage.object-store.swift.domain-name
       [domain_name: <string> | default = ""]
 
       # OpenStack Swift project ID (v2,v3 auth only).
-      # CLI flag: -common.storage.thanos.swift.project-id
+      # CLI flag: -common.storage.object-store.swift.project-id
       [project_id: <string> | default = ""]
 
       # OpenStack Swift project name (v2,v3 auth only).
-      # CLI flag: -common.storage.thanos.swift.project-name
+      # CLI flag: -common.storage.object-store.swift.project-name
       [project_name: <string> | default = ""]
 
       # ID of the OpenStack Swift project's domain (v3 auth only), only needed
       # if it differs the from user domain.
-      # CLI flag: -common.storage.thanos.swift.project-domain-id
+      # CLI flag: -common.storage.object-store.swift.project-domain-id
       [project_domain_id: <string> | default = ""]
 
       # Name of the OpenStack Swift project's domain (v3 auth only), only needed
       # if it differs from the user domain.
-      # CLI flag: -common.storage.thanos.swift.project-domain-name
+      # CLI flag: -common.storage.object-store.swift.project-domain-name
       [project_domain_name: <string> | default = ""]
 
       # OpenStack Swift Region to use (v2,v3 auth only).
-      # CLI flag: -common.storage.thanos.swift.region-name
+      # CLI flag: -common.storage.object-store.swift.region-name
       [region_name: <string> | default = ""]
 
       # Name of the OpenStack Swift container to put chunks in.
-      # CLI flag: -common.storage.thanos.swift.container-name
+      # CLI flag: -common.storage.object-store.swift.container-name
       [container_name: <string> | default = ""]
 
       # Max retries on requests error.
-      # CLI flag: -common.storage.thanos.swift.max-retries
+      # CLI flag: -common.storage.object-store.swift.max-retries
       [max_retries: <int> | default = 3]
 
       # Time after which a connection attempt is aborted.
-      # CLI flag: -common.storage.thanos.swift.connect-timeout
+      # CLI flag: -common.storage.object-store.swift.connect-timeout
       [connect_timeout: <duration> | default = 10s]
 
       # Time after which an idle request is aborted. The timeout watchdog is
       # reset each time some data is received, so the timeout triggers after X
       # time no data is received on a request.
-      # CLI flag: -common.storage.thanos.swift.request-timeout
+      # CLI flag: -common.storage.object-store.swift.request-timeout
       [request_timeout: <duration> | default = 5s]
 
     filesystem:
       # Local filesystem storage directory.
-      # CLI flag: -common.storage.thanos.filesystem.dir
+      # CLI flag: -common.storage.object-store.filesystem.dir
       [dir: <string> | default = ""]
 
     # Prefix for all objects stored in the backend storage. For simplicity, it
     # may only contain digits and English alphabet letters.
-    # CLI flag: -common.storage.thanos.storage-prefix
+    # CLI flag: -common.storage.object-store.storage-prefix
     [storage_prefix: <string> | default = ""]
 
 [persist_tokens: <boolean>]
@@ -4911,214 +4907,6 @@ storage:
     # CLI flag: -ruler.storage.local.directory
     [directory: <string> | default = ""]
 
-  [thanos_objstore: <boolean>]
-
-  objstore_config:
-    [backend: <string> | default = ""]
-
-    s3:
-      [endpoint: <string> | default = ""]
-
-      [region: <string> | default = ""]
-
-      [bucket_name: <string> | default = ""]
-
-      secret_access_key:
-
-      session_token:
-
-      [access_key_id: <string> | default = ""]
-
-      [insecure: <boolean>]
-
-      [disable_dualstack: <boolean>]
-
-      [signature_version: <string> | default = ""]
-
-      [storage_class: <string> | default = ""]
-
-      sse:
-        [type: <string> | default = ""]
-
-        [kms_key_id: <string> | default = ""]
-
-        [kms_encryption_context: <string> | default = ""]
-
-      http:
-        [idle_conn_timeout: <duration>]
-
-        [response_header_timeout: <duration>]
-
-        [insecure_skip_verify: <boolean>]
-
-        [tls_handshake_timeout: <duration>]
-
-        [expect_continue_timeout: <duration>]
-
-        [max_idle_connections: <int>]
-
-        [max_idle_connections_per_host: <int>]
-
-        [max_connections_per_host: <int>]
-
-        [ca_file: <string> | default = ""]
-
-    gcs:
-      [bucket_name: <string> | default = ""]
-
-      service_account:
-
-      [chunk_buffer_size: <int>]
-
-      http:
-        [idle_conn_timeout: <duration>]
-
-        [response_header_timeout: <duration>]
-
-        [insecure_skip_verify: <boolean>]
-
-        [tls_handshake_timeout: <duration>]
-
-        [expect_continue_timeout: <duration>]
-
-        [max_idle_connections: <int>]
-
-        [max_idle_connections_per_host: <int>]
-
-        [max_connections_per_host: <int>]
-
-        [ca_file: <string> | default = ""]
-
-    azure:
-      [account_name: <string> | default = ""]
-
-      account_key:
-
-      connection_string:
-
-      [container_name: <string> | default = ""]
-
-      [endpoint_suffix: <string> | default = ""]
-
-      [max_retries: <int>]
-
-      http:
-        [idle_conn_timeout: <duration>]
-
-        [response_header_timeout: <duration>]
-
-        [insecure_skip_verify: <boolean>]
-
-        [tls_handshake_timeout: <duration>]
-
-        [expect_continue_timeout: <duration>]
-
-        [max_idle_connections: <int>]
-
-        [max_idle_connections_per_host: <int>]
-
-        [max_connections_per_host: <int>]
-
-        [ca_file: <string> | default = ""]
-
-    swift:
-      [auth_version: <int>]
-
-      [auth_url: <string> | default = ""]
-
-      [internal: <boolean>]
-
-      [username: <string> | default = ""]
-
-      [user_domain_name: <string> | default = ""]
-
-      [user_domain_id: <string> | default = ""]
-
-      [user_id: <string> | default = ""]
-
-      [password: <string> | default = ""]
-
-      [domain_id: <string> | default = ""]
-
-      [domain_name: <string> | default = ""]
-
-      [project_id: <string> | default = ""]
-
-      [project_name: <string> | default = ""]
-
-      [project_domain_id: <string> | default = ""]
-
-      [project_domain_name: <string> | default = ""]
-
-      [region_name: <string> | default = ""]
-
-      [container_name: <string> | default = ""]
-
-      [max_retries: <int>]
-
-      [connect_timeout: <duration>]
-
-      [request_timeout: <duration>]
-
-    filesystem:
-      [dir: <string> | default = ""]
-
-    [storage_prefix: <string> | default = ""]
-
-    configdb:
-      configs_api_url:
-        [url: <url>]
-
-      [client_timeout: <duration>]
-
-      [tls_cert_path: <string> | default = ""]
-
-      [tls_key_path: <string> | default = ""]
-
-      [tls_ca_path: <string> | default = ""]
-
-      [tls_server_name: <string> | default = ""]
-
-      [tls_insecure_skip_verify: <boolean>]
-
-      # Override the default cipher suite list (separated by commas). Allowed
-      # values:
-      # 
-      # Secure Ciphers:
-      # - TLS_AES_128_GCM_SHA256
-      # - TLS_AES_256_GCM_SHA384
-      # - TLS_CHACHA20_POLY1305_SHA256
-      # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
-      # - TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
-      # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
-      # - TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
-      # - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
-      # - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
-      # - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-      # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-      # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
-      # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
-      # 
-      # Insecure Ciphers:
-      # - TLS_RSA_WITH_RC4_128_SHA
-      # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
-      # - TLS_RSA_WITH_AES_128_CBC_SHA
-      # - TLS_RSA_WITH_AES_256_CBC_SHA
-      # - TLS_RSA_WITH_AES_128_CBC_SHA256
-      # - TLS_RSA_WITH_AES_128_GCM_SHA256
-      # - TLS_RSA_WITH_AES_256_GCM_SHA384
-      # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
-      # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
-      # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
-      # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
-      # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
-      [tls_cipher_suites: <string> | default = ""]
-
-      [tls_min_version: <string> | default = ""]
-
-    local:
-      [directory: <string> | default = ""]
-
 # File path to store temporary rule files.
 # CLI flag: -ruler.rule-path
 [rule_path: <string> | default = "/rules"]
@@ -6185,340 +5973,340 @@ congestion_control:
 [max_parallel_get_chunk: <int> | default = 150]
 
 # Enable the thanos.io/objstore to be the backend for object storage
-# CLI flag: -thanos.enable
+# CLI flag: -use-thanos-objstore
 [thanos_objstore: <boolean> | default = false]
 
-objstore_config:
+object_store:
   # Backend storage to use. Supported backends are: s3, gcs, azure, swift,
   # filesystem.
-  # CLI flag: -thanos.backend
+  # CLI flag: -object-store.backend
   [backend: <string> | default = "filesystem"]
 
   s3:
     # The S3 bucket endpoint. It could be an AWS S3 endpoint listed at
     # https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of an
     # S3-compatible service in hostname:port format.
-    # CLI flag: -thanos.s3.endpoint
+    # CLI flag: -object-store.s3.endpoint
     [endpoint: <string> | default = ""]
 
     # S3 region. If unset, the client will issue a S3 GetBucketLocation API call
     # to autodetect it.
-    # CLI flag: -thanos.s3.region
+    # CLI flag: -object-store.s3.region
     [region: <string> | default = ""]
 
     # S3 bucket name
-    # CLI flag: -thanos.s3.bucket-name
+    # CLI flag: -object-store.s3.bucket-name
     [bucket_name: <string> | default = ""]
 
     # S3 secret access key
-    # CLI flag: -thanos.s3.secret-access-key
+    # CLI flag: -object-store.s3.secret-access-key
     [secret_access_key: <string> | default = ""]
 
     # S3 session token
-    # CLI flag: -thanos.s3.session-token
+    # CLI flag: -object-store.s3.session-token
     [session_token: <string> | default = ""]
 
     # S3 access key ID
-    # CLI flag: -thanos.s3.access-key-id
+    # CLI flag: -object-store.s3.access-key-id
     [access_key_id: <string> | default = ""]
 
     # If enabled, use http:// for the S3 endpoint instead of https://. This
     # could be useful in local dev/test environments while using an
     # S3-compatible backend storage, like Minio.
-    # CLI flag: -thanos.s3.insecure
+    # CLI flag: -object-store.s3.insecure
     [insecure: <boolean> | default = false]
 
     # Disable forcing S3 dualstack endpoint usage.
-    # CLI flag: -thanos.s3.disable-dualstack
+    # CLI flag: -object-store.s3.disable-dualstack
     [disable_dualstack: <boolean> | default = false]
 
     # The signature version to use for authenticating against S3. Supported
     # values are: v4.
-    # CLI flag: -thanos.s3.signature-version
+    # CLI flag: -object-store.s3.signature-version
     [signature_version: <string> | default = "v4"]
 
     # The S3 storage class to use. Details can be found at
     # https://aws.amazon.com/s3/storage-classes/.
-    # CLI flag: -thanos.s3.storage-class
+    # CLI flag: -object-store.s3.storage-class
     [storage_class: <string> | default = "STANDARD"]
 
     sse:
       # Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.
-      # CLI flag: -thanos.s3.sse.type
+      # CLI flag: -object-store.s3.sse.type
       [type: <string> | default = ""]
 
       # KMS Key ID used to encrypt objects in S3
-      # CLI flag: -thanos.s3.sse.kms-key-id
+      # CLI flag: -object-store.s3.sse.kms-key-id
       [kms_key_id: <string> | default = ""]
 
       # KMS Encryption Context used for object encryption. It expects JSON
       # formatted string.
-      # CLI flag: -thanos.s3.sse.kms-encryption-context
+      # CLI flag: -object-store.s3.sse.kms-encryption-context
       [kms_encryption_context: <string> | default = ""]
 
     http:
       # The time an idle connection will remain idle before closing.
-      # CLI flag: -thanos.s3.idle-conn-timeout
+      # CLI flag: -object-store.s3.idle-conn-timeout
       [idle_conn_timeout: <duration> | default = 1m30s]
 
       # The amount of time the client will wait for a servers response headers.
-      # CLI flag: -thanos.s3.response-header-timeout
+      # CLI flag: -object-store.s3.response-header-timeout
       [response_header_timeout: <duration> | default = 2m]
 
       # If the client connects via HTTPS and this option is enabled, the client
       # will accept any certificate and hostname.
-      # CLI flag: -thanos.s3.insecure-skip-verify
+      # CLI flag: -object-store.s3.insecure-skip-verify
       [insecure_skip_verify: <boolean> | default = false]
 
       # Maximum time to wait for a TLS handshake. 0 means no limit.
-      # CLI flag: -thanos.s3.tls-handshake-timeout
+      # CLI flag: -object-store.s3.tls-handshake-timeout
       [tls_handshake_timeout: <duration> | default = 10s]
 
       # The time to wait for a server's first response headers after fully
       # writing the request headers if the request has an Expect header. 0 to
       # send the request body immediately.
-      # CLI flag: -thanos.s3.expect-continue-timeout
+      # CLI flag: -object-store.s3.expect-continue-timeout
       [expect_continue_timeout: <duration> | default = 1s]
 
       # Maximum number of idle (keep-alive) connections across all hosts. 0
       # means no limit.
-      # CLI flag: -thanos.s3.max-idle-connections
+      # CLI flag: -object-store.s3.max-idle-connections
       [max_idle_connections: <int> | default = 100]
 
       # Maximum number of idle (keep-alive) connections to keep per-host. If 0,
       # a built-in default value is used.
-      # CLI flag: -thanos.s3.max-idle-connections-per-host
+      # CLI flag: -object-store.s3.max-idle-connections-per-host
       [max_idle_connections_per_host: <int> | default = 100]
 
       # Maximum number of connections per host. 0 means no limit.
-      # CLI flag: -thanos.s3.max-connections-per-host
+      # CLI flag: -object-store.s3.max-connections-per-host
       [max_connections_per_host: <int> | default = 0]
 
       # Path to the trusted CA file that signed the SSL certificate of the
       # object storage endpoint.
-      # CLI flag: -thanos.s3.ca-file
+      # CLI flag: -object-store.s3.ca-file
       [ca_file: <string> | default = ""]
 
   gcs:
     # GCS bucket name
-    # CLI flag: -thanos.gcs.bucket-name
+    # CLI flag: -object-store.gcs.bucket-name
     [bucket_name: <string> | default = ""]
 
     # JSON representing either a Google Developers Console
     # client_credentials.json file or a Google Developers service account key
     # file. If empty, fallback to Google default logic.
-    # CLI flag: -thanos.gcs.service-account
+    # CLI flag: -object-store.gcs.service-account
     [service_account: <string> | default = ""]
 
     # The size of the buffer that GCS client for each PUT request. 0 to disable
     # buffering.
-    # CLI flag: -thanos.gcs.chunk-buffer-size
+    # CLI flag: -object-store.gcs.chunk-buffer-size
     [chunk_buffer_size: <int> | default = 0]
 
     http:
       # The time an idle connection will remain idle before closing.
-      # CLI flag: -thanos.s3.http.idle-conn-timeout
+      # CLI flag: -object-store.s3.http.idle-conn-timeout
       [idle_conn_timeout: <duration> | default = 1m30s]
 
       # The amount of time the client will wait for a servers response headers.
-      # CLI flag: -thanos.s3.http.response-header-timeout
+      # CLI flag: -object-store.s3.http.response-header-timeout
       [response_header_timeout: <duration> | default = 2m]
 
       # If the client connects via HTTPS and this option is enabled, the client
       # will accept any certificate and hostname.
-      # CLI flag: -thanos.s3.http.insecure-skip-verify
+      # CLI flag: -object-store.s3.http.insecure-skip-verify
       [insecure_skip_verify: <boolean> | default = false]
 
       # Maximum time to wait for a TLS handshake. 0 means no limit.
-      # CLI flag: -thanos.s3.http.tls-handshake-timeout
+      # CLI flag: -object-store.s3.http.tls-handshake-timeout
       [tls_handshake_timeout: <duration> | default = 10s]
 
       # The time to wait for a server's first response headers after fully
       # writing the request headers if the request has an Expect header. 0 to
       # send the request body immediately.
-      # CLI flag: -thanos.s3.http.expect-continue-timeout
+      # CLI flag: -object-store.s3.http.expect-continue-timeout
       [expect_continue_timeout: <duration> | default = 1s]
 
       # Maximum number of idle (keep-alive) connections across all hosts. 0
       # means no limit.
-      # CLI flag: -thanos.s3.http.max-idle-connections
+      # CLI flag: -object-store.s3.http.max-idle-connections
       [max_idle_connections: <int> | default = 100]
 
       # Maximum number of idle (keep-alive) connections to keep per-host. If 0,
       # a built-in default value is used.
-      # CLI flag: -thanos.s3.http.max-idle-connections-per-host
+      # CLI flag: -object-store.s3.http.max-idle-connections-per-host
       [max_idle_connections_per_host: <int> | default = 100]
 
       # Maximum number of connections per host. 0 means no limit.
-      # CLI flag: -thanos.s3.http.max-connections-per-host
+      # CLI flag: -object-store.s3.http.max-connections-per-host
       [max_connections_per_host: <int> | default = 0]
 
       # Path to the trusted CA file that signed the SSL certificate of the
       # object storage endpoint.
-      # CLI flag: -thanos.s3.http.ca-file
+      # CLI flag: -object-store.s3.http.ca-file
       [ca_file: <string> | default = ""]
 
   azure:
     # Azure storage account name
-    # CLI flag: -thanos.azure.account-name
+    # CLI flag: -object-store.azure.account-name
     [account_name: <string> | default = ""]
 
     # Azure storage account key
-    # CLI flag: -thanos.azure.account-key
+    # CLI flag: -object-store.azure.account-key
     [account_key: <string> | default = ""]
 
     # If `connection-string` is set, the values of `account-name` and
     # `endpoint-suffix` values will not be used. Use this method over
     # `account-key` if you need to authenticate via a SAS token. Or if you use
     # the Azurite emulator.
-    # CLI flag: -thanos.azure.connection-string
+    # CLI flag: -object-store.azure.connection-string
     [connection_string: <string> | default = ""]
 
     # Azure storage container name
-    # CLI flag: -thanos.azure.container-name
+    # CLI flag: -object-store.azure.container-name
     [container_name: <string> | default = "loki"]
 
     # Azure storage endpoint suffix without schema. The account name will be
     # prefixed to this value to create the FQDN
-    # CLI flag: -thanos.azure.endpoint-suffix
+    # CLI flag: -object-store.azure.endpoint-suffix
     [endpoint_suffix: <string> | default = ""]
 
     # Number of retries for recoverable errors
-    # CLI flag: -thanos.azure.max-retries
+    # CLI flag: -object-store.azure.max-retries
     [max_retries: <int> | default = 20]
 
     http:
       # The time an idle connection will remain idle before closing.
-      # CLI flag: -thanos.azure.idle-conn-timeout
+      # CLI flag: -object-store.azure.idle-conn-timeout
       [idle_conn_timeout: <duration> | default = 1m30s]
 
       # The amount of time the client will wait for a servers response headers.
-      # CLI flag: -thanos.azure.response-header-timeout
+      # CLI flag: -object-store.azure.response-header-timeout
       [response_header_timeout: <duration> | default = 2m]
 
       # If the client connects via HTTPS and this option is enabled, the client
       # will accept any certificate and hostname.
-      # CLI flag: -thanos.azure.insecure-skip-verify
+      # CLI flag: -object-store.azure.insecure-skip-verify
       [insecure_skip_verify: <boolean> | default = false]
 
       # Maximum time to wait for a TLS handshake. 0 means no limit.
-      # CLI flag: -thanos.azure.tls-handshake-timeout
+      # CLI flag: -object-store.azure.tls-handshake-timeout
       [tls_handshake_timeout: <duration> | default = 10s]
 
       # The time to wait for a server's first response headers after fully
       # writing the request headers if the request has an Expect header. 0 to
       # send the request body immediately.
-      # CLI flag: -thanos.azure.expect-continue-timeout
+      # CLI flag: -object-store.azure.expect-continue-timeout
       [expect_continue_timeout: <duration> | default = 1s]
 
       # Maximum number of idle (keep-alive) connections across all hosts. 0
       # means no limit.
-      # CLI flag: -thanos.azure.max-idle-connections
+      # CLI flag: -object-store.azure.max-idle-connections
       [max_idle_connections: <int> | default = 100]
 
       # Maximum number of idle (keep-alive) connections to keep per-host. If 0,
       # a built-in default value is used.
-      # CLI flag: -thanos.azure.max-idle-connections-per-host
+      # CLI flag: -object-store.azure.max-idle-connections-per-host
       [max_idle_connections_per_host: <int> | default = 100]
 
       # Maximum number of connections per host. 0 means no limit.
-      # CLI flag: -thanos.azure.max-connections-per-host
+      # CLI flag: -object-store.azure.max-connections-per-host
       [max_connections_per_host: <int> | default = 0]
 
       # Path to the trusted CA file that signed the SSL certificate of the
       # object storage endpoint.
-      # CLI flag: -thanos.azure.ca-file
+      # CLI flag: -object-store.azure.ca-file
       [ca_file: <string> | default = ""]
 
   swift:
     # OpenStack Swift authentication API version. 0 to autodetect.
-    # CLI flag: -thanos.swift.auth-version
+    # CLI flag: -object-store.swift.auth-version
     [auth_version: <int> | default = 0]
 
     # OpenStack Swift authentication URL
-    # CLI flag: -thanos.swift.auth-url
+    # CLI flag: -object-store.swift.auth-url
     [auth_url: <string> | default = ""]
 
     # Set this to true to use the internal OpenStack Swift endpoint URL
-    # CLI flag: -thanos.swift.internal
+    # CLI flag: -object-store.swift.internal
     [internal: <boolean> | default = false]
 
     # OpenStack Swift username.
-    # CLI flag: -thanos.swift.username
+    # CLI flag: -object-store.swift.username
     [username: <string> | default = ""]
 
     # OpenStack Swift user's domain name.
-    # CLI flag: -thanos.swift.user-domain-name
+    # CLI flag: -object-store.swift.user-domain-name
     [user_domain_name: <string> | default = ""]
 
     # OpenStack Swift user's domain ID.
-    # CLI flag: -thanos.swift.user-domain-id
+    # CLI flag: -object-store.swift.user-domain-id
     [user_domain_id: <string> | default = ""]
 
     # OpenStack Swift user ID.
-    # CLI flag: -thanos.swift.user-id
+    # CLI flag: -object-store.swift.user-id
     [user_id: <string> | default = ""]
 
     # OpenStack Swift API key.
-    # CLI flag: -thanos.swift.password
+    # CLI flag: -object-store.swift.password
     [password: <string> | default = ""]
 
     # OpenStack Swift user's domain ID.
-    # CLI flag: -thanos.swift.domain-id
+    # CLI flag: -object-store.swift.domain-id
     [domain_id: <string> | default = ""]
 
     # OpenStack Swift user's domain name.
-    # CLI flag: -thanos.swift.domain-name
+    # CLI flag: -object-store.swift.domain-name
     [domain_name: <string> | default = ""]
 
     # OpenStack Swift project ID (v2,v3 auth only).
-    # CLI flag: -thanos.swift.project-id
+    # CLI flag: -object-store.swift.project-id
     [project_id: <string> | default = ""]
 
     # OpenStack Swift project name (v2,v3 auth only).
-    # CLI flag: -thanos.swift.project-name
+    # CLI flag: -object-store.swift.project-name
     [project_name: <string> | default = ""]
 
     # ID of the OpenStack Swift project's domain (v3 auth only), only needed if
     # it differs the from user domain.
-    # CLI flag: -thanos.swift.project-domain-id
+    # CLI flag: -object-store.swift.project-domain-id
     [project_domain_id: <string> | default = ""]
 
     # Name of the OpenStack Swift project's domain (v3 auth only), only needed
     # if it differs from the user domain.
-    # CLI flag: -thanos.swift.project-domain-name
+    # CLI flag: -object-store.swift.project-domain-name
     [project_domain_name: <string> | default = ""]
 
     # OpenStack Swift Region to use (v2,v3 auth only).
-    # CLI flag: -thanos.swift.region-name
+    # CLI flag: -object-store.swift.region-name
     [region_name: <string> | default = ""]
 
     # Name of the OpenStack Swift container to put chunks in.
-    # CLI flag: -thanos.swift.container-name
+    # CLI flag: -object-store.swift.container-name
     [container_name: <string> | default = ""]
 
     # Max retries on requests error.
-    # CLI flag: -thanos.swift.max-retries
+    # CLI flag: -object-store.swift.max-retries
     [max_retries: <int> | default = 3]
 
     # Time after which a connection attempt is aborted.
-    # CLI flag: -thanos.swift.connect-timeout
+    # CLI flag: -object-store.swift.connect-timeout
     [connect_timeout: <duration> | default = 10s]
 
     # Time after which an idle request is aborted. The timeout watchdog is reset
     # each time some data is received, so the timeout triggers after X time no
     # data is received on a request.
-    # CLI flag: -thanos.swift.request-timeout
+    # CLI flag: -object-store.swift.request-timeout
     [request_timeout: <duration> | default = 5s]
 
   filesystem:
     # Local filesystem storage directory.
-    # CLI flag: -thanos.filesystem.dir
+    # CLI flag: -object-store.filesystem.dir
     [dir: <string> | default = ""]
 
   # Prefix for all objects stored in the backend storage. For simplicity, it may
   # only contain digits and English alphabet letters.
-  # CLI flag: -thanos.storage-prefix
+  # CLI flag: -object-store.storage-prefix
   [storage_prefix: <string> | default = ""]
 
 # The maximum number of chunks to fetch per batch.

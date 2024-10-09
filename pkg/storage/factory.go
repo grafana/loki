@@ -404,14 +404,8 @@ func NewIndexClient(component string, periodCfg config.PeriodConfig, tableRange 
 				return client, nil
 			}
 
-			var objectClient client.ObjectClient
-			var err error
-			if cfg.UseThanosObjstore {
-				objectClient, err = NewObjectClientV2(component, periodCfg.ObjectType, cfg)
-			} else {
-				registerer = prometheus.WrapRegistererWith(prometheus.Labels{"component": component}, registerer)
-				objectClient, err = NewObjectClient(periodCfg.ObjectType, cfg, cm)
-			}
+			registerer = prometheus.WrapRegistererWith(prometheus.Labels{"component": component}, registerer)
+			objectClient, err := NewObjectClient(periodCfg.ObjectType, component, cfg, cm)
 			if err != nil {
 				return nil, err
 			}
@@ -485,13 +479,7 @@ func NewChunkClient(component, name string, cfg Config, schemaCfg config.SchemaC
 	case util.StringsContain(types.TestingStorageTypes, storeType):
 		switch storeType {
 		case types.StorageTypeInMemory:
-			var c client.ObjectClient
-			var err error
-			if cfg.UseThanosObjstore {
-				c, err = NewObjectClientV2(component, name, cfg)
-			} else {
-				c, err = NewObjectClient(name, cfg, clientMetrics)
-			}
+			c, err := NewObjectClient(name, component, cfg, clientMetrics)
 			if err != nil {
 				return nil, err
 			}
@@ -501,26 +489,14 @@ func NewChunkClient(component, name string, cfg Config, schemaCfg config.SchemaC
 	case util.StringsContain(types.SupportedStorageTypes, storeType):
 		switch storeType {
 		case types.StorageTypeFileSystem:
-			var c client.ObjectClient
-			var err error
-			if cfg.UseThanosObjstore {
-				c, err = NewObjectClientV2(component, name, cfg)
-			} else {
-				c, err = NewObjectClient(name, cfg, clientMetrics)
-			}
+			c, err := NewObjectClient(name, component, cfg, clientMetrics)
 			if err != nil {
 				return nil, err
 			}
 			return client.NewClientWithMaxParallel(c, client.FSEncoder, cfg.MaxParallelGetChunk, schemaCfg), nil
 
 		case types.StorageTypeAWS, types.StorageTypeS3, types.StorageTypeAzure, types.StorageTypeBOS, types.StorageTypeSwift, types.StorageTypeCOS, types.StorageTypeAlibabaCloud:
-			var c client.ObjectClient
-			var err error
-			if cfg.UseThanosObjstore {
-				c, err = NewObjectClientV2(component, name, cfg)
-			} else {
-				c, err = NewObjectClient(name, cfg, clientMetrics)
-			}
+			c, err := NewObjectClient(name, component, cfg, clientMetrics)
 			if err != nil {
 				return nil, err
 			}
@@ -530,13 +506,7 @@ func NewChunkClient(component, name string, cfg Config, schemaCfg config.SchemaC
 			return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 
 		case types.StorageTypeGCS:
-			var c client.ObjectClient
-			var err error
-			if cfg.UseThanosObjstore {
-				c, err = NewObjectClientV2(component, name, cfg)
-			} else {
-				c, err = NewObjectClient(name, cfg, clientMetrics)
-			}
+			c, err := NewObjectClient(name, component, cfg, clientMetrics)
 			if err != nil {
 				return nil, err
 			}
@@ -586,13 +556,7 @@ func NewTableClient(component, name string, periodCfg config.PeriodConfig, cfg C
 		}
 
 	case util.StringsContain(types.SupportedIndexTypes, name):
-		var objectClient client.ObjectClient
-		var err error
-		if cfg.UseThanosObjstore {
-			objectClient, err = NewObjectClientV2(component, periodCfg.ObjectType, cfg)
-		} else {
-			objectClient, err = NewObjectClient(periodCfg.ObjectType, cfg, cm)
-		}
+		objectClient, err := NewObjectClient(periodCfg.ObjectType, component, cfg, cm)
 		if err != nil {
 			return nil, err
 		}
@@ -647,25 +611,8 @@ func (c *ClientMetrics) Unregister() {
 }
 
 // NewObjectClient makes a new StorageClient with the prefix in the front.
-func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
-	actual, err := internalNewObjectClient("", name, cfg, clientMetrics)
-	if err != nil {
-		return nil, err
-	}
-
-	if cfg.ObjectPrefix == "" {
-		return actual, nil
-	} else {
-		prefix := strings.Trim(cfg.ObjectPrefix, "/") + "/"
-		return client.NewPrefixedObjectClient(actual, prefix), nil
-	}
-}
-
-// NewObjectClient makes a new StorageClient with the prefix in the front.
-func NewObjectClientV2(component, name string, cfg Config) (client.ObjectClient, error) {
-	// TODO: Statify internalNewObjectClient signature to be removed once the old objstore is removed
-	clientMetrics := ClientMetrics{}
-	actual, err := internalNewObjectClient(component, name, cfg, clientMetrics)
+func NewObjectClient(name, component string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
+	actual, err := internalNewObjectClient(name, component, cfg, clientMetrics)
 	if err != nil {
 		return nil, err
 	}
@@ -679,16 +626,16 @@ func NewObjectClientV2(component, name string, cfg Config) (client.ObjectClient,
 }
 
 // internalNewObjectClient makes the underlying StorageClient of the desired types.
-func internalNewObjectClient(component, name string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
+func internalNewObjectClient(storeName, component string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
 	var (
 		namedStore string
-		storeType  = name
+		storeType  = storeName
 	)
 
 	// lookup storeType for named stores
-	if nsType, ok := cfg.NamedStores.storeType[name]; ok {
+	if nsType, ok := cfg.NamedStores.storeType[storeName]; ok {
 		storeType = nsType
-		namedStore = name
+		namedStore = storeName
 	}
 
 	switch storeType {
@@ -700,7 +647,7 @@ func internalNewObjectClient(component, name string, cfg Config, clientMetrics C
 		if namedStore != "" {
 			awsCfg, ok := cfg.NamedStores.AWS[namedStore]
 			if !ok {
-				return nil, fmt.Errorf("Unrecognized named aws storage config %s", name)
+				return nil, fmt.Errorf("Unrecognized named aws storage config %s", storeName)
 			}
 			s3Cfg = awsCfg.S3Config
 		}
@@ -711,7 +658,7 @@ func internalNewObjectClient(component, name string, cfg Config, clientMetrics C
 		if namedStore != "" {
 			nsCfg, ok := cfg.NamedStores.AlibabaCloud[namedStore]
 			if !ok {
-				return nil, fmt.Errorf("Unrecognized named alibabacloud oss storage config %s", name)
+				return nil, fmt.Errorf("Unrecognized named alibabacloud oss storage config %s", storeName)
 			}
 
 			ossCfg = (alibaba.OssConfig)(nsCfg)
@@ -723,7 +670,7 @@ func internalNewObjectClient(component, name string, cfg Config, clientMetrics C
 		if namedStore != "" {
 			nsCfg, ok := cfg.NamedStores.GCS[namedStore]
 			if !ok {
-				return nil, fmt.Errorf("Unrecognized named gcs storage config %s", name)
+				return nil, fmt.Errorf("Unrecognized named gcs storage config %s", storeName)
 			}
 			gcsCfg = (gcp.GCSConfig)(nsCfg)
 		}
@@ -743,7 +690,7 @@ func internalNewObjectClient(component, name string, cfg Config, clientMetrics C
 		if namedStore != "" {
 			nsCfg, ok := cfg.NamedStores.Azure[namedStore]
 			if !ok {
-				return nil, fmt.Errorf("Unrecognized named azure storage config %s", name)
+				return nil, fmt.Errorf("Unrecognized named azure storage config %s", storeName)
 			}
 			azureCfg = (azure.BlobStorageConfig)(nsCfg)
 		}
@@ -754,7 +701,7 @@ func internalNewObjectClient(component, name string, cfg Config, clientMetrics C
 		if namedStore != "" {
 			nsCfg, ok := cfg.NamedStores.Swift[namedStore]
 			if !ok {
-				return nil, fmt.Errorf("Unrecognized named swift storage config %s", name)
+				return nil, fmt.Errorf("Unrecognized named swift storage config %s", storeName)
 			}
 			swiftCfg = (openstack.SwiftConfig)(nsCfg)
 		}
@@ -765,7 +712,7 @@ func internalNewObjectClient(component, name string, cfg Config, clientMetrics C
 		if namedStore != "" {
 			nsCfg, ok := cfg.NamedStores.Filesystem[namedStore]
 			if !ok {
-				return nil, fmt.Errorf("Unrecognized named filesystem storage config %s", name)
+				return nil, fmt.Errorf("Unrecognized named filesystem storage config %s", storeName)
 			}
 			fsCfg = (local.FSConfig)(nsCfg)
 		}
@@ -776,7 +723,7 @@ func internalNewObjectClient(component, name string, cfg Config, clientMetrics C
 		if namedStore != "" {
 			nsCfg, ok := cfg.NamedStores.BOS[namedStore]
 			if !ok {
-				return nil, fmt.Errorf("Unrecognized named bos storage config %s", name)
+				return nil, fmt.Errorf("Unrecognized named bos storage config %s", storeName)
 			}
 
 			bosCfg = (baidubce.BOSStorageConfig)(nsCfg)
@@ -788,7 +735,7 @@ func internalNewObjectClient(component, name string, cfg Config, clientMetrics C
 		if namedStore != "" {
 			nsCfg, ok := cfg.NamedStores.COS[namedStore]
 			if !ok {
-				return nil, fmt.Errorf("Unrecognized named cos storage config %s", name)
+				return nil, fmt.Errorf("Unrecognized named cos storage config %s", storeName)
 			}
 
 			cosCfg = (ibmcloud.COSConfig)(nsCfg)
@@ -796,6 +743,6 @@ func internalNewObjectClient(component, name string, cfg Config, clientMetrics C
 		return ibmcloud.NewCOSObjectClient(cosCfg, cfg.Hedging)
 
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v, %v, %v", name, types.StorageTypeAWS, types.StorageTypeS3, types.StorageTypeGCS, types.StorageTypeAzure, types.StorageTypeAlibabaCloud, types.StorageTypeSwift, types.StorageTypeBOS, types.StorageTypeCOS, types.StorageTypeFileSystem)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v, %v, %v", storeName, types.StorageTypeAWS, types.StorageTypeS3, types.StorageTypeGCS, types.StorageTypeAzure, types.StorageTypeAlibabaCloud, types.StorageTypeSwift, types.StorageTypeBOS, types.StorageTypeCOS, types.StorageTypeFileSystem)
 	}
 }

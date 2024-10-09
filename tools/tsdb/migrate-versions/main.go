@@ -20,7 +20,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/loki"
 	"github.com/grafana/loki/v3/pkg/storage"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
@@ -99,13 +98,7 @@ func main() {
 }
 
 func migrateTables(pCfg config.PeriodConfig, storageCfg storage.Config, clientMetrics storage.ClientMetrics, tableRange config.TableRange) error {
-	var objClient client.ObjectClient
-	var err error
-	if storageCfg.UseThanosObjstore {
-		objClient, err = storage.NewObjectClientV2("tables-migration-tool", pCfg.ObjectType, storageCfg)
-	} else {
-		objClient, err = storage.NewObjectClient(pCfg.ObjectType, storageCfg, clientMetrics)
-	}
+	objClient, err := storage.NewObjectClient(pCfg.ObjectType, "tsdb-migrate", storageCfg, clientMetrics)
 	if err != nil {
 		return err
 	}

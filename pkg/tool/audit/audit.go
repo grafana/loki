@@ -52,13 +52,7 @@ func Run(ctx context.Context, cloudIndexPath, table string, cfg Config, logger l
 
 func GetObjectClient(cfg Config) (client.ObjectClient, error) {
 	periodCfg := cfg.SchemaConfig.Configs[len(cfg.SchemaConfig.Configs)-1] // only check the last period.
-	var objClient client.ObjectClient
-	var err error
-	if cfg.StorageConfig.UseThanosObjstore {
-		objClient, err = storage.NewObjectClientV2("audit", periodCfg.ObjectType, cfg.StorageConfig)
-	} else {
-		objClient, err = storage.NewObjectClient(periodCfg.ObjectType, cfg.StorageConfig, storage.NewClientMetrics())
-	}
+	objClient, err := storage.NewObjectClient(periodCfg.ObjectType, "tool-audit", cfg.StorageConfig, storage.NewClientMetrics())
 	if err != nil {
 		return nil, fmt.Errorf("couldn't create object client: %w", err)
 	}
