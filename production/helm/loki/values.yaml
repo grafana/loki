@@ -1796,6 +1796,8 @@ ingester:
   readinessProbe: {}
   # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
+  # -- UpdateStrategy for the ingester StatefulSets. One of 'RollingUpdate' or 'OnDelete'.
+  updateStrategy: RollingUpdate
   persistence:
     # -- Enable creating PVCs which is required when using boltdb-shipper
     enabled: false

@@ -41,7 +41,7 @@ spec:
       name: ingester-zone-c
       rollout-group: ingester
   updateStrategy:
-    type: OnDelete
+    type: {{ .Values.ingester.updateStrategy }}
   template:
     metadata:
       annotations:
