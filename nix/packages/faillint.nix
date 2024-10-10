@@ -2,7 +2,7 @@
 
 buildGoModule rec {
   pname = "faillint";
-  version = "24d8e46ee21be34778b85fce26fed0ad50210141";
+  version = "v1.14.0";
 
   src = fetchFromGitHub {
     owner = "fatih";
