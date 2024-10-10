@@ -3,6 +3,7 @@ package queryrange
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -221,6 +222,7 @@ type aggregatedMetricQuery struct {
 	aggregateBy string
 	start       time.Time
 	end         time.Time
+	step        time.Duration
 }
 
 func (a *aggregatedMetricQuery) buildBaseQueryString(
@@ -254,7 +256,7 @@ func (a *aggregatedMetricQuery) buildBaseQueryString(
 	)
 }
 
-func (a *aggregatedMetricQuery) BuildQuery() string {
+func (a *aggregatedMetricQuery) BuildQuery() (string, time.Duration) {
 	// by this point query as been validated and we can assume that there is at least one matcher
 	firstMatcher := a.matchers[0]
 
@@ -287,7 +289,16 @@ func (a *aggregatedMetricQuery) BuildQuery() string {
 		query = query + " | " + strings.Join(filters, " | ")
 	}
 
-	lookBack := a.end.Sub(a.start).Truncate(time.Second)
-	query = query + fmt.Sprintf(` | unwrap bytes(bytes) | __error__=""[%s]))`, lookBack)
-	return query
+	step := a.step
+	if step == 0 {
+		step = time.Duration(defaultQueryRangeStep(a.start, a.end)) * time.Second
+	}
+	query = query + fmt.Sprintf(` | unwrap bytes(bytes) | __error__=""[%s]))`, step)
+	return query, step
+}
+
+// defaultQueryRangeStep returns the default step used in the query range API,
+// which is dynamically calculated based on the time range
+func defaultQueryRangeStep(start time.Time, end time.Time) int {
+	return int(math.Max(math.Floor(end.Sub(start).Seconds()/250), 1))
 }

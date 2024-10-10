@@ -440,7 +440,7 @@ func NewRangeQueryWithDefaults() *RangeQuery {
 	result := &RangeQuery{
 		Start:     start,
 		End:       end,
-		Limit:     defaultQueryLimit,
+		Limit:     DefaultQueryLimit,
 		Direction: defaultDirection,
 		Interval:  0,
 	}

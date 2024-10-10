@@ -18,14 +18,14 @@ import (
 )
 
 const (
-	defaultQueryLimit = 100
+	DefaultQueryLimit = 100
 	defaultLimit      = 1000
 	defaultSince      = 1 * time.Hour
 	defaultDirection  = logproto.BACKWARD
 )
 
 func limit(r *http.Request) (uint32, error) {
-	l, err := parseInt(r.Form.Get("limit"), defaultQueryLimit)
+	l, err := parseInt(r.Form.Get("limit"), DefaultQueryLimit)
 	if err != nil {
 		return 0, err
 	}
@@ -36,7 +36,7 @@ func limit(r *http.Request) (uint32, error) {
 }
 
 func lineLimit(r *http.Request) (uint32, error) {
-	l, err := parseInt(r.Form.Get("line_limit"), defaultQueryLimit)
+	l, err := parseInt(r.Form.Get("line_limit"), DefaultQueryLimit)
 	if err != nil {
 		return 0, err
 	}

@@ -1205,41 +1205,27 @@ func aggMetricsVolumeHandler(
 		start:       r.GetStart(),
 		end:         r.GetEnd(),
 		aggregateBy: strings.Join(r.GetTargetLabels(), ","),
+		step:        time.Duration(r.GetStep() * int64(time.Millisecond)),
 	}
 
-	qryStr := aggMetricQry.BuildQuery()
+	qryStr, step := aggMetricQry.BuildQuery()
 	expr, err := syntax.ParseExpr(qryStr)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
-	var lokiReq base.Request
-	if r.GetStep() <= 0 {
-		lokiReq = &LokiInstantRequest{
-			Query:     expr.String(),
-			Limit:     1000,
-			Direction: logproto.BACKWARD,
-			TimeTs:    r.GetEnd().UTC(),
-			Path:      "/loki/api/v1/query",
-			Plan: &plan.QueryPlan{
-				AST: expr,
-			},
-			CachingOptions: r.GetCachingOptions(),
-		}
-	} else {
-		lokiReq = &LokiRequest{
-			Query:     expr.String(),
-			Limit:     1000,
-			Step:      r.GetStep(),
-			StartTs:   r.GetStart().UTC(),
-			EndTs:     r.GetEnd().UTC(),
-			Direction: logproto.BACKWARD,
-			Path:      "/loki/api/v1/query_range",
-			Plan: &plan.QueryPlan{
-				AST: expr,
-			},
-			CachingOptions: r.GetCachingOptions(),
-		}
+	lokiReq := &LokiRequest{
+		Query:     expr.String(),
+		Limit:     loghttp.DefaultQueryLimit,
+		Step:      step.Milliseconds(),
+		StartTs:   r.GetStart().UTC(),
+		EndTs:     r.GetEnd().UTC(),
+		Direction: logproto.BACKWARD,
+		Path:      "/loki/api/v1/query_range",
+		Plan: &plan.QueryPlan{
+			AST: expr,
+		},
+		CachingOptions: r.GetCachingOptions(),
 	}
 
 	resp, err := logHandler.Do(ctx, lokiReq)
@@ -1260,6 +1246,18 @@ func aggMetricsVolumeHandler(
 	for _, stream := range result {
 		if resultType == loghttp.ResultTypeVector && len(stream.Samples) > 1 {
 			resultType = loghttp.ResultTypeMatrix
+		}
+
+		// sum the values and take the latest timestamp if an instant volume was requested
+		if r.GetStep() == 0 {
+			newSample := stream.Samples[len(stream.Samples)-1]
+			for _, sample := range stream.Samples[0 : len(stream.Samples)-1] {
+				newSample.Value += sample.Value
+			}
+
+			stream.Samples = []logproto.LegacySample{
+				newSample,
+			}
 		}
 
 		lbls := logproto.FromLabelAdaptersToLabels(stream.Labels)
