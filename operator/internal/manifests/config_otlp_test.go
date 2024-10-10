@@ -186,6 +186,15 @@ func TestOtlpAttributeConfig(t *testing.T) {
 				},
 			},
 		},
+		{
+			desc: "openshift-logging defaults",
+			spec: lokiv1.LokiStackSpec{
+				Tenants: &lokiv1.TenantsSpec{
+					Mode: lokiv1.OpenshiftLogging,
+				},
+			},
+			wantConfig: defaultOpenShiftLoggingAttributes(),
+		},
 	}
 
 	for _, tc := range tt {

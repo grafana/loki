@@ -5,14 +5,8 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 )
 
-func defaultOTLPAttributeConfig(ts *lokiv1.TenantsSpec) config.OTLPAttributeConfig {
-	if ts == nil || ts.Mode != lokiv1.OpenshiftLogging {
-		return config.OTLPAttributeConfig{}
-	}
-
-	// TODO decide which of these can be disabled by using "disableRecommendedAttributes"
-	// TODO decide whether we want to split the default configuration by tenant
-	result := config.OTLPAttributeConfig{
+func defaultOpenShiftLoggingAttributes() config.OTLPAttributeConfig {
+	return config.OTLPAttributeConfig{
 		DefaultIndexLabels: []string{
 			"openshift.cluster.uid",
 			"openshift.log.source",
@@ -90,8 +84,16 @@ func defaultOTLPAttributeConfig(ts *lokiv1.TenantsSpec) config.OTLPAttributeConf
 			},
 		},
 	}
+}
 
-	return result
+func defaultOTLPAttributeConfig(ts *lokiv1.TenantsSpec) config.OTLPAttributeConfig {
+	if ts == nil || ts.Mode != lokiv1.OpenshiftLogging {
+		return config.OTLPAttributeConfig{}
+	}
+
+	// TODO decide which of these can be disabled by using "disableRecommendedAttributes"
+	// TODO decide whether we want to split the default configuration by tenant
+	return defaultOpenShiftLoggingAttributes()
 }
 
 func collectAttributes(attrs []lokiv1.OTLPAttributeReference) (regularExpressions, names []string) {
