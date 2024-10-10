@@ -38,7 +38,6 @@ func TestArgsMap(t *testing.T) {
 }
 
 func TestBaseMetricName(t *testing.T) {
-	require := require.New(t)
 
 	cases := []struct {
 		name     string
@@ -60,7 +59,7 @@ func TestBaseMetricName(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			actual := tc.builder.baseMetricName()
-			require.Equal(tc.expected, actual)
+			require.Equal(t, tc.expected, actual)
 		})
 	}
 }

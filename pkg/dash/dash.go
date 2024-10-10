@@ -207,7 +207,7 @@ type TemplateArgs struct {
 	PartitionFields string
 }
 
-// Map helps turn a template args struct into an abritrary map.
+// Map helps turn a template args struct into an arbitrary map.
 // mainly useful for extending the list of keys to send to a template
 func (a TemplateArgs) Map() map[string]string {
 	ty := reflect.TypeOf(a)
