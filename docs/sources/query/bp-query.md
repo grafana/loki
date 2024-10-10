@@ -4,7 +4,7 @@ menuTitle:  Query best practices
 description: Describes best practices for querying in Grafana Loki.
 aliases:
 - ../bp-query
-weight: 700
+weight: 100
 ---
 # Query best practices
 
