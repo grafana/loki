@@ -56,6 +56,8 @@ pkgs.stdenv.mkDerivation {
     export GOPROXY=off
 
     cp -r ${lambda-promtail-gomod} tools/lambda-promtail/vendor
+    go clean -modcache
+    go version
     make clean loki
   '';
 
