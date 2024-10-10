@@ -316,7 +316,10 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 }
 
 func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef, BlockDirectory]) {
+	errLogger := log.With(f.logger, "task", task.key, "msg", "failed to process download request")
+
 	if ctx.Err() != nil {
+		level.Error(errLogger).Log("err", ctx.Err())
 		task.errors <- ctx.Err()
 		return
 	}
@@ -324,6 +327,7 @@ func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef
 	// check if block was fetched while task was waiting in queue
 	result, exists, err := f.fromCache(ctx, task.key)
 	if err != nil {
+		level.Error(errLogger).Log("err", err)
 		task.errors <- err
 		return
 	}
@@ -341,6 +345,7 @@ func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef
 	// fetch from storage
 	result, err = f.fetchBlock(ctx, task.item)
 	if err != nil {
+		level.Error(errLogger).Log("err", err)
 		task.errors <- err
 		return
 	}
@@ -354,6 +359,7 @@ func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef
 		err = f.blocksCache.PutInc(ctx, key, result)
 	}
 	if err != nil {
+		level.Error(errLogger).Log("err", err)
 		task.errors <- err
 		return
 	}

@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"unsafe"
@@ -287,21 +286,18 @@ func (p *Process) MemoryInfoWithContext(ctx context.Context) (*MemoryInfoStat, e
 }
 
 func (p *Process) ChildrenWithContext(ctx context.Context) ([]*Process, error) {
-	procs, err := ProcessesWithContext(ctx)
+	pids, err := common.CallPgrepWithContext(ctx, invoke, p.Pid)
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
-	ret := make([]*Process, 0, len(procs))
-	for _, proc := range procs {
-		ppid, err := proc.PpidWithContext(ctx)
+	ret := make([]*Process, 0, len(pids))
+	for _, pid := range pids {
+		np, err := NewProcessWithContext(ctx, pid)
 		if err != nil {
-			continue
+			return nil, err
 		}
-		if ppid == p.Pid {
-			ret = append(ret, proc)
-		}
+		ret = append(ret, np)
 	}
-	sort.Slice(ret, func(i, j int) bool { return ret[i].Pid < ret[j].Pid })
 	return ret, nil
 }
 
