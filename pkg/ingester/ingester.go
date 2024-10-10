@@ -615,9 +615,6 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 	// BEFORE the ingester ring lifecycler is started, because once the ingester ring lifecycler will start
 	// it will switch the ingester state in the ring to ACTIVE.
 	if i.partitionReader != nil {
-		// Disable rate limits
-		i.limiter.DisableForWALReplay()
-
 		if err := services.StartAndAwaitRunning(ctx, i.partitionReader); err != nil {
 			return fmt.Errorf("failed to start partition reader: %w", err)
 		}

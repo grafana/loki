@@ -1089,9 +1089,7 @@ func TestStreamShardingUsage(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), limitsDefinition)
 	require.NoError(t, err)
 
-	rateStrategy := &TenantBasedStrategy{limits: limits}
-
-	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), rateStrategy)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 
 	defaultShardStreamsCfg := limiter.limits.ShardStreams("fake")
 	tenantShardStreamsCfg := limiter.limits.ShardStreams(customTenant1)

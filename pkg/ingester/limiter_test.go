@@ -133,8 +133,7 @@ func TestStreamCountLimiter_AssertNewStreamAllowed(t *testing.T) {
 				ownedStreamCount: testData.ownedStreamCount,
 			}
 			strategy := &fixedStrategy{localLimit: testData.calculatedLocalLimit}
-			rateStrategy := &TenantBasedStrategy{limits: limits}
-			limiter := NewLimiter(limits, NilMetrics, strategy, rateStrategy)
+			limiter := NewLimiter(limits, NilMetrics, strategy, &TenantBasedStrategy{limits: limits})
 			defaultCountSupplier := func() int {
 				return testData.streams
 			}
