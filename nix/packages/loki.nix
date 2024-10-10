@@ -29,6 +29,7 @@ pkgs.stdenv.mkDerivation {
     git
     go_1_23
     golangci-lint
+    gotools
     nettools
     yamllint
 
