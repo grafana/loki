@@ -12,7 +12,12 @@ weight: 100
 
 This Helm Chart installation runs the Grafana Loki *single binary* within a Kubernetes cluster.
 
-If you set the `singleBinary.replicas` value to 1 and set the deployment mode to `SingleBinary`, this chart configures Loki to run the `all` target in a [monolithic mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode), designed to work with a filesystem storage. It will also configure meta-monitoring of metrics and logs.
+If you set the `singleBinary.replicas` value to 1 and set the deployment mode to `SingleBinary`, this chart configures Loki to run the `all` target in a [monolithic mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode), designed to work with the filesystem storage configuration. It will also configure meta-monitoring of metrics and logs. 
+
+{{< admonition type="note" >}}
+You must specify `commonConfig.replication_factor: 1` if you are only using 1 replica, otherwise requests will fail.
+{{< /admonition >}}
+
 If you set the `singleBinary.replicas` value to 2 or more, this chart configures Loki to run a *single binary* in a replicated, highly available mode.  When running replicas of a single binary, you must configure object storage.
 
 **Before you begin: Software Requirements**
@@ -47,7 +52,7 @@ If you set the `singleBinary.replicas` value to 2 or more, this chart configures
           type: 'filesystem'
         schemaConfig:
           configs:
-          - from: 2024-01-01
+          - from: "2024-01-01"
             store: tsdb
             index:
               prefix: loki_index_
@@ -72,7 +77,7 @@ If you set the `singleBinary.replicas` value to 2 or more, this chart configures
           replication_factor: 3
         schemaConfig:
           configs:
-          - from: 2024-01-01
+          - from: "2024-01-01"
             store: tsdb
             index:
               prefix: loki_index_

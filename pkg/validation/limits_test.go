@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logql"
 )
@@ -339,12 +339,13 @@ func TestLimitsValidation(t *testing.T) {
 		},
 		{
 			limits:   Limits{DeletionMode: "disabled", BloomBlockEncoding: "unknown"},
-			expected: fmt.Errorf("invalid encoding: unknown, supported: %s", chunkenc.SupportedEncoding()),
+			expected: fmt.Errorf("invalid encoding: unknown, supported: %s", compression.SupportedCodecs()),
 		},
 	} {
 		desc := fmt.Sprintf("%s/%s", tc.limits.DeletionMode, tc.limits.BloomBlockEncoding)
 		t.Run(desc, func(t *testing.T) {
 			tc.limits.TSDBShardingStrategy = logql.PowerOfTwoVersion.String() // hacky but needed for test
+			tc.limits.TSDBMaxBytesPerShard = DefaultTSDBMaxBytesPerShard
 			if tc.expected == nil {
 				require.NoError(t, tc.limits.Validate())
 			} else {

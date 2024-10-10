@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
 
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
@@ -82,6 +83,46 @@ func TestRequestParserWrapping(t *testing.T) {
 	require.True(t, called)
 }
 
-func stubParser(_ string, _ *http.Request, _ push.TenantsRetention, _ push.Limits, _ push.UsageTracker) (*logproto.PushRequest, *push.Stats, error) {
+func Test_OtelErrorHeaderInterceptor(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		inputCode    int
+		expectedCode int
+	}{
+		{
+			name:         "500",
+			inputCode:    http.StatusInternalServerError,
+			expectedCode: http.StatusServiceUnavailable,
+		},
+		{
+			name:         "400",
+			inputCode:    http.StatusBadRequest,
+			expectedCode: http.StatusBadRequest,
+		},
+		{
+			name:         "204",
+			inputCode:    http.StatusNoContent,
+			expectedCode: http.StatusNoContent,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRecorder()
+			i := newOtelErrorHeaderInterceptor(r)
+
+			http.Error(i, "error", tc.inputCode)
+			require.Equal(t, tc.expectedCode, r.Code)
+		})
+	}
+}
+
+func stubParser(
+	_ string,
+	_ *http.Request,
+	_ push.TenantsRetention,
+	_ push.Limits,
+	_ push.UsageTracker,
+	_ bool,
+	_ log.Logger,
+) (*logproto.PushRequest, *push.Stats, error) {
 	return &logproto.PushRequest{}, &push.Stats{}, nil
 }

@@ -1,5 +1,53 @@
 # Change Log
 
+## [v1.118.0] - 2024-06-04
+
+**Note**: This release contains features in closed beta (#700).
+
+- #701 - @llDrLove - Rename control plane permission to control plane firewall
+- #700 - @bbassingthwaite - Add ProxyProtocol to LoadBalancer HealthCheck
+
+## [v1.117.0] - 2024-06-04
+
+- #696 - @llDrLove - Support specifying control plane firewall rules when creating or updating DOKS clusters
+- #697 - @asaha2 - Add support for lb internal network type
+- #695 - @ElanHasson - APPS-8732 - Update documentation on App Platform OpenSearch endpoint structure.
+- #692 - @ElanHasson - APPS-8732 - Add OpenSearch as a Log Destination for App Platform.
+
+## [v1.116.0] - 2024-05-16
+
+- #693 - @guptado - Introduce VPC peering methods
+
+## [v1.115.0] - 2024-05-08
+
+- #688 - @asaha2 - load balancers: support glb active-passive fail-over settings, currently in closed beta
+
+## [v1.114.0] - 2024-04-12
+
+- #686 - @greeshmapill - APPS-8386: Add comments to mark deprecation of unused instance size fields
+- #685 - @jcodybaker - APPS-8711: container termination controls
+- #682 - @dependabot[bot] - Bump golang.org/x/net from 0.17.0 to 0.23.0
+
+## [v1.113.0] - 2024-04-12
+
+- #679 - @bhardwajRahul - Enable ui_connection parameter for Opensearch
+- #678 - @bhardwajRahul - Enable Opensearch option in Godo
+
+## [v1.112.0] - 2024-04-08
+
+- #672 - @dependabot[bot] - Bump google.golang.org/protobuf from 1.28.0 to 1.33.0
+- #675 - @bhardwajRahul - Add ListDatabaseEvents to Godo
+
+## [v1.111.0] - 2024-04-02
+
+- #674 - @asaha2 - load balancers: introduce glb settings in godo, currently in closed beta
+
+## [v1.110.0] - 2024-03-14
+
+- #667 - @dwilsondo - Include DBaaS metrics credential endpoint operations
+- #670 - @guptado - [NETPROD-3583] Added name param in ListOption to get resource by name
+- #671 - @greeshmapill - APPS-8383: Add deprecation intent and bandwidth allowance to app instance size spec
+
 ## [v1.109.0] - 2024-02-09
 
 - #668 - @greeshmapill - APPS-8315: Update app instance size spec

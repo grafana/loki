@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -47,7 +48,9 @@ overrides:
 	require.Equal(t, time.Duration(0), overrides.RetentionPeriod("1"))   // default
 	require.Equal(t, 2*30*24*time.Hour, overrides.RetentionPeriod("29")) // overrides
 	require.Equal(t, []validation.StreamRetention(nil), overrides.StreamRetention("1"))
-	require.Equal(t, []validation.StreamRetention{
+
+	actual := overrides.StreamRetention("29")
+	expected := []validation.StreamRetention{
 		{Period: model.Duration(48 * time.Hour), Priority: 10, Selector: `{app="foo"}`, Matchers: []*labels.Matcher{
 			labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
 		}},
@@ -55,7 +58,17 @@ overrides:
 			labels.MustNewMatcher(labels.MatchEqual, "namespace", "bar"),
 			labels.MustNewMatcher(labels.MatchRegexp, "cluster", "fo.*|b.+|[1-2]"),
 		}},
-	}, overrides.StreamRetention("29"))
+	}
+
+	require.Equal(t, removeFastRegexMatcher(expected), removeFastRegexMatcher(actual))
+}
+
+func removeFastRegexMatcher(configs []validation.StreamRetention) []validation.StreamRetention {
+	result := make([]validation.StreamRetention, 0, len(configs))
+	for _, config := range configs {
+		config.Matchers = syntax.RemoveFastRegexMatchers(config.Matchers)
+	}
+	return result
 }
 
 func Test_ValidateRules(t *testing.T) {
@@ -91,8 +104,12 @@ configs:
     "1":
         log_push_request: false
         limited_log_push_errors: false
+        log_duplicate_metrics: false
+        log_duplicate_stream_info: false
     "2":
         log_push_request: true
+        log_duplicate_metrics: true
+        log_duplicate_stream_info: true
 `)
 
 	tenantConfigs, err := runtime.NewTenantConfigs(runtimeGetter)
@@ -104,6 +121,12 @@ configs:
 	require.Equal(t, true, tenantConfigs.LogPushRequest("2"))
 	require.Equal(t, true, tenantConfigs.LimitedLogPushErrors("3"))
 	require.Equal(t, false, tenantConfigs.LogPushRequest("3"))
+	require.Equal(t, false, tenantConfigs.LogDuplicateMetrics("1"))
+	require.Equal(t, true, tenantConfigs.LogDuplicateMetrics("2"))
+	require.Equal(t, false, tenantConfigs.LogDuplicateMetrics("3"))
+	require.Equal(t, false, tenantConfigs.LogDuplicateStreamInfo("1"))
+	require.Equal(t, true, tenantConfigs.LogDuplicateStreamInfo("2"))
+	require.Equal(t, false, tenantConfigs.LogDuplicateStreamInfo("3"))
 }
 
 func newTestRuntimeconfig(t *testing.T, yaml string) runtime.TenantConfigProvider {

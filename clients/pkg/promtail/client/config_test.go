@@ -97,7 +97,6 @@ func Test_Config(t *testing.T) {
 		},
 	}
 	for _, tc := range tests {
-		tc := tc
 		err := yaml.Unmarshal([]byte(tc.configValues), &clientConfig)
 
 		if tc.expectedErr != nil {

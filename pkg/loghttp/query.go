@@ -9,6 +9,7 @@ import (
 	"unsafe"
 
 	"github.com/c2h5oh/datasize"
+	"github.com/gorilla/mux"
 	"github.com/grafana/jsonparser"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
@@ -506,7 +507,7 @@ func ParseRangeQuery(r *http.Request) (*RangeQuery, error) {
 	if GetVersion(r.URL.Path) == VersionLegacy {
 		result.Query, err = parseRegexQuery(r)
 		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 
 		expr, err := syntax.ParseExpr(result.Query)
@@ -537,6 +538,9 @@ func ParseIndexShardsQuery(r *http.Request) (*RangeQuery, datasize.ByteSize, err
 		return nil, 0, err
 	}
 	targetBytes, err := parseBytes(r, "targetBytesPerShard", true)
+	if targetBytes <= 0 {
+		return nil, 0, errors.New("targetBytesPerShard must be a positive value")
+	}
 	return parsed, targetBytes, err
 }
 
@@ -647,6 +651,7 @@ func ParseDetectedFieldsQuery(r *http.Request) (*logproto.DetectedFieldsRequest,
 	result := &logproto.DetectedFieldsRequest{}
 
 	result.Query = query(r)
+	result.Values, result.Name = values(r)
 	result.Start, result.End, err = bounds(r)
 	if err != nil {
 		return nil, err
@@ -661,7 +666,7 @@ func ParseDetectedFieldsQuery(r *http.Request) (*logproto.DetectedFieldsRequest,
 		return nil, err
 	}
 
-	result.FieldLimit, err = fieldLimit(r)
+	result.Limit, err = detectedFieldsLimit(r)
 	if err != nil {
 		return nil, err
 	}
@@ -681,7 +686,13 @@ func ParseDetectedFieldsQuery(r *http.Request) (*logproto.DetectedFieldsRequest,
 	if (result.End.Sub(result.Start) / step) > 11000 {
 		return nil, errStepTooSmall
 	}
+
 	return result, nil
+}
+
+func values(r *http.Request) (bool, string) {
+	name, ok := mux.Vars(r)["name"]
+	return ok, name
 }
 
 func targetLabels(r *http.Request) []string {

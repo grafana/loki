@@ -269,7 +269,6 @@ func Test_encodePromResponse(t *testing.T) {
 			}`,
 		},
 	} {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			r, err := tt.resp.encode(context.Background())
 			require.NoError(t, err)

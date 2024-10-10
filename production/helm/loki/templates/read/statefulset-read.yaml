@@ -19,11 +19,11 @@ metadata:
     {{- end }}
   {{- end }}
 spec:
-{{- if not .Values.write.autoscaling.enabled }}
+{{- if not .Values.read.autoscaling.enabled }}
   {{- if eq .Values.deploymentMode "SingleBinary" }}
   replicas: 0
   {{- else }}
-  replicas: {{ .Values.write.replicas }}
+  replicas: {{ .Values.read.replicas }}
   {{- end }}
 {{- end }}
   podManagementPolicy: {{ .Values.read.podManagementPolicy }}
@@ -180,6 +180,10 @@ spec:
       kind: PersistentVolumeClaim
       metadata:
         name: data
+        {{- with .Values.read.persistence.annotations }}
+        annotations:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
       spec:
         accessModes:
           - ReadWriteOnce

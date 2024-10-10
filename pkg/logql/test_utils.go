@@ -234,7 +234,6 @@ func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQu
 		if err != nil {
 			return nil, err
 		}
-
 		results = append(results, res)
 	}
 
@@ -277,8 +276,9 @@ func randomStreams(nStreams, nEntries, nShards int, labelNames []string, valueFi
 			if valueField {
 				line = fmt.Sprintf("%s value=%f", line, r.Float64()*100.0)
 			}
+			nanos := r.Int63n(time.Second.Nanoseconds())
 			stream.Entries = append(stream.Entries, logproto.Entry{
-				Timestamp: time.Unix(0, int64(j*int(time.Second))),
+				Timestamp: time.Unix(0, int64(j*int(time.Second))+nanos),
 				Line:      line,
 			})
 		}

@@ -13,7 +13,7 @@ import (
 func TestStreamsMap(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1))
 	chunkfmt, headfmt := defaultChunkFormat(t)
 
 	ss := []*stream{
@@ -31,6 +31,7 @@ func TestStreamsMap(t *testing.T) {
 			NewStreamRateCalculator(),
 			NilMetrics,
 			nil,
+			nil,
 		),
 		newStream(
 			chunkfmt,
@@ -45,6 +46,7 @@ func TestStreamsMap(t *testing.T) {
 			true,
 			NewStreamRateCalculator(),
 			NilMetrics,
+			nil,
 			nil,
 		),
 	}

@@ -125,7 +125,7 @@ func (s *edfScheduler) nextIndex() int {
 }
 
 // A simple RR scheduler to use for fallback when fewer than two backends have
-// non-zero weights, or all backends have the the same weight, or when only one
+// non-zero weights, or all backends have the same weight, or when only one
 // subconn exists.
 type rrScheduler struct {
 	inc    func() uint32

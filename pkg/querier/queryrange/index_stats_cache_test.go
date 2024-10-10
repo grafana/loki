@@ -212,7 +212,7 @@ func TestIndexStatsCache_RecentData(t *testing.T) {
 
 func indexStatsResultHandler(v *IndexStatsResponse) (*int, queryrangebase.Handler) {
 	calls := 0
-	return &calls, queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+	return &calls, queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		calls++
 		return v, nil
 	})

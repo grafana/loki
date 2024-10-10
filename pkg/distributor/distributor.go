@@ -1,6 +1,7 @@
 package distributor
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -9,13 +10,17 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
+	"unsafe"
 
+	"github.com/buger/jsonparser"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/status"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/twmb/franz-go/pkg/kgo"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"google.golang.org/grpc/codes"
 
@@ -41,8 +46,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -56,16 +63,6 @@ const (
 	ringKey = "distributor"
 
 	ringAutoForgetUnhealthyPeriods = 2
-
-	labelServiceName = "service_name"
-	serviceUnknown   = "unknown_service"
-	labelLevel       = "level"
-	logLevelDebug    = "debug"
-	logLevelInfo     = "info"
-	logLevelWarn     = "warn"
-	logLevelError    = "error"
-	logLevelFatal    = "fatal"
-	logLevelCritical = "critical"
 )
 
 var (
@@ -73,10 +70,17 @@ var (
 	rfStats           = analytics.NewInt("distributor_replication_factor")
 )
 
+var allowedLabelsForLevel = map[string]struct{}{
+	"level": {}, "LEVEL": {}, "Level": {},
+	"severity": {}, "SEVERITY": {}, "Severity": {},
+	"lvl": {}, "LVL": {}, "Lvl": {},
+}
+
 // Config for a Distributor.
 type Config struct {
 	// Distributors ring
 	DistributorRing RingConfig `yaml:"ring,omitempty"`
+	PushWorkerCount int        `yaml:"push_worker_count"`
 
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
@@ -88,6 +92,10 @@ type Config struct {
 	WriteFailuresLogging writefailures.Cfg `yaml:"write_failures_logging" doc:"description=Customize the logging of write failures."`
 
 	OTLPConfig push.GlobalOTLPConfig `yaml:"otlp_config"`
+
+	KafkaEnabled    bool         `yaml:"kafka_writes_enabled"`
+	IngesterEnabled bool         `yaml:"ingester_writes_enabled"`
+	KafkaConfig     kafka.Config `yaml:"-"`
 }
 
 // RegisterFlags registers distributor-related flags.
@@ -96,11 +104,26 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DistributorRing.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
+	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
+	fs.BoolVar(&cfg.KafkaEnabled, "distributor.kafka-writes-enabled", false, "Enable writes to Kafka during Push requests.")
+	fs.BoolVar(&cfg.IngesterEnabled, "distributor.ingester-writes-enabled", true, "Enable writes to Ingesters during Push requests. Defaults to true.")
+}
+
+func (cfg *Config) Validate() error {
+	if !cfg.KafkaEnabled && !cfg.IngesterEnabled {
+		return fmt.Errorf("at least one of kafka and ingestor writes must be enabled")
+	}
+	return nil
 }
 
 // RateStore manages the ingestion rate of streams, populated by data fetched from ingesters.
 type RateStore interface {
 	RateFor(tenantID string, streamHash uint64) (int64, float64)
+}
+
+type KafkaProducer interface {
+	ProduceSync(ctx context.Context, records []*kgo.Record) kgo.ProduceResults
+	Close()
 }
 
 // Distributor coordinates replicates and distribution of log streams.
@@ -145,7 +168,19 @@ type Distributor struct {
 	replicationFactor      prometheus.Gauge
 	streamShardCount       prometheus.Counter
 
-	usageTracker push.UsageTracker
+	usageTracker   push.UsageTracker
+	ingesterTasks  chan pushIngesterTask
+	ingesterTaskWg sync.WaitGroup
+
+	// kafka
+	kafkaWriter   KafkaProducer
+	partitionRing ring.PartitionRingReader
+
+	// kafka metrics
+	kafkaAppends           *prometheus.CounterVec
+	kafkaWriteBytesTotal   prometheus.Counter
+	kafkaWriteLatency      prometheus.Histogram
+	kafkaRecordsPerRequest prometheus.Histogram
 }
 
 // New a distributor creates.
@@ -154,6 +189,7 @@ func New(
 	clientCfg client.Config,
 	configs *runtime.TenantConfigs,
 	ingestersRing ring.ReadRing,
+	partitionRing ring.PartitionRingReader,
 	overrides Limits,
 	registerer prometheus.Registerer,
 	metricsNamespace string,
@@ -192,6 +228,20 @@ func New(
 		return nil, err
 	}
 
+	if partitionRing == nil && cfg.KafkaEnabled {
+		return nil, fmt.Errorf("partition ring is required for kafka writes")
+	}
+
+	var kafkaWriter KafkaProducer
+	if cfg.KafkaEnabled {
+		kafkaClient, err := kafka.NewWriterClient(cfg.KafkaConfig, 20, logger, registerer)
+		if err != nil {
+			return nil, fmt.Errorf("failed to start kafka client: %w", err)
+		}
+		kafkaWriter = kafka.NewProducer(kafkaClient, cfg.KafkaConfig.ProducerMaxBufferedBytes,
+			prometheus.WrapRegistererWithPrefix("_kafka_", registerer))
+	}
+
 	d := &Distributor{
 		cfg:                   cfg,
 		logger:                logger,
@@ -207,6 +257,7 @@ func New(
 		rateLimitStrat:        rateLimitStrat,
 		tee:                   tee,
 		usageTracker:          usageTracker,
+		ingesterTasks:         make(chan pushIngesterTask),
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_ingester_appends_total",
@@ -227,7 +278,34 @@ func New(
 			Name:      "stream_sharding_count",
 			Help:      "Total number of times the distributor has sharded streams",
 		}),
+		kafkaAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_kafka_appends_total",
+			Help:      "The total number of appends sent to kafka ingest path.",
+		}, []string{"partition", "status"}),
+		kafkaWriteLatency: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Namespace:                       constants.Loki,
+			Name:                            "distributor_kafka_latency_seconds",
+			Help:                            "Latency to write an incoming request to the ingest storage.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
+			NativeHistogramMaxBucketNumber:  100,
+			Buckets:                         prometheus.DefBuckets,
+		}),
+		kafkaWriteBytesTotal: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_kafka_sent_bytes_total",
+			Help:      "Total number of bytes sent to the ingest storage.",
+		}),
+		kafkaRecordsPerRequest: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_kafka_records_per_write_request",
+			Help:      "The number of records a single per-partition write request has been split into.",
+			Buckets:   prometheus.ExponentialBuckets(1, 2, 8),
+		}),
 		writeFailuresManager: writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
+		kafkaWriter:          kafkaWriter,
+		partitionRing:        partitionRing,
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
@@ -285,6 +363,15 @@ func (d *Distributor) starting(ctx context.Context) error {
 }
 
 func (d *Distributor) running(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer func() {
+		cancel()
+		d.ingesterTaskWg.Wait()
+	}()
+	d.ingesterTaskWg.Add(d.cfg.PushWorkerCount)
+	for i := 0; i < d.cfg.PushWorkerCount; i++ {
+		go d.pushIngesterWorker(ctx)
+	}
 	select {
 	case <-ctx.Done():
 		return nil
@@ -294,6 +381,9 @@ func (d *Distributor) running(ctx context.Context) error {
 }
 
 func (d *Distributor) stopping(_ error) error {
+	if d.kafkaWriter != nil {
+		d.kafkaWriter.Close()
+	}
 	return services.StopManagerAndAwaitStopped(context.Background(), d.subservices)
 }
 
@@ -317,6 +407,21 @@ type pushTracker struct {
 	streamsFailed  atomic.Int32
 	done           chan struct{}
 	err            chan error
+}
+
+// doneWithResult records the result of a stream push.
+// If err is nil, the stream push is considered successful.
+// If err is not nil, the stream push is considered failed.
+func (p *pushTracker) doneWithResult(err error) {
+	if err == nil {
+		if p.streamsPending.Dec() == 0 {
+			p.done <- struct{}{}
+		}
+	} else {
+		if p.streamsFailed.Inc() == 1 {
+			p.err <- err
+		}
+	}
 }
 
 // Push a set of streams.
@@ -376,7 +481,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			n := 0
 			pushSize := 0
 			prevTs := stream.Entries[0].Timestamp
-			addLogLevel := validationContext.allowStructuredMetadata && validationContext.discoverLogLevels && !lbs.Has(labelLevel)
+
+			shouldDiscoverLevels := validationContext.allowStructuredMetadata && validationContext.discoverLogLevels
+			levelFromLabel, hasLevelLabel := hasAnyLevelLabels(lbs)
 			for _, entry := range stream.Entries {
 				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
@@ -385,12 +492,21 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				}
 
 				structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
-				if addLogLevel && !structuredMetadata.Has(labelLevel) {
-					logLevel := detectLogLevelFromLogEntry(entry, structuredMetadata)
-					entry.StructuredMetadata = append(entry.StructuredMetadata, logproto.LabelAdapter{
-						Name:  labelLevel,
-						Value: logLevel,
-					})
+				if shouldDiscoverLevels {
+					var logLevel string
+					if hasLevelLabel {
+						logLevel = levelFromLabel
+					} else if levelFromMetadata, ok := hasAnyLevelLabels(structuredMetadata); ok {
+						logLevel = levelFromMetadata
+					} else {
+						logLevel = detectLogLevelFromLogEntry(entry, structuredMetadata)
+					}
+					if logLevel != constants.LogLevelUnknown && logLevel != "" {
+						entry.StructuredMetadata = append(entry.StructuredMetadata, logproto.LabelAdapter{
+							Name:  constants.LevelLabel,
+							Value: logLevel,
+						})
+					}
 				}
 				stream.Entries[n] = entry
 
@@ -415,6 +531,10 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				pushSize += len(entry.Line)
 			}
 			stream.Entries = stream.Entries[:n]
+			if len(stream.Entries) == 0 {
+				// Empty stream after validating all the entries
+				continue
+			}
 
 			shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)
 			if shardStreamsCfg.Enabled {
@@ -430,7 +550,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 	var validationErr error
 	if validationErrors.Err() != nil {
-		validationErr = httpgrpc.Errorf(http.StatusBadRequest, validationErrors.Error())
+		validationErr = httpgrpc.Errorf(http.StatusBadRequest, "%s", validationErrors.Error())
 	}
 
 	// Return early if none of the streams contained entries
@@ -439,32 +559,29 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	now := time.Now()
-	if !d.ingestionRateLimiter.AllowN(now, tenantID, validatedLineSize) {
-		// Return a 429 to indicate to the client they are being rate limited
-		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineCount))
-		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineSize))
 
-		if d.usageTracker != nil {
-			for _, stream := range req.Streams {
-				lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream)
-				if err != nil {
-					continue
-				}
+	if block, until, retStatusCode := d.validator.ShouldBlockIngestion(validationContext, now); block {
+		d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCount, validatedLineSize, validation.BlockedIngestion)
 
-				discardedStreamBytes := 0
-				for _, e := range stream.Entries {
-					discardedStreamBytes += len(e.Line)
-				}
+		err = fmt.Errorf(validation.BlockedIngestionErrorMsg, tenantID, until.Format(time.RFC3339), retStatusCode)
+		d.writeFailuresManager.Log(tenantID, err)
 
-				if d.usageTracker != nil {
-					d.usageTracker.DiscardedBytesAdd(ctx, tenantID, validation.RateLimited, lbs, float64(discardedStreamBytes))
-				}
-			}
+		// If the status code is 200, return success.
+		// Note that we still log the error and increment the metrics.
+		if retStatusCode == http.StatusOK {
+			return &logproto.PushResponse{}, nil
 		}
+
+		return nil, httpgrpc.Errorf(retStatusCode, "%s", err.Error())
+	}
+
+	if !d.ingestionRateLimiter.AllowN(now, tenantID, validatedLineSize) {
+		d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCount, validatedLineSize, validation.RateLimited)
 
 		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validatedLineCount, validatedLineSize)
 		d.writeFailuresManager.Log(tenantID, err)
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, err.Error())
+		// Return a 429 to indicate to the client they are being rate limited
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
 	}
 
 	// Nil check for performance reasons, to avoid dynamic lookup and/or no-op
@@ -476,57 +593,89 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
 	var descs [maxExpectedReplicationSet]ring.InstanceDesc
 
-	streamTrackers := make([]streamTracker, len(streams))
-	streamsByIngester := map[string][]*streamTracker{}
-	ingesterDescs := map[string]ring.InstanceDesc{}
-
-	if err := func() error {
-		sp := opentracing.SpanFromContext(ctx)
-		if sp != nil {
-			sp.LogKV("event", "started to query ingesters ring")
-			defer func() {
-				sp.LogKV("event", "finished to query ingesters ring")
-			}()
-		}
-
-		for i, stream := range streams {
-			replicationSet, err := d.ingestersRing.Get(stream.HashKey, ring.WriteNoExtend, descs[:0], nil, nil)
-			if err != nil {
-				return err
-			}
-
-			streamTrackers[i] = streamTracker{
-				KeyedStream: stream,
-				minSuccess:  len(replicationSet.Instances) - replicationSet.MaxErrors,
-				maxFailures: replicationSet.MaxErrors,
-			}
-			for _, ingester := range replicationSet.Instances {
-				streamsByIngester[ingester.Addr] = append(streamsByIngester[ingester.Addr], &streamTrackers[i])
-				ingesterDescs[ingester.Addr] = ingester
-			}
-		}
-		return nil
-	}(); err != nil {
-		return nil, err
-	}
-
 	tracker := pushTracker{
 		done: make(chan struct{}, 1), // buffer avoids blocking if caller terminates - sendSamples() only sends once on each
 		err:  make(chan error, 1),
 	}
-	tracker.streamsPending.Store(int32(len(streams)))
-	for ingester, streams := range streamsByIngester {
-		go func(ingester ring.InstanceDesc, samples []*streamTracker) {
-			// Use a background context to make sure all ingesters get samples even if we return early
-			localCtx, cancel := context.WithTimeout(context.Background(), d.clientCfg.RemoteTimeout)
-			defer cancel()
-			localCtx = user.InjectOrgID(localCtx, tenantID)
-			if sp := opentracing.SpanFromContext(ctx); sp != nil {
-				localCtx = opentracing.ContextWithSpan(localCtx, sp)
-			}
-			d.sendStreams(localCtx, ingester, samples, &tracker)
-		}(ingesterDescs[ingester], streams)
+	streamsToWrite := 0
+	if d.cfg.IngesterEnabled {
+		streamsToWrite += len(streams)
 	}
+	if d.cfg.KafkaEnabled {
+		streamsToWrite += len(streams)
+	}
+	// We must correctly set streamsPending before beginning any writes to ensure we don't have a race between finishing all of one path before starting the other.
+	tracker.streamsPending.Store(int32(streamsToWrite))
+
+	if d.cfg.KafkaEnabled {
+		subring, err := d.partitionRing.PartitionRing().ShuffleShard(tenantID, d.validator.IngestionPartitionsTenantShardSize(tenantID))
+		if err != nil {
+			return nil, err
+		}
+		// We don't need to create a new context like the ingester writes, because we don't return unless all writes have succeeded.
+		d.sendStreamsToKafka(ctx, streams, tenantID, &tracker, subring)
+	}
+
+	if d.cfg.IngesterEnabled {
+		streamTrackers := make([]streamTracker, len(streams))
+		streamsByIngester := map[string][]*streamTracker{}
+		ingesterDescs := map[string]ring.InstanceDesc{}
+
+		if err := func() error {
+			sp := opentracing.SpanFromContext(ctx)
+			if sp != nil {
+				sp.LogKV("event", "started to query ingesters ring")
+				defer func() {
+					sp.LogKV("event", "finished to query ingesters ring")
+				}()
+			}
+
+			for i, stream := range streams {
+				replicationSet, err := d.ingestersRing.Get(stream.HashKey, ring.WriteNoExtend, descs[:0], nil, nil)
+				if err != nil {
+					return err
+				}
+
+				streamTrackers[i] = streamTracker{
+					KeyedStream: stream,
+					minSuccess:  len(replicationSet.Instances) - replicationSet.MaxErrors,
+					maxFailures: replicationSet.MaxErrors,
+				}
+				for _, ingester := range replicationSet.Instances {
+					streamsByIngester[ingester.Addr] = append(streamsByIngester[ingester.Addr], &streamTrackers[i])
+					ingesterDescs[ingester.Addr] = ingester
+				}
+			}
+			return nil
+		}(); err != nil {
+			return nil, err
+		}
+
+		for ingester, streams := range streamsByIngester {
+			func(ingester ring.InstanceDesc, samples []*streamTracker) {
+				// Use a background context to make sure all ingesters get samples even if we return early
+				localCtx, cancel := context.WithTimeout(context.Background(), d.clientCfg.RemoteTimeout)
+				localCtx = user.InjectOrgID(localCtx, tenantID)
+				if sp := opentracing.SpanFromContext(ctx); sp != nil {
+					localCtx = opentracing.ContextWithSpan(localCtx, sp)
+				}
+				select {
+				case <-ctx.Done():
+					cancel()
+					return
+				case d.ingesterTasks <- pushIngesterTask{
+					ingester:      ingester,
+					streamTracker: samples,
+					pushTracker:   &tracker,
+					ctx:           localCtx,
+					cancel:        cancel,
+				}:
+					return
+				}
+			}(ingesterDescs[ingester], streams)
+		}
+	}
+
 	select {
 	case err := <-tracker.err:
 		return nil, err
@@ -535,6 +684,46 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+
+func (d *Distributor) trackDiscardedData(
+	ctx context.Context,
+	req *logproto.PushRequest,
+	validationContext validationContext,
+	tenantID string,
+	validatedLineCount int,
+	validatedLineSize int,
+	reason string,
+) {
+	validation.DiscardedSamples.WithLabelValues(reason, tenantID).Add(float64(validatedLineCount))
+	validation.DiscardedBytes.WithLabelValues(reason, tenantID).Add(float64(validatedLineSize))
+
+	if d.usageTracker != nil {
+		for _, stream := range req.Streams {
+			lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream)
+			if err != nil {
+				continue
+			}
+
+			discardedStreamBytes := 0
+			for _, e := range stream.Entries {
+				discardedStreamBytes += len(e.Line)
+			}
+
+			if d.usageTracker != nil {
+				d.usageTracker.DiscardedBytesAdd(ctx, tenantID, reason, lbs, float64(discardedStreamBytes))
+			}
+		}
+	}
+}
+
+func hasAnyLevelLabels(l labels.Labels) (string, bool) {
+	for lbl := range allowedLabelsForLevel {
+		if l.Has(lbl) {
+			return l.Get(lbl), true
+		}
+	}
+	return "", false
 }
 
 // shardStream shards (divides) the given stream into N smaller streams, where
@@ -559,7 +748,7 @@ func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID
 	return d.divideEntriesBetweenShards(tenantID, shardCount, shardStreamsCfg, stream)
 }
 
-func (d *Distributor) divideEntriesBetweenShards(tenantID string, totalShards int, shardStreamsCfg *shardstreams.Config, stream logproto.Stream) []KeyedStream {
+func (d *Distributor) divideEntriesBetweenShards(tenantID string, totalShards int, shardStreamsCfg shardstreams.Config, stream logproto.Stream) []KeyedStream {
 	derivedStreams := d.createShards(stream, totalShards, tenantID, shardStreamsCfg)
 
 	for i := 0; i < len(stream.Entries); i++ {
@@ -571,7 +760,7 @@ func (d *Distributor) divideEntriesBetweenShards(tenantID string, totalShards in
 	return derivedStreams
 }
 
-func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tenantID string, shardStreamsCfg *shardstreams.Config) []KeyedStream {
+func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tenantID string, shardStreamsCfg shardstreams.Config) []KeyedStream {
 	var (
 		streamLabels   = labelTemplate(stream.Labels, d.logger)
 		streamPattern  = streamLabels.String()
@@ -674,9 +863,30 @@ func (d *Distributor) truncateLines(vContext validationContext, stream *logproto
 	validation.MutatedBytes.WithLabelValues(validation.LineTooLong, vContext.userID).Add(float64(truncatedBytes))
 }
 
+type pushIngesterTask struct {
+	streamTracker []*streamTracker
+	pushTracker   *pushTracker
+	ingester      ring.InstanceDesc
+	ctx           context.Context
+	cancel        context.CancelFunc
+}
+
+func (d *Distributor) pushIngesterWorker(ctx context.Context) {
+	defer d.ingesterTaskWg.Done()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case task := <-d.ingesterTasks:
+			d.sendStreams(task)
+		}
+	}
+}
+
 // TODO taken from Cortex, see if we can refactor out an usable interface.
-func (d *Distributor) sendStreams(ctx context.Context, ingester ring.InstanceDesc, streamTrackers []*streamTracker, pushTracker *pushTracker) {
-	err := d.sendStreamsErr(ctx, ingester, streamTrackers)
+func (d *Distributor) sendStreams(task pushIngesterTask) {
+	defer task.cancel()
+	err := d.sendStreamsErr(task.ctx, task.ingester, task.streamTracker)
 
 	// If we succeed, decrement each stream's pending count by one.
 	// If we reach the required number of successful puts on this stream, then
@@ -687,21 +897,17 @@ func (d *Distributor) sendStreams(ctx context.Context, ingester ring.InstanceDes
 	//
 	// The use of atomic increments here guarantees only a single sendStreams
 	// goroutine will write to either channel.
-	for i := range streamTrackers {
+	for i := range task.streamTracker {
 		if err != nil {
-			if streamTrackers[i].failed.Inc() <= int32(streamTrackers[i].maxFailures) {
+			if task.streamTracker[i].failed.Inc() <= int32(task.streamTracker[i].maxFailures) {
 				continue
 			}
-			if pushTracker.streamsFailed.Inc() == 1 {
-				pushTracker.err <- err
-			}
+			task.pushTracker.doneWithResult(err)
 		} else {
-			if streamTrackers[i].succeeded.Inc() != int32(streamTrackers[i].minSuccess) {
+			if task.streamTracker[i].succeeded.Inc() != int32(task.streamTracker[i].minSuccess) {
 				continue
 			}
-			if pushTracker.streamsPending.Dec() == 0 {
-				pushTracker.done <- struct{}{}
-			}
+			task.pushTracker.doneWithResult(nil)
 		}
 	}
 }
@@ -733,6 +939,69 @@ func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.Instance
 	return err
 }
 
+func (d *Distributor) sendStreamsToKafka(ctx context.Context, streams []KeyedStream, tenant string, tracker *pushTracker, subring *ring.PartitionRing) {
+	for _, s := range streams {
+		go func(s KeyedStream) {
+			err := d.sendStreamToKafka(ctx, s, tenant, subring)
+			if err != nil {
+				err = fmt.Errorf("failed to write stream to kafka: %w", err)
+			}
+			tracker.doneWithResult(err)
+		}(s)
+	}
+}
+
+func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream, tenant string, subring *ring.PartitionRing) error {
+	if len(stream.Stream.Entries) == 0 {
+		return nil
+	}
+	partitionID, err := subring.ActivePartitionForKey(stream.HashKey)
+	if err != nil {
+		d.kafkaAppends.WithLabelValues("kafka", "fail").Inc()
+		return fmt.Errorf("failed to find active partition for stream: %w", err)
+	}
+
+	startTime := time.Now()
+
+	records, err := kafka.Encode(partitionID, tenant, stream.Stream, d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes)
+	if err != nil {
+		d.kafkaAppends.WithLabelValues(fmt.Sprintf("partition_%d", partitionID), "fail").Inc()
+		return fmt.Errorf("failed to marshal write request to records: %w", err)
+	}
+
+	d.kafkaRecordsPerRequest.Observe(float64(len(records)))
+
+	produceResults := d.kafkaWriter.ProduceSync(ctx, records)
+
+	if count, sizeBytes := successfulProduceRecordsStats(produceResults); count > 0 {
+		d.kafkaWriteLatency.Observe(time.Since(startTime).Seconds())
+		d.kafkaWriteBytesTotal.Add(float64(sizeBytes))
+	}
+
+	var finalErr error
+	for _, result := range produceResults {
+		if result.Err != nil {
+			d.kafkaAppends.WithLabelValues(fmt.Sprintf("partition_%d", partitionID), "fail").Inc()
+			finalErr = result.Err
+		} else {
+			d.kafkaAppends.WithLabelValues(fmt.Sprintf("partition_%d", partitionID), "success").Inc()
+		}
+	}
+
+	return finalErr
+}
+
+func successfulProduceRecordsStats(results kgo.ProduceResults) (count, sizeBytes int) {
+	for _, res := range results {
+		if res.Err == nil && res.Record != nil {
+			count++
+			sizeBytes += len(res.Record.Value)
+		}
+	}
+
+	return
+}
+
 type labelData struct {
 	ls   labels.Labels
 	hash uint64
@@ -753,20 +1022,6 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 		return nil, "", 0, err
 	}
 
-	// We do not want to count service_name added by us in the stream limit so adding it after validating original labels.
-	if !ls.Has(labelServiceName) && len(vContext.discoverServiceName) > 0 {
-		serviceName := serviceUnknown
-		for _, labelName := range vContext.discoverServiceName {
-			if labelVal := ls.Get(labelName); labelVal != "" {
-				serviceName = labelVal
-				break
-			}
-		}
-
-		ls = labels.NewBuilder(ls).Set(labelServiceName, serviceName).Labels()
-		stream.Labels = ls.String()
-	}
-
 	lsHash := ls.Hash()
 
 	d.labelCache.Add(key, labelData{ls, lsHash})
@@ -779,7 +1034,7 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 // based on the rate stored in the rate store and will store the new evaluated number of shards.
 //
 // desiredRate is expected to be given in bytes.
-func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, pushSize int, tenantID string, streamShardcfg *shardstreams.Config) int {
+func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, pushSize int, tenantID string, streamShardcfg shardstreams.Config) int {
 	if streamShardcfg.DesiredRate.Val() <= 0 {
 		if streamShardcfg.LoggingEnabled {
 			level.Error(logger).Log("msg", "invalid desired rate", "desired_rate", streamShardcfg.DesiredRate.String())
@@ -863,31 +1118,86 @@ func detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.
 	if otlpSeverityNumberTxt := structuredMetadata.Get(push.OTLPSeverityNumber); otlpSeverityNumberTxt != "" {
 		otlpSeverityNumber, err := strconv.Atoi(otlpSeverityNumberTxt)
 		if err != nil {
-			return logLevelInfo
+			return constants.LogLevelInfo
 		}
-		if otlpSeverityNumber <= int(plog.SeverityNumberDebug4) {
-			return logLevelDebug
+		if otlpSeverityNumber == int(plog.SeverityNumberUnspecified) {
+			return constants.LogLevelUnknown
+		} else if otlpSeverityNumber <= int(plog.SeverityNumberTrace4) {
+			return constants.LogLevelTrace
+		} else if otlpSeverityNumber <= int(plog.SeverityNumberDebug4) {
+			return constants.LogLevelDebug
 		} else if otlpSeverityNumber <= int(plog.SeverityNumberInfo4) {
-			return logLevelInfo
+			return constants.LogLevelInfo
 		} else if otlpSeverityNumber <= int(plog.SeverityNumberWarn4) {
-			return logLevelWarn
+			return constants.LogLevelWarn
 		} else if otlpSeverityNumber <= int(plog.SeverityNumberError4) {
-			return logLevelError
+			return constants.LogLevelError
 		} else if otlpSeverityNumber <= int(plog.SeverityNumberFatal4) {
-			return logLevelFatal
+			return constants.LogLevelFatal
 		}
-		return logLevelInfo
+		return constants.LogLevelUnknown
 	}
 
 	return extractLogLevelFromLogLine(entry.Line)
 }
 
 func extractLogLevelFromLogLine(log string) string {
-	// check for log levels in known log formats to avoid any false detection
+	logSlice := unsafe.Slice(unsafe.StringData(log), len(log))
+	var v []byte
+	if isJSON(log) {
+		v = getValueUsingJSONParser(logSlice)
+	} else {
+		v = getValueUsingLogfmtParser(logSlice)
+	}
 
-	// json logs:
+	switch {
+	case bytes.EqualFold(v, []byte("trace")), bytes.EqualFold(v, []byte("trc")):
+		return constants.LogLevelTrace
+	case bytes.EqualFold(v, []byte("debug")), bytes.EqualFold(v, []byte("dbg")):
+		return constants.LogLevelDebug
+	case bytes.EqualFold(v, []byte("info")), bytes.EqualFold(v, []byte("inf")):
+		return constants.LogLevelInfo
+	case bytes.EqualFold(v, []byte("warn")), bytes.EqualFold(v, []byte("wrn")):
+		return constants.LogLevelWarn
+	case bytes.EqualFold(v, []byte("error")), bytes.EqualFold(v, []byte("err")):
+		return constants.LogLevelError
+	case bytes.EqualFold(v, []byte("critical")):
+		return constants.LogLevelCritical
+	case bytes.EqualFold(v, []byte("fatal")):
+		return constants.LogLevelFatal
+	default:
+		return detectLevelFromLogLine(log)
+	}
+}
+
+func getValueUsingLogfmtParser(line []byte) []byte {
+	equalIndex := bytes.Index(line, []byte("="))
+	if len(line) == 0 || equalIndex == -1 {
+		return nil
+	}
+
+	d := logfmt.NewDecoder(line)
+	for !d.EOL() && d.ScanKeyval() {
+		if _, ok := allowedLabelsForLevel[string(d.Key())]; ok {
+			return (d.Value())
+		}
+	}
+	return nil
+}
+
+func getValueUsingJSONParser(log []byte) []byte {
+	for allowedLabel := range allowedLabelsForLevel {
+		l, _, _, err := jsonparser.Get(log, allowedLabel)
+		if err == nil {
+			return l
+		}
+	}
+	return nil
+}
+
+func isJSON(line string) bool {
 	var firstNonSpaceChar rune
-	for _, char := range log {
+	for _, char := range line {
 		if !unicode.IsSpace(char) {
 			firstNonSpaceChar = char
 			break
@@ -895,70 +1205,35 @@ func extractLogLevelFromLogLine(log string) string {
 	}
 
 	var lastNonSpaceChar rune
-	for i := len(log) - 1; i >= 0; i-- {
-		char := rune(log[i])
+	for i := len(line) - 1; i >= 0; i-- {
+		char := rune(line[i])
 		if !unicode.IsSpace(char) {
 			lastNonSpaceChar = char
 			break
 		}
 	}
 
-	if firstNonSpaceChar == '{' && lastNonSpaceChar == '}' {
-		if strings.Contains(log, `:"err"`) || strings.Contains(log, `:"ERR"`) ||
-			strings.Contains(log, `:"error"`) || strings.Contains(log, `:"ERROR"`) {
-			return logLevelError
-		}
-		if strings.Contains(log, `:"warn"`) || strings.Contains(log, `:"WARN"`) ||
-			strings.Contains(log, `:"warning"`) || strings.Contains(log, `:"WARNING"`) {
-			return logLevelWarn
-		}
-		if strings.Contains(log, `:"critical"`) || strings.Contains(log, `:"CRITICAL"`) {
-			return logLevelCritical
-		}
-		if strings.Contains(log, `:"debug"`) || strings.Contains(log, `:"DEBUG"`) {
-			return logLevelDebug
-		}
-		if strings.Contains(log, `:"info"`) || strings.Contains(log, `:"INFO"`) {
-			return logLevelInfo
-		}
-	}
+	return firstNonSpaceChar == '{' && lastNonSpaceChar == '}'
+}
 
-	// logfmt logs:
-	if strings.Contains(log, "=") {
-		if strings.Contains(log, "=err") || strings.Contains(log, "=ERR") ||
-			strings.Contains(log, "=error") || strings.Contains(log, "=ERROR") {
-			return logLevelError
-		}
-		if strings.Contains(log, "=warn") || strings.Contains(log, "=WARN") ||
-			strings.Contains(log, "=warning") || strings.Contains(log, "=WARNING") {
-			return logLevelWarn
-		}
-		if strings.Contains(log, "=critical") || strings.Contains(log, "=CRITICAL") {
-			return logLevelCritical
-		}
-		if strings.Contains(log, "=debug") || strings.Contains(log, "=DEBUG") {
-			return logLevelDebug
-		}
-		if strings.Contains(log, "=info") || strings.Contains(log, "=INFO") {
-			return logLevelInfo
-		}
+func detectLevelFromLogLine(log string) string {
+	if strings.Contains(log, "info:") || strings.Contains(log, "INFO:") ||
+		strings.Contains(log, "info") || strings.Contains(log, "INFO") {
+		return constants.LogLevelInfo
 	}
-
 	if strings.Contains(log, "err:") || strings.Contains(log, "ERR:") ||
 		strings.Contains(log, "error") || strings.Contains(log, "ERROR") {
-		return logLevelError
+		return constants.LogLevelError
 	}
 	if strings.Contains(log, "warn:") || strings.Contains(log, "WARN:") ||
 		strings.Contains(log, "warning") || strings.Contains(log, "WARNING") {
-		return logLevelWarn
+		return constants.LogLevelWarn
 	}
 	if strings.Contains(log, "CRITICAL:") || strings.Contains(log, "critical:") {
-		return logLevelCritical
+		return constants.LogLevelCritical
 	}
 	if strings.Contains(log, "debug:") || strings.Contains(log, "DEBUG:") {
-		return logLevelDebug
+		return constants.LogLevelDebug
 	}
-
-	// Default to info if no specific level is found
-	return logLevelInfo
+	return constants.LogLevelUnknown
 }

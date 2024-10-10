@@ -5,7 +5,7 @@
     ],
     "labels": ["dependencies"],
     "prHourlyLimit": 4,
-    "baseBranches": ["main", "release-2.9.x", "release-2.8.x"],
+    "baseBranches": ["main"],
     "packageRules": [
       {
         "matchBaseBranches": ["release-2.9.x","release-2.8.x"],
@@ -30,5 +30,7 @@
     "prConcurrentLimit": 10,
     "rebaseWhen": "conflicted",
     "branchPrefix": "deps-update/",
-    "postUpdateOptions": ["gomodTidy"]
+    "postUpdateOptions": ["gomodTidy"],
+    "semanticCommitType": "fix",
+    "semanticCommitScope": "deps"
   }

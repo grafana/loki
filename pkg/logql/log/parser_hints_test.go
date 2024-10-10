@@ -225,7 +225,6 @@ func Test_ParserHints(t *testing.T) {
 			`{app="nginx", message_message="foo"}`,
 		},
 	} {
-		tt := tt
 		t.Run(tt.expr, func(t *testing.T) {
 			t.Parallel()
 			expr, err := syntax.ParseSampleExpr(tt.expr)

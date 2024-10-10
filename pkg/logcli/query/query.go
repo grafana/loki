@@ -490,6 +490,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 			q.resultsDirection(),
 			uint32(q.Limit),
 			nil,
+			nil,
 		)
 		if err != nil {
 			return err
@@ -505,6 +506,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 			q.Interval,
 			q.resultsDirection(),
 			uint32(q.Limit),
+			nil,
 			nil,
 		)
 		if err != nil {

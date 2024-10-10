@@ -17,7 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/tool/rules/rwrulefmt"
 )
 
-// Printer is  used for printing formatted output from the cortextool
+// Printer is  used for printing formatted output from the lokitool
 type Printer struct {
 	disableColor bool
 	colorizer    colorstring.Colorize

@@ -77,6 +77,7 @@ func (f *FileClient) Query(q string, limit int, t time.Time, direction logproto.
 		direction,
 		uint32(limit),
 		nil,
+		nil,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse query: %w", err)
@@ -117,6 +118,7 @@ func (f *FileClient) QueryRange(queryStr string, limit int, start, end time.Time
 		interval,
 		direction,
 		uint32(limit),
+		nil,
 		nil,
 	)
 	if err != nil {
@@ -205,7 +207,7 @@ func (f *FileClient) GetVolumeRange(_ *volume.Query) (*loghttp.QueryResponse, er
 }
 
 func (f *FileClient) GetDetectedFields(
-	_ string,
+	_, _ string,
 	_, _ int,
 	_, _ time.Time,
 	_ time.Duration,
@@ -276,7 +278,7 @@ func newFileIterator(
 	})
 
 	if len(lines) == 0 {
-		return iter.NoopIterator, nil
+		return iter.NoopEntryIterator, nil
 	}
 
 	streams := map[uint64]*logproto.Stream{}
@@ -315,7 +317,7 @@ func newFileIterator(
 	}
 
 	if len(streams) == 0 {
-		return iter.NoopIterator, nil
+		return iter.NoopEntryIterator, nil
 	}
 
 	streamResult := make([]logproto.Stream, 0, len(streams))

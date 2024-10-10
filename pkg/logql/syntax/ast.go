@@ -60,7 +60,7 @@ func ExtractLineFilters(e Expr) []LineFilterExpr {
 	}
 	var filters []LineFilterExpr
 	visitor := &DepthFirstTraversal{
-		VisitLineFilterFn: func(v RootVisitor, e *LineFilterExpr) {
+		VisitLineFilterFn: func(_ RootVisitor, e *LineFilterExpr) {
 			if e != nil {
 				filters = append(filters, *e)
 			}
@@ -68,6 +68,55 @@ func ExtractLineFilters(e Expr) []LineFilterExpr {
 	}
 	e.Accept(visitor)
 	return filters
+}
+
+func ExtractLabelFiltersBeforeParser(e Expr) []*LabelFilterExpr {
+	if e == nil {
+		return nil
+	}
+	var (
+		filters         []*LabelFilterExpr
+		foundParseStage bool
+	)
+
+	visitor := &DepthFirstTraversal{
+		VisitLabelFilterFn: func(_ RootVisitor, e *LabelFilterExpr) {
+			if !foundParseStage {
+				filters = append(filters, e)
+			}
+		},
+
+		// TODO(rfratto): Find a way to generically represent or test for an
+		// expression that modifies extracted labels (parsers, keep, drop, etc.).
+		//
+		// As the AST is now, we can't prove at compile time that the list of
+		// visitors below is complete. For example, if a new parser stage
+		// expression is added without updating this list, blooms can silently
+		// misbehave.
+
+		VisitLogfmtParserFn:           func(_ RootVisitor, _ *LogfmtParserExpr) { foundParseStage = true },
+		VisitLabelParserFn:            func(_ RootVisitor, _ *LabelParserExpr) { foundParseStage = true },
+		VisitJSONExpressionParserFn:   func(_ RootVisitor, _ *JSONExpressionParser) { foundParseStage = true },
+		VisitLogfmtExpressionParserFn: func(_ RootVisitor, _ *LogfmtExpressionParser) { foundParseStage = true },
+		VisitLabelFmtFn:               func(_ RootVisitor, _ *LabelFmtExpr) { foundParseStage = true },
+		VisitKeepLabelFn:              func(_ RootVisitor, _ *KeepLabelsExpr) { foundParseStage = true },
+		VisitDropLabelsFn:             func(_ RootVisitor, _ *DropLabelsExpr) { foundParseStage = true },
+	}
+	e.Accept(visitor)
+	return filters
+}
+
+func IsMatchEqualFilterer(filterer log.LabelFilterer) bool {
+	switch filter := filterer.(type) {
+	case *log.LineFilterLabelFilter:
+		return filter.Type == labels.MatchEqual
+	case *log.StringLabelFilter:
+		return filter.Type == labels.MatchEqual
+	case *log.BinaryLabelFilter:
+		return IsMatchEqualFilterer(filter.Left) && IsMatchEqualFilterer(filter.Right)
+	default:
+		return false
+	}
 }
 
 // implicit holds default implementations
@@ -133,68 +182,75 @@ func (m MultiStageExpr) stages() ([]log.Stage, error) {
 // are as close to the front of the filter as possible.
 func (m MultiStageExpr) reorderStages() []StageExpr {
 	var (
-		result  = make([]StageExpr, 0, len(m))
-		filters = make([]*LineFilterExpr, 0, len(m))
-		rest    = make([]StageExpr, 0, len(m))
+		result         = make([]StageExpr, 0, len(m))
+		lineFilters    = make([]*LineFilterExpr, 0, len(m))
+		notLineFilters = make([]StageExpr, 0, len(m))
 	)
+
+	combineFilters := func() {
+		if len(lineFilters) > 0 {
+			result = append(result, combineFilters(lineFilters))
+		}
+
+		result = append(result, notLineFilters...)
+
+		lineFilters = lineFilters[:0]
+		notLineFilters = notLineFilters[:0]
+	}
 
 	for _, s := range m {
 		switch f := s.(type) {
+		case *LabelFilterExpr:
+			combineFilters()
+			result = append(result, f)
 		case *LineFilterExpr:
-			filters = append(filters, f)
+			lineFilters = append(lineFilters, f)
 		case *LineFmtExpr:
 			// line_format modifies the contents of the line so any line filter
 			// originally after a line_format must still be after the same
 			// line_format.
 
-			rest = append(rest, f)
+			notLineFilters = append(notLineFilters, f)
 
-			if len(filters) > 0 {
-				result = append(result, combineFilters(filters))
-			}
-			result = append(result, rest...)
-
-			filters = filters[:0]
-			rest = rest[:0]
+			combineFilters()
 		case *LabelParserExpr:
-			rest = append(rest, f)
+			notLineFilters = append(notLineFilters, f)
 
 			// unpack modifies the contents of the line so any line filter
 			// originally after an unpack must still be after the same
 			// unpack.
 			if f.Op == OpParserTypeUnpack {
-				if len(filters) > 0 {
-					result = append(result, combineFilters(filters))
-				}
-				result = append(result, rest...)
-
-				filters = filters[:0]
-				rest = rest[:0]
+				combineFilters()
 			}
 		default:
-			rest = append(rest, f)
+			notLineFilters = append(notLineFilters, f)
 		}
 	}
 
-	if len(filters) > 0 {
-		result = append(result, combineFilters(filters))
-	}
-	return append(result, rest...)
+	combineFilters()
+
+	return result
 }
 
 func combineFilters(in []*LineFilterExpr) StageExpr {
 	result := in[len(in)-1]
 	for i := len(in) - 2; i >= 0; i-- {
-		leafNode(result).Left = in[i]
+		leaf := leafNode(result, in[i])
+		if leaf != nil {
+			leaf.Left = in[i]
+		}
 	}
 
 	return result
 }
 
-func leafNode(in *LineFilterExpr) *LineFilterExpr {
+func leafNode(in *LineFilterExpr, child *LineFilterExpr) *LineFilterExpr {
 	current := in
 	//nolint:revive
 	for ; current.Left != nil; current = current.Left {
+		if current == child || current.Left == child {
+			return nil
+		}
 	}
 	return current
 }
@@ -318,9 +374,14 @@ func (e *PipelineExpr) Pipeline() (log.Pipeline, error) {
 // HasFilter returns true if the pipeline contains stage that can filter out lines.
 func (e *PipelineExpr) HasFilter() bool {
 	for _, p := range e.MultiStages {
-		switch p.(type) {
-		case *LineFilterExpr, *LabelFilterExpr:
+		switch v := p.(type) {
+		case *LabelFilterExpr:
 			return true
+		case *LineFilterExpr:
+			// ignore empty matchers as they match everything
+			if !((v.Ty == log.LineMatchEqual || v.Ty == log.LineMatchRegexp) && v.Match == "") {
+				return true
+			}
 		default:
 			continue
 		}
@@ -366,14 +427,6 @@ func newLineFilterExpr(ty log.LineMatchType, op, match string) *LineFilterExpr {
 func newOrLineFilter(left, right *LineFilterExpr) *LineFilterExpr {
 	right.Ty = left.Ty
 
-	if left.Ty == log.LineMatchEqual || left.Ty == log.LineMatchRegexp || left.Ty == log.LineMatchPattern {
-		left.Or = right
-		right.IsOrChild = true
-		return left
-	}
-
-	// !(left or right) == (!left and !right).
-
 	// NOTE: Consider, we have chain of "or", != "foo" or "bar" or "baz"
 	// we parse from right to left, so first time left="bar", right="baz", and we don't know the actual `Ty` (equal: |=, notequal: !=, regex: |~, etc). So
 	// it will have default (0, LineMatchEqual).
@@ -385,6 +438,13 @@ func newOrLineFilter(left, right *LineFilterExpr) *LineFilterExpr {
 		tmp = tmp.Or
 	}
 
+	if left.Ty == log.LineMatchEqual || left.Ty == log.LineMatchRegexp || left.Ty == log.LineMatchPattern {
+		left.Or = right
+		right.IsOrChild = true
+		return left
+	}
+
+	// !(left or right) == (!left and !right).
 	return newNestedLineFilterExpr(left, right)
 }
 
@@ -1242,7 +1302,9 @@ const (
 	// internal expressions not represented in LogQL. These are used to
 	// evaluate expressions differently resulting in intermediate formats
 	// that are not consumable by LogQL clients but are used for sharding.
-	OpRangeTypeQuantileSketch = "__quantile_sketch_over_time__"
+	OpRangeTypeQuantileSketch     = "__quantile_sketch_over_time__"
+	OpRangeTypeFirstWithTimestamp = "__first_over_time_ts__"
+	OpRangeTypeLastWithTimestamp  = "__last_over_time_ts__"
 )
 
 func IsComparisonOperator(op string) bool {
@@ -1346,7 +1408,9 @@ func (e *RangeAggregationExpr) MatcherGroups() ([]MatcherRange, error) {
 func (e RangeAggregationExpr) validate() error {
 	if e.Grouping != nil {
 		switch e.Operation {
-		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeQuantileSketch, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeFirst, OpRangeTypeLast:
+		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile,
+			OpRangeTypeQuantileSketch, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeFirst,
+			OpRangeTypeLast, OpRangeTypeFirstWithTimestamp, OpRangeTypeLastWithTimestamp:
 		default:
 			return fmt.Errorf("grouping not allowed for %s aggregation", e.Operation)
 		}
@@ -1355,7 +1419,8 @@ func (e RangeAggregationExpr) validate() error {
 		switch e.Operation {
 		case OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev,
 			OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeRate, OpRangeTypeRateCounter,
-			OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast, OpRangeTypeQuantileSketch:
+			OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast, OpRangeTypeQuantileSketch,
+			OpRangeTypeFirstWithTimestamp, OpRangeTypeLastWithTimestamp:
 			return nil
 		default:
 			return fmt.Errorf("invalid aggregation %s with unwrap", e.Operation)
@@ -2216,6 +2281,8 @@ var shardableOps = map[string]bool{
 	// range vector ops
 	OpRangeTypeAvg:       true,
 	OpRangeTypeCount:     true,
+	OpRangeTypeFirst:     true,
+	OpRangeTypeLast:      true,
 	OpRangeTypeRate:      true,
 	OpRangeTypeBytes:     true,
 	OpRangeTypeBytesRate: true,

@@ -2,15 +2,13 @@ package bloomgateway
 
 import (
 	"context"
-	"math/rand"
 	"sync"
 	"time"
 
-	"github.com/oklog/ulid"
 	"github.com/prometheus/common/model"
 
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
@@ -18,10 +16,6 @@ import (
 
 const (
 	Day = 24 * time.Hour
-)
-
-var (
-	entropy = rand.New(rand.NewSource(time.Now().UnixNano()))
 )
 
 type tokenSettings struct {
@@ -45,10 +39,8 @@ func (e *wrappedError) Set(err error) {
 
 // Task is the data structure that is enqueued to the internal queue and dequeued by query workers
 type Task struct {
-	// ID is a lexcographically sortable unique identifier of the task
-	ID ulid.ULID
-	// Tenant is the tenant ID
-	Tenant string
+	// tenant is the tenant ID
+	tenant string
 
 	// channel to write partial responses to
 	resCh chan v1.Output
@@ -63,8 +55,8 @@ type Task struct {
 
 	// series of the original request
 	series []*logproto.GroupedChunkRefs
-	// filters of the original request
-	filters []syntax.LineFilterExpr
+	// matchers to check against
+	matchers []v1.LabelMatcher
 	// blocks that were resolved on the index gateway and sent with the request
 	blocks []bloomshipper.BlockRef
 	// from..through date of the task's chunks
@@ -77,23 +69,18 @@ type Task struct {
 
 	// log enqueue time so we can observe the time spent in the queue
 	enqueueTime time.Time
+
+	// recorder
+	recorder *v1.BloomRecorder
 }
 
-// NewTask returns a new Task that can be enqueued to the task queue.
-// In addition, it returns a result and an error channel, as well
-// as an error if the instantiation fails.
-func NewTask(ctx context.Context, tenantID string, refs seriesWithInterval, filters []syntax.LineFilterExpr, blocks []bloomshipper.BlockRef) (Task, error) {
-	key, err := ulid.New(ulid.Now(), entropy)
-	if err != nil {
-		return Task{}, err
-	}
-
-	task := Task{
-		ID:       key,
-		Tenant:   tenantID,
+func newTask(ctx context.Context, tenantID string, refs seriesWithInterval, matchers []v1.LabelMatcher, blocks []bloomshipper.BlockRef) Task {
+	return Task{
+		tenant:   tenantID,
+		recorder: v1.NewBloomRecorder(ctx, "task"),
 		err:      new(wrappedError),
 		resCh:    make(chan v1.Output),
-		filters:  filters,
+		matchers: matchers,
 		blocks:   blocks,
 		series:   refs.series,
 		interval: refs.interval,
@@ -101,7 +88,6 @@ func NewTask(ctx context.Context, tenantID string, refs seriesWithInterval, filt
 		ctx:      ctx,
 		done:     make(chan struct{}),
 	}
-	return task, nil
 }
 
 // Bounds implements Bounded
@@ -130,37 +116,39 @@ func (t Task) CloseWithError(err error) {
 
 // Copy returns a copy of the existing task but with a new slice of grouped chunk refs
 func (t Task) Copy(series []*logproto.GroupedChunkRefs) Task {
-	// do not copy ID to distinguish it as copied task
 	return Task{
-		Tenant:   t.Tenant,
+		recorder: t.recorder,
+		tenant:   t.tenant,
 		err:      t.err,
 		resCh:    t.resCh,
-		filters:  t.filters,
+		matchers: t.matchers,
 		blocks:   t.blocks,
 		series:   series,
 		interval: t.interval,
 		table:    t.table,
 		ctx:      t.ctx,
-		done:     make(chan struct{}),
+		done:     t.done,
 	}
 }
 
-func (t Task) RequestIter(tokenizer *v1.NGramTokenizer) v1.Iterator[v1.Request] {
+func (t Task) RequestIter() iter.Iterator[v1.Request] {
 	return &requestIterator{
-		series:  v1.NewSliceIter(t.series),
-		search:  v1.FiltersToBloomTest(tokenizer, t.filters...),
-		channel: t.resCh,
-		curr:    v1.Request{},
+		recorder: t.recorder,
+		series:   iter.NewSliceIter(t.series),
+		search:   v1.LabelMatchersToBloomTest(t.matchers...),
+		channel:  t.resCh,
+		curr:     v1.Request{},
 	}
 }
 
-var _ v1.Iterator[v1.Request] = &requestIterator{}
+var _ iter.Iterator[v1.Request] = &requestIterator{}
 
 type requestIterator struct {
-	series  v1.Iterator[*logproto.GroupedChunkRefs]
-	search  v1.BloomTest
-	channel chan<- v1.Output
-	curr    v1.Request
+	recorder *v1.BloomRecorder
+	series   iter.Iterator[*logproto.GroupedChunkRefs]
+	search   v1.BloomTest
+	channel  chan<- v1.Output
+	curr     v1.Request
 }
 
 // At implements v1.Iterator.
@@ -181,6 +169,7 @@ func (it *requestIterator) Next() bool {
 	}
 	group := it.series.At()
 	it.curr = v1.Request{
+		Recorder: it.recorder,
 		Fp:       model.Fingerprint(group.Fingerprint),
 		Chks:     convertToChunkRefs(group.Refs),
 		Search:   it.search,

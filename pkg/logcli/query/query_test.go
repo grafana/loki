@@ -426,7 +426,7 @@ func (t *testQueryClient) Query(_ string, _ int, _ time.Time, _ logproto.Directi
 func (t *testQueryClient) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, step, interval time.Duration, _ bool) (*loghttp.QueryResponse, error) {
 	ctx := user.InjectOrgID(context.Background(), "fake")
 
-	params, err := logql.NewLiteralParams(queryStr, from, through, step, interval, direction, uint32(limit), nil)
+	params, err := logql.NewLiteralParams(queryStr, from, through, step, interval, direction, uint32(limit), nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -486,7 +486,7 @@ func (t *testQueryClient) GetVolumeRange(_ *volume.Query) (*loghttp.QueryRespons
 }
 
 func (t *testQueryClient) GetDetectedFields(
-	_ string,
+	_, _ string,
 	_, _ int,
 	_, _ time.Time,
 	_ time.Duration,
@@ -887,8 +887,6 @@ func TestParallelJobs(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
-
 		t.Run(
 			tt.name,
 			func(t *testing.T) {
