@@ -16,10 +16,14 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
+type ObjectAttributes struct {
+	Size int64
+}
+
 // ObjectClient is used to store arbitrary data in Object Store (S3/GCS/Azure/...)
 type ObjectClient interface {
 	ObjectExists(ctx context.Context, objectKey string) (bool, error)
-	ObjectExistsWithSize(ctx context.Context, objectKey string) (bool, int64, error)
+	GetAttributes(ctx context.Context, objectKey string) (ObjectAttributes, error)
 
 	PutObject(ctx context.Context, objectKey string, object io.Reader) error
 	// NOTE: The consumer of GetObject should always call the Close method when it is done reading which otherwise could cause a resource leak.

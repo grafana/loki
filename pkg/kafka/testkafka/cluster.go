@@ -102,7 +102,7 @@ func addSupportForConsumerGroups(t testing.TB, cluster *kfake.Cluster, topicName
 			partitionID = allPartitions
 		} else {
 			partitionID = req.Groups[0].Topics[0].Partitions[0]
-			assert.Len(t, req.Groups[0], 1, "test only has support for one partition per request")
+			assert.Len(t, req.Groups[0].Topics, 1, "test only has support for one partition per request")
 			assert.Len(t, req.Groups[0].Topics[0].Partitions, 1, "test only has support for one partition per request")
 		}
 

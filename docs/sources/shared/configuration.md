@@ -839,6 +839,20 @@ kafka_config:
   # CLI flag: -kafka.producer-max-buffered-bytes
   [producer_max_buffered_bytes: <int> | default = 1073741824]
 
+  # The best-effort maximum lag a consumer tries to achieve at startup. Set both
+  # -kafka.target-consumer-lag-at-startup and -kafka.max-consumer-lag-at-startup
+  # to 0 to disable waiting for maximum consumer lag being honored at startup.
+  # CLI flag: -kafka.target-consumer-lag-at-startup
+  [target_consumer_lag_at_startup: <duration> | default = 2s]
+
+  # The guaranteed maximum lag before a consumer is considered to have caught up
+  # reading from a partition at startup, becomes ACTIVE in the hash ring and
+  # passes the readiness check. Set both -kafka.target-consumer-lag-at-startup
+  # and -kafka.max-consumer-lag-at-startup to 0 to disable waiting for maximum
+  # consumer lag being honored at startup.
+  # CLI flag: -kafka.max-consumer-lag-at-startup
+  [max_consumer_lag_at_startup: <duration> | default = 15s]
+
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
 [runtime_config: <runtime_config>]
@@ -1298,18 +1312,9 @@ Experimental: The `bloom_gateway` block configures the Loki bloom gateway server
 client:
   # Configures the behavior of the connection pool.
   pool_config:
-    # How frequently to clean up clients for servers that have gone away or are
-    # unhealthy.
+    # How frequently to update the list of servers.
     # CLI flag: -bloom-gateway-client.pool.check-interval
-    [check_interval: <duration> | default = 10s]
-
-    # Run a health check on each server during periodic cleanup.
-    # CLI flag: -bloom-gateway-client.pool.enable-health-check
-    [enable_health_check: <boolean> | default = true]
-
-    # Timeout for the health check if health check is enabled.
-    # CLI flag: -bloom-gateway-client.pool.health-check-timeout
-    [health_check_timeout: <duration> | default = 1s]
+    [check_interval: <duration> | default = 15s]
 
   # The grpc_client block configures the gRPC client used to communicate between
   # a client and server component in Loki.
@@ -3813,6 +3818,12 @@ otlp_config:
 # status code (260) is returned to the client along with an error message.
 # CLI flag: -limits.block-ingestion-status-code
 [block_ingestion_status_code: <int> | default = 260]
+
+# The number of partitions a tenant's data should be sharded to when using kafka
+# ingestion. Tenants are sharded across partitions using shuffle-sharding. 0
+# disables shuffle sharding and tenant is sharded across all partitions.
+# CLI flag: -limits.ingestion-partition-tenant-shard-size
+[ingestion_partitions_tenant_shard_size: <int> | default = 0]
 ```
 
 ### local_storage_config
@@ -4217,6 +4228,11 @@ engine:
 # When true, querier limits sent via a header are enforced.
 # CLI flag: -querier.per-request-limits-enabled
 [per_request_limits_enabled: <boolean> | default = false]
+
+# When true, querier directs ingester queries to the partition-ingesters instead
+# of the normal ingesters.
+# CLI flag: -querier.query-partition-ingesters
+[query_partition_ingesters: <boolean> | default = false]
 ```
 
 ### query_range

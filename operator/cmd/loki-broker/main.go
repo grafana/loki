@@ -178,7 +178,7 @@ func main() {
 				os.Exit(1)
 			}
 		} else {
-			fmt.Fprintf(os.Stdout, "---\n%s", b)
+			_, _ = fmt.Fprintf(os.Stdout, "---\n%s", b)
 		}
 	}
 }

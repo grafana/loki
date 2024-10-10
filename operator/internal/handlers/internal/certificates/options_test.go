@@ -140,7 +140,6 @@ func TestGetOptions_PruneServiceCAAnnotations_ForTenantMode(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		tc := tc
 		t.Run(string(tc.mode), func(t *testing.T) {
 			opts, err := GetOptions(context.TODO(), k, req, tc.mode)
 			require.NoError(t, err)

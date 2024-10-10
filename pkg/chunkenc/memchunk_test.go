@@ -86,7 +86,6 @@ const (
 
 func TestBlocksInclusive(t *testing.T) {
 	for _, enc := range testEncodings {
-		enc := enc
 		for _, format := range allPossibleFormats {
 			chunkfmt, headfmt := format.chunkFormat, format.headBlockFmt
 			chk := NewMemChunk(chunkfmt, enc, headfmt, testBlockSize, testTargetSize)
@@ -105,7 +104,6 @@ func TestBlocksInclusive(t *testing.T) {
 
 func TestBlock(t *testing.T) {
 	for _, enc := range testEncodings {
-		enc := enc
 		for _, format := range allPossibleFormats {
 			chunkFormat, headBlockFmt := format.chunkFormat, format.headBlockFmt
 			t.Run(fmt.Sprintf("encoding:%v chunkFormat:%v headBlockFmt:%v", enc, chunkFormat, headBlockFmt), func(t *testing.T) {
@@ -260,7 +258,6 @@ func TestBlock(t *testing.T) {
 
 func TestCorruptChunk(t *testing.T) {
 	for _, enc := range testEncodings {
-		enc := enc
 		for _, format := range allPossibleFormats {
 			chunkfmt, headfmt := format.chunkFormat, format.headBlockFmt
 
@@ -337,7 +334,6 @@ func TestReadFormatV1(t *testing.T) {
 func TestRoundtripV2(t *testing.T) {
 	for _, testData := range allPossibleFormats {
 		for _, enc := range testEncodings {
-			enc := enc
 			t.Run(testNameWithFormats(enc, testData.chunkFormat, testData.headBlockFmt), func(t *testing.T) {
 				t.Parallel()
 
@@ -397,7 +393,6 @@ func testNameWithFormats(enc compression.Codec, chunkFormat byte, headBlockFmt H
 
 func TestRoundtripV3(t *testing.T) {
 	for _, enc := range testEncodings {
-		enc := enc
 		for _, format := range allPossibleFormats {
 			chunkfmt, headfmt := format.chunkFormat, format.headBlockFmt
 			t.Run(fmt.Sprintf("%v-%v", format, enc), func(t *testing.T) {
@@ -422,10 +417,8 @@ func TestRoundtripV3(t *testing.T) {
 func TestSerialization(t *testing.T) {
 	for _, testData := range allPossibleFormats {
 		for _, enc := range testEncodings {
-			enc := enc
 			// run tests with and without structured metadata since it is optional
 			for _, appendWithStructuredMetadata := range []bool{false, true} {
-				appendWithStructuredMetadata := appendWithStructuredMetadata
 				testName := testNameWithFormats(enc, testData.chunkFormat, testData.headBlockFmt)
 				if appendWithStructuredMetadata {
 					testName = fmt.Sprintf("%s - append structured metadata", testName)
@@ -511,7 +504,6 @@ func TestSerialization(t *testing.T) {
 func TestChunkFilling(t *testing.T) {
 	for _, testData := range allPossibleFormats {
 		for _, enc := range testEncodings {
-			enc := enc
 			t.Run(testNameWithFormats(enc, testData.chunkFormat, testData.headBlockFmt), func(t *testing.T) {
 				t.Parallel()
 
@@ -676,8 +668,6 @@ func TestMemChunk_AppendOutOfOrder(t *testing.T) {
 
 	for _, f := range HeadBlockFmts {
 		for testName, tester := range tests {
-			tester := tester
-
 			t.Run(testName, func(t *testing.T) {
 				t.Parallel()
 
@@ -1117,7 +1107,6 @@ func TestMemChunk_IteratorBounds(t *testing.T) {
 		t.Run(
 			fmt.Sprintf("mint:%d,maxt:%d,direction:%s", tt.mint.UnixNano(), tt.maxt.UnixNano(), tt.direction),
 			func(t *testing.T) {
-				tt := tt
 				c := createChunk()
 
 				noopStreamPipeline := log.NewNoopPipeline().ForStream(labels.Labels{})
@@ -1143,7 +1132,6 @@ func TestMemChunk_IteratorBounds(t *testing.T) {
 
 func TestMemchunkLongLine(t *testing.T) {
 	for _, enc := range testEncodings {
-		enc := enc
 		t.Run(enc.String(), func(t *testing.T) {
 			t.Parallel()
 
@@ -1777,7 +1765,6 @@ func TestMemChunk_SpaceFor(t *testing.T) {
 
 func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 	for _, enc := range testEncodings {
-		enc := enc
 		t.Run(enc.String(), func(t *testing.T) {
 			streamLabels := labels.Labels{
 				{Name: "job", Value: "fake"},

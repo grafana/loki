@@ -128,7 +128,7 @@ type Options struct {
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "v7.0.76"
+	libraryVersion = "v7.0.77"
 )
 
 // User Agent should always following the below style.
@@ -661,7 +661,7 @@ func (c *Client) executeMethod(ctx context.Context, method string, metadata requ
 		// Initiate the request.
 		res, err = c.do(req)
 		if err != nil {
-			if isRequestErrorRetryable(err) {
+			if isRequestErrorRetryable(ctx, err) {
 				// Retry the request
 				continue
 			}

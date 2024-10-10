@@ -36,4 +36,6 @@ type Limits interface {
 
 	BlockIngestionUntil(userID string) time.Time
 	BlockIngestionStatusCode(userID string) int
+
+	IngestionPartitionsTenantShardSize(userID string) int
 }
