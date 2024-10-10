@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	dashboardLoader, err := dash.NewDashboardLoader(&dash.SimpleMetricLoader{})
+	dashboardLoader, err := dash.NewDashboardLoader(dash.DummyLoader)
 	if err != nil {
 		panic(err)
 	}

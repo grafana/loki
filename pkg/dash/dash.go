@@ -66,8 +66,11 @@ func (l *DashboardLoader) writesDashboard() (dashboard.Dashboard, error) {
 	// (not everyone may use our k8s style)
 	topologyFilters := []string{`namespace=~".*loki.*"`}
 
-	server := l.ml.Server()
-	index := l.ml.Index()
+	var (
+		server        = l.ml.Server()
+		index         = l.ml.Index()
+		objectStorage = l.ml.ObjectStorage()
+	)
 
 	reds := []*RedMethodBuilder{
 		NewRedMethodBuilder(
@@ -91,6 +94,14 @@ func (l *DashboardLoader) writesDashboard() (dashboard.Dashboard, error) {
 			index.IndexQueryLatency,
 			statusMap,
 			append([]string{`container="ingester"`, `operation="index_chunk"`}, topologyFilters...),
+			[]string{"status_code"},
+			"pod",
+		),
+		NewRedMethodBuilder(
+			fmt.Sprintf("Object Storage - %s", objectStorage.Backend),
+			objectStorage.RequestDuration,
+			statusMap,
+			append([]string{`container="ingester"`}, topologyFilters...),
 			[]string{"status_code"},
 			"pod",
 		),
@@ -269,6 +280,7 @@ func (b *RedMethodBuilder) QPSPanel() (*timeseries.PanelBuilder, error) {
 		// TODO: how to assign predefined colors by status?
 	return timeseries.NewPanelBuilder().
 		Title("qps").
+		Span(8).
 		Min(0).
 		Unit("short").
 		WithTarget(qry).
@@ -325,6 +337,7 @@ func (b *RedMethodBuilder) LatencyPanels() (res []cog.Builder[dashboard.Panel], 
 
 		panel := timeseries.NewPanelBuilder().
 			Title("latency").
+			Span(8).
 			Unit("ms").
 			Min(0).
 			Legend(
