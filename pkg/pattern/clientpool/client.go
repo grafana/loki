@@ -35,10 +35,6 @@ type ClosableHealthAndIngesterClient struct {
 	io.Closer
 }
 
-func (c ClosableHealthAndIngesterClient) Close() error {
-	return c.Closer.Close()
-}
-
 // Config for an ingester client.
 type Config struct {
 	PoolConfig                   PoolConfig                     `yaml:"pool_config,omitempty" doc:"description=Configures how connections are pooled."`
