@@ -109,7 +109,7 @@ The following steps show how to deploy the Loki Helm chart in simple scalable mo
 
 ## Object Storage Configuration
 
-After testing Loki with MinIO, it is recommended to configure Loki with an object storage provider. The following examples shows how to configure Loki with different object storage providers:
+After testing Loki with MinIO, we recommend to configure Loki with an object storage provider. The following examples shows how to configure Loki with different object storage providers:
 
 {{< admonition type="caution" >}}
 When deploying Loki using S3 Storage **DO NOT** use the default bucket names;  `chunk`, `ruler` and `admin`. Choose a unique name for each bucket. For more information see the following [security update](https://grafana.com/blog/2024/06/27/grafana-security-update-grafana-loki-and-unintended-data-write-attempts-to-amazon-s3-buckets/). This caution does not apply when you are using MinIO. When using MinIO we recommend using the default bucket names.
@@ -130,8 +130,8 @@ loki:
           period: 24h
   storage_config:
     aws:
-      region: eu-west-2
-      bucketnames: loki-aws-dev-chunk # Define your AWS bucket here (Must be unique)
+      region: <AWS region your bucket is in eg. `eu-west-2`>
+      bucketnames: <Your AWS bucket for chunk eg. `aws-loki-dev-chunk`>
       s3forcepathstyle: false
   pattern_ingester:
       enabled: true
@@ -145,9 +145,9 @@ loki:
   storage:
     type: s3
     bucketNames:
-      chunks: "<INSERT BUCKET NAME>" # The S3 bucket name for storing chunks (Must be unique)
-      ruler: "<INSERT BUCKET NAME>" # The S3 bucket name for storing ruler data (Must be unique)
-      admin: "<INSERT BUCKET NAME>"
+        chunks: <Your AWS bucket for chunk eg. `aws-loki-dev-chunk`>
+        ruler: <Your AWS bucket for ruler eg. `aws-loki-dev-ruler`>
+        admin: <Your AWS bucket for admin eg. `aws-loki-dev-admin`>
     s3:
       # s3 URL can be used to specify the endpoint, access key, secret key, and bucket name this works well for S3 compatible storages or are hosting Loki on-premises and want to use S3 as the storage backend. Either use the s3 URL or the individual fields below (AWS endpoint, region, secret).
       s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name

@@ -436,7 +436,7 @@ Now that you have created the `values.yaml` file, you can deploy Loki using the 
 The Loki Gateway service is a LoadBalancer service that exposes the Loki gateway to the internet. This is where you will write logs to and query logs from. By default NGINX is used as the gateway.
 
 {{< admonition type="caution" >}}
-The Loki Gateway service is exposed to the internet. It is recommended to secure the gateway with authentication. Refer to the [Authentication]({{< relref "../../../../operations/authentication" >}}) documentation for more information.
+The Loki Gateway service is exposed to the internet. We recommend to secure the gateway with authentication. Refer to the [Authentication]({{< relref "../../../../operations/authentication" >}}) documentation for more information.
 {{< /admonition >}}
 
 To find the Loki Gateway service, run the following command:
