@@ -1650,8 +1650,8 @@ type RegionBackendServicesListUsableCall struct {
 	header_      http.Header
 }
 
-// ListUsable: Retrieves an aggregated list of all usable backend services in
-// the specified project in the given region.
+// ListUsable: Retrieves a list of all usable backend services in the specified
+// project in the given region.
 //
 //   - project: Project ID for this request.
 //   - region: Name of the region scoping this request. It must be a string that

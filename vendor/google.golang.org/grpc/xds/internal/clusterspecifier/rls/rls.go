@@ -65,13 +65,13 @@ func (rls) ParseClusterSpecifierConfig(cfg proto.Message) (clusterspecifier.Bala
 	if cfg == nil {
 		return nil, fmt.Errorf("rls_csp: nil configuration message provided")
 	}
-	any, ok := cfg.(*anypb.Any)
+	m, ok := cfg.(*anypb.Any)
 	if !ok {
 		return nil, fmt.Errorf("rls_csp: error parsing config %v: unknown type %T", cfg, cfg)
 	}
 	rlcs := new(rlspb.RouteLookupClusterSpecifier)
 
-	if err := any.UnmarshalTo(rlcs); err != nil {
+	if err := m.UnmarshalTo(rlcs); err != nil {
 		return nil, fmt.Errorf("rls_csp: error parsing config %v: %v", cfg, err)
 	}
 	rlcJSON, err := protojson.Marshal(rlcs.GetRouteLookupConfig())
