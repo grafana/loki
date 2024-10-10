@@ -4,7 +4,7 @@ menuTItle:  Template functions
 description: Describes query functions that are supported by the Go text template.
 aliases:
 - ../logql/template_functions/
-weight: 30
+weight: 500
 ---
 
 # LogQL template functions
