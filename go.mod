@@ -14,7 +14,7 @@ require (
 	github.com/Azure/go-autorest/autorest/azure/auth v0.5.13
 	github.com/Masterminds/sprig/v3 v3.2.3
 	github.com/NYTimes/gziphandler v1.1.1
-	github.com/Shopify/sarama v1.38.1
+	github.com/Shopify/sarama v1.43.3
 	github.com/Workiva/go-datastructures v1.1.5
 	github.com/alicebob/miniredis/v2 v2.30.4
 	github.com/aliyun/aliyun-oss-go-sdk v2.2.10+incompatible
