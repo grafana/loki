@@ -1,0 +1,38 @@
+{{- if .Values.ruler.remoteEvaluationDedicatedQueryPath }}
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if $isDistributed -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "loki.rulerQuerierFullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "loki.rulerQuerierLabels" . | nindent 4 }}
+    {{- with .Values.rulerQuerier.serviceLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    {{- with .Values.loki.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .Values.rulerQuerier.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http-metrics
+      port: 3100
+      targetPort: http-metrics
+      protocol: TCP
+    - name: grpc
+      port: 9095
+      targetPort: grpc
+      protocol: TCP
+      {{- if .Values.rulerQuerier.appProtocol.grpc }}
+      appProtocol: {{ .Values.rulerQuerier.appProtocol.grpc }}
+      {{- end }}
+  selector:
+    {{- include "loki.rulerQuerierSelectorLabels" . | nindent 4 }}
+{{- end -}}
+{{- end -}}
