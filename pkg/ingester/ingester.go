@@ -404,18 +404,21 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		i.SetExtractorWrapper(i.cfg.SampleExtractorWrapper)
 	}
 
-	var limiterStrategy limiterRingStrategy
+	var streamCountLimiterStrategy limiterRingStrategy
 	var ownedStreamsStrategy ownershipStrategy
+	var streamRateLimitStrategy RateLimiterStrategy
 	if i.cfg.KafkaIngestion.Enabled {
-		limiterStrategy = newPartitionRingLimiterStrategy(partitionRingWatcher, limits.IngestionPartitionsTenantShardSize)
+		streamCountLimiterStrategy = newPartitionRingLimiterStrategy(partitionRingWatcher, limits.IngestionPartitionsTenantShardSize)
 		ownedStreamsStrategy = newOwnedStreamsPartitionStrategy(i.ingestPartitionID, partitionRingWatcher, limits.IngestionPartitionsTenantShardSize, util_log.Logger)
+		streamRateLimitStrategy = &NoLimitsStrategy{} // Kafka ingestion does not have per-stream rate limits, because we control the consumption speed.
 	} else {
-		limiterStrategy = newIngesterRingLimiterStrategy(i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor)
+		streamCountLimiterStrategy = newIngesterRingLimiterStrategy(i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor)
 		ownedStreamsStrategy = newOwnedStreamsIngesterStrategy(i.lifecycler.ID, i.readRing, util_log.Logger)
+		streamRateLimitStrategy = &TenantBasedStrategy{limits: limits}
 	}
 	// Now that the lifecycler has been created, we can create the limiter
 	// which depends on it.
-	i.limiter = NewLimiter(limits, metrics, limiterStrategy)
+	i.limiter = NewLimiter(limits, metrics, streamCountLimiterStrategy, streamRateLimitStrategy)
 	i.recalculateOwnedStreams = newRecalculateOwnedStreamsSvc(i.getInstances, ownedStreamsStrategy, cfg.OwnedStreamsCheckInterval, util_log.Logger)
 
 	return i, nil
