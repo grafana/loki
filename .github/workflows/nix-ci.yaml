@@ -22,6 +22,9 @@ jobs:
       - uses: cachix/install-nix-action@v30
         with:
           nix_path: nixpkgs=channel:nixos-unstable
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
       - run: nix run --print-build-logs .#test
   packages:
     runs-on: ubuntu-latest
