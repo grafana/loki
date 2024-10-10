@@ -12,19 +12,22 @@ import (
 	"github.com/grafana/grafana-foundation-sdk/go/common"
 	"github.com/grafana/grafana-foundation-sdk/go/dashboard"
 	"github.com/grafana/grafana-foundation-sdk/go/prometheus"
+	"github.com/grafana/grafana-foundation-sdk/go/table"
+	"github.com/grafana/grafana-foundation-sdk/go/testdata"
+	"github.com/grafana/grafana-foundation-sdk/go/text"
 	"github.com/grafana/grafana-foundation-sdk/go/timeseries"
 	prom "github.com/prometheus/client_golang/prometheus"
 )
 
 type DashboardLoader struct {
-	ml MetricLoader
+	ml DependencyLoader
 
 	// individual dashboards, pre-rendered at initialization and
 	// accessed by http handlers via corresponding CamelCase methods
 	writes []byte
 }
 
-func NewDashboardLoader(ml MetricLoader) (*DashboardLoader, error) {
+func NewDashboardLoader(ml DependencyLoader) (*DashboardLoader, error) {
 	dl := &DashboardLoader{
 		ml: ml,
 	}
@@ -114,6 +117,8 @@ func (l *DashboardLoader) writesDashboard() (dashboard.Dashboard, error) {
 		Time("now-30m", "now").
 		Timezone(common.TimeZoneUtc)
 
+	l.WelcomeRow(objectStorage, builder)
+
 	for _, red := range reds {
 		if err := red.Build(builder); err != nil {
 			return dashboard.Dashboard{}, err
@@ -121,6 +126,49 @@ func (l *DashboardLoader) writesDashboard() (dashboard.Dashboard, error) {
 	}
 
 	return builder.Build()
+}
+
+// WelcomeRow adds 3 panels:
+// * [text panel] A description
+// * [instant query panel] Cell-metadata:
+//   - A detected object storage backend (s3)
+//   - the loki version running
+//
+// * [instant query panel] A list of required conventions
+// and whether or not they're satisfied
+//   - cluster, namespace, container labels
+func (l *DashboardLoader) WelcomeRow(objectStorage *ObjectStorageMetrics, builder *dashboard.DashboardBuilder) {
+	builder.WithRow(dashboard.NewRowBuilder("Welcome"))
+	builder.WithPanel(
+		text.NewPanelBuilder().
+			Span(8).
+			Title("Welcome to the Loki Writes Dashboard").
+			Description("This dashboard provides insights into Loki's write path performance.").
+			Transparent(true).
+			Mode(text.TextModeMarkdown).
+			Content("## Welcome to the Loki Writes Dashboard\n\nThis dashboard provides insights into Loki's write path performance, including request rates, latency distributions, and object storage metrics.\n\nThe panels below show key metrics and system information to help you monitor and optimize Loki's write operations."),
+	)
+
+	builder.WithPanel(
+		table.NewPanelBuilder().
+			Span(8).
+			Title("System Information").
+			Description("Key information about the Loki system").
+			WithTarget(
+				testdata.NewDataqueryBuilder().
+					ScenarioId(testdata.DataqueryScenarioIdCsvContent).
+					CsvContent(
+						fmt.Sprintf(
+							`Field,Value
+Version,%s
+Backend,%s`,
+							l.ml.BuildInfo().Version,
+							l.ml.ObjectStorage().Backend,
+						),
+					),
+			),
+	)
+
 }
 
 func forceTpl(name, s string) *template.Template {

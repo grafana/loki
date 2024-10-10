@@ -6,7 +6,9 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index"
+	"github.com/grafana/loki/v3/pkg/util/build"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	prom_api "github.com/prometheus/prometheus/web/api/v1"
 )
 
 var (
@@ -23,17 +25,18 @@ var (
 	}, []string{"operation", "status_code"})
 )
 
-// MetricLoader is an interface for how different metric categories used in dashboards are loaded.
+// DependencyLoader is an interface for how different metric categories used in dashboards are loaded.
 // Ideally, the actual client_golang types are passed through here, usually via pkg-specific
 // Metrics{} structs. This is _hopeful_, but as of now some types are private/otherwise harder to expose.
 // TODO: pass in actual metrics structs
-type MetricLoader interface {
+type DependencyLoader interface {
 	Server() *server.Metrics
 	Index() *index.Metrics
 	ObjectStorage() *ObjectStorageMetrics
 
 	// utils needed for determining which metrics to use, e.g. S3 vs GCS depending on the current live backend.
 	SchemaConfig() config.SchemaConfig
+	BuildInfo() prom_api.PrometheusVersion
 }
 
 var DummyLoader = NewSimpleMetricLoader(config.SchemaConfig{
@@ -45,34 +48,43 @@ var DummyLoader = NewSimpleMetricLoader(config.SchemaConfig{
 })
 
 // Not derived from a running loki instance, but created
-type SimpleMetricLoader struct {
+type SimpleDependencyLoader struct {
 	schemaConfig config.SchemaConfig
 }
 
-func NewSimpleMetricLoader(schemaConfig config.SchemaConfig) *SimpleMetricLoader {
-	return &SimpleMetricLoader{
+func NewSimpleMetricLoader(schemaConfig config.SchemaConfig) *SimpleDependencyLoader {
+	return &SimpleDependencyLoader{
 		schemaConfig: schemaConfig,
 	}
 }
 
-func (s *SimpleMetricLoader) SchemaConfig() config.SchemaConfig {
+func (s *SimpleDependencyLoader) SchemaConfig() config.SchemaConfig {
 	return s.schemaConfig
 }
 
-func (s *SimpleMetricLoader) Server() *server.Metrics {
+func (s *SimpleDependencyLoader) Server() *server.Metrics {
 	return server.NewServerMetrics(server.Config{
 		MetricsNamespace: constants.Loki,
 		Registerer:       prometheus.NewRegistry(),
 	})
 }
 
-func (s *SimpleMetricLoader) Index() *index.Metrics {
+func (s *SimpleDependencyLoader) Index() *index.Metrics {
 	return index.NewMetrics(prometheus.NewRegistry())
+}
+
+func (s *SimpleDependencyLoader) BuildInfo() prom_api.PrometheusVersion {
+	res := build.GetVersion()
+	// hack for dev
+	if res.Version == "" {
+		res.Version = "test-version"
+	}
+	return res
 }
 
 // use the last period's type to determine which storage backend to select on;
 // defaulting to gcs if there is no match or there are no period configs
-func (s *SimpleMetricLoader) ObjectStorage() *ObjectStorageMetrics {
+func (s *SimpleDependencyLoader) ObjectStorage() *ObjectStorageMetrics {
 	periods := s.schemaConfig.Configs
 	if len(periods) == 0 {
 		return &ObjectStorageMetrics{
