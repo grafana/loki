@@ -154,12 +154,12 @@ type Container struct {
 	segmentsContainer      string
 }
 
-func NewContainer(logger log.Logger, conf []byte) (*Container, error) {
+func NewContainer(logger log.Logger, conf []byte, rt http.RoundTripper) (*Container, error) {
 	sc, err := parseConfig(conf)
 	if err != nil {
 		return nil, errors.Wrap(err, "parse config")
 	}
-	return NewContainerFromConfig(logger, sc, false)
+	return NewContainerFromConfig(logger, sc, false, rt)
 }
 
 func ensureContainer(connection *swift.Connection, name string, createIfNotExist bool) error {
@@ -178,22 +178,22 @@ func ensureContainer(connection *swift.Connection, name string, createIfNotExist
 	return nil
 }
 
-func NewContainerFromConfig(logger log.Logger, sc *Config, createContainer bool) (*Container, error) {
-
+func NewContainerFromConfig(logger log.Logger, sc *Config, createContainer bool, rt http.RoundTripper) (*Container, error) {
+	if rt != nil {
+		sc.HTTPConfig.Transport = rt
+	}
 	// Check if a roundtripper has been set in the config
 	// otherwise build the default transport.
-	var rt http.RoundTripper
+	var tpt http.RoundTripper
+	tpt, err := exthttp.DefaultTransport(sc.HTTPConfig)
+	if err != nil {
+		return nil, err
+	}
 	if sc.HTTPConfig.Transport != nil {
-		rt = sc.HTTPConfig.Transport
-	} else {
-		var err error
-		rt, err = exthttp.DefaultTransport(sc.HTTPConfig)
-		if err != nil {
-			return nil, err
-		}
+		tpt = sc.HTTPConfig.Transport
 	}
 
-	connection := connectionFromConfig(sc, rt)
+	connection := connectionFromConfig(sc, tpt)
 	if err := connection.Authenticate(); err != nil {
 		return nil, errors.Wrap(err, "authentication")
 	}
@@ -378,7 +378,7 @@ func NewTestContainer(t testing.TB) (objstore.Bucket, func(), error) {
 				"needs to be manually cleared. This means that it is only useful to run one test in a time. This is due " +
 				"to safety (accidentally pointing prod container for test) as well as swift not being fully strong consistent.")
 		}
-		c, err := NewContainerFromConfig(log.NewNopLogger(), config, false)
+		c, err := NewContainerFromConfig(log.NewNopLogger(), config, false, nil)
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "initializing new container")
 		}
@@ -392,7 +392,7 @@ func NewTestContainer(t testing.TB) (objstore.Bucket, func(), error) {
 	}
 	config.ContainerName = objstore.CreateTemporaryTestBucketName(t)
 	config.SegmentContainerName = config.ContainerName
-	c, err := NewContainerFromConfig(log.NewNopLogger(), config, true)
+	c, err := NewContainerFromConfig(log.NewNopLogger(), config, true, nil)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "initializing new container")
 	}
