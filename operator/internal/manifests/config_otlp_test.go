@@ -1,10 +1,12 @@
 package manifests
 
 import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
-	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestOtlpAttributeConfig(t *testing.T) {
@@ -187,8 +189,6 @@ func TestOtlpAttributeConfig(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		tc := tc
-
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
