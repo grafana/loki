@@ -566,14 +566,18 @@ func (b *metricBucket) Get(ctx context.Context, name string) (io.ReadCloser, err
 	const op = OpGet
 	b.metrics.ops.WithLabelValues(op).Inc()
 
+	start := time.Now()
+
 	rc, err := b.bkt.Get(ctx, name)
 	if err != nil {
 		if !b.metrics.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
 			b.metrics.opsFailures.WithLabelValues(op).Inc()
 		}
+		b.metrics.opsDuration.WithLabelValues(op).Observe(float64(time.Since(start)))
 		return nil, err
 	}
 	return newTimingReader(
+		start,
 		rc,
 		true,
 		op,
@@ -589,14 +593,18 @@ func (b *metricBucket) GetRange(ctx context.Context, name string, off, length in
 	const op = OpGetRange
 	b.metrics.ops.WithLabelValues(op).Inc()
 
+	start := time.Now()
+
 	rc, err := b.bkt.GetRange(ctx, name, off, length)
 	if err != nil {
 		if !b.metrics.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
 			b.metrics.opsFailures.WithLabelValues(op).Inc()
 		}
+		b.metrics.opsDuration.WithLabelValues(op).Observe(float64(time.Since(start)))
 		return nil, err
 	}
 	return newTimingReader(
+		start,
 		rc,
 		true,
 		op,
@@ -628,7 +636,10 @@ func (b *metricBucket) Upload(ctx context.Context, name string, r io.Reader) err
 	const op = OpUpload
 	b.metrics.ops.WithLabelValues(op).Inc()
 
+	start := time.Now()
+
 	trc := newTimingReader(
+		start,
 		r,
 		false,
 		op,
@@ -705,7 +716,7 @@ type timingReader struct {
 	transferredBytes  *prometheus.HistogramVec
 }
 
-func newTimingReader(r io.Reader, closeReader bool, op string, dur *prometheus.HistogramVec, failed *prometheus.CounterVec, isFailureExpected IsOpFailureExpectedFunc, fetchedBytes *prometheus.CounterVec, transferredBytes *prometheus.HistogramVec) io.ReadCloser {
+func newTimingReader(start time.Time, r io.Reader, closeReader bool, op string, dur *prometheus.HistogramVec, failed *prometheus.CounterVec, isFailureExpected IsOpFailureExpectedFunc, fetchedBytes *prometheus.CounterVec, transferredBytes *prometheus.HistogramVec) io.ReadCloser {
 	// Initialize the metrics with 0.
 	dur.WithLabelValues(op)
 	failed.WithLabelValues(op)
@@ -716,7 +727,7 @@ func newTimingReader(r io.Reader, closeReader bool, op string, dur *prometheus.H
 		closeReader:       closeReader,
 		objSize:           objSize,
 		objSizeErr:        objSizeErr,
-		start:             time.Now(),
+		start:             start,
 		op:                op,
 		duration:          dur,
 		failed:            failed,
@@ -728,7 +739,6 @@ func newTimingReader(r io.Reader, closeReader bool, op string, dur *prometheus.H
 
 	_, isSeeker := r.(io.Seeker)
 	_, isReaderAt := r.(io.ReaderAt)
-
 	if isSeeker && isReaderAt {
 		// The assumption is that in most cases when io.ReaderAt() is implemented then
 		// io.Seeker is implemented too (e.g. os.File).
@@ -736,6 +746,9 @@ func newTimingReader(r io.Reader, closeReader bool, op string, dur *prometheus.H
 	}
 	if isSeeker {
 		return &timingReaderSeeker{timingReader: trc}
+	}
+	if _, isWriterTo := r.(io.WriterTo); isWriterTo {
+		return &timingReaderWriterTo{timingReader: trc}
 	}
 
 	return &trc
@@ -772,11 +785,16 @@ func (r *timingReader) Close() error {
 
 func (r *timingReader) Read(b []byte) (n int, err error) {
 	n, err = r.Reader.Read(b)
+	r.updateMetrics(n, err)
+	return n, err
+}
+
+func (r *timingReader) updateMetrics(n int, err error) {
 	if r.fetchedBytes != nil {
 		r.fetchedBytes.WithLabelValues(r.op).Add(float64(n))
 	}
-
 	r.readBytes += int64(n)
+
 	// Report metric just once.
 	if !r.alreadyGotErr && err != nil && err != io.EOF {
 		if !r.isFailureExpected(err) && !errors.Is(err, context.Canceled) {
@@ -784,7 +802,6 @@ func (r *timingReader) Read(b []byte) (n int, err error) {
 		}
 		r.alreadyGotErr = true
 	}
-	return n, err
 }
 
 type timingReaderSeeker struct {
@@ -801,4 +818,14 @@ type timingReaderSeekerReaderAt struct {
 
 func (rsc *timingReaderSeekerReaderAt) ReadAt(p []byte, off int64) (int, error) {
 	return (rsc.Reader).(io.ReaderAt).ReadAt(p, off)
+}
+
+type timingReaderWriterTo struct {
+	timingReader
+}
+
+func (t *timingReaderWriterTo) WriteTo(w io.Writer) (n int64, err error) {
+	n, err = (t.Reader).(io.WriterTo).WriteTo(w)
+	t.timingReader.updateMetrics(int(n), err)
+	return n, err
 }

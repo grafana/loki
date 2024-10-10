@@ -22,27 +22,32 @@ import (
 	v3statuspb "github.com/envoyproxy/go-control-plane/envoy/service/status/v3"
 )
 
-// DumpResources returns the status and contents of all xDS resources.
-func (c *clientImpl) DumpResources() (*v3statuspb.ClientStatusResponse, error) {
+// dumpResources returns the status and contents of all xDS resources.
+func (c *clientImpl) dumpResources() *v3statuspb.ClientConfig {
 	c.authorityMu.Lock()
 	defer c.authorityMu.Unlock()
 
 	var retCfg []*v3statuspb.ClientConfig_GenericXdsConfig
 	for _, a := range c.authorities {
-		cfg, err := a.dumpResources()
-		if err != nil {
-			return nil, err
-		}
-		retCfg = append(retCfg, cfg...)
+		retCfg = append(retCfg, a.dumpResources()...)
 	}
 
-	return &v3statuspb.ClientStatusResponse{
-		Config: []*v3statuspb.ClientConfig{
-			{
-				// TODO: Populate ClientScope. Need to update go-control-plane dependency.
-				Node:              c.config.NodeProto,
-				GenericXdsConfigs: retCfg,
-			},
-		},
-	}, nil
+	return &v3statuspb.ClientConfig{
+		Node:              c.config.Node(),
+		GenericXdsConfigs: retCfg,
+	}
+}
+
+// DumpResources returns the status and contents of all xDS resources.
+func DumpResources() *v3statuspb.ClientStatusResponse {
+	clientsMu.Lock()
+	defer clientsMu.Unlock()
+
+	resp := &v3statuspb.ClientStatusResponse{}
+	for key, client := range clients {
+		cfg := client.dumpResources()
+		cfg.ClientScope = key
+		resp.Config = append(resp.Config, cfg)
+	}
+	return resp
 }

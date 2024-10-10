@@ -6,6 +6,7 @@ package azure
 import (
 	"context"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -145,7 +146,7 @@ type Bucket struct {
 }
 
 // NewBucket returns a new Bucket using the provided Azure config.
-func NewBucket(logger log.Logger, azureConfig []byte, component string) (*Bucket, error) {
+func NewBucket(logger log.Logger, azureConfig []byte, component string, rt http.RoundTripper) (*Bucket, error) {
 	level.Debug(logger).Log("msg", "creating new Azure bucket connection", "component", component)
 	conf, err := parseConfig(azureConfig)
 	if err != nil {
@@ -154,11 +155,14 @@ func NewBucket(logger log.Logger, azureConfig []byte, component string) (*Bucket
 	if conf.MSIResource != "" {
 		level.Warn(logger).Log("msg", "The field msi_resource has been deprecated and should no longer be set")
 	}
-	return NewBucketWithConfig(logger, conf, component)
+	return NewBucketWithConfig(logger, conf, component, rt)
 }
 
 // NewBucketWithConfig returns a new Bucket using the provided Azure config struct.
-func NewBucketWithConfig(logger log.Logger, conf Config, component string) (*Bucket, error) {
+func NewBucketWithConfig(logger log.Logger, conf Config, component string, rt http.RoundTripper) (*Bucket, error) {
+	if rt != nil {
+		conf.HTTPConfig.Transport = rt
+	}
 	if err := conf.validate(); err != nil {
 		return nil, err
 	}
@@ -355,7 +359,7 @@ func NewTestBucket(t testing.TB, component string) (objstore.Bucket, func(), err
 	if err != nil {
 		return nil, nil, err
 	}
-	bkt, err := NewBucket(log.NewNopLogger(), bc, component)
+	bkt, err := NewBucket(log.NewNopLogger(), bc, component, nil)
 	if err != nil {
 		t.Errorf("Cannot create Azure storage container:")
 		return nil, nil, err

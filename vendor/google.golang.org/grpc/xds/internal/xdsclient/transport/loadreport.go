@@ -223,6 +223,7 @@ func (t *Transport) sendLoadStatsRequest(stream lrsStream, loads []*load.Data) e
 				TotalSuccessfulRequests: localityData.RequestStats.Succeeded,
 				TotalRequestsInProgress: localityData.RequestStats.InProgress,
 				TotalErrorRequests:      localityData.RequestStats.Errored,
+				TotalIssuedRequests:     localityData.RequestStats.Issued,
 				LoadMetricStats:         loadMetricStats,
 				UpstreamEndpointStats:   nil, // TODO: populate for per endpoint loads.
 			})
