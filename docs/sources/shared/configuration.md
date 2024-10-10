@@ -4231,7 +4231,7 @@ engine:
 
 # When true, querier directs ingester queries to the partition-ingesters instead
 # of the normal ingesters.
-# CLI flag: -querier.query_partition_ingesters
+# CLI flag: -querier.query-partition-ingesters
 [query_partition_ingesters: <boolean> | default = false]
 ```
 
