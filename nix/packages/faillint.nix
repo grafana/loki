@@ -1,13 +1,13 @@
 { lib, buildGoModule, fetchFromGitHub }:
 
-buildGoModule {
+buildGoModule rec {
   pname = "faillint";
-  version = "1.13.0";
+  version = "24d8e46ee21be34778b85fce26fed0ad50210141";
 
   src = fetchFromGitHub {
-    owner = "trevorwhitney";
+    owner = "fatih";
     repo = "faillint";
-    rev = "main";
+    rev = "${version}";
     sha256 = "NV+wbu547mtTa6dTGv7poBwWXOmu5YjqbauzolCg5qs=";
   };
 
