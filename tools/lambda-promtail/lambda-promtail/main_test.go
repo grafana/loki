@@ -64,3 +64,33 @@ func TestLambdaPromtail_TestDropLabels(t *testing.T) {
 	require.NotContains(t, modifiedLabels, model.LabelName("A1"))
 	require.Contains(t, modifiedLabels, model.LabelName("B2"))
 }
+
+func TestLambdaPromtail_ExtraHeadersValid(t *testing.T) {
+	extraHeaders, err := parseExtraHeaders("X-Custom-Header,This!sATota\\yCu$t0mHe4der,My-Server_WantsThis,What_ever could go here?,Expected4Entry,yLKc+QSB5VF/Gp3VPN7oOxa98yxWMxeHOAo+CW6trow=")
+	require.Nil(t, err)
+	require.Len(t, extraHeaders, 3)
+	require.Equal(t, extraHeaders["X-Custom-Header"], "This!sATota\\yCu$t0mHe4der")
+	require.Equal(t, extraHeaders["My-Server_WantsThis"], "What_ever could go here?")
+	require.Equal(t, extraHeaders["Expected4Entry"], "yLKc+QSB5VF/Gp3VPN7oOxa98yxWMxeHOAo+CW6trow=")
+}
+
+func TestLambdaPromtail_ExtraHeadersInvalidHeaderKey(t *testing.T) {
+	extraHeaders, err := parseExtraHeaders("Th.s_Shou|d-Fa!l,a")
+	require.Nil(t, extraHeaders)
+	require.ErrorContains(t, err, "HTTP header key is invalid:")
+	extraHeaders, err = parseExtraHeaders("Also Not Valid ,b")
+	require.Nil(t, extraHeaders)
+	require.ErrorContains(t, err, "HTTP header key is invalid:")
+}
+
+func TestLambdaPromtail_ExtraHeadersMissingValue(t *testing.T) {
+	extraHeaders, err := parseExtraHeaders("A,a,B,b,C,c,D")
+	require.Nil(t, extraHeaders)
+	require.Errorf(t, err, invalidExtraHeadersError)
+}
+
+func TestLambdaPromtail_TestParseHeadersNoneProvided(t *testing.T) {
+	extraLabels, err := parseExtraHeaders("")
+	require.Len(t, extraLabels, 0)
+	require.Nil(t, err)
+}
