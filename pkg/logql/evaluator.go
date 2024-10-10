@@ -282,15 +282,17 @@ func EvaluatorUnsupportedType(expr syntax.Expr, ev EvaluatorFactory) error {
 }
 
 type DefaultEvaluator struct {
-	maxLookBackPeriod time.Duration
-	querier           Querier
+	maxLookBackPeriod         time.Duration
+	maxCountMinSketchHeapSize int
+	querier                   Querier
 }
 
 // NewDefaultEvaluator constructs a DefaultEvaluator
-func NewDefaultEvaluator(querier Querier, maxLookBackPeriod time.Duration) *DefaultEvaluator {
+func NewDefaultEvaluator(querier Querier, maxLookBackPeriod time.Duration, maxCountMinSketchHeapSize int) *DefaultEvaluator {
 	return &DefaultEvaluator{
-		querier:           querier,
-		maxLookBackPeriod: maxLookBackPeriod,
+		querier:                   querier,
+		maxLookBackPeriod:         maxLookBackPeriod,
+		maxCountMinSketchHeapSize: maxCountMinSketchHeapSize,
 	}
 }
 
@@ -350,7 +352,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 				return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset)
 			})
 		}
-		return newVectorAggEvaluator(ctx, nextEvFactory, e, q)
+		return newVectorAggEvaluator(ctx, nextEvFactory, e, q, ev.maxCountMinSketchHeapSize)
 	case *syntax.RangeAggregationExpr:
 		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 			&logproto.SampleQueryRequest{
@@ -391,7 +393,8 @@ func newVectorAggEvaluator(
 	evFactory SampleEvaluatorFactory,
 	expr *syntax.VectorAggregationExpr,
 	q Params,
-) (*VectorAggEvaluator, error) {
+	maxCountMinSketchHeapSize int,
+) (StepEvaluator, error) {
 	if expr.Grouping == nil {
 		return nil, errors.Errorf("aggregation operator '%q' without grouping", expr.Operation)
 	}
@@ -400,6 +403,10 @@ func newVectorAggEvaluator(
 		return nil, err
 	}
 	sort.Strings(expr.Grouping.Groups)
+
+	if expr.Operation == syntax.OpTypeCountMinSketch {
+		return newCountMinSketchVectorAggEvaluator(nextEvaluator, expr, maxCountMinSketchHeapSize)
+	}
 
 	return &VectorAggEvaluator{
 		nextEvaluator: nextEvaluator,
@@ -1198,7 +1205,8 @@ type VectorIterator struct {
 }
 
 func newVectorIterator(val float64,
-	stepMs, startMs, endMs int64) *VectorIterator {
+	stepMs, startMs, endMs int64,
+) *VectorIterator {
 	if stepMs == 0 {
 		stepMs = 1
 	}
@@ -1294,6 +1302,7 @@ func (e *LabelReplaceEvaluator) Next() (bool, int64, StepResult) {
 func (e *LabelReplaceEvaluator) Close() error {
 	return e.nextEvaluator.Close()
 }
+
 func (e *LabelReplaceEvaluator) Error() error {
 	return e.nextEvaluator.Error()
 }

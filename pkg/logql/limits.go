@@ -8,9 +8,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
-var (
-	NoLimits = &fakeLimits{maxSeries: math.MaxInt32}
-)
+var NoLimits = &fakeLimits{
+	maxSeries: math.MaxInt32,
+	timeout:   math.MaxInt32,
+}
 
 // Limits allow the engine to fetch limits for a given users.
 type Limits interface {
