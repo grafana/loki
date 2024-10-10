@@ -1157,7 +1157,7 @@ func extractLogLevelFromLogLine(log string) string {
 		return constants.LogLevelDebug
 	case bytes.EqualFold(v, []byte("info")), bytes.EqualFold(v, []byte("inf")):
 		return constants.LogLevelInfo
-	case bytes.EqualFold(v, []byte("warn")), bytes.EqualFold(v, []byte("wrn")):
+	case bytes.EqualFold(v, []byte("warn")), bytes.EqualFold(v, []byte("wrn")), bytes.EqualFold(v, []byte("warning")):
 		return constants.LogLevelWarn
 	case bytes.EqualFold(v, []byte("error")), bytes.EqualFold(v, []byte("err")):
 		return constants.LogLevelError
