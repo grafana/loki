@@ -32,7 +32,7 @@ docker run -v /var/log:/var/log \
 
 Or, an alternative is to run the fluent-bit container using [Docker Hub](https://hub.docker.com/r/fluent/fluent-bit) image:
 
-### Docker Container Logs
+### Docker container logs
 
 To ship logs from Docker containers to Grafana Cloud using Fluent Bit, you can use the Fluent Bit Docker image and configure it to forward logs directly to Grafana Loki. Below is a step-by-step guide on setting up Fluent Bit for this purpose.
 
@@ -142,7 +142,7 @@ You can also adapt your plugins.conf, removing the need to change the command li
     Path /path/to/built/out_grafana_loki.so
 ```
 
-## Configuration Options
+## Configuration options
 
 | Key                  | Description                                                                                                                                                                                                                                                                                                                                                                             | Default                                |
 |----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------|
@@ -219,11 +219,11 @@ and a LabelMap file as follows :
 
 The labels extracted will be `{team="x-men", container="promtail", pod="promtail-xxx", namespace="prod"}`.
 
-If you don't want the `kubernetes` and `HOSTNAME` fields to appear in the log line you can use the `RemoveKeys` configuration field. (for example, `RemoveKeys kubernetes,HOSTNAME`).
+If you don't want the `kubernetes` and `HOSTNAME` fields to appear in the log line you can use the `RemoveKeys` configuration field. For example, `RemoveKeys kubernetes,HOSTNAME`.
 
 ### Buffering
 
-Buffering refers to the ability to store the records somewhere, and while they are processed and delivered, still be able to store more. The Loki output plugin can be blocked by the Loki client because of its design:
+Buffering refers to the ability to store the records somewhere, and while they are processed and delivered, still be able to continue storing more records. The Loki output plugin can be blocked by the Loki client because of its design:
 
 - If the BatchSize is over the limit, the output plugin pauses receiving new records until the pending batch is successfully sent to the server
 - If the Loki server is unreachable (retry 429s, 500s and connection-level errors), the output plugin blocks new records until the Loki server is available again, and the pending batch is successfully sent to the server or as long as the maximum number of attempts has been reached within configured back-off mechanism
@@ -247,7 +247,7 @@ The blocking state with some of the input plugins is not acceptable, because it 
 
 ### Configuration examples
 
-To configure the Loki output plugin add this section to fluent-bit.conf
+To configure the Loki output plugin add this section to your luent-bit.conf file.
 
 ```properties
 [Output]

@@ -201,7 +201,7 @@ docker restart loki-fundamentals-fluent-bit-1
 In this step, we will start the Carnivorous Greenhouse application. To start the application, run the following command:
 <!-- INTERACTIVE ignore START -->
 {{< admonition type="note" >}}
-This docker-compose file relies on the `loki-fundamentals_loki` docker network. If you have not started the observability stack, you will need to start it first.
+This docker-compose file relies on the `loki-fundamentals_loki` Docker network. If you have not started the observability stack, you will need to start it first.
 {{< /admonition >}}
 <!-- INTERACTIVE ignore END -->
 
