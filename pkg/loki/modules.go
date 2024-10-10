@@ -975,8 +975,9 @@ func (t *Loki) setupAsyncStore() error {
 }
 
 func (t *Loki) initIngesterQuerier() (_ services.Service, err error) {
-	logger := log.With(util_log.Logger, "component", "querier")
-	t.ingesterQuerier, err = querier.NewIngesterQuerier(t.Cfg.IngesterClient, t.ring, t.Cfg.Querier.ExtraQueryDelay, t.Cfg.MetricsNamespace, logger)
+	logger := log.With(util_log.Logger, "component", "ingester-querier")
+
+	t.ingesterQuerier, err = querier.NewIngesterQuerier(t.Cfg.Querier, t.Cfg.IngesterClient, t.ring, t.partitionRing, t.Overrides.IngestionPartitionsTenantShardSize, t.Cfg.MetricsNamespace, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -1756,7 +1757,7 @@ func (t *Loki) initAnalytics() (services.Service, error) {
 
 // The Ingest Partition Ring is responsible for watching the available ingesters and assigning partitions to incoming requests.
 func (t *Loki) initPartitionRing() (services.Service, error) {
-	if !t.Cfg.Ingester.KafkaIngestion.Enabled {
+	if !t.Cfg.Ingester.KafkaIngestion.Enabled && !t.Cfg.Querier.QueryPartitionIngesters {
 		return nil, nil
 	}
 
