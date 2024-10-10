@@ -80,7 +80,11 @@ func (l *DashboardLoader) writesDashboard() (dashboard.Dashboard, error) {
 			"Distributor",
 			server.RequestDuration,
 			statusMap,
-			append([]string{`container="distributor", route="loki_api_v1_push"`}, topologyFilters...),
+			append([]string{
+				`container="distributor"`,
+				`route=~"api_prom_push|loki_api_v1_push|otlp_v1_logs|/httpgrpc.HTTP/Handle"`,
+				`status_code=~"([0-9]).."`,
+			}, topologyFilters...),
 			[]string{"status_code"},
 			"pod",
 		),
