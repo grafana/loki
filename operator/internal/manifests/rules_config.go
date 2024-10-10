@@ -29,7 +29,6 @@ func RulesConfigMapShards(opts *Options) ([]*corev1.ConfigMap, error) {
 	shardedCM := NewShardedConfigMap(template, RulesConfigMapName(opts.Name))
 
 	for _, r := range opts.AlertingRules {
-		r := r
 		if opts.Stack.Tenants != nil {
 			configureAlertingRuleForMode(&r, opts.Stack.Tenants.Mode)
 		}
@@ -46,7 +45,6 @@ func RulesConfigMapShards(opts *Options) ([]*corev1.ConfigMap, error) {
 	}
 
 	for _, r := range opts.RecordingRules {
-		r := r
 		if opts.Stack.Tenants != nil {
 			configureRecordingRuleForMode(&r, opts.Stack.Tenants.Mode)
 		}

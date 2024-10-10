@@ -68,7 +68,6 @@ func TestGetTLSSecurityProfile(t *testing.T) {
 	k.StatusStub = func() client.StatusWriter { return sw }
 
 	for _, tc := range tc {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
