@@ -8,7 +8,7 @@ import (
 	"github.com/openshift/library-go/pkg/crypto"
 	corev1 "k8s.io/api/core/v1"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	configv1 "github.com/grafana/loki/operator/api/config/v1"
 )
 
 // ComponentCertificates is a map of lokistack component names to TLS certificates
