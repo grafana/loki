@@ -83,6 +83,7 @@ func (p *processor) processTasksForDay(ctx context.Context, _ string, _ config.D
 
 	for _, t := range tasks {
 		FromContext(t.ctx).AddBlocksFetchTime(duration)
+		FromContext(t.ctx).AddProcessedBlocksTotal(len(tasksByBlock))
 	}
 
 	if err != nil {
