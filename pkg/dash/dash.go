@@ -19,6 +19,8 @@ import (
 	prom "github.com/prometheus/client_golang/prometheus"
 )
 
+var requiredLabels = []string{"cluster", "namespace", "container"}
+
 type DashboardLoader struct {
 	ml DependencyLoader
 
@@ -173,6 +175,31 @@ Backend,%s`,
 			),
 	)
 
+	var targets []*prometheus.DataqueryBuilder
+	for _, l := range requiredLabels {
+		targets = append(
+			targets,
+			prometheus.NewDataqueryBuilder().
+				Instant().
+				Expr(
+					fmt.Sprintf(
+						`absent(sum(loki_build_info{%s!=""}))`,
+						l,
+					),
+				).LegendFormat(l),
+		)
+	}
+
+	panel := table.NewPanelBuilder().
+		Span(8).
+		Title("Missing required labels").
+		Description("Required labels not present on Loki instances")
+
+	for _, t := range targets {
+		panel.WithTarget(t)
+	}
+
+	builder.WithPanel(panel)
 }
 
 func forceTpl(name, s string) *template.Template {
