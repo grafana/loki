@@ -44,6 +44,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	fmpb "google.golang.org/protobuf/types/known/fieldmaskpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -350,6 +351,9 @@ type TopicConfigToUpdate struct {
 	// IngestionDataSourceSettings are settings for ingestion from a
 	// data source into this topic.
 	//
+	// When changing this value, the entire data source settings object must be applied,
+	// rather than just the differences.
+	//
 	// Use the zero value &IngestionDataSourceSettings{} to remove the ingestion settings from the topic.
 	IngestionDataSourceSettings *IngestionDataSourceSettings
 }
@@ -495,6 +499,97 @@ func (i *IngestionDataSourceAWSKinesis) isIngestionDataSource() bool {
 	return true
 }
 
+// CloudStorageIngestionState denotes the possible states for ingestion from Cloud Storage.
+type CloudStorageIngestionState int
+
+const (
+	// CloudStorageIngestionStateUnspecified is the default value. This value is unused.
+	CloudStorageIngestionStateUnspecified = iota
+
+	// CloudStorageIngestionStateActive means ingestion is active.
+	CloudStorageIngestionStateActive
+
+	// CloudStorageIngestionPermissionDenied means encountering an error while calling the Cloud Storage API.
+	// This can happen if the Pub/Sub SA has not been granted the
+	// [appropriate permissions](https://cloud.google.com/storage/docs/access-control/iam-permissions):
+	// - storage.objects.list: to list the objects in a bucket.
+	// - storage.objects.get: to read the objects in a bucket.
+	// - storage.buckets.get: to verify the bucket exists.
+	CloudStorageIngestionPermissionDenied
+
+	// CloudStorageIngestionPublishPermissionDenied means encountering an error when publishing to the topic.
+	// This can happen if the Pub/Sub SA has not been granted the [appropriate publish
+	// permissions](https://cloud.google.com/pubsub/docs/access-control#pubsub.publisher)
+	CloudStorageIngestionPublishPermissionDenied
+
+	// CloudStorageIngestionBucketNotFound means the provided bucket doesn't exist.
+	CloudStorageIngestionBucketNotFound
+
+	// CloudStorageIngestionTooManyObjects means the bucket has too many objects, ingestion will be paused.
+	CloudStorageIngestionTooManyObjects
+)
+
+// IngestionDataSourceCloudStorage are ingestion settings for Cloud Storage.
+type IngestionDataSourceCloudStorage struct {
+	// State is an output-only field indicating the state of the Cloud storage ingestion source.
+	State CloudStorageIngestionState
+
+	// Bucket is the Cloud Storage bucket. The bucket name must be without any
+	// prefix like "gs://". See the bucket naming requirements (https://cloud.google.com/storage/docs/buckets#naming).
+	Bucket string
+
+	// InputFormat is the format of objects in Cloud Storage.
+	// Defaults to TextFormat.
+	InputFormat ingestionDataSourceCloudStorageInputFormat
+
+	// MinimumObjectCreateTime means objects with a larger or equal creation timestamp will be
+	// ingested.
+	MinimumObjectCreateTime time.Time
+
+	// MatchGlob is the pattern used to match objects that will be ingested. If
+	// empty, all objects will be ingested. See the [supported
+	// patterns](https://cloud.google.com/storage/docs/json_api/v1/objects/list#list-objects-and-prefixes-using-glob).
+	MatchGlob string
+}
+
+var _ IngestionDataSource = (*IngestionDataSourceCloudStorage)(nil)
+
+func (i *IngestionDataSourceCloudStorage) isIngestionDataSource() bool {
+	return true
+}
+
+type ingestionDataSourceCloudStorageInputFormat interface {
+	isCloudStorageIngestionInputFormat() bool
+}
+
+var _ ingestionDataSourceCloudStorageInputFormat = (*IngestionDataSourceCloudStorageTextFormat)(nil)
+var _ ingestionDataSourceCloudStorageInputFormat = (*IngestionDataSourceCloudStorageAvroFormat)(nil)
+var _ ingestionDataSourceCloudStorageInputFormat = (*IngestionDataSourceCloudStoragePubSubAvroFormat)(nil)
+
+// IngestionDataSourceCloudStorageTextFormat means Cloud Storage data will be interpreted as text.
+type IngestionDataSourceCloudStorageTextFormat struct {
+	Delimiter string
+}
+
+func (i *IngestionDataSourceCloudStorageTextFormat) isCloudStorageIngestionInputFormat() bool {
+	return true
+}
+
+// IngestionDataSourceCloudStorageAvroFormat means Cloud Storage data will be interpreted in Avro format.
+type IngestionDataSourceCloudStorageAvroFormat struct{}
+
+func (i *IngestionDataSourceCloudStorageAvroFormat) isCloudStorageIngestionInputFormat() bool {
+	return true
+}
+
+// IngestionDataSourceCloudStoragePubSubAvroFormat is used assuming the data was written using Cloud
+// Storage subscriptions https://cloud.google.com/pubsub/docs/cloudstorage.
+type IngestionDataSourceCloudStoragePubSubAvroFormat struct{}
+
+func (i *IngestionDataSourceCloudStoragePubSubAvroFormat) isCloudStorageIngestionInputFormat() bool {
+	return true
+}
+
 func protoToIngestionDataSourceSettings(pbs *pb.IngestionDataSourceSettings) *IngestionDataSourceSettings {
 	if pbs == nil {
 		return nil
@@ -508,6 +603,25 @@ func protoToIngestionDataSourceSettings(pbs *pb.IngestionDataSourceSettings) *In
 			ConsumerARN:       k.GetConsumerArn(),
 			AWSRoleARN:        k.GetAwsRoleArn(),
 			GCPServiceAccount: k.GetGcpServiceAccount(),
+		}
+	} else if cs := pbs.GetCloudStorage(); cs != nil {
+		var format ingestionDataSourceCloudStorageInputFormat
+		switch t := cs.InputFormat.(type) {
+		case *pb.IngestionDataSourceSettings_CloudStorage_TextFormat_:
+			format = &IngestionDataSourceCloudStorageTextFormat{
+				Delimiter: *t.TextFormat.Delimiter,
+			}
+		case *pb.IngestionDataSourceSettings_CloudStorage_AvroFormat_:
+			format = &IngestionDataSourceCloudStorageAvroFormat{}
+		case *pb.IngestionDataSourceSettings_CloudStorage_PubsubAvroFormat:
+			format = &IngestionDataSourceCloudStoragePubSubAvroFormat{}
+		}
+		s.Source = &IngestionDataSourceCloudStorage{
+			State:                   CloudStorageIngestionState(cs.GetState()),
+			Bucket:                  cs.GetBucket(),
+			InputFormat:             format,
+			MinimumObjectCreateTime: cs.GetMinimumObjectCreateTime().AsTime(),
+			MatchGlob:               cs.GetMatchGlob(),
 		}
 	}
 	return s
@@ -532,6 +646,48 @@ func (i *IngestionDataSourceSettings) toProto() *pb.IngestionDataSourceSettings 
 					AwsRoleArn:        k.AWSRoleARN,
 					GcpServiceAccount: k.GCPServiceAccount,
 				},
+			}
+		}
+		if cs, ok := out.(*IngestionDataSourceCloudStorage); ok {
+			switch format := cs.InputFormat.(type) {
+			case *IngestionDataSourceCloudStorageTextFormat:
+				pbs.Source = &pb.IngestionDataSourceSettings_CloudStorage_{
+					CloudStorage: &pb.IngestionDataSourceSettings_CloudStorage{
+						State:  pb.IngestionDataSourceSettings_CloudStorage_State(cs.State),
+						Bucket: cs.Bucket,
+						InputFormat: &pb.IngestionDataSourceSettings_CloudStorage_TextFormat_{
+							TextFormat: &pb.IngestionDataSourceSettings_CloudStorage_TextFormat{
+								Delimiter: &format.Delimiter,
+							},
+						},
+						MinimumObjectCreateTime: timestamppb.New(cs.MinimumObjectCreateTime),
+						MatchGlob:               cs.MatchGlob,
+					},
+				}
+			case *IngestionDataSourceCloudStorageAvroFormat:
+				pbs.Source = &pb.IngestionDataSourceSettings_CloudStorage_{
+					CloudStorage: &pb.IngestionDataSourceSettings_CloudStorage{
+						State:  pb.IngestionDataSourceSettings_CloudStorage_State(cs.State),
+						Bucket: cs.Bucket,
+						InputFormat: &pb.IngestionDataSourceSettings_CloudStorage_AvroFormat_{
+							AvroFormat: &pb.IngestionDataSourceSettings_CloudStorage_AvroFormat{},
+						},
+						MinimumObjectCreateTime: timestamppb.New(cs.MinimumObjectCreateTime),
+						MatchGlob:               cs.MatchGlob,
+					},
+				}
+			case *IngestionDataSourceCloudStoragePubSubAvroFormat:
+				pbs.Source = &pb.IngestionDataSourceSettings_CloudStorage_{
+					CloudStorage: &pb.IngestionDataSourceSettings_CloudStorage{
+						State:  pb.IngestionDataSourceSettings_CloudStorage_State(cs.State),
+						Bucket: cs.Bucket,
+						InputFormat: &pb.IngestionDataSourceSettings_CloudStorage_PubsubAvroFormat{
+							PubsubAvroFormat: &pb.IngestionDataSourceSettings_CloudStorage_PubSubAvroFormat{},
+						},
+						MinimumObjectCreateTime: timestamppb.New(cs.MinimumObjectCreateTime),
+						MatchGlob:               cs.MatchGlob,
+					},
+				}
 			}
 		}
 	}
@@ -748,8 +904,8 @@ func (t *Topic) Publish(ctx context.Context, msg *Message) *PublishResult {
 	var createSpan trace.Span
 	if t.enableTracing {
 		opts := getPublishSpanAttributes(t.c.projectID, t.ID(), msg)
+		opts = append(opts, trace.WithAttributes(semconv.CodeFunction("Publish")))
 		ctx, createSpan = startSpan(ctx, createSpanName, t.ID(), opts...)
-		createSpan.SetAttributes(semconv.CodeFunction("Publish"))
 	}
 	ctx, err := tag.New(ctx, tag.Insert(keyStatus, "OK"), tag.Upsert(keyTopic, t.name))
 	if err != nil {
@@ -973,8 +1129,14 @@ func (t *Topic) publishMessageBundle(ctx context.Context, bms []*bundledMessage)
 		opts := getCommonOptions(projectID, topicID)
 		// Add link to publish RPC span of createSpan(s).
 		opts = append(opts, trace.WithLinks(links...))
+		opts = append(
+			opts,
+			trace.WithAttributes(
+				semconv.MessagingBatchMessageCount(numMsgs),
+				semconv.CodeFunction("publishMessageBundle"),
+			),
+		)
 		ctx, pSpan = startSpan(ctx, publishRPCSpanName, topicID, opts...)
-		pSpan.SetAttributes(semconv.MessagingBatchMessageCount(numMsgs), semconv.CodeFunction("publishMessageBundle"))
 		defer pSpan.End()
 
 		// Add the reverse link to createSpan(s) of publish RPC span.

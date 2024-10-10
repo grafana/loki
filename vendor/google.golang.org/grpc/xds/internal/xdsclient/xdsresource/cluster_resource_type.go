@@ -111,7 +111,10 @@ func (c *ClusterResourceData) Raw() *anypb.Any {
 // corresponding to the cluster resource being watched.
 type ClusterWatcher interface {
 	// OnUpdate is invoked to report an update for the resource being watched.
-	OnUpdate(*ClusterResourceData)
+	//
+	// The watcher is expected to call Done() on the DoneNotifier once it has
+	// processed the update.
+	OnUpdate(*ClusterResourceData, DoneNotifier)
 
 	// OnError is invoked under different error conditions including but not
 	// limited to the following:
@@ -121,28 +124,34 @@ type ClusterWatcher interface {
 	//	- resource validation error
 	//	- ADS stream failure
 	//	- connection failure
-	OnError(error)
+	//
+	// The watcher is expected to call Done() on the DoneNotifier once it has
+	// processed the update.
+	OnError(error, DoneNotifier)
 
 	// OnResourceDoesNotExist is invoked for a specific error condition where
 	// the requested resource is not found on the xDS management server.
-	OnResourceDoesNotExist()
+	//
+	// The watcher is expected to call Done() on the DoneNotifier once it has
+	// processed the update.
+	OnResourceDoesNotExist(DoneNotifier)
 }
 
 type delegatingClusterWatcher struct {
 	watcher ClusterWatcher
 }
 
-func (d *delegatingClusterWatcher) OnUpdate(data ResourceData) {
+func (d *delegatingClusterWatcher) OnUpdate(data ResourceData, done DoneNotifier) {
 	c := data.(*ClusterResourceData)
-	d.watcher.OnUpdate(c)
+	d.watcher.OnUpdate(c, done)
 }
 
-func (d *delegatingClusterWatcher) OnError(err error) {
-	d.watcher.OnError(err)
+func (d *delegatingClusterWatcher) OnError(err error, done DoneNotifier) {
+	d.watcher.OnError(err, done)
 }
 
-func (d *delegatingClusterWatcher) OnResourceDoesNotExist() {
-	d.watcher.OnResourceDoesNotExist()
+func (d *delegatingClusterWatcher) OnResourceDoesNotExist(done DoneNotifier) {
+	d.watcher.OnResourceDoesNotExist(done)
 }
 
 // WatchCluster uses xDS to discover the configuration associated with the
