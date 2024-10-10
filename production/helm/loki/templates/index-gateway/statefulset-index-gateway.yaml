@@ -12,9 +12,10 @@ metadata:
   {{- end }}
 spec:
   replicas: {{ .Values.indexGateway.replicas }}
+{{- with .Values.indexGateway.updateStrategy }}
   updateStrategy:
-    rollingUpdate:
-      partition: 0
+     {{- tpl (. | toYaml) $ | nindent 4 }}
+{{- end }}
   serviceName: {{ include "loki.indexGatewayFullname" . }}-headless
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
   {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.indexGateway.persistence.enableStatefulSetAutoDeletePVC)  }}
