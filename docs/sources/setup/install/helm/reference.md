@@ -753,6 +753,7 @@ null
   "priorityClassName": null,
   "replicas": 0,
   "resources": {},
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
@@ -1033,6 +1034,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomBuilder.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for bloom-builder service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomBuilder.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for bloom-builder service</td>
@@ -1125,6 +1135,7 @@ null
     "imagePullSecrets": [],
     "name": null
   },
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
@@ -1414,6 +1425,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomGateway.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for bloom-gateway service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomGateway.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for bloom-gateway service</td>
@@ -1506,6 +1526,7 @@ null
     "imagePullSecrets": [],
     "name": null
   },
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
@@ -1795,6 +1816,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomPlanner.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for bloom-planner service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomPlanner.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for bloom-planner service</td>
@@ -2009,7 +2039,7 @@ null
 		<tr>
 			<td>chunksCache.persistence.storageSize</td>
 			<td>string</td>
-			<td>Size of persistent disk</td>
+			<td>Size of persistent disk, must be in G or Gi</td>
 			<td><pre lang="json">
 "10G"
 </pre>
@@ -2252,6 +2282,7 @@ null
     "imagePullSecrets": [],
     "name": null
   },
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
@@ -2550,6 +2581,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>compactor.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for compactor service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>compactor.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for compactor service</td>
@@ -2642,6 +2682,7 @@ null
   "priorityClassName": null,
   "replicas": 0,
   "resources": {},
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
@@ -2931,6 +2972,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>distributor.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for distributor service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>distributor.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for distributor service</td>
@@ -2989,6 +3039,7 @@ null
   },
   "provisioner": {
     "additionalTenants": [],
+    "affinity": {},
     "annotations": {},
     "enabled": true,
     "env": [],
@@ -3001,6 +3052,7 @@ null
       "tag": null
     },
     "labels": {},
+    "nodeSelector": {},
     "priorityClassName": null,
     "provisionedSecretPrefix": null,
     "securityContext": {
@@ -3008,9 +3060,11 @@ null
       "runAsGroup": 10001,
       "runAsNonRoot": true,
       "runAsUser": 10001
-    }
+    },
+    "tolerations": []
   },
   "tokengen": {
+    "affinity": {},
     "annotations": {},
     "enabled": true,
     "env": [],
@@ -3019,6 +3073,7 @@ null
     "extraVolumeMounts": [],
     "extraVolumes": [],
     "labels": {},
+    "nodeSelector": {},
     "priorityClassName": "",
     "securityContext": {
       "fsGroup": 10001,
@@ -3172,6 +3227,7 @@ null
 			<td><pre lang="json">
 {
   "additionalTenants": [],
+  "affinity": {},
   "annotations": {},
   "enabled": true,
   "env": [],
@@ -3184,6 +3240,7 @@ null
     "tag": null
   },
   "labels": {},
+  "nodeSelector": {},
   "priorityClassName": null,
   "provisionedSecretPrefix": null,
   "securityContext": {
@@ -3191,7 +3248,8 @@ null
     "runAsGroup": 10001,
     "runAsNonRoot": true,
     "runAsUser": 10001
-  }
+  },
+  "tolerations": []
 }
 </pre>
 </td>
@@ -3202,6 +3260,15 @@ null
 			<td>Additional tenants to be created. Each tenant will get a read and write policy and associated token. Tenant must have a name and a namespace for the secret containting the token to be created in. For example additionalTenants:   - name: loki     secretNamespace: grafana</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.provisioner.affinity</td>
+			<td>object</td>
+			<td>Affinity for tokengen Pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -3311,6 +3378,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>enterprise.provisioner.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for tokengen Pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise.provisioner.priorityClassName</td>
 			<td>string</td>
 			<td>The name of the PriorityClass for provisioner Job</td>
@@ -3343,11 +3419,21 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>enterprise.provisioner.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for tokengen Pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise.tokengen</td>
 			<td>object</td>
 			<td>Configuration for `tokengen` target</td>
 			<td><pre lang="json">
 {
+  "affinity": {},
   "annotations": {},
   "enabled": true,
   "env": [],
@@ -3356,6 +3442,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "labels": {},
+  "nodeSelector": {},
   "priorityClassName": "",
   "securityContext": {
     "fsGroup": 10001,
@@ -3366,6 +3453,15 @@ null
   "targetModule": "tokengen",
   "tolerations": []
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.tokengen.affinity</td>
+			<td>object</td>
+			<td>Affinity for tokengen Pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -3436,6 +3532,15 @@ true
 			<td>enterprise.tokengen.labels</td>
 			<td>object</td>
 			<td>Additional labels for the `tokengen` Job</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.tokengen.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for tokengen Pods</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -4520,9 +4625,13 @@ null
   "priorityClassName": null,
   "replicas": 0,
   "resources": {},
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 300,
-  "tolerations": []
+  "tolerations": [],
+  "updateStrategy": {
+    "type": "RollingUpdate"
+  }
 }
 </pre>
 </td>
@@ -4773,6 +4882,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>indexGateway.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for index-gateway service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>indexGateway.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for index-gateway service</td>
@@ -4796,6 +4914,26 @@ null
 			<td>Tolerations for index-gateway pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.updateStrategy</td>
+			<td>object</td>
+			<td>UpdateStrategy for the indexGateway StatefulSet.</td>
+			<td><pre lang="json">
+{
+  "type": "RollingUpdate"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.updateStrategy.type</td>
+			<td>string</td>
+			<td>One of  'OnDelete' or 'RollingUpdate'</td>
+			<td><pre lang="json">
+"RollingUpdate"
 </pre>
 </td>
 		</tr>
@@ -4873,6 +5011,7 @@ null
   "readinessProbe": {},
   "replicas": 0,
   "resources": {},
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 300,
   "tolerations": [],
@@ -4888,6 +5027,9 @@ null
       "whenUnsatisfiable": "ScheduleAnyway"
     }
   ],
+  "updateStrategy": {
+    "type": "RollingUpdate"
+  },
   "zoneAwareReplication": {
     "enabled": true,
     "maxUnavailablePct": 33,
@@ -5256,6 +5398,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>ingester.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for ingestor service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>ingester.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for ingestor service</td>
@@ -5288,6 +5439,26 @@ false
 			<td>topologySpread for ingester pods.</td>
 			<td><pre lang="">
 Defaults to allow skew no more than 1 node
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.updateStrategy</td>
+			<td>object</td>
+			<td>UpdateStrategy for the ingester StatefulSets.</td>
+			<td><pre lang="json">
+{
+  "type": "RollingUpdate"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.updateStrategy.type</td>
+			<td>string</td>
+			<td>One of  'OnDelete' or 'RollingUpdate'</td>
+			<td><pre lang="json">
+"RollingUpdate"
 </pre>
 </td>
 		</tr>
@@ -5515,6 +5686,7 @@ null
       "/loki/api/v1/index/volume",
       "/loki/api/v1/index/volume_range",
       "/loki/api/v1/format_query",
+      "/loki/api/v1/detected_field",
       "/loki/api/v1/detected_fields",
       "/loki/api/v1/detected_labels",
       "/loki/api/v1/patterns"
@@ -5577,6 +5749,7 @@ null
   "/loki/api/v1/index/volume",
   "/loki/api/v1/index/volume_range",
   "/loki/api/v1/format_query",
+  "/loki/api/v1/detected_field",
   "/loki/api/v1/detected_fields",
   "/loki/api/v1/detected_labels",
   "/loki/api/v1/patterns"
@@ -5837,7 +6010,7 @@ null
 		<tr>
 			<td>loki.image.tag</td>
 			<td>string</td>
-			<td>Overrides the image tag whose default is the chart's appVersion TODO: needed for 3rd target backend functionality revert to null or latest once this behavior is relased</td>
+			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -6059,6 +6232,7 @@ null
   "azure": {
     "accountKey": null,
     "accountName": null,
+    "chunkDelimiter": null,
     "connectionString": null,
     "endpointSuffix": null,
     "requestTimeout": null,
@@ -6418,6 +6592,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>memberlist.service.annotations</td>
+			<td>object</td>
+			<td></td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>memberlist.service.publishNotReadyAddresses</td>
 			<td>bool</td>
 			<td></td>
@@ -6475,7 +6658,12 @@ false
 			<td>object</td>
 			<td>The SecurityContext override for memcached pods</td>
 			<td><pre lang="json">
-{}
+{
+  "fsGroup": 11211,
+  "runAsGroup": 11211,
+  "runAsNonRoot": true,
+  "runAsUser": 11211
+}
 </pre>
 </td>
 		</tr>
@@ -7457,6 +7645,7 @@ false
     "imagePullSecrets": [],
     "name": null
   },
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
@@ -7755,6 +7944,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>patternIngester.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for pattern ingester service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>patternIngester.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for pattern ingester service</td>
@@ -7846,6 +8044,7 @@ null
   "priorityClassName": null,
   "replicas": 0,
   "resources": {},
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
@@ -8201,6 +8400,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>querier.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for querier service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>querier.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for querier service</td>
@@ -8292,6 +8500,7 @@ Defaults to allow skew no more then 1 node
   "priorityClassName": null,
   "replicas": 0,
   "resources": {},
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
@@ -8572,6 +8781,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>queryFrontend.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for query-frontend service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>queryFrontend.serviceLabels</td>
 			<td>object</td>
 			<td>Labels for query-frontend service</td>
@@ -8640,6 +8858,7 @@ null
   "priorityClassName": null,
   "replicas": 0,
   "resources": {},
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
@@ -8815,6 +9034,15 @@ null
 			<td>queryScheduler.resources</td>
 			<td>object</td>
 			<td>Resource requests and limits for the query-scheduler</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for query-scheduler service</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -9474,7 +9702,7 @@ null
 		<tr>
 			<td>resultsCache.persistence.storageSize</td>
 			<td>string</td>
-			<td>Size of persistent disk</td>
+			<td>Size of persistent disk, must be in G or Gi</td>
 			<td><pre lang="json">
 "10G"
 </pre>
@@ -9739,6 +9967,7 @@ null
   "priorityClassName": null,
   "replicas": 0,
   "resources": {},
+  "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 300,
   "tolerations": []
@@ -9995,6 +10224,15 @@ null
 			<td>ruler.resources</td>
 			<td>object</td>
 			<td>Resource requests and limits for the ruler</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for ruler service</td>
 			<td><pre lang="json">
 {}
 </pre>

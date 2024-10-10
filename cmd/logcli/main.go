@@ -692,7 +692,7 @@ func newVolumeQuery(rangeQuery bool, cmd *kingpin.CmdClause) *volume.Query {
 
 func newDetectedFieldsQuery(cmd *kingpin.CmdClause) *detected.FieldsQuery {
 	// calculate query range from cli params
-	var from, to string
+	var fieldName, from, to string
 	var since time.Duration
 
 	q := &detected.FieldsQuery{}
@@ -705,24 +705,28 @@ func newDetectedFieldsQuery(cmd *kingpin.CmdClause) *detected.FieldsQuery {
 		q.Start = mustParse(from, defaultStart)
 		q.End = mustParse(to, defaultEnd)
 
+		q.FieldName = fieldName
+
 		q.Quiet = *quiet
 
 		return nil
 	})
 
-	cmd.Flag("field-limit", "Limit on number of fields to return.").
+	cmd.Flag("limit", "Limit on number of fields or values to return.").
 		Default("100").
-		IntVar(&q.FieldLimit)
+		IntVar(&q.Limit)
 	cmd.Flag("line-limit", "Limit the number of lines each subquery is allowed to process.").
 		Default("1000").
 		IntVar(&q.LineLimit)
 	cmd.Arg("query", "eg '{foo=\"bar\",baz=~\".*blip\"} |~ \".*error.*\"'").
 		Required().
 		StringVar(&q.QueryString)
+	cmd.Arg("field", "The name of the field.").Default("").StringVar(&fieldName)
 	cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
 	cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").StringVar(&from)
 	cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
 	cmd.Flag("step", "Query resolution step width, for metric queries. Evaluate the query at the specified step over the time range.").
+		Default("10s").
 		DurationVar(&q.Step)
 
 	return q

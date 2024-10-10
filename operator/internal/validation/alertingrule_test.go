@@ -219,7 +219,6 @@ var att = []struct {
 
 func TestAlertingRuleValidationWebhook_ValidateCreate(t *testing.T) {
 	for _, tc := range att {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
@@ -244,7 +243,6 @@ func TestAlertingRuleValidationWebhook_ValidateCreate(t *testing.T) {
 
 func TestAlertingRuleValidationWebhook_ValidateUpdate(t *testing.T) {
 	for _, tc := range att {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 

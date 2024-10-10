@@ -459,13 +459,16 @@ message DetectedFieldsRequest {
   ];
   string query = 3; // Naming this query instead of match because this should be with queryrangebase.Request interface
   uint32 lineLimit = 4;
-  uint32 fieldLimit = 5;
+  uint32 limit = 5;
   int64 step = 6;
+  bool values = 7; // True to fetch detected field values, false for fetch detected field label names.
+  string name = 8; // Name of the detected field to fetch values for.
 }
 
 message DetectedFieldsResponse {
-  repeated DetectedField fields = 1;
-  uint32 fieldLimit = 2 [(gogoproto.jsontag) = "fieldLimit,omitempty"];
+  repeated DetectedField fields = 1 [(gogoproto.jsontag) = "fields,omitempty"];
+  uint32 limit = 2 [(gogoproto.jsontag) = "limit,omitempty"];
+  repeated string values = 3 [(gogoproto.jsontag) = "values,omitempty"];
 }
 
 // TODO: make the detected field include the serialized sketch
