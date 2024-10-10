@@ -7,8 +7,8 @@
 
 package versions
 
+import "go/build/constraint"
+
 func init() {
-	if Compare(toolchain, Go1_21) < 0 {
-		toolchain = Go1_21
-	}
+	ConstraintGoVersion = constraint.GoVersion
 }
