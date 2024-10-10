@@ -187,6 +187,210 @@ func TestOtlpAttributeConfig(t *testing.T) {
 			},
 		},
 		{
+			desc: "tenant stream label",
+			spec: lokiv1.LokiStackSpec{
+				Limits: &lokiv1.LimitsSpec{
+					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
+						"test-tenant": {
+							OTLP: &lokiv1.TenantOTLPSpec{
+								IgnoreGlobalStreamLabels: true,
+								OTLPSpec: lokiv1.OTLPSpec{
+									StreamLabels: &lokiv1.OTLPStreamLabelSpec{
+										ResourceAttributes: []lokiv1.OTLPAttributeReference{
+											{
+												Name: "tenant.stream.label",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantConfig: config.OTLPAttributeConfig{
+				Tenants: map[string]*config.OTLPTenantAttributeConfig{
+					"test-tenant": {
+						IgnoreGlobalStreamLabels: true,
+						ResourceAttributes: []config.OTLPAttribute{
+							{
+								Action: config.OTLPAttributeActionStreamLabel,
+								Names:  []string{"tenant.stream.label"},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc: "tenant stream label regex",
+			spec: lokiv1.LokiStackSpec{
+				Limits: &lokiv1.LimitsSpec{
+					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
+						"test-tenant": {
+							OTLP: &lokiv1.TenantOTLPSpec{
+								OTLPSpec: lokiv1.OTLPSpec{
+									StreamLabels: &lokiv1.OTLPStreamLabelSpec{
+										ResourceAttributes: []lokiv1.OTLPAttributeReference{
+											{
+												Name:  "tenant\\.stream\\.label\\.regex\\..+",
+												Regex: true,
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantConfig: config.OTLPAttributeConfig{
+				Tenants: map[string]*config.OTLPTenantAttributeConfig{
+					"test-tenant": {
+						ResourceAttributes: []config.OTLPAttribute{
+							{
+								Action: config.OTLPAttributeActionStreamLabel,
+								Regex:  "tenant\\.stream\\.label\\.regex\\..+",
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc: "tenant metadata",
+			spec: lokiv1.LokiStackSpec{
+				Limits: &lokiv1.LimitsSpec{
+					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
+						"test-tenant": {
+							OTLP: &lokiv1.TenantOTLPSpec{
+								OTLPSpec: lokiv1.OTLPSpec{
+									StructuredMetadata: &lokiv1.OTLPMetadataSpec{
+										ResourceAttributes: []lokiv1.OTLPAttributeReference{
+											{
+												Name: "tenant.metadata",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantConfig: config.OTLPAttributeConfig{
+				Tenants: map[string]*config.OTLPTenantAttributeConfig{
+					"test-tenant": {
+						ResourceAttributes: []config.OTLPAttribute{
+							{
+								Action: config.OTLPAttributeActionMetadata,
+								Names:  []string{"tenant.metadata"},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc: "tenant combined",
+			spec: lokiv1.LokiStackSpec{
+				Limits: &lokiv1.LimitsSpec{
+					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
+						"test-tenant": {
+							OTLP: &lokiv1.TenantOTLPSpec{
+								OTLPSpec: lokiv1.OTLPSpec{
+									StreamLabels: &lokiv1.OTLPStreamLabelSpec{
+										ResourceAttributes: []lokiv1.OTLPAttributeReference{
+											{
+												Name: "tenant.stream.label",
+											},
+											{
+												Name:  `tenant\.stream\.label\.regex\..+`,
+												Regex: true,
+											},
+										},
+									},
+									StructuredMetadata: &lokiv1.OTLPMetadataSpec{
+										ResourceAttributes: []lokiv1.OTLPAttributeReference{
+											{
+												Name: "tenant.resource.metadata",
+											},
+											{
+												Name:  `tenant\.resource.metadata\.other\..+`,
+												Regex: true,
+											},
+										},
+										ScopeAttributes: []lokiv1.OTLPAttributeReference{
+											{
+												Name: "tenant.scope.metadata",
+											},
+											{
+												Name:  `tenant\.scope\.metadata\.other\..+`,
+												Regex: true,
+											},
+										},
+										LogAttributes: []lokiv1.OTLPAttributeReference{
+											{
+												Name: "tenant.log.metadata",
+											},
+											{
+												Name:  `tenant\.log\.metadata\.other\..+`,
+												Regex: true,
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantConfig: config.OTLPAttributeConfig{
+				Tenants: map[string]*config.OTLPTenantAttributeConfig{
+					"test-tenant": {
+						ResourceAttributes: []config.OTLPAttribute{
+							{
+								Action: config.OTLPAttributeActionStreamLabel,
+								Names:  []string{"tenant.stream.label"},
+							},
+							{
+								Action: config.OTLPAttributeActionStreamLabel,
+								Regex:  "tenant\\.stream\\.label\\.regex\\..+",
+							},
+							{
+								Action: config.OTLPAttributeActionMetadata,
+								Names:  []string{"tenant.resource.metadata"},
+							},
+							{
+								Action: config.OTLPAttributeActionMetadata,
+								Regex:  `tenant\.resource.metadata\.other\..+`,
+							},
+						},
+						ScopeAttributes: []config.OTLPAttribute{
+							{
+								Action: config.OTLPAttributeActionMetadata,
+								Names:  []string{"tenant.scope.metadata"},
+							},
+							{
+								Action: config.OTLPAttributeActionMetadata,
+								Regex:  `tenant\.scope\.metadata\.other\..+`,
+							},
+						},
+						LogAttributes: []config.OTLPAttribute{
+							{
+								Action: config.OTLPAttributeActionMetadata,
+								Names:  []string{"tenant.log.metadata"},
+							},
+							{
+								Action: config.OTLPAttributeActionMetadata,
+								Regex:  `tenant\.log\.metadata\.other\..+`,
+							},
+						},
+					},
+				},
+			},
+		},
+		{
 			desc: "openshift-logging defaults",
 			spec: lokiv1.LokiStackSpec{
 				Tenants: &lokiv1.TenantsSpec{
