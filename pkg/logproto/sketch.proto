@@ -46,6 +46,8 @@ message CountMinSketch {
 
   // counters is a matrix of depth * width.
   repeated uint32 counters = 3;
+
+  bytes hyperloglog = 4;
 }
 
 message CountMinSketchVector {

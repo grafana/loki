@@ -3,19 +3,23 @@ package sketch
 import (
 	"fmt"
 	"math"
+
+	"github.com/axiomhq/hyperloglog"
 )
 
 type CountMinSketch struct {
 	Depth, Width uint32
 	Counters     [][]uint32
+	HyperLogLog  *hyperloglog.Sketch //hyperloglog.New16(),
 }
 
 // NewCountMinSketch creates a new CMS for a given width and depth.
 func NewCountMinSketch(w, d uint32) (*CountMinSketch, error) {
 	return &CountMinSketch{
-		Depth:    d,
-		Width:    w,
-		Counters: make2dslice(w, d),
+		Depth:       d,
+		Width:       w,
+		Counters:    make2dslice(w, d),
+		HyperLogLog: hyperloglog.New16(),
 	}, nil
 }
 
@@ -43,6 +47,7 @@ func (s *CountMinSketch) getPos(h1, h2, row uint32) uint32 {
 
 // Add 'count' occurrences of the given input.
 func (s *CountMinSketch) Add(event string, count int) {
+	s.HyperLogLog.Insert(unsafeGetBytes(event))
 	// see the comments in the hashn function for how using only 2
 	// hash functions rather than a function per row still fullfils
 	// the pairwise indendent hash functions requirement for CMS
@@ -65,6 +70,8 @@ func (s *CountMinSketch) Increment(event string) {
 // Returns the new estimate for the event as well as the both hashes which can be used
 // to identify the event for other things that need a hash.
 func (s *CountMinSketch) ConservativeAdd(event string, count uint32) (uint32, uint32, uint32) {
+	s.HyperLogLog.Insert(unsafeGetBytes(event))
+
 	min := uint32(math.MaxUint32)
 
 	h1, h2 := hashn(event)
@@ -118,5 +125,14 @@ func (s *CountMinSketch) Merge(from *CountMinSketch) error {
 			s.Counters[i][j] += v
 		}
 	}
+
+	// merge the cardinality sketches
+	s.HyperLogLog.Merge(from.HyperLogLog)
+
 	return nil
+}
+
+// Cardinality returns the estimated cardinality of the input to the CMS.
+func (s *CountMinSketch) Cardinality() uint64 {
+	return s.HyperLogLog.Estimate()
 }

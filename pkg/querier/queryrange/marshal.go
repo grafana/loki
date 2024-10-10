@@ -137,12 +137,12 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 			Statistics: result.Statistics,
 		}, nil
 	case logql.CountMinSketchVector:
-		r := data.ToProto()
+		r, err := data.ToProto()
 		return &CountMinSketchResponse{
 			Response:   r,
 			Warnings:   result.Warnings,
 			Statistics: result.Statistics,
-		}, nil
+		}, err
 	}
 
 	return nil, fmt.Errorf("unsupported data type: %T", result.Data)

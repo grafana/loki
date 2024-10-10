@@ -3,6 +3,7 @@ package logql
 import (
 	"container/heap"
 	"fmt"
+	"github.com/axiomhq/hyperloglog"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -72,7 +73,7 @@ func (CountMinSketchVector) String() string {
 
 func (CountMinSketchVector) Type() promql_parser.ValueType { return CountMinSketchVectorType }
 
-func (v CountMinSketchVector) ToProto() *logproto.CountMinSketchVector {
+func (v CountMinSketchVector) ToProto() (*logproto.CountMinSketchVector, error) {
 	p := &logproto.CountMinSketchVector{
 		TimestampMs: v.T,
 		Metrics:     make([]*logproto.Labels, len(v.Metrics)),
@@ -81,6 +82,13 @@ func (v CountMinSketchVector) ToProto() *logproto.CountMinSketchVector {
 			Width: v.F.Width,
 		},
 	}
+
+	// insert the hll sketch
+	hllBytes, err := v.F.HyperLogLog.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	p.Sketch.Hyperloglog = hllBytes
 
 	// Serialize CMS
 	p.Sketch.Counters = make([]uint32, 0, v.F.Depth*v.F.Width)
@@ -101,7 +109,7 @@ func (v CountMinSketchVector) ToProto() *logproto.CountMinSketchVector {
 		}
 	}
 
-	return p
+	return p, nil
 }
 
 func CountMinSketchVectorFromProto(p *logproto.CountMinSketchVector) (CountMinSketchVector, error) {
@@ -116,6 +124,12 @@ func CountMinSketchVectorFromProto(p *logproto.CountMinSketchVector) (CountMinSk
 	if err != nil {
 		return vec, err
 	}
+
+	hll := hyperloglog.New()
+	if err := hll.UnmarshalBinary(p.Sketch.Hyperloglog); err != nil {
+		return vec, err
+	}
+	vec.F.HyperLogLog = hll
 
 	for row := 0; row < int(vec.F.Depth); row++ {
 		s := row * int(vec.F.Width)

@@ -1,12 +1,12 @@
 package logql
 
 import (
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"testing"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/sketch"
 )
 
@@ -61,19 +61,22 @@ func TestCountMinSketchSerialization(t *testing.T) {
 	}
 	vec.Add(metric, 42.0)
 
+	hllBytes, _ := vec.F.HyperLogLog.MarshalBinary()
 	proto := &logproto.CountMinSketchVector{
 		TimestampMs: 42,
 		Sketch: &logproto.CountMinSketch{
-			Depth:    2,
-			Width:    4,
-			Counters: []uint32{0, 0, 0, 42, 0, 42, 0, 0},
+			Depth:       2,
+			Width:       4,
+			Counters:    []uint32{0, 0, 0, 42, 0, 42, 0, 0},
+			Hyperloglog: hllBytes,
 		},
 		Metrics: []*logproto.Labels{
 			{Metric: []*logproto.LabelPair{{Name: "foo", Value: "bar"}}},
 		},
 	}
 
-	actual := vec.ToProto()
+	actual, err := vec.ToProto()
+	require.NoError(t, err)
 	require.Equal(t, proto, actual)
 
 	round, err := CountMinSketchVectorFromProto(actual)
