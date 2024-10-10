@@ -50,7 +50,7 @@ func newGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, component 
 
 		cfg.GCS.HTTP.Transport = hedgedTrasport
 	}
-	return bucket.NewClient(ctx, cfg, component, logger)
+	return bucket.NewClient(bucket.GCS, ctx, cfg, component, logger)
 }
 
 func (s *GCSThanosObjectClient) Stop() {}
