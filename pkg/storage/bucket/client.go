@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"fmt"
 	"regexp"
-	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,7 +16,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/bucket/gcs"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/swift"
-	"github.com/grafana/loki/v3/pkg/util"
 )
 
 const (
@@ -53,8 +50,6 @@ var (
 
 // StorageBackendConfig holds configuration for accessing long-term storage.
 type StorageBackendConfig struct {
-	Backend string `yaml:"backend"`
-
 	// Backends
 	S3         s3.Config         `yaml:"s3"`
 	GCS        gcs.Config        `yaml:"gcs"`
@@ -62,28 +57,13 @@ type StorageBackendConfig struct {
 	Swift      swift.Config      `yaml:"swift"`
 	Filesystem filesystem.Config `yaml:"filesystem"`
 
-	// Not used internally, meant to allow callers to wrap Buckets
-	// created using this config
-	Middlewares []func(objstore.Bucket) (objstore.Bucket, error) `yaml:"-"`
-
 	// Used to inject additional backends into the config. Allows for this config to
 	// be embedded in multiple contexts and support non-object storage based backends.
 	ExtraBackends []string `yaml:"-"`
 }
 
-// Metrics holds metric related configuration for the objstore.
-type Metrics struct {
-	// Registerer is the prometheus registerer that will be used by the objstore
-	// to register bucket metrics.
-	Registerer prometheus.Registerer
-	// BucketMetrics are objstore metrics that are will wrap the bucket.
-	// This should be set when we create multiple buckets for the same component
-	// to avoid duplicate registration of metrics.
-	BucketMetrics *objstore.Metrics
-}
-
-// Returns the supportedBackends for the package and any custom backends injected into the config.
-func (cfg *StorageBackendConfig) supportedBackends() []string {
+// Returns the SupportedBackends for the package and any custom backends injected into the config.
+func (cfg *StorageBackendConfig) SupportedBackends() []string {
 	return append(SupportedBackends, cfg.ExtraBackends...)
 }
 
@@ -98,8 +78,6 @@ func (cfg *StorageBackendConfig) RegisterFlagsWithPrefixAndDefaultDirectory(pref
 	cfg.Azure.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Swift.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Filesystem.RegisterFlagsWithPrefixAndDefaultDirectory(prefix, dir, f)
-
-	f.StringVar(&cfg.Backend, prefix+"backend", Filesystem, fmt.Sprintf("Backend storage to use. Supported backends are: %s.", strings.Join(cfg.supportedBackends(), ", ")))
 }
 
 func (cfg *StorageBackendConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -107,14 +85,9 @@ func (cfg *StorageBackendConfig) RegisterFlagsWithPrefix(prefix string, f *flag.
 }
 
 func (cfg *StorageBackendConfig) Validate() error {
-	if !util.StringsContain(cfg.supportedBackends(), cfg.Backend) {
-		return ErrUnsupportedStorageBackend
-	}
-
-	if cfg.Backend == S3 {
-		if err := cfg.S3.Validate(); err != nil {
-			return err
-		}
+	// TODO: validate other providers
+	if err := cfg.S3.Validate(); err != nil {
+		return err
 	}
 
 	return nil
@@ -123,8 +96,7 @@ func (cfg *StorageBackendConfig) Validate() error {
 // Config holds configuration for accessing long-term storage.
 type Config struct {
 	StorageBackendConfig `yaml:",inline"`
-
-	StoragePrefix string `yaml:"storage_prefix"`
+	StoragePrefix        string `yaml:"storage_prefix"`
 
 	// Not used internally, meant to allow callers to wrap Buckets
 	// created using this config
@@ -157,14 +129,14 @@ func (cfg *Config) Validate() error {
 }
 
 // NewClient creates a new bucket client based on the configured backend
-func NewClient(ctx context.Context, cfg Config, name string, logger log.Logger) (objstore.InstrumentedBucket, error) {
+func NewClient(backend string, ctx context.Context, cfg Config, name string, logger log.Logger) (objstore.InstrumentedBucket, error) {
 	var (
 		client objstore.Bucket
 		err    error
 	)
 
 	// TODO: add support for other backends that loki already supports
-	switch cfg.Backend {
+	switch backend {
 	case S3:
 		client, err = s3.NewBucketClient(cfg.S3, name, logger)
 	case GCS:

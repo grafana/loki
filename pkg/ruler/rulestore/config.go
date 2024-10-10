@@ -15,6 +15,7 @@ import (
 // Config configures a rule store.
 type Config struct {
 	bucket.Config `yaml:",inline"`
+	Backend       string        `yaml:"backend"`
 	ConfigDB      client.Config `yaml:"configdb"`
 	Local         local.Config  `yaml:"local"`
 }
