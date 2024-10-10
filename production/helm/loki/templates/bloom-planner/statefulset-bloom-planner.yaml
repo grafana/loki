@@ -19,7 +19,7 @@ spec:
       partition: 0
   serviceName: {{ include "loki.bloomPlannerFullname" . }}-headless
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
-  {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.bloomPlanner.persistence.enableStatefulSetAutoDeletePVC)  }}
+  {{- if and (semverCompare ">= 1.23-0" (include "loki.kubeVersion" .)) (.Values.bloomPlanner.persistence.enableStatefulSetAutoDeletePVC)  }}
   persistentVolumeClaimRetentionPolicy:
     whenDeleted: {{ .Values.bloomPlanner.persistence.whenDeleted }}
     whenScaled: {{ .Values.bloomPlanner.persistence.whenScaled }}
