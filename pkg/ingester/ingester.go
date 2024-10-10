@@ -404,18 +404,21 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		i.SetExtractorWrapper(i.cfg.SampleExtractorWrapper)
 	}
 
-	var limiterStrategy limiterRingStrategy
+	var streamCountLimiterStrategy limiterRingStrategy
 	var ownedStreamsStrategy ownershipStrategy
+	var streamRateLimitStrategy RateLimiterStrategy
 	if i.cfg.KafkaIngestion.Enabled {
-		limiterStrategy = newPartitionRingLimiterStrategy(partitionRingWatcher, limits.IngestionPartitionsTenantShardSize)
+		streamCountLimiterStrategy = newPartitionRingLimiterStrategy(partitionRingWatcher, limits.IngestionPartitionsTenantShardSize)
 		ownedStreamsStrategy = newOwnedStreamsPartitionStrategy(i.ingestPartitionID, partitionRingWatcher, limits.IngestionPartitionsTenantShardSize, util_log.Logger)
+		streamRateLimitStrategy = &NoLimitsStrategy{} // Kafka ingestion does not have per-stream rate limits, because we control the consumption speed.
 	} else {
-		limiterStrategy = newIngesterRingLimiterStrategy(i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor)
+		streamCountLimiterStrategy = newIngesterRingLimiterStrategy(i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor)
 		ownedStreamsStrategy = newOwnedStreamsIngesterStrategy(i.lifecycler.ID, i.readRing, util_log.Logger)
+		streamRateLimitStrategy = &TenantBasedStrategy{limits: limits}
 	}
 	// Now that the lifecycler has been created, we can create the limiter
 	// which depends on it.
-	i.limiter = NewLimiter(limits, metrics, limiterStrategy)
+	i.limiter = NewLimiter(limits, metrics, streamCountLimiterStrategy, streamRateLimitStrategy)
 	i.recalculateOwnedStreams = newRecalculateOwnedStreamsSvc(i.getInstances, ownedStreamsStrategy, cfg.OwnedStreamsCheckInterval, util_log.Logger)
 
 	return i, nil
@@ -612,6 +615,9 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 	// BEFORE the ingester ring lifecycler is started, because once the ingester ring lifecycler will start
 	// it will switch the ingester state in the ring to ACTIVE.
 	if i.partitionReader != nil {
+		// Disable rate limits
+		i.limiter.DisableForWALReplay()
+
 		if err := services.StartAndAwaitRunning(ctx, i.partitionReader); err != nil {
 			return fmt.Errorf("failed to start partition reader: %w", err)
 		}
