@@ -64,7 +64,7 @@ jobs:
           cd ${{ github.workspace }}/pr/production/helm/loki
           # Check if the scenarios folder exists
           if [ ! -d "scenarios" ]; then
-            echo "PR looks autdated because PRs branch does not have the scenarious, copying them from the base branch."
+            echo "PR looks outdated because PRs branch does not have the scenarios, copying them from the base branch."
             cp -r ${{ github.workspace }}/base/production/helm/loki/scenarios ./scenarios
           fi
           
