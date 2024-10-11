@@ -373,8 +373,8 @@ func (p *Process) ConnectionsWithContext(ctx context.Context) ([]net.ConnectionS
 	return net.ConnectionsPidWithContext(ctx, "all", p.Pid)
 }
 
-func (p *Process) ConnectionsMaxWithContext(ctx context.Context, max int) ([]net.ConnectionStat, error) {
-	return net.ConnectionsPidMaxWithContext(ctx, "all", p.Pid, max)
+func (p *Process) ConnectionsMaxWithContext(ctx context.Context, maxConn int) ([]net.ConnectionStat, error) {
+	return net.ConnectionsPidMaxWithContext(ctx, "all", p.Pid, maxConn)
 }
 
 func (p *Process) MemoryMapsWithContext(ctx context.Context, grouped bool) (*[]MemoryMapsStat, error) {
@@ -399,7 +399,9 @@ func (p *Process) MemoryMapsWithContext(ctx context.Context, grouped bool) (*[]M
 	// function of parsing a block
 	getBlock := func(firstLine []string, block []string) (MemoryMapsStat, error) {
 		m := MemoryMapsStat{}
-		m.Path = firstLine[len(firstLine)-1]
+		if len(firstLine) >= 6 {
+			m.Path = strings.Join(firstLine[5:], " ")
+		}
 
 		for _, line := range block {
 			if strings.Contains(line, "VmFlags") {
@@ -727,8 +729,12 @@ func (p *Process) fillFromIOWithContext(ctx context.Context) (*IOCountersStat, e
 		case "syscw":
 			ret.WriteCount = t
 		case "read_bytes":
-			ret.ReadBytes = t
+			ret.DiskReadBytes = t
 		case "write_bytes":
+			ret.DiskWriteBytes = t
+		case "rchar":
+			ret.ReadBytes = t
+		case "wchar":
 			ret.WriteBytes = t
 		}
 	}

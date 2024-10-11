@@ -256,7 +256,6 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 			expected: expectedMergedResponseWithTime(1+2+3+4, twelve34),
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			srm := NewSplitByRangeMiddleware(log.NewNopLogger(), testEngineOpts, fakeLimits{
 				maxSeries:    10000,
@@ -408,7 +407,6 @@ func Test_RangeVectorSplit(t *testing.T) {
 			expected: expectedMergedResponse(1 + 2 + 3),
 		},
 	} {
-		tc := tc
 		t.Run(tc.in.GetQuery(), func(t *testing.T) {
 			resp, err := srm.Wrap(queryrangebase.HandlerFunc(
 				func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {

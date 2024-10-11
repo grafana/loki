@@ -842,7 +842,7 @@ type OTLPResourceAttributesConfigSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum=index_label;structured_metadata;drop
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Action"
-	Action OTLPAttributeAction `json:"action,omitempty"`
+	Action OTLPAttributeAction `json:"action"`
 
 	// Attributes is the list of attributes to configure indexing or drop them
 	// altogether.
@@ -887,7 +887,7 @@ type OTLPResourceAttributesSpec struct {
 // tenants.
 type GlobalOTLPSpec struct {
 	// IndexedResourceAttributes contains the global configuration for resource attributes
-	// to store them as index labels or structured metadata or drop them altogether.
+	// to store them as index labels.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
@@ -909,7 +909,7 @@ type OTLPSpec struct {
 	ResourceAttributes *OTLPResourceAttributesSpec `json:"resourceAttributes,omitempty"`
 
 	// ScopeAttributes contains the configuration for scope attributes
-	// to store them as index labels or structured metadata or drop them altogether.
+	// to store them as structured metadata or drop them altogether.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
@@ -917,7 +917,7 @@ type OTLPSpec struct {
 	ScopeAttributes []OTLPAttributesSpec `json:"scopeAttributes,omitempty"`
 
 	// LogAttributes contains the configuration for log attributes
-	// to store them as index labels or structured metadata or drop them altogether.
+	// to store them as structured metadata or drop them altogether.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
@@ -1071,8 +1071,8 @@ type LokiStackSpec struct {
 	// ManagementState defines if the CR should be managed by the operator or not.
 	// Default is managed.
 	//
-	// +required
-	// +kubebuilder:validation:Required
+	// +optional
+	// +kubebuilder:validation:optional
 	// +kubebuilder:default:=Managed
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:Managed","urn:alm:descriptor:com.tectonic.ui:select:Unmanaged"},displayName="Management State"
 	ManagementState ManagementStateType `json:"managementState,omitempty"`

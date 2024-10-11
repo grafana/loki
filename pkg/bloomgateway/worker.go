@@ -76,7 +76,7 @@ func (w *worker) running(_ context.Context) error {
 			if err == queue.ErrStopped && len(items) == 0 {
 				return err
 			}
-			w.metrics.tasksDequeued.WithLabelValues(w.id, labelFailure).Inc()
+			w.metrics.tasksDequeued.WithLabelValues(w.id, labelFailure).Observe(1)
 			level.Error(w.logger).Log("msg", "failed to dequeue tasks", "err", err, "items", len(items))
 		}
 		idx = newIdx
@@ -86,7 +86,7 @@ func (w *worker) running(_ context.Context) error {
 			continue
 		}
 
-		w.metrics.tasksDequeued.WithLabelValues(w.id, labelSuccess).Add(float64(len(items)))
+		w.metrics.tasksDequeued.WithLabelValues(w.id, labelSuccess).Observe(float64(len(items)))
 
 		tasks := make([]Task, 0, len(items))
 		for _, item := range items {

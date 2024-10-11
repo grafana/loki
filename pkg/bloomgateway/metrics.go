@@ -56,7 +56,7 @@ type serverMetrics struct {
 	filteredSeries   prometheus.Histogram
 	requestedChunks  prometheus.Histogram
 	filteredChunks   prometheus.Histogram
-	receivedFilters  prometheus.Histogram
+	receivedMatchers prometheus.Histogram
 }
 
 func newMetrics(registerer prometheus.Registerer, namespace, subsystem string) *metrics {
@@ -105,11 +105,11 @@ func newServerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 			Help:      "Total amount of chunk refs filtered by bloom-gateway",
 			Buckets:   prometheus.ExponentialBucketsRange(1, 100e3, 10),
 		}),
-		receivedFilters: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+		receivedMatchers: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
-			Name:      "request_filters",
-			Help:      "Number of filters per request.",
+			Name:      "request_matchers",
+			Help:      "Number of matchers per request.",
 			Buckets:   prometheus.ExponentialBuckets(1, 2, 9), // 1 -> 256
 		}),
 	}
@@ -119,7 +119,7 @@ type workerMetrics struct {
 	dequeueDuration    *prometheus.HistogramVec
 	queueDuration      *prometheus.HistogramVec
 	processDuration    *prometheus.HistogramVec
-	tasksDequeued      *prometheus.CounterVec
+	tasksDequeued      *prometheus.HistogramVec
 	tasksProcessed     *prometheus.CounterVec
 	blocksNotAvailable *prometheus.CounterVec
 	blockQueryLatency  *prometheus.HistogramVec
@@ -147,11 +147,12 @@ func newWorkerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 			Name:      "process_duration_seconds",
 			Help:      "Time spent processing tasks in seconds",
 		}, append(labels, "status")),
-		tasksDequeued: r.NewCounterVec(prometheus.CounterOpts{
+		tasksDequeued: r.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
-			Name:      "tasks_dequeued_total",
-			Help:      "Total amount of tasks that the worker dequeued from the queue",
+			Name:      "tasks_dequeued",
+			Help:      "Total amount of tasks that the worker dequeued from the queue at once",
+			Buckets:   prometheus.ExponentialBuckets(1, 2, 8), // [1, 2, ..., 128]
 		}, append(labels, "status")),
 		tasksProcessed: r.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,

@@ -9,3 +9,14 @@
 {{ template "chart.requirementsSection" . }}
 
 Find more information in the Loki Helm Chart [documentation](https://grafana.com/docs/loki/next/installation/helm).
+
+## Contributing and releasing
+
+If you made any changes to the [Chart.yaml](https://github.com/grafana/loki/blob/main/production/helm/loki/Chart.yaml) or [values.yaml](https://github.com/grafana/loki/blob/main/production/helm/loki/values.yaml) run `make helm-docs` from the root of the repository to update the documentation and commit the changed files.
+
+#### Versioning
+
+Normally contributors need _not_ bump the version nor update the [CHANGELOG.md](https://github.com/grafana/loki/blob/main/production/helm/loki/CHANGELOG.md). A new version of the Chart will follow this cadence:
+- Automatic weekly releases
+- Releases that coincide with Loki/GEL releases
+- Manual releases when necessary (ie. to address a CVE or critical bug)

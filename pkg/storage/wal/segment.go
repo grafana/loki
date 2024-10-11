@@ -177,7 +177,7 @@ func (b *SegmentWriter) Append(tenantID, labelsString string, lbls labels.Labels
 	b.lastAppend = now
 
 	for _, e := range entries {
-		b.inputSize.Add(int64(len(e.Line)))
+		b.inputSize.Add(int64(len(e.Line))) // todo(cyriltovena): should add the size of structured metadata
 	}
 	id := streamID{labels: labelsString, tenant: tenantID}
 	s := b.getOrCreateStream(id, lbls)
@@ -231,7 +231,6 @@ func (b *SegmentWriter) Meta(id string) *metastorepb.BlockMeta {
 	}
 	result := make([]*metastorepb.TenantStreams, 0, len(tenants))
 	for _, tenant := range tenants {
-		tenant := tenant
 		result = append(result, tenant)
 	}
 	sort.Slice(result, func(i, j int) bool {
@@ -379,7 +378,6 @@ func (b *SegmentWriter) Reset() {
 	b.firstAppend = time.Time{}
 	b.lastAppend = time.Time{}
 	for _, s := range b.streams {
-		s := s
 		s.Reset()
 		streamSegmentPool.Put(s)
 	}

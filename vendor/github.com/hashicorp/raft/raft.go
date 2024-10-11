@@ -1749,7 +1749,7 @@ func (r *Raft) requestPreVote(rpc RPC, req *RequestPreVoteRequest) {
 	}()
 
 	// Check if we have an existing leader [who's not the candidate] and also
-	var candidate ServerAddress
+	candidate := r.trans.DecodePeer(req.GetRPCHeader().Addr)
 	candidateID := ServerID(req.ID)
 
 	// if the Servers list is empty that mean the cluster is very likely trying to bootstrap,
@@ -1805,7 +1805,6 @@ func (r *Raft) requestPreVote(rpc RPC, req *RequestPreVoteRequest) {
 	}
 
 	resp.Granted = true
-	r.setLastContact()
 }
 
 // installSnapshot is invoked when we get a InstallSnapshot RPC call.

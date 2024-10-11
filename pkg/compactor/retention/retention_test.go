@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -21,6 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	ingesterclient "github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
@@ -31,14 +34,37 @@ import (
 )
 
 type mockChunkClient struct {
-	mtx           sync.Mutex
-	deletedChunks map[string]struct{}
+	mtx              sync.Mutex
+	deletedChunks    map[string]struct{}
+	unstableDeletion bool
+	perObjectCounter map[string]uint32
+}
+
+// newMockChunkClient creates a client that fails every first call to DeleteChunk if `unstableDeletion` is true.
+func newMockChunkClient(unstableDeletion bool) *mockChunkClient {
+	return &mockChunkClient{
+		deletedChunks:    map[string]struct{}{},
+		unstableDeletion: unstableDeletion,
+		perObjectCounter: map[string]uint32{},
+	}
+}
+
+// shouldFail returns true for every first call
+func (m *mockChunkClient) shouldFail(objectKey string) bool {
+	if !m.unstableDeletion {
+		return false
+	}
+	shouldFail := m.perObjectCounter[objectKey]%2 == 0
+	m.perObjectCounter[objectKey]++
+	return shouldFail
 }
 
 func (m *mockChunkClient) DeleteChunk(_ context.Context, _, chunkID string) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
-
+	if m.shouldFail(chunkID) {
+		return fmt.Errorf("chunk deletion for chunkID:%s is failed by mockChunkClient", chunkID)
+	}
 	m.deletedChunks[string([]byte(chunkID))] = struct{}{} // forces a copy, because this string is only valid within the delete fn.
 	return nil
 }
@@ -128,7 +154,6 @@ func Test_Retention(t *testing.T) {
 			},
 		},
 	} {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			// insert in the store.
 			var (
@@ -143,8 +168,9 @@ func Test_Retention(t *testing.T) {
 			// marks and sweep
 			expiration := NewExpirationChecker(tt.limits)
 			workDir := filepath.Join(t.TempDir(), "retention")
-			chunkClient := &mockChunkClient{deletedChunks: map[string]struct{}{}}
-			sweep, err := NewSweeper(workDir, chunkClient, 10, 0, nil)
+			// must not fail the process because deletion must be retried
+			chunkClient := newMockChunkClient(true)
+			sweep, err := NewSweeper(workDir, chunkClient, 10, 0, backoff.Config{MaxRetries: 2}, nil)
 			require.NoError(t, err)
 			sweep.Start()
 			defer sweep.Stop()
@@ -173,6 +199,38 @@ func Test_Retention(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_Sweeper_deleteChunk(t *testing.T) {
+	chunkID := "1/3fff2c2d7595e046:1916fa8c4bd:1916fdfb33d:bd55fc5"
+	tests := map[string]struct {
+		maxRetries    int
+		expectedError error
+	}{
+		"expected error if chunk is not deleted and retry is disabled": {
+			maxRetries:    1,
+			expectedError: fmt.Errorf("chunk deletion for chunkID:%s is failed by mockChunkClient", chunkID),
+		},
+		"expected  no error if chunk is not deleted at the first attempt but retried": {
+			maxRetries: 2,
+		},
+	}
+	for name, data := range tests {
+		t.Run(name, func(t *testing.T) {
+			workDir := filepath.Join(t.TempDir(), "retention")
+			chunkClient := newMockChunkClient(true)
+			sweep, err := NewSweeper(workDir, chunkClient, 10, 0, backoff.Config{MaxRetries: data.maxRetries}, nil)
+			require.NoError(t, err)
+
+			err = sweep.deleteChunk(context.Background(), []byte(chunkID))
+			if data.expectedError != nil {
+				require.Equal(t, data.expectedError, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+
 }
 
 type noopWriter struct {
@@ -220,7 +278,7 @@ func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time
 	labelsBuilder.Set(labels.MetricName, "logs")
 	metric := labelsBuilder.Labels()
 	fp := ingesterclient.Fingerprint(lbs)
-	chunkEnc := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, blockSize, targetSize)
+	chunkEnc := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.Snappy, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, blockSize, targetSize)
 
 	for ts := from; !ts.After(through); ts = ts.Add(1 * time.Minute) {
 		dup, err := chunkEnc.Append(&logproto.Entry{
@@ -507,7 +565,6 @@ func TestChunkRewriter(t *testing.T) {
 			},
 		},
 	} {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			store := newTestStore(t)
 			require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{tt.chunk}))

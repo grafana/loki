@@ -37,7 +37,7 @@ type V3Builder struct {
 }
 
 type SeriesWithBlooms struct {
-	Series *Series
+	Series *SeriesWithMeta
 	Blooms iter.SizedIterator[*Bloom]
 }
 
@@ -63,6 +63,8 @@ func NewBlockBuilderV3(opts BlockOptions, writer BlockWriter) (*V3Builder, error
 	}, nil
 }
 
+// BuildFrom is only used in tests as helper function to create blocks
+// It does not take indexed fields into account.
 func (b *V3Builder) BuildFrom(itr iter.Iterator[SeriesWithBlooms]) (uint32, error) {
 	for itr.Next() {
 		at := itr.At()
@@ -79,12 +81,7 @@ func (b *V3Builder) BuildFrom(itr iter.Iterator[SeriesWithBlooms]) (uint32, erro
 			return 0, errors.Wrap(err, "iterating blooms")
 		}
 
-		// TODO(chaudum): Use the indexed fields from bloom creation, however,
-		// currently we still build blooms from log lines.
-		fields := NewSet[Field](1)
-		fields.Add("__line__")
-
-		blockFull, err := b.AddSeries(*at.Series, offsets, fields)
+		blockFull, err := b.AddSeries(at.Series.Series, offsets, at.Series.Meta.Fields)
 		if err != nil {
 			return 0, errors.Wrapf(err, "writing series")
 		}

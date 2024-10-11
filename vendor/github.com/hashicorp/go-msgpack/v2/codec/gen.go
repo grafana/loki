@@ -7,7 +7,7 @@
 package codec
 
 import (
-	"encoding/base64"
+	"encoding/base32"
 	"errors"
 	"fmt"
 	"io"
@@ -132,7 +132,8 @@ var (
 	errGenAllTypesSamePkg  = errors.New("All types must be in the same package")
 	errGenExpectArrayOrMap = errors.New("unexpected type. Expecting array/map/slice")
 
-	genBase64enc  = base64.NewEncoding("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789__")
+	// base64 requires 64 unique characters in Go 1.22+, which is not possible for Go identifiers.
+	genBase32enc  = base32.NewEncoding("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef")
 	genQNameRegex = regexp.MustCompile(`[A-Za-z_.]+`)
 )
 
@@ -1829,7 +1830,7 @@ func genMethodNameT(t reflect.Type, tRef reflect.Type) (n string) {
 			} else {
 				// best way to get the package name inclusive
 				// return ptrPfx + strings.Replace(tstr, ".", "_", 1000)
-				// return ptrPfx + genBase64enc.EncodeToString([]byte(tstr))
+				// return ptrPfx + genBase32enc.EncodeToString([]byte(tstr))
 				if t.Name() != "" && genQNameRegex.MatchString(tstr) {
 					return ptrPfx + strings.Replace(tstr, ".", "_", 1000)
 				} else {
@@ -1840,12 +1841,12 @@ func genMethodNameT(t reflect.Type, tRef reflect.Type) (n string) {
 	}
 }
 
-// genCustomNameForType base64encodes the t.String() value in such a way
+// genCustomNameForType base32encodes the t.String() value in such a way
 // that it can be used within a function name.
 func genCustomTypeName(tstr string) string {
-	len2 := genBase64enc.EncodedLen(len(tstr))
+	len2 := genBase32enc.EncodedLen(len(tstr))
 	bufx := make([]byte, len2)
-	genBase64enc.Encode(bufx, []byte(tstr))
+	genBase32enc.Encode(bufx, []byte(tstr))
 	for i := len2 - 1; i >= 0; i-- {
 		if bufx[i] == '=' {
 			len2--

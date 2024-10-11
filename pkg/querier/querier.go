@@ -72,6 +72,7 @@ type Config struct {
 	QueryIngesterOnly             bool             `yaml:"query_ingester_only"`
 	MultiTenantQueriesEnabled     bool             `yaml:"multi_tenant_queries_enabled"`
 	PerRequestLimitsEnabled       bool             `yaml:"per_request_limits_enabled"`
+	QueryPartitionIngesters       bool             `yaml:"query_partition_ingesters" category:"experimental"`
 }
 
 // RegisterFlags register flags.
@@ -85,6 +86,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.QueryIngesterOnly, "querier.query-ingester-only", false, "When true, queriers only query the ingesters, and not stored data. This is useful when the object store is unavailable.")
 	f.BoolVar(&cfg.MultiTenantQueriesEnabled, "querier.multi-tenant-queries-enabled", false, "When true, allow queries to span multiple tenants.")
 	f.BoolVar(&cfg.PerRequestLimitsEnabled, "querier.per-request-limits-enabled", false, "When true, querier limits sent via a header are enforced.")
+	f.BoolVar(&cfg.QueryPartitionIngesters, "querier.query-partition-ingesters", false, "When true, querier directs ingester queries to the partition-ingesters instead of the normal ingesters.")
 }
 
 // Validate validates the config.
@@ -1071,6 +1073,7 @@ func containsAllIDTypes(values []string) bool {
 	return true
 }
 
+// TODO(twhitney): Delete this method and the GRPC service signature. This is now handled in the query frontend.
 func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
 	expr, err := syntax.ParseLogSelector(req.Query, true)
 	if err != nil {
@@ -1103,7 +1106,7 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 		return nil, err
 	}
 
-	detectedFields := parseDetectedFields(req.FieldLimit, streams)
+	detectedFields := parseDetectedFields(req.Limit, streams)
 
 	fields := make([]*logproto.DetectedField, len(detectedFields))
 	fieldCount := 0
@@ -1113,49 +1116,25 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 			level.Warn(q.logger).Log("msg", "failed to marshal hyperloglog sketch", "err", err)
 			continue
 		}
-
+		p := v.parsers
+		if len(p) == 0 {
+			p = nil
+		}
 		fields[fieldCount] = &logproto.DetectedField{
 			Label:       k,
 			Type:        v.fieldType,
 			Cardinality: v.Estimate(),
 			Sketch:      sketch,
-			Parsers:     v.parsers,
+			Parsers:     p,
 		}
 
 		fieldCount++
 	}
 
 	return &logproto.DetectedFieldsResponse{
-		Fields:     fields,
-		FieldLimit: req.GetFieldLimit(),
+		Fields: fields,
+		Limit:  req.GetLimit(),
 	}, nil
-}
-
-func getParsersFromExpr(expr syntax.LogSelectorExpr) []string {
-	parsers := make([]string, 0)
-	expr.Walk(func(e syntax.Expr) {
-		switch concrete := e.(type) {
-		case *syntax.LogfmtParserExpr, *syntax.LogfmtExpressionParser:
-			if !slices.Contains(parsers, "logfmt") {
-				parsers = append(parsers, "logfmt")
-			}
-		case *syntax.JSONExpressionParser:
-			if !slices.Contains(parsers, "json") {
-				parsers = append(parsers, "json")
-			}
-		case *syntax.LabelParserExpr:
-			if concrete.Op == syntax.OpParserTypeJSON {
-				if !slices.Contains(parsers, "json") {
-					parsers = append(parsers, "json")
-				}
-			}
-		}
-		// bail if we found both parsers
-		if len(parsers) == 2 {
-			return
-		}
-	})
-	return parsers
 }
 
 type parsedFields struct {

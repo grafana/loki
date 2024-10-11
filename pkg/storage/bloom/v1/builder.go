@@ -7,7 +7,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
@@ -66,24 +66,29 @@ func (b BlockOptions) Encode(enc *encoding.Encbuf) {
 	enc.PutBE64(b.BlockSize)
 }
 
-func NewBlockOptions(enc chunkenc.Encoding, nGramLength, nGramSkip, maxBlockSizeBytes, maxBloomSizeBytes uint64) BlockOptions {
+func NewBlockOptions(enc compression.Codec, maxBlockSizeBytes, maxBloomSizeBytes uint64) BlockOptions {
 	opts := NewBlockOptionsFromSchema(Schema{
-		version:     CurrentSchemaVersion,
-		encoding:    enc,
-		nGramLength: nGramLength,
-		nGramSkip:   nGramSkip,
-	})
+		version:  CurrentSchemaVersion,
+		encoding: enc,
+	}, maxBloomSizeBytes)
 	opts.BlockSize = maxBlockSizeBytes
 	opts.UnencodedBlockOptions.MaxBloomSizeBytes = maxBloomSizeBytes
 	return opts
 }
 
-func NewBlockOptionsFromSchema(s Schema) BlockOptions {
+func NewBlockOptionsFromSchema(s Schema, maxBloomSizeBytes uint64) BlockOptions {
 	return BlockOptions{
 		Schema: s,
 		// TODO(owen-d): benchmark and find good defaults
-		SeriesPageSize: 4 << 10,   // 4KB, typical page size
-		BloomPageSize:  256 << 10, // 256KB, no idea what to make this
+		SeriesPageSize: 4 << 10, // 4KB, typical page size
+
+		// Allow one bloom page to fit either several small blooms or one large
+		// bloom at max size.
+		//
+		// Previously this value was fixed at 256KB, which is smaller than most
+		// blooms. Setting this value less than maxBloomSizeBytes means that most
+		// pages will consist of a single oversized bloom.
+		BloomPageSize: maxBloomSizeBytes,
 	}
 }
 
@@ -122,7 +127,7 @@ func (w *PageWriter) Add(item []byte) (offset int) {
 	return offset
 }
 
-func (w *PageWriter) writePage(writer io.Writer, pool chunkenc.WriterPool, crc32Hash hash.Hash32) (int, int, error) {
+func (w *PageWriter) writePage(writer io.Writer, pool compression.WriterPool, crc32Hash hash.Hash32) (int, int, error) {
 	// write the number of blooms in this page, must not be varint
 	// so we can calculate it's position+len during decoding
 	w.enc.PutBE64(uint64(w.n))
@@ -151,10 +156,29 @@ func (w *PageWriter) writePage(writer io.Writer, pool chunkenc.WriterPool, crc32
 	return decompressedLen, w.enc.Len(), nil
 }
 
+// indexingInfo is a datastructure that holds information about the indexing operation.
+type indexingInfo struct {
+	sourceBytes   int
+	indexedFields Set[Field]
+}
+
+func newIndexingInfo() indexingInfo {
+	return indexingInfo{
+		sourceBytes:   0,
+		indexedFields: NewSet[Field](16),
+	}
+}
+
+func (s indexingInfo) merge(other indexingInfo) indexingInfo {
+	s.sourceBytes += other.sourceBytes
+	s.indexedFields.Union(other.indexedFields)
+	return s
+}
+
 type BloomCreation struct {
-	Bloom            *Bloom
-	SourceBytesAdded int
-	Err              error
+	Bloom *Bloom
+	Info  indexingInfo
+	Err   error
 }
 
 // Simplistic implementation of a merge builder that builds a single block
@@ -164,12 +188,12 @@ type MergeBuilder struct {
 	blocks iter.Iterator[*SeriesWithBlooms]
 	// store
 	store iter.Iterator[*Series]
-	// Add chunks to a bloom
-	populate func(s *Series, srcBlooms iter.SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation)
+	// Add chunks of a single series to a bloom
+	populate BloomPopulatorFunc
 	metrics  *Metrics
 }
 
-type BloomPopulatorFunc = func(s *Series, srcBlooms iter.SizedIterator[*Bloom], toAdd ChunkRefs, ch chan *BloomCreation)
+type BloomPopulatorFunc func(series *Series, preExistingBlooms iter.SizedIterator[*Bloom], chunksToAdd ChunkRefs, ch chan *BloomCreation)
 
 // NewMergeBuilder is a specific builder which does the following:
 //  1. merges multiple blocks into a single ordered querier,
@@ -222,7 +246,8 @@ func (mb *MergeBuilder) processNextSeries(
 	bool, // done building block
 	error, // error
 ) {
-	var blockSeriesIterated, chunksIndexed, chunksCopied, bytesAdded int
+	var blockSeriesIterated, chunksIndexed, chunksCopied int
+
 	defer func() {
 		mb.metrics.blockSeriesIterated.Add(float64(blockSeriesIterated))
 		mb.metrics.chunksIndexed.WithLabelValues(chunkIndexedTypeIterated).Add(float64(chunksIndexed))
@@ -257,9 +282,11 @@ func (mb *MergeBuilder) processNextSeries(
 	}
 
 	var (
-		offsets           []BloomOffset
+		offsets []BloomOffset
+
 		chunksToAdd                                  = nextInStore.Chunks
 		preExistingBlooms iter.SizedIterator[*Bloom] = iter.NewEmptyIter[*Bloom]()
+		info                                         = newIndexingInfo()
 	)
 
 	if nextInBlocks != nil && nextInBlocks.Series.Fingerprint == nextInStore.Fingerprint {
@@ -267,6 +294,8 @@ func (mb *MergeBuilder) processNextSeries(
 		chunksToAdd = nextInStore.Chunks.Unless(nextInBlocks.Series.Chunks)
 		chunksCopied += len(nextInStore.Chunks) - len(chunksToAdd)
 		preExistingBlooms = nextInBlocks.Blooms
+		// we also need to carry over existing indexed fields from the series metadata
+		info.indexedFields.Union(nextInBlocks.Series.Meta.Fields)
 	}
 
 	chunksIndexed += len(chunksToAdd)
@@ -275,31 +304,26 @@ func (mb *MergeBuilder) processNextSeries(
 	ch := make(chan *BloomCreation)
 	go mb.populate(nextInStore, preExistingBlooms, chunksToAdd, ch)
 
-	for bloom := range ch {
-		if bloom.Err != nil {
-			return nil, bytesAdded, 0, false, false, errors.Wrap(bloom.Err, "populating bloom")
+	for creation := range ch {
+		if creation.Err != nil {
+			return nil, info.sourceBytes, 0, false, false, errors.Wrap(creation.Err, "populating bloom")
 		}
-		offset, err := builder.AddBloom(bloom.Bloom)
+		offset, err := builder.AddBloom(creation.Bloom)
 		if err != nil {
-			return nil, bytesAdded, 0, false, false, errors.Wrapf(
+			return nil, info.sourceBytes, 0, false, false, errors.Wrapf(
 				err, "adding bloom to block for fp (%s)", nextInStore.Fingerprint,
 			)
 		}
 		offsets = append(offsets, offset)
-		bytesAdded += bloom.SourceBytesAdded
+		info.merge(creation.Info)
 	}
 
-	// TODO(chaudum): Use the indexed fields from bloom creation, however,
-	// currently we still build blooms from log lines.
-	fields := NewSet[Field](1)
-	fields.Add("__line__")
-
-	done, err := builder.AddSeries(*nextInStore, offsets, fields)
+	done, err := builder.AddSeries(*nextInStore, offsets, info.indexedFields)
 	if err != nil {
-		return nil, bytesAdded, 0, false, false, errors.Wrap(err, "committing series")
+		return nil, info.sourceBytes, 0, false, false, errors.Wrap(err, "committing series")
 	}
 
-	return nextInBlocks, bytesAdded, chunksIndexed + chunksCopied, blocksFinished, done, nil
+	return nextInBlocks, info.sourceBytes, chunksIndexed + chunksCopied, blocksFinished, done, nil
 }
 
 func (mb *MergeBuilder) Build(builder *BlockBuilder) (checksum uint32, totalBytes int, err error) {

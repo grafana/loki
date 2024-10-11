@@ -26,6 +26,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/twmb/franz-go/pkg/kgo"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -124,7 +125,7 @@ func TestDistributor(t *testing.T) {
 			if len(tc.expectedErrors) > 0 {
 				for _, expectedError := range tc.expectedErrors {
 					if len(tc.expectedErrors) == 1 {
-						assert.Equal(t, err, expectedError)
+						assert.Equal(t, expectedError, err)
 					} else {
 						assert.Contains(t, err.Error(), expectedError.Error())
 					}
@@ -400,8 +401,6 @@ func Test_IncrementTimestamp(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			ing := &mockIngester{}
 			distributors, _ := prepare(t, 1, 3, testData.limits, func(_ string) (ring_client.PoolClient, error) { return ing, nil })
@@ -502,6 +501,76 @@ func TestDistributorPushErrors(t *testing.T) {
 
 		require.Equal(t, 0, len(ingesters[0].pushed))
 		require.Equal(t, 0, len(ingesters[2].pushed))
+	})
+}
+
+func TestDistributorPushToKafka(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+
+	t.Run("with kafka, any failure fails the request", func(t *testing.T) {
+		kafkaWriter := &mockKafkaWriter{
+			failOnWrite: true,
+		}
+		distributors, _ := prepare(t, 1, 0, limits, nil)
+		for _, d := range distributors {
+			d.cfg.KafkaEnabled = true
+			d.cfg.IngesterEnabled = false
+			d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes = 1000
+			d.kafkaWriter = kafkaWriter
+		}
+
+		request := makeWriteRequest(10, 64)
+		_, err := distributors[0].Push(ctx, request)
+		require.Error(t, err)
+	})
+
+	t.Run("with kafka, no failures is successful", func(t *testing.T) {
+		kafkaWriter := &mockKafkaWriter{
+			failOnWrite: false,
+		}
+		distributors, _ := prepare(t, 1, 0, limits, nil)
+		for _, d := range distributors {
+			d.cfg.KafkaEnabled = true
+			d.cfg.IngesterEnabled = false
+			d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes = 1000
+			d.kafkaWriter = kafkaWriter
+		}
+
+		request := makeWriteRequest(10, 64)
+		_, err := distributors[0].Push(ctx, request)
+		require.NoError(t, err)
+
+		require.Equal(t, 1, kafkaWriter.pushed)
+	})
+
+	t.Run("with kafka and ingesters, both must complete", func(t *testing.T) {
+		kafkaWriter := &mockKafkaWriter{
+			failOnWrite: false,
+		}
+		distributors, ingesters := prepare(t, 1, 3, limits, nil)
+		ingesters[0].succeedAfter = 5 * time.Millisecond
+		ingesters[1].succeedAfter = 10 * time.Millisecond
+		ingesters[2].succeedAfter = 15 * time.Millisecond
+
+		for _, d := range distributors {
+			d.cfg.KafkaEnabled = true
+			d.cfg.IngesterEnabled = true
+			d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes = 1000
+			d.kafkaWriter = kafkaWriter
+		}
+
+		request := makeWriteRequest(10, 64)
+		_, err := distributors[0].Push(ctx, request)
+		require.NoError(t, err)
+
+		require.Equal(t, 1, kafkaWriter.pushed)
+
+		require.Equal(t, 1, len(ingesters[0].pushed))
+		require.Equal(t, 1, len(ingesters[1].pushed))
+		require.Eventually(t, func() bool {
+			return len(ingesters[2].pushed) == 1
+		}, time.Second, 10*time.Millisecond)
 	})
 }
 
@@ -1145,8 +1214,6 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
@@ -1270,9 +1337,26 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ingestersRing))
 
-	test.Poll(t, time.Second, numIngesters, func() interface{} {
-		return ingestersRing.InstancesCount()
+	partitionRing := ring.NewPartitionRing(ring.PartitionRingDesc{
+		Partitions: map[int32]ring.PartitionDesc{
+			1: {
+				Id:             1,
+				Tokens:         []uint32{1},
+				State:          ring.PartitionActive,
+				StateTimestamp: time.Now().Unix(),
+			},
+		},
+		Owners: map[string]ring.OwnerDesc{
+			"test": {
+				OwnedPartition:   1,
+				State:            ring.OwnerActive,
+				UpdatedTimestamp: time.Now().Unix(),
+			},
+		},
 	})
+	partitionRingReader := mockPartitionRingReader{
+		ring: partitionRing,
+	}
 
 	loopbackName, err := loki_net.LoopbackInterfaceName()
 	require.NoError(t, err)
@@ -1299,7 +1383,7 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 		overrides, err := validation.NewOverrides(*limits, nil)
 		require.NoError(t, err)
 
-		d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, log.NewNopLogger())
+		d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, partitionRingReader, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, log.NewNopLogger())
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 		distributors[i] = d
@@ -1329,7 +1413,7 @@ func makeWriteRequestWithLabelsWithLevel(lines, size int, labels []string, level
 
 		for j := 0; j < lines; j++ {
 			// Construct the log line, honoring the input size
-			line := "msg=" + strconv.Itoa(j) + strings.Repeat("0", size) + " severity=" + level
+			line := "msg=an error occured " + strconv.Itoa(j) + strings.Repeat("0", size) + " severity=" + level
 
 			stream.Entries = append(stream.Entries, logproto.Entry{
 				Timestamp: time.Now().Add(time.Duration(j) * time.Millisecond),
@@ -1371,6 +1455,37 @@ func makeWriteRequestWithLabels(lines, size int, labels []string) *logproto.Push
 
 func makeWriteRequest(lines, size int) *logproto.PushRequest {
 	return makeWriteRequestWithLabels(lines, size, []string{`{foo="bar"}`})
+}
+
+type mockKafkaWriter struct {
+	failOnWrite bool
+	pushed      int
+}
+
+func (m *mockKafkaWriter) ProduceSync(_ context.Context, _ []*kgo.Record) kgo.ProduceResults {
+	if m.failOnWrite {
+		return kgo.ProduceResults{
+			{
+				Err: kgo.ErrRecordTimeout,
+			},
+		}
+	}
+	m.pushed++
+	return kgo.ProduceResults{
+		{
+			Err: nil,
+		},
+	}
+}
+
+func (m *mockKafkaWriter) Close() {}
+
+type mockPartitionRingReader struct {
+	ring *ring.PartitionRing
+}
+
+func (m mockPartitionRingReader) PartitionRing() *ring.PartitionRing {
+	return m.ring
 }
 
 type mockIngester struct {
@@ -1529,20 +1644,28 @@ func Test_DetectLogLevels(t *testing.T) {
 	})
 
 	t.Run("log level detection enabled and warn logs", func(t *testing.T) {
-		limits, ingester := setup(true)
-		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+		for _, level := range []string{"warn", "Wrn", "WARNING"} {
+			limits, ingester := setup(true)
+			distributors, _ := prepare(
+				t,
+				1,
+				5,
+				limits,
+				func(_ string) (ring_client.PoolClient, error) { return ingester, nil },
+			)
 
-		writeReq := makeWriteRequestWithLabelsWithLevel(1, 10, []string{`{foo="bar"}`}, "warn")
-		_, err := distributors[0].Push(ctx, writeReq)
-		require.NoError(t, err)
-		topVal := ingester.Peek()
-		require.Equal(t, `{foo="bar"}`, topVal.Streams[0].Labels)
-		require.Equal(t, push.LabelsAdapter{
-			{
-				Name:  constants.LevelLabel,
-				Value: constants.LogLevelWarn,
-			},
-		}, topVal.Streams[0].Entries[0].StructuredMetadata)
+			writeReq := makeWriteRequestWithLabelsWithLevel(1, 10, []string{`{foo="bar"}`}, level)
+			_, err := distributors[0].Push(ctx, writeReq)
+			require.NoError(t, err)
+			topVal := ingester.Peek()
+			require.Equal(t, `{foo="bar"}`, topVal.Streams[0].Labels)
+			require.Equal(t, push.LabelsAdapter{
+				{
+					Name:  constants.LevelLabel,
+					Value: constants.LogLevelWarn,
+				},
+			}, topVal.Streams[0].Entries[0].StructuredMetadata, fmt.Sprintf("level: %s", level))
+		}
 	})
 
 	t.Run("log level detection enabled but log level already present in stream", func(t *testing.T) {

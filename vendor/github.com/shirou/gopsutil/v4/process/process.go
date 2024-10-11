@@ -103,10 +103,18 @@ type RlimitStat struct {
 }
 
 type IOCountersStat struct {
-	ReadCount  uint64 `json:"readCount"`
+	// ReadCount is a number of read I/O operations such as syscalls.
+	ReadCount uint64 `json:"readCount"`
+	// WriteCount is a number of read I/O operations such as syscalls.
 	WriteCount uint64 `json:"writeCount"`
-	ReadBytes  uint64 `json:"readBytes"`
+	// ReadBytes is a number of all I/O read in bytes. This includes disk I/O on Linux and Windows.
+	ReadBytes uint64 `json:"readBytes"`
+	// WriteBytes is a number of all I/O write in bytes. This includes disk I/O on Linux and Windows.
 	WriteBytes uint64 `json:"writeBytes"`
+	// DiskReadBytes is a number of disk I/O write in bytes. Currently only Linux has this value.
+	DiskReadBytes uint64 `json:"diskReadBytes"`
+	// DiskWriteBytes is a number of disk I/O read in bytes.  Currently only Linux has this value.
+	DiskWriteBytes uint64 `json:"diskWriteBytes"`
 }
 
 type NumCtxSwitchesStat struct {
@@ -317,7 +325,11 @@ func calculatePercent(t1, t2 *cpu.TimesStat, delta float64, numcpu int) float64 
 	if delta == 0 {
 		return 0
 	}
-	delta_proc := t2.Total() - t1.Total()
+	// https://github.com/giampaolo/psutil/blob/c034e6692cf736b5e87d14418a8153bb03f6cf42/psutil/__init__.py#L1064
+	delta_proc := (t2.User - t1.User) + (t2.System - t1.System)
+	if delta_proc <= 0 {
+		return 0
+	}
 	overall_percent := ((delta_proc / delta) * 100) * float64(numcpu)
 	return overall_percent
 }
@@ -539,8 +551,8 @@ func (p *Process) Connections() ([]net.ConnectionStat, error) {
 }
 
 // ConnectionsMax returns a slice of net.ConnectionStat used by the process at most `max`.
-func (p *Process) ConnectionsMax(max int) ([]net.ConnectionStat, error) {
-	return p.ConnectionsMaxWithContext(context.Background(), max)
+func (p *Process) ConnectionsMax(maxConn int) ([]net.ConnectionStat, error) {
+	return p.ConnectionsMaxWithContext(context.Background(), maxConn)
 }
 
 // MemoryMaps get memory maps from /proc/(pid)/smaps

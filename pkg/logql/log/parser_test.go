@@ -83,7 +83,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 			labels.EmptyLabels(),
 			labels.FromStrings("counter", "1",
 				"price__net_", "5.56909",
-				"foo", "",
+				"foo", " ",
 			),
 			NoParserHints(),
 		},
@@ -366,6 +366,26 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			labels.EmptyLabels(),
 			labels.FromStrings("param", "1"),
+			NoParserHints(),
+		},
+		{
+			"object element not present",
+			testLine,
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("undefined", `pod[""]`),
+			},
+			labels.EmptyLabels(),
+			labels.FromStrings("undefined", ""),
+			NoParserHints(),
+		},
+		{
+			"accessing invalid array index",
+			testLine,
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("param", `pod.deployment.params[""]`),
+			},
+			labels.EmptyLabels(),
+			labels.FromStrings("param", ""),
 			NoParserHints(),
 		},
 		{
@@ -802,7 +822,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			"utf8 error rune",
 			[]byte(`buzz=foo bar=�f`),
 			labels.EmptyLabels(),
-			labels.FromStrings("buzz", "foo"),
+			labels.FromStrings("bar", " f", "buzz", "foo"),
 			nil,
 			NoParserHints(),
 		},
@@ -1037,7 +1057,7 @@ func TestLogfmtParser_keepEmpty(t *testing.T) {
 			false,
 			labels.FromStrings("foo", "bar"),
 			labels.FromStrings("foo", "bar",
-				"bar", "buzz"),
+				"bar", "buzz", "foo_extracted", "b r"),
 		},
 		{
 			"utf8 error rune with keep empty",
@@ -1045,7 +1065,7 @@ func TestLogfmtParser_keepEmpty(t *testing.T) {
 			true,
 			labels.FromStrings("foo", "bar"),
 			labels.FromStrings("foo", "bar",
-				"foo_extracted", "",
+				"foo_extracted", "b r",
 				"bar", "buzz"),
 		},
 	}
@@ -1386,7 +1406,6 @@ func Test_PatternParser(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.pattern, func(t *testing.T) {
 			t.Parallel()
 			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())

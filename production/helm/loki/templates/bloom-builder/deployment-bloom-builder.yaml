@@ -1,5 +1,5 @@
 {{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
-{{- if $isDistributed -}}
+{{- if (and $isDistributed (gt (int .Values.bloomPlanner.replicas) 0)) -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -101,6 +101,10 @@ spec:
             - name: license
               mountPath: /etc/loki/license
             {{- end }}
+            - name: temp
+              mountPath: /tmp
+            - name: data
+              mountPath: /var/loki
             {{- with .Values.bloomBuilder.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -136,6 +140,10 @@ spec:
             secretName: enterprise-logs-license
           {{- end }}
         {{- end }}
+        - name: temp
+          emptyDir: {}
+        - name: data
+          emptyDir: {}
         {{- with .Values.bloomBuilder.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
