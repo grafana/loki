@@ -397,7 +397,21 @@ func TestOtlpAttributeConfig(t *testing.T) {
 					Mode: lokiv1.OpenshiftLogging,
 				},
 			},
-			wantConfig: defaultOpenShiftLoggingAttributes(),
+			wantConfig: defaultOpenShiftLoggingAttributes(false),
+		},
+		{
+			desc: "openshift-logging defaults without recommended",
+			spec: lokiv1.LokiStackSpec{
+				Tenants: &lokiv1.TenantsSpec{
+					Mode: lokiv1.OpenshiftLogging,
+					Openshift: &lokiv1.OpenshiftTenantSpec{
+						OTLP: &lokiv1.OpenshiftOTLPConfig{
+							DisableRecommendedAttributes: true,
+						},
+					},
+				},
+			},
+			wantConfig: defaultOpenShiftLoggingAttributes(true),
 		},
 	}
 

@@ -5,26 +5,31 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 )
 
-func defaultOpenShiftLoggingAttributes() config.OTLPAttributeConfig {
-	return config.OTLPAttributeConfig{
+func defaultOpenShiftLoggingAttributes(disableRecommended bool) config.OTLPAttributeConfig {
+	result := config.OTLPAttributeConfig{
 		DefaultIndexLabels: []string{
 			"openshift.cluster.uid",
 			"openshift.log.source",
 			"log_source",
 			"openshift.log.type",
 			"log_type",
-
-			"k8s.node.name",
-			"k8s.node.uid",
 			"k8s.namespace.name",
 			"kubernetes.namespace_name",
+		},
+	}
+
+	if !disableRecommended {
+		result.DefaultIndexLabels = append(result.DefaultIndexLabels,
+			"k8s.node.name",
+			"k8s.node.uid",
 			"k8s.container.name",
 			"kubernetes.container_name",
 			"k8s.pod.name",
 			"k8s.pod.uid",
 			"kubernetes.pod_name",
-		},
-		Global: &config.OTLPTenantAttributeConfig{
+		)
+
+		result.Global = &config.OTLPTenantAttributeConfig{
 			ResourceAttributes: []config.OTLPAttribute{
 				{
 					Action: config.OTLPAttributeActionStreamLabel,
@@ -82,8 +87,10 @@ func defaultOpenShiftLoggingAttributes() config.OTLPAttributeConfig {
 					Regex:  "systemd\\.u\\..+",
 				},
 			},
-		},
+		}
 	}
+
+	return result
 }
 
 func defaultOTLPAttributeConfig(ts *lokiv1.TenantsSpec) config.OTLPAttributeConfig {
@@ -93,7 +100,12 @@ func defaultOTLPAttributeConfig(ts *lokiv1.TenantsSpec) config.OTLPAttributeConf
 
 	// TODO decide which of these can be disabled by using "disableRecommendedAttributes"
 	// TODO decide whether we want to split the default configuration by tenant
-	return defaultOpenShiftLoggingAttributes()
+	disableRecommended := false
+	if ts.Openshift != nil && ts.Openshift.OTLP != nil {
+		disableRecommended = ts.Openshift.OTLP.DisableRecommendedAttributes
+	}
+
+	return defaultOpenShiftLoggingAttributes(disableRecommended)
 }
 
 func convertAttributeReferences(refs []lokiv1.OTLPAttributeReference, action config.OTLPAttributeAction) []config.OTLPAttribute {
