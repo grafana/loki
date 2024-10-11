@@ -176,52 +176,31 @@ Example, assuming 4 CPU cores:
 Here, the memory requirement for block processing is 2GiB.
 To get the minimum requirements for the Bloom Gateways, you need to double the value.
 
-## Building and querying blooms
-Bloom filters are built per stream and aggregated together into block files. 
-Streams are assigned to blocks by their fingerprint, following the same ordering scheme as Loki’s TSDB and sharding calculation.
-This gives a data locality benefit when querying as streams in the same shard are likely to be in the same block.
+## Building and Querying Blooms
 
-In addition to blocks, builders maintain a list of metadata files containing references to bloom blocks and the 
-TSDB index files they were built from. Gateways and the planner use these metadata files to discover existing blocks.
+Blooms are built per stream and aggregated into block files. Streams are assigned to blocks based on their fingerprint, ensuring data locality and efficient querying within the same shard.
 
-Every `-bloom-build.planner.interval`, the planner will load the latest TSDB files for all tenants for
-which bloom building is enabled, and compares the TSDB files with the latest bloom metadata files. 
-If there are new TSDB files or any of them have changed, the planner will create a task for the streams and chunks
-referenced by the TSDB file.
+In addition to blocks, builders maintain metadata files referencing bloom blocks and their corresponding TSDB index files[_{{{CITATION{{{_1{Metadata - Wikipedia](https://en.wikipedia.org/wiki/Metadata). These metadata files help gateways and the planner discover existing blocks.
 
-The builder pulls a task from the planner's queue and processes the containing streams and chunks.
-For a given stream, the builder will iterate through all the log lines inside its new  chunks and build a bloom for the
-stream. In case of changes for a previously processed TSDB file, builders will try to reuse blooms from existing blocks
-instead of building new ones from scratch.
-The builder computes [n-grams](https://en.wikipedia.org/wiki/N-gram#:~:text=An%20n%2Dgram%20is%20a,pairs%20extracted%20from%20a%20genome.)
-for each log line of each chunk of a stream and appends both the hash of each n-gram and the hash of each n-gram plus
-the chunk identifier to the bloom. The former allows gateways to skip whole streams while the latter is for skipping
-individual chunks.
+**Bloom Building Process**:
+- Periodically, the planner compares the latest TSDB files with bloom metadata files.
+- If there are new or changed TSDB files, the planner creates tasks for the referenced streams and chunks.
+- The builder processes these tasks, iterating through new log chunks and building a bloom for each stream.
+- For previously processed TSDB files, builders try to reuse existing blooms instead of creating new ones from scratch.
 
-For example, given a log line `abcdef` in the chunk `c6dj8g`, we compute its n-grams: `abc`, `bcd`, `cde`, `def`. 
-And append to the stream bloom the following hashes: `hash("abc")`, `hash("abc" + "c6dj8g")` ... `hash("def")`, `hash("def" + "c6dj8g")`.
-
-By adding n-grams to blooms instead of whole log lines, we can perform partial matches. 
-For the example above, a filter expression `|= "bcd"` would match against the bloom.
-The filter `|= "bcde` would also match the bloom since we decompose the filter into n-grams: 
-`bcd`, `cde` which both are present in the bloom.
-
-N-grams sizes are configurable. The longer the n-gram is, the fewer tokens we need to append to the blooms, 
-but the longer filtering expressions need to be able to check them against blooms. 
-For the example above, where the n-gram length is 3, we need filtering expressions that have at least 3 characters.
+**Structured Metadata Integration**:
+- Builders use structured metadata for each log line of each chunk, improving accuracy and performance[_{{{CITATION{{{_2{A Comprehensive Structured Data Guide - Elastic](https://www.elastic.co/what-is/structured-data).
+- The metadata allows gateways to skip whole streams or individual chunks during queries[_{{{CITATION{{{_1{Metadata - Wikipedia](https://en.wikipedia.org/wiki/Metadata).
 
 ### Queries for which blooms are used
+
 Loki will check blooms for any log filtering expression within a query that satisfies the following criteria:
-- The filtering expression contains at least as many characters as the n-gram length used to build the blooms.
-  - For example, if the n-grams length is 5, the filter `|= "foo"` will not take advantage of blooms but `|= "foobar"` would.
-- If the filter is a regex, we use blooms only if we can simplify the regex to a set of simple matchers.
-  - For example, `|~ "(error|warn)"` would be simplified into `|= "error" or "warn"` thus would make use of blooms, 
-    whereas `|~ "f.*oo"` would not be simplifiable.
-- The filtering expression is a match (`|=`) or regex match (`|~`) filter. We don’t use blooms for not equal (`!=`) or not regex (`!~`) expressions.
-  - For example, `|= "level=error"` would use blooms but `!= "level=error"` would not.
-- The filtering expression is placed before a [line format expression](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#line-format-expression).
-  - For example, with `|= "level=error" | logfmt | line_format "ERROR {{.err}}" |= "traceID=3ksn8d4jj3"`, 
-    the first filter (`|= "level=error"`) will benefit from blooms but the second one (`|= "traceID=3ksn8d4jj3"`) will not.
+- The filtering expression must align with the structured metadata[_{{{CITATION{{{_2{A Comprehensive Structured Data Guide - Elastic](https://www.elastic.co/what-is/structured-data).
+- Regex filters simplify to sets of matchers for bloom queries (e.g., `|~ "(error|warn)"`).
+- Only match (`|=`) and regex match (`|~`) filters use blooms.
+- Filters before [line format expressions](https://grafana.com/docs/loki/latest/logql/log_queries/#line-format-expression) can use blooms.
+
+For more information on structured metadata, you can refer to the [Wikipedia article on Metadata](https://en.wikipedia.org/wiki/Metadata)[_{{{CITATION{{{_1{Metadata - Wikipedia](https://en.wikipedia.org/wiki/Metadata).
 
 ## Query sharding
 Query acceleration does not just happen while processing chunks, but also happens from the query planning phase where
