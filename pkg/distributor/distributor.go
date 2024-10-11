@@ -501,7 +501,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 					} else {
 						logLevel = detectLogLevelFromLogEntry(entry, structuredMetadata)
 					}
-					if logLevel != constants.LogLevelUnknown && logLevel != "" {
+					if logLevel != "" {
 						entry.StructuredMetadata = append(entry.StructuredMetadata, logproto.LabelAdapter{
 							Name:  constants.LevelLabel,
 							Value: logLevel,
