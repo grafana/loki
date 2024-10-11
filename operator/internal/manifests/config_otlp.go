@@ -96,17 +96,32 @@ func defaultOTLPAttributeConfig(ts *lokiv1.TenantsSpec) config.OTLPAttributeConf
 	return defaultOpenShiftLoggingAttributes()
 }
 
-func collectAttributes(attrs []lokiv1.OTLPAttributeReference) (regularExpressions, names []string) {
-	for _, attr := range attrs {
+func convertAttributeReferences(refs []lokiv1.OTLPAttributeReference, action config.OTLPAttributeAction) []config.OTLPAttribute {
+	var (
+		names  []string
+		result []config.OTLPAttribute
+	)
+
+	for _, attr := range refs {
 		if attr.Regex {
-			regularExpressions = append(regularExpressions, attr.Name)
+			result = append(result, config.OTLPAttribute{
+				Action: action,
+				Regex:  attr.Name,
+			})
 			continue
 		}
 
 		names = append(names, attr.Name)
 	}
 
-	return regularExpressions, names
+	if len(names) > 0 {
+		result = append(result, config.OTLPAttribute{
+			Action: action,
+			Names:  names,
+		})
+	}
+
+	return result
 }
 
 func otlpAttributeConfig(ls *lokiv1.LokiStackSpec) config.OTLPAttributeConfig {
@@ -145,54 +160,18 @@ func otlpAttributeConfig(ls *lokiv1.LokiStackSpec) config.OTLPAttributeConfig {
 				}
 
 				if resAttr := structuredMetadata.ResourceAttributes; len(resAttr) > 0 {
-					regularExpressions, names := collectAttributes(resAttr)
-					if len(names) > 0 {
-						result.Global.ResourceAttributes = append(result.Global.ResourceAttributes, config.OTLPAttribute{
-							Action: config.OTLPAttributeActionMetadata,
-							Names:  names,
-						})
-					}
-
-					for _, re := range regularExpressions {
-						result.Global.ResourceAttributes = append(result.Global.ResourceAttributes, config.OTLPAttribute{
-							Action: config.OTLPAttributeActionMetadata,
-							Regex:  re,
-						})
-					}
+					result.Global.ResourceAttributes = append(result.Global.ResourceAttributes,
+						convertAttributeReferences(resAttr, config.OTLPAttributeActionMetadata)...)
 				}
 
 				if scopeAttr := structuredMetadata.ScopeAttributes; len(scopeAttr) > 0 {
-					regularExpressions, names := collectAttributes(scopeAttr)
-					if len(names) > 0 {
-						result.Global.ScopeAttributes = append(result.Global.ScopeAttributes, config.OTLPAttribute{
-							Action: config.OTLPAttributeActionMetadata,
-							Names:  names,
-						})
-					}
-
-					for _, re := range regularExpressions {
-						result.Global.ScopeAttributes = append(result.Global.ScopeAttributes, config.OTLPAttribute{
-							Action: config.OTLPAttributeActionMetadata,
-							Regex:  re,
-						})
-					}
+					result.Global.ScopeAttributes = append(result.Global.ScopeAttributes,
+						convertAttributeReferences(scopeAttr, config.OTLPAttributeActionMetadata)...)
 				}
 
 				if logAttr := structuredMetadata.LogAttributes; len(logAttr) > 0 {
-					regularExpressions, names := collectAttributes(logAttr)
-					if len(names) > 0 {
-						result.Global.LogAttributes = append(result.Global.LogAttributes, config.OTLPAttribute{
-							Action: config.OTLPAttributeActionMetadata,
-							Names:  names,
-						})
-					}
-
-					for _, re := range regularExpressions {
-						result.Global.LogAttributes = append(result.Global.LogAttributes, config.OTLPAttribute{
-							Action: config.OTLPAttributeActionMetadata,
-							Regex:  re,
-						})
-					}
+					result.Global.LogAttributes = append(result.Global.LogAttributes,
+						convertAttributeReferences(logAttr, config.OTLPAttributeActionMetadata)...)
 				}
 			}
 		}
@@ -205,72 +184,24 @@ func otlpAttributeConfig(ls *lokiv1.LokiStackSpec) config.OTLPAttributeConfig {
 				}
 
 				if streamLabels := tenantOTLP.StreamLabels; streamLabels != nil {
-					regularExpressions, names := collectAttributes(streamLabels.ResourceAttributes)
-					if len(names) > 0 {
-						tenantResult.ResourceAttributes = append(tenantResult.ResourceAttributes, config.OTLPAttribute{
-							Action: config.OTLPAttributeActionStreamLabel,
-							Names:  names,
-						})
-					}
-
-					for _, re := range regularExpressions {
-						tenantResult.ResourceAttributes = append(tenantResult.ResourceAttributes, config.OTLPAttribute{
-							Action: config.OTLPAttributeActionStreamLabel,
-							Regex:  re,
-						})
-					}
+					tenantResult.ResourceAttributes = append(tenantResult.ResourceAttributes,
+						convertAttributeReferences(streamLabels.ResourceAttributes, config.OTLPAttributeActionStreamLabel)...)
 				}
 
 				if structuredMetadata := tenantOTLP.StructuredMetadata; structuredMetadata != nil {
 					if resAttr := structuredMetadata.ResourceAttributes; len(resAttr) > 0 {
-						regularExpressions, names := collectAttributes(resAttr)
-						if len(names) > 0 {
-							tenantResult.ResourceAttributes = append(tenantResult.ResourceAttributes, config.OTLPAttribute{
-								Action: config.OTLPAttributeActionMetadata,
-								Names:  names,
-							})
-						}
-
-						for _, re := range regularExpressions {
-							tenantResult.ResourceAttributes = append(tenantResult.ResourceAttributes, config.OTLPAttribute{
-								Action: config.OTLPAttributeActionMetadata,
-								Regex:  re,
-							})
-						}
+						tenantResult.ResourceAttributes = append(tenantResult.ResourceAttributes,
+							convertAttributeReferences(resAttr, config.OTLPAttributeActionMetadata)...)
 					}
 
 					if scopeAttr := structuredMetadata.ScopeAttributes; len(scopeAttr) > 0 {
-						regularExpressions, names := collectAttributes(scopeAttr)
-						if len(names) > 0 {
-							tenantResult.ScopeAttributes = append(tenantResult.ScopeAttributes, config.OTLPAttribute{
-								Action: config.OTLPAttributeActionMetadata,
-								Names:  names,
-							})
-						}
-
-						for _, re := range regularExpressions {
-							tenantResult.ScopeAttributes = append(tenantResult.ScopeAttributes, config.OTLPAttribute{
-								Action: config.OTLPAttributeActionMetadata,
-								Regex:  re,
-							})
-						}
+						tenantResult.ScopeAttributes = append(tenantResult.ScopeAttributes,
+							convertAttributeReferences(scopeAttr, config.OTLPAttributeActionMetadata)...)
 					}
 
 					if logAttr := structuredMetadata.LogAttributes; len(logAttr) > 0 {
-						regularExpressions, names := collectAttributes(logAttr)
-						if len(names) > 0 {
-							tenantResult.LogAttributes = append(tenantResult.LogAttributes, config.OTLPAttribute{
-								Action: config.OTLPAttributeActionMetadata,
-								Names:  names,
-							})
-						}
-
-						for _, re := range regularExpressions {
-							tenantResult.LogAttributes = append(tenantResult.LogAttributes, config.OTLPAttribute{
-								Action: config.OTLPAttributeActionMetadata,
-								Regex:  re,
-							})
-						}
+						tenantResult.LogAttributes = append(tenantResult.LogAttributes,
+							convertAttributeReferences(logAttr, config.OTLPAttributeActionMetadata)...)
 					}
 				}
 

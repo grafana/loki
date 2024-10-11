@@ -156,31 +156,31 @@ func TestOtlpAttributeConfig(t *testing.T) {
 						},
 						{
 							Action: config.OTLPAttributeActionMetadata,
-							Names:  []string{"resource.metadata"},
+							Regex:  "resource.metadata\\.other\\..+",
 						},
 						{
 							Action: config.OTLPAttributeActionMetadata,
-							Regex:  "resource.metadata\\.other\\..+",
+							Names:  []string{"resource.metadata"},
 						},
 					},
 					ScopeAttributes: []config.OTLPAttribute{
 						{
 							Action: config.OTLPAttributeActionMetadata,
-							Names:  []string{"scope.metadata"},
+							Regex:  "scope.metadata\\.other\\..+",
 						},
 						{
 							Action: config.OTLPAttributeActionMetadata,
-							Regex:  "scope.metadata\\.other\\..+",
+							Names:  []string{"scope.metadata"},
 						},
 					},
 					LogAttributes: []config.OTLPAttribute{
 						{
 							Action: config.OTLPAttributeActionMetadata,
-							Names:  []string{"log.metadata"},
+							Regex:  "log.metadata\\.other\\..+",
 						},
 						{
 							Action: config.OTLPAttributeActionMetadata,
-							Regex:  "log.metadata\\.other\\..+",
+							Names:  []string{"log.metadata"},
 						},
 					},
 				},
@@ -351,39 +351,39 @@ func TestOtlpAttributeConfig(t *testing.T) {
 						ResourceAttributes: []config.OTLPAttribute{
 							{
 								Action: config.OTLPAttributeActionStreamLabel,
-								Names:  []string{"tenant.stream.label"},
-							},
-							{
-								Action: config.OTLPAttributeActionStreamLabel,
 								Regex:  "tenant\\.stream\\.label\\.regex\\..+",
 							},
 							{
-								Action: config.OTLPAttributeActionMetadata,
-								Names:  []string{"tenant.resource.metadata"},
+								Action: config.OTLPAttributeActionStreamLabel,
+								Names:  []string{"tenant.stream.label"},
 							},
 							{
 								Action: config.OTLPAttributeActionMetadata,
 								Regex:  `tenant\.resource.metadata\.other\..+`,
 							},
+							{
+								Action: config.OTLPAttributeActionMetadata,
+								Names:  []string{"tenant.resource.metadata"},
+							},
 						},
 						ScopeAttributes: []config.OTLPAttribute{
 							{
 								Action: config.OTLPAttributeActionMetadata,
-								Names:  []string{"tenant.scope.metadata"},
+								Regex:  `tenant\.scope\.metadata\.other\..+`,
 							},
 							{
 								Action: config.OTLPAttributeActionMetadata,
-								Regex:  `tenant\.scope\.metadata\.other\..+`,
+								Names:  []string{"tenant.scope.metadata"},
 							},
 						},
 						LogAttributes: []config.OTLPAttribute{
 							{
 								Action: config.OTLPAttributeActionMetadata,
-								Names:  []string{"tenant.log.metadata"},
+								Regex:  `tenant\.log\.metadata\.other\..+`,
 							},
 							{
 								Action: config.OTLPAttributeActionMetadata,
-								Regex:  `tenant\.log\.metadata\.other\..+`,
+								Names:  []string{"tenant.log.metadata"},
 							},
 						},
 					},
