@@ -9,11 +9,11 @@ import (
 	"text/template"
 
 	"github.com/grafana/grafana-foundation-sdk/go/cog"
+	"github.com/grafana/grafana-foundation-sdk/go/cog/variants"
 	"github.com/grafana/grafana-foundation-sdk/go/common"
 	"github.com/grafana/grafana-foundation-sdk/go/dashboard"
 	"github.com/grafana/grafana-foundation-sdk/go/prometheus"
 	"github.com/grafana/grafana-foundation-sdk/go/table"
-	"github.com/grafana/grafana-foundation-sdk/go/testdata"
 	"github.com/grafana/grafana-foundation-sdk/go/text"
 	"github.com/grafana/grafana-foundation-sdk/go/timeseries"
 	prom "github.com/prometheus/client_golang/prometheus"
@@ -121,7 +121,12 @@ func (l *DashboardLoader) writesDashboard() (dashboard.Dashboard, error) {
 		Tags([]string{"generated", "from", "go"}).
 		Refresh("1m").
 		Time("now-30m", "now").
-		Timezone(common.TimeZoneUtc)
+		Timezone(common.TimeZoneUtc).
+		WithVariable(
+			dashboard.NewDatasourceVariableBuilder("prometheus_datasource").
+				Label("Prometheus datasource").
+				Type("prometheus"),
+		)
 
 	l.WelcomeRow(objectStorage, builder)
 
@@ -156,31 +161,40 @@ func (l *DashboardLoader) WelcomeRow(objectStorage *ObjectStorageMetrics, builde
 	)
 
 	builder.WithPanel(
-		table.NewPanelBuilder().
+		text.NewPanelBuilder().
 			Span(8).
 			Title("System Information").
 			Description("Key information about the Loki system").
-			WithTarget(
-				testdata.NewDataqueryBuilder().
-					ScenarioId(testdata.DataqueryScenarioIdCsvContent).
-					CsvContent(
-						fmt.Sprintf(
-							`Field,Value
-Version,%s
-Backend,%s`,
-							l.ml.BuildInfo().Version,
-							l.ml.ObjectStorage().Backend,
-						),
-					),
-			),
+			Transparent(true).
+			Mode(text.TextModeHTML).
+			Content(fmt.Sprintf(`
+<table width="100%%">
+	<thead>
+		<tr>
+      		<th scope="col">Version</th>
+      		<th scope="col">Backend</th>
+    	</tr>
+	</thead>
+	<tbody>
+		<tr>
+		  <td>%[1]s</td>
+		  <td>%[2]s</td>
+		</tr>
+	</tbody>
+<table>
+`, l.ml.BuildInfo().Version, l.ml.ObjectStorage().Backend)),
 	)
 
-	var targets []*prometheus.DataqueryBuilder
+	var targets []cog.Builder[variants.Dataquery]
 	for _, l := range requiredLabels {
 		targets = append(
 			targets,
 			prometheus.NewDataqueryBuilder().
 				Instant().
+				Datasource(dashboard.DataSourceRef{
+					Type: cog.ToPtr("prometheus"),
+					Uid:  cog.ToPtr("$prometheus_datasource"),
+				}).
 				Expr(
 					fmt.Sprintf(
 						`absent(sum(loki_build_info{%s!=""}))`,
@@ -193,11 +207,12 @@ Backend,%s`,
 	panel := table.NewPanelBuilder().
 		Span(8).
 		Title("Missing required labels").
-		Description("Required labels not present on Loki instances")
-
-	for _, t := range targets {
-		panel.WithTarget(t)
-	}
+		Description("Required labels not present on Loki instances").
+		Datasource(dashboard.DataSourceRef{
+			Type: cog.ToPtr("prometheus"),
+			Uid:  cog.ToPtr("$prometheus_datasource"),
+		}).
+		Targets(targets)
 
 	builder.WithPanel(panel)
 }
@@ -346,9 +361,7 @@ func (b *RedMethodBuilder) QPSPanel() (*timeseries.PanelBuilder, error) {
 		return nil, err
 	}
 	qry := prometheus.NewDataqueryBuilder().
-		Expr(
-			gen,
-		).
+		Expr(gen).
 		LegendFormat(
 			fmt.Sprintf(
 				`{{ %s }}`,
@@ -362,6 +375,10 @@ func (b *RedMethodBuilder) QPSPanel() (*timeseries.PanelBuilder, error) {
 		Span(8).
 		Min(0).
 		Unit("short").
+		Datasource(dashboard.DataSourceRef{
+			Type: cog.ToPtr("prometheus"),
+			Uid:  cog.ToPtr("$prometheus_datasource"),
+		}).
 		WithTarget(qry).
 		Legend(
 			common.NewVizLegendOptionsBuilder().ShowLegend(true).DisplayMode(common.LegendDisplayModeList).Placement(common.LegendPlacementBottom),
@@ -386,7 +403,7 @@ func (b *RedMethodBuilder) LatencyPanels() (res []cog.Builder[dashboard.Panel], 
 
 	for _, args := range rounds {
 
-		var queries []*prometheus.DataqueryBuilder
+		var queries []cog.Builder[variants.Dataquery]
 
 		for _, q := range []string{"50", "90", "99"} {
 			extended := args.Map()
@@ -406,9 +423,7 @@ func (b *RedMethodBuilder) LatencyPanels() (res []cog.Builder[dashboard.Panel], 
 			}
 
 			qry := prometheus.NewDataqueryBuilder().
-				Expr(
-					gen,
-				).
+				Expr(gen).
 				LegendFormat("p" + q)
 
 			queries = append(queries, qry)
@@ -419,13 +434,14 @@ func (b *RedMethodBuilder) LatencyPanels() (res []cog.Builder[dashboard.Panel], 
 			Span(8).
 			Unit("ms").
 			Min(0).
+			Datasource(dashboard.DataSourceRef{
+				Type: cog.ToPtr("prometheus"),
+				Uid:  cog.ToPtr("$prometheus_datasource"),
+			}).
 			Legend(
 				common.NewVizLegendOptionsBuilder().ShowLegend(true).DisplayMode(common.LegendDisplayModeList).Placement(common.LegendPlacementBottom),
-			)
-
-		for _, qry := range queries {
-			panel = panel.WithTarget(qry)
-		}
+			).
+			Targets(queries)
 
 		res = append(res, panel)
 	}
