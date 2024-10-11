@@ -29,6 +29,8 @@ const (
 var (
 	ErrMissingKafkaAddress                 = errors.New("the Kafka address has not been configured")
 	ErrMissingKafkaTopic                   = errors.New("the Kafka topic has not been configured")
+	ErrInconsistentConsumerLagAtStartup    = errors.New("the target and max consumer lag at startup must be either both set to 0 or to a value greater than 0")
+	ErrInvalidMaxConsumerLagAtStartup      = errors.New("the configured max consumer lag at startup must greater or equal than the configured target consumer lag")
 	ErrInconsistentSASLUsernameAndPassword = errors.New("both sasl username and password must be set")
 	ErrInvalidProducerMaxRecordSizeBytes   = fmt.Errorf("the configured producer max record size bytes must be a value between %d and %d", minProducerRecordDataBytesLimit, maxProducerRecordDataBytesLimit)
 )

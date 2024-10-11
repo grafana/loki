@@ -186,6 +186,7 @@ type Distributor struct {
 	kafkaWriteBytesTotal   prometheus.Counter
 	kafkaWriteLatency      prometheus.Histogram
 	kafkaRecordsPerRequest prometheus.Histogram
+	kafkaBytesPerRecord    prometheus.Histogram
 }
 
 // New a distributor creates.
@@ -312,6 +313,12 @@ func New(
 		kafkaRecordsPerRequest: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_kafka_records_per_write_request",
+			Help:      "The number of records a single per-partition write request has been split into.",
+			Buckets:   prometheus.ExponentialBuckets(1, 2, 8),
+		}),
+		kafkaBytesPerRecord: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_kafka_bytes_per_record",
 			Help:      "The number of records a single per-partition write request has been split into.",
 			Buckets:   prometheus.ExponentialBuckets(1, 2, 8),
 		}),
@@ -627,36 +634,40 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
 	var descs [maxExpectedReplicationSet]ring.InstanceDesc
 
-	tracker := pushTracker{
+	kafkaTracker := pushTracker{
 		done: make(chan struct{}, 1), // buffer avoids blocking if caller terminates - sendSamples() only sends once on each
 		err:  make(chan error, 1),
 	}
-	streamsToWrite := 0
-	if d.cfg.IngesterEnabled {
-		streamsToWrite += len(streams)
-	}
+	var kafkaSpan opentracing.Span
 	if d.cfg.KafkaEnabled {
-		streamsToWrite += len(streams)
-	}
-	// We must correctly set streamsPending before beginning any writes to ensure we don't have a race between finishing all of one path before starting the other.
-	tracker.streamsPending.Store(int32(streamsToWrite))
+		var kafkaCtx context.Context
+		kafkaSpan, kafkaCtx = opentracing.StartSpanFromContext(ctx, "KafkaSend")
+		kafkaTracker.streamsPending.Store(int32(len(streams)))
 
-	if d.cfg.KafkaEnabled {
 		subring, err := d.partitionRing.PartitionRing().ShuffleShard(tenantID, d.validator.IngestionPartitionsTenantShardSize(tenantID))
 		if err != nil {
 			return nil, err
 		}
 		// We don't need to create a new context like the ingester writes, because we don't return unless all writes have succeeded.
-		d.sendStreamsToKafka(ctx, streams, tenantID, &tracker, subring)
+		d.sendStreamsToKafka(kafkaCtx, streams, tenantID, &kafkaTracker, subring)
 	}
 
+	ingesterTracker := pushTracker{
+		done: make(chan struct{}, 1), // buffer avoids blocking if caller terminates - sendSamples() only sends once on each
+		err:  make(chan error, 1),
+	}
+	var ingesterSpan opentracing.Span
 	if d.cfg.IngesterEnabled {
+		var ingesterCtx context.Context
+		ingesterSpan, ingesterCtx = opentracing.StartSpanFromContext(ctx, "IngesterSend")
+		ingesterTracker.streamsPending.Store(int32(len(streams)))
+
 		streamTrackers := make([]streamTracker, len(streams))
 		streamsByIngester := map[string][]*streamTracker{}
 		ingesterDescs := map[string]ring.InstanceDesc{}
 
 		if err := func() error {
-			sp := opentracing.SpanFromContext(ctx)
+			sp := opentracing.SpanFromContext(ingesterCtx)
 			if sp != nil {
 				sp.LogKV("event", "started to query ingesters ring")
 				defer func() {
@@ -687,10 +698,10 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 		for ingester, streams := range streamsByIngester {
 			func(ingester ring.InstanceDesc, samples []*streamTracker) {
-				// Use a background context to make sure all ingesters get samples even if we return early
+				// Use a background context to make sure all ingesters get samples even if we return early.
 				localCtx, cancel := context.WithTimeout(context.Background(), d.clientCfg.RemoteTimeout)
 				localCtx = user.InjectOrgID(localCtx, tenantID)
-				if sp := opentracing.SpanFromContext(ctx); sp != nil {
+				if sp := opentracing.SpanFromContext(ingesterCtx); sp != nil {
 					localCtx = opentracing.ContextWithSpan(localCtx, sp)
 				}
 				select {
@@ -700,7 +711,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				case d.ingesterTasks <- pushIngesterTask{
 					ingester:      ingester,
 					streamTracker: samples,
-					pushTracker:   &tracker,
+					pushTracker:   &ingesterTracker,
 					ctx:           localCtx,
 					cancel:        cancel,
 				}:
@@ -710,14 +721,26 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		}
 	}
 
-	select {
-	case err := <-tracker.err:
-		return nil, err
-	case <-tracker.done:
-		return &logproto.PushResponse{}, validationErr
-	case <-ctx.Done():
-		return nil, ctx.Err()
+	kafkaDone := !d.cfg.KafkaEnabled
+	ingestersDone := !d.cfg.IngesterEnabled
+	for !kafkaDone || !ingestersDone {
+		select {
+		// If either tracker errors, return the first one
+		case err := <-ingesterTracker.err:
+			return nil, err
+		case err := <-kafkaTracker.err:
+			return nil, err
+		case <-kafkaTracker.done:
+			kafkaSpan.Finish()
+			kafkaDone = true
+		case <-ingesterTracker.done:
+			ingesterSpan.Finish()
+			ingestersDone = true
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
+	return &logproto.PushResponse{}, validationErr
 }
 
 func (d *Distributor) trackDiscardedData(
@@ -941,15 +964,6 @@ func (d *Distributor) createShard(lbls labels.Labels, streamPattern string, shar
 	}
 }
 
-// maxT returns the highest between two given timestamps.
-func maxT(t1, t2 time.Time) time.Time {
-	if t1.Before(t2) {
-		return t2
-	}
-
-	return t1
-}
-
 func (d *Distributor) truncateLines(vContext validationContext, stream *logproto.Stream) {
 	if !vContext.maxLineSizeTruncate {
 		return
@@ -1075,6 +1089,9 @@ func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream,
 		return fmt.Errorf("failed to marshal write request to records: %w", err)
 	}
 
+	for _, record := range records {
+		d.kafkaBytesPerRecord.Observe(float64(len(record.Value)))
+	}
 	d.kafkaRecordsPerRequest.Observe(float64(len(records)))
 
 	produceResults := d.kafkaWriter.ProduceSync(ctx, records)
