@@ -2,6 +2,7 @@ package pattern
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"testing"
 	"time"
@@ -15,8 +16,8 @@ import (
 	"github.com/grafana/dskit/ring"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/pattern/aggregation"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 
 	"github.com/grafana/loki/v3/pkg/pattern/drain"
@@ -149,6 +150,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 
 		err = inst.Push(context.Background(), &push.PushRequest{
 			Streams: []push.Stream{
+				// info level
 				{
 					Labels: lbs.String(),
 					Entries: []push.Entry{
@@ -164,21 +166,17 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 						},
 					},
 				},
+				// unknown level
 				{
 					Labels: lbs2.String(),
 					Entries: []push.Entry{
 						{
 							Timestamp: time.Unix(20, 0),
 							Line:      "ts=1 msg=hello",
-							StructuredMetadata: push.LabelsAdapter{
-								push.LabelAdapter{
-									Name:  constants.LevelLabel,
-									Value: "error",
-								},
-							},
 						},
 					},
 				},
+				// error level
 				{
 					Labels: lbs3.String(),
 					Entries: []push.Entry{
@@ -199,6 +197,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 		for i := 0; i < 30; i++ {
 			err = inst.Push(context.Background(), &push.PushRequest{
 				Streams: []push.Stream{
+					// info
 					{
 						Labels: lbs.String(),
 						Entries: []push.Entry{
@@ -214,6 +213,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 							},
 						},
 					},
+					// error
 					{
 						Labels: lbs2.String(),
 						Entries: []push.Entry{
@@ -243,9 +243,26 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 
 		require.Len(t, inst.aggMetricsByStreamAndLevel, 3)
 
-		require.Equal(t, uint64(14+(15*30)), inst.aggMetricsByStreamAndLevel[lbs.String()]["info"].bytes)
-		require.Equal(t, uint64(14+(15*30)), inst.aggMetricsByStreamAndLevel[lbs2.String()]["error"].bytes)
-		require.Equal(t, uint64(17), inst.aggMetricsByStreamAndLevel[lbs3.String()]["error"].bytes)
+		require.Equal(
+			t,
+			uint64(14+(15*30)),
+			inst.aggMetricsByStreamAndLevel[lbs.String()]["info"].bytes,
+		)
+		require.Equal(
+			t,
+			uint64(14),
+			inst.aggMetricsByStreamAndLevel[lbs2.String()]["unknown"].bytes,
+		)
+		require.Equal(
+			t,
+			uint64(15*30),
+			inst.aggMetricsByStreamAndLevel[lbs2.String()]["error"].bytes,
+		)
+		require.Equal(
+			t,
+			uint64(17),
+			inst.aggMetricsByStreamAndLevel[lbs3.String()]["error"].bytes,
+		)
 
 		require.Equal(
 			t,
@@ -254,7 +271,12 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 		)
 		require.Equal(
 			t,
-			uint64(31),
+			uint64(1),
+			inst.aggMetricsByStreamAndLevel[lbs2.String()]["unknown"].count,
+		)
+		require.Equal(
+			t,
+			uint64(30),
 			inst.aggMetricsByStreamAndLevel[lbs2.String()]["error"].count,
 		)
 		require.Equal(
@@ -270,51 +292,74 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 		now := model.Now()
 		inst.Downsample(now)
 
+		expectedTestLine := fmt.Sprintf(
+			`ts=%d bytes=%s count=%d detected_level="info" %s="test_service" test="test"`,
+			now.UnixNano(),
+			util.HumanizeBytes(uint64(14+(15*30))),
+			uint64(31),
+			loghttp_push.LabelServiceName,
+		)
+
 		mockWriter.AssertCalled(
 			t,
 			"WriteEntry",
 			now.Time(),
-			aggregation.AggregatedMetricEntry(
-				now,
-				uint64(14+(15*30)),
-				uint64(31),
-				"test_service",
-				lbs,
-			),
+			expectedTestLine,
 			labels.New(
 				labels.Label{Name: loghttp_push.AggregatedMetricLabel, Value: "test_service"},
 				labels.Label{Name: "level", Value: "info"},
 			),
 		)
 
-		mockWriter.AssertCalled(
-			t,
-			"WriteEntry",
-			now.Time(),
-			aggregation.AggregatedMetricEntry(
-				now,
-				uint64(14+(15*30)),
-				uint64(31),
-				"foo_service",
-				lbs2,
-			),
-			labels.New(
-				labels.Label{Name: loghttp_push.AggregatedMetricLabel, Value: "foo_service"},
-				labels.Label{Name: "level", Value: "error"},
-			),
+		expectedFooLine1 := fmt.Sprintf(
+			`ts=%d bytes=%s count=%d detected_level="unknown" foo="bar" %s="foo_service"`,
+			now.UnixNano(),
+			util.HumanizeBytes(uint64(14)),
+			uint64(1),
+			loghttp_push.LabelServiceName,
+		)
+		expectedFooLine2 := fmt.Sprintf(
+			`ts=%d bytes=%s count=%d detected_level="error" foo="bar" %s="foo_service"`,
+			now.UnixNano(),
+			util.HumanizeBytes(uint64(15*30)),
+			uint64(30),
+			loghttp_push.LabelServiceName,
 		)
 
 		mockWriter.AssertCalled(
 			t,
 			"WriteEntry",
 			now.Time(),
-			aggregation.AggregatedMetricEntry(
-				now,
-				uint64(17),
-				uint64(1),
-				"baz_service",
-				lbs3,
+			expectedFooLine1,
+			labels.New(
+				labels.Label{Name: loghttp_push.AggregatedMetricLabel, Value: "foo_service"},
+				labels.Label{Name: "level", Value: "unknown"},
 			),
+		)
+		mockWriter.AssertCalled(
+			t,
+			"WriteEntry",
+			now.Time(),
+			expectedFooLine2,
+			labels.New(
+				labels.Label{Name: loghttp_push.AggregatedMetricLabel, Value: "foo_service"},
+				labels.Label{Name: "level", Value: "error"},
+			),
+		)
+
+		expectedBazLine := fmt.Sprintf(
+			`ts=%d bytes=%s count=%d detected_level="error" foo="baz" %s="baz_service"`,
+			now.UnixNano(),
+			util.HumanizeBytes(uint64(17)),
+			uint64(1),
+			loghttp_push.LabelServiceName,
+		)
+
+		mockWriter.AssertCalled(
+			t,
+			"WriteEntry",
+			now.Time(),
+			expectedBazLine,
 			labels.New(
 				labels.Label{Name: loghttp_push.AggregatedMetricLabel, Value: "baz_service"},
 				labels.Label{Name: "level", Value: "error"},

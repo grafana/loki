@@ -308,6 +308,7 @@ func (i *instance) writeAggregatedMetrics(
 	service := streamLbls.Get(push.LabelServiceName)
 	if service == "" {
 		service = push.ServiceUnknown
+		streamLbls = append(streamLbls, labels.Label{Name: push.LabelServiceName, Value: service})
 	}
 
 	newLbls := labels.Labels{
@@ -318,7 +319,7 @@ func (i *instance) writeAggregatedMetrics(
 	if i.writer != nil {
 		i.writer.WriteEntry(
 			now.Time(),
-			aggregation.AggregatedMetricEntry(now, totalBytes, totalCount, service, streamLbls),
+			aggregation.AggregatedMetricEntry(now, totalBytes, totalCount, level, streamLbls),
 			newLbls,
 		)
 
