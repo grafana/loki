@@ -18,7 +18,7 @@ import (
 	prom "github.com/prometheus/client_golang/prometheus"
 )
 
-var requiredLabels = []string{"cluster", "namespace", "container"}
+var requiredLabels = []string{"cluster", "namespace", "container", "fake"}
 
 type DashboardLoader struct {
 	ml DependencyLoader
@@ -120,15 +120,7 @@ func (l *DashboardLoader) writesDashboard() (dashboard.Dashboard, error) {
 		Tags([]string{"generated", "from", "go"}).
 		Refresh("1m").
 		Time("now-30m", "now").
-		Timezone(common.TimeZoneUtc).
-		WithVariable(
-			dashboard.NewDatasourceVariableBuilder("prometheus_datasource").
-				Label("Prometheus datasource").
-				Type("prometheus").Current(dashboard.VariableOption{
-				Text:  dashboard.StringOrArrayOfString{String: cog.ToPtr("default")},
-				Value: dashboard.StringOrArrayOfString{String: cog.ToPtr("default")},
-			}),
-		)
+		Timezone(common.TimeZoneUtc)
 
 	l.WelcomeRow(objectStorage, builder)
 
@@ -206,10 +198,6 @@ func (l *DashboardLoader) WelcomeRow(objectStorage *ObjectStorageMetrics, builde
 		Span(8).
 		Title("Missing required labels").
 		Description("Required labels not present on Loki instances").
-		Datasource(dashboard.DataSourceRef{
-			Type: cog.ToPtr("prometheus"),
-			Uid:  cog.ToPtr("$prometheus_datasource"),
-		}).
 		Targets(targets).Legend(
 		common.NewVizLegendOptionsBuilder().
 			IsVisible(true).
@@ -377,10 +365,6 @@ func (b *RedMethodBuilder) QPSPanel() (*timeseries.PanelBuilder, error) {
 		Span(8).
 		Min(0).
 		Unit("short").
-		Datasource(dashboard.DataSourceRef{
-			Type: cog.ToPtr("prometheus"),
-			Uid:  cog.ToPtr("$prometheus_datasource"),
-		}).
 		WithTarget(qry).
 		Legend(
 			common.NewVizLegendOptionsBuilder().ShowLegend(true).DisplayMode(common.LegendDisplayModeList).Placement(common.LegendPlacementBottom),
@@ -436,10 +420,6 @@ func (b *RedMethodBuilder) LatencyPanels() (res []cog.Builder[dashboard.Panel], 
 			Span(8).
 			Unit("ms").
 			Min(0).
-			Datasource(dashboard.DataSourceRef{
-				Type: cog.ToPtr("prometheus"),
-				Uid:  cog.ToPtr("$prometheus_datasource"),
-			}).
 			Legend(
 				common.NewVizLegendOptionsBuilder().ShowLegend(true).DisplayMode(common.LegendDisplayModeList).Placement(common.LegendPlacementBottom),
 			).
