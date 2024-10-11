@@ -53,7 +53,7 @@ It is not recommended to run scalable mode with `filesystem` storage. For the pu
      loki:
        schemaConfig:
          configs:
-           - from: 2024-04-01
+           - from: "2024-04-01"
              store: tsdb
              object_store: s3
              schema: v13
@@ -134,7 +134,7 @@ After testing Loki with MinIO, it is recommended to configure Loki with an objec
 loki:
   schemaConfig:
     configs:
-      - from: 2024-04-01
+      - from: "2024-04-01"
         store: tsdb
         object_store: s3
         schema: v13
@@ -214,7 +214,7 @@ bloomGateway:
 loki:
   schemaConfig:
     configs:
-      - from: 2024-04-01
+      - from: "2024-04-01"
         store: tsdb
         object_store: azure
         schema: v13
