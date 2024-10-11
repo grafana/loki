@@ -13,7 +13,6 @@ import (
 	"github.com/grafana/grafana-foundation-sdk/go/common"
 	"github.com/grafana/grafana-foundation-sdk/go/dashboard"
 	"github.com/grafana/grafana-foundation-sdk/go/prometheus"
-	"github.com/grafana/grafana-foundation-sdk/go/table"
 	"github.com/grafana/grafana-foundation-sdk/go/text"
 	"github.com/grafana/grafana-foundation-sdk/go/timeseries"
 	prom "github.com/prometheus/client_golang/prometheus"
@@ -125,7 +124,10 @@ func (l *DashboardLoader) writesDashboard() (dashboard.Dashboard, error) {
 		WithVariable(
 			dashboard.NewDatasourceVariableBuilder("prometheus_datasource").
 				Label("Prometheus datasource").
-				Type("prometheus"),
+				Type("prometheus").Current(dashboard.VariableOption{
+				Text:  dashboard.StringOrArrayOfString{String: cog.ToPtr("default")},
+				Value: dashboard.StringOrArrayOfString{String: cog.ToPtr("default")},
+			}),
 		)
 
 	l.WelcomeRow(objectStorage, builder)
@@ -187,24 +189,20 @@ func (l *DashboardLoader) WelcomeRow(objectStorage *ObjectStorageMetrics, builde
 
 	var targets []cog.Builder[variants.Dataquery]
 	for _, l := range requiredLabels {
-		targets = append(
-			targets,
-			prometheus.NewDataqueryBuilder().
-				Instant().
-				Datasource(dashboard.DataSourceRef{
-					Type: cog.ToPtr("prometheus"),
-					Uid:  cog.ToPtr("$prometheus_datasource"),
-				}).
-				Expr(
-					fmt.Sprintf(
-						`absent(sum(loki_build_info{%s!=""}))`,
-						l,
-					),
-				).LegendFormat(l),
-		)
+		target := prometheus.NewDataqueryBuilder().
+			Expr(
+				fmt.Sprintf(
+					`absent(sum(loki_build_info{%s!=""}))`,
+					l,
+				),
+			).
+			LegendFormat(l).
+			Instant()
+
+		targets = append(targets, target)
 	}
 
-	panel := table.NewPanelBuilder().
+	panel := timeseries.NewPanelBuilder().
 		Span(8).
 		Title("Missing required labels").
 		Description("Required labels not present on Loki instances").
@@ -212,7 +210,11 @@ func (l *DashboardLoader) WelcomeRow(objectStorage *ObjectStorageMetrics, builde
 			Type: cog.ToPtr("prometheus"),
 			Uid:  cog.ToPtr("$prometheus_datasource"),
 		}).
-		Targets(targets)
+		Targets(targets).Legend(
+		common.NewVizLegendOptionsBuilder().
+			IsVisible(true).
+			DisplayMode(common.LegendDisplayModeList),
+	)
 
 	builder.WithPanel(panel)
 }

@@ -42,7 +42,7 @@ type DependencyLoader interface {
 var DummyLoader = NewSimpleMetricLoader(config.SchemaConfig{
 	Configs: []config.PeriodConfig{
 		{
-			ObjectType: "gcs",
+			ObjectType: "s3",
 		},
 	},
 })
