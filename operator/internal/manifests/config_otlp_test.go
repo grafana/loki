@@ -156,31 +156,31 @@ func TestOtlpAttributeConfig(t *testing.T) {
 						},
 						{
 							Action: config.OTLPAttributeActionMetadata,
-							Regex:  "resource.metadata\\.other\\..+",
+							Names:  []string{"resource.metadata"},
 						},
 						{
 							Action: config.OTLPAttributeActionMetadata,
-							Names:  []string{"resource.metadata"},
+							Regex:  "resource.metadata\\.other\\..+",
 						},
 					},
 					ScopeAttributes: []config.OTLPAttribute{
 						{
 							Action: config.OTLPAttributeActionMetadata,
-							Regex:  "scope.metadata\\.other\\..+",
+							Names:  []string{"scope.metadata"},
 						},
 						{
 							Action: config.OTLPAttributeActionMetadata,
-							Names:  []string{"scope.metadata"},
+							Regex:  "scope.metadata\\.other\\..+",
 						},
 					},
 					LogAttributes: []config.OTLPAttribute{
 						{
 							Action: config.OTLPAttributeActionMetadata,
-							Regex:  "log.metadata\\.other\\..+",
+							Names:  []string{"log.metadata"},
 						},
 						{
 							Action: config.OTLPAttributeActionMetadata,
-							Names:  []string{"log.metadata"},
+							Regex:  "log.metadata\\.other\\..+",
 						},
 					},
 				},
@@ -351,39 +351,39 @@ func TestOtlpAttributeConfig(t *testing.T) {
 						ResourceAttributes: []config.OTLPAttribute{
 							{
 								Action: config.OTLPAttributeActionStreamLabel,
-								Regex:  "tenant\\.stream\\.label\\.regex\\..+",
-							},
-							{
-								Action: config.OTLPAttributeActionStreamLabel,
 								Names:  []string{"tenant.stream.label"},
 							},
 							{
-								Action: config.OTLPAttributeActionMetadata,
-								Regex:  `tenant\.resource.metadata\.other\..+`,
+								Action: config.OTLPAttributeActionStreamLabel,
+								Regex:  "tenant\\.stream\\.label\\.regex\\..+",
 							},
 							{
 								Action: config.OTLPAttributeActionMetadata,
 								Names:  []string{"tenant.resource.metadata"},
 							},
+							{
+								Action: config.OTLPAttributeActionMetadata,
+								Regex:  `tenant\.resource.metadata\.other\..+`,
+							},
 						},
 						ScopeAttributes: []config.OTLPAttribute{
 							{
 								Action: config.OTLPAttributeActionMetadata,
-								Regex:  `tenant\.scope\.metadata\.other\..+`,
+								Names:  []string{"tenant.scope.metadata"},
 							},
 							{
 								Action: config.OTLPAttributeActionMetadata,
-								Names:  []string{"tenant.scope.metadata"},
+								Regex:  `tenant\.scope\.metadata\.other\..+`,
 							},
 						},
 						LogAttributes: []config.OTLPAttribute{
 							{
 								Action: config.OTLPAttributeActionMetadata,
-								Regex:  `tenant\.log\.metadata\.other\..+`,
+								Names:  []string{"tenant.log.metadata"},
 							},
 							{
 								Action: config.OTLPAttributeActionMetadata,
-								Names:  []string{"tenant.log.metadata"},
+								Regex:  `tenant\.log\.metadata\.other\..+`,
 							},
 						},
 					},
@@ -397,7 +397,7 @@ func TestOtlpAttributeConfig(t *testing.T) {
 					Mode: lokiv1.OpenshiftLogging,
 				},
 			},
-			wantConfig: sortAndDeduplicateOTLPAttributes(defaultOpenShiftLoggingAttributes(false)),
+			wantConfig: sortAndDeduplicateOTLPConfig(defaultOpenShiftLoggingAttributes(false)),
 		},
 		{
 			desc: "openshift-logging defaults without recommended",
@@ -411,7 +411,7 @@ func TestOtlpAttributeConfig(t *testing.T) {
 					},
 				},
 			},
-			wantConfig: sortAndDeduplicateOTLPAttributes(defaultOpenShiftLoggingAttributes(true)),
+			wantConfig: sortAndDeduplicateOTLPConfig(defaultOpenShiftLoggingAttributes(true)),
 		},
 		{
 			desc: "openshift-logging defaults with additional custom attributes",
@@ -531,6 +531,142 @@ func TestOtlpAttributeConfig(t *testing.T) {
 			cfg := otlpAttributeConfig(&tc.spec)
 
 			assert.Equal(t, tc.wantConfig, cfg)
+		})
+	}
+}
+
+func TestSortOTLPAttributes(t *testing.T) {
+	tt := []struct {
+		desc      string
+		attrs     []config.OTLPAttribute
+		wantAttrs []config.OTLPAttribute
+	}{
+		{
+			desc: "sort",
+			attrs: []config.OTLPAttribute{
+				{
+					Action: config.OTLPAttributeActionMetadata,
+					Names:  []string{"test.a"},
+				},
+				{
+					Action: config.OTLPAttributeActionMetadata,
+					Regex:  "test.regex.c",
+				},
+				{
+					Action: config.OTLPAttributeActionStreamLabel,
+					Names:  []string{"test.b"},
+				},
+				{
+					Action: config.OTLPAttributeActionMetadata,
+					Regex:  "test.regex.a",
+				},
+				{
+					Action: config.OTLPAttributeActionStreamLabel,
+					Regex:  "test.regex.b",
+				},
+			},
+			wantAttrs: []config.OTLPAttribute{
+				{
+					Action: config.OTLPAttributeActionStreamLabel,
+					Names:  []string{"test.b"},
+				},
+				{
+					Action: config.OTLPAttributeActionStreamLabel,
+					Regex:  "test.regex.b",
+				},
+				{
+					Action: config.OTLPAttributeActionMetadata,
+					Names:  []string{"test.a"},
+				},
+				{
+					Action: config.OTLPAttributeActionMetadata,
+					Regex:  "test.regex.a",
+				},
+				{
+					Action: config.OTLPAttributeActionMetadata,
+					Regex:  "test.regex.c",
+				},
+			},
+		},
+		{
+			desc: "simple combine",
+			attrs: []config.OTLPAttribute{
+				{
+					Action: config.OTLPAttributeActionStreamLabel,
+					Names:  []string{"test.a"},
+				},
+				{
+					Action: config.OTLPAttributeActionStreamLabel,
+					Names:  []string{"test.b"},
+				},
+			},
+			wantAttrs: []config.OTLPAttribute{
+				{
+					Action: config.OTLPAttributeActionStreamLabel,
+					Names:  []string{"test.a", "test.b"},
+				},
+			},
+		},
+		{
+			desc: "complex combine",
+			attrs: []config.OTLPAttribute{
+				{
+					Action: config.OTLPAttributeActionStreamLabel,
+					Names:  []string{"test.a"},
+				},
+				{
+					Action: config.OTLPAttributeActionStreamLabel,
+					Names:  []string{"test.c"},
+				},
+				{
+					Action: config.OTLPAttributeActionMetadata,
+					Names:  []string{"test.d", "test.e"},
+				},
+				{
+					Action: config.OTLPAttributeActionStreamLabel,
+					Names:  []string{"test.b"},
+				},
+				{
+					Action: config.OTLPAttributeActionMetadata,
+					Names:  []string{"test.f"},
+				},
+				{
+					Action: config.OTLPAttributeActionStreamLabel,
+					Regex:  "test.regex.b",
+				},
+				{
+					Action: config.OTLPAttributeActionMetadata,
+					Regex:  "test.regex.a",
+				},
+			},
+			wantAttrs: []config.OTLPAttribute{
+				{
+					Action: config.OTLPAttributeActionStreamLabel,
+					Names:  []string{"test.a", "test.b", "test.c"},
+				},
+				{
+					Action: config.OTLPAttributeActionStreamLabel,
+					Regex:  "test.regex.b",
+				},
+				{
+					Action: config.OTLPAttributeActionMetadata,
+					Names:  []string{"test.d", "test.e", "test.f"},
+				},
+				{
+					Action: config.OTLPAttributeActionMetadata,
+					Regex:  "test.regex.a",
+				},
+			},
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+
+			attrs := sortAndDeduplicateOTLPAttributes(tc.attrs)
+
+			assert.Equal(t, tc.wantAttrs, attrs)
 		})
 	}
 }

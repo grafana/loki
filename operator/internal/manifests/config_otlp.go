@@ -2,6 +2,7 @@ package manifests
 
 import (
 	"slices"
+	"strings"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
@@ -138,13 +139,92 @@ func convertAttributeReferences(refs []lokiv1.OTLPAttributeReference, action con
 	return result
 }
 
-func sortAndDeduplicateOTLPAttributes(cfg config.OTLPAttributeConfig) config.OTLPAttributeConfig {
+func sortAndDeduplicateOTLPConfig(cfg config.OTLPAttributeConfig) config.OTLPAttributeConfig {
 	if len(cfg.DefaultIndexLabels) > 1 {
 		slices.Sort(cfg.DefaultIndexLabels)
 		cfg.DefaultIndexLabels = slices.Compact(cfg.DefaultIndexLabels)
 	}
 
+	if cfg.Global != nil {
+		if len(cfg.Global.ResourceAttributes) > 1 {
+			cfg.Global.ResourceAttributes = sortAndDeduplicateOTLPAttributes(cfg.Global.ResourceAttributes)
+		}
+
+		if len(cfg.Global.ScopeAttributes) > 1 {
+			cfg.Global.ScopeAttributes = sortAndDeduplicateOTLPAttributes(cfg.Global.ScopeAttributes)
+		}
+
+		if len(cfg.Global.LogAttributes) > 1 {
+			cfg.Global.LogAttributes = sortAndDeduplicateOTLPAttributes(cfg.Global.LogAttributes)
+		}
+	}
+
+	for _, t := range cfg.Tenants {
+		if len(t.ResourceAttributes) > 1 {
+			t.ResourceAttributes = sortAndDeduplicateOTLPAttributes(t.ResourceAttributes)
+		}
+
+		if len(t.ScopeAttributes) > 1 {
+			t.ScopeAttributes = sortAndDeduplicateOTLPAttributes(t.ScopeAttributes)
+		}
+
+		if len(t.LogAttributes) > 1 {
+			t.LogAttributes = sortAndDeduplicateOTLPAttributes(t.LogAttributes)
+		}
+	}
+
 	return cfg
+}
+
+func sortAndDeduplicateOTLPAttributes(attrs []config.OTLPAttribute) []config.OTLPAttribute {
+	slices.SortFunc(attrs, func(a, b config.OTLPAttribute) int {
+		action := strings.Compare(string(a.Action), string(b.Action))
+		if action != 0 {
+			return action
+		}
+
+		if a.Regex != "" && b.Regex != "" {
+			return strings.Compare(a.Regex, b.Regex)
+		}
+
+		if a.Regex != "" && b.Regex == "" {
+			return 1
+		}
+
+		if a.Regex == "" && b.Regex != "" {
+			return -1
+		}
+
+		return 0
+	})
+
+	for i := 0; i < len(attrs)-1; i++ {
+		a := attrs[i]
+		if a.Regex != "" {
+			continue
+		}
+
+		next := attrs[i+1]
+		if next.Regex != "" {
+			continue
+		}
+
+		if a.Action != next.Action {
+			continue
+		}
+
+		// Combine attribute definitions if they have the same action and just contain names
+		a.Names = append(a.Names, next.Names...)
+		slices.Sort(a.Names)
+		a.Names = slices.Compact(a.Names)
+
+		// Remove the "next" attribute definition
+		attrs[i] = a
+		attrs = append(attrs[:i+1], attrs[i+2:]...)
+		i--
+	}
+
+	return attrs
 }
 
 func otlpAttributeConfig(ls *lokiv1.LokiStackSpec) config.OTLPAttributeConfig {
@@ -236,5 +316,5 @@ func otlpAttributeConfig(ls *lokiv1.LokiStackSpec) config.OTLPAttributeConfig {
 		}
 	}
 
-	return sortAndDeduplicateOTLPAttributes(result)
+	return sortAndDeduplicateOTLPConfig(result)
 }
