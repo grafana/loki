@@ -397,7 +397,7 @@ func TestOtlpAttributeConfig(t *testing.T) {
 					Mode: lokiv1.OpenshiftLogging,
 				},
 			},
-			wantConfig: defaultOpenShiftLoggingAttributes(false),
+			wantConfig: sortAndDeduplicateOTLPAttributes(defaultOpenShiftLoggingAttributes(false)),
 		},
 		{
 			desc: "openshift-logging defaults without recommended",
@@ -411,7 +411,7 @@ func TestOtlpAttributeConfig(t *testing.T) {
 					},
 				},
 			},
-			wantConfig: defaultOpenShiftLoggingAttributes(true),
+			wantConfig: sortAndDeduplicateOTLPAttributes(defaultOpenShiftLoggingAttributes(true)),
 		},
 		{
 			desc: "openshift-logging defaults with additional custom attributes",
@@ -447,14 +447,70 @@ func TestOtlpAttributeConfig(t *testing.T) {
 			},
 			wantConfig: config.OTLPAttributeConfig{
 				DefaultIndexLabels: []string{
-					"openshift.cluster.uid",
-					"openshift.log.source",
-					"log_source",
-					"openshift.log.type",
-					"log_type",
+					"custom.stream.label",
 					"k8s.namespace.name",
 					"kubernetes.namespace_name",
+					"log_source",
+					"log_type",
+					"openshift.cluster.uid",
+					"openshift.log.source",
+					"openshift.log.type",
+				},
+				Global: &config.OTLPTenantAttributeConfig{
+					LogAttributes: []config.OTLPAttribute{
+						{
+							Action: config.OTLPAttributeActionMetadata,
+							Names:  []string{"custom.log.metadata"},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc: "openshift-logging defaults with de-duplication",
+			spec: lokiv1.LokiStackSpec{
+				Limits: &lokiv1.LimitsSpec{
+					Global: &lokiv1.LimitsTemplateSpec{
+						OTLP: &lokiv1.OTLPSpec{
+							StreamLabels: &lokiv1.OTLPStreamLabelSpec{
+								ResourceAttributes: []lokiv1.OTLPAttributeReference{
+									{
+										Name: "custom.stream.label",
+									},
+									{
+										Name: "k8s.namespace.name",
+									},
+								},
+							},
+							StructuredMetadata: &lokiv1.OTLPMetadataSpec{
+								LogAttributes: []lokiv1.OTLPAttributeReference{
+									{
+										Name: "custom.log.metadata",
+									},
+								},
+							},
+						},
+					},
+				},
+				Tenants: &lokiv1.TenantsSpec{
+					Mode: lokiv1.OpenshiftLogging,
+					Openshift: &lokiv1.OpenshiftTenantSpec{
+						OTLP: &lokiv1.OpenshiftOTLPConfig{
+							DisableRecommendedAttributes: true,
+						},
+					},
+				},
+			},
+			wantConfig: config.OTLPAttributeConfig{
+				DefaultIndexLabels: []string{
 					"custom.stream.label",
+					"k8s.namespace.name",
+					"kubernetes.namespace_name",
+					"log_source",
+					"log_type",
+					"openshift.cluster.uid",
+					"openshift.log.source",
+					"openshift.log.type",
 				},
 				Global: &config.OTLPTenantAttributeConfig{
 					LogAttributes: []config.OTLPAttribute{

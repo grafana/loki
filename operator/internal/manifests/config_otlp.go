@@ -1,6 +1,8 @@
 package manifests
 
 import (
+	"slices"
+
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 )
@@ -8,13 +10,13 @@ import (
 func defaultOpenShiftLoggingAttributes(disableRecommended bool) config.OTLPAttributeConfig {
 	result := config.OTLPAttributeConfig{
 		DefaultIndexLabels: []string{
-			"openshift.cluster.uid",
-			"openshift.log.source",
-			"log_source",
-			"openshift.log.type",
-			"log_type",
 			"k8s.namespace.name",
 			"kubernetes.namespace_name",
+			"log_source",
+			"log_type",
+			"openshift.cluster.uid",
+			"openshift.log.source",
+			"openshift.log.type",
 		},
 	}
 
@@ -136,6 +138,15 @@ func convertAttributeReferences(refs []lokiv1.OTLPAttributeReference, action con
 	return result
 }
 
+func sortAndDeduplicateOTLPAttributes(cfg config.OTLPAttributeConfig) config.OTLPAttributeConfig {
+	if len(cfg.DefaultIndexLabels) > 1 {
+		slices.Sort(cfg.DefaultIndexLabels)
+		cfg.DefaultIndexLabels = slices.Compact(cfg.DefaultIndexLabels)
+	}
+
+	return cfg
+}
+
 func otlpAttributeConfig(ls *lokiv1.LokiStackSpec) config.OTLPAttributeConfig {
 	result := defaultOTLPAttributeConfig(ls.Tenants)
 
@@ -225,5 +236,5 @@ func otlpAttributeConfig(ls *lokiv1.LokiStackSpec) config.OTLPAttributeConfig {
 		}
 	}
 
-	return result
+	return sortAndDeduplicateOTLPAttributes(result)
 }
