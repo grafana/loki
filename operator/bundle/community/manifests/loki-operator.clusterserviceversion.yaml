@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:0.6.2
-    createdAt: "2024-10-10T11:53:17Z"
+    createdAt: "2024-10-14T10:09:30Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -1810,7 +1810,7 @@ spec:
                 - --upstream=http://127.0.0.1:8080/
                 - --logtostderr=true
                 - --v=0
-                image: gcr.io/kubebuilder/kube-rbac-proxy:v0.15.0
+                image: gcr.io/kubebuilder/kube-rbac-proxy:v0.18.1
                 name: kube-rbac-proxy
                 ports:
                 - containerPort: 8443

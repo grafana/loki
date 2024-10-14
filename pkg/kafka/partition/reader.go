@@ -105,6 +105,8 @@ func (p *Reader) start(ctx context.Context) error {
 		p.kafkaCfg.Topic: {p.partitionID: kgo.NewOffset().At(lastCommittedOffset)},
 	})
 
+	level.Info(p.logger).Log("msg", "initialising partition reader", "last_committed_offset", lastCommittedOffset, "partition", p.partitionID, "consumer_group", p.consumerGroup)
+
 	p.committer = newCommitter(p.kafkaCfg, kadm.NewClient(p.client), p.partitionID, p.consumerGroup, p.logger, p.reg)
 
 	if targetLag, maxLag := p.kafkaCfg.TargetConsumerLagAtStartup, p.kafkaCfg.MaxConsumerLagAtStartup; targetLag > 0 && maxLag > 0 {
@@ -355,6 +357,8 @@ func (p *Reader) processNextFetchesUntilLagHonored(ctx context.Context, maxLag t
 		}
 		lastProducedOffset = lastProducedOffset - 1 // Kafka returns the next empty offset so we must subtract 1 to get the oldest written offset.
 
+		level.Debug(logger).Log("msg", "fetched latest offset information", "partition_start_offset", partitionStartOffset, "last_produced_offset", lastProducedOffset)
+
 		// Ensure there are some records to consume. For example, if the partition has been inactive for a long
 		// time and all its records have been deleted, the partition start offset may be > 0 but there are no
 		// records to actually consume.
@@ -365,7 +369,7 @@ func (p *Reader) processNextFetchesUntilLagHonored(ctx context.Context, maxLag t
 
 		// This message is NOT expected to be logged with a very high rate. In this log we display the last measured
 		// lag. If we don't have it (lag is zero value), then it will not be logged.
-		level.Info(loggerWithCurrentLagIfSet(logger, currLag)).Log("msg", "partition reader is consuming records to honor target and max consumer lag", "partition_start_offset", partitionStartOffset, "last_produced_offset", lastProducedOffset)
+		level.Info(loggerWithCurrentLagIfSet(logger, currLag)).Log("msg", "partition reader is consuming records to honor target and max consumer lag", "partition_start_offset", partitionStartOffset, "last_produced_offset", lastProducedOffset, "last_processed_offset", p.lastProcessedOffset, "offset_lag", lastProducedOffset-p.lastProcessedOffset)
 
 		for boff.Ongoing() {
 			// Continue reading until we reached the desired offset.
