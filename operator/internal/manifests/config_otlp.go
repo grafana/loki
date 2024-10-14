@@ -29,6 +29,7 @@ func defaultOpenShiftLoggingAttributes(disableRecommended bool) config.OTLPAttri
 			"k8s.pod.name",
 			"k8s.pod.uid",
 			"kubernetes.container_name",
+			"kubernetes.host",
 			"kubernetes.pod_name",
 		)
 		slices.Sort(result.DefaultIndexLabels)
