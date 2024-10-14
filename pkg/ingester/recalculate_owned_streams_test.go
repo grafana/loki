@@ -70,7 +70,7 @@ func Test_recalculateOwnedStreams_recalculateWithIngesterStrategy(t *testing.T) 
 				UseOwnedStreamCount:     testData.featureEnabled,
 			}, nil)
 			require.NoError(t, err)
-			limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(mockRing, 1))
+			limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(mockRing, 1), &TenantBasedStrategy{limits: limits})
 
 			tenant, err := newInstance(
 				defaultConfig(),
