@@ -23,24 +23,21 @@ func defaultOpenShiftLoggingAttributes(disableRecommended bool) config.OTLPAttri
 
 	if !disableRecommended {
 		result.DefaultIndexLabels = append(result.DefaultIndexLabels,
+			"k8s.container.name",
 			"k8s.node.name",
 			"k8s.node.uid",
-			"k8s.container.name",
-			"kubernetes.container_name",
 			"k8s.pod.name",
 			"k8s.pod.uid",
+			"kubernetes.container_name",
 			"kubernetes.pod_name",
 		)
+		slices.Sort(result.DefaultIndexLabels)
 
 		result.Global = &config.OTLPTenantAttributeConfig{
 			ResourceAttributes: []config.OTLPAttribute{
 				{
 					Action: config.OTLPAttributeActionStreamLabel,
 					Regex:  "openshift\\.labels\\..+",
-				},
-				{
-					Action: config.OTLPAttributeActionMetadata,
-					Regex:  "k8s\\.pod\\.labels\\..+",
 				},
 				{
 					Action: config.OTLPAttributeActionMetadata,
@@ -51,30 +48,34 @@ func defaultOpenShiftLoggingAttributes(disableRecommended bool) config.OTLPAttri
 						"k8s.job.name",
 						"k8s.replicaset.name",
 						"k8s.statefulset.name",
+						"process.command_line",
 						"process.executable.name",
 						"process.executable.path",
-						"process.command_line",
 						"process.pid",
 						"service.name",
 					},
+				},
+				{
+					Action: config.OTLPAttributeActionMetadata,
+					Regex:  "k8s\\.pod\\.labels\\..+",
 				},
 			},
 			LogAttributes: []config.OTLPAttribute{
 				{
 					Action: config.OTLPAttributeActionMetadata,
 					Names: []string{
-						"log.iostream",
 						"k8s.event.level",
-						"k8s.event.stage",
-						"k8s.event.user_agent",
-						"k8s.event.request.uri",
-						"k8s.event.response.code",
-						"k8s.event.object_ref.resource",
-						"k8s.event.object_ref.name",
 						"k8s.event.object_ref.api.group",
 						"k8s.event.object_ref.api.version",
-						"k8s.user.username",
+						"k8s.event.object_ref.name",
+						"k8s.event.object_ref.resource",
+						"k8s.event.request.uri",
+						"k8s.event.response.code",
+						"k8s.event.stage",
+						"k8s.event.user_agent",
 						"k8s.user.groups",
+						"k8s.user.username",
+						"log.iostream",
 					},
 				},
 				{
@@ -203,6 +204,9 @@ func sortAndDeduplicateOTLPAttributes(attrs []config.OTLPAttribute) []config.OTL
 		if a.Regex != "" {
 			continue
 		}
+
+		slices.Sort(a.Names)
+		attrs[i] = a
 
 		next := attrs[i+1]
 		if next.Regex != "" {

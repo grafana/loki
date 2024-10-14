@@ -397,7 +397,7 @@ func TestOtlpAttributeConfig(t *testing.T) {
 					Mode: lokiv1.OpenshiftLogging,
 				},
 			},
-			wantConfig: sortAndDeduplicateOTLPConfig(defaultOpenShiftLoggingAttributes(false)),
+			wantConfig: defaultOpenShiftLoggingAttributes(false),
 		},
 		{
 			desc: "openshift-logging defaults without recommended",
@@ -411,7 +411,7 @@ func TestOtlpAttributeConfig(t *testing.T) {
 					},
 				},
 			},
-			wantConfig: sortAndDeduplicateOTLPConfig(defaultOpenShiftLoggingAttributes(true)),
+			wantConfig: defaultOpenShiftLoggingAttributes(true),
 		},
 		{
 			desc: "openshift-logging defaults with additional custom attributes",
