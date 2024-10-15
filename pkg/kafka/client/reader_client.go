@@ -58,8 +58,8 @@ func setDefaultNumberOfPartitionsForAutocreatedTopics(cfg kafka.Config, cl *kgo.
 		return
 	}
 
+	// Note: this client doesn't get closed because it is owned by the caller
 	adm := kadm.NewClient(cl)
-	defer adm.Close()
 
 	defaultNumberOfPartitions := fmt.Sprintf("%d", cfg.AutoCreateTopicDefaultPartitions)
 	_, err := adm.AlterBrokerConfigsState(context.Background(), []kadm.AlterConfig{

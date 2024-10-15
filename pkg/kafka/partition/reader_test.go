@@ -59,7 +59,7 @@ func (m *mockConsumer) Flush(ctx context.Context) error {
 }
 
 func TestPartitionReader_BasicFunctionality(t *testing.T) {
-	_, kafkaCfg := testkafka.CreateCluster(t, 1, "test-topic")
+	_, kafkaCfg := testkafka.CreateCluster(t, 1, "test")
 	consumer := newMockConsumer()
 
 	consumerFactory := func(_ Committer) (Consumer, error) {
@@ -83,8 +83,8 @@ func TestPartitionReader_BasicFunctionality(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, records, 1)
 
-	producer.ProduceSync(context.Background(), records...)
-	producer.ProduceSync(context.Background(), records...)
+	require.NoError(t, producer.ProduceSync(context.Background(), records...).FirstErr())
+	require.NoError(t, producer.ProduceSync(context.Background(), records...).FirstErr())
 
 	// Wait for records to be processed
 	assert.Eventually(t, func() bool {
