@@ -22,6 +22,7 @@ import (
 	"github.com/twmb/franz-go/plugin/kprom"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/client"
 )
 
 var errWaitTargetLagDeadlineExceeded = errors.New("waiting for target lag deadline exceeded")
@@ -94,7 +95,7 @@ func NewReader(
 // This method is called when the PartitionReader service starts.
 func (p *Reader) start(ctx context.Context) error {
 	var err error
-	p.client, err = kafka.NewReaderClient(p.kafkaCfg, p.metrics.kprom, p.logger)
+	p.client, err = client.NewReaderClient(p.kafkaCfg, p.metrics.kprom, p.logger)
 	if err != nil {
 		return errors.Wrap(err, "creating kafka reader client")
 	}
@@ -104,6 +105,8 @@ func (p *Reader) start(ctx context.Context) error {
 	p.client.AddConsumePartitions(map[string]map[int32]kgo.Offset{
 		p.kafkaCfg.Topic: {p.partitionID: kgo.NewOffset().At(lastCommittedOffset)},
 	})
+
+	level.Info(p.logger).Log("msg", "initialising partition reader", "last_committed_offset", lastCommittedOffset, "partition", p.partitionID, "consumer_group", p.consumerGroup)
 
 	p.committer = newCommitter(p.kafkaCfg, kadm.NewClient(p.client), p.partitionID, p.consumerGroup, p.logger, p.reg)
 
@@ -355,6 +358,8 @@ func (p *Reader) processNextFetchesUntilLagHonored(ctx context.Context, maxLag t
 		}
 		lastProducedOffset = lastProducedOffset - 1 // Kafka returns the next empty offset so we must subtract 1 to get the oldest written offset.
 
+		level.Debug(logger).Log("msg", "fetched latest offset information", "partition_start_offset", partitionStartOffset, "last_produced_offset", lastProducedOffset)
+
 		// Ensure there are some records to consume. For example, if the partition has been inactive for a long
 		// time and all its records have been deleted, the partition start offset may be > 0 but there are no
 		// records to actually consume.
@@ -365,7 +370,7 @@ func (p *Reader) processNextFetchesUntilLagHonored(ctx context.Context, maxLag t
 
 		// This message is NOT expected to be logged with a very high rate. In this log we display the last measured
 		// lag. If we don't have it (lag is zero value), then it will not be logged.
-		level.Info(loggerWithCurrentLagIfSet(logger, currLag)).Log("msg", "partition reader is consuming records to honor target and max consumer lag", "partition_start_offset", partitionStartOffset, "last_produced_offset", lastProducedOffset)
+		level.Info(loggerWithCurrentLagIfSet(logger, currLag)).Log("msg", "partition reader is consuming records to honor target and max consumer lag", "partition_start_offset", partitionStartOffset, "last_produced_offset", lastProducedOffset, "last_processed_offset", p.lastProcessedOffset, "offset_lag", lastProducedOffset-p.lastProcessedOffset)
 
 		for boff.Ongoing() {
 			// Continue reading until we reached the desired offset.
@@ -535,7 +540,7 @@ func newReaderMetrics(reg prometheus.Registerer) readerMetrics {
 	return readerMetrics{
 		receiveDelayWhenStarting: receiveDelay.WithLabelValues("starting"),
 		receiveDelayWhenRunning:  receiveDelay.WithLabelValues("running"),
-		kprom:                    kafka.NewReaderClientMetrics("partition-reader", reg),
+		kprom:                    client.NewReaderClientMetrics("partition-reader", reg),
 		fetchWaitDuration: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:                        "loki_ingest_storage_reader_records_batch_wait_duration_seconds",
 			Help:                        "How long a consumer spent waiting for a batch of records from the Kafka client. If fetching is faster than processing, then this will be close to 0.",

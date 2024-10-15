@@ -71,11 +71,11 @@ $(JSONNETFMT): $(BINGO_DIR)/jsonnetfmt.mod
 	@echo "(re)installing $(GOBIN)/jsonnetfmt-v0.20.0"
 	@cd $(BINGO_DIR) && GOWORK=off $(GO) build -mod=mod -modfile=jsonnetfmt.mod -o=$(GOBIN)/jsonnetfmt-v0.20.0 "github.com/google/go-jsonnet/cmd/jsonnetfmt"
 
-KIND := $(GOBIN)/kind-v0.22.0
+KIND := $(GOBIN)/kind-v0.23.0
 $(KIND): $(BINGO_DIR)/kind.mod
 	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
-	@echo "(re)installing $(GOBIN)/kind-v0.22.0"
-	@cd $(BINGO_DIR) && GOWORK=off $(GO) build -mod=mod -modfile=kind.mod -o=$(GOBIN)/kind-v0.22.0 "sigs.k8s.io/kind"
+	@echo "(re)installing $(GOBIN)/kind-v0.23.0"
+	@cd $(BINGO_DIR) && GOWORK=off $(GO) build -mod=mod -modfile=kind.mod -o=$(GOBIN)/kind-v0.23.0 "sigs.k8s.io/kind"
 
 KUSTOMIZE := $(GOBIN)/kustomize-v4.5.7
 $(KUSTOMIZE): $(BINGO_DIR)/kustomize.mod
@@ -83,11 +83,11 @@ $(KUSTOMIZE): $(BINGO_DIR)/kustomize.mod
 	@echo "(re)installing $(GOBIN)/kustomize-v4.5.7"
 	@cd $(BINGO_DIR) && GOWORK=off $(GO) build -mod=mod -modfile=kustomize.mod -o=$(GOBIN)/kustomize-v4.5.7 "sigs.k8s.io/kustomize/kustomize/v4"
 
-OPERATOR_SDK := $(GOBIN)/operator-sdk-v1.33.0
+OPERATOR_SDK := $(GOBIN)/operator-sdk-v1.37.0
 $(OPERATOR_SDK): $(BINGO_DIR)/operator-sdk.mod
 	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
-	@echo "(re)installing $(GOBIN)/operator-sdk-v1.33.0"
-	@cd $(BINGO_DIR) && GOWORK=off $(GO) build -mod=mod -modfile=operator-sdk.mod -o=$(GOBIN)/operator-sdk-v1.33.0 "github.com/operator-framework/operator-sdk/cmd/operator-sdk"
+	@echo "(re)installing $(GOBIN)/operator-sdk-v1.37.0"
+	@cd $(BINGO_DIR) && GOWORK=off $(GO) build -mod=mod -modfile=operator-sdk.mod -o=$(GOBIN)/operator-sdk-v1.37.0 "github.com/operator-framework/operator-sdk/cmd/operator-sdk"
 
 PROMTOOL := $(GOBIN)/promtool-v0.47.1
 $(PROMTOOL): $(BINGO_DIR)/promtool.mod
