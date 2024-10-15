@@ -1,19 +1,25 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-package kafka
+package client
 
 import (
+	"context"
+	"fmt"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/plugin/kprom"
+
+	"github.com/grafana/loki/v3/pkg/kafka"
 )
 
 // NewReaderClient returns the kgo.Client that should be used by the Reader.
-func NewReaderClient(kafkaCfg Config, metrics *kprom.Metrics, logger log.Logger, opts ...kgo.Opt) (*kgo.Client, error) {
+func NewReaderClient(kafkaCfg kafka.Config, metrics *kprom.Metrics, logger log.Logger, opts ...kgo.Opt) (*kgo.Client, error) {
 	const fetchMaxBytes = 100_000_000
 
 	opts = append(opts, commonKafkaClientOptions(kafkaCfg, metrics, logger)...)
@@ -33,7 +39,7 @@ func NewReaderClient(kafkaCfg Config, metrics *kprom.Metrics, logger log.Logger,
 		return nil, errors.Wrap(err, "creating kafka client")
 	}
 	if kafkaCfg.AutoCreateTopicEnabled {
-		kafkaCfg.SetDefaultNumberOfPartitionsForAutocreatedTopics(logger)
+		setDefaultNumberOfPartitionsForAutocreatedTopics(kafkaCfg, client, logger)
 	}
 	return client, nil
 }
@@ -43,4 +49,30 @@ func NewReaderClientMetrics(component string, reg prometheus.Registerer) *kprom.
 		kprom.Registerer(prometheus.WrapRegistererWith(prometheus.Labels{"component": component}, reg)),
 		// Do not export the client ID, because we use it to specify options to the backend.
 		kprom.FetchAndProduceDetail(kprom.Batches, kprom.Records, kprom.CompressedBytes, kprom.UncompressedBytes))
+}
+
+// setDefaultNumberOfPartitionsForAutocreatedTopics tries to set num.partitions config option on brokers.
+// This is best-effort, if setting the option fails, error is logged, but not returned.
+func setDefaultNumberOfPartitionsForAutocreatedTopics(cfg kafka.Config, cl *kgo.Client, logger log.Logger) {
+	if cfg.AutoCreateTopicDefaultPartitions <= 0 {
+		return
+	}
+
+	adm := kadm.NewClient(cl)
+	defer adm.Close()
+
+	defaultNumberOfPartitions := fmt.Sprintf("%d", cfg.AutoCreateTopicDefaultPartitions)
+	_, err := adm.AlterBrokerConfigsState(context.Background(), []kadm.AlterConfig{
+		{
+			Op:    kadm.SetConfig,
+			Name:  "num.partitions",
+			Value: &defaultNumberOfPartitions,
+		},
+	})
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to alter default number of partitions", "err", err)
+		return
+	}
+
+	level.Info(logger).Log("msg", "configured Kafka-wide default number of partitions for auto-created topics (num.partitions)", "value", cfg.AutoCreateTopicDefaultPartitions)
 }

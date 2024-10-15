@@ -17,6 +17,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/kafka/testkafka"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -67,7 +68,7 @@ func TestPartitionReader_BasicFunctionality(t *testing.T) {
 
 	partitionReader, err := NewReader(kafkaCfg, 0, "test-consumer-group", consumerFactory, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
-	producer, err := kafka.NewWriterClient(kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	producer, err := client.NewWriterClient(kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	err = services.StartAndAwaitRunning(context.Background(), partitionReader)
@@ -121,7 +122,7 @@ func TestPartitionReader_ProcessCatchUpAtStartup(t *testing.T) {
 
 	partitionReader, err := NewReader(kafkaCfg, 0, "test-consumer-group", consumerFactory, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
-	producer, err := kafka.NewWriterClient(kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	producer, err := client.NewWriterClient(kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	stream := logproto.Stream{
@@ -175,11 +176,11 @@ func TestPartitionReader_ProcessCommits(t *testing.T) {
 	partitionID := int32(0)
 	partitionReader, err := NewReader(kafkaCfg, partitionID, "test-consumer-group", consumerFactory, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
-	producer, err := kafka.NewWriterClient(kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	producer, err := client.NewWriterClient(kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	// Init the client: This usually happens in "start" but we want to manage our own lifecycle for this test.
-	partitionReader.client, err = kafka.NewReaderClient(kafkaCfg, nil, log.NewNopLogger(),
+	partitionReader.client, err = client.NewReaderClient(kafkaCfg, nil, log.NewNopLogger(),
 		kgo.ConsumePartitions(map[string]map[int32]kgo.Offset{
 			kafkaCfg.Topic: {partitionID: kgo.NewOffset().AtStart()},
 		}),
