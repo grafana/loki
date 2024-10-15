@@ -72,7 +72,7 @@ func (cfg *StorageBackendConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix("", f)
 }
 
-func (cfg *StorageBackendConfig) RegisterFlagsWithPrefixAndDefaultDirectory(prefix, dir string, f *flag.FlagSet) {
+func (cfg *StorageBackendConfig) RegisterFlagsWithPrefixAndDefaultDirectory(prefix, _ string, f *flag.FlagSet) {
 	cfg.GCS.RegisterFlagsWithPrefix(prefix, f)
 
 	// TODO: uncomment when other providers are supported

@@ -366,7 +366,7 @@ func (cfg *Config) Validate() error {
 		return errors.Wrap(err, "invalid bloom shipper config")
 	}
 	if err := cfg.ObjectStore.Validate(); err != nil {
-		return err
+		return errors.Wrap(err, "invalid object store config")
 	}
 
 	return cfg.NamedStores.Validate()
@@ -404,7 +404,6 @@ func NewIndexClient(component string, periodCfg config.PeriodConfig, tableRange 
 				return client, nil
 			}
 
-			registerer = prometheus.WrapRegistererWith(prometheus.Labels{"component": component}, registerer)
 			objectClient, err := NewObjectClient(periodCfg.ObjectType, component, cfg, cm)
 			if err != nil {
 				return nil, err
@@ -466,7 +465,7 @@ func NewIndexClient(component string, periodCfg config.PeriodConfig, tableRange 
 }
 
 // NewChunkClient makes a new chunk.Client of the desired types.
-func NewChunkClient(component, name string, cfg Config, schemaCfg config.SchemaConfig, cc congestion.Controller, registerer prometheus.Registerer, clientMetrics ClientMetrics, logger log.Logger) (client.Client, error) {
+func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaConfig, cc congestion.Controller, registerer prometheus.Registerer, clientMetrics ClientMetrics, logger log.Logger) (client.Client, error) {
 	var storeType = name
 
 	// lookup storeType for named stores
@@ -617,7 +616,8 @@ func NewObjectClient(name, component string, cfg Config, clientMetrics ClientMet
 		return nil, err
 	}
 
-	if cfg.ObjectPrefix == "" {
+	// TODO: do not apply prefix when using thanos store
+	if cfg.UseThanosObjstore || cfg.ObjectPrefix == "" {
 		return actual, nil
 	} else {
 		prefix := strings.Trim(cfg.ObjectPrefix, "/") + "/"
