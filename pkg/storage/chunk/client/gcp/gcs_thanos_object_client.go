@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/go-kit/kit/log/level"
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
@@ -32,6 +32,14 @@ func NewGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, component 
 		return nil, err
 	}
 
+	if hedgingCfg.At == 0 {
+		return &GCSThanosObjectClient{
+			client:       client,
+			hedgedClient: client,
+			logger:       logger,
+		}, nil
+	}
+
 	hedgedClient, err := newGCSThanosObjectClient(ctx, cfg, component, logger, true, hedgingCfg)
 	if err != nil {
 		return nil, err
@@ -53,6 +61,7 @@ func newGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, component 
 
 		cfg.GCS.Transport = hedgedTrasport
 	}
+
 	return bucket.NewClient(bucket.GCS, ctx, cfg, component, logger)
 }
 
@@ -71,8 +80,8 @@ func (s *GCSThanosObjectClient) GetAttributes(ctx context.Context, objectKey str
 	if err != nil {
 		return attr, err
 	}
-	attr.Size = thanosAttr.Size
 
+	attr.Size = thanosAttr.Size
 	return attr, nil
 }
 
@@ -120,6 +129,8 @@ func (s *GCSThanosObjectClient) List(ctx context.Context, prefix, delimiter stri
 			commonPrefixes = append(commonPrefixes, client.StorageCommonPrefix(objectKey))
 			return nil
 		}
+
+		// TODO: remove this once thanos support IterWithAttributes
 		attr, err := s.client.Attributes(ctx, objectKey)
 		if err != nil {
 			return errors.Wrapf(err, "failed to get attributes for %s", objectKey)
@@ -131,7 +142,6 @@ func (s *GCSThanosObjectClient) List(ctx context.Context, prefix, delimiter stri
 		})
 
 		return nil
-
 	}, iterParams...)
 	if err != nil {
 		return nil, nil, err

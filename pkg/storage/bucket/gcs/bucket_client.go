@@ -17,5 +17,5 @@ func NewBucketClient(ctx context.Context, cfg Config, name string, logger log.Lo
 	bucketConfig.ChunkSizeBytes = cfg.ChunkBufferSize
 	bucketConfig.HTTPConfig.Transport = cfg.Transport
 
-	return gcs.NewBucketWithConfig(ctx, logger, bucketConfig, name)
+	return gcs.NewBucketWithConfig(ctx, logger, bucketConfig, name, nil)
 }
