@@ -464,7 +464,7 @@ loki-write-headless              ClusterIP      None             <none>         
 
 Congratulations! You have successfully deployed Loki in simple scalable mode on AWS using the Helm chart. Before we finish, let's test the deployment.
 
-## Testing You're Loki Deployment
+## Testing Your Loki Deployment
 
 k6 is one of the fastest way to test your Loki deployment. This will allow you to both write and query logs to Loki. To get started with k6, follow the steps below:
 
