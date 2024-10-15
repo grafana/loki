@@ -1780,31 +1780,10 @@ storage:
       [strategy: <string> | default = ""]
 
   object_store:
-    gcs:
-      # GCS bucket name
-      # CLI flag: -common.storage.object-store.gcs.bucket-name
-      [bucket_name: <string> | default = ""]
-
-      # JSON either from a Google Developers Console client_credentials.json
-      # file, or a Google Developers service account key. Needs to be valid
-      # JSON, not a filesystem path. If empty, fallback to Google default logic:
-      # 1. A JSON file whose path is specified by the
-      # GOOGLE_APPLICATION_CREDENTIALS environment variable. For workload
-      # identity federation, refer to
-      # https://cloud.google.com/iam/docs/how-to#using-workload-identity-federation
-      # on how to generate the JSON configuration file for on-prem/non-Google
-      # cloud platforms.
-      # 2. A JSON file in a location known to the gcloud command-line tool:
-      # $HOME/.config/gcloud/application_default_credentials.json.
-      # 3. On Google Compute Engine it fetches credentials from the metadata
-      # server.
-      # CLI flag: -common.storage.object-store.gcs.service-account
-      [service_account: <string> | default = ""]
-
-      # The maximum size of the buffer that GCS client for a single PUT request.
-      # 0 to disable buffering.
-      # CLI flag: -common.storage.object-store.gcs.chunk-buffer-size
-      [chunk_buffer_size: <int> | default = 0]
+    # The gcs_backend block configures the connection to Google Cloud Storage
+    # object storage backend.
+    # The CLI flags prefix for this block configuration is: common.storage
+    [gcs: <gcs_storage_backend>]
 
     # Prefix for all objects stored in the backend storage. For simplicity, it
     # may only contain digits and English alphabet letters.
@@ -2574,6 +2553,35 @@ The `frontend_worker` configures the worker - running within the Loki querier - 
 # The CLI flags prefix for this block configuration is:
 # metastore.grpc-client-config
 [query_scheduler_grpc_client: <grpc_client>]
+```
+
+### gcs_storage_backend
+
+The gcs_backend block configures the connection to Google Cloud Storage object storage backend.
+
+```yaml
+# GCS bucket name
+# CLI flag: -<prefix>.object-store.gcs.bucket-name
+[bucket_name: <string> | default = ""]
+
+# JSON either from a Google Developers Console client_credentials.json file, or
+# a Google Developers service account key. Needs to be valid JSON, not a
+# filesystem path. If empty, fallback to Google default logic:
+# 1. A JSON file whose path is specified by the GOOGLE_APPLICATION_CREDENTIALS
+# environment variable. For workload identity federation, refer to
+# https://cloud.google.com/iam/docs/how-to#using-workload-identity-federation on
+# how to generate the JSON configuration file for on-prem/non-Google cloud
+# platforms.
+# 2. A JSON file in a location known to the gcloud command-line tool:
+# $HOME/.config/gcloud/application_default_credentials.json.
+# 3. On Google Compute Engine it fetches credentials from the metadata server.
+# CLI flag: -<prefix>.object-store.gcs.service-account
+[service_account: <string> | default = ""]
+
+# The maximum size of the buffer that GCS client for a single PUT request. 0 to
+# disable buffering.
+# CLI flag: -<prefix>.object-store.gcs.chunk-buffer-size
+[chunk_buffer_size: <int> | default = 0]
 ```
 
 ### gcs_storage_config
@@ -5673,31 +5681,9 @@ congestion_control:
 [use_thanos_objstore: <boolean> | default = false]
 
 object_store:
-  gcs:
-    # GCS bucket name
-    # CLI flag: -object-store.gcs.bucket-name
-    [bucket_name: <string> | default = ""]
-
-    # JSON either from a Google Developers Console client_credentials.json file,
-    # or a Google Developers service account key. Needs to be valid JSON, not a
-    # filesystem path. If empty, fallback to Google default logic:
-    # 1. A JSON file whose path is specified by the
-    # GOOGLE_APPLICATION_CREDENTIALS environment variable. For workload identity
-    # federation, refer to
-    # https://cloud.google.com/iam/docs/how-to#using-workload-identity-federation
-    # on how to generate the JSON configuration file for on-prem/non-Google
-    # cloud platforms.
-    # 2. A JSON file in a location known to the gcloud command-line tool:
-    # $HOME/.config/gcloud/application_default_credentials.json.
-    # 3. On Google Compute Engine it fetches credentials from the metadata
-    # server.
-    # CLI flag: -object-store.gcs.service-account
-    [service_account: <string> | default = ""]
-
-    # The maximum size of the buffer that GCS client for a single PUT request. 0
-    # to disable buffering.
-    # CLI flag: -object-store.gcs.chunk-buffer-size
-    [chunk_buffer_size: <int> | default = 0]
+  # The gcs_backend block configures the connection to Google Cloud Storage
+  # object storage backend.
+  [gcs: <gcs_storage_backend>]
 
   # Prefix for all objects stored in the backend storage. For simplicity, it may
   # only contain digits and English alphabet letters.
