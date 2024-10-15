@@ -48,12 +48,13 @@ func newGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, component 
 			return nil, err
 		}
 
-		cfg.GCS.HTTP.Transport = hedgedTrasport
+		cfg.GCS.Transport = hedgedTrasport
 	}
 	return bucket.NewClient(bucket.GCS, ctx, cfg, component, logger)
 }
 
-func (s *GCSThanosObjectClient) Stop() {}
+func (s *GCSThanosObjectClient) Stop() {
+}
 
 // ObjectExists checks if a given objectKey exists in the GCS bucket
 func (s *GCSThanosObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
@@ -84,6 +85,7 @@ func (s *GCSThanosObjectClient) GetObject(ctx context.Context, objectKey string)
 		return nil, 0, err
 	}
 
+	// TODO: use GetSize once the upstream change is merged
 	attr, err := s.hedgedClient.Attributes(ctx, objectKey)
 	if err != nil {
 		return nil, 0, errors.Wrapf(err, "failed to get attributes for %s", objectKey)
@@ -93,11 +95,7 @@ func (s *GCSThanosObjectClient) GetObject(ctx context.Context, objectKey string)
 }
 
 func (s *GCSThanosObjectClient) GetObjectRange(ctx context.Context, objectKey string, offset, length int64) (io.ReadCloser, error) {
-	reader, err := s.hedgedClient.GetRange(ctx, objectKey, offset, length)
-	if err != nil {
-		return nil, err
-	}
-	return reader, nil
+	return s.hedgedClient.GetRange(ctx, objectKey, offset, length)
 }
 
 // List objects with given prefix.
@@ -153,7 +151,9 @@ func (s *GCSThanosObjectClient) IsStorageTimeoutErr(err error) bool {
 	// TODO(dannyk): move these out to be generic
 	// context errors are all client-side
 	if isContextErr(err) {
-		return false
+		// Go 1.23 changed the type of the error returned by the http client when a timeout occurs
+		// while waiting for headers.  This is a server side timeout.
+		return strings.Contains(err.Error(), "Client.Timeout")
 	}
 
 	// connection misconfiguration, or writing on a closed connection

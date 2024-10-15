@@ -51,11 +51,11 @@ var (
 // StorageBackendConfig holds configuration for accessing long-term storage.
 type StorageBackendConfig struct {
 	// Backends
-	S3         s3.Config         `yaml:"s3"`
+	S3         s3.Config         `yaml:"s3" doc:"hidden"`
 	GCS        gcs.Config        `yaml:"gcs"`
-	Azure      azure.Config      `yaml:"azure"`
-	Swift      swift.Config      `yaml:"swift"`
-	Filesystem filesystem.Config `yaml:"filesystem"`
+	Azure      azure.Config      `yaml:"azure" doc:"hidden"`
+	Swift      swift.Config      `yaml:"swift" doc:"hidden"`
+	Filesystem filesystem.Config `yaml:"filesystem" doc:"hidden"`
 
 	// Used to inject additional backends into the config. Allows for this config to
 	// be embedded in multiple contexts and support non-object storage based backends.
@@ -73,11 +73,13 @@ func (cfg *StorageBackendConfig) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *StorageBackendConfig) RegisterFlagsWithPrefixAndDefaultDirectory(prefix, dir string, f *flag.FlagSet) {
-	cfg.S3.RegisterFlagsWithPrefix(prefix, f)
 	cfg.GCS.RegisterFlagsWithPrefix(prefix, f)
-	cfg.Azure.RegisterFlagsWithPrefix(prefix, f)
-	cfg.Swift.RegisterFlagsWithPrefix(prefix, f)
-	cfg.Filesystem.RegisterFlagsWithPrefixAndDefaultDirectory(prefix, dir, f)
+
+	// TODO: uncomment when other providers are supported
+	// cfg.S3.RegisterFlagsWithPrefix(prefix, f)
+	// cfg.Azure.RegisterFlagsWithPrefix(prefix, f)
+	// cfg.Swift.RegisterFlagsWithPrefix(prefix, f)
+	// cfg.Filesystem.RegisterFlagsWithPrefixAndDefaultDirectory(prefix, dir, f)
 }
 
 func (cfg *StorageBackendConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
