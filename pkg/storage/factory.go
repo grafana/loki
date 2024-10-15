@@ -616,7 +616,6 @@ func NewObjectClient(name, component string, cfg Config, clientMetrics ClientMet
 		return nil, err
 	}
 
-	// TODO: do not apply prefix when using thanos store
 	if cfg.UseThanosObjstore || cfg.ObjectPrefix == "" {
 		return actual, nil
 	} else {
