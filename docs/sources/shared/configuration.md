@@ -1780,8 +1780,8 @@ storage:
       [strategy: <string> | default = ""]
 
   object_store:
-    # The gcs_backend block configures the connection to Google Cloud Storage
-    # object storage backend.
+    # The gcs_storage_backend block configures the connection to Google Cloud
+    # Storage object storage backend.
     # The CLI flags prefix for this block configuration is: common.storage
     [gcs: <gcs_storage_backend>]
 
@@ -2557,7 +2557,7 @@ The `frontend_worker` configures the worker - running within the Loki querier - 
 
 ### gcs_storage_backend
 
-The gcs_backend block configures the connection to Google Cloud Storage object storage backend.
+The `gcs_storage_backend` block configures the connection to Google Cloud Storage object storage backend.
 
 ```yaml
 # GCS bucket name
@@ -5681,8 +5681,8 @@ congestion_control:
 [use_thanos_objstore: <boolean> | default = false]
 
 object_store:
-  # The gcs_backend block configures the connection to Google Cloud Storage
-  # object storage backend.
+  # The gcs_storage_backend block configures the connection to Google Cloud
+  # Storage object storage backend.
   [gcs: <gcs_storage_backend>]
 
   # Prefix for all objects stored in the backend storage. For simplicity, it may
