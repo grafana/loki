@@ -53,7 +53,7 @@ jobs:
           fi
           helm dependency build
           for file in scenarios/*.yaml; do
-            cat "$file"
+            echo "rendering scenario $(file)"
             schenario_folder=${{ github.workspace }}/output/base/$(basename $file .yaml)
             mkdir $schenario_folder
             helm template loki-test-chart-name . -f $file --output-dir $schenario_folder
@@ -62,9 +62,15 @@ jobs:
       - name: Render Helm chart for each scenario in the PR branch
         run: |
           cd ${{ github.workspace }}/pr/production/helm/loki
+          # Check if the scenarios folder exists
+          if [ ! -d "scenarios" ]; then
+            echo "PR looks outdated because PRs branch does not have the scenarios, copying them from the base branch."
+            cp -r ${{ github.workspace }}/base/production/helm/loki/scenarios ./scenarios
+          fi
+          
           helm dependency build
           for file in scenarios/*.yaml; do
-            cat "$file"
+            echo "rendering scenario $(file)"
             schenario_folder=${{ github.workspace }}/output/pr/$(basename $file .yaml)
             mkdir $schenario_folder
             helm template loki-test-chart-name . -f $file --output-dir $schenario_folder

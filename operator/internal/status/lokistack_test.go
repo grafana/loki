@@ -105,7 +105,6 @@ func TestGenerateCondition(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
@@ -155,7 +154,6 @@ func TestGenerateCondition_ZoneAwareLokiStack(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
@@ -274,7 +272,6 @@ func TestGenerateWarningCondition_WhenStorageSchemaIsOld(t *testing.T) {
 		},
 	}
 	for _, tc := range tt {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			condition := generateWarnings(tc.schemas)

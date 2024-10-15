@@ -219,7 +219,6 @@ func TestAlertingRuleTenantLabels(t *testing.T) {
 		},
 	}
 	for _, tc := range tt {
-		tc := tc
 		t.Run(tc.rule.Spec.TenantID, func(t *testing.T) {
 			t.Parallel()
 			AlertingRuleTenantLabels(tc.rule)

@@ -31,7 +31,8 @@ We do not recommended to run scalable mode with `filesystem` storage. For the pu
 ## Prerequisites
 
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).
-- A running Kubernetes cluster.
+- A running Kubernetes cluster (must have at least 3 nodes).
+
 
 
 ## Deploying the Helm chart for development and testing
@@ -121,7 +122,7 @@ When deploying Loki using S3 Storage **DO NOT** use the default bucket names;  `
 loki:
   schemaConfig:
     configs:
-      - from: 2024-04-01
+      - from: "2024-04-01"
         store: tsdb
         object_store: s3
         schema: v13
@@ -185,7 +186,7 @@ minio:
 loki:
   schemaConfig:
     configs:
-      - from: 2024-04-01
+      - from: "2024-04-01"
         store: tsdb
         object_store: azure
         schema: v13
