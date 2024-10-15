@@ -793,6 +793,16 @@ kafka_config:
   # CLI flag: -kafka.write-timeout
   [write_timeout: <duration> | default = 10s]
 
+  # The SASL username for authentication to Kafka using the PLAIN mechanism.
+  # Both username and password must be set.
+  # CLI flag: -kafka.sasl-username
+  [sasl_username: <string> | default = ""]
+
+  # The SASL password for authentication to Kafka using the PLAIN mechanism.
+  # Both username and password must be set.
+  # CLI flag: -kafka.sasl-password
+  [sasl_password: <string> | default = ""]
+
   # The consumer group used by the consumer to track the last consumed offset.
   # The consumer group must be different for each ingester. If the configured
   # consumer group contains the '<partition>' placeholder, it is replaced with
