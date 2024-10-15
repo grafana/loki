@@ -105,6 +105,8 @@ func (p *Reader) start(ctx context.Context) error {
 		p.kafkaCfg.Topic: {p.partitionID: kgo.NewOffset().At(lastCommittedOffset)},
 	})
 
+	level.Info(p.logger).Log("msg", "initialising partition reader", "last_committed_offset", lastCommittedOffset, "partition", p.partitionID, "consumer_group", p.consumerGroup)
+
 	p.committer = newCommitter(p.kafkaCfg, kadm.NewClient(p.client), p.partitionID, p.consumerGroup, p.logger, p.reg)
 
 	if targetLag, maxLag := p.kafkaCfg.TargetConsumerLagAtStartup, p.kafkaCfg.MaxConsumerLagAtStartup; targetLag > 0 && maxLag > 0 {
@@ -274,7 +276,7 @@ func (p *Reader) processNextFetchesUntilTargetOrMaxLagHonored(ctx context.Contex
 	attempts := []func() (time.Duration, error){
 		// First process fetches until at least the max lag is honored.
 		func() (time.Duration, error) {
-			return p.processNextFetchesUntilLagHonored(ctx, maxLag, logger, recordsChan)
+			return p.processNextFetchesUntilLagHonored(ctx, maxLag, logger, recordsChan, time.Since)
 		},
 
 		// If the target lag hasn't been reached with the first attempt (which stops once at least the max lag
@@ -287,13 +289,13 @@ func (p *Reader) processNextFetchesUntilTargetOrMaxLagHonored(ctx context.Contex
 			timedCtx, cancel := context.WithTimeoutCause(ctx, maxLag, errWaitTargetLagDeadlineExceeded)
 			defer cancel()
 
-			return p.processNextFetchesUntilLagHonored(timedCtx, targetLag, logger, recordsChan)
+			return p.processNextFetchesUntilLagHonored(timedCtx, targetLag, logger, recordsChan, time.Since)
 		},
 
 		// If the target lag hasn't been reached with the previous attempt then we'll move on. However,
 		// we still need to guarantee that in the meanwhile the lag didn't increase and max lag is still honored.
 		func() (time.Duration, error) {
-			return p.processNextFetchesUntilLagHonored(ctx, maxLag, logger, recordsChan)
+			return p.processNextFetchesUntilLagHonored(ctx, maxLag, logger, recordsChan, time.Since)
 		},
 	}
 
@@ -326,7 +328,7 @@ func (p *Reader) processNextFetchesUntilTargetOrMaxLagHonored(ctx context.Contex
 	return nil
 }
 
-func (p *Reader) processNextFetchesUntilLagHonored(ctx context.Context, maxLag time.Duration, logger log.Logger, recordsChan chan<- []Record) (time.Duration, error) {
+func (p *Reader) processNextFetchesUntilLagHonored(ctx context.Context, maxLag time.Duration, logger log.Logger, recordsChan chan<- []Record, timeSince func(time.Time) time.Duration) (time.Duration, error) {
 	boff := backoff.New(ctx, backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
 		MaxBackoff: time.Second,
@@ -355,6 +357,8 @@ func (p *Reader) processNextFetchesUntilLagHonored(ctx context.Context, maxLag t
 		}
 		lastProducedOffset = lastProducedOffset - 1 // Kafka returns the next empty offset so we must subtract 1 to get the oldest written offset.
 
+		level.Debug(logger).Log("msg", "fetched latest offset information", "partition_start_offset", partitionStartOffset, "last_produced_offset", lastProducedOffset)
+
 		// Ensure there are some records to consume. For example, if the partition has been inactive for a long
 		// time and all its records have been deleted, the partition start offset may be > 0 but there are no
 		// records to actually consume.
@@ -365,7 +369,7 @@ func (p *Reader) processNextFetchesUntilLagHonored(ctx context.Context, maxLag t
 
 		// This message is NOT expected to be logged with a very high rate. In this log we display the last measured
 		// lag. If we don't have it (lag is zero value), then it will not be logged.
-		level.Info(loggerWithCurrentLagIfSet(logger, currLag)).Log("msg", "partition reader is consuming records to honor target and max consumer lag", "partition_start_offset", partitionStartOffset, "last_produced_offset", lastProducedOffset)
+		level.Info(loggerWithCurrentLagIfSet(logger, currLag)).Log("msg", "partition reader is consuming records to honor target and max consumer lag", "partition_start_offset", partitionStartOffset, "last_produced_offset", lastProducedOffset, "last_processed_offset", p.lastProcessedOffset, "offset_lag", lastProducedOffset-p.lastProcessedOffset)
 
 		for boff.Ongoing() {
 			// Continue reading until we reached the desired offset.
@@ -382,7 +386,7 @@ func (p *Reader) processNextFetchesUntilLagHonored(ctx context.Context, maxLag t
 
 		// If it took less than the max desired lag to replay the partition
 		// then we can stop here, otherwise we'll have to redo it.
-		if currLag = time.Since(lastProducedOffsetRequestedAt); currLag <= maxLag {
+		if currLag = timeSince(lastProducedOffsetRequestedAt); currLag <= maxLag {
 			return currLag, nil
 		}
 	}

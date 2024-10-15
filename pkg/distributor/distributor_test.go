@@ -401,8 +401,6 @@ func Test_IncrementTimestamp(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			ing := &mockIngester{}
 			distributors, _ := prepare(t, 1, 3, testData.limits, func(_ string) (ring_client.PoolClient, error) { return ing, nil })
@@ -1216,8 +1214,6 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
@@ -1417,7 +1413,7 @@ func makeWriteRequestWithLabelsWithLevel(lines, size int, labels []string, level
 
 		for j := 0; j < lines; j++ {
 			// Construct the log line, honoring the input size
-			line := "msg=" + strconv.Itoa(j) + strings.Repeat("0", size) + " severity=" + level
+			line := "msg=an error occured " + strconv.Itoa(j) + strings.Repeat("0", size) + " severity=" + level
 
 			stream.Entries = append(stream.Entries, logproto.Entry{
 				Timestamp: time.Now().Add(time.Duration(j) * time.Millisecond),
@@ -1648,20 +1644,28 @@ func Test_DetectLogLevels(t *testing.T) {
 	})
 
 	t.Run("log level detection enabled and warn logs", func(t *testing.T) {
-		limits, ingester := setup(true)
-		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+		for _, level := range []string{"warn", "Wrn", "WARNING"} {
+			limits, ingester := setup(true)
+			distributors, _ := prepare(
+				t,
+				1,
+				5,
+				limits,
+				func(_ string) (ring_client.PoolClient, error) { return ingester, nil },
+			)
 
-		writeReq := makeWriteRequestWithLabelsWithLevel(1, 10, []string{`{foo="bar"}`}, "warn")
-		_, err := distributors[0].Push(ctx, writeReq)
-		require.NoError(t, err)
-		topVal := ingester.Peek()
-		require.Equal(t, `{foo="bar"}`, topVal.Streams[0].Labels)
-		require.Equal(t, push.LabelsAdapter{
-			{
-				Name:  constants.LevelLabel,
-				Value: constants.LogLevelWarn,
-			},
-		}, topVal.Streams[0].Entries[0].StructuredMetadata)
+			writeReq := makeWriteRequestWithLabelsWithLevel(1, 10, []string{`{foo="bar"}`}, level)
+			_, err := distributors[0].Push(ctx, writeReq)
+			require.NoError(t, err)
+			topVal := ingester.Peek()
+			require.Equal(t, `{foo="bar"}`, topVal.Streams[0].Labels)
+			require.Equal(t, push.LabelsAdapter{
+				{
+					Name:  constants.LevelLabel,
+					Value: constants.LogLevelWarn,
+				},
+			}, topVal.Streams[0].Entries[0].StructuredMetadata, fmt.Sprintf("level: %s", level))
+		}
 	})
 
 	t.Run("log level detection enabled but log level already present in stream", func(t *testing.T) {

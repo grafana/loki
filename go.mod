@@ -1,8 +1,8 @@
 module github.com/grafana/loki/v3
 
-go 1.22
+go 1.23
 
-toolchain go1.23.2
+toolchain go1.23.1
 
 require (
 	cloud.google.com/go/bigtable v1.29.0
@@ -51,7 +51,7 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
-	github.com/grafana/dskit v0.0.0-20241002104024-b69ac1b95024
+	github.com/grafana/dskit v0.0.0-20241007172036-53283a0f6b41
 	github.com/grafana/go-gelf/v2 v2.0.1
 	github.com/grafana/gomemcache v0.0.0-20240229205252-cd6a66d6fb56
 	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
@@ -125,7 +125,7 @@ require (
 	github.com/efficientgo/core v1.0.0-rc.3
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/gogo/googleapis v1.4.1
-	github.com/grafana/jsonparser v0.0.0-20240425183733-ea80629e1a32
+	github.com/grafana/jsonparser v0.0.0-20241004153430-023329977675
 	github.com/grafana/loki/pkg/push v0.0.0-20240924133635-758364c7775f
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/hashicorp/raft v1.7.1

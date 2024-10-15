@@ -13,7 +13,7 @@ import (
 func TestStreamsMap(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 	chunkfmt, headfmt := defaultChunkFormat(t)
 
 	ss := []*stream{
@@ -21,7 +21,7 @@ func TestStreamsMap(t *testing.T) {
 			chunkfmt,
 			headfmt,
 			defaultConfig(),
-			limiter,
+			limiter.rateLimitStrategy,
 			"fake",
 			model.Fingerprint(1),
 			labels.Labels{
@@ -37,7 +37,7 @@ func TestStreamsMap(t *testing.T) {
 			chunkfmt,
 			headfmt,
 			defaultConfig(),
-			limiter,
+			limiter.rateLimitStrategy,
 			"fake",
 			model.Fingerprint(2),
 			labels.Labels{

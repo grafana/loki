@@ -227,7 +227,6 @@ func TestValidateModes_StaticMode(t *testing.T) {
 		},
 	}
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -434,7 +433,6 @@ func TestValidateModes_DynamicMode(t *testing.T) {
 		},
 	}
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -533,7 +531,6 @@ func TestValidateModes_OpenshiftLoggingMode(t *testing.T) {
 		},
 	}
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 

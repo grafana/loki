@@ -322,6 +322,10 @@ func (t *Loki) initTenantConfigs() (_ services.Service, err error) {
 func (t *Loki) initDistributor() (services.Service, error) {
 	t.Cfg.Distributor.KafkaConfig = t.Cfg.KafkaConfig
 
+	if t.Cfg.Distributor.KafkaEnabled && !t.Cfg.Ingester.KafkaIngestion.Enabled {
+		return nil, errors.New("kafka is enabled in distributor but not in ingester")
+	}
+
 	var err error
 	logger := log.With(util_log.Logger, "component", "distributor")
 	t.distributor, err = distributor.New(
@@ -970,8 +974,9 @@ func (t *Loki) setupAsyncStore() error {
 }
 
 func (t *Loki) initIngesterQuerier() (_ services.Service, err error) {
-	logger := log.With(util_log.Logger, "component", "querier")
-	t.ingesterQuerier, err = querier.NewIngesterQuerier(t.Cfg.IngesterClient, t.ring, t.Cfg.Querier.ExtraQueryDelay, t.Cfg.MetricsNamespace, logger)
+	logger := log.With(util_log.Logger, "component", "ingester-querier")
+
+	t.ingesterQuerier, err = querier.NewIngesterQuerier(t.Cfg.Querier, t.Cfg.IngesterClient, t.ring, t.partitionRing, t.Overrides.IngestionPartitionsTenantShardSize, t.Cfg.MetricsNamespace, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -1480,8 +1485,6 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 
 	var indexClients []indexgateway.IndexClientWithRange
 	for i, period := range t.Cfg.SchemaConfig.Configs {
-		period := period
-
 		if period.IndexType != types.BoltDBShipperType {
 			continue
 		}
@@ -1754,7 +1757,7 @@ func (t *Loki) initAnalytics() (services.Service, error) {
 
 // The Ingest Partition Ring is responsible for watching the available ingesters and assigning partitions to incoming requests.
 func (t *Loki) initPartitionRing() (services.Service, error) {
-	if !t.Cfg.Ingester.KafkaIngestion.Enabled {
+	if !t.Cfg.Ingester.KafkaIngestion.Enabled && !t.Cfg.Querier.QueryPartitionIngesters {
 		return nil, nil
 	}
 

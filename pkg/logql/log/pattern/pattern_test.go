@@ -176,7 +176,6 @@ func Test_BytesIndexUnicode(t *testing.T) {
 
 func Test_matcher_Matches(t *testing.T) {
 	for _, tt := range fixtures {
-		tt := tt
 		t.Run(tt.expr, func(t *testing.T) {
 			t.Parallel()
 			m, err := New(tt.expr)

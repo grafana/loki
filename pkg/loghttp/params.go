@@ -49,7 +49,7 @@ func lineLimit(r *http.Request) (uint32, error) {
 func detectedFieldsLimit(r *http.Request) (uint32, error) {
 	limit := r.Form.Get("limit")
 	if limit == "" {
-		// for backwards compatability
+		// for backwards compatibility
 		limit = r.Form.Get("field_limit")
 	}
 

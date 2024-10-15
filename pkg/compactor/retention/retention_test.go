@@ -154,7 +154,6 @@ func Test_Retention(t *testing.T) {
 			},
 		},
 	} {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			// insert in the store.
 			var (
@@ -566,7 +565,6 @@ func TestChunkRewriter(t *testing.T) {
 			},
 		},
 	} {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			store := newTestStore(t)
 			require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{tt.chunk}))
