@@ -1,4 +1,4 @@
-package kafka
+package client
 
 import (
 	"context"
@@ -13,20 +13,30 @@ import (
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
+	"github.com/twmb/franz-go/pkg/sasl/plain"
 	"github.com/twmb/franz-go/plugin/kotel"
 	"github.com/twmb/franz-go/plugin/kprom"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+)
+
+var (
+	// writerRequestTimeoutOverhead is the overhead applied by the Writer to every Kafka timeout.
+	// You can think about this overhead as an extra time for requests sitting in the client's buffer
+	// before being sent on the wire and the actual time it takes to send it over the network and
+	// start being processed by Kafka.
+	writerRequestTimeoutOverhead = 2 * time.Second
 )
 
 // NewWriterClient returns the kgo.Client that should be used by the Writer.
 //
 // The input prometheus.Registerer must be wrapped with a prefix (the names of metrics
 // registered don't have a prefix).
-func NewWriterClient(kafkaCfg Config, maxInflightProduceRequests int, logger log.Logger, reg prometheus.Registerer) (*kgo.Client, error) {
+func NewWriterClient(kafkaCfg kafka.Config, maxInflightProduceRequests int, logger log.Logger, reg prometheus.Registerer) (*kgo.Client, error) {
 	// Do not export the client ID, because we use it to specify options to the backend.
 	metrics := kprom.NewMetrics(
 		"", // No prefix. We expect the input prometheus.Registered to be wrapped with a prefix.
@@ -42,7 +52,7 @@ func NewWriterClient(kafkaCfg Config, maxInflightProduceRequests int, logger log
 		kgo.RecordPartitioner(kgo.ManualPartitioner()),
 
 		// Set the upper bounds the size of a record batch.
-		kgo.ProducerBatchMaxBytes(producerBatchMaxBytes),
+		kgo.ProducerBatchMaxBytes(kafka.ProducerBatchMaxBytes),
 
 		// By default, the Kafka client allows 1 Produce in-flight request per broker. Disabling write idempotency
 		// (which we don't need), we can increase the max number of in-flight Produce requests per broker. A higher
@@ -81,10 +91,14 @@ func NewWriterClient(kafkaCfg Config, maxInflightProduceRequests int, logger log
 		kgo.MaxBufferedRecords(math.MaxInt), // Use a high value to set it as unlimited, because the client doesn't support "0 as unlimited".
 		kgo.MaxBufferedBytes(0),
 	)
-	if kafkaCfg.AutoCreateTopicEnabled {
-		kafkaCfg.SetDefaultNumberOfPartitionsForAutocreatedTopics(logger)
+	client, err := kgo.NewClient(opts...)
+	if err != nil {
+		return nil, err
 	}
-	return kgo.NewClient(opts...)
+	if kafkaCfg.AutoCreateTopicEnabled {
+		setDefaultNumberOfPartitionsForAutocreatedTopics(kafkaCfg, client, logger)
+	}
+	return client, nil
 }
 
 type onlySampledTraces struct {
@@ -99,7 +113,7 @@ func (o onlySampledTraces) Inject(ctx context.Context, carrier propagation.TextM
 	o.TextMapPropagator.Inject(ctx, carrier)
 }
 
-func commonKafkaClientOptions(cfg Config, metrics *kprom.Metrics, logger log.Logger) []kgo.Opt {
+func commonKafkaClientOptions(cfg kafka.Config, metrics *kprom.Metrics, logger log.Logger) []kgo.Opt {
 	opts := []kgo.Opt{
 		kgo.ClientID(cfg.ClientID),
 		kgo.SeedBrokers(cfg.Address),
@@ -137,6 +151,16 @@ func commonKafkaClientOptions(cfg Config, metrics *kprom.Metrics, logger log.Log
 			// 30s is the default timeout in the Kafka client.
 			return 30 * time.Second
 		}),
+	}
+
+	// SASL plain auth.
+	if cfg.SASLUsername != "" && cfg.SASLPassword.String() != "" {
+		opts = append(opts, kgo.SASL(plain.Plain(func(_ context.Context) (plain.Auth, error) {
+			return plain.Auth{
+				User: cfg.SASLUsername,
+				Pass: cfg.SASLPassword.String(),
+			}, nil
+		})))
 	}
 
 	if cfg.AutoCreateTopicEnabled {

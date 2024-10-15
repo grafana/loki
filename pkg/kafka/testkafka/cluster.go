@@ -16,8 +16,8 @@ import (
 )
 
 // CreateCluster returns a fake Kafka cluster for unit testing.
-func CreateCluster(t testing.TB, numPartitions int32, topicName string) (*kfake.Cluster, kafka.Config) {
-	cluster, addr := CreateClusterWithoutCustomConsumerGroupsSupport(t, numPartitions, topicName)
+func CreateCluster(t testing.TB, numPartitions int32, topicName string, opts ...kfake.Opt) (*kfake.Cluster, kafka.Config) {
+	cluster, addr := CreateClusterWithoutCustomConsumerGroupsSupport(t, numPartitions, topicName, opts...)
 	addSupportForConsumerGroups(t, cluster, topicName, numPartitions)
 
 	return cluster, createTestKafkaConfig(addr, topicName)
@@ -34,8 +34,16 @@ func createTestKafkaConfig(clusterAddr, topicName string) kafka.Config {
 	return cfg
 }
 
-func CreateClusterWithoutCustomConsumerGroupsSupport(t testing.TB, numPartitions int32, topicName string) (*kfake.Cluster, string) {
-	cluster, err := kfake.NewCluster(kfake.NumBrokers(1), kfake.SeedTopics(numPartitions, topicName))
+func CreateClusterWithoutCustomConsumerGroupsSupport(t testing.TB, numPartitions int32, topicName string, opts ...kfake.Opt) (*kfake.Cluster, string) {
+	cfg := []kfake.Opt{
+		kfake.NumBrokers(1),
+		kfake.SeedTopics(numPartitions, topicName),
+	}
+
+	// Apply options.
+	cfg = append(cfg, opts...)
+
+	cluster, err := kfake.NewCluster(cfg...)
 	require.NoError(t, err)
 	t.Cleanup(cluster.Close)
 

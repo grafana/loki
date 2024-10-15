@@ -22,6 +22,7 @@ import (
 	"github.com/twmb/franz-go/plugin/kprom"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/client"
 )
 
 var errWaitTargetLagDeadlineExceeded = errors.New("waiting for target lag deadline exceeded")
@@ -94,7 +95,7 @@ func NewReader(
 // This method is called when the PartitionReader service starts.
 func (p *Reader) start(ctx context.Context) error {
 	var err error
-	p.client, err = kafka.NewReaderClient(p.kafkaCfg, p.metrics.kprom, p.logger)
+	p.client, err = client.NewReaderClient(p.kafkaCfg, p.metrics.kprom, p.logger)
 	if err != nil {
 		return errors.Wrap(err, "creating kafka reader client")
 	}
@@ -539,7 +540,7 @@ func newReaderMetrics(reg prometheus.Registerer) readerMetrics {
 	return readerMetrics{
 		receiveDelayWhenStarting: receiveDelay.WithLabelValues("starting"),
 		receiveDelayWhenRunning:  receiveDelay.WithLabelValues("running"),
-		kprom:                    kafka.NewReaderClientMetrics("partition-reader", reg),
+		kprom:                    client.NewReaderClientMetrics("partition-reader", reg),
 		fetchWaitDuration: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:                        "loki_ingest_storage_reader_records_batch_wait_duration_seconds",
 			Help:                        "How long a consumer spent waiting for a batch of records from the Kafka client. If fetching is faster than processing, then this will be close to 0.",
