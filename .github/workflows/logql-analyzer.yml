@@ -99,5 +99,5 @@ jobs:
         EOF
 
         docker run --rm \
-        -e GITHUB_TOKEN="$GITHUB_TOKEN" \
-        -e CONFIG_JSON="$(cat config.json)" us-docker.pkg.dev/grafanalabs-global/docker-deployment-tools-prod/updater |& tee updater-output.log
+          -e GITHUB_TOKEN="$GITHUB_TOKEN" \
+          -e CONFIG_JSON="$(cat config.json)" us-docker.pkg.dev/grafanalabs-global/docker-deployment-tools-prod/updater |& tee updater-output.log
