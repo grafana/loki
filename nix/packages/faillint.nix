@@ -2,15 +2,15 @@
 
 buildGoModule rec {
   pname = "faillint";
-  version = "1.11.0";
+  version = "v1.14.0";
 
   src = fetchFromGitHub {
     owner = "fatih";
     repo = "faillint";
-    rev = "v${version}";
-    sha256 = "ZSTeNp8r+Ab315N1eVDbZmEkpQUxmmVovvtqBBskuI4=";
+    rev = "${version}";
+    sha256 = "NV+wbu547mtTa6dTGv7poBwWXOmu5YjqbauzolCg5qs=";
   };
 
-  vendorHash = "sha256-5OR6Ylkx8AnDdtweY1B9OEcIIGWsY8IwTHbR/LGnqFI=";
+  vendorHash = "sha256-vWt4HneDA7YwXYnn8TbfWCKzSv7RcgXxn/HAh6a+htQ=";
   doCheck = false;
 }

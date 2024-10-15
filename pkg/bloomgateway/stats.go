@@ -16,7 +16,8 @@ type Stats struct {
 	MetasFetchTime, BlocksFetchTime     *atomic.Duration
 	ProcessingTime, TotalProcessingTime *atomic.Duration
 	PostProcessingTime                  *atomic.Duration
-	ProcessedBlocks                     *atomic.Int32
+	ProcessedBlocks                     *atomic.Int32 // blocks processed for this specific request
+	ProcessedBlocksTotal                *atomic.Int32 // blocks processed for multiplexed request
 }
 
 type statsKey int
@@ -26,14 +27,15 @@ var ctxKey = statsKey(0)
 // ContextWithEmptyStats returns a context with empty stats.
 func ContextWithEmptyStats(ctx context.Context) (*Stats, context.Context) {
 	stats := &Stats{
-		Status:              "unknown",
-		ProcessedBlocks:     atomic.NewInt32(0),
-		QueueTime:           atomic.NewDuration(0),
-		MetasFetchTime:      atomic.NewDuration(0),
-		BlocksFetchTime:     atomic.NewDuration(0),
-		ProcessingTime:      atomic.NewDuration(0),
-		TotalProcessingTime: atomic.NewDuration(0),
-		PostProcessingTime:  atomic.NewDuration(0),
+		Status:               "unknown",
+		ProcessedBlocks:      atomic.NewInt32(0),
+		ProcessedBlocksTotal: atomic.NewInt32(0),
+		QueueTime:            atomic.NewDuration(0),
+		MetasFetchTime:       atomic.NewDuration(0),
+		BlocksFetchTime:      atomic.NewDuration(0),
+		ProcessingTime:       atomic.NewDuration(0),
+		TotalProcessingTime:  atomic.NewDuration(0),
+		PostProcessingTime:   atomic.NewDuration(0),
 	}
 	ctx = context.WithValue(ctx, ctxKey, stats)
 	return stats, ctx
@@ -72,6 +74,7 @@ func (s *Stats) KVArgs() []any {
 		"tasks", s.NumTasks,
 		"matchers", s.NumMatchers,
 		"blocks_processed", s.ProcessedBlocks.Load(),
+		"blocks_processed_total", s.ProcessedBlocksTotal.Load(),
 		"series_requested", s.SeriesRequested,
 		"series_filtered", s.SeriesFiltered,
 		"chunks_requested", s.ChunksRequested,
@@ -134,4 +137,11 @@ func (s *Stats) IncProcessedBlocks() {
 		return
 	}
 	s.ProcessedBlocks.Inc()
+}
+
+func (s *Stats) AddProcessedBlocksTotal(delta int) {
+	if s == nil {
+		return
+	}
+	s.ProcessedBlocksTotal.Add(int32(delta))
 }

@@ -38,9 +38,10 @@ type Limits interface {
 // Limiter implements primitives to get the maximum number of streams
 // an ingester can handle for a specific tenant
 type Limiter struct {
-	limits       Limits
-	ringStrategy limiterRingStrategy
-	metrics      *ingesterMetrics
+	limits            Limits
+	ringStrategy      limiterRingStrategy
+	metrics           *ingesterMetrics
+	rateLimitStrategy RateLimiterStrategy
 
 	mtx      sync.RWMutex
 	disabled bool
@@ -51,6 +52,7 @@ func (l *Limiter) DisableForWALReplay() {
 	defer l.mtx.Unlock()
 	l.disabled = true
 	l.metrics.limiterEnabled.Set(0)
+	l.rateLimitStrategy.SetDisabled(true)
 }
 
 func (l *Limiter) Enable() {
@@ -58,6 +60,7 @@ func (l *Limiter) Enable() {
 	defer l.mtx.Unlock()
 	l.disabled = false
 	l.metrics.limiterEnabled.Set(1)
+	l.rateLimitStrategy.SetDisabled(false)
 }
 
 type limiterRingStrategy interface {
@@ -65,11 +68,12 @@ type limiterRingStrategy interface {
 }
 
 // NewLimiter makes a new limiter
-func NewLimiter(limits Limits, metrics *ingesterMetrics, ingesterRingLimiterStrategy limiterRingStrategy) *Limiter {
+func NewLimiter(limits Limits, metrics *ingesterMetrics, ingesterRingLimiterStrategy limiterRingStrategy, rateLimitStrategy RateLimiterStrategy) *Limiter {
 	return &Limiter{
-		limits:       limits,
-		ringStrategy: ingesterRingLimiterStrategy,
-		metrics:      metrics,
+		limits:            limits,
+		ringStrategy:      ingesterRingLimiterStrategy,
+		metrics:           metrics,
+		rateLimitStrategy: rateLimitStrategy,
 	}
 }
 
@@ -231,14 +235,34 @@ func (l *streamCountLimiter) getSuppliers(tenant string) (streamCountSupplier, f
 
 type RateLimiterStrategy interface {
 	RateLimit(tenant string) validation.RateLimit
+	SetDisabled(bool)
 }
 
-func (l *Limiter) RateLimit(tenant string) validation.RateLimit {
+type TenantBasedStrategy struct {
+	disabled bool
+	limits   Limits
+}
+
+func (l *TenantBasedStrategy) RateLimit(tenant string) validation.RateLimit {
 	if l.disabled {
 		return validation.Unlimited
 	}
 
 	return l.limits.PerStreamRateLimit(tenant)
+}
+
+func (l *TenantBasedStrategy) SetDisabled(disabled bool) {
+	l.disabled = disabled
+}
+
+type NoLimitsStrategy struct{}
+
+func (l *NoLimitsStrategy) RateLimit(_ string) validation.RateLimit {
+	return validation.Unlimited
+}
+
+func (l *NoLimitsStrategy) SetDisabled(_ bool) {
+	// no-op
 }
 
 type StreamRateLimiter struct {

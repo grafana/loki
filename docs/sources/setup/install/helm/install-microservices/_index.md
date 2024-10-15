@@ -28,7 +28,8 @@ We do not recommended to run Microservice mode with `filesystem` storage. For th
 ## Prerequisites
 
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).
-- A running Kubernetes cluster.
+- A running Kubernetes cluster (must have at least 3 nodes).
+
 
 
 ## Deploying the Helm chart for development and testing
@@ -73,7 +74,6 @@ We do not recommended to run Microservice mode with `filesystem` storage. For th
         compactor:
           retention_enabled: true 
           delete_request_store: s3
-
 
      deploymentMode: Distributed
 
@@ -281,7 +281,7 @@ loki:
 loki:
   schemaConfig:
     configs:
-      - from: 2024-04-01
+      - from: "2024-04-01"
         store: tsdb
         object_store: azure
         schema: v13
