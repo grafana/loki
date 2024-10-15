@@ -14,7 +14,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/kafka/testkafka"
 )
 
@@ -24,7 +24,7 @@ func TestPartitionCommitter(t *testing.T) {
 	topicName := "test-topic"
 	_, kafkaCfg := testkafka.CreateCluster(t, numPartitions, topicName)
 
-	client, err := kafka.NewReaderClient(kafkaCfg, kprom.NewMetrics("foo"), log.NewNopLogger())
+	client, err := client.NewReaderClient(kafkaCfg, kprom.NewMetrics("foo"), log.NewNopLogger())
 	require.NoError(t, err)
 
 	// Create a Kafka admin client

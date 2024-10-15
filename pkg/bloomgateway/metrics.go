@@ -119,7 +119,7 @@ type workerMetrics struct {
 	dequeueDuration    *prometheus.HistogramVec
 	queueDuration      *prometheus.HistogramVec
 	processDuration    *prometheus.HistogramVec
-	tasksDequeued      *prometheus.CounterVec
+	tasksDequeued      *prometheus.HistogramVec
 	tasksProcessed     *prometheus.CounterVec
 	blocksNotAvailable *prometheus.CounterVec
 	blockQueryLatency  *prometheus.HistogramVec
@@ -147,11 +147,12 @@ func newWorkerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 			Name:      "process_duration_seconds",
 			Help:      "Time spent processing tasks in seconds",
 		}, append(labels, "status")),
-		tasksDequeued: r.NewCounterVec(prometheus.CounterOpts{
+		tasksDequeued: r.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
-			Name:      "tasks_dequeued_total",
-			Help:      "Total amount of tasks that the worker dequeued from the queue",
+			Name:      "tasks_dequeued",
+			Help:      "Total amount of tasks that the worker dequeued from the queue at once",
+			Buckets:   prometheus.ExponentialBuckets(1, 2, 8), // [1, 2, ..., 128]
 		}, append(labels, "status")),
 		tasksProcessed: r.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,

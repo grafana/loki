@@ -2008,6 +2008,7 @@ ManagementStateType
 </em>
 </td>
 <td>
+<em>(Optional)</em>
 <p>ManagementState defines if the CR should be managed by the operator or not.
 Default is managed.</p>
 </td>
