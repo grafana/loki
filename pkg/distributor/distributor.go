@@ -279,11 +279,13 @@ func New(
 			Help:      "Total number of times the distributor has sharded streams",
 		}),
 		kafkaAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Name: "kafka_appends_total",
-			Help: "The total number of appends sent to kafka ingest path.",
+			Namespace: constants.Loki,
+			Name:      "distributor_kafka_appends_total",
+			Help:      "The total number of appends sent to kafka ingest path.",
 		}, []string{"partition", "status"}),
 		kafkaWriteLatency: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-			Name:                            "kafka_latency_seconds",
+			Namespace:                       constants.Loki,
+			Name:                            "distributor_kafka_latency_seconds",
 			Help:                            "Latency to write an incoming request to the ingest storage.",
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMinResetDuration: 1 * time.Hour,
@@ -291,13 +293,15 @@ func New(
 			Buckets:                         prometheus.DefBuckets,
 		}),
 		kafkaWriteBytesTotal: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Name: "kafka_sent_bytes_total",
-			Help: "Total number of bytes sent to the ingest storage.",
+			Namespace: constants.Loki,
+			Name:      "distributor_kafka_sent_bytes_total",
+			Help:      "Total number of bytes sent to the ingest storage.",
 		}),
 		kafkaRecordsPerRequest: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-			Name:    "kafka_records_per_write_request",
-			Help:    "The number of records a single per-partition write request has been split into.",
-			Buckets: prometheus.ExponentialBuckets(1, 2, 8),
+			Namespace: constants.Loki,
+			Name:      "distributor_kafka_records_per_write_request",
+			Help:      "The number of records a single per-partition write request has been split into.",
+			Buckets:   prometheus.ExponentialBuckets(1, 2, 8),
 		}),
 		writeFailuresManager: writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
 		kafkaWriter:          kafkaWriter,
@@ -1153,7 +1157,7 @@ func extractLogLevelFromLogLine(log string) string {
 		return constants.LogLevelDebug
 	case bytes.EqualFold(v, []byte("info")), bytes.EqualFold(v, []byte("inf")):
 		return constants.LogLevelInfo
-	case bytes.EqualFold(v, []byte("warn")), bytes.EqualFold(v, []byte("wrn")):
+	case bytes.EqualFold(v, []byte("warn")), bytes.EqualFold(v, []byte("wrn")), bytes.EqualFold(v, []byte("warning")):
 		return constants.LogLevelWarn
 	case bytes.EqualFold(v, []byte("error")), bytes.EqualFold(v, []byte("err")):
 		return constants.LogLevelError

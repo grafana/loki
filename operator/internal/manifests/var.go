@@ -10,6 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/ptr"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
@@ -459,7 +460,7 @@ func lokiServiceMonitorEndpoint(stackName, portName, serviceName, namespace stri
 					Key: corev1.TLSPrivateKeyKey,
 				},
 				// ServerName can be e.g. loki-distributor-http.openshift-logging.svc.cluster.local
-				ServerName: fqdn(serviceName, namespace),
+				ServerName: ptr.To(fqdn(serviceName, namespace)),
 			},
 		}
 
@@ -492,7 +493,7 @@ func gatewayServiceMonitorEndpoint(gatewayName, portName, serviceName, namespace
 					},
 				},
 				// ServerName can be e.g. lokistack-dev-gateway-http.openshift-logging.svc.cluster.local
-				ServerName: fqdn(serviceName, namespace),
+				ServerName: ptr.To(fqdn(serviceName, namespace)),
 			},
 		}
 

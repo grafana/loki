@@ -18,6 +18,8 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/atomic"
+
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 // NewWriterClient returns the kgo.Client that should be used by the Writer.
@@ -189,6 +191,7 @@ func NewProducer(client *kgo.Client, maxBufferedBytes int64, reg prometheus.Regi
 		// Metrics.
 		bufferedProduceBytes: promauto.With(reg).NewSummary(
 			prometheus.SummaryOpts{
+				Namespace:  constants.Loki,
 				Name:       "buffered_produce_bytes",
 				Help:       "The buffered produce records in bytes. Quantile buckets keep track of buffered records size over the last 60s.",
 				Objectives: map[float64]float64{0.5: 0.05, 0.99: 0.001, 1: 0.001},
@@ -197,16 +200,19 @@ func NewProducer(client *kgo.Client, maxBufferedBytes int64, reg prometheus.Regi
 			}),
 		bufferedProduceBytesLimit: promauto.With(reg).NewGauge(
 			prometheus.GaugeOpts{
-				Name: "buffered_produce_bytes_limit",
-				Help: "The bytes limit on buffered produce records. Produce requests fail once this limit is reached.",
+				Namespace: constants.Loki,
+				Name:      "buffered_produce_bytes_limit",
+				Help:      "The bytes limit on buffered produce records. Produce requests fail once this limit is reached.",
 			}),
 		produceRequestsTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "produce_requests_total",
-			Help: "Total number of produce requests issued to Kafka.",
+			Namespace: constants.Loki,
+			Name:      "produce_requests_total",
+			Help:      "Total number of produce requests issued to Kafka.",
 		}),
 		produceFailuresTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "produce_failures_total",
-			Help: "Total number of failed produce requests issued to Kafka.",
+			Namespace: constants.Loki,
+			Name:      "produce_failures_total",
+			Help:      "Total number of failed produce requests issued to Kafka.",
 		}, []string{"reason"}),
 	}
 

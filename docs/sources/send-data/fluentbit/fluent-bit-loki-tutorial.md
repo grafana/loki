@@ -46,7 +46,7 @@ Provide feedback, report bugs, and raise issues in the [Grafana Killercoda repos
 
 ## Scenario
 
-In this scenario, we have a microservices application called the Carnivourse Greenhouse. This application consists of the following services:
+In this scenario, we have a microservices application called the Carnivorous Greenhouse. This application consists of the following services:
 
 - **User Service:** Manages user data and authentication for the application. Such as creating users and logging in.
 - **Plant Service:** Manages the creation of new plants and updates other services when a new plant is created.
@@ -56,7 +56,7 @@ In this scenario, we have a microservices application called the Carnivourse Gre
 - **Main App:** The main application that ties all the services together.
 - **Database:** A database that stores user and plant data.
 
-Each service has been instrumented with the fluent bit logging framework to generate logs. If you would like to learn more about how the Carnivorous Greenhouse application was instrumented with Fluent Bit, refer to the [Carnivorous Greenhouse repository](https://github.com/grafana/loki-fundamentals/blob/fluentbit-official/greenhouse/loggingfw.py).
+Each service has been instrumented with the Fluent Bit logging framework to generate logs. If you would like to learn more about how the Carnivorous Greenhouse application was instrumented with Fluent Bit, refer to the [Carnivorous Greenhouse repository](https://github.com/grafana/loki-fundamentals/blob/fluentbit-official/greenhouse/loggingfw.py).
 
 <!-- INTERACTIVE page intro.md END -->
 
@@ -135,7 +135,7 @@ For more information on the `forward` input plugin, see the [Fluent Bit Forward 
 
 ### Export logs to Loki using the official Loki output plugin
 
-Lastly, we will configure Fluent Bit to export logs to Loki using the official Loki output plugin. The Loki output plugin allows you to send logs or events to a Loki service. It supports data enrichment with Kubernetes labels, custom label keys and structured metadata.
+Lastly, we will configure Fluent Bit to export logs to Loki using the official Loki output plugin. The Loki output plugin allows you to send logs or events to a Loki service. It supports data enrichment with Kubernetes labels, custom label keys, and structured metadata.
 
 Add the following configuration to the `fluent-bit.conf` file:
 ```conf
@@ -201,7 +201,7 @@ docker restart loki-fundamentals-fluent-bit-1
 In this step, we will start the Carnivorous Greenhouse application. To start the application, run the following command:
 <!-- INTERACTIVE ignore START -->
 {{< admonition type="note" >}}
-This docker-compose file relies on the `loki-fundamentals_loki` docker network. If you have not started the observability stack, you will need to start it first.
+This docker-compose file relies on the `loki-fundamentals_loki` Docker network. If you have not started the observability stack, you will need to start it first.
 {{< /admonition >}}
 <!-- INTERACTIVE ignore END -->
 

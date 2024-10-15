@@ -114,38 +114,35 @@ docker run -v /var/run/docker.sock:/var/run/docker.sock -v $(pwd)/fluent-bit.con
 
 The recommended way to collect logs from Kubernetes with Fluent Bit is to use the Helm chart provided by the Fluent Bit project. The Helm chart is available at [https://github.com/fluent/helm-charts](https://github.com/fluent/helm-charts).
 
-Here is an example of how to deploy the Fluent Bit helm chart to collect logs from Kubernetes and send them to Loki:
+Here is an example of how to deploy the Fluent Bit Helm chart to collect logs from Kubernetes and send them to Loki:
 
 1. Add the Fluent Bit Helm repository:
    
-```bash
-helm repo add fluent https://fluent.github.io/helm-charts
-```
+   ```bash
+   helm repo add fluent https://fluent.github.io/helm-charts
 1. Create a `values.yaml` file with the following content:
 
-```yaml
-config:
-    outputs: |
-        [OUTPUT]
-            Name        loki
-            Match       *
-            Host        YourHost.Company.net
-            port        443
-            tls         on
-            tls.verify  on
-            http_user   XXX
-            http_passwd XXX
-            Labels agent=fluend-bit
-```
+   ```yaml
+   config:
+       outputs: |
+           [OUTPUT]
+               Name        loki
+               Match       *
+               Host        YourHost.Company.net
+               port        443
+               tls         on
+               tls.verify  on
+               http_user   XXX
+               http_passwd XXX
+               Labels agent=fluend-bit
 
-Note we are only updating the `outputs` section of the Fluent Bit configuration. This is to replace the default output plugin with the Loki output plugin. If you need to update other parts of the Fluent Bit configuration refer to the [Fluent Bit values file reference](https://github.com/fluent/helm-charts/blob/main/charts/fluent-bit/values.yaml).
+   Note we are only updating the `outputs` section of the Fluent Bit configuration. This is to replace the default output plugin with the Loki output plugin. If you need to update other parts of the Fluent Bit configuration refer to the [Fluent Bit values file reference](https://github.com/fluent/helm-charts/blob/main/charts/fluent-bit/values.yaml).
 
 1. Deploy the Fluent Bit Helm chart:
 
-```bash
-helm install fluent-bit fluent/fluent-bit -f values.yaml
-```
+   ```bash
+   helm install fluent-bit fluent/fluent-bit -f values.yaml
 
-## Where next?
+## Next steps
 
 - [Sending logs to Loki using Fluent Bit tutorial](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/fluentbit/fluent-bit-loki-tutorial/)
