@@ -3725,20 +3725,6 @@ ruler_remote_write_sigv4_config:
 # CLI flag: -limits.per-user-override-period
 [per_tenant_override_period: <duration> | default = 10s]
 
-# S3 server-side encryption type. Required to enable server-side encryption
-# overrides for a specific tenant. If not set, the default S3 client settings
-# are used.
-[s3_sse_type: <string> | default = ""]
-
-# S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not
-# set.
-[s3_sse_kms_key_id: <string> | default = ""]
-
-# S3 server-side encryption KMS encryption context. If unset and the key ID
-# override is set, the encryption context will not be provided to S3. Ignored if
-# the SSE type override is not set.
-[s3_sse_kms_encryption_context: <string> | default = ""]
-
 # Deprecated: Use deletion_mode per tenant configuration instead.
 [allow_deletes: <boolean>]
 
