@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -22,6 +23,7 @@ import (
 type GCSThanosObjectClient struct {
 	client       objstore.Bucket
 	hedgedClient objstore.Bucket
+	logger       log.Logger
 }
 
 func NewGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, hedgingCfg hedging.Config) (*GCSThanosObjectClient, error) {
@@ -38,6 +40,7 @@ func NewGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, component 
 	return &GCSThanosObjectClient{
 		client:       client,
 		hedgedClient: hedgedClient,
+		logger:       logger,
 	}, nil
 }
 
@@ -79,19 +82,20 @@ func (s *GCSThanosObjectClient) PutObject(ctx context.Context, objectKey string,
 }
 
 // GetObject returns a reader and the size for the specified object key from the configured GCS bucket.
+// size is set to -1 if it cannot be succefully determined, it is up to the caller to check this value before using it.
 func (s *GCSThanosObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	reader, err := s.hedgedClient.Get(ctx, objectKey)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	// TODO: use GetSize once the upstream change is merged
-	attr, err := s.hedgedClient.Attributes(ctx, objectKey)
+	size, err := objstore.TryToGetSize(reader)
 	if err != nil {
-		return nil, 0, errors.Wrapf(err, "failed to get attributes for %s", objectKey)
+		size = -1
+		level.Warn(s.logger).Log("msg", "failed to get size of object", "err", err)
 	}
 
-	return reader, attr.Size, err
+	return reader, size, err
 }
 
 func (s *GCSThanosObjectClient) GetObjectRange(ctx context.Context, objectKey string, offset, length int64) (io.ReadCloser, error) {

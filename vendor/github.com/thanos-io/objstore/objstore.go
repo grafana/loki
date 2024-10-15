@@ -829,3 +829,17 @@ func (t *timingReaderWriterTo) WriteTo(w io.Writer) (n int64, err error) {
 	t.timingReader.updateMetrics(int(n), err)
 	return n, err
 }
+
+type ObjectSizerReadCloser struct {
+	io.ReadCloser
+	Size func() (int64, error)
+}
+
+// ObjectSize implement ObjectSizer.
+func (o ObjectSizerReadCloser) ObjectSize() (int64, error) {
+	if o.Size == nil {
+		return 0, errors.New("unknown size")
+	}
+
+	return o.Size()
+}
