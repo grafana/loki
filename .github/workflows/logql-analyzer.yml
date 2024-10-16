@@ -75,6 +75,7 @@ jobs:
     - name: Log in to Google Artifact Registry
       uses: grafana/shared-workflows/actions/login-to-gar@main
       with:
+        registry: "us-docker.pkg.dev"
         environment: "prod"
 
     - name: Update to latest image
