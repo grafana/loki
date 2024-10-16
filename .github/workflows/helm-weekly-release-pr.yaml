@@ -31,7 +31,7 @@ jobs:
 
       - uses: imjasonh/setup-crane@v0.4
       - run: |
-          echo "${DOCKER_PASSWORD}" | crane auth login https://registry.hub.docker.com --username "${DOCKER_USERNAME}" --password-stdin
+          echo "${DOCKER_PASSWORD}" | crane auth login registry.hub.docker.com --username "${DOCKER_USERNAME}" --password-stdin
 
       - name: Update/regenerate files
         id: update-k
