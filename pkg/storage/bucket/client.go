@@ -87,10 +87,10 @@ func (cfg *StorageBackendConfig) RegisterFlagsWithPrefix(prefix string, f *flag.
 }
 
 func (cfg *StorageBackendConfig) Validate() error {
-	// TODO: validate other providers
-	if err := cfg.S3.Validate(); err != nil {
-		return err
-	}
+	// TODO: enable validation when s3 flags are registered
+	// if err := cfg.S3.Validate(); err != nil {
+	// return err
+	//}
 
 	return nil
 }
@@ -131,7 +131,7 @@ func (cfg *Config) Validate() error {
 }
 
 // NewClient creates a new bucket client based on the configured backend
-func NewClient(backend string, ctx context.Context, cfg Config, name string, logger log.Logger) (objstore.InstrumentedBucket, error) {
+func NewClient(ctx context.Context, backend string, cfg Config, name string, logger log.Logger) (objstore.InstrumentedBucket, error) {
 	var (
 		client objstore.Bucket
 		err    error

@@ -123,7 +123,7 @@ func NewLegacyRuleStore(cfg RuleStoreConfig, hedgeCfg hedging.Config, clientMetr
 }
 
 // NewRuleStore returns a rule store backend client based on the provided cfg.
-func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.TenantConfigProvider, loader promRules.GroupLoader, logger log.Logger, reg prometheus.Registerer) (rulestore.RuleStore, error) {
+func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.TenantConfigProvider, loader promRules.GroupLoader, logger log.Logger, _ prometheus.Registerer) (rulestore.RuleStore, error) {
 	if cfg.Backend == configdb.Name {
 		c, err := configClient.New(cfg.ConfigDB)
 		if err != nil {
@@ -136,15 +136,10 @@ func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.
 	if cfg.Backend == local.Name {
 		return local.NewLocalRulesClient(cfg.Local, loader)
 	}
-	bucketClient, err := bucket.NewClient(cfg.Backend, ctx, cfg.Config, "ruler-storage", logger)
+	bucketClient, err := bucket.NewClient(ctx, cfg.Backend, cfg.Config, "ruler-storage", logger)
 	if err != nil {
 		return nil, err
 	}
 
-	store := bucketclient.NewBucketRuleStore(bucketClient, cfgProvider, logger)
-	if err != nil {
-		return nil, err
-	}
-
-	return store, nil
+	return bucketclient.NewBucketRuleStore(bucketClient, cfgProvider, logger), nil
 }
