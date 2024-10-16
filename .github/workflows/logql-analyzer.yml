@@ -23,6 +23,25 @@ jobs:
       with:
         fetch-tags: true
 
+    - name: Run shell command
+      id: prepare
+      env:
+        MAJOR_MINOR_VERSION_REGEXP: '([0-9]+\\.[0-9]+)'
+        RELEASE_TAG_REGEXP: '^([0-9]+\\.[0-9]+\\.[0-9]+)$'
+      run: |
+        echo $("${WORKSPACE_ROOT}/loki/tools/image-tag") > .tag
+        if [[ "${RELEASE_VERSION}" == "test" ]]; then
+          echo "RELEASE_VERSION is not set, using image tag"
+          RELEASE_VERSION=$(cat .tag)
+        fi
+
+        # if the tag matches the pattern `D.D.D` then RELEASE_NAME="D-D-x", otherwise RELEASE_NAME="next"
+        RELEASE_NAME=$([[ $RELEASE_VERSION =~ $RELEASE_TAG_REGEXP ]] && echo $RELEASE_TAG | grep -oE $MAJOR_MINOR_VERSION_REGEXP | sed "s/\\./-/g" | sed "s/$/-x/" || echo "next")
+        echo "RELEASE_NAME: $RELEASE_NAME"
+
+        echo "::set-output name=release_version::${RELEASE_VERSION}"
+        echo "::set-output name=release_name::${RELEASE_NAME}"
+
     - id: "get-github-app-token"
       name: "get github app token"
       uses: "actions/create-github-app-token@v1"
@@ -44,7 +63,7 @@ jobs:
       with:
         build-args: "IMAGE_TAG=${RELEASE_VERSION}"
         file: "cmd/logql-analyzer/Dockerfile"
-        platforms: "linux/amd64,linux/arm64,linux/arm"
+        platforms: "linux/amd64"
         push: true
         tags: "${{ env.IMAGE_PREFIX }}/logql-analyzer:${RELEASE_VERSION}"
 
@@ -53,25 +72,12 @@ jobs:
       with:
         environment: "prod"
 
-    - name: Run shell command
-      id: prepare
-      run: |
-        echo $("${WORKSPACE_ROOT}/loki/tools/image-tag") > .tag
-        RELEASE_TAG=$(cat .tag)
-        echo "RELEASE_TAG: $RELEASE_TAG"
-
-        # if the tag matches the pattern `D.D.D` then RELEASE_NAME="D-D-x", otherwise RELEASE_NAME="next"
-        RELEASE_NAME=$([[ $RELEASE_TAG =~ $RELEASE_TAG_REGEXP ]] && echo $RELEASE_TAG | grep -oE $MAJOR_MINOR_VERSION_REGEXP | sed "s/\\./-/g" | sed "s/$/-x/" || echo "next")
-        echo "RELEASE_NAME: $RELEASE_NAME"
-
-        echo "::set-output name=release_tag::${RELEASE_TAG}"
-        echo "::set-output name=release_name::${RELEASE_NAME}"
 
     - name: Update to latest image
       env:
         GITHUB_TOKEN: ${{ steps.get-github-app-token.outputs.token }}
         RELEASE_NAME: ${{ steps.prepare.outputs.release_name }}
-        RELEASE_TAG: ${{ steps.prepare.outputs.release_tag }}
+        RELEASE_VERSION: ${{ steps.prepare.outputs.release_version }}
       run: |
         set -e -o pipefail
 
@@ -92,7 +98,7 @@ jobs:
               {
                 "file_path": "ksonnet/environments/logql-analyzer/supported-versions.libsonnet",
                 "jsonnet_key": "${RELEASE_NAME}",
-                "jsonnet_value": "grafana/logql-analyzer:${RELEASE_TAG}-amd64",
+                "jsonnet_value": "grafana/logql-analyzer:${RELEASE_VERSION}-amd64",
                 "upsert": true
               }
             ]
