@@ -6,6 +6,10 @@ on:
 
   workflow_dispatch: # for manual testing
 
+  pull_request:
+    branches:
+      - fix-helm-release
+
 jobs:
   weekly-release-pr:
     runs-on: ubuntu-latest
@@ -20,6 +24,21 @@ jobs:
           app-id: "${{ secrets.APP_ID }}"
           owner: "${{ github.repository_owner }}"
           private-key: "${{ secrets.APP_PRIVATE_KEY }}"
+
+      - name: Update/regenerate files
+        id: update
+        run: bash .github/workflows/scripts/helm-weekly-release.sh -k
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ steps.get_github_app_token.outputs.token }}
+          title: Release loki Helm chart ${{ steps.update.outputs.new_chart_version }}
+          body: Automated PR created by [helm-weekly-release-pr.yaml](https://github.com/grafana/loki/blob/main/.github/workflows/helm-weekly-release-pr.yaml)
+          commit-message: Update loki chart to ${{ steps.update.outputs.new_chart_version }}
+          branch: helm-chart-weekly-${{ steps.update.outputs.new_chart_version }}
+          base: ${{ steps.update.outputs.weekly }}
+          labels: helm
 
       - name: Update/regenerate files
         id: update
