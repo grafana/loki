@@ -41,7 +41,7 @@ calculate_next_chart_version() {
     new_chart_semver=$(set_semver_patch_to_zero "${new_chart_semver}")
   fi
 
-  if $k_release; then
+  if ${k_release}; then
     echo "${new_chart_semver}-weekly.${new_chart_weekly}"
   else
     echo "${new_chart_semver}"
@@ -86,7 +86,7 @@ new_chart_version=$(calculate_next_chart_version "${current_chart_version}" "${l
 
 validate_version_update "${new_chart_version}" "${current_chart_version}" "${latest_gel_tag}" "${latest_loki_tag}"
 
-if $k_release; then
+if ${k_release}; then
   update_yaml_node "${values_file}" .loki.image.tag "${latest_loki_tag}"
   update_yaml_node "${values_file}" .enterprise.image.tag "${latest_gel_tag}"
   update_yaml_node "${chart_file}" .appVersion "$(extract_k_version "${latest_loki_tag}")"
@@ -94,7 +94,7 @@ fi
 
 update_yaml_node "${chart_file}" .version "${new_chart_version}"
 
-if $k_release; then
+if ${k_release}; then
   sed --in-place \
     --regexp-extended \
     "s/(.*\<AUTOMATED_UPDATES_LOCATOR\>.*)/\1\n\n## ${new_chart_version}\n\n- \[CHANGE\] Changed version of Grafana Loki to ${latest_loki_tag}\n- \[CHANGE\] Changed version of Grafana Enterprise Logs to ${latest_gel_tag}/g" production/helm/loki/CHANGELOG.md
@@ -107,6 +107,6 @@ fi
 make TTY='' helm-docs
 
 echo "::set-output name=new_chart_version::${new_chart_version}"
-if $k_release; then
+if ${k_release}; then
   echo "::set-output name=weekly::$(extract_k_version "${latest_loki_tag}")"
 fi

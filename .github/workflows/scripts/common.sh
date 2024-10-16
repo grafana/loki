@@ -22,7 +22,7 @@ get_yaml_node() {
 # Increments the part of the semver string
 # $1: version itself
 # $2: number of part: 0 – major, 1 – minor, 2 – patch
-# shellcheck disable=SC2207,SC2046
+# shellcheck disable=SC2207,SC2046,SC2248,SC2250
 increment_semver() {
   local delimiter=.
   local array=($(echo "$1" | tr $delimiter '\n'))
@@ -32,7 +32,7 @@ increment_semver() {
 
 # Sets the patch segment of a semver to 0
 # $1: version itself
-# shellcheck disable=SC2207,SC2046
+# shellcheck disable=SC2207,SC2046,SC2248,SC2250
 set_semver_patch_to_zero() {
   local delimiter=.
   local array=($(echo "$1" | tr $delimiter '\n'))
