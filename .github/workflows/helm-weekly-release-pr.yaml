@@ -30,8 +30,8 @@ jobs:
         uses: "grafana/shared-workflows/actions/dockerhub-login@main"
 
       - uses: imjasonh/setup-crane@v0.4
-      - run: |
-          echo "${{ env.DOCKER_PASSWORD }}" | crane auth login registry.hub.docker.com --username "${{ env.DOCKER_USERNAME }}" --password-stdin
+      # - run: |
+      #     echo "${{ env.DOCKER_PASSWORD }}" | crane auth login registry.hub.docker.com --username "${{ env.DOCKER_USERNAME }}" --password-stdin
 
       - name: Update/regenerate files
         id: update-k
