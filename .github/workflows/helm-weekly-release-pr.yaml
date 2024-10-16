@@ -16,6 +16,8 @@ permissions:
 jobs:
   weekly-release-pr:
     runs-on: ubuntu-latest
+    env:
+      BUILD_IN_CONTAINER: false
     steps:
       - uses: actions/checkout@v4
       - id: "get_github_app_token"
