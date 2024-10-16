@@ -24,12 +24,13 @@ jobs:
       with:
         fetch-tags: true
 
-    - id: prepare
+    - name: prepare
+      id: prepare
       env:
         MAJOR_MINOR_VERSION_REGEXP: '([0-9]+\\.[0-9]+)'
         RELEASE_TAG_REGEXP: '^([0-9]+\\.[0-9]+\\.[0-9]+)$'
       run: |
-        echo $("${WORKSPACE_ROOT}/loki/tools/image-tag") > .tag
+        echo "$(./tools/image-tag)" > .tag
         version="${RELEASE_VERSION}"
         if [[ "${version}" == "test" ]]; then
           echo "RELEASE_VERSION is not set, using image tag"
