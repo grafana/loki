@@ -30,8 +30,9 @@ jobs:
       env:
         MAJOR_MINOR_VERSION_REGEXP: '([0-9]+\\.[0-9]+)'
         RELEASE_TAG_REGEXP: '^([0-9]+\\.[0-9]+\\.[0-9]+)$'
+      working-directory: loki
       run: |
-        echo "$(./loki/tools/image-tag)" > .tag
+        echo "$(./tools/image-tag)" > .tag
         if [[ "$RELEASE_VERSION" == "test" ]]; then
           echo "RELEASE_VERSION is not set, using image tag"
           RELEASE_VERSION="$(cat .tag)"
