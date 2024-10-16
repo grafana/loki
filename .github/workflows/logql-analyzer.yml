@@ -57,20 +57,24 @@ jobs:
         environment: "prod"
 
     - name: Run shell command
+      id: prepare
       run: |
         echo $("${WORKSPACE_ROOT}/loki/tools/image-tag") > .tag
-        export RELEASE_TAG=$(cat .tag)
+        RELEASE_TAG=$(cat .tag)
+        echo "RELEASE_TAG: $RELEASE_TAG"
+
         # if the tag matches the pattern `D.D.D` then RELEASE_NAME="D-D-x", otherwise RELEASE_NAME="next"
-        export RELEASE_NAME=$([[ $RELEASE_TAG =~ $RELEASE_TAG_REGEXP ]] && echo $RELEASE_TAG | grep -oE $MAJOR_MINOR_VERSION_REGEXP | sed "s/\\./-/g" | sed "s/$/-x/" || echo "next")
-        echo $RELEASE_NAME
-        echo $PLUGIN_CONFIG_TEMPLATE > updater-config.yaml
-        # replace placeholders with RELEASE_NAME and RELEASE TAG
-        sed -i "s/\\"{{release}}\\"/\\"$RELEASE_NAME\\"/g" %s % configFileName
-        sed -i "s/{{version}}/$RELEASE_TAG/g" %s % configFileName
+        RELEASE_NAME=$([[ $RELEASE_TAG =~ $RELEASE_TAG_REGEXP ]] && echo $RELEASE_TAG | grep -oE $MAJOR_MINOR_VERSION_REGEXP | sed "s/\\./-/g" | sed "s/$/-x/" || echo "next")
+        echo "RELEASE_NAME: $RELEASE_NAME"
+
+        echo "::set-output name=release_tag::${RELEASE_TAG}"
+        echo "::set-output name=release_name::${RELEASE_NAME}"
 
     - name: Update to latest image
       env:
         GITHUB_TOKEN: ${{ steps.get-github-app-token.outputs.token }}
+        RELEASE_NAME: ${{ steps.prepare.outputs.release_name }}
+        RELEASE_TAG: ${{ steps.prepare.outputs.release_tag }}
       run: |
         set -e -o pipefail
 
@@ -91,7 +95,7 @@ jobs:
               {
                 "file_path": "ksonnet/environments/logql-analyzer/supported-versions.libsonnet",
                 "jsonnet_key": "${RELEASE_NAME}",
-                "jsonnet_value": "grafana/logql-analyzer:${RELEASE_VERSION}-amd64",
+                "jsonnet_value": "grafana/logql-analyzer:${RELEASE_TAG}-amd64",
                 "upsert": true
               }
             ]
