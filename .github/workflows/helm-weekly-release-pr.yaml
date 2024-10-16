@@ -35,7 +35,8 @@ jobs:
 
       - name: Update/regenerate files
         id: update-k
-        run: bash .github/workflows/scripts/helm-weekly-release.sh -k
+        run: |
+          bash .github/workflows/scripts/helm-weekly-release.sh -k
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v5
