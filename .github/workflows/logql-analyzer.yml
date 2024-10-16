@@ -23,6 +23,7 @@ jobs:
     - uses: actions/checkout@v4
       with:
         fetch-tags: true
+        path: loki
 
     - name: prepare
       id: prepare
@@ -30,7 +31,7 @@ jobs:
         MAJOR_MINOR_VERSION_REGEXP: '([0-9]+\\.[0-9]+)'
         RELEASE_TAG_REGEXP: '^([0-9]+\\.[0-9]+\\.[0-9]+)$'
       run: |
-        echo "$(./tools/image-tag)" > .tag
+        echo "$(./loki/tools/image-tag)" > .tag
         if [[ "$RELEASE_VERSION" == "test" ]]; then
           echo "RELEASE_VERSION is not set, using image tag"
           RELEASE_VERSION="$(cat .tag)"
@@ -64,6 +65,7 @@ jobs:
       uses: "docker/build-push-action@v6"
       with:
         build-args: "IMAGE_TAG=${{ steps.prepare.outputs.release_version }}"
+        context: loki
         file: "cmd/logql-analyzer/Dockerfile"
         platforms: "linux/amd64"
         push: true
