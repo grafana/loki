@@ -38,7 +38,7 @@ jobs:
       # - run: |
       #     echo "${{ env.DOCKER_PASSWORD }}" | crane auth login registry.hub.docker.com --username "${{ env.DOCKER_USERNAME }}" --password-stdin
 
-      - name: Update/regenerate files
+      - name: Update/regenerate files for k release
         id: update-k
         run: |
           bash .github/workflows/scripts/helm-weekly-release.sh -k
@@ -54,7 +54,7 @@ jobs:
           base: ${{ steps.update-k.outputs.weekly }}
           labels: helm
 
-      - name: Update/regenerate files
+      - name: Update/regenerate files for standard release
         id: update
         run: bash .github/workflows/scripts/helm-weekly-release.sh
 
