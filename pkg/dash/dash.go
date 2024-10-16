@@ -18,7 +18,7 @@ import (
 	prom "github.com/prometheus/client_golang/prometheus"
 )
 
-var requiredLabels = []string{"cluster", "namespace", "container", "fake"}
+var requiredLabels = []string{"cluster", "namespace", "container", "missing_label"}
 
 type DashboardLoader struct {
 	ml DependencyLoader
@@ -197,7 +197,7 @@ func (l *DashboardLoader) WelcomeRow(objectStorage *ObjectStorageMetrics, builde
 	panel := timeseries.NewPanelBuilder().
 		Span(8).
 		Title("Missing required labels").
-		Description("Required labels not present on Loki instances").
+		Description("Labels that show up here are missing from loki instances but are required for use with this dashboard. To fix, ensure they're added via prometheus scrape configs").
 		Targets(targets).Legend(
 		common.NewVizLegendOptionsBuilder().
 			IsVisible(true).

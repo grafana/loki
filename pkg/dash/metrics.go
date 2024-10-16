@@ -25,6 +25,14 @@ var (
 	}, []string{"operation", "status_code"})
 )
 
+var DummyLoader = NewSimpleLoader(config.SchemaConfig{
+	Configs: []config.PeriodConfig{
+		{
+			ObjectType: "gcs",
+		},
+	},
+})
+
 // DependencyLoader is an interface for how different metric categories used in dashboards are loaded.
 // Ideally, the actual client_golang types are passed through here, usually via pkg-specific
 // Metrics{} structs. This is _hopeful_, but as of now some types are private/otherwise harder to expose.
@@ -39,20 +47,12 @@ type DependencyLoader interface {
 	BuildInfo() prom_api.PrometheusVersion
 }
 
-var DummyLoader = NewSimpleMetricLoader(config.SchemaConfig{
-	Configs: []config.PeriodConfig{
-		{
-			ObjectType: "s3",
-		},
-	},
-})
-
 // Not derived from a running loki instance, but created
 type SimpleDependencyLoader struct {
 	schemaConfig config.SchemaConfig
 }
 
-func NewSimpleMetricLoader(schemaConfig config.SchemaConfig) *SimpleDependencyLoader {
+func NewSimpleLoader(schemaConfig config.SchemaConfig) *SimpleDependencyLoader {
 	return &SimpleDependencyLoader{
 		schemaConfig: schemaConfig,
 	}
