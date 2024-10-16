@@ -47,7 +47,7 @@ jobs:
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ steps.get_github_app_token.outputs.token }}
-          title: Release loki Helm chart ${{ steps.update-k.outputs.new_chart_version }}
+          title: "chore: release loki Helm chart ${{ steps.update-k.outputs.new_chart_version }}"
           body: Automated PR created by [helm-weekly-release-pr.yaml](https://github.com/grafana/loki/blob/main/.github/workflows/helm-weekly-release-pr.yaml)
           commit-message: Update loki chart to ${{ steps.update-k.outputs.new_chart_version }}
           branch: helm-chart-weekly-${{ steps.update-k.outputs.new_chart_version }}
@@ -62,7 +62,7 @@ jobs:
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ steps.get_github_app_token.outputs.token }}
-          title: Release loki Helm chart ${{ steps.update.outputs.new_chart_version }}
+          title: "chore: release loki Helm chart ${{ steps.update.outputs.new_chart_version }}"
           body: Automated PR created by [helm-weekly-release-pr.yaml](https://github.com/grafana/loki/blob/main/.github/workflows/helm-weekly-release-pr.yaml)
           commit-message: Update loki chart to ${{ steps.update.outputs.new_chart_version }}
           branch: helm-chart-weekly-${{ steps.update.outputs.new_chart_version }}
