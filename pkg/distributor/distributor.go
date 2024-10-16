@@ -641,7 +641,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	var kafkaSpan opentracing.Span
 	if d.cfg.KafkaEnabled {
 		var kafkaCtx context.Context
-		kafkaSpan, kafkaCtx = opentracing.StartSpanFromContext(ctx, "KafkaSend")
+		kafkaSpan, kafkaCtx = opentracing.StartSpanFromContext(ctx, "sendStreamsToKafka")
 		kafkaTracker.streamsPending.Store(int32(len(streams)))
 
 		subring, err := d.partitionRing.PartitionRing().ShuffleShard(tenantID, d.validator.IngestionPartitionsTenantShardSize(tenantID))
@@ -659,7 +659,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	var ingesterSpan opentracing.Span
 	if d.cfg.IngesterEnabled {
 		var ingesterCtx context.Context
-		ingesterSpan, ingesterCtx = opentracing.StartSpanFromContext(ctx, "IngesterSend")
+		ingesterSpan, ingesterCtx = opentracing.StartSpanFromContext(ctx, "sendStreamsToIngesters")
 		ingesterTracker.streamsPending.Store(int32(len(streams)))
 
 		streamTrackers := make([]streamTracker, len(streams))

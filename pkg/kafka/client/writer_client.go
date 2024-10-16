@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/twmb/franz-go/pkg/kerr"
@@ -62,8 +63,8 @@ func NewWriterClient(kafkaCfg kafka.Config, maxInflightProduceRequests int, logg
 		// doesn't take longer than 1s to process them (if it takes longer, the client will buffer data and stop
 		// issuing new Produce requests until some previous ones complete).
 		kgo.DisableIdempotentWrite(),
-		kgo.ProducerLinger(kafkaCfg.LingerDuration),
-		kgo.MaxProduceRequestsInflightPerBroker(kafkaCfg.ConcurrentRequests),
+		kgo.ProducerLinger(50*time.Millisecond),
+		kgo.MaxProduceRequestsInflightPerBroker(maxInflightProduceRequests),
 
 		// Unlimited number of Produce retries but a deadline on the max time a record can take to be delivered.
 		// With the default config it would retry infinitely.
@@ -274,6 +275,10 @@ func (c *Producer) updateMetricsLoop() {
 // This function honors the configure max buffered bytes and refuse to produce a record, returnin kgo.ErrMaxBuffered,
 // if the configured limit is reached.
 func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.ProduceResults {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "kafka.produceSync")
+	span.LogKV("records", len(records))
+	defer span.Finish()
+
 	var (
 		remaining = atomic.NewInt64(int64(len(records)))
 		done      = make(chan struct{})
