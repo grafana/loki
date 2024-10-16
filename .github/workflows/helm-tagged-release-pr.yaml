@@ -1,4 +1,4 @@
-name: helm-weekly-release-pr
+name: Helm tagged release PR
 
 on:
   release:
