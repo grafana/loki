@@ -23,6 +23,7 @@ jobs:
       - uses: gabe565/setup-helm-docs-action@v1
         with:
           version: v1.11.2
+
       - id: "get_github_app_token"
         name: "get github app token"
         uses: "actions/create-github-app-token@v1"
@@ -35,8 +36,6 @@ jobs:
         uses: "grafana/shared-workflows/actions/dockerhub-login@main"
 
       - uses: imjasonh/setup-crane@v0.4
-      # - run: |
-      #     echo "${{ env.DOCKER_PASSWORD }}" | crane auth login registry.hub.docker.com --username "${{ env.DOCKER_USERNAME }}" --password-stdin
 
       - name: Update/regenerate files for k release
         id: update-k
@@ -47,7 +46,7 @@ jobs:
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ steps.get_github_app_token.outputs.token }}
-          title: "chore: release loki Helm chart ${{ steps.update-k.outputs.new_chart_version }}"
+          title: "chore: release loki helm chart ${{ steps.update-k.outputs.new_chart_version }}"
           body: Automated PR created by [helm-weekly-release-pr.yaml](https://github.com/grafana/loki/blob/main/.github/workflows/helm-weekly-release-pr.yaml)
           commit-message: Update loki chart to ${{ steps.update-k.outputs.new_chart_version }}
           branch: helm-chart-weekly-${{ steps.update-k.outputs.new_chart_version }}
@@ -56,13 +55,14 @@ jobs:
 
       - name: Update/regenerate files for standard release
         id: update
-        run: bash .github/workflows/scripts/helm-weekly-release.sh
+        run: |
+          bash .github/workflows/scripts/helm-weekly-release.sh
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ steps.get_github_app_token.outputs.token }}
-          title: "chore: release loki Helm chart ${{ steps.update.outputs.new_chart_version }}"
+          title: "chore: release loki helm chart ${{ steps.update.outputs.new_chart_version }}"
           body: Automated PR created by [helm-weekly-release-pr.yaml](https://github.com/grafana/loki/blob/main/.github/workflows/helm-weekly-release-pr.yaml)
           commit-message: Update loki chart to ${{ steps.update.outputs.new_chart_version }}
           branch: helm-chart-weekly-${{ steps.update.outputs.new_chart_version }}
