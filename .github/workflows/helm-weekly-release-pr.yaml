@@ -8,6 +8,10 @@ on:
 
   pull_request:
 
+permissions:
+  id-token: "write"
+  pull-requests: "write"
+
 jobs:
   weekly-release-pr:
     runs-on: ubuntu-latest
@@ -23,6 +27,7 @@ jobs:
 
       - name: "Login to DockerHub (from vault)"
         uses: "grafana/shared-workflows/actions/dockerhub-login@main"
+
       - uses: imjasonh/setup-crane@v0.4
       - run: |
           echo "${DOCKER_PASSWORD}" | crane auth login https://registry.hub.docker.com --username "${DOCKER_USERNAME}" --password-stdin
