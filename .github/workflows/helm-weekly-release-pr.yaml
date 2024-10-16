@@ -6,8 +6,6 @@ on:
 
   workflow_dispatch: # for manual testing
 
-  pull_request:
-
 permissions:
   contents: "read"
   id-token: "write"

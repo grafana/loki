@@ -4,7 +4,8 @@ on:
   release:
     types:
       - released
-  pull_request:
+
+  workflow_dispatch: # for manual testing
 
 jobs:
   weekly-release-pr:

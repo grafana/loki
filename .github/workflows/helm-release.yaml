@@ -1,7 +1,7 @@
 name: helm-release
 
 on:
-  workflow_dispatch: # must be invoked manually
+  workflow_dispatch: # for manual testing
   push:
     branches:
       - main
