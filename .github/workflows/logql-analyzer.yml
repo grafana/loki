@@ -67,7 +67,7 @@ jobs:
       with:
         build-args: "IMAGE_TAG=${{ steps.prepare.outputs.release_version }}"
         context: loki
-        file: "cmd/logql-analyzer/Dockerfile"
+        file: "loki/cmd/logql-analyzer/Dockerfile"
         platforms: "linux/amd64"
         push: true
         tags: "grafana/logql-analyzer:${{ steps.prepare.outputs.release_version }}"
