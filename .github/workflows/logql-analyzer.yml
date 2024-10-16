@@ -61,17 +61,16 @@ jobs:
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
       uses: "docker/build-push-action@v6"
       with:
-        build-args: "IMAGE_TAG=${RELEASE_VERSION}"
+        build-args: "IMAGE_TAG=${{ steps.prepare.outputs.release_version }}"
         file: "cmd/logql-analyzer/Dockerfile"
         platforms: "linux/amd64"
         push: true
-        tags: "${{ env.IMAGE_PREFIX }}/logql-analyzer:${RELEASE_VERSION}"
+        tags: "grafana/logql-analyzer:${{ steps.prepare.outputs.release_version }}"
 
     - name: Log in to Google Artifact Registry
       uses: grafana/shared-workflows/actions/login-to-gar@main
       with:
         environment: "prod"
-
 
     - name: Update to latest image
       env:
