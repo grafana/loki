@@ -3,8 +3,6 @@ name: LogQL Analyzer
 on:
   workflow_dispatch:
   pull_request:
-    branches:
-      - logql-analyzer-ci-2
   release:
     types:
       - released
