@@ -51,4 +51,4 @@ sed --in-place \
 
 make TTY='' helm-docs
 
-echo "::set-output name=new_chart_version::${new_chart_version}"
+echo "new_chart_version=${new_chart_version}" >> "$GITHUB_OUTPUT"

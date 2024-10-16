@@ -106,7 +106,7 @@ fi
 
 make TTY='' helm-docs
 
-echo "::set-output name=new_chart_version::${new_chart_version}"
+echo "new_chart_version=${new_chart_version}" >> "$GITHUB_OUTPUT"
 if ${k_release}; then
-  echo "::set-output name=weekly::$(extract_k_version "${latest_loki_tag}")"
+  echo "weekly=$(extract_k_version "${latest_loki_tag}")" >> "$GITHUB_OUTPUT"
 fi

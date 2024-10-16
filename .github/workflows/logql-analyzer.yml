@@ -24,24 +24,25 @@ jobs:
       with:
         fetch-tags: true
 
-    - name: Run shell command
-      id: prepare
+    - id: prepare
       env:
         MAJOR_MINOR_VERSION_REGEXP: '([0-9]+\\.[0-9]+)'
         RELEASE_TAG_REGEXP: '^([0-9]+\\.[0-9]+\\.[0-9]+)$'
       run: |
         echo $("${WORKSPACE_ROOT}/loki/tools/image-tag") > .tag
-        if [[ "${RELEASE_VERSION}" == "test" ]]; then
+        version="${RELEASE_VERSION}"
+        if [[ "${version}" == "test" ]]; then
           echo "RELEASE_VERSION is not set, using image tag"
-          RELEASE_VERSION=$(cat .tag)
+          version=$(cat .tag)
         fi
+        echo "RELEASE_VERSION: $version"
 
         # if the tag matches the pattern `D.D.D` then RELEASE_NAME="D-D-x", otherwise RELEASE_NAME="next"
-        RELEASE_NAME=$([[ $RELEASE_VERSION =~ $RELEASE_TAG_REGEXP ]] && echo $RELEASE_TAG | grep -oE $MAJOR_MINOR_VERSION_REGEXP | sed "s/\\./-/g" | sed "s/$/-x/" || echo "next")
+        RELEASE_NAME=$([[ $version =~ $RELEASE_TAG_REGEXP ]] && echo $RELEASE_TAG | grep -oE $MAJOR_MINOR_VERSION_REGEXP | sed "s/\\./-/g" | sed "s/$/-x/" || echo "next")
         echo "RELEASE_NAME: $RELEASE_NAME"
 
-        echo "::set-output name=release_version::${RELEASE_VERSION}"
-        echo "::set-output name=release_name::${RELEASE_NAME}"
+        echo "release_version=${version}" >> "$GITHUB_OUTPUT"
+        echo "release_name=${RELEASE_NAME}" >> "$GITHUB_OUTPUT"
 
     - id: "get-github-app-token"
       name: "get github app token"
