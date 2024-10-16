@@ -113,13 +113,9 @@ Run the following commands in your command line. They work for Windows or Linux 
     You should see something similar to the following:
 
     ```bash
-    ✔ Container mydevice-minio-1     Started              0.0s
-    ✔ Container mydevice-flog-1      Started              0.0s
-    ✔ Container mydevice-write-1     Started              0.0s
-    ✔ Container mydevice-read-1      Started              0.0s
-    ✔ Container mydevice-gateway-1   Started              0.0s
-    ✔ Container mydevice-grafana-1   Started              0.0s
-    ✔ Container mydevice-promtail-1  Started              0.0s
+    ✔ Container loki-loki-1      Started              0.0s
+    ✔ Container loki-grafana-1   Started              0.0s
+    ✔ Container loki-promtail-1  Started              0.0s
     ```
 
 1. Verify that Loki is up and running.

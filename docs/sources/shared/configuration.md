@@ -793,6 +793,16 @@ kafka_config:
   # CLI flag: -kafka.write-timeout
   [write_timeout: <duration> | default = 10s]
 
+  # The SASL username for authentication to Kafka using the PLAIN mechanism.
+  # Both username and password must be set.
+  # CLI flag: -kafka.sasl-username
+  [sasl_username: <string> | default = ""]
+
+  # The SASL password for authentication to Kafka using the PLAIN mechanism.
+  # Both username and password must be set.
+  # CLI flag: -kafka.sasl-password
+  [sasl_password: <string> | default = ""]
+
   # The consumer group used by the consumer to track the last consumed offset.
   # The consumer group must be different for each ingester. If the configured
   # consumer group contains the '<partition>' placeholder, it is replaced with
@@ -4228,6 +4238,11 @@ engine:
 # When true, querier limits sent via a header are enforced.
 # CLI flag: -querier.per-request-limits-enabled
 [per_request_limits_enabled: <boolean> | default = false]
+
+# When true, querier directs ingester queries to the partition-ingesters instead
+# of the normal ingesters.
+# CLI flag: -querier.query-partition-ingesters
+[query_partition_ingesters: <boolean> | default = false]
 ```
 
 ### query_range
