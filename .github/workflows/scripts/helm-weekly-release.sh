@@ -13,7 +13,8 @@ find_latest_image_tag() {
   local regExp="^(k|weekly-k)\d+-[a-z0-9]+"
   local crane_results
   crane_results=$(crane ls "${docker_hub_repo}" | grep -P "${regExp}")
-  echo "${crane_results}" | sed -E "s/([weekly-]*k[[:digit:]]*)-([^-]*).*/\1-\2/g" | sort -Vur | head -1
+  sorted_results="$(echo "${crane_results}" | sed -E "s/([weekly-]*k[[:digit:]]*)-([^-]*).*/\1-\2/g" | sort -Vur)"
+  echo "${sorted_results}" | head -1
 }
 
 # takes k197-abcdef and returns r197, k197-abcdef-arm64 and returns k197, weekly-k197-abcdef and returns k197
