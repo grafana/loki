@@ -20,6 +20,7 @@ jobs:
       BUILD_IN_CONTAINER: false
     steps:
       - uses: actions/checkout@v4
+      - uses: gabe565/setup-helm-docs-action@v1
       - id: "get_github_app_token"
         name: "get github app token"
         uses: "actions/create-github-app-token@v1"
