@@ -319,8 +319,8 @@ func New(
 		kafkaBytesPerRecord: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_kafka_bytes_per_record",
-			Help:      "The number of records a single per-partition write request has been split into.",
-			Buckets:   prometheus.ExponentialBuckets(1, 2, 8),
+			Help:      "The number of bytes per kafka record generated.",
+			Buckets:   prometheus.ExponentialBuckets(64, 4, 10), // 64b - 64kb
 		}),
 		writeFailuresManager: writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
 		kafkaWriter:          kafkaWriter,
