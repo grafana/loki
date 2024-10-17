@@ -183,6 +183,11 @@ func (o *client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 	}
 	defer readCloser.Close()
 
+	// reset if GetObject fails to return a valid size
+	if size < 0 {
+		size = 0
+	}
+
 	// adds bytes.MinRead to avoid allocations when the size is known.
 	// This is because ReadFrom reads bytes.MinRead by bytes.MinRead.
 	buf := bytes.NewBuffer(make([]byte, 0, size+bytes.MinRead))

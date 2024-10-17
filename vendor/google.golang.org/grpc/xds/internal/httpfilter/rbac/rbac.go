@@ -117,7 +117,7 @@ func parseConfig(rbacCfg *rpb.RBAC) (httpfilter.FilterConfig, error) {
 	// "If absent, no enforcing RBAC policy will be applied" - RBAC
 	// Documentation for Rules field.
 	// "At this time, if the RBAC.action is Action.LOG then the policy will be
-	// completely ignored, as if RBAC was not configurated." - A41
+	// completely ignored, as if RBAC was not configured." - A41
 	if rbacCfg.Rules == nil || rbacCfg.GetRules().GetAction() == v3rbacpb.RBAC_LOG {
 		return config{}, nil
 	}
@@ -128,7 +128,7 @@ func parseConfig(rbacCfg *rpb.RBAC) (httpfilter.FilterConfig, error) {
 	ce, err := rbac.NewChainEngine([]*v3rbacpb.RBAC{rbacCfg.GetRules()}, "")
 	if err != nil {
 		// "At this time, if the RBAC.action is Action.LOG then the policy will be
-		// completely ignored, as if RBAC was not configurated." - A41
+		// completely ignored, as if RBAC was not configured." - A41
 		if rbacCfg.GetRules().GetAction() != v3rbacpb.RBAC_LOG {
 			return nil, fmt.Errorf("rbac: error constructing matching engine: %v", err)
 		}
@@ -198,7 +198,7 @@ func (builder) BuildServerInterceptor(cfg httpfilter.FilterConfig, override http
 	// "If absent, no enforcing RBAC policy will be applied" - RBAC
 	// Documentation for Rules field.
 	// "At this time, if the RBAC.action is Action.LOG then the policy will be
-	// completely ignored, as if RBAC was not configurated." - A41
+	// completely ignored, as if RBAC was not configured." - A41
 	if c.chainEngine == nil {
 		return nil, nil
 	}

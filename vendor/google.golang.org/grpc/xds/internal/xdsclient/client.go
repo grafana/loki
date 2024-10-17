@@ -24,8 +24,6 @@ import (
 	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/xds/internal/xdsclient/load"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
-
-	v3statuspb "github.com/envoyproxy/go-control-plane/envoy/service/status/v3"
 )
 
 // XDSClient is a full fledged gRPC client which queries a set of discovery APIs
@@ -47,10 +45,6 @@ type XDSClient interface {
 	// cancel()), there's a small window where the callback can be called after
 	// the watcher is canceled. Callers need to handle this case.
 	WatchResource(rType xdsresource.Type, resourceName string, watcher xdsresource.ResourceWatcher) (cancel func())
-
-	// DumpResources returns the status of the xDS resources. Returns a map of
-	// resource type URLs to a map of resource names to resource state.
-	DumpResources() (*v3statuspb.ClientStatusResponse, error)
 
 	ReportLoad(*bootstrap.ServerConfig) (*load.Store, func())
 

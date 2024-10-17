@@ -1413,7 +1413,7 @@ func makeWriteRequestWithLabelsWithLevel(lines, size int, labels []string, level
 
 		for j := 0; j < lines; j++ {
 			// Construct the log line, honoring the input size
-			line := "msg=an error occured " + strconv.Itoa(j) + strings.Repeat("0", size) + " severity=" + level
+			line := "msg=an error occurred " + strconv.Itoa(j) + strings.Repeat("0", size) + " severity=" + level
 
 			stream.Entries = append(stream.Entries, logproto.Entry{
 				Timestamp: time.Now().Add(time.Duration(j) * time.Millisecond),

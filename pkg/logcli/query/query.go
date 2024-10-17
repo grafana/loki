@@ -538,15 +538,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 }
 
 func GetObjectClient(store string, conf loki.Config, cm storage.ClientMetrics) (chunk.ObjectClient, error) {
-	oc, err := storage.NewObjectClient(
-		store,
-		conf.StorageConfig,
-		cm,
-	)
-	if err != nil {
-		return nil, err
-	}
-	return oc, nil
+	return storage.NewObjectClient(store, "logcli-query", conf.StorageConfig, cm)
 }
 
 var errNotExists = stdErrors.New("doesn't exist")

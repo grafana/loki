@@ -98,7 +98,7 @@ func main() {
 }
 
 func migrateTables(pCfg config.PeriodConfig, storageCfg storage.Config, clientMetrics storage.ClientMetrics, tableRange config.TableRange) error {
-	objClient, err := storage.NewObjectClient(pCfg.ObjectType, storageCfg, clientMetrics)
+	objClient, err := storage.NewObjectClient(pCfg.ObjectType, "tsdb-migrate", storageCfg, clientMetrics)
 	if err != nil {
 		return err
 	}

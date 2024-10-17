@@ -84,6 +84,17 @@ type weightedTargetBalancer struct {
 	targets map[string]Target
 }
 
+type localityKeyType string
+
+const localityKey = localityKeyType("locality")
+
+// LocalityFromResolverState returns the locality from the resolver.State
+// provided, or an empty string if not present.
+func LocalityFromResolverState(state resolver.State) string {
+	locality, _ := state.Attributes.Value(localityKey).(string)
+	return locality
+}
+
 // UpdateClientConnState takes the new targets in balancer group,
 // creates/deletes sub-balancers and sends them update. addresses are split into
 // groups based on hierarchy path.
@@ -142,7 +153,7 @@ func (b *weightedTargetBalancer) UpdateClientConnState(s balancer.ClientConnStat
 			ResolverState: resolver.State{
 				Addresses:     addressesSplit[name],
 				ServiceConfig: s.ResolverState.ServiceConfig,
-				Attributes:    s.ResolverState.Attributes,
+				Attributes:    s.ResolverState.Attributes.WithValue(localityKey, name),
 			},
 			BalancerConfig: newT.ChildPolicy.Config,
 		})
