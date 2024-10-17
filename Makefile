@@ -458,13 +458,17 @@ endif
 LOKI_DOCKER_DRIVER ?= "grafana/loki-docker-driver"
 PLUGIN_TAG ?= $(IMAGE_TAG)
 PLUGIN_ARCH ?=
+PLUGIN_BUILD_ARGS ?=
+ifeq ("$(PLUGIN_ARCH)", "-arm64")
+	PLUGIN_BUILD_ARGS = --build-arg GOARCH=arm64
+endif
 
 # build-rootfs
 # builds the plugin rootfs
 define build-rootfs
 	rm -rf clients/cmd/docker-driver/rootfs || true
 	mkdir clients/cmd/docker-driver/rootfs
-	docker build --build-arg $(BUILD_IMAGE) -t rootfsimage -f clients/cmd/docker-driver/Dockerfile .
+	docker build $(PLUGIN_BUILD_ARGS) --build-arg $(BUILD_IMAGE) -t rootfsimage -f clients/cmd/docker-driver/Dockerfile .
 
 	ID=$$(docker create rootfsimage true) && \
 	(docker export $$ID | tar -x -C clients/cmd/docker-driver/rootfs) && \
@@ -481,7 +485,7 @@ docker-driver: docker-driver-clean ## build the docker-driver executable
 	docker plugin create $(LOKI_DOCKER_DRIVER):main$(PLUGIN_ARCH) clients/cmd/docker-driver
 
 clients/cmd/docker-driver/docker-driver:
-	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
+	CGO_ENABLED=0 GOARCH=$(GOARCH) go build $(GO_FLAGS) -o $@ ./$(@D)
 
 docker-driver-push: docker-driver
 ifndef DOCKER_PASSWORD
