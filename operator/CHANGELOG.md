@@ -1,5 +1,19 @@
 ## Main
 
+## [0.6.3](https://github.com/grafana/loki/compare/operator/v0.6.2...operator/v0.6.3) (2024-10-16)
+
+
+### Features
+
+* **operator:** Declare feature FIPS support for OpenShift only ([#14308](https://github.com/grafana/loki/issues/14308)) ([720c303](https://github.com/grafana/loki/commit/720c3037923c174e71a02d99d4bee6271428fbdb))
+
+
+### Bug Fixes
+
+* **operator:** Add missing groupBy label for all rules on OpenShift ([#14279](https://github.com/grafana/loki/issues/14279)) ([ce7b2e8](https://github.com/grafana/loki/commit/ce7b2e89d9470e4e6a61a94f2b51ff8b938b5a5e))
+* **operator:** Disable automatic discovery of service name ([#14506](https://github.com/grafana/loki/issues/14506)) ([3834c74](https://github.com/grafana/loki/commit/3834c74966b307411732cd3cbaf66305008b10eb))
+* **operator:** Use empty initiliazed pod status map when no pods ([#14314](https://github.com/grafana/loki/issues/14314)) ([6f533ed](https://github.com/grafana/loki/commit/6f533ed4386ee2db61680a9021934bfe9a9ba749))
+
 ## [0.6.2](https://github.com/grafana/loki/compare/operator/v0.6.1...operator/v0.6.2) (2024-09-11)
 
 
