@@ -114,7 +114,7 @@ func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(prefix, description st
 func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Registerer, logger log.Logger, metricsNamespace string) MemcachedClient {
 	var selector serverSelector
 	if cfg.ConsistentHash {
-		selector = jumphash.DefaultSelector()
+		selector = jumphash.DefaultSelector("memcached")
 	} else {
 		selector = &memcache.ServerList{}
 	}
