@@ -53,9 +53,8 @@ spec:
             - -config.file=/etc/loki/config/config.yaml
             - -target={{ .Values.enterprise.tokengen.targetModule }}
             - -tokengen.token-file=/shared/admin-token
-            {{- with .Values.enterprise.tokengen.extraArgs }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
+            {{ include "loki.templateArgs" .Values.loki.extraArgs }}
+            {{ include "loki.templateArgs" .Values.enterprise.tokengen.extraArgs }}
           volumeMounts:
             {{- if .Values.enterprise.tokengen.extraVolumeMounts }}
               {{ toYaml .Values.enterprise.tokengen.extraVolumeMounts | nindent 12 }}
@@ -69,13 +68,11 @@ spec:
             - name: license
               mountPath: /etc/loki/license
           env:
-            {{- if .Values.enterprise.tokengen.env }}
-              {{ toYaml .Values.enterprise.tokengen.env | nindent 12 }}
-            {{- end }}
-          {{- with .Values.enterprise.tokengen.extraEnvFrom }}
+            {{ include "loki.templateEnv" .Values.loki.extraEnv }}
+            {{ include "loki.templateEnv" .Values.enterprise.tokengen.extraEnv }}
           envFrom:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{ include "loki.templateEnv" .Values.loki.extraEnvFrom }}
+            {{ include "loki.templateEnv" .Values.enterprise.tokengen.extraEnvFrom }}
       containers:
         - name: create-secret
           image: {{ include "loki.kubectlImage" . }}
