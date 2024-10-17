@@ -22,6 +22,14 @@ This guide references the Loki Helm chart version 3.0 or greater and contains th
 
 If you are installing Grafana Enterprise Logs, follow the [GEL Helm installation](https://grafana.com/docs/enterprise-logs/<ENTERPRISE_LOGS_VERSION>/setup/helm/).
 
+
+## Cloud Deployment Guides
+
+The following guides provide step-by-step instructions for deploying Loki on cloud providers:
+
+- [Deploy Loki Simple Scalable Helm chart on AWS]({{< relref "./install-scalable/aws" >}})
+- [Deploy Loki Distributed Helm chart on AWS]({{< relref "./install-microservices/aws" >}})
+
 ## Reference
 
 [Values reference]({{< relref "./reference" >}})
