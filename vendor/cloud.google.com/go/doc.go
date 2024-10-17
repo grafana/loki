@@ -79,12 +79,15 @@ are also provided in all auto-generated libraries: for example,
 cloud.google.com/go/secretmanager/apiv1 provides DefaultAuthScopes. Example:
 
 	ctx := context.Background()
-	// https://pkg.go.dev/golang.org/x/oauth2/google
-	creds, err := google.CredentialsFromJSON(ctx, []byte("JSON creds"), secretmanager.DefaultAuthScopes()...)
+	// https://pkg.go.dev/cloud.google.com/go/auth/credentials
+	creds, err := credentials.DetectDefault(&credentials.DetectOptions{
+		Scopes:          secretmanager.DefaultAuthScopes(),
+		CredentialsJSON: []byte("JSON creds")
+	}), secretmanager.DefaultAuthScopes()...)
 	if err != nil {
 		// TODO: handle error.
 	}
-	client, err := secretmanager.NewClient(ctx, option.WithCredentials(creds))
+	client, err := secretmanager.NewClient(ctx, option.WithAuthCredentials(creds))
 	if err != nil {
 		// TODO: handle error.
 	}

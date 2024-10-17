@@ -857,14 +857,7 @@ func (c *httpStorageClient) newRangeReaderXML(ctx context.Context, params *newRa
 
 	reopen := readerReopen(ctx, req.Header, params, s,
 		func(ctx context.Context) (*http.Response, error) {
-			// Set custom headers passed in via the context. This is only required for XML;
-			// for gRPC & JSON this is handled in the GAPIC and Apiary layers respectively.
-			ctxHeaders := callctx.HeadersFromContext(ctx)
-			for k, vals := range ctxHeaders {
-				for _, v := range vals {
-					req.Header.Set(k, v)
-				}
-			}
+			setHeadersFromCtx(ctx, req.Header)
 			return c.hc.Do(req.WithContext(ctx))
 		},
 		func() error { return setConditionsHeaders(req.Header, params.conds) },
@@ -1422,18 +1415,20 @@ func parseReadResponse(res *http.Response, params *newRangeReaderParams, reopen 
 		}
 	} else {
 		size = res.ContentLength
-		// Check the CRC iff all of the following hold:
-		// - We asked for content (length != 0).
-		// - We got all the content (status != PartialContent).
-		// - The server sent a CRC header.
-		// - The Go http stack did not uncompress the file.
-		// - We were not served compressed data that was uncompressed on download.
-		// The problem with the last two cases is that the CRC will not match -- GCS
-		// computes it on the compressed contents, but we compute it on the
-		// uncompressed contents.
-		if params.length != 0 && !res.Uncompressed && !uncompressedByServer(res) {
-			crc, checkCRC = parseCRC32c(res)
-		}
+	}
+
+	// Check the CRC iff all of the following hold:
+	// - We asked for content (length != 0).
+	// - We got all the content (status != PartialContent).
+	// - The server sent a CRC header.
+	// - The Go http stack did not uncompress the file.
+	// - We were not served compressed data that was uncompressed on download.
+	// The problem with the last two cases is that the CRC will not match -- GCS
+	// computes it on the compressed contents, but we compute it on the
+	// uncompressed contents.
+	crc, checkCRC = parseCRC32c(res)
+	if params.length == 0 || res.StatusCode == http.StatusPartialContent || res.Uncompressed || uncompressedByServer(res) {
+		checkCRC = false
 	}
 
 	remain := res.ContentLength
@@ -1470,6 +1465,8 @@ func parseReadResponse(res *http.Response, params *newRangeReaderParams, reopen 
 		StartOffset:     startOffset,
 		Generation:      params.gen,
 		Metageneration:  metaGen,
+		CRC32C:          crc,
+		Decompressed:    res.Uncompressed || uncompressedByServer(res),
 	}
 	return &Reader{
 		Attrs:    attrs,
@@ -1483,4 +1480,31 @@ func parseReadResponse(res *http.Response, params *newRangeReaderParams, reopen 
 			checkCRC: checkCRC,
 		},
 	}, nil
+}
+
+// setHeadersFromCtx sets custom headers passed in via the context on the header,
+// replacing any header with the same key (which avoids duplicating invocation headers).
+// This is only required for XML; for gRPC & JSON requests this is handled in
+// the GAPIC and Apiary layers respectively.
+func setHeadersFromCtx(ctx context.Context, header http.Header) {
+	ctxHeaders := callctx.HeadersFromContext(ctx)
+	for k, vals := range ctxHeaders {
+		// Merge x-goog-api-client values into a single space-separated value.
+		if strings.EqualFold(k, xGoogHeaderKey) {
+			alreadySetValues := header.Values(xGoogHeaderKey)
+			vals = append(vals, alreadySetValues...)
+
+			if len(vals) > 0 {
+				xGoogHeader := vals[0]
+				for _, v := range vals[1:] {
+					xGoogHeader = strings.Join([]string{xGoogHeader, v}, " ")
+				}
+				header.Set(k, xGoogHeader)
+			}
+		} else {
+			for _, v := range vals {
+				header.Set(k, v)
+			}
+		}
+	}
 }

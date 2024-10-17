@@ -112,7 +112,9 @@ type scWithRPCCount struct {
 }
 
 func (lrb *leastRequestBalancer) Build(info base.PickerBuildInfo) balancer.Picker {
-	logger.Infof("least-request: Build called with info: %v", info)
+	if logger.V(2) {
+		logger.Infof("least-request: Build called with info: %v", info)
+	}
 	if len(info.ReadySCs) == 0 {
 		return base.NewErrPicker(balancer.ErrNoSubConnAvailable)
 	}

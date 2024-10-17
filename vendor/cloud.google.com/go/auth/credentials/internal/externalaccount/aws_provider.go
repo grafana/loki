@@ -94,30 +94,28 @@ func (sp *awsSubjectProvider) subjectToken(ctx context.Context) (string, error) 
 	if sp.RegionalCredVerificationURL == "" {
 		sp.RegionalCredVerificationURL = defaultRegionalCredentialVerificationURL
 	}
-	if sp.requestSigner == nil {
-		headers := make(map[string]string)
-		if sp.shouldUseMetadataServer() {
-			awsSessionToken, err := sp.getAWSSessionToken(ctx)
-			if err != nil {
-				return "", err
-			}
-
-			if awsSessionToken != "" {
-				headers[awsIMDSv2SessionTokenHeader] = awsSessionToken
-			}
-		}
-
-		awsSecurityCredentials, err := sp.getSecurityCredentials(ctx, headers)
+	headers := make(map[string]string)
+	if sp.shouldUseMetadataServer() {
+		awsSessionToken, err := sp.getAWSSessionToken(ctx)
 		if err != nil {
 			return "", err
 		}
-		if sp.region, err = sp.getRegion(ctx, headers); err != nil {
-			return "", err
+
+		if awsSessionToken != "" {
+			headers[awsIMDSv2SessionTokenHeader] = awsSessionToken
 		}
-		sp.requestSigner = &awsRequestSigner{
-			RegionName:             sp.region,
-			AwsSecurityCredentials: awsSecurityCredentials,
-		}
+	}
+
+	awsSecurityCredentials, err := sp.getSecurityCredentials(ctx, headers)
+	if err != nil {
+		return "", err
+	}
+	if sp.region, err = sp.getRegion(ctx, headers); err != nil {
+		return "", err
+	}
+	sp.requestSigner = &awsRequestSigner{
+		RegionName:             sp.region,
+		AwsSecurityCredentials: awsSecurityCredentials,
 	}
 
 	// Generate the signed request to AWS STS GetCallerIdentity API.

@@ -3565,16 +3565,10 @@ func validateObjectAttributeRequest(OA *minio.ObjectAttributes, opts *minio.Obje
 		}
 	}
 
-	hasFullObjectChecksum := true
-	if OA.Checksum.ChecksumCRC32 == "" {
-		if OA.Checksum.ChecksumCRC32C == "" {
-			if OA.Checksum.ChecksumSHA1 == "" {
-				if OA.Checksum.ChecksumSHA256 == "" {
-					hasFullObjectChecksum = false
-				}
-			}
-		}
-	}
+	hasFullObjectChecksum := (OA.Checksum.ChecksumCRC32 != "" ||
+		OA.Checksum.ChecksumCRC32C != "" ||
+		OA.Checksum.ChecksumSHA1 != "" ||
+		OA.Checksum.ChecksumSHA256 != "")
 
 	if test.HasFullChecksum {
 		if !hasFullObjectChecksum {

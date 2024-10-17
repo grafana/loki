@@ -1695,7 +1695,6 @@ type Query struct {
 
 	// IncludeFoldersAsPrefixes includes Folders and Managed Folders in the set of
 	// prefixes returned by the query. Only applicable if Delimiter is set to /.
-	// IncludeFoldersAsPrefixes is not yet implemented in the gRPC API.
 	IncludeFoldersAsPrefixes bool
 
 	// SoftDeleted indicates whether to list soft-deleted objects.
@@ -2350,6 +2349,7 @@ func toProtoChecksums(sendCRC32C bool, attrs *ObjectAttrs) *storagepb.ObjectChec
 }
 
 // ServiceAccount fetches the email address of the given project's Google Cloud Storage service account.
+// Note: gRPC is not supported.
 func (c *Client) ServiceAccount(ctx context.Context, projectID string) (string, error) {
 	o := makeStorageOpts(true, c.retry, "")
 	return c.tc.GetServiceAccount(ctx, projectID, o...)

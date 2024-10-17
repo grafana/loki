@@ -82,10 +82,3 @@ func (l *lookback) advance(t time.Time) int64 {
 	l.head = nh
 	return nh
 }
-
-func min(x int64, y int64) int64 {
-	if x < y {
-		return x
-	}
-	return y
-}

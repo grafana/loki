@@ -86,6 +86,7 @@ func NewListenerWrapper(params ListenerWrapperParams) net.Listener {
 		xdsC:              params.XDSClient,
 		modeCallback:      params.ModeCallback,
 		isUnspecifiedAddr: params.Listener.Addr().(*net.TCPAddr).IP.IsUnspecified(),
+		conns:             make(map[*connWrapper]bool),
 
 		mode:   connectivity.ServingModeNotServing,
 		closed: grpcsync.NewEvent(),
@@ -135,13 +136,13 @@ type listenerWrapper struct {
 
 	// mu guards access to the current serving mode and the active filter chain
 	// manager.
-	mu sync.RWMutex
+	mu sync.Mutex
 	// Current serving mode.
 	mode connectivity.ServingMode
 	// Filter chain manager currently serving.
 	activeFilterChainManager *xdsresource.FilterChainManager
 	// conns accepted with configuration from activeFilterChainManager.
-	conns []*connWrapper
+	conns map[*connWrapper]bool
 
 	// These fields are read/written to in the context of xDS updates, which are
 	// guaranteed to be emitted synchronously from the xDS Client. Thus, they do
@@ -202,17 +203,14 @@ func (l *listenerWrapper) maybeUpdateFilterChains() {
 	// gracefully shut down with a grace period of 10 minutes for long-lived
 	// RPC's, such that clients will reconnect and have the updated
 	// configuration apply." - A36
-	var connsToClose []*connWrapper
-	if l.activeFilterChainManager != nil { // If there is a filter chain manager to clean up.
-		connsToClose = l.conns
-		l.conns = nil
-	}
+	connsToClose := l.conns
+	l.conns = make(map[*connWrapper]bool)
 	l.activeFilterChainManager = l.pendingFilterChainManager
 	l.pendingFilterChainManager = nil
 	l.instantiateFilterChainRoutingConfigurationsLocked()
 	l.mu.Unlock()
 	go func() {
-		for _, conn := range connsToClose {
+		for conn := range connsToClose {
 			conn.Drain()
 		}
 	}()
@@ -304,7 +302,7 @@ func (l *listenerWrapper) Accept() (net.Conn, error) {
 			return nil, fmt.Errorf("received connection with non-TCP address (local: %T, remote %T)", conn.LocalAddr(), conn.RemoteAddr())
 		}
 
-		l.mu.RLock()
+		l.mu.Lock()
 		if l.mode == connectivity.ServingModeNotServing {
 			// Close connections as soon as we accept them when we are in
 			// "not-serving" mode. Since we accept a net.Listener from the user
@@ -312,7 +310,7 @@ func (l *listenerWrapper) Accept() (net.Conn, error) {
 			// "not-serving". Closing the connection immediately upon accepting
 			// is one of the other ways to implement the "not-serving" mode as
 			// outlined in gRFC A36.
-			l.mu.RUnlock()
+			l.mu.Unlock()
 			conn.Close()
 			continue
 		}
@@ -324,7 +322,7 @@ func (l *listenerWrapper) Accept() (net.Conn, error) {
 			SourcePort:            srcAddr.Port,
 		})
 		if err != nil {
-			l.mu.RUnlock()
+			l.mu.Unlock()
 			// When a matching filter chain is not found, we close the
 			// connection right away, but do not return an error back to
 			// `grpc.Serve()` from where this Accept() was invoked. Returning an
@@ -341,10 +339,16 @@ func (l *listenerWrapper) Accept() (net.Conn, error) {
 			continue
 		}
 		cw := &connWrapper{Conn: conn, filterChain: fc, parent: l, urc: fc.UsableRouteConfiguration}
-		l.conns = append(l.conns, cw)
-		l.mu.RUnlock()
+		l.conns[cw] = true
+		l.mu.Unlock()
 		return cw, nil
 	}
+}
+
+func (l *listenerWrapper) removeConn(conn *connWrapper) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	delete(l.conns, conn)
 }
 
 // Close closes the underlying listener. It also cancels the xDS watch
@@ -376,9 +380,9 @@ func (l *listenerWrapper) switchModeLocked(newMode connectivity.ServingMode, err
 	l.mode = newMode
 	if l.mode == connectivity.ServingModeNotServing {
 		connsToClose := l.conns
-		l.conns = nil
+		l.conns = make(map[*connWrapper]bool)
 		go func() {
-			for _, conn := range connsToClose {
+			for conn := range connsToClose {
 				conn.Drain()
 			}
 		}()
@@ -410,7 +414,8 @@ type ldsWatcher struct {
 	name   string
 }
 
-func (lw *ldsWatcher) OnUpdate(update *xdsresource.ListenerResourceData) {
+func (lw *ldsWatcher) OnUpdate(update *xdsresource.ListenerResourceData, onDone xdsresource.OnDoneFunc) {
+	defer onDone()
 	if lw.parent.closed.HasFired() {
 		lw.logger.Warningf("Resource %q received update: %#v after listener was closed", lw.name, update)
 		return
@@ -421,7 +426,8 @@ func (lw *ldsWatcher) OnUpdate(update *xdsresource.ListenerResourceData) {
 	lw.parent.handleLDSUpdate(update.Resource)
 }
 
-func (lw *ldsWatcher) OnError(err error) {
+func (lw *ldsWatcher) OnError(err error, onDone xdsresource.OnDoneFunc) {
+	defer onDone()
 	if lw.parent.closed.HasFired() {
 		lw.logger.Warningf("Resource %q received error: %v after listener was closed", lw.name, err)
 		return
@@ -433,7 +439,8 @@ func (lw *ldsWatcher) OnError(err error) {
 	// continue to use the old configuration.
 }
 
-func (lw *ldsWatcher) OnResourceDoesNotExist() {
+func (lw *ldsWatcher) OnResourceDoesNotExist(onDone xdsresource.OnDoneFunc) {
+	defer onDone()
 	if lw.parent.closed.HasFired() {
 		lw.logger.Warningf("Resource %q received resource-does-not-exist error after listener was closed", lw.name)
 		return
