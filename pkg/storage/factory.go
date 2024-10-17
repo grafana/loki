@@ -326,7 +326,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.CongestionControl.RegisterFlagsWithPrefix("store.", f)
 
 	f.BoolVar(&cfg.UseThanosObjstore, "use-thanos-objstore", false, "Enable the thanos.io/objstore to be the backend for object storage")
-	cfg.ObjectStore.RegisterFlagsWithPrefix("object-store.", f)
+	cfg.ObjectStore.RegisterFlags(f)
 
 	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "", f)
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")

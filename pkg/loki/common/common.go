@@ -94,7 +94,7 @@ func (s *Storage) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	s.COS.RegisterFlagsWithPrefix(prefix, f)
 	s.CongestionControl.RegisterFlagsWithPrefix(prefix, f)
 
-	s.ObjectStore.RegisterFlagsWithPrefix(prefix+"object-store.", f)
+	s.ObjectStore.RegisterFlagsWithPrefix(prefix, f)
 }
 
 type FilesystemConfig struct {
