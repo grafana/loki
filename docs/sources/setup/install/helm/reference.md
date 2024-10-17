@@ -11123,7 +11123,7 @@ false
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/loki-helm-test",
-    "tag": "ewelch-distributed-helm-chart-17db5ee"
+    "tag": null
   },
   "labels": {},
   "prometheusAddress": "",
@@ -11160,7 +11160,7 @@ false
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "grafana/loki-helm-test",
-  "tag": "ewelch-distributed-helm-chart-17db5ee"
+  "tag": null
 }
 </pre>
 </td>
@@ -11206,7 +11206,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"ewelch-distributed-helm-chart-17db5ee"
+null
 </pre>
 </td>
 		</tr>
