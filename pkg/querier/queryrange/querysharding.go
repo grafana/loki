@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -216,7 +217,13 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	}
 	strategy := version.Strategy(resolver, uint64(ast.limits.TSDBMaxBytesPerShard(tenants[0])))
 
-	mapper := logql.NewShardMapper(strategy, ast.metrics, ast.shardAggregation)
+	// Merge global shard aggregations and tenant overrides.
+	limitShardAggregation := validation.IntersectionPerTenant(tenants, func(tenant string) []string {
+		return ast.limits.ShardAggregations(tenant)
+	})
+	mergedShardAggregation := slices.Compact(append(limitShardAggregation, ast.shardAggregation...))
+
+	mapper := logql.NewShardMapper(strategy, ast.metrics, mergedShardAggregation)
 
 	noop, bytesPerShard, parsed, err := mapper.Parse(params.GetExpression())
 	if err != nil {
