@@ -17,6 +17,12 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [CHANGE] Changed version of Grafana Loki to k224-10569ab
 - [CHANGE] Changed version of Grafana Enterprise Logs to weekly-k224-0622b0d
+## 6.19.0-weekly.224
+
+- [CHANGE] Changed version of Grafana Loki to k224-bebe9fa
+- [CHANGE] Changed version of Grafana Enterprise Logs to weekly-k224-0622b0d
+
+## 6.18.0
 
 ## 6.17.1
 
