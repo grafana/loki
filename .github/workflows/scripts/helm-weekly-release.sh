@@ -106,7 +106,9 @@ fi
 
 make TTY='' helm-docs
 
+# shellcheck disable=SC2154,SC2250
 echo "new_chart_version=${new_chart_version}" >> "$GITHUB_OUTPUT"
 if ${k_release}; then
+  # shellcheck disable=SC2154,SC2250
   echo "weekly=$(extract_k_version "${latest_loki_tag}")" >> "$GITHUB_OUTPUT"
 fi

@@ -51,4 +51,5 @@ sed --in-place \
 
 make TTY='' helm-docs
 
+# shellcheck disable=SC2154,SC2250
 echo "new_chart_version=${new_chart_version}" >> "$GITHUB_OUTPUT"
