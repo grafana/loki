@@ -516,6 +516,22 @@ func Test_labelsFormatter_Format(t *testing.T) {
 		want labels.Labels
 	}{
 		{
+			"rename label",
+			mustNewLabelsFormatter([]LabelFmt{
+				NewRenameLabelFmt("baz", "foo"),
+			}),
+			labels.FromStrings("foo", "blip", "bar", "blop"),
+			labels.FromStrings("bar", "blop", "baz", "blip"),
+		},
+		{
+			"rename and overwrite existing label",
+			mustNewLabelsFormatter([]LabelFmt{
+				NewRenameLabelFmt("bar", "foo"),
+			}),
+			labels.FromStrings("foo", "blip", "bar", "blop"),
+			labels.FromStrings("bar", "blip"),
+		},
+		{
 			"combined with template",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", "{{.foo}} and {{.bar}}")}),
 			labels.FromStrings("foo", "blip", "bar", "blop"),
