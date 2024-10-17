@@ -1,4 +1,4 @@
-package splitkeyspace
+package strategies
 
 import (
 	"context"
@@ -17,31 +17,26 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
 
-type Limits interface {
-	BloomSplitSeriesKeyspaceBy(tenantID string) int
-}
-
-type Strategy struct {
+type SplitKeyspaceStrategy struct {
 	limits Limits
-
 	logger log.Logger
 }
 
 func NewSplitKeyspaceStrategy(
 	limits Limits,
 	logger log.Logger,
-) (*Strategy, error) {
-	return &Strategy{
+) (*SplitKeyspaceStrategy, error) {
+	return &SplitKeyspaceStrategy{
 		limits: limits,
 		logger: logger,
 	}, nil
 }
 
-func (s *Strategy) Plan(
+func (s *SplitKeyspaceStrategy) Plan(
 	ctx context.Context,
 	table config.DayTable,
 	tenant string,
-	tsdbs map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries,
+	tsdbs TSDBSet,
 	metas []bloomshipper.Meta,
 ) ([]*protos.Task, error) {
 	splitFactor := s.limits.BloomSplitSeriesKeyspaceBy(tenant)
@@ -86,7 +81,7 @@ type blockPlan struct {
 	gaps []protos.Gap
 }
 
-func (s *Strategy) findOutdatedGaps(
+func (s *SplitKeyspaceStrategy) findOutdatedGaps(
 	ctx context.Context,
 	tenant string,
 	tsdbs map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries,

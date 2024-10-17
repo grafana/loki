@@ -1,4 +1,4 @@
-package splitkeyspace
+package strategies
 
 import (
 	"context"

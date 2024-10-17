@@ -390,7 +390,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	)
 
 	f.BoolVar(&l.BloomCreationEnabled, "bloom-build.enable", false, "Experimental. Whether to create blooms for the tenant.")
-	f.StringVar(&l.BloomPlanningStrategy, "bloom-build.planning-strategy", "split", "Experimental. Bloom planning strategy to use in bloom creation. Can be one of: 'split'")
+	f.StringVar(&l.BloomPlanningStrategy, "bloom-build.planning-strategy", "split_keyspace_by_factor", "Experimental. Bloom planning strategy to use in bloom creation. Can be one of: 'split_keyspace_by_factor'")
 	f.IntVar(&l.BloomSplitSeriesKeyspaceBy, "bloom-build.split-keyspace-by", 256, "Experimental. Only if `bloom-build.planning-strategy` is 'split'. Number of splits to create for the series keyspace when building blooms. The series keyspace is split into this many parts to parallelize bloom creation.")
 	f.IntVar(&l.BloomBuildMaxBuilders, "bloom-build.max-builders", 0, "Experimental. Maximum number of builders to use when building blooms. 0 allows unlimited builders.")
 	f.DurationVar(&l.BloomBuilderResponseTimeout, "bloom-build.builder-response-timeout", 0, "Experimental. Timeout for a builder to finish a task. If a builder does not respond within this time, it is considered failed and the task will be requeued. 0 disables the timeout.")

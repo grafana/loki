@@ -3765,9 +3765,9 @@ shard_streams:
 [bloom_creation_enabled: <boolean> | default = false]
 
 # Experimental. Bloom planning strategy to use in bloom creation. Can be one of:
-# 'split'
+# 'split_keyspace_by_factor'
 # CLI flag: -bloom-build.planning-strategy
-[bloom_planning_strategy: <string> | default = "split"]
+[bloom_planning_strategy: <string> | default = "split_keyspace_by_factor"]
 
 # Experimental. Only if `bloom-build.planning-strategy` is 'split'. Number of
 # splits to create for the series keyspace when building blooms. The series
