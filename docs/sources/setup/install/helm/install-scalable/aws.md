@@ -573,6 +573,6 @@ k6 is one of the fastest way to test your Loki deployment. This will allow you t
 
 Now that you have successfully deployed Loki in simple scalable mode on AWS, you may wish to explore the following:
 
-- [Sanding data to Loki]({{< relref "../../../../send-data" >}})
+- [Sending data to Loki]({{< relref "../../../../send-data" >}})
 - [Querying Loki]({{< relref "../../../../query" >}})
 - [Operations]({{< relref "../../../../operations" >}})
