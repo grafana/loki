@@ -261,6 +261,8 @@ To allow the IAM role to access the S3 buckets, you need to add the policy to th
 
 ## Deploying the Helm chart
 
+Before we can deploy the Loki Helm chart, we need to add the Grafana chart repository to Helm. This repository contains the Loki Helm chart.
+
 1. Add the Grafana chart repository to Helm:
 
     ```bash
@@ -271,6 +273,34 @@ To allow the IAM role to access the S3 buckets, you need to add the policy to th
     ```bash
     helm repo update
     ```
+1. Create a new namespace for Loki:
+
+    ```bash
+    kubectl create namespace loki
+    ```
+### Loki Basic Authentication
+
+Loki by default does not come with any authentication. Since we will be deploying Loki to AWS and exposing the gateway to the internet, we recommend adding atleast basic authentication. In this guide we will give Loki a username and password:
+
+1. To start we will need create a `.htpasswd` file with the username and password. You can use the `htpasswd` command to create the file:
+   
+   {{< admonition type="tip" >}}
+    If you don't have the `htpasswd` command installed, you can install it using `brew` or `apt-get` or `yum` depending on your OS.
+   {{< /admonition >}}
+
+    ```bash
+    htpasswd -c .htpasswd <username>
+    ```
+    This will create a file called `auth` with the username `loki`. You will be prompted to enter a password.
+
+ 1. Create a Kubernetes secret with the `.htpasswd` file:
+
+    ```bash
+    kubectl create secret generic loki-basic-auth --from-file=.htpasswd -n loki
+    ```
+
+    This will create a secret called `loki-basic-auth` in the `loki` namespace. We will reference this secret in the Loki Helm chart configuration.
+
     
 
 ### Loki Helm chart configuration
@@ -360,8 +390,11 @@ Create a `values.yaml` file with the following content:
 
  # This exposes the Loki gateway so it can be written to and queried externaly
  gateway:
-   service:
-     type: LoadBalancer
+    service:
+      type: LoadBalancer
+    basicAuth: 
+      enabled: true
+      existingSecret: loki-basic-auth # Change this is you used a different secret name
 
 
  # Enable minio for storage
@@ -436,7 +469,7 @@ Now that you have created the `values.yaml` file, you can deploy Loki using the 
 The Loki Gateway service is a LoadBalancer service that exposes the Loki gateway to the internet. This is where you will write logs to and query logs from. By default NGINX is used as the gateway.
 
 {{< admonition type="caution" >}}
-The Loki Gateway service is exposed to the internet. We recommend to secure the gateway with authentication. Refer to the [Authentication]({{< relref "../../../../operations/authentication" >}}) documentation for more information.
+The Loki Gateway service is exposed to the internet. We provide basic authentication using a username and password in this tutorial. Refer to the [Authentication]({{< relref "../../../../operations/authentication" >}}) documentation for more information.
 {{< /admonition >}}
 
 To find the Loki Gateway service, run the following command:
@@ -481,7 +514,14 @@ k6 is one of the fastest way to test your Loki deployment. This will allow you t
     * Path is automatically appended by the client
     * @constant {string}
     */
-    const BASE_URL = `http://<EXTERNAL-IP>/loki/api/v1/push`;
+
+    const username = '<USERNAME>';
+    const password = '<PASSWORD>';
+    const external_ip = '<EXTERNAL-IP>';
+
+    const credentials = `${username}:${password}`;
+
+    const BASE_URL = `http://${credentials}@${external_ip}`;
 
     /**
     * Helper constant for byte values
@@ -498,6 +538,7 @@ k6 is one of the fastest way to test your Loki deployment. This will allow you t
     /**
     * Instantiate config and Loki client
     */
+
     const conf = new loki.Config(BASE_URL);
     const client = new loki.Client(conf);
 
@@ -541,13 +582,13 @@ k6 is one of the fastest way to test your Loki deployment. This will allow you t
     function randomChoice(items) {
       return items[Math.floor(Math.random() * items.length)];
     }
-    ```
+   ```
 
    **Replace `<EXTERNAL-IP>` with the external IP address of the Loki Gateway service.**
 
    This script will write logs to Loki and query logs from Loki. It will write logs in a random format between 800KB and 2MB and query logs in a random format over the last 5 minutes.
   
-3. Run the test:
+1. Run the test:
 
     ```bash
     ./k6 run aws-test.js
@@ -561,7 +602,7 @@ k6 is one of the fastest way to test your Loki deployment. This will allow you t
 
 - **IAM Role:** The IAM role created in this guide is a basic role that allows Loki to read and write to the S3 bucket. You may wish to add more granular permissions based on your requirements.
 
-- **Authentication:** Grafana Loki doesn't come with any included authentication layer. Within the simple scalable mode, the Loki gateway (NGINX) is exposed to the internet. It is advised to add a username and password via the `basicAuth` section in the `values.yaml` file. NGINX can also be replaced with other open-source reverse proxies. Refer to [Authentication]({{< relref "../../../../operations/authentication" >}}) for more information.
+- **Authentication:** Grafana Loki comes with a basic authentication layer.  The Loki gateway (NGINX) is exposed to the internet using basic authentication in this example. NGINX can also be replaced with other open-source reverse proxies. Refer to [Authentication]({{< relref "../../../../operations/authentication" >}}) for more information.
 
 - **Retention:** The retention period is set to 28 days in the `values.yaml` file. You may wish to adjust this based on your requirements.
 
