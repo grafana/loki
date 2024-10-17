@@ -103,10 +103,10 @@ func (v *LokiStackValidator) validate(ctx context.Context, obj runtime.Object) (
 	)
 }
 
-func (v *LokiStackValidator) validateGlobalOTLPSpec(s *lokiv1.GlobalOTLPSpec) field.ErrorList {
+func (v *LokiStackValidator) validateGlobalOTLPSpec(s *lokiv1.OTLPSpec) field.ErrorList {
 	basePath := field.NewPath("spec", "limits", "global")
 
-	return v.validateOTLPSpec(basePath, &s.OTLPSpec)
+	return v.validateOTLPSpec(basePath, s)
 }
 
 func (v *LokiStackValidator) validatePerTenantOTLPSpec(tenants map[string]lokiv1.PerTenantLimitsTemplateSpec) field.ErrorList {
@@ -114,7 +114,7 @@ func (v *LokiStackValidator) validatePerTenantOTLPSpec(tenants map[string]lokiv1
 
 	for key, tenant := range tenants {
 		basePath := field.NewPath("spec", "limits", "tenants").Key(key)
-		allErrs = append(allErrs, v.validateOTLPSpec(basePath, tenant.OTLP)...)
+		allErrs = append(allErrs, v.validateOTLPSpec(basePath, &tenant.OTLP.OTLPSpec)...)
 	}
 
 	return allErrs
@@ -123,77 +123,9 @@ func (v *LokiStackValidator) validatePerTenantOTLPSpec(tenants map[string]lokiv1
 func (v *LokiStackValidator) validateOTLPSpec(parent *field.Path, s *lokiv1.OTLPSpec) field.ErrorList {
 	var allErrs field.ErrorList
 
-	if s.ResourceAttributes != nil && s.ResourceAttributes.IgnoreDefaults {
-		switch {
-		case len(s.ResourceAttributes.Attributes) == 0:
-			allErrs = append(allErrs,
-				field.Invalid(
-					parent.Child("otlp", "resourceAttributes"),
-					[]lokiv1.OTLPAttributesSpec{},
-					lokiv1.ErrOTLPResourceAttributesEmptyNotAllowed.Error(),
-				),
-			)
-		default:
-			var indexLabelActionFound bool
-			for _, attr := range s.ResourceAttributes.Attributes {
-				if attr.Action == lokiv1.OTLPAttributeActionIndexLabel {
-					indexLabelActionFound = true
-					break
-				}
-			}
+	// TODO this needs to take "required" and "recommended" labels into account when looking at invalid stream label configurations
 
-			if !indexLabelActionFound {
-				allErrs = append(allErrs,
-					field.Invalid(
-						parent.Child("otlp", "resourceAttributes"),
-						s.ResourceAttributes.Attributes,
-						lokiv1.ErrOTLPResourceAttributesIndexLabelActionMissing.Error(),
-					),
-				)
-			}
-
-			for idx, attr := range s.ResourceAttributes.Attributes {
-				if len(attr.Attributes) == 0 && attr.Regex == "" {
-					allErrs = append(allErrs,
-						field.Invalid(
-							parent.Child("otlp", "resourceAttributes").Index(idx),
-							[]string{},
-							lokiv1.ErrOTLPAttributesSpecInvalid.Error(),
-						),
-					)
-				}
-			}
-		}
-	}
-
-	if len(s.ScopeAttributes) != 0 {
-		for idx, attr := range s.ScopeAttributes {
-			if len(attr.Attributes) == 0 && attr.Regex == "" {
-				allErrs = append(allErrs,
-					field.Invalid(
-						parent.Child("otlp", "scopeAttributes").Index(idx),
-						[]string{},
-						lokiv1.ErrOTLPAttributesSpecInvalid.Error(),
-					),
-				)
-			}
-		}
-	}
-
-	if len(s.LogAttributes) != 0 {
-		for idx, attr := range s.LogAttributes {
-			if len(attr.Attributes) == 0 && attr.Regex == "" {
-				allErrs = append(allErrs,
-					field.Invalid(
-						parent.Child("otlp", "logAttributes").Index(idx),
-						[]string{},
-						lokiv1.ErrOTLPAttributesSpecInvalid.Error(),
-					),
-				)
-			}
-		}
-	}
-
+	// FIXME validation temporarily removed
 	return allErrs
 }
 
