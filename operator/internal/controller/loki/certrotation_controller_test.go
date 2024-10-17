@@ -1,4 +1,4 @@
-package controllers
+package loki
 
 import (
 	"testing"

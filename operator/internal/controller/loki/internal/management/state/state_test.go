@@ -1,4 +1,4 @@
-package state_test
+package state
 
 import (
 	"context"
@@ -14,7 +14,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/controllers/loki/internal/management/state"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 )
 
@@ -73,7 +72,7 @@ func TestIsManaged(t *testing.T) {
 				k.SetClientObject(object, &tst.stack)
 				return nil
 			}
-			ok, err := state.IsManaged(context.TODO(), r, k)
+			ok, err := IsManaged(context.TODO(), r, k)
 			require.NoError(t, err)
 			require.Equal(t, ok, tst.wantOk)
 		})
@@ -109,7 +108,7 @@ func TestIsManaged_WhenError_ReturnNotManagedWithError(t *testing.T) {
 	for _, tst := range table {
 		t.Run(tst.name, func(t *testing.T) {
 			k.GetReturns(tst.apierror)
-			ok, err := state.IsManaged(context.TODO(), r, k)
+			ok, err := IsManaged(context.TODO(), r, k)
 			require.Equal(t, tst.wantErr, err)
 			require.False(t, ok)
 		})
