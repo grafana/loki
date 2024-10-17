@@ -600,7 +600,7 @@ func TestCompactor_Compact(t *testing.T) {
 
 						// verify the chunkmetas in the builder
 						actualChunks := map[string]index.ChunkMetas{}
-						for seriesID, stream := range initializedIndexSets[userID].(*mockIndexSet).compactedIndex.(*compactedIndex).builder.streams {
+						for seriesID, stream := range initializedIndexSets[userID].(*mockIndexSet).compactedIndex.(*CompactedIndex).builder.streams {
 							actualChunks[seriesID] = stream.chunks
 						}
 
@@ -859,7 +859,7 @@ type testContext struct {
 	userID               string
 	tableInterval        model.Interval
 	shiftTableStart      func(ms int64) int64
-	buildCompactedIndex  func() *compactedIndex
+	buildCompactedIndex  func() *CompactedIndex
 	expectedChunkEntries map[string][]retention.ChunkEntry
 }
 
@@ -888,7 +888,7 @@ func setupCompactedIndex(t *testing.T) *testContext {
 	lbls2 := mustParseLabels(`{fizz="buzz", a="b"}`)
 	userID := buildUserID(0)
 
-	buildCompactedIndex := func() *compactedIndex {
+	buildCompactedIndex := func() *CompactedIndex {
 		indexFormat, err := periodConfig.TSDBFormat()
 		require.NoError(t, err)
 		builder := NewBuilder(indexFormat)
@@ -900,7 +900,7 @@ func setupCompactedIndex(t *testing.T) *testContext {
 
 		builder.FinalizeChunks()
 
-		return newCompactedIndex(context.Background(), tableName.prefix, buildUserID(0), t.TempDir(), periodConfig, builder)
+		return NewCompactedIndex(context.Background(), tableName.prefix, buildUserID(0), t.TempDir(), periodConfig, builder)
 	}
 
 	expectedChunkEntries := map[string][]retention.ChunkEntry{
