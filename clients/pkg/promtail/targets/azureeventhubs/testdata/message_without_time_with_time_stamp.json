@@ -1,0 +1,10 @@
+{
+  "records": [
+    {
+      "timeStamp": "2024-09-18T00:45:09+00:00",
+      "resourceId": "/RESOURCE_ID",
+      "operationName": "ApplicationGatewayAccess",
+      "category": "ApplicationGatewayAccessLog"
+    }
+  ]
+}
