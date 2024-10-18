@@ -147,9 +147,10 @@ spec:
                         type: object
                       otlp:
                         description: |-
-                          OTLP to configure which resource, scope and log attributes
-                          to store as labels or structured metadata or drop them altogether
-                          for all tenants.
+                          OTLP to configure which resource, scope and log attributes are stored as stream labels or structured metadata.
+
+                          Tenancy modes can provide a default OTLP configuration, when no custom OTLP configuration is set or even
+                          enforce the use of some required attributes.
                         properties:
                           streamLabels:
                             description: StreamLabels configures which resource attributes
@@ -387,15 +388,13 @@ spec:
                           type: object
                         otlp:
                           description: |-
-                            OTLP to configure which resource, scope and log attributes
-                            to store as labels or structured metadata or drop them altogether
-                            for a single tenants.
+                            OTLP to configure which resource, scope and log attributes are stored as stream labels or structured metadata.
+
+                            Tenancy modes can provide a default OTLP configuration, when no custom OTLP configuration is set or even
+                            enforce the use of some required attributes.
+
+                            The per-tenant configuration for OTLP attributes will be merged with the global configuration.
                           properties:
-                            ignoreGlobalStreamLabels:
-                              description: When IgnoreGlobalStreamLabels is true,
-                                then this tenant will ignore the global stream label
-                                configuration.
-                              type: boolean
                             streamLabels:
                               description: StreamLabels configures which resource
                                 attributes are converted to Loki stream labels.

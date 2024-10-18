@@ -236,9 +236,6 @@ limits_config:
   otlp_config:
     {{- if .ResourceAttributes }}
     resource_attributes:
-      {{- if .IgnoreGlobalStreamLabels }}
-      ignore_defaults: true
-      {{- end }}
       {{- with .ResourceAttributes}}
       attributes_config:
       {{- range . }}

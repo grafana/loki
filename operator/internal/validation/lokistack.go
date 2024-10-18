@@ -114,7 +114,7 @@ func (v *LokiStackValidator) validatePerTenantOTLPSpec(tenants map[string]lokiv1
 
 	for key, tenant := range tenants {
 		basePath := field.NewPath("spec", "limits", "tenants").Key(key)
-		allErrs = append(allErrs, v.validateOTLPSpec(basePath, &tenant.OTLP.OTLPSpec)...)
+		allErrs = append(allErrs, v.validateOTLPSpec(basePath, tenant.OTLP)...)
 	}
 
 	return allErrs
@@ -122,8 +122,6 @@ func (v *LokiStackValidator) validatePerTenantOTLPSpec(tenants map[string]lokiv1
 
 func (v *LokiStackValidator) validateOTLPSpec(parent *field.Path, s *lokiv1.OTLPSpec) field.ErrorList {
 	var allErrs field.ErrorList
-
-	// TODO this needs to take "required" and "recommended" labels into account when looking at invalid stream label configurations
 
 	// FIXME validation temporarily removed
 	return allErrs

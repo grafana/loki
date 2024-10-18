@@ -192,14 +192,11 @@ func TestOtlpAttributeConfig(t *testing.T) {
 				Limits: &lokiv1.LimitsSpec{
 					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
 						"test-tenant": {
-							OTLP: &lokiv1.TenantOTLPSpec{
-								IgnoreGlobalStreamLabels: true,
-								OTLPSpec: lokiv1.OTLPSpec{
-									StreamLabels: &lokiv1.OTLPStreamLabelSpec{
-										ResourceAttributes: []lokiv1.OTLPAttributeReference{
-											{
-												Name: "tenant.stream.label",
-											},
+							OTLP: &lokiv1.OTLPSpec{
+								StreamLabels: &lokiv1.OTLPStreamLabelSpec{
+									ResourceAttributes: []lokiv1.OTLPAttributeReference{
+										{
+											Name: "tenant.stream.label",
 										},
 									},
 								},
@@ -211,7 +208,6 @@ func TestOtlpAttributeConfig(t *testing.T) {
 			wantConfig: config.OTLPAttributeConfig{
 				Tenants: map[string]*config.OTLPTenantAttributeConfig{
 					"test-tenant": {
-						IgnoreGlobalStreamLabels: true,
 						ResourceAttributes: []config.OTLPAttribute{
 							{
 								Action: config.OTLPAttributeActionStreamLabel,
@@ -228,14 +224,12 @@ func TestOtlpAttributeConfig(t *testing.T) {
 				Limits: &lokiv1.LimitsSpec{
 					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
 						"test-tenant": {
-							OTLP: &lokiv1.TenantOTLPSpec{
-								OTLPSpec: lokiv1.OTLPSpec{
-									StreamLabels: &lokiv1.OTLPStreamLabelSpec{
-										ResourceAttributes: []lokiv1.OTLPAttributeReference{
-											{
-												Name:  "tenant\\.stream\\.label\\.regex\\..+",
-												Regex: true,
-											},
+							OTLP: &lokiv1.OTLPSpec{
+								StreamLabels: &lokiv1.OTLPStreamLabelSpec{
+									ResourceAttributes: []lokiv1.OTLPAttributeReference{
+										{
+											Name:  "tenant\\.stream\\.label\\.regex\\..+",
+											Regex: true,
 										},
 									},
 								},
@@ -263,13 +257,11 @@ func TestOtlpAttributeConfig(t *testing.T) {
 				Limits: &lokiv1.LimitsSpec{
 					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
 						"test-tenant": {
-							OTLP: &lokiv1.TenantOTLPSpec{
-								OTLPSpec: lokiv1.OTLPSpec{
-									StructuredMetadata: &lokiv1.OTLPMetadataSpec{
-										ResourceAttributes: []lokiv1.OTLPAttributeReference{
-											{
-												Name: "tenant.metadata",
-											},
+							OTLP: &lokiv1.OTLPSpec{
+								StructuredMetadata: &lokiv1.OTLPMetadataSpec{
+									ResourceAttributes: []lokiv1.OTLPAttributeReference{
+										{
+											Name: "tenant.metadata",
 										},
 									},
 								},
@@ -297,46 +289,44 @@ func TestOtlpAttributeConfig(t *testing.T) {
 				Limits: &lokiv1.LimitsSpec{
 					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
 						"test-tenant": {
-							OTLP: &lokiv1.TenantOTLPSpec{
-								OTLPSpec: lokiv1.OTLPSpec{
-									StreamLabels: &lokiv1.OTLPStreamLabelSpec{
-										ResourceAttributes: []lokiv1.OTLPAttributeReference{
-											{
-												Name: "tenant.stream.label",
-											},
-											{
-												Name:  `tenant\.stream\.label\.regex\..+`,
-												Regex: true,
-											},
+							OTLP: &lokiv1.OTLPSpec{
+								StreamLabels: &lokiv1.OTLPStreamLabelSpec{
+									ResourceAttributes: []lokiv1.OTLPAttributeReference{
+										{
+											Name: "tenant.stream.label",
+										},
+										{
+											Name:  `tenant\.stream\.label\.regex\..+`,
+											Regex: true,
 										},
 									},
-									StructuredMetadata: &lokiv1.OTLPMetadataSpec{
-										ResourceAttributes: []lokiv1.OTLPAttributeReference{
-											{
-												Name: "tenant.resource.metadata",
-											},
-											{
-												Name:  `tenant\.resource.metadata\.other\..+`,
-												Regex: true,
-											},
+								},
+								StructuredMetadata: &lokiv1.OTLPMetadataSpec{
+									ResourceAttributes: []lokiv1.OTLPAttributeReference{
+										{
+											Name: "tenant.resource.metadata",
 										},
-										ScopeAttributes: []lokiv1.OTLPAttributeReference{
-											{
-												Name: "tenant.scope.metadata",
-											},
-											{
-												Name:  `tenant\.scope\.metadata\.other\..+`,
-												Regex: true,
-											},
+										{
+											Name:  `tenant\.resource.metadata\.other\..+`,
+											Regex: true,
 										},
-										LogAttributes: []lokiv1.OTLPAttributeReference{
-											{
-												Name: "tenant.log.metadata",
-											},
-											{
-												Name:  `tenant\.log\.metadata\.other\..+`,
-												Regex: true,
-											},
+									},
+									ScopeAttributes: []lokiv1.OTLPAttributeReference{
+										{
+											Name: "tenant.scope.metadata",
+										},
+										{
+											Name:  `tenant\.scope\.metadata\.other\..+`,
+											Regex: true,
+										},
+									},
+									LogAttributes: []lokiv1.OTLPAttributeReference{
+										{
+											Name: "tenant.log.metadata",
+										},
+										{
+											Name:  `tenant\.log\.metadata\.other\..+`,
+											Regex: true,
 										},
 									},
 								},

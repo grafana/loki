@@ -258,10 +258,9 @@ type OTLPAttributeConfig struct {
 }
 
 type OTLPTenantAttributeConfig struct {
-	IgnoreGlobalStreamLabels bool
-	ResourceAttributes       []OTLPAttribute
-	ScopeAttributes          []OTLPAttribute
-	LogAttributes            []OTLPAttribute
+	ResourceAttributes []OTLPAttribute
+	ScopeAttributes    []OTLPAttribute
+	LogAttributes      []OTLPAttribute
 }
 
 type OTLPAttributeAction string

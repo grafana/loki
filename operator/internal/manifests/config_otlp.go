@@ -287,9 +287,7 @@ func otlpAttributeConfig(ls *lokiv1.LokiStackSpec) config.OTLPAttributeConfig {
 		for tenant, tenantLimits := range ls.Limits.Tenants {
 			if tenantLimits.OTLP != nil {
 				tenantOTLP := tenantLimits.OTLP
-				tenantResult := &config.OTLPTenantAttributeConfig{
-					IgnoreGlobalStreamLabels: tenantOTLP.IgnoreGlobalStreamLabels,
-				}
+				tenantResult := &config.OTLPTenantAttributeConfig{}
 
 				if streamLabels := tenantOTLP.StreamLabels; streamLabels != nil {
 					tenantResult.ResourceAttributes = append(tenantResult.ResourceAttributes,

@@ -6141,7 +6141,6 @@ limits_config:
   allow_structured_metadata: true
   otlp_config:
     resource_attributes:
-      ignore_defaults: true
       attributes_config:
       - action: index_label
         attributes:
@@ -6291,7 +6290,6 @@ overrides:
   test-a:
     otlp_config:
       resource_attributes:
-        ignore_defaults: true
         attributes_config:
         - action: index_label
           attributes:
@@ -6464,12 +6462,9 @@ overrides:
 		Overrides: map[string]LokiOverrides{
 			"test-a": {
 				Limits: lokiv1.PerTenantLimitsTemplateSpec{
-					OTLP: &lokiv1.TenantOTLPSpec{
-						IgnoreGlobalStreamLabels: true,
-						OTLPSpec:                 lokiv1.OTLPSpec{
-							// This part of the spec is not actually used in this step.
-							// It has already been pre-processed into the OTLPAttributes below.
-						},
+					OTLP: &lokiv1.OTLPSpec{
+						// This part of the spec is not actually used in this step.
+						// It has already been pre-processed into the OTLPAttributes below.
 					},
 				},
 			},
@@ -6480,7 +6475,6 @@ overrides:
 				"bar.baz",
 			},
 			Global: &OTLPTenantAttributeConfig{
-				IgnoreGlobalStreamLabels: true,
 				ResourceAttributes: []OTLPAttribute{
 					{
 						Action: OTLPAttributeActionStreamLabel,
@@ -6517,7 +6511,6 @@ overrides:
 			},
 			Tenants: map[string]*OTLPTenantAttributeConfig{
 				"test-a": {
-					IgnoreGlobalStreamLabels: true,
 					ResourceAttributes: []OTLPAttribute{
 						{
 							Action: OTLPAttributeActionStreamLabel,

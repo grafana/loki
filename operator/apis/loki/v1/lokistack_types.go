@@ -834,18 +834,6 @@ type OTLPSpec struct {
 	StructuredMetadata *OTLPMetadataSpec `json:"structuredMetadata,omitempty"`
 }
 
-// TenantOTLPSpec defines an OTLP attribute configuration specific to a tenant. It extends OTLPSpec.
-type TenantOTLPSpec struct {
-	// When IgnoreGlobalStreamLabels is true, then this tenant will ignore the global stream label configuration.
-	//
-	// +optional
-	// +kubebuilder:validation:Optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Ignore global stream labels"
-	IgnoreGlobalStreamLabels bool `json:"ignoreGlobalStreamLabels,omitempty"`
-
-	OTLPSpec `json:",omitempty"`
-}
-
 type OTLPStreamLabelSpec struct {
 	// ResourceAttributes lists the names of the resource attributes that should be converted into Loki stream labels.
 	//
@@ -947,9 +935,10 @@ type LimitsTemplateSpec struct {
 	// +kubebuilder:validation:Optional
 	QueryLimits *QueryLimitSpec `json:"queries,omitempty"`
 
-	// OTLP to configure which resource, scope and log attributes
-	// to store as labels or structured metadata or drop them altogether
-	// for all tenants.
+	// OTLP to configure which resource, scope and log attributes are stored as stream labels or structured metadata.
+	//
+	// Tenancy modes can provide a default OTLP configuration, when no custom OTLP configuration is set or even
+	// enforce the use of some required attributes.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
@@ -976,13 +965,16 @@ type PerTenantLimitsTemplateSpec struct {
 	// +kubebuilder:validation:Optional
 	QueryLimits *PerTenantQueryLimitSpec `json:"queries,omitempty"`
 
-	// OTLP to configure which resource, scope and log attributes
-	// to store as labels or structured metadata or drop them altogether
-	// for a single tenants.
+	// OTLP to configure which resource, scope and log attributes are stored as stream labels or structured metadata.
+	//
+	// Tenancy modes can provide a default OTLP configuration, when no custom OTLP configuration is set or even
+	// enforce the use of some required attributes.
+	//
+	// The per-tenant configuration for OTLP attributes will be merged with the global configuration.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	OTLP *TenantOTLPSpec `json:"otlp,omitempty"`
+	OTLP *OTLPSpec `json:"otlp,omitempty"`
 
 	// Retention defines how long logs are kept in storage.
 	//
