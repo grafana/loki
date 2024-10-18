@@ -1,6 +1,51 @@
 # Changes
 
 
+## [1.44.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.43.0...storage/v1.44.0) (2024-10-03)
+
+
+### Features
+
+* **storage/dataflux:** Add dataflux interface ([#10748](https://github.com/googleapis/google-cloud-go/issues/10748)) ([cb7b0a1](https://github.com/googleapis/google-cloud-go/commit/cb7b0a1b285de9d4182155a123747419232dd35f))
+* **storage/dataflux:** Add range_splitter [#10748](https://github.com/googleapis/google-cloud-go/issues/10748) ([#10899](https://github.com/googleapis/google-cloud-go/issues/10899)) ([d49da26](https://github.com/googleapis/google-cloud-go/commit/d49da26be7dc52fad37c392c2876f62b1a5625a2))
+* **storage/dataflux:** Add worksteal algorithm to fast-listing ([#10913](https://github.com/googleapis/google-cloud-go/issues/10913)) ([015b52c](https://github.com/googleapis/google-cloud-go/commit/015b52c345df75408be3edcfda96d37145794f9f))
+* **storage/internal:** Add managed folder to testIamPermissions method ([2f0aec8](https://github.com/googleapis/google-cloud-go/commit/2f0aec894179304d234be6c792d82cf4336b6d0a))
+* **storage/transfermanager:** Add option to StripPrefix on directory download ([#10894](https://github.com/googleapis/google-cloud-go/issues/10894)) ([607534c](https://github.com/googleapis/google-cloud-go/commit/607534cdd5edf2d15d3de891cf6a0b6cbaa7d545))
+* **storage/transfermanager:** Add SkipIfExists option ([#10893](https://github.com/googleapis/google-cloud-go/issues/10893)) ([7daa1bd](https://github.com/googleapis/google-cloud-go/commit/7daa1bdc78844adac80f6378b1f6f2dd415b80a8))
+* **storage/transfermanager:** Checksum full object downloads ([#10569](https://github.com/googleapis/google-cloud-go/issues/10569)) ([c366c90](https://github.com/googleapis/google-cloud-go/commit/c366c908534ef09442f1f3e8a4f74bd545a474fb))
+* **storage:** Add direct google access side-effect imports by default ([#10757](https://github.com/googleapis/google-cloud-go/issues/10757)) ([9ad8324](https://github.com/googleapis/google-cloud-go/commit/9ad83248a7049c82580bc45d9685c329811bce88))
+* **storage:** Add full object checksum to reader.Attrs ([#10538](https://github.com/googleapis/google-cloud-go/issues/10538)) ([245d2ea](https://github.com/googleapis/google-cloud-go/commit/245d2eaddb4862da7c8d1892d5d462bf390adb2b))
+* **storage:** Add support for Go 1.23 iterators ([84461c0](https://github.com/googleapis/google-cloud-go/commit/84461c0ba464ec2f951987ba60030e37c8a8fc18))
+* **storage:** Add update time in bucketAttrs ([#10710](https://github.com/googleapis/google-cloud-go/issues/10710)) ([5f06ae1](https://github.com/googleapis/google-cloud-go/commit/5f06ae1a331c46ded47c96c205b3f1be92d64d29)), refs [#9361](https://github.com/googleapis/google-cloud-go/issues/9361)
+* **storage:** GA gRPC client  ([#10859](https://github.com/googleapis/google-cloud-go/issues/10859)) ([c7a55a2](https://github.com/googleapis/google-cloud-go/commit/c7a55a26c645905317fe27505d503c338f50ee34))
+* **storage:** Introduce gRPC client-side metrics ([#10639](https://github.com/googleapis/google-cloud-go/issues/10639)) ([437bcb1](https://github.com/googleapis/google-cloud-go/commit/437bcb1e0b514959648eed36ba3963aa4fbeffc8))
+* **storage:** Support IncludeFoldersAsPrefixes for gRPC ([#10767](https://github.com/googleapis/google-cloud-go/issues/10767)) ([65bcc59](https://github.com/googleapis/google-cloud-go/commit/65bcc59a6c0753f8fbd66c8792bc69300e95ec62))
+
+
+### Bug Fixes
+
+* **storage/transfermanager:** Correct Attrs.StartOffset for sharded downloads ([#10512](https://github.com/googleapis/google-cloud-go/issues/10512)) ([01a5cbb](https://github.com/googleapis/google-cloud-go/commit/01a5cbba6d9d9f425f045b58fa16d8c85804c29c))
+* **storage:** Add retryalways policy to encryption test ([#10644](https://github.com/googleapis/google-cloud-go/issues/10644)) ([59cfd12](https://github.com/googleapis/google-cloud-go/commit/59cfd12ce5650279c99787da4a273db1e3253c76)), refs [#10567](https://github.com/googleapis/google-cloud-go/issues/10567)
+* **storage:** Add unknown host to retriable errors ([#10619](https://github.com/googleapis/google-cloud-go/issues/10619)) ([4ec0452](https://github.com/googleapis/google-cloud-go/commit/4ec0452a393341b1036ac6e1e7287843f097d978))
+* **storage:** Bump dependencies ([2ddeb15](https://github.com/googleapis/google-cloud-go/commit/2ddeb1544a53188a7592046b98913982f1b0cf04))
+* **storage:** Bump google.golang.org/grpc@v1.64.1 ([8ecc4e9](https://github.com/googleapis/google-cloud-go/commit/8ecc4e9622e5bbe9b90384d5848ab816027226c5))
+* **storage:** Check for grpc NotFound error in HMAC test ([#10645](https://github.com/googleapis/google-cloud-go/issues/10645)) ([3c8e88a](https://github.com/googleapis/google-cloud-go/commit/3c8e88a085bab3142dfff6ef9a8e49c29a5c877d))
+* **storage:** Disable grpc metrics using emulator ([#10870](https://github.com/googleapis/google-cloud-go/issues/10870)) ([35ad73d](https://github.com/googleapis/google-cloud-go/commit/35ad73d3be5485ac592e2ef1ea6c0854f1eff4a0))
+* **storage:** Retry gRPC DEADLINE_EXCEEDED errors ([#10635](https://github.com/googleapis/google-cloud-go/issues/10635)) ([0018415](https://github.com/googleapis/google-cloud-go/commit/0018415295a5fd964b923db6a4785e9eed46a2e2))
+* **storage:** Update dependencies ([257c40b](https://github.com/googleapis/google-cloud-go/commit/257c40bd6d7e59730017cf32bda8823d7a232758))
+* **storage:** Update google.golang.org/api to v0.191.0 ([5b32644](https://github.com/googleapis/google-cloud-go/commit/5b32644eb82eb6bd6021f80b4fad471c60fb9d73))
+
+
+### Performance Improvements
+
+* **storage:** GRPC zerocopy codec ([#10888](https://github.com/googleapis/google-cloud-go/issues/10888)) ([aeba28f](https://github.com/googleapis/google-cloud-go/commit/aeba28ffffcd82ac5540e45247112bdacc5c530d))
+
+
+### Documentation
+
+* **storage/internal:** Clarify possible objectAccessControl roles ([2f0aec8](https://github.com/googleapis/google-cloud-go/commit/2f0aec894179304d234be6c792d82cf4336b6d0a))
+* **storage/internal:** Update dual-region bucket link ([2f0aec8](https://github.com/googleapis/google-cloud-go/commit/2f0aec894179304d234be6c792d82cf4336b6d0a))
+
 ## [1.43.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.42.0...storage/v1.43.0) (2024-07-03)
 
 

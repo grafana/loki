@@ -76,9 +76,9 @@ func newEDSResolver(nameToWatch string, producer xdsresource.Producer, topLevelR
 }
 
 // OnUpdate is invoked to report an update for the resource being watched.
-func (er *edsDiscoveryMechanism) OnUpdate(update *xdsresource.EndpointsResourceData, onDone xdsresource.DoneNotifier) {
+func (er *edsDiscoveryMechanism) OnUpdate(update *xdsresource.EndpointsResourceData, onDone xdsresource.OnDoneFunc) {
 	if er.stopped.HasFired() {
-		onDone.OnDone()
+		onDone()
 		return
 	}
 
@@ -89,9 +89,9 @@ func (er *edsDiscoveryMechanism) OnUpdate(update *xdsresource.EndpointsResourceD
 	er.topLevelResolver.onUpdate(onDone)
 }
 
-func (er *edsDiscoveryMechanism) OnError(err error, onDone xdsresource.DoneNotifier) {
+func (er *edsDiscoveryMechanism) OnError(err error, onDone xdsresource.OnDoneFunc) {
 	if er.stopped.HasFired() {
-		onDone.OnDone()
+		onDone()
 		return
 	}
 
@@ -104,7 +104,7 @@ func (er *edsDiscoveryMechanism) OnError(err error, onDone xdsresource.DoneNotif
 		// Continue using a previously received good configuration if one
 		// exists.
 		er.mu.Unlock()
-		onDone.OnDone()
+		onDone()
 		return
 	}
 
@@ -120,9 +120,9 @@ func (er *edsDiscoveryMechanism) OnError(err error, onDone xdsresource.DoneNotif
 	er.topLevelResolver.onUpdate(onDone)
 }
 
-func (er *edsDiscoveryMechanism) OnResourceDoesNotExist(onDone xdsresource.DoneNotifier) {
+func (er *edsDiscoveryMechanism) OnResourceDoesNotExist(onDone xdsresource.OnDoneFunc) {
 	if er.stopped.HasFired() {
-		onDone.OnDone()
+		onDone()
 		return
 	}
 

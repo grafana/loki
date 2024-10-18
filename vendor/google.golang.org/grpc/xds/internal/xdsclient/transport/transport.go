@@ -122,10 +122,9 @@ type Transport struct {
 // error is returned from this function when the data model layer believes
 // otherwise, and this will cause the transport layer to send a NACK.
 //
-// The implementation is expected to use the ADS flow control object passed to
-// it, and increment the number of watchers to whom the update is sent to, and
-// eventually decrement the number once the update is consumed by the watchers.
-type OnRecvHandlerFunc func(update ResourceUpdate, fc *ADSFlowControl) error
+// The implementation is expected to invoke onDone when local processing of the
+// update is complete, i.e. it is consumed by all watchers.
+type OnRecvHandlerFunc func(update ResourceUpdate, onDone func()) error
 
 // OnSendHandlerFunc is the implementation at the authority, which handles state
 // changes for the resource watch and stop watch timers accordingly.
@@ -469,12 +468,12 @@ func (t *Transport) sendExisting(stream adsStream) (sentNodeProto bool, err erro
 func (t *Transport) recv(ctx context.Context, stream adsStream) bool {
 	// Initialize the flow control quota for the stream. This helps to block the
 	// next read until the previous one is consumed by all watchers.
-	fc := NewADSStreamFlowControl()
+	fc := newADSFlowControl()
 
 	msgReceived := false
 	for {
 		// Wait for ADS stream level flow control to be available.
-		if !fc.Wait(ctx) {
+		if !fc.wait(ctx) {
 			if t.logger.V(2) {
 				t.logger.Infof("ADS stream context canceled")
 			}
@@ -503,7 +502,8 @@ func (t *Transport) recv(ctx context.Context, stream adsStream) bool {
 			URL:       url,
 			Version:   rVersion,
 		}
-		if err = t.onRecvHandler(u, fc); xdsresource.ErrType(err) == xdsresource.ErrorTypeResourceTypeUnsupported {
+		fc.setPending()
+		if err = t.onRecvHandler(u, fc.onDone); xdsresource.ErrType(err) == xdsresource.ErrorTypeResourceTypeUnsupported {
 			t.logger.Warningf("%v", err)
 			continue
 		}
@@ -638,40 +638,37 @@ func (t *Transport) ChannelConnectivityStateForTesting() connectivity.State {
 	return t.cc.GetState()
 }
 
-// ADSFlowControl implements ADS stream level flow control that enables the
+// adsFlowControl implements ADS stream level flow control that enables the
 // transport to block the reading of the next message off of the stream until
 // the previous update is consumed by all watchers.
 //
 // The lifetime of the flow control is tied to the lifetime of the stream.
-//
-// New instances must be created with a call to NewADSStreamFlowControl.
-type ADSFlowControl struct {
+type adsFlowControl struct {
 	logger *grpclog.PrefixLogger
 
-	// Count of watchers yet to consume the most recent update.
-	pending atomic.Int64
+	// Whether the most recent update is pending consumption by all watchers.
+	pending atomic.Bool
 	// Channel used to notify when all the watchers have consumed the most
 	// recent update. Wait() blocks on reading a value from this channel.
 	readyCh chan struct{}
 }
 
-// NewADSStreamFlowControl returns a new ADSFlowControl.
-func NewADSStreamFlowControl() *ADSFlowControl {
-	return &ADSFlowControl{readyCh: make(chan struct{}, 1)}
+// newADSFlowControl returns a new adsFlowControl.
+func newADSFlowControl() *adsFlowControl {
+	return &adsFlowControl{readyCh: make(chan struct{}, 1)}
 }
 
-// Add increments the number of watchers (by one) who are yet to consume the
-// most recent update received on the ADS stream.
-func (fc *ADSFlowControl) Add() {
-	fc.pending.Add(1)
+// setPending changes the internal state to indicate that there is an update
+// pending consumption by all watchers.
+func (fc *adsFlowControl) setPending() {
+	fc.pending.Store(true)
 }
 
-// Wait blocks until all the watchers have consumed the most recent update and
+// wait blocks until all the watchers have consumed the most recent update and
 // returns true. If the context expires before that, it returns false.
-func (fc *ADSFlowControl) Wait(ctx context.Context) bool {
-	// If there are no watchers or none with pending updates, there is no need
-	// to block.
-	if n := fc.pending.Load(); n == 0 {
+func (fc *adsFlowControl) wait(ctx context.Context) bool {
+	// If there is no pending update, there is no need to block.
+	if !fc.pending.Load() {
 		// If all watchers finished processing the most recent update before the
 		// `recv` goroutine made the next call to `Wait()`, there would be an
 		// entry in the readyCh channel that needs to be drained to ensure that
@@ -691,11 +688,9 @@ func (fc *ADSFlowControl) Wait(ctx context.Context) bool {
 	}
 }
 
-// OnDone indicates that a watcher has consumed the most recent update.
-func (fc *ADSFlowControl) OnDone() {
-	if pending := fc.pending.Add(-1); pending != 0 {
-		return
-	}
+// onDone indicates that all watchers have consumed the most recent update.
+func (fc *adsFlowControl) onDone() {
+	fc.pending.Store(false)
 
 	select {
 	// Writes to the readyCh channel should not block ideally. The default

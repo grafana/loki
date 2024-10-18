@@ -111,10 +111,7 @@ func (c *ClusterResourceData) Raw() *anypb.Any {
 // corresponding to the cluster resource being watched.
 type ClusterWatcher interface {
 	// OnUpdate is invoked to report an update for the resource being watched.
-	//
-	// The watcher is expected to call Done() on the DoneNotifier once it has
-	// processed the update.
-	OnUpdate(*ClusterResourceData, DoneNotifier)
+	OnUpdate(*ClusterResourceData, OnDoneFunc)
 
 	// OnError is invoked under different error conditions including but not
 	// limited to the following:
@@ -124,34 +121,28 @@ type ClusterWatcher interface {
 	//	- resource validation error
 	//	- ADS stream failure
 	//	- connection failure
-	//
-	// The watcher is expected to call Done() on the DoneNotifier once it has
-	// processed the update.
-	OnError(error, DoneNotifier)
+	OnError(error, OnDoneFunc)
 
 	// OnResourceDoesNotExist is invoked for a specific error condition where
 	// the requested resource is not found on the xDS management server.
-	//
-	// The watcher is expected to call Done() on the DoneNotifier once it has
-	// processed the update.
-	OnResourceDoesNotExist(DoneNotifier)
+	OnResourceDoesNotExist(OnDoneFunc)
 }
 
 type delegatingClusterWatcher struct {
 	watcher ClusterWatcher
 }
 
-func (d *delegatingClusterWatcher) OnUpdate(data ResourceData, done DoneNotifier) {
+func (d *delegatingClusterWatcher) OnUpdate(data ResourceData, onDone OnDoneFunc) {
 	c := data.(*ClusterResourceData)
-	d.watcher.OnUpdate(c, done)
+	d.watcher.OnUpdate(c, onDone)
 }
 
-func (d *delegatingClusterWatcher) OnError(err error, done DoneNotifier) {
-	d.watcher.OnError(err, done)
+func (d *delegatingClusterWatcher) OnError(err error, onDone OnDoneFunc) {
+	d.watcher.OnError(err, onDone)
 }
 
-func (d *delegatingClusterWatcher) OnResourceDoesNotExist(done DoneNotifier) {
-	d.watcher.OnResourceDoesNotExist(done)
+func (d *delegatingClusterWatcher) OnResourceDoesNotExist(onDone OnDoneFunc) {
+	d.watcher.OnResourceDoesNotExist(onDone)
 }
 
 // WatchCluster uses xDS to discover the configuration associated with the

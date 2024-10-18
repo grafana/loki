@@ -17,7 +17,7 @@ limitations under the License.
 package bigtable
 
 import (
-	"fmt"
+	"errors"
 	"strconv"
 	"strings"
 	"time"
@@ -81,7 +81,7 @@ func extractLocation(headerMD metadata.MD, trailerMD metadata.MD) (string, strin
 	}
 
 	if len(locationMetadata) < 1 {
-		return defaultCluster, defaultZone, fmt.Errorf("failed to get location metadata")
+		return defaultCluster, defaultZone, errors.New("failed to get location metadata")
 	}
 
 	// Unmarshal binary location metadata

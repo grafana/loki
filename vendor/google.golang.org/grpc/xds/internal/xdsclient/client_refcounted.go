@@ -35,8 +35,8 @@ const (
 var (
 	// The following functions are no-ops in the actual code, but can be
 	// overridden in tests to give them visibility into certain events.
-	xdsClientImplCreateHook = func(name string) {}
-	xdsClientImplCloseHook  = func(name string) {}
+	xdsClientImplCreateHook = func(string) {}
+	xdsClientImplCloseHook  = func(string) {}
 )
 
 func clientRefCountedClose(name string) {

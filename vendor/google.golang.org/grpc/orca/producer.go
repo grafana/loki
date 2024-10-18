@@ -72,7 +72,7 @@ type OOBListenerOptions struct {
 // returned stop function must be called when no longer needed.  Do not
 // register a single OOBListener more than once per SubConn.
 func RegisterOOBListener(sc balancer.SubConn, l OOBListener, opts OOBListenerOptions) (stop func()) {
-	pr, close := sc.GetOrBuildProducer(producerBuilderSingleton)
+	pr, closeFn := sc.GetOrBuildProducer(producerBuilderSingleton)
 	p := pr.(*producer)
 
 	p.registerListener(l, opts.ReportInterval)
@@ -84,7 +84,7 @@ func RegisterOOBListener(sc balancer.SubConn, l OOBListener, opts OOBListenerOpt
 	// subsequent calls.
 	return grpcsync.OnceFunc(func() {
 		p.unregisterListener(l, opts.ReportInterval)
-		close()
+		closeFn()
 	})
 }
 
