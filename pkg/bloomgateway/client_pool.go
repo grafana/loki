@@ -76,14 +76,6 @@ func (p *JumpHashClientPool) Stop() {
 	_ = services.StopAndAwaitTerminated(context.Background(), p.Service)
 }
 
-func (p *JumpHashClientPool) AddrForFingerprint(fp uint64) (string, error) {
-	addr, err := p.FromUInt64(fp)
-	if err != nil {
-		return "", err
-	}
-	return addr.String(), nil
-}
-
 func (p *JumpHashClientPool) Addr(key string) (string, error) {
 	addr, err := p.FromString(key)
 	if err != nil {
