@@ -391,9 +391,9 @@ func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]by
 	defer smp.Put(m)
 	for _, f := range lf.formats {
 		if f.Rename {
-			v, category, ok := lbs.GetWithCategory(f.Value)
+			v, _, ok := lbs.GetWithCategory(f.Value)
 			if ok {
-				lbs.Set(category, f.Name, v)
+				lbs.Set(ParsedLabel, f.Name, v)
 				lbs.Del(f.Value)
 			}
 			continue

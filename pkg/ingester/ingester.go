@@ -404,18 +404,21 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		i.SetExtractorWrapper(i.cfg.SampleExtractorWrapper)
 	}
 
-	var limiterStrategy limiterRingStrategy
+	var streamCountLimiter limiterRingStrategy
 	var ownedStreamsStrategy ownershipStrategy
+	var streamRateLimiter RateLimiterStrategy
 	if i.cfg.KafkaIngestion.Enabled {
-		limiterStrategy = newPartitionRingLimiterStrategy(partitionRingWatcher, limits.IngestionPartitionsTenantShardSize)
+		streamCountLimiter = newPartitionRingLimiterStrategy(partitionRingWatcher, limits.IngestionPartitionsTenantShardSize)
 		ownedStreamsStrategy = newOwnedStreamsPartitionStrategy(i.ingestPartitionID, partitionRingWatcher, limits.IngestionPartitionsTenantShardSize, util_log.Logger)
+		streamRateLimiter = &NoLimitsStrategy{} // Kafka ingestion does not have per-stream rate limits, because we control the consumption speed.
 	} else {
-		limiterStrategy = newIngesterRingLimiterStrategy(i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor)
+		streamCountLimiter = newIngesterRingLimiterStrategy(i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor)
 		ownedStreamsStrategy = newOwnedStreamsIngesterStrategy(i.lifecycler.ID, i.readRing, util_log.Logger)
+		streamRateLimiter = &TenantBasedStrategy{limits: limits}
 	}
 	// Now that the lifecycler has been created, we can create the limiter
 	// which depends on it.
-	i.limiter = NewLimiter(limits, metrics, limiterStrategy)
+	i.limiter = NewLimiter(limits, metrics, streamCountLimiter, streamRateLimiter)
 	i.recalculateOwnedStreams = newRecalculateOwnedStreamsSvc(i.getInstances, ownedStreamsStrategy, cfg.OwnedStreamsCheckInterval, util_log.Logger)
 
 	return i, nil
@@ -608,6 +611,10 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 		i.setPrepareShutdown()
 	}
 
+	// start our flush loop: this needs to start before the partition-reader in order for chunks to be shipped in the case of Kafka catching up.
+	i.loopDone.Add(1)
+	go i.loop()
+
 	// When kafka ingestion is enabled, we have to make sure that reader catches up replaying the partition
 	// BEFORE the ingester ring lifecycler is started, because once the ingester ring lifecycler will start
 	// it will switch the ingester state in the ring to ACTIVE.
@@ -643,9 +650,7 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 			return fmt.Errorf("failed to start partition ring lifecycler: %w", err)
 		}
 	}
-	// start our loop
-	i.loopDone.Add(1)
-	go i.loop()
+
 	return nil
 }
 
