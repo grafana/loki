@@ -1789,12 +1789,16 @@ storage:
       # CLI flag: -common.storage.congestion-control.hedge.strategy
       [strategy: <string> | default = ""]
 
-  # The object_store block configures the connection to object storage backends
-  # using thanos-io/objstore clients. This will become the default way of
-  # configuring object store clients in future releases. Currently this is
-  # opt-in and takes effect only when `-use-thanos-objstore` is set to true.
-  # The CLI flags prefix for this block configuration is: common.storage
-  [object_store: <object_store>]
+  object_store:
+    # The gcs_storage_backend block configures the connection to Google Cloud
+    # Storage object storage backend.
+    # The CLI flags prefix for this block configuration is: common.storage
+    [gcs: <gcs_storage_backend>]
+
+    # Prefix for all objects stored in the backend storage. For simplicity, it
+    # may only contain digits and English alphabet letters.
+    # CLI flag: -common.storage.object-store.storage-prefix
+    [storage_prefix: <string> | default = ""]
 
 [persist_tokens: <boolean>]
 
@@ -4128,22 +4132,6 @@ Named store from this example can be used by setting object_store to store-1 in 
 [cos: <map of string to cos_storage_config>]
 ```
 
-### object_store
-
-The `object_store` block configures the connection to object storage backends using thanos-io/objstore clients. This will become the default way of configuring object store clients in future releases. Currently this is opt-in and takes effect only when `-use-thanos-objstore` is set to true.
-
-```yaml
-# The gcs_storage_backend block configures the connection to Google Cloud
-# Storage object storage backend.
-# The CLI flags prefix for this block configuration is: common.storage
-[gcs: <gcs_storage_backend>]
-
-# Prefix for all objects stored in the backend storage. For simplicity, it may
-# only contain digits and English alphabet letters.
-# CLI flag: -<prefix>.object-store.storage-prefix
-[storage_prefix: <string> | default = ""]
-```
-
 ### operational_config
 
 These are values which allow you to control aspects of Loki's operation, most commonly used for controlling types of higher verbosity logging, the values here can be overridden in the `configs` section of the `runtime_config` file.
@@ -5705,11 +5693,15 @@ congestion_control:
 # CLI flag: -use-thanos-objstore
 [use_thanos_objstore: <boolean> | default = false]
 
-# The object_store block configures the connection to object storage backends
-# using thanos-io/objstore clients. This will become the default way of
-# configuring object store clients in future releases. Currently this is opt-in
-# and takes effect only when `-use-thanos-objstore` is set to true.
-[object_store: <object_store>]
+object_store:
+  # The gcs_storage_backend block configures the connection to Google Cloud
+  # Storage object storage backend.
+  [gcs: <gcs_storage_backend>]
+
+  # Prefix for all objects stored in the backend storage. For simplicity, it may
+  # only contain digits and English alphabet letters.
+  # CLI flag: -object-store.storage-prefix
+  [storage_prefix: <string> | default = ""]
 
 # The maximum number of chunks to fetch per batch.
 # CLI flag: -store.max-chunk-batch-size
