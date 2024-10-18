@@ -196,7 +196,7 @@ spec:
                             type: object
                           structuredMetadata:
                             description: StructuredMetadata configures which attributes
-                              are included in structured metadata.
+                              are saved in structured metadata.
                             properties:
                               logAttributes:
                                 description: LogAttributes lists the names of log
@@ -441,7 +441,7 @@ spec:
                               type: object
                             structuredMetadata:
                               description: StructuredMetadata configures which attributes
-                                are included in structured metadata.
+                                are saved in structured metadata.
                               properties:
                                 logAttributes:
                                   description: LogAttributes lists the names of log
@@ -3867,7 +3867,7 @@ spec:
                         type: array
                       otlp:
                         description: OTLP contains settings for ingesting data using
-                          OTLP in an OpenShift context.
+                          OTLP in the OpenShift tenancy mode.
                         properties:
                           disableRecommendedAttributes:
                             description: |-

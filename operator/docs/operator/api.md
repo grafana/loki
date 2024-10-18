@@ -2758,7 +2758,7 @@ OTLPMetadataSpec
 </td>
 <td>
 <em>(Optional)</em>
-<p>StructuredMetadata configures which attributes are included in structured metadata.</p>
+<p>StructuredMetadata configures which attributes are saved in structured metadata.</p>
 </td>
 </tr>
 </tbody>
@@ -3144,7 +3144,7 @@ OpenshiftOTLPConfig
 </td>
 <td>
 <em>(Optional)</em>
-<p>OTLP contains settings for ingesting data using OTLP in an OpenShift context.</p>
+<p>OTLP contains settings for ingesting data using OTLP in the OpenShift tenancy mode.</p>
 </td>
 </tr>
 </tbody>
