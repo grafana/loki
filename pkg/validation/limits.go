@@ -226,7 +226,7 @@ type Limits struct {
 
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
 
-	PatternIngesterTokenizableJsonFields dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields" json:"pattern_ingester_tokenizable_json_fields" doc:"description=List of JSON fields that should be tokenized in the ingester."`
+	PatternIngesterTokenizableJsonFields dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields" json:"pattern_ingester_tokenizable_json_fields" doc:"hidden"`
 }
 
 type StreamRetention struct {
