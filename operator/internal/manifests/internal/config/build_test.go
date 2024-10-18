@@ -95,7 +95,6 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
-  discover_service_name: []
   max_entries_limit_per_query: 5000
   discover_service_name: []
   max_global_streams_per_user: 0
@@ -354,7 +353,6 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
-  discover_service_name: []
   max_entries_limit_per_query: 5000
   discover_service_name: []
   max_global_streams_per_user: 0
@@ -782,7 +780,6 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
-  discover_service_name: []
   max_entries_limit_per_query: 5000
   discover_service_name: []
   max_global_streams_per_user: 0
@@ -1142,7 +1139,6 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
-  discover_service_name: []
   max_entries_limit_per_query: 5000
   discover_service_name: []
   max_global_streams_per_user: 0
@@ -1503,7 +1499,6 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
-  discover_service_name: []
   max_entries_limit_per_query: 5000
   discover_service_name: []
   max_global_streams_per_user: 0
@@ -1898,7 +1893,6 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
-  discover_service_name: []
   max_entries_limit_per_query: 5000
   discover_service_name: []
   max_global_streams_per_user: 0
@@ -2235,7 +2229,6 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
-  discover_service_name: []
   max_entries_limit_per_query: 5000
   discover_service_name: []
   max_global_streams_per_user: 0
@@ -2676,7 +2669,6 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
-  discover_service_name: []
   max_entries_limit_per_query: 5000
   discover_service_name: []
   max_global_streams_per_user: 0
@@ -3002,7 +2994,6 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
-  discover_service_name: []
   max_entries_limit_per_query: 5000
   discover_service_name: []
   max_global_streams_per_user: 0
@@ -3501,7 +3492,6 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
-  discover_service_name: []
   max_entries_limit_per_query: 5000
   discover_service_name: []
   max_global_streams_per_user: 0
@@ -3764,7 +3754,6 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
-  discover_service_name: []
   max_entries_limit_per_query: 5000
   discover_service_name: []
   max_global_streams_per_user: 0
@@ -4028,7 +4017,6 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
-  discover_service_name: []
   max_entries_limit_per_query: 5000
   discover_service_name: []
   max_global_streams_per_user: 0
@@ -4293,7 +4281,6 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
-  discover_service_name: []
   max_entries_limit_per_query: 5000
   discover_service_name: []
   max_global_streams_per_user: 0
@@ -4594,7 +4581,6 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
-  discover_service_name: []
   max_entries_limit_per_query: 5000
   discover_service_name: []
   max_global_streams_per_user: 0
@@ -4893,7 +4879,6 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
-  discover_service_name: []
   max_entries_limit_per_query: 5000
   discover_service_name: []
   max_global_streams_per_user: 0
@@ -5393,7 +5378,6 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
-  discover_service_name: []
   max_entries_limit_per_query: 5000
   discover_service_name: []
   max_global_streams_per_user: 0
@@ -5571,7 +5555,6 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
-  discover_service_name: []
   max_entries_limit_per_query: 5000
   discover_service_name: []
   max_global_streams_per_user: 0
@@ -5742,7 +5725,6 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
-  discover_service_name: []
   max_entries_limit_per_query: 5000
   discover_service_name: []
   max_global_streams_per_user: 0
@@ -6136,7 +6118,6 @@ limits_config:
   # (See https://github.com/grafana/loki/blob/main/pkg/ingester/limiter.go#L73)
   max_streams_per_user: 0
   max_line_size: 256000
-  discover_service_name: []
   max_entries_limit_per_query: 5000
   discover_service_name: []
   max_global_streams_per_user: 0
