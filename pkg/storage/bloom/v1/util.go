@@ -26,10 +26,6 @@ var (
 	SeriesPagePool = mempool.NewBytePoolAllocator(1<<10, 128<<10, 2)
 )
 
-func newCRC32() hash.Hash32 {
-	return crc32.New(castagnoliTable)
-}
-
 type ChecksumPool struct {
 	sync.Pool
 }

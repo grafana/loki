@@ -137,7 +137,7 @@ func (bq *BlockQuerier) Schema() (Schema, error) {
 
 func (bq *BlockQuerier) Reset() error {
 	bq.blooms.Reset()
-	return bq.LazySeriesIter.Seek(0)
+	return bq.Seek(0)
 }
 
 func (bq *BlockQuerier) Err() error {

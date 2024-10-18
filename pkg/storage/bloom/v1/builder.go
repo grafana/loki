@@ -67,10 +67,8 @@ func (b BlockOptions) Encode(enc *encoding.Encbuf) {
 }
 
 func NewBlockOptions(enc compression.Codec, maxBlockSizeBytes, maxBloomSizeBytes uint64) BlockOptions {
-	opts := NewBlockOptionsFromSchema(Schema{
-		version:  CurrentSchemaVersion,
-		encoding: enc,
-	}, maxBloomSizeBytes)
+	schema := NewSchema(CurrentSchemaVersion, enc)
+	opts := NewBlockOptionsFromSchema(schema, maxBloomSizeBytes)
 	opts.BlockSize = maxBlockSizeBytes
 	opts.UnencodedBlockOptions.MaxBloomSizeBytes = maxBloomSizeBytes
 	return opts
@@ -209,7 +207,7 @@ func NewMergeBuilder(
 	// because blooms dont contain the label-set (only the fingerprint),
 	// in the case of a fingerprint collision we simply treat it as one
 	// series with multiple chunks.
-	combinedSeriesIter := iter.NewDedupingIter[*Series, *Series](
+	combinedSeriesIter := iter.NewDedupingIter(
 		// eq
 		func(s1, s2 *Series) bool {
 			return s1.Fingerprint == s2.Fingerprint
@@ -223,7 +221,7 @@ func NewMergeBuilder(
 				Chunks:      s1.Chunks.Union(s2.Chunks),
 			}
 		},
-		iter.NewPeekIter[*Series](store),
+		iter.NewPeekIter(store),
 	)
 
 	return &MergeBuilder{
@@ -295,7 +293,7 @@ func (mb *MergeBuilder) processNextSeries(
 		chunksCopied += len(nextInStore.Chunks) - len(chunksToAdd)
 		preExistingBlooms = nextInBlocks.Blooms
 		// we also need to carry over existing indexed fields from the series metadata
-		info.indexedFields.Union(nextInBlocks.Series.Meta.Fields)
+		info.indexedFields.Union(nextInBlocks.Series.Fields)
 	}
 
 	chunksIndexed += len(chunksToAdd)

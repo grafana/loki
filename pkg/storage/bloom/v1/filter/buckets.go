@@ -17,10 +17,6 @@ import (
 	"math/bits"
 )
 
-type BucketGetter interface {
-	Get(bucket uint) uint32
-}
-
 // Buckets is a fast, space-efficient array of buckets where each bucket can
 // store up to a configured maximum value.
 type Buckets struct {

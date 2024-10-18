@@ -31,23 +31,6 @@ func mktime(s string) model.Time {
 	return model.TimeFromUnix(ts.Unix())
 }
 
-func TestGetFromThrough(t *testing.T) {
-	chunks := []*logproto.ShortRef{
-		{From: 0, Through: 6},
-		{From: 1, Through: 5},
-		{From: 2, Through: 9},
-		{From: 3, Through: 8},
-		{From: 4, Through: 7},
-	}
-	from, through := getFromThrough(chunks)
-	require.Equal(t, model.Time(0), from)
-	require.Equal(t, model.Time(9), through)
-
-	// assert that slice order did not change
-	require.Equal(t, model.Time(0), chunks[0].From)
-	require.Equal(t, model.Time(4), chunks[len(chunks)-1].From)
-}
-
 func TestTruncateDay(t *testing.T) {
 	expected := mktime("2024-01-24 00:00")
 

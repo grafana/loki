@@ -352,7 +352,7 @@ func filterChunkRefs(req *logproto.FilterChunkRefRequest, responses []v1.Output)
 
 	// dedupe outputs, merging the same series.
 	// This returns an Iterator[v1.Output]
-	dedupedResps := iter.NewDedupingIter[v1.Output, v1.Output](
+	dedupedResps := iter.NewDedupingIter(
 		// eq
 		func(o1, o2 v1.Output) bool {
 			return o1.Fp == o2.Fp

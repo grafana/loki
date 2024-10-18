@@ -61,7 +61,7 @@ func (r *ByteReader) TarEntries() (iter.Iterator[TarEntry], error) {
 		},
 	}
 
-	return iter.NewSliceIter[TarEntry](entries), err
+	return iter.NewSliceIter(entries), err
 }
 
 func (r *ByteReader) Cleanup() error {
@@ -162,7 +162,7 @@ func (r *DirectoryBlockReader) TarEntries() (iter.Iterator[TarEntry], error) {
 		},
 	}
 
-	return iter.NewSliceIter[TarEntry](entries), nil
+	return iter.NewSliceIter(entries), nil
 }
 
 func (r *DirectoryBlockReader) Cleanup() error {

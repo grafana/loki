@@ -22,10 +22,7 @@ func TestArchive(t *testing.T) {
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
-			Schema: Schema{
-				version:  CurrentSchemaVersion,
-				encoding: compression.None,
-			},
+			Schema:         NewSchema(CurrentSchemaVersion, compression.None),
 			SeriesPageSize: 100,
 			BloomPageSize:  10 << 10,
 		},
@@ -33,7 +30,7 @@ func TestArchive(t *testing.T) {
 	)
 
 	require.Nil(t, err)
-	itr := v2.NewSliceIter[SeriesWithBlooms](data)
+	itr := v2.NewSliceIter(data)
 	_, err = builder.BuildFrom(itr)
 	require.Nil(t, err)
 
@@ -104,10 +101,7 @@ func TestArchiveCompression(t *testing.T) {
 
 			builder, err := NewBlockBuilder(
 				BlockOptions{
-					Schema: Schema{
-						version:  CurrentSchemaVersion,
-						encoding: compression.None,
-					},
+					Schema:         NewSchema(CurrentSchemaVersion, compression.None),
 					SeriesPageSize: 100,
 					BloomPageSize:  10 << 10,
 				},
@@ -115,7 +109,7 @@ func TestArchiveCompression(t *testing.T) {
 			)
 
 			require.Nil(t, err)
-			itr := v2.NewSliceIter[SeriesWithBlooms](data)
+			itr := v2.NewSliceIter(data)
 			_, err = builder.BuildFrom(itr)
 			require.Nil(t, err)
 

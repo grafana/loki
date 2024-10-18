@@ -13,7 +13,7 @@ type Stats struct {
 	ChunksRequested, ChunksFiltered     int
 	SeriesRequested, SeriesFiltered     int
 	QueueTime                           *atomic.Duration
-	MetasFetchTime, BlocksFetchTime     *atomic.Duration
+	BlocksFetchTime                     *atomic.Duration
 	ProcessingTime, TotalProcessingTime *atomic.Duration
 	PostProcessingTime                  *atomic.Duration
 	ProcessedBlocks                     *atomic.Int32 // blocks processed for this specific request
@@ -31,7 +31,6 @@ func ContextWithEmptyStats(ctx context.Context) (*Stats, context.Context) {
 		ProcessedBlocks:      atomic.NewInt32(0),
 		ProcessedBlocksTotal: atomic.NewInt32(0),
 		QueueTime:            atomic.NewDuration(0),
-		MetasFetchTime:       atomic.NewDuration(0),
 		BlocksFetchTime:      atomic.NewDuration(0),
 		ProcessingTime:       atomic.NewDuration(0),
 		TotalProcessingTime:  atomic.NewDuration(0),
@@ -54,7 +53,6 @@ func FromContext(ctx context.Context) *Stats {
 // aggregates the total duration
 func (s *Stats) Duration() (dur time.Duration) {
 	dur += s.QueueTime.Load()
-	dur += s.MetasFetchTime.Load()
 	dur += s.BlocksFetchTime.Load()
 	dur += s.ProcessingTime.Load()
 	dur += s.PostProcessingTime.Load()
@@ -82,7 +80,6 @@ func (s *Stats) KVArgs() []any {
 		"chunks_remaining", chunksRemaining,
 		"filter_ratio", filterRatio,
 		"queue_time", s.QueueTime.Load(),
-		"metas_fetch_time", s.MetasFetchTime.Load(),
 		"blocks_fetch_time", s.BlocksFetchTime.Load(),
 		"processing_time", s.ProcessingTime.Load(),
 		"post_processing_time", s.PostProcessingTime.Load(),
@@ -95,13 +92,6 @@ func (s *Stats) AddQueueTime(t time.Duration) {
 		return
 	}
 	s.QueueTime.Add(t)
-}
-
-func (s *Stats) AddMetasFetchTime(t time.Duration) {
-	if s == nil {
-		return
-	}
-	s.MetasFetchTime.Add(t)
 }
 
 func (s *Stats) AddBlocksFetchTime(t time.Duration) {

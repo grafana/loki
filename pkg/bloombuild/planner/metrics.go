@@ -5,8 +5,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-
-	"github.com/grafana/loki/v3/pkg/queue"
 )
 
 const (
@@ -210,8 +208,4 @@ func NewMetrics(
 			Help:      "Number of tenants with a retention exceeding the configured retention lookback.",
 		}),
 	}
-}
-
-func NewQueueMetrics(r prometheus.Registerer) *queue.Metrics {
-	return queue.NewMetrics(r, metricsNamespace, metricsSubsystem)
 }

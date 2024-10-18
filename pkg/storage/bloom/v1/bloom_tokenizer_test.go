@@ -173,7 +173,7 @@ func TestTokenizerPopulateWontExceedMaxSize(t *testing.T) {
 	var ct int
 	for created := range ch {
 		ct++
-		capacity := created.Bloom.ScalableBloomFilter.Capacity() / 8
+		capacity := created.Bloom.Capacity() / 8
 		t.Log(ct, int(capacity), maxSize)
 		require.Less(t, int(capacity), maxSize)
 	}

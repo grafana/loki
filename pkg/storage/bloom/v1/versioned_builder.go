@@ -81,7 +81,7 @@ func (b *V3Builder) BuildFrom(itr iter.Iterator[SeriesWithBlooms]) (uint32, erro
 			return 0, errors.Wrap(err, "iterating blooms")
 		}
 
-		blockFull, err := b.AddSeries(at.Series.Series, offsets, at.Series.Meta.Fields)
+		blockFull, err := b.AddSeries(at.Series.Series, offsets, at.Series.Fields)
 		if err != nil {
 			return 0, errors.Wrapf(err, "writing series")
 		}

@@ -16,10 +16,7 @@ import (
 // characterized by small page sizes
 func smallBlockOpts(v Version, enc compression.Codec) BlockOptions {
 	return BlockOptions{
-		Schema: Schema{
-			version:  v,
-			encoding: enc,
-		},
+		Schema:         NewSchema(v, enc),
 		SeriesPageSize: 100,
 		BloomPageSize:  2 << 10,
 		BlockSize:      0, // unlimited
@@ -55,11 +52,11 @@ func TestV3Roundtrip(t *testing.T) {
 	block := NewBlock(reader, NewMetrics(nil))
 	querier := NewBlockQuerier(block, &mempool.SimpleHeapAllocator{}, DefaultMaxPageSize).Iter()
 
-	CompareIterators[SeriesWithBlooms, *SeriesWithBlooms](
+	CompareIterators(
 		t,
 		func(t *testing.T, a SeriesWithBlooms, b *SeriesWithBlooms) {
-			require.Equal(t, a.Series.Series.Fingerprint, b.Series.Series.Fingerprint)
-			require.ElementsMatch(t, a.Series.Series.Chunks, b.Series.Series.Chunks)
+			require.Equal(t, a.Series.Fingerprint, b.Series.Fingerprint)
+			require.ElementsMatch(t, a.Series.Chunks, b.Series.Chunks)
 			bloomsA, err := v2.Collect(a.Blooms)
 			require.NoError(t, err)
 			bloomsB, err := v2.Collect(b.Blooms)

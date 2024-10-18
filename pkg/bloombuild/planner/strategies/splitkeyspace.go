@@ -207,13 +207,13 @@ func blockPlansForGaps(
 				return planGap.Blocks[i].Bounds.Less(planGap.Blocks[j].Bounds)
 			})
 
-			peekingBlocks := iter.NewPeekIter[bloomshipper.BlockRef](
-				iter.NewSliceIter[bloomshipper.BlockRef](
+			peekingBlocks := iter.NewPeekIter(
+				iter.NewSliceIter(
 					planGap.Blocks,
 				),
 			)
 			// dedupe blocks which could be in multiple metas
-			itr := iter.NewDedupingIter[bloomshipper.BlockRef, bloomshipper.BlockRef](
+			itr := iter.NewDedupingIter(
 				func(a, b bloomshipper.BlockRef) bool {
 					return a == b
 				},
@@ -224,7 +224,7 @@ func blockPlansForGaps(
 				peekingBlocks,
 			)
 
-			deduped, err := iter.Collect[bloomshipper.BlockRef](itr)
+			deduped, err := iter.Collect(itr)
 			if err != nil {
 				return nil, fmt.Errorf("failed to dedupe blocks: %w", err)
 			}

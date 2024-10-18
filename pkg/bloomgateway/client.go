@@ -301,12 +301,12 @@ func mergeSeries(input [][]*logproto.GroupedChunkRefs, buf []*logproto.GroupedCh
 		iters = append(iters, iter.NewPeekIter(iter.NewSliceIter(inp)))
 	}
 
-	heapIter := v1.NewHeapIterator[*logproto.GroupedChunkRefs](
+	heapIter := v1.NewHeapIterator(
 		func(a, b *logproto.GroupedChunkRefs) bool { return a.Fingerprint < b.Fingerprint },
 		iters...,
 	)
 
-	dedupeIter := iter.NewDedupingIter[*logproto.GroupedChunkRefs, *logproto.GroupedChunkRefs](
+	dedupeIter := iter.NewDedupingIter(
 		// eq
 		func(a, b *logproto.GroupedChunkRefs) bool { return a.Fingerprint == b.Fingerprint },
 		// from
