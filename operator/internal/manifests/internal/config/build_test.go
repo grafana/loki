@@ -97,6 +97,7 @@ limits_config:
   max_line_size: 256000
   discover_service_name: []
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -355,6 +356,7 @@ limits_config:
   max_line_size: 256000
   discover_service_name: []
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -782,6 +784,7 @@ limits_config:
   max_line_size: 256000
   discover_service_name: []
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -1141,6 +1144,7 @@ limits_config:
   max_line_size: 256000
   discover_service_name: []
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -1501,6 +1505,7 @@ limits_config:
   max_line_size: 256000
   discover_service_name: []
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -1895,6 +1900,7 @@ limits_config:
   max_line_size: 256000
   discover_service_name: []
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -2231,6 +2237,7 @@ limits_config:
   max_line_size: 256000
   discover_service_name: []
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -2671,6 +2678,7 @@ limits_config:
   max_line_size: 256000
   discover_service_name: []
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -2996,6 +3004,7 @@ limits_config:
   max_line_size: 256000
   discover_service_name: []
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -3494,6 +3503,7 @@ limits_config:
   max_line_size: 256000
   discover_service_name: []
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -3756,6 +3766,7 @@ limits_config:
   max_line_size: 256000
   discover_service_name: []
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -4019,6 +4030,7 @@ limits_config:
   max_line_size: 256000
   discover_service_name: []
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -4283,6 +4295,7 @@ limits_config:
   max_line_size: 256000
   discover_service_name: []
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -4583,6 +4596,7 @@ limits_config:
   max_line_size: 256000
   discover_service_name: []
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -4881,6 +4895,7 @@ limits_config:
   max_line_size: 256000
   discover_service_name: []
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -5380,6 +5395,7 @@ limits_config:
   max_line_size: 256000
   discover_service_name: []
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -5557,6 +5573,7 @@ limits_config:
   max_line_size: 256000
   discover_service_name: []
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -5727,6 +5744,7 @@ limits_config:
   max_line_size: 256000
   discover_service_name: []
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -6120,6 +6138,7 @@ limits_config:
   max_line_size: 256000
   discover_service_name: []
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
