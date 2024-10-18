@@ -282,12 +282,14 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 			Desc: `Configures additional object stores for a given storage provider.
 Supported stores: aws, azure, bos, filesystem, gcs, swift.
 Example:
-storage_config:
-  named_stores:
-    aws:
-      store-1:
-        endpoint: s3://foo-bucket
-        region: us-west1
+` + "```yaml" + `
+    storage_config:
+      named_stores:
+        aws:
+          store-1:
+            endpoint: s3://foo-bucket
+            region: us-west1
+` + "```" + `
 Named store from this example can be used by setting object_store to store-1 in period_config.`,
 		},
 		{

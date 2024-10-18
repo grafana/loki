@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"time"
+
+	"github.com/grafana/loki/v3/pkg/bloombuild/planner/strategies"
 )
 
 // Config configures the bloom-planner component.
@@ -44,8 +46,8 @@ func (cfg *Config) Validate() error {
 
 type Limits interface {
 	RetentionLimits
+	strategies.Limits
 	BloomCreationEnabled(tenantID string) bool
-	BloomSplitSeriesKeyspaceBy(tenantID string) int
 	BloomBuildMaxBuilders(tenantID string) int
 	BuilderResponseTimeout(tenantID string) time.Duration
 	BloomTaskMaxRetries(tenantID string) int

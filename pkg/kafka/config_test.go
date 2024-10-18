@@ -3,39 +3,37 @@ package kafka
 import (
 	"testing"
 
-	"github.com/go-kit/log"
+	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
-	"github.com/twmb/franz-go/pkg/kfake"
-	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
-func TestSetDefaultNumberOfPartitionsForAutocreatedTopics(t *testing.T) {
-	cluster, err := kfake.NewCluster(kfake.NumBrokers(1))
-	require.NoError(t, err)
-	t.Cleanup(cluster.Close)
-
-	addrs := cluster.ListenAddrs()
-	require.Len(t, addrs, 1)
-
+func TestBothSASLParamsMustBeSet(t *testing.T) {
 	cfg := Config{
-		Address:                          addrs[0],
-		AutoCreateTopicDefaultPartitions: 100,
+		// Other required params
+		Address:                    "abcd",
+		Topic:                      "abcd",
+		ProducerMaxRecordSizeBytes: 1048576,
 	}
 
-	cluster.ControlKey(kmsg.AlterConfigs.Int16(), func(request kmsg.Request) (kmsg.Response, error, bool) {
-		r := request.(*kmsg.AlterConfigsRequest)
+	// No SASL params is valid
+	err := cfg.Validate()
+	require.NoError(t, err)
 
-		require.Len(t, r.Resources, 1)
-		res := r.Resources[0]
-		require.Equal(t, kmsg.ConfigResourceTypeBroker, res.ResourceType)
-		require.Len(t, res.Configs, 1)
-		cfg := res.Configs[0]
-		require.Equal(t, "num.partitions", cfg.Name)
-		require.NotNil(t, *cfg.Value)
-		require.Equal(t, "100", *cfg.Value)
+	// Just username is invalid
+	cfg.SASLUsername = "abcd"
+	cfg.SASLPassword = flagext.Secret{}
+	err = cfg.Validate()
+	require.Error(t, err)
 
-		return &kmsg.AlterConfigsResponse{}, nil, true
-	})
+	// Just password is invalid
+	cfg.SASLUsername = ""
+	cfg.SASLPassword = flagext.SecretWithValue("abcd")
+	err = cfg.Validate()
+	require.Error(t, err)
 
-	cfg.SetDefaultNumberOfPartitionsForAutocreatedTopics(log.NewNopLogger())
+	// Both username and password is valid
+	cfg.SASLUsername = "abcd"
+	cfg.SASLPassword = flagext.SecretWithValue("abcd")
+	err = cfg.Validate()
+	require.NoError(t, err)
 }
