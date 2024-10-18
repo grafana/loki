@@ -209,6 +209,8 @@ func buildResponses(query seriesindex.Query, batch seriesindex.ReadBatchResult, 
 }
 
 func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequest) (result *logproto.GetChunkRefResponse, err error) {
+	logger := util_log.WithContext(ctx, g.log)
+
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -259,7 +261,7 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 	}
 
 	result.Refs = chunkRefs
-	level.Info(g.log).Log("msg", "return filtered chunk refs", "unfiltered", initialChunkCount, "filtered", len(result.Refs))
+	level.Info(logger).Log("msg", "return filtered chunk refs", "unfiltered", initialChunkCount, "filtered", len(result.Refs))
 	return result, nil
 }
 
