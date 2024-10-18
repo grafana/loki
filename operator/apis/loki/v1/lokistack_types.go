@@ -290,7 +290,7 @@ type OpenshiftTenantSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Admin Groups"
 	AdminGroups []string `json:"adminGroups"`
 
-	// OTLP contains settings for ingesting data using OTLP in an OpenShift context.
+	// OTLP contains settings for ingesting data using OTLP in the OpenShift tenancy mode.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
@@ -826,7 +826,7 @@ type OTLPSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Stream Labels"
 	StreamLabels *OTLPStreamLabelSpec `json:"streamLabels,omitempty"`
 
-	// StructuredMetadata configures which attributes are included in structured metadata.
+	// StructuredMetadata configures which attributes are saved in structured metadata.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
