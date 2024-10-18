@@ -48,7 +48,7 @@ type Config struct {
 }
 
 type Limits interface {
-	PatternIngesterTokenizableJsonFields(userID string) []string
+	PatternIngesterTokenizableJSONFields(userID string) []string
 }
 
 func createLogClusterCache(maxSize int, onEvict func(int, *LogCluster)) *LogClusterCache {
@@ -157,7 +157,7 @@ func New(tenantID string, config *Config, limits Limits, format string, metrics 
 	var tokenizer LineTokenizer
 	switch format {
 	case FormatJSON:
-		fieldsToTokenize := limits.PatternIngesterTokenizableJsonFields(tenantID)
+		fieldsToTokenize := limits.PatternIngesterTokenizableJSONFields(tenantID)
 		tokenizer = newJSONTokenizer(config.ParamString, config.MaxAllowedLineLength, fieldsToTokenize)
 	case FormatLogfmt:
 		tokenizer = newLogfmtTokenizer(config.ParamString, config.MaxAllowedLineLength)

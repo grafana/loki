@@ -226,7 +226,7 @@ type Limits struct {
 
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
 
-	PatternIngesterTokenizableJsonFields dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields" json:"pattern_ingester_tokenizable_json_fields" doc:"hidden"`
+	PatternIngesterTokenizableJSONFields dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields" json:"pattern_ingester_tokenizable_json_fields" doc:"hidden"`
 }
 
 type StreamRetention struct {
@@ -421,8 +421,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.IngestionPartitionsTenantShardSize, "limits.ingestion-partition-tenant-shard-size", 0, "The number of partitions a tenant's data should be sharded to when using kafka ingestion. Tenants are sharded across partitions using shuffle-sharding. 0 disables shuffle sharding and tenant is sharded across all partitions.")
 
-	_ = l.PatternIngesterTokenizableJsonFields.Set("log,message,msg,msg_,_msg,content")
-	f.Var(&l.PatternIngesterTokenizableJsonFields, "limits.pattern-ingester-tokenizable-json-fields", "List of JSON fields that should be tokenized in the ingester.")
+	_ = l.PatternIngesterTokenizableJSONFields.Set("log,message,msg,msg_,_msg,content")
+	f.Var(&l.PatternIngesterTokenizableJSONFields, "limits.pattern-ingester-tokenizable-json-fields", "List of JSON fields that should be tokenized in the ingester.")
 }
 
 // SetGlobalOTLPConfig set GlobalOTLPConfig which is used while unmarshaling per-tenant otlp config to use the default list of resource attributes picked as index labels.
@@ -1059,8 +1059,8 @@ func (o *Overrides) BlockIngestionStatusCode(userID string) int {
 	return o.getOverridesForUser(userID).BlockIngestionStatusCode
 }
 
-func (o *Overrides) PatternIngesterTokenizableJsonFields(userID string) []string {
-	return o.getOverridesForUser(userID).PatternIngesterTokenizableJsonFields
+func (o *Overrides) PatternIngesterTokenizableJSONFields(userID string) []string {
+	return o.getOverridesForUser(userID).PatternIngesterTokenizableJSONFields
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

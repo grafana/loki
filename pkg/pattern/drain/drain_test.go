@@ -670,6 +670,6 @@ type fakeLimits struct {
 	Limits
 }
 
-func (f *fakeLimits) PatternIngesterTokenizableJsonFields(_ string) []string {
+func (f *fakeLimits) PatternIngesterTokenizableJSONFields(_ string) []string {
 	return []string{"log", "message", "msg", "msg_", "_msg", "content"}
 }
