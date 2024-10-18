@@ -1,7 +1,9 @@
-resources:
-- bases/config.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+
+resources:
+- bases/config.yaml
+
 patches:
 - path: patches/basic.config.yaml
   target:

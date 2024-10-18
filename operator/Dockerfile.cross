@@ -17,7 +17,6 @@ RUN go mod download
 
 # Copy the go source
 COPY cmd/loki-operator/main.go cmd/loki-operator/main.go
-COPY api/ api/
 COPY internal/ internal/
 
 # Build

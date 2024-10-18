@@ -1,3 +1,6 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
 resources:
 - ../../crd
 - ../../rbac
@@ -41,8 +44,6 @@ images:
 
 # the following config is for teaching kustomize how to do var substitution
 # [CERTMANAGER] To enable cert-manager, uncomment all sections with 'CERTMANAGER' prefix.
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
 patches:
 - path: manager_auth_proxy_patch.yaml
 - path: manager_related_image_patch.yaml
