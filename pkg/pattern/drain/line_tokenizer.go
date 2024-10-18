@@ -263,17 +263,23 @@ func (t *logfmtTokenizer) Clone(tokens []string, _ interface{}) ([]string, inter
 
 type jsonTokenizer struct {
 	*punctuationTokenizer
-	varReplace    string
-	maxLineLength int
+	varReplace       string
+	maxLineLength    int
+	fieldsToTokenize []string
 }
 
-func newJSONTokenizer(varReplace string, maxLineLength int) *jsonTokenizer {
-	return &jsonTokenizer{newPunctuationTokenizer(maxLineLength), varReplace, maxLineLength}
+func newJSONTokenizer(varReplace string, maxLineLength int, fieldsToTokenize []string) *jsonTokenizer {
+	return &jsonTokenizer{
+		punctuationTokenizer: newPunctuationTokenizer(maxLineLength),
+		varReplace:           varReplace,
+		maxLineLength:        maxLineLength,
+		fieldsToTokenize:     fieldsToTokenize,
+	}
 }
 
 func (t *jsonTokenizer) Tokenize(line string, tokens []string, state interface{}) ([]string, interface{}) {
 	var found []byte
-	for _, key := range []string{"log", "message", "msg", "msg_", "_msg", "content"} {
+	for _, key := range t.fieldsToTokenize {
 		msg, ty, _, err := jsonparser.Get(unsafeBytes(line), key)
 		if err == nil && ty == jsonparser.String {
 			found = msg

@@ -47,6 +47,10 @@ type Config struct {
 	MaxAllowedLineLength int
 }
 
+type Limits interface {
+	PatternIngesterTokenizableJsonFields(userID string) []string
+}
+
 func createLogClusterCache(maxSize int, onEvict func(int, *LogCluster)) *LogClusterCache {
 	if maxSize == 0 {
 		maxSize = math.MaxInt
@@ -135,7 +139,7 @@ func DefaultConfig() *Config {
 	}
 }
 
-func New(config *Config, format string, metrics *Metrics) *Drain {
+func New(tenantID string, config *Config, limits Limits, format string, metrics *Metrics) *Drain {
 	if config.LogClusterDepth < 3 {
 		panic("depth argument must be at least 3")
 	}
@@ -153,7 +157,8 @@ func New(config *Config, format string, metrics *Metrics) *Drain {
 	var tokenizer LineTokenizer
 	switch format {
 	case FormatJSON:
-		tokenizer = newJSONTokenizer(config.ParamString, config.MaxAllowedLineLength)
+		fieldsToTokenize := limits.PatternIngesterTokenizableJsonFields(tenantID)
+		tokenizer = newJSONTokenizer(config.ParamString, config.MaxAllowedLineLength, fieldsToTokenize)
 	case FormatLogfmt:
 		tokenizer = newLogfmtTokenizer(config.ParamString, config.MaxAllowedLineLength)
 	default:
