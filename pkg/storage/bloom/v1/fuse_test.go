@@ -65,7 +65,7 @@ func TestFusedQuerier(t *testing.T) {
 		writer,
 	)
 	require.Nil(t, err)
-	itr := v2.NewSliceIter[SeriesWithBlooms](data)
+	itr := v2.NewSliceIter(data)
 	_, err = builder.BuildFrom(itr)
 	require.NoError(t, err)
 	require.False(t, itr.Next())
@@ -96,7 +96,7 @@ func TestFusedQuerier(t *testing.T) {
 
 	var itrs []v2.PeekIterator[Request]
 	for _, reqs := range inputs {
-		itrs = append(itrs, v2.NewPeekIter[Request](v2.NewSliceIter[Request](reqs)))
+		itrs = append(itrs, v2.NewPeekIter(v2.NewSliceIter(reqs)))
 	}
 
 	resps := make([][]Output, nReqs)
@@ -295,7 +295,7 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 		writer,
 	)
 	require.Nil(t, err)
-	itr := v2.NewSliceIter[SeriesWithBlooms](data)
+	itr := v2.NewSliceIter(data)
 	_, err = builder.BuildFrom(itr)
 	require.NoError(t, err)
 	require.False(t, itr.Next())
@@ -367,7 +367,7 @@ func TestFusedQuerier_SkipsEmptyBlooms(t *testing.T) {
 		Blooms: v2.NewSliceIter([]*Bloom{NewBloom()}),
 	}
 
-	itr := v2.NewSliceIter[SeriesWithBlooms]([]SeriesWithBlooms{data})
+	itr := v2.NewSliceIter([]SeriesWithBlooms{data})
 	_, err = builder.BuildFrom(itr)
 	require.NoError(t, err)
 	require.False(t, itr.Next())
@@ -382,7 +382,7 @@ func TestFusedQuerier_SkipsEmptyBlooms(t *testing.T) {
 	}
 	err = NewBlockQuerier(block, BloomPagePool, DefaultMaxPageSize).Fuse(
 		[]v2.PeekIterator[Request]{
-			v2.NewPeekIter[Request](v2.NewSliceIter[Request]([]Request{req})),
+			v2.NewPeekIter(v2.NewSliceIter([]Request{req})),
 		},
 		log.NewNopLogger(),
 	).Run()
@@ -408,7 +408,7 @@ func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]Request, []chan Ou
 		writer,
 	)
 	require.Nil(b, err)
-	itr := v2.NewSliceIter[SeriesWithBlooms](data)
+	itr := v2.NewSliceIter(data)
 	_, err = builder.BuildFrom(itr)
 	require.Nil(b, err)
 	block := NewBlock(reader, NewMetrics(nil))
@@ -470,7 +470,7 @@ func BenchmarkBlockQuerying(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			itrs = itrs[:0]
 			for _, reqs := range requestChains {
-				itrs = append(itrs, v2.NewPeekIter[Request](v2.NewSliceIter[Request](reqs)))
+				itrs = append(itrs, v2.NewPeekIter(v2.NewSliceIter(reqs)))
 			}
 			fused := querier.Fuse(itrs, log.NewNopLogger())
 			_ = fused.Run()

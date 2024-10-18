@@ -30,7 +30,7 @@ func TestArchive(t *testing.T) {
 	)
 
 	require.Nil(t, err)
-	itr := v2.NewSliceIter[SeriesWithBlooms](data)
+	itr := v2.NewSliceIter(data)
 	_, err = builder.BuildFrom(itr)
 	require.Nil(t, err)
 
@@ -109,7 +109,7 @@ func TestArchiveCompression(t *testing.T) {
 			)
 
 			require.Nil(t, err)
-			itr := v2.NewSliceIter[SeriesWithBlooms](data)
+			itr := v2.NewSliceIter(data)
 			_, err = builder.BuildFrom(itr)
 			require.Nil(t, err)
 

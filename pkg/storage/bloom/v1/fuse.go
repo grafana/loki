@@ -137,14 +137,14 @@ type FusedQuerier struct {
 }
 
 func NewFusedQuerier(bq *BlockQuerier, inputs []iter.PeekIterator[Request], logger log.Logger) *FusedQuerier {
-	heap := NewHeapIterator[Request](
+	heap := NewHeapIterator(
 		func(a, b Request) bool {
 			return a.Fp < b.Fp
 		},
 		inputs...,
 	)
 
-	merging := iter.NewDedupingIter[Request, []Request](
+	merging := iter.NewDedupingIter(
 		func(a Request, b []Request) bool {
 			return a.Fp == b[0].Fp
 		},
@@ -152,7 +152,7 @@ func NewFusedQuerier(bq *BlockQuerier, inputs []iter.PeekIterator[Request], logg
 		func(a Request, b []Request) []Request {
 			return append(b, a)
 		},
-		iter.NewPeekIter[Request](heap),
+		iter.NewPeekIter(heap),
 	)
 	return &FusedQuerier{
 		bq:     bq,

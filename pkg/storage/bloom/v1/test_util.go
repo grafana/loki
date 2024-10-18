@@ -35,7 +35,7 @@ func MakeBlock(t testing.TB, nth int, fromFp, throughFp model.Fingerprint, fromT
 		writer,
 	)
 	require.Nil(t, err)
-	itr := iter.NewSliceIter[SeriesWithBlooms](data)
+	itr := iter.NewSliceIter(data)
 	_, err = builder.BuildFrom(itr)
 	require.Nil(t, err)
 	block := NewBlock(reader, NewMetrics(nil))

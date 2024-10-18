@@ -206,7 +206,7 @@ type BoundedIter[V any] struct {
 
 func (bi *BoundedIter[V]) Next() bool {
 	for bi.Iterator.Next() {
-		switch bi.cmp(bi.Iterator.At()) {
+		switch bi.cmp(bi.At()) {
 		case Before:
 			continue
 		case After:
