@@ -37,6 +37,7 @@ func defaultOpenShiftLoggingAttributes(disableRecommended bool) config.OTLPAttri
 	)
 	slices.Sort(result.DefaultIndexLabels)
 
+	// TODO decide whether we want to split the default configuration by tenant
 	result.Global = &config.OTLPTenantAttributeConfig{
 		ResourceAttributes: []config.OTLPAttribute{
 			{
@@ -105,8 +106,6 @@ func defaultOTLPAttributeConfig(ts *lokiv1.TenantsSpec) config.OTLPAttributeConf
 		return config.OTLPAttributeConfig{}
 	}
 
-	// TODO decide which of these can be disabled by using "disableRecommendedAttributes"
-	// TODO decide whether we want to split the default configuration by tenant
 	disableRecommended := false
 	if ts.Openshift != nil && ts.Openshift.OTLP != nil {
 		disableRecommended = ts.Openshift.OTLP.DisableRecommendedAttributes
