@@ -27,7 +27,7 @@ const (
 
 // LokiStackSizeType declares the type for loki cluster scale outs.
 //
-// +kubebuilder:validation:Enum="1x.demo";"1x.extra-small";"1x.small";"1x.medium"
+// +kubebuilder:validation:Enum="1x.demo";"1x.pico";"1x.extra-small";"1x.small";"1x.medium"
 type LokiStackSizeType string
 
 const (
@@ -39,10 +39,18 @@ const (
 	// DO NOT USE THIS IN PRODUCTION!
 	SizeOneXDemo LokiStackSizeType = "1x.demo"
 
+	// SizeOneXPico defines the size of a single Loki deployment
+	// with extra small resources/limits requirements and HA support for all
+	// Loki components. This size is dedicated for setup **without** the
+	// requirement for single replication factor and auto-compaction.
+	//
+	// FIXME: Add clear description of ingestion/query performance expectations.
+	SizeOneXPico LokiStackSizeType = "1x.pico"
+
 	// SizeOneXExtraSmall defines the size of a single Loki deployment
-	// with extra small resources/limits requirements and without HA support.
-	// This size is ultimately dedicated for development and demo purposes.
-	// DO NOT USE THIS IN PRODUCTION!
+	// with extra small resources/limits requirements and HA support for all
+	// Loki components. This size is dedicated for setup **without** the
+	// requirement for single replication factor and auto-compaction.
 	//
 	// FIXME: Add clear description of ingestion/query performance expectations.
 	SizeOneXExtraSmall LokiStackSizeType = "1x.extra-small"
