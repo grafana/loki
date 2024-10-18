@@ -27,8 +27,7 @@ If you are installing Grafana Enterprise Logs, follow the [GEL Helm installation
 
 The following guides provide step-by-step instructions for deploying Loki on cloud providers:
 
-- [Deploy Loki Simple Scalable Helm chart on AWS]({{< relref "./install-scalable/aws" >}})
-- [Deploy Loki Distributed Helm chart on AWS]({{< relref "./install-microservices/aws" >}})
+- [Amazon EKS]({{< relref "./deployment-guides/aws.md" >}})
 
 ## Reference
 

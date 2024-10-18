@@ -1,17 +1,13 @@
 ---
-title: Deploy the Simple Scalable Helm chart on AWS
+title: Deploy the Loki Helm chart on AWS
 menuTitle: Deploy on AWS
-description: Installing Loki in Simple Scalable mode using the Helm chart on AWS.
-aliases:
-  - ../../../installation/helm/scalable/
-  - ../../../installation/helm/install-scalable/
-weight: 300
+description: Installing the Loki Helm chart on AWS.
 keywords: 
 ---
 
-# Deploy the Simple Scalable Helm chart on AWS
+# Deploy the Loki Helm chart on AWS
 
-This guide shows how to deploy a minimally viable Loki in simple scalable mode on AWS using the Helm chart. To run through this guide, we expect you to have the necessary tools and permissions to deploy resources on AWS, such as:
+This guide shows how to deploy a minimally viable Loki in either **distributed** or **monolithic** mode on AWS using the Helm chart. To run through this guide, we expect you to have the necessary tools and permissions to deploy resources on AWS, such as:
 
 - Full access to EKS (Amazon Elastic Kubernetes Service)
 - Full access to S3 (Amazon Simple Storage Service)
@@ -305,7 +301,9 @@ Loki by default does not come with any authentication. Since we will be deployin
 
 ### Loki Helm chart configuration
 
-Create a `values.yaml` file with the following content:
+Create a `values.yaml` file choosing the configuration options that best suit your requirements. Below there are two examples of `values.yaml` files for the Loki Helm chart. The first template is Loki in distributed mode the second is Loki in monolithic mode with a replication factor of 3. The rest of this guide will focus on deploying Loki in distributed mode. However, there is no difference in the deployment process between the two modes apart from the components you are deploying.
+
+{{< collapse title="Distributed" >}}
 
 ```yaml
  loki:
@@ -339,7 +337,7 @@ Create a `values.yaml` file with the following content:
     storage:
       type: s3
       s3:
-        region: eu-west-2
+        region: <Insert s3 bucket region> # eu-west-2
         bucketnames: <Insert s3 bucket name> # Your actual S3 bucket name (loki-aws-dev-ruler)
         s3forcepathstyle: false
       alertmanager_url: http://prom:9093 # The URL of the Alertmanager to send alerts (Prometheus, Mimir, etc.)
@@ -357,51 +355,195 @@ Create a `values.yaml` file with the following content:
        region: <Insert s3 bucket region> # eu-west-2
        #insecure: false
      # s3forcepathstyle: false
-       
-       
- deploymentMode: SimpleScalable
 
- serviceAccount:
-   create: true
-   annotations:
-     "eks.amazonaws.com/role-arn": "arn:aws:iam::<Account ID>:role/LokiServiceAccountRole" # The service role you created
+   serviceAccount:
+    create: true
+    annotations:
+      "eks.amazonaws.com/role-arn": "arn:aws:iam::<Account ID>:role/LokiServiceAccountRole" # The service role you created
 
- backend:
-   replicas: 2
-   persistence:
-     storageClass: gp2
-     accessModes:
-       - ReadWriteOnce
-     size: 10Gi
- read:
-   replicas: 2
-   persistence:
-     storageClass: gp2
-     accessModes:
-       - ReadWriteOnce
-     size: 10Gi
- write:
-   replicas: 3
-   persistence:
-     storageClass: gp2
-     accessModes:
-       - ReadWriteOnce
-     size: 10Gi
+   deploymentMode: Distributed
 
- # This exposes the Loki gateway so it can be written to and queried externaly
- gateway:
+   ingester:
+    replicas: 3
+    persistence:
+      storageClass: gp2
+      accessModes:
+        - ReadWriteOnce
+      size: 10Gi
+   querier:
+    replicas: 3
+    maxUnavailable: 2
+    persistence:
+      storageClass: gp2
+      accessModes:
+        - ReadWriteOnce
+      size: 10Gi
+   queryFrontend:
+    replicas: 2
+    maxUnavailable: 1
+   queryScheduler:
+    replicas: 2
+   distributor:
+    replicas: 3
+    maxUnavailable: 2
+   compactor:
+    replicas: 1
+    persistence:
+      storageClass: gp2
+      accessModes:
+        - ReadWriteOnce
+      size: 10Gi
+   indexGateway:
+    replicas: 2
+    maxUnavailable: 1
+    persistence:
+      storageClass: gp2
+      accessModes:
+        - ReadWriteOnce
+      size: 10Gi
+   ruler:
+    replicas: 1
+    maxUnavailable: 1
+    persistence:
+      storageClass: gp2
+      accessModes:
+        - ReadWriteOnce
+      size: 10Gi
+
+
+   # This exposes the Loki gateway so it can be written to and queried externaly
+   gateway:
     service:
       type: LoadBalancer
     basicAuth: 
-      enabled: true
-      existingSecret: loki-basic-auth # Change this is you used a different secret name
+        enabled: true
+        existingSecret: loki-basic-auth
 
 
- # Enable minio for storage
- minio:
-   enabled: false
+
+   # Enable minio for storage
+   minio:
+    enabled: false
+
+   backend:
+    replicas: 0
+   read:
+    replicas: 0
+   write:
+    replicas: 0
+
+   singleBinary:
+    replicas: 0
  
 ```
+{{< /collapse >}}
+
+{{< collapse title="Monolithic" >}}
+
+```yaml
+loki:
+  commonConfig:
+    replication_factor: 3
+  schemaConfig:
+    configs:
+      - from: 2024-04-01
+        store: tsdb
+        object_store: s3
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+  storage_config:
+    aws:
+      region: <Insert s3 bucket region> # eu-west-2
+      bucketnames: <Insert s3 bucket name> # Your actual S3 bucket name for chunks
+      s3forcepathstyle: false
+  pattern_ingester:
+      enabled: true
+  limits_config:
+    allow_structured_metadata: true
+    volume_enabled: true
+    retention_period: 672h # 28 days retention
+  compactor:
+    retention_enabled: true 
+    delete_request_store: s3
+  ruler:
+    enable_api: true
+    storage:
+      type: s3
+      s3:
+        region: <Insert s3 bucket region> # eu-west-2
+        bucketnames: <Insert s3 bucket name> # Your actual S3 bucket name for ruler
+        s3forcepathstyle: false
+    alertmanager_url: http://prom:9093 # The URL of the Alertmanager to send alerts (Prometheus, Mimir, etc.)
+    
+  storage:
+    type: s3
+    bucketNames:
+       chunks: "<Insert s3 bucket name>" # Your actual S3 bucket name (loki-aws-dev-chunks)
+       ruler: "<Insert s3 bucket name>" # Your actual S3 bucket name (loki-aws-dev-ruler)
+       # admin: "<Insert s3 bucket name>" # Your actual S3 bucket name (loki-aws-dev-admin) - GEL customers only
+    s3:
+      region: <Insert s3 bucket region> # eu-west-2
+      #insecure: false
+     # s3forcepathstyle: false
+      
+
+serviceAccount:
+  create: true
+  annotations:
+    "eks.amazonaws.com/role-arn": "arn:aws:iam::182399686258:role/LokiServiceAccountRole" # The service role you created
+
+deploymentMode: SingleBinary
+
+
+# This exposes the Loki gateway so it can be written to and queried externaly
+gateway:
+  service:
+    type: LoadBalancer
+  basicAuth: 
+      enabled: true
+      existingSecret: loki-basic-auth
+
+
+singleBinary:
+  replicas: 3
+  persistence:
+    storageClass: gp2
+    accessModes:
+      - ReadWriteOnce
+    size: 30Gi
+
+# Zero out replica counts of other deployment modes
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+
+ingester:
+  replicas: 0
+querier:
+  replicas: 0
+queryFrontend:
+  replicas: 0
+queryScheduler:
+  replicas: 0
+distributor:
+  replicas: 0
+compactor:
+  replicas: 0
+indexGateway:
+  replicas: 0
+bloomCompactor:
+  replicas: 0
+bloomGateway:
+  replicas: 0
+
+```
+
+{{< /collapse >}}
 
 {{< admonition type="caution" >}}
 Make sure to replace the placeholders with your actual values.
@@ -448,20 +590,32 @@ Now that you have created the `values.yaml` file, you can deploy Loki using the 
     kubectl get pods -n loki
     ```
     You should see the Loki pods running.
+
     ```console
-    NAME                           READY   STATUS    RESTARTS   AGE
-    loki-backend-0                 2/2     Running   0          43m
-    loki-backend-1                 2/2     Running   0          43m
-    loki-canary-c7hbw              1/1     Running   0          43m
-    loki-canary-wtxb8              1/1     Running   0          43m
-    loki-chunks-cache-0            2/2     Running   0          43m
-    loki-gateway-844ff6d84-9zg5k   1/1     Running   0          43m
-    loki-read-848c686c9d-kd9xt     1/1     Running   0          43m
-    loki-read-848c686c9d-vx697     1/1     Running   0          43m
-    loki-results-cache-0           2/2     Running   0          43m
-    loki-write-0                   1/1     Running   0          43m
-    loki-write-1                   1/1     Running   0          43m
-    loki-write-2                   1/1     Running   0          43m
+    NAME                                    READY   STATUS    RESTARTS   AGE
+    loki-canary-crqpg                       1/1     Running   0          10m
+    loki-canary-hm26p                       1/1     Running   0          10m
+    loki-canary-v9wv9                       1/1     Running   0          10m
+    loki-chunks-cache-0                     2/2     Running   0          10m
+    loki-compactor-0                        1/1     Running   0          10m
+    loki-distributor-78ccdcc9b4-9wlhl       1/1     Running   0          10m
+    loki-distributor-78ccdcc9b4-km6j2       1/1     Running   0          10m
+    loki-distributor-78ccdcc9b4-ptwrb       1/1     Running   0          10m
+    loki-gateway-5f97f78755-hm6mx           1/1     Running   0          10m
+    loki-index-gateway-0                    1/1     Running   0          10m
+    loki-index-gateway-1                    1/1     Running   0          10m
+    loki-ingester-zone-a-0                  1/1     Running   0          10m
+    loki-ingester-zone-b-0                  1/1     Running   0          10m
+    loki-ingester-zone-c-0                  1/1     Running   0          10m
+    loki-querier-89d4ff448-4vr9b            1/1     Running   0          10m
+    loki-querier-89d4ff448-7nvrf            1/1     Running   0          10m
+    loki-querier-89d4ff448-q89kh            1/1     Running   0          10m
+    loki-query-frontend-678899db5-n5wc4     1/1     Running   0          10m
+    loki-query-frontend-678899db5-tf69b     1/1     Running   0          10m
+    loki-query-scheduler-7d666bf759-9xqb5   1/1     Running   0          10m
+    loki-query-scheduler-7d666bf759-kpb5q   1/1     Running   0          10m
+    loki-results-cache-0                    2/2     Running   0          10m
+    loki-ruler-0                            1/1     Running   0          10m
     ```
   
 ### Find the Loki Gateway Service
@@ -481,21 +635,10 @@ You should see the Loki Gateway service with an external IP address. This is the
 
 ```console
   NAME                             TYPE           CLUSTER-IP       EXTERNAL-IP                                                               PORT(S)              AGE
-loki-backend                     ClusterIP      10.100.97.223    <none>                                                                    3100/TCP,9095/TCP    46m
-loki-backend-headless            ClusterIP      None             <none>                                                                    3100/TCP,9095/TCP    46m
-loki-canary                      ClusterIP      10.100.121.159   <none>                                                                    3500/TCP             46m
-loki-chunks-cache                ClusterIP      None             <none>                                                                    11211/TCP,9150/TCP   46m
 loki-gateway                     LoadBalancer   10.100.201.74    12345678975675456-1433434453245433545656563.eu-west-2.elb.amazonaws.com   80:30707/TCP         46m
-loki-memberlist                  ClusterIP      None             <none>                                                                    7946/TCP             46m
-loki-query-scheduler-discovery   ClusterIP      None             <none>                                                                    3100/TCP,9095/TCP    46m
-loki-read                        ClusterIP      10.100.187.114   <none>                                                                    3100/TCP,9095/TCP    46m
-loki-read-headless               ClusterIP      None             <none>                                                                    3100/TCP,9095/TCP    46m
-loki-results-cache               ClusterIP      None             <none>                                                                    11211/TCP,9150/TCP   46m
-loki-write                       ClusterIP      10.100.217.163   <none>                                                                    3100/TCP,9095/TCP    46m
-loki-write-headless              ClusterIP      None             <none>                                                                    3100/TCP,9095/TCP    46m
 ```
 
-Congratulations! You have successfully deployed Loki in simple scalable mode on AWS using the Helm chart. Before we finish, let's test the deployment.
+Congratulations! You have successfully deployed Loki on AWS using the Helm chart. Before we finish, let's test the deployment.
 
 ## Testing Your Loki Deployment
 
@@ -612,7 +755,7 @@ k6 is one of the fastest way to test your Loki deployment. This will allow you t
 
 ## Next steps
 
-Now that you have successfully deployed Loki in simple scalable mode on AWS, you may wish to explore the following:
+Now that you have successfully deployed Loki in distributed mode on AWS, you may wish to explore the following:
 
 - [Sending data to Loki]({{< relref "../../../../send-data" >}})
 - [Querying Loki]({{< relref "../../../../query" >}})

@@ -33,8 +33,6 @@ We do not recommended to run scalable mode with `filesystem` storage. For the pu
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).
 - A running Kubernetes cluster (must have at least 3 nodes).
 
-
-
 ## Deploying the Helm chart for development and testing
 
 The following steps show how to deploy the Loki Helm chart in simple scalable mode using the included MinIO as the storage backend. Our recommendation is to start here for development and testing purposes. Then configure Loki with an object storage provider when moving to production.
@@ -116,9 +114,9 @@ After testing Loki with MinIO, we recommend to configure Loki with an object sto
 When deploying Loki using S3 Storage **DO NOT** use the default bucket names;  `chunk`, `ruler` and `admin`. Choose a unique name for each bucket. For more information see the following [security update](https://grafana.com/blog/2024/06/27/grafana-security-update-grafana-loki-and-unintended-data-write-attempts-to-amazon-s3-buckets/). This caution does not apply when you are using MinIO. When using MinIO we recommend using the default bucket names.
 {{< /admonition >}}
 
-{{< code >}}
+{{< collapse title="S3" >}}
 
-```s3
+```yaml
 loki:
   schemaConfig:
     configs:
@@ -182,7 +180,13 @@ write:
 minio:
   enabled: false
 ```
-```azure
+  
+{{< /collapse >}}
+  
+{{< collapse title="Azure" >}}
+  
+```yaml
+
 loki:
   schemaConfig:
     configs:
@@ -237,20 +241,11 @@ write:
 minio:
   enabled: false
 
-{{< /code >}}
+``` 
+{{< /collapse >}}
+
 
 To configure other storage providers, refer to the [Helm Chart Reference]({{< relref "../reference" >}}).
-
-## Deploying the Loki Helm chart to a Production Environment
-
-{{< admonition type="note" >}}
-We are activley working on providing more guides for deploying Loki in production. 
-{{< /admonition >}}
-
-It is recommended to run Loki at scale within in a cloud enviroment like AWS, Azure, or GCP. The below guides will show you how to deploy a minimally viable production environment.
-- [Deploy Loki on AWS]({{< relref "./aws" >}})
-
-
 
 ## Next Steps 
 * Configure an agent to [send log data to Loki](/docs/loki/<LOKI_VERSION>/send-data/).

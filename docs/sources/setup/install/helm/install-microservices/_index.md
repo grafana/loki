@@ -41,13 +41,13 @@ We do not recommended to run Microservice mode with `filesystem` storage. For th
    helm repo add grafana https://grafana.github.io/helm-charts
    ```
 
-2. Update the chart repository:
+1. Update the chart repository:
 
    ```bash
    helm repo update
    ```
 
-3. Create the configuration file `values.yaml`. The example below illustrates how to deploy Loki in test mode using MinIO as storage:
+1. Create the configuration file `values.yaml`. The example below illustrates how to deploy Loki in test mode using MinIO as storage:
 
      ```yaml
      loki:
@@ -122,7 +122,7 @@ We do not recommended to run Microservice mode with `filesystem` storage. For th
        enabled: true
      ```
 
-4. Install or upgrade the Loki deployment.
+1. Install or upgrade the Loki deployment.
      - To install:
         ```bash
        helm install --values values.yaml loki grafana/loki
@@ -176,9 +176,10 @@ After testing Loki with [MinIO](https://min.io/docs/minio/kubernetes/upstream/in
 When deploying Loki using S3 Storage **DO NOT** use the default bucket names;  `chunk`, `ruler` and `admin`. Choose a unique name for each bucket. For more information see the following [security update](https://grafana.com/blog/2024/06/27/grafana-security-update-grafana-loki-and-unintended-data-write-attempts-to-amazon-s3-buckets/). This caution does not apply when you are using MinIO. When using MinIO we recommend using the default bucket names.
 {{< /admonition >}}
 
-{{< code >}}
 
-```s3
+{{< collapse title="S3" >}}
+
+```yaml
 # Example configuration for Loki with S3 storage
 
 loki:
@@ -274,8 +275,11 @@ loki:
     replicas: 0
 
 ```
+{{< /collapse >}}
 
-```azure
+{{< collapse title="Azure" >}}
+
+```yaml
 # Example configuration for Loki with Azure Blob Storage
 
 loki:
@@ -355,9 +359,18 @@ singleBinary:
   replicas: 0
 
 ```
-{{< /code >}}
+{{< /collapse >}}
 
 To configure other storage providers, refer to the [Helm Chart Reference]({{< relref "../reference" >}}).
+
+## Deploying the Loki Helm chart to a Production Environment
+
+{{< admonition type="note" >}}
+We are actively working on providing more guides for deploying Loki in production. 
+{{< /admonition >}}
+
+It is recommended to run Loki at scale within in a cloud environment like AWS, Azure, or GCP. The below guides will show you how to deploy a minimally viable production environment.
+- [Deploy Loki on AWS]({{< relref "../deployment-guides/aws" >}})
 
 ## Next Steps 
 * Configure an agent to [send log data to Loki](/docs/loki/<LOKI_VERSION>/send-data/).
