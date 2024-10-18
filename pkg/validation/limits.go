@@ -259,6 +259,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		"service",
 		"app",
 		"application",
+		"app_name",
 		"name",
 		"app_kubernetes_io_name",
 		"container",
