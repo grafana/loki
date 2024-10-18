@@ -46,7 +46,6 @@ type Builder struct {
 	metrics *Metrics
 	logger  log.Logger
 
-	tsdbStore   common.TSDBStore
 	bloomStore  bloomshipper.Store
 	chunkLoader ChunkLoader
 
@@ -74,18 +73,12 @@ func New(
 	builderID := uuid.NewString()
 	logger = log.With(logger, "builder_id", builderID)
 
-	tsdbStore, err := common.NewTSDBStores("bloom-builder", schemaCfg, storeCfg, storageMetrics, logger)
-	if err != nil {
-		return nil, fmt.Errorf("error creating TSDB store: %w", err)
-	}
-
 	metrics := NewMetrics(r)
 	b := &Builder{
 		ID:          builderID,
 		cfg:         cfg,
 		limits:      limits,
 		metrics:     metrics,
-		tsdbStore:   tsdbStore,
 		bloomStore:  bloomStore,
 		chunkLoader: NewStoreChunkLoader(fetcherProvider, metrics),
 		logger:      logger,

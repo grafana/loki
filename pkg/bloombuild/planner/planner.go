@@ -82,7 +82,7 @@ func New(
 	}
 
 	// Queue to manage tasks
-	queueMetrics := NewQueueMetrics(r)
+	queueMetrics := queue.NewMetrics(r, metricsNamespace, metricsSubsystem)
 	tasksQueue := queue.NewRequestQueue(cfg.MaxQueuedTasksPerTenant, 0, NewQueueLimits(limits), queueMetrics)
 
 	// Clean metrics for inactive users: do not have added tasks to the queue in the last 1 hour
