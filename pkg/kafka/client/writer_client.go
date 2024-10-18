@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/twmb/franz-go/pkg/kerr"
@@ -277,6 +278,10 @@ func (c *Producer) updateMetricsLoop() {
 // This function honors the configure max buffered bytes and refuse to produce a record, returnin kgo.ErrMaxBuffered,
 // if the configured limit is reached.
 func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.ProduceResults {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "kafka.produceSync")
+	span.LogKV("records", len(records))
+	defer span.Finish()
+
 	var (
 		remaining = atomic.NewInt64(int64(len(records)))
 		done      = make(chan struct{})

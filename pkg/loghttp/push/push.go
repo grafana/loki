@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/opentracing/opentracing-go"
 
 	"github.com/grafana/loki/pkg/push"
 
@@ -20,13 +21,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
 
-	loki_util "github.com/grafana/loki/v3/pkg/util"
-
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util"
+	loki_util "github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/unmarshal"
 	unmarshal2 "github.com/grafana/loki/v3/pkg/util/unmarshal/legacy"
@@ -107,6 +107,9 @@ type Stats struct {
 }
 
 func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, pushRequestParser RequestParser, tracker UsageTracker, logPushRequestStreams bool) (*logproto.PushRequest, error) {
+	span, ctx := opentracing.StartSpanFromContext(r.Context(), "parseRequest")
+	defer span.Finish()
+	r = r.WithContext(ctx)
 	req, pushStats, err := pushRequestParser(userID, r, tenantsRetention, limits, tracker, logPushRequestStreams, logger)
 	if err != nil {
 		return nil, err
