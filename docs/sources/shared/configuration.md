@@ -1789,6 +1789,17 @@ storage:
       # CLI flag: -common.storage.congestion-control.hedge.strategy
       [strategy: <string> | default = ""]
 
+  object_store:
+    # The gcs_storage_backend block configures the connection to Google Cloud
+    # Storage object storage backend.
+    # The CLI flags prefix for this block configuration is: common.storage
+    [gcs: <gcs_storage_backend>]
+
+    # Prefix for all objects stored in the backend storage. For simplicity, it
+    # may only contain digits and English alphabet letters.
+    # CLI flag: -common.storage.object-store.storage-prefix
+    [storage_prefix: <string> | default = ""]
+
 [persist_tokens: <boolean>]
 
 [replication_factor: <int>]
@@ -2552,6 +2563,35 @@ The `frontend_worker` configures the worker - running within the Loki querier - 
 # The CLI flags prefix for this block configuration is:
 # metastore.grpc-client-config
 [query_scheduler_grpc_client: <grpc_client>]
+```
+
+### gcs_storage_backend
+
+The `gcs_storage_backend` block configures the connection to Google Cloud Storage object storage backend.
+
+```yaml
+# GCS bucket name
+# CLI flag: -<prefix>.object-store.gcs.bucket-name
+[bucket_name: <string> | default = ""]
+
+# JSON either from a Google Developers Console client_credentials.json file, or
+# a Google Developers service account key. Needs to be valid JSON, not a
+# filesystem path. If empty, fallback to Google default logic:
+# 1. A JSON file whose path is specified by the GOOGLE_APPLICATION_CREDENTIALS
+# environment variable. For workload identity federation, refer to
+# https://cloud.google.com/iam/docs/how-to#using-workload-identity-federation on
+# how to generate the JSON configuration file for on-prem/non-Google cloud
+# platforms.
+# 2. A JSON file in a location known to the gcloud command-line tool:
+# $HOME/.config/gcloud/application_default_credentials.json.
+# 3. On Google Compute Engine it fetches credentials from the metadata server.
+# CLI flag: -<prefix>.object-store.gcs.service-account
+[service_account: <string> | default = ""]
+
+# The maximum size of the buffer that GCS client for a single PUT request. 0 to
+# disable buffering.
+# CLI flag: -<prefix>.object-store.gcs.chunk-buffer-size
+[chunk_buffer_size: <int> | default = 0]
 ```
 
 ### gcs_storage_config
@@ -5645,6 +5685,23 @@ congestion_control:
 # Maximum number of parallel chunk reads.
 # CLI flag: -store.max-parallel-get-chunk
 [max_parallel_get_chunk: <int> | default = 150]
+
+# Enables the use of thanos-io/objstore clients for connecting to object
+# storage. When set to true, the configuration inside
+# `storage_config.object_store` or `common.storage.object_store` block takes
+# effect.
+# CLI flag: -use-thanos-objstore
+[use_thanos_objstore: <boolean> | default = false]
+
+object_store:
+  # The gcs_storage_backend block configures the connection to Google Cloud
+  # Storage object storage backend.
+  [gcs: <gcs_storage_backend>]
+
+  # Prefix for all objects stored in the backend storage. For simplicity, it may
+  # only contain digits and English alphabet letters.
+  # CLI flag: -object-store.storage-prefix
+  [storage_prefix: <string> | default = ""]
 
 # The maximum number of chunks to fetch per batch.
 # CLI flag: -store.max-chunk-batch-size

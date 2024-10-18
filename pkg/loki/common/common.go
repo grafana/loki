@@ -6,6 +6,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/netutil"
 
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/alibaba"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/azure"
@@ -78,6 +79,7 @@ type Storage struct {
 	Hedging           hedging.Config            `yaml:"hedging"`
 	COS               ibmcloud.COSConfig        `yaml:"cos"`
 	CongestionControl congestion.Config         `yaml:"congestion_control,omitempty"`
+	ObjectStore       bucket.Config             `yaml:"object_store"`
 }
 
 func (s *Storage) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -91,6 +93,8 @@ func (s *Storage) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	s.Hedging.RegisterFlagsWithPrefix(prefix, f)
 	s.COS.RegisterFlagsWithPrefix(prefix, f)
 	s.CongestionControl.RegisterFlagsWithPrefix(prefix, f)
+
+	s.ObjectStore.RegisterFlagsWithPrefix(prefix, f)
 }
 
 type FilesystemConfig struct {
