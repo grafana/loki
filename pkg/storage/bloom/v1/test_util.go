@@ -28,10 +28,7 @@ func MakeBlock(t testing.TB, nth int, fromFp, throughFp model.Fingerprint, fromT
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
-			Schema: Schema{
-				version:  CurrentSchemaVersion,
-				encoding: compression.Snappy,
-			},
+			Schema:         NewSchema(CurrentSchemaVersion, compression.Snappy),
 			SeriesPageSize: 100,
 			BloomPageSize:  10 << 10,
 		},

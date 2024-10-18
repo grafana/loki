@@ -67,10 +67,8 @@ func (b BlockOptions) Encode(enc *encoding.Encbuf) {
 }
 
 func NewBlockOptions(enc compression.Codec, maxBlockSizeBytes, maxBloomSizeBytes uint64) BlockOptions {
-	opts := NewBlockOptionsFromSchema(Schema{
-		version:  CurrentSchemaVersion,
-		encoding: enc,
-	}, maxBloomSizeBytes)
+	schema := NewSchema(CurrentSchemaVersion, enc)
+	opts := NewBlockOptionsFromSchema(schema, maxBloomSizeBytes)
 	opts.BlockSize = maxBlockSizeBytes
 	opts.UnencodedBlockOptions.MaxBloomSizeBytes = maxBloomSizeBytes
 	return opts

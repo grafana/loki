@@ -16,10 +16,7 @@ import (
 // characterized by small page sizes
 func smallBlockOpts(v Version, enc compression.Codec) BlockOptions {
 	return BlockOptions{
-		Schema: Schema{
-			version:  v,
-			encoding: enc,
-		},
+		Schema:         NewSchema(v, enc),
 		SeriesPageSize: 100,
 		BloomPageSize:  2 << 10,
 		BlockSize:      0, // unlimited

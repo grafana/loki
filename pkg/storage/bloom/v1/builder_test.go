@@ -42,10 +42,7 @@ func TestBlockOptions_BloomPageSize(t *testing.T) {
 func TestBlockOptions_RoundTrip(t *testing.T) {
 	t.Parallel()
 	opts := BlockOptions{
-		Schema: Schema{
-			version:  CurrentSchemaVersion,
-			encoding: compression.Snappy,
-		},
+		Schema:         NewSchema(CurrentSchemaVersion, compression.Snappy),
 		SeriesPageSize: 100,
 		BloomPageSize:  10 << 10,
 		BlockSize:      10 << 20,
@@ -100,10 +97,7 @@ func TestBlockBuilder_RoundTrip(t *testing.T) {
 			desc := fmt.Sprintf("%s/%s", tc.desc, enc)
 			t.Run(desc, func(t *testing.T) {
 				blockOpts := BlockOptions{
-					Schema: Schema{
-						version:  CurrentSchemaVersion,
-						encoding: enc,
-					},
+					Schema:         NewSchema(CurrentSchemaVersion, enc),
 					SeriesPageSize: 100,
 					BloomPageSize:  10 << 10,
 					BlockSize:      tc.maxBlockSize,
@@ -215,10 +209,7 @@ func TestMergeBuilder(t *testing.T) {
 	blocks := make([]iter.PeekIterator[*SeriesWithBlooms], 0, nBlocks)
 	data, _ := MkBasicSeriesWithBlooms(numSeries, 0, 0xffff, 0, 10000)
 	blockOpts := BlockOptions{
-		Schema: Schema{
-			version:  CurrentSchemaVersion,
-			encoding: compression.Snappy,
-		},
+		Schema:         NewSchema(CurrentSchemaVersion, compression.Snappy),
 		SeriesPageSize: 100,
 		BloomPageSize:  10 << 10,
 	}
@@ -312,10 +303,7 @@ func TestMergeBuilderFingerprintCollision(t *testing.T) {
 	reader := NewByteReader(indexBuf, bloomsBuf)
 
 	blockOpts := BlockOptions{
-		Schema: Schema{
-			version:  CurrentSchemaVersion,
-			encoding: compression.Snappy,
-		},
+		Schema:         NewSchema(CurrentSchemaVersion, compression.Snappy),
 		SeriesPageSize: 100,
 		BloomPageSize:  10 << 10,
 	}
@@ -409,10 +397,7 @@ func TestBlockReset(t *testing.T) {
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
 	reader := NewByteReader(indexBuf, bloomsBuf)
 
-	schema := Schema{
-		version:  CurrentSchemaVersion,
-		encoding: compression.Snappy,
-	}
+	schema := NewSchema(CurrentSchemaVersion, compression.Snappy)
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
@@ -465,10 +450,9 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 	}
 
 	blockOpts := BlockOptions{
-		Schema: Schema{
-			version:  CurrentSchemaVersion,
-			encoding: compression.Snappy, // test with different encodings?
-		},
+		// test with different encodings?
+		Schema: NewSchema(CurrentSchemaVersion, compression.Snappy),
+
 		SeriesPageSize: 100,
 		BloomPageSize:  10 << 10,
 	}
