@@ -35,6 +35,7 @@ spec:
       port: {{ .Values.loki.server.grpc_listen_port }}
       targetPort: grpc
       protocol: TCP
+      appProtocol: tcp
   selector:
     {{- include "loki.backendSelectorLabels" . | nindent 4 }}
 {{- end }}
