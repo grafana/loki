@@ -1482,9 +1482,9 @@ OTLPSpec
 </td>
 <td>
 <em>(Optional)</em>
-<p>OTLP to configure which resource, scope and log attributes
-to store as labels or structured metadata or drop them altogether
-for all tenants.</p>
+<p>OTLP to configure which resource, scope and log attributes are stored as stream labels or structured metadata.</p>
+<p>Tenancy modes can provide a default OTLP configuration, when no custom OTLP configuration is set or even
+enforce the use of some required attributes.</p>
 </td>
 </tr>
 <tr>
@@ -2719,7 +2719,7 @@ bool
 
 ## OTLPSpec { #loki-grafana-com-v1-OTLPSpec }
 <p>
-(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>, <a href="#loki-grafana-com-v1-TenantOTLPSpec">TenantOTLPSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>, <a href="#loki-grafana-com-v1-PerTenantLimitsTemplateSpec">PerTenantLimitsTemplateSpec</a>)
 </p>
 <div>
 <p>OTLPSpec defines which resource, scope and log attributes should be used as stream labels or
@@ -3197,16 +3197,17 @@ PerTenantQueryLimitSpec
 <td>
 <code>otlp</code><br/>
 <em>
-<a href="#loki-grafana-com-v1-TenantOTLPSpec">
-TenantOTLPSpec
+<a href="#loki-grafana-com-v1-OTLPSpec">
+OTLPSpec
 </a>
 </em>
 </td>
 <td>
 <em>(Optional)</em>
-<p>OTLP to configure which resource, scope and log attributes
-to store as labels or structured metadata or drop them altogether
-for a single tenants.</p>
+<p>OTLP to configure which resource, scope and log attributes are stored as stream labels or structured metadata.</p>
+<p>Tenancy modes can provide a default OTLP configuration, when no custom OTLP configuration is set or even
+enforce the use of some required attributes.</p>
+<p>The per-tenant configuration for OTLP attributes will be merged with the global configuration.</p>
 </td>
 </tr>
 <tr>
@@ -4724,48 +4725,6 @@ SubjectKind
 <td><p>User represents a subject that is a user.</p>
 </td>
 </tr></tbody>
-</table>
-
-## TenantOTLPSpec { #loki-grafana-com-v1-TenantOTLPSpec }
-<p>
-(<em>Appears on:</em><a href="#loki-grafana-com-v1-PerTenantLimitsTemplateSpec">PerTenantLimitsTemplateSpec</a>)
-</p>
-<div>
-<p>TenantOTLPSpec defines an OTLP attribute configuration specific to a tenant. It extends OTLPSpec.</p>
-</div>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>
-<code>ignoreGlobalStreamLabels</code><br/>
-<em>
-bool
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>When IgnoreGlobalStreamLabels is true, then this tenant will ignore the global stream label configuration.</p>
-</td>
-</tr>
-<tr>
-<td>
-<code>OTLPSpec</code><br/>
-<em>
-<a href="#loki-grafana-com-v1-OTLPSpec">
-OTLPSpec
-</a>
-</em>
-</td>
-<td>
-</td>
-</tr>
-</tbody>
 </table>
 
 ## TenantSecretSpec { #loki-grafana-com-v1-TenantSecretSpec }
