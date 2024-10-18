@@ -638,6 +638,7 @@ func (t *Loki) initPatternIngester() (_ services.Service, err error) {
 	t.Cfg.Pattern.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.PatternIngester, err = pattern.New(
 		t.Cfg.Pattern,
+		t.Overrides,
 		t.PatternRingClient,
 		t.Cfg.MetricsNamespace,
 		prometheus.DefaultRegisterer,

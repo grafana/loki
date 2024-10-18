@@ -148,6 +148,10 @@ func (cfg *Config) Validate() error {
 	return cfg.LifecyclerConfig.Validate()
 }
 
+type Limits interface {
+	drain.Limits
+}
+
 type Ingester struct {
 	services.Service
 	lifecycler *ring.Lifecycler
@@ -156,6 +160,7 @@ type Ingester struct {
 	lifecyclerWatcher *services.FailureWatcher
 
 	cfg        Config
+	limits     Limits
 	registerer prometheus.Registerer
 	logger     log.Logger
 
@@ -175,6 +180,7 @@ type Ingester struct {
 
 func New(
 	cfg Config,
+	limits Limits,
 	ringClient RingClient,
 	metricsNamespace string,
 	registerer prometheus.Registerer,
@@ -189,6 +195,7 @@ func New(
 
 	i := &Ingester{
 		cfg:         cfg,
+		limits:      limits,
 		ringClient:  ringClient,
 		logger:      log.With(logger, "component", "pattern-ingester"),
 		registerer:  registerer,
@@ -416,6 +423,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 			i.logger,
 			i.metrics,
 			i.drainCfg,
+			i.limits,
 			i.ringClient,
 			i.lifecycler.ID,
 			writer,

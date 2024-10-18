@@ -35,6 +35,7 @@ func newStream(
 	guessedFormat string,
 	instanceID string,
 	drainCfg *drain.Config,
+	drainLimits drain.Limits,
 ) (*stream, error) {
 	return &stream{
 		fp:           fp,
@@ -42,7 +43,7 @@ func newStream(
 		labelsString: labels.String(),
 		labelHash:    labels.Hash(),
 		logger:       logger,
-		patterns: drain.New(drainCfg, guessedFormat, &drain.Metrics{
+		patterns: drain.New(instanceID, drainCfg, drainLimits, guessedFormat, &drain.Metrics{
 			PatternsEvictedTotal:  metrics.patternsDiscardedTotal.WithLabelValues(instanceID, guessedFormat, "false"),
 			PatternsPrunedTotal:   metrics.patternsDiscardedTotal.WithLabelValues(instanceID, guessedFormat, "true"),
 			PatternsDetectedTotal: metrics.patternsDetectedTotal.WithLabelValues(instanceID, guessedFormat),

@@ -41,7 +41,7 @@ func TestSweepInstance(t *testing.T) {
 		ring: fakeRing,
 	}
 
-	ing, err := New(defaultIngesterTestConfig(t), ringClient, "foo", nil, log.NewNopLogger())
+	ing, err := New(defaultIngesterTestConfig(t), &fakeLimits{}, ringClient, "foo", nil, log.NewNopLogger())
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 	err = services.StartAndAwaitRunning(context.Background(), ing)

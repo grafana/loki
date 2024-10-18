@@ -32,16 +32,17 @@ const indexShards = 32
 
 // instance is a tenant instance of the pattern ingester.
 type instance struct {
-	instanceID string
-	buf        []byte             // buffer used to compute fps.
-	mapper     *ingester.FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
-	streams    *streamsMap
-	index      *index.BitPrefixInvertedIndex
-	logger     log.Logger
-	metrics    *ingesterMetrics
-	drainCfg   *drain.Config
-	ringClient RingClient
-	ingesterID string
+	instanceID  string
+	buf         []byte             // buffer used to compute fps.
+	mapper      *ingester.FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
+	streams     *streamsMap
+	index       *index.BitPrefixInvertedIndex
+	logger      log.Logger
+	metrics     *ingesterMetrics
+	drainCfg    *drain.Config
+	drainLimits drain.Limits
+	ringClient  RingClient
+	ingesterID  string
 
 	aggMetricsLock             sync.Mutex
 	aggMetricsByStreamAndLevel map[string]map[string]*aggregatedMetrics
@@ -59,6 +60,7 @@ func newInstance(
 	logger log.Logger,
 	metrics *ingesterMetrics,
 	drainCfg *drain.Config,
+	drainLimits drain.Limits,
 	ringClient RingClient,
 	ingesterID string,
 	writer aggregation.EntryWriter,
@@ -75,6 +77,7 @@ func newInstance(
 		index:                      index,
 		metrics:                    metrics,
 		drainCfg:                   drainCfg,
+		drainLimits:                drainLimits,
 		ringClient:                 ringClient,
 		ingesterID:                 ingesterID,
 		aggMetricsByStreamAndLevel: make(map[string]map[string]*aggregatedMetrics),
@@ -220,7 +223,7 @@ func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream
 	fp := i.getHashForLabels(labels)
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
 	firstEntryLine := pushReqStream.Entries[0].Line
-	s, err := newStream(fp, sortedLabels, i.metrics, i.logger, drain.DetectLogFormat(firstEntryLine), i.instanceID, i.drainCfg)
+	s, err := newStream(fp, sortedLabels, i.metrics, i.logger, drain.DetectLogFormat(firstEntryLine), i.instanceID, i.drainCfg, i.drainLimits)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
