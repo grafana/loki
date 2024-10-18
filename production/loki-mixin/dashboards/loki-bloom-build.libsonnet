@@ -1,13 +1,13 @@
-local raw = (import './dashboard-bloom-compactor.json');
+local raw = (import './dashboard-bloom-build.json');
 
 // !--- HOW TO UPDATE THIS DASHBOARD ---!
 // 1. Export the dashboard from Grafana as JSON
 //    !NOTE: Make sure you collapse all rows but the (first) Overview row.
-// 2. Copy the JSON into `dashboard-bloom-compactor.json`
+// 2. Copy the JSON into `dashboard-bloom-build.json`
 // 3. Delete the `id` and `templating` fields from the JSON
 (import 'dashboard-utils.libsonnet') {
   grafanaDashboards+:: if !$._config.blooms.enabled then {} else {
-    'loki-bloom-compactor.json':
+    'loki-bloom-build.json':
       raw
       {
         local replaceClusterMatchers(expr) =
@@ -62,7 +62,7 @@ local raw = (import './dashboard-bloom-compactor.json');
           for p in super.panels
         ],
       }
-      + $.dashboard('Loki / Bloom Compactor', uid='bloom-compactor')
+      + $.dashboard('Loki / Bloom Build', uid='bloom-build')
         .addCluster()
         .addNamespace()
         .addLog()
