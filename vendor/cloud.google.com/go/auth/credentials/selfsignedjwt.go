@@ -17,6 +17,7 @@ package credentials
 import (
 	"context"
 	"crypto/rsa"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -35,6 +36,9 @@ var (
 // configureSelfSignedJWT uses the private key in the service account to create
 // a JWT without making a network call.
 func configureSelfSignedJWT(f *credsfile.ServiceAccountFile, opts *DetectOptions) (auth.TokenProvider, error) {
+	if len(opts.scopes()) == 0 && opts.Audience == "" {
+		return nil, errors.New("credentials: both scopes and audience are empty")
+	}
 	pk, err := internal.ParseKey([]byte(f.PrivateKey))
 	if err != nil {
 		return nil, fmt.Errorf("credentials: could not parse key: %w", err)

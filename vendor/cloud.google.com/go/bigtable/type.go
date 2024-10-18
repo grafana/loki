@@ -16,12 +16,51 @@ limitations under the License.
 
 package bigtable
 
-import btapb "cloud.google.com/go/bigtable/admin/apiv2/adminpb"
+import (
+	btapb "cloud.google.com/go/bigtable/admin/apiv2/adminpb"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
+)
 
 // Type wraps the protobuf representation of a type. See the protobuf definition
 // for more details on types.
 type Type interface {
 	proto() *btapb.Type
+}
+
+var marshalOptions = protojson.MarshalOptions{AllowPartial: true, UseEnumNumbers: true}
+var unmarshalOptions = protojson.UnmarshalOptions{AllowPartial: true}
+
+// MarshalJSON returns the string representation of the Type protobuf.
+func MarshalJSON(t Type) ([]byte, error) {
+	return marshalOptions.Marshal(t.proto())
+}
+
+// UnmarshalJSON returns a Type object from json bytes.
+func UnmarshalJSON(data []byte) (Type, error) {
+	result := &btapb.Type{}
+	if err := unmarshalOptions.Unmarshal(data, result); err != nil {
+		return nil, err
+	}
+	return ProtoToType(result), nil
+}
+
+// Equal compares Type objects.
+func Equal(a, b Type) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return proto.Equal(a.proto(), b.proto())
+}
+
+// TypeUnspecified represents the absence of a type.
+type TypeUnspecified struct{}
+
+func (n TypeUnspecified) proto() *btapb.Type {
+	return &btapb.Type{}
 }
 
 type unknown[T interface{}] struct {
@@ -67,13 +106,22 @@ type StringEncoding interface {
 	proto() *btapb.Type_String_Encoding
 }
 
-// StringUtf8Encoding represents a string with UTF-8 encoding.
-type StringUtf8Encoding struct {
-}
+// StringUtf8Encoding represents an UTF-8 raw encoding for a string.
+// DEPRECATED: Please use StringUtf8BytesEncoding.
+type StringUtf8Encoding struct{}
 
 func (encoding StringUtf8Encoding) proto() *btapb.Type_String_Encoding {
 	return &btapb.Type_String_Encoding{
 		Encoding: &btapb.Type_String_Encoding_Utf8Raw_{},
+	}
+}
+
+// StringUtf8BytesEncoding represents an UTF-8 bytes encoding for a string.
+type StringUtf8BytesEncoding struct{}
+
+func (encoding StringUtf8BytesEncoding) proto() *btapb.Type_String_Encoding {
+	return &btapb.Type_String_Encoding{
+		Encoding: &btapb.Type_String_Encoding_Utf8Bytes_{},
 	}
 }
 
@@ -199,12 +247,16 @@ func ProtoToType(pb *btapb.Type) Type {
 	if pb == nil {
 		return unknown[btapb.Type]{wrapped: nil}
 	}
-
+	if pb.Kind == nil {
+		return TypeUnspecified{}
+	}
 	switch t := pb.Kind.(type) {
 	case *btapb.Type_Int64Type:
 		return int64ProtoToType(t.Int64Type)
 	case *btapb.Type_BytesType:
 		return bytesProtoToType(t.BytesType)
+	case *btapb.Type_StringType:
+		return stringProtoToType(t.StringType)
 	case *btapb.Type_AggregateType:
 		return aggregateProtoToType(t.AggregateType)
 	default:
@@ -229,6 +281,23 @@ func bytesProtoToType(b *btapb.Type_Bytes) BytesType {
 	return BytesType{Encoding: bytesEncodingProtoToType(b.Encoding)}
 }
 
+func stringEncodingProtoToType(se *btapb.Type_String_Encoding) StringEncoding {
+	if se == nil {
+		return unknown[btapb.Type_String_Encoding]{wrapped: se}
+	}
+
+	switch se.Encoding.(type) {
+	case *btapb.Type_String_Encoding_Utf8Raw_:
+		return StringUtf8Encoding{}
+	default:
+		return unknown[btapb.Type_String_Encoding]{wrapped: se}
+	}
+}
+
+func stringProtoToType(s *btapb.Type_String) Type {
+	return StringType{Encoding: stringEncodingProtoToType(s.Encoding)}
+}
+
 func int64EncodingProtoToEncoding(ie *btapb.Type_Int64_Encoding) Int64Encoding {
 	if ie == nil {
 		return unknown[btapb.Type_Int64_Encoding]{wrapped: ie}
@@ -246,7 +315,7 @@ func int64ProtoToType(i *btapb.Type_Int64) Type {
 	return Int64Type{Encoding: int64EncodingProtoToEncoding(i.Encoding)}
 }
 
-func aggregateProtoToType(agg *btapb.Type_Aggregate) Type {
+func aggregateProtoToType(agg *btapb.Type_Aggregate) AggregateType {
 	if agg == nil {
 		return AggregateType{Input: nil, Aggregator: unknownAggregator{wrapped: agg}}
 	}

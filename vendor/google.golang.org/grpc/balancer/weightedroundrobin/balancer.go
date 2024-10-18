@@ -440,7 +440,7 @@ func (p *picker) start(ctx context.Context) {
 	}()
 }
 
-func (p *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
+func (p *picker) Pick(balancer.PickInfo) (balancer.PickResult, error) {
 	// Read the scheduler atomically.  All scheduler operations are threadsafe,
 	// and if the scheduler is replaced during this usage, we want to use the
 	// scheduler that was live when the pick started.
@@ -513,7 +513,7 @@ func (w *weightedSubConn) OnLoadReport(load *v3orcapb.OrcaLoadReport) {
 	}
 
 	w.lastUpdated = internal.TimeNow()
-	if w.nonEmptySince == (time.Time{}) {
+	if w.nonEmptySince.Equal(time.Time{}) {
 		w.nonEmptySince = w.lastUpdated
 	}
 }
@@ -608,7 +608,7 @@ func (w *weightedSubConn) weight(now time.Time, weightExpirationPeriod, blackout
 
 	// The SubConn has not received a load report (i.e. just turned READY with
 	// no load report).
-	if w.lastUpdated == (time.Time{}) {
+	if w.lastUpdated.Equal(time.Time{}) {
 		endpointWeightNotYetUsableMetric.Record(w.metricsRecorder, 1, w.target, w.locality)
 		return 0
 	}
@@ -625,7 +625,7 @@ func (w *weightedSubConn) weight(now time.Time, weightExpirationPeriod, blackout
 	}
 
 	// If we don't have at least blackoutPeriod worth of data, return 0.
-	if blackoutPeriod != 0 && (w.nonEmptySince == (time.Time{}) || now.Sub(w.nonEmptySince) < blackoutPeriod) {
+	if blackoutPeriod != 0 && (w.nonEmptySince.Equal(time.Time{}) || now.Sub(w.nonEmptySince) < blackoutPeriod) {
 		if recordMetrics {
 			endpointWeightNotYetUsableMetric.Record(w.metricsRecorder, 1, w.target, w.locality)
 		}

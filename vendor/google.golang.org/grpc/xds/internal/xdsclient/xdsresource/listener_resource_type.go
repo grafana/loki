@@ -144,10 +144,7 @@ func (l *ListenerResourceData) Raw() *anypb.Any {
 // events corresponding to the listener resource being watched.
 type ListenerWatcher interface {
 	// OnUpdate is invoked to report an update for the resource being watched.
-	//
-	// The watcher is expected to call Done() on the DoneNotifier once it has
-	// processed the update.
-	OnUpdate(*ListenerResourceData, DoneNotifier)
+	OnUpdate(*ListenerResourceData, OnDoneFunc)
 
 	// OnError is invoked under different error conditions including but not
 	// limited to the following:
@@ -157,34 +154,28 @@ type ListenerWatcher interface {
 	//	- resource validation error
 	//	- ADS stream failure
 	//	- connection failure
-	//
-	// The watcher is expected to call Done() on the DoneNotifier once it has
-	// processed the update.
-	OnError(error, DoneNotifier)
+	OnError(error, OnDoneFunc)
 
 	// OnResourceDoesNotExist is invoked for a specific error condition where
 	// the requested resource is not found on the xDS management server.
-	//
-	// The watcher is expected to call Done() on the DoneNotifier once it has
-	// processed the update.
-	OnResourceDoesNotExist(DoneNotifier)
+	OnResourceDoesNotExist(OnDoneFunc)
 }
 
 type delegatingListenerWatcher struct {
 	watcher ListenerWatcher
 }
 
-func (d *delegatingListenerWatcher) OnUpdate(data ResourceData, done DoneNotifier) {
+func (d *delegatingListenerWatcher) OnUpdate(data ResourceData, onDone OnDoneFunc) {
 	l := data.(*ListenerResourceData)
-	d.watcher.OnUpdate(l, done)
+	d.watcher.OnUpdate(l, onDone)
 }
 
-func (d *delegatingListenerWatcher) OnError(err error, done DoneNotifier) {
-	d.watcher.OnError(err, done)
+func (d *delegatingListenerWatcher) OnError(err error, onDone OnDoneFunc) {
+	d.watcher.OnError(err, onDone)
 }
 
-func (d *delegatingListenerWatcher) OnResourceDoesNotExist(done DoneNotifier) {
-	d.watcher.OnResourceDoesNotExist(done)
+func (d *delegatingListenerWatcher) OnResourceDoesNotExist(onDone OnDoneFunc) {
+	d.watcher.OnResourceDoesNotExist(onDone)
 }
 
 // WatchListener uses xDS to discover the configuration associated with the

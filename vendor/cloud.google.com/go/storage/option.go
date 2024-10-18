@@ -22,8 +22,9 @@ import (
 // storageConfig contains the Storage client option configuration that can be
 // set through storageClientOptions.
 type storageConfig struct {
-	useJSONforReads bool
-	readAPIWasSet   bool
+	useJSONforReads      bool
+	readAPIWasSet        bool
+	disableClientMetrics bool
 }
 
 // newStorageConfig generates a new storageConfig with all the given
@@ -77,4 +78,33 @@ type withReadAPI struct {
 func (w *withReadAPI) ApplyStorageOpt(c *storageConfig) {
 	c.useJSONforReads = w.useJSON
 	c.readAPIWasSet = true
+}
+
+type withDisabledClientMetrics struct {
+	internaloption.EmbeddableAdapter
+	disabledClientMetrics bool
+}
+
+// WithDisabledClientMetrics is an option that may be passed to [NewClient].
+// gRPC metrics are enabled by default in the GCS client and will export the
+// gRPC telemetry discussed in [gRFC/66] and [gRFC/78] to
+// [Google Cloud Monitoring]. The option is used to disable metrics.
+// Google Cloud Support can use this information to more quickly diagnose
+// problems related to GCS and gRPC.
+// Sending this data does not incur any billing charges, and requires minimal
+// CPU (a single RPC every few minutes) or memory (a few KiB to batch the
+// telemetry).
+//
+// The default is to enable client metrics. To opt-out of metrics collected use
+// this option.
+//
+// [gRFC/66]: https://github.com/grpc/proposal/blob/master/A66-otel-stats.md
+// [gRFC/78]: https://github.com/grpc/proposal/blob/master/A78-grpc-metrics-wrr-pf-xds.md
+// [Google Cloud Monitoring]: https://cloud.google.com/monitoring/docs
+func WithDisabledClientMetrics() option.ClientOption {
+	return &withDisabledClientMetrics{disabledClientMetrics: true}
+}
+
+func (w *withDisabledClientMetrics) ApplyStorageOpt(c *storageConfig) {
+	c.disableClientMetrics = w.disabledClientMetrics
 }

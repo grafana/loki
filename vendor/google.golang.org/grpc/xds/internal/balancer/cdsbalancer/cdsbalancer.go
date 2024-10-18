@@ -364,7 +364,7 @@ func (b *cdsBalancer) closeAllWatchers() {
 // Close cancels the CDS watch, closes the child policy and closes the
 // cdsBalancer.
 func (b *cdsBalancer) Close() {
-	b.serializer.TrySchedule(func(ctx context.Context) {
+	b.serializer.TrySchedule(func(context.Context) {
 		b.closeAllWatchers()
 
 		if b.childLB != nil {
