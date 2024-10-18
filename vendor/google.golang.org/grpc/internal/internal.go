@@ -217,10 +217,9 @@ var (
 	SetConnectedAddress any // func(scs *SubConnState, addr resolver.Address)
 
 	// SnapshotMetricRegistryForTesting snapshots the global data of the metric
-	// registry. Registers a cleanup function on the provided testing.T that
-	// sets the metric registry to its original state. Only called in testing
-	// functions.
-	SnapshotMetricRegistryForTesting any // func(t *testing.T)
+	// registry. Returns a cleanup function that sets the metric registry to its
+	// original state. Only called in testing functions.
+	SnapshotMetricRegistryForTesting func() func()
 
 	// SetDefaultBufferPoolForTesting updates the default buffer pool, for
 	// testing purposes.

@@ -42,7 +42,8 @@ func (v Value) Type() ValueType { return v.t }
 // Int64ValueType, 0 is returned.
 func (v Value) Int64() int64 {
 	if v.t == Int64ValueType {
-		return int64(v.val)
+		// Assumes the correct int64 was stored in v.val based on type.
+		return int64(v.val) // nolint: gosec
 	}
 	return 0
 }

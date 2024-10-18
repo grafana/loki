@@ -1,5 +1,32 @@
 # Changes
 
+## [1.31.0](https://github.com/googleapis/google-cloud-go/compare/bigtable/v1.30.0...bigtable/v1.31.0) (2024-08-28)
+
+
+### Features
+
+* **bigtable:** Using new auth library ([#10766](https://github.com/googleapis/google-cloud-go/issues/10766)) ([8daf304](https://github.com/googleapis/google-cloud-go/commit/8daf304faf3808690996ad3a45d2890b107a0939))
+
+
+### Performance Improvements
+
+* **bigtable:** Use RecvMsg instead of Recv ([#10674](https://github.com/googleapis/google-cloud-go/issues/10674)) ([7e4fbc5](https://github.com/googleapis/google-cloud-go/commit/7e4fbc5612441c59bfaa1e5b9bbd06e3387b5c02))
+
+## [1.30.0](https://github.com/googleapis/google-cloud-go/compare/bigtable/v1.29.0...bigtable/v1.30.0) (2024-08-26)
+
+
+### Features
+
+* **bigtable:** Add MarshalJSON to allow clients to get a stringified version of the protobuf ([#10679](https://github.com/googleapis/google-cloud-go/issues/10679)) ([663f399](https://github.com/googleapis/google-cloud-go/commit/663f3996ced66c312c8202535574d3ffcb72d283))
+* **bigtable:** Add nil checks to Equal method ([#10758](https://github.com/googleapis/google-cloud-go/issues/10758)) ([f1aad7f](https://github.com/googleapis/google-cloud-go/commit/f1aad7f3a05a959d0dd973e026026391deda7657))
+* **bigtable:** Add UpdateFamily to allow updating a family type ([#10759](https://github.com/googleapis/google-cloud-go/issues/10759)) ([ec0cbb2](https://github.com/googleapis/google-cloud-go/commit/ec0cbb20ba42b7ef03688a06dc0a380e9b27e394))
+* **bigtable:** Update go version for conformance tests ([#10743](https://github.com/googleapis/google-cloud-go/issues/10743)) ([74cf45e](https://github.com/googleapis/google-cloud-go/commit/74cf45efe7dc6f74cadac3f015a705f8dbf69622))
+
+
+### Bug Fixes
+
+* **bigtable:** Use new auth library ([#10670](https://github.com/googleapis/google-cloud-go/issues/10670)) ([fab520d](https://github.com/googleapis/google-cloud-go/commit/fab520d226340bbf1aedc001dcb7384651e075a0))
+
 ## [1.29.0](https://github.com/googleapis/google-cloud-go/compare/bigtable/v1.28.0...bigtable/v1.29.0) (2024-08-09)
 
 
