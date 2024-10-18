@@ -44,7 +44,6 @@ var (
 	ErrUnsupportedStorageBackend        = errors.New("unsupported storage backend")
 	ErrInvalidCharactersInStoragePrefix = errors.New("storage prefix contains invalid characters, it may only contain digits and English alphabet letters")
 
-	// TODO: Remove this global if we can tag all clients with component name
 	metrics = objstore.BucketMetrics(prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer), "")
 )
 

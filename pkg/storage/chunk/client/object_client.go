@@ -183,7 +183,8 @@ func (o *client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 	}
 	defer readCloser.Close()
 
-	// reset if GetObject fails to return a valid size
+	// reset if the size is unknown
+	// start with a buf of size bytes.MinRead since we cannot avoid allocations
 	if size < 0 {
 		size = 0
 	}
