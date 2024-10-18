@@ -1,3 +1,6 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
 resources:
 - ../../crd
 - ../../rbac
@@ -17,14 +20,14 @@ namespace: openshift-operators-redhat
 namePrefix: loki-operator-
 
 labels:
-- pairs:
+- includeSelectors: true
+  pairs:
+    app.kubernetes.io/managed-by: operator-lifecycle-manager
     app.kubernetes.io/name: loki-operator
     app.kubernetes.io/part-of: cluster-logging
-    app.kubernetes.io/managed-by: operator-lifecycle-manager
-  includeSelectors: true
 - pairs:
     app.kubernetes.io/instance: loki-operator-0.1.0
-    app.kubernetes.io/version: "0.1.0"
+    app.kubernetes.io/version: 0.1.0
 
 generatorOptions:
   disableNameSuffixHash: true
@@ -34,16 +37,17 @@ configMapGenerator:
   - controller_manager_config.yaml
   name: manager-config
 
-patchesStrategicMerge:
-- auth_proxy_service_annotations_patch.yaml
-- manager_auth_proxy_patch.yaml
-- manager_related_image_patch.yaml
-- manager_run_flags_patch.yaml
-- manager_security_context_patch.yaml
-- manager_webhook_patch.yaml
-- prometheus_service_monitor_patch.yaml
 
 images:
 - name: controller
   newName: quay.io/openshift-logging/loki-operator
   newTag: 0.1.0
+
+patches:
+- path: auth_proxy_service_annotations_patch.yaml
+- path: manager_auth_proxy_patch.yaml
+- path: manager_related_image_patch.yaml
+- path: manager_run_flags_patch.yaml
+- path: manager_security_context_patch.yaml
+- path: manager_webhook_patch.yaml
+- path: prometheus_service_monitor_patch.yaml
