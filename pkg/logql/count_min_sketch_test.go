@@ -1,8 +1,9 @@
 package logql
 
 import (
-	"github.com/grafana/loki/v3/pkg/logproto"
 	"testing"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"

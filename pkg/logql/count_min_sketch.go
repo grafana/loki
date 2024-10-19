@@ -3,6 +3,7 @@ package logql
 import (
 	"container/heap"
 	"fmt"
+
 	"github.com/axiomhq/hyperloglog"
 
 	"github.com/prometheus/prometheus/model/labels"
