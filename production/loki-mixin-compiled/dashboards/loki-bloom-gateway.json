@@ -132,7 +132,7 @@
                }
             },
             "panels": [ ],
-            "pluginVersion": "11.4.0-77663",
+            "pluginVersion": "11.4.0-77765",
             "targets": [
                {
                   "datasource": {
@@ -227,7 +227,7 @@
                "sizing": "auto"
             },
             "panels": [ ],
-            "pluginVersion": "11.4.0-77663",
+            "pluginVersion": "11.4.0-77765",
             "targets": [
                {
                   "datasource": {
@@ -373,7 +373,7 @@
                }
             },
             "panels": [ ],
-            "pluginVersion": "11.4.0-77663",
+            "pluginVersion": "11.4.0-77765",
             "targets": [
                {
                   "datasource": {
@@ -501,7 +501,7 @@
                }
             },
             "panels": [ ],
-            "pluginVersion": "11.4.0-77663",
+            "pluginVersion": "11.4.0-77765",
             "targets": [
                {
                   "datasource": {
@@ -595,7 +595,7 @@
                "sizing": "auto"
             },
             "panels": [ ],
-            "pluginVersion": "11.4.0-77663",
+            "pluginVersion": "11.4.0-77765",
             "targets": [
                {
                   "datasource": {
@@ -714,7 +714,7 @@
                }
             },
             "panels": [ ],
-            "pluginVersion": "11.4.0-77663",
+            "pluginVersion": "11.4.0-77765",
             "targets": [
                {
                   "datasource": {
@@ -830,7 +830,7 @@
                }
             },
             "panels": [ ],
-            "pluginVersion": "11.4.0-77663",
+            "pluginVersion": "11.4.0-77765",
             "targets": [
                {
                   "datasource": {
@@ -944,7 +944,7 @@
                }
             },
             "panels": [ ],
-            "pluginVersion": "11.4.0-77663",
+            "pluginVersion": "11.4.0-77765",
             "targets": [
                {
                   "datasource": {
@@ -1054,7 +1054,7 @@
                      "h": 7,
                      "w": 12,
                      "x": 0,
-                     "y": 698
+                     "y": 447
                   },
                   "id": 97,
                   "options": {
@@ -1070,7 +1070,7 @@
                      }
                   },
                   "panels": [ ],
-                  "pluginVersion": "11.4.0-77663",
+                  "pluginVersion": "11.4.0-77765",
                   "targets": [
                      {
                         "datasource": {
@@ -1169,7 +1169,7 @@
                      "h": 7,
                      "w": 12,
                      "x": 12,
-                     "y": 698
+                     "y": 447
                   },
                   "id": 98,
                   "options": {
@@ -1185,7 +1185,7 @@
                      }
                   },
                   "panels": [ ],
-                  "pluginVersion": "11.4.0-77663",
+                  "pluginVersion": "11.4.0-77765",
                   "targets": [
                      {
                         "datasource": {
@@ -1270,7 +1270,7 @@
                      "h": 7,
                      "w": 12,
                      "x": 0,
-                     "y": 1118
+                     "y": 454
                   },
                   "id": 107,
                   "options": {
@@ -1286,7 +1286,7 @@
                      }
                   },
                   "panels": [ ],
-                  "pluginVersion": "11.4.0-77663",
+                  "pluginVersion": "11.4.0-77765",
                   "targets": [
                      {
                         "datasource": {
@@ -1372,7 +1372,7 @@
                      "h": 7,
                      "w": 12,
                      "x": 12,
-                     "y": 1118
+                     "y": 454
                   },
                   "id": 108,
                   "options": {
@@ -1388,7 +1388,7 @@
                      }
                   },
                   "panels": [ ],
-                  "pluginVersion": "11.4.0-77663",
+                  "pluginVersion": "11.4.0-77765",
                   "targets": [
                      {
                         "datasource": {
@@ -1425,7 +1425,7 @@
                {
                   "datasource": {
                      "type": "loki",
-                     "uid": "${logs}"
+                     "uid": "${loki_datasource}"
                   },
                   "fieldConfig": {
                      "defaults": { },
@@ -1435,7 +1435,7 @@
                      "h": 9,
                      "w": 15,
                      "x": 0,
-                     "y": 224
+                     "y": 920
                   },
                   "id": 48,
                   "options": {
@@ -1449,12 +1449,12 @@
                      "wrapLogMessage": true
                   },
                   "panels": [ ],
-                  "pluginVersion": "11.4.0-77663",
+                  "pluginVersion": "11.4.0-77765",
                   "targets": [
                      {
                         "datasource": {
                            "type": "loki",
-                           "uid": "${logs}"
+                           "uid": "${loki_datasource}"
                         },
                         "editorMode": "code",
                         "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} |= \"level=error\" or \"panic:\" | logfmt",
@@ -1464,11 +1464,10 @@
                      {
                         "datasource": {
                            "type": "loki",
-                           "uid": "${logs}"
+                           "uid": "${loki_datasource}"
                         },
                         "editorMode": "code",
                         "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} |= \"level=warn\" | logfmt",
-                        "hide": true,
                         "queryType": "range",
                         "refId": "B"
                      }
@@ -1479,7 +1478,7 @@
                {
                   "datasource": {
                      "type": "loki",
-                     "uid": "${logs}"
+                     "uid": "${loki_datasource}"
                   },
                   "fieldConfig": {
                      "defaults": {
@@ -1588,7 +1587,7 @@
                      "h": 9,
                      "w": 9,
                      "x": 15,
-                     "y": 224
+                     "y": 920
                   },
                   "id": 52,
                   "options": {
@@ -1605,28 +1604,25 @@
                      }
                   },
                   "panels": [ ],
-                  "pluginVersion": "11.4.0-77663",
+                  "pluginVersion": "11.4.0-77765",
                   "targets": [
                      {
                         "datasource": {
                            "type": "loki",
-                           "uid": "${logs}"
+                           "uid": "${loki_datasource}"
                         },
                         "editorMode": "code",
                         "expr": "sum by (level) (count_over_time({cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} |~ \"level=(warn|error)\" | logfmt [$__auto]))",
-                        "legendFormat": "{{ level }}",
                         "queryType": "range",
                         "refId": "A"
                      },
                      {
                         "datasource": {
                            "type": "loki",
-                           "uid": "${logs}"
+                           "uid": "${loki_datasource}"
                         },
                         "editorMode": "code",
                         "expr": "sum (count_over_time({cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} |= \"panic:\" | logfmt [$__auto]))",
-                        "hide": false,
-                        "legendFormat": "panic",
                         "queryType": "range",
                         "refId": "B"
                      }
@@ -1697,8 +1693,7 @@
                            "mode": "absolute",
                            "steps": [
                               {
-                                 "color": "green",
-                                 "value": null
+                                 "color": "green"
                               },
                               {
                                  "color": "red",
@@ -1713,7 +1708,7 @@
                      "h": 14,
                      "w": 12,
                      "x": 0,
-                     "y": 700
+                     "y": 1764
                   },
                   "id": 10,
                   "options": {
@@ -1822,8 +1817,7 @@
                            "mode": "absolute",
                            "steps": [
                               {
-                                 "color": "green",
-                                 "value": null
+                                 "color": "green"
                               },
                               {
                                  "color": "red",
@@ -1839,7 +1833,7 @@
                      "h": 7,
                      "w": 12,
                      "x": 12,
-                     "y": 700
+                     "y": 1764
                   },
                   "id": 11,
                   "options": {
@@ -1949,8 +1943,7 @@
                            "mode": "absolute",
                            "steps": [
                               {
-                                 "color": "green",
-                                 "value": null
+                                 "color": "green"
                               },
                               {
                                  "color": "red",
@@ -1966,7 +1959,7 @@
                      "h": 7,
                      "w": 12,
                      "x": 12,
-                     "y": 1076
+                     "y": 2140
                   },
                   "id": 81,
                   "options": {
@@ -2093,8 +2086,7 @@
                            "mode": "absolute",
                            "steps": [
                               {
-                                 "color": "green",
-                                 "value": null
+                                 "color": "green"
                               },
                               {
                                  "color": "red",
@@ -2109,7 +2101,7 @@
                      "h": 7,
                      "w": 8,
                      "x": 0,
-                     "y": 1083
+                     "y": 2147
                   },
                   "id": 87,
                   "options": {
@@ -2197,8 +2189,7 @@
                            "mode": "absolute",
                            "steps": [
                               {
-                                 "color": "green",
-                                 "value": null
+                                 "color": "green"
                               },
                               {
                                  "color": "red",
@@ -2214,7 +2205,7 @@
                      "h": 7,
                      "w": 8,
                      "x": 8,
-                     "y": 1083
+                     "y": 2147
                   },
                   "id": 88,
                   "options": {
@@ -2301,8 +2292,7 @@
                            "mode": "absolute",
                            "steps": [
                               {
-                                 "color": "green",
-                                 "value": null
+                                 "color": "green"
                               },
                               {
                                  "color": "red",
@@ -2318,7 +2308,7 @@
                      "h": 7,
                      "w": 8,
                      "x": 16,
-                     "y": 1083
+                     "y": 2147
                   },
                   "id": 89,
                   "options": {
@@ -2414,8 +2404,7 @@
                            "mode": "absolute",
                            "steps": [
                               {
-                                 "color": "green",
-                                 "value": null
+                                 "color": "green"
                               },
                               {
                                  "color": "red",
@@ -2431,7 +2420,7 @@
                      "h": 7,
                      "w": 12,
                      "x": 0,
-                     "y": 1090
+                     "y": 2154
                   },
                   "id": 84,
                   "options": {
@@ -2518,8 +2507,7 @@
                            "mode": "absolute",
                            "steps": [
                               {
-                                 "color": "green",
-                                 "value": null
+                                 "color": "green"
                               },
                               {
                                  "color": "red",
@@ -2535,7 +2523,7 @@
                      "h": 7,
                      "w": 12,
                      "x": 12,
-                     "y": 1090
+                     "y": 2154
                   },
                   "id": 85,
                   "options": {
@@ -2621,8 +2609,7 @@
                            "mode": "absolute",
                            "steps": [
                               {
-                                 "color": "green",
-                                 "value": null
+                                 "color": "green"
                               },
                               {
                                  "color": "red",
@@ -2638,7 +2625,7 @@
                      "h": 7,
                      "w": 24,
                      "x": 0,
-                     "y": 1097
+                     "y": 2161
                   },
                   "id": 102,
                   "options": {
@@ -2751,8 +2738,7 @@
                            "mode": "absolute",
                            "steps": [
                               {
-                                 "color": "green",
-                                 "value": null
+                                 "color": "green"
                               }
                            ]
                         }
@@ -2808,7 +2794,7 @@
                      "h": 7,
                      "w": 12,
                      "x": 0,
-                     "y": 111
+                     "y": 1175
                   },
                   "id": 13,
                   "options": {
@@ -2892,8 +2878,7 @@
                            "mode": "absolute",
                            "steps": [
                               {
-                                 "color": "green",
-                                 "value": null
+                                 "color": "green"
                               }
                            ]
                         }
@@ -2949,7 +2934,7 @@
                      "h": 7,
                      "w": 12,
                      "x": 12,
-                     "y": 111
+                     "y": 1175
                   },
                   "id": 86,
                   "options": {
@@ -3035,8 +3020,7 @@
                            "mode": "absolute",
                            "steps": [
                               {
-                                 "color": "green",
-                                 "value": null
+                                 "color": "green"
                               }
                            ]
                         },
@@ -3048,7 +3032,7 @@
                      "h": 7,
                      "w": 12,
                      "x": 0,
-                     "y": 185
+                     "y": 1249
                   },
                   "id": 14,
                   "options": {
@@ -3171,8 +3155,7 @@
                            "mode": "absolute",
                            "steps": [
                               {
-                                 "color": "green",
-                                 "value": null
+                                 "color": "green"
                               }
                            ]
                         },
@@ -3184,7 +3167,7 @@
                      "h": 7,
                      "w": 12,
                      "x": 12,
-                     "y": 185
+                     "y": 1249
                   },
                   "id": 15,
                   "options": {
@@ -3297,7 +3280,7 @@
                      "h": 7,
                      "w": 8,
                      "x": 0,
-                     "y": 112
+                     "y": 1176
                   },
                   "id": 16,
                   "options": {
@@ -3395,7 +3378,7 @@
                      "h": 7,
                      "w": 8,
                      "x": 8,
-                     "y": 112
+                     "y": 1176
                   },
                   "id": 17,
                   "options": {
@@ -3519,7 +3502,7 @@
                      "h": 7,
                      "w": 8,
                      "x": 16,
-                     "y": 112
+                     "y": 1176
                   },
                   "id": 22,
                   "options": {
@@ -3619,8 +3602,7 @@
                            "mode": "absolute",
                            "steps": [
                               {
-                                 "color": "green",
-                                 "value": null
+                                 "color": "green"
                               },
                               {
                                  "color": "red",
@@ -3636,7 +3618,7 @@
                      "h": 8,
                      "w": 8,
                      "x": 0,
-                     "y": 113
+                     "y": 1177
                   },
                   "id": 69,
                   "options": {
@@ -3746,8 +3728,7 @@
                            "mode": "absolute",
                            "steps": [
                               {
-                                 "color": "green",
-                                 "value": null
+                                 "color": "green"
                               },
                               {
                                  "color": "red",
@@ -3763,7 +3744,7 @@
                      "h": 8,
                      "w": 8,
                      "x": 8,
-                     "y": 113
+                     "y": 1177
                   },
                   "id": 70,
                   "options": {
@@ -3873,8 +3854,7 @@
                            "mode": "absolute",
                            "steps": [
                               {
-                                 "color": "green",
-                                 "value": null
+                                 "color": "green"
                               },
                               {
                                  "color": "red",
@@ -3889,7 +3869,7 @@
                      "h": 8,
                      "w": 8,
                      "x": 16,
-                     "y": 113
+                     "y": 1177
                   },
                   "id": 71,
                   "options": {
@@ -3986,8 +3966,7 @@
                            "mode": "absolute",
                            "steps": [
                               {
-                                 "color": "green",
-                                 "value": null
+                                 "color": "green"
                               },
                               {
                                  "color": "red",
@@ -4003,7 +3982,7 @@
                      "h": 8,
                      "w": 8,
                      "x": 0,
-                     "y": 150
+                     "y": 1214
                   },
                   "id": 105,
                   "options": {
@@ -4063,7 +4042,7 @@
                      "h": 1,
                      "w": 24,
                      "x": 0,
-                     "y": 114
+                     "y": 1178
                   },
                   "id": 19,
                   "options": {
@@ -4135,8 +4114,7 @@
                            "mode": "absolute",
                            "steps": [
                               {
-                                 "color": "green",
-                                 "value": null
+                                 "color": "green"
                               }
                            ]
                         },
@@ -4148,7 +4126,7 @@
                      "h": 7,
                      "w": 12,
                      "x": 0,
-                     "y": 115
+                     "y": 1179
                   },
                   "id": 20,
                   "options": {
@@ -4251,8 +4229,7 @@
                            "mode": "absolute",
                            "steps": [
                               {
-                                 "color": "green",
-                                 "value": null
+                                 "color": "green"
                               }
                            ]
                         },
@@ -4309,7 +4286,7 @@
                      "h": 7,
                      "w": 12,
                      "x": 12,
-                     "y": 115
+                     "y": 1179
                   },
                   "id": 83,
                   "options": {
@@ -4438,8 +4415,7 @@
                            "mode": "absolute",
                            "steps": [
                               {
-                                 "color": "green",
-                                 "value": null
+                                 "color": "green"
                               }
                            ]
                         },
@@ -4482,7 +4458,7 @@
                      "h": 7,
                      "w": 24,
                      "x": 0,
-                     "y": 122
+                     "y": 1186
                   },
                   "id": 92,
                   "options": {
@@ -4571,8 +4547,7 @@
                            "mode": "absolute",
                            "steps": [
                               {
-                                 "color": "green",
-                                 "value": null
+                                 "color": "green"
                               }
                            ]
                         },
@@ -4597,7 +4572,7 @@
                      "h": 7,
                      "w": 12,
                      "x": 0,
-                     "y": 129
+                     "y": 1193
                   },
                   "id": 76,
                   "options": {
@@ -4698,8 +4673,7 @@
                            "mode": "absolute",
                            "steps": [
                               {
-                                 "color": "green",
-                                 "value": null
+                                 "color": "green"
                               }
                            ]
                         },
@@ -4724,7 +4698,7 @@
                      "h": 7,
                      "w": 12,
                      "x": 12,
-                     "y": 129
+                     "y": 1193
                   },
                   "id": 21,
                   "options": {
@@ -4891,8 +4865,7 @@
                            "mode": "absolute",
                            "steps": [
                               {
-                                 "color": "green",
-                                 "value": null
+                                 "color": "green"
                               }
                            ]
                         },
@@ -4917,7 +4890,7 @@
                      "h": 7,
                      "w": 12,
                      "x": 0,
-                     "y": 136
+                     "y": 1200
                   },
                   "id": 101,
                   "options": {
@@ -4979,7 +4952,7 @@
                      "h": 1,
                      "w": 24,
                      "x": 0,
-                     "y": 1731
+                     "y": 1013
                   },
                   "id": 61,
                   "options": {
@@ -4992,7 +4965,7 @@
                      "mode": "markdown"
                   },
                   "panels": [ ],
-                  "pluginVersion": "11.4.0-77663",
+                  "pluginVersion": "11.4.0-77765",
                   "targets": [ ],
                   "title": "The gateway download bloom meta files and blocks from the object store.",
                   "transparent": true,
@@ -5008,7 +4981,7 @@
                      "h": 7,
                      "w": 2,
                      "x": 0,
-                     "y": 1732
+                     "y": 1014
                   },
                   "id": 24,
                   "options": {
@@ -5021,7 +4994,7 @@
                      "mode": "markdown"
                   },
                   "panels": [ ],
-                  "pluginVersion": "11.4.0-77663",
+                  "pluginVersion": "11.4.0-77765",
                   "targets": [ ],
                   "title": "",
                   "transparent": true,
@@ -5089,7 +5062,7 @@
                      "h": 7,
                      "w": 11,
                      "x": 2,
-                     "y": 1732
+                     "y": 1014
                   },
                   "id": 25,
                   "options": {
@@ -5106,7 +5079,7 @@
                      }
                   },
                   "panels": [ ],
-                  "pluginVersion": "11.4.0-77663",
+                  "pluginVersion": "11.4.0-77765",
                   "targets": [
                      {
                         "datasource": {
@@ -5114,7 +5087,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "sum by (status_code, operation) (rate(loki_gcs_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} [$__rate_interval]))",
+                        "expr": "sum by (status_code, operation) (rate(loki_gcs_request_duration_seconds_count{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval]))",
                         "instant": false,
                         "legendFormat": "{{operation}} {{status_code}}",
                         "range": true,
@@ -5186,7 +5159,7 @@
                      "h": 7,
                      "w": 11,
                      "x": 13,
-                     "y": 1732
+                     "y": 1014
                   },
                   "id": 29,
                   "options": {
@@ -5203,7 +5176,7 @@
                      }
                   },
                   "panels": [ ],
-                  "pluginVersion": "11.4.0-77663",
+                  "pluginVersion": "11.4.0-77765",
                   "targets": [
                      {
                         "datasource": {
@@ -5211,7 +5184,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.99, sum by (operation, le) (rate(loki_gcs_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} [$__rate_interval])))",
+                        "expr": "histogram_quantile(0.99, sum by (operation, le) (rate(loki_gcs_request_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "{{operation}} p99",
                         "range": true,
@@ -5223,7 +5196,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.90, sum by (operation, le) (rate(loki_gcs_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} [$__rate_interval])))",
+                        "expr": "histogram_quantile(0.90, sum by (operation, le) (rate(loki_gcs_request_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "{{operation}} p90",
@@ -5236,7 +5209,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.50, sum by (operation, le) (rate(loki_gcs_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} [$__rate_interval])))",
+                        "expr": "histogram_quantile(0.50, sum by (operation, le) (rate(loki_gcs_request_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "{{operation}} p50",
@@ -5257,7 +5230,7 @@
                      "h": 7,
                      "w": 2,
                      "x": 0,
-                     "y": 1739
+                     "y": 1021
                   },
                   "id": 62,
                   "options": {
@@ -5270,7 +5243,7 @@
                      "mode": "markdown"
                   },
                   "panels": [ ],
-                  "pluginVersion": "11.4.0-77663",
+                  "pluginVersion": "11.4.0-77765",
                   "targets": [ ],
                   "title": "",
                   "transparent": true,
@@ -5338,7 +5311,7 @@
                      "h": 7,
                      "w": 11,
                      "x": 2,
-                     "y": 1739
+                     "y": 1021
                   },
                   "id": 63,
                   "options": {
@@ -5355,7 +5328,7 @@
                      }
                   },
                   "panels": [ ],
-                  "pluginVersion": "11.4.0-77663",
+                  "pluginVersion": "11.4.0-77765",
                   "targets": [
                      {
                         "datasource": {
@@ -5363,7 +5336,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "sum by (status_code, operation) (rate(loki_s3_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} [$__rate_interval]))",
+                        "expr": "sum by (status_code, operation) (rate(loki_s3_request_duration_seconds_count{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval]))",
                         "instant": false,
                         "legendFormat": "{{operation}} {{status_code}}",
                         "range": true,
@@ -5435,7 +5408,7 @@
                      "h": 7,
                      "w": 11,
                      "x": 13,
-                     "y": 1739
+                     "y": 1021
                   },
                   "id": 64,
                   "options": {
@@ -5452,7 +5425,7 @@
                      }
                   },
                   "panels": [ ],
-                  "pluginVersion": "11.4.0-77663",
+                  "pluginVersion": "11.4.0-77765",
                   "targets": [
                      {
                         "datasource": {
@@ -5460,7 +5433,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.99, sum by (operation, le) (rate(loki_s3_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} [$__rate_interval])))",
+                        "expr": "histogram_quantile(0.99, sum by (operation, le) (rate(loki_s3_request_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "{{operation}} p99",
                         "range": true,
@@ -5472,7 +5445,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.90, sum by (operation, le) (rate(loki_s3_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} [$__rate_interval])))",
+                        "expr": "histogram_quantile(0.90, sum by (operation, le) (rate(loki_s3_request_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "{{operation}} p90",
@@ -5485,7 +5458,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.50, sum by (operation, le) (rate(loki_s3_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} [$__rate_interval])))",
+                        "expr": "histogram_quantile(0.50, sum by (operation, le) (rate(loki_s3_request_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "{{operation}} p50",
@@ -5506,7 +5479,7 @@
                      "h": 7,
                      "w": 2,
                      "x": 0,
-                     "y": 1746
+                     "y": 1028
                   },
                   "id": 65,
                   "options": {
@@ -5519,7 +5492,7 @@
                      "mode": "markdown"
                   },
                   "panels": [ ],
-                  "pluginVersion": "11.4.0-77663",
+                  "pluginVersion": "11.4.0-77765",
                   "targets": [ ],
                   "title": "",
                   "transparent": true,
@@ -5587,7 +5560,7 @@
                      "h": 7,
                      "w": 11,
                      "x": 2,
-                     "y": 1746
+                     "y": 1028
                   },
                   "id": 66,
                   "options": {
@@ -5604,7 +5577,7 @@
                      }
                   },
                   "panels": [ ],
-                  "pluginVersion": "11.4.0-77663",
+                  "pluginVersion": "11.4.0-77765",
                   "targets": [
                      {
                         "datasource": {
@@ -5612,7 +5585,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "sum by (status_code, operation) (rate(loki_azure_blob_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} [$__rate_interval]))",
+                        "expr": "sum by (status_code, operation) (rate(loki_azure_blob_request_duration_seconds_count{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval]))",
                         "instant": false,
                         "legendFormat": "{{operation}} {{status_code}}",
                         "range": true,
@@ -5684,7 +5657,7 @@
                      "h": 7,
                      "w": 11,
                      "x": 13,
-                     "y": 1746
+                     "y": 1028
                   },
                   "id": 67,
                   "options": {
@@ -5701,7 +5674,7 @@
                      }
                   },
                   "panels": [ ],
-                  "pluginVersion": "11.4.0-77663",
+                  "pluginVersion": "11.4.0-77765",
                   "targets": [
                      {
                         "datasource": {
@@ -5709,7 +5682,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.99, sum by (operation, le) (rate(loki_azure_blob_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} [$__rate_interval])))",
+                        "expr": "histogram_quantile(0.99, sum by (operation, le) (rate(loki_azure_blob_request_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "{{operation}} p99",
                         "range": true,
@@ -5721,7 +5694,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.90, sum by (operation, le) (rate(loki_azure_blob_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} [$__rate_interval])))",
+                        "expr": "histogram_quantile(0.90, sum by (operation, le) (rate(loki_azure_blob_request_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "{{operation}} p90",
@@ -5734,7 +5707,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.50, sum by (operation, le) (rate(loki_azure_blob_request_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"} [$__rate_interval])))",
+                        "expr": "histogram_quantile(0.50, sum by (operation, le) (rate(loki_azure_blob_request_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"} [$__rate_interval])))",
                         "hide": false,
                         "instant": false,
                         "legendFormat": "{{operation}} p50",
@@ -5784,7 +5757,7 @@
                      "h": 8,
                      "w": 12,
                      "x": 0,
-                     "y": 1625
+                     "y": 1044
                   },
                   "id": 80,
                   "options": {
@@ -5822,7 +5795,7 @@
                      }
                   },
                   "panels": [ ],
-                  "pluginVersion": "11.4.0-77663",
+                  "pluginVersion": "11.4.0-77765",
                   "targets": [
                      {
                         "datasource": {
@@ -5831,7 +5804,7 @@
                         },
                         "editorMode": "code",
                         "exemplar": false,
-                        "expr": "increase(loki_bloom_gateway_dequeue_duration_seconds_bucket{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval])",
+                        "expr": "increase(loki_bloom_gateway_dequeue_duration_seconds_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__rate_interval])",
                         "format": "heatmap",
                         "instant": false,
                         "legendFormat": "__auto",
@@ -5866,7 +5839,7 @@
                      "h": 8,
                      "w": 12,
                      "x": 12,
-                     "y": 1625
+                     "y": 1044
                   },
                   "id": 106,
                   "options": {
@@ -5904,7 +5877,7 @@
                      }
                   },
                   "panels": [ ],
-                  "pluginVersion": "11.4.0-77663",
+                  "pluginVersion": "11.4.0-77765",
                   "targets": [
                      {
                         "datasource": {
@@ -5912,7 +5885,7 @@
                            "uid": "${datasource}"
                         },
                         "editorMode": "code",
-                        "expr": "increase(loki_bloom_gateway_tasks_dequeued_bucket{cluster=\"$cluster\", namespace=\"$namespace\", container=\"bloom-gateway\"}[$__rate_interval])",
+                        "expr": "increase(loki_bloom_gateway_tasks_dequeued_bucket{cluster=\"$cluster\", job=\"$namespace/bloom-gateway\"}[$__rate_interval])",
                         "format": "heatmap",
                         "hide": false,
                         "instant": false,
