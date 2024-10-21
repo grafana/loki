@@ -50,6 +50,34 @@ func convertAttributeReferences(refs []lokiv1.OTLPAttributeReference, action con
 	return result
 }
 
+func convertTenantAttributeReferences(otlpSpec *lokiv1.OTLPSpec) *config.OTLPTenantAttributeConfig {
+	result := &config.OTLPTenantAttributeConfig{}
+
+	if streamLabels := otlpSpec.StreamLabels; streamLabels != nil {
+		result.ResourceAttributes = append(result.ResourceAttributes,
+			convertAttributeReferences(streamLabels.ResourceAttributes, config.OTLPAttributeActionStreamLabel)...)
+	}
+
+	if structuredMetadata := otlpSpec.StructuredMetadata; structuredMetadata != nil {
+		if resAttr := structuredMetadata.ResourceAttributes; len(resAttr) > 0 {
+			result.ResourceAttributes = append(result.ResourceAttributes,
+				convertAttributeReferences(resAttr, config.OTLPAttributeActionMetadata)...)
+		}
+
+		if scopeAttr := structuredMetadata.ScopeAttributes; len(scopeAttr) > 0 {
+			result.ScopeAttributes = append(result.ScopeAttributes,
+				convertAttributeReferences(scopeAttr, config.OTLPAttributeActionMetadata)...)
+		}
+
+		if logAttr := structuredMetadata.LogAttributes; len(logAttr) > 0 {
+			result.LogAttributes = append(result.LogAttributes,
+				convertAttributeReferences(logAttr, config.OTLPAttributeActionMetadata)...)
+		}
+	}
+
+	return result
+}
+
 func sortAndDeduplicateOTLPConfig(cfg config.OTLPAttributeConfig) config.OTLPAttributeConfig {
 	if cfg.Global != nil {
 		if len(cfg.Global.ResourceAttributes) > 1 {
@@ -180,34 +208,12 @@ func otlpAttributeConfig(ls *lokiv1.LokiStackSpec) config.OTLPAttributeConfig {
 		for tenant, tenantLimits := range ls.Limits.Tenants {
 			if tenantLimits.OTLP != nil {
 				result.RemoveDefaultLabels = true
-				tenantOTLP := tenantLimits.OTLP
-				tenantResult := &config.OTLPTenantAttributeConfig{}
-
-				if streamLabels := tenantOTLP.StreamLabels; streamLabels != nil {
-					tenantResult.ResourceAttributes = append(tenantResult.ResourceAttributes,
-						convertAttributeReferences(streamLabels.ResourceAttributes, config.OTLPAttributeActionStreamLabel)...)
-				}
-
-				if structuredMetadata := tenantOTLP.StructuredMetadata; structuredMetadata != nil {
-					if resAttr := structuredMetadata.ResourceAttributes; len(resAttr) > 0 {
-						tenantResult.ResourceAttributes = append(tenantResult.ResourceAttributes,
-							convertAttributeReferences(resAttr, config.OTLPAttributeActionMetadata)...)
-					}
-
-					if scopeAttr := structuredMetadata.ScopeAttributes; len(scopeAttr) > 0 {
-						tenantResult.ScopeAttributes = append(tenantResult.ScopeAttributes,
-							convertAttributeReferences(scopeAttr, config.OTLPAttributeActionMetadata)...)
-					}
-
-					if logAttr := structuredMetadata.LogAttributes; len(logAttr) > 0 {
-						tenantResult.LogAttributes = append(tenantResult.LogAttributes,
-							convertAttributeReferences(logAttr, config.OTLPAttributeActionMetadata)...)
-					}
-				}
 
 				if result.Tenants == nil {
 					result.Tenants = map[string]*config.OTLPTenantAttributeConfig{}
 				}
+
+				tenantResult := convertTenantAttributeReferences(tenantLimits.OTLP)
 				result.Tenants[tenant] = tenantResult
 			}
 		}
