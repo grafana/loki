@@ -82,7 +82,7 @@ func New(
 	}
 
 	// Queue to manage tasks
-	queueMetrics := NewQueueMetrics(r)
+	queueMetrics := queue.NewMetrics(r, metricsNamespace, metricsSubsystem)
 	tasksQueue := queue.NewRequestQueue(cfg.MaxQueuedTasksPerTenant, 0, NewQueueLimits(limits), queueMetrics)
 
 	// Clean metrics for inactive users: do not have added tasks to the queue in the last 1 hour
@@ -591,14 +591,14 @@ func (p *Planner) deleteOutdatedMetasAndBlocks(
 		err = client.DeleteMetas(ctx, []bloomshipper.MetaRef{meta.MetaRef})
 		if err != nil {
 			if client.IsObjectNotFoundErr(err) {
-				level.Debug(logger).Log("msg", "meta not found while attempting delete, continuing", "meta", meta.MetaRef.String())
+				level.Debug(logger).Log("msg", "meta not found while attempting delete, continuing", "meta", meta.String())
 			} else {
-				level.Error(logger).Log("msg", "failed to delete meta", "err", err, "meta", meta.MetaRef.String())
+				level.Error(logger).Log("msg", "failed to delete meta", "err", err, "meta", meta.String())
 				return nil, errors.Wrap(err, "failed to delete meta")
 			}
 		}
 		deletedMetas++
-		level.Debug(logger).Log("msg", "removed outdated meta", "meta", meta.MetaRef.String())
+		level.Debug(logger).Log("msg", "removed outdated meta", "meta", meta.String())
 	}
 
 	level.Debug(logger).Log(

@@ -108,7 +108,7 @@ func TestTask_RequestIterator(t *testing.T) {
 		}
 
 		// merge the request iterators using the heap sort iterator
-		it := v1.NewHeapIterator[v1.Request](func(r1, r2 v1.Request) bool { return r1.Fp < r2.Fp }, iters...)
+		it := v1.NewHeapIterator(func(r1, r2 v1.Request) bool { return r1.Fp < r2.Fp }, iters...)
 
 		// first item
 		require.True(t, it.Next())
