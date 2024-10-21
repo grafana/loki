@@ -17,7 +17,7 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/v3/pkg/bloombuild/planner/testutils"
+	"github.com/grafana/loki/v3/pkg/bloombuild/planner/plannertest"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	"github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -39,7 +39,7 @@ func createPlanner(
 	schemaCfg := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				From: testutils.ParseDayTime("2023-09-01"),
+				From: plannertest.ParseDayTime("2023-09-01"),
 				IndexTables: config.IndexPeriodicTableConfig{
 					PeriodicTableConfig: config.PeriodicTableConfig{
 						Prefix: "index_",
@@ -275,8 +275,8 @@ func Test_processTenantTaskResults(t *testing.T) {
 		{
 			name: "errors",
 			originalMetas: []bloomshipper.Meta{
-				testutils.GenMeta(0, 10, []int{0}, []bloomshipper.BlockRef{testutils.GenBlockRef(0, 10)}),
-				testutils.GenMeta(10, 20, []int{0}, []bloomshipper.BlockRef{testutils.GenBlockRef(10, 20)}),
+				plannertest.GenMeta(0, 10, []int{0}, []bloomshipper.BlockRef{plannertest.GenBlockRef(0, 10)}),
+				plannertest.GenMeta(10, 20, []int{0}, []bloomshipper.BlockRef{plannertest.GenBlockRef(10, 20)}),
 			},
 			taskResults: []*protos.TaskResult{
 				{
@@ -290,16 +290,16 @@ func Test_processTenantTaskResults(t *testing.T) {
 			},
 			expectedMetas: []bloomshipper.Meta{
 				// The original metas should remain unchanged
-				testutils.GenMeta(0, 10, []int{0}, []bloomshipper.BlockRef{testutils.GenBlockRef(0, 10)}),
-				testutils.GenMeta(10, 20, []int{0}, []bloomshipper.BlockRef{testutils.GenBlockRef(10, 20)}),
+				plannertest.GenMeta(0, 10, []int{0}, []bloomshipper.BlockRef{plannertest.GenBlockRef(0, 10)}),
+				plannertest.GenMeta(10, 20, []int{0}, []bloomshipper.BlockRef{plannertest.GenBlockRef(10, 20)}),
 			},
 			expectedTasksSucceed: 0,
 		},
 		{
 			name: "no new metas",
 			originalMetas: []bloomshipper.Meta{
-				testutils.GenMeta(0, 10, []int{0}, []bloomshipper.BlockRef{testutils.GenBlockRef(0, 10)}),
-				testutils.GenMeta(10, 20, []int{0}, []bloomshipper.BlockRef{testutils.GenBlockRef(10, 20)}),
+				plannertest.GenMeta(0, 10, []int{0}, []bloomshipper.BlockRef{plannertest.GenBlockRef(0, 10)}),
+				plannertest.GenMeta(10, 20, []int{0}, []bloomshipper.BlockRef{plannertest.GenBlockRef(10, 20)}),
 			},
 			taskResults: []*protos.TaskResult{
 				{
@@ -311,8 +311,8 @@ func Test_processTenantTaskResults(t *testing.T) {
 			},
 			expectedMetas: []bloomshipper.Meta{
 				// The original metas should remain unchanged
-				testutils.GenMeta(0, 10, []int{0}, []bloomshipper.BlockRef{testutils.GenBlockRef(0, 10)}),
-				testutils.GenMeta(10, 20, []int{0}, []bloomshipper.BlockRef{testutils.GenBlockRef(10, 20)}),
+				plannertest.GenMeta(0, 10, []int{0}, []bloomshipper.BlockRef{plannertest.GenBlockRef(0, 10)}),
+				plannertest.GenMeta(10, 20, []int{0}, []bloomshipper.BlockRef{plannertest.GenBlockRef(10, 20)}),
 			},
 			expectedTasksSucceed: 2,
 		},
@@ -322,58 +322,58 @@ func Test_processTenantTaskResults(t *testing.T) {
 				{
 					TaskID: "1",
 					CreatedMetas: []bloomshipper.Meta{
-						testutils.GenMeta(0, 10, []int{0}, []bloomshipper.BlockRef{testutils.GenBlockRef(0, 10)}),
+						plannertest.GenMeta(0, 10, []int{0}, []bloomshipper.BlockRef{plannertest.GenBlockRef(0, 10)}),
 					},
 				},
 				{
 					TaskID: "2",
 					CreatedMetas: []bloomshipper.Meta{
-						testutils.GenMeta(10, 20, []int{0}, []bloomshipper.BlockRef{testutils.GenBlockRef(10, 20)}),
+						plannertest.GenMeta(10, 20, []int{0}, []bloomshipper.BlockRef{plannertest.GenBlockRef(10, 20)}),
 					},
 				},
 			},
 			expectedMetas: []bloomshipper.Meta{
-				testutils.GenMeta(0, 10, []int{0}, []bloomshipper.BlockRef{testutils.GenBlockRef(0, 10)}),
-				testutils.GenMeta(10, 20, []int{0}, []bloomshipper.BlockRef{testutils.GenBlockRef(10, 20)}),
+				plannertest.GenMeta(0, 10, []int{0}, []bloomshipper.BlockRef{plannertest.GenBlockRef(0, 10)}),
+				plannertest.GenMeta(10, 20, []int{0}, []bloomshipper.BlockRef{plannertest.GenBlockRef(10, 20)}),
 			},
 			expectedTasksSucceed: 2,
 		},
 		{
 			name: "single meta covers all original",
 			originalMetas: []bloomshipper.Meta{
-				testutils.GenMeta(0, 5, []int{0}, []bloomshipper.BlockRef{testutils.GenBlockRef(0, 5)}),
-				testutils.GenMeta(6, 10, []int{0}, []bloomshipper.BlockRef{testutils.GenBlockRef(6, 10)}),
+				plannertest.GenMeta(0, 5, []int{0}, []bloomshipper.BlockRef{plannertest.GenBlockRef(0, 5)}),
+				plannertest.GenMeta(6, 10, []int{0}, []bloomshipper.BlockRef{plannertest.GenBlockRef(6, 10)}),
 			},
 			taskResults: []*protos.TaskResult{
 				{
 					TaskID: "1",
 					CreatedMetas: []bloomshipper.Meta{
-						testutils.GenMeta(0, 10, []int{1}, []bloomshipper.BlockRef{testutils.GenBlockRef(0, 10)}),
+						plannertest.GenMeta(0, 10, []int{1}, []bloomshipper.BlockRef{plannertest.GenBlockRef(0, 10)}),
 					},
 				},
 			},
 			expectedMetas: []bloomshipper.Meta{
-				testutils.GenMeta(0, 10, []int{1}, []bloomshipper.BlockRef{testutils.GenBlockRef(0, 10)}),
+				plannertest.GenMeta(0, 10, []int{1}, []bloomshipper.BlockRef{plannertest.GenBlockRef(0, 10)}),
 			},
 			expectedTasksSucceed: 1,
 		},
 		{
 			name: "multi version ordering",
 			originalMetas: []bloomshipper.Meta{
-				testutils.GenMeta(0, 5, []int{0}, []bloomshipper.BlockRef{testutils.GenBlockRef(0, 5)}),
-				testutils.GenMeta(0, 10, []int{1}, []bloomshipper.BlockRef{testutils.GenBlockRef(0, 10)}), // only part of the range is outdated, must keep
+				plannertest.GenMeta(0, 5, []int{0}, []bloomshipper.BlockRef{plannertest.GenBlockRef(0, 5)}),
+				plannertest.GenMeta(0, 10, []int{1}, []bloomshipper.BlockRef{plannertest.GenBlockRef(0, 10)}), // only part of the range is outdated, must keep
 			},
 			taskResults: []*protos.TaskResult{
 				{
 					TaskID: "1",
 					CreatedMetas: []bloomshipper.Meta{
-						testutils.GenMeta(8, 10, []int{2}, []bloomshipper.BlockRef{testutils.GenBlockRef(8, 10)}),
+						plannertest.GenMeta(8, 10, []int{2}, []bloomshipper.BlockRef{plannertest.GenBlockRef(8, 10)}),
 					},
 				},
 			},
 			expectedMetas: []bloomshipper.Meta{
-				testutils.GenMeta(0, 10, []int{1}, []bloomshipper.BlockRef{testutils.GenBlockRef(0, 10)}),
-				testutils.GenMeta(8, 10, []int{2}, []bloomshipper.BlockRef{testutils.GenBlockRef(8, 10)}),
+				plannertest.GenMeta(0, 10, []int{1}, []bloomshipper.BlockRef{plannertest.GenBlockRef(0, 10)}),
+				plannertest.GenMeta(8, 10, []int{2}, []bloomshipper.BlockRef{plannertest.GenBlockRef(8, 10)}),
 			},
 			expectedTasksSucceed: 1,
 		},
@@ -388,11 +388,11 @@ func Test_processTenantTaskResults(t *testing.T) {
 			}
 			planner := createPlanner(t, cfg, &fakeLimits{}, logger)
 
-			bloomClient, err := planner.bloomStore.Client(testutils.TestDay.ModelTime())
+			bloomClient, err := planner.bloomStore.Client(plannertest.TestDay.ModelTime())
 			require.NoError(t, err)
 
 			// Create original metas and blocks
-			err = testutils.PutMetas(bloomClient, tc.originalMetas)
+			err = plannertest.PutMetas(bloomClient, tc.originalMetas)
 			require.NoError(t, err)
 
 			ctx, ctxCancel := context.WithCancel(context.Background())
@@ -406,7 +406,7 @@ func Test_processTenantTaskResults(t *testing.T) {
 
 				completed, err := planner.processTenantTaskResults(
 					ctx,
-					testutils.TestTable,
+					plannertest.TestTable,
 					"fakeTenant",
 					tc.originalMetas,
 					len(tc.taskResults),
@@ -419,7 +419,7 @@ func Test_processTenantTaskResults(t *testing.T) {
 			for _, taskResult := range tc.taskResults {
 				if len(taskResult.CreatedMetas) > 0 {
 					// Emulate builder putting new metas to obj store
-					err = testutils.PutMetas(bloomClient, taskResult.CreatedMetas)
+					err = plannertest.PutMetas(bloomClient, taskResult.CreatedMetas)
 					require.NoError(t, err)
 				}
 
@@ -434,7 +434,7 @@ func Test_processTenantTaskResults(t *testing.T) {
 				context.Background(),
 				bloomshipper.MetaSearchParams{
 					TenantID: "fakeTenant",
-					Interval: bloomshipper.NewInterval(testutils.TestTable.Bounds()),
+					Interval: bloomshipper.NewInterval(plannertest.TestTable.Bounds()),
 					Keyspace: v1.NewBounds(0, math.MaxUint64),
 				},
 			)
@@ -477,63 +477,63 @@ func Test_deleteOutdatedMetas(t *testing.T) {
 		{
 			name: "only up to date metas",
 			originalMetas: []bloomshipper.Meta{
-				testutils.GenMeta(0, 10, []int{0}, []bloomshipper.BlockRef{testutils.GenBlockRef(0, 10)}),
+				plannertest.GenMeta(0, 10, []int{0}, []bloomshipper.BlockRef{plannertest.GenBlockRef(0, 10)}),
 			},
 			newMetas: []bloomshipper.Meta{
-				testutils.GenMeta(10, 20, []int{0}, []bloomshipper.BlockRef{testutils.GenBlockRef(10, 20)}),
+				plannertest.GenMeta(10, 20, []int{0}, []bloomshipper.BlockRef{plannertest.GenBlockRef(10, 20)}),
 			},
 			expectedUpToDateMetas: []bloomshipper.Meta{
-				testutils.GenMeta(0, 10, []int{0}, []bloomshipper.BlockRef{testutils.GenBlockRef(0, 10)}),
-				testutils.GenMeta(10, 20, []int{0}, []bloomshipper.BlockRef{testutils.GenBlockRef(10, 20)}),
+				plannertest.GenMeta(0, 10, []int{0}, []bloomshipper.BlockRef{plannertest.GenBlockRef(0, 10)}),
+				plannertest.GenMeta(10, 20, []int{0}, []bloomshipper.BlockRef{plannertest.GenBlockRef(10, 20)}),
 			},
 		},
 		{
 			name: "outdated metas",
 			originalMetas: []bloomshipper.Meta{
-				testutils.GenMeta(0, 5, []int{0}, []bloomshipper.BlockRef{testutils.GenBlockRef(0, 5)}),
+				plannertest.GenMeta(0, 5, []int{0}, []bloomshipper.BlockRef{plannertest.GenBlockRef(0, 5)}),
 			},
 			newMetas: []bloomshipper.Meta{
-				testutils.GenMeta(0, 10, []int{1}, []bloomshipper.BlockRef{testutils.GenBlockRef(0, 10)}),
+				plannertest.GenMeta(0, 10, []int{1}, []bloomshipper.BlockRef{plannertest.GenBlockRef(0, 10)}),
 			},
 			expectedUpToDateMetas: []bloomshipper.Meta{
-				testutils.GenMeta(0, 10, []int{1}, []bloomshipper.BlockRef{testutils.GenBlockRef(0, 10)}),
+				plannertest.GenMeta(0, 10, []int{1}, []bloomshipper.BlockRef{plannertest.GenBlockRef(0, 10)}),
 			},
 		},
 		{
 			name: "new metas reuse blocks from outdated meta",
 			originalMetas: []bloomshipper.Meta{
-				testutils.GenMeta(0, 10, []int{0}, []bloomshipper.BlockRef{ // Outdated
-					testutils.GenBlockRef(0, 5),  // Reuse
-					testutils.GenBlockRef(5, 10), // Delete
+				plannertest.GenMeta(0, 10, []int{0}, []bloomshipper.BlockRef{ // Outdated
+					plannertest.GenBlockRef(0, 5),  // Reuse
+					plannertest.GenBlockRef(5, 10), // Delete
 				}),
-				testutils.GenMeta(10, 20, []int{0}, []bloomshipper.BlockRef{ // Outdated
-					testutils.GenBlockRef(10, 20), // Reuse
+				plannertest.GenMeta(10, 20, []int{0}, []bloomshipper.BlockRef{ // Outdated
+					plannertest.GenBlockRef(10, 20), // Reuse
 				}),
-				testutils.GenMeta(20, 30, []int{0}, []bloomshipper.BlockRef{ // Up to date
-					testutils.GenBlockRef(20, 30),
+				plannertest.GenMeta(20, 30, []int{0}, []bloomshipper.BlockRef{ // Up to date
+					plannertest.GenBlockRef(20, 30),
 				}),
 			},
 			newMetas: []bloomshipper.Meta{
-				testutils.GenMeta(0, 5, []int{1}, []bloomshipper.BlockRef{
-					testutils.GenBlockRef(0, 5), // Reused block
+				plannertest.GenMeta(0, 5, []int{1}, []bloomshipper.BlockRef{
+					plannertest.GenBlockRef(0, 5), // Reused block
 				}),
-				testutils.GenMeta(5, 20, []int{1}, []bloomshipper.BlockRef{
-					testutils.GenBlockRef(5, 7),   // New block
-					testutils.GenBlockRef(7, 10),  // New block
-					testutils.GenBlockRef(10, 20), // Reused block
+				plannertest.GenMeta(5, 20, []int{1}, []bloomshipper.BlockRef{
+					plannertest.GenBlockRef(5, 7),   // New block
+					plannertest.GenBlockRef(7, 10),  // New block
+					plannertest.GenBlockRef(10, 20), // Reused block
 				}),
 			},
 			expectedUpToDateMetas: []bloomshipper.Meta{
-				testutils.GenMeta(0, 5, []int{1}, []bloomshipper.BlockRef{
-					testutils.GenBlockRef(0, 5),
+				plannertest.GenMeta(0, 5, []int{1}, []bloomshipper.BlockRef{
+					plannertest.GenBlockRef(0, 5),
 				}),
-				testutils.GenMeta(5, 20, []int{1}, []bloomshipper.BlockRef{
-					testutils.GenBlockRef(5, 7),
-					testutils.GenBlockRef(7, 10),
-					testutils.GenBlockRef(10, 20),
+				plannertest.GenMeta(5, 20, []int{1}, []bloomshipper.BlockRef{
+					plannertest.GenBlockRef(5, 7),
+					plannertest.GenBlockRef(7, 10),
+					plannertest.GenBlockRef(10, 20),
 				}),
-				testutils.GenMeta(20, 30, []int{0}, []bloomshipper.BlockRef{
-					testutils.GenBlockRef(20, 30),
+				plannertest.GenMeta(20, 30, []int{0}, []bloomshipper.BlockRef{
+					plannertest.GenBlockRef(20, 30),
 				}),
 			},
 		},
@@ -548,13 +548,13 @@ func Test_deleteOutdatedMetas(t *testing.T) {
 			}
 			planner := createPlanner(t, cfg, &fakeLimits{}, logger)
 
-			bloomClient, err := planner.bloomStore.Client(testutils.TestDay.ModelTime())
+			bloomClient, err := planner.bloomStore.Client(plannertest.TestDay.ModelTime())
 			require.NoError(t, err)
 
 			// Create original/new metas and blocks
-			err = testutils.PutMetas(bloomClient, tc.originalMetas)
+			err = plannertest.PutMetas(bloomClient, tc.originalMetas)
 			require.NoError(t, err)
-			err = testutils.PutMetas(bloomClient, tc.newMetas)
+			err = plannertest.PutMetas(bloomClient, tc.newMetas)
 			require.NoError(t, err)
 
 			// Get all metas
@@ -562,7 +562,7 @@ func Test_deleteOutdatedMetas(t *testing.T) {
 				context.Background(),
 				bloomshipper.MetaSearchParams{
 					TenantID: "fakeTenant",
-					Interval: bloomshipper.NewInterval(testutils.TestTable.Bounds()),
+					Interval: bloomshipper.NewInterval(plannertest.TestTable.Bounds()),
 					Keyspace: v1.NewBounds(0, math.MaxUint64),
 				},
 			)
@@ -570,7 +570,7 @@ func Test_deleteOutdatedMetas(t *testing.T) {
 			removeLocFromMetasSources(metas)
 			require.ElementsMatch(t, append(tc.originalMetas, tc.newMetas...), metas)
 
-			upToDate, err := planner.deleteOutdatedMetasAndBlocks(context.Background(), testutils.TestTable, "fakeTenant", tc.newMetas, tc.originalMetas, phasePlanning)
+			upToDate, err := planner.deleteOutdatedMetasAndBlocks(context.Background(), plannertest.TestTable, "fakeTenant", tc.newMetas, tc.originalMetas, phasePlanning)
 			require.NoError(t, err)
 			require.ElementsMatch(t, tc.expectedUpToDateMetas, upToDate)
 
@@ -579,7 +579,7 @@ func Test_deleteOutdatedMetas(t *testing.T) {
 				context.Background(),
 				bloomshipper.MetaSearchParams{
 					TenantID: "fakeTenant",
-					Interval: bloomshipper.NewInterval(testutils.TestTable.Bounds()),
+					Interval: bloomshipper.NewInterval(plannertest.TestTable.Bounds()),
 					Keyspace: v1.NewBounds(0, math.MaxUint64),
 				},
 			)
@@ -717,7 +717,7 @@ func createTasks(n int, resultsCh chan *protos.TaskResult) []*QueueTask {
 	for i := 0; i < n; i++ {
 		task := NewQueueTask(
 			context.Background(), time.Now(),
-			protos.NewTask(config.NewDayTable(testutils.TestDay, "fake"), "fakeTenant", v1.NewBounds(0, 10), testutils.TsdbID(1), nil),
+			protos.NewTask(config.NewDayTable(plannertest.TestDay, "fake"), "fakeTenant", v1.NewBounds(0, 10), plannertest.TsdbID(1), nil),
 			resultsCh,
 		)
 		tasks = append(tasks, task)
