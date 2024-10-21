@@ -23,10 +23,10 @@ If possible try to stay current and do sequential updates. If you want to skip v
 Using docker you can check changes between 2 versions of Loki with a command like this:
 
 ```
-export OLD_LOKI=2.3.0
-export NEW_LOKI=2.4.1
-export CONFIG_FILE=loki-local-config.yaml
-diff --color=always --side-by-side <(docker run --rm -t -v "${PWD}":/config grafana/loki:${OLD_LOKI} -config.file=/config/${CONFIG_FILE} -print-config-stderr 2>&1 | sed '/Starting Loki/q' | tr -d '\r') <(docker run --rm -t -v "${PWD}":/config grafana/loki:${NEW_LOKI} -config.file=/config/${CONFIG_FILE} -print-config-stderr 2>&1 | sed '/Starting Loki/q' | tr -d '\r') | less -R
+export OLD_LOKI=2.9.4
+export NEW_LOKI=3.0.0
+export CONFIG_FILE=local-config.yaml
+diff --color=always --side-by-side <(docker run --rm -t -v "${PWD}":/config grafana/loki:${OLD_LOKI} -config.file=/etc/loki/${CONFIG_FILE} -print-config-stderr 2>&1 | sed '/Starting Loki/q' | tr -d '\r') <(docker run --rm -t -v "${PWD}":/config grafana/loki:${NEW_LOKI} -config.file=/etc/loki/${CONFIG_FILE} -print-config-stderr 2>&1 | sed '/Starting Loki/q' | tr -d '\r') | less -R
 ```
 
 The `tr -d '\r'` is likely not necessary for most people, seems like WSL2 was sneaking in some windows newline characters...
@@ -36,7 +36,45 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+### HTTP API
+
+The API endpoint for instant queries `/api/v1/query` now returns a HTTP status 400 (Bad Request) when the provided `query`
+parameter contains a log selector query instead of returning inconsistent results. Please use the range query endpoint
+`/api/v1/query_range` (`Range` type in Grafana Explore) instead.
+
+### Configuration
+
 Loki changes the default value of `-ruler.alertmanager-use-v2` from `false` to `true`. Alertmanager APIv1 was deprecated in Alertmanager 0.16.0 and is removed as of 0.27.0.
+
+### Experimental Bloom Filters
+
+{{% admonition type="note" %}}
+Experimental features are subject to rapid change and/or removal, which can introduce breaking changes even between minor version.
+They also don't follow the deprecation lifecycle of regular features.
+{{% /admonition %}}
+
+The bloom compactor component, which builds bloom filter blocks for query acceleration, has been removed in favor of two new components: bloom planner and bloom builder.
+Please consult the [Query Acceleration with Blooms](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/query-acceleration-blooms/) docs for more information.
+
+CLI arguments (and their YAML counterparts) of per-tenant settings that have been removed as part of this change:
+
+* `-bloom-compactor.enable-compaction`
+* `-bloom-compactor.shard-size`
+* `-bloom-compactor.shard-size`
+* `-bloom-compactor.shard-size`
+
+CLI arguments of per-tenant settings that have been moved to a different prefix as part of this change:
+
+* `-bloom-compactor.max-page-size` changed to `-bloom-builder.max-page-size`
+* `-bloom-compactor.max-block-size` changed to `-bloom-builder.max-block-size`
+* `-bloom-compactor.ngram-length` changed to `-bloom-builder.ngram-length`
+* `-bloom-compactor.ngram-skip` changed to `-bloom-builder.ngram-skip`
+* `-bloom-compactor.false-positive-rate` changed to `-bloom-builder.false-positive-rate`
+* `-bloom-compactor.block-encoding` changed to `-bloom-builder.block-encoding`
+
+Their YAML counterparts in the `limits_config` block are kept identical.
+
+All other CLI arguments (and their YAML counterparts) prefixed with `-bloom-compactor.` have been removed.
 
 ## 3.0.0
 
@@ -61,7 +99,7 @@ If you would like to see if your existing configuration will work with Loki 3.0:
 1. In an empty directory on your computer, copy you configuration into a file named `loki-config.yaml`.
 1. Run this command from that directory: 
 ```bash
-docker run --rm -t -v "${PWD}":/config grafana/loki:3.0.0 -config.file=/config/loki-config.yaml -verify-config=true`
+docker run --rm -t -v "${PWD}":/config grafana/loki:3.0.0 -config.file=/config/loki-config.yaml -verify-config=true
 ```
 
 {{< admonition type="note" >}}
@@ -496,7 +534,7 @@ only in 2.8 and forward releases does the zero value disable retention.
 
 The metrics.go log line emitted for every query had an entry called `subqueries` which was intended to represent the amount a query was parallelized on execution.
 
-In the current form it only displayed the count of subqueries generated with Loki's split by time logic and did not include counts for shards.
+In the current form it only displayed the count of subqueries generated with the Loki split by time logic and did not include counts for shards.
 
 There wasn't a clean way to update subqueries to include sharding information and there is value in knowing the difference between the subqueries generated when we split by time vs sharding factors, especially now that TSDB can do dynamic sharding.
 

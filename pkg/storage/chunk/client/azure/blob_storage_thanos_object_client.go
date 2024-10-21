@@ -21,12 +21,12 @@ type BlobStorageThanosObjectClient struct {
 }
 
 // NewBlobStorageObjectClient makes a new BlobStorage-backed ObjectClient.
-func NewBlobStorageThanosObjectClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, hedgingCfg hedging.Config, reg prometheus.Registerer) (*BlobStorageThanosObjectClient, error) {
-	client, err := newBlobStorageThanosObjClient(ctx, cfg, component, logger, false, hedgingCfg, prometheus.WrapRegistererWith(prometheus.Labels{"hedging": "false"}, reg))
+func NewBlobStorageThanosObjectClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, hedgingCfg hedging.Config) (*BlobStorageThanosObjectClient, error) {
+	client, err := newBlobStorageThanosObjClient(ctx, cfg, component, logger, false, hedgingCfg)
 	if err != nil {
 		return nil, err
 	}
-	hedgedClient, err := newBlobStorageThanosObjClient(ctx, cfg, component, logger, true, hedgingCfg, prometheus.WrapRegistererWith(prometheus.Labels{"hedging": "true"}, reg))
+	hedgedClient, err := newBlobStorageThanosObjClient(ctx, cfg, component, logger, true, hedgingCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -36,9 +36,9 @@ func NewBlobStorageThanosObjectClient(ctx context.Context, cfg bucket.Config, co
 	}, nil
 }
 
-func newBlobStorageThanosObjClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, hedging bool, hedgingCfg hedging.Config, reg prometheus.Registerer) (objstore.Bucket, error) {
+func newBlobStorageThanosObjClient(ctx context.Context, cfg bucket.Config, component string, logger log.Logger, hedging bool, hedgingCfg hedging.Config) (objstore.Bucket, error) {
 	if hedging {
-		hedgedTrasport, err := hedgingCfg.RoundTripperWithRegisterer(nil, reg)
+		hedgedTrasport, err := hedgingCfg.RoundTripperWithRegisterer(nil, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
 		if err != nil {
 			return nil, err
 		}
@@ -46,7 +46,7 @@ func newBlobStorageThanosObjClient(ctx context.Context, cfg bucket.Config, compo
 		cfg.Azure.HTTP.Transport = hedgedTrasport
 	}
 
-	return bucket.NewClient(ctx, cfg, component, logger, reg)
+	return bucket.NewClient(ctx, bucket.Azure, cfg, component, logger)
 }
 
 // Stop fulfills the chunk.ObjectClient interface

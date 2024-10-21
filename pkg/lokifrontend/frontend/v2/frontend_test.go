@@ -186,7 +186,7 @@ func TestFrontendRetryEnqueue(t *testing.T) {
 func TestFrontendEnqueueFailure(t *testing.T) {
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
-	f, _ := setupFrontend(t, cfg, func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
+	f, _ := setupFrontend(t, cfg, func(_ *Frontend, _ *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
 		return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.SHUTTING_DOWN}
 	})
 

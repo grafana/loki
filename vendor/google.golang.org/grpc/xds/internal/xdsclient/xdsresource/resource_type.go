@@ -25,11 +25,8 @@
 package xdsresource
 
 import (
-	"fmt"
-
-	"google.golang.org/grpc/internal"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	xdsinternal "google.golang.org/grpc/xds/internal"
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version"
 	"google.golang.org/protobuf/types/known/anypb"
 )
@@ -40,8 +37,6 @@ func init() {
 	xdsinternal.ResourceTypeMapForTesting[version.V3RouteConfigURL] = routeConfigType
 	xdsinternal.ResourceTypeMapForTesting[version.V3ClusterURL] = clusterType
 	xdsinternal.ResourceTypeMapForTesting[version.V3EndpointsURL] = endpointsType
-
-	internal.TriggerXDSResourceNameNotFoundForTesting = triggerResourceNotFoundForTesting
 }
 
 // Producer contains a single method to discover resource configuration from a
@@ -57,13 +52,29 @@ type Producer interface {
 	WatchResource(rType Type, resourceName string, watcher ResourceWatcher) (cancel func())
 }
 
+// DoneNotifier wraps the OnDone callback to be invoked once a resource update
+// is processed by the watcher.
+type DoneNotifier interface {
+	OnDone()
+}
+
+// NopDoneNotifier is a concrete implementation of the DoneNotifier interface,
+// that serves as a convenient placeholder when the callback is not needed.
+type NopDoneNotifier struct{}
+
+// OnDone implements the DoneNotifier interface.
+func (NopDoneNotifier) OnDone() {}
+
 // ResourceWatcher wraps the callbacks to be invoked for different events
 // corresponding to the resource being watched.
 type ResourceWatcher interface {
 	// OnUpdate is invoked to report an update for the resource being watched.
 	// The ResourceData parameter needs to be type asserted to the appropriate
 	// type for the resource being watched.
-	OnUpdate(ResourceData)
+	//
+	// The watcher is expected to call Done() on the DoneNotifier once it has
+	// processed the update.
+	OnUpdate(ResourceData, DoneNotifier)
 
 	// OnError is invoked under different error conditions including but not
 	// limited to the following:
@@ -73,11 +84,11 @@ type ResourceWatcher interface {
 	//	- resource validation error
 	//	- ADS stream failure
 	//	- connection failure
-	OnError(error)
+	OnError(error, DoneNotifier)
 
 	// OnResourceDoesNotExist is invoked for a specific error condition where
 	// the requested resource is not found on the xDS management server.
-	OnResourceDoesNotExist()
+	OnResourceDoesNotExist(DoneNotifier)
 }
 
 // TODO: Once the implementation is complete, rename this interface as
@@ -133,9 +144,13 @@ type ResourceData interface {
 // DecodeOptions wraps the options required by ResourceType implementation for
 // decoding configuration received from the xDS management server.
 type DecodeOptions struct {
-	// BootstrapConfig contains the bootstrap configuration passed to the
-	// top-level xdsClient. This contains useful data for resource validation.
+	// BootstrapConfig contains the complete bootstrap configuration passed to
+	// the xDS client. This contains useful data for resource validation.
 	BootstrapConfig *bootstrap.Config
+	// ServerConfig contains the server config (from the above bootstrap
+	// configuration) of the xDS server from which the current resource, for
+	// which Decode() is being invoked, was received.
+	ServerConfig *bootstrap.ServerConfig
 }
 
 // DecodeResult is the result of a decode operation.
@@ -166,21 +181,4 @@ func (r resourceTypeState) TypeName() string {
 
 func (r resourceTypeState) AllResourcesRequiredInSotW() bool {
 	return r.allResourcesRequiredInSotW
-}
-
-func triggerResourceNotFoundForTesting(cb func(Type, string) error, typeName, resourceName string) error {
-	var typ Type
-	switch typeName {
-	case ListenerResourceTypeName:
-		typ = listenerType
-	case RouteConfigTypeName:
-		typ = routeConfigType
-	case ClusterResourceTypeName:
-		typ = clusterType
-	case EndpointsResourceTypeName:
-		typ = endpointsType
-	default:
-		return fmt.Errorf("unknown type name %q", typeName)
-	}
-	return cb(typ, resourceName)
 }

@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -53,7 +52,7 @@ func TestMigrateTables(t *testing.T) {
 	}
 	clientMetrics := storage.NewClientMetrics()
 
-	objClient, err := storage.NewObjectClient("table-migration-tool", pcfg.ObjectType, storageCfg, clientMetrics, prometheus.DefaultRegisterer)
+	objClient, err := storage.NewObjectClient(pcfg.ObjectType, "test", storageCfg, clientMetrics)
 	require.NoError(t, err)
 	indexStorageClient := shipperstorage.NewIndexStorageClient(objClient, pcfg.IndexTables.PathPrefix)
 

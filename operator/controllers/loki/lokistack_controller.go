@@ -221,9 +221,11 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 	}
 
 	if r.FeatureGates.OpenShift.Enabled {
-		bld = bld.
-			Owns(&routev1.Route{}, updateOrDeleteOnlyPred).
-			Owns(&cloudcredentialv1.CredentialsRequest{}, updateOrDeleteOnlyPred)
+		bld = bld.Owns(&routev1.Route{}, updateOrDeleteOnlyPred)
+
+		if r.FeatureGates.OpenShift.TokenCCOAuthEnv {
+			bld = bld.Owns(&cloudcredentialv1.CredentialsRequest{}, updateOrDeleteOnlyPred)
+		}
 
 		if r.FeatureGates.OpenShift.ClusterTLSPolicy {
 			bld = bld.Watches(&openshiftconfigv1.APIServer{}, r.enqueueAllLokiStacksHandler(), updateOrDeleteOnlyPred)

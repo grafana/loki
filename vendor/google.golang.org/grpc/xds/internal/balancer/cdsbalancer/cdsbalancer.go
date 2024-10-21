@@ -180,7 +180,7 @@ type cdsBalancer struct {
 
 // handleSecurityConfig processes the security configuration received from the
 // management server, creates appropriate certificate provider plugins, and
-// updates the HandhakeInfo which is added as an address attribute in
+// updates the HandshakeInfo which is added as an address attribute in
 // NewSubConn() calls.
 //
 // Only executed in the context of a serializer callback.
@@ -207,7 +207,7 @@ func (b *cdsBalancer) handleSecurityConfig(config *xdsresource.SecurityConfig) e
 	}
 
 	// A root provider is required whether we are using TLS or mTLS.
-	cpc := b.xdsClient.BootstrapConfig().CertProviderConfigs
+	cpc := b.xdsClient.BootstrapConfig().CertProviderConfigs()
 	rootProvider, err := buildProvider(cpc, config.RootInstanceName, config.RootCertName, false, true)
 	if err != nil {
 		return err
@@ -309,8 +309,8 @@ func (b *cdsBalancer) UpdateClientConnState(state balancer.ClientConnState) erro
 	b.lbCfg = lbCfg
 
 	// Handle the update in a blocking fashion.
-	done := make(chan struct{})
-	ok = b.serializer.Schedule(func(context.Context) {
+	errCh := make(chan error, 1)
+	callback := func(context.Context) {
 		// A config update with a changed top-level cluster name means that none
 		// of our old watchers make any sense any more.
 		b.closeAllWatchers()
@@ -319,20 +319,20 @@ func (b *cdsBalancer) UpdateClientConnState(state balancer.ClientConnState) erro
 		// could end up creating more watchers if turns out to be an aggregate
 		// cluster.
 		b.createAndAddWatcherForCluster(lbCfg.ClusterName)
-		close(done)
-	})
-	if !ok {
+		errCh <- nil
+	}
+	onFailure := func() {
 		// The call to Schedule returns false *only* if the serializer has been
 		// closed, which happens only when we receive an update after close.
-		return errBalancerClosed
+		errCh <- errBalancerClosed
 	}
-	<-done
-	return nil
+	b.serializer.ScheduleOr(callback, onFailure)
+	return <-errCh
 }
 
 // ResolverError handles errors reported by the xdsResolver.
 func (b *cdsBalancer) ResolverError(err error) {
-	b.serializer.Schedule(func(context.Context) {
+	b.serializer.TrySchedule(func(context.Context) {
 		// Resource not found error is reported by the resolver when the
 		// top-level cluster resource is removed by the management server.
 		if xdsresource.ErrType(err) == xdsresource.ErrorTypeResourceNotFound {
@@ -351,7 +351,7 @@ func (b *cdsBalancer) UpdateSubConnState(sc balancer.SubConn, state balancer.Sub
 	b.logger.Errorf("UpdateSubConnState(%v, %+v) called unexpectedly", sc, state)
 }
 
-// Closes all registered cluster wathers and removes them from the internal map.
+// Closes all registered cluster watchers and removes them from the internal map.
 //
 // Only executed in the context of a serializer callback.
 func (b *cdsBalancer) closeAllWatchers() {
@@ -364,7 +364,7 @@ func (b *cdsBalancer) closeAllWatchers() {
 // Close cancels the CDS watch, closes the child policy and closes the
 // cdsBalancer.
 func (b *cdsBalancer) Close() {
-	b.serializer.Schedule(func(ctx context.Context) {
+	b.serializer.TrySchedule(func(ctx context.Context) {
 		b.closeAllWatchers()
 
 		if b.childLB != nil {
@@ -384,7 +384,7 @@ func (b *cdsBalancer) Close() {
 }
 
 func (b *cdsBalancer) ExitIdle() {
-	b.serializer.Schedule(func(context.Context) {
+	b.serializer.TrySchedule(func(context.Context) {
 		if b.childLB == nil {
 			b.logger.Warningf("Received ExitIdle with no child policy")
 			return
@@ -609,21 +609,7 @@ func (b *cdsBalancer) generateDMsForCluster(name string, depth int, dms []cluste
 			Cluster:               cluster.ClusterName,
 			EDSServiceName:        cluster.EDSServiceName,
 			MaxConcurrentRequests: cluster.MaxRequests,
-		}
-		if cluster.LRSServerConfig == xdsresource.ClusterLRSServerSelf {
-			bootstrapConfig := b.xdsClient.BootstrapConfig()
-			parsedName := xdsresource.ParseName(cluster.ClusterName)
-			if parsedName.Scheme == xdsresource.FederationScheme {
-				// Is a federation resource name, find the corresponding
-				// authority server config.
-				if cfg, ok := bootstrapConfig.Authorities[parsedName.Authority]; ok {
-					dm.LoadReportingServer = cfg.XDSServer
-				}
-			} else {
-				// Not a federation resource name, use the default
-				// authority.
-				dm.LoadReportingServer = bootstrapConfig.XDSServer
-			}
+			LoadReportingServer:   cluster.LRSServerConfig,
 		}
 	case xdsresource.ClusterTypeLogicalDNS:
 		dm = clusterresolver.DiscoveryMechanism{
@@ -644,6 +630,8 @@ func (b *cdsBalancer) generateDMsForCluster(name string, depth int, dms []cluste
 		odJSON = json.RawMessage(`{}`)
 	}
 	dm.OutlierDetection = odJSON
+
+	dm.TelemetryLabels = cluster.TelemetryLabels
 
 	return append(dms, dm), true, nil
 }

@@ -10,7 +10,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/prometheus/client_golang/prometheus"
 	progressbar "github.com/schollz/progressbar/v3"
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
@@ -18,7 +17,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/storage"
-	loki_storage "github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	indexshipper_storage "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	shipperutil "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
@@ -54,8 +52,7 @@ func Run(ctx context.Context, cloudIndexPath, table string, cfg Config, logger l
 
 func GetObjectClient(cfg Config) (client.ObjectClient, error) {
 	periodCfg := cfg.SchemaConfig.Configs[len(cfg.SchemaConfig.Configs)-1] // only check the last period.
-
-	objClient, err := loki_storage.NewObjectClient("audit", periodCfg.ObjectType, cfg.StorageConfig, storage.NewClientMetrics(), prometheus.DefaultRegisterer)
+	objClient, err := storage.NewObjectClient(periodCfg.ObjectType, "tool-audit", cfg.StorageConfig, storage.NewClientMetrics())
 	if err != nil {
 		return nil, fmt.Errorf("couldn't create object client: %w", err)
 	}

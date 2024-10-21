@@ -33,4 +33,9 @@ type Limits interface {
 	MaxStructuredMetadataSize(userID string) int
 	MaxStructuredMetadataCount(userID string) int
 	OTLPConfig(userID string) push.OTLPConfig
+
+	BlockIngestionUntil(userID string) time.Time
+	BlockIngestionStatusCode(userID string) int
+
+	IngestionPartitionsTenantShardSize(userID string) int
 }

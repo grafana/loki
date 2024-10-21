@@ -88,10 +88,9 @@ func NewScalableBloomFilter(hint uint, fpRate, r float64) *ScalableBloomFilter {
 	return s
 }
 
-// NewDefaultScalableBloomFilter creates a new Scalable Bloom Filter with the
-// specified target false-positive rate and an optimal tightening ratio.
-func NewDefaultScalableBloomFilter(fpRate float64) *ScalableBloomFilter {
-	return NewScalableBloomFilter(10000, fpRate, 0.8)
+// NewDefaultScalableBloomFilter creates a new Scalable Bloom Filter.
+func NewDefaultScalableBloomFilter() *ScalableBloomFilter {
+	return NewScalableBloomFilter(10e3, 0.1, 0.8)
 }
 
 // Capacity returns the current Scalable Bloom Filter capacity, which is the
@@ -108,6 +107,17 @@ func (s *ScalableBloomFilter) Capacity() uint {
 // Returns the highest value (the last filter)
 func (s *ScalableBloomFilter) K() uint {
 	return s.filters[len(s.filters)-1].K()
+}
+
+func (s *ScalableBloomFilter) Count() (ct int) {
+	for _, filter := range s.filters {
+		ct += int(filter.Count())
+	}
+	return
+}
+
+func (s *ScalableBloomFilter) IsEmpty() bool {
+	return s.Count() == 0
 }
 
 // FillRatio returns the average ratio of set bits across every filter.

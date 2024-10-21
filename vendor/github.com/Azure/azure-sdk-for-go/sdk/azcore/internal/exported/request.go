@@ -7,6 +7,7 @@
 package exported
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -51,20 +52,56 @@ type Request struct {
 	values   opValues
 }
 
-type opValues map[reflect.Type]interface{}
+type opValues map[reflect.Type]any
 
 // Set adds/changes a value
-func (ov opValues) set(value interface{}) {
+func (ov opValues) set(value any) {
 	ov[reflect.TypeOf(value)] = value
 }
 
 // Get looks for a value set by SetValue first
-func (ov opValues) get(value interface{}) bool {
+func (ov opValues) get(value any) bool {
 	v, ok := ov[reflect.ValueOf(value).Elem().Type()]
 	if ok {
 		reflect.ValueOf(value).Elem().Set(reflect.ValueOf(v))
 	}
 	return ok
+}
+
+// NewRequestFromRequest creates a new policy.Request with an existing *http.Request
+// Exported as runtime.NewRequestFromRequest().
+func NewRequestFromRequest(req *http.Request) (*Request, error) {
+	policyReq := &Request{req: req}
+
+	if req.Body != nil {
+		// we can avoid a body copy here if the underlying stream is already a
+		// ReadSeekCloser.
+		readSeekCloser, isReadSeekCloser := req.Body.(io.ReadSeekCloser)
+
+		if !isReadSeekCloser {
+			// since this is an already populated http.Request we want to copy
+			// over its body, if it has one.
+			bodyBytes, err := io.ReadAll(req.Body)
+
+			if err != nil {
+				return nil, err
+			}
+
+			if err := req.Body.Close(); err != nil {
+				return nil, err
+			}
+
+			readSeekCloser = NopCloser(bytes.NewReader(bodyBytes))
+		}
+
+		// SetBody also takes care of updating the http.Request's body
+		// as well, so they should stay in-sync from this point.
+		if err := policyReq.SetBody(readSeekCloser, req.Header.Get("Content-Type")); err != nil {
+			return nil, err
+		}
+	}
+
+	return policyReq, nil
 }
 
 // NewRequest creates a new Request with the specified input.
@@ -108,7 +145,7 @@ func (req *Request) Next() (*http.Response, error) {
 }
 
 // SetOperationValue adds/changes a mutable key/value associated with a single operation.
-func (req *Request) SetOperationValue(value interface{}) {
+func (req *Request) SetOperationValue(value any) {
 	if req.values == nil {
 		req.values = opValues{}
 	}
@@ -116,7 +153,7 @@ func (req *Request) SetOperationValue(value interface{}) {
 }
 
 // OperationValue looks for a value set by SetOperationValue().
-func (req *Request) OperationValue(value interface{}) bool {
+func (req *Request) OperationValue(value any) bool {
 	if req.values == nil {
 		return false
 	}

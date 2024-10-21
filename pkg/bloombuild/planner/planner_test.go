@@ -1,6 +1,7 @@
 package planner
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -20,6 +21,8 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
+	"github.com/grafana/loki/v3/pkg/compression"
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
@@ -58,100 +61,6 @@ func genMeta(min, max model.Fingerprint, sources []int, blocks []bloomshipper.Bl
 	return m
 }
 
-func Test_gapsBetweenTSDBsAndMetas(t *testing.T) {
-
-	for _, tc := range []struct {
-		desc           string
-		err            bool
-		exp            []tsdbGaps
-		ownershipRange v1.FingerprintBounds
-		tsdbs          []tsdb.SingleTenantTSDBIdentifier
-		metas          []bloomshipper.Meta
-	}{
-		{
-			desc:           "non-overlapping tsdbs and metas",
-			err:            true,
-			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.SingleTenantTSDBIdentifier{tsdbID(0)},
-			metas: []bloomshipper.Meta{
-				genMeta(11, 20, []int{0}, nil),
-			},
-		},
-		{
-			desc:           "single tsdb",
-			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.SingleTenantTSDBIdentifier{tsdbID(0)},
-			metas: []bloomshipper.Meta{
-				genMeta(4, 8, []int{0}, nil),
-			},
-			exp: []tsdbGaps{
-				{
-					tsdb: tsdbID(0),
-					gaps: []v1.FingerprintBounds{
-						v1.NewBounds(0, 3),
-						v1.NewBounds(9, 10),
-					},
-				},
-			},
-		},
-		{
-			desc:           "multiple tsdbs with separate blocks",
-			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.SingleTenantTSDBIdentifier{tsdbID(0), tsdbID(1)},
-			metas: []bloomshipper.Meta{
-				genMeta(0, 5, []int{0}, nil),
-				genMeta(6, 10, []int{1}, nil),
-			},
-			exp: []tsdbGaps{
-				{
-					tsdb: tsdbID(0),
-					gaps: []v1.FingerprintBounds{
-						v1.NewBounds(6, 10),
-					},
-				},
-				{
-					tsdb: tsdbID(1),
-					gaps: []v1.FingerprintBounds{
-						v1.NewBounds(0, 5),
-					},
-				},
-			},
-		},
-		{
-			desc:           "multiple tsdbs with the same blocks",
-			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.SingleTenantTSDBIdentifier{tsdbID(0), tsdbID(1)},
-			metas: []bloomshipper.Meta{
-				genMeta(0, 5, []int{0, 1}, nil),
-				genMeta(6, 8, []int{1}, nil),
-			},
-			exp: []tsdbGaps{
-				{
-					tsdb: tsdbID(0),
-					gaps: []v1.FingerprintBounds{
-						v1.NewBounds(6, 10),
-					},
-				},
-				{
-					tsdb: tsdbID(1),
-					gaps: []v1.FingerprintBounds{
-						v1.NewBounds(9, 10),
-					},
-				},
-			},
-		},
-	} {
-		t.Run(tc.desc, func(t *testing.T) {
-			gaps, err := gapsBetweenTSDBsAndMetas(tc.ownershipRange, tc.tsdbs, tc.metas)
-			if tc.err {
-				require.Error(t, err)
-				return
-			}
-			require.Equal(t, tc.exp, gaps)
-		})
-	}
-}
-
 func genBlockRef(min, max model.Fingerprint) bloomshipper.BlockRef {
 	startTS, endTS := testDay.Bounds()
 	return bloomshipper.BlockRef{
@@ -166,195 +75,53 @@ func genBlockRef(min, max model.Fingerprint) bloomshipper.BlockRef {
 	}
 }
 
-func genBlock(ref bloomshipper.BlockRef) bloomshipper.Block {
+func genBlock(ref bloomshipper.BlockRef) (bloomshipper.Block, error) {
+	indexBuf := bytes.NewBuffer(nil)
+	bloomsBuf := bytes.NewBuffer(nil)
+	writer := v1.NewMemoryBlockWriter(indexBuf, bloomsBuf)
+	reader := v1.NewByteReader(indexBuf, bloomsBuf)
+
+	blockOpts := v1.NewBlockOptions(compression.None, 0, 0)
+
+	builder, err := v1.NewBlockBuilder(blockOpts, writer)
+	if err != nil {
+		return bloomshipper.Block{}, err
+	}
+
+	if _, err = builder.BuildFrom(iter.NewEmptyIter[v1.SeriesWithBlooms]()); err != nil {
+		return bloomshipper.Block{}, err
+	}
+
+	block := v1.NewBlock(reader, v1.NewMetrics(nil))
+
+	buf := bytes.NewBuffer(nil)
+	if err := v1.TarCompress(ref.Codec, buf, block.Reader()); err != nil {
+		return bloomshipper.Block{}, err
+	}
+
+	tarReader := bytes.NewReader(buf.Bytes())
+
 	return bloomshipper.Block{
 		BlockRef: ref,
-		Data:     &DummyReadSeekCloser{},
-	}
+		Data:     bloomshipper.ClosableReadSeekerAdapter{ReadSeeker: tarReader},
+	}, nil
 }
 
-func Test_blockPlansForGaps(t *testing.T) {
-	for _, tc := range []struct {
-		desc           string
-		ownershipRange v1.FingerprintBounds
-		tsdbs          []tsdb.SingleTenantTSDBIdentifier
-		metas          []bloomshipper.Meta
-		err            bool
-		exp            []blockPlan
-	}{
-		{
-			desc:           "single overlapping meta+no overlapping block",
-			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.SingleTenantTSDBIdentifier{tsdbID(0)},
-			metas: []bloomshipper.Meta{
-				genMeta(5, 20, []int{1}, []bloomshipper.BlockRef{genBlockRef(11, 20)}),
-			},
-			exp: []blockPlan{
+func genSeries(bounds v1.FingerprintBounds) []*v1.Series {
+	series := make([]*v1.Series, 0, int(bounds.Max-bounds.Min+1))
+	for i := bounds.Min; i <= bounds.Max; i++ {
+		series = append(series, &v1.Series{
+			Fingerprint: i,
+			Chunks: v1.ChunkRefs{
 				{
-					tsdb: tsdbID(0),
-					gaps: []protos.GapWithBlocks{
-						{
-							Bounds: v1.NewBounds(0, 10),
-						},
-					},
+					From:     0,
+					Through:  1,
+					Checksum: 1,
 				},
 			},
-		},
-		{
-			desc:           "single overlapping meta+one overlapping block",
-			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.SingleTenantTSDBIdentifier{tsdbID(0)},
-			metas: []bloomshipper.Meta{
-				genMeta(5, 20, []int{1}, []bloomshipper.BlockRef{genBlockRef(9, 20)}),
-			},
-			exp: []blockPlan{
-				{
-					tsdb: tsdbID(0),
-					gaps: []protos.GapWithBlocks{
-						{
-							Bounds: v1.NewBounds(0, 10),
-							Blocks: []bloomshipper.BlockRef{genBlockRef(9, 20)},
-						},
-					},
-				},
-			},
-		},
-		{
-			// the range which needs to be generated doesn't overlap with existing blocks
-			// from other tsdb versions since theres an up to date tsdb version block,
-			// but we can trim the range needing generation
-			desc:           "trims up to date area",
-			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.SingleTenantTSDBIdentifier{tsdbID(0)},
-			metas: []bloomshipper.Meta{
-				genMeta(9, 20, []int{0}, []bloomshipper.BlockRef{genBlockRef(9, 20)}), // block for same tsdb
-				genMeta(9, 20, []int{1}, []bloomshipper.BlockRef{genBlockRef(9, 20)}), // block for different tsdb
-			},
-			exp: []blockPlan{
-				{
-					tsdb: tsdbID(0),
-					gaps: []protos.GapWithBlocks{
-						{
-							Bounds: v1.NewBounds(0, 8),
-						},
-					},
-				},
-			},
-		},
-		{
-			desc:           "uses old block for overlapping range",
-			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.SingleTenantTSDBIdentifier{tsdbID(0)},
-			metas: []bloomshipper.Meta{
-				genMeta(9, 20, []int{0}, []bloomshipper.BlockRef{genBlockRef(9, 20)}), // block for same tsdb
-				genMeta(5, 20, []int{1}, []bloomshipper.BlockRef{genBlockRef(5, 20)}), // block for different tsdb
-			},
-			exp: []blockPlan{
-				{
-					tsdb: tsdbID(0),
-					gaps: []protos.GapWithBlocks{
-						{
-							Bounds: v1.NewBounds(0, 8),
-							Blocks: []bloomshipper.BlockRef{genBlockRef(5, 20)},
-						},
-					},
-				},
-			},
-		},
-		{
-			desc:           "multi case",
-			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.SingleTenantTSDBIdentifier{tsdbID(0), tsdbID(1)}, // generate for both tsdbs
-			metas: []bloomshipper.Meta{
-				genMeta(0, 2, []int{0}, []bloomshipper.BlockRef{
-					genBlockRef(0, 1),
-					genBlockRef(1, 2),
-				}), // tsdb_0
-				genMeta(6, 8, []int{0}, []bloomshipper.BlockRef{genBlockRef(6, 8)}), // tsdb_0
-
-				genMeta(3, 5, []int{1}, []bloomshipper.BlockRef{genBlockRef(3, 5)}),   // tsdb_1
-				genMeta(8, 10, []int{1}, []bloomshipper.BlockRef{genBlockRef(8, 10)}), // tsdb_1
-			},
-			exp: []blockPlan{
-				{
-					tsdb: tsdbID(0),
-					gaps: []protos.GapWithBlocks{
-						// tsdb (id=0) can source chunks from the blocks built from tsdb (id=1)
-						{
-							Bounds: v1.NewBounds(3, 5),
-							Blocks: []bloomshipper.BlockRef{genBlockRef(3, 5)},
-						},
-						{
-							Bounds: v1.NewBounds(9, 10),
-							Blocks: []bloomshipper.BlockRef{genBlockRef(8, 10)},
-						},
-					},
-				},
-				// tsdb (id=1) can source chunks from the blocks built from tsdb (id=0)
-				{
-					tsdb: tsdbID(1),
-					gaps: []protos.GapWithBlocks{
-						{
-							Bounds: v1.NewBounds(0, 2),
-							Blocks: []bloomshipper.BlockRef{
-								genBlockRef(0, 1),
-								genBlockRef(1, 2),
-							},
-						},
-						{
-							Bounds: v1.NewBounds(6, 7),
-							Blocks: []bloomshipper.BlockRef{genBlockRef(6, 8)},
-						},
-					},
-				},
-			},
-		},
-		{
-			desc:           "dedupes block refs",
-			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.SingleTenantTSDBIdentifier{tsdbID(0)},
-			metas: []bloomshipper.Meta{
-				genMeta(9, 20, []int{1}, []bloomshipper.BlockRef{
-					genBlockRef(1, 4),
-					genBlockRef(9, 20),
-				}), // blocks for first diff tsdb
-				genMeta(5, 20, []int{2}, []bloomshipper.BlockRef{
-					genBlockRef(5, 10),
-					genBlockRef(9, 20), // same block references in prior meta (will be deduped)
-				}), // block for second diff tsdb
-			},
-			exp: []blockPlan{
-				{
-					tsdb: tsdbID(0),
-					gaps: []protos.GapWithBlocks{
-						{
-							Bounds: v1.NewBounds(0, 10),
-							Blocks: []bloomshipper.BlockRef{
-								genBlockRef(1, 4),
-								genBlockRef(5, 10),
-								genBlockRef(9, 20),
-							},
-						},
-					},
-				},
-			},
-		},
-	} {
-		t.Run(tc.desc, func(t *testing.T) {
-			// we reuse the gapsBetweenTSDBsAndMetas function to generate the gaps as this function is tested
-			// separately and it's used to generate input in our regular code path (easier to write tests this way).
-			gaps, err := gapsBetweenTSDBsAndMetas(tc.ownershipRange, tc.tsdbs, tc.metas)
-			require.NoError(t, err)
-
-			plans, err := blockPlansForGaps(gaps, tc.metas)
-			if tc.err {
-				require.Error(t, err)
-				return
-			}
-			require.Equal(t, tc.exp, plans)
-
 		})
 	}
+	return series
 }
 
 func createTasks(n int, resultsCh chan *protos.TaskResult) []*QueueTask {
@@ -403,6 +170,7 @@ func createPlanner(
 				HardLimit: flagext.Bytes(20 << 20),
 				TTL:       time.Hour,
 			},
+			CacheListOps: false,
 		},
 		FSConfig: local.FSConfig{
 			Directory: t.TempDir(),
@@ -415,7 +183,7 @@ func createPlanner(
 	bloomStore, err := bloomshipper.NewBloomStore(schemaCfg.Configs, storageCfg, storage.ClientMetrics{}, metasCache, blocksCache, &mempool.SimpleHeapAllocator{}, reg, logger)
 	require.NoError(t, err)
 
-	planner, err := New(cfg, limits, schemaCfg, storageCfg, storage.ClientMetrics{}, bloomStore, logger, reg)
+	planner, err := New(cfg, limits, schemaCfg, storageCfg, storage.ClientMetrics{}, bloomStore, logger, reg, nil)
 	require.NoError(t, err)
 
 	return planner
@@ -611,7 +379,12 @@ func putMetas(bloomClient bloomshipper.Client, metas []bloomshipper.Meta) error 
 		}
 
 		for _, block := range meta.Blocks {
-			err := bloomClient.PutBlock(context.Background(), genBlock(block))
+			writtenBlock, err := genBlock(block)
+			if err != nil {
+				return err
+			}
+
+			err = bloomClient.PutBlock(context.Background(), writtenBlock)
 			if err != nil {
 				return err
 			}
@@ -796,23 +569,160 @@ func Test_processTenantTaskResults(t *testing.T) {
 				},
 			)
 			require.NoError(t, err)
-
-			// TODO(salvacorts): Fix this
-			// For some reason, when the tests are run in the CI, we do not encode the `loc` of model.Time for each TSDB.
-			// As a result, when we fetch them, the loc is empty whereas in the original metas, it is not. Therefore the
-			// comparison fails. As a workaround to fix the issue, we will manually reset the TS of the sources to the
-			// fetched metas
-			for i := range metas {
-				for j := range metas[i].Sources {
-					sec := metas[i].Sources[j].TS.Unix()
-					nsec := metas[i].Sources[j].TS.Nanosecond()
-					metas[i].Sources[j].TS = time.Unix(sec, int64(nsec))
-				}
-			}
+			removeLocFromMetasSources(metas)
 
 			// Compare metas
 			require.Equal(t, len(tc.expectedMetas), len(metas))
 			require.ElementsMatch(t, tc.expectedMetas, metas)
+		})
+	}
+}
+
+// For some reason, when the tests are run in the CI, we do not encode the `loc` of model.Time for each TSDB.
+// As a result, when we fetch them, the loc is empty whereas in the original metas, it is not. Therefore the
+// comparison fails. As a workaround to fix the issue, we will manually reset the TS of the sources to the
+// fetched metas
+func removeLocFromMetasSources(metas []bloomshipper.Meta) []bloomshipper.Meta {
+	for i := range metas {
+		for j := range metas[i].Sources {
+			sec := metas[i].Sources[j].TS.Unix()
+			nsec := metas[i].Sources[j].TS.Nanosecond()
+			metas[i].Sources[j].TS = time.Unix(sec, int64(nsec))
+		}
+	}
+
+	return metas
+}
+
+func Test_deleteOutdatedMetas(t *testing.T) {
+	for _, tc := range []struct {
+		name                  string
+		originalMetas         []bloomshipper.Meta
+		newMetas              []bloomshipper.Meta
+		expectedUpToDateMetas []bloomshipper.Meta
+	}{
+		{
+			name: "no metas",
+		},
+		{
+			name: "only up to date metas",
+			originalMetas: []bloomshipper.Meta{
+				genMeta(0, 10, []int{0}, []bloomshipper.BlockRef{genBlockRef(0, 10)}),
+			},
+			newMetas: []bloomshipper.Meta{
+				genMeta(10, 20, []int{0}, []bloomshipper.BlockRef{genBlockRef(10, 20)}),
+			},
+			expectedUpToDateMetas: []bloomshipper.Meta{
+				genMeta(0, 10, []int{0}, []bloomshipper.BlockRef{genBlockRef(0, 10)}),
+				genMeta(10, 20, []int{0}, []bloomshipper.BlockRef{genBlockRef(10, 20)}),
+			},
+		},
+		{
+			name: "outdated metas",
+			originalMetas: []bloomshipper.Meta{
+				genMeta(0, 5, []int{0}, []bloomshipper.BlockRef{genBlockRef(0, 5)}),
+			},
+			newMetas: []bloomshipper.Meta{
+				genMeta(0, 10, []int{1}, []bloomshipper.BlockRef{genBlockRef(0, 10)}),
+			},
+			expectedUpToDateMetas: []bloomshipper.Meta{
+				genMeta(0, 10, []int{1}, []bloomshipper.BlockRef{genBlockRef(0, 10)}),
+			},
+		},
+		{
+			name: "new metas reuse blocks from outdated meta",
+			originalMetas: []bloomshipper.Meta{
+				genMeta(0, 10, []int{0}, []bloomshipper.BlockRef{ // Outdated
+					genBlockRef(0, 5),  // Reuse
+					genBlockRef(5, 10), // Delete
+				}),
+				genMeta(10, 20, []int{0}, []bloomshipper.BlockRef{ // Outdated
+					genBlockRef(10, 20), // Reuse
+				}),
+				genMeta(20, 30, []int{0}, []bloomshipper.BlockRef{ // Up to date
+					genBlockRef(20, 30),
+				}),
+			},
+			newMetas: []bloomshipper.Meta{
+				genMeta(0, 5, []int{1}, []bloomshipper.BlockRef{
+					genBlockRef(0, 5), // Reused block
+				}),
+				genMeta(5, 20, []int{1}, []bloomshipper.BlockRef{
+					genBlockRef(5, 7),   // New block
+					genBlockRef(7, 10),  // New block
+					genBlockRef(10, 20), // Reused block
+				}),
+			},
+			expectedUpToDateMetas: []bloomshipper.Meta{
+				genMeta(0, 5, []int{1}, []bloomshipper.BlockRef{
+					genBlockRef(0, 5),
+				}),
+				genMeta(5, 20, []int{1}, []bloomshipper.BlockRef{
+					genBlockRef(5, 7),
+					genBlockRef(7, 10),
+					genBlockRef(10, 20),
+				}),
+				genMeta(20, 30, []int{0}, []bloomshipper.BlockRef{
+					genBlockRef(20, 30),
+				}),
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			logger := log.NewNopLogger()
+			// logger := log.NewLogfmtLogger(os.Stdout)
+
+			cfg := Config{
+				PlanningInterval:        1 * time.Hour,
+				MaxQueuedTasksPerTenant: 10000,
+			}
+			planner := createPlanner(t, cfg, &fakeLimits{}, logger)
+
+			bloomClient, err := planner.bloomStore.Client(testDay.ModelTime())
+			require.NoError(t, err)
+
+			// Create original/new metas and blocks
+			err = putMetas(bloomClient, tc.originalMetas)
+			require.NoError(t, err)
+			err = putMetas(bloomClient, tc.newMetas)
+			require.NoError(t, err)
+
+			// Get all metas
+			metas, err := planner.bloomStore.FetchMetas(
+				context.Background(),
+				bloomshipper.MetaSearchParams{
+					TenantID: "fakeTenant",
+					Interval: bloomshipper.NewInterval(testTable.Bounds()),
+					Keyspace: v1.NewBounds(0, math.MaxUint64),
+				},
+			)
+			require.NoError(t, err)
+			removeLocFromMetasSources(metas)
+			require.ElementsMatch(t, append(tc.originalMetas, tc.newMetas...), metas)
+
+			upToDate, err := planner.deleteOutdatedMetasAndBlocks(context.Background(), testTable, "fakeTenant", tc.newMetas, tc.originalMetas, phasePlanning)
+			require.NoError(t, err)
+			require.ElementsMatch(t, tc.expectedUpToDateMetas, upToDate)
+
+			// Get all metas
+			metas, err = planner.bloomStore.FetchMetas(
+				context.Background(),
+				bloomshipper.MetaSearchParams{
+					TenantID: "fakeTenant",
+					Interval: bloomshipper.NewInterval(testTable.Bounds()),
+					Keyspace: v1.NewBounds(0, math.MaxUint64),
+				},
+			)
+			require.NoError(t, err)
+			removeLocFromMetasSources(metas)
+			require.ElementsMatch(t, tc.expectedUpToDateMetas, metas)
+
+			// Fetch all blocks from the metas
+			for _, meta := range metas {
+				blocks, err := planner.bloomStore.FetchBlocks(context.Background(), meta.Blocks)
+				require.NoError(t, err)
+				require.Len(t, blocks, len(meta.Blocks))
+			}
 		})
 	}
 }
@@ -932,6 +842,7 @@ func (f *fakeBuilder) Recv() (*protos.BuilderToPlanner, error) {
 }
 
 type fakeLimits struct {
+	Limits
 	timeout    time.Duration
 	maxRetries int
 }

@@ -11,7 +11,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -189,7 +188,7 @@ func NewTSDBStores(
 	for i, cfg := range schemaCfg.Configs {
 		if cfg.IndexType == types.TSDBType {
 
-			c, err := baseStore.NewObjectClient("tsdb-store", cfg.ObjectType, storeCfg, clientMetrics, prometheus.DefaultRegisterer)
+			c, err := baseStore.NewObjectClient(cfg.ObjectType, "bloom-compactor", storeCfg)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to create object client")
 			}

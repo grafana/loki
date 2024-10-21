@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -126,12 +127,25 @@ func (s *GCSObjectClient) Stop() {
 }
 
 func (s *GCSObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	_, err := s.getsBuckets.Object(objectKey).Attrs(ctx)
-	if err != nil {
+	if _, err := s.GetAttributes(ctx, objectKey); err != nil {
+		if s.IsObjectNotFoundErr(err) {
+			return false, nil
+		}
 		return false, err
 	}
-
 	return true, nil
+}
+
+func (s *GCSObjectClient) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
+	attrs, err := s.getsBuckets.Object(objectKey).Attrs(ctx)
+	if err != nil {
+		return client.ObjectAttributes{}, err
+	}
+
+	if attrs != nil {
+		return client.ObjectAttributes{Size: attrs.Size}, nil
+	}
+	return client.ObjectAttributes{}, nil
 }
 
 // GetObject returns a reader and the size for the specified object key from the configured GCS bucket.
@@ -151,6 +165,24 @@ func (s *GCSObjectClient) GetObject(ctx context.Context, objectKey string) (io.R
 	return util.NewReadCloserWithContextCancelFunc(rc, cancel), size, nil
 }
 
+// GetObject returns a reader and the size for the specified object key from the configured GCS bucket.
+func (s *GCSObjectClient) GetObjectRange(ctx context.Context, objectKey string, offset, length int64) (io.ReadCloser, error) {
+	var cancel context.CancelFunc = func() {}
+	if s.cfg.RequestTimeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, s.cfg.RequestTimeout)
+	}
+
+	rangeReader, err := s.getsBuckets.Object(objectKey).NewRangeReader(ctx, offset, length)
+	if err != nil {
+		// cancel the context if there is an error.
+		cancel()
+		return nil, err
+	}
+
+	// else return a wrapped ReadCloser which cancels the context while closing the reader.
+	return util.NewReadCloserWithContextCancelFunc(rangeReader, cancel), nil
+}
+
 func (s *GCSObjectClient) getObject(ctx context.Context, objectKey string) (rc io.ReadCloser, size int64, err error) {
 	reader, err := s.getsBuckets.Object(objectKey).NewReader(ctx)
 	if err != nil {
@@ -161,7 +193,7 @@ func (s *GCSObjectClient) getObject(ctx context.Context, objectKey string) (rc i
 }
 
 // PutObject puts the specified bytes into the configured GCS bucket at the provided key
-func (s *GCSObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+func (s *GCSObjectClient) PutObject(ctx context.Context, objectKey string, object io.Reader) error {
 	writer := s.defaultBucket.Object(objectKey).NewWriter(ctx)
 	// Default GCSChunkSize is 8M and for each call, 8M is allocated xD
 	// By setting it to 0, we just upload the object in a single a request
@@ -251,7 +283,9 @@ func (s *GCSObjectClient) IsStorageTimeoutErr(err error) bool {
 	// TODO(dannyk): move these out to be generic
 	// context errors are all client-side
 	if isContextErr(err) {
-		return false
+		// Go 1.23 changed the type of the error returned by the http client when a timeout occurs
+		// while waiting for headers.  This is a server side timeout.
+		return strings.Contains(err.Error(), "Client.Timeout")
 	}
 
 	// connection misconfiguration, or writing on a closed connection

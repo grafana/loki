@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc/testdata"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -23,7 +24,7 @@ func logprotoEntryWithStructuredMetadata(ts int64, line string, structuredMetada
 	}
 }
 
-func generateData(enc Encoding, chunksCount, blockSize, targetSize int) ([]Chunk, uint64) {
+func generateData(enc compression.Codec, chunksCount, blockSize, targetSize int) ([]Chunk, uint64) {
 	chunks := []Chunk{}
 	i := int64(0)
 	size := uint64(0)
@@ -53,6 +54,13 @@ func fillChunkClose(c Chunk, close bool) int64 {
 	entry := &logproto.Entry{
 		Timestamp: time.Unix(0, 0),
 		Line:      testdata.LogString(i),
+		StructuredMetadata: []logproto.LabelAdapter{
+			{Name: "foo", Value: "bar"},
+			{Name: "baz", Value: "buzz"},
+			{Name: "qux", Value: "quux"},
+			{Name: "corge", Value: "grault"},
+			{Name: "garply", Value: "waldo"},
+		},
 	}
 	for c.SpaceFor(entry) {
 		_, err := c.Append(entry)

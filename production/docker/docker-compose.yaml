@@ -14,7 +14,7 @@ services:
   # Loki would not have permissions to create the directories.
   # Therefore the init container changes permissions of the mounted directory.
   init:
-    image: &lokiImage grafana/loki:2.9.2
+    image: &lokiImage grafana/loki:2.9.10
     user: root
     entrypoint:
       - "chown"
@@ -71,7 +71,7 @@ services:
       - ./loki/:/var/log/
 
   promtail:
-    image: grafana/promtail:2.9.2
+    image: grafana/promtail:2.9.10
     volumes:
       - ./loki/:/var/log/
       - ./config:/etc/promtail/
@@ -104,7 +104,7 @@ services:
       - loki
 
   loki-gateway:
-    image: nginx:1.19
+    image: nginx:1.27
     volumes:
       - ./config/nginx.conf:/etc/nginx/nginx.conf
     ports:
@@ -182,7 +182,7 @@ services:
 
   # alertmanager to enable receiving alerts
   alertmanager:
-    image: prom/alertmanager:v0.23.0
+    image: prom/alertmanager:v0.27.0
     restart: unless-stopped
     ports:
       - "9093:9093"

@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
@@ -85,7 +86,7 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 	defer sp.Finish()
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	if l.shouldCache != nil && !l.shouldCache(ctx, req) {
@@ -124,6 +125,9 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 	}
 
 	cacheKey := fmt.Sprintf("log:%s:%s:%d:%d", tenant.JoinTenantIDs(transformedTenantIDs), req.GetQuery(), interval.Nanoseconds(), alignedStart.UnixNano()/(interval.Nanoseconds()))
+	if httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) == "true" {
+		cacheKey = "pipeline-disabled:" + cacheKey
+	}
 
 	_, buff, _, err := l.cache.Fetch(ctx, []string{cache.HashKey(cacheKey)})
 	if err != nil {

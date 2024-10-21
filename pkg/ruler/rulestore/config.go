@@ -15,6 +15,7 @@ import (
 // Config configures a rule store.
 type Config struct {
 	bucket.Config `yaml:",inline"`
+	Backend       string        `yaml:"backend"`
 	ConfigDB      client.Config `yaml:"configdb"`
 	Local         local.Config  `yaml:"local"`
 }
@@ -26,6 +27,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ExtraBackends = []string{configdb.Name, local.Name}
 	cfg.ConfigDB.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Local.RegisterFlagsWithPrefix(prefix, f)
+	f.StringVar(&cfg.Backend, prefix+"backend", "filesystem", "Backend storage to use. Supported backends are: s3, gcs, azure, swift, filesystem.")
 	cfg.RegisterFlagsWithPrefix(prefix, f)
 }
 

@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
@@ -61,7 +62,7 @@ func TestTSDBSeriesIter(t *testing.T) {
 			},
 		},
 	}
-	srcItr := v1.NewSliceIter(input)
+	srcItr := v2.NewSliceIter(input)
 	itr, err := NewTSDBSeriesIter(context.Background(), "", forSeriesTestImpl(input), v1.NewBounds(0, math.MaxUint64))
 	require.NoError(t, err)
 

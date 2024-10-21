@@ -12,9 +12,10 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/v3/pkg/storage/wal/index"
 	"github.com/grafana/loki/v3/pkg/storage/wal/testdata"
 
 	"github.com/grafana/loki/pkg/push"
@@ -100,7 +101,6 @@ func TestWalSegmentWriter_Append(t *testing.T) {
 
 	// Run the test cases
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			// Create a new WalSegmentWriter
@@ -111,7 +111,7 @@ func TestWalSegmentWriter_Append(t *testing.T) {
 				for _, stream := range batch {
 					labels, err := syntax.ParseLabels(stream.labels)
 					require.NoError(t, err)
-					w.Append(stream.tenant, stream.labels, labels, stream.entries)
+					w.Append(stream.tenant, stream.labels, labels, stream.entries, time.Now())
 				}
 			}
 			require.NotEmpty(t, tt.expected, "expected entries are empty")
@@ -121,7 +121,7 @@ func TestWalSegmentWriter_Append(t *testing.T) {
 				require.True(t, ok)
 				lbs, err := syntax.ParseLabels(expected.labels)
 				require.NoError(t, err)
-				lbs = append(lbs, labels.Label{Name: string(tsdb.TenantLabel), Value: expected.tenant})
+				lbs = append(lbs, labels.Label{Name: index.TenantLabel, Value: expected.tenant})
 				sort.Sort(lbs)
 				require.Equal(t, lbs, stream.lbls)
 				require.Equal(t, expected.entries, stream.entries)
@@ -149,7 +149,7 @@ func TestMultiTenantWrite(t *testing.T) {
 			for i := 0; i < 10; i++ {
 				w.Append(tenant, lblString, lbl, []*push.Entry{
 					{Timestamp: time.Unix(0, int64(i)), Line: fmt.Sprintf("log line %d", i)},
-				})
+				}, time.Now())
 			}
 		}
 	}
@@ -167,7 +167,7 @@ func TestMultiTenantWrite(t *testing.T) {
 
 	for _, tenant := range tenants {
 		for _, lbl := range lbls {
-			expectedSeries = append(expectedSeries, labels.NewBuilder(lbl).Set(tsdb.TenantLabel, tenant).Labels().String())
+			expectedSeries = append(expectedSeries, labels.NewBuilder(lbl).Set(index.TenantLabel, tenant).Labels().String())
 		}
 	}
 
@@ -224,7 +224,7 @@ func testCompression(t *testing.T, maxInputSize int64) {
 			inputSize += int64(len(line))
 			w.Append("tenant", lbl.String(), lbl, []*push.Entry{
 				{Timestamp: time.Unix(0, int64(i*1e9)), Line: string(line)},
-			})
+			}, time.Now())
 		}
 	}
 
@@ -266,7 +266,7 @@ func TestReset(t *testing.T) {
 		{Timestamp: time.Unix(0, 0), Line: "Entry 1"},
 		{Timestamp: time.Unix(1, 0), Line: "Entry 2"},
 		{Timestamp: time.Unix(2, 0), Line: "Entry 3"},
-	})
+	}, time.Now())
 
 	n, err := w.WriteTo(dst)
 	require.NoError(t, err)
@@ -279,13 +279,61 @@ func TestReset(t *testing.T) {
 		{Timestamp: time.Unix(0, 0), Line: "Entry 1"},
 		{Timestamp: time.Unix(1, 0), Line: "Entry 2"},
 		{Timestamp: time.Unix(2, 0), Line: "Entry 3"},
-	})
+	}, time.Now())
 
 	n, err = w.WriteTo(copyBuffer)
 	require.NoError(t, err)
 	require.True(t, n > 0)
 
 	require.Equal(t, dst.Bytes(), copyBuffer.Bytes())
+}
+
+func Test_Meta(t *testing.T) {
+	w, err := NewWalSegmentWriter()
+	buff := bytes.NewBuffer(nil)
+
+	require.NoError(t, err)
+
+	lbls := labels.FromStrings("container", "foo", "namespace", "dev")
+	w.Append("tenantb", lbls.String(), lbls, []*push.Entry{
+		{Timestamp: time.Unix(1, 0), Line: "Entry 1"},
+		{Timestamp: time.Unix(2, 0), Line: "Entry 2"},
+		{Timestamp: time.Unix(3, 0), Line: "Entry 3"},
+	}, time.Now())
+	lbls = labels.FromStrings("container", "bar", "namespace", "dev")
+	w.Append("tenanta", lbls.String(), lbls, []*push.Entry{
+		{Timestamp: time.Unix(2, 0), Line: "Entry 1"},
+		{Timestamp: time.Unix(3, 0), Line: "Entry 2"},
+		{Timestamp: time.Unix(4, 0), Line: "Entry 3"},
+	}, time.Now())
+	_, err = w.WriteTo(buff)
+	require.NoError(t, err)
+	meta := w.Meta("bar")
+	indexReader, err := index.NewReader(index.RealByteSlice(buff.Bytes()[meta.IndexRef.Offset : meta.IndexRef.Offset+meta.IndexRef.Length]))
+	require.NoError(t, err)
+
+	defer indexReader.Close()
+
+	require.Equal(t, &metastorepb.BlockMeta{
+		FormatVersion:   1,
+		Id:              "bar",
+		MinTime:         time.Unix(1, 0).UnixNano(),
+		MaxTime:         time.Unix(4, 0).UnixNano(),
+		CompactionLevel: 0,
+		IndexRef:        meta.IndexRef,
+		TenantStreams: []*metastorepb.TenantStreams{
+			{
+				TenantId: "tenanta",
+				MinTime:  time.Unix(2, 0).UnixNano(),
+				MaxTime:  time.Unix(4, 0).UnixNano(),
+			},
+			{
+				TenantId: "tenantb",
+				MinTime:  time.Unix(1, 0).UnixNano(),
+				MaxTime:  time.Unix(3, 0).UnixNano(),
+			},
+		},
+	}, meta)
 }
 
 func BenchmarkWrites(b *testing.B) {
@@ -336,7 +384,7 @@ func BenchmarkWrites(b *testing.B) {
 	require.NoError(b, err)
 
 	for _, d := range data {
-		writer.Append(d.tenant, d.labels, d.lbls, d.entries)
+		writer.Append(d.tenant, d.labels, d.lbls, d.entries, time.Now())
 	}
 
 	encodedLength, err := writer.WriteTo(dst)
@@ -350,22 +398,6 @@ func BenchmarkWrites(b *testing.B) {
 			n, err := writer.WriteTo(dst)
 			require.NoError(b, err)
 			require.EqualValues(b, encodedLength, n)
-		}
-	})
-
-	bytesBuf := make([]byte, inputSize)
-	b.Run("Reader", func(b *testing.B) {
-		b.ResetTimer()
-		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
-			var err error
-			reader, err := writer.ToReader()
-			require.NoError(b, err)
-
-			n, err := reader.Read(bytesBuf)
-			require.NoError(b, err)
-			require.EqualValues(b, encodedLength, n)
-			require.NoError(b, reader.Close())
 		}
 	})
 }

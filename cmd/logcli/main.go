@@ -450,7 +450,7 @@ func newQueryClient(app *kingpin.Application) client.Client {
 	}
 
 	// extract host
-	addressAction := func(c *kingpin.ParseContext) error {
+	addressAction := func(_ *kingpin.ParseContext) error {
 		// If a proxy is to be used do not set TLS ServerName. In the case of HTTPS proxy this ensures
 		// the http client validates both the proxy's cert and the cert used by loki behind the proxy
 		// using the ServerName's from the provided --addr and --proxy-url flags.
@@ -494,7 +494,7 @@ func newLabelQuery(cmd *kingpin.CmdClause) *labelquery.LabelQuery {
 	q := &labelquery.LabelQuery{}
 
 	// executed after all command flags are parsed
-	cmd.Action(func(c *kingpin.ParseContext) error {
+	cmd.Action(func(_ *kingpin.ParseContext) error {
 
 		defaultEnd := time.Now()
 		defaultStart := defaultEnd.Add(-since)
@@ -522,7 +522,7 @@ func newSeriesQuery(cmd *kingpin.CmdClause) *seriesquery.SeriesQuery {
 	q := &seriesquery.SeriesQuery{}
 
 	// executed after all command flags are parsed
-	cmd.Action(func(c *kingpin.ParseContext) error {
+	cmd.Action(func(_ *kingpin.ParseContext) error {
 
 		defaultEnd := time.Now()
 		defaultStart := defaultEnd.Add(-since)
@@ -550,7 +550,7 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 	q := &query.Query{}
 
 	// executed after all command flags are parsed
-	cmd.Action(func(c *kingpin.ParseContext) error {
+	cmd.Action(func(_ *kingpin.ParseContext) error {
 
 		if instant {
 			q.SetInstant(mustParse(now, time.Now()))
@@ -692,37 +692,41 @@ func newVolumeQuery(rangeQuery bool, cmd *kingpin.CmdClause) *volume.Query {
 
 func newDetectedFieldsQuery(cmd *kingpin.CmdClause) *detected.FieldsQuery {
 	// calculate query range from cli params
-	var from, to string
+	var fieldName, from, to string
 	var since time.Duration
 
 	q := &detected.FieldsQuery{}
 
 	// executed after all command flags are parsed
-	cmd.Action(func(c *kingpin.ParseContext) error {
+	cmd.Action(func(_ *kingpin.ParseContext) error {
 		defaultEnd := time.Now()
 		defaultStart := defaultEnd.Add(-since)
 
 		q.Start = mustParse(from, defaultStart)
 		q.End = mustParse(to, defaultEnd)
 
+		q.FieldName = fieldName
+
 		q.Quiet = *quiet
 
 		return nil
 	})
 
-	cmd.Flag("field-limit", "Limit on number of fields to return.").
+	cmd.Flag("limit", "Limit on number of fields or values to return.").
 		Default("100").
-		IntVar(&q.FieldLimit)
+		IntVar(&q.Limit)
 	cmd.Flag("line-limit", "Limit the number of lines each subquery is allowed to process.").
 		Default("1000").
 		IntVar(&q.LineLimit)
 	cmd.Arg("query", "eg '{foo=\"bar\",baz=~\".*blip\"} |~ \".*error.*\"'").
 		Required().
 		StringVar(&q.QueryString)
+	cmd.Arg("field", "The name of the field.").Default("").StringVar(&fieldName)
 	cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
 	cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").StringVar(&from)
 	cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
 	cmd.Flag("step", "Query resolution step width, for metric queries. Evaluate the query at the specified step over the time range.").
+		Default("10s").
 		DurationVar(&q.Step)
 
 	return q

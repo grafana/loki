@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/queue"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -192,12 +193,12 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return nil, errors.New("from time must not be after through time")
 	}
 
-	filters := v1.ExtractTestableLineFilters(req.Plan.AST)
-	stats.NumFilters = len(filters)
-	g.metrics.receivedFilters.Observe(float64(len(filters)))
+	matchers := v1.ExtractTestableLabelMatchers(req.Plan.AST)
+	stats.NumMatchers = len(matchers)
+	g.metrics.receivedMatchers.Observe(float64(len(matchers)))
 
 	// Shortcut if request does not contain filters
-	if len(filters) == 0 {
+	if len(matchers) == 0 {
 		stats.Status = labelSuccess
 		return &logproto.FilterChunkRefResponse{
 			ChunkRefs: req.Refs,
@@ -226,7 +227,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	stats.NumTasks = len(seriesByDay)
 
 	sp.LogKV(
-		"filters", len(filters),
+		"matchers", len(matchers),
 		"days", len(seriesByDay),
 		"blocks", len(req.Blocks),
 		"series_requested", len(req.Refs),
@@ -238,7 +239,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	}
 
 	series := seriesByDay[0]
-	task := newTask(ctx, tenantID, series, filters, blocks)
+	task := newTask(ctx, tenantID, series, matchers, blocks)
 
 	// TODO(owen-d): include capacity in constructor?
 	task.responses = responsesPool.Get(len(series.series))
@@ -351,13 +352,13 @@ func filterChunkRefs(req *logproto.FilterChunkRefRequest, responses []v1.Output)
 
 	// dedupe outputs, merging the same series.
 	// This returns an Iterator[v1.Output]
-	dedupedResps := v1.NewDedupingIter[v1.Output, v1.Output](
+	dedupedResps := iter.NewDedupingIter[v1.Output, v1.Output](
 		// eq
 		func(o1, o2 v1.Output) bool {
 			return o1.Fp == o2.Fp
 		},
 		// from
-		v1.Identity[v1.Output],
+		iter.Identity[v1.Output],
 		// merge two removal sets for the same series, deduping
 		// requires that the removals of the outputs are sorted
 		func(o1, o2 v1.Output) v1.Output {
@@ -395,7 +396,7 @@ func filterChunkRefs(req *logproto.FilterChunkRefRequest, responses []v1.Output)
 			res.Removals = chks
 			return res
 		},
-		v1.NewPeekingIter(v1.NewSliceIter(responses)),
+		iter.NewPeekIter(iter.NewSliceIter(responses)),
 	)
 
 	// Iterate through the requested and filtered series/chunks,

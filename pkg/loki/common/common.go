@@ -59,8 +59,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Ring.RegisterFlagsWithPrefix("common.storage.", "collectors/", f)
 	c.Ring.RegisterFlagsWithPrefix("common.storage.", "collectors/", throwaway)
 
-	f.BoolVar(&c.Storage.ThanosObjStore, "common.thanos.enable", false, "Enable the thanos.io/objstore to be the backend for object storage")
-
 	// instance related flags.
 	c.InstanceInterfaceNames = netutil.PrivateNetworkInterfacesWithFallback([]string{"eth0", "en0"}, util_log.Logger)
 	throwaway.StringVar(&c.InstanceAddr, "common.instance-addr", "", "Default advertised address to be used by Loki components.")
@@ -81,8 +79,7 @@ type Storage struct {
 	Hedging           hedging.Config            `yaml:"hedging"`
 	COS               ibmcloud.COSConfig        `yaml:"cos"`
 	CongestionControl congestion.Config         `yaml:"congestion_control,omitempty"`
-	ThanosObjStore    bool                      `yaml:"thanos_objstore"`
-	ObjStoreConf      bucket.Config             `yaml:"objstore_config"`
+	ObjectStore       bucket.Config             `yaml:"object_store"  doc:"hidden"`
 }
 
 func (s *Storage) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -97,7 +94,7 @@ func (s *Storage) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	s.COS.RegisterFlagsWithPrefix(prefix, f)
 	s.CongestionControl.RegisterFlagsWithPrefix(prefix, f)
 
-	s.ObjStoreConf.RegisterFlagsWithPrefix(prefix+"thanos.", f)
+	s.ObjectStore.RegisterFlagsWithPrefix(prefix+"object-store.", f)
 }
 
 type FilesystemConfig struct {

@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"fmt"
 	"regexp"
-	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,7 +16,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/bucket/gcs"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/swift"
-	"github.com/grafana/loki/v3/pkg/util"
 )
 
 const (
@@ -46,12 +43,12 @@ var (
 
 	ErrUnsupportedStorageBackend        = errors.New("unsupported storage backend")
 	ErrInvalidCharactersInStoragePrefix = errors.New("storage prefix contains invalid characters, it may only contain digits and English alphabet letters")
+
+	metrics = objstore.BucketMetrics(prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer), "")
 )
 
 // StorageBackendConfig holds configuration for accessing long-term storage.
 type StorageBackendConfig struct {
-	Backend string `yaml:"backend"`
-
 	// Backends
 	S3         s3.Config         `yaml:"s3"`
 	GCS        gcs.Config        `yaml:"gcs"`
@@ -64,8 +61,8 @@ type StorageBackendConfig struct {
 	ExtraBackends []string `yaml:"-"`
 }
 
-// Returns the supportedBackends for the package and any custom backends injected into the config.
-func (cfg *StorageBackendConfig) supportedBackends() []string {
+// Returns the SupportedBackends for the package and any custom backends injected into the config.
+func (cfg *StorageBackendConfig) SupportedBackends() []string {
 	return append(SupportedBackends, cfg.ExtraBackends...)
 }
 
@@ -75,13 +72,11 @@ func (cfg *StorageBackendConfig) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *StorageBackendConfig) RegisterFlagsWithPrefixAndDefaultDirectory(prefix, dir string, f *flag.FlagSet) {
-	cfg.S3.RegisterFlagsWithPrefix(prefix, f)
 	cfg.GCS.RegisterFlagsWithPrefix(prefix, f)
+	cfg.S3.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Azure.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Swift.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Filesystem.RegisterFlagsWithPrefixAndDefaultDirectory(prefix, dir, f)
-
-	f.StringVar(&cfg.Backend, prefix+"backend", Filesystem, fmt.Sprintf("Backend storage to use. Supported backends are: %s.", strings.Join(cfg.supportedBackends(), ", ")))
 }
 
 func (cfg *StorageBackendConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -89,15 +84,10 @@ func (cfg *StorageBackendConfig) RegisterFlagsWithPrefix(prefix string, f *flag.
 }
 
 func (cfg *StorageBackendConfig) Validate() error {
-	if !util.StringsContain(cfg.supportedBackends(), cfg.Backend) {
-		return ErrUnsupportedStorageBackend
-	}
-
-	if cfg.Backend == S3 {
-		if err := cfg.S3.Validate(); err != nil {
-			return err
-		}
-	}
+	// TODO: enable validation when s3 flags are registered
+	// if err := cfg.S3.Validate(); err != nil {
+	// return err
+	//}
 
 	return nil
 }
@@ -105,8 +95,7 @@ func (cfg *StorageBackendConfig) Validate() error {
 // Config holds configuration for accessing long-term storage.
 type Config struct {
 	StorageBackendConfig `yaml:",inline"`
-
-	StoragePrefix string `yaml:"storage_prefix"`
+	StoragePrefix        string `yaml:"storage_prefix"`
 
 	// Not used internally, meant to allow callers to wrap Buckets
 	// created using this config
@@ -139,13 +128,14 @@ func (cfg *Config) Validate() error {
 }
 
 // NewClient creates a new bucket client based on the configured backend
-func NewClient(ctx context.Context, cfg Config, name string, logger log.Logger, reg prometheus.Registerer) (objstore.InstrumentedBucket, error) {
+func NewClient(ctx context.Context, backend string, cfg Config, name string, logger log.Logger) (objstore.InstrumentedBucket, error) {
 	var (
 		client objstore.Bucket
 		err    error
 	)
 
-	switch cfg.Backend {
+	// TODO: add support for other backends that loki already supports
+	switch backend {
 	case S3:
 		client, err = s3.NewBucketClient(cfg.S3, name, logger)
 	case GCS:
@@ -168,7 +158,7 @@ func NewClient(ctx context.Context, cfg Config, name string, logger log.Logger, 
 		client = NewPrefixedBucketClient(client, cfg.StoragePrefix)
 	}
 
-	instrumentedClient := objstoretracing.WrapWithTraces(bucketWithMetrics(client, name, reg))
+	instrumentedClient := objstoretracing.WrapWithTraces(objstore.WrapWith(client, metrics))
 
 	// Wrap the client with any provided middleware
 	for _, wrap := range cfg.Middlewares {
@@ -179,18 +169,4 @@ func NewClient(ctx context.Context, cfg Config, name string, logger log.Logger, 
 	}
 
 	return instrumentedClient, nil
-}
-
-func bucketWithMetrics(bucketClient objstore.Bucket, name string, reg prometheus.Registerer) objstore.Bucket {
-	if reg == nil {
-		return bucketClient
-	}
-
-	reg = prometheus.WrapRegistererWithPrefix("loki_", reg)
-	reg = prometheus.WrapRegistererWith(prometheus.Labels{"component": name}, reg)
-
-	return objstore.WrapWithMetrics(
-		bucketClient,
-		reg,
-		"")
 }

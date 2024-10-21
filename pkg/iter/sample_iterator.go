@@ -13,14 +13,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
-// SampleIterator iterates over samples in time-order.
-type SampleIterator interface {
-	Iterator
-	// todo(ctovena) we should add `Seek(t int64) bool`
-	// This way we can skip when ranging over samples.
-	Sample() logproto.Sample
-}
-
 // PeekingSampleIterator is a sample iterator that can peek sample without moving the current sample.
 type PeekingSampleIterator interface {
 	SampleIterator
@@ -46,7 +38,7 @@ func NewPeekingSampleIterator(iter SampleIterator) PeekingSampleIterator {
 	next := &sampleWithLabels{}
 	if iter.Next() {
 		cache = &sampleWithLabels{
-			Sample:     iter.Sample(),
+			Sample:     iter.At(),
 			labels:     iter.Labels(),
 			streamHash: iter.StreamHash(),
 		}
@@ -92,7 +84,7 @@ func (it *peekingSampleIterator) Next() bool {
 // cacheNext caches the next element if it exists.
 func (it *peekingSampleIterator) cacheNext() {
 	if it.iter.Next() {
-		it.cache.Sample = it.iter.Sample()
+		it.cache.Sample = it.iter.At()
 		it.cache.labels = it.iter.Labels()
 		it.cache.streamHash = it.iter.StreamHash()
 		return
@@ -101,7 +93,7 @@ func (it *peekingSampleIterator) cacheNext() {
 	it.cache = nil
 }
 
-func (it *peekingSampleIterator) Sample() logproto.Sample {
+func (it *peekingSampleIterator) At() logproto.Sample {
 	if it.next != nil {
 		return it.next.Sample
 	}
@@ -115,8 +107,8 @@ func (it *peekingSampleIterator) Peek() (string, logproto.Sample, bool) {
 	return "", logproto.Sample{}, false
 }
 
-func (it *peekingSampleIterator) Error() error {
-	return it.iter.Error()
+func (it *peekingSampleIterator) Err() error {
+	return it.iter.Err()
 }
 
 type SampleIteratorHeap struct {
@@ -144,7 +136,7 @@ func (h *SampleIteratorHeap) Pop() interface{} {
 }
 
 func (h SampleIteratorHeap) Less(i, j int) bool {
-	s1, s2 := h.its[i].Sample(), h.its[j].Sample()
+	s1, s2 := h.its[i].At(), h.its[j].At()
 	if s1.Timestamp == s2.Timestamp {
 		if h.its[i].StreamHash() == 0 {
 			return h.its[i].Labels() < h.its[j].Labels()
@@ -218,7 +210,7 @@ func (i *mergeSampleIterator) requeue(ei SampleIterator, advanced bool) {
 		return
 	}
 
-	if err := ei.Error(); err != nil {
+	if err := ei.Err(); err != nil {
 		i.errs = append(i.errs, err)
 	}
 	util.LogError("closing iterator", ei.Close)
@@ -238,7 +230,7 @@ func (i *mergeSampleIterator) Next() bool {
 
 	// shortcut for the last iterator.
 	if i.heap.Len() == 1 {
-		i.curr.Sample = i.heap.Peek().Sample()
+		i.curr.Sample = i.heap.Peek().At()
 		i.curr.labels = i.heap.Peek().Labels()
 		i.curr.streamHash = i.heap.Peek().StreamHash()
 		if !i.heap.Peek().Next() {
@@ -254,7 +246,7 @@ func (i *mergeSampleIterator) Next() bool {
 Outer:
 	for i.heap.Len() > 0 {
 		next := i.heap.Peek()
-		sample := next.Sample()
+		sample := next.At()
 		if len(i.buffer) > 0 && (i.buffer[0].streamHash != next.StreamHash() || i.buffer[0].Timestamp != sample.Timestamp) {
 			break
 		}
@@ -280,7 +272,7 @@ Outer:
 			if !next.Next() {
 				continue Outer
 			}
-			sample := next.Sample()
+			sample := next.At()
 			if next.StreamHash() != i.buffer[0].streamHash ||
 				sample.Timestamp != i.buffer[0].Timestamp {
 				break
@@ -321,7 +313,7 @@ func (i *mergeSampleIterator) nextFromBuffer() {
 	i.buffer = i.buffer[1:]
 }
 
-func (i *mergeSampleIterator) Sample() logproto.Sample {
+func (i *mergeSampleIterator) At() logproto.Sample {
 	return i.curr.Sample
 }
 
@@ -333,7 +325,7 @@ func (i *mergeSampleIterator) StreamHash() uint64 {
 	return i.curr.streamHash
 }
 
-func (i *mergeSampleIterator) Error() error {
+func (i *mergeSampleIterator) Err() error {
 	switch len(i.errs) {
 	case 0:
 		return nil
@@ -370,7 +362,7 @@ type sortSampleIterator struct {
 // When timestamp is equal, the iterator sorts samples by their label alphabetically.
 func NewSortSampleIterator(is []SampleIterator) SampleIterator {
 	if len(is) == 0 {
-		return NoopIterator
+		return NoopSampleIterator
 	}
 	if len(is) == 1 {
 		return is[0]
@@ -397,7 +389,7 @@ func (i *sortSampleIterator) init() {
 			continue
 		}
 
-		if err := it.Error(); err != nil {
+		if err := it.Err(); err != nil {
 			i.errs = append(i.errs, err)
 		}
 		util.LogError("closing iterator", it.Close)
@@ -417,13 +409,13 @@ func (i *sortSampleIterator) Next() bool {
 	}
 
 	next := i.heap.Peek()
-	i.curr.Sample = next.Sample()
+	i.curr.Sample = next.At()
 	i.curr.labels = next.Labels()
 	i.curr.streamHash = next.StreamHash()
 	// if the top iterator is empty, we remove it.
 	if !next.Next() {
 		heap.Pop(i.heap)
-		if err := next.Error(); err != nil {
+		if err := next.Err(); err != nil {
 			i.errs = append(i.errs, err)
 		}
 		util.LogError("closing iterator", next.Close)
@@ -435,7 +427,7 @@ func (i *sortSampleIterator) Next() bool {
 	return true
 }
 
-func (i *sortSampleIterator) Sample() logproto.Sample {
+func (i *sortSampleIterator) At() logproto.Sample {
 	return i.curr.Sample
 }
 
@@ -447,7 +439,7 @@ func (i *sortSampleIterator) StreamHash() uint64 {
 	return i.curr.streamHash
 }
 
-func (i *sortSampleIterator) Error() error {
+func (i *sortSampleIterator) Err() error {
 	switch len(i.errs) {
 	case 0:
 		return nil
@@ -505,8 +497,8 @@ func (i *sampleQueryClientIterator) Next() bool {
 	return true
 }
 
-func (i *sampleQueryClientIterator) Sample() logproto.Sample {
-	return i.curr.Sample()
+func (i *sampleQueryClientIterator) At() logproto.Sample {
+	return i.curr.At()
 }
 
 func (i *sampleQueryClientIterator) Labels() string {
@@ -517,7 +509,7 @@ func (i *sampleQueryClientIterator) StreamHash() uint64 {
 	return i.curr.StreamHash()
 }
 
-func (i *sampleQueryClientIterator) Error() error {
+func (i *sampleQueryClientIterator) Err() error {
 	return i.err
 }
 
@@ -587,7 +579,7 @@ func (i *seriesIterator) Next() bool {
 	return i.i < len(i.series.Samples)
 }
 
-func (i *seriesIterator) Error() error {
+func (i *seriesIterator) Err() error {
 	return nil
 }
 
@@ -599,7 +591,7 @@ func (i *seriesIterator) StreamHash() uint64 {
 	return i.series.StreamHash
 }
 
-func (i *seriesIterator) Sample() logproto.Sample {
+func (i *seriesIterator) At() logproto.Sample {
 	return i.series.Samples[i.i]
 }
 
@@ -638,8 +630,8 @@ func (i *nonOverlappingSampleIterator) Next() bool {
 	return true
 }
 
-func (i *nonOverlappingSampleIterator) Sample() logproto.Sample {
-	return i.curr.Sample()
+func (i *nonOverlappingSampleIterator) At() logproto.Sample {
+	return i.curr.At()
 }
 
 func (i *nonOverlappingSampleIterator) Labels() string {
@@ -656,11 +648,11 @@ func (i *nonOverlappingSampleIterator) StreamHash() uint64 {
 	return i.curr.StreamHash()
 }
 
-func (i *nonOverlappingSampleIterator) Error() error {
+func (i *nonOverlappingSampleIterator) Err() error {
 	if i.curr == nil {
 		return nil
 	}
-	return i.curr.Error()
+	return i.curr.Err()
 }
 
 func (i *nonOverlappingSampleIterator) Close() error {
@@ -694,13 +686,13 @@ func (i *timeRangedSampleIterator) Next() bool {
 		i.SampleIterator.Close()
 		return ok
 	}
-	ts := i.SampleIterator.Sample().Timestamp
+	ts := i.SampleIterator.At().Timestamp
 	for ok && i.mint > ts {
 		ok = i.SampleIterator.Next()
 		if !ok {
 			continue
 		}
-		ts = i.SampleIterator.Sample().Timestamp
+		ts = i.SampleIterator.At().Timestamp
 	}
 	if ok {
 		if ts == i.mint { // The mint is inclusive
@@ -724,7 +716,7 @@ func ReadSampleBatch(i SampleIterator, size uint32) (*logproto.SampleQueryRespon
 		seriesCount int
 	)
 	for ; respSize < size && i.Next(); respSize++ {
-		labels, hash, sample := i.Labels(), i.StreamHash(), i.Sample()
+		labels, hash, sample := i.Labels(), i.StreamHash(), i.At()
 		streams, ok := series[hash]
 		if !ok {
 			streams = map[string]*logproto.Series{}
@@ -750,5 +742,5 @@ func ReadSampleBatch(i SampleIterator, size uint32) (*logproto.SampleQueryRespon
 			result.Series = append(result.Series, *s)
 		}
 	}
-	return &result, respSize, i.Error()
+	return &result, respSize, i.Err()
 }

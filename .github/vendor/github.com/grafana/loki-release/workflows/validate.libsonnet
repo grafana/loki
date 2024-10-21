@@ -115,7 +115,6 @@ local validationJob = _validationJob(false);
       validationMakeStep('validate dev cluster config', 'validate-dev-cluster-config'),
       validationMakeStep('check example config docs', 'check-example-config-doc'),
       validationMakeStep('check helm reference doc', 'documentation-helm-reference-check'),
-      validationMakeStep('check drone drift', 'check-drone-drift'),
     ]) + {
       steps+: [
         step.new('build docs website')
@@ -161,6 +160,7 @@ local validationJob = _validationJob(false);
         + step.with({
           version: '${{ inputs.golang_ci_lint_version }}',
           'only-new-issues': true,
+          args: '-v --timeout 15m --build-tags linux,promtail_journal_enabled',
         }),
       ],
     )

@@ -15,6 +15,9 @@ const (
 
 	statusSuccess = "success"
 	statusFailure = "failure"
+
+	phasePlanning = "planning"
+	phaseBuilding = "building"
 )
 
 type Metrics struct {
@@ -33,12 +36,19 @@ type Metrics struct {
 	buildTime        *prometheus.HistogramVec
 	buildLastSuccess prometheus.Gauge
 
-	blocksDeleted prometheus.Counter
-	metasDeleted  prometheus.Counter
+	blocksDeleted *prometheus.CounterVec
+	metasDeleted  *prometheus.CounterVec
 
 	tenantsDiscovered    prometheus.Counter
 	tenantTasksPlanned   *prometheus.GaugeVec
 	tenantTasksCompleted *prometheus.GaugeVec
+
+	// Retention metrics
+	retentionRunning                  prometheus.Gauge
+	retentionTime                     *prometheus.HistogramVec
+	retentionDaysPerIteration         *prometheus.HistogramVec
+	retentionTenantsPerIteration      *prometheus.HistogramVec
+	retentionTenantsExceedingLookback prometheus.Gauge
 }
 
 func NewMetrics(
@@ -127,18 +137,18 @@ func NewMetrics(
 			Help:      "Unix timestamp of the last successful build cycle.",
 		}),
 
-		blocksDeleted: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		blocksDeleted: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
 			Name:      "blocks_deleted_total",
 			Help:      "Number of blocks deleted",
-		}),
-		metasDeleted: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		}, []string{"phase"}),
+		metasDeleted: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
 			Name:      "metas_deleted_total",
 			Help:      "Number of metas deleted",
-		}),
+		}, []string{"phase"}),
 
 		tenantsDiscovered: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Namespace: metricsNamespace,
@@ -158,6 +168,47 @@ func NewMetrics(
 			Name:      "tenant_tasks_completed",
 			Help:      "Number of tasks completed for a tenant during the current build iteration.",
 		}, []string{"tenant", "status"}),
+
+		// Retention
+		retentionRunning: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "retention_running",
+			Help:      "1 if retention is running in this compactor.",
+		}),
+
+		retentionTime: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "retention_time_seconds",
+			Help:      "Time this retention process took to complete.",
+			Buckets:   prometheus.DefBuckets,
+		}, []string{"status"}),
+
+		retentionDaysPerIteration: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "retention_days_processed",
+			Help:      "Number of days iterated over during the retention process.",
+			// 1day -> 5 years, 10 buckets
+			Buckets: prometheus.ExponentialBucketsRange(1, 365*5, 10),
+		}, []string{"status"}),
+
+		retentionTenantsPerIteration: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "retention_tenants_processed",
+			Help:      "Number of tenants on which retention was applied during the retention process.",
+			// 1 tenant -> 10k tenants, 10 buckets
+			Buckets: prometheus.ExponentialBucketsRange(1, 10000, 10),
+		}, []string{"status"}),
+
+		retentionTenantsExceedingLookback: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "retention_tenants_exceeding_lookback",
+			Help:      "Number of tenants with a retention exceeding the configured retention lookback.",
+		}),
 	}
 }
 

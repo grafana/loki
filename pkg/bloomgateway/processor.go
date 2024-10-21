@@ -5,12 +5,12 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/multierror"
 
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
@@ -36,7 +36,6 @@ type processor struct {
 
 func (p *processor) processTasks(ctx context.Context, tasks []Task) error {
 	tenant := tasks[0].tenant
-	level.Info(p.logger).Log("msg", "process tasks", "tenant", tenant, "tasks", len(tasks))
 
 	for ts, tasks := range group(tasks, func(t Task) config.DayTime { return t.table }) {
 		err := p.processTasksForDay(ctx, tenant, ts, tasks)
@@ -53,8 +52,7 @@ func (p *processor) processTasks(ctx context.Context, tasks []Task) error {
 	return nil
 }
 
-func (p *processor) processTasksForDay(ctx context.Context, tenant string, day config.DayTime, tasks []Task) error {
-	level.Info(p.logger).Log("msg", "process tasks for day", "tenant", tenant, "tasks", len(tasks), "day", day.String())
+func (p *processor) processTasksForDay(ctx context.Context, _ string, _ config.DayTime, tasks []Task) error {
 	var duration time.Duration
 
 	blocksRefs := make([]bloomshipper.BlockRef, 0, len(tasks[0].blocks)*len(tasks))
@@ -82,10 +80,10 @@ func (p *processor) processTasksForDay(ctx context.Context, tenant string, day c
 		bloomshipper.WithPool(p.store.Allocator()),
 	)
 	duration = time.Since(startBlocks)
-	level.Debug(p.logger).Log("msg", "fetched blocks", "count", len(refs), "duration", duration, "err", err)
 
 	for _, t := range tasks {
 		FromContext(t.ctx).AddBlocksFetchTime(duration)
+		FromContext(t.ctx).AddProcessedBlocksTotal(len(tasksByBlock))
 	}
 
 	if err != nil {
@@ -148,8 +146,12 @@ func (p *processor) processBlock(_ context.Context, bq *bloomshipper.CloseableBl
 		return err
 	}
 
-	tokenizer := v1.NewNGramTokenizer(schema.NGramLen(), schema.NGramSkip())
-	iters := make([]v1.PeekingIterator[v1.Request], 0, len(tasks))
+	// We require V3+ schema
+	if schema.Version() < v1.V3 {
+		return v1.ErrUnsupportedSchemaVersion
+	}
+
+	iters := make([]iter.PeekIterator[v1.Request], 0, len(tasks))
 
 	for _, task := range tasks {
 		// NB(owen-d): can be helpful for debugging, but is noisy
@@ -162,11 +164,12 @@ func (p *processor) processBlock(_ context.Context, bq *bloomshipper.CloseableBl
 		// 	sp.LogKV("process block", blockID, "series", len(task.series))
 		// }
 
-		it := v1.NewPeekingIter(task.RequestIter(tokenizer))
+		it := iter.NewPeekIter(task.RequestIter())
 		iters = append(iters, it)
 	}
 
-	fq := blockQuerier.Fuse(iters, p.logger)
+	logger := log.With(p.logger, "block", bq.BlockRef.String())
+	fq := blockQuerier.Fuse(iters, logger)
 
 	start := time.Now()
 	err = fq.Run()

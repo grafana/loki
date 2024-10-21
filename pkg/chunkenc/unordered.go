@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-
 	"io"
 	"math"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
@@ -29,7 +29,7 @@ type HeadBlock interface {
 	CheckpointBytes(b []byte) ([]byte, error)
 	CheckpointSize() int
 	LoadBytes(b []byte) error
-	Serialise(pool WriterPool) ([]byte, error)
+	Serialise(pool compression.WriterPool) ([]byte, error)
 	Reset()
 	Bounds() (mint, maxt int64)
 	Entries() int
@@ -252,13 +252,15 @@ func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.D
 	// cutting of blocks.
 	streams := map[string]*logproto.Stream{}
 	baseHash := pipeline.BaseLabels().Hash()
+	var structuredMetadata labels.Labels
 	_ = hb.forEntries(
 		ctx,
 		direction,
 		mint,
 		maxt,
 		func(statsCtx *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
-			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line, hb.symbolizer.Lookup(structuredMetadataSymbols)...)
+			structuredMetadata = hb.symbolizer.Lookup(structuredMetadataSymbols, structuredMetadata)
+			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line, structuredMetadata...)
 			if !matches {
 				return nil
 			}
@@ -288,13 +290,19 @@ func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.D
 		stats.FromContext(ctx).SetQueryReferencedStructuredMetadata()
 	}
 	if len(streams) == 0 {
-		return iter.NoopIterator
+		return iter.NoopEntryIterator
 	}
 	streamsResult := make([]logproto.Stream, 0, len(streams))
 	for _, stream := range streams {
 		streamsResult = append(streamsResult, *stream)
 	}
-	return iter.NewStreamsIterator(streamsResult, direction)
+
+	return iter.EntryIteratorWithClose(iter.NewStreamsIterator(streamsResult, direction), func() error {
+		if structuredMetadata != nil {
+			structuredMetadataPool.Put(structuredMetadata) // nolint:staticcheck
+		}
+		return nil
+	})
 }
 
 // nolint:unused
@@ -306,13 +314,15 @@ func (hb *unorderedHeadBlock) SampleIterator(
 ) iter.SampleIterator {
 	series := map[string]*logproto.Series{}
 	baseHash := extractor.BaseLabels().Hash()
+	var structuredMetadata labels.Labels
 	_ = hb.forEntries(
 		ctx,
 		logproto.FORWARD,
 		mint,
 		maxt,
 		func(statsCtx *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
-			value, parsedLabels, ok := extractor.ProcessString(ts, line, hb.symbolizer.Lookup(structuredMetadataSymbols)...)
+			structuredMetadata = hb.symbolizer.Lookup(structuredMetadataSymbols, structuredMetadata)
+			value, parsedLabels, ok := extractor.ProcessString(ts, line, structuredMetadata...)
 			if !ok {
 				return nil
 			}
@@ -345,7 +355,7 @@ func (hb *unorderedHeadBlock) SampleIterator(
 	}
 
 	if len(series) == 0 {
-		return iter.NoopIterator
+		return iter.NoopSampleIterator
 	}
 	seriesRes := make([]logproto.Series, 0, len(series))
 	for _, s := range series {
@@ -355,13 +365,16 @@ func (hb *unorderedHeadBlock) SampleIterator(
 		for _, s := range series {
 			SamplesPool.Put(s.Samples)
 		}
+		if structuredMetadata != nil {
+			structuredMetadataPool.Put(structuredMetadata) // nolint:staticcheck
+		}
 		return nil
 	})
 }
 
 // nolint:unused
 // serialise is used in creating an ordered, compressed block from an unorderedHeadBlock
-func (hb *unorderedHeadBlock) Serialise(pool WriterPool) ([]byte, error) {
+func (hb *unorderedHeadBlock) Serialise(pool compression.WriterPool) ([]byte, error) {
 	inBuf := serializeBytesBufferPool.Get().(*bytes.Buffer)
 	defer func() {
 		inBuf.Reset()
@@ -445,7 +458,7 @@ func (hb *unorderedHeadBlock) Convert(version HeadBlockFmt, symbolizer *symboliz
 		0,
 		math.MaxInt64,
 		func(_ *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
-			_, err := out.Append(ts, line, hb.symbolizer.Lookup(structuredMetadataSymbols))
+			_, err := out.Append(ts, line, hb.symbolizer.Lookup(structuredMetadataSymbols, nil))
 			return err
 		},
 	)
@@ -585,8 +598,7 @@ func (hb *unorderedHeadBlock) LoadBytes(b []byte) error {
 				}
 			}
 		}
-
-		if _, err := hb.Append(ts, line, hb.symbolizer.Lookup(structuredMetadataSymbols)); err != nil {
+		if _, err := hb.Append(ts, line, hb.symbolizer.Lookup(structuredMetadataSymbols, nil)); err != nil {
 			return err
 		}
 	}

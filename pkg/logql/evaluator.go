@@ -331,9 +331,12 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 			nextEvFactory = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params) (StepEvaluator, error) {
 				it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 					&logproto.SampleQueryRequest{
-						Start:    q.Start().Add(-rangExpr.Left.Interval).Add(-rangExpr.Left.Offset),
-						End:      q.End().Add(-rangExpr.Left.Offset),
-						Selector: e.String(), // intentionally send the vector for reducing labels.
+						// extend startTs backwards by step
+						Start: q.Start().Add(-rangExpr.Left.Interval).Add(-rangExpr.Left.Offset),
+						// add leap nanosecond to endTs to include lines exactly at endTs. range iterators work on start exclusive, end inclusive ranges
+						End: q.End().Add(-rangExpr.Left.Offset).Add(time.Nanosecond),
+						// intentionally send the vector for reducing labels.
+						Selector: e.String(),
 						Shards:   q.Shards(),
 						Plan: &plan.QueryPlan{
 							AST: expr,
@@ -351,9 +354,12 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 	case *syntax.RangeAggregationExpr:
 		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 			&logproto.SampleQueryRequest{
-				Start:    q.Start().Add(-e.Left.Interval).Add(-e.Left.Offset),
-				End:      q.End().Add(-e.Left.Offset),
-				Selector: expr.String(),
+				// extend startTs backwards by step
+				Start: q.Start().Add(-e.Left.Interval).Add(-e.Left.Offset),
+				// add leap nanosecond to endTs to include lines exactly at endTs. range iterators work on start exclusive, end inclusive ranges
+				End: q.End().Add(-e.Left.Offset).Add(time.Nanosecond),
+				// intentionally send the vector for reducing labels.
+				Selector: e.String(),
 				Shards:   q.Shards(),
 				Plan: &plan.QueryPlan{
 					AST: expr,
@@ -408,20 +414,6 @@ type VectorAggEvaluator struct {
 	expr          *syntax.VectorAggregationExpr
 	buf           []byte
 	lb            *labels.Builder
-}
-
-func NewVectorAggEvaluator(
-	nextEvaluator StepEvaluator,
-	expr *syntax.VectorAggregationExpr,
-	buf []byte,
-	lb *labels.Builder,
-) *VectorAggEvaluator {
-	return &VectorAggEvaluator{
-		nextEvaluator: nextEvaluator,
-		expr:          expr,
-		buf:           buf,
-		lb:            lb,
-	}
 }
 
 func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
@@ -698,7 +690,9 @@ func newRangeAggEvaluator(
 			return nil, err
 		}
 
-		return NewRangeVectorEvaluator(iter), nil
+		return &RangeVectorEvaluator{
+			iter: iter,
+		}, nil
 	}
 }
 
@@ -706,12 +700,6 @@ type RangeVectorEvaluator struct {
 	iter RangeVectorIterator
 
 	err error
-}
-
-func NewRangeVectorEvaluator(iter RangeVectorIterator) *RangeVectorEvaluator {
-	return &RangeVectorEvaluator{
-		iter: iter,
-	}
 }
 
 func (r *RangeVectorEvaluator) Next() (bool, int64, StepResult) {

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -242,11 +241,21 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 
 	if q.logExecQuery {
 		queryHash := util.HashedQuery(q.params.QueryString())
-		if GetRangeType(q.params) == InstantType {
-			level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "instant", "query", q.params.QueryString(), "query_hash", queryHash)
-		} else {
-			level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "range", "query", q.params.QueryString(), "length", q.params.End().Sub(q.params.Start()), "step", q.params.Step(), "query_hash", queryHash)
+
+		logValues := []interface{}{
+			"msg", "executing query",
+			"query", q.params.QueryString(),
+			"query_hash", queryHash,
 		}
+		tags := httpreq.ExtractQueryTagsFromContext(ctx)
+		tagValues := tagsToKeyValues(tags)
+		if GetRangeType(q.params) == InstantType {
+			logValues = append(logValues, "type", "instant")
+		} else {
+			logValues = append(logValues, "type", "range", "length", q.params.End().Sub(q.params.Start()), "step", q.params.Step())
+		}
+		logValues = append(logValues, tagValues...)
+		level.Info(logutil.WithContext(ctx, q.logger)).Log(logValues...)
 	}
 
 	rangeType := GetRangeType(q.params)
@@ -371,20 +380,45 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 		case SampleVector:
 			maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
 			maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
-			return q.JoinSampleVector(next, vec, stepEvaluator, maxSeries)
+			mfl := false
+			if rae, ok := expr.(*syntax.RangeAggregationExpr); ok && (rae.Operation == syntax.OpRangeTypeFirstWithTimestamp || rae.Operation == syntax.OpRangeTypeLastWithTimestamp) {
+				mfl = true
+			}
+			return q.JoinSampleVector(next, vec, stepEvaluator, maxSeries, mfl)
 		case ProbabilisticQuantileVector:
 			return MergeQuantileSketchVector(next, vec, stepEvaluator, q.params)
 		default:
 			return nil, fmt.Errorf("unsupported result type: %T", r)
 		}
 	}
-	return nil, nil
+	return nil, errors.New("unexpected empty result")
 }
 
-func (q *query) JoinSampleVector(next bool, r StepResult, stepEvaluator StepEvaluator, maxSeries int) (promql_parser.Value, error) {
+func vectorsToSeries(vec promql.Vector, sm map[uint64]promql.Series) {
+	for _, p := range vec {
+		var (
+			series promql.Series
+			hash   = p.Metric.Hash()
+			ok     bool
+		)
 
-	seriesIndex := map[uint64]*promql.Series{}
+		series, ok = sm[hash]
+		if !ok {
+			series = promql.Series{
+				Metric: p.Metric,
+				Floats: make([]promql.FPoint, 0, 1),
+			}
+			sm[hash] = series
+		}
+		series.Floats = append(series.Floats, promql.FPoint{
+			T: p.T,
+			F: p.F,
+		})
+		sm[hash] = series
+	}
+}
 
+func (q *query) JoinSampleVector(next bool, r StepResult, stepEvaluator StepEvaluator, maxSeries int, mergeFirstLast bool) (promql_parser.Value, error) {
 	vec := promql.Vector{}
 	if next {
 		vec = r.SampleVector()
@@ -394,8 +428,21 @@ func (q *query) JoinSampleVector(next bool, r StepResult, stepEvaluator StepEval
 	if len(vec) > maxSeries {
 		return nil, logqlmodel.NewSeriesLimitError(maxSeries)
 	}
+	seriesIndex := map[uint64]promql.Series{}
 
 	if GetRangeType(q.params) == InstantType {
+		// an instant query sharded first/last_over_time can return a single vector
+		if mergeFirstLast {
+			vectorsToSeries(vec, seriesIndex)
+			series := make([]promql.Series, 0, len(seriesIndex))
+			for _, s := range seriesIndex {
+				series = append(series, s)
+			}
+			result := promql.Matrix(series)
+			sort.Sort(result)
+			return result, stepEvaluator.Error()
+		}
+
 		sortByValue, err := Sortable(q.params)
 		if err != nil {
 			return nil, fmt.Errorf("fail to check Sortable, logql: %s ,err: %s", q.params.QueryString(), err)
@@ -406,33 +453,9 @@ func (q *query) JoinSampleVector(next bool, r StepResult, stepEvaluator StepEval
 		return vec, nil
 	}
 
-	stepCount := int(math.Ceil(float64(q.params.End().Sub(q.params.Start()).Nanoseconds()) / float64(q.params.Step().Nanoseconds())))
-	if stepCount <= 0 {
-		stepCount = 1
-	}
-
 	for next {
 		vec = r.SampleVector()
-		for _, p := range vec {
-			var (
-				series *promql.Series
-				hash   = p.Metric.Hash()
-				ok     bool
-			)
-
-			series, ok = seriesIndex[hash]
-			if !ok {
-				series = &promql.Series{
-					Metric: p.Metric,
-					Floats: make([]promql.FPoint, 0, stepCount),
-				}
-				seriesIndex[hash] = series
-			}
-			series.Floats = append(series.Floats, promql.FPoint{
-				T: p.T,
-				F: p.F,
-			})
-		}
+		vectorsToSeries(vec, seriesIndex)
 		// as we slowly build the full query for each steps, make sure we don't go over the limit of unique series.
 		if len(seriesIndex) > maxSeries {
 			return nil, logqlmodel.NewSeriesLimitError(maxSeries)
@@ -445,7 +468,7 @@ func (q *query) JoinSampleVector(next bool, r StepResult, stepEvaluator StepEval
 
 	series := make([]promql.Series, 0, len(seriesIndex))
 	for _, s := range seriesIndex {
-		series = append(series, *s)
+		series = append(series, s)
 	}
 	result := promql.Matrix(series)
 	sort.Sort(result)
@@ -540,7 +563,7 @@ func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, inte
 	// value here because many unit tests start at time.Unix(0,0)
 	lastEntry := lastEntryMinTime
 	for respSize < size && i.Next() {
-		streamLabels, entry := i.Labels(), i.Entry()
+		streamLabels, entry := i.Labels(), i.At()
 
 		forwardShouldOutput := dir == logproto.FORWARD &&
 			(entry.Timestamp.Equal(lastEntry.Add(interval)) || entry.Timestamp.After(lastEntry.Add(interval)))
@@ -559,7 +582,7 @@ func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, inte
 				streams[streamLabels] = stream
 			}
 			stream.Entries = append(stream.Entries, entry)
-			lastEntry = i.Entry().Timestamp
+			lastEntry = i.At().Timestamp
 			respSize++
 		}
 	}
@@ -569,7 +592,7 @@ func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, inte
 		result = append(result, *stream)
 	}
 	sort.Sort(result)
-	return result, i.Error()
+	return result, i.Err()
 }
 
 type groupedAggregation struct {

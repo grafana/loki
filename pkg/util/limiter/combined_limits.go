@@ -3,12 +3,12 @@ package limiter
 import (
 	bloombuilder "github.com/grafana/loki/v3/pkg/bloombuild/builder"
 	bloomplanner "github.com/grafana/loki/v3/pkg/bloombuild/planner"
-	"github.com/grafana/loki/v3/pkg/bloomcompactor"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
 	"github.com/grafana/loki/v3/pkg/compactor"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
+	"github.com/grafana/loki/v3/pkg/pattern"
 	querier_limits "github.com/grafana/loki/v3/pkg/querier/limits"
 	queryrange_limits "github.com/grafana/loki/v3/pkg/querier/queryrange/limits"
 	"github.com/grafana/loki/v3/pkg/ruler"
@@ -27,7 +27,7 @@ type CombinedLimits interface {
 	storage.StoreLimits
 	indexgateway.Limits
 	bloomgateway.Limits
-	bloomcompactor.Limits
 	bloomplanner.Limits
 	bloombuilder.Limits
+	pattern.Limits
 }

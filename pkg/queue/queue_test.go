@@ -31,7 +31,7 @@ func BenchmarkGetNextRequest(b *testing.B) {
 	}{
 		{
 			"without sub-queues",
-			func(i int) []string { return nil },
+			func(_ int) []string { return nil },
 		},
 		{
 			"with 1 level of sub-queues",
@@ -44,8 +44,6 @@ func BenchmarkGetNextRequest(b *testing.B) {
 	}
 
 	for _, benchCase := range benchCases {
-		benchCase := benchCase
-
 		b.Run(benchCase.name, func(b *testing.B) {
 
 			queues := make([]*RequestQueue, 0, b.N)
@@ -554,7 +552,7 @@ func assertChanReceived(t *testing.T, c chan struct{}, timeout time.Duration, ms
 	select {
 	case <-c:
 	case <-time.After(timeout):
-		t.Fatalf(msg)
+		t.Fatal(msg)
 	}
 }
 

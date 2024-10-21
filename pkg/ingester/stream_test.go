@@ -14,6 +14,7 @@ import (
 	gokitlog "github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/runtime"
 
 	"github.com/grafana/dskit/httpgrpc"
@@ -55,7 +56,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
@@ -67,7 +68,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 				chunkfmt,
 				headfmt,
 				cfg,
-				limiter,
+				limiter.rateLimitStrategy,
 				"fake",
 				model.Fingerprint(0),
 				labels.Labels{
@@ -101,7 +102,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 			}
 
 			fmt.Fprintf(&expected, "user 'fake', total ignored: %d out of %d for stream: {foo=\"bar\"}", numLogs, numLogs)
-			expectErr := httpgrpc.Errorf(http.StatusBadRequest, expected.String())
+			expectErr := httpgrpc.Errorf(http.StatusBadRequest, "%s", expected.String())
 
 			_, err = s.Push(context.Background(), newLines, recordPool.GetRecord(), 0, true, false, nil)
 			require.Error(t, err)
@@ -113,7 +114,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 func TestPushDeduplication(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 
 	chunkfmt, headfmt := defaultChunkFormat(t)
 
@@ -121,7 +122,7 @@ func TestPushDeduplication(t *testing.T) {
 		chunkfmt,
 		headfmt,
 		defaultConfig(),
-		limiter,
+		limiter.rateLimitStrategy,
 		"fake",
 		model.Fingerprint(0),
 		labels.Labels{
@@ -149,7 +150,7 @@ func TestPushDeduplication(t *testing.T) {
 func TestPushDeduplicationExtraMetrics(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 
 	chunkfmt, headfmt := defaultChunkFormat(t)
 
@@ -181,7 +182,7 @@ func TestPushDeduplicationExtraMetrics(t *testing.T) {
 		chunkfmt,
 		headfmt,
 		defaultConfig(),
-		limiter,
+		limiter.rateLimitStrategy,
 		"fake",
 		model.Fingerprint(0),
 		labels.Labels{
@@ -219,7 +220,7 @@ func TestPushDeduplicationExtraMetrics(t *testing.T) {
 func TestPushRejectOldCounter(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 
 	chunkfmt, headfmt := defaultChunkFormat(t)
 
@@ -227,7 +228,7 @@ func TestPushRejectOldCounter(t *testing.T) {
 		chunkfmt,
 		headfmt,
 		defaultConfig(),
-		limiter,
+		limiter.rateLimitStrategy,
 		"fake",
 		model.Fingerprint(0),
 		labels.Labels{
@@ -276,7 +277,7 @@ func TestStreamIterator(t *testing.T) {
 		{"gzipChunk", func() *chunkenc.MemChunk {
 			chunkfmt, headfmt := defaultChunkFormat(t)
 
-			return chunkenc.NewMemChunk(chunkfmt, chunkenc.EncGZIP, headfmt, 256*1024, 0)
+			return chunkenc.NewMemChunk(chunkfmt, compression.GZIP, headfmt, 256*1024, 0)
 		}},
 	} {
 		t.Run(chk.name, func(t *testing.T) {
@@ -327,7 +328,7 @@ func TestEntryErrorCorrectlyReported(t *testing.T) {
 	}
 	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 
 	chunkfmt, headfmt := defaultChunkFormat(t)
 
@@ -335,7 +336,7 @@ func TestEntryErrorCorrectlyReported(t *testing.T) {
 		chunkfmt,
 		headfmt,
 		&cfg,
-		limiter,
+		limiter.rateLimitStrategy,
 		"fake",
 		model.Fingerprint(0),
 		labels.Labels{
@@ -366,7 +367,7 @@ func TestUnorderedPush(t *testing.T) {
 	cfg.MaxChunkAge = 10 * time.Second
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 
 	chunkfmt, headfmt := defaultChunkFormat(t)
 
@@ -374,7 +375,7 @@ func TestUnorderedPush(t *testing.T) {
 		chunkfmt,
 		headfmt,
 		&cfg,
-		limiter,
+		limiter.rateLimitStrategy,
 		"fake",
 		model.Fingerprint(0),
 		labels.Labels{
@@ -456,8 +457,8 @@ func TestUnorderedPush(t *testing.T) {
 	require.Nil(t, err)
 	for _, x := range exp {
 		require.Equal(t, true, sItr.Next())
-		require.Equal(t, x.Timestamp, time.Unix(0, sItr.Sample().Timestamp))
-		require.Equal(t, float64(1), sItr.Sample().Value)
+		require.Equal(t, x.Timestamp, time.Unix(0, sItr.At().Timestamp))
+		require.Equal(t, float64(1), sItr.At().Value)
 	}
 	require.Equal(t, false, sItr.Next())
 }
@@ -469,7 +470,7 @@ func TestPushRateLimit(t *testing.T) {
 	}
 	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 
 	chunkfmt, headfmt := defaultChunkFormat(t)
 
@@ -477,7 +478,7 @@ func TestPushRateLimit(t *testing.T) {
 		chunkfmt,
 		headfmt,
 		defaultConfig(),
-		limiter,
+		limiter.rateLimitStrategy,
 		"fake",
 		model.Fingerprint(0),
 		labels.Labels{
@@ -509,7 +510,7 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 	}
 	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 
 	cfg := defaultConfig()
 	chunkfmt, headfmt := defaultChunkFormat(t)
@@ -518,7 +519,7 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 		chunkfmt,
 		headfmt,
 		cfg,
-		limiter,
+		limiter.rateLimitStrategy,
 		"fake",
 		model.Fingerprint(0),
 		labels.Labels{
@@ -548,7 +549,7 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 
 	cfg := defaultConfig()
 	cfg.MaxChunkAge = time.Minute
@@ -558,7 +559,7 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 		chunkfmt,
 		headfmt,
 		cfg,
-		limiter,
+		limiter.rateLimitStrategy,
 		"fake",
 		model.Fingerprint(0),
 		labels.Labels{
@@ -599,8 +600,8 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 func iterEq(t *testing.T, exp []logproto.Entry, got iter.EntryIterator) {
 	var i int
 	for got.Next() {
-		require.Equal(t, exp[i].Timestamp, got.Entry().Timestamp, "failed on the (%d) ts", i)
-		require.Equal(t, exp[i].Line, got.Entry().Line)
+		require.Equal(t, exp[i].Timestamp, got.At().Timestamp, "failed on the (%d) ts", i)
+		require.Equal(t, exp[i].Line, got.At().Line)
 		i++
 	}
 	require.Equal(t, i, len(exp), "incorrect number of entries expected")
@@ -616,10 +617,10 @@ func Benchmark_PushStream(b *testing.B) {
 
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(b, err)
-	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 	chunkfmt, headfmt := defaultChunkFormat(b)
 
-	s := newStream(chunkfmt, headfmt, &Config{MaxChunkAge: 24 * time.Hour}, limiter, "fake", model.Fingerprint(0), ls, true, NewStreamRateCalculator(), NilMetrics, nil, nil)
+	s := newStream(chunkfmt, headfmt, &Config{MaxChunkAge: 24 * time.Hour}, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), ls, true, NewStreamRateCalculator(), NilMetrics, nil, nil)
 	expr, err := syntax.ParseLogSelector(`{namespace="loki-dev"}`, true)
 	require.NoError(b, err)
 	t, err := newTailer("foo", expr, &fakeTailServer{}, 10)

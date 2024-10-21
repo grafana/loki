@@ -37,12 +37,13 @@ import (
 	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/internal/pretty"
+	"google.golang.org/grpc/internal/xds"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/serviceconfig"
 	xdsinternal "google.golang.org/grpc/xds/internal"
 	"google.golang.org/grpc/xds/internal/balancer/loadstore"
 	"google.golang.org/grpc/xds/internal/xdsclient"
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
 	"google.golang.org/grpc/xds/internal/xdsclient/load"
 )
 
@@ -51,6 +52,8 @@ const (
 	Name                   = "xds_cluster_impl_experimental"
 	defaultRequestCountMax = 1024
 )
+
+var connectedAddress = internal.ConnectedAddress.(func(balancer.SubConnState) resolver.Address)
 
 func init() {
 	balancer.Register(bb{})
@@ -123,6 +126,7 @@ type clusterImplBalancer struct {
 	requestCounterService string // The service name for the request counter.
 	requestCounter        *xdsclient.ClusterRequestsCounter
 	requestCountMax       uint32
+	telemetryLabels       map[string]string
 	pickerUpdateCh        *buffer.Unbounded
 }
 
@@ -210,7 +214,9 @@ func (b *clusterImplBalancer) UpdateClientConnState(s balancer.ClientConnState) 
 		return nil
 	}
 
-	b.logger.Infof("Received update from resolver, balancer config: %+v", pretty.ToJSON(s.BalancerConfig))
+	if b.logger.V(2) {
+		b.logger.Infof("Received update from resolver, balancer config: %s", pretty.ToJSON(s.BalancerConfig))
+	}
 	newConfig, ok := s.BalancerConfig.(*LBConfig)
 	if !ok {
 		return fmt.Errorf("unexpected balancer config with type: %T", s.BalancerConfig)
@@ -357,22 +363,35 @@ func (scw *scWrapper) localityID() xdsinternal.LocalityID {
 func (b *clusterImplBalancer) NewSubConn(addrs []resolver.Address, opts balancer.NewSubConnOptions) (balancer.SubConn, error) {
 	clusterName := b.getClusterName()
 	newAddrs := make([]resolver.Address, len(addrs))
-	var lID xdsinternal.LocalityID
 	for i, addr := range addrs {
-		newAddrs[i] = internal.SetXDSHandshakeClusterName(addr, clusterName)
-		lID = xdsinternal.GetLocalityID(newAddrs[i])
+		newAddrs[i] = xds.SetXDSHandshakeClusterName(addr, clusterName)
 	}
 	var sc balancer.SubConn
+	scw := &scWrapper{}
 	oldListener := opts.StateListener
-	opts.StateListener = func(state balancer.SubConnState) { b.updateSubConnState(sc, state, oldListener) }
+	opts.StateListener = func(state balancer.SubConnState) {
+		b.updateSubConnState(sc, state, oldListener)
+		if state.ConnectivityState != connectivity.Ready {
+			return
+		}
+		// Read connected address and call updateLocalityID() based on the connected
+		// address's locality. https://github.com/grpc/grpc-go/issues/7339
+		addr := connectedAddress(state)
+		lID := xdsinternal.GetLocalityID(addr)
+		if lID.Empty() {
+			if b.logger.V(2) {
+				b.logger.Infof("Locality ID for %s unexpectedly empty", addr)
+			}
+			return
+		}
+		scw.updateLocalityID(lID)
+	}
 	sc, err := b.ClientConn.NewSubConn(newAddrs, opts)
 	if err != nil {
 		return nil, err
 	}
-	// Wrap this SubConn in a wrapper, and add it to the map.
-	ret := &scWrapper{SubConn: sc}
-	ret.updateLocalityID(lID)
-	return ret, nil
+	scw.SubConn = sc
+	return scw, nil
 }
 
 func (b *clusterImplBalancer) RemoveSubConn(sc balancer.SubConn) {
@@ -384,7 +403,7 @@ func (b *clusterImplBalancer) UpdateAddresses(sc balancer.SubConn, addrs []resol
 	newAddrs := make([]resolver.Address, len(addrs))
 	var lID xdsinternal.LocalityID
 	for i, addr := range addrs {
-		newAddrs[i] = internal.SetXDSHandshakeClusterName(addr, clusterName)
+		newAddrs[i] = xds.SetXDSHandshakeClusterName(addr, clusterName)
 		lID = xdsinternal.GetLocalityID(newAddrs[i])
 	}
 	if scw, ok := sc.(*scWrapper); ok {
@@ -465,18 +484,19 @@ func (b *clusterImplBalancer) run() {
 				b.childState = u
 				b.ClientConn.UpdateState(balancer.State{
 					ConnectivityState: b.childState.ConnectivityState,
-					Picker: newPicker(b.childState, &dropConfigs{
+					Picker: b.newPicker(&dropConfigs{
 						drops:           b.drops,
 						requestCounter:  b.requestCounter,
 						requestCountMax: b.requestCountMax,
-					}, b.loadWrapper),
+					}),
 				})
 			case *LBConfig:
+				b.telemetryLabels = u.TelemetryLabels
 				dc := b.handleDropAndRequestCount(u)
 				if dc != nil && b.childState.Picker != nil {
 					b.ClientConn.UpdateState(balancer.State{
 						ConnectivityState: b.childState.ConnectivityState,
-						Picker:            newPicker(b.childState, dc, b.loadWrapper),
+						Picker:            b.newPicker(dc),
 					})
 				}
 			}
