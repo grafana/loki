@@ -1,6 +1,8 @@
 package openshift
 
 import (
+	"slices"
+
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 )
 
@@ -30,8 +32,13 @@ func DefaultOTLPAttributes(disableRecommended bool) config.OTLPAttributeConfig {
 		return result
 	}
 
+	// TODO decide whether we want to split the default configuration by tenant
 	result.Global.ResourceAttributes[0].Names = append(result.Global.ResourceAttributes[0].Names,
 		"k8s.container.name",
+		"k8s.cronjob.name",
+		"k8s.daemonset.name",
+		"k8s.deployment.name",
+		"k8s.job.name",
 		"k8s.node.name",
 		"k8s.node.uid",
 		"k8s.pod.name",
@@ -39,71 +46,61 @@ func DefaultOTLPAttributes(disableRecommended bool) config.OTLPAttributeConfig {
 		"kubernetes.container_name",
 		"kubernetes.host",
 		"kubernetes.pod_name",
+		"service.name",
 	)
+	slices.Sort(result.Global.ResourceAttributes[0].Names)
 
-	// TODO decide whether we want to split the default configuration by tenant
-	result.Global = &config.OTLPTenantAttributeConfig{
-		ResourceAttributes: []config.OTLPAttribute{
-			{
-				Action: config.OTLPAttributeActionStreamLabel,
-				Names: []string{
-					"k8s.cronjob.name",
-					"k8s.daemonset.name",
-					"k8s.deployment.name",
-					"k8s.job.name",
-					"service.name",
-				},
-			},
-			{
-				Action: config.OTLPAttributeActionStreamLabel,
-				Regex:  "openshift\\.labels\\..+",
-			},
-			{
-				Action: config.OTLPAttributeActionMetadata,
-				Names: []string{
-					"k8s.replicaset.name",
-					"k8s.statefulset.name",
-					"process.command_line",
-					"process.executable.name",
-					"process.executable.path",
-					"process.pid",
-				},
-			},
-			{
-				Action: config.OTLPAttributeActionMetadata,
-				Regex:  "k8s\\.pod\\.labels\\..+",
+	result.Global.ResourceAttributes = append(result.Global.ResourceAttributes,
+		config.OTLPAttribute{
+			Action: config.OTLPAttributeActionStreamLabel,
+			Regex:  "openshift\\.labels\\..+",
+		},
+		config.OTLPAttribute{
+			Action: config.OTLPAttributeActionMetadata,
+			Names: []string{
+				"k8s.replicaset.name",
+				"k8s.statefulset.name",
+				"process.command_line",
+				"process.executable.name",
+				"process.executable.path",
+				"process.pid",
 			},
 		},
-		LogAttributes: []config.OTLPAttribute{
-			{
-				Action: config.OTLPAttributeActionMetadata,
-				Names: []string{
-					"k8s.event.level",
-					"k8s.event.object_ref.api.group",
-					"k8s.event.object_ref.api.version",
-					"k8s.event.object_ref.name",
-					"k8s.event.object_ref.resource",
-					"k8s.event.request.uri",
-					"k8s.event.response.code",
-					"k8s.event.stage",
-					"k8s.event.user_agent",
-					"k8s.user.groups",
-					"k8s.user.username",
-					"log.iostream",
-				},
+		config.OTLPAttribute{
+			Action: config.OTLPAttributeActionMetadata,
+			Regex:  "k8s\\.pod\\.labels\\..+",
+		},
+	)
+
+	result.Global.LogAttributes = []config.OTLPAttribute{
+		{
+			Action: config.OTLPAttributeActionMetadata,
+			Names: []string{
+				"k8s.event.level",
+				"k8s.event.object_ref.api.group",
+				"k8s.event.object_ref.api.version",
+				"k8s.event.object_ref.name",
+				"k8s.event.object_ref.resource",
+				"k8s.event.request.uri",
+				"k8s.event.response.code",
+				"k8s.event.stage",
+				"k8s.event.user_agent",
+				"k8s.user.groups",
+				"k8s.user.username",
+				"log.iostream",
 			},
-			{
-				Action: config.OTLPAttributeActionMetadata,
-				Regex:  "k8s\\.event\\.annotations\\..+",
-			},
-			{
-				Action: config.OTLPAttributeActionMetadata,
-				Regex:  "systemd\\.t\\..+",
-			},
-			{
-				Action: config.OTLPAttributeActionMetadata,
-				Regex:  "systemd\\.u\\..+",
-			},
+		},
+		{
+			Action: config.OTLPAttributeActionMetadata,
+			Regex:  "k8s\\.event\\.annotations\\..+",
+		},
+		{
+			Action: config.OTLPAttributeActionMetadata,
+			Regex:  "systemd\\.t\\..+",
+		},
+		{
+			Action: config.OTLPAttributeActionMetadata,
+			Regex:  "systemd\\.u\\..+",
 		},
 	}
 
