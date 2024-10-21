@@ -3091,9 +3091,13 @@ bool
 </td>
 <td>
 <em>(Optional)</em>
+<p>DisableRecommendedAttributes can be used to reduce the number of attributes used for stream labels and structured
+metadata.</p>
 <p>Enabling this setting removes the &ldquo;recommended attributes&rdquo; from the generated Loki configuration. This will cause
-meta information to not be available as stream labels or structured metadata,
-potentially making queries more expensive and less performant.</p>
+meta information to not be available as stream labels or structured metadata, potentially making queries more
+expensive and less performant.</p>
+<p>Note that there is a set of &ldquo;required attributes&rdquo;, needed for OpenShift Logging to work properly. Those will be
+added to the configuration, even if this field is set to true.</p>
 <p>This option is supposed to be combined with a custom label configuration customizing the labels for the specific
 usecase.</p>
 </td>
