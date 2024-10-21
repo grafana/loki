@@ -3765,7 +3765,7 @@ shard_streams:
 [bloom_creation_enabled: <boolean> | default = false]
 
 # Experimental. Bloom planning strategy to use in bloom creation. Can be one of:
-# 'split_keyspace_by_factor'
+# 'split_keyspace_by_factor', 'split_by_chunk_size'
 # CLI flag: -bloom-build.planning-strategy
 [bloom_planning_strategy: <string> | default = "split_keyspace_by_factor"]
 
@@ -3774,6 +3774,10 @@ shard_streams:
 # keyspace is split into this many parts to parallelize bloom creation.
 # CLI flag: -bloom-build.split-keyspace-by
 [bloom_split_series_keyspace_by: <int> | default = 256]
+
+# Experimental. Target chunk size in bytes for bloom tasks. Default is 100GB.
+# CLI flag: -bloom-build.target-chunk-size
+[bloom_task_target_chunk_size: <int> | default = 100GB]
 
 # Experimental. Compression algorithm for bloom block pages.
 # CLI flag: -bloom-build.block-encoding
