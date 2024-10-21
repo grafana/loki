@@ -15,11 +15,13 @@ import (
 
 const (
 	SplitKeyspaceStrategyName = "split_keyspace_by_factor"
+	ChunkSizeStrategyName     = "split_by_chunk_size"
 )
 
 type Limits interface {
 	BloomPlanningStrategy(tenantID string) string
-	BloomSplitSeriesKeyspaceBy(tenantID string) int
+	SplitKeyspaceStrategyLimits
+	ChunkSizeStrategyLimits
 }
 
 type TSDBSet = map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries
@@ -39,6 +41,8 @@ func NewStrategy(
 	switch strategy {
 	case SplitKeyspaceStrategyName:
 		return NewSplitKeyspaceStrategy(limits, logger)
+	case ChunkSizeStrategyName:
+		return NewChunkSizeStrategy(limits, logger)
 	default:
 		return nil, fmt.Errorf("unknown bloom planning strategy (%s)", strategy)
 	}
