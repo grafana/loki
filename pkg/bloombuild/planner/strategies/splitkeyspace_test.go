@@ -220,7 +220,7 @@ func Test_blockPlansForGaps(t *testing.T) {
 				plannertest.GenMeta(0, 2, []int{0}, []bloomshipper.BlockRef{
 					plannertest.GenBlockRef(0, 1),
 					plannertest.GenBlockRef(1, 2),
-				}),                                                                                          // tsdb_0
+				}), // tsdb_0
 				plannertest.GenMeta(6, 8, []int{0}, []bloomshipper.BlockRef{plannertest.GenBlockRef(6, 8)}), // tsdb_0
 
 				plannertest.GenMeta(3, 5, []int{1}, []bloomshipper.BlockRef{plannertest.GenBlockRef(3, 5)}),   // tsdb_1
