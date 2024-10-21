@@ -5803,6 +5803,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>kubeVersionOverride</td>
+			<td>string</td>
+			<td>Overrides the version used to determine compatibility of resources with the target Kubernetes cluster. This is useful when using `helm template`, because then helm will use the client version of kubectl as the Kubernetes version, which may or may not match your cluster's server version. Example: 'v1.24.4'. Set to null to use the version that helm devises.</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>kubectlImage</td>
 			<td>object</td>
 			<td>kubetclImage is used in the enterprise provisioner and tokengen jobs</td>
