@@ -511,6 +511,19 @@ func TestOtlpAttributeConfig(t *testing.T) {
 							},
 						},
 					},
+					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
+						"application": {
+							OTLP: &lokiv1.OTLPSpec{
+								StreamLabels: &lokiv1.OTLPStreamLabelSpec{
+									ResourceAttributes: []lokiv1.OTLPAttributeReference{
+										{
+											Name: "custom.application.label",
+										},
+									},
+								},
+							},
+						},
+					},
 				},
 				Tenants: &lokiv1.TenantsSpec{
 					Mode: lokiv1.OpenshiftLogging,
@@ -543,6 +556,32 @@ func TestOtlpAttributeConfig(t *testing.T) {
 						{
 							Action: config.OTLPAttributeActionMetadata,
 							Names:  []string{"custom.log.metadata"},
+						},
+					},
+				},
+				Tenants: map[string]*config.OTLPTenantAttributeConfig{
+					"application": {
+						ResourceAttributes: []config.OTLPAttribute{
+							{
+								Action: config.OTLPAttributeActionStreamLabel,
+								Names: []string{
+									"custom.application.label",
+									"custom.stream.label",
+									"k8s.namespace.name",
+									"kubernetes.namespace_name",
+									"log_source",
+									"log_type",
+									"openshift.cluster.uid",
+									"openshift.log.source",
+									"openshift.log.type",
+								},
+							},
+						},
+						LogAttributes: []config.OTLPAttribute{
+							{
+								Action: config.OTLPAttributeActionMetadata,
+								Names:  []string{"custom.log.metadata"},
+							},
 						},
 					},
 				},
