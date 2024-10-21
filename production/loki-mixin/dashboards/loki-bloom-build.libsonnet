@@ -12,7 +12,7 @@ local template = import 'grafonnet/template.libsonnet';
     template.new(
       'tenant',
       '$datasource',
-      'label_values(loki_bloomplanner_tenant_tasks_planned{cluster="$cluster", namespace="$namespace"})',
+      'label_values(loki_bloomplanner_tenant_tasks_planned{cluster="$cluster", namespace="$namespace"}, tenant)',
       label='Tenant',
       sort=3,  // numerical ascending
       includeAll=true,
