@@ -114,6 +114,10 @@ spec:
             {{- if .Values.enterpriseGateway.env }}
             {{ toYaml .Values.enterpriseGateway.env | nindent 12 }}
             {{- end }}
+            {{- with .Values.enterpriseGateway.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
         {{- with .Values.enterpriseGateway.extraContainers }}
         {{ toYaml . | nindent 8 }}
         {{- end }}

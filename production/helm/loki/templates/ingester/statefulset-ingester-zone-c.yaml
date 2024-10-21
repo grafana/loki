@@ -40,8 +40,10 @@ spec:
       {{- include "loki.ingesterSelectorLabels" . | nindent 6 }}
       name: ingester-zone-c
       rollout-group: ingester
+{{- with .Values.ingester.updateStrategy }}
   updateStrategy:
-    type: OnDelete
+     {{- tpl (. | toYaml) $ | nindent 4 }}
+{{- end }}
   template:
     metadata:
       annotations:

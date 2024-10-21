@@ -1,8 +1,8 @@
 module github.com/grafana/loki/v3
 
-go 1.22
+go 1.23
 
-toolchain go1.23.2
+toolchain go1.23.1
 
 require (
 	cloud.google.com/go/bigtable v1.29.0
@@ -104,7 +104,7 @@ require (
 	golang.org/x/sys v0.25.0
 	golang.org/x/time v0.6.0
 	google.golang.org/api v0.193.0
-	google.golang.org/grpc v1.65.0
+	google.golang.org/grpc v1.66.0
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -139,7 +139,7 @@ require (
 	github.com/richardartoul/molecule v1.0.0
 	github.com/schollz/progressbar/v3 v3.14.6
 	github.com/shirou/gopsutil/v4 v4.24.8
-	github.com/thanos-io/objstore v0.0.0-20240818203309-0363dadfdfb1
+	github.com/thanos-io/objstore v0.0.0-20241015070247-5f04b8b0b52a
 	github.com/twmb/franz-go v1.17.1
 	github.com/twmb/franz-go/pkg/kadm v1.13.0
 	github.com/twmb/franz-go/pkg/kfake v0.0.0-20240821035758-b77dd13e2bfa

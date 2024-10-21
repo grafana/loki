@@ -827,6 +827,8 @@ adminApi:
   #      - domain.tld
   # -- Additional CLI arguments for the `admin-api` target
   extraArgs: {}
+  # -- Environment variables from secrets or configmaps to add to the admin-api pods
+  extraEnvFrom: []
   # -- Additional labels for the `admin-api` Deployment
   labels: {}
   # -- Additional annotations for the `admin-api` Deployment
@@ -1105,6 +1107,8 @@ enterpriseGateway:
   #      - domain.tld
   # -- Additional CLI arguments for the `gateway` target
   extraArgs: {}
+  # -- Environment variables from secrets or configmaps to add to the enterprise gateway pods
+  extraEnvFrom: []
   # -- Additional labels for the `gateway` Pod
   labels: {}
   # -- Additional annotations for the `gateway` Pod
@@ -1802,6 +1806,13 @@ ingester:
   readinessProbe: {}
   # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
+  # -- UpdateStrategy for the ingester StatefulSets.
+  updateStrategy:
+    # -- One of  'OnDelete' or 'RollingUpdate'
+    type: RollingUpdate
+    # -- Optional for updateStrategy.type=RollingUpdate. See [Partitioned rolling updates](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#partitions) in the StatefulSet docs for details.
+    # rollingUpdate:
+    #   partition: 0
   persistence:
     # -- Enable creating PVCs which is required when using boltdb-shipper
     enabled: false
@@ -2319,6 +2330,13 @@ indexGateway:
   # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
   appProtocol:
     grpc: ""
+  # -- UpdateStrategy for the indexGateway StatefulSet.
+  updateStrategy:
+    # -- One of  'OnDelete' or 'RollingUpdate'
+    type: RollingUpdate
+    # -- Optional for updateStrategy.type=RollingUpdate. See [Partitioned rolling updates](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#partitions) in the StatefulSet docs for details.
+    # rollingUpdate:
+    #   partition: 0
 # -- Configuration for the compactor
 compactor:
   # -- Number of replicas for the compactor

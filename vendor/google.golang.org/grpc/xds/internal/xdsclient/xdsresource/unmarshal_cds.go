@@ -278,7 +278,7 @@ func dnsHostNameFromCluster(cluster *v3clusterpb.Cluster) (string, error) {
 // the received Cluster resource.
 func securityConfigFromCluster(cluster *v3clusterpb.Cluster) (*SecurityConfig, error) {
 	if tsm := cluster.GetTransportSocketMatches(); len(tsm) != 0 {
-		return nil, fmt.Errorf("unsupport transport_socket_matches field is non-empty: %+v", tsm)
+		return nil, fmt.Errorf("unsupported transport_socket_matches field is non-empty: %+v", tsm)
 	}
 	// The Cluster resource contains a `transport_socket` field, which contains
 	// a oneof `typed_config` field of type `protobuf.Any`. The any proto
@@ -477,7 +477,7 @@ func securityConfigFromCommonTLSContextUsingNewFields(common *v3tlspb.CommonTlsC
 	case len(validationCtx.GetVerifyCertificateHash()) != 0:
 		return nil, fmt.Errorf("unsupported verify_certificate_hash field in CommonTlsContext message: %+v", common)
 	case validationCtx.GetRequireSignedCertificateTimestamp().GetValue():
-		return nil, fmt.Errorf("unsupported require_sugned_ceritificate_timestamp field in CommonTlsContext message: %+v", common)
+		return nil, fmt.Errorf("unsupported require_signed_certificate_timestamp field in CommonTlsContext message: %+v", common)
 	case validationCtx.GetCrl() != nil:
 		return nil, fmt.Errorf("unsupported crl field in CommonTlsContext message: %+v", common)
 	case validationCtx.GetCustomValidatorConfig() != nil:
