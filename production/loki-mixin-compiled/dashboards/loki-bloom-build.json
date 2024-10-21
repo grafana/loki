@@ -6356,6 +6356,26 @@
                "refresh": 1,
                "regex": "",
                "type": "datasource"
+            },
+            {
+               "allValue": ".+",
+               "current": { },
+               "datasource": "$datasource",
+               "hide": 0,
+               "includeAll": true,
+               "label": "Tenant",
+               "multi": false,
+               "name": "tenant",
+               "options": [ ],
+               "query": "label_values(loki_bloomplanner_tenant_tasks_planned{cluster=\"$cluster\", namespace=\"$namespace\"})",
+               "refresh": 0,
+               "regex": "",
+               "sort": 3,
+               "tagValuesQuery": "",
+               "tags": [ ],
+               "tagsQuery": "",
+               "type": "query",
+               "useTags": false
             }
          ]
       },

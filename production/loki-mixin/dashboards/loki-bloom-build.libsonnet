@@ -1,4 +1,5 @@
 local raw = (import './dashboard-bloom-build.json');
+local template = import 'grafonnet/template.libsonnet';
 
 // !--- HOW TO UPDATE THIS DASHBOARD ---!
 // 1. Export the dashboard from Grafana as JSON
@@ -6,6 +7,18 @@ local raw = (import './dashboard-bloom-build.json');
 // 2. Copy the JSON into `dashboard-bloom-build.json`
 // 3. Delete the `id` and `templating` fields from the JSON
 (import 'dashboard-utils.libsonnet') {
+
+  local tenantTemplate =
+    template.new(
+      'tenant',
+      '$datasource',
+      'label_values(loki_bloomplanner_tenant_tasks_planned{cluster="$cluster", namespace="$namespace"})',
+      label='Tenant',
+      sort=3,  // numerical ascending
+      includeAll=true,
+      allValues='.+',
+    ),
+
   grafanaDashboards+:: if !$._config.blooms.enabled then {} else {
     'loki-bloom-build.json':
       raw
@@ -66,6 +79,9 @@ local raw = (import './dashboard-bloom-build.json');
         .addCluster()
         .addNamespace()
         .addLog()
-        .addTag(),
+        .addTag()
+      + {
+        templating+: { list+: [tenantTemplate] },
+      },
   },
 }
