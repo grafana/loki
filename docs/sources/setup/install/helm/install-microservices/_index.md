@@ -1,7 +1,7 @@
 ---
 title: Loki Microservice Helm chart 
 menuTitle: Install microservice Loki
-description: Installing Loki in microservice (distributed) mode using the Helm chart.
+description: Installing Loki in microservice mode using the Helm chart.
 weight: 300
 keywords: 
 ---
@@ -10,7 +10,7 @@ keywords:
 
 This Helm Chart deploys Grafana Loki on Kubernetes.
 
-This chart configures Loki to run Loki in [microservice / distributed mode]({{< relref "../../../../get-started/deployment-modes#microservices-mode" >}}). The microservices deployment mode runs components of Loki as distinct processes.
+This chart configures Loki to run Loki in [microservice mode]({{< relref "../../../../get-started/deployment-modes#microservices-mode" >}}). The microservices deployment mode runs components of Loki as distinct processes.
 
 The default Helm chart deploys the following components:
 - **Compactor component** (1 replica): Compacts and processes stored data.

@@ -7,7 +7,7 @@ keywords:
 
 # Deploy the Loki Helm chart on AWS
 
-This guide shows how to deploy a minimally viable Loki in either **distributed** or **monolithic** mode on AWS using the Helm chart. To run through this guide, we expect you to have the necessary tools and permissions to deploy resources on AWS, such as:
+This guide shows how to deploy a minimally viable Loki in either **microservice** or **monolithic** mode on AWS using the Helm chart. To run through this guide, we expect you to have the necessary tools and permissions to deploy resources on AWS, such as:
 
 - Full access to EKS (Amazon Elastic Kubernetes Service)
 - Full access to S3 (Amazon Simple Storage Service)
@@ -302,7 +302,7 @@ Loki by default does not come with any authentication. Since we will be deployin
 
 ### Loki Helm chart configuration
 
-Create a `values.yaml` file choosing the configuration options that best suit your requirements. Below there are two examples of `values.yaml` files for the Loki Helm chart. The first template is Loki in [distributed](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) mode the second is Loki in [monolithic](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode) mode with a replication factor of 3. The rest of this guide will focus on deploying Loki in distributed mode. However, there is no difference in the deployment process between the two modes apart from the components you are deploying.
+Create a `values.yaml` file choosing the configuration options that best suit your requirements. Below there are two examples of `values.yaml` files for the Loki Helm chart. The first template is Loki in [microservices](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) mode the second is Loki in [monolithic](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode) mode with a replication factor of 3. The rest of this guide will focus on deploying Loki in microservices mode. However, there is no difference in the deployment process between the two modes apart from the components you are deploying.
 
 {{< collapse title="Distributed" >}}
 
@@ -756,7 +756,7 @@ k6 is one of the fastest way to test your Loki deployment. This will allow you t
 
 ## Next steps
 
-Now that you have successfully deployed Loki in distributed mode on AWS, you may wish to explore the following:
+Now that you have successfully deployed Loki in microservices mode on AWS, you may wish to explore the following:
 
 - [Sending data to Loki]({{< relref "../../../../send-data" >}})
 - [Querying Loki]({{< relref "../../../../query" >}})
