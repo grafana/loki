@@ -89,8 +89,12 @@ func GenBlock(ref bloomshipper.BlockRef) (bloomshipper.Block, error) {
 }
 
 func GenSeries(bounds v1.FingerprintBounds) []*v1.Series {
-	series := make([]*v1.Series, 0, int(bounds.Max-bounds.Min+1))
-	for i := bounds.Min; i <= bounds.Max; i++ {
+	return GenSeriesWithStep(bounds, 1)
+}
+
+func GenSeriesWithStep(bounds v1.FingerprintBounds, step int) []*v1.Series {
+	series := make([]*v1.Series, 0, int(bounds.Max-bounds.Min+1)/step)
+	for i := bounds.Min; i <= bounds.Max; i += model.Fingerprint(step) {
 		series = append(series, &v1.Series{
 			Fingerprint: i,
 			Chunks: v1.ChunkRefs{
