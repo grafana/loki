@@ -6,105 +6,8 @@ import (
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+	"github.com/grafana/loki/operator/internal/manifests/openshift"
 )
-
-func defaultOpenShiftLoggingAttributes(disableRecommended bool) config.OTLPAttributeConfig {
-	result := config.OTLPAttributeConfig{
-		DefaultIndexLabels: []string{
-			"k8s.namespace.name",
-			"kubernetes.namespace_name",
-			"log_source",
-			"log_type",
-			"openshift.cluster.uid",
-			"openshift.log.source",
-			"openshift.log.type",
-		},
-	}
-
-	if disableRecommended {
-		return result
-	}
-
-	result.DefaultIndexLabels = append(result.DefaultIndexLabels,
-		"k8s.container.name",
-		"k8s.node.name",
-		"k8s.node.uid",
-		"k8s.pod.name",
-		"k8s.pod.uid",
-		"kubernetes.container_name",
-		"kubernetes.host",
-		"kubernetes.pod_name",
-	)
-	slices.Sort(result.DefaultIndexLabels)
-
-	// TODO decide whether we want to split the default configuration by tenant
-	result.Global = &config.OTLPTenantAttributeConfig{
-		ResourceAttributes: []config.OTLPAttribute{
-			{
-				Action: config.OTLPAttributeActionStreamLabel,
-				Names: []string{
-					"k8s.cronjob.name",
-					"k8s.daemonset.name",
-					"k8s.deployment.name",
-					"k8s.job.name",
-					"service.name",
-				},
-			},
-			{
-				Action: config.OTLPAttributeActionStreamLabel,
-				Regex:  "openshift\\.labels\\..+",
-			},
-			{
-				Action: config.OTLPAttributeActionMetadata,
-				Names: []string{
-					"k8s.replicaset.name",
-					"k8s.statefulset.name",
-					"process.command_line",
-					"process.executable.name",
-					"process.executable.path",
-					"process.pid",
-				},
-			},
-			{
-				Action: config.OTLPAttributeActionMetadata,
-				Regex:  "k8s\\.pod\\.labels\\..+",
-			},
-		},
-		LogAttributes: []config.OTLPAttribute{
-			{
-				Action: config.OTLPAttributeActionMetadata,
-				Names: []string{
-					"k8s.event.level",
-					"k8s.event.object_ref.api.group",
-					"k8s.event.object_ref.api.version",
-					"k8s.event.object_ref.name",
-					"k8s.event.object_ref.resource",
-					"k8s.event.request.uri",
-					"k8s.event.response.code",
-					"k8s.event.stage",
-					"k8s.event.user_agent",
-					"k8s.user.groups",
-					"k8s.user.username",
-					"log.iostream",
-				},
-			},
-			{
-				Action: config.OTLPAttributeActionMetadata,
-				Regex:  "k8s\\.event\\.annotations\\..+",
-			},
-			{
-				Action: config.OTLPAttributeActionMetadata,
-				Regex:  "systemd\\.t\\..+",
-			},
-			{
-				Action: config.OTLPAttributeActionMetadata,
-				Regex:  "systemd\\.u\\..+",
-			},
-		},
-	}
-
-	return result
-}
 
 func defaultOTLPAttributeConfig(ts *lokiv1.TenantsSpec) config.OTLPAttributeConfig {
 	if ts == nil || ts.Mode != lokiv1.OpenshiftLogging {
@@ -116,7 +19,7 @@ func defaultOTLPAttributeConfig(ts *lokiv1.TenantsSpec) config.OTLPAttributeConf
 		disableRecommended = ts.Openshift.OTLP.DisableRecommendedAttributes
 	}
 
-	return defaultOpenShiftLoggingAttributes(disableRecommended)
+	return openshift.DefaultOTLPAttributes(disableRecommended)
 }
 
 func convertAttributeReferences(refs []lokiv1.OTLPAttributeReference, action config.OTLPAttributeAction) []config.OTLPAttribute {

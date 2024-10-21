@@ -7,6 +7,7 @@ import (
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+	"github.com/grafana/loki/operator/internal/manifests/openshift"
 )
 
 func TestOtlpAttributeConfig(t *testing.T) {
@@ -387,7 +388,7 @@ func TestOtlpAttributeConfig(t *testing.T) {
 					Mode: lokiv1.OpenshiftLogging,
 				},
 			},
-			wantConfig: defaultOpenShiftLoggingAttributes(false),
+			wantConfig: openshift.DefaultOTLPAttributes(false),
 		},
 		{
 			desc: "openshift-logging defaults without recommended",
@@ -401,7 +402,7 @@ func TestOtlpAttributeConfig(t *testing.T) {
 					},
 				},
 			},
-			wantConfig: defaultOpenShiftLoggingAttributes(true),
+			wantConfig: openshift.DefaultOTLPAttributes(true),
 		},
 		{
 			desc: "openshift-logging defaults with additional custom attributes",
