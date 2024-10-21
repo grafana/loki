@@ -61,14 +61,9 @@ func (s *ChunkSizeStrategy) Plan(
 		return nil, nil
 	}
 
-	tasks, err := s.computeTasks(ctx, table, tenant, metas, tsdbsWithGaps, targetTaskSize)
+	tasks, err := s.computeTasks(ctx, tenant, table, metas, tsdbsWithGaps, targetTaskSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compute block plan: %w", err)
-	}
-
-	tasks := make([]*protos.Task, 0, len(blocksToBuild))
-	for _, block := range blocksToBuild {
-		tasks = append(tasks, protos.NewTask(table, tenant, ownershipRange, block.tsdb, block.gaps))
 	}
 
 	return tasks, nil
