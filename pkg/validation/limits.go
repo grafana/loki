@@ -226,7 +226,9 @@ type Limits struct {
 
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
 
-	PatternIngesterTokenizableJSONFields dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields" json:"pattern_ingester_tokenizable_json_fields" doc:"hidden"`
+	PatternIngesterTokenizableJSONFieldsDefault dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_default" json:"pattern_ingester_tokenizable_json_fields_default" doc:"hidden"`
+	PatternIngesterTokenizableJSONFieldsAppend  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_append" json:"pattern_ingester_tokenizable_json_fields_append" doc:"hidden"`
+	PatternIngesterTokenizableJSONFieldsDelete  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_delete" json:"pattern_ingester_tokenizable_json_fields_delete" doc:"hidden"`
 }
 
 type StreamRetention struct {
@@ -421,8 +423,10 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.IngestionPartitionsTenantShardSize, "limits.ingestion-partition-tenant-shard-size", 0, "The number of partitions a tenant's data should be sharded to when using kafka ingestion. Tenants are sharded across partitions using shuffle-sharding. 0 disables shuffle sharding and tenant is sharded across all partitions.")
 
-	_ = l.PatternIngesterTokenizableJSONFields.Set("log,message,msg,msg_,_msg,content")
-	f.Var(&l.PatternIngesterTokenizableJSONFields, "limits.pattern-ingester-tokenizable-json-fields", "List of JSON fields that should be tokenized in the ingester.")
+	_ = l.PatternIngesterTokenizableJSONFieldsDefault.Set("log,message,msg,msg_,_msg,content")
+	f.Var(&l.PatternIngesterTokenizableJSONFieldsDefault, "limits.pattern-ingester-tokenizable-json-fields", "List of JSON fields that should be tokenized in the pattern ingester.")
+	f.Var(&l.PatternIngesterTokenizableJSONFieldsAppend, "limits.pattern-ingester-tokenizable-json-fields-append", "List of JSON fields that should be appended to the default list of tokenizable fields in the pattern ingester.")
+	f.Var(&l.PatternIngesterTokenizableJSONFieldsDelete, "limits.pattern-ingester-tokenizable-json-fields-delete", "List of JSON fields that should be deleted from the (default U append) list of tokenizable fields in the pattern ingester.")
 }
 
 // SetGlobalOTLPConfig set GlobalOTLPConfig which is used while unmarshaling per-tenant otlp config to use the default list of resource attributes picked as index labels.
@@ -1060,7 +1064,38 @@ func (o *Overrides) BlockIngestionStatusCode(userID string) int {
 }
 
 func (o *Overrides) PatternIngesterTokenizableJSONFields(userID string) []string {
-	return o.getOverridesForUser(userID).PatternIngesterTokenizableJSONFields
+	defaultFields := o.getOverridesForUser(userID).PatternIngesterTokenizableJSONFieldsDefault
+	appendFields := o.getOverridesForUser(userID).PatternIngesterTokenizableJSONFieldsAppend
+	deleteFields := o.getOverridesForUser(userID).PatternIngesterTokenizableJSONFieldsDelete
+
+	outputMap := make(map[string]struct{}, len(defaultFields)+len(appendFields))
+
+	for _, field := range defaultFields {
+		outputMap[field] = struct{}{}
+	}
+
+	for _, field := range appendFields {
+		outputMap[field] = struct{}{}
+	}
+
+	for _, field := range deleteFields {
+		delete(outputMap, field)
+	}
+
+	output := make([]string, 0, len(outputMap))
+	for field := range outputMap {
+		output = append(output, field)
+	}
+
+	return output
+}
+
+func (o *Overrides) PatternIngesterTokenizableJSONFieldsAppend(userID string) []string {
+	return o.getOverridesForUser(userID).PatternIngesterTokenizableJSONFieldsAppend
+}
+
+func (o *Overrides) PatternIngesterTokenizableJSONFieldsDelete(userID string) []string {
+	return o.getOverridesForUser(userID).PatternIngesterTokenizableJSONFieldsDelete
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {
