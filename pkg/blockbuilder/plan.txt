@@ -17,9 +17,18 @@ Deliverable: RF1 metrics proof
   * ignore limits if too complex (for now)
   * /dev/null backend
 
-# Second Impl: Foo
 
+# TODO improvements
 * metadata store
   * include offsets committed for coordination b/w ingester-readers & long term storage
-* scheduler architecture
+* planner/scheduler+worker architecture
 * shuffle sharding
+
+
+# Things to solve
+* limits application
+* job sizing -- coordinate kafka offsets w/ underlying bytes added?
+  * ideally we can ask kafka for "the next 1GB" in a partition, but to do this we'd need the kafka offsets (auto-incremented integers for messages within a partition) to be derived from the message size. Right now, different batch sizes can cause kafka msgs to have very different sizes.
+  * idea: another set of partitions to store offsets->datasize? Sounds shitty tbh & breaks the consistency bound on writes (what if kafka acks first write but doesnt ack the second?)
+  * what if we stored byte counter metadata in kafka records so we could O(log(n)) seek an offset range w/ the closest $SIZE
+    * Likely a reasonable perf tradeoff as this isn't called often (only in job planner in the future).
