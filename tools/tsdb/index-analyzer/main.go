@@ -24,7 +24,7 @@ func main() {
 	periodCfg, tableRange, tableName, err := helpers.GetPeriodConfigForTableNumber(bucket, conf.SchemaConfig.Configs)
 	helpers.ExitErr("find period config for bucket", err)
 
-	objectClient, err := storage.NewObjectClient(periodCfg.ObjectType, conf.StorageConfig, clientMetrics)
+	objectClient, err := storage.NewObjectClient(periodCfg.ObjectType, "index-analyzer", conf.StorageConfig, clientMetrics)
 	helpers.ExitErr("creating object client", err)
 
 	shipper, err := indexshipper.NewIndexShipper(

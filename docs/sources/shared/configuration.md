@@ -5646,6 +5646,13 @@ congestion_control:
 # CLI flag: -store.max-parallel-get-chunk
 [max_parallel_get_chunk: <int> | default = 150]
 
+# Enables the use of thanos-io/objstore clients for connecting to object
+# storage. When set to true, the configuration inside
+# `storage_config.object_store` or `common.storage.object_store` block takes
+# effect.
+# CLI flag: -use-thanos-objstore
+[use_thanos_objstore: <boolean> | default = false]
+
 # The maximum number of chunks to fetch per batch.
 # CLI flag: -store.max-chunk-batch-size
 [max_chunk_batch_size: <int> | default = 50]

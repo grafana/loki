@@ -20,9 +20,13 @@ import (
 const DirDelim = "/"
 
 func getContainerClient(conf Config) (*container.Client, error) {
-	dt, err := exthttp.DefaultTransport(conf.HTTPConfig)
+	var rt http.RoundTripper
+	rt, err := exthttp.DefaultTransport(conf.HTTPConfig)
 	if err != nil {
 		return nil, err
+	}
+	if conf.HTTPConfig.Transport != nil {
+		rt = conf.HTTPConfig.Transport
 	}
 	opt := &container.ClientOptions{
 		ClientOptions: azcore.ClientOptions{
@@ -35,7 +39,7 @@ func getContainerClient(conf Config) (*container.Client, error) {
 			Telemetry: policy.TelemetryOptions{
 				ApplicationID: "Thanos",
 			},
-			Transport: &http.Client{Transport: dt},
+			Transport: &http.Client{Transport: rt},
 		},
 	}
 

@@ -53,6 +53,7 @@ This is the generated reference for the Loki Helm Chart values.
   "env": [],
   "extraArgs": {},
   "extraContainers": [],
+  "extraEnvFrom": [],
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
@@ -126,6 +127,15 @@ This is the generated reference for the Loki Helm Chart values.
 			<td>adminApi.extraContainers</td>
 			<td>list</td>
 			<td>Conifgure optional extraContainers</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the admin-api pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -3616,6 +3626,7 @@ false
   "env": [],
   "extraArgs": {},
   "extraContainers": [],
+  "extraEnvFrom": [],
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
@@ -3692,6 +3703,15 @@ false
 			<td>enterpriseGateway.extraContainers</td>
 			<td>list</td>
 			<td>Conifgure optional extraContainers</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the enterprise gateway pods</td>
 			<td><pre lang="json">
 []
 </pre>

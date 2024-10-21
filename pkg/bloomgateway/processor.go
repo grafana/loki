@@ -168,7 +168,7 @@ func (p *processor) processBlock(_ context.Context, bq *bloomshipper.CloseableBl
 		iters = append(iters, it)
 	}
 
-	logger := log.With(p.logger, "block", bq.BlockRef.String())
+	logger := log.With(p.logger, "block", bq.String())
 	fq := blockQuerier.Fuse(iters, logger)
 
 	start := time.Now()

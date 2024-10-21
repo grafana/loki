@@ -8,7 +8,7 @@ annotations:
   operators.operatorframework.io.bundle.channel.default.v1: stable
   operators.operatorframework.io.metrics.builder: operator-sdk-unknown
   operators.operatorframework.io.metrics.mediatype.v1: metrics+v1
-  operators.operatorframework.io.metrics.project_layout: go.kubebuilder.io/v3
+  operators.operatorframework.io.metrics.project_layout: go.kubebuilder.io/v4
 
   # Annotations for testing.
   operators.operatorframework.io.test.mediatype.v1: scorecard+v1
