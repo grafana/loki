@@ -80,29 +80,29 @@ func convertTenantAttributeReferences(otlpSpec *lokiv1.OTLPSpec) *config.OTLPTen
 
 func sortAndDeduplicateOTLPConfig(cfg config.OTLPAttributeConfig) config.OTLPAttributeConfig {
 	if cfg.Global != nil {
-		if len(cfg.Global.ResourceAttributes) > 1 {
+		if len(cfg.Global.ResourceAttributes) > 0 {
 			cfg.Global.ResourceAttributes = sortAndDeduplicateOTLPAttributes(cfg.Global.ResourceAttributes)
 		}
 
-		if len(cfg.Global.ScopeAttributes) > 1 {
+		if len(cfg.Global.ScopeAttributes) > 0 {
 			cfg.Global.ScopeAttributes = sortAndDeduplicateOTLPAttributes(cfg.Global.ScopeAttributes)
 		}
 
-		if len(cfg.Global.LogAttributes) > 1 {
+		if len(cfg.Global.LogAttributes) > 0 {
 			cfg.Global.LogAttributes = sortAndDeduplicateOTLPAttributes(cfg.Global.LogAttributes)
 		}
 	}
 
 	for _, t := range cfg.Tenants {
-		if len(t.ResourceAttributes) > 1 {
+		if len(t.ResourceAttributes) > 0 {
 			t.ResourceAttributes = sortAndDeduplicateOTLPAttributes(t.ResourceAttributes)
 		}
 
-		if len(t.ScopeAttributes) > 1 {
+		if len(t.ScopeAttributes) > 0 {
 			t.ScopeAttributes = sortAndDeduplicateOTLPAttributes(t.ScopeAttributes)
 		}
 
-		if len(t.LogAttributes) > 1 {
+		if len(t.LogAttributes) > 0 {
 			t.LogAttributes = sortAndDeduplicateOTLPAttributes(t.LogAttributes)
 		}
 	}
@@ -111,6 +111,22 @@ func sortAndDeduplicateOTLPConfig(cfg config.OTLPAttributeConfig) config.OTLPAtt
 }
 
 func sortAndDeduplicateOTLPAttributes(attrs []config.OTLPAttribute) []config.OTLPAttribute {
+	if len(attrs) == 0 {
+		// Skip everything for zero items
+		return attrs
+	}
+
+	if len(attrs[0].Names) > 1 {
+		// If the first OTLPAttribute has names, then sort and de-duplicate them
+		slices.Sort(attrs[0].Names)
+		attrs[0].Names = slices.Compact(attrs[0].Names)
+	}
+
+	if len(attrs) == 1 {
+		// If there's only one item, then skip the complex sorting
+		return attrs
+	}
+
 	slices.SortFunc(attrs, func(a, b config.OTLPAttribute) int {
 		action := strings.Compare(string(a.Action), string(b.Action))
 		if action != 0 {
