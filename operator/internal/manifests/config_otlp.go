@@ -42,22 +42,27 @@ func defaultOpenShiftLoggingAttributes(disableRecommended bool) config.OTLPAttri
 		ResourceAttributes: []config.OTLPAttribute{
 			{
 				Action: config.OTLPAttributeActionStreamLabel,
-				Regex:  "openshift\\.labels\\..+",
-			},
-			{
-				Action: config.OTLPAttributeActionMetadata,
 				Names: []string{
 					"k8s.cronjob.name",
 					"k8s.daemonset.name",
 					"k8s.deployment.name",
 					"k8s.job.name",
+					"service.name",
+				},
+			},
+			{
+				Action: config.OTLPAttributeActionStreamLabel,
+				Regex:  "openshift\\.labels\\..+",
+			},
+			{
+				Action: config.OTLPAttributeActionMetadata,
+				Names: []string{
 					"k8s.replicaset.name",
 					"k8s.statefulset.name",
 					"process.command_line",
 					"process.executable.name",
 					"process.executable.path",
 					"process.pid",
-					"service.name",
 				},
 			},
 			{
