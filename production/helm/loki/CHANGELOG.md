@@ -15,6 +15,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 6.18.0
 
+- [CHANGE] Added automated weekly releases, which created this release.
+
 ## 6.17.1
 
 - [BUGFIX] Added missing `loki.storage.azure.chunkDelimiter` parameter to Helm chart.

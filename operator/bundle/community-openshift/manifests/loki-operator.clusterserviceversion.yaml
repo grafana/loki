@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:0.6.2
-    createdAt: "2024-10-18T09:44:00Z"
+    createdAt: "2024-10-21T11:24:52Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     features.operators.openshift.io/disconnected: "true"
@@ -1854,7 +1854,7 @@ spec:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI
-                  value: docker.io/grafana/loki:3.2.0
+                  value: docker.io/grafana/loki:3.2.1
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
@@ -1978,7 +1978,7 @@ spec:
   provider:
     name: Grafana Loki SIG Operator
   relatedImages:
-  - image: docker.io/grafana/loki:3.2.0
+  - image: docker.io/grafana/loki:3.2.1
     name: loki
   - image: quay.io/observatorium/api:latest
     name: gateway

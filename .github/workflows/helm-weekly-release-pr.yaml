@@ -2,7 +2,7 @@ name: Helm weekly release PR
 
 on:
   schedule:
-    - cron: '0 10 * * 1-5' # 10 UTC on weekdays; if we miss published images one day, they should align the day after
+    - cron: '0 10 * * 2' # 10 UTC every Tuesday (since ks get cut on Monday)
 
   workflow_dispatch: # for manual testing
 

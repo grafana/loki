@@ -121,6 +121,10 @@ spec:
             {{- if .Values.adminApi.env }}
             {{ toYaml .Values.adminApi.env | nindent 12 }}
             {{- end }}
+          {{- with .Values.adminApi.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
         {{- with .Values.adminApi.extraContainers }}
         {{ toYaml . | nindent 8 }}
         {{- end }}
