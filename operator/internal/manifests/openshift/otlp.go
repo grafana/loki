@@ -68,7 +68,7 @@ func DefaultOTLPAttributes(disableRecommended bool) config.OTLPAttributeConfig {
 		},
 		config.OTLPAttribute{
 			Action: config.OTLPAttributeActionMetadata,
-			Regex:  "k8s\\.pod\\.labels\\..+",
+			Regex:  `k8s\.pod\.labels\..+`,
 		},
 	)
 
@@ -92,15 +92,15 @@ func DefaultOTLPAttributes(disableRecommended bool) config.OTLPAttributeConfig {
 		},
 		{
 			Action: config.OTLPAttributeActionMetadata,
-			Regex:  "k8s\\.event\\.annotations\\..+",
+			Regex:  `k8s\.event\.annotations\..+`,
 		},
 		{
 			Action: config.OTLPAttributeActionMetadata,
-			Regex:  "systemd\\.t\\..+",
+			Regex:  `systemd\.t\..+`,
 		},
 		{
 			Action: config.OTLPAttributeActionMetadata,
-			Regex:  "systemd\\.u\\..+",
+			Regex:  `systemd\.u\..+`,
 		},
 	}
 
