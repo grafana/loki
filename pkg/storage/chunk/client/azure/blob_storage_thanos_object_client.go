@@ -58,7 +58,7 @@ func (s *BlobStorageThanosObjectClient) ObjectExists(ctx context.Context, object
 }
 
 // PutObject into the store
-func (s *BlobStorageThanosObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+func (s *BlobStorageThanosObjectClient) PutObject(ctx context.Context, objectKey string, object io.Reader) error {
 	return s.client.Upload(ctx, objectKey, object)
 }
 
@@ -80,6 +80,10 @@ func (s *BlobStorageThanosObjectClient) GetObject(ctx context.Context, objectKey
 	}
 
 	return reader, attr.Size, err
+}
+
+func (s *BlobStorageThanosObjectClient) GetObjectRange(ctx context.Context, objectKey string, offset, length int64) (io.ReadCloser, error) {
+	return s.hedgedClient.GetRange(ctx, objectKey, offset, length)
 }
 
 // List implements chunk.ObjectClient.
