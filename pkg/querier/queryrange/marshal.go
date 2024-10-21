@@ -136,6 +136,13 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 			Warnings:   result.Warnings,
 			Statistics: result.Statistics,
 		}, nil
+	case logql.CountMinSketchVector:
+		r, err := data.ToProto()
+		return &CountMinSketchResponse{
+			Response:   r,
+			Warnings:   result.Warnings,
+			Statistics: result.Statistics,
+		}, err
 	}
 
 	return nil, fmt.Errorf("unsupported data type: %T", result.Data)
@@ -202,6 +209,17 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 			Warnings:   r.Warnings,
 			Statistics: r.Statistics,
 		}, nil
+	case *CountMinSketchResponse:
+		cms, err := logql.CountMinSketchVectorFromProto(r.Response)
+		if err != nil {
+			return logqlmodel.Result{}, fmt.Errorf("cannot decode count min sketch vector: %w", err)
+		}
+		return logqlmodel.Result{
+			Data:       cms,
+			Headers:    resp.GetHeaders(),
+			Warnings:   r.Warnings,
+			Statistics: r.Statistics,
+		}, nil
 	default:
 		return logqlmodel.Result{}, fmt.Errorf("cannot decode (%T)", resp)
 	}
@@ -237,6 +255,8 @@ func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
 		return concrete.DetectedLabels, nil
 	case *QueryResponse_DetectedFields:
 		return concrete.DetectedFields, nil
+	case *QueryResponse_CountMinSketches:
+		return concrete.CountMinSketches, nil
 	default:
 		return nil, fmt.Errorf("unsupported QueryResponse response type, got (%T)", res.Response)
 	}
@@ -278,6 +298,8 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 		p.Response = &QueryResponse_DetectedLabels{response}
 	case *DetectedFieldsResponse:
 		p.Response = &QueryResponse_DetectedFields{response}
+	case *CountMinSketchResponse:
+		p.Response = &QueryResponse_CountMinSketches{response}
 	default:
 		return nil, fmt.Errorf("invalid response format, got (%T)", res)
 	}
