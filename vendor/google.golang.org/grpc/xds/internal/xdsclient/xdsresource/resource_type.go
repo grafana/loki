@@ -52,13 +52,29 @@ type Producer interface {
 	WatchResource(rType Type, resourceName string, watcher ResourceWatcher) (cancel func())
 }
 
+// DoneNotifier wraps the OnDone callback to be invoked once a resource update
+// is processed by the watcher.
+type DoneNotifier interface {
+	OnDone()
+}
+
+// NopDoneNotifier is a concrete implementation of the DoneNotifier interface,
+// that serves as a convenient placeholder when the callback is not needed.
+type NopDoneNotifier struct{}
+
+// OnDone implements the DoneNotifier interface.
+func (NopDoneNotifier) OnDone() {}
+
 // ResourceWatcher wraps the callbacks to be invoked for different events
 // corresponding to the resource being watched.
 type ResourceWatcher interface {
 	// OnUpdate is invoked to report an update for the resource being watched.
 	// The ResourceData parameter needs to be type asserted to the appropriate
 	// type for the resource being watched.
-	OnUpdate(ResourceData)
+	//
+	// The watcher is expected to call Done() on the DoneNotifier once it has
+	// processed the update.
+	OnUpdate(ResourceData, DoneNotifier)
 
 	// OnError is invoked under different error conditions including but not
 	// limited to the following:
@@ -68,11 +84,11 @@ type ResourceWatcher interface {
 	//	- resource validation error
 	//	- ADS stream failure
 	//	- connection failure
-	OnError(error)
+	OnError(error, DoneNotifier)
 
 	// OnResourceDoesNotExist is invoked for a specific error condition where
 	// the requested resource is not found on the xDS management server.
-	OnResourceDoesNotExist()
+	OnResourceDoesNotExist(DoneNotifier)
 }
 
 // TODO: Once the implementation is complete, rename this interface as

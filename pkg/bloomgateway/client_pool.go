@@ -54,7 +54,7 @@ type AddressProvider interface {
 }
 
 func NewJumpHashClientPool(clientFactory ClientFactory, dnsProvider AddressProvider, updateInterval time.Duration, logger log.Logger) (*JumpHashClientPool, error) {
-	selector := jumphash.DefaultSelector()
+	selector := jumphash.DefaultSelector("bloomgateway")
 	err := selector.SetServers(dnsProvider.Addresses()...)
 	if err != nil {
 		level.Warn(logger).Log("msg", "error updating servers", "err", err)
@@ -74,14 +74,6 @@ func NewJumpHashClientPool(clientFactory ClientFactory, dnsProvider AddressProvi
 
 func (p *JumpHashClientPool) Stop() {
 	_ = services.StopAndAwaitTerminated(context.Background(), p.Service)
-}
-
-func (p *JumpHashClientPool) AddrForFingerprint(fp uint64) (string, error) {
-	addr, err := p.FromUInt64(fp)
-	if err != nil {
-		return "", err
-	}
-	return addr.String(), nil
 }
 
 func (p *JumpHashClientPool) Addr(key string) (string, error) {

@@ -202,6 +202,7 @@ limits_config:
   max_streams_per_user: 0
   max_line_size: {{ .Stack.Limits.Global.IngestionLimits.MaxLineSize }}
   max_entries_limit_per_query: {{ .Stack.Limits.Global.QueryLimits.MaxEntriesLimitPerQuery }}
+  discover_service_name: []
   max_global_streams_per_user: {{ .Stack.Limits.Global.IngestionLimits.MaxGlobalStreamsPerTenant }}
   max_chunks_per_query: {{ .Stack.Limits.Global.QueryLimits.MaxChunksPerQuery }}
   max_query_length: 721h
