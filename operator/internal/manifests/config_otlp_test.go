@@ -402,6 +402,71 @@ func TestOtlpAttributeConfig(t *testing.T) {
 			},
 		},
 		{
+			desc: "global and tenant configuration with de-duplication",
+			spec: lokiv1.LokiStackSpec{
+				Limits: &lokiv1.LimitsSpec{
+					Global: &lokiv1.LimitsTemplateSpec{
+						OTLP: &lokiv1.OTLPSpec{
+							StreamLabels: &lokiv1.OTLPStreamLabelSpec{
+								ResourceAttributes: []lokiv1.OTLPAttributeReference{
+									{
+										Name: "global.stream.label",
+									},
+									{
+										Name: "another.stream.label",
+									},
+								},
+							},
+						},
+					},
+					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
+						"test-tenant": {
+							OTLP: &lokiv1.OTLPSpec{
+								StreamLabels: &lokiv1.OTLPStreamLabelSpec{
+									ResourceAttributes: []lokiv1.OTLPAttributeReference{
+										{
+											Name: "tenant.stream.label",
+										},
+										{
+											Name: "another.stream.label",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantConfig: config.OTLPAttributeConfig{
+				RemoveDefaultLabels: true,
+				Global: &config.OTLPTenantAttributeConfig{
+					ResourceAttributes: []config.OTLPAttribute{
+						{
+							Action: config.OTLPAttributeActionStreamLabel,
+							Names: []string{
+								"another.stream.label",
+								"global.stream.label",
+							},
+						},
+					},
+				},
+				Tenants: map[string]*config.OTLPTenantAttributeConfig{
+					"test-tenant": {
+						ResourceAttributes: []config.OTLPAttribute{
+							{
+								Action: config.OTLPAttributeActionStreamLabel,
+								Names: []string{
+									"another.stream.label",
+									"global.stream.label",
+									"tenant.stream.label",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
 			desc: "openshift-logging defaults",
 			spec: lokiv1.LokiStackSpec{
 				Tenants: &lokiv1.TenantsSpec{

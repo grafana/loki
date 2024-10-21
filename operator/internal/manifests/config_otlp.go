@@ -50,8 +50,42 @@ func convertAttributeReferences(refs []lokiv1.OTLPAttributeReference, action con
 	return result
 }
 
-func convertTenantAttributeReferences(otlpSpec *lokiv1.OTLPSpec) *config.OTLPTenantAttributeConfig {
+func copyOTLPAttributes(in []config.OTLPAttribute) []config.OTLPAttribute {
+	result := make([]config.OTLPAttribute, 0, len(in))
+	for _, attr := range in {
+		result = append(result, config.OTLPAttribute{
+			Action: attr.Action,
+			Names:  slices.Clone(attr.Names),
+			Regex:  attr.Regex,
+		})
+	}
+
+	return result
+}
+
+func copyTenantAttributeConfig(in *config.OTLPTenantAttributeConfig) *config.OTLPTenantAttributeConfig {
 	result := &config.OTLPTenantAttributeConfig{}
+	if in == nil {
+		return result
+	}
+
+	if len(in.ResourceAttributes) > 0 {
+		result.ResourceAttributes = copyOTLPAttributes(in.ResourceAttributes)
+	}
+
+	if len(in.ScopeAttributes) > 0 {
+		result.ScopeAttributes = copyOTLPAttributes(in.ScopeAttributes)
+	}
+
+	if len(in.LogAttributes) > 0 {
+		result.LogAttributes = copyOTLPAttributes(in.LogAttributes)
+	}
+
+	return result
+}
+
+func convertTenantAttributeReferences(otlpSpec *lokiv1.OTLPSpec, base *config.OTLPTenantAttributeConfig) *config.OTLPTenantAttributeConfig {
+	result := copyTenantAttributeConfig(base)
 
 	if streamLabels := otlpSpec.StreamLabels; streamLabels != nil {
 		result.ResourceAttributes = append(result.ResourceAttributes,
@@ -229,7 +263,7 @@ func otlpAttributeConfig(ls *lokiv1.LokiStackSpec) config.OTLPAttributeConfig {
 					result.Tenants = map[string]*config.OTLPTenantAttributeConfig{}
 				}
 
-				tenantResult := convertTenantAttributeReferences(tenantLimits.OTLP)
+				tenantResult := convertTenantAttributeReferences(tenantLimits.OTLP, result.Global)
 				result.Tenants[tenant] = tenantResult
 			}
 		}
