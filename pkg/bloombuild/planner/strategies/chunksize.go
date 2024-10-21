@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"math"
+	"sort"
 )
 
 type ChunkSizeStrategyLimits interface {
@@ -61,31 +62,12 @@ func (s *ChunkSizeStrategy) Plan(
 		return nil, nil
 	}
 
-	tasks, err := s.computeTasks(ctx, tenant, table, metas, tsdbsWithGaps, targetTaskSize)
-	if err != nil {
-		return nil, fmt.Errorf("failed to compute block plan: %w", err)
-	}
-
-	return tasks, nil
-}
-
-func (s *ChunkSizeStrategy) computeTasks(
-	ctx context.Context,
-	tenant string,
-	table config.DayTable,
-	metas []bloomshipper.Meta,
-	tsdbsWithGaps []tsdbGaps,
-	targetTaskSizeBytes uint64,
-) ([]*protos.Task, error) {
-	sizedIter, iterSize, err := s.sizedSeriesIter(ctx, tenant, tsdbsWithGaps, targetTaskSizeBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create sized series iterator: %w", err)
-	}
+	sizedIter, iterSize, err := s.sizedSeriesIter(ctx, tenant, tsdbsWithGaps, targetTaskSize)
 
 	tasks := make([]*protos.Task, 0, iterSize)
 	for sizedIter.Next() {
 		series := sizedIter.At()
-		if len(series) == 0 {
+		if series.Len() == 0 {
 			// This should never happen, but just in case.
 			level.Error(s.logger).Log("msg", "got empty series batch")
 			continue
@@ -93,7 +75,7 @@ func (s *ChunkSizeStrategy) computeTasks(
 
 		bounds := series.Bounds()
 
-		relevantBlocks, err := getBlocksMatchingBounds(metas, bounds)
+		blocks, err := getBlocksMatchingBounds(metas, bounds)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get blocks matching bounds: %w", err)
 		}
@@ -101,10 +83,10 @@ func (s *ChunkSizeStrategy) computeTasks(
 		planGap := protos.Gap{
 			Bounds: bounds,
 			Series: series.V1Series(),
-			Blocks: relevantBlocks,
+			Blocks: blocks,
 		}
 
-		tasks = append(tasks, protos.NewTask(table, tenant, bounds, series[0].TSDB, []protos.Gap{planGap}))
+		tasks = append(tasks, protos.NewTask(table, tenant, bounds, series.TSDB(), []protos.Gap{planGap}))
 	}
 	if err := sizedIter.Err(); err != nil {
 		return nil, fmt.Errorf("failed to iterate over sized series: %w", err)
@@ -133,7 +115,35 @@ func getBlocksMatchingBounds(metas []bloomshipper.Meta, bounds v1.FingerprintBou
 		}
 	}
 
-	return blocks, nil
+	// ensure we sort blocks so deduping iterator works as expected
+	sort.Slice(blocks, func(i, j int) bool {
+		return blocks[i].Bounds.Less(blocks[j].Bounds)
+	})
+
+	peekingBlocks := iter.NewPeekIter(
+		iter.NewSliceIter(
+			blocks,
+		),
+	)
+
+	// dedupe blocks which could be in multiple metas
+	itr := iter.NewDedupingIter(
+		func(a, b bloomshipper.BlockRef) bool {
+			return a == b
+		},
+		iter.Identity[bloomshipper.BlockRef],
+		func(a, _ bloomshipper.BlockRef) bloomshipper.BlockRef {
+			return a
+		},
+		peekingBlocks,
+	)
+
+	deduped, err := iter.Collect(itr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to dedupe blocks: %w", err)
+	}
+
+	return deduped, nil
 }
 
 type seriesWithChunks struct {
@@ -142,20 +152,30 @@ type seriesWithChunks struct {
 	Chunks []index.ChunkMeta
 }
 
-type seriesBatch []seriesWithChunks
+type seriesBatch struct {
+	series []seriesWithChunks
+	size   uint64
+}
 
-func (sb seriesBatch) Bounds() v1.FingerprintBounds {
-	if len(sb) == 0 {
+func newSeriesBatch() seriesBatch {
+	return seriesBatch{
+		series: make([]seriesWithChunks, 0, 100),
+	}
+}
+
+func (b *seriesBatch) Bounds() v1.FingerprintBounds {
+	if len(b.series) == 0 {
 		return v1.NewBounds(0, 0)
 	}
 
 	// We assume that the series are sorted by fingerprint.
-	return v1.NewBounds(sb[0].FP, sb[len(sb)-1].FP)
+	// This is guaranteed since series are iterated in order by the TSDB.
+	return v1.NewBounds(b.series[0].FP, b.series[len(b.series)-1].FP)
 }
 
-func (sb seriesBatch) V1Series() []*v1.Series {
-	series := make([]*v1.Series, 0, len(sb))
-	for _, s := range sb {
+func (b *seriesBatch) V1Series() []*v1.Series {
+	series := make([]*v1.Series, 0, len(b.series))
+	for _, s := range b.series {
 		res := &v1.Series{
 			Fingerprint: s.FP,
 			Chunks:      make(v1.ChunkRefs, 0, len(s.Chunks)),
@@ -174,6 +194,26 @@ func (sb seriesBatch) V1Series() []*v1.Series {
 	return series
 }
 
+func (b *seriesBatch) Append(s seriesWithChunks, size uint64) {
+	b.series = append(b.series, s)
+	b.size += size
+}
+
+func (b *seriesBatch) Len() int {
+	return len(b.series)
+}
+
+func (b *seriesBatch) Size() uint64 {
+	return b.size
+}
+
+func (b *seriesBatch) TSDB() tsdb.SingleTenantTSDBIdentifier {
+	if len(b.series) == 0 {
+		return tsdb.SingleTenantTSDBIdentifier{}
+	}
+	return b.series[0].TSDB
+}
+
 func (s *ChunkSizeStrategy) sizedSeriesIter(
 	ctx context.Context,
 	tenant string,
@@ -181,8 +221,7 @@ func (s *ChunkSizeStrategy) sizedSeriesIter(
 	targetTaskSizeBytes uint64,
 ) (iter.Iterator[seriesBatch], int, error) {
 	batches := make([]seriesBatch, 0, 100)
-	var currentBatch seriesBatch
-	var currentBatchSizeBytes uint64
+	currentBatch := newSeriesBatch()
 
 	for _, idx := range tsdbsWithGaps {
 		for _, gap := range idx.gaps {
@@ -201,29 +240,30 @@ func (s *ChunkSizeStrategy) sizedSeriesIter(
 							seriesSize += uint64(chk.KB * 1024)
 						}
 
-						// Cut a new batch IF:
-						// - The current batch is not empty --> So we add at least one series to the batch.
-						// AND either:
-						// - Adding this series to the batch would exceed the target task size.
-						// - OR this series is from a different TSDB than the current batch.
-						if len(currentBatch) > 0 && (currentBatchSizeBytes+seriesSize >= targetTaskSizeBytes || currentBatch[len(currentBatch)-1].TSDB != idx.tsdbIdentifier) {
+						// Cut a new batch IF the current batch is not empty (so we add at least one series to the batch)
+						// AND Adding this series to the batch would exceed the target task size.
+						if currentBatch.Len() > 0 && currentBatch.Size()+seriesSize > targetTaskSizeBytes {
 							batches = append(batches, currentBatch)
-							currentBatch = make([]seriesWithChunks, 0, 100)
-							currentBatchSizeBytes = 0
+							currentBatch = newSeriesBatch()
 						}
 
-						currentBatchSizeBytes += seriesSize
-						currentBatch = append(currentBatch, seriesWithChunks{
+						currentBatch.Append(seriesWithChunks{
 							TSDB:   idx.tsdbIdentifier,
 							FP:     fp,
 							Chunks: chks,
-						})
+						}, seriesSize)
 						return false
 					}
 				},
 				labels.MustNewMatcher(labels.MatchEqual, "", ""),
 			); err != nil {
 				return nil, 0, err
+			}
+
+			// Add the last batch for this TSDB if it's not empty.
+			if currentBatch.Len() > 0 {
+				batches = append(batches, currentBatch)
+				currentBatch = newSeriesBatch()
 			}
 		}
 	}
