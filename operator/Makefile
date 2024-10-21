@@ -142,7 +142,7 @@ manager: deps generate ## Build manager binary
 
 .PHONY: size-calculator
 size-calculator: deps generate ## Build size-calculator binary
-	go build -o bin/size-calculator main.go
+	go build -o bin/size-calculator ./cmd/size-calculator/main.go
 
 .PHONY: go-generate
 go-generate: ## Run go generate
