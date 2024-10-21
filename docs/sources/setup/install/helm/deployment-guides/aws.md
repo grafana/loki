@@ -157,12 +157,13 @@ Create a new directory and navigate to it. Make sure to create the files in this
             {
                 "Effect": "Allow",
                 "Principal": {
-                    "Federated": "arn:aws:iam::< ACCOUNT ID >:oidc-provider/oidc.eks.<INSERT REGION>.amazonaws.com/id/< ID >"
+                    "Federated": "arn:aws:iam::< ACCOUNT ID >:oidc-provider/oidc.eks.<INSERT REGION>.amazonaws.com/id/< OIDC ID >"
                 },
                 "Action": "sts:AssumeRoleWithWebIdentity",
                 "Condition": {
                     "StringEquals": {
-                        "oidc.eks.<INSERT REGION>.amazonaws.com/id/< ID >:sub": "system:serviceaccount:loki:loki"
+                        "oidc.eks.<INSERT REGION>.amazonaws.com/id/< OIDC ID >:sub": "system:serviceaccount:loki:loki",
+                        "oidc.eks.<INSERT REGION>.amazonaws.com/id/< OIDC ID >:aud": "sts.amazonaws.com"
                     }
                 }
             }
@@ -301,7 +302,7 @@ Loki by default does not come with any authentication. Since we will be deployin
 
 ### Loki Helm chart configuration
 
-Create a `values.yaml` file choosing the configuration options that best suit your requirements. Below there are two examples of `values.yaml` files for the Loki Helm chart. The first template is Loki in distributed mode the second is Loki in monolithic mode with a replication factor of 3. The rest of this guide will focus on deploying Loki in distributed mode. However, there is no difference in the deployment process between the two modes apart from the components you are deploying.
+Create a `values.yaml` file choosing the configuration options that best suit your requirements. Below there are two examples of `values.yaml` files for the Loki Helm chart. The first template is Loki in [distributed](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) mode the second is Loki in [monolithic](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode) mode with a replication factor of 3. The rest of this guide will focus on deploying Loki in distributed mode. However, there is no difference in the deployment process between the two modes apart from the components you are deploying.
 
 {{< collapse title="Distributed" >}}
 
@@ -745,13 +746,13 @@ k6 is one of the fastest way to test your Loki deployment. This will allow you t
 
 - **IAM Role:** The IAM role created in this guide is a basic role that allows Loki to read and write to the S3 bucket. You may wish to add more granular permissions based on your requirements.
 
-- **Authentication:** Grafana Loki comes with a basic authentication layer.  The Loki gateway (NGINX) is exposed to the internet using basic authentication in this example. NGINX can also be replaced with other open-source reverse proxies. Refer to [Authentication]({{< relref "../../../../operations/authentication" >}}) for more information.
+- **Authentication:** Grafana Loki comes with a basic authentication layer. The Loki gateway (NGINX) is exposed to the internet using basic authentication in this example. NGINX can also be replaced with other open-source reverse proxies. Refer to [Authentication]({{< relref "../../../../operations/authentication" >}}) for more information.
 
 - **Retention:** The retention period is set to 28 days in the `values.yaml` file. You may wish to adjust this based on your requirements.
 
 - **Costs:** Running Loki on AWS will incur costs. Make sure to monitor your usage and costs to avoid any unexpected bills. In this guide we have used a simple EKS cluster with 3 nodes and m5.xlarge instances. You may wish to adjust the instance types and number of nodes based on your workload.
 
-- **Guide:** Note that this guide was **last updated on 1st October 2024**. As cloud providers frequently update their services and offerings, some steps in this guide may need adjustments over time.
+- **Guide:** Note that this guide was **last updated on 21st October 2024**. As cloud providers frequently update their services and offerings, some steps in this guide may need adjustments over time.
 
 ## Next steps
 
