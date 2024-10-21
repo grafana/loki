@@ -295,8 +295,8 @@ type Config struct {
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
 	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
 
-	UseThanosObjstore bool          `yaml:"use_thanos_objstore"`
-	ObjectStore       bucket.Config `yaml:"object_store"`
+	UseThanosObjstore bool          `yaml:"use_thanos_objstore" doc:"hidden`
+	ObjectStore       bucket.Config `yaml:"object_store" doc:"hidden"`
 
 	MaxChunkBatchSize   int                       `yaml:"max_chunk_batch_size"`
 	BoltDBShipperConfig boltdb.IndexCfg           `yaml:"boltdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in the form of boltdb files. Required fields only required when boltdb-shipper is defined in config."`
@@ -326,7 +326,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.CongestionControl.RegisterFlagsWithPrefix("store.", f)
 
 	f.BoolVar(&cfg.UseThanosObjstore, "use-thanos-objstore", false, "Enables the use of thanos-io/objstore clients for connecting to object storage. When set to true, the configuration inside `storage_config.object_store` or `common.storage.object_store` block takes effect.")
-	cfg.ObjectStore.RegisterFlags(f)
+	cfg.ObjectStore.RegisterFlagsWithPrefix("object-store.", f)
 
 	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "", f)
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")

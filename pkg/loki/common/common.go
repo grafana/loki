@@ -79,7 +79,7 @@ type Storage struct {
 	Hedging           hedging.Config            `yaml:"hedging"`
 	COS               ibmcloud.COSConfig        `yaml:"cos"`
 	CongestionControl congestion.Config         `yaml:"congestion_control,omitempty"`
-	ObjectStore       bucket.Config             `yaml:"object_store"`
+	ObjectStore       bucket.Config             `yaml:"object_store"  doc:"hidden"`
 }
 
 func (s *Storage) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -94,7 +94,7 @@ func (s *Storage) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	s.COS.RegisterFlagsWithPrefix(prefix, f)
 	s.CongestionControl.RegisterFlagsWithPrefix(prefix, f)
 
-	s.ObjectStore.RegisterFlagsWithPrefix(prefix, f)
+	s.ObjectStore.RegisterFlagsWithPrefix(prefix+"object-store.", f)
 }
 
 type FilesystemConfig struct {
