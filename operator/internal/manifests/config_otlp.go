@@ -51,11 +51,6 @@ func convertAttributeReferences(refs []lokiv1.OTLPAttributeReference, action con
 }
 
 func sortAndDeduplicateOTLPConfig(cfg config.OTLPAttributeConfig) config.OTLPAttributeConfig {
-	if len(cfg.DefaultIndexLabels) > 1 {
-		slices.Sort(cfg.DefaultIndexLabels)
-		cfg.DefaultIndexLabels = slices.Compact(cfg.DefaultIndexLabels)
-	}
-
 	if cfg.Global != nil {
 		if len(cfg.Global.ResourceAttributes) > 1 {
 			cfg.Global.ResourceAttributes = sortAndDeduplicateOTLPAttributes(cfg.Global.ResourceAttributes)
@@ -146,28 +141,17 @@ func otlpAttributeConfig(ls *lokiv1.LokiStackSpec) config.OTLPAttributeConfig {
 
 	if ls.Limits != nil {
 		if ls.Limits.Global != nil && ls.Limits.Global.OTLP != nil {
+			result.RemoveDefaultLabels = true
 			globalOTLP := ls.Limits.Global.OTLP
 
-			if globalOTLP.StreamLabels != nil {
-				regularExpressions := []string{}
-				for _, attr := range globalOTLP.StreamLabels.ResourceAttributes {
-					if attr.Regex {
-						regularExpressions = append(regularExpressions, attr.Name)
-						continue
-					}
-
-					result.DefaultIndexLabels = append(result.DefaultIndexLabels, attr.Name)
+			if streamLabels := globalOTLP.StreamLabels; streamLabels != nil {
+				if result.Global == nil {
+					result.Global = &config.OTLPTenantAttributeConfig{}
 				}
 
-				if len(regularExpressions) > 0 {
-					result.Global = &config.OTLPTenantAttributeConfig{}
-
-					for _, re := range regularExpressions {
-						result.Global.ResourceAttributes = append(result.Global.ResourceAttributes, config.OTLPAttribute{
-							Action: config.OTLPAttributeActionStreamLabel,
-							Regex:  re,
-						})
-					}
+				if resAttr := streamLabels.ResourceAttributes; len(resAttr) > 0 {
+					result.Global.ResourceAttributes = append(result.Global.ResourceAttributes,
+						convertAttributeReferences(resAttr, config.OTLPAttributeActionStreamLabel)...)
 				}
 			}
 
@@ -195,6 +179,7 @@ func otlpAttributeConfig(ls *lokiv1.LokiStackSpec) config.OTLPAttributeConfig {
 
 		for tenant, tenantLimits := range ls.Limits.Tenants {
 			if tenantLimits.OTLP != nil {
+				result.RemoveDefaultLabels = true
 				tenantOTLP := tenantLimits.OTLP
 				tenantResult := &config.OTLPTenantAttributeConfig{}
 

@@ -252,9 +252,9 @@ type RetentionOptions struct {
 // This is both influenced by the tenancy mode and the custom OTLP configuration on the LokiStack and might
 // contain more labels than the user has configured if some labels are deemed "required".
 type OTLPAttributeConfig struct {
-	DefaultIndexLabels []string
-	Global             *OTLPTenantAttributeConfig
-	Tenants            map[string]*OTLPTenantAttributeConfig
+	RemoveDefaultLabels bool
+	Global              *OTLPTenantAttributeConfig
+	Tenants             map[string]*OTLPTenantAttributeConfig
 }
 
 type OTLPTenantAttributeConfig struct {

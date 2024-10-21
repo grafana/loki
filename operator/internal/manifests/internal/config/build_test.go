@@ -6061,9 +6061,7 @@ compactor:
   working_directory: /tmp/loki/compactor
 distributor:
   otlp_config:
-    default_resource_attributes_as_index_labels:
-    - foo.bar
-    - bar.baz
+    default_resource_attributes_as_index_labels: []
 frontend:
   tail_proxy_url: http://loki-querier-http-lokistack-dev.default.svc.cluster.local:3100
   compress_responses: true
@@ -6470,10 +6468,7 @@ overrides:
 			},
 		},
 		OTLPAttributes: OTLPAttributeConfig{
-			DefaultIndexLabels: []string{
-				"foo.bar",
-				"bar.baz",
-			},
+			RemoveDefaultLabels: true,
 			Global: &OTLPTenantAttributeConfig{
 				ResourceAttributes: []OTLPAttribute{
 					{

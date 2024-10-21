@@ -37,7 +37,17 @@ func TestOtlpAttributeConfig(t *testing.T) {
 				},
 			},
 			wantConfig: config.OTLPAttributeConfig{
-				DefaultIndexLabels: []string{"stream.label"},
+				RemoveDefaultLabels: true,
+				Global: &config.OTLPTenantAttributeConfig{
+					ResourceAttributes: []config.OTLPAttribute{
+						{
+							Action: config.OTLPAttributeActionStreamLabel,
+							Names: []string{
+								"stream.label",
+							},
+						},
+					},
+				},
 			},
 		},
 		{
@@ -59,6 +69,7 @@ func TestOtlpAttributeConfig(t *testing.T) {
 				},
 			},
 			wantConfig: config.OTLPAttributeConfig{
+				RemoveDefaultLabels: true,
 				Global: &config.OTLPTenantAttributeConfig{
 					ResourceAttributes: []config.OTLPAttribute{
 						{
@@ -87,6 +98,7 @@ func TestOtlpAttributeConfig(t *testing.T) {
 				},
 			},
 			wantConfig: config.OTLPAttributeConfig{
+				RemoveDefaultLabels: true,
 				Global: &config.OTLPTenantAttributeConfig{
 					ResourceAttributes: []config.OTLPAttribute{
 						{
@@ -148,9 +160,13 @@ func TestOtlpAttributeConfig(t *testing.T) {
 				},
 			},
 			wantConfig: config.OTLPAttributeConfig{
-				DefaultIndexLabels: []string{"stream.label"},
+				RemoveDefaultLabels: true,
 				Global: &config.OTLPTenantAttributeConfig{
 					ResourceAttributes: []config.OTLPAttribute{
+						{
+							Action: config.OTLPAttributeActionStreamLabel,
+							Names:  []string{"stream.label"},
+						},
 						{
 							Action: config.OTLPAttributeActionStreamLabel,
 							Regex:  "stream\\.label\\.regex\\..+",
@@ -207,6 +223,7 @@ func TestOtlpAttributeConfig(t *testing.T) {
 				},
 			},
 			wantConfig: config.OTLPAttributeConfig{
+				RemoveDefaultLabels: true,
 				Tenants: map[string]*config.OTLPTenantAttributeConfig{
 					"test-tenant": {
 						ResourceAttributes: []config.OTLPAttribute{
@@ -240,6 +257,7 @@ func TestOtlpAttributeConfig(t *testing.T) {
 				},
 			},
 			wantConfig: config.OTLPAttributeConfig{
+				RemoveDefaultLabels: true,
 				Tenants: map[string]*config.OTLPTenantAttributeConfig{
 					"test-tenant": {
 						ResourceAttributes: []config.OTLPAttribute{
@@ -272,6 +290,7 @@ func TestOtlpAttributeConfig(t *testing.T) {
 				},
 			},
 			wantConfig: config.OTLPAttributeConfig{
+				RemoveDefaultLabels: true,
 				Tenants: map[string]*config.OTLPTenantAttributeConfig{
 					"test-tenant": {
 						ResourceAttributes: []config.OTLPAttribute{
@@ -337,6 +356,7 @@ func TestOtlpAttributeConfig(t *testing.T) {
 				},
 			},
 			wantConfig: config.OTLPAttributeConfig{
+				RemoveDefaultLabels: true,
 				Tenants: map[string]*config.OTLPTenantAttributeConfig{
 					"test-tenant": {
 						ResourceAttributes: []config.OTLPAttribute{
@@ -437,17 +457,23 @@ func TestOtlpAttributeConfig(t *testing.T) {
 				},
 			},
 			wantConfig: config.OTLPAttributeConfig{
-				DefaultIndexLabels: []string{
-					"custom.stream.label",
-					"k8s.namespace.name",
-					"kubernetes.namespace_name",
-					"log_source",
-					"log_type",
-					"openshift.cluster.uid",
-					"openshift.log.source",
-					"openshift.log.type",
-				},
+				RemoveDefaultLabels: true,
 				Global: &config.OTLPTenantAttributeConfig{
+					ResourceAttributes: []config.OTLPAttribute{
+						{
+							Action: config.OTLPAttributeActionStreamLabel,
+							Names: []string{
+								"custom.stream.label",
+								"k8s.namespace.name",
+								"kubernetes.namespace_name",
+								"log_source",
+								"log_type",
+								"openshift.cluster.uid",
+								"openshift.log.source",
+								"openshift.log.type",
+							},
+						},
+					},
 					LogAttributes: []config.OTLPAttribute{
 						{
 							Action: config.OTLPAttributeActionMetadata,
@@ -493,17 +519,23 @@ func TestOtlpAttributeConfig(t *testing.T) {
 				},
 			},
 			wantConfig: config.OTLPAttributeConfig{
-				DefaultIndexLabels: []string{
-					"custom.stream.label",
-					"k8s.namespace.name",
-					"kubernetes.namespace_name",
-					"log_source",
-					"log_type",
-					"openshift.cluster.uid",
-					"openshift.log.source",
-					"openshift.log.type",
-				},
+				RemoveDefaultLabels: true,
 				Global: &config.OTLPTenantAttributeConfig{
+					ResourceAttributes: []config.OTLPAttribute{
+						{
+							Action: config.OTLPAttributeActionStreamLabel,
+							Names: []string{
+								"custom.stream.label",
+								"k8s.namespace.name",
+								"kubernetes.namespace_name",
+								"log_source",
+								"log_type",
+								"openshift.cluster.uid",
+								"openshift.log.source",
+								"openshift.log.type",
+							},
+						},
+					},
 					LogAttributes: []config.OTLPAttribute{
 						{
 							Action: config.OTLPAttributeActionMetadata,
