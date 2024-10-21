@@ -228,6 +228,7 @@ func (s *LokiStore) chunkClientForPeriod(p config.PeriodConfig) (client.Client, 
 	if objectStoreType == "" {
 		objectStoreType = p.IndexType
 	}
+
 	var cc congestion.Controller
 	ccCfg := s.cfg.CongestionControl
 

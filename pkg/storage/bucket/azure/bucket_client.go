@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/go-kit/log"
-	"github.com/prometheus/common/model"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/providers/azure"
 )
@@ -19,26 +18,20 @@ func newBucketClient(cfg Config, name string, logger log.Logger, factory func(lo
 	bucketConfig := azure.DefaultConfig
 	bucketConfig.StorageAccountName = cfg.StorageAccountName
 	bucketConfig.StorageAccountKey = cfg.StorageAccountKey.String()
+	bucketConfig.StorageConnectionString = cfg.StorageConnectionString.String()
 	bucketConfig.ContainerName = cfg.ContainerName
 	bucketConfig.MaxRetries = cfg.MaxRetries
 	bucketConfig.UserAssignedID = cfg.UserAssignedID
-	bucketConfig.PipelineConfig.MaxRetryDelay = model.Duration(cfg.MaxRetryDelay)
-
-	bucketConfig.HTTPConfig = azure.HTTPConfig{
-		IdleConnTimeout:       model.Duration(cfg.HTTP.IdleConnTimeout),
-		ResponseHeaderTimeout: model.Duration(cfg.HTTP.ResponseHeaderTimeout),
-		InsecureSkipVerify:    cfg.HTTP.InsecureSkipVerify,
-		TLSHandshakeTimeout:   model.Duration(cfg.HTTP.TLSHandshakeTimeout),
-		ExpectContinueTimeout: model.Duration(cfg.HTTP.ExpectContinueTimeout),
-		MaxIdleConns:          cfg.HTTP.MaxIdleConns,
-		MaxIdleConnsPerHost:   cfg.HTTP.MaxIdleConnsPerHost,
-		MaxConnsPerHost:       cfg.HTTP.MaxConnsPerHost,
-	}
 
 	if cfg.Endpoint != "" {
 		// azure.DefaultConfig has the default Endpoint, overwrite it only if a different one was explicitly provided.
 		bucketConfig.Endpoint = cfg.Endpoint
 	}
 
-	return factory(logger, bucketConfig, name, nil)
+	var rt http.RoundTripper
+	if cfg.Transport != nil {
+		rt = cfg.Transport
+	}
+
+	return factory(logger, bucketConfig, name, rt)
 }

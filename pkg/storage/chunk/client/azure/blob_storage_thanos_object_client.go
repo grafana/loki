@@ -43,7 +43,7 @@ func newBlobStorageThanosObjClient(ctx context.Context, cfg bucket.Config, compo
 			return nil, err
 		}
 
-		cfg.Azure.HTTP.Transport = hedgedTrasport
+		cfg.Azure.Transport = hedgedTrasport
 	}
 
 	return bucket.NewClient(ctx, bucket.Azure, cfg, component, logger)
@@ -118,6 +118,18 @@ func (s *BlobStorageThanosObjectClient) List(ctx context.Context, prefix, delimi
 	}
 
 	return storageObjects, commonPrefixes, nil
+}
+
+// GetAttributes returns the attributes of the specified object key from the configured GCS bucket.
+func (s *BlobStorageThanosObjectClient) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
+	attr := client.ObjectAttributes{}
+	thanosAttr, err := s.hedgedClient.Attributes(ctx, objectKey)
+	if err != nil {
+		return attr, err
+	}
+
+	attr.Size = thanosAttr.Size
+	return attr, nil
 }
 
 // IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
