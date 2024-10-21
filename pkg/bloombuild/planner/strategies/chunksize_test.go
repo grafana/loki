@@ -2,22 +2,22 @@ package strategies
 
 import (
 	"context"
-	"github.com/grafana/loki/v3/pkg/bloombuild/planner/test_utils"
-	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"testing"
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/bloombuild/planner/plannertest"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 )
 
 func taskForGap(bounds v1.FingerprintBounds) *protos.Task {
-	return protos.NewTask(test_utils.TestTable, "fake", bounds, test_utils.TsdbID(0), []protos.Gap{
+	return protos.NewTask(plannertest.TestTable, "fake", bounds, plannertest.TsdbID(0), []protos.Gap{
 		{
 			Bounds: bounds,
-			Series: test_utils.GenSeriesWithStep(bounds, 10),
+			Series: plannertest.GenSeriesWithStep(bounds, 10),
 			Blocks: nil,
 		},
 	})
@@ -37,7 +37,7 @@ func Test_ChunkSizeStrategy_Plan(t *testing.T) {
 
 			// Each series will have 1 chunk of 100KB each
 			tsdbs: TSDBSet{
-				test_utils.TsdbID(0): newFakeForSeries(test_utils.GenSeriesWithStep(v1.NewBounds(0, 100), 10)), // 10 series
+				plannertest.TsdbID(0): newFakeForSeries(plannertest.GenSeriesWithStep(v1.NewBounds(0, 100), 10)), // 10 series
 			},
 
 			// We expect 5 tasks, each with 2 series each
@@ -56,30 +56,30 @@ func Test_ChunkSizeStrategy_Plan(t *testing.T) {
 			// Original metas cover the entire range
 			// One meta for each 2 series w/ 1 block per series
 			originalMetas: []bloomshipper.Meta{
-				test_utils.GenMeta(0, 10, []int{0}, []bloomshipper.BlockRef{
-					test_utils.GenBlockRef(0, 0),
-					test_utils.GenBlockRef(10, 10),
+				plannertest.GenMeta(0, 10, []int{0}, []bloomshipper.BlockRef{
+					plannertest.GenBlockRef(0, 0),
+					plannertest.GenBlockRef(10, 10),
 				}),
-				test_utils.GenMeta(20, 30, []int{0}, []bloomshipper.BlockRef{
-					test_utils.GenBlockRef(20, 20),
-					test_utils.GenBlockRef(30, 30),
+				plannertest.GenMeta(20, 30, []int{0}, []bloomshipper.BlockRef{
+					plannertest.GenBlockRef(20, 20),
+					plannertest.GenBlockRef(30, 30),
 				}),
-				test_utils.GenMeta(40, 50, []int{0}, []bloomshipper.BlockRef{
-					test_utils.GenBlockRef(40, 40),
-					test_utils.GenBlockRef(50, 50),
+				plannertest.GenMeta(40, 50, []int{0}, []bloomshipper.BlockRef{
+					plannertest.GenBlockRef(40, 40),
+					plannertest.GenBlockRef(50, 50),
 				}),
-				test_utils.GenMeta(60, 70, []int{0}, []bloomshipper.BlockRef{
-					test_utils.GenBlockRef(60, 60),
-					test_utils.GenBlockRef(70, 70),
+				plannertest.GenMeta(60, 70, []int{0}, []bloomshipper.BlockRef{
+					plannertest.GenBlockRef(60, 60),
+					plannertest.GenBlockRef(70, 70),
 				}),
-				test_utils.GenMeta(80, 90, []int{0}, []bloomshipper.BlockRef{
-					test_utils.GenBlockRef(80, 80),
-					test_utils.GenBlockRef(90, 90),
+				plannertest.GenMeta(80, 90, []int{0}, []bloomshipper.BlockRef{
+					plannertest.GenBlockRef(80, 80),
+					plannertest.GenBlockRef(90, 90),
 				}),
 			},
 
 			tsdbs: TSDBSet{
-				test_utils.TsdbID(0): newFakeForSeries(test_utils.GenSeriesWithStep(v1.NewBounds(0, 100), 10)), // 10 series
+				plannertest.TsdbID(0): newFakeForSeries(plannertest.GenSeriesWithStep(v1.NewBounds(0, 100), 10)), // 10 series
 			},
 
 			// We expect no tasks
@@ -93,30 +93,30 @@ func Test_ChunkSizeStrategy_Plan(t *testing.T) {
 			// Original metas cover the entire range
 			// One meta for each 2 series w/ 1 block per series
 			originalMetas: []bloomshipper.Meta{
-				test_utils.GenMeta(0, 10, []int{0}, []bloomshipper.BlockRef{
-					test_utils.GenBlockRef(0, 0),
-					test_utils.GenBlockRef(10, 10),
+				plannertest.GenMeta(0, 10, []int{0}, []bloomshipper.BlockRef{
+					plannertest.GenBlockRef(0, 0),
+					plannertest.GenBlockRef(10, 10),
 				}),
-				test_utils.GenMeta(20, 30, []int{0}, []bloomshipper.BlockRef{
-					test_utils.GenBlockRef(20, 20),
+				plannertest.GenMeta(20, 30, []int{0}, []bloomshipper.BlockRef{
+					plannertest.GenBlockRef(20, 20),
 					// Missing block for 30
 				}),
-				test_utils.GenMeta(40, 50, []int{0}, []bloomshipper.BlockRef{
-					test_utils.GenBlockRef(40, 40),
-					test_utils.GenBlockRef(50, 50),
+				plannertest.GenMeta(40, 50, []int{0}, []bloomshipper.BlockRef{
+					plannertest.GenBlockRef(40, 40),
+					plannertest.GenBlockRef(50, 50),
 				}),
-				test_utils.GenMeta(60, 70, []int{0}, []bloomshipper.BlockRef{
-					test_utils.GenBlockRef(60, 60),
-					test_utils.GenBlockRef(70, 70),
+				plannertest.GenMeta(60, 70, []int{0}, []bloomshipper.BlockRef{
+					plannertest.GenBlockRef(60, 60),
+					plannertest.GenBlockRef(70, 70),
 				}),
-				test_utils.GenMeta(80, 90, []int{0}, []bloomshipper.BlockRef{
-					test_utils.GenBlockRef(80, 80),
-					test_utils.GenBlockRef(90, 90),
+				plannertest.GenMeta(80, 90, []int{0}, []bloomshipper.BlockRef{
+					plannertest.GenBlockRef(80, 80),
+					plannertest.GenBlockRef(90, 90),
 				}),
 			},
 
 			tsdbs: TSDBSet{
-				test_utils.TsdbID(0): newFakeForSeries(test_utils.GenSeriesWithStep(v1.NewBounds(0, 100), 10)), // 10 series
+				plannertest.TsdbID(0): newFakeForSeries(plannertest.GenSeriesWithStep(v1.NewBounds(0, 100), 10)), // 10 series
 			},
 
 			// We expect 1 tasks for the missing series
@@ -132,27 +132,27 @@ func Test_ChunkSizeStrategy_Plan(t *testing.T) {
 			// Original metas cover the entire range
 			// One meta for each 2 series w/ 1 block per series
 			originalMetas: []bloomshipper.Meta{
-				test_utils.GenMeta(0, 10, []int{0}, []bloomshipper.BlockRef{
-					test_utils.GenBlockRef(0, 0),
-					test_utils.GenBlockRef(10, 10),
+				plannertest.GenMeta(0, 10, []int{0}, []bloomshipper.BlockRef{
+					plannertest.GenBlockRef(0, 0),
+					plannertest.GenBlockRef(10, 10),
 				}),
 				// Missing meta for 20-30
-				test_utils.GenMeta(40, 50, []int{0}, []bloomshipper.BlockRef{
-					test_utils.GenBlockRef(40, 40),
-					test_utils.GenBlockRef(50, 50),
+				plannertest.GenMeta(40, 50, []int{0}, []bloomshipper.BlockRef{
+					plannertest.GenBlockRef(40, 40),
+					plannertest.GenBlockRef(50, 50),
 				}),
-				test_utils.GenMeta(60, 70, []int{0}, []bloomshipper.BlockRef{
-					test_utils.GenBlockRef(60, 60),
-					test_utils.GenBlockRef(70, 70),
+				plannertest.GenMeta(60, 70, []int{0}, []bloomshipper.BlockRef{
+					plannertest.GenBlockRef(60, 60),
+					plannertest.GenBlockRef(70, 70),
 				}),
-				test_utils.GenMeta(80, 90, []int{0}, []bloomshipper.BlockRef{
-					test_utils.GenBlockRef(80, 80),
-					test_utils.GenBlockRef(90, 90),
+				plannertest.GenMeta(80, 90, []int{0}, []bloomshipper.BlockRef{
+					plannertest.GenBlockRef(80, 80),
+					plannertest.GenBlockRef(90, 90),
 				}),
 			},
 
 			tsdbs: TSDBSet{
-				test_utils.TsdbID(0): newFakeForSeries(test_utils.GenSeriesWithStep(v1.NewBounds(0, 100), 10)), // 10 series
+				plannertest.TsdbID(0): newFakeForSeries(plannertest.GenSeriesWithStep(v1.NewBounds(0, 100), 10)), // 10 series
 			},
 
 			// We expect 1 tasks for the missing series
@@ -168,7 +168,7 @@ func Test_ChunkSizeStrategy_Plan(t *testing.T) {
 			strategy, err := NewChunkSizeStrategy(tc.limits, logger)
 			require.NoError(t, err)
 
-			actual, err := strategy.Plan(context.Background(), test_utils.TestTable, "fake", tc.tsdbs, tc.originalMetas)
+			actual, err := strategy.Plan(context.Background(), plannertest.TestTable, "fake", tc.tsdbs, tc.originalMetas)
 			require.NoError(t, err)
 
 			require.ElementsMatch(t, tc.expectedTasks, actual)
