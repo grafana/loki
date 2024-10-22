@@ -1,5 +1,33 @@
 # Changes
 
+## [1.33.0](https://github.com/googleapis/google-cloud-go/compare/bigtable/v1.32.0...bigtable/v1.33.0) (2024-09-23)
+
+
+### Features
+
+* **bigtable/admin:** Add support for Cloud Bigtable Row Affinity in App Profiles ([b9dfce5](https://github.com/googleapis/google-cloud-go/commit/b9dfce5e509d0c795e89c66b7f6a6bb356e3a172))
+
+
+### Bug Fixes
+
+* **bigtable:** Rollback new auth library ([#10906](https://github.com/googleapis/google-cloud-go/issues/10906)) ([8109157](https://github.com/googleapis/google-cloud-go/commit/8109157cb2bfb700fde04361e0fa7c1345608fce))
+
+## [1.32.0](https://github.com/googleapis/google-cloud-go/compare/bigtable/v1.31.0...bigtable/v1.32.0) (2024-09-09)
+
+
+### Features
+
+* **bigtable:** Add "TypeUnspecified" to represent an unspecified type ([#10820](https://github.com/googleapis/google-cloud-go/issues/10820)) ([8d008de](https://github.com/googleapis/google-cloud-go/commit/8d008def4378d33ab66ca0ec346534be87155576))
+* **bigtable:** Add client side metrics to feature flag ([#10678](https://github.com/googleapis/google-cloud-go/issues/10678)) ([02b2d12](https://github.com/googleapis/google-cloud-go/commit/02b2d12d51f774ea9ce6985b3f03006ef3d23e50))
+* **bigtable:** Add update value type test. ([#10771](https://github.com/googleapis/google-cloud-go/issues/10771)) ([210f022](https://github.com/googleapis/google-cloud-go/commit/210f0228e68452c23cbf6bf42862974303f54450))
+* **bigtable:** Wrapping errors on Export ([#10836](https://github.com/googleapis/google-cloud-go/issues/10836)) ([fc6d6a8](https://github.com/googleapis/google-cloud-go/commit/fc6d6a8b6bb90714e92bfb09762cc5a99930a6a8))
+
+
+### Bug Fixes
+
+* **bigtable:** Bump dependencies ([2ddeb15](https://github.com/googleapis/google-cloud-go/commit/2ddeb1544a53188a7592046b98913982f1b0cf04))
+* **bigtable:** Error logging for client side metrics ([#10658](https://github.com/googleapis/google-cloud-go/issues/10658)) ([9a94ff8](https://github.com/googleapis/google-cloud-go/commit/9a94ff87b83f37472aa94b6e0d1cc69bbb83c3bc))
+
 ## [1.31.0](https://github.com/googleapis/google-cloud-go/compare/bigtable/v1.30.0...bigtable/v1.31.0) (2024-08-28)
 
 

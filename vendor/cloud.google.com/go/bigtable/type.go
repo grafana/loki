@@ -56,6 +56,13 @@ func Equal(a, b Type) bool {
 	return proto.Equal(a.proto(), b.proto())
 }
 
+// TypeUnspecified represents the absence of a type.
+type TypeUnspecified struct{}
+
+func (n TypeUnspecified) proto() *btapb.Type {
+	return &btapb.Type{}
+}
+
 type unknown[T interface{}] struct {
 	wrapped *T
 }
@@ -99,13 +106,22 @@ type StringEncoding interface {
 	proto() *btapb.Type_String_Encoding
 }
 
-// StringUtf8Encoding represents a string with UTF-8 encoding.
-type StringUtf8Encoding struct {
-}
+// StringUtf8Encoding represents an UTF-8 raw encoding for a string.
+// DEPRECATED: Please use StringUtf8BytesEncoding.
+type StringUtf8Encoding struct{}
 
 func (encoding StringUtf8Encoding) proto() *btapb.Type_String_Encoding {
 	return &btapb.Type_String_Encoding{
 		Encoding: &btapb.Type_String_Encoding_Utf8Raw_{},
+	}
+}
+
+// StringUtf8BytesEncoding represents an UTF-8 bytes encoding for a string.
+type StringUtf8BytesEncoding struct{}
+
+func (encoding StringUtf8BytesEncoding) proto() *btapb.Type_String_Encoding {
+	return &btapb.Type_String_Encoding{
+		Encoding: &btapb.Type_String_Encoding_Utf8Bytes_{},
 	}
 }
 
@@ -231,7 +247,9 @@ func ProtoToType(pb *btapb.Type) Type {
 	if pb == nil {
 		return unknown[btapb.Type]{wrapped: nil}
 	}
-
+	if pb.Kind == nil {
+		return TypeUnspecified{}
+	}
 	switch t := pb.Kind.(type) {
 	case *btapb.Type_Int64Type:
 		return int64ProtoToType(t.Int64Type)
