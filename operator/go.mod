@@ -10,7 +10,7 @@ require (
 	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.6.0
 	github.com/grafana/loki v1.6.2-0.20230403212622-90888a0cc737
-	github.com/grafana/loki/operator/api/loki v0.0.0-00010101000000-000000000000
+	github.com/grafana/loki/operator/api/loki v0.0.0-20241022194843-275c97cec7f7
 	github.com/imdario/mergo v0.3.16
 	github.com/maxbrunsfeld/counterfeiter/v6 v6.9.0
 	github.com/openshift/api v0.0.0-20240912201240-0a8800162826 // release-4.17
