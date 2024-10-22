@@ -13,7 +13,7 @@ require (
 	github.com/grafana/loki/operator/api/loki v0.0.0-00010101000000-000000000000
 	github.com/imdario/mergo v0.3.16
 	github.com/maxbrunsfeld/counterfeiter/v6 v6.9.0
-	github.com/openshift/api v0.0.0-20240912201240-0a8800162826 // release-4.17
+	github.com/openshift/api 4f6053f954b0 // release-4.17
 	github.com/openshift/cloud-credential-operator v0.0.0-20240908131729-d5b0b95c40f7 // release-4.17
 	github.com/openshift/library-go v0.0.0-20240731134552-8211143dfde7 // release-4.17
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.76.1
