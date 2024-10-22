@@ -18,7 +18,7 @@ There are two methods for authenticating and connecting Loki to AWS S3. We will 
 ## Prerequisites
 
 - Helm 3 or above. Refer to [Installing Helm](https://helm.sh/docs/intro/install/). This should be installed on your local machine.
-- A running Kubernetes cluster on AWS. A simple way to get started is by using EKSctl. See [Getting started with EKSctl](https://eksctl.io/).
+- A running Kubernetes cluster on AWS. A simple way to get started is by using EKSctl. Refer to [Getting started with EKSctl](https://eksctl.io/).
 - Kubectl installed on your local machine. Refer to [Install and Set Up kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/).
 - (Optional) AWS CLI installed on your local machine. Refer to [Installing the AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html). This is required if you plan to use EKSctl to create the EKS cluster and modify the IAM roles and policies locally.
   
