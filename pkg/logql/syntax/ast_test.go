@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -1141,5 +1142,67 @@ func TestCombineFilters(t *testing.T) {
 		if i > 2 {
 			t.Fatalf("left num isn't a correct number")
 		}
+	}
+}
+
+func Test_VariantsExpr_String(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		expr string
+	}{
+		{`variants(count_over_time({foo="bar"}[5m])) of ({foo="bar"})`},
+		{
+			`variants(count_over_time({baz="qux", foo=~"bar"}[5m]), bytes_over_time({baz="qux", foo=~"bar"}[5m])) of ({baz="qux", foo=~"bar"} | logfmt | this = "that")`,
+		},
+		{
+			`variants(count_over_time({baz="qux", foo!="bar"}[5m]),rate({baz="qux", foo!="bar"}[5m])) of ({baz="qux", foo!="bar"} |= "that")`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.expr, func(t *testing.T) {
+			t.Parallel()
+			expr, err := ParseExpr(tt.expr)
+			require.NoError(t, err)
+
+			expr2, err := ParseExpr(expr.String())
+			require.Nil(t, err)
+
+			AssertExpressions(t, expr, expr2)
+		})
+	}
+}
+
+func Test_VariantsExpr_Pretty(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		expr   string
+		pretty string
+	}{
+		{`variants(count_over_time({foo="bar"}[5m])) of ({foo="bar"})`, `
+variants(
+  count_over_time({foo="bar"}[5m])
+) of (
+  {foo="bar"}
+)`},
+		{
+			`variants(count_over_time({baz="qux", foo=~"bar"}[5m]), bytes_over_time({baz="qux", foo=~"bar"}[5m])) of ({baz="qux", foo=~"bar"} | logfmt | this = "that")`,
+			`variants(
+  count_over_time({baz="qux", foo=~"bar"}[5m]),
+  bytes_over_time({baz="qux", foo=~"bar"}[5m])
+) of (
+  {baz="qux", foo=~"bar"} | logfmt | this="that"
+)`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.expr, func(t *testing.T) {
+			t.Parallel()
+			expr, err := ParseExpr(tt.expr)
+			require.NoError(t, err)
+
+			require.Equal(t, strings.TrimSpace(tt.pretty), strings.TrimSpace(expr.Pretty(0)))
+		})
 	}
 }

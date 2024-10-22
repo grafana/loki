@@ -323,6 +323,9 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 		defer util.LogErrorWithContext(ctx, "closing iterator", itr.Close)
 		streams, err := readStreams(itr, q.params.Limit(), q.params.Direction(), q.params.Interval())
 		return streams, err
+	case syntax.VariantsExpr:
+		// TODO(twhitney)
+    panic("TODO(twhitney): not implemeneted")
 	default:
 		return nil, fmt.Errorf("unexpected type (%T): cannot evaluate", e)
 	}

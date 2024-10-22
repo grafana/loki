@@ -71,6 +71,11 @@ import (
   KeepLabel               log.KeepLabel
   KeepLabels              []log.KeepLabel
   KeepLabelsExpr          *KeepLabelsExpr
+
+  VariantsExpr            VariantsExpr
+  VariantsList            []SampleExpr
+  VariantsOp              string
+  VariantsOf              string
 }
 
 %start root
@@ -131,6 +136,11 @@ import (
 %type <IPLabelFilter>         ipLabelFilter
 %type <OffsetExpr>            offsetExpr
 
+%type <VariantsExpr>          variantsExpr
+%type <VariantsList>          variantsList
+%type <VariantsOp>            variantsOp
+%type <VariantsOf>            variantsOf
+
 %token <bytes> BYTES
 %token <str>      IDENTIFIER STRING NUMBER PARSER_FLAG
 %token <duration> DURATION RANGE
@@ -140,7 +150,7 @@ import (
                   BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
                   MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
                   FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME VECTOR LABEL_REPLACE UNPACK OFFSET PATTERN IP ON IGNORING GROUP_LEFT GROUP_RIGHT
-                  DECOLORIZE DROP KEEP
+                  DECOLORIZE DROP KEEP VARIANTS OF
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -157,6 +167,7 @@ root: expr { exprlex.(*parser).expr = $1 };
 expr:
       logExpr                                      { $$ = $1 }
     | metricExpr                                   { $$ = $1 }
+    | variantsExpr                                 { $$ = $1 }
     ;
 
 metricExpr:
@@ -173,6 +184,22 @@ logExpr:
       selector                                    { $$ = newMatcherExpr($1)}
     | selector pipelineExpr                       { $$ = newPipelineExpr(newMatcherExpr($1), $2)}
     | OPEN_PARENTHESIS logExpr CLOSE_PARENTHESIS  { $$ = $2 }
+    ;
+
+variantsExpr:
+      variantsOp OPEN_PARENTHESIS variantsList CLOSE_PARENTHESIS variantsOf OPEN_PARENTHESIS logExpr CLOSE_PARENTHESIS { $$ = newVariantsExpr($3, $7) }
+    ;
+
+variantsOp:
+    VARIANTS { $$ = OpVariants }
+    ;
+variantsOf:
+    OF { $$ = VariantsOf }
+    ;
+
+variantsList:
+      metricExpr                         { $$ = []SampleExpr{$1} }
+    | variantsList COMMA metricExpr      { $$ = append($1, $3) }
     ;
 
 logRangeExpr:

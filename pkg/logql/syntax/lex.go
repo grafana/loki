@@ -80,6 +80,10 @@ var tokens = map[string]int{
 
 	// keep labels
 	OpKeep: KEEP,
+
+	// variants
+	OpVariants: VARIANTS,
+	VariantsOf: OF,
 }
 
 var parserFlags = map[string]struct{}{

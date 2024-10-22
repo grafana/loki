@@ -1301,6 +1301,10 @@ const (
 	OpStrict    = "--strict"
 	OpKeepEmpty = "--keep-empty"
 
+	// variants
+	OpVariants = "variants"
+	VariantsOf = "of"
+
 	// internal expressions not represented in LogQL. These are used to
 	// evaluate expressions differently resulting in intermediate formats
 	// that are not consumable by LogQL clients but are used for sharding.
@@ -2430,4 +2434,115 @@ func groupingReducesLabels(grp *Grouping) bool {
 	}
 
 	return false
+}
+
+// VariantsExpr is a LogQL expression that can produce multiple streams, defined by a set of variants,
+// over a single log selector.
+//
+//sumtype:decl
+type VariantsExpr interface {
+	LogSelector() LogSelectorExpr
+	Matchers() []*labels.Matcher
+	Variants() []SampleExpr
+	Expr
+}
+
+type MultiVariantExpr struct {
+	logSelector LogSelectorExpr
+	variants    []SampleExpr
+	implicit
+}
+
+func (m *MultiVariantExpr) LogSelector() LogSelectorExpr {
+	return m.logSelector
+}
+
+func (m *MultiVariantExpr) Matchers() []*labels.Matcher {
+	return m.logSelector.Matchers()
+}
+
+func (m *MultiVariantExpr) Variants() []SampleExpr {
+	return m.variants
+}
+
+func (m *MultiVariantExpr) Shardable(topLevel bool) bool {
+	if !m.logSelector.Shardable(topLevel) {
+		return false
+	}
+
+	for _, v := range m.variants {
+		if !v.Shardable(topLevel) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (m *MultiVariantExpr) Walk(f WalkFn) {
+	f(m)
+}
+
+func (m *MultiVariantExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString(OpVariants)
+	sb.WriteString("(")
+	for i, v := range m.variants {
+		sb.WriteString(v.String())
+		if i+1 != len(m.variants) {
+			sb.WriteString(", ")
+		}
+	}
+	sb.WriteString(") ")
+
+	sb.WriteString(VariantsOf)
+	sb.WriteString(" (")
+	sb.WriteString(m.logSelector.String())
+	sb.WriteString(")")
+
+	return sb.String()
+}
+
+// TDOO(twhitney): do the sample expressions also need to accept the root vistor?
+// is there a way to test this?
+func (m *MultiVariantExpr) Accept(v RootVisitor) {
+	for _, variant := range m.variants {
+		variant.Accept(v)
+	}
+
+	m.logSelector.Accept(v)
+}
+
+// Pretty prettyfies any LogQL expression at given `level` of the whole LogQL query.
+func (m *MultiVariantExpr) Pretty(level int) string {
+	s := Indent(level)
+
+	s += OpVariants + "(\n"
+
+	variants := make([]string, 0, len(m.variants))
+	for _, v := range m.variants {
+		variants = append(variants, v.Pretty(level+1))
+	}
+
+	for i, v := range variants {
+		s += v
+		// LogQL doesn't allow `,` at the end of last argument.
+		if i < len(variants)-1 {
+			s += ","
+		}
+		s += "\n"
+	}
+
+	s += Indent(level) + ") of (\n"
+	s += m.logSelector.Pretty(level + 1)
+	s += Indent(level) + "\n)"
+
+	return s
+}
+
+func newVariantsExpr(variants []SampleExpr, selector LogSelectorExpr) VariantsExpr {
+	return &MultiVariantExpr{
+		variants:    variants,
+		logSelector: selector,
+	}
 }
