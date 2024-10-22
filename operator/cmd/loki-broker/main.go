@@ -13,7 +13,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	configv1 "github.com/grafana/loki/operator/api/config/v1"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
