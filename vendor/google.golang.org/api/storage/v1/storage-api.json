@@ -34,6 +34,11 @@
     },
     {
       "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.europe-west8.rep.googleapis.com/",
+      "location": "europe-west8"
+    },
+    {
+      "description": "Regional Endpoint",
       "endpointUrl": "https://storage.europe-west9.rep.googleapis.com/",
       "location": "europe-west9"
     },
@@ -41,9 +46,54 @@
       "description": "Regional Endpoint",
       "endpointUrl": "https://storage.me-central2.rep.googleapis.com/",
       "location": "me-central2"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.us-central1.rep.googleapis.com/",
+      "location": "us-central1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.us-east1.rep.googleapis.com/",
+      "location": "us-east1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.us-east4.rep.googleapis.com/",
+      "location": "us-east4"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.us-east5.rep.googleapis.com/",
+      "location": "us-east5"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.us-south1.rep.googleapis.com/",
+      "location": "us-south1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.us-west1.rep.googleapis.com/",
+      "location": "us-west1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.us-west2.rep.googleapis.com/",
+      "location": "us-west2"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.us-west3.rep.googleapis.com/",
+      "location": "us-west3"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.us-west4.rep.googleapis.com/",
+      "location": "us-west4"
     }
   ],
-  "etag": "\"38363036373236373330353534313035333932\"",
+  "etag": "\"3132333635343336333933383332343134323139\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -1027,6 +1077,34 @@
           "scopes": [
             "https://www.googleapis.com/auth/cloud-platform",
             "https://www.googleapis.com/auth/devstorage.full_control"
+          ]
+        },
+        "relocate": {
+          "description": "Initiates a long-running Relocate Bucket operation on the specified bucket.",
+          "httpMethod": "POST",
+          "id": "storage.buckets.relocate",
+          "parameterOrder": [
+            "bucket"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of the bucket to be moved.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/relocate",
+          "request": {
+            "$ref": "RelocateBucketRequest"
+          },
+          "response": {
+            "$ref": "GoogleLongrunningOperation"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_write"
           ]
         },
         "restore": {
@@ -2829,6 +2907,11 @@
               "location": "query",
               "type": "string"
             },
+            "restoreToken": {
+              "description": "Restore token used to differentiate soft-deleted objects with the same name and generation. Only applicable for hierarchical namespace buckets and if softDeleted is set to true. This parameter is optional, and is only required in the rare case when there are multiple soft-deleted objects with the same name and generation.",
+              "location": "query",
+              "type": "string"
+            },
             "softDeleted": {
               "description": "If true, only soft-deleted object versions will be listed. The default is false. For more information, see [Soft Delete](https://cloud.google.com/storage/docs/soft-delete).",
               "location": "query",
@@ -3301,6 +3384,11 @@
                 "Include all properties.",
                 "Omit the owner, acl property."
               ],
+              "location": "query",
+              "type": "string"
+            },
+            "restoreToken": {
+              "description": "Restore token used to differentiate sof-deleted objects with the same name and generation. Only applicable for hierarchical namespace buckets. This parameter is optional, and is only required in the rare case when there are multiple soft-deleted objects with the same name and generation.",
               "location": "query",
               "type": "string"
             },
@@ -3781,6 +3869,38 @@
     },
     "operations": {
       "methods": {
+        "advanceRelocateBucket": {
+          "description": "Starts asynchronous advancement of the relocate bucket operation in the case of required write downtime, to allow it to lock the bucket at the source location, and proceed with the bucket location swap. The server makes a best effort to advance the relocate bucket operation, but success is not guaranteed.",
+          "httpMethod": "POST",
+          "id": "storage.buckets.operations.advanceRelocateBucket",
+          "parameterOrder": [
+            "bucket",
+            "operationId"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of the bucket to advance the relocate for.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "operationId": {
+              "description": "ID of the operation resource.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/operations/{operationId}/advanceRelocateBucket",
+          "request": {
+            "$ref": "AdvanceRelocateBucketOperationRequest"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        },
         "cancel": {
           "description": "Starts asynchronous cancellation on a long-running operation. The server makes a best effort to cancel the operation, but success is not guaranteed.",
           "httpMethod": "POST",
@@ -4136,9 +4256,26 @@
       }
     }
   },
-  "revision": "20240819",
+  "revision": "20241008",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
+    "AdvanceRelocateBucketOperationRequest": {
+      "description": "An AdvanceRelocateBucketOperation request.",
+      "id": "AdvanceRelocateBucketOperationRequest",
+      "properties": {
+        "expireTime": {
+          "description": "Specifies the time when the relocation will revert to the sync stage if the relocation hasn't succeeded.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "ttl": {
+          "description": "Specifies the duration after which the relocation will revert to the sync stage if the relocation hasn't succeeded. Optional, if not supplied, a default value of 12h will be used.",
+          "format": "google-duration",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "AnywhereCache": {
       "description": "An Anywhere Cache instance.",
       "id": "AnywhereCache",
@@ -5597,6 +5734,10 @@
           },
           "type": "object"
         },
+        "restoreToken": {
+          "description": "Restore token used to differentiate deleted objects with the same name and generation. This field is only returned for deleted objects in hierarchical namespace buckets.",
+          "type": "string"
+        },
         "retention": {
           "description": "A collection of object level retention parameters.",
           "properties": {
@@ -5861,6 +6002,34 @@
           "description": "The IAM policy format version.",
           "format": "int32",
           "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "RelocateBucketRequest": {
+      "description": "A Relocate Bucket request.",
+      "id": "RelocateBucketRequest",
+      "properties": {
+        "destinationCustomPlacementConfig": {
+          "description": "The bucket's new custom placement configuration if relocating to a Custom Dual Region.",
+          "properties": {
+            "dataLocations": {
+              "description": "The list of regional locations in which data is placed.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "destinationLocation": {
+          "description": "The new location the bucket will be relocated to.",
+          "type": "string"
+        },
+        "validateOnly": {
+          "description": "If true, validate the operation, but do not actually relocate the bucket.",
+          "type": "boolean"
         }
       },
       "type": "object"

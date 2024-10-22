@@ -343,6 +343,34 @@ type ProjectsServiceAccountService struct {
 	s *Service
 }
 
+// AdvanceRelocateBucketOperationRequest: An AdvanceRelocateBucketOperation
+// request.
+type AdvanceRelocateBucketOperationRequest struct {
+	// ExpireTime: Specifies the time when the relocation will revert to the sync
+	// stage if the relocation hasn't succeeded.
+	ExpireTime string `json:"expireTime,omitempty"`
+	// Ttl: Specifies the duration after which the relocation will revert to the
+	// sync stage if the relocation hasn't succeeded. Optional, if not supplied, a
+	// default value of 12h will be used.
+	Ttl string `json:"ttl,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "ExpireTime") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "ExpireTime") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s AdvanceRelocateBucketOperationRequest) MarshalJSON() ([]byte, error) {
+	type NoMethod AdvanceRelocateBucketOperationRequest
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
 // AnywhereCache: An Anywhere Cache instance.
 type AnywhereCache struct {
 	// AdmissionPolicy: The cache-level entry admission policy.
@@ -2236,6 +2264,10 @@ type Object struct {
 	// Owner: The owner of the object. This will always be the uploader of the
 	// object.
 	Owner *ObjectOwner `json:"owner,omitempty"`
+	// RestoreToken: Restore token used to differentiate deleted objects with the
+	// same name and generation. This field is only returned for deleted objects in
+	// hierarchical namespace buckets.
+	RestoreToken string `json:"restoreToken,omitempty"`
 	// Retention: A collection of object level retention parameters.
 	Retention *ObjectRetention `json:"retention,omitempty"`
 	// RetentionExpirationTime: A server-determined value that specifies the
@@ -2636,6 +2668,59 @@ type PolicyBindings struct {
 
 func (s PolicyBindings) MarshalJSON() ([]byte, error) {
 	type NoMethod PolicyBindings
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// RelocateBucketRequest: A Relocate Bucket request.
+type RelocateBucketRequest struct {
+	// DestinationCustomPlacementConfig: The bucket's new custom placement
+	// configuration if relocating to a Custom Dual Region.
+	DestinationCustomPlacementConfig *RelocateBucketRequestDestinationCustomPlacementConfig `json:"destinationCustomPlacementConfig,omitempty"`
+	// DestinationLocation: The new location the bucket will be relocated to.
+	DestinationLocation string `json:"destinationLocation,omitempty"`
+	// ValidateOnly: If true, validate the operation, but do not actually relocate
+	// the bucket.
+	ValidateOnly bool `json:"validateOnly,omitempty"`
+	// ForceSendFields is a list of field names (e.g.
+	// "DestinationCustomPlacementConfig") to unconditionally include in API
+	// requests. By default, fields with empty or default values are omitted from
+	// API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g.
+	// "DestinationCustomPlacementConfig") to include in API requests with the JSON
+	// null value. By default, fields with empty values are omitted from API
+	// requests. See https://pkg.go.dev/google.golang.org/api#hdr-NullFields for
+	// more details.
+	NullFields []string `json:"-"`
+}
+
+func (s RelocateBucketRequest) MarshalJSON() ([]byte, error) {
+	type NoMethod RelocateBucketRequest
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// RelocateBucketRequestDestinationCustomPlacementConfig: The bucket's new
+// custom placement configuration if relocating to a Custom Dual Region.
+type RelocateBucketRequestDestinationCustomPlacementConfig struct {
+	// DataLocations: The list of regional locations in which data is placed.
+	DataLocations []string `json:"dataLocations,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "DataLocations") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "DataLocations") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s RelocateBucketRequestDestinationCustomPlacementConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod RelocateBucketRequestDestinationCustomPlacementConfig
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -5318,6 +5403,109 @@ func (c *BucketsPatchCall) Do(opts ...googleapi.CallOption) (*Bucket, error) {
 		return nil, gensupport.WrapError(err)
 	}
 	ret := &Bucket{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	if err := gensupport.DecodeResponse(target, res); err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
+type BucketsRelocateCall struct {
+	s                     *Service
+	bucket                string
+	relocatebucketrequest *RelocateBucketRequest
+	urlParams_            gensupport.URLParams
+	ctx_                  context.Context
+	header_               http.Header
+}
+
+// Relocate: Initiates a long-running Relocate Bucket operation on the
+// specified bucket.
+//
+// - bucket: Name of the bucket to be moved.
+func (r *BucketsService) Relocate(bucket string, relocatebucketrequest *RelocateBucketRequest) *BucketsRelocateCall {
+	c := &BucketsRelocateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.relocatebucketrequest = relocatebucketrequest
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *BucketsRelocateCall) Fields(s ...googleapi.Field) *BucketsRelocateCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *BucketsRelocateCall) Context(ctx context.Context) *BucketsRelocateCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *BucketsRelocateCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *BucketsRelocateCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	var body io.Reader = nil
+	body, err := googleapi.WithoutDataWrapper.JSONReader(c.relocatebucketrequest)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/relocate")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket": c.bucket,
+	})
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.buckets.relocate" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *GoogleLongrunningOperation.ServerResponse.Header or (if a response was
+// returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *BucketsRelocateCall) Do(opts ...googleapi.CallOption) (*GoogleLongrunningOperation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &GoogleLongrunningOperation{
 		ServerResponse: googleapi.ServerResponse{
 			Header:         res.Header,
 			HTTPStatusCode: res.StatusCode,
@@ -9961,6 +10149,17 @@ func (c *ObjectsGetCall) Projection(projection string) *ObjectsGetCall {
 	return c
 }
 
+// RestoreToken sets the optional parameter "restoreToken": Restore token used
+// to differentiate soft-deleted objects with the same name and generation.
+// Only applicable for hierarchical namespace buckets and if softDeleted is set
+// to true. This parameter is optional, and is only required in the rare case
+// when there are multiple soft-deleted objects with the same name and
+// generation.
+func (c *ObjectsGetCall) RestoreToken(restoreToken string) *ObjectsGetCall {
+	c.urlParams_.Set("restoreToken", restoreToken)
+	return c
+}
+
 // SoftDeleted sets the optional parameter "softDeleted": If true, only
 // soft-deleted object versions will be listed. The default is false. For more
 // information, see Soft Delete
@@ -11056,6 +11255,16 @@ func (c *ObjectsRestoreCall) Projection(projection string) *ObjectsRestoreCall {
 	return c
 }
 
+// RestoreToken sets the optional parameter "restoreToken": Restore token used
+// to differentiate sof-deleted objects with the same name and generation. Only
+// applicable for hierarchical namespace buckets. This parameter is optional,
+// and is only required in the rare case when there are multiple soft-deleted
+// objects with the same name and generation.
+func (c *ObjectsRestoreCall) RestoreToken(restoreToken string) *ObjectsRestoreCall {
+	c.urlParams_.Set("restoreToken", restoreToken)
+	return c
+}
+
 // UserProject sets the optional parameter "userProject": The project to be
 // billed for this request. Required for Requester Pays buckets.
 func (c *ObjectsRestoreCall) UserProject(userProject string) *ObjectsRestoreCall {
@@ -12072,6 +12281,92 @@ func (c *ObjectsWatchAllCall) Do(opts ...googleapi.CallOption) (*Channel, error)
 		return nil, err
 	}
 	return ret, nil
+}
+
+type OperationsAdvanceRelocateBucketCall struct {
+	s                                     *Service
+	bucket                                string
+	operationId                           string
+	advancerelocatebucketoperationrequest *AdvanceRelocateBucketOperationRequest
+	urlParams_                            gensupport.URLParams
+	ctx_                                  context.Context
+	header_                               http.Header
+}
+
+// AdvanceRelocateBucket: Starts asynchronous advancement of the relocate
+// bucket operation in the case of required write downtime, to allow it to lock
+// the bucket at the source location, and proceed with the bucket location
+// swap. The server makes a best effort to advance the relocate bucket
+// operation, but success is not guaranteed.
+//
+// - bucket: Name of the bucket to advance the relocate for.
+// - operationId: ID of the operation resource.
+func (r *OperationsService) AdvanceRelocateBucket(bucket string, operationId string, advancerelocatebucketoperationrequest *AdvanceRelocateBucketOperationRequest) *OperationsAdvanceRelocateBucketCall {
+	c := &OperationsAdvanceRelocateBucketCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.operationId = operationId
+	c.advancerelocatebucketoperationrequest = advancerelocatebucketoperationrequest
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *OperationsAdvanceRelocateBucketCall) Fields(s ...googleapi.Field) *OperationsAdvanceRelocateBucketCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *OperationsAdvanceRelocateBucketCall) Context(ctx context.Context) *OperationsAdvanceRelocateBucketCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *OperationsAdvanceRelocateBucketCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *OperationsAdvanceRelocateBucketCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	var body io.Reader = nil
+	body, err := googleapi.WithoutDataWrapper.JSONReader(c.advancerelocatebucketoperationrequest)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/operations/{operationId}/advanceRelocateBucket")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket":      c.bucket,
+		"operationId": c.operationId,
+	})
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.buckets.operations.advanceRelocateBucket" call.
+func (c *OperationsAdvanceRelocateBucketCall) Do(opts ...googleapi.CallOption) error {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if err != nil {
+		return err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return gensupport.WrapError(err)
+	}
+	return nil
 }
 
 type OperationsCancelCall struct {

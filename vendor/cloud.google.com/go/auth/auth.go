@@ -328,7 +328,9 @@ func (c *cachedTokenProvider) tokenNonBlocking(ctx context.Context) (*Token, err
 		defer c.mu.Unlock()
 		return c.cachedToken, nil
 	case stale:
-		c.tokenAsync(ctx)
+		// Call tokenAsync with a new Context because the user-provided context
+		// may have a short timeout incompatible with async token refresh.
+		c.tokenAsync(context.Background())
 		// Return the stale token immediately to not block customer requests to Cloud services.
 		c.mu.Lock()
 		defer c.mu.Unlock()
@@ -343,13 +345,14 @@ func (c *cachedTokenProvider) tokenState() tokenState {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	t := c.cachedToken
+	now := timeNow()
 	if t == nil || t.Value == "" {
 		return invalid
 	} else if t.Expiry.IsZero() {
 		return fresh
-	} else if timeNow().After(t.Expiry.Round(0)) {
+	} else if now.After(t.Expiry.Round(0)) {
 		return invalid
-	} else if timeNow().After(t.Expiry.Round(0).Add(-c.expireEarly)) {
+	} else if now.After(t.Expiry.Round(0).Add(-c.expireEarly)) {
 		return stale
 	}
 	return fresh
