@@ -130,6 +130,49 @@ func TestLex(t *testing.T) {
 	}
 }
 
+func TestLex_Variatns(t *testing.T) {
+	for _, tc := range []struct {
+		input    string
+		expected []int
+	}{
+		// {`count_over_time({foo="bar"}[5m])`, []int{COUNT_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS}},
+		{
+			`variants(count_over_time({foo="bar"}[5m])) of ({foo="bar"})`,
+			[]int{VARIANTS, OPEN_PARENTHESIS, COUNT_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, CLOSE_PARENTHESIS, OF, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, CLOSE_PARENTHESIS},
+		},
+		{
+			`variants(bytes_over_time({foo="bar"}[5m]), count_over_time({foo="bar"}[5m])) of ({foo="bar"})`,
+			[]int{VARIANTS, OPEN_PARENTHESIS, BYTES_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, COMMA,
+				COUNT_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, CLOSE_PARENTHESIS, OF, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, CLOSE_PARENTHESIS},
+		},
+		{
+			`variants(count_over_time({foo="bar"}[5m]), rate({foo="bar"}[5m])) of ({foo="bar"} | logfmt | number="42")`,
+			[]int{VARIANTS, OPEN_PARENTHESIS, COUNT_OVER_TIME, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, COMMA,
+				RATE, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, CLOSE_PARENTHESIS, OF,
+				OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PIPE, IDENTIFIER, EQ, STRING, CLOSE_PARENTHESIS},
+		},
+	} {
+		t.Run(tc.input, func(t *testing.T) {
+			actual := []int{}
+			l := lexer{
+				Scanner: Scanner{
+					Mode: scanner.SkipComments | scanner.ScanStrings,
+				},
+			}
+			l.Init(strings.NewReader(tc.input))
+			var lval exprSymType
+			for {
+				tok := l.Lex(&lval)
+				if tok == 0 {
+					break
+				}
+				actual = append(actual, tok)
+			}
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
 func Test_isFunction(t *testing.T) {
 	tests := []struct {
 		next string
