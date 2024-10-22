@@ -45,12 +45,12 @@ func WithRetryableErrFunc(f func(err error) bool) func(*ObjectClientAdapter) {
 func (o *ObjectClientAdapter) Stop() {
 }
 
-// ObjectExists checks if a given objectKey exists in the GCS bucket
+// ObjectExists checks if a given objectKey exists in the bucket
 func (o *ObjectClientAdapter) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
 	return o.bucket.Exists(ctx, objectKey)
 }
 
-// GetAttributes returns the attributes of the specified object key from the configured GCS bucket.
+// GetAttributes returns the attributes of the specified object key from the configured bucket.
 func (o *ObjectClientAdapter) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
 	attr := client.ObjectAttributes{}
 	thanosAttr, err := o.hedgedBucket.Attributes(ctx, objectKey)
@@ -62,12 +62,12 @@ func (o *ObjectClientAdapter) GetAttributes(ctx context.Context, objectKey strin
 	return attr, nil
 }
 
-// PutObject puts the specified bytes into the configured GCS bucket at the provided key
+// PutObject puts the specified bytes into the configured bucket at the provided key
 func (o *ObjectClientAdapter) PutObject(ctx context.Context, objectKey string, object io.Reader) error {
 	return o.bucket.Upload(ctx, objectKey, object)
 }
 
-// GetObject returns a reader and the size for the specified object key from the configured GCS bucket.
+// GetObject returns a reader and the size for the specified object key from the configured bucket.
 // size is set to -1 if it cannot be succefully determined, it is up to the caller to check this value before using it.
 func (o *ObjectClientAdapter) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	reader, err := o.hedgedBucket.Get(ctx, objectKey)
@@ -127,7 +127,7 @@ func (o *ObjectClientAdapter) List(ctx context.Context, prefix, delimiter string
 	return storageObjects, commonPrefixes, nil
 }
 
-// DeleteObject deletes the specified object key from the configured GCS bucket.
+// DeleteObject deletes the specified object key from the configured bucket.
 func (o *ObjectClientAdapter) DeleteObject(ctx context.Context, objectKey string) error {
 	return o.bucket.Delete(ctx, objectKey)
 }
