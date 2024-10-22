@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/wal"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -246,6 +247,10 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		}
 
 		lineBytes := len(entries[i].Line)
+		metadataBytes := 0
+		for _, metadata := range entries[i].StructuredMetadata {
+			metadataBytes += len(metadata.Name) + len(metadata.Value)
+		}
 		totalBytes += lineBytes
 
 		now := time.Now()
@@ -253,7 +258,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(lineBytes)}})
 			s.writeFailures.Log(s.tenant, failedEntriesWithError[len(failedEntriesWithError)-1].e)
 			rateLimitedSamples++
-			rateLimitedBytes += lineBytes
+			rateLimitedBytes += lineBytes + metadataBytes
 			continue
 		}
 
@@ -263,7 +268,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(entries[i].Timestamp, cutoff)})
 			s.writeFailures.Log(s.tenant, fmt.Errorf("%w for stream %s", failedEntriesWithError[len(failedEntriesWithError)-1].e, s.labels))
 			outOfOrderSamples++
-			outOfOrderBytes += lineBytes
+			outOfOrderBytes += lineBytes + metadataBytes
 			continue
 		}
 
@@ -288,7 +293,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		failedEntriesWithError = make([]entryWithError, 0, len(toStore))
 		for i := 0; i < len(toStore); i++ {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{toStore[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(toStore[i].Line))}})
-			rateLimitedBytes += len(toStore[i].Line)
+			rateLimitedBytes += util.EntryTotalSize(toStore[i])
 		}
 	}
 

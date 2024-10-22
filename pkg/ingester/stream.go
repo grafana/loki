@@ -9,8 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/runtime"
-
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/opentracing/opentracing-go"
@@ -25,6 +23,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -346,7 +346,7 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 			if chunkenc.IsOutOfOrderErr(err) {
 				s.writeFailures.Log(s.tenant, err)
 				outOfOrderSamples++
-				outOfOrderBytes += len(entries[i].Line)
+				outOfOrderBytes += util.EntryTotalSize(&entries[i])
 			}
 			continue
 		}
@@ -411,13 +411,14 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 
 		lineBytes := len(entries[i].Line)
 		totalBytes += lineBytes
+		metadataBytes := util.StructuredMetadataSize(entries[i].StructuredMetadata)
 
 		now := time.Now()
 		if !rateLimitWholeStream && !s.limiter.AllowN(now, len(entries[i].Line)) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(lineBytes)}})
 			s.writeFailures.Log(s.tenant, failedEntriesWithError[len(failedEntriesWithError)-1].e)
 			rateLimitedSamples++
-			rateLimitedBytes += lineBytes
+			rateLimitedBytes += lineBytes + metadataBytes
 			continue
 		}
 
@@ -427,7 +428,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(entries[i].Timestamp, cutoff)})
 			s.writeFailures.Log(s.tenant, fmt.Errorf("%w for stream %s", failedEntriesWithError[len(failedEntriesWithError)-1].e, s.labels))
 			outOfOrderSamples++
-			outOfOrderBytes += lineBytes
+			outOfOrderBytes += lineBytes + metadataBytes
 			continue
 		}
 
@@ -452,7 +453,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		failedEntriesWithError = make([]entryWithError, 0, len(toStore))
 		for i := 0; i < len(toStore); i++ {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&toStore[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(toStore[i].Line))}})
-			rateLimitedBytes += len(toStore[i].Line)
+			rateLimitedBytes += util.EntryTotalSize(&toStore[i])
 		}
 
 		// Log the only last error to the write failures manager.
