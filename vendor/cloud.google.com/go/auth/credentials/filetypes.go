@@ -124,7 +124,13 @@ func resolveUniverseDomain(optsUniverseDomain, fileUniverseDomain string) string
 }
 
 func handleServiceAccount(f *credsfile.ServiceAccountFile, opts *DetectOptions) (auth.TokenProvider, error) {
+	ud := resolveUniverseDomain(opts.UniverseDomain, f.UniverseDomain)
 	if opts.UseSelfSignedJWT {
+		return configureSelfSignedJWT(f, opts)
+	} else if ud != "" && ud != internalauth.DefaultUniverseDomain {
+		// For non-GDU universe domains, token exchange is impossible and services
+		// must support self-signed JWTs.
+		opts.UseSelfSignedJWT = true
 		return configureSelfSignedJWT(f, opts)
 	}
 	opts2LO := &auth.Options2LO{
