@@ -3,7 +3,6 @@ package distributor
 import (
 	"context"
 	"fmt"
-	"github.com/c2h5oh/datasize"
 	"math"
 	"math/rand"
 	"net/http"
@@ -13,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/httpgrpc"

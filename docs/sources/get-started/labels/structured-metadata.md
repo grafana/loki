@@ -37,7 +37,8 @@ See the [Promtail: Structured metadata stage](https://grafana.com/docs/loki/<LOK
 With Loki version 1.2.0, support for structured metadata has been added to the Logstash output plugin. For more information, see [logstash](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/logstash/).
 
 {{% admonition type="warning" %}}
-There are defaults for how much structured metadata can be attached per log line.
+Structured metadata size is taken into account while asserting ingestion rate limiting. 
+Along with that, there are separate limits on how much structured metadata can be attached per log line.
 ```
 # Maximum size accepted for structured metadata per log line.
 # CLI flag: -limits.max-structured-metadata-size
