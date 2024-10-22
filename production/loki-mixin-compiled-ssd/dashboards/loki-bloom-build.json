@@ -6367,7 +6367,7 @@
                "multi": false,
                "name": "tenant",
                "options": [ ],
-               "query": "label_values(loki_bloomplanner_tenant_tasks_planned{cluster=\"$cluster\", namespace=\"$namespace\"})",
+               "query": "label_values(loki_bloomplanner_tenant_tasks_planned{cluster=\"$cluster\", namespace=\"$namespace\"}, tenant)",
                "refresh": 0,
                "regex": "",
                "sort": 3,

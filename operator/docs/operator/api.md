@@ -1007,7 +1007,7 @@ BlockedQueryTypes
 </table>
 
 ## BlockedQueryTypes { #loki-grafana-com-v1-BlockedQueryTypes }
-(<code>[]github.com/grafana/loki/operator/apis/loki/v1.BlockedQueryType</code> alias)
+(<code>[]github.com/grafana/loki/operator/api/loki/v1.BlockedQueryType</code> alias)
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-BlockedQuerySpec">BlockedQuerySpec</a>)
 </p>
@@ -1461,7 +1461,7 @@ LimitsTemplateSpec
 <code>tenants</code><br/>
 <em>
 <a href="#loki-grafana-com-v1-PerTenantLimitsTemplateSpec">
-map[string]github.com/grafana/loki/operator/apis/loki/v1.PerTenantLimitsTemplateSpec
+map[string]github.com/grafana/loki/operator/api/loki/v1.PerTenantLimitsTemplateSpec
 </a>
 </em>
 </td>
@@ -3405,7 +3405,7 @@ At least one container is still running or is in the process of being restarted.
 </table>
 
 ## PodStatusMap { #loki-grafana-com-v1-PodStatusMap }
-(<code>map[github.com/grafana/loki/operator/apis/loki/v1.PodStatus][]string</code> alias)
+(<code>map[github.com/grafana/loki/operator/api/loki/v1.PodStatus][]string</code> alias)
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackComponentStatus">LokiStackComponentStatus</a>)
 </p>
@@ -4594,7 +4594,7 @@ RemoteWriteSpec
 <code>overrides</code><br/>
 <em>
 <a href="#loki-grafana-com-v1-RulerOverrides">
-map[string]github.com/grafana/loki/operator/apis/loki/v1.RulerOverrides
+map[string]github.com/grafana/loki/operator/api/loki/v1.RulerOverrides
 </a>
 </em>
 </td>
@@ -5967,7 +5967,7 @@ LimitsTemplateSpec
 <code>tenants</code><br/>
 <em>
 <a href="#loki-grafana-com-v1beta1-LimitsTemplateSpec">
-map[string]github.com/grafana/loki/operator/apis/loki/v1beta1.LimitsTemplateSpec
+map[string]github.com/grafana/loki/operator/api/loki/v1beta1.LimitsTemplateSpec
 </a>
 </em>
 </td>
@@ -8188,7 +8188,7 @@ RemoteWriteSpec
 <code>overrides</code><br/>
 <em>
 <a href="#loki-grafana-com-v1beta1-RulerOverrides">
-map[string]github.com/grafana/loki/operator/apis/loki/v1beta1.RulerOverrides
+map[string]github.com/grafana/loki/operator/api/loki/v1beta1.RulerOverrides
 </a>
 </em>
 </td>
