@@ -101,12 +101,12 @@ func (b *xdsResolverBuilder) Build(target resolver.Target, cc resolver.ClientCon
 	if b.newXDSClient != nil {
 		newXDSClient = b.newXDSClient
 	}
-	client, close, err := newXDSClient(target.String())
+	client, closeFn, err := newXDSClient(target.String())
 	if err != nil {
 		return nil, fmt.Errorf("xds: failed to create xds-client: %v", err)
 	}
 	r.xdsClient = client
-	r.xdsClientClose = close
+	r.xdsClientClose = closeFn
 
 	// Determine the listener resource name and start a watcher for it.
 	template, err := r.sanityChecksOnBootstrapConfig(target, opts, r.xdsClient)
@@ -128,7 +128,7 @@ func (b *xdsResolverBuilder) Build(target resolver.Target, cc resolver.ClientCon
 //
 // Returns the listener resource name template to use. If any of the above
 // validations fail, a non-nil error is returned.
-func (r *xdsResolver) sanityChecksOnBootstrapConfig(target resolver.Target, opts resolver.BuildOptions, client xdsclient.XDSClient) (string, error) {
+func (r *xdsResolver) sanityChecksOnBootstrapConfig(target resolver.Target, _ resolver.BuildOptions, client xdsclient.XDSClient) (string, error) {
 	bootstrapConfig := client.BootstrapConfig()
 	if bootstrapConfig == nil {
 		// This is never expected to happen after a successful xDS client
@@ -214,7 +214,7 @@ type xdsResolver struct {
 }
 
 // ResolveNow is a no-op at this point.
-func (*xdsResolver) ResolveNow(o resolver.ResolveNowOptions) {}
+func (*xdsResolver) ResolveNow(resolver.ResolveNowOptions) {}
 
 func (r *xdsResolver) Close() {
 	// Cancel the context passed to the serializer and wait for any scheduled
