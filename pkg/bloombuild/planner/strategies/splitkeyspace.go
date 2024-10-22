@@ -3,6 +3,7 @@ package strategies
 import (
 	"context"
 	"fmt"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 

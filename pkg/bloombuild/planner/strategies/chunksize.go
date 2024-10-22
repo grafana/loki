@@ -3,9 +3,15 @@ package strategies
 import (
 	"context"
 	"fmt"
+	"math"
+	"sort"
+
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -13,10 +19,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
-	"math"
-	"sort"
 )
 
 type ChunkSizeStrategyLimits interface {
@@ -63,6 +65,9 @@ func (s *ChunkSizeStrategy) Plan(
 	}
 
 	sizedIter, iterSize, err := s.sizedSeriesIter(ctx, tenant, tsdbsWithGaps, targetTaskSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get sized series iter: %w", err)
+	}
 
 	tasks := make([]*protos.Task, 0, iterSize)
 	for sizedIter.Next() {
