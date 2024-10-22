@@ -9,8 +9,9 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/thanos-io/objstore"
+
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 )
 
 type ObjectClientAdapter struct {

@@ -6,9 +6,10 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/v3/pkg/storage/bucket/filesystem"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
-	"github.com/stretchr/testify/require"
 )
 
 func TestObjectClientAdapter_List(t *testing.T) {
