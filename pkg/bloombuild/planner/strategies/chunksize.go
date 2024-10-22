@@ -22,7 +22,7 @@ import (
 )
 
 type ChunkSizeStrategyLimits interface {
-	BloomTaskTargetChunkSizeBytes(tenantID string) uint64
+	BloomTaskTargetSeriesChunksSizeBytes(tenantID string) uint64
 }
 
 type ChunkSizeStrategy struct {
@@ -47,7 +47,7 @@ func (s *ChunkSizeStrategy) Plan(
 	tsdbs TSDBSet,
 	metas []bloomshipper.Meta,
 ) ([]*protos.Task, error) {
-	targetTaskSize := s.limits.BloomTaskTargetChunkSizeBytes(tenant)
+	targetTaskSize := s.limits.BloomTaskTargetSeriesChunksSizeBytes(tenant)
 
 	logger := log.With(s.logger, "table", table.Addr(), "tenant", tenant)
 	level.Debug(s.logger).Log("msg", "loading work for tenant", "target task size", humanize.Bytes(targetTaskSize))
@@ -74,7 +74,7 @@ func (s *ChunkSizeStrategy) Plan(
 		series := sizedIter.At()
 		if series.Len() == 0 {
 			// This should never happen, but just in case.
-			level.Error(s.logger).Log("msg", "got empty series batch")
+			level.Warn(logger).Log("msg", "got empty series batch", "tsdb", series.TSDB().Name())
 			continue
 		}
 
@@ -152,9 +152,9 @@ func getBlocksMatchingBounds(metas []bloomshipper.Meta, bounds v1.FingerprintBou
 }
 
 type seriesWithChunks struct {
-	TSDB   tsdb.SingleTenantTSDBIdentifier
-	FP     model.Fingerprint
-	Chunks []index.ChunkMeta
+	tsdb   tsdb.SingleTenantTSDBIdentifier
+	fp     model.Fingerprint
+	chunks []index.ChunkMeta
 }
 
 type seriesBatch struct {
@@ -175,17 +175,17 @@ func (b *seriesBatch) Bounds() v1.FingerprintBounds {
 
 	// We assume that the series are sorted by fingerprint.
 	// This is guaranteed since series are iterated in order by the TSDB.
-	return v1.NewBounds(b.series[0].FP, b.series[len(b.series)-1].FP)
+	return v1.NewBounds(b.series[0].fp, b.series[len(b.series)-1].fp)
 }
 
 func (b *seriesBatch) V1Series() []*v1.Series {
 	series := make([]*v1.Series, 0, len(b.series))
 	for _, s := range b.series {
 		res := &v1.Series{
-			Fingerprint: s.FP,
-			Chunks:      make(v1.ChunkRefs, 0, len(s.Chunks)),
+			Fingerprint: s.fp,
+			Chunks:      make(v1.ChunkRefs, 0, len(s.chunks)),
 		}
-		for _, chk := range s.Chunks {
+		for _, chk := range s.chunks {
 			res.Chunks = append(res.Chunks, v1.ChunkRef{
 				From:     model.Time(chk.MinTime),
 				Through:  model.Time(chk.MaxTime),
@@ -216,7 +216,7 @@ func (b *seriesBatch) TSDB() tsdb.SingleTenantTSDBIdentifier {
 	if len(b.series) == 0 {
 		return tsdb.SingleTenantTSDBIdentifier{}
 	}
-	return b.series[0].TSDB
+	return b.series[0].tsdb
 }
 
 func (s *ChunkSizeStrategy) sizedSeriesIter(
@@ -253,9 +253,9 @@ func (s *ChunkSizeStrategy) sizedSeriesIter(
 						}
 
 						currentBatch.Append(seriesWithChunks{
-							TSDB:   idx.tsdbIdentifier,
-							FP:     fp,
-							Chunks: chks,
+							tsdb:   idx.tsdbIdentifier,
+							fp:     fp,
+							chunks: chks,
 						}, seriesSize)
 						return false
 					}

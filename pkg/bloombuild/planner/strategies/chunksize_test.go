@@ -243,6 +243,6 @@ type fakeChunkSizeLimits struct {
 	TargetSize uint64
 }
 
-func (f fakeChunkSizeLimits) BloomTaskTargetChunkSizeBytes(_ string) uint64 {
+func (f fakeChunkSizeLimits) BloomTaskTargetSeriesChunksSizeBytes(_ string) uint64 {
 	return f.TargetSize
 }

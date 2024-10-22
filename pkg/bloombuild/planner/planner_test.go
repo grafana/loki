@@ -753,9 +753,9 @@ func (f *fakeLimits) BloomTaskMaxRetries(_ string) int {
 }
 
 func (f *fakeLimits) BloomPlanningStrategy(_ string) string {
-	return strategies.ChunkSizeStrategyName
+	return strategies.SplitBySeriesChunkSizeStrategyName
 }
 
-func (f *fakeLimits) BloomTaskTargetChunkSizeBytes(_ string) uint64 {
+func (f *fakeLimits) BloomTaskTargetSeriesChunksSizeBytes(_ string) uint64 {
 	return 1 << 20 // 1MB
 }

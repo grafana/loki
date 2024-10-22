@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	SplitKeyspaceStrategyName = "split_keyspace_by_factor"
-	ChunkSizeStrategyName     = "split_by_chunk_size"
+	SplitKeyspaceStrategyName          = "split_keyspace_by_factor"
+	SplitBySeriesChunkSizeStrategyName = "split_by_series_chunks_size"
 )
 
 type Limits interface {
@@ -41,7 +41,7 @@ func NewStrategy(
 	switch strategy {
 	case SplitKeyspaceStrategyName:
 		return NewSplitKeyspaceStrategy(limits, logger)
-	case ChunkSizeStrategyName:
+	case SplitBySeriesChunkSizeStrategyName:
 		return NewChunkSizeStrategy(limits, logger)
 	default:
 		return nil, fmt.Errorf("unknown bloom planning strategy (%s)", strategy)
