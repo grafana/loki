@@ -115,11 +115,46 @@ type partitionReader struct {
 	group       string
 	partitionID int32
 
-	metrics partition.ReaderMetrics
-	logger  log.Logger
-	client  *kgo.Client
-	aClient *kadm.Client
-	reg     prometheus.Registerer
+	readerMetrics *partition.ReaderMetrics
+	writerMetrics *partition.CommitterMetrics
+	logger        log.Logger
+	client        *kgo.Client
+	aClient       *kadm.Client
+}
+
+func NewPartitionReader(
+	topic string,
+	group string,
+	partitionID int32,
+	logger log.Logger,
+	r prometheus.Registerer,
+) (*partitionReader, error) {
+	readerMetrics := partition.NewReaderMetrics(r)
+	writerMetrics := partition.NewCommitterMetrics(r, partitionID)
+
+	opts := []kgo.Opt{
+		kgo.SeedBrokers([]string{"localhost:9092"}...),
+		kgo.ConsumerGroup(group),
+		kgo.ConsumeTopics(topic),
+	}
+
+	client, err := kgo.NewClient(opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	aClient := kadm.NewClient(client)
+
+	return &partitionReader{
+		topic:         topic,
+		group:         group,
+		partitionID:   partitionID,
+		readerMetrics: readerMetrics,
+		writerMetrics: writerMetrics,
+		logger:        logger,
+		client:        client,
+		aClient:       aClient,
+	}, nil
 }
 
 // Fetches the desired offset in the partition itself, not the consumer group
@@ -271,7 +306,7 @@ func (p *partitionReader) poll(
 	maxOffset int64, // exclusive
 ) ([]partition.Record, bool) {
 	defer func(start time.Time) {
-		p.metrics.FetchWaitDuration.Observe(time.Since(start).Seconds())
+		p.readerMetrics.FetchWaitDuration.Observe(time.Since(start).Seconds())
 	}(time.Now())
 	fetches := p.client.PollFetches(ctx)
 	p.recordFetchesMetrics(fetches)
@@ -322,7 +357,7 @@ func (p *partitionReader) logFetchErrors(fetches kgo.Fetches) {
 	if len(mErr) == 0 {
 		return
 	}
-	p.metrics.FetchesErrors.Add(float64(len(mErr)))
+	p.readerMetrics.FetchesErrors.Add(float64(len(mErr)))
 	level.Error(p.logger).Log("msg", "encountered error while fetching", "err", mErr.Err())
 }
 
@@ -336,11 +371,11 @@ func (p *partitionReader) recordFetchesMetrics(fetches kgo.Fetches) {
 	fetches.EachRecord(func(record *kgo.Record) {
 		numRecords++
 		delay := now.Sub(record.Timestamp).Seconds()
-		p.metrics.ReceiveDelayWhenRunning.Observe(delay)
+		p.readerMetrics.ReceiveDelayWhenRunning.Observe(delay)
 	})
 
-	p.metrics.FetchesTotal.Add(float64(len(fetches)))
-	p.metrics.RecordsPerFetch.Observe(float64(numRecords))
+	p.readerMetrics.FetchesTotal.Add(float64(len(fetches)))
+	p.readerMetrics.RecordsPerFetch.Observe(float64(numRecords))
 }
 
 func (r *partitionReader) Process(ctx context.Context, offsets Offsets, ch chan<- []partition.Record) (int64, error) {
@@ -374,6 +409,36 @@ func (r *partitionReader) Process(ctx context.Context, offsets Offsets, ch chan<
 func (r *partitionReader) Close() error {
 	r.aClient.Close()
 	r.client.Close()
+	return nil
+}
+
+// Commits the offset to the consumer group.
+func (r *partitionReader) Commit(ctx context.Context, offset int64) (err error) {
+	startTime := time.Now()
+	r.writerMetrics.CommitRequestsTotal.Inc()
+
+	defer func() {
+		r.writerMetrics.CommitRequestsLatency.Observe(time.Since(startTime).Seconds())
+
+		if err != nil {
+			level.Error(r.logger).Log("msg", "failed to commit last consumed offset to Kafka", "err", err, "offset", offset)
+			r.writerMetrics.CommitFailuresTotal.Inc()
+		}
+	}()
+
+	// Commit the last consumed offset.
+	toCommit := kadm.Offsets{}
+	toCommit.AddOffset(r.topic, r.partitionID, offset, -1)
+	committed, err := r.aClient.CommitOffsets(ctx, r.group, toCommit)
+	if err != nil {
+		return err
+	} else if !committed.Ok() {
+		return committed.Error()
+	}
+
+	committedOffset, _ := committed.Lookup(r.topic, r.partitionID)
+	level.Debug(r.logger).Log("msg", "last commit offset successfully committed to Kafka", "offset", committedOffset.At)
+	r.writerMetrics.LastCommittedOffset.Set(float64(committedOffset.At))
 	return nil
 }
 
