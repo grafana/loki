@@ -694,7 +694,6 @@ func internalNewObjectClient(storeName, component string, cfg Config, clientMetr
 			azureCfg = (azure.BlobStorageConfig)(nsCfg)
 		}
 		if cfg.UseThanosObjstore {
-			clientMetrics.Unregister()
 			return azure.NewBlobStorageThanosObjectClient(context.Background(), cfg.ObjectStore, component, util_log.Logger, cfg.Hedging)
 		}
 		return azure.NewBlobStorage(&azureCfg, clientMetrics.AzureMetrics, cfg.Hedging)

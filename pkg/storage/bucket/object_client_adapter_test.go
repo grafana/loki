@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAdapter_List(t *testing.T) {
+func TestObjectClientAdapter_List(t *testing.T) {
 	tests := []struct {
 		name              string
 		prefix            string
