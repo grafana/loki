@@ -51,9 +51,9 @@
         "k8s.io/apimachinery/pkg/apis/": "Kubernetes ",
         "k8s.io/component-base/config/": "Kubernetes ",
         "sigs.k8s.io/controller-runtime/pkg/config/": "K8S Controller-runtime ",
-        "github.com/grafana/loki/operator/apis/loki/v1": "Loki Operator v1",
-        "github.com/grafana/loki/operator/apis/loki/v1beta1": "Loki Operator v1beta1",
-        "github.com/grafana/loki/operator/apis/loki/config/v1": "Feature Gates"
+        "github.com/grafana/loki/operator/api/loki/v1": "Loki Operator v1",
+        "github.com/grafana/loki/operator/api/loki/v1beta1": "Loki Operator v1beta1",
+        "github.com/grafana/loki/operator/api/loki/config/v1": "Feature Gates"
     },
     "markdownDisabled": false
 }
