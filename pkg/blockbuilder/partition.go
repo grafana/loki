@@ -265,8 +265,11 @@ func (r *partitionReader) HighestPartitionOffset(ctx context.Context) (int64, er
 }
 
 // pollFetches retrieves the next batch of records from Kafka and measures the fetch duration.
-// NB(owen-d): lifted from `pkg/kafka/partition/reader.go:Reader`
-func (p *partitionReader) poll(ctx context.Context) []partition.Record {
+// NB(owen-d): originally lifted from `pkg/kafka/partition/reader.go:Reader`
+func (p *partitionReader) poll(
+	ctx context.Context,
+	maxOffset int64, // exclusive
+) ([]partition.Record, bool) {
 	defer func(start time.Time) {
 		p.metrics.FetchWaitDuration.Observe(time.Since(start).Seconds())
 	}(time.Now())
@@ -275,14 +278,22 @@ func (p *partitionReader) poll(ctx context.Context) []partition.Record {
 	p.logFetchErrors(fetches)
 	fetches = partition.FilterOutErrFetches(fetches)
 	if fetches.NumRecords() == 0 {
-		return nil
+		return nil, false
 	}
 	records := make([]partition.Record, 0, fetches.NumRecords())
-	fetches.EachRecord(func(rec *kgo.Record) {
+
+	itr := fetches.RecordIter()
+	for !itr.Done() {
+		rec := itr.Next()
 		if rec.Partition != p.partitionID {
 			level.Error(p.logger).Log("msg", "wrong partition record received", "partition", rec.Partition, "expected_partition", p.partitionID)
-			return
+			continue
 		}
+
+		if rec.Offset >= maxOffset {
+			return records, true
+		}
+
 		records = append(records, partition.Record{
 			// This context carries the tracing data for this individual record;
 			// kotel populates this data when it fetches the messages.
@@ -291,8 +302,9 @@ func (p *partitionReader) poll(ctx context.Context) []partition.Record {
 			Content:  rec.Value,
 			Offset:   rec.Offset,
 		})
-	})
-	return records
+	}
+
+	return records, false
 }
 
 // logFetchErrors logs any errors encountered during the fetch operation.
@@ -334,23 +346,27 @@ func (p *partitionReader) recordFetchesMetrics(fetches kgo.Fetches) {
 func (r *partitionReader) Process(ctx context.Context, offsets Offsets, ch chan<- []partition.Record) (int64, error) {
 	r.updateReaderOffset(offsets.Min)
 
-	var lastOffset int64 = offsets.Min - 1
-
-	_, err := withBackoff(
-		ctx,
-		defaultBackoffConfig,
-		func() (struct{}, error) {
-			fetches := r.poll(ctx)
-			if len(fetches) > 0 {
-				lastOffset = fetches[len(fetches)-1].Offset
-				select {
-				case ch <- fetches:
-				case <-ctx.Done():
-				}
-			}
-			return struct{}{}, nil
-		},
+	var (
+		lastOffset int64 = offsets.Min - 1
+		boff             = backoff.New(ctx, defaultBackoffConfig)
+		err        error
 	)
+
+	for boff.Ongoing() {
+		fetches, done := r.poll(ctx, offsets.Max)
+		if len(fetches) > 0 {
+			lastOffset = fetches[len(fetches)-1].Offset
+			select {
+			case ch <- fetches:
+			case <-ctx.Done():
+				return lastOffset, ctx.Err()
+			}
+		}
+
+		if done {
+			break
+		}
+	}
 
 	return lastOffset, err
 }
