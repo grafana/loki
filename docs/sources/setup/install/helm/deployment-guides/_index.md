@@ -10,4 +10,4 @@ keywords:
 
 The following guides provide step-by-step instructions for deploying Loki on cloud providers:
 
-- [Deploy Loki on AWS]({{< relref "./aws" >}})
+- [Deploy Loki on AWS](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/deployment-guides/aws/)
