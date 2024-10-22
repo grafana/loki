@@ -103,7 +103,7 @@ bloomGateway:
 
 In this configuration, we are deploying Loki with MinIO as the object storage. We recommend configuring object storage via cloud provider or pointing Loki at a MinIO cluster for production deployments.
 
-### Multi Replica
+### Multiple Replicas
 
 The default Helm chart deploys the following components:
 - Loki (3 replicas)
