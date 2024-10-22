@@ -48,7 +48,7 @@ type Reader struct {
 
 	client  *kgo.Client
 	logger  log.Logger
-	metrics readerMetrics
+	metrics ReaderMetrics
 	reg     prometheus.Registerer
 	clock   quartz.Clock
 }
@@ -82,7 +82,7 @@ func NewReader(
 		partitionID:         partitionID,
 		consumerGroup:       kafkaCfg.GetConsumerGroup(instanceID, partitionID),
 		logger:              logger,
-		metrics:             newReaderMetrics(reg),
+		metrics:             NewReaderMetrics(reg),
 		reg:                 reg,
 		lastProcessedOffset: -1,
 		consumerFactory:     consumerFactory,
@@ -433,19 +433,19 @@ func (p *Reader) logFetchErrors(fetches kgo.Fetches) {
 	if len(mErr) == 0 {
 		return
 	}
-	p.metrics.fetchesErrors.Add(float64(len(mErr)))
+	p.metrics.FetchesErrors.Add(float64(len(mErr)))
 	level.Error(p.logger).Log("msg", "encountered error while fetching", "err", mErr.Err())
 }
 
 // pollFetches retrieves the next batch of records from Kafka and measures the fetch duration.
 func (p *Reader) poll(ctx context.Context) []Record {
 	defer func(start time.Time) {
-		p.metrics.fetchWaitDuration.Observe(time.Since(start).Seconds())
+		p.metrics.FetchWaitDuration.Observe(time.Since(start).Seconds())
 	}(time.Now())
 	fetches := p.client.PollFetches(ctx)
 	p.recordFetchesMetrics(fetches)
 	p.logFetchErrors(fetches)
-	fetches = filterOutErrFetches(fetches)
+	fetches = FilterOutErrFetches(fetches)
 	if fetches.NumRecords() == 0 {
 		return nil
 	}
@@ -478,18 +478,18 @@ func (p *Reader) recordFetchesMetrics(fetches kgo.Fetches) {
 		numRecords++
 		delay := now.Sub(record.Timestamp).Seconds()
 		if p.lastProcessedOffset == -1 {
-			p.metrics.receiveDelayWhenStarting.Observe(delay)
+			p.metrics.ReceiveDelayWhenStarting.Observe(delay)
 		} else {
-			p.metrics.receiveDelayWhenRunning.Observe(delay)
+			p.metrics.ReceiveDelayWhenRunning.Observe(delay)
 		}
 	})
 
-	p.metrics.fetchesTotal.Add(float64(len(fetches)))
-	p.metrics.recordsPerFetch.Observe(float64(numRecords))
+	p.metrics.FetchesTotal.Add(float64(len(fetches)))
+	p.metrics.RecordsPerFetch.Observe(float64(numRecords))
 }
 
-// filterOutErrFetches removes any fetches that resulted in errors from the provided slice.
-func filterOutErrFetches(fetches kgo.Fetches) kgo.Fetches {
+// FilterOutErrFetches removes any fetches that resulted in errors from the provided slice.
+func FilterOutErrFetches(fetches kgo.Fetches) kgo.Fetches {
 	filtered := make(kgo.Fetches, 0, len(fetches))
 	for i, fetch := range fetches {
 		if !isErrFetch(fetch) {
@@ -512,21 +512,21 @@ func isErrFetch(fetch kgo.Fetch) bool {
 	return false
 }
 
-type readerMetrics struct {
-	receiveDelayWhenStarting prometheus.Observer
-	receiveDelayWhenRunning  prometheus.Observer
-	recordsPerFetch          prometheus.Histogram
-	fetchesErrors            prometheus.Counter
-	fetchesTotal             prometheus.Counter
-	fetchWaitDuration        prometheus.Histogram
+type ReaderMetrics struct {
+	ReceiveDelayWhenStarting prometheus.Observer
+	ReceiveDelayWhenRunning  prometheus.Observer
+	RecordsPerFetch          prometheus.Histogram
+	FetchesErrors            prometheus.Counter
+	FetchesTotal             prometheus.Counter
+	FetchWaitDuration        prometheus.Histogram
 	// strongConsistencyInstrumentation *StrongReadConsistencyInstrumentation[struct{}]
 	// lastConsumedOffset               prometheus.Gauge
-	consumeLatency prometheus.Histogram
+	ConsumeLatency prometheus.Histogram
 	kprom          *kprom.Metrics
 }
 
-// newReaderMetrics initializes and returns a new set of metrics for the PartitionReader.
-func newReaderMetrics(reg prometheus.Registerer) readerMetrics {
+// NewReaderMetrics initializes and returns a new set of metrics for the PartitionReader.
+func NewReaderMetrics(reg prometheus.Registerer) ReaderMetrics {
 	receiveDelay := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 		Name:                            "loki_ingest_storage_reader_receive_delay_seconds",
 		Help:                            "Delay between producing a record and receiving it in the consumer.",
@@ -537,25 +537,25 @@ func newReaderMetrics(reg prometheus.Registerer) readerMetrics {
 		Buckets:                         prometheus.ExponentialBuckets(0.125, 2, 18), // Buckets between 125ms and 9h.
 	}, []string{"phase"})
 
-	return readerMetrics{
-		receiveDelayWhenStarting: receiveDelay.WithLabelValues("starting"),
-		receiveDelayWhenRunning:  receiveDelay.WithLabelValues("running"),
+	return ReaderMetrics{
+		ReceiveDelayWhenStarting: receiveDelay.WithLabelValues("starting"),
+		ReceiveDelayWhenRunning:  receiveDelay.WithLabelValues("running"),
 		kprom:                    client.NewReaderClientMetrics("partition-reader", reg),
-		fetchWaitDuration: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+		FetchWaitDuration: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:                        "loki_ingest_storage_reader_records_batch_wait_duration_seconds",
 			Help:                        "How long a consumer spent waiting for a batch of records from the Kafka client. If fetching is faster than processing, then this will be close to 0.",
 			NativeHistogramBucketFactor: 1.1,
 		}),
-		recordsPerFetch: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+		RecordsPerFetch: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:    "loki_ingest_storage_reader_records_per_fetch",
 			Help:    "The number of records received by the consumer in a single fetch operation.",
 			Buckets: prometheus.ExponentialBuckets(1, 2, 15),
 		}),
-		fetchesErrors: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		FetchesErrors: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_ingest_storage_reader_fetch_errors_total",
 			Help: "The number of fetch errors encountered by the consumer.",
 		}),
-		fetchesTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		FetchesTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_ingest_storage_reader_fetches_total",
 			Help: "Total number of Kafka fetches received by the consumer.",
 		}),
