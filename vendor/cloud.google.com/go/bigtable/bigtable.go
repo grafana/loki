@@ -109,6 +109,7 @@ func NewClientWithConfig(ctx context.Context, project, instance string, config C
 
 	// Allow non-default service account in DirectPath.
 	o = append(o, internaloption.AllowNonDefaultServiceAccount(true))
+	o = append(o, internaloption.EnableNewAuthLibrary())
 	o = append(o, opts...)
 	connPool, err := gtransport.DialPool(ctx, o...)
 	if err != nil {
@@ -395,8 +396,10 @@ func (t *Table) readRows(ctx context.Context, arg RowSet, f func(Row) bool, mt *
 		// Ignore error since header is only being used to record builtin metrics
 		// Failure to record metrics should not fail the operation
 		*headerMD, _ = stream.Header()
+		res := new(btpb.ReadRowsResponse)
 		for {
-			res, err := stream.Recv()
+			proto.Reset(res)
+			err := stream.RecvMsg(res)
 			if err == io.EOF {
 				*trailerMD = stream.Trailer()
 				break
@@ -437,7 +440,8 @@ func (t *Table) readRows(ctx context.Context, arg RowSet, f func(Row) bool, mt *
 					// Cancel and drain stream.
 					cancel()
 					for {
-						if _, err := stream.Recv(); err != nil {
+						proto.Reset(res)
+						if err := stream.RecvMsg(res); err != nil {
 							*trailerMD = stream.Trailer()
 							// The stream has ended. We don't return an error
 							// because the caller has intentionally interrupted the scan.
