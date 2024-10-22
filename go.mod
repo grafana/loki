@@ -5,7 +5,7 @@ go 1.23
 toolchain go1.23.1
 
 require (
-	cloud.google.com/go/bigtable v1.31.0
+	cloud.google.com/go/bigtable v1.33.0
 	cloud.google.com/go/pubsub v1.45.0
 	cloud.google.com/go/storage v1.43.0
 	github.com/Azure/azure-pipeline-go v0.2.3
@@ -162,7 +162,7 @@ require (
 	cel.dev/expr v0.16.0 // indirect
 	cloud.google.com/go/auth v0.9.3 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.4 // indirect
-	cloud.google.com/go/monitoring v1.21.0 // indirect
+	cloud.google.com/go/monitoring v1.21.1 // indirect
 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20230811130428-ced1acdcaa24 // indirect
 	github.com/benbjohnson/immutable v0.4.0 // indirect
 	github.com/coreos/etcd v3.3.27+incompatible // indirect
@@ -193,7 +193,7 @@ require (
 	cloud.google.com/go v0.115.1 // indirect
 	cloud.google.com/go/compute/metadata v0.5.0 // indirect
 	cloud.google.com/go/iam v1.2.1 // indirect
-	cloud.google.com/go/longrunning v0.6.0 // indirect
+	cloud.google.com/go/longrunning v0.6.1 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.13.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.7.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.10.0 // indirect

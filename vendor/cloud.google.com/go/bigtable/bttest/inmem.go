@@ -338,8 +338,11 @@ func (s *server) ModifyColumnFamilies(ctx context.Context, req *btapb.ModifyColu
 			if !ok {
 				return nil, fmt.Errorf("no such family %q", mod.Id)
 			}
-			if cf.valueType != newcf.valueType {
-				return nil, status.Errorf(codes.InvalidArgument, "Immutable fields 'value_type' cannot be updated")
+			if cf.valueType != nil {
+				_, isOldAggregateType := cf.valueType.Kind.(*btapb.Type_AggregateType)
+				if isOldAggregateType && cf.valueType != newcf.valueType {
+					return nil, status.Errorf(codes.InvalidArgument, "Immutable fields 'value_type.aggregate_type' cannot be updated")
+				}
 			}
 
 			// assume that we ALWAYS want to replace by the new setting
