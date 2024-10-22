@@ -101,7 +101,7 @@ func (p *Reader) start(ctx context.Context) error {
 	}
 
 	// We manage our commits manually, so we must fetch the last offset for our consumer group to find out where to read from.
-	lastCommittedOffset := p.FetchLastCommittedOffset(ctx)
+	lastCommittedOffset := p.fetchLastCommittedOffset(ctx)
 	p.client.AddConsumePartitions(map[string]map[int32]kgo.Offset{
 		p.kafkaCfg.Topic: {p.partitionID: kgo.NewOffset().At(lastCommittedOffset)},
 	})
@@ -157,7 +157,7 @@ func (p *Reader) run(ctx context.Context) error {
 	return nil
 }
 
-func (p *Reader) FetchLastCommittedOffset(ctx context.Context) int64 {
+func (p *Reader) fetchLastCommittedOffset(ctx context.Context) int64 {
 	// We manually create a request so that we can request the offset for a single partition
 	// only, which is more performant than requesting the offsets for all partitions.
 	req := kmsg.NewPtrOffsetFetchRequest()
@@ -212,7 +212,7 @@ func (p *Reader) FetchLastCommittedOffset(ctx context.Context) int64 {
 	return fetchRes.Groups[0].Topics[0].Partitions[0].Offset
 }
 
-func (p *Reader) FetchPartitionOffset(ctx context.Context, position int64) (int64, error) {
+func (p *Reader) fetchPartitionOffset(ctx context.Context, position int64) (int64, error) {
 	// Create a custom request to fetch the latest offset of a specific partition.
 	// We manually create a request so that we can request the offset for a single partition
 	// only, which is more performant than requesting the offsets for all partitions.
@@ -339,7 +339,7 @@ func (p *Reader) processNextFetchesUntilLagHonored(ctx context.Context, maxLag t
 
 	for boff.Ongoing() {
 		// Send a direct request to the Kafka backend to fetch the partition start offset.
-		partitionStartOffset, err := p.FetchPartitionOffset(ctx, kafkaStartOffset)
+		partitionStartOffset, err := p.fetchPartitionOffset(ctx, kafkaStartOffset)
 		if err != nil {
 			level.Warn(logger).Log("msg", "partition reader failed to fetch partition start offset", "err", err)
 			boff.Wait()
@@ -350,7 +350,7 @@ func (p *Reader) processNextFetchesUntilLagHonored(ctx context.Context, maxLag t
 		// We intentionally don't use WaitNextFetchLastProducedOffset() to not introduce further
 		// latency.
 		lastProducedOffsetRequestedAt := time.Now()
-		lastProducedOffset, err := p.FetchPartitionOffset(ctx, kafkaEndOffset)
+		lastProducedOffset, err := p.fetchPartitionOffset(ctx, kafkaEndOffset)
 		if err != nil {
 			level.Warn(logger).Log("msg", "partition reader failed to fetch last produced offset", "err", err)
 			boff.Wait()
