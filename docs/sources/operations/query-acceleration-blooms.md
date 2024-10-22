@@ -32,7 +32,7 @@ With accelerated filtering, Loki is able to skip most of the chunks and only pro
 
 ### Add data to blooms
 
-To make data available for query acceleration, send [structured metadata][] to Loki. Loki builds blooms from all strucutred metadata keys and values.
+To make data available for query acceleration, send [structured metadata][] to Loki. Loki builds blooms from all structured metadata keys and values.
 
 ### Query blooms
 
