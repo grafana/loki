@@ -208,12 +208,12 @@ Unfortunately, the amount of data each stream has is often unbalanced with the r
 
 Query acceleration introduces a new sharding strategy: `bounded`, which uses blooms to reduce the chunks to be processed right away during the planning phase in the query frontend, as well as evenly distributes the amount of chunks each sharded query will need to process.
 
-[structured metadata]: {{< relref "../get-started/labels/structured-metadata" >}}
-[label filter expression]: {{< relref "../query/log_queries/_index.md#label-filter-expression" >}}
-[parser expression]: {{< relref "../query/log_queries/_index.md#parser-expression" >}}
-[labels format expression]: {{< relref "../query/log_queries/_index.md#labels-format-expression" >}}
-[drop labels expression]: {{< relref "../query/log_queries/_index.md#drop-labels-expression" >}}
-[keep labels expression]: {{< relref "../query/log_queries/_index.md#keep-labels-expression" >}}
+[structured metadata]: https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/structured-metadata
+[label filter expression]: https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#label-filter-expression
+[parser expression]: https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#parser-expression
+[labels format expression]: https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#labels-format-expression
+[drop labels expression]: https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#drop-labels-expression
+[keep labels expression]: https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#keep-labels-expression
 [tenant-limits]: https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config
 [bloom-gateway-cfg]: https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_gateway
 [bloom-build-cfg]: https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_build
