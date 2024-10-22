@@ -40,9 +40,7 @@ func DefaultOTLPAttributes(disableRecommended bool) config.OTLPAttributeConfig {
 		"k8s.deployment.name",
 		"k8s.job.name",
 		"k8s.node.name",
-		"k8s.node.uid",
 		"k8s.pod.name",
-		"k8s.pod.uid",
 		"kubernetes.container_name",
 		"kubernetes.host",
 		"kubernetes.pod_name",
@@ -52,12 +50,10 @@ func DefaultOTLPAttributes(disableRecommended bool) config.OTLPAttributeConfig {
 
 	result.Global.ResourceAttributes = append(result.Global.ResourceAttributes,
 		config.OTLPAttribute{
-			Action: config.OTLPAttributeActionStreamLabel,
-			Regex:  "openshift\\.labels\\..+",
-		},
-		config.OTLPAttribute{
 			Action: config.OTLPAttributeActionMetadata,
 			Names: []string{
+				"k8s.node.uid",
+				"k8s.pod.uid",
 				"k8s.replicaset.name",
 				"k8s.statefulset.name",
 				"process.command_line",
@@ -69,6 +65,10 @@ func DefaultOTLPAttributes(disableRecommended bool) config.OTLPAttributeConfig {
 		config.OTLPAttribute{
 			Action: config.OTLPAttributeActionMetadata,
 			Regex:  `k8s\.pod\.labels\..+`,
+		},
+		config.OTLPAttribute{
+			Action: config.OTLPAttributeActionMetadata,
+			Regex:  `openshift\.labels\..+`,
 		},
 	)
 
