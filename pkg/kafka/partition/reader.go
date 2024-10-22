@@ -48,7 +48,7 @@ type Reader struct {
 
 	client  *kgo.Client
 	logger  log.Logger
-	metrics ReaderMetrics
+	metrics *ReaderMetrics
 	reg     prometheus.Registerer
 	clock   quartz.Clock
 }
@@ -314,7 +314,6 @@ func (p *Reader) processNextFetchesUntilTargetOrMaxLagHonored(ctx context.Contex
 		if currLag <= targetLag {
 			level.Info(logger).Log(
 				"msg", "partition reader consumed partition and current lag is lower or equal to configured target consumer lag",
-				"last_consumed_offset", p.committer.lastCommittedOffset,
 				"current_lag", currLag,
 			)
 			return nil
@@ -323,7 +322,6 @@ func (p *Reader) processNextFetchesUntilTargetOrMaxLagHonored(ctx context.Contex
 
 	level.Warn(logger).Log(
 		"msg", "partition reader consumed partition and current lag is lower than configured max consumer lag but higher than target consumer lag",
-		"last_consumed_offset", p.committer.lastCommittedOffset,
 		"current_lag", currLag,
 	)
 	return nil
@@ -526,7 +524,7 @@ type ReaderMetrics struct {
 }
 
 // NewReaderMetrics initializes and returns a new set of metrics for the PartitionReader.
-func NewReaderMetrics(reg prometheus.Registerer) ReaderMetrics {
+func NewReaderMetrics(reg prometheus.Registerer) *ReaderMetrics {
 	receiveDelay := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 		Name:                            "loki_ingest_storage_reader_receive_delay_seconds",
 		Help:                            "Delay between producing a record and receiving it in the consumer.",
@@ -537,7 +535,7 @@ func NewReaderMetrics(reg prometheus.Registerer) ReaderMetrics {
 		Buckets:                         prometheus.ExponentialBuckets(0.125, 2, 18), // Buckets between 125ms and 9h.
 	}, []string{"phase"})
 
-	return ReaderMetrics{
+	return &ReaderMetrics{
 		ReceiveDelayWhenStarting: receiveDelay.WithLabelValues("starting"),
 		ReceiveDelayWhenRunning:  receiveDelay.WithLabelValues("running"),
 		kprom:                    client.NewReaderClientMetrics("partition-reader", reg),
