@@ -21,9 +21,9 @@ This Helm Chart installation deploys Grafana Loki in [monolithic mode](https://g
 
 There are two ways to deploy Loki in monolithic mode:
 1. **Single Replica**: Run Loki with a single replica. This mode is useful for testing and development or if you are planning to run Loki as a meta-monitoring system.
-2. **Multiple Replicas**: Run Loki with multiple replicas. This mode is useful for high availability and scalability. This mode is less economical than distributed mode, but it is simpler to operate.
+2. **Multiple Replicas**: Run Loki with multiple replicas. This mode is useful for high availability and scalability. This mode is less economical than microservice mode, but it is simpler to operate. We recommend running at least three replicas for high availability.
 
-Once you have selected choose the appropriate `values.yaml` configuration file below and then continue with the deployment steps.
+Once you have selected how many replicas you would like to deploy choose the appropriate `values.yaml` configuration file below and then continue with the deployment steps.
   
 ### Single Replica
 
@@ -103,7 +103,7 @@ bloomGateway:
 
 In this configuration, we are deploying Loki with MinIO as the object storage. We recommend configuring object storage via cloud provider or pointing Loki at a MinIO cluster for production deployments.
 
-### Multiple Replicas
+### Multiple Replicas  
 
 Deploying the Helm chart with multiple replicas deploys the following components:
 - Loki (3 replicas)

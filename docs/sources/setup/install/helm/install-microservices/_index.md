@@ -1,12 +1,12 @@
 ---
-title: Loki Microservice Helm chart 
+title: Install the microservice Helm chart
 menuTitle: Install microservice Loki
 description: Installing Loki in microservice mode using the Helm chart.
 weight: 300
 keywords: 
 ---
 
-# Loki Microservice Helm chart
+# Install the microservice Helm chart
 
 This Helm Chart deploys Grafana Loki on Kubernetes.
 
@@ -22,7 +22,7 @@ The default Helm chart deploys the following components:
 - **QueryScheduler component** (2 replicas): Schedules queries.
 
 {{< admonition type="note" >}}
-We do not recommended to run Microservice mode with `filesystem` storage. For the purpose of this guide, we will use MinIO as the object storage to provide a complete example. 
+We do not recommend running Microservice mode with `filesystem` storage. For the purpose of this guide, we will use MinIO as the object storage to provide a complete example. 
 {{< /admonition >}}
 
 ## Prerequisites
@@ -53,7 +53,7 @@ We do not recommended to run Microservice mode with `filesystem` storage. For th
      loki:
         schemaConfig:
           configs:
-            - from: 2024-04-01
+            - from: "2024-04-01"
               store: tsdb
               object_store: s3
               schema: v13
