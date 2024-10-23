@@ -133,6 +133,10 @@ type SingleTenantQuerier struct {
 	logger          log.Logger
 }
 
+func (s *SingleTenantQuerier) SelectVariants(_ context.Context, _ logql.SelectVariantsParams) (iter.VariantsIterator, error) {
+  panic("TODO(twhitney): SelectVariants not implemented on SingleTenantQuerier") // TODO: Implement
+}
+
 type deleteGetter interface {
 	GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]deletion.DeleteRequest, error)
 }

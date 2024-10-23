@@ -36,6 +36,10 @@ type Querier struct {
 	metaStore    Metastore
 }
 
+func (q *Querier) SelectVariants(_ context.Context, _ logql.SelectVariantsParams) (iter.VariantsIterator, error) {
+  panic("TODO(twhitney): SelectVariants not implemented on Querier") // TODO: Implement
+}
+
 func New(
 	metaStore Metastore,
 	blockStorage BlockStorage,

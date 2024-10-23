@@ -54,7 +54,7 @@ func removeFastRegexMatcherFromExpr(expr Expr) Expr {
 			}
 			typed.Unwrap.PostFilters = cleaned
 		case *MultiVariantExpr:
-			typed.logSelector = removeFastRegexMatcherFromExpr(typed.logSelector).(LogSelectorExpr)
+			typed.logRange.Left = removeFastRegexMatcherFromExpr(typed.logRange.Left).(LogSelectorExpr)
 			for i, variant := range typed.variants {
 				typed.variants[i] = removeFastRegexMatcherFromExpr(variant).(SampleExpr)
 			}
