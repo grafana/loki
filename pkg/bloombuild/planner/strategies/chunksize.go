@@ -40,6 +40,10 @@ func NewChunkSizeStrategy(
 	}, nil
 }
 
+func (s *ChunkSizeStrategy) Name() string {
+	return SplitBySeriesChunkSizeStrategyName
+}
+
 func (s *ChunkSizeStrategy) Plan(
 	ctx context.Context,
 	table config.DayTable,

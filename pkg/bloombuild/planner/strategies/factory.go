@@ -27,6 +27,7 @@ type Limits interface {
 type TSDBSet = map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries
 
 type PlanningStrategy interface {
+	Name() string
 	// Plan returns a set of tasks for a given tenant-table tuple and TSDBs.
 	Plan(ctx context.Context, table config.DayTable, tenant string, tsdbs TSDBSet, metas []bloomshipper.Meta) ([]*protos.Task, error)
 }

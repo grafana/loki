@@ -35,6 +35,10 @@ func NewSplitKeyspaceStrategy(
 	}, nil
 }
 
+func (s *SplitKeyspaceStrategy) Name() string {
+	return SplitKeyspaceStrategyName
+}
+
 func (s *SplitKeyspaceStrategy) Plan(
 	ctx context.Context,
 	table config.DayTable,
