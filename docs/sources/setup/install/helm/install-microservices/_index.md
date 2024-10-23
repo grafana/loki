@@ -21,7 +21,7 @@ The default Helm chart deploys the following components:
 - **QueryFrontend component** (2 replicas, maxUnavailable: 1): Manages frontend queries. Up to 1 replica can be unavailable during updates.
 - **QueryScheduler component** (2 replicas): Schedules queries.
 
-It is not recommended to run scalable mode with `filesystem` storage. For the purpose of this guide, we will use MinIO as the object storage to provide a complete example. 
+It is not recommended to run microservice mode with `filesystem` storage. For the purpose of this guide, we will use MinIO as the object storage to provide a complete example. 
 
 **Prerequisites**
 
@@ -96,7 +96,9 @@ It is not recommended to run scalable mode with `filesystem` storage. For the pu
        replicas: 2
        maxUnavailable: 1
 
-     bloomCompactor:
+     bloomPlanner:
+       replicas: 0
+     bloomBuilder:
        replicas: 0
      bloomGateway:
        replicas: 0
@@ -244,7 +246,9 @@ When deploying Loki using S3 Storage **DO NOT** use the default bucket names;  `
     replicas: 2
     maxUnavailable: 1
 
-  bloomCompactor:
+  bloomPlanner:
+    replicas: 0
+  bloomBuilder:
     replicas: 0
   bloomGateway:
     replicas: 0
@@ -325,7 +329,9 @@ indexGateway:
   replicas: 2
   maxUnavailable: 1
 
-bloomCompactor:
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
   replicas: 0
 bloomGateway:
   replicas: 0

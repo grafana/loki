@@ -53,6 +53,7 @@ This is the generated reference for the Loki Helm Chart values.
   "env": [],
   "extraArgs": {},
   "extraContainers": [],
+  "extraEnvFrom": [],
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
@@ -126,6 +127,15 @@ This is the generated reference for the Loki Helm Chart values.
 			<td>adminApi.extraContainers</td>
 			<td>list</td>
 			<td>Conifgure optional extraContainers</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the admin-api pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -3616,6 +3626,7 @@ false
   "env": [],
   "extraArgs": {},
   "extraContainers": [],
+  "extraEnvFrom": [],
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
@@ -3692,6 +3703,15 @@ false
 			<td>enterpriseGateway.extraContainers</td>
 			<td>list</td>
 			<td>Conifgure optional extraContainers</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the enterprise gateway pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -4212,6 +4232,15 @@ false
 			<td>Lifecycle for the gateway container</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.nginxConfig.clientMaxBodySize</td>
+			<td>string</td>
+			<td>Allows customizing the `client_max_body_size` directive</td>
+			<td><pre lang="json">
+"4M"
 </pre>
 </td>
 		</tr>
@@ -5779,6 +5808,15 @@ null
 			<td>TLS configuration for the ingress. Hosts passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>kubeVersionOverride</td>
+			<td>string</td>
+			<td>Overrides the version used to determine compatibility of resources with the target Kubernetes cluster. This is useful when using `helm template`, because then helm will use the client version of kubectl as the Kubernetes version, which may or may not match your cluster's server version. Example: 'v1.24.4'. Set to null to use the version that helm devises.</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>

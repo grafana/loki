@@ -3764,11 +3764,20 @@ shard_streams:
 # CLI flag: -bloom-build.enable
 [bloom_creation_enabled: <boolean> | default = false]
 
-# Experimental. Number of splits to create for the series keyspace when building
-# blooms. The series keyspace is split into this many parts to parallelize bloom
-# creation.
+# Experimental. Bloom planning strategy to use in bloom creation. Can be one of:
+# 'split_keyspace_by_factor', 'split_by_series_chunks_size'
+# CLI flag: -bloom-build.planning-strategy
+[bloom_planning_strategy: <string> | default = "split_keyspace_by_factor"]
+
+# Experimental. Only if `bloom-build.planning-strategy` is 'split'. Number of
+# splits to create for the series keyspace when building blooms. The series
+# keyspace is split into this many parts to parallelize bloom creation.
 # CLI flag: -bloom-build.split-keyspace-by
 [bloom_split_series_keyspace_by: <int> | default = 256]
+
+# Experimental. Target chunk size in bytes for bloom tasks. Default is 20GB.
+# CLI flag: -bloom-build.split-target-series-chunk-size
+[bloom_task_target_series_chunk_size: <int> | default = 20GB]
 
 # Experimental. Compression algorithm for bloom block pages.
 # CLI flag: -bloom-build.block-encoding
@@ -4059,12 +4068,14 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 Configures additional object stores for a given storage provider.
 Supported stores: aws, azure, bos, filesystem, gcs, swift.
 Example:
-storage_config:
-  named_stores:
-    aws:
-      store-1:
-        endpoint: s3://foo-bucket
-        region: us-west1
+```yaml
+    storage_config:
+      named_stores:
+        aws:
+          store-1:
+            endpoint: s3://foo-bucket
+            region: us-west1
+```
 Named store from this example can be used by setting object_store to store-1 in period_config.
 
 ```yaml
@@ -5550,12 +5561,14 @@ hedging:
 # Configures additional object stores for a given storage provider.
 # Supported stores: aws, azure, bos, filesystem, gcs, swift.
 # Example:
-# storage_config:
-#   named_stores:
-#     aws:
-#       store-1:
-#         endpoint: s3://foo-bucket
-#         region: us-west1
+# ```yaml
+#     storage_config:
+#       named_stores:
+#         aws:
+#           store-1:
+#             endpoint: s3://foo-bucket
+#             region: us-west1
+# ```
 # Named store from this example can be used by setting object_store to store-1
 # in period_config.
 [named_stores: <named_stores_config>]
@@ -5636,6 +5649,13 @@ congestion_control:
 # Maximum number of parallel chunk reads.
 # CLI flag: -store.max-parallel-get-chunk
 [max_parallel_get_chunk: <int> | default = 150]
+
+# Enables the use of thanos-io/objstore clients for connecting to object
+# storage. When set to true, the configuration inside
+# `storage_config.object_store` or `common.storage.object_store` block takes
+# effect.
+# CLI flag: -use-thanos-objstore
+[use_thanos_objstore: <boolean> | default = false]
 
 # The maximum number of chunks to fetch per batch.
 # CLI flag: -store.max-chunk-batch-size

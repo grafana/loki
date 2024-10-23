@@ -8,7 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 )
 
@@ -202,8 +202,9 @@ func ConfigOptions(opt Options) config.Options {
 			AlertManager:          amConfig,
 			RemoteWrite:           rwConfig,
 		},
-		Retention: retentionConfig(&opt.Stack),
-		Overrides: overrides,
+		Retention:      retentionConfig(&opt.Stack),
+		OTLPAttributes: otlpAttributeConfig(&opt.Stack),
+		Overrides:      overrides,
 	}
 }
 

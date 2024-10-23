@@ -108,7 +108,9 @@ It is not recommended to run scalable mode with `filesystem` storage. For the pu
        replicas: 0
      indexGateway:
        replicas: 0
-     bloomCompactor:
+     bloomPlanner:
+       replicas: 0
+     bloomBuilder:
        replicas: 0
      bloomGateway:
        replicas: 0
@@ -209,7 +211,9 @@ compactor:
   replicas: 0
 indexGateway:
   replicas: 0
-bloomCompactor:
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
   replicas: 0
 bloomGateway:
   replicas: 0
@@ -287,7 +291,9 @@ compactor:
   replicas: 0
 indexGateway:
   replicas: 0
-bloomCompactor:
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
   replicas: 0
 bloomGateway:
   replicas: 0

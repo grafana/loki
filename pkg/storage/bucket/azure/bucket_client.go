@@ -35,5 +35,5 @@ func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucke
 		return nil, err
 	}
 
-	return azure.NewBucket(logger, serialized, name)
+	return azure.NewBucket(logger, serialized, name, nil)
 }

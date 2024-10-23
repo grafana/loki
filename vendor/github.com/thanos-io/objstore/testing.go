@@ -106,6 +106,11 @@ func AcceptanceTest(t *testing.T, bkt Bucket) {
 	rc1, err := bkt.Get(ctx, "id1/obj_1.some")
 	testutil.Ok(t, err)
 	defer func() { testutil.Ok(t, rc1.Close()) }()
+
+	sz, err := TryToGetSize(rc1)
+	testutil.Ok(t, err)
+	testutil.Equals(t, int64(11), sz, "expected size to be equal to 11")
+
 	content, err := io.ReadAll(rc1)
 	testutil.Ok(t, err)
 	testutil.Equals(t, "@test-data@", string(content))
@@ -118,6 +123,11 @@ func AcceptanceTest(t *testing.T, bkt Bucket) {
 	rc2, err := bkt.GetRange(ctx, "id1/obj_1.some", 1, 3)
 	testutil.Ok(t, err)
 	defer func() { testutil.Ok(t, rc2.Close()) }()
+
+	sz, err = TryToGetSize(rc2)
+	testutil.Ok(t, err)
+	testutil.Equals(t, int64(3), sz, "expected size to be equal to 3")
+
 	content, err = io.ReadAll(rc2)
 	testutil.Ok(t, err)
 	testutil.Equals(t, "tes", string(content))
@@ -126,6 +136,11 @@ func AcceptanceTest(t *testing.T, bkt Bucket) {
 	rcUnspecifiedLen, err := bkt.GetRange(ctx, "id1/obj_1.some", 1, -1)
 	testutil.Ok(t, err)
 	defer func() { testutil.Ok(t, rcUnspecifiedLen.Close()) }()
+
+	sz, err = TryToGetSize(rcUnspecifiedLen)
+	testutil.Ok(t, err)
+	testutil.Equals(t, int64(10), sz, "expected size to be equal to 10")
+
 	content, err = io.ReadAll(rcUnspecifiedLen)
 	testutil.Ok(t, err)
 	testutil.Equals(t, "test-data@", string(content))
@@ -141,6 +156,11 @@ func AcceptanceTest(t *testing.T, bkt Bucket) {
 	rcLength, err := bkt.GetRange(ctx, "id1/obj_1.some", 3, 9999)
 	testutil.Ok(t, err)
 	defer func() { testutil.Ok(t, rcLength.Close()) }()
+
+	sz, err = TryToGetSize(rcLength)
+	testutil.Ok(t, err)
+	testutil.Equals(t, int64(8), sz, "expected size to be equal to 8")
+
 	content, err = io.ReadAll(rcLength)
 	testutil.Ok(t, err)
 	testutil.Equals(t, "st-data@", string(content))
