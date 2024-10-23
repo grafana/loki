@@ -28,7 +28,7 @@ var response = `{
 `
 
 func TestDoRequest(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, err := w.Write([]byte(response))
 		require.NoError(t, err)
 	}))

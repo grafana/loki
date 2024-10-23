@@ -137,14 +137,14 @@ type FusedQuerier struct {
 }
 
 func NewFusedQuerier(bq *BlockQuerier, inputs []iter.PeekIterator[Request], logger log.Logger) *FusedQuerier {
-	heap := NewHeapIterator[Request](
+	heap := NewHeapIterator(
 		func(a, b Request) bool {
 			return a.Fp < b.Fp
 		},
 		inputs...,
 	)
 
-	merging := iter.NewDedupingIter[Request, []Request](
+	merging := iter.NewDedupingIter(
 		func(a Request, b []Request) bool {
 			return a.Fp == b[0].Fp
 		},
@@ -152,7 +152,7 @@ func NewFusedQuerier(bq *BlockQuerier, inputs []iter.PeekIterator[Request], logg
 		func(a Request, b []Request) []Request {
 			return append(b, a)
 		},
-		iter.NewPeekIter[Request](heap),
+		iter.NewPeekIter(heap),
 	)
 	return &FusedQuerier{
 		bq:     bq,
@@ -253,7 +253,7 @@ func (fq *FusedQuerier) Run() error {
 	return nil
 }
 
-func (fq *FusedQuerier) runSeries(schema Schema, series *SeriesWithOffsets, reqs []Request) {
+func (fq *FusedQuerier) runSeries(_ Schema, series *SeriesWithMeta, reqs []Request) {
 	// For a given chunk|series to be removed, it must fail to match all blooms.
 	// Because iterating/loading blooms can be expensive, we iterate blooms one at a time, collecting
 	// the removals (failures) for each (bloom, chunk) pair.
@@ -263,9 +263,10 @@ func (fq *FusedQuerier) runSeries(schema Schema, series *SeriesWithOffsets, reqs
 		Missing  ChunkRefs // chunks that do not exist in the blooms and cannot be queried
 		InBlooms ChunkRefs // chunks which do exist in the blooms and can be queried
 
-		found map[int]bool // map of the index in `InBlooms` to whether the chunk
-		// was found in _any_ of the blooms for the series. In order to
-		// be eligible for removal, a chunk must be found in _no_ blooms.
+		// Map of the index in `InBlooms` to whether the chunk was found in _any_
+		// of the blooms for the series. In order to be eligible for removal, a
+		// chunk must be found in _no_ blooms.
+		found map[int]bool
 	}
 
 	inputs := make([]inputChunks, 0, len(reqs))
@@ -305,14 +306,18 @@ func (fq *FusedQuerier) runSeries(schema Schema, series *SeriesWithOffsets, reqs
 		// Test each bloom individually
 		bloom := fq.bq.blooms.At()
 
-		// TODO(owen-d): this is a stopgap to avoid filtering broken blooms until we find their cause.
+		// This is a stopgap to avoid filtering on empty blooms.
 		// In the case we don't have any data in the bloom, don't filter any chunks.
-		if bloom.ScalableBloomFilter.Count() == 0 {
-			level.Warn(fq.logger).Log(
-				"msg", "Found bloom with no data",
-				"offset_page", offset.Page,
-				"offset_bytes", offset.ByteOffset,
-			)
+		// Empty blooms are generated from chunks that do not have entries with structured metadata.
+		if bloom.IsEmpty() {
+			// To debug empty blooms, uncomment the following block. Note that this may produce *a lot* of logs.
+			// swb := fq.bq.At()
+			// level.Debug(fq.logger).Log(
+			// 	"msg", "empty bloom",
+			// 	"series", swb.Fingerprint,
+			// 	"offset_page", offset.Page,
+			// 	"offset_bytes", offset.ByteOffset,
+			// )
 
 			for j := range reqs {
 				for k := range inputs[j].InBlooms {
@@ -331,23 +336,16 @@ func (fq *FusedQuerier) runSeries(schema Schema, series *SeriesWithOffsets, reqs
 				continue
 			}
 
-			// TODO(owen-d): copying this over, but they're going to be the same
-			// across any block schema because prefix len is determined by n-gram and
-			// all chunks have the same encoding length. tl;dr: it's weird/unnecessary to have
-			// these defined this way and recreated across each bloom
-			var (
-				tokenBuf  []byte
-				prefixLen int
-			)
 			for k, chk := range inputs[j].InBlooms {
 				// if we've already found this chunk in a previous bloom, skip testing it
 				if inputs[j].found[k] {
 					continue
 				}
 
-				// Get buf to concatenate the chunk and search token
-				tokenBuf, prefixLen = prefixedToken(schema.NGramLen(), chk, tokenBuf)
-				if matched := req.Search.MatchesWithPrefixBuf(bloom, tokenBuf, prefixLen); matched {
+				// TODO(rfratto): reuse buffer between multiple calls to
+				// prefixForChunkRef and MatchesWithPrefixBuf to avoid allocations.
+				tokenBuf := prefixForChunkRef(chk)
+				if matched := req.Search.MatchesWithPrefixBuf(bloom, tokenBuf, len(tokenBuf)); matched {
 					inputs[j].found[k] = true
 				}
 			}
@@ -357,7 +355,6 @@ func (fq *FusedQuerier) runSeries(schema Schema, series *SeriesWithOffsets, reqs
 	}
 
 	for i, req := range reqs {
-
 		removals := removalsFor(inputs[i].InBlooms, inputs[i].found)
 
 		req.Recorder.record(

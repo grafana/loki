@@ -221,7 +221,7 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads, indexShipper indexshippe
 		_, err = b.Build(
 			context.Background(),
 			filepath.Join(managerScratchDir(m.dir), m.name),
-			func(from, through model.Time, checksum uint32) Identifier {
+			func(_, _ model.Time, _ uint32) Identifier {
 				return dst
 			},
 		)

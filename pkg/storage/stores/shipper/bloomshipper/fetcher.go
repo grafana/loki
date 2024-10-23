@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -240,7 +239,7 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 
 	var enqueueTime time.Duration
 	for i := 0; i < n; i++ {
-		key := f.client.Block(refs[i]).Addr()
+		key := cacheKey(refs[i])
 		dir, isFound, err := f.fromCache(ctx, key)
 		if err != nil {
 			return results, err
@@ -317,7 +316,10 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 }
 
 func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef, BlockDirectory]) {
+	errLogger := log.With(f.logger, "task", task.key, "msg", "failed to process download request")
+
 	if ctx.Err() != nil {
+		level.Error(errLogger).Log("err", ctx.Err())
 		task.errors <- ctx.Err()
 		return
 	}
@@ -325,6 +327,7 @@ func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef
 	// check if block was fetched while task was waiting in queue
 	result, exists, err := f.fromCache(ctx, task.key)
 	if err != nil {
+		level.Error(errLogger).Log("err", err)
 		task.errors <- err
 		return
 	}
@@ -342,11 +345,12 @@ func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef
 	// fetch from storage
 	result, err = f.fetchBlock(ctx, task.item)
 	if err != nil {
+		level.Error(errLogger).Log("err", err)
 		task.errors <- err
 		return
 	}
 
-	key := f.client.Block(result.BlockRef).Addr()
+	key := cacheKey(result.BlockRef)
 	if task.async {
 		// put item into cache
 		err = f.blocksCache.Put(ctx, key, result)
@@ -355,6 +359,7 @@ func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef
 		err = f.blocksCache.PutInc(ctx, key, result)
 	}
 	if err != nil {
+		level.Error(errLogger).Log("err", err)
 		task.errors <- err
 		return
 	}
@@ -407,10 +412,9 @@ func (f *Fetcher) loadBlocksFromFS(_ context.Context, refs []BlockRef) ([]BlockD
 	missing := make([]BlockRef, 0, len(refs))
 
 	for _, ref := range refs {
-		path := f.localFSResolver.Block(ref).LocalPath()
-		// the block directory does not contain the .tar.gz extension
+		// the block directory does not contain the .tar(.compression) extension
 		// since it is stripped when the archive is extracted into a folder
-		path = strings.TrimSuffix(path, ".tar.gz")
+		path := localFilePathWithoutExtension(ref, f.localFSResolver)
 		if ok, clean := f.isBlockDir(path); ok {
 			blockDirs = append(blockDirs, NewBlockDirectory(ref, path))
 		} else {

@@ -15,6 +15,7 @@ import (
 	"github.com/oklog/ulid"
 	"golang.org/x/net/context"
 
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 	"github.com/grafana/loki/v3/pkg/storage/wal"
 )
 
@@ -95,13 +96,12 @@ func (i *Ingester) flush(l log.Logger, j int, it *wal.PendingSegment) error {
 }
 
 func (i *Ingester) flushSegment(ctx context.Context, j int, w *wal.SegmentWriter) error {
-	start := time.Now()
-	defer func() {
-		i.metrics.flushDuration.Observe(time.Since(start).Seconds())
-		w.ReportMetrics()
-	}()
+	ctx, cancelFunc := context.WithTimeout(ctx, i.cfg.FlushOpTimeout)
+	defer cancelFunc()
 
+	start := time.Now()
 	i.metrics.flushesTotal.Add(1)
+	defer func() { i.metrics.flushDuration.Observe(time.Since(start).Seconds()) }()
 
 	buf := i.flushBuffers[j]
 	defer buf.Reset()
@@ -110,10 +110,20 @@ func (i *Ingester) flushSegment(ctx context.Context, j int, w *wal.SegmentWriter
 		return err
 	}
 
-	id := ulid.MustNew(ulid.Timestamp(time.Now()), rand.Reader)
-	if err := i.store.PutObject(ctx, fmt.Sprintf("loki-v2/wal/anon/"+id.String()), buf); err != nil {
+	stats := wal.GetSegmentStats(w, time.Now())
+	wal.ReportSegmentStats(stats, i.metrics.segmentMetrics)
+
+	id := ulid.MustNew(ulid.Timestamp(time.Now()), rand.Reader).String()
+	if err := i.store.PutObject(ctx, wal.Dir+id, buf); err != nil {
 		i.metrics.flushFailuresTotal.Inc()
 		return fmt.Errorf("failed to put object: %w", err)
+	}
+
+	if _, err := i.metastoreClient.AddBlock(ctx, &metastorepb.AddBlockRequest{
+		Block: w.Meta(id),
+	}); err != nil {
+		i.metrics.flushFailuresTotal.Inc()
+		return fmt.Errorf("failed to update metastore: %w", err)
 	}
 
 	return nil

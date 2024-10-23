@@ -42,7 +42,7 @@ local releaseLibStep = common.releaseLibStep;
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       |||),
 
-      step.new('Build and export', 'docker/build-push-action@v5')
+      step.new('Build and export', 'docker/build-push-action@v6')
       + step.withTimeoutMinutes('${{ fromJSON(env.BUILD_TIMEOUT) }}')
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.withEnv({
@@ -93,7 +93,7 @@ local releaseLibStep = common.releaseLibStep;
         echo "version=$(./tools/image-tag)" >> $GITHUB_OUTPUT
       |||),
 
-      step.new('Build and push', 'docker/build-push-action@v5')
+      step.new('Build and push', 'docker/build-push-action@v6')
       + step.withTimeoutMinutes('${{ fromJSON(env.BUILD_TIMEOUT) }}')
       + step.with({
         context: context,
@@ -176,6 +176,7 @@ local releaseLibStep = common.releaseLibStep;
   dist: function(buildImage, skipArm=true, useGCR=false, makeTargets=['dist', 'packages'])
     job.new()
     + job.withSteps([
+      common.cleanUpBuildCache,
       common.fetchReleaseRepo,
       common.googleAuth,
       common.setupGoogleCloudSdk,

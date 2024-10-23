@@ -2,13 +2,11 @@ package pattern
 
 import (
 	"context"
-	"errors"
 	"math"
 	"net/http"
 	"sort"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/ring"
 	"github.com/prometheus/client_golang/prometheus"
@@ -16,9 +14,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-
-	loki_iter "github.com/grafana/loki/v3/pkg/iter"
-	pattern_iter "github.com/grafana/loki/v3/pkg/pattern/iter"
+	"github.com/grafana/loki/v3/pkg/pattern/iter"
 )
 
 // TODO(kolesnikovae): parametrise QueryPatternsRequest
@@ -26,8 +22,6 @@ const (
 	minClusterSize = 30
 	maxPatterns    = 300
 )
-
-var ErrParseQuery = errors.New("only byte_over_time and count_over_time queries without filters are supported")
 
 type IngesterQuerier struct {
 	cfg    Config
@@ -58,7 +52,7 @@ func NewIngesterQuerier(
 func (q *IngesterQuerier) Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
 	_, err := syntax.ParseMatchers(req.Query, true)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.PatternClient) (interface{}, error) {
 		return client.Query(ctx, req)
@@ -66,74 +60,16 @@ func (q *IngesterQuerier) Patterns(ctx context.Context, req *logproto.QueryPatte
 	if err != nil {
 		return nil, err
 	}
-	iterators := make([]pattern_iter.Iterator, len(resps))
+	iterators := make([]iter.Iterator, len(resps))
 	for i := range resps {
-		iterators[i] = pattern_iter.NewQueryClientIterator(resps[i].response.(logproto.Pattern_QueryClient))
+		iterators[i] = iter.NewQueryClientIterator(resps[i].response.(logproto.Pattern_QueryClient))
 	}
 	// TODO(kolesnikovae): Incorporate with pruning
-	resp, err := pattern_iter.ReadBatch(pattern_iter.NewMerge(iterators...), math.MaxInt32)
+	resp, err := iter.ReadBatch(iter.NewMerge(iterators...), math.MaxInt32)
 	if err != nil {
 		return nil, err
 	}
 	return prunePatterns(resp, minClusterSize, q.ingesterQuerierMetrics), nil
-}
-
-func (q *IngesterQuerier) Samples(
-	ctx context.Context,
-	req *logproto.QuerySamplesRequest,
-) (*logproto.QuerySamplesResponse, error) {
-	expr, err := syntax.ParseSampleExpr(req.Query)
-	if err != nil {
-		return nil, err
-	}
-
-	var selector syntax.LogSelectorExpr
-	switch e := expr.(type) {
-	case *syntax.VectorAggregationExpr:
-		selector, err = e.Selector()
-	case *syntax.RangeAggregationExpr:
-		selector, err = e.Selector()
-	default:
-		return nil, ErrParseQuery
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	if selector == nil || selector.HasFilter() {
-		return nil, ErrParseQuery
-	}
-
-	iterators, err := q.querySample(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	// TODO(twhitney): what should batch size be here?
-	resp, err := pattern_iter.ReadMetricsBatch(pattern_iter.NewSumMergeSampleIterator(iterators), math.MaxInt32, q.logger)
-	if err != nil {
-		return nil, err
-	}
-	return resp, nil
-}
-
-func (q *IngesterQuerier) querySample(ctx context.Context, req *logproto.QuerySamplesRequest) ([]loki_iter.SampleIterator, error) {
-	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.PatternClient) (interface{}, error) {
-		return client.QuerySample(ctx, req)
-	})
-	if err != nil {
-		return nil, err
-	}
-	level.Debug(q.logger).Log("msg", "queried patterns ingesters for metric samples",
-		"query", req.Query,
-		"num_responses", len(resps))
-
-	iterators := make([]loki_iter.SampleIterator, len(resps))
-	for i := range resps {
-		iterators[i] = pattern_iter.NewQuerySamplesClientIterator(resps[i].response.(logproto.Pattern_QuerySampleClient), q.logger)
-	}
-	return iterators, nil
 }
 
 func prunePatterns(resp *logproto.QueryPatternsResponse, minClusterSize int64, metrics *ingesterQuerierMetrics) *logproto.QueryPatternsResponse {
@@ -210,10 +146,8 @@ func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet 
 	responses := make([]ResponseFromIngesters, len(replicationSet.Instances))
 
 	for i, ingester := range replicationSet.Instances {
-		ingester := ingester
-		i := i
 		g.Go(func() error {
-			client, err := q.ringClient.Pool().GetClientFor(ingester.Addr)
+			client, err := q.ringClient.GetClientFor(ingester.Addr)
 			if err != nil {
 				return err
 			}

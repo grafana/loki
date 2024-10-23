@@ -238,14 +238,14 @@ func FilterCountersWithContext(ctx context.Context) ([]FilterStat, error) {
 	}
 	stats := make([]FilterStat, 0, 1)
 
-	max, err := common.ReadInts(maxfile)
+	maxConn, err := common.ReadInts(maxfile)
 	if err != nil {
 		return nil, err
 	}
 
 	payload := FilterStat{
 		ConnTrackCount: count[0],
-		ConnTrackMax:   max[0],
+		ConnTrackMax:   maxConn[0],
 	}
 
 	stats = append(stats, payload)
@@ -396,12 +396,12 @@ func ConnectionsWithContext(ctx context.Context, kind string) ([]ConnectionStat,
 
 // Return a list of network connections opened returning at most `max`
 // connections for each running process.
-func ConnectionsMax(kind string, max int) ([]ConnectionStat, error) {
-	return ConnectionsMaxWithContext(context.Background(), kind, max)
+func ConnectionsMax(kind string, maxConn int) ([]ConnectionStat, error) {
+	return ConnectionsMaxWithContext(context.Background(), kind, maxConn)
 }
 
-func ConnectionsMaxWithContext(ctx context.Context, kind string, max int) ([]ConnectionStat, error) {
-	return ConnectionsPidMaxWithContext(ctx, kind, 0, max)
+func ConnectionsMaxWithContext(ctx context.Context, kind string, maxConn int) ([]ConnectionStat, error) {
+	return ConnectionsPidMaxWithContext(ctx, kind, 0, maxConn)
 }
 
 // Return a list of network connections opened, omitting `Uids`.
@@ -415,8 +415,8 @@ func ConnectionsWithoutUidsWithContext(ctx context.Context, kind string) ([]Conn
 	return ConnectionsMaxWithoutUidsWithContext(ctx, kind, 0)
 }
 
-func ConnectionsMaxWithoutUidsWithContext(ctx context.Context, kind string, max int) ([]ConnectionStat, error) {
-	return ConnectionsPidMaxWithoutUidsWithContext(ctx, kind, 0, max)
+func ConnectionsMaxWithoutUidsWithContext(ctx context.Context, kind string, maxConn int) ([]ConnectionStat, error) {
+	return ConnectionsPidMaxWithoutUidsWithContext(ctx, kind, 0, maxConn)
 }
 
 // Return a list of network connections opened by a process.
@@ -437,23 +437,23 @@ func ConnectionsPidWithoutUidsWithContext(ctx context.Context, kind string, pid 
 }
 
 // Return up to `max` network connections opened by a process.
-func ConnectionsPidMax(kind string, pid int32, max int) ([]ConnectionStat, error) {
-	return ConnectionsPidMaxWithContext(context.Background(), kind, pid, max)
+func ConnectionsPidMax(kind string, pid int32, maxConn int) ([]ConnectionStat, error) {
+	return ConnectionsPidMaxWithContext(context.Background(), kind, pid, maxConn)
 }
 
-func ConnectionsPidMaxWithoutUids(kind string, pid int32, max int) ([]ConnectionStat, error) {
-	return ConnectionsPidMaxWithoutUidsWithContext(context.Background(), kind, pid, max)
+func ConnectionsPidMaxWithoutUids(kind string, pid int32, maxConn int) ([]ConnectionStat, error) {
+	return ConnectionsPidMaxWithoutUidsWithContext(context.Background(), kind, pid, maxConn)
 }
 
-func ConnectionsPidMaxWithContext(ctx context.Context, kind string, pid int32, max int) ([]ConnectionStat, error) {
-	return connectionsPidMaxWithoutUidsWithContext(ctx, kind, pid, max, false)
+func ConnectionsPidMaxWithContext(ctx context.Context, kind string, pid int32, maxConn int) ([]ConnectionStat, error) {
+	return connectionsPidMaxWithoutUidsWithContext(ctx, kind, pid, maxConn, false)
 }
 
-func ConnectionsPidMaxWithoutUidsWithContext(ctx context.Context, kind string, pid int32, max int) ([]ConnectionStat, error) {
-	return connectionsPidMaxWithoutUidsWithContext(ctx, kind, pid, max, true)
+func ConnectionsPidMaxWithoutUidsWithContext(ctx context.Context, kind string, pid int32, maxConn int) ([]ConnectionStat, error) {
+	return connectionsPidMaxWithoutUidsWithContext(ctx, kind, pid, maxConn, true)
 }
 
-func connectionsPidMaxWithoutUidsWithContext(ctx context.Context, kind string, pid int32, max int, skipUids bool) ([]ConnectionStat, error) {
+func connectionsPidMaxWithoutUidsWithContext(ctx context.Context, kind string, pid int32, maxConn int, skipUids bool) ([]ConnectionStat, error) {
 	tmap, ok := netConnectionKindMap[kind]
 	if !ok {
 		return nil, fmt.Errorf("invalid kind, %s", kind)
@@ -462,16 +462,16 @@ func connectionsPidMaxWithoutUidsWithContext(ctx context.Context, kind string, p
 	var err error
 	var inodes map[string][]inodeMap
 	if pid == 0 {
-		inodes, err = getProcInodesAllWithContext(ctx, root, max)
+		inodes, err = getProcInodesAllWithContext(ctx, root, maxConn)
 	} else {
-		inodes, err = getProcInodes(root, pid, max)
+		inodes, err = getProcInodes(root, pid, maxConn)
 		if len(inodes) == 0 {
 			// no connection for the pid
 			return []ConnectionStat{}, nil
 		}
 	}
 	if err != nil {
-		return nil, fmt.Errorf("cound not get pid(s), %d: %w", pid, err)
+		return nil, fmt.Errorf("could not get pid(s), %d: %w", pid, err)
 	}
 	return statsFromInodesWithContext(ctx, root, pid, tmap, inodes, skipUids)
 }
@@ -543,7 +543,7 @@ func statsFromInodesWithContext(ctx context.Context, root string, pid int32, tma
 }
 
 // getProcInodes returns fd of the pid.
-func getProcInodes(root string, pid int32, max int) (map[string][]inodeMap, error) {
+func getProcInodes(root string, pid int32, maxConn int) (map[string][]inodeMap, error) {
 	ret := make(map[string][]inodeMap)
 
 	dir := fmt.Sprintf("%s/%d/fd", root, pid)
@@ -552,7 +552,7 @@ func getProcInodes(root string, pid int32, max int) (map[string][]inodeMap, erro
 		return ret, err
 	}
 	defer f.Close()
-	dirEntries, err := f.ReadDir(max)
+	dirEntries, err := f.ReadDir(maxConn)
 	if err != nil {
 		return ret, err
 	}
@@ -573,7 +573,7 @@ func getProcInodes(root string, pid int32, max int) (map[string][]inodeMap, erro
 		if !ok {
 			ret[inode] = make([]inodeMap, 0)
 		}
-		fd, err := strconv.Atoi(dirEntry.Name())
+		fd, err := strconv.ParseInt(dirEntry.Name(), 10, 32)
 		if err != nil {
 			continue
 		}
@@ -668,11 +668,11 @@ func (p *process) fillFromStatus(ctx context.Context) error {
 	return nil
 }
 
-func getProcInodesAll(root string, max int) (map[string][]inodeMap, error) {
-	return getProcInodesAllWithContext(context.Background(), root, max)
+func getProcInodesAll(root string, maxConn int) (map[string][]inodeMap, error) {
+	return getProcInodesAllWithContext(context.Background(), root, maxConn)
 }
 
-func getProcInodesAllWithContext(ctx context.Context, root string, max int) (map[string][]inodeMap, error) {
+func getProcInodesAllWithContext(ctx context.Context, root string, maxConn int) (map[string][]inodeMap, error) {
 	pids, err := PidsWithContext(ctx)
 	if err != nil {
 		return nil, err
@@ -680,7 +680,7 @@ func getProcInodesAllWithContext(ctx context.Context, root string, max int) (map
 	ret := make(map[string][]inodeMap)
 
 	for _, pid := range pids {
-		t, err := getProcInodes(root, pid, max)
+		t, err := getProcInodes(root, pid, maxConn)
 		if err != nil {
 			// skip if permission error or no longer exists
 			if os.IsPermission(err) || os.IsNotExist(err) || errors.Is(err, io.EOF) {
@@ -858,7 +858,7 @@ func processUnix(file string, kind netConnectionKindType, inodes map[string][]in
 		if len(tokens) < 6 {
 			continue
 		}
-		st, err := strconv.Atoi(tokens[4])
+		st, err := strconv.ParseInt(tokens[4], 10, 32)
 		if err != nil {
 			return nil, err
 		}

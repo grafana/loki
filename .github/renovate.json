@@ -5,7 +5,7 @@
     ],
     "labels": ["dependencies"],
     "prHourlyLimit": 4,
-    "baseBranches": ["main", "release-2.9.x", "release-2.8.x"],
+    "baseBranches": ["main"],
     "packageRules": [
       {
         "matchBaseBranches": ["release-2.9.x","release-2.8.x"],
@@ -16,7 +16,7 @@
         "matchFileNames": [ "operator/go.mod" ],
         "matchPackageNames": [
           "github.com/grafana/loki",
-          "github.com/grafana/loki/operator/apis/loki"
+          "github.com/grafana/loki/operator/api/loki"
         ],
         "enabled": false
       }

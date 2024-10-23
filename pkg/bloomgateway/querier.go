@@ -103,7 +103,7 @@ func convertToShortRef(ref *logproto.ChunkRef) *logproto.ShortRef {
 
 func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, chunkRefs []*logproto.ChunkRef, queryPlan plan.QueryPlan) ([]*logproto.ChunkRef, error) {
 	// Shortcut that does not require any filtering
-	if !bq.limits.BloomGatewayEnabled(tenant) || len(chunkRefs) == 0 || len(v1.ExtractTestableLineFilters(queryPlan.AST)) == 0 {
+	if !bq.limits.BloomGatewayEnabled(tenant) || len(chunkRefs) == 0 || len(v1.ExtractTestableLabelMatchers(queryPlan.AST)) == 0 {
 		return chunkRefs, nil
 	}
 
@@ -149,7 +149,7 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	// We can perform requests sequentially, because most of the time the request
 	// only covers a single day, and if not, it's at most two days.
 	for _, s := range partitionSeriesByDay(from, through, grouped) {
-		day := bloomshipper.NewInterval(s.day.Time, s.day.Time.Add(Day))
+		day := bloomshipper.NewInterval(s.day.Time, s.day.Add(Day))
 		blocks, skipped, err := bq.blockResolver.Resolve(ctx, tenant, day, s.series)
 		if err != nil {
 			return nil, err

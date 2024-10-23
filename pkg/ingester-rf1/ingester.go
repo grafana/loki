@@ -3,6 +3,7 @@ package ingesterrf1
 import (
 	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/clientpool"
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/metastorepb"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/objstore"
 	"github.com/grafana/loki/v3/pkg/ingester/index"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
@@ -33,7 +35,6 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -109,7 +110,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.FlushOpBackoff.MinBackoff, "ingester-rf1.flush-op-backoff-min-period", 100*time.Millisecond, "Minimum backoff period when a flush fails. Each concurrent flush has its own backoff, see `ingester.concurrent-flushes`.")
 	f.DurationVar(&cfg.FlushOpBackoff.MaxBackoff, "ingester-rf1.flush-op-backoff-max-period", time.Minute, "Maximum backoff period when a flush fails. Each concurrent flush has its own backoff, see `ingester.concurrent-flushes`.")
 	f.IntVar(&cfg.FlushOpBackoff.MaxRetries, "ingester-rf1.flush-op-backoff-retries", 10, "Maximum retries for failed flushes.")
-	f.DurationVar(&cfg.FlushOpTimeout, "ingester-rf1.flush-op-timeout", 10*time.Minute, "The timeout for an individual flush. Will be retried up to `flush-op-backoff-retries` times.")
+	f.DurationVar(&cfg.FlushOpTimeout, "ingester-rf1.flush-op-timeout", 10*time.Second, "The timeout for an individual flush. Will be retried up to `flush-op-backoff-retries` times.")
 	f.DurationVar(&cfg.MaxSegmentAge, "ingester-rf1.max-segment-age", 500*time.Millisecond, "The maximum age of a segment before it should be flushed. Increasing this value allows more time for a segment to grow to max-segment-size, but may increase latency if the write volume is too small.")
 	f.IntVar(&cfg.MaxSegmentSize, "ingester-rf1.max-segment-size", 8*1024*1024, "The maximum size of a segment before it should be flushed. It is not a strict limit, and segments can exceed the maximum size when individual appends are larger than the remaining capacity.")
 	f.IntVar(&cfg.MaxSegments, "ingester-rf1.max-segments", 10, "The maximum number of segments to buffer in-memory. Increasing this value allows for large bursts of writes to be buffered in memory, but may increase latency if the write volume exceeds the rate at which segments can be flushed.")
@@ -181,6 +182,7 @@ type Ingester struct {
 	lifecyclerWatcher *services.FailureWatcher
 
 	store           Storage
+	metastoreClient metastorepb.MetastoreServiceClient
 	periodicConfigs []config.PeriodConfig
 
 	loopQuit    chan struct{}
@@ -211,9 +213,7 @@ type Ingester struct {
 
 	customStreamsTracker push.UsageTracker
 
-	// recalculateOwnedStreams periodically checks the ring for changes and recalculates owned streams for each instance.
 	readRing ring.ReadRing
-	// recalculateOwnedStreams *recalculateOwnedStreams
 }
 
 // New makes a new Ingester.
@@ -222,6 +222,7 @@ func New(cfg Config, clientConfig client.Config,
 	storageConfig storage.Config,
 	clientMetrics storage.ClientMetrics,
 	limits Limits, configs *runtime.TenantConfigs,
+	metastoreClient metastorepb.MetastoreServiceClient,
 	registerer prometheus.Registerer,
 	writeFailuresCfg writefailures.Cfg,
 	metricsNamespace string,
@@ -241,25 +242,25 @@ func New(cfg Config, clientConfig client.Config,
 		MaxAge:         cfg.MaxSegmentAge,
 		MaxSegments:    int64(cfg.MaxSegments),
 		MaxSegmentSize: int64(cfg.MaxSegmentSize),
-	}, wal.NewMetrics(registerer))
+	}, wal.NewManagerMetrics(registerer))
 	if err != nil {
 		return nil, err
 	}
 
 	i := &Ingester{
-		cfg:              cfg,
-		logger:           logger,
-		clientConfig:     clientConfig,
-		tenantConfigs:    configs,
-		instances:        map[string]*instance{},
-		store:            storage,
-		periodicConfigs:  periodConfigs,
-		flushBuffers:     make([]*bytes.Buffer, cfg.ConcurrentFlushes),
-		flushWorkersDone: sync.WaitGroup{},
-		loopQuit:         make(chan struct{}),
-		tailersQuit:      make(chan struct{}),
-		metrics:          metrics,
-		// flushOnShutdownSwitch: &OnceSwitch{},
+		cfg:                  cfg,
+		logger:               logger,
+		clientConfig:         clientConfig,
+		tenantConfigs:        configs,
+		instances:            map[string]*instance{},
+		store:                storage,
+		periodicConfigs:      periodConfigs,
+		flushBuffers:         make([]*bytes.Buffer, cfg.ConcurrentFlushes),
+		flushWorkersDone:     sync.WaitGroup{},
+		loopQuit:             make(chan struct{}),
+		tailersQuit:          make(chan struct{}),
+		metrics:              metrics,
+		metastoreClient:      metastoreClient,
 		terminateOnShutdown:  false,
 		streamRateCalculator: NewStreamRateCalculator(),
 		writeLogManager:      writefailures.NewManager(logger, registerer, writeFailuresCfg, configs, "ingester_rf1"),
@@ -285,19 +286,7 @@ func New(cfg Config, clientConfig client.Config,
 
 	i.setupAutoForget()
 
-	//if i.cfg.ChunkFilterer != nil {
-	//	i.SetChunkFilterer(i.cfg.ChunkFilterer)
-	//}
-	//
-	//if i.cfg.PipelineWrapper != nil {
-	//	i.SetPipelineWrapper(i.cfg.PipelineWrapper)
-	//}
-	//
-	//if i.cfg.SampleExtractorWrapper != nil {
-	//	i.SetExtractorWrapper(i.cfg.SampleExtractorWrapper)
-	//}
-	//
-	//i.recalculateOwnedStreams = newRecalculateOwnedStreams(i.getInstances, i.lifecycler.ID, i.readRing, cfg.OwnedStreamsCheckInterval, util_log.Logger)
+	// i.recalculateOwnedStreams = newRecalculateOwnedStreams(i.getInstances, i.lifecycler.ID, i.readRing, cfg.OwnedStreamsCheckInterval, util_log.Logger)
 
 	return i, nil
 }
@@ -395,7 +384,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 	shutdownMarkerPath := path.Join(i.cfg.ShutdownMarkerPath, shutdownMarkerFilename)
 	shutdownMarker, err := shutdownMarkerExists(shutdownMarkerPath)
 	if err != nil {
-		return errors.Wrap(err, "failed to check ingester shutdown marker")
+		return fmt.Errorf("failed to check ingester shutdown marker: %w", err)
 	}
 
 	if shutdownMarker {
@@ -407,11 +396,6 @@ func (i *Ingester) starting(ctx context.Context) error {
 	//if err != nil {
 	//	return fmt.Errorf("can not start recalculate owned streams service: %w", err)
 	//}
-
-	err = i.lifecycler.AwaitRunning(ctx)
-	if err != nil {
-		return fmt.Errorf("can not ensure recalculate owned streams service is running: %w", err)
-	}
 
 	go i.periodicStreamMaintenance()
 	return nil
@@ -706,11 +690,6 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 		return nil, ErrReadOnly
 	}
 
-	// Set profiling tags
-	defer pprof.SetGoroutineLabels(ctx)
-	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "write", "tenant", instanceID))
-	pprof.SetGoroutineLabels(ctx)
-
 	instance, err := i.GetOrCreateInstance(instanceID)
 	if err != nil {
 		return &logproto.PushResponse{}, err
@@ -902,6 +881,6 @@ func (i *Ingester) GetDetectedFields(_ context.Context, r *logproto.DetectedFiel
 				Cardinality: 1,
 			},
 		},
-		FieldLimit: r.GetFieldLimit(),
+		Limit: r.GetLimit(),
 	}, nil
 }

@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.21']
+        go: ['1.22']
     steps:
     - name: Install make
       run: sudo apt-get install make
@@ -25,7 +25,7 @@ jobs:
       with:
         go-version: ${{ matrix.go }}
       id: go
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Check generated docs
       working-directory: ./operator
       run: |
@@ -38,7 +38,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.21']
+        go: ['1.22']
     steps:
     - name: Install make
       run: sudo apt-get install make
@@ -47,12 +47,12 @@ jobs:
       with:
         go-version: ${{ matrix.go }}
       id: go
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Lint
       uses: golangci/golangci-lint-action@v3
       with:
-        version: v1.54.2
-        args: --timeout=4m
+        version: v1.61.0
+        args: --timeout=5m
         working-directory: ./operator
     - name: Check prometheus rules
       working-directory: ./operator
@@ -64,7 +64,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.21']
+        go: ['1.22']
     steps:
     - name: Install make
       run: sudo apt-get install make
@@ -73,7 +73,7 @@ jobs:
       with:
         go-version: ${{ matrix.go }}
       id: go
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Build Manager
       working-directory: ./operator
       run: |-
@@ -85,7 +85,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.21']
+        go: ['1.22']
     steps:
     - name: Install make
       run: sudo apt-get install make
@@ -94,7 +94,7 @@ jobs:
       with:
         go-version: ${{ matrix.go }}
       id: go
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Build Broker
       working-directory: ./operator
       run: |-
@@ -106,7 +106,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.21']
+        go: ['1.22']
     steps:
     - name: Install make
       run: sudo apt-get install make
@@ -115,7 +115,7 @@ jobs:
       with:
         go-version: ${{ matrix.go }}
       id: go
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Run tests
       working-directory: ./operator
       run: go test -coverprofile=profile.cov ./...

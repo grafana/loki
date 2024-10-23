@@ -47,6 +47,7 @@ type GRPCPool struct {
 // NewBloomGatewayGRPCPool instantiates a new pool of GRPC connections for the Bloom Gateway
 // Internally, it also instantiates a protobuf bloom gateway client and a health client.
 func NewBloomGatewayGRPCPool(address string, opts []grpc.DialOption) (*GRPCPool, error) {
+	// nolint:staticcheck // grpc.Dial() has been deprecated; we'll address it before upgrading to gRPC 2.
 	conn, err := grpc.Dial(address, opts...)
 	if err != nil {
 		return nil, errors.Wrap(err, "new grpc pool dial")
@@ -160,7 +161,7 @@ func NewClient(
 		}
 	}
 
-	poolFactory := func(addr string) (ringclient.PoolClient, error) {
+	clientFactory := func(addr string) (ringclient.PoolClient, error) {
 		pool, err := NewBloomGatewayGRPCPool(addr, dialOpts)
 		if err != nil {
 			return nil, errors.Wrap(err, "new bloom gateway grpc pool")
@@ -184,17 +185,10 @@ func NewClient(
 	// Make an attempt to do one DNS lookup so we can start with addresses
 	dnsProvider.RunOnce()
 
-	clientPool := ringclient.NewPool(
-		"bloom-gateway",
-		ringclient.PoolConfig(cfg.PoolConfig),
-		func() ([]string, error) { return dnsProvider.Addresses(), nil },
-		ringclient.PoolAddrFunc(poolFactory),
-		metrics.clients,
-		logger,
-	)
-
-	pool := NewJumpHashClientPool(clientPool, dnsProvider, cfg.PoolConfig.CheckInterval, logger)
-	pool.Start()
+	pool, err := NewJumpHashClientPool(clientFactory, dnsProvider, cfg.PoolConfig.CheckInterval, logger)
+	if err != nil {
+		return nil, err
+	}
 
 	return &GatewayClient{
 		cfg:         cfg,
@@ -307,12 +301,12 @@ func mergeSeries(input [][]*logproto.GroupedChunkRefs, buf []*logproto.GroupedCh
 		iters = append(iters, iter.NewPeekIter(iter.NewSliceIter(inp)))
 	}
 
-	heapIter := v1.NewHeapIterator[*logproto.GroupedChunkRefs](
+	heapIter := v1.NewHeapIterator(
 		func(a, b *logproto.GroupedChunkRefs) bool { return a.Fingerprint < b.Fingerprint },
 		iters...,
 	)
 
-	dedupeIter := iter.NewDedupingIter[*logproto.GroupedChunkRefs, *logproto.GroupedChunkRefs](
+	dedupeIter := iter.NewDedupingIter(
 		// eq
 		func(a, b *logproto.GroupedChunkRefs) bool { return a.Fingerprint == b.Fingerprint },
 		// from

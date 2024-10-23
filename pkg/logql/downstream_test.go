@@ -89,7 +89,7 @@ func TestMappingEquivalence(t *testing.T) {
 		regular := NewEngine(opts, q, NoLimits, log.NewNopLogger())
 		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
 
-		t.Run(tc.query, func(t *testing.T) {
+		t.Run(tc.query+"_range", func(t *testing.T) {
 			params, err := NewLiteralParams(
 				tc.query,
 				start,
@@ -121,6 +121,46 @@ func TestMappingEquivalence(t *testing.T) {
 
 			if tc.approximate {
 				approximatelyEquals(t, res.Data.(promql.Matrix), shardedRes.Data.(promql.Matrix))
+			} else {
+				require.Equal(t, res.Data, shardedRes.Data)
+			}
+		})
+		t.Run(tc.query+"_instant", func(t *testing.T) {
+			// for an instant query we set the start and end to the same timestamp
+			// plus set step and interval to 0
+			params, err := NewLiteralParams(
+				tc.query,
+				time.Unix(0, int64(rounds+1)),
+				time.Unix(0, int64(rounds+1)),
+				0,
+				0,
+				logproto.FORWARD,
+				uint32(limit),
+				nil,
+				nil,
+			)
+			require.NoError(t, err)
+			qry := regular.Query(params)
+			ctx := user.InjectOrgID(context.Background(), "fake")
+
+			strategy := NewPowerOfTwoStrategy(ConstantShards(shards))
+			mapper := NewShardMapper(strategy, nilShardMetrics, tc.shardAgg)
+			_, _, mapped, err := mapper.Parse(params.GetExpression())
+			require.NoError(t, err)
+
+			shardedQry := sharded.Query(ctx, ParamsWithExpressionOverride{
+				Params:             params,
+				ExpressionOverride: mapped,
+			})
+
+			res, err := qry.Exec(ctx)
+			require.NoError(t, err)
+
+			shardedRes, err := shardedQry.Exec(ctx)
+			require.NoError(t, err)
+
+			if tc.approximate {
+				approximatelyEqualsVector(t, res.Data.(promql.Vector), shardedRes.Data.(promql.Vector)) //, tc.realtiveError)
 			} else {
 				require.Equal(t, res.Data, shardedRes.Data)
 			}
@@ -576,6 +616,24 @@ func approximatelyEquals(t *testing.T, as, bs promql.Matrix) {
 			bSample.F = math.Round(bSample.F*1e6) / 1e6
 		}
 		require.Equalf(t, a, b, "metric %s differs from %s at %d", a.Metric, b.Metric, i)
+	}
+}
+
+// approximatelyEqualsVector ensures two responses are approximately equal,
+// up to 6 decimals precision per sample
+func approximatelyEqualsVector(t *testing.T, as, bs promql.Vector) {
+	require.Len(t, bs, len(as))
+
+	for i := 0; i < len(as); i++ {
+		a := as[i]
+		b := bs[i]
+		require.Equal(t, a.Metric, b.Metric)
+
+		aSample := a.F
+		aSample = math.Round(aSample*1e6) / 1e6
+		bSample := b.F
+		bSample = math.Round(bSample*1e6) / 1e6
+		require.Equalf(t, aSample, bSample, "metric %s differs from %s at %d", a.Metric, b.Metric, i)
 	}
 }
 
