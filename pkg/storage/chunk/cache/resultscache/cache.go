@@ -289,10 +289,10 @@ func merge(extents []Extent, acc *accumulator) ([]Extent, error) {
 		return nil, err
 	}
 	return append(extents, Extent{
-		Start:    acc.Extent.Start,
-		End:      acc.Extent.End,
+		Start:    acc.Start,
+		End:      acc.End,
 		Response: anyResp,
-		TraceId:  acc.Extent.TraceId,
+		TraceId:  acc.TraceId,
 	}), nil
 }
 
@@ -386,7 +386,7 @@ func (s ResultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 
 	// If start and end are the same (valid in promql), start == req.GetEnd() and we won't do the query.
 	// But we should only do the request if we don't have a valid cached response for it.
-	if req.GetStart() == req.GetEnd() && len(cachedResponses) == 0 {
+	if req.GetStart().Equal(req.GetEnd()) && len(cachedResponses) == 0 {
 		requests = append(requests, req)
 	}
 

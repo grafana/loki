@@ -1,3 +1,9 @@
+# -- Overrides the version used to determine compatibility of resources with the target Kubernetes cluster.
+# This is useful when using `helm template`, because then helm will use the client version of kubectl as the Kubernetes version,
+# which may or may not match your cluster's server version. Example: 'v1.24.4'. Set to null to use the version that helm
+# devises.
+kubeVersionOverride: null
+
 global:
   image:
     # -- Overrides the Docker registry globally for all images
@@ -821,6 +827,8 @@ adminApi:
   #      - domain.tld
   # -- Additional CLI arguments for the `admin-api` target
   extraArgs: {}
+  # -- Environment variables from secrets or configmaps to add to the admin-api pods
+  extraEnvFrom: []
   # -- Additional labels for the `admin-api` Deployment
   labels: {}
   # -- Additional annotations for the `admin-api` Deployment
@@ -1099,6 +1107,8 @@ enterpriseGateway:
   #      - domain.tld
   # -- Additional CLI arguments for the `gateway` target
   extraArgs: {}
+  # -- Environment variables from secrets or configmaps to add to the enterprise gateway pods
+  extraEnvFrom: []
   # -- Additional labels for the `gateway` Pod
   labels: {}
   # -- Additional annotations for the `gateway` Pod

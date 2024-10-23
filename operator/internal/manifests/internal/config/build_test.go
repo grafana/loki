@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	configv1 "github.com/grafana/loki/operator/api/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
@@ -96,6 +96,7 @@ limits_config:
   max_streams_per_user: 0
   max_line_size: 256000
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -353,6 +354,7 @@ limits_config:
   max_streams_per_user: 0
   max_line_size: 256000
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -779,6 +781,7 @@ limits_config:
   max_streams_per_user: 0
   max_line_size: 256000
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -1137,6 +1140,7 @@ limits_config:
   max_streams_per_user: 0
   max_line_size: 256000
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -1496,6 +1500,7 @@ limits_config:
   max_streams_per_user: 0
   max_line_size: 256000
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -1889,6 +1894,7 @@ limits_config:
   max_streams_per_user: 0
   max_line_size: 256000
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -2224,6 +2230,7 @@ limits_config:
   max_streams_per_user: 0
   max_line_size: 256000
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -2663,6 +2670,7 @@ limits_config:
   max_streams_per_user: 0
   max_line_size: 256000
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -2987,6 +2995,7 @@ limits_config:
   max_streams_per_user: 0
   max_line_size: 256000
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -3484,6 +3493,7 @@ limits_config:
   max_streams_per_user: 0
   max_line_size: 256000
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -3745,6 +3755,7 @@ limits_config:
   max_streams_per_user: 0
   max_line_size: 256000
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -4007,6 +4018,7 @@ limits_config:
   max_streams_per_user: 0
   max_line_size: 256000
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -4270,6 +4282,7 @@ limits_config:
   max_streams_per_user: 0
   max_line_size: 256000
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -4569,6 +4582,7 @@ limits_config:
   max_streams_per_user: 0
   max_line_size: 256000
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -4866,6 +4880,7 @@ limits_config:
   max_streams_per_user: 0
   max_line_size: 256000
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -5364,6 +5379,7 @@ limits_config:
   max_streams_per_user: 0
   max_line_size: 256000
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -5540,6 +5556,7 @@ limits_config:
   max_streams_per_user: 0
   max_line_size: 256000
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -5709,6 +5726,7 @@ limits_config:
   max_streams_per_user: 0
   max_line_size: 256000
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -6101,6 +6119,7 @@ limits_config:
   max_streams_per_user: 0
   max_line_size: 256000
   max_entries_limit_per_query: 5000
+  discover_service_name: []
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h

@@ -25,6 +25,7 @@ The default Helm chart deploys the following components:
 We do not recommend running Microservice mode with `filesystem` storage. For the purpose of this guide, we will use MinIO as the object storage to provide a complete example. 
 {{< /admonition >}}
 
+
 ## Prerequisites
 
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).
@@ -96,7 +97,9 @@ We do not recommend running Microservice mode with `filesystem` storage. For the
        replicas: 2
        maxUnavailable: 1
 
-     bloomCompactor:
+     bloomPlanner:
+       replicas: 0
+     bloomBuilder:
        replicas: 0
      bloomGateway:
        replicas: 0
@@ -259,7 +262,9 @@ loki:
     replicas: 2
     maxUnavailable: 1
 
-  bloomCompactor:
+  bloomPlanner:
+    replicas: 0
+  bloomBuilder:
     replicas: 0
   bloomGateway:
     replicas: 0
@@ -343,7 +348,9 @@ indexGateway:
   replicas: 2
   maxUnavailable: 1
 
-bloomCompactor:
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
   replicas: 0
 bloomGateway:
   replicas: 0

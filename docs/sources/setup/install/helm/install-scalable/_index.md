@@ -97,6 +97,7 @@ The following steps show how to deploy the Loki Helm chart in simple scalable mo
     ```
 
 1. Install or upgrade the Loki deployment.
+
      - To install:
         ```bash
        helm install --values values.yaml loki grafana/loki
@@ -241,9 +242,9 @@ write:
 minio:
   enabled: false
 
+
 ``` 
 {{< /collapse >}}
-
 
 To configure other storage providers, refer to the [Helm Chart Reference]({{< relref "../reference" >}}).
 

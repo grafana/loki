@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	configv1 "github.com/grafana/loki/operator/api/config/v1"
 )
 
 func TestBuildAll(t *testing.T) {
