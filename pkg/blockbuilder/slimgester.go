@@ -1,14 +1,31 @@
 package blockbuilder
 
 import (
+	"context"
 	"sync"
 
 	"github.com/go-kit/log"
+	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/pkg/push"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
+	"github.com/grafana/loki/v3/pkg/ingester"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
 )
 
-type SlimgesterMetrics struct{}
+type SlimgesterMetrics struct {
+	chunksCreatedTotal prometheus.Counter
+	samplesPerChunk    prometheus.Histogram
+	blocksPerChunk     prometheus.Histogram
+}
+
 type Config struct{}
 
 // Slimgester is a slimmed-down version of the ingester, intended to
@@ -33,4 +50,153 @@ type Slimgester struct {
 	instancesMtx sync.RWMutex
 
 	store stores.ChunkWriter
+}
+
+// instance is a slimmed down version from the ingester pkg
+type instance struct {
+	buf     []byte             // buffer used to compute fps.
+	mapper  *ingester.FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
+	metrics *SlimgesterMetrics
+	streams *streamsMap
+
+	schemaconfig *config.SchemaConfig
+}
+
+type streamsMap struct {
+	// labels -> stream
+	m   map[string]*stream
+	mtx sync.RWMutex
+}
+
+// For performs an operation on an existing stream, creating it if it wasn't previously present.
+func (m *streamsMap) For(
+	ls string,
+	createFn func() (*stream, error),
+	fn func(*stream) error,
+) (existed bool, err error) {
+	// first use read lock in case the stream exists
+	m.mtx.RLock()
+	if s, ok := m.m[ls]; ok {
+		err := fn(s)
+		m.mtx.RUnlock()
+		return true, err
+	}
+	m.mtx.RUnlock()
+
+	// Stream wasn't found, acquire write lock to create it
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	// Double check it wasn't created while we were upgrading the lock
+	if s, ok := m.m[ls]; ok {
+		return true, fn(s)
+	}
+
+	// Create new stream
+	s, err := createFn()
+	if err != nil {
+		return false, err
+	}
+
+	m.m[ls] = s
+	return false, fn(s)
+}
+
+func (i *instance) getHashForLabels(ls labels.Labels) model.Fingerprint {
+	var fp uint64
+	fp, i.buf = ls.HashWithoutLabels(i.buf, []string(nil)...)
+	return i.mapper.MapFP(model.Fingerprint(fp), ls)
+}
+
+// Push will iterate over the given streams present in the PushRequest and attempt to store them.
+func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
+	for _, s := range req.Streams {
+		i.streams.For(
+			s.Labels,
+			func() (*stream, error) {
+				ls, err := syntax.ParseLabels(s.Labels)
+				if err != nil {
+					return nil, err
+				}
+				fp := i.getHashForLabels(ls)
+				return newStream(fp, ls, i.metrics), nil
+			},
+			func(stream *stream) error {
+				closed, err := stream.Push(s.Entries)
+				if err != nil {
+					return err
+				}
+
+				// TODO: flush closed
+				panic(closed)
+
+				return nil
+			},
+		)
+	}
+
+	return nil
+}
+
+type stream struct {
+	fp model.Fingerprint
+	ls labels.Labels
+
+	chunkFormat     byte
+	headFmt         chunkenc.HeadBlockFmt
+	codec           compression.Codec
+	blockSize       int
+	targetChunkSize int
+
+	chunkMtx sync.RWMutex
+	chunk    *chunkenc.MemChunk
+	metrics  *SlimgesterMetrics
+}
+
+func newStream(fp model.Fingerprint, ls labels.Labels, metrics *SlimgesterMetrics) *stream {
+	return &stream{
+		fp: fp,
+		ls: ls,
+
+		chunkFormat: chunkenc.ChunkFormatV3,
+		metrics:     metrics,
+	}
+}
+
+func (s *stream) Push(entries []push.Entry) (closed []*chunkenc.MemChunk, err error) {
+	s.chunkMtx.Lock()
+	defer s.chunkMtx.Unlock()
+
+	if s.chunk == nil {
+		s.chunk = s.NewChunk()
+	}
+
+	// bytesAdded, err := s.storeEntries(ctx, toStore, usageTracker)
+	for i := 0; i < len(entries); i++ {
+
+		// cut the chunk if the new addition overflows target size
+		if !s.chunk.SpaceFor(&entries[i]) {
+			if err = s.chunk.Close(); err != nil {
+				return closed, errors.Wrap(err, "closing chunk")
+			}
+
+			s.metrics.samplesPerChunk.Observe(float64(s.chunk.Size()))
+			s.metrics.blocksPerChunk.Observe(float64(s.chunk.BlockCount()))
+			s.metrics.chunksCreatedTotal.Inc()
+
+			// add a chunk
+			closed = append(closed, s.chunk)
+			s.chunk = s.NewChunk()
+		}
+
+		if _, err = s.chunk.Append(&entries[i]); err != nil {
+			return closed, errors.Wrap(err, "appending entry")
+		}
+	}
+
+	return closed, nil
+}
+
+func (s *stream) NewChunk() *chunkenc.MemChunk {
+	return chunkenc.NewMemChunk(s.chunkFormat, s.codec, s.headFmt, s.blockSize, s.targetChunkSize)
 }
