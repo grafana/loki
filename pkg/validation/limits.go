@@ -61,7 +61,7 @@ const (
 	defaultMaxStructuredMetadataCount = 128
 	defaultBloomBuildMaxBlockSize     = "200MB"
 	defaultBloomBuildMaxBloomSize     = "128MB"
-	defaultBloomTaskTargetChunkSize   = "100GB"
+	defaultBloomTaskTargetChunkSize   = "20GB"
 
 	defaultBlockedIngestionStatusCode = 260 // 260 is a custom status code to indicate blocked ingestion
 )
