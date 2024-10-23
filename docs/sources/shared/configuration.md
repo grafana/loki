@@ -3775,9 +3775,9 @@ shard_streams:
 # CLI flag: -bloom-build.split-keyspace-by
 [bloom_split_series_keyspace_by: <int> | default = 256]
 
-# Experimental. Target chunk size in bytes for bloom tasks. Default is 100GB.
+# Experimental. Target chunk size in bytes for bloom tasks. Default is 20GB.
 # CLI flag: -bloom-build.split-target-series-chunk-size
-[bloom_task_target_series_chunk_size: <int> | default = 100GB]
+[bloom_task_target_series_chunk_size: <int> | default = 20GB]
 
 # Experimental. Compression algorithm for bloom block pages.
 # CLI flag: -bloom-build.block-encoding
