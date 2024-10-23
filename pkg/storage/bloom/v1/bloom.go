@@ -47,18 +47,6 @@ func (b *Bloom) Encode(enc *encoding.Encbuf) error {
 	return nil
 }
 
-func (b *Bloom) DecodeCopy(dec *encoding.Decbuf) error {
-	ln := dec.Uvarint()
-	data := dec.Bytes(ln)
-
-	_, err := b.ReadFrom(bytes.NewReader(data))
-	if err != nil {
-		return errors.Wrap(err, "decoding copy of bloom filter")
-	}
-
-	return nil
-}
-
 func (b *Bloom) Decode(dec *encoding.Decbuf) error {
 	ln := dec.Uvarint()
 	data := dec.Bytes(ln)
@@ -316,7 +304,7 @@ func (b *BloomBlock) BloomPageDecoder(r io.ReadSeeker, alloc mempool.Allocator, 
 		return nil, false, errors.Wrap(err, "seeking to bloom page")
 	}
 
-	if b.schema.encoding == compression.EncNone {
+	if b.schema.encoding == compression.None {
 		res, err = LazyDecodeBloomPageNoCompression(r, alloc, page)
 	} else {
 		res, err = LazyDecodeBloomPage(r, alloc, b.schema.DecompressorPool(), page)

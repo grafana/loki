@@ -85,4 +85,5 @@ const (
 	BCE_TRAFFIC_LIMIT                   = "x-bce-traffic-limit"
 	BCE_BUCKET_TYPE                     = "x-bce-bucket-type"
 	BCE_OBJECT_TAGGING                  = "x-bce-tagging"
+	BCE_FETCH_CALLBACK_ADDRESS          = "x-bce-callback-address"
 )

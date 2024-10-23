@@ -28,17 +28,14 @@ func MakeBlock(t testing.TB, nth int, fromFp, throughFp model.Fingerprint, fromT
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
-			Schema: Schema{
-				version:  CurrentSchemaVersion,
-				encoding: compression.EncSnappy,
-			},
+			Schema:         NewSchema(CurrentSchemaVersion, compression.Snappy),
 			SeriesPageSize: 100,
 			BloomPageSize:  10 << 10,
 		},
 		writer,
 	)
 	require.Nil(t, err)
-	itr := iter.NewSliceIter[SeriesWithBlooms](data)
+	itr := iter.NewSliceIter(data)
 	_, err = builder.BuildFrom(itr)
 	require.Nil(t, err)
 	block := NewBlock(reader, NewMetrics(nil))

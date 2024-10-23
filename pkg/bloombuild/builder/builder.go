@@ -34,7 +34,7 @@ import (
 )
 
 // TODO(chaudum): Make configurable via (per-tenant?) setting.
-var blockCompressionAlgo = compression.EncNone
+var defaultBlockCompressionCodec = compression.None
 
 type Builder struct {
 	services.Service
@@ -46,7 +46,6 @@ type Builder struct {
 	metrics *Metrics
 	logger  log.Logger
 
-	tsdbStore   common.TSDBStore
 	bloomStore  bloomshipper.Store
 	chunkLoader ChunkLoader
 
@@ -60,9 +59,9 @@ type Builder struct {
 func New(
 	cfg Config,
 	limits Limits,
-	schemaCfg config.SchemaConfig,
-	storeCfg storage.Config,
-	storageMetrics storage.ClientMetrics,
+	_ config.SchemaConfig,
+	_ storage.Config,
+	_ storage.ClientMetrics,
 	fetcherProvider stores.ChunkFetcherProvider,
 	bloomStore bloomshipper.Store,
 	logger log.Logger,
@@ -74,18 +73,12 @@ func New(
 	builderID := uuid.NewString()
 	logger = log.With(logger, "builder_id", builderID)
 
-	tsdbStore, err := common.NewTSDBStores(schemaCfg, storeCfg, storageMetrics, logger)
-	if err != nil {
-		return nil, fmt.Errorf("error creating TSDB store: %w", err)
-	}
-
 	metrics := NewMetrics(r)
 	b := &Builder{
 		ID:          builderID,
 		cfg:         cfg,
 		limits:      limits,
 		metrics:     metrics,
-		tsdbStore:   tsdbStore,
 		bloomStore:  bloomStore,
 		chunkLoader: NewStoreChunkLoader(fetcherProvider, metrics),
 		logger:      logger,
@@ -336,7 +329,7 @@ func (b *Builder) processTask(
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
 
-	blockEnc, err := compression.ParseEncoding(b.limits.BloomBlockEncoding(task.Tenant))
+	blockEnc, err := compression.ParseCodec(b.limits.BloomBlockEncoding(task.Tenant))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse block encoding: %w", err)
 	}
@@ -386,7 +379,7 @@ func (b *Builder) processTask(
 		// Blocks are built consuming the series iterator. For observability, we wrap the series iterator
 		// with a counter iterator to count the number of times Next() is called on it.
 		// This is used to observe the number of series that are being processed.
-		seriesItrWithCounter := iter.NewCounterIter[*v1.Series](seriesItr)
+		seriesItrWithCounter := iter.NewCounterIter(seriesItr)
 
 		gen := NewSimpleBloomGenerator(
 			tenant,
@@ -407,7 +400,7 @@ func (b *Builder) processTask(
 			blockCt++
 			blk := newBlocks.At()
 
-			built, err := bloomshipper.BlockFrom(blockCompressionAlgo, tenant, task.Table.Addr(), blk)
+			built, err := bloomshipper.BlockFrom(defaultBlockCompressionCodec, tenant, task.Table.Addr(), blk)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to build block", "err", err)
 				if err = blk.Reader().Cleanup(); err != nil {
@@ -416,7 +409,7 @@ func (b *Builder) processTask(
 				return nil, fmt.Errorf("failed to build block: %w", err)
 			}
 
-			logger := log.With(logger, "block", built.BlockRef.String())
+			logger := log.With(logger, "block", built.String())
 
 			if err := client.PutBlock(
 				ctx,
@@ -461,7 +454,7 @@ func (b *Builder) processTask(
 		}
 		meta.MetaRef = ref
 
-		logger = log.With(logger, "meta", meta.MetaRef.String())
+		logger = log.With(logger, "meta", meta.String())
 
 		if err := client.PutMeta(ctx, meta); err != nil {
 			level.Error(logger).Log("msg", "failed to write meta", "err", err)
@@ -490,7 +483,7 @@ func (b *Builder) loadWorkForGap(
 	table config.DayTable,
 	gap protos.Gap,
 ) (iter.Iterator[*v1.Series], iter.CloseResetIterator[*v1.SeriesWithBlooms], error) {
-	seriesItr := iter.NewCancelableIter[*v1.Series](ctx, iter.NewSliceIter[*v1.Series](gap.Series))
+	seriesItr := iter.NewCancelableIter(ctx, iter.NewSliceIter(gap.Series))
 
 	// load a blocks iterator for the gap
 	fetcher, err := b.bloomStore.Fetcher(table.ModelTime())

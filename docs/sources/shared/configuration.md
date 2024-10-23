@@ -793,6 +793,16 @@ kafka_config:
   # CLI flag: -kafka.write-timeout
   [write_timeout: <duration> | default = 10s]
 
+  # The SASL username for authentication to Kafka using the PLAIN mechanism.
+  # Both username and password must be set.
+  # CLI flag: -kafka.sasl-username
+  [sasl_username: <string> | default = ""]
+
+  # The SASL password for authentication to Kafka using the PLAIN mechanism.
+  # Both username and password must be set.
+  # CLI flag: -kafka.sasl-password
+  [sasl_password: <string> | default = ""]
+
   # The consumer group used by the consumer to track the last consumed offset.
   # The consumer group must be different for each ingester. If the configured
   # consumer group contains the '<partition>' placeholder, it is replaced with
@@ -838,6 +848,20 @@ kafka_config:
   # This limit is per Kafka client. 0 to disable the limit.
   # CLI flag: -kafka.producer-max-buffered-bytes
   [producer_max_buffered_bytes: <int> | default = 1073741824]
+
+  # The best-effort maximum lag a consumer tries to achieve at startup. Set both
+  # -kafka.target-consumer-lag-at-startup and -kafka.max-consumer-lag-at-startup
+  # to 0 to disable waiting for maximum consumer lag being honored at startup.
+  # CLI flag: -kafka.target-consumer-lag-at-startup
+  [target_consumer_lag_at_startup: <duration> | default = 2s]
+
+  # The guaranteed maximum lag before a consumer is considered to have caught up
+  # reading from a partition at startup, becomes ACTIVE in the hash ring and
+  # passes the readiness check. Set both -kafka.target-consumer-lag-at-startup
+  # and -kafka.max-consumer-lag-at-startup to 0 to disable waiting for maximum
+  # consumer lag being honored at startup.
+  # CLI flag: -kafka.max-consumer-lag-at-startup
+  [max_consumer_lag_at_startup: <duration> | default = 15s]
 
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
@@ -1298,18 +1322,9 @@ Experimental: The `bloom_gateway` block configures the Loki bloom gateway server
 client:
   # Configures the behavior of the connection pool.
   pool_config:
-    # How frequently to clean up clients for servers that have gone away or are
-    # unhealthy.
+    # How frequently to update the list of servers.
     # CLI flag: -bloom-gateway-client.pool.check-interval
-    [check_interval: <duration> | default = 10s]
-
-    # Run a health check on each server during periodic cleanup.
-    # CLI flag: -bloom-gateway-client.pool.enable-health-check
-    [enable_health_check: <boolean> | default = true]
-
-    # Timeout for the health check if health check is enabled.
-    # CLI flag: -bloom-gateway-client.pool.health-check-timeout
-    [health_check_timeout: <duration> | default = 1s]
+    [check_interval: <duration> | default = 15s]
 
   # The grpc_client block configures the gRPC client used to communicate between
   # a client and server component in Loki.
@@ -2247,6 +2262,10 @@ ring:
   # Name of network interface to read address from.
   # CLI flag: -distributor.ring.instance-interface-names
   [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
+
+# Number of workers to push batches to ingesters.
+# CLI flag: -distributor.push-worker-count
+[push_worker_count: <int> | default = 256]
 
 rate_store:
   # The max number of concurrent requests to make to ingester stream apis
@@ -3745,11 +3764,20 @@ shard_streams:
 # CLI flag: -bloom-build.enable
 [bloom_creation_enabled: <boolean> | default = false]
 
-# Experimental. Number of splits to create for the series keyspace when building
-# blooms. The series keyspace is split into this many parts to parallelize bloom
-# creation.
+# Experimental. Bloom planning strategy to use in bloom creation. Can be one of:
+# 'split_keyspace_by_factor', 'split_by_series_chunks_size'
+# CLI flag: -bloom-build.planning-strategy
+[bloom_planning_strategy: <string> | default = "split_keyspace_by_factor"]
+
+# Experimental. Only if `bloom-build.planning-strategy` is 'split'. Number of
+# splits to create for the series keyspace when building blooms. The series
+# keyspace is split into this many parts to parallelize bloom creation.
 # CLI flag: -bloom-build.split-keyspace-by
 [bloom_split_series_keyspace_by: <int> | default = 256]
+
+# Experimental. Target chunk size in bytes for bloom tasks. Default is 20GB.
+# CLI flag: -bloom-build.split-target-series-chunk-size
+[bloom_task_target_series_chunk_size: <int> | default = 20GB]
 
 # Experimental. Compression algorithm for bloom block pages.
 # CLI flag: -bloom-build.block-encoding
@@ -3809,6 +3837,12 @@ otlp_config:
 # status code (260) is returned to the client along with an error message.
 # CLI flag: -limits.block-ingestion-status-code
 [block_ingestion_status_code: <int> | default = 260]
+
+# The number of partitions a tenant's data should be sharded to when using kafka
+# ingestion. Tenants are sharded across partitions using shuffle-sharding. 0
+# disables shuffle sharding and tenant is sharded across all partitions.
+# CLI flag: -limits.ingestion-partition-tenant-shard-size
+[ingestion_partitions_tenant_shard_size: <int> | default = 0]
 ```
 
 ### local_storage_config
@@ -4034,12 +4068,14 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 Configures additional object stores for a given storage provider.
 Supported stores: aws, azure, bos, filesystem, gcs, swift.
 Example:
-storage_config:
-  named_stores:
-    aws:
-      store-1:
-        endpoint: s3://foo-bucket
-        region: us-west1
+```yaml
+    storage_config:
+      named_stores:
+        aws:
+          store-1:
+            endpoint: s3://foo-bucket
+            region: us-west1
+```
 Named store from this example can be used by setting object_store to store-1 in period_config.
 
 ```yaml
@@ -4213,6 +4249,11 @@ engine:
 # When true, querier limits sent via a header are enforced.
 # CLI flag: -querier.per-request-limits-enabled
 [per_request_limits_enabled: <boolean> | default = false]
+
+# When true, querier directs ingester queries to the partition-ingesters instead
+# of the normal ingesters.
+# CLI flag: -querier.query-partition-ingesters
+[query_partition_ingesters: <boolean> | default = false]
 ```
 
 ### query_range
@@ -5520,12 +5561,14 @@ hedging:
 # Configures additional object stores for a given storage provider.
 # Supported stores: aws, azure, bos, filesystem, gcs, swift.
 # Example:
-# storage_config:
-#   named_stores:
-#     aws:
-#       store-1:
-#         endpoint: s3://foo-bucket
-#         region: us-west1
+# ```yaml
+#     storage_config:
+#       named_stores:
+#         aws:
+#           store-1:
+#             endpoint: s3://foo-bucket
+#             region: us-west1
+# ```
 # Named store from this example can be used by setting object_store to store-1
 # in period_config.
 [named_stores: <named_stores_config>]
@@ -5606,6 +5649,13 @@ congestion_control:
 # Maximum number of parallel chunk reads.
 # CLI flag: -store.max-parallel-get-chunk
 [max_parallel_get_chunk: <int> | default = 150]
+
+# Enables the use of thanos-io/objstore clients for connecting to object
+# storage. When set to true, the configuration inside
+# `storage_config.object_store` or `common.storage.object_store` block takes
+# effect.
+# CLI flag: -use-thanos-objstore
+[use_thanos_objstore: <boolean> | default = false]
 
 # The maximum number of chunks to fetch per batch.
 # CLI flag: -store.max-chunk-batch-size

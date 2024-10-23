@@ -17,7 +17,7 @@ func Test_OwnedStreamService(t *testing.T) {
 	require.NoError(t, err)
 	// Mock the ring
 	ring := &ringCountMock{count: 30}
-	limiter := NewLimiter(limits, NilMetrics, ring, 3)
+	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(ring, 3), &TenantBasedStrategy{limits: limits})
 
 	service := newOwnedStreamService("test", limiter)
 	require.Equal(t, 0, service.getOwnedStreamCount())

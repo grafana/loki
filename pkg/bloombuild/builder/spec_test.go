@@ -48,7 +48,7 @@ func blocksFromSchemaWithRange(t *testing.T, n int, options v1.BlockOptions, fro
 
 		minIdx, maxIdx := i*seriesPerBlock, (i+1)*seriesPerBlock
 
-		itr := v2.NewSliceIter[v1.SeriesWithBlooms](data[minIdx:maxIdx])
+		itr := v2.NewSliceIter(data[minIdx:maxIdx])
 		_, err = builder.BuildFrom(itr)
 		require.Nil(t, err)
 
@@ -115,7 +115,7 @@ func dummyBloomGen(t *testing.T, opts v1.BlockOptions, store v2.Iterator[*v1.Ser
 
 func TestSimpleBloomGenerator(t *testing.T) {
 	const maxBlockSize = 100 << 20 // 100MB
-	for _, enc := range []compression.Encoding{compression.EncNone, compression.EncGZIP, compression.EncSnappy} {
+	for _, enc := range []compression.Codec{compression.None, compression.GZIP, compression.Snappy} {
 		for _, tc := range []struct {
 			desc                 string
 			fromSchema, toSchema v1.BlockOptions
@@ -134,8 +134,8 @@ func TestSimpleBloomGenerator(t *testing.T) {
 		} {
 			t.Run(fmt.Sprintf("%s/%s", tc.desc, enc), func(t *testing.T) {
 				sourceBlocks, data, refs := blocksFromSchemaWithRange(t, 2, tc.fromSchema, 0x00000, 0x6ffff)
-				storeItr := v2.NewMapIter[v1.SeriesWithBlooms, *v1.Series](
-					v2.NewSliceIter[v1.SeriesWithBlooms](data),
+				storeItr := v2.NewMapIter(
+					v2.NewSliceIter(data),
 					func(swb v1.SeriesWithBlooms) *v1.Series {
 						return &swb.Series.Series
 					},

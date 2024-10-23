@@ -229,7 +229,7 @@ func (is *indexSet) upload() error {
 		}
 	}()
 
-	gzipPool := compression.GetWriterPool(compression.EncGZIP)
+	gzipPool := compression.GetWriterPool(compression.GZIP)
 	compressedWriter := gzipPool.GetWriter(f)
 	defer gzipPool.PutWriter(compressedWriter)
 

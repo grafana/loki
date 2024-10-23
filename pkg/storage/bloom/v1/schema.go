@@ -33,19 +33,18 @@ const (
 var (
 	SupportedVersions = []Version{V3}
 
-	ErrInvalidSchemaVersion     = errors.New("invalid schema version")
 	ErrUnsupportedSchemaVersion = errors.New("unsupported schema version")
 )
 
 type Schema struct {
 	version  Version
-	encoding compression.Encoding
+	encoding compression.Codec
 }
 
-func NewSchema() Schema {
+func NewSchema(version Version, encoding compression.Codec) Schema {
 	return Schema{
-		version:  CurrentSchemaVersion,
-		encoding: compression.EncNone,
+		version:  version,
+		encoding: encoding,
 	}
 }
 
@@ -80,7 +79,6 @@ func (s *Schema) Encode(enc *encoding.Encbuf) {
 	enc.PutBE32(magicNumber)
 	enc.PutByte(byte(s.version))
 	enc.PutByte(byte(s.encoding))
-
 }
 
 func (s *Schema) DecodeFrom(r io.ReadSeeker) error {
@@ -105,8 +103,8 @@ func (s *Schema) Decode(dec *encoding.Decbuf) error {
 		return errors.Errorf("invalid version. expected %d, got %d", 3, s.version)
 	}
 
-	s.encoding = compression.Encoding(dec.Byte())
-	if _, err := compression.ParseEncoding(s.encoding.String()); err != nil {
+	s.encoding = compression.Codec(dec.Byte())
+	if _, err := compression.ParseCodec(s.encoding.String()); err != nil {
 		return errors.Wrap(err, "parsing encoding")
 	}
 

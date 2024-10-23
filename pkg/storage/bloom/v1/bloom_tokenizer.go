@@ -126,12 +126,12 @@ func (bt *BloomTokenizer) Populate(blooms v2iter.SizedIterator[*Bloom], chks v2i
 }
 
 func (bt *BloomTokenizer) sendBloom(ch chan<- *BloomCreation, bloom *Bloom, info indexingInfo) {
-	fillRatio := bloom.ScalableBloomFilter.FillRatio()
+	fillRatio := bloom.FillRatio()
 	bt.metrics.hammingWeightRatio.Observe(fillRatio)
 	bt.metrics.estimatedCount.Observe(
-		float64(estimatedCount(bloom.ScalableBloomFilter.Capacity(), fillRatio)),
+		float64(estimatedCount(bloom.Capacity(), fillRatio)),
 	)
-	bt.metrics.bloomSize.Observe(float64(bloom.ScalableBloomFilter.Capacity() / eightBits))
+	bt.metrics.bloomSize.Observe(float64(bloom.Capacity() / eightBits))
 	bt.metrics.bloomsTotal.Inc()
 	ch <- &BloomCreation{
 		Bloom: bloom,
@@ -184,7 +184,7 @@ func (bt *BloomTokenizer) addChunkToBloom(bloom *Bloom, ref ChunkRef, entryIter 
 				}
 
 				// maxBloomSize is in bytes, but blooms operate at the bit level; adjust
-				collision, full = bloom.ScalableBloomFilter.TestAndAddWithMaxSize([]byte(tok), bt.maxBloomSize*eightBits)
+				collision, full = bloom.TestAndAddWithMaxSize([]byte(tok), bt.maxBloomSize*eightBits)
 
 				if collision {
 					collisionInserts++

@@ -691,7 +691,7 @@ func (q *Rf1Querier) DetectedFields(ctx context.Context, req *logproto.DetectedF
 		return nil, err
 	}
 
-	detectedFields := parseDetectedFields(ctx, req.FieldLimit, streams)
+	detectedFields := parseDetectedFields(ctx, req.Limit, streams)
 
 	fields := make([]*logproto.DetectedField, len(detectedFields))
 	fieldCount := 0
@@ -714,8 +714,8 @@ func (q *Rf1Querier) DetectedFields(ctx context.Context, req *logproto.DetectedF
 	}
 
 	return &logproto.DetectedFieldsResponse{
-		Fields:     fields,
-		FieldLimit: req.GetFieldLimit(),
+		Fields: fields,
+		Limit:  req.GetLimit(),
 	}, nil
 }
 

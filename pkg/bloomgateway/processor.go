@@ -83,6 +83,7 @@ func (p *processor) processTasksForDay(ctx context.Context, _ string, _ config.D
 
 	for _, t := range tasks {
 		FromContext(t.ctx).AddBlocksFetchTime(duration)
+		FromContext(t.ctx).AddProcessedBlocksTotal(len(tasksByBlock))
 	}
 
 	if err != nil {
@@ -167,7 +168,7 @@ func (p *processor) processBlock(_ context.Context, bq *bloomshipper.CloseableBl
 		iters = append(iters, it)
 	}
 
-	logger := log.With(p.logger, "block", bq.BlockRef.String())
+	logger := log.With(p.logger, "block", bq.String())
 	fq := blockQuerier.Fuse(iters, logger)
 
 	start := time.Now()

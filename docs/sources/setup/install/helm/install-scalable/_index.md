@@ -28,7 +28,7 @@ It is not recommended to run scalable mode with `filesystem` storage. For the pu
 **Prerequisites**
 
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).
-- A running Kubernetes cluster.
+- A running Kubernetes cluster (must have at least 3 nodes).
 - (Optional) A Memcached deployment for better query performance. For information on configuring Memcached, refer to [caching section]({{< relref "../../../../operations/caching" >}}).
 
 
@@ -53,7 +53,7 @@ It is not recommended to run scalable mode with `filesystem` storage. For the pu
      loki:
        schemaConfig:
          configs:
-           - from: 2024-04-01
+           - from: "2024-04-01"
              store: tsdb
              object_store: s3
              schema: v13
@@ -108,7 +108,9 @@ It is not recommended to run scalable mode with `filesystem` storage. For the pu
        replicas: 0
      indexGateway:
        replicas: 0
-     bloomCompactor:
+     bloomPlanner:
+       replicas: 0
+     bloomBuilder:
        replicas: 0
      bloomGateway:
        replicas: 0
@@ -138,7 +140,7 @@ When deploying Loki using S3 Storage **DO NOT** use the default bucket names;  `
 loki:
   schemaConfig:
     configs:
-      - from: 2024-04-01
+      - from: "2024-04-01"
         store: tsdb
         object_store: s3
         schema: v13
@@ -209,7 +211,9 @@ compactor:
   replicas: 0
 indexGateway:
   replicas: 0
-bloomCompactor:
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
   replicas: 0
 bloomGateway:
   replicas: 0
@@ -218,7 +222,7 @@ bloomGateway:
 loki:
   schemaConfig:
     configs:
-      - from: 2024-04-01
+      - from: "2024-04-01"
         store: tsdb
         object_store: azure
         schema: v13
@@ -287,7 +291,9 @@ compactor:
   replicas: 0
 indexGateway:
   replicas: 0
-bloomCompactor:
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
   replicas: 0
 bloomGateway:
   replicas: 0

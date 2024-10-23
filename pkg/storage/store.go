@@ -194,7 +194,6 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 
 func (s *LokiStore) init() error {
 	for i, p := range s.schemaCfg.Configs {
-		p := p
 		chunkClient, err := s.chunkClientForPeriod(p)
 		if err != nil {
 			return err
@@ -229,8 +228,6 @@ func (s *LokiStore) chunkClientForPeriod(p config.PeriodConfig) (client.Client, 
 	if objectStoreType == "" {
 		objectStoreType = p.IndexType
 	}
-	chunkClientReg := prometheus.WrapRegistererWith(
-		prometheus.Labels{"component": "chunk-store-" + p.From.String()}, s.registerer)
 
 	var cc congestion.Controller
 	ccCfg := s.cfg.CongestionControl
@@ -243,7 +240,10 @@ func (s *LokiStore) chunkClientForPeriod(p config.PeriodConfig) (client.Client, 
 		)
 	}
 
-	chunks, err := NewChunkClient(objectStoreType, s.cfg, s.schemaCfg, cc, chunkClientReg, s.clientMetrics, s.logger)
+	component := "chunk-store-" + p.From.String()
+	chunkClientReg := prometheus.WrapRegistererWith(
+		prometheus.Labels{"component": component}, s.registerer)
+	chunks, err := NewChunkClient(objectStoreType, component, s.cfg, s.schemaCfg, cc, chunkClientReg, s.clientMetrics, s.logger)
 	if err != nil {
 		return nil, errors.Wrap(err, "error creating object client")
 	}
@@ -266,14 +266,8 @@ func shouldUseIndexGatewayClient(cfg indexshipper.Config) bool {
 }
 
 func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.TableRange, chunkClient client.Client, f *fetcher.Fetcher) (stores.ChunkWriter, index.ReaderWriter, func(), error) {
-	indexClientReg := prometheus.WrapRegistererWith(
-		prometheus.Labels{
-			"component": fmt.Sprintf(
-				"index-store-%s-%s",
-				p.IndexType,
-				p.From.String(),
-			),
-		}, s.registerer)
+	component := fmt.Sprintf("index-store-%s-%s", p.IndexType, p.From.String())
+	indexClientReg := prometheus.WrapRegistererWith(prometheus.Labels{"component": component}, s.registerer)
 	indexClientLogger := log.With(s.logger, "index-store", fmt.Sprintf("%s-%s", p.IndexType, p.From.String()))
 
 	if p.IndexType == types.TSDBType {
@@ -291,7 +285,7 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 			}, nil
 		}
 
-		objectClient, err := NewObjectClient(p.ObjectType, s.cfg, s.clientMetrics)
+		objectClient, err := NewObjectClient(p.ObjectType, component, s.cfg, s.clientMetrics)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -314,7 +308,7 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 			}, nil
 	}
 
-	idx, err := NewIndexClient(p, tableRange, s.cfg, s.schemaCfg, s.limits, s.clientMetrics, nil, indexClientReg, indexClientLogger, s.metricsNamespace)
+	idx, err := NewIndexClient(component, p, tableRange, s.cfg, s.schemaCfg, s.limits, s.clientMetrics, nil, indexClientReg, indexClientLogger, s.metricsNamespace)
 	if err != nil {
 		return nil, nil, nil, errors.Wrap(err, "error creating index client")
 	}

@@ -2,7 +2,8 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    cert-manager.io/inject-ca-from: loki-operator/loki-operator-serving-cert
+    controller-gen.kubebuilder.io/version: v0.16.3
   creationTimestamp: null
   labels:
     app.kubernetes.io/instance: loki-operator-v0.6.2
@@ -69,7 +70,6 @@ spec:
                       enableIPv6:
                         description: |-
                           EnableIPv6 enables IPv6 support for the memberlist based hash ring.
-
 
                           Currently this also forces the instanceAddrType to podIP to avoid local address lookup
                           for the memberlist.
@@ -166,124 +166,101 @@ spec:
                         type: object
                       otlp:
                         description: |-
-                          OTLP to configure which resource, scope and log attributes
-                          to store as labels or structured metadata or drop them altogether
-                          for all tenants.
+                          OTLP to configure which resource, scope and log attributes are stored as stream labels or structured metadata.
+
+                          Tenancy modes can provide a default OTLP configuration, when no custom OTLP configuration is set or even
+                          enforce the use of some required attributes.
                         properties:
-                          indexedResourceAttributes:
-                            description: |-
-                              IndexedResourceAttributes contains the global configuration for resource attributes
-                              to store them as index labels.
-                            items:
-                              type: string
-                            type: array
-                          logAttributes:
-                            description: |-
-                              LogAttributes contains the configuration for log attributes
-                              to store them as structured metadata or drop them altogether.
-                            items:
-                              description: |-
-                                OTLPAttributesSpec contains the configuration for a set of attributes
-                                to store them as index labels or structured metadata or drop them altogether.
-                              properties:
-                                action:
-                                  description: |-
-                                    Action defines the indexing action for the selected attributes. They
-                                    can be either added to structured metadata or drop altogether.
-                                  enum:
-                                  - structured_metadata
-                                  - drop
-                                  type: string
-                                attributes:
-                                  description: Attributes allows choosing the attributes
-                                    by listing their names.
-                                  items:
-                                    type: string
-                                  type: array
-                                regex:
-                                  description: Regex allows choosing the attributes
-                                    by matching a regular expression.
-                                  type: string
-                              required:
-                              - action
-                              type: object
-                            type: array
-                          resourceAttributes:
-                            description: |-
-                              ResourceAttributes contains the configuration for resource attributes
-                              to store them as index labels or structured metadata or drop them altogether.
+                          streamLabels:
+                            description: StreamLabels configures which resource attributes
+                              are converted to Loki stream labels.
                             properties:
-                              attributes:
-                                description: |-
-                                  Attributes contains the configuration for resource attributes
-                                  to store them as index labels or structured metadata or drop them altogether.
+                              resourceAttributes:
+                                description: ResourceAttributes lists the names of
+                                  the resource attributes that should be converted
+                                  into Loki stream labels.
                                 items:
-                                  description: |-
-                                    OTLPResourceAttributesConfigSpec contains the configuration for a set of resource attributes
-                                    to store them as index labels or structured metadata or drop them altogether.
                                   properties:
-                                    action:
-                                      description: |-
-                                        Action defines the indexing action for the selected resoure attributes. They
-                                        can be either indexed as labels, added to structured metadata or drop altogether.
-                                      enum:
-                                      - index_label
-                                      - structured_metadata
-                                      - drop
+                                    name:
+                                      description: Name contains either a verbatim
+                                        name of an attribute or a regular expression
+                                        matching many attributes.
                                       type: string
-                                    attributes:
-                                      description: |-
-                                        Attributes is the list of attributes to configure indexing or drop them
-                                        altogether.
-                                      items:
-                                        type: string
-                                      type: array
                                     regex:
-                                      description: Regex allows choosing the attributes
-                                        by matching a regular expression.
-                                      type: string
+                                      description: If Regex is true, then Name is
+                                        treated as a regular expression instead of
+                                        as a verbatim attribute name.
+                                      type: boolean
+                                  required:
+                                  - name
                                   type: object
                                 type: array
-                              ignoreDefaults:
-                                description: |-
-                                  IgnoreDefaults controls whether to ignore the global configuration for resource attributes
-                                  indexed as labels.
-
-
-                                  If IgnoreDefaults is true, then this spec needs to contain at least one mapping to a index label.
-                                type: boolean
                             type: object
-                          scopeAttributes:
-                            description: |-
-                              ScopeAttributes contains the configuration for scope attributes
-                              to store them as structured metadata or drop them altogether.
-                            items:
-                              description: |-
-                                OTLPAttributesSpec contains the configuration for a set of attributes
-                                to store them as index labels or structured metadata or drop them altogether.
-                              properties:
-                                action:
-                                  description: |-
-                                    Action defines the indexing action for the selected attributes. They
-                                    can be either added to structured metadata or drop altogether.
-                                  enum:
-                                  - structured_metadata
-                                  - drop
-                                  type: string
-                                attributes:
-                                  description: Attributes allows choosing the attributes
-                                    by listing their names.
-                                  items:
-                                    type: string
-                                  type: array
-                                regex:
-                                  description: Regex allows choosing the attributes
-                                    by matching a regular expression.
-                                  type: string
-                              required:
-                              - action
-                              type: object
-                            type: array
+                          structuredMetadata:
+                            description: StructuredMetadata configures which attributes
+                              are saved in structured metadata.
+                            properties:
+                              logAttributes:
+                                description: LogAttributes lists the names of log
+                                  attributes that should be included in structured
+                                  metadata.
+                                items:
+                                  properties:
+                                    name:
+                                      description: Name contains either a verbatim
+                                        name of an attribute or a regular expression
+                                        matching many attributes.
+                                      type: string
+                                    regex:
+                                      description: If Regex is true, then Name is
+                                        treated as a regular expression instead of
+                                        as a verbatim attribute name.
+                                      type: boolean
+                                  required:
+                                  - name
+                                  type: object
+                                type: array
+                              resourceAttributes:
+                                description: ResourceAttributes lists the names of
+                                  resource attributes that should be included in structured
+                                  metadata.
+                                items:
+                                  properties:
+                                    name:
+                                      description: Name contains either a verbatim
+                                        name of an attribute or a regular expression
+                                        matching many attributes.
+                                      type: string
+                                    regex:
+                                      description: If Regex is true, then Name is
+                                        treated as a regular expression instead of
+                                        as a verbatim attribute name.
+                                      type: boolean
+                                  required:
+                                  - name
+                                  type: object
+                                type: array
+                              scopeAttributes:
+                                description: ScopeAttributes lists the names of scope
+                                  attributes that should be included in structured
+                                  metadata.
+                                items:
+                                  properties:
+                                    name:
+                                      description: Name contains either a verbatim
+                                        name of an attribute or a regular expression
+                                        matching many attributes.
+                                      type: string
+                                    regex:
+                                      description: If Regex is true, then Name is
+                                        treated as a regular expression instead of
+                                        as a verbatim attribute name.
+                                      type: boolean
+                                  required:
+                                  - name
+                                  type: object
+                                type: array
+                            type: object
                         type: object
                       queries:
                         description: QueryLimits defines the limit applied on querying
@@ -363,7 +340,7 @@ spec:
                     type: object
                   tenants:
                     additionalProperties:
-                      description: LimitsTemplateSpec defines the limits  applied
+                      description: PerTenantLimitsTemplateSpec defines the limits  applied
                         at ingestion or query path.
                       properties:
                         ingestion:
@@ -430,117 +407,103 @@ spec:
                           type: object
                         otlp:
                           description: |-
-                            OTLP to configure which resource, scope and log attributes
-                            to store as labels or structured metadata or drop them altogether
-                            for a single tenants.
+                            OTLP to configure which resource, scope and log attributes are stored as stream labels or structured metadata.
+
+                            Tenancy modes can provide a default OTLP configuration, when no custom OTLP configuration is set or even
+                            enforce the use of some required attributes.
+
+                            The per-tenant configuration for OTLP attributes will be merged with the global configuration.
                           properties:
-                            logAttributes:
-                              description: |-
-                                LogAttributes contains the configuration for log attributes
-                                to store them as structured metadata or drop them altogether.
-                              items:
-                                description: |-
-                                  OTLPAttributesSpec contains the configuration for a set of attributes
-                                  to store them as index labels or structured metadata or drop them altogether.
-                                properties:
-                                  action:
-                                    description: |-
-                                      Action defines the indexing action for the selected attributes. They
-                                      can be either added to structured metadata or drop altogether.
-                                    enum:
-                                    - structured_metadata
-                                    - drop
-                                    type: string
-                                  attributes:
-                                    description: Attributes allows choosing the attributes
-                                      by listing their names.
-                                    items:
-                                      type: string
-                                    type: array
-                                  regex:
-                                    description: Regex allows choosing the attributes
-                                      by matching a regular expression.
-                                    type: string
-                                required:
-                                - action
-                                type: object
-                              type: array
-                            resourceAttributes:
-                              description: |-
-                                ResourceAttributes contains the configuration for resource attributes
-                                to store them as index labels or structured metadata or drop them altogether.
+                            streamLabels:
+                              description: StreamLabels configures which resource
+                                attributes are converted to Loki stream labels.
                               properties:
-                                attributes:
-                                  description: |-
-                                    Attributes contains the configuration for resource attributes
-                                    to store them as index labels or structured metadata or drop them altogether.
+                                resourceAttributes:
+                                  description: ResourceAttributes lists the names
+                                    of the resource attributes that should be converted
+                                    into Loki stream labels.
                                   items:
-                                    description: |-
-                                      OTLPResourceAttributesConfigSpec contains the configuration for a set of resource attributes
-                                      to store them as index labels or structured metadata or drop them altogether.
                                     properties:
-                                      action:
-                                        description: |-
-                                          Action defines the indexing action for the selected resoure attributes. They
-                                          can be either indexed as labels, added to structured metadata or drop altogether.
-                                        enum:
-                                        - index_label
-                                        - structured_metadata
-                                        - drop
+                                      name:
+                                        description: Name contains either a verbatim
+                                          name of an attribute or a regular expression
+                                          matching many attributes.
                                         type: string
-                                      attributes:
-                                        description: |-
-                                          Attributes is the list of attributes to configure indexing or drop them
-                                          altogether.
-                                        items:
-                                          type: string
-                                        type: array
                                       regex:
-                                        description: Regex allows choosing the attributes
-                                          by matching a regular expression.
-                                        type: string
+                                        description: If Regex is true, then Name is
+                                          treated as a regular expression instead
+                                          of as a verbatim attribute name.
+                                        type: boolean
+                                    required:
+                                    - name
                                     type: object
                                   type: array
-                                ignoreDefaults:
-                                  description: |-
-                                    IgnoreDefaults controls whether to ignore the global configuration for resource attributes
-                                    indexed as labels.
-
-
-                                    If IgnoreDefaults is true, then this spec needs to contain at least one mapping to a index label.
-                                  type: boolean
                               type: object
-                            scopeAttributes:
-                              description: |-
-                                ScopeAttributes contains the configuration for scope attributes
-                                to store them as structured metadata or drop them altogether.
-                              items:
-                                description: |-
-                                  OTLPAttributesSpec contains the configuration for a set of attributes
-                                  to store them as index labels or structured metadata or drop them altogether.
-                                properties:
-                                  action:
-                                    description: |-
-                                      Action defines the indexing action for the selected attributes. They
-                                      can be either added to structured metadata or drop altogether.
-                                    enum:
-                                    - structured_metadata
-                                    - drop
-                                    type: string
-                                  attributes:
-                                    description: Attributes allows choosing the attributes
-                                      by listing their names.
-                                    items:
-                                      type: string
-                                    type: array
-                                  regex:
-                                    description: Regex allows choosing the attributes
-                                      by matching a regular expression.
-                                    type: string
-                                required:
-                                - action
-                                type: object
-                              type: array
+                            structuredMetadata:
+                              description: StructuredMetadata configures which attributes
+                                are saved in structured metadata.
+                              properties:
+                                logAttributes:
+                                  description: LogAttributes lists the names of log
+                                    attributes that should be included in structured
+                                    metadata.
+                                  items:
+                                    properties:
+                                      name:
+                                        description: Name contains either a verbatim
+                                          name of an attribute or a regular expression
+                                          matching many attributes.
+                                        type: string
+                                      regex:
+                                        description: If Regex is true, then Name is
+                                          treated as a regular expression instead
+                                          of as a verbatim attribute name.
+                                        type: boolean
+                                    required:
+                                    - name
+                                    type: object
+                                  type: array
+                                resourceAttributes:
+                                  description: ResourceAttributes lists the names
+                                    of resource attributes that should be included
+                                    in structured metadata.
+                                  items:
+                                    properties:
+                                      name:
+                                        description: Name contains either a verbatim
+                                          name of an attribute or a regular expression
+                                          matching many attributes.
+                                        type: string
+                                      regex:
+                                        description: If Regex is true, then Name is
+                                          treated as a regular expression instead
+                                          of as a verbatim attribute name.
+                                        type: boolean
+                                    required:
+                                    - name
+                                    type: object
+                                  type: array
+                                scopeAttributes:
+                                  description: ScopeAttributes lists the names of
+                                    scope attributes that should be included in structured
+                                    metadata.
+                                  items:
+                                    properties:
+                                      name:
+                                        description: Name contains either a verbatim
+                                          name of an attribute or a regular expression
+                                          matching many attributes.
+                                        type: string
+                                      regex:
+                                        description: If Regex is true, then Name is
+                                          treated as a regular expression instead
+                                          of as a verbatim attribute name.
+                                        type: boolean
+                                    required:
+                                    - name
+                                    type: object
+                                  type: array
+                              type: object
                           type: object
                         queries:
                           description: QueryLimits defines the limit applied on querying
@@ -849,7 +812,6 @@ spec:
                         effectiveDate:
                           description: |-
                             EffectiveDate contains a date in YYYY-MM-DD format which is interpreted in the UTC time zone.
-
 
                             The configuration always needs at least one schema that is currently valid. This means that when creating a new
                             LokiStack it is recommended to add a schema with the latest available version and an effective date of "yesterday".
@@ -3896,7 +3858,6 @@ spec:
                           AdminGroups defines a list of groups, whose members are considered to have admin-privileges by the Loki Operator.
                           Setting this to an empty array disables admin groups.
 
-
                           By default the following groups are considered admin-groups:
                            - system:cluster-admins
                            - cluster-admin
@@ -3904,6 +3865,26 @@ spec:
                         items:
                           type: string
                         type: array
+                      otlp:
+                        description: OTLP contains settings for ingesting data using
+                          OTLP in the OpenShift tenancy mode.
+                        properties:
+                          disableRecommendedAttributes:
+                            description: |-
+                              DisableRecommendedAttributes can be used to reduce the number of attributes used for stream labels and structured
+                              metadata.
+
+                              Enabling this setting removes the "recommended attributes" from the generated Loki configuration. This will cause
+                              meta information to not be available as stream labels or structured metadata, potentially making queries more
+                              expensive and less performant.
+
+                              Note that there is a set of "required attributes", needed for OpenShift Logging to work properly. Those will be
+                              added to the configuration, even if this field is set to true.
+
+                              This option is supposed to be combined with a custom label configuration customizing the labels for the specific
+                              usecase.
+                            type: boolean
+                        type: object
                     type: object
                 required:
                 - mode
@@ -3989,16 +3970,8 @@ spec:
               conditions:
                 description: Conditions of the Loki deployment health.
                 items:
-                  description: "Condition contains details for one aspect of the current
-                    state of this API Resource.\n---\nThis struct is intended for
-                    direct use as an array at the field path .status.conditions.  For
-                    example,\n\n\n\ttype FooStatus struct{\n\t    // Represents the
-                    observations of a foo's current state.\n\t    // Known .status.conditions.type
-                    are: \"Available\", \"Progressing\", and \"Degraded\"\n\t    //
-                    +patchMergeKey=type\n\t    // +patchStrategy=merge\n\t    // +listType=map\n\t
-                    \   // +listMapKey=type\n\t    Conditions []metav1.Condition `json:\"conditions,omitempty\"
-                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`\n\n\n\t
-                    \   // other fields\n\t}"
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
                   properties:
                     lastTransitionTime:
                       description: |-
@@ -4039,12 +4012,7 @@ spec:
                       - Unknown
                       type: string
                     type:
-                      description: |-
-                        type of condition in CamelCase or in foo.example.com/CamelCase.
-                        ---
-                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
-                        useful (see .node.status.conditions), the ability to deconflict is important.
-                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -4080,7 +4048,6 @@ spec:
                         effectiveDate:
                           description: |-
                             EffectiveDate contains a date in YYYY-MM-DD format which is interpreted in the UTC time zone.
-
 
                             The configuration always needs at least one schema that is currently valid. This means that when creating a new
                             LokiStack it is recommended to add a schema with the latest available version and an effective date of "yesterday".
@@ -5102,6 +5069,7 @@ spec:
                 - mode
                 type: object
             required:
+            - managementState
             - size
             - storage
             - storageClassName
@@ -5182,16 +5150,8 @@ spec:
               conditions:
                 description: Conditions of the Loki deployment health.
                 items:
-                  description: "Condition contains details for one aspect of the current
-                    state of this API Resource.\n---\nThis struct is intended for
-                    direct use as an array at the field path .status.conditions.  For
-                    example,\n\n\n\ttype FooStatus struct{\n\t    // Represents the
-                    observations of a foo's current state.\n\t    // Known .status.conditions.type
-                    are: \"Available\", \"Progressing\", and \"Degraded\"\n\t    //
-                    +patchMergeKey=type\n\t    // +patchStrategy=merge\n\t    // +listType=map\n\t
-                    \   // +listMapKey=type\n\t    Conditions []metav1.Condition `json:\"conditions,omitempty\"
-                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`\n\n\n\t
-                    \   // other fields\n\t}"
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
                   properties:
                     lastTransitionTime:
                       description: |-
@@ -5232,12 +5192,7 @@ spec:
                       - Unknown
                       type: string
                     type:
-                      description: |-
-                        type of condition in CamelCase or in foo.example.com/CamelCase.
-                        ---
-                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
-                        useful (see .node.status.conditions), the ability to deconflict is important.
-                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string

@@ -40,7 +40,7 @@ func New(
 		return periodicConfigs[i].From.Time.Before(periodicConfigs[j].From.Time)
 	})
 	for _, periodicConfig := range periodicConfigs {
-		objectClient, err := storage.NewObjectClient(periodicConfig.ObjectType, storageConfig, clientMetrics)
+		objectClient, err := storage.NewObjectClient(periodicConfig.ObjectType, "storage-rf1", storageConfig, clientMetrics)
 		if err != nil {
 			return nil, fmt.Errorf("creating object client for period %s: %w ", periodicConfig.From, err)
 		}
@@ -70,12 +70,12 @@ func (m *Multi) GetStoreFor(ts model.Time) (client.ObjectClient, error) {
 	return nil, fmt.Errorf("no store found for timestamp %s", ts)
 }
 
-func (m *Multi) ObjectExistsWithSize(ctx context.Context, objectKey string) (bool, int64, error) {
+func (m *Multi) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
 	s, err := m.GetStoreFor(model.Now())
 	if err != nil {
-		return false, 0, err
+		return client.ObjectAttributes{}, err
 	}
-	return s.ObjectExistsWithSize(ctx, objectKey)
+	return s.GetAttributes(ctx, objectKey)
 }
 
 func (m *Multi) ObjectExists(ctx context.Context, objectKey string) (bool, error) {

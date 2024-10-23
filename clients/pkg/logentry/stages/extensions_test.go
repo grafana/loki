@@ -65,7 +65,6 @@ func TestNewDocker(t *testing.T) {
 	}
 
 	for tName, tt := range tests {
-		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
 			p, err := NewDocker(util_log.Logger, prometheus.DefaultRegisterer)
@@ -268,7 +267,6 @@ func TestNewCri(t *testing.T) {
 	}
 
 	for tName, tt := range tests {
-		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
 			cfg := map[string]interface{}{}

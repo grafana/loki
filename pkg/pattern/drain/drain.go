@@ -47,6 +47,10 @@ type Config struct {
 	MaxAllowedLineLength int
 }
 
+type Limits interface {
+	PatternIngesterTokenizableJSONFields(userID string) []string
+}
+
 func createLogClusterCache(maxSize int, onEvict func(int, *LogCluster)) *LogClusterCache {
 	if maxSize == 0 {
 		maxSize = math.MaxInt
@@ -135,7 +139,7 @@ func DefaultConfig() *Config {
 	}
 }
 
-func New(config *Config, format string, metrics *Metrics) *Drain {
+func New(tenantID string, config *Config, limits Limits, format string, metrics *Metrics) *Drain {
 	if config.LogClusterDepth < 3 {
 		panic("depth argument must be at least 3")
 	}
@@ -153,11 +157,12 @@ func New(config *Config, format string, metrics *Metrics) *Drain {
 	var tokenizer LineTokenizer
 	switch format {
 	case FormatJSON:
-		tokenizer = newJSONTokenizer(config.ParamString)
+		fieldsToTokenize := limits.PatternIngesterTokenizableJSONFields(tenantID)
+		tokenizer = newJSONTokenizer(config.ParamString, config.MaxAllowedLineLength, fieldsToTokenize)
 	case FormatLogfmt:
-		tokenizer = newLogfmtTokenizer(config.ParamString)
+		tokenizer = newLogfmtTokenizer(config.ParamString, config.MaxAllowedLineLength)
 	default:
-		tokenizer = newPunctuationTokenizer()
+		tokenizer = newPunctuationTokenizer(config.MaxAllowedLineLength)
 	}
 
 	d.idToCluster = createLogClusterCache(config.MaxClusters, func(int, *LogCluster) {
@@ -204,9 +209,6 @@ func (d *Drain) TrainTokens(tokens []string, stringer func([]string) string, ts 
 
 func (d *Drain) Train(content string, ts int64) *LogCluster {
 	if !d.limiter.Allow() {
-		return nil
-	}
-	if len(content) > d.config.MaxAllowedLineLength {
 		return nil
 	}
 	d.tokens, d.state = d.tokenizer.Tokenize(content, d.tokens, d.state)

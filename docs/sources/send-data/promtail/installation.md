@@ -41,6 +41,40 @@ See the instructions [here](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/i
     docker run -v <local-path>:/mnt/config -v /var/log:/var/log --link loki grafana/promtail:3.0.0 --config.file=/mnt/config/promtail-config.yaml
     ```
 
+## Install on MacOS with Homebrew
+
+1. If necessary, install [Homebrew](https://brew.sh/).
+
+    ```bash
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    ```
+
+1. Update Homebrew.
+
+    ```bash
+    brew update
+    ```
+
+1. Navigate to the [homebrew page for Promtail](https://formulae.brew.sh/formula/promtail).
+1. To install Promtail, run the following command:
+
+    ```bash
+    brew install promtail
+    ```
+
+1. Check that installation was successful.
+   1. Check that promtail exists in its install directory.
+
+      ```bash
+      which promtail
+      ```
+
+   1. Run promtail
+
+      ```bash
+      promtail
+      ```
+
 ## Install using Helm
 
 1. Make sure that Helm is installed. See [Installing Helm](https://helm.sh/docs/intro/install/).

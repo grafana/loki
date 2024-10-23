@@ -66,22 +66,27 @@ func (b BlockOptions) Encode(enc *encoding.Encbuf) {
 	enc.PutBE64(b.BlockSize)
 }
 
-func NewBlockOptions(enc compression.Encoding, maxBlockSizeBytes, maxBloomSizeBytes uint64) BlockOptions {
-	opts := NewBlockOptionsFromSchema(Schema{
-		version:  CurrentSchemaVersion,
-		encoding: enc,
-	})
+func NewBlockOptions(enc compression.Codec, maxBlockSizeBytes, maxBloomSizeBytes uint64) BlockOptions {
+	schema := NewSchema(CurrentSchemaVersion, enc)
+	opts := NewBlockOptionsFromSchema(schema, maxBloomSizeBytes)
 	opts.BlockSize = maxBlockSizeBytes
 	opts.UnencodedBlockOptions.MaxBloomSizeBytes = maxBloomSizeBytes
 	return opts
 }
 
-func NewBlockOptionsFromSchema(s Schema) BlockOptions {
+func NewBlockOptionsFromSchema(s Schema, maxBloomSizeBytes uint64) BlockOptions {
 	return BlockOptions{
 		Schema: s,
 		// TODO(owen-d): benchmark and find good defaults
-		SeriesPageSize: 4 << 10,   // 4KB, typical page size
-		BloomPageSize:  256 << 10, // 256KB, no idea what to make this
+		SeriesPageSize: 4 << 10, // 4KB, typical page size
+
+		// Allow one bloom page to fit either several small blooms or one large
+		// bloom at max size.
+		//
+		// Previously this value was fixed at 256KB, which is smaller than most
+		// blooms. Setting this value less than maxBloomSizeBytes means that most
+		// pages will consist of a single oversized bloom.
+		BloomPageSize: maxBloomSizeBytes,
 	}
 }
 
@@ -202,7 +207,7 @@ func NewMergeBuilder(
 	// because blooms dont contain the label-set (only the fingerprint),
 	// in the case of a fingerprint collision we simply treat it as one
 	// series with multiple chunks.
-	combinedSeriesIter := iter.NewDedupingIter[*Series, *Series](
+	combinedSeriesIter := iter.NewDedupingIter(
 		// eq
 		func(s1, s2 *Series) bool {
 			return s1.Fingerprint == s2.Fingerprint
@@ -216,7 +221,7 @@ func NewMergeBuilder(
 				Chunks:      s1.Chunks.Union(s2.Chunks),
 			}
 		},
-		iter.NewPeekIter[*Series](store),
+		iter.NewPeekIter(store),
 	)
 
 	return &MergeBuilder{
@@ -288,7 +293,7 @@ func (mb *MergeBuilder) processNextSeries(
 		chunksCopied += len(nextInStore.Chunks) - len(chunksToAdd)
 		preExistingBlooms = nextInBlocks.Blooms
 		// we also need to carry over existing indexed fields from the series metadata
-		info.indexedFields.Union(nextInBlocks.Series.Meta.Fields)
+		info.indexedFields.Union(nextInBlocks.Series.Fields)
 	}
 
 	chunksIndexed += len(chunksToAdd)

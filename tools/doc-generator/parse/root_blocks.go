@@ -33,6 +33,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/scheduler"
 	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/gcs"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/alibaba"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
@@ -280,18 +281,25 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 			Desc: `Configures additional object stores for a given storage provider.
 Supported stores: aws, azure, bos, filesystem, gcs, swift.
 Example:
-storage_config:
-  named_stores:
-    aws:
-      store-1:
-        endpoint: s3://foo-bucket
-        region: us-west1
+` + "```yaml" + `
+    storage_config:
+      named_stores:
+        aws:
+          store-1:
+            endpoint: s3://foo-bucket
+            region: us-west1
+` + "```" + `
 Named store from this example can be used by setting object_store to store-1 in period_config.`,
 		},
 		{
 			Name:       "attributes_config",
 			StructType: []reflect.Type{reflect.TypeOf(push.AttributesConfig{})},
 			Desc:       "Define actions for matching OpenTelemetry (OTEL) attributes.",
+		},
+		{
+			Name:       "gcs_storage_backend",
+			StructType: []reflect.Type{reflect.TypeOf(gcs.Config{})},
+			Desc:       "The gcs_storage_backend block configures the connection to Google Cloud Storage object storage backend.",
 		},
 	}
 )

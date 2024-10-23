@@ -107,16 +107,11 @@ compactor:
 {{- end }}
   delete_request_store: {{.ObjectStorage.SharedStore}}
 {{- end }}
-{{- if $l := .Stack.Limits.Global }}
-{{- with $l.OTLP }}{{- with .IndexedResourceAttributes }}
+{{- if .OTLPAttributes.RemoveDefaultLabels }}
 distributor:
   otlp_config:
-    default_resource_attributes_as_index_labels:
-    {{- range . }}
-    - {{ . }}
-    {{- end }}
+    default_resource_attributes_as_index_labels: []
 {{- end }}
-{{- end }}{{- end }}
 frontend:
   tail_proxy_url: {{ .Querier.Protocol }}://{{ .Querier.FQDN }}:{{ .Querier.Port }}
 {{- if .Gates.HTTPEncryption }}
@@ -202,6 +197,7 @@ limits_config:
   max_streams_per_user: 0
   max_line_size: {{ .Stack.Limits.Global.IngestionLimits.MaxLineSize }}
   max_entries_limit_per_query: {{ .Stack.Limits.Global.QueryLimits.MaxEntriesLimitPerQuery }}
+  discover_service_name: []
   max_global_streams_per_user: {{ .Stack.Limits.Global.IngestionLimits.MaxGlobalStreamsPerTenant }}
   max_chunks_per_query: {{ .Stack.Limits.Global.QueryLimits.MaxChunksPerQuery }}
   max_query_length: 721h
@@ -233,19 +229,18 @@ limits_config:
     enabled: true
     desired_rate: {{ . }}MB
 {{- end }}
-{{- with .Stack.Limits.Global.OTLP }}
+{{- with .OTLPAttributes.Global }}
   otlp_config:
-    {{- with .ResourceAttributes }}
+    {{- if .ResourceAttributes }}
     resource_attributes:
-      ignore_defaults: {{ .IgnoreDefaults }}
-      {{- with .Attributes}}
+      {{- with .ResourceAttributes}}
       attributes_config:
       {{- range . }}
-      - action: {{ .Action.Value }}
+      - action: {{ .Action }}
         {{- with .Regex }}
         regex: {{ . }}
         {{- end }}
-        {{- with .Attributes }}
+        {{- with .Names }}
         attributes:
         {{- range . }}
         - {{ . }}
@@ -257,11 +252,11 @@ limits_config:
     {{- with .ScopeAttributes }}
     scope_attributes:
     {{- range . }}
-    - action: {{ .Action.Value }}
+    - action: {{ .Action }}
       {{- with .Regex }}
       regex: {{ . }}
       {{- end }}
-      {{- with .Attributes }}
+      {{- with .Names }}
       attributes:
       {{- range . }}
       - {{ . }}
@@ -272,11 +267,11 @@ limits_config:
     {{- with .LogAttributes }}
     log_attributes:
     {{- range . }}
-    - action: {{ .Action.Value }}
+    - action: {{ .Action }}
       {{- with .Regex }}
       regex: {{ . }}
       {{- end }}
-      {{- with .Attributes }}
+      {{- with .Names }}
       attributes:
       {{- range . }}
       - {{ . }}

@@ -625,6 +625,8 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 		switch typ {
 		case jsonparser.Null:
 			lbs.Set(ParsedLabel, key, "")
+		case jsonparser.Object:
+			lbs.Set(ParsedLabel, key, string(data))
 		default:
 			lbs.Set(ParsedLabel, key, unescapeJSONString(data))
 		}

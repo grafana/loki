@@ -3,7 +3,6 @@ package builder
 import (
 	"context"
 	"fmt"
-	"io"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -17,28 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
-
-// inclusive range
-type Keyspace struct {
-	min, max model.Fingerprint
-}
-
-func (k Keyspace) Cmp(other Keyspace) v1.BoundsCheck {
-	if other.max < k.min {
-		return v1.Before
-	} else if other.min > k.max {
-		return v1.After
-	}
-	return v1.Overlap
-}
-
-// Store is likely bound within. This allows specifying impls like ShardedStore<Store>
-// to only request the shard-range needed from the existing store.
-type BloomGenerator interface {
-	Generate(ctx context.Context) (skippedBlocks []v1.BlockMetadata, toClose []io.Closer, results iter.Iterator[*v1.Block], err error)
-}
 
 // Simple implementation of a BloomGenerator.
 type SimpleBloomGenerator struct {
@@ -245,12 +223,6 @@ func (b *LazyBlockBuilderIterator) At() *v1.Block {
 
 func (b *LazyBlockBuilderIterator) Err() error {
 	return b.err
-}
-
-// IndexLoader loads an index. This helps us do things like
-// load TSDBs for a specific period excluding multitenant (pre-compacted) indices
-type indexLoader interface {
-	Index() (tsdb.Index, error)
 }
 
 // ChunkItersByFingerprint models the chunks belonging to a fingerprint

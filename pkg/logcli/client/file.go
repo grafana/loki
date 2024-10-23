@@ -207,7 +207,7 @@ func (f *FileClient) GetVolumeRange(_ *volume.Query) (*loghttp.QueryResponse, er
 }
 
 func (f *FileClient) GetDetectedFields(
-	_ string,
+	_, _ string,
 	_, _ int,
 	_, _ time.Time,
 	_ time.Duration,
