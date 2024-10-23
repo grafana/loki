@@ -102,6 +102,10 @@ type LokiStore struct {
 	metricsNamespace string
 }
 
+func (l *LokiStore) SelectVariants(_ context.Context, _ logql.SelectVariantsParams) (iter.VariantsIterator, error) {
+  panic("TODO(twhitney): SelectVariants not implemented on LokiStore") // TODO: Implement
+}
+
 // NewStore creates a new Loki Store using configuration supplied.
 func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.SchemaConfig,
 	limits StoreLimits, clientMetrics ClientMetrics, registerer prometheus.Registerer, logger log.Logger,

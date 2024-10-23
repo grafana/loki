@@ -76,6 +76,7 @@ import (
   VariantsList            []SampleExpr
   VariantsOp              string
   VariantsOf              string
+  VariantsRangeExpr       *LogRange
 }
 
 %start root
@@ -140,6 +141,7 @@ import (
 %type <VariantsList>          variantsList
 %type <VariantsOp>            variantsOp
 %type <VariantsOf>            variantsOf
+%type <VariantsRangeExpr>     variantsRangeExpr
 
 %token <bytes> BYTES
 %token <str>      IDENTIFIER STRING NUMBER PARSER_FLAG
@@ -184,22 +186,6 @@ logExpr:
       selector                                    { $$ = newMatcherExpr($1)}
     | selector pipelineExpr                       { $$ = newPipelineExpr(newMatcherExpr($1), $2)}
     | OPEN_PARENTHESIS logExpr CLOSE_PARENTHESIS  { $$ = $2 }
-    ;
-
-variantsExpr:
-      variantsOp OPEN_PARENTHESIS variantsList CLOSE_PARENTHESIS variantsOf OPEN_PARENTHESIS logExpr CLOSE_PARENTHESIS { $$ = newVariantsExpr($3, $7) }
-    ;
-
-variantsOp:
-    VARIANTS { $$ = OpVariants }
-    ;
-variantsOf:
-    OF { $$ = VariantsOf }
-    ;
-
-variantsList:
-      metricExpr                         { $$ = []SampleExpr{$1} }
-    | variantsList COMMA metricExpr      { $$ = append($1, $3) }
     ;
 
 logRangeExpr:
@@ -607,5 +593,36 @@ grouping:
     | WITHOUT OPEN_PARENTHESIS labels CLOSE_PARENTHESIS   { $$ = &Grouping{ Without: true , Groups: $3 } }
     | BY OPEN_PARENTHESIS CLOSE_PARENTHESIS               { $$ = &Grouping{ Without: false , Groups: nil } }
     | WITHOUT OPEN_PARENTHESIS CLOSE_PARENTHESIS          { $$ = &Grouping{ Without: true , Groups: nil } }
+    ;
+
+variantsExpr:
+      variantsOp OPEN_PARENTHESIS variantsList CLOSE_PARENTHESIS variantsOf OPEN_PARENTHESIS variantsRangeExpr CLOSE_PARENTHESIS { $$ = newVariantsExpr($3, $7) }
+    ;
+
+variantsOp:
+      VARIANTS { $$ = OpVariants }
+    ;
+variantsOf:
+      OF { $$ = VariantsOf }
+    ;
+
+variantsList:
+      metricExpr                         { $$ = []SampleExpr{$1} }
+    | variantsList COMMA metricExpr      { $$ = append($1, $3) }
+    ;
+
+variantsRangeExpr:
+      selector RANGE                                                                        { $$ = newLogRange(newMatcherExpr($1), $2, nil, nil ) }
+    | selector RANGE offsetExpr                                                             { $$ = newLogRange(newMatcherExpr($1), $2, nil, $3 ) }
+    | OPEN_PARENTHESIS selector CLOSE_PARENTHESIS RANGE                                     { $$ = newLogRange(newMatcherExpr($2), $4, nil, nil ) }
+    | OPEN_PARENTHESIS selector CLOSE_PARENTHESIS RANGE offsetExpr                          { $$ = newLogRange(newMatcherExpr($2), $4, nil, $5 ) }
+    | selector pipelineExpr RANGE                                                           { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $2), $3, nil, nil ) }
+    | selector pipelineExpr RANGE offsetExpr                                                { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $2), $3, nil, $4 ) }
+    | OPEN_PARENTHESIS selector pipelineExpr CLOSE_PARENTHESIS RANGE                        { $$ = newLogRange(newPipelineExpr(newMatcherExpr($2), $3), $5, nil, nil ) }
+    | OPEN_PARENTHESIS selector pipelineExpr CLOSE_PARENTHESIS RANGE offsetExpr             { $$ = newLogRange(newPipelineExpr(newMatcherExpr($2), $3), $5, nil, $6 ) }
+    | selector RANGE pipelineExpr                                                           { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $3), $2, nil, nil) }
+    | selector RANGE offsetExpr pipelineExpr                                                { $$ = newLogRange(newPipelineExpr(newMatcherExpr($1), $4), $2, nil, $3 ) }
+    | OPEN_PARENTHESIS variantsRangeExpr CLOSE_PARENTHESIS                                       { $$ = $2 }
+    | variantsRangeExpr error
     ;
 %%

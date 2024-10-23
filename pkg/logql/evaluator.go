@@ -257,6 +257,7 @@ func Sortable(q Params) (bool, error) {
 type EvaluatorFactory interface {
 	SampleEvaluatorFactory
 	EntryEvaluatorFactory
+	VariantEvaluatorFactory
 }
 
 type SampleEvaluatorFactory interface {
@@ -317,6 +318,24 @@ func (ev *DefaultEvaluator) NewIterator(ctx context.Context, expr syntax.LogSele
 	}
 
 	return ev.querier.SelectLogs(ctx, params)
+}
+
+type VariantEvaluatorFactory interface {
+	NewVariantsStepEvaluator(
+		ctx context.Context,
+		expr syntax.VariantsExpr,
+		p Params,
+	) (StepEvaluator, error)
+}
+
+type VariantsEvaluatorFunc func(ctx context.Context, expr syntax.VariantsExpr, p Params) (StepEvaluator, error)
+
+func (s VariantsEvaluatorFunc) NewVariantsStepEvaluator(
+	ctx context.Context,
+	expr syntax.VariantsExpr,
+	p Params,
+) (StepEvaluator, error) {
+	return s(ctx, expr, p)
 }
 
 func (ev *DefaultEvaluator) NewStepEvaluator(
@@ -383,6 +402,48 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 			return nil, err
 		}
 		return newVectorIterator(val, q.Step().Milliseconds(), q.Start().UnixMilli(), q.End().UnixMilli()), nil
+	default:
+		return nil, EvaluatorUnsupportedType(e, ev)
+	}
+}
+
+func (ev *DefaultEvaluator) NewVariantsStepEvaluator(
+	ctx context.Context,
+	expr syntax.VariantsExpr,
+	q Params,
+) (StepEvaluator, error) {
+	switch e := expr.(type) {
+	//TODO(twhitney): how do we handle range aggregations??
+	//TODO(twhitney): do we need to enforce that the variants have the same range?
+	//TODO(twhitney): going to need to handle merging aggregations (ie sum() by)
+	case *syntax.MultiVariantExpr:
+		logRange := e.LogRange()
+		variants := make([]string, 0, len(e.Variants()))
+		for _, variant := range e.Variants() {
+			variants = append(variants, variant.String())
+		}
+
+		it, err := ev.querier.SelectVariants(ctx, SelectVariantsParams{
+			&logproto.VariantsQueryRequest{
+				// extend startTs backwards by step
+				Start: q.Start().Add(-logRange.Interval).Add(-logRange.Offset),
+				// add leap nanosecond to endTs to include lines exactly at endTs. range iterators work on start exclusive, end inclusive ranges
+				End: q.End().Add(-logRange.Offset).Add(time.Nanosecond),
+				// intentionally send the vector for reducing labels.
+				Selector: logRange.String(),
+				Variants: variants,
+				Shards:   q.Shards(),
+				Plan: &plan.QueryPlan{
+					AST: expr,
+				},
+				StoreChunks: q.GetStoreChunks(),
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+		//TODO(twhitney): do we need a peeking iterator here?
+		return newVariantsEvaluator(it, e, q, e.LogRange().Offset)
 	default:
 		return nil, EvaluatorUnsupportedType(e, ev)
 	}
@@ -1336,4 +1397,41 @@ func absentLabels(expr syntax.SampleExpr) (labels.Labels, error) {
 		m = labels.NewBuilder(m).Del(v).Labels()
 	}
 	return m, nil
+}
+
+type VariantsEvaluator struct {
+	iter iter.VariantsIterator
+
+	err error
+}
+
+// while Next returns a promql.Value, the only acceptable types are Scalar and Vector.
+func (v *VariantsEvaluator) Next() (ok bool, ts int64, r StepResult) {
+	panic("not implemented") // TODO: Implement
+}
+
+// Close all resources used.
+func (v *VariantsEvaluator) Close() error {
+	panic("not implemented") // TODO: Implement
+}
+
+// Reports any error
+func (v *VariantsEvaluator) Error() error {
+	panic("not implemented") // TODO: Implement
+}
+
+// Explain returns a print of the step evaluation tree
+func (v *VariantsEvaluator) Explain(_ Node) {
+	panic("not implemented") // TODO: Implement
+}
+
+func newVariantsEvaluator(
+	it iter.VariantsIterator,
+	expr *syntax.MultiVariantExpr,
+	q Params,
+	o time.Duration,
+) (StepEvaluator, error) {
+	return &VariantsEvaluator{
+		iter: it,
+	}, nil
 }

@@ -728,6 +728,10 @@ type querierMock struct {
 	util.ExtendedMock
 }
 
+func (q *querierMock) SelectVariants(_ context.Context, _ logql.SelectVariantsParams) (iter.VariantsIterator, error) {
+  panic("TODO(twhitney): SelectVariants not implemented on querierMock") // TODO: Implement
+}
+
 func newQuerierMock() *querierMock {
 	return &querierMock{}
 }

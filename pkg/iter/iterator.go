@@ -8,7 +8,7 @@ import (
 )
 
 type logprotoType interface {
-	logproto.Entry | logproto.Sample
+	logproto.Entry | logproto.Sample | logproto.Variants
 }
 
 type StreamIterator[T logprotoType] interface {
@@ -22,6 +22,7 @@ type StreamIterator[T logprotoType] interface {
 
 type EntryIterator StreamIterator[logproto.Entry]
 type SampleIterator StreamIterator[logproto.Sample]
+type VariantsIterator StreamIterator[logproto.Variants]
 
 // noOpIterator implements StreamIterator
 type noOpIterator[T logprotoType] struct{}
@@ -35,6 +36,7 @@ func (noOpIterator[T]) Close() error       { return nil }
 
 var NoopEntryIterator = noOpIterator[logproto.Entry]{}
 var NoopSampleIterator = noOpIterator[logproto.Sample]{}
+var NoopVariantsIterator = noOpIterator[logproto.Variants]{}
 
 // errorIterator implements StreamIterator
 type errorIterator[T logprotoType] struct{}
@@ -48,3 +50,4 @@ func (errorIterator[T]) Close() error       { return errors.New("close") }
 
 var ErrorEntryIterator = errorIterator[logproto.Entry]{}
 var ErrorSampleIterator = errorIterator[logproto.Sample]{}
+var ErrorVariantsIterator = errorIterator[logproto.Variants]{}

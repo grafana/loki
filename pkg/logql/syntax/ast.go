@@ -2441,32 +2441,60 @@ func groupingReducesLabels(grp *Grouping) bool {
 //
 //sumtype:decl
 type VariantsExpr interface {
-	LogSelector() LogSelectorExpr
+	LogRange() *LogRange
 	Matchers() []*labels.Matcher
 	Variants() []SampleExpr
+	SetVariant(i int, e SampleExpr) error
+	Interval() time.Duration
+	Offset() time.Duration
 	Expr
 }
 
 type MultiVariantExpr struct {
-	logSelector LogSelectorExpr
+	logRange *LogRange
 	variants    []SampleExpr
 	implicit
 }
 
-func (m *MultiVariantExpr) LogSelector() LogSelectorExpr {
-	return m.logSelector
+func (m *MultiVariantExpr) LogRange() *LogRange {
+	return m.logRange
+}
+
+func (m *MultiVariantExpr) SetLogSelector(e *LogRange) {
+	m.logRange = e
 }
 
 func (m *MultiVariantExpr) Matchers() []*labels.Matcher {
-	return m.logSelector.Matchers()
+	return m.logRange.Left.Matchers()
+}
+
+func (m *MultiVariantExpr) Interval() time.Duration {
+	return m.logRange.Interval
+}
+
+func (m *MultiVariantExpr) Offset() time.Duration {
+	return m.logRange.Offset
 }
 
 func (m *MultiVariantExpr) Variants() []SampleExpr {
 	return m.variants
 }
 
+func (m *MultiVariantExpr) AddVariant(v SampleExpr) {
+	m.variants = append(m.variants, v)
+}
+
+func (m *MultiVariantExpr) SetVariant(i int, v SampleExpr) error {
+	if i >= len(m.variants) {
+		return fmt.Errorf("variant index out of range")
+	}
+
+	m.variants[i] = v
+	return nil
+}
+
 func (m *MultiVariantExpr) Shardable(topLevel bool) bool {
-	if !m.logSelector.Shardable(topLevel) {
+	if !m.logRange.Shardable(topLevel) {
 		return false
 	}
 
@@ -2497,7 +2525,7 @@ func (m *MultiVariantExpr) String() string {
 
 	sb.WriteString(VariantsOf)
 	sb.WriteString(" (")
-	sb.WriteString(m.logSelector.String())
+	sb.WriteString(m.logRange.String())
 	sb.WriteString(")")
 
 	return sb.String()
@@ -2506,11 +2534,7 @@ func (m *MultiVariantExpr) String() string {
 // TDOO(twhitney): do the sample expressions also need to accept the root vistor?
 // is there a way to test this?
 func (m *MultiVariantExpr) Accept(v RootVisitor) {
-	for _, variant := range m.variants {
-		variant.Accept(v)
-	}
-
-	m.logSelector.Accept(v)
+	v.VisitVariants(m)
 }
 
 // Pretty prettyfies any LogQL expression at given `level` of the whole LogQL query.
@@ -2534,15 +2558,15 @@ func (m *MultiVariantExpr) Pretty(level int) string {
 	}
 
 	s += Indent(level) + ") of (\n"
-	s += m.logSelector.Pretty(level + 1)
+	s += m.logRange.Pretty(level + 1)
 	s += Indent(level) + "\n)"
 
 	return s
 }
 
-func newVariantsExpr(variants []SampleExpr, selector LogSelectorExpr) VariantsExpr {
+func newVariantsExpr(variants []SampleExpr, logRange *LogRange) VariantsExpr {
 	return &MultiVariantExpr{
 		variants:    variants,
-		logSelector: selector,
+		logRange: logRange,
 	}
 }

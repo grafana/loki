@@ -417,6 +417,10 @@ type DownstreamEvaluator struct {
 	defaultEvaluator EvaluatorFactory
 }
 
+func (d *DownstreamEvaluator) NewVariantsStepEvaluator(ctx context.Context, expr syntax.VariantsExpr, p Params) (StepEvaluator, error) {
+	panic("TODO(twhitney): NewVariantStepEvaluator hasn't been implemented on DownstreamEvaluator") // TODO: Implement
+}
+
 // Downstream runs queries and collects stats from the embedded Downstreamer
 func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []DownstreamQuery, acc Accumulator) ([]logqlmodel.Result, error) {
 	results, err := ev.Downstreamer.Downstream(ctx, queries, acc)
@@ -451,6 +455,10 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 }
 
 type errorQuerier struct{}
+
+func (e *errorQuerier) SelectVariants(_ context.Context, _ SelectVariantsParams) (iter.VariantsIterator, error) {
+	panic("TODO(twhitney): SelectorVariants not implemented on errorQuerier") // TODO: Implement
+}
 
 func (errorQuerier) SelectLogs(_ context.Context, _ SelectLogParams) (iter.EntryIterator, error) {
 	return nil, errors.New("SelectLogs unimplemented: the query-frontend cannot evaluate an expression that selects logs. this is likely a bug in the query engine. please contact your system operator")

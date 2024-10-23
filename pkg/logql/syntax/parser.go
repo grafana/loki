@@ -127,7 +127,7 @@ func validateExpr(expr Expr) error {
 }
 
 func validateVariantsExpr(e VariantsExpr) error {
-	err := validateLogSelectorExpression(e.LogSelector())
+	err := validateLogSelectorExpression(e.LogRange().Left)
 	if err != nil {
 		return err
 	}

@@ -38,6 +38,10 @@ type MockQuerier struct {
 	streams []logproto.Stream
 }
 
+func (q MockQuerier) SelectVariants(_ context.Context, _ SelectVariantsParams) (iter.VariantsIterator, error) {
+	panic("TODO(twhitney): SelectVariants not implemented on MockQuerier") // TODO: Implement
+}
+
 func (q MockQuerier) extractOldShard(xs []string) (*index.ShardAnnotation, error) {
 	parsed, version, err := ParseShards(xs)
 	if err != nil {

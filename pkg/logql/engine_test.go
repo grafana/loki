@@ -2273,6 +2273,10 @@ func TestEngine_RangeQuery(t *testing.T) {
 
 type statsQuerier struct{}
 
+func (s *statsQuerier) SelectVariants(_ context.Context, _ SelectVariantsParams) (iter.VariantsIterator, error) {
+	panic("TODO(twhitney): SelectVariants not implemented on statsQuerier") // TODO: Implement
+}
+
 func (statsQuerier) SelectLogs(ctx context.Context, _ SelectLogParams) (iter.EntryIterator, error) {
 	st := stats.FromContext(ctx)
 	st.AddDecompressedBytes(1)
@@ -2302,6 +2306,10 @@ func TestEngine_Stats(t *testing.T) {
 }
 
 type metaQuerier struct{}
+
+func (m *metaQuerier) SelectVariants(_ context.Context, _ SelectVariantsParams) (iter.VariantsIterator, error) {
+	panic("TODO(twhitney): SelecttVariants not implemented on metaQuerier") // TODO: Implement
+}
 
 func (metaQuerier) SelectLogs(ctx context.Context, _ SelectLogParams) (iter.EntryIterator, error) {
 	_ = metadata.JoinHeaders(ctx, []*definitions.PrometheusResponseHeader{
@@ -2363,6 +2371,10 @@ func TestEngine_LogsInstantQuery_Vector(t *testing.T) {
 type errorIteratorQuerier struct {
 	samples func() []iter.SampleIterator
 	entries func() []iter.EntryIterator
+}
+
+func (e *errorIteratorQuerier) SelectVariants(_ context.Context, _ SelectVariantsParams) (iter.VariantsIterator, error) {
+	panic("TODO(twhitney): SelectVariants not implemented on errorIteratorQuerier") // TODO: Implement
 }
 
 func (e errorIteratorQuerier) SelectLogs(_ context.Context, p SelectLogParams) (iter.EntryIterator, error) {
@@ -2627,9 +2639,14 @@ func TestHashingStability(t *testing.T) {
 func TestUnexpectedEmptyResults(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "fake")
 
-	mock := &mockEvaluatorFactory{SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params) (StepEvaluator, error) {
-		return EmptyEvaluator[SampleVector]{value: nil}, nil
-	})}
+	mock := &mockEvaluatorFactory{
+		SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params) (StepEvaluator, error) {
+			return EmptyEvaluator[SampleVector]{value: nil}, nil
+		}),
+		VariantsEvaluatorFunc(func(context.Context, syntax.VariantsExpr, Params) (StepEvaluator, error) {
+			panic("TODO(twhitney): unimplemented mock VariantsEvaluatorFactory")
+		}),
+	}
 
 	eng := NewEngine(EngineOpts{}, nil, NoLimits, log.NewNopLogger())
 	params, err := NewLiteralParams(`first_over_time({a=~".+"} | logfmt | unwrap value [1s])`, time.Now(), time.Now(), 0, 0, logproto.BACKWARD, 0, nil, nil)
@@ -2643,6 +2660,7 @@ func TestUnexpectedEmptyResults(t *testing.T) {
 
 type mockEvaluatorFactory struct {
 	SampleEvaluatorFactory
+	VariantEvaluatorFactory
 }
 
 func (*mockEvaluatorFactory) NewIterator(context.Context, syntax.LogSelectorExpr, Params) (iter.EntryIterator, error) {
@@ -2682,6 +2700,10 @@ type querierRecorder struct {
 	streams map[string][]logproto.Stream
 	series  map[string][]logproto.Series
 	match   bool
+}
+
+func (q *querierRecorder) SelectVariants(_ context.Context, _ SelectVariantsParams) (iter.VariantsIterator, error) {
+	panic("TODO(twhitney): SelectVariants not implemented on querierRecorder") // TODO: Implement
 }
 
 func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *querierRecorder {

@@ -7,6 +7,7 @@ type AcceptVisitor interface {
 type RootVisitor interface {
 	SampleExprVisitor
 	LogSelectorExprVisitor
+	VariantExprVisitor
 	StageExprVisitor
 
 	VisitLogRange(*LogRange)
@@ -26,6 +27,10 @@ type LogSelectorExprVisitor interface {
 	VisitPipeline(*PipelineExpr)
 	VisitLiteral(*LiteralExpr)
 	VisitVector(*VectorExpr)
+}
+
+type VariantExprVisitor interface {
+	VisitVariants(*MultiVariantExpr)
 }
 
 type StageExprVisitor interface {
@@ -65,6 +70,10 @@ type DepthFirstTraversal struct {
 	VisitRangeAggregationFn       func(v RootVisitor, e *RangeAggregationExpr)
 	VisitVectorFn                 func(v RootVisitor, e *VectorExpr)
 	VisitVectorAggregationFn      func(v RootVisitor, e *VectorAggregationExpr)
+}
+
+func (d *DepthFirstTraversal) VisitVariants(_ *MultiVariantExpr) {
+	panic("not implemented") // TODO: Implement
 }
 
 // VisitBinOp implements RootVisitor.
