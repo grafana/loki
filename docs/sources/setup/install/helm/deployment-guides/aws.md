@@ -7,11 +7,11 @@ keywords:
 
 # Deploy the Loki Helm chart on AWS
 
-This guide shows how to deploy a minimally viable Loki in either **microservice** or **monolithic** mode on AWS using the Helm chart. To run through this guide, we expect you to have the necessary tools and permissions to deploy resources on AWS, such as:
+This guide shows how to deploy a minimally viable Loki in either **microservice** mode on AWS using the Helm chart. To run through this guide, we expect you to have the necessary tools and permissions to deploy resources on AWS, such as:
 
 - Full access to EKS (Amazon Elastic Kubernetes Service)
 - Full access to S3 (Amazon Simple Storage Service)
-- Sufficient permissions to create IAM roles and policies
+- Sufficient permissions to create IAM (Identity Access Management) roles and policies
 
 There are two methods for authenticating and connecting Loki to AWS S3. We will guide you through the recommended method of granting access via an IAM role.
 
@@ -81,10 +81,13 @@ The following plugins are also required to be installed within the EKS cluster:
 
 You must also install an **OIDC (OpenID Connect) provider** on the EKS cluster. This is required for the IAM roles and policies to work correctly. If you are using EKSctl, you can install the OIDC provider using the following command:
 
+{{< admonition type="tip" >}}
+If you used the above EKSctl configuration file to create the cluster, you do not need to run this command. The OIDC provider is automatically installed.
+{{< /admonition >}}
+
 ```bash
 eksctl utils associate-iam-oidc-provider --cluster loki --approve
 ```
-**This may be installed by default when creating the EKS cluster using EKSctl and the above config.**
 
 ## Create three S3 buckets
 
@@ -94,25 +97,21 @@ eksctl utils associate-iam-oidc-provider --cluster loki --approve
 
 Before deploying Loki, you need to create two S3 buckets; one to store logs (chunks), the second to store alert rules. You can create the bucket using the AWS Management Console or the AWS CLI. The bucket name must be globally unique.
 
-{{<admonition type="note">}}
+{{< admonition type="note" >}}
 GEL customers will require a third bucket to store the admin data. This bucket is not required for OSS users.
-{{</admonition>}}
+{{< /admonition >}}
 
 ```bash
 aws s3api create-bucket --bucket  <Your S3 bucket eg. `loki-aws-dev-chunks`> --region <S3 region your account is on, eg `eu-west-2`> --create-bucket-configuration LocationConstraint=<S3 region your account is on, eg `eu-west-2`> \
 aws s3api create-bucket --bucket  <Your S3 bucket eg. `loki-aws-dev-ruler`> --region <S3 region your account is on, eg `eu-west-2`> --create-bucket-configuration LocationConstraint=<S3 region your account is on, eg `eu-west-2`>
 ```
-Make sure to replace the region and bucket name with your desired values. We will revisit the bucket policy later in this guide.
-
-
+Make sure to replace the `region` and `bucket` name with your desired values. We will revisit the bucket policy later in this guide.
 
 ## Defining IAM roles and policies
 
 The recommended method for connecting Loki to AWS S3 is to use an IAM role. This method is more secure than using access keys and secret keys which are directly stored in the Loki configuration. The role and policy can be created using the AWS CLI or the AWS Management Console. The below steps show how to create the role and policy using the AWS CLI.
 
-{{< admonition type="tip" >}}
-Create a new directory and navigate to it. Make sure to create the files in this directory. All commands in this guide assume you are in this directory.
-{{< /admonition >}}
+1. Create a new directory and navigate to it. Make sure to create the files in this directory. All commands in this guide assume you are in this directory.
 
 1. Create a `loki-s3-policy.json` file with the following content:
 
@@ -142,13 +141,13 @@ Create a new directory and navigate to it. Make sure to create the files in this
 
     **Make sure to replace the placeholder with the name of the buckets you created earlier.**
 
-1. Create the IAM policy using the AWS CLI:
-
+2. Create the IAM policy using the AWS CLI:
+    **Make sure to replace the placeholders with the names of the buckets you created earlier.**
     ```bash
     aws iam create-policy --policy-name LokiS3AccessPolicy --policy-document file://loki-s3-policy.json
     ```
 
-1. Create a trust policy document named `trust-policy.json` with the following content:
+3. Create a trust policy document named `trust-policy.json` with the following content:
 
     ```json
     {
@@ -172,13 +171,13 @@ Create a new directory and navigate to it. Make sure to create the files in this
     ```
    **Make sure to replace the placeholders with your AWS account ID, region, and the OIDC ID (you can find this in the EKS cluster configuration).**
 
-1. Create the IAM role using the AWS CLI:
+4. Create the IAM role using the AWS CLI:
 
     ```bash
     aws iam create-role --role-name LokiServiceAccountRole --assume-role-policy-document file://trust-policy.json
     ```
 
-1. Attach the policy to the role:
+5. Attach the policy to the role:
 
     ```bash
     aws iam attach-role-policy --role-name LokiServiceAccountRole --policy-arn arn:aws:iam::<Account ID>:policy/LokiS3AccessPolicy
@@ -277,10 +276,10 @@ Before we can deploy the Loki Helm chart, we need to add the Grafana chart repos
     ```
 ### Loki Basic Authentication
 
-Loki by default does not come with any authentication. Since we will be deploying Loki to AWS and exposing the gateway to the internet, we recommend adding atleast basic authentication. In this guide we will give Loki a username and password:
+Loki by default does not come with any authentication. Since we will be deploying Loki to AWS and exposing the gateway to the internet, we recommend adding at least basic authentication. In this guide we will give Loki a username and password:
 
 1. To start we will need create a `.htpasswd` file with the username and password. You can use the `htpasswd` command to create the file:
-   
+
    {{< admonition type="tip" >}}
     If you don't have the `htpasswd` command installed, you can install it using `brew` or `apt-get` or `yum` depending on your OS.
    {{< /admonition >}}
@@ -304,8 +303,6 @@ Loki by default does not come with any authentication. Since we will be deployin
 
 Create a `values.yaml` file choosing the configuration options that best suit your requirements. Below there are two examples of `values.yaml` files for the Loki Helm chart. The first template is Loki in [microservices](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) mode the second is Loki in [monolithic](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode) mode with a replication factor of 3. The rest of this guide will focus on deploying Loki in microservices mode. However, there is no difference in the deployment process between the two modes apart from the components you are deploying.
 
-{{< collapse title="Distributed" >}}
-
 ```yaml
  loki:
    schemaConfig:
@@ -319,8 +316,8 @@ Create a `values.yaml` file choosing the configuration options that best suit yo
            period: 24h
    storage_config:
      aws:
-       region: <Insert s3 bucket region> # eu-west-2
-       bucketnames: <Insert s3 bucket name> # Your actual S3 bucket name (loki-aws-dev-chunks)
+       region: <Insert s3 bucket region> # for example, eu-west-2  
+       bucketnames: <Insert s3 bucket name> # Your actual S3 bucket name, for example, loki-aws-dev-chunks
        s3forcepathstyle: false
    ingester:
        chunk_encoding: snappy
@@ -338,8 +335,8 @@ Create a `values.yaml` file choosing the configuration options that best suit yo
     storage:
       type: s3
       s3:
-        region: <Insert s3 bucket region> # eu-west-2
-        bucketnames: <Insert s3 bucket name> # Your actual S3 bucket name (loki-aws-dev-ruler)
+        region: <Insert s3 bucket region> # for example, eu-west-2
+        bucketnames: <Insert s3 bucket name> # Your actual S3 bucket name, for example, loki-aws-dev-ruler
         s3forcepathstyle: false
       alertmanager_url: http://prom:9093 # The URL of the Alertmanager to send alerts (Prometheus, Mimir, etc.)
 
@@ -437,114 +434,6 @@ Create a `values.yaml` file choosing the configuration options that best suit yo
     replicas: 0
  
 ```
-{{< /collapse >}}
-
-{{< collapse title="Monolithic" >}}
-
-```yaml
-loki:
-  commonConfig:
-    replication_factor: 3
-  schemaConfig:
-    configs:
-      - from: 2024-04-01
-        store: tsdb
-        object_store: s3
-        schema: v13
-        index:
-          prefix: loki_index_
-          period: 24h
-  storage_config:
-    aws:
-      region: <Insert s3 bucket region> # eu-west-2
-      bucketnames: <Insert s3 bucket name> # Your actual S3 bucket name for chunks
-      s3forcepathstyle: false
-  pattern_ingester:
-      enabled: true
-  limits_config:
-    allow_structured_metadata: true
-    volume_enabled: true
-    retention_period: 672h # 28 days retention
-  compactor:
-    retention_enabled: true 
-    delete_request_store: s3
-  ruler:
-    enable_api: true
-    storage:
-      type: s3
-      s3:
-        region: <Insert s3 bucket region> # eu-west-2
-        bucketnames: <Insert s3 bucket name> # Your actual S3 bucket name for ruler
-        s3forcepathstyle: false
-    alertmanager_url: http://prom:9093 # The URL of the Alertmanager to send alerts (Prometheus, Mimir, etc.)
-    
-  storage:
-    type: s3
-    bucketNames:
-       chunks: "<Insert s3 bucket name>" # Your actual S3 bucket name (loki-aws-dev-chunks)
-       ruler: "<Insert s3 bucket name>" # Your actual S3 bucket name (loki-aws-dev-ruler)
-       # admin: "<Insert s3 bucket name>" # Your actual S3 bucket name (loki-aws-dev-admin) - GEL customers only
-    s3:
-      region: <Insert s3 bucket region> # eu-west-2
-      #insecure: false
-     # s3forcepathstyle: false
-      
-
-serviceAccount:
-  create: true
-  annotations:
-    "eks.amazonaws.com/role-arn": "arn:aws:iam::182399686258:role/LokiServiceAccountRole" # The service role you created
-
-deploymentMode: SingleBinary
-
-
-# This exposes the Loki gateway so it can be written to and queried externaly
-gateway:
-  service:
-    type: LoadBalancer
-  basicAuth: 
-      enabled: true
-      existingSecret: loki-basic-auth
-
-
-singleBinary:
-  replicas: 3
-  persistence:
-    storageClass: gp2
-    accessModes:
-      - ReadWriteOnce
-    size: 30Gi
-
-# Zero out replica counts of other deployment modes
-backend:
-  replicas: 0
-read:
-  replicas: 0
-write:
-  replicas: 0
-
-ingester:
-  replicas: 0
-querier:
-  replicas: 0
-queryFrontend:
-  replicas: 0
-queryScheduler:
-  replicas: 0
-distributor:
-  replicas: 0
-compactor:
-  replicas: 0
-indexGateway:
-  replicas: 0
-bloomCompactor:
-  replicas: 0
-bloomGateway:
-  replicas: 0
-
-```
-
-{{< /collapse >}}
 
 {{< admonition type="caution" >}}
 Make sure to replace the placeholders with your actual values.
@@ -694,7 +583,7 @@ k6 is one of the fastest way to test your Loki deployment. This will allow you t
       iterations: 10,
     };
 
-    /**
+    **It is important to create a namespace called `loki` as our trust policy is set to allow the IAM role to be used by the `loki` service account in the `loki` namespace. This is configurable but make sure to update your service account.**
     * "main" function for each VU iteration
     */
     export default () => {
@@ -754,7 +643,7 @@ k6 is one of the fastest way to test your Loki deployment. This will allow you t
 
 - **Guide:** Note that this guide was **last updated on 21st October 2024**. As cloud providers frequently update their services and offerings, some steps in this guide may need adjustments over time.
 
-## Next steps
+k6 is one of the fastest ways to test your Loki deployment. This will allow you to both write and query logs to Loki. To get started with k6, follow the steps below:
 
 Now that you have successfully deployed Loki in microservices mode on AWS, you may wish to explore the following:
 

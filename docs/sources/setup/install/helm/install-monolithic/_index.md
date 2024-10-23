@@ -27,7 +27,7 @@ Once you have selected choose the appropriate `values.yaml` configuration file b
   
 ### Single Replica
 
-The default Helm chart deploys the following components:
+Deploying the Helm chart with a single replica deploys the following components:
 - Loki (1 replica)
 - Loki Canary (1 DaemonSet)
 - Loki Gateway (1 NGINX replica)
@@ -105,7 +105,7 @@ In this configuration, we are deploying Loki with MinIO as the object storage. W
 
 ### Multiple Replicas
 
-The default Helm chart deploys the following components:
+Deploying the Helm chart with multiple replicas deploys the following components:
 - Loki (3 replicas)
 - Loki Canary (1 DaemonSet)
 - Loki Gateway (1 NGINX replica)
