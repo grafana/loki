@@ -348,6 +348,7 @@ func (f fakeForSeries) ForSeries(_ context.Context, _ string, ff index.Fingerpri
 				MinTime:  int64(c.From),
 				MaxTime:  int64(c.Through),
 				Checksum: c.Checksum,
+				KB:       100,
 			})
 		}
 

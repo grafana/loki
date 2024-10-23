@@ -61,6 +61,7 @@ const (
 	defaultMaxStructuredMetadataCount = 128
 	defaultBloomBuildMaxBlockSize     = "200MB"
 	defaultBloomBuildMaxBloomSize     = "128MB"
+	defaultBloomTaskTargetChunkSize   = "20GB"
 
 	defaultBlockedIngestionStatusCode = 260 // 260 is a custom status code to indicate blocked ingestion
 )
@@ -207,10 +208,11 @@ type Limits struct {
 	BloomBuildTaskMaxRetries    int           `yaml:"bloom_build_task_max_retries" json:"bloom_build_task_max_retries" category:"experimental"`
 	BloomBuilderResponseTimeout time.Duration `yaml:"bloom_build_builder_response_timeout" json:"bloom_build_builder_response_timeout" category:"experimental"`
 
-	BloomCreationEnabled       bool   `yaml:"bloom_creation_enabled" json:"bloom_creation_enabled" category:"experimental"`
-	BloomPlanningStrategy      string `yaml:"bloom_planning_strategy" json:"bloom_planning_strategy" category:"experimental"`
-	BloomSplitSeriesKeyspaceBy int    `yaml:"bloom_split_series_keyspace_by" json:"bloom_split_series_keyspace_by" category:"experimental"`
-	BloomBlockEncoding         string `yaml:"bloom_block_encoding" json:"bloom_block_encoding" category:"experimental"`
+	BloomCreationEnabled           bool             `yaml:"bloom_creation_enabled" json:"bloom_creation_enabled" category:"experimental"`
+	BloomPlanningStrategy          string           `yaml:"bloom_planning_strategy" json:"bloom_planning_strategy" category:"experimental"`
+	BloomSplitSeriesKeyspaceBy     int              `yaml:"bloom_split_series_keyspace_by" json:"bloom_split_series_keyspace_by" category:"experimental"`
+	BloomTaskTargetSeriesChunkSize flagext.ByteSize `yaml:"bloom_task_target_series_chunk_size" json:"bloom_task_target_series_chunk_size" category:"experimental"`
+	BloomBlockEncoding             string           `yaml:"bloom_block_encoding" json:"bloom_block_encoding" category:"experimental"`
 
 	BloomMaxBlockSize flagext.ByteSize `yaml:"bloom_max_block_size" json:"bloom_max_block_size" category:"experimental"`
 	BloomMaxBloomSize flagext.ByteSize `yaml:"bloom_max_bloom_size" json:"bloom_max_bloom_size" category:"experimental"`
@@ -394,8 +396,10 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	)
 
 	f.BoolVar(&l.BloomCreationEnabled, "bloom-build.enable", false, "Experimental. Whether to create blooms for the tenant.")
-	f.StringVar(&l.BloomPlanningStrategy, "bloom-build.planning-strategy", "split_keyspace_by_factor", "Experimental. Bloom planning strategy to use in bloom creation. Can be one of: 'split_keyspace_by_factor'")
+	f.StringVar(&l.BloomPlanningStrategy, "bloom-build.planning-strategy", "split_keyspace_by_factor", "Experimental. Bloom planning strategy to use in bloom creation. Can be one of: 'split_keyspace_by_factor', 'split_by_series_chunks_size'")
 	f.IntVar(&l.BloomSplitSeriesKeyspaceBy, "bloom-build.split-keyspace-by", 256, "Experimental. Only if `bloom-build.planning-strategy` is 'split'. Number of splits to create for the series keyspace when building blooms. The series keyspace is split into this many parts to parallelize bloom creation.")
+	_ = l.BloomTaskTargetSeriesChunkSize.Set(defaultBloomTaskTargetChunkSize)
+	f.Var(&l.BloomTaskTargetSeriesChunkSize, "bloom-build.split-target-series-chunk-size", fmt.Sprintf("Experimental. Target chunk size in bytes for bloom tasks. Default is %s.", defaultBloomTaskTargetChunkSize))
 	f.IntVar(&l.BloomBuildMaxBuilders, "bloom-build.max-builders", 0, "Experimental. Maximum number of builders to use when building blooms. 0 allows unlimited builders.")
 	f.DurationVar(&l.BloomBuilderResponseTimeout, "bloom-build.builder-response-timeout", 0, "Experimental. Timeout for a builder to finish a task. If a builder does not respond within this time, it is considered failed and the task will be requeued. 0 disables the timeout.")
 	f.IntVar(&l.BloomBuildTaskMaxRetries, "bloom-build.task-max-retries", 3, "Experimental. Maximum number of retries for a failed task. If a task fails more than this number of times, it is considered failed and will not be retried. A value of 0 disables this limit.")
@@ -1013,6 +1017,10 @@ func (o *Overrides) BloomPlanningStrategy(userID string) string {
 
 func (o *Overrides) BloomSplitSeriesKeyspaceBy(userID string) int {
 	return o.getOverridesForUser(userID).BloomSplitSeriesKeyspaceBy
+}
+
+func (o *Overrides) BloomTaskTargetSeriesChunksSizeBytes(userID string) uint64 {
+	return uint64(o.getOverridesForUser(userID).BloomTaskTargetSeriesChunkSize)
 }
 
 func (o *Overrides) BloomBuildMaxBuilders(userID string) int {
