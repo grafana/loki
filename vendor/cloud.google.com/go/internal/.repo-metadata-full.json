@@ -179,6 +179,16 @@
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/apihub/apiv1": {
+    "api_shortname": "apihub",
+    "distribution_name": "cloud.google.com/go/apihub/apiv1",
+    "description": "API hub API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/apihub/latest/apiv1",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/apikeys/apiv2": {
     "api_shortname": "apikeys",
     "distribution_name": "cloud.google.com/go/apikeys/apiv2",
@@ -557,6 +567,16 @@
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigquery/latest/storage/apiv1",
     "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/bigquery/storage/apiv1alpha": {
+    "api_shortname": "bigquerystorage",
+    "distribution_name": "cloud.google.com/go/bigquery/storage/apiv1alpha",
+    "description": "BigQuery Storage API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigquery/latest/storage/apiv1alpha",
+    "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/bigquery/storage/apiv1beta1": {
@@ -1009,6 +1029,16 @@
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/datastore/apiv1": {
+    "api_shortname": "datastore",
+    "distribution_name": "cloud.google.com/go/datastore/apiv1",
+    "description": "Cloud Datastore API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/datastore/latest/apiv1",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/datastream/apiv1": {
     "api_shortname": "datastream",
     "distribution_name": "cloud.google.com/go/datastream/apiv1",
@@ -1329,6 +1359,16 @@
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/gkeconnect/gateway/apiv1": {
+    "api_shortname": "connectgateway",
+    "distribution_name": "cloud.google.com/go/gkeconnect/gateway/apiv1",
+    "description": "Connect Gateway API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/gkeconnect/latest/gateway/apiv1",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/gkeconnect/gateway/apiv1beta1": {
     "api_shortname": "connectgateway",
     "distribution_name": "cloud.google.com/go/gkeconnect/gateway/apiv1beta1",
@@ -1352,7 +1392,7 @@
   "cloud.google.com/go/gkemulticloud/apiv1": {
     "api_shortname": "gkemulticloud",
     "distribution_name": "cloud.google.com/go/gkemulticloud/apiv1",
-    "description": "Anthos Multi-Cloud API",
+    "description": "GKE Multi-Cloud API",
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/gkemulticloud/latest/apiv1",
@@ -1552,7 +1592,7 @@
   "cloud.google.com/go/managedkafka/apiv1": {
     "api_shortname": "managedkafka",
     "distribution_name": "cloud.google.com/go/managedkafka/apiv1",
-    "description": "Apache Kafka for BigQuery API",
+    "description": "Managed Service for Apache Kafka API",
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/managedkafka/latest/apiv1",
@@ -1567,6 +1607,16 @@
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/maps/latest/addressvalidation/apiv1",
     "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/maps/areainsights/apiv1": {
+    "api_shortname": "areainsights",
+    "distribution_name": "cloud.google.com/go/maps/areainsights/apiv1",
+    "description": "Places Insights API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/maps/latest/areainsights/apiv1",
+    "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/maps/fleetengine/apiv1": {

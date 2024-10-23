@@ -1,6 +1,13 @@
 # Changes
 
 
+## [1.2.1](https://github.com/googleapis/google-cloud-go/compare/iam/v1.2.0...iam/v1.2.1) (2024-09-12)
+
+
+### Bug Fixes
+
+* **iam:** Bump dependencies ([2ddeb15](https://github.com/googleapis/google-cloud-go/commit/2ddeb1544a53188a7592046b98913982f1b0cf04))
+
 ## [1.2.0](https://github.com/googleapis/google-cloud-go/compare/iam/v1.1.13...iam/v1.2.0) (2024-08-20)
 
 
