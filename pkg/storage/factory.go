@@ -295,7 +295,7 @@ type Config struct {
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
 	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
 
-	UseThanosObjstore bool          `yaml:"use_thanos_objstore" doc:"hidden`
+	UseThanosObjstore bool          `yaml:"use_thanos_objstore" doc:"hidden"`
 	ObjectStore       bucket.Config `yaml:"object_store" doc:"hidden"`
 
 	MaxChunkBatchSize   int                       `yaml:"max_chunk_batch_size"`
