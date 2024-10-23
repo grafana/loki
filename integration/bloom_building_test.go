@@ -96,8 +96,8 @@ func TestBloomBuilding(t *testing.T) {
 		"-bloom-build.planner.interval=15s",
 		"-bloom-build.planner.min-table-offset=0", // Disable table offset so we process today's data.
 		"-bloom.cache-list-ops=0",                 // Disable cache list operations to avoid caching issues.
-		"-bloom-build.planning-strategy=split_by_chunk_size",
-		"-bloom-build.target-chunk-size=1KB",
+		"-bloom-build.planning-strategy=split_by_series_chunks_size",
+		"-bloom-build.split-target-series-chunk-size=1KB",
 	)
 	require.NoError(t, clu.Run())
 
