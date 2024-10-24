@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/wal"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -269,10 +270,7 @@ func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logp
 	}
 
 	validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(len(pushReqStream.Entries)))
-	bytes := 0
-	for _, e := range pushReqStream.Entries {
-		bytes += len(e.Line)
-	}
+	bytes := util.EntriesTotalSize(pushReqStream.Entries)
 	validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
 	if i.customStreamsTracker != nil {
 		i.customStreamsTracker.DiscardedBytesAdd(ctx, i.instanceID, validation.StreamLimit, labels, float64(bytes))

@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/wal"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -245,15 +246,15 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 			continue
 		}
 
-		lineBytes := len(entries[i].Line)
-		totalBytes += lineBytes
+		entryBytes := util.EntryTotalSize(&entries[i])
+		totalBytes += entryBytes
 
 		now := time.Now()
-		if !rateLimitWholeStream && !s.limiter.AllowN(now, len(entries[i].Line)) {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(lineBytes)}})
+		if !rateLimitWholeStream && !s.limiter.AllowN(now, entryBytes) {
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(entryBytes)}})
 			s.writeFailures.Log(s.tenant, failedEntriesWithError[len(failedEntriesWithError)-1].e)
 			rateLimitedSamples++
-			rateLimitedBytes += lineBytes
+			rateLimitedBytes += entryBytes
 			continue
 		}
 
@@ -263,11 +264,11 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(entries[i].Timestamp, cutoff)})
 			s.writeFailures.Log(s.tenant, fmt.Errorf("%w for stream %s", failedEntriesWithError[len(failedEntriesWithError)-1].e, s.labels))
 			outOfOrderSamples++
-			outOfOrderBytes += lineBytes
+			outOfOrderBytes += entryBytes
 			continue
 		}
 
-		validBytes += lineBytes
+		validBytes += entryBytes
 
 		lastLine.ts = entries[i].Timestamp
 		lastLine.content = entries[i].Line
@@ -287,8 +288,9 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		rateLimitedSamples = len(toStore)
 		failedEntriesWithError = make([]entryWithError, 0, len(toStore))
 		for i := 0; i < len(toStore); i++ {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{toStore[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(toStore[i].Line))}})
-			rateLimitedBytes += len(toStore[i].Line)
+			entryTotalSize := util.EntryTotalSize(toStore[i])
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{toStore[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(entryTotalSize)}})
+			rateLimitedBytes += entryTotalSize
 		}
 	}
 

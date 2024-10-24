@@ -193,7 +193,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, ten
 			stats.StreamLabelsSize += int64(labelsSize(logproto.FromLabelsToLabelAdapters(lbs)))
 		}
 
-		resourceAttributesAsStructuredMetadataSize := labelsSize(resourceAttributesAsStructuredMetadata)
+		resourceAttributesAsStructuredMetadataSize := loki_util.StructuredMetadataSize(resourceAttributesAsStructuredMetadata)
 		retentionPeriodForUser := tenantsRetention.RetentionPeriodFor(userID, lbs)
 
 		stats.StructuredMetadataBytes[retentionPeriodForUser] += int64(resourceAttributesAsStructuredMetadataSize)
@@ -250,7 +250,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, ten
 				})
 			}
 
-			scopeAttributesAsStructuredMetadataSize := labelsSize(scopeAttributesAsStructuredMetadata)
+			scopeAttributesAsStructuredMetadataSize := loki_util.StructuredMetadataSize(scopeAttributesAsStructuredMetadata)
 			stats.StructuredMetadataBytes[retentionPeriodForUser] += int64(scopeAttributesAsStructuredMetadataSize)
 			if tracker != nil {
 				tracker.ReceivedBytesAdd(ctx, userID, retentionPeriodForUser, lbs, float64(scopeAttributesAsStructuredMetadataSize))
@@ -276,7 +276,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, ten
 				stream.Entries = append(stream.Entries, entry)
 				pushRequestsByStream[labelsStr] = stream
 
-				metadataSize := int64(labelsSize(entry.StructuredMetadata) - resourceAttributesAsStructuredMetadataSize - scopeAttributesAsStructuredMetadataSize)
+				metadataSize := int64(loki_util.StructuredMetadataSize(entry.StructuredMetadata) - resourceAttributesAsStructuredMetadataSize - scopeAttributesAsStructuredMetadataSize)
 				stats.StructuredMetadataBytes[retentionPeriodForUser] += metadataSize
 				stats.LogLinesBytes[retentionPeriodForUser] += int64(len(entry.Line))
 

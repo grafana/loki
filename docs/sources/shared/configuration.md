@@ -3260,7 +3260,8 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -distributor.ingestion-rate-limit-strategy
 [ingestion_rate_strategy: <string> | default = "global"]
 
-# Per-user ingestion rate limit in sample size per second. Units in MB.
+# Per-user ingestion rate limit in sample size per second. Sample size includes
+# size of the logs line and the size of structured metadata labels. Units in MB.
 # CLI flag: -distributor.ingestion-rate-limit-mb
 [ingestion_rate_mb: <float> | default = 4]
 

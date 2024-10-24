@@ -283,10 +283,7 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 		}
 		for _, e := range s.Entries {
 			pushStats.NumLines++
-			var entryLabelsSize int64
-			for _, l := range e.StructuredMetadata {
-				entryLabelsSize += int64(len(l.Name) + len(l.Value))
-			}
+			entryLabelsSize := int64(util.StructuredMetadataSize(e.StructuredMetadata))
 			pushStats.LogLinesBytes[retentionPeriod] += int64(len(e.Line))
 			pushStats.StructuredMetadataBytes[retentionPeriod] += entryLabelsSize
 

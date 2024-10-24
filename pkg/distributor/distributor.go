@@ -471,11 +471,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
 				validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(len(stream.Entries)))
-				bytes := 0
-				for _, e := range stream.Entries {
-					bytes += len(e.Line)
-				}
-				validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(bytes))
+				discardedBytes := util.EntriesTotalSize(stream.Entries)
+				validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(discardedBytes))
 				continue
 			}
 
@@ -527,7 +524,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				}
 
 				n++
-				validatedLineSize += len(entry.Line)
+				validatedLineSize += util.EntryTotalSize(&entry)
 				validatedLineCount++
 				pushSize += len(entry.Line)
 			}
@@ -706,10 +703,7 @@ func (d *Distributor) trackDiscardedData(
 				continue
 			}
 
-			discardedStreamBytes := 0
-			for _, e := range stream.Entries {
-				discardedStreamBytes += len(e.Line)
-			}
+			discardedStreamBytes := util.EntriesTotalSize(stream.Entries)
 
 			if d.usageTracker != nil {
 				d.usageTracker.DiscardedBytesAdd(ctx, tenantID, reason, lbs, float64(discardedStreamBytes))
