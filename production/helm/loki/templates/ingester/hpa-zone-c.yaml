@@ -1,10 +1,10 @@
 {{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
-{{- if and $isDistributed .Values.ingester.autoscaling.enabled (or (not .Values.ingester.zoneAwareReplication.enabled) .Values.ingester.zoneAwareReplication.migration.enabled) }}
+{{- if and $isDistributed .Values.ingester.autoscaling.enabled .Values.ingester.zoneAwareReplication.enabled }}
 {{- $apiVersion := include "loki.hpa.apiVersion" . -}}
 apiVersion: {{ $apiVersion }}
 kind: HorizontalPodAutoscaler
 metadata:
-  name: {{ include "loki.ingesterFullname" . }}
+  name: {{ include "loki.ingesterFullname" . }}-zone-c
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "loki.ingesterLabels" . | nindent 4 }}
@@ -12,7 +12,7 @@ spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: StatefulSet
-    name: {{ include "loki.ingesterFullname" . }}
+    name: {{ include "loki.ingesterFullname" . }}-zone-c
   minReplicas: {{ .Values.ingester.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.ingester.autoscaling.maxReplicas }}
   metrics:
