@@ -133,7 +133,11 @@ func GetGRPCTransportCredsAndEndpoint(opts *Options) (credentials.TransportCrede
 		transportCredsForS2A, err = loadMTLSMDSTransportCreds(mtlsMDSRoot, mtlsMDSKey)
 		if err != nil {
 			log.Printf("Loading MTLS MDS credentials failed: %v", err)
-			return defaultTransportCreds, config.endpoint, nil
+			if config.s2aAddress != "" {
+				s2aAddr = config.s2aAddress
+			} else {
+				return defaultTransportCreds, config.endpoint, nil
+			}
 		}
 	} else if config.s2aAddress != "" {
 		s2aAddr = config.s2aAddress
@@ -177,7 +181,11 @@ func GetHTTPTransportConfig(opts *Options) (cert.Provider, func(context.Context,
 		transportCredsForS2A, err = loadMTLSMDSTransportCreds(mtlsMDSRoot, mtlsMDSKey)
 		if err != nil {
 			log.Printf("Loading MTLS MDS credentials failed: %v", err)
-			return config.clientCertSource, nil, nil
+			if config.s2aAddress != "" {
+				s2aAddr = config.s2aAddress
+			} else {
+				return config.clientCertSource, nil, nil
+			}
 		}
 	} else if config.s2aAddress != "" {
 		s2aAddr = config.s2aAddress

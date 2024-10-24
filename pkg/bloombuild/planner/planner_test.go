@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner/plannertest"
+	"github.com/grafana/loki/v3/pkg/bloombuild/planner/strategies"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	"github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -749,4 +750,12 @@ func (f *fakeLimits) BloomBuildMaxBuilders(_ string) int {
 
 func (f *fakeLimits) BloomTaskMaxRetries(_ string) int {
 	return f.maxRetries
+}
+
+func (f *fakeLimits) BloomPlanningStrategy(_ string) string {
+	return strategies.SplitBySeriesChunkSizeStrategyName
+}
+
+func (f *fakeLimits) BloomTaskTargetSeriesChunksSizeBytes(_ string) uint64 {
+	return 1 << 20 // 1MB
 }

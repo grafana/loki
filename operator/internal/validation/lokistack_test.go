@@ -391,64 +391,60 @@ var ltt = []struct {
 		),
 	},
 	{
-		desc: "enabling global limits OTLP IgnoreDefaults without resource attributes",
+		desc: "lokistack with custom OTLP configuration with a global stream label",
 		spec: lokiv1.LokiStack{
 			Spec: lokiv1.LokiStackSpec{
-				Storage: lokiv1.ObjectStorageSpec{
-					Schemas: []lokiv1.ObjectStorageSchema{
-						{
-							Version:       lokiv1.ObjectStorageSchemaV13,
-							EffectiveDate: "2020-10-11",
-						},
-					},
-				},
 				Limits: &lokiv1.LimitsSpec{
 					Global: &lokiv1.LimitsTemplateSpec{
-						OTLP: &lokiv1.GlobalOTLPSpec{
-							OTLPSpec: lokiv1.OTLPSpec{
-								ResourceAttributes: &lokiv1.OTLPResourceAttributesSpec{
-									IgnoreDefaults: true,
+						OTLP: &lokiv1.OTLPSpec{
+							StreamLabels: &lokiv1.OTLPStreamLabelSpec{
+								ResourceAttributes: []lokiv1.OTLPAttributeReference{
+									{
+										Name: "global.stream.label",
+									},
 								},
 							},
 						},
 					},
 				},
-			},
-		},
-		err: apierrors.NewInvalid(
-			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
-			"testing-stack",
-			field.ErrorList{
-				field.Invalid(
-					field.NewPath("spec", "limits", "global", "otlp", "resourceAttributes"),
-					[]lokiv1.OTLPAttributesSpec{},
-					lokiv1.ErrOTLPResourceAttributesEmptyNotAllowed.Error(),
-				),
-			},
-		),
-	},
-	{
-		desc: "enabling global limits OTLP IgnoreDefaults without index label action for resource attributes",
-		spec: lokiv1.LokiStack{
-			Spec: lokiv1.LokiStackSpec{
 				Storage: lokiv1.ObjectStorageSpec{
 					Schemas: []lokiv1.ObjectStorageSchema{
 						{
 							Version:       lokiv1.ObjectStorageSchemaV13,
-							EffectiveDate: "2020-10-11",
+							EffectiveDate: "2024-10-22",
 						},
 					},
 				},
+				Tenants: &lokiv1.TenantsSpec{
+					Mode: lokiv1.Static,
+				},
+			},
+		},
+		err: nil,
+	},
+	{
+		desc: "lokistack with custom OTLP configuration with a global stream label and a tenant with no stream label",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
 				Limits: &lokiv1.LimitsSpec{
 					Global: &lokiv1.LimitsTemplateSpec{
-						OTLP: &lokiv1.GlobalOTLPSpec{
-							OTLPSpec: lokiv1.OTLPSpec{
-								ResourceAttributes: &lokiv1.OTLPResourceAttributesSpec{
-									IgnoreDefaults: true,
-									Attributes: []lokiv1.OTLPResourceAttributesConfigSpec{
+						OTLP: &lokiv1.OTLPSpec{
+							StreamLabels: &lokiv1.OTLPStreamLabelSpec{
+								ResourceAttributes: []lokiv1.OTLPAttributeReference{
+									{
+										Name: "global.stream.label",
+									},
+								},
+							},
+						},
+					},
+					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
+						"test-tenant": {
+							OTLP: &lokiv1.OTLPSpec{
+								StructuredMetadata: &lokiv1.OTLPMetadataSpec{
+									ResourceAttributes: []lokiv1.OTLPAttributeReference{
 										{
-											Action:     lokiv1.OTLPAttributeActionStructuredMetadata,
-											Attributes: []string{"test"},
+											Name: "custom.resource.attribute",
 										},
 									},
 								},
@@ -456,232 +452,142 @@ var ltt = []struct {
 						},
 					},
 				},
-			},
-		},
-		err: apierrors.NewInvalid(
-			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
-			"testing-stack",
-			field.ErrorList{
-				field.Invalid(
-					field.NewPath("spec", "limits", "global", "otlp", "resourceAttributes"),
-					[]lokiv1.OTLPResourceAttributesConfigSpec{
-						{
-							Action:     lokiv1.OTLPAttributeActionStructuredMetadata,
-							Attributes: []string{"test"},
-						},
-					},
-					lokiv1.ErrOTLPResourceAttributesIndexLabelActionMissing.Error(),
-				),
-			},
-		),
-	},
-	{
-		desc: "enabling global limits OTLP IgnoreDefaults with invalid resource attributes config",
-		spec: lokiv1.LokiStack{
-			Spec: lokiv1.LokiStackSpec{
 				Storage: lokiv1.ObjectStorageSpec{
 					Schemas: []lokiv1.ObjectStorageSchema{
 						{
 							Version:       lokiv1.ObjectStorageSchemaV13,
-							EffectiveDate: "2020-10-11",
+							EffectiveDate: "2024-10-22",
 						},
 					},
 				},
-				Limits: &lokiv1.LimitsSpec{
-					Global: &lokiv1.LimitsTemplateSpec{
-						OTLP: &lokiv1.GlobalOTLPSpec{
-							OTLPSpec: lokiv1.OTLPSpec{
-								ResourceAttributes: &lokiv1.OTLPResourceAttributesSpec{
-									IgnoreDefaults: true,
-									Attributes: []lokiv1.OTLPResourceAttributesConfigSpec{
-										{
-											Action: lokiv1.OTLPAttributeActionStructuredMetadata,
-										},
-									},
-								},
-							},
+				Tenants: &lokiv1.TenantsSpec{
+					Mode: lokiv1.Static,
+					Authentication: []lokiv1.AuthenticationSpec{
+						{
+							TenantName: "test-tenant",
 						},
 					},
 				},
 			},
 		},
-		err: apierrors.NewInvalid(
-			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
-			"testing-stack",
-			field.ErrorList{
-				field.Invalid(
-					field.NewPath("spec", "limits", "global", "otlp", "resourceAttributes"),
-					[]lokiv1.OTLPResourceAttributesConfigSpec{
-						{
-							Action: lokiv1.OTLPAttributeActionStructuredMetadata,
-						},
-					},
-					lokiv1.ErrOTLPResourceAttributesIndexLabelActionMissing.Error(),
-				),
-				field.Invalid(
-					field.NewPath("spec", "limits", "global", "otlp", "resourceAttributes").Index(0),
-					[]string{},
-					lokiv1.ErrOTLPAttributesSpecInvalid.Error(),
-				),
-			},
-		),
+		err: nil,
 	},
 	{
-		desc: "enabling global limits OTLP with invalid resource attributes config",
+		desc: "lokistack with custom OTLP configuration with no global stream label and a tenant with a stream label",
 		spec: lokiv1.LokiStack{
 			Spec: lokiv1.LokiStackSpec{
-				Storage: lokiv1.ObjectStorageSpec{
-					Schemas: []lokiv1.ObjectStorageSchema{
-						{
-							Version:       lokiv1.ObjectStorageSchemaV13,
-							EffectiveDate: "2020-10-11",
-						},
-					},
-				},
-				Limits: &lokiv1.LimitsSpec{
-					Global: &lokiv1.LimitsTemplateSpec{
-						OTLP: &lokiv1.GlobalOTLPSpec{
-							OTLPSpec: lokiv1.OTLPSpec{
-								ResourceAttributes: &lokiv1.OTLPResourceAttributesSpec{
-									IgnoreDefaults: true,
-									Attributes: []lokiv1.OTLPResourceAttributesConfigSpec{
-										{
-											Action: lokiv1.OTLPAttributeActionIndexLabel,
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		err: apierrors.NewInvalid(
-			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
-			"testing-stack",
-			field.ErrorList{
-				field.Invalid(
-					field.NewPath("spec", "limits", "global", "otlp", "resourceAttributes").Index(0),
-					[]string{},
-					lokiv1.ErrOTLPAttributesSpecInvalid.Error(),
-				),
-			},
-		),
-	},
-	{
-		desc: "invalid global OTLP scope attribute specs",
-		spec: lokiv1.LokiStack{
-			Spec: lokiv1.LokiStackSpec{
-				Storage: lokiv1.ObjectStorageSpec{
-					Schemas: []lokiv1.ObjectStorageSchema{
-						{
-							Version:       lokiv1.ObjectStorageSchemaV13,
-							EffectiveDate: "2020-10-11",
-						},
-					},
-				},
-				Limits: &lokiv1.LimitsSpec{
-					Global: &lokiv1.LimitsTemplateSpec{
-						OTLP: &lokiv1.GlobalOTLPSpec{
-							OTLPSpec: lokiv1.OTLPSpec{
-								ScopeAttributes: []lokiv1.OTLPAttributesSpec{
-									{
-										Action: lokiv1.OTLPAttributeActionIndexLabel,
-									},
-									{
-										Action: lokiv1.OTLPAttributeActionStructuredMetadata,
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		err: apierrors.NewInvalid(
-			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
-			"testing-stack",
-			field.ErrorList{
-				field.Invalid(
-					field.NewPath("spec", "limits", "global", "otlp", "scopeAttributes").Index(0),
-					[]string{},
-					lokiv1.ErrOTLPAttributesSpecInvalid.Error(),
-				),
-				field.Invalid(
-					field.NewPath("spec", "limits", "global", "otlp", "scopeAttributes").Index(1),
-					[]string{},
-					lokiv1.ErrOTLPAttributesSpecInvalid.Error(),
-				),
-			},
-		),
-	},
-	{
-		desc: "invalid global OTLP log attribute specs",
-		spec: lokiv1.LokiStack{
-			Spec: lokiv1.LokiStackSpec{
-				Storage: lokiv1.ObjectStorageSpec{
-					Schemas: []lokiv1.ObjectStorageSchema{
-						{
-							Version:       lokiv1.ObjectStorageSchemaV13,
-							EffectiveDate: "2020-10-11",
-						},
-					},
-				},
-				Limits: &lokiv1.LimitsSpec{
-					Global: &lokiv1.LimitsTemplateSpec{
-						OTLP: &lokiv1.GlobalOTLPSpec{
-							OTLPSpec: lokiv1.OTLPSpec{
-								LogAttributes: []lokiv1.OTLPAttributesSpec{
-									{
-										Action: lokiv1.OTLPAttributeActionIndexLabel,
-									},
-									{
-										Action: lokiv1.OTLPAttributeActionStructuredMetadata,
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		err: apierrors.NewInvalid(
-			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
-			"testing-stack",
-			field.ErrorList{
-				field.Invalid(
-					field.NewPath("spec", "limits", "global", "otlp", "logAttributes").Index(0),
-					[]string{},
-					lokiv1.ErrOTLPAttributesSpecInvalid.Error(),
-				),
-				field.Invalid(
-					field.NewPath("spec", "limits", "global", "otlp", "logAttributes").Index(1),
-					[]string{},
-					lokiv1.ErrOTLPAttributesSpecInvalid.Error(),
-				),
-			},
-		),
-	},
-	{
-		desc: "enabling per-tenant limits OTLP IgnoreDefaults without resource attributes",
-		spec: lokiv1.LokiStack{
-			Spec: lokiv1.LokiStackSpec{
-				Storage: lokiv1.ObjectStorageSpec{
-					Schemas: []lokiv1.ObjectStorageSchema{
-						{
-							Version:       lokiv1.ObjectStorageSchemaV13,
-							EffectiveDate: "2020-10-11",
-						},
-					},
-				},
 				Limits: &lokiv1.LimitsSpec{
 					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
-						"tenant-a": {
+						"test-tenant": {
 							OTLP: &lokiv1.OTLPSpec{
-								ResourceAttributes: &lokiv1.OTLPResourceAttributesSpec{
-									IgnoreDefaults: true,
+								StreamLabels: &lokiv1.OTLPStreamLabelSpec{
+									ResourceAttributes: []lokiv1.OTLPAttributeReference{
+										{
+											Name: "tenant.stream.label",
+										},
+									},
 								},
 							},
+						},
+					},
+				},
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV13,
+							EffectiveDate: "2024-10-22",
+						},
+					},
+				},
+				Tenants: &lokiv1.TenantsSpec{
+					Mode: lokiv1.Static,
+					Authentication: []lokiv1.AuthenticationSpec{
+						{
+							TenantName: "test-tenant",
+						},
+					},
+				},
+			},
+		},
+		err: nil,
+	},
+	{
+		desc: "lokistack with custom OTLP configuration missing a global stream label",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
+				Limits: &lokiv1.LimitsSpec{
+					Global: &lokiv1.LimitsTemplateSpec{
+						OTLP: &lokiv1.OTLPSpec{
+							StructuredMetadata: &lokiv1.OTLPMetadataSpec{
+								ResourceAttributes: []lokiv1.OTLPAttributeReference{
+									{
+										Name: "custom.resource.attribute",
+									},
+								},
+							},
+						},
+					},
+				},
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV13,
+							EffectiveDate: "2024-10-22",
+						},
+					},
+				},
+				Tenants: &lokiv1.TenantsSpec{
+					Mode: lokiv1.Static,
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
+			"testing-stack",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("spec", "limits", "global", "otlp", "streamLabels", "resourceAttributes"),
+					nil,
+					lokiv1.ErrOTLPGlobalNoStreamLabel.Error(),
+				),
+			},
+		),
+	},
+	{
+		desc: "lokistack with custom OTLP configuration missing a tenant",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
+				Limits: &lokiv1.LimitsSpec{
+					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
+						"test-tenant": {
+							OTLP: &lokiv1.OTLPSpec{
+								StreamLabels: &lokiv1.OTLPStreamLabelSpec{
+									ResourceAttributes: []lokiv1.OTLPAttributeReference{
+										{
+											Name: "tenant.stream.label",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV13,
+							EffectiveDate: "2024-10-22",
+						},
+					},
+				},
+				Tenants: &lokiv1.TenantsSpec{
+					Mode: lokiv1.Static,
+					Authentication: []lokiv1.AuthenticationSpec{
+						{
+							TenantName: "test-tenant",
+						},
+						{
+							TenantName: "second-tenant",
 						},
 					},
 				},
@@ -692,9 +598,58 @@ var ltt = []struct {
 			"testing-stack",
 			field.ErrorList{
 				field.Invalid(
-					field.NewPath("spec", "limits", "tenants").Key("tenant-a").Child("otlp", "resourceAttributes"),
-					[]lokiv1.OTLPAttributesSpec{},
-					lokiv1.ErrOTLPResourceAttributesEmptyNotAllowed.Error(),
+					field.NewPath("spec", "limits", "tenants", "second-tenant", "otlp"),
+					nil,
+					lokiv1.ErrOTLPTenantMissing.Error(),
+				),
+			},
+		),
+	},
+	{
+		desc: "lokistack with custom OTLP configuration with a tenant without stream label",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
+				Limits: &lokiv1.LimitsSpec{
+					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
+						"test-tenant": {
+							OTLP: &lokiv1.OTLPSpec{
+								StructuredMetadata: &lokiv1.OTLPMetadataSpec{
+									ResourceAttributes: []lokiv1.OTLPAttributeReference{
+										{
+											Name: "tenant.resource.attribute",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV13,
+							EffectiveDate: "2024-10-22",
+						},
+					},
+				},
+				Tenants: &lokiv1.TenantsSpec{
+					Mode: lokiv1.Static,
+					Authentication: []lokiv1.AuthenticationSpec{
+						{
+							TenantName: "test-tenant",
+						},
+					},
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
+			"testing-stack",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("spec", "limits", "tenants", "test-tenant", "otlp", "streamLabels", "resourceAttributes"),
+					nil,
+					lokiv1.ErrOTLPTenantNoStreamLabel.Error(),
 				),
 			},
 		),

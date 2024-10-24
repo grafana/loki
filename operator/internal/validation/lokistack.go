@@ -79,12 +79,10 @@ func (v *LokiStackValidator) validate(ctx context.Context, obj runtime.Object) (
 	}
 
 	if stack.Spec.Limits != nil {
-		if stack.Spec.Limits.Global != nil && stack.Spec.Limits.Global.OTLP != nil {
-			allErrs = append(allErrs, v.validateGlobalOTLPSpec(stack.Spec.Limits.Global.OTLP)...)
-		}
-
-		if stack.Spec.Limits.Tenants != nil {
-			allErrs = append(allErrs, v.validatePerTenantOTLPSpec(stack.Spec.Limits.Tenants)...)
+		if (stack.Spec.Limits.Global != nil && stack.Spec.Limits.Global.OTLP != nil) ||
+			len(stack.Spec.Limits.Tenants) > 0 {
+			// Only need to validate custom OTLP configuration
+			allErrs = append(allErrs, v.validateOTLPConfiguration(&stack.Spec)...)
 		}
 	}
 
@@ -103,98 +101,86 @@ func (v *LokiStackValidator) validate(ctx context.Context, obj runtime.Object) (
 	)
 }
 
-func (v *LokiStackValidator) validateGlobalOTLPSpec(s *lokiv1.GlobalOTLPSpec) field.ErrorList {
-	basePath := field.NewPath("spec", "limits", "global")
+func (v *LokiStackValidator) validateOTLPConfiguration(spec *lokiv1.LokiStackSpec) field.ErrorList {
+	if spec.Tenants == nil {
+		return nil
+	}
 
-	return v.validateOTLPSpec(basePath, &s.OTLPSpec)
+	if spec.Tenants.Mode == lokiv1.OpenshiftLogging {
+		// This tenancy mode always provides stream labels
+		return nil
+	}
+
+	if spec.Tenants.Mode == lokiv1.OpenshiftNetwork {
+		// No validation defined for openshift-network tenancy mode
+		// TODO can we define a validation for this mode?
+		return nil
+	}
+
+	if spec.Limits == nil {
+		return nil
+	}
+
+	hasGlobalStreamLabels := false
+	if spec.Limits.Global != nil && spec.Limits.Global.OTLP != nil {
+		hasGlobalStreamLabels = v.hasOTLPStreamLabel(spec.Limits.Global.OTLP)
+	}
+
+	if hasGlobalStreamLabels {
+		// When the global configuration has at least one stream label, then the configuration will be valid
+		return nil
+	}
+
+	if spec.Limits.Tenants == nil {
+		// No tenant config and no global stream labels -> error
+		return field.ErrorList{
+			field.Invalid(
+				field.NewPath("spec", "limits", "global", "otlp", "streamLabels", "resourceAttributes"),
+				nil,
+				lokiv1.ErrOTLPGlobalNoStreamLabel.Error(),
+			),
+		}
+	}
+
+	errList := field.ErrorList{}
+	for _, tenant := range spec.Tenants.Authentication {
+		tenantName := tenant.TenantName
+		tenantLimits, ok := spec.Limits.Tenants[tenantName]
+		if !ok || tenantLimits.OTLP == nil {
+			// No tenant limits defined and no global stream labels -> error
+			errList = append(errList, field.Invalid(
+				field.NewPath("spec", "limits", "tenants", tenantName, "otlp"),
+				nil,
+				lokiv1.ErrOTLPTenantMissing.Error(),
+			))
+
+			continue
+		}
+
+		if v.hasOTLPStreamLabel(tenantLimits.OTLP) {
+			continue
+		}
+
+		errList = append(errList, field.Invalid(
+			field.NewPath("spec", "limits", "tenants", tenantName, "otlp", "streamLabels", "resourceAttributes"),
+			nil,
+			lokiv1.ErrOTLPTenantNoStreamLabel.Error(),
+		))
+	}
+
+	return errList
 }
 
-func (v *LokiStackValidator) validatePerTenantOTLPSpec(tenants map[string]lokiv1.PerTenantLimitsTemplateSpec) field.ErrorList {
-	var allErrs field.ErrorList
-
-	for key, tenant := range tenants {
-		basePath := field.NewPath("spec", "limits", "tenants").Key(key)
-		allErrs = append(allErrs, v.validateOTLPSpec(basePath, tenant.OTLP)...)
+func (v *LokiStackValidator) hasOTLPStreamLabel(otlp *lokiv1.OTLPSpec) bool {
+	if otlp == nil {
+		return false
 	}
 
-	return allErrs
-}
-
-func (v *LokiStackValidator) validateOTLPSpec(parent *field.Path, s *lokiv1.OTLPSpec) field.ErrorList {
-	var allErrs field.ErrorList
-
-	if s.ResourceAttributes != nil && s.ResourceAttributes.IgnoreDefaults {
-		switch {
-		case len(s.ResourceAttributes.Attributes) == 0:
-			allErrs = append(allErrs,
-				field.Invalid(
-					parent.Child("otlp", "resourceAttributes"),
-					[]lokiv1.OTLPAttributesSpec{},
-					lokiv1.ErrOTLPResourceAttributesEmptyNotAllowed.Error(),
-				),
-			)
-		default:
-			var indexLabelActionFound bool
-			for _, attr := range s.ResourceAttributes.Attributes {
-				if attr.Action == lokiv1.OTLPAttributeActionIndexLabel {
-					indexLabelActionFound = true
-					break
-				}
-			}
-
-			if !indexLabelActionFound {
-				allErrs = append(allErrs,
-					field.Invalid(
-						parent.Child("otlp", "resourceAttributes"),
-						s.ResourceAttributes.Attributes,
-						lokiv1.ErrOTLPResourceAttributesIndexLabelActionMissing.Error(),
-					),
-				)
-			}
-
-			for idx, attr := range s.ResourceAttributes.Attributes {
-				if len(attr.Attributes) == 0 && attr.Regex == "" {
-					allErrs = append(allErrs,
-						field.Invalid(
-							parent.Child("otlp", "resourceAttributes").Index(idx),
-							[]string{},
-							lokiv1.ErrOTLPAttributesSpecInvalid.Error(),
-						),
-					)
-				}
-			}
-		}
+	if otlp.StreamLabels == nil {
+		return false
 	}
 
-	if len(s.ScopeAttributes) != 0 {
-		for idx, attr := range s.ScopeAttributes {
-			if len(attr.Attributes) == 0 && attr.Regex == "" {
-				allErrs = append(allErrs,
-					field.Invalid(
-						parent.Child("otlp", "scopeAttributes").Index(idx),
-						[]string{},
-						lokiv1.ErrOTLPAttributesSpecInvalid.Error(),
-					),
-				)
-			}
-		}
-	}
-
-	if len(s.LogAttributes) != 0 {
-		for idx, attr := range s.LogAttributes {
-			if len(attr.Attributes) == 0 && attr.Regex == "" {
-				allErrs = append(allErrs,
-					field.Invalid(
-						parent.Child("otlp", "logAttributes").Index(idx),
-						[]string{},
-						lokiv1.ErrOTLPAttributesSpecInvalid.Error(),
-					),
-				)
-			}
-		}
-	}
-
-	return allErrs
+	return len(otlp.StreamLabels.ResourceAttributes) > 0
 }
 
 func (v *LokiStackValidator) validateHashRingSpec(s lokiv1.LokiStackSpec) field.ErrorList {

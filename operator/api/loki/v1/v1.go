@@ -84,12 +84,12 @@ var (
 	// ErrIPv6InstanceAddrTypeNotAllowed when the default InstanceAddrType is used with enableIPv6.
 	ErrIPv6InstanceAddrTypeNotAllowed = errors.New(`instanceAddrType "default" cannot be used with enableIPv6 at the same time`)
 
-	// ErrOTLPResourceAttributesEmptyNotAllowed when the OTLP ResourceAttributes are empty even though ignoreDefaults is enabled.
-	ErrOTLPResourceAttributesEmptyNotAllowed = errors.New(`resourceAttributes cannot be empty when ignoreDefaults is true`)
-	// ErrOTLPResourceAttributesIndexLabelActionMissing when OTLP ResourceAttributes does not contain at least one index label when ignoreDefaults is enabled.
-	ErrOTLPResourceAttributesIndexLabelActionMissing = errors.New(`resourceAttributes does not contain at least one attributed mapped to "index_label"`)
-	// ErrOTLPAttributesSpecInvalid when the OTLPAttributesSpec attibutes and regex fields are both empty.
-	ErrOTLPAttributesSpecInvalid = errors.New(`attributes and regex cannot be empty at the same time`)
+	// ErrOTLPGlobalNoStreamLabel when the global OTLP configuration does not define at least one stream label.
+	ErrOTLPGlobalNoStreamLabel = errors.New("global OTLP configuration needs to define at least one stream label")
+	// ErrOTLPTenantMissing when a tenant is missing from the OTLP configuration although it has been defined in the tenancy.
+	ErrOTLPTenantMissing = errors.New("if no global OTLP configuration is present which defines at least one stream label, every tenant must have an OTLP configuration")
+	// ErrOTLPTenantNoStreamLabel when a tenant is defined but has no stream labels and there also no global stream labels.
+	ErrOTLPTenantNoStreamLabel = errors.New("if no global OTLP configuration is present which defines at least one stream label, every tenant must define at least one stream label")
 
 	// ErrRuleMustMatchNamespace indicates that an expression used in an alerting or recording rule is missing
 	// matchers for a namespace.

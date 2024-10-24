@@ -281,8 +281,6 @@ func (p *Planner) runOne(ctx context.Context) error {
 				continue
 			}
 
-			level.Debug(logger).Log("msg", "computed tasks", "tasks", len(tasks), "existingMetas", len(existingMetas))
-
 			var tenantTableEnqueuedTasks int
 			resultsCh := make(chan *protos.TaskResult, len(tasks))
 
@@ -377,12 +375,12 @@ func (p *Planner) computeTasks(
 	table config.DayTable,
 	tenant string,
 ) ([]*protos.Task, []bloomshipper.Meta, error) {
-	logger := log.With(p.logger, "table", table.Addr(), "tenant", tenant)
-
 	strategy, err := strategies.NewStrategy(tenant, p.limits, p.logger)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error creating strategy: %w", err)
 	}
+
+	logger := log.With(p.logger, "table", table.Addr(), "tenant", tenant, "strategy", strategy.Name())
 
 	// Fetch source metas to be used in both build and cleanup of out-of-date metas+blooms
 	metas, err := p.bloomStore.FetchMetas(
@@ -432,6 +430,7 @@ func (p *Planner) computeTasks(
 		return nil, nil, fmt.Errorf("failed to plan tasks: %w", err)
 	}
 
+	level.Debug(logger).Log("msg", "computed tasks", "tasks", len(tasks), "existingMetas", len(metas))
 	return tasks, metas, nil
 }
 
