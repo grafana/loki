@@ -2447,12 +2447,15 @@ type VariantsExpr interface {
 	SetVariant(i int, e SampleExpr) error
 	Interval() time.Duration
 	Offset() time.Duration
+	IncludeLogs(bool)
+	ShouldIncludeLogs() bool
 	Expr
 }
 
 type MultiVariantExpr struct {
-	logRange *LogRange
+	logRange    *LogRange
 	variants    []SampleExpr
+	includeLogs bool
 	implicit
 }
 
@@ -2482,6 +2485,14 @@ func (m *MultiVariantExpr) Variants() []SampleExpr {
 
 func (m *MultiVariantExpr) AddVariant(v SampleExpr) {
 	m.variants = append(m.variants, v)
+}
+
+func (m *MultiVariantExpr) IncludeLogs(include bool) {
+	m.includeLogs = include
+}
+
+func (m *MultiVariantExpr) ShouldIncludeLogs() bool {
+	return m.includeLogs
 }
 
 func (m *MultiVariantExpr) SetVariant(i int, v SampleExpr) error {
@@ -2528,6 +2539,12 @@ func (m *MultiVariantExpr) String() string {
 	sb.WriteString(m.logRange.String())
 	sb.WriteString(")")
 
+	if !m.ShouldIncludeLogs() {
+		sb.WriteString(Without)
+		sb.WriteString(" ")
+		sb.WriteString(Logs)
+	}
+
 	return sb.String()
 }
 
@@ -2567,6 +2584,12 @@ func (m *MultiVariantExpr) Pretty(level int) string {
 func newVariantsExpr(variants []SampleExpr, logRange *LogRange) VariantsExpr {
 	return &MultiVariantExpr{
 		variants:    variants,
-		logRange: logRange,
+		logRange:    logRange,
+		includeLogs: true,
 	}
+}
+
+func newLoglessVariantsExpr(v VariantsExpr) VariantsExpr {
+	v.IncludeLogs(false)
+	return v
 }

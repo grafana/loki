@@ -67,6 +67,12 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 		"multiple variants": {
 			query: `variants(count_over_time({app="loki"} [1m]), bytes_over_time({app="loki"} [1m])) of ({app="loki"}[1m])`,
 		},
+		"single variant without logs": {
+			query: `variants(count_over_time({app="loki"} [1m])) of ({app="loki"}[1m]) without logs`,
+		},
+		"multiple variants without logs": {
+			query: `variants(count_over_time({app="loki"} [1m]), bytes_over_time({app="loki"} [1m])) of ({app="loki"}[1m]) without logs`,
+		},
 	}
 
 	for name, test := range tests {
@@ -135,6 +141,27 @@ func TestJSONSerializationRoundTrip_Variants(t *testing.T) {
 						Interval: 5 * time.Minute,
 					}, "count_over_time", nil, nil),
 				},
+				includeLogs: true,
+			},
+		},
+		"single variant without logs": {
+			query: `variants(count_over_time({app="loki"} [5m])) of ({app="loki"} [5m]) without logs`,
+			expected: MultiVariantExpr{
+				logRange: newLogRange(
+					newMatcherExpr(
+						[]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "app", "loki")},
+					), 5*time.Minute, nil, nil),
+				variants: []SampleExpr{
+					newRangeAggregationExpr(&LogRange{
+						Left: &MatchersExpr{
+							Mts: []*labels.Matcher{
+								mustNewMatcher(labels.MatchEqual, "app", "loki"),
+							},
+						},
+						Interval: 5 * time.Minute,
+					}, "count_over_time", nil, nil),
+				},
+				includeLogs: false,
 			},
 		},
 		"multiple variants": {
@@ -162,6 +189,35 @@ func TestJSONSerializationRoundTrip_Variants(t *testing.T) {
 						Interval: 5 * time.Minute,
 					}, "bytes_over_time", nil, nil),
 				},
+				includeLogs: true,
+			},
+		},
+		"multiple variants without logs": {
+			query: `variants(count_over_time({app="loki"} [5m]), bytes_over_time({app="loki"} [5m])) of ({app="loki"}[5m]) without logs`,
+			expected: MultiVariantExpr{
+				logRange: newLogRange(
+					newMatcherExpr(
+						[]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "app", "loki")},
+					), 5*time.Minute, nil, nil),
+				variants: []SampleExpr{
+					newRangeAggregationExpr(&LogRange{
+						Left: &MatchersExpr{
+							Mts: []*labels.Matcher{
+								mustNewMatcher(labels.MatchEqual, "app", "loki"),
+							},
+						},
+						Interval: 5 * time.Minute,
+					}, "count_over_time", nil, nil),
+					newRangeAggregationExpr(&LogRange{
+						Left: &MatchersExpr{
+							Mts: []*labels.Matcher{
+								mustNewMatcher(labels.MatchEqual, "app", "loki"),
+							},
+						},
+						Interval: 5 * time.Minute,
+					}, "bytes_over_time", nil, nil),
+				},
+				includeLogs: false,
 			},
 		},
 	}
