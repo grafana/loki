@@ -615,5 +615,5 @@ func IsRetryableErr(err error) bool {
 }
 
 func (a *S3ObjectClient) IsRetryableErr(err error) bool {
-	return IsStorageTimeoutErr(err) || IsStorageThrottledErr(err)
+	return IsRetryableErr(err)
 }
