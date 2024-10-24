@@ -32,6 +32,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.15.0
 
 - [ENHANCEMENT] Allow setting annotations for memberlist and query-scheduler-discovery services
+- [ENHANCEMENT] Allow to customize `client_max_body_size` when using Loki Gateway. #12924
 
 ## 6.14.1
 

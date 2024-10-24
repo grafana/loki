@@ -202,8 +202,9 @@ func ConfigOptions(opt Options) config.Options {
 			AlertManager:          amConfig,
 			RemoteWrite:           rwConfig,
 		},
-		Retention: retentionConfig(&opt.Stack),
-		Overrides: overrides,
+		Retention:      retentionConfig(&opt.Stack),
+		OTLPAttributes: otlpAttributeConfig(&opt.Stack),
+		Overrides:      overrides,
 	}
 }
 
