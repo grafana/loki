@@ -50,7 +50,7 @@ import (
 
 var (
 	success = &logproto.PushResponse{}
-	ctx     = user.InjectOrgID(context.Background(), "test")
+	ctx, _  = context.WithTimeout(user.InjectOrgID(context.Background(), "test"), 10*time.Second)
 )
 
 func TestDistributor(t *testing.T) {
