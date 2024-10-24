@@ -77,6 +77,9 @@ const (
 	VectorAgg           = "vector_agg"
 	VectorMatchingField = "vector_matching"
 	Without             = "without"
+	Variants            = "variants"
+	Of                  = "of"
+	Logs                = "logs"
 )
 
 func DecodeJSON(raw string) (Expr, error) {
@@ -98,6 +101,8 @@ func DecodeJSON(raw string) (Expr, error) {
 		return decodeLabelReplace(iter)
 	case LogSelector:
 		return decodeLogSelector(iter)
+	case Variants:
+		return decodeVariants(iter)
 	default:
 		return nil, fmt.Errorf("unknown expression type: %s", key)
 	}
@@ -300,6 +305,52 @@ func (v *JSONSerializer) VisitPipeline(e *PipelineExpr) {
 
 	v.WriteObjectField(LogSelector)
 	encodeLogSelector(v.Stream, e)
+	v.WriteObjectEnd()
+	v.Flush()
+}
+
+func (v *JSONSerializer) VisitVariants(e *MultiVariantExpr) {
+	v.WriteObjectStart()
+
+	v.WriteObjectField(Variants)
+	v.WriteObjectStart()
+
+	v.WriteObjectField(LogSelector)
+
+	// Serialize log range as string.
+	v.WriteObjectStart()
+	v.WriteObjectField(IntervalNanos)
+
+	logRange := e.LogRange()
+	v.WriteInt64(int64(logRange.Interval))
+	v.WriteMore()
+	v.WriteObjectField(OffsetNanos)
+	v.WriteInt64(int64(logRange.Offset))
+
+	// Serialize log selector pipeline as string.
+	v.WriteMore()
+	v.WriteObjectField(LogSelector)
+	encodeLogSelector(v.Stream, logRange.Left)
+	v.WriteObjectEnd()
+	v.WriteMore()
+
+	v.WriteObjectField(Variants)
+	v.WriteArrayStart()
+	for i, variant := range e.Variants() {
+		if i > 0 {
+			v.WriteMore()
+		}
+		variant.Accept(v)
+	}
+	v.WriteArrayEnd()
+
+	if !e.ShouldIncludeLogs() {
+		v.WriteMore()
+		v.WriteObjectField(Without)
+		v.WriteBool(true)
+	}
+
+	v.WriteObjectEnd()
 	v.WriteObjectEnd()
 	v.Flush()
 }
@@ -722,6 +773,35 @@ func decodeSample(iter *jsoniter.Iterator) (SampleExpr, error) {
 		}
 	}
 	return expr, err
+}
+
+func decodeVariants(iter *jsoniter.Iterator) (VariantsExpr, error) {
+	var e MultiVariantExpr
+
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
+		switch f {
+		case Variants:
+			for iter.ReadArray() {
+				expr, err := decodeSample(iter)
+				if err != nil {
+					return nil, err
+				}
+
+				e.AddVariant(expr)
+			}
+		case LogSelector:
+			logRange, err := decodeLogRange(iter)
+			if err != nil {
+				return nil, err
+			}
+
+			e.SetLogSelector(logRange)
+		case Without:
+			e.IncludeLogs(iter.ReadBool())
+		}
+	}
+
+	return &e, nil
 }
 
 func decodeBinOp(iter *jsoniter.Iterator) (*BinOpExpr, error) {

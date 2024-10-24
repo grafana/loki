@@ -36,6 +36,7 @@ var tokens = map[string]int{
 	"bool":         BOOL,
 	"[":            OPEN_BRACKET,
 	"]":            CLOSE_BRACKET,
+	"logs":         LOGS,
 	OpLabelReplace: LABEL_REPLACE,
 	OpOffset:       OFFSET,
 	OpOn:           ON,
@@ -80,6 +81,10 @@ var tokens = map[string]int{
 
 	// keep labels
 	OpKeep: KEEP,
+
+	// variants
+	OpVariants: VARIANTS,
+	VariantsOf: OF,
 }
 
 var parserFlags = map[string]struct{}{

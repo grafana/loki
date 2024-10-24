@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 )
 
@@ -59,6 +61,18 @@ func TestJSONSerializationRoundTrip(t *testing.T) {
 		"empty label filter string": {
 			query: `rate({app="foo"} |= "bar" | json | unwrap latency | path!="" [5m])`,
 		},
+		"single variant": {
+			query: `variants(count_over_time({app="loki"} [1m])) of ({app="loki"}[1m])`,
+		},
+		"multiple variants": {
+			query: `variants(count_over_time({app="loki"} [1m]), bytes_over_time({app="loki"} [1m])) of ({app="loki"}[1m])`,
+		},
+		"single variant without logs": {
+			query: `variants(count_over_time({app="loki"} [1m])) of ({app="loki"}[1m]) without logs`,
+		},
+		"multiple variants without logs": {
+			query: `variants(count_over_time({app="loki"} [1m]), bytes_over_time({app="loki"} [1m])) of ({app="loki"}[1m]) without logs`,
+		},
 	}
 
 	for name, test := range tests {
@@ -102,5 +116,132 @@ func TestJSONSerializationParseTestCases(t *testing.T) {
 				AssertExpressions(t, tc.exp, actual)
 			})
 		}
+	}
+}
+
+func TestJSONSerializationRoundTrip_Variants(t *testing.T) {
+	tests := map[string]struct {
+		query    string
+		expected MultiVariantExpr
+	}{
+		"single variant": {
+			query: `variants(count_over_time({app="loki"} [5m])) of ({app="loki"} [5m])`,
+			expected: MultiVariantExpr{
+				logRange: newLogRange(
+					newMatcherExpr(
+						[]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "app", "loki")},
+					), 5*time.Minute, nil, nil),
+				variants: []SampleExpr{
+					newRangeAggregationExpr(&LogRange{
+						Left: &MatchersExpr{
+							Mts: []*labels.Matcher{
+								mustNewMatcher(labels.MatchEqual, "app", "loki"),
+							},
+						},
+						Interval: 5 * time.Minute,
+					}, "count_over_time", nil, nil),
+				},
+				includeLogs: true,
+			},
+		},
+		"single variant without logs": {
+			query: `variants(count_over_time({app="loki"} [5m])) of ({app="loki"} [5m]) without logs`,
+			expected: MultiVariantExpr{
+				logRange: newLogRange(
+					newMatcherExpr(
+						[]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "app", "loki")},
+					), 5*time.Minute, nil, nil),
+				variants: []SampleExpr{
+					newRangeAggregationExpr(&LogRange{
+						Left: &MatchersExpr{
+							Mts: []*labels.Matcher{
+								mustNewMatcher(labels.MatchEqual, "app", "loki"),
+							},
+						},
+						Interval: 5 * time.Minute,
+					}, "count_over_time", nil, nil),
+				},
+				includeLogs: false,
+			},
+		},
+		"multiple variants": {
+			query: `variants(count_over_time({app="loki"} [5m]), bytes_over_time({app="loki"} [5m])) of ({app="loki"}[5m])`,
+			expected: MultiVariantExpr{
+				logRange: newLogRange(
+					newMatcherExpr(
+						[]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "app", "loki")},
+					), 5*time.Minute, nil, nil),
+				variants: []SampleExpr{
+					newRangeAggregationExpr(&LogRange{
+						Left: &MatchersExpr{
+							Mts: []*labels.Matcher{
+								mustNewMatcher(labels.MatchEqual, "app", "loki"),
+							},
+						},
+						Interval: 5 * time.Minute,
+					}, "count_over_time", nil, nil),
+					newRangeAggregationExpr(&LogRange{
+						Left: &MatchersExpr{
+							Mts: []*labels.Matcher{
+								mustNewMatcher(labels.MatchEqual, "app", "loki"),
+							},
+						},
+						Interval: 5 * time.Minute,
+					}, "bytes_over_time", nil, nil),
+				},
+				includeLogs: true,
+			},
+		},
+		"multiple variants without logs": {
+			query: `variants(count_over_time({app="loki"} [5m]), bytes_over_time({app="loki"} [5m])) of ({app="loki"}[5m]) without logs`,
+			expected: MultiVariantExpr{
+				logRange: newLogRange(
+					newMatcherExpr(
+						[]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "app", "loki")},
+					), 5*time.Minute, nil, nil),
+				variants: []SampleExpr{
+					newRangeAggregationExpr(&LogRange{
+						Left: &MatchersExpr{
+							Mts: []*labels.Matcher{
+								mustNewMatcher(labels.MatchEqual, "app", "loki"),
+							},
+						},
+						Interval: 5 * time.Minute,
+					}, "count_over_time", nil, nil),
+					newRangeAggregationExpr(&LogRange{
+						Left: &MatchersExpr{
+							Mts: []*labels.Matcher{
+								mustNewMatcher(labels.MatchEqual, "app", "loki"),
+							},
+						},
+						Interval: 5 * time.Minute,
+					}, "bytes_over_time", nil, nil),
+				},
+				includeLogs: false,
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			expr, err := ParseExpr(test.query)
+			require.NoError(t, err)
+
+			var buf bytes.Buffer
+			err = EncodeJSON(expr, &buf)
+			require.NoError(t, err)
+
+			actual, err := DecodeJSON(buf.String())
+			require.NoError(t, err)
+
+			require.Equal(t, expr.Pretty(0), actual.Pretty(0))
+
+			require.ElementsMatch(
+				t,
+				test.expected.Variants(),
+				actual.(*MultiVariantExpr).Variants(),
+			)
+			require.Equal(t, test.expected.LogRange(), actual.(*MultiVariantExpr).LogRange())
+		})
 	}
 }

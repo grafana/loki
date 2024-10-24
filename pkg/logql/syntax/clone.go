@@ -10,6 +10,10 @@ type cloneVisitor struct {
 	cloned Expr
 }
 
+func (c *cloneVisitor) VisitVariants(_ *MultiVariantExpr) {
+	panic("not implemented") // TODO: Implement
+}
+
 var _ RootVisitor = &cloneVisitor{}
 
 func cloneGrouping(g *Grouping) *Grouping {
