@@ -99,20 +99,29 @@ func newInstance(
 	metrics *SlimgesterMetrics,
 	periods []config.PeriodConfig,
 ) *instance {
+	streams := newStreamsMap()
 	return &instance{
 		tenant:  tenant,
 		buf:     make([]byte, 0, 1024),
-		mapper:  ingester.NewFPMapper(nil), // TODO: impl
+		mapper:  ingester.NewFPMapper(streams.getLabelsFromFingerprint),
 		metrics: metrics,
-		streams: &streamsMap{m: make(map[string]*stream)},
+		streams: streams,
 		periods: periods,
+	}
+}
+
+func newStreamsMap() *streamsMap {
+	return &streamsMap{
+		byLabels: make(map[string]*stream),
+		byFp:     make(map[model.Fingerprint]*stream),
 	}
 }
 
 type streamsMap struct {
 	// labels -> stream
-	m   map[string]*stream
-	mtx sync.RWMutex
+	byLabels map[string]*stream
+	byFp     map[model.Fingerprint]*stream
+	mtx      sync.RWMutex
 }
 
 // For performs an operation on an existing stream, creating it if it wasn't previously present.
@@ -123,7 +132,7 @@ func (m *streamsMap) For(
 ) error {
 	// first use read lock in case the stream exists
 	m.mtx.RLock()
-	if s, ok := m.m[ls]; ok {
+	if s, ok := m.byLabels[ls]; ok {
 		err := fn(s)
 		m.mtx.RUnlock()
 		return err
@@ -135,7 +144,7 @@ func (m *streamsMap) For(
 	defer m.mtx.Unlock()
 
 	// Double check it wasn't created while we were upgrading the lock
-	if s, ok := m.m[ls]; ok {
+	if s, ok := m.byLabels[ls]; ok {
 		return fn(s)
 	}
 
@@ -145,8 +154,20 @@ func (m *streamsMap) For(
 		return err
 	}
 
-	m.m[ls] = s
+	m.byLabels[ls] = s
+	m.byFp[s.fp] = s
 	return fn(s)
+}
+
+// Return labels associated with given fingerprint. Used by fingerprint mapper.
+func (m *streamsMap) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	if s, ok := m.byFp[fp]; ok {
+		return s.ls
+	}
+	return nil
 }
 
 func (i *instance) getHashForLabels(ls labels.Labels) model.Fingerprint {
