@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.3](https://github.com/grafana/loki/compare/v3.1.2...v3.1.3) (2024-10-24)
+
+
+### Bug Fixes
+
+* **ci:** updated release workflow to use github app token ([#14527](https://github.com/grafana/loki/issues/14527)) ([be131eb](https://github.com/grafana/loki/commit/be131eb0ddb44578c2a532c70af73395c0713821))
+
 ## [3.1.2](https://github.com/grafana/loki/compare/v3.1.1...v3.1.2) (2024-10-17)
 
 
