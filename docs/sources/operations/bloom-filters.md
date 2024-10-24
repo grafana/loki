@@ -18,7 +18,7 @@ This feature is an [experimental feature](/docs/release-life-cycle/). Engineerin
 
 Loki leverages [bloom filters](https://en.wikipedia.org/wiki/Bloom_filter) to speed up queries by reducing the amount of data Loki needs to load from the store and iterate through.
 Loki is often used to run "needle in a haystack" queries; these are queries where a large number of log lines are searched, but only a few log lines match the query.
-Some common use cases are needing to find all logs tied to a specific trace ID or customer ID.
+Some common use cases are searching all logs tied to a specific trace ID or customer ID.
 
 An example of such queries would be looking for a trace ID on a whole cluster for the past 24 hours:
 
@@ -113,7 +113,7 @@ overrides:
 ### Sizing and configuration
 
 The single planner instance runs the planning phase for bloom blocks for each tenant in the given interval and puts the created tasks to an internal task queue.
-Builders process tasks sequentially by pulling them from the queue. The amount of builder replicas required to complete all pending tasks before the next planning iteration depends on the value of `-bloom-build.planner.bloom_split_series_keyspace_by`, the amount of tenants, and the log volume of the streams.
+Builders process tasks sequentially by pulling them from the queue. The amount of builder replicas required to complete all pending tasks before the next planning iteration depends on the value of `-bloom-build.planner.bloom_split_series_keyspace_by`, the number of tenants, and the log volume of the streams.
 
 The maximum block size is configured per tenant via `-bloom-build.max-block-size`.
 The actual block size might exceed this limit given that we append streams blooms to the block until the block is larger than the configured maximum size.
@@ -145,7 +145,7 @@ Multiple directories on different disk mounts can be specified using the `-bloom
 ```
 
 Bloom Gateways need to deal with relatively large files: the bloom filter blocks.
-Even though the binary format of the bloom blocks allows for reading them into memory in smaller pages, the memory consumption depends on the amount of pages that are concurrently loaded into memory for processing.
+Even though the binary format of the bloom blocks allows for reading them into memory in smaller pages, the memory consumption depends on the number of pages that are concurrently loaded into memory for processing.
 The product of three settings control the maximum amount of bloom data in memory at any given time: `-bloom-gateway.worker-concurrency`, `-bloom-gateway.block-query-concurrency`, and `-bloom.max-query-page-size`.
 
 Example, assuming 4 CPU cores:
