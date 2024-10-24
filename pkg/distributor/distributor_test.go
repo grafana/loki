@@ -56,9 +56,6 @@ var (
 
 func TestDistributor(t *testing.T) {
 	lineSize := 10
-	// detected_level label will be added to all log entries
-	strucutredMetadataSize := len(constants.LevelLabel) + len(constants.LogLevelUnknown)
-	entryTotalSize := lineSize + strucutredMetadataSize
 	ingestionRateLimit := datasize.ByteSize(400)
 	ingestionRateLimitMB := ingestionRateLimit.MBytes() // 400 Bytes/s limit
 
@@ -78,7 +75,7 @@ func TestDistributor(t *testing.T) {
 		{
 			lines:          100,
 			streams:        1,
-			expectedErrors: []error{httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", ingestionRateLimit, 100, 100*entryTotalSize)},
+			expectedErrors: []error{httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", ingestionRateLimit, 100, 100*lineSize)},
 		},
 		{
 			lines:            100,
@@ -1229,9 +1226,7 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 
 			distributors, _ := prepare(t, testData.distributors, 5, limits, nil)
 			for _, push := range testData.pushes {
-				// each log entry will be added structured metadata label `detected_level:"unknown"` that adds additional 21 bytes on distributor side.
-				structuredMetadataSize := 21
-				request := makeWriteRequest(1, push.bytes-structuredMetadataSize)
+				request := makeWriteRequest(1, push.bytes)
 				response, err := distributors[0].Push(ctx, request)
 
 				if push.expectedError == nil {
