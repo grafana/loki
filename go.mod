@@ -63,7 +63,7 @@ require (
 	github.com/imdario/mergo v0.3.16
 	github.com/influxdata/telegraf v1.16.3
 	github.com/jmespath/go-jmespath v0.4.0
-	github.com/joncrlsn/dque v0.0.0-20211108142734-c2ef48c5192a
+	github.com/joncrlsn/dque v0.0.0-20241024143830-7723fd131a64
 	github.com/json-iterator/go v1.1.12
 	github.com/klauspost/compress v1.17.11
 	github.com/klauspost/pgzip v1.2.6
