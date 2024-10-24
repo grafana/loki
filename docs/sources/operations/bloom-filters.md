@@ -89,7 +89,7 @@ Do not run more than one instance of the Bloom Planner.
 The Bloom Builder is a stateless horizontally scalable component and can be scaled independently of the planner to fulfill the processing demand of the created tasks.
 
 You can find all the configuration options for these components in the [Configure section for the Bloom Builder][bloom-build-cfg].
-Refer to the [Enable Query Acceleration with Blooms](#enable-query-acceleration-with-blooms) section below for a configuration snippet enabling this feature.
+Refer to the [Enable bloom filters](#enable-bloom-filters) section above for a configuration snippet enabling this feature.
 
 ### Retention
 
@@ -129,7 +129,7 @@ This component is horizontally scalable and every instance only owns a subset of
 The sharding of the data is performed on the client side using DNS discovery of the server instances and the [jumphash](https://arxiv.org/abs/1406.2294) algorithm for consistent hashing and even distribution of the stream fingerprints across Bloom Gateway instances.
 
 You can find all the configuration options for this component in the Configure section for the [Bloom Gateways][bloom-gateway-cfg].
-Refer to the [Enable Query Acceleration with Blooms](#enable-query-acceleration-with-blooms) section below for a configuration snippet enabling this feature.
+Refer to the [Enable bloom filters](#enable-bloom-filters) section above for a configuration snippet enabling this feature.
 
 ### Sizing and configuration
 
