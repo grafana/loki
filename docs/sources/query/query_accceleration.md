@@ -1,5 +1,5 @@
 ---
-title: Query acceleration
+title: Query acceleration (Experimental)
 menuTitle: Query acceleration
 description: Provides instructions on how to write LogQL queries to benefit from query acceleration.
 weight: 900
