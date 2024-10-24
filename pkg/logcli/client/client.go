@@ -88,6 +88,7 @@ type DefaultClient struct {
 	AuthHeader      string
 	ProxyURL        string
 	BackoffConfig   BackoffConfig
+	Compression     bool
 }
 
 // Query uses the /api/v1/query endpoint to execute an instant query
@@ -319,6 +320,16 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 	}
 	if c.Tripperware != nil {
 		client.Transport = c.Tripperware(client.Transport)
+	}
+	if c.Compression {
+		// NewClientFromConfig() above returns an http.Client that uses a transport which
+		// has compression explicitly disabled. Here we re-enable it. If the caller
+		// defines a custom Tripperware that isn't an http.Transport then this won't work,
+		// but in that case they control the transport anyway and can configure
+		// compression that way.
+		if transport, ok := client.Transport.(*http.Transport); ok {
+			transport.DisableCompression = false
+		}
 	}
 
 	var resp *http.Response
