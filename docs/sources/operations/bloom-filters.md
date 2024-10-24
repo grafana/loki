@@ -1,14 +1,16 @@
 ---
-title: Query Acceleration with Blooms (Experimental)
-menuTitle: Query Acceleration with Blooms
-description: Describes how to enable and configure query acceleration with blooms.
+title: Bloom filters (Experimental)
+menuTitle: Bloom filters
+description: Describes how to enable and configure query acceleration with bloom filters.
 weight:
 keywords:
   - blooms
   - query acceleration
+aliases:
+  - ./query-acceleration-blooms
 ---
 
-# Query Acceleration with Blooms (Experimental)
+# Bloom filters (Experimental)
 
 {{% admonition type="warning" %}}
 This feature is an [experimental feature](/docs/release-life-cycle/). Engineering and on-call support is not available. No SLA is provided.
@@ -28,30 +30,9 @@ Without accelerated filtering, Loki downloads all the chunks for all the streams
 
 With accelerated filtering, Loki is able to skip most of the chunks and only process the ones where we have a statistical confidence that the structured metadata pair might be present.
 
-## Using query acceleration
+To learn how to write queries to use bloom filters, refer to [Query acceleration][].
 
-### Add data to blooms
-
-To make data available for query acceleration, send [structured metadata][] to Loki. Loki builds blooms from all structured metadata keys and values.
-
-### Query blooms
-
-Loki will check blooms for any [label filter expression][] that satisfies _all_ of the following criteria:
-
-* The label filter expression using **string equality**, such as `| key="value"`.
-* The label filter expression is querying for structured metadata and not a stream label.
-* The label filter expression is placed before any [parser expression][], [labels format expression][], [drop labels expression][], or [keep labels expression][].
-
-To take full advantage of blooms, ensure that filtering structured metadata is done before any parse expression:
-
-```logql
-{cluster="prod"} | logfmt | json | detected_level="error"  # NOT ACCELERATED: structured metadata filter is after a parse stage
-{cluster="prod"} | detected_level="error" | logfmt | json  # ACCELERATED: structured metadata filter is before any parse stage
-```
-
-## Operating blooms
-
-### Enable Query Acceleration with Blooms
+## Enable bloom filters
 
 {{< admonition type="warning" >}}
 Building and querying bloom filters are by design not supported in single binary deployment.
@@ -91,7 +72,7 @@ limits_config:
 For more configuration options refer to the [Bloom Gateway][bloom-gateway-cfg], [Bloom Build][bloom-build-cfg] and [per tenant-limits][tenant-limits] configuration docs.
 We strongly recommend reading the whole documentation for this experimental feature before using it.
 
-### Bloom Planner and Builder
+## Bloom Planner and Builder
 
 Building bloom filters from the chunks in the object storage is done by two components: the Bloom Planner and the Bloom
 Builder, where the planner creates tasks for bloom building, and sends the tasks to the builders to process and upload the resulting blocks.
@@ -110,7 +91,7 @@ The Bloom Builder is a stateless horizontally scalable component and can be scal
 You can find all the configuration options for these components in the [Configure section for the Bloom Builder][bloom-build-cfg].
 Refer to the [Enable Query Acceleration with Blooms](#enable-query-acceleration-with-blooms) section below for a configuration snippet enabling this feature.
 
-#### Retention
+### Retention
 
 The Bloom Planner applies bloom block retention on object storage. Retention is disabled by default.
 When enabled, retention is applied to all tenants. The retention for each tenant is the longest of its [configured][tenant-limits] general retention (`retention_period`) and the streams retention (`retention_stream`).
@@ -129,7 +110,7 @@ overrides:
               period: 40d
 ```
 
-#### Sizing and configuration
+### Sizing and configuration
 
 The single planner instance runs the planning phase for bloom blocks for each tenant in the given interval and puts the created tasks to an internal task queue.
 Builders process tasks sequentially by pulling them from the queue. The amount of builder replicas required to complete all pending tasks before the next planning iteration depends on the value of `-bloom-build.planner.bloom_split_series_keyspace_by`, the amount of tenants, and the log volume of the streams.
@@ -139,7 +120,7 @@ The actual block size might exceed this limit given that we append streams bloom
 Blocks are created in memory and as soon as they are written to the object store they are freed. Chunks and TSDB files are downloaded from the object store to the file system.
 We estimate that builders are able to process 4MB worth of data per second per core.
 
-### Bloom Gateway
+## Bloom Gateway
 
 Bloom Gateways handle chunks filtering requests from the [index gateway](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/components/#index-gateway).
 The service takes a list of chunks and a filtering expression and matches them against the blooms, filtering out those chunks not matching the given filter expression.
@@ -150,7 +131,7 @@ The sharding of the data is performed on the client side using DNS discovery of 
 You can find all the configuration options for this component in the Configure section for the [Bloom Gateways][bloom-gateway-cfg].
 Refer to the [Enable Query Acceleration with Blooms](#enable-query-acceleration-with-blooms) section below for a configuration snippet enabling this feature.
 
-#### Sizing and configuration
+### Sizing and configuration
 
 Bloom Gateways use their local file system as a Least Recently Used (LRU) cache for blooms that are downloaded from object storage.
 The size of the blooms depend on the ingest volume and number of unique structured metadata key-value pairs, as well as on build settings of the blooms, namely false-positive-rate.
@@ -180,7 +161,7 @@ Example, assuming 4 CPU cores:
 Here, the memory requirement for block processing is 2GiB.
 To get the minimum requirements for the Bloom Gateways, you need to double the value.
 
-### Building blooms
+## Building blooms
 
 Bloom filters are built per stream and aggregated together into block files.
 Streams are assigned to blocks by their fingerprint, following the same ordering scheme as Loki’s TSDB and sharding calculation.
@@ -200,7 +181,7 @@ The first set of hashes allows gateways to skip whole streams, while the latter 
 
 For example, given structured metadata `foo=bar` in the chunk `c6dj8g`, we append to the stream bloom the following hashes: `hash("foo")`, `hash("bar")`, `hash("foo=bar")`, `hash("c6dj8g" + "foo")` ... `hash("c6dj8g" + "foo=bar")`.
 
-### Query sharding
+## Query sharding
 
 Query acceleration does not just happen while processing chunks, but also happens from the query planning phase where the query frontend applies [query sharding](https://lokidex.com/posts/tsdb/#sharding).
 Loki 3.0 introduces a new [per-tenant configuration][tenant-limits] flag `tsdb_sharding_strategy` which defaults to computing shards as in previous versions of Loki by using the index stats to come up with the closest power of two that would optimistically divide the data to process in shards of roughly the same size.
@@ -208,17 +189,11 @@ Unfortunately, the amount of data each stream has is often unbalanced with the r
 
 Query acceleration introduces a new sharding strategy: `bounded`, which uses blooms to reduce the chunks to be processed right away during the planning phase in the query frontend, as well as evenly distributes the amount of chunks each sharded query will need to process.
 
+[Query acceleration]: https://grafana.com/docs/loki/<LOKI_VERSION>/query/query-acceleration
 [structured metadata]: https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/structured-metadata
-[label filter expression]: https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#label-filter-expression
-[parser expression]: https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#parser-expression
-[labels format expression]: https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#labels-format-expression
-[drop labels expression]: https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#drop-labels-expression
-[keep labels expression]: https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#keep-labels-expression
 [tenant-limits]: https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config
 [bloom-gateway-cfg]: https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_gateway
 [bloom-build-cfg]: https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_build
 [storage-config-cfg]: https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#storage_config
 [microservices]: https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode
 [ssd]: https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable
-
-
