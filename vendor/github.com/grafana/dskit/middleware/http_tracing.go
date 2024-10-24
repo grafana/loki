@@ -38,6 +38,11 @@ func (t Tracer) Wrap(next http.Handler) http.Handler {
 				sp.SetTag("http.user_agent", userAgent)
 			}
 
+			// add the content type, useful when query requests are sent as POST
+			if ct := r.Header.Get("Content-Type"); ct != "" {
+				sp.SetTag("http.content_type", ct)
+			}
+
 			// add a tag with the client's sourceIPs to the span, if a
 			// SourceIPExtractor is given.
 			if t.SourceIPs != nil {

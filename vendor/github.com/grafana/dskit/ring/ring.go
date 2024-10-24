@@ -215,13 +215,13 @@ type Ring struct {
 	// Number of registered instances per zone.
 	instancesCountPerZone map[string]int
 
-	// Nubmber of registered instances with tokens per zone.
+	// Number of registered instances with tokens per zone.
 	instancesWithTokensCountPerZone map[string]int
 
 	// Number of registered instances are writable and have tokens.
 	writableInstancesWithTokensCount int
 
-	// Nubmber of registered instances with tokens per zone that are writable.
+	// Number of registered instances with tokens per zone that are writable.
 	writableInstancesWithTokensCountPerZone map[string]int
 
 	// Cache of shuffle-sharded subrings per identifier. Invalidated when topology changes.
