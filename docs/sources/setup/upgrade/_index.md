@@ -79,7 +79,7 @@ All other CLI arguments (and their YAML counterparts) prefixed with `-bloom-comp
 ## 3.0.0
 
 {{% admonition type="note" %}}
-If you have questions about upgrading to Loki 3.0, please join us on the [community Slack(https://slack.grafana.com/) in the `#loki-3` channel.
+If you have questions about upgrading to Loki 3.0, please join us on the [community Slack](https://slack.grafana.com/) in the `#loki-3` channel.
 
 Or leave a comment on this [Github Issue](https://github.com/grafana/loki/issues/12506).
 {{% /admonition %}}
