@@ -5,12 +5,18 @@ package concurrency
 // If all workers are busy, Go() will spawn a new goroutine to run the workload.
 func NewReusableGoroutinesPool(size int) *ReusableGoroutinesPool {
 	p := &ReusableGoroutinesPool{
-		jobs: make(chan func()),
+		jobs:   make(chan func()),
+		closed: make(chan struct{}),
 	}
 	for i := 0; i < size; i++ {
 		go func() {
-			for f := range p.jobs {
-				f()
+			for {
+				select {
+				case f := <-p.jobs:
+					f()
+				case <-p.closed:
+					return
+				}
 			}
 		}()
 	}
@@ -18,7 +24,8 @@ func NewReusableGoroutinesPool(size int) *ReusableGoroutinesPool {
 }
 
 type ReusableGoroutinesPool struct {
-	jobs chan func()
+	jobs   chan func()
+	closed chan struct{}
 }
 
 // Go will run the given function in a worker of the pool.
@@ -32,7 +39,9 @@ func (p *ReusableGoroutinesPool) Go(f func()) {
 }
 
 // Close stops the workers of the pool.
-// No new Do() calls should be performed after calling Close().
+// No new Go() calls should be performed after calling Close().
 // Close does NOT wait for all jobs to finish, it is the caller's responsibility to ensure that in the provided workloads.
 // Close is intended to be used in tests to ensure that no goroutines are leaked.
-func (p *ReusableGoroutinesPool) Close() { close(p.jobs) }
+func (p *ReusableGoroutinesPool) Close() {
+	close(p.closed)
+}
