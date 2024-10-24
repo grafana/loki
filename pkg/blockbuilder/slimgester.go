@@ -16,8 +16,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 type SlimgesterMetrics struct {
@@ -50,16 +52,61 @@ type Slimgester struct {
 	instancesMtx sync.RWMutex
 
 	store stores.ChunkWriter
+
+	queueMtx   sync.Mutex
+	flushQueue []*chunk.Chunk
+}
+
+func (i *Slimgester) Append(ctx context.Context, tenant string, req *logproto.PushRequest) error {
+	// use rlock so multiple appends can be called on same instance.
+	// re-check after using regular lock if it didnt exist.
+	i.instancesMtx.RLock()
+	inst, ok := i.instances[tenant]
+	i.instancesMtx.RUnlock()
+	if !ok {
+		i.instancesMtx.Lock()
+		inst, ok = i.instances[tenant]
+		if !ok {
+			inst = newInstance(tenant, i.metrics, i.periodicConfigs)
+			i.instances[tenant] = inst
+		}
+		i.instancesMtx.Unlock()
+	}
+
+	closed, err := inst.Push(ctx, req)
+	if len(closed) > 0 {
+		i.queueMtx.Lock()
+		defer i.queueMtx.Unlock()
+		i.flushQueue = append(i.flushQueue, closed...)
+	}
+
+	return err
 }
 
 // instance is a slimmed down version from the ingester pkg
 type instance struct {
+	tenant  string
 	buf     []byte             // buffer used to compute fps.
 	mapper  *ingester.FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
 	metrics *SlimgesterMetrics
 	streams *streamsMap
 
-	schemaconfig *config.SchemaConfig
+	periods []config.PeriodConfig
+}
+
+func newInstance(
+	tenant string,
+	metrics *SlimgesterMetrics,
+	periods []config.PeriodConfig,
+) *instance {
+	return &instance{
+		tenant:  tenant,
+		buf:     make([]byte, 0, 1024),
+		mapper:  ingester.NewFPMapper(nil), // TODO: impl
+		metrics: metrics,
+		streams: &streamsMap{m: make(map[string]*stream)},
+		periods: periods,
+	}
 }
 
 type streamsMap struct {
@@ -112,7 +159,7 @@ func (i *instance) getHashForLabels(ls labels.Labels) model.Fingerprint {
 func (i *instance) Push(
 	ctx context.Context,
 	req *logproto.PushRequest,
-) (closed []*chunkenc.MemChunk, err error) {
+) (closed []*chunk.Chunk, err error) {
 	for _, s := range req.Streams {
 		err = i.streams.For(
 			s.Labels,
@@ -129,7 +176,19 @@ func (i *instance) Push(
 				if err != nil {
 					return err
 				}
-				closed = append(closed, xs...)
+
+				if len(xs) > 0 {
+					for _, x := range xs {
+						firstTime, lastTime := util.RoundToMilliseconds(x.Bounds())
+						chk := chunk.NewChunk(
+							i.tenant, stream.fp, stream.ls,
+							chunkenc.NewFacade(x, stream.blockSize, stream.targetChunkSize),
+							firstTime,
+							lastTime,
+						)
+						closed = append(closed, &chk)
+					}
+				}
 				return err
 			},
 		)
