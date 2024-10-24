@@ -36,7 +36,7 @@ and served by the new [Bloom Gateway](#bloom-gateway) component.
 ## Enable Query Acceleration with Blooms
 {{< admonition type="warning" >}}
 Building and querying bloom filters are by design not supported in single binary deployment.
-It can be used with Single Scalable deployment (SSD), but it is recommended to
+It can be used with Simple Scalable deployment (SSD), but it is recommended to
 run bloom components only in fully distributed microservice mode.
 The reason is that bloom filters also come with a relatively high cost for both building
 and querying the bloom filters that only pays off at large scale deployments.
