@@ -318,7 +318,7 @@ Loki by default does not come with any authentication. Since we will be deployin
 Create a `values.yaml` file choosing the configuration options that best suit your requirements. Below there are two examples of `values.yaml` files for the Loki Helm chart. The first template is Loki in [microservices](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) mode the second is Loki in [monolithic](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode) mode with a replication factor of 3. The rest of this guide will focus on deploying Loki in microservices mode. However, there is no difference in the deployment process between the two modes apart from the components you are deploying.
 
 ```yaml
- loki:
+loki:
    schemaConfig:
      configs:
        - from: 2024-04-01
@@ -355,98 +355,98 @@ Create a `values.yaml` file choosing the configuration options that best suit yo
       alertmanager_url: http://prom:9093 # The URL of the Alertmanager to send alerts (Prometheus, Mimir, etc.)
 
    querier:
-     max_concurrent: 4
+      max_concurrent: 4
 
    storage:
-     type: s3
-     bucketNames:
-       chunks: "<CHUNK BUCKET NAME>" # Your actual S3 bucket name (loki-aws-dev-chunks)
-       ruler: "<RULER BUCKET NAME>" # Your actual S3 bucket name (loki-aws-dev-ruler)
-       # admin: "<Insert s3 bucket name>" # Your actual S3 bucket name (loki-aws-dev-admin) - GEL customers only
-     s3:
-       region: <S3 BUCKET REGION> # eu-west-2
-       #insecure: false
-     # s3forcepathstyle: false
+      type: s3
+      bucketNames:
+        chunks: "<CHUNK BUCKET NAME>" # Your actual S3 bucket name (loki-aws-dev-chunks)
+        ruler: "<RULER BUCKET NAME>" # Your actual S3 bucket name (loki-aws-dev-ruler)
+        # admin: "<Insert s3 bucket name>" # Your actual S3 bucket name (loki-aws-dev-admin) - GEL customers only
+      s3:
+        region: <S3 BUCKET REGION> # eu-west-2
+        #insecure: false
+      # s3forcepathstyle: false
 
-   serviceAccount:
-    create: true
-    annotations:
-      "eks.amazonaws.com/role-arn": "arn:aws:iam::<Account ID>:role/LokiServiceAccountRole" # The service role you created
+serviceAccount:
+ create: true
+ annotations:
+   "eks.amazonaws.com/role-arn": "arn:aws:iam::<Account ID>:role/LokiServiceAccountRole" # The service role you created
 
-   deploymentMode: Distributed
+deploymentMode: Distributed
 
-   ingester:
-    replicas: 3
-    persistence:
-      storageClass: gp2
-      accessModes:
-        - ReadWriteOnce
-      size: 10Gi
-   querier:
-    replicas: 3
-    maxUnavailable: 2
-    persistence:
-      storageClass: gp2
-      accessModes:
-        - ReadWriteOnce
-      size: 10Gi
-   queryFrontend:
-    replicas: 2
-    maxUnavailable: 1
-   queryScheduler:
-    replicas: 2
-   distributor:
-    replicas: 3
-    maxUnavailable: 2
-   compactor:
-    replicas: 1
-    persistence:
-      storageClass: gp2
-      accessModes:
-        - ReadWriteOnce
-      size: 10Gi
-   indexGateway:
-    replicas: 2
-    maxUnavailable: 1
-    persistence:
-      storageClass: gp2
-      accessModes:
-        - ReadWriteOnce
-      size: 10Gi
-   ruler:
-    replicas: 1
-    maxUnavailable: 1
-    persistence:
-      storageClass: gp2
-      accessModes:
-        - ReadWriteOnce
-      size: 10Gi
+ingester:
+ replicas: 3
+ persistence:
+   storageClass: gp2
+   accessModes:
+     - ReadWriteOnce
+   size: 10Gi
 
-
-   # This exposes the Loki gateway so it can be written to and queried externaly
-   gateway:
-    service:
-      type: LoadBalancer
-    basicAuth: 
-        enabled: true
-        existingSecret: loki-basic-auth
+querier:
+ replicas: 3
+ maxUnavailable: 2
+ persistence:
+   storageClass: gp2
+   accessModes:
+     - ReadWriteOnce
+   size: 10Gi
+queryFrontend:
+ replicas: 2
+ maxUnavailable: 1
+queryScheduler:
+ replicas: 2
+distributor:
+ replicas: 3
+ maxUnavailable: 2
+compactor:
+ replicas: 1
+ persistence:
+   storageClass: gp2
+   accessModes:
+     - ReadWriteOnce
+   size: 10Gi
+indexGateway:
+ replicas: 2
+ maxUnavailable: 1
+ persistence:
+   storageClass: gp2
+   accessModes:
+     - ReadWriteOnce
+   size: 10Gi
+ruler:
+ replicas: 1
+ maxUnavailable: 1
+ persistence:
+   storageClass: gp2
+   accessModes:
+     - ReadWriteOnce
+   size: 10Gi
 
 
+# This exposes the Loki gateway so it can be written to and queried externaly
+gateway:
+ service:
+   type: LoadBalancer
+ basicAuth: 
+     enabled: true
+     existingSecret: loki-basic-auth
 
-   # Enable minio for storage
-   minio:
-    enabled: false
 
-   backend:
-    replicas: 0
-   read:
-    replicas: 0
-   write:
-    replicas: 0
 
-   singleBinary:
-    replicas: 0
- 
+# Enable minio for storage
+minio:
+ enabled: false
+
+backend:
+ replicas: 0
+read:
+ replicas: 0
+write:
+ replicas: 0
+
+singleBinary:
+ replicas: 0
 ```
 
 {{< admonition type="caution" >}}
