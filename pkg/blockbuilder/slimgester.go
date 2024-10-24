@@ -2,11 +2,17 @@ package blockbuilder
 
 import (
 	"context"
+	"flag"
+	"fmt"
+	"runtime"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -28,7 +34,57 @@ type SlimgesterMetrics struct {
 	blocksPerChunk     prometheus.Histogram
 }
 
-type Config struct{}
+func NewSlimgesterMetrics(r prometheus.Registerer) *SlimgesterMetrics {
+	return &SlimgesterMetrics{
+		chunksCreatedTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_slimgester_chunks_created_total",
+			Help: "The total number of chunks created in the slimgester.",
+		}),
+		samplesPerChunk: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:    "loki_slimgester_chunk_samples",
+			Help:    "Number of samples in chunks at flush.",
+			Buckets: prometheus.ExponentialBuckets(10, 2, 8), // 10, 20, 40, 80, 160, 320, 640, 1280
+		}),
+		blocksPerChunk: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:    "loki_slimgester_chunk_blocks",
+			Help:    "Number of blocks in chunks at flush.",
+			Buckets: prometheus.ExponentialBuckets(2, 2, 6), // 2, 4, 8, 16, 32, 64
+		}),
+	}
+}
+
+type Config struct {
+	ConcurrentFlushes int               `yaml:"concurrent_flushes"`
+	ConcurrentWriters int               `yaml:"concurrent_writers"`
+	BlockSize         int               `yaml:"chunk_block_size"`
+	TargetChunkSize   int               `yaml:"chunk_target_size"`
+	ChunkEncoding     string            `yaml:"chunk_encoding"`
+	parsedEncoding    compression.Codec `yaml:"-"` // placeholder for validated encoding
+	MaxChunkAge       time.Duration     `yaml:"max_chunk_age"`
+}
+
+func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 16, "How many flushes can happen concurrently")
+	f.IntVar(&cfg.ConcurrentWriters, "ingester.concurrent-writers", runtime.NumCPU(), "How many workers to process writes, defaults to number of available cpus")
+	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "The targeted _uncompressed_ size in bytes of a chunk block When this threshold is exceeded the head block will be cut and compressed inside the chunk.")
+	f.IntVar(&cfg.TargetChunkSize, "ingester.chunk-target-size", 1572864, "A target _compressed_ size in bytes for chunks. This is a desired size not an exact size, chunks may be slightly bigger or significantly smaller if they get flushed for other reasons (e.g. chunk_idle_period). A value of 0 creates chunks with a fixed 10 blocks, a non zero value will create chunks with a variable number of blocks to meet the target size.") // 1.5 MB
+	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", compression.GZIP.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", compression.SupportedCodecs()))
+	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 2*time.Hour, "The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this, the current chunk will be flushed to the store and a new chunk created.")
+}
+
+// RegisterFlags registers flags.
+func (c *Config) RegisterFlags(flags *flag.FlagSet) {
+	c.RegisterFlagsWithPrefix("slimgester", flags)
+}
+
+func (cfg *Config) Validate() error {
+	enc, err := compression.ParseCodec(cfg.ChunkEncoding)
+	if err != nil {
+		return err
+	}
+	cfg.parsedEncoding = enc
+	return nil
+}
 
 // Slimgester is a slimmed-down version of the ingester, intended to
 // ingest logs without WALs. Broadly, it accumulates logs into per-tenant chunks in the same way the existing ingester does,
@@ -42,6 +98,8 @@ type Config struct{}
 //     Serializes (cuts) any buffered data into chunks, flushes them to storage, then creates + flushes TSDB indices
 //     containing all chunk references. Finally, clears internal state.
 type Slimgester struct {
+	services.Service
+
 	cfg             Config
 	periodicConfigs []config.PeriodConfig
 
@@ -51,10 +109,67 @@ type Slimgester struct {
 	instances    map[string]*instance
 	instancesMtx sync.RWMutex
 
-	store stores.ChunkWriter
+	store      stores.ChunkWriter
+	flushQueue chan *chunk.Chunk
 
-	queueMtx   sync.Mutex
-	flushQueue []*chunk.Chunk
+	wg     sync.WaitGroup // for waiting on flusher
+	quit   chan struct{}  // for signaling flusher
+	closer sync.Once      // for coordinating channel closure
+}
+
+func NewSlimgester(
+	cfg Config,
+	periodicConfigs []config.PeriodConfig,
+	store stores.ChunkWriter,
+	logger log.Logger,
+	reg prometheus.Registerer,
+) (*Slimgester,
+	error) {
+	i := &Slimgester{
+		cfg:             cfg,
+		periodicConfigs: periodicConfigs,
+		metrics:         NewSlimgesterMetrics(reg),
+		logger:          logger,
+		instances:       make(map[string]*instance),
+		store:           store,
+
+		flushQueue: make(chan *chunk.Chunk),
+		quit:       make(chan struct{}),
+	}
+
+	i.Service = services.NewBasicService(i.starting, i.running, i.stopping)
+	return i, nil
+}
+
+func (i *Slimgester) starting(_ context.Context) error {
+	go i.flushLoop()
+	return nil
+}
+
+func (i *Slimgester) running(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		i.close()
+	}
+
+	return nil
+}
+
+func (i *Slimgester) stopping(err error) error {
+	i.wg.Wait()
+	return err
+}
+
+func (i *Slimgester) flushLoop() {
+	i.wg.Add(1)
+	i.wg.Done()
+}
+
+// behind sync.Once b/c it can be called from etiher `running` or `stopping`.
+func (i *Slimgester) close() {
+	i.closer.Do(func() {
+		close(i.quit)
+	})
 }
 
 func (i *Slimgester) Append(ctx context.Context, tenant string, req *logproto.PushRequest) error {
@@ -74,10 +189,8 @@ func (i *Slimgester) Append(ctx context.Context, tenant string, req *logproto.Pu
 	}
 
 	closed, err := inst.Push(ctx, req)
-	if len(closed) > 0 {
-		i.queueMtx.Lock()
-		defer i.queueMtx.Unlock()
-		i.flushQueue = append(i.flushQueue, closed...)
+	for _, chk := range closed {
+		i.flushQueue <- chk
 	}
 
 	return err
