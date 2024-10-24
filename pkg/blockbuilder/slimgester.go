@@ -73,13 +73,13 @@ func (m *streamsMap) For(
 	ls string,
 	createFn func() (*stream, error),
 	fn func(*stream) error,
-) (existed bool, err error) {
+) error {
 	// first use read lock in case the stream exists
 	m.mtx.RLock()
 	if s, ok := m.m[ls]; ok {
 		err := fn(s)
 		m.mtx.RUnlock()
-		return true, err
+		return err
 	}
 	m.mtx.RUnlock()
 
@@ -89,17 +89,17 @@ func (m *streamsMap) For(
 
 	// Double check it wasn't created while we were upgrading the lock
 	if s, ok := m.m[ls]; ok {
-		return true, fn(s)
+		return fn(s)
 	}
 
 	// Create new stream
 	s, err := createFn()
 	if err != nil {
-		return false, err
+		return err
 	}
 
 	m.m[ls] = s
-	return false, fn(s)
+	return fn(s)
 }
 
 func (i *instance) getHashForLabels(ls labels.Labels) model.Fingerprint {
@@ -109,9 +109,12 @@ func (i *instance) getHashForLabels(ls labels.Labels) model.Fingerprint {
 }
 
 // Push will iterate over the given streams present in the PushRequest and attempt to store them.
-func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
+func (i *instance) Push(
+	ctx context.Context,
+	req *logproto.PushRequest,
+) (closed []*chunkenc.MemChunk, err error) {
 	for _, s := range req.Streams {
-		i.streams.For(
+		err = i.streams.For(
 			s.Labels,
 			func() (*stream, error) {
 				ls, err := syntax.ParseLabels(s.Labels)
@@ -122,20 +125,17 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 				return newStream(fp, ls, i.metrics), nil
 			},
 			func(stream *stream) error {
-				closed, err := stream.Push(s.Entries)
+				xs, err := stream.Push(s.Entries)
 				if err != nil {
 					return err
 				}
-
-				// TODO: flush closed
-				panic(closed)
-
-				return nil
+				closed = append(closed, xs...)
+				return err
 			},
 		)
 	}
 
-	return nil
+	return closed, err
 }
 
 type stream struct {
