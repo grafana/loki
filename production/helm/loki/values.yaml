@@ -1515,6 +1515,8 @@ read:
   priorityClassName: null
   # -- Annotations for read deployment
   annotations: {}
+  # -- Pod Disruption Budget / Deployment Rollout Strategy maxUnavailable
+  maxUnavailable: 1
   # -- Annotations for read pods
   podAnnotations: {}
   # -- Additional labels for each `read` pod
