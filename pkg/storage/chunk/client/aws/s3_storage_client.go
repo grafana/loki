@@ -563,7 +563,7 @@ func isContextErr(err error) bool {
 }
 
 // IsStorageTimeoutErr returns true if error means that object cannot be retrieved right now due to server-side timeouts.
-func (a *S3ObjectClient) IsStorageTimeoutErr(err error) bool {
+func IsStorageTimeoutErr(err error) bool {
 	// TODO(dannyk): move these out to be generic
 	// context errors are all client-side
 	if isContextErr(err) {
@@ -599,7 +599,7 @@ func (a *S3ObjectClient) IsStorageTimeoutErr(err error) bool {
 }
 
 // IsStorageThrottledErr returns true if error means that object cannot be retrieved right now due to throttling.
-func (a *S3ObjectClient) IsStorageThrottledErr(err error) bool {
+func IsStorageThrottledErr(err error) bool {
 	if rerr, ok := err.(awserr.RequestFailure); ok {
 
 		// https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html
@@ -609,6 +609,11 @@ func (a *S3ObjectClient) IsStorageThrottledErr(err error) bool {
 
 	return false
 }
+
+func IsRetryableErr(err error) bool {
+	return IsStorageTimeoutErr(err) || IsStorageThrottledErr(err)
+}
+
 func (a *S3ObjectClient) IsRetryableErr(err error) bool {
-	return a.IsStorageTimeoutErr(err) || a.IsStorageThrottledErr(err)
+	return IsStorageTimeoutErr(err) || IsStorageThrottledErr(err)
 }

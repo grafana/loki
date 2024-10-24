@@ -650,6 +650,10 @@ func internalNewObjectClient(storeName, component string, cfg Config, clientMetr
 			}
 			s3Cfg = awsCfg.S3Config
 		}
+
+		if cfg.UseThanosObjstore {
+			return aws.NewS3ThanosObjectClient(context.Background(), cfg.ObjectStore, component, util_log.Logger, cfg.Hedging)
+		}
 		return aws.NewS3ObjectClient(s3Cfg, cfg.Hedging)
 
 	case types.StorageTypeAlibabaCloud:
@@ -692,6 +696,9 @@ func internalNewObjectClient(storeName, component string, cfg Config, clientMetr
 				return nil, fmt.Errorf("Unrecognized named azure storage config %s", storeName)
 			}
 			azureCfg = (azure.BlobStorageConfig)(nsCfg)
+		}
+		if cfg.UseThanosObjstore {
+			return azure.NewBlobStorageThanosObjectClient(context.Background(), cfg.ObjectStore, component, util_log.Logger, cfg.Hedging)
 		}
 		return azure.NewBlobStorage(&azureCfg, clientMetrics.AzureMetrics, cfg.Hedging)
 

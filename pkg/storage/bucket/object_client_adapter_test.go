@@ -1,4 +1,4 @@
-package gcp
+package bucket
 
 import (
 	"bytes"
@@ -12,7 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 )
 
-func TestGCSThanosObjStore_List(t *testing.T) {
+func TestObjectClientAdapter_List(t *testing.T) {
 	tests := []struct {
 		name              string
 		prefix            string
@@ -95,10 +95,10 @@ func TestGCSThanosObjStore_List(t *testing.T) {
 		require.NoError(t, newBucket.Upload(context.Background(), "depply/nested/folder/b", buff))
 		require.NoError(t, newBucket.Upload(context.Background(), "depply/nested/folder/c", buff))
 
-		gcpClient := &GCSThanosObjectClient{}
-		gcpClient.client = newBucket
+		client := NewObjectClientAdapter(newBucket, nil, nil)
+		client.bucket = newBucket
 
-		storageObj, storageCommonPref, err := gcpClient.List(context.Background(), tt.prefix, tt.delimiter)
+		storageObj, storageCommonPref, err := client.List(context.Background(), tt.prefix, tt.delimiter)
 		if tt.wantErr != nil {
 			require.Equal(t, tt.wantErr.Error(), err.Error())
 			continue
