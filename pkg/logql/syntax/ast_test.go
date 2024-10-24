@@ -1157,6 +1157,13 @@ func Test_VariantsExpr_String(t *testing.T) {
 		{
 			`variants(count_over_time({baz="qux", foo!="bar"}[5m]),rate({baz="qux", foo!="bar"}[5m])) of ({baz="qux", foo!="bar"} |= "that" [5m])`,
 		},
+		{`variants(count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m]) without logs`},
+		{
+			`variants(count_over_time({baz="qux", foo=~"bar"}[5m]), bytes_over_time({baz="qux", foo=~"bar"}[5m])) of ({baz="qux", foo=~"bar"} | logfmt | this = "that"[5m]) without logs`,
+		},
+		{
+			`variants(count_over_time({baz="qux", foo!="bar"}[5m]),rate({baz="qux", foo!="bar"}[5m])) of ({baz="qux", foo!="bar"} |= "that" [5m]) without logs`,
+		},
 	}
 
 	for _, tt := range tests {
@@ -1179,19 +1186,19 @@ func Test_VariantsExpr_Pretty(t *testing.T) {
 		expr   string
 		pretty string
 	}{
-		{`variants(count_over_time({foo="bar"}[5m])) of ({foo="bar"})`, `
+		{`variants(count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`, `
 variants(
   count_over_time({foo="bar"}[5m])
 ) of (
-  {foo="bar"}
+  {foo="bar"} [5m]
 )`},
 		{
-			`variants(count_over_time({baz="qux", foo=~"bar"}[5m]), bytes_over_time({baz="qux", foo=~"bar"}[5m])) of ({baz="qux", foo=~"bar"} | logfmt | this = "that")`,
+			`variants(count_over_time({baz="qux", foo=~"bar"}[5m]), bytes_over_time({baz="qux", foo=~"bar"}[5m])) of ({baz="qux", foo=~"bar"} | logfmt | this = "that"[5m])`,
 			`variants(
   count_over_time({baz="qux", foo=~"bar"}[5m]),
   bytes_over_time({baz="qux", foo=~"bar"}[5m])
 ) of (
-  {baz="qux", foo=~"bar"} | logfmt | this="that"
+  {baz="qux", foo=~"bar"} | logfmt | this="that" [5m]
 )`,
 		},
 	}

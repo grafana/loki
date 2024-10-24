@@ -79,6 +79,7 @@ const (
 	Without             = "without"
 	Variants            = "variants"
 	Of                  = "of"
+	Logs                = "logs"
 )
 
 func DecodeJSON(raw string) (Expr, error) {
@@ -342,6 +343,13 @@ func (v *JSONSerializer) VisitVariants(e *MultiVariantExpr) {
 		variant.Accept(v)
 	}
 	v.WriteArrayEnd()
+
+	if !e.ShouldIncludeLogs() {
+		v.WriteMore()
+		v.WriteObjectField(Without)
+		v.WriteBool(true)
+	}
+
 	v.WriteObjectEnd()
 	v.WriteObjectEnd()
 	v.Flush()
@@ -788,6 +796,8 @@ func decodeVariants(iter *jsoniter.Iterator) (VariantsExpr, error) {
 			}
 
 			e.SetLogSelector(logRange)
+		case Without:
+			e.IncludeLogs(iter.ReadBool())
 		}
 	}
 
