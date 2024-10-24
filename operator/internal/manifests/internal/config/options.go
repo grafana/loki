@@ -29,6 +29,7 @@ type Options struct {
 	MaxConcurrent         MaxConcurrent
 	WriteAheadLog         WriteAheadLog
 	EnableRemoteReporting bool
+	DiscoverLogLevels     bool
 	Shippers              []string
 
 	ObjectStorage storage.Options
