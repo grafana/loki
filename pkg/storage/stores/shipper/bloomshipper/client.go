@@ -225,13 +225,16 @@ func newBlockRefWithEncoding(ref Ref, enc compression.Codec) BlockRef {
 }
 
 func BlockFrom(enc compression.Codec, tenant, table string, blk *v1.Block) (Block, error) {
-	md, _ := blk.Metadata()
+	md, err := blk.Metadata()
+	if err != nil {
+		return Block{}, errors.Wrap(err, "decoding index")
+	}
+
 	ref := newBlockRefWithEncoding(newRefFrom(tenant, table, md), enc)
 
 	// TODO(owen-d): pool
 	buf := bytes.NewBuffer(nil)
-	err := v1.TarCompress(ref.Codec, buf, blk.Reader())
-
+	err = v1.TarCompress(ref.Codec, buf, blk.Reader())
 	if err != nil {
 		return Block{}, err
 	}

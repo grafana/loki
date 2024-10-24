@@ -153,7 +153,8 @@ func aggregateHeaders(xs []SeriesHeader) SeriesHeader {
 	fromFp, _ := xs[0].Bounds.Bounds()
 	_, throughFP := xs[len(xs)-1].Bounds.Bounds()
 	res := SeriesHeader{
-		Bounds: NewBounds(fromFp, throughFP),
+		NumSeries: len(xs),
+		Bounds:    NewBounds(fromFp, throughFP),
 	}
 
 	for i, x := range xs {

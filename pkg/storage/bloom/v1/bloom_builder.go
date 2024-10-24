@@ -68,6 +68,14 @@ func (b *BloomBlockBuilder) writeSchema() error {
 }
 
 func (b *BloomBlockBuilder) Close() (uint32, error) {
+	if !b.writtenSchema {
+		// We will get here only if we haven't appended any bloom filters to the block
+		// This would happen only if all series yielded empty blooms
+		if err := b.writeSchema(); err != nil {
+			return 0, errors.Wrap(err, "writing schema")
+		}
+	}
+
 	if b.page.Count() > 0 {
 		if err := b.flushPage(); err != nil {
 			return 0, errors.Wrap(err, "flushing final bloom page")
