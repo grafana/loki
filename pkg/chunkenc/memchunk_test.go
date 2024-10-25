@@ -75,6 +75,10 @@ var (
 			headBlockFmt: UnorderedWithStructuredMetadataHeadBlockFmt,
 			chunkFormat:  ChunkFormatV4,
 		},
+		{
+			headBlockFmt: UnorderedWithOrganizedStructuredMetadataHeadBlockFmt,
+			chunkFormat:  ChunkFormatV5,
+		},
 	}
 )
 
@@ -83,6 +87,8 @@ const (
 	lblPing                 = "ping"
 	lblPong                 = "pong"
 )
+
+var HeadBlockFmts = []HeadBlockFmt{OrderedHeadBlockFmt, UnorderedHeadBlockFmt, UnorderedWithStructuredMetadataHeadBlockFmt, UnorderedWithOrganizedStructuredMetadataHeadBlockFmt}
 
 func TestBlocksInclusive(t *testing.T) {
 	for _, enc := range testEncodings {

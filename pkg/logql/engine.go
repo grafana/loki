@@ -38,10 +38,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
-const (
-	DefaultBlockedQueryMessage = "blocked by policy"
-)
-
 var (
 	QueryTime = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "logql",

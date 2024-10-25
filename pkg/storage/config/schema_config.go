@@ -15,7 +15,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/mtime"
 	"github.com/prometheus/common/model"
-	yaml "gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -423,8 +423,10 @@ func (cfg *PeriodConfig) ChunkFormat() (byte, chunkenc.HeadBlockFmt, error) {
 	switch {
 	case sver <= 12:
 		return chunkenc.ChunkFormatV3, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV3), nil
-	default: // for v13 and above
+	case sver <= 13: // for v13 and above
 		return chunkenc.ChunkFormatV4, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), nil
+	default:
+		return chunkenc.ChunkFormatV5, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV5), nil
 	}
 }
 
@@ -469,7 +471,7 @@ func (cfg PeriodConfig) validate() error {
 	}
 
 	switch v {
-	case 10, 11, 12, 13:
+	case 10, 11, 12, 13, 14:
 		if cfg.RowShards == 0 {
 			return fmt.Errorf("must have row_shards > 0 (current: %d) for schema (%s)", cfg.RowShards, cfg.Schema)
 		}

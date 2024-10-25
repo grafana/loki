@@ -625,7 +625,7 @@ func HeadFromCheckpoint(b []byte, desiredIfNotUnordered HeadBlockFmt, symbolizer
 		return nil, errors.Wrap(db.err(), "verifying headblock header")
 	}
 	format := HeadBlockFmt(version)
-	if format > UnorderedWithStructuredMetadataHeadBlockFmt {
+	if format > UnorderedWithOrganizedStructuredMetadataHeadBlockFmt {
 		return nil, fmt.Errorf("unexpected head block version: %v", format)
 	}
 
