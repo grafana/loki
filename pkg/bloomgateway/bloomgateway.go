@@ -169,13 +169,12 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "bloomgateway.FilterChunkRefs")
 	stats, ctx := ContextWithEmptyStats(ctx)
-	logger := spanlogger.FromContextWithFallback(
-		ctx,
-		utillog.WithContext(ctx, g.logger),
-	)
+	logger := spanlogger.FromContextWithFallback(ctx, utillog.WithContext(ctx, g.logger))
+
+	queryHash := req.Plan.Hash()
 
 	defer func() {
-		level.Info(logger).Log(stats.KVArgs()...)
+		level.Info(logger).Log(append([]any{"msg", "stats-report", "queryhash", queryHash}, stats.KVArgs()...))
 		sp.Finish()
 	}()
 

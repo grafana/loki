@@ -67,7 +67,6 @@ func (s *Stats) KVArgs() []any {
 	filterRatio := float64(s.ChunksFiltered) / float64(max(s.ChunksRequested, 1))
 
 	return []any{
-		"msg", "stats-report",
 		"status", s.Status,
 		"tasks", s.NumTasks,
 		"matchers", s.NumMatchers,
