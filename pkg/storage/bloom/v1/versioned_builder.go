@@ -125,10 +125,35 @@ func (b *V3Builder) AddSeries(series Series, offsets []BloomOffset, fields Set[F
 		return false, errors.Wrapf(err, "writing index for series %v", series.Fingerprint)
 	}
 
-	full, _, err := b.writer.Full(b.opts.BlockSize)
+	full, err := b.full()
 	if err != nil {
 		return false, errors.Wrap(err, "checking if block is full")
 	}
 
 	return full, nil
+}
+
+func (b *V3Builder) full() (bool, error) {
+	if b.opts.BlockSize == 0 {
+		// Unlimited block size
+		return false, nil
+	}
+
+	full, writtenSize, err := b.writer.Full(b.opts.BlockSize)
+	if err != nil {
+		return false, errors.Wrap(err, "checking if block writer is full")
+	}
+	if full {
+		return true, nil
+	}
+
+	// Even if the block writer is not full, we may have unflushed data in the bloom builders.
+	// Check if by flushing these, we would exceed the block size.
+	unflushedIndexSize := b.index.UnflushedSize()
+	unflushedBloomSize := b.blooms.UnflushedSize()
+	if uint64(writtenSize+unflushedIndexSize+unflushedBloomSize) > b.opts.BlockSize {
+		return true, nil
+	}
+
+	return false, nil
 }
