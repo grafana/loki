@@ -87,8 +87,8 @@ func TestConfig_Validate(t *testing.T) {
 		"should fail if invalid storage class is set": {
 			setup: func() *Config {
 				return &Config{
-					SignatureVersion: SignatureVersionV2,
 					StorageClass:     "foo",
+					SignatureVersion: SignatureVersionV4,
 				}
 			},
 			expected: errUnsupportedStorageClass,
