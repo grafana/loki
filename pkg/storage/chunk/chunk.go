@@ -29,7 +29,6 @@ var (
 	ErrWrongMetadata   = errs.New("wrong chunk metadata")
 	ErrMetadataLength  = errs.New("chunk metadata wrong length")
 	ErrDataLength      = errs.New("chunk data wrong length")
-	ErrSliceOutOfRange = errs.New("chunk can't be sliced out of its data range")
 	ErrChunkDecode     = errs.New("error decoding freshly created chunk")
 )
 
