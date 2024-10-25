@@ -19,8 +19,6 @@ import (
 )
 
 const (
-	SignatureVersionV4 = "v4"
-
 	// SSEKMS config type constant to configure S3 server side encryption using KMS
 	// https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingKMSEncryption.html
 	SSEKMS = "SSE-KMS"
@@ -31,17 +29,15 @@ const (
 )
 
 var (
-	supportedSignatureVersions = []string{SignatureVersionV4}
 	supportedSSETypes          = []string{SSEKMS, SSES3}
 	supportedStorageClasses    = s3_service.ObjectStorageClass_Values()
 	supportedBucketLookupTypes = thanosS3BucketLookupTypesValues()
 
-	errUnsupportedSignatureVersion = fmt.Errorf("unsupported signature version (supported values: %s)", strings.Join(supportedSignatureVersions, ", "))
-	errUnsupportedSSEType          = errors.New("unsupported S3 SSE type")
-	errUnsupportedStorageClass     = fmt.Errorf("unsupported S3 storage class (supported values: %s)", strings.Join(supportedStorageClasses, ", "))
-	errInvalidSSEContext           = errors.New("invalid S3 SSE encryption context")
-	errInvalidEndpointPrefix       = errors.New("the endpoint must not prefixed with the bucket name")
-	errInvalidSTSEndpoint          = errors.New("sts-endpoint must be a valid url")
+	errUnsupportedSSEType      = errors.New("unsupported S3 SSE type")
+	errUnsupportedStorageClass = fmt.Errorf("unsupported S3 storage class (supported values: %s)", strings.Join(supportedStorageClasses, ", "))
+	errInvalidSSEContext       = errors.New("invalid S3 SSE encryption context")
+	errInvalidEndpointPrefix   = errors.New("the endpoint must not prefixed with the bucket name")
+	errInvalidSTSEndpoint      = errors.New("sts-endpoint must be a valid url")
 )
 
 var thanosS3BucketLookupTypes = map[string]s3.BucketLookupType{
@@ -114,7 +110,6 @@ type Config struct {
 	AccessKeyID          string              `yaml:"access_key_id"`
 	SessionToken         flagext.Secret      `yaml:"session_token"`
 	Insecure             bool                `yaml:"insecure" category:"advanced"`
-	SignatureVersion     string              `yaml:"signature_version" category:"advanced"`
 	ListObjectsVersion   string              `yaml:"list_objects_version" category:"advanced"`
 	BucketLookupType     s3.BucketLookupType `yaml:"bucket_lookup_type" category:"advanced"`
 	DualstackEnabled     bool                `yaml:"dualstack_enabled" category:"experimental"`
@@ -143,7 +138,6 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Region, prefix+"s3.region", "", "S3 region. If unset, the client will issue a S3 GetBucketLocation API call to autodetect it.")
 	f.StringVar(&cfg.Endpoint, prefix+"s3.endpoint", "", "The S3 bucket endpoint. It could be an AWS S3 endpoint listed at https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of an S3-compatible service in hostname:port format.")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "If enabled, use http:// for the S3 endpoint instead of https://. This could be useful in local dev/test environments while using an S3-compatible backend storage, like Minio.")
-	f.StringVar(&cfg.SignatureVersion, prefix+"s3.signature-version", SignatureVersionV4, fmt.Sprintf("The signature version to use for authenticating against S3. Supported values are: %s.", strings.Join(supportedSignatureVersions, ", ")))
 	f.StringVar(&cfg.ListObjectsVersion, prefix+"s3.list-objects-version", "", "Use a specific version of the S3 list object API. Supported values are v1 or v2. Default is unset.")
 	f.StringVar(&cfg.StorageClass, prefix+"s3.storage-class", "", "The S3 storage class to use, not set by default. Details can be found at https://aws.amazon.com/s3/storage-classes/. Supported values are: "+strings.Join(supportedStorageClasses, ", "))
 	f.BoolVar(&cfg.NativeAWSAuthEnabled, prefix+"s3.native-aws-auth-enabled", false, "If enabled, it will use the default authentication methods of the AWS SDK for go based on known environment variables and known AWS config files.")
@@ -159,9 +153,6 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 // Validate config and returns error on failure
 func (cfg *Config) Validate() error {
-	if !slices.Contains(supportedSignatureVersions, cfg.SignatureVersion) {
-		return errUnsupportedSignatureVersion
-	}
 	if cfg.Endpoint != "" {
 		endpoint := strings.Split(cfg.Endpoint, ".")
 		if cfg.BucketName != "" && endpoint[0] != "" && endpoint[0] == cfg.BucketName {

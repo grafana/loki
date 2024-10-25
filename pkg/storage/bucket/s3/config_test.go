@@ -75,11 +75,10 @@ func TestConfig_Validate(t *testing.T) {
 				sseCfg := &SSEConfig{}
 				flagext.DefaultValues(sseCfg)
 				cfg := &Config{
-					Endpoint:         "s3.eu-central-1.amazonaws.com",
-					BucketName:       "mimir-block",
-					SSE:              *sseCfg,
-					SignatureVersion: SignatureVersionV4,
-					StorageClass:     s3_service.StorageClassStandard,
+					Endpoint:     "s3.eu-central-1.amazonaws.com",
+					BucketName:   "mimir-block",
+					SSE:          *sseCfg,
+					StorageClass: s3_service.StorageClassStandard,
 				}
 				return cfg
 			},
@@ -87,26 +86,17 @@ func TestConfig_Validate(t *testing.T) {
 		"should fail if invalid storage class is set": {
 			setup: func() *Config {
 				return &Config{
-					StorageClass:     "foo",
-					SignatureVersion: SignatureVersionV4,
+					StorageClass: "foo",
 				}
 			},
 			expected: errUnsupportedStorageClass,
 		},
-		"should pass if valid storage signature version is set": {
-			setup: func() *Config {
-				return &Config{
-					SignatureVersion: SignatureVersionV4, StorageClass: s3_service.StorageClassStandard,
-				}
-			},
-		},
 		"should fail on invalid endpoint prefix": {
 			setup: func() *Config {
 				return &Config{
-					Endpoint:         "mimir-blocks.s3.eu-central-1.amazonaws.com",
-					BucketName:       "mimir-blocks",
-					SignatureVersion: SignatureVersionV4,
-					StorageClass:     s3_service.StorageClassStandard,
+					Endpoint:     "mimir-blocks.s3.eu-central-1.amazonaws.com",
+					BucketName:   "mimir-blocks",
+					StorageClass: s3_service.StorageClassStandard,
 				}
 			},
 			expected: errInvalidEndpointPrefix,
@@ -114,7 +104,6 @@ func TestConfig_Validate(t *testing.T) {
 		"should pass if native_aws_auth_enabled is set": {
 			setup: func() *Config {
 				return &Config{
-					SignatureVersion:     SignatureVersionV4,
 					NativeAWSAuthEnabled: true,
 				}
 			},
@@ -124,11 +113,10 @@ func TestConfig_Validate(t *testing.T) {
 				sseCfg := &SSEConfig{}
 				flagext.DefaultValues(sseCfg)
 				cfg := &Config{
-					BucketName:       "mimir-block",
-					SSE:              *sseCfg,
-					SignatureVersion: SignatureVersionV4,
-					StorageClass:     s3_service.StorageClassStandard,
-					STSEndpoint:      "https://sts.eu-central-1.amazonaws.com",
+					BucketName:   "mimir-block",
+					SSE:          *sseCfg,
+					StorageClass: s3_service.StorageClassStandard,
+					STSEndpoint:  "https://sts.eu-central-1.amazonaws.com",
 				}
 				return cfg
 			},
@@ -138,11 +126,10 @@ func TestConfig_Validate(t *testing.T) {
 				sseCfg := &SSEConfig{}
 				flagext.DefaultValues(sseCfg)
 				cfg := &Config{
-					BucketName:       "mimir-block",
-					SSE:              *sseCfg,
-					SignatureVersion: SignatureVersionV4,
-					StorageClass:     s3_service.StorageClassStandard,
-					STSEndpoint:      "sts.eu-central-1.amazonaws.com",
+					BucketName:   "mimir-block",
+					SSE:          *sseCfg,
+					StorageClass: s3_service.StorageClassStandard,
+					STSEndpoint:  "sts.eu-central-1.amazonaws.com",
 				}
 				return cfg
 			},
