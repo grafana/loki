@@ -90,7 +90,7 @@ func seriesWithoutBlooms(nSeries int, fromFp, throughFp model.Fingerprint) []Ser
 
 	// remove blooms from series
 	for i := range series {
-		series[i].Blooms = v2.NewSliceIter([]*Bloom{})
+		series[i].Blooms = v2.NewEmptyIter[*Bloom]()
 	}
 
 	return series
