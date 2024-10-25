@@ -67,6 +67,8 @@ func (f HeadBlockFmt) NewBlock(symbolizer *symbolizer) HeadBlock {
 	switch {
 	case f < UnorderedHeadBlockFmt:
 		return &headBlock{}
+	case f == UnorderedWithOrganizedStructuredMetadataHeadBlockFmt:
+		return newOrganisedHeadBlock(f, symbolizer)
 	default:
 		return newUnorderedHeadBlock(f, symbolizer)
 	}
@@ -96,7 +98,7 @@ func ChunkHeadFormatFor(chunkfmt byte) HeadBlockFmt {
 	if chunkfmt == ChunkFormatV4 {
 		return UnorderedWithStructuredMetadataHeadBlockFmt
 	}
-	// return the latest head format for all chunkformat >v3
+	// return the latest head format for all chunkformat >v4
 	return UnorderedWithOrganizedStructuredMetadataHeadBlockFmt
 }
 
@@ -230,6 +232,21 @@ func (hb *headBlock) Serialise(pool compression.WriterPool) ([]byte, error) {
 	}
 
 	return outBuf.Bytes(), nil
+}
+
+func (hb *headBlock) CompressedBlock(pool compression.WriterPool) (block, int, error) {
+	b, err := hb.Serialise(pool)
+	if err != nil {
+		return block{}, 0, err
+	}
+	mint, maxt := hb.Bounds()
+	return block{
+		b:                b,
+		numEntries:       hb.Entries(),
+		mint:             mint,
+		maxt:             maxt,
+		uncompressedSize: hb.UncompressedSize(),
+	}, len(b), nil
 }
 
 // CheckpointBytes serializes a headblock to []byte. This is used by the WAL checkpointing,
@@ -950,21 +967,26 @@ func (c *MemChunk) cut() error {
 		return nil
 	}
 
-	b, err := c.head.Serialise(compression.GetWriterPool(c.encoding))
+	bl, blockSize, err := c.head.CompressedBlock(compression.GetWriterPool(c.encoding))
 	if err != nil {
 		return err
 	}
+	c.blocks = append(c.blocks, bl)
+	//b, err := c.head.Serialise(compression.GetWriterPool(c.encoding))
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//mint, maxt := c.head.Bounds()
+	//c.blocks = append(c.blocks, block{
+	//	b:                b,
+	//	numEntries:       c.head.Entries(),
+	//	mint:             mint,
+	//	maxt:             maxt,
+	//	uncompressedSize: c.head.UncompressedSize(),
+	//})
 
-	mint, maxt := c.head.Bounds()
-	c.blocks = append(c.blocks, block{
-		b:                b,
-		numEntries:       c.head.Entries(),
-		mint:             mint,
-		maxt:             maxt,
-		uncompressedSize: c.head.UncompressedSize(),
-	})
-
-	c.cutBlockSize += len(b)
+	c.cutBlockSize += blockSize
 
 	c.head.Reset()
 	return nil

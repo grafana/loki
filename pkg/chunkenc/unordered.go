@@ -50,6 +50,7 @@ type HeadBlock interface {
 		extractor log.StreamSampleExtractor,
 	) iter.SampleIterator
 	Format() HeadBlockFmt
+	CompressedBlock(pool compression.WriterPool) (block, int, error)
 }
 
 type unorderedHeadBlock struct {
@@ -94,6 +95,21 @@ func (hb *unorderedHeadBlock) UncompressedSize() int {
 func (hb *unorderedHeadBlock) Reset() {
 	x := newUnorderedHeadBlock(hb.format, hb.symbolizer)
 	*hb = *x
+}
+
+func (hb *unorderedHeadBlock) CompressedBlock(pool compression.WriterPool) (block, int, error) {
+	b, err := hb.Serialise(pool)
+	if err != nil {
+		return block{}, 0, err
+	}
+	mint, maxt := hb.Bounds()
+	return block{
+		b:                b,
+		numEntries:       hb.Entries(),
+		mint:             mint,
+		maxt:             maxt,
+		uncompressedSize: hb.UncompressedSize(),
+	}, len(b), nil
 }
 
 type nsEntry struct {
