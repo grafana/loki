@@ -17,6 +17,10 @@
     per_namespace_label: 'namespace',
     per_job_label: 'job',
 
+    // Optional prefix for pod matchers (non SSD). Useful for Loki distributed installs via helm which prefix pod names with the helm release name.
+    // When specifying the prefix, make sure to include the trailing hyphen, e.g. "loki-".
+    pod_prefix_matcher: '',
+
     // Grouping labels, to uniquely identify and group by {jobs, clusters}
     job_labels: [$._config.per_cluster_label, $._config.per_namespace_label, $._config.per_job_label],
     cluster_labels: [$._config.per_cluster_label, $._config.per_namespace_label],
