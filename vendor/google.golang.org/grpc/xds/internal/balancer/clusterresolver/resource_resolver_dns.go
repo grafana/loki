@@ -27,7 +27,6 @@ import (
 	"google.golang.org/grpc/internal/pretty"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/serviceconfig"
-	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
 
 var (
@@ -80,7 +79,7 @@ func newDNSResolver(target string, topLevelResolver topLevelResolver, logger *gr
 			ret.logger.Infof("Failed to parse dns hostname %q in clusterresolver LB policy", target)
 		}
 		ret.updateReceived = true
-		ret.topLevelResolver.onUpdate(xdsresource.NopDoneNotifier{})
+		ret.topLevelResolver.onUpdate(func() {})
 		return ret
 	}
 
@@ -90,7 +89,7 @@ func newDNSResolver(target string, topLevelResolver topLevelResolver, logger *gr
 			ret.logger.Infof("Failed to build DNS resolver for target %q: %v", target, err)
 		}
 		ret.updateReceived = true
-		ret.topLevelResolver.onUpdate(xdsresource.NopDoneNotifier{})
+		ret.topLevelResolver.onUpdate(func() {})
 		return ret
 	}
 	ret.dnsR = r
@@ -154,7 +153,7 @@ func (dr *dnsDiscoveryMechanism) UpdateState(state resolver.State) error {
 	dr.updateReceived = true
 	dr.mu.Unlock()
 
-	dr.topLevelResolver.onUpdate(xdsresource.NopDoneNotifier{})
+	dr.topLevelResolver.onUpdate(func() {})
 	return nil
 }
 
@@ -177,7 +176,7 @@ func (dr *dnsDiscoveryMechanism) ReportError(err error) {
 	dr.updateReceived = true
 	dr.mu.Unlock()
 
-	dr.topLevelResolver.onUpdate(xdsresource.NopDoneNotifier{})
+	dr.topLevelResolver.onUpdate(func() {})
 }
 
 func (dr *dnsDiscoveryMechanism) NewAddress(addresses []resolver.Address) {

@@ -295,7 +295,7 @@ type Config struct {
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
 	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
 
-	UseThanosObjstore bool          `yaml:"use_thanos_objstore" doc:"hidden`
+	UseThanosObjstore bool          `yaml:"use_thanos_objstore" doc:"hidden"`
 	ObjectStore       bucket.Config `yaml:"object_store" doc:"hidden"`
 
 	MaxChunkBatchSize   int                       `yaml:"max_chunk_batch_size"`
@@ -649,6 +649,10 @@ func internalNewObjectClient(storeName, component string, cfg Config, clientMetr
 				return nil, fmt.Errorf("Unrecognized named aws storage config %s", storeName)
 			}
 			s3Cfg = awsCfg.S3Config
+		}
+
+		if cfg.CongestionControl.Enabled {
+			s3Cfg.BackoffConfig.MaxRetries = 1
 		}
 
 		if cfg.UseThanosObjstore {

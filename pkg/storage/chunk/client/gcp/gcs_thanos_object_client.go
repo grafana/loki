@@ -26,8 +26,7 @@ func NewGCSThanosObjectClient(ctx context.Context, cfg bucket.Config, component 
 		}
 	}
 
-	o := bucket.NewObjectClientAdapter(b, hedged, logger)
-	bucket.WithRetryableErrFunc(IsRetryableErr)(o)
+	o := bucket.NewObjectClientAdapter(b, hedged, logger, bucket.WithRetryableErrFunc(IsRetryableErr))
 	return o, nil
 }
 

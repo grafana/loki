@@ -137,14 +137,14 @@ type FusedQuerier struct {
 }
 
 func NewFusedQuerier(bq *BlockQuerier, inputs []iter.PeekIterator[Request], logger log.Logger) *FusedQuerier {
-	heap := NewHeapIterator[Request](
+	heap := NewHeapIterator(
 		func(a, b Request) bool {
 			return a.Fp < b.Fp
 		},
 		inputs...,
 	)
 
-	merging := iter.NewDedupingIter[Request, []Request](
+	merging := iter.NewDedupingIter(
 		func(a Request, b []Request) bool {
 			return a.Fp == b[0].Fp
 		},
@@ -152,7 +152,7 @@ func NewFusedQuerier(bq *BlockQuerier, inputs []iter.PeekIterator[Request], logg
 		func(a Request, b []Request) []Request {
 			return append(b, a)
 		},
-		iter.NewPeekIter[Request](heap),
+		iter.NewPeekIter(heap),
 	)
 	return &FusedQuerier{
 		bq:     bq,
@@ -263,9 +263,10 @@ func (fq *FusedQuerier) runSeries(_ Schema, series *SeriesWithMeta, reqs []Reque
 		Missing  ChunkRefs // chunks that do not exist in the blooms and cannot be queried
 		InBlooms ChunkRefs // chunks which do exist in the blooms and can be queried
 
-		found map[int]bool // map of the index in `InBlooms` to whether the chunk
-		// was found in _any_ of the blooms for the series. In order to
-		// be eligible for removal, a chunk must be found in _no_ blooms.
+		// Map of the index in `InBlooms` to whether the chunk was found in _any_
+		// of the blooms for the series. In order to be eligible for removal, a
+		// chunk must be found in _no_ blooms.
+		found map[int]bool
 	}
 
 	inputs := make([]inputChunks, 0, len(reqs))
@@ -354,7 +355,6 @@ func (fq *FusedQuerier) runSeries(_ Schema, series *SeriesWithMeta, reqs []Reque
 	}
 
 	for i, req := range reqs {
-
 		removals := removalsFor(inputs[i].InBlooms, inputs[i].found)
 
 		req.Recorder.record(

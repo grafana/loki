@@ -28,20 +28,9 @@ func NewBloomBlockBuilder(opts BlockOptions, writer io.WriteCloser) *BloomBlockB
 	}
 }
 
-func (b *BloomBlockBuilder) WriteSchema() error {
-	b.scratch.Reset()
-	b.opts.Schema.Encode(b.scratch)
-	if _, err := b.writer.Write(b.scratch.Get()); err != nil {
-		return errors.Wrap(err, "writing schema")
-	}
-	b.writtenSchema = true
-	b.offset += b.scratch.Len()
-	return nil
-}
-
 func (b *BloomBlockBuilder) Append(bloom *Bloom) (BloomOffset, error) {
 	if !b.writtenSchema {
-		if err := b.WriteSchema(); err != nil {
+		if err := b.writeSchema(); err != nil {
 			return BloomOffset{}, errors.Wrap(err, "writing schema")
 		}
 	}
@@ -61,6 +50,21 @@ func (b *BloomBlockBuilder) Append(bloom *Bloom) (BloomOffset, error) {
 		Page:       len(b.pages),
 		ByteOffset: b.page.Add(b.scratch.Get()),
 	}, nil
+}
+
+func (b *BloomBlockBuilder) writeSchema() error {
+	if b.writtenSchema {
+		return nil
+	}
+
+	b.scratch.Reset()
+	b.opts.Schema.Encode(b.scratch)
+	if _, err := b.writer.Write(b.scratch.Get()); err != nil {
+		return errors.Wrap(err, "writing schema")
+	}
+	b.writtenSchema = true
+	b.offset += b.scratch.Len()
+	return nil
 }
 
 func (b *BloomBlockBuilder) Close() (uint32, error) {

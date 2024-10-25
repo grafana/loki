@@ -45,6 +45,8 @@ const (
 	ReplicationStatusFailed ReplicationStatus = "FAILED"
 	// ReplicationStatusReplica indicates object is a replica of a source
 	ReplicationStatusReplica ReplicationStatus = "REPLICA"
+	// ReplicationStatusReplicaEdge indicates object is a replica of a edge source
+	ReplicationStatusReplicaEdge ReplicationStatus = "REPLICA-EDGE"
 )
 
 // Empty returns true if no replication status set.

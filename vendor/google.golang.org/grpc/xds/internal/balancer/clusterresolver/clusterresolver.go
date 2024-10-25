@@ -216,7 +216,7 @@ func (b *clusterResolverBalancer) handleResourceUpdate(update *resourceUpdate) {
 	b.updateChildConfig()
 
 	if update.onDone != nil {
-		update.onDone.OnDone()
+		update.onDone()
 	}
 }
 

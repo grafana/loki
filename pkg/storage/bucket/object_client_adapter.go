@@ -8,7 +8,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
-
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -20,12 +19,12 @@ type ObjectClientAdapter struct {
 	isRetryableErr       func(err error) bool
 }
 
-func NewObjectClientAdapter(bucket, hedgedBucket objstore.Bucket, logger log.Logger) *ObjectClientAdapter {
+func NewObjectClientAdapter(bucket, hedgedBucket objstore.Bucket, logger log.Logger, opts ...ClientOptions) *ObjectClientAdapter {
 	if hedgedBucket == nil {
 		hedgedBucket = bucket
 	}
 
-	return &ObjectClientAdapter{
+	o := &ObjectClientAdapter{
 		bucket:       bucket,
 		hedgedBucket: hedgedBucket,
 		logger:       log.With(logger, "component", "bucket_to_object_client_adapter"),
@@ -34,9 +33,17 @@ func NewObjectClientAdapter(bucket, hedgedBucket objstore.Bucket, logger log.Log
 			return false
 		},
 	}
+
+	for _, opt := range opts {
+		opt(o)
+	}
+
+	return o
 }
 
-func WithRetryableErrFunc(f func(err error) bool) func(*ObjectClientAdapter) {
+type ClientOptions func(*ObjectClientAdapter)
+
+func WithRetryableErrFunc(f func(err error) bool) ClientOptions {
 	return func(o *ObjectClientAdapter) {
 		o.isRetryableErr = f
 	}
