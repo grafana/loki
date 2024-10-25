@@ -19,7 +19,7 @@ type ObjectClientAdapter struct {
 	isRetryableErr       func(err error) bool
 }
 
-func NewObjectClientAdapter(bucket, hedgedBucket objstore.Bucket, logger log.Logger, opts ...options) *ObjectClientAdapter {
+func NewObjectClientAdapter(bucket, hedgedBucket objstore.Bucket, logger log.Logger, opts ...ClientOptions) *ObjectClientAdapter {
 	if hedgedBucket == nil {
 		hedgedBucket = bucket
 	}
@@ -41,9 +41,9 @@ func NewObjectClientAdapter(bucket, hedgedBucket objstore.Bucket, logger log.Log
 	return o
 }
 
-type options func(*ObjectClientAdapter)
+type ClientOptions func(*ObjectClientAdapter)
 
-func WithRetryableErrFunc(f func(err error) bool) options {
+func WithRetryableErrFunc(f func(err error) bool) ClientOptions {
 	return func(o *ObjectClientAdapter) {
 		o.isRetryableErr = f
 	}
