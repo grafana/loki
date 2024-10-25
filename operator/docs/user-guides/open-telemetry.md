@@ -15,17 +15,19 @@ toc: true
 
 ## Introduction
 
-Loki 3.0 introduced the OpenTelemetry Protocol (OTLP) as a new API for ingesting log entries in addition to the standard Push API that was available in previous versions of Loki.
+Loki 3.0 introduced an API endpoint using the OpenTelemetry Protocol (OTLP) as a new way of ingesting log entries into Loki. This endpoint is an addition to the standard Push API that was available in Loki from the start.
 
 Because OTLP is not specifically geared towards Loki but is a standard format, it needs additional configuration on Loki's side to map the OpenTelemetry data format to Loki's data model.
 
-Specifically, OTLP has no concept of "stream labels" or "structured metadata". OTLP instead provides metadata about a log entry in _attributes_ that are grouped into three buckets (resource, scope and log), depending on the number of entries an attribute applies to.
+Specifically, OTLP has no concept of "stream labels" or "structured metadata". Instead, OTLP provides metadata about a log entry in _attributes_ that are grouped into three buckets (resource, scope and log), which allows setting metadata for many log entries at once or just on a single entry depending on what's needed.
 
 ## Prerequisites
 
 Log ingestion using OTLP depends on structured metadata being available in Loki. This capability was introduced with schema version 13, which is available in Loki Operator when using `v13` in a schema configuration entry.
 
-When creating a new `LokiStack`, make sure to include `version: v13` in the storage schema configuration. If there is an existing schema configuration, a new configuration needs to be added, so that it becomes active in the future (see [Upgrading Schemas](loki-upgrading-schemas) in the Loki documentation).
+If you are creating a new `LokiStack`, make sure to set `version: v13` in the storage schema configuration.
+
+If there is an existing schema configuration, a new schema version entry needs to be added, so that it becomes active in the future (see [Upgrading Schemas](loki-upgrading-schemas) in the Loki documentation).
 
 ```yaml
 # [...]
@@ -49,9 +51,13 @@ By default, `default_resource_attributes_as_index_labels` provides a set of reso
 
 As the field in the distributor configuration is limited to resource-level attributes and can only produce stream-labels as an output, the `otlp_config` needs to be used to map scope or log level attributes to structured metadata.
 
-**Note:** All attributes that are not mapped to either a stream label or structured metadata will not be stored into Loki.
+**Note:** Attributes that are not mapped to either a stream label or structured metadata will not be stored into Loki.
 
-### Operator Defaults
+The Loki Operator does not use the same approach for configuring the attributes as Loki itself does. The most visible difference is that there is no distinction between the `distributor` and `limits` configuration in the Operator.
+
+Instead, the Loki Operator only uses the `limits` configuration for all its attributes. The structure of the `limits` configuration also differs from the structure in the Loki configuration file. See [Custom Attribute Mapping](#custom-attribute-mapping) below for an explanation of the configuration options available in the Operator.
+
+### Loki Operator Defaults
 
 When using the Loki Operator the default attribute mappings depend on the [tenancy mode]({{< ref "api.md#loki-grafana-com-v1-ModeType" >}}) used for the `LokiStack`:
 
