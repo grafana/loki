@@ -27,7 +27,7 @@ Queries will be accelerated for any [label filter expression][] that satisfies _
 
 * The label filter expression using **string equality**, such as `| key="value"`.
     * `or` and `and` operators can be used to match multiple values, such as `| detected_level="error" or detected_level="warn"`.
-    * _Basic_ regular expresions are automatically simplified into a supported expression:
+    * _Basic_ regular expressions are automatically simplified into a supported expression:
         * `| key=~"value"` is converted to `| key="value"`.
         * `| key=~"value1|value2"` is converted to `| key="value1" or key="value2"`.
 * The label filter expression is querying for structured metadata and not a stream label.
