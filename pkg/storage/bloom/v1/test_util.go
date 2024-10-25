@@ -132,9 +132,11 @@ func CompareIterators[A, B any](
 	a iter.Iterator[A],
 	b iter.Iterator[B],
 ) {
+	var i int
 	for a.Next() {
-		require.True(t, b.Next())
+		require.Truef(t, b.Next(), "'a' has %dth element but 'b' does not'", i)
 		f(t, a.At(), b.At())
+		i++
 	}
 	require.False(t, b.Next())
 	require.NoError(t, a.Err())
