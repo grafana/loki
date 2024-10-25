@@ -1,11 +1,21 @@
 package v1
 
 import (
+	regexsyn "github.com/grafana/regexp/syntax"
+
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/util"
 )
+
+// Simplifiable regexp expressions can quickly expand into very high
+// cardinality; we limit the number of matchers to prevent this.
+//
+// For example, the regex `[0-9]` expands to 10 matchers (0, 1, .. 9), while
+// `[0-9][0-9]` expands to 100 matchers (00, 01, .., 99).
+const maxRegexMatchers = 25
 
 // LabelMatcher represents bloom tests for key-value pairs, mapped from
 // LabelFilterExprs from the AST.
@@ -54,14 +64,20 @@ func buildLabelMatcher(filter log.LabelFilterer) LabelMatcher {
 	switch filter := filter.(type) {
 
 	case *log.LineFilterLabelFilter:
-		if filter.Type != labels.MatchEqual {
-			return UnsupportedLabelMatcher{}
+		if filter.Type == labels.MatchEqual {
+			return PlainLabelMatcher{
+				Key:   filter.Name,
+				Value: filter.Value,
+			}
+		} else if filter.Type == labels.MatchRegexp {
+			reg, err := regexsyn.Parse(filter.Value, regexsyn.Perl)
+			if err != nil {
+				return UnsupportedLabelMatcher{}
+			}
+			return buildSimplifiedRegexMatcher(filter.Name, reg.Simplify())
 		}
 
-		return PlainLabelMatcher{
-			Key:   filter.Name,
-			Value: filter.Value,
-		}
+		return UnsupportedLabelMatcher{}
 
 	case *log.StringLabelFilter:
 		if filter.Type != labels.MatchEqual {
@@ -86,6 +102,150 @@ func buildLabelMatcher(filter log.LabelFilterer) LabelMatcher {
 
 	default:
 		return UnsupportedLabelMatcher{}
+	}
+}
+
+// buildSimplifiedRegexMatcher builds a simplified label matcher from a regex.
+// reg may be mutated.
+func buildSimplifiedRegexMatcher(key string, reg *regexsyn.Regexp) LabelMatcher {
+	switch reg.Op {
+	case regexsyn.OpAlternate:
+		util.ClearCapture(reg)
+
+		left := buildSimplifiedRegexMatcher(key, reg.Sub[0])
+		for _, sub := range reg.Sub[1:] {
+			right := buildSimplifiedRegexMatcher(key, sub)
+			left = OrLabelMatcher{Left: left, Right: right}
+		}
+		return left
+
+	case regexsyn.OpConcat:
+		// OpConcat checks for the concatenation of two or more subexpressions. For
+		// example, value1|value2 simplifies to value[12], with the two
+		// subexpressions value and [12].
+		//
+		// We expand subexpressions back out into full matchers where possible, so
+		// value[12] becomes value1 OR value2, and value[1-9] becomes value1 OR
+		// value2 .. OR value9.
+		util.ClearCapture(reg)
+
+		matchers, ok := expandSubexpr(reg)
+		if !ok || len(matchers) == 0 {
+			return UnsupportedLabelMatcher{}
+		}
+
+		var left LabelMatcher = PlainLabelMatcher{Key: key, Value: matchers[0]}
+		for _, matcher := range matchers[1:] {
+			right := PlainLabelMatcher{Key: key, Value: matcher}
+			left = OrLabelMatcher{Left: left, Right: right}
+		}
+		return left
+
+	case regexsyn.OpCapture:
+		util.ClearCapture(reg)
+		return buildSimplifiedRegexMatcher(key, reg)
+
+	case regexsyn.OpLiteral:
+		return PlainLabelMatcher{
+			Key:   key,
+			Value: string(reg.Rune),
+		}
+
+	default:
+		return UnsupportedLabelMatcher{}
+	}
+}
+
+func expandSubexpr(reg *regexsyn.Regexp) (prefixes []string, ok bool) {
+	switch reg.Op {
+	case regexsyn.OpAlternate:
+		util.ClearCapture(reg)
+
+		for _, sub := range reg.Sub {
+			subPrefixes, ok := expandSubexpr(sub)
+			if !ok {
+				return nil, false
+			} else if len(prefixes)+len(subPrefixes) > maxRegexMatchers {
+				return nil, false
+			}
+			prefixes = append(prefixes, subPrefixes...)
+		}
+		return prefixes, true
+
+	case regexsyn.OpCharClass:
+		// OpCharClass stores ranges of characters, so [12] is the range of bytes
+		// []rune('1', '2'), while [15] is represented as []rune('1', '1', '5',
+		// '5').
+		//
+		// To expand OpCharClass, we iterate over each pair of runes.
+		if len(reg.Rune)%2 != 0 {
+			// Invalid regexp; sequences should be even.
+			return nil, false
+		}
+
+		for i := 0; i < len(reg.Rune); i += 2 {
+			start, end := reg.Rune[i+0], reg.Rune[i+1]
+			for r := start; r <= end; r++ {
+				prefixes = append(prefixes, string(r))
+				if len(prefixes) > maxRegexMatchers {
+					return nil, false
+				}
+			}
+		}
+
+		return prefixes, true
+
+	case regexsyn.OpConcat:
+		if len(reg.Sub) == 0 {
+			return nil, false
+		}
+
+		// We get the prefixes for each subexpression and then iteratively combine
+		// them together.
+		//
+		// For the regexp [12][34]value (which concatenates [12], [34], and value):
+		//
+		// 1. We get the prefixes for [12], which are 1 and 2.
+		// 2. We get the prefixes for [34], which are 3 and 4.
+		// 3. We add the prefixes together to get 13, 14, 23, and 24.
+		// 4. We get the prerfixes for value, which is value.
+		// 5. Finally, we add the prefixes together to get 13value, 14value, 23value, and 24value.
+		curPrefixes, ok := expandSubexpr(reg.Sub[0])
+		if !ok {
+			return nil, false
+		}
+
+		for _, sub := range reg.Sub[1:] {
+			subPrefixes, ok := expandSubexpr(sub)
+			if !ok {
+				return nil, false
+			} else if len(curPrefixes)*len(subPrefixes) > maxRegexMatchers {
+				return nil, false
+			}
+
+			newPrefixes := make([]string, 0, len(curPrefixes)*len(subPrefixes))
+
+			for _, curPrefix := range curPrefixes {
+				for _, subPrefix := range subPrefixes {
+					newPrefixes = append(newPrefixes, curPrefix+subPrefix)
+				}
+			}
+
+			curPrefixes = newPrefixes
+		}
+
+		return curPrefixes, true
+
+	case regexsyn.OpCapture:
+		util.ClearCapture(reg)
+		return expandSubexpr(reg)
+
+	case regexsyn.OpLiteral:
+		prefixes = append(prefixes, string(reg.Rune))
+		return prefixes, true
+
+	default:
+		return nil, false
 	}
 }
 

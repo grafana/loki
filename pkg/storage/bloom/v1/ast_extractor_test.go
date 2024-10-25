@@ -56,8 +56,89 @@ func TestExtractLabelMatchers(t *testing.T) {
 		},
 
 		{
-			name:  "unsupported label matchers",
+			name:  "basic regex matcher",
 			input: `{app="foo"} | key1=~"value1"`,
+			expect: []v1.LabelMatcher{
+				v1.PlainLabelMatcher{Key: "key1", Value: "value1"},
+			},
+		},
+
+		{
+			name:  "regex matcher short", // simplifies to value[15].
+			input: `{app="foo"} | key1=~"value1|value5"`,
+			expect: []v1.LabelMatcher{
+				v1.OrLabelMatcher{
+					v1.PlainLabelMatcher{Key: "key1", Value: "value1"},
+					v1.PlainLabelMatcher{Key: "key1", Value: "value5"},
+				},
+			},
+		},
+
+		{
+			name:  "regex matcher range",
+			input: `{app="foo"} | key1=~"value[0-9]"`,
+			expect: []v1.LabelMatcher{
+				buildOrMatchers(
+					v1.PlainLabelMatcher{Key: "key1", Value: "value0"},
+					v1.PlainLabelMatcher{Key: "key1", Value: "value1"},
+					v1.PlainLabelMatcher{Key: "key1", Value: "value2"},
+					v1.PlainLabelMatcher{Key: "key1", Value: "value3"},
+					v1.PlainLabelMatcher{Key: "key1", Value: "value4"},
+					v1.PlainLabelMatcher{Key: "key1", Value: "value5"},
+					v1.PlainLabelMatcher{Key: "key1", Value: "value6"},
+					v1.PlainLabelMatcher{Key: "key1", Value: "value7"},
+					v1.PlainLabelMatcher{Key: "key1", Value: "value8"},
+					v1.PlainLabelMatcher{Key: "key1", Value: "value9"},
+				),
+			},
+		},
+
+		{
+			name:  "regex matcher ignore high cardinality",
+			input: `{app="foo"} | key1=~"value[0-9][0-9]"`, // This would expand to 100 matchers. Too many!
+			expect: []v1.LabelMatcher{
+				v1.UnsupportedLabelMatcher{},
+			},
+		},
+
+		{
+			name:  "regex matcher",
+			input: `{app="foo"} | key1=~"value123|value456"`,
+			expect: []v1.LabelMatcher{
+				v1.OrLabelMatcher{
+					v1.PlainLabelMatcher{Key: "key1", Value: "value123"},
+					v1.PlainLabelMatcher{Key: "key1", Value: "value456"},
+				},
+			},
+		},
+
+		{
+			name:  "regex multiple expands",
+			input: `{app="foo"} | detected_level=~"debug|info|warn|error"`,
+			expect: []v1.LabelMatcher{
+				buildOrMatchers(
+					v1.PlainLabelMatcher{Key: "detected_level", Value: "debug"},
+					v1.PlainLabelMatcher{Key: "detected_level", Value: "info"},
+					v1.PlainLabelMatcher{Key: "detected_level", Value: "warn"},
+					v1.PlainLabelMatcher{Key: "detected_level", Value: "error"},
+				),
+			},
+		},
+
+		{
+			name:  "regex matcher with ignored capture groups",
+			input: `{app="foo"} | key1=~"value1|(value2)"`,
+			expect: []v1.LabelMatcher{
+				v1.OrLabelMatcher{
+					v1.PlainLabelMatcher{Key: "key1", Value: "value1"},
+					v1.PlainLabelMatcher{Key: "key1", Value: "value2"},
+				},
+			},
+		},
+
+		{
+			name:  "unsupported label matchers",
+			input: `{app="foo"} | key1!="value1"`,
 			expect: []v1.LabelMatcher{
 				v1.UnsupportedLabelMatcher{},
 			},
@@ -71,6 +152,23 @@ func TestExtractLabelMatchers(t *testing.T) {
 			require.Equal(t, tc.expect, v1.ExtractTestableLabelMatchers(expr))
 		})
 	}
+}
+
+func buildOrMatchers(matchers ...v1.LabelMatcher) v1.LabelMatcher {
+	if len(matchers) == 1 {
+		return matchers[0]
+	}
+
+	left := matchers[0]
+
+	for _, right := range matchers[1:] {
+		left = v1.OrLabelMatcher{
+			Left:  left,
+			Right: right,
+		}
+	}
+
+	return left
 }
 
 func TestExtractLabelMatchers_IgnoreAfterParse(t *testing.T) {
