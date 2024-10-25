@@ -114,6 +114,10 @@ func (w *PageWriter) Reset() {
 	w.n = 0
 }
 
+func (w *PageWriter) UnflushedSize() int {
+	return w.enc.Len()
+}
+
 func (w *PageWriter) SpaceFor(numBytes int) bool {
 	// if a single bloom exceeds the target size, still accept it
 	// otherwise only accept it if adding it would not exceed the target size

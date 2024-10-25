@@ -28,6 +28,10 @@ func NewBloomBlockBuilder(opts BlockOptions, writer io.WriteCloser) *BloomBlockB
 	}
 }
 
+func (b *BloomBlockBuilder) UnflushedSize() int {
+	return b.scratch.Len() + b.page.UnflushedSize()
+}
+
 func (b *BloomBlockBuilder) Append(bloom *Bloom) (BloomOffset, error) {
 	if !b.writtenSchema {
 		if err := b.writeSchema(); err != nil {
