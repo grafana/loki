@@ -26,8 +26,7 @@ func NewS3ThanosObjectClient(ctx context.Context, cfg bucket.Config, component s
 		}
 	}
 
-	o := bucket.NewObjectClientAdapter(b, hedged, logger)
-	bucket.WithRetryableErrFunc(IsRetryableErr)(o)
+	o := bucket.NewObjectClientAdapter(b, hedged, logger, bucket.WithRetryableErrFunc(IsRetryableErr))
 	return o, nil
 }
 
