@@ -4236,6 +4236,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>gateway.nginxConfig.clientMaxBodySize</td>
+			<td>string</td>
+			<td>Allows customizing the `client_max_body_size` directive</td>
+			<td><pre lang="json">
+"4M"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.nginxConfig.customBackendUrl</td>
 			<td>string</td>
 			<td>Override Backend URL</td>
@@ -5799,6 +5808,15 @@ null
 			<td>TLS configuration for the ingress. Hosts passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>kubeVersionOverride</td>
+			<td>string</td>
+			<td>Overrides the version used to determine compatibility of resources with the target Kubernetes cluster. This is useful when using `helm template`, because then helm will use the client version of kubectl as the Kubernetes version, which may or may not match your cluster's server version. Example: 'v1.24.4'. Set to null to use the version that helm devises.</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>

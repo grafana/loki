@@ -77,11 +77,11 @@ $(KIND): $(BINGO_DIR)/kind.mod
 	@echo "(re)installing $(GOBIN)/kind-v0.23.0"
 	@cd $(BINGO_DIR) && GOWORK=off $(GO) build -mod=mod -modfile=kind.mod -o=$(GOBIN)/kind-v0.23.0 "sigs.k8s.io/kind"
 
-KUSTOMIZE := $(GOBIN)/kustomize-v4.5.7
+KUSTOMIZE := $(GOBIN)/kustomize-v5.4.3
 $(KUSTOMIZE): $(BINGO_DIR)/kustomize.mod
 	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
-	@echo "(re)installing $(GOBIN)/kustomize-v4.5.7"
-	@cd $(BINGO_DIR) && GOWORK=off $(GO) build -mod=mod -modfile=kustomize.mod -o=$(GOBIN)/kustomize-v4.5.7 "sigs.k8s.io/kustomize/kustomize/v4"
+	@echo "(re)installing $(GOBIN)/kustomize-v5.4.3"
+	@cd $(BINGO_DIR) && GOWORK=off $(GO) build -mod=mod -modfile=kustomize.mod -o=$(GOBIN)/kustomize-v5.4.3 "sigs.k8s.io/kustomize/kustomize/v5"
 
 OPERATOR_SDK := $(GOBIN)/operator-sdk-v1.37.0
 $(OPERATOR_SDK): $(BINGO_DIR)/operator-sdk.mod

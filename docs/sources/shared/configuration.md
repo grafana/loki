@@ -3260,7 +3260,8 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -distributor.ingestion-rate-limit-strategy
 [ingestion_rate_strategy: <string> | default = "global"]
 
-# Per-user ingestion rate limit in sample size per second. Units in MB.
+# Per-user ingestion rate limit in sample size per second. Sample size includes
+# size of the logs line and the size of structured metadata labels. Units in MB.
 # CLI flag: -distributor.ingestion-rate-limit-mb
 [ingestion_rate_mb: <float> | default = 4]
 
@@ -3765,7 +3766,7 @@ shard_streams:
 [bloom_creation_enabled: <boolean> | default = false]
 
 # Experimental. Bloom planning strategy to use in bloom creation. Can be one of:
-# 'split_keyspace_by_factor'
+# 'split_keyspace_by_factor', 'split_by_series_chunks_size'
 # CLI flag: -bloom-build.planning-strategy
 [bloom_planning_strategy: <string> | default = "split_keyspace_by_factor"]
 
@@ -3774,6 +3775,10 @@ shard_streams:
 # keyspace is split into this many parts to parallelize bloom creation.
 # CLI flag: -bloom-build.split-keyspace-by
 [bloom_split_series_keyspace_by: <int> | default = 256]
+
+# Experimental. Target chunk size in bytes for bloom tasks. Default is 20GB.
+# CLI flag: -bloom-build.split-target-series-chunk-size
+[bloom_task_target_series_chunk_size: <int> | default = 20GB]
 
 # Experimental. Compression algorithm for bloom block pages.
 # CLI flag: -bloom-build.block-encoding
@@ -5645,13 +5650,6 @@ congestion_control:
 # Maximum number of parallel chunk reads.
 # CLI flag: -store.max-parallel-get-chunk
 [max_parallel_get_chunk: <int> | default = 150]
-
-# Enables the use of thanos-io/objstore clients for connecting to object
-# storage. When set to true, the configuration inside
-# `storage_config.object_store` or `common.storage.object_store` block takes
-# effect.
-# CLI flag: -use-thanos-objstore
-[use_thanos_objstore: <boolean> | default = false]
 
 # The maximum number of chunks to fetch per batch.
 # CLI flag: -store.max-chunk-batch-size
