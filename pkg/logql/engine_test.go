@@ -2610,7 +2610,10 @@ func TestHashingStability(t *testing.T) {
 		{`sum (count_over_time({app="myapp",env="myenv"} |= "error" |= "metrics.go" | logfmt [10s])) by(query_hash)`},
 	} {
 		params.queryString = test.qs
-		expectedQueryHash := util.HashedQuery(test.qs)
+		normalizedQueryString := syntax.MustParseExpr(test.qs).String()
+		expectedQueryHash := util.HashedQuery(normalizedQueryString)
+
+		t.Logf("\nOriginal query:   %s\nNormalized query: %s", test.qs, normalizedQueryString)
 
 		// check that both places will end up having the same query hash, even though they're emitting different log lines.
 		withEngine := queryWithEngine()
