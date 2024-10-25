@@ -55,6 +55,7 @@ type QuerierAPI struct {
 	cfg     Config
 	limits  Limits
 	engine  Engine
+	logger  log.Logger
 }
 
 // NewQuerierAPI returns an instance of the QuerierAPI.
@@ -65,6 +66,7 @@ func NewQuerierAPI(cfg Config, querier Querier, limits Limits, logger log.Logger
 		limits:  limits,
 		querier: querier,
 		engine:  engine,
+		logger:  logger,
 	}
 }
 
@@ -123,7 +125,7 @@ func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelReques
 	}
 
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
-	logql.RecordLabelQueryMetrics(ctx, util_log.Logger, *req.Start, *req.End, req.Name, req.Query, strconv.Itoa(status), statResult)
+	logql.RecordLabelQueryMetrics(ctx, q.logger, *req.Start, *req.End, req.Name, req.Query, strconv.Itoa(status), statResult)
 
 	return resp, err
 }
@@ -274,7 +276,7 @@ func (q *QuerierAPI) SeriesHandler(ctx context.Context, req *logproto.SeriesRequ
 	}
 
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
-	logql.RecordSeriesQueryMetrics(ctx, util_log.Logger, req.Start, req.End, req.Groups, strconv.Itoa(status), req.GetShards(), statResult)
+	logql.RecordSeriesQueryMetrics(ctx, q.logger, req.Start, req.End, req.Groups, strconv.Itoa(status), req.GetShards(), statResult)
 
 	return resp, statResult, err
 }
@@ -300,8 +302,9 @@ func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQu
 		sp.LogKV(statResult.KVList()...)
 	}
 
+	normalizedQuery := syntax.MustParseExpr(req.Query).String()
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
-	logql.RecordStatsQueryMetrics(ctx, util_log.Logger, req.Start, req.End, req.Query, strconv.Itoa(status), statResult)
+	logql.RecordStatsQueryMetrics(ctx, q.logger, req.Start, req.End, normalizedQuery, strconv.Itoa(status), statResult)
 
 	return resp, err
 }
@@ -328,10 +331,9 @@ func (q *QuerierAPI) IndexShardsHandler(ctx context.Context, req *loghttp.RangeQ
 		sp.LogKV(statResult.KVList()...)
 	}
 
+	normalizedQuery := syntax.MustParseExpr(req.Query).String()
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
-	logql.RecordShardsQueryMetrics(
-		ctx, util_log.Logger, req.Start, req.End, req.Query, targetBytesPerShard, strconv.Itoa(status), resLength, statResult,
-	)
+	logql.RecordShardsQueryMetrics(ctx, q.logger, req.Start, req.End, normalizedQuery, targetBytesPerShard, strconv.Itoa(status), resLength, statResult)
 
 	return resp, err
 }
@@ -362,7 +364,7 @@ func (q *QuerierAPI) VolumeHandler(ctx context.Context, req *logproto.VolumeRequ
 	}
 
 	status, _ := serverutil.ClientHTTPStatusAndError(err)
-	logql.RecordVolumeQueryMetrics(ctx, util_log.Logger, req.From.Time(), req.Through.Time(), req.GetQuery(), uint32(req.GetLimit()), time.Duration(req.GetStep()), strconv.Itoa(status), statResult)
+	logql.RecordVolumeQueryMetrics(ctx, q.logger, req.From.Time(), req.Through.Time(), req.GetQuery(), uint32(req.GetLimit()), time.Duration(req.GetStep()), strconv.Itoa(status), statResult)
 
 	return resp, nil
 }

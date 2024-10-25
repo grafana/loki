@@ -130,7 +130,7 @@ func RecordRangeAndInstantQueryMetrics(
 	}
 
 	var (
-		query       = p.QueryString()
+		query       = syntax.MustParseExpr(p.QueryString()).String()
 		hashedQuery = util.HashedQuery(query)
 	)
 
