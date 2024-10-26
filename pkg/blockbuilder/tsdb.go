@@ -1,0 +1,173 @@
+package blockbuilder
+
+import (
+	"sync"
+
+	"github.com/cespare/xxhash"
+	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+)
+
+// TsdbCreator accepts writes and builds TSDBs.
+type TsdbCreator struct {
+	// Function to build a TSDB from the current state
+	mkTsdb func() ([]byte, error)
+
+	mtx    sync.RWMutex
+	shards int
+	heads  *tenantHeads
+}
+
+// new creates a new HeadManager
+func newTsdbCreator(mkTsdb func() ([]byte, error)) *TsdbCreator {
+	m := &TsdbCreator{
+		mkTsdb: mkTsdb,
+		shards: 1 << 5, // 32 shards
+	}
+
+	return m
+}
+
+// Append adds a new series for the given user
+func (m *TsdbCreator) Append(userID string, ls labels.Labels, fprint uint64, chks index.ChunkMetas) error {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	// TODO(owen-d): safe to remove?
+	// Remove __name__="logs" as it's not needed in TSDB
+	b := labels.NewBuilder(ls)
+	b.Del(labels.MetricName)
+	ls = b.Labels()
+
+	// Just append to heads, no WAL needed
+	m.heads.Append(userID, ls, fprint, chks)
+	return nil
+}
+
+// Create builds a TSDB from the current state using the provided mkTsdb function
+func (m *TsdbCreator) Create() ([]byte, error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	out, err := m.mkTsdb()
+	if err != nil {
+		return nil, errors.Wrap(err, "creating TSDB")
+	}
+
+	m.heads = newTenantHeads(m.shards)
+	return out, nil
+}
+
+// tenantHeads manages per-tenant series
+type tenantHeads struct {
+	shards  int
+	locks   []sync.RWMutex
+	tenants []map[string]*Head
+}
+
+func newTenantHeads(shards int) *tenantHeads {
+	t := &tenantHeads{
+		shards:  shards,
+		locks:   make([]sync.RWMutex, shards),
+		tenants: make([]map[string]*Head, shards),
+	}
+	for i := range t.tenants {
+		t.tenants[i] = make(map[string]*Head)
+	}
+	return t
+}
+
+func (t *tenantHeads) Append(userID string, ls labels.Labels, fprint uint64, chks index.ChunkMetas) {
+	head := t.getOrCreateTenantHead(userID)
+	head.Append(ls, fprint, chks)
+}
+
+func (t *tenantHeads) getOrCreateTenantHead(userID string) *Head {
+	idx := t.shardForTenant(userID)
+	mtx := &t.locks[idx]
+
+	// Fast path: return existing head
+	mtx.RLock()
+	head, ok := t.tenants[idx][userID]
+	mtx.RUnlock()
+	if ok {
+		return head
+	}
+
+	// Slow path: create new head
+	mtx.Lock()
+	defer mtx.Unlock()
+
+	head, ok = t.tenants[idx][userID]
+	if !ok {
+		head = NewHead(userID)
+		t.tenants[idx][userID] = head
+	}
+	return head
+}
+
+func (t *tenantHeads) shardForTenant(userID string) uint64 {
+	return xxhash.Sum64String(userID) & uint64(t.shards-1)
+}
+
+// forAll iterates through all series in all tenant heads
+func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, fp uint64, chks index.ChunkMetas) error) error {
+	for i, shard := range t.tenants {
+		t.locks[i].RLock()
+		defer t.locks[i].RUnlock()
+
+		for user, tenant := range shard {
+			if err := tenant.forAll(func(ls labels.Labels, fp uint64, chks index.ChunkMetas) error {
+				return fn(user, ls, fp, chks)
+			}); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// Head manages series for a single tenant
+type Head struct {
+	userID string
+	series map[uint64]*series
+	mtx    sync.RWMutex
+}
+
+type series struct {
+	labels labels.Labels
+	chks   []index.ChunkMeta
+}
+
+func NewHead(userID string) *Head {
+	return &Head{
+		userID: userID,
+		series: make(map[uint64]*series),
+	}
+}
+
+func (h *Head) Append(ls labels.Labels, fp uint64, chks index.ChunkMetas) {
+	h.mtx.Lock()
+	defer h.mtx.Unlock()
+
+	s, ok := h.series[fp]
+	if !ok {
+		s = &series{labels: ls}
+		h.series[fp] = s
+	}
+	s.chks = append(s.chks, chks...)
+}
+
+func (h *Head) forAll(fn func(ls labels.Labels, fp uint64, chks index.ChunkMetas) error) error {
+	h.mtx.RLock()
+	defer h.mtx.RUnlock()
+
+	for fp, s := range h.series {
+		if err := fn(s.labels, fp, s.chks); err != nil {
+			return err
+		}
+	}
+	return nil
+}

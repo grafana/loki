@@ -239,8 +239,8 @@ type Slimgester struct {
 	instancesMtx sync.RWMutex
 
 	store      stores.ChunkWriter
-	input      chan AppendInput // for processing
-	flushQueue chan *chunk.Chunk
+	input      chan AppendInput  // for processing
+	flushQueue chan *chunk.Chunk // for flushing
 
 	grp    errgroup.Group // for waiting on flushers+workers
 	quit   chan struct{}  // for signaling flushers+workers
