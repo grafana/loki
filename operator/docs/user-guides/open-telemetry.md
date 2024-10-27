@@ -49,7 +49,7 @@ Loki splits the configuration for mapping OTLP attributes to stream labels and s
 
 By default, `default_resource_attributes_as_index_labels` provides a set of resource-attributes that are mapped to stream-labels on the Loki side.
 
-As the field in the distributor configuration is limited to resource-level attributes and can only produce stream-labels as an output, the `otlp_config` needs to be used to map scope or log level attributes to structured metadata.
+As the field in the distributor configuration is limited to resource-level attributes and can only produce stream-labels as an output, the `otlp_config` needs to be used to map resource, scope or log level attributes to structured metadata.
 
 **Note:** Attributes that are not mapped to either a stream label or structured metadata will not be stored into Loki.
 
@@ -83,7 +83,7 @@ spec:
         otlp: {} # OTLP Attribute Configuration for tenant "example-tenant"
 ```
 
-Both global and per-tenant OTLP configuration can contain rules mapping attributes to stream-labels or structured-metadata. At least _one stream-label_ is needed for successfully saving a log entry to Loki storage, so the configuration should account for that.
+Both global and per-tenant OTLP configurations can map attributes to stream-labels or structured-metadata. At least _one stream-label_ is needed for successfully saving a log entry to Loki storage, so the configuration should account for that.
 
 Stream labels can only be generated from resource-level attributes, which is mirrored in the data structure of the `LokiStack` resource:
 
@@ -131,7 +131,7 @@ The `openshift-logging` tenancy mode contains its own set of default attributes.
 
 Because the OpenShift attribute configuration is applied based on the tenancy mode, the simplest configuration is to just set the tenancy mode and not apply any custom attributes. This will provide instant compatibility with the other OpenShift tools.
 
-In case additional attributes are needed, either as stream labels or structured metadata, the normal custom attribute configuration mentioned above can be used. In contrast to the Grafana default labels, providing a custom attribute configuration in the `openshift-logging` tenancy mode does not remove the defaults. Instead the custom configuration is **merged** with the default configuration.
+In case additional attributes are needed, either as stream labels or structured metadata, the normal custom attribute configuration mentioned above can be used. Attributes defined in the custom configuration will be **merged** with the default configuration.
 
 #### Removing Recommended Attributes
 
@@ -151,7 +151,7 @@ Setting `disableRecommendedAttributes: true` reduces the set of default attribut
 
 This option is meant for situations when some of the default attributes cause performance issues during ingestion of logs or if the default set causes excessive use of storage.
 
-Because the set of required attributes only contains stream labels and even reduces that set, only setting this option will negatively affect query performance. It needs to be combined with a custom attribute configuration that reintroduces attributes that are needed under the specific circumstances, so that the data contained in those attributes is available again.
+Because the set of required attributes only contains a subset of the default stream labels, only setting this option will negatively affect query performance. It needs to be combined with a custom attribute configuration that reintroduces attributes that are needed for queries so that the data contained in those attributes is available again.
 
 ## References
 
