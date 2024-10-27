@@ -126,7 +126,7 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 			start := time.Now()
 
 			// start a new statistics context to be used by middleware, which we will merge with the response's statistics
-			middlewareStats, statsCtx := stats.NewContext(ctx)
+			middlewareStats, statsCtx := stats.NewContextWithQuery(ctx, req.GetQuery())
 
 			// execute the request
 			resp, err := next.Do(statsCtx, req)

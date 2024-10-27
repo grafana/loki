@@ -26,8 +26,9 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-
 	"github.com/go-kit/log"
+
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 type (
@@ -51,6 +52,10 @@ type Context struct {
 	// result accumulates results for JoinResult.
 	result Result
 
+	// original query and its hash
+	query     string
+	queryHash uint32
+
 	mtx sync.Mutex
 }
 
@@ -71,20 +76,40 @@ const (
 	BloomMetasCache           CacheType = "bloom-metas"           //nolint:staticcheck
 )
 
+// New creates a new instance
+func New() *Context {
+	return &Context{}
+}
+
 // NewContext creates a new statistics context
 func NewContext(ctx context.Context) (*Context, context.Context) {
-	contextData := &Context{}
+	return NewContextWithQuery(ctx, "")
+}
+
+func NewContextWithQuery(ctx context.Context, query string) (*Context, context.Context) {
+	contextData := WithQuery(New(), query)
 	ctx = context.WithValue(ctx, statsKey, contextData)
 	return contextData, ctx
+}
+
+func WithQuery(c *Context, query string) *Context {
+	c.query = query
+	c.queryHash = util.HashedQuery(query)
+	return c
 }
 
 // FromContext returns the statistics context.
 func FromContext(ctx context.Context) *Context {
 	v, ok := ctx.Value(statsKey).(*Context)
 	if !ok {
-		return &Context{}
+		return New()
 	}
 	return v
+}
+
+// QueryAndHash returns the original query and its hash
+func (c *Context) QueryAndHash() (string, uint32) {
+	return c.query, c.queryHash
 }
 
 // Ingester returns the ingester statistics accumulated so far.

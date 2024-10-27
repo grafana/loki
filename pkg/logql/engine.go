@@ -230,9 +230,15 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "query.Exec")
 	defer sp.Finish()
 
+	statsCtx, ctx := stats.NewContextWithQuery(ctx, q.params.QueryString())
+	metadataCtx, ctx := metadata.NewContext(ctx)
+
+	query, queryHash := statsCtx.QueryAndHash()
+
 	sp.LogKV(
 		"type", GetRangeType(q.params),
-		"query", q.params.QueryString(),
+		"query", query,
+		"query_hash", queryHash,
 		"start", q.params.Start(),
 		"end", q.params.End(),
 		"step", q.params.Step(),
@@ -240,11 +246,9 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	)
 
 	if q.logExecQuery {
-		queryHash := util.HashedQuery(q.params.QueryString())
-
 		logValues := []interface{}{
 			"msg", "executing query",
-			"query", q.params.QueryString(),
+			"query", query,
 			"query_hash", queryHash,
 		}
 		tags := httpreq.ExtractQueryTagsFromContext(ctx)
@@ -264,9 +268,6 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 
 	// records query statistics
 	start := time.Now()
-	statsCtx, ctx := stats.NewContext(ctx)
-	metadataCtx, ctx := metadata.NewContext(ctx)
-
 	data, err := q.Eval(ctx)
 
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
