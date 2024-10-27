@@ -175,7 +175,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	)
 
 	defer func() {
-		level.Info(logger).Log(stats.KVArgs()...)
+		level.Info(logger).Log(stats.KVArgs(ctx)...)
 		sp.Finish()
 	}()
 

@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"go.uber.org/atomic"
+
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 type Stats struct {
@@ -59,12 +61,15 @@ func (s *Stats) Duration() (dur time.Duration) {
 	return
 }
 
-func (s *Stats) KVArgs() []any {
+func (s *Stats) KVArgs(ctx context.Context) []any {
 	if s == nil {
 		return []any{}
 	}
 	chunksRemaining := s.ChunksRequested - s.ChunksFiltered
 	filterRatio := float64(s.ChunksFiltered) / float64(max(s.ChunksRequested, 1))
+
+	statsCtx := stats.FromContext(ctx)
+	query, queryHash := statsCtx.QueryAndHash()
 
 	return []any{
 		"msg", "stats-report",
@@ -84,6 +89,8 @@ func (s *Stats) KVArgs() []any {
 		"processing_time", s.ProcessingTime.Load(),
 		"post_processing_time", s.PostProcessingTime.Load(),
 		"duration", s.Duration(),
+		"query", query,
+		"query_hash", queryHash,
 	}
 }
 
