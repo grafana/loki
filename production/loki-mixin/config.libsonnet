@@ -85,6 +85,6 @@
 
     partition_ingester: {
       enabled: false,
-    }
+    },
   },
 }
