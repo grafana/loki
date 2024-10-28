@@ -313,6 +313,10 @@ type storeMock struct {
 	util.ExtendedMock
 }
 
+func (s *storeMock) SelectVariants(ctx context.Context, req logql.SelectVariantsParams) (iter.SampleIterator, error) {
+	panic("TODO(twhitney): SelectVariants not implemented on querier.storeMock") // TODO: Implement
+}
+
 func newStoreMock() *storeMock {
 	return &storeMock{}
 }
@@ -728,8 +732,8 @@ type querierMock struct {
 	util.ExtendedMock
 }
 
-func (q *querierMock) SelectVariants(_ context.Context, _ logql.SelectVariantsParams) (iter.VariantsIterator, error) {
-  panic("TODO(twhitney): SelectVariants not implemented on querierMock") // TODO: Implement
+func (q *querierMock) SelectVariants(_ context.Context, _ logql.SelectVariantsParams) (iter.SampleIterator, error) {
+	panic("TODO(twhitney): SelectVariants not implemented on querierMock") // TODO: Implement
 }
 
 func newQuerierMock() *querierMock {

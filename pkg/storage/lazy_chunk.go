@@ -115,7 +115,7 @@ func (c *LazyChunk) Iterator(
 func (c *LazyChunk) SampleIterator(
 	ctx context.Context,
 	from, through time.Time,
-	extractor log.StreamSampleExtractor,
+	extractors []log.StreamSampleExtractor,
 	nextChunk *LazyChunk,
 ) (iter.SampleIterator, error) {
 	// If the chunk is not already loaded, then error out.
@@ -137,10 +137,20 @@ func (c *LazyChunk) SampleIterator(
 			its = append(its, cache)
 			continue
 		}
+
+		var blockSampleIterator iter.SampleIterator
+		if len(extractors) == 0 {
+			return nil, errors.New("no extractors provided")
+		} else if len(extractors) > 0 {
+			blockSampleIterator = b.MultiExtractorSampleIterator(ctx, extractors)
+		} else {
+			blockSampleIterator = b.SampleIterator(ctx, extractors[0])
+		}
+
 		// if the block is overlapping cache it with the next chunk boundaries.
 		if nextChunk != nil && IsBlockOverlapping(b, nextChunk, logproto.FORWARD) {
 			// todo(cyriltovena) we can avoid to drop the metric name for each chunks since many chunks have the same metric/labelset.
-			it := iter.NewCachedSampleIterator(b.SampleIterator(ctx, extractor), b.Entries())
+			it := iter.NewCachedSampleIterator(blockSampleIterator, b.Entries())
 			its = append(its, it)
 			if c.overlappingSampleBlocks == nil {
 				c.overlappingSampleBlocks = make(map[int]iter.CacheSampleIterator)
@@ -160,7 +170,7 @@ func (c *LazyChunk) SampleIterator(
 			}
 		}
 		// non-overlapping block with the next chunk are not cached.
-		its = append(its, b.SampleIterator(ctx, extractor))
+		its = append(its, blockSampleIterator)
 	}
 
 	// build the final iterator bound to the requested time range.

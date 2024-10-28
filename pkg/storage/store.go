@@ -54,7 +54,11 @@ var (
 type SelectStore interface {
 	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
 	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
-	SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
+	SelectSeries(
+		ctx context.Context,
+		req logql.SelectLogParams,
+	) ([]logproto.SeriesIdentifier, error)
+	SelectVariants(ctx context.Context, req logql.SelectVariantsParams) (iter.SampleIterator, error)
 }
 
 type SchemaConfigProvider interface {
@@ -102,8 +106,76 @@ type LokiStore struct {
 	metricsNamespace string
 }
 
-func (l *LokiStore) SelectVariants(_ context.Context, _ logql.SelectVariantsParams) (iter.VariantsIterator, error) {
-  panic("TODO(twhitney): SelectVariants not implemented on LokiStore") // TODO: Implement
+func (s *LokiStore) SelectVariants(
+	ctx context.Context,
+	req logql.SelectVariantsParams,
+) (iter.SampleIterator, error) {
+	matchers, from, through, err := decodeReq(req)
+	if err != nil {
+		return nil, err
+	}
+
+	lazyChunks, err := s.lazyChunks(
+		ctx,
+		from,
+		through,
+		chunk.NewPredicate(matchers, req.Plan),
+		req.GetStoreChunks(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(lazyChunks) == 0 {
+		return iter.NoopSampleIterator, nil
+	}
+
+	expr, err := req.Expr()
+	if err != nil {
+		return nil, err
+	}
+
+	extractors, err := expr.Extractors()
+	if err != nil {
+		return nil, err
+	}
+
+	for i, extractor := range extractors {
+		extractor, err = deletion.SetupExtractor(req, extractor)
+		if err != nil {
+			return nil, err
+		}
+
+		if s.extractorWrapper != nil &&
+			httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != "true" {
+			userID, err := tenant.TenantID(ctx)
+			if err != nil {
+				return nil, err
+			}
+
+			extractor = s.extractorWrapper.Wrap(ctx, extractor, req.Plan.String(), userID)
+		}
+
+		extractors[i] = extractor
+	}
+
+	var chunkFilterer chunk.Filterer
+	if s.chunkFilterer != nil {
+		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
+	}
+
+	return newMultiExtractorSampleBatchIterator(
+		ctx,
+		s.schemaCfg,
+		s.chunkMetrics,
+		lazyChunks,
+		s.cfg.MaxChunkBatchSize,
+		matchers,
+		extractors,
+		req.Start,
+		req.End,
+		chunkFilterer,
+	)
 }
 
 // NewStore creates a new Loki Store using configuration supplied.

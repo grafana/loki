@@ -64,6 +64,7 @@ type QueryParams interface {
 	GetStart() time.Time
 	GetEnd() time.Time
 	GetShards() []string
+	GetDeletes() []*logproto.Delete
 }
 
 // SelectParams specifies parameters passed to data selections.
@@ -136,7 +137,7 @@ func (s SelectSampleParams) LogSelector() (syntax.LogSelectorExpr, error) {
 type Querier interface {
 	SelectLogs(context.Context, SelectLogParams) (iter.EntryIterator, error)
 	SelectSamples(context.Context, SelectSampleParams) (iter.SampleIterator, error)
-	SelectVariants(context.Context, SelectVariantsParams) (iter.VariantsIterator, error)
+	SelectVariants(context.Context, SelectVariantsParams) (iter.SampleIterator, error)
 }
 
 // EngineOpts is the list of options to use with the LogQL query engine.
@@ -674,6 +675,26 @@ func (q *query) evalVariant(
 	}
 	return nil, errors.New("unexpected empty result")
 }
+
 type SelectVariantsParams struct {
 	*logproto.VariantsQueryRequest
+}
+
+func (s SelectVariantsParams) Expr() (syntax.VariantsExpr, error) {
+	if s.VariantsQueryRequest.Plan == nil {
+		return nil, errors.New("query plan is empty")
+	}
+	expr, ok := s.VariantsQueryRequest.Plan.AST.(syntax.VariantsExpr)
+	if !ok {
+		return nil, errors.New("only sample expression supported")
+	}
+	return expr, nil
+}
+
+func (s SelectVariantsParams) LogSelector() (syntax.LogSelectorExpr, error) {
+	expr, err := s.Expr()
+	if err != nil {
+		return nil, err
+	}
+	return expr.LogRange().Left, nil
 }

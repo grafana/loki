@@ -246,7 +246,7 @@ type querier struct {
 	labels labels.Labels
 }
 
-func (q *querier) SelectVariants(_ context.Context, _ logql.SelectVariantsParams) (iter.VariantsIterator, error) {
+func (q *querier) SelectVariants(_ context.Context, _ logql.SelectVariantsParams) (iter.SampleIterator, error) {
   panic("TODO(twhitney): SelectVariants not implemented on logcli client.Querier") // TODO: Implement
 }
 

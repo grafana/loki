@@ -1193,6 +1193,13 @@ func (b encBlock) SampleIterator(ctx context.Context, extractor log.StreamSample
 	return newSampleIterator(ctx, compression.GetReaderPool(b.enc), b.b, b.format, extractor, b.symbolizer)
 }
 
+func (b encBlock) MultiExtractorSampleIterator(ctx context.Context, extractors []log.StreamSampleExtractor) iter.SampleIterator {
+	if len(b.b) == 0 {
+		return iter.NoopSampleIterator
+	}
+	return newMultiExtractorSampleIterator(ctx, compression.GetReaderPool(b.enc), b.b, b.format, extractors, b.symbolizer)
+}
+
 func (b block) Offset() int {
 	return b.offset
 }

@@ -529,20 +529,10 @@ message VariantsQueryRequest {
 }
 
 message VariantsQueryResponse {
-  repeated Variants variants = 1 [(gogoproto.nullable) = true];
-  stats.Ingester stats = 3 [(gogoproto.nullable) = false];
-  repeated string warnings = 4;
-}
-
-message Variants {
-  repeated StreamAdapter streams = 1 [
-    (gogoproto.customtype) = "github.com/grafana/loki/pkg/push.Stream",
-    (gogoproto.nullable) = true
-  ];
-
-  repeated Series series = 2 [
+  repeated Series series = 1 [
     (gogoproto.customtype) = "Series",
     (gogoproto.nullable) = true
   ];
-
+  stats.Ingester stats = 2 [(gogoproto.nullable) = false];
+  repeated string warnings = 3;
 }

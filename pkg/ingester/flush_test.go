@@ -380,6 +380,10 @@ type testStore struct {
 	onPut  func(ctx context.Context, chunks []chunk.Chunk) error
 }
 
+func (t *testStore) SelectVariants(ctx context.Context, req logql.SelectVariantsParams) (iter.SampleIterator, error) {
+  panic("TODO(twhitney): SelectVariants not implemented on testStore") // TODO: Implement
+}
+
 // Note: the ingester New() function creates it's own WAL first which we then override if specified.
 // Because of this, ensure any WAL directories exist/are cleaned up even when overriding the wal.
 // This is an ugly hook for testing :(

@@ -456,7 +456,7 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 
 type errorQuerier struct{}
 
-func (e *errorQuerier) SelectVariants(_ context.Context, _ SelectVariantsParams) (iter.VariantsIterator, error) {
+func (e *errorQuerier) SelectVariants(_ context.Context, _ SelectVariantsParams) (iter.SampleIterator, error) {
 	panic("TODO(twhitney): SelectorVariants not implemented on errorQuerier") // TODO: Implement
 }
 

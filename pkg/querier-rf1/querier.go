@@ -100,7 +100,7 @@ type Rf1Querier struct {
 	walQuerier     logql.Querier
 }
 
-func (r *Rf1Querier) SelectVariants(_ context.Context, _ logql.SelectVariantsParams) (iter.VariantsIterator, error) {
+func (r *Rf1Querier) SelectVariants(_ context.Context, _ logql.SelectVariantsParams) (iter.SampleIterator, error) {
 	panic("TODO(twhitney): SelectVariants not implemented on Rf1Querier") // TODO: Implement
 }
 

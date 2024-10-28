@@ -133,10 +133,6 @@ type SingleTenantQuerier struct {
 	logger          log.Logger
 }
 
-func (s *SingleTenantQuerier) SelectVariants(_ context.Context, _ logql.SelectVariantsParams) (iter.VariantsIterator, error) {
-  panic("TODO(twhitney): SelectVariants not implemented on SingleTenantQuerier") // TODO: Implement
-}
-
 type deleteGetter interface {
 	GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]deletion.DeleteRequest, error)
 }
@@ -1440,4 +1436,88 @@ func streamsForFieldDetection(i iter.EntryIterator, size uint32) (logqlmodel.Str
 	}
 	sort.Sort(result)
 	return result, i.Err()
+}
+
+func (q *SingleTenantQuerier) SelectVariants(
+	ctx context.Context,
+	params logql.SelectVariantsParams,
+) (iter.SampleIterator, error) {
+	var err error
+	params.Start, params.End, err = q.validateVariantsRequest(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+
+	params.VariantsQueryRequest.Deletes, err = q.deletesForUser(ctx, params.Start, params.End)
+	if err != nil {
+		level.Error(spanlogger.FromContext(ctx)).Log("msg", "failed loading deletes for user", "err", err)
+	}
+
+	_, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
+
+	iters := []iter.SampleIterator{}
+	// TODO(twhitney): deal with ingesters later
+	// if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
+	// 	// Make a copy of the request before modifying
+	// 	// because the initial request is used below to query stores
+	// 	queryRequestCopy := *params.VariantsQueryRequest
+	// 	newParams := logql.SelectVariantsParams{
+	// 		VariantsQueryRequest: &queryRequestCopy,
+	// 	}
+	// 	newParams.Start = ingesterQueryInterval.start
+	// 	newParams.End = ingesterQueryInterval.end
+
+	// 	ingesterIters, err := q.ingesterQuerier.SelectVariants(ctx, newParams)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+
+	// 	for _, iter := range ingesterIters {
+	// 		for iter.Next() {
+	// 			iters = append(iters, iter.At())
+	// 		}
+	// 	}
+	// }
+
+	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
+		params.Start = storeQueryInterval.start
+		params.End = storeQueryInterval.end
+
+		storeIter, err := q.store.SelectVariants(ctx, params)
+		if err != nil {
+			return nil, err
+		}
+
+		iters = append(iters, storeIter)
+	}
+
+	return iter.NewMergeSampleIterator(ctx, iters), nil
+}
+
+func (q *SingleTenantQuerier) validateVariantsRequest(
+	ctx context.Context,
+	req logql.QueryParams,
+) (time.Time, time.Time, error) {
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+
+	selector, err := req.LogSelector()
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+	matchers := selector.Matchers()
+
+	maxStreamMatchersPerQuery := q.limits.MaxStreamsMatchersPerQuery(ctx, userID)
+	if len(matchers) > maxStreamMatchersPerQuery {
+		return time.Time{}, time.Time{}, httpgrpc.Errorf(
+			http.StatusBadRequest,
+			"max streams matchers per query exceeded, matchers-count > limit (%d > %d)",
+			len(matchers),
+			maxStreamMatchersPerQuery,
+		)
+	}
+
+	return validateQueryTimeRangeLimits(ctx, userID, q.limits, req.GetStart(), req.GetEnd())
 }

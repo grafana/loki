@@ -117,7 +117,7 @@ func TestNonMetricQuery(t *testing.T) {
 
 type FakeQuerier struct{}
 
-func (f *FakeQuerier) SelectVariants(_ context.Context, _ logql.SelectVariantsParams) (iter.VariantsIterator, error) {
+func (f *FakeQuerier) SelectVariants(_ context.Context, _ logql.SelectVariantsParams) (iter.SampleIterator, error) {
   panic("TODO(twhitney): SelectVariants not implemented on FakeQuerier") // TODO: Implement
 }
 

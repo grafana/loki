@@ -585,7 +585,157 @@ func (it *sampleBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, thro
 			if !chks[i][j].IsValid {
 				continue
 			}
-			iterator, err := chks[i][j].SampleIterator(it.ctx, from, through, streamExtractor, nextChunk)
+			iterator, err := chks[i][j].SampleIterator(
+				it.ctx,
+				from,
+				through,
+				[]log.StreamSampleExtractor{streamExtractor},
+				nextChunk,
+			)
+			if err != nil {
+				return nil, err
+			}
+			iterators = append(iterators, iterator)
+		}
+		result = append(result, iter.NewNonOverlappingSampleIterator(iterators))
+	}
+
+	return iter.NewMergeSampleIterator(it.ctx, result), nil
+}
+
+type multiExtractorSampleIterator struct {
+	*sampleBatchIterator
+
+	extractors []log.SampleExtractor
+}
+
+func newMultiExtractorSampleBatchIterator(
+	ctx context.Context,
+	schemas config.SchemaConfig,
+	metrics *ChunkMetrics,
+	chunks []*LazyChunk,
+	batchSize int,
+	matchers []*labels.Matcher,
+	extractors []syntax.SampleExtractor,
+	start, end time.Time,
+	chunkFilterer chunk.Filterer,
+) (iter.SampleIterator, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	return &multiExtractorSampleIterator{
+		sampleBatchIterator: &sampleBatchIterator{
+			extractor: nil,
+			ctx:       ctx,
+			cancel:    cancel,
+			batchChunkIterator: newBatchChunkIterator(
+				ctx,
+				schemas,
+				chunks,
+				batchSize,
+				logproto.FORWARD,
+				start,
+				end,
+				metrics,
+				matchers,
+				chunkFilterer,
+			),
+		},
+		extractors: extractors,
+	}, nil
+}
+
+func (it *multiExtractorSampleIterator) Next() bool {
+	// for loop to avoid recursion
+	for it.ctx.Err() == nil {
+		if it.curr != nil && it.curr.Next() {
+			return true
+		}
+		// close previous iterator
+		if it.curr != nil {
+			it.err = it.curr.Close()
+		}
+		next := it.batchChunkIterator.Next()
+		if next == nil {
+			return false
+		}
+		if next.err != nil {
+			it.err = next.err
+			return false
+		}
+		var err error
+		it.curr, err = it.newChunksIterator(next)
+		if err != nil {
+			it.err = err
+			return false
+		}
+	}
+	return false
+}
+
+// newChunksIterator creates an iterator over a set of lazychunks.
+func (it *multiExtractorSampleIterator) newChunksIterator(
+	b *chunkBatch,
+) (iter.SampleIterator, error) {
+	iters, err := it.buildIterators(b.chunksBySeries, b.from, b.through, b.nextChunk)
+	if err != nil {
+		return nil, err
+	}
+
+	return iter.NewSortSampleIterator(iters), nil
+}
+
+func (it *multiExtractorSampleIterator) buildIterators(
+	chks map[model.Fingerprint][][]*LazyChunk,
+	from, through time.Time,
+	nextChunk *LazyChunk,
+) ([]iter.SampleIterator, error) {
+	// 1 iterator per chunk
+	result := make([]iter.SampleIterator, 0, len(chks))
+	for _, chunks := range chks {
+		if len(chunks) != 0 && len(chunks[0]) != 0 {
+			extractors := make([]log.StreamSampleExtractor, 0, len(it.extractors))
+			for _, extractor := range it.extractors {
+				extractors = append(
+					extractors,
+					extractor.ForStream(
+						labels.NewBuilder(chunks[0][0].Chunk.Metric).
+							Del(labels.MetricName).
+							Labels(),
+					),
+				)
+
+				iterator, err := it.buildHeapIterator(chunks, from, through, extractors, nextChunk)
+				if err != nil {
+					return nil, err
+				}
+				result = append(result, iterator)
+			}
+		}
+	}
+
+	return result, nil
+}
+
+func (it *multiExtractorSampleIterator) buildHeapIterator(
+	chks [][]*LazyChunk,
+	from, through time.Time,
+	streamExtractors []log.StreamSampleExtractor,
+	nextChunk *LazyChunk,
+) (iter.SampleIterator, error) {
+	result := make([]iter.SampleIterator, 0, len(chks))
+
+	for i := range chks {
+		iterators := make([]iter.SampleIterator, 0, len(chks[i]))
+		for j := range chks[i] {
+			if !chks[i][j].IsValid {
+				continue
+			}
+			iterator, err := chks[i][j].SampleIterator(
+				it.ctx,
+				from,
+				through,
+				streamExtractors,
+				nextChunk,
+			)
 			if err != nil {
 				return nil, err
 			}

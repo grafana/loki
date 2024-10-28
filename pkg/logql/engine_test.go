@@ -2273,7 +2273,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 
 type statsQuerier struct{}
 
-func (s *statsQuerier) SelectVariants(_ context.Context, _ SelectVariantsParams) (iter.VariantsIterator, error) {
+func (s *statsQuerier) SelectVariants(_ context.Context, _ SelectVariantsParams) (iter.SampleIterator, error) {
 	panic("TODO(twhitney): SelectVariants not implemented on statsQuerier") // TODO: Implement
 }
 
@@ -2307,7 +2307,7 @@ func TestEngine_Stats(t *testing.T) {
 
 type metaQuerier struct{}
 
-func (m *metaQuerier) SelectVariants(_ context.Context, _ SelectVariantsParams) (iter.VariantsIterator, error) {
+func (m *metaQuerier) SelectVariants(_ context.Context, _ SelectVariantsParams) (iter.SampleIterator, error) {
 	panic("TODO(twhitney): SelecttVariants not implemented on metaQuerier") // TODO: Implement
 }
 
@@ -2373,7 +2373,7 @@ type errorIteratorQuerier struct {
 	entries func() []iter.EntryIterator
 }
 
-func (e *errorIteratorQuerier) SelectVariants(_ context.Context, _ SelectVariantsParams) (iter.VariantsIterator, error) {
+func (e *errorIteratorQuerier) SelectVariants(_ context.Context, _ SelectVariantsParams) (iter.SampleIterator, error) {
 	panic("TODO(twhitney): SelectVariants not implemented on errorIteratorQuerier") // TODO: Implement
 }
 
@@ -2702,7 +2702,7 @@ type querierRecorder struct {
 	match   bool
 }
 
-func (q *querierRecorder) SelectVariants(_ context.Context, _ SelectVariantsParams) (iter.VariantsIterator, error) {
+func (q *querierRecorder) SelectVariants(_ context.Context, _ SelectVariantsParams) (iter.SampleIterator, error) {
 	panic("TODO(twhitney): SelectVariants not implemented on querierRecorder") // TODO: Implement
 }
 

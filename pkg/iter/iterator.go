@@ -8,7 +8,7 @@ import (
 )
 
 type logprotoType interface {
-	logproto.Entry | logproto.Sample | logproto.Variants
+	logproto.Entry | logproto.Sample
 }
 
 type StreamIterator[T logprotoType] interface {
@@ -20,9 +20,10 @@ type StreamIterator[T logprotoType] interface {
 	StreamHash() uint64
 }
 
-type EntryIterator StreamIterator[logproto.Entry]
-type SampleIterator StreamIterator[logproto.Sample]
-type VariantsIterator StreamIterator[logproto.Variants]
+type (
+	EntryIterator  StreamIterator[logproto.Entry]
+	SampleIterator StreamIterator[logproto.Sample]
+)
 
 // noOpIterator implements StreamIterator
 type noOpIterator[T logprotoType] struct{}
@@ -34,9 +35,10 @@ func (noOpIterator[T]) Labels() string     { return "" }
 func (noOpIterator[T]) StreamHash() uint64 { return 0 }
 func (noOpIterator[T]) Close() error       { return nil }
 
-var NoopEntryIterator = noOpIterator[logproto.Entry]{}
-var NoopSampleIterator = noOpIterator[logproto.Sample]{}
-var NoopVariantsIterator = noOpIterator[logproto.Variants]{}
+var (
+	NoopEntryIterator  = noOpIterator[logproto.Entry]{}
+	NoopSampleIterator = noOpIterator[logproto.Sample]{}
+)
 
 // errorIterator implements StreamIterator
 type errorIterator[T logprotoType] struct{}
@@ -48,6 +50,7 @@ func (errorIterator[T]) Labels() string     { return "" }
 func (errorIterator[T]) StreamHash() uint64 { return 0 }
 func (errorIterator[T]) Close() error       { return errors.New("close") }
 
-var ErrorEntryIterator = errorIterator[logproto.Entry]{}
-var ErrorSampleIterator = errorIterator[logproto.Sample]{}
-var ErrorVariantsIterator = errorIterator[logproto.Variants]{}
+var (
+	ErrorEntryIterator  = errorIterator[logproto.Entry]{}
+	ErrorSampleIterator = errorIterator[logproto.Sample]{}
+)

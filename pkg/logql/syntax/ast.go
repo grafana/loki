@@ -2449,6 +2449,7 @@ type VariantsExpr interface {
 	Offset() time.Duration
 	IncludeLogs(bool)
 	ShouldIncludeLogs() bool
+	Extractors() ([]SampleExtractor, error)
 	Expr
 }
 
@@ -2456,6 +2457,7 @@ type MultiVariantExpr struct {
 	logRange    *LogRange
 	variants    []SampleExpr
 	includeLogs bool
+	err         error
 	implicit
 }
 
@@ -2579,6 +2581,20 @@ func (m *MultiVariantExpr) Pretty(level int) string {
 	s += Indent(level) + "\n)"
 
 	return s
+}
+
+func (m *MultiVariantExpr) Extractors() ([]log.SampleExtractor, error) {
+	extractors := make([]log.SampleExtractor, 0, len(m.variants))
+	for _, v := range m.variants {
+		e, err := v.Extractor()
+		if err != nil {
+			return nil, err
+		}
+
+		extractors = append(extractors, e)
+	}
+
+	return extractors, nil
 }
 
 func newVariantsExpr(variants []SampleExpr, logRange *LogRange) VariantsExpr {
