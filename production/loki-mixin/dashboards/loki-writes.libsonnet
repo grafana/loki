@@ -29,6 +29,9 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             any_ingester: if $._config.meta_monitoring.enabled
                             then [utils.selector.re('job', '($namespace)/(ingester.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
                             else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester.*'))],
+                            partition_ingester: if $._config.meta_monitoring.enabled
+                            then [utils.selector.re('job', '($namespace)/(partition-ingester.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
+                            else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'partition-ingester.*'))],
                           },
 
                           local selector(matcherId) =
@@ -41,6 +44,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           distributorSelector:: selector('distributor'),
                           ingesterSelector:: selector('ingester'),
                           ingesterZoneSelector:: selector('ingester_zone'),
+                          partitionIngesterSelector:: selector('partition_ingester'),
                           anyIngester:: selector('any_ingester'),
                         } +
                         $.dashboard('Loki / Writes', uid='writes')
@@ -167,6 +171,33 @@ local utils = import 'mixin-utils/utils.libsonnet';
                               $.toPrometheusSelector(
                                 dashboards['loki-writes.json'].clusterMatchers +
                                 dashboards['loki-writes.json'].matchers.ingester +
+                                [utils.selector.eq('route', '/logproto.Pusher/Push')]
+                              ),
+                            )
+                          )
+                        )
+                        .addRowIf(
+                          $._config.partition_ingester.enabled,
+                          $.row('Partition Ingester')
+                          .addPanel(
+                            $.newQueryPanel('QPS') +
+                            $.newQpsPanel('loki_request_duration_seconds_count{%s route="/logproto.Pusher/Push"}' % dashboards['loki-writes.json'].partitionIngesterSelector)
+                          )
+                          .addPanel(
+                            $.newQueryPanel('Latency', 'ms') +
+                            utils.latencyRecordingRulePanel(
+                              'loki_request_duration_seconds',
+                              dashboards['loki-writes.json'].clusterMatchers +
+                              dashboards['loki-writes.json'].matchers.partition_ingester +
+                              [utils.selector.eq('route', '/logproto.Pusher/Push')],
+                            )
+                          )
+                          .addPanel(
+                            $.p99LatencyByPod(
+                              'loki_request_duration_seconds',
+                              $.toPrometheusSelector(
+                                dashboards['loki-writes.json'].clusterMatchers +
+                                dashboards['loki-writes.json'].matchers.partition_ingester +
                                 [utils.selector.eq('route', '/logproto.Pusher/Push')]
                               ),
                             )

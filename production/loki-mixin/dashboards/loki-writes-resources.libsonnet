@@ -6,6 +6,13 @@
   then '(ingester.*|loki-single-binary)'
   else 'ingester.*',
 
+  local partition_ingester_pod_matcher = if $._config.meta_monitoring.enabled
+  then 'container=~"loki|partition-ingester", pod=~"(partition-ingester.*loki-single-binary)"'
+  else 'container="partition-ingester"',
+  local partition_ingester_job_matcher = if $._config.meta_monitoring.enabled
+  then '(partition-ingester.*|loki-single-binary)'
+  else 'partition-ingester.*',
+
   grafanaDashboards+:: if $._config.ssd.enabled then {} else {
     'loki-writes-resources.json':
       ($.dashboard('Loki / Writes Resources', uid='writes-resources'))
@@ -76,6 +83,48 @@
         )
         .addPanel(
           $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', ingester_job_matcher),
+        )
+      )
+      .addRowIf(
+        $._config.partition_ingester.enabled,
+        $.row('Partition Ingester')
+        .addPanel(
+          $.newQueryPanel('In-memory streams') +
+          $.queryPanel(
+            'sum by(%s) (loki_ingester_memory_streams{%s})' % [$._config.per_instance_label, $.jobMatcher(partition_ingester_job_matcher)],
+            '{{%s}}' % $._config.per_instance_label
+          ) +
+          {
+            tooltip: { sort: 2 },  // Sort descending.
+          },
+        )
+        .addPanel(
+          $.CPUUsagePanel('CPU', partition_ingester_pod_matcher),
+        )
+        .addPanel(
+          $.memoryWorkingSetPanel('Memory (workingset)', partition_ingester_pod_matcher),
+        )
+        .addPanel(
+          $.goHeapInUsePanel('Memory (go heap inuse)', partition_ingester_job_matcher),
+        )
+        .addPanel(
+          $.newQueryPanel('Disk Writes', 'Bps') +
+          $.queryPanel(
+            'sum by(%s, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $.filterNodeDisk(partition_ingester_job_matcher)],
+            '{{%s}} - {{device}}' % $._config.per_instance_label
+          ) +
+          $.withStacking,
+        )
+        .addPanel(
+          $.newQueryPanel('Disk Reads', 'Bps') +
+          $.queryPanel(
+            'sum by(%s, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $.filterNodeDisk(partition_ingester_job_matcher)],
+            '{{%s}} - {{device}}' % $._config.per_instance_label
+          ) +
+          $.withStacking,
+        )
+        .addPanel(
+          $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', partition_ingester_job_matcher),
         )
       ),
   },

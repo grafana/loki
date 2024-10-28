@@ -82,5 +82,9 @@
     meta_monitoring: {
       enabled: false,
     },
+
+    partition_ingester: {
+      enabled: false,
+    }
   },
 }
