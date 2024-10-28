@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"io"
 	"math"
 
 	"github.com/Workiva/go-datastructures/rangetree"
@@ -13,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 type organisedHeadBlock struct {
@@ -86,11 +88,11 @@ func (b *organisedHeadBlock) CompressedBlock(pool compression.WriterPool) (block
 	if err != nil {
 		return block{}, 0, err
 	}
-	sm, err = b.serialiseStructuredMetadata()
+	sm, err = b.serialiseStructuredMetadata(pool)
 	if err != nil {
 		return block{}, 0, err
 	}
-	ts, err = b.serialiseTimestamps()
+	ts, err = b.serialiseTimestamps(pool)
 	if err != nil {
 		return block{}, 0, err
 	}
@@ -187,4 +189,158 @@ func (b *organisedHeadBlock) serialiseTimestamps(pool compression.WriterPool) ([
 	}
 
 	return outBuf.Bytes(), nil
+}
+
+// todo (shantanu): rename these iterators to something meaningful
+
+// newOrganizedSampleIterator iterates over new block format v5.
+func newOrganizedSampleIterator(ctx context.Context, pool compression.ReaderPool, b []byte, format byte, extractor log.StreamSampleExtractor, symbolizer *symbolizer) iter.SampleIterator {
+	return &sampleOrganizedBufferedIterator{
+		organizedBufferedIterator: newOrganizedBufferedIterator(ctx, pool, b, format, symbolizer),
+		extractor:                 extractor,
+		stats:                     stats.FromContext(ctx),
+	}
+}
+
+func newOrganizedBufferedIterator(ctx context.Context, pool compression.ReaderPool, b []byte, format byte, symbolizer *symbolizer) *organizedBufferedIterator {
+	st := stats.FromContext(ctx)
+	st.AddCompressedBytes(int64(len(b)))
+	return &organizedBufferedIterator{
+		origBytes: b,
+		stats:     st,
+
+		pool:       pool,
+		symbolizer: symbolizer,
+
+		format: format,
+	}
+}
+
+type organizedBufferedIterator struct {
+	origBytes []byte
+	stats     *stats.Context
+
+	reader     io.Reader
+	pool       compression.ReaderPool
+	symbolizer *symbolizer
+
+	err error
+
+	readBuf      [20]byte // Enough bytes to store two varints.
+	readBufValid int      // How many bytes are left in readBuf from previous read.
+
+	format   byte
+	buf      []byte // The buffer for a single entry.
+	currLine []byte // the current line, this is the same as the buffer but sliced the line size.
+	currTs   int64
+
+	symbolsBuf             []symbol      // The buffer for a single entry's symbols.
+	currStructuredMetadata labels.Labels // The current labels.
+
+	closed bool
+}
+
+func (e *organizedBufferedIterator) Next() bool {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (e *organizedBufferedIterator) Err() error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (e *organizedBufferedIterator) Close() error {
+	//TODO implement me
+	panic("implement me")
+}
+
+type entryOrganizedBufferedIterator struct {
+	*organizedBufferedIterator
+	pipeline log.StreamPipeline
+	stats    *stats.Context
+
+	cur        logproto.Entry
+	currLabels log.LabelsResult
+}
+
+func (e *entryOrganizedBufferedIterator) Labels() string {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (e *entryOrganizedBufferedIterator) Err() error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (e *entryOrganizedBufferedIterator) At() logproto.Entry {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (e *entryOrganizedBufferedIterator) StreamHash() uint64 {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (e *entryOrganizedBufferedIterator) Next() bool {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (e *entryOrganizedBufferedIterator) Close() error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func newEntryOrganizedBufferedIterator(ctx context.Context, pool compression.ReaderPool, b []byte, pipeline log.StreamPipeline, format byte, symbolizer *symbolizer) iter.EntryIterator {
+	return &entryOrganizedBufferedIterator{
+		organizedBufferedIterator: newOrganizedBufferedIterator(ctx, pool, b, format, symbolizer),
+		pipeline:                  pipeline,
+		stats:                     stats.FromContext(ctx),
+	}
+}
+
+type sampleOrganizedBufferedIterator struct {
+	*organizedBufferedIterator
+
+	extractor log.StreamSampleExtractor
+	stats     *stats.Context
+
+	cur        logproto.Sample
+	currLabels log.LabelsResult
+}
+
+func (s *sampleOrganizedBufferedIterator) Err() error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (s *sampleOrganizedBufferedIterator) At() logproto.Sample {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (s *sampleOrganizedBufferedIterator) StreamHash() uint64 {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (s *sampleOrganizedBufferedIterator) Next() bool {
+	for s.organizedBufferedIterator.Next() {
+		// iterate over samples here
+	}
+	return false
+}
+func (s *sampleOrganizedBufferedIterator) Close() error {
+	if s.extractor.ReferencedStructuredMetadata() {
+		s.stats.SetQueryReferencedStructuredMetadata()
+	}
+
+	return s.organizedBufferedIterator.Close()
+}
+
+func (s *sampleOrganizedBufferedIterator) Labels() string {
+	return s.currLabels.String()
 }
