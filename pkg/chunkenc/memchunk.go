@@ -58,6 +58,8 @@ func (f HeadBlockFmt) String() string {
 		return "unordered"
 	case f == UnorderedWithStructuredMetadataHeadBlockFmt:
 		return "unordered with structured metadata"
+	case f == UnorderedWithOrganizedStructuredMetadataHeadBlockFmt:
+		return "unordered organized with structured metadata"
 	default:
 		return fmt.Sprintf("unknown: %v", byte(f))
 	}
@@ -1201,7 +1203,7 @@ func (b encBlock) Iterator(ctx context.Context, pipeline log.StreamPipeline) ite
 		return iter.NoopEntryIterator
 	}
 	if b.format >= ChunkFormatV5 {
-		return newEntryOrganizedBufferedIterator(ctx, compression.GetReaderPool(b.enc), b.b, pipeline, b.format, b.symbolizer)
+		return newEntryOrganizedBufferedIterator(ctx, compression.GetReaderPool(b.enc), b.b, pipeline, b.format, b.symbolizer, b.sm, b.ts)
 	}
 	return newEntryIterator(ctx, compression.GetReaderPool(b.enc), b.b, pipeline, b.format, b.symbolizer)
 }
@@ -1211,7 +1213,7 @@ func (b encBlock) SampleIterator(ctx context.Context, extractor log.StreamSample
 		return iter.NoopSampleIterator
 	}
 	if b.format >= ChunkFormatV5 {
-		return newOrganizedSampleIterator(ctx, compression.GetReaderPool(b.enc), b.b, b.format, extractor, b.symbolizer)
+		return newOrganizedSampleIterator(ctx, compression.GetReaderPool(b.enc), b.b, b.format, extractor, b.symbolizer, b.sm, b.ts)
 	}
 	return newSampleIterator(ctx, compression.GetReaderPool(b.enc), b.b, b.format, extractor, b.symbolizer)
 }
