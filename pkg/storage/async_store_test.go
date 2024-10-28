@@ -379,7 +379,8 @@ func TestMergeShardsFromIngestersAndStore(t *testing.T) {
 			Shards: sharding.LinearShards(n, bytesPerShard*uint64(n)),
 			Statistics: stats.Result{
 				Index: stats.Index{
-					TotalChunks: chks,
+					TotalChunks:      chks,
+					PostFilterChunks: chks,
 				},
 			},
 		}
@@ -434,7 +435,6 @@ func TestMergeShardsFromIngestersAndStore(t *testing.T) {
 			)
 			require.Equal(t, tc.exp.Statistics, got.Statistics)
 			require.Equal(t, tc.exp.ChunkGroups, got.ChunkGroups)
-			require.Equal(t, tc.exp.Statistics.Index.TotalChunks, got.Statistics.Index.TotalChunks)
 			for i, shard := range tc.exp.Shards {
 				require.Equal(t, shard, got.Shards[i], "shard %d", i)
 			}

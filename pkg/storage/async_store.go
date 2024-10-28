@@ -378,6 +378,8 @@ func mergeShardsFromIngestersAndStore(
 	// but it's still directionally helpful
 	updatedStats := storeResp.Statistics
 	updatedStats.Index.TotalChunks += int64(statsResp.Chunks)
+	updatedStats.Index.PostFilterChunks += int64(statsResp.Chunks)
+
 	return &logproto.ShardsResponse{
 		Shards:     shards,
 		Statistics: updatedStats,
