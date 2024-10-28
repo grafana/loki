@@ -51,11 +51,17 @@ By default, `default_resource_attributes_as_index_labels` provides a set of reso
 
 As the field in the distributor configuration is limited to resource-level attributes and can only produce stream-labels as an output, the `otlp_config` needs to be used to map resource, scope or log level attributes to structured metadata.
 
-**Note:** Attributes that are not mapped to either a stream label or structured metadata will not be stored into Loki.
-
 The Loki Operator does not use the same approach for configuring the attributes as Loki itself does. The most visible difference is that there is no distinction between the `distributor` and `limits` configuration in the Operator.
 
 Instead, the Loki Operator only uses the `limits` configuration for all its attributes. The structure of the `limits` configuration also differs from the structure in the Loki configuration file. See [Custom Attribute Mapping](#custom-attribute-mapping) below for an explanation of the configuration options available in the Operator.
+
+### Picking Stream Labels and Structured Metadata
+
+Whether you choose to map an attribute to a stream label or to structured metadata depends on what data is present in the attribute. Stream labels are used to identify a set of log entries "belonging together" in a stream of events. These labels are used for indexing and identifying the streams and so should not contain information that changes between different log entries of the same application. They should also not contain values that have a high number of different values ("cardinality").
+
+Structured metadata on the other hand is just saved together with the log entries and only read when querying for logs, so it's more suitable to store "any data". Both stream labels and structured metadata can be used to filter log entries during a query.
+
+**Note:** Attributes that are not mapped to either a stream label or structured metadata will not be stored into Loki.
 
 ### Loki Operator Defaults
 
