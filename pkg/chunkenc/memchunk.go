@@ -972,19 +972,6 @@ func (c *MemChunk) cut() error {
 		return err
 	}
 	c.blocks = append(c.blocks, bl)
-	//b, err := c.head.Serialise(compression.GetWriterPool(c.encoding))
-	//if err != nil {
-	//	return err
-	//}
-	//
-	//mint, maxt := c.head.Bounds()
-	//c.blocks = append(c.blocks, block{
-	//	b:                b,
-	//	numEntries:       c.head.Entries(),
-	//	mint:             mint,
-	//	maxt:             maxt,
-	//	uncompressedSize: c.head.UncompressedSize(),
-	//})
 
 	c.cutBlockSize += blockSize
 
@@ -1219,6 +1206,9 @@ func (b encBlock) Iterator(ctx context.Context, pipeline log.StreamPipeline) ite
 func (b encBlock) SampleIterator(ctx context.Context, extractor log.StreamSampleExtractor) iter.SampleIterator {
 	if len(b.b) == 0 {
 		return iter.NoopSampleIterator
+	}
+	if b.format >= ChunkFormatV5 {
+		return newOrganizedSampleIterator(ctx, compression.GetReaderPool(b.enc), b.b, b.format, extractor, b.symbolizer)
 	}
 	return newSampleIterator(ctx, compression.GetReaderPool(b.enc), b.b, b.format, extractor, b.symbolizer)
 }
