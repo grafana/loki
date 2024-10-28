@@ -1200,6 +1200,9 @@ func (b encBlock) Iterator(ctx context.Context, pipeline log.StreamPipeline) ite
 	if len(b.b) == 0 {
 		return iter.NoopEntryIterator
 	}
+	if b.format >= ChunkFormatV5 {
+		return newEntryOrganizedBufferedIterator(ctx, compression.GetReaderPool(b.enc), b.b, pipeline, b.format, b.symbolizer)
+	}
 	return newEntryIterator(ctx, compression.GetReaderPool(b.enc), b.b, pipeline, b.format, b.symbolizer)
 }
 

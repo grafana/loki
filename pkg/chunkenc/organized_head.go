@@ -6,8 +6,10 @@ import (
 	"encoding/binary"
 	"io"
 	"math"
+	"time"
 
 	"github.com/Workiva/go-datastructures/rangetree"
+	"github.com/cespare/xxhash/v2"
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -61,23 +63,6 @@ func (b *organisedHeadBlock) Serialise(pool compression.WriterPool) ([]byte, err
 	}
 
 	return outBuf.Bytes(), nil
-}
-
-func (b *organisedHeadBlock) Iterator(
-	_ context.Context,
-	_ logproto.Direction,
-	_, _ int64,
-	_ log.StreamPipeline,
-) iter.EntryIterator {
-	return nil
-}
-
-func (b *organisedHeadBlock) SampleIterator(
-	_ context.Context,
-	_, _ int64,
-	_ log.StreamSampleExtractor,
-) iter.SampleIterator {
-	return nil
 }
 
 func (b *organisedHeadBlock) CompressedBlock(pool compression.WriterPool) (block, int, error) {
@@ -192,7 +177,6 @@ func (b *organisedHeadBlock) serialiseTimestamps(pool compression.WriterPool) ([
 }
 
 // todo (shantanu): rename these iterators to something meaningful
-
 // newOrganizedSampleIterator iterates over new block format v5.
 func newOrganizedSampleIterator(ctx context.Context, pool compression.ReaderPool, b []byte, format byte, extractor log.StreamSampleExtractor, symbolizer *symbolizer) iter.SampleIterator {
 	return &sampleOrganizedBufferedIterator{
@@ -241,18 +225,78 @@ type organizedBufferedIterator struct {
 }
 
 func (e *organizedBufferedIterator) Next() bool {
-	//TODO implement me
-	panic("implement me")
+	if e.closed {
+		return false
+	}
+
+	if !e.closed && e.reader == nil {
+		var err error
+
+		e.reader, err = e.pool.GetReader(bytes.NewReader(e.origBytes))
+		if err != nil {
+			e.err = err
+			return false
+		}
+
+		// todo (shantanu): assign ok and handle errors
+		ts, _ := e.nextTs()
+		line, _ := e.nextLine()
+		structuredMetadata, _ := e.nextMetadata()
+
+		e.currTs = ts
+		e.currLine = line
+		e.currStructuredMetadata = structuredMetadata
+	}
+	return true
+}
+
+func (e *organizedBufferedIterator) nextTs() (int64, bool) {
+	return 0, true
+}
+
+func (e *organizedBufferedIterator) nextLine() ([]byte, bool) {
+	return []byte{}, true
+}
+
+func (e *organizedBufferedIterator) nextMetadata() (labels.Labels, bool) {
+	return nil, true
 }
 
 func (e *organizedBufferedIterator) Err() error {
-	//TODO implement me
-	panic("implement me")
+	return e.err
 }
 
 func (e *organizedBufferedIterator) Close() error {
-	//TODO implement me
-	panic("implement me")
+	if !e.closed {
+		e.closed = true
+		e.close()
+	}
+
+	return e.err
+}
+
+func (e *organizedBufferedIterator) close() {
+	if e.reader != nil {
+		e.pool.PutReader(e.reader)
+		e.reader = nil
+	}
+
+	if e.buf != nil {
+		BytesBufferPool.Put(e.buf)
+		e.buf = nil
+	}
+
+	if e.symbolsBuf != nil {
+		SymbolsPool.Put(e.symbolsBuf)
+		e.symbolsBuf = nil
+	}
+
+	if e.currStructuredMetadata != nil {
+		structuredMetadataPool.Put(e.currStructuredMetadata) // nolint:staticcheck
+		e.currStructuredMetadata = nil
+	}
+
+	e.origBytes = nil
 }
 
 type entryOrganizedBufferedIterator struct {
@@ -265,33 +309,42 @@ type entryOrganizedBufferedIterator struct {
 }
 
 func (e *entryOrganizedBufferedIterator) Labels() string {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (e *entryOrganizedBufferedIterator) Err() error {
-	//TODO implement me
-	panic("implement me")
+	return e.currLabels.String()
 }
 
 func (e *entryOrganizedBufferedIterator) At() logproto.Entry {
-	//TODO implement me
-	panic("implement me")
+	return e.cur
 }
 
 func (e *entryOrganizedBufferedIterator) StreamHash() uint64 {
-	//TODO implement me
-	panic("implement me")
+	return e.pipeline.BaseLabels().Hash()
 }
 
 func (e *entryOrganizedBufferedIterator) Next() bool {
-	//TODO implement me
-	panic("implement me")
+	for e.organizedBufferedIterator.Next() {
+		newLine, lbs, matches := e.pipeline.Process(e.currTs, e.currLine, e.currStructuredMetadata...)
+		if !matches {
+			continue
+		}
+
+		e.stats.AddPostFilterLines(1)
+		e.currLabels = lbs
+		e.cur.Timestamp = time.Unix(0, e.currTs)
+		e.cur.Line = string(newLine)
+		e.cur.StructuredMetadata = logproto.FromLabelsToLabelAdapters(lbs.StructuredMetadata())
+		e.cur.Parsed = logproto.FromLabelsToLabelAdapters(lbs.Parsed())
+
+		return true
+	}
+	return false
 }
 
 func (e *entryOrganizedBufferedIterator) Close() error {
-	//TODO implement me
-	panic("implement me")
+	if e.pipeline.ReferencedStructuredMetadata() {
+		e.stats.SetQueryReferencedStructuredMetadata()
+	}
+
+	return e.organizedBufferedIterator.Close()
 }
 
 func newEntryOrganizedBufferedIterator(ctx context.Context, pool compression.ReaderPool, b []byte, pipeline log.StreamPipeline, format byte, symbolizer *symbolizer) iter.EntryIterator {
@@ -312,27 +365,30 @@ type sampleOrganizedBufferedIterator struct {
 	currLabels log.LabelsResult
 }
 
-func (s *sampleOrganizedBufferedIterator) Err() error {
-	//TODO implement me
-	panic("implement me")
-}
-
 func (s *sampleOrganizedBufferedIterator) At() logproto.Sample {
-	//TODO implement me
-	panic("implement me")
+	return s.cur
 }
 
 func (s *sampleOrganizedBufferedIterator) StreamHash() uint64 {
-	//TODO implement me
-	panic("implement me")
+	return s.extractor.BaseLabels().Hash()
 }
 
 func (s *sampleOrganizedBufferedIterator) Next() bool {
 	for s.organizedBufferedIterator.Next() {
-		// iterate over samples here
+		val, labels, ok := s.extractor.Process(s.currTs, s.currLine, s.currStructuredMetadata...)
+		if !ok {
+			continue
+		}
+		s.stats.AddPostFilterLines(1)
+		s.currLabels = labels
+		s.cur.Value = val
+		s.cur.Hash = xxhash.Sum64(s.currLine)
+		s.cur.Timestamp = s.currTs
+		return true
 	}
 	return false
 }
+
 func (s *sampleOrganizedBufferedIterator) Close() error {
 	if s.extractor.ReferencedStructuredMetadata() {
 		s.stats.SetQueryReferencedStructuredMetadata()
