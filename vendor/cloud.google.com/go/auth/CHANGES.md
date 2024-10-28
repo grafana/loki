@@ -1,5 +1,70 @@
 # Changelog
 
+## [0.9.8](https://github.com/googleapis/google-cloud-go/compare/auth/v0.9.7...auth/v0.9.8) (2024-10-09)
+
+
+### Bug Fixes
+
+* **auth:** Restore OpenTelemetry handling in transports ([#10968](https://github.com/googleapis/google-cloud-go/issues/10968)) ([08c6d04](https://github.com/googleapis/google-cloud-go/commit/08c6d04901c1a20e219b2d86df41dbaa6d7d7b55)), refs [#10962](https://github.com/googleapis/google-cloud-go/issues/10962)
+* **auth:** Try talk to plaintext S2A if credentials can not be found for mTLS-S2A ([#10941](https://github.com/googleapis/google-cloud-go/issues/10941)) ([0f0bf2d](https://github.com/googleapis/google-cloud-go/commit/0f0bf2d18c97dd8b65bcf0099f0802b5631c6287))
+
+## [0.9.7](https://github.com/googleapis/google-cloud-go/compare/auth/v0.9.6...auth/v0.9.7) (2024-10-01)
+
+
+### Bug Fixes
+
+* **auth:** Restore support for non-default service accounts for DirectPath ([#10937](https://github.com/googleapis/google-cloud-go/issues/10937)) ([a38650e](https://github.com/googleapis/google-cloud-go/commit/a38650edbf420223077498cafa537aec74b37aad)), refs [#10907](https://github.com/googleapis/google-cloud-go/issues/10907)
+
+## [0.9.6](https://github.com/googleapis/google-cloud-go/compare/auth/v0.9.5...auth/v0.9.6) (2024-09-30)
+
+
+### Bug Fixes
+
+* **auth:** Make aws credentials provider retrieve fresh credentials ([#10920](https://github.com/googleapis/google-cloud-go/issues/10920)) ([250fbf8](https://github.com/googleapis/google-cloud-go/commit/250fbf87d858d865e399a241b7e537c4ff0c3dd8))
+
+## [0.9.5](https://github.com/googleapis/google-cloud-go/compare/auth/v0.9.4...auth/v0.9.5) (2024-09-25)
+
+
+### Bug Fixes
+
+* **auth:** Restore support for GOOGLE_CLOUD_UNIVERSE_DOMAIN env ([#10915](https://github.com/googleapis/google-cloud-go/issues/10915)) ([94caaaa](https://github.com/googleapis/google-cloud-go/commit/94caaaa061362d0e00ef6214afcc8a0a3e7ebfb2))
+* **auth:** Skip directpath credentials overwrite when it's not on GCE ([#10833](https://github.com/googleapis/google-cloud-go/issues/10833)) ([7e5e8d1](https://github.com/googleapis/google-cloud-go/commit/7e5e8d10b761b0a6e43e19a028528db361bc07b1))
+* **auth:** Use new context for non-blocking token refresh ([#10919](https://github.com/googleapis/google-cloud-go/issues/10919)) ([cf7102d](https://github.com/googleapis/google-cloud-go/commit/cf7102d33a21be1e5a9d47a49456b3a57c43b350))
+
+## [0.9.4](https://github.com/googleapis/google-cloud-go/compare/auth/v0.9.3...auth/v0.9.4) (2024-09-11)
+
+
+### Bug Fixes
+
+* **auth:** Enable self-signed JWT for non-GDU universe domain ([#10831](https://github.com/googleapis/google-cloud-go/issues/10831)) ([f9869f7](https://github.com/googleapis/google-cloud-go/commit/f9869f7903cfd34d1b97c25d0dc5669d2c5138e6))
+
+## [0.9.3](https://github.com/googleapis/google-cloud-go/compare/auth/v0.9.2...auth/v0.9.3) (2024-09-03)
+
+
+### Bug Fixes
+
+* **auth:** Choose quota project envvar over file when both present ([#10807](https://github.com/googleapis/google-cloud-go/issues/10807)) ([2d8dd77](https://github.com/googleapis/google-cloud-go/commit/2d8dd7700eff92d4b95027be55e26e1e7aa79181)), refs [#10804](https://github.com/googleapis/google-cloud-go/issues/10804)
+
+## [0.9.2](https://github.com/googleapis/google-cloud-go/compare/auth/v0.9.1...auth/v0.9.2) (2024-08-30)
+
+
+### Bug Fixes
+
+* **auth:** Handle non-Transport DefaultTransport ([#10733](https://github.com/googleapis/google-cloud-go/issues/10733)) ([98d91dc](https://github.com/googleapis/google-cloud-go/commit/98d91dc8316b247498fab41ab35e57a0446fe556)), refs [#10742](https://github.com/googleapis/google-cloud-go/issues/10742)
+* **auth:** Make sure quota option takes precedence over env/file ([#10797](https://github.com/googleapis/google-cloud-go/issues/10797)) ([f1b050d](https://github.com/googleapis/google-cloud-go/commit/f1b050d56d804b245cab048c2980d32b0eaceb4e)), refs [#10795](https://github.com/googleapis/google-cloud-go/issues/10795)
+
+
+### Documentation
+
+* **auth:** Fix Go doc comment link ([#10751](https://github.com/googleapis/google-cloud-go/issues/10751)) ([015acfa](https://github.com/googleapis/google-cloud-go/commit/015acfab4d172650928bb1119bc2cd6307b9a437))
+
+## [0.9.1](https://github.com/googleapis/google-cloud-go/compare/auth/v0.9.0...auth/v0.9.1) (2024-08-22)
+
+
+### Bug Fixes
+
+* **auth:** Setting expireEarly to default when the value is 0 ([#10732](https://github.com/googleapis/google-cloud-go/issues/10732)) ([5e67869](https://github.com/googleapis/google-cloud-go/commit/5e67869a31e9e8ecb4eeebd2cfa11a761c3b1948))
+
 ## [0.9.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.8.1...auth/v0.9.0) (2024-08-16)
 
 

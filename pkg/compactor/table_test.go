@@ -350,7 +350,6 @@ func TestTable_CompactionRetention(t *testing.T) {
 				}),
 			},
 		} {
-			tt := tt
 			commonDBsConfig := IndexesConfig{
 				NumCompactedFiles:   tt.dbsSetup.numCompactedDBs,
 				NumUnCompactedFiles: tt.dbsSetup.numUnCompactedCommonDBs,

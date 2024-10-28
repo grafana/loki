@@ -314,7 +314,6 @@ func Test_PromQL(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.normalQuery, func(t *testing.T) {
 
 			baseQuery, err := engine.NewRangeQuery(context.Background(), shardAwareQueryable, nil, tt.normalQuery, start, end, step)

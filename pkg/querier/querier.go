@@ -72,6 +72,7 @@ type Config struct {
 	QueryIngesterOnly             bool             `yaml:"query_ingester_only"`
 	MultiTenantQueriesEnabled     bool             `yaml:"multi_tenant_queries_enabled"`
 	PerRequestLimitsEnabled       bool             `yaml:"per_request_limits_enabled"`
+	QueryPartitionIngesters       bool             `yaml:"query_partition_ingesters" category:"experimental"`
 }
 
 // RegisterFlags register flags.
@@ -85,6 +86,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.QueryIngesterOnly, "querier.query-ingester-only", false, "When true, queriers only query the ingesters, and not stored data. This is useful when the object store is unavailable.")
 	f.BoolVar(&cfg.MultiTenantQueriesEnabled, "querier.multi-tenant-queries-enabled", false, "When true, allow queries to span multiple tenants.")
 	f.BoolVar(&cfg.PerRequestLimitsEnabled, "querier.per-request-limits-enabled", false, "When true, querier limits sent via a header are enforced.")
+	f.BoolVar(&cfg.QueryPartitionIngesters, "querier.query-partition-ingesters", false, "When true, querier directs ingester queries to the partition-ingesters instead of the normal ingesters.")
 }
 
 // Validate validates the config.
@@ -1104,7 +1106,7 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 		return nil, err
 	}
 
-	detectedFields := parseDetectedFields(req.FieldLimit, streams)
+	detectedFields := parseDetectedFields(req.Limit, streams)
 
 	fields := make([]*logproto.DetectedField, len(detectedFields))
 	fieldCount := 0
@@ -1130,8 +1132,8 @@ func (q *SingleTenantQuerier) DetectedFields(ctx context.Context, req *logproto.
 	}
 
 	return &logproto.DetectedFieldsResponse{
-		Fields:     fields,
-		FieldLimit: req.GetFieldLimit(),
+		Fields: fields,
+		Limit:  req.GetLimit(),
 	}, nil
 }
 

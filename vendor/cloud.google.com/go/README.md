@@ -28,12 +28,16 @@ For an updated list of all of our released APIs please see our
 
 ## [Go Versions Supported](#supported-versions)
 
+**Note:** As of Jan 1, 2025 the Cloud Client Libraries for Go will support the
+two most-recent major Go releases -- the same [policy](https://go.dev/doc/devel/release#policy)
+the Go programming language follows.
+
 Our libraries are compatible with at least the three most recent, major Go
 releases. They are currently compatible with:
 
+- Go 1.23
 - Go 1.22
 - Go 1.21
-- Go 1.20
 
 ## Authorization
 
@@ -56,14 +60,14 @@ client, err := storage.NewClient(ctx, option.WithCredentialsFile("path/to/keyfil
 ```
 
 You can exert more control over authorization by using the
-[`golang.org/x/oauth2`](https://pkg.go.dev/golang.org/x/oauth2) package to
-create an `oauth2.TokenSource`. Then pass
-[`option.WithTokenSource`](https://pkg.go.dev/google.golang.org/api/option#WithTokenSource)
+[credentials](https://pkg.go.dev/cloud.google.com/go/auth/credentials) package to
+create an [auth.Credentials](https://pkg.go.dev/cloud.google.com/go/auth#Credentials).
+Then pass [`option.WithAuthCredentials`](https://pkg.go.dev/google.golang.org/api/option#WithAuthCredentials)
 to the `NewClient` function:
 
 ```go
-tokenSource := ...
-client, err := storage.NewClient(ctx, option.WithTokenSource(tokenSource))
+creds := ...
+client, err := storage.NewClient(ctx, option.WithAuthCredentials(creds))
 ```
 
 ## Contributing

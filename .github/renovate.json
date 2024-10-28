@@ -16,7 +16,7 @@
         "matchFileNames": [ "operator/go.mod" ],
         "matchPackageNames": [
           "github.com/grafana/loki",
-          "github.com/grafana/loki/operator/apis/loki"
+          "github.com/grafana/loki/operator/api/loki"
         ],
         "enabled": false
       }

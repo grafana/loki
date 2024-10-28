@@ -32,7 +32,9 @@ import (
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/base"
 	"google.golang.org/grpc/balancer/weightedroundrobin/internal"
+	"google.golang.org/grpc/balancer/weightedtarget"
 	"google.golang.org/grpc/connectivity"
+	estats "google.golang.org/grpc/experimental/stats"
 	"google.golang.org/grpc/internal/grpclog"
 	iserviceconfig "google.golang.org/grpc/internal/serviceconfig"
 	"google.golang.org/grpc/orca"
@@ -44,6 +46,43 @@ import (
 
 // Name is the name of the weighted round robin balancer.
 const Name = "weighted_round_robin"
+
+var (
+	rrFallbackMetric = estats.RegisterInt64Count(estats.MetricDescriptor{
+		Name:           "grpc.lb.wrr.rr_fallback",
+		Description:    "EXPERIMENTAL. Number of scheduler updates in which there were not enough endpoints with valid weight, which caused the WRR policy to fall back to RR behavior.",
+		Unit:           "update",
+		Labels:         []string{"grpc.target"},
+		OptionalLabels: []string{"grpc.lb.locality"},
+		Default:        false,
+	})
+
+	endpointWeightNotYetUsableMetric = estats.RegisterInt64Count(estats.MetricDescriptor{
+		Name:           "grpc.lb.wrr.endpoint_weight_not_yet_usable",
+		Description:    "EXPERIMENTAL. Number of endpoints from each scheduler update that don't yet have usable weight information (i.e., either the load report has not yet been received, or it is within the blackout period).",
+		Unit:           "endpoint",
+		Labels:         []string{"grpc.target"},
+		OptionalLabels: []string{"grpc.lb.locality"},
+		Default:        false,
+	})
+
+	endpointWeightStaleMetric = estats.RegisterInt64Count(estats.MetricDescriptor{
+		Name:           "grpc.lb.wrr.endpoint_weight_stale",
+		Description:    "EXPERIMENTAL. Number of endpoints from each scheduler update whose latest weight is older than the expiration period.",
+		Unit:           "endpoint",
+		Labels:         []string{"grpc.target"},
+		OptionalLabels: []string{"grpc.lb.locality"},
+		Default:        false,
+	})
+	endpointWeightsMetric = estats.RegisterFloat64Histo(estats.MetricDescriptor{
+		Name:           "grpc.lb.wrr.endpoint_weights",
+		Description:    "EXPERIMENTAL. Weight of each endpoint, recorded on every scheduler update. Endpoints without usable weights will be recorded as weight 0.",
+		Unit:           "endpoint",
+		Labels:         []string{"grpc.target"},
+		OptionalLabels: []string{"grpc.lb.locality"},
+		Default:        false,
+	})
+)
 
 func init() {
 	balancer.Register(bb{})
@@ -58,7 +97,10 @@ func (bb) Build(cc balancer.ClientConn, bOpts balancer.BuildOptions) balancer.Ba
 		csEvltr:           &balancer.ConnectivityStateEvaluator{},
 		scMap:             make(map[balancer.SubConn]*weightedSubConn),
 		connectivityState: connectivity.Connecting,
+		target:            bOpts.Target.String(),
+		metricsRecorder:   bOpts.MetricsRecorder,
 	}
+
 	b.logger = prefixLogger(b)
 	b.logger.Infof("Created")
 	return b
@@ -101,8 +143,11 @@ func (bb) Name() string {
 
 // wrrBalancer implements the weighted round robin LB policy.
 type wrrBalancer struct {
-	cc     balancer.ClientConn
-	logger *grpclog.PrefixLogger
+	// The following fields are immutable.
+	cc              balancer.ClientConn
+	logger          *grpclog.PrefixLogger
+	target          string
+	metricsRecorder estats.MetricsRecorder
 
 	// The following fields are only accessed on calls into the LB policy, and
 	// do not need a mutex.
@@ -114,6 +159,7 @@ type wrrBalancer struct {
 	resolverErr       error // the last error reported by the resolver; cleared on successful resolution
 	connErr           error // the last connection error; cleared upon leaving TransientFailure
 	stopPicker        func()
+	locality          string
 }
 
 func (b *wrrBalancer) UpdateClientConnState(ccs balancer.ClientConnState) error {
@@ -125,6 +171,7 @@ func (b *wrrBalancer) UpdateClientConnState(ccs balancer.ClientConnState) error 
 	}
 
 	b.cfg = cfg
+	b.locality = weightedtarget.LocalityFromResolverState(ccs.ResolverState)
 	b.updateAddresses(ccs.ResolverState.Addresses)
 
 	if len(ccs.ResolverState.Addresses) == 0 {
@@ -171,6 +218,10 @@ func (b *wrrBalancer) updateAddresses(addrs []resolver.Address) {
 				// Initially, we set load reports to off, because they are not
 				// running upon initial weightedSubConn creation.
 				cfg: &lbConfig{EnableOOBLoadReport: false},
+
+				metricsRecorder: b.metricsRecorder,
+				target:          b.target,
+				locality:        b.locality,
 			}
 			b.subConns.Set(addr, wsc)
 			b.scMap[sc] = wsc
@@ -318,9 +369,12 @@ func (b *wrrBalancer) regeneratePicker() {
 	}
 
 	p := &picker{
-		v:        rand.Uint32(), // start the scheduler at a random point
-		cfg:      b.cfg,
-		subConns: b.readySubConns(),
+		v:               rand.Uint32(), // start the scheduler at a random point
+		cfg:             b.cfg,
+		subConns:        b.readySubConns(),
+		metricsRecorder: b.metricsRecorder,
+		locality:        b.locality,
+		target:          b.target,
 	}
 	var ctx context.Context
 	ctx, b.stopPicker = context.WithCancel(context.Background())
@@ -339,16 +393,20 @@ type picker struct {
 	v         uint32             // incrementing value used by the scheduler; accessed atomically
 	cfg       *lbConfig          // active config when picker created
 	subConns  []*weightedSubConn // all READY subconns
+
+	// The following fields are immutable.
+	target          string
+	locality        string
+	metricsRecorder estats.MetricsRecorder
 }
 
-// scWeights returns a slice containing the weights from p.subConns in the same
-// order as p.subConns.
-func (p *picker) scWeights() []float64 {
+func (p *picker) scWeights(recordMetrics bool) []float64 {
 	ws := make([]float64, len(p.subConns))
 	now := internal.TimeNow()
 	for i, wsc := range p.subConns {
-		ws[i] = wsc.weight(now, time.Duration(p.cfg.WeightExpirationPeriod), time.Duration(p.cfg.BlackoutPeriod))
+		ws[i] = wsc.weight(now, time.Duration(p.cfg.WeightExpirationPeriod), time.Duration(p.cfg.BlackoutPeriod), recordMetrics)
 	}
+
 	return ws
 }
 
@@ -357,7 +415,7 @@ func (p *picker) inc() uint32 {
 }
 
 func (p *picker) regenerateScheduler() {
-	s := newScheduler(p.scWeights(), p.inc)
+	s := p.newScheduler(true)
 	atomic.StorePointer(&p.scheduler, unsafe.Pointer(&s))
 }
 
@@ -367,6 +425,7 @@ func (p *picker) start(ctx context.Context) {
 		// No need to regenerate weights with only one backend.
 		return
 	}
+
 	go func() {
 		ticker := time.NewTicker(time.Duration(p.cfg.WeightUpdatePeriod))
 		defer ticker.Stop()
@@ -381,7 +440,7 @@ func (p *picker) start(ctx context.Context) {
 	}()
 }
 
-func (p *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
+func (p *picker) Pick(balancer.PickInfo) (balancer.PickResult, error) {
 	// Read the scheduler atomically.  All scheduler operations are threadsafe,
 	// and if the scheduler is replaced during this usage, we want to use the
 	// scheduler that was live when the pick started.
@@ -404,8 +463,12 @@ func (p *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 // When needed, it also tracks connectivity state, listens for metrics updates
 // by implementing the orca.OOBListener interface and manages that listener.
 type weightedSubConn struct {
+	// The following fields are immutable.
 	balancer.SubConn
-	logger *grpclog.PrefixLogger
+	logger          *grpclog.PrefixLogger
+	target          string
+	metricsRecorder estats.MetricsRecorder
+	locality        string
 
 	// The following fields are only accessed on calls into the LB policy, and
 	// do not need a mutex.
@@ -450,7 +513,7 @@ func (w *weightedSubConn) OnLoadReport(load *v3orcapb.OrcaLoadReport) {
 	}
 
 	w.lastUpdated = internal.TimeNow()
-	if w.nonEmptySince == (time.Time{}) {
+	if w.nonEmptySince.Equal(time.Time{}) {
 		w.nonEmptySince = w.lastUpdated
 	}
 }
@@ -495,14 +558,17 @@ func (w *weightedSubConn) updateConnectivityState(cs connectivity.State) connect
 		w.SubConn.Connect()
 	case connectivity.Ready:
 		// If we transition back to READY state, reset nonEmptySince so that we
-		// apply the blackout period after we start receiving load data.  Note
-		// that we cannot guarantee that we will never receive lingering
-		// callbacks for backend metric reports from the previous connection
-		// after the new connection has been established, but they should be
-		// masked by new backend metric reports from the new connection by the
-		// time the blackout period ends.
+		// apply the blackout period after we start receiving load data. Also
+		// reset lastUpdated to trigger endpoint weight not yet usable in the
+		// case endpoint gets asked what weight it is before receiving a new
+		// load report. Note that we cannot guarantee that we will never receive
+		// lingering callbacks for backend metric reports from the previous
+		// connection after the new connection has been established, but they
+		// should be masked by new backend metric reports from the new
+		// connection by the time the blackout period ends.
 		w.mu.Lock()
 		w.nonEmptySince = time.Time{}
+		w.lastUpdated = time.Time{}
 		w.mu.Unlock()
 	case connectivity.Shutdown:
 		if w.stopORCAListener != nil {
@@ -527,21 +593,44 @@ func (w *weightedSubConn) updateConnectivityState(cs connectivity.State) connect
 
 // weight returns the current effective weight of the subconn, taking into
 // account the parameters.  Returns 0 for blacked out or expired data, which
-// will cause the backend weight to be treated as the mean of the weights of
-// the other backends.
-func (w *weightedSubConn) weight(now time.Time, weightExpirationPeriod, blackoutPeriod time.Duration) float64 {
+// will cause the backend weight to be treated as the mean of the weights of the
+// other backends. If forScheduler is set to true, this function will emit
+// metrics through the metrics registry.
+func (w *weightedSubConn) weight(now time.Time, weightExpirationPeriod, blackoutPeriod time.Duration, recordMetrics bool) (weight float64) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+
+	if recordMetrics {
+		defer func() {
+			endpointWeightsMetric.Record(w.metricsRecorder, weight, w.target, w.locality)
+		}()
+	}
+
+	// The SubConn has not received a load report (i.e. just turned READY with
+	// no load report).
+	if w.lastUpdated.Equal(time.Time{}) {
+		endpointWeightNotYetUsableMetric.Record(w.metricsRecorder, 1, w.target, w.locality)
+		return 0
+	}
+
 	// If the most recent update was longer ago than the expiration period,
 	// reset nonEmptySince so that we apply the blackout period again if we
 	// start getting data again in the future, and return 0.
 	if now.Sub(w.lastUpdated) >= weightExpirationPeriod {
+		if recordMetrics {
+			endpointWeightStaleMetric.Record(w.metricsRecorder, 1, w.target, w.locality)
+		}
 		w.nonEmptySince = time.Time{}
 		return 0
 	}
+
 	// If we don't have at least blackoutPeriod worth of data, return 0.
-	if blackoutPeriod != 0 && (w.nonEmptySince == (time.Time{}) || now.Sub(w.nonEmptySince) < blackoutPeriod) {
+	if blackoutPeriod != 0 && (w.nonEmptySince.Equal(time.Time{}) || now.Sub(w.nonEmptySince) < blackoutPeriod) {
+		if recordMetrics {
+			endpointWeightNotYetUsableMetric.Record(w.metricsRecorder, 1, w.target, w.locality)
+		}
 		return 0
 	}
+
 	return w.weightVal
 }

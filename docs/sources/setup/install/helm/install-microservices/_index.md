@@ -21,12 +21,12 @@ The default Helm chart deploys the following components:
 - **QueryFrontend component** (2 replicas, maxUnavailable: 1): Manages frontend queries. Up to 1 replica can be unavailable during updates.
 - **QueryScheduler component** (2 replicas): Schedules queries.
 
-It is not recommended to run scalable mode with `filesystem` storage. For the purpose of this guide, we will use MinIO as the object storage to provide a complete example. 
+It is not recommended to run microservice mode with `filesystem` storage. For the purpose of this guide, we will use MinIO as the object storage to provide a complete example. 
 
 **Prerequisites**
 
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).
-- A running Kubernetes cluster.
+- A running Kubernetes cluster (must have at least 3 nodes).
 - (Optional) A Memcached deployment for better query performance. For information on configuring Memcached, refer to the [caching section](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/caching/).
 
 
@@ -51,7 +51,7 @@ It is not recommended to run scalable mode with `filesystem` storage. For the pu
      loki:
        schemaConfig:
          configs:
-           - from: 2024-04-01
+           - from: "2024-04-01"
              store: tsdb
              object_store: s3
              schema: v13
@@ -96,7 +96,9 @@ It is not recommended to run scalable mode with `filesystem` storage. For the pu
        replicas: 2
        maxUnavailable: 1
 
-     bloomCompactor:
+     bloomPlanner:
+       replicas: 0
+     bloomBuilder:
        replicas: 0
      bloomGateway:
        replicas: 0
@@ -179,7 +181,7 @@ When deploying Loki using S3 Storage **DO NOT** use the default bucket names;  `
   loki:
     schemaConfig:
       configs:
-        - from: 2024-04-01
+        - from: "2024-04-01"
           store: tsdb
           object_store: s3
           schema: v13
@@ -244,7 +246,9 @@ When deploying Loki using S3 Storage **DO NOT** use the default bucket names;  `
     replicas: 2
     maxUnavailable: 1
 
-  bloomCompactor:
+  bloomPlanner:
+    replicas: 0
+  bloomBuilder:
     replicas: 0
   bloomGateway:
     replicas: 0
@@ -267,7 +271,7 @@ When deploying Loki using S3 Storage **DO NOT** use the default bucket names;  `
 loki:
   schemaConfig:
     configs:
-      - from: 2024-04-01
+      - from: "2024-04-01"
         store: tsdb
         object_store: azure
         schema: v13
@@ -325,7 +329,9 @@ indexGateway:
   replicas: 2
   maxUnavailable: 1
 
-bloomCompactor:
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
   replicas: 0
 bloomGateway:
   replicas: 0

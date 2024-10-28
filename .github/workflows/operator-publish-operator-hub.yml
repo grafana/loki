@@ -10,8 +10,6 @@ jobs:
     with:
       org: redhat-openshift-ecosystem
       repo: community-operators-prod
-    secrets:
-      GRAFANABOT_GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
   operator-hub-community-release:
     if: startsWith(github.event.release.tag_name, 'operator/')
@@ -19,5 +17,3 @@ jobs:
     with:
       org: k8s-operatorhub
       repo: community-operators
-    secrets:
-      GRAFANABOT_GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}

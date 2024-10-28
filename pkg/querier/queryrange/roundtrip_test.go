@@ -1261,6 +1261,16 @@ func Test_getOperation(t *testing.T) {
 			path:       "/prom/label/__name__/values",
 			expectedOp: LabelNamesOp,
 		},
+		{
+			name:       "detected_fields",
+			path:       "/loki/api/v1/detected_fields",
+			expectedOp: DetectedFieldsOp,
+		},
+		{
+			name:       "detected_fields_values",
+			path:       "/loki/api/v1/detected_field/foo/values",
+			expectedOp: DetectedFieldsOp,
+		},
 	}
 
 	for _, tc := range cases {

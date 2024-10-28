@@ -149,7 +149,7 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	// We can perform requests sequentially, because most of the time the request
 	// only covers a single day, and if not, it's at most two days.
 	for _, s := range partitionSeriesByDay(from, through, grouped) {
-		day := bloomshipper.NewInterval(s.day.Time, s.day.Time.Add(Day))
+		day := bloomshipper.NewInterval(s.day.Time, s.day.Add(Day))
 		blocks, skipped, err := bq.blockResolver.Resolve(ctx, tenant, day, s.series)
 		if err != nil {
 			return nil, err

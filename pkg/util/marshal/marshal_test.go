@@ -1125,7 +1125,6 @@ func Test_WriteQueryPatternsResponseJSON(t *testing.T) {
 			`{"status":"success","data":[{"pattern":"foo <*> bar","samples":[]},{"pattern":"foo <*> buzz","samples":[]}]}`,
 		},
 	} {
-		tc := tc
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			var b bytes.Buffer
 			err := WriteQueryPatternsResponseJSON(tc.input, &b)
