@@ -25,8 +25,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/ingester"
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
@@ -239,8 +237,11 @@ type Slimgester struct {
 	instancesMtx sync.RWMutex
 
 	store      stores.ChunkWriter
-	input      chan AppendInput  // for processing
-	flushQueue chan *chunk.Chunk // for flushing
+	input      chan []AppendInput // for processing
+	flushQueue chan *chunk.Chunk  // for flushing
+
+	tsdbCreator   *TsdbCreator
+	jobController *PartitionJobController
 
 	grp    errgroup.Group // for waiting on flushers+workers
 	quit   chan struct{}  // for signaling flushers+workers
@@ -253,6 +254,8 @@ func NewSlimgester(
 	store stores.ChunkWriter,
 	logger log.Logger,
 	reg prometheus.Registerer,
+	tsdbCreator *TsdbCreator,
+	jobController *PartitionJobController,
 ) (*Slimgester,
 	error) {
 	i := &Slimgester{
@@ -262,18 +265,56 @@ func NewSlimgester(
 		logger:          logger,
 		instances:       make(map[string]*instance),
 		store:           store,
+		tsdbCreator:     tsdbCreator,
+		jobController:   jobController,
 
-		input:      make(chan AppendInput),
+		input:      make(chan []AppendInput),
 		flushQueue: make(chan *chunk.Chunk),
 
 		quit: make(chan struct{}),
 	}
 
-	i.Service = services.NewBasicService(i.starting, i.running, i.stopping)
+	i.Service = services.NewBasicService(nil, i.running, i.stopping)
 	return i, nil
 }
 
-func (i *Slimgester) starting(ctx context.Context) error {
+func (i *Slimgester) running(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		i.close()
+	case <-i.quit:
+	}
+	return nil
+}
+
+func (i *Slimgester) stopping(e error) error {
+	i.close()
+	err := multierror.New(e)
+	err.Add(i.grp.Wait())
+	return err.Err()
+}
+
+// behind sync.Once b/c it can be called from etiher `running` or `stopping`.
+func (i *Slimgester) close() {
+	i.closer.Do(func() {
+		close(i.quit)
+	})
+}
+
+// runOne performs a single
+func (i *Slimgester) runOne(ctx context.Context) error {
+	exists, job, err := i.jobController.LoadJob(ctx)
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		level.Info(i.logger).Log("msg", "no available job to process")
+		return nil
+	}
+
+	i.jobController.part.Process(ctx, job.Offsets, i.input)
+
 	// start flush goroutines
 	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
 		i.grp.Go(func() error {
@@ -312,10 +353,12 @@ func (i *Slimgester) starting(ctx context.Context) error {
 					return nil
 				case <-ctx.Done():
 					return ctx.Err()
-				case input := <-i.input:
-					if err := i.Append(ctx, input); err != nil {
-						level.Error(i.logger).Log("msg", "failed to append records", "err", err)
-						return err
+				case inputs := <-i.input:
+					for _, input := range inputs {
+						if err := i.Append(ctx, input); err != nil {
+							level.Error(i.logger).Log("msg", "failed to append records", "err", err)
+							return err
+						}
 					}
 				}
 			}
@@ -323,29 +366,6 @@ func (i *Slimgester) starting(ctx context.Context) error {
 	}
 	return nil
 
-}
-
-func (i *Slimgester) running(ctx context.Context) error {
-	select {
-	case <-ctx.Done():
-		i.close()
-	case <-i.quit:
-	}
-	return nil
-}
-
-func (i *Slimgester) stopping(e error) error {
-	i.close()
-	err := multierror.New(e)
-	err.Add(i.grp.Wait())
-	return err.Err()
-}
-
-// behind sync.Once b/c it can be called from etiher `running` or `stopping`.
-func (i *Slimgester) close() {
-	i.closer.Do(func() {
-		close(i.quit)
-	})
 }
 
 // reportFlushedChunkStatistics calculate overall statistics of flushed chunks without compromising the flush process.
@@ -397,7 +417,10 @@ func (i *Slimgester) reportFlushedChunkStatistics(
 
 type AppendInput struct {
 	tenant string
-	req    *logproto.PushRequest
+	// both labels & labelsStr are populated to prevent duplicating conversion work in mulitple places
+	labels    labels.Labels
+	labelsStr string
+	entries   []push.Entry
 }
 
 func (i *Slimgester) Append(ctx context.Context, input AppendInput) error {
@@ -416,7 +439,7 @@ func (i *Slimgester) Append(ctx context.Context, input AppendInput) error {
 		i.instancesMtx.Unlock()
 	}
 
-	closed, err := inst.Push(ctx, input.req)
+	closed, err := inst.Push(ctx, input)
 	for _, chk := range closed {
 		i.flushQueue <- chk
 	}
@@ -523,46 +546,40 @@ func (i *instance) getHashForLabels(ls labels.Labels) model.Fingerprint {
 // Push will iterate over the given streams present in the PushRequest and attempt to store them.
 func (i *instance) Push(
 	ctx context.Context,
-	req *logproto.PushRequest,
+	input AppendInput,
 ) (closed []*chunk.Chunk, err error) {
-	for _, s := range req.Streams {
-		err = i.streams.For(
-			s.Labels,
-			func() (*stream, error) {
-				ls, err := syntax.ParseLabels(s.Labels)
-				if err != nil {
-					return nil, err
-				}
-				fp := i.getHashForLabels(ls)
-				return newStream(fp, ls, i.metrics), nil
-			},
-			func(stream *stream) error {
-				xs, err := stream.Push(s.Entries)
-				if err != nil {
-					return err
-				}
-
-				if len(xs) > 0 {
-					for _, x := range xs {
-						firstTime, lastTime := util.RoundToMilliseconds(x.Bounds())
-						chk := chunk.NewChunk(
-							i.tenant, stream.fp, stream.ls,
-							chunkenc.NewFacade(x, stream.blockSize, stream.targetChunkSize),
-							firstTime,
-							lastTime,
-						)
-						// encodeChunk mutates the chunk so we must pass by reference
-						if err := i.encodeChunk(ctx, &chk, x); err != nil {
-							return err
-						}
-
-						closed = append(closed, &chk)
-					}
-				}
+	err = i.streams.For(
+		input.labelsStr,
+		func() (*stream, error) {
+			fp := i.getHashForLabels(input.labels)
+			return newStream(fp, input.labels, i.metrics), nil
+		},
+		func(stream *stream) error {
+			xs, err := stream.Push(input.entries)
+			if err != nil {
 				return err
-			},
-		)
-	}
+			}
+
+			if len(xs) > 0 {
+				for _, x := range xs {
+					firstTime, lastTime := util.RoundToMilliseconds(x.Bounds())
+					chk := chunk.NewChunk(
+						i.tenant, stream.fp, stream.ls,
+						chunkenc.NewFacade(x, stream.blockSize, stream.targetChunkSize),
+						firstTime,
+						lastTime,
+					)
+					// encodeChunk mutates the chunk so we must pass by reference
+					if err := i.encodeChunk(ctx, &chk, x); err != nil {
+						return err
+					}
+
+					closed = append(closed, &chk)
+				}
+			}
+			return err
+		},
+	)
 
 	return closed, err
 }

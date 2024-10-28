@@ -13,7 +13,7 @@ import (
 // TsdbCreator accepts writes and builds TSDBs.
 type TsdbCreator struct {
 	// Function to build a TSDB from the current state
-	mkTsdb func() ([]byte, error)
+	mkTsdb func(*tenantHeads) ([]byte, error)
 
 	mtx    sync.RWMutex
 	shards int
@@ -21,7 +21,7 @@ type TsdbCreator struct {
 }
 
 // new creates a new HeadManager
-func newTsdbCreator(mkTsdb func() ([]byte, error)) *TsdbCreator {
+func newTsdbCreator(mkTsdb func(*tenantHeads) ([]byte, error)) *TsdbCreator {
 	m := &TsdbCreator{
 		mkTsdb: mkTsdb,
 		shards: 1 << 5, // 32 shards
@@ -51,7 +51,7 @@ func (m *TsdbCreator) Create() ([]byte, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	out, err := m.mkTsdb()
+	out, err := m.mkTsdb(m.heads)
 	if err != nil {
 		return nil, errors.Wrap(err, "creating TSDB")
 	}

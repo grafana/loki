@@ -16,6 +16,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
 
+	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/partition"
 )
 
@@ -34,6 +35,7 @@ type partitionReader struct {
 	topic       string
 	group       string
 	partitionID int32
+	decoder     *kafka.Decoder
 
 	readerMetrics *partition.ReaderMetrics
 	writerMetrics *partition.CommitterMetrics
@@ -46,6 +48,7 @@ func NewPartitionReader(
 	topic string,
 	group string,
 	partitionID int32,
+	decoder *kafka.Decoder,
 	logger log.Logger,
 	r prometheus.Registerer,
 ) (*partitionReader, error) {
@@ -72,6 +75,7 @@ func NewPartitionReader(
 		readerMetrics: readerMetrics,
 		writerMetrics: writerMetrics,
 		logger:        logger,
+		decoder:       decoder,
 		client:        client,
 		aClient:       aClient,
 	}, nil
@@ -298,7 +302,7 @@ func (p *partitionReader) recordFetchesMetrics(fetches kgo.Fetches) {
 	p.readerMetrics.RecordsPerFetch.Observe(float64(numRecords))
 }
 
-func (r *partitionReader) Process(ctx context.Context, offsets Offsets, ch chan<- []partition.Record) (int64, error) {
+func (r *partitionReader) Process(ctx context.Context, offsets Offsets, ch chan<- []AppendInput) (int64, error) {
 	r.updateReaderOffset(offsets.Min)
 
 	var (
@@ -311,10 +315,29 @@ func (r *partitionReader) Process(ctx context.Context, offsets Offsets, ch chan<
 		fetches, done := r.poll(ctx, offsets.Max)
 		if len(fetches) > 0 {
 			lastOffset = fetches[len(fetches)-1].Offset
+			converted := make([]AppendInput, 0, len(fetches))
+
+			for _, fetch := range fetches {
+				stream, labels, err := r.decoder.Decode(fetch.Content)
+				if err != nil {
+					return 0, fmt.Errorf("failed to decode record: %w", err)
+				}
+				if len(stream.Entries) == 0 {
+					continue
+				}
+
+				converted = append(converted, AppendInput{
+					tenant:    fetch.TenantID,
+					labels:    labels,
+					labelsStr: stream.Labels,
+					entries:   stream.Entries,
+				})
+			}
+
 			select {
-			case ch <- fetches:
+			case ch <- converted:
 			case <-ctx.Done():
-				return lastOffset, ctx.Err()
+				return 0, ctx.Err()
 			}
 		}
 

@@ -2,8 +2,6 @@ package blockbuilder
 
 import (
 	"context"
-
-	"github.com/grafana/loki/v3/pkg/kafka/partition"
 )
 
 // [min,max)
@@ -28,7 +26,7 @@ type PartitionController interface {
 	// so it's advised to not buffer the channel for natural backpressure.
 	// As a convenience, it returns the last seen offset, which matches
 	// the final record sent on the channel.
-	Process(context.Context, Offsets, chan<- []partition.Record) (int64, error)
+	Process(context.Context, Offsets, chan<- []AppendInput) (int64, error)
 
 	Close() error
 }
