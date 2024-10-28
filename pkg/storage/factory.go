@@ -654,6 +654,10 @@ func internalNewObjectClient(storeName, component string, cfg Config, clientMetr
 		if cfg.CongestionControl.Enabled {
 			s3Cfg.BackoffConfig.MaxRetries = 1
 		}
+
+		if cfg.UseThanosObjstore {
+			return aws.NewS3ThanosObjectClient(context.Background(), cfg.ObjectStore, component, util_log.Logger, cfg.Hedging)
+		}
 		return aws.NewS3ObjectClient(s3Cfg, cfg.Hedging)
 
 	case types.StorageTypeAlibabaCloud:
