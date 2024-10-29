@@ -23,7 +23,7 @@ There are two ways to deploy Loki in monolithic mode:
 1. **Single Replica**: Run Loki with a single replica. This mode is useful for testing and development or if you are planning to run Loki as a meta-monitoring system.
 2. **Multiple Replicas**: Run Loki with multiple replicas. This mode is useful for high availability. This mode is less economical than microservice mode, but it is simpler to operate. We recommend running at least three replicas for high availability.
 
-Once you have selected how many replicas you would like to deploy choose the appropriate `values.yaml` configuration file below and then continue with the deployment steps.
+Once you have selected how many replicas you would like to deploy, choose the appropriate `values.yaml` configuration file below and then continue with the deployment steps.
   
 ### Single Replica
 
