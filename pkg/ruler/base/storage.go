@@ -121,6 +121,9 @@ func NewLegacyRuleStore(cfg RuleStoreConfig, hedgeCfg hedging.Config, clientMetr
 // NewRuleStore returns a rule store backend client based on the provided cfg.
 func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.SSEConfigProvider, loader promRules.GroupLoader, logger log.Logger) (rulestore.RuleStore, error) {
 	if cfg.Backend == local.Name {
+		if loader == nil {
+			loader = promRules.FileLoader{}
+		}
 		return local.NewLocalRulesClient(cfg.Local, loader)
 	}
 
