@@ -14,7 +14,7 @@ import (
 
 type element struct {
 	Event string
-	Count int64
+	Count float64
 }
 
 type TopKResult []element
@@ -146,7 +146,7 @@ func (t *Topk) ToProto() (*logproto.TopK, error) {
 		Depth: t.sketch.Depth,
 		Width: t.sketch.Width,
 	}
-	cms.Counters = make([]uint32, 0, cms.Depth*cms.Width)
+	cms.Counters = make([]float64, 0, cms.Depth*cms.Width)
 	for row := uint32(0); row < cms.Depth; row++ {
 		cms.Counters = append(cms.Counters, t.sketch.Counters[row]...)
 	}
@@ -175,7 +175,7 @@ func (t *Topk) ToProto() (*logproto.TopK, error) {
 
 // wrapper to bundle together updating of the bf portion of the sketch and pushing of a new element
 // to the heap
-func (t *Topk) heapPush(h *MinHeap, event string, estimate, h1, h2 uint32) {
+func (t *Topk) heapPush(h *MinHeap, event string, estimate float64, h1, h2 uint32) {
 	var pos uint32
 	for i := range t.bf {
 		pos = t.sketch.getPos(h1, h2, uint32(i))
@@ -186,7 +186,7 @@ func (t *Topk) heapPush(h *MinHeap, event string, estimate, h1, h2 uint32) {
 
 // wrapper to bundle together updating of the bf portion of the sketch for the removed and added event
 // as well as replacing the min heap element with the new event and it's count
-func (t *Topk) heapMinReplace(event string, estimate uint32, removed string) {
+func (t *Topk) heapMinReplace(event string, estimate float64, removed string) {
 	t.updateBF(removed, event)
 	(*t.heap)[0].event = event
 	(*t.heap)[0].count = estimate
@@ -304,11 +304,11 @@ func (t *Topk) Merge(from *Topk) error {
 
 	var all TopKResult
 	for _, e := range *t.heap {
-		all = append(all, element{Event: e.event, Count: int64(t.sketch.Count(e.event))})
+		all = append(all, element{Event: e.event, Count: t.sketch.Count(e.event)})
 	}
 
 	for _, e := range *from.heap {
-		all = append(all, element{Event: e.event, Count: int64(t.sketch.Count(e.event))})
+		all = append(all, element{Event: e.event, Count: t.sketch.Count(e.event)})
 	}
 
 	all = removeDuplicates(all)
@@ -318,7 +318,7 @@ func (t *Topk) Merge(from *Topk) error {
 	// TODO: merging should also potentially replace it's bloomfilter? or 0 everything in the bloomfilter
 	for _, e := range all[:t.max] {
 		h1, h2 = hashn(e.Event)
-		t.heapPush(temp, e.Event, uint32(e.Count), h1, h2)
+		t.heapPush(temp, e.Event, float64(e.Count), h1, h2)
 	}
 	t.heap = temp
 
@@ -347,7 +347,7 @@ func (t *Topk) Topk() TopKResult {
 	for _, e := range *t.heap {
 		res = append(res, element{
 			Event: e.event,
-			Count: int64(t.sketch.Count(e.event)),
+			Count: t.sketch.Count(e.event),
 		})
 	}
 	sort.Sort(res)

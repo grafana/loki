@@ -285,8 +285,7 @@ func TestApproxTopkSketches(t *testing.T) {
 
 	limits := &fakeLimits{
 		maxSeries: math.MaxInt64,
-		// timeout:   5 * time.Minute,
-		timeout: time.Hour,
+		timeout:   time.Hour,
 	}
 
 	for _, tc := range []struct {
@@ -295,6 +294,7 @@ func TestApproxTopkSketches(t *testing.T) {
 		shardedQuery  string
 		regularQuery  string
 		realtiveError float64
+		//cardinalityEstimate int
 	}{
 		// Note:our data generation results in less spread between topk things for 10k streams than for 100k streams
 		// if we have 1k streams, we can get much more accurate results for topk 10 than topk 100
@@ -304,6 +304,7 @@ func TestApproxTopkSketches(t *testing.T) {
 			shardedQuery:  `approx_topk(3, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
 			regularQuery:  `topk(3, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
 			realtiveError: 0.0012,
+			//cardinalityEstimate: 3,
 		},
 		{
 			labelShards:   10,
@@ -394,6 +395,10 @@ func TestApproxTopkSketches(t *testing.T) {
 			shardedRes, err := shardedQry.Exec(ctx)
 			require.NoError(t, err)
 			relativeErrorVector(t, res.Data.(promql.Vector), shardedRes.Data.(promql.Vector), tc.realtiveError)
+
+			// we can't check this here currently because the CMS vector step evaluators Next function translates
+			// each steps probabilistic result into just a promql.Vector
+			// require.Equal(t, tc.cardinalityEstimate, res.Data.(CountMinSketchVector).F.HyperLogLog.Estimate())
 		})
 	}
 }

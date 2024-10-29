@@ -46,6 +46,7 @@ func (v CountMinSketchVector) CountMinSketchVec() CountMinSketchVector {
 }
 
 func (v *CountMinSketchVector) Merge(right *CountMinSketchVector) (*CountMinSketchVector, error) {
+	// The underlying CMS implementation already merges the HLL sketches that are part of that structure.
 	err := v.F.Merge(right.F)
 	if err != nil {
 		return v, err
@@ -92,7 +93,7 @@ func (v CountMinSketchVector) ToProto() (*logproto.CountMinSketchVector, error) 
 	p.Sketch.Hyperloglog = hllBytes
 
 	// Serialize CMS
-	p.Sketch.Counters = make([]uint32, 0, v.F.Depth*v.F.Width)
+	p.Sketch.Counters = make([]float64, 0, v.F.Depth*v.F.Width)
 	for row := uint32(0); row < v.F.Depth; row++ {
 		p.Sketch.Counters = append(p.Sketch.Counters, v.F.Counters[row]...)
 	}
@@ -181,7 +182,7 @@ func NewHeapCountMinSketchVector(ts int64, metricsLength, maxLabels int) HeapCou
 func (v *HeapCountMinSketchVector) Add(metric labels.Labels, value float64) {
 	// TODO: we save a lot of allocations by reusing the buffer inside metric.String
 	metricString := metric.String()
-	v.F.Add(metricString, int(value))
+	v.F.Add(metricString, value)
 
 	// Add our metric if we haven't seen it
 	if _, ok := v.observed[metricString]; !ok {

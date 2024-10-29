@@ -9,7 +9,7 @@ import (
 
 type CountMinSketch struct {
 	Depth, Width uint32
-	Counters     [][]uint32
+	Counters     [][]float64
 	HyperLogLog  *hyperloglog.Sketch //hyperloglog.New16(),
 }
 
@@ -32,10 +32,10 @@ func NewCountMinSketchFromErrorAndProbability(epsilon float64, delta float64) (*
 	return NewCountMinSketch(uint32(width), uint32(depth))
 }
 
-func make2dslice(col, row uint32) [][]uint32 {
-	ret := make([][]uint32, row)
+func make2dslice(col, row uint32) [][]float64 {
+	ret := make([][]float64, row)
 	for i := range ret {
-		ret[i] = make([]uint32, col)
+		ret[i] = make([]float64, col)
 	}
 	return ret
 }
@@ -46,7 +46,7 @@ func (s *CountMinSketch) getPos(h1, h2, row uint32) uint32 {
 }
 
 // Add 'count' occurrences of the given input.
-func (s *CountMinSketch) Add(event string, count int) {
+func (s *CountMinSketch) Add(event string, count float64) {
 	s.HyperLogLog.Insert(unsafeGetBytes(event))
 	// see the comments in the hashn function for how using only 2
 	// hash functions rather than a function per row still fullfils
@@ -54,7 +54,7 @@ func (s *CountMinSketch) Add(event string, count int) {
 	h1, h2 := hashn(event)
 	for i := uint32(0); i < s.Depth; i++ {
 		pos := s.getPos(h1, h2, i)
-		s.Counters[i][pos] += uint32(count)
+		s.Counters[i][pos] += count
 	}
 }
 
@@ -69,10 +69,10 @@ func (s *CountMinSketch) Increment(event string) {
 // value that's less than Count(h) + count rather than all counters that h hashed to.
 // Returns the new estimate for the event as well as the both hashes which can be used
 // to identify the event for other things that need a hash.
-func (s *CountMinSketch) ConservativeAdd(event string, count uint32) (uint32, uint32, uint32) {
+func (s *CountMinSketch) ConservativeAdd(event string, count float64) (float64, uint32, uint32) {
 	s.HyperLogLog.Insert(unsafeGetBytes(event))
 
-	min := uint32(math.MaxUint32)
+	min := float64(math.MaxUint64)
 
 	h1, h2 := hashn(event)
 	// inline Count to save time/memory
@@ -94,13 +94,13 @@ func (s *CountMinSketch) ConservativeAdd(event string, count uint32) (uint32, ui
 	return min, h1, h2
 }
 
-func (s *CountMinSketch) ConservativeIncrement(event string) (uint32, uint32, uint32) {
-	return s.ConservativeAdd(event, 1)
+func (s *CountMinSketch) ConservativeIncrement(event string) (float64, uint32, uint32) {
+	return s.ConservativeAdd(event, float64(1))
 }
 
 // Count returns the approximate min count for the given input.
-func (s *CountMinSketch) Count(event string) uint32 {
-	min := uint32(math.MaxUint32)
+func (s *CountMinSketch) Count(event string) float64 {
+	min := float64(math.MaxUint64)
 	h1, h2 := hashn(event)
 
 	var pos uint32

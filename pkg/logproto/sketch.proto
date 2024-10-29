@@ -45,7 +45,7 @@ message CountMinSketch {
   uint32 width = 2;
 
   // counters is a matrix of depth * width.
-  repeated uint32 counters = 3;
+  repeated double counters = 3;
 
   bytes hyperloglog = 4;
 }
@@ -66,7 +66,7 @@ message TopK {
 
   message Pair {
     string event = 1;
-    uint32 count = 2;
+    double count = 2;
   }
   repeated Pair list = 2;
 
