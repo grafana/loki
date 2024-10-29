@@ -32,6 +32,9 @@
       "enabled": false
     }
   ],
+  "digest": {
+    "enabled": false
+  },
   "vulnerabilityAlerts": {
     "enabled": true,
     "addLabels": [
