@@ -315,7 +315,7 @@ Loki by default does not come with any authentication. Since we will be deployin
 
 ### Loki Helm chart configuration
 
-Create a `values.yaml` file choosing the configuration options that best suit your requirements. Below there are two examples of `values.yaml` files for the Loki Helm chart. The first template is Loki in [microservices](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) mode the second is Loki in [monolithic](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode) mode with a replication factor of 3. The rest of this guide will focus on deploying Loki in microservices mode. However, there is no difference in the deployment process between the two modes apart from the components you are deploying.
+Create a `values.yaml` file choosing the configuration options that best suit your requirements. Below there is an example of `values.yaml` files for the Loki Helm chart in [microservices](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) mode.
 
 ```yaml
 loki:
