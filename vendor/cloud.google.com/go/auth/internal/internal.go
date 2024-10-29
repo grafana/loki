@@ -200,7 +200,7 @@ func (c *ComputeUniverseDomainProvider) GetProperty(ctx context.Context) (string
 var httpGetMetadataUniverseDomain = func(ctx context.Context) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
-	return metadata.GetWithContext(ctx, "universe/universe_domain")
+	return metadata.GetWithContext(ctx, "universe/universe-domain")
 }
 
 func getMetadataUniverseDomain(ctx context.Context) (string, error) {
