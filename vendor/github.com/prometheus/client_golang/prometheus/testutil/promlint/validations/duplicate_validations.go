@@ -1,4 +1,4 @@
-// Copyright 2020 The Prometheus Authors
+// Copyright 2024 The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -11,24 +11,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package promlint
+package validations
 
 import (
-	dto "github.com/prometheus/client_model/go"
+	"fmt"
+	"reflect"
 
-	"github.com/prometheus/client_golang/prometheus/testutil/promlint/validations"
+	dto "github.com/prometheus/client_model/go"
 )
 
-type Validation = func(mf *dto.MetricFamily) []error
+// LintDuplicateMetric detects duplicate metric.
+func LintDuplicateMetric(mf *dto.MetricFamily) []error {
+	var problems []error
 
-var defaultValidations = []Validation{
-	validations.LintHelp,
-	validations.LintMetricUnits,
-	validations.LintCounter,
-	validations.LintHistogramSummaryReserved,
-	validations.LintMetricTypeInName,
-	validations.LintReservedChars,
-	validations.LintCamelCase,
-	validations.LintUnitAbbreviations,
-	validations.LintDuplicateMetric,
+	for i, m := range mf.Metric {
+		for _, k := range mf.Metric[i+1:] {
+			if reflect.DeepEqual(m.Label, k.Label) {
+				problems = append(problems, fmt.Errorf("metric not unique"))
+				break
+			}
+		}
+	}
+
+	return problems
 }
