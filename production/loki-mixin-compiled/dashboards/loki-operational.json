@@ -2634,7 +2634,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=~\"(ingester|partition-ingester).*\"}[$__rate_interval]))",
+                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=~\"(ingester.*|partition-ingester.*)\"}[$__rate_interval]))",
                         "intervalFactor": 3,
                         "legendFormat": "{{pod}}",
                         "refId": "A"
@@ -2730,7 +2730,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "go_memstats_heap_inuse_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"(ingester|partition-ingester).*\"}",
+                        "expr": "go_memstats_heap_inuse_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"(ingester.*|partition-ingester.*)\"}",
                         "instant": false,
                         "intervalFactor": 3,
                         "legendFormat": "{{pod}}",
@@ -2825,7 +2825,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=~\"$namespace/(ingester|partition-ingester).*\"} | logfmt | level=\"error\"[$__auto]))",
+                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(ingester.*|partition-ingester.*)\"} | logfmt | level=\"error\"[$__auto]))",
                         "refId": "A"
                      }
                   ],
@@ -2888,7 +2888,7 @@
                   "panels": [ ],
                   "targets": [
                      {
-                        "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"$namespace/(ingester|partition-ingester).*\"} |= \"level=error\"",
+                        "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(ingester.*|partition-ingester.*)\"} |= \"level=error\"",
                         "refId": "A"
                      }
                   ],
@@ -3047,7 +3047,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "topk(10,sum by (tenant) (loki_ingester_memory_streams{cluster=\"$cluster\",job=~\"$namespace/(ingester|partition-ingester).*\"}))",
+                        "expr": "topk(10,sum by (tenant) (loki_ingester_memory_streams{cluster=\"$cluster\",job=~\"($namespace)/(ingester.*|partition-ingester.*)\"}))",
                         "interval": "",
                         "legendFormat": "{{ tenant }}",
                         "refId": "A"
@@ -3138,7 +3138,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "topk(10, sum by (tenant) (rate(loki_ingester_streams_created_total{cluster=\"$cluster\",job=~\"$namespace/(ingester|partition-ingester).*\"}[$__rate_interval]) > 0))",
+                        "expr": "topk(10, sum by (tenant) (rate(loki_ingester_streams_created_total{cluster=\"$cluster\",job=~\"($namespace)/(ingester.*|partition-ingester.*)\"}[$__rate_interval]) > 0))",
                         "interval": "",
                         "legendFormat": "{{ tenant }}",
                         "refId": "A"
@@ -3332,7 +3332,7 @@
                   "reverseYBuckets": false,
                   "targets": [
                      {
-                        "expr": "sum(rate(loki_ingester_chunk_size_bytes_bucket{cluster=\"$cluster\",job=~\"$namespace/(ingester|partition-ingester).*\"}[$__rate_interval])) by (le)",
+                        "expr": "sum(rate(loki_ingester_chunk_size_bytes_bucket{cluster=\"$cluster\",job=~\"($namespace)/(ingester.*|partition-ingester.*)\"}[$__rate_interval])) by (le)",
                         "format": "heatmap",
                         "instant": false,
                         "interval": "",
@@ -3408,7 +3408,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum by(reason) (rate(loki_ingester_chunks_flushed_total{cluster=~\"$cluster\", namespace=~\"$namespace\"}[$__rate_interval])) / ignoring(reason) group_left sum(rate(loki_ingester_chunks_flushed_total{cluster=~\"$cluster\", namespace=~\"$namespace\"}[$__rate_interval]))",
+                        "expr": "sum by(reason) (rate(loki_ingester_chunks_flushed_total{cluster=~\"$cluster\",job=~\"$namespace/(ingester|partition-ingester).*\", namespace=~\"$namespace\"}[$__rate_interval])) / ignoring(reason) group_left sum(rate(loki_ingester_chunks_flushed_total{cluster=~\"$cluster\",job=~\"$namespace/(ingester|partition-ingester).*\", namespace=~\"$namespace\"}[$__rate_interval]))",
                         "interval": "",
                         "legendFormat": "{{ reason }}"
                      }
@@ -3487,7 +3487,7 @@
                   "reverseYBuckets": false,
                   "targets": [
                      {
-                        "expr": "sum by (le) (rate(loki_ingester_chunk_utilization_bucket{cluster=\"$cluster\", job=~\"$namespace/(ingester|partition-ingester).*\"}[$__rate_interval]))",
+                        "expr": "sum by (le) (rate(loki_ingester_chunk_utilization_bucket{cluster=\"$cluster\", job=~\"($namespace)/(ingester.*|partition-ingester.*)\"}[$__rate_interval]))",
                         "format": "heatmap",
                         "instant": false,
                         "interval": "",
