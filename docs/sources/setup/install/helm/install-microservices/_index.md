@@ -173,7 +173,7 @@ We do not recommend running Microservice mode with `filesystem` storage. For the
 
 ## Object Storage Configuration
 
-After testing Loki with [MinIO](https://min.io/docs/minio/kubernetes/upstream/index.html), we recommend to configure Loki with an object storage provider. The following examples shows how to configure Loki with different object storage providers:
+After testing Loki with [MinIO](https://min.io/docs/minio/kubernetes/upstream/index.html), we recommend configuring Loki with an object storage provider. The following examples shows how to configure Loki with different object storage providers:
 
 {{< admonition type="caution" >}}
 When deploying Loki using S3 Storage **DO NOT** use the default bucket names;  `chunk`, `ruler` and `admin`. Choose a unique name for each bucket. For more information see the following [security update](https://grafana.com/blog/2024/06/27/grafana-security-update-grafana-loki-and-unintended-data-write-attempts-to-amazon-s3-buckets/). This caution does not apply when you are using MinIO. When using MinIO we recommend using the default bucket names.
