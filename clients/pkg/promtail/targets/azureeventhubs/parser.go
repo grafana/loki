@@ -61,22 +61,23 @@ func (l azureMonitorResourceLog) isTimeOrTimeStampFieldSet() bool {
 // getTime returns time from `time` or `timeStamp` field. If both fields are set, `time` is used. If both fields are empty, error is returned.
 func (l azureMonitorResourceLog) getTime() (time.Time, error) {
 	if len(l.Time) == 0 && len(l.TimeStamp) == 0 {
+		var t time.Time
 		return t, errors.New("time and timeStamp fields are empty")
 	}
-	
+
 	if len(l.Time) != 0 {
 		t, err := time.Parse(time.RFC3339, l.Time)
 		if err != nil {
 			return t, err
 		}
-		
+
 		return t.UTC(), nil
 	}
 
-        t, err := time.Parse(time.RFC3339, l.TimeStamp)
-        if err != nil {
-	        return t, err
-        }
+	t, err := time.Parse(time.RFC3339, l.TimeStamp)
+	if err != nil {
+		return t, err
+	}
 
 	return t.UTC(), nil
 }

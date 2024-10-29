@@ -273,3 +273,17 @@ func Test_parseMessage_message_without_time_with_time_stamp(t *testing.T) {
 
 	assert.Equal(t, time.Date(2024, time.September, 18, 00, 45, 9, 0, time.UTC), entries[0].Timestamp)
 }
+
+func Test_parseMessage_message_without_time_and_time_stamp(t *testing.T) {
+	messageParser := &messageParser{
+		disallowCustomMessages: true,
+	}
+
+	message := &sarama.ConsumerMessage{
+		Value:     readFile(t, "testdata/message_without_time_and_time_stamp.json"),
+		Timestamp: time.Date(2023, time.March, 17, 8, 44, 02, 0, time.UTC),
+	}
+
+	_, err := messageParser.Parse(message, nil, nil, true)
+	assert.EqualError(t, err, "required field or fields is empty")
+}
