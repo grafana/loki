@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/httpgrpc"
@@ -54,7 +55,9 @@ var (
 )
 
 func TestDistributor(t *testing.T) {
-	ingestionRateLimit := 0.000096 // 100 Bytes/s limit
+	lineSize := 10
+	ingestionRateLimit := datasize.ByteSize(400)
+	ingestionRateLimitMB := ingestionRateLimit.MBytes() // 400 Bytes/s limit
 
 	for i, tc := range []struct {
 		lines            int
@@ -72,7 +75,7 @@ func TestDistributor(t *testing.T) {
 		{
 			lines:          100,
 			streams:        1,
-			expectedErrors: []error{httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 100, 100, 1000)},
+			expectedErrors: []error{httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", ingestionRateLimit, 100, 100*lineSize)},
 		},
 		{
 			lines:            100,
@@ -104,15 +107,15 @@ func TestDistributor(t *testing.T) {
 		t.Run(fmt.Sprintf("[%d](lines=%v)", i, tc.lines), func(t *testing.T) {
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
-			limits.IngestionRateMB = ingestionRateLimit
-			limits.IngestionBurstSizeMB = ingestionRateLimit
+			limits.IngestionRateMB = ingestionRateLimitMB
+			limits.IngestionBurstSizeMB = ingestionRateLimitMB
 			limits.MaxLineSize = fe.ByteSize(tc.maxLineSize)
 
 			distributors, _ := prepare(t, 1, 5, limits, nil)
 
 			var request logproto.PushRequest
 			for i := 0; i < tc.streams; i++ {
-				req := makeWriteRequest(tc.lines, 10)
+				req := makeWriteRequest(tc.lines, lineSize)
 				request.Streams = append(request.Streams, req.Streams[0])
 			}
 
@@ -1178,37 +1181,37 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 		"local strategy: limit should be set to each distributor": {
 			distributors:          2,
 			ingestionRateStrategy: validation.LocalIngestionRateStrategy,
-			ingestionRateMB:       10 * (1.0 / float64(bytesInMB)),
-			ingestionBurstSizeMB:  10 * (1.0 / float64(bytesInMB)),
+			ingestionRateMB:       datasize.ByteSize(100).MBytes(),
+			ingestionBurstSizeMB:  datasize.ByteSize(100).MBytes(),
 			pushes: []testPush{
-				{bytes: 5, expectedError: nil},
-				{bytes: 6, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 10, 1, 6)},
-				{bytes: 5, expectedError: nil},
-				{bytes: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 10, 1, 1)},
+				{bytes: 50, expectedError: nil},
+				{bytes: 60, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 100, 1, 60)},
+				{bytes: 50, expectedError: nil},
+				{bytes: 40, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 100, 1, 40)},
 			},
 		},
 		"global strategy: limit should be evenly shared across distributors": {
 			distributors:          2,
 			ingestionRateStrategy: validation.GlobalIngestionRateStrategy,
-			ingestionRateMB:       10 * (1.0 / float64(bytesInMB)),
-			ingestionBurstSizeMB:  5 * (1.0 / float64(bytesInMB)),
+			ingestionRateMB:       datasize.ByteSize(200).MBytes(),
+			ingestionBurstSizeMB:  datasize.ByteSize(100).MBytes(),
 			pushes: []testPush{
-				{bytes: 3, expectedError: nil},
-				{bytes: 3, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 5, 1, 3)},
-				{bytes: 2, expectedError: nil},
-				{bytes: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 5, 1, 1)},
+				{bytes: 60, expectedError: nil},
+				{bytes: 50, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 100, 1, 50)},
+				{bytes: 40, expectedError: nil},
+				{bytes: 30, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 100, 1, 30)},
 			},
 		},
 		"global strategy: burst should set to each distributor": {
 			distributors:          2,
 			ingestionRateStrategy: validation.GlobalIngestionRateStrategy,
-			ingestionRateMB:       10 * (1.0 / float64(bytesInMB)),
-			ingestionBurstSizeMB:  20 * (1.0 / float64(bytesInMB)),
+			ingestionRateMB:       datasize.ByteSize(100).MBytes(),
+			ingestionBurstSizeMB:  datasize.ByteSize(200).MBytes(),
 			pushes: []testPush{
-				{bytes: 15, expectedError: nil},
-				{bytes: 6, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 5, 1, 6)},
-				{bytes: 5, expectedError: nil},
-				{bytes: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 5, 1, 1)},
+				{bytes: 150, expectedError: nil},
+				{bytes: 60, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 50, 1, 60)},
+				{bytes: 50, expectedError: nil},
+				{bytes: 30, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 50, 1, 30)},
 			},
 		},
 	}
@@ -1227,8 +1230,8 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 				response, err := distributors[0].Push(ctx, request)
 
 				if push.expectedError == nil {
+					assert.NoError(t, err)
 					assert.Equal(t, success, response)
-					assert.Nil(t, err)
 				} else {
 					assert.Nil(t, response)
 					assert.Equal(t, push.expectedError, err)
