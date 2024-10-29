@@ -261,23 +261,41 @@ func NewSlimgester(
 		jobController:   jobController,
 	}
 
-	i.Service = services.NewBasicService(nil, nil, nil)
+	i.Service = services.NewBasicService(nil, i.running, nil)
 	return i, nil
 }
 
+func (i *Slimgester) running(ctx context.Context) error {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			_, err := i.runOne(ctx)
+			if err != nil {
+				return err
+			}
+		}
+	}
+}
+
 // runOne performs a single
-func (i *Slimgester) runOne(ctx context.Context) (lastOffset int64, skipped bool, err error) {
+func (i *Slimgester) runOne(ctx context.Context) (skipped bool, err error) {
 
 	exists, job, err := i.jobController.LoadJob(ctx)
 	if err != nil {
-		return 0, false, err
+		return false, err
 	}
 
 	if !exists {
 		level.Info(i.logger).Log("msg", "no available job to process")
-		return 0, true, nil
+		return true, nil
 	}
 
+	var lastOffset int64
 	p := newPipeline(ctx)
 
 	// Pipeline stage 1: Process the job offsets and write records to inputCh
@@ -374,7 +392,15 @@ func (i *Slimgester) runOne(ctx context.Context) (lastOffset int64, skipped bool
 	)
 
 	err = p.Run()
-	return lastOffset, false, err
+	if err != nil {
+		return false, err
+	}
+
+	if err = i.jobController.part.Commit(ctx, lastOffset); err != nil {
+		return false, err
+	}
+
+	return false, nil
 }
 
 // reportFlushedChunkStatistics calculate overall statistics of flushed chunks without compromising the flush process.
