@@ -5,6 +5,8 @@ import (
 	"hash"
 	"io"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/v3/pkg/compression"
@@ -112,6 +114,10 @@ func (w *PageWriter) Reset() {
 	w.n = 0
 }
 
+func (w *PageWriter) UnflushedSize() int {
+	return w.enc.Len()
+}
+
 func (w *PageWriter) SpaceFor(numBytes int) bool {
 	// if a single bloom exceeds the target size, still accept it
 	// otherwise only accept it if adding it would not exceed the target size
@@ -189,6 +195,7 @@ type MergeBuilder struct {
 	// Add chunks of a single series to a bloom
 	populate BloomPopulatorFunc
 	metrics  *Metrics
+	logger   log.Logger
 }
 
 type BloomPopulatorFunc func(series *Series, preExistingBlooms iter.SizedIterator[*Bloom], chunksToAdd ChunkRefs, ch chan *BloomCreation)
@@ -202,6 +209,7 @@ func NewMergeBuilder(
 	store iter.Iterator[*Series],
 	populate BloomPopulatorFunc,
 	metrics *Metrics,
+	logger log.Logger,
 ) *MergeBuilder {
 	// combinedSeriesIter handles series with fingerprint collisions:
 	// because blooms dont contain the label-set (only the fingerprint),
@@ -229,6 +237,7 @@ func NewMergeBuilder(
 		store:    combinedSeriesIter,
 		populate: populate,
 		metrics:  metrics,
+		logger:   logger,
 	}
 }
 
@@ -306,6 +315,12 @@ func (mb *MergeBuilder) processNextSeries(
 		if creation.Err != nil {
 			return nil, info.sourceBytes, 0, false, false, errors.Wrap(creation.Err, "populating bloom")
 		}
+
+		if creation.Bloom.IsEmpty() {
+			level.Debug(mb.logger).Log("msg", "received empty bloom. Adding to index but skipping offsets", "fingerprint", nextInStore.Fingerprint)
+			continue
+		}
+
 		offset, err := builder.AddBloom(creation.Bloom)
 		if err != nil {
 			return nil, info.sourceBytes, 0, false, false, errors.Wrapf(

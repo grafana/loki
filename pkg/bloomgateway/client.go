@@ -204,7 +204,7 @@ func (c *GatewayClient) Close() {
 	c.dnsProvider.Stop()
 }
 
-// FilterChunkRefs implements Client
+// FilterChunks implements Client
 func (c *GatewayClient) FilterChunks(ctx context.Context, _ string, interval bloomshipper.Interval, blocks []blockWithSeries, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error) {
 	// no block and therefore no series with chunks
 	if len(blocks) == 0 {

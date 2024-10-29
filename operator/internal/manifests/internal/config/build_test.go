@@ -97,6 +97,7 @@ limits_config:
   max_line_size: 256000
   max_entries_limit_per_query: 5000
   discover_service_name: []
+  discover_log_levels: true
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -259,6 +260,7 @@ overrides:
 		},
 		Shippers:              []string{"boltdb"},
 		EnableRemoteReporting: true,
+		DiscoverLogLevels:     true,
 		HTTPTimeouts: HTTPTimeoutConfig{
 			IdleTimeout:  30 * time.Second,
 			ReadTimeout:  30 * time.Second,
@@ -355,6 +357,7 @@ limits_config:
   max_line_size: 256000
   max_entries_limit_per_query: 5000
   discover_service_name: []
+  discover_log_levels: false
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -782,6 +785,7 @@ limits_config:
   max_line_size: 256000
   max_entries_limit_per_query: 5000
   discover_service_name: []
+  discover_log_levels: false
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -1141,6 +1145,7 @@ limits_config:
   max_line_size: 256000
   max_entries_limit_per_query: 5000
   discover_service_name: []
+  discover_log_levels: false
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -1501,6 +1506,7 @@ limits_config:
   max_line_size: 256000
   max_entries_limit_per_query: 5000
   discover_service_name: []
+  discover_log_levels: false
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -1895,6 +1901,7 @@ limits_config:
   max_line_size: 256000
   max_entries_limit_per_query: 5000
   discover_service_name: []
+  discover_log_levels: false
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -2231,6 +2238,7 @@ limits_config:
   max_line_size: 256000
   max_entries_limit_per_query: 5000
   discover_service_name: []
+  discover_log_levels: false
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -2671,6 +2679,7 @@ limits_config:
   max_line_size: 256000
   max_entries_limit_per_query: 5000
   discover_service_name: []
+  discover_log_levels: false
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -2996,6 +3005,7 @@ limits_config:
   max_line_size: 256000
   max_entries_limit_per_query: 5000
   discover_service_name: []
+  discover_log_levels: false
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -3494,6 +3504,7 @@ limits_config:
   max_line_size: 256000
   max_entries_limit_per_query: 5000
   discover_service_name: []
+  discover_log_levels: false
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -3756,6 +3767,7 @@ limits_config:
   max_line_size: 256000
   max_entries_limit_per_query: 5000
   discover_service_name: []
+  discover_log_levels: false
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -4019,6 +4031,7 @@ limits_config:
   max_line_size: 256000
   max_entries_limit_per_query: 5000
   discover_service_name: []
+  discover_log_levels: false
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -4283,6 +4296,7 @@ limits_config:
   max_line_size: 256000
   max_entries_limit_per_query: 5000
   discover_service_name: []
+  discover_log_levels: false
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -4583,6 +4597,7 @@ limits_config:
   max_line_size: 256000
   max_entries_limit_per_query: 5000
   discover_service_name: []
+  discover_log_levels: false
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -4881,6 +4896,7 @@ limits_config:
   max_line_size: 256000
   max_entries_limit_per_query: 5000
   discover_service_name: []
+  discover_log_levels: false
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -5380,6 +5396,7 @@ limits_config:
   max_line_size: 256000
   max_entries_limit_per_query: 5000
   discover_service_name: []
+  discover_log_levels: false
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -5557,6 +5574,7 @@ limits_config:
   max_line_size: 256000
   max_entries_limit_per_query: 5000
   discover_service_name: []
+  discover_log_levels: false
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -5727,6 +5745,7 @@ limits_config:
   max_line_size: 256000
   max_entries_limit_per_query: 5000
   discover_service_name: []
+  discover_log_levels: false
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h
@@ -6118,6 +6137,7 @@ limits_config:
   max_line_size: 256000
   max_entries_limit_per_query: 5000
   discover_service_name: []
+  discover_log_levels: false
   max_global_streams_per_user: 0
   max_chunks_per_query: 2000000
   max_query_length: 721h

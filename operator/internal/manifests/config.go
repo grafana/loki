@@ -194,6 +194,7 @@ func ConfigOptions(opt Options) config.Options {
 		ObjectStorage:         opt.ObjectStorage,
 		HTTPTimeouts:          opt.Timeouts.Loki,
 		EnableRemoteReporting: opt.Gates.GrafanaLabsUsageReport,
+		DiscoverLogLevels:     discoverLogLevels(&opt.Stack),
 		Ruler: config.Ruler{
 			Enabled:               rulerEnabled,
 			RulesStorageDirectory: rulesStorageDirectory,
@@ -395,4 +396,17 @@ func retentionConfig(ls *lokiv1.LokiStackSpec) config.RetentionOptions {
 		Enabled:           true,
 		DeleteWorkerCount: deleteWorkerCountMap[ls.Size],
 	}
+}
+
+func discoverLogLevels(ls *lokiv1.LokiStackSpec) bool {
+	if ls.Tenants == nil {
+		return true
+	}
+
+	if ls.Tenants.Mode == lokiv1.OpenshiftLogging ||
+		ls.Tenants.Mode == lokiv1.OpenshiftNetwork {
+		return false
+	}
+
+	return true
 }
