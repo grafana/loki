@@ -153,7 +153,7 @@ The recommended method for connecting Loki to AWS S3 is to use an IAM role. This
     }
     ```
 
-    **Make sure to replace the placeholder with the name of the buckets you created earlier.**
+    **Make sure to replace the placeholders with the names of the buckets you created earlier.**
 
 1. Create the IAM policy using the AWS CLI:
 
@@ -228,7 +228,7 @@ To allow the IAM role to access the S3 buckets, you need to add the policy to th
         ]
     }
     ```
-    **Make sure to replace the placeholders with your AWS account ID and the bucket name.**
+    **Make sure to replace the placeholders with your AWS account ID and the bucket names.**
 
 1. Add the policy to the bucket:
 
@@ -261,7 +261,7 @@ To allow the IAM role to access the S3 buckets, you need to add the policy to th
         ]
     }
     ```
-    **Make sure to replace the placeholders with your AWS account ID and the bucket name.**
+    **Make sure to replace the placeholders with your AWS account ID and the bucket names.**
 
 1. Add the policy to the bucket:
 
@@ -486,7 +486,7 @@ Now that you have created the `values.yaml` file, you can deploy Loki using the 
     ```bash
     helm install --values values.yaml loki grafana/loki -n loki --create-namespace
     ```
-    **It is important to create a namespace called `loki` as our trust policy is set to allow the IAM role to be used by the `loki` service account in the `loki` namespace. This is configurable but make sure to update your service account**
+    **It is important to create a namespace called `loki` as our trust policy is set to allow the IAM role to be used by the `loki` service account in the `loki` namespace. This is configurable but make sure to update your service account.**
 
 1. Verify the deployment:
 
@@ -546,7 +546,7 @@ Congratulations! You have successfully deployed Loki on AWS using the Helm chart
 
 ## Testing Your Loki Deployment
 
-k6 is one of the fastest way to test your Loki deployment. This will allow you to both write and query logs to Loki. To get started with k6, follow the steps below:
+k6 is one of the fastest ways to test your Loki deployment. This will allow you to both write and query logs to Loki. To get started with k6, follow the steps below:
 
 1. Install k6 with the Loki extension on your local machine. Refer to [Installing k6 and the xk6-loki extension](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/k6/).
 
