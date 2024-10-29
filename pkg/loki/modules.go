@@ -1247,7 +1247,6 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 	}
 
 	if t.Cfg.StorageConfig.UseThanosObjstore {
-		// TODO: add SSE limits
 		t.RulerStorage, err = base_ruler.NewRuleStore(context.Background(), t.Cfg.RulerStorage, t.Overrides, ruler.GroupLoader{}, util_log.Logger)
 	} else {
 		t.RulerStorage, err = base_ruler.NewLegacyRuleStore(t.Cfg.Ruler.StoreConfig, t.Cfg.StorageConfig.Hedging, t.ClientMetrics, ruler.GroupLoader{}, util_log.Logger)
