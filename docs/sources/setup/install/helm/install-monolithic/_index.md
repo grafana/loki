@@ -239,8 +239,8 @@ loki:
           period: 24h
   storage_config:
     aws:
-      region: <AWS region your bucket is in eg. `eu-west-2`>
-      bucketnames: <Your AWS bucket for chunk eg. `aws-loki-dev-chunk`>
+      region: <AWS region your bucket is in, for example, `eu-west-2`>
+      bucketnames: <Your AWS bucket for chunk, for exaxmple,  `aws-loki-dev-chunk`>
       s3forcepathstyle: false
   pattern_ingester:
       enabled: true
@@ -252,9 +252,9 @@ loki:
   storage:
     type: s3
     bucketNames:
-        chunks: <Your AWS bucket for chunk eg. `aws-loki-dev-chunk`>
-        ruler: <Your AWS bucket for ruler eg. `aws-loki-dev-ruler`>
-        admin: <Your AWS bucket for admin eg. `aws-loki-dev-admin`>
+        chunks: <Your AWS bucket for chunk, for example, `aws-loki-dev-chunk`>
+        ruler: <Your AWS bucket for ruler, for example, `aws-loki-dev-ruler`>
+        admin: <Your AWS bucket for admin, for example, `aws-loki-dev-admin`>
     s3:
       # s3 URL can be used to specify the endpoint, access key, secret key, and bucket name this works well for S3 compatible storages or are hosting Loki on-premises and want to use S3 as the storage backend. Either use the s3 URL or the individual fields below (AWS endpoint, region, secret).
       s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name
@@ -402,7 +402,7 @@ bloomGateway:
   
 
 
-To configure other storage providers, refer to the [Helm Chart Reference]({{< relref "../reference" >}}).
+To configure other storage providers, refer to the [Helm Chart Reference](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/reference/).
 
 ## Deploying the Loki Helm chart to a Production Environment
 
@@ -411,7 +411,7 @@ We are actively working on providing more guides for deploying Loki in productio
 {{< /admonition >}}
 
 It is recommended to run Loki at scale within in a cloud environment like AWS, Azure, or GCP. The below guides will show you how to deploy a minimally viable production environment.
-- [Deploy Loki on AWS]({{< relref "../deployment-guides/aws" >}})
+- [Deploy Loki on AWS](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/deployment-guides/aws)
 
 
 ## Next Steps 
