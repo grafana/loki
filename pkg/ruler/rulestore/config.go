@@ -8,15 +8,13 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/ruler/rulestore/local"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
-	"github.com/grafana/loki/v3/pkg/tool/client"
 )
 
 // Config configures a rule store.
 type Config struct {
 	bucket.Config `yaml:",inline"`
-	Backend       string        `yaml:"backend"`
-	ConfigDB      client.Config `yaml:"configdb"`
-	Local         local.Config  `yaml:"local"`
+	Backend       string       `yaml:"backend"`
+	Local         local.Config `yaml:"local"`
 }
 
 // RegisterFlags registers the backend storage config.

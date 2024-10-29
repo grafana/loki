@@ -231,6 +231,12 @@ type Limits struct {
 	PatternIngesterTokenizableJSONFieldsDefault dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_default" json:"pattern_ingester_tokenizable_json_fields_default" doc:"hidden"`
 	PatternIngesterTokenizableJSONFieldsAppend  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_append" json:"pattern_ingester_tokenizable_json_fields_append" doc:"hidden"`
 	PatternIngesterTokenizableJSONFieldsDelete  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_delete" json:"pattern_ingester_tokenizable_json_fields_delete" doc:"hidden"`
+
+	// This config doesn't have a CLI flag registered here because they're registered in
+	// their own original config struct.
+	S3SSEType                 string `yaml:"s3_sse_type" json:"s3_sse_type" doc:"nocli|description=S3 server-side encryption type. Required to enable server-side encryption overrides for a specific tenant. If not set, the default S3 client settings are used."`
+	S3SSEKMSKeyID             string `yaml:"s3_sse_kms_key_id" json:"s3_sse_kms_key_id" doc:"nocli|description=S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not set."`
+	S3SSEKMSEncryptionContext string `yaml:"s3_sse_kms_encryption_context" json:"s3_sse_kms_encryption_context" doc:"nocli|description=S3 server-side encryption KMS encryption context. If unset and the key ID override is set, the encryption context will not be provided to S3. Ignored if the SSE type override is not set."`
 }
 
 type StreamRetention struct {
@@ -1104,6 +1110,21 @@ func (o *Overrides) PatternIngesterTokenizableJSONFieldsAppend(userID string) []
 
 func (o *Overrides) PatternIngesterTokenizableJSONFieldsDelete(userID string) []string {
 	return o.getOverridesForUser(userID).PatternIngesterTokenizableJSONFieldsDelete
+}
+
+// S3SSEType returns the per-tenant S3 SSE type.
+func (o *Overrides) S3SSEType(user string) string {
+	return o.getOverridesForUser(user).S3SSEType
+}
+
+// S3SSEKMSKeyID returns the per-tenant S3 KMS-SSE key id.
+func (o *Overrides) S3SSEKMSKeyID(user string) string {
+	return o.getOverridesForUser(user).S3SSEKMSKeyID
+}
+
+// S3SSEKMSEncryptionContext returns the per-tenant S3 KMS-SSE encryption context.
+func (o *Overrides) S3SSEKMSEncryptionContext(user string) string {
+	return o.getOverridesForUser(user).S3SSEKMSEncryptionContext
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

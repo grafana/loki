@@ -7,7 +7,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
 	promRules "github.com/prometheus/prometheus/rules"
 
 	"github.com/grafana/loki/v3/pkg/ruler/rulestore"
@@ -120,10 +119,11 @@ func NewLegacyRuleStore(cfg RuleStoreConfig, hedgeCfg hedging.Config, clientMetr
 }
 
 // NewRuleStore returns a rule store backend client based on the provided cfg.
-func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.TenantConfigProvider, loader promRules.GroupLoader, logger log.Logger, _ prometheus.Registerer) (rulestore.RuleStore, error) {
+func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.SSEConfigProvider, loader promRules.GroupLoader, logger log.Logger) (rulestore.RuleStore, error) {
 	if cfg.Backend == local.Name {
 		return local.NewLocalRulesClient(cfg.Local, loader)
 	}
+
 	bucketClient, err := bucket.NewClient(ctx, cfg.Backend, cfg.Config, "ruler-storage", logger)
 	if err != nil {
 		return nil, err
