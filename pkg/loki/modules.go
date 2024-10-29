@@ -35,6 +35,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/blockbuilder"
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner"
 	bloomprotos "github.com/grafana/loki/v3/pkg/bloombuild/protos"
@@ -48,6 +49,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/objstore"
+	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -136,6 +138,7 @@ const (
 	Analytics                string = "analytics"
 	InitCodec                string = "init-codec"
 	PartitionRing            string = "partition-ring"
+	BlockBuilder             string = "block-builder"
 )
 
 const (
@@ -1774,6 +1777,46 @@ func (t *Loki) initPartitionRing() (services.Service, error) {
 	t.Server.HTTP.Path("/partition-ring").Methods("GET", "POST").Handler(ring.NewPartitionRingPageHandler(t.partitionRingWatcher, ring.NewPartitionRingEditor(ingester.PartitionRingKey, kvClient)))
 
 	return t.partitionRingWatcher, nil
+}
+
+func (t *Loki) initBlockBuilder() (services.Service, error) {
+	logger := log.With(util_log.Logger, "component", "block_builder")
+
+	id := t.Cfg.Ingester.LifecyclerConfig.ID
+	ingestPartitionID, err := partitionring.ExtractIngesterPartitionID(id)
+	if err != nil {
+		return nil, fmt.Errorf("calculating block builder partition ID: %w", err)
+	}
+
+	reader, err := blockbuilder.NewPartitionReader(
+		t.Cfg.KafkaConfig,
+		ingestPartitionID,
+		id,
+		logger,
+		prometheus.DefaultRegisterer,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	bb, err := blockbuilder.NewBlockBuilder(
+		t.Cfg.BlockBuilder,
+		t.Cfg.SchemaConfig.Configs,
+		t.Store,
+		logger,
+		prometheus.DefaultRegisterer,
+		tsdbCreator,
+		blockbuilder.NewPartitionJobController(
+			reader,
+		),
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	t.blockBuilder = bb
+	return t.blockBuilder, nil
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLimits) (deletion.DeleteRequestsClient, error) {

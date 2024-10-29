@@ -95,7 +95,7 @@ func NewReader(
 // This method is called when the PartitionReader service starts.
 func (p *Reader) start(ctx context.Context) error {
 	var err error
-	p.client, err = client.NewReaderClient(p.kafkaCfg, p.metrics.kprom, p.logger)
+	p.client, err = client.NewReaderClient(p.kafkaCfg, p.metrics.Kprom, p.logger)
 	if err != nil {
 		return errors.Wrap(err, "creating kafka reader client")
 	}
@@ -520,7 +520,7 @@ type ReaderMetrics struct {
 	// strongConsistencyInstrumentation *StrongReadConsistencyInstrumentation[struct{}]
 	// lastConsumedOffset               prometheus.Gauge
 	ConsumeLatency prometheus.Histogram
-	kprom          *kprom.Metrics
+	Kprom          *kprom.Metrics
 }
 
 // NewReaderMetrics initializes and returns a new set of metrics for the PartitionReader.
@@ -538,7 +538,7 @@ func NewReaderMetrics(reg prometheus.Registerer) *ReaderMetrics {
 	return &ReaderMetrics{
 		ReceiveDelayWhenStarting: receiveDelay.WithLabelValues("starting"),
 		ReceiveDelayWhenRunning:  receiveDelay.WithLabelValues("running"),
-		kprom:                    client.NewReaderClientMetrics("partition-reader", reg),
+		Kprom:                    client.NewReaderClientMetrics("partition-reader", reg),
 		FetchWaitDuration: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:                        "loki_ingest_storage_reader_records_batch_wait_duration_seconds",
 			Help:                        "How long a consumer spent waiting for a batch of records from the Kafka client. If fetching is faster than processing, then this will be close to 0.",

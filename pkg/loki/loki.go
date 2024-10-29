@@ -31,6 +31,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/blockbuilder"
 	"github.com/grafana/loki/v3/pkg/bloombuild"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
 	"github.com/grafana/loki/v3/pkg/compactor"
@@ -44,7 +45,6 @@ import (
 	metastoreclient "github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/client"
 	ingester_client "github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/kafka"
-	ingester_kafka "github.com/grafana/loki/v3/pkg/kafka/ingester"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/loki/common"
 	"github.com/grafana/loki/v3/pkg/lokifrontend"
@@ -95,6 +95,7 @@ type Config struct {
 	IngesterClient      ingester_client.Config     `yaml:"ingester_client,omitempty"`
 	IngesterRF1Client   ingester_client.Config     `yaml:"ingester_rf1_client,omitempty"`
 	Ingester            ingester.Config            `yaml:"ingester,omitempty"`
+	BlockBuilder        blockbuilder.Config        `yaml:"block_builder,omitempty"`
 	Pattern             pattern.Config             `yaml:"pattern_ingester,omitempty"`
 	IndexGateway        indexgateway.Config        `yaml:"index_gateway"`
 	BloomBuild          bloombuild.Config          `yaml:"bloom_build,omitempty" category:"experimental"`
@@ -265,6 +266,9 @@ func (c *Config) Validate() error {
 	if err := c.Ingester.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingester config"))
 	}
+	if err := c.BlockBuilder.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid block_builder config"))
+	}
 	if err := c.LimitsConfig.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid limits_config config"))
 	}
@@ -382,7 +386,7 @@ type Loki struct {
 	MetastoreClient           *metastoreclient.Client
 	partitionRingWatcher      *ring.PartitionRingWatcher
 	partitionRing             *ring.PartitionInstanceRing
-	kafkaIngester             *ingester_kafka.Ingester
+	blockBuilder              *blockbuilder.BlockBuilder
 
 	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -704,6 +708,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(PatternIngesterTee, t.initPatternIngesterTee, modules.UserInvisibleModule)
 	mm.RegisterModule(PatternIngester, t.initPatternIngester)
 	mm.RegisterModule(PartitionRing, t.initPartitionRing, modules.UserInvisibleModule)
+	mm.RegisterModule(BlockBuilder, t.initBlockBuilder)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)

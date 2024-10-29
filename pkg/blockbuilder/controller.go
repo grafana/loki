@@ -16,6 +16,8 @@ type Job struct {
 
 // Interface required for interacting with queue partitions.
 type PartitionController interface {
+	Topic() string
+	Partition() int32
 	// Returns the highest committed offset from the consumer group
 	HighestCommittedOffset(ctx context.Context) (int64, error)
 	// Returns the highest available offset in the partition
@@ -49,10 +51,17 @@ type PartitionController interface {
 //
 //	containing log data and "committed" is the consumer group
 type PartitionJobController struct {
-	topic     string
-	partition int32
-	stepLen   int64
-	part      PartitionController
+	stepLen int64
+	part    PartitionController
+}
+
+func NewPartitionJobController(
+	controller PartitionController,
+) *PartitionJobController {
+	return &PartitionJobController{
+		stepLen: 1000, // Default step length of 1000 offsets per job
+		part:    controller,
+	}
 }
 
 // LoadJob(ctx) returns the next job by finding the most recent unconsumed offset in the partition
@@ -75,7 +84,7 @@ func (l *PartitionJobController) LoadJob(ctx context.Context) (bool, Job, error)
 
 	// Create the job with the calculated offsets
 	job := Job{
-		Partition: l.partition,
+		Partition: l.part.Partition(),
 		Offsets: Offsets{
 			Min: startOffset,
 			Max: startOffset + l.stepLen,

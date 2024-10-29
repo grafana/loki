@@ -17,6 +17,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kmsg"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/kafka/partition"
 )
 
@@ -45,23 +46,22 @@ type partitionReader struct {
 }
 
 func NewPartitionReader(
-	topic string,
-	group string,
+	kafkaCfg kafka.Config,
 	partitionID int32,
-	decoder *kafka.Decoder,
+	instanceID string,
 	logger log.Logger,
 	r prometheus.Registerer,
 ) (*partitionReader, error) {
 	readerMetrics := partition.NewReaderMetrics(r)
 	writerMetrics := partition.NewCommitterMetrics(r, partitionID)
+	group := kafkaCfg.GetConsumerGroup(instanceID, partitionID)
 
-	opts := []kgo.Opt{
-		kgo.SeedBrokers([]string{"localhost:9092"}...),
-		kgo.ConsumerGroup(group),
-		kgo.ConsumeTopics(topic),
+	decoder, err := kafka.NewDecoder()
+	if err != nil {
+		return nil, err
 	}
 
-	client, err := kgo.NewClient(opts...)
+	client, err := client.NewReaderClient(kafkaCfg, readerMetrics.Kprom, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +69,7 @@ func NewPartitionReader(
 	aClient := kadm.NewClient(client)
 
 	return &partitionReader{
-		topic:         topic,
+		topic:         kafkaCfg.Topic,
 		group:         group,
 		partitionID:   partitionID,
 		readerMetrics: readerMetrics,
@@ -80,6 +80,9 @@ func NewPartitionReader(
 		aClient:       aClient,
 	}, nil
 }
+
+func (r *partitionReader) Topic() string    { return r.topic }
+func (r *partitionReader) Partition() int32 { return r.partitionID }
 
 // Fetches the desired offset in the partition itself, not the consumer group
 // NB(owen-d): lifted from `pkg/kafka/partition/reader.go:Reader`

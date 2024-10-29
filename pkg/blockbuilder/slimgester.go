@@ -5,7 +5,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"runtime"
 	"sync"
 	"time"
 
@@ -14,12 +13,10 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/push"
-	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/ingester"
@@ -27,179 +24,39 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
 	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
 const (
 	flushReasonFull   = "full"
 	flushReasonMaxAge = "max_age"
+	onePointFiveMB    = 3 << 19
 )
-
-type SlimgesterMetrics struct {
-	chunkUtilization              prometheus.Histogram
-	chunkEntries                  prometheus.Histogram
-	chunkSize                     prometheus.Histogram
-	chunkCompressionRatio         prometheus.Histogram
-	chunksPerTenant               *prometheus.CounterVec
-	chunkSizePerTenant            *prometheus.CounterVec
-	chunkAge                      prometheus.Histogram
-	chunkEncodeTime               prometheus.Histogram
-	chunksFlushFailures           prometheus.Counter
-	chunksFlushedPerReason        *prometheus.CounterVec
-	chunkLifespan                 prometheus.Histogram
-	chunksEncoded                 *prometheus.CounterVec
-	chunkDecodeFailures           *prometheus.CounterVec
-	flushedChunksStats            *analytics.Counter
-	flushedChunksBytesStats       *analytics.Statistics
-	flushedChunksLinesStats       *analytics.Statistics
-	flushedChunksAgeStats         *analytics.Statistics
-	flushedChunksLifespanStats    *analytics.Statistics
-	flushedChunksUtilizationStats *analytics.Statistics
-
-	chunksCreatedTotal prometheus.Counter
-	samplesPerChunk    prometheus.Histogram
-	blocksPerChunk     prometheus.Histogram
-	chunkCreatedStats  *analytics.Counter
-}
-
-func NewSlimgesterMetrics(r prometheus.Registerer) *SlimgesterMetrics {
-	return &SlimgesterMetrics{
-		chunkUtilization: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Namespace: constants.Loki,
-			Name:      "slimgester_chunk_utilization",
-			Help:      "Distribution of stored chunk utilization (when stored).",
-			Buckets:   prometheus.LinearBuckets(0, 0.2, 6),
-		}),
-		chunkEntries: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Namespace: constants.Loki,
-			Name:      "slimgester_chunk_entries",
-			Help:      "Distribution of stored lines per chunk (when stored).",
-			Buckets:   prometheus.ExponentialBuckets(200, 2, 9), // biggest bucket is 200*2^(9-1) = 51200
-		}),
-		chunkSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Namespace: constants.Loki,
-			Name:      "slimgester_chunk_size_bytes",
-			Help:      "Distribution of stored chunk sizes (when stored).",
-			Buckets:   prometheus.ExponentialBuckets(20000, 2, 10), // biggest bucket is 20000*2^(10-1) = 10,240,000 (~10.2MB)
-		}),
-		chunkCompressionRatio: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Namespace: constants.Loki,
-			Name:      "slimgester_chunk_compression_ratio",
-			Help:      "Compression ratio of chunks (when stored).",
-			Buckets:   prometheus.LinearBuckets(.75, 2, 10),
-		}),
-		chunksPerTenant: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "slimgester_chunks_stored_total",
-			Help:      "Total stored chunks per tenant.",
-		}, []string{"tenant"}),
-		chunkSizePerTenant: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "slimgester_chunk_stored_bytes_total",
-			Help:      "Total bytes stored in chunks per tenant.",
-		}, []string{"tenant"}),
-		chunkAge: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Namespace: constants.Loki,
-			Name:      "slimgester_chunk_age_seconds",
-			Help:      "Distribution of chunk ages (when stored).",
-			// with default settings chunks should flush between 5 min and 12 hours
-			// so buckets at 1min, 5min, 10min, 30min, 1hr, 2hr, 4hr, 10hr, 12hr, 16hr
-			Buckets: []float64{60, 300, 600, 1800, 3600, 7200, 14400, 36000, 43200, 57600},
-		}),
-		chunkEncodeTime: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Namespace: constants.Loki,
-			Name:      "slimgester_chunk_encode_time_seconds",
-			Help:      "Distribution of chunk encode times.",
-			// 10ms to 10s.
-			Buckets: prometheus.ExponentialBuckets(0.01, 4, 6),
-		}),
-		chunksFlushFailures: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "slimgester_chunks_flush_failures_total",
-			Help:      "Total number of flush failures.",
-		}),
-		chunksFlushedPerReason: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "slimgester_chunks_flushed_total",
-			Help:      "Total flushed chunks per reason.",
-		}, []string{"reason"}),
-		chunkLifespan: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Namespace: constants.Loki,
-			Name:      "slimgester_chunk_bounds_hours",
-			Help:      "Distribution of chunk end-start durations.",
-			// 1h -> 8hr
-			Buckets: prometheus.LinearBuckets(1, 1, 8),
-		}),
-		chunksEncoded: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "slimgester_chunks_encoded_total",
-			Help:      "The total number of chunks encoded in the ingester.",
-		}, []string{"user"}),
-		chunkDecodeFailures: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "slimgester_chunk_decode_failures_total",
-			Help:      "The number of freshly encoded chunks that failed to decode.",
-		}, []string{"user"}),
-		flushedChunksStats:      analytics.NewCounter("slimgester_flushed_chunks"),
-		flushedChunksBytesStats: analytics.NewStatistics("slimgester_flushed_chunks_bytes"),
-		flushedChunksLinesStats: analytics.NewStatistics("slimgester_flushed_chunks_lines"),
-		flushedChunksAgeStats: analytics.NewStatistics(
-			"slimgester_flushed_chunks_age_seconds",
-		),
-		flushedChunksLifespanStats: analytics.NewStatistics(
-			"slimgester_flushed_chunks_lifespan_seconds",
-		),
-		flushedChunksUtilizationStats: analytics.NewStatistics(
-			"slimgester_flushed_chunks_utilization",
-		),
-		chunksCreatedTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "slimgester_chunks_created_total",
-			Help:      "The total number of chunks created in the ingester.",
-		}),
-		samplesPerChunk: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Namespace: constants.Loki,
-			Subsystem: "slimgester",
-			Name:      "samples_per_chunk",
-			Help:      "The number of samples in a chunk.",
-
-			Buckets: prometheus.LinearBuckets(4096, 2048, 6),
-		}),
-		blocksPerChunk: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Namespace: constants.Loki,
-			Subsystem: "slimgester",
-			Name:      "blocks_per_chunk",
-			Help:      "The number of blocks in a chunk.",
-
-			Buckets: prometheus.ExponentialBuckets(5, 2, 6),
-		}),
-
-		chunkCreatedStats: analytics.NewCounter("slimgester_chunk_created"),
-	}
-}
 
 type Config struct {
 	ConcurrentFlushes int               `yaml:"concurrent_flushes"`
 	ConcurrentWriters int               `yaml:"concurrent_writers"`
-	BlockSize         int               `yaml:"chunk_block_size"`
-	TargetChunkSize   int               `yaml:"chunk_target_size"`
+	BlockSize         flagext.ByteSize  `yaml:"chunk_block_size"`
+	TargetChunkSize   flagext.ByteSize  `yaml:"chunk_target_size"`
 	ChunkEncoding     string            `yaml:"chunk_encoding"`
 	parsedEncoding    compression.Codec `yaml:"-"` // placeholder for validated encoding
 	MaxChunkAge       time.Duration     `yaml:"max_chunk_age"`
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 16, "How many flushes can happen concurrently")
-	f.IntVar(&cfg.ConcurrentWriters, "ingester.concurrent-writers", runtime.NumCPU(), "How many workers to process writes, defaults to number of available cpus")
-	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "The targeted _uncompressed_ size in bytes of a chunk block When this threshold is exceeded the head block will be cut and compressed inside the chunk.")
-	f.IntVar(&cfg.TargetChunkSize, "ingester.chunk-target-size", 1572864, "A target _compressed_ size in bytes for chunks. This is a desired size not an exact size, chunks may be slightly bigger or significantly smaller if they get flushed for other reasons (e.g. chunk_idle_period). A value of 0 creates chunks with a fixed 10 blocks, a non zero value will create chunks with a variable number of blocks to meet the target size.") // 1.5 MB
-	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", compression.GZIP.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", compression.SupportedCodecs()))
-	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 2*time.Hour, "The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this, the current chunk will be flushed to the store and a new chunk created.")
+	f.IntVar(&cfg.ConcurrentFlushes, prefix+"concurrent-flushes", 16, "How many flushes can happen concurrently")
+	f.IntVar(&cfg.ConcurrentWriters, prefix+"concurrent-writers", 16, "How many workers to process writes, defaults to number of available cpus")
+	_ = cfg.BlockSize.Set("256KB")
+	f.Var(&cfg.BlockSize, prefix+"chunks-block-size", "The targeted _uncompressed_ size in bytes of a chunk block When this threshold is exceeded the head block will be cut and compressed inside the chunk.")
+	_ = cfg.TargetChunkSize.Set(fmt.Sprint(onePointFiveMB))
+	f.Var(&cfg.TargetChunkSize, prefix+"chunk-target-size", "A target _compressed_ size in bytes for chunks. This is a desired size not an exact size, chunks may be slightly bigger or significantly smaller if they get flushed for other reasons (e.g. chunk_idle_period). A value of 0 creates chunks with a fixed 10 blocks, a non zero value will create chunks with a variable number of blocks to meet the target size.")
+	f.StringVar(&cfg.ChunkEncoding, prefix+"chunk-encoding", compression.Snappy.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", compression.SupportedCodecs()))
+	f.DurationVar(&cfg.MaxChunkAge, prefix+"max-chunk-age", 2*time.Hour, "The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this, the current chunk will be flushed to the store and a new chunk created.")
 }
 
 // RegisterFlags registers flags.
 func (c *Config) RegisterFlags(flags *flag.FlagSet) {
-	c.RegisterFlagsWithPrefix("slimgester", flags)
+	c.RegisterFlagsWithPrefix("blockbuilder.", flags)
 }
 
 func (cfg *Config) Validate() error {
@@ -211,7 +68,7 @@ func (cfg *Config) Validate() error {
 	return nil
 }
 
-// Slimgester is a slimmed-down version of the ingester, intended to
+// BlockBuilder is a slimmed-down version of the ingester, intended to
 // ingest logs without WALs. Broadly, it accumulates logs into per-tenant chunks in the same way the existing ingester does,
 // without a WAL. Index (TSDB) creation is also not an out-of-band procedure and must be called directly. In essence, this
 // allows us to buffer data, flushing chunks to storage as necessary, and then when ready to commit this, relevant TSDBs (one per period) are created and flushed to storage. This allows an external caller to prepare a batch of data, build relevant chunks+indices, ensure they're flushed, and then return. As long as chunk+index creation is deterministic, this operation is also
@@ -222,7 +79,7 @@ func (cfg *Config) Validate() error {
 //   - `Commit(context.Context) error`
 //     Serializes (cuts) any buffered data into chunks, flushes them to storage, then creates + flushes TSDB indices
 //     containing all chunk references. Finally, clears internal state.
-type Slimgester struct {
+type BlockBuilder struct {
 	services.Service
 
 	cfg             Config
@@ -240,7 +97,7 @@ type Slimgester struct {
 	jobController *PartitionJobController
 }
 
-func NewSlimgester(
+func NewBlockBuilder(
 	cfg Config,
 	periodicConfigs []config.PeriodConfig,
 	store stores.ChunkWriter,
@@ -248,9 +105,9 @@ func NewSlimgester(
 	reg prometheus.Registerer,
 	tsdbCreator *TsdbCreator,
 	jobController *PartitionJobController,
-) (*Slimgester,
+) (*BlockBuilder,
 	error) {
-	i := &Slimgester{
+	i := &BlockBuilder{
 		cfg:             cfg,
 		periodicConfigs: periodicConfigs,
 		metrics:         NewSlimgesterMetrics(reg),
@@ -265,7 +122,7 @@ func NewSlimgester(
 	return i, nil
 }
 
-func (i *Slimgester) running(ctx context.Context) error {
+func (i *BlockBuilder) running(ctx context.Context) error {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
@@ -283,7 +140,7 @@ func (i *Slimgester) running(ctx context.Context) error {
 }
 
 // runOne performs a single
-func (i *Slimgester) runOne(ctx context.Context) (skipped bool, err error) {
+func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 
 	exists, job, err := i.jobController.LoadJob(ctx)
 	if err != nil {
@@ -404,7 +261,7 @@ func (i *Slimgester) runOne(ctx context.Context) (skipped bool, err error) {
 }
 
 // reportFlushedChunkStatistics calculate overall statistics of flushed chunks without compromising the flush process.
-func (i *Slimgester) reportFlushedChunkStatistics(
+func (i *BlockBuilder) reportFlushedChunkStatistics(
 	ch *chunk.Chunk,
 ) {
 	byt, err := ch.Encoded()
@@ -458,7 +315,7 @@ type AppendInput struct {
 	entries   []push.Entry
 }
 
-func (i *Slimgester) Append(ctx context.Context, input AppendInput) ([]*chunk.Chunk, error) {
+func (i *BlockBuilder) Append(ctx context.Context, input AppendInput) ([]*chunk.Chunk, error) {
 	// use rlock so multiple appends can be called on same instance.
 	// re-check after using regular lock if it didnt exist.
 	i.instancesMtx.RLock()
