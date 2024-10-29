@@ -11,14 +11,12 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/analytics"
@@ -236,16 +234,10 @@ type Slimgester struct {
 	instances    map[string]*instance
 	instancesMtx sync.RWMutex
 
-	store      stores.ChunkWriter
-	input      chan []AppendInput // for processing
-	flushQueue chan *chunk.Chunk  // for flushing
+	store stores.ChunkWriter
 
 	tsdbCreator   *TsdbCreator
 	jobController *PartitionJobController
-
-	grp    errgroup.Group // for waiting on flushers+workers
-	quit   chan struct{}  // for signaling flushers+workers
-	closer sync.Once      // for coordinating channel closure
 }
 
 func NewSlimgester(
@@ -267,63 +259,100 @@ func NewSlimgester(
 		store:           store,
 		tsdbCreator:     tsdbCreator,
 		jobController:   jobController,
-
-		input:      make(chan []AppendInput),
-		flushQueue: make(chan *chunk.Chunk),
-
-		quit: make(chan struct{}),
 	}
 
-	i.Service = services.NewBasicService(nil, i.running, i.stopping)
+	i.Service = services.NewBasicService(nil, nil, nil)
 	return i, nil
 }
 
-func (i *Slimgester) running(ctx context.Context) error {
-	select {
-	case <-ctx.Done():
-		i.close()
-	case <-i.quit:
-	}
-	return nil
-}
-
-func (i *Slimgester) stopping(e error) error {
-	i.close()
-	err := multierror.New(e)
-	err.Add(i.grp.Wait())
-	return err.Err()
-}
-
-// behind sync.Once b/c it can be called from etiher `running` or `stopping`.
-func (i *Slimgester) close() {
-	i.closer.Do(func() {
-		close(i.quit)
-	})
-}
-
 // runOne performs a single
-func (i *Slimgester) runOne(ctx context.Context) error {
+func (i *Slimgester) runOne(ctx context.Context) (lastOffset int64, skipped bool, err error) {
+
 	exists, job, err := i.jobController.LoadJob(ctx)
 	if err != nil {
-		return err
+		return 0, false, err
 	}
 
 	if !exists {
 		level.Info(i.logger).Log("msg", "no available job to process")
-		return nil
+		return 0, true, nil
 	}
 
-	i.jobController.part.Process(ctx, job.Offsets, i.input)
+	p := newPipeline(ctx)
 
-	// start flush goroutines
-	for j := 0; j < i.cfg.ConcurrentFlushes; j++ {
-		i.grp.Go(func() error {
+	// Pipeline stage 1: Process the job offsets and write records to inputCh
+	// This stage reads from the partition and feeds records into the input channel
+	// When complete, it stores the last processed offset and closes the channel
+	inputCh := make(chan []AppendInput)
+	p.AddStageWithCleanup(
+		1,
+		func(ctx context.Context) error {
+			lastOffset, err = i.jobController.part.Process(ctx, job.Offsets, inputCh)
+			return err
+		},
+		func() error {
+			close(inputCh)
+			return nil
+		},
+	)
+
+	// Stage 2: Process input records and generate chunks
+	// This stage receives AppendInput batches, appends them to appropriate instances,
+	// and forwards any cut chunks to the chunks channel for flushing.
+	// ConcurrentWriters workers process inputs in parallel to maximize throughput.
+	flush := make(chan *chunk.Chunk)
+	p.AddStageWithCleanup(
+		i.cfg.ConcurrentWriters,
+		func(ctx context.Context) error {
+
 			for {
 				select {
-				case <-i.quit:
-					return nil
 				case <-ctx.Done():
-				case chk := <-i.flushQueue:
+					return ctx.Err()
+				case inputs, ok := <-inputCh:
+					// inputs are finished; we're done
+					if !ok {
+						return nil
+					}
+
+					for _, input := range inputs {
+						cut, err := i.Append(ctx, input)
+						if err != nil {
+							level.Error(i.logger).Log("msg", "failed to append records", "err", err)
+							return err
+						}
+
+						for _, chk := range cut {
+							select {
+							case <-ctx.Done():
+								return ctx.Err()
+							case flush <- chk:
+							}
+						}
+					}
+				}
+			}
+		},
+		func() error {
+			close(flush)
+			return nil
+		},
+	)
+
+	// Stage 3: Flush chunks to storage
+	// This stage receives chunks from the chunks channel and flushes them to storage
+	// using ConcurrentFlushes workers for parallel processing
+	p.AddStage(
+		i.cfg.ConcurrentFlushes,
+		func(ctx context.Context) error {
+			for {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case chk, ok := <-flush:
+					if !ok {
+						return nil
+					}
 					if _, err := withBackoff(
 						ctx,
 						defaultBackoffConfig, // retry forever
@@ -341,31 +370,11 @@ func (i *Slimgester) runOne(ctx context.Context) error {
 					}
 				}
 			}
-		})
-	}
+		},
+	)
 
-	// start chunk building goroutines
-	for j := 0; j < i.cfg.ConcurrentWriters; j++ {
-		i.grp.Go(func() error {
-			for {
-				select {
-				case <-i.quit:
-					return nil
-				case <-ctx.Done():
-					return ctx.Err()
-				case inputs := <-i.input:
-					for _, input := range inputs {
-						if err := i.Append(ctx, input); err != nil {
-							level.Error(i.logger).Log("msg", "failed to append records", "err", err)
-							return err
-						}
-					}
-				}
-			}
-		})
-	}
-	return nil
-
+	err = p.Run()
+	return lastOffset, false, err
 }
 
 // reportFlushedChunkStatistics calculate overall statistics of flushed chunks without compromising the flush process.
@@ -423,7 +432,7 @@ type AppendInput struct {
 	entries   []push.Entry
 }
 
-func (i *Slimgester) Append(ctx context.Context, input AppendInput) error {
+func (i *Slimgester) Append(ctx context.Context, input AppendInput) ([]*chunk.Chunk, error) {
 	// use rlock so multiple appends can be called on same instance.
 	// re-check after using regular lock if it didnt exist.
 	i.instancesMtx.RLock()
@@ -440,11 +449,7 @@ func (i *Slimgester) Append(ctx context.Context, input AppendInput) error {
 	}
 
 	closed, err := inst.Push(ctx, input)
-	for _, chk := range closed {
-		i.flushQueue <- chk
-	}
-
-	return err
+	return closed, err
 }
 
 // instance is a slimmed down version from the ingester pkg
