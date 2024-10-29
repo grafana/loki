@@ -6,6 +6,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
@@ -263,7 +264,7 @@ func TestMergeBuilder(t *testing.T) {
 	)
 
 	// Ensure that the merge builder combines all the blocks correctly
-	mergeBuilder := NewMergeBuilder(dedupedBlocks(blocks), storeItr, populate, NewMetrics(nil))
+	mergeBuilder := NewMergeBuilder(dedupedBlocks(blocks), storeItr, populate, NewMetrics(nil), log.NewNopLogger())
 	indexBuf := bytes.NewBuffer(nil)
 	bloomsBuf := bytes.NewBuffer(nil)
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
@@ -350,6 +351,8 @@ func TestMergeBuilderFingerprintCollision(t *testing.T) {
 	// We're not testing the ability to extend a bloom in this test
 	pop := func(_ *Series, _ iter.SizedIterator[*Bloom], _ ChunkRefs, ch chan *BloomCreation) {
 		bloom := NewBloom()
+		// Add something to the bloom so it's not empty
+		bloom.Add([]byte("hello"))
 		stats := indexingInfo{
 			sourceBytes:   int(bloom.Capacity()) / 8,
 			indexedFields: NewSetFromLiteral[Field]("__all__"),
@@ -367,6 +370,7 @@ func TestMergeBuilderFingerprintCollision(t *testing.T) {
 		iter.NewSliceIter(data),
 		pop,
 		NewMetrics(nil),
+		log.NewNopLogger(),
 	)
 
 	_, _, err = mergeBuilder.Build(builder)
@@ -539,6 +543,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 		dedupedStore,
 		pop,
 		NewMetrics(nil),
+		log.NewNopLogger(),
 	)
 	builder, err := NewBlockBuilder(blockOpts, writer)
 	require.Nil(t, err)

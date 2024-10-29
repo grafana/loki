@@ -32,6 +32,8 @@ func NewBloomRecorder(ctx context.Context, id string) *BloomRecorder {
 		chunksSkipped:  atomic.NewInt64(0),
 		seriesMissed:   atomic.NewInt64(0),
 		chunksMissed:   atomic.NewInt64(0),
+		seriesEmpty:    atomic.NewInt64(0),
+		chunksEmpty:    atomic.NewInt64(0),
 		chunksFiltered: atomic.NewInt64(0),
 	}
 }
@@ -45,6 +47,8 @@ type BloomRecorder struct {
 	seriesSkipped, chunksSkipped *atomic.Int64
 	// not found in bloom
 	seriesMissed, chunksMissed *atomic.Int64
+	// exists in block index but empty offsets
+	seriesEmpty, chunksEmpty *atomic.Int64
 	// filtered out
 	chunksFiltered *atomic.Int64
 }
@@ -56,6 +60,8 @@ func (r *BloomRecorder) Merge(other *BloomRecorder) {
 	r.chunksSkipped.Add(other.chunksSkipped.Load())
 	r.seriesMissed.Add(other.seriesMissed.Load())
 	r.chunksMissed.Add(other.chunksMissed.Load())
+	r.seriesEmpty.Add(other.seriesEmpty.Load())
+	r.chunksEmpty.Add(other.chunksEmpty.Load())
 	r.chunksFiltered.Add(other.chunksFiltered.Load())
 }
 
@@ -66,13 +72,15 @@ func (r *BloomRecorder) Report(logger log.Logger, metrics *Metrics) {
 		seriesFound     = r.seriesFound.Load()
 		seriesSkipped   = r.seriesSkipped.Load()
 		seriesMissed    = r.seriesMissed.Load()
-		seriesRequested = seriesFound + seriesSkipped + seriesMissed
+		seriesEmpty     = r.seriesEmpty.Load()
+		seriesRequested = seriesFound + seriesSkipped + seriesMissed + seriesEmpty
 
 		chunksFound     = r.chunksFound.Load()
 		chunksSkipped   = r.chunksSkipped.Load()
 		chunksMissed    = r.chunksMissed.Load()
 		chunksFiltered  = r.chunksFiltered.Load()
-		chunksRequested = chunksFound + chunksSkipped + chunksMissed
+		chunksEmpty     = r.chunksEmpty.Load()
+		chunksRequested = chunksFound + chunksSkipped + chunksMissed + chunksEmpty
 	)
 	level.Debug(logger).Log(
 		"recorder_msg", "bloom search results",
@@ -82,11 +90,13 @@ func (r *BloomRecorder) Report(logger log.Logger, metrics *Metrics) {
 		"recorder_series_found", seriesFound,
 		"recorder_series_skipped", seriesSkipped,
 		"recorder_series_missed", seriesMissed,
+		"recorder_series_empty", seriesEmpty,
 
 		"recorder_chunks_requested", chunksRequested,
 		"recorder_chunks_found", chunksFound,
 		"recorder_chunks_skipped", chunksSkipped,
 		"recorder_chunks_missed", chunksMissed,
+		"recorder_chunks_empty", chunksEmpty,
 		"recorder_chunks_filtered", chunksFiltered,
 	)
 
@@ -94,25 +104,27 @@ func (r *BloomRecorder) Report(logger log.Logger, metrics *Metrics) {
 		metrics.recorderSeries.WithLabelValues(recorderRequested).Add(float64(seriesRequested))
 		metrics.recorderSeries.WithLabelValues(recorderFound).Add(float64(seriesFound))
 		metrics.recorderSeries.WithLabelValues(recorderSkipped).Add(float64(seriesSkipped))
+		metrics.recorderSeries.WithLabelValues(recorderEmpty).Add(float64(seriesEmpty))
 		metrics.recorderSeries.WithLabelValues(recorderMissed).Add(float64(seriesMissed))
 
 		metrics.recorderChunks.WithLabelValues(recorderRequested).Add(float64(chunksRequested))
 		metrics.recorderChunks.WithLabelValues(recorderFound).Add(float64(chunksFound))
 		metrics.recorderChunks.WithLabelValues(recorderSkipped).Add(float64(chunksSkipped))
 		metrics.recorderChunks.WithLabelValues(recorderMissed).Add(float64(chunksMissed))
+		metrics.recorderChunks.WithLabelValues(recorderEmpty).Add(float64(chunksEmpty))
 		metrics.recorderChunks.WithLabelValues(recorderFiltered).Add(float64(chunksFiltered))
 	}
 }
 
-func (r *BloomRecorder) record(
-	seriesFound, chunksFound, seriesSkipped, chunksSkipped, seriesMissed, chunksMissed, chunksFiltered int,
-) {
+func (r *BloomRecorder) record(seriesFound, chunksFound, seriesSkipped, chunksSkipped, seriesMissed, chunksMissed, seriesEmpty, chunksEmpty, chunksFiltered int) {
 	r.seriesFound.Add(int64(seriesFound))
 	r.chunksFound.Add(int64(chunksFound))
 	r.seriesSkipped.Add(int64(seriesSkipped))
 	r.chunksSkipped.Add(int64(chunksSkipped))
 	r.seriesMissed.Add(int64(seriesMissed))
 	r.chunksMissed.Add(int64(chunksMissed))
+	r.seriesEmpty.Add(int64(seriesEmpty))
+	r.chunksEmpty.Add(int64(chunksEmpty))
 	r.chunksFiltered.Add(int64(chunksFiltered))
 }
 
@@ -170,6 +182,7 @@ func (fq *FusedQuerier) recordMissingFp(
 			0, 0, // found
 			0, 0, // skipped
 			1, len(input.Chks), // missed
+			0, 0, // empty
 			0, // chunks filtered
 		)
 	})
@@ -184,6 +197,22 @@ func (fq *FusedQuerier) recordSkippedFp(
 			0, 0, // found
 			1, len(input.Chks), // skipped
 			0, 0, // missed
+			0, 0, // empty
+			0, // chunks filtered
+		)
+	})
+}
+
+func (fq *FusedQuerier) recordEmptyFp(
+	batch []Request,
+	fp model.Fingerprint,
+) {
+	fq.noRemovals(batch, fp, func(input Request) {
+		input.Recorder.record(
+			0, 0, // found
+			0, 0, // skipped
+			0, 0, // missed
+			1, len(input.Chks), // empty
 			0, // chunks filtered
 		)
 	})
@@ -280,6 +309,19 @@ func (fq *FusedQuerier) runSeries(_ Schema, series *SeriesWithMeta, reqs []Reque
 		})
 	}
 
+	if len(series.Offsets) == 0 {
+		// We end up here for series with no structured metadata fields.
+		// While building blooms, these series would yield empty blooms.
+		// We add these series to the index of the block so we don't report them as missing,
+		// but we don't filter any chunks for them.
+		level.Debug(fq.logger).Log(
+			"msg", "series with empty offsets",
+			"fp", series.Fingerprint,
+		)
+		fq.recordEmptyFp(reqs, series.Fingerprint)
+		return
+	}
+
 	for i, offset := range series.Offsets {
 		skip := fq.bq.blooms.LoadOffset(offset)
 		if skip {
@@ -361,6 +403,7 @@ func (fq *FusedQuerier) runSeries(_ Schema, series *SeriesWithMeta, reqs []Reque
 			1, len(inputs[i].InBlooms), // found
 			0, 0, // skipped
 			0, len(inputs[i].Missing), // missed
+			0, 0, // empty
 			len(removals), // filtered
 		)
 		req.Response <- Output{
