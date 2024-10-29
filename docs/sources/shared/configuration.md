@@ -3844,6 +3844,20 @@ otlp_config:
 # disables shuffle sharding and tenant is sharded across all partitions.
 # CLI flag: -limits.ingestion-partition-tenant-shard-size
 [ingestion_partitions_tenant_shard_size: <int> | default = 0]
+
+# S3 server-side encryption type. Required to enable server-side encryption
+# overrides for a specific tenant. If not set, the default S3 client settings
+# are used.
+[s3_sse_type: <string> | default = ""]
+
+# S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not
+# set.
+[s3_sse_kms_key_id: <string> | default = ""]
+
+# S3 server-side encryption KMS encryption context. If unset and the key ID
+# override is set, the encryption context will not be provided to S3. Ignored if
+# the SSE type override is not set.
+[s3_sse_kms_encryption_context: <string> | default = ""]
 ```
 
 ### local_storage_config
