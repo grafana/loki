@@ -218,7 +218,7 @@ loki:
         ruler: <Your AWS bucket for ruler , for example,  `aws-loki-dev-ruler`>
         admin: <Your AWS bucket for admin , for example,  `aws-loki-dev-admin`>
     s3:
-      # s3 URL can be used to specify the endpoint, access key, secret key, and bucket name this works well for S3 compatible storages or are hosting Loki on-premises and want to use S3 as the storage backend. Either use the s3 URL or the individual fields below (AWS endpoint, region, secret).
+      # s3 URL can be used to specify the endpoint, access key, secret key, and bucket name this works well for S3 compatible storage or if you are hosting Loki on-premises and want to use S3 as the storage backend. Either use the s3 URL or the individual fields below (AWS endpoint, region, secret).
       s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name
       # AWS endpoint URL
       endpoint: <your-endpoint>
