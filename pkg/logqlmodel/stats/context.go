@@ -103,6 +103,11 @@ func (c *Context) Store() Store {
 	return c.store
 }
 
+// Index returns the index statistics accumulated so far.
+func (c *Context) Index() Index {
+	return c.index
+}
+
 // Caches returns the cache statistics accumulated so far.
 func (c *Context) Caches() Caches {
 	return Caches{
@@ -400,6 +405,14 @@ func (c *Context) AddChunksDownloaded(i int64) {
 
 func (c *Context) AddChunksRef(i int64) {
 	atomic.AddInt64(&c.store.TotalChunksRef, i)
+}
+
+func (c *Context) AddIndexTotalChunkRefs(i int64) {
+	atomic.AddInt64(&c.index.TotalChunks, i)
+}
+
+func (c *Context) AddIndexPostFilterChunkRefs(i int64) {
+	atomic.AddInt64(&c.index.PostFilterChunks, i)
 }
 
 // AddCacheEntriesFound counts the number of cache entries requested and found
