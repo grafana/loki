@@ -227,12 +227,14 @@ type organizedBufferedIterator struct {
 
 	closed bool
 
+	// Buffers and readers for structured metadata bytes
 	smBytes      []byte
 	smReader     io.Reader // initialized later
 	smBuf        []symbol
 	smReadBuf    [2 * binary.MaxVarintLen64]byte // same, enough to contain two varints
 	smValidBytes int
 
+	// Buffers and readers for timestamp bytes
 	tsBytes        []byte
 	tsReadBufValid int
 	tsReadBuf      [binary.MaxVarintLen64]byte
@@ -246,23 +248,52 @@ func (e *organizedBufferedIterator) Next() bool {
 
 		// todo(shantanu): handle all errors
 		e.reader, err = e.pool.GetReader(bytes.NewReader(e.origBytes))
-		e.tsReader, err = e.pool.GetReader(bytes.NewReader(e.tsBytes))
-		e.smReader, err = e.pool.GetReader(bytes.NewReader(e.smBytes))
-
 		if err != nil {
 			e.err = err
 			return false
 		}
-
-		// todo (shantanu): assign ok and handle errors
-		ts, _ := e.nextTs()
-		line, _ := e.nextLine()
-		structuredMetadata, _ := e.nextMetadata()
-
-		e.currTs = ts
-		e.currLine = line
-		e.currStructuredMetadata = structuredMetadata
 	}
+
+	if !e.closed && e.tsReader == nil {
+		var err error
+
+		// todo(shantanu): handle all errors
+		e.tsReader, err = e.pool.GetReader(bytes.NewReader(e.tsBytes))
+		if err != nil {
+			e.err = err
+			return false
+		}
+	}
+
+	if !e.closed && e.smReader == nil {
+		var err error
+		e.smReader, err = e.pool.GetReader(bytes.NewReader(e.smBytes))
+		if err != nil {
+			e.err = err
+			return false
+		}
+	}
+
+	// todo (shantanu): need a better way to close the iterator instead of individually doing this.
+	ts, ok := e.nextTs()
+	if !ok {
+		e.Close()
+		return false
+	}
+	line, ok := e.nextLine()
+	if !ok {
+		e.Close()
+		return false
+	}
+	structuredMetadata, ok := e.nextMetadata()
+	if !ok {
+		e.Close()
+		return false
+	}
+
+	e.currTs = ts
+	e.currLine = line
+	e.currStructuredMetadata = structuredMetadata
 	return true
 }
 
@@ -272,34 +303,93 @@ func (e *organizedBufferedIterator) nextTs() (int64, bool) {
 
 	for tsw == 0 {
 		n, err := e.tsReader.Read(e.tsReadBuf[e.tsReadBufValid:])
+		e.tsReadBufValid += n
+
 		if err != nil {
 			if err != io.EOF {
 				e.err = err
 				return 0, false
 			}
-			if e.readBufValid == 0 { // Got EOF and no data in the buffer.
+			if e.tsReadBufValid == 0 { // Got EOF and no data in the buffer.
 				return 0, false
 			}
-			if e.readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
+			if e.tsReadBufValid == lastAttempt { // Got EOF and could not parse same data last time.
 				e.err = fmt.Errorf("invalid data in chunk")
 				return 0, false
 			}
 		}
-		e.tsReadBufValid += n
+
 		ts, tsw = binary.Varint(e.tsReadBuf[:e.tsReadBufValid])
-		if tsw > 0 {
-			e.tsReadBufValid -= tsw
-			copy(e.readBuf[:e.tsReadBufValid], e.tsReadBuf[tsw:])
-			lastAttempt = e.tsReadBufValid
-			return ts, true
-		}
+		lastAttempt = e.tsReadBufValid
 	}
+
+	e.tsReadBufValid = copy(e.tsReadBuf[:], e.tsReadBuf[tsw:e.tsReadBufValid])
 
 	return ts, true
 }
 
 func (e *organizedBufferedIterator) nextLine() ([]byte, bool) {
-	return []byte{}, true
+	var lw, lineSize, lastAttempt int
+
+	for lw == 0 {
+		n, err := e.reader.Read(e.readBuf[e.readBufValid:])
+		if err != nil {
+			if err != io.EOF {
+				e.err = err
+				return nil, false
+			}
+			if e.readBufValid == 0 { // Got EOF and no data in the buffer.
+				return nil, false
+			}
+			if e.readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
+				e.err = fmt.Errorf("invalid data in chunk")
+				return nil, false
+			}
+
+		}
+		var l uint64
+		e.readBufValid += n
+		l, lw = binary.Uvarint(e.readBuf[:e.readBufValid])
+		lineSize = int(l)
+
+	}
+
+	if lineSize >= maxLineLength {
+		e.err = fmt.Errorf("line too long %d, max limit: %d", lineSize, maxLineLength)
+		return nil, false
+	}
+
+	// if the buffer is small, we get a new one
+	if e.buf == nil || lineSize > cap(e.buf) {
+		if e.buf != nil {
+			BytesBufferPool.Put(e.buf)
+		}
+		e.buf = BytesBufferPool.Get(lineSize).([]byte)
+		if lineSize > cap(e.buf) {
+			e.err = fmt.Errorf("could not get a line buffer of size %d, actual %d", lineSize, cap(e.buf))
+			return nil, false
+		}
+	}
+
+	e.buf = e.buf[:lineSize]
+	n := copy(e.buf, e.readBuf[lw:e.readBufValid])
+	e.readBufValid = copy(e.readBuf[:], e.readBuf[lw+n:e.readBufValid])
+
+	for n < lineSize {
+		r, err := e.reader.Read(e.buf[n:lineSize])
+		n += r
+		if err != nil {
+			// We might get EOF after reading enough bytes to fill the buffer, which is OK.
+			// EOF and zero bytes read when the buffer isn't full is an error.
+			if err == io.EOF && r != 0 {
+				continue
+			}
+			e.err = err
+			return nil, false
+		}
+	}
+
+	return e.buf[:lineSize], true
 }
 
 func (e *organizedBufferedIterator) nextMetadata() (labels.Labels, bool) {
