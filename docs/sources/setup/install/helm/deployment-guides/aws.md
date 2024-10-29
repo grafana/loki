@@ -117,7 +117,7 @@ GEL customers will require a third bucket to store the admin data. This bucket i
 
 ```bash
 aws s3api create-bucket --bucket  <YOUR CHUNK BUCKET NAME e.g. `loki-aws-dev-chunks`> --region <S3 region your account is on, e.g. `eu-west-2`> --create-bucket-configuration LocationConstraint=<S3 region your account is on, e.g. `eu-west-2`> \
-aws s3api create-bucket --bucket  <YOUR RULER BUCKET NAME eg. `loki-aws-dev-ruler`> --region <S3 REGION your account is on, eg `eu-west-2`> --create-bucket-configuration LocationConstraint=<S3 REGION your account is on, eg `eu-west-2`>
+aws s3api create-bucket --bucket  <YOUR RULER BUCKET NAME e.g. `loki-aws-dev-ruler`> --region <S3 REGION your account is on, e.g. `eu-west-2`> --create-bucket-configuration LocationConstraint=<S3 REGION your account is on, e.g. `eu-west-2`>
 ```
 Make sure to replace the `region` and `bucket` name with your desired values. We will revisit the bucket policy later in this guide.
 
