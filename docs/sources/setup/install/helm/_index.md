@@ -31,4 +31,4 @@ The following guides provide step-by-step instructions for deploying Loki on clo
 
 ## Reference
 
-[Values reference]({{< relref "./reference" >}})
+[Values reference](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/reference/)
