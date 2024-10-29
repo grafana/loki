@@ -321,7 +321,7 @@ Create a `values.yaml` file choosing the configuration options that best suit yo
 loki:
    schemaConfig:
      configs:
-       - from: 2024-04-01
+       - from: "2024-04-01"
          store: tsdb
          object_store: s3
          schema: v13
