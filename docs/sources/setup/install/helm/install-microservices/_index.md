@@ -376,7 +376,7 @@ To configure other storage providers, refer to the [Helm Chart Reference]({{< re
 We are actively working on providing more guides for deploying Loki in production. 
 {{< /admonition >}}
 
-It is recommended to run Loki at scale within a cloud environment like AWS, Azure, or GCP. The below guides will show you how to deploy a minimally viable production environment.
+We recommend running Loki at scale within a cloud environment like AWS, Azure, or GCP. The below guides will show you how to deploy a minimally viable production environment.
 - [Deploy Loki on AWS]({{< relref "../deployment-guides/aws" >}})
 
 ## Next Steps 
