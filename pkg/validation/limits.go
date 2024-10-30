@@ -61,6 +61,7 @@ const (
 	defaultMaxStructuredMetadataCount = 128
 	defaultBloomBuildMaxBlockSize     = "200MB"
 	defaultBloomBuildMaxBloomSize     = "128MB"
+	defaultBloomTaskTargetChunkSize   = "20GB"
 
 	defaultBlockedIngestionStatusCode = 260 // 260 is a custom status code to indicate blocked ingestion
 )
@@ -207,9 +208,11 @@ type Limits struct {
 	BloomBuildTaskMaxRetries    int           `yaml:"bloom_build_task_max_retries" json:"bloom_build_task_max_retries" category:"experimental"`
 	BloomBuilderResponseTimeout time.Duration `yaml:"bloom_build_builder_response_timeout" json:"bloom_build_builder_response_timeout" category:"experimental"`
 
-	BloomCreationEnabled       bool   `yaml:"bloom_creation_enabled" json:"bloom_creation_enabled" category:"experimental"`
-	BloomSplitSeriesKeyspaceBy int    `yaml:"bloom_split_series_keyspace_by" json:"bloom_split_series_keyspace_by" category:"experimental"`
-	BloomBlockEncoding         string `yaml:"bloom_block_encoding" json:"bloom_block_encoding" category:"experimental"`
+	BloomCreationEnabled           bool             `yaml:"bloom_creation_enabled" json:"bloom_creation_enabled" category:"experimental"`
+	BloomPlanningStrategy          string           `yaml:"bloom_planning_strategy" json:"bloom_planning_strategy" category:"experimental"`
+	BloomSplitSeriesKeyspaceBy     int              `yaml:"bloom_split_series_keyspace_by" json:"bloom_split_series_keyspace_by" category:"experimental"`
+	BloomTaskTargetSeriesChunkSize flagext.ByteSize `yaml:"bloom_task_target_series_chunk_size" json:"bloom_task_target_series_chunk_size" category:"experimental"`
+	BloomBlockEncoding             string           `yaml:"bloom_block_encoding" json:"bloom_block_encoding" category:"experimental"`
 
 	BloomMaxBlockSize flagext.ByteSize `yaml:"bloom_max_block_size" json:"bloom_max_block_size" category:"experimental"`
 	BloomMaxBloomSize flagext.ByteSize `yaml:"bloom_max_bloom_size" json:"bloom_max_bloom_size" category:"experimental"`
@@ -224,6 +227,16 @@ type Limits struct {
 	BlockIngestionStatusCode int                `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
 
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
+
+	PatternIngesterTokenizableJSONFieldsDefault dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_default" json:"pattern_ingester_tokenizable_json_fields_default" doc:"hidden"`
+	PatternIngesterTokenizableJSONFieldsAppend  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_append" json:"pattern_ingester_tokenizable_json_fields_append" doc:"hidden"`
+	PatternIngesterTokenizableJSONFieldsDelete  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_delete" json:"pattern_ingester_tokenizable_json_fields_delete" doc:"hidden"`
+
+	// This config doesn't have a CLI flag registered here because they're registered in
+	// their own original config struct.
+	S3SSEType                 string `yaml:"s3_sse_type" json:"s3_sse_type" doc:"nocli|description=S3 server-side encryption type. Required to enable server-side encryption overrides for a specific tenant. If not set, the default S3 client settings are used."`
+	S3SSEKMSKeyID             string `yaml:"s3_sse_kms_key_id" json:"s3_sse_kms_key_id" doc:"nocli|description=S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not set."`
+	S3SSEKMSEncryptionContext string `yaml:"s3_sse_kms_encryption_context" json:"s3_sse_kms_encryption_context" doc:"nocli|description=S3 server-side encryption KMS encryption context. If unset and the key ID override is set, the encryption context will not be provided to S3. Ignored if the SSE type override is not set."`
 }
 
 type StreamRetention struct {
@@ -243,7 +256,7 @@ func (e LimitError) Error() string {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&l.IngestionRateStrategy, "distributor.ingestion-rate-limit-strategy", "global", "Whether the ingestion rate limit should be applied individually to each distributor instance (local), or evenly shared across the cluster (global). The ingestion rate strategy cannot be overridden on a per-tenant basis.\n- local: enforces the limit on a per distributor basis. The actual effective rate limit will be N times higher, where N is the number of distributor replicas.\n- global: enforces the limit globally, configuring a per-distributor local rate limiter as 'ingestion_rate / N', where N is the number of distributor replicas (it's automatically adjusted if the number of replicas change). The global strategy requires the distributors to form their own ring, which is used to keep track of the current number of healthy distributor replicas.")
-	f.Float64Var(&l.IngestionRateMB, "distributor.ingestion-rate-limit-mb", 4, "Per-user ingestion rate limit in sample size per second. Units in MB.")
+	f.Float64Var(&l.IngestionRateMB, "distributor.ingestion-rate-limit-mb", 4, "Per-user ingestion rate limit in sample size per second. Sample size includes size of the logs line and the size of structured metadata labels. Units in MB.")
 	f.Float64Var(&l.IngestionBurstSizeMB, "distributor.ingestion-burst-size-mb", 6, "Per-user allowed ingestion burst size (in sample size). Units in MB. The burst size refers to the per-distributor local rate limiter even in the case of the 'global' strategy, and should be set at least to the maximum logs size expected in a single push request.")
 
 	_ = l.MaxLineSize.Set("256KB")
@@ -389,7 +402,10 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	)
 
 	f.BoolVar(&l.BloomCreationEnabled, "bloom-build.enable", false, "Experimental. Whether to create blooms for the tenant.")
-	f.IntVar(&l.BloomSplitSeriesKeyspaceBy, "bloom-build.split-keyspace-by", 256, "Experimental. Number of splits to create for the series keyspace when building blooms. The series keyspace is split into this many parts to parallelize bloom creation.")
+	f.StringVar(&l.BloomPlanningStrategy, "bloom-build.planning-strategy", "split_keyspace_by_factor", "Experimental. Bloom planning strategy to use in bloom creation. Can be one of: 'split_keyspace_by_factor', 'split_by_series_chunks_size'")
+	f.IntVar(&l.BloomSplitSeriesKeyspaceBy, "bloom-build.split-keyspace-by", 256, "Experimental. Only if `bloom-build.planning-strategy` is 'split'. Number of splits to create for the series keyspace when building blooms. The series keyspace is split into this many parts to parallelize bloom creation.")
+	_ = l.BloomTaskTargetSeriesChunkSize.Set(defaultBloomTaskTargetChunkSize)
+	f.Var(&l.BloomTaskTargetSeriesChunkSize, "bloom-build.split-target-series-chunk-size", fmt.Sprintf("Experimental. Target chunk size in bytes for bloom tasks. Default is %s.", defaultBloomTaskTargetChunkSize))
 	f.IntVar(&l.BloomBuildMaxBuilders, "bloom-build.max-builders", 0, "Experimental. Maximum number of builders to use when building blooms. 0 allows unlimited builders.")
 	f.DurationVar(&l.BloomBuilderResponseTimeout, "bloom-build.builder-response-timeout", 0, "Experimental. Timeout for a builder to finish a task. If a builder does not respond within this time, it is considered failed and the task will be requeued. 0 disables the timeout.")
 	f.IntVar(&l.BloomBuildTaskMaxRetries, "bloom-build.task-max-retries", 3, "Experimental. Maximum number of retries for a failed task. If a task fails more than this number of times, it is considered failed and will not be retried. A value of 0 disables this limit.")
@@ -416,6 +432,11 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.BlockIngestionStatusCode, "limits.block-ingestion-status-code", defaultBlockedIngestionStatusCode, "HTTP status code to return when ingestion is blocked. If 200, the ingestion will be blocked without returning an error to the client. By Default, a custom status code (260) is returned to the client along with an error message.")
 
 	f.IntVar(&l.IngestionPartitionsTenantShardSize, "limits.ingestion-partition-tenant-shard-size", 0, "The number of partitions a tenant's data should be sharded to when using kafka ingestion. Tenants are sharded across partitions using shuffle-sharding. 0 disables shuffle sharding and tenant is sharded across all partitions.")
+
+	_ = l.PatternIngesterTokenizableJSONFieldsDefault.Set("log,message,msg,msg_,_msg,content")
+	f.Var(&l.PatternIngesterTokenizableJSONFieldsDefault, "limits.pattern-ingester-tokenizable-json-fields", "List of JSON fields that should be tokenized in the pattern ingester.")
+	f.Var(&l.PatternIngesterTokenizableJSONFieldsAppend, "limits.pattern-ingester-tokenizable-json-fields-append", "List of JSON fields that should be appended to the default list of tokenizable fields in the pattern ingester.")
+	f.Var(&l.PatternIngesterTokenizableJSONFieldsDelete, "limits.pattern-ingester-tokenizable-json-fields-delete", "List of JSON fields that should be deleted from the (default U append) list of tokenizable fields in the pattern ingester.")
 }
 
 // SetGlobalOTLPConfig set GlobalOTLPConfig which is used while unmarshaling per-tenant otlp config to use the default list of resource attributes picked as index labels.
@@ -996,8 +1017,16 @@ func (o *Overrides) BloomCreationEnabled(userID string) bool {
 	return o.getOverridesForUser(userID).BloomCreationEnabled
 }
 
+func (o *Overrides) BloomPlanningStrategy(userID string) string {
+	return o.getOverridesForUser(userID).BloomPlanningStrategy
+}
+
 func (o *Overrides) BloomSplitSeriesKeyspaceBy(userID string) int {
 	return o.getOverridesForUser(userID).BloomSplitSeriesKeyspaceBy
+}
+
+func (o *Overrides) BloomTaskTargetSeriesChunksSizeBytes(userID string) uint64 {
+	return uint64(o.getOverridesForUser(userID).BloomTaskTargetSeriesChunkSize)
 }
 
 func (o *Overrides) BloomBuildMaxBuilders(userID string) int {
@@ -1046,6 +1075,56 @@ func (o *Overrides) BlockIngestionUntil(userID string) time.Time {
 
 func (o *Overrides) BlockIngestionStatusCode(userID string) int {
 	return o.getOverridesForUser(userID).BlockIngestionStatusCode
+}
+
+func (o *Overrides) PatternIngesterTokenizableJSONFields(userID string) []string {
+	defaultFields := o.getOverridesForUser(userID).PatternIngesterTokenizableJSONFieldsDefault
+	appendFields := o.getOverridesForUser(userID).PatternIngesterTokenizableJSONFieldsAppend
+	deleteFields := o.getOverridesForUser(userID).PatternIngesterTokenizableJSONFieldsDelete
+
+	outputMap := make(map[string]struct{}, len(defaultFields)+len(appendFields))
+
+	for _, field := range defaultFields {
+		outputMap[field] = struct{}{}
+	}
+
+	for _, field := range appendFields {
+		outputMap[field] = struct{}{}
+	}
+
+	for _, field := range deleteFields {
+		delete(outputMap, field)
+	}
+
+	output := make([]string, 0, len(outputMap))
+	for field := range outputMap {
+		output = append(output, field)
+	}
+
+	return output
+}
+
+func (o *Overrides) PatternIngesterTokenizableJSONFieldsAppend(userID string) []string {
+	return o.getOverridesForUser(userID).PatternIngesterTokenizableJSONFieldsAppend
+}
+
+func (o *Overrides) PatternIngesterTokenizableJSONFieldsDelete(userID string) []string {
+	return o.getOverridesForUser(userID).PatternIngesterTokenizableJSONFieldsDelete
+}
+
+// S3SSEType returns the per-tenant S3 SSE type.
+func (o *Overrides) S3SSEType(user string) string {
+	return o.getOverridesForUser(user).S3SSEType
+}
+
+// S3SSEKMSKeyID returns the per-tenant S3 KMS-SSE key id.
+func (o *Overrides) S3SSEKMSKeyID(user string) string {
+	return o.getOverridesForUser(user).S3SSEKMSKeyID
+}
+
+// S3SSEKMSEncryptionContext returns the per-tenant S3 KMS-SSE encryption context.
+func (o *Overrides) S3SSEKMSEncryptionContext(user string) string {
+	return o.getOverridesForUser(user).S3SSEKMSEncryptionContext
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

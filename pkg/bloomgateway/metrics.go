@@ -23,7 +23,6 @@ const (
 type clientMetrics struct {
 	clientRequests *prometheus.CounterVec
 	requestLatency *prometheus.HistogramVec
-	clients        prometheus.Gauge
 }
 
 func newClientMetrics(registerer prometheus.Registerer) *clientMetrics {
@@ -41,12 +40,6 @@ func newClientMetrics(registerer prometheus.Registerer) *clientMetrics {
 			Help:      "Time (in seconds) spent serving requests when using the bloom gateway",
 			Buckets:   instrument.DefBuckets,
 		}, []string{"operation", "status_code"}),
-		clients: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
-			Namespace: constants.Loki,
-			Subsystem: "bloom_gateway",
-			Name:      "clients",
-			Help:      "The current number of bloom gateway clients.",
-		}),
 	}
 }
 

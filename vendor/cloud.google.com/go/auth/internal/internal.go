@@ -38,8 +38,11 @@ const (
 	// QuotaProjectEnvVar is the environment variable for setting the quota
 	// project.
 	QuotaProjectEnvVar = "GOOGLE_CLOUD_QUOTA_PROJECT"
-	projectEnvVar      = "GOOGLE_CLOUD_PROJECT"
-	maxBodySize        = 1 << 20
+	// UniverseDomainEnvVar is the environment variable for setting the default
+	// service domain for a given Cloud universe.
+	UniverseDomainEnvVar = "GOOGLE_CLOUD_UNIVERSE_DOMAIN"
+	projectEnvVar        = "GOOGLE_CLOUD_PROJECT"
+	maxBodySize          = 1 << 20
 
 	// DefaultUniverseDomain is the default value for universe domain.
 	// Universe domain is the default service domain for a given Cloud universe.

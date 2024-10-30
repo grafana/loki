@@ -279,7 +279,7 @@ func isContextErr(err error) bool {
 }
 
 // IsStorageTimeoutErr returns true if error means that object cannot be retrieved right now due to server-side timeouts.
-func (s *GCSObjectClient) IsStorageTimeoutErr(err error) bool {
+func IsStorageTimeoutErr(err error) bool {
 	// TODO(dannyk): move these out to be generic
 	// context errors are all client-side
 	if isContextErr(err) {
@@ -315,7 +315,7 @@ func (s *GCSObjectClient) IsStorageTimeoutErr(err error) bool {
 }
 
 // IsStorageThrottledErr returns true if error means that object cannot be retrieved right now due to throttling.
-func (s *GCSObjectClient) IsStorageThrottledErr(err error) bool {
+func IsStorageThrottledErr(err error) bool {
 	if gerr, ok := err.(*googleapi.Error); ok {
 		// https://cloud.google.com/storage/docs/retry-strategy
 		return gerr.Code == http.StatusTooManyRequests ||
@@ -326,8 +326,13 @@ func (s *GCSObjectClient) IsStorageThrottledErr(err error) bool {
 }
 
 // IsRetryableErr returns true if the request failed due to some retryable server-side scenario
+func IsRetryableErr(err error) bool {
+	return IsStorageTimeoutErr(err) || IsStorageThrottledErr(err)
+}
+
+// IsRetryableErr returns true if the request failed due to some retryable server-side scenario
 func (s *GCSObjectClient) IsRetryableErr(err error) bool {
-	return s.IsStorageTimeoutErr(err) || s.IsStorageThrottledErr(err)
+	return IsRetryableErr(err)
 }
 
 func gcsTransport(ctx context.Context, scope string, insecure bool, http2 bool, serviceAccount flagext.Secret) (http.RoundTripper, error) {

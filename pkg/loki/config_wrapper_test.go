@@ -736,7 +736,7 @@ ruler:
 		})
 
 		t.Run("explicit storage config provided via config file is preserved", func(t *testing.T) {
-			specificRulerConfig := `common:
+			explicitStorageConfig := `common:
   storage:
     gcs:
       bucket_name: foobar
@@ -749,7 +749,7 @@ storage_config:
     access_key_id: abc123
     secret_access_key: def789`
 
-			config, defaults := testContext(specificRulerConfig, nil)
+			config, defaults := testContext(explicitStorageConfig, nil)
 
 			assert.Equal(t, "s3://foo-bucket", config.StorageConfig.AWSStorageConfig.S3Config.Endpoint)
 			assert.Equal(t, "us-east1", config.StorageConfig.AWSStorageConfig.S3Config.Region)
@@ -763,6 +763,43 @@ storage_config:
 
 			// should remain empty
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.S3, config.Ruler.StoreConfig.S3)
+		})
+
+		t.Run("when common object_store config is provided, storage_config and rulers should use it", func(t *testing.T) {
+			commonStorageConfig := `common:
+  storage:
+    object_store:
+      gcs:
+        bucket_name: foobar
+        chunk_buffer_size: 17`
+
+			config, _ := testContext(commonStorageConfig, nil)
+
+			assert.Equal(t, "foobar", config.StorageConfig.ObjectStore.GCS.BucketName)
+			assert.Equal(t, 17, config.StorageConfig.ObjectStore.GCS.ChunkBufferSize)
+
+			// TODO: common config should be set on ruler bucket config
+		})
+
+		t.Run("explicit thanos object storage config provided via config file is preserved", func(t *testing.T) {
+			explicitStorageConfig := `common:
+  storage:
+    object_store:
+      gcs:
+        bucket_name: foobar
+        chunk_buffer_size: 17
+storage_config:
+  object_store:
+    gcs:
+      bucket_name: barfoo
+      chunk_buffer_size: 27`
+
+			config, _ := testContext(explicitStorageConfig, nil)
+
+			assert.Equal(t, "barfoo", config.StorageConfig.ObjectStore.GCS.BucketName)
+			assert.Equal(t, 27, config.StorageConfig.ObjectStore.GCS.ChunkBufferSize)
+
+			// TODO: common config should be set on ruler bucket config
 		})
 
 		t.Run("named storage config provided via config file is preserved", func(t *testing.T) {

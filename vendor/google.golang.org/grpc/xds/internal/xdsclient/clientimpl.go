@@ -85,16 +85,16 @@ func (c *clientImpl) close() {
 	c.authorityMu.Unlock()
 	c.serializerClose()
 
-	for _, f := range c.config.XDSServer.Cleanups {
-		f()
-	}
-	for _, a := range c.config.Authorities {
-		if a.XDSServer == nil {
-			// The server for this authority is the top-level one, cleaned up above.
-			continue
-		}
-		for _, f := range a.XDSServer.Cleanups {
+	for _, s := range c.config.XDSServers() {
+		for _, f := range s.Cleanups() {
 			f()
+		}
+	}
+	for _, a := range c.config.Authorities() {
+		for _, s := range a.XDSServers {
+			for _, f := range s.Cleanups() {
+				f()
+			}
 		}
 	}
 	c.logger.Infof("Shutdown")

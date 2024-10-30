@@ -1,7 +1,6 @@
 package kafka
 
 import (
-	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -9,10 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
-	"github.com/twmb/franz-go/pkg/kadm"
-	"github.com/twmb/franz-go/pkg/kgo"
+	"github.com/grafana/dskit/flagext"
 )
 
 const (
@@ -21,29 +17,24 @@ const (
 	consumeFromEnd        = "end"
 	consumeFromTimestamp  = "timestamp"
 
-	// writerRequestTimeoutOverhead is the overhead applied by the Writer to every Kafka timeout.
-	// You can think about this overhead as an extra time for requests sitting in the client's buffer
-	// before being sent on the wire and the actual time it takes to send it over the network and
-	// start being processed by Kafka.
-	writerRequestTimeoutOverhead = 2 * time.Second
-
-	// producerBatchMaxBytes is the max allowed size of a batch of Kafka records.
-	producerBatchMaxBytes = 16_000_000
+	// ProducerBatchMaxBytes is the max allowed size of a batch of Kafka records.
+	ProducerBatchMaxBytes = 16_000_000
 
 	// maxProducerRecordDataBytesLimit is the max allowed size of a single record data. Given we have a limit
-	// on the max batch size (producerBatchMaxBytes), a Kafka record data can't be bigger than the batch size
+	// on the max batch size (ProducerBatchMaxBytes), a Kafka record data can't be bigger than the batch size
 	// minus some overhead required to serialise the batch and the record itself. We use 16KB as such overhead
 	// in the worst case scenario, which is expected to be way above the actual one.
-	maxProducerRecordDataBytesLimit = producerBatchMaxBytes - 16384
+	maxProducerRecordDataBytesLimit = ProducerBatchMaxBytes - 16384
 	minProducerRecordDataBytesLimit = 1024 * 1024
 )
 
 var (
-	ErrMissingKafkaAddress               = errors.New("the Kafka address has not been configured")
-	ErrMissingKafkaTopic                 = errors.New("the Kafka topic has not been configured")
-	ErrInconsistentConsumerLagAtStartup  = errors.New("the target and max consumer lag at startup must be either both set to 0 or to a value greater than 0")
-	ErrInvalidMaxConsumerLagAtStartup    = errors.New("the configured max consumer lag at startup must greater or equal than the configured target consumer lag")
-	ErrInvalidProducerMaxRecordSizeBytes = fmt.Errorf("the configured producer max record size bytes must be a value between %d and %d", minProducerRecordDataBytesLimit, maxProducerRecordDataBytesLimit)
+	ErrMissingKafkaAddress                 = errors.New("the Kafka address has not been configured")
+	ErrMissingKafkaTopic                   = errors.New("the Kafka topic has not been configured")
+	ErrInconsistentConsumerLagAtStartup    = errors.New("the target and max consumer lag at startup must be either both set to 0 or to a value greater than 0")
+	ErrInvalidMaxConsumerLagAtStartup      = errors.New("the configured max consumer lag at startup must greater or equal than the configured target consumer lag")
+	ErrInconsistentSASLUsernameAndPassword = errors.New("both sasl username and password must be set")
+	ErrInvalidProducerMaxRecordSizeBytes   = fmt.Errorf("the configured producer max record size bytes must be a value between %d and %d", minProducerRecordDataBytesLimit, maxProducerRecordDataBytesLimit)
 )
 
 // Config holds the generic config for the Kafka backend.
@@ -53,6 +44,9 @@ type Config struct {
 	ClientID     string        `yaml:"client_id"`
 	DialTimeout  time.Duration `yaml:"dial_timeout"`
 	WriteTimeout time.Duration `yaml:"write_timeout"`
+
+	SASLUsername string         `yaml:"sasl_username"`
+	SASLPassword flagext.Secret `yaml:"sasl_password"`
 
 	ConsumerGroup                     string        `yaml:"consumer_group"`
 	ConsumerGroupOffsetCommitInterval time.Duration `yaml:"consumer_group_offset_commit_interval"`
@@ -79,6 +73,9 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.ClientID, prefix+".client-id", "", "The Kafka client ID.")
 	f.DurationVar(&cfg.DialTimeout, prefix+".dial-timeout", 2*time.Second, "The maximum time allowed to open a connection to a Kafka broker.")
 	f.DurationVar(&cfg.WriteTimeout, prefix+".write-timeout", 10*time.Second, "How long to wait for an incoming write request to be successfully committed to the Kafka backend.")
+
+	f.StringVar(&cfg.SASLUsername, prefix+".sasl-username", "", "The SASL username for authentication to Kafka using the PLAIN mechanism. Both username and password must be set.")
+	f.Var(&cfg.SASLPassword, prefix+".sasl-password", "The SASL password for authentication to Kafka using the PLAIN mechanism. Both username and password must be set.")
 
 	f.StringVar(&cfg.ConsumerGroup, prefix+".consumer-group", "", "The consumer group used by the consumer to track the last consumed offset. The consumer group must be different for each ingester. If the configured consumer group contains the '<partition>' placeholder, it is replaced with the actual partition ID owned by the ingester. When empty (recommended), Mimir uses the ingester instance ID to guarantee uniqueness.")
 	f.DurationVar(&cfg.ConsumerGroupOffsetCommitInterval, prefix+".consumer-group-offset-commit-interval", time.Second, "How frequently a consumer should commit the consumed offset to Kafka. The last committed offset is used at startup to continue the consumption from where it was left.")
@@ -113,6 +110,10 @@ func (cfg *Config) Validate() error {
 		return ErrInvalidMaxConsumerLagAtStartup
 	}
 
+	if (cfg.SASLUsername == "") != (cfg.SASLPassword.String() == "") {
+		return ErrInconsistentSASLUsernameAndPassword
+	}
+
 	return nil
 }
 
@@ -123,36 +124,4 @@ func (cfg *Config) GetConsumerGroup(instanceID string, partitionID int32) string
 	}
 
 	return strings.ReplaceAll(cfg.ConsumerGroup, "<partition>", strconv.Itoa(int(partitionID)))
-}
-
-// SetDefaultNumberOfPartitionsForAutocreatedTopics tries to set num.partitions config option on brokers.
-// This is best-effort, if setting the option fails, error is logged, but not returned.
-func (cfg Config) SetDefaultNumberOfPartitionsForAutocreatedTopics(logger log.Logger) {
-	if cfg.AutoCreateTopicDefaultPartitions <= 0 {
-		return
-	}
-
-	cl, err := kgo.NewClient(commonKafkaClientOptions(cfg, nil, logger)...)
-	if err != nil {
-		level.Error(logger).Log("msg", "failed to create kafka client", "err", err)
-		return
-	}
-
-	adm := kadm.NewClient(cl)
-	defer adm.Close()
-
-	defaultNumberOfPartitions := fmt.Sprintf("%d", cfg.AutoCreateTopicDefaultPartitions)
-	_, err = adm.AlterBrokerConfigsState(context.Background(), []kadm.AlterConfig{
-		{
-			Op:    kadm.SetConfig,
-			Name:  "num.partitions",
-			Value: &defaultNumberOfPartitions,
-		},
-	})
-	if err != nil {
-		level.Error(logger).Log("msg", "failed to alter default number of partitions", "err", err)
-		return
-	}
-
-	level.Info(logger).Log("msg", "configured Kafka-wide default number of partitions for auto-created topics (num.partitions)", "value", cfg.AutoCreateTopicDefaultPartitions)
 }

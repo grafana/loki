@@ -793,6 +793,16 @@ kafka_config:
   # CLI flag: -kafka.write-timeout
   [write_timeout: <duration> | default = 10s]
 
+  # The SASL username for authentication to Kafka using the PLAIN mechanism.
+  # Both username and password must be set.
+  # CLI flag: -kafka.sasl-username
+  [sasl_username: <string> | default = ""]
+
+  # The SASL password for authentication to Kafka using the PLAIN mechanism.
+  # Both username and password must be set.
+  # CLI flag: -kafka.sasl-password
+  [sasl_password: <string> | default = ""]
+
   # The consumer group used by the consumer to track the last consumed offset.
   # The consumer group must be different for each ingester. If the configured
   # consumer group contains the '<partition>' placeholder, it is replaced with
@@ -3250,7 +3260,8 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -distributor.ingestion-rate-limit-strategy
 [ingestion_rate_strategy: <string> | default = "global"]
 
-# Per-user ingestion rate limit in sample size per second. Units in MB.
+# Per-user ingestion rate limit in sample size per second. Sample size includes
+# size of the logs line and the size of structured metadata labels. Units in MB.
 # CLI flag: -distributor.ingestion-rate-limit-mb
 [ingestion_rate_mb: <float> | default = 4]
 
@@ -3754,11 +3765,20 @@ shard_streams:
 # CLI flag: -bloom-build.enable
 [bloom_creation_enabled: <boolean> | default = false]
 
-# Experimental. Number of splits to create for the series keyspace when building
-# blooms. The series keyspace is split into this many parts to parallelize bloom
-# creation.
+# Experimental. Bloom planning strategy to use in bloom creation. Can be one of:
+# 'split_keyspace_by_factor', 'split_by_series_chunks_size'
+# CLI flag: -bloom-build.planning-strategy
+[bloom_planning_strategy: <string> | default = "split_keyspace_by_factor"]
+
+# Experimental. Only if `bloom-build.planning-strategy` is 'split'. Number of
+# splits to create for the series keyspace when building blooms. The series
+# keyspace is split into this many parts to parallelize bloom creation.
 # CLI flag: -bloom-build.split-keyspace-by
 [bloom_split_series_keyspace_by: <int> | default = 256]
+
+# Experimental. Target chunk size in bytes for bloom tasks. Default is 20GB.
+# CLI flag: -bloom-build.split-target-series-chunk-size
+[bloom_task_target_series_chunk_size: <int> | default = 20GB]
 
 # Experimental. Compression algorithm for bloom block pages.
 # CLI flag: -bloom-build.block-encoding
@@ -3824,6 +3844,20 @@ otlp_config:
 # disables shuffle sharding and tenant is sharded across all partitions.
 # CLI flag: -limits.ingestion-partition-tenant-shard-size
 [ingestion_partitions_tenant_shard_size: <int> | default = 0]
+
+# S3 server-side encryption type. Required to enable server-side encryption
+# overrides for a specific tenant. If not set, the default S3 client settings
+# are used.
+[s3_sse_type: <string> | default = ""]
+
+# S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not
+# set.
+[s3_sse_kms_key_id: <string> | default = ""]
+
+# S3 server-side encryption KMS encryption context. If unset and the key ID
+# override is set, the encryption context will not be provided to S3. Ignored if
+# the SSE type override is not set.
+[s3_sse_kms_encryption_context: <string> | default = ""]
 ```
 
 ### local_storage_config
@@ -4049,12 +4083,14 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 Configures additional object stores for a given storage provider.
 Supported stores: aws, azure, bos, filesystem, gcs, swift.
 Example:
-storage_config:
-  named_stores:
-    aws:
-      store-1:
-        endpoint: s3://foo-bucket
-        region: us-west1
+```yaml
+    storage_config:
+      named_stores:
+        aws:
+          store-1:
+            endpoint: s3://foo-bucket
+            region: us-west1
+```
 Named store from this example can be used by setting object_store to store-1 in period_config.
 
 ```yaml
@@ -5540,12 +5576,14 @@ hedging:
 # Configures additional object stores for a given storage provider.
 # Supported stores: aws, azure, bos, filesystem, gcs, swift.
 # Example:
-# storage_config:
-#   named_stores:
-#     aws:
-#       store-1:
-#         endpoint: s3://foo-bucket
-#         region: us-west1
+# ```yaml
+#     storage_config:
+#       named_stores:
+#         aws:
+#           store-1:
+#             endpoint: s3://foo-bucket
+#             region: us-west1
+# ```
 # Named store from this example can be used by setting object_store to store-1
 # in period_config.
 [named_stores: <named_stores_config>]
