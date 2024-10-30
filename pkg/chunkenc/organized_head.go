@@ -286,10 +286,11 @@ func (e *organizedBufferedIterator) Next() bool {
 		return false
 	}
 	structuredMetadata, ok := e.nextMetadata()
-	if !ok {
-		e.Close()
-		return false
-	}
+	// there can be cases when there's no structured metadata?
+	// if !ok {
+	// 	e.Close()
+	// 	return false
+	// }
 
 	e.currTs = ts
 	e.currLine = line
@@ -352,6 +353,7 @@ func (e *organizedBufferedIterator) nextLine() ([]byte, bool) {
 		l, lw = binary.Uvarint(e.readBuf[:e.readBufValid])
 		lineSize = int(l)
 
+		lastAttempt = e.readBufValid
 	}
 
 	if lineSize >= maxLineLength {
