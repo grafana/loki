@@ -630,6 +630,7 @@ spec:
         displayName: LokiStack Size
         path: size
         x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:1x.pico
         - urn:alm:descriptor:com.tectonic.ui:select:1x.extra-small
         - urn:alm:descriptor:com.tectonic.ui:select:1x.small
         - urn:alm:descriptor:com.tectonic.ui:select:1x.medium
