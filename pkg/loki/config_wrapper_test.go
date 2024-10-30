@@ -553,7 +553,7 @@ memberlist:
 				assert.Equal(t, "example.com", actual.UserDomainName)
 				assert.Equal(t, "1", actual.UserDomainID)
 				assert.Equal(t, "27", actual.UserID)
-				assert.Equal(t, "supersecret", actual.Password)
+				assert.Equal(t, flagext.SecretWithValue("supersecret"), actual.Password)
 				assert.Equal(t, "2", actual.DomainID)
 				assert.Equal(t, "test.com", actual.DomainName)
 				assert.Equal(t, "13", actual.ProjectID)
