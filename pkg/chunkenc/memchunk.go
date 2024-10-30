@@ -391,7 +391,6 @@ func panicIfInvalidFormat(chunkFmt byte, head HeadBlockFmt) {
 		panic("only UnorderedWithStructuredMetadataHeadBlockFmt is supported for V4 chunks")
 	}
 	if chunkFmt == ChunkFormatV5 && head != UnorderedWithOrganizedStructuredMetadataHeadBlockFmt {
-		fmt.Println("received head fmt", head.String())
 		panic("only UnorderedWithOrganizedStructuredMetadataHeadBlockFmt is supported for V4 chunks")
 	}
 }
@@ -496,57 +495,118 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 	num := db.uvarint()
 	bc.blocks = make([]block, 0, num)
 
-	for i := 0; i < num; i++ {
-		var blk block
-		// Read #entries.
-		blk.numEntries = db.uvarint()
+	if version == ChunkFormatV5 {
+		for i := 0; i < num; i++ {
+			var blk block
 
-		// Read mint, maxt.
-		blk.mint = db.varint64()
-		blk.maxt = db.varint64()
+			blk.numEntries = db.uvarint()
+			blk.mint = db.varint64()
+			blk.maxt = db.varint64()
+			blk.offset = db.uvarint()
 
-		// Read offset and length.
-		blk.offset = db.uvarint()
-		if version >= ChunkFormatV3 {
 			blk.uncompressedSize = db.uvarint()
-		}
-		l := db.uvarint()
 
-		invalidBlockErr := validateBlock(b, blk.offset, l)
-		if invalidBlockErr != nil {
-			level.Error(util_log.Logger).Log("msg", "invalid block found", "err", invalidBlockErr)
-			// if block is expected to have different offset than what is encoded, see if we get a valid block using expected offset
-			if blk.offset != expectedBlockOffset {
-				_ = level.Error(util_log.Logger).Log("msg", "block offset does not match expected one, will try reading with expected offset", "actual", blk.offset, "expected", expectedBlockOffset)
-				blk.offset = expectedBlockOffset
-				if err := validateBlock(b, blk.offset, l); err != nil {
-					level.Error(util_log.Logger).Log("msg", "could not find valid block using expected offset", "err", err)
-				} else {
-					invalidBlockErr = nil
-					level.Info(util_log.Logger).Log("msg", "valid block found using expected offset")
+			// read lines length
+			linesLen := db.uvarint()
+			tsLen := db.uvarint()
+			smLen := db.uvarint()
+
+			// Validate each section with its own CRC32
+			if invalidBlockErr := validateBlock(b, blk.offset, linesLen); invalidBlockErr != nil {
+				level.Error(util_log.Logger).Log("msg", "invalid block found", "err", invalidBlockErr)
+				// if block is expected to have different offset than what is encoded, see if we get a valid block using expected offset
+				if blk.offset != expectedBlockOffset {
+					_ = level.Error(util_log.Logger).Log("msg", "block offset does not match expected one, will try reading with expected offset", "actual", blk.offset, "expected", expectedBlockOffset)
+					blk.offset = expectedBlockOffset
+					if err := validateBlock(b, blk.offset, linesLen); err != nil {
+						level.Error(util_log.Logger).Log("msg", "could not find valid block using expected offset", "err", err)
+					} else {
+						invalidBlockErr = nil
+						level.Info(util_log.Logger).Log("msg", "valid block found using expected offset")
+					}
 				}
+
+				// if the block read with expected offset is still invalid, do not continue further
+				if invalidBlockErr != nil {
+					if errors.Is(invalidBlockErr, ErrInvalidChecksum) {
+						expectedBlockOffset += linesLen + 4
+						continue
+					}
+					return nil, invalidBlockErr
+				}
+				return nil, errors.Wrap(invalidBlockErr, "validate lines section")
+			}
+			linesEnd := blk.offset + linesLen + 4 // +4 for CRC32
+
+			if err := validateBlock(b, linesEnd, tsLen); err != nil {
+				return nil, errors.Wrap(err, "validate timestamps section")
+			}
+			tsEnd := linesEnd + tsLen + 4
+
+			if err := validateBlock(b, tsEnd, smLen); err != nil {
+				return nil, errors.Wrap(err, "validate metadata section")
 			}
 
-			// if the block read with expected offset is still invalid, do not continue further
+			// Set sections after validation
+			blk.b = b[blk.offset : blk.offset+linesLen]
+			blk.ts = b[linesEnd : linesEnd+tsLen]
+			blk.sm = b[tsEnd : tsEnd+smLen]
+			bc.blocks = append(bc.blocks, blk)
+			bc.cutBlockSize += len(blk.b) + len(blk.ts) + len(blk.sm) + 12 // +12 for
+		}
+	} else {
+		for i := 0; i < num; i++ {
+			var blk block
+			// Read #entries.
+			blk.numEntries = db.uvarint()
+
+			// Read mint, maxt.
+			blk.mint = db.varint64()
+			blk.maxt = db.varint64()
+
+			// Read offset and length.
+			blk.offset = db.uvarint()
+			if version >= ChunkFormatV3 {
+				blk.uncompressedSize = db.uvarint()
+			}
+			l := db.uvarint()
+
+			invalidBlockErr := validateBlock(b, blk.offset, l)
 			if invalidBlockErr != nil {
-				if errors.Is(invalidBlockErr, ErrInvalidChecksum) {
-					expectedBlockOffset += l + 4
-					continue
+				level.Error(util_log.Logger).Log("msg", "invalid block found", "err", invalidBlockErr)
+				// if block is expected to have different offset than what is encoded, see if we get a valid block using expected offset
+				if blk.offset != expectedBlockOffset {
+					_ = level.Error(util_log.Logger).Log("msg", "block offset does not match expected one, will try reading with expected offset", "actual", blk.offset, "expected", expectedBlockOffset)
+					blk.offset = expectedBlockOffset
+					if err := validateBlock(b, blk.offset, l); err != nil {
+						level.Error(util_log.Logger).Log("msg", "could not find valid block using expected offset", "err", err)
+					} else {
+						invalidBlockErr = nil
+						level.Info(util_log.Logger).Log("msg", "valid block found using expected offset")
+					}
 				}
-				return nil, invalidBlockErr
+
+				// if the block read with expected offset is still invalid, do not continue further
+				if invalidBlockErr != nil {
+					if errors.Is(invalidBlockErr, ErrInvalidChecksum) {
+						expectedBlockOffset += l + 4
+						continue
+					}
+					return nil, invalidBlockErr
+				}
 			}
-		}
 
-		// next block starts at current block start + current block length + checksum
-		expectedBlockOffset = blk.offset + l + 4
-		blk.b = b[blk.offset : blk.offset+l]
-		bc.blocks = append(bc.blocks, blk)
+			// next block starts at current block start + current block length + checksum
+			expectedBlockOffset = blk.offset + l + 4
+			blk.b = b[blk.offset : blk.offset+l]
+			bc.blocks = append(bc.blocks, blk)
 
-		// Update the counter used to track the size of cut blocks.
-		bc.cutBlockSize += len(blk.b)
+			// Update the counter used to track the size of cut blocks.
+			bc.cutBlockSize += len(blk.b)
 
-		if db.err() != nil {
-			return nil, errors.Wrap(db.err(), "decoding block meta")
+			if db.err() != nil {
+				return nil, errors.Wrap(db.err(), "decoding block meta")
+			}
 		}
 	}
 
@@ -711,6 +771,31 @@ func (c *MemChunk) writeTo(w io.Writer, forCheckpoint bool) (int64, error) {
 			return offset, errors.Wrap(err, "write block")
 		}
 		offset += int64(n)
+
+		if c.format == ChunkFormatV5 {
+			crc32Hash.Reset()
+			// write timestamps separately
+			_, err := crc32Hash.Write(b.ts)
+			if err != nil {
+				return offset, errors.Wrap(err, "write timestamp")
+			}
+			n, err := w.Write(crc32Hash.Sum(b.ts))
+			if err != nil {
+				return offset, errors.Wrap(err, "write timestamp")
+			}
+			offset += int64(n)
+			crc32Hash.Reset()
+			// write timestamps separately
+			_, err = crc32Hash.Write(b.sm)
+			if err != nil {
+				return offset, errors.Wrap(err, "write metadata")
+			}
+			n, err = w.Write(crc32Hash.Sum(b.sm))
+			if err != nil {
+				return offset, errors.Wrap(err, "write metadata")
+			}
+			offset += int64(n)
+		}
 	}
 
 	metasOffset := offset
@@ -727,7 +812,13 @@ func (c *MemChunk) writeTo(w io.Writer, forCheckpoint bool) (int64, error) {
 		if c.format >= ChunkFormatV3 {
 			eb.putUvarint(b.uncompressedSize)
 		}
-		eb.putUvarint(len(b.b))
+
+		eb.putUvarint(len(b.b)) // in case of ChunkV5, this is just lines
+		if c.format == ChunkFormatV5 {
+			eb.putUvarint(len(b.ts)) // timestamps
+			eb.putUvarint(len(b.sm)) // metadata
+		}
+
 	}
 	metasLen := len(eb.get())
 	eb.putHash(crc32Hash)
