@@ -1578,7 +1578,6 @@ type VariantsEvaluator struct {
 
 	variantEvaluators []StepEvaluator
 	currentSamples    SampleVector
-	nextSample        int
 	err               error
 }
 
@@ -1593,12 +1592,8 @@ func (it *VariantsEvaluator) Explain(_ Node) {
 }
 
 func (it *VariantsEvaluator) Next() (bool, int64, StepResult) {
-	// return calculated samples for current window while available
-	for it.nextSample >= len(it.currentSamples) {
-		// once exhausted, load the next window
-		if !it.loadNextWindow() {
-			return false, it.current, SampleVector{}
-		}
+	if !it.loadNextWindow() {
+		return false, it.current, SampleVector{}
 	}
 
 	return true, it.current, it.currentSamples
@@ -1620,18 +1615,21 @@ func (it *VariantsEvaluator) loadNextWindow() bool {
 	}
 
 	it.currentSamples = samples
-	it.nextSample = 0
 	return true
 }
 
 func (it *VariantsEvaluator) loadSamplesForRange(
-	variantIter StepEvaluator,
+	variantEval StepEvaluator,
 	start, end int64,
 ) []promql.Sample {
 	var samples []promql.Sample
 
+	// convert to milliseconds, as thats what the evalutors Next() will return
+	start = start / 1e+6
+	end = end / 1e+6
+
 	// Next() (ok bool, ts int64, r StepResult)
-	for ok, ts, result := variantIter.Next(); ok; {
+	for ok, ts, result := variantEval.Next(); ok; {
 		// upper bound is inclusive for step evaluation
 		if ts > end {
 			break
