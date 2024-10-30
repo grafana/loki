@@ -7,12 +7,14 @@ import (
 	"sort"
 	"time"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
-	"github.com/grafana/loki/pkg/util/math"
+	"golang.org/x/exp/maps"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
+	"github.com/grafana/loki/v3/pkg/util/math"
 )
 
 // NewBufferedAccumulator returns an accumulator which aggregates all query
@@ -39,12 +41,19 @@ func (a *BufferedAccumulator) Result() []logqlmodel.Result {
 
 type QuantileSketchAccumulator struct {
 	matrix ProbabilisticQuantileMatrix
+
+	stats    stats.Result        // for accumulating statistics from downstream requests
+	headers  map[string][]string // for accumulating headers from downstream requests
+	warnings map[string]struct{} // for accumulating warnings from downstream requests}
 }
 
 // newQuantileSketchAccumulator returns an accumulator for sharded
 // probabilistic quantile queries that merges results as they come in.
 func newQuantileSketchAccumulator() *QuantileSketchAccumulator {
-	return &QuantileSketchAccumulator{}
+	return &QuantileSketchAccumulator{
+		headers:  make(map[string][]string),
+		warnings: make(map[string]struct{}),
+	}
 }
 
 func (a *QuantileSketchAccumulator) Accumulate(_ context.Context, res logqlmodel.Result, _ int) error {
@@ -55,6 +64,21 @@ func (a *QuantileSketchAccumulator) Accumulate(_ context.Context, res logqlmodel
 	if !ok {
 		return fmt.Errorf("unexpected matrix type: got (%T), want (ProbabilisticQuantileMatrix)", res.Data)
 	}
+
+	// TODO(owen-d/ewelch): Shard counts should be set by the querier
+	// so we don't have to do it in tricky ways in multiple places.
+	// See pkg/logql/downstream.go:DownstreamEvaluator.Downstream
+	// for another example.
+	if res.Statistics.Summary.Shards == 0 {
+		res.Statistics.Summary.Shards = 1
+	}
+	a.stats.Merge(res.Statistics)
+	metadata.ExtendHeaders(a.headers, res.Headers)
+
+	for _, w := range res.Warnings {
+		a.warnings[w] = struct{}{}
+	}
+
 	if a.matrix == nil {
 		a.matrix = data
 		return nil
@@ -62,11 +86,33 @@ func (a *QuantileSketchAccumulator) Accumulate(_ context.Context, res logqlmodel
 
 	var err error
 	a.matrix, err = a.matrix.Merge(data)
+	a.stats.Merge(res.Statistics)
 	return err
 }
 
 func (a *QuantileSketchAccumulator) Result() []logqlmodel.Result {
-	return []logqlmodel.Result{{Data: a.matrix}}
+	headers := make([]*definitions.PrometheusResponseHeader, 0, len(a.headers))
+	for name, vals := range a.headers {
+		headers = append(
+			headers,
+			&definitions.PrometheusResponseHeader{
+				Name:   name,
+				Values: vals,
+			},
+		)
+	}
+
+	warnings := maps.Keys(a.warnings)
+	sort.Strings(warnings)
+
+	return []logqlmodel.Result{
+		{
+			Data:       a.matrix,
+			Headers:    headers,
+			Warnings:   warnings,
+			Statistics: a.stats,
+		},
+	}
 }
 
 // heap impl for keeping only the top n results across m streams
@@ -90,8 +136,9 @@ type AccumulatedStreams struct {
 	streams      []*logproto.Stream
 	order        logproto.Direction
 
-	stats   stats.Result        // for accumulating statistics from downstream requests
-	headers map[string][]string // for accumulating headers from downstream requests
+	stats    stats.Result        // for accumulating statistics from downstream requests
+	headers  map[string][]string // for accumulating headers from downstream requests
+	warnings map[string]struct{} // for accumulating warnings from downstream requests
 }
 
 // NewStreamAccumulator returns an accumulator for limited log queries.
@@ -113,7 +160,8 @@ func NewStreamAccumulator(params Params) *AccumulatedStreams {
 		order:    order,
 		limit:    int(params.Limit()),
 
-		headers: make(map[string][]string),
+		headers:  make(map[string][]string),
+		warnings: make(map[string]struct{}),
 	}
 }
 
@@ -353,6 +401,11 @@ func (acc *AccumulatedStreams) Result() []logqlmodel.Result {
 		)
 	}
 
+	warnings := maps.Keys(acc.warnings)
+	sort.Strings(warnings)
+
+	res.Warnings = warnings
+
 	return []logqlmodel.Result{res}
 }
 
@@ -366,6 +419,10 @@ func (acc *AccumulatedStreams) Accumulate(_ context.Context, x logqlmodel.Result
 	}
 	acc.stats.Merge(x.Statistics)
 	metadata.ExtendHeaders(acc.headers, x.Headers)
+
+	for _, w := range x.Warnings {
+		acc.warnings[w] = struct{}{}
+	}
 
 	switch got := x.Data.(type) {
 	case logqlmodel.Streams:

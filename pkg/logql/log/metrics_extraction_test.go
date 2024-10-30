@@ -346,7 +346,7 @@ func TestNewLineSampleExtractor(t *testing.T) {
 	require.Equal(t, 1., f)
 	assertLabelResult(t, lbs, l)
 
-	stage := mustFilter(NewFilter("foo", labels.MatchEqual)).ToStage()
+	stage := mustFilter(NewFilter("foo", LineMatchEqual)).ToStage()
 	se, err = NewLineSampleExtractor(BytesExtractor, []Stage{stage}, []string{"namespace"}, false, false)
 	require.NoError(t, err)
 
@@ -404,7 +404,7 @@ func TestNewLineSampleExtractorWithStructuredMetadata(t *testing.T) {
 	se, err = NewLineSampleExtractor(BytesExtractor, []Stage{
 		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")),
 		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "user", "bob")),
-		mustFilter(NewFilter("foo", labels.MatchEqual)).ToStage(),
+		mustFilter(NewFilter("foo", LineMatchEqual)).ToStage(),
 	}, []string{"foo"}, false, false)
 	require.NoError(t, err)
 

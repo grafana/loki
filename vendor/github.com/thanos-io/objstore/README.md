@@ -145,7 +145,7 @@ Thanos uses the [minio client](https://github.com/minio/minio-go) library to upl
 
 > NOTE: S3 client was designed for AWS S3, but it can be configured against other S3-compatible object storages e.g Ceph
 
-The S# object storage yaml configuration definition:
+The S3 object storage yaml configuration definition:
 
 ```yaml mdox-exec="go run scripts/cfggen/main.go --name=s3.Config"
 type: S3
@@ -153,6 +153,7 @@ config:
   bucket: ""
   endpoint: ""
   region: ""
+  disable_dualstack: false
   aws_sdk_auth: false
   access_key: ""
   insecure: false
@@ -181,6 +182,7 @@ config:
   list_objects_version: ""
   bucket_lookup_type: auto
   send_content_md5: true
+  disable_multipart: false
   part_size: 67108864
   sse_config:
     type: ""
@@ -198,6 +200,8 @@ However if you set `aws_sdk_auth: true` Thanos will use the default authenticati
 The field `prefix` can be used to transparently use prefixes in your S3 bucket. This allows you to separate blocks coming from different sources into paths with different prefixes, making it easier to understand what's going on (i.e. you don't have to use Thanos tooling to know from where which blocks came).
 
 The AWS region to endpoint mapping can be found in this [link](https://docs.aws.amazon.com/general/latest/gr/s3.html).
+
+By default, the library prefers using [dual-stack endpoints](https://docs.aws.amazon.com/AmazonS3/latest/userguide/dual-stack-endpoints.html). You can explicitly disable this behaviour by setting `disable_dualstack: true`.
 
 Make sure you use a correct signature version. Currently AWS requires signature v4, so it needs `signature_version2: false`. If you don't specify it, you will get an `Access Denied` error. On the other hand, several S3 compatible APIs use `signature_version2: true`.
 
@@ -354,6 +358,22 @@ config:
   service_account: ""
   use_grpc: false
   grpc_conn_pool_size: 0
+  http_config:
+    idle_conn_timeout: 0s
+    response_header_timeout: 0s
+    insecure_skip_verify: false
+    tls_handshake_timeout: 0s
+    expect_continue_timeout: 0s
+    max_idle_conns: 0
+    max_idle_conns_per_host: 0
+    max_conns_per_host: 0
+    tls_config:
+      ca_file: ""
+      cert_file: ""
+      key_file: ""
+      server_name: ""
+      insecure_skip_verify: false
+    disable_compression: false
 prefix: ""
 ```
 
@@ -501,6 +521,22 @@ config:
   connect_timeout: 10s
   timeout: 5m
   use_dynamic_large_objects: false
+  http_config:
+    idle_conn_timeout: 1m30s
+    response_header_timeout: 2m
+    insecure_skip_verify: false
+    tls_handshake_timeout: 10s
+    expect_continue_timeout: 1s
+    max_idle_conns: 100
+    max_idle_conns_per_host: 100
+    max_conns_per_host: 0
+    tls_config:
+      ca_file: ""
+      cert_file: ""
+      key_file: ""
+      server_name: ""
+      insecure_skip_verify: false
+    disable_compression: false
 prefix: ""
 ```
 

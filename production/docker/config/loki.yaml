@@ -97,6 +97,13 @@ schema_config:
     index:
       prefix: index_
       period: 24h
+  - from: 2024-03-29
+    store: tsdb
+    object_store: s3
+    schema: v13
+    index:
+      prefix: index_
+      period: 24h
 
 
 limits_config:

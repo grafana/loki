@@ -9,7 +9,7 @@ import "pkg/logproto/logproto.proto";
 import "pkg/querier/queryrange/queryrangebase/definitions/definitions.proto";
 import "pkg/storage/chunk/cache/resultscache/types.proto";
 
-option go_package = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase";
+option go_package = "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase";
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
@@ -42,6 +42,7 @@ message PrometheusResponse {
   string ErrorType = 3 [(gogoproto.jsontag) = "errorType,omitempty"];
   string Error = 4 [(gogoproto.jsontag) = "error,omitempty"];
   repeated definitions.PrometheusResponseHeader Headers = 5 [(gogoproto.jsontag) = "-"];
+  repeated string Warnings = 6 [(gogoproto.jsontag) = "warnings,omitempty"];
 }
 
 message PrometheusData {
@@ -56,7 +57,7 @@ message SampleStream {
   repeated logproto.LegacyLabelPair labels = 1 [
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "metric",
-    (gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelAdapter"
+    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/logproto.LabelAdapter"
   ];
   repeated logproto.LegacySample samples = 2 [
     (gogoproto.nullable) = false,

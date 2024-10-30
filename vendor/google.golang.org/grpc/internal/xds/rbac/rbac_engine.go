@@ -28,7 +28,6 @@ import (
 	"net"
 	"strconv"
 
-	v3rbacpb "github.com/envoyproxy/go-control-plane/envoy/config/rbac/v3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/authz/audit"
 	"google.golang.org/grpc/codes"
@@ -38,6 +37,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
+
+	v3rbacpb "github.com/envoyproxy/go-control-plane/envoy/config/rbac/v3"
 )
 
 var logger = grpclog.Component("rbac")
@@ -236,12 +237,9 @@ func newRPCData(ctx context.Context) (*rpcData, error) {
 
 	var authType string
 	var peerCertificates []*x509.Certificate
-	if pi.AuthInfo != nil {
-		tlsInfo, ok := pi.AuthInfo.(credentials.TLSInfo)
-		if ok {
-			authType = pi.AuthInfo.AuthType()
-			peerCertificates = tlsInfo.State.PeerCertificates
-		}
+	if tlsInfo, ok := pi.AuthInfo.(credentials.TLSInfo); ok {
+		authType = pi.AuthInfo.AuthType()
+		peerCertificates = tlsInfo.State.PeerCertificates
 	}
 
 	return &rpcData{
@@ -280,11 +278,12 @@ func (e *engine) doAuditLogging(rpcData *rpcData, rule string, authorized bool) 
 	// In the RBAC world, we need to have a SPIFFE ID as the principal for this
 	// to be meaningful
 	principal := ""
-	if rpcData.peerInfo != nil && rpcData.peerInfo.AuthInfo != nil && rpcData.peerInfo.AuthInfo.AuthType() == "tls" {
+	if rpcData.peerInfo != nil {
 		// If AuthType = tls, then we can cast AuthInfo to TLSInfo.
-		tlsInfo := rpcData.peerInfo.AuthInfo.(credentials.TLSInfo)
-		if tlsInfo.SPIFFEID != nil {
-			principal = tlsInfo.SPIFFEID.String()
+		if tlsInfo, ok := rpcData.peerInfo.AuthInfo.(credentials.TLSInfo); ok {
+			if tlsInfo.SPIFFEID != nil {
+				principal = tlsInfo.SPIFFEID.String()
+			}
 		}
 	}
 

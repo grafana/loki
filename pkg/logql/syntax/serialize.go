@@ -8,7 +8,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 )
 
 type JSONSerializer struct {
@@ -69,6 +69,7 @@ const (
 	RHS                 = "rhs"
 	Src                 = "src"
 	StringField         = "string"
+	NoopField           = "noop"
 	Type                = "type"
 	Unwrap              = "unwrap"
 	Value               = "value"
@@ -415,8 +416,26 @@ func encodeLabelFilter(s *jsoniter.Stream, filter log.LabelFilterer) {
 		s.WriteObjectEnd()
 
 		s.WriteObjectEnd()
-	case log.NoopLabelFilter:
-		return
+	case *log.NoopLabelFilter:
+		s.WriteObjectStart()
+		s.WriteObjectField(NoopField)
+
+		s.WriteObjectStart()
+		if concrete.Matcher != nil {
+			s.WriteObjectField(Name)
+			s.WriteString(concrete.Name)
+
+			s.WriteMore()
+			s.WriteObjectField(Value)
+			s.WriteString(concrete.Value)
+
+			s.WriteMore()
+			s.WriteObjectField(Type)
+			s.WriteInt(int(concrete.Type))
+		}
+		s.WriteObjectEnd()
+
+		s.WriteObjectEnd()
 	case *log.BytesLabelFilter:
 		s.WriteObjectStart()
 		s.WriteObjectField(Bytes)
@@ -606,8 +625,7 @@ func decodeLabelFilter(iter *jsoniter.Iterator) log.LabelFilterer {
 			}
 
 			filter = log.NewNumericLabelFilter(t, name, value)
-		case StringField:
-
+		case StringField, NoopField:
 			var name string
 			var value string
 			var t labels.MatchType

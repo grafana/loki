@@ -4,7 +4,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 )
 
 // ComponentResources is a map of component->requests/limits
@@ -46,6 +46,64 @@ var ResourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 		},
 		WALStorage: ResourceRequirements{
 			PVCSize: resource.MustParse("10Gi"),
+		},
+	},
+	lokiv1.SizeOneXPico: {
+		Querier: corev1.ResourceRequirements{
+			Requests: map[corev1.ResourceName]resource.Quantity{
+				corev1.ResourceCPU:    resource.MustParse("750m"),
+				corev1.ResourceMemory: resource.MustParse("1.5Gi"),
+			},
+		},
+		Ruler: ResourceRequirements{
+			Requests: map[corev1.ResourceName]resource.Quantity{
+				corev1.ResourceCPU:    resource.MustParse("500m"),
+				corev1.ResourceMemory: resource.MustParse("1Gi"),
+			},
+			PVCSize: resource.MustParse("10Gi"),
+		},
+		Ingester: ResourceRequirements{
+			PVCSize: resource.MustParse("10Gi"),
+			Requests: map[corev1.ResourceName]resource.Quantity{
+				corev1.ResourceCPU:    resource.MustParse("500m"),
+				corev1.ResourceMemory: resource.MustParse("3Gi"),
+			},
+			PDBMinAvailable: 1,
+		},
+		Distributor: corev1.ResourceRequirements{
+			Requests: map[corev1.ResourceName]resource.Quantity{
+				corev1.ResourceCPU:    resource.MustParse("500m"),
+				corev1.ResourceMemory: resource.MustParse("500Mi"),
+			},
+		},
+		QueryFrontend: corev1.ResourceRequirements{
+			Requests: map[corev1.ResourceName]resource.Quantity{
+				corev1.ResourceCPU:    resource.MustParse("500m"),
+				corev1.ResourceMemory: resource.MustParse("500Mi"),
+			},
+		},
+		Compactor: ResourceRequirements{
+			PVCSize: resource.MustParse("10Gi"),
+			Requests: map[corev1.ResourceName]resource.Quantity{
+				corev1.ResourceCPU:    resource.MustParse("500m"),
+				corev1.ResourceMemory: resource.MustParse("500Mi"),
+			},
+		},
+		Gateway: corev1.ResourceRequirements{
+			Requests: map[corev1.ResourceName]resource.Quantity{
+				corev1.ResourceCPU:    resource.MustParse("500m"),
+				corev1.ResourceMemory: resource.MustParse("500Mi"),
+			},
+		},
+		IndexGateway: ResourceRequirements{
+			PVCSize: resource.MustParse("50Gi"),
+			Requests: map[corev1.ResourceName]resource.Quantity{
+				corev1.ResourceCPU:    resource.MustParse("150m"),
+				corev1.ResourceMemory: resource.MustParse("250Mi"),
+			},
+		},
+		WALStorage: ResourceRequirements{
+			PVCSize: resource.MustParse("150Gi"),
 		},
 	},
 	lokiv1.SizeOneXExtraSmall: {
@@ -252,6 +310,7 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 					MaxQuerySeries:          500,
 					QueryTimeout:            "3m",
 					CardinalityLimit:        100000,
+					MaxVolumeSeries:         1000,
 				},
 			},
 		},
@@ -282,6 +341,66 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 			},
 		},
 	},
+
+	lokiv1.SizeOneXPico: {
+		Size: lokiv1.SizeOneXPico,
+		Replication: &lokiv1.ReplicationSpec{
+			Factor: 2,
+		},
+		Limits: &lokiv1.LimitsSpec{
+			Global: &lokiv1.LimitsTemplateSpec{
+				IngestionLimits: &lokiv1.IngestionLimitSpec{
+					// Defaults from Loki docs
+					IngestionRate:             4,
+					IngestionBurstSize:        6,
+					MaxGlobalStreamsPerTenant: 10000,
+					MaxLabelNameLength:        1024,
+					MaxLabelValueLength:       2048,
+					MaxLabelNamesPerSeries:    30,
+					MaxLineSize:               256000,
+					PerStreamDesiredRate:      3,
+					PerStreamRateLimit:        5,
+					PerStreamRateLimitBurst:   15,
+				},
+				QueryLimits: &lokiv1.QueryLimitSpec{
+					// Defaults from Loki docs
+					MaxEntriesLimitPerQuery: 5000,
+					MaxChunksPerQuery:       2000000,
+					MaxQuerySeries:          500,
+					QueryTimeout:            "3m",
+					CardinalityLimit:        100000,
+					MaxVolumeSeries:         1000,
+				},
+			},
+		},
+		Template: &lokiv1.LokiTemplateSpec{
+			Compactor: &lokiv1.LokiComponentSpec{
+				Replicas: 1,
+			},
+			Distributor: &lokiv1.LokiComponentSpec{
+				Replicas: 2,
+			},
+			Ingester: &lokiv1.LokiComponentSpec{
+				Replicas: 3,
+			},
+			Querier: &lokiv1.LokiComponentSpec{
+				Replicas: 2,
+			},
+			QueryFrontend: &lokiv1.LokiComponentSpec{
+				Replicas: 2,
+			},
+			Gateway: &lokiv1.LokiComponentSpec{
+				Replicas: 2,
+			},
+			IndexGateway: &lokiv1.LokiComponentSpec{
+				Replicas: 2,
+			},
+			Ruler: &lokiv1.LokiComponentSpec{
+				Replicas: 2,
+			},
+		},
+	},
+
 	lokiv1.SizeOneXExtraSmall: {
 		Size: lokiv1.SizeOneXExtraSmall,
 		Replication: &lokiv1.ReplicationSpec{
@@ -291,15 +410,16 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 			Global: &lokiv1.LimitsTemplateSpec{
 				IngestionLimits: &lokiv1.IngestionLimitSpec{
 					// Defaults from Loki docs
-					IngestionRate:           4,
-					IngestionBurstSize:      6,
-					MaxLabelNameLength:      1024,
-					MaxLabelValueLength:     2048,
-					MaxLabelNamesPerSeries:  30,
-					MaxLineSize:             256000,
-					PerStreamDesiredRate:    3,
-					PerStreamRateLimit:      5,
-					PerStreamRateLimitBurst: 15,
+					IngestionRate:             4,
+					IngestionBurstSize:        6,
+					MaxGlobalStreamsPerTenant: 10000,
+					MaxLabelNameLength:        1024,
+					MaxLabelValueLength:       2048,
+					MaxLabelNamesPerSeries:    30,
+					MaxLineSize:               256000,
+					PerStreamDesiredRate:      3,
+					PerStreamRateLimit:        5,
+					PerStreamRateLimitBurst:   15,
 				},
 				QueryLimits: &lokiv1.QueryLimitSpec{
 					// Defaults from Loki docs
@@ -308,6 +428,7 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 					MaxQuerySeries:          500,
 					QueryTimeout:            "3m",
 					CardinalityLimit:        100000,
+					MaxVolumeSeries:         1000,
 				},
 			},
 		},
@@ -367,6 +488,7 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 					MaxQuerySeries:          500,
 					QueryTimeout:            "3m",
 					CardinalityLimit:        100000,
+					MaxVolumeSeries:         1000,
 				},
 			},
 		},
@@ -426,6 +548,7 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 					MaxQuerySeries:          500,
 					QueryTimeout:            "3m",
 					CardinalityLimit:        100000,
+					MaxVolumeSeries:         1000,
 				},
 			},
 		},

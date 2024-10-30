@@ -17,8 +17,8 @@ import (
 
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 )
 
 type (
@@ -225,7 +225,7 @@ func (ds *deleteRequestsStore) GetCacheGenerationNumber(ctx context.Context, use
 	ctx = user.InjectOrgID(ctx, userID)
 
 	genNumber := ""
-	err := ds.indexClient.QueryPages(ctx, []index.Query{query}, func(query index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
+	err := ds.indexClient.QueryPages(ctx, []index.Query{query}, func(_ index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
 		itr := batch.Iterator()
 		for itr.Next() {
 			genNumber = string(itr.Value())
@@ -244,7 +244,7 @@ func (ds *deleteRequestsStore) GetCacheGenerationNumber(ctx context.Context, use
 func (ds *deleteRequestsStore) queryDeleteRequests(ctx context.Context, deleteQuery index.Query) ([]DeleteRequest, error) {
 	var deleteRequests []DeleteRequest
 	var err error
-	err = ds.indexClient.QueryPages(ctx, []index.Query{deleteQuery}, func(query index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
+	err = ds.indexClient.QueryPages(ctx, []index.Query{deleteQuery}, func(_ index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
 		// No need to lock inside the callback since we run a single index query.
 		itr := batch.Iterator()
 		for itr.Next() {
@@ -297,7 +297,7 @@ func (ds *deleteRequestsStore) queryDeleteRequestDetails(ctx context.Context, de
 
 	var marshalError error
 	var requestWithDetails DeleteRequest
-	err := ds.indexClient.QueryPages(ctx, deleteRequestQuery, func(query index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
+	err := ds.indexClient.QueryPages(ctx, deleteRequestQuery, func(_ index.Query, batch index.ReadBatchResult) (shouldContinue bool) {
 		if requestWithDetails, marshalError = unmarshalDeleteRequestDetails(batch.Iterator(), deleteRequest); marshalError != nil {
 			return false
 		}

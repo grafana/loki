@@ -17,8 +17,8 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
-	compactor_client_grpc "github.com/grafana/loki/pkg/compactor/client/grpc"
-	"github.com/grafana/loki/pkg/compactor/deletionmode"
+	compactor_client_grpc "github.com/grafana/loki/v3/pkg/compactor/client/grpc"
+	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
 )
 
 func server(t *testing.T, h *GRPCRequestHandler) (compactor_client_grpc.CompactorClient, func()) {
@@ -38,6 +38,7 @@ func server(t *testing.T, h *GRPCRequestHandler) (compactor_client_grpc.Compacto
 		}
 	}()
 
+	// nolint:staticcheck // grpc.DialContext() has been deprecated; we'll address it before upgrading to gRPC 2.
 	conn, err := grpc.DialContext(context.Background(), "",
 		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 			return lis.Dial()
@@ -74,7 +75,7 @@ func TestGRPCGetDeleteRequests(t *testing.T) {
 	t.Run("it gets all the delete requests for the user", func(t *testing.T) {
 		store := &mockDeleteRequestsStore{}
 		store.getAllResult = []DeleteRequest{{RequestID: "test-request-1", Status: StatusReceived}, {RequestID: "test-request-2", Status: StatusReceived}}
-		h := NewGRPCRequestHandler(store, &fakeLimits{mode: deletionmode.FilterAndDelete.String()})
+		h := NewGRPCRequestHandler(store, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}})
 		grpcClient, closer := server(t, h)
 		t.Cleanup(closer)
 
@@ -96,7 +97,7 @@ func TestGRPCGetDeleteRequests(t *testing.T) {
 			{RequestID: "test-request-2", CreatedAt: now.Add(time.Minute), StartTime: now.Add(30 * time.Minute), EndTime: now.Add(90 * time.Minute)},
 			{RequestID: "test-request-1", CreatedAt: now, StartTime: now.Add(time.Hour), EndTime: now.Add(2 * time.Hour)},
 		}
-		h := NewGRPCRequestHandler(store, &fakeLimits{mode: deletionmode.FilterAndDelete.String()})
+		h := NewGRPCRequestHandler(store, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}})
 		grpcClient, closer := server(t, h)
 		t.Cleanup(closer)
 
@@ -124,7 +125,7 @@ func TestGRPCGetDeleteRequests(t *testing.T) {
 			{RequestID: "test-request-2", CreatedAt: now.Add(time.Minute), Status: StatusProcessed},
 			{RequestID: "test-request-3", CreatedAt: now.Add(2 * time.Minute), Status: StatusReceived},
 		}
-		h := NewGRPCRequestHandler(store, &fakeLimits{mode: deletionmode.FilterAndDelete.String()})
+		h := NewGRPCRequestHandler(store, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}})
 		grpcClient, closer := server(t, h)
 		t.Cleanup(closer)
 
@@ -145,7 +146,7 @@ func TestGRPCGetDeleteRequests(t *testing.T) {
 	t.Run("error getting from store", func(t *testing.T) {
 		store := &mockDeleteRequestsStore{}
 		store.getAllErr = errors.New("something bad")
-		h := NewGRPCRequestHandler(store, &fakeLimits{mode: deletionmode.FilterAndDelete.String()})
+		h := NewGRPCRequestHandler(store, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}})
 		grpcClient, closer := server(t, h)
 		t.Cleanup(closer)
 
@@ -162,7 +163,7 @@ func TestGRPCGetDeleteRequests(t *testing.T) {
 
 	t.Run("validation", func(t *testing.T) {
 		t.Run("no org id", func(t *testing.T) {
-			h := NewGRPCRequestHandler(&mockDeleteRequestsStore{}, &fakeLimits{mode: deletionmode.FilterAndDelete.String()})
+			h := NewGRPCRequestHandler(&mockDeleteRequestsStore{}, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}})
 			grpcClient, closer := server(t, h)
 			t.Cleanup(closer)
 
@@ -178,7 +179,7 @@ func TestGRPCGetCacheGenNumbers(t *testing.T) {
 	t.Run("get gen number", func(t *testing.T) {
 		store := &mockDeleteRequestsStore{}
 		store.genNumber = "123"
-		h := NewGRPCRequestHandler(store, &fakeLimits{mode: deletionmode.FilterAndDelete.String()})
+		h := NewGRPCRequestHandler(store, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}})
 		grpcClient, closer := server(t, h)
 		t.Cleanup(closer)
 
@@ -195,7 +196,7 @@ func TestGRPCGetCacheGenNumbers(t *testing.T) {
 	t.Run("error getting from store", func(t *testing.T) {
 		store := &mockDeleteRequestsStore{}
 		store.getErr = errors.New("something bad")
-		h := NewGRPCRequestHandler(store, &fakeLimits{mode: deletionmode.FilterAndDelete.String()})
+		h := NewGRPCRequestHandler(store, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}})
 		grpcClient, closer := server(t, h)
 		t.Cleanup(closer)
 
@@ -212,7 +213,7 @@ func TestGRPCGetCacheGenNumbers(t *testing.T) {
 
 	t.Run("validation", func(t *testing.T) {
 		t.Run("no org id", func(t *testing.T) {
-			h := NewGRPCRequestHandler(&mockDeleteRequestsStore{}, &fakeLimits{mode: deletionmode.FilterAndDelete.String()})
+			h := NewGRPCRequestHandler(&mockDeleteRequestsStore{}, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}})
 			grpcClient, closer := server(t, h)
 			t.Cleanup(closer)
 

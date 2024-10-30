@@ -8,7 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/ptr"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 )
 
 func TestConfigureDeploymentForStorageType(t *testing.T) {
@@ -171,8 +171,9 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 		{
 			desc: "object storage Azure with WIF",
 			opts: Options{
-				SecretName:  "test",
-				SharedStore: lokiv1.ObjectStorageSecretAzure,
+				SecretName:     "test",
+				SharedStore:    lokiv1.ObjectStorageSecretAzure,
+				CredentialMode: lokiv1.CredentialModeToken,
 				Azure: &AzureStorageConfig{
 					WorkloadIdentity: true,
 				},
@@ -295,8 +296,9 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 		{
 			desc: "object storage Azure with WIF and custom audience",
 			opts: Options{
-				SecretName:  "test",
-				SharedStore: lokiv1.ObjectStorageSecretAzure,
+				SecretName:     "test",
+				SharedStore:    lokiv1.ObjectStorageSecretAzure,
+				CredentialMode: lokiv1.CredentialModeToken,
 				Azure: &AzureStorageConfig{
 					WorkloadIdentity: true,
 					Audience:         "custom-audience",
@@ -420,8 +422,9 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 		{
 			desc: "object storage Azure with WIF and OpenShift Managed Credentials",
 			opts: Options{
-				SecretName:  "test",
-				SharedStore: lokiv1.ObjectStorageSecretAzure,
+				SecretName:     "test",
+				SharedStore:    lokiv1.ObjectStorageSecretAzure,
+				CredentialMode: lokiv1.CredentialModeTokenCCO,
 				Azure: &AzureStorageConfig{
 					WorkloadIdentity: true,
 				},
@@ -607,8 +610,9 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 		{
 			desc: "object storage GCS with Workload Identity",
 			opts: Options{
-				SecretName:  "test",
-				SharedStore: lokiv1.ObjectStorageSecretGCS,
+				SecretName:     "test",
+				SharedStore:    lokiv1.ObjectStorageSecretGCS,
+				CredentialMode: lokiv1.CredentialModeToken,
 				GCS: &GCSStorageConfig{
 					Audience:         "test",
 					WorkloadIdentity: true,
@@ -762,8 +766,9 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 		{
 			desc: "object storage S3 in STS Mode",
 			opts: Options{
-				SecretName:  "test",
-				SharedStore: lokiv1.ObjectStorageSecretS3,
+				SecretName:     "test",
+				SharedStore:    lokiv1.ObjectStorageSecretS3,
+				CredentialMode: lokiv1.CredentialModeToken,
 				S3: &S3StorageConfig{
 					STS:      true,
 					Audience: "test",
@@ -854,8 +859,9 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 		{
 			desc: "object storage S3 in STS Mode in OpenShift",
 			opts: Options{
-				SecretName:  "test",
-				SharedStore: lokiv1.ObjectStorageSecretS3,
+				SecretName:     "test",
+				SharedStore:    lokiv1.ObjectStorageSecretS3,
+				CredentialMode: lokiv1.CredentialModeTokenCCO,
 				S3: &S3StorageConfig{
 					STS: true,
 				},
@@ -898,12 +904,12 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 											ReadOnly:  false,
 											MountPath: saTokenVolumeMountPath,
 										},
-										managedAuthConfigVolumeMount,
+										tokenCCOAuthConfigVolumeMount,
 									},
 									Env: []corev1.EnvVar{
 										{
 											Name:  "AWS_SHARED_CREDENTIALS_FILE",
-											Value: "/etc/storage/managed-auth/credentials",
+											Value: "/etc/storage/token-auth/credentials",
 										},
 										{
 											Name:  "AWS_SDK_LOAD_CONFIG",
@@ -938,10 +944,85 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 									},
 								},
 								{
-									Name: managedAuthConfigVolumeName,
+									Name: tokenAuthConfigVolumeName,
 									VolumeSource: corev1.VolumeSource{
 										Secret: &corev1.SecretVolumeSource{
 											SecretName: "cloud-credentials",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc: "object storage S3 with static credentials in OpenShift CCO cluster",
+			opts: Options{
+				SecretName:     "test",
+				SharedStore:    lokiv1.ObjectStorageSecretS3,
+				CredentialMode: lokiv1.CredentialModeStatic,
+			},
+			dpl: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+								},
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      "test",
+											ReadOnly:  false,
+											MountPath: "/etc/storage/secrets",
+										},
+									},
+									Env: []corev1.EnvVar{
+										{
+											Name: EnvAWSAccessKeyID,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAWSAccessKeyID,
+												},
+											},
+										},
+										{
+											Name: EnvAWSAccessKeySecret,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAWSAccessKeySecret,
+												},
+											},
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: "test",
+									VolumeSource: corev1.VolumeSource{
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: "test",
 										},
 									},
 								},
@@ -1119,7 +1200,6 @@ func TestConfigureDeploymentForStorageType(t *testing.T) {
 	}
 
 	for _, tc := range tc {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			err := ConfigureDeployment(tc.dpl, tc.opts)
@@ -1289,8 +1369,9 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 		{
 			desc: "object storage Azure with WIF",
 			opts: Options{
-				SecretName:  "test",
-				SharedStore: lokiv1.ObjectStorageSecretAzure,
+				SecretName:     "test",
+				SharedStore:    lokiv1.ObjectStorageSecretAzure,
+				CredentialMode: lokiv1.CredentialModeToken,
 				Azure: &AzureStorageConfig{
 					WorkloadIdentity: true,
 				},
@@ -1413,8 +1494,9 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 		{
 			desc: "object storage Azure with WIF and custom audience",
 			opts: Options{
-				SecretName:  "test",
-				SharedStore: lokiv1.ObjectStorageSecretAzure,
+				SecretName:     "test",
+				SharedStore:    lokiv1.ObjectStorageSecretAzure,
+				CredentialMode: lokiv1.CredentialModeToken,
 				Azure: &AzureStorageConfig{
 					WorkloadIdentity: true,
 					Audience:         "custom-audience",
@@ -1538,8 +1620,9 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 		{
 			desc: "object storage Azure with WIF and OpenShift Managed Credentials",
 			opts: Options{
-				SecretName:  "test",
-				SharedStore: lokiv1.ObjectStorageSecretAzure,
+				SecretName:     "test",
+				SharedStore:    lokiv1.ObjectStorageSecretAzure,
+				CredentialMode: lokiv1.CredentialModeTokenCCO,
 				Azure: &AzureStorageConfig{
 					WorkloadIdentity: true,
 				},
@@ -1725,8 +1808,9 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 		{
 			desc: "object storage GCS with Workload Identity",
 			opts: Options{
-				SecretName:  "test",
-				SharedStore: lokiv1.ObjectStorageSecretGCS,
+				SecretName:     "test",
+				SharedStore:    lokiv1.ObjectStorageSecretGCS,
+				CredentialMode: lokiv1.CredentialModeTokenCCO,
 				GCS: &GCSStorageConfig{
 					Audience:         "test",
 					WorkloadIdentity: true,
@@ -1880,8 +1964,9 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 		{
 			desc: "object storage S3 in STS Mode in OpenShift",
 			opts: Options{
-				SecretName:  "test",
-				SharedStore: lokiv1.ObjectStorageSecretS3,
+				SecretName:     "test",
+				SharedStore:    lokiv1.ObjectStorageSecretS3,
+				CredentialMode: lokiv1.CredentialModeTokenCCO,
 				S3: &S3StorageConfig{
 					STS: true,
 				},
@@ -1924,12 +2009,12 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 											ReadOnly:  false,
 											MountPath: saTokenVolumeMountPath,
 										},
-										managedAuthConfigVolumeMount,
+										tokenCCOAuthConfigVolumeMount,
 									},
 									Env: []corev1.EnvVar{
 										{
 											Name:  "AWS_SHARED_CREDENTIALS_FILE",
-											Value: "/etc/storage/managed-auth/credentials",
+											Value: "/etc/storage/token-auth/credentials",
 										},
 										{
 											Name:  "AWS_SDK_LOAD_CONFIG",
@@ -1964,10 +2049,95 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 									},
 								},
 								{
-									Name: managedAuthConfigVolumeName,
+									Name: tokenAuthConfigVolumeName,
 									VolumeSource: corev1.VolumeSource{
 										Secret: &corev1.SecretVolumeSource{
 											SecretName: "cloud-credentials",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc: "object storage S3 with static credentials in OpenShift CCO cluster",
+			opts: Options{
+				SecretName:     "test",
+				SharedStore:    lokiv1.ObjectStorageSecretS3,
+				CredentialMode: lokiv1.CredentialModeStatic,
+				S3: &S3StorageConfig{
+					STS: true,
+				},
+				OpenShift: OpenShiftOptions{
+					Enabled: true,
+					CloudCredentials: CloudCredentials{
+						SecretName: "cloud-credentials",
+						SHA1:       "deadbeef",
+					},
+				},
+			},
+			sts: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+								},
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: "loki-ingester",
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      "test",
+											ReadOnly:  false,
+											MountPath: "/etc/storage/secrets",
+										},
+									},
+									Env: []corev1.EnvVar{
+										{
+											Name: EnvAWSAccessKeyID,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAWSAccessKeyID,
+												},
+											},
+										},
+										{
+											Name: EnvAWSAccessKeySecret,
+											ValueFrom: &corev1.EnvVarSource{
+												SecretKeyRef: &corev1.SecretKeySelector{
+													LocalObjectReference: corev1.LocalObjectReference{
+														Name: "test",
+													},
+													Key: KeyAWSAccessKeySecret,
+												},
+											},
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: "test",
+									VolumeSource: corev1.VolumeSource{
+										Secret: &corev1.SecretVolumeSource{
+											SecretName: "test",
 										},
 									},
 								},
@@ -2145,7 +2315,6 @@ func TestConfigureStatefulSetForStorageType(t *testing.T) {
 	}
 
 	for _, tc := range tc {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			err := ConfigureStatefulSet(tc.sts, tc.opts)
@@ -2337,7 +2506,6 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 	}
 
 	for _, tc := range tc {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			err := ConfigureDeployment(tc.dpl, tc.opts)
@@ -2532,7 +2700,6 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 	}
 
 	for _, tc := range tc {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			err := ConfigureStatefulSet(tc.sts, tc.opts)

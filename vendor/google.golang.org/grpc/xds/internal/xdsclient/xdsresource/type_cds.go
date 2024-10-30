@@ -20,6 +20,7 @@ package xdsresource
 import (
 	"encoding/json"
 
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
@@ -39,18 +40,6 @@ const (
 	ClusterTypeAggregate
 )
 
-// ClusterLRSServerConfigType is the type of LRS server config.
-type ClusterLRSServerConfigType int
-
-const (
-	// ClusterLRSOff indicates LRS is off (loads are not reported for this
-	// cluster).
-	ClusterLRSOff ClusterLRSServerConfigType = iota
-	// ClusterLRSServerSelf indicates loads should be reported to the same
-	// server (the authority) where the CDS resp is received from.
-	ClusterLRSServerSelf
-)
-
 // ClusterUpdate contains information from a received CDS response, which is of
 // interest to the registered CDS watcher.
 type ClusterUpdate struct {
@@ -60,10 +49,10 @@ type ClusterUpdate struct {
 	// EDSServiceName is an optional name for EDS. If it's not set, the balancer
 	// should watch ClusterName for the EDS resources.
 	EDSServiceName string
-	// LRSServerConfig contains the server where the load reports should be sent
-	// to. This can be change to an interface, to support other types, e.g. a
-	// ServerConfig with ServerURI, creds.
-	LRSServerConfig ClusterLRSServerConfigType
+	// LRSServerConfig contains configuration about the xDS server that sent
+	// this cluster resource. This is also the server where load reports are to
+	// be sent, for this cluster.
+	LRSServerConfig *bootstrap.ServerConfig
 	// SecurityCfg contains security configuration sent by the control plane.
 	SecurityCfg *SecurityConfig
 	// MaxRequests for circuit breaking, if any (otherwise nil).
@@ -85,12 +74,8 @@ type ClusterUpdate struct {
 
 	// Raw is the resource from the xds response.
 	Raw *anypb.Any
-}
-
-// ClusterUpdateErrTuple is a tuple with the update and error. It contains the
-// results from unmarshal functions. It's used to pass unmarshal results of
-// multiple resources together, e.g. in maps like `map[string]{Update,error}`.
-type ClusterUpdateErrTuple struct {
-	Update ClusterUpdate
-	Err    error
+	// TelemetryLabels are the string valued metadata of filter_metadata type
+	// "com.google.csm.telemetry_labels" with keys "service_name" or
+	// "service_namespace".
+	TelemetryLabels map[string]string
 }

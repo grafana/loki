@@ -58,6 +58,14 @@ func WithIssuedAt() ParserOption {
 	}
 }
 
+// WithExpirationRequired returns the ParserOption to make exp claim required.
+// By default exp claim is optional.
+func WithExpirationRequired() ParserOption {
+	return func(p *Parser) {
+		p.validator.requireExp = true
+	}
+}
+
 // WithAudience configures the validator to require the specified audience in
 // the `aud` claim. Validation will fail if the audience is not listed in the
 // token or the `aud` claim is missing.

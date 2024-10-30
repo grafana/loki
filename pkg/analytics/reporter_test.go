@@ -14,7 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 )
 
 func Test_LeaderElection(t *testing.T) {
@@ -156,4 +156,17 @@ func TestWrongKV(t *testing.T) {
 		cancel()
 	}()
 	require.Equal(t, nil, r.running(ctx))
+}
+
+func TestStartCPUCollection(t *testing.T) {
+	r, err := NewReporter(Config{Leader: true, Enabled: true}, kv.Config{
+		Store: "inmemory",
+	}, nil, log.NewLogfmtLogger(os.Stdout), prometheus.NewPedanticRegistry())
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r.startCPUPercentCollection(ctx, 1*time.Second)
+	require.Eventually(t, func() bool {
+		return cpuUsage.Value() > 0
+	}, 5*time.Second, 1*time.Second)
 }

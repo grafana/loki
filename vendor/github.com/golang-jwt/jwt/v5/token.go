@@ -1,6 +1,7 @@
 package jwt
 
 import (
+	"crypto"
 	"encoding/base64"
 	"encoding/json"
 )
@@ -9,7 +10,20 @@ import (
 // the key for verification.  The function receives the parsed, but unverified
 // Token.  This allows you to use properties in the Header of the token (such as
 // `kid`) to identify which key to use.
+//
+// The returned interface{} may be a single key or a VerificationKeySet containing
+// multiple keys.
 type Keyfunc func(*Token) (interface{}, error)
+
+// VerificationKey represents a public or secret key for verifying a token's signature.
+type VerificationKey interface {
+	crypto.PublicKey | []uint8
+}
+
+// VerificationKeySet is a set of public or secret keys. It is used by the parser to verify a token.
+type VerificationKeySet struct {
+	Keys []VerificationKey
+}
 
 // Token represents a JWT Token.  Different fields will be used depending on
 // whether you're creating or parsing/verifying a token.

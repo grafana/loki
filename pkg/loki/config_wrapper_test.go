@@ -9,25 +9,26 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/netutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/distributor"
-	"github.com/grafana/loki/pkg/loki/common"
-	"github.com/grafana/loki/pkg/storage/bucket/swift"
-	"github.com/grafana/loki/pkg/storage/chunk/client/alibaba"
-	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
-	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
-	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
-	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
-	"github.com/grafana/loki/pkg/storage/chunk/client/ibmcloud"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
-	"github.com/grafana/loki/pkg/util/cfg"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	loki_net "github.com/grafana/loki/pkg/util/net"
-	lokiring "github.com/grafana/loki/pkg/util/ring"
+	"github.com/grafana/loki/v3/pkg/distributor"
+	"github.com/grafana/loki/v3/pkg/loki/common"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/swift"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/alibaba"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/azure"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/baidubce"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/gcp"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/ibmcloud"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/openstack"
+	"github.com/grafana/loki/v3/pkg/util/cfg"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	loki_net "github.com/grafana/loki/v3/pkg/util/net"
+	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
 
 // Can't use a totally empty yaml file or it causes weird behavior in the unmarshalling.
@@ -100,7 +101,7 @@ common:
 			assert.EqualValues(t, "/opt/loki/rules-temp", config.Ruler.RulePath)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/compactor", config.CompactorConfig.WorkingDirectory)
-			assert.EqualValues(t, "/opt/loki/blooms", config.StorageConfig.BloomShipperConfig.WorkingDirectory)
+			assert.EqualValues(t, flagext.StringSliceCSV{"/opt/loki/blooms"}, config.StorageConfig.BloomShipperConfig.WorkingDirectory)
 		})
 
 		t.Run("accepts paths both with and without trailing slash", func(t *testing.T) {
@@ -112,7 +113,7 @@ common:
 			assert.EqualValues(t, "/opt/loki/rules-temp", config.Ruler.RulePath)
 			assert.EqualValues(t, "/opt/loki/wal", config.Ingester.WAL.Dir)
 			assert.EqualValues(t, "/opt/loki/compactor", config.CompactorConfig.WorkingDirectory)
-			assert.EqualValues(t, "/opt/loki/blooms", config.StorageConfig.BloomShipperConfig.WorkingDirectory)
+			assert.EqualValues(t, flagext.StringSliceCSV{"/opt/loki/blooms"}, config.StorageConfig.BloomShipperConfig.WorkingDirectory)
 		})
 
 		t.Run("does not rewrite custom (non-default) paths passed via config file", func(t *testing.T) {
@@ -218,12 +219,16 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.AlibabaCloud, config.Ruler.StoreConfig.AlibabaCloud)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.COS, config.Ruler.StoreConfig.COS)
 			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig, config.StorageConfig.AWSStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.AlibabaStorageConfig, config.StorageConfig.AlibabaStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.COSConfig, config.StorageConfig.COSConfig)
 		})
 
 		t.Run("when multiple configs are provided, an error is returned", func(t *testing.T) {
@@ -254,6 +259,7 @@ memberlist:
       access_key_id: abc123
       secret_access_key: def789
       insecure: true
+      disable_dualstack: true
       http_config:
         response_header_timeout: 5m`
 
@@ -278,6 +284,7 @@ memberlist:
 				assert.Equal(t, "def789", actual.SecretAccessKey.String())
 				assert.Equal(t, "", actual.SessionToken.String())
 				assert.Equal(t, true, actual.Insecure)
+				assert.True(t, actual.DisableDualstack)
 				assert.Equal(t, 5*time.Minute, actual.HTTPConfig.ResponseHeaderTimeout)
 				assert.Equal(t, false, actual.HTTPConfig.InsecureSkipVerify)
 
@@ -293,12 +300,17 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.AlibabaCloud, config.Ruler.StoreConfig.AlibabaCloud)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.COS, config.Ruler.StoreConfig.COS)
+
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.AlibabaStorageConfig, config.StorageConfig.AlibabaStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.COSConfig, config.StorageConfig.COSConfig)
 		})
 
 		t.Run("when common s3 storage config is provided (with session token), ruler and storage config are defaulted to use it", func(t *testing.T) {
@@ -312,6 +324,7 @@ memberlist:
       secret_access_key: def789
       session_token: 456abc
       insecure: true
+      disable_dualstack: false
       http_config:
         response_header_timeout: 5m`
 
@@ -336,6 +349,7 @@ memberlist:
 				assert.Equal(t, "def789", actual.SecretAccessKey.String())
 				assert.Equal(t, "456abc", actual.SessionToken.String())
 				assert.Equal(t, true, actual.Insecure)
+				assert.False(t, actual.DisableDualstack)
 				assert.Equal(t, 5*time.Minute, actual.HTTPConfig.ResponseHeaderTimeout)
 				assert.Equal(t, false, actual.HTTPConfig.InsecureSkipVerify)
 
@@ -351,12 +365,17 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.AlibabaCloud, config.Ruler.StoreConfig.AlibabaCloud)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.COS, config.Ruler.StoreConfig.COS)
+
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.AlibabaStorageConfig, config.StorageConfig.AlibabaStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.COSConfig, config.StorageConfig.COSConfig)
 		})
 
 		t.Run("when common gcs storage config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
@@ -387,12 +406,17 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.AlibabaCloud, config.Ruler.StoreConfig.AlibabaCloud)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.COS, config.Ruler.StoreConfig.COS)
+
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.AlibabaStorageConfig, config.StorageConfig.AlibabaStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.COSConfig, config.StorageConfig.COSConfig)
 		})
 
 		t.Run("when common azure storage config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
@@ -439,6 +463,8 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.AlibabaCloud, config.Ruler.StoreConfig.AlibabaCloud)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.COS, config.Ruler.StoreConfig.COS)
 
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
@@ -446,6 +472,8 @@ memberlist:
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.AlibabaStorageConfig, config.StorageConfig.AlibabaStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.COSConfig, config.StorageConfig.COSConfig)
 		})
 
 		t.Run("when common bos storage config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
@@ -477,6 +505,8 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.S3, config.Ruler.StoreConfig.S3)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.AlibabaCloud, config.Ruler.StoreConfig.AlibabaCloud)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.COS, config.Ruler.StoreConfig.COS)
 
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
@@ -484,6 +514,8 @@ memberlist:
 			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
+			assert.EqualValues(t, defaults.StorageConfig.AlibabaStorageConfig, config.StorageConfig.AlibabaStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.COSConfig, config.StorageConfig.COSConfig)
 		})
 
 		t.Run("when common swift storage config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
@@ -544,12 +576,103 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Azure, config.Ruler.StoreConfig.Azure)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.AlibabaCloud, config.Ruler.StoreConfig.AlibabaCloud)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.COS, config.Ruler.StoreConfig.COS)
+
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.AlibabaStorageConfig, config.StorageConfig.AlibabaStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.COSConfig, config.StorageConfig.COSConfig)
+		})
+
+		t.Run("when common alibaba storage config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
+			configInput := `common:
+  storage:
+    alibabacloud:
+      bucket: testbucket
+      endpoint: https://example.com
+      access_key_id: abc123
+      secret_access_key: def789`
+
+			config, defaults := testContext(configInput, nil)
+
+			assert.Equal(t, "alibaba", config.Ruler.StoreConfig.Type)
+
+			for _, actual := range []alibaba.OssConfig{
+				config.Ruler.StoreConfig.AlibabaCloud,
+				config.StorageConfig.AlibabaStorageConfig,
+			} {
+				assert.Equal(t, "testbucket", actual.Bucket)
+				assert.Equal(t, "https://example.com", actual.Endpoint)
+				assert.Equal(t, "abc123", actual.AccessKeyID)
+				assert.Equal(t, "def789", actual.SecretAccessKey)
+			}
+
+			// should remain empty
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.GCS, config.Ruler.StoreConfig.GCS)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.S3, config.Ruler.StoreConfig.S3)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.Azure, config.Ruler.StoreConfig.Azure)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.COS, config.Ruler.StoreConfig.COS)
+
+			// should remain empty
+			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
+			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
+			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
+			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
+			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.COSConfig, config.StorageConfig.COSConfig)
+		})
+
+		t.Run("when common cos storage config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
+			configInput := `common:
+  storage:
+    cos:
+      bucketnames: testbucket
+      endpoint: https://example.com
+      region: test-region
+      access_key_id: abc123
+      secret_access_key: def789`
+
+			config, defaults := testContext(configInput, nil)
+
+			assert.Equal(t, "cos", config.Ruler.StoreConfig.Type)
+
+			for _, actual := range []ibmcloud.COSConfig{
+				config.Ruler.StoreConfig.COS,
+				config.StorageConfig.COSConfig,
+			} {
+				assert.Equal(t, "testbucket", actual.BucketNames)
+				assert.Equal(t, "https://example.com", actual.Endpoint)
+				assert.Equal(t, "test-region", actual.Region)
+				assert.Equal(t, "abc123", actual.AccessKeyID)
+				assert.Equal(t, flagext.SecretWithValue("def789"), actual.SecretAccessKey)
+			}
+
+			// should remain empty
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.GCS, config.Ruler.StoreConfig.GCS)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.S3, config.Ruler.StoreConfig.S3)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.Azure, config.Ruler.StoreConfig.Azure)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.Swift, config.Ruler.StoreConfig.Swift)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.Local, config.Ruler.StoreConfig.Local)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
+			assert.EqualValues(t, defaults.Ruler.StoreConfig.AlibabaCloud, config.Ruler.StoreConfig.AlibabaCloud)
+
+			// should remain empty
+			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
+			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
+			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
+			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
+			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
+			assert.EqualValues(t, defaults.StorageConfig.AlibabaStorageConfig, config.StorageConfig.AlibabaStorageConfig)
 		})
 
 		t.Run("when common filesystem/local config is provided, ruler and storage config are defaulted to use it", func(t *testing.T) {
@@ -613,7 +736,7 @@ ruler:
 		})
 
 		t.Run("explicit storage config provided via config file is preserved", func(t *testing.T) {
-			specificRulerConfig := `common:
+			explicitStorageConfig := `common:
   storage:
     gcs:
       bucket_name: foobar
@@ -626,7 +749,7 @@ storage_config:
     access_key_id: abc123
     secret_access_key: def789`
 
-			config, defaults := testContext(specificRulerConfig, nil)
+			config, defaults := testContext(explicitStorageConfig, nil)
 
 			assert.Equal(t, "s3://foo-bucket", config.StorageConfig.AWSStorageConfig.S3Config.Endpoint)
 			assert.Equal(t, "us-east1", config.StorageConfig.AWSStorageConfig.S3Config.Region)
@@ -640,6 +763,43 @@ storage_config:
 
 			// should remain empty
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.S3, config.Ruler.StoreConfig.S3)
+		})
+
+		t.Run("when common object_store config is provided, storage_config and rulers should use it", func(t *testing.T) {
+			commonStorageConfig := `common:
+  storage:
+    object_store:
+      gcs:
+        bucket_name: foobar
+        chunk_buffer_size: 17`
+
+			config, _ := testContext(commonStorageConfig, nil)
+
+			assert.Equal(t, "foobar", config.StorageConfig.ObjectStore.GCS.BucketName)
+			assert.Equal(t, 17, config.StorageConfig.ObjectStore.GCS.ChunkBufferSize)
+
+			// TODO: common config should be set on ruler bucket config
+		})
+
+		t.Run("explicit thanos object storage config provided via config file is preserved", func(t *testing.T) {
+			explicitStorageConfig := `common:
+  storage:
+    object_store:
+      gcs:
+        bucket_name: foobar
+        chunk_buffer_size: 17
+storage_config:
+  object_store:
+    gcs:
+      bucket_name: barfoo
+      chunk_buffer_size: 27`
+
+			config, _ := testContext(explicitStorageConfig, nil)
+
+			assert.Equal(t, "barfoo", config.StorageConfig.ObjectStore.GCS.BucketName)
+			assert.Equal(t, 27, config.StorageConfig.ObjectStore.GCS.ChunkBufferSize)
+
+			// TODO: common config should be set on ruler bucket config
 		})
 
 		t.Run("named storage config provided via config file is preserved", func(t *testing.T) {
@@ -798,6 +958,109 @@ query_range:
 		config, _ := testContext(configFileString, nil)
 		assert.True(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 	})
+
+	t.Run("querier worker grpc client behavior", func(t *testing.T) {
+		newConfigBothClientsSet := `---
+frontend_worker:
+  query_frontend_grpc_client:
+    tls_server_name: query-frontend
+  query_scheduler_grpc_client:
+    tls_server_name: query-scheduler
+`
+
+		oldConfig := `---
+frontend_worker:
+  grpc_client_config:
+    tls_server_name: query-frontend
+`
+
+		mixedConfig := `---
+frontend_worker:
+  grpc_client_config:
+    tls_server_name: query-frontend-old
+  query_frontend_grpc_client:
+    tls_server_name: query-frontend-new
+  query_scheduler_grpc_client:
+    tls_server_name: query-scheduler
+`
+		t.Run("new configs are used", func(t *testing.T) {
+			asserts := func(config ConfigWrapper) {
+				require.EqualValues(t, "query-frontend", config.Worker.NewQueryFrontendGRPCClientConfig.TLS.ServerName)
+				require.EqualValues(t, "query-scheduler", config.Worker.QuerySchedulerGRPCClientConfig.TLS.ServerName)
+				// we never want to use zero values by default.
+				require.NotEqualValues(t, 0, config.Worker.NewQueryFrontendGRPCClientConfig.MaxRecvMsgSize)
+				require.NotEqualValues(t, 0, config.Worker.QuerySchedulerGRPCClientConfig.MaxRecvMsgSize)
+			}
+
+			yamlConfig, _, err := configWrapperFromYAML(t, newConfigBothClientsSet, nil)
+			require.NoError(t, err)
+			asserts(yamlConfig)
+
+			// repeat the test using only cli flags.
+			cliFlags := []string{
+				"-querier.frontend-grpc-client.tls-server-name=query-frontend",
+				"-querier.scheduler-grpc-client.tls-server-name=query-scheduler",
+			}
+			cliConfig, _, err := configWrapperFromYAML(t, emptyConfigString, cliFlags)
+			require.NoError(t, err)
+			asserts(cliConfig)
+		})
+
+		t.Run("old config works the same way", func(t *testing.T) {
+			asserts := func(config ConfigWrapper) {
+				require.EqualValues(t, "query-frontend", config.Worker.NewQueryFrontendGRPCClientConfig.TLS.ServerName)
+				require.EqualValues(t, "query-frontend", config.Worker.QuerySchedulerGRPCClientConfig.TLS.ServerName)
+
+				// we never want to use zero values by default.
+				require.NotEqualValues(t, 0, config.Worker.NewQueryFrontendGRPCClientConfig.MaxRecvMsgSize)
+				require.NotEqualValues(t, 0, config.Worker.QuerySchedulerGRPCClientConfig.MaxRecvMsgSize)
+			}
+
+			yamlConfig, _, err := configWrapperFromYAML(t, oldConfig, nil)
+			require.NoError(t, err)
+			asserts(yamlConfig)
+
+			// repeat the test using only cli flags.
+			cliFlags := []string{
+				"-querier.frontend-client.tls-server-name=query-frontend",
+			}
+			cliConfig, _, err := configWrapperFromYAML(t, emptyConfigString, cliFlags)
+			require.NoError(t, err)
+			asserts(cliConfig)
+		})
+
+		t.Run("mixed frontend clients throws an error", func(t *testing.T) {
+			_, _, err := configWrapperFromYAML(t, mixedConfig, nil)
+			require.Error(t, err)
+
+			// repeat the test using only cli flags.
+			_, _, err = configWrapperFromYAML(t, emptyConfigString, []string{
+				"-querier.frontend-client.tls-server-name=query-frontend",
+				"-querier.frontend-grpc-client.tls-server-name=query-frontend",
+			})
+			require.Error(t, err)
+
+			// repeat the test mixing the YAML with cli flags.
+			_, _, err = configWrapperFromYAML(t, newConfigBothClientsSet, []string{
+				"-querier.frontend-client.tls-server-name=query-frontend",
+			})
+			require.Error(t, err)
+		})
+
+		t.Run("mix correct cli flags with YAML configs", func(t *testing.T) {
+			config, _, err := configWrapperFromYAML(t, newConfigBothClientsSet, []string{
+				"-querier.scheduler-grpc-client.tls-enabled=true",
+			})
+			require.NoError(t, err)
+
+			require.EqualValues(t, "query-frontend", config.Worker.NewQueryFrontendGRPCClientConfig.TLS.ServerName)
+			require.EqualValues(t, "query-scheduler", config.Worker.QuerySchedulerGRPCClientConfig.TLS.ServerName)
+			// we never want to use zero values by default.
+			require.NotEqualValues(t, 0, config.Worker.NewQueryFrontendGRPCClientConfig.MaxRecvMsgSize)
+			require.NotEqualValues(t, 0, config.Worker.QuerySchedulerGRPCClientConfig.MaxRecvMsgSize)
+			require.True(t, config.Worker.QuerySchedulerGRPCClientConfig.TLSEnabled)
+		})
+	})
 }
 
 const defaultResulsCacheString = `---
@@ -873,6 +1136,15 @@ chunk_store_config:
 	t.Run("for the index queries cache config", func(t *testing.T) {
 		t.Run("no embedded cache enabled by default if Redis is set", func(t *testing.T) {
 			configFileString := `---
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v12
+      index:
+        prefix: index_
+        period: 24h
 storage_config:
   index_queries_cache_config:
     redis:
@@ -885,6 +1157,15 @@ storage_config:
 
 		t.Run("no embedded cache enabled by default if Memcache is set", func(t *testing.T) {
 			configFileString := `---
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v12
+      index:
+        prefix: index_
+        period: 24h
 storage_config:
   index_queries_cache_config:
     memcached_client:
@@ -1174,7 +1455,7 @@ func Test_applyIngesterRingConfig(t *testing.T) {
 		assert.Equal(t, 9,
 			reflect.TypeOf(distributor.RingConfig{}).NumField(),
 			fmt.Sprintf(msgf, reflect.TypeOf(distributor.RingConfig{}).String()))
-		assert.Equal(t, 13,
+		assert.Equal(t, 15,
 			reflect.TypeOf(lokiring.RingConfig{}).NumField(),
 			fmt.Sprintf(msgf, reflect.TypeOf(lokiring.RingConfig{}).String()))
 	})
@@ -1580,6 +1861,15 @@ func Test_applyChunkRetain(t *testing.T) {
 
 	t.Run("chunk retain is set to IndexCacheValidity + 1 minute", func(t *testing.T) {
 		yamlContent := `
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v12
+      index:
+        prefix: index_
+        period: 24h
 storage_config:
   index_cache_validity: 10m
   index_queries_cache_config:
@@ -1594,6 +1884,33 @@ storage_config:
 		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
 		assert.NoError(t, err)
 		assert.Equal(t, 11*time.Minute, config.Ingester.RetainPeriod)
+	})
+
+	t.Run("chunk retain is not changed for tsdb index type", func(t *testing.T) {
+		yamlContent := `
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: tsdb
+      object_store: filesystem
+      schema: v12
+      index:
+        prefix: index_
+        period: 24h
+storage_config:
+  index_cache_validity: 10m
+  index_queries_cache_config:
+    memcached:
+      batch_size: 256
+      parallelism: 10
+    memcached_client:
+      consistent_hash: true
+      host: memcached-index-queries.loki-bigtable.svc.cluster.local
+      service: memcached-client
+`
+		config, _, err := configWrapperFromYAML(t, yamlContent, nil)
+		assert.NoError(t, err)
+		assert.Equal(t, time.Duration(0), config.Ingester.RetainPeriod)
 	})
 }
 

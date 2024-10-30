@@ -14,16 +14,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
-	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 const (
 	query        = "/api/v1/query_range?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680&step=120"
-	responseBody = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
+	responseBody = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]},"warnings":["this is a warning"]}`
 )
 
 var (
@@ -55,7 +55,8 @@ var (
 		},
 	}
 	parsedResponse = &PrometheusResponse{
-		Status: "success",
+		Status:   "success",
+		Warnings: []string{"this is a warning"},
 		Data: PrometheusData{
 			ResultType: model.ValMatrix.String(),
 			Result: []SampleStream{
@@ -414,11 +415,11 @@ func TestResultsCache(t *testing.T) {
 		c,
 		resultscache.ConstSplitter(day),
 		mockLimits{},
-		PrometheusCodec,
+		PrometheusCodecForRangeQueries,
 		PrometheusResponseExtractor{},
 		nil,
 		nil,
-		func(_ context.Context, tenantIDs []string, r Request) int {
+		func(_ context.Context, _ []string, _ Request) int {
 			return mockLimits{}.MaxQueryParallelism(context.Background(), "fake")
 		},
 		false,
@@ -461,11 +462,11 @@ func TestResultsCacheRecent(t *testing.T) {
 		c,
 		resultscache.ConstSplitter(day),
 		mockLimits{maxCacheFreshness: 10 * time.Minute},
-		PrometheusCodec,
+		PrometheusCodecForRangeQueries,
 		PrometheusResponseExtractor{},
 		nil,
 		nil,
-		func(_ context.Context, tenantIDs []string, r Request) int {
+		func(_ context.Context, _ []string, _ Request) int {
 			return mockLimits{}.MaxQueryParallelism(context.Background(), "fake")
 		},
 		false,
@@ -572,11 +573,11 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 				c,
 				resultscache.ConstSplitter(day),
 				mockLimits{maxCacheFreshness: 10 * time.Minute},
-				PrometheusCodec,
+				PrometheusCodecForRangeQueries,
 				PrometheusResponseExtractor{},
 				nil,
 				tc.shouldCache,
-				func(_ context.Context, tenantIDs []string, r Request) int {
+				func(_ context.Context, _ []string, _ Request) int {
 					return mockLimits{}.MaxQueryParallelism(context.Background(), "fake")
 				},
 				false,

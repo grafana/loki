@@ -21,16 +21,17 @@ import (
 	"github.com/grafana/dskit/user"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
-	"github.com/grafana/loki/pkg/querier/queryrange"
-	querier_stats "github.com/grafana/loki/pkg/querier/stats"
-	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
-	httpgrpcutil "github.com/grafana/loki/pkg/util/httpgrpc"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v2/frontendv2pb"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange"
+	querier_stats "github.com/grafana/loki/v3/pkg/querier/stats"
+	"github.com/grafana/loki/v3/pkg/scheduler/schedulerpb"
+	httpgrpcutil "github.com/grafana/loki/v3/pkg/util/httpgrpc"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, metrics *Metrics, codec RequestCodec) (*schedulerProcessor, []services.Service) {
@@ -38,9 +39,9 @@ func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, m
 		log:            log,
 		handler:        handler,
 		codec:          codec,
-		maxMessageSize: cfg.GRPCClientConfig.MaxSendMsgSize,
+		maxMessageSize: cfg.NewQueryFrontendGRPCClientConfig.MaxRecvMsgSize,
 		querierID:      cfg.QuerierID,
-		grpcConfig:     cfg.GRPCClientConfig,
+		grpcConfig:     cfg.NewQueryFrontendGRPCClientConfig,
 		schedulerClientFactory: func(conn *grpc.ClientConn) schedulerpb.SchedulerForQuerierClient {
 			return schedulerpb.NewSchedulerForQuerierClient(conn)
 		},
@@ -89,7 +90,7 @@ func (sp *schedulerProcessor) processQueriesOnSingleStream(workerCtx context.Con
 	// Run the querier loop (and so all the queries) in a dedicated context that we call the "execution context".
 	// The execution context is cancelled once the workerCtx is cancelled AND there's no inflight query executing.
 	execCtx, execCancel, inflightQuery := newExecutionContext(workerCtx, sp.log)
-	defer execCancel()
+	defer execCancel(errors.New("scheduler processor execution context canceled"))
 
 	backoff := backoff.New(execCtx, processorBackoffConfig)
 	for backoff.Ongoing() {
@@ -121,8 +122,8 @@ func (sp *schedulerProcessor) processQueriesOnSingleStream(workerCtx context.Con
 // process loops processing requests on an established stream.
 func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_QuerierLoopClient, address string, inflightQuery *atomic.Bool, workerID string) error {
 	// Build a child context so we can cancel a query when the stream is closed.
-	ctx, cancel := context.WithCancel(c.Context())
-	defer cancel()
+	ctx, cancel := context.WithCancelCause(c.Context())
+	defer cancel(errors.New("querier loop canceled"))
 
 	for {
 		start := time.Now()
@@ -315,6 +316,7 @@ func (sp *schedulerProcessor) createFrontendClient(addr string) (client.PoolClie
 		return nil, err
 	}
 
+	// nolint:staticcheck // grpc.Dial() has been deprecated; we'll address it before upgrading to gRPC 2.
 	conn, err := grpc.Dial(addr, opts...)
 	if err != nil {
 		return nil, err

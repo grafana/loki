@@ -14,9 +14,9 @@ import (
 	"github.com/gogo/googleapis/google/rpc"
 	"github.com/gogo/status"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
-	storage_errors "github.com/grafana/loki/pkg/storage/errors"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	storage_errors "github.com/grafana/loki/v3/pkg/storage/errors"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 // StatusClientClosedRequest is the status code for when a client request cancellation of an http request
@@ -26,6 +26,15 @@ const (
 	ErrClientCanceled   = "The request was cancelled by the client."
 	ErrDeadlineExceeded = "Request timed out, decrease the duration of the request or add more label matchers (prefer exact match over regex match) to reduce the amount of data processed."
 )
+
+func ClientGrpcStatusAndError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	status, newErr := ClientHTTPStatusAndError(err)
+	return httpgrpc.Errorf(status, "%s", newErr.Error())
+}
 
 // WriteError write a go error with the correct status code.
 func WriteError(err error, w http.ResponseWriter) {
@@ -39,6 +48,10 @@ func WriteError(err error, w http.ResponseWriter) {
 // ClientHTTPStatusAndError returns error and http status that is "safe" to return to client without
 // exposing any implementation details.
 func ClientHTTPStatusAndError(err error) (int, error) {
+	if err == nil {
+		return http.StatusOK, nil
+	}
+
 	var (
 		queryErr storage_errors.QueryError
 		promErr  promql.ErrStorage
@@ -69,7 +82,12 @@ func ClientHTTPStatusAndError(err error) (int, error) {
 		return http.StatusGatewayTimeout, errors.New(ErrDeadlineExceeded)
 	case errors.As(err, &queryErr):
 		return http.StatusBadRequest, err
-	case errors.Is(err, logqlmodel.ErrLimit) || errors.Is(err, logqlmodel.ErrParse) || errors.Is(err, logqlmodel.ErrPipeline) || errors.Is(err, logqlmodel.ErrBlocked) || errors.Is(err, logqlmodel.ErrParseMatchers):
+	case errors.Is(err, logqlmodel.ErrLimit) ||
+		errors.Is(err, logqlmodel.ErrParse) ||
+		errors.Is(err, logqlmodel.ErrPipeline) ||
+		errors.Is(err, logqlmodel.ErrBlocked) ||
+		errors.Is(err, logqlmodel.ErrParseMatchers) ||
+		errors.Is(err, logqlmodel.ErrUnsupportedSyntaxForInstantQuery):
 		return http.StatusBadRequest, err
 	case errors.Is(err, user.ErrNoOrgID):
 		return http.StatusBadRequest, err

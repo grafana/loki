@@ -15,7 +15,7 @@ import (
 	"github.com/mitchellh/go-wordwrap"
 	"gopkg.in/yaml.v3"
 
-	"github.com/grafana/loki/tools/doc-generator/parse"
+	"github.com/grafana/loki/v3/tools/doc-generator/parse"
 )
 
 type specWriter struct {
@@ -27,18 +27,20 @@ func (w *specWriter) writeConfigBlock(b *parse.ConfigBlock, indent int) {
 		return
 	}
 
+	var written bool
 	for i, entry := range b.Entries {
 		// Add a new line to separate from the previous entry
-		if i > 0 {
+		if written && i > 0 {
 			w.out.WriteString("\n")
 		}
 
-		w.writeConfigEntry(entry, indent)
+		written = w.writeConfigEntry(entry, indent)
 	}
 }
 
 // nolint:goconst
-func (w *specWriter) writeConfigEntry(e *parse.ConfigEntry, indent int) {
+func (w *specWriter) writeConfigEntry(e *parse.ConfigEntry, indent int) (written bool) {
+	written = true
 	if e.Kind == parse.KindBlock {
 		// If the block is a root block it will have its dedicated section in the doc,
 		// so here we've just to write down the reference without re-iterating on it.
@@ -64,6 +66,11 @@ func (w *specWriter) writeConfigEntry(e *parse.ConfigEntry, indent int) {
 	}
 
 	if e.Kind == parse.KindField || e.Kind == parse.KindSlice || e.Kind == parse.KindMap {
+		if strings.HasPrefix(e.Description(), "IGNORED:") {
+			// We skip documenting any field whose description starts with "IGNORED:".
+			return false
+		}
+
 		// Description
 		w.writeComment(e.Description(), indent, 0)
 		w.writeExample(e.FieldExample, indent)
@@ -87,6 +94,8 @@ func (w *specWriter) writeConfigEntry(e *parse.ConfigEntry, indent int) {
 			w.out.WriteString(pad(indent) + "[" + e.Name + ": <" + e.FieldType + ">" + defaultValue + "]\n")
 		}
 	}
+
+	return written
 }
 
 func (w *specWriter) writeFlag(name string, indent int) {

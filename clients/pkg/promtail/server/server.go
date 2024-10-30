@@ -23,9 +23,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/version"
 
-	"github.com/grafana/loki/clients/pkg/promtail/server/ui"
-	"github.com/grafana/loki/clients/pkg/promtail/targets"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/server/ui"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
 )
 
 var (

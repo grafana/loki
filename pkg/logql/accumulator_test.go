@@ -10,9 +10,11 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/sketch"
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/sketch"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
 )
 
 func TestAccumulatedStreams(t *testing.T) {
@@ -51,7 +53,7 @@ func TestDownstreamAccumulatorSimple(t *testing.T) {
 	}
 	// dummy params. Only need to populate direction & limit
 	params, err := NewLiteralParams(
-		`{app="foo"}`, time.Time{}, time.Time{}, 0, 0, direction, uint32(lim), nil,
+		`{app="foo"}`, time.Time{}, time.Time{}, 0, 0, direction, uint32(lim), nil, nil,
 	)
 	require.NoError(t, err)
 
@@ -110,7 +112,7 @@ func TestDownstreamAccumulatorMultiMerge(t *testing.T) {
 
 			// dummy params. Only need to populate direction & limit
 			params, err := NewLiteralParams(
-				`{app="foo"}`, time.Time{}, time.Time{}, 0, 0, direction, uint32(lim), nil,
+				`{app="foo"}`, time.Time{}, time.Time{}, 0, 0, direction, uint32(lim), nil, nil,
 			)
 			require.NoError(t, err)
 
@@ -149,12 +151,28 @@ func TestDownstreamAccumulatorMultiMerge(t *testing.T) {
 	}
 }
 
+func TestQuantileSketchDownstreamAccumulatorSimple(t *testing.T) {
+	acc := newQuantileSketchAccumulator()
+	downstreamResult := newQuantileSketchResults()[0]
+
+	require.Nil(t, acc.Accumulate(context.Background(), downstreamResult, 0))
+
+	res := acc.Result()[0]
+	got, ok := res.Data.(ProbabilisticQuantileMatrix)
+	require.Equal(t, true, ok)
+	require.Equal(t, 10, len(got), "correct number of vectors")
+
+	require.Equal(t, res.Headers[0].Name, "HeaderA")
+	require.Equal(t, res.Warnings, []string{"warning"})
+	require.Equal(t, int64(33), res.Statistics.Summary.Shards)
+}
+
 func BenchmarkAccumulator(b *testing.B) {
 
 	// dummy params. Only need to populate direction & limit
 	lim := 30
 	params, err := NewLiteralParams(
-		`{app="foo"}`, time.Time{}, time.Time{}, 0, 0, logproto.BACKWARD, uint32(lim), nil,
+		`{app="foo"}`, time.Time{}, time.Time{}, 0, 0, logproto.BACKWARD, uint32(lim), nil, nil,
 	)
 	require.NoError(b, err)
 
@@ -172,7 +190,7 @@ func BenchmarkAccumulator(b *testing.B) {
 		},
 		"quantile sketches": {
 			newQuantileSketchResults(),
-			func(p Params, _ []logqlmodel.Result) Accumulator {
+			func(_ Params, _ []logqlmodel.Result) Accumulator {
 				return newQuantileSketchAccumulator()
 			},
 			params,
@@ -218,6 +236,9 @@ func newStreamResults() []logqlmodel.Result {
 
 func newQuantileSketchResults() []logqlmodel.Result {
 	results := make([]logqlmodel.Result, 100)
+	statistics := stats.Result{
+		Summary: stats.Summary{Shards: 33},
+	}
 
 	for r := range results {
 		vectors := make([]ProbabilisticQuantileVector, 10)
@@ -231,7 +252,7 @@ func newQuantileSketchResults() []logqlmodel.Result {
 				}
 			}
 		}
-		results[r] = logqlmodel.Result{Data: ProbabilisticQuantileMatrix(vectors)}
+		results[r] = logqlmodel.Result{Data: ProbabilisticQuantileMatrix(vectors), Headers: []*definitions.PrometheusResponseHeader{{Name: "HeaderA", Values: []string{"ValueA"}}}, Warnings: []string{"warning"}, Statistics: statistics}
 	}
 
 	return results

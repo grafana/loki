@@ -12,8 +12,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	configv1 "github.com/grafana/loki/operator/api/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 )
 
@@ -390,7 +390,6 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 		},
 	}
 	for _, tc := range tc {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			err := ApplyGatewayDefaultOptions(tc.opts)
@@ -1324,7 +1323,6 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 	}
 
 	for _, tc := range tc {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			err := configureGatewayDeploymentForMode(tc.dpl, tc.tenants, tc.featureGates, "min-version", "cipher1,cipher2", tc.adminGroups)
@@ -1383,7 +1381,6 @@ func TestConfigureServiceForMode(t *testing.T) {
 		},
 	}
 	for _, tc := range tc {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			err := configureGatewayServiceForMode(tc.svc, tc.mode)
@@ -1495,11 +1492,14 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 								CertFile: "/path/to/cert/file",
 								KeyFile:  "/path/to/key/file",
 							},
-							BearerTokenSecret: corev1.SecretKeySelector{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: "abcd-gateway-token",
+							Authorization: &monitoringv1.SafeAuthorization{
+								Type: "Bearer",
+								Credentials: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "abcd-gateway-token",
+									},
+									Key: corev1.ServiceAccountTokenKey,
 								},
-								Key: corev1.ServiceAccountTokenKey,
 							},
 						},
 					},
@@ -1514,22 +1514,28 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 								CertFile: "/path/to/cert/file",
 								KeyFile:  "/path/to/key/file",
 							},
-							BearerTokenSecret: corev1.SecretKeySelector{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: "abcd-gateway-token",
+							Authorization: &monitoringv1.SafeAuthorization{
+								Type: "Bearer",
+								Credentials: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "abcd-gateway-token",
+									},
+									Key: corev1.ServiceAccountTokenKey,
 								},
-								Key: corev1.ServiceAccountTokenKey,
 							},
 						},
 						{
 							Port:   openshift.GatewayOPAInternalPortName,
 							Path:   "/metrics",
 							Scheme: "https",
-							BearerTokenSecret: corev1.SecretKeySelector{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: "abcd-gateway-token",
+							Authorization: &monitoringv1.SafeAuthorization{
+								Type: "Bearer",
+								Credentials: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "abcd-gateway-token",
+									},
+									Key: corev1.ServiceAccountTokenKey,
 								},
-								Key: corev1.ServiceAccountTokenKey,
 							},
 							TLSConfig: &monitoringv1.TLSConfig{
 								CAFile:   "/path/to/ca/file",
@@ -1566,11 +1572,14 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 								CertFile: "/path/to/cert/file",
 								KeyFile:  "/path/to/key/file",
 							},
-							BearerTokenSecret: corev1.SecretKeySelector{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: "abcd-gateway-token",
+							Authorization: &monitoringv1.SafeAuthorization{
+								Type: "Bearer",
+								Credentials: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "abcd-gateway-token",
+									},
+									Key: corev1.ServiceAccountTokenKey,
 								},
-								Key: corev1.ServiceAccountTokenKey,
 							},
 						},
 					},
@@ -1585,22 +1594,28 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 								CertFile: "/path/to/cert/file",
 								KeyFile:  "/path/to/key/file",
 							},
-							BearerTokenSecret: corev1.SecretKeySelector{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: "abcd-gateway-token",
+							Authorization: &monitoringv1.SafeAuthorization{
+								Type: "Bearer",
+								Credentials: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "abcd-gateway-token",
+									},
+									Key: corev1.ServiceAccountTokenKey,
 								},
-								Key: corev1.ServiceAccountTokenKey,
 							},
 						},
 						{
 							Port:   openshift.GatewayOPAInternalPortName,
 							Path:   "/metrics",
 							Scheme: "https",
-							BearerTokenSecret: corev1.SecretKeySelector{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: "abcd-gateway-token",
+							Authorization: &monitoringv1.SafeAuthorization{
+								Type: "Bearer",
+								Credentials: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: "abcd-gateway-token",
+									},
+									Key: corev1.ServiceAccountTokenKey,
 								},
-								Key: corev1.ServiceAccountTokenKey,
 							},
 							TLSConfig: &monitoringv1.TLSConfig{
 								CAFile:   "/path/to/ca/file",
@@ -1614,7 +1629,6 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 		},
 	}
 	for _, tc := range tc {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			err := configureGatewayServiceMonitorForMode(tc.sm, tc.opts)

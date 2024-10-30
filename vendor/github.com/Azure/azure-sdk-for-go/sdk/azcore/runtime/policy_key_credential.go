@@ -12,13 +12,19 @@ import (
 
 // KeyCredentialPolicy authorizes requests with a [azcore.KeyCredential].
 type KeyCredentialPolicy struct {
-	cred   *exported.KeyCredential
-	header string
-	prefix string
+	cred      *exported.KeyCredential
+	header    string
+	prefix    string
+	allowHTTP bool
 }
 
 // KeyCredentialPolicyOptions contains the optional values configuring [KeyCredentialPolicy].
 type KeyCredentialPolicyOptions struct {
+	// InsecureAllowCredentialWithHTTP enables authenticated requests over HTTP.
+	// By default, authenticated requests to an HTTP endpoint are rejected by the client.
+	// WARNING: setting this to true will allow sending the authentication key in clear text. Use with caution.
+	InsecureAllowCredentialWithHTTP bool
+
 	// Prefix is used if the key requires a prefix before it's inserted into the HTTP request.
 	Prefix string
 }
@@ -32,18 +38,27 @@ func NewKeyCredentialPolicy(cred *exported.KeyCredential, header string, options
 		options = &KeyCredentialPolicyOptions{}
 	}
 	return &KeyCredentialPolicy{
-		cred:   cred,
-		header: header,
-		prefix: options.Prefix,
+		cred:      cred,
+		header:    header,
+		prefix:    options.Prefix,
+		allowHTTP: options.InsecureAllowCredentialWithHTTP,
 	}
 }
 
 // Do implementes the Do method on the [policy.Polilcy] interface.
 func (k *KeyCredentialPolicy) Do(req *policy.Request) (*http.Response, error) {
-	val := exported.KeyCredentialGet(k.cred)
-	if k.prefix != "" {
-		val = k.prefix + val
+	// skip adding the authorization header if no KeyCredential was provided.
+	// this prevents a panic that might be hard to diagnose and allows testing
+	// against http endpoints that don't require authentication.
+	if k.cred != nil {
+		if err := checkHTTPSForAuth(req, k.allowHTTP); err != nil {
+			return nil, err
+		}
+		val := exported.KeyCredentialGet(k.cred)
+		if k.prefix != "" {
+			val = k.prefix + val
+		}
+		req.Raw().Header.Add(k.header, val)
 	}
-	req.Raw().Header.Add(k.header, val)
 	return req.Next()
 }

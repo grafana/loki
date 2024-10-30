@@ -5,7 +5,7 @@ let
     pname = "lambda-promtail";
 
     src = ./../../tools/lambda-promtail;
-    vendorSha256 = "11yNeQb4k5/w0+r+LJOmjXUQRaWvWSXqM+zMHtMVxY8=";
+    vendorHash = "sha256-zEN42vbw4mWtU8KOUi9ZSQiFoRJnH7C04aaZ2wCtA/o=";
 
     doCheck = false;
 
@@ -27,10 +27,10 @@ pkgs.stdenv.mkDerivation {
     bash
     gcc
     git
-    go
+    go_1_23
     golangci-lint
+    gotools
     nettools
-    systemd
     yamllint
 
     (import ./faillint.nix {
@@ -66,6 +66,7 @@ pkgs.stdenv.mkDerivation {
     export GOMODCACHE=$TMPDIR/gomodcache
     export GOLANGCI_LINT_CACHE=$TMPDIR/go-cache
     export GOPROXY=off
+    export BUILD_IN_CONTAINER=false
 
     make lint test
   '';

@@ -18,12 +18,12 @@ import (
 	"context"
 	"regexp"
 
-	"github.com/golang/protobuf/ptypes/empty"
-	btapb "google.golang.org/genproto/googleapis/bigtable/admin/v2"
-	iampb "google.golang.org/genproto/googleapis/iam/v1"
-	"google.golang.org/genproto/googleapis/longrunning"
+	btapb "cloud.google.com/go/bigtable/admin/apiv2/adminpb"
+	"cloud.google.com/go/iam/apiv1/iampb"
+	longrunning "cloud.google.com/go/longrunning/autogen/longrunningpb"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 var _ btapb.BigtableInstanceAdminServer = (*server)(nil)
@@ -58,7 +58,7 @@ var (
 	regInstanceName    = regexp.MustCompile(instanceNameRegRaw)
 )
 
-func (s *server) DeleteInstance(ctx context.Context, req *btapb.DeleteInstanceRequest) (*empty.Empty, error) {
+func (s *server) DeleteInstance(ctx context.Context, req *btapb.DeleteInstanceRequest) (*emptypb.Empty, error) {
 	name := req.GetName()
 	if !regInstanceName.Match([]byte(name)) {
 		return nil, status.Errorf(codes.InvalidArgument,
@@ -77,7 +77,7 @@ func (s *server) DeleteInstance(ctx context.Context, req *btapb.DeleteInstanceRe
 	// Then finally remove the instance.
 	delete(s.instances, name)
 
-	return new(empty.Empty), nil
+	return new(emptypb.Empty), nil
 }
 
 func (s *server) CreateCluster(ctx context.Context, req *btapb.CreateClusterRequest) (*longrunning.Operation, error) {
@@ -96,7 +96,7 @@ func (s *server) UpdateCluster(ctx context.Context, req *btapb.Cluster) (*longru
 	return nil, errUnimplemented
 }
 
-func (s *server) DeleteCluster(ctx context.Context, req *btapb.DeleteClusterRequest) (*empty.Empty, error) {
+func (s *server) DeleteCluster(ctx context.Context, req *btapb.DeleteClusterRequest) (*emptypb.Empty, error) {
 	return nil, errUnimplemented
 }
 
@@ -116,7 +116,7 @@ func (s *server) UpdateAppProfile(ctx context.Context, req *btapb.UpdateAppProfi
 	return nil, errUnimplemented
 }
 
-func (s *server) DeleteAppProfile(ctx context.Context, req *btapb.DeleteAppProfileRequest) (*empty.Empty, error) {
+func (s *server) DeleteAppProfile(ctx context.Context, req *btapb.DeleteAppProfileRequest) (*emptypb.Empty, error) {
 	return nil, errUnimplemented
 }
 

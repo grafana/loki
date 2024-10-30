@@ -101,6 +101,7 @@ const (
 var DefaultConfig = Config{
 	PutUserMetadata:  map[string]string{},
 	HTTPConfig:       exthttp.DefaultHTTPConfig,
+	DisableMultipart: false,
 	PartSize:         1024 * 1024 * 64, // 64MB.
 	BucketLookupType: AutoLookup,
 	SendContentMd5:   true, // Default to using MD5.
@@ -116,6 +117,7 @@ type Config struct {
 	Bucket             string             `yaml:"bucket"`
 	Endpoint           string             `yaml:"endpoint"`
 	Region             string             `yaml:"region"`
+	DisableDualstack   bool               `yaml:"disable_dualstack"`
 	AWSSDKAuth         bool               `yaml:"aws_sdk_auth"`
 	AccessKey          string             `yaml:"access_key"`
 	Insecure           bool               `yaml:"insecure"`
@@ -128,6 +130,7 @@ type Config struct {
 	ListObjectsVersion string             `yaml:"list_objects_version"`
 	BucketLookupType   BucketLookupType   `yaml:"bucket_lookup_type"`
 	SendContentMd5     bool               `yaml:"send_content_md5"`
+	DisableMultipart   bool               `yaml:"disable_multipart"`
 	// PartSize used for multipart upload. Only used if uploaded object size is known and larger than configured PartSize.
 	// NOTE we need to make sure this number does not produce more parts than 10 000.
 	PartSize    uint64    `yaml:"part_size"`
@@ -150,15 +153,16 @@ type TraceConfig struct {
 
 // Bucket implements the store.Bucket interface against s3-compatible APIs.
 type Bucket struct {
-	logger          log.Logger
-	name            string
-	client          *minio.Client
-	defaultSSE      encrypt.ServerSide
-	putUserMetadata map[string]string
-	storageClass    string
-	partSize        uint64
-	listObjectsV1   bool
-	sendContentMd5  bool
+	logger           log.Logger
+	name             string
+	client           *minio.Client
+	defaultSSE       encrypt.ServerSide
+	putUserMetadata  map[string]string
+	storageClass     string
+	disableMultipart bool
+	partSize         uint64
+	listObjectsV1    bool
+	sendContentMd5   bool
 }
 
 // parseConfig unmarshals a buffer into a Config with default values.
@@ -172,13 +176,13 @@ func parseConfig(conf []byte) (Config, error) {
 }
 
 // NewBucket returns a new Bucket using the provided s3 config values.
-func NewBucket(logger log.Logger, conf []byte, component string) (*Bucket, error) {
+func NewBucket(logger log.Logger, conf []byte, component string, rt http.RoundTripper) (*Bucket, error) {
 	config, err := parseConfig(conf)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewBucketWithConfig(logger, config, component)
+	return NewBucketWithConfig(logger, config, component, rt)
 }
 
 type overrideSignerType struct {
@@ -198,7 +202,7 @@ func (s *overrideSignerType) Retrieve() (credentials.Value, error) {
 }
 
 // NewBucketWithConfig returns a new Bucket using the provided s3 config values.
-func NewBucketWithConfig(logger log.Logger, config Config, component string) (*Bucket, error) {
+func NewBucketWithConfig(logger log.Logger, config Config, component string, rt http.RoundTripper) (*Bucket, error) {
 	var chain []credentials.Provider
 
 	// TODO(bwplotka): Don't do flags as they won't scale, use actual params like v2, v4 instead
@@ -238,25 +242,25 @@ func NewBucketWithConfig(logger log.Logger, config Config, component string) (*B
 			}),
 		}
 	}
-
+	if rt != nil {
+		config.HTTPConfig.Transport = rt
+	}
 	// Check if a roundtripper has been set in the config
 	// otherwise build the default transport.
-	var rt http.RoundTripper
+	var tpt http.RoundTripper
+	tpt, err := exthttp.DefaultTransport(config.HTTPConfig)
+	if err != nil {
+		return nil, err
+	}
 	if config.HTTPConfig.Transport != nil {
-		rt = config.HTTPConfig.Transport
-	} else {
-		var err error
-		rt, err = exthttp.DefaultTransport(config.HTTPConfig)
-		if err != nil {
-			return nil, err
-		}
+		tpt = config.HTTPConfig.Transport
 	}
 
 	client, err := minio.New(config.Endpoint, &minio.Options{
 		Creds:        credentials.NewChainCredentials(chain),
 		Secure:       !config.Insecure,
 		Region:       config.Region,
-		Transport:    rt,
+		Transport:    tpt,
 		BucketLookup: config.BucketLookupType.MinioType(),
 	})
 	if err != nil {
@@ -299,6 +303,11 @@ func NewBucketWithConfig(logger log.Logger, config Config, component string) (*B
 		}
 	}
 
+	if config.DisableDualstack {
+		// The value in the config is inverted for backward compatibility
+		client.SetS3EnableDualstack(false)
+	}
+
 	if config.TraceConfig.Enable {
 		logWriter := log.NewStdlibAdapter(level.Debug(logger), log.MessageKey("s3TraceMsg"))
 		client.TraceOn(logWriter)
@@ -319,15 +328,16 @@ func NewBucketWithConfig(logger log.Logger, config Config, component string) (*B
 	}
 
 	bkt := &Bucket{
-		logger:          logger,
-		name:            config.Bucket,
-		client:          client,
-		defaultSSE:      sse,
-		putUserMetadata: config.PutUserMetadata,
-		storageClass:    storageClass,
-		partSize:        config.PartSize,
-		listObjectsV1:   config.ListObjectsVersion == "v1",
-		sendContentMd5:  config.SendContentMd5,
+		logger:           logger,
+		name:             config.Bucket,
+		client:           client,
+		defaultSSE:       sse,
+		putUserMetadata:  config.PutUserMetadata,
+		storageClass:     storageClass,
+		disableMultipart: config.DisableMultipart,
+		partSize:         config.PartSize,
+		listObjectsV1:    config.ListObjectsVersion == "v1",
+		sendContentMd5:   config.SendContentMd5,
 	}
 	return bkt, nil
 }
@@ -442,7 +452,17 @@ func (b *Bucket) getRange(ctx context.Context, name string, off, length int64) (
 		return nil, err
 	}
 
-	return r, nil
+	return objstore.ObjectSizerReadCloser{
+		ReadCloser: r,
+		Size: func() (int64, error) {
+			stat, err := r.Stat()
+			if err != nil {
+				return 0, err
+			}
+
+			return stat.Size, nil
+		},
+	}, nil
 }
 
 // Get returns a reader for the given object name.
@@ -500,6 +520,7 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
 		r,
 		size,
 		minio.PutObjectOptions{
+			DisableMultipart:     b.disableMultipart,
 			PartSize:             partSize,
 			ServerSideEncryption: sse,
 			UserMetadata:         userMetadata,
@@ -600,7 +621,7 @@ func NewTestBucketFromConfig(t testing.TB, location string, c Config, reuseBucke
 	if err != nil {
 		return nil, nil, err
 	}
-	b, err := NewBucket(log.NewNopLogger(), bc, "thanos-e2e-test")
+	b, err := NewBucket(log.NewNopLogger(), bc, "thanos-e2e-test", nil)
 	if err != nil {
 		return nil, nil, err
 	}

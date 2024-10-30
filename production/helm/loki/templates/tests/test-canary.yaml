@@ -1,5 +1,5 @@
 {{- with .Values.test }}
-{{- if and .enabled $.Values.monitoring.selfMonitoring.enabled $.Values.monitoring.lokiCanary.enabled }}
+{{- if $.Values.lokiCanary.enabled }}
 ---
 apiVersion: v1
 kind: Pod
@@ -21,6 +21,8 @@ spec:
     - name: loki-helm-test
       image: {{ include "loki.helmTestImage" $ }}
       env:
+        - name: CANARY_SERVICE_ADDRESS
+          value: "{{ .canaryServiceAddress }}"
         - name: CANARY_PROMETHEUS_ADDRESS
           value: "{{ .prometheusAddress }}"
         {{- with .timeout }}

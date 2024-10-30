@@ -5,7 +5,7 @@ rec {
     version = "0.1.0";
 
     src = ./../../../../..;
-    vendorSha256 = null;
+    vendorHash = null;
 
     buildPhase = ''
       runHook preBuild

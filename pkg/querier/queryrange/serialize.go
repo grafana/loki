@@ -5,10 +5,10 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/util/httpreq"
-	serverutil "github.com/grafana/loki/pkg/util/server"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	serverutil "github.com/grafana/loki/v3/pkg/util/server"
 )
 
 type serializeRoundTripper struct {
@@ -25,7 +25,7 @@ func NewSerializeRoundTripper(next queryrangebase.Handler, codec queryrangebase.
 
 func (rt *serializeRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 	ctx := r.Context()
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "limitedRoundTripper.do")
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "serializeRoundTripper.do")
 	defer sp.Finish()
 
 	request, err := rt.codec.DecodeRequest(ctx, r, nil)

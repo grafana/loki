@@ -6,7 +6,6 @@ import (
 	"net/netip"
 	"unicode"
 
-	"github.com/prometheus/prometheus/model/labels"
 	"go4.org/netipx"
 )
 
@@ -27,14 +26,14 @@ type IPMatcher interface{}
 
 type IPLineFilter struct {
 	ip *ipFilter
-	ty labels.MatchType
+	ty LineMatchType
 }
 
 // NewIPLineFilter is used to construct ip filter as a `LineFilter`
-func NewIPLineFilter(pattern string, ty labels.MatchType) (*IPLineFilter, error) {
+func NewIPLineFilter(pattern string, ty LineMatchType) (*IPLineFilter, error) {
 	// check if `ty` supported in ip matcher.
 	switch ty {
-	case labels.MatchEqual, labels.MatchNotEqual:
+	case LineMatchEqual, LineMatchNotEqual:
 	default:
 		return nil, ErrIPFilterInvalidOperation
 	}
@@ -69,8 +68,8 @@ func (f *IPLineFilter) RequiredLabelNames() []string {
 	return []string{} // empty for line filter
 }
 
-func (f *IPLineFilter) filterTy(line []byte, ty labels.MatchType) bool {
-	if ty == labels.MatchNotEqual {
+func (f *IPLineFilter) filterTy(line []byte, ty LineMatchType) bool {
+	if ty == LineMatchNotEqual {
 		return !f.ip.filter(line)
 	}
 	return f.ip.filter(line)
@@ -283,14 +282,14 @@ func isHexDigit(r byte) bool {
 // It returns the number of chars in the initial segment of `s`
 // which consist only of chars from `accept`.
 func bytesSpan(s, accept []byte) int {
-	m := make(map[byte]bool)
+	var charset [256]bool
 
 	for _, r := range accept {
-		m[r] = true
+		charset[r] = true
 	}
 
 	for i, r := range s {
-		if !m[r] {
+		if !charset[r] {
 			return i
 		}
 	}

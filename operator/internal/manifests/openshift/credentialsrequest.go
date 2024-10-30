@@ -17,7 +17,7 @@ const azureFallbackRegion = "centralus"
 func BuildCredentialsRequest(opts Options) (*cloudcredentialv1.CredentialsRequest, error) {
 	stack := client.ObjectKey{Name: opts.BuildOpts.LokiStackName, Namespace: opts.BuildOpts.LokiStackNamespace}
 
-	providerSpec, err := encodeProviderSpec(opts.ManagedAuth)
+	providerSpec, err := encodeProviderSpec(opts.TokenCCOAuth)
 	if err != nil {
 		return nil, kverrors.Wrap(err, "failed encoding credentialsrequest provider spec")
 	}
@@ -42,7 +42,7 @@ func BuildCredentialsRequest(opts Options) (*cloudcredentialv1.CredentialsReques
 	}, nil
 }
 
-func encodeProviderSpec(env *config.ManagedAuthConfig) (*runtime.RawExtension, error) {
+func encodeProviderSpec(env *config.TokenCCOAuthConfig) (*runtime.RawExtension, error) {
 	var spec runtime.Object
 
 	switch {

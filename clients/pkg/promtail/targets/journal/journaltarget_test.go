@@ -20,10 +20,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
-	"github.com/grafana/loki/clients/pkg/promtail/positions"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/testutils"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/testutils"
 )
 
 type mockJournalReader struct {
@@ -45,7 +45,7 @@ func (r *mockJournalReader) Follow(until <-chan time.Time, _ io.Writer) error {
 }
 
 func newMockJournalEntry(entry *sdjournal.JournalEntry) journalEntryFunc {
-	return func(c sdjournal.JournalReaderConfig, cursor string) (*sdjournal.JournalEntry, error) {
+	return func(_ sdjournal.JournalReaderConfig, _ string) (*sdjournal.JournalEntry, error) {
 		return entry, nil
 	}
 }

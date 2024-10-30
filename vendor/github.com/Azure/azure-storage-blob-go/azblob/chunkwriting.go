@@ -188,8 +188,11 @@ func (c *copier) close() error {
 // waitForFinish waits for all writes to complete while combining errors from errCh
 func (c *copier) waitForFinish() error {
 	var err error
+	var mu sync.Mutex
 	done := make(chan struct{})
+	mu.Lock()
 	go func() {
+		defer mu.Unlock()
 		// when write latencies are long, several errors might have occurred
 		// drain them all as we wait for writes to complete.
 		err = c.drainErrs(done)
@@ -197,6 +200,9 @@ func (c *copier) waitForFinish() error {
 
 	c.wg.Wait()
 	close(done)
+
+	mu.Lock()
+	defer mu.Unlock()
 	return err
 }
 

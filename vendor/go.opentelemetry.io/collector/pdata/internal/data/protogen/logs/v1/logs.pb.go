@@ -125,9 +125,11 @@ func (SeverityNumber) EnumDescriptor() ([]byte, []int) {
 	return fileDescriptor_d1c030a3ec7e961e, []int{0}
 }
 
-// LogRecordFlags is defined as a protobuf 'uint32' type and is to be used as
-// bit-fields. Each non-zero value defined in this enum is a bit-mask.
-// To extract the bit-field, for example, use an expression like:
+// LogRecordFlags represents constants used to interpret the
+// LogRecord.flags field, which is protobuf 'fixed32' type and is to
+// be used as bit-fields. Each non-zero value defined in this enum is
+// a bit-mask.  To extract the bit-field, for example, use an
+// expression like:
 //
 //	(logRecord.flags & LOG_RECORD_FLAGS_TRACE_FLAGS_MASK)
 type LogRecordFlags int32
@@ -225,6 +227,9 @@ type ResourceLogs struct {
 	Resource v1.Resource `protobuf:"bytes,1,opt,name=resource,proto3" json:"resource"`
 	// A list of ScopeLogs that originate from a resource.
 	ScopeLogs []*ScopeLogs `protobuf:"bytes,2,rep,name=scope_logs,json=scopeLogs,proto3" json:"scope_logs,omitempty"`
+	// The Schema URL, if known. This is the identifier of the Schema that the resource data
+	// is recorded in. To learn more about Schema URL see
+	// https://opentelemetry.io/docs/specs/otel/schemas/#schema-url
 	// This schema_url applies to the data in the "resource" field. It does not apply
 	// to the data in the "scope_logs" field which have their own schema_url field.
 	SchemaUrl string `protobuf:"bytes,3,opt,name=schema_url,json=schemaUrl,proto3" json:"schema_url,omitempty"`
@@ -299,6 +304,9 @@ type ScopeLogs struct {
 	Scope v11.InstrumentationScope `protobuf:"bytes,1,opt,name=scope,proto3" json:"scope"`
 	// A list of log records.
 	LogRecords []*LogRecord `protobuf:"bytes,2,rep,name=log_records,json=logRecords,proto3" json:"log_records,omitempty"`
+	// The Schema URL, if known. This is the identifier of the Schema that the log data
+	// is recorded in. To learn more about Schema URL see
+	// https://opentelemetry.io/docs/specs/otel/schemas/#schema-url
 	// This schema_url applies to all logs in the "logs" field.
 	SchemaUrl string `protobuf:"bytes,3,opt,name=schema_url,json=schemaUrl,proto3" json:"schema_url,omitempty"`
 }

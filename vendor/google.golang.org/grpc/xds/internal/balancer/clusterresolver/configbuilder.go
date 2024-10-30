@@ -24,7 +24,6 @@ import (
 	"sort"
 
 	"google.golang.org/grpc/balancer/weightedroundrobin"
-	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/hierarchy"
 	internalserviceconfig "google.golang.org/grpc/internal/serviceconfig"
 	"google.golang.org/grpc/resolver"
@@ -98,47 +97,27 @@ func buildPriorityConfig(priorities []priorityConfig, xdsLBPolicy *internalservi
 			}
 			retConfig.Priorities = append(retConfig.Priorities, names...)
 			retAddrs = append(retAddrs, addrs...)
-			var odCfgs map[string]*outlierdetection.LBConfig
-			if envconfig.XDSOutlierDetection {
-				odCfgs = convertClusterImplMapToOutlierDetection(configs, p.mechanism.outlierDetection)
-				for n, c := range odCfgs {
-					retConfig.Children[n] = &priority.Child{
-						Config: &internalserviceconfig.BalancerConfig{Name: outlierdetection.Name, Config: c},
-						// Ignore all re-resolution from EDS children.
-						IgnoreReresolutionRequests: true,
-					}
-				}
-				continue
-			}
-			for n, c := range configs {
+			odCfgs := convertClusterImplMapToOutlierDetection(configs, p.mechanism.outlierDetection)
+			for n, c := range odCfgs {
 				retConfig.Children[n] = &priority.Child{
-					Config: &internalserviceconfig.BalancerConfig{Name: clusterimpl.Name, Config: c},
+					Config: &internalserviceconfig.BalancerConfig{Name: outlierdetection.Name, Config: c},
 					// Ignore all re-resolution from EDS children.
 					IgnoreReresolutionRequests: true,
 				}
-
 			}
+			continue
 		case DiscoveryMechanismTypeLogicalDNS:
 			name, config, addrs := buildClusterImplConfigForDNS(p.childNameGen, p.addresses, p.mechanism)
 			retConfig.Priorities = append(retConfig.Priorities, name)
 			retAddrs = append(retAddrs, addrs...)
-			var odCfg *outlierdetection.LBConfig
-			if envconfig.XDSOutlierDetection {
-				odCfg = makeClusterImplOutlierDetectionChild(config, p.mechanism.outlierDetection)
-				retConfig.Children[name] = &priority.Child{
-					Config: &internalserviceconfig.BalancerConfig{Name: outlierdetection.Name, Config: odCfg},
-					// Not ignore re-resolution from DNS children, they will trigger
-					// DNS to re-resolve.
-					IgnoreReresolutionRequests: false,
-				}
-				continue
-			}
+			odCfg := makeClusterImplOutlierDetectionChild(config, p.mechanism.outlierDetection)
 			retConfig.Children[name] = &priority.Child{
-				Config: &internalserviceconfig.BalancerConfig{Name: clusterimpl.Name, Config: config},
+				Config: &internalserviceconfig.BalancerConfig{Name: outlierdetection.Name, Config: odCfg},
 				// Not ignore re-resolution from DNS children, they will trigger
 				// DNS to re-resolve.
 				IgnoreReresolutionRequests: false,
 			}
+			continue
 		}
 	}
 	return retConfig, retAddrs, nil
@@ -167,8 +146,9 @@ func buildClusterImplConfigForDNS(g *nameGenerator, addrStrs []string, mechanism
 		retAddrs = append(retAddrs, hierarchy.Set(resolver.Address{Addr: addrStr}, []string{pName}))
 	}
 	return pName, &clusterimpl.LBConfig{
-		Cluster:     mechanism.Cluster,
-		ChildPolicy: &internalserviceconfig.BalancerConfig{Name: childPolicy},
+		Cluster:         mechanism.Cluster,
+		TelemetryLabels: mechanism.TelemetryLabels,
+		ChildPolicy:     &internalserviceconfig.BalancerConfig{Name: childPolicy},
 	}, retAddrs
 }
 
@@ -304,6 +284,7 @@ func priorityLocalitiesToClusterImpl(localities []xdsresource.Locality, priority
 		EDSServiceName:        mechanism.EDSServiceName,
 		LoadReportingServer:   mechanism.LoadReportingServer,
 		MaxConcurrentRequests: mechanism.MaxConcurrentRequests,
+		TelemetryLabels:       mechanism.TelemetryLabels,
 		DropCategories:        drops,
 		ChildPolicy:           xdsLBPolicy,
 	}, addrs, nil

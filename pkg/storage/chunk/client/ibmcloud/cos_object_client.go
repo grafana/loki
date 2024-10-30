@@ -3,6 +3,7 @@ package ibmcloud
 import (
 	"context"
 	"flag"
+	"fmt"
 	"hash/fnv"
 	"io"
 	"net"
@@ -27,10 +28,11 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
-	"github.com/grafana/loki/pkg/util/constants"
-	"github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const defaultCOSAuthEndpoint = "https://iam.cloud.ibm.com/identity/token"
@@ -318,26 +320,44 @@ func (c *COSObjectClient) DeleteObject(ctx context.Context, objectKey string) er
 }
 
 func (c *COSObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
+	if _, err := c.objectAttributes(ctx, objectKey, "COS.ObjectExists"); err != nil {
+		if c.IsObjectNotFoundErr(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func (c *COSObjectClient) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
+	return c.objectAttributes(ctx, objectKey, "COS.GetAttributes")
+}
+
+func (c *COSObjectClient) objectAttributes(ctx context.Context, objectKey, source string) (client.ObjectAttributes, error) {
 	bucket := c.bucketFromKey(objectKey)
-	err := instrument.CollectedRequest(ctx, "COS.GetObject", cosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
-		var requestErr error
-		_, requestErr = c.hedgedCOS.HeadObject(&cos.HeadObjectInput{
+	var objectSize int64
+	err := instrument.CollectedRequest(ctx, source, cosRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
+		headOutput, requestErr := c.hedgedCOS.HeadObject(&cos.HeadObjectInput{
 			Bucket: ibm.String(bucket),
 			Key:    ibm.String(objectKey),
 		})
-		return requestErr
+		if requestErr != nil {
+			return requestErr
+		}
+		if headOutput != nil && headOutput.ContentLength != nil {
+			objectSize = *headOutput.ContentLength
+		}
+		return nil
 	})
-
 	if err != nil {
-		return false, err
+		return client.ObjectAttributes{}, err
 	}
 
-	return true, nil
+	return client.ObjectAttributes{Size: objectSize}, nil
 }
 
 // GetObject returns a reader and the size for the specified object key from the configured S3 bucket.
 func (c *COSObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
-
 	var resp *cos.GetObjectOutput
 
 	// Map the key into a bucket
@@ -369,16 +389,50 @@ func (c *COSObjectClient) GetObject(ctx context.Context, objectKey string) (io.R
 	return nil, 0, errors.Wrap(err, "failed to get cos object")
 }
 
+// GetObject returns a reader and the size for the specified object key from the configured S3 bucket.
+func (c *COSObjectClient) GetObjectRange(ctx context.Context, objectKey string, offset, length int64) (io.ReadCloser, error) {
+	var resp *cos.GetObjectOutput
+
+	// Map the key into a bucket
+	bucket := c.bucketFromKey(objectKey)
+
+	retries := backoff.New(ctx, c.cfg.BackoffConfig)
+	err := ctx.Err()
+	for retries.Ongoing() {
+		if ctx.Err() != nil {
+			return nil, errors.Wrap(ctx.Err(), "ctx related error during cos getObject")
+		}
+		err = instrument.CollectedRequest(ctx, "COS.GetObject", cosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+			var requestErr error
+			resp, requestErr = c.hedgedCOS.GetObjectWithContext(ctx, &cos.GetObjectInput{
+				Bucket: ibm.String(bucket),
+				Key:    ibm.String(objectKey),
+				Range:  ibm.String(fmt.Sprintf("bytes=%d-%d", offset, offset+length-1)),
+			})
+			return requestErr
+		})
+		if err == nil && resp.Body != nil {
+			return resp.Body, nil
+		}
+		retries.Wait()
+	}
+	return nil, errors.Wrap(err, "failed to get cos object")
+}
+
 // PutObject into the store
-func (c *COSObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+func (c *COSObjectClient) PutObject(ctx context.Context, objectKey string, object io.Reader) error {
 	return instrument.CollectedRequest(ctx, "COS.PutObject", cosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		readSeeker, err := util.ReadSeeker(object)
+		if err != nil {
+			return err
+		}
 		putObjectInput := &cos.PutObjectInput{
-			Body:   object,
+			Body:   readSeeker,
 			Bucket: ibm.String(c.bucketFromKey(objectKey)),
 			Key:    ibm.String(objectKey),
 		}
 
-		_, err := c.cos.PutObjectWithContext(ctx, putObjectInput)
+		_, err = c.cos.PutObjectWithContext(ctx, putObjectInput)
 		return err
 	})
 }

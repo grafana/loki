@@ -29,13 +29,20 @@ type Transporter = exported.Transporter
 type Request = exported.Request
 
 // ClientOptions contains optional settings for a client's pipeline.
-// All zero-value fields will be initialized with default values.
+// Instances can be shared across calls to SDK client constructors when uniform configuration is desired.
+// Zero-value fields will have their specified default values applied during use.
 type ClientOptions struct {
-	// APIVersion overrides the default version requested of the service. Set with caution as this package version has not been tested with arbitrary service versions.
+	// APIVersion overrides the default version requested of the service.
+	// Set with caution as this package version has not been tested with arbitrary service versions.
 	APIVersion string
 
 	// Cloud specifies a cloud for the client. The default is Azure Public Cloud.
 	Cloud cloud.Configuration
+
+	// InsecureAllowCredentialWithHTTP enables authenticated requests over HTTP.
+	// By default, authenticated requests to an HTTP endpoint are rejected by the client.
+	// WARNING: setting this to true will allow sending the credential in clear text. Use with caution.
+	InsecureAllowCredentialWithHTTP bool
 
 	// Logging configures the built-in logging policy.
 	Logging LogOptions
@@ -145,6 +152,11 @@ type BearerTokenOptions struct {
 	// When this field isn't set, the policy follows its default behavior of authorizing every request with a bearer token from
 	// its given credential.
 	AuthorizationHandler AuthorizationHandler
+
+	// InsecureAllowCredentialWithHTTP enables authenticated requests over HTTP.
+	// By default, authenticated requests to an HTTP endpoint are rejected by the client.
+	// WARNING: setting this to true will allow sending the bearer token in clear text. Use with caution.
+	InsecureAllowCredentialWithHTTP bool
 }
 
 // AuthorizationHandler allows SDK developers to insert custom logic that runs when BearerTokenPolicy must authorize a request.

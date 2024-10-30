@@ -3,44 +3,59 @@ package bloomshipper
 import (
 	"context"
 	"fmt"
-	"path/filepath"
+	"path"
 	"sort"
+	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"golang.org/x/exp/slices"
 
-	"github.com/grafana/loki/pkg/storage"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/storage"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 var (
 	errNoStore = errors.New("no store found for time")
 )
 
-type Store interface {
+type StoreBase interface {
 	ResolveMetas(ctx context.Context, params MetaSearchParams) ([][]MetaRef, []*Fetcher, error)
 	FetchMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error)
-	FetchBlocks(ctx context.Context, refs []BlockRef) ([]*CloseableBlockQuerier, error)
+	FetchBlocks(ctx context.Context, refs []BlockRef, opts ...FetchOption) ([]*CloseableBlockQuerier, error)
+	TenantFilesForInterval(
+		ctx context.Context, interval Interval,
+		filter func(tenant string, object client.StorageObject) bool,
+	) (map[string][]client.StorageObject, error)
 	Fetcher(ts model.Time) (*Fetcher, error)
 	Client(ts model.Time) (Client, error)
 	Stop()
 }
 
+type Store interface {
+	StoreBase
+	BloomMetrics() *v1.Metrics
+	Allocator() mempool.Allocator
+}
+
 type bloomStoreConfig struct {
-	workingDir string
-	numWorkers int
+	workingDirs      []string
+	numWorkers       int
+	maxBloomPageSize int
 }
 
 // Compiler check to ensure bloomStoreEntry implements the Store interface
-var _ Store = &bloomStoreEntry{}
+var _ StoreBase = &bloomStoreEntry{}
 
 type bloomStoreEntry struct {
 	start              model.Time
@@ -56,7 +71,14 @@ func (b *bloomStoreEntry) ResolveMetas(ctx context.Context, params MetaSearchPar
 	var refs []MetaRef
 	tables := tablesForRange(b.cfg, params.Interval)
 	for _, table := range tables {
-		prefix := filepath.Join(rootFolder, table, params.TenantID, metasFolder)
+		prefix := path.Join(rootFolder, table, params.TenantID, metasFolder)
+		level.Debug(b.fetcher.logger).Log(
+			"msg", "listing metas",
+			"store", b.cfg.From,
+			"table", table,
+			"tenant", params.TenantID,
+			"prefix", prefix,
+		)
 		list, _, err := b.objectClient.List(ctx, prefix, "")
 		if err != nil {
 			return nil, nil, fmt.Errorf("error listing metas under prefix [%s]: %w", prefix, err)
@@ -93,15 +115,51 @@ func (b *bloomStoreEntry) ResolveMetas(ctx context.Context, params MetaSearchPar
 	return [][]MetaRef{refs}, []*Fetcher{b.fetcher}, nil
 }
 
+// FilterMetasOverlappingBounds filters metas that are within the given bounds.
+// the input metas are expected to be sorted by fingerprint.
+func FilterMetasOverlappingBounds(metas []Meta, bounds v1.FingerprintBounds) []Meta {
+	withinBounds := make([]Meta, 0, len(metas))
+	for _, meta := range metas {
+		// We can stop iterating once we find an item greater
+		// than the keyspace we're looking for
+		if bounds.Cmp(meta.Bounds.Min) == v1.After {
+			break
+		}
+
+		// Only check keyspace for now, because we don't have start/end timestamps in the refs
+		if !bounds.Overlaps(meta.Bounds) {
+			continue
+		}
+
+		withinBounds = append(withinBounds, meta)
+	}
+
+	return withinBounds
+}
+
 // FetchMetas implements store.
 func (b *bloomStoreEntry) FetchMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error) {
+	logger := spanlogger.FromContext(ctx)
+
+	resolverStart := time.Now()
 	metaRefs, fetchers, err := b.ResolveMetas(ctx, params)
+	resolverDuration := time.Since(resolverStart)
 	if err != nil {
 		return nil, err
 	}
 	if len(metaRefs) != len(fetchers) {
 		return nil, errors.New("metaRefs and fetchers have unequal length")
 	}
+
+	var metaCt int
+	for i := range metaRefs {
+		metaCt += len(metaRefs[i])
+	}
+	logger.LogKV(
+		"msg", "resolved metas",
+		"metas", metaCt,
+		"duration", resolverDuration,
+	)
 
 	var metas []Meta
 	for i := range fetchers {
@@ -115,8 +173,88 @@ func (b *bloomStoreEntry) FetchMetas(ctx context.Context, params MetaSearchParam
 }
 
 // FetchBlocks implements Store.
-func (b *bloomStoreEntry) FetchBlocks(ctx context.Context, refs []BlockRef) ([]*CloseableBlockQuerier, error) {
-	return b.fetcher.FetchBlocks(ctx, refs)
+func (b *bloomStoreEntry) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...FetchOption) ([]*CloseableBlockQuerier, error) {
+	return b.fetcher.FetchBlocks(ctx, refs, opts...)
+}
+
+func (b *bloomStoreEntry) TenantFilesForInterval(
+	ctx context.Context,
+	interval Interval,
+	filter func(tenant string, object client.StorageObject) bool,
+) (map[string][]client.StorageObject, error) {
+	tables := tablesForRange(b.cfg, interval)
+	if len(tables) == 0 {
+		return nil, nil
+	}
+
+	tenants := make(map[string][]client.StorageObject, 100)
+	for _, table := range tables {
+		prefix := path.Join(rootFolder, table)
+		level.Debug(b.fetcher.logger).Log(
+			"msg", "listing tenants",
+			"store", b.cfg.From,
+			"table", table,
+			"prefix", prefix,
+		)
+		objects, _, err := b.objectClient.List(ctx, prefix, "")
+		if err != nil {
+			if b.objectClient.IsObjectNotFoundErr(err) {
+				continue
+			}
+
+			return nil, fmt.Errorf("error listing tenants under prefix [%s]: %w", prefix, err)
+		}
+		if len(objects) == 0 {
+			continue
+		}
+
+		// Sort objects by the key to ensure keys are sorted by tenant.
+		cmpObj := func(a, b client.StorageObject) int {
+			if a.Key < b.Key {
+				return -1
+			}
+			if a.Key > b.Key {
+				return 1
+			}
+			return 0
+		}
+		if !slices.IsSortedFunc(objects, cmpObj) {
+			slices.SortFunc(objects, cmpObj)
+		}
+
+		for i := 0; i < len(objects); i++ {
+			tenant, err := b.TenantPrefix(key(objects[i].Key))
+			if err != nil {
+				return nil, fmt.Errorf("error parsing tenant key [%s]: %w", objects[i].Key, err)
+			}
+
+			// Search next object with different tenant
+			var j int
+			for j = i + 1; j < len(objects); j++ {
+				nextTenant, err := b.TenantPrefix(key(objects[j].Key))
+				if err != nil {
+					return nil, fmt.Errorf("error parsing tenant key [%s]: %w", objects[i].Key, err)
+				}
+				if nextTenant != tenant {
+					break
+				}
+			}
+
+			if _, ok := tenants[tenant]; !ok {
+				tenants[tenant] = nil // Initialize tenant with empty slice
+			}
+
+			if filter != nil && !filter(tenant, objects[i]) {
+				continue
+			}
+
+			// Add all objects for this tenant
+			tenants[tenant] = append(tenants[tenant], objects[i:j]...)
+			i = j - 1 // -1 because the loop will increment i by 1
+		}
+	}
+
+	return tenants, nil
 }
 
 // Fetcher implements Store.
@@ -142,6 +280,9 @@ type BloomStore struct {
 	stores             []*bloomStoreEntry
 	storageConfig      storage.Config
 	metrics            *storeMetrics
+	bloomMetrics       *v1.Metrics
+	logger             log.Logger
+	allocator          mempool.Allocator
 	defaultKeyResolver // TODO(owen-d): impl schema aware resolvers
 }
 
@@ -150,13 +291,17 @@ func NewBloomStore(
 	storageConfig storage.Config,
 	clientMetrics storage.ClientMetrics,
 	metasCache cache.Cache,
-	blocksCache cache.TypedCache[string, BlockDirectory],
+	blocksCache Cache,
+	allocator mempool.Allocator,
 	reg prometheus.Registerer,
 	logger log.Logger,
 ) (*BloomStore, error) {
 	store := &BloomStore{
 		storageConfig: storageConfig,
 		metrics:       newStoreMetrics(reg, constants.Loki, "bloom_store"),
+		bloomMetrics:  v1.NewMetrics(reg),
+		allocator:     allocator,
+		logger:        logger,
 	}
 
 	if metasCache == nil {
@@ -164,37 +309,46 @@ func NewBloomStore(
 	}
 
 	if blocksCache == nil {
-		blocksCache = cache.NewNoopTypedCache[string, BlockDirectory]()
+		return nil, errors.New("no blocks cache")
 	}
 
 	// sort by From time
 	sort.Slice(periodicConfigs, func(i, j int) bool {
-		return periodicConfigs[i].From.Time.Before(periodicConfigs[i].From.Time)
+		return periodicConfigs[i].From.Time.Before(periodicConfigs[j].From.Time)
 	})
 
 	// TODO(chaudum): Remove wrapper
 	cfg := bloomStoreConfig{
-		workingDir: storageConfig.BloomShipperConfig.WorkingDirectory,
-		numWorkers: storageConfig.BloomShipperConfig.BlocksDownloadingQueue.WorkersCount,
+		workingDirs:      storageConfig.BloomShipperConfig.WorkingDirectory,
+		numWorkers:       storageConfig.BloomShipperConfig.DownloadParallelism,
+		maxBloomPageSize: int(storageConfig.BloomShipperConfig.MaxQueryPageSize),
 	}
 
-	if err := util.EnsureDirectory(cfg.workingDir); err != nil {
-		return nil, errors.Wrapf(err, "failed to create working directory for bloom store: '%s'", cfg.workingDir)
+	for _, wd := range cfg.workingDirs {
+		if err := util.EnsureDirectory(wd); err != nil {
+			return nil, errors.Wrapf(err, "failed to create working directory for bloom store: '%s'", wd)
+		}
+		if err := util.RequirePermissions(wd, 0o700); err != nil {
+			return nil, errors.Wrapf(err, "insufficient permissions on working directory for bloom store: '%s'", wd)
+		}
 	}
 
 	for _, periodicConfig := range periodicConfigs {
-		objectClient, err := storage.NewObjectClient("bloom-shipper", periodicConfig.ObjectType, storageConfig, clientMetrics, prometheus.DefaultRegisterer)
+		objectClient, err := storage.NewObjectClient(periodicConfig.ObjectType, "bloomshipper", storageConfig, clientMetrics)
 		if err != nil {
 			return nil, errors.Wrapf(err, "creating object client for period %s", periodicConfig.From)
 		}
 
+		if storageConfig.BloomShipperConfig.CacheListOps {
+			objectClient = newCachedListOpObjectClient(objectClient, 5*time.Minute, 10*time.Second)
+		}
 		bloomClient, err := NewBloomClient(cfg, objectClient, logger)
 		if err != nil {
 			return nil, errors.Wrapf(err, "creating bloom client for period %s", periodicConfig.From)
 		}
 
 		regWithLabels := prometheus.WrapRegistererWith(prometheus.Labels{"store": periodicConfig.From.String()}, reg)
-		fetcher, err := NewFetcher(cfg, bloomClient, metasCache, blocksCache, regWithLabels, logger)
+		fetcher, err := NewFetcher(cfg, bloomClient, metasCache, blocksCache, regWithLabels, logger, store.bloomMetrics)
 		if err != nil {
 			return nil, errors.Wrapf(err, "creating fetcher for period %s", periodicConfig.From)
 		}
@@ -209,6 +363,10 @@ func NewBloomStore(
 	}
 
 	return store, nil
+}
+
+func (b *BloomStore) BloomMetrics() *v1.Metrics {
+	return b.bloomMetrics
 }
 
 // Impements KeyResolver
@@ -243,6 +401,34 @@ func (b *BloomStore) Block(ref BlockRef) (loc Location) {
 	return
 }
 
+func (b *BloomStore) TenantFilesForInterval(
+	ctx context.Context,
+	interval Interval,
+	filter func(tenant string, object client.StorageObject) bool,
+) (map[string][]client.StorageObject, error) {
+	var allTenants map[string][]client.StorageObject
+
+	err := b.forStores(ctx, interval, func(innerCtx context.Context, interval Interval, store StoreBase) error {
+		tenants, err := store.TenantFilesForInterval(innerCtx, interval, filter)
+		if err != nil {
+			return err
+		}
+
+		if allTenants == nil {
+			allTenants = tenants
+			return nil
+		}
+
+		for tenant, files := range tenants {
+			allTenants[tenant] = append(allTenants[tenant], files...)
+		}
+
+		return nil
+	})
+
+	return allTenants, err
+}
+
 // Fetcher implements Store.
 func (b *BloomStore) Fetcher(ts model.Time) (*Fetcher, error) {
 	if store := b.getStore(ts); store != nil {
@@ -259,12 +445,17 @@ func (b *BloomStore) Client(ts model.Time) (Client, error) {
 	return nil, errNoStore
 }
 
+// Allocator implements Store.
+func (b *BloomStore) Allocator() mempool.Allocator {
+	return b.allocator
+}
+
 // ResolveMetas implements Store.
 func (b *BloomStore) ResolveMetas(ctx context.Context, params MetaSearchParams) ([][]MetaRef, []*Fetcher, error) {
 	refs := make([][]MetaRef, 0, len(b.stores))
 	fetchers := make([]*Fetcher, 0, len(b.stores))
 
-	err := b.forStores(ctx, params.Interval, func(innerCtx context.Context, interval Interval, store Store) error {
+	err := b.forStores(ctx, params.Interval, func(innerCtx context.Context, interval Interval, store StoreBase) error {
 		newParams := params
 		newParams.Interval = interval
 		metas, fetcher, err := store.ResolveMetas(innerCtx, newParams)
@@ -305,12 +496,8 @@ func (b *BloomStore) FetchMetas(ctx context.Context, params MetaSearchParams) ([
 	return metas, nil
 }
 
-// FetchBlocks implements Store.
-func (b *BloomStore) FetchBlocks(ctx context.Context, blocks []BlockRef) ([]*CloseableBlockQuerier, error) {
-
-	var refs [][]BlockRef
-	var fetchers []*Fetcher
-
+// partitionBlocksByFetcher returns a slice of BlockRefs for each fetcher
+func (b *BloomStore) partitionBlocksByFetcher(blocks []BlockRef) (refs [][]BlockRef, fetchers []*Fetcher) {
 	for i := len(b.stores) - 1; i >= 0; i-- {
 		s := b.stores[i]
 		from, through := s.start, model.Latest
@@ -319,9 +506,9 @@ func (b *BloomStore) FetchBlocks(ctx context.Context, blocks []BlockRef) ([]*Clo
 		}
 
 		var res []BlockRef
-		for _, meta := range blocks {
-			if meta.StartTimestamp >= from && meta.StartTimestamp < through {
-				res = append(res, meta)
+		for _, ref := range blocks {
+			if ref.StartTimestamp >= from && ref.StartTimestamp < through {
+				res = append(res, ref)
 			}
 		}
 
@@ -331,9 +518,16 @@ func (b *BloomStore) FetchBlocks(ctx context.Context, blocks []BlockRef) ([]*Clo
 		}
 	}
 
+	return refs, fetchers
+}
+
+// FetchBlocks implements Store.
+func (b *BloomStore) FetchBlocks(ctx context.Context, blocks []BlockRef, opts ...FetchOption) ([]*CloseableBlockQuerier, error) {
+	refs, fetchers := b.partitionBlocksByFetcher(blocks)
+
 	results := make([]*CloseableBlockQuerier, 0, len(blocks))
 	for i := range fetchers {
-		res, err := fetchers[i].FetchBlocks(ctx, refs[i])
+		res, err := fetchers[i].FetchBlocks(ctx, refs[i], opts...)
 		if err != nil {
 			return results, err
 		}
@@ -341,17 +535,27 @@ func (b *BloomStore) FetchBlocks(ctx context.Context, blocks []BlockRef) ([]*Clo
 	}
 
 	// sort responses (results []*CloseableBlockQuerier) based on requests (blocks []BlockRef)
-	slices.SortFunc(results, func(a, b *CloseableBlockQuerier) int {
-		ia, ib := slices.Index(blocks, a.BlockRef), slices.Index(blocks, b.BlockRef)
-		if ia < ib {
-			return -1
-		} else if ia > ib {
-			return +1
-		}
-		return 0
-	})
+	sortBlocks(results, blocks)
 
 	return results, nil
+}
+
+func sortBlocks(bqs []*CloseableBlockQuerier, refs []BlockRef) {
+	tmp := make([]*CloseableBlockQuerier, len(refs))
+	for _, bq := range bqs {
+		if bq == nil {
+			// ignore responses with nil values
+			continue
+		}
+		idx := slices.Index(refs, bq.BlockRef)
+		if idx < 0 {
+			// not found
+			// should not happen in the context of sorting responses based on requests
+			continue
+		}
+		tmp[idx] = bq
+	}
+	copy(bqs, tmp)
 }
 
 // Stop implements Store.
@@ -385,7 +589,7 @@ func (b *BloomStore) storeDo(ts model.Time, f func(s *bloomStoreEntry) error) er
 	return fmt.Errorf("no store found for timestamp %s", ts.Time())
 }
 
-func (b *BloomStore) forStores(ctx context.Context, interval Interval, f func(innerCtx context.Context, interval Interval, store Store) error) error {
+func (b *BloomStore) forStores(ctx context.Context, interval Interval, f func(innerCtx context.Context, interval Interval, store StoreBase) error) error {
 	if len(b.stores) == 0 {
 		return nil
 	}
@@ -409,13 +613,6 @@ func (b *BloomStore) forStores(ctx context.Context, interval Interval, f func(in
 		return b.stores[j].start > through
 	})
 
-	min := func(a, b model.Time) model.Time {
-		if a < b {
-			return a
-		}
-		return b
-	}
-
 	start := from
 	for ; i < j; i++ {
 		nextSchemaStarts := model.Latest
@@ -438,6 +635,12 @@ func tablesForRange(periodConfig config.PeriodConfig, interval Interval) []strin
 	step := int64(periodConfig.IndexTables.Period.Seconds())
 	lower := interval.Start.Unix() / step
 	upper := interval.End.Unix() / step
+
+	// end is exclusive, so if it's on a step boundary, we don't want to include it
+	if interval.End.Unix()%step == 0 {
+		upper--
+	}
+
 	tables := make([]string, 0, 1+upper-lower)
 	for i := lower; i <= upper; i++ {
 		tables = append(tables, fmt.Sprintf("%s%d", periodConfig.IndexTables.Prefix, i))

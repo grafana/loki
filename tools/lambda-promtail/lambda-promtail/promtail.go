@@ -17,7 +17,7 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 const (
@@ -40,13 +40,6 @@ type batch struct {
 	streams map[string]*logproto.Stream
 	size    int
 	client  Client
-}
-
-type batchIf interface {
-	add(ctx context.Context, e entry) error
-	encode() ([]byte, int, error)
-	createPushRequest() (*logproto.PushRequest, int)
-	flushBatch(ctx context.Context) error
 }
 
 func newBatch(ctx context.Context, pClient Client, entries ...entry) (*batch, error) {
@@ -158,7 +151,7 @@ func (c *promtailClient) sendToPromtail(ctx context.Context, b *batch) error {
 		if status > 0 && status != 429 && status/100 != 5 {
 			break
 		}
-		level.Error(*c.log).Log("err", fmt.Errorf("error sending batch, will retry, status: %d error: %s\n", status, err))
+		level.Error(*c.log).Log("err", fmt.Errorf("error sending batch, will retry, status: %d error: %s", status, err))
 		backoff.Wait()
 
 		// Make sure it sends at least once before checking for retry.
@@ -168,7 +161,7 @@ func (c *promtailClient) sendToPromtail(ctx context.Context, b *batch) error {
 	}
 
 	if err != nil {
-		level.Error(*c.log).Log("err", fmt.Errorf("Failed to send logs! %s\n", err))
+		level.Error(*c.log).Log("err", fmt.Errorf("failed to send logs! %s", err))
 		return err
 	}
 

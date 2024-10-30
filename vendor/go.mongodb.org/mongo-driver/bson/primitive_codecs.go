@@ -8,6 +8,7 @@ package bson
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 
 	"go.mongodb.org/mongo-driver/bson/bsoncodec"
@@ -45,14 +46,25 @@ func (pc PrimitiveCodecs) RegisterPrimitiveCodecs(rb *bsoncodec.RegistryBuilder)
 
 // RawValueEncodeValue is the ValueEncoderFunc for RawValue.
 //
-// Deprecated: Use bson.NewRegistry to get a registry with all primitive encoders and decoders
-// registered.
+// If the RawValue's Type is "invalid" and the RawValue's Value is not empty or
+// nil, then this method will return an error.
+//
+// Deprecated: Use bson.NewRegistry to get a registry with all primitive
+// encoders and decoders registered.
 func (PrimitiveCodecs) RawValueEncodeValue(_ bsoncodec.EncodeContext, vw bsonrw.ValueWriter, val reflect.Value) error {
 	if !val.IsValid() || val.Type() != tRawValue {
-		return bsoncodec.ValueEncoderError{Name: "RawValueEncodeValue", Types: []reflect.Type{tRawValue}, Received: val}
+		return bsoncodec.ValueEncoderError{
+			Name:     "RawValueEncodeValue",
+			Types:    []reflect.Type{tRawValue},
+			Received: val,
+		}
 	}
 
 	rawvalue := val.Interface().(RawValue)
+
+	if !rawvalue.Type.IsValid() {
+		return fmt.Errorf("the RawValue Type specifies an invalid BSON type: %#x", byte(rawvalue.Type))
+	}
 
 	return bsonrw.Copier{}.CopyValueFromBytes(vw, rawvalue.Type, rawvalue.Value)
 }

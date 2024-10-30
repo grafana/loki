@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -17,16 +17,16 @@ import (
 
 	"github.com/grafana/regexp/syntax"
 
-	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 // Expr is the root expression which can be a SampleExpr or LogSelectorExpr
 //
 //sumtype:decl
 type Expr interface {
-	logQLExpr()      // ensure it's not implemented accidentally
-	Shardable() bool // A recursive check on the AST to see if it's shardable.
+	logQLExpr()                   // ensure it's not implemented accidentally
+	Shardable(topLevel bool) bool // A recursive check on the AST to see if it's shardable.
 	Walkable
 	fmt.Stringer
 	AcceptVisitor
@@ -60,7 +60,7 @@ func ExtractLineFilters(e Expr) []LineFilterExpr {
 	}
 	var filters []LineFilterExpr
 	visitor := &DepthFirstTraversal{
-		VisitLineFilterFn: func(v RootVisitor, e *LineFilterExpr) {
+		VisitLineFilterFn: func(_ RootVisitor, e *LineFilterExpr) {
 			if e != nil {
 				filters = append(filters, *e)
 			}
@@ -68,6 +68,55 @@ func ExtractLineFilters(e Expr) []LineFilterExpr {
 	}
 	e.Accept(visitor)
 	return filters
+}
+
+func ExtractLabelFiltersBeforeParser(e Expr) []*LabelFilterExpr {
+	if e == nil {
+		return nil
+	}
+	var (
+		filters         []*LabelFilterExpr
+		foundParseStage bool
+	)
+
+	visitor := &DepthFirstTraversal{
+		VisitLabelFilterFn: func(_ RootVisitor, e *LabelFilterExpr) {
+			if !foundParseStage {
+				filters = append(filters, e)
+			}
+		},
+
+		// TODO(rfratto): Find a way to generically represent or test for an
+		// expression that modifies extracted labels (parsers, keep, drop, etc.).
+		//
+		// As the AST is now, we can't prove at compile time that the list of
+		// visitors below is complete. For example, if a new parser stage
+		// expression is added without updating this list, blooms can silently
+		// misbehave.
+
+		VisitLogfmtParserFn:           func(_ RootVisitor, _ *LogfmtParserExpr) { foundParseStage = true },
+		VisitLabelParserFn:            func(_ RootVisitor, _ *LabelParserExpr) { foundParseStage = true },
+		VisitJSONExpressionParserFn:   func(_ RootVisitor, _ *JSONExpressionParser) { foundParseStage = true },
+		VisitLogfmtExpressionParserFn: func(_ RootVisitor, _ *LogfmtExpressionParser) { foundParseStage = true },
+		VisitLabelFmtFn:               func(_ RootVisitor, _ *LabelFmtExpr) { foundParseStage = true },
+		VisitKeepLabelFn:              func(_ RootVisitor, _ *KeepLabelsExpr) { foundParseStage = true },
+		VisitDropLabelsFn:             func(_ RootVisitor, _ *DropLabelsExpr) { foundParseStage = true },
+	}
+	e.Accept(visitor)
+	return filters
+}
+
+func IsMatchEqualFilterer(filterer log.LabelFilterer) bool {
+	switch filter := filterer.(type) {
+	case *log.LineFilterLabelFilter:
+		return filter.Type == labels.MatchEqual
+	case *log.StringLabelFilter:
+		return filter.Type == labels.MatchEqual
+	case *log.BinaryLabelFilter:
+		return IsMatchEqualFilterer(filter.Left) && IsMatchEqualFilterer(filter.Right)
+	default:
+		return false
+	}
 }
 
 // implicit holds default implementations
@@ -133,68 +182,75 @@ func (m MultiStageExpr) stages() ([]log.Stage, error) {
 // are as close to the front of the filter as possible.
 func (m MultiStageExpr) reorderStages() []StageExpr {
 	var (
-		result  = make([]StageExpr, 0, len(m))
-		filters = make([]*LineFilterExpr, 0, len(m))
-		rest    = make([]StageExpr, 0, len(m))
+		result         = make([]StageExpr, 0, len(m))
+		lineFilters    = make([]*LineFilterExpr, 0, len(m))
+		notLineFilters = make([]StageExpr, 0, len(m))
 	)
+
+	combineFilters := func() {
+		if len(lineFilters) > 0 {
+			result = append(result, combineFilters(lineFilters))
+		}
+
+		result = append(result, notLineFilters...)
+
+		lineFilters = lineFilters[:0]
+		notLineFilters = notLineFilters[:0]
+	}
 
 	for _, s := range m {
 		switch f := s.(type) {
+		case *LabelFilterExpr:
+			combineFilters()
+			result = append(result, f)
 		case *LineFilterExpr:
-			filters = append(filters, f)
+			lineFilters = append(lineFilters, f)
 		case *LineFmtExpr:
 			// line_format modifies the contents of the line so any line filter
 			// originally after a line_format must still be after the same
 			// line_format.
 
-			rest = append(rest, f)
+			notLineFilters = append(notLineFilters, f)
 
-			if len(filters) > 0 {
-				result = append(result, combineFilters(filters))
-			}
-			result = append(result, rest...)
-
-			filters = filters[:0]
-			rest = rest[:0]
+			combineFilters()
 		case *LabelParserExpr:
-			rest = append(rest, f)
+			notLineFilters = append(notLineFilters, f)
 
 			// unpack modifies the contents of the line so any line filter
 			// originally after an unpack must still be after the same
 			// unpack.
 			if f.Op == OpParserTypeUnpack {
-				if len(filters) > 0 {
-					result = append(result, combineFilters(filters))
-				}
-				result = append(result, rest...)
-
-				filters = filters[:0]
-				rest = rest[:0]
+				combineFilters()
 			}
 		default:
-			rest = append(rest, f)
+			notLineFilters = append(notLineFilters, f)
 		}
 	}
 
-	if len(filters) > 0 {
-		result = append(result, combineFilters(filters))
-	}
-	return append(result, rest...)
+	combineFilters()
+
+	return result
 }
 
 func combineFilters(in []*LineFilterExpr) StageExpr {
 	result := in[len(in)-1]
 	for i := len(in) - 2; i >= 0; i-- {
-		leafNode(result).Left = in[i]
+		leaf := leafNode(result, in[i])
+		if leaf != nil {
+			leaf.Left = in[i]
+		}
 	}
 
 	return result
 }
 
-func leafNode(in *LineFilterExpr) *LineFilterExpr {
+func leafNode(in *LineFilterExpr, child *LineFilterExpr) *LineFilterExpr {
 	current := in
 	//nolint:revive
 	for ; current.Left != nil; current = current.Left {
+		if current == child || current.Left == child {
+			return nil
+		}
 	}
 	return current
 }
@@ -231,7 +287,7 @@ func (e *MatchersExpr) AppendMatchers(m []*labels.Matcher) {
 	e.Mts = append(e.Mts, m...)
 }
 
-func (e *MatchersExpr) Shardable() bool { return true }
+func (e *MatchersExpr) Shardable(_ bool) bool { return true }
 
 func (e *MatchersExpr) Walk(f WalkFn) { f(e) }
 
@@ -273,9 +329,9 @@ func newPipelineExpr(left *MatchersExpr, pipeline MultiStageExpr) LogSelectorExp
 
 func (e *PipelineExpr) isLogSelectorExpr() {}
 
-func (e *PipelineExpr) Shardable() bool {
+func (e *PipelineExpr) Shardable(topLevel bool) bool {
 	for _, p := range e.MultiStages {
-		if !p.Shardable() {
+		if !p.Shardable(topLevel) {
 			return false
 		}
 	}
@@ -318,9 +374,14 @@ func (e *PipelineExpr) Pipeline() (log.Pipeline, error) {
 // HasFilter returns true if the pipeline contains stage that can filter out lines.
 func (e *PipelineExpr) HasFilter() bool {
 	for _, p := range e.MultiStages {
-		switch p.(type) {
-		case *LineFilterExpr, *LabelFilterExpr:
+		switch v := p.(type) {
+		case *LabelFilterExpr:
 			return true
+		case *LineFilterExpr:
+			// ignore empty matchers as they match everything
+			if !((v.Ty == log.LineMatchEqual || v.Ty == log.LineMatchRegexp) && v.Match == "") {
+				return true
+			}
 		default:
 			continue
 		}
@@ -329,20 +390,31 @@ func (e *PipelineExpr) HasFilter() bool {
 }
 
 type LineFilter struct {
-	Ty    labels.MatchType
+	Ty    log.LineMatchType
 	Match string
 	Op    string
 }
 
 type LineFilterExpr struct {
 	LineFilter
-	Left      *LineFilterExpr
+	Left *LineFilterExpr
+	// Or in LineFilterExpr works as follows.
+	//
+	// Case 1: With MatchEqual operators(|= or |~, etc)
+	// example: `{app="loki"} |= "test" |= "foo" or "bar"`
+	// expectation: match "test" AND (either "foo" OR "bar")
+	//
+	// Case 2: With NotMatchEqual operators (!= or !~, etc)
+	// example: `{app="loki"} != "test" != "foo" or "bar"`
+	// expectation: match !"test" AND !"foo" AND !"bar", Basically exactly as if `{app="loki"} != "test" != "foo" != "bar".
+
+	// See LineFilterExpr tests for more examples.
 	Or        *LineFilterExpr
 	IsOrChild bool
 	implicit
 }
 
-func newLineFilterExpr(ty labels.MatchType, op, match string) *LineFilterExpr {
+func newLineFilterExpr(ty log.LineMatchType, op, match string) *LineFilterExpr {
 	return &LineFilterExpr{
 		LineFilter: LineFilter{
 			Ty:    ty,
@@ -355,7 +427,18 @@ func newLineFilterExpr(ty labels.MatchType, op, match string) *LineFilterExpr {
 func newOrLineFilter(left, right *LineFilterExpr) *LineFilterExpr {
 	right.Ty = left.Ty
 
-	if left.Ty == labels.MatchEqual || left.Ty == labels.MatchRegexp {
+	// NOTE: Consider, we have chain of "or", != "foo" or "bar" or "baz"
+	// we parse from right to left, so first time left="bar", right="baz", and we don't know the actual `Ty` (equal: |=, notequal: !=, regex: |~, etc). So
+	// it will have default (0, LineMatchEqual).
+	// we only know real `Ty` in next stage, where left="foo", right="bar or baz", at this time, `Ty` is LineMatchNotEqual(!=).
+	// Now we need to update not just `right.Ty = left.Ty`, we also have to update all the `right.Or`  until `right.Or` is nil.
+	tmp := right
+	for tmp.Or != nil {
+		tmp.Or.Ty = left.Ty
+		tmp = tmp.Or
+	}
+
+	if left.Ty == log.LineMatchEqual || left.Ty == log.LineMatchRegexp || left.Ty == log.LineMatchPattern {
 		left.Or = right
 		right.IsOrChild = true
 		return left
@@ -366,6 +449,46 @@ func newOrLineFilter(left, right *LineFilterExpr) *LineFilterExpr {
 }
 
 func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineFilterExpr {
+	// NOTE: When parsing "or" chains in linefilter, particularly variations of NOT filters (!= or !~), we need to transform
+	// say (!= "foo" or "bar "baz") => (!="foo" != "bar" != "baz")
+	if right.Or != nil && !(right.Ty == log.LineMatchEqual || right.Ty == log.LineMatchRegexp || right.Ty == log.LineMatchPattern) {
+		right.Or.IsOrChild = false
+		tmp := right.Or
+		right.Or = nil
+		right = newNestedLineFilterExpr(right, tmp)
+	}
+
+	// NOTE: Before supporting `or` in linefilter, `right` will always be a leaf node (right.next == nil)
+	// After supporting `or` in linefilter, `right` may not be a leaf node (e.g: |= "a" or "b). Here "b".Left = "a")
+	// We traverse the tree recursively untile we make `right` leaf node.
+	// Consider the following expression. {app="loki"} != "test" != "foo" or "bar or "car""
+	// It first creates following tree on the left and transformed into the one on the right.
+	//                                                                              ┌────────────┐
+	//               ┌────────────┐                                                 │   root     │
+	//               │   root     │                                                 └──────┬─────┘
+	//               └──────┬─────┘                                                        │
+	//                      │                                                              │
+	//                      │                                                              │
+	//                      │                       ─────────►            ┌────────────────┴─────────────┐
+	//     ┌────────────────┴─────────────┐                               │                              │
+	//     │                              │                           ┌───┴────┐                         │
+	//     │                              │                           │ foo    │                      ┌──┴────┐
+	//     │                            ┌─┴────┐                      └───┬────┘                      │  bar  │
+	// ┌───┴────┐                       │ bar  │                          │                           └───────┘
+	// │  test  │                       └──┬───┘                          │
+	// └────────┘                          │                              │
+	//                                     │                     ┌────────┘
+	//                                     │                     │
+	//                           ┌─────────┘                     │
+	//                           │                               │
+	//                           │                           ┌───┴───┐
+	//                           │                           │  test │
+	//                         ┌─┴────┐                      └───────┘
+	//                         │ foo  │
+	//                         └──────┘
+	if right.Left != nil {
+		left = newNestedLineFilterExpr(left, right.Left)
+	}
 	return &LineFilterExpr{
 		Left:       left,
 		LineFilter: right.LineFilter,
@@ -389,7 +512,7 @@ func (e *LineFilterExpr) Accept(v RootVisitor) {
 }
 
 // AddFilterExpr adds a filter expression to a logselector expression.
-func AddFilterExpr(expr LogSelectorExpr, ty labels.MatchType, op, match string) (LogSelectorExpr, error) {
+func AddFilterExpr(expr LogSelectorExpr, ty log.LineMatchType, op, match string) (LogSelectorExpr, error) {
 	filter := newLineFilterExpr(ty, op, match)
 	switch e := expr.(type) {
 	case *MatchersExpr:
@@ -402,7 +525,7 @@ func AddFilterExpr(expr LogSelectorExpr, ty labels.MatchType, op, match string) 
 	}
 }
 
-func (e *LineFilterExpr) Shardable() bool { return true }
+func (e *LineFilterExpr) Shardable(_ bool) bool { return true }
 
 func (e *LineFilterExpr) String() string {
 	var sb strings.Builder
@@ -412,16 +535,7 @@ func (e *LineFilterExpr) String() string {
 	}
 
 	if !e.IsOrChild { // Only write the type when we're not chaining "or" filters
-		switch e.Ty {
-		case labels.MatchRegexp:
-			sb.WriteString("|~")
-		case labels.MatchNotRegexp:
-			sb.WriteString("!~")
-		case labels.MatchEqual:
-			sb.WriteString("|=")
-		case labels.MatchNotEqual:
-			sb.WriteString("!=")
-		}
+		sb.WriteString(e.Ty.String())
 		sb.WriteString(" ")
 	}
 
@@ -534,7 +648,7 @@ func newLogfmtParserExpr(flags []string) *LogfmtParserExpr {
 
 func (*LogfmtParserExpr) isStageExpr() {}
 
-func (e *LogfmtParserExpr) Shardable() bool { return true }
+func (e *LogfmtParserExpr) Shardable(_ bool) bool { return true }
 
 func (e *LogfmtParserExpr) Walk(f WalkFn) { f(e) }
 
@@ -591,7 +705,7 @@ func newLabelParserExpr(op, param string) *LabelParserExpr {
 
 func (*LabelParserExpr) isStageExpr() {}
 
-func (e *LabelParserExpr) Shardable() bool { return true }
+func (e *LabelParserExpr) Shardable(_ bool) bool { return true }
 
 func (e *LabelParserExpr) Walk(f WalkFn) { f(e) }
 
@@ -640,7 +754,7 @@ func newLabelFilterExpr(filterer log.LabelFilterer) *LabelFilterExpr {
 
 func (*LabelFilterExpr) isStageExpr() {}
 
-func (e *LabelFilterExpr) Shardable() bool { return true }
+func (e *LabelFilterExpr) Shardable(_ bool) bool { return true }
 
 func (e *LabelFilterExpr) Walk(f WalkFn) { f(e) }
 
@@ -681,7 +795,7 @@ func newDecolorizeExpr() *DecolorizeExpr {
 
 func (*DecolorizeExpr) isStageExpr() {}
 
-func (e *DecolorizeExpr) Shardable() bool { return true }
+func (e *DecolorizeExpr) Shardable(_ bool) bool { return true }
 
 func (e *DecolorizeExpr) Stage() (log.Stage, error) {
 	return log.NewDecolorizer()
@@ -704,7 +818,7 @@ func newDropLabelsExpr(dropLabels []log.DropLabel) *DropLabelsExpr {
 
 func (*DropLabelsExpr) isStageExpr() {}
 
-func (e *DropLabelsExpr) Shardable() bool { return true }
+func (e *DropLabelsExpr) Shardable(_ bool) bool { return true }
 
 func (e *DropLabelsExpr) Stage() (log.Stage, error) {
 	return log.NewDropLabels(e.dropLabels), nil
@@ -746,7 +860,7 @@ func newKeepLabelsExpr(keepLabels []log.KeepLabel) *KeepLabelsExpr {
 
 func (*KeepLabelsExpr) isStageExpr() {}
 
-func (e *KeepLabelsExpr) Shardable() bool { return true }
+func (e *KeepLabelsExpr) Shardable(_ bool) bool { return true }
 
 func (e *KeepLabelsExpr) Stage() (log.Stage, error) {
 	return log.NewKeepLabels(e.keepLabels), nil
@@ -781,7 +895,7 @@ func (e *KeepLabelsExpr) Accept(v RootVisitor) { v.VisitKeepLabel(e) }
 
 func (*LineFmtExpr) isStageExpr() {}
 
-func (e *LineFmtExpr) Shardable() bool { return true }
+func (e *LineFmtExpr) Shardable(_ bool) bool { return true }
 
 func (e *LineFmtExpr) Walk(f WalkFn) { f(e) }
 
@@ -808,7 +922,7 @@ func newLabelFmtExpr(fmts []log.LabelFmt) *LabelFmtExpr {
 
 func (*LabelFmtExpr) isStageExpr() {}
 
-func (e *LabelFmtExpr) Shardable() bool {
+func (e *LabelFmtExpr) Shardable(_ bool) bool {
 	// While LabelFmt is shardable in certain cases, it is not always,
 	// but this is left to the shardmapper to determine
 	return true
@@ -856,7 +970,7 @@ func newJSONExpressionParser(expressions []log.LabelExtractionExpr) *JSONExpress
 
 func (*JSONExpressionParser) isStageExpr() {}
 
-func (j *JSONExpressionParser) Shardable() bool { return true }
+func (j *JSONExpressionParser) Shardable(_ bool) bool { return true }
 
 func (j *JSONExpressionParser) Walk(f WalkFn) { f(j) }
 
@@ -912,7 +1026,7 @@ func newLogfmtExpressionParser(expressions []log.LabelExtractionExpr, flags []st
 
 func (*LogfmtExpressionParser) isStageExpr() {}
 
-func (l *LogfmtExpressionParser) Shardable() bool { return true }
+func (l *LogfmtExpressionParser) Shardable(_ bool) bool { return true }
 
 func (l *LogfmtExpressionParser) Walk(f WalkFn) { f(l) }
 
@@ -1033,7 +1147,7 @@ func (r LogRange) String() string {
 	return sb.String()
 }
 
-func (r *LogRange) Shardable() bool { return r.Left.Shardable() }
+func (r *LogRange) Shardable(topLevel bool) bool { return r.Left.Shardable(topLevel) }
 
 func (r *LogRange) Walk(f WalkFn) {
 	f(r)
@@ -1188,7 +1302,9 @@ const (
 	// internal expressions not represented in LogQL. These are used to
 	// evaluate expressions differently resulting in intermediate formats
 	// that are not consumable by LogQL clients but are used for sharding.
-	OpRangeTypeQuantileSketch = "__quantile_sketch_over_time__"
+	OpRangeTypeQuantileSketch     = "__quantile_sketch_over_time__"
+	OpRangeTypeFirstWithTimestamp = "__first_over_time_ts__"
+	OpRangeTypeLastWithTimestamp  = "__last_over_time_ts__"
 )
 
 func IsComparisonOperator(op string) bool {
@@ -1292,7 +1408,9 @@ func (e *RangeAggregationExpr) MatcherGroups() ([]MatcherRange, error) {
 func (e RangeAggregationExpr) validate() error {
 	if e.Grouping != nil {
 		switch e.Operation {
-		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeQuantileSketch, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeFirst, OpRangeTypeLast:
+		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile,
+			OpRangeTypeQuantileSketch, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeFirst,
+			OpRangeTypeLast, OpRangeTypeFirstWithTimestamp, OpRangeTypeLastWithTimestamp:
 		default:
 			return fmt.Errorf("grouping not allowed for %s aggregation", e.Operation)
 		}
@@ -1301,7 +1419,8 @@ func (e RangeAggregationExpr) validate() error {
 		switch e.Operation {
 		case OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev,
 			OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeRate, OpRangeTypeRateCounter,
-			OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast, OpRangeTypeQuantileSketch:
+			OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast, OpRangeTypeQuantileSketch,
+			OpRangeTypeFirstWithTimestamp, OpRangeTypeLastWithTimestamp:
 			return nil
 		default:
 			return fmt.Errorf("invalid aggregation %s with unwrap", e.Operation)
@@ -1337,8 +1456,15 @@ func (e *RangeAggregationExpr) String() string {
 }
 
 // impl SampleExpr
-func (e *RangeAggregationExpr) Shardable() bool {
-	return shardableOps[e.Operation] && e.Left.Shardable()
+func (e *RangeAggregationExpr) Shardable(topLevel bool) bool {
+	// Here we are blocking sharding of quantile operations if they are not
+	// the top level aggregation in a query, such as max(quantile_over_time(...)).
+	// The sharding here will be blocked even if the feature flag in the shardmapper
+	// to enable sharding of quantile queries is enabled.
+	if e.Operation == OpRangeTypeQuantile && !topLevel {
+		return false
+	}
+	return shardableOps[e.Operation] && e.Left.Shardable(topLevel)
 }
 
 func (e *RangeAggregationExpr) Walk(f WalkFn) {
@@ -1496,8 +1622,8 @@ func (e *VectorAggregationExpr) String() string {
 }
 
 // impl SampleExpr
-func (e *VectorAggregationExpr) Shardable() bool {
-	if !shardableOps[e.Operation] || !e.Left.Shardable() {
+func (e *VectorAggregationExpr) Shardable(topLevel bool) bool {
+	if !shardableOps[e.Operation] || !e.Left.Shardable(topLevel) {
 		return false
 	}
 
@@ -1524,7 +1650,7 @@ func (e *VectorAggregationExpr) Shardable() bool {
 		// `max( max(sum(rate(shard1))) ++ max(sum(rate(shard2))) ... etc)`
 		// because it’s only taking the maximum from each shard,
 		// but we actually need to sum all the shards then put the max on top
-		if _, ok := e.Left.(*RangeAggregationExpr); ok {
+		if _, ok := e.Left.(*RangeAggregationExpr); ok && e.Left.Shardable(false) {
 			return true
 		}
 		return false
@@ -1654,7 +1780,7 @@ func (e *BinOpExpr) String() string {
 }
 
 // impl SampleExpr
-func (e *BinOpExpr) Shardable() bool {
+func (e *BinOpExpr) Shardable(topLevel bool) bool {
 	if e.Opts != nil && e.Opts.VectorMatching != nil {
 		matching := e.Opts.VectorMatching
 		// prohibit sharding when we're changing the label groupings,
@@ -1666,7 +1792,7 @@ func (e *BinOpExpr) Shardable() bool {
 			return false
 		}
 	}
-	return shardableOps[e.Op] && e.SampleExpr.Shardable() && e.RHS.Shardable()
+	return shardableOps[e.Op] && e.SampleExpr.Shardable(topLevel) && e.RHS.Shardable(topLevel)
 }
 
 func (e *BinOpExpr) Walk(f WalkFn) {
@@ -2006,7 +2132,7 @@ func (e *LiteralExpr) isSampleExpr()                           {}
 func (e *LiteralExpr) isLogSelectorExpr()                      {}
 func (e *LiteralExpr) Selector() (LogSelectorExpr, error)      { return e, e.err }
 func (e *LiteralExpr) HasFilter() bool                         { return false }
-func (e *LiteralExpr) Shardable() bool                         { return true }
+func (e *LiteralExpr) Shardable(_ bool) bool                   { return true }
 func (e *LiteralExpr) Walk(f WalkFn)                           { f(e) }
 func (e *LiteralExpr) Accept(v RootVisitor)                    { v.VisitLiteral(e) }
 func (e *LiteralExpr) Pipeline() (log.Pipeline, error)         { return log.NewNoopPipeline(), nil }
@@ -2093,7 +2219,7 @@ func (e *LabelReplaceExpr) Extractor() (SampleExtractor, error) {
 	return e.Left.Extractor()
 }
 
-func (e *LabelReplaceExpr) Shardable() bool {
+func (e *LabelReplaceExpr) Shardable(_ bool) bool {
 	return false
 }
 
@@ -2155,6 +2281,8 @@ var shardableOps = map[string]bool{
 	// range vector ops
 	OpRangeTypeAvg:       true,
 	OpRangeTypeCount:     true,
+	OpRangeTypeFirst:     true,
+	OpRangeTypeLast:      true,
 	OpRangeTypeRate:      true,
 	OpRangeTypeBytes:     true,
 	OpRangeTypeBytesRate: true,
@@ -2233,7 +2361,7 @@ func (e *VectorExpr) Value() (float64, error) {
 
 func (e *VectorExpr) Selector() (LogSelectorExpr, error)      { return e, e.err }
 func (e *VectorExpr) HasFilter() bool                         { return false }
-func (e *VectorExpr) Shardable() bool                         { return false }
+func (e *VectorExpr) Shardable(_ bool) bool                   { return false }
 func (e *VectorExpr) Walk(f WalkFn)                           { f(e) }
 func (e *VectorExpr) Accept(v RootVisitor)                    { v.VisitVector(e) }
 func (e *VectorExpr) Pipeline() (log.Pipeline, error)         { return log.NewNoopPipeline(), nil }

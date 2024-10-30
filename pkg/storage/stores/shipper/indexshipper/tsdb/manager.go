@@ -15,10 +15,11 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/types"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // nolint:revive
@@ -220,7 +221,7 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads, indexShipper indexshippe
 		_, err = b.Build(
 			context.Background(),
 			filepath.Join(managerScratchDir(m.dir), m.name),
-			func(from, through model.Time, checksum uint32) Identifier {
+			func(_, _ model.Time, _ uint32) Identifier {
 				return dst
 			},
 		)
@@ -276,7 +277,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier, legacy boo
 
 	if legacy {
 		// pass all TSDB tableRanges as the legacy WAL files are not period specific.
-		tableRanges = config.GetIndexStoreTableRanges(config.TSDBType, m.schemaCfg.Configs)
+		tableRanges = config.GetIndexStoreTableRanges(types.TSDBType, m.schemaCfg.Configs)
 
 		// do not ship legacy WAL files.
 		// TSDBs built from these WAL files would get loaded on starting tsdbManager

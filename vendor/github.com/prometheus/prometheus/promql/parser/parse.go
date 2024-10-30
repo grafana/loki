@@ -72,8 +72,7 @@ func WithFunctions(functions map[string]*Function) Opt {
 }
 
 // NewParser returns a new parser.
-// nolint:revive
-func NewParser(input string, opts ...Opt) *parser {
+func NewParser(input string, opts ...Opt) *parser { //nolint:revive // unexported-return.
 	p := parserPool.Get().(*parser)
 
 	p.functions = Functions
@@ -172,7 +171,7 @@ func ParseExpr(input string) (expr Expr, err error) {
 	return p.ParseExpr()
 }
 
-// ParseMetric parses the input into a metric
+// ParseMetric parses the input into a metric.
 func ParseMetric(input string) (m labels.Labels, err error) {
 	p := NewParser(input)
 	defer p.Close()
@@ -207,6 +206,20 @@ func ParseMetricSelector(input string) (m []*labels.Matcher, err error) {
 	}
 
 	return m, err
+}
+
+// ParseMetricSelectors parses a list of provided textual metric selectors into lists of
+// label matchers.
+func ParseMetricSelectors(matchers []string) (m [][]*labels.Matcher, err error) {
+	var matcherSets [][]*labels.Matcher
+	for _, s := range matchers {
+		matchers, err := ParseMetricSelector(s)
+		if err != nil {
+			return nil, err
+		}
+		matcherSets = append(matcherSets, matchers)
+	}
+	return matcherSets, nil
 }
 
 // SequenceValue is an omittable value in a sequence of time series values.
@@ -245,7 +258,6 @@ func ParseSeriesDesc(input string) (labels labels.Labels, values []SequenceValue
 
 		labels = result.labels
 		values = result.values
-
 	}
 
 	if len(p.parseErrors) != 0 {
@@ -404,6 +416,8 @@ func (p *parser) newBinaryExpression(lhs Node, op Item, modifiers, rhs Node) *Bi
 }
 
 func (p *parser) assembleVectorSelector(vs *VectorSelector) {
+	// If the metric name was set outside the braces, add a matcher for it.
+	// If the metric name was inside the braces we don't need to do anything.
 	if vs.Name != "" {
 		nameMatcher, err := labels.NewMatcher(labels.MatchEqual, labels.MetricName, vs.Name)
 		if err != nil {
@@ -433,6 +447,10 @@ func (p *parser) newAggregateExpr(op Item, modifier, args Node) (ret *AggregateE
 
 	desiredArgs := 1
 	if ret.Op.IsAggregatorWithParam() {
+		if !EnableExperimentalFunctions && (ret.Op == LIMITK || ret.Op == LIMIT_RATIO) {
+			p.addParseErrf(ret.PositionRange(), "limitk() and limit_ratio() are experimental and must be enabled with --enable-feature=promql-experimental-functions")
+			return
+		}
 		desiredArgs = 2
 
 		ret.Param = arguments[0]
@@ -467,19 +485,19 @@ func (p *parser) mergeMaps(left, right *map[string]interface{}) (ret *map[string
 }
 
 func (p *parser) histogramsIncreaseSeries(base, inc *histogram.FloatHistogram, times uint64) ([]SequenceValue, error) {
-	return p.histogramsSeries(base, inc, times, func(a, b *histogram.FloatHistogram) *histogram.FloatHistogram {
+	return p.histogramsSeries(base, inc, times, func(a, b *histogram.FloatHistogram) (*histogram.FloatHistogram, error) {
 		return a.Add(b)
 	})
 }
 
 func (p *parser) histogramsDecreaseSeries(base, inc *histogram.FloatHistogram, times uint64) ([]SequenceValue, error) {
-	return p.histogramsSeries(base, inc, times, func(a, b *histogram.FloatHistogram) *histogram.FloatHistogram {
+	return p.histogramsSeries(base, inc, times, func(a, b *histogram.FloatHistogram) (*histogram.FloatHistogram, error) {
 		return a.Sub(b)
 	})
 }
 
 func (p *parser) histogramsSeries(base, inc *histogram.FloatHistogram, times uint64,
-	combine func(*histogram.FloatHistogram, *histogram.FloatHistogram) *histogram.FloatHistogram,
+	combine func(*histogram.FloatHistogram, *histogram.FloatHistogram) (*histogram.FloatHistogram, error),
 ) ([]SequenceValue, error) {
 	ret := make([]SequenceValue, times+1)
 	// Add an additional value (the base) for time 0, which we ignore in tests.
@@ -490,7 +508,11 @@ func (p *parser) histogramsSeries(base, inc *histogram.FloatHistogram, times uin
 			return nil, fmt.Errorf("error combining histograms: cannot merge from schema %d to %d", inc.Schema, cur.Schema)
 		}
 
-		cur = combine(cur.Copy(), inc)
+		var err error
+		cur, err = combine(cur.Copy(), inc)
+		if err != nil {
+			return ret, err
+		}
 		ret[i] = SequenceValue{Histogram: cur}
 	}
 
@@ -546,6 +568,15 @@ func (p *parser) buildHistogramFromMap(desc *map[string]interface{}) *histogram.
 			output.ZeroThreshold = bucketWidth
 		} else {
 			p.addParseErrf(p.yyParser.lval.item.PositionRange(), "error parsing z_bucket_w number: %v", val)
+		}
+	}
+	val, ok = (*desc)["custom_values"]
+	if ok {
+		customValues, ok := val.([]float64)
+		if ok {
+			output.CustomValues = customValues
+		} else {
+			p.addParseErrf(p.yyParser.lval.item.PositionRange(), "error parsing custom_values: %v", val)
 		}
 	}
 
@@ -645,7 +676,7 @@ func (p *parser) checkAST(node Node) (typ ValueType) {
 			p.addParseErrf(n.PositionRange(), "aggregation operator expected in aggregation expression but got %q", n.Op)
 		}
 		p.expectType(n.Expr, ValueTypeVector, "aggregation expression")
-		if n.Op == TOPK || n.Op == BOTTOMK || n.Op == QUANTILE {
+		if n.Op == TOPK || n.Op == BOTTOMK || n.Op == QUANTILE || n.Op == LIMITK || n.Op == LIMIT_RATIO {
 			p.expectType(n.Param, ValueTypeScalar, "aggregation parameter")
 		}
 		if n.Op == COUNT_VALUES {
@@ -660,9 +691,9 @@ func (p *parser) checkAST(node Node) (typ ValueType) {
 		// This is made a function instead of a variable, so it is lazily evaluated on demand.
 		opRange := func() (r posrange.PositionRange) {
 			// Remove whitespace at the beginning and end of the range.
-			for r.Start = n.LHS.PositionRange().End; isSpace(rune(p.lex.input[r.Start])); r.Start++ { // nolint:revive
+			for r.Start = n.LHS.PositionRange().End; isSpace(rune(p.lex.input[r.Start])); r.Start++ {
 			}
-			for r.End = n.RHS.PositionRange().Start - 1; isSpace(rune(p.lex.input[r.End])); r.End-- { // nolint:revive
+			for r.End = n.RHS.PositionRange().Start - 1; isSpace(rune(p.lex.input[r.End])); r.End-- {
 			}
 			return
 		}
@@ -777,7 +808,6 @@ func (p *parser) checkAST(node Node) (typ ValueType) {
 			// metric name is a non-empty matcher.
 			break
 		}
-
 		// A Vector selector must contain at least one non-empty matcher to prevent
 		// implicit selection of all metrics (e.g. by a typo).
 		notEmpty := false
@@ -854,6 +884,15 @@ func (p *parser) newLabelMatcher(label, operator, value Item) *labels.Matcher {
 	m, err := labels.NewMatcher(matchType, label.Val, val)
 	if err != nil {
 		p.addParseErr(mergeRanges(&label, &value), err)
+	}
+
+	return m
+}
+
+func (p *parser) newMetricNameMatcher(value Item) *labels.Matcher {
+	m, err := labels.NewMatcher(labels.MatchEqual, labels.MetricName, value.Val)
+	if err != nil {
+		p.addParseErr(value.PositionRange(), err)
 	}
 
 	return m

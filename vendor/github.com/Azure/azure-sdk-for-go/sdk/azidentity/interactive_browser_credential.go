@@ -11,6 +11,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 )
 
 const credNameBrowser = "InteractiveBrowserCredential"
@@ -22,26 +23,40 @@ type InteractiveBrowserCredentialOptions struct {
 	// AdditionallyAllowedTenants specifies additional tenants for which the credential may acquire
 	// tokens. Add the wildcard value "*" to allow the credential to acquire tokens for any tenant.
 	AdditionallyAllowedTenants []string
+
+	// authenticationRecord returned by a call to a credential's Authenticate method. Set this option
+	// to enable the credential to use data from a previous authentication.
+	authenticationRecord authenticationRecord
+
 	// ClientID is the ID of the application users will authenticate to.
 	// Defaults to the ID of an Azure development application.
 	ClientID string
 
+	// disableAutomaticAuthentication prevents the credential from automatically prompting the user to authenticate.
+	// When this option is true, GetToken will return authenticationRequiredError when user interaction is necessary
+	// to acquire a token.
+	disableAutomaticAuthentication bool
+
 	// DisableInstanceDiscovery should be set true only by applications authenticating in disconnected clouds, or
-	// private clouds such as Azure Stack. It determines whether the credential requests Azure AD instance metadata
+	// private clouds such as Azure Stack. It determines whether the credential requests Microsoft Entra instance metadata
 	// from https://login.microsoft.com before authenticating. Setting this to true will skip this request, making
 	// the application responsible for ensuring the configured authority is valid and trustworthy.
 	DisableInstanceDiscovery bool
 
 	// LoginHint pre-populates the account prompt with a username. Users may choose to authenticate a different account.
 	LoginHint string
-	// RedirectURL is the URL Azure Active Directory will redirect to with the access token. This is required
+
+	// RedirectURL is the URL Microsoft Entra ID will redirect to with the access token. This is required
 	// only when setting ClientID, and must match a redirect URI in the application's registration.
 	// Applications which have registered "http://localhost" as a redirect URI need not set this option.
 	RedirectURL string
 
-	// TenantID is the Azure Active Directory tenant the credential authenticates in. Defaults to the
+	// TenantID is the Microsoft Entra tenant the credential authenticates in. Defaults to the
 	// "organizations" tenant, which can authenticate work and school accounts.
 	TenantID string
+
+	// tokenCachePersistenceOptions enables persistent token caching when not nil.
+	tokenCachePersistenceOptions *tokenCachePersistenceOptions
 }
 
 func (o *InteractiveBrowserCredentialOptions) init() {
@@ -66,10 +81,14 @@ func NewInteractiveBrowserCredential(options *InteractiveBrowserCredentialOption
 	}
 	cp.init()
 	msalOpts := publicClientOptions{
-		ClientOptions:            cp.ClientOptions,
-		DisableInstanceDiscovery: cp.DisableInstanceDiscovery,
-		LoginHint:                cp.LoginHint,
-		RedirectURL:              cp.RedirectURL,
+		AdditionallyAllowedTenants:     cp.AdditionallyAllowedTenants,
+		ClientOptions:                  cp.ClientOptions,
+		DisableAutomaticAuthentication: cp.disableAutomaticAuthentication,
+		DisableInstanceDiscovery:       cp.DisableInstanceDiscovery,
+		LoginHint:                      cp.LoginHint,
+		Record:                         cp.authenticationRecord,
+		RedirectURL:                    cp.RedirectURL,
+		TokenCachePersistenceOptions:   cp.tokenCachePersistenceOptions,
 	}
 	c, err := newPublicClient(cp.TenantID, cp.ClientID, credNameBrowser, msalOpts)
 	if err != nil {
@@ -78,9 +97,22 @@ func NewInteractiveBrowserCredential(options *InteractiveBrowserCredentialOption
 	return &InteractiveBrowserCredential{client: c}, nil
 }
 
-// GetToken requests an access token from Azure Active Directory. This method is called automatically by Azure SDK clients.
+// Authenticate a user via the default browser. Subsequent calls to GetToken will automatically use the returned AuthenticationRecord.
+func (c *InteractiveBrowserCredential) authenticate(ctx context.Context, opts *policy.TokenRequestOptions) (authenticationRecord, error) {
+	var err error
+	ctx, endSpan := runtime.StartSpan(ctx, credNameBrowser+"."+traceOpAuthenticate, c.client.azClient.Tracer(), nil)
+	defer func() { endSpan(err) }()
+	tk, err := c.client.Authenticate(ctx, opts)
+	return tk, err
+}
+
+// GetToken requests an access token from Microsoft Entra ID. This method is called automatically by Azure SDK clients.
 func (c *InteractiveBrowserCredential) GetToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
-	return c.client.GetToken(ctx, opts)
+	var err error
+	ctx, endSpan := runtime.StartSpan(ctx, credNameBrowser+"."+traceOpGetToken, c.client.azClient.Tracer(), nil)
+	defer func() { endSpan(err) }()
+	tk, err := c.client.GetToken(ctx, opts)
+	return tk, err
 }
 
 var _ azcore.TokenCredential = (*InteractiveBrowserCredential)(nil)

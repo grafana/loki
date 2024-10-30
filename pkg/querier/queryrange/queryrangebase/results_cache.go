@@ -15,10 +15,10 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
-	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 var (
@@ -74,7 +74,8 @@ type PrometheusResponseExtractor struct{}
 func (PrometheusResponseExtractor) Extract(start, end int64, res resultscache.Response, _, _ int64) resultscache.Response {
 	promRes := res.(*PrometheusResponse)
 	return &PrometheusResponse{
-		Status: StatusSuccess,
+		Status:   StatusSuccess,
+		Warnings: promRes.Warnings,
 		Data: PrometheusData{
 			ResultType: promRes.Data.ResultType,
 			Result:     extractMatrix(start, end, promRes.Data.Result),
@@ -88,7 +89,8 @@ func (PrometheusResponseExtractor) Extract(start, end int64, res resultscache.Re
 func (PrometheusResponseExtractor) ResponseWithoutHeaders(resp Response) Response {
 	promRes := resp.(*PrometheusResponse)
 	return &PrometheusResponse{
-		Status: StatusSuccess,
+		Status:   StatusSuccess,
+		Warnings: promRes.Warnings,
 		Data: PrometheusData{
 			ResultType: promRes.Data.ResultType,
 			Result:     promRes.Data.Result,
@@ -222,7 +224,7 @@ func (s resultsCache) shouldCacheResponse(ctx context.Context, req Request, r Re
 	s.metrics.versionComparisons.Inc()
 
 	if len(genNumbersFromResp) == 0 && genNumberFromCtx != "" {
-		level.Debug(logger).Log("msg", fmt.Sprintf("we found results cache gen number %s set in store but none in headers", genNumberFromCtx))
+		level.Debug(logger).Log("msg", fmt.Sprintf("we found results cache gen number %s set in store but none in headers", genNumberFromCtx), "query", req.GetQuery())
 
 		// NB(owen-d):
 		// If the queriers aren't returning cache numbers, something is likely broken
@@ -233,7 +235,7 @@ func (s resultsCache) shouldCacheResponse(ctx context.Context, req Request, r Re
 
 	for _, gen := range genNumbersFromResp {
 		if gen != genNumberFromCtx {
-			level.Debug(logger).Log("msg", fmt.Sprintf("inconsistency in results cache gen numbers %s (GEN-FROM-RESPONSE) != %s (GEN-FROM-STORE), not caching the response", gen, genNumberFromCtx))
+			level.Debug(logger).Log("msg", fmt.Sprintf("inconsistency in results cache gen numbers %s (GEN-FROM-RESPONSE) != %s (GEN-FROM-STORE), not caching the response", gen, genNumberFromCtx), "query", req.GetQuery())
 			s.metrics.versionComparisonFailures.WithLabelValues(reasonMismatch).Inc()
 			return false
 		}

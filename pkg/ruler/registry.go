@@ -25,9 +25,9 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/ruler/storage/cleaner"
-	"github.com/grafana/loki/pkg/ruler/storage/instance"
-	"github.com/grafana/loki/pkg/ruler/storage/wal"
+	"github.com/grafana/loki/v3/pkg/ruler/storage/cleaner"
+	"github.com/grafana/loki/v3/pkg/ruler/storage/instance"
+	"github.com/grafana/loki/v3/pkg/ruler/storage/wal"
 )
 
 type walRegistry struct {
@@ -128,8 +128,12 @@ func (r *walRegistry) get(tenant string) storage.Storage {
 }
 
 func (r *walRegistry) Appender(ctx context.Context) storage.Appender {
+	// concurrency-safe retrieval of remote-write config for this tenant, using the global remote-write for defaults
+	r.overridesMu.Lock()
 	tenant, _ := user.ExtractOrgID(ctx)
 	rwCfg, err := r.getTenantRemoteWriteConfig(tenant, r.config.RemoteWrite)
+	r.overridesMu.Unlock()
+
 	if err != nil {
 		level.Error(r.logger).Log("msg", "error retrieving remote-write config; discarding samples", "user", tenant, "err", err)
 		return discardingAppender{}
@@ -381,6 +385,9 @@ func (n notReadyAppender) UpdateMetadata(_ storage.SeriesRef, _ labels.Labels, _
 func (n notReadyAppender) AppendHistogram(_ storage.SeriesRef, _ labels.Labels, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
 	return 0, errNotReady
 }
+func (n notReadyAppender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
+	return 0, errNotReady
+}
 func (n notReadyAppender) Commit() error   { return errNotReady }
 func (n notReadyAppender) Rollback() error { return errNotReady }
 
@@ -396,6 +403,9 @@ func (n discardingAppender) UpdateMetadata(_ storage.SeriesRef, _ labels.Labels,
 	return 0, nil
 }
 func (n discardingAppender) AppendHistogram(_ storage.SeriesRef, _ labels.Labels, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	return 0, nil
+}
+func (n discardingAppender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
 	return 0, nil
 }
 func (n discardingAppender) Commit() error   { return nil }

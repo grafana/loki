@@ -15,6 +15,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 )
 
 const credNameWorkloadIdentity = "WorkloadIdentityCredential"
@@ -41,7 +42,7 @@ type WorkloadIdentityCredentialOptions struct {
 	// ClientID of the service principal. Defaults to the value of the environment variable AZURE_CLIENT_ID.
 	ClientID string
 	// DisableInstanceDiscovery should be set true only by applications authenticating in disconnected clouds, or
-	// private clouds such as Azure Stack. It determines whether the credential requests Azure AD instance metadata
+	// private clouds such as Azure Stack. It determines whether the credential requests Microsoft Entra instance metadata
 	// from https://login.microsoft.com before authenticating. Setting this to true will skip this request, making
 	// the application responsible for ensuring the configured authority is valid and trustworthy.
 	DisableInstanceDiscovery bool
@@ -93,9 +94,13 @@ func NewWorkloadIdentityCredential(options *WorkloadIdentityCredentialOptions) (
 	return &w, nil
 }
 
-// GetToken requests an access token from Azure Active Directory. Azure SDK clients call this method automatically.
+// GetToken requests an access token from Microsoft Entra ID. Azure SDK clients call this method automatically.
 func (w *WorkloadIdentityCredential) GetToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
-	return w.cred.GetToken(ctx, opts)
+	var err error
+	ctx, endSpan := runtime.StartSpan(ctx, credNameWorkloadIdentity+"."+traceOpGetToken, w.cred.client.azClient.Tracer(), nil)
+	defer func() { endSpan(err) }()
+	tk, err := w.cred.GetToken(ctx, opts)
+	return tk, err
 }
 
 // getAssertion returns the specified file's content, which is expected to be a Kubernetes service account token.

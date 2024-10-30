@@ -20,12 +20,14 @@ import (
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/client"
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/pkg/push"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 const localhost = "127.0.0.1"
@@ -101,6 +103,10 @@ func TestLokiPushTarget(t *testing.T) {
 			Entry: logproto.Entry{
 				Timestamp: time.Unix(int64(i), 0),
 				Line:      "line" + strconv.Itoa(i),
+				StructuredMetadata: push.LabelsAdapter{
+					{Name: "i", Value: strconv.Itoa(i)},
+					{Name: "anotherMetaData", Value: "val"},
+				},
 			},
 		}
 	}
@@ -122,6 +128,13 @@ func TestLokiPushTarget(t *testing.T) {
 	}
 	// Spot check the first value in the result to make sure relabel rules were applied properly
 	require.Equal(t, expectedLabels, eh.Received()[0].Labels)
+
+	expectedStructuredMetadata := push.LabelsAdapter{
+		{Name: "i", Value: strconv.Itoa(0)},
+		{Name: "anotherMetaData", Value: "val"},
+	}
+	// Spot check the first value in the result to make sure structured metadata was received properly
+	require.Equal(t, expectedStructuredMetadata, eh.Received()[0].StructuredMetadata)
 
 	// With keep timestamp enabled, verify timestamp
 	require.Equal(t, time.Unix(99, 0).Unix(), eh.Received()[99].Timestamp.Unix())

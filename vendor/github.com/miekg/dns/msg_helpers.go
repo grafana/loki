@@ -20,9 +20,7 @@ func unpackDataA(msg []byte, off int) (net.IP, int, error) {
 	if off+net.IPv4len > len(msg) {
 		return nil, len(msg), &Error{err: "overflow unpacking a"}
 	}
-	a := append(make(net.IP, 0, net.IPv4len), msg[off:off+net.IPv4len]...)
-	off += net.IPv4len
-	return a, off, nil
+	return cloneSlice(msg[off : off+net.IPv4len]), off + net.IPv4len, nil
 }
 
 func packDataA(a net.IP, msg []byte, off int) (int, error) {
@@ -47,9 +45,7 @@ func unpackDataAAAA(msg []byte, off int) (net.IP, int, error) {
 	if off+net.IPv6len > len(msg) {
 		return nil, len(msg), &Error{err: "overflow unpacking aaaa"}
 	}
-	aaaa := append(make(net.IP, 0, net.IPv6len), msg[off:off+net.IPv6len]...)
-	off += net.IPv6len
-	return aaaa, off, nil
+	return cloneSlice(msg[off : off+net.IPv6len]), off + net.IPv6len, nil
 }
 
 func packDataAAAA(aaaa net.IP, msg []byte, off int) (int, error) {
@@ -410,29 +406,24 @@ func packStringTxt(s []string, msg []byte, off int) (int, error) {
 
 func unpackDataOpt(msg []byte, off int) ([]EDNS0, int, error) {
 	var edns []EDNS0
-Option:
-	var code uint16
-	if off+4 > len(msg) {
-		return nil, len(msg), &Error{err: "overflow unpacking opt"}
+	for off < len(msg) {
+		if off+4 > len(msg) {
+			return nil, len(msg), &Error{err: "overflow unpacking opt"}
+		}
+		code := binary.BigEndian.Uint16(msg[off:])
+		off += 2
+		optlen := binary.BigEndian.Uint16(msg[off:])
+		off += 2
+		if off+int(optlen) > len(msg) {
+			return nil, len(msg), &Error{err: "overflow unpacking opt"}
+		}
+		opt := makeDataOpt(code)
+		if err := opt.unpack(msg[off : off+int(optlen)]); err != nil {
+			return nil, len(msg), err
+		}
+		edns = append(edns, opt)
+		off += int(optlen)
 	}
-	code = binary.BigEndian.Uint16(msg[off:])
-	off += 2
-	optlen := binary.BigEndian.Uint16(msg[off:])
-	off += 2
-	if off+int(optlen) > len(msg) {
-		return nil, len(msg), &Error{err: "overflow unpacking opt"}
-	}
-	e := makeDataOpt(code)
-	if err := e.unpack(msg[off : off+int(optlen)]); err != nil {
-		return nil, len(msg), err
-	}
-	edns = append(edns, e)
-	off += int(optlen)
-
-	if off < len(msg) {
-		goto Option
-	}
-
 	return edns, off, nil
 }
 
@@ -461,8 +452,7 @@ func unpackStringOctet(msg []byte, off int) (string, int, error) {
 }
 
 func packStringOctet(s string, msg []byte, off int) (int, error) {
-	txtTmp := make([]byte, 256*4+1)
-	off, err := packOctetString(s, msg, off, txtTmp)
+	off, err := packOctetString(s, msg, off)
 	if err != nil {
 		return len(msg), err
 	}

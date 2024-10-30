@@ -34,11 +34,332 @@ This is the generated reference for the Loki Helm Chart values.
 	</thead>
 	<tbody>
 		<tr>
+			<td>adminApi</td>
+			<td>object</td>
+			<td>Configuration for the `admin-api` target</td>
+			<td><pre lang="json">
+{
+  "affinity": {},
+  "annotations": {},
+  "containerSecurityContext": {
+    "allowPrivilegeEscalation": false,
+    "capabilities": {
+      "drop": [
+        "ALL"
+      ]
+    },
+    "readOnlyRootFilesystem": true
+  },
+  "env": [],
+  "extraArgs": {},
+  "extraContainers": [],
+  "extraEnvFrom": [],
+  "extraVolumeMounts": [],
+  "extraVolumes": [],
+  "hostAliases": [],
+  "initContainers": [],
+  "labels": {},
+  "nodeSelector": {},
+  "podSecurityContext": {
+    "runAsGroup": 10001,
+    "runAsNonRoot": true,
+    "runAsUser": 10001
+  },
+  "readinessProbe": {
+    "httpGet": {
+      "path": "/ready",
+      "port": "http-metrics"
+    },
+    "initialDelaySeconds": 45
+  },
+  "replicas": 1,
+  "resources": {},
+  "service": {
+    "annotations": {},
+    "labels": {}
+  },
+  "strategy": {
+    "type": "RollingUpdate"
+  },
+  "terminationGracePeriodSeconds": 60,
+  "tolerations": []
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.affinity</td>
+			<td>object</td>
+			<td>Affinity for admin-api Pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.annotations</td>
+			<td>object</td>
+			<td>Additional annotations for the `admin-api` Deployment</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.env</td>
+			<td>list</td>
+			<td>Configure optional environment variables</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.extraArgs</td>
+			<td>object</td>
+			<td>Additional CLI arguments for the `admin-api` target</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.extraContainers</td>
+			<td>list</td>
+			<td>Conifgure optional extraContainers</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the admin-api pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Additional volume mounts for Pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.extraVolumes</td>
+			<td>list</td>
+			<td>Additional volumes for Pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.hostAliases</td>
+			<td>list</td>
+			<td>hostAliases to add</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.initContainers</td>
+			<td>list</td>
+			<td>Configure optional initContainers</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.labels</td>
+			<td>object</td>
+			<td>Additional labels for the `admin-api` Deployment</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for admin-api Pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.podSecurityContext</td>
+			<td>object</td>
+			<td>Run container as user `enterprise-logs(uid=10001)` `fsGroup` must not be specified, because these security options are applied on container level not on Pod level.</td>
+			<td><pre lang="json">
+{
+  "runAsGroup": 10001,
+  "runAsNonRoot": true,
+  "runAsUser": 10001
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.readinessProbe</td>
+			<td>object</td>
+			<td>Readiness probe</td>
+			<td><pre lang="json">
+{
+  "httpGet": {
+    "path": "/ready",
+    "port": "http-metrics"
+  },
+  "initialDelaySeconds": 45
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.replicas</td>
+			<td>int</td>
+			<td>Define the amount of instances</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.resources</td>
+			<td>object</td>
+			<td>Values are defined in small.yaml and large.yaml</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.service</td>
+			<td>object</td>
+			<td>Additional labels and annotations for the `admin-api` Service</td>
+			<td><pre lang="json">
+{
+  "annotations": {},
+  "labels": {}
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.strategy</td>
+			<td>object</td>
+			<td>Update strategy</td>
+			<td><pre lang="json">
+{
+  "type": "RollingUpdate"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td>Grace period to allow the admin-api to shutdown before it is killed</td>
+			<td><pre lang="json">
+60
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for admin-api Pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend</td>
+			<td>object</td>
+			<td>Configuration for the backend pod(s)</td>
+			<td><pre lang="json">
+{
+  "affinity": {
+    "podAntiAffinity": {
+      "requiredDuringSchedulingIgnoredDuringExecution": [
+        {
+          "labelSelector": {
+            "matchLabels": {
+              "app.kubernetes.io/component": "backend"
+            }
+          },
+          "topologyKey": "kubernetes.io/hostname"
+        }
+      ]
+    }
+  },
+  "annotations": {},
+  "autoscaling": {
+    "behavior": {},
+    "enabled": false,
+    "maxReplicas": 6,
+    "minReplicas": 3,
+    "targetCPUUtilizationPercentage": 60,
+    "targetMemoryUtilizationPercentage": null
+  },
+  "dnsConfig": {},
+  "extraArgs": [],
+  "extraEnv": [],
+  "extraEnvFrom": [],
+  "extraVolumeMounts": [],
+  "extraVolumes": [],
+  "image": {
+    "registry": null,
+    "repository": null,
+    "tag": null
+  },
+  "initContainers": [],
+  "nodeSelector": {},
+  "persistence": {
+    "annotations": {},
+    "dataVolumeParameters": {
+      "emptyDir": {}
+    },
+    "enableStatefulSetAutoDeletePVC": true,
+    "selector": null,
+    "size": "10Gi",
+    "storageClass": null,
+    "volumeClaimsEnabled": true
+  },
+  "podAnnotations": {},
+  "podLabels": {},
+  "podManagementPolicy": "Parallel",
+  "priorityClassName": null,
+  "replicas": 3,
+  "resources": {},
+  "selectorLabels": {},
+  "service": {
+    "annotations": {},
+    "labels": {}
+  },
+  "targetModule": "backend",
+  "terminationGracePeriodSeconds": 300,
+  "tolerations": [],
+  "topologySpreadConstraints": []
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.affinity</td>
-			<td>string</td>
-			<td>Affinity for backend pods. Passed through `tpl` and, thus, to be configured as string</td>
+			<td>object</td>
+			<td>Affinity for backend pods.</td>
 			<td><pre lang="">
-Hard node and soft zone anti-affinity
+Hard node anti-affinity
 </pre>
 </td>
 		</tr>
@@ -83,7 +404,7 @@ false
 			<td>int</td>
 			<td>Minimum autoscaling replicas for the backend.</td>
 			<td><pre lang="json">
-2
+3
 </pre>
 </td>
 		</tr>
@@ -199,6 +520,15 @@ null
 			<td>backend.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for backend pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for volume claim</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -344,7 +674,7 @@ null
 		<tr>
 			<td>backend.targetModule</td>
 			<td>string</td>
-			<td>Comma-separated list of Loki modules to load for the read</td>
+			<td>Comma-separated list of Loki modules to load for the backend</td>
 			<td><pre lang="json">
 "backend"
 </pre>
@@ -378,11 +708,2395 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomBuilder</td>
+			<td>object</td>
+			<td>Configuration for the bloom-builder</td>
+			<td><pre lang="json">
+{
+  "affinity": {
+    "podAntiAffinity": {
+      "requiredDuringSchedulingIgnoredDuringExecution": [
+        {
+          "labelSelector": {
+            "matchLabels": {
+              "app.kubernetes.io/component": "bloom-builder"
+            }
+          },
+          "topologyKey": "kubernetes.io/hostname"
+        }
+      ]
+    }
+  },
+  "appProtocol": {
+    "grpc": ""
+  },
+  "autoscaling": {
+    "behavior": {
+      "enabled": false,
+      "scaleDown": {},
+      "scaleUp": {}
+    },
+    "customMetrics": [],
+    "enabled": false,
+    "maxReplicas": 3,
+    "minReplicas": 1,
+    "targetCPUUtilizationPercentage": 60,
+    "targetMemoryUtilizationPercentage": null
+  },
+  "command": null,
+  "extraArgs": [],
+  "extraContainers": [],
+  "extraEnv": [],
+  "extraEnvFrom": [],
+  "extraVolumeMounts": [],
+  "extraVolumes": [],
+  "hostAliases": [],
+  "image": {
+    "registry": null,
+    "repository": null,
+    "tag": null
+  },
+  "maxUnavailable": null,
+  "nodeSelector": {},
+  "podAnnotations": {},
+  "podLabels": {},
+  "priorityClassName": null,
+  "replicas": 0,
+  "resources": {},
+  "serviceAnnotations": {},
+  "serviceLabels": {},
+  "terminationGracePeriodSeconds": 30,
+  "tolerations": []
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.affinity</td>
+			<td>object</td>
+			<td>Affinity for bloom-builder pods.</td>
+			<td><pre lang="">
+Hard node anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.appProtocol</td>
+			<td>object</td>
+			<td>Adds the appProtocol field to the queryFrontend service. This allows bloomBuilder to work with istio protocol selection.</td>
+			<td><pre lang="json">
+{
+  "grpc": ""
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.appProtocol.grpc</td>
+			<td>string</td>
+			<td>Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.autoscaling.behavior.enabled</td>
+			<td>bool</td>
+			<td>Enable autoscaling behaviours</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.autoscaling.behavior.scaleDown</td>
+			<td>object</td>
+			<td>define scale down policies, must conform to HPAScalingRules</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.autoscaling.behavior.scaleUp</td>
+			<td>object</td>
+			<td>define scale up policies, must conform to HPAScalingRules</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.autoscaling.customMetrics</td>
+			<td>list</td>
+			<td>Allows one to define custom metrics using the HPA/v2 schema (for example, Pods, Object or External metrics)</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.autoscaling.enabled</td>
+			<td>bool</td>
+			<td>Enable autoscaling for the bloom-builder</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.autoscaling.maxReplicas</td>
+			<td>int</td>
+			<td>Maximum autoscaling replicas for the bloom-builder</td>
+			<td><pre lang="json">
+3
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.autoscaling.minReplicas</td>
+			<td>int</td>
+			<td>Minimum autoscaling replicas for the bloom-builder</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.autoscaling.targetCPUUtilizationPercentage</td>
+			<td>int</td>
+			<td>Target CPU utilisation percentage for the bloom-builder</td>
+			<td><pre lang="json">
+60
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.autoscaling.targetMemoryUtilizationPercentage</td>
+			<td>string</td>
+			<td>Target memory utilisation percentage for the bloom-builder</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.command</td>
+			<td>string</td>
+			<td>Command to execute instead of defined in Docker image</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.extraArgs</td>
+			<td>list</td>
+			<td>Additional CLI args for the bloom-builder</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the bloom-builder pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.extraEnv</td>
+			<td>list</td>
+			<td>Environment variables to add to the bloom-builder pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the bloom-builder pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Volume mounts to add to the bloom-builder pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.extraVolumes</td>
+			<td>list</td>
+			<td>Volumes to add to the bloom-builder pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.hostAliases</td>
+			<td>list</td>
+			<td>hostAliases to add</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.image.registry</td>
+			<td>string</td>
+			<td>The Docker registry for the bloom-builder image. Overrides `loki.image.registry`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.image.repository</td>
+			<td>string</td>
+			<td>Docker image repository for the bloom-builder image. Overrides `loki.image.repository`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.image.tag</td>
+			<td>string</td>
+			<td>Docker image tag for the bloom-builder image. Overrides `loki.image.tag`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.maxUnavailable</td>
+			<td>string</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for bloom-builder pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.podAnnotations</td>
+			<td>object</td>
+			<td>Annotations for bloom-builder pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.podLabels</td>
+			<td>object</td>
+			<td>Labels for bloom-builder pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for bloom-builder pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.replicas</td>
+			<td>int</td>
+			<td>Number of replicas for the bloom-builder</td>
+			<td><pre lang="json">
+0
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the bloom-builder</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for bloom-builder service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.serviceLabels</td>
+			<td>object</td>
+			<td>Labels for bloom-builder service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td>Grace period to allow the bloom-builder to shutdown before it is killed</td>
+			<td><pre lang="json">
+30
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for bloom-builder pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway</td>
+			<td>object</td>
+			<td>Configuration for the bloom-gateway</td>
+			<td><pre lang="json">
+{
+  "affinity": {
+    "podAntiAffinity": {
+      "requiredDuringSchedulingIgnoredDuringExecution": [
+        {
+          "labelSelector": {
+            "matchLabels": {
+              "app.kubernetes.io/component": "bloom-gateway"
+            }
+          },
+          "topologyKey": "kubernetes.io/hostname"
+        }
+      ]
+    }
+  },
+  "appProtocol": {
+    "grpc": ""
+  },
+  "command": null,
+  "extraArgs": [],
+  "extraContainers": [],
+  "extraEnv": [],
+  "extraEnvFrom": [],
+  "extraVolumeMounts": [],
+  "extraVolumes": [],
+  "hostAliases": [],
+  "image": {
+    "registry": null,
+    "repository": null,
+    "tag": null
+  },
+  "initContainers": [],
+  "livenessProbe": {},
+  "nodeSelector": {},
+  "persistence": {
+    "annotations": {},
+    "claims": [
+      {
+        "name": "data",
+        "size": "10Gi",
+        "storageClass": null
+      }
+    ],
+    "enableStatefulSetAutoDeletePVC": false,
+    "enabled": false,
+    "whenDeleted": "Retain",
+    "whenScaled": "Retain"
+  },
+  "podAnnotations": {},
+  "podLabels": {},
+  "priorityClassName": null,
+  "readinessProbe": {},
+  "replicas": 0,
+  "resources": {},
+  "serviceAccount": {
+    "annotations": {},
+    "automountServiceAccountToken": true,
+    "create": false,
+    "imagePullSecrets": [],
+    "name": null
+  },
+  "serviceAnnotations": {},
+  "serviceLabels": {},
+  "terminationGracePeriodSeconds": 30,
+  "tolerations": []
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.affinity</td>
+			<td>object</td>
+			<td>Affinity for bloom-gateway pods.</td>
+			<td><pre lang="">
+Hard node anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.appProtocol</td>
+			<td>object</td>
+			<td>Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"</td>
+			<td><pre lang="json">
+{
+  "grpc": ""
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.command</td>
+			<td>string</td>
+			<td>Command to execute instead of defined in Docker image</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.extraArgs</td>
+			<td>list</td>
+			<td>Additional CLI args for the bloom-gateway</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the bloom-gateway pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.extraEnv</td>
+			<td>list</td>
+			<td>Environment variables to add to the bloom-gateway pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the bloom-gateway pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Volume mounts to add to the bloom-gateway pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.extraVolumes</td>
+			<td>list</td>
+			<td>Volumes to add to the bloom-gateway pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.hostAliases</td>
+			<td>list</td>
+			<td>hostAliases to add</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.image.registry</td>
+			<td>string</td>
+			<td>The Docker registry for the bloom-gateway image. Overrides `loki.image.registry`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.image.repository</td>
+			<td>string</td>
+			<td>Docker image repository for the bloom-gateway image. Overrides `loki.image.repository`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.image.tag</td>
+			<td>string</td>
+			<td>Docker image tag for the bloom-gateway image. Overrides `loki.image.tag`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the bloom-gateway pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.livenessProbe</td>
+			<td>object</td>
+			<td>liveness probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for bloom-gateway pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for bloom-gateway PVCs</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.persistence.claims</td>
+			<td>list</td>
+			<td>List of the bloom-gateway PVCs</td>
+			<td><pre lang="list">
+
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.persistence.claims[0].size</td>
+			<td>string</td>
+			<td>Size of persistent disk</td>
+			<td><pre lang="json">
+"10Gi"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.persistence.enableStatefulSetAutoDeletePVC</td>
+			<td>bool</td>
+			<td>Enable StatefulSetAutoDeletePVC feature</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.persistence.enabled</td>
+			<td>bool</td>
+			<td>Enable creating PVCs for the bloom-gateway</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.podAnnotations</td>
+			<td>object</td>
+			<td>Annotations for bloom-gateway pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.podLabels</td>
+			<td>object</td>
+			<td>Labels for bloom-gateway pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for bloom-gateway pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.readinessProbe</td>
+			<td>object</td>
+			<td>readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.replicas</td>
+			<td>int</td>
+			<td>Number of replicas for the bloom-gateway</td>
+			<td><pre lang="json">
+0
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the bloom-gateway</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.serviceAccount.annotations</td>
+			<td>object</td>
+			<td>Annotations for the bloom-gateway service account</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.serviceAccount.automountServiceAccountToken</td>
+			<td>bool</td>
+			<td>Set this toggle to false to opt out of automounting API credentials for the service account</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.serviceAccount.imagePullSecrets</td>
+			<td>list</td>
+			<td>Image pull secrets for the bloom-gateway service account</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.serviceAccount.name</td>
+			<td>string</td>
+			<td>The name of the ServiceAccount to use for the bloom-gateway. If not set and create is true, a name is generated by appending "-bloom-gateway" to the common ServiceAccount.</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for bloom-gateway service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.serviceLabels</td>
+			<td>object</td>
+			<td>Labels for bloom-gateway service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td>Grace period to allow the bloom-gateway to shutdown before it is killed</td>
+			<td><pre lang="json">
+30
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for bloom-gateway pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner</td>
+			<td>object</td>
+			<td>Configuration for the bloom-planner</td>
+			<td><pre lang="json">
+{
+  "affinity": {
+    "podAntiAffinity": {
+      "requiredDuringSchedulingIgnoredDuringExecution": [
+        {
+          "labelSelector": {
+            "matchLabels": {
+              "app.kubernetes.io/component": "bloom-planner"
+            }
+          },
+          "topologyKey": "kubernetes.io/hostname"
+        }
+      ]
+    }
+  },
+  "appProtocol": {
+    "grpc": ""
+  },
+  "command": null,
+  "extraArgs": [],
+  "extraContainers": [],
+  "extraEnv": [],
+  "extraEnvFrom": [],
+  "extraVolumeMounts": [],
+  "extraVolumes": [],
+  "hostAliases": [],
+  "image": {
+    "registry": null,
+    "repository": null,
+    "tag": null
+  },
+  "initContainers": [],
+  "livenessProbe": {},
+  "nodeSelector": {},
+  "persistence": {
+    "annotations": {},
+    "claims": [
+      {
+        "name": "data",
+        "size": "10Gi",
+        "storageClass": null
+      }
+    ],
+    "enableStatefulSetAutoDeletePVC": false,
+    "enabled": false,
+    "whenDeleted": "Retain",
+    "whenScaled": "Retain"
+  },
+  "podAnnotations": {},
+  "podLabels": {},
+  "priorityClassName": null,
+  "readinessProbe": {},
+  "replicas": 0,
+  "resources": {},
+  "serviceAccount": {
+    "annotations": {},
+    "automountServiceAccountToken": true,
+    "create": false,
+    "imagePullSecrets": [],
+    "name": null
+  },
+  "serviceAnnotations": {},
+  "serviceLabels": {},
+  "terminationGracePeriodSeconds": 30,
+  "tolerations": []
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.affinity</td>
+			<td>object</td>
+			<td>Affinity for bloom-planner pods.</td>
+			<td><pre lang="">
+Hard node anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.appProtocol</td>
+			<td>object</td>
+			<td>Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"</td>
+			<td><pre lang="json">
+{
+  "grpc": ""
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.command</td>
+			<td>string</td>
+			<td>Command to execute instead of defined in Docker image</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.extraArgs</td>
+			<td>list</td>
+			<td>Additional CLI args for the bloom-planner</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the bloom-planner pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.extraEnv</td>
+			<td>list</td>
+			<td>Environment variables to add to the bloom-planner pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the bloom-planner pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Volume mounts to add to the bloom-planner pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.extraVolumes</td>
+			<td>list</td>
+			<td>Volumes to add to the bloom-planner pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.hostAliases</td>
+			<td>list</td>
+			<td>hostAliases to add</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.image.registry</td>
+			<td>string</td>
+			<td>The Docker registry for the bloom-planner image. Overrides `loki.image.registry`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.image.repository</td>
+			<td>string</td>
+			<td>Docker image repository for the bloom-planner image. Overrides `loki.image.repository`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.image.tag</td>
+			<td>string</td>
+			<td>Docker image tag for the bloom-planner image. Overrides `loki.image.tag`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the bloom-planner pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.livenessProbe</td>
+			<td>object</td>
+			<td>liveness probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for bloom-planner pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for bloom-planner PVCs</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.persistence.claims</td>
+			<td>list</td>
+			<td>List of the bloom-planner PVCs</td>
+			<td><pre lang="list">
+
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.persistence.claims[0].size</td>
+			<td>string</td>
+			<td>Size of persistent disk</td>
+			<td><pre lang="json">
+"10Gi"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.persistence.enableStatefulSetAutoDeletePVC</td>
+			<td>bool</td>
+			<td>Enable StatefulSetAutoDeletePVC feature</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.persistence.enabled</td>
+			<td>bool</td>
+			<td>Enable creating PVCs for the bloom-planner</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.podAnnotations</td>
+			<td>object</td>
+			<td>Annotations for bloom-planner pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.podLabels</td>
+			<td>object</td>
+			<td>Labels for bloom-planner pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for bloom-planner pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.readinessProbe</td>
+			<td>object</td>
+			<td>readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.replicas</td>
+			<td>int</td>
+			<td>Number of replicas for the bloom-planner</td>
+			<td><pre lang="json">
+0
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the bloom-planner</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.serviceAccount.annotations</td>
+			<td>object</td>
+			<td>Annotations for the bloom-planner service account</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.serviceAccount.automountServiceAccountToken</td>
+			<td>bool</td>
+			<td>Set this toggle to false to opt out of automounting API credentials for the service account</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.serviceAccount.imagePullSecrets</td>
+			<td>list</td>
+			<td>Image pull secrets for the bloom-planner service account</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.serviceAccount.name</td>
+			<td>string</td>
+			<td>The name of the ServiceAccount to use for the bloom-planner. If not set and create is true, a name is generated by appending "-bloom-planner" to the common ServiceAccount.</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for bloom-planner service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.serviceLabels</td>
+			<td>object</td>
+			<td>Labels for bloom-planner service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td>Grace period to allow the bloom-planner to shutdown before it is killed</td>
+			<td><pre lang="json">
+30
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for bloom-planner pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.affinity</td>
+			<td>object</td>
+			<td>Affinity for chunks-cache pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.allocatedMemory</td>
+			<td>int</td>
+			<td>Amount of memory allocated to chunks-cache for object storage (in MB).</td>
+			<td><pre lang="json">
+8192
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.annotations</td>
+			<td>object</td>
+			<td>Annotations for the chunks-cache pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.batchSize</td>
+			<td>int</td>
+			<td>Batchsize for sending and receiving chunks from chunks cache</td>
+			<td><pre lang="json">
+4
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.connectionLimit</td>
+			<td>int</td>
+			<td>Maximum number of connections allowed</td>
+			<td><pre lang="json">
+16384
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.defaultValidity</td>
+			<td>string</td>
+			<td>Specify how long cached chunks should be stored in the chunks-cache before being expired</td>
+			<td><pre lang="json">
+"0s"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.enabled</td>
+			<td>bool</td>
+			<td>Specifies whether memcached based chunks-cache should be enabled</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.extraArgs</td>
+			<td>object</td>
+			<td>Additional CLI args for chunks-cache</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.extraContainers</td>
+			<td>list</td>
+			<td>Additional containers to be added to the chunks-cache pod.</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.extraExtendedOptions</td>
+			<td>string</td>
+			<td>Add extended options for chunks-cache memcached container. The format is the same as for the memcached -o/--extend flag. Example: extraExtendedOptions: 'tls,no_hashexpand'</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Additional volume mounts to be added to the chunks-cache pod (applies to both memcached and exporter containers). Example: extraVolumeMounts: - name: extra-volume   mountPath: /etc/extra-volume   readOnly: true</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.extraVolumes</td>
+			<td>list</td>
+			<td>Additional volumes to be added to the chunks-cache pod (applies to both memcached and exporter containers). Example: extraVolumes: - name: extra-volume   secret:    secretName: extra-volume-secret</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.initContainers</td>
+			<td>list</td>
+			<td>Extra init containers for chunks-cache pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.maxItemMemory</td>
+			<td>int</td>
+			<td>Maximum item memory for chunks-cache (in MB).</td>
+			<td><pre lang="json">
+5
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for chunks-cache pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.parallelism</td>
+			<td>int</td>
+			<td>Parallel threads for sending and receiving chunks from chunks cache</td>
+			<td><pre lang="json">
+5
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.persistence</td>
+			<td>object</td>
+			<td>Persistence settings for the chunks-cache</td>
+			<td><pre lang="json">
+{
+  "enabled": false,
+  "mountPath": "/data",
+  "storageClass": null,
+  "storageSize": "10G"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.persistence.enabled</td>
+			<td>bool</td>
+			<td>Enable creating PVCs for the chunks-cache</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.persistence.mountPath</td>
+			<td>string</td>
+			<td>Volume mount path</td>
+			<td><pre lang="json">
+"/data"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.persistence.storageClass</td>
+			<td>string</td>
+			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.persistence.storageSize</td>
+			<td>string</td>
+			<td>Size of persistent disk, must be in G or Gi</td>
+			<td><pre lang="json">
+"10G"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.podAnnotations</td>
+			<td>object</td>
+			<td>Annotations for chunks-cache pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.podDisruptionBudget</td>
+			<td>object</td>
+			<td>Pod Disruption Budget</td>
+			<td><pre lang="json">
+{
+  "maxUnavailable": 1
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.podLabels</td>
+			<td>object</td>
+			<td>Labels for chunks-cache pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.podManagementPolicy</td>
+			<td>string</td>
+			<td>Management policy for chunks-cache pods</td>
+			<td><pre lang="json">
+"Parallel"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.port</td>
+			<td>int</td>
+			<td>Port of the chunks-cache service</td>
+			<td><pre lang="json">
+11211
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for chunks-cache pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.replicas</td>
+			<td>int</td>
+			<td>Total number of chunks-cache replicas</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.resources</td>
+			<td>string</td>
+			<td>Resource requests and limits for the chunks-cache By default a safe memory limit will be requested based on allocatedMemory value (floor (* 1.2 allocatedMemory)).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.service</td>
+			<td>object</td>
+			<td>Service annotations and labels</td>
+			<td><pre lang="json">
+{
+  "annotations": {},
+  "labels": {}
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.statefulStrategy</td>
+			<td>object</td>
+			<td>Stateful chunks-cache strategy</td>
+			<td><pre lang="json">
+{
+  "type": "RollingUpdate"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td>Grace period to allow the chunks-cache to shutdown before it is killed</td>
+			<td><pre lang="json">
+60
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.timeout</td>
+			<td>string</td>
+			<td>Memcached operation timeout</td>
+			<td><pre lang="json">
+"2000ms"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for chunks-cache pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>topologySpreadConstraints allows to customize the default topologySpreadConstraints. This can be either a single dict as shown below or a slice of topologySpreadConstraints. labelSelector is taken from the constraint itself (if it exists) or is generated by the chart using the same selectors as for services.</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.writebackBuffer</td>
+			<td>int</td>
+			<td>Max number of objects to use for cache write back</td>
+			<td><pre lang="json">
+500000
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.writebackParallelism</td>
+			<td>int</td>
+			<td>Number of parallel threads for cache write back</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.writebackSizeLimit</td>
+			<td>string</td>
+			<td>Max memory to use for cache write back</td>
+			<td><pre lang="json">
+"500MB"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>clusterLabelOverride</td>
 			<td>string</td>
 			<td>Overrides the chart's cluster label</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor</td>
+			<td>object</td>
+			<td>Configuration for the compactor</td>
+			<td><pre lang="json">
+{
+  "affinity": {
+    "podAntiAffinity": {
+      "requiredDuringSchedulingIgnoredDuringExecution": [
+        {
+          "labelSelector": {
+            "matchLabels": {
+              "app.kubernetes.io/component": "compactor"
+            }
+          },
+          "topologyKey": "kubernetes.io/hostname"
+        }
+      ]
+    }
+  },
+  "appProtocol": {
+    "grpc": ""
+  },
+  "command": null,
+  "extraArgs": [],
+  "extraContainers": [],
+  "extraEnv": [],
+  "extraEnvFrom": [],
+  "extraVolumeMounts": [],
+  "extraVolumes": [],
+  "hostAliases": [],
+  "image": {
+    "registry": null,
+    "repository": null,
+    "tag": null
+  },
+  "initContainers": [],
+  "livenessProbe": {},
+  "nodeSelector": {},
+  "persistence": {
+    "annotations": {},
+    "claims": [
+      {
+        "name": "data",
+        "size": "10Gi",
+        "storageClass": null
+      }
+    ],
+    "enableStatefulSetAutoDeletePVC": false,
+    "enabled": false,
+    "size": "10Gi",
+    "storageClass": null,
+    "whenDeleted": "Retain",
+    "whenScaled": "Retain"
+  },
+  "podAnnotations": {},
+  "podLabels": {},
+  "priorityClassName": null,
+  "readinessProbe": {},
+  "replicas": 0,
+  "resources": {},
+  "serviceAccount": {
+    "annotations": {},
+    "automountServiceAccountToken": true,
+    "create": false,
+    "imagePullSecrets": [],
+    "name": null
+  },
+  "serviceAnnotations": {},
+  "serviceLabels": {},
+  "terminationGracePeriodSeconds": 30,
+  "tolerations": []
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.affinity</td>
+			<td>object</td>
+			<td>Affinity for compactor pods.</td>
+			<td><pre lang="">
+Hard node anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.appProtocol</td>
+			<td>object</td>
+			<td>Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"</td>
+			<td><pre lang="json">
+{
+  "grpc": ""
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.command</td>
+			<td>string</td>
+			<td>Command to execute instead of defined in Docker image</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.extraArgs</td>
+			<td>list</td>
+			<td>Additional CLI args for the compactor</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the compactor pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.extraEnv</td>
+			<td>list</td>
+			<td>Environment variables to add to the compactor pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the compactor pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Volume mounts to add to the compactor pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.extraVolumes</td>
+			<td>list</td>
+			<td>Volumes to add to the compactor pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.hostAliases</td>
+			<td>list</td>
+			<td>hostAliases to add</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.image.registry</td>
+			<td>string</td>
+			<td>The Docker registry for the compactor image. Overrides `loki.image.registry`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.image.repository</td>
+			<td>string</td>
+			<td>Docker image repository for the compactor image. Overrides `loki.image.repository`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.image.tag</td>
+			<td>string</td>
+			<td>Docker image tag for the compactor image. Overrides `loki.image.tag`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the compactor pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.livenessProbe</td>
+			<td>object</td>
+			<td>liveness probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for compactor pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for compactor PVCs</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.persistence.claims</td>
+			<td>list</td>
+			<td>List of the compactor PVCs</td>
+			<td><pre lang="list">
+
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.persistence.enableStatefulSetAutoDeletePVC</td>
+			<td>bool</td>
+			<td>Enable StatefulSetAutoDeletePVC feature</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.persistence.enabled</td>
+			<td>bool</td>
+			<td>Enable creating PVCs for the compactor</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.persistence.size</td>
+			<td>string</td>
+			<td>Size of persistent disk</td>
+			<td><pre lang="json">
+"10Gi"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.persistence.storageClass</td>
+			<td>string</td>
+			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.podAnnotations</td>
+			<td>object</td>
+			<td>Annotations for compactor pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.podLabels</td>
+			<td>object</td>
+			<td>Labels for compactor pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for compactor pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.readinessProbe</td>
+			<td>object</td>
+			<td>readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.replicas</td>
+			<td>int</td>
+			<td>Number of replicas for the compactor</td>
+			<td><pre lang="json">
+0
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the compactor</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.serviceAccount.annotations</td>
+			<td>object</td>
+			<td>Annotations for the compactor service account</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.serviceAccount.automountServiceAccountToken</td>
+			<td>bool</td>
+			<td>Set this toggle to false to opt out of automounting API credentials for the service account</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.serviceAccount.imagePullSecrets</td>
+			<td>list</td>
+			<td>Image pull secrets for the compactor service account</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.serviceAccount.name</td>
+			<td>string</td>
+			<td>The name of the ServiceAccount to use for the compactor. If not set and create is true, a name is generated by appending "-compactor" to the common ServiceAccount.</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for compactor service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.serviceLabels</td>
+			<td>object</td>
+			<td>Labels for compactor service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td>Grace period to allow the compactor to shutdown before it is killed</td>
+			<td><pre lang="json">
+30
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for compactor pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>deploymentMode</td>
+			<td>string</td>
+			<td>Deployment mode lets you specify how to deploy Loki. There are 3 options: - SingleBinary: Loki is deployed as a single binary, useful for small installs typically without HA, up to a few tens of GB/day. - SimpleScalable: Loki is deployed as 3 targets: read, write, and backend. Useful for medium installs easier to manage than distributed, up to a about 1TB/day. - Distributed: Loki is deployed as individual microservices. The most complicated but most capable, useful for large installs, typically over 1TB/day. There are also 2 additional modes used for migrating between deployment modes: - SingleBinary<->SimpleScalable: Migrate from SingleBinary to SimpleScalable (or vice versa) - SimpleScalable<->Distributed: Migrate from SimpleScalable to Distributed (or vice versa) Note: SimpleScalable and Distributed REQUIRE the use of object storage.</td>
+			<td><pre lang="json">
+"SimpleScalable"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor</td>
+			<td>object</td>
+			<td>Configuration for the distributor</td>
+			<td><pre lang="json">
+{
+  "affinity": {
+    "podAntiAffinity": {
+      "requiredDuringSchedulingIgnoredDuringExecution": [
+        {
+          "labelSelector": {
+            "matchLabels": {
+              "app.kubernetes.io/component": "distributor"
+            }
+          },
+          "topologyKey": "kubernetes.io/hostname"
+        }
+      ]
+    }
+  },
+  "appProtocol": {
+    "grpc": ""
+  },
+  "autoscaling": {
+    "behavior": {
+      "enabled": false,
+      "scaleDown": {},
+      "scaleUp": {}
+    },
+    "customMetrics": [],
+    "enabled": false,
+    "maxReplicas": 3,
+    "minReplicas": 1,
+    "targetCPUUtilizationPercentage": 60,
+    "targetMemoryUtilizationPercentage": null
+  },
+  "command": null,
+  "extraArgs": [],
+  "extraContainers": [],
+  "extraEnv": [],
+  "extraEnvFrom": [],
+  "extraVolumeMounts": [],
+  "extraVolumes": [],
+  "hostAliases": [],
+  "image": {
+    "registry": null,
+    "repository": null,
+    "tag": null
+  },
+  "maxSurge": 0,
+  "maxUnavailable": null,
+  "nodeSelector": {},
+  "podAnnotations": {},
+  "podLabels": {},
+  "priorityClassName": null,
+  "replicas": 0,
+  "resources": {},
+  "serviceAnnotations": {},
+  "serviceLabels": {},
+  "terminationGracePeriodSeconds": 30,
+  "tolerations": []
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.affinity</td>
+			<td>object</td>
+			<td>Affinity for distributor pods.</td>
+			<td><pre lang="">
+Hard node anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.appProtocol</td>
+			<td>object</td>
+			<td>Adds the appProtocol field to the distributor service. This allows distributor to work with istio protocol selection.</td>
+			<td><pre lang="json">
+{
+  "grpc": ""
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.appProtocol.grpc</td>
+			<td>string</td>
+			<td>Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.autoscaling.behavior.enabled</td>
+			<td>bool</td>
+			<td>Enable autoscaling behaviours</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.autoscaling.behavior.scaleDown</td>
+			<td>object</td>
+			<td>define scale down policies, must conform to HPAScalingRules</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.autoscaling.behavior.scaleUp</td>
+			<td>object</td>
+			<td>define scale up policies, must conform to HPAScalingRules</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.autoscaling.customMetrics</td>
+			<td>list</td>
+			<td>Allows one to define custom metrics using the HPA/v2 schema (for example, Pods, Object or External metrics)</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.autoscaling.enabled</td>
+			<td>bool</td>
+			<td>Enable autoscaling for the distributor</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.autoscaling.maxReplicas</td>
+			<td>int</td>
+			<td>Maximum autoscaling replicas for the distributor</td>
+			<td><pre lang="json">
+3
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.autoscaling.minReplicas</td>
+			<td>int</td>
+			<td>Minimum autoscaling replicas for the distributor</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.autoscaling.targetCPUUtilizationPercentage</td>
+			<td>int</td>
+			<td>Target CPU utilisation percentage for the distributor</td>
+			<td><pre lang="json">
+60
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.autoscaling.targetMemoryUtilizationPercentage</td>
+			<td>string</td>
+			<td>Target memory utilisation percentage for the distributor</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.command</td>
+			<td>string</td>
+			<td>Command to execute instead of defined in Docker image</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.extraArgs</td>
+			<td>list</td>
+			<td>Additional CLI args for the distributor</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the distributor pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.extraEnv</td>
+			<td>list</td>
+			<td>Environment variables to add to the distributor pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the distributor pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Volume mounts to add to the distributor pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.extraVolumes</td>
+			<td>list</td>
+			<td>Volumes to add to the distributor pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.hostAliases</td>
+			<td>list</td>
+			<td>hostAliases to add</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.image.registry</td>
+			<td>string</td>
+			<td>The Docker registry for the distributor image. Overrides `loki.image.registry`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.image.repository</td>
+			<td>string</td>
+			<td>Docker image repository for the distributor image. Overrides `loki.image.repository`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.image.tag</td>
+			<td>string</td>
+			<td>Docker image tag for the distributor image. Overrides `loki.image.tag`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.maxSurge</td>
+			<td>int</td>
+			<td>Max Surge for distributor pods</td>
+			<td><pre lang="json">
+0
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.maxUnavailable</td>
+			<td>string</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for distributor pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.podAnnotations</td>
+			<td>object</td>
+			<td>Annotations for distributor pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.podLabels</td>
+			<td>object</td>
+			<td>Labels for distributor pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for distributor pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.replicas</td>
+			<td>int</td>
+			<td>Number of replicas for the distributor</td>
+			<td><pre lang="json">
+0
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the distributor</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for distributor service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.serviceLabels</td>
+			<td>object</td>
+			<td>Labels for distributor service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td>Grace period to allow the distributor to shutdown before it is killed</td>
+			<td><pre lang="json">
+30
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for distributor pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise</td>
+			<td>object</td>
+			<td>Configuration for running Enterprise Loki</td>
+			<td><pre lang="json">
+{
+  "adminApi": {
+    "enabled": true
+  },
+  "adminToken": {
+    "additionalNamespaces": [],
+    "secret": null
+  },
+  "canarySecret": null,
+  "cluster_name": null,
+  "config": "{{- if .Values.enterprise.adminApi.enabled }}\nadmin_client:\n  {{ include \"enterprise-logs.adminAPIStorageConfig\" . | nindent 2 }}\n{{ end }}\nauth:\n  type: {{ .Values.enterprise.adminApi.enabled | ternary \"enterprise\" \"trust\" }}\nauth_enabled: {{ .Values.loki.auth_enabled }}\ncluster_name: {{ include \"loki.clusterName\" . }}\nlicense:\n  path: /etc/loki/license/license.jwt\n",
+  "enabled": false,
+  "externalConfigName": "",
+  "externalLicenseName": null,
+  "gelGateway": true,
+  "image": {
+    "digest": null,
+    "pullPolicy": "IfNotPresent",
+    "registry": "docker.io",
+    "repository": "grafana/enterprise-logs",
+    "tag": null
+  },
+  "license": {
+    "contents": "NOTAVALIDLICENSE"
+  },
+  "provisioner": {
+    "additionalTenants": [],
+    "affinity": {},
+    "annotations": {},
+    "enabled": true,
+    "env": [],
+    "extraVolumeMounts": [],
+    "image": {
+      "digest": null,
+      "pullPolicy": "IfNotPresent",
+      "registry": "docker.io",
+      "repository": "grafana/enterprise-logs-provisioner",
+      "tag": null
+    },
+    "labels": {},
+    "nodeSelector": {},
+    "priorityClassName": null,
+    "provisionedSecretPrefix": null,
+    "securityContext": {
+      "fsGroup": 10001,
+      "runAsGroup": 10001,
+      "runAsNonRoot": true,
+      "runAsUser": 10001
+    },
+    "tolerations": []
+  },
+  "tokengen": {
+    "affinity": {},
+    "annotations": {},
+    "enabled": true,
+    "env": [],
+    "extraArgs": [],
+    "extraEnvFrom": [],
+    "extraVolumeMounts": [],
+    "extraVolumes": [],
+    "labels": {},
+    "nodeSelector": {},
+    "priorityClassName": "",
+    "securityContext": {
+      "fsGroup": 10001,
+      "runAsGroup": 10001,
+      "runAsNonRoot": true,
+      "runAsUser": 10001
+    },
+    "targetModule": "tokengen",
+    "tolerations": []
+  },
+  "useExternalLicense": false,
+  "version": "3.1.1"
+}
 </pre>
 </td>
 		</tr>
@@ -434,24 +3148,6 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>enterprise.config</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-"{{- if .Values.enterprise.adminApi.enabled }}\n{{- if or .Values.minio.enabled (eq .Values.loki.storage.type \"s3\") (eq .Values.loki.storage.type \"gcs\") (eq .Values.loki.storage.type \"azure\") }}\nadmin_client:\n  storage:\n    s3:\n      bucket_name: {{ .Values.loki.storage.bucketNames.admin }}\n{{- end }}\n{{- end }}\nauth:\n  type: {{ .Values.enterprise.adminApi.enabled | ternary \"enterprise\" \"trust\" }}\nauth_enabled: {{ .Values.loki.auth_enabled }}\ncluster_name: {{ include \"loki.clusterName\" . }}\nlicense:\n  path: /etc/loki/license/license.jwt\n"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.enabled</td>
-			<td>bool</td>
-			<td></td>
-			<td><pre lang="json">
-false
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>enterprise.externalConfigName</td>
 			<td>string</td>
 			<td>Name of the external config secret to use</td>
@@ -466,6 +3162,15 @@ false
 			<td>Name of external license secret to use</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.gelGateway</td>
+			<td>bool</td>
+			<td>Use GEL gateway, if false will use the default nginx gateway</td>
+			<td><pre lang="json">
+true
 </pre>
 </td>
 		</tr>
@@ -532,6 +3237,7 @@ null
 			<td><pre lang="json">
 {
   "additionalTenants": [],
+  "affinity": {},
   "annotations": {},
   "enabled": true,
   "env": [],
@@ -544,6 +3250,7 @@ null
     "tag": null
   },
   "labels": {},
+  "nodeSelector": {},
   "priorityClassName": null,
   "provisionedSecretPrefix": null,
   "securityContext": {
@@ -551,7 +3258,8 @@ null
     "runAsGroup": 10001,
     "runAsNonRoot": true,
     "runAsUser": 10001
-  }
+  },
+  "tolerations": []
 }
 </pre>
 </td>
@@ -562,6 +3270,15 @@ null
 			<td>Additional tenants to be created. Each tenant will get a read and write policy and associated token. Tenant must have a name and a namespace for the secret containting the token to be created in. For example additionalTenants:   - name: loki     secretNamespace: grafana</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.provisioner.affinity</td>
+			<td>object</td>
+			<td>Affinity for tokengen Pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -671,6 +3388,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>enterprise.provisioner.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for tokengen Pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise.provisioner.priorityClassName</td>
 			<td>string</td>
 			<td>The name of the PriorityClass for provisioner Job</td>
@@ -703,11 +3429,21 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>enterprise.provisioner.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for tokengen Pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise.tokengen</td>
 			<td>object</td>
 			<td>Configuration for `tokengen` target</td>
 			<td><pre lang="json">
 {
+  "affinity": {},
   "annotations": {},
   "enabled": true,
   "env": [],
@@ -716,6 +3452,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "labels": {},
+  "nodeSelector": {},
   "priorityClassName": "",
   "securityContext": {
     "fsGroup": 10001,
@@ -726,6 +3463,15 @@ null
   "targetModule": "tokengen",
   "tolerations": []
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.tokengen.affinity</td>
+			<td>object</td>
+			<td>Affinity for tokengen Pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -802,6 +3548,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>enterprise.tokengen.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for tokengen Pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise.tokengen.priorityClassName</td>
 			<td>string</td>
 			<td>The name of the PriorityClass for tokengen Pods</td>
@@ -852,11 +3607,265 @@ false
 </td>
 		</tr>
 		<tr>
-			<td>enterprise.version</td>
-			<td>string</td>
-			<td></td>
+			<td>enterpriseGateway</td>
+			<td>object</td>
+			<td>If running enterprise and using the default enterprise gateway, configs go here.</td>
 			<td><pre lang="json">
-"v1.8.6"
+{
+  "affinity": {},
+  "annotations": {},
+  "containerSecurityContext": {
+    "allowPrivilegeEscalation": false,
+    "capabilities": {
+      "drop": [
+        "ALL"
+      ]
+    },
+    "readOnlyRootFilesystem": true
+  },
+  "env": [],
+  "extraArgs": {},
+  "extraContainers": [],
+  "extraEnvFrom": [],
+  "extraVolumeMounts": [],
+  "extraVolumes": [],
+  "hostAliases": [],
+  "initContainers": [],
+  "labels": {},
+  "nodeSelector": {},
+  "podSecurityContext": {
+    "fsGroup": 10001,
+    "runAsGroup": 10001,
+    "runAsNonRoot": true,
+    "runAsUser": 10001
+  },
+  "readinessProbe": {
+    "httpGet": {
+      "path": "/ready",
+      "port": "http-metrics"
+    },
+    "initialDelaySeconds": 45
+  },
+  "replicas": 1,
+  "resources": {},
+  "service": {
+    "annotations": {},
+    "labels": {},
+    "type": "ClusterIP"
+  },
+  "strategy": {
+    "type": "RollingUpdate"
+  },
+  "terminationGracePeriodSeconds": 60,
+  "tolerations": [],
+  "useDefaultProxyURLs": true
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.affinity</td>
+			<td>object</td>
+			<td>Affinity for gateway Pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.annotations</td>
+			<td>object</td>
+			<td>Additional annotations for the `gateway` Pod</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.env</td>
+			<td>list</td>
+			<td>Configure optional environment variables</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.extraArgs</td>
+			<td>object</td>
+			<td>Additional CLI arguments for the `gateway` target</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.extraContainers</td>
+			<td>list</td>
+			<td>Conifgure optional extraContainers</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the enterprise gateway pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Additional volume mounts for Pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.extraVolumes</td>
+			<td>list</td>
+			<td>Additional volumes for Pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.hostAliases</td>
+			<td>list</td>
+			<td>hostAliases to add</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.initContainers</td>
+			<td>list</td>
+			<td>Configure optional initContainers</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.labels</td>
+			<td>object</td>
+			<td>Additional labels for the `gateway` Pod</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for gateway Pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.podSecurityContext</td>
+			<td>object</td>
+			<td>Run container as user `enterprise-logs(uid=10001)`</td>
+			<td><pre lang="json">
+{
+  "fsGroup": 10001,
+  "runAsGroup": 10001,
+  "runAsNonRoot": true,
+  "runAsUser": 10001
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.readinessProbe</td>
+			<td>object</td>
+			<td>Readiness probe</td>
+			<td><pre lang="json">
+{
+  "httpGet": {
+    "path": "/ready",
+    "port": "http-metrics"
+  },
+  "initialDelaySeconds": 45
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.replicas</td>
+			<td>int</td>
+			<td>Define the amount of instances</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.resources</td>
+			<td>object</td>
+			<td>Values are defined in small.yaml and large.yaml</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.service</td>
+			<td>object</td>
+			<td>Service overriding service type</td>
+			<td><pre lang="json">
+{
+  "annotations": {},
+  "labels": {},
+  "type": "ClusterIP"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.strategy</td>
+			<td>object</td>
+			<td>update strategy</td>
+			<td><pre lang="json">
+{
+  "type": "RollingUpdate"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td>Grace period to allow the gateway to shutdown before it is killed</td>
+			<td><pre lang="json">
+60
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for gateway Pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.useDefaultProxyURLs</td>
+			<td>bool</td>
+			<td>If you want to use your own proxy URLs, set this to false.</td>
+			<td><pre lang="json">
+true
 </pre>
 </td>
 		</tr>
@@ -880,10 +3889,10 @@ null
 		</tr>
 		<tr>
 			<td>gateway.affinity</td>
-			<td>string</td>
-			<td>Affinity for gateway pods. Passed through `tpl` and, thus, to be configured as string</td>
+			<td>object</td>
+			<td>Affinity for gateway pods.</td>
 			<td><pre lang="">
-Hard node and soft zone anti-affinity
+Hard node anti-affinity
 </pre>
 </td>
 		</tr>
@@ -971,9 +3980,9 @@ null
 		<tr>
 			<td>gateway.basicAuth.htpasswd</td>
 			<td>string</td>
-			<td>Uses the specified users from the `loki.tenants` list to create the htpasswd file if `loki.tenants` is not set, the `gateway.basicAuth.username` and `gateway.basicAuth.password` are used The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes high CPU load.</td>
-			<td><pre lang="json">
-"{{ if .Values.loki.tenants }}\n\n  {{- range $t := .Values.loki.tenants }}\n{{ htpasswd (required \"All tenants must have a 'name' set\" $t.name) (required \"All tenants must have a 'password' set\" $t.password) }}\n\n  {{- end }}\n{{ else }} {{ htpasswd (required \"'gateway.basicAuth.username' is required\" .Values.gateway.basicAuth.username) (required \"'gateway.basicAuth.password' is required\" .Values.gateway.basicAuth.password) }} {{ end }}"
+			<td>Uses the specified users from the `loki.tenants` list to create the htpasswd file. if `loki.tenants` is not set, the `gateway.basicAuth.username` and `gateway.basicAuth.password` are used. The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes high CPU load.</td>
+			<td><pre lang="">
+Either `loki.tenants` or `gateway.basicAuth.username` and `gateway.basicAuth.password`.
 </pre>
 </td>
 		</tr>
@@ -992,6 +4001,15 @@ null
 			<td>The basic auth username for the gateway</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.containerPort</td>
+			<td>int</td>
+			<td>Default container port</td>
+			<td><pre lang="json">
+8080
 </pre>
 </td>
 		</tr>
@@ -1134,7 +4152,7 @@ null
 			<td>string</td>
 			<td>The gateway image tag</td>
 			<td><pre lang="json">
-"1.24-alpine"
+"1.27-alpine"
 </pre>
 </td>
 		</tr>
@@ -1218,6 +4236,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>gateway.nginxConfig.clientMaxBodySize</td>
+			<td>string</td>
+			<td>Allows customizing the `client_max_body_size` directive</td>
+			<td><pre lang="json">
+"4M"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.nginxConfig.customBackendUrl</td>
 			<td>string</td>
 			<td>Override Backend URL</td>
@@ -1290,11 +4317,29 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>gateway.nginxConfig.schema</td>
+			<td>string</td>
+			<td>Which schema to be used when building URLs. Can be 'http' or 'https'.</td>
+			<td><pre lang="json">
+"http"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.nginxConfig.serverSnippet</td>
 			<td>string</td>
 			<td>Allows appending custom configuration to the server block</td>
 			<td><pre lang="json">
 ""
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.nginxConfig.ssl</td>
+			<td>bool</td>
+			<td>Whether ssl should be appended to the listen directive of the server block or not.</td>
+			<td><pre lang="json">
+false
 </pre>
 </td>
 		</tr>
@@ -1362,7 +4407,7 @@ null
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"http"
+"http-metrics"
 </pre>
 </td>
 		</tr>
@@ -1556,20 +4601,1136 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>ingress.annotations</td>
+			<td>indexGateway</td>
 			<td>object</td>
-			<td></td>
+			<td>Configuration for the index-gateway</td>
+			<td><pre lang="json">
+{
+  "affinity": {
+    "podAntiAffinity": {
+      "requiredDuringSchedulingIgnoredDuringExecution": [
+        {
+          "labelSelector": {
+            "matchLabels": {
+              "app.kubernetes.io/component": "index-gateway"
+            }
+          },
+          "topologyKey": "kubernetes.io/hostname"
+        }
+      ]
+    }
+  },
+  "appProtocol": {
+    "grpc": ""
+  },
+  "extraArgs": [],
+  "extraContainers": [],
+  "extraEnv": [],
+  "extraEnvFrom": [],
+  "extraVolumeMounts": [],
+  "extraVolumes": [],
+  "hostAliases": [],
+  "image": {
+    "registry": null,
+    "repository": null,
+    "tag": null
+  },
+  "initContainers": [],
+  "joinMemberlist": true,
+  "maxUnavailable": null,
+  "nodeSelector": {},
+  "persistence": {
+    "annotations": {},
+    "enableStatefulSetAutoDeletePVC": false,
+    "enabled": false,
+    "inMemory": false,
+    "size": "10Gi",
+    "storageClass": null,
+    "whenDeleted": "Retain",
+    "whenScaled": "Retain"
+  },
+  "podAnnotations": {},
+  "podLabels": {},
+  "priorityClassName": null,
+  "replicas": 0,
+  "resources": {},
+  "serviceAnnotations": {},
+  "serviceLabels": {},
+  "terminationGracePeriodSeconds": 300,
+  "tolerations": [],
+  "updateStrategy": {
+    "type": "RollingUpdate"
+  }
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.affinity</td>
+			<td>object</td>
+			<td>Affinity for index-gateway pods.</td>
+			<td><pre lang="">
+Hard node anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.appProtocol</td>
+			<td>object</td>
+			<td>Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"</td>
+			<td><pre lang="json">
+{
+  "grpc": ""
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.extraArgs</td>
+			<td>list</td>
+			<td>Additional CLI args for the index-gateway</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the index-gateway pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.extraEnv</td>
+			<td>list</td>
+			<td>Environment variables to add to the index-gateway pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the index-gateway pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Volume mounts to add to the index-gateway pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.extraVolumes</td>
+			<td>list</td>
+			<td>Volumes to add to the index-gateway pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.hostAliases</td>
+			<td>list</td>
+			<td>hostAliases to add</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.image.registry</td>
+			<td>string</td>
+			<td>The Docker registry for the index-gateway image. Overrides `loki.image.registry`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.image.repository</td>
+			<td>string</td>
+			<td>Docker image repository for the index-gateway image. Overrides `loki.image.repository`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.image.tag</td>
+			<td>string</td>
+			<td>Docker image tag for the index-gateway image. Overrides `loki.image.tag`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the index-gateway pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.joinMemberlist</td>
+			<td>bool</td>
+			<td>Whether the index gateway should join the memberlist hashring</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.maxUnavailable</td>
+			<td>string</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for index-gateway pods</td>
 			<td><pre lang="json">
 {}
 </pre>
 </td>
 		</tr>
 		<tr>
-			<td>ingress.enabled</td>
+			<td>indexGateway.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for index gateway PVCs</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.persistence.enableStatefulSetAutoDeletePVC</td>
 			<td>bool</td>
-			<td></td>
+			<td>Enable StatefulSetAutoDeletePVC feature</td>
 			<td><pre lang="json">
 false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.persistence.enabled</td>
+			<td>bool</td>
+			<td>Enable creating PVCs which is required when using boltdb-shipper</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.persistence.inMemory</td>
+			<td>bool</td>
+			<td>Use emptyDir with ramdisk for storage. **Please note that all data in indexGateway will be lost on pod restart**</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.persistence.size</td>
+			<td>string</td>
+			<td>Size of persistent or memory disk</td>
+			<td><pre lang="json">
+"10Gi"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.persistence.storageClass</td>
+			<td>string</td>
+			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.podAnnotations</td>
+			<td>object</td>
+			<td>Annotations for index-gateway pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.podLabels</td>
+			<td>object</td>
+			<td>Labels for index-gateway pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for index-gateway pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.replicas</td>
+			<td>int</td>
+			<td>Number of replicas for the index-gateway</td>
+			<td><pre lang="json">
+0
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the index-gateway</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for index-gateway service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.serviceLabels</td>
+			<td>object</td>
+			<td>Labels for index-gateway service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td>Grace period to allow the index-gateway to shutdown before it is killed.</td>
+			<td><pre lang="json">
+300
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for index-gateway pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.updateStrategy</td>
+			<td>object</td>
+			<td>UpdateStrategy for the indexGateway StatefulSet.</td>
+			<td><pre lang="json">
+{
+  "type": "RollingUpdate"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.updateStrategy.type</td>
+			<td>string</td>
+			<td>One of  'OnDelete' or 'RollingUpdate'</td>
+			<td><pre lang="json">
+"RollingUpdate"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester</td>
+			<td>object</td>
+			<td>Configuration for the ingester</td>
+			<td><pre lang="json">
+{
+  "affinity": {
+    "podAntiAffinity": {
+      "requiredDuringSchedulingIgnoredDuringExecution": [
+        {
+          "labelSelector": {
+            "matchLabels": {
+              "app.kubernetes.io/component": "ingester"
+            }
+          },
+          "topologyKey": "kubernetes.io/hostname"
+        }
+      ]
+    }
+  },
+  "appProtocol": {
+    "grpc": ""
+  },
+  "autoscaling": {
+    "behavior": {
+      "enabled": false,
+      "scaleDown": {},
+      "scaleUp": {}
+    },
+    "customMetrics": [],
+    "enabled": false,
+    "maxReplicas": 3,
+    "minReplicas": 1,
+    "targetCPUUtilizationPercentage": 60,
+    "targetMemoryUtilizationPercentage": null
+  },
+  "command": null,
+  "extraArgs": [],
+  "extraContainers": [],
+  "extraEnv": [],
+  "extraEnvFrom": [],
+  "extraVolumeMounts": [],
+  "extraVolumes": [],
+  "hostAliases": [],
+  "image": {
+    "registry": null,
+    "repository": null,
+    "tag": null
+  },
+  "initContainers": [],
+  "lifecycle": {},
+  "livenessProbe": {},
+  "maxUnavailable": 1,
+  "nodeSelector": {},
+  "persistence": {
+    "claims": [
+      {
+        "name": "data",
+        "size": "10Gi",
+        "storageClass": null
+      }
+    ],
+    "enableStatefulSetAutoDeletePVC": false,
+    "enabled": false,
+    "inMemory": false,
+    "whenDeleted": "Retain",
+    "whenScaled": "Retain"
+  },
+  "podAnnotations": {},
+  "podLabels": {},
+  "priorityClassName": null,
+  "readinessProbe": {},
+  "replicas": 0,
+  "resources": {},
+  "serviceAnnotations": {},
+  "serviceLabels": {},
+  "terminationGracePeriodSeconds": 300,
+  "tolerations": [],
+  "topologySpreadConstraints": [
+    {
+      "labelSelector": {
+        "matchLabels": {
+          "app.kubernetes.io/component": "ingester"
+        }
+      },
+      "maxSkew": 1,
+      "topologyKey": "kubernetes.io/hostname",
+      "whenUnsatisfiable": "ScheduleAnyway"
+    }
+  ],
+  "updateStrategy": {
+    "type": "RollingUpdate"
+  },
+  "zoneAwareReplication": {
+    "enabled": true,
+    "maxUnavailablePct": 33,
+    "migration": {
+      "enabled": false,
+      "excludeDefaultZone": false,
+      "readPath": false,
+      "writePath": false
+    },
+    "zoneA": {
+      "annotations": {},
+      "extraAffinity": {},
+      "nodeSelector": null,
+      "podAnnotations": {}
+    },
+    "zoneB": {
+      "annotations": {},
+      "extraAffinity": {},
+      "nodeSelector": null,
+      "podAnnotations": {}
+    },
+    "zoneC": {
+      "annotations": {},
+      "extraAffinity": {},
+      "nodeSelector": null,
+      "podAnnotations": {}
+    }
+  }
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.affinity</td>
+			<td>object</td>
+			<td>Affinity for ingester pods. Ignored if zoneAwareReplication is enabled.</td>
+			<td><pre lang="">
+Hard node anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.appProtocol</td>
+			<td>object</td>
+			<td>Adds the appProtocol field to the ingester service. This allows ingester to work with istio protocol selection.</td>
+			<td><pre lang="json">
+{
+  "grpc": ""
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.appProtocol.grpc</td>
+			<td>string</td>
+			<td>Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.autoscaling.behavior.enabled</td>
+			<td>bool</td>
+			<td>Enable autoscaling behaviours</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.autoscaling.behavior.scaleDown</td>
+			<td>object</td>
+			<td>define scale down policies, must conform to HPAScalingRules</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.autoscaling.behavior.scaleUp</td>
+			<td>object</td>
+			<td>define scale up policies, must conform to HPAScalingRules</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.autoscaling.customMetrics</td>
+			<td>list</td>
+			<td>Allows one to define custom metrics using the HPA/v2 schema (for example, Pods, Object or External metrics)</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.autoscaling.enabled</td>
+			<td>bool</td>
+			<td>Enable autoscaling for the ingester</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.autoscaling.maxReplicas</td>
+			<td>int</td>
+			<td>Maximum autoscaling replicas for the ingester</td>
+			<td><pre lang="json">
+3
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.autoscaling.minReplicas</td>
+			<td>int</td>
+			<td>Minimum autoscaling replicas for the ingester</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.autoscaling.targetCPUUtilizationPercentage</td>
+			<td>int</td>
+			<td>Target CPU utilisation percentage for the ingester</td>
+			<td><pre lang="json">
+60
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.autoscaling.targetMemoryUtilizationPercentage</td>
+			<td>string</td>
+			<td>Target memory utilisation percentage for the ingester</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.command</td>
+			<td>string</td>
+			<td>Command to execute instead of defined in Docker image</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.extraArgs</td>
+			<td>list</td>
+			<td>Additional CLI args for the ingester</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the ingester pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.extraEnv</td>
+			<td>list</td>
+			<td>Environment variables to add to the ingester pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the ingester pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Volume mounts to add to the ingester pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.extraVolumes</td>
+			<td>list</td>
+			<td>Volumes to add to the ingester pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.hostAliases</td>
+			<td>list</td>
+			<td>hostAliases to add</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.image.registry</td>
+			<td>string</td>
+			<td>The Docker registry for the ingester image. Overrides `loki.image.registry`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.image.repository</td>
+			<td>string</td>
+			<td>Docker image repository for the ingester image. Overrides `loki.image.repository`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.image.tag</td>
+			<td>string</td>
+			<td>Docker image tag for the ingester image. Overrides `loki.image.tag`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the ingester pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.lifecycle</td>
+			<td>object</td>
+			<td>Lifecycle for the ingester container</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.livenessProbe</td>
+			<td>object</td>
+			<td>liveness probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.maxUnavailable</td>
+			<td>int</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for ingester pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.persistence.claims</td>
+			<td>list</td>
+			<td>List of the ingester PVCs</td>
+			<td><pre lang="list">
+
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.persistence.enableStatefulSetAutoDeletePVC</td>
+			<td>bool</td>
+			<td>Enable StatefulSetAutoDeletePVC feature</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.persistence.enabled</td>
+			<td>bool</td>
+			<td>Enable creating PVCs which is required when using boltdb-shipper</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.persistence.inMemory</td>
+			<td>bool</td>
+			<td>Use emptyDir with ramdisk for storage. **Please note that all data in ingester will be lost on pod restart**</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.podAnnotations</td>
+			<td>object</td>
+			<td>Annotations for ingester pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.podLabels</td>
+			<td>object</td>
+			<td>Labels for ingester pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.readinessProbe</td>
+			<td>object</td>
+			<td>readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.replicas</td>
+			<td>int</td>
+			<td>Number of replicas for the ingester, when zoneAwareReplication.enabled is true, the total number of replicas will match this value with each zone having 1/3rd of the total replicas.</td>
+			<td><pre lang="json">
+0
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the ingester</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for ingestor service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.serviceLabels</td>
+			<td>object</td>
+			<td>Labels for ingestor service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td>Grace period to allow the ingester to shutdown before it is killed. Especially for the ingestor, this must be increased. It must be long enough so ingesters can be gracefully shutdown flushing/transferring all data and to successfully leave the member ring on shutdown.</td>
+			<td><pre lang="json">
+300
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for ingester pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>topologySpread for ingester pods.</td>
+			<td><pre lang="">
+Defaults to allow skew no more than 1 node
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.updateStrategy</td>
+			<td>object</td>
+			<td>UpdateStrategy for the ingester StatefulSets.</td>
+			<td><pre lang="json">
+{
+  "type": "RollingUpdate"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.updateStrategy.type</td>
+			<td>string</td>
+			<td>One of  'OnDelete' or 'RollingUpdate'</td>
+			<td><pre lang="json">
+"RollingUpdate"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.zoneAwareReplication</td>
+			<td>object</td>
+			<td>Enabling zone awareness on ingesters will create 3 statefulests where all writes will send a replica to each zone. This is primarily intended to accelerate rollout operations by allowing for multiple ingesters within a single zone to be shutdown and restart simultaneously (the remaining 2 zones will be guaranteed to have at least one copy of the data). Note: This can be used to run Loki over multiple cloud provider availability zones however this is not currently recommended as Loki is not optimized for this and cross zone network traffic costs can become extremely high extremely quickly. Even with zone awareness enabled, it is recommended to run Loki in a single availability zone.</td>
+			<td><pre lang="json">
+{
+  "enabled": true,
+  "maxUnavailablePct": 33,
+  "migration": {
+    "enabled": false,
+    "excludeDefaultZone": false,
+    "readPath": false,
+    "writePath": false
+  },
+  "zoneA": {
+    "annotations": {},
+    "extraAffinity": {},
+    "nodeSelector": null,
+    "podAnnotations": {}
+  },
+  "zoneB": {
+    "annotations": {},
+    "extraAffinity": {},
+    "nodeSelector": null,
+    "podAnnotations": {}
+  },
+  "zoneC": {
+    "annotations": {},
+    "extraAffinity": {},
+    "nodeSelector": null,
+    "podAnnotations": {}
+  }
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.zoneAwareReplication.enabled</td>
+			<td>bool</td>
+			<td>Enable zone awareness.</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.zoneAwareReplication.maxUnavailablePct</td>
+			<td>int</td>
+			<td>The percent of replicas in each zone that will be restarted at once. In a value of 0-100</td>
+			<td><pre lang="json">
+33
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.zoneAwareReplication.migration</td>
+			<td>object</td>
+			<td>The migration block allows migrating non zone aware ingesters to zone aware ingesters.</td>
+			<td><pre lang="json">
+{
+  "enabled": false,
+  "excludeDefaultZone": false,
+  "readPath": false,
+  "writePath": false
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.zoneAwareReplication.zoneA</td>
+			<td>object</td>
+			<td>zoneA configuration</td>
+			<td><pre lang="json">
+{
+  "annotations": {},
+  "extraAffinity": {},
+  "nodeSelector": null,
+  "podAnnotations": {}
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.zoneAwareReplication.zoneA.annotations</td>
+			<td>object</td>
+			<td>Specific annotations to add to zone A statefulset</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.zoneAwareReplication.zoneA.extraAffinity</td>
+			<td>object</td>
+			<td>optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.zoneAwareReplication.zoneA.nodeSelector</td>
+			<td>string</td>
+			<td>optionally define a node selector for this zone</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.zoneAwareReplication.zoneA.podAnnotations</td>
+			<td>object</td>
+			<td>Specific annotations to add to zone A pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.zoneAwareReplication.zoneB.annotations</td>
+			<td>object</td>
+			<td>Specific annotations to add to zone B statefulset</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.zoneAwareReplication.zoneB.extraAffinity</td>
+			<td>object</td>
+			<td>optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.zoneAwareReplication.zoneB.nodeSelector</td>
+			<td>string</td>
+			<td>optionally define a node selector for this zone</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.zoneAwareReplication.zoneB.podAnnotations</td>
+			<td>object</td>
+			<td>Specific annotations to add to zone B pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.zoneAwareReplication.zoneC.annotations</td>
+			<td>object</td>
+			<td>Specific annotations to add to zone C statefulset</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.zoneAwareReplication.zoneC.extraAffinity</td>
+			<td>object</td>
+			<td>optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.zoneAwareReplication.zoneC.nodeSelector</td>
+			<td>string</td>
+			<td>optionally define a node selector for this zone</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.zoneAwareReplication.zoneC.podAnnotations</td>
+			<td>object</td>
+			<td>Specific annotations to add to zone C pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress</td>
+			<td>object</td>
+			<td>Ingress configuration Use either this ingress or the gateway, but not both at once. If you enable this, make sure to disable the gateway. You'll need to supply authn configuration for your ingress controller.</td>
+			<td><pre lang="json">
+{
+  "annotations": {},
+  "enabled": false,
+  "hosts": [
+    "loki.example.com"
+  ],
+  "ingressClassName": "",
+  "labels": {},
+  "paths": {
+    "distributor": [
+      "/api/prom/push",
+      "/loki/api/v1/push",
+      "/otlp/v1/logs"
+    ],
+    "queryFrontend": [
+      "/api/prom/query",
+      "/api/prom/label",
+      "/api/prom/series",
+      "/api/prom/tail",
+      "/loki/api/v1/query",
+      "/loki/api/v1/query_range",
+      "/loki/api/v1/tail",
+      "/loki/api/v1/label",
+      "/loki/api/v1/labels",
+      "/loki/api/v1/series",
+      "/loki/api/v1/index/stats",
+      "/loki/api/v1/index/volume",
+      "/loki/api/v1/index/volume_range",
+      "/loki/api/v1/format_query",
+      "/loki/api/v1/detected_field",
+      "/loki/api/v1/detected_fields",
+      "/loki/api/v1/detected_labels",
+      "/loki/api/v1/patterns"
+    ],
+    "ruler": [
+      "/api/prom/rules",
+      "/api/prom/api/v1/rules",
+      "/api/prom/api/v1/alerts",
+      "/loki/api/v1/rules",
+      "/prometheus/api/v1/rules",
+      "/prometheus/api/v1/alerts"
+    ]
+  },
+  "tls": []
+}
 </pre>
 </td>
 		</tr>
@@ -1585,182 +5746,59 @@ false
 </td>
 		</tr>
 		<tr>
-			<td>ingress.ingressClassName</td>
-			<td>string</td>
-			<td></td>
+			<td>ingress.paths.distributor</td>
+			<td>list</td>
+			<td>Paths that are exposed by Loki Distributor. If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.distributorFullname"}}`. If deployment mode is SimpleScalable, the requests are forwarded to write k8s service: `{{"loki.writeFullname"}}`. If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`</td>
 			<td><pre lang="json">
-""
+[
+  "/api/prom/push",
+  "/loki/api/v1/push",
+  "/otlp/v1/logs"
+]
 </pre>
 </td>
 		</tr>
 		<tr>
-			<td>ingress.labels</td>
-			<td>object</td>
-			<td></td>
+			<td>ingress.paths.queryFrontend</td>
+			<td>list</td>
+			<td>Paths that are exposed by Loki Query Frontend. If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.queryFrontendFullname"}}`. If deployment mode is SimpleScalable, the requests are forwarded to write k8s service: `{{"loki.readFullname"}}`. If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`</td>
 			<td><pre lang="json">
-{}
+[
+  "/api/prom/query",
+  "/api/prom/label",
+  "/api/prom/series",
+  "/api/prom/tail",
+  "/loki/api/v1/query",
+  "/loki/api/v1/query_range",
+  "/loki/api/v1/tail",
+  "/loki/api/v1/label",
+  "/loki/api/v1/labels",
+  "/loki/api/v1/series",
+  "/loki/api/v1/index/stats",
+  "/loki/api/v1/index/volume",
+  "/loki/api/v1/index/volume_range",
+  "/loki/api/v1/format_query",
+  "/loki/api/v1/detected_field",
+  "/loki/api/v1/detected_fields",
+  "/loki/api/v1/detected_labels",
+  "/loki/api/v1/patterns"
+]
 </pre>
 </td>
 		</tr>
 		<tr>
-			<td>ingress.paths.read[0]</td>
-			<td>string</td>
-			<td></td>
+			<td>ingress.paths.ruler</td>
+			<td>list</td>
+			<td>Paths that are exposed by Loki Ruler. If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.rulerFullname"}}`. If deployment mode is SimpleScalable, the requests are forwarded to k8s service: `{{"loki.backendFullname"}}`. If deployment mode is SimpleScalable but `read.legacyReadTarget` is `true`, the requests are forwarded to k8s service: `{{"loki.readFullname"}}`. If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`</td>
 			<td><pre lang="json">
-"/api/prom/tail"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>ingress.paths.read[1]</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-"/loki/api/v1/tail"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>ingress.paths.read[2]</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-"/loki/api"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>ingress.paths.read[3]</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-"/api/prom/rules"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>ingress.paths.read[4]</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-"/loki/api/v1/rules"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>ingress.paths.read[5]</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-"/prometheus/api/v1/rules"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>ingress.paths.read[6]</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-"/prometheus/api/v1/alerts"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>ingress.paths.singleBinary[0]</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-"/api/prom/push"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>ingress.paths.singleBinary[1]</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-"/loki/api/v1/push"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>ingress.paths.singleBinary[2]</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-"/api/prom/tail"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>ingress.paths.singleBinary[3]</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-"/loki/api/v1/tail"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>ingress.paths.singleBinary[4]</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-"/loki/api"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>ingress.paths.singleBinary[5]</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-"/api/prom/rules"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>ingress.paths.singleBinary[6]</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-"/loki/api/v1/rules"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>ingress.paths.singleBinary[7]</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-"/prometheus/api/v1/rules"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>ingress.paths.singleBinary[8]</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-"/prometheus/api/v1/alerts"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>ingress.paths.write[0]</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-"/api/prom/push"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>ingress.paths.write[1]</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-"/loki/api/v1/push"
+[
+  "/api/prom/rules",
+  "/api/prom/api/v1/rules",
+  "/api/prom/api/v1/alerts",
+  "/loki/api/v1/rules",
+  "/prometheus/api/v1/rules",
+  "/prometheus/api/v1/alerts"
+]
 </pre>
 </td>
 		</tr>
@@ -1770,6 +5808,30 @@ false
 			<td>TLS configuration for the ingress. Hosts passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>kubeVersionOverride</td>
+			<td>string</td>
+			<td>Overrides the version used to determine compatibility of resources with the target Kubernetes cluster. This is useful when using `helm template`, because then helm will use the client version of kubectl as the Kubernetes version, which may or may not match your cluster's server version. Example: 'v1.24.4'. Set to null to use the version that helm devises.</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>kubectlImage</td>
+			<td>object</td>
+			<td>kubetclImage is used in the enterprise provisioner and tokengen jobs</td>
+			<td><pre lang="json">
+{
+  "digest": null,
+  "pullPolicy": "IfNotPresent",
+  "registry": "docker.io",
+  "repository": "bitnami/kubectl",
+  "tag": null
+}
 </pre>
 </td>
 		</tr>
@@ -1819,6 +5881,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>loki</td>
+			<td>object</td>
+			<td>Configuration for running Loki</td>
+			<td><pre lang="">
+See values.yaml
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.analytics</td>
 			<td>object</td>
 			<td>Optional analytics configuration</td>
@@ -1833,15 +5904,6 @@ null
 			<td>Common annotations for all deployments/StatefulSets</td>
 			<td><pre lang="json">
 {}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>loki.auth_enabled</td>
-			<td>bool</td>
-			<td></td>
-			<td><pre lang="json">
-true
 </pre>
 </td>
 		</tr>
@@ -1873,6 +5935,15 @@ true
 			<td>Config file contents for Loki</td>
 			<td><pre lang="">
 See values.yaml
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.configObjectName</td>
+			<td>string</td>
+			<td>The name of the object which Loki will mount as a volume containing the config. If the configStorageType is Secret, this will be the name of the Secret, if it is ConfigMap, this will be the name of the ConfigMap. The value will be passed through tpl.</td>
+			<td><pre lang="json">
+"{{ include \"loki.name\" . }}"
 </pre>
 </td>
 		</tr>
@@ -1921,24 +5992,6 @@ true
 </td>
 		</tr>
 		<tr>
-			<td>loki.existingSecretForConfig</td>
-			<td>string</td>
-			<td>Specify an existing secret containing loki configuration. If non-empty, overrides `loki.config`</td>
-			<td><pre lang="json">
-""
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>loki.externalConfigSecretName</td>
-			<td>string</td>
-			<td>Name of the Secret or ConfigMap that contains the configuration (used for naming even if config is internal).</td>
-			<td><pre lang="json">
-"{{ include \"loki.name\" . }}"
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>loki.extraMemberlistConfig</td>
 			<td>object</td>
 			<td>Extra memberlist configuration</td>
@@ -1948,20 +6001,11 @@ true
 </td>
 		</tr>
 		<tr>
-			<td>loki.frontend.scheduler_address</td>
+			<td>loki.generatedConfigObjectName</td>
 			<td>string</td>
-			<td></td>
+			<td>The name of the Secret or ConfigMap that will be created by this chart. If empty, no configmap or secret will be created. The value will be passed through tpl.</td>
 			<td><pre lang="json">
-"{{ include \"loki.querySchedulerAddress\" . }}"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>loki.frontend_worker.scheduler_address</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-"{{ include \"loki.querySchedulerAddress\" . }}"
+"{{ include \"loki.name\" . }}"
 </pre>
 </td>
 		</tr>
@@ -2004,7 +6048,7 @@ null
 		<tr>
 			<td>loki.image.tag</td>
 			<td>string</td>
-			<td>Overrides the image tag whose default is the chart's appVersion TODO: needed for 3rd target backend functionality revert to null or latest once this behavior is relased</td>
+			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -2016,7 +6060,7 @@ null
 			<td>Optional index gateway configuration</td>
 			<td><pre lang="json">
 {
-  "mode": "ring"
+  "mode": "simple"
 }
 </pre>
 </td>
@@ -2037,9 +6081,11 @@ null
 			<td><pre lang="json">
 {
   "max_cache_freshness_per_query": "10m",
+  "query_timeout": "300s",
   "reject_old_samples": true,
   "reject_old_samples_max_age": "168h",
-  "split_queries_by_interval": "15m"
+  "split_queries_by_interval": "15m",
+  "volume_enabled": true
 }
 </pre>
 </td>
@@ -2073,6 +6119,17 @@ null
     "service": "memcached-client",
     "timeout": "500ms"
   }
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.pattern_ingester</td>
+			<td>object</td>
+			<td>Optional pattern ingester configuration</td>
+			<td><pre lang="json">
+{
+  "enabled": false
 }
 </pre>
 </td>
@@ -2119,47 +6176,20 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>loki.query_scheduler</td>
+			<td>loki.query_range</td>
 			<td>object</td>
-			<td>Additional query scheduler config</td>
+			<td>Optional querier configuration</td>
 			<td><pre lang="json">
 {}
 </pre>
 </td>
 		</tr>
 		<tr>
-			<td>loki.readinessProbe.httpGet.path</td>
-			<td>string</td>
-			<td></td>
+			<td>loki.query_scheduler</td>
+			<td>object</td>
+			<td>Additional query scheduler config</td>
 			<td><pre lang="json">
-"/ready"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>loki.readinessProbe.httpGet.port</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-"http-metrics"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>loki.readinessProbe.initialDelaySeconds</td>
-			<td>int</td>
-			<td></td>
-			<td><pre lang="json">
-30
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>loki.readinessProbe.timeoutSeconds</td>
-			<td>int</td>
-			<td></td>
-			<td><pre lang="json">
-1
+{}
 </pre>
 </td>
 		</tr>
@@ -2206,7 +6236,9 @@ null
 			<td><pre lang="json">
 {
   "grpc_listen_port": 9095,
-  "http_listen_port": 3100
+  "http_listen_port": 3100,
+  "http_server_read_timeout": "600s",
+  "http_server_write_timeout": "600s"
 }
 </pre>
 </td>
@@ -2238,6 +6270,7 @@ null
   "azure": {
     "accountKey": null,
     "accountName": null,
+    "chunkDelimiter": null,
     "connectionString": null,
     "endpointSuffix": null,
     "requestTimeout": null,
@@ -2245,12 +6278,8 @@ null
     "useManagedIdentity": false,
     "userAssignedId": null
   },
-  "bucketNames": {
-    "admin": "admin",
-    "chunks": "chunks",
-    "ruler": "ruler"
-  },
   "filesystem": {
+    "admin_api_directory": "/var/loki/admin",
     "chunks_directory": "/var/loki/chunks",
     "rules_directory": "/var/loki/rules"
   },
@@ -2262,6 +6291,7 @@ null
   "s3": {
     "accessKeyId": null,
     "backoff_config": {},
+    "disable_dualstack": false,
     "endpoint": null,
     "http_config": {},
     "insecure": false,
@@ -2312,10 +6342,23 @@ null
 			<td>Additional storage config</td>
 			<td><pre lang="json">
 {
+  "bloom_shipper": {
+    "working_directory": "/var/loki/data/bloomshipper"
+  },
+  "boltdb_shipper": {
+    "index_gateway_client": {
+      "server_address": "{{ include \"loki.indexGatewayAddress\" . }}"
+    }
+  },
   "hedging": {
     "at": "250ms",
     "max_per_second": 20,
     "up_to": 3
+  },
+  "tsdb_shipper": {
+    "index_gateway_client": {
+      "server_address": "{{ include \"loki.indexGatewayAddress\" . }}"
+    }
   }
 }
 </pre>
@@ -2351,11 +6394,403 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>loki.useTestSchema</td>
+			<td>bool</td>
+			<td>a real Loki install requires a proper schemaConfig defined above this, however for testing or playing around you can enable useTestSchema</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.annotations</td>
+			<td>object</td>
+			<td>Additional annotations for the `loki-canary` Daemonset</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for canary pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.enabled</td>
+			<td>bool</td>
+			<td></td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.extraArgs</td>
+			<td>list</td>
+			<td>Additional CLI arguments for the `loki-canary' command</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.extraEnv</td>
+			<td>list</td>
+			<td>Environment variables to add to the canary pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the canary pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Volume mounts to add to the canary pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.extraVolumes</td>
+			<td>list</td>
+			<td>Volumes to add to the canary pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.image</td>
+			<td>object</td>
+			<td>Image to use for loki canary</td>
+			<td><pre lang="json">
+{
+  "digest": null,
+  "pullPolicy": "IfNotPresent",
+  "registry": "docker.io",
+  "repository": "grafana/loki-canary",
+  "tag": null
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.image.digest</td>
+			<td>string</td>
+			<td>Overrides the image tag with an image digest</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.image.pullPolicy</td>
+			<td>string</td>
+			<td>Docker image pull policy</td>
+			<td><pre lang="json">
+"IfNotPresent"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.image.registry</td>
+			<td>string</td>
+			<td>The Docker registry</td>
+			<td><pre lang="json">
+"docker.io"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.image.repository</td>
+			<td>string</td>
+			<td>Docker image repository</td>
+			<td><pre lang="json">
+"grafana/loki-canary"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.image.tag</td>
+			<td>string</td>
+			<td>Overrides the image tag whose default is the chart's appVersion</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.labelname</td>
+			<td>string</td>
+			<td>The name of the label to look for at loki when doing the checks.</td>
+			<td><pre lang="json">
+"pod"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for canary pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.podLabels</td>
+			<td>object</td>
+			<td>Additional labels for each `loki-canary` pod</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for loki-canary pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.push</td>
+			<td>bool</td>
+			<td></td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the canary</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.service.annotations</td>
+			<td>object</td>
+			<td>Annotations for loki-canary Service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.service.labels</td>
+			<td>object</td>
+			<td>Additional labels for loki-canary Service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for canary pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.updateStrategy</td>
+			<td>object</td>
+			<td>Update strategy for the `loki-canary` Daemonset pods</td>
+			<td><pre lang="json">
+{
+  "rollingUpdate": {
+    "maxUnavailable": 1
+  },
+  "type": "RollingUpdate"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memberlist.service.annotations</td>
+			<td>object</td>
+			<td></td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>memberlist.service.publishNotReadyAddresses</td>
 			<td>bool</td>
 			<td></td>
 			<td><pre lang="json">
 false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcached.containerSecurityContext</td>
+			<td>object</td>
+			<td>The SecurityContext for memcached containers</td>
+			<td><pre lang="json">
+{
+  "allowPrivilegeEscalation": false,
+  "capabilities": {
+    "drop": [
+      "ALL"
+    ]
+  },
+  "readOnlyRootFilesystem": true
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcached.image.pullPolicy</td>
+			<td>string</td>
+			<td>Memcached Docker image pull policy</td>
+			<td><pre lang="json">
+"IfNotPresent"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcached.image.repository</td>
+			<td>string</td>
+			<td>Memcached Docker image repository</td>
+			<td><pre lang="json">
+"memcached"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcached.image.tag</td>
+			<td>string</td>
+			<td>Memcached Docker image tag</td>
+			<td><pre lang="json">
+"1.6.23-alpine"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcached.podSecurityContext</td>
+			<td>object</td>
+			<td>The SecurityContext override for memcached pods</td>
+			<td><pre lang="json">
+{
+  "fsGroup": 11211,
+  "runAsGroup": 11211,
+  "runAsNonRoot": true,
+  "runAsUser": 11211
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcached.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for memcached pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcachedExporter.containerSecurityContext</td>
+			<td>object</td>
+			<td>The SecurityContext for memcached exporter containers</td>
+			<td><pre lang="json">
+{
+  "allowPrivilegeEscalation": false,
+  "capabilities": {
+    "drop": [
+      "ALL"
+    ]
+  },
+  "readOnlyRootFilesystem": true
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcachedExporter.enabled</td>
+			<td>bool</td>
+			<td>Whether memcached metrics should be exported</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcachedExporter.extraArgs</td>
+			<td>object</td>
+			<td>Extra args to add to the exporter container. Example: extraArgs:   memcached.tls.enable: true   memcached.tls.cert-file: /certs/cert.crt   memcached.tls.key-file: /certs/cert.key   memcached.tls.ca-file: /certs/ca.crt   memcached.tls.insecure-skip-verify: false   memcached.tls.server-name: memcached</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcachedExporter.image.pullPolicy</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"IfNotPresent"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcachedExporter.image.repository</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"prom/memcached-exporter"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcachedExporter.image.tag</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"v0.14.2"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcachedExporter.resources.limits</td>
+			<td>object</td>
+			<td></td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcachedExporter.resources.requests</td>
+			<td>object</td>
+			<td></td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -2406,9 +6841,10 @@ false
 		<tr>
 			<td>minio</td>
 			<td>object</td>
-			<td>-----------------------------------</td>
+			<td>Configuration for the minio subchart</td>
 			<td><pre lang="json">
 {
+  "address": null,
   "buckets": [
     {
       "name": "chunks",
@@ -2429,6 +6865,7 @@ false
   "drivesPerNode": 2,
   "enabled": false,
   "persistence": {
+    "annotations": {},
     "size": "5Gi"
   },
   "replicas": 1,
@@ -2440,6 +6877,81 @@ false
   },
   "rootPassword": "supersecret",
   "rootUser": "enterprise-logs"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring</td>
+			<td>object</td>
+			<td>DEPRECATED Monitoring section determines which monitoring features to enable, this section is being replaced by https://github.com/grafana/meta-monitoring-chart</td>
+			<td><pre lang="json">
+{
+  "dashboards": {
+    "annotations": {},
+    "enabled": false,
+    "labels": {
+      "grafana_dashboard": "1"
+    },
+    "namespace": null
+  },
+  "rules": {
+    "additionalGroups": [],
+    "additionalRuleLabels": {},
+    "alerting": true,
+    "annotations": {},
+    "disabled": {},
+    "enabled": false,
+    "labels": {},
+    "namespace": null
+  },
+  "selfMonitoring": {
+    "enabled": false,
+    "grafanaAgent": {
+      "annotations": {},
+      "enableConfigReadAPI": false,
+      "installOperator": false,
+      "labels": {},
+      "priorityClassName": null,
+      "resources": {},
+      "tolerations": []
+    },
+    "logsInstance": {
+      "annotations": {},
+      "clients": null,
+      "labels": {}
+    },
+    "podLogs": {
+      "additionalPipelineStages": [],
+      "annotations": {},
+      "apiVersion": "monitoring.grafana.com/v1alpha1",
+      "labels": {},
+      "relabelings": []
+    },
+    "tenant": {
+      "name": "self-monitoring",
+      "password": null,
+      "secretNamespace": "{{ .Release.Namespace }}"
+    }
+  },
+  "serviceMonitor": {
+    "annotations": {},
+    "enabled": false,
+    "interval": "15s",
+    "labels": {},
+    "metricRelabelings": [],
+    "metricsInstance": {
+      "annotations": {},
+      "enabled": true,
+      "labels": {},
+      "remoteWrite": null
+    },
+    "namespaceSelector": {},
+    "relabelings": [],
+    "scheme": "http",
+    "scrapeTimeout": null,
+    "tlsConfig": null
+  }
 }
 </pre>
 </td>
@@ -2458,7 +6970,7 @@ false
 			<td>bool</td>
 			<td>If enabled, create configmap with dashboards for monitoring Loki</td>
 			<td><pre lang="json">
-true
+false
 </pre>
 </td>
 		</tr>
@@ -2483,201 +6995,19 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>monitoring.lokiCanary.annotations</td>
+			<td>monitoring.rules</td>
 			<td>object</td>
-			<td>Additional annotations for the `loki-canary` Daemonset</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.lokiCanary.dnsConfig</td>
-			<td>object</td>
-			<td>DNS config for canary pods</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.lokiCanary.enabled</td>
-			<td>bool</td>
-			<td></td>
-			<td><pre lang="json">
-true
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.lokiCanary.extraArgs</td>
-			<td>list</td>
-			<td>Additional CLI arguments for the `loki-canary' command</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.lokiCanary.extraEnv</td>
-			<td>list</td>
-			<td>Environment variables to add to the canary pods</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.lokiCanary.extraEnvFrom</td>
-			<td>list</td>
-			<td>Environment variables from secrets or configmaps to add to the canary pods</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.lokiCanary.image</td>
-			<td>object</td>
-			<td>Image to use for loki canary</td>
+			<td>DEPRECATED Recording rules for monitoring Loki, required for some dashboards</td>
 			<td><pre lang="json">
 {
-  "digest": null,
-  "pullPolicy": "IfNotPresent",
-  "registry": "docker.io",
-  "repository": "grafana/loki-canary",
-  "tag": null
-}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.lokiCanary.image.digest</td>
-			<td>string</td>
-			<td>Overrides the image tag with an image digest</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.lokiCanary.image.pullPolicy</td>
-			<td>string</td>
-			<td>Docker image pull policy</td>
-			<td><pre lang="json">
-"IfNotPresent"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.lokiCanary.image.registry</td>
-			<td>string</td>
-			<td>The Docker registry</td>
-			<td><pre lang="json">
-"docker.io"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.lokiCanary.image.repository</td>
-			<td>string</td>
-			<td>Docker image repository</td>
-			<td><pre lang="json">
-"grafana/loki-canary"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.lokiCanary.image.tag</td>
-			<td>string</td>
-			<td>Overrides the image tag whose default is the chart's appVersion</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.lokiCanary.labelname</td>
-			<td>string</td>
-			<td>The name of the label to look for at loki when doing the checks.</td>
-			<td><pre lang="json">
-"pod"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.lokiCanary.nodeSelector</td>
-			<td>object</td>
-			<td>Node selector for canary pods</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.lokiCanary.podLabels</td>
-			<td>object</td>
-			<td>Additional labels for each `loki-canary` pod</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.lokiCanary.priorityClassName</td>
-			<td>string</td>
-			<td>The name of the PriorityClass for loki-canary pods</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.lokiCanary.resources</td>
-			<td>object</td>
-			<td>Resource requests and limits for the canary</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.lokiCanary.service.annotations</td>
-			<td>object</td>
-			<td>Annotations for loki-canary Service</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.lokiCanary.service.labels</td>
-			<td>object</td>
-			<td>Additional labels for loki-canary Service</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.lokiCanary.tolerations</td>
-			<td>list</td>
-			<td>Tolerations for canary pods</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.lokiCanary.updateStrategy</td>
-			<td>object</td>
-			<td>Update strategy for the `loki-canary` Daemonset pods</td>
-			<td><pre lang="json">
-{
-  "rollingUpdate": {
-    "maxUnavailable": 1
-  },
-  "type": "RollingUpdate"
+  "additionalGroups": [],
+  "additionalRuleLabels": {},
+  "alerting": true,
+  "annotations": {},
+  "disabled": {},
+  "enabled": false,
+  "labels": {},
+  "namespace": null
 }
 </pre>
 </td>
@@ -2732,7 +7062,7 @@ true
 			<td>bool</td>
 			<td>If enabled, create PrometheusRule resource with Loki recording rules</td>
 			<td><pre lang="json">
-true
+false
 </pre>
 </td>
 		</tr>
@@ -2755,11 +7085,56 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>monitoring.selfMonitoring.enabled</td>
-			<td>bool</td>
-			<td></td>
+			<td>monitoring.selfMonitoring</td>
+			<td>object</td>
+			<td>DEPRECATED Self monitoring determines whether Loki should scrape its own logs. This feature currently relies on the Grafana Agent Operator being installed, which is installed by default using the grafana-agent-operator sub-chart. It will create custom resources for GrafanaAgent, LogsInstance, and PodLogs to configure scrape configs to scrape its own logs with the labels expected by the included dashboards.</td>
 			<td><pre lang="json">
-true
+{
+  "enabled": false,
+  "grafanaAgent": {
+    "annotations": {},
+    "enableConfigReadAPI": false,
+    "installOperator": false,
+    "labels": {},
+    "priorityClassName": null,
+    "resources": {},
+    "tolerations": []
+  },
+  "logsInstance": {
+    "annotations": {},
+    "clients": null,
+    "labels": {}
+  },
+  "podLogs": {
+    "additionalPipelineStages": [],
+    "annotations": {},
+    "apiVersion": "monitoring.grafana.com/v1alpha1",
+    "labels": {},
+    "relabelings": []
+  },
+  "tenant": {
+    "name": "self-monitoring",
+    "password": null,
+    "secretNamespace": "{{ .Release.Namespace }}"
+  }
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.selfMonitoring.grafanaAgent</td>
+			<td>object</td>
+			<td>DEPRECATED Grafana Agent configuration</td>
+			<td><pre lang="json">
+{
+  "annotations": {},
+  "enableConfigReadAPI": false,
+  "installOperator": false,
+  "labels": {},
+  "priorityClassName": null,
+  "resources": {},
+  "tolerations": []
+}
 </pre>
 </td>
 		</tr>
@@ -2784,9 +7159,9 @@ false
 		<tr>
 			<td>monitoring.selfMonitoring.grafanaAgent.installOperator</td>
 			<td>bool</td>
-			<td>Controls whether to install the Grafana Agent Operator and its CRDs. Note that helm will not install CRDs if this flag is enabled during an upgrade. In that case install the CRDs manually from https://github.com/grafana/agent/tree/main/production/operator/crds</td>
+			<td>DEPRECATED Controls whether to install the Grafana Agent Operator and its CRDs. Note that helm will not install CRDs if this flag is enabled during an upgrade. In that case install the CRDs manually from https://github.com/grafana/agent/tree/main/production/operator/crds</td>
 			<td><pre lang="json">
-true
+false
 </pre>
 </td>
 		</tr>
@@ -2854,6 +7229,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.selfMonitoring.podLogs.additionalPipelineStages</td>
+			<td>list</td>
+			<td>Additional pipeline stages to process logs after scraping https://grafana.com/docs/agent/latest/operator/api/#pipelinestagespec-a-namemonitoringgrafanacomv1alpha1pipelinestagespeca</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.selfMonitoring.podLogs.annotations</td>
 			<td>object</td>
 			<td>PodLogs annotations</td>
@@ -2896,6 +7280,7 @@ null
 			<td><pre lang="json">
 {
   "name": "self-monitoring",
+  "password": null,
   "secretNamespace": "{{ .Release.Namespace }}"
 }
 </pre>
@@ -2907,6 +7292,15 @@ null
 			<td>Name of the tenant</td>
 			<td><pre lang="json">
 "self-monitoring"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.selfMonitoring.tenant.password</td>
+			<td>string</td>
+			<td>Password of the gateway for Basic auth</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -2933,7 +7327,7 @@ null
 			<td>bool</td>
 			<td>If enabled, ServiceMonitor resources for Prometheus Operator are created</td>
 			<td><pre lang="json">
-true
+false
 </pre>
 </td>
 		</tr>
@@ -3123,6 +7517,24 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>networkPolicy.egressKubeApiserver.enabled</td>
+			<td>bool</td>
+			<td>Enable additional cilium egress rules to kube-apiserver for backend.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>networkPolicy.egressWorld.enabled</td>
+			<td>bool</td>
+			<td>Enable additional cilium egress rules to external world for write, read and backend.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>networkPolicy.enabled</td>
 			<td>bool</td>
 			<td>Specifies whether Network Policies should be created</td>
@@ -3204,6 +7616,1504 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>patternIngester</td>
+			<td>object</td>
+			<td>Configuration for the pattern ingester</td>
+			<td><pre lang="json">
+{
+  "affinity": {
+    "podAntiAffinity": {
+      "requiredDuringSchedulingIgnoredDuringExecution": [
+        {
+          "labelSelector": {
+            "matchLabels": {
+              "app.kubernetes.io/component": "pattern-ingester"
+            }
+          },
+          "topologyKey": "kubernetes.io/hostname"
+        }
+      ]
+    }
+  },
+  "appProtocol": {
+    "grpc": ""
+  },
+  "command": null,
+  "extraArgs": [],
+  "extraContainers": [],
+  "extraEnv": [],
+  "extraEnvFrom": [],
+  "extraVolumeMounts": [],
+  "extraVolumes": [],
+  "hostAliases": [],
+  "image": {
+    "registry": null,
+    "repository": null,
+    "tag": null
+  },
+  "initContainers": [],
+  "livenessProbe": {},
+  "nodeSelector": {},
+  "persistence": {
+    "annotations": {},
+    "claims": [
+      {
+        "name": "data",
+        "size": "10Gi",
+        "storageClass": null
+      }
+    ],
+    "enableStatefulSetAutoDeletePVC": false,
+    "enabled": false,
+    "size": "10Gi",
+    "storageClass": null,
+    "whenDeleted": "Retain",
+    "whenScaled": "Retain"
+  },
+  "podAnnotations": {},
+  "podLabels": {},
+  "priorityClassName": null,
+  "readinessProbe": {},
+  "replicas": 0,
+  "resources": {},
+  "serviceAccount": {
+    "annotations": {},
+    "automountServiceAccountToken": true,
+    "create": false,
+    "imagePullSecrets": [],
+    "name": null
+  },
+  "serviceAnnotations": {},
+  "serviceLabels": {},
+  "terminationGracePeriodSeconds": 30,
+  "tolerations": []
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.affinity</td>
+			<td>object</td>
+			<td>Affinity for pattern ingester pods.</td>
+			<td><pre lang="">
+Hard node anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.appProtocol</td>
+			<td>object</td>
+			<td>Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"</td>
+			<td><pre lang="json">
+{
+  "grpc": ""
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.command</td>
+			<td>string</td>
+			<td>Command to execute instead of defined in Docker image</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.extraArgs</td>
+			<td>list</td>
+			<td>Additional CLI args for the pattern ingester</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the pattern ingester pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.extraEnv</td>
+			<td>list</td>
+			<td>Environment variables to add to the pattern ingester pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the pattern ingester pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Volume mounts to add to the pattern ingester pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.extraVolumes</td>
+			<td>list</td>
+			<td>Volumes to add to the pattern ingester pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.hostAliases</td>
+			<td>list</td>
+			<td>hostAliases to add</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.image.registry</td>
+			<td>string</td>
+			<td>The Docker registry for the pattern ingester image. Overrides `loki.image.registry`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.image.repository</td>
+			<td>string</td>
+			<td>Docker image repository for the pattern ingester image. Overrides `loki.image.repository`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.image.tag</td>
+			<td>string</td>
+			<td>Docker image tag for the pattern ingester image. Overrides `loki.image.tag`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the pattern ingester pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.livenessProbe</td>
+			<td>object</td>
+			<td>liveness probe settings for ingester pods. If empty use `loki.livenessProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for pattern ingester pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for pattern ingester PVCs</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.persistence.claims</td>
+			<td>list</td>
+			<td>List of the pattern ingester PVCs</td>
+			<td><pre lang="list">
+
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.persistence.enableStatefulSetAutoDeletePVC</td>
+			<td>bool</td>
+			<td>Enable StatefulSetAutoDeletePVC feature</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.persistence.enabled</td>
+			<td>bool</td>
+			<td>Enable creating PVCs for the pattern ingester</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.persistence.size</td>
+			<td>string</td>
+			<td>Size of persistent disk</td>
+			<td><pre lang="json">
+"10Gi"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.persistence.storageClass</td>
+			<td>string</td>
+			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.podAnnotations</td>
+			<td>object</td>
+			<td>Annotations for pattern ingester pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.podLabels</td>
+			<td>object</td>
+			<td>Labels for pattern ingester pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for pattern ingester pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.readinessProbe</td>
+			<td>object</td>
+			<td>readiness probe settings for ingester pods. If empty, use `loki.readinessProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.replicas</td>
+			<td>int</td>
+			<td>Number of replicas for the pattern ingester</td>
+			<td><pre lang="json">
+0
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the pattern ingester</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.serviceAccount.annotations</td>
+			<td>object</td>
+			<td>Annotations for the pattern ingester service account</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.serviceAccount.automountServiceAccountToken</td>
+			<td>bool</td>
+			<td>Set this toggle to false to opt out of automounting API credentials for the service account</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.serviceAccount.imagePullSecrets</td>
+			<td>list</td>
+			<td>Image pull secrets for the pattern ingester service account</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.serviceAccount.name</td>
+			<td>string</td>
+			<td>The name of the ServiceAccount to use for the pattern ingester. If not set and create is true, a name is generated by appending "-pattern-ingester" to the common ServiceAccount.</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for pattern ingester service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.serviceLabels</td>
+			<td>object</td>
+			<td>Labels for pattern ingester service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td>Grace period to allow the pattern ingester to shutdown before it is killed</td>
+			<td><pre lang="json">
+30
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for pattern ingester pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier</td>
+			<td>object</td>
+			<td>Configuration for the querier</td>
+			<td><pre lang="json">
+{
+  "affinity": {
+    "podAntiAffinity": {
+      "requiredDuringSchedulingIgnoredDuringExecution": [
+        {
+          "labelSelector": {
+            "matchLabels": {
+              "app.kubernetes.io/component": "querier"
+            }
+          },
+          "topologyKey": "kubernetes.io/hostname"
+        }
+      ]
+    }
+  },
+  "appProtocol": {
+    "grpc": ""
+  },
+  "autoscaling": {
+    "behavior": {
+      "enabled": false,
+      "scaleDown": {},
+      "scaleUp": {}
+    },
+    "customMetrics": [],
+    "enabled": false,
+    "maxReplicas": 3,
+    "minReplicas": 1,
+    "targetCPUUtilizationPercentage": 60,
+    "targetMemoryUtilizationPercentage": null
+  },
+  "command": null,
+  "dnsConfig": {},
+  "extraArgs": [],
+  "extraContainers": [],
+  "extraEnv": [],
+  "extraEnvFrom": [],
+  "extraVolumeMounts": [],
+  "extraVolumes": [],
+  "hostAliases": [],
+  "image": {
+    "registry": null,
+    "repository": null,
+    "tag": null
+  },
+  "initContainers": [],
+  "maxSurge": 0,
+  "maxUnavailable": null,
+  "nodeSelector": {},
+  "persistence": {
+    "annotations": {},
+    "enabled": false,
+    "size": "10Gi",
+    "storageClass": null
+  },
+  "podAnnotations": {},
+  "podLabels": {},
+  "priorityClassName": null,
+  "replicas": 0,
+  "resources": {},
+  "serviceAnnotations": {},
+  "serviceLabels": {},
+  "terminationGracePeriodSeconds": 30,
+  "tolerations": [],
+  "topologySpreadConstraints": [
+    {
+      "labelSelector": {
+        "matchLabels": {
+          "app.kubernetes.io/component": "querier"
+        }
+      },
+      "maxSkew": 1,
+      "topologyKey": "kubernetes.io/hostname",
+      "whenUnsatisfiable": "ScheduleAnyway"
+    }
+  ]
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.affinity</td>
+			<td>object</td>
+			<td>Affinity for querier pods.</td>
+			<td><pre lang="">
+Hard node anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.appProtocol</td>
+			<td>object</td>
+			<td>Adds the appProtocol field to the querier service. This allows querier to work with istio protocol selection.</td>
+			<td><pre lang="json">
+{
+  "grpc": ""
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.appProtocol.grpc</td>
+			<td>string</td>
+			<td>Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.autoscaling.behavior.enabled</td>
+			<td>bool</td>
+			<td>Enable autoscaling behaviours</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.autoscaling.behavior.scaleDown</td>
+			<td>object</td>
+			<td>define scale down policies, must conform to HPAScalingRules</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.autoscaling.behavior.scaleUp</td>
+			<td>object</td>
+			<td>define scale up policies, must conform to HPAScalingRules</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.autoscaling.customMetrics</td>
+			<td>list</td>
+			<td>Allows one to define custom metrics using the HPA/v2 schema (for example, Pods, Object or External metrics)</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.autoscaling.enabled</td>
+			<td>bool</td>
+			<td>Enable autoscaling for the querier, this is only used if `indexGateway.enabled: true`</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.autoscaling.maxReplicas</td>
+			<td>int</td>
+			<td>Maximum autoscaling replicas for the querier</td>
+			<td><pre lang="json">
+3
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.autoscaling.minReplicas</td>
+			<td>int</td>
+			<td>Minimum autoscaling replicas for the querier</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.autoscaling.targetCPUUtilizationPercentage</td>
+			<td>int</td>
+			<td>Target CPU utilisation percentage for the querier</td>
+			<td><pre lang="json">
+60
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.autoscaling.targetMemoryUtilizationPercentage</td>
+			<td>string</td>
+			<td>Target memory utilisation percentage for the querier</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.command</td>
+			<td>string</td>
+			<td>Command to execute instead of defined in Docker image</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for querier pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.extraArgs</td>
+			<td>list</td>
+			<td>Additional CLI args for the querier</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the querier pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.extraEnv</td>
+			<td>list</td>
+			<td>Environment variables to add to the querier pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the querier pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Volume mounts to add to the querier pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.extraVolumes</td>
+			<td>list</td>
+			<td>Volumes to add to the querier pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.hostAliases</td>
+			<td>list</td>
+			<td>hostAliases to add</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.image.registry</td>
+			<td>string</td>
+			<td>The Docker registry for the querier image. Overrides `loki.image.registry`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.image.repository</td>
+			<td>string</td>
+			<td>Docker image repository for the querier image. Overrides `loki.image.repository`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.image.tag</td>
+			<td>string</td>
+			<td>Docker image tag for the querier image. Overrides `loki.image.tag`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the querier pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.maxSurge</td>
+			<td>int</td>
+			<td>Max Surge for querier pods</td>
+			<td><pre lang="json">
+0
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.maxUnavailable</td>
+			<td>string</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for querier pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for querier PVCs</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.persistence.enabled</td>
+			<td>bool</td>
+			<td>Enable creating PVCs for the querier cache</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.persistence.size</td>
+			<td>string</td>
+			<td>Size of persistent disk</td>
+			<td><pre lang="json">
+"10Gi"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.persistence.storageClass</td>
+			<td>string</td>
+			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.podAnnotations</td>
+			<td>object</td>
+			<td>Annotations for querier pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.podLabels</td>
+			<td>object</td>
+			<td>Labels for querier pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for querier pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.replicas</td>
+			<td>int</td>
+			<td>Number of replicas for the querier</td>
+			<td><pre lang="json">
+0
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the querier</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for querier service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.serviceLabels</td>
+			<td>object</td>
+			<td>Labels for querier service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td>Grace period to allow the querier to shutdown before it is killed</td>
+			<td><pre lang="json">
+30
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for querier pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>querier.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>topologySpread for querier pods.</td>
+			<td><pre lang="">
+Defaults to allow skew no more then 1 node
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend</td>
+			<td>object</td>
+			<td>Configuration for the query-frontend</td>
+			<td><pre lang="json">
+{
+  "affinity": {
+    "podAntiAffinity": {
+      "requiredDuringSchedulingIgnoredDuringExecution": [
+        {
+          "labelSelector": {
+            "matchLabels": {
+              "app.kubernetes.io/component": "query-frontend"
+            }
+          },
+          "topologyKey": "kubernetes.io/hostname"
+        }
+      ]
+    }
+  },
+  "appProtocol": {
+    "grpc": ""
+  },
+  "autoscaling": {
+    "behavior": {
+      "enabled": false,
+      "scaleDown": {},
+      "scaleUp": {}
+    },
+    "customMetrics": [],
+    "enabled": false,
+    "maxReplicas": 3,
+    "minReplicas": 1,
+    "targetCPUUtilizationPercentage": 60,
+    "targetMemoryUtilizationPercentage": null
+  },
+  "command": null,
+  "extraArgs": [],
+  "extraContainers": [],
+  "extraEnv": [],
+  "extraEnvFrom": [],
+  "extraVolumeMounts": [],
+  "extraVolumes": [],
+  "hostAliases": [],
+  "image": {
+    "registry": null,
+    "repository": null,
+    "tag": null
+  },
+  "maxUnavailable": null,
+  "nodeSelector": {},
+  "podAnnotations": {},
+  "podLabels": {},
+  "priorityClassName": null,
+  "replicas": 0,
+  "resources": {},
+  "serviceAnnotations": {},
+  "serviceLabels": {},
+  "terminationGracePeriodSeconds": 30,
+  "tolerations": []
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.affinity</td>
+			<td>object</td>
+			<td>Affinity for query-frontend pods.</td>
+			<td><pre lang="">
+Hard node anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.appProtocol</td>
+			<td>object</td>
+			<td>Adds the appProtocol field to the queryFrontend service. This allows queryFrontend to work with istio protocol selection.</td>
+			<td><pre lang="json">
+{
+  "grpc": ""
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.appProtocol.grpc</td>
+			<td>string</td>
+			<td>Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.autoscaling.behavior.enabled</td>
+			<td>bool</td>
+			<td>Enable autoscaling behaviours</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.autoscaling.behavior.scaleDown</td>
+			<td>object</td>
+			<td>define scale down policies, must conform to HPAScalingRules</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.autoscaling.behavior.scaleUp</td>
+			<td>object</td>
+			<td>define scale up policies, must conform to HPAScalingRules</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.autoscaling.customMetrics</td>
+			<td>list</td>
+			<td>Allows one to define custom metrics using the HPA/v2 schema (for example, Pods, Object or External metrics)</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.autoscaling.enabled</td>
+			<td>bool</td>
+			<td>Enable autoscaling for the query-frontend</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.autoscaling.maxReplicas</td>
+			<td>int</td>
+			<td>Maximum autoscaling replicas for the query-frontend</td>
+			<td><pre lang="json">
+3
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.autoscaling.minReplicas</td>
+			<td>int</td>
+			<td>Minimum autoscaling replicas for the query-frontend</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.autoscaling.targetCPUUtilizationPercentage</td>
+			<td>int</td>
+			<td>Target CPU utilisation percentage for the query-frontend</td>
+			<td><pre lang="json">
+60
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.autoscaling.targetMemoryUtilizationPercentage</td>
+			<td>string</td>
+			<td>Target memory utilisation percentage for the query-frontend</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.command</td>
+			<td>string</td>
+			<td>Command to execute instead of defined in Docker image</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.extraArgs</td>
+			<td>list</td>
+			<td>Additional CLI args for the query-frontend</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the query-frontend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.extraEnv</td>
+			<td>list</td>
+			<td>Environment variables to add to the query-frontend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the query-frontend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Volume mounts to add to the query-frontend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.extraVolumes</td>
+			<td>list</td>
+			<td>Volumes to add to the query-frontend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.hostAliases</td>
+			<td>list</td>
+			<td>hostAliases to add</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.image.registry</td>
+			<td>string</td>
+			<td>The Docker registry for the query-frontend image. Overrides `loki.image.registry`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.image.repository</td>
+			<td>string</td>
+			<td>Docker image repository for the query-frontend image. Overrides `loki.image.repository`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.image.tag</td>
+			<td>string</td>
+			<td>Docker image tag for the query-frontend image. Overrides `loki.image.tag`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.maxUnavailable</td>
+			<td>string</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for query-frontend pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.podAnnotations</td>
+			<td>object</td>
+			<td>Annotations for query-frontend pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.podLabels</td>
+			<td>object</td>
+			<td>Labels for query-frontend pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for query-frontend pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.replicas</td>
+			<td>int</td>
+			<td>Number of replicas for the query-frontend</td>
+			<td><pre lang="json">
+0
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the query-frontend</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for query-frontend service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.serviceLabels</td>
+			<td>object</td>
+			<td>Labels for query-frontend service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td>Grace period to allow the query-frontend to shutdown before it is killed</td>
+			<td><pre lang="json">
+30
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for query-frontend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler</td>
+			<td>object</td>
+			<td>Configuration for the query-scheduler</td>
+			<td><pre lang="json">
+{
+  "affinity": {
+    "podAntiAffinity": {
+      "requiredDuringSchedulingIgnoredDuringExecution": [
+        {
+          "labelSelector": {
+            "matchLabels": {
+              "app.kubernetes.io/component": "query-scheduler"
+            }
+          },
+          "topologyKey": "kubernetes.io/hostname"
+        }
+      ]
+    }
+  },
+  "appProtocol": {
+    "grpc": ""
+  },
+  "extraArgs": [],
+  "extraContainers": [],
+  "extraEnv": [],
+  "extraEnvFrom": [],
+  "extraVolumeMounts": [],
+  "extraVolumes": [],
+  "hostAliases": [],
+  "image": {
+    "registry": null,
+    "repository": null,
+    "tag": null
+  },
+  "maxUnavailable": 1,
+  "nodeSelector": {},
+  "podAnnotations": {},
+  "podLabels": {},
+  "priorityClassName": null,
+  "replicas": 0,
+  "resources": {},
+  "serviceAnnotations": {},
+  "serviceLabels": {},
+  "terminationGracePeriodSeconds": 30,
+  "tolerations": []
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.affinity</td>
+			<td>object</td>
+			<td>Affinity for query-scheduler pods.</td>
+			<td><pre lang="">
+Hard node anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.appProtocol</td>
+			<td>object</td>
+			<td>Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"</td>
+			<td><pre lang="json">
+{
+  "grpc": ""
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.extraArgs</td>
+			<td>list</td>
+			<td>Additional CLI args for the query-scheduler</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the query-scheduler pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.extraEnv</td>
+			<td>list</td>
+			<td>Environment variables to add to the query-scheduler pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the query-scheduler pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Volume mounts to add to the query-scheduler pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.extraVolumes</td>
+			<td>list</td>
+			<td>Volumes to add to the query-scheduler pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.hostAliases</td>
+			<td>list</td>
+			<td>hostAliases to add</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.image.registry</td>
+			<td>string</td>
+			<td>The Docker registry for the query-scheduler image. Overrides `loki.image.registry`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.image.repository</td>
+			<td>string</td>
+			<td>Docker image repository for the query-scheduler image. Overrides `loki.image.repository`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.image.tag</td>
+			<td>string</td>
+			<td>Docker image tag for the query-scheduler image. Overrides `loki.image.tag`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.maxUnavailable</td>
+			<td>int</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for query-scheduler pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.podAnnotations</td>
+			<td>object</td>
+			<td>Annotations for query-scheduler pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.podLabels</td>
+			<td>object</td>
+			<td>Labels for query-scheduler pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for query-scheduler pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.replicas</td>
+			<td>int</td>
+			<td>Number of replicas for the query-scheduler. It should be lower than `-querier.max-concurrent` to avoid generating back-pressure in queriers; it's also recommended that this value evenly divides the latter</td>
+			<td><pre lang="json">
+0
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the query-scheduler</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for query-scheduler service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.serviceLabels</td>
+			<td>object</td>
+			<td>Labels for query-scheduler service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td>Grace period to allow the query-scheduler to shutdown before it is killed</td>
+			<td><pre lang="json">
+30
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for query-scheduler pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>rbac.namespaced</td>
 			<td>bool</td>
 			<td>Whether to install RBAC in the namespace only or cluster-wide. Useful if you want to watch ConfigMap globally.</td>
@@ -3240,11 +9150,81 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>read</td>
+			<td>object</td>
+			<td>Configuration for the read pod(s)</td>
+			<td><pre lang="json">
+{
+  "affinity": {
+    "podAntiAffinity": {
+      "requiredDuringSchedulingIgnoredDuringExecution": [
+        {
+          "labelSelector": {
+            "matchLabels": {
+              "app.kubernetes.io/component": "read"
+            }
+          },
+          "topologyKey": "kubernetes.io/hostname"
+        }
+      ]
+    }
+  },
+  "annotations": {},
+  "autoscaling": {
+    "behavior": {},
+    "enabled": false,
+    "maxReplicas": 6,
+    "minReplicas": 2,
+    "targetCPUUtilizationPercentage": 60,
+    "targetMemoryUtilizationPercentage": null
+  },
+  "dnsConfig": {},
+  "extraArgs": [],
+  "extraContainers": [],
+  "extraEnv": [],
+  "extraEnvFrom": [],
+  "extraVolumeMounts": [],
+  "extraVolumes": [],
+  "image": {
+    "registry": null,
+    "repository": null,
+    "tag": null
+  },
+  "legacyReadTarget": false,
+  "lifecycle": {},
+  "nodeSelector": {},
+  "persistence": {
+    "annotations": {},
+    "enableStatefulSetAutoDeletePVC": true,
+    "selector": null,
+    "size": "10Gi",
+    "storageClass": null
+  },
+  "podAnnotations": {},
+  "podLabels": {},
+  "podManagementPolicy": "Parallel",
+  "priorityClassName": null,
+  "replicas": 3,
+  "resources": {},
+  "selectorLabels": {},
+  "service": {
+    "annotations": {},
+    "labels": {}
+  },
+  "targetModule": "read",
+  "terminationGracePeriodSeconds": 30,
+  "tolerations": [],
+  "topologySpreadConstraints": []
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.affinity</td>
-			<td>string</td>
-			<td>Affinity for read pods. Passed through `tpl` and, thus, to be configured as string</td>
+			<td>object</td>
+			<td>Affinity for read pods.</td>
 			<td><pre lang="">
-Hard node and soft zone anti-affinity
+Hard node anti-affinity
 </pre>
 </td>
 		</tr>
@@ -3324,6 +9304,15 @@ null
 			<td>read.extraArgs</td>
 			<td>list</td>
 			<td>Additional CLI args for the read</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the read pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -3414,6 +9403,15 @@ false
 			<td>read.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for read pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for volume claim</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3573,6 +9571,739 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>resultsCache.affinity</td>
+			<td>object</td>
+			<td>Affinity for results-cache pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.allocatedMemory</td>
+			<td>int</td>
+			<td>Amount of memory allocated to results-cache for object storage (in MB).</td>
+			<td><pre lang="json">
+1024
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.annotations</td>
+			<td>object</td>
+			<td>Annotations for the results-cache pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.connectionLimit</td>
+			<td>int</td>
+			<td>Maximum number of connections allowed</td>
+			<td><pre lang="json">
+16384
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.defaultValidity</td>
+			<td>string</td>
+			<td>Specify how long cached results should be stored in the results-cache before being expired</td>
+			<td><pre lang="json">
+"12h"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.enabled</td>
+			<td>bool</td>
+			<td>Specifies whether memcached based results-cache should be enabled</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.extraArgs</td>
+			<td>object</td>
+			<td>Additional CLI args for results-cache</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.extraContainers</td>
+			<td>list</td>
+			<td>Additional containers to be added to the results-cache pod.</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.extraExtendedOptions</td>
+			<td>string</td>
+			<td>Add extended options for results-cache memcached container. The format is the same as for the memcached -o/--extend flag. Example: extraExtendedOptions: 'tls,modern,track_sizes'</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Additional volume mounts to be added to the results-cache pod (applies to both memcached and exporter containers). Example: extraVolumeMounts: - name: extra-volume   mountPath: /etc/extra-volume   readOnly: true</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.extraVolumes</td>
+			<td>list</td>
+			<td>Additional volumes to be added to the results-cache pod (applies to both memcached and exporter containers). Example: extraVolumes: - name: extra-volume   secret:    secretName: extra-volume-secret</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.initContainers</td>
+			<td>list</td>
+			<td>Extra init containers for results-cache pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.maxItemMemory</td>
+			<td>int</td>
+			<td>Maximum item results-cache for memcached (in MB).</td>
+			<td><pre lang="json">
+5
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for results-cache pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.persistence</td>
+			<td>object</td>
+			<td>Persistence settings for the results-cache</td>
+			<td><pre lang="json">
+{
+  "enabled": false,
+  "mountPath": "/data",
+  "storageClass": null,
+  "storageSize": "10G"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.persistence.enabled</td>
+			<td>bool</td>
+			<td>Enable creating PVCs for the results-cache</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.persistence.mountPath</td>
+			<td>string</td>
+			<td>Volume mount path</td>
+			<td><pre lang="json">
+"/data"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.persistence.storageClass</td>
+			<td>string</td>
+			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.persistence.storageSize</td>
+			<td>string</td>
+			<td>Size of persistent disk, must be in G or Gi</td>
+			<td><pre lang="json">
+"10G"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.podAnnotations</td>
+			<td>object</td>
+			<td>Annotations for results-cache pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.podDisruptionBudget</td>
+			<td>object</td>
+			<td>Pod Disruption Budget</td>
+			<td><pre lang="json">
+{
+  "maxUnavailable": 1
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.podLabels</td>
+			<td>object</td>
+			<td>Labels for results-cache pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.podManagementPolicy</td>
+			<td>string</td>
+			<td>Management policy for results-cache pods</td>
+			<td><pre lang="json">
+"Parallel"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.port</td>
+			<td>int</td>
+			<td>Port of the results-cache service</td>
+			<td><pre lang="json">
+11211
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for results-cache pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.replicas</td>
+			<td>int</td>
+			<td>Total number of results-cache replicas</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.resources</td>
+			<td>string</td>
+			<td>Resource requests and limits for the results-cache By default a safe memory limit will be requested based on allocatedMemory value (floor (* 1.2 allocatedMemory)).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.service</td>
+			<td>object</td>
+			<td>Service annotations and labels</td>
+			<td><pre lang="json">
+{
+  "annotations": {},
+  "labels": {}
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.statefulStrategy</td>
+			<td>object</td>
+			<td>Stateful results-cache strategy</td>
+			<td><pre lang="json">
+{
+  "type": "RollingUpdate"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td>Grace period to allow the results-cache to shutdown before it is killed</td>
+			<td><pre lang="json">
+60
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.timeout</td>
+			<td>string</td>
+			<td>Memcached operation timeout</td>
+			<td><pre lang="json">
+"500ms"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for results-cache pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>topologySpreadConstraints allows to customize the default topologySpreadConstraints. This can be either a single dict as shown below or a slice of topologySpreadConstraints. labelSelector is taken from the constraint itself (if it exists) or is generated by the chart using the same selectors as for services.</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.writebackBuffer</td>
+			<td>int</td>
+			<td>Max number of objects to use for cache write back</td>
+			<td><pre lang="json">
+500000
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.writebackParallelism</td>
+			<td>int</td>
+			<td>Number of parallel threads for cache write back</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.writebackSizeLimit</td>
+			<td>string</td>
+			<td>Max memory to use for cache write back</td>
+			<td><pre lang="json">
+"500MB"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>rollout_operator</td>
+			<td>object</td>
+			<td>Setting for the Grafana Rollout Operator https://github.com/grafana/helm-charts/tree/main/charts/rollout-operator</td>
+			<td><pre lang="json">
+{
+  "enabled": false,
+  "podSecurityContext": {
+    "fsGroup": 10001,
+    "runAsGroup": 10001,
+    "runAsNonRoot": true,
+    "runAsUser": 10001,
+    "seccompProfile": {
+      "type": "RuntimeDefault"
+    }
+  },
+  "securityContext": {
+    "allowPrivilegeEscalation": false,
+    "capabilities": {
+      "drop": [
+        "ALL"
+      ]
+    },
+    "readOnlyRootFilesystem": true
+  }
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>rollout_operator.podSecurityContext</td>
+			<td>object</td>
+			<td>podSecurityContext is the pod security context for the rollout operator. When installing on OpenShift, override podSecurityContext settings with  rollout_operator:   podSecurityContext:     fsGroup: null     runAsGroup: null     runAsUser: null</td>
+			<td><pre lang="json">
+{
+  "fsGroup": 10001,
+  "runAsGroup": 10001,
+  "runAsNonRoot": true,
+  "runAsUser": 10001,
+  "seccompProfile": {
+    "type": "RuntimeDefault"
+  }
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler</td>
+			<td>object</td>
+			<td>Configuration for the ruler</td>
+			<td><pre lang="json">
+{
+  "affinity": {
+    "podAntiAffinity": {
+      "requiredDuringSchedulingIgnoredDuringExecution": [
+        {
+          "labelSelector": {
+            "matchLabels": {
+              "app.kubernetes.io/component": "ruler"
+            }
+          },
+          "topologyKey": "kubernetes.io/hostname"
+        }
+      ]
+    }
+  },
+  "appProtocol": {
+    "grpc": ""
+  },
+  "command": null,
+  "directories": {},
+  "dnsConfig": {},
+  "enabled": true,
+  "extraArgs": [],
+  "extraContainers": [],
+  "extraEnv": [],
+  "extraEnvFrom": [],
+  "extraVolumeMounts": [],
+  "extraVolumes": [],
+  "hostAliases": [],
+  "image": {
+    "registry": null,
+    "repository": null,
+    "tag": null
+  },
+  "initContainers": [],
+  "maxUnavailable": null,
+  "nodeSelector": {},
+  "persistence": {
+    "annotations": {},
+    "enabled": false,
+    "size": "10Gi",
+    "storageClass": null
+  },
+  "podAnnotations": {},
+  "podLabels": {},
+  "priorityClassName": null,
+  "replicas": 0,
+  "resources": {},
+  "serviceAnnotations": {},
+  "serviceLabels": {},
+  "terminationGracePeriodSeconds": 300,
+  "tolerations": []
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.affinity</td>
+			<td>object</td>
+			<td>Affinity for ruler pods.</td>
+			<td><pre lang="">
+Hard node anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.appProtocol</td>
+			<td>object</td>
+			<td>Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"</td>
+			<td><pre lang="json">
+{
+  "grpc": ""
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.command</td>
+			<td>string</td>
+			<td>Command to execute instead of defined in Docker image</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.directories</td>
+			<td>object</td>
+			<td>Directories containing rules files</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for ruler pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.enabled</td>
+			<td>bool</td>
+			<td>The ruler component is optional and can be disabled if desired.</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.extraArgs</td>
+			<td>list</td>
+			<td>Additional CLI args for the ruler</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the ruler pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.extraEnv</td>
+			<td>list</td>
+			<td>Environment variables to add to the ruler pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the ruler pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Volume mounts to add to the ruler pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.extraVolumes</td>
+			<td>list</td>
+			<td>Volumes to add to the ruler pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.hostAliases</td>
+			<td>list</td>
+			<td>hostAliases to add</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.image.registry</td>
+			<td>string</td>
+			<td>The Docker registry for the ruler image. Overrides `loki.image.registry`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.image.repository</td>
+			<td>string</td>
+			<td>Docker image repository for the ruler image. Overrides `loki.image.repository`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.image.tag</td>
+			<td>string</td>
+			<td>Docker image tag for the ruler image. Overrides `loki.image.tag`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the ruler pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.maxUnavailable</td>
+			<td>string</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for ruler pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for ruler PVCs</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.persistence.enabled</td>
+			<td>bool</td>
+			<td>Enable creating PVCs which is required when using recording rules</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.persistence.size</td>
+			<td>string</td>
+			<td>Size of persistent disk</td>
+			<td><pre lang="json">
+"10Gi"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.persistence.storageClass</td>
+			<td>string</td>
+			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.podAnnotations</td>
+			<td>object</td>
+			<td>Annotations for ruler pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.podLabels</td>
+			<td>object</td>
+			<td>Labels for compactor pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for ruler pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.replicas</td>
+			<td>int</td>
+			<td>Number of replicas for the ruler</td>
+			<td><pre lang="json">
+0
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the ruler</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for ruler service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.serviceLabels</td>
+			<td>object</td>
+			<td>Labels for ruler service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td>Grace period to allow the ruler to shutdown before it is killed</td>
+			<td><pre lang="json">
+300
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for ruler pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>serviceAccount.annotations</td>
 			<td>object</td>
 			<td>Annotations for the service account</td>
@@ -3667,7 +10398,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.24.3"
+"1.27.5"
 </pre>
 </td>
 		</tr>
@@ -3817,10 +10548,10 @@ false
 		</tr>
 		<tr>
 			<td>singleBinary.affinity</td>
-			<td>string</td>
-			<td>Affinity for single binary pods. Passed through `tpl` and, thus, to be configured as string</td>
+			<td>object</td>
+			<td>Affinity for single binary pods.</td>
 			<td><pre lang="">
-Hard node and soft zone anti-affinity
+Hard node anti-affinity
 </pre>
 </td>
 		</tr>
@@ -3987,6 +10718,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for volume claim</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.persistence.enableStatefulSetAutoDeletePVC</td>
 			<td>bool</td>
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
@@ -4131,11 +10871,63 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>tableManager</td>
+			<td>object</td>
+			<td>DEPRECATED Configuration for the table-manager. The table-manager is only necessary when using a deprecated index type such as Cassandra, Bigtable, or DynamoDB, it has not been necessary since loki introduced self- contained index types like 'boltdb-shipper' and 'tsdb'. This will be removed in a future helm chart.</td>
+			<td><pre lang="json">
+{
+  "affinity": {
+    "podAntiAffinity": {
+      "requiredDuringSchedulingIgnoredDuringExecution": [
+        {
+          "labelSelector": {
+            "matchLabels": {
+              "app.kubernetes.io/component": "table-manager"
+            }
+          },
+          "topologyKey": "kubernetes.io/hostname"
+        }
+      ]
+    }
+  },
+  "annotations": {},
+  "command": null,
+  "dnsConfig": {},
+  "enabled": false,
+  "extraArgs": [],
+  "extraContainers": [],
+  "extraEnv": [],
+  "extraEnvFrom": [],
+  "extraVolumeMounts": [],
+  "extraVolumes": [],
+  "image": {
+    "registry": null,
+    "repository": null,
+    "tag": null
+  },
+  "nodeSelector": {},
+  "podAnnotations": {},
+  "podLabels": {},
+  "priorityClassName": null,
+  "resources": {},
+  "retention_deletes_enabled": false,
+  "retention_period": 0,
+  "service": {
+    "annotations": {},
+    "labels": {}
+  },
+  "terminationGracePeriodSeconds": 30,
+  "tolerations": []
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>tableManager.affinity</td>
-			<td>string</td>
-			<td>Affinity for table-manager pods. Passed through `tpl` and, thus, to be configured as string</td>
+			<td>object</td>
+			<td>Affinity for table-manager pods.</td>
 			<td><pre lang="">
-Hard node and soft zone anti-affinity
+Hard node and anti-affinity
 </pre>
 </td>
 		</tr>
@@ -4362,16 +11154,17 @@ false
 			<td><pre lang="json">
 {
   "annotations": {},
+  "canaryServiceAddress": "http://loki-canary:3500/metrics",
   "enabled": true,
   "image": {
     "digest": null,
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/loki-helm-test",
-    "tag": null
+    "tag": "ewelch-distributed-helm-chart-17db5ee"
   },
   "labels": {},
-  "prometheusAddress": "http://prometheus:9090",
+  "prometheusAddress": "",
   "timeout": "1m"
 }
 </pre>
@@ -4387,6 +11180,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>test.canaryServiceAddress</td>
+			<td>string</td>
+			<td>Used to directly query the metrics endpoint of the canary for testing, this approach avoids needing prometheus for testing. This in a newer approach to using prometheusAddress such that tests do not have a dependency on prometheus</td>
+			<td><pre lang="json">
+"http://loki-canary:3500/metrics"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>test.image</td>
 			<td>object</td>
 			<td>Image to use for loki canary</td>
@@ -4396,7 +11198,7 @@ false
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "grafana/loki-helm-test",
-  "tag": null
+  "tag": "ewelch-distributed-helm-chart-17db5ee"
 }
 </pre>
 </td>
@@ -4442,7 +11244,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-null
+"ewelch-distributed-helm-chart-17db5ee"
 </pre>
 </td>
 		</tr>
@@ -4458,9 +11260,9 @@ null
 		<tr>
 			<td>test.prometheusAddress</td>
 			<td>string</td>
-			<td>Address of the prometheus server to query for the test</td>
+			<td>Address of the prometheus server to query for the test. This overrides any value set for canaryServiceAddress. This is kept for backward compatibility and may be removed in future releases. Previous value was 'http://prometheus:9090'</td>
 			<td><pre lang="json">
-"http://prometheus:9090"
+""
 </pre>
 </td>
 		</tr>
@@ -4475,10 +11277,10 @@ null
 		</tr>
 		<tr>
 			<td>write.affinity</td>
-			<td>string</td>
-			<td>Affinity for write pods. Passed through `tpl` and, thus, to be configured as string</td>
+			<td>object</td>
+			<td>Affinity for write pods.</td>
 			<td><pre lang="">
-Hard node and soft zone anti-affinity
+Hard node anti-affinity
 </pre>
 </td>
 		</tr>
@@ -4703,6 +11505,15 @@ null
 			<td>write.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for write pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.persistence.annotations</td>
+			<td>object</td>
+			<td>Annotations for volume claim</td>
 			<td><pre lang="json">
 {}
 </pre>

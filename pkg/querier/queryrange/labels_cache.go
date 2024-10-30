@@ -8,10 +8,10 @@ import (
 
 	"github.com/go-kit/log"
 
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/cache/resultscache"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 type cacheKeyLabels struct {
@@ -61,7 +61,7 @@ func (i cacheKeyLabels) GenerateCacheKey(ctx context.Context, userID string, r r
 		return fmt.Sprintf("labelvalues:%s:%s:%s:%d:%d", userID, lr.GetName(), lr.GetQuery(), currentInterval, split)
 	}
 
-	return fmt.Sprintf("labels:%s:%d:%d", userID, currentInterval, split)
+	return fmt.Sprintf("labels:%s:%s:%d:%d", userID, lr.GetQuery(), currentInterval, split)
 }
 
 type labelsExtractor struct{}

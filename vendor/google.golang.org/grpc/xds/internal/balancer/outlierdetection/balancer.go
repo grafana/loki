@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"math/rand"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -36,9 +37,7 @@ import (
 	"google.golang.org/grpc/internal/balancer/gracefulswitch"
 	"google.golang.org/grpc/internal/buffer"
 	"google.golang.org/grpc/internal/channelz"
-	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/grpclog"
-	"google.golang.org/grpc/internal/grpcrand"
 	"google.golang.org/grpc/internal/grpcsync"
 	iserviceconfig "google.golang.org/grpc/internal/serviceconfig"
 	"google.golang.org/grpc/resolver"
@@ -55,23 +54,21 @@ var (
 const Name = "outlier_detection_experimental"
 
 func init() {
-	if envconfig.XDSOutlierDetection {
-		balancer.Register(bb{})
-	}
+	balancer.Register(bb{})
 }
 
 type bb struct{}
 
 func (bb) Build(cc balancer.ClientConn, bOpts balancer.BuildOptions) balancer.Balancer {
 	b := &outlierDetectionBalancer{
-		cc:               cc,
-		closed:           grpcsync.NewEvent(),
-		done:             grpcsync.NewEvent(),
-		addrs:            make(map[string]*addressInfo),
-		scWrappers:       make(map[balancer.SubConn]*subConnWrapper),
-		scUpdateCh:       buffer.NewUnbounded(),
-		pickerUpdateCh:   buffer.NewUnbounded(),
-		channelzParentID: bOpts.ChannelzParentID,
+		cc:             cc,
+		closed:         grpcsync.NewEvent(),
+		done:           grpcsync.NewEvent(),
+		addrs:          make(map[string]*addressInfo),
+		scWrappers:     make(map[balancer.SubConn]*subConnWrapper),
+		scUpdateCh:     buffer.NewUnbounded(),
+		pickerUpdateCh: buffer.NewUnbounded(),
+		channelzParent: bOpts.ChannelzParent,
 	}
 	b.logger = prefixLogger(b)
 	b.logger.Infof("Created")
@@ -167,11 +164,11 @@ type outlierDetectionBalancer struct {
 	// to suppress redundant picker updates.
 	recentPickerNoop bool
 
-	closed           *grpcsync.Event
-	done             *grpcsync.Event
-	cc               balancer.ClientConn
-	logger           *grpclog.PrefixLogger
-	channelzParentID *channelz.Identifier
+	closed         *grpcsync.Event
+	done           *grpcsync.Event
+	cc             balancer.ClientConn
+	logger         *grpclog.PrefixLogger
+	channelzParent channelz.Identifier
 
 	// childMu guards calls into child (to uphold the balancer.Balancer API
 	// guarantee of synchronous calls).
@@ -595,20 +592,6 @@ func (b *outlierDetectionBalancer) Target() string {
 	return b.cc.Target()
 }
 
-func max(x, y time.Duration) time.Duration {
-	if x < y {
-		return y
-	}
-	return x
-}
-
-func min(x, y time.Duration) time.Duration {
-	if x < y {
-		return x
-	}
-	return y
-}
-
 // handleSubConnUpdate stores the recent state and forward the update
 // if the SubConn is not ejected.
 func (b *outlierDetectionBalancer) handleSubConnUpdate(u *scUpdate) {
@@ -840,8 +823,8 @@ func (b *outlierDetectionBalancer) successRateAlgorithm() {
 		successRate := float64(bucket.numSuccesses) / float64(bucket.numSuccesses+bucket.numFailures)
 		requiredSuccessRate := mean - stddev*(float64(ejectionCfg.StdevFactor)/1000)
 		if successRate < requiredSuccessRate {
-			channelz.Infof(logger, b.channelzParentID, "SuccessRate algorithm detected outlier: %s. Parameters: successRate=%f, mean=%f, stddev=%f, requiredSuccessRate=%f", addrInfo, successRate, mean, stddev, requiredSuccessRate)
-			if uint32(grpcrand.Int31n(100)) < ejectionCfg.EnforcementPercentage {
+			channelz.Infof(logger, b.channelzParent, "SuccessRate algorithm detected outlier: %s. Parameters: successRate=%f, mean=%f, stddev=%f, requiredSuccessRate=%f", addrInfo, successRate, mean, stddev, requiredSuccessRate)
+			if uint32(rand.Int31n(100)) < ejectionCfg.EnforcementPercentage {
 				b.ejectAddress(addrInfo)
 			}
 		}
@@ -867,8 +850,8 @@ func (b *outlierDetectionBalancer) failurePercentageAlgorithm() {
 		}
 		failurePercentage := (float64(bucket.numFailures) / float64(bucket.numSuccesses+bucket.numFailures)) * 100
 		if failurePercentage > float64(b.cfg.FailurePercentageEjection.Threshold) {
-			channelz.Infof(logger, b.channelzParentID, "FailurePercentage algorithm detected outlier: %s, failurePercentage=%f", addrInfo, failurePercentage)
-			if uint32(grpcrand.Int31n(100)) < ejectionCfg.EnforcementPercentage {
+			channelz.Infof(logger, b.channelzParent, "FailurePercentage algorithm detected outlier: %s, failurePercentage=%f", addrInfo, failurePercentage)
+			if uint32(rand.Int31n(100)) < ejectionCfg.EnforcementPercentage {
 				b.ejectAddress(addrInfo)
 			}
 		}
@@ -882,7 +865,7 @@ func (b *outlierDetectionBalancer) ejectAddress(addrInfo *addressInfo) {
 	addrInfo.ejectionTimeMultiplier++
 	for _, sbw := range addrInfo.sws {
 		sbw.eject()
-		channelz.Infof(logger, b.channelzParentID, "Subchannel ejected: %s", sbw)
+		channelz.Infof(logger, b.channelzParent, "Subchannel ejected: %s", sbw)
 	}
 
 }
@@ -893,7 +876,7 @@ func (b *outlierDetectionBalancer) unejectAddress(addrInfo *addressInfo) {
 	addrInfo.latestEjectionTimestamp = time.Time{}
 	for _, sbw := range addrInfo.sws {
 		sbw.uneject()
-		channelz.Infof(logger, b.channelzParentID, "Subchannel unejected: %s", sbw)
+		channelz.Infof(logger, b.channelzParent, "Subchannel unejected: %s", sbw)
 	}
 }
 

@@ -8,37 +8,51 @@ package azidentity
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity/internal"
 	"github.com/Azure/azure-sdk-for-go/sdk/internal/log"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/public"
+
+	// this import ensures well-known configurations in azcore/cloud have ARM audiences for Authenticate()
+	_ "github.com/Azure/azure-sdk-for-go/sdk/azcore/arm/runtime"
 )
 
 type publicClientOptions struct {
 	azcore.ClientOptions
 
-	AdditionallyAllowedTenants []string
-	DeviceCodePrompt           func(context.Context, DeviceCodeMessage) error
-	DisableInstanceDiscovery   bool
-	LoginHint, RedirectURL     string
-	Username, Password         string
+	AdditionallyAllowedTenants     []string
+	DeviceCodePrompt               func(context.Context, DeviceCodeMessage) error
+	DisableAutomaticAuthentication bool
+	DisableInstanceDiscovery       bool
+	LoginHint, RedirectURL         string
+	Record                         authenticationRecord
+	TokenCachePersistenceOptions   *tokenCachePersistenceOptions
+	Username, Password             string
 }
 
 // publicClient wraps the MSAL public client
 type publicClient struct {
-	account                  public.Account
 	cae, noCAE               msalPublicClient
 	caeMu, noCAEMu, clientMu *sync.Mutex
 	clientID, tenantID       string
+	defaultScope             []string
 	host                     string
 	name                     string
 	opts                     publicClientOptions
+	record                   authenticationRecord
+	azClient                 *azcore.Client
 }
+
+var errScopeRequired = errors.New("authenticating in this environment requires specifying a scope in TokenRequestOptions")
 
 func newPublicClient(tenantID, clientID, name string, o publicClientOptions) (*publicClient, error) {
 	if !validTenantID(tenantID) {
@@ -48,17 +62,74 @@ func newPublicClient(tenantID, clientID, name string, o publicClientOptions) (*p
 	if err != nil {
 		return nil, err
 	}
+	// if the application specified a cloud configuration, use its ARM audience as the default scope for Authenticate()
+	audience := o.Cloud.Services[cloud.ResourceManager].Audience
+	if audience == "" {
+		// no cloud configuration, or no ARM audience, specified; try to map the host to a well-known one (all of which have a trailing slash)
+		if !strings.HasSuffix(host, "/") {
+			host += "/"
+		}
+		switch host {
+		case cloud.AzureChina.ActiveDirectoryAuthorityHost:
+			audience = cloud.AzureChina.Services[cloud.ResourceManager].Audience
+		case cloud.AzureGovernment.ActiveDirectoryAuthorityHost:
+			audience = cloud.AzureGovernment.Services[cloud.ResourceManager].Audience
+		case cloud.AzurePublic.ActiveDirectoryAuthorityHost:
+			audience = cloud.AzurePublic.Services[cloud.ResourceManager].Audience
+		}
+	}
+	// if we didn't come up with an audience, the application will have to specify a scope for Authenticate()
+	var defaultScope []string
+	if audience != "" {
+		defaultScope = []string{audience + defaultSuffix}
+	}
+	client, err := azcore.NewClient(module, version, runtime.PipelineOptions{
+		Tracing: runtime.TracingOptions{
+			Namespace: traceNamespace,
+		},
+	}, &o.ClientOptions)
+	if err != nil {
+		return nil, err
+	}
 	o.AdditionallyAllowedTenants = resolveAdditionalTenants(o.AdditionallyAllowedTenants)
 	return &publicClient{
-		caeMu:    &sync.Mutex{},
-		clientID: clientID,
-		clientMu: &sync.Mutex{},
-		host:     host,
-		name:     name,
-		noCAEMu:  &sync.Mutex{},
-		opts:     o,
-		tenantID: tenantID,
+		caeMu:        &sync.Mutex{},
+		clientID:     clientID,
+		clientMu:     &sync.Mutex{},
+		defaultScope: defaultScope,
+		host:         host,
+		name:         name,
+		noCAEMu:      &sync.Mutex{},
+		opts:         o,
+		record:       o.Record,
+		tenantID:     tenantID,
+		azClient:     client,
 	}, nil
+}
+
+func (p *publicClient) Authenticate(ctx context.Context, tro *policy.TokenRequestOptions) (authenticationRecord, error) {
+	if tro == nil {
+		tro = &policy.TokenRequestOptions{}
+	}
+	if len(tro.Scopes) == 0 {
+		if p.defaultScope == nil {
+			return authenticationRecord{}, errScopeRequired
+		}
+		tro.Scopes = p.defaultScope
+	}
+	client, mu, err := p.client(*tro)
+	if err != nil {
+		return authenticationRecord{}, err
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	_, err = p.reqToken(ctx, client, *tro)
+	if err == nil {
+		scope := strings.Join(tro.Scopes, ", ")
+		msg := fmt.Sprintf("%s.Authenticate() acquired a token for scope %q", p.name, scope)
+		log.Write(EventAuthentication, msg)
+	}
+	return p.record, err
 }
 
 // GetToken requests an access token from MSAL, checking the cache first.
@@ -76,9 +147,12 @@ func (p *publicClient) GetToken(ctx context.Context, tro policy.TokenRequestOpti
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	ar, err := client.AcquireTokenSilent(ctx, tro.Scopes, public.WithSilentAccount(p.account), public.WithClaims(tro.Claims), public.WithTenantID(tenant))
+	ar, err := client.AcquireTokenSilent(ctx, tro.Scopes, public.WithSilentAccount(p.record.account()), public.WithClaims(tro.Claims), public.WithTenantID(tenant))
 	if err == nil {
 		return p.token(ar, err)
+	}
+	if p.opts.DisableAutomaticAuthentication {
+		return azcore.AccessToken{}, newauthenticationRequiredError(p.name, tro)
 	}
 	at, err := p.reqToken(ctx, client, tro)
 	if err == nil {
@@ -148,9 +222,14 @@ func (p *publicClient) client(tro policy.TokenRequestOptions) (msalPublicClient,
 }
 
 func (p *publicClient) newMSALClient(enableCAE bool) (msalPublicClient, error) {
+	cache, err := internal.NewCache(p.opts.TokenCachePersistenceOptions, enableCAE)
+	if err != nil {
+		return nil, err
+	}
 	o := []public.Option{
 		public.WithAuthority(runtime.JoinPaths(p.host, p.tenantID)),
-		public.WithHTTPClient(newPipelineAdapter(&p.opts.ClientOptions)),
+		public.WithCache(cache),
+		public.WithHTTPClient(p),
 	}
 	if enableCAE {
 		o = append(o, public.WithClientCapabilities(cp1))
@@ -163,7 +242,7 @@ func (p *publicClient) newMSALClient(enableCAE bool) (msalPublicClient, error) {
 
 func (p *publicClient) token(ar public.AuthResult, err error) (azcore.AccessToken, error) {
 	if err == nil {
-		p.account = ar.Account
+		p.record, err = newAuthenticationRecord(ar)
 	} else {
 		res := getResponseFromError(err)
 		err = newAuthenticationFailedError(p.name, err.Error(), res, err)
@@ -171,8 +250,24 @@ func (p *publicClient) token(ar public.AuthResult, err error) (azcore.AccessToke
 	return azcore.AccessToken{Token: ar.AccessToken, ExpiresOn: ar.ExpiresOn.UTC()}, err
 }
 
-// resolveTenant returns the correct tenant for a token request given the client's
+// resolveTenant returns the correct WithTenantID() argument for a token request given the client's
 // configuration, or an error when that configuration doesn't allow the specified tenant
 func (p *publicClient) resolveTenant(specified string) (string, error) {
-	return resolveTenant(p.tenantID, specified, p.name, p.opts.AdditionallyAllowedTenants)
+	t, err := resolveTenant(p.tenantID, specified, p.name, p.opts.AdditionallyAllowedTenants)
+	if t == p.tenantID {
+		// callers pass this value to MSAL's WithTenantID(). There's no need to redundantly specify
+		// the client's default tenant and doing so is an error when that tenant is "organizations"
+		t = ""
+	}
+	return t, err
+}
+
+// these methods satisfy the MSAL ops.HTTPClient interface
+
+func (p *publicClient) CloseIdleConnections() {
+	// do nothing
+}
+
+func (p *publicClient) Do(r *http.Request) (*http.Response, error) {
+	return doForClient(p.azClient, r)
 }

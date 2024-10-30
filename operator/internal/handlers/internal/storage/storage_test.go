@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -14,8 +15,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	configv1 "github.com/grafana/loki/operator/api/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/grafana/loki/operator/internal/status"
 )
@@ -39,7 +40,7 @@ var (
 			Namespace: "some-ns",
 		},
 		Data: map[string][]byte{
-			"endpoint":          []byte("s3://your-endpoint"),
+			"endpoint":          []byte("https://s3.a-region.amazonaws.com"),
 			"region":            []byte("a-region"),
 			"bucketnames":       []byte("bucket1,bucket2"),
 			"access_key_id":     []byte("a-secret-id"),
@@ -47,13 +48,14 @@ var (
 		},
 	}
 
-	defaultManagedAuthSecret = corev1.Secret{
+	defaultTokenCCOAuthSecret = corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "some-stack-secret",
 			Namespace: "some-ns",
 		},
 		Data: map[string][]byte{
-			"region": []byte("a-region"),
+			"bucketnames": []byte("bucket1,bucket2"),
+			"region":      []byte("a-region"),
 		},
 	}
 
@@ -146,13 +148,13 @@ func TestBuildOptions_WhenMissingCloudCredentialsSecret_SetDegraded(t *testing.T
 
 	fg := configv1.FeatureGates{
 		OpenShift: configv1.OpenShiftFeatureGates{
-			ManagedAuthEnv: true,
+			TokenCCOAuthEnv: true,
 		},
 	}
 
 	degradedErr := &status.DegradedError{
 		Message: "Missing OpenShift cloud credentials secret",
-		Reason:  lokiv1.ReasonMissingManagedAuthSecret,
+		Reason:  lokiv1.ReasonMissingTokenCCOAuthSecret,
 		Requeue: true,
 	}
 
@@ -175,7 +177,7 @@ func TestBuildOptions_WhenMissingCloudCredentialsSecret_SetDegraded(t *testing.T
 					},
 				},
 				Secret: lokiv1.ObjectStorageSecretSpec{
-					Name: defaultManagedAuthSecret.Name,
+					Name: defaultTokenCCOAuthSecret.Name,
 					Type: lokiv1.ObjectStorageSecretS3,
 				},
 			},
@@ -188,8 +190,8 @@ func TestBuildOptions_WhenMissingCloudCredentialsSecret_SetDegraded(t *testing.T
 			k.SetClientObject(object, stack)
 			return nil
 		}
-		if name.Name == defaultManagedAuthSecret.Name {
-			k.SetClientObject(object, &defaultManagedAuthSecret)
+		if name.Name == defaultTokenCCOAuthSecret.Name {
+			k.SetClientObject(object, &defaultTokenCCOAuthSecret)
 			return nil
 		}
 		if name.Name == fmt.Sprintf("%s-aws-creds", stack.Name) {
@@ -558,4 +560,124 @@ func TestBuildOptions_WhenInvalidCAConfigMap_SetDegraded(t *testing.T) {
 	// make sure error is returned
 	require.Error(t, err)
 	require.Equal(t, degradedErr, err)
+}
+
+func TestAllowStructuredMetadata(t *testing.T) {
+	testTime := time.Date(2024, 7, 1, 1, 0, 0, 0, time.UTC)
+	tt := []struct {
+		desc      string
+		schemas   []lokiv1.ObjectStorageSchema
+		wantAllow bool
+	}{
+		{
+			desc:      "disallow - no schemas",
+			schemas:   []lokiv1.ObjectStorageSchema{},
+			wantAllow: false,
+		},
+		{
+			desc: "disallow - only v12",
+			schemas: []lokiv1.ObjectStorageSchema{
+				{
+					Version:       lokiv1.ObjectStorageSchemaV12,
+					EffectiveDate: "2024-07-01",
+				},
+			},
+			wantAllow: false,
+		},
+		{
+			desc: "allow - only v13",
+			schemas: []lokiv1.ObjectStorageSchema{
+				{
+					Version:       lokiv1.ObjectStorageSchemaV13,
+					EffectiveDate: "2024-07-01",
+				},
+			},
+			wantAllow: true,
+		},
+		{
+			desc: "disallow - v13 in future",
+			schemas: []lokiv1.ObjectStorageSchema{
+				{
+					Version:       lokiv1.ObjectStorageSchemaV12,
+					EffectiveDate: "2024-07-01",
+				},
+				{
+					Version:       lokiv1.ObjectStorageSchemaV13,
+					EffectiveDate: "2024-07-02",
+				},
+			},
+			wantAllow: false,
+		},
+		{
+			desc: "disallow - v13 in past",
+			schemas: []lokiv1.ObjectStorageSchema{
+				{
+					Version:       lokiv1.ObjectStorageSchemaV13,
+					EffectiveDate: "2024-06-01",
+				},
+				{
+					Version:       lokiv1.ObjectStorageSchemaV12,
+					EffectiveDate: "2024-07-01",
+				},
+			},
+			wantAllow: false,
+		},
+		{
+			desc: "disallow - v13 in past and future",
+			schemas: []lokiv1.ObjectStorageSchema{
+				{
+					Version:       lokiv1.ObjectStorageSchemaV13,
+					EffectiveDate: "2024-06-01",
+				},
+				{
+					Version:       lokiv1.ObjectStorageSchemaV12,
+					EffectiveDate: "2024-07-01",
+				},
+				{
+					Version:       lokiv1.ObjectStorageSchemaV13,
+					EffectiveDate: "2024-07-02",
+				},
+			},
+			wantAllow: false,
+		},
+		{
+			desc: "allow - v13 active",
+			schemas: []lokiv1.ObjectStorageSchema{
+				{
+					Version:       lokiv1.ObjectStorageSchemaV12,
+					EffectiveDate: "2024-06-01",
+				},
+				{
+					Version:       lokiv1.ObjectStorageSchemaV13,
+					EffectiveDate: "2024-07-01",
+				},
+			},
+			wantAllow: true,
+		},
+		{
+			desc: "allow - v13 active, v12 in future",
+			schemas: []lokiv1.ObjectStorageSchema{
+				{
+					Version:       lokiv1.ObjectStorageSchemaV13,
+					EffectiveDate: "2024-07-01",
+				},
+				{
+					Version:       lokiv1.ObjectStorageSchemaV12,
+					EffectiveDate: "2024-08-01",
+				},
+			},
+			wantAllow: true,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+
+			allow := allowStructuredMetadata(tc.schemas, testTime)
+			if allow != tc.wantAllow {
+				t.Errorf("got %v, want %v", allow, tc.wantAllow)
+			}
+		})
+	}
 }

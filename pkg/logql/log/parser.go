@@ -4,14 +4,15 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/grafana/jsonparser"
 
-	"github.com/grafana/loki/pkg/logql/log/jsonexpr"
-	"github.com/grafana/loki/pkg/logql/log/logfmt"
-	"github.com/grafana/loki/pkg/logql/log/pattern"
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logql/log/jsonexpr"
+	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
+	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 
 	"github.com/grafana/regexp"
 	jsoniter "github.com/json-iterator/go"
@@ -39,6 +40,14 @@ var (
 	errMissingCapture       = errors.New("at least one named capture must be supplied")
 	errFoundAllLabels       = errors.New("found all required labels")
 	errLabelDoesNotMatch    = errors.New("found a label with a matcher that didn't match")
+
+	// the rune error replacement is rejected by Prometheus hence replacing them with space.
+	removeInvalidUtf = func(r rune) rune {
+		if r == utf8.RuneError {
+			return 32 // rune value for space
+		}
+		return r
+	}
 )
 
 type JSONParser struct {
@@ -200,12 +209,11 @@ func unescapeJSONString(b []byte) string {
 		return ""
 	}
 	res := string(bU)
-	// rune error is rejected by Prometheus
-	for _, r := range res {
-		if r == utf8.RuneError {
-			return ""
-		}
+
+	if strings.ContainsRune(res, utf8.RuneError) {
+		res = strings.Map(removeInvalidUtf, res)
 	}
+
 	return res
 }
 
@@ -339,9 +347,9 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 		}
 
 		val := l.dec.Value()
-		// the rune error replacement is rejected by Prometheus, so we skip it.
+
 		if bytes.ContainsRune(val, utf8.RuneError) {
-			val = nil
+			val = bytes.Map(removeInvalidUtf, val)
 		}
 
 		if !l.keepEmpty && len(val) == 0 {
@@ -373,7 +381,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 func (l *LogfmtParser) RequiredLabelNames() []string { return []string{} }
 
 type PatternParser struct {
-	matcher pattern.Matcher
+	matcher *pattern.Matcher
 	names   []string
 }
 
@@ -617,6 +625,8 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 		switch typ {
 		case jsonparser.Null:
 			lbs.Set(ParsedLabel, key, "")
+		case jsonparser.Object:
+			lbs.Set(ParsedLabel, key, string(data))
 		default:
 			lbs.Set(ParsedLabel, key, unescapeJSONString(data))
 		}

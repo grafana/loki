@@ -12,13 +12,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/exp/slices"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
-	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/testutils"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 func Test(t *testing.T) {
@@ -193,18 +194,18 @@ func Test(t *testing.T) {
 			assert.NoError(t, chunkClient.PutChunks(context.Background(), test.storeStart))
 
 			// Build fetcher
-			f, err := New(c1, c2, false, sc, chunkClient, 1, 1, test.handoff)
+			f, err := New(c1, c2, false, sc, chunkClient, test.handoff)
 			assert.NoError(t, err)
 
 			// Run the test
 			chks, err := f.FetchChunks(context.Background(), test.fetch)
 			assert.NoError(t, err)
 			assertChunks(t, test.fetch, chks)
-			l1actual, err := makeChunksFromMap(c1.GetInternal())
+			l1actual, err := makeChunksFromMapKeys(c1.GetKeys())
 			assert.NoError(t, err)
 			assert.Equal(t, test.l1KeysRequested, c1.KeysRequested())
 			assertChunks(t, test.l1End, l1actual)
-			l2actual, err := makeChunksFromMap(c2.GetInternal())
+			l2actual, err := makeChunksFromMapKeys(c2.GetKeys())
 			assert.NoError(t, err)
 			assert.Equal(t, test.l2KeysRequested, c2.KeysRequested())
 			assertChunks(t, test.l2End, l2actual)
@@ -290,7 +291,7 @@ func BenchmarkFetch(b *testing.B) {
 	_ = chunkClient.PutChunks(context.Background(), test.storeStart)
 
 	// Build fetcher
-	f, _ := New(c1, c2, false, sc, chunkClient, 1, 1, test.handoff)
+	f, _ := New(c1, c2, false, sc, chunkClient, test.handoff)
 
 	for i := 0; i < b.N; i++ {
 		_, err := f.FetchChunks(context.Background(), test.fetch)
@@ -311,10 +312,10 @@ func makeChunks(now time.Time, tpls ...c) []chunk.Chunk {
 		from := int(chk.from) / int(time.Hour)
 		// This is only here because it's helpful for debugging.
 		// This isn't even the write format for Loki but we dont' care for the sake of these tests.
-		memChk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncNone, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 256*1024, 0)
+		memChk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.None, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 256*1024, 0)
 		// To make sure the fetcher doesn't swap keys and buffers each chunk is built with different, but deterministic data
 		for i := 0; i < from; i++ {
-			_ = memChk.Append(&logproto.Entry{
+			_, _ = memChk.Append(&logproto.Entry{
 				Timestamp: time.Unix(int64(i), 0),
 				Line:      fmt.Sprintf("line ts=%d", i),
 			})
@@ -340,9 +341,9 @@ func makeChunks(now time.Time, tpls ...c) []chunk.Chunk {
 	return chks
 }
 
-func makeChunksFromMap(m map[string][]byte) ([]chunk.Chunk, error) {
-	chks := make([]chunk.Chunk, 0, len(m))
-	for k := range m {
+func makeChunksFromMapKeys(keys []string) ([]chunk.Chunk, error) {
+	chks := make([]chunk.Chunk, 0, len(keys))
+	for _, k := range keys {
 		c, err := chunk.ParseExternalKey("fake", k)
 		if err != nil {
 			return nil, err

@@ -19,10 +19,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/ruler/storage/instance"
-	"github.com/grafana/loki/pkg/ruler/util"
-	"github.com/grafana/loki/pkg/util/test"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/ruler/storage/instance"
+	"github.com/grafana/loki/v3/pkg/ruler/util"
+	"github.com/grafana/loki/v3/pkg/util/test"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const enabledRWTenant = "enabled"
@@ -398,6 +398,30 @@ func TestTenantRemoteWriteConfigWithOverrideConcurrentAccess(t *testing.T) {
 
 				_, err := reg.getTenantConfig(additionalHeadersRWTenant)
 				require.NoError(t, err)
+			}(reg)
+		}
+
+		wg.Wait()
+	})
+}
+
+func TestAppenderConcurrentAccess(t *testing.T) {
+	require.NotPanics(t, func() {
+		reg := setupRegistry(t, cfg, newFakeLimits())
+		var wg sync.WaitGroup
+		for i := 0; i < 1000; i++ {
+			wg.Add(1)
+			go func(reg *walRegistry) {
+				defer wg.Done()
+
+				_ = reg.Appender(user.InjectOrgID(context.Background(), enabledRWTenant))
+			}(reg)
+
+			wg.Add(1)
+			go func(reg *walRegistry) {
+				defer wg.Done()
+
+				_ = reg.Appender(user.InjectOrgID(context.Background(), additionalHeadersRWTenant))
 			}(reg)
 		}
 

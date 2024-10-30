@@ -3,179 +3,123 @@ package v1
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/storage/bloom/v1/filter"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
-func TestFiltersToBloomTests(t *testing.T) {
-	for _, tc := range []struct {
-		name        string
-		query       string
-		bloom       filter.Checker
-		expectMatch bool
+func TestLabelMatchersToBloomTest(t *testing.T) {
+	// All test cases below have access to a fake bloom filter with
+	// trace_id=exists_1 and trace_id=exists_2
+	var (
+		prefix    = "fakeprefix"
+		tokenizer = NewStructuredMetadataTokenizer(prefix)
+		bloom     = newFakeMetadataBloom(
+			tokenizer,
+			push.LabelAdapter{Name: "trace_id", Value: "exists_1"},
+			push.LabelAdapter{Name: "trace_id", Value: "exists_2"},
+		)
+	)
+
+	tt := []struct {
+		name  string
+		query string
+		match bool
 	}{
 		{
-			name:        "No filters",
-			query:       `{app="fake"}`,
-			bloom:       fakeBloom{"foo", "bar"},
-			expectMatch: true,
+			name:  "no matchers",
+			query: `{app="fake"}`,
+			match: true,
 		},
 		{
-			name:        "Single filter",
-			query:       `{app="fake"} |= "foo"`,
-			bloom:       fakeBloom{"foo", "bar"},
-			expectMatch: true,
+			name:  "basic matcher pass",
+			query: `{app="fake"} | trace_id="exists_1"`,
+			match: true,
 		},
 		{
-			name:        "Single filter no match",
-			query:       `{app="fake"} |= "nope"`,
-			bloom:       fakeBloom{"foo", "bar"},
-			expectMatch: false,
+			name:  "basic matcher fail",
+			query: `{app="fake"} | trace_id="noexist"`,
+			match: false,
 		},
 		{
-			name:        "two filters",
-			query:       `{app="fake"} |= "foo" |= "bar"`,
-			bloom:       fakeBloom{"foo", "bar"},
-			expectMatch: true,
+			name:  "multiple matcher pass",
+			query: `{app="fake"} | trace_id="exists_1" | trace_id="exists_2"`,
+			match: true,
 		},
 		{
-			name:        "two filters no match",
-			query:       `{app="fake"} |= "foo" |= "nope"`,
-			bloom:       fakeBloom{"foo", "bar"},
-			expectMatch: false,
+			name:  "multiple matcher fail",
+			query: `{app="fake"} | trace_id="exists_1" | trace_id="noexist"`,
+			match: false,
 		},
 		{
-			name:        "notEq match",
-			query:       `{app="fake"} != "nope"`,
-			bloom:       fakeBloom{"foo", "bar"},
-			expectMatch: true,
+			name:  "ignore non-indexed key",
+			query: `{app="fake"} | noexist="noexist"`,
+			match: true,
 		},
 		{
-			name:        "notEq no match",
-			query:       `{app="fake"} != "foo"`,
-			bloom:       fakeBloom{"foo", "bar"},
-			expectMatch: false,
+			name:  "ignore non-indexed key with empty value",
+			query: `{app="fake"} | noexist=""`,
+			match: true,
 		},
 		{
-			name:        "or filter both match",
-			query:       `{app="fake"} |= "foo" or "bar"`,
-			bloom:       fakeBloom{"foo", "bar"},
-			expectMatch: true,
+			name:  "ignore unsupported operator",
+			query: `{app="fake"} | trace_id=~".*noexist.*"`,
+			match: true,
 		},
 		{
-			name:        "or filter one right match",
-			query:       `{app="fake"} |= "nope" or "foo"`,
-			bloom:       fakeBloom{"foo", "bar"},
-			expectMatch: true,
+			name:  "or test pass",
+			query: `{app="fake"} | trace_id="noexist" or trace_id="exists_1"`,
+			match: true,
 		},
 		{
-			name:        "or filter one left match",
-			query:       `{app="fake"} |= "foo" or "nope"`,
-			bloom:       fakeBloom{"foo", "bar"},
-			expectMatch: true,
+			name:  "or test fail",
+			query: `{app="fake"} | trace_id="noexist" or trace_id="noexist"`,
+			match: false,
 		},
 		{
-			name:        "or filter no match",
-			query:       `{app="fake"} |= "no" or "nope"`,
-			bloom:       fakeBloom{"foo", "bar"},
-			expectMatch: false,
+			name:  "and test pass",
+			query: `{app="fake"} | trace_id="exists_1" or trace_id="exists_2"`,
+			match: true,
 		},
 		{
-			name:        "Not or filter match",
-			query:       `{app="fake"} != "nope" or "no"`,
-			bloom:       fakeBloom{"foo", "bar"},
-			expectMatch: true,
+			name:  "and test fail",
+			query: `{app="fake"} | trace_id="exists_1" and trace_id="noexist"`,
+			match: false,
 		},
-		{
-			name:        "Not or filter right no match",
-			query:       `{app="fake"} != "nope" or "bar"`,
-			bloom:       fakeBloom{"foo", "bar"},
-			expectMatch: false,
-		},
-		{
-			name:        "Not or filter left no match",
-			query:       `{app="fake"} != "foo" or "nope"`,
-			bloom:       fakeBloom{"foo", "bar"},
-			expectMatch: false,
-		},
-		{
-			name:        "Not or filter no match",
-			query:       `{app="fake"} != "foo" or "bar"`,
-			bloom:       fakeBloom{"foo", "bar"},
-			expectMatch: false,
-		},
-		{
-			name:        "complex filter match",
-			query:       `{app="fake"} |= "foo" |= "bar" or "baz" |= "fuzz" or "not" != "nope" != "no" or "none"`,
-			bloom:       fakeBloom{"foo", "bar", "baz", "fuzz"},
-			expectMatch: true,
-		},
-		{
-			name:        "regex match all star",
-			query:       `{app="fake"} |~ ".*"`,
-			bloom:       fakeBloom{"foo", "bar"},
-			expectMatch: true,
-		},
-		{
-			name:        "regex match all plus",
-			query:       `{app="fake"} |~ ".+"`,
-			bloom:       fakeBloom{"foo", "bar"},
-			expectMatch: true,
-		},
-		{
-			name:        "regex match none",
-			query:       `{app="fake"} !~ ".*"`,
-			bloom:       fakeBloom{"foo", "bar"},
-			expectMatch: false,
-		},
-		{
-			name:        "regex match",
-			query:       `{app="fake"} |~ "nope|.*foo.*"`,
-			bloom:       fakeBloom{"foo", "bar"},
-			expectMatch: true,
-		},
-		{
-			name:        "regex no match",
-			query:       `{app="fake"} !~ "nope|.*foo.*"`,
-			bloom:       fakeBloom{"foo", "bar"},
-			expectMatch: false,
-		},
-		{
-			name:        "complex regex match",
-			query:       `{app="fake"} |~ "(nope|.*not.*|.*foo.*)" or "(no|ba)" !~ "noz.*" or "(nope|not)"`,
-			bloom:       fakeBloom{"foo", "bar", "baz", "fuzz"},
-			expectMatch: true,
-		},
-		{
-			name:        "complex regex no match",
-			query:       `{app="fake"} |~ "(nope|.*not.*|.*foo.*)" or "(no|ba)" !~ "noz.*"`,
-			bloom:       fakeBloom{"foo", "bar", "baz", "fuzz", "noz"},
-			expectMatch: false,
-		},
-	} {
+	}
+
+	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			expr, err := syntax.ParseExpr(tc.query)
-			assert.NoError(t, err)
-			filters := syntax.ExtractLineFilters(expr)
+			require.NoError(t, err)
 
-			bloomTests := FiltersToBloomTest(fakeNgramBuilder{}, filters...)
+			matchers := ExtractTestableLabelMatchers(expr)
+			bloomTest := LabelMatchersToBloomTest(matchers...)
 
-			assert.Equal(t, tc.expectMatch, bloomTests.Matches(tc.bloom))
+			// .Matches and .MatchesWithPrefixBuf should both have the same result.
+			require.Equal(t, tc.match, bloomTest.Matches(bloom))
+			require.Equal(t, tc.match, bloomTest.MatchesWithPrefixBuf(bloom, []byte(prefix), len(prefix)))
 		})
 	}
 }
 
-type fakeNgramBuilder struct{}
+type fakeMetadataBloom []string
 
-func (f fakeNgramBuilder) Tokens(line string) Iterator[[]byte] {
-	return NewSliceIter[[]byte]([][]byte{[]byte(line)})
+// fakeBloom is a fake bloom filter that matches tokens exactly.
+// It uses a tokenizer to build the tokens for a line
+func newFakeMetadataBloom(tokenizer *StructuredMetadataTokenizer, kvs ...push.LabelAdapter) (res fakeMetadataBloom) {
+	for _, kv := range kvs {
+		it := tokenizer.Tokens(kv)
+		for it.Next() {
+			res = append(res, it.At())
+		}
+	}
+	return res
 }
 
-type fakeBloom []string
-
-func (f fakeBloom) Test(data []byte) bool {
+func (f fakeMetadataBloom) Test(data []byte) bool {
 	str := string(data)
 	for _, match := range f {
 		if str == match {

@@ -7,9 +7,9 @@ import (
 
 	"github.com/go-kit/log"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 const EvalModeLocal = "local"
@@ -36,6 +36,7 @@ func (l *LocalEvaluator) Eval(ctx context.Context, qs string, now time.Time) (*l
 		0,
 		logproto.FORWARD,
 		0,
+		nil,
 		nil,
 	)
 	if err != nil {

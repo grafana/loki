@@ -12,7 +12,8 @@ type headerContextKey string
 
 var (
 	// LokiActorPathHeader is the name of the header e.g. used to enqueue requests in hierarchical queues.
-	LokiActorPathHeader = "X-Loki-Actor-Path"
+	LokiActorPathHeader               = "X-Loki-Actor-Path"
+	LokiDisablePipelineWrappersHeader = "X-Loki-Disable-Pipeline-Wrappers"
 
 	// LokiActorPathDelimiter is the delimiter used to serialise the hierarchy of the actor.
 	LokiActorPathDelimiter = "|"
@@ -49,4 +50,8 @@ func ExtractActorPath(ctx context.Context) []string {
 
 func InjectActorPath(ctx context.Context, value string) context.Context {
 	return context.WithValue(ctx, headerContextKey(LokiActorPathHeader), value)
+}
+
+func InjectHeader(ctx context.Context, key, value string) context.Context {
+	return context.WithValue(ctx, headerContextKey(key), value)
 }

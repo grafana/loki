@@ -11,7 +11,7 @@ Log entries that fall within a specified time window and match an optional line 
 
 Log entry deletion is supported _only_ when TSDB or BoltDB shipper is configured as the index store.
 
-The compactor component exposes REST [endpoints]({{< relref "../../reference/api#compactor" >}}) that process delete requests.
+The compactor component exposes REST [endpoints](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#compactor) that process delete requests.
 Hitting the endpoint specifies the streams and the time window.
 The deletion of the log entries takes place after a configurable cancellation time period expires.
 

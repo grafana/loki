@@ -2,43 +2,43 @@ package bloomgateway
 
 import (
 	"context"
-	"math"
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/dskit/concurrency"
+	"github.com/grafana/dskit/multierror"
+
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 )
 
-func newProcessor(id string, store bloomshipper.Store, logger log.Logger, metrics *workerMetrics) *processor {
+func newProcessor(id string, concurrency int, store bloomshipper.Store, logger log.Logger, metrics *workerMetrics) *processor {
 	return &processor{
-		id:      id,
-		store:   store,
-		logger:  logger,
-		metrics: metrics,
+		id:          id,
+		concurrency: concurrency,
+		store:       store,
+		logger:      logger,
+		metrics:     metrics,
 	}
 }
 
 type processor struct {
-	id      string
-	store   bloomshipper.Store
-	logger  log.Logger
-	metrics *workerMetrics
+	id          string
+	concurrency int // concurrency at which bloom blocks are processed
+	store       bloomshipper.Store
+	logger      log.Logger
+	metrics     *workerMetrics
 }
 
-func (p *processor) run(ctx context.Context, tasks []Task) error {
-	return p.runWithBounds(ctx, tasks, v1.MultiFingerprintBounds{{Min: 0, Max: math.MaxUint64}})
-}
-
-func (p *processor) runWithBounds(ctx context.Context, tasks []Task, bounds v1.MultiFingerprintBounds) error {
-	tenant := tasks[0].Tenant
-	level.Info(p.logger).Log("msg", "process tasks with bounds", "tenant", tenant, "tasks", len(tasks), "bounds", bounds)
+func (p *processor) processTasks(ctx context.Context, tasks []Task) error {
+	tenant := tasks[0].tenant
 
 	for ts, tasks := range group(tasks, func(t Task) config.DayTime { return t.table }) {
-		err := p.processTasks(ctx, tenant, ts, bounds, tasks)
+		err := p.processTasksForDay(ctx, tenant, ts, tasks)
 		if err != nil {
 			for _, task := range tasks {
 				task.CloseWithError(err)
@@ -52,79 +52,139 @@ func (p *processor) runWithBounds(ctx context.Context, tasks []Task, bounds v1.M
 	return nil
 }
 
-func (p *processor) processTasks(ctx context.Context, tenant string, day config.DayTime, keyspaces v1.MultiFingerprintBounds, tasks []Task) error {
-	level.Info(p.logger).Log("msg", "process tasks for day", "tenant", tenant, "tasks", len(tasks), "day", day.String())
+func (p *processor) processTasksForDay(ctx context.Context, _ string, _ config.DayTime, tasks []Task) error {
+	var duration time.Duration
 
-	minFpRange, maxFpRange := getFirstLast(keyspaces)
-	interval := bloomshipper.NewInterval(day.Bounds())
-	metaSearch := bloomshipper.MetaSearchParams{
-		TenantID: tenant,
-		Interval: interval,
-		Keyspace: v1.NewBounds(minFpRange.Min, maxFpRange.Max),
-	}
-	metas, err := p.store.FetchMetas(ctx, metaSearch)
-	if err != nil {
-		return err
+	blocksRefs := make([]bloomshipper.BlockRef, 0, len(tasks[0].blocks)*len(tasks))
+	for _, task := range tasks {
+		blocksRefs = append(blocksRefs, task.blocks...)
 	}
 
-	blocksRefs := bloomshipper.BlocksForMetas(metas, interval, keyspaces)
-	return p.processBlocks(ctx, partitionTasks(tasks, blocksRefs))
-}
+	tasksByBlock := partitionTasksByBlock(tasks, blocksRefs)
 
-func (p *processor) processBlocks(ctx context.Context, data []blockWithTasks) error {
-	refs := make([]bloomshipper.BlockRef, len(data))
-	for _, block := range data {
+	refs := make([]bloomshipper.BlockRef, 0, len(tasksByBlock))
+	for _, block := range tasksByBlock {
 		refs = append(refs, block.ref)
 	}
 
-	bqs, err := p.store.FetchBlocks(ctx, refs)
+	startBlocks := time.Now()
+	bqs, err := p.store.FetchBlocks(
+		ctx,
+		refs,
+		bloomshipper.WithFetchAsync(true),
+		bloomshipper.WithIgnoreNotFound(true),
+		// NB(owen-d): we relinquish bloom pages to a pool
+		// after iteration for performance (alloc reduction).
+		// This is safe to do here because we do not capture
+		// the underlying bloom []byte outside of iteration
+		bloomshipper.WithPool(p.store.Allocator()),
+	)
+	duration = time.Since(startBlocks)
+
+	for _, t := range tasks {
+		FromContext(t.ctx).AddBlocksFetchTime(duration)
+		FromContext(t.ctx).AddProcessedBlocksTotal(len(tasksByBlock))
+	}
+
 	if err != nil {
 		return err
 	}
 
-	blockIter := v1.NewSliceIter(bqs)
+	startProcess := time.Now()
+	res := p.processBlocks(ctx, bqs, tasksByBlock)
+	duration = time.Since(startProcess)
 
-outer:
-	for blockIter.Next() {
-		bq := blockIter.At()
-		for i, block := range data {
-			if block.ref.Bounds.Equal(bq.Bounds) {
-				err := p.processBlock(ctx, bq.BlockQuerier, block.tasks)
-				bq.Close()
-				if err != nil {
-					return err
-				}
-				data = append(data[:i], data[i+1:]...)
-				continue outer
-			}
-		}
-		// should not happen, but close anyway
-		bq.Close()
+	for _, t := range tasks {
+		FromContext(t.ctx).AddProcessingTime(duration)
 	}
-	return nil
+
+	return res
 }
 
-func (p *processor) processBlock(_ context.Context, blockQuerier *v1.BlockQuerier, tasks []Task) error {
+func (p *processor) processBlocks(ctx context.Context, bqs []*bloomshipper.CloseableBlockQuerier, data []blockWithTasks) error {
+	// We opportunistically close blocks during iteration to allow returning memory to the pool, etc,
+	// as soon as possible, but since we exit early on error, we need to ensure we close all blocks.
+	hasClosed := make([]bool, len(bqs))
+	defer func() {
+		for i, bq := range bqs {
+			if bq != nil && !hasClosed[i] {
+				_ = bq.Close()
+			}
+		}
+	}()
+
+	return concurrency.ForEachJob(ctx, len(bqs), p.concurrency, func(ctx context.Context, i int) error {
+		bq := bqs[i]
+		if bq == nil {
+			p.metrics.blocksNotAvailable.WithLabelValues(p.id).Inc()
+			return nil
+		}
+
+		block := data[i]
+
+		if !block.ref.Bounds.Equal(bq.Bounds) {
+			return errors.Errorf("block and querier bounds differ: %s vs %s", block.ref.Bounds, bq.Bounds)
+		}
+
+		var errs multierror.MultiError
+		errs.Add(
+			errors.Wrap(
+				p.processBlock(ctx, bq, block.tasks),
+				"processing block",
+			),
+		)
+		errs.Add(bq.Close())
+		hasClosed[i] = true
+		return errs.Err()
+	})
+}
+
+func (p *processor) processBlock(_ context.Context, bq *bloomshipper.CloseableBlockQuerier, tasks []Task) (err error) {
+	blockQuerier := bq.BlockQuerier
 	schema, err := blockQuerier.Schema()
 	if err != nil {
 		return err
 	}
 
-	tokenizer := v1.NewNGramTokenizer(schema.NGramLen(), 0)
-	iters := make([]v1.PeekingIterator[v1.Request], 0, len(tasks))
+	// We require V3+ schema
+	if schema.Version() < v1.V3 {
+		return v1.ErrUnsupportedSchemaVersion
+	}
+
+	iters := make([]iter.PeekIterator[v1.Request], 0, len(tasks))
+
 	for _, task := range tasks {
-		it := v1.NewPeekingIter(task.RequestIter(tokenizer))
+		// NB(owen-d): can be helpful for debugging, but is noisy
+		// and don't feel like threading this through a configuration
+
+		// if sp := opentracing.SpanFromContext(task.ctx); sp != nil {
+		// 	md, _ := blockQuerier.Metadata()
+		// 	blk := bloomshipper.BlockRefFrom(task.tenant, task.table.String(), md)
+		// 	blockID := blk.String()
+		// 	sp.LogKV("process block", blockID, "series", len(task.series))
+		// }
+
+		it := iter.NewPeekIter(task.RequestIter())
 		iters = append(iters, it)
 	}
 
-	fq := blockQuerier.Fuse(iters)
+	logger := log.With(p.logger, "block", bq.String())
+	fq := blockQuerier.Fuse(iters, logger)
 
 	start := time.Now()
 	err = fq.Run()
+	duration := time.Since(start)
+
 	if err != nil {
-		p.metrics.blockQueryLatency.WithLabelValues(p.id, labelFailure).Observe(time.Since(start).Seconds())
+		p.metrics.blockQueryLatency.WithLabelValues(p.id, labelFailure).Observe(duration.Seconds())
 	} else {
-		p.metrics.blockQueryLatency.WithLabelValues(p.id, labelSuccess).Observe(time.Since(start).Seconds())
+		p.metrics.blockQueryLatency.WithLabelValues(p.id, labelSuccess).Observe(duration.Seconds())
+	}
+
+	for _, task := range tasks {
+		stats := FromContext(task.ctx)
+		stats.AddTotalProcessingTime(duration)
+		stats.IncProcessedBlocks()
 	}
 
 	return err

@@ -37,16 +37,19 @@ var (
 	// ErrTooOldSample is when out of order support is enabled but the sample is outside the time window allowed.
 	ErrTooOldSample = errors.New("too old sample")
 	// ErrDuplicateSampleForTimestamp is when the sample has same timestamp but different value.
-	ErrDuplicateSampleForTimestamp   = errors.New("duplicate sample for timestamp")
-	ErrOutOfOrderExemplar            = errors.New("out of order exemplar")
-	ErrDuplicateExemplar             = errors.New("duplicate exemplar")
-	ErrExemplarLabelLength           = fmt.Errorf("label length for exemplar exceeds maximum of %d UTF-8 characters", exemplar.ExemplarMaxLabelSetLength)
-	ErrExemplarsDisabled             = fmt.Errorf("exemplar storage is disabled or max exemplars is less than or equal to 0")
-	ErrNativeHistogramsDisabled      = fmt.Errorf("native histograms are disabled")
-	ErrHistogramCountNotBigEnough    = errors.New("histogram's observation count should be at least the number of observations found in the buckets")
-	ErrHistogramNegativeBucketCount  = errors.New("histogram has a bucket whose observation count is negative")
-	ErrHistogramSpanNegativeOffset   = errors.New("histogram has a span whose offset is negative")
-	ErrHistogramSpansBucketsMismatch = errors.New("histogram spans specify different number of buckets than provided")
+	ErrDuplicateSampleForTimestamp = errDuplicateSampleForTimestamp{}
+	ErrOutOfOrderExemplar          = errors.New("out of order exemplar")
+	ErrDuplicateExemplar           = errors.New("duplicate exemplar")
+	ErrExemplarLabelLength         = fmt.Errorf("label length for exemplar exceeds maximum of %d UTF-8 characters", exemplar.ExemplarMaxLabelSetLength)
+	ErrExemplarsDisabled           = fmt.Errorf("exemplar storage is disabled or max exemplars is less than or equal to 0")
+	ErrNativeHistogramsDisabled    = fmt.Errorf("native histograms are disabled")
+
+	// ErrOutOfOrderCT indicates failed append of CT to the storage
+	// due to CT being older the then newer sample.
+	// NOTE(bwplotka): This can be both an instrumentation failure or commonly expected
+	// behaviour, and we currently don't have a way to determine this. As a result
+	// it's recommended to ignore this error for now.
+	ErrOutOfOrderCT = fmt.Errorf("created timestamp out of order, ignoring")
 )
 
 // SeriesRef is a generic series reference. In prometheus it is either a
@@ -119,11 +122,11 @@ type MockQuerier struct {
 	SelectMockFunction func(sortSeries bool, hints *SelectHints, matchers ...*labels.Matcher) SeriesSet
 }
 
-func (q *MockQuerier) LabelValues(context.Context, string, ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (q *MockQuerier) LabelValues(context.Context, string, *LabelHints, ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, nil
 }
 
-func (q *MockQuerier) LabelNames(context.Context, ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (q *MockQuerier) LabelNames(context.Context, *LabelHints, ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, nil
 }
 
@@ -158,12 +161,12 @@ type LabelQuerier interface {
 	// It is not safe to use the strings beyond the lifetime of the querier.
 	// If matchers are specified the returned result set is reduced
 	// to label values of metrics matching the matchers.
-	LabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error)
+	LabelValues(ctx context.Context, name string, hints *LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error)
 
 	// LabelNames returns all the unique label names present in the block in sorted order.
 	// If matchers are specified the returned result set is reduced
 	// to label names of metrics matching the matchers.
-	LabelNames(ctx context.Context, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error)
+	LabelNames(ctx context.Context, hints *LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error)
 
 	// Close releases the resources of the Querier.
 	Close() error
@@ -187,6 +190,9 @@ type SelectHints struct {
 	Start int64 // Start time in milliseconds for this select.
 	End   int64 // End time in milliseconds for this select.
 
+	// Maximum number of results returned. Use a value of 0 to disable.
+	Limit int
+
 	Step int64  // Query step size in milliseconds.
 	Func string // String representation of surrounding function or aggregation.
 
@@ -194,10 +200,31 @@ type SelectHints struct {
 	By       bool     // Indicate whether it is without or by.
 	Range    int64    // Range vector selector range in milliseconds.
 
+	// ShardCount is the total number of shards that series should be split into
+	// at query time. Then, only series in the ShardIndex shard will be returned
+	// by the query.
+	//
+	// ShardCount equal to 0 means that sharding is disabled.
+	ShardCount uint64
+
+	// ShardIndex is the series shard index to query. The index must be between 0 and ShardCount-1.
+	// When ShardCount is set to a value > 0, then a query will only process series within the
+	// ShardIndex's shard.
+	//
+	// Series are sharded by "labels stable hash" mod "ShardCount".
+	ShardIndex uint64
+
 	// DisableTrimming allows to disable trimming of matching series chunks based on query Start and End time.
 	// When disabled, the result may contain samples outside the queried time range but Select() performances
 	// may be improved.
 	DisableTrimming bool
+}
+
+// LabelHints specifies hints passed for label reads.
+// This is used only as an option for implementation to use.
+type LabelHints struct {
+	// Maximum number of results returned. Use a value of 0 to disable.
+	Limit int
 }
 
 // TODO(bwplotka): Move to promql/engine_test.go?
@@ -241,6 +268,7 @@ type Appender interface {
 	ExemplarAppender
 	HistogramAppender
 	MetadataUpdater
+	CreatedTimestampAppender
 }
 
 // GetRef is an extra interface on Appenders used by downstream projects
@@ -298,6 +326,24 @@ type MetadataUpdater interface {
 	UpdateMetadata(ref SeriesRef, l labels.Labels, m metadata.Metadata) (SeriesRef, error)
 }
 
+// CreatedTimestampAppender provides an interface for appending CT to storage.
+type CreatedTimestampAppender interface {
+	// AppendCTZeroSample adds synthetic zero sample for the given ct timestamp,
+	// which will be associated with given series, labels and the incoming
+	// sample's t (timestamp). AppendCTZeroSample returns error if zero sample can't be
+	// appended, for example when ct is too old, or when it would collide with
+	// incoming sample (sample has priority).
+	//
+	// AppendCTZeroSample has to be called before the corresponding sample Append.
+	// A series reference number is returned which can be used to modify the
+	// CT for the given series in the same or later transactions.
+	// Returned reference numbers are ephemeral and may be rejected in calls
+	// to AppendCTZeroSample() at any point.
+	//
+	// If the reference is 0 it must not be used for caching.
+	AppendCTZeroSample(ref SeriesRef, l labels.Labels, t, ct int64) (SeriesRef, error)
+}
+
 // SeriesSet contains a set of series.
 type SeriesSet interface {
 	Next() bool
@@ -327,7 +373,7 @@ func (s testSeriesSet) At() Series                        { return s.series }
 func (s testSeriesSet) Err() error                        { return nil }
 func (s testSeriesSet) Warnings() annotations.Annotations { return nil }
 
-// TestSeriesSet returns a mock series set
+// TestSeriesSet returns a mock series set.
 func TestSeriesSet(series Series) SeriesSet {
 	return testSeriesSet{series: series}
 }

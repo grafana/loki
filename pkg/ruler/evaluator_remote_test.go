@@ -18,9 +18,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 type mockClient struct {
@@ -45,7 +45,7 @@ func TestRemoteEvalQueryTimeout(t *testing.T) {
 	require.NoError(t, err)
 
 	cli := mockClient{
-		handleFn: func(ctx context.Context, in *httpgrpc.HTTPRequest, opts ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
+		handleFn: func(_ context.Context, _ *httpgrpc.HTTPRequest, _ ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
 			// sleep for slightly longer than the timeout
 			time.Sleep(timeout + (100 * time.Millisecond))
 			return &httpgrpc.HTTPResponse{
@@ -79,7 +79,7 @@ func TestRemoteEvalMaxResponseSize(t *testing.T) {
 	require.NoError(t, err)
 
 	cli := mockClient{
-		handleFn: func(ctx context.Context, in *httpgrpc.HTTPRequest, opts ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
+		handleFn: func(_ context.Context, _ *httpgrpc.HTTPRequest, _ ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
 			// generate a response of random bytes that's just too big for the max response size
 			var resp = make([]byte, exceededSize)
 			_, err = rand.Read(resp)
@@ -116,7 +116,7 @@ func TestRemoteEvalScalar(t *testing.T) {
 	)
 
 	cli := mockClient{
-		handleFn: func(ctx context.Context, in *httpgrpc.HTTPRequest, opts ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
+		handleFn: func(_ context.Context, _ *httpgrpc.HTTPRequest, _ ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
 			// this is somewhat bleeding the abstraction, but it's more idiomatic/readable than constructing
 			// the expected JSON response by hand
 			resp := loghttp.QueryResponse{
@@ -162,7 +162,7 @@ func TestRemoteEvalEmptyScalarResponse(t *testing.T) {
 	require.NoError(t, err)
 
 	cli := mockClient{
-		handleFn: func(ctx context.Context, in *httpgrpc.HTTPRequest, opts ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
+		handleFn: func(_ context.Context, _ *httpgrpc.HTTPRequest, _ ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
 			// this is somewhat bleeding the abstraction, but it's more idiomatic/readable than constructing
 			// the expected JSON response by hand
 			resp := loghttp.QueryResponse{
@@ -195,7 +195,7 @@ func TestRemoteEvalEmptyScalarResponse(t *testing.T) {
 	require.Empty(t, res.Data)
 }
 
-// TestRemoteEvalEmptyVectorResponse validates that an empty vector response is valid and does not cause an error
+// TestRemoteEvalVectorResponse validates that an empty vector response is valid and does not cause an error
 func TestRemoteEvalVectorResponse(t *testing.T) {
 	defaultLimits := defaultLimitsTestConfig()
 	limits, err := validation.NewOverrides(defaultLimits, nil)
@@ -205,7 +205,7 @@ func TestRemoteEvalVectorResponse(t *testing.T) {
 	value := 35891
 
 	cli := mockClient{
-		handleFn: func(ctx context.Context, in *httpgrpc.HTTPRequest, opts ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
+		handleFn: func(_ context.Context, _ *httpgrpc.HTTPRequest, _ ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
 			// this is somewhat bleeding the abstraction, but it's more idiomatic/readable than constructing
 			// the expected JSON response by hand
 			resp := loghttp.QueryResponse{
@@ -267,7 +267,7 @@ func TestRemoteEvalEmptyVectorResponse(t *testing.T) {
 	require.NoError(t, err)
 
 	cli := mockClient{
-		handleFn: func(ctx context.Context, in *httpgrpc.HTTPRequest, opts ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
+		handleFn: func(_ context.Context, _ *httpgrpc.HTTPRequest, _ ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
 			// this is somewhat bleeding the abstraction, but it's more idiomatic/readable than constructing
 			// the expected JSON response by hand
 			resp := loghttp.QueryResponse{
@@ -307,7 +307,7 @@ func TestRemoteEvalErrorResponse(t *testing.T) {
 	var respErr = fmt.Errorf("some error occurred")
 
 	cli := mockClient{
-		handleFn: func(ctx context.Context, in *httpgrpc.HTTPRequest, opts ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
+		handleFn: func(_ context.Context, _ *httpgrpc.HTTPRequest, _ ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
 			return nil, respErr
 		},
 	}
@@ -331,7 +331,7 @@ func TestRemoteEvalNon2xxResponse(t *testing.T) {
 	const httpErr = http.StatusInternalServerError
 
 	cli := mockClient{
-		handleFn: func(ctx context.Context, in *httpgrpc.HTTPRequest, opts ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
+		handleFn: func(_ context.Context, _ *httpgrpc.HTTPRequest, _ ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
 			return &httpgrpc.HTTPResponse{
 				Code: httpErr,
 			}, nil
@@ -354,7 +354,7 @@ func TestRemoteEvalNonJSONResponse(t *testing.T) {
 	require.NoError(t, err)
 
 	cli := mockClient{
-		handleFn: func(ctx context.Context, in *httpgrpc.HTTPRequest, opts ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
+		handleFn: func(_ context.Context, _ *httpgrpc.HTTPRequest, _ ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
 			return &httpgrpc.HTTPResponse{
 				Code: http.StatusOK,
 				Body: []byte("this is not json"),
@@ -378,7 +378,7 @@ func TestRemoteEvalUnsupportedResultResponse(t *testing.T) {
 	require.NoError(t, err)
 
 	cli := mockClient{
-		handleFn: func(ctx context.Context, in *httpgrpc.HTTPRequest, opts ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
+		handleFn: func(_ context.Context, _ *httpgrpc.HTTPRequest, _ ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
 			// this is somewhat bleeding the abstraction, but it's more idiomatic/readable than constructing
 			// the expected JSON response by hand
 			resp := loghttp.QueryResponse{

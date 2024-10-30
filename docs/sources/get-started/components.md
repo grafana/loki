@@ -8,20 +8,25 @@ aliases:
 ---
 # Loki components
 
+{{< youtube id="_hv4i84Z68s" >}}
+
 Loki is a modular system that contains many components that can either be run together (in "single binary" mode with target `all`),
 in logical groups (in "simple scalable deployment" mode with targets `read`, `write`, `backend`), or individually (in "microservice" mode).
 For more information see [Deployment modes]({{< relref "./deployment-modes" >}}).
 
-| Component | _individual_ | `all` | `read` | `write` | `backend` |
-| ----------------------------------- | - | - | - | - | - |
-| [Distributor](#distributor)         | x | x |   | x |   |
-| [Ingester](#ingester)               | x | x |   | x |   |
-| [Query Frontend](#query-frontend)   | x | x | x |   |   |
-| [Query Scheduler](#query-scheduler) | x | x |   |   | x |
-| [Querier](#querier)                 | x | x | x |   |   |
-| [Index Gateway](#index-gateway)     | x |   |   |   | x |
-| [Compactor](#compactor)             | x | x |   |   | x |
-| [Ruler](#ruler)                     | x | x |   |   | x |
+| Component                                          | _individual_ | `all` | `read` | `write` | `backend` |
+|----------------------------------------------------|--------------| - | - | - | - |
+| [Distributor](#distributor)                        | x            | x |   | x |   |
+| [Ingester](#ingester)                              | x            | x |   | x |   |
+| [Query Frontend](#query-frontend)                  | x            | x | x |   |   |
+| [Query Scheduler](#query-scheduler)                | x            | x |   |   | x |
+| [Querier](#querier)                                | x            | x | x |   |   |
+| [Index Gateway](#index-gateway)                    | x            |   |   |   | x |
+| [Compactor](#compactor)                            | x            | x |   |   | x |
+| [Ruler](#ruler)                                    | x            | x |   |   | x |
+| [Bloom Planner (Experimental)](#bloom-planner)     | x            |   |   |   | x |
+| [Bloom Builder (Experimental)](#bloom-builder)     | x            |   |   |   | x |
+| [Bloom Gateway (Experimental)](#bloom-gateway)     | x            |   |   |   | x |
 
 This page describes the responsibilities of each of these components.
 
@@ -29,7 +34,7 @@ This page describes the responsibilities of each of these components.
 ## Distributor
 
 The **distributor** service is responsible for handling incoming push requests from
-clients. It's the first stop in the write path for log data. Once the
+clients. It's the first step in the write path for log data. Once the
 distributor receives a set of streams in an HTTP request, each stream is validated for correctness
 and to ensure that it is within the configured tenant (or global) limits. Each valid stream
 is then sent to `n` [ingesters](#ingester) in parallel, where `n` is the [replication factor](#replication-factor) for data.
@@ -54,9 +59,9 @@ Currently the only way the distributor mutates incoming data is by normalizing l
 
 The distributor can also rate limit incoming logs based on the maximum data ingest rate per tenant. It does this by checking a per-tenant limit and dividing it by the current number of distributors. This allows the rate limit to be specified per tenant at the cluster level and enables us to scale the distributors up or down and have the per-distributor limit adjust accordingly. For instance, say we have 10 distributors and tenant A has a 10MB rate limit. Each distributor will allow up to 1MB/s before limiting. Now, say another large tenant joins the cluster and we need to spin up 10 more distributors. The now 20 distributors will adjust their rate limits for tenant A to `(10MB / 20 distributors) = 500KB/s`. This is how global limits allow much simpler and safer operation of the Loki cluster.
 
-{{% admonition type="note" %}}
-The distributor uses the `ring` component under the hood to register itself amongst its peers and get the total number of active distributors. This is a different "key" than the ingesters use in the ring and comes from the distributor's own [ring configuration]({{< relref "../configure#distributor" >}}).
-{{% /admonition %}}
+{{< admonition type="note" >}}
+The distributor uses the `ring` component under the hood to register itself amongst its peers and get the total number of active distributors. This is a different "key" than the ingesters use in the ring and comes from the distributor's own [ring configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#distributor).
+{{< /admonition >}}
 
 ### Forwarding
 
@@ -66,9 +71,9 @@ Once the distributor has performed all of its validation duties, it forwards dat
 
 In order to mitigate the chance of _losing_ data on any single ingester, the distributor will forward writes to a _replication factor_ of them. Generally, the replication factor is `3`. Replication allows for ingester restarts and rollouts without failing writes and adds additional protection from data loss for some scenarios. Loosely, for each label set (called a _stream_) that is pushed to a distributor, it will hash the labels and use the resulting value to look up `replication_factor` ingesters in the `ring` (which is a subcomponent that exposes a [distributed hash table](https://en.wikipedia.org/wiki/Distributed_hash_table)). It will then try to write the same data to all of them. This will generate an error if less than a _quorum_ of writes succeed. A quorum is defined as `floor( replication_factor / 2 ) + 1`. So, for our `replication_factor` of `3`, we require that two writes succeed. If less than two writes succeed, the distributor returns an error and the write operation will be retried.
 
-{{% admonition type="caution" %}}
+{{< admonition type="caution" >}}
 If a write is acknowledged by 2 out of 3 ingesters, we can tolerate the loss of one ingester but not two, as this would result in data loss.
-{{% /admonition %}}
+{{< /admonition >}}
 
 The replication factor is not the only thing that prevents data loss, though, and its main purpose is to allow writes to continue uninterrupted during rollouts and restarts. The [ingester component](#ingester) now includes a [write ahead log](https://en.wikipedia.org/wiki/Write-ahead_logging) (WAL) which persists incoming writes to disk to ensure they are not lost as long as the disk isn't corrupted. The complementary nature of replication factor and WAL ensures data isn't lost unless there are significant failures in both mechanisms (that is, multiple ingesters die and lose/corrupt their disks).
 
@@ -127,9 +132,9 @@ the hash ring. Each ingester has a state of either `PENDING`, `JOINING`,
 1. `PENDING` is an Ingester's state when it is waiting for a [handoff](#handoff) from
    another ingester that is `LEAVING`. This only applies for legacy deployment modes.
 
-   {{% admonition type="note" %}}
+   {{< admonition type="note" >}}
    Handoff is deprecated behavior mainly used in stateless deployments of ingesters, which is discouraged. Instead, it's recommended using a stateful deployment model together with the [write ahead log]({{< relref "../operations/storage/wal" >}}).
-   {{% /admonition %}}
+   {{< /admonition >}}
 
 1. `JOINING` is an Ingester's state when it is currently inserting its tokens
    into the ring and initializing itself. It may receive write requests for
@@ -170,7 +175,7 @@ deduplicated.
 
 ### Timestamp Ordering
 
-Loki is configured to [accept out-of-order writes]({{< relref "../configure#accept-out-of-order-writes" >}}) by default.
+Loki is configured to [accept out-of-order writes](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#accept-out-of-order-writes) by default.
 
 When not configured to accept out-of-order writes, the ingester validates that ingested log lines are in order. When an
 ingester receives a log line that doesn't follow the expected order, the line
@@ -203,9 +208,9 @@ nanosecond timestamps:
 
 ### Handoff
 
-{{% admonition type="warning" %}}
+{{< admonition type="warning" >}}
 Handoff is deprecated behavior mainly used in stateless deployments of ingesters, which is discouraged. Instead, it's recommended using a stateful deployment model together with the [write ahead log]({{< relref "../operations/storage/wal" >}}).
-{{% /admonition %}}
+{{< /admonition >}}
 
 By default, when an ingester is shutting down and tries to leave the hash ring,
 it will wait to see if a new ingester tries to enter before flushing and will
@@ -334,3 +339,42 @@ This mode is called remote rule evaluation and is used to gain the advantages of
 from the query frontend.
 
 When running multiple rulers, they use a consistent hash ring to distribute rule groups amongst available ruler instances.
+
+## Bloom Planner
+{{< admonition type="warning" >}}
+This feature is an [experimental feature](/docs/release-life-cycle/). Engineering and on-call support is not available.
+No SLA is provided.
+{{< /admonition >}}
+
+The Bloom Planner service is responsible for planning the tasks for blooms creation. It runs as a singleton and provides a queue
+from which tasks are pulled by the Bloom Builders. The planning runs periodically and takes into account what blooms have already
+been built for a given day and tenant and what series need to be newly added.
+
+This service is also used to apply blooms retention.
+
+## Bloom Builder
+{{< admonition type="warning" >}}
+This feature is an [experimental feature](/docs/release-life-cycle/). Engineering and on-call support is not available.
+No SLA is provided.
+{{< /admonition >}}
+
+The Bloom Builder service is responsible for processing the tasks created by the Bloom Planner.
+The Bloom Builder creates bloom blocks from structured metadata of log entries.
+The resulting blooms are grouped in bloom blocks spanning multiple series and chunks from a given day. 
+This component also builds metadata files to track which blocks are available for each series and TSDB index file.
+
+The service is stateless and horizontally scalable.
+
+## Bloom Gateway
+{{< admonition type="warning" >}}
+This feature is an [experimental feature](/docs/release-life-cycle/). Engineering and on-call support is not available.
+No SLA is provided.
+{{< /admonition >}}
+
+The Bloom Gateway service is responsible for handling and serving chunks filtering requests. 
+The index gateway queries the Bloom Gateway when computing chunk references, or when computing shards for a given query.
+The gateway service takes a list of chunks and a filtering expression and matches them against the blooms, 
+filtering out any chunks that do not match the given label filter expression.
+
+The service is horizontally scalable. When running multiple instances, the client (Index Gateway) shards requests
+across instances based on the hash of the bloom blocks that are referenced.

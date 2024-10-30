@@ -9,11 +9,11 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/containerd/log"
 	"github.com/docker/docker/pkg/ioutils"
 	"github.com/docker/docker/pkg/plugins/transport"
 	"github.com/docker/go-connections/sockets"
 	"github.com/docker/go-connections/tlsconfig"
-	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -26,7 +26,10 @@ const (
 	dummyHost = "plugin.moby.localhost"
 )
 
-func newTransport(addr string, tlsConfig *tlsconfig.Options) (transport.Transport, error) {
+// VersionMimetype is the Content-Type the engine sends to plugins.
+const VersionMimetype = transport.VersionMimetype
+
+func newTransport(addr string, tlsConfig *tlsconfig.Options) (*transport.HTTPTransport, error) {
 	tr := &http.Transport{}
 
 	if tlsConfig != nil {
@@ -77,7 +80,7 @@ func NewClientWithTimeout(addr string, tlsConfig *tlsconfig.Options, timeout tim
 }
 
 // newClientWithTransport creates a new plugin client with a given transport.
-func newClientWithTransport(tr transport.Transport, timeout time.Duration) *Client {
+func newClientWithTransport(tr *transport.HTTPTransport, timeout time.Duration) *Client {
 	return &Client{
 		http: &http.Client{
 			Transport: tr,
@@ -87,15 +90,24 @@ func newClientWithTransport(tr transport.Transport, timeout time.Duration) *Clie
 	}
 }
 
+// requestFactory defines an interface that transports can implement to
+// create new requests. It's used in testing.
+type requestFactory interface {
+	NewRequest(path string, data io.Reader) (*http.Request, error)
+}
+
 // Client represents a plugin client.
 type Client struct {
 	http           *http.Client // http client to use
-	requestFactory transport.RequestFactory
+	requestFactory requestFactory
 }
 
 // RequestOpts is the set of options that can be passed into a request
 type RequestOpts struct {
 	Timeout time.Duration
+
+	// testTimeOut is used during tests to limit the max timeout in [abort]
+	testTimeOut int
 }
 
 // WithRequestTimeout sets a timeout duration for plugin requests
@@ -126,7 +138,7 @@ func (c *Client) CallWithOptions(serviceMethod string, args interface{}, ret int
 	defer body.Close()
 	if ret != nil {
 		if err := json.NewDecoder(body).Decode(&ret); err != nil {
-			logrus.Errorf("%s: error reading plugin resp: %v", serviceMethod, err)
+			log.G(context.TODO()).Errorf("%s: error reading plugin resp: %v", serviceMethod, err)
 			return err
 		}
 	}
@@ -150,7 +162,7 @@ func (c *Client) SendFile(serviceMethod string, data io.Reader, ret interface{})
 	}
 	defer body.Close()
 	if err := json.NewDecoder(body).Decode(&ret); err != nil {
-		logrus.Errorf("%s: error reading plugin resp: %v", serviceMethod, err)
+		log.G(context.TODO()).Errorf("%s: error reading plugin resp: %v", serviceMethod, err)
 		return err
 	}
 	return nil
@@ -186,11 +198,11 @@ func (c *Client) callWithRetry(serviceMethod string, data io.Reader, retry bool,
 			}
 
 			timeOff := backoff(retries)
-			if abort(start, timeOff) {
+			if abort(start, timeOff, opts.testTimeOut) {
 				return nil, err
 			}
 			retries++
-			logrus.Warnf("Unable to connect to plugin: %s%s: %v, retrying in %v", req.URL.Host, req.URL.Path, err, timeOff)
+			log.G(context.TODO()).Warnf("Unable to connect to plugin: %s%s: %v, retrying in %v", req.URL.Host, req.URL.Path, err, timeOff)
 			time.Sleep(timeOff)
 			continue
 		}
@@ -238,8 +250,15 @@ func backoff(retries int) time.Duration {
 	return time.Duration(b) * time.Second
 }
 
-func abort(start time.Time, timeOff time.Duration) bool {
-	return timeOff+time.Since(start) >= time.Duration(defaultTimeOut)*time.Second
+// testNonExistingPlugin is a special plugin-name, which overrides defaultTimeOut in tests.
+const testNonExistingPlugin = "this-plugin-does-not-exist"
+
+func abort(start time.Time, timeOff time.Duration, overrideTimeout int) bool {
+	to := defaultTimeOut
+	if overrideTimeout > 0 {
+		to = overrideTimeout
+	}
+	return timeOff+time.Since(start) >= time.Duration(to)*time.Second
 }
 
 func httpScheme(u *url.URL) string {

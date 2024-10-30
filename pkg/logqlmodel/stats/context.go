@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
+
 	"github.com/go-kit/log"
 )
 
@@ -43,6 +44,7 @@ type Context struct {
 	querier  Querier
 	ingester Ingester
 	caches   Caches
+	index    Index
 
 	// store is the store statistics collected across the query path
 	store Store
@@ -101,6 +103,11 @@ func (c *Context) Store() Store {
 	return c.store
 }
 
+// Index returns the index statistics accumulated so far.
+func (c *Context) Index() Index {
+	return c.index
+}
+
 // Caches returns the cache statistics accumulated so far.
 func (c *Context) Caches() Caches {
 	return Caches{
@@ -125,6 +132,7 @@ func (c *Context) Reset() {
 	c.ingester.Reset()
 	c.result.Reset()
 	c.caches.Reset()
+	c.index.Reset()
 }
 
 // Result calculates the summary based on store and ingester data.
@@ -137,6 +145,7 @@ func (c *Context) Result(execTime time.Duration, queueTime time.Duration, totalE
 		},
 		Ingester: c.ingester,
 		Caches:   c.caches,
+		Index:    c.index,
 	})
 
 	r.ComputeSummary(execTime, queueTime, totalEntriesReturned)
@@ -153,7 +162,7 @@ func JoinResults(ctx context.Context, res Result) {
 	stats.result.Merge(res)
 }
 
-// JoinIngesterResult joins the ingester result statistics in a concurrency-safe manner.
+// JoinIngesters joins the ingester result statistics in a concurrency-safe manner.
 func JoinIngesters(ctx context.Context, inc Ingester) {
 	stats := FromContext(ctx)
 	stats.mtx.Lock()
@@ -189,6 +198,7 @@ func (s *Store) Merge(m Store) {
 	s.TotalChunksRef += m.TotalChunksRef
 	s.TotalChunksDownloaded += m.TotalChunksDownloaded
 	s.CongestionControlLatency += m.CongestionControlLatency
+	s.PipelineWrapperFilteredLines += m.PipelineWrapperFilteredLines
 	s.ChunksDownloadTime += m.ChunksDownloadTime
 	s.ChunkRefsFetchTime += m.ChunkRefsFetchTime
 	s.Chunk.HeadChunkBytes += m.Chunk.HeadChunkBytes
@@ -224,6 +234,12 @@ func (i *Ingester) Merge(m Ingester) {
 	i.TotalLinesSent += m.TotalLinesSent
 	i.TotalChunksMatched += m.TotalChunksMatched
 	i.TotalReached += m.TotalReached
+}
+
+func (i *Index) Merge(m Index) {
+	i.TotalChunks += m.TotalChunks
+	i.PostFilterChunks += m.PostFilterChunks
+	i.ShardsDuration += m.ShardsDuration
 }
 
 func (c *Caches) Merge(m Caches) {
@@ -267,6 +283,7 @@ func (r *Result) Merge(m Result) {
 	r.Ingester.Merge(m.Ingester)
 	r.Caches.Merge(m.Caches)
 	r.Summary.Merge(m.Summary)
+	r.Index.Merge(m.Index)
 	r.ComputeSummary(ConvertSecondsToNanoseconds(r.Summary.ExecTime+m.Summary.ExecTime),
 		ConvertSecondsToNanoseconds(r.Summary.QueueTime+m.Summary.QueueTime), int(r.Summary.TotalEntriesReturned))
 }
@@ -287,6 +304,10 @@ func (r Result) ChunkRefsFetchTime() time.Duration {
 
 func (r Result) CongestionControlLatency() time.Duration {
 	return time.Duration(r.Querier.Store.CongestionControlLatency)
+}
+
+func (r Result) PipelineWrapperFilteredLines() int64 {
+	return r.Querier.Store.PipelineWrapperFilteredLines + r.Ingester.Store.PipelineWrapperFilteredLines
 }
 
 func (r Result) TotalDuplicates() int64 {
@@ -374,12 +395,24 @@ func (c *Context) AddCongestionControlLatency(i time.Duration) {
 	atomic.AddInt64(&c.store.CongestionControlLatency, int64(i))
 }
 
+func (c *Context) AddPipelineWrapperFilterdLines(i int64) {
+	atomic.AddInt64(&c.store.PipelineWrapperFilteredLines, i)
+}
+
 func (c *Context) AddChunksDownloaded(i int64) {
 	atomic.AddInt64(&c.store.TotalChunksDownloaded, i)
 }
 
 func (c *Context) AddChunksRef(i int64) {
 	atomic.AddInt64(&c.store.TotalChunksRef, i)
+}
+
+func (c *Context) AddIndexTotalChunkRefs(i int64) {
+	atomic.AddInt64(&c.index.TotalChunks, i)
+}
+
+func (c *Context) AddIndexPostFilterChunkRefs(i int64) {
+	atomic.AddInt64(&c.index.PostFilterChunks, i)
 }
 
 // AddCacheEntriesFound counts the number of cache entries requested and found
@@ -499,9 +532,12 @@ func (c *Context) getCacheStatsByType(t CacheType) *Cache {
 	return stats
 }
 
-// Log logs a query statistics result.
-func (r Result) Log(log log.Logger) {
-	_ = log.Log(
+func (r Result) Log(logger log.Logger) {
+	logger.Log(r.KVList()...)
+}
+
+func (r Result) KVList() []any {
+	result := []any{
 		"Ingester.TotalReached", r.Ingester.TotalReached,
 		"Ingester.TotalChunksMatched", r.Ingester.TotalChunksMatched,
 		"Ingester.TotalBatches", r.Ingester.TotalBatches,
@@ -530,13 +566,14 @@ func (r Result) Log(log log.Logger) {
 		"Querier.CompressedBytes", humanize.Bytes(uint64(r.Querier.Store.Chunk.CompressedBytes)),
 		"Querier.TotalDuplicates", r.Querier.Store.Chunk.TotalDuplicates,
 		"Querier.QueryReferencedStructuredMetadata", r.Querier.Store.QueryReferencedStructured,
-	)
-	r.Caches.Log(log)
-	r.Summary.Log(log)
+	}
+
+	result = append(result, r.Caches.kvList()...)
+	return append(result, r.Summary.kvList()...)
 }
 
-func (s Summary) Log(log log.Logger) {
-	_ = log.Log(
+func (s Summary) kvList() []any {
+	return []any{
 		"Summary.BytesProcessedPerSecond", humanize.Bytes(uint64(s.BytesProcessedPerSecond)),
 		"Summary.LinesProcessedPerSecond", s.LinesProcessedPerSecond,
 		"Summary.TotalBytesProcessed", humanize.Bytes(uint64(s.TotalBytesProcessed)),
@@ -544,11 +581,11 @@ func (s Summary) Log(log log.Logger) {
 		"Summary.PostFilterLines", s.TotalPostFilterLines,
 		"Summary.ExecTime", ConvertSecondsToNanoseconds(s.ExecTime),
 		"Summary.QueueTime", ConvertSecondsToNanoseconds(s.QueueTime),
-	)
+	}
 }
 
-func (c Caches) Log(log log.Logger) {
-	_ = log.Log(
+func (c Caches) kvList() []any {
+	return []any{
 		"Cache.Chunk.Requests", c.Chunk.Requests,
 		"Cache.Chunk.EntriesRequested", c.Chunk.EntriesRequested,
 		"Cache.Chunk.EntriesFound", c.Chunk.EntriesFound,
@@ -601,5 +638,5 @@ func (c Caches) Log(log log.Logger) {
 		"Cache.InstantMetricResult.BytesSent", humanize.Bytes(uint64(c.InstantMetricResult.BytesSent)),
 		"Cache.InstantMetricResult.BytesReceived", humanize.Bytes(uint64(c.InstantMetricResult.BytesReceived)),
 		"Cache.InstantMetricResult.DownloadTime", c.InstantMetricResult.CacheDownloadTime(),
-	)
+	}
 }

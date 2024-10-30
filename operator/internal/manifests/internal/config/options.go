@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	configv1 "github.com/grafana/loki/operator/api/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
@@ -29,6 +29,7 @@ type Options struct {
 	MaxConcurrent         MaxConcurrent
 	WriteAheadLog         WriteAheadLog
 	EnableRemoteReporting bool
+	DiscoverLogLevels     bool
 	Shippers              []string
 
 	ObjectStorage storage.Options
@@ -36,6 +37,8 @@ type Options struct {
 	HTTPTimeouts HTTPTimeoutConfig
 
 	Retention RetentionOptions
+
+	OTLPAttributes OTLPAttributeConfig
 
 	Overrides map[string]LokiOverrides
 }
@@ -223,10 +226,20 @@ type WriteAheadLog struct {
 	IngesterMemoryRequest int64
 }
 
+const (
+	// minimumReplayCeiling contains the minimum value that will be used for the replay_memory_ceiling.
+	// It is set, so that even when the ingester has a low memory request, the replay will not flush each block
+	// on its own.
+	minimumReplayCeiling = 512 * 1024 * 1024
+)
+
 // ReplayMemoryCeiling calculates 50% of the ingester memory
 // for the ingester to use for the write-ahead-log capbability.
 func (w WriteAheadLog) ReplayMemoryCeiling() string {
 	value := int64(math.Ceil(float64(w.IngesterMemoryRequest) * float64(0.5)))
+	if value < minimumReplayCeiling {
+		value = minimumReplayCeiling
+	}
 	return fmt.Sprintf("%d", value)
 }
 
@@ -234,6 +247,34 @@ func (w WriteAheadLog) ReplayMemoryCeiling() string {
 type RetentionOptions struct {
 	Enabled           bool
 	DeleteWorkerCount uint
+}
+
+// OTLPAttributeConfig contains the rendered OTLP label configuration.
+// This is both influenced by the tenancy mode and the custom OTLP configuration on the LokiStack and might
+// contain more labels than the user has configured if some labels are deemed "required".
+type OTLPAttributeConfig struct {
+	RemoveDefaultLabels bool
+	Global              *OTLPTenantAttributeConfig
+	Tenants             map[string]*OTLPTenantAttributeConfig
+}
+
+type OTLPTenantAttributeConfig struct {
+	ResourceAttributes []OTLPAttribute
+	ScopeAttributes    []OTLPAttribute
+	LogAttributes      []OTLPAttribute
+}
+
+type OTLPAttributeAction string
+
+const (
+	OTLPAttributeActionStreamLabel OTLPAttributeAction = "index_label"
+	OTLPAttributeActionMetadata    OTLPAttributeAction = "structured_metadata"
+)
+
+type OTLPAttribute struct {
+	Action OTLPAttributeAction
+	Names  []string
+	Regex  string
 }
 
 type TLSOptions struct {

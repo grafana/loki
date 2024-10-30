@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 func Test_SplitRangeInterval(t *testing.T) {
@@ -75,7 +75,6 @@ func Test_SplitRangeInterval(t *testing.T) {
 			2,
 		},
 	} {
-		tc := tc
 		t.Run(tc.expr, func(t *testing.T) {
 			t.Parallel()
 
@@ -1811,7 +1810,6 @@ func Test_SplitRangeVectorMapping(t *testing.T) {
 			3,
 		},
 	} {
-		tc := tc
 		t.Run(tc.expr, func(t *testing.T) {
 			t.Parallel()
 
@@ -2002,7 +2000,6 @@ func Test_SplitRangeVectorMapping_Noop(t *testing.T) {
 			`vector(0.000000)`,
 		},
 	} {
-		tc := tc
 		t.Run(tc.expr, func(t *testing.T) {
 			t.Parallel()
 

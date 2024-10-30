@@ -21,6 +21,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync/atomic"
+	"unsafe"
 
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/base"
@@ -29,7 +31,6 @@ import (
 	"google.golang.org/grpc/credentials/tls/certprovider"
 	"google.golang.org/grpc/internal/balancer/nop"
 	xdsinternal "google.golang.org/grpc/internal/credentials/xds"
-	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/internal/pretty"
@@ -90,19 +91,21 @@ func (bb) Build(cc balancer.ClientConn, opts balancer.BuildOptions) balancer.Bal
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	hi := xdsinternal.NewHandshakeInfo(nil, nil, nil, false)
+	xdsHIPtr := unsafe.Pointer(hi)
 	b := &cdsBalancer{
 		bOpts:             opts,
 		childConfigParser: parser,
 		serializer:        grpcsync.NewCallbackSerializer(ctx),
 		serializerCancel:  cancel,
-		xdsHI:             xdsinternal.NewHandshakeInfo(nil, nil),
+		xdsHIPtr:          &xdsHIPtr,
 		watchers:          make(map[string]*watcherState),
 	}
 	b.ccw = &ccWrapper{
 		ClientConn: cc,
-		xdsHI:      b.xdsHI,
+		xdsHIPtr:   b.xdsHIPtr,
 	}
-	b.logger = prefixLogger((b))
+	b.logger = prefixLogger(b)
 	b.logger.Infof("Created")
 
 	var creds credentials.TransportCredentials
@@ -150,11 +153,13 @@ type cdsBalancer struct {
 	// The following fields are initialized at build time and are either
 	// read-only after that or provide their own synchronization, and therefore
 	// do not need to be guarded by a mutex.
-	ccw               *ccWrapper                 // ClientConn interface passed to child LB.
-	bOpts             balancer.BuildOptions      // BuildOptions passed to child LB.
-	childConfigParser balancer.ConfigParser      // Config parser for cluster_resolver LB policy.
-	xdsHI             *xdsinternal.HandshakeInfo // Handshake info from security configuration.
-	logger            *grpclog.PrefixLogger      // Prefix logger for all logging.
+	ccw               *ccWrapper            // ClientConn interface passed to child LB.
+	bOpts             balancer.BuildOptions // BuildOptions passed to child LB.
+	childConfigParser balancer.ConfigParser // Config parser for cluster_resolver LB policy.
+	logger            *grpclog.PrefixLogger // Prefix logger for all logging.
+	xdsCredsInUse     bool
+
+	xdsHIPtr *unsafe.Pointer // Accessed atomically.
 
 	// The serializer and its cancel func are initialized at build time, and the
 	// rest of the fields here are only accessed from serializer callbacks (or
@@ -171,12 +176,11 @@ type cdsBalancer struct {
 	// a new provider is to be created.
 	cachedRoot     certprovider.Provider
 	cachedIdentity certprovider.Provider
-	xdsCredsInUse  bool
 }
 
 // handleSecurityConfig processes the security configuration received from the
 // management server, creates appropriate certificate provider plugins, and
-// updates the HandhakeInfo which is added as an address attribute in
+// updates the HandshakeInfo which is added as an address attribute in
 // NewSubConn() calls.
 //
 // Only executed in the context of a serializer callback.
@@ -187,6 +191,7 @@ func (b *cdsBalancer) handleSecurityConfig(config *xdsresource.SecurityConfig) e
 	if !b.xdsCredsInUse {
 		return nil
 	}
+	var xdsHI *xdsinternal.HandshakeInfo
 
 	// Security config being nil is a valid case where the management server has
 	// not sent any security configuration. The xdsCredentials implementation
@@ -195,22 +200,14 @@ func (b *cdsBalancer) handleSecurityConfig(config *xdsresource.SecurityConfig) e
 		// We need to explicitly set the fields to nil here since this might be
 		// a case of switching from a good security configuration to an empty
 		// one where fallback credentials are to be used.
-		b.xdsHI.SetRootCertProvider(nil)
-		b.xdsHI.SetIdentityCertProvider(nil)
-		b.xdsHI.SetSANMatchers(nil)
+		xdsHI = xdsinternal.NewHandshakeInfo(nil, nil, nil, false)
+		atomic.StorePointer(b.xdsHIPtr, unsafe.Pointer(xdsHI))
 		return nil
-	}
 
-	bc := b.xdsClient.BootstrapConfig()
-	if bc == nil || bc.CertProviderConfigs == nil {
-		// Bootstrap did not find any certificate provider configs, but the user
-		// has specified xdsCredentials and the management server has sent down
-		// security configuration.
-		return fmt.Errorf("xds: certificate_providers config missing in bootstrap file")
 	}
-	cpc := bc.CertProviderConfigs
 
 	// A root provider is required whether we are using TLS or mTLS.
+	cpc := b.xdsClient.BootstrapConfig().CertProviderConfigs()
 	rootProvider, err := buildProvider(cpc, config.RootInstanceName, config.RootCertName, false, true)
 	if err != nil {
 		return err
@@ -235,18 +232,17 @@ func (b *cdsBalancer) handleSecurityConfig(config *xdsresource.SecurityConfig) e
 	}
 	b.cachedRoot = rootProvider
 	b.cachedIdentity = identityProvider
-
-	// We set all fields here, even if some of them are nil, since they
-	// could have been non-nil earlier.
-	b.xdsHI.SetRootCertProvider(rootProvider)
-	b.xdsHI.SetIdentityCertProvider(identityProvider)
-	b.xdsHI.SetSANMatchers(config.SubjectAltNameMatchers)
+	xdsHI = xdsinternal.NewHandshakeInfo(rootProvider, identityProvider, config.SubjectAltNameMatchers, false)
+	atomic.StorePointer(b.xdsHIPtr, unsafe.Pointer(xdsHI))
 	return nil
 }
 
 func buildProviderFunc(configs map[string]*certprovider.BuildableConfig, instanceName, certName string, wantIdentity, wantRoot bool) (certprovider.Provider, error) {
 	cfg, ok := configs[instanceName]
 	if !ok {
+		// Defensive programming. If a resource received from the management
+		// server contains a certificate provider instance name that is not
+		// found in the bootstrap, the resource is NACKed by the xDS client.
 		return nil, fmt.Errorf("certificate provider instance %q not found in bootstrap file", instanceName)
 	}
 	provider, err := cfg.Build(certprovider.BuildOptions{
@@ -313,8 +309,8 @@ func (b *cdsBalancer) UpdateClientConnState(state balancer.ClientConnState) erro
 	b.lbCfg = lbCfg
 
 	// Handle the update in a blocking fashion.
-	done := make(chan struct{})
-	ok = b.serializer.Schedule(func(context.Context) {
+	errCh := make(chan error, 1)
+	callback := func(context.Context) {
 		// A config update with a changed top-level cluster name means that none
 		// of our old watchers make any sense any more.
 		b.closeAllWatchers()
@@ -323,20 +319,20 @@ func (b *cdsBalancer) UpdateClientConnState(state balancer.ClientConnState) erro
 		// could end up creating more watchers if turns out to be an aggregate
 		// cluster.
 		b.createAndAddWatcherForCluster(lbCfg.ClusterName)
-		close(done)
-	})
-	if !ok {
+		errCh <- nil
+	}
+	onFailure := func() {
 		// The call to Schedule returns false *only* if the serializer has been
 		// closed, which happens only when we receive an update after close.
-		return errBalancerClosed
+		errCh <- errBalancerClosed
 	}
-	<-done
-	return nil
+	b.serializer.ScheduleOr(callback, onFailure)
+	return <-errCh
 }
 
 // ResolverError handles errors reported by the xdsResolver.
 func (b *cdsBalancer) ResolverError(err error) {
-	b.serializer.Schedule(func(context.Context) {
+	b.serializer.TrySchedule(func(context.Context) {
 		// Resource not found error is reported by the resolver when the
 		// top-level cluster resource is removed by the management server.
 		if xdsresource.ErrType(err) == xdsresource.ErrorTypeResourceNotFound {
@@ -355,7 +351,7 @@ func (b *cdsBalancer) UpdateSubConnState(sc balancer.SubConn, state balancer.Sub
 	b.logger.Errorf("UpdateSubConnState(%v, %+v) called unexpectedly", sc, state)
 }
 
-// Closes all registered cluster wathers and removes them from the internal map.
+// Closes all registered cluster watchers and removes them from the internal map.
 //
 // Only executed in the context of a serializer callback.
 func (b *cdsBalancer) closeAllWatchers() {
@@ -368,7 +364,7 @@ func (b *cdsBalancer) closeAllWatchers() {
 // Close cancels the CDS watch, closes the child policy and closes the
 // cdsBalancer.
 func (b *cdsBalancer) Close() {
-	b.serializer.Schedule(func(ctx context.Context) {
+	b.serializer.TrySchedule(func(context.Context) {
 		b.closeAllWatchers()
 
 		if b.childLB != nil {
@@ -388,7 +384,7 @@ func (b *cdsBalancer) Close() {
 }
 
 func (b *cdsBalancer) ExitIdle() {
-	b.serializer.Schedule(func(context.Context) {
+	b.serializer.TrySchedule(func(context.Context) {
 		if b.childLB == nil {
 			b.logger.Warningf("Received ExitIdle with no child policy")
 			return
@@ -613,21 +609,7 @@ func (b *cdsBalancer) generateDMsForCluster(name string, depth int, dms []cluste
 			Cluster:               cluster.ClusterName,
 			EDSServiceName:        cluster.EDSServiceName,
 			MaxConcurrentRequests: cluster.MaxRequests,
-		}
-		if cluster.LRSServerConfig == xdsresource.ClusterLRSServerSelf {
-			bootstrapConfig := b.xdsClient.BootstrapConfig()
-			parsedName := xdsresource.ParseName(cluster.ClusterName)
-			if parsedName.Scheme == xdsresource.FederationScheme {
-				// Is a federation resource name, find the corresponding
-				// authority server config.
-				if cfg, ok := bootstrapConfig.Authorities[parsedName.Authority]; ok {
-					dm.LoadReportingServer = cfg.XDSServer
-				}
-			} else {
-				// Not a federation resource name, use the default
-				// authority.
-				dm.LoadReportingServer = bootstrapConfig.XDSServer
-			}
+			LoadReportingServer:   cluster.LRSServerConfig,
 		}
 	case xdsresource.ClusterTypeLogicalDNS:
 		dm = clusterresolver.DiscoveryMechanism{
@@ -636,20 +618,20 @@ func (b *cdsBalancer) generateDMsForCluster(name string, depth int, dms []cluste
 			DNSHostname: cluster.DNSHostName,
 		}
 	}
-	if envconfig.XDSOutlierDetection {
-		odJSON := cluster.OutlierDetection
-		// "In the cds LB policy, if the outlier_detection field is not set in
-		// the Cluster resource, a "no-op" outlier_detection config will be
-		// generated in the corresponding DiscoveryMechanism config, with all
-		// fields unset." - A50
-		if odJSON == nil {
-			// This will pick up top level defaults in Cluster Resolver
-			// ParseConfig, but sre and fpe will be nil still so still a
-			// "no-op" config.
-			odJSON = json.RawMessage(`{}`)
-		}
-		dm.OutlierDetection = odJSON
+	odJSON := cluster.OutlierDetection
+	// "In the cds LB policy, if the outlier_detection field is not set in
+	// the Cluster resource, a "no-op" outlier_detection config will be
+	// generated in the corresponding DiscoveryMechanism config, with all
+	// fields unset." - A50
+	if odJSON == nil {
+		// This will pick up top level defaults in Cluster Resolver
+		// ParseConfig, but sre and fpe will be nil still so still a
+		// "no-op" config.
+		odJSON = json.RawMessage(`{}`)
 	}
+	dm.OutlierDetection = odJSON
+
+	dm.TelemetryLabels = cluster.TelemetryLabels
 
 	return append(dms, dm), true, nil
 }
@@ -663,9 +645,7 @@ func (b *cdsBalancer) generateDMsForCluster(name string, depth int, dms []cluste
 type ccWrapper struct {
 	balancer.ClientConn
 
-	// The certificate providers in this HandshakeInfo are updated based on the
-	// received security configuration in the Cluster resource.
-	xdsHI *xdsinternal.HandshakeInfo
+	xdsHIPtr *unsafe.Pointer
 }
 
 // NewSubConn intercepts NewSubConn() calls from the child policy and adds an
@@ -674,8 +654,9 @@ type ccWrapper struct {
 func (ccw *ccWrapper) NewSubConn(addrs []resolver.Address, opts balancer.NewSubConnOptions) (balancer.SubConn, error) {
 	newAddrs := make([]resolver.Address, len(addrs))
 	for i, addr := range addrs {
-		newAddrs[i] = xdsinternal.SetHandshakeInfo(addr, ccw.xdsHI)
+		newAddrs[i] = xdsinternal.SetHandshakeInfo(addr, ccw.xdsHIPtr)
 	}
+
 	// No need to override opts.StateListener; just forward all calls to the
 	// child that created the SubConn.
 	return ccw.ClientConn.NewSubConn(newAddrs, opts)
@@ -684,7 +665,7 @@ func (ccw *ccWrapper) NewSubConn(addrs []resolver.Address, opts balancer.NewSubC
 func (ccw *ccWrapper) UpdateAddresses(sc balancer.SubConn, addrs []resolver.Address) {
 	newAddrs := make([]resolver.Address, len(addrs))
 	for i, addr := range addrs {
-		newAddrs[i] = xdsinternal.SetHandshakeInfo(addr, ccw.xdsHI)
+		newAddrs[i] = xdsinternal.SetHandshakeInfo(addr, ccw.xdsHIPtr)
 	}
 	ccw.ClientConn.UpdateAddresses(sc, newAddrs)
 }

@@ -62,7 +62,7 @@ func (m *SigningMethodECDSA) Verify(signingString string, sig []byte, key interf
 	case *ecdsa.PublicKey:
 		ecdsaKey = k
 	default:
-		return ErrInvalidKeyType
+		return newError("ECDSA verify expects *ecdsa.PublicKey", ErrInvalidKeyType)
 	}
 
 	if len(sig) != 2*m.KeySize {
@@ -96,7 +96,7 @@ func (m *SigningMethodECDSA) Sign(signingString string, key interface{}) ([]byte
 	case *ecdsa.PrivateKey:
 		ecdsaKey = k
 	default:
-		return nil, ErrInvalidKeyType
+		return nil, newError("ECDSA sign expects *ecdsa.PrivateKey", ErrInvalidKeyType)
 	}
 
 	// Create the hasher

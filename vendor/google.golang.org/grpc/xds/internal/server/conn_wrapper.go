@@ -19,14 +19,15 @@
 package server
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc/credentials/tls/certprovider"
 	xdsinternal "google.golang.org/grpc/internal/credentials/xds"
+	"google.golang.org/grpc/internal/transport"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
 
@@ -37,15 +38,16 @@ import (
 //     key material from the certificate providers.
 //  2. Implements the XDSHandshakeInfo() method used by the xdsCredentials to
 //     retrieve the configured certificate providers.
-//  3. xDS filter_chain matching logic to select appropriate security
-//     configuration for the incoming connection.
+//  3. xDS filter_chain configuration determines security configuration.
+//  4. Dynamically reads routing configuration in UsableRouteConfiguration(), called
+//     to process incoming RPC's. (LDS + RDS configuration).
 type connWrapper struct {
 	net.Conn
 
 	// The specific filter chain picked for handling this connection.
 	filterChain *xdsresource.FilterChain
 
-	// A reference fo the listenerWrapper on which this connection was accepted.
+	// A reference to the listenerWrapper on which this connection was accepted.
 	parent *listenerWrapper
 
 	// The certificate providers created for this connection.
@@ -59,14 +61,19 @@ type connWrapper struct {
 	deadlineMu sync.Mutex
 	deadline   time.Time
 
+	mu       sync.Mutex
+	st       transport.ServerTransport
+	draining bool
+
 	// The virtual hosts with matchable routes and instantiated HTTP Filters per
-	// route.
-	virtualHosts []xdsresource.VirtualHostWithInterceptors
+	// route, or an error.
+	urc *atomic.Pointer[xdsresource.UsableRouteConfiguration]
 }
 
-// VirtualHosts returns the virtual hosts to be used for server side routing.
-func (c *connWrapper) VirtualHosts() []xdsresource.VirtualHostWithInterceptors {
-	return c.virtualHosts
+// UsableRouteConfiguration returns the UsableRouteConfiguration to be used for
+// server side routing.
+func (c *connWrapper) UsableRouteConfiguration() xdsresource.UsableRouteConfiguration {
+	return *c.urc.Load()
 }
 
 // SetDeadline makes a copy of the passed in deadline and forwards the call to
@@ -92,24 +99,15 @@ func (c *connWrapper) GetDeadline() time.Time {
 // configuration for this connection. This method is invoked by the
 // ServerHandshake() method of the XdsCredentials.
 func (c *connWrapper) XDSHandshakeInfo() (*xdsinternal.HandshakeInfo, error) {
-	// Ideally this should never happen, since xdsCredentials are the only ones
-	// which will invoke this method at handshake time. But to be on the safe
-	// side, we avoid acting on the security configuration received from the
-	// control plane when the user has not configured the use of xDS
-	// credentials, by checking the value of this flag.
-	if !c.parent.xdsCredsInUse {
-		return nil, errors.New("user has not configured xDS credentials")
-	}
-
 	if c.filterChain.SecurityCfg == nil {
 		// If the security config is empty, this means that the control plane
 		// did not provide any security configuration and therefore we should
 		// return an empty HandshakeInfo here so that the xdsCreds can use the
 		// configured fallback credentials.
-		return xdsinternal.NewHandshakeInfo(nil, nil), nil
+		return xdsinternal.NewHandshakeInfo(nil, nil, nil, false), nil
 	}
 
-	cpc := c.parent.xdsC.BootstrapConfig().CertProviderConfigs
+	cpc := c.parent.xdsC.BootstrapConfig().CertProviderConfigs()
 	// Identity provider name is mandatory on the server-side, and this is
 	// enforced when the resource is received at the XDSClient layer.
 	secCfg := c.filterChain.SecurityCfg
@@ -128,9 +126,31 @@ func (c *connWrapper) XDSHandshakeInfo() (*xdsinternal.HandshakeInfo, error) {
 	c.identityProvider = ip
 	c.rootProvider = rp
 
-	xdsHI := xdsinternal.NewHandshakeInfo(c.rootProvider, c.identityProvider)
-	xdsHI.SetRequireClientCert(secCfg.RequireClientCert)
-	return xdsHI, nil
+	return xdsinternal.NewHandshakeInfo(c.rootProvider, c.identityProvider, nil, secCfg.RequireClientCert), nil
+}
+
+// PassServerTransport drains the passed in ServerTransport if draining is set,
+// or persists it to be drained once drained is called.
+func (c *connWrapper) PassServerTransport(st transport.ServerTransport) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.draining {
+		st.Drain("draining")
+	} else {
+		c.st = st
+	}
+}
+
+// Drain drains the associated ServerTransport, or sets draining to true so it
+// will be drained after it is created.
+func (c *connWrapper) Drain() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.st == nil {
+		c.draining = true
+	} else {
+		c.st.Drain("draining")
+	}
 }
 
 // Close closes the providers and the underlying connection.
@@ -141,12 +161,16 @@ func (c *connWrapper) Close() error {
 	if c.rootProvider != nil {
 		c.rootProvider.Close()
 	}
+	c.parent.removeConn(c)
 	return c.Conn.Close()
 }
 
 func buildProviderFunc(configs map[string]*certprovider.BuildableConfig, instanceName, certName string, wantIdentity, wantRoot bool) (certprovider.Provider, error) {
 	cfg, ok := configs[instanceName]
 	if !ok {
+		// Defensive programming. If a resource received from the management
+		// server contains a certificate provider instance name that is not
+		// found in the bootstrap, the resource is NACKed by the xDS client.
 		return nil, fmt.Errorf("certificate provider instance %q not found in bootstrap file", instanceName)
 	}
 	provider, err := cfg.Build(certprovider.BuildOptions{

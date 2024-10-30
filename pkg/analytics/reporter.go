@@ -7,6 +7,7 @@ import (
 	"flag"
 	"io"
 	"math"
+	"os"
 	"time"
 
 	"github.com/go-kit/log"
@@ -18,8 +19,10 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/util/build"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/util/build"
+
+	"github.com/shirou/gopsutil/v4/process"
 )
 
 const (
@@ -92,28 +95,31 @@ func (rep *Reporter) initLeader(ctx context.Context) *ClusterSeed {
 		MaxRetries: 0,
 	})
 	for backoff.Ongoing() {
-		// create a new cluster seed
-		seed := ClusterSeed{
-			UID:               uuid.NewString(),
-			PrometheusVersion: build.GetVersion(),
-			CreatedAt:         time.Now(),
-		}
-		if err := kvClient.CAS(ctx, seedKey, func(in interface{}) (out interface{}, retry bool, err error) {
-			// The key is already set, so we don't need to do anything
-			if in != nil {
-				if kvSeed, ok := in.(*ClusterSeed); ok && kvSeed != nil && kvSeed.UID != seed.UID {
-					seed = *kvSeed
-					return nil, false, nil
-				}
+		{
+			// create a new cluster seed
+			seed := ClusterSeed{
+				UID:               uuid.NewString(),
+				PrometheusVersion: build.GetVersion(),
+				CreatedAt:         time.Now(),
 			}
-			return &seed, true, nil
-		}); err != nil {
-			level.Info(rep.logger).Log("msg", "failed to CAS cluster seed key", "err", err)
-			continue
+			if err := kvClient.CAS(ctx, seedKey, func(in interface{}) (out interface{}, retry bool, err error) {
+				// The key is already set, so we don't need to do anything
+				if in != nil {
+					if kvSeed, ok := in.(*ClusterSeed); ok && kvSeed != nil && kvSeed.UID != seed.UID {
+						seed = *kvSeed
+						return nil, false, nil
+					}
+				}
+				return &seed, true, nil
+			}); err != nil {
+				level.Info(rep.logger).Log("msg", "failed to CAS cluster seed key", "err", err)
+				continue
+			}
 		}
 		// ensure stability of the cluster seed
 		stableSeed := ensureStableKey(ctx, kvClient, rep.logger)
-		seed = *stableSeed
+		// This is a new local variable so that Go knows it's not racing with the previous usage.
+		seed := *stableSeed
 		// Fetch the remote cluster seed.
 		remoteSeed, err := rep.fetchSeed(ctx,
 			func(err error) bool {
@@ -259,6 +265,7 @@ func (rep *Reporter) running(ctx context.Context) error {
 		}
 		return nil
 	}
+	rep.startCPUPercentCollection(ctx, time.Minute)
 	// check every minute if we should report.
 	ticker := time.NewTicker(reportCheckInterval)
 	defer ticker.Stop()
@@ -311,6 +318,39 @@ func (rep *Reporter) reportUsage(ctx context.Context, interval time.Time) error 
 		return nil
 	}
 	return errs.Err()
+}
+
+const cpuUsageKey = "cpu_usage"
+
+var (
+	cpuUsage = NewFloat(cpuUsageKey)
+)
+
+func (rep *Reporter) startCPUPercentCollection(ctx context.Context, cpuCollectionInterval time.Duration) {
+	proc, err := process.NewProcess(int32(os.Getpid()))
+	if err != nil {
+		level.Debug(rep.logger).Log("msg", "failed to get process", "err", err)
+		return
+	}
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				percent, err := proc.CPUPercentWithContext(ctx)
+				if err != nil {
+					level.Debug(rep.logger).Log("msg", "failed to get cpu percent", "err", err)
+				} else {
+					if cpuUsage.Value() < percent {
+						cpuUsage.Set(percent)
+					}
+				}
+
+			}
+			time.Sleep(cpuCollectionInterval)
+		}
+	}()
 }
 
 // nextReport compute the next report time based on the interval.

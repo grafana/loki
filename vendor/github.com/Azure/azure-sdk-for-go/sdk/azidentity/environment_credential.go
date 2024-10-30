@@ -25,7 +25,7 @@ type EnvironmentCredentialOptions struct {
 	azcore.ClientOptions
 
 	// DisableInstanceDiscovery should be set true only by applications authenticating in disconnected clouds, or
-	// private clouds such as Azure Stack. It determines whether the credential requests Azure AD instance metadata
+	// private clouds such as Azure Stack. It determines whether the credential requests Microsoft Entra instance metadata
 	// from https://login.microsoft.com before authenticating. Setting this to true will skip this request, making
 	// the application responsible for ensuring the configured authority is valid and trustworthy.
 	DisableInstanceDiscovery bool
@@ -56,6 +56,9 @@ type EnvironmentCredentialOptions struct {
 // AZURE_CLIENT_CERTIFICATE_PATH: path to a PEM or PKCS12 certificate file including the private key.
 //
 // AZURE_CLIENT_CERTIFICATE_PASSWORD: (optional) password for the certificate file.
+//
+// Note that this credential uses [ParseCertificates] to load the certificate and key from the file. If this
+// function isn't able to parse your certificate, use [ClientCertificateCredential] instead.
 //
 // # User with username and password
 //
@@ -121,7 +124,7 @@ func NewEnvironmentCredential(options *EnvironmentCredentialOptions) (*Environme
 		}
 		certs, key, err := ParseCertificates(certData, password)
 		if err != nil {
-			return nil, fmt.Errorf(`failed to load certificate from "%s": %v`, certPath, err)
+			return nil, fmt.Errorf("failed to parse %q due to error %q. This may be due to a limitation of this module's certificate loader. Consider calling NewClientCertificateCredential instead", certPath, err.Error())
 		}
 		o := &ClientCertificateCredentialOptions{
 			AdditionallyAllowedTenants: additionalTenants,
@@ -156,7 +159,7 @@ func NewEnvironmentCredential(options *EnvironmentCredentialOptions) (*Environme
 	return nil, errors.New("incomplete environment variable configuration. Only AZURE_TENANT_ID and AZURE_CLIENT_ID are set")
 }
 
-// GetToken requests an access token from Azure Active Directory. This method is called automatically by Azure SDK clients.
+// GetToken requests an access token from Microsoft Entra ID. This method is called automatically by Azure SDK clients.
 func (c *EnvironmentCredential) GetToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
 	return c.cred.GetToken(ctx, opts)
 }

@@ -9,7 +9,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 func Test_lineFormatter_Format(t *testing.T) {
@@ -515,6 +515,22 @@ func Test_labelsFormatter_Format(t *testing.T) {
 		in   labels.Labels
 		want labels.Labels
 	}{
+		{
+			"rename label",
+			mustNewLabelsFormatter([]LabelFmt{
+				NewRenameLabelFmt("baz", "foo"),
+			}),
+			labels.FromStrings("foo", "blip", "bar", "blop"),
+			labels.FromStrings("bar", "blop", "baz", "blip"),
+		},
+		{
+			"rename and overwrite existing label",
+			mustNewLabelsFormatter([]LabelFmt{
+				NewRenameLabelFmt("bar", "foo"),
+			}),
+			labels.FromStrings("foo", "blip", "bar", "blop"),
+			labels.FromStrings("bar", "blip"),
+		},
 		{
 			"combined with template",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", "{{.foo}} and {{.bar}}")}),

@@ -19,6 +19,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -81,7 +83,7 @@ func Load(s string, expandExternalLabels bool, logger log.Logger) (*Config, erro
 		return cfg, nil
 	}
 
-	b := labels.ScratchBuilder{}
+	b := labels.NewScratchBuilder(0)
 	cfg.GlobalConfig.ExternalLabels.Range(func(v labels.Label) {
 		newV := os.Expand(v.Value, func(s string) string {
 			if s == "$" {
@@ -96,6 +98,7 @@ func Load(s string, expandExternalLabels bool, logger log.Logger) (*Config, erro
 		if newV != v.Value {
 			level.Debug(logger).Log("msg", "External label replaced", "label", v.Name, "input", v.Value, "output", newV)
 		}
+		// Note newV can be blank. https://github.com/prometheus/prometheus/issues/11024
 		b.Add(v.Name, newV)
 	})
 	cfg.GlobalConfig.ExternalLabels = b.Labels()
@@ -143,18 +146,27 @@ var (
 		ScrapeInterval:     model.Duration(1 * time.Minute),
 		ScrapeTimeout:      model.Duration(10 * time.Second),
 		EvaluationInterval: model.Duration(1 * time.Minute),
+		RuleQueryOffset:    model.Duration(0 * time.Minute),
+		// When native histogram feature flag is enabled, ScrapeProtocols default
+		// changes to DefaultNativeHistogramScrapeProtocols.
+		ScrapeProtocols: DefaultScrapeProtocols,
+	}
+
+	DefaultRuntimeConfig = RuntimeConfig{
+		// Go runtime tuning.
+		GoGC: 75,
 	}
 
 	// DefaultScrapeConfig is the default scrape configuration.
 	DefaultScrapeConfig = ScrapeConfig{
-		// ScrapeTimeout and ScrapeInterval default to the configured
-		// globals.
+		// ScrapeTimeout, ScrapeInterval and ScrapeProtocols default to the configured globals.
 		ScrapeClassicHistograms: false,
 		MetricsPath:             "/metrics",
 		Scheme:                  "http",
 		HonorLabels:             false,
 		HonorTimestamps:         true,
 		HTTPClientConfig:        config.DefaultHTTPClientConfig,
+		EnableCompression:       true,
 	}
 
 	// DefaultAlertmanagerConfig is the default alertmanager configuration.
@@ -168,6 +180,7 @@ var (
 	// DefaultRemoteWriteConfig is the default remote write configuration.
 	DefaultRemoteWriteConfig = RemoteWriteConfig{
 		RemoteTimeout:    model.Duration(30 * time.Second),
+		ProtobufMessage:  RemoteWriteProtoMsgV1,
 		QueueConfig:      DefaultQueueConfig,
 		MetadataConfig:   DefaultMetadataConfig,
 		HTTPClientConfig: config.DefaultHTTPClientConfig,
@@ -214,11 +227,15 @@ var (
 	DefaultExemplarsConfig = ExemplarsConfig{
 		MaxExemplars: 100000,
 	}
+
+	// DefaultOTLPConfig is the default OTLP configuration.
+	DefaultOTLPConfig = OTLPConfig{}
 )
 
 // Config is the top-level configuration for Prometheus's config files.
 type Config struct {
 	GlobalConfig      GlobalConfig    `yaml:"global"`
+	Runtime           RuntimeConfig   `yaml:"runtime,omitempty"`
 	AlertingConfig    AlertingConfig  `yaml:"alerting,omitempty"`
 	RuleFiles         []string        `yaml:"rule_files,omitempty"`
 	ScrapeConfigFiles []string        `yaml:"scrape_config_files,omitempty"`
@@ -228,6 +245,7 @@ type Config struct {
 
 	RemoteWriteConfigs []*RemoteWriteConfig `yaml:"remote_write,omitempty"`
 	RemoteReadConfigs  []*RemoteReadConfig  `yaml:"remote_read,omitempty"`
+	OTLPConfig         OTLPConfig           `yaml:"otlp,omitempty"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -260,13 +278,13 @@ func (c Config) String() string {
 	return string(b)
 }
 
-// ScrapeConfigs returns the scrape configurations.
+// GetScrapeConfigs returns the scrape configurations.
 func (c *Config) GetScrapeConfigs() ([]*ScrapeConfig, error) {
 	scfgs := make([]*ScrapeConfig, len(c.ScrapeConfigs))
 
 	jobNames := map[string]string{}
 	for i, scfg := range c.ScrapeConfigs {
-		// We do these checks for library users that would not call Validate in
+		// We do these checks for library users that would not call validate in
 		// Unmarshal.
 		if err := scfg.Validate(c.GlobalConfig); err != nil {
 			return nil, err
@@ -329,6 +347,14 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		c.GlobalConfig = DefaultGlobalConfig
 	}
 
+	// If a runtime block was open but empty the default runtime config is overwritten.
+	// We have to restore it here.
+	if c.Runtime.isZero() {
+		c.Runtime = DefaultRuntimeConfig
+		// Use the GOGC env var value if the runtime section is empty.
+		c.Runtime.GoGC = getGoGCEnv()
+	}
+
 	for _, rf := range c.RuleFiles {
 		if !patRulePath.MatchString(rf) {
 			return fmt.Errorf("invalid rule file path %q", rf)
@@ -385,8 +411,15 @@ type GlobalConfig struct {
 	ScrapeInterval model.Duration `yaml:"scrape_interval,omitempty"`
 	// The default timeout when scraping targets.
 	ScrapeTimeout model.Duration `yaml:"scrape_timeout,omitempty"`
+	// The protocols to negotiate during a scrape. It tells clients what
+	// protocol are accepted by Prometheus and with what weight (most wanted is first).
+	// Supported values (case sensitive): PrometheusProto, OpenMetricsText0.0.1,
+	// OpenMetricsText1.0.0, PrometheusText0.0.4.
+	ScrapeProtocols []ScrapeProtocol `yaml:"scrape_protocols,omitempty"`
 	// How frequently to evaluate rules by default.
 	EvaluationInterval model.Duration `yaml:"evaluation_interval,omitempty"`
+	// Offset the rule evaluation timestamp of this particular group by the specified duration into the past to ensure the underlying metrics have been received.
+	RuleQueryOffset model.Duration `yaml:"rule_query_offset,omitempty"`
 	// File to which PromQL queries are logged.
 	QueryLogFile string `yaml:"query_log_file,omitempty"`
 	// The labels to add to any timeseries that this Prometheus instance scrapes.
@@ -412,6 +445,75 @@ type GlobalConfig struct {
 	// Keep no more than this many dropped targets per job.
 	// 0 means no limit.
 	KeepDroppedTargets uint `yaml:"keep_dropped_targets,omitempty"`
+}
+
+// ScrapeProtocol represents supported protocol for scraping metrics.
+type ScrapeProtocol string
+
+// Validate returns error if given scrape protocol is not supported.
+func (s ScrapeProtocol) Validate() error {
+	if _, ok := ScrapeProtocolsHeaders[s]; !ok {
+		return fmt.Errorf("unknown scrape protocol %v, supported: %v",
+			s, func() (ret []string) {
+				for k := range ScrapeProtocolsHeaders {
+					ret = append(ret, string(k))
+				}
+				sort.Strings(ret)
+				return ret
+			}())
+	}
+	return nil
+}
+
+var (
+	PrometheusProto      ScrapeProtocol = "PrometheusProto"
+	PrometheusText0_0_4  ScrapeProtocol = "PrometheusText0.0.4"
+	OpenMetricsText0_0_1 ScrapeProtocol = "OpenMetricsText0.0.1"
+	OpenMetricsText1_0_0 ScrapeProtocol = "OpenMetricsText1.0.0"
+
+	ScrapeProtocolsHeaders = map[ScrapeProtocol]string{
+		PrometheusProto:      "application/vnd.google.protobuf;proto=io.prometheus.client.MetricFamily;encoding=delimited",
+		PrometheusText0_0_4:  "text/plain;version=0.0.4",
+		OpenMetricsText0_0_1: "application/openmetrics-text;version=0.0.1",
+		OpenMetricsText1_0_0: "application/openmetrics-text;version=1.0.0",
+	}
+
+	// DefaultScrapeProtocols is the set of scrape protocols that will be proposed
+	// to scrape target, ordered by priority.
+	DefaultScrapeProtocols = []ScrapeProtocol{
+		OpenMetricsText1_0_0,
+		OpenMetricsText0_0_1,
+		PrometheusText0_0_4,
+	}
+
+	// DefaultProtoFirstScrapeProtocols is like DefaultScrapeProtocols, but it
+	// favors protobuf Prometheus exposition format.
+	// Used by default for certain feature-flags like
+	// "native-histograms" and "created-timestamp-zero-ingestion".
+	DefaultProtoFirstScrapeProtocols = []ScrapeProtocol{
+		PrometheusProto,
+		OpenMetricsText1_0_0,
+		OpenMetricsText0_0_1,
+		PrometheusText0_0_4,
+	}
+)
+
+// validateAcceptScrapeProtocols return errors if we see problems with accept scrape protocols option.
+func validateAcceptScrapeProtocols(sps []ScrapeProtocol) error {
+	if len(sps) == 0 {
+		return errors.New("scrape_protocols cannot be empty")
+	}
+	dups := map[string]struct{}{}
+	for _, sp := range sps {
+		if _, ok := dups[strings.ToLower(string(sp))]; ok {
+			return fmt.Errorf("duplicated protocol in scrape_protocols, got %v", sps)
+		}
+		if err := sp.Validate(); err != nil {
+			return fmt.Errorf("scrape_protocols: %w", err)
+		}
+		dups[strings.ToLower(string(sp))] = struct{}{}
+	}
+	return nil
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -459,6 +561,14 @@ func (c *GlobalConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if gc.EvaluationInterval == 0 {
 		gc.EvaluationInterval = DefaultGlobalConfig.EvaluationInterval
 	}
+
+	if gc.ScrapeProtocols == nil {
+		gc.ScrapeProtocols = DefaultGlobalConfig.ScrapeProtocols
+	}
+	if err := validateAcceptScrapeProtocols(gc.ScrapeProtocols); err != nil {
+		return fmt.Errorf("%w for global config", err)
+	}
+
 	*c = *gc
 	return nil
 }
@@ -469,7 +579,20 @@ func (c *GlobalConfig) isZero() bool {
 		c.ScrapeInterval == 0 &&
 		c.ScrapeTimeout == 0 &&
 		c.EvaluationInterval == 0 &&
-		c.QueryLogFile == ""
+		c.RuleQueryOffset == 0 &&
+		c.QueryLogFile == "" &&
+		c.ScrapeProtocols == nil
+}
+
+// RuntimeConfig configures the values for the process behavior.
+type RuntimeConfig struct {
+	// The Go garbage collection target percentage.
+	GoGC int `yaml:"gogc,omitempty"`
+}
+
+// isZero returns true iff the global config is the zero value.
+func (c *RuntimeConfig) isZero() bool {
+	return c.GoGC == 0
 }
 
 type ScrapeConfigs struct {
@@ -484,18 +607,27 @@ type ScrapeConfig struct {
 	HonorLabels bool `yaml:"honor_labels,omitempty"`
 	// Indicator whether the scraped timestamps should be respected.
 	HonorTimestamps bool `yaml:"honor_timestamps"`
+	// Indicator whether to track the staleness of the scraped timestamps.
+	TrackTimestampsStaleness bool `yaml:"track_timestamps_staleness"`
 	// A set of query parameters with which the target is scraped.
 	Params url.Values `yaml:"params,omitempty"`
 	// How frequently to scrape the targets of this scrape config.
 	ScrapeInterval model.Duration `yaml:"scrape_interval,omitempty"`
 	// The timeout for scraping targets of this config.
 	ScrapeTimeout model.Duration `yaml:"scrape_timeout,omitempty"`
+	// The protocols to negotiate during a scrape. It tells clients what
+	// protocol are accepted by Prometheus and with what preference (most wanted is first).
+	// Supported values (case sensitive): PrometheusProto, OpenMetricsText0.0.1,
+	// OpenMetricsText1.0.0, PrometheusText0.0.4.
+	ScrapeProtocols []ScrapeProtocol `yaml:"scrape_protocols,omitempty"`
 	// Whether to scrape a classic histogram that is also exposed as a native histogram.
 	ScrapeClassicHistograms bool `yaml:"scrape_classic_histograms,omitempty"`
 	// The HTTP resource path on which to fetch metrics from targets.
 	MetricsPath string `yaml:"metrics_path,omitempty"`
 	// The URL scheme with which to fetch metrics from targets.
 	Scheme string `yaml:"scheme,omitempty"`
+	// Indicator whether to request compressed response from the target.
+	EnableCompression bool `yaml:"enable_compression"`
 	// An uncompressed response body larger than this many bytes will cause the
 	// scrape to fail. 0 means no limit.
 	BodySizeLimit units.Base2Bytes `yaml:"body_size_limit,omitempty"`
@@ -514,9 +646,12 @@ type ScrapeConfig struct {
 	// More than this label value length post metric-relabeling will cause the
 	// scrape to fail. 0 means no limit.
 	LabelValueLengthLimit uint `yaml:"label_value_length_limit,omitempty"`
-	// More than this many buckets in a native histogram will cause the scrape to
-	// fail.
+	// If there are more than this many buckets in a native histogram,
+	// buckets will be merged to stay within the limit.
 	NativeHistogramBucketLimit uint `yaml:"native_histogram_bucket_limit,omitempty"`
+	// If the growth factor of one bucket to the next is smaller than this,
+	// buckets will be merged to increase the factor sufficiently.
+	NativeHistogramMinBucketFactor float64 `yaml:"native_histogram_min_bucket_factor,omitempty"`
 	// Keep no more than this many dropped targets per job.
 	// 0 means no limit.
 	KeepDroppedTargets uint `yaml:"keep_dropped_targets,omitempty"`
@@ -577,6 +712,7 @@ func (c *ScrapeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
+// Validate validates scrape config, but also fills relevant default values from global config if needed.
 func (c *ScrapeConfig) Validate(globalConfig GlobalConfig) error {
 	if c == nil {
 		return errors.New("empty or null scrape config section")
@@ -616,6 +752,13 @@ func (c *ScrapeConfig) Validate(globalConfig GlobalConfig) error {
 	}
 	if c.KeepDroppedTargets == 0 {
 		c.KeepDroppedTargets = globalConfig.KeepDroppedTargets
+	}
+
+	if c.ScrapeProtocols == nil {
+		c.ScrapeProtocols = globalConfig.ScrapeProtocols
+	}
+	if err := validateAcceptScrapeProtocols(c.ScrapeProtocols); err != nil {
+		return fmt.Errorf("%w for scrape config with job name %q", err, c.JobName)
 	}
 
 	return nil
@@ -833,6 +976,8 @@ type AlertmanagerConfig struct {
 
 	// List of Alertmanager relabel configurations.
 	RelabelConfigs []*relabel.Config `yaml:"relabel_configs,omitempty"`
+	// Relabel alerts before sending to the specific alertmanager.
+	AlertRelabelConfigs []*relabel.Config `yaml:"alert_relabel_configs,omitempty"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -875,6 +1020,12 @@ func (c *AlertmanagerConfig) UnmarshalYAML(unmarshal func(interface{}) error) er
 		}
 	}
 
+	for _, rlcfg := range c.AlertRelabelConfigs {
+		if rlcfg == nil {
+			return errors.New("empty or null Alertmanager alert relabeling rule")
+		}
+	}
+
 	return nil
 }
 
@@ -909,6 +1060,49 @@ func CheckTargetAddress(address model.LabelValue) error {
 	return nil
 }
 
+// RemoteWriteProtoMsg represents the known protobuf message for the remote write
+// 1.0 and 2.0 specs.
+type RemoteWriteProtoMsg string
+
+// Validate returns error if the given reference for the protobuf message is not supported.
+func (s RemoteWriteProtoMsg) Validate() error {
+	switch s {
+	case RemoteWriteProtoMsgV1, RemoteWriteProtoMsgV2:
+		return nil
+	default:
+		return fmt.Errorf("unknown remote write protobuf message %v, supported: %v", s, RemoteWriteProtoMsgs{RemoteWriteProtoMsgV1, RemoteWriteProtoMsgV2}.String())
+	}
+}
+
+type RemoteWriteProtoMsgs []RemoteWriteProtoMsg
+
+func (m RemoteWriteProtoMsgs) Strings() []string {
+	ret := make([]string, 0, len(m))
+	for _, typ := range m {
+		ret = append(ret, string(typ))
+	}
+	return ret
+}
+
+func (m RemoteWriteProtoMsgs) String() string {
+	return strings.Join(m.Strings(), ", ")
+}
+
+var (
+	// RemoteWriteProtoMsgV1 represents the deprecated `prometheus.WriteRequest` protobuf
+	// message introduced in the https://prometheus.io/docs/specs/remote_write_spec/.
+	//
+	// NOTE: This string is used for both HTTP header values and config value, so don't change
+	// this reference.
+	RemoteWriteProtoMsgV1 RemoteWriteProtoMsg = "prometheus.WriteRequest"
+	// RemoteWriteProtoMsgV2 represents the `io.prometheus.write.v2.Request` protobuf
+	// message introduced in https://prometheus.io/docs/specs/remote_write_spec_2_0/
+	//
+	// NOTE: This string is used for both HTTP header values and config value, so don't change
+	// this reference.
+	RemoteWriteProtoMsgV2 RemoteWriteProtoMsg = "io.prometheus.write.v2.Request"
+)
+
 // RemoteWriteConfig is the configuration for writing to remote storage.
 type RemoteWriteConfig struct {
 	URL                  *config.URL       `yaml:"url"`
@@ -918,6 +1112,9 @@ type RemoteWriteConfig struct {
 	Name                 string            `yaml:"name,omitempty"`
 	SendExemplars        bool              `yaml:"send_exemplars,omitempty"`
 	SendNativeHistograms bool              `yaml:"send_native_histograms,omitempty"`
+	// ProtobufMessage specifies the protobuf message to use against the remote
+	// receiver as specified in https://prometheus.io/docs/specs/remote_write_spec_2_0/
+	ProtobufMessage RemoteWriteProtoMsg `yaml:"protobuf_message,omitempty"`
 
 	// We cannot do proper Go type embedding below as the parser will then parse
 	// values arbitrarily into the overflow maps of further-down types.
@@ -950,6 +1147,10 @@ func (c *RemoteWriteConfig) UnmarshalYAML(unmarshal func(interface{}) error) err
 	}
 	if err := validateHeaders(c.Headers); err != nil {
 		return err
+	}
+
+	if err := c.ProtobufMessage.Validate(); err != nil {
+		return fmt.Errorf("invalid protobuf_message value: %w", err)
 	}
 
 	// The UnmarshalYAML method of HTTPClientConfig is not being called because it's not a pointer.
@@ -1020,6 +1221,9 @@ type QueueConfig struct {
 	MinBackoff       model.Duration `yaml:"min_backoff,omitempty"`
 	MaxBackoff       model.Duration `yaml:"max_backoff,omitempty"`
 	RetryOnRateLimit bool           `yaml:"retry_on_http_429,omitempty"`
+
+	// Samples older than the limit will be dropped.
+	SampleAgeLimit model.Duration `yaml:"sample_age_limit,omitempty"`
 }
 
 // MetadataConfig is the configuration for sending metadata to remote
@@ -1087,4 +1291,52 @@ func filePath(filename string) string {
 
 func fileErr(filename string, err error) error {
 	return fmt.Errorf("%q: %w", filePath(filename), err)
+}
+
+func getGoGCEnv() int {
+	goGCEnv := os.Getenv("GOGC")
+	// If the GOGC env var is set, use the same logic as upstream Go.
+	if goGCEnv != "" {
+		// Special case for GOGC=off.
+		if strings.ToLower(goGCEnv) == "off" {
+			return -1
+		}
+		i, err := strconv.Atoi(goGCEnv)
+		if err == nil {
+			return i
+		}
+	}
+	return DefaultRuntimeConfig.GoGC
+}
+
+// OTLPConfig is the configuration for writing to the OTLP endpoint.
+type OTLPConfig struct {
+	PromoteResourceAttributes []string `yaml:"promote_resource_attributes,omitempty"`
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (c *OTLPConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	*c = DefaultOTLPConfig
+	type plain OTLPConfig
+	if err := unmarshal((*plain)(c)); err != nil {
+		return err
+	}
+
+	seen := map[string]struct{}{}
+	var err error
+	for i, attr := range c.PromoteResourceAttributes {
+		attr = strings.TrimSpace(attr)
+		if attr == "" {
+			err = errors.Join(err, fmt.Errorf("empty promoted OTel resource attribute"))
+			continue
+		}
+		if _, exists := seen[attr]; exists {
+			err = errors.Join(err, fmt.Errorf("duplicated promoted OTel resource attribute %q", attr))
+			continue
+		}
+
+		seen[attr] = struct{}{}
+		c.PromoteResourceAttributes[i] = attr
+	}
+	return err
 }

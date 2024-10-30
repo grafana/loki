@@ -37,7 +37,7 @@ Loki places the same restrictions on label naming as [Prometheus](https://promet
 
 This series of examples will illustrate basic use cases and concepts for labeling in Loki.
 
-Let's take an example:
+Let's take an example Promtail/Alloy config file:
 
 ```yaml
 scrape_configs:
@@ -123,7 +123,7 @@ Now instead of a regex, we could do this:
 
 Hopefully now you are starting to see the power of labels. By using a single label, you can query many streams. By combining several different labels, you can create very flexible log queries.
 
-Labels are the index to Loki's log data. They are used to find the compressed log content, which is stored separately as chunks. Every unique combination of label and values defines a stream, and logs for a stream are batched up, compressed, and stored as chunks.
+Labels are the index to Loki log data. They are used to find the compressed log content, which is stored separately as chunks. Every unique combination of label and values defines a stream, and logs for a stream are batched up, compressed, and stored as chunks.
 
 For Loki to be efficient and cost-effective, we have to use labels responsibly. The next section will explore this in more detail.
 

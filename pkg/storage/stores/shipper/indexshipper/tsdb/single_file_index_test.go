@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"sort"
 	"testing"
@@ -12,11 +13,11 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 func TestSingleIdx(t *testing.T) {
@@ -140,7 +141,6 @@ func TestSingleIdx(t *testing.T) {
 					End:         10,
 					Checksum:    3,
 				}}, shardedRefs)
-
 			})
 
 			t.Run("Series", func(t *testing.T) {
@@ -202,10 +202,8 @@ func TestSingleIdx(t *testing.T) {
 				require.Nil(t, err)
 				require.Equal(t, []string{"bar"}, vs)
 			})
-
 		})
 	}
-
 }
 
 func BenchmarkTSDBIndex_GetChunkRefs(b *testing.B) {
@@ -743,8 +741,48 @@ func TestTSDBIndex_Volume(t *testing.T) {
 					Limit: 10,
 				}, acc.Volumes())
 			})
+			// todo(cyriltovena): tests with chunk filterer
 		})
 	})
+}
+
+func BenchmarkTSDBIndex_Volume(b *testing.B) {
+	var series []LoadableSeries
+	for i := 0; i < 1000; i++ {
+		series = append(series, LoadableSeries{
+			Labels: mustParseLabels(fmt.Sprintf(`{foo="bar", fizz="fizz%d", buzz="buzz%d",bar="bar%d", bozz="bozz%d"}`, i, i, i, i)),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  0,
+					MaxTime:  10,
+					Checksum: uint32(i),
+					KB:       10,
+					Entries:  10,
+				},
+				{
+					MinTime:  10,
+					MaxTime:  20,
+					Checksum: uint32(i),
+					KB:       10,
+					Entries:  10,
+				},
+			},
+		})
+	}
+	ctx := context.Background()
+	from := model.Earliest
+	through := model.Latest
+	// Create the TSDB index
+	tempDir := b.TempDir()
+	tsdbIndex := BuildIndex(b, tempDir, series)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		acc := seriesvolume.NewAccumulator(10, 10)
+		err := tsdbIndex.Volume(ctx, "fake", from, through, acc, nil, nil, nil, seriesvolume.Series, labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"))
+		require.NoError(b, err)
+	}
 }
 
 type filterAll struct{}
@@ -757,4 +795,8 @@ type filterAllFilterer struct{}
 
 func (f *filterAllFilterer) ShouldFilter(_ labels.Labels) bool {
 	return true
+}
+
+func (f *filterAllFilterer) RequiredLabelNames() []string {
+	return nil
 }

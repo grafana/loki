@@ -3,6 +3,7 @@ package ingester
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,17 +15,16 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
-	"github.com/pkg/errors"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 	"github.com/prometheus/prometheus/tsdb/wlog"
 	prompool "github.com/prometheus/prometheus/util/pool"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/ingester/wal"
-	"github.com/grafana/loki/pkg/logproto"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/pool"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/ingester/wal"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/pool"
 )
 
 var (
@@ -125,7 +125,7 @@ func decodeCheckpointRecord(rec []byte, s *Series) error {
 	case wal.CheckpointRecord:
 		return proto.Unmarshal(cpy[1:], s)
 	default:
-		return errors.Errorf("unexpected record type: %d", rec[0])
+		return fmt.Errorf("unexpected record type: %d", rec[0])
 	}
 }
 
@@ -345,12 +345,12 @@ func (w *WALCheckpointWriter) Advance() (bool, error) {
 	}
 
 	if err := os.MkdirAll(checkpointDirTemp, 0777); err != nil {
-		return false, errors.Wrap(err, "create checkpoint dir")
+		return false, fmt.Errorf("create checkpoint dir: %w", err)
 	}
 
 	checkpoint, err := wlog.NewSize(log.With(util_log.Logger, "component", "checkpoint_wal"), nil, checkpointDirTemp, walSegmentSize, wlog.CompressionNone)
 	if err != nil {
-		return false, errors.Wrap(err, "open checkpoint")
+		return false, fmt.Errorf("open checkpoint: %w", err)
 	}
 
 	w.checkpointWAL = checkpoint
@@ -493,7 +493,7 @@ func (w *WALCheckpointWriter) Close(abort bool) error {
 	}
 
 	if err := fileutil.Replace(w.checkpointWAL.Dir(), w.final); err != nil {
-		return errors.Wrap(err, "rename checkpoint directory")
+		return fmt.Errorf("rename checkpoint directory: %w", err)
 	}
 	level.Info(util_log.Logger).Log("msg", "atomic checkpoint finished", "old", w.checkpointWAL.Dir(), "new", w.final)
 	// We delete the WAL segments which are before the previous checkpoint and not before the

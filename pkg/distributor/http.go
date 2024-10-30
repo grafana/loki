@@ -8,13 +8,13 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util"
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/pkg/loghttp/push"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 // PushHandler reads a snappy-compressed proto from the HTTP body.
@@ -23,7 +23,26 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d *Distributor) OTLPPushHandler(w http.ResponseWriter, r *http.Request) {
-	d.pushHandler(w, r, push.ParseOTLPRequest)
+	interceptor := newOtelErrorHeaderInterceptor(w)
+	d.pushHandler(interceptor, r, push.ParseOTLPRequest)
+}
+
+// otelErrorHeaderInterceptor maps 500 errors to 503.
+// According to the OTLP specification, 500 errors are never retried on the client side, but 503 are.
+type otelErrorHeaderInterceptor struct {
+	http.ResponseWriter
+}
+
+func newOtelErrorHeaderInterceptor(w http.ResponseWriter) *otelErrorHeaderInterceptor {
+	return &otelErrorHeaderInterceptor{ResponseWriter: w}
+}
+
+func (i *otelErrorHeaderInterceptor) WriteHeader(statusCode int) {
+	if statusCode == http.StatusInternalServerError {
+		statusCode = http.StatusServiceUnavailable
+	}
+
+	i.ResponseWriter.WriteHeader(statusCode)
 }
 
 func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRequestParser push.RequestParser) {
@@ -34,7 +53,13 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	req, err := push.ParseRequest(logger, tenantID, r, d.tenantsRetention, d.validator.Limits, pushRequestParser, d.usageTracker)
+
+	if d.RequestParserWrapper != nil {
+		pushRequestParser = d.RequestParserWrapper(pushRequestParser)
+	}
+
+	logPushRequestStreams := d.tenantConfigs.LogPushRequestStreams(tenantID)
+	req, err := push.ParseRequest(logger, tenantID, r, d.tenantsRetention, d.validator.Limits, pushRequestParser, d.usageTracker, logPushRequestStreams)
 	if err != nil {
 		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
@@ -49,7 +74,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		return
 	}
 
-	if d.tenantConfigs.LogPushRequestStreams(tenantID) {
+	if logPushRequestStreams {
 		var sb strings.Builder
 		for _, s := range req.Streams {
 			sb.WriteString(s.Labels)

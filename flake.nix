@@ -58,41 +58,33 @@
             type = "app";
             program = with pkgs; "${
                 (writeShellScriptBin "test.sh" ''
-                  ${loki.overrideAttrs(old: { doCheck = true; })}/bin/loki --version
+                  ${loki.overrideAttrs(old: { 
+                  buildInputs =
+                    let
+                      inherit (old) buildInputs;
+                    in
+                    if pkgs.stdenv.hostPlatform.isLinux then
+                      buildInputs ++ (with pkgs; [ systemd ])
+                    else buildInputs;
+                  doCheck = true; 
+                  })}/bin/loki --version
                 '')
               }/bin/test.sh";
-          };
-
-          loki = {
-            type = "app";
-            program = with pkgs; "${loki}/bin/loki";
-          };
-          promtail = {
-            type = "app";
-            program = with pkgs; "${promtail}/bin/promtail";
-          };
-          logcli = {
-            type = "app";
-            program = with pkgs; "${logcli}/bin/logcli";
-          };
-          loki-canary = {
-            type = "app";
-            program = with pkgs; "${loki-canary}/bin/loki-canary";
-          };
-          loki-helm-test = {
-            type = "app";
-            program = with pkgs; "${loki-helm-test}/bin/helm-test";
           };
         };
 
         devShell = pkgs.mkShell {
           nativeBuildInputs = with pkgs; [
-            (import ./packages/chart-releaser.nix {
-              inherit (prev) pkgs lib buildGoModule fetchFromGitHub;
+            (pkgs.callPackage ./nix/packages/chart-releaser.nix {
+              inherit pkgs;
+              inherit (pkgs) buildGoModule fetchFromGitHub;
+            })
+
+            (pkgs.callPackage ./nix/packages/faillint.nix {
+              inherit (pkgs) lib buildGoModule fetchFromGitHub;
             })
 
             chart-testing
-            faillint
             gcc
             go
             golangci-lint
@@ -101,7 +93,6 @@
             nettools
             nixpkgs-fmt
             statix
-            systemd
             yamllint
           ];
         };

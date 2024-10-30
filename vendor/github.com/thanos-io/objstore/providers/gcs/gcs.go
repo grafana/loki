@@ -22,7 +22,6 @@ import (
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	htransport "google.golang.org/api/transport/http"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v2"
@@ -49,13 +48,20 @@ type Config struct {
 	// on how to enable direct path.
 	GRPCConnPoolSize int                `yaml:"grpc_conn_pool_size"`
 	HTTPConfig       exthttp.HTTPConfig `yaml:"http_config"`
+
+	// ChunkSizeBytes controls the maximum number of bytes of the object that the
+	// Writer will attempt to send to the server in a single request
+	// Used as storage.Writer.ChunkSize of https://pkg.go.dev/google.golang.org/cloud/storage#Writer
+	ChunkSizeBytes int  `yaml:"chunk_size_bytes"`
+	noAuth         bool `yaml:"no_auth"`
 }
 
 // Bucket implements the store.Bucket and shipper.Bucket interfaces against GCS.
 type Bucket struct {
-	logger log.Logger
-	bkt    *storage.BucketHandle
-	name   string
+	logger    log.Logger
+	bkt       *storage.BucketHandle
+	name      string
+	chunkSize int
 
 	closer io.Closer
 }
@@ -71,20 +77,22 @@ func parseConfig(conf []byte) (Config, error) {
 }
 
 // NewBucket returns a new Bucket against the given bucket handle.
-func NewBucket(ctx context.Context, logger log.Logger, conf []byte, component string) (*Bucket, error) {
+func NewBucket(ctx context.Context, logger log.Logger, conf []byte, component string, rt http.RoundTripper) (*Bucket, error) {
 	config, err := parseConfig(conf)
 	if err != nil {
 		return nil, err
 	}
-	return NewBucketWithConfig(ctx, logger, config, component)
+	return NewBucketWithConfig(ctx, logger, config, component, rt)
 }
 
 // NewBucketWithConfig returns a new Bucket with gcs Config struct.
-func NewBucketWithConfig(ctx context.Context, logger log.Logger, gc Config, component string) (*Bucket, error) {
+func NewBucketWithConfig(ctx context.Context, logger log.Logger, gc Config, component string, rt http.RoundTripper) (*Bucket, error) {
 	if gc.Bucket == "" {
 		return nil, errors.New("missing Google Cloud Storage bucket name for stored blocks")
 	}
-
+	if rt != nil {
+		gc.HTTPConfig.Transport = rt
+	}
 	var opts []option.ClientOption
 
 	// If ServiceAccount is provided, use them in GCS client, otherwise fallback to Google default logic.
@@ -94,27 +102,41 @@ func NewBucketWithConfig(ctx context.Context, logger log.Logger, gc Config, comp
 			return nil, errors.Wrap(err, "failed to create credentials from JSON")
 		}
 		opts = append(opts, option.WithCredentials(credentials))
-	} else {
+	}
+	if gc.noAuth {
 		opts = append(opts, option.WithoutAuthentication())
 	}
-
 	opts = append(opts,
 		option.WithUserAgent(fmt.Sprintf("thanos-%s/%s (%s)", component, version.Version, runtime.Version())),
 	)
 
-	// Check if a roundtripper has been set in the config
-	// otherwise build the default transport.
-	var rt http.RoundTripper
-	if gc.HTTPConfig.Transport != nil {
-		rt = gc.HTTPConfig.Transport
-	} else {
+	if !gc.UseGRPC {
 		var err error
-		rt, err = exthttp.DefaultTransport(gc.HTTPConfig)
+		opts, err = appendHttpOptions(gc, opts)
 		if err != nil {
 			return nil, err
 		}
 	}
 
+	return newBucket(ctx, logger, gc, opts)
+}
+
+func appendHttpOptions(gc Config, opts []option.ClientOption) ([]option.ClientOption, error) {
+	// Check if a roundtripper has been set in the config
+	// otherwise build the default transport.
+	var rt http.RoundTripper
+	rt, err := exthttp.DefaultTransport(gc.HTTPConfig)
+	if err != nil {
+		return nil, err
+	}
+	if gc.HTTPConfig.Transport != nil {
+		rt = gc.HTTPConfig.Transport
+	}
+
+	// GCS uses some defaults when "options.WithHTTPClient" is not used that are important when we call
+	// htransport.NewTransport namely the scopes that are then used for OAth authentication. So to build our own
+	// http client we need to se those defaults
+	opts = append(opts, option.WithScopes(storage.ScopeFullControl, "https://www.googleapis.com/auth/cloud-platform"))
 	gRT, err := htransport.NewTransport(context.Background(), rt, opts...)
 	if err != nil {
 		return nil, err
@@ -124,9 +146,7 @@ func NewBucketWithConfig(ctx context.Context, logger log.Logger, gc Config, comp
 		Transport: gRT,
 		Timeout:   time.Duration(gc.HTTPConfig.IdleConnTimeout),
 	}
-	opts = append(opts, option.WithHTTPClient(httpCli))
-
-	return newBucket(ctx, logger, gc, opts)
+	return append(opts, option.WithHTTPClient(httpCli)), nil
 }
 
 func newBucket(ctx context.Context, logger log.Logger, gc Config, opts []option.ClientOption) (*Bucket, error) {
@@ -136,7 +156,6 @@ func newBucket(ctx context.Context, logger log.Logger, gc Config, opts []option.
 	)
 	if gc.UseGRPC {
 		opts = append(opts,
-			option.WithGRPCDialOption(grpc.WithRecvBufferPool(grpc.NewSharedBufferPool())),
 			option.WithGRPCConnectionPool(gc.GRPCConnPoolSize),
 		)
 		gcsClient, err = storage.NewGRPCClient(ctx, opts...)
@@ -147,10 +166,11 @@ func newBucket(ctx context.Context, logger log.Logger, gc Config, opts []option.
 		return nil, err
 	}
 	bkt := &Bucket{
-		logger: logger,
-		bkt:    gcsClient.Bucket(gc.Bucket),
-		closer: gcsClient,
-		name:   gc.Bucket,
+		logger:    logger,
+		bkt:       gcsClient.Bucket(gc.Bucket),
+		closer:    gcsClient,
+		name:      gc.Bucket,
+		chunkSize: gc.ChunkSizeBytes,
 	}
 	return bkt, nil
 }
@@ -206,12 +226,33 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 
 // Get returns a reader for the given object name.
 func (b *Bucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
-	return b.bkt.Object(name).NewReader(ctx)
+	r, err := b.bkt.Object(name).NewReader(ctx)
+	if err != nil {
+		return r, err
+	}
+
+	return objstore.ObjectSizerReadCloser{
+		ReadCloser: r,
+		Size: func() (int64, error) {
+			return r.Attrs.Size, nil
+		},
+	}, nil
 }
 
 // GetRange returns a new range reader for the given object name and range.
 func (b *Bucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
-	return b.bkt.Object(name).NewRangeReader(ctx, off, length)
+	r, err := b.bkt.Object(name).NewRangeReader(ctx, off, length)
+	if err != nil {
+		return r, err
+	}
+
+	sz := r.Remain()
+	return objstore.ObjectSizerReadCloser{
+		ReadCloser: r,
+		Size: func() (int64, error) {
+			return sz, nil
+		},
+	}, nil
 }
 
 // Attributes returns information about the specified object.
@@ -246,6 +287,12 @@ func (b *Bucket) Exists(ctx context.Context, name string) (bool, error) {
 // Upload writes the file specified in src to remote GCS location specified as target.
 func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
 	w := b.bkt.Object(name).NewWriter(ctx)
+
+	// if `chunkSize` is 0, we don't set any custom value for writer's ChunkSize.
+	// It uses whatever the default value https://pkg.go.dev/google.golang.org/cloud/storage#Writer
+	if b.chunkSize > 0 {
+		w.ChunkSize = b.chunkSize
+	}
 
 	if _, err := io.Copy(w, r); err != nil {
 		return err
@@ -289,7 +336,7 @@ func NewTestBucket(t testing.TB, project string) (objstore.Bucket, func(), error
 		return nil, nil, err
 	}
 
-	b, err := NewBucket(ctx, log.NewNopLogger(), bc, "thanos-e2e-test")
+	b, err := NewBucket(ctx, log.NewNopLogger(), bc, "thanos-e2e-test", nil)
 	if err != nil {
 		return nil, nil, err
 	}

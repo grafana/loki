@@ -14,9 +14,9 @@ import (
 	"github.com/prometheus/prometheus/model/relabel"
 	"google.golang.org/api/option"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
 )
 
 var defaultBackoff = backoff.Config{
@@ -127,7 +127,7 @@ func (t *pullTarget) consumeSubscription() {
 	defer t.cancel()
 
 	for t.backoff.Ongoing() {
-		err := t.sub.Receive(t.ctx, func(ctx context.Context, m *pubsub.Message) {
+		err := t.sub.Receive(t.ctx, func(_ context.Context, m *pubsub.Message) {
 			t.msgs <- m
 			t.backoff.Reset()
 		})

@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/util/strutil"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 var tokens = map[string]int{
@@ -23,8 +23,10 @@ var tokens = map[string]int{
 	OpTypeNEQ:      NEQ,
 	"=~":           RE,
 	"!~":           NRE,
+	"!>":           NPA,
 	"|=":           PIPE_EXACT,
 	"|~":           PIPE_MATCH,
+	"|>":           PIPE_PATTERN,
 	OpPipe:         PIPE,
 	OpUnwrap:       UNWRAP,
 	"(":            OPEN_PARENTHESIS,

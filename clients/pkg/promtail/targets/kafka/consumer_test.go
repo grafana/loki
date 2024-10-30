@@ -3,6 +3,7 @@ package kafka
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,7 +12,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
 )
 
 type DiscovererFn func(sarama.ConsumerGroupSession, sarama.ConsumerGroupClaim) (RunnableTarget, error)
@@ -34,7 +35,7 @@ func (f *fakeTarget) Details() interface{}             { return nil }
 
 func Test_ComsumerConsume(t *testing.T) {
 	var (
-		group       = &testConsumerGroupHandler{}
+		group       = &testConsumerGroupHandler{mu: &sync.Mutex{}}
 		session     = &testSession{}
 		ctx, cancel = context.WithCancel(context.Background())
 		c           = &consumer{
@@ -42,7 +43,7 @@ func Test_ComsumerConsume(t *testing.T) {
 			ctx:           context.Background(),
 			cancel:        func() {},
 			ConsumerGroup: group,
-			discoverer: DiscovererFn(func(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) (RunnableTarget, error) {
+			discoverer: DiscovererFn(func(_ sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) (RunnableTarget, error) {
 				if claim.Topic() != "dropped" {
 					return &fakeTarget{
 						ctx: ctx,
@@ -86,6 +87,7 @@ func Test_ComsumerConsume(t *testing.T) {
 func Test_ComsumerRetry(_ *testing.T) {
 	var (
 		group = &testConsumerGroupHandler{
+			mu:        &sync.Mutex{},
 			returnErr: errors.New("foo"),
 		}
 		ctx, cancel = context.WithCancel(context.Background())

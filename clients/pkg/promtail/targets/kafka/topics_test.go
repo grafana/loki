@@ -3,12 +3,14 @@ package kafka
 import (
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
 type mockKafkaClient struct {
+	mu     sync.Mutex
 	topics []string
 	err    error
 }
@@ -18,6 +20,8 @@ func (m *mockKafkaClient) RefreshMetadata(_ ...string) error {
 }
 
 func (m *mockKafkaClient) Topics() ([]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return m.topics, m.err
 }
 
@@ -45,7 +49,6 @@ func Test_NewTopicManager(t *testing.T) {
 			false,
 		},
 	} {
-		tt := tt
 		t.Run(strings.Join(tt.in, ","), func(t *testing.T) {
 			t.Parallel()
 			_, err := newTopicManager(&mockKafkaClient{}, tt.in)
@@ -82,7 +85,6 @@ func Test_Topics(t *testing.T) {
 			false,
 		},
 	} {
-		tt := tt
 		t.Run("", func(t *testing.T) {
 			t.Parallel()
 

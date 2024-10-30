@@ -29,6 +29,7 @@ const (
 	defaultAPIVersion                 = "2021-10-01"
 	imdsEndpoint                      = "http://169.254.169.254/metadata/instance/compute/location?format=text&api-version=" + defaultAPIVersion
 	autoDetectRegion                  = "TryAutoDetect"
+	AccessTokenTypeBearer             = "Bearer"
 )
 
 // These are various hosts that host AAD Instance discovery endpoints.
@@ -138,6 +139,39 @@ const (
 	ADFS = "ADFS"
 )
 
+// AuthenticationScheme is an extensibility mechanism designed to be used only by Azure Arc for proof of possession access tokens.
+type AuthenticationScheme interface {
+	// Extra parameters that are added to the request to the /token endpoint.
+	TokenRequestParams() map[string]string
+	// Key ID of the public / private key pair used by the encryption algorithm, if any.
+	// Tokens obtained by authentication schemes that use this are bound to the KeyId, i.e.
+	// if a different kid is presented, the access token cannot be used.
+	KeyID() string
+	// Creates the access token that goes into an Authorization HTTP header.
+	FormatAccessToken(accessToken string) (string, error)
+	//Expected to match the token_type parameter returned by ESTS. Used to disambiguate
+	// between ATs of different types (e.g. Bearer and PoP) when loading from cache etc.
+	AccessTokenType() string
+}
+
+// default authn scheme realizing AuthenticationScheme for "Bearer" tokens
+type BearerAuthenticationScheme struct{}
+
+var bearerAuthnScheme BearerAuthenticationScheme
+
+func (ba *BearerAuthenticationScheme) TokenRequestParams() map[string]string {
+	return nil
+}
+func (ba *BearerAuthenticationScheme) KeyID() string {
+	return ""
+}
+func (ba *BearerAuthenticationScheme) FormatAccessToken(accessToken string) (string, error) {
+	return accessToken, nil
+}
+func (ba *BearerAuthenticationScheme) AccessTokenType() string {
+	return AccessTokenTypeBearer
+}
+
 // AuthParams represents the parameters used for authorization for token acquisition.
 type AuthParams struct {
 	AuthorityInfo Info
@@ -180,6 +214,8 @@ type AuthParams struct {
 	LoginHint string
 	// DomainHint is a directive that can be used to accelerate the user to their federated IdP sign-in page
 	DomainHint string
+	// AuthnScheme is an optional scheme for formatting access tokens
+	AuthnScheme AuthenticationScheme
 }
 
 // NewAuthParams creates an authorization parameters object.
@@ -188,6 +224,7 @@ func NewAuthParams(clientID string, authorityInfo Info) AuthParams {
 		ClientID:      clientID,
 		AuthorityInfo: authorityInfo,
 		CorrelationID: uuid.New().String(),
+		AuthnScheme:   &bearerAuthnScheme,
 	}
 }
 

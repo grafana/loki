@@ -17,7 +17,7 @@ and corresponding updates for existing programs.
 
 ## Parsing and Validation Options
 
-Under the hood, a new `validator` struct takes care of validating the claims. A
+Under the hood, a new `Validator` struct takes care of validating the claims. A
 long awaited feature has been the option to fine-tune the validation of tokens.
 This is now possible with several `ParserOption` functions that can be appended
 to most `Parse` functions, such as `ParseWithClaims`. The most important options
@@ -66,6 +66,16 @@ type Claims interface {
 	GetSubject() (string, error)
 	GetAudience() (ClaimStrings, error)
 }
+```
+
+Users that previously directly called the `Valid` function on their claims,
+e.g., to perform validation independently of parsing/verifying a token, can now
+use the `jwt.NewValidator` function to create a `Validator` independently of the
+`Parser`.
+
+```go
+var v = jwt.NewValidator(jwt.WithLeeway(5*time.Second))
+v.Validate(myClaims)
 ```
 
 ### Supported Claim Types and Removal of `StandardClaims`
@@ -169,7 +179,7 @@ be a drop-in replacement, if you're having troubles migrating, please open an
 issue.
 
 You can replace all occurrences of `github.com/dgrijalva/jwt-go` or
-`github.com/golang-jwt/jwt` with `github.com/golang-jwt/jwt/v5`, either manually
+`github.com/golang-jwt/jwt` with `github.com/golang-jwt/jwt/v4`, either manually
 or by using tools such as `sed` or `gofmt`.
 
 And then you'd typically run:

@@ -15,9 +15,9 @@ import (
 	"github.com/thanos-io/objstore"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/pkg/ruler/rulespb"
-	"github.com/grafana/loki/pkg/ruler/rulestore"
-	"github.com/grafana/loki/pkg/storage/bucket"
+	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
+	"github.com/grafana/loki/v3/pkg/ruler/rulestore"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 )
 
 const (
@@ -38,11 +38,11 @@ var (
 // using the Thanos objstore.Bucket interface
 type BucketRuleStore struct {
 	bucket      objstore.Bucket
-	cfgProvider bucket.TenantConfigProvider
+	cfgProvider bucket.SSEConfigProvider
 	logger      log.Logger
 }
 
-func NewBucketRuleStore(bkt objstore.Bucket, cfgProvider bucket.TenantConfigProvider, logger log.Logger) *BucketRuleStore {
+func NewBucketRuleStore(bkt objstore.Bucket, cfgProvider bucket.SSEConfigProvider, logger log.Logger) *BucketRuleStore {
 	return &BucketRuleStore{
 		bucket:      bucket.NewPrefixedBucketClient(bkt, rulesPrefix),
 		cfgProvider: cfgProvider,

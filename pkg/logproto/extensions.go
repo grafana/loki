@@ -7,10 +7,11 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/dustin/go-humanize"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 // This is the separator define in the Prometheus Labels.Hash function.
@@ -132,4 +133,58 @@ func (m *IndexStatsResponse) LoggingKeyValues() []interface{} {
 		"streams", m.Streams,
 		"entries", m.Entries,
 	}
+}
+
+func (m *Shard) SpaceFor(stats *IndexStatsResponse, targetShardBytes uint64) bool {
+	curDelta := max(m.Stats.Bytes, targetShardBytes) - min(m.Stats.Bytes, targetShardBytes)
+	updated := m.Stats.Bytes + stats.Bytes
+	newDelta := max(updated, targetShardBytes) - min(updated, targetShardBytes)
+	return newDelta <= curDelta
+}
+
+type DetectedFieldType string
+
+const (
+	DetectedFieldString   DetectedFieldType = "string"
+	DetectedFieldInt      DetectedFieldType = "int"
+	DetectedFieldFloat    DetectedFieldType = "float"
+	DetectedFieldBoolean  DetectedFieldType = "boolean"
+	DetectedFieldDuration DetectedFieldType = "duration"
+	DetectedFieldBytes    DetectedFieldType = "bytes"
+)
+
+// UnmarshalJSON implements the json.Unmarshaler interface.
+// QueryPatternsResponse json representation is different from the proto
+//
+//	`{"status":"success","data":[{"pattern":"foo <*> bar","samples":[[1,1],[2,2]]},{"pattern":"foo <*> buzz","samples":[[3,1],[3,2]]}]}`
+func (r *QueryPatternsResponse) UnmarshalJSON(data []byte) error {
+	var v struct {
+		Status string `json:"status"`
+		Data   []struct {
+			Pattern string    `json:"pattern"`
+			Samples [][]int64 `json:"samples"`
+		} `json:"data"`
+	}
+	if err := jsoniter.ConfigFastest.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	r.Series = make([]*PatternSeries, 0, len(v.Data))
+	for _, d := range v.Data {
+		samples := make([]*PatternSample, 0, len(d.Samples))
+		for _, s := range d.Samples {
+			samples = append(samples, &PatternSample{Timestamp: model.TimeFromUnix(s[0]), Value: s[1]})
+		}
+		r.Series = append(r.Series, &PatternSeries{Pattern: d.Pattern, Samples: samples})
+	}
+	return nil
+}
+
+func (d DetectedFieldType) String() string {
+	return string(d)
+}
+
+func (m *ShardsResponse) Merge(other *ShardsResponse) {
+	m.Shards = append(m.Shards, other.Shards...)
+	m.ChunkGroups = append(m.ChunkGroups, other.ChunkGroups...)
+	m.Statistics.Merge(other.Statistics)
 }

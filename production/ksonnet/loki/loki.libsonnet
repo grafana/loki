@@ -35,4 +35,7 @@
 (import 'memberlist.libsonnet') +
 
 // Prometheus ServiceMonitor
-(import 'servicemonitor.libsonnet')
+(import 'servicemonitor.libsonnet') +
+
+// Patterns ingester
+(import 'patterns.libsonnet')

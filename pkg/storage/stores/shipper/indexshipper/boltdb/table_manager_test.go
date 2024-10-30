@@ -12,12 +12,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/testutil"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/testutil"
 )
 
 const indexTablePeriod = 24 * time.Hour
@@ -143,7 +143,7 @@ func TestLoadTables(t *testing.T) {
 	for tableName, expectedIndex := range expectedTables {
 		// loaded tables should not have any index files, it should have handed them over to index shipper
 		testutil.VerifyIndexes(t, userID, []index.Query{{TableName: tableName}},
-			func(ctx context.Context, table string, callback func(b *bbolt.DB) error) error {
+			func(ctx context.Context, _ string, callback func(_ *bbolt.DB) error) error {
 				return tm.tables[tableName].ForEach(ctx, callback)
 			},
 			0, 0)
@@ -187,7 +187,7 @@ func TestTableManager_BatchWrite(t *testing.T) {
 	for tableName, expectedIndex := range tc {
 		require.NoError(t, tm.tables[tableName].Snapshot())
 		testutil.VerifyIndexes(t, userID, []index.Query{{TableName: tableName}},
-			func(ctx context.Context, table string, callback func(b *bbolt.DB) error) error {
+			func(_ context.Context, _ string, callback func(_ *bbolt.DB) error) error {
 				return tm.tables[tableName].ForEach(context.Background(), callback)
 			},
 			expectedIndex.start, expectedIndex.numRecords)

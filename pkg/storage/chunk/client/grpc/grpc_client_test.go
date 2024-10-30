@@ -7,11 +7,12 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 )
 
 // This includes test for all RPCs in
@@ -81,7 +82,7 @@ func TestGrpcStore(t *testing.T) {
 	newChunkData := func() chunk.Data {
 		return chunkenc.NewFacade(
 			chunkenc.NewMemChunk(
-				chunkenc.ChunkFormatV3, chunkenc.EncNone, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 256*1024, 0,
+				chunkenc.ChunkFormatV3, compression.None, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 256*1024, 0,
 			), 0, 0)
 	}
 
@@ -157,7 +158,7 @@ func TestGrpcStore(t *testing.T) {
 		{TableName: "table", HashValue: "foo"},
 	}
 	results := 0
-	err = storageClient.QueryPages(context.Background(), queries, func(query index.Query, batch index.ReadBatchResult) bool {
+	err = storageClient.QueryPages(context.Background(), queries, func(_ index.Query, batch index.ReadBatchResult) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results++

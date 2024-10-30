@@ -30,15 +30,17 @@ import (
 	v3corepb "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	v3aggregateclusterpb "github.com/envoyproxy/go-control-plane/envoy/extensions/clusters/aggregate/v3"
 	v3tlspb "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
-	"github.com/golang/protobuf/proto"
 
 	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/pretty"
 	iserviceconfig "google.golang.org/grpc/internal/serviceconfig"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/internal/xds/matcher"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdslbregistry"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 // ValidateClusterAndConstructClusterUpdateForTesting exports the
@@ -49,7 +51,7 @@ var ValidateClusterAndConstructClusterUpdateForTesting = validateClusterAndConst
 // to this value by the management server.
 const transportSocketName = "envoy.transport_sockets.tls"
 
-func unmarshalClusterResource(r *anypb.Any) (string, ClusterUpdate, error) {
+func unmarshalClusterResource(r *anypb.Any, serverCfg *bootstrap.ServerConfig) (string, ClusterUpdate, error) {
 	r, err := UnwrapResource(r)
 	if err != nil {
 		return "", ClusterUpdate{}, fmt.Errorf("failed to unwrap resource: %v", err)
@@ -63,7 +65,7 @@ func unmarshalClusterResource(r *anypb.Any) (string, ClusterUpdate, error) {
 	if err := proto.Unmarshal(r.GetValue(), cluster); err != nil {
 		return "", ClusterUpdate{}, fmt.Errorf("failed to unmarshal resource: %v", err)
 	}
-	cu, err := validateClusterAndConstructClusterUpdate(cluster)
+	cu, err := validateClusterAndConstructClusterUpdate(cluster, serverCfg)
 	if err != nil {
 		return cluster.GetName(), ClusterUpdate{}, err
 	}
@@ -80,16 +82,40 @@ const (
 	defaultLeastRequestChoiceCount = 2
 )
 
-func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster) (ClusterUpdate, error) {
+func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster, serverCfg *bootstrap.ServerConfig) (ClusterUpdate, error) {
+	telemetryLabels := make(map[string]string)
+	if fmd := cluster.GetMetadata().GetFilterMetadata(); fmd != nil {
+		if val, ok := fmd["com.google.csm.telemetry_labels"]; ok {
+			if fields := val.GetFields(); fields != nil {
+				if val, ok := fields["service_name"]; ok {
+					if _, ok := val.GetKind().(*structpb.Value_StringValue); ok {
+						telemetryLabels["csm.service_name"] = val.GetStringValue()
+					}
+				}
+				if val, ok := fields["service_namespace"]; ok {
+					if _, ok := val.GetKind().(*structpb.Value_StringValue); ok {
+						telemetryLabels["csm.service_namespace_name"] = val.GetStringValue()
+					}
+				}
+			}
+		}
+	}
+	// "The values for the service labels csm.service_name and
+	// csm.service_namespace_name come from xDS, “unknown” if not present." -
+	// CSM Design.
+	if _, ok := telemetryLabels["csm.service_name"]; !ok {
+		telemetryLabels["csm.service_name"] = "unknown"
+	}
+	if _, ok := telemetryLabels["csm.service_namespace_name"]; !ok {
+		telemetryLabels["csm.service_namespace_name"] = "unknown"
+	}
+
 	var lbPolicy json.RawMessage
 	var err error
 	switch cluster.GetLbPolicy() {
 	case v3clusterpb.Cluster_ROUND_ROBIN:
 		lbPolicy = []byte(`[{"xds_wrr_locality_experimental": {"childPolicy": [{"round_robin": {}}]}}]`)
 	case v3clusterpb.Cluster_RING_HASH:
-		if !envconfig.XDSRingHash {
-			return ClusterUpdate{}, fmt.Errorf("unexpected lbPolicy %v in response: %+v", cluster.GetLbPolicy(), cluster)
-		}
 		rhc := cluster.GetRingHashLbConfig()
 		if rhc.GetHashFunction() != v3clusterpb.Cluster_RingHashLbConfig_XX_HASH {
 			return ClusterUpdate{}, fmt.Errorf("unsupported ring_hash hash function %v in response: %+v", rhc.GetHashFunction(), cluster)
@@ -132,24 +158,18 @@ func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster) (Clu
 	// Process security configuration received from the control plane iff the
 	// corresponding environment variable is set.
 	var sc *SecurityConfig
-	if envconfig.XDSClientSideSecurity {
-		var err error
-		if sc, err = securityConfigFromCluster(cluster); err != nil {
-			return ClusterUpdate{}, err
-		}
+	if sc, err = securityConfigFromCluster(cluster); err != nil {
+		return ClusterUpdate{}, err
 	}
 
 	// Process outlier detection received from the control plane iff the
 	// corresponding environment variable is set.
 	var od json.RawMessage
-	if envconfig.XDSOutlierDetection {
-		var err error
-		if od, err = outlierConfigFromCluster(cluster); err != nil {
-			return ClusterUpdate{}, err
-		}
+	if od, err = outlierConfigFromCluster(cluster); err != nil {
+		return ClusterUpdate{}, err
 	}
 
-	if cluster.GetLoadBalancingPolicy() != nil && envconfig.XDSCustomLBPolicy {
+	if cluster.GetLoadBalancingPolicy() != nil {
 		lbPolicy, err = xdslbregistry.ConvertToServiceConfig(cluster.GetLoadBalancingPolicy(), 0)
 		if err != nil {
 			return ClusterUpdate{}, fmt.Errorf("error converting LoadBalancingPolicy %v in response: %+v: %v", cluster.GetLoadBalancingPolicy(), cluster, err)
@@ -169,23 +189,14 @@ func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster) (Clu
 		MaxRequests:      circuitBreakersFromCluster(cluster),
 		LBPolicy:         lbPolicy,
 		OutlierDetection: od,
+		TelemetryLabels:  telemetryLabels,
 	}
 
-	// Note that this is different from the gRFC (gRFC A47 says to include the
-	// full ServerConfig{URL,creds,server feature} here). This information is
-	// not available here, because this function doesn't have access to the
-	// xdsclient bootstrap information now (can be added if necessary). The
-	// ServerConfig will be read and populated by the CDS balancer when
-	// processing this field.
-	// According to A27:
-	// If the `lrs_server` field is set, it must have its `self` field set, in
-	// which case the client should use LRS for load reporting. Otherwise
-	// (the `lrs_server` field is not set), LRS load reporting will be disabled.
 	if lrs := cluster.GetLrsServer(); lrs != nil {
 		if lrs.GetSelf() == nil {
 			return ClusterUpdate{}, fmt.Errorf("unsupported config_source_specifier %T in lrs_server field", lrs.ConfigSourceSpecifier)
 		}
-		ret.LRSServerConfig = ClusterLRSServerSelf
+		ret.LRSServerConfig = serverCfg
 	}
 
 	// Validate and set cluster type from the response.
@@ -201,9 +212,6 @@ func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster) (Clu
 		}
 		return ret, nil
 	case cluster.GetType() == v3clusterpb.Cluster_LOGICAL_DNS:
-		if !envconfig.XDSAggregateAndDNS {
-			return ClusterUpdate{}, fmt.Errorf("unsupported cluster type (%v, %v) in response: %+v", cluster.GetType(), cluster.GetClusterType(), cluster)
-		}
 		ret.ClusterType = ClusterTypeLogicalDNS
 		dnsHN, err := dnsHostNameFromCluster(cluster)
 		if err != nil {
@@ -212,9 +220,6 @@ func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster) (Clu
 		ret.DNSHostName = dnsHN
 		return ret, nil
 	case cluster.GetClusterType() != nil && cluster.GetClusterType().Name == "envoy.clusters.aggregate":
-		if !envconfig.XDSAggregateAndDNS {
-			return ClusterUpdate{}, fmt.Errorf("unsupported cluster type (%v, %v) in response: %+v", cluster.GetType(), cluster.GetClusterType(), cluster)
-		}
 		clusters := &v3aggregateclusterpb.ClusterConfig{}
 		if err := proto.Unmarshal(cluster.GetClusterType().GetTypedConfig().GetValue(), clusters); err != nil {
 			return ClusterUpdate{}, fmt.Errorf("failed to unmarshal resource: %v", err)
@@ -273,7 +278,7 @@ func dnsHostNameFromCluster(cluster *v3clusterpb.Cluster) (string, error) {
 // the received Cluster resource.
 func securityConfigFromCluster(cluster *v3clusterpb.Cluster) (*SecurityConfig, error) {
 	if tsm := cluster.GetTransportSocketMatches(); len(tsm) != 0 {
-		return nil, fmt.Errorf("unsupport transport_socket_matches field is non-empty: %+v", tsm)
+		return nil, fmt.Errorf("unsupported transport_socket_matches field is non-empty: %+v", tsm)
 	}
 	// The Cluster resource contains a `transport_socket` field, which contains
 	// a oneof `typed_config` field of type `protobuf.Any`. The any proto
@@ -285,12 +290,12 @@ func securityConfigFromCluster(cluster *v3clusterpb.Cluster) (*SecurityConfig, e
 	if name := ts.GetName(); name != transportSocketName {
 		return nil, fmt.Errorf("transport_socket field has unexpected name: %s", name)
 	}
-	any := ts.GetTypedConfig()
-	if any == nil || any.TypeUrl != version.V3UpstreamTLSContextURL {
-		return nil, fmt.Errorf("transport_socket field has unexpected typeURL: %s", any.TypeUrl)
+	tc := ts.GetTypedConfig()
+	if tc == nil || tc.TypeUrl != version.V3UpstreamTLSContextURL {
+		return nil, fmt.Errorf("transport_socket field has unexpected typeURL: %s", tc.TypeUrl)
 	}
 	upstreamCtx := &v3tlspb.UpstreamTlsContext{}
-	if err := proto.Unmarshal(any.GetValue(), upstreamCtx); err != nil {
+	if err := proto.Unmarshal(tc.GetValue(), upstreamCtx); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal UpstreamTlsContext in CDS response: %v", err)
 	}
 	// The following fields from `UpstreamTlsContext` are ignored:
@@ -472,7 +477,7 @@ func securityConfigFromCommonTLSContextUsingNewFields(common *v3tlspb.CommonTlsC
 	case len(validationCtx.GetVerifyCertificateHash()) != 0:
 		return nil, fmt.Errorf("unsupported verify_certificate_hash field in CommonTlsContext message: %+v", common)
 	case validationCtx.GetRequireSignedCertificateTimestamp().GetValue():
-		return nil, fmt.Errorf("unsupported require_sugned_ceritificate_timestamp field in CommonTlsContext message: %+v", common)
+		return nil, fmt.Errorf("unsupported require_signed_certificate_timestamp field in CommonTlsContext message: %+v", common)
 	case validationCtx.GetCrl() != nil:
 		return nil, fmt.Errorf("unsupported crl field in CommonTlsContext message: %+v", common)
 	case validationCtx.GetCustomValidatorConfig() != nil:

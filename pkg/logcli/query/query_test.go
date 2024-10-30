@@ -3,6 +3,7 @@ package query
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,16 +17,17 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logcli/output"
-	"github.com/grafana/loki/pkg/logcli/volume"
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/loki"
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util/marshal"
+	"github.com/grafana/loki/v3/pkg/logcli/output"
+	"github.com/grafana/loki/v3/pkg/logcli/volume"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/loki"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/util/marshal"
 )
 
 func Test_batch(t *testing.T) {
@@ -406,7 +408,6 @@ func Test_batch(t *testing.T) {
 type testQueryClient struct {
 	engine          *logql.Engine
 	queryRangeCalls int
-	orgID           string
 }
 
 func newTestQueryClient(testStreams ...logproto.Stream) *testQueryClient {
@@ -425,7 +426,7 @@ func (t *testQueryClient) Query(_ string, _ int, _ time.Time, _ logproto.Directi
 func (t *testQueryClient) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, step, interval time.Duration, _ bool) (*loghttp.QueryResponse, error) {
 	ctx := user.InjectOrgID(context.Background(), "fake")
 
-	params, err := logql.NewLiteralParams(queryStr, from, through, step, interval, direction, uint32(limit), nil)
+	params, err := logql.NewLiteralParams(queryStr, from, through, step, interval, direction, uint32(limit), nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -484,6 +485,27 @@ func (t *testQueryClient) GetVolumeRange(_ *volume.Query) (*loghttp.QueryRespons
 	panic("not implemented")
 }
 
+func (t *testQueryClient) GetDetectedFields(
+	_, _ string,
+	_, _ int,
+	_, _ time.Time,
+	_ time.Duration,
+	_ bool,
+) (*loghttp.DetectedFieldsResponse, error) {
+	panic("not implemented")
+}
+
+var legacySchemaConfigContents = `schema_config:
+  configs:
+  - from: 2020-05-15
+    store: boltdb-shipper
+    object_store: gcs
+    schema: v10
+    index:
+      prefix: index_
+      period: 168h
+`
+
 var schemaConfigContents = `schema_config:
   configs:
   - from: 2020-05-15
@@ -501,10 +523,35 @@ var schemaConfigContents = `schema_config:
       prefix: index_
       period: 24h
 `
+var schemaConfigContents2 = `schema_config:
+  configs:
+  - from: 2020-05-15
+    store: boltdb-shipper
+    object_store: gcs
+    schema: v10
+    index:
+      prefix: index_
+      period: 168h
+  - from: 2020-07-31
+    store: boltdb-shipper
+    object_store: gcs
+    schema: v11
+    index:
+      prefix: index_
+      period: 24h
+  - from: 2020-09-30
+    store: boltdb-shipper
+    object_store: gcs
+    schema: v12
+    index:
+      prefix: index_
+      period: 24h
+`
+var cm = storage.NewClientMetrics()
 
-func TestLoadFromURL(t *testing.T) {
+func setupTestEnv(t *testing.T) (string, client.ObjectClient) {
+	t.Helper()
 	tmpDir := t.TempDir()
-
 	conf := loki.Config{
 		StorageConfig: storage.Config{
 			FSConfig: local.FSConfig{
@@ -513,11 +560,19 @@ func TestLoadFromURL(t *testing.T) {
 		},
 	}
 
-	cm := storage.NewClientMetrics()
-	client, err := GetObjectClient(config.StorageTypeFileSystem, conf, cm)
+	client, err := GetObjectClient(types.StorageTypeFileSystem, conf, cm)
 	require.NoError(t, err)
 	require.NotNil(t, client)
 
+	_, err = getLatestConfig(client, "456")
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errNotExists))
+
+	return tmpDir, client
+}
+
+func TestLoadFromURL(t *testing.T) {
+	tmpDir, client := setupTestEnv(t)
 	filename := "schemaconfig.yaml"
 
 	// Missing schemaconfig.yaml file should error
@@ -537,12 +592,85 @@ func TestLoadFromURL(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, schemaConfig)
+}
 
-	// Load multiple schemaconfig files
-	schemaConfig, err = LoadSchemaUsingObjectClient(client, "foo.yaml", filename, "bar.yaml")
+func TestMultipleConfigs(t *testing.T) {
+	tmpDir, client := setupTestEnv(t)
 
+	err := os.WriteFile(
+		filepath.Join(tmpDir, "456-schemaconfig.yaml"),
+		[]byte(schemaConfigContents),
+		0666,
+	)
 	require.NoError(t, err)
-	require.NotNil(t, schemaConfig)
+
+	config, err := getLatestConfig(client, "456")
+	require.NoError(t, err)
+	require.NotNil(t, config)
+	require.Len(t, config.Configs, 2)
+
+	err = os.WriteFile(
+		filepath.Join(tmpDir, "456-schemaconfig-1.yaml"),
+		[]byte(schemaConfigContents2),
+		0666,
+	)
+	require.NoError(t, err)
+
+	config, err = getLatestConfig(client, "456")
+	require.NoError(t, err)
+	require.NotNil(t, config)
+	require.Len(t, config.Configs, 3)
+}
+
+func TestMultipleConfigsIncludingLegacy(t *testing.T) {
+	tmpDir, client := setupTestEnv(t)
+
+	err := os.WriteFile(
+		filepath.Join(tmpDir, "schemaconfig.yaml"),
+		[]byte(legacySchemaConfigContents),
+		0666,
+	)
+	require.NoError(t, err)
+
+	err = os.WriteFile(
+		filepath.Join(tmpDir, "456-schemaconfig.yaml"),
+		[]byte(schemaConfigContents),
+		0666,
+	)
+	require.NoError(t, err)
+
+	config, err := getLatestConfig(client, "456")
+	require.NoError(t, err)
+	require.NotNil(t, config)
+	require.Len(t, config.Configs, 2)
+
+	err = os.WriteFile(
+		filepath.Join(tmpDir, "456-schemaconfig-1.yaml"),
+		[]byte(schemaConfigContents2),
+		0666,
+	)
+	require.NoError(t, err)
+
+	config, err = getLatestConfig(client, "456")
+	require.NoError(t, err)
+	require.NotNil(t, config)
+	require.Len(t, config.Configs, 3)
+}
+
+func TestLegacyConfigOnly(t *testing.T) {
+	tmpDir, client := setupTestEnv(t)
+
+	err := os.WriteFile(
+		filepath.Join(tmpDir, "schemaconfig.yaml"),
+		[]byte(legacySchemaConfigContents),
+		0666,
+	)
+	require.NoError(t, err)
+
+	config, err := getLatestConfig(client, "456")
+	require.NoError(t, err)
+	require.NotNil(t, config)
+	require.Len(t, config.Configs, 1)
 }
 
 func TestDurationCeilDiv(t *testing.T) {
@@ -759,8 +887,6 @@ func TestParallelJobs(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
-
 		t.Run(
 			tt.name,
 			func(t *testing.T) {

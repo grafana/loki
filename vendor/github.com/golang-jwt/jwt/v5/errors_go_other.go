@@ -22,7 +22,7 @@ func (je joinedError) Is(err error) bool {
 
 // wrappedErrors is a workaround for wrapping multiple errors in environments
 // where Go 1.20 is not available. It basically uses the already implemented
-// functionatlity of joinedError to handle multiple errors with supplies a
+// functionality of joinedError to handle multiple errors with supplies a
 // custom error message that is identical to the one we produce in Go 1.20 using
 // multiple %w directives.
 type wrappedErrors struct {

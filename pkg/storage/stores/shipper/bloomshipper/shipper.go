@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 )
 
 type ForEachBlockCallback func(bq *v1.BlockQuerier, bounds v1.FingerprintBounds) error
@@ -16,21 +16,17 @@ type Interface interface {
 }
 
 type Shipper struct {
-	store Store
+	store StoreBase
 }
 
-type Limits interface {
-	BloomGatewayBlocksDownloadingParallelism(tenantID string) int
-}
-
-func NewShipper(client Store) *Shipper {
+func NewShipper(client StoreBase) *Shipper {
 	return &Shipper{store: client}
 }
 
 // ForEach is a convenience function that wraps the store's FetchBlocks function
 // and automatically closes the block querier once the callback was run.
 func (s *Shipper) ForEach(ctx context.Context, refs []BlockRef, callback ForEachBlockCallback) error {
-	bqs, err := s.store.FetchBlocks(ctx, refs)
+	bqs, err := s.store.FetchBlocks(ctx, refs, WithFetchAsync(false))
 	if err != nil {
 		return err
 	}

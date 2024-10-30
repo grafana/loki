@@ -3,6 +3,7 @@ package comparator
 import (
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"sync"
 	"time"
@@ -11,7 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/pkg/canary/reader"
+	"github.com/grafana/loki/v3/pkg/canary/reader"
 )
 
 const (
@@ -24,6 +25,8 @@ const (
 	DebugWebsocketMissingEntry   = "websocket missing entry: %v\n"
 	DebugQueryResult             = "confirmation query result: %v\n"
 	DebugEntryFound              = "missing websocket entry %v was found %v seconds after it was originally sent\n"
+
+	floatDiffTolerance = 1e-6
 )
 
 var (
@@ -90,6 +93,16 @@ var (
 		Help:      "how long the spot check test query execution took in seconds.",
 		Buckets:   instrument.DefBuckets,
 	})
+	queryResultsDiff = promauto.NewCounter(prometheus.CounterOpts{
+		Namespace: "loki_canary",
+		Name:      "cache_test_query_results_diff_total",
+		Help:      "counts number of times the query results was different with and without cache ",
+	})
+	queryResultsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "loki_canary",
+		Name:      "cache_test_query_results_total",
+		Help:      "counts number of times the query results test requests are done ",
+	}, []string{"status"}) // status=success/failure
 )
 
 type Comparator struct {
@@ -98,6 +111,7 @@ type Comparator struct {
 	spotEntMtx          sync.Mutex // Locks access to []spotCheck
 	spotMtx             sync.Mutex // Locks spotcheckRunning for single threaded but async spotCheck()
 	metTestMtx          sync.Mutex // Locks metricTestRunning for single threaded but async metricTest()
+	cacheTestMtx        sync.Mutex // Locks cacheTestRunning for single threaded but async cacheTest()
 	pruneMtx            sync.Mutex // Locks pruneEntriesRunning for single threaded but async pruneEntries()
 	w                   io.Writer
 	entries             []*time.Time
@@ -116,14 +130,19 @@ type Comparator struct {
 	metricTestInterval  time.Duration
 	metricTestRange     time.Duration
 	metricTestRunning   bool
-	writeInterval       time.Duration
-	confirmAsync        bool
-	startTime           time.Time
-	sent                chan time.Time
-	recv                chan time.Time
-	rdr                 reader.LokiReader
-	quit                chan struct{}
-	done                chan struct{}
+	cacheTestInterval   time.Duration
+	cacheTestRange      time.Duration
+	// how far back from current time the execution time (--now) should be set for running this query.
+	cacheTestNow     time.Duration
+	cacheTestRunning bool
+	writeInterval    time.Duration
+	confirmAsync     bool
+	startTime        time.Time
+	sent             chan time.Time
+	recv             chan time.Time
+	rdr              reader.LokiReader
+	quit             chan struct{}
+	done             chan struct{}
 }
 
 func NewComparator(writer io.Writer,
@@ -133,6 +152,9 @@ func NewComparator(writer io.Writer,
 	spotCheckInterval, spotCheckMax, spotCheckQueryRate, spotCheckWait time.Duration,
 	metricTestInterval time.Duration,
 	metricTestRange time.Duration,
+	cacheTestInterval time.Duration,
+	cacheTestRange time.Duration,
+	cacheTestNow time.Duration,
 	writeInterval time.Duration,
 	buckets int,
 	sentChan chan time.Time,
@@ -155,6 +177,10 @@ func NewComparator(writer io.Writer,
 		metricTestInterval:  metricTestInterval,
 		metricTestRange:     metricTestRange,
 		metricTestRunning:   false,
+		cacheTestInterval:   cacheTestInterval,
+		cacheTestRange:      cacheTestRange,
+		cacheTestNow:        cacheTestNow,
+		cacheTestRunning:    false,
 		writeInterval:       writeInterval,
 		confirmAsync:        confirmAsync,
 		startTime:           time.Now(),
@@ -252,10 +278,12 @@ func (c *Comparator) run() {
 	randomGenerator := rand.New(rand.NewSource(time.Now().UnixNano()))
 	mt := time.NewTicker(time.Duration(randomGenerator.Int63n(c.metricTestInterval.Nanoseconds())))
 	sc := time.NewTicker(c.spotCheckQueryRate)
+	ct := time.NewTicker(c.cacheTestInterval)
 	defer func() {
 		t.Stop()
 		mt.Stop()
 		sc.Stop()
+		ct.Stop()
 		close(c.done)
 	}()
 
@@ -294,9 +322,62 @@ func (c *Comparator) run() {
 				firstMt = false
 				mt.Reset(c.metricTestInterval)
 			}
+		case <-ct.C:
+			// Only run one instance of cache tests at a time.
+			c.cacheTestMtx.Lock()
+			if !c.cacheTestRunning {
+				c.cacheTestRunning = true
+				go c.cacheTest(time.Now())
+			}
+			c.cacheTestMtx.Unlock()
+
 		case <-c.quit:
 			return
 		}
+	}
+}
+
+func (c *Comparator) cacheTest(currTime time.Time) {
+	defer func() {
+		c.cacheTestMtx.Lock()
+		c.cacheTestRunning = false
+		c.cacheTestMtx.Unlock()
+	}()
+
+	// cacheTest is currently run using `reader.CountOverTime()` which is an instant query.
+	// We make the query with and without cache over the data that is not changing (e.g: --now="1hr ago") instead of on latest data that is a moving target.
+	queryStartTime := currTime.Add(-c.cacheTestNow)
+
+	// We cannot query for range before the pod even started.
+	if queryStartTime.Before(c.startTime) {
+		// we wait.
+		fmt.Fprintf(c.w, "cacheTest not run. still waiting for query start range(%s) to past the process start time(%s).\n", queryStartTime, c.startTime)
+		return
+	}
+
+	rangeDuration := c.cacheTestRange
+	rng := fmt.Sprintf("%.0fs", rangeDuration.Seconds())
+
+	// with cache
+	countCache, err := c.rdr.QueryCountOverTime(rng, queryStartTime, true)
+	if err != nil {
+		fmt.Fprintf(c.w, "error running cache query test with cache: %s\n", err.Error())
+		queryResultsTotal.WithLabelValues("failure").Inc()
+		return
+	}
+
+	// without cache
+	countNocache, err := c.rdr.QueryCountOverTime(rng, queryStartTime, false)
+	if err != nil {
+		fmt.Fprintf(c.w, "error running cache query test without cache: %s\n", err.Error())
+		queryResultsTotal.WithLabelValues("failure").Inc()
+		return
+	}
+
+	queryResultsTotal.WithLabelValues("success").Inc()
+	if math.Abs(countNocache-countCache) > floatDiffTolerance {
+		queryResultsDiff.Inc()
+		fmt.Fprintf(c.w, "found a diff in instant query results time: %s, result_with_cache: %v, result_without_cache: %v\n", queryStartTime, countCache, countNocache)
 	}
 }
 
@@ -317,7 +398,7 @@ func (c *Comparator) metricTest(currTime time.Time) {
 		adjustedRange = currTime.Sub(c.startTime)
 	}
 	begin := time.Now()
-	actualCount, err := c.rdr.QueryCountOverTime(fmt.Sprintf("%.0fs", adjustedRange.Seconds()))
+	actualCount, err := c.rdr.QueryCountOverTime(fmt.Sprintf("%.0fs", adjustedRange.Seconds()), begin, true)
 	metricTestLatency.Observe(time.Since(begin).Seconds())
 	if err != nil {
 		fmt.Fprintf(c.w, "error running metric query test: %s\n", err.Error())
@@ -346,7 +427,7 @@ func (c *Comparator) spotCheckEntries(currTime time.Time) {
 		func(_ int, t *time.Time) bool {
 			return t.Before(currTime.Add(-c.spotCheckMax))
 		},
-		func(_ int, t *time.Time) {
+		func(_ int, _ *time.Time) {
 
 		})
 
@@ -432,7 +513,7 @@ func (c *Comparator) pruneEntries(currentTime time.Time) {
 		func(_ int, t *time.Time) bool {
 			return t.Before(currentTime.Add(-c.wait))
 		},
-		func(_ int, t *time.Time) {
+		func(_ int, _ *time.Time) {
 
 		})
 }

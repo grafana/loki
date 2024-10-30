@@ -12,9 +12,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
 
 func TestStatsCollectorMiddleware(t *testing.T) {
@@ -24,7 +24,7 @@ func TestStatsCollectorMiddleware(t *testing.T) {
 		now  = time.Now()
 	)
 	ctx := context.WithValue(context.Background(), ctxKey, data)
-	_, _ = StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	_, _ = StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		return nil, nil
 	})).Do(ctx, &LokiRequest{
 		Query:   "foo",
@@ -37,7 +37,7 @@ func TestStatsCollectorMiddleware(t *testing.T) {
 
 	// no context.
 	data = &queryData{}
-	_, _ = StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	_, _ = StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		return nil, nil
 	})).Do(context.Background(), &LokiRequest{
 		Query:   "foo",
@@ -48,7 +48,7 @@ func TestStatsCollectorMiddleware(t *testing.T) {
 	// stats
 	data = &queryData{}
 	ctx = context.WithValue(context.Background(), ctxKey, data)
-	_, _ = StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	_, _ = StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		return &LokiPromResponse{
 			Statistics: stats.Result{
 				Ingester: stats.Ingester{
@@ -69,7 +69,7 @@ func TestStatsCollectorMiddleware(t *testing.T) {
 	// Rationale being, in that case returned `response` will be nil and there won't be any `response.statistics` to collect.
 	data = &queryData{}
 	ctx = context.WithValue(context.Background(), ctxKey, data)
-	_, _ = StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	_, _ = StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		return nil, errors.New("request timedout")
 	})).Do(ctx, &LokiRequest{
 		Query:   "foo",
@@ -86,17 +86,17 @@ func Test_StatsHTTP(t *testing.T) {
 	}{
 		{
 			"should not record metric if nothing is recorded",
-			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 				data := r.Context().Value(ctxKey).(*queryData)
 				data.recorded = false
 			}),
-			func(t *testing.T, data *queryData) {
+			func(t *testing.T, _ *queryData) {
 				t.Fail()
 			},
 		},
 		{
 			"empty statistics success",
-			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 				data := r.Context().Value(ctxKey).(*queryData)
 				data.recorded = true
 				data.params, _ = ParamsFromRequest(&LokiRequest{
@@ -189,7 +189,7 @@ func Test_StatsHTTP(t *testing.T) {
 }
 
 func Test_StatsUpdateResult(t *testing.T) {
-	resp, err := StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	resp, err := StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		time.Sleep(20 * time.Millisecond)
 		return &LokiResponse{}, nil
 	})).Do(context.Background(), &LokiRequest{

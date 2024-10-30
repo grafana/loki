@@ -9,6 +9,7 @@ package plog
 import (
 	"sort"
 
+	"go.opentelemetry.io/collector/pdata/internal"
 	otlplogs "go.opentelemetry.io/collector/pdata/internal/data/protogen/logs/v1"
 )
 
@@ -20,18 +21,20 @@ import (
 // Must use NewLogRecordSlice function to create new instances.
 // Important: zero-initialized instance is not valid for use.
 type LogRecordSlice struct {
-	orig *[]*otlplogs.LogRecord
+	orig  *[]*otlplogs.LogRecord
+	state *internal.State
 }
 
-func newLogRecordSlice(orig *[]*otlplogs.LogRecord) LogRecordSlice {
-	return LogRecordSlice{orig}
+func newLogRecordSlice(orig *[]*otlplogs.LogRecord, state *internal.State) LogRecordSlice {
+	return LogRecordSlice{orig: orig, state: state}
 }
 
 // NewLogRecordSlice creates a LogRecordSlice with 0 elements.
 // Can use "EnsureCapacity" to initialize with a given capacity.
 func NewLogRecordSlice() LogRecordSlice {
 	orig := []*otlplogs.LogRecord(nil)
-	return newLogRecordSlice(&orig)
+	state := internal.StateMutable
+	return newLogRecordSlice(&orig, &state)
 }
 
 // Len returns the number of elements in the slice.
@@ -50,7 +53,7 @@ func (es LogRecordSlice) Len() int {
 //	    ... // Do something with the element
 //	}
 func (es LogRecordSlice) At(i int) LogRecord {
-	return newLogRecord((*es.orig)[i])
+	return newLogRecord((*es.orig)[i], es.state)
 }
 
 // EnsureCapacity is an operation that ensures the slice has at least the specified capacity.
@@ -66,6 +69,7 @@ func (es LogRecordSlice) At(i int) LogRecord {
 //	    // Here should set all the values for e.
 //	}
 func (es LogRecordSlice) EnsureCapacity(newCap int) {
+	es.state.AssertMutable()
 	oldCap := cap(*es.orig)
 	if newCap <= oldCap {
 		return
@@ -79,6 +83,7 @@ func (es LogRecordSlice) EnsureCapacity(newCap int) {
 // AppendEmpty will append to the end of the slice an empty LogRecord.
 // It returns the newly added LogRecord.
 func (es LogRecordSlice) AppendEmpty() LogRecord {
+	es.state.AssertMutable()
 	*es.orig = append(*es.orig, &otlplogs.LogRecord{})
 	return es.At(es.Len() - 1)
 }
@@ -86,6 +91,8 @@ func (es LogRecordSlice) AppendEmpty() LogRecord {
 // MoveAndAppendTo moves all elements from the current slice and appends them to the dest.
 // The current slice will be cleared.
 func (es LogRecordSlice) MoveAndAppendTo(dest LogRecordSlice) {
+	es.state.AssertMutable()
+	dest.state.AssertMutable()
 	if *dest.orig == nil {
 		// We can simply move the entire vector and avoid any allocations.
 		*dest.orig = *es.orig
@@ -98,6 +105,7 @@ func (es LogRecordSlice) MoveAndAppendTo(dest LogRecordSlice) {
 // RemoveIf calls f sequentially for each element present in the slice.
 // If f returns true, the element is removed from the slice.
 func (es LogRecordSlice) RemoveIf(f func(LogRecord) bool) {
+	es.state.AssertMutable()
 	newLen := 0
 	for i := 0; i < len(*es.orig); i++ {
 		if f(es.At(i)) {
@@ -111,18 +119,18 @@ func (es LogRecordSlice) RemoveIf(f func(LogRecord) bool) {
 		(*es.orig)[newLen] = (*es.orig)[i]
 		newLen++
 	}
-	// TODO: Prevent memory leak by erasing truncated values.
 	*es.orig = (*es.orig)[:newLen]
 }
 
 // CopyTo copies all elements from the current slice overriding the destination.
 func (es LogRecordSlice) CopyTo(dest LogRecordSlice) {
+	dest.state.AssertMutable()
 	srcLen := es.Len()
 	destCap := cap(*dest.orig)
 	if srcLen <= destCap {
 		(*dest.orig) = (*dest.orig)[:srcLen:destCap]
 		for i := range *es.orig {
-			newLogRecord((*es.orig)[i]).CopyTo(newLogRecord((*dest.orig)[i]))
+			newLogRecord((*es.orig)[i], es.state).CopyTo(newLogRecord((*dest.orig)[i], dest.state))
 		}
 		return
 	}
@@ -130,7 +138,7 @@ func (es LogRecordSlice) CopyTo(dest LogRecordSlice) {
 	wrappers := make([]*otlplogs.LogRecord, srcLen)
 	for i := range *es.orig {
 		wrappers[i] = &origs[i]
-		newLogRecord((*es.orig)[i]).CopyTo(newLogRecord(wrappers[i]))
+		newLogRecord((*es.orig)[i], es.state).CopyTo(newLogRecord(wrappers[i], dest.state))
 	}
 	*dest.orig = wrappers
 }
@@ -139,5 +147,6 @@ func (es LogRecordSlice) CopyTo(dest LogRecordSlice) {
 // provided less function so that two instances of LogRecordSlice
 // can be compared.
 func (es LogRecordSlice) Sort(less func(a, b LogRecord) bool) {
+	es.state.AssertMutable()
 	sort.SliceStable(*es.orig, func(i, j int) bool { return less(es.At(i), es.At(j)) })
 }

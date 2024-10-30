@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-
 	"net/textproto"
 	"strings"
 	"sync"
@@ -28,15 +27,22 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
-	"github.com/grafana/loki/pkg/querier/queryrange"
-	"github.com/grafana/loki/pkg/queue"
-	"github.com/grafana/loki/pkg/scheduler/limits"
-	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
-	"github.com/grafana/loki/pkg/util"
-	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
-	lokihttpreq "github.com/grafana/loki/pkg/util/httpreq"
-	lokiring "github.com/grafana/loki/pkg/util/ring"
+	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v2/frontendv2pb"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange"
+	"github.com/grafana/loki/v3/pkg/queue"
+	"github.com/grafana/loki/v3/pkg/scheduler/limits"
+	"github.com/grafana/loki/v3/pkg/scheduler/schedulerpb"
+	"github.com/grafana/loki/v3/pkg/util"
+	lokigrpc "github.com/grafana/loki/v3/pkg/util/httpgrpc"
+	lokihttpreq "github.com/grafana/loki/v3/pkg/util/httpreq"
+	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
+)
+
+const (
+	// NumTokens is 1 since we only need to insert 1 token to be used for leader election purposes.
+	NumTokens = 1
+	// ReplicationFactor should be 2 because we want 2 schedulers.
+	ReplicationFactor = 2
 )
 
 var errSchedulerIsNotRunning = errors.New("scheduler is not running")
@@ -111,7 +117,25 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.QuerierForgetDelay, "query-scheduler.querier-forget-delay", 0, "If a querier disconnects without sending notification about graceful shutdown, the query-scheduler will keep the querier in the tenant's shard until the forget delay has passed. This feature is useful to reduce the blast radius when shuffle-sharding is enabled.")
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("query-scheduler.grpc-client-config", f)
 	f.BoolVar(&cfg.UseSchedulerRing, "query-scheduler.use-scheduler-ring", false, "Set to true to have the query schedulers create and place themselves in a ring. If no frontend_address or scheduler_address are present anywhere else in the configuration, Loki will toggle this value to true.")
-	cfg.SchedulerRing.RegisterFlagsWithPrefix("query-scheduler.", "collectors/", f)
+
+	// Ring
+	skipFlags := []string{
+		"query-scheduler.ring.num-tokens",
+		"query-scheduler.ring.replication-factor",
+	}
+	cfg.SchedulerRing.RegisterFlagsWithPrefix("query-scheduler.", "collectors/", f, skipFlags...)
+	f.IntVar(&cfg.SchedulerRing.NumTokens, "query-scheduler.ring.num-tokens", NumTokens, fmt.Sprintf("IGNORED: Num tokens is fixed to %d", NumTokens))
+	f.IntVar(&cfg.SchedulerRing.ReplicationFactor, "query-scheduler.ring.replication-factor", ReplicationFactor, fmt.Sprintf("IGNORED: Replication factor is fixed to %d", ReplicationFactor))
+}
+
+func (cfg *Config) Validate() error {
+	if cfg.SchedulerRing.NumTokens != NumTokens {
+		return errors.New("Num tokens must not be changed as it will not take effect")
+	}
+	if cfg.SchedulerRing.ReplicationFactor != ReplicationFactor {
+		return errors.New("Replication factor must not be changed as it will not take effect")
+	}
+	return nil
 }
 
 // NewScheduler creates a new Scheduler.
@@ -532,6 +556,7 @@ func (s *Scheduler) forwardErrorToFrontend(ctx context.Context, req *schedulerRe
 		return
 	}
 
+	// nolint:staticcheck // grpc.DialContext() has been deprecated; we'll address it before upgrading to gRPC 2.
 	conn, err := grpc.DialContext(ctx, req.frontendAddress, opts...)
 	if err != nil {
 		level.Warn(s.log).Log("msg", "failed to create gRPC connection to frontend to report error", "frontend", req.frontendAddress, "err", err, "requestErr", requestErr)

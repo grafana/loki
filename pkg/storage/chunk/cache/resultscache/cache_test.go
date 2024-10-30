@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/exp/slices"
 
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 const day = 24 * time.Hour
@@ -491,7 +491,7 @@ func TestHandleHit(t *testing.T) {
 				minCacheExtent:    10,
 				limits:            mockLimits{},
 				merger:            MockMerger{},
-				parallelismForReq: func(_ context.Context, tenantIDs []string, r Request) int { return 1 },
+				parallelismForReq: func(_ context.Context, _ []string, _ Request) int { return 1 },
 				next: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
 					return mkAPIResponse(req.GetStart().UnixMilli(), req.GetEnd().UnixMilli(), req.GetStep()), nil
 				}),
@@ -514,7 +514,7 @@ func TestHandleHit_queryLengthServed(t *testing.T) {
 		extractor:         MockExtractor{},
 		limits:            mockLimits{},
 		merger:            MockMerger{},
-		parallelismForReq: func(_ context.Context, tenantIDs []string, r Request) int { return 1 },
+		parallelismForReq: func(_ context.Context, _ []string, _ Request) int { return 1 },
 		next: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
 			return mkAPIResponse(req.GetStart().UnixMilli(), req.GetEnd().UnixMilli(), req.GetStep()), nil
 		}),
@@ -602,7 +602,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 				MockExtractor{},
 				nil,
 				nil,
-				func(_ context.Context, tenantIDs []string, r Request) int {
+				func(_ context.Context, _ []string, _ Request) int {
 					return 10
 				},
 				nil,
@@ -646,7 +646,7 @@ func Test_resultsCache_MissingData(t *testing.T) {
 		MockExtractor{},
 		nil,
 		nil,
-		func(_ context.Context, tenantIDs []string, r Request) int {
+		func(_ context.Context, _ []string, _ Request) int {
 			return 10
 		},
 		nil,
@@ -680,6 +680,105 @@ func Test_resultsCache_MissingData(t *testing.T) {
 	extents, hit = rc.get(ctx, "mixed")
 	require.Equal(t, len(extents), 0)
 	require.False(t, hit)
+}
+
+func Test_shouldCacheReq(t *testing.T) {
+	cfg := Config{
+		CacheConfig: cache.Config{
+			Cache: cache.NewMockCache(),
+		},
+	}
+	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache, constants.Loki)
+	require.NoError(t, err)
+	rc := NewResultsCache(
+		log.NewNopLogger(),
+		c,
+		nil,
+		ConstSplitter(day),
+		mockLimits{},
+		MockMerger{},
+		MockExtractor{},
+		nil,
+		nil,
+		func(_ context.Context, _ []string, _ Request) int {
+			return 10
+		},
+		nil,
+		false,
+		false,
+	)
+	require.NoError(t, err)
+
+	// create cache with handler
+	ctx := user.InjectOrgID(context.Background(), "1")
+
+	// create request with start end within the key extents
+	req := parsedRequest.WithStartEndForCache(time.UnixMilli(50), time.UnixMilli(120))
+
+	// fill cache
+	key := ConstSplitter(day).GenerateCacheKey(context.Background(), "1", req)
+	rc.put(ctx, key, []Extent{mkExtent(50, 120)})
+
+	// Asserts (when `shouldLookupCache` is non-nil and set to return false (should not cache), resultcache should get result from upstream handler (mockHandler))
+	// 1. With `shouldLookupCache` non-nil and set `noCacheReq`, should get result from `next` handler
+	// 2. With `shouldLookupCache` non-nil and set `cacheReq`, should get result from cache
+	// 3. With `shouldLookupCache` nil, should get result from cache
+
+	cases := []struct {
+		name              string
+		shouldLookupCache ShouldCacheReqFn
+		// expected number of times, upstream `next` handler is called inside results cache
+		expCount int
+	}{
+		{
+			name:              "don't lookup cache",
+			shouldLookupCache: noLookupCache,
+			expCount:          1,
+		},
+		{
+			name:              "lookup cache",
+			shouldLookupCache: lookupCache,
+			expCount:          0,
+		},
+		{
+			name:              "nil",
+			shouldLookupCache: nil,
+			expCount:          0,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mh := &mockHandler{}
+			rc.next = mh
+			rc.shouldCacheReq = tc.shouldLookupCache
+
+			_, err = rc.Do(ctx, req)
+			require.NoError(t, err)
+			require.Equal(t, tc.expCount, mh.called)
+
+		})
+	}
+}
+
+type mockHandler struct {
+	called int
+	res    Response
+}
+
+func (mh *mockHandler) Do(_ context.Context, _ Request) (Response, error) {
+	mh.called++
+	return mh.res, nil
+}
+
+// noLookupCache is of type `ShouldCacheReq` that always returns false (do not cache)
+func noLookupCache(_ context.Context, _ Request) bool {
+	return false
+}
+
+// lookupCache is of type `ShouldCacheReq` that always returns true (cache the result)
+func lookupCache(_ context.Context, _ Request) bool {
+	return true
 }
 
 func mkAPIResponse(start, end, step int64) *MockResponse {

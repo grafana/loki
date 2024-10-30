@@ -1,4 +1,4 @@
-{ pkgs, lib, buildGoModule, fetchFromGitHub }:
+{ pkgs, buildGoModule, fetchFromGitHub }:
 buildGoModule rec {
   pname = "chart-releaser";
   version = "1.4.0";
@@ -10,7 +10,7 @@ buildGoModule rec {
     sha256 = "1x3r4cyzk4p9shbg2xzgvfbfk9kc12hqy9xzpd6l0fbyhdh91qxw";
   };
 
-  vendorSha256 = "GYsP5LXZA/swgg7xsOkOAITj/E7euEpP0Uk2KzUzBbI=";
+  vendorHash = "sha256-GYsP5LXZA/swgg7xsOkOAITj/E7euEpP0Uk2KzUzBbI=";
 
   postPatch = ''
     substituteInPlace pkg/config/config.go \

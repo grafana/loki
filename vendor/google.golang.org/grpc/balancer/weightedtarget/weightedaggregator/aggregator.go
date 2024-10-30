@@ -89,7 +89,7 @@ func New(cc balancer.ClientConn, logger *grpclog.PrefixLogger, newWRR func() wrr
 }
 
 // Start starts the aggregator. It can be called after Stop to restart the
-// aggretator.
+// aggregator.
 func (wbsa *Aggregator) Start() {
 	wbsa.mu.Lock()
 	defer wbsa.mu.Unlock()

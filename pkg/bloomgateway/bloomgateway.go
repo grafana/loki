@@ -1,74 +1,38 @@
 /*
-Bloom Gateway package
-
 The bloom gateway is a component that can be run as a standalone microserivce
 target and provides capabilities for filtering ChunkRefs based on a given list
 of line filter expressions.
-
-			     Querier   Query Frontend
-			        |           |
-			................................... service boundary
-			        |           |
-			        +----+------+
-			             |
-			     indexgateway.Gateway
-			             |
-			   bloomgateway.BloomQuerier
-			             |
-			   bloomgateway.GatewayClient
-			             |
-			  logproto.BloomGatewayClient
-			             |
-			................................... service boundary
-			             |
-			      bloomgateway.Gateway
-			             |
-		       queue.RequestQueue
-			             |
-		       bloomgateway.Worker
-			             |
-		     bloomgateway.Processor
-			             |
-	         bloomshipper.Store
-			             |
-	         bloomshipper.Client
-			             |
-			        ObjectClient
-			             |
-			................................... service boundary
-			             |
-		         object storage
 */
 package bloomgateway
 
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
-	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
-	"github.com/oklog/ulid"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/queue"
-	v1 "github.com/grafana/loki/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/constants"
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/queue"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	utillog "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
-var errGatewayUnhealthy = errors.New("bloom-gateway is unhealthy in the ring")
-
 const (
-	pendingTasksInitialCap  = 1024
 	metricsSubsystem        = "bloom_gateway"
 	querierMetricsSubsystem = "bloom_gateway_querier"
 )
@@ -77,40 +41,6 @@ var (
 	// responsesPool pooling array of v1.Output [64, 128, 256, ..., 65536]
 	responsesPool = queue.NewSlicePool[v1.Output](1<<6, 1<<16, 2)
 )
-
-// SyncMap is a map structure which can be synchronized using the RWMutex
-type SyncMap[k comparable, v any] struct {
-	sync.RWMutex
-	Map map[k]v
-}
-
-type pendingTasks SyncMap[ulid.ULID, Task]
-
-func (t *pendingTasks) Len() int {
-	t.RLock()
-	defer t.RUnlock()
-	return len(t.Map)
-}
-
-func (t *pendingTasks) Add(k ulid.ULID, v Task) {
-	t.Lock()
-	t.Map[k] = v
-	t.Unlock()
-}
-
-func (t *pendingTasks) Delete(k ulid.ULID) {
-	t.Lock()
-	delete(t.Map, k)
-	t.Unlock()
-}
-
-// makePendingTasks creates a SyncMap that holds pending tasks
-func makePendingTasks(n int) *pendingTasks {
-	return &pendingTasks{
-		RWMutex: sync.RWMutex{},
-		Map:     make(map[ulid.ULID]Task, n),
-	}
-}
 
 type Gateway struct {
 	services.Service
@@ -123,7 +53,7 @@ type Gateway struct {
 	activeUsers *util.ActiveUsersCleanupService
 	bloomStore  bloomshipper.Store
 
-	pendingTasks *pendingTasks
+	pendingTasks *atomic.Int64
 
 	serviceMngr    *services.Manager
 	serviceWatcher *services.FailureWatcher
@@ -131,6 +61,9 @@ type Gateway struct {
 	workerConfig workerConfig
 }
 
+// fixedQueueLimits is a queue.Limits implementation that returns a fixed value for MaxConsumers.
+// Notably this lets us run with "disabled" max consumers (0) for the bloom gateway meaning it will
+// distribute any request to any receiver.
 type fixedQueueLimits struct {
 	maxConsumers int
 }
@@ -141,14 +74,17 @@ func (l *fixedQueueLimits) MaxConsumers(_ string, _ int) int {
 
 // New returns a new instance of the Bloom Gateway.
 func New(cfg Config, store bloomshipper.Store, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
+	utillog.WarnExperimentalUse("Bloom Gateway", logger)
 	g := &Gateway{
-		cfg:          cfg,
-		logger:       logger,
-		metrics:      newMetrics(reg, constants.Loki, metricsSubsystem),
-		pendingTasks: makePendingTasks(pendingTasksInitialCap),
+		cfg:     cfg,
+		logger:  logger,
+		metrics: newMetrics(reg, constants.Loki, metricsSubsystem),
 		workerConfig: workerConfig{
-			maxItems: 100,
+			maxItems:         cfg.NumMultiplexItems,
+			queryConcurrency: cfg.BlockQueryConcurrency,
 		},
+		pendingTasks: &atomic.Int64{},
+
 		bloomStore: store,
 	}
 
@@ -214,7 +150,7 @@ func (g *Gateway) running(ctx context.Context) error {
 		case err := <-g.serviceWatcher.Chan():
 			return errors.Wrap(err, "bloom gateway subservice failed")
 		case <-inflightTasksTicker.C:
-			inflight := g.pendingTasks.Len()
+			inflight := g.pendingTasks.Load()
 			g.metrics.inflightRequests.Observe(float64(inflight))
 		}
 	}
@@ -231,10 +167,21 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return nil, err
 	}
 
-	logger := log.With(g.logger, "tenant", tenantID)
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "bloomgateway.FilterChunkRefs")
+	stats, ctx := ContextWithEmptyStats(ctx)
+	logger := spanlogger.FromContextWithFallback(
+		ctx,
+		utillog.WithContext(ctx, g.logger),
+	)
+
+	defer func() {
+		level.Info(logger).Log(stats.KVArgs()...)
+		sp.Finish()
+	}()
 
 	// start time == end time --> empty response
 	if req.From.Equal(req.Through) {
+		stats.Status = labelSuccess
 		return &logproto.FilterChunkRefResponse{
 			ChunkRefs: []*logproto.GroupedChunkRefs{},
 		}, nil
@@ -242,88 +189,131 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 
 	// start time > end time --> error response
 	if req.Through.Before(req.From) {
+		stats.Status = labelFailure
 		return nil, errors.New("from time must not be after through time")
 	}
 
+	matchers := v1.ExtractTestableLabelMatchers(req.Plan.AST)
+	stats.NumMatchers = len(matchers)
+	g.metrics.receivedMatchers.Observe(float64(len(matchers)))
+
 	// Shortcut if request does not contain filters
-	if len(syntax.ExtractLineFilters(req.Plan.AST)) == 0 {
-		return &logproto.FilterChunkRefResponse{
-			ChunkRefs: req.Refs,
-		}, nil
+	if len(matchers) == 0 {
+		stats.Status = labelSuccess
+		return &logproto.FilterChunkRefResponse{ChunkRefs: req.Refs}, nil
 	}
 
-	// Sort ChunkRefs by fingerprint in ascending order
-	sort.Slice(req.Refs, func(i, j int) bool {
-		return req.Refs[i].Fingerprint < req.Refs[j].Fingerprint
-	})
-
-	var numSeries int
-	seriesByDay := partitionRequest(req)
-
-	// no tasks --> empty response
-	if len(seriesByDay) == 0 {
-		return &logproto.FilterChunkRefResponse{
-			ChunkRefs: []*logproto.GroupedChunkRefs{},
-		}, nil
-	}
-
-	filters := syntax.ExtractLineFilters(req.Plan.AST)
-	tasks := make([]Task, 0, len(seriesByDay))
-	for _, seriesForDay := range seriesByDay {
-		task, err := NewTask(ctx, tenantID, seriesForDay, filters)
+	blocks := make([]bloomshipper.BlockRef, 0, len(req.Blocks))
+	for _, key := range req.Blocks {
+		block, err := bloomshipper.BlockRefFromKey(key)
 		if err != nil {
-			return nil, err
+			stats.Status = labelFailure
+			return nil, errors.New("could not parse block key")
 		}
-		level.Debug(g.logger).Log("msg", "creating task for day", "day", seriesForDay.day, "interval", seriesForDay.interval.String(), "task", task.ID)
-		tasks = append(tasks, task)
-		numSeries += len(seriesForDay.series)
+		blocks = append(blocks, block)
 	}
+
+	// Shortcut if request does not contain blocks
+	if len(blocks) == 0 {
+		stats.Status = labelSuccess
+		return &logproto.FilterChunkRefResponse{ChunkRefs: req.Refs}, nil
+	}
+
+	seriesByDay := partitionRequest(req)
+	stats.NumTasks = len(seriesByDay)
+
+	sp.LogKV(
+		"matchers", len(matchers),
+		"days", len(seriesByDay),
+		"blocks", len(req.Blocks),
+		"series_requested", len(req.Refs),
+	)
+
+	// len(seriesByDay) should never be 0
+	// Not sure how this can happen, but there was a bug report
+	// https://github.com/grafana/loki/issues/14623
+	if len(seriesByDay) == 0 {
+		stats.Status = labelSuccess
+		return &logproto.FilterChunkRefResponse{ChunkRefs: req.Refs}, nil
+	}
+
+	if len(seriesByDay) > 1 {
+		stats.Status = labelFailure
+		return nil, errors.New("request time range must span exactly one day")
+	}
+
+	series := seriesByDay[0]
+	task := newTask(ctx, tenantID, series, matchers, blocks)
+
+	// TODO(owen-d): include capacity in constructor?
+	task.responses = responsesPool.Get(len(series.series))
+	// free up the responses
+	defer responsesPool.Put(task.responses)
 
 	g.activeUsers.UpdateUserTimestamp(tenantID, time.Now())
 
-	// Ideally we could use an unbuffered channel here, but since we return the
-	// request on the first error, there can be cases where the request context
-	// is not done yet and the consumeTask() function wants to send to the
-	// tasksCh, but nobody reads from it any more.
-	tasksCh := make(chan Task, len(tasks))
-	for _, task := range tasks {
-		task := task
-		task.enqueueTime = time.Now()
-		level.Info(logger).Log("msg", "enqueue task", "task", task.ID, "table", task.table, "series", len(task.series))
-		g.queue.Enqueue(tenantID, []string{}, task, func() {
-			// When enqueuing, we also add the task to the pending tasks
-			g.pendingTasks.Add(task.ID, task)
-		})
-		go g.consumeTask(ctx, task, tasksCh)
+	var preFilterSeries, preFilterChunks int
+
+	preFilterSeries = len(req.Refs)
+	for _, series := range req.Refs {
+		preFilterChunks += len(series.Refs)
 	}
 
-	responses := responsesPool.Get(numSeries)
-	defer responsesPool.Put(responses)
-	remaining := len(tasks)
+	tasksCh := make(chan Task, 1)
 
-	for remaining > 0 {
-		select {
-		case <-ctx.Done():
-			return nil, errors.Wrap(ctx.Err(), "request failed")
-		case task := <-tasksCh:
-			level.Info(logger).Log("msg", "task done", "task", task.ID, "err", task.Err())
-			if task.Err() != nil {
-				return nil, errors.Wrap(task.Err(), "request failed")
-			}
-			responses = append(responses, task.responses...)
-			remaining--
+	// TODO(owen-d): gracefully handle full queues
+	task.enqueueTime = time.Now()
+	if err := g.queue.Enqueue(tenantID, nil, task, func() {
+		// When enqueuing, we also add the task to the pending tasks
+		_ = g.pendingTasks.Inc()
+	}); err != nil {
+		stats.Status = labelFailure
+		return nil, errors.Wrap(err, "failed to enqueue task")
+	}
+	// TODO(owen-d): use `concurrency` lib, bound parallelism
+	go g.consumeTask(ctx, task, tasksCh)
+
+	combinedRecorder := v1.NewBloomRecorder(ctx, "combined")
+
+	select {
+	case <-ctx.Done():
+		stats.Status = "cancel"
+		return nil, errors.Wrap(ctx.Err(), "request failed")
+	case task = <-tasksCh:
+		if task.Err() != nil {
+			stats.Status = labelFailure
+			return nil, errors.Wrap(task.Err(), "request failed")
 		}
+		combinedRecorder.Merge(task.recorder)
 	}
 
-	preFilterSeries := len(req.Refs)
+	combinedRecorder.Report(utillog.WithContext(ctx, g.logger), g.bloomStore.BloomMetrics())
 
-	// TODO(chaudum): Don't wait for all responses before starting to filter chunks.
-	filtered := g.processResponses(req, responses)
+	start := time.Now()
+	filtered := filterChunkRefs(req, task.responses)
+	duration := time.Since(start)
+	stats.AddPostProcessingTime(duration)
 
-	postFilterSeries := len(req.Refs)
+	var postFilterSeries, postFilterChunks int
+	postFilterSeries = len(filtered)
+	for _, group := range filtered {
+		postFilterChunks += len(group.Refs)
+	}
 
-	level.Info(logger).Log("msg", "return filtered chunk refs", "pre_filter_series", preFilterSeries, "post_filter_series", postFilterSeries, "filtered_chunks", filtered)
-	return &logproto.FilterChunkRefResponse{ChunkRefs: req.Refs}, nil
+	g.metrics.requestedSeries.Observe(float64(preFilterSeries))
+	g.metrics.filteredSeries.Observe(float64(preFilterSeries - postFilterSeries))
+	g.metrics.requestedChunks.Observe(float64(preFilterChunks))
+	g.metrics.filteredChunks.Observe(float64(preFilterChunks - postFilterChunks))
+
+	stats.Status = "success"
+	stats.SeriesRequested = preFilterSeries
+	stats.SeriesFiltered = preFilterSeries - postFilterSeries
+	stats.ChunksRequested = preFilterChunks
+	stats.ChunksFiltered = preFilterChunks - postFilterChunks
+
+	sp.LogKV("msg", "return filtered chunk refs")
+
+	return &logproto.FilterChunkRefResponse{ChunkRefs: filtered}, nil
 }
 
 // consumeTask receives v1.Output yielded from the block querier on the task's
@@ -333,17 +323,16 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 // Once the tasks is closed, it will send the task with the results from the
 // block querier to the supplied task channel.
 func (g *Gateway) consumeTask(ctx context.Context, task Task, tasksCh chan<- Task) {
-	logger := log.With(g.logger, "task", task.ID)
-
 	for res := range task.resCh {
 		select {
 		case <-ctx.Done():
-			level.Debug(logger).Log("msg", "drop partial result", "fp_int", uint64(res.Fp), "fp_hex", res.Fp, "chunks_to_remove", res.Removals.Len())
-			g.metrics.chunkRemovals.WithLabelValues("dropped").Add(float64(res.Removals.Len()))
+			// do nothing
 		default:
-			level.Debug(logger).Log("msg", "accept partial result", "fp_int", uint64(res.Fp), "fp_hex", res.Fp, "chunks_to_remove", res.Removals.Len())
+			// chunks may not always be sorted
+			if !slices.IsSortedFunc(res.Removals, func(a, b v1.ChunkRef) int { return a.Cmp(b) }) {
+				slices.SortFunc(res.Removals, func(a, b v1.ChunkRef) int { return a.Cmp(b) })
+			}
 			task.responses = append(task.responses, res)
-			g.metrics.chunkRemovals.WithLabelValues("accepted").Add(float64(res.Removals.Len()))
 		}
 	}
 
@@ -356,50 +345,127 @@ func (g *Gateway) consumeTask(ctx context.Context, task Task, tasksCh chan<- Tas
 	}
 }
 
-func (g *Gateway) processResponses(req *logproto.FilterChunkRefRequest, responses []v1.Output) (filtered int) {
-	for _, o := range responses {
-		if o.Removals.Len() == 0 {
+// TODO(owen-d): improve perf. This can be faster with a more specialized impl
+// NB(owen-d): `req` is mutated in place for performance, but `responses` is not
+// Removals of the outputs must be sorted.
+func filterChunkRefs(req *logproto.FilterChunkRefRequest, responses []v1.Output) []*logproto.GroupedChunkRefs {
+	// sort responses by fingerprint
+	sort.Slice(responses, func(i, j int) bool { return responses[i].Fp < responses[j].Fp })
+
+	res := make([]*logproto.GroupedChunkRefs, 0, len(req.Refs))
+
+	// dedupe outputs, merging the same series.
+	// This returns an Iterator[v1.Output]
+	dedupedResps := iter.NewDedupingIter(
+		// eq
+		func(o1, o2 v1.Output) bool {
+			return o1.Fp == o2.Fp
+		},
+		// from
+		iter.Identity[v1.Output],
+		// merge two removal sets for the same series, deduping
+		// requires that the removals of the outputs are sorted
+		func(o1, o2 v1.Output) v1.Output {
+			res := v1.Output{Fp: o1.Fp}
+
+			var chks v1.ChunkRefs
+			var i, j int
+			for i < len(o1.Removals) && j < len(o2.Removals) {
+
+				a, b := o1.Removals[i], o2.Removals[j]
+
+				if a == b {
+					chks = append(chks, a)
+					i++
+					j++
+					continue
+				}
+
+				if a.Less(b) {
+					chks = append(chks, a)
+					i++
+					continue
+				}
+				chks = append(chks, b)
+				j++
+			}
+
+			if i < len(o1.Removals) {
+				chks = append(chks, o1.Removals[i:]...)
+			}
+			if j < len(o2.Removals) {
+				chks = append(chks, o2.Removals[j:]...)
+			}
+
+			res.Removals = chks
+			return res
+		},
+		iter.NewPeekIter(iter.NewSliceIter(responses)),
+	)
+
+	// Iterate through the requested and filtered series/chunks,
+	// removing chunks that were filtered out.
+	var next bool
+	var at v1.Output
+	if next = dedupedResps.Next(); next {
+		at = dedupedResps.At()
+	}
+
+	for i := 0; i < len(req.Refs); i++ {
+		// we've hit the end of the removals -- append the rest of the
+		// requested series and return
+		if !next {
+			res = append(res, req.Refs[i:]...)
+			return res
+		}
+
+		// the current series had no removals
+		cur := req.Refs[i]
+		if cur.Fingerprint < uint64(at.Fp) {
+			res = append(res, cur)
 			continue
 		}
-		filtered += g.removeNotMatchingChunks(req, o)
-	}
-	return
-}
 
-func (g *Gateway) removeNotMatchingChunks(req *logproto.FilterChunkRefRequest, res v1.Output) (filtered int) {
+		// the current series had removals. No need to check for equality
+		// b/c removals must be present in input
+		filterChunkRefsForSeries(cur, at.Removals)
+		if len(cur.Refs) > 0 {
+			res = append(res, cur)
+		}
 
-	// binary search index of fingerprint
-	idx := sort.Search(len(req.Refs), func(i int) bool {
-		return req.Refs[i].Fingerprint >= uint64(res.Fp)
-	})
-
-	// fingerprint not found
-	if idx >= len(req.Refs) {
-		level.Error(g.logger).Log("msg", "index out of range", "idx", idx, "len", len(req.Refs), "fp", uint64(res.Fp))
-		return
-	}
-
-	// if all chunks of a fingerprint are are removed
-	// then remove the whole group from the response
-	if len(req.Refs[idx].Refs) == res.Removals.Len() {
-		filtered += len(req.Refs[idx].Refs)
-
-		req.Refs[idx] = nil // avoid leaking pointer
-		req.Refs = append(req.Refs[:idx], req.Refs[idx+1:]...)
-		return
-	}
-
-	for i := range res.Removals {
-		toRemove := res.Removals[i]
-		for j := 0; j < len(req.Refs[idx].Refs); j++ {
-			if toRemove.Checksum == req.Refs[idx].Refs[j].Checksum {
-				filtered += 1
-
-				req.Refs[idx].Refs[j] = nil // avoid leaking pointer
-				req.Refs[idx].Refs = append(req.Refs[idx].Refs[:j], req.Refs[idx].Refs[j+1:]...)
-				j-- // since we removed the current item at index, we have to redo the same index
-			}
+		// advance removals
+		if next = dedupedResps.Next(); next {
+			at = dedupedResps.At()
 		}
 	}
-	return
+
+	return res
+}
+
+// mutates cur
+func filterChunkRefsForSeries(cur *logproto.GroupedChunkRefs, removals v1.ChunkRefs) {
+	// use same backing array to avoid allocations
+	res := cur.Refs[:0]
+
+	var i, j int
+	for i < len(cur.Refs) && j < len(removals) {
+
+		if (*v1.ChunkRef)(cur.Refs[i]).Less(removals[j]) {
+			// chunk was not removed
+			res = append(res, cur.Refs[i])
+			i++
+		} else {
+			// Since all removals must exist in the series, we can assume that if the removal
+			// is not less, it must be equal to the current chunk (a match). Skip this chunk.
+			i++
+			j++
+		}
+
+	}
+
+	if i < len(cur.Refs) {
+		res = append(res, cur.Refs[i:]...)
+	}
+
+	cur.Refs = cur.Refs[:len(res)]
 }

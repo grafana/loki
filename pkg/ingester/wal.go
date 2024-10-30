@@ -2,17 +2,17 @@ package ingester
 
 import (
 	"flag"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log/level"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/tsdb/wlog"
 
-	"github.com/grafana/loki/pkg/ingester/wal"
-	"github.com/grafana/loki/pkg/util/flagext"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/ingester/wal"
+	"github.com/grafana/loki/v3/pkg/util/flagext"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var (
@@ -33,7 +33,7 @@ type WALConfig struct {
 
 func (cfg *WALConfig) Validate() error {
 	if cfg.Enabled && cfg.CheckpointDuration < 1 {
-		return errors.Errorf("invalid checkpoint duration: %v", cfg.CheckpointDuration)
+		return fmt.Errorf("invalid checkpoint duration: %v", cfg.CheckpointDuration)
 	}
 	return nil
 }

@@ -9,6 +9,7 @@ package bson
 import (
 	"bytes"
 	"encoding/json"
+	"sync"
 
 	"go.mongodb.org/mongo-driver/bson/bsoncodec"
 	"go.mongodb.org/mongo-driver/bson/bsonrw"
@@ -141,6 +142,13 @@ func MarshalAppendWithRegistry(r *bsoncodec.Registry, dst []byte, val interface{
 	return MarshalAppendWithContext(bsoncodec.EncodeContext{Registry: r}, dst, val)
 }
 
+// Pool of buffers for marshalling BSON.
+var bufPool = sync.Pool{
+	New: func() interface{} {
+		return new(bytes.Buffer)
+	},
+}
+
 // MarshalAppendWithContext will encode val as a BSON document using Registry r and EncodeContext ec and append the
 // bytes to dst. If dst is not large enough to hold the bytes, it will be grown. If val is not a type that can be
 // transformed into a document, MarshalValueAppendWithContext should be used instead.
@@ -162,8 +170,26 @@ func MarshalAppendWithRegistry(r *bsoncodec.Registry, dst []byte, val interface{
 //
 // See [Encoder] for more examples.
 func MarshalAppendWithContext(ec bsoncodec.EncodeContext, dst []byte, val interface{}) ([]byte, error) {
-	sw := new(bsonrw.SliceWriter)
-	*sw = dst
+	sw := bufPool.Get().(*bytes.Buffer)
+	defer func() {
+		// Proper usage of a sync.Pool requires each entry to have approximately
+		// the same memory cost. To obtain this property when the stored type
+		// contains a variably-sized buffer, we add a hard limit on the maximum
+		// buffer to place back in the pool. We limit the size to 16MiB because
+		// that's the maximum wire message size supported by any current MongoDB
+		// server.
+		//
+		// Comment based on
+		// https://cs.opensource.google/go/go/+/refs/tags/go1.19:src/fmt/print.go;l=147
+		//
+		// Recycle byte slices that are smaller than 16MiB and at least half
+		// occupied.
+		if sw.Cap() < 16*1024*1024 && sw.Cap()/2 < sw.Len() {
+			bufPool.Put(sw)
+		}
+	}()
+
+	sw.Reset()
 	vw := bvwPool.Get(sw)
 	defer bvwPool.Put(vw)
 
@@ -184,7 +210,7 @@ func MarshalAppendWithContext(ec bsoncodec.EncodeContext, dst []byte, val interf
 		return nil, err
 	}
 
-	return *sw, nil
+	return append(dst, sw.Bytes()...), nil
 }
 
 // MarshalValue returns the BSON encoding of val.

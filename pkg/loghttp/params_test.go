@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func TestHttp_defaultQueryRangeStep(t *testing.T) {
@@ -39,8 +39,6 @@ func TestHttp_defaultQueryRangeStep(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			assert.Equal(t, testData.expected, defaultQueryRangeStep(testData.start, testData.end))
 		})
@@ -123,8 +121,6 @@ func TestHttp_ParseRangeQuery_Step(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			req := httptest.NewRequest("GET", testData.reqPath, nil)
 			err := req.ParseForm()
@@ -176,8 +172,6 @@ func Test_interval(t *testing.T) {
 		},
 	}
 	for _, testData := range tests {
-		testData := testData
-
 		t.Run(testData.name, func(t *testing.T) {
 			req := httptest.NewRequest("GET", testData.reqPath, nil)
 			err := req.ParseForm()

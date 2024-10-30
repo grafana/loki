@@ -23,9 +23,9 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 
-	logcli "github.com/grafana/loki/pkg/logcli/client"
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/util/unmarshal"
+	logcli "github.com/grafana/loki/v3/pkg/logcli/client"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/util/unmarshal"
 )
 
 const requestTimeout = 30 * time.Second
@@ -111,7 +111,7 @@ func (c *Client) PushOTLPLogLine(line string, timestamp time.Time, logAttributes
 	return c.pushOTLPLogLine(line, timestamp, logAttributes)
 }
 
-func formatTS(ts time.Time) string {
+func FormatTS(ts time.Time) string {
 	return strconv.FormatInt(ts.UnixNano(), 10)
 }
 
@@ -130,7 +130,7 @@ func (c *Client) pushLogLine(line string, timestamp time.Time, structuredMetadat
 		},
 		Values: [][]any{
 			{
-				formatTS(timestamp),
+				FormatTS(timestamp),
 				line,
 				structuredMetadata,
 			},
@@ -177,7 +177,7 @@ func (c *Client) pushLogLine(line string, timestamp time.Time, structuredMetadat
 	return fmt.Errorf("request failed with status code %v: %s", res.StatusCode, buf)
 }
 
-// pushLogLine creates a new logline
+// pushOTLPLogLine creates a new logline
 func (c *Client) pushOTLPLogLine(line string, timestamp time.Time, logAttributes map[string]any) error {
 	apiEndpoint := fmt.Sprintf("%s/otlp/v1/logs", c.baseURL)
 
@@ -241,6 +241,7 @@ func (c *Client) Metrics() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	defer res.Body.Close()
 
 	var sb strings.Builder
 	if _, err := io.Copy(&sb, res.Body); err != nil {
@@ -508,7 +509,7 @@ func (c *Client) RunQuery(ctx context.Context, query string, extraHeaders ...Hea
 
 	v := url.Values{}
 	v.Set("query", query)
-	v.Set("time", formatTS(c.Now.Add(time.Second)))
+	v.Set("time", FormatTS(c.Now.Add(time.Second)))
 
 	u, err := url.Parse(c.baseURL)
 	if err != nil {
@@ -567,8 +568,8 @@ func (c *Client) parseResponse(buf []byte, statusCode int) (*Response, error) {
 func (c *Client) rangeQueryURL(query string, start, end time.Time) string {
 	v := url.Values{}
 	v.Set("query", query)
-	v.Set("start", formatTS(start))
-	v.Set("end", formatTS(end))
+	v.Set("start", FormatTS(start))
+	v.Set("end", FormatTS(end))
 
 	u, err := url.Parse(c.baseURL)
 	if err != nil {

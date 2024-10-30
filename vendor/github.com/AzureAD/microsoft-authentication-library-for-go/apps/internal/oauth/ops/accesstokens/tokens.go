@@ -168,6 +168,7 @@ type TokenResponse struct {
 
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
+	TokenType    string `json:"token_type"`
 
 	FamilyID       string                    `json:"foci"`
 	IDToken        IDToken                   `json:"id_token"`

@@ -13,8 +13,9 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/grafana/loki/pkg/loki"
-	"github.com/grafana/loki/tools/doc-generator/parse"
+	"github.com/grafana/loki/v3/pkg/loki"
+	"github.com/grafana/loki/v3/tools/doc-generator/parse"
+	"golang.org/x/exp/slices"
 )
 
 const (
@@ -94,6 +95,24 @@ func annotateFlagPrefix(blocks []*parse.ConfigBlock) {
 }
 
 func generateBlocksMarkdown(blocks []*parse.ConfigBlock) string {
+	slices.SortFunc(blocks, func(a, b *parse.ConfigBlock) int {
+		if a.Name < b.Name {
+			return -1
+		}
+
+		if a.Name > b.Name {
+			return 1
+		}
+
+		if a.FlagsPrefix < b.FlagsPrefix {
+			return -1
+		}
+		if a.FlagsPrefix < b.FlagsPrefix {
+			return 1
+		}
+		return 0
+	})
+
 	md := &markdownWriter{}
 	md.writeConfigDoc(blocks)
 	return md.string()

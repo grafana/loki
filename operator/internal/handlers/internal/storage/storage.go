@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	configv1 "github.com/grafana/loki/operator/api/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/grafana/loki/operator/internal/status"
@@ -20,14 +20,14 @@ import (
 //   - The object storage schema config is invalid.
 //   - The object storage CA ConfigMap is missing if one referenced.
 //   - The object storage CA ConfigMap data is invalid.
-//   - The object storage managed auth secret is missing (Only on OpenShift STS-clusters)
+//   - The object storage token cco auth secret is missing (Only on OpenShift STS-clusters)
 func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg configv1.FeatureGates) (storage.Options, error) {
-	storageSecret, managedAuthSecret, err := getSecrets(ctx, k, stack, fg)
+	storageSecret, tokenCCOAuthSecret, err := getSecrets(ctx, k, stack, fg)
 	if err != nil {
 		return storage.Options{}, err
 	}
 
-	objStore, err := extractSecrets(stack.Spec.Storage.Secret.Type, storageSecret, managedAuthSecret, fg)
+	objStore, err := extractSecrets(stack.Spec.Storage.Secret, storageSecret, tokenCCOAuthSecret, fg)
 	if err != nil {
 		return storage.Options{}, &status.DegradedError{
 			Message: fmt.Sprintf("Invalid object storage secret contents: %s", err),
@@ -35,10 +35,19 @@ func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg
 			Requeue: false,
 		}
 	}
-	objStore.OpenShift.Enabled = fg.OpenShift.Enabled
 
+	if objStore.CredentialMode == lokiv1.CredentialModeTokenCCO && tokenCCOAuthSecret == nil {
+		// If we have no token cco auth secret at this point, it is an error
+		return storage.Options{}, &status.DegradedError{
+			Message: "Missing OpenShift cloud credentials secret",
+			Reason:  lokiv1.ReasonMissingTokenCCOAuthSecret,
+			Requeue: true,
+		}
+	}
+
+	now := time.Now().UTC()
 	storageSchemas, err := storage.BuildSchemaConfig(
-		time.Now().UTC(),
+		now,
 		stack.Spec.Storage,
 		stack.Status.Storage,
 	)
@@ -51,6 +60,7 @@ func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg
 	}
 
 	objStore.Schemas = storageSchemas
+	objStore.AllowStructuredMetadata = allowStructuredMetadata(storageSchemas, now)
 
 	if stack.Spec.Storage.TLS == nil {
 		return objStore, nil
@@ -89,4 +99,17 @@ func BuildOptions(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, fg
 	objStore.TLS = &storage.TLSConfig{CA: cm.Name, Key: caKey}
 
 	return objStore, nil
+}
+
+func allowStructuredMetadata(schemas []lokiv1.ObjectStorageSchema, now time.Time) bool {
+	activeVersion := lokiv1.ObjectStorageSchemaV11
+	for _, s := range schemas {
+		time, _ := s.EffectiveDate.UTCTime()
+		if time.Before(now) {
+			activeVersion = s.Version
+		}
+	}
+
+	return activeVersion != lokiv1.ObjectStorageSchemaV11 &&
+		activeVersion != lokiv1.ObjectStorageSchemaV12
 }

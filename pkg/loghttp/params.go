@@ -8,16 +8,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/c2h5oh/datasize"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 const (
 	defaultQueryLimit = 100
+	defaultLimit      = 1000
 	defaultSince      = 1 * time.Hour
 	defaultDirection  = logproto.BACKWARD
 )
@@ -27,6 +29,35 @@ func limit(r *http.Request) (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
+	if l <= 0 {
+		return 0, errors.New("limit must be a positive value")
+	}
+	return uint32(l), nil
+}
+
+func lineLimit(r *http.Request) (uint32, error) {
+	l, err := parseInt(r.Form.Get("line_limit"), defaultQueryLimit)
+	if err != nil {
+		return 0, err
+	}
+	if l <= 0 {
+		return 0, errors.New("limit must be a positive value")
+	}
+	return uint32(l), nil
+}
+
+func detectedFieldsLimit(r *http.Request) (uint32, error) {
+	limit := r.Form.Get("limit")
+	if limit == "" {
+		// for backwards compatibility
+		limit = r.Form.Get("field_limit")
+	}
+
+	l, err := parseInt(limit, defaultLimit)
+	if err != nil {
+		return 0, err
+	}
+
 	if l <= 0 {
 		return 0, errors.New("limit must be a positive value")
 	}
@@ -192,11 +223,29 @@ func parseRegexQuery(httpRequest *http.Request) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		newExpr, err := syntax.AddFilterExpr(expr, labels.MatchRegexp, "", regexp)
+		newExpr, err := syntax.AddFilterExpr(expr, log.LineMatchRegexp, "", regexp)
 		if err != nil {
 			return "", err
 		}
 		query = newExpr.String()
 	}
 	return query, nil
+}
+
+func parseBytes(r *http.Request, field string, optional bool) (val datasize.ByteSize, err error) {
+	s := r.Form.Get(field)
+
+	if s == "" {
+		if !optional {
+			return 0, fmt.Errorf("missing %s", field)
+		}
+		return val, nil
+	}
+
+	if err := val.UnmarshalText([]byte(s)); err != nil {
+		return 0, errors.Wrapf(err, "invalid %s: %s", field, s)
+	}
+
+	return val, nil
+
 }

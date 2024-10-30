@@ -4,7 +4,7 @@ menuTItle:
 description: Overview of how log queries are constructed and parsed.
 aliases: 
 - ../logql/log_queries/
-weight: 10 
+weight: 300 
 ---
 
 # Log queries
@@ -95,7 +95,7 @@ An example that mutates is the expression
 ```
 
 
-Log pipeline expressions fall into one of three categories:
+Log pipeline expressions fall into one of four categories:
 
 - Filtering expressions: [line filter expressions](#line-filter-expression)
 and
@@ -104,6 +104,7 @@ and
 - Formatting expressions: [line format expressions](#line-format-expression)
 and
 [label format expressions](#labels-format-expression)
+- Labels expressions: [drop labels expression](#drop-labels-expression) and [keep labels expression](#keep-labels-expression)
 
 ### Line filter expression
 
@@ -222,15 +223,15 @@ For example with `cluster="namespace"` the cluster is the label identifier, the 
 We support multiple **value** types which are automatically inferred from the query input.
 
 - **String** is double quoted or backticked such as `"200"` or \``us-central1`\`.
-- **[Duration](https://golang.org/pkg/time/#ParseDuration)** is a sequence of decimal numbers, each with optional fraction and a unit suffix, such as "300ms", "1.5h" or "2h45m". Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
+- **[Duration](https://golang.org/pkg/time/#ParseDuration)** is a sequence of decimal numbers, each with optional fraction and a unit suffix, such as "300ms", "1.5h" or "2h45m". Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h". The value of the label identifier used for comparison must be a string with a unit suffix to be parsed correctly, such as "0.10ms" or "1h30m". Optionally, `label_format` can be used to modify the value and append the unit before making the comparison.
 - **Number** are floating-point number (64bits), such as`250`, `89.923`.
-- **Bytes** is a sequence of decimal numbers, each with optional fraction and a unit suffix, such as "42MB", "1.5Kib" or "20b". Valid bytes units are "b", "kib", "kb", "mib", "mb", "gib",  "gb", "tib", "tb", "pib", "pb", "eib", "eb".
+- **Bytes** is a sequence of decimal numbers, each with optional fraction and a unit suffix, such as "42MB", "1.5KiB" or "20B". Valid bytes units are "B", "kB", "MB", "GB", "TB", "KB", "KiB", "MiB", "GiB", "TiB".
 
 String type work exactly like Prometheus label matchers use in [log stream selector](#log-stream-selector). This means you can use the same operations (`=`,`!=`,`=~`,`!~`).
 
 > The string type is the only one that can filter out a log line with a label `__error__`.
 
-Using Duration, Number and Bytes will convert the label value prior to comparision and support the following comparators:
+Using Duration, Number and Bytes will convert the label value prior to comparison and support the following comparators:
 
 - `==` or `=` for equality.
 - `!=` for inequality.
@@ -246,10 +247,10 @@ You can chain multiple predicates using `and` and `or` which respectively expres
 This means that all the following expressions are equivalent:
 
 ```logql
-| duration >= 20ms or size == 20kb and method!~"2.."
-| duration >= 20ms or size == 20kb | method!~"2.."
-| duration >= 20ms or size == 20kb , method!~"2.."
-| duration >= 20ms or size == 20kb  method!~"2.."
+| duration >= 20ms or size == 20KB and method!~"2.."
+| duration >= 20ms or size == 20KB | method!~"2.."
+| duration >= 20ms or size == 20KB , method!~"2.."
+| duration >= 20ms or size == 20KB  method!~"2.."
 
 ```
 
@@ -594,7 +595,7 @@ If we have the following labels `ip=1.1.1.1`, `status=200` and `duration=3000`(m
 
 The above query will give us the `line` as `1.1.1.1 200 3`
 
-See [template functions]({{< relref "../template_functions" >}}) to learn about available functions in the template format.
+Additionally, you can also access the log line using the [`__line__`](https://grafana.com/docs/loki/<LOKI_VERSION>/query/template_functions/#__line__) function and the timestamp using the [`__timestamp__`](https://grafana.com/docs/loki/<LOKI_VERSION>/query/template_functions/#__timestamp__) function. See [template functions](https://grafana.com/docs/loki/<LOKI_VERSION>/query/template_functions/) to learn about available functions in the template format.
 
 ### Labels format expression
 
@@ -626,7 +627,7 @@ the result will be
 {host="grafana.net", path="/", status="200"} {"level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
 ```
 
-Similary, this expression can be used to drop `__error__` labels as well. For example, for the query `{job="varlogs"}|json|drop __error__`, with below log line
+Similarly, this expression can be used to drop `__error__` labels as well. For example, for the query `{job="varlogs"}|json|drop __error__`, with below log line
 
 ```
 INFO GET / loki.net 200

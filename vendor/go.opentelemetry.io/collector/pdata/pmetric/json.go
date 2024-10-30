@@ -17,8 +17,10 @@ import (
 
 var _ Marshaler = (*JSONMarshaler)(nil)
 
+// JSONMarshaler marshals pdata.Metrics to JSON bytes using the OTLP/JSON format.
 type JSONMarshaler struct{}
 
+// MarshalMetrics to the OTLP/JSON format.
 func (*JSONMarshaler) MarshalMetrics(md Metrics) ([]byte, error) {
 	buf := bytes.Buffer{}
 	pb := internal.MetricsToProto(internal.Metrics(md))
@@ -26,8 +28,10 @@ func (*JSONMarshaler) MarshalMetrics(md Metrics) ([]byte, error) {
 	return buf.Bytes(), err
 }
 
+// JSONUnmarshaler unmarshals OTLP/JSON formatted-bytes to pdata.Metrics.
 type JSONUnmarshaler struct{}
 
+// UnmarshalMetrics from OTLP/JSON format into pdata.Metrics.
 func (*JSONUnmarshaler) UnmarshalMetrics(buf []byte) (Metrics, error) {
 	iter := jsoniter.ConfigFastest.BorrowIterator(buf)
 	defer jsoniter.ConfigFastest.ReturnIterator(iter)
@@ -44,7 +48,7 @@ func (ms Metrics) unmarshalJsoniter(iter *jsoniter.Iterator) {
 	iter.ReadObjectCB(func(iter *jsoniter.Iterator, f string) bool {
 		switch f {
 		case "resource_metrics", "resourceMetrics":
-			iter.ReadArrayCB(func(iterator *jsoniter.Iterator) bool {
+			iter.ReadArrayCB(func(*jsoniter.Iterator) bool {
 				ms.ResourceMetrics().AppendEmpty().unmarshalJsoniter(iter)
 				return true
 			})
@@ -102,6 +106,11 @@ func (ms Metric) unmarshalJsoniter(iter *jsoniter.Iterator) {
 			ms.orig.Description = iter.ReadString()
 		case "unit":
 			ms.orig.Unit = iter.ReadString()
+		case "metadata":
+			iter.ReadArrayCB(func(iter *jsoniter.Iterator) bool {
+				ms.orig.Metadata = append(ms.orig.Metadata, json.ReadAttribute(iter))
+				return true
+			})
 		case "sum":
 			ms.SetEmptySum().unmarshalJsoniter(iter)
 		case "gauge":

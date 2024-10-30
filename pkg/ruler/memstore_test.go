@@ -15,7 +15,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 const ruleName = "testrule"
@@ -48,7 +48,7 @@ func TestSelectRestores(t *testing.T) {
 	}
 
 	callCount := 0
-	fn := rules.QueryFunc(func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+	fn := rules.QueryFunc(func(_ context.Context, _ string, t time.Time) (promql.Vector, error) {
 		callCount++
 		return promql.Vector{
 			promql.Sample{
@@ -138,7 +138,7 @@ func TestMemstoreStart(_ *testing.T) {
 		},
 	}
 
-	fn := rules.QueryFunc(func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+	fn := rules.QueryFunc(func(_ context.Context, _ string, _ time.Time) (promql.Vector, error) {
 		return nil, nil
 	})
 
@@ -171,7 +171,7 @@ func TestMemstoreBlocks(t *testing.T) {
 		},
 	}
 
-	fn := rules.QueryFunc(func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+	fn := rules.QueryFunc(func(_ context.Context, _ string, _ time.Time) (promql.Vector, error) {
 		return nil, nil
 	})
 

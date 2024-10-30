@@ -8,20 +8,20 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/cassandra"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb"
-	"github.com/grafana/loki/pkg/util/constants"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/cassandra"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb"
+	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func TestFactoryStop(t *testing.T) {
@@ -214,15 +214,15 @@ func TestNamedStores_populateStoreType(t *testing.T) {
 
 		storeType, ok := ns.storeType["store-1"]
 		assert.True(t, ok)
-		assert.Equal(t, config.StorageTypeAWS, storeType)
+		assert.Equal(t, types.StorageTypeAWS, storeType)
 
 		storeType, ok = ns.storeType["store-2"]
 		assert.True(t, ok)
-		assert.Equal(t, config.StorageTypeAWS, storeType)
+		assert.Equal(t, types.StorageTypeAWS, storeType)
 
 		storeType, ok = ns.storeType["store-3"]
 		assert.True(t, ok)
-		assert.Equal(t, config.StorageTypeGCS, storeType)
+		assert.Equal(t, types.StorageTypeGCS, storeType)
 
 		_, ok = ns.storeType["store-4"]
 		assert.False(t, ok)
@@ -234,7 +234,7 @@ func TestNewObjectClient_prefixing(t *testing.T) {
 		var cfg Config
 		flagext.DefaultValues(&cfg)
 
-		objectClient, err := NewObjectClient("inmemory", "inmemory", cfg, cm, prometheus.NewRegistry())
+		objectClient, err := NewObjectClient("inmemory", "test", cfg, cm)
 		require.NoError(t, err)
 
 		_, ok := objectClient.(client.PrefixedObjectClient)
@@ -246,7 +246,7 @@ func TestNewObjectClient_prefixing(t *testing.T) {
 		flagext.DefaultValues(&cfg)
 		cfg.ObjectPrefix = "my/prefix/"
 
-		objectClient, err := NewObjectClient("inmemory", "inmemory", cfg, cm, prometheus.NewRegistry())
+		objectClient, err := NewObjectClient("inmemory", "test", cfg, cm)
 		require.NoError(t, err)
 
 		prefixed, ok := objectClient.(client.PrefixedObjectClient)
@@ -259,7 +259,7 @@ func TestNewObjectClient_prefixing(t *testing.T) {
 		flagext.DefaultValues(&cfg)
 		cfg.ObjectPrefix = "my/prefix"
 
-		objectClient, err := NewObjectClient("inmemory", "inmemory", cfg, cm, prometheus.NewRegistry())
+		objectClient, err := NewObjectClient("inmemory", "test", cfg, cm)
 		require.NoError(t, err)
 
 		prefixed, ok := objectClient.(client.PrefixedObjectClient)
@@ -272,7 +272,7 @@ func TestNewObjectClient_prefixing(t *testing.T) {
 		flagext.DefaultValues(&cfg)
 		cfg.ObjectPrefix = "/my/prefix/"
 
-		objectClient, err := NewObjectClient("inmemory", "inmemory", cfg, cm, prometheus.NewRegistry())
+		objectClient, err := NewObjectClient("inmemory", "test", cfg, cm)
 		require.NoError(t, err)
 
 		prefixed, ok := objectClient.(client.PrefixedObjectClient)

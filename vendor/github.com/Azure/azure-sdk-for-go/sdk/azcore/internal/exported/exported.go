@@ -8,6 +8,8 @@ package exported
 
 import (
 	"context"
+	"encoding/base64"
+	"fmt"
 	"io"
 	"net/http"
 	"sync/atomic"
@@ -76,6 +78,38 @@ type TokenRequestOptions struct {
 type TokenCredential interface {
 	// GetToken requests an access token for the specified set of scopes.
 	GetToken(ctx context.Context, options TokenRequestOptions) (AccessToken, error)
+}
+
+// DecodeByteArray will base-64 decode the provided string into v.
+// Exported as runtime.DecodeByteArray()
+func DecodeByteArray(s string, v *[]byte, format Base64Encoding) error {
+	if len(s) == 0 {
+		return nil
+	}
+	payload := string(s)
+	if payload[0] == '"' {
+		// remove surrounding quotes
+		payload = payload[1 : len(payload)-1]
+	}
+	switch format {
+	case Base64StdFormat:
+		decoded, err := base64.StdEncoding.DecodeString(payload)
+		if err == nil {
+			*v = decoded
+			return nil
+		}
+		return err
+	case Base64URLFormat:
+		// use raw encoding as URL format should not contain any '=' characters
+		decoded, err := base64.RawURLEncoding.DecodeString(payload)
+		if err == nil {
+			*v = decoded
+			return nil
+		}
+		return err
+	default:
+		return fmt.Errorf("unrecognized byte array format: %d", format)
+	}
 }
 
 // KeyCredential contains an authentication key used to authenticate to an Azure service.

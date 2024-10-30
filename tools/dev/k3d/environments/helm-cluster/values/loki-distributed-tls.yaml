@@ -1,0 +1,241 @@
+common_client_crt: &common_client_crt /var/client-tls/tls.crt
+common_client_key: &common_client_key /var/client-tls/tls.key
+common_ca_crt: &common_ca_crt /var/root-tls/tls.crt
+common_server_crt: &common_server_crt /var/tls/tls.crt
+common_server_key: &common_server_key /var/tls/tls.key
+common_ca_secret: &common_ca_secret ca-tls
+common_client_secret: &common_client_secret client-tls
+common_server_secret: &common_server_secret my-demo-app-tls
+
+base_grpc_tls: &base_grpc_tls
+  tls_cert_path: *common_client_crt
+  tls_key_path: *common_client_key
+  tls_ca_path: *common_ca_crt
+
+base_grpc_tls_with_server_name: &base_grpc_tls_with_server_name
+  tls_server_name: loki-memberlist
+  <<: *base_grpc_tls
+
+base_extra_volume_mounts: &base_extra_volume_mounts
+  extraVolumeMounts:
+    - name: tls-cert
+      mountPath: /var/tls
+    - name: root-tls-cert
+      mountPath: /var/root-tls
+    - name: client-tls
+      mountPath: /var/client-tls
+  
+base_extra_volumes: &base_extra_volumes
+  extraVolumes:
+    - name: tls-cert
+      secret:
+        secretName: *common_server_secret
+    - name: root-tls-cert
+      secret:
+        secretName: *common_ca_secret
+    - name: client-tls
+      secret:
+        secretName: *common_client_secret
+
+test:
+  enabled: false
+
+monitoring:
+  dashboards:
+    enabled: true
+    namespace: k3d-helm-cluster
+  selfMonitoring:
+    enabled: true
+    tenant:
+      name: loki
+      secretNamespace: k3d-helm-cluster
+    logsInstance:
+      clients:
+      - name: loki
+        url: https://loki-gateway.default.svc.cluster.local/loki/api/v1/push
+        external_labels:
+          cluster: loki 
+        tlsConfig:
+          insecureSkipVerify: false
+          cert:
+            secret:
+              key: tls.crt
+              name: client-tls
+          ca:
+            secret:
+              key: tls.crt
+              name: my-ca-tls
+          keySecret:
+            key: tls.key
+            name: client-tls
+          serverName: loki-gateway
+        tenantId: "self-monitoring"
+  serviceMonitor:
+    labels:
+      release: "prometheus"
+  rules:
+    namespace: k3d-helm-cluster
+    labels:
+      release: "prometheus"
+  lokiCanary:
+    <<: *base_extra_volumes
+    <<: *base_extra_volume_mounts
+    extraArgs:
+    - -ca-file=/var/root-tls/tls.crt
+    - -cert-file=/var/tls/tls.crt
+    - -key-file=/var/tls/tls.key
+    - -tls=true
+minio:
+  enabled: true
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+singleBinary:
+  replicas: 0
+
+gateway:
+  <<: *base_extra_volume_mounts
+  <<: *base_extra_volumes
+  readinessProbe:
+      httpGet:
+        path: /
+        port: http-metrics
+        scheme: HTTPS
+      initialDelaySeconds: 30
+      timeoutSeconds: 1
+  nginxConfig:
+    ssl: true
+    serverSnippet: |
+      listen              443 ssl;
+      ssl_verify_client   off;
+      ssl_protocols       TLSv1.2 TLSv1.3;
+      ssl_ciphers         HIGH:!aNULL:!MD5;
+      ssl_certificate     /var/tls/tls.crt;
+      ssl_certificate_key /var/tls/tls.key;
+      ssl_client_certificate /var/client-tls/tls.crt;
+      ssl_trusted_certificate /var/root-tls/tls.crt;
+      server_name loki-memberlist;
+    schema: https
+
+compactor:
+  replicas: 1
+  enabled: true
+  <<: *base_extra_volume_mounts
+  <<: *base_extra_volumes
+
+distributor:
+  replicas: 1
+  <<: *base_extra_volume_mounts
+  <<: *base_extra_volumes
+
+indexGateway:
+  replicas: 1
+  enabled: true
+  <<: *base_extra_volume_mounts
+  <<: *base_extra_volumes
+
+ingester:
+  replicas: 3
+  maxUnavailable: 1
+  <<: *base_extra_volume_mounts
+  <<: *base_extra_volumes
+
+querier:
+  replicas: 3
+  maxUnavailable: 1
+  <<: *base_extra_volume_mounts
+  <<: *base_extra_volumes
+
+queryFrontend:
+  replicas: 1
+  <<: *base_extra_volume_mounts
+  <<: *base_extra_volumes
+
+queryScheduler:
+  replicas: 2
+  enabled: true
+  <<: *base_extra_volume_mounts
+  <<: *base_extra_volumes
+
+ruler:
+  replicas: 1
+  enabled: true
+  <<: *base_extra_volume_mounts
+  <<: *base_extra_volumes
+
+loki:
+  schemaConfig:
+    configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: s3
+      schema: v13
+      index:
+        prefix: loki_index_
+        period: 24h
+  readinessProbe:
+    httpGet:
+      path: /ready
+      port: http-metrics
+      scheme: HTTPS
+    initialDelaySeconds: 30
+    timeoutSeconds: 1
+  structuredConfig:
+    server:
+      log_level: debug
+      http_tls_config:
+        cert_file: *common_server_crt
+        key_file: *common_server_key
+        client_ca_file: *common_ca_crt
+
+        # we need to set this to VerifyClientCertIfGiven to allow for mutual TLS.
+        # we can't set it to VerifyClientCertIfGivenAndRequireAnyClientCert because
+        # it would broke k8s liveness and readiness probes.
+        client_auth_type: VerifyClientCertIfGiven
+      grpc_tls_config:
+        cert_file: *common_server_crt
+        key_file: *common_server_key
+        client_ca_file: *common_ca_crt
+
+        # we need to set this to VerifyClientCertIfGiven to allow for mutual TLS.
+        # we can't set it to VerifyClientCertIfGivenAndRequireAnyClientCert because
+        # it would broke k8s liveness and readiness probes.
+        client_auth_type: VerifyClientCertIfGiven
+    ingester_client:
+      grpc_client_config:
+        <<: *base_grpc_tls_with_server_name
+        tls_enabled: true
+    query_scheduler:
+      grpc_client_config:
+        <<: *base_grpc_tls_with_server_name
+        tls_enabled: true
+    frontend:
+      tail_tls_config:
+        <<: *base_grpc_tls_with_server_name
+      grpc_client_config:
+        <<: *base_grpc_tls_with_server_name
+        tls_enabled: true
+    storage_config:
+      tsdb_shipper:
+        index_gateway_client:
+          grpc_client_config:
+            <<: *base_grpc_tls_with_server_name
+            tls_enabled: true
+    frontend_worker:
+      grpc_client_config:
+        <<: *base_grpc_tls_with_server_name
+        tls_enabled: true
+    memberlist:
+      <<: *base_grpc_tls_with_server_name
+      tls_enabled: true
+    ruler:
+      ruler_client:
+        <<: *base_grpc_tls_with_server_name
+        tls_enabled: true
+      evaluation:
+        query_frontend:
+          <<: *base_grpc_tls_with_server_name
+          tls_enabled: true

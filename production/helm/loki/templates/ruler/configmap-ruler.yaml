@@ -1,0 +1,14 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if $isDistributed }}
+{{- range $dir, $files := .Values.ruler.directories }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "loki.rulerFullname" $ }}-{{ include "loki.rulerRulesDirName" $dir }}
+  labels:
+    {{- include "loki.rulerLabels" $ | nindent 4 }}
+data:
+  {{- toYaml $files | nindent 2}}
+{{- end }}
+{{- end }}

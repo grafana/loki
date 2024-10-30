@@ -7,7 +7,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func TestNewCategorizeLabelsIterator(t *testing.T) {
@@ -127,8 +127,8 @@ func TestNewCategorizeLabelsIterator(t *testing.T) {
 
 			streamsEntries := make(map[string][]logproto.Entry)
 			for itr.Next() {
-				streamsEntries[itr.Labels()] = append(streamsEntries[itr.Labels()], itr.Entry())
-				require.NoError(t, itr.Error())
+				streamsEntries[itr.Labels()] = append(streamsEntries[itr.Labels()], itr.At())
+				require.NoError(t, itr.Err())
 			}
 
 			var streams []logproto.Stream

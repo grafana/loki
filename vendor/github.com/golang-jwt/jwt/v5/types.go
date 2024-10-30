@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"reflect"
 	"strconv"
 	"time"
 )
@@ -121,14 +120,14 @@ func (s *ClaimStrings) UnmarshalJSON(data []byte) (err error) {
 		for _, vv := range v {
 			vs, ok := vv.(string)
 			if !ok {
-				return &json.UnsupportedTypeError{Type: reflect.TypeOf(vv)}
+				return ErrInvalidType
 			}
 			aud = append(aud, vs)
 		}
 	case nil:
 		return nil
 	default:
-		return &json.UnsupportedTypeError{Type: reflect.TypeOf(v)}
+		return ErrInvalidType
 	}
 
 	*s = aud
