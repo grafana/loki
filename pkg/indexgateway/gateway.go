@@ -58,7 +58,7 @@ type IndexClientWithRange struct {
 }
 
 type BloomQuerier interface {
-	FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, chunks []*logproto.ChunkRef, plan plan.QueryPlan) ([]*logproto.ChunkRef, error)
+	FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, series []labels.Labels, chunks []*logproto.ChunkRef, plan plan.QueryPlan) ([]*logproto.ChunkRef, error)
 }
 
 type Gateway struct {
@@ -257,7 +257,12 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 		return result, nil
 	}
 
-	chunkRefs, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, result.Refs, req.Plan)
+	series, err := g.indexQuerier.GetSeries(ctx, instanceID, req.From, req.Through, matchers...)
+	if err != nil {
+		return nil, err
+	}
+
+	chunkRefs, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, series, result.Refs, req.Plan)
 	if err != nil {
 		return nil, err
 	}

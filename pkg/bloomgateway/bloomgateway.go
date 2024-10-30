@@ -19,6 +19,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/model/labels"
 	"go.uber.org/atomic"
 
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
@@ -160,6 +161,18 @@ func (g *Gateway) stopping(_ error) error {
 	return services.StopManagerAndAwaitStopped(context.Background(), g.serviceMngr)
 }
 
+func extractSeries(refs []*logproto.GroupedChunkRefs) []labels.Labels {
+	series := make([]labels.Labels, 0, len(refs))
+	for _, ref := range refs {
+		if ref.Labels == nil {
+			continue
+		}
+		lbs := logproto.FromLabelAdaptersToLabels(ref.Labels.Labels)
+		series = append(series, lbs)
+	}
+	return series
+}
+
 // FilterChunkRefs implements BloomGatewayServer
 func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunkRefRequest) (*logproto.FilterChunkRefResponse, error) {
 	tenantID, err := tenant.TenantID(ctx)
@@ -193,7 +206,12 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return nil, errors.New("from time must not be after through time")
 	}
 
-	matchers := v1.ExtractTestableLabelMatchers(req.Plan.AST)
+	// This time, we do pass the series to the ExtractTestableLabelMatchers
+	// To this point, we have called ExtractTestableLabelMatchers multiple times
+	// without the series (faster) just to return early if there are no filters expressions.
+	// We now need to be more precise and only extract matchers that do not
+	// match the series labels.
+	matchers := v1.ExtractTestableLabelMatchers(req.Plan.AST, extractSeries(req.Refs)...)
 	stats.NumMatchers = len(matchers)
 	g.metrics.receivedMatchers.Observe(float64(len(matchers)))
 

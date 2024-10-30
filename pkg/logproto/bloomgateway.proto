@@ -45,6 +45,7 @@ message GroupedChunkRefs {
   uint64 fingerprint = 1;
   string tenant = 2;
   repeated ShortRef refs = 3;
+  IndexSeries labels = 4;
 }
 
 service BloomGateway {

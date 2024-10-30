@@ -41,7 +41,7 @@ func stringSlice[T fmt.Stringer](s []T) []string {
 
 func groupRefs(t *testing.T, chunkRefs []*logproto.ChunkRef) []*logproto.GroupedChunkRefs {
 	t.Helper()
-	return groupChunkRefs(chunkRefs, nil)
+	return groupChunkRefs(nil, chunkRefs, nil)
 }
 
 func newLimits() *validation.Overrides {
