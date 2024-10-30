@@ -631,11 +631,6 @@ func internalNewObjectClient(storeName, component string, cfg Config, clientMetr
 		storeType  = storeName
 	)
 
-	// preserve olf reg behaviour
-	if !cfg.ThanosObjStore {
-		reg = prometheus.WrapRegistererWith(prometheus.Labels{"component": component}, reg)
-	}
-
 	// lookup storeType for named stores
 	if nsType, ok := cfg.NamedStores.storeType[storeName]; ok {
 		storeType = nsType
@@ -720,9 +715,8 @@ func internalNewObjectClient(storeName, component string, cfg Config, clientMetr
 			}
 			swiftCfg = (openstack.SwiftConfig)(nsCfg)
 		}
-		if cfg.ThanosObjStore {
-			clientMetrics.Unregister()
-			openstack.NewSwiftThanosObjectClient(context.Background(), cfg.ObjStoreConf, component, util_log.Logger, cfg.Hedging, reg)
+		if cfg.UseThanosObjstore {
+			return openstack.NewSwiftThanosObjectClient(context.Background(), cfg.ObjectStore, component, util_log.Logger, cfg.Hedging)
 		}
 		return openstack.NewSwiftObjectClient(swiftCfg, cfg.Hedging)
 

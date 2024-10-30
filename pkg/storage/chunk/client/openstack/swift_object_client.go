@@ -16,26 +16,44 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
+	bucket_http "github.com/grafana/loki/v3/pkg/storage/bucket/http"
 	bucket_swift "github.com/grafana/loki/v3/pkg/storage/bucket/swift"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/v3/pkg/util/log"
 )
 
-var defaultTransport http.RoundTripper = &http.Transport{
-	Proxy:                 http.ProxyFromEnvironment,
-	MaxIdleConnsPerHost:   200,
-	MaxIdleConns:          200,
-	ExpectContinueTimeout: 5 * time.Second,
-}
+func defaultTransport(config bucket_http.Config) (http.RoundTripper, error) {
+	tlsConfig := &tls.Config{}
+	if len(config.TLSConfig.CAPath) > 0 {
+		caPath := config.TLSConfig.CAPath
+		data, err := os.ReadFile(caPath)
+		if err != nil {
+			return nil, fmt.Errorf("unable to load specified CA cert %s: %s", caPath, err)
+		}
+		caCertPool := x509.NewCertPool()
+		if !caCertPool.AppendCertsFromPEM(data) {
+			return nil, fmt.Errorf("unable to use specified CA cert %s", caPath)
+		}
+		tlsConfig.RootCAs = caCertPool
+	}
 
-// HTTPConfig stores the http.Transport configuration
-type HTTPConfig struct {
-	Timeout               time.Duration `yaml:"timeout"`
-	IdleConnTimeout       time.Duration `yaml:"idle_conn_timeout"`
-	ResponseHeaderTimeout time.Duration `yaml:"response_header_timeout"`
-	InsecureSkipVerify    bool          `yaml:"insecure_skip_verify"`
-	CAFile                string        `yaml:"ca_file"`
+	if config.Transport != nil {
+		return config.Transport, nil
+	}
+
+	return &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		MaxIdleConns:          config.MaxIdleConns,
+		MaxIdleConnsPerHost:   config.MaxIdleConnsPerHost,
+		ExpectContinueTimeout: 5 * time.Second,
+		// Set this value so that the underlying transport round-tripper
+		// doesn't try to auto decode the body of objects with
+		// content-encoding set to `gzip`.
+		//
+		// Refer: https://golang.org/src/net/http/transport.go?h=roundTrip#L1843.
+		TLSClientConfig: tlsConfig,
+	}, nil
 }
 
 type SwiftObjectClient struct {
@@ -46,8 +64,8 @@ type SwiftObjectClient struct {
 
 // SwiftConfig is config for the Swift Chunk Client.
 type SwiftConfig struct {
+	Internal            bool `yaml:"internal"`
 	bucket_swift.Config `yaml:",inline"`
-	HTTPConfig          HTTPConfig `yaml:"http_config"`
 }
 
 // RegisterFlags registers flags.
@@ -62,9 +80,8 @@ func (cfg *SwiftConfig) Validate() error {
 
 // RegisterFlagsWithPrefix registers flags with prefix.
 func (cfg *SwiftConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.BoolVar(&cfg.Internal, prefix+"swift.internal", false, "Set this to true to use the internal OpenStack Swift endpoint URL")
 	cfg.Config.RegisterFlagsWithPrefix(prefix, f)
-	f.DurationVar(&cfg.HTTPConfig.Timeout, prefix+"swift.http.timeout", 0, "Timeout specifies a time limit for requests made by swift Client.")
-	f.StringVar(&cfg.HTTPConfig.CAFile, prefix+"swift.http.ca-file", "", "Path to the trusted CA file that signed the SSL certificate of the Swift endpoint.")
 }
 
 // NewSwiftObjectClient makes a new chunk.Client that writes chunks to OpenStack Swift.
@@ -91,24 +108,16 @@ func NewSwiftObjectClient(cfg SwiftConfig, hedgingCfg hedging.Config) (*SwiftObj
 }
 
 func createConnection(cfg SwiftConfig, hedgingCfg hedging.Config, hedging bool) (*swift.Connection, error) {
-	tlsConfig := &tls.Config{
-		InsecureSkipVerify: cfg.HTTP.InsecureSkipVerify,
+	defaultTransport, err := defaultTransport(cfg.Config.HTTP)
+	if err != nil {
+		return nil, err
 	}
-	if cfg.HTTPConfig.CAFile != "" {
-		tlsConfig.RootCAs = x509.NewCertPool()
-		data, err := os.ReadFile(cfg.HTTPConfig.CAFile)
-		if err != nil {
-			return nil, err
-		}
-		tlsConfig.RootCAs.AppendCertsFromPEM(data)
-		defaultTransport := defaultTransport.(*http.Transport)
-		defaultTransport.TLSClientConfig = tlsConfig
-	}
+
 	c := &swift.Connection{
 		AuthVersion:    cfg.Config.AuthVersion,
 		AuthUrl:        cfg.Config.AuthURL,
-		Internal:       cfg.Config.Internal,
-		ApiKey:         cfg.Config.Password,
+		Internal:       cfg.Internal,
+		ApiKey:         cfg.Config.Password.String(),
 		UserName:       cfg.Config.Username,
 		UserId:         cfg.Config.UserID,
 		Retries:        cfg.Config.MaxRetries,
@@ -124,14 +133,6 @@ func createConnection(cfg SwiftConfig, hedgingCfg hedging.Config, hedging bool) 
 		Transport:      defaultTransport,
 	}
 
-	// Create a connection
-
-	switch {
-	case cfg.Config.UserDomainName != "":
-		c.Domain = cfg.Config.UserDomainName
-	case cfg.Config.UserDomainID != "":
-		c.DomainId = cfg.Config.UserDomainID
-	}
 	if hedging {
 		var err error
 		c.Transport, err = hedgingCfg.RoundTripperWithRegisterer(c.Transport, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
@@ -140,7 +141,8 @@ func createConnection(cfg SwiftConfig, hedgingCfg hedging.Config, hedging bool) 
 		}
 	}
 
-	err := c.Authenticate(context.TODO())
+	// Create a connection
+	err = c.Authenticate(context.TODO())
 	if err != nil {
 		return nil, err
 	}
@@ -252,4 +254,8 @@ func (s *SwiftObjectClient) IsObjectNotFoundErr(err error) bool {
 }
 
 // TODO(dannyk): implement for client
-func (s *SwiftObjectClient) IsRetryableErr(error) bool { return false }
+func IsRetryableErr(error) bool { return false }
+
+func (s *SwiftObjectClient) IsRetryableErr(err error) bool {
+	return IsRetryableErr(err)
+}
