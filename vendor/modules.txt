@@ -10,7 +10,7 @@ cloud.google.com/go/internal/optional
 cloud.google.com/go/internal/pubsub
 cloud.google.com/go/internal/trace
 cloud.google.com/go/internal/version
-# cloud.google.com/go/auth v0.9.8
+# cloud.google.com/go/auth v0.9.9
 ## explicit; go 1.21
 cloud.google.com/go/auth
 cloud.google.com/go/auth/credentials
@@ -55,7 +55,7 @@ cloud.google.com/go/longrunning/autogen/longrunningpb
 cloud.google.com/go/monitoring/apiv3/v2
 cloud.google.com/go/monitoring/apiv3/v2/monitoringpb
 cloud.google.com/go/monitoring/internal
-# cloud.google.com/go/pubsub v1.45.0
+# cloud.google.com/go/pubsub v1.45.1
 ## explicit; go 1.21
 cloud.google.com/go/pubsub
 cloud.google.com/go/pubsub/apiv1
@@ -1966,7 +1966,7 @@ golang.org/x/tools/internal/stdlib
 golang.org/x/tools/internal/tokeninternal
 golang.org/x/tools/internal/typesinternal
 golang.org/x/tools/internal/versions
-# google.golang.org/api v0.201.0
+# google.golang.org/api v0.203.0
 ## explicit; go 1.21
 google.golang.org/api/cloudresourcemanager/v1
 google.golang.org/api/compute/v1
@@ -1987,13 +1987,13 @@ google.golang.org/api/transport
 google.golang.org/api/transport/grpc
 google.golang.org/api/transport/http
 google.golang.org/api/transport/http/internal/propagation
-# google.golang.org/genproto v0.0.0-20241007155032-5fefd90f89a9
+# google.golang.org/genproto v0.0.0-20241015192408-796eee8c2d53
 ## explicit; go 1.21
 google.golang.org/genproto/googleapis/type/calendarperiod
 google.golang.org/genproto/googleapis/type/date
 google.golang.org/genproto/googleapis/type/expr
 google.golang.org/genproto/protobuf/api
-# google.golang.org/genproto/googleapis/api v0.0.0-20240930140551-af27646dc61f
+# google.golang.org/genproto/googleapis/api v0.0.0-20241007155032-5fefd90f89a9
 ## explicit; go 1.21
 google.golang.org/genproto/googleapis/api
 google.golang.org/genproto/googleapis/api/annotations
@@ -2002,7 +2002,7 @@ google.golang.org/genproto/googleapis/api/expr/v1alpha1
 google.golang.org/genproto/googleapis/api/label
 google.golang.org/genproto/googleapis/api/metric
 google.golang.org/genproto/googleapis/api/monitoredres
-# google.golang.org/genproto/googleapis/rpc v0.0.0-20241007155032-5fefd90f89a9
+# google.golang.org/genproto/googleapis/rpc v0.0.0-20241015192408-796eee8c2d53
 ## explicit; go 1.21
 google.golang.org/genproto/googleapis/rpc/code
 google.golang.org/genproto/googleapis/rpc/errdetails

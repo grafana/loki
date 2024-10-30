@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.9](https://github.com/googleapis/google-cloud-go/compare/auth/v0.9.8...auth/v0.9.9) (2024-10-22)
+
+
+### Bug Fixes
+
+* **auth:** Fallback cert lookups for missing files ([#11013](https://github.com/googleapis/google-cloud-go/issues/11013)) ([bd76695](https://github.com/googleapis/google-cloud-go/commit/bd766957ec238b7c40ddbabb369e612dc9b07313)), refs [#10844](https://github.com/googleapis/google-cloud-go/issues/10844)
+* **auth:** Replace MDS endpoint universe_domain with universe-domain ([#11000](https://github.com/googleapis/google-cloud-go/issues/11000)) ([6a1586f](https://github.com/googleapis/google-cloud-go/commit/6a1586f2ce9974684affaea84e7b629313b4d114))
+
 ## [0.9.8](https://github.com/googleapis/google-cloud-go/compare/auth/v0.9.7...auth/v0.9.8) (2024-10-09)
 
 
