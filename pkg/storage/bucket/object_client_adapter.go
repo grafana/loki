@@ -38,26 +38,26 @@ func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedSto
 		}
 	}
 
-	b, err := NewClient(ctx, storeType, storeCfg, component, logger, nil)
+	bucket, err := NewClient(ctx, storeType, storeCfg, component, logger, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create bucket: %w", err)
 	}
 
-	hedgedBucket := b
+	hedgedBucket := bucket
 	if hedgingCfg.At != 0 {
 		hedgedTrasport, err := hedgingCfg.RoundTripperWithRegisterer(nil, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
 		if err != nil {
 			return nil, fmt.Errorf("create hedged transport: %w", err)
 		}
 
-		b, err = NewClient(ctx, storeType, storeCfg, component, logger, hedgedTrasport)
+		bucket, err = NewClient(ctx, storeType, storeCfg, component, logger, hedgedTrasport)
 		if err != nil {
 			return nil, fmt.Errorf("create hedged bucket: %w", err)
 		}
 	}
 
 	o := &ObjectClientAdapter{
-		bucket:       b,
+		bucket:       bucket,
 		hedgedBucket: hedgedBucket,
 		logger:       log.With(logger, "component", "bucket_to_object_client_adapter"),
 		// default to no retryable errors. Override with WithRetryableErrFunc

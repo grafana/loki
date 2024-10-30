@@ -2,6 +2,7 @@ package bucket
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/grafana/loki/v3/pkg/storage/bucket/azure"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/filesystem"
@@ -38,8 +39,7 @@ func (ns *NamedStores) populateStoreType() error {
 	ns.storeType = make(map[string]string)
 
 	checkForDuplicates := func(name string) error {
-		switch name {
-		case S3, GCS, Azure, Swift, Filesystem:
+		if slices.Contains(SupportedBackends, name) {
 			return fmt.Errorf("named store %q should not match with the name of a predefined storage type", name)
 		}
 
@@ -89,10 +89,6 @@ func (ns *NamedStores) populateStoreType() error {
 }
 
 func (ns *NamedStores) LookupStoreType(name string) (string, bool) {
-	if ns == nil {
-		return "", false
-	}
-
 	st, ok := ns.storeType[name]
 	return st, ok
 }
