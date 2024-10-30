@@ -21,8 +21,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/pattern/drain"
 
-	loghttp_push "github.com/grafana/loki/v3/pkg/loghttp/push"
-
 	"github.com/grafana/loki/pkg/push"
 )
 
