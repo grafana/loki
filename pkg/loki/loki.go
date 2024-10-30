@@ -740,7 +740,7 @@ func (t *Loki) setupModuleManager() error {
 		BloomStore:               {IndexGatewayRing},
 		PatternRingClient:        {Server, MemberlistKV, Analytics},
 		PatternIngesterTee:       {Server, MemberlistKV, Analytics, PatternRingClient},
-		PatternIngester:          {Server, MemberlistKV, Analytics, PatternRingClient, PatternIngesterTee},
+		PatternIngester:          {Server, MemberlistKV, Analytics, PatternRingClient, PatternIngesterTee, Overrides},
 		IngesterQuerier:          {Ring, PartitionRing, Overrides},
 		QuerySchedulerRing:       {Overrides, MemberlistKV},
 		IndexGatewayRing:         {Overrides, MemberlistKV},
