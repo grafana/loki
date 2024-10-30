@@ -310,6 +310,17 @@ Loki by default does not come with any authentication. Since we will be deployin
     ```
 
     This will create a secret called `loki-basic-auth` in the `loki` namespace. We will reference this secret in the Loki Helm chart configuration.
+  
+1. Create a `canary-basic-auth` secret for the canary:
+
+    ```bash
+    kubectl create secret generic canary-basic-auth \
+      --from-literal=username=<USERNAME> \
+      --from-literal=password=<PASSWORD> \
+      -n loki
+    ```
+    We create a literal secret with the username and password for Loki canary to authenticate with the Loki gateway.
+    **Make sure to replace the placeholders with your desired username and password.** 
 
     
 
@@ -349,8 +360,8 @@ loki:
     storage:
       type: s3
       s3:
-        region: <Insert s3 bucket region> # for example, eu-west-2
-        bucketnames: <Insert s3 bucket name> # Your actual S3 bucket name, for example, loki-aws-dev-ruler
+        region: <S3 BUCKET REGION> # for example, eu-west-2
+        bucketnames: <RULER BUCKET NAME> # Your actual S3 bucket name, for example, loki-aws-dev-ruler
         s3forcepathstyle: false
       alertmanager_url: http://prom:9093 # The URL of the Alertmanager to send alerts (Prometheus, Mimir, etc.)
 
@@ -432,7 +443,22 @@ gateway:
      enabled: true
      existingSecret: loki-basic-auth
 
-
+# Since we are using basic auth, we need to pass the username and password to the canary
+lokiCanary:
+  extraArgs:
+    - -pass=$(LOKI_PASS)
+    - -user=$(LOKI_USER)
+  extraEnv:
+    - name: LOKI_PASS
+      valueFrom:
+        secretKeyRef:
+          name: canary-basic-auth
+          key: password
+    - name: LOKI_USER
+      valueFrom:
+        secretKeyRef:
+          name: canary-basic-auth
+          key: username
 
 # Enable minio for storage
 minio:
