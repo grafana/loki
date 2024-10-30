@@ -4,28 +4,30 @@ import (
 	"fmt"
 	"unsafe"
 
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
 )
 
 type BloomTest interface {
-	Matches(bloom filter.Checker) bool
-	MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool
+	Matches(series labels.Labels, bloom filter.Checker) bool
+	MatchesWithPrefixBuf(series labels.Labels, bloom filter.Checker, buf []byte, prefixLen int) bool
 }
 
 type BloomTests []BloomTest
 
-func (b BloomTests) Matches(bloom filter.Checker) bool {
+func (b BloomTests) Matches(series labels.Labels, bloom filter.Checker) bool {
 	for _, test := range b {
-		if !test.Matches(bloom) {
+		if !test.Matches(series, bloom) {
 			return false
 		}
 	}
 	return true
 }
 
-func (b BloomTests) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
+func (b BloomTests) MatchesWithPrefixBuf(series labels.Labels, bloom filter.Checker, buf []byte, prefixLen int) bool {
 	for _, test := range b {
-		if !test.MatchesWithPrefixBuf(bloom, buf, prefixLen) {
+		if !test.MatchesWithPrefixBuf(series, bloom, buf, prefixLen) {
 			return false
 		}
 	}
@@ -37,12 +39,12 @@ type matchAllTest struct{}
 var MatchAll = matchAllTest{}
 
 // Matches implements BloomTest
-func (n matchAllTest) Matches(_ filter.Checker) bool {
+func (n matchAllTest) Matches(_ labels.Labels, _ filter.Checker) bool {
 	return true
 }
 
 // MatchesWithPrefixBuf implements BloomTest
-func (n matchAllTest) MatchesWithPrefixBuf(_ filter.Checker, _ []byte, _ int) bool {
+func (n matchAllTest) MatchesWithPrefixBuf(_ labels.Labels, _ filter.Checker, _ []byte, _ int) bool {
 	return true
 }
 
@@ -72,13 +74,13 @@ func newOrTest(left, right BloomTest) orTest {
 }
 
 // Matches implements BloomTest
-func (o orTest) Matches(bloom filter.Checker) bool {
-	return o.left.Matches(bloom) || o.right.Matches(bloom)
+func (o orTest) Matches(series labels.Labels, bloom filter.Checker) bool {
+	return o.left.Matches(series, bloom) || o.right.Matches(series, bloom)
 }
 
 // MatchesWithPrefixBuf implements BloomTest
-func (o orTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
-	return o.left.MatchesWithPrefixBuf(bloom, buf, prefixLen) || o.right.MatchesWithPrefixBuf(bloom, buf, prefixLen)
+func (o orTest) MatchesWithPrefixBuf(series labels.Labels, bloom filter.Checker, buf []byte, prefixLen int) bool {
+	return o.left.MatchesWithPrefixBuf(series, bloom, buf, prefixLen) || o.right.MatchesWithPrefixBuf(series, bloom, buf, prefixLen)
 }
 
 type andTest struct {
@@ -93,13 +95,13 @@ func newAndTest(left, right BloomTest) andTest {
 }
 
 // Matches implements BloomTest
-func (a andTest) Matches(bloom filter.Checker) bool {
-	return a.left.Matches(bloom) && a.right.Matches(bloom)
+func (a andTest) Matches(series labels.Labels, bloom filter.Checker) bool {
+	return a.left.Matches(series, bloom) && a.right.Matches(series, bloom)
 }
 
 // MatchesWithPrefixBuf implements BloomTest
-func (a andTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
-	return a.left.MatchesWithPrefixBuf(bloom, buf, prefixLen) && a.right.MatchesWithPrefixBuf(bloom, buf, prefixLen)
+func (a andTest) MatchesWithPrefixBuf(series labels.Labels, bloom filter.Checker, buf []byte, prefixLen int) bool {
+	return a.left.MatchesWithPrefixBuf(series, bloom, buf, prefixLen) && a.right.MatchesWithPrefixBuf(series, bloom, buf, prefixLen)
 }
 
 func LabelMatchersToBloomTest(matchers ...LabelMatcher) BloomTest {
@@ -144,7 +146,7 @@ func newStringMatcherTest(matcher PlainLabelMatcher) stringMatcherTest {
 	return stringMatcherTest{matcher: matcher}
 }
 
-func (sm stringMatcherTest) Matches(bloom filter.Checker) bool {
+func (sm stringMatcherTest) Matches(series labels.Labels, bloom filter.Checker) bool {
 	// TODO(rfratto): reintroduce the use of a shared tokenizer here to avoid
 	// desyncing between how tokens are passed during building vs passed during
 	// querying.
@@ -161,20 +163,10 @@ func (sm stringMatcherTest) Matches(bloom filter.Checker) bool {
 		rawCombined = unsafe.Slice(unsafe.StringData(combined), len(combined))
 	)
 
-	if !bloom.Test(rawKey) {
-		// The structured metadata key wasn't indexed. However, sm.matcher might be
-		// checking against a label which *does* exist, so we can't safely filter
-		// out this chunk.
-		//
-		// TODO(rfratto): The negative test here is a bit confusing, and the key
-		// presence test should likely be done higher up within FuseQuerier.
-		return true
-	}
-
-	return bloom.Test(rawCombined)
+	return sm.match(series, bloom, rawKey, rawCombined)
 }
 
-func (sm stringMatcherTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
+func (sm stringMatcherTest) MatchesWithPrefixBuf(series labels.Labels, bloom filter.Checker, buf []byte, prefixLen int) bool {
 	var (
 		combined = fmt.Sprintf("%s=%s", sm.matcher.Key, sm.matcher.Value)
 
@@ -182,17 +174,28 @@ func (sm stringMatcherTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byt
 		prefixedCombined = appendToBuf(buf, prefixLen, combined)
 	)
 
-	if !bloom.Test(prefixedKey) {
-		// The structured metadata key wasn't indexed for a prefix. However,
-		// sm.matcher might be checking against a label which *does* exist, so we
-		// can't safely filter out this chunk.
-		//
-		// TODO(rfratto): The negative test here is a bit confusing, and the key
-		// presence test should likely be done higher up within FuseQuerier.
-		return true
+	return sm.match(series, bloom, prefixedKey, prefixedCombined)
+}
+
+func (sm stringMatcherTest) match(series labels.Labels, bloom filter.Checker, key []byte, combined []byte) bool {
+	// If the label is part of the series, we cannot check the bloom since
+	// the label is not structured metadata
+	if value := series.Get(sm.matcher.Key); value != "" {
+		// If the series label value is the same as the matcher value, we cannot filter out this chunk.
+		// Otherwise, we can filter out this chunk.
+		// E.g. `{env="prod"} | env="prod"` should not filter out the chunk.
+		// E.g. `{env="prod"} | env="dev"` should filter out the chunk.
+		// E.g. `{env="prod"} | env=""` should filter out the chunk.
+		return value == sm.matcher.Value
 	}
 
-	return bloom.Test(prefixedCombined)
+	// To this point we know the label is structured metadata so if the label name is not
+	// in the bloom, we can filter out the chunk.
+	if !bloom.Test(key) {
+		return false
+	}
+
+	return bloom.Test(combined)
 }
 
 // appendToBuf is the equivalent of append(buf[:prefixLen], str). len(buf) must

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -15,36 +14,11 @@ func TestExtractLabelMatchers(t *testing.T) {
 	tt := []struct {
 		name   string
 		input  string
-		series []labels.Labels
 		expect []v1.LabelMatcher
 	}{
 		{
 			name:  "basic label matcher",
 			input: `{app="foo"} | key="value"`,
-			expect: []v1.LabelMatcher{
-				v1.PlainLabelMatcher{Key: "key", Value: "value"},
-			},
-		},
-
-		{
-			name:  "basic label matcher in series",
-			input: `{app="foo"} | key="value"`,
-			series: []labels.Labels{
-				labels.FromStrings("app", "foo", "bar", "baz"),
-				labels.FromStrings("app", "foo", "key", "other"),
-			},
-			expect: []v1.LabelMatcher{
-				v1.UnsupportedLabelMatcher{},
-			},
-		},
-
-		{
-			name:  "basic label matcher not in series",
-			input: `{app="foo"} | key="value"`,
-			series: []labels.Labels{
-				labels.FromStrings("app", "foo", "bar", "baz"),
-				labels.FromStrings("app", "foo", "env", "prod"),
-			},
 			expect: []v1.LabelMatcher{
 				v1.PlainLabelMatcher{Key: "key", Value: "value"},
 			},
@@ -94,7 +68,7 @@ func TestExtractLabelMatchers(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			expr, err := syntax.ParseExpr(tc.input)
 			require.NoError(t, err)
-			require.Equal(t, tc.expect, v1.ExtractTestableLabelMatchers(expr, tc.series...))
+			require.Equal(t, tc.expect, v1.ExtractTestableLabelMatchers(expr))
 		})
 	}
 }

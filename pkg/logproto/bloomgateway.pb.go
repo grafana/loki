@@ -175,10 +175,12 @@ func (m *ShortRef) GetChecksum() uint32 {
 }
 
 type GroupedChunkRefs struct {
-	Fingerprint uint64       `protobuf:"varint,1,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`
-	Tenant      string       `protobuf:"bytes,2,opt,name=tenant,proto3" json:"tenant,omitempty"`
-	Refs        []*ShortRef  `protobuf:"bytes,3,rep,name=refs,proto3" json:"refs,omitempty"`
-	Labels      *IndexSeries `protobuf:"bytes,4,opt,name=labels,proto3" json:"labels,omitempty"`
+	Fingerprint uint64      `protobuf:"varint,1,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`
+	Tenant      string      `protobuf:"bytes,2,opt,name=tenant,proto3" json:"tenant,omitempty"`
+	Refs        []*ShortRef `protobuf:"bytes,3,rep,name=refs,proto3" json:"refs,omitempty"`
+	// Labels are only populated on FilterChunkRefRequest. They are not returned on FilterChunkRefResponse
+	// TODO(salvacorts): Consider two different messages for FilterChunkRefRequest and FilterChunkRefResponse
+	Labels *IndexSeries `protobuf:"bytes,4,opt,name=labels,proto3" json:"labels,omitempty"`
 }
 
 func (m *GroupedChunkRefs) Reset()      { *m = GroupedChunkRefs{} }

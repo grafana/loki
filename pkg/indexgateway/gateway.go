@@ -58,7 +58,7 @@ type IndexClientWithRange struct {
 }
 
 type BloomQuerier interface {
-	FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, series []labels.Labels, chunks []*logproto.ChunkRef, plan plan.QueryPlan) ([]*logproto.ChunkRef, error)
+	FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, series map[uint64]labels.Labels, chunks []*logproto.ChunkRef, plan plan.QueryPlan) ([]*logproto.ChunkRef, error)
 }
 
 type Gateway struct {
@@ -225,12 +225,16 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 		return nil, err
 	}
 
+	series := make(map[uint64]labels.Labels)
 	result = &logproto.GetChunkRefResponse{
 		Refs: make([]*logproto.ChunkRef, 0, len(chunks)),
 	}
 	for _, cs := range chunks {
 		for i := range cs {
 			result.Refs = append(result.Refs, &cs[i].ChunkRef)
+			if _, ok := series[cs[i].Fingerprint]; !ok {
+				series[cs[i].Fingerprint] = cs[i].Metric
+			}
 		}
 	}
 
@@ -255,11 +259,6 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 	// the g.bloomQuerier)
 	if len(v1.ExtractTestableLabelMatchers(req.Plan.AST)) == 0 {
 		return result, nil
-	}
-
-	series, err := g.indexQuerier.GetSeries(ctx, instanceID, req.From, req.Through, matchers...)
-	if err != nil {
-		return nil, err
 	}
 
 	chunkRefs, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, series, result.Refs, req.Plan)

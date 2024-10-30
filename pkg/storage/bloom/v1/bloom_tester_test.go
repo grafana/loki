@@ -3,6 +3,7 @@ package v1
 import (
 	"testing"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -23,6 +24,7 @@ func TestLabelMatchersToBloomTest(t *testing.T) {
 		)
 	)
 
+	series := labels.FromStrings("app", "fake")
 	tt := []struct {
 		name  string
 		query string
@@ -54,14 +56,29 @@ func TestLabelMatchersToBloomTest(t *testing.T) {
 			match: false,
 		},
 		{
-			name:  "ignore non-indexed key",
+			name:  "filter non-indexed key",
 			query: `{app="fake"} | noexist="noexist"`,
+			match: false,
+		},
+		{
+			name:  "filter non-indexed key with empty value",
+			query: `{app="fake"} | noexist=""`,
+			match: false,
+		},
+		{
+			name:  "filter series label with different value",
+			query: `{app="fake"} | app="noexist"`,
+			match: false,
+		},
+		{
+			name:  "ignore label from series",
+			query: `{app="fake"} | app="fake"`,
 			match: true,
 		},
 		{
-			name:  "ignore non-indexed key with empty value",
-			query: `{app="fake"} | noexist=""`,
-			match: true,
+			name:  "ignore label from series with empty value",
+			query: `{app="fake"} | app=""`,
+			match: false,
 		},
 		{
 			name:  "ignore unsupported operator",
@@ -99,8 +116,8 @@ func TestLabelMatchersToBloomTest(t *testing.T) {
 			bloomTest := LabelMatchersToBloomTest(matchers...)
 
 			// .Matches and .MatchesWithPrefixBuf should both have the same result.
-			require.Equal(t, tc.match, bloomTest.Matches(bloom))
-			require.Equal(t, tc.match, bloomTest.MatchesWithPrefixBuf(bloom, []byte(prefix), len(prefix)))
+			require.Equal(t, tc.match, bloomTest.Matches(series, bloom))
+			require.Equal(t, tc.match, bloomTest.MatchesWithPrefixBuf(series, bloom, []byte(prefix), len(prefix)))
 		})
 	}
 }

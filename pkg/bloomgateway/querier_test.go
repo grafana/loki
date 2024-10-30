@@ -81,7 +81,7 @@ func TestBloomQuerier(t *testing.T) {
 		}
 		expr, err := syntax.ParseExpr(`{foo="bar"}`)
 		require.NoError(t, err)
-		res, err := bq.FilterChunkRefs(ctx, tenant, from, through, nil, chunkRefs, plan.QueryPlan{AST: expr})
+		res, err := bq.FilterChunkRefs(ctx, tenant, from, through, nil, plan.QueryPlan{AST: expr})
 		require.NoError(t, err)
 		require.Equal(t, chunkRefs, res)
 		require.Equal(t, 0, c.callCount)
@@ -97,7 +97,7 @@ func TestBloomQuerier(t *testing.T) {
 		chunkRefs := []*logproto.ChunkRef{}
 		expr, err := syntax.ParseExpr(`{foo="bar"} | trace_id="exists"`)
 		require.NoError(t, err)
-		res, err := bq.FilterChunkRefs(ctx, tenant, from, through, nil, chunkRefs, plan.QueryPlan{AST: expr})
+		res, err := bq.FilterChunkRefs(ctx, tenant, from, through, nil, plan.QueryPlan{AST: expr})
 		require.NoError(t, err)
 		require.Equal(t, chunkRefs, res)
 		require.Equal(t, 0, c.callCount)
@@ -117,7 +117,7 @@ func TestBloomQuerier(t *testing.T) {
 		}
 		expr, err := syntax.ParseExpr(`{foo="bar"} | trace_id="exists"`)
 		require.NoError(t, err)
-		res, err := bq.FilterChunkRefs(ctx, tenant, from, through, nil, chunkRefs, plan.QueryPlan{AST: expr})
+		res, err := bq.FilterChunkRefs(ctx, tenant, from, through, nil, plan.QueryPlan{AST: expr})
 		require.Error(t, err)
 		require.Nil(t, res)
 	})
@@ -136,7 +136,7 @@ func TestBloomQuerier(t *testing.T) {
 		}
 		expr, err := syntax.ParseExpr(`{foo="bar"} | trace_id="exists"`)
 		require.NoError(t, err)
-		res, err := bq.FilterChunkRefs(ctx, tenant, from, through, nil, chunkRefs, plan.QueryPlan{AST: expr})
+		res, err := bq.FilterChunkRefs(ctx, tenant, from, through, nil, plan.QueryPlan{AST: expr})
 		require.NoError(t, err)
 		require.Equal(t, chunkRefs, res)
 		require.Equal(t, 2, c.callCount)
@@ -150,6 +150,10 @@ func TestGroupChunkRefs(t *testing.T) {
 		labels.FromStrings("app", "2"),
 		labels.FromStrings("app", "3"),
 	}
+	seriesMap := make(map[uint64]labels.Labels)
+	for _, s := range series {
+		seriesMap[s.Hash()] = s
+	}
 
 	chunkRefs := []*logproto.ChunkRef{
 		{Fingerprint: series[0].Hash(), UserID: "tenant", From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59")},
@@ -160,7 +164,7 @@ func TestGroupChunkRefs(t *testing.T) {
 		{Fingerprint: series[2].Hash(), UserID: "tenant", From: mktime("2024-04-20 01:00"), Through: mktime("2024-04-20 01:59")},
 	}
 
-	result := groupChunkRefs(series, chunkRefs, nil)
+	result := groupChunkRefs(seriesMap, chunkRefs, nil)
 	require.Equal(t, []*logproto.GroupedChunkRefs{
 		{Fingerprint: series[0].Hash(), Tenant: "tenant", Refs: []*logproto.ShortRef{
 			{From: mktime("2024-04-20 00:00"), Through: mktime("2024-04-20 00:59")},
@@ -189,12 +193,12 @@ func BenchmarkGroupChunkRefs(b *testing.B) {
 	n := 1000  // num series
 	m := 10000 // num chunks per series
 	chunkRefs := make([]*logproto.ChunkRef, 0, n*m)
-	series := make([]labels.Labels, 0, n)
+	series := make(map[uint64]labels.Labels, n)
 
 	for i := 0; i < n; i++ {
 		s := labels.FromStrings("app", fmt.Sprintf("%d", i))
 		sFP := s.Hash()
-		series = append(series, s)
+		series[sFP] = s
 		for j := 0; j < m; j++ {
 			chunkRefs = append(chunkRefs, &logproto.ChunkRef{
 				Fingerprint: sFP,
