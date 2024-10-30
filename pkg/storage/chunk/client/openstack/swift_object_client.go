@@ -44,8 +44,8 @@ func defaultTransport(config bucket_http.Config) (http.RoundTripper, error) {
 
 	return &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
-		MaxIdleConns:          config.MaxIdleConns,
-		MaxIdleConnsPerHost:   config.MaxIdleConnsPerHost,
+		MaxIdleConns:          200,
+		MaxIdleConnsPerHost:   200,
 		ExpectContinueTimeout: 5 * time.Second,
 		// Set this value so that the underlying transport round-tripper
 		// doesn't try to auto decode the body of objects with

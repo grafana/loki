@@ -5846,6 +5846,10 @@ The `swift_storage_config` block configures the connection to OpenStack Object S
 &nbsp;
 
 ```yaml
+# Set this to true to use the internal OpenStack Swift endpoint URL
+# CLI flag: -<prefix>.swift.internal
+[internal: <boolean> | default = false]
+
 # OpenStack Swift authentication API version. 0 to autodetect.
 # CLI flag: -<prefix>.swift.auth-version
 [auth_version: <int> | default = 0]
@@ -5853,10 +5857,6 @@ The `swift_storage_config` block configures the connection to OpenStack Object S
 # OpenStack Swift authentication URL
 # CLI flag: -<prefix>.swift.auth-url
 [auth_url: <string> | default = ""]
-
-# Set this to true to use the internal OpenStack Swift endpoint URL
-# CLI flag: -<prefix>.swift.internal
-[internal: <boolean> | default = false]
 
 # OpenStack Swift username.
 # CLI flag: -<prefix>.swift.username
@@ -5925,6 +5925,12 @@ The `swift_storage_config` block configures the connection to OpenStack Object S
 # is received on a request.
 # CLI flag: -<prefix>.swift.request-timeout
 [request_timeout: <duration> | default = 5s]
+
+http_config:
+  # Path to the CA certificates to validate server certificate against. If not
+  # set, the host's root CA certificates are used.
+  # CLI flag: -<prefix>.swift.http.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
 ```
 
 ### table_manager

@@ -6,17 +6,21 @@ import (
 	"time"
 )
 
+// NOTE some of the fields are hidden in the documentation due to this struct
+// being by the old Swift storage backend. The hidden fields can be unhidden
+// when we deprecate the old clients.
+
 // Config stores the http.Client configuration for the storage clients.
 type Config struct {
-	IdleConnTimeout       time.Duration `yaml:"idle_conn_timeout"`
-	ResponseHeaderTimeout time.Duration `yaml:"response_header_timeout"`
-	InsecureSkipVerify    bool          `yaml:"insecure_skip_verify"`
+	IdleConnTimeout       time.Duration `yaml:"idle_conn_timeout" doc:"hidden"`
+	ResponseHeaderTimeout time.Duration `yaml:"response_header_timeout" doc:"hidden"`
+	InsecureSkipVerify    bool          `yaml:"insecure_skip_verify" doc:"hidden"`
 
-	TLSHandshakeTimeout   time.Duration `yaml:"tls_handshake_timeout"`
-	ExpectContinueTimeout time.Duration `yaml:"expect_continue_timeout"`
-	MaxIdleConns          int           `yaml:"max_idle_connections"`
-	MaxIdleConnsPerHost   int           `yaml:"max_idle_connections_per_host"`
-	MaxConnsPerHost       int           `yaml:"max_connections_per_host"`
+	TLSHandshakeTimeout   time.Duration `yaml:"tls_handshake_timeout" doc:"hidden"`
+	ExpectContinueTimeout time.Duration `yaml:"expect_continue_timeout" doc:"hidden"`
+	MaxIdleConns          int           `yaml:"max_idle_connections" doc:"hidden"`
+	MaxIdleConnsPerHost   int           `yaml:"max_idle_connections_per_host" doc:"hidden"`
+	MaxConnsPerHost       int           `yaml:"max_connections_per_host" doc:"hidden"`
 
 	// Allow upstream callers to inject a round tripper
 	Transport http.RoundTripper `yaml:"-"`
@@ -27,9 +31,9 @@ type Config struct {
 // TLSConfig configures the options for TLS connections.
 type TLSConfig struct {
 	CAPath     string `yaml:"tls_ca_path" category:"advanced"`
-	CertPath   string `yaml:"tls_cert_path" category:"advanced"`
-	KeyPath    string `yaml:"tls_key_path" category:"advanced"`
-	ServerName string `yaml:"tls_server_name" category:"advanced"`
+	CertPath   string `yaml:"tls_cert_path" category:"advanced" doc:"hidden"`
+	KeyPath    string `yaml:"tls_key_path" category:"advanced" doc:"hidden"`
+	ServerName string `yaml:"tls_server_name" category:"advanced" doc:"hidden"`
 }
 
 // RegisterFlags registers the flags for the storage HTTP client.
