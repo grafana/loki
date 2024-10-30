@@ -10,7 +10,7 @@ keywords:
 
 This Helm Chart deploys Grafana Loki on Kubernetes.
 
-This chart configures Loki to run Loki in [microservice mode]({{< relref "../../../../get-started/deployment-modes#microservices-mode" >}}). The microservices deployment mode runs components of Loki as distinct processes.
+This Helm chart deploys Loki to run Loki in [microservice mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) within a Kubernetes cluster. The microservices deployment mode runs components of Loki as distinct processes.
 
 The default Helm chart deploys the following components:
 - **Compactor component** (1 replica): Compacts and processes stored data.
@@ -22,7 +22,7 @@ The default Helm chart deploys the following components:
 - **QueryScheduler component** (2 replicas): Schedules queries.
 
 {{< admonition type="note" >}}
-We do not recommend running Microservice mode with `filesystem` storage. For the purpose of this guide, we will use MinIO as the object storage to provide a complete example. 
+We do not recommend running in Microservice mode with `filesystem` storage. For the purpose of this guide, we will use MinIO as the object storage to provide a complete example. 
 {{< /admonition >}}
 
 
@@ -197,8 +197,8 @@ loki:
           period: 24h
   storage_config:
     aws:
-      region: <AWS region your bucket is in eg. `eu-west-2`>
-      bucketnames: <Your AWS bucket for chunk eg. `aws-loki-dev-chunk`>
+      region: <AWS region your bucket is in, for example, `eu-west-2`>
+      bucketnames: <Your AWS bucket for chunk, for example, `aws-loki-dev-chunk`>
       s3forcepathstyle: false
   ingester:
       chunk_encoding: snappy
@@ -215,8 +215,8 @@ loki:
     type: s3
     bucketNames:
         chunks: <Your AWS bucket for chunk, for example, `aws-loki-dev-chunk`>
-        ruler: <Your AWS bucket for ruler , for example,  `aws-loki-dev-ruler`>
-        admin: <Your AWS bucket for admin , for example,  `aws-loki-dev-admin`>
+        ruler: <Your AWS bucket for ruler, for example,  `aws-loki-dev-ruler`>
+        admin: <Your AWS bucket for admin, for example,  `aws-loki-dev-admin`>
     s3:
       # s3 URL can be used to specify the endpoint, access key, secret key, and bucket name this works well for S3 compatible storage or if you are hosting Loki on-premises and want to use S3 as the storage backend. Either use the s3 URL or the individual fields below (AWS endpoint, region, secret).
       s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name

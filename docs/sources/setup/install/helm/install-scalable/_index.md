@@ -11,7 +11,7 @@ keywords:
 
 # Install the simple scalable Helm chart
 
-This Helm Chart deploys Grafana Loki on Kubernetes in simple scalable mode.
+This Helm Chart deploys Grafana Loki in [simple scalable mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable) within a Kubernetes cluster.
 
 This chart configures Loki to run `read`, `write`, and `backend` targets in a [scalable mode]({{< relref "../../../../get-started/deployment-modes#simple-scalable" >}}). Loki’s simple scalable deployment mode separates execution paths into read, write, and backend targets.
 
@@ -109,7 +109,7 @@ The following steps show how to deploy the Loki Helm chart in simple scalable mo
 
 ## Object Storage Configuration
 
-After testing Loki with MinIO, we recommend to configure Loki with an object storage provider. The following examples shows how to configure Loki with different object storage providers:
+After testing Loki with MinIO, we recommend configuring Loki with an object storage provider. The following examples shows how to configure Loki with different object storage providers:
 
 {{< admonition type="caution" >}}
 When deploying Loki using S3 Storage **DO NOT** use the default bucket names;  `chunk`, `ruler` and `admin`. Choose a unique name for each bucket. For more information see the following [security update](https://grafana.com/blog/2024/06/27/grafana-security-update-grafana-loki-and-unintended-data-write-attempts-to-amazon-s3-buckets/). This caution does not apply when you are using MinIO. When using MinIO we recommend using the default bucket names.

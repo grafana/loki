@@ -46,7 +46,7 @@ loki:
     replication_factor: 1
   schemaConfig:
     configs:
-      - from: 2024-04-01
+      - from: "2024-04-01"
         store: tsdb
         object_store: s3
         schema: v13
@@ -124,7 +124,7 @@ loki:
     replication_factor: 3
   schemaConfig:
     configs:
-      - from: 2024-04-01
+      - from: "2024-04-01"
         store: tsdb
         object_store: s3
         schema: v13
@@ -410,7 +410,7 @@ To configure other storage providers, refer to the [Helm Chart Reference](https:
 We are actively working on providing more guides for deploying Loki in production. 
 {{< /admonition >}}
 
-It is recommended to run Loki at scale within in a cloud environment like AWS, Azure, or GCP. The below guides will show you how to deploy a minimally viable production environment.
+We recommend running Loki at scale within a cloud environment like AWS, Azure, or GCP. The below guides will show you how to deploy a minimally viable production environment.
 - [Deploy Loki on AWS](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/deployment-guides/aws)
 
 
