@@ -371,6 +371,7 @@ Flags:
       --auth-header="Authorization"
                                 The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.
       --proxy-url=""            The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.
+      --compress                Request that Loki compress returned data in transit. Can also be set using LOKI_HTTP_COMPRESSION env var.
       --limit=30                Limit on number of entries to print. Setting it to 0 will fetch all entries.
       --since=1h                Lookback window.
       --from=FROM               Start looking for logs at this absolute time (inclusive)
@@ -465,6 +466,7 @@ Flags:
       --auth-header="Authorization"
                               The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.
       --proxy-url=""          The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.
+      --compress              Request that Loki compress returned data in transit. Can also be set using LOKI_HTTP_COMPRESSION env var.
       --limit=30              Limit on number of entries to print. Setting it to 0 will fetch all entries.
       --now=NOW               Time at which to execute the instant query.
       --forward               Scan forwards through logs.
@@ -525,6 +527,7 @@ Flags:
       --auth-header="Authorization"
                               The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.
       --proxy-url=""          The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.
+      --compress              Request that Loki compress returned data in transit. Can also be set using LOKI_HTTP_COMPRESSION env var.
       --since=1h              Lookback window.
       --from=FROM             Start looking for labels at this absolute time (inclusive)
       --to=TO                 Stop looking for labels at this absolute time (exclusive)
@@ -581,6 +584,7 @@ Flags:
       --auth-header="Authorization"
                               The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.
       --proxy-url=""          The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.
+      --compress              Request that Loki compress returned data in transit. Can also be set using LOKI_HTTP_COMPRESSION env var.
       --since=1h              Lookback window.
       --from=FROM             Start looking for logs at this absolute time (inclusive)
       --to=TO                 Stop looking for logs at this absolute time (exclusive)
@@ -633,6 +637,7 @@ Flags:
       --auth-header="Authorization"
                               The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.
       --proxy-url=""          The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.
+      --compress              Request that Loki compress returned data in transit. Can also be set using LOKI_HTTP_COMPRESSION env var.
 ```
 
 ### `stats` command reference
@@ -694,6 +699,7 @@ Flags:
       --auth-header="Authorization"
                               The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.
       --proxy-url=""          The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.
+      --compress              Request that Loki compress returned data in transit. Can also be set using LOKI_HTTP_COMPRESSION env var.
       --since=1h              Lookback window.
       --from=FROM             Start looking for logs at this absolute time (inclusive)
       --to=TO                 Stop looking for logs at this absolute time (exclusive)
@@ -761,6 +767,7 @@ Flags:
       --auth-header="Authorization"
                               The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.
       --proxy-url=""          The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.
+      --compress              Request that Loki compress returned data in transit. Can also be set using LOKI_HTTP_COMPRESSION env var.
       --since=1h              Lookback window.
       --from=FROM             Start looking for logs at this absolute time (inclusive)
       --to=TO                 Stop looking for logs at this absolute time (exclusive)
@@ -833,6 +840,7 @@ Flags:
       --auth-header="Authorization"
                               The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.
       --proxy-url=""          The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.
+      --compress              Request that Loki compress returned data in transit. Can also be set using LOKI_HTTP_COMPRESSION env var.
       --since=1h              Lookback window.
       --from=FROM             Start looking for logs at this absolute time (inclusive)
       --to=TO                 Stop looking for logs at this absolute time (exclusive)

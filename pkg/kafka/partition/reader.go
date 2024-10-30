@@ -477,7 +477,7 @@ func (p *Reader) recordFetchesMetrics(fetches kgo.Fetches) {
 	fetches.EachRecord(func(record *kgo.Record) {
 		numRecords++
 		delay := now.Sub(record.Timestamp).Seconds()
-		if p.lastProcessedOffset == -1 {
+		if p.Service.State() == services.Starting {
 			p.metrics.receiveDelayWhenStarting.Observe(delay)
 		} else {
 			p.metrics.receiveDelayWhenRunning.Observe(delay)
