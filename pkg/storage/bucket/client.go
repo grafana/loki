@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"fmt"
+	"net/http"
 	"regexp"
 
 	"github.com/go-kit/log"
@@ -48,8 +48,8 @@ var (
 	metrics = objstore.BucketMetrics(prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer), "")
 )
 
-// StorageBackendConfig holds configuration for accessing long-term storage.
-type StorageBackendConfig struct {
+// Config holds configuration for accessing long-term storage.
+type Config struct {
 	// Backends
 	S3         s3.Config         `yaml:"s3"`
 	GCS        gcs.Config        `yaml:"gcs"`
@@ -57,51 +57,20 @@ type StorageBackendConfig struct {
 	Swift      swift.Config      `yaml:"swift"`
 	Filesystem filesystem.Config `yaml:"filesystem"`
 
-	NamedStores NamedStores `yaml:"named_stores"`
+	StoragePrefix string `yaml:"storage_prefix"`
 
 	// Used to inject additional backends into the config. Allows for this config to
 	// be embedded in multiple contexts and support non-object storage based backends.
 	ExtraBackends []string `yaml:"-"`
-}
-
-// Returns the SupportedBackends for the package and any custom backends injected into the config.
-func (cfg *StorageBackendConfig) SupportedBackends() []string {
-	return append(SupportedBackends, cfg.ExtraBackends...)
-}
-
-// RegisterFlags registers the backend storage config.
-func (cfg *StorageBackendConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.RegisterFlagsWithPrefix("", f)
-}
-
-func (cfg *StorageBackendConfig) RegisterFlagsWithPrefixAndDefaultDirectory(prefix, dir string, f *flag.FlagSet) {
-	cfg.GCS.RegisterFlagsWithPrefix(prefix, f)
-	cfg.S3.RegisterFlagsWithPrefix(prefix, f)
-	cfg.Azure.RegisterFlagsWithPrefix(prefix, f)
-	cfg.Swift.RegisterFlagsWithPrefix(prefix, f)
-	cfg.Filesystem.RegisterFlagsWithPrefixAndDefaultDirectory(prefix, dir, f)
-}
-
-func (cfg *StorageBackendConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	cfg.RegisterFlagsWithPrefixAndDefaultDirectory(prefix, "", f)
-}
-
-func (cfg *StorageBackendConfig) Validate() error {
-	if err := cfg.S3.Validate(); err != nil {
-		return err
-	}
-
-	return cfg.NamedStores.Validate()
-}
-
-// Config holds configuration for accessing long-term storage.
-type Config struct {
-	StorageBackendConfig `yaml:",inline"`
-	StoragePrefix        string `yaml:"storage_prefix"`
 
 	// Not used internally, meant to allow callers to wrap Buckets
 	// created using this config
 	Middlewares []func(objstore.InstrumentedBucket) (objstore.InstrumentedBucket, error) `yaml:"-"`
+}
+
+// Returns the SupportedBackends for the package and any custom backends injected into the config.
+func (cfg *Config) SupportedBackends() []string {
+	return append(SupportedBackends, cfg.ExtraBackends...)
 }
 
 // RegisterFlags registers the backend storage config.
@@ -110,7 +79,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *Config) RegisterFlagsWithPrefixAndDefaultDirectory(prefix, dir string, f *flag.FlagSet) {
-	cfg.StorageBackendConfig.RegisterFlagsWithPrefixAndDefaultDirectory(prefix, dir, f)
+	cfg.GCS.RegisterFlagsWithPrefix(prefix, f)
+	cfg.S3.RegisterFlagsWithPrefix(prefix, f)
+	cfg.Azure.RegisterFlagsWithPrefix(prefix, f)
+	cfg.Swift.RegisterFlagsWithPrefix(prefix, f)
+	cfg.Filesystem.RegisterFlagsWithPrefixAndDefaultDirectory(prefix, dir, f)
 	f.StringVar(&cfg.StoragePrefix, prefix+"storage-prefix", "", "Prefix for all objects stored in the backend storage. For simplicity, it may only contain digits and English alphabet letters.")
 }
 
@@ -126,7 +99,20 @@ func (cfg *Config) Validate() error {
 		}
 	}
 
-	if err := cfg.StorageBackendConfig.Validate(); err != nil {
+	if err := cfg.S3.Validate(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+type ConfigWithNamedStores struct {
+	Config      `yaml:",inline"`
+	NamedStores NamedStores `yaml:"named_stores"`
+}
+
+func (cfg *ConfigWithNamedStores) Validate() error {
+	if err := cfg.Config.Validate(); err != nil {
 		return err
 	}
 
@@ -134,82 +120,24 @@ func (cfg *Config) Validate() error {
 }
 
 // NewClient creates a new bucket client based on the configured backend
-func NewClient(ctx context.Context, backend string, cfg Config, name string, logger log.Logger) (objstore.InstrumentedBucket, error) {
+func NewClient(ctx context.Context, backend string, cfg Config, name string, logger log.Logger, rt http.RoundTripper) (objstore.InstrumentedBucket, error) {
 	var (
-		storeType  = backend
-		namedStore bool
-
 		client objstore.Bucket
 		err    error
 	)
 
-	if st, ok := cfg.NamedStores.storeType[backend]; ok {
-		namedStore = true
-		storeType = st
-	}
-
 	// TODO: add support for other backends that loki already supports
-	switch storeType {
+	switch backend {
 	case S3:
-		s3Cfg := cfg.S3
-		if namedStore {
-			nsCfg, ok := cfg.NamedStores.S3[backend]
-			if !ok {
-				return nil, fmt.Errorf("Unrecognized named s3 storage config %s", backend)
-			}
-
-			s3Cfg = (s3.Config)(nsCfg)
-		}
-
-		client, err = s3.NewBucketClient(s3Cfg, name, logger)
+		client, err = s3.NewBucketClient(cfg.S3, name, logger, rt)
 	case GCS:
-		gcsCfg := cfg.GCS
-		if namedStore {
-			nsCfg, ok := cfg.NamedStores.GCS[backend]
-			if !ok {
-				return nil, fmt.Errorf("Unrecognized named gcs storage config %s", backend)
-			}
-
-			gcsCfg = (gcs.Config)(nsCfg)
-		}
-
-		client, err = gcs.NewBucketClient(ctx, gcsCfg, name, logger)
+		client, err = gcs.NewBucketClient(ctx, cfg.GCS, name, logger, rt)
 	case Azure:
-		azureCfg := cfg.Azure
-		if namedStore {
-			nsCfg, ok := cfg.NamedStores.Azure[backend]
-			if !ok {
-				return nil, fmt.Errorf("Unrecognized named azure storage config %s", backend)
-			}
-
-			azureCfg = (azure.Config)(nsCfg)
-		}
-
-		client, err = azure.NewBucketClient(azureCfg, name, logger)
+		client, err = azure.NewBucketClient(cfg.Azure, name, logger, rt)
 	case Swift:
-		swiftCfg := cfg.Swift
-		if namedStore {
-			nsCfg, ok := cfg.NamedStores.Swift[backend]
-			if !ok {
-				return nil, fmt.Errorf("Unrecognized named swift storage config %s", backend)
-			}
-
-			swiftCfg = (swift.Config)(nsCfg)
-		}
-
-		client, err = swift.NewBucketClient(swiftCfg, name, logger)
+		client, err = swift.NewBucketClient(cfg.Swift, name, logger, rt)
 	case Filesystem:
-		fsCfg := cfg.Filesystem
-		if namedStore {
-			nsCfg, ok := cfg.NamedStores.Filesystem[backend]
-			if !ok {
-				return nil, fmt.Errorf("Unrecognized named swift storage config %s", backend)
-			}
-
-			fsCfg = (filesystem.Config)(nsCfg)
-		}
-
-		client, err = filesystem.NewBucketClient(fsCfg)
+		client, err = filesystem.NewBucketClient(cfg.Filesystem)
 	default:
 		return nil, ErrUnsupportedStorageBackend
 	}

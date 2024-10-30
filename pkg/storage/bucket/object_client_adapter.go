@@ -2,15 +2,20 @@ package bucket
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/gcp"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
 
 type ObjectClientAdapter struct {
@@ -19,13 +24,40 @@ type ObjectClientAdapter struct {
 	isRetryableErr       func(err error) bool
 }
 
-func NewObjectClientAdapter(bucket, hedgedBucket objstore.Bucket, logger log.Logger, opts ...ClientOptions) *ObjectClientAdapter {
-	if hedgedBucket == nil {
-		hedgedBucket = bucket
+func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedStores, component string, hedgingCfg hedging.Config, logger log.Logger) (*ObjectClientAdapter, error) {
+	var (
+		storeType = backend
+		storeCfg  = cfg.Config
+	)
+
+	if st, ok := cfg.NamedStores.LookupStoreType(backend); ok {
+		storeType = st
+		// override config with values from named store config
+		if err := cfg.NamedStores.OverrideConfig(&storeCfg, backend, storeType); err != nil {
+			return nil, err
+		}
+	}
+
+	b, err := NewClient(ctx, storeType, storeCfg, component, logger, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create bucket: %w", err)
+	}
+
+	hedgedBucket := b
+	if hedgingCfg.At != 0 {
+		hedgedTrasport, err := hedgingCfg.RoundTripperWithRegisterer(nil, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
+		if err != nil {
+			return nil, fmt.Errorf("create hedged transport: %w", err)
+		}
+
+		b, err = NewClient(ctx, storeType, storeCfg, component, logger, hedgedTrasport)
+		if err != nil {
+			return nil, fmt.Errorf("create hedged bucket: %w", err)
+		}
 	}
 
 	o := &ObjectClientAdapter{
-		bucket:       bucket,
+		bucket:       b,
 		hedgedBucket: hedgedBucket,
 		logger:       log.With(logger, "component", "bucket_to_object_client_adapter"),
 		// default to no retryable errors. Override with WithRetryableErrFunc
@@ -34,19 +66,14 @@ func NewObjectClientAdapter(bucket, hedgedBucket objstore.Bucket, logger log.Log
 		},
 	}
 
-	for _, opt := range opts {
-		opt(o)
+	switch storeType {
+	case GCS:
+		o.isRetryableErr = gcp.IsRetryableErr
+	case S3:
+		o.isRetryableErr = aws.IsRetryableErr
 	}
 
-	return o
-}
-
-type ClientOptions func(*ObjectClientAdapter)
-
-func WithRetryableErrFunc(f func(err error) bool) ClientOptions {
-	return func(o *ObjectClientAdapter) {
-		o.isRetryableErr = f
-	}
+	return o, nil
 }
 
 func (o *ObjectClientAdapter) Stop() {

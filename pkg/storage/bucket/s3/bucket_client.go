@@ -1,6 +1,8 @@
 package s3
 
 import (
+	"net/http"
+
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/objstore"
@@ -14,23 +16,13 @@ const (
 )
 
 // NewBucketClient creates a new S3 bucket client
-func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucket, error) {
+func NewBucketClient(cfg Config, name string, logger log.Logger, rt http.RoundTripper) (objstore.Bucket, error) {
 	s3Cfg, err := newS3Config(cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	return s3.NewBucketWithConfig(logger, s3Cfg, name, nil)
-}
-
-// NewBucketReaderClient creates a new S3 bucket client
-func NewBucketReaderClient(cfg Config, name string, logger log.Logger) (objstore.BucketReader, error) {
-	s3Cfg, err := newS3Config(cfg)
-	if err != nil {
-		return nil, err
-	}
-
-	return s3.NewBucketWithConfig(logger, s3Cfg, name, nil)
+	return s3.NewBucketWithConfig(logger, s3Cfg, name, rt)
 }
 
 func newS3Config(cfg Config) (s3.Config, error) {
@@ -70,7 +62,6 @@ func newS3Config(cfg Config) (s3.Config, error) {
 			MaxIdleConns:          cfg.HTTP.MaxIdleConns,
 			MaxIdleConnsPerHost:   cfg.HTTP.MaxIdleConnsPerHost,
 			MaxConnsPerHost:       cfg.HTTP.MaxConnsPerHost,
-			Transport:             cfg.HTTP.Transport,
 			TLSConfig: exthttp.TLSConfig{
 				CAFile:     cfg.HTTP.TLSConfig.CAPath,
 				CertFile:   cfg.HTTP.TLSConfig.CertPath,

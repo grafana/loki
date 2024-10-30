@@ -295,8 +295,8 @@ type Config struct {
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
 	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
 
-	UseThanosObjstore bool          `yaml:"use_thanos_objstore" doc:"hidden"`
-	ObjectStore       bucket.Config `yaml:"object_store" doc:"hidden"`
+	UseThanosObjstore bool                         `yaml:"use_thanos_objstore" doc:"hidden"`
+	ObjectStore       bucket.ConfigWithNamedStores `yaml:"object_store" doc:"hidden"`
 
 	MaxChunkBatchSize   int                       `yaml:"max_chunk_batch_size"`
 	BoltDBShipperConfig boltdb.IndexCfg           `yaml:"boltdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in the form of boltdb files. Required fields only required when boltdb-shipper is defined in config."`
@@ -611,12 +611,16 @@ func (c *ClientMetrics) Unregister() {
 
 // NewObjectClient makes a new StorageClient with the prefix in the front.
 func NewObjectClient(name, component string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
+	if cfg.UseThanosObjstore {
+		return bucket.NewObjectClient(context.Background(), name, cfg.ObjectStore, component, cfg.Hedging, util_log.Logger)
+	}
+
 	actual, err := internalNewObjectClient(name, component, cfg, clientMetrics)
 	if err != nil {
 		return nil, err
 	}
 
-	if cfg.UseThanosObjstore || cfg.ObjectPrefix == "" {
+	if cfg.ObjectPrefix == "" {
 		return actual, nil
 	} else {
 		prefix := strings.Trim(cfg.ObjectPrefix, "/") + "/"
@@ -655,9 +659,6 @@ func internalNewObjectClient(storeName, component string, cfg Config, clientMetr
 			s3Cfg.BackoffConfig.MaxRetries = 1
 		}
 
-		if cfg.UseThanosObjstore {
-			return aws.NewS3ThanosObjectClient(context.Background(), cfg.ObjectStore, component, util_log.Logger, cfg.Hedging)
-		}
 		return aws.NewS3ObjectClient(s3Cfg, cfg.Hedging)
 
 	case types.StorageTypeAlibabaCloud:
@@ -687,9 +688,6 @@ func internalNewObjectClient(storeName, component string, cfg Config, clientMetr
 		if cfg.CongestionControl.Enabled {
 			gcsCfg.EnableRetries = false
 		}
-		if cfg.UseThanosObjstore {
-			return gcp.NewGCSThanosObjectClient(context.Background(), cfg.ObjectStore, component, util_log.Logger, cfg.Hedging)
-		}
 		return gcp.NewGCSObjectClient(context.Background(), gcsCfg, cfg.Hedging)
 
 	case types.StorageTypeAzure:
@@ -700,9 +698,6 @@ func internalNewObjectClient(storeName, component string, cfg Config, clientMetr
 				return nil, fmt.Errorf("Unrecognized named azure storage config %s", storeName)
 			}
 			azureCfg = (azure.BlobStorageConfig)(nsCfg)
-		}
-		if cfg.UseThanosObjstore {
-			return azure.NewBlobStorageThanosObjectClient(context.Background(), cfg.ObjectStore, component, util_log.Logger, cfg.Hedging)
 		}
 		return azure.NewBlobStorage(&azureCfg, clientMetrics.AzureMetrics, cfg.Hedging)
 

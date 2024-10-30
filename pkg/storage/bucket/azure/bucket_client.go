@@ -8,11 +8,7 @@ import (
 	"github.com/thanos-io/objstore/providers/azure"
 )
 
-func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucket, error) {
-	return newBucketClient(cfg, name, logger, azure.NewBucketWithConfig)
-}
-
-func newBucketClient(cfg Config, name string, logger log.Logger, factory func(log.Logger, azure.Config, string, http.RoundTripper) (*azure.Bucket, error)) (objstore.Bucket, error) {
+func NewBucketClient(cfg Config, name string, logger log.Logger, rt http.RoundTripper) (objstore.Bucket, error) {
 	// Start with default config to make sure that all parameters are set to sensible values, especially
 	// HTTP Config field.
 	bucketConfig := azure.DefaultConfig
@@ -28,10 +24,5 @@ func newBucketClient(cfg Config, name string, logger log.Logger, factory func(lo
 		bucketConfig.Endpoint = cfg.Endpoint
 	}
 
-	var rt http.RoundTripper
-	if cfg.Transport != nil {
-		rt = cfg.Transport
-	}
-
-	return factory(logger, bucketConfig, name, rt)
+	return azure.NewBucketWithConfig(logger, bucketConfig, name, rt)
 }

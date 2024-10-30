@@ -2,7 +2,6 @@ package azure
 
 import (
 	"flag"
-	"net/http"
 
 	"github.com/grafana/dskit/flagext"
 )
@@ -16,9 +15,6 @@ type Config struct {
 	Endpoint                string         `yaml:"endpoint_suffix"`
 	MaxRetries              int            `yaml:"max_retries"`
 	UserAssignedID          string         `yaml:"user_assigned_id"`
-
-	// Allow upstream callers to inject a round tripper
-	Transport http.RoundTripper `yaml:"-"`
 }
 
 // RegisterFlags registers the flags for Azure storage

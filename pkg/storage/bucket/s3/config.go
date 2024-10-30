@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"net/http"
 	"slices"
 	"strings"
 	"time"
@@ -65,9 +64,6 @@ type HTTPConfig struct {
 	MaxIdleConns          int           `yaml:"max_idle_connections" category:"advanced"`
 	MaxIdleConnsPerHost   int           `yaml:"max_idle_connections_per_host" category:"advanced"`
 	MaxConnsPerHost       int           `yaml:"max_connections_per_host" category:"advanced"`
-
-	// Allow upstream callers to inject a round tripper
-	Transport http.RoundTripper `yaml:"-"`
 
 	TLSConfig TLSConfig `yaml:",inline"`
 }

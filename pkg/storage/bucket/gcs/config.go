@@ -2,7 +2,6 @@ package gcs
 
 import (
 	"flag"
-	"net/http"
 
 	"github.com/grafana/dskit/flagext"
 )
@@ -12,9 +11,6 @@ type Config struct {
 	BucketName      string         `yaml:"bucket_name"`
 	ServiceAccount  flagext.Secret `yaml:"service_account" doc:"description_method=GCSServiceAccountLongDescription"`
 	ChunkBufferSize int            `yaml:"chunk_buffer_size"`
-
-	// Allow upstream callers to inject a round tripper
-	Transport http.RoundTripper `yaml:"-"`
 }
 
 // RegisterFlags registers the flags for GCS storage
