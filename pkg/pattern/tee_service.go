@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 
 	ring_client "github.com/grafana/dskit/ring/client"
@@ -29,6 +30,7 @@ import (
 type TeeService struct {
 	cfg        Config
 	limits     Limits
+	tenantCfgs *runtime.TenantConfigs
 	logger     log.Logger
 	ringClient RingClient
 	wg         *sync.WaitGroup
@@ -52,6 +54,7 @@ func NewTeeService(
 	cfg Config,
 	limits Limits,
 	ringClient RingClient,
+	tenantCfgs *runtime.TenantConfigs,
 	metricsNamespace string,
 	registerer prometheus.Registerer,
 	logger log.Logger,
@@ -87,6 +90,7 @@ func NewTeeService(
 		),
 		cfg:        cfg,
 		limits:     limits,
+		tenantCfgs: tenantCfgs,
 		ringClient: ringClient,
 
 		wg:           &sync.WaitGroup{},
@@ -324,7 +328,20 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 					sp.LogKV(
 						"event", "forwarded push request to pattern ingester",
 						"labels", strings.Join(labels, ", "),
+						"tenant", clientRequest.tenant,
 					)
+
+					// this is basically the same as logging push reques streams, so
+					// we put it behind the same flag
+					if ts.tenantCfgs.LogPushRequestStreams(clientRequest.tenant) {
+						level.Debug(ts.logger).
+							Log(
+								"msg", "forwarded push request to pattern ingester",
+								"labels", strings.Join(labels, ", "),
+								"tenant", clientRequest.tenant,
+							)
+					}
+
 					return nil
 				}
 
