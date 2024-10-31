@@ -201,7 +201,7 @@ With the example config, here is how various kinds of Attributes would be stored
 * Store remaining Resource Attributes as Structured Metadata.
 * Store all the Scope and Log Attributes as Structured Metadata.
 
-#### Example 2:
+#### Example 3:
 
 ```yaml
 limits_config:
