@@ -14,9 +14,23 @@ You can configure the behavior of the single binary with the `-target` command-l
 
 Because Loki decouples the data it stores from the software which ingests and queries it, you can easily redeploy a cluster under a different mode as your needs change, with minimal or no configuration changes.
 
+## Monolithic mode
+
+The simplest mode of operation is the monolithic deployment mode. You enable monolithic mode by setting the `-target=all` command line parameter. This mode runs all of Loki’s microservice components inside a single process as a single binary or Docker image.
+
+![monolithic mode diagram](../monolithic-mode.png "Monolithic mode")
+
+Monolithic mode is useful for getting started quickly to experiment with Loki, as well as for small read/write volumes of up to approximately 20GB per day.
+
+You can horizontally scale a monolithic mode deployment to more instances by using a shared object store, and by configuring the [`ring` section](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#common) of the `loki.yaml` file to share state between all instances, but the recommendation is to use simple scalable mode if you need to scale your deployment.
+
+You can configure high availability by running two Loki instances using `memberlist_config` configuration and a shared object store and setting the `replication_factor` to `3`. You route traffic to all the Loki instances in a round robin fashion.
+
+Query parallelization is limited by the number of instances and the setting `max_query_parallelism` which is defined in the `loki.yaml` file.
+
 ## Simple Scalable
 
-The simple scalable deployment mode, is the preferred way to deploy Loki for most installations. The simple scalable deployment is the default configuration installed by the [Loki Helm Chart]({{< relref "../setup/install/helm" >}}). This deployment mode is the easiest way to deploy Loki at scale. It strikes a balance between deploying in [monolithic mode](#monolithic-mode) or deploying each component as a [separate microservice](#microservices-mode).
+The simple scalable deployment is the default configuration installed by the [Loki Helm Chart]({{< relref "../setup/install/helm" >}}). This deployment mode is the easiest way to deploy Loki at scale. It strikes a balance between deploying in [monolithic mode](#monolithic-mode) or deploying each component as a [separate microservice](#microservices-mode).
 
 {{% admonition type="note" %}}
 This deployment mode is sometimes referred to by the acronym SSD for simple scalable deployment, not to be confused with solid state drives. Loki uses an object store.
@@ -43,20 +57,6 @@ The three execution paths in simple scalable mode are each activated by appendin
 -- Ruler
 
 The simple scalable deployment mode requires a reverse proxy to be deployed in front of Loki, to direct client API requests to either the read or write nodes. The Loki Helm chart includes a default reverse proxy configuration, using Nginx.
-
-## Monolithic mode
-
-The simplest mode of operation is the monolithic deployment mode. You enable monolithic mode by setting the `-target=all` command line parameter. This mode runs all of Loki’s microservice components inside a single process as a single binary or Docker image.
-
-![monolithic mode diagram](../monolithic-mode.png "Monolithic mode")
-
-Monolithic mode is useful for getting started quickly to experiment with Loki, as well as for small read/write volumes of up to approximately 20GB per day.
-
-You can horizontally scale a monolithic mode deployment to more instances by using a shared object store, and by configuring the [`ring` section](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#common) of the `loki.yaml` file to share state between all instances, but the recommendation is to use simple scalable mode if you need to scale your deployment.
-
-You can configure high availability by running two Loki instances using `memberlist_config` configuration and a shared object store and setting the `replication_factor` to `3`. You route traffic to all the Loki instances in a round robin fashion.
-
-Query parallelization is limited by the number of instances and the setting `max_query_parallelism` which is defined in the `loki.yaml` file.
 
 ## Microservices mode
 The microservices deployment mode runs components of Loki as distinct processes. Each process is invoked specifying its `target`:
