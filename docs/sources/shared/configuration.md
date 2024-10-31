@@ -359,10 +359,6 @@ pattern_ingester:
   # Configures the metric aggregation and storage behavior of the pattern
   # ingester.
   metric_aggregation:
-    # Whether the pattern ingester metric aggregation is enabled.
-    # CLI flag: -pattern-ingester.metric-aggregation.enabled
-    [enabled: <boolean> | default = false]
-
     # How often to downsample metrics from raw push observations.
     # CLI flag: -pattern-ingester.metric-aggregation.downsample-period
     [downsample_period: <duration> | default = 10s]
@@ -3844,6 +3840,13 @@ otlp_config:
 # disables shuffle sharding and tenant is sharded across all partitions.
 # CLI flag: -limits.ingestion-partition-tenant-shard-size
 [ingestion_partitions_tenant_shard_size: <int> | default = 0]
+
+# Enable metric aggregation. When enabled, pushed streams will be sampled for
+# bytes and count, and these metric will be written back into Loki as a special
+# __aggregated_metric__ stream, which can be queried for faster histogram
+# queries.
+# CLI flag: -limits.metric-aggregation-enabled
+[metric_aggregation_enabled: <boolean> | default = false]
 
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings

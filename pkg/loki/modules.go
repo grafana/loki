@@ -680,6 +680,7 @@ func (t *Loki) initPatternIngesterTee() (services.Service, error) {
 
 	svc, err := pattern.NewTeeService(
 		t.Cfg.Pattern,
+		t.Overrides,
 		t.PatternRingClient,
 		t.Cfg.MetricsNamespace,
 		prometheus.DefaultRegisterer,

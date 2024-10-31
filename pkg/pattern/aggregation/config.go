@@ -9,8 +9,6 @@ import (
 )
 
 type Config struct {
-	// TODO(twhitney): This needs to be a per-tenant config
-	Enabled          bool                    `yaml:"enabled,omitempty" doc:"description=Whether the pattern ingester metric aggregation is enabled."`
 	DownsamplePeriod time.Duration           `yaml:"downsample_period"`
 	LokiAddr         string                  `yaml:"loki_address,omitempty" doc:"description=The address of the Loki instance to push aggregated metrics to."`
 	WriteTimeout     time.Duration           `yaml:"timeout,omitempty" doc:"description=The timeout for writing to Loki."`
@@ -27,12 +25,6 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(fs *flag.FlagSet, prefix string) {
-	fs.BoolVar(
-		&cfg.Enabled,
-		prefix+"metric-aggregation.enabled",
-		false,
-		"Flag to enable or disable metric aggregation.",
-	)
 	fs.DurationVar(
 		&cfg.DownsamplePeriod,
 		prefix+"metric-aggregation.downsample-period",
@@ -105,3 +97,7 @@ func (s *secretValue) Set(val string) error {
 func (s *secretValue) Get() any { return string(*s) }
 
 func (s *secretValue) String() string { return string(*s) }
+
+type Limits interface {
+	MetricAggregationEnabled(userID string) bool
+}
