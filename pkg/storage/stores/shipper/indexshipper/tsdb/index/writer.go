@@ -139,28 +139,28 @@ func (fw *FileWriter) Bytes() ([]byte, error) {
 	return io.ReadAll(fw.f)
 }
 
-type BufferWriter struct {
+type MemWriter struct {
 	buf *bytes.Buffer
 }
 
 // NewBufferWriter returns a new BufferWriter.
 // todo: pooling memory
-func NewBufferWriter() *BufferWriter {
-	return &BufferWriter{
+func NewBufferWriter() *MemWriter {
+	return &MemWriter{
 		buf: bytes.NewBuffer(nil),
 	}
 }
 
-func (bw *BufferWriter) Write(p []byte) (n int, err error) {
+func (bw *MemWriter) Write(p []byte) (n int, err error) {
 	n, err = bw.buf.Write(p)
 	return n, err
 }
 
-func (bw *BufferWriter) Pos() uint64 {
+func (bw *MemWriter) Pos() uint64 {
 	return uint64(bw.buf.Len())
 }
 
-func (bw *BufferWriter) WriteBufs(bufs ...[]byte) error {
+func (bw *MemWriter) WriteBufs(bufs ...[]byte) error {
 	for _, b := range bufs {
 		if _, err := bw.Write(b); err != nil {
 			return err
@@ -169,11 +169,11 @@ func (bw *BufferWriter) WriteBufs(bufs ...[]byte) error {
 	return nil
 }
 
-func (bw *BufferWriter) ReadFrom(r io.Reader) (int64, error) {
+func (bw *MemWriter) ReadFrom(r io.Reader) (int64, error) {
 	return io.Copy(bw.buf, r)
 }
 
-func (bw *BufferWriter) WriteAt(buf []byte, pos int64) (int, error) {
+func (bw *MemWriter) WriteAt(buf []byte, pos int64) (int, error) {
 	if pos+int64(len(buf)) > int64(bw.buf.Len()) {
 		return 0, errors.New("write exceeds buffer size")
 	}
@@ -188,7 +188,7 @@ func (bw *BufferWriter) WriteAt(buf []byte, pos int64) (int, error) {
 }
 
 // AddPadding adds zero byte padding until the file size is a multiple of size.
-func (bw *BufferWriter) AddPadding(size int) error {
+func (bw *MemWriter) AddPadding(size int) error {
 	if size <= 0 {
 		return nil
 	}
@@ -210,15 +210,15 @@ func (bw *BufferWriter) AddPadding(size int) error {
 	return nil
 }
 
-func (bw *BufferWriter) Bytes() ([]byte, error) {
+func (bw *MemWriter) Bytes() ([]byte, error) {
 	return bw.buf.Bytes(), nil
 }
 
-func (bw *BufferWriter) Close() error {
+func (bw *MemWriter) Close() error {
 	bw.buf.Reset()
 	return nil
 }
 
-func (bw *BufferWriter) Flush() error { return nil }
+func (bw *MemWriter) Flush() error { return nil }
 
-func (bw *BufferWriter) Remove() error { return nil }
+func (bw *MemWriter) Remove() error { return nil }
