@@ -23,7 +23,7 @@ This guide was accurate at the time it was last updated on **31st October, 2024*
 
 - **IAM Role:** The IAM role created in this guide is a basic role that allows Loki to read and write to the S3 bucket. You may wish to add more granular permissions based on your requirements.
 
-- **Authentication:** Grafana Loki comes with a basic authentication layer. The Loki gateway (NGINX) is exposed to the internet using basic authentication in this example. NGINX can also be replaced with other open-source reverse proxies. Refer to [Authentication](https://grafana.com/docs/loki/<LOKI_VERSION/operations/authentication/) for more information.
+- **Authentication:** Grafana Loki comes with a basic authentication layer. The Loki gateway (NGINX) is exposed to the internet using basic authentication in this example. NGINX can also be replaced with other open-source reverse proxies. Refer to [Authentication](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/authentication/) for more information.
 
 - **Retention:** The retention period is set to 28 days in the `values.yaml` file. You may wish to adjust this based on your requirements.
 
