@@ -110,6 +110,7 @@ func partitionSeriesByDay(from, through model.Time, seriesWithChunks []*logproto
 
 			res = append(res, &logproto.GroupedChunkRefs{
 				Fingerprint: series.Fingerprint,
+				Labels:      series.Labels,
 				Tenant:      series.Tenant,
 				Refs:        relevantChunks,
 			})
