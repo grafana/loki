@@ -76,14 +76,6 @@ func TestLabelMatchersToBloomTest(t *testing.T) {
 			query: `{app="fake"} | env="dev"`, // env is set to prod in the series
 			match: false,
 		},
-		// We cannot support this test case until we can forward a list of structured metadata fields.
-		// We cannot check if the key is structured metadata using the bloom because these are probabilistic
-		// E.g. bloom.Test("env") may return true even if env is not structured metadata.
-		//{
-		//	name:  "filter label from series overridden by structured metadata",
-		//	query: `{app="fake"} | app="fake"`, // app is set to other in the structured metadata
-		//	match: false,
-		//},
 		{
 			name:  "ignore label from series and structured metadata",
 			query: `{app="fake"} | app="other"`,

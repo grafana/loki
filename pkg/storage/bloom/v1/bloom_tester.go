@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"unsafe"
 
+	"github.com/go-kit/log/level"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
@@ -174,13 +176,11 @@ func (sm stringMatcherTest) MatchesWithPrefixBuf(series labels.Labels, bloom fil
 }
 
 // match returns true if the series matches the matcher or is in the bloom filter.
-// TODO(salvacorts): support filtering out chunks for labels overriden by structurdd metadata.
-// We'd need passing a list of structured metadata fields similarly to how we pass the series.
-// SEE: https://github.com/grafana/loki/pull/14661#discussion_r1824228343
 func (sm stringMatcherTest) match(series labels.Labels, bloom filter.Checker, combined []byte) bool {
 	// If we don't have the series labels, we cannot disambiguate which labels come from the series in which case
 	// we may filter out chunks for queries like `{env="prod"} | env="prod"` if env=prod is not structured metadata
 	if len(series) == 0 {
+		level.Warn(util_log.Logger).Log("msg", "series has no labels, cannot filter out chunks")
 		return true
 	}
 
