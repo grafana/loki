@@ -18,7 +18,7 @@ There are two methods for authenticating and connecting Loki to AWS S3. We will 
 ## Considerations
 
 {{< admonition type="caution" >}}
-This guide was accurate at the time it was last updated on **21st October, 2024**.  As cloud providers frequently update their services and offerings, as a best practice, you should refer to the [AWS S3 documentation](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html) before creating your buckets and assigning roles.
+This guide was accurate at the time it was last updated on **31st October, 2024**.  As cloud providers frequently update their services and offerings, as a best practice, you should refer to the [AWS S3 documentation](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html) before creating your buckets and assigning roles.
 {{< /admonition >}}
 
 - **IAM Role:** The IAM role created in this guide is a basic role that allows Loki to read and write to the S3 bucket. You may wish to add more granular permissions based on your requirements.
@@ -48,7 +48,7 @@ The minimum requirements for deploying Loki on EKS are:
 
 - Kubernetes version `1.30` or above.
 - `3` nodes for the EKS cluster.
-- Instance type depends on your workload. A good starting point is `m5.xlarge`.
+- Instance type depends on your workload. A good starting point for a production cluster is `m7i.2xlarge`.
 
 Here is the EKSctl cluster configuration file used in this guide:
 
@@ -59,8 +59,8 @@ apiVersion: eksctl.io/v1alpha5
 kind: ClusterConfig
 
 metadata:
-  name: <INSERT-NAME>
-  region: <INSERT-REGION>
+  name: <INSERT-CLUSTER-NAME>
+  region: <INSERT-REGION-FOR-CLUSTER>
   version: "1.31"
 
 iam:
@@ -68,28 +68,25 @@ iam:
 
 addons:
   - name: aws-ebs-csi-driver
-  - name: eks-pod-identity-agent
 
 managedNodeGroups:
   - name: loki-workers
-    instanceType: m5.xlarge
+    instanceType: m7i.2xlarge
     desiredCapacity: 3
     minSize: 2
     maxSize: 3
-    amiFamily: AmazonLinux2
+    amiFamily: AmazonLinux2023
     iam:
       withAddonPolicies:
         ebs: true
     volumeSize: 80
-    volumeType: gp2
+    volumeType: gp3
     ebsOptimized: true
-
 ```
 
 
 The following plugins must also be installed within the EKS cluster:
 - **Amazon EBS CSI Driver**: Enables Kubernetes to dynamically provision and manage EBS volumes as persistent storage for applications. We use this to provision the node volumes for Loki.
-- **Amazon EKS Pod Identity Agent**: Manages AWS IAM roles for pods, allowing fine-grained access control to AWS resources without needing to store credentials in containers. This is how Loki will access the S3 bucket.
 - **CoreDNS**: Provides internal DNS service for Kubernetes clusters, ensuring that services and pods can communicate with each other using DNS names. 
 - **kube-proxy**: Maintains network rules on nodes, enabling communication between pods and services within the cluster.
 
@@ -198,77 +195,6 @@ The recommended method for connecting Loki to AWS S3 is to use an IAM role. This
     ```
     **Make sure to replace the placeholder with your AWS account ID.**
 
-### Adding the policy to the S3 buckets
-
-To allow the IAM role to access the S3 buckets, you need to add the policy to the bucket. You can do this using the AWS Management Console or the AWS CLI. The below steps show how to add the policy using the AWS CLI.
-
-1. Create a bucket policy file named `bucket-policy-chunk.json` with the following content:
-
-    ```json
-    {
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Sid": "Statement1",
-                "Effect": "Allow",
-                "Principal": {
-                    "AWS": "arn:aws:iam::<ACCOUNT ID>:role/LokiServiceAccountRole"
-                },
-                "Action": [
-                    "s3:PutObject",
-                    "s3:GetObject",
-                    "s3:DeleteObject",
-                    "s3:ListBucket"
-                ],
-                "Resource": [
-                    "arn:aws:s3:::< CHUNK BUCKET NAME >",
-                    "arn:aws:s3:::< CHUNK BUCKET NAME >/*"
-                ]
-            }
-        ]
-    }
-    ```
-    **Make sure to replace the placeholders with your AWS account ID and the bucket names.**
-
-1. Add the policy to the bucket:
-
-    ```bash
-    aws s3api put-bucket-policy --bucket <CHUNK BUCKET NAME eg. `loki-aws-dev-chunks`> --policy file://bucket-policy-chunk.json
-    ```
-1. Create a bucket policy file named `bucket-policy-ruler.json` with the following content:
-
-    ```json
-    {
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Sid": "Statement1",
-                "Effect": "Allow",
-                "Principal": {
-                    "AWS": "arn:aws:iam::<ACCOUNT ID>:role/LokiServiceAccountRole"
-                },
-                "Action": [
-                    "s3:PutObject",
-                    "s3:GetObject",
-                    "s3:DeleteObject",
-                    "s3:ListBucket"
-                ],
-                "Resource": [
-                    "arn:aws:s3:::< RULER BUCKET NAME >",
-                    "arn:aws:s3:::< RULER BUCKET NAME >/*"
-                ]
-            }
-        ]
-    }
-    ```
-    **Make sure to replace the placeholders with your AWS account ID and the bucket names.**
-
-1. Add the policy to the bucket:
-
-    ```bash
-    aws s3api put-bucket-policy --bucket <RULER BUCKET NAME eg. `loki-aws-dev-ruler`> --policy file://bucket-policy-ruler.json
-    ```
-
 ## Deploying the Helm chart
 
 Before we can deploy the Loki Helm chart, we need to add the Grafana chart repository to Helm. This repository contains the Loki Helm chart.
@@ -321,8 +247,6 @@ Loki by default does not come with any authentication. Since we will be deployin
     ```
     We create a literal secret with the username and password for Loki canary to authenticate with the Loki gateway.
     **Make sure to replace the placeholders with your desired username and password.** 
-
-    
 
 ### Loki Helm chart configuration
 
