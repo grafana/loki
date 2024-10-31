@@ -2,6 +2,7 @@ package index
 
 import (
 	"bufio"
+	"bytes"
 	"io"
 	"math"
 	"os"
@@ -137,3 +138,87 @@ func (fw *FileWriter) Bytes() ([]byte, error) {
 
 	return io.ReadAll(fw.f)
 }
+
+type BufferWriter struct {
+	buf *bytes.Buffer
+}
+
+// NewBufferWriter returns a new BufferWriter.
+// todo: pooling memory
+func NewBufferWriter() *BufferWriter {
+	return &BufferWriter{
+		buf: bytes.NewBuffer(nil),
+	}
+}
+
+func (bw *BufferWriter) Write(p []byte) (n int, err error) {
+	n, err = bw.buf.Write(p)
+	return n, err
+}
+
+func (bw *BufferWriter) Pos() uint64 {
+	return uint64(bw.buf.Len())
+}
+
+func (bw *BufferWriter) WriteBufs(bufs ...[]byte) error {
+	for _, b := range bufs {
+		if _, err := bw.Write(b); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (bw *BufferWriter) ReadFrom(r io.Reader) (int64, error) {
+	return io.Copy(bw.buf, r)
+}
+
+func (bw *BufferWriter) WriteAt(buf []byte, pos int64) (int, error) {
+	if pos+int64(len(buf)) > int64(bw.buf.Len()) {
+		return 0, errors.New("write exceeds buffer size")
+	}
+
+	// Get current bytes
+	bytes := bw.buf.Bytes()
+
+	// Copy buf into correct position
+	copy(bytes[pos:], buf)
+
+	return len(buf), nil
+}
+
+// AddPadding adds zero byte padding until the file size is a multiple of size.
+func (bw *BufferWriter) AddPadding(size int) error {
+	if size <= 0 {
+		return nil
+	}
+
+	p := bw.buf.Len() % size
+	if p == 0 {
+		return nil
+	}
+
+	p = size - p
+	padding := make([]byte, p)
+	n, err := bw.Write(padding)
+	if err != nil {
+		return err
+	}
+	if n != len(padding) {
+		return errors.New("failed to write padding")
+	}
+	return nil
+}
+
+func (bw *BufferWriter) Bytes() ([]byte, error) {
+	return bw.buf.Bytes(), nil
+}
+
+func (bw *BufferWriter) Close() error {
+	bw.buf.Reset()
+	return nil
+}
+
+func (bw *BufferWriter) Flush() error { return nil }
+
+func (bw *BufferWriter) Remove() error { return nil }
