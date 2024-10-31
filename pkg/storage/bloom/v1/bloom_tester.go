@@ -174,6 +174,9 @@ func (sm stringMatcherTest) MatchesWithPrefixBuf(series labels.Labels, bloom fil
 }
 
 // match returns true if the series matches the matcher or is in the bloom filter.
+// TODO(salvacorts): support filtering out chunks for labels overriden by structurdd metadata.
+// We'd need passing a list of structured metadata fields similarly to how we pass the series.
+// SEE: https://github.com/grafana/loki/pull/14661#discussion_r1824228343
 func (sm stringMatcherTest) match(series labels.Labels, bloom filter.Checker, combined []byte) bool {
 	// If we don't have the series labels, we cannot disambiguate which labels come from the series in which case
 	// we may filter out chunks for queries like `{env="prod"} | env="prod"` if env=prod is not structured metadata
