@@ -4508,7 +4508,9 @@ remote_write:
   # Deprecated: Use 'clients' instead. Configure remote write client.
   [client: <RemoteWriteConfig>]
 
-  # Configure remote write clients. A map with remote client id as key.
+  # Configure remote write clients. A map with remote client id as key. For
+  # details, see
+  # https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write
   [clients: <map of string to RemoteWriteConfig>]
 
   # Enable remote-write functionality.

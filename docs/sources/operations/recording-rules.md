@@ -74,6 +74,21 @@ so a `Persistent Volume` should be utilised.
 
 ## Remote-Write
 
+### Client configuration
+
+Remote-write client configuration is fully compatible with [prometheus configuration format](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write).
+
+```yaml
+remote_write:	
+  clients:	
+    mimir:	
+      url: http://mimir/api/v1/push
+      write_relabel_configs:
+      - action: replace
+        target_label: job
+        replacement: loki-recording-rules
+```
+
 ### Per-Tenant Limits
 
 Remote-write can be configured at a global level in the base configuration, and certain parameters tuned specifically on
