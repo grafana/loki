@@ -322,6 +322,7 @@ func mergeSeries(input [][]*logproto.GroupedChunkRefs, buf []*logproto.GroupedCh
 			}
 			return &logproto.GroupedChunkRefs{
 				Fingerprint: a.Fingerprint,
+				Labels:      a.Labels,
 				Tenant:      a.Tenant,
 				Refs:        mergeChunkSets(a.Refs, b.Refs),
 			}
