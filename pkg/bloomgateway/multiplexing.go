@@ -174,6 +174,7 @@ func (it *requestIterator) Next() bool {
 	it.curr = v1.Request{
 		Recorder: it.recorder,
 		Fp:       model.Fingerprint(group.Fingerprint),
+		Labels:   logproto.FromLabelAdaptersToLabels(group.Labels.Labels),
 		Chks:     convertToChunkRefs(group.Refs),
 		Search:   it.search,
 		Response: it.channel,
