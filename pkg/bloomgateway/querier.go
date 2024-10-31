@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
@@ -101,7 +102,7 @@ func convertToShortRef(ref *logproto.ChunkRef) *logproto.ShortRef {
 	return &logproto.ShortRef{From: ref.From, Through: ref.Through, Checksum: ref.Checksum}
 }
 
-func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, chunkRefs []*logproto.ChunkRef, queryPlan plan.QueryPlan) ([]*logproto.ChunkRef, error) {
+func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, series map[uint64]labels.Labels, chunkRefs []*logproto.ChunkRef, queryPlan plan.QueryPlan) ([]*logproto.ChunkRef, error) {
 	// Shortcut that does not require any filtering
 	if !bq.limits.BloomGatewayEnabled(tenant) || len(chunkRefs) == 0 || len(v1.ExtractTestableLabelMatchers(queryPlan.AST)) == 0 {
 		return chunkRefs, nil
@@ -112,7 +113,7 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 
 	grouped := groupedChunksRefPool.Get(len(chunkRefs))
 	defer groupedChunksRefPool.Put(grouped)
-	grouped = groupChunkRefs(chunkRefs, grouped)
+	grouped = groupChunkRefs(series, chunkRefs, grouped)
 
 	preFilterChunks := len(chunkRefs)
 	preFilterSeries := len(grouped)
@@ -225,7 +226,7 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 // groups them by fingerprint.
 // The second argument `grouped` can be used to pass a buffer to avoid allocations.
 // If it's nil, the returned slice will be allocated.
-func groupChunkRefs(chunkRefs []*logproto.ChunkRef, grouped []*logproto.GroupedChunkRefs) []*logproto.GroupedChunkRefs {
+func groupChunkRefs(series map[uint64]labels.Labels, chunkRefs []*logproto.ChunkRef, grouped []*logproto.GroupedChunkRefs) []*logproto.GroupedChunkRefs {
 	seen := make(map[uint64]int, len(grouped))
 	for _, chunkRef := range chunkRefs {
 		if idx, found := seen[chunkRef.Fingerprint]; found {
@@ -234,10 +235,14 @@ func groupChunkRefs(chunkRefs []*logproto.ChunkRef, grouped []*logproto.GroupedC
 			seen[chunkRef.Fingerprint] = len(grouped)
 			grouped = append(grouped, &logproto.GroupedChunkRefs{
 				Fingerprint: chunkRef.Fingerprint,
-				Tenant:      chunkRef.UserID,
-				Refs:        []*logproto.ShortRef{convertToShortRef(chunkRef)},
+				Labels: &logproto.IndexSeries{
+					Labels: logproto.FromLabelsToLabelAdapters(series[chunkRef.Fingerprint]),
+				},
+				Tenant: chunkRef.UserID,
+				Refs:   []*logproto.ShortRef{convertToShortRef(chunkRef)},
 			})
 		}
 	}
+
 	return grouped
 }
