@@ -44,9 +44,9 @@ func groupRefs(t *testing.T, chunkRefs []*logproto.ChunkRef) []*logproto.Grouped
 	t.Helper()
 	grouped := groupChunkRefs(nil, chunkRefs, nil)
 	// Put fake labels to the series
-	for i, g := range grouped {
+	for _, g := range grouped {
 		g.Labels = &logproto.IndexSeries{
-			Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", fmt.Sprintf("%d", i))),
+			Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", fmt.Sprintf("%d", g.Fingerprint))),
 		}
 	}
 
@@ -305,17 +305,17 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 					{From: 1696248000000, Through: 1696251600000, Checksum: 2},
 					{From: 1696244400000, Through: 1696248000000, Checksum: 4},
 				}, Labels: &logproto.IndexSeries{
-					Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "0")),
+					Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "1000")),
 				}},
 				{Fingerprint: 2000, Tenant: tenantID, Refs: []*logproto.ShortRef{
 					{From: 1696255200000, Through: 1696258800000, Checksum: 3},
 				}, Labels: &logproto.IndexSeries{
-					Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "1")),
+					Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "2000")),
 				}},
 				{Fingerprint: 3000, Tenant: tenantID, Refs: []*logproto.ShortRef{
 					{From: 1696240800000, Through: 1696244400000, Checksum: 1},
 				}, Labels: &logproto.IndexSeries{
-					Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "2")),
+					Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "3000")),
 				}},
 			},
 		}, res)
