@@ -44,6 +44,10 @@ If you have questions about upgrading to Loki 3.0, please join us on the [commun
 Or leave a comment on this [Github Issue](https://github.com/grafana/loki/issues/12506).
 {{% /admonition %}}
 
+{{< admonition type="tip" >}}
+If you have not yet [migrated to TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-to-tsdb/), do so before you upgrade to Loki 3.0.
+{{< /admonition >}}
+
 Loki 3.0 is a major version increase and comes with several breaking changes.
 
 Here is the shortlist of things we think most people may encounter:
