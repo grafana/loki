@@ -9,6 +9,21 @@ import (
 	"github.com/pkg/errors"
 )
 
+type writer interface {
+	io.WriteCloser
+	io.ReaderFrom
+	// WriteAt overwrites a subset of the writer, but only if it won't overflow the current position.
+	// NB: will not change position.
+	io.WriterAt
+	Remove() error
+	Pos() uint64
+	WriteBufs(bufs ...[]byte) error
+	AddPadding(size int) error
+	Flush() error
+	// Returns the underlying bytes of the writer and sets the Pos to the end
+	Bytes() ([]byte, error)
+}
+
 type FileWriter struct {
 	f        *os.File
 	fbuf     *bufio.Writer
@@ -69,12 +84,17 @@ func (fw *FileWriter) Flush() error {
 	return fw.fbuf.Flush()
 }
 
-func (fw *FileWriter) WriteAt(buf []byte, pos uint64) error {
+func (fw *FileWriter) WriteAt(buf []byte, pos int64) (int, error) {
 	if err := fw.Flush(); err != nil {
-		return err
+		return 0, err
 	}
-	_, err := fw.f.WriteAt(buf, int64(pos))
-	return err
+	if pos > int64(fw.Pos()) {
+		return 0, errors.New("position out of range")
+	}
+	if pos+int64(len(buf)) > int64(fw.Pos()) {
+		return 0, errors.New("write exceeds buffer size")
+	}
+	return fw.f.WriteAt(buf, int64(pos))
 }
 
 // AddPadding adds zero byte padding until the file size is a multiple size.
@@ -103,4 +123,17 @@ func (fw *FileWriter) Close() error {
 
 func (fw *FileWriter) Remove() error {
 	return os.Remove(fw.name)
+}
+
+func (fw *FileWriter) Bytes() ([]byte, error) {
+	// First, ensure all is flushed
+	if err := fw.Flush(); err != nil {
+		return nil, err
+	}
+
+	if _, err := fw.f.Seek(0, io.SeekStart); err != nil {
+		return nil, err
+	}
+
+	return io.ReadAll(fw.f)
 }
