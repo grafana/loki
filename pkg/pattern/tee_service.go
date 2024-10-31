@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 
 	ring_client "github.com/grafana/dskit/ring/client"
 )
@@ -293,10 +294,11 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 		// are gathered by this request
 		_ = instrument.CollectedRequest(
 			ctx,
-			"FlushTeedLogsToPatternIngested",
+			"FlushTeedLogsToPatternIngester",
 			ts.sendDuration,
 			instrument.ErrorCode,
 			func(ctx context.Context) error {
+				sp := spanlogger.FromContext(ctx)
 				client, err := ts.ringClient.GetClientFor(clientRequest.ingesterAddr)
 				if err != nil {
 					return err
@@ -313,6 +315,16 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 					// Success here means the stream will be processed for both metrics and patterns
 					ts.ingesterAppends.WithLabelValues(clientRequest.ingesterAddr, "success").Inc()
 					ts.ingesterMetricAppends.WithLabelValues("success").Inc()
+
+					labels := make([]string, 0, len(req.Streams))
+					for _, stream := range req.Streams {
+						labels = append(labels, stream.Labels)
+					}
+
+					sp.LogKV(
+						"event", "forwarded push request to pattern ingester",
+						"labels", strings.Join(labels, ", "),
+					)
 					return nil
 				}
 
