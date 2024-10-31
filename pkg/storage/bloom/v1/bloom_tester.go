@@ -5,10 +5,10 @@ import (
 	"unsafe"
 
 	"github.com/go-kit/log/level"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/storage/bloom/v1/filter"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type BloomTest interface {
