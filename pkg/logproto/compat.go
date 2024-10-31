@@ -82,10 +82,6 @@ func FromMetricsToLabelAdapters(metric model.Metric) []LabelAdapter {
 	return result
 }
 
-func FromMetricsToLabels(metric model.Metric) labels.Labels {
-	return FromLabelAdaptersToLabels(FromMetricsToLabelAdapters(metric))
-}
-
 type byLabel []LabelAdapter
 
 func (s byLabel) Len() int           { return len(s) }
@@ -310,9 +306,6 @@ func (m *VolumeRequest) GetQuery() string {
 	return m.Matchers
 }
 
-// GetCachingOptions returns the caching options.
-func (m *VolumeRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
-
 // WithStartEnd clone the current request with different start and end timestamp.
 func (m *VolumeRequest) WithStartEnd(start, end time.Time) definitions.Request {
 	clone := *m
@@ -398,6 +391,7 @@ func (m *FilterChunkRefRequest) WithStartEndForCache(start, end time.Time) resul
 		if len(refs) > 0 {
 			chunkRefs = append(chunkRefs, &GroupedChunkRefs{
 				Fingerprint: chunkRef.Fingerprint,
+				Labels:      chunkRef.Labels,
 				Tenant:      chunkRef.Tenant,
 				Refs:        refs,
 			})
@@ -531,7 +525,7 @@ func (m *DetectedFieldsRequest) LogToSpan(sp opentracing.Span) {
 		otlog.String("start", m.Start.String()),
 		otlog.String("end", m.End.String()),
 		otlog.String("step", time.Duration(m.Step).String()),
-		otlog.String("field_limit", fmt.Sprintf("%d", m.FieldLimit)),
+		otlog.String("field_limit", fmt.Sprintf("%d", m.Limit)),
 		otlog.String("line_limit", fmt.Sprintf("%d", m.LineLimit)),
 	}
 	sp.LogFields(fields...)
@@ -592,35 +586,6 @@ func (m *DetectedLabelsRequest) LogToSpan(sp opentracing.Span) {
 		otlog.String("query", m.GetQuery()),
 		otlog.String("start", m.Start.String()),
 		otlog.String("end", m.End.String()),
-	}
-	sp.LogFields(fields...)
-}
-
-func (m *QuerySamplesRequest) GetCachingOptions() (res definitions.CachingOptions) { return }
-
-func (m *QuerySamplesRequest) WithStartEnd(start, end time.Time) definitions.Request {
-	clone := *m
-	clone.Start = start
-	clone.End = end
-	return &clone
-}
-
-func (m *QuerySamplesRequest) WithStartEndForCache(start, end time.Time) resultscache.Request {
-	return m.WithStartEnd(start, end).(resultscache.Request)
-}
-
-func (m *QuerySamplesRequest) WithQuery(query string) definitions.Request {
-	clone := *m
-	clone.Query = query
-	return &clone
-}
-
-func (m *QuerySamplesRequest) LogToSpan(sp opentracing.Span) {
-	fields := []otlog.Field{
-		otlog.String("query", m.GetQuery()),
-		otlog.String("start", m.Start.String()),
-		otlog.String("end", m.End.String()),
-		otlog.String("step", time.Duration(m.Step).String()),
 	}
 	sp.LogFields(fields...)
 }

@@ -1,9 +1,9 @@
 package builder
 
 import (
-	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -21,7 +21,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/common"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -30,7 +30,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/ring"
 )
+
+// TODO(chaudum): Make configurable via (per-tenant?) setting.
+var defaultBlockCompressionCodec = compression.None
 
 type Builder struct {
 	services.Service
@@ -42,33 +46,32 @@ type Builder struct {
 	metrics *Metrics
 	logger  log.Logger
 
-	tsdbStore   common.TSDBStore
 	bloomStore  bloomshipper.Store
 	chunkLoader ChunkLoader
 
 	client protos.PlannerForBuilderClient
+
+	// used only in SSD mode where a single planner of the backend replicas needs to create tasksQueue
+	// therefore is nil when planner is run in microservice mode (default)
+	ringWatcher *common.RingWatcher
 }
 
 func New(
 	cfg Config,
 	limits Limits,
-	schemaCfg config.SchemaConfig,
-	storeCfg storage.Config,
-	storageMetrics storage.ClientMetrics,
+	_ config.SchemaConfig,
+	_ storage.Config,
+	_ storage.ClientMetrics,
 	fetcherProvider stores.ChunkFetcherProvider,
 	bloomStore bloomshipper.Store,
 	logger log.Logger,
 	r prometheus.Registerer,
+	rm *ring.RingManager,
 ) (*Builder, error) {
 	utillog.WarnExperimentalUse("Bloom Builder", logger)
 
 	builderID := uuid.NewString()
 	logger = log.With(logger, "builder_id", builderID)
-
-	tsdbStore, err := common.NewTSDBStores(schemaCfg, storeCfg, storageMetrics, logger)
-	if err != nil {
-		return nil, fmt.Errorf("error creating TSDB store: %w", err)
-	}
 
 	metrics := NewMetrics(r)
 	b := &Builder{
@@ -76,23 +79,37 @@ func New(
 		cfg:         cfg,
 		limits:      limits,
 		metrics:     metrics,
-		tsdbStore:   tsdbStore,
 		bloomStore:  bloomStore,
 		chunkLoader: NewStoreChunkLoader(fetcherProvider, metrics),
 		logger:      logger,
+	}
+
+	if rm != nil {
+		b.ringWatcher = common.NewRingWatcher(rm.RingLifecycler.GetInstanceID(), rm.Ring, time.Minute, logger)
 	}
 
 	b.Service = services.NewBasicService(b.starting, b.running, b.stopping)
 	return b, nil
 }
 
-func (b *Builder) starting(_ context.Context) error {
+func (b *Builder) starting(ctx context.Context) error {
+	if b.ringWatcher != nil {
+		if err := services.StartAndAwaitRunning(ctx, b.ringWatcher); err != nil {
+			return fmt.Errorf("error starting builder subservices: %w", err)
+		}
+	}
 	b.metrics.running.Set(1)
 	return nil
 }
 
 func (b *Builder) stopping(_ error) error {
 	defer b.metrics.running.Set(0)
+
+	if b.ringWatcher != nil {
+		if err := services.StopAndAwaitTerminated(context.Background(), b.ringWatcher); err != nil {
+			return fmt.Errorf("error stopping builder subservices: %w", err)
+		}
+	}
 
 	if b.client != nil {
 		// The gRPC server we use from dskit expects the orgID to be injected into the context when auth is enabled
@@ -137,15 +154,27 @@ func (b *Builder) running(ctx context.Context) error {
 	return nil
 }
 
-func (b *Builder) connectAndBuild(
-	ctx context.Context,
-) error {
+func (b *Builder) plannerAddress() string {
+	if b.ringWatcher == nil {
+		return b.cfg.PlannerAddress
+	}
+
+	addr, err := b.ringWatcher.GetLeaderAddress()
+	if err != nil {
+		return b.cfg.PlannerAddress
+	}
+
+	return addr
+}
+
+func (b *Builder) connectAndBuild(ctx context.Context) error {
 	opts, err := b.cfg.GrpcConfig.DialOption(nil, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create grpc dial options: %w", err)
 	}
 
-	conn, err := grpc.DialContext(ctx, b.cfg.PlannerAddress, opts...)
+	// nolint:staticcheck // grpc.DialContext() has been deprecated; we'll address it before upgrading to gRPC 2.
+	conn, err := grpc.DialContext(ctx, b.plannerAddress(), opts...)
 	if err != nil {
 		return fmt.Errorf("failed to dial bloom planner: %w", err)
 	}
@@ -191,6 +220,7 @@ func (b *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 			return fmt.Errorf("failed to receive task from planner: %w", err)
 		}
 
+		b.metrics.processingTask.Set(1)
 		b.metrics.taskStarted.Inc()
 		start := time.Now()
 
@@ -212,8 +242,11 @@ func (b *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 
 		b.logTaskCompleted(task, newMetas, err, start)
 		if err = b.notifyTaskCompletedToPlanner(c, task, newMetas, err); err != nil {
+			b.metrics.processingTask.Set(0)
 			return fmt.Errorf("failed to notify task completion to planner: %w", err)
 		}
+
+		b.metrics.processingTask.Set(0)
 	}
 
 	level.Debug(b.logger).Log("msg", "builder loop stopped")
@@ -262,22 +295,10 @@ func (b *Builder) notifyTaskCompletedToPlanner(
 		CreatedMetas: metas,
 	}
 
-	// We have a retry mechanism upper in the stack, but we add another one here
-	// to try our best to avoid losing the task result.
-	retries := backoff.New(c.Context(), b.cfg.BackoffConfig)
-	for retries.Ongoing() {
-		if err := c.Send(&protos.BuilderToPlanner{
-			BuilderID: b.ID,
-			Result:    *result.ToProtoTaskResult(),
-		}); err == nil {
-			break
-		}
-
-		level.Error(logger).Log("msg", "failed to acknowledge task completion to planner. Retrying", "err", err)
-		retries.Wait()
-	}
-
-	if err := retries.Err(); err != nil {
+	if err := c.Send(&protos.BuilderToPlanner{
+		BuilderID: b.ID,
+		Result:    *result.ToProtoTaskResult(),
+	}); err != nil {
 		return fmt.Errorf("failed to acknowledge task completion to planner: %w", err)
 	}
 
@@ -308,18 +329,16 @@ func (b *Builder) processTask(
 		return nil, fmt.Errorf("failed to get client: %w", err)
 	}
 
-	blockEnc, err := chunkenc.ParseEncoding(b.limits.BloomBlockEncoding(task.Tenant))
+	blockEnc, err := compression.ParseCodec(b.limits.BloomBlockEncoding(task.Tenant))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse block encoding: %w", err)
 	}
 
 	var (
 		blockCt      int
-		nGramSize    = uint64(b.limits.BloomNGramLength(tenant))
-		nGramSkip    = uint64(b.limits.BloomNGramSkip(tenant))
-		maxBlockSize = uint64(b.limits.BloomCompactorMaxBlockSize(tenant))
-		maxBloomSize = uint64(b.limits.BloomCompactorMaxBloomSize(tenant))
-		blockOpts    = v1.NewBlockOptions(blockEnc, nGramSize, nGramSkip, maxBlockSize, maxBloomSize)
+		maxBlockSize = uint64(b.limits.BloomMaxBlockSize(tenant))
+		maxBloomSize = uint64(b.limits.BloomMaxBloomSize(tenant))
+		blockOpts    = v1.NewBlockOptions(blockEnc, maxBlockSize, maxBloomSize)
 		created      []bloomshipper.Meta
 		totalSeries  int
 		bytesAdded   int
@@ -343,7 +362,7 @@ func (b *Builder) processTask(
 		// Fetch blocks that aren't up to date but are in the desired fingerprint range
 		// to try and accelerate bloom creation.
 		level.Debug(logger).Log("msg", "loading series and blocks for gap", "blocks", len(gap.Blocks))
-		seriesItr, blocksIter, err := b.loadWorkForGap(ctx, task.Table, tenant, task.TSDB, gap)
+		seriesItr, blocksIter, err := b.loadWorkForGap(ctx, task.Table, gap)
 		if err != nil {
 			level.Error(logger).Log("msg", "failed to get series and blocks", "err", err)
 			return nil, fmt.Errorf("failed to get series and blocks: %w", err)
@@ -360,7 +379,7 @@ func (b *Builder) processTask(
 		// Blocks are built consuming the series iterator. For observability, we wrap the series iterator
 		// with a counter iterator to count the number of times Next() is called on it.
 		// This is used to observe the number of series that are being processed.
-		seriesItrWithCounter := iter.NewCounterIter[*v1.Series](seriesItr)
+		seriesItrWithCounter := iter.NewCounterIter(seriesItr)
 
 		gen := NewSimpleBloomGenerator(
 			tenant,
@@ -368,7 +387,7 @@ func (b *Builder) processTask(
 			seriesItrWithCounter,
 			b.chunkLoader,
 			blocksIter,
-			b.rwFn,
+			b.writerReaderFunc,
 			nil, // TODO(salvacorts): Pass reporter or remove when we address tracking
 			b.bloomStore.BloomMetrics(),
 			logger,
@@ -381,22 +400,32 @@ func (b *Builder) processTask(
 			blockCt++
 			blk := newBlocks.At()
 
-			built, err := bloomshipper.BlockFrom(tenant, task.Table.Addr(), blk)
+			built, err := bloomshipper.BlockFrom(defaultBlockCompressionCodec, tenant, task.Table.Addr(), blk)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to build block", "err", err)
+				if err = blk.Reader().Cleanup(); err != nil {
+					level.Error(logger).Log("msg", "failed to cleanup block directory", "err", err)
+				}
 				return nil, fmt.Errorf("failed to build block: %w", err)
 			}
 
-			logger := log.With(logger, "block", built.BlockRef.String())
+			logger := log.With(logger, "block", built.String())
 
 			if err := client.PutBlock(
 				ctx,
 				built,
 			); err != nil {
 				level.Error(logger).Log("msg", "failed to write block", "err", err)
+				if err = blk.Reader().Cleanup(); err != nil {
+					level.Error(logger).Log("msg", "failed to cleanup block directory", "err", err)
+				}
 				return nil, fmt.Errorf("failed to write block: %w", err)
 			}
 			b.metrics.blocksCreated.Inc()
+
+			if err := blk.Reader().Cleanup(); err != nil {
+				level.Error(logger).Log("msg", "failed to cleanup block directory", "err", err)
+			}
 
 			totalGapKeyspace := gap.Bounds.Max - gap.Bounds.Min
 			progress := built.Bounds.Max - gap.Bounds.Min
@@ -425,7 +454,7 @@ func (b *Builder) processTask(
 		}
 		meta.MetaRef = ref
 
-		logger = log.With(logger, "meta", meta.MetaRef.String())
+		logger = log.With(logger, "meta", meta.String())
 
 		if err := client.PutMeta(ctx, meta); err != nil {
 			level.Error(logger).Log("msg", "failed to write meta", "err", err)
@@ -452,15 +481,9 @@ func (b *Builder) processTask(
 func (b *Builder) loadWorkForGap(
 	ctx context.Context,
 	table config.DayTable,
-	tenant string,
-	id tsdb.Identifier,
-	gap protos.GapWithBlocks,
+	gap protos.Gap,
 ) (iter.Iterator[*v1.Series], iter.CloseResetIterator[*v1.SeriesWithBlooms], error) {
-	// load a series iterator for the gap
-	seriesItr, err := b.tsdbStore.LoadTSDB(ctx, table, tenant, id, gap.Bounds)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to load tsdb")
-	}
+	seriesItr := iter.NewCancelableIter(ctx, iter.NewSliceIter(gap.Series))
 
 	// load a blocks iterator for the gap
 	fetcher, err := b.bloomStore.Fetcher(table.ModelTime())
@@ -489,9 +512,10 @@ func (b *Builder) loadWorkForGap(
 	return seriesItr, blocksIter, nil
 }
 
-// TODO(owen-d): pool, evaluate if memory-only is the best choice
-func (b *Builder) rwFn() (v1.BlockWriter, v1.BlockReader) {
-	indexBuf := bytes.NewBuffer(nil)
-	bloomsBuf := bytes.NewBuffer(nil)
-	return v1.NewMemoryBlockWriter(indexBuf, bloomsBuf), v1.NewByteReader(indexBuf, bloomsBuf)
+func (b *Builder) writerReaderFunc() (v1.BlockWriter, v1.BlockReader) {
+	dir, err := os.MkdirTemp(b.cfg.WorkingDir, "bloom-block-")
+	if err != nil {
+		panic(err)
+	}
+	return v1.NewDirectoryBlockWriter(dir), v1.NewDirectoryBlockReader(dir)
 }

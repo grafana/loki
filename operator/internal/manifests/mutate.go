@@ -206,14 +206,12 @@ func mutateServiceMonitor(existing, desired *monitoringv1.ServiceMonitor) {
 
 func mutateIngress(existing, desired *networkingv1.Ingress) {
 	existing.Labels = desired.Labels
-	existing.Annotations = desired.Annotations
 	existing.Spec.DefaultBackend = desired.Spec.DefaultBackend
 	existing.Spec.Rules = desired.Spec.Rules
 	existing.Spec.TLS = desired.Spec.TLS
 }
 
 func mutateRoute(existing, desired *routev1.Route) {
-	existing.Annotations = desired.Annotations
 	existing.Labels = desired.Labels
 	existing.Spec = desired.Spec
 }

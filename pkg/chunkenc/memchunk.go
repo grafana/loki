@@ -16,6 +16,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
@@ -131,7 +132,7 @@ type MemChunk struct {
 	head HeadBlock
 
 	format   byte
-	encoding Encoding
+	encoding compression.Codec
 	headFmt  HeadBlockFmt
 
 	// compressed size of chunk. Set when chunk is cut or while decoding chunk from storage.
@@ -196,7 +197,7 @@ func (hb *headBlock) Append(ts int64, line string, _ labels.Labels) (bool, error
 	return false, nil
 }
 
-func (hb *headBlock) Serialise(pool WriterPool) ([]byte, error) {
+func (hb *headBlock) Serialise(pool compression.WriterPool) ([]byte, error) {
 	inBuf := serializeBytesBufferPool.Get().(*bytes.Buffer)
 	defer func() {
 		inBuf.Reset()
@@ -354,7 +355,7 @@ type entry struct {
 }
 
 // NewMemChunk returns a new in-mem chunk.
-func NewMemChunk(chunkFormat byte, enc Encoding, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
+func NewMemChunk(chunkFormat byte, enc compression.Codec, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
 	return newMemChunkWithFormat(chunkFormat, enc, head, blockSize, targetSize)
 }
 
@@ -369,7 +370,7 @@ func panicIfInvalidFormat(chunkFmt byte, head HeadBlockFmt) {
 }
 
 // NewMemChunk returns a new in-mem chunk.
-func newMemChunkWithFormat(format byte, enc Encoding, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
+func newMemChunkWithFormat(format byte, enc compression.Codec, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
 	panicIfInvalidFormat(format, head)
 
 	symbolizer := newSymbolizer()
@@ -413,10 +414,10 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 	bc.format = version
 	switch version {
 	case ChunkFormatV1:
-		bc.encoding = EncGZIP
+		bc.encoding = compression.GZIP
 	case ChunkFormatV2, ChunkFormatV3, ChunkFormatV4:
 		// format v2+ has a byte for block encoding.
-		enc := Encoding(db.byte())
+		enc := compression.Codec(db.byte())
 		if db.err() != nil {
 			return nil, errors.Wrap(db.err(), "verifying encoding")
 		}
@@ -441,13 +442,20 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 
 	metasOffset := uint64(0)
 	metasLen := uint64(0)
+	// There is a rare issue where chunks built by Loki have incorrect offset for some blocks which causes Loki to fail to read those chunks.
+	// While the root cause is yet to be identified, we will try to read those problematic chunks using the expected offset for blocks calculated using other relative offsets in the chunk.
+	expectedBlockOffset := 0
 	if version >= ChunkFormatV4 {
-		// version >= 4 starts writing length of sections after their offsets
+		// version >= 4 starts writing length of sections before their offsets
 		metasLen, metasOffset = readSectionLenAndOffset(chunkMetasSectionIdx)
+		structuredMetadataLength, structuredMetadataOffset := readSectionLenAndOffset(chunkStructuredMetadataSectionIdx)
+		expectedBlockOffset = int(structuredMetadataLength + structuredMetadataOffset + 4)
 	} else {
 		// version <= 3 does not store length of metas. metas are followed by metasOffset + hash and then the chunk ends
 		metasOffset = binary.BigEndian.Uint64(b[len(b)-8:])
 		metasLen = uint64(len(b)-(8+4)) - metasOffset
+		// version 1 writes blocks after version number while version 2 and 3 write blocks after chunk encoding
+		expectedBlockOffset = len(b) - len(db.b)
 	}
 	mb := b[metasOffset : metasOffset+metasLen]
 	db = decbuf{b: mb}
@@ -476,15 +484,35 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 			blk.uncompressedSize = db.uvarint()
 		}
 		l := db.uvarint()
-		blk.b = b[blk.offset : blk.offset+l]
 
-		// Verify checksums.
-		expCRC := binary.BigEndian.Uint32(b[blk.offset+l:])
-		if expCRC != crc32.Checksum(blk.b, castagnoliTable) {
-			_ = level.Error(util_log.Logger).Log("msg", "Checksum does not match for a block in chunk, this block will be skipped", "err", ErrInvalidChecksum)
-			continue
+		invalidBlockErr := validateBlock(b, blk.offset, l)
+		if invalidBlockErr != nil {
+			level.Error(util_log.Logger).Log("msg", "invalid block found", "err", invalidBlockErr)
+			// if block is expected to have different offset than what is encoded, see if we get a valid block using expected offset
+			if blk.offset != expectedBlockOffset {
+				_ = level.Error(util_log.Logger).Log("msg", "block offset does not match expected one, will try reading with expected offset", "actual", blk.offset, "expected", expectedBlockOffset)
+				blk.offset = expectedBlockOffset
+				if err := validateBlock(b, blk.offset, l); err != nil {
+					level.Error(util_log.Logger).Log("msg", "could not find valid block using expected offset", "err", err)
+				} else {
+					invalidBlockErr = nil
+					level.Info(util_log.Logger).Log("msg", "valid block found using expected offset")
+				}
+			}
+
+			// if the block read with expected offset is still invalid, do not continue further
+			if invalidBlockErr != nil {
+				if errors.Is(invalidBlockErr, ErrInvalidChecksum) {
+					expectedBlockOffset += l + 4
+					continue
+				}
+				return nil, invalidBlockErr
+			}
 		}
 
+		// next block starts at current block start + current block length + checksum
+		expectedBlockOffset = blk.offset + l + 4
+		blk.b = b[blk.offset : blk.offset+l]
 		bc.blocks = append(bc.blocks, blk)
 
 		// Update the counter used to track the size of cut blocks.
@@ -508,7 +536,7 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 		if fromCheckpoint {
 			bc.symbolizer = symbolizerFromCheckpoint(lb)
 		} else {
-			symbolizer, err := symbolizerFromEnc(lb, GetReaderPool(bc.encoding))
+			symbolizer, err := symbolizerFromEnc(lb, compression.GetReaderPool(bc.encoding))
 			if err != nil {
 				return nil, err
 			}
@@ -626,7 +654,7 @@ func (c *MemChunk) writeTo(w io.Writer, forCheckpoint bool) (int64, error) {
 			}
 		} else {
 			var err error
-			n, crcHash, err = c.symbolizer.SerializeTo(w, GetWriterPool(c.encoding))
+			n, crcHash, err = c.symbolizer.SerializeTo(w, compression.GetWriterPool(c.encoding))
 			if err != nil {
 				return offset, errors.Wrap(err, "write structured metadata")
 			}
@@ -749,7 +777,7 @@ func MemchunkFromCheckpoint(chk, head []byte, desiredIfNotUnordered HeadBlockFmt
 }
 
 // Encoding implements Chunk.
-func (c *MemChunk) Encoding() Encoding {
+func (c *MemChunk) Encoding() compression.Codec {
 	return c.encoding
 }
 
@@ -914,7 +942,7 @@ func (c *MemChunk) cut() error {
 		return nil
 	}
 
-	b, err := c.head.Serialise(GetWriterPool(c.encoding))
+	b, err := c.head.Serialise(compression.GetWriterPool(c.encoding))
 	if err != nil {
 		return err
 	}
@@ -1145,7 +1173,7 @@ func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, err
 // then allows us to bind a decoding context to a block when requested, but otherwise helps reduce the
 // chances of chunk<>block encoding drift in the codebase as the latter is parameterized by the former.
 type encBlock struct {
-	enc        Encoding
+	enc        compression.Codec
 	format     byte
 	symbolizer *symbolizer
 	block
@@ -1155,14 +1183,14 @@ func (b encBlock) Iterator(ctx context.Context, pipeline log.StreamPipeline) ite
 	if len(b.b) == 0 {
 		return iter.NoopEntryIterator
 	}
-	return newEntryIterator(ctx, GetReaderPool(b.enc), b.b, pipeline, b.format, b.symbolizer)
+	return newEntryIterator(ctx, compression.GetReaderPool(b.enc), b.b, pipeline, b.format, b.symbolizer)
 }
 
 func (b encBlock) SampleIterator(ctx context.Context, extractor log.StreamSampleExtractor) iter.SampleIterator {
 	if len(b.b) == 0 {
 		return iter.NoopSampleIterator
 	}
-	return newSampleIterator(ctx, GetReaderPool(b.enc), b.b, b.format, extractor, b.symbolizer)
+	return newSampleIterator(ctx, compression.GetReaderPool(b.enc), b.b, b.format, extractor, b.symbolizer)
 }
 
 func (b block) Offset() int {
@@ -1312,7 +1340,7 @@ type bufferedIterator struct {
 	stats     *stats.Context
 
 	reader     io.Reader
-	pool       ReaderPool
+	pool       compression.ReaderPool
 	symbolizer *symbolizer
 
 	err error
@@ -1331,7 +1359,7 @@ type bufferedIterator struct {
 	closed bool
 }
 
-func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte, format byte, symbolizer *symbolizer) *bufferedIterator {
+func newBufferedIterator(ctx context.Context, pool compression.ReaderPool, b []byte, format byte, symbolizer *symbolizer) *bufferedIterator {
 	stats := stats.FromContext(ctx)
 	stats.AddCompressedBytes(int64(len(b)))
 	return &bufferedIterator{
@@ -1592,7 +1620,7 @@ func (si *bufferedIterator) close() {
 	si.origBytes = nil
 }
 
-func newEntryIterator(ctx context.Context, pool ReaderPool, b []byte, pipeline log.StreamPipeline, format byte, symbolizer *symbolizer) iter.EntryIterator {
+func newEntryIterator(ctx context.Context, pool compression.ReaderPool, b []byte, pipeline log.StreamPipeline, format byte, symbolizer *symbolizer) iter.EntryIterator {
 	return &entryBufferedIterator{
 		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
 		pipeline:         pipeline,
@@ -1644,7 +1672,7 @@ func (e *entryBufferedIterator) Close() error {
 	return e.bufferedIterator.Close()
 }
 
-func newSampleIterator(ctx context.Context, pool ReaderPool, b []byte, format byte, extractor log.StreamSampleExtractor, symbolizer *symbolizer) iter.SampleIterator {
+func newSampleIterator(ctx context.Context, pool compression.ReaderPool, b []byte, format byte, extractor log.StreamSampleExtractor, symbolizer *symbolizer) iter.SampleIterator {
 	return &sampleBufferedIterator{
 		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
 		extractor:        extractor,
@@ -1692,4 +1720,22 @@ func (e *sampleBufferedIterator) StreamHash() uint64 { return e.extractor.BaseLa
 
 func (e *sampleBufferedIterator) At() logproto.Sample {
 	return e.cur
+}
+
+// validateBlock validates block by doing following checks:
+// 1. Offset+length do not overrun size of the chunk from which we are reading the block.
+// 2. Checksum of the block we will read matches the stored checksum in the chunk.
+func validateBlock(chunkBytes []byte, offset, length int) error {
+	if offset+length > len(chunkBytes) {
+		return fmt.Errorf("offset %d + length %d exceeds chunk length %d", offset, length, len(chunkBytes))
+	}
+
+	blockBytes := chunkBytes[offset : offset+length]
+	// Verify checksums.
+	expCRC := binary.BigEndian.Uint32(chunkBytes[offset+length:])
+	if expCRC != crc32.Checksum(blockBytes, castagnoliTable) {
+		return ErrInvalidChecksum
+	}
+
+	return nil
 }

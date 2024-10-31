@@ -14,7 +14,6 @@ import (
 
 const (
 	configWithS3Backend = `
-backend: s3
 s3:
   endpoint:          localhost
   bucket_name:       test
@@ -24,7 +23,6 @@ s3:
 `
 
 	configWithGCSBackend = `
-backend: gcs
 gcs:
   bucket_name:     test
   service_account: |-
@@ -41,36 +39,34 @@ gcs:
       "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/test%40test.com"
     }
 `
-
-	configWithUnknownBackend = `
-backend: unknown
-`
 )
 
 func TestNewClient(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
+		backend     string
 		config      string
 		expectedErr error
 	}{
 		"should create an S3 bucket": {
+			backend:     "s3",
 			config:      configWithS3Backend,
 			expectedErr: nil,
 		},
 		"should create a GCS bucket": {
+			backend:     "gcs",
 			config:      configWithGCSBackend,
 			expectedErr: nil,
 		},
 		"should return error on unknown backend": {
-			config:      configWithUnknownBackend,
+			backend:     "unknown",
+			config:      "",
 			expectedErr: ErrUnsupportedStorageBackend,
 		},
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			// Load config
 			cfg := Config{}
@@ -80,7 +76,7 @@ func TestNewClient(t *testing.T) {
 			require.NoError(t, err)
 
 			// Instance a new bucket client from the config
-			bucketClient, err := NewClient(context.Background(), cfg, "test", util_log.Logger, nil)
+			bucketClient, err := NewClient(context.Background(), testData.backend, cfg, "test", util_log.Logger)
 			require.Equal(t, testData.expectedErr, err)
 
 			if testData.expectedErr == nil {

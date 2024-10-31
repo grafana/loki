@@ -234,7 +234,6 @@ func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQu
 		if err != nil {
 			return nil, err
 		}
-
 		results = append(results, res)
 	}
 

@@ -118,6 +118,7 @@ var retryableHTTPStatusCodes = map[int]struct{}{
 	http.StatusBadGateway:          {},
 	http.StatusServiceUnavailable:  {},
 	http.StatusGatewayTimeout:      {},
+	520:                            {}, // It is used by Cloudflare as a catch-all response for when the origin server sends something unexpected.
 	// Add more HTTP status codes here.
 }
 
@@ -128,9 +129,10 @@ func isHTTPStatusRetryable(httpStatusCode int) (ok bool) {
 }
 
 // For now, all http Do() requests are retriable except some well defined errors
-func isRequestErrorRetryable(err error) bool {
+func isRequestErrorRetryable(ctx context.Context, err error) bool {
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return false
+		// Retry if internal timeout in the HTTP call.
+		return ctx.Err() == nil
 	}
 	if ue, ok := err.(*url.Error); ok {
 		e := ue.Unwrap()

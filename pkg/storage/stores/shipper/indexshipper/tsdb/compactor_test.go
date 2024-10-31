@@ -144,7 +144,7 @@ func setupMultiTenantIndex(t *testing.T, indexFormat int, userStreams map[string
 	_, err := b.Build(
 		context.Background(),
 		t.TempDir(),
-		func(from, through model.Time, checksum uint32) Identifier {
+		func(_, _ model.Time, _ uint32) Identifier {
 			return dst
 		},
 	)
@@ -609,7 +609,7 @@ func TestCompactor_Compact(t *testing.T) {
 						require.NoError(t, err)
 
 						actualChunks = map[string]index.ChunkMetas{}
-						err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), "", nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
+						err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), "", nil, 0, math.MaxInt64, func(lbls labels.Labels, _ model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
 							actualChunks[lbls.String()] = chks
 							return false
 						}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
@@ -824,7 +824,7 @@ func TestCompactedIndex(t *testing.T) {
 			require.NoError(t, err)
 
 			foundChunks := map[string]index.ChunkMetas{}
-			err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), "", nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
+			err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), "", nil, 0, math.MaxInt64, func(lbls labels.Labels, _ model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
 				foundChunks[lbls.String()] = append(index.ChunkMetas{}, chks...)
 				return false
 			}, labels.MustNewMatcher(labels.MatchEqual, "", ""))

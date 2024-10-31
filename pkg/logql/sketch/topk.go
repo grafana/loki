@@ -2,7 +2,6 @@ package sketch
 
 import (
 	"container/heap"
-	"reflect"
 	"sort"
 	"unsafe"
 
@@ -210,14 +209,8 @@ func (t *Topk) updateBF(removed, added string) {
 	}
 }
 
-// todo: is there a way to save more bytes/allocs via a pool?
 func unsafeGetBytes(s string) []byte {
-	if s == "" {
-		return nil // or []byte{}
-	}
-	return (*[0x7fff0000]byte)(unsafe.Pointer(
-		(*reflect.StringHeader)(unsafe.Pointer(&s)).Data),
-	)[:len(s):len(s)]
+	return unsafe.Slice(unsafe.StringData(s), len(s))
 }
 
 // Observe is our sketch event observation function, which is a bit more complex than the original count min sketch + heap TopK

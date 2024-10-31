@@ -156,7 +156,7 @@ func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through mod
 		ctx,
 		len(jobs),
 		len(jobs),
-		func(ctx context.Context, i int) error {
+		func(_ context.Context, i int) error {
 			resp, err := jobs[i]()
 			resps[i] = resp
 			return err
@@ -208,7 +208,7 @@ func (a *AsyncStore) Volume(ctx context.Context, userID string, from, through mo
 		ctx,
 		len(jobs),
 		len(jobs),
-		func(ctx context.Context, i int) error {
+		func(_ context.Context, i int) error {
 			resp, err := jobs[i]()
 			resps[i] = resp
 			return err
@@ -324,7 +324,7 @@ func (a *AsyncStore) GetShards(
 		ctx,
 		len(jobs),
 		len(jobs),
-		func(ctx context.Context, i int) error {
+		func(_ context.Context, i int) error {
 			return jobs[i]()
 		},
 	); err != nil {
@@ -372,15 +372,8 @@ func mergeShardsFromIngestersAndStore(
 
 	shards := sharding.LinearShards(int(totalBytes/targetBytesPerShard), totalBytes)
 
-	// increment the total chunks by the number seen from ingesters
-	// NB(owen-d): this isn't perfect as it mixes signals a bit by joining
-	// store chunks which _could_ possibly be filtered with ingester chunks which can't,
-	// but it's still directionally helpful
-	updatedStats := storeResp.Statistics
-	updatedStats.Index.TotalChunks += int64(statsResp.Chunks)
 	return &logproto.ShardsResponse{
-		Shards:     shards,
-		Statistics: updatedStats,
+		Shards: shards,
 		// explicitly nil chunkgroups when we've changed the shards+included chunkrefs from ingesters
 		ChunkGroups: nil,
 	}

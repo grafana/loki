@@ -9,7 +9,6 @@ import (
 
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
@@ -19,17 +18,20 @@ const (
 	Day = 24 * time.Hour
 )
 
-type tokenSettings struct {
-	nGramLen int
-}
-
 type wrappedError struct {
 	mu  sync.Mutex
 	err error
 }
 
 func (e *wrappedError) Error() string {
-	return e.err.Error()
+	e.mu.Lock()
+	err := e.err
+	e.mu.Unlock()
+
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 func (e *wrappedError) Set(err error) {
@@ -56,8 +58,8 @@ type Task struct {
 
 	// series of the original request
 	series []*logproto.GroupedChunkRefs
-	// filters of the original request
-	filters []syntax.LineFilterExpr
+	// matchers to check against
+	matchers []v1.LabelMatcher
 	// blocks that were resolved on the index gateway and sent with the request
 	blocks []bloomshipper.BlockRef
 	// from..through date of the task's chunks
@@ -75,13 +77,13 @@ type Task struct {
 	recorder *v1.BloomRecorder
 }
 
-func newTask(ctx context.Context, tenantID string, refs seriesWithInterval, filters []syntax.LineFilterExpr, blocks []bloomshipper.BlockRef) Task {
+func newTask(ctx context.Context, tenantID string, refs seriesWithInterval, matchers []v1.LabelMatcher, blocks []bloomshipper.BlockRef) Task {
 	return Task{
 		tenant:   tenantID,
 		recorder: v1.NewBloomRecorder(ctx, "task"),
 		err:      new(wrappedError),
 		resCh:    make(chan v1.Output),
-		filters:  filters,
+		matchers: matchers,
 		blocks:   blocks,
 		series:   refs.series,
 		interval: refs.interval,
@@ -122,7 +124,7 @@ func (t Task) Copy(series []*logproto.GroupedChunkRefs) Task {
 		tenant:   t.tenant,
 		err:      t.err,
 		resCh:    t.resCh,
-		filters:  t.filters,
+		matchers: t.matchers,
 		blocks:   t.blocks,
 		series:   series,
 		interval: t.interval,
@@ -132,13 +134,11 @@ func (t Task) Copy(series []*logproto.GroupedChunkRefs) Task {
 	}
 }
 
-func (t Task) RequestIter(
-	tokenizer *v1.NGramTokenizer,
-) iter.Iterator[v1.Request] {
+func (t Task) RequestIter() iter.Iterator[v1.Request] {
 	return &requestIterator{
 		recorder: t.recorder,
 		series:   iter.NewSliceIter(t.series),
-		search:   v1.FiltersToBloomTest(tokenizer, t.filters...),
+		search:   v1.LabelMatchersToBloomTest(t.matchers...),
 		channel:  t.resCh,
 		curr:     v1.Request{},
 	}
@@ -174,6 +174,7 @@ func (it *requestIterator) Next() bool {
 	it.curr = v1.Request{
 		Recorder: it.recorder,
 		Fp:       model.Fingerprint(group.Fingerprint),
+		Labels:   logproto.FromLabelAdaptersToLabels(group.Labels.Labels),
 		Chks:     convertToChunkRefs(group.Refs),
 		Search:   it.search,
 		Response: it.channel,

@@ -18,9 +18,6 @@ common:
     kvstore:
       store: inmemory
 
-ingester_rf1:
-  enabled: false
-
 query_range:
   results_cache:
     cache:
@@ -42,7 +39,7 @@ pattern_ingester:
   enabled: true
   metric_aggregation:
     enabled: true
-    log_push_observations: true
+    loki_address: localhost:3100
 
 ruler:
   alertmanager_url: http://localhost:9093

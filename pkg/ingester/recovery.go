@@ -1,13 +1,14 @@
 package ingester
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"runtime"
 	"sync"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wlog"
@@ -159,12 +160,12 @@ func (r *ingesterRecoverer) Push(userID string, entries wal.RefEntries) error {
 	return r.ing.replayController.WithBackPressure(func() error {
 		out, ok := r.users.Load(userID)
 		if !ok {
-			return errors.Errorf("user (%s) not set during WAL replay", userID)
+			return fmt.Errorf("user (%s) not set during WAL replay", userID)
 		}
 
 		s, ok := out.(*sync.Map).Load(entries.Ref)
 		if !ok {
-			return errors.Errorf("stream (%d) not set during WAL replay for user (%s)", entries.Ref, userID)
+			return fmt.Errorf("stream (%d) not set during WAL replay for user (%s)", entries.Ref, userID)
 		}
 
 		// ignore out of order errors here (it's possible for a checkpoint to already have data from the wal segments)
@@ -273,7 +274,7 @@ func RecoverWAL(ctx context.Context, reader WALReader, recoverer Recoverer) erro
 				entries, ok := next.data.(wal.RefEntries)
 				var err error
 				if !ok {
-					err = errors.Errorf("unexpected type (%T) when recovering WAL, expecting (%T)", next.data, entries)
+					err = fmt.Errorf("unexpected type (%T) when recovering WAL, expecting (%T)", next.data, entries)
 				}
 				if err == nil {
 					err = recoverer.Push(next.userID, entries)
@@ -323,7 +324,7 @@ func RecoverCheckpoint(reader WALReader, recoverer Recoverer) error {
 				series, ok := next.data.(*Series)
 				var err error
 				if !ok {
-					err = errors.Errorf("unexpected type (%T) when recovering WAL, expecting (%T)", next.data, series)
+					err = fmt.Errorf("unexpected type (%T) when recovering WAL, expecting (%T)", next.data, series)
 				}
 				if err == nil {
 					err = recoverer.Series(series)

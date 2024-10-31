@@ -37,9 +37,10 @@ func (spacesTokenizer) Clone(tokens []string, _ interface{}) ([]string, interfac
 type punctuationTokenizer struct {
 	includeDelimiters [128]rune
 	excludeDelimiters [128]rune
+	maxLineLength     int
 }
 
-func newPunctuationTokenizer() *punctuationTokenizer {
+func newPunctuationTokenizer(maxLineLength int) *punctuationTokenizer {
 	var included [128]rune
 	var excluded [128]rune
 	included['='] = 1
@@ -51,10 +52,15 @@ func newPunctuationTokenizer() *punctuationTokenizer {
 	return &punctuationTokenizer{
 		includeDelimiters: included,
 		excludeDelimiters: excluded,
+		maxLineLength:     maxLineLength,
 	}
 }
 
 func (p *punctuationTokenizer) Tokenize(line string, tokens []string, state interface{}) ([]string, interface{}) {
+	if len(line) > p.maxLineLength {
+		return nil, nil
+	}
+
 	if cap(tokens) == 0 {
 		tokens = make([]string, 0, 128)
 	}
@@ -190,18 +196,24 @@ func (splittingTokenizer) Clone(tokens []string, state interface{}) ([]string, i
 }
 
 type logfmtTokenizer struct {
-	dec        *logfmt.Decoder
-	varReplace string
+	dec           *logfmt.Decoder
+	varReplace    string
+	maxLineLength int
 }
 
-func newLogfmtTokenizer(varReplace string) *logfmtTokenizer {
+func newLogfmtTokenizer(varReplace string, maxLineLength int) *logfmtTokenizer {
 	return &logfmtTokenizer{
-		dec:        logfmt.NewDecoder(nil),
-		varReplace: varReplace,
+		dec:           logfmt.NewDecoder(nil),
+		varReplace:    varReplace,
+		maxLineLength: maxLineLength,
 	}
 }
 
 func (t *logfmtTokenizer) Tokenize(line string, tokens []string, _ interface{}) ([]string, interface{}) {
+	if len(line) > t.maxLineLength {
+		return nil, nil
+	}
+
 	if cap(tokens) == 0 {
 		tokens = make([]string, 0, 64)
 	}
@@ -233,7 +245,7 @@ func (t *logfmtTokenizer) Join(tokens []string, _ interface{}) string {
 	buf := bytes.NewBuffer(make([]byte, 0, 1024))
 	enc := gologfmt.NewEncoder(buf)
 	for i := 0; i < len(tokens); i += 2 {
-		k, v := tokens[i], tokens[i+1]
+		k, v := tokens[i], unsafeBytes(tokens[i+1])
 		if err := enc.EncodeKeyval(k, v); err != nil {
 			return ""
 		}
@@ -251,16 +263,23 @@ func (t *logfmtTokenizer) Clone(tokens []string, _ interface{}) ([]string, inter
 
 type jsonTokenizer struct {
 	*punctuationTokenizer
-	varReplace string
+	varReplace       string
+	maxLineLength    int
+	fieldsToTokenize []string
 }
 
-func newJSONTokenizer(varReplace string) *jsonTokenizer {
-	return &jsonTokenizer{newPunctuationTokenizer(), varReplace}
+func newJSONTokenizer(varReplace string, maxLineLength int, fieldsToTokenize []string) *jsonTokenizer {
+	return &jsonTokenizer{
+		punctuationTokenizer: newPunctuationTokenizer(maxLineLength),
+		varReplace:           varReplace,
+		maxLineLength:        maxLineLength,
+		fieldsToTokenize:     fieldsToTokenize,
+	}
 }
 
 func (t *jsonTokenizer) Tokenize(line string, tokens []string, state interface{}) ([]string, interface{}) {
 	var found []byte
-	for _, key := range []string{"log", "message", "msg", "msg_", "_msg", "content"} {
+	for _, key := range t.fieldsToTokenize {
 		msg, ty, _, err := jsonparser.Get(unsafeBytes(line), key)
 		if err == nil && ty == jsonparser.String {
 			found = msg
@@ -272,7 +291,13 @@ func (t *jsonTokenizer) Tokenize(line string, tokens []string, state interface{}
 		return nil, nil
 	}
 
-	return t.punctuationTokenizer.Tokenize(unsafeString(found), tokens, state)
+	foundLine := unsafeString(found)
+
+	if len(foundLine) > t.maxLineLength {
+		return nil, nil
+	}
+
+	return t.punctuationTokenizer.Tokenize(foundLine, tokens, state)
 }
 
 func (t *jsonTokenizer) Join(tokens []string, state interface{}) string {
@@ -285,4 +310,13 @@ func isVariableField(key []byte) bool {
 		bytes.EqualFold(key, []byte("traceID")) ||
 		bytes.EqualFold(key, []byte("time")) ||
 		bytes.EqualFold(key, []byte("timestamp"))
+}
+
+type DedupingTokenizer struct {
+	LineTokenizer
+	dedupParam string
+}
+
+func (d DedupingTokenizer) Join(tokens []string, state interface{}) string {
+	return deduplicatePlaceholders(d.LineTokenizer.Join(tokens, state), d.dedupParam)
 }

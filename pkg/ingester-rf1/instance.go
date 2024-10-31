@@ -18,13 +18,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
-	"github.com/grafana/loki/v3/pkg/ingester/index"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/wal"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -61,7 +61,6 @@ type instance struct {
 	buf     []byte // buffer used to compute fps.
 	streams *streamsMap
 
-	index  *index.Multi
 	mapper *FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
 
 	instanceID string
@@ -100,7 +99,7 @@ func (i *instance) Push(ctx context.Context, w *wal.Manager, req *logproto.PushR
 				s, err := i.createStream(ctx, reqStream)
 				return s, err
 			},
-			func(s *stream) error {
+			func(_ *stream) error {
 				return nil
 			},
 		)
@@ -140,10 +139,6 @@ func newInstance(
 	customStreamsTracker push.UsageTracker,
 	logger log.Logger,
 ) (*instance, error) {
-	invertedIndex, err := index.NewMultiInvertedIndex(periodConfigs, uint32(cfg.IndexShards))
-	if err != nil {
-		return nil, err
-	}
 	streams := newStreamsMap()
 	ownedStreamsSvc := newOwnedStreamService(instanceID, limiter)
 	c := config.SchemaConfig{Configs: periodConfigs}
@@ -151,7 +146,6 @@ func newInstance(
 		cfg:        cfg,
 		streams:    streams,
 		buf:        make([]byte, 0, 1024),
-		index:      invertedIndex,
 		instanceID: instanceID,
 		//
 		streamsCreatedTotal: streamsCreatedTotal.WithLabelValues(instanceID),
@@ -182,7 +176,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 	// reducing the stream limits, for instance.
 	var err error
 
-	labels, err := syntax.ParseLabels(pushReqStream.Labels)
+	sortedLabels, err := syntax.ParseLabels(pushReqStream.Labels)
 	if err != nil {
 		if i.configs.LogStreamCreation(i.instanceID) {
 			level.Debug(util_log.Logger).Log(
@@ -192,16 +186,14 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 				"stream", pushReqStream.Labels,
 			)
 		}
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	if err != nil {
-		return i.onStreamCreationError(ctx, pushReqStream, err, labels)
+		return i.onStreamCreationError(ctx, pushReqStream, err, sortedLabels)
 	}
 
-	fp := i.getHashForLabels(labels)
-
-	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
+	fp := i.getHashForLabels(sortedLabels)
 
 	chunkfmt, headfmt, err := i.chunkFormatAt(minTs(&pushReqStream))
 	if err != nil {
@@ -278,10 +270,7 @@ func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logp
 	}
 
 	validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(len(pushReqStream.Entries)))
-	bytes := 0
-	for _, e := range pushReqStream.Entries {
-		bytes += len(e.Line)
-	}
+	bytes := util.EntriesTotalSize(pushReqStream.Entries)
 	validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
 	if i.customStreamsTracker != nil {
 		i.customStreamsTracker.DiscardedBytesAdd(ctx, i.instanceID, validation.StreamLimit, labels, float64(bytes))

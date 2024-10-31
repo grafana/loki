@@ -114,6 +114,31 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # querier.
 [querier: <querier>]
 
+querier_rf1:
+  # Enable the RF1 querier. If set, replaces the usual querier with an RF-1
+  # querier.
+  # CLI flag: -querier-rf1.enabled
+  [enabled: <boolean> | default = false]
+
+  # Time to wait before sending more than the minimum successful query requests.
+  # CLI flag: -querier-rf1.extra-query-delay
+  [extra_query_delay: <duration> | default = 0s]
+
+  engine:
+    # The maximum amount of time to look back for log lines. Used only for
+    # instant log queries.
+    # CLI flag: -querier-rf1.engine.max-lookback-period
+    [max_look_back_period: <duration> | default = 30s]
+
+  # The maximum number of queries that can be simultaneously processed by the
+  # querier.
+  # CLI flag: -querier-rf1.max-concurrent
+  [max_concurrent: <int> | default = 4]
+
+  # When true, querier limits sent via a header are enforced.
+  # CLI flag: -querier-rf1.per-request-limits-enabled
+  [per_request_limits_enabled: <boolean> | default = false]
+
 # The query_scheduler block configures the Loki query scheduler. When configured
 # it separates the tenant query queues from the query-frontend.
 [query_scheduler: <query_scheduler>]
@@ -141,270 +166,6 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # The ingester block configures the ingester and how the ingester will register
 # itself to a key value store.
 [ingester: <ingester>]
-
-ingester_rf1:
-  # Whether the ingester is enabled.
-  # CLI flag: -ingester-rf1.enabled
-  [enabled: <boolean> | default = false]
-
-  # Configures how the lifecycle of the ingester will operate and where it will
-  # register for discovery.
-  lifecycler:
-    ring:
-      kvstore:
-        # Backend storage to use for the ring. Supported values are: consul,
-        # etcd, inmemory, memberlist, multi.
-        # CLI flag: -ingester-rf1.store
-        [store: <string> | default = "consul"]
-
-        # The prefix for the keys in the store. Should end with a /.
-        # CLI flag: -ingester-rf1.prefix
-        [prefix: <string> | default = "collectors/"]
-
-        # Configuration for a Consul client. Only applies if the selected
-        # kvstore is consul.
-        # The CLI flags prefix for this block configuration is: ingester-rf1
-        [consul: <consul>]
-
-        # Configuration for an ETCD v3 client. Only applies if the selected
-        # kvstore is etcd.
-        # The CLI flags prefix for this block configuration is: ingester-rf1
-        [etcd: <etcd>]
-
-        multi:
-          # Primary backend storage used by multi-client.
-          # CLI flag: -ingester-rf1.multi.primary
-          [primary: <string> | default = ""]
-
-          # Secondary backend storage used by multi-client.
-          # CLI flag: -ingester-rf1.multi.secondary
-          [secondary: <string> | default = ""]
-
-          # Mirror writes to secondary store.
-          # CLI flag: -ingester-rf1.multi.mirror-enabled
-          [mirror_enabled: <boolean> | default = false]
-
-          # Timeout for storing value to secondary store.
-          # CLI flag: -ingester-rf1.multi.mirror-timeout
-          [mirror_timeout: <duration> | default = 2s]
-
-      # The heartbeat timeout after which ingesters are skipped for
-      # reads/writes. 0 = never (timeout disabled).
-      # CLI flag: -ingester-rf1.ring.heartbeat-timeout
-      [heartbeat_timeout: <duration> | default = 1m]
-
-      # The number of ingesters to write to and read from.
-      # CLI flag: -ingester-rf1.distributor.replication-factor
-      [replication_factor: <int> | default = 3]
-
-      # True to enable the zone-awareness and replicate ingested samples across
-      # different availability zones.
-      # CLI flag: -ingester-rf1.distributor.zone-awareness-enabled
-      [zone_awareness_enabled: <boolean> | default = false]
-
-      # Comma-separated list of zones to exclude from the ring. Instances in
-      # excluded zones will be filtered out from the ring.
-      # CLI flag: -ingester-rf1.distributor.excluded-zones
-      [excluded_zones: <string> | default = ""]
-
-    # Number of tokens for each ingester.
-    # CLI flag: -ingester-rf1.num-tokens
-    [num_tokens: <int> | default = 128]
-
-    # Period at which to heartbeat to consul. 0 = disabled.
-    # CLI flag: -ingester-rf1.heartbeat-period
-    [heartbeat_period: <duration> | default = 5s]
-
-    # Heartbeat timeout after which instance is assumed to be unhealthy. 0 =
-    # disabled.
-    # CLI flag: -ingester-rf1.heartbeat-timeout
-    [heartbeat_timeout: <duration> | default = 1m]
-
-    # Observe tokens after generating to resolve collisions. Useful when using
-    # gossiping ring.
-    # CLI flag: -ingester-rf1.observe-period
-    [observe_period: <duration> | default = 0s]
-
-    # Period to wait for a claim from another member; will join automatically
-    # after this.
-    # CLI flag: -ingester-rf1.join-after
-    [join_after: <duration> | default = 0s]
-
-    # Minimum duration to wait after the internal readiness checks have passed
-    # but before succeeding the readiness endpoint. This is used to slowdown
-    # deployment controllers (eg. Kubernetes) after an instance is ready and
-    # before they proceed with a rolling update, to give the rest of the cluster
-    # instances enough time to receive ring updates.
-    # CLI flag: -ingester-rf1.min-ready-duration
-    [min_ready_duration: <duration> | default = 15s]
-
-    # Name of network interface to read address from.
-    # CLI flag: -ingester-rf1.lifecycler.interface
-    [interface_names: <list of strings> | default = [<private network interfaces>]]
-
-    # Enable IPv6 support. Required to make use of IP addresses from IPv6
-    # interfaces.
-    # CLI flag: -ingester-rf1.enable-inet6
-    [enable_inet6: <boolean> | default = false]
-
-    # Duration to sleep for before exiting, to ensure metrics are scraped.
-    # CLI flag: -ingester-rf1.final-sleep
-    [final_sleep: <duration> | default = 0s]
-
-    # File path where tokens are stored. If empty, tokens are not stored at
-    # shutdown and restored at startup.
-    # CLI flag: -ingester-rf1.tokens-file-path
-    [tokens_file_path: <string> | default = ""]
-
-    # The availability zone where this instance is running.
-    # CLI flag: -ingester-rf1.availability-zone
-    [availability_zone: <string> | default = ""]
-
-    # Unregister from the ring upon clean shutdown. It can be useful to disable
-    # for rolling restarts with consistent naming in conjunction with
-    # -distributor.extend-writes=false.
-    # CLI flag: -ingester-rf1.unregister-on-shutdown
-    [unregister_on_shutdown: <boolean> | default = true]
-
-    # When enabled the readiness probe succeeds only after all instances are
-    # ACTIVE and healthy in the ring, otherwise only the instance itself is
-    # checked. This option should be disabled if in your cluster multiple
-    # instances can be rolled out simultaneously, otherwise rolling updates may
-    # be slowed down.
-    # CLI flag: -ingester-rf1.readiness-check-ring-health
-    [readiness_check_ring_health: <boolean> | default = true]
-
-    # IP address to advertise in the ring.
-    # CLI flag: -ingester-rf1.lifecycler.addr
-    [address: <string> | default = ""]
-
-    # port to advertise in consul (defaults to server.grpc-listen-port).
-    # CLI flag: -ingester-rf1.lifecycler.port
-    [port: <int> | default = 0]
-
-    # ID to register in the ring.
-    # CLI flag: -ingester-rf1.lifecycler.ID
-    [id: <string> | default = "<hostname>"]
-
-  # How many flushes can happen concurrently from each stream.
-  # CLI flag: -ingester-rf1.concurrent-flushes
-  [concurrent_flushes: <int> | default = 32]
-
-  # How often should the ingester see if there are any blocks to flush. The
-  # first flush check is delayed by a random time up to 0.8x the flush check
-  # period. Additionally, there is +/- 1% jitter added to the interval.
-  # CLI flag: -ingester-rf1.flush-check-period
-  [flush_check_period: <duration> | default = 500ms]
-
-  flush_op_backoff:
-    # Minimum backoff period when a flush fails. Each concurrent flush has its
-    # own backoff, see `ingester.concurrent-flushes`.
-    # CLI flag: -ingester-rf1.flush-op-backoff-min-period
-    [min_period: <duration> | default = 100ms]
-
-    # Maximum backoff period when a flush fails. Each concurrent flush has its
-    # own backoff, see `ingester.concurrent-flushes`.
-    # CLI flag: -ingester-rf1.flush-op-backoff-max-period
-    [max_period: <duration> | default = 1m]
-
-    # Maximum retries for failed flushes.
-    # CLI flag: -ingester-rf1.flush-op-backoff-retries
-    [max_retries: <int> | default = 10]
-
-  # The timeout for an individual flush. Will be retried up to
-  # `flush-op-backoff-retries` times.
-  # CLI flag: -ingester-rf1.flush-op-timeout
-  [flush_op_timeout: <duration> | default = 10m]
-
-  # How long chunks should be retained in-memory after they've been flushed.
-  # CLI flag: -ingester-rf1.chunks-retain-period
-  [chunk_retain_period: <duration> | default = 0s]
-
-  [chunk_idle_period: <duration>]
-
-  # The targeted _uncompressed_ size in bytes of a chunk block When this
-  # threshold is exceeded the head block will be cut and compressed inside the
-  # chunk.
-  # CLI flag: -ingester-rf1.chunks-block-size
-  [chunk_block_size: <int> | default = 262144]
-
-  # A target _compressed_ size in bytes for chunks. This is a desired size not
-  # an exact size, chunks may be slightly bigger or significantly smaller if
-  # they get flushed for other reasons (e.g. chunk_idle_period). A value of 0
-  # creates chunks with a fixed 10 blocks, a non zero value will create chunks
-  # with a variable number of blocks to meet the target size.
-  # CLI flag: -ingester-rf1.chunk-target-size
-  [chunk_target_size: <int> | default = 1572864]
-
-  # The algorithm to use for compressing chunk. (none, gzip, lz4-64k, snappy,
-  # lz4-256k, lz4-1M, lz4, flate, zstd)
-  # CLI flag: -ingester-rf1.chunk-encoding
-  [chunk_encoding: <string> | default = "gzip"]
-
-  # The maximum duration of a timeseries chunk in memory. If a timeseries runs
-  # for longer than this, the current chunk will be flushed to the store and a
-  # new chunk created.
-  # CLI flag: -ingester-rf1.max-chunk-age
-  [max_chunk_age: <duration> | default = 2h]
-
-  # Forget about ingesters having heartbeat timestamps older than
-  # `ring.kvstore.heartbeat_timeout`. This is equivalent to clicking on the
-  # `/ring` `forget` button in the UI: the ingester is removed from the ring.
-  # This is a useful setting when you are sure that an unhealthy node won't
-  # return. An example is when not using stateful sets or the equivalent. Use
-  # `memberlist.rejoin_interval` > 0 to handle network partition cases when
-  # using a memberlist.
-  # CLI flag: -ingester-rf1.autoforget-unhealthy
-  [autoforget_unhealthy: <boolean> | default = false]
-
-  # The maximum number of errors a stream will report to the user when a push
-  # fails. 0 to make unlimited.
-  # CLI flag: -ingester-rf1.max-ignored-stream-errors
-  [max_returned_stream_errors: <int> | default = 10]
-
-  # Shard factor used in the ingesters for the in process reverse index. This
-  # MUST be evenly divisible by ALL schema shard factors or Loki will not start.
-  # CLI flag: -ingester-rf1.index-shards
-  [index_shards: <int> | default = 32]
-
-  # Maximum number of dropped streams to keep in memory during tailing.
-  # CLI flag: -ingester-rf1.tailer.max-dropped-streams
-  [max_dropped_streams: <int> | default = 10]
-
-  # Path where the shutdown marker file is stored. If not set and
-  # common.path_prefix is set then common.path_prefix will be used.
-  # CLI flag: -ingester-rf1.shutdown-marker-path
-  [shutdown_marker_path: <string> | default = ""]
-
-  # Interval at which the ingester ownedStreamService checks for changes in the
-  # ring to recalculate owned streams.
-  # CLI flag: -ingester-rf1.owned-streams-check-interval
-  [owned_streams_check_interval: <duration> | default = 30s]
-
-  # Configures how the pattern ingester will connect to the ingesters.
-  client_config:
-    # Configures how connections are pooled.
-    pool_config:
-      # How frequently to clean up clients for ingesters that have gone away.
-      # CLI flag: -ingester-rf1.client-cleanup-period
-      [client_cleanup_period: <duration> | default = 15s]
-
-      # Run a health check on each ingester client during periodic cleanup.
-      # CLI flag: -ingester-rf1.health-check-ingesters
-      [health_check_ingesters: <boolean> | default = true]
-
-      # Timeout for the health check.
-      # CLI flag: -ingester-rf1.remote-timeout
-      [remote_timeout: <duration> | default = 1s]
-
-    # The remote request timeout on the client side.
-    # CLI flag: -ingester-rf1.client.timeout
-    [remote_timeout: <duration> | default = 5s]
-
-    # Configures how the gRPC connection to ingesters work as a client.
-    # The CLI flags prefix for this block configuration is:
-    # pattern-ingester.client
-    [grpc_client_config: <grpc_client>]
 
 pattern_ingester:
   # Whether the pattern ingester is enabled.
@@ -602,81 +363,211 @@ pattern_ingester:
     # CLI flag: -pattern-ingester.metric-aggregation.enabled
     [enabled: <boolean> | default = false]
 
-    # Whether to log push observations.
-    # CLI flag: -pattern-ingester.metric-aggregation.log-push-observations
-    [log_push_observations: <boolean> | default = false]
-
     # How often to downsample metrics from raw push observations.
-    # CLI flag: -pattern-ingester.downsample-period
+    # CLI flag: -pattern-ingester.metric-aggregation.downsample-period
     [downsample_period: <duration> | default = 10s]
+
+    # The address of the Loki instance to push aggregated metrics to.
+    # CLI flag: -pattern-ingester.metric-aggregation.loki-address
+    [loki_address: <string> | default = ""]
+
+    # The timeout for writing to Loki.
+    # CLI flag: -pattern-ingester.metric-aggregation.timeout
+    [timeout: <duration> | default = 10s]
+
+    # How long to wait in between pushes to Loki.
+    # CLI flag: -pattern-ingester.metric-aggregation.push-period
+    [push_period: <duration> | default = 30s]
+
+    # The HTTP client configuration for pushing metrics to Loki.
+    http_client_config:
+      basic_auth:
+        [username: <string> | default = ""]
+
+        [username_file: <string> | default = ""]
+
+        [username_ref: <string> | default = ""]
+
+        [password: <string> | default = ""]
+
+        [password_file: <string> | default = ""]
+
+        [password_ref: <string> | default = ""]
+
+      authorization:
+        [type: <string> | default = ""]
+
+        [credentials: <string> | default = ""]
+
+        [credentials_file: <string> | default = ""]
+
+        [credentials_ref: <string> | default = ""]
+
+      oauth2:
+        [client_id: <string> | default = ""]
+
+        [client_secret: <string> | default = ""]
+
+        [client_secret_file: <string> | default = ""]
+
+        [client_secret_ref: <string> | default = ""]
+
+        [scopes: <list of strings>]
+
+        [token_url: <string> | default = ""]
+
+        [endpoint_params: <map of string to string>]
+
+        tls_config:
+          [ca: <string> | default = ""]
+
+          [cert: <string> | default = ""]
+
+          [key: <string> | default = ""]
+
+          [ca_file: <string> | default = ""]
+
+          [cert_file: <string> | default = ""]
+
+          [key_file: <string> | default = ""]
+
+          [ca_ref: <string> | default = ""]
+
+          [cert_ref: <string> | default = ""]
+
+          [key_ref: <string> | default = ""]
+
+          [server_name: <string> | default = ""]
+
+          [insecure_skip_verify: <boolean>]
+
+          [min_version: <int>]
+
+          [max_version: <int>]
+
+        proxy_url:
+          [url: <url>]
+
+        [no_proxy: <string> | default = ""]
+
+        [proxy_from_environment: <boolean>]
+
+        [proxy_connect_header: <map of string to list of strings>]
+
+      [bearer_token: <string> | default = ""]
+
+      [bearer_token_file: <string> | default = ""]
+
+      tls_config:
+        [ca: <string> | default = ""]
+
+        [cert: <string> | default = ""]
+
+        [key: <string> | default = ""]
+
+        [ca_file: <string> | default = ""]
+
+        [cert_file: <string> | default = ""]
+
+        [key_file: <string> | default = ""]
+
+        [ca_ref: <string> | default = ""]
+
+        [cert_ref: <string> | default = ""]
+
+        [key_ref: <string> | default = ""]
+
+        [server_name: <string> | default = ""]
+
+        [insecure_skip_verify: <boolean>]
+
+        [min_version: <int>]
+
+        [max_version: <int>]
+
+      [follow_redirects: <boolean>]
+
+      [enable_http2: <boolean>]
+
+      proxy_url:
+        [url: <url>]
+
+      [no_proxy: <string> | default = ""]
+
+      [proxy_from_environment: <boolean>]
+
+      [proxy_connect_header: <map of string to list of strings>]
+
+      http_headers:
+        [: <map of string to Header>]
+
+    # Whether to use TLS for pushing metrics to Loki.
+    # CLI flag: -pattern-ingester.metric-aggregation.tls
+    [use_tls: <boolean> | default = false]
+
+    # The basic auth configuration for pushing metrics to Loki.
+    basic_auth:
+      # Basic auth username for sending aggregations back to Loki.
+      # CLI flag: -pattern-ingester.metric-aggregation.basic-auth.username
+      [username: <string> | default = ""]
+
+      # Basic auth password for sending aggregations back to Loki.
+      # CLI flag: -pattern-ingester.metric-aggregation.basic-auth.password
+      [password: <string> | default = ""]
+
+    # The backoff configuration for pushing metrics to Loki.
+    backoff_config:
+      # Minimum delay when backing off.
+      # CLI flag: -pattern-ingester.metric-aggregation.backoff-min-period
+      [min_period: <duration> | default = 100ms]
+
+      # Maximum delay when backing off.
+      # CLI flag: -pattern-ingester.metric-aggregation.backoff-max-period
+      [max_period: <duration> | default = 10s]
+
+      # Number of times to backoff and retry before failing.
+      # CLI flag: -pattern-ingester.metric-aggregation.backoff-retries
+      [max_retries: <int> | default = 10]
+
+  # Configures the pattern tee which forwards requests to the pattern ingester.
+  tee_config:
+    # The size of the batch of raw logs to send for template mining
+    # CLI flag: -pattern-ingester.tee.batch-size
+    [batch_size: <int> | default = 5000]
+
+    # The max time between batches of raw logs to send for template mining
+    # CLI flag: -pattern-ingester.tee.batch-flush-interval
+    [batch_flush_interval: <duration> | default = 1s]
+
+    # The number of log flushes to queue before dropping
+    # CLI flag: -pattern-ingester.tee.flush-queue-size
+    [flush_queue_size: <int> | default = 1000]
+
+    # the number of concurrent workers sending logs to the template service
+    # CLI flag: -pattern-ingester.tee.flush-worker-count
+    [flush_worker_count: <int> | default = 100]
+
+    # The max time we will try to flush any remaining logs to be mined when the
+    # service is stopped
+    # CLI flag: -pattern-ingester.tee.stop-flush-timeout
+    [stop_flush_timeout: <duration> | default = 30s]
+
+  # Timeout for connections between the Loki and the pattern ingester.
+  # CLI flag: -pattern-ingester.connection-timeout
+  [connection_timeout: <duration> | default = 2s]
+
+  # The maximum length of log lines that can be used for pattern detection.
+  # CLI flag: -pattern-ingester.max-allowed-line-length
+  [max_allowed_line_length: <int> | default = 3000]
 
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
 # object store.
 [index_gateway: <index_gateway>]
 
-# Experimental: The bloom_compactor block configures the Loki bloom compactor
-# server, responsible for compacting stream indexes into bloom filters and
-# merging them as bloom blocks.
-[bloom_compactor: <bloom_compactor>]
-
-bloom_build:
-  # Flag to enable or disable the usage of the bloom-planner and bloom-builder
-  # components.
-  # CLI flag: -bloom-build.enabled
-  [enabled: <boolean> | default = false]
-
-  planner:
-    # Interval at which to re-run the bloom creation planning.
-    # CLI flag: -bloom-build.planner.interval
-    [planning_interval: <duration> | default = 8h]
-
-    # Newest day-table offset (from today, inclusive) to build blooms for.
-    # Increase to lower cost by not re-writing data to object storage too
-    # frequently since recent data changes more often at the cost of not having
-    # blooms available as quickly.
-    # CLI flag: -bloom-build.planner.min-table-offset
-    [min_table_offset: <int> | default = 1]
-
-    # Oldest day-table offset (from today, inclusive) to compact. This can be
-    # used to lower cost by not trying to compact older data which doesn't
-    # change. This can be optimized by aligning it with the maximum
-    # `reject_old_samples_max_age` setting of any tenant.
-    # CLI flag: -bloom-build.planner.max-table-offset
-    [max_table_offset: <int> | default = 2]
-
-    # Maximum number of tasks to queue per tenant.
-    # CLI flag: -bloom-build.planner.max-tasks-per-tenant
-    [max_queued_tasks_per_tenant: <int> | default = 30000]
-
-    retention:
-      # Enable bloom retention.
-      # CLI flag: -bloom-build.planner.retention.enabled
-      [enabled: <boolean> | default = false]
-
-  builder:
-    # The grpc_client block configures the gRPC client used to communicate
-    # between a client and server component in Loki.
-    # The CLI flags prefix for this block configuration is:
-    # bloom-gateway-client.grpc
-    [grpc_config: <grpc_client>]
-
-    # Hostname (and port) of the bloom planner
-    # CLI flag: -bloom-build.builder.planner-address
-    [planner_address: <string> | default = ""]
-
-    backoff_config:
-      # Minimum delay when backing off.
-      # CLI flag: -bloom-build.builder.backoff.backoff-min-period
-      [min_period: <duration> | default = 100ms]
-
-      # Maximum delay when backing off.
-      # CLI flag: -bloom-build.builder.backoff.backoff-max-period
-      [max_period: <duration> | default = 10s]
-
-      # Number of times to backoff and retry before failing.
-      # CLI flag: -bloom-build.builder.backoff.backoff-retries
-      [max_retries: <int> | default = 10]
+# Experimental: The bloom_build block configures the Loki bloom planner and
+# builder servers, responsible for building bloom filters.
+[bloom_build: <bloom_build>]
 
 # Experimental: The bloom_gateway block configures the Loki bloom gateway
 # server, responsible for serving queries for filtering chunks based on filter
@@ -852,6 +743,125 @@ compactor_grpc_client:
 # type memberlist is automatically selected for all the components that require
 # a ring unless otherwise specified in the component's configuration section.
 [memberlist: <memberlist>]
+
+metastore:
+  # CLI flag: -metastore.data-dir
+  [data_dir: <string> | default = "./data-metastore/data"]
+
+  raft:
+    # CLI flag: -metastore.raft.dir
+    [dir: <string> | default = "./data-metastore/raft"]
+
+    # CLI flag: -metastore.raft.bootstrap-peers
+    [bootstrap_peers: <list of strings> | default = []]
+
+    # CLI flag: -metastore.raft.server-id
+    [server_id: <string> | default = "localhost:9099"]
+
+    # CLI flag: -metastore.raft.bind-address
+    [bind_address: <string> | default = "localhost:9099"]
+
+    # CLI flag: -metastore.raft.advertise-address
+    [advertise_address: <string> | default = "localhost:9099"]
+
+metastore_client:
+  # CLI flag: -metastore.address
+  [address: <string> | default = "localhost:9095"]
+
+  # Configures the gRPC client used to communicate with the metastore.
+  [grpc_client_config: <grpc_client>]
+
+kafka_config:
+  # The Kafka backend address.
+  # CLI flag: -kafka.address
+  [address: <string> | default = "localhost:9092"]
+
+  # The Kafka topic name.
+  # CLI flag: -kafka.topic
+  [topic: <string> | default = ""]
+
+  # The Kafka client ID.
+  # CLI flag: -kafka.client-id
+  [client_id: <string> | default = ""]
+
+  # The maximum time allowed to open a connection to a Kafka broker.
+  # CLI flag: -kafka.dial-timeout
+  [dial_timeout: <duration> | default = 2s]
+
+  # How long to wait for an incoming write request to be successfully committed
+  # to the Kafka backend.
+  # CLI flag: -kafka.write-timeout
+  [write_timeout: <duration> | default = 10s]
+
+  # The SASL username for authentication to Kafka using the PLAIN mechanism.
+  # Both username and password must be set.
+  # CLI flag: -kafka.sasl-username
+  [sasl_username: <string> | default = ""]
+
+  # The SASL password for authentication to Kafka using the PLAIN mechanism.
+  # Both username and password must be set.
+  # CLI flag: -kafka.sasl-password
+  [sasl_password: <string> | default = ""]
+
+  # The consumer group used by the consumer to track the last consumed offset.
+  # The consumer group must be different for each ingester. If the configured
+  # consumer group contains the '<partition>' placeholder, it is replaced with
+  # the actual partition ID owned by the ingester. When empty (recommended),
+  # Mimir uses the ingester instance ID to guarantee uniqueness.
+  # CLI flag: -kafka.consumer-group
+  [consumer_group: <string> | default = ""]
+
+  # How frequently a consumer should commit the consumed offset to Kafka. The
+  # last committed offset is used at startup to continue the consumption from
+  # where it was left.
+  # CLI flag: -kafka.consumer-group-offset-commit-interval
+  [consumer_group_offset_commit_interval: <duration> | default = 1s]
+
+  # How long to retry a failed request to get the last produced offset.
+  # CLI flag: -kafka.last-produced-offset-retry-timeout
+  [last_produced_offset_retry_timeout: <duration> | default = 10s]
+
+  # Enable auto-creation of Kafka topic if it doesn't exist.
+  # CLI flag: -kafka.auto-create-topic-enabled
+  [auto_create_topic_enabled: <boolean> | default = true]
+
+  # When auto-creation of Kafka topic is enabled and this value is positive,
+  # Kafka's num.partitions configuration option is set on Kafka brokers with
+  # this value when Loki component that uses Kafka starts. This configuration
+  # option specifies the default number of partitions that the Kafka broker uses
+  # for auto-created topics. Note that this is a Kafka-cluster wide setting, and
+  # applies to any auto-created topic. If the setting of num.partitions fails,
+  # Loki proceeds anyways, but auto-created topics could have an incorrect
+  # number of partitions.
+  # CLI flag: -kafka.auto-create-topic-default-partitions
+  [auto_create_topic_default_partitions: <int> | default = 1000]
+
+  # The maximum size of a Kafka record data that should be generated by the
+  # producer. An incoming write request larger than this size is split into
+  # multiple Kafka records. We strongly recommend to not change this setting
+  # unless for testing purposes.
+  # CLI flag: -kafka.producer-max-record-size-bytes
+  [producer_max_record_size_bytes: <int> | default = 15983616]
+
+  # The maximum size of (uncompressed) buffered and unacknowledged produced
+  # records sent to Kafka. The produce request fails once this limit is reached.
+  # This limit is per Kafka client. 0 to disable the limit.
+  # CLI flag: -kafka.producer-max-buffered-bytes
+  [producer_max_buffered_bytes: <int> | default = 1073741824]
+
+  # The best-effort maximum lag a consumer tries to achieve at startup. Set both
+  # -kafka.target-consumer-lag-at-startup and -kafka.max-consumer-lag-at-startup
+  # to 0 to disable waiting for maximum consumer lag being honored at startup.
+  # CLI flag: -kafka.target-consumer-lag-at-startup
+  [target_consumer_lag_at_startup: <duration> | default = 2s]
+
+  # The guaranteed maximum lag before a consumer is considered to have caught up
+  # reading from a partition at startup, becomes ACTIVE in the hash ring and
+  # passes the readiness check. Set both -kafka.target-consumer-lag-at-startup
+  # and -kafka.max-consumer-lag-at-startup to 0 to disable waiting for maximum
+  # consumer lag being honored at startup.
+  # CLI flag: -kafka.max-consumer-lag-at-startup
+  [max_consumer_lag_at_startup: <duration> | default = 15s]
 
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
@@ -1127,9 +1137,13 @@ backoff_config:
   # CLI flag: -s3.max-backoff
   [max_period: <duration> | default = 3s]
 
-  # Maximum number of times to retry when s3 get Object
+  # Maximum number of times to retry for s3 GetObject or ObjectExists
   # CLI flag: -s3.max-retries
   [max_retries: <int> | default = 5]
+
+# Disable forcing S3 dualstack endpoint usage.
+# CLI flag: -s3.disable-dualstack
+[disable_dualstack: <boolean> | default = false]
 ```
 
 ### azure_storage_config
@@ -1233,152 +1247,67 @@ The `azure_storage_config` block configures the connection to Azure object stora
 [max_retry_delay: <duration> | default = 500ms]
 ```
 
-### bloom_compactor
+### bloom_build
 
-Experimental: The `bloom_compactor` block configures the Loki bloom compactor server, responsible for compacting stream indexes into bloom filters and merging them as bloom blocks.
+Experimental: The `bloom_build` block configures the Loki bloom planner and builder servers, responsible for building bloom filters.
 
 ```yaml
-# Defines the ring to be used by the bloom-compactor servers. In case this isn't
-# configured, this block supports inheriting configuration from the common ring
-# section.
-ring:
-  kvstore:
-    # Backend storage to use for the ring. Supported values are: consul, etcd,
-    # inmemory, memberlist, multi.
-    # CLI flag: -bloom-compactor.ring.store
-    [store: <string> | default = "consul"]
-
-    # The prefix for the keys in the store. Should end with a /.
-    # CLI flag: -bloom-compactor.ring.prefix
-    [prefix: <string> | default = "collectors/"]
-
-    # Configuration for a Consul client. Only applies if the selected kvstore is
-    # consul.
-    # The CLI flags prefix for this block configuration is: bloom-compactor.ring
-    [consul: <consul>]
-
-    # Configuration for an ETCD v3 client. Only applies if the selected kvstore
-    # is etcd.
-    # The CLI flags prefix for this block configuration is: bloom-compactor.ring
-    [etcd: <etcd>]
-
-    multi:
-      # Primary backend storage used by multi-client.
-      # CLI flag: -bloom-compactor.ring.multi.primary
-      [primary: <string> | default = ""]
-
-      # Secondary backend storage used by multi-client.
-      # CLI flag: -bloom-compactor.ring.multi.secondary
-      [secondary: <string> | default = ""]
-
-      # Mirror writes to secondary store.
-      # CLI flag: -bloom-compactor.ring.multi.mirror-enabled
-      [mirror_enabled: <boolean> | default = false]
-
-      # Timeout for storing value to secondary store.
-      # CLI flag: -bloom-compactor.ring.multi.mirror-timeout
-      [mirror_timeout: <duration> | default = 2s]
-
-  # Period at which to heartbeat to the ring. 0 = disabled.
-  # CLI flag: -bloom-compactor.ring.heartbeat-period
-  [heartbeat_period: <duration> | default = 15s]
-
-  # The heartbeat timeout after which compactors are considered unhealthy within
-  # the ring. 0 = never (timeout disabled).
-  # CLI flag: -bloom-compactor.ring.heartbeat-timeout
-  [heartbeat_timeout: <duration> | default = 1m]
-
-  # File path where tokens are stored. If empty, tokens are not stored at
-  # shutdown and restored at startup.
-  # CLI flag: -bloom-compactor.ring.tokens-file-path
-  [tokens_file_path: <string> | default = ""]
-
-  # True to enable zone-awareness and replicate blocks across different
-  # availability zones.
-  # CLI flag: -bloom-compactor.ring.zone-awareness-enabled
-  [zone_awareness_enabled: <boolean> | default = false]
-
-  # Number of tokens to use in the ring per compactor. Higher number of tokens
-  # will result in more and smaller files (metas and blocks.)
-  # CLI flag: -bloom-compactor.ring.num-tokens
-  [num_tokens: <int> | default = 10]
-
-  # Instance ID to register in the ring.
-  # CLI flag: -bloom-compactor.ring.instance-id
-  [instance_id: <string> | default = "<hostname>"]
-
-  # Name of network interface to read address from.
-  # CLI flag: -bloom-compactor.ring.instance-interface-names
-  [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
-
-  # Port to advertise in the ring (defaults to server.grpc-listen-port).
-  # CLI flag: -bloom-compactor.ring.instance-port
-  [instance_port: <int> | default = 0]
-
-  # IP address to advertise in the ring.
-  # CLI flag: -bloom-compactor.ring.instance-addr
-  [instance_addr: <string> | default = ""]
-
-  # The availability zone where this instance is running. Required if
-  # zone-awareness is enabled.
-  # CLI flag: -bloom-compactor.ring.instance-availability-zone
-  [instance_availability_zone: <string> | default = ""]
-
-  # Enable using a IPv6 instance address.
-  # CLI flag: -bloom-compactor.ring.instance-enable-ipv6
-  [instance_enable_ipv6: <boolean> | default = false]
-
-# Flag to enable or disable the usage of the bloom-compactor component.
-# CLI flag: -bloom-compactor.enabled
+# Flag to enable or disable the usage of the bloom-planner and bloom-builder
+# components.
+# CLI flag: -bloom-build.enabled
 [enabled: <boolean> | default = false]
 
-# Interval at which to re-run the compaction operation.
-# CLI flag: -bloom-compactor.compaction-interval
-[compaction_interval: <duration> | default = 10m]
+planner:
+  # Interval at which to re-run the bloom creation planning.
+  # CLI flag: -bloom-build.planner.interval
+  [planning_interval: <duration> | default = 8h]
 
-# Newest day-table offset (from today, inclusive) to compact. Increase to lower
-# cost by not re-writing data to object storage too frequently since recent data
-# changes more often at the cost of not having blooms available as quickly.
-# CLI flag: -bloom-compactor.min-table-offset
-[min_table_offset: <int> | default = 1]
+  # Newest day-table offset (from today, inclusive) to build blooms for.
+  # Increase to lower cost by not re-writing data to object storage too
+  # frequently since recent data changes more often at the cost of not having
+  # blooms available as quickly.
+  # CLI flag: -bloom-build.planner.min-table-offset
+  [min_table_offset: <int> | default = 1]
 
-# Oldest day-table offset (from today, inclusive) to compact. This can be used
-# to lower cost by not trying to compact older data which doesn't change. This
-# can be optimized by aligning it with the maximum `reject_old_samples_max_age`
-# setting of any tenant.
-# CLI flag: -bloom-compactor.max-table-offset
-[max_table_offset: <int> | default = 2]
+  # Oldest day-table offset (from today, inclusive) to compact. This can be used
+  # to lower cost by not trying to compact older data which doesn't change. This
+  # can be optimized by aligning it with the maximum
+  # `reject_old_samples_max_age` setting of any tenant.
+  # CLI flag: -bloom-build.planner.max-table-offset
+  [max_table_offset: <int> | default = 2]
 
-# Number of workers to run in parallel for compaction.
-# CLI flag: -bloom-compactor.worker-parallelism
-[worker_parallelism: <int> | default = 1]
+  # Maximum number of tasks to queue per tenant.
+  # CLI flag: -bloom-build.planner.max-tasks-per-tenant
+  [max_queued_tasks_per_tenant: <int> | default = 30000]
 
-# Minimum backoff time between retries.
-# CLI flag: -bloom-compactor.compaction-retries-min-backoff
-[compaction_retries_min_backoff: <duration> | default = 10s]
+  retention:
+    # Enable bloom retention.
+    # CLI flag: -bloom-build.planner.retention.enabled
+    [enabled: <boolean> | default = false]
 
-# Maximum backoff time between retries.
-# CLI flag: -bloom-compactor.compaction-retries-max-backoff
-[compaction_retries_max_backoff: <duration> | default = 1m]
+builder:
+  # The grpc_client block configures the gRPC client used to communicate between
+  # a client and server component in Loki.
+  # The CLI flags prefix for this block configuration is:
+  # bloom-gateway-client.grpc
+  [grpc_config: <grpc_client>]
 
-# Number of retries to perform when compaction fails.
-# CLI flag: -bloom-compactor.compaction-retries
-[compaction_retries: <int> | default = 3]
+  # Hostname (and port) of the bloom planner
+  # CLI flag: -bloom-build.builder.planner-address
+  [planner_address: <string> | default = ""]
 
-# Maximum number of tables to compact in parallel. While increasing this value,
-# please make sure compactor has enough disk space allocated to be able to store
-# and compact as many tables.
-# CLI flag: -bloom-compactor.max-compaction-parallelism
-[max_compaction_parallelism: <int> | default = 1]
+  backoff_config:
+    # Minimum delay when backing off.
+    # CLI flag: -bloom-build.builder.backoff.backoff-min-period
+    [min_period: <duration> | default = 100ms]
 
-retention:
-  # Enable bloom retention.
-  # CLI flag: -bloom-compactor.retention.enabled
-  [enabled: <boolean> | default = false]
+    # Maximum delay when backing off.
+    # CLI flag: -bloom-build.builder.backoff.backoff-max-period
+    [max_period: <duration> | default = 10s]
 
-  # Max lookback days for retention.
-  # CLI flag: -bloom-compactor.retention.max-lookback-days
-  [max_lookback_days: <int> | default = 365]
+    # Number of times to backoff and retry before failing.
+    # CLI flag: -bloom-build.builder.backoff.backoff-retries
+    [max_retries: <int> | default = 10]
 ```
 
 ### bloom_gateway
@@ -1393,18 +1322,9 @@ Experimental: The `bloom_gateway` block configures the Loki bloom gateway server
 client:
   # Configures the behavior of the connection pool.
   pool_config:
-    # How frequently to clean up clients for servers that have gone away or are
-    # unhealthy.
+    # How frequently to update the list of servers.
     # CLI flag: -bloom-gateway-client.pool.check-interval
-    [check_interval: <duration> | default = 10s]
-
-    # Run a health check on each server during periodic cleanup.
-    # CLI flag: -bloom-gateway-client.pool.enable-health-check
-    [enable_health_check: <boolean> | default = true]
-
-    # Timeout for the health check if health check is enabled.
-    # CLI flag: -bloom-gateway-client.pool.health-check-timeout
-    [health_check_timeout: <duration> | default = 1s]
+    [check_interval: <duration> | default = 15s]
 
   # The grpc_client block configures the gRPC client used to communicate between
   # a client and server component in Loki.
@@ -2012,6 +1932,19 @@ The `compactor` block configures the compactor component, which compacts index s
 # CLI flag: -compactor.retention-table-timeout
 [retention_table_timeout: <duration> | default = 0s]
 
+retention_backoff_config:
+  # Minimum delay when backing off.
+  # CLI flag: -compactor.retention-backoff-config.backoff-min-period
+  [min_period: <duration> | default = 100ms]
+
+  # Maximum delay when backing off.
+  # CLI flag: -compactor.retention-backoff-config.backoff-max-period
+  [max_period: <duration> | default = 10s]
+
+  # Number of times to backoff and retry before failing.
+  # CLI flag: -compactor.retention-backoff-config.backoff-retries
+  [max_retries: <int> | default = 10]
+
 # Store used for managing delete requests.
 # CLI flag: -compactor.delete-request-store
 [delete_request_store: <string> | default = ""]
@@ -2149,12 +2082,11 @@ compactor_ring:
 
 Configuration for a Consul client. Only applies if the selected kvstore is `consul`. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `bloom-compactor.ring`
 - `common.storage.ring`
 - `compactor.ring`
 - `distributor.ring`
 - `index-gateway.ring`
-- `ingester-rf1`
+- `ingester.partition-ring`
 - `pattern-ingester`
 - `query-scheduler.ring`
 - `ruler.ring`
@@ -2331,6 +2263,10 @@ ring:
   # CLI flag: -distributor.ring.instance-interface-names
   [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
 
+# Number of workers to push batches to ingesters.
+# CLI flag: -distributor.push-worker-count
+[push_worker_count: <int> | default = 256]
+
 rate_store:
   # The max number of concurrent requests to make to ingester stream apis
   # CLI flag: -distributor.rate-store.max-request-parallelism
@@ -2364,18 +2300,25 @@ otlp_config:
   # List of default otlp resource attributes to be picked as index labels
   # CLI flag: -distributor.otlp.default_resource_attributes_as_index_labels
   [default_resource_attributes_as_index_labels: <list of strings> | default = [service.name service.namespace service.instance.id deployment.environment cloud.region cloud.availability_zone k8s.cluster.name k8s.namespace.name k8s.pod.name k8s.container.name container.name k8s.replicaset.name k8s.deployment.name k8s.statefulset.name k8s.daemonset.name k8s.cronjob.name k8s.job.name]]
+
+# Enable writes to Kafka during Push requests.
+# CLI flag: -distributor.kafka-writes-enabled
+[kafka_writes_enabled: <boolean> | default = false]
+
+# Enable writes to Ingesters during Push requests. Defaults to true.
+# CLI flag: -distributor.ingester-writes-enabled
+[ingester_writes_enabled: <boolean> | default = true]
 ```
 
 ### etcd
 
 Configuration for an ETCD v3 client. Only applies if the selected kvstore is `etcd`. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `bloom-compactor.ring`
 - `common.storage.ring`
 - `compactor.ring`
 - `distributor.ring`
 - `index-gateway.ring`
-- `ingester-rf1`
+- `ingester.partition-ring`
 - `pattern-ingester`
 - `query-scheduler.ring`
 - `ruler.ring`
@@ -2606,6 +2549,8 @@ The `frontend_worker` configures the worker - running within the Loki querier - 
 
 # Configures the querier gRPC client used to communicate with the
 # query-scheduler. This can't be used in conjunction with 'grpc_client_config'.
+# The CLI flags prefix for this block configuration is:
+# metastore.grpc-client-config
 [query_scheduler_grpc_client: <grpc_client>]
 ```
 
@@ -2662,8 +2607,8 @@ The `grpc_client` block configures the gRPC client used to communicate between a
 - `bloom-gateway-client.grpc`
 - `boltdb.shipper.index-gateway-client.grpc`
 - `frontend.grpc-client-config`
-- `ingester-rf1.client`
 - `ingester.client`
+- `metastore.grpc-client-config`
 - `pattern-ingester.client`
 - `querier.frontend-client`
 - `querier.frontend-grpc-client`
@@ -3199,6 +3144,71 @@ wal:
 # ring to recalculate owned streams.
 # CLI flag: -ingester.owned-streams-check-interval
 [owned_streams_check_interval: <duration> | default = 30s]
+
+kafka_ingestion:
+  # Whether the kafka ingester is enabled.
+  # CLI flag: -ingester.kafka-ingestion-enabled
+  [enabled: <boolean> | default = false]
+
+  partition_ring:
+    # The key-value store used to share the hash ring across multiple instances.
+    # This option needs be set on ingesters, distributors, queriers, and rulers
+    # when running in microservices mode.
+    kvstore:
+      # Backend storage to use for the ring. Supported values are: consul, etcd,
+      # inmemory, memberlist, multi.
+      # CLI flag: -ingester.partition-ring.store
+      [store: <string> | default = "memberlist"]
+
+      # The prefix for the keys in the store. Should end with a /.
+      # CLI flag: -ingester.partition-ring.prefix
+      [prefix: <string> | default = "collectors/"]
+
+      # Configuration for a Consul client. Only applies if the selected kvstore
+      # is consul.
+      # The CLI flags prefix for this block configuration is:
+      # ingester.partition-ring
+      [consul: <consul>]
+
+      # Configuration for an ETCD v3 client. Only applies if the selected
+      # kvstore is etcd.
+      # The CLI flags prefix for this block configuration is:
+      # ingester.partition-ring
+      [etcd: <etcd>]
+
+      multi:
+        # Primary backend storage used by multi-client.
+        # CLI flag: -ingester.partition-ring.multi.primary
+        [primary: <string> | default = ""]
+
+        # Secondary backend storage used by multi-client.
+        # CLI flag: -ingester.partition-ring.multi.secondary
+        [secondary: <string> | default = ""]
+
+        # Mirror writes to secondary store.
+        # CLI flag: -ingester.partition-ring.multi.mirror-enabled
+        [mirror_enabled: <boolean> | default = false]
+
+        # Timeout for storing value to secondary store.
+        # CLI flag: -ingester.partition-ring.multi.mirror-timeout
+        [mirror_timeout: <duration> | default = 2s]
+
+    # Minimum number of owners to wait before a PENDING partition gets switched
+    # to ACTIVE.
+    # CLI flag: -ingester.partition-ring.min-partition-owners-count
+    [min_partition_owners_count: <int> | default = 1]
+
+    # How long the minimum number of owners are enforced before a PENDING
+    # partition gets switched to ACTIVE.
+    # CLI flag: -ingester.partition-ring.min-partition-owners-duration
+    [min_partition_owners_duration: <duration> | default = 10s]
+
+    # How long to wait before an INACTIVE partition is eligible for deletion.
+    # The partition is deleted only if it has been in INACTIVE state for at
+    # least the configured duration and it has no owners registered. A value of
+    # 0 disables partitions deletion.
+    # CLI flag: -ingester.partition-ring.delete-inactive-partition-after
+    [delete_inactive_partition_after: <duration> | default = 13h]
 ```
 
 ### ingester_client
@@ -3208,16 +3218,26 @@ The `ingester_client` block configures how the distributor will connect to inges
 ```yaml
 # Configures how connections are pooled.
 pool_config:
-  [client_cleanup_period: <duration>]
+  # How frequently to clean up clients for ingesters that have gone away.
+  # CLI flag: -distributor.client-cleanup-period
+  [client_cleanup_period: <duration> | default = 15s]
 
-  [health_check_ingesters: <boolean>]
+  # Run a health check on each ingester client during periodic cleanup.
+  # CLI flag: -distributor.health-check-ingesters
+  [health_check_ingesters: <boolean> | default = true]
 
-  [remote_timeout: <duration>]
+  # How quickly a dead client will be removed after it has been detected to
+  # disappear. Set this to a value to allow time for a secondary health check to
+  # recover the missing client.
+  # CLI flag: -ingester.client.healthcheck-timeout
+  [remote_timeout: <duration> | default = 1s]
 
-[remote_timeout: <duration>]
+# The remote request timeout on the client side.
+# CLI flag: -ingester.client.timeout
+[remote_timeout: <duration> | default = 5s]
 
 # Configures how the gRPC connection to ingesters work as a client.
-# The CLI flags prefix for this block configuration is: ingester-rf1.client
+# The CLI flags prefix for this block configuration is: ingester.client
 [grpc_client_config: <grpc_client>]
 ```
 
@@ -3240,7 +3260,8 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -distributor.ingestion-rate-limit-strategy
 [ingestion_rate_strategy: <string> | default = "global"]
 
-# Per-user ingestion rate limit in sample size per second. Units in MB.
+# Per-user ingestion rate limit in sample size per second. Sample size includes
+# size of the logs line and the size of structured metadata labels. Units in MB.
 # CLI flag: -distributor.ingestion-rate-limit-mb
 [ingestion_rate_mb: <float> | default = 4]
 
@@ -3304,7 +3325,7 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # list to service_name. If none of the configured labels exist in the stream,
 # label is set to unknown_service. Empty list disables setting the label.
 # CLI flag: -validation.discover-service-name
-[discover_service_name: <list of strings> | default = [service app application name app_kubernetes_io_name container container_name component workload job]]
+[discover_service_name: <list of strings> | default = [service app application name app_kubernetes_io_name container container_name k8s_container_name component workload job k8s_job_name]]
 
 # Discover and add log levels during ingestion, if not present already. Levels
 # would be added to Structured Metadata with name
@@ -3723,48 +3744,10 @@ shard_streams:
 # CLI flag: -bloom-gateway.cache-key-interval
 [bloom_gateway_cache_key_interval: <duration> | default = 15m]
 
-# Experimental. The shard size defines how many bloom compactors should be used
-# by a tenant when computing blooms. If it's set to 0, shuffle sharding is
-# disabled.
-# CLI flag: -bloom-compactor.shard-size
-[bloom_compactor_shard_size: <int> | default = 0]
-
-# Experimental. Whether to compact chunks into bloom filters.
-# CLI flag: -bloom-compactor.enable-compaction
-[bloom_compactor_enable_compaction: <boolean> | default = false]
-
-# Experimental. The maximum bloom block size. A value of 0 sets an unlimited
-# size. Default is 200MB. The actual block size might exceed this limit since
-# blooms will be added to blocks until the block exceeds the maximum block size.
-# CLI flag: -bloom-compactor.max-block-size
-[bloom_compactor_max_block_size: <int> | default = 200MB]
-
-# Experimental. The maximum bloom size per log stream. A log stream whose
-# generated bloom filter exceeds this size will be discarded. A value of 0 sets
-# an unlimited size. Default is 128MB.
-# CLI flag: -bloom-compactor.max-bloom-size
-[bloom_compactor_max_bloom_size: <int> | default = 128MB]
-
-# Experimental. Whether to create blooms for the tenant.
-# CLI flag: -bloom-build.enable
-[bloom_creation_enabled: <boolean> | default = false]
-
-# Experimental. Number of splits to create for the series keyspace when building
-# blooms. The series keyspace is split into this many parts to parallelize bloom
-# creation.
-# CLI flag: -bloom-build.split-keyspace-by
-[bloom_split_series_keyspace_by: <int> | default = 256]
-
 # Experimental. Maximum number of builders to use when building blooms. 0 allows
 # unlimited builders.
 # CLI flag: -bloom-build.max-builders
 [bloom_build_max_builders: <int> | default = 0]
-
-# Experimental. Timeout for a builder to finish a task. If a builder does not
-# respond within this time, it is considered failed and the task will be
-# requeued. 0 disables the timeout.
-# CLI flag: -bloom-build.builder-response-timeout
-[bloom_build_builder_response_timeout: <duration> | default = 0s]
 
 # Experimental. Maximum number of retries for a failed task. If a task fails
 # more than this number of times, it is considered failed and will not be
@@ -3772,23 +3755,46 @@ shard_streams:
 # CLI flag: -bloom-build.task-max-retries
 [bloom_build_task_max_retries: <int> | default = 3]
 
-# Experimental. Length of the n-grams created when computing blooms from log
-# lines.
-# CLI flag: -bloom-compactor.ngram-length
-[bloom_ngram_length: <int> | default = 4]
+# Experimental. Timeout for a builder to finish a task. If a builder does not
+# respond within this time, it is considered failed and the task will be
+# requeued. 0 disables the timeout.
+# CLI flag: -bloom-build.builder-response-timeout
+[bloom_build_builder_response_timeout: <duration> | default = 0s]
 
-# Experimental. Skip factor for the n-grams created when computing blooms from
-# log lines.
-# CLI flag: -bloom-compactor.ngram-skip
-[bloom_ngram_skip: <int> | default = 1]
+# Experimental. Whether to create blooms for the tenant.
+# CLI flag: -bloom-build.enable
+[bloom_creation_enabled: <boolean> | default = false]
 
-# Experimental. Scalable Bloom Filter desired false-positive rate.
-# CLI flag: -bloom-compactor.false-positive-rate
-[bloom_false_positive_rate: <float> | default = 0.01]
+# Experimental. Bloom planning strategy to use in bloom creation. Can be one of:
+# 'split_keyspace_by_factor', 'split_by_series_chunks_size'
+# CLI flag: -bloom-build.planning-strategy
+[bloom_planning_strategy: <string> | default = "split_keyspace_by_factor"]
+
+# Experimental. Only if `bloom-build.planning-strategy` is 'split'. Number of
+# splits to create for the series keyspace when building blooms. The series
+# keyspace is split into this many parts to parallelize bloom creation.
+# CLI flag: -bloom-build.split-keyspace-by
+[bloom_split_series_keyspace_by: <int> | default = 256]
+
+# Experimental. Target chunk size in bytes for bloom tasks. Default is 20GB.
+# CLI flag: -bloom-build.split-target-series-chunk-size
+[bloom_task_target_series_chunk_size: <int> | default = 20GB]
 
 # Experimental. Compression algorithm for bloom block pages.
-# CLI flag: -bloom-compactor.block-encoding
+# CLI flag: -bloom-build.block-encoding
 [bloom_block_encoding: <string> | default = "none"]
+
+# Experimental. The maximum bloom block size. A value of 0 sets an unlimited
+# size. Default is 200MB. The actual block size might exceed this limit since
+# blooms will be added to blocks until the block exceeds the maximum block size.
+# CLI flag: -bloom-build.max-block-size
+[bloom_max_block_size: <int> | default = 200MB]
+
+# Experimental. The maximum bloom size per log stream. A log stream whose
+# generated bloom filter exceeds this size will be discarded. A value of 0 sets
+# an unlimited size. Default is 128MB.
+# CLI flag: -bloom-build.max-bloom-size
+[bloom_max_bloom_size: <int> | default = 128MB]
 
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata
@@ -3821,6 +3827,37 @@ otlp_config:
   # Configuration for log attributes to store them as Structured Metadata or
   # drop them altogether
   [log_attributes: <list of attributes_configs>]
+
+# Block ingestion until the configured date. The time should be in RFC3339
+# format.
+# CLI flag: -limits.block-ingestion-until
+[block_ingestion_until: <time> | default = 0]
+
+# HTTP status code to return when ingestion is blocked. If 200, the ingestion
+# will be blocked without returning an error to the client. By Default, a custom
+# status code (260) is returned to the client along with an error message.
+# CLI flag: -limits.block-ingestion-status-code
+[block_ingestion_status_code: <int> | default = 260]
+
+# The number of partitions a tenant's data should be sharded to when using kafka
+# ingestion. Tenants are sharded across partitions using shuffle-sharding. 0
+# disables shuffle sharding and tenant is sharded across all partitions.
+# CLI flag: -limits.ingestion-partition-tenant-shard-size
+[ingestion_partitions_tenant_shard_size: <int> | default = 0]
+
+# S3 server-side encryption type. Required to enable server-side encryption
+# overrides for a specific tenant. If not set, the default S3 client settings
+# are used.
+[s3_sse_type: <string> | default = ""]
+
+# S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not
+# set.
+[s3_sse_kms_key_id: <string> | default = ""]
+
+# S3 server-side encryption KMS encryption context. If unset and the key ID
+# override is set, the encryption context will not be provided to S3. Ignored if
+# the SSE type override is not set.
+[s3_sse_kms_encryption_context: <string> | default = ""]
 ```
 
 ### local_storage_config
@@ -3945,6 +3982,14 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # CLI flag: -memberlist.leave-timeout
 [leave_timeout: <duration> | default = 20s]
 
+# Timeout for broadcasting all remaining locally-generated updates to other
+# nodes when shutting down. Only used if there are nodes left in the memberlist
+# cluster, and only applies to locally-generated updates, not to broadcast
+# messages that are result of incoming gossip updates. 0 = no timeout, wait
+# until all locally-generated updates are sent.
+# CLI flag: -memberlist.broadcast-timeout-for-local-updates-on-shutdown
+[broadcast_timeout_for_local_updates_on_shutdown: <duration> | default = 10s]
+
 # How much space to use for keeping received and sent messages in memory for
 # troubleshooting (two buffers). 0 to disable.
 # CLI flag: -memberlist.message-history-buffer-bytes
@@ -4038,12 +4083,14 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 Configures additional object stores for a given storage provider.
 Supported stores: aws, azure, bos, filesystem, gcs, swift.
 Example:
-storage_config:
-  named_stores:
-    aws:
-      store-1:
-        endpoint: s3://foo-bucket
-        region: us-west1
+```yaml
+    storage_config:
+      named_stores:
+        aws:
+          store-1:
+            endpoint: s3://foo-bucket
+            region: us-west1
+```
 Named store from this example can be used by setting object_store to store-1 in period_config.
 
 ```yaml
@@ -4217,6 +4264,11 @@ engine:
 # When true, querier limits sent via a header are enforced.
 # CLI flag: -querier.per-request-limits-enabled
 [per_request_limits_enabled: <boolean> | default = false]
+
+# When true, querier directs ingester queries to the partition-ingesters instead
+# of the normal ingesters.
+# CLI flag: -querier.query-partition-ingesters
+[query_partition_ingesters: <boolean> | default = false]
 ```
 
 ### query_range
@@ -5043,9 +5095,13 @@ backoff_config:
   # CLI flag: -<prefix>.storage.s3.max-backoff
   [max_period: <duration> | default = 3s]
 
-  # Maximum number of times to retry when s3 get Object
+  # Maximum number of times to retry for s3 GetObject or ObjectExists
   # CLI flag: -<prefix>.storage.s3.max-retries
   [max_retries: <int> | default = 5]
+
+# Disable forcing S3 dualstack endpoint usage.
+# CLI flag: -<prefix>.storage.s3.disable-dualstack
+[disable_dualstack: <boolean> | default = false]
 ```
 
 ### schema_config
@@ -5258,11 +5314,7 @@ grpc_tls_config:
 # CLI flag: -server.grpc.stats-tracking-enabled
 [grpc_server_stats_tracking_enabled: <boolean> | default = true]
 
-# If true, gGPC's buffer pools will be used to handle incoming requests.
-# Enabling this feature can reduce memory allocation, but also requires
-# disabling GRPC server stats tracking by setting
-# `server.grpc.stats-tracking-enabled=false`. This is an experimental gRPC
-# feature, so it might be removed in a future version of the gRPC library.
+# Deprecated option, has no effect and will be removed in a future version.
 # CLI flag: -server.grpc.recv-buffer-pools-enabled
 [grpc_server_recv_buffer_pools_enabled: <boolean> | default = false]
 
@@ -5524,12 +5576,14 @@ hedging:
 # Configures additional object stores for a given storage provider.
 # Supported stores: aws, azure, bos, filesystem, gcs, swift.
 # Example:
-# storage_config:
-#   named_stores:
-#     aws:
-#       store-1:
-#         endpoint: s3://foo-bucket
-#         region: us-west1
+# ```yaml
+#     storage_config:
+#       named_stores:
+#         aws:
+#           store-1:
+#             endpoint: s3://foo-bucket
+#             region: us-west1
+# ```
 # Named store from this example can be used by setting object_store to store-1
 # in period_config.
 [named_stores: <named_stores_config>]

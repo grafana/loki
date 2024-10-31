@@ -26,7 +26,7 @@ spec:
   podManagementPolicy: Parallel
   serviceName: {{ include "loki.ingesterFullname" . }}-zone-a
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
-  {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.ingester.persistence.enableStatefulSetAutoDeletePVC)  }}
+  {{- if and (semverCompare ">= 1.23-0" (include "loki.kubeVersion" .)) (.Values.ingester.persistence.enableStatefulSetAutoDeletePVC)  }}
   {{/*
     Data on the read nodes is easy to replace, so we want to always delete PVCs to make
     operation easier, and will rely on re-fetching data when needed.
@@ -40,8 +40,10 @@ spec:
       {{- include "loki.ingesterSelectorLabels" . | nindent 6 }}
       name: ingester-zone-a
       rollout-group: ingester
+{{- with .Values.ingester.updateStrategy }}
   updateStrategy:
-    type: OnDelete
+     {{- tpl (. | toYaml) $ | nindent 4 }}
+{{- end }}
   template:
     metadata:
       annotations:

@@ -36,14 +36,19 @@ import (
 )
 
 type Config struct {
-	maxNodeDepth     int
-	LogClusterDepth  int
-	SimTh            float64
-	MaxChildren      int
-	ExtraDelimiters  []string
-	MaxClusters      int
-	ParamString      string
-	MaxEvictionRatio float64
+	maxNodeDepth         int
+	LogClusterDepth      int
+	SimTh                float64
+	MaxChildren          int
+	ExtraDelimiters      []string
+	MaxClusters          int
+	ParamString          string
+	MaxEvictionRatio     float64
+	MaxAllowedLineLength int
+}
+
+type Limits interface {
+	PatternIngesterTokenizableJSONFields(userID string) []string
 }
 
 func createLogClusterCache(maxSize int, onEvict func(int, *LogCluster)) *LogClusterCache {
@@ -125,26 +130,26 @@ func DefaultConfig() *Config {
 		// Both SimTh and MaxClusterDepth impact branching factor: the greater
 		// MaxClusterDepth and SimTh, the less the chance that there will be
 		// "similar" clusters, but the greater the footprint.
-		SimTh:            0.3,
-		MaxChildren:      15,
-		ParamString:      `<_>`,
-		MaxClusters:      300,
-		MaxEvictionRatio: 0.25,
+		SimTh:                0.3,
+		MaxChildren:          15,
+		ParamString:          `<_>`,
+		MaxClusters:          300,
+		MaxEvictionRatio:     0.25,
+		MaxAllowedLineLength: 3000,
 	}
 }
 
-func New(config *Config, format string, metrics *Metrics) *Drain {
+func New(tenantID string, config *Config, limits Limits, format string, metrics *Metrics) *Drain {
 	if config.LogClusterDepth < 3 {
 		panic("depth argument must be at least 3")
 	}
 	config.maxNodeDepth = config.LogClusterDepth - 2
 
 	d := &Drain{
-		config:               config,
-		rootNode:             createNode(),
-		metrics:              metrics,
-		maxAllowedLineLength: 3000,
-		format:               format,
+		config:   config,
+		rootNode: createNode(),
+		metrics:  metrics,
+		format:   format,
 	}
 
 	limiter := newLimiter(config.MaxEvictionRatio)
@@ -152,12 +157,14 @@ func New(config *Config, format string, metrics *Metrics) *Drain {
 	var tokenizer LineTokenizer
 	switch format {
 	case FormatJSON:
-		tokenizer = newJSONTokenizer(config.ParamString)
+		fieldsToTokenize := limits.PatternIngesterTokenizableJSONFields(tenantID)
+		tokenizer = newJSONTokenizer(config.ParamString, config.MaxAllowedLineLength, fieldsToTokenize)
 	case FormatLogfmt:
-		tokenizer = newLogfmtTokenizer(config.ParamString)
+		tokenizer = newLogfmtTokenizer(config.ParamString, config.MaxAllowedLineLength)
 	default:
-		tokenizer = newPunctuationTokenizer()
+		tokenizer = newPunctuationTokenizer(config.MaxAllowedLineLength)
 	}
+
 	d.idToCluster = createLogClusterCache(config.MaxClusters, func(int, *LogCluster) {
 		if metrics != nil {
 			if d.pruning {
@@ -170,24 +177,26 @@ func New(config *Config, format string, metrics *Metrics) *Drain {
 			limiter.Evict()
 		}
 	})
-	d.tokenizer = tokenizer
+	d.tokenizer = &DedupingTokenizer{
+		LineTokenizer: tokenizer,
+		dedupParam:    config.ParamString,
+	}
 	d.limiter = limiter
 	return d
 }
 
 type Drain struct {
-	config               *Config
-	rootNode             *Node
-	idToCluster          *LogClusterCache
-	clustersCounter      int
-	metrics              *Metrics
-	tokenizer            LineTokenizer
-	maxAllowedLineLength int
-	format               string
-	tokens               []string
-	state                interface{}
-	limiter              *limiter
-	pruning              bool
+	config          *Config
+	rootNode        *Node
+	idToCluster     *LogClusterCache
+	clustersCounter int
+	metrics         *Metrics
+	tokenizer       LineTokenizer
+	format          string
+	tokens          []string
+	state           interface{}
+	limiter         *limiter
+	pruning         bool
 }
 
 func (d *Drain) Clusters() []*LogCluster {
@@ -200,9 +209,6 @@ func (d *Drain) TrainTokens(tokens []string, stringer func([]string) string, ts 
 
 func (d *Drain) Train(content string, ts int64) *LogCluster {
 	if !d.limiter.Allow() {
-		return nil
-	}
-	if len(content) > d.maxAllowedLineLength {
 		return nil
 	}
 	d.tokens, d.state = d.tokenizer.Tokenize(content, d.tokens, d.state)
@@ -297,14 +303,6 @@ func deduplicatePlaceholders(line string, placeholder string) string {
 	return unsafeString(builder)
 }
 
-func (d *Drain) PatternString(c *LogCluster) string {
-	s := deduplicatePlaceholders(d.tokenizer.Join(c.Tokens, c.TokenState), d.config.ParamString)
-	if s == d.config.ParamString {
-		return ""
-	}
-	return s
-}
-
 func (d *Drain) Prune() {
 	d.pruneTree(d.rootNode)
 }
@@ -316,14 +314,14 @@ func (d *Drain) pruneTree(node *Node) int {
 		}
 	}
 
-	validClusterIds := 0
+	validClusterIDs := 0
 	for _, clusterID := range node.clusterIDs {
 		cluster := d.idToCluster.Get(clusterID)
 		if cluster != nil {
-			validClusterIds++
+			validClusterIDs++
 		}
 	}
-	return len(node.keyToChildNode) + validClusterIds
+	return len(node.keyToChildNode) + validClusterIDs
 }
 
 func (d *Drain) Delete(cluster *LogCluster) {

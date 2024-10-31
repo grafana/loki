@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -140,17 +139,16 @@ func TestProcessor(t *testing.T) {
 			},
 			day: config.NewDayTime(truncateDay(now)),
 		}
-		filters := []syntax.LineFilterExpr{
-			{
-				LineFilter: syntax.LineFilter{
-					Ty:    0,
-					Match: "no match",
-				},
+
+		matchers := []v1.LabelMatcher{
+			v1.PlainLabelMatcher{
+				Key:   "trace_id",
+				Value: "nomatch",
 			},
 		}
 
 		t.Log("series", len(swb.series))
-		task := newTask(ctx, "fake", swb, filters, nil)
+		task := newTask(ctx, "fake", swb, matchers, nil)
 		tasks := []Task{task}
 
 		results := atomic.NewInt64(0)
@@ -192,17 +190,15 @@ func TestProcessor(t *testing.T) {
 			},
 			day: config.NewDayTime(truncateDay(now)),
 		}
-		filters := []syntax.LineFilterExpr{
-			{
-				LineFilter: syntax.LineFilter{
-					Ty:    0,
-					Match: "no match",
-				},
+		matchers := []v1.LabelMatcher{
+			v1.PlainLabelMatcher{
+				Key:   "trace_id",
+				Value: "nomatch",
 			},
 		}
 
 		t.Log("series", len(swb.series))
-		task := newTask(ctx, "fake", swb, filters, blocks)
+		task := newTask(ctx, "fake", swb, matchers, blocks)
 		tasks := []Task{task}
 
 		results := atomic.NewInt64(0)
@@ -241,17 +237,15 @@ func TestProcessor(t *testing.T) {
 			},
 			day: config.NewDayTime(truncateDay(now)),
 		}
-		filters := []syntax.LineFilterExpr{
-			{
-				LineFilter: syntax.LineFilter{
-					Ty:    0,
-					Match: "no match",
-				},
+		matchers := []v1.LabelMatcher{
+			v1.PlainLabelMatcher{
+				Key:   "trace_id",
+				Value: "nomatch",
 			},
 		}
 
 		t.Log("series", len(swb.series))
-		task := newTask(ctx, "fake", swb, filters, nil)
+		task := newTask(ctx, "fake", swb, matchers, nil)
 		tasks := []Task{task}
 
 		results := atomic.NewInt64(0)

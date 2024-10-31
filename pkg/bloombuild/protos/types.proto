@@ -3,6 +3,7 @@ syntax = "proto3";
 package protos;
 
 import "gogoproto/gogo.proto";
+import "pkg/logproto/bloomgateway.proto";
 
 option go_package = "protos";
 option (gogoproto.marshaler_all) = true;
@@ -27,12 +28,18 @@ message DayTable {
   string prefix = 2;
 }
 
+message ProtoSeries {
+  uint64 fingerprint = 1;
+  repeated logproto.ShortRef chunks = 2;
+}
+
 message ProtoGapWithBlocks {
   ProtoFingerprintBounds bounds = 1 [
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "bounds"
   ];
-  repeated string blockRef = 2;
+  repeated ProtoSeries series = 2;
+  repeated string blockRef = 3;
 }
 
 // TODO: Define BlockRef and SingleTenantTSDBIdentifier as messages so we can use them right away

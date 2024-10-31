@@ -8,8 +8,11 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -40,14 +43,14 @@ func newPushStats() *Stats {
 	}
 }
 
-func ParseOTLPRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker) (*logproto.PushRequest, *Stats, error) {
+func ParseOTLPRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
 	stats := newPushStats()
 	otlpLogs, err := extractLogs(r, stats)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	req := otlpToLokiPushRequest(r.Context(), otlpLogs, userID, tenantsRetention, limits.OTLPConfig(userID), tracker, stats)
+	req := otlpToLokiPushRequest(r.Context(), otlpLogs, userID, tenantsRetention, limits.OTLPConfig(userID), limits.DiscoverServiceName(userID), tracker, stats, logPushRequestStreams, logger)
 	return req, stats, nil
 }
 
@@ -98,7 +101,7 @@ func extractLogs(r *http.Request, pushStats *Stats) (plog.Logs, error) {
 	return req.Logs(), nil
 }
 
-func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, tenantsRetention TenantsRetention, otlpConfig OTLPConfig, tracker UsageTracker, stats *Stats) *logproto.PushRequest {
+func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, tenantsRetention TenantsRetention, otlpConfig OTLPConfig, discoverServiceName []string, tracker UsageTracker, stats *Stats, logPushRequestStreams bool, logger log.Logger) *logproto.PushRequest {
 	if ld.LogRecordCount() == 0 {
 		return &logproto.PushRequest{}
 	}
@@ -111,12 +114,18 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, ten
 		res := rls.At(i).Resource()
 		resAttrs := res.Attributes()
 
-		if v, ok := resAttrs.Get(attrServiceName); !ok || v.AsString() == "" {
-			resAttrs.PutStr(attrServiceName, "unknown_service")
-		}
 		resourceAttributesAsStructuredMetadata := make(push.LabelsAdapter, 0, resAttrs.Len())
 		streamLabels := make(model.LabelSet, 30) // we have a default labels limit of 30 so just initialize the map of same size
+		var pushedLabels model.LabelSet
+		if logPushRequestStreams {
+			pushedLabels = make(model.LabelSet, 30)
+		}
 
+		shouldDiscoverServiceName := len(discoverServiceName) > 0 && !stats.IsAggregatedMetric
+		hasServiceName := false
+		if v, ok := resAttrs.Get(attrServiceName); ok && v.AsString() != "" {
+			hasServiceName = true
+		}
 		resAttrs.Range(func(k string, v pcommon.Value) bool {
 			action := otlpConfig.ActionForResourceAttribute(k)
 			if action == Drop {
@@ -127,6 +136,19 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, ten
 			if action == IndexLabel {
 				for _, lbl := range attributeAsLabels {
 					streamLabels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
+					if logPushRequestStreams && pushedLabels != nil {
+						pushedLabels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
+					}
+
+					if !hasServiceName && shouldDiscoverServiceName {
+						for _, labelName := range discoverServiceName {
+							if lbl.Name == labelName {
+								streamLabels[model.LabelName(LabelServiceName)] = model.LabelValue(lbl.Value)
+								hasServiceName = true
+								break
+							}
+						}
+					}
 				}
 			} else if action == StructuredMetadata {
 				resourceAttributesAsStructuredMetadata = append(resourceAttributesAsStructuredMetadata, attributeAsLabels...)
@@ -134,6 +156,27 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, ten
 
 			return true
 		})
+
+		if !hasServiceName && shouldDiscoverServiceName {
+			streamLabels[model.LabelName(LabelServiceName)] = model.LabelValue(ServiceUnknown)
+		}
+
+		if logPushRequestStreams {
+			var sb strings.Builder
+			sb.WriteString("{")
+			labels := make([]string, 0, len(pushedLabels))
+			for name, value := range pushedLabels {
+				labels = append(labels, fmt.Sprintf(`%s="%s"`, name, value))
+			}
+			sb.WriteString(strings.Join(labels, ", "))
+			sb.WriteString("}")
+
+			level.Debug(logger).Log(
+				"msg", "OTLP push request stream before service name discovery",
+				"stream", sb.String(),
+				"service_name", streamLabels[model.LabelName(LabelServiceName)],
+			)
+		}
 
 		if err := streamLabels.Validate(); err != nil {
 			stats.Errs = append(stats.Errs, fmt.Errorf("invalid labels: %w", err))
@@ -150,7 +193,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, ten
 			stats.StreamLabelsSize += int64(labelsSize(logproto.FromLabelsToLabelAdapters(lbs)))
 		}
 
-		resourceAttributesAsStructuredMetadataSize := labelsSize(resourceAttributesAsStructuredMetadata)
+		resourceAttributesAsStructuredMetadataSize := loki_util.StructuredMetadataSize(resourceAttributesAsStructuredMetadata)
 		retentionPeriodForUser := tenantsRetention.RetentionPeriodFor(userID, lbs)
 
 		stats.StructuredMetadataBytes[retentionPeriodForUser] += int64(resourceAttributesAsStructuredMetadataSize)
@@ -207,7 +250,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, ten
 				})
 			}
 
-			scopeAttributesAsStructuredMetadataSize := labelsSize(scopeAttributesAsStructuredMetadata)
+			scopeAttributesAsStructuredMetadataSize := loki_util.StructuredMetadataSize(scopeAttributesAsStructuredMetadata)
 			stats.StructuredMetadataBytes[retentionPeriodForUser] += int64(scopeAttributesAsStructuredMetadataSize)
 			if tracker != nil {
 				tracker.ReceivedBytesAdd(ctx, userID, retentionPeriodForUser, lbs, float64(scopeAttributesAsStructuredMetadataSize))
@@ -233,7 +276,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, ten
 				stream.Entries = append(stream.Entries, entry)
 				pushRequestsByStream[labelsStr] = stream
 
-				metadataSize := int64(labelsSize(entry.StructuredMetadata) - resourceAttributesAsStructuredMetadataSize - scopeAttributesAsStructuredMetadataSize)
+				metadataSize := int64(loki_util.StructuredMetadataSize(entry.StructuredMetadata) - resourceAttributesAsStructuredMetadataSize - scopeAttributesAsStructuredMetadataSize)
 				stats.StructuredMetadataBytes[retentionPeriodForUser] += metadataSize
 				stats.LogLinesBytes[retentionPeriodForUser] += int64(len(entry.Line))
 

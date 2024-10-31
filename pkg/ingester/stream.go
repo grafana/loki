@@ -3,17 +3,15 @@ package ingester
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/runtime"
-
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/opentracing/opentracing-go"
-	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -25,6 +23,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -268,7 +268,7 @@ func errorForFailedEntries(s *stream, failedEntriesWithError []entryWithError, t
 
 	fmt.Fprintf(&buf, "user '%s', total ignored: %d out of %d for stream: %s", s.tenant, len(failedEntriesWithError), totalEntries, streamName)
 
-	return httpgrpc.Errorf(statusCode, buf.String())
+	return httpgrpc.Errorf(statusCode, "%s", buf.String())
 }
 
 func hasRateLimitErr(errs []entryWithError) bool {
@@ -346,7 +346,7 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 			if chunkenc.IsOutOfOrderErr(err) {
 				s.writeFailures.Log(s.tenant, err)
 				outOfOrderSamples++
-				outOfOrderBytes += len(entries[i].Line)
+				outOfOrderBytes += util.EntryTotalSize(&entries[i])
 			}
 			continue
 		}
@@ -409,15 +409,15 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 			continue
 		}
 
-		lineBytes := len(entries[i].Line)
-		totalBytes += lineBytes
+		entryBytes := util.EntryTotalSize(&entries[i])
+		totalBytes += entryBytes
 
 		now := time.Now()
-		if !rateLimitWholeStream && !s.limiter.AllowN(now, len(entries[i].Line)) {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(lineBytes)}})
+		if !rateLimitWholeStream && !s.limiter.AllowN(now, entryBytes) {
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(entryBytes)}})
 			s.writeFailures.Log(s.tenant, failedEntriesWithError[len(failedEntriesWithError)-1].e)
 			rateLimitedSamples++
-			rateLimitedBytes += lineBytes
+			rateLimitedBytes += entryBytes
 			continue
 		}
 
@@ -427,11 +427,11 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(entries[i].Timestamp, cutoff)})
 			s.writeFailures.Log(s.tenant, fmt.Errorf("%w for stream %s", failedEntriesWithError[len(failedEntriesWithError)-1].e, s.labels))
 			outOfOrderSamples++
-			outOfOrderBytes += lineBytes
+			outOfOrderBytes += entryBytes
 			continue
 		}
 
-		validBytes += lineBytes
+		validBytes += entryBytes
 
 		lastLine.ts = entries[i].Timestamp
 		lastLine.content = entries[i].Line
@@ -451,9 +451,19 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		rateLimitedSamples = len(toStore)
 		failedEntriesWithError = make([]entryWithError, 0, len(toStore))
 		for i := 0; i < len(toStore); i++ {
-			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&toStore[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(toStore[i].Line))}})
-			rateLimitedBytes += len(toStore[i].Line)
+			failedEntriesWithError = append(failedEntriesWithError, entryWithError{
+				&toStore[i],
+				&validation.ErrStreamRateLimit{
+					RateLimit: flagext.ByteSize(limit),
+					Labels:    s.labelsString,
+					Bytes:     flagext.ByteSize(util.EntryTotalSize(&toStore[i])),
+				},
+			})
+			rateLimitedBytes += util.EntryTotalSize(&toStore[i])
 		}
+
+		// Log the only last error to the write failures manager.
+		s.writeFailures.Log(s.tenant, failedEntriesWithError[len(failedEntriesWithError)-1].e)
 	}
 
 	s.streamRateCalculator.Record(s.tenant, s.labelHash, s.labelHashNoShard, totalBytes)

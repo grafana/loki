@@ -155,6 +155,11 @@ func (c *BceClient) SendRequest(req *BceRequest, resp *BceResponse) error {
 
 		log.Infof("receive http response: status: %s, debugId: %s, requestId: %s, elapsed: %v",
 			resp.StatusText(), resp.DebugId(), resp.RequestId(), resp.ElapsedTime())
+
+		if resp.ElapsedTime().Milliseconds() > DEFAULT_WARN_LOG_TIMEOUT_IN_MILLS {
+			log.Warnf("request time more than 5 second, debugId: %s, requestId: %s, elapsed: %v",
+			resp.DebugId(), resp.RequestId(), resp.ElapsedTime())
+		}
 		for k, v := range resp.Headers() {
 			log.Debugf("%s=%s", k, v)
 		}

@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -12,10 +13,8 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
-	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -47,7 +46,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	mathutil "github.com/grafana/loki/v3/pkg/util/math"
-	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 	server_util "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -289,7 +287,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 				"stream", pushReqStream.Labels,
 			)
 		}
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	if record != nil {
@@ -309,7 +307,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
 
-	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures, i.configs)
+	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures, i.configs)
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
@@ -338,10 +336,7 @@ func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logp
 	}
 
 	validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(len(pushReqStream.Entries)))
-	bytes := 0
-	for _, e := range pushReqStream.Entries {
-		bytes += len(e.Line)
-	}
+	bytes := util.EntriesTotalSize(pushReqStream.Entries)
 	validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
 	if i.customStreamsTracker != nil {
 		i.customStreamsTracker.DiscardedBytesAdd(ctx, i.instanceID, validation.StreamLimit, labels, float64(bytes))
@@ -374,7 +369,7 @@ func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) (*st
 		return nil, fmt.Errorf("failed to create stream for fingerprint: %w", err)
 	}
 
-	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures, i.configs)
+	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures, i.configs)
 
 	i.onStreamCreated(s)
 
@@ -1175,35 +1170,24 @@ func minTs(stream *logproto.Stream) model.Time {
 }
 
 // For each stream, we check if the stream is owned by the ingester or not and increment/decrement the owned stream count.
-func (i *instance) updateOwnedStreams(ingesterRing ring.ReadRing, ingesterID string) error {
+func (i *instance) updateOwnedStreams(isOwnedStream func(*stream) (bool, error)) error {
 	start := time.Now()
 	defer func() {
 		i.metrics.streamsOwnershipCheck.Observe(float64(time.Since(start).Milliseconds()))
 	}()
-	var descsBuf = make([]ring.InstanceDesc, ingesterRing.ReplicationFactor()+1)
-	var hostsBuf = make([]string, ingesterRing.ReplicationFactor()+1)
-	var zoneBuf = make([]string, ingesterRing.ZonesCount()+1)
+
 	var err error
 	i.streams.WithLock(func() {
 		i.ownedStreamsSvc.resetStreamCounts()
 		err = i.streams.ForEach(func(s *stream) (bool, error) {
-			replicationSet, err := ingesterRing.Get(lokiring.TokenFor(i.instanceID, s.labelsString), ring.WriteNoExtend, descsBuf, hostsBuf, zoneBuf)
+			ownedStream, err := isOwnedStream(s)
 			if err != nil {
-				return false, fmt.Errorf("error getting replication set for stream %s: %v", s.labelsString, err)
+				return false, err
 			}
-			ownedStream := i.isOwnedStream(replicationSet, ingesterID)
+
 			i.ownedStreamsSvc.trackStreamOwnership(s.fp, ownedStream)
 			return true, nil
 		})
 	})
 	return err
-}
-
-func (i *instance) isOwnedStream(replicationSet ring.ReplicationSet, ingesterID string) bool {
-	for _, instanceDesc := range replicationSet.Instances {
-		if instanceDesc.Id == ingesterID {
-			return true
-		}
-	}
-	return false
 }

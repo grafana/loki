@@ -9,8 +9,11 @@ linters:
   disable-all: true
   # Specifically enable linters we want to use.
   enable:
+    - asasalint
+    - bodyclose
     - depguard
     - errcheck
+    - errorlint
     - godot
     - gofumpt
     - goimports
@@ -21,8 +24,11 @@ linters:
     - misspell
     - revive
     - staticcheck
+    - tenv
     - typecheck
+    - unconvert
     - unused
+    - unparam
 
 issues:
   # Maximum issues count per one linter.
@@ -124,6 +130,8 @@ linters-settings:
           - "**/example/**/*.go"
           - "**/trace/*.go"
           - "**/trace/**/*.go"
+          - "**/log/*.go"
+          - "**/log/**/*.go"
         deny:
           - pkg: "go.opentelemetry.io/otel/internal$"
             desc: Do not use cross-module internal packages.

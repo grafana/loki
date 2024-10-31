@@ -22,8 +22,9 @@ import (
 // storageConfig contains the Storage client option configuration that can be
 // set through storageClientOptions.
 type storageConfig struct {
-	useJSONforReads bool
-	readAPIWasSet   bool
+	useJSONforReads      bool
+	readAPIWasSet        bool
+	disableClientMetrics bool
 }
 
 // newStorageConfig generates a new storageConfig with all the given
@@ -44,10 +45,14 @@ type storageClientOption interface {
 	ApplyStorageOpt(*storageConfig)
 }
 
-// WithJSONReads is an option that may be passed to a Storage Client on creation.
-// It sets the client to use the JSON API for object reads. Currently, the
-// default API used for reads is XML.
-// Setting this option is required to use the GenerationNotMatch condition.
+// WithJSONReads is an option that may be passed to [NewClient].
+// It sets the client to use the Cloud Storage JSON API for object
+// reads. Currently, the default API used for reads is XML, but JSON will
+// become the default in a future release.
+//
+// Setting this option is required to use the GenerationNotMatch condition. We
+// also recommend using JSON reads to ensure consistency with other client
+// operations (all of which use JSON by default).
 //
 // Note that when this option is set, reads will return a zero date for
 // [ReaderObjectAttrs].LastModified and may return a different value for
@@ -56,10 +61,11 @@ func WithJSONReads() option.ClientOption {
 	return &withReadAPI{useJSON: true}
 }
 
-// WithXMLReads is an option that may be passed to a Storage Client on creation.
-// It sets the client to use the XML API for object reads.
+// WithXMLReads is an option that may be passed to [NewClient].
+// It sets the client to use the Cloud Storage XML API for object reads.
 //
-// This is the current default.
+// This is the current default, but the default will switch to JSON in a future
+// release.
 func WithXMLReads() option.ClientOption {
 	return &withReadAPI{useJSON: false}
 }
@@ -72,4 +78,33 @@ type withReadAPI struct {
 func (w *withReadAPI) ApplyStorageOpt(c *storageConfig) {
 	c.useJSONforReads = w.useJSON
 	c.readAPIWasSet = true
+}
+
+type withDisabledClientMetrics struct {
+	internaloption.EmbeddableAdapter
+	disabledClientMetrics bool
+}
+
+// WithDisabledClientMetrics is an option that may be passed to [NewClient].
+// gRPC metrics are enabled by default in the GCS client and will export the
+// gRPC telemetry discussed in [gRFC/66] and [gRFC/78] to
+// [Google Cloud Monitoring]. The option is used to disable metrics.
+// Google Cloud Support can use this information to more quickly diagnose
+// problems related to GCS and gRPC.
+// Sending this data does not incur any billing charges, and requires minimal
+// CPU (a single RPC every few minutes) or memory (a few KiB to batch the
+// telemetry).
+//
+// The default is to enable client metrics. To opt-out of metrics collected use
+// this option.
+//
+// [gRFC/66]: https://github.com/grpc/proposal/blob/master/A66-otel-stats.md
+// [gRFC/78]: https://github.com/grpc/proposal/blob/master/A78-grpc-metrics-wrr-pf-xds.md
+// [Google Cloud Monitoring]: https://cloud.google.com/monitoring/docs
+func WithDisabledClientMetrics() option.ClientOption {
+	return &withDisabledClientMetrics{disabledClientMetrics: true}
+}
+
+func (w *withDisabledClientMetrics) ApplyStorageOpt(c *storageConfig) {
+	c.disableClientMetrics = w.disabledClientMetrics
 }

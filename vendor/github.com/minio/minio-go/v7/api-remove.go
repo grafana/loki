@@ -435,7 +435,7 @@ func (c *Client) removeObjects(ctx context.Context, bucketName string, objectsCh
 
 		// Generate remove multi objects XML request
 		removeBytes := generateRemoveMultiObjectsRequest(batch)
-		// Execute GET on bucket to list objects.
+		// Execute POST on bucket to remove objects.
 		resp, err := c.executeMethod(ctx, http.MethodPost, requestMetadata{
 			bucketName:       bucketName,
 			queryValues:      urlValues,
