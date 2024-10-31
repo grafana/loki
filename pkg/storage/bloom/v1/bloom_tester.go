@@ -157,45 +157,37 @@ func (sm stringMatcherTest) Matches(series labels.Labels, bloom filter.Checker) 
 	// 2. It should be possible to test for just the key
 
 	var (
-		combined = fmt.Sprintf("%s=%s", sm.matcher.Key, sm.matcher.Value)
-
-		rawKey      = unsafe.Slice(unsafe.StringData(sm.matcher.Key), len(sm.matcher.Key))
+		combined    = fmt.Sprintf("%s=%s", sm.matcher.Key, sm.matcher.Value)
 		rawCombined = unsafe.Slice(unsafe.StringData(combined), len(combined))
 	)
 
-	return sm.match(series, bloom, rawKey, rawCombined)
+	return sm.match(series, bloom, rawCombined)
 }
 
 func (sm stringMatcherTest) MatchesWithPrefixBuf(series labels.Labels, bloom filter.Checker, buf []byte, prefixLen int) bool {
 	var (
-		combined = fmt.Sprintf("%s=%s", sm.matcher.Key, sm.matcher.Value)
-
-		prefixedKey      = appendToBuf(buf, prefixLen, sm.matcher.Key)
+		combined         = fmt.Sprintf("%s=%s", sm.matcher.Key, sm.matcher.Value)
 		prefixedCombined = appendToBuf(buf, prefixLen, combined)
 	)
 
-	return sm.match(series, bloom, prefixedKey, prefixedCombined)
+	return sm.match(series, bloom, prefixedCombined)
 }
 
-func (sm stringMatcherTest) match(series labels.Labels, bloom filter.Checker, key []byte, combined []byte) bool {
-	// If the label is part of the series, we cannot check the bloom since
-	// the label is not structured metadata
-	if value := series.Get(sm.matcher.Key); value != "" {
-		// If the series label value is the same as the matcher value, we cannot filter out this chunk.
-		// Otherwise, we can filter out this chunk.
-		// E.g. `{env="prod"} | env="prod"` should not filter out the chunk.
-		// E.g. `{env="prod"} | env="dev"` should filter out the chunk.
-		// E.g. `{env="prod"} | env=""` should filter out the chunk.
-		return value == sm.matcher.Value
+// match returns true if the series matches the matcher or is in the bloom filter.
+func (sm stringMatcherTest) match(series labels.Labels, bloom filter.Checker, combined []byte) bool {
+	// If we don't have the series labels, we cannot disambiguate which labels come from the series in which case
+	// we may filter out chunks for queries like `{env="prod"} | env="prod"` if env=prod is not structured metadata
+	if len(series) == 0 {
+		return true
 	}
 
-	// To this point we know the label is structured metadata so if the label name is not
-	// in the bloom, we can filter out the chunk.
-	if !bloom.Test(key) {
-		return false
-	}
+	// It's in the series if the key is set and has the same value.
+	// By checking val != "" we handle `{env="prod"} | user=""`.
+	val := series.Get(sm.matcher.Key)
+	inSeries := val != "" && val == sm.matcher.Value
 
-	return bloom.Test(combined)
+	inBloom := bloom.Test(combined)
+	return inSeries || inBloom
 }
 
 // appendToBuf is the equivalent of append(buf[:prefixLen], str). len(buf) must
