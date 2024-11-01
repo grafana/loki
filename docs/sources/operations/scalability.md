@@ -66,9 +66,9 @@ this will result in far lower `ruler` resource usage because the majority of the
 The LogQL queries coming from the `ruler` will be executed against the given `query-frontend` service.
 Requests will be load-balanced across all `query-frontend` IPs if the `dns:///` prefix is used.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Queries that fail to execute are _not_ retried.
-{{% /admonition %}}
+{{< /admonition >}}
 
 ### Limits and Observability
 

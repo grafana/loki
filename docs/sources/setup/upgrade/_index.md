@@ -48,10 +48,10 @@ Loki changes the default value of `-ruler.alertmanager-use-v2` from `false` to `
 
 ### Experimental Bloom Filters
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Experimental features are subject to rapid change and/or removal, which can introduce breaking changes even between minor version.
 They also don't follow the deprecation lifecycle of regular features.
-{{% /admonition %}}
+{{< /admonition >}}
 
 The bloom compactor component, which builds bloom filter blocks for query acceleration, has been removed in favor of two new components: bloom planner and bloom builder.
 Please consult the [Query Acceleration with Blooms](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/query-acceleration-blooms/) docs for more information.
@@ -78,11 +78,11 @@ All other CLI arguments (and their YAML counterparts) prefixed with `-bloom-comp
 
 ## 3.0.0
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 If you have questions about upgrading to Loki 3.0, please join us on the [community Slack](https://slack.grafana.com/) in the `#loki-3` channel.
 
 Or leave a comment on this [Github Issue](https://github.com/grafana/loki/issues/12506).
-{{% /admonition %}}
+{{< /admonition >}}
 
 {{< admonition type="tip" >}}
 If you have not yet [migrated to TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-to-tsdb/), do so before you upgrade to Loki 3.0.
@@ -165,11 +165,11 @@ This enforces chunks and index files to reside together in the same storage buck
 
 We are removing the shared store setting in an effort to simplify storage configuration and reduce the possibility for misconfiguration.
 
-{{% admonition type="warning" %}}
+{{< admonition type="warning" >}}
 With this change Loki no longer allows storing chunks and indexes for a given period in different storage buckets.
 This is a breaking change for setups that store chunks and indexes in different storage buckets by setting `-boltdb.shipper.shared-store` or `-tsdb.shipper.shared-store` to a value
 different from `object_store` in `period_config`.
-{{% /admonition %}}
+{{< /admonition >}}
 
 - If you have not configured `-boltdb.shipper.shared-store`,`-tsdb.shipper.shared-store` or their corresponding YAML setting before, no changes are required as part of the upgrade.
 - If you have configured `-boltdb.shipper.shared-store` or its YAML setting:
@@ -194,9 +194,9 @@ period_config:
     period: 24h
 ```
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 `path_prefix` only applies to TSDB and BoltDB indexes. This setting has no effect on [legacy indexes](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#index-storage).
-{{% /admonition %}}
+{{< /admonition >}}
 
 `path_prefix` defaults to `index/` which is same as the default value of the removed configurations.
 
@@ -290,7 +290,7 @@ This new metric will provide a more clear signal that there is an issue with ing
 
 #### Changes to default configuration values in 3.0
 
-{{% responsive-table %}}
+{{< responsive-table >}}
 | configuration                                          | new default | old default | notes |
 | ------------------------------------------------------ | ----------- | ----------- | --------
 | `compactor.delete-max-interval`                        | 24h         | 0           | splits the delete requests into intervals no longer than `delete_max_interval` |
@@ -310,7 +310,7 @@ This new metric will provide a more clear signal that there is an issue with ing
 | `query-scheduler.max-outstanding-requests-per-tenant`  | 32000       | 100         | - |
 | `validation.max-label-names-per-series`                | 15          | 30          | - |
 | `legacy-read-mode`                                     | false       | true        | Deprecated. It will be removed in the next minor release. |
-{{% /responsive-table %}}
+{{< /responsive-table >}}
 
 #### Automatic stream sharding is enabled by default
 
@@ -529,10 +529,10 @@ limits_config:
   retention_period: 744h
 ```
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 In previous versions, the zero value of `0` or `0s` will result in **immediate deletion of all logs**,
 only in 2.8 and forward releases does the zero value disable retention.
-{{% /admonition %}}
+{{< /admonition >}}
 
 #### metrics.go log line `subqueries` replaced with `splits` and `shards`
 
@@ -546,9 +546,9 @@ In 2.8 we no longer include `subqueries` in metrics.go, it does still exist in t
 
 Instead, now you can use `splits` to see how many split by time intervals were created and `shards` to see the total number of shards created for a query.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Currently not every query can be sharded and a shards value of zero is a good indicator the query was not able to be sharded.
-{{% /admonition %}}
+{{< /admonition >}}
 
 ### Promtail
 
@@ -579,9 +579,9 @@ ruler:
 
 #### query-frontend Kubernetes headless service changed to load balanced service
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 This is relevant only if you are using [jsonnet for deploying Loki in Kubernetes](/docs/loki/<LOKI_VERSION>/installation/tanka/).
-{{% /admonition %}}
+{{< /admonition >}}
 
 The `query-frontend` Kubernetes service was previously headless and was used for two purposes:
 * Distributing the Loki query requests amongst all the available Query Frontend pods.
@@ -1114,9 +1114,9 @@ In Loki 2.2 we changed the internal version of our chunk format from v2 to v3, t
 
 This makes it important to first upgrade to 2.0, 2.0.1, or 2.1 **before** upgrading to 2.2 so that if you need to rollback for any reason you can do so easily.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 2.0 and 2.0.1 are identical in every aspect except 2.0.1 contains the code necessary to read the v3 chunk format. Therefor if you are on 2.0 and ugrade to 2.2, if you want to rollback, you must rollback to 2.0.1.
-{{% /admonition %}}
+{{< /admonition >}}
 
 ### Loki Config
 
@@ -1260,14 +1260,14 @@ This likely only affects a small portion of tanka users because the default sche
 }
 ```
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 If you had set `index_period_hours` to a value other than 168h (the previous default) you must update this in the above config `period:` to match what you chose.
-{{% /admonition %}}
+{{< /admonition >}}
 
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 We have changed the default index store to `boltdb-shipper` it's important to add `using_boltdb_shipper: false,` until you are ready to change (if you want to change)
-{{% /admonition %}}
+{{< /admonition >}}
 
 Changing the jsonnet config to use the `boltdb-shipper` type is the same as [below](#upgrading-schema-to-use-boltdb-shipper-andor-v11-schema) where you need to add a new schema section.
 
@@ -1309,9 +1309,9 @@ _THIS BEING SAID_ we are not expecting problems, our testing so far has not unco
 
 Report any problems via GitHub issues or reach us on the #loki slack channel.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 If are using boltdb-shipper and were running with high availability and separate filesystems, this was a poorly documented and even more experimental mode we toyed with using boltdb-shipper. For now we removed the documentation and also any kind of support for this mode.
-{{% /admonition %}}
+{{< /admonition >}}
 
 To use boltdb-shipper in 2.0 you need a shared storage (S3, GCS, etc), the mode of running with separate filesystem stores in HA using a ring is not officially supported.
 
@@ -1454,9 +1454,9 @@ schema_config:
 ```
 If you are not on `schema: v11` this would be a good opportunity to make that change _in the new schema config_ also.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 If the current time in your timezone is after midnight UTC already, set the date one additional day forward.
-{{% /admonition %}}
+{{< /admonition >}}
 
 There was also a significant overhaul to how boltdb-shipper internals, this should not be visible to a user but as this
 feature is experimental and under development bug are possible!
@@ -1515,9 +1515,9 @@ Defaulting to `gcs,bigtable` was confusing for anyone using ksonnet with other s
 
 ## 1.5.0
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 The required upgrade path outlined for version 1.4.0 below is still true for moving to 1.5.0 from any release older than 1.4.0 (e.g. 1.3.0 -> 1.5.0 needs to also look at the 1.4.0 upgrade requirements).
-{{% /admonition %}}
+{{< /admonition >}}
 
 ### Breaking config changes!
 
@@ -1571,9 +1571,9 @@ Not every environment will allow this capability however, it's possible to restr
 
 #### Filesystem
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 The location Loki is looking for files with the provided config in the docker image has changed.
-{{% /admonition %}}
+{{< /admonition >}}
 
 In 1.4.0 and earlier the included config file in the docker container was using directories:
 
