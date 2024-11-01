@@ -364,10 +364,6 @@ pattern_ingester:
   # Configures the metric aggregation and storage behavior of the pattern
   # ingester.
   metric_aggregation:
-    # Whether the pattern ingester metric aggregation is enabled.
-    # CLI flag: -pattern-ingester.metric-aggregation.enabled
-    [enabled: <boolean> | default = false]
-
     # How often to downsample metrics from raw push observations.
     # CLI flag: -pattern-ingester.metric-aggregation.downsample-period
     [downsample_period: <duration> | default = 10s]
@@ -3330,7 +3326,7 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # list to service_name. If none of the configured labels exist in the stream,
 # label is set to unknown_service. Empty list disables setting the label.
 # CLI flag: -validation.discover-service-name
-[discover_service_name: <list of strings> | default = [service app application name app_kubernetes_io_name container container_name k8s_container_name component workload job k8s_job_name]]
+[discover_service_name: <list of strings> | default = [service app application app_name name app_kubernetes_io_name container container_name k8s_container_name component workload job k8s_job_name]]
 
 # Discover and add log levels during ingestion, if not present already. Levels
 # would be added to Structured Metadata with name
@@ -3849,6 +3845,13 @@ otlp_config:
 # disables shuffle sharding and tenant is sharded across all partitions.
 # CLI flag: -limits.ingestion-partition-tenant-shard-size
 [ingestion_partitions_tenant_shard_size: <int> | default = 0]
+
+# Enable metric aggregation. When enabled, pushed streams will be sampled for
+# bytes and count, and these metric will be written back into Loki as a special
+# __aggregated_metric__ stream, which can be queried for faster histogram
+# queries.
+# CLI flag: -limits.metric-aggregation-enabled
+[metric_aggregation_enabled: <boolean> | default = false]
 
 # List of LogQL vector and range aggregations that should be sharded.
 [shard_aggregations: <list of strings>]
@@ -4881,7 +4884,9 @@ remote_write:
   # Deprecated: Use 'clients' instead. Configure remote write client.
   [client: <RemoteWriteConfig>]
 
-  # Configure remote write clients. A map with remote client id as key.
+  # Configure remote write clients. A map with remote client id as key. For
+  # details, see
+  # https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write
   [clients: <map of string to RemoteWriteConfig>]
 
   # Enable remote-write functionality.

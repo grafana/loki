@@ -176,10 +176,10 @@ If there are new TSDB files or any of them have changed, the planner will create
 The builder pulls a task from the planner's queue and processes the containing streams and chunks.
 For a given stream, the builder will iterate through all the log lines inside its new chunks and build a bloom for the stream.
 In case of changes for a previously processed TSDB file, builders will try to reuse blooms from existing blocks instead of building new ones from scratch.
-The builder converts structured metadata from each log line of each chunk of a stream and appends the hash of each key, value, and key-value pair to the bloom, followed by the hashes combined with the chunk identifier.
+The builder converts structured metadata from each log line of each chunk of a stream and appends the hash of each key, and key-value pair to the bloom, followed by the hashes combined with the chunk identifier.
 The first set of hashes allows gateways to skip whole streams, while the latter is for skipping individual chunks.
 
-For example, given structured metadata `foo=bar` in the chunk `c6dj8g`, we append to the stream bloom the following hashes: `hash("foo")`, `hash("bar")`, `hash("foo=bar")`, `hash("c6dj8g" + "foo")` ... `hash("c6dj8g" + "foo=bar")`.
+For example, given structured metadata `foo=bar` in the chunk `c6dj8g`, we append to the stream bloom the following hashes: `hash("foo")`, `hash("foo=bar")`, `hash("c6dj8g" + "foo")` and `hash("c6dj8g" + "foo=bar")`.
 
 ## Query sharding
 

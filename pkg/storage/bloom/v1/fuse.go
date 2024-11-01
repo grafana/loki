@@ -7,6 +7,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"go.uber.org/atomic"
 
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
@@ -15,6 +16,7 @@ import (
 
 type Request struct {
 	Fp       model.Fingerprint
+	Labels   labels.Labels
 	Chks     ChunkRefs
 	Search   BloomTest
 	Response chan<- Output
@@ -252,6 +254,7 @@ func (fq *FusedQuerier) Run() error {
 		nextBatch := fq.inputs.At()
 
 		fp := nextBatch[0].Fp
+		lbs := nextBatch[0].Labels
 
 		// advance the series iterator to the next fingerprint
 		if err := fq.bq.Seek(fp); err != nil {
@@ -276,13 +279,13 @@ func (fq *FusedQuerier) Run() error {
 			continue
 		}
 
-		fq.runSeries(schema, series, nextBatch)
+		fq.runSeries(schema, lbs, series, nextBatch)
 	}
 
 	return nil
 }
 
-func (fq *FusedQuerier) runSeries(_ Schema, series *SeriesWithMeta, reqs []Request) {
+func (fq *FusedQuerier) runSeries(_ Schema, lbs labels.Labels, series *SeriesWithMeta, reqs []Request) {
 	// For a given chunk|series to be removed, it must fail to match all blooms.
 	// Because iterating/loading blooms can be expensive, we iterate blooms one at a time, collecting
 	// the removals (failures) for each (bloom, chunk) pair.
@@ -372,7 +375,7 @@ func (fq *FusedQuerier) runSeries(_ Schema, series *SeriesWithMeta, reqs []Reque
 			// shortcut: series level removal
 			// we can skip testing chunk keys individually if the bloom doesn't match
 			// the query.
-			if !req.Search.Matches(bloom) {
+			if !req.Search.Matches(lbs, bloom) {
 				// Nothing else needs to be done for this (bloom, request);
 				// check the next input request
 				continue
@@ -387,7 +390,7 @@ func (fq *FusedQuerier) runSeries(_ Schema, series *SeriesWithMeta, reqs []Reque
 				// TODO(rfratto): reuse buffer between multiple calls to
 				// prefixForChunkRef and MatchesWithPrefixBuf to avoid allocations.
 				tokenBuf := prefixForChunkRef(chk)
-				if matched := req.Search.MatchesWithPrefixBuf(bloom, tokenBuf, len(tokenBuf)); matched {
+				if matched := req.Search.MatchesWithPrefixBuf(lbs, bloom, tokenBuf, len(tokenBuf)); matched {
 					inputs[j].found[k] = true
 				}
 			}
