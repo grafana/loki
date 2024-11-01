@@ -17,7 +17,7 @@ require (
 	github.com/openshift/cloud-credential-operator v0.0.0-20240908131729-d5b0b95c40f7 // release-4.17
 	github.com/openshift/library-go v0.0.0-20240731134552-8211143dfde7 // release-4.17
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.76.1
-	github.com/prometheus/client_golang v1.20.4
+	github.com/prometheus/client_golang v1.20.5
 	github.com/prometheus/common v0.60.0
 	github.com/prometheus/prometheus v0.42.0
 	github.com/stretchr/testify v1.9.0
