@@ -23,6 +23,10 @@ type writer interface {
 	Flush() error
 	// Returns the underlying bytes of the writer and sets the Pos to the end
 	Bytes() ([]byte, error)
+
+	// Used at the end to return the built file. Left as a implementable method rather than being
+	// done via Bytes() to allow optimizations (e.g. avoid loading whole index into memory when unused)
+	Load() (io.ReadCloser, error)
 }
 
 type FileWriter struct {
@@ -122,6 +126,14 @@ func (fw *FileWriter) Close() error {
 	return fw.f.Close()
 }
 
+func (fw *FileWriter) Load() (io.ReadCloser, error) {
+	f, err := os.Open(fw.name)
+	if err != nil {
+		return nil, err
+	}
+	return f, nil
+}
+
 func (fw *FileWriter) Remove() error {
 	return os.Remove(fw.name)
 }
@@ -214,11 +226,12 @@ func (bw *MemWriter) Bytes() ([]byte, error) {
 	return bw.buf.Bytes(), nil
 }
 
-func (bw *MemWriter) Close() error {
-	bw.buf.Reset()
-	return nil
-}
+func (bw *MemWriter) Close() error { return nil }
 
 func (bw *MemWriter) Flush() error { return nil }
 
 func (bw *MemWriter) Remove() error { return nil }
+
+func (bw *MemWriter) Load() (io.ReadCloser, error) {
+	return io.NopCloser(bytes.NewReader(bw.buf.Bytes())), nil
+}

@@ -37,6 +37,7 @@ import (
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 
+	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
 
@@ -1113,24 +1114,38 @@ type labelIndexHashEntry struct {
 	offset uint64
 }
 
-func (w *Creator) Close() error {
-	// Even if this fails, we need to close all the files.
-	ensureErr := w.ensureStage(idxStageDone)
+// if reader is true, return an io.ReadCloser of the underlying index. Otherwise, it returns nil.
+func (w *Creator) Close(reader bool) (db io.ReadCloser, err error) {
+	var errs multierror.MultiError
+
+	if ensureErr := w.ensureStage(idxStageDone); ensureErr != nil {
+		errs.Add(ensureErr)
+	}
 
 	if w.fP != nil {
 		if err := w.fP.Close(); err != nil {
-			return err
+			errs.Add(err)
 		}
 	}
+
 	if w.fPO != nil {
 		if err := w.fPO.Close(); err != nil {
-			return err
+			errs.Add(err)
 		}
 	}
+
 	if err := w.f.Close(); err != nil {
-		return err
+		errs.Add(err)
 	}
-	return ensureErr
+
+	if err := errs.Err(); err != nil {
+		return nil, err
+	}
+
+	if reader {
+		return w.f.Load()
+	}
+	return nil, nil
 }
 
 // StringIter iterates over a sorted list of strings.

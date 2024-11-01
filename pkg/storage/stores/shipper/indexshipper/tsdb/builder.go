@@ -169,7 +169,7 @@ func (b *Builder) Build(
 		}
 	}
 
-	if err := writer.Close(); err != nil {
+	if _, err := writer.Close(false); err != nil {
 		return id, err
 	}
 
