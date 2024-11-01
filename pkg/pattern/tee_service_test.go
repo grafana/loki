@@ -47,6 +47,9 @@ func getTestTee(t *testing.T) (*TeeService, *mockPoolClient) {
 
 	logsTee, err := NewTeeService(
 		cfg,
+		&fakeLimits{
+			metricAggregationEnabled: true,
+		},
 		ringClient,
 		"test",
 		nil,
