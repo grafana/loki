@@ -10,6 +10,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+// interface used in tsdb creation -- originally extracted from
+// interacting with temporary files on the file system.
 type writer interface {
 	io.WriteCloser
 	io.ReaderFrom
@@ -99,7 +101,7 @@ func (fw *FileWriter) WriteAt(buf []byte, pos int64) (int, error) {
 	if pos+int64(len(buf)) > int64(fw.Pos()) {
 		return 0, errors.New("write exceeds buffer size")
 	}
-	return fw.f.WriteAt(buf, int64(pos))
+	return fw.f.WriteAt(buf, pos)
 }
 
 // AddPadding adds zero byte padding until the file size is a multiple size.
