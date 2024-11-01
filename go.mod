@@ -16,7 +16,7 @@ require (
 	github.com/Masterminds/sprig/v3 v3.2.3
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/Workiva/go-datastructures v1.1.5
-	github.com/alicebob/miniredis/v2 v2.30.4
+	github.com/alicebob/miniredis/v2 v2.33.0
 	github.com/aliyun/aliyun-oss-go-sdk v2.2.10+incompatible
 	github.com/aws/aws-sdk-go v1.55.5
 	github.com/baidubce/bce-sdk-go v0.9.197
@@ -350,7 +350,7 @@ require (
 	github.com/willf/bitset v1.1.11 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/stringprep v1.0.4 // indirect
-	github.com/yuin/gopher-lua v1.1.0 // indirect
+	github.com/yuin/gopher-lua v1.1.1 // indirect
 	go.etcd.io/etcd/api/v3 v3.5.4 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.5.4 // indirect
 	go.etcd.io/etcd/client/v3 v3.5.4 // indirect
