@@ -796,6 +796,178 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 	})
 }
 
+func TestStreamShardByTime(t *testing.T) {
+	baseTimestamp := time.Date(2024, 10, 31, 12, 34, 56, 0, time.UTC)
+	t.Logf("Base timestamp: %s (unix %d)", baseTimestamp.Format(time.RFC3339Nano), baseTimestamp.Unix())
+
+	for _, tc := range []struct {
+		test         string
+		labels       string
+		entries      []logproto.Entry
+		timeShardLen time.Duration
+		expResult    []streamWithTimeShard
+	}{
+		{
+			test:         "zero shard because no entries",
+			labels:       "{app='myapp'}",
+			entries:      nil,
+			timeShardLen: time.Hour,
+			expResult:    nil,
+		},
+		{
+			test:   "single shard with one entry",
+			labels: `{app="myapp"}`,
+			entries: []logproto.Entry{
+				{Timestamp: baseTimestamp, Line: "foo"},
+				//{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
+			},
+			timeShardLen: time.Hour,
+			expResult: []streamWithTimeShard{
+				{Stream: logproto.Stream{Labels: `{__time_shard__="1730376000_1730379600", app="myapp"}`, Entries: []logproto.Entry{
+					{Timestamp: baseTimestamp, Line: "foo"},
+				}}, linesTotalLen: 3},
+			},
+		},
+		{
+			test:   "single shard with two entries",
+			labels: `{app="myapp"}`,
+			entries: []logproto.Entry{
+				{Timestamp: baseTimestamp, Line: "foo"},
+				{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
+			},
+			timeShardLen: time.Hour,
+			expResult: []streamWithTimeShard{
+				{Stream: logproto.Stream{Labels: `{__time_shard__="1730376000_1730379600", app="myapp"}`, Entries: []logproto.Entry{
+					{Timestamp: baseTimestamp, Line: "foo"},
+					{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
+				}}, linesTotalLen: 6},
+			},
+		},
+		{
+			test:   "single shard with two entries reversed",
+			labels: `{app="myapp"}`,
+			entries: []logproto.Entry{
+				{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
+				{Timestamp: baseTimestamp, Line: "foo"},
+			},
+			timeShardLen: time.Hour,
+			expResult: []streamWithTimeShard{
+				{Stream: logproto.Stream{Labels: `{__time_shard__="1730376000_1730379600", app="myapp"}`, Entries: []logproto.Entry{
+					{Timestamp: baseTimestamp, Line: "foo"},
+					{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
+				}}, linesTotalLen: 6},
+			},
+		},
+		{
+			test:   "two shards without a gap",
+			labels: `{app="myapp"}`,
+			entries: []logproto.Entry{
+				{Timestamp: baseTimestamp, Line: "foo"},
+				{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
+				{Timestamp: baseTimestamp.Add(time.Hour), Line: "baz"},
+			},
+			timeShardLen: time.Hour,
+			expResult: []streamWithTimeShard{
+				{Stream: logproto.Stream{Labels: `{__time_shard__="1730376000_1730379600", app="myapp"}`, Entries: []logproto.Entry{
+					{Timestamp: baseTimestamp, Line: "foo"},
+					{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
+				}}, linesTotalLen: 6},
+				{Stream: logproto.Stream{Labels: `{__time_shard__="1730379600_1730383200", app="myapp"}`, Entries: []logproto.Entry{
+					{Timestamp: baseTimestamp.Add(time.Hour), Line: "baz"},
+				}}, linesTotalLen: 3},
+			},
+		},
+		{
+			test:   "two shards with a gap",
+			labels: `{app="myapp"}`,
+			entries: []logproto.Entry{
+				{Timestamp: baseTimestamp, Line: "foo"},
+				{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
+				{Timestamp: baseTimestamp.Add(4 * time.Hour), Line: "baz"},
+			},
+			timeShardLen: time.Hour,
+			expResult: []streamWithTimeShard{
+				{Stream: logproto.Stream{Labels: `{__time_shard__="1730376000_1730379600", app="myapp"}`, Entries: []logproto.Entry{
+					{Timestamp: baseTimestamp, Line: "foo"},
+					{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
+				}}, linesTotalLen: 6},
+				{Stream: logproto.Stream{Labels: `{__time_shard__="1730390400_1730394000", app="myapp"}`, Entries: []logproto.Entry{
+					{Timestamp: baseTimestamp.Add(4 * time.Hour), Line: "baz"},
+				}}, linesTotalLen: 3},
+			},
+		},
+		{
+			test:   "bigger shard len",
+			labels: `{app="myapp"}`,
+			entries: []logproto.Entry{
+				{Timestamp: baseTimestamp, Line: "foo"},
+				{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
+				{Timestamp: baseTimestamp.Add(6 * time.Hour), Line: "baz"},
+			},
+			timeShardLen: 24 * time.Hour,
+			expResult: []streamWithTimeShard{
+				{Stream: logproto.Stream{Labels: `{__time_shard__="1730332800_1730419200", app="myapp"}`, Entries: []logproto.Entry{
+					{Timestamp: baseTimestamp, Line: "foo"},
+					{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
+					{Timestamp: baseTimestamp.Add(6 * time.Hour), Line: "baz"},
+				}}, linesTotalLen: 9},
+			},
+		},
+		{
+			test:   "longer messy gaps",
+			labels: `{app="myapp"}`,
+			entries: []logproto.Entry{
+				{Timestamp: baseTimestamp.Truncate(time.Hour), Line: "11"},
+				{Timestamp: baseTimestamp, Line: "13"},
+				{Timestamp: baseTimestamp, Line: "14"},
+				{Timestamp: baseTimestamp.Truncate(time.Hour), Line: "12"},
+				{Timestamp: baseTimestamp.Add(2 * time.Hour), Line: "32"},
+				{Timestamp: baseTimestamp.Truncate(time.Hour).Add(2 * time.Hour), Line: "31"},
+				{Timestamp: baseTimestamp.Add(5 * time.Hour), Line: "41"},
+				{Timestamp: baseTimestamp.Truncate(time.Hour).Add(time.Hour), Line: "21"},
+			},
+			timeShardLen: time.Hour,
+			expResult: []streamWithTimeShard{
+				{Stream: logproto.Stream{Labels: `{__time_shard__="1730376000_1730379600", app="myapp"}`, Entries: []logproto.Entry{
+					{Timestamp: baseTimestamp.Truncate(time.Hour), Line: "11"},
+					{Timestamp: baseTimestamp.Truncate(time.Hour), Line: "12"},
+					{Timestamp: baseTimestamp, Line: "13"},
+					{Timestamp: baseTimestamp, Line: "14"},
+				}}, linesTotalLen: 8},
+				{Stream: logproto.Stream{Labels: `{__time_shard__="1730379600_1730383200", app="myapp"}`, Entries: []logproto.Entry{
+					{Timestamp: baseTimestamp.Truncate(time.Hour).Add(time.Hour), Line: "21"},
+				}}, linesTotalLen: 2},
+				{Stream: logproto.Stream{Labels: `{__time_shard__="1730383200_1730386800", app="myapp"}`, Entries: []logproto.Entry{
+					{Timestamp: baseTimestamp.Truncate(time.Hour).Add(2 * time.Hour), Line: "31"},
+					{Timestamp: baseTimestamp.Add(2 * time.Hour), Line: "32"},
+				}}, linesTotalLen: 4},
+				{Stream: logproto.Stream{Labels: `{__time_shard__="1730394000_1730397600", app="myapp"}`, Entries: []logproto.Entry{
+					{Timestamp: baseTimestamp.Add(5 * time.Hour), Line: "41"},
+				}}, linesTotalLen: 2},
+			},
+		},
+	} {
+		t.Run(tc.test, func(t *testing.T) {
+			lbls, err := syntax.ParseLabels(tc.labels)
+			require.NoError(t, err)
+			stream := logproto.Stream{
+				Labels:  tc.labels,
+				Hash:    lbls.Hash(),
+				Entries: tc.entries,
+			}
+
+			shardedStreams := shardStreamByTime(stream, lbls, tc.timeShardLen)
+			require.Len(t, shardedStreams, len(tc.expResult))
+
+			for i, ss := range shardedStreams {
+				assert.Equal(t, tc.expResult[i].linesTotalLen, ss.linesTotalLen)
+				assert.Equal(t, tc.expResult[i].Labels, ss.Labels)
+				assert.EqualValues(t, tc.expResult[i].Entries, ss.Entries)
+			}
+		})
+	}
+}
+
 func generateEntries(n int) []logproto.Entry {
 	var entries []logproto.Entry
 	for i := 0; i < n; i++ {
@@ -1386,7 +1558,9 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 		overrides, err := validation.NewOverrides(*limits, nil)
 		require.NoError(t, err)
 
-		d, err := New(distributorConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, partitionRingReader, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, log.NewNopLogger())
+		ingesterConfig := ingester.Config{MaxChunkAge: 2 * time.Hour}
+
+		d, err := New(distributorConfig, ingesterConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, partitionRingReader, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, log.NewNopLogger())
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 		distributors[i] = d

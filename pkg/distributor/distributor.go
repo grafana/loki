@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -64,6 +65,8 @@ const (
 	ringKey = "distributor"
 
 	ringAutoForgetUnhealthyPeriods = 2
+
+	timeShardLabel = "__time_shard__"
 )
 
 var (
@@ -132,6 +135,7 @@ type Distributor struct {
 	services.Service
 
 	cfg              Config
+	ingesterCfg      ingester.Config
 	logger           log.Logger
 	clientCfg        client.Config
 	tenantConfigs    *runtime.TenantConfigs
@@ -187,6 +191,7 @@ type Distributor struct {
 // New a distributor creates.
 func New(
 	cfg Config,
+	ingesterCfg ingester.Config,
 	clientCfg client.Config,
 	configs *runtime.TenantConfigs,
 	ingestersRing ring.ReadRing,
@@ -245,6 +250,7 @@ func New(
 
 	d := &Distributor{
 		cfg:                   cfg,
+		ingesterCfg:           ingesterCfg,
 		logger:                logger,
 		clientCfg:             clientCfg,
 		tenantConfigs:         configs,
@@ -448,6 +454,28 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	var validationErrors util.GroupedErrors
 	validationContext := d.validator.getValidationContextForTime(time.Now(), tenantID)
 
+	shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)
+	maybeShardByRate := func(stream logproto.Stream, pushSize int) {
+		if shardStreamsCfg.Enabled {
+			streams = append(streams, d.shardStream(stream, pushSize, tenantID)...)
+		} else {
+			streams = append(streams, KeyedStream{
+				HashKey: lokiring.TokenFor(tenantID, stream.Labels),
+				Stream:  stream,
+			})
+		}
+	}
+	maybeShardByTime := func(stream logproto.Stream, labels labels.Labels, pushSize int) {
+		if shardStreamsCfg.TimeShardingEnabled {
+			streamsByTime := shardStreamByTime(stream, labels, d.ingesterCfg.MaxChunkAge/2)
+			for _, ts := range streamsByTime {
+				maybeShardByRate(ts.Stream, ts.linesTotalLen)
+			}
+		} else {
+			maybeShardByRate(stream, pushSize)
+		}
+	}
+
 	func() {
 		sp := opentracing.SpanFromContext(ctx)
 		if sp != nil {
@@ -456,6 +484,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				sp.LogKV("event", "finished to validate request")
 			}()
 		}
+
 		for _, stream := range req.Streams {
 			// Return early if stream does not contain any entries
 			if len(stream.Entries) == 0 {
@@ -534,15 +563,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				continue
 			}
 
-			shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)
-			if shardStreamsCfg.Enabled {
-				streams = append(streams, d.shardStream(stream, pushSize, tenantID)...)
-			} else {
-				streams = append(streams, KeyedStream{
-					HashKey: lokiring.TokenFor(tenantID, stream.Labels),
-					Stream:  stream,
-				})
-			}
+			maybeShardByTime(stream, lbs, pushSize)
 		}
 	}()
 
@@ -719,6 +740,52 @@ func hasAnyLevelLabels(l labels.Labels) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+type streamWithTimeShard struct {
+	logproto.Stream
+	linesTotalLen int
+}
+
+// This should shard the stream into multiple sub-streams based on the log
+// timestamps, but with no new alocations for the log entries. It will sort them
+// in-place in the given stream object (so it may modify it!) and reference
+// sub-slices of the same stream.Entries slice.
+func shardStreamByTime(stream logproto.Stream, lbls labels.Labels, timeShardLen time.Duration) []streamWithTimeShard {
+	entries := stream.Entries
+	entriesLen := len(entries)
+	if entriesLen == 0 {
+		return nil
+	}
+
+	slices.SortStableFunc(entries, func(a, b logproto.Entry) int { return a.Timestamp.Compare(b.Timestamp) })
+
+	result := make([]streamWithTimeShard, 0, entries[entriesLen-1].Timestamp.Sub(entries[0].Timestamp)/timeShardLen)
+	labelBuilder := labels.NewBuilder(lbls)
+
+	for startIdx := 0; startIdx < entriesLen; /* the index is changed below */ {
+		timeShardStart := entries[startIdx].Timestamp.Truncate(timeShardLen)
+		timeShardEnd := timeShardStart.Add(timeShardLen)
+
+		endIdx := startIdx + 1
+		linesTotalLen := len(entries[startIdx].Line)
+		for ; endIdx < entriesLen && entries[endIdx].Timestamp.Before(timeShardEnd); endIdx++ {
+			linesTotalLen += len(entries[endIdx].Line)
+		}
+
+		shardLbls := labelBuilder.Set(timeShardLabel, fmt.Sprintf("%d_%d", timeShardStart.Unix(), timeShardEnd.Unix())).Labels()
+		result = append(result, streamWithTimeShard{
+			Stream: logproto.Stream{
+				Labels:  shardLbls.String(),
+				Hash:    shardLbls.Hash(),
+				Entries: stream.Entries[startIdx:endIdx],
+			},
+			linesTotalLen: linesTotalLen,
+		})
+
+		startIdx = endIdx
+	}
+	return result
 }
 
 // shardStream shards (divides) the given stream into N smaller streams, where

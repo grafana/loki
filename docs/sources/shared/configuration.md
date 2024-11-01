@@ -3707,6 +3707,13 @@ shard_streams:
   # CLI flag: -shard-streams.enabled
   [enabled: <boolean> | default = true]
 
+  # Automatically shard streams by adding a __time_shard__ label, with values
+  # calculated from the log timestamps divided by MaxChunkAge/2. This allows the
+  # out-of-order ingestion of very old logs. If both flags are enabled,
+  # time-based sharding will happen before rate-based sharding.
+  # CLI flag: -shard-streams.time-sharding-enabled
+  [time_sharding_enabled: <boolean> | default = false]
+
   # Whether to log sharding streams behavior or not. Not recommended for
   # production environments.
   # CLI flag: -shard-streams.logging-enabled
