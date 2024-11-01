@@ -12,6 +12,7 @@ import (
 )
 
 type readerMetrics struct {
+	partition         prometheus.Gauge
 	phase             *prometheus.GaugeVec
 	receiveDelay      *prometheus.HistogramVec
 	recordsPerFetch   prometheus.Histogram
@@ -25,6 +26,10 @@ type readerMetrics struct {
 // newReaderMetrics initializes and returns a new set of metrics for the PartitionReader.
 func newReaderMetrics(r prometheus.Registerer) readerMetrics {
 	return readerMetrics{
+		partition: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Name: "loki_ingest_storage_reader_partition_id",
+			Help: "The partition ID assigned to this reader.",
+		}),
 		phase: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_ingest_storage_reader_phase",
 			Help: "The current phase of the consumer.",
@@ -60,12 +65,14 @@ func newReaderMetrics(r prometheus.Registerer) readerMetrics {
 	}
 }
 
-func (m *readerMetrics) reportStarting() {
+func (m *readerMetrics) reportStarting(partitionID int32) {
+	m.partition.Set(float64(partitionID))
 	m.phase.WithLabelValues(phaseStarting).Set(1)
 	m.phase.WithLabelValues(phaseRunning).Set(0)
 }
 
-func (m *readerMetrics) reportRunning() {
+func (m *readerMetrics) reportRunning(partitionID int32) {
+	m.partition.Set(float64(partitionID))
 	m.phase.WithLabelValues(phaseStarting).Set(0)
 	m.phase.WithLabelValues(phaseRunning).Set(1)
 }
