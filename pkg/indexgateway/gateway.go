@@ -22,7 +22,6 @@ import (
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -59,7 +58,7 @@ type IndexClientWithRange struct {
 }
 
 type BloomQuerier interface {
-	FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, chunks []*logproto.ChunkRef, plan plan.QueryPlan) ([]*logproto.ChunkRef, error)
+	FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, series map[uint64]labels.Labels, chunks []*logproto.ChunkRef, plan plan.QueryPlan) ([]*logproto.ChunkRef, error)
 }
 
 type Gateway struct {
@@ -226,16 +225,23 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 		return nil, err
 	}
 
+	series := make(map[uint64]labels.Labels)
 	result = &logproto.GetChunkRefResponse{
 		Refs: make([]*logproto.ChunkRef, 0, len(chunks)),
 	}
 	for _, cs := range chunks {
 		for i := range cs {
 			result.Refs = append(result.Refs, &cs[i].ChunkRef)
+			if _, ok := series[cs[i].Fingerprint]; !ok {
+				series[cs[i].Fingerprint] = cs[i].Metric
+			}
 		}
 	}
 
 	initialChunkCount := len(result.Refs)
+	result.Stats.TotalChunks = int64(initialChunkCount)
+	result.Stats.PostFilterChunks = int64(initialChunkCount) // populate early for error reponses
+
 	defer func() {
 		if err == nil {
 			g.metrics.preFilterChunks.WithLabelValues(routeChunkRefs).Observe(float64(initialChunkCount))
@@ -255,13 +261,14 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 		return result, nil
 	}
 
-	chunkRefs, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, result.Refs, req.Plan)
+	chunkRefs, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, series, result.Refs, req.Plan)
 	if err != nil {
 		return nil, err
 	}
 
 	result.Refs = chunkRefs
 	level.Info(logger).Log("msg", "return filtered chunk refs", "unfiltered", initialChunkCount, "filtered", len(result.Refs))
+	result.Stats.PostFilterChunks = int64(len(result.Refs))
 	return result, nil
 }
 
@@ -486,16 +493,7 @@ func (g *Gateway) boundedShards(
 	g.metrics.preFilterChunks.WithLabelValues(routeShards).Observe(float64(ct))
 	g.metrics.postFilterChunks.WithLabelValues(routeShards).Observe(float64(len(filtered)))
 
-	statistics := stats.Result{
-		Index: stats.Index{
-			TotalChunks:      int64(ct),
-			PostFilterChunks: int64(len(filtered)),
-		},
-	}
-
-	resp := &logproto.ShardsResponse{
-		Statistics: statistics,
-	}
+	resp := &logproto.ShardsResponse{}
 
 	// Edge case: if there are no chunks after filtering, we still need to return a single shard
 	if len(filtered) == 0 {
@@ -530,8 +528,8 @@ func (g *Gateway) boundedShards(
 	ms := syntax.MatchersExpr{Mts: p.Matchers}
 	level.Debug(logger).Log(
 		"msg", "send shards response",
-		"total_chunks", statistics.Index.TotalChunks,
-		"post_filter_chunks", statistics.Index.PostFilterChunks,
+		"total_chunks", ct,
+		"post_filter_chunks", len(filtered),
 		"shards", len(resp.Shards),
 		"query", req.Query,
 		"target_bytes_per_shard", datasize.ByteSize(req.TargetBytesPerShard).HumanReadable(),

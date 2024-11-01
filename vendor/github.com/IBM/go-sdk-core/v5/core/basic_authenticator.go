@@ -15,6 +15,7 @@ package core
 // limitations under the License.
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 )
@@ -47,7 +48,7 @@ func NewBasicAuthenticator(username string, password string) (*BasicAuthenticato
 // from a map.
 func newBasicAuthenticatorFromMap(properties map[string]string) (*BasicAuthenticator, error) {
 	if properties == nil {
-		err := fmt.Errorf(ERRORMSG_PROPS_MAP_NIL)
+		err := errors.New(ERRORMSG_PROPS_MAP_NIL)
 		return nil, SDKErrorf(err, "", "missing-props", getComponentInfo())
 	}
 

@@ -92,6 +92,7 @@ type Config struct {
 	Frontend            lokifrontend.Config        `yaml:"frontend,omitempty"`
 	QueryRange          queryrange.Config          `yaml:"query_range,omitempty"`
 	Ruler               ruler.Config               `yaml:"ruler,omitempty"`
+	RulerStorage        rulestore.Config           `yaml:"ruler_storage,omitempty" doc:"hidden"`
 	IngesterClient      ingester_client.Config     `yaml:"ingester_client,omitempty"`
 	IngesterRF1Client   ingester_client.Config     `yaml:"ingester_rf1_client,omitempty"`
 	Ingester            ingester.Config            `yaml:"ingester,omitempty"`
@@ -179,6 +180,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.TableManager.RegisterFlags(f)
 	c.Frontend.RegisterFlags(f)
 	c.Ruler.RegisterFlags(f)
+	c.RulerStorage.RegisterFlags(f)
 	c.Worker.RegisterFlags(f)
 	c.QueryRange.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
@@ -261,6 +263,9 @@ func (c *Config) Validate() error {
 	}
 	if err := c.Ruler.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ruler config"))
+	}
+	if err := c.RulerStorage.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ruler_storage config"))
 	}
 	if err := c.Ingester.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingester config"))
@@ -735,7 +740,7 @@ func (t *Loki) setupModuleManager() error {
 		BloomStore:               {IndexGatewayRing},
 		PatternRingClient:        {Server, MemberlistKV, Analytics},
 		PatternIngesterTee:       {Server, MemberlistKV, Analytics, PatternRingClient},
-		PatternIngester:          {Server, MemberlistKV, Analytics, PatternRingClient, PatternIngesterTee},
+		PatternIngester:          {Server, MemberlistKV, Analytics, PatternRingClient, PatternIngesterTee, Overrides},
 		IngesterQuerier:          {Ring, PartitionRing, Overrides},
 		QuerySchedulerRing:       {Overrides, MemberlistKV},
 		IndexGatewayRing:         {Overrides, MemberlistKV},

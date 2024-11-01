@@ -84,10 +84,9 @@ func (cfg *StorageBackendConfig) RegisterFlagsWithPrefix(prefix string, f *flag.
 }
 
 func (cfg *StorageBackendConfig) Validate() error {
-	// TODO: enable validation when s3 flags are registered
-	// if err := cfg.S3.Validate(); err != nil {
-	// return err
-	//}
+	if err := cfg.S3.Validate(); err != nil {
+		return err
+	}
 
 	return nil
 }

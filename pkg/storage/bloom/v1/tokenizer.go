@@ -25,7 +25,6 @@ func (t *StructuredMetadataTokenizer) Tokens(kv push.LabelAdapter) iter.Iterator
 	combined := fmt.Sprintf("%s=%s", kv.Name, kv.Value)
 	t.tokens = append(t.tokens[:0],
 		kv.Name, t.prefix+kv.Name,
-		kv.Value, t.prefix+kv.Value,
 		combined, t.prefix+combined,
 	)
 	return iter.NewSliceIter(t.tokens)

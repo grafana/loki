@@ -15,6 +15,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -41,7 +42,15 @@ func stringSlice[T fmt.Stringer](s []T) []string {
 
 func groupRefs(t *testing.T, chunkRefs []*logproto.ChunkRef) []*logproto.GroupedChunkRefs {
 	t.Helper()
-	return groupChunkRefs(chunkRefs, nil)
+	grouped := groupChunkRefs(nil, chunkRefs, nil)
+	// Put fake labels to the series
+	for _, g := range grouped {
+		g.Labels = &logproto.IndexSeries{
+			Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", fmt.Sprintf("%d", g.Fingerprint))),
+		}
+	}
+
+	return grouped
 }
 
 func newLimits() *validation.Overrides {
@@ -295,12 +304,18 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 				{Fingerprint: 1000, Tenant: tenantID, Refs: []*logproto.ShortRef{
 					{From: 1696248000000, Through: 1696251600000, Checksum: 2},
 					{From: 1696244400000, Through: 1696248000000, Checksum: 4},
+				}, Labels: &logproto.IndexSeries{
+					Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "1000")),
 				}},
 				{Fingerprint: 2000, Tenant: tenantID, Refs: []*logproto.ShortRef{
 					{From: 1696255200000, Through: 1696258800000, Checksum: 3},
+				}, Labels: &logproto.IndexSeries{
+					Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "2000")),
 				}},
 				{Fingerprint: 3000, Tenant: tenantID, Refs: []*logproto.ShortRef{
 					{From: 1696240800000, Through: 1696244400000, Checksum: 1},
+				}, Labels: &logproto.IndexSeries{
+					Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "3000")),
 				}},
 			},
 		}, res)
@@ -405,6 +420,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			// see MkBasicSeriesWithBlooms() in pkg/storage/bloom/v1/test_util.go
 			rnd := rand.Intn(len(inputChunkRefs))
 			fp := inputChunkRefs[rnd].Fingerprint
+			lbs := inputChunkRefs[rnd].Labels
 			chks := inputChunkRefs[rnd].Refs
 			key := fmt.Sprintf("%s:%04x", model.Fingerprint(fp), 0)
 
@@ -428,6 +444,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 				ChunkRefs: []*logproto.GroupedChunkRefs{
 					{
 						Fingerprint: fp,
+						Labels:      lbs,
 						Refs:        chks,
 						Tenant:      tenantID,
 					},

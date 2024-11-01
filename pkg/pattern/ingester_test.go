@@ -341,8 +341,13 @@ func (m *mockEntryWriter) Stop() {
 
 type fakeLimits struct {
 	Limits
+	metricAggregationEnabled bool
 }
 
 func (f *fakeLimits) PatternIngesterTokenizableJSONFields(_ string) []string {
 	return []string{"log", "message", "msg", "msg_", "_msg", "content"}
+}
+
+func (f *fakeLimits) MetricAggregationEnabled(_ string) bool {
+	return f.metricAggregationEnabled
 }

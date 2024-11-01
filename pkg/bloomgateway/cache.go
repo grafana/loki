@@ -72,6 +72,7 @@ func (e extractor) Extract(start, end int64, r resultscache.Response, _, _ int64
 		if len(refs) > 0 {
 			chunkRefs = append(chunkRefs, &logproto.GroupedChunkRefs{
 				Fingerprint: chunkRef.Fingerprint,
+				Labels:      chunkRef.Labels,
 				Tenant:      chunkRef.Tenant,
 				Refs:        refs,
 			})
