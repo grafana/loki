@@ -28,10 +28,10 @@ func newBucketClient(cfg Config, name string, logger log.Logger, factory func(lo
 		bucketConfig.Endpoint = cfg.Endpoint
 	}
 
-	var rt http.RoundTripper
-	if cfg.Transport != nil {
-		rt = cfg.Transport
-	}
-
-	return factory(logger, bucketConfig, name, func(_ http.RoundTripper) http.RoundTripper { return rt })
+	return factory(logger, bucketConfig, name, func(rt http.RoundTripper) http.RoundTripper {
+		if cfg.Transport != nil {
+			rt = cfg.Transport
+		}
+		return rt
+	})
 }
