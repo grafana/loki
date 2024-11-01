@@ -115,7 +115,7 @@ require (
 	github.com/Azure/go-autorest/autorest v0.11.29
 	github.com/DataDog/sketches-go v1.4.6
 	github.com/DmitriyVTitov/size v1.5.0
-	github.com/IBM/go-sdk-core/v5 v5.17.5
+	github.com/IBM/go-sdk-core/v5 v5.18.1
 	github.com/IBM/ibm-cos-sdk-go v1.11.1
 	github.com/axiomhq/hyperloglog v0.0.0-20240507144631-af9851f82b27
 	github.com/buger/jsonparser v1.1.1
