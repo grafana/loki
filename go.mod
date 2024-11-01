@@ -138,7 +138,7 @@ require (
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/richardartoul/molecule v1.0.0
 	github.com/schollz/progressbar/v3 v3.14.6
-	github.com/shirou/gopsutil/v4 v4.24.9
+	github.com/shirou/gopsutil/v4 v4.24.10
 	github.com/thanos-io/objstore v0.0.0-20241015070247-5f04b8b0b52a
 	github.com/twmb/franz-go v1.17.1
 	github.com/twmb/franz-go/pkg/kadm v1.13.0
@@ -171,7 +171,7 @@ require (
 	github.com/coreos/etcd v3.3.27+incompatible // indirect
 	github.com/coreos/pkg v0.0.0-20220810130054-c7d1c02cb6cf // indirect
 	github.com/dlclark/regexp2 v1.4.0 // indirect
-	github.com/ebitengine/purego v0.8.0 // indirect
+	github.com/ebitengine/purego v0.8.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
