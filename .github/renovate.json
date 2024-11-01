@@ -30,6 +30,16 @@
         "github.com/grafana/loki/operator/api/loki"
       ],
       "enabled": false
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["go"],
+      "enabled": false
+    },
+    {
+      "matchManagers": ["dockerfile"],
+      "matchPackageNames": ["golang", "grafana/loki-build-image"],
+      "enabled": false
     }
   ],
   "digest": {
