@@ -30,7 +30,7 @@ See the instructions [here](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/i
 1. Make sure to modify the tag to the most recent version.
 
     ```bash
-    docker pull grafana/promtail:3.0.0
+    docker pull grafana/promtail:3.2.1
     ```
 
 1. Create your Promtail configuration file in a file called `promtail-config.yaml`. Refer to the [Promtail configuration reference](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/configuration/) for more details.
@@ -38,7 +38,7 @@ See the instructions [here](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/i
 1. Note that you will need to replace `<local-path>` in the commands with your local path.
 
     ```bash
-    docker run -v <local-path>:/mnt/config -v /var/log:/var/log --link loki grafana/promtail:3.0.0 --config.file=/mnt/config/promtail-config.yaml
+    docker run -v <local-path>:/mnt/config -v /var/log:/var/log --link loki grafana/promtail:3.2.1 --config.file=/mnt/config/promtail-config.yaml
     ```
 
 ## Install on MacOS with Homebrew
