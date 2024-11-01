@@ -211,7 +211,8 @@ func NewTOCFromByteSlice(bs ByteSlice) (*TOC, error) {
 	}, nil
 }
 
-func NewWriterWithVersion(ctx context.Context, version int, fn string) (*Creator, error) {
+// For writing TSDBs using temporary files
+func NewFileWriterWithVersion(ctx context.Context, version int, fn string) (*Creator, error) {
 	dir := filepath.Dir(fn)
 
 	df, err := fileutil.OpenDir(dir)
@@ -243,12 +244,39 @@ func NewWriterWithVersion(ctx context.Context, version int, fn string) (*Creator
 		return nil, errors.Wrap(err, "sync dir")
 	}
 
+	return newWriter(
+		ctx,
+		version,
+		f,
+		fP,
+		fPO,
+	)
+}
+
+// For writing TSDBs in memory
+func NewMemWriterWithVersion(ctx context.Context, version int) (*Creator, error) {
+	return newWriter(
+		ctx,
+		version,
+		NewBufferWriter(),
+		NewBufferWriter(),
+		NewBufferWriter(),
+	)
+}
+
+func newWriter(
+	ctx context.Context,
+	version int,
+	fWriter writer,
+	postingsWriter writer,
+	postingOffsetsWriter writer,
+) (*Creator, error) {
 	iw := &Creator{
 		Version: version,
 		ctx:     ctx,
-		f:       f,
-		fP:      fP,
-		fPO:     fPO,
+		f:       fWriter,
+		fP:      postingsWriter,
+		fPO:     postingOffsetsWriter,
 		stage:   idxStageNone,
 
 		// Reusable memory.
@@ -267,7 +295,7 @@ func NewWriterWithVersion(ctx context.Context, version int, fn string) (*Creator
 
 // NewWriter returns a new Writer to the given filename.
 func NewWriter(ctx context.Context, indexFormat int, fn string) (*Creator, error) {
-	return NewWriterWithVersion(ctx, indexFormat, fn)
+	return NewFileWriterWithVersion(ctx, indexFormat, fn)
 }
 
 func (w *Creator) write(bufs ...[]byte) error {

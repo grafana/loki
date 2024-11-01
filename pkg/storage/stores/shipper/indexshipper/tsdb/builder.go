@@ -111,9 +111,7 @@ func (b *Builder) Build(
 	name := fmt.Sprintf("%s-%x.staging", index.IndexFilename, rng)
 	tmpPath := filepath.Join(scratchDir, name)
 
-	var writer *index.Creator
-
-	writer, err = index.NewWriterWithVersion(ctx, b.version, tmpPath)
+	writer, err := index.NewFileWriterWithVersion(ctx, b.version, tmpPath)
 	if err != nil {
 		return id, err
 	}
