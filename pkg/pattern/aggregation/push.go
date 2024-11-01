@@ -163,7 +163,7 @@ func (p *Push) Stop() {
 
 // buildPayload creates the snappy compressed protobuf to send to Loki
 func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
-	sp, ctx := opentracing.StartSpanFromContext(
+	sp, _ := opentracing.StartSpanFromContext(
 		ctx,
 		"patternIngester.aggregation.Push.buildPayload",
 	)
