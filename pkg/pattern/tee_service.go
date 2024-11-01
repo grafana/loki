@@ -27,6 +27,7 @@ import (
 
 type TeeService struct {
 	cfg        Config
+	limits     Limits
 	logger     log.Logger
 	ringClient RingClient
 	wg         *sync.WaitGroup
@@ -48,6 +49,7 @@ type TeeService struct {
 
 func NewTeeService(
 	cfg Config,
+	limits Limits,
 	ringClient RingClient,
 	metricsNamespace string,
 	registerer prometheus.Registerer,
@@ -83,6 +85,7 @@ func NewTeeService(
 			),
 		),
 		cfg:        cfg,
+		limits:     limits,
 		ringClient: ringClient,
 
 		wg:           &sync.WaitGroup{},
@@ -317,14 +320,15 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 				ts.ingesterAppends.WithLabelValues(clientRequest.ingesterAddr, "fail").Inc()
 				level.Error(ts.logger).Log("msg", "failed to send patterns to pattern ingester", "err", err)
 
-				if !ts.cfg.MetricAggregation.Enabled {
-					return err
-				}
-
 				// Pattern ingesters serve 2 functions, processing patterns and aggregating metrics.
 				// Only owned streams are processed for patterns, however any pattern ingester can
 				// aggregate metrics for any stream. Therefore, if we can't send the owned stream,
 				// try to forward request to any pattern ingester so we at least capture the metrics.
+
+				if !ts.limits.MetricAggregationEnabled(clientRequest.tenant) {
+					return err
+				}
+
 				replicationSet, err := ts.ringClient.Ring().
 					GetReplicationSetForOperation(ring.WriteNoExtend)
 				if err != nil || len(replicationSet.Instances) == 0 {
