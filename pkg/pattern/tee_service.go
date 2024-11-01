@@ -342,8 +342,8 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 						"tenant", clientRequest.tenant,
 					)
 
-					// this is basically the same as logging push reques streams, so
-					// we put it behind the same flag
+					// this is basically the same as logging push request streams,
+					// so put it behind the same flag
 					if ts.tenantCfgs.LogPushRequestStreams(clientRequest.tenant) {
 						level.Debug(ts.logger).
 							Log(
