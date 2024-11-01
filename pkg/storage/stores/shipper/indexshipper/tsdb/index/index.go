@@ -38,6 +38,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 
 	"github.com/grafana/dskit/multierror"
+
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
 
