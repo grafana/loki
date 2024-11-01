@@ -518,7 +518,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: null
+    tag: test
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
