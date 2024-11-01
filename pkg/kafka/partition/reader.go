@@ -99,7 +99,7 @@ func (p *Reader) start(ctx context.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "creating kafka reader client")
 	}
-	p.metrics.reportStarting()
+	p.metrics.reportStarting(p.partitionID)
 
 	// We manage our commits manually, so we must fetch the last offset for our consumer group to find out where to read from.
 	lastCommittedOffset := p.fetchLastCommittedOffset(ctx)
@@ -142,7 +142,7 @@ func (p *Reader) start(ctx context.Context) error {
 // data from Kafka, and send it to the consumer.
 func (p *Reader) run(ctx context.Context) error {
 	level.Info(p.logger).Log("msg", "starting partition reader", "partition", p.partitionID, "consumer_group", p.consumerGroup)
-	p.metrics.reportRunning()
+	p.metrics.reportRunning(p.partitionID)
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
