@@ -150,6 +150,7 @@ func (cfg *Config) Validate() error {
 
 type Limits interface {
 	drain.Limits
+	aggregation.Limits
 }
 
 type Ingester struct {
@@ -294,29 +295,18 @@ func (i *Ingester) loop() {
 	flushTicker := util.NewTickerWithJitter(i.cfg.FlushCheckPeriod, j)
 	defer flushTicker.Stop()
 
-	if i.cfg.MetricAggregation.Enabled {
-		downsampleTicker := time.NewTimer(i.cfg.MetricAggregation.DownsamplePeriod)
-		defer downsampleTicker.Stop()
-		for {
-			select {
-			case <-flushTicker.C:
-				i.sweepUsers(false, true)
-			case t := <-downsampleTicker.C:
-				downsampleTicker.Reset(i.cfg.MetricAggregation.DownsamplePeriod)
-				now := model.TimeFromUnixNano(t.UnixNano())
-				i.downsampleMetrics(now)
-			case <-i.loopQuit:
-				return
-			}
-		}
-	} else {
-		for {
-			select {
-			case <-flushTicker.C:
-				i.sweepUsers(false, true)
-			case <-i.loopQuit:
-				return
-			}
+	downsampleTicker := time.NewTimer(i.cfg.MetricAggregation.DownsamplePeriod)
+	defer downsampleTicker.Stop()
+	for {
+		select {
+		case <-flushTicker.C:
+			i.sweepUsers(false, true)
+		case t := <-downsampleTicker.C:
+			downsampleTicker.Reset(i.cfg.MetricAggregation.DownsamplePeriod)
+			now := model.TimeFromUnixNano(t.UnixNano())
+			i.downsampleMetrics(now)
+		case <-i.loopQuit:
+			return
 		}
 	}
 }
@@ -401,7 +391,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 		var writer aggregation.EntryWriter
 
 		aggCfg := i.cfg.MetricAggregation
-		if aggCfg.Enabled {
+		if i.limits.MetricAggregationEnabled(instanceID) {
 			writer, err = aggregation.NewPush(
 				aggCfg.LokiAddr,
 				instanceID,
@@ -469,6 +459,8 @@ func (i *Ingester) downsampleMetrics(ts model.Time) {
 	instances := i.getInstances()
 
 	for _, instance := range instances {
-		instance.Downsample(ts)
+		if i.limits.MetricAggregationEnabled(instance.instanceID) {
+			instance.Downsample(ts)
+		}
 	}
 }
