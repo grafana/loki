@@ -682,6 +682,7 @@ func (t *Loki) initPatternIngesterTee() (services.Service, error) {
 		t.Cfg.Pattern,
 		t.Overrides,
 		t.PatternRingClient,
+		t.tenantConfigs,
 		t.Cfg.MetricsNamespace,
 		prometheus.DefaultRegisterer,
 		logger,
