@@ -187,7 +187,14 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 	}
 
 	streams := make([]logproto.Stream, 0, len(entriesByStream))
-	services := make([]string, 0, len(entriesByStream))
+
+  // limit the number of services to log to 1000
+	serviceLimit := len(entriesByStream)
+	if serviceLimit > 1000 {
+		serviceLimit = 1000
+	}
+
+	services := make([]string, 0, serviceLimit)
 	for s, entries := range entriesByStream {
 		lbls, err := syntax.ParseLabels(s)
 		if err != nil {
@@ -200,7 +207,9 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 			Hash:    lbls.Hash(),
 		})
 
-		services = append(services, lbls.Get(push.AggregatedMetricLabel))
+		if len(services) < serviceLimit {
+			services = append(services, lbls.Get(push.AggregatedMetricLabel))
+		}
 	}
 
 	req := &logproto.PushRequest{
@@ -215,7 +224,8 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 
 	sp.LogKV(
 		"event", "build aggregated metrics payload",
-		"services", strings.Join(services, ","),
+		"num_service", len(entriesByStream),
+		"first_1k_services", strings.Join(services, ","),
 		"num_streams", len(streams),
 		"num_entries", len(entries),
 	)

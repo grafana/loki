@@ -320,14 +320,25 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 					ts.ingesterAppends.WithLabelValues(clientRequest.ingesterAddr, "success").Inc()
 					ts.ingesterMetricAppends.WithLabelValues("success").Inc()
 
-					labels := make([]string, 0, len(req.Streams))
+					// limit logged labels to 1000
+					labelsLimit := len(req.Streams)
+					if labelsLimit > 1000 {
+						labelsLimit = 1000
+					}
+
+					labels := make([]string, 0, labelsLimit)
 					for _, stream := range req.Streams {
+						if len(labels) >= 1000 {
+							break
+						}
+
 						labels = append(labels, stream.Labels)
 					}
 
 					sp.LogKV(
 						"event", "forwarded push request to pattern ingester",
-						"labels", strings.Join(labels, ", "),
+						"num_streams", len(req.Streams),
+						"first_1k_labels", strings.Join(labels, ", "),
 						"tenant", clientRequest.tenant,
 					)
 
@@ -337,7 +348,8 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 						level.Debug(ts.logger).
 							Log(
 								"msg", "forwarded push request to pattern ingester",
-								"labels", strings.Join(labels, ", "),
+								"num_streams", len(req.Streams),
+								"first_1k_labels", strings.Join(labels, ", "),
 								"tenant", clientRequest.tenant,
 							)
 					}
