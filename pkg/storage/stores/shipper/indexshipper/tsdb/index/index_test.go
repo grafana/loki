@@ -132,7 +132,7 @@ func TestIndexRW_Create_Open(t *testing.T) {
 	// An empty index must still result in a readable file.
 	iw, err := NewWriter(context.Background(), FormatV3, fn)
 	require.NoError(t, err)
-	_, err = iw.Close()
+	_, err = iw.Close(false)
 	require.NoError(t, err)
 
 	ir, err := NewFileReader(fn)
@@ -179,7 +179,7 @@ func TestIndexRW_Postings(t *testing.T) {
 	require.NoError(t, iw.AddSeries(3, series[2], model.Fingerprint(series[2].Hash())))
 	require.NoError(t, iw.AddSeries(4, series[3], model.Fingerprint(series[3].Hash())))
 
-	_, err = iw.Close()
+	_, err = iw.Close(false)
 	require.NoError(t, err)
 
 	ir, err := NewFileReader(fn)
@@ -268,7 +268,7 @@ func TestPostingsMany(t *testing.T) {
 	for i, s := range series {
 		require.NoError(t, iw.AddSeries(storage.SeriesRef(i), s, model.Fingerprint(s.Hash())))
 	}
-	_, err = iw.Close()
+	_, err = iw.Close(false)
 	require.NoError(t, err)
 
 	ir, err := NewFileReader(fn)
@@ -409,7 +409,7 @@ func TestPersistence_index_e2e(t *testing.T) {
 		postings.Add(storage.SeriesRef(i), s.labels)
 	}
 
-	_, err = iw.Close()
+	_, err = iw.Close(false)
 	require.NoError(t, err)
 
 	ir, err := NewFileReader(filepath.Join(dir, IndexFilename))
@@ -744,7 +744,7 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			_, err = iw.Close()
+			_, err = iw.Close(false)
 			require.NoError(t, err)
 
 			ir, err := NewFileReader(filepath.Join(dir, name))
@@ -1000,7 +1000,7 @@ func BenchmarkInitReader_ReadOffsetTable(b *testing.B) {
 		require.NoError(b, err)
 	}
 
-	_, err = iw.Close()
+	_, err = iw.Close(false)
 	require.NoError(b, err)
 
 	bs, err := os.ReadFile(idxFile)
