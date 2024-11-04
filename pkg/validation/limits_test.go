@@ -414,3 +414,36 @@ pattern_ingester_tokenizable_json_fields_delete: body
 		})
 	}
 }
+
+func Test_MetricAggregationEnabled(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		yaml     string
+		expected bool
+	}{
+		{
+			name: "when true",
+			yaml: `
+metric_aggregation_enabled: true
+`,
+			expected: true,
+		},
+		{
+			name: "when false",
+			yaml: `
+metric_aggregation_enabled: false
+`,
+			expected: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			overrides := Overrides{
+				defaultLimits: &Limits{},
+			}
+			require.NoError(t, yaml.Unmarshal([]byte(tc.yaml), overrides.defaultLimits))
+
+			actual := overrides.MetricAggregationEnabled("fake")
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
