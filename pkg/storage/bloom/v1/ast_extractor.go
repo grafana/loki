@@ -117,6 +117,12 @@ func buildSimplifiedRegexMatcher(key string, reg *regexsyn.Regexp) LabelMatcher 
 		util.ClearCapture(reg)
 
 		left := buildSimplifiedRegexMatcher(key, reg.Sub[0])
+		if len(reg.Sub) == 1 {
+			// This shouldn't be possible (even `warn|` has two subexpressions, where
+			// the latter matches an empty string), but we have a length check here
+			// anyway just to avoid a potential panic.
+			return left
+		}
 		for _, sub := range reg.Sub[1:] {
 			right := buildSimplifiedRegexMatcher(key, sub)
 			left = OrLabelMatcher{Left: left, Right: right}
