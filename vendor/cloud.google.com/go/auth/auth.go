@@ -227,9 +227,7 @@ type CredentialsOptions struct {
 	UniverseDomainProvider CredentialsPropertyProvider
 }
 
-// NewCredentials returns new [Credentials] from the provided options. Most users
-// will want to build this object a function from the
-// [cloud.google.com/go/auth/credentials] package.
+// NewCredentials returns new [Credentials] from the provided options.
 func NewCredentials(opts *CredentialsOptions) *Credentials {
 	creds := &Credentials{
 		TokenProvider:  opts.TokenProvider,
@@ -242,8 +240,8 @@ func NewCredentials(opts *CredentialsOptions) *Credentials {
 	return creds
 }
 
-// CachedTokenProviderOptions provided options for configuring a
-// CachedTokenProvider.
+// CachedTokenProviderOptions provides options for configuring a cached
+// [TokenProvider].
 type CachedTokenProviderOptions struct {
 	// DisableAutoRefresh makes the TokenProvider always return the same token,
 	// even if it is expired. The default is false. Optional.
@@ -253,7 +251,7 @@ type CachedTokenProviderOptions struct {
 	// seconds. Optional.
 	ExpireEarly time.Duration
 	// DisableAsyncRefresh configures a synchronous workflow that refreshes
-	// stale tokens while blocking. The default is false. Optional.
+	// tokens in a blocking manner. The default is false. Optional.
 	DisableAsyncRefresh bool
 }
 
@@ -280,12 +278,7 @@ func (ctpo *CachedTokenProviderOptions) blockingRefresh() bool {
 
 // NewCachedTokenProvider wraps a [TokenProvider] to cache the tokens returned
 // by the underlying provider. By default it will refresh tokens asynchronously
-// (non-blocking mode) within a window that starts 3 minutes and 45 seconds
-// before they expire. The asynchronous (non-blocking) refresh can be changed to
-// a synchronous (blocking) refresh using the
-// CachedTokenProviderOptions.DisableAsyncRefresh option. The time-before-expiry
-// duration can be configured using the CachedTokenProviderOptions.ExpireEarly
-// option.
+// a few minutes before they expire.
 func NewCachedTokenProvider(tp TokenProvider, opts *CachedTokenProviderOptions) TokenProvider {
 	if ctp, ok := tp.(*cachedTokenProvider); ok {
 		return ctp

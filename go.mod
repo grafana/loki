@@ -7,7 +7,7 @@ toolchain go1.23.1
 require (
 	cloud.google.com/go/bigtable v1.33.0
 	cloud.google.com/go/pubsub v1.45.1
-	cloud.google.com/go/storage v1.44.0
+	cloud.google.com/go/storage v1.46.0
 	github.com/Azure/azure-pipeline-go v0.2.3
 	github.com/Azure/azure-storage-blob-go v0.14.0
 	github.com/Azure/go-autorest/autorest/adal v0.9.24
@@ -67,7 +67,7 @@ require (
 	github.com/json-iterator/go v1.1.12
 	github.com/klauspost/compress v1.17.11
 	github.com/klauspost/pgzip v1.2.6
-	github.com/leodido/go-syslog/v4 v4.1.0
+	github.com/leodido/go-syslog/v4 v4.2.0
 	github.com/mattn/go-ieproxy v0.0.12
 	github.com/minio/minio-go/v7 v7.0.80
 	github.com/mitchellh/go-wordwrap v1.0.1
@@ -139,7 +139,7 @@ require (
 	github.com/richardartoul/molecule v1.0.0
 	github.com/schollz/progressbar/v3 v3.17.0
 	github.com/shirou/gopsutil/v4 v4.24.10
-	github.com/thanos-io/objstore v0.0.0-20241015070247-5f04b8b0b52a
+	github.com/thanos-io/objstore v0.0.0-20241028150459-cfdd0e50390d
 	github.com/twmb/franz-go v1.17.1
 	github.com/twmb/franz-go/pkg/kadm v1.13.0
 	github.com/twmb/franz-go/pkg/kfake v0.0.0-20241015013301-cea7aa5d8037
@@ -160,8 +160,8 @@ require (
 
 require (
 	cel.dev/expr v0.16.1 // indirect
-	cloud.google.com/go/auth v0.9.9 // indirect
-	cloud.google.com/go/auth/oauth2adapt v0.2.4 // indirect
+	cloud.google.com/go/auth v0.10.0 // indirect
+	cloud.google.com/go/auth/oauth2adapt v0.2.5 // indirect
 	cloud.google.com/go/monitoring v1.21.1 // indirect
 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20230811130428-ced1acdcaa24 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.24.1 // indirect
@@ -404,4 +404,4 @@ replace github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-2024051813
 replace github.com/grafana/loki/pkg/push => ./pkg/push
 
 // leodido fork his project to continue support
-replace github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.1.0
+replace github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.2.0
