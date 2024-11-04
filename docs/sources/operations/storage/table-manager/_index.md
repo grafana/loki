@@ -6,9 +6,9 @@ weight:
 ---
 # Table manager
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Table manager is only needed if you are using a multi-store [backend](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/). If you are using either TSDB (recommended), or BoltDB (deprecated) you do not need the Table Manager.
-{{% /admonition %}}
+{{< /admonition >}}
 
 Grafana Loki supports storing indexes and chunks in table-based data storages. When
 such a storage type is used, multiple tables are created over the time: each
@@ -145,11 +145,11 @@ number_of_tables_to_keep = floor(retention_period / table_period) + 1
 
 ![retention](./table-manager-retention.png)
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 It's important to note that - due to the internal implementation - the table
 `period` and `retention_period` **must** be multiples of `24h` in order to get
 the expected behavior.
-{{% /admonition %}}
+{{< /admonition >}}
 
 For detailed information on configuring the retention, refer to the
 [Loki Storage Retention]({{< relref "../retention" >}})

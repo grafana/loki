@@ -32,9 +32,9 @@ Query parallelization is limited by the number of instances and the setting `max
 
 The simple scalable deployment is the default configuration installed by the [Loki Helm Chart]({{< relref "../setup/install/helm" >}}). This deployment mode is the easiest way to deploy Loki at scale. It strikes a balance between deploying in [monolithic mode](#monolithic-mode) or deploying each component as a [separate microservice](#microservices-mode).
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 This deployment mode is sometimes referred to by the acronym SSD for simple scalable deployment, not to be confused with solid state drives. Loki uses an object store.
-{{% /admonition %}}
+{{< /admonition >}}
 
 Loki’s simple scalable deployment mode separates execution paths into read, write, and backend targets. These targets can be scaled independently, letting you customize your Loki deployment to meet your business needs for log ingestion and log query so that your infrastructure costs better match how you use Loki.
 
@@ -75,13 +75,13 @@ For release 2.9 the components are:
 - Ruler
 - Table Manager (deprecated)
 
-{{% admonition type="tip" %}}
+{{< admonition type="tip" >}}
 You can see the complete list of targets for your version of Loki by running Loki with the flag `-list-targets`, for example:
 
 ```bash
 docker run docker.io/grafana/loki:2.9.2 -config.file=/etc/loki/local-config.yaml -list-targets
 ```
-{{% /admonition %}}
+{{< /admonition >}}
 
 ![Microservices mode diagram](../microservices-mode.png "Microservices mode")
 

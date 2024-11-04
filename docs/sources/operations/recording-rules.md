@@ -30,11 +30,11 @@ is that Prometheus will, for example, reject a remote-write request with 100 sam
 When the `ruler` starts up, it will load the WALs for the tenants who have recording rules. These WAL files are stored
 on disk and are loaded into memory.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 WALs are loaded one at a time upon start-up. This is a current limitation of the Loki ruler.
 For this reason, it is adviseable that the number of rule groups serviced by a ruler be kept to a reasonable size, since
 _no rule evaluation occurs while WAL replay is in progress (this includes alerting rules)_.
-{{% /admonition %}}
+{{< /admonition >}}
 
 
 ### Truncation
@@ -56,10 +56,10 @@ excessively large due to truncation.
 
 See Mimir's guide for [configuring Grafana Mimir hash rings](/docs/mimir/latest/configure/configure-hash-rings/) for scaling the ruler using a ring.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 The `ruler` shards by rule _group_, not by individual rules. This is an artifact of the fact that Prometheus
 recording rules need to run in order since one recording rule can reuse another - but this is not possible in Loki.
-{{% /admonition %}}
+{{< /admonition >}}
 
 ## Deployment
 
