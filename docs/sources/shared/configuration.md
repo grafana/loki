@@ -3846,15 +3846,15 @@ otlp_config:
 # CLI flag: -limits.ingestion-partition-tenant-shard-size
 [ingestion_partitions_tenant_shard_size: <int> | default = 0]
 
+# List of LogQL vector and range aggregations that should be sharded.
+[shard_aggregations: <list of strings>]
+
 # Enable metric aggregation. When enabled, pushed streams will be sampled for
 # bytes and count, and these metric will be written back into Loki as a special
 # __aggregated_metric__ stream, which can be queried for faster histogram
 # queries.
 # CLI flag: -limits.metric-aggregation-enabled
 [metric_aggregation_enabled: <boolean> | default = false]
-
-# List of LogQL vector and range aggregations that should be sharded.
-[shard_aggregations: <list of strings>]
 
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings
