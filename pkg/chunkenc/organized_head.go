@@ -296,6 +296,8 @@ func (e *organizedBufferedIterator) Next() bool {
 	e.currTs = ts
 	e.currLine = line
 	e.currStructuredMetadata = structuredMetadata
+
+	// todo(shantanu) Populate si.stats
 	return true
 }
 
