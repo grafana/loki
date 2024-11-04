@@ -20,7 +20,7 @@ func TestExtractLabelMatchers(t *testing.T) {
 			name:  "basic label matcher",
 			input: `{app="foo"} | key="value"`,
 			expect: []v1.LabelMatcher{
-				v1.PlainLabelMatcher{Key: "key", Value: "value"},
+				v1.KeyValueMatcher{Key: "key", Value: "value"},
 			},
 		},
 
@@ -29,8 +29,8 @@ func TestExtractLabelMatchers(t *testing.T) {
 			input: `{app="foo"} | key1="value1" or key2="value2"`,
 			expect: []v1.LabelMatcher{
 				v1.OrLabelMatcher{
-					Left:  v1.PlainLabelMatcher{Key: "key1", Value: "value1"},
-					Right: v1.PlainLabelMatcher{Key: "key2", Value: "value2"},
+					Left:  v1.KeyValueMatcher{Key: "key1", Value: "value1"},
+					Right: v1.KeyValueMatcher{Key: "key2", Value: "value2"},
 				},
 			},
 		},
@@ -40,8 +40,8 @@ func TestExtractLabelMatchers(t *testing.T) {
 			input: `{app="foo"} | key1="value1" and key2="value2"`,
 			expect: []v1.LabelMatcher{
 				v1.AndLabelMatcher{
-					Left:  v1.PlainLabelMatcher{Key: "key1", Value: "value1"},
-					Right: v1.PlainLabelMatcher{Key: "key2", Value: "value2"},
+					Left:  v1.KeyValueMatcher{Key: "key1", Value: "value1"},
+					Right: v1.KeyValueMatcher{Key: "key2", Value: "value2"},
 				},
 			},
 		},
@@ -50,8 +50,8 @@ func TestExtractLabelMatchers(t *testing.T) {
 			name:  "multiple label matchers",
 			input: `{app="foo"} | key1="value1" | key2="value2"`,
 			expect: []v1.LabelMatcher{
-				v1.PlainLabelMatcher{Key: "key1", Value: "value1"},
-				v1.PlainLabelMatcher{Key: "key2", Value: "value2"},
+				v1.KeyValueMatcher{Key: "key1", Value: "value1"},
+				v1.KeyValueMatcher{Key: "key2", Value: "value2"},
 			},
 		},
 
@@ -59,7 +59,7 @@ func TestExtractLabelMatchers(t *testing.T) {
 			name:  "basic regex matcher",
 			input: `{app="foo"} | key1=~"value1"`,
 			expect: []v1.LabelMatcher{
-				v1.PlainLabelMatcher{Key: "key1", Value: "value1"},
+				v1.KeyValueMatcher{Key: "key1", Value: "value1"},
 			},
 		},
 
@@ -68,8 +68,8 @@ func TestExtractLabelMatchers(t *testing.T) {
 			input: `{app="foo"} | key1=~"value1|value5"`,
 			expect: []v1.LabelMatcher{
 				v1.OrLabelMatcher{
-					v1.PlainLabelMatcher{Key: "key1", Value: "value1"},
-					v1.PlainLabelMatcher{Key: "key1", Value: "value5"},
+					v1.KeyValueMatcher{Key: "key1", Value: "value1"},
+					v1.KeyValueMatcher{Key: "key1", Value: "value5"},
 				},
 			},
 		},
@@ -79,16 +79,16 @@ func TestExtractLabelMatchers(t *testing.T) {
 			input: `{app="foo"} | key1=~"value[0-9]"`,
 			expect: []v1.LabelMatcher{
 				buildOrMatchers(
-					v1.PlainLabelMatcher{Key: "key1", Value: "value0"},
-					v1.PlainLabelMatcher{Key: "key1", Value: "value1"},
-					v1.PlainLabelMatcher{Key: "key1", Value: "value2"},
-					v1.PlainLabelMatcher{Key: "key1", Value: "value3"},
-					v1.PlainLabelMatcher{Key: "key1", Value: "value4"},
-					v1.PlainLabelMatcher{Key: "key1", Value: "value5"},
-					v1.PlainLabelMatcher{Key: "key1", Value: "value6"},
-					v1.PlainLabelMatcher{Key: "key1", Value: "value7"},
-					v1.PlainLabelMatcher{Key: "key1", Value: "value8"},
-					v1.PlainLabelMatcher{Key: "key1", Value: "value9"},
+					v1.KeyValueMatcher{Key: "key1", Value: "value0"},
+					v1.KeyValueMatcher{Key: "key1", Value: "value1"},
+					v1.KeyValueMatcher{Key: "key1", Value: "value2"},
+					v1.KeyValueMatcher{Key: "key1", Value: "value3"},
+					v1.KeyValueMatcher{Key: "key1", Value: "value4"},
+					v1.KeyValueMatcher{Key: "key1", Value: "value5"},
+					v1.KeyValueMatcher{Key: "key1", Value: "value6"},
+					v1.KeyValueMatcher{Key: "key1", Value: "value7"},
+					v1.KeyValueMatcher{Key: "key1", Value: "value8"},
+					v1.KeyValueMatcher{Key: "key1", Value: "value9"},
 				),
 			},
 		},
@@ -106,8 +106,8 @@ func TestExtractLabelMatchers(t *testing.T) {
 			input: `{app="foo"} | key1=~"value123|value456"`,
 			expect: []v1.LabelMatcher{
 				v1.OrLabelMatcher{
-					v1.PlainLabelMatcher{Key: "key1", Value: "value123"},
-					v1.PlainLabelMatcher{Key: "key1", Value: "value456"},
+					v1.KeyValueMatcher{Key: "key1", Value: "value123"},
+					v1.KeyValueMatcher{Key: "key1", Value: "value456"},
 				},
 			},
 		},
@@ -117,10 +117,10 @@ func TestExtractLabelMatchers(t *testing.T) {
 			input: `{app="foo"} | detected_level=~"debug|info|warn|error"`,
 			expect: []v1.LabelMatcher{
 				buildOrMatchers(
-					v1.PlainLabelMatcher{Key: "detected_level", Value: "debug"},
-					v1.PlainLabelMatcher{Key: "detected_level", Value: "info"},
-					v1.PlainLabelMatcher{Key: "detected_level", Value: "warn"},
-					v1.PlainLabelMatcher{Key: "detected_level", Value: "error"},
+					v1.KeyValueMatcher{Key: "detected_level", Value: "debug"},
+					v1.KeyValueMatcher{Key: "detected_level", Value: "info"},
+					v1.KeyValueMatcher{Key: "detected_level", Value: "warn"},
+					v1.KeyValueMatcher{Key: "detected_level", Value: "error"},
 				),
 			},
 		},
@@ -130,8 +130,8 @@ func TestExtractLabelMatchers(t *testing.T) {
 			input: `{app="foo"} | key1=~"value1|(value2)"`,
 			expect: []v1.LabelMatcher{
 				v1.OrLabelMatcher{
-					v1.PlainLabelMatcher{Key: "key1", Value: "value1"},
-					v1.PlainLabelMatcher{Key: "key1", Value: "value2"},
+					v1.KeyValueMatcher{Key: "key1", Value: "value1"},
+					v1.KeyValueMatcher{Key: "key1", Value: "value2"},
 				},
 			},
 		},
@@ -140,7 +140,7 @@ func TestExtractLabelMatchers(t *testing.T) {
 			name:  "regex .+ matcher",
 			input: `{app="foo"} | key1=~".+"`,
 			expect: []v1.LabelMatcher{
-				v1.PresentLabelMatcher{Key: "key1"},
+				v1.KeyMatcher{Key: "key1"},
 			},
 		},
 
@@ -215,7 +215,7 @@ func TestExtractLabelMatchers_IgnoreAfterParse(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fullInput := fmt.Sprintf(`{app="foo"} | key1="value1" | %s | key2="value2"`, tc.expr)
 			expect := []v1.LabelMatcher{
-				v1.PlainLabelMatcher{Key: "key1", Value: "value1"},
+				v1.KeyValueMatcher{Key: "key1", Value: "value1"},
 				// key2="value2" should be ignored following tc.expr
 			}
 

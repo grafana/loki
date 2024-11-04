@@ -25,13 +25,13 @@ type LabelMatcher interface{ isLabelMatcher() }
 // mapped. Bloom tests for UnsupportedLabelMatchers must always pass.
 type UnsupportedLabelMatcher struct{}
 
-// PlainLabelMatcher represents a direct key-value matcher. Bloom tests
-// must only pass if the key-value pair exists in the bloom.
-type PlainLabelMatcher struct{ Key, Value string }
+// KeyValueMatcher represents a direct key-value matcher. Bloom tests must only
+// pass if the key-value pair exists in the bloom.
+type KeyValueMatcher struct{ Key, Value string }
 
-// PresentLabelMatcher represents a key matcher. Bloom tests must only pass if
-// the key exists in the bloom.
-type PresentLabelMatcher struct{ Key string }
+// KeyMatcher represents a key matcher. Bloom tests must only pass if the key
+// exists in the bloom.
+type KeyMatcher struct{ Key string }
 
 // OrLabelMatcher represents a logical OR test. Bloom tests must only pass if
 // one of the Left or Right label matcher bloom tests pass.
@@ -69,7 +69,7 @@ func buildLabelMatcher(filter log.LabelFilterer) LabelMatcher {
 
 	case *log.LineFilterLabelFilter:
 		if filter.Type == labels.MatchEqual {
-			return PlainLabelMatcher{
+			return KeyValueMatcher{
 				Key:   filter.Name,
 				Value: filter.Value,
 			}
@@ -88,7 +88,7 @@ func buildLabelMatcher(filter log.LabelFilterer) LabelMatcher {
 			return UnsupportedLabelMatcher{}
 		}
 
-		return PlainLabelMatcher{
+		return KeyValueMatcher{
 			Key:   filter.Name,
 			Value: filter.Value,
 		}
@@ -138,9 +138,9 @@ func buildSimplifiedRegexMatcher(key string, reg *regexsyn.Regexp) LabelMatcher 
 			return UnsupportedLabelMatcher{}
 		}
 
-		var left LabelMatcher = PlainLabelMatcher{Key: key, Value: matchers[0]}
+		var left LabelMatcher = KeyValueMatcher{Key: key, Value: matchers[0]}
 		for _, matcher := range matchers[1:] {
-			right := PlainLabelMatcher{Key: key, Value: matcher}
+			right := KeyValueMatcher{Key: key, Value: matcher}
 			left = OrLabelMatcher{Left: left, Right: right}
 		}
 		return left
@@ -150,14 +150,14 @@ func buildSimplifiedRegexMatcher(key string, reg *regexsyn.Regexp) LabelMatcher 
 		return buildSimplifiedRegexMatcher(key, reg)
 
 	case regexsyn.OpLiteral:
-		return PlainLabelMatcher{
+		return KeyValueMatcher{
 			Key:   key,
 			Value: string(reg.Rune),
 		}
 
 	case regexsyn.OpPlus:
 		if reg.Sub[0].Op == regexsyn.OpAnyChar || reg.Sub[0].Op == regexsyn.OpAnyCharNotNL { // .+
-			return PresentLabelMatcher{Key: key}
+			return KeyMatcher{Key: key}
 		}
 
 		return UnsupportedLabelMatcher{}
@@ -265,7 +265,7 @@ func expandSubexpr(reg *regexsyn.Regexp) (prefixes []string, ok bool) {
 //
 
 func (UnsupportedLabelMatcher) isLabelMatcher() {}
-func (PlainLabelMatcher) isLabelMatcher()       {}
-func (PresentLabelMatcher) isLabelMatcher()     {}
+func (KeyValueMatcher) isLabelMatcher()         {}
+func (KeyMatcher) isLabelMatcher()              {}
 func (OrLabelMatcher) isLabelMatcher()          {}
 func (AndLabelMatcher) isLabelMatcher()         {}

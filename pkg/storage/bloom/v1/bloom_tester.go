@@ -119,11 +119,11 @@ func matcherToBloomTest(matcher LabelMatcher) BloomTest {
 	case UnsupportedLabelMatcher:
 		return matchAllTest{}
 
-	case PlainLabelMatcher:
-		return newStringMatcherTest(matcher)
+	case KeyValueMatcher:
+		return newKeyValueMatcherTest(matcher)
 
-	case PresentLabelMatcher:
-		return newPresenceMatcherTest(matcher)
+	case KeyMatcher:
+		return newKeyMatcherTest(matcher)
 
 	case OrLabelMatcher:
 		return newOrTest(
@@ -143,15 +143,15 @@ func matcherToBloomTest(matcher LabelMatcher) BloomTest {
 	}
 }
 
-type stringMatcherTest struct {
-	matcher PlainLabelMatcher
+type keyValueMatcherTest struct {
+	matcher KeyValueMatcher
 }
 
-func newStringMatcherTest(matcher PlainLabelMatcher) stringMatcherTest {
-	return stringMatcherTest{matcher: matcher}
+func newKeyValueMatcherTest(matcher KeyValueMatcher) keyValueMatcherTest {
+	return keyValueMatcherTest{matcher: matcher}
 }
 
-func (sm stringMatcherTest) Matches(series labels.Labels, bloom filter.Checker) bool {
+func (kvm keyValueMatcherTest) Matches(series labels.Labels, bloom filter.Checker) bool {
 	// TODO(rfratto): reintroduce the use of a shared tokenizer here to avoid
 	// desyncing between how tokens are passed during building vs passed during
 	// querying.
@@ -162,24 +162,24 @@ func (sm stringMatcherTest) Matches(series labels.Labels, bloom filter.Checker) 
 	// 2. It should be possible to test for just the key
 
 	var (
-		combined    = fmt.Sprintf("%s=%s", sm.matcher.Key, sm.matcher.Value)
+		combined    = fmt.Sprintf("%s=%s", kvm.matcher.Key, kvm.matcher.Value)
 		rawCombined = unsafe.Slice(unsafe.StringData(combined), len(combined))
 	)
 
-	return sm.match(series, bloom, rawCombined)
+	return kvm.match(series, bloom, rawCombined)
 }
 
-func (sm stringMatcherTest) MatchesWithPrefixBuf(series labels.Labels, bloom filter.Checker, buf []byte, prefixLen int) bool {
+func (kvm keyValueMatcherTest) MatchesWithPrefixBuf(series labels.Labels, bloom filter.Checker, buf []byte, prefixLen int) bool {
 	var (
-		combined         = fmt.Sprintf("%s=%s", sm.matcher.Key, sm.matcher.Value)
+		combined         = fmt.Sprintf("%s=%s", kvm.matcher.Key, kvm.matcher.Value)
 		prefixedCombined = appendToBuf(buf, prefixLen, combined)
 	)
 
-	return sm.match(series, bloom, prefixedCombined)
+	return kvm.match(series, bloom, prefixedCombined)
 }
 
 // match returns true if the series matches the matcher or is in the bloom filter.
-func (sm stringMatcherTest) match(series labels.Labels, bloom filter.Checker, combined []byte) bool {
+func (kvm keyValueMatcherTest) match(series labels.Labels, bloom filter.Checker, combined []byte) bool {
 	// If we don't have the series labels, we cannot disambiguate which labels come from the series in which case
 	// we may filter out chunks for queries like `{env="prod"} | env="prod"` if env=prod is not structured metadata
 	if len(series) == 0 {
@@ -189,8 +189,8 @@ func (sm stringMatcherTest) match(series labels.Labels, bloom filter.Checker, co
 
 	// It's in the series if the key is set and has the same value.
 	// By checking val != "" we handle `{env="prod"} | user=""`.
-	val := series.Get(sm.matcher.Key)
-	inSeries := val != "" && val == sm.matcher.Value
+	val := series.Get(kvm.matcher.Key)
+	inSeries := val != "" && val == kvm.matcher.Value
 
 	inBloom := bloom.Test(combined)
 	return inSeries || inBloom
@@ -203,15 +203,15 @@ func appendToBuf(buf []byte, prefixLen int, str string) []byte {
 	return append(buf[:prefixLen], rawString...)
 }
 
-type presenceMatcherTest struct {
-	matcher PresentLabelMatcher
+type keyMatcherTest struct {
+	matcher KeyMatcher
 }
 
-func newPresenceMatcherTest(matcher PresentLabelMatcher) presenceMatcherTest {
-	return presenceMatcherTest{matcher: matcher}
+func newKeyMatcherTest(matcher KeyMatcher) keyMatcherTest {
+	return keyMatcherTest{matcher: matcher}
 }
 
-func (pm presenceMatcherTest) Matches(series labels.Labels, bloom filter.Checker) bool {
+func (km keyMatcherTest) Matches(series labels.Labels, bloom filter.Checker) bool {
 	// TODO(rfratto): reintroduce the use of a shared tokenizer here to avoid
 	// desyncing between how tokens are passed during building vs passed during
 	// querying.
@@ -222,25 +222,25 @@ func (pm presenceMatcherTest) Matches(series labels.Labels, bloom filter.Checker
 	// 2. It should be possible to test for just the key
 
 	var (
-		key    = pm.matcher.Key
+		key    = km.matcher.Key
 		rawKey = unsafe.Slice(unsafe.StringData(key), len(key))
 	)
 
-	return pm.match(series, bloom, rawKey)
+	return km.match(series, bloom, rawKey)
 }
 
-func (pm presenceMatcherTest) MatchesWithPrefixBuf(series labels.Labels, bloom filter.Checker, buf []byte, prefixLen int) bool {
+func (km keyMatcherTest) MatchesWithPrefixBuf(series labels.Labels, bloom filter.Checker, buf []byte, prefixLen int) bool {
 	var (
-		key         = pm.matcher.Key
+		key         = km.matcher.Key
 		prefixedKey = appendToBuf(buf, prefixLen, key)
 	)
 
-	return pm.match(series, bloom, prefixedKey)
+	return km.match(series, bloom, prefixedKey)
 }
 
 // match returns true if the series matches the matcher or is in the bloom
 // filter.
-func (pm presenceMatcherTest) match(series labels.Labels, bloom filter.Checker, key []byte) bool {
+func (km keyMatcherTest) match(series labels.Labels, bloom filter.Checker, key []byte) bool {
 	// If we don't have the series labels, we cannot disambiguate which labels come from the series in which case
 	// we may filter out chunks for queries like `{env="prod"} | env="prod"` if env=prod is not structured metadata
 	if len(series) == 0 {
@@ -248,7 +248,7 @@ func (pm presenceMatcherTest) match(series labels.Labels, bloom filter.Checker, 
 		return true
 	}
 
-	inSeries := series.Get(pm.matcher.Key) != ""
+	inSeries := series.Get(km.matcher.Key) != ""
 	inBloom := bloom.Test(key)
 	return inSeries || inBloom
 }
