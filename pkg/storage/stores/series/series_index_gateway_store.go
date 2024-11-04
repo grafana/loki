@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	statscontext "github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
@@ -57,6 +58,10 @@ func (c *IndexGatewayClientStore) GetChunkRefs(ctx context.Context, _ string, fr
 	for i, ref := range response.Refs {
 		result[i] = *ref
 	}
+
+	statsCtx := statscontext.FromContext(ctx)
+	statsCtx.AddIndexTotalChunkRefs(response.Stats.TotalChunks)
+	statsCtx.AddIndexPostFilterChunkRefs(response.Stats.PostFilterChunks)
 
 	return result, nil
 }

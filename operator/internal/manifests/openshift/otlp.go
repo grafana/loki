@@ -32,7 +32,6 @@ func DefaultOTLPAttributes(disableRecommended bool) config.OTLPAttributeConfig {
 		return result
 	}
 
-	// TODO decide whether we want to split the default configuration by tenant
 	result.Global.ResourceAttributes[0].Names = append(result.Global.ResourceAttributes[0].Names,
 		"k8s.container.name",
 		"k8s.cronjob.name",
@@ -41,6 +40,7 @@ func DefaultOTLPAttributes(disableRecommended bool) config.OTLPAttributeConfig {
 		"k8s.job.name",
 		"k8s.node.name",
 		"k8s.pod.name",
+		"k8s.statefulset.name",
 		"kubernetes.container_name",
 		"kubernetes.host",
 		"kubernetes.pod_name",
@@ -55,7 +55,6 @@ func DefaultOTLPAttributes(disableRecommended bool) config.OTLPAttributeConfig {
 				"k8s.node.uid",
 				"k8s.pod.uid",
 				"k8s.replicaset.name",
-				"k8s.statefulset.name",
 				"process.command_line",
 				"process.executable.name",
 				"process.executable.path",

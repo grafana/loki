@@ -134,8 +134,6 @@ func newPreparedResource(ctx context.Context, project string, resourceOptions []
 }
 
 type metricsContext struct {
-	// project used by exporter
-	project string
 	// client options passed to gRPC channels
 	clientOpts []option.ClientOption
 	// instance of metric reader used by gRPC client-side metrics
@@ -154,29 +152,36 @@ func createHistogramView(name string, boundaries []float64) metric.View {
 	})
 }
 
-func newGRPCMetricContext(ctx context.Context, project string) (*metricsContext, error) {
-	preparedResource, err := newPreparedResource(ctx, project, []resource.Option{resource.WithDetectors(gcp.NewDetector())})
-	if err != nil {
-		return nil, err
-	}
-	// Implementation requires a project, if one is not determined possibly user
-	// credentials. Then we will fail stating gRPC Metrics require a project-id.
-	if project == "" && preparedResource.projectToUse != "" {
-		return nil, fmt.Errorf("google cloud project is required to start client-side metrics")
-	}
-	// If projectTouse isn't the same as project provided to Storage client, then
-	// emit a log stating which project is being used to emit metrics to.
-	if project != preparedResource.projectToUse {
-		log.Printf("The Project ID configured for metrics is %s, but the Project ID of the storage client is %s. Make sure that the service account in use has the required metric writing role (roles/monitoring.metricWriter) in the project projectIdToUse or metrics will not be written.", preparedResource.projectToUse, project)
-	}
-	meOpts := []mexporter.Option{
-		mexporter.WithProjectID(preparedResource.projectToUse),
-		mexporter.WithMetricDescriptorTypeFormatter(metricFormatter),
-		mexporter.WithCreateServiceTimeSeries(),
-		mexporter.WithMonitoredResourceDescription(monitoredResourceName, []string{"project_id", "location", "cloud_platform", "host_id", "instance_id", "api"})}
-	exporter, err := mexporter.New(meOpts...)
-	if err != nil {
-		return nil, err
+func newGRPCMetricContext(ctx context.Context, project string, config storageConfig) (*metricsContext, error) {
+	var exporter metric.Exporter
+	meterOpts := []metric.Option{}
+	if config.metricExporter != nil {
+		exporter = *config.metricExporter
+	} else {
+		preparedResource, err := newPreparedResource(ctx, project, []resource.Option{resource.WithDetectors(gcp.NewDetector())})
+		if err != nil {
+			return nil, err
+		}
+		meterOpts = append(meterOpts, metric.WithResource(preparedResource.resource))
+		// Implementation requires a project, if one is not determined possibly user
+		// credentials. Then we will fail stating gRPC Metrics require a project-id.
+		if project == "" && preparedResource.projectToUse == "" {
+			return nil, fmt.Errorf("google cloud project is required to start client-side metrics")
+		}
+		// If projectTouse isn't the same as project provided to Storage client, then
+		// emit a log stating which project is being used to emit metrics to.
+		if project != preparedResource.projectToUse {
+			log.Printf("The Project ID configured for metrics is %s, but the Project ID of the storage client is %s. Make sure that the service account in use has the required metric writing role (roles/monitoring.metricWriter) in the project projectIdToUse or metrics will not be written.", preparedResource.projectToUse, project)
+		}
+		meOpts := []mexporter.Option{
+			mexporter.WithProjectID(preparedResource.projectToUse),
+			mexporter.WithMetricDescriptorTypeFormatter(metricFormatter),
+			mexporter.WithCreateServiceTimeSeries(),
+			mexporter.WithMonitoredResourceDescription(monitoredResourceName, []string{"project_id", "location", "cloud_platform", "host_id", "instance_id", "api"})}
+		exporter, err = mexporter.New(meOpts...)
+		if err != nil {
+			return nil, err
+		}
 	}
 	// Metric views update histogram boundaries to be relevant to GCS
 	// otherwise default OTel histogram boundaries are used.
@@ -185,11 +190,13 @@ func newGRPCMetricContext(ctx context.Context, project string) (*metricsContext,
 		createHistogramView("grpc.client.attempt.rcvd_total_compressed_message_size", sizeHistogramBoundaries()),
 		createHistogramView("grpc.client.attempt.sent_total_compressed_message_size", sizeHistogramBoundaries()),
 	}
-	provider := metric.NewMeterProvider(
-		metric.WithReader(metric.NewPeriodicReader(&exporterLogSuppressor{exporter: exporter}, metric.WithInterval(time.Minute))),
-		metric.WithResource(preparedResource.resource),
-		metric.WithView(metricViews...),
-	)
+	interval := time.Minute
+	if config.metricInterval > 0 {
+		interval = config.metricInterval
+	}
+	meterOpts = append(meterOpts, metric.WithReader(metric.NewPeriodicReader(&exporterLogSuppressor{exporter: exporter}, metric.WithInterval(interval))),
+		metric.WithView(metricViews...))
+	provider := metric.NewMeterProvider(meterOpts...)
 	mo := opentelemetry.MetricsOptions{
 		MeterProvider: provider,
 		Metrics: opentelemetry.DefaultMetrics().Add(
@@ -209,7 +216,6 @@ func newGRPCMetricContext(ctx context.Context, project string) (*metricsContext,
 		option.WithGRPCDialOption(grpc.WithDefaultCallOptions(grpc.StaticMethodCallOption{})),
 	}
 	context := &metricsContext{
-		project:    preparedResource.projectToUse,
 		clientOpts: opts,
 		provider:   provider,
 		close:      createShutdown(ctx, provider),
@@ -217,14 +223,14 @@ func newGRPCMetricContext(ctx context.Context, project string) (*metricsContext,
 	return context, nil
 }
 
-func enableClientMetrics(ctx context.Context, s *settings) (*metricsContext, error) {
+func enableClientMetrics(ctx context.Context, s *settings, config storageConfig) (*metricsContext, error) {
 	var project string
 	c, err := transport.Creds(ctx, s.clientOption...)
 	if err == nil {
 		project = c.ProjectID
 	}
 	// Enable client-side metrics for gRPC
-	metricsContext, err := newGRPCMetricContext(ctx, project)
+	metricsContext, err := newGRPCMetricContext(ctx, project, config)
 	if err != nil {
 		return nil, fmt.Errorf("gRPC Metrics: %w", err)
 	}
