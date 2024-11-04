@@ -33,8 +33,7 @@ var (
 	errSecretUnknownSSEType  = errors.New("unsupported SSE type (supported: SSE-KMS, SSE-S3)")
 	errSecretHashError       = errors.New("error calculating hash for secret")
 
-	errSecretUnknownCredentialMode     = errors.New("unknown credential mode")
-	errSecretUnsupportedCredentialMode = errors.New("combination of storage type and credential mode not supported")
+	errSecretUnknownCredentialMode = errors.New("unknown credential mode")
 
 	errAzureManagedIdentityNoOverride = errors.New("when in managed mode, storage secret can not contain credentials")
 	errAzureInvalidEnvironment        = errors.New("azure environment invalid (valid values: AzureGlobal, AzureChinaCloud, AzureGermanCloud, AzureUSGovernment)")
@@ -47,6 +46,7 @@ var (
 
 	errGCPParseCredentialsFile      = errors.New("gcp storage secret cannot be parsed from JSON content")
 	errGCPWrongCredentialSourceFile = errors.New("credential source in secret needs to point to token file")
+	errGCPInvalidCredentialsFile    = errors.New("GCP credentials file contains invalid fields")
 
 	azureValidEnvironments = map[string]bool{
 		"AzureGlobal":       true,
@@ -138,7 +138,7 @@ func extractSecrets(secretSpec lokiv1.ObjectStorageSecretSpec, objStore, tokenCC
 	case lokiv1.ObjectStorageSecretAzure:
 		storageOpts.Azure, err = extractAzureConfigSecret(objStore, credentialMode)
 	case lokiv1.ObjectStorageSecretGCS:
-		storageOpts.GCS, err = extractGCSConfigSecret(objStore, credentialMode)
+		storageOpts.GCS, err = extractGCSConfigSecret(objStore, tokenCCOAuth, credentialMode)
 	case lokiv1.ObjectStorageSecretS3:
 		storageOpts.S3, err = extractS3ConfigSecret(objStore, credentialMode)
 	case lokiv1.ObjectStorageSecretSwift:
@@ -333,6 +333,7 @@ func extractGoogleCredentialSource(secret *corev1.Secret) (sourceFile, sourceTyp
 	}
 
 	credentialsFile := struct {
+		Audience          string `json:"audience"`
 		CredentialsType   string `json:"type"`
 		CredentialsSource struct {
 			File string `json:"file"`
@@ -347,7 +348,7 @@ func extractGoogleCredentialSource(secret *corev1.Secret) (sourceFile, sourceTyp
 	return credentialsFile.CredentialsSource.File, credentialsFile.CredentialsType, nil
 }
 
-func extractGCSConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMode) (*storage.GCSStorageConfig, error) {
+func extractGCSConfigSecret(s, tokenCCOAuth *corev1.Secret, credentialMode lokiv1.CredentialMode) (*storage.GCSStorageConfig, error) {
 	// Extract and validate mandatory fields
 	bucket := s.Data[storage.KeyGCPStorageBucketName]
 	if len(bucket) == 0 {
@@ -355,6 +356,15 @@ func extractGCSConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMo
 	}
 
 	switch credentialMode {
+	case lokiv1.CredentialModeTokenCCO:
+		if _, ok := s.Data[storage.KeyGCPServiceAccountKeyFilename]; ok {
+			return nil, fmt.Errorf("%w: %s", errGCPInvalidCredentialsFile, "key.json must not be set for CredentialModeTokenCCO")
+		}
+
+		return &storage.GCSStorageConfig{
+			Bucket:           string(bucket),
+			WorkloadIdentity: true,
+		}, nil
 	case lokiv1.CredentialModeStatic:
 		return &storage.GCSStorageConfig{
 			Bucket: string(bucket),
@@ -380,12 +390,9 @@ func extractGCSConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMo
 			WorkloadIdentity: true,
 			Audience:         audience,
 		}, nil
-	case lokiv1.CredentialModeTokenCCO:
-		return nil, fmt.Errorf("%w: type: %s credentialMode: %s", errSecretUnsupportedCredentialMode, lokiv1.ObjectStorageSecretGCS, credentialMode)
 	default:
+		return nil, fmt.Errorf("%w: %s", errSecretUnknownCredentialMode, credentialMode)
 	}
-
-	return nil, fmt.Errorf("%w: %s", errSecretUnknownCredentialMode, credentialMode)
 }
 
 func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMode) (*storage.S3StorageConfig, error) {
