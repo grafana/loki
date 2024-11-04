@@ -240,6 +240,9 @@ func (i *Index) Merge(m Index) {
 	i.TotalChunks += m.TotalChunks
 	i.PostFilterChunks += m.PostFilterChunks
 	i.ShardsDuration += m.ShardsDuration
+	if m.UsedBloomFilters {
+		i.UsedBloomFilters = m.UsedBloomFilters
+	}
 }
 
 func (c *Caches) Merge(m Caches) {

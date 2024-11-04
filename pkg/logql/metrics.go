@@ -208,6 +208,7 @@ func RecordRangeAndInstantQueryMetrics(
 		"index_total_chunks", stats.Index.TotalChunks,
 		"index_post_bloom_filter_chunks", stats.Index.PostFilterChunks,
 		"index_bloom_filter_ratio", fmt.Sprintf("%.2f", bloomRatio),
+		"index_used_bloom_filters", stats.Index.UsedBloomFilters,
 		"index_shard_resolver_duration", time.Duration(stats.Index.ShardsDuration),
 	}...)
 
