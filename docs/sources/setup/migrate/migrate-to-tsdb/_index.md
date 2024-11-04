@@ -20,9 +20,9 @@ we strongly recommend migrating to TSDB.
 To begin the migration, add a new [period_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#period_config) entry in your [schema_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#schema_config).
 You can read more about schema config [here](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#schema-config).
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 You must roll out the new `period_config` change to all Loki components in order for it to take effect.
-{{% /admonition %}}
+{{< /admonition >}}
 
 This example adds a new `period_config` which configures Loki to start using the TSDB index for the data ingested starting from `2023-10-20`.
 

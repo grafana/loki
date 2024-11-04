@@ -93,9 +93,9 @@ Since the OpenTelemetry protocol differs from the Loki storage model, here is ho
   - service.name
   - service.namespace
 
-    {{% admonition type="note" %}}
+    {{< admonition type="note" >}}
     Because Loki has a default limit of 15 index labels, we recommend storing only select resource attributes as index labels. Although the default config selects more than 15 Resource Attributes, it should be fine since a few are mutually exclusive.
-    {{% /admonition %}}
+    {{< /admonition >}}
 
 - Timestamp: One of `LogRecord.TimeUnixNano` or `LogRecord.ObservedTimestamp`, based on which one is set. If both are not set, the ingestion timestamp will be used.
 
