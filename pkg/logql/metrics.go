@@ -95,12 +95,13 @@ func RecordRangeAndInstantQueryMetrics(
 	result promql_parser.Value,
 ) {
 	var (
-		logger        = fixLogger(ctx, log)
-		rangeType     = GetRangeType(p)
-		rt            = string(rangeType)
-		latencyType   = latencyTypeFast
-		returnedLines = 0
-		queryTags, _  = ctx.Value(httpreq.QueryTagsHTTPHeader).(string) // it's ok to be empty.
+		logger              = fixLogger(ctx, log)
+		rangeType           = GetRangeType(p)
+		rt                  = string(rangeType)
+		latencyType         = latencyTypeFast
+		returnedLines       = 0
+		cardinalityEstimate = uint64(0)
+		queryTags, _        = ctx.Value(httpreq.QueryTagsHTTPHeader).(string) // it's ok to be empty.
 	)
 
 	queryType, err := QueryType(p.GetExpression())
@@ -139,6 +140,10 @@ func RecordRangeAndInstantQueryMetrics(
 	var bloomRatio float64 // what % are filtered
 	if stats.Index.TotalChunks > 0 {
 		bloomRatio = float64(stats.Index.TotalChunks-stats.Index.PostFilterChunks) / float64(stats.Index.TotalChunks)
+	}
+
+	if r, ok := result.(CountMinSketchVector); ok {
+		cardinalityEstimate = r.F.HyperLogLog.Estimate()
 	}
 
 	logValues = append(logValues, []interface{}{
@@ -187,6 +192,8 @@ func RecordRangeAndInstantQueryMetrics(
 		"cache_result_hit", resultCache.EntriesFound,
 		"cache_result_download_time", resultCache.CacheDownloadTime(),
 		"cache_result_query_length_served", resultCache.CacheQueryLengthServed(),
+		// Cardinality estimate for some approximate query types
+		"cardinality_estimate", cardinalityEstimate,
 		// The total of chunk reference fetched from index.
 		"ingester_chunk_refs", stats.Ingester.Store.GetTotalChunksRef(),
 		// Total number of chunks fetched.
