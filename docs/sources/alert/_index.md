@@ -202,18 +202,18 @@ Another great use case is alerting on high cardinality sources. These are things
 
 Creating these alerts in LogQL is attractive because these metrics can be extracted at _query time_, meaning we don't suffer the cardinality explosion in our metrics store.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 As an example, we can use LogQL v2 to help Loki to monitor _itself_, alerting us when specific tenants have queries that take longer than 10s to complete! To do so, we'd use the following query: `sum by (org_id) (rate({job="loki-prod/query-frontend"} |= "metrics.go" | logfmt | duration > 10s [1m])`.
-{{% /admonition %}}
+{{< /admonition >}}
 
 ## Interacting with the Ruler
 
 ### Lokitool
 Because the rule files are identical to Prometheus rule files, we can interact with the Loki Ruler via `lokitool`.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 lokitool is intended to run against multi-tenant Loki.  The commands need an `--id=` flag set to the Loki instance ID or set the environment variable `LOKI_TENANT_ID`.  If Loki is running in single tenant mode, the required ID is `fake`.
-{{% /admonition %}}
+{{< /admonition >}}
 
 An example workflow is included below:
 

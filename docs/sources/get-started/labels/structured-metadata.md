@@ -5,9 +5,9 @@ description: Describes how to enable structure metadata for logs and how to quer
 ---
 # What is structured metadata
 
-{{% admonition type="warning" %}}
+{{< admonition type="warning" >}}
 Structured metadata was added to chunk format V4 which is used if the schema version is greater or equal to `13`. See [Schema Config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#schema-config) for more details about schema versions.
-{{% /admonition %}}
+{{< /admonition >}}
 
 Selecting proper, low cardinality labels is critical to operating and querying Loki effectively. Some metadata, especially infrastructure related metadata, can be difficult to embed in log lines, and is too high cardinality to effectively store as indexed labels (and therefore reducing performance of the index).
 
@@ -36,7 +36,7 @@ See the [Promtail: Structured metadata stage](https://grafana.com/docs/loki/<LOK
 
 With Loki version 1.2.0, support for structured metadata has been added to the Logstash output plugin. For more information, see [logstash](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/logstash/).
 
-{{% admonition type="warning" %}}
+{{< admonition type="warning" >}}
 Structured metadata size is taken into account while asserting ingestion rate limiting. 
 Along with that, there are separate limits on how much structured metadata can be attached per log line.
 ```
@@ -48,7 +48,7 @@ Along with that, there are separate limits on how much structured metadata can b
 # CLI flag: -limits.max-structured-metadata-entries-count
 [max_structured_metadata_entries_count: <int> | default = 128]
 ```
-{{% /admonition %}}
+{{< /admonition >}}
 
 ## Querying structured metadata
 

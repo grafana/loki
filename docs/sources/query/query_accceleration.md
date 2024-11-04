@@ -10,9 +10,9 @@ keywords:
 
 # Query acceleration (Experimental)
 
-{{% admonition type="warning" %}}
+{{< admonition type="warning" >}}
 Query acceleration using blooms is an [experimental feature](/docs/release-life-cycle/). Engineering and on-call support is not available. No SLA is provided.
-{{% /admonition %}}
+{{< /admonition >}}
 
 If [bloom filters][] are enabled, you can write LogQL queries using [structured metadata][] to benefit from query acceleration.
 

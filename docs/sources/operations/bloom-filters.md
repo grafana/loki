@@ -12,9 +12,9 @@ aliases:
 
 # Bloom filters (Experimental)
 
-{{% admonition type="warning" %}}
+{{< admonition type="warning" >}}
 This feature is an [experimental feature](/docs/release-life-cycle/). Engineering and on-call support is not available. No SLA is provided.
-{{% /admonition %}}
+{{< /admonition >}}
 
 Loki leverages [bloom filters](https://en.wikipedia.org/wiki/Bloom_filter) to speed up queries by reducing the amount of data Loki needs to load from the store and iterate through.
 Loki is often used to run "needle in a haystack" queries; these are queries where a large number of log lines are searched, but only a few log lines match the query.
