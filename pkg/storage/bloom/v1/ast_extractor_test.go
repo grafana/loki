@@ -137,6 +137,22 @@ func TestExtractLabelMatchers(t *testing.T) {
 		},
 
 		{
+			name:  "advanced regex matcher",
+			input: `{app="foo"} | key1=~"(warn|info[0-3])"`,
+			expect: []v1.LabelMatcher{
+				v1.OrLabelMatcher{
+					v1.KeyValueMatcher{Key: "key1", Value: "warn"},
+					buildOrMatchers(
+						v1.KeyValueMatcher{Key: "key1", Value: "info0"},
+						v1.KeyValueMatcher{Key: "key1", Value: "info1"},
+						v1.KeyValueMatcher{Key: "key1", Value: "info2"},
+						v1.KeyValueMatcher{Key: "key1", Value: "info3"},
+					),
+				},
+			},
+		},
+
+		{
 			name:  "regex .+ matcher",
 			input: `{app="foo"} | key1=~".+"`,
 			expect: []v1.LabelMatcher{
