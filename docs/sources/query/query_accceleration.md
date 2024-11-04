@@ -26,6 +26,11 @@ If [bloom filters][] are enabled, you can write LogQL queries using [structured 
 Queries will be accelerated for any [label filter expression][] that satisfies _all_ of the following criteria:
 
 * The label filter expression using **string equality**, such as `| key="value"`.
+    * `or` and `and` operators can be used to match multiple values, such as `| detected_level="error" or detected_level="warn"`.
+    * _Basic_ regular expressions are automatically simplified into a supported expression:
+        * `| key=~"value"` is converted to `| key="value"`.
+        * `| key=~"value1|value2"` is converted to `| key="value1" or key="value2"`.
+        * `| key=~".+"` checks for existence of `key`. `.*` is not supported.
 * The label filter expression is querying for structured metadata and not a stream label.
 * The label filter expression is placed before any [parser expression][], [labels format expression][], [drop labels expression][], or [keep labels expression][].
 
