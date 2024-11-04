@@ -28,6 +28,7 @@ const emptyStats = `{
 	"index": {
 		"postFilterChunks": 0,
 		"totalChunks": 0,
+		"usedBloomFilters": false,
 		"shardsDuration": 0
 	},
 	"ingester" : {

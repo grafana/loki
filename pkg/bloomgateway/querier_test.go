@@ -81,7 +81,7 @@ func TestBloomQuerier(t *testing.T) {
 		}
 		expr, err := syntax.ParseExpr(`{foo="bar"}`)
 		require.NoError(t, err)
-		res, err := bq.FilterChunkRefs(ctx, tenant, from, through, nil, chunkRefs, plan.QueryPlan{AST: expr})
+		res, _, err := bq.FilterChunkRefs(ctx, tenant, from, through, nil, chunkRefs, plan.QueryPlan{AST: expr})
 		require.NoError(t, err)
 		require.Equal(t, chunkRefs, res)
 		require.Equal(t, 0, c.callCount)
@@ -97,7 +97,7 @@ func TestBloomQuerier(t *testing.T) {
 		chunkRefs := []*logproto.ChunkRef{}
 		expr, err := syntax.ParseExpr(`{foo="bar"} | trace_id="exists"`)
 		require.NoError(t, err)
-		res, err := bq.FilterChunkRefs(ctx, tenant, from, through, nil, chunkRefs, plan.QueryPlan{AST: expr})
+		res, _, err := bq.FilterChunkRefs(ctx, tenant, from, through, nil, chunkRefs, plan.QueryPlan{AST: expr})
 		require.NoError(t, err)
 		require.Equal(t, chunkRefs, res)
 		require.Equal(t, 0, c.callCount)
@@ -117,7 +117,7 @@ func TestBloomQuerier(t *testing.T) {
 		}
 		expr, err := syntax.ParseExpr(`{foo="bar"} | trace_id="exists"`)
 		require.NoError(t, err)
-		res, err := bq.FilterChunkRefs(ctx, tenant, from, through, nil, chunkRefs, plan.QueryPlan{AST: expr})
+		res, _, err := bq.FilterChunkRefs(ctx, tenant, from, through, nil, chunkRefs, plan.QueryPlan{AST: expr})
 		require.Error(t, err)
 		require.Nil(t, res)
 	})
@@ -136,7 +136,7 @@ func TestBloomQuerier(t *testing.T) {
 		}
 		expr, err := syntax.ParseExpr(`{foo="bar"} | trace_id="exists"`)
 		require.NoError(t, err)
-		res, err := bq.FilterChunkRefs(ctx, tenant, from, through, nil, chunkRefs, plan.QueryPlan{AST: expr})
+		res, _, err := bq.FilterChunkRefs(ctx, tenant, from, through, nil, chunkRefs, plan.QueryPlan{AST: expr})
 		require.NoError(t, err)
 		require.Equal(t, chunkRefs, res)
 		require.Equal(t, 2, c.callCount)
