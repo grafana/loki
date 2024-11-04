@@ -95,7 +95,7 @@ func TestExtractLabelMatchers(t *testing.T) {
 
 		{
 			name:  "regex matcher ignore high cardinality",
-			input: `{app="foo"} | key1=~"value[0-9][0-9]"`, // This would expand to 100 matchers. Too many!
+			input: `{app="foo"} | key1=~"value[0-9][0-9][0-9]"`, // This would expand to 1000 matchers. Too many!
 			expect: []v1.LabelMatcher{
 				v1.UnsupportedLabelMatcher{},
 			},

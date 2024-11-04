@@ -11,11 +11,13 @@ import (
 )
 
 // Simplifiable regexp expressions can quickly expand into very high
-// cardinality; we limit the number of matchers to prevent this.
+// cardinality; we limit the number of matchers to prevent this. However,
+// since bloom tests are relatively cheap to test, we can afford to be a little
+// generous while still preventing excessive cardinality.
 //
 // For example, the regex `[0-9]` expands to 10 matchers (0, 1, .. 9), while
-// `[0-9][0-9]` expands to 100 matchers (00, 01, .., 99).
-const maxRegexMatchers = 25
+// `[0-9][0-9][0-9]` expands to 1000 matchers (000, 001, .., 999).
+const maxRegexMatchers = 200
 
 // LabelMatcher represents bloom tests for key-value pairs, mapped from
 // LabelFilterExprs from the AST.
