@@ -29,6 +29,10 @@ type UnsupportedLabelMatcher struct{}
 // must only pass if the key-value pair exists in the bloom.
 type PlainLabelMatcher struct{ Key, Value string }
 
+// PresentLabelMatcher represents a key matcher. Bloom tests must only pass if
+// the key exists in the bloom.
+type PresentLabelMatcher struct{ Key string }
+
 // OrLabelMatcher represents a logical OR test. Bloom tests must only pass if
 // one of the Left or Right label matcher bloom tests pass.
 type OrLabelMatcher struct{ Left, Right LabelMatcher }
@@ -151,6 +155,13 @@ func buildSimplifiedRegexMatcher(key string, reg *regexsyn.Regexp) LabelMatcher 
 			Value: string(reg.Rune),
 		}
 
+	case regexsyn.OpPlus:
+		if reg.Sub[0].Op == regexsyn.OpAnyChar || reg.Sub[0].Op == regexsyn.OpAnyCharNotNL { // .+
+			return PresentLabelMatcher{Key: key}
+		}
+
+		return UnsupportedLabelMatcher{}
+
 	default:
 		return UnsupportedLabelMatcher{}
 	}
@@ -255,5 +266,6 @@ func expandSubexpr(reg *regexsyn.Regexp) (prefixes []string, ok bool) {
 
 func (UnsupportedLabelMatcher) isLabelMatcher() {}
 func (PlainLabelMatcher) isLabelMatcher()       {}
+func (PresentLabelMatcher) isLabelMatcher()     {}
 func (OrLabelMatcher) isLabelMatcher()          {}
 func (AndLabelMatcher) isLabelMatcher()         {}

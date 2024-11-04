@@ -116,6 +116,16 @@ func TestLabelMatchersToBloomTest(t *testing.T) {
 			query: `{app="fake"} | trace_id="exists_1" and trace_id="noexist"`,
 			match: false,
 		},
+		{
+			name:  "presence test pass",
+			query: `{app="fake"} | trace_id=~".+"`,
+			match: true,
+		},
+		{
+			name:  "presence test pass",
+			query: `{app="fake"} | noexist=~".+"`,
+			match: false,
+		},
 	}
 
 	for _, tc := range tt {

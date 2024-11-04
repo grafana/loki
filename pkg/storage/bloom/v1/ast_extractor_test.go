@@ -137,6 +137,31 @@ func TestExtractLabelMatchers(t *testing.T) {
 		},
 
 		{
+			name:  "regex .+ matcher",
+			input: `{app="foo"} | key1=~".+"`,
+			expect: []v1.LabelMatcher{
+				v1.PresentLabelMatcher{Key: "key1"},
+			},
+		},
+
+		{
+			// This should also be unsupported for suffix or substring regexes.
+			name:  "regex .+ prefix matcher",
+			input: `{app="foo"} | key1=~".+foo"`,
+			expect: []v1.LabelMatcher{
+				v1.UnsupportedLabelMatcher{},
+			},
+		},
+
+		{
+			name:  "regex .* matcher",
+			input: `{app="foo"} | key1=~".*"`,
+			expect: []v1.LabelMatcher{
+				v1.UnsupportedLabelMatcher{},
+			},
+		},
+
+		{
 			name:  "unsupported label matchers",
 			input: `{app="foo"} | key1!="value1"`,
 			expect: []v1.LabelMatcher{

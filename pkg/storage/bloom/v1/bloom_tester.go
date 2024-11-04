@@ -122,6 +122,9 @@ func matcherToBloomTest(matcher LabelMatcher) BloomTest {
 	case PlainLabelMatcher:
 		return newStringMatcherTest(matcher)
 
+	case PresentLabelMatcher:
+		return newPresenceMatcherTest(matcher)
+
 	case OrLabelMatcher:
 		return newOrTest(
 			matcherToBloomTest(matcher.Left),
@@ -198,4 +201,54 @@ func (sm stringMatcherTest) match(series labels.Labels, bloom filter.Checker, co
 func appendToBuf(buf []byte, prefixLen int, str string) []byte {
 	rawString := unsafe.Slice(unsafe.StringData(str), len(str))
 	return append(buf[:prefixLen], rawString...)
+}
+
+type presenceMatcherTest struct {
+	matcher PresentLabelMatcher
+}
+
+func newPresenceMatcherTest(matcher PresentLabelMatcher) presenceMatcherTest {
+	return presenceMatcherTest{matcher: matcher}
+}
+
+func (pm presenceMatcherTest) Matches(series labels.Labels, bloom filter.Checker) bool {
+	// TODO(rfratto): reintroduce the use of a shared tokenizer here to avoid
+	// desyncing between how tokens are passed during building vs passed during
+	// querying.
+	//
+	// For a shared tokenizer to be ergonomic:
+	//
+	// 1. A prefix shouldn't be required until MatchesWithPrefixBuf is called
+	// 2. It should be possible to test for just the key
+
+	var (
+		key    = pm.matcher.Key
+		rawKey = unsafe.Slice(unsafe.StringData(key), len(key))
+	)
+
+	return pm.match(series, bloom, rawKey)
+}
+
+func (pm presenceMatcherTest) MatchesWithPrefixBuf(series labels.Labels, bloom filter.Checker, buf []byte, prefixLen int) bool {
+	var (
+		key         = pm.matcher.Key
+		prefixedKey = appendToBuf(buf, prefixLen, key)
+	)
+
+	return pm.match(series, bloom, prefixedKey)
+}
+
+// match returns true if the series matches the matcher or is in the bloom
+// filter.
+func (pm presenceMatcherTest) match(series labels.Labels, bloom filter.Checker, key []byte) bool {
+	// If we don't have the series labels, we cannot disambiguate which labels come from the series in which case
+	// we may filter out chunks for queries like `{env="prod"} | env="prod"` if env=prod is not structured metadata
+	if len(series) == 0 {
+		level.Warn(util_log.Logger).Log("msg", "series has no labels, cannot filter out chunks")
+		return true
+	}
+
+	inSeries := series.Get(pm.matcher.Key) != ""
+	inBloom := bloom.Test(key)
+	return inSeries || inBloom
 }
