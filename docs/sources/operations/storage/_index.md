@@ -77,9 +77,9 @@ See the [AWS deployment section](https://grafana.com/docs/loki/<LOKI_VERSION>/co
 
 ### DynamoDB
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 DynamoDB support is deprecated and will be removed in a future release.
-{{% /admonition %}}
+{{< /admonition >}}
 
 When using DynamoDB for the index, the following permissions are needed:
 
