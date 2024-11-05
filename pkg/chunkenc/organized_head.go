@@ -286,7 +286,7 @@ func (e *organizedBufferedIterator) Next() bool {
 		e.Close()
 		return false
 	}
-	structuredMetadata, ok := e.nextMetadata()
+	structuredMetadata, _ := e.nextMetadata()
 	// there can be cases when there's no structured metadata?
 	// if !ok {
 	// 	e.Close()
