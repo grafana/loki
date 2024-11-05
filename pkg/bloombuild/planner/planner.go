@@ -405,7 +405,6 @@ func (p *Planner) computeTasks(
 	// Resolve TSDBs
 	tsdbs, err := p.tsdbStore.ResolveTSDBs(ctx, table, tenant)
 	if err != nil {
-		level.Error(logger).Log("msg", "failed to resolve tsdbs", "err", err)
 		return nil, nil, fmt.Errorf("failed to resolve tsdbs: %w", err)
 	}
 
@@ -664,9 +663,14 @@ func (p *Planner) loadTenantTables(
 		}
 
 		for tenants.Next() && tenants.Err() == nil && ctx.Err() == nil {
-			p.metrics.tenantsDiscovered.Inc()
 			tenant := tenants.At()
+			if tenant == "" {
+				// Tables that have not been fully compacted yet will have multi-tenant TSDBs for which the tenant is ""
+				// in this case we just skip the tenant
+				continue
+			}
 
+			p.metrics.tenantsDiscovered.Inc()
 			if !p.limits.BloomCreationEnabled(tenant) {
 				level.Debug(p.logger).Log("msg", "bloom creation disabled for tenant", "tenant", tenant)
 				continue
