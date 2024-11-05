@@ -281,8 +281,6 @@ func (p *Planner) runOne(ctx context.Context) error {
 				continue
 			}
 
-			level.Debug(logger).Log("msg", "computed tasks", "tasks", len(tasks), "existingMetas", len(existingMetas))
-
 			var tenantTableEnqueuedTasks int
 			resultsCh := make(chan *protos.TaskResult, len(tasks))
 
@@ -377,12 +375,12 @@ func (p *Planner) computeTasks(
 	table config.DayTable,
 	tenant string,
 ) ([]*protos.Task, []bloomshipper.Meta, error) {
-	logger := log.With(p.logger, "table", table.Addr(), "tenant", tenant)
-
 	strategy, err := strategies.NewStrategy(tenant, p.limits, p.logger)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error creating strategy: %w", err)
 	}
+
+	logger := log.With(p.logger, "table", table.Addr(), "tenant", tenant, "strategy", strategy.Name())
 
 	// Fetch source metas to be used in both build and cleanup of out-of-date metas+blooms
 	metas, err := p.bloomStore.FetchMetas(
@@ -407,7 +405,6 @@ func (p *Planner) computeTasks(
 	// Resolve TSDBs
 	tsdbs, err := p.tsdbStore.ResolveTSDBs(ctx, table, tenant)
 	if err != nil {
-		level.Error(logger).Log("msg", "failed to resolve tsdbs", "err", err)
 		return nil, nil, fmt.Errorf("failed to resolve tsdbs: %w", err)
 	}
 
@@ -432,6 +429,7 @@ func (p *Planner) computeTasks(
 		return nil, nil, fmt.Errorf("failed to plan tasks: %w", err)
 	}
 
+	level.Debug(logger).Log("msg", "computed tasks", "tasks", len(tasks), "existingMetas", len(metas))
 	return tasks, metas, nil
 }
 
@@ -665,9 +663,14 @@ func (p *Planner) loadTenantTables(
 		}
 
 		for tenants.Next() && tenants.Err() == nil && ctx.Err() == nil {
-			p.metrics.tenantsDiscovered.Inc()
 			tenant := tenants.At()
+			if tenant == "" {
+				// Tables that have not been fully compacted yet will have multi-tenant TSDBs for which the tenant is ""
+				// in this case we just skip the tenant
+				continue
+			}
 
+			p.metrics.tenantsDiscovered.Inc()
 			if !p.limits.BloomCreationEnabled(tenant) {
 				level.Debug(p.logger).Log("msg", "bloom creation disabled for tenant", "tenant", tenant)
 				continue

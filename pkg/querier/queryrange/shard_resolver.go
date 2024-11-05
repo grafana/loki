@@ -201,7 +201,7 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, uint64, error) {
 	maxBytesPerShard := validation.SmallestPositiveIntPerTenant(tenantIDs, r.limits.TSDBMaxBytesPerShard)
 	factor := sharding.GuessShardFactor(combined.Bytes, uint64(maxBytesPerShard), r.maxShards)
 
-	var bytesPerShard = combined.Bytes
+	bytesPerShard := combined.Bytes
 	if factor > 0 {
 		bytesPerShard = combined.Bytes / uint64(factor)
 	}
@@ -275,7 +275,6 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 		Query:               expr.String(),
 		TargetBytesPerShard: targetBytesPerShard,
 	})
-
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "failed to get shards for expression, got %T: %+v", err, err)
 	}

@@ -38,8 +38,11 @@ const (
 	// QuotaProjectEnvVar is the environment variable for setting the quota
 	// project.
 	QuotaProjectEnvVar = "GOOGLE_CLOUD_QUOTA_PROJECT"
-	projectEnvVar      = "GOOGLE_CLOUD_PROJECT"
-	maxBodySize        = 1 << 20
+	// UniverseDomainEnvVar is the environment variable for setting the default
+	// service domain for a given Cloud universe.
+	UniverseDomainEnvVar = "GOOGLE_CLOUD_UNIVERSE_DOMAIN"
+	projectEnvVar        = "GOOGLE_CLOUD_PROJECT"
+	maxBodySize          = 1 << 20
 
 	// DefaultUniverseDomain is the default value for universe domain.
 	// Universe domain is the default service domain for a given Cloud universe.
@@ -197,7 +200,7 @@ func (c *ComputeUniverseDomainProvider) GetProperty(ctx context.Context) (string
 var httpGetMetadataUniverseDomain = func(ctx context.Context) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
-	return metadata.GetWithContext(ctx, "universe/universe_domain")
+	return metadata.GetWithContext(ctx, "universe/universe-domain")
 }
 
 func getMetadataUniverseDomain(ctx context.Context) (string, error) {

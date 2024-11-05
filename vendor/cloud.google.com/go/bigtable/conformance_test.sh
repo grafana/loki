@@ -50,10 +50,10 @@ trap cleanup EXIT
 
 # Run the conformance tests
 cd $conformanceTestsHome
-# Tests in https://github.com/googleapis/cloud-bigtable-clients-test/tree/main/tests can only be run on go1.20.2
-go install golang.org/dl/go1.20.2@latest
-go1.20.2 download
-go1.20.2 test -v -proxy_addr=:$testProxyPort | tee -a $sponge_log
+# Tests in https://github.com/googleapis/cloud-bigtable-clients-test/tree/main/tests can only be run on go1.22.5
+go install golang.org/dl/go1.22.5@latest
+go1.22.5 download
+go1.22.5 test -v -proxy_addr=:$testProxyPort | tee -a $sponge_log
 RETURN_CODE=$?
 
 echo "exiting with ${RETURN_CODE}"

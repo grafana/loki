@@ -2118,6 +2118,8 @@ func (c *Client) ParallelCopy(srcBucketName string, srcObjectName string,
 		ContentDisposition: objectMeta.ContentDisposition,
 		Expires:            objectMeta.Expires,
 		StorageClass:       objectMeta.StorageClass,
+		ObjectTagging: args.ObjectTagging,
+		TaggingDirective: args.TaggingDirective,
 	}
 	if args != nil {
 		if len(args.StorageClass) != 0 {

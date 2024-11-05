@@ -161,6 +161,7 @@ func (c *connWrapper) Close() error {
 	if c.rootProvider != nil {
 		c.rootProvider.Close()
 	}
+	c.parent.removeConn(c)
 	return c.Conn.Close()
 }
 

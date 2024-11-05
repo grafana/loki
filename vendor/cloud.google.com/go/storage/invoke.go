@@ -74,7 +74,15 @@ func run(ctx context.Context, call func(ctx context.Context) error, retry *retry
 			return true, fmt.Errorf("storage: retry failed after %v attempts; last error: %w", *retry.maxAttempts, err)
 		}
 		attempts++
-		return !errorFunc(err), err
+		retryable := errorFunc(err)
+		// Explicitly check context cancellation so that we can distinguish between a
+		// DEADLINE_EXCEEDED error from the server and a user-set context deadline.
+		// Unfortunately gRPC will codes.DeadlineExceeded (which may be retryable if it's
+		// sent by the server) in both cases.
+		if ctxErr := ctx.Err(); errors.Is(ctxErr, context.Canceled) || errors.Is(ctxErr, context.DeadlineExceeded) {
+			retryable = false
+		}
+		return !retryable, err
 	})
 }
 
@@ -84,21 +92,7 @@ func setInvocationHeaders(ctx context.Context, invocationID string, attempts int
 	invocationHeader := fmt.Sprintf("gccl-invocation-id/%v gccl-attempt-count/%v", invocationID, attempts)
 	xGoogHeader := strings.Join([]string{invocationHeader, xGoogDefaultHeader}, " ")
 
-	// TODO: remove this once the respective transport packages merge xGoogHeader.
-	// Also remove gl-go at that time, as it will be repeated.
-	hdrs := callctx.HeadersFromContext(ctx)
-	for _, v := range hdrs[xGoogHeaderKey] {
-		xGoogHeader = strings.Join([]string{xGoogHeader, v}, " ")
-	}
-
-	if hdrs[xGoogHeaderKey] != nil {
-		// Replace the key instead of adding it, if there was anything to merge with.
-		hdrs[xGoogHeaderKey] = []string{xGoogHeader}
-	} else {
-		// TODO: keep this line when removing the above code.
-		ctx = callctx.SetHeaders(ctx, xGoogHeaderKey, xGoogHeader)
-	}
-
+	ctx = callctx.SetHeaders(ctx, xGoogHeaderKey, xGoogHeader)
 	ctx = callctx.SetHeaders(ctx, idempotencyHeaderKey, invocationID)
 	return ctx
 }
@@ -138,14 +132,18 @@ func ShouldRetry(err error) bool {
 				return true
 			}
 		}
+	case *net.DNSError:
+		if e.IsTemporary {
+			return true
+		}
 	case interface{ Temporary() bool }:
 		if e.Temporary() {
 			return true
 		}
 	}
-	// UNAVAILABLE, RESOURCE_EXHAUSTED, and INTERNAL codes are all retryable for gRPC.
+	// UNAVAILABLE, RESOURCE_EXHAUSTED, INTERNAL, and DEADLINE_EXCEEDED codes are all retryable for gRPC.
 	if st, ok := status.FromError(err); ok {
-		if code := st.Code(); code == codes.Unavailable || code == codes.ResourceExhausted || code == codes.Internal {
+		if code := st.Code(); code == codes.Unavailable || code == codes.ResourceExhausted || code == codes.Internal || code == codes.DeadlineExceeded {
 			return true
 		}
 	}

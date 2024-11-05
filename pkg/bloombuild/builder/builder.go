@@ -59,9 +59,9 @@ type Builder struct {
 func New(
 	cfg Config,
 	limits Limits,
-	schemaCfg config.SchemaConfig,
-	storeCfg storage.Config,
-	storageMetrics storage.ClientMetrics,
+	_ config.SchemaConfig,
+	_ storage.Config,
+	_ storage.ClientMetrics,
 	fetcherProvider stores.ChunkFetcherProvider,
 	bloomStore bloomshipper.Store,
 	logger log.Logger,

@@ -295,7 +295,7 @@ type Config struct {
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
 	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
 
-	UseThanosObjstore bool          `yaml:"use_thanos_objstore" doc:"hidden`
+	UseThanosObjstore bool          `yaml:"use_thanos_objstore" doc:"hidden"`
 	ObjectStore       bucket.Config `yaml:"object_store" doc:"hidden"`
 
 	MaxChunkBatchSize   int                       `yaml:"max_chunk_batch_size"`
@@ -650,6 +650,14 @@ func internalNewObjectClient(storeName, component string, cfg Config, clientMetr
 			}
 			s3Cfg = awsCfg.S3Config
 		}
+
+		if cfg.CongestionControl.Enabled {
+			s3Cfg.BackoffConfig.MaxRetries = 1
+		}
+
+		if cfg.UseThanosObjstore {
+			return aws.NewS3ThanosObjectClient(context.Background(), cfg.ObjectStore, component, util_log.Logger, cfg.Hedging)
+		}
 		return aws.NewS3ObjectClient(s3Cfg, cfg.Hedging)
 
 	case types.StorageTypeAlibabaCloud:
@@ -692,6 +700,9 @@ func internalNewObjectClient(storeName, component string, cfg Config, clientMetr
 				return nil, fmt.Errorf("Unrecognized named azure storage config %s", storeName)
 			}
 			azureCfg = (azure.BlobStorageConfig)(nsCfg)
+		}
+		if cfg.UseThanosObjstore {
+			return azure.NewBlobStorageThanosObjectClient(context.Background(), cfg.ObjectStore, component, util_log.Logger, cfg.Hedging)
 		}
 		return azure.NewBlobStorage(&azureCfg, clientMetrics.AzureMetrics, cfg.Hedging)
 

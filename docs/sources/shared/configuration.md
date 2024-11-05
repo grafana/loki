@@ -130,6 +130,11 @@ querier_rf1:
     # CLI flag: -querier-rf1.engine.max-lookback-period
     [max_look_back_period: <duration> | default = 30s]
 
+    # The maximum number of labels the heap of a topk query using a count min
+    # sketch can track.
+    # CLI flag: -querier-rf1.engine.max-count-min-sketch-heap-size
+    [max_count_min_sketch_heap_size: <int> | default = 10000]
+
   # The maximum number of queries that can be simultaneously processed by the
   # querier.
   # CLI flag: -querier-rf1.max-concurrent
@@ -359,10 +364,6 @@ pattern_ingester:
   # Configures the metric aggregation and storage behavior of the pattern
   # ingester.
   metric_aggregation:
-    # Whether the pattern ingester metric aggregation is enabled.
-    # CLI flag: -pattern-ingester.metric-aggregation.enabled
-    [enabled: <boolean> | default = false]
-
     # How often to downsample metrics from raw push observations.
     # CLI flag: -pattern-ingester.metric-aggregation.downsample-period
     [downsample_period: <duration> | default = 10s]
@@ -3260,7 +3261,8 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -distributor.ingestion-rate-limit-strategy
 [ingestion_rate_strategy: <string> | default = "global"]
 
-# Per-user ingestion rate limit in sample size per second. Units in MB.
+# Per-user ingestion rate limit in sample size per second. Sample size includes
+# size of the logs line and the size of structured metadata labels. Units in MB.
 # CLI flag: -distributor.ingestion-rate-limit-mb
 [ingestion_rate_mb: <float> | default = 4]
 
@@ -3324,7 +3326,7 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # list to service_name. If none of the configured labels exist in the stream,
 # label is set to unknown_service. Empty list disables setting the label.
 # CLI flag: -validation.discover-service-name
-[discover_service_name: <list of strings> | default = [service app application name app_kubernetes_io_name container container_name k8s_container_name component workload job k8s_job_name]]
+[discover_service_name: <list of strings> | default = [service app application app_name name app_kubernetes_io_name container container_name k8s_container_name component workload job k8s_job_name]]
 
 # Discover and add log levels during ingestion, if not present already. Levels
 # would be added to Structured Metadata with name
@@ -3765,7 +3767,7 @@ shard_streams:
 [bloom_creation_enabled: <boolean> | default = false]
 
 # Experimental. Bloom planning strategy to use in bloom creation. Can be one of:
-# 'split_keyspace_by_factor'
+# 'split_keyspace_by_factor', 'split_by_series_chunks_size'
 # CLI flag: -bloom-build.planning-strategy
 [bloom_planning_strategy: <string> | default = "split_keyspace_by_factor"]
 
@@ -3774,6 +3776,10 @@ shard_streams:
 # keyspace is split into this many parts to parallelize bloom creation.
 # CLI flag: -bloom-build.split-keyspace-by
 [bloom_split_series_keyspace_by: <int> | default = 256]
+
+# Experimental. Target chunk size in bytes for bloom tasks. Default is 20GB.
+# CLI flag: -bloom-build.split-target-series-chunk-size
+[bloom_task_target_series_chunk_size: <int> | default = 20GB]
 
 # Experimental. Compression algorithm for bloom block pages.
 # CLI flag: -bloom-build.block-encoding
@@ -3839,6 +3845,30 @@ otlp_config:
 # disables shuffle sharding and tenant is sharded across all partitions.
 # CLI flag: -limits.ingestion-partition-tenant-shard-size
 [ingestion_partitions_tenant_shard_size: <int> | default = 0]
+
+# List of LogQL vector and range aggregations that should be sharded.
+[shard_aggregations: <list of strings>]
+
+# Enable metric aggregation. When enabled, pushed streams will be sampled for
+# bytes and count, and these metric will be written back into Loki as a special
+# __aggregated_metric__ stream, which can be queried for faster histogram
+# queries.
+# CLI flag: -limits.metric-aggregation-enabled
+[metric_aggregation_enabled: <boolean> | default = false]
+
+# S3 server-side encryption type. Required to enable server-side encryption
+# overrides for a specific tenant. If not set, the default S3 client settings
+# are used.
+[s3_sse_type: <string> | default = ""]
+
+# S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not
+# set.
+[s3_sse_kms_key_id: <string> | default = ""]
+
+# S3 server-side encryption KMS encryption context. If unset and the key ID
+# override is set, the encryption context will not be provided to S3. Ignored if
+# the SSE type override is not set.
+[s3_sse_kms_encryption_context: <string> | default = ""]
 ```
 
 ### local_storage_config
@@ -4222,6 +4252,11 @@ engine:
   # log queries.
   # CLI flag: -querier.engine.max-lookback-period
   [max_look_back_period: <duration> | default = 30s]
+
+  # The maximum number of labels the heap of a topk query using a count min
+  # sketch can track.
+  # CLI flag: -querier.engine.max-count-min-sketch-heap-size
+  [max_count_min_sketch_heap_size: <int> | default = 10000]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
@@ -4849,7 +4884,9 @@ remote_write:
   # Deprecated: Use 'clients' instead. Configure remote write client.
   [client: <RemoteWriteConfig>]
 
-  # Configure remote write clients. A map with remote client id as key.
+  # Configure remote write clients. A map with remote client id as key. For
+  # details, see
+  # https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write
   [clients: <map of string to RemoteWriteConfig>]
 
   # Enable remote-write functionality.
@@ -5645,13 +5682,6 @@ congestion_control:
 # Maximum number of parallel chunk reads.
 # CLI flag: -store.max-parallel-get-chunk
 [max_parallel_get_chunk: <int> | default = 150]
-
-# Enables the use of thanos-io/objstore clients for connecting to object
-# storage. When set to true, the configuration inside
-# `storage_config.object_store` or `common.storage.object_store` block takes
-# effect.
-# CLI flag: -use-thanos-objstore
-[use_thanos_objstore: <boolean> | default = false]
 
 # The maximum number of chunks to fetch per batch.
 # CLI flag: -store.max-chunk-batch-size

@@ -204,7 +204,7 @@ func (c *GatewayClient) Close() {
 	c.dnsProvider.Stop()
 }
 
-// FilterChunkRefs implements Client
+// FilterChunks implements Client
 func (c *GatewayClient) FilterChunks(ctx context.Context, _ string, interval bloomshipper.Interval, blocks []blockWithSeries, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error) {
 	// no block and therefore no series with chunks
 	if len(blocks) == 0 {
@@ -322,6 +322,7 @@ func mergeSeries(input [][]*logproto.GroupedChunkRefs, buf []*logproto.GroupedCh
 			}
 			return &logproto.GroupedChunkRefs{
 				Fingerprint: a.Fingerprint,
+				Labels:      a.Labels,
 				Tenant:      a.Tenant,
 				Refs:        mergeChunkSets(a.Refs, b.Refs),
 			}

@@ -21,7 +21,7 @@ LOKI_OPERATOR_NS ?= kubernetes-operators
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
-VERSION ?= 0.6.2
+VERSION ?= 0.7.0
 CHANNELS ?= "alpha"
 DEFAULT_CHANNEL ?= "alpha"
 
@@ -314,7 +314,7 @@ oci-push-calculator: ## Push the calculator image
 ##@ Website
 TYPES_TARGET := $(shell find api/loki -type f -iname "*_types.go")
 docs/operator/api.md: $(TYPES_TARGET) $(GEN_CRD_API_REFERENCE_DOCS)
-	$(GEN_CRD_API_REFERENCE_DOCS) -api-dir "github.com/grafana/loki/operator/apis/loki/" -config "$(PWD)/config/docs/config.json" -template-dir "$(PWD)/config/docs/templates" -out-file "$(PWD)/$@"
+	$(GEN_CRD_API_REFERENCE_DOCS) -api-dir "github.com/grafana/loki/operator/api/loki/" -config "$(PWD)/config/docs/config.json" -template-dir "$(PWD)/config/docs/templates" -out-file "$(PWD)/$@"
 	sed -i 's/+docs:/  docs:/' $@
 	sed -i 's/+parent:/    parent:/' $@
 	sed -i 's/##/\n##/' $@

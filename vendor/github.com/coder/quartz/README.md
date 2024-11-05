@@ -73,7 +73,7 @@ For example, with a timer:
 ```go
 fired := false
 
-tmr := mClock.Afterfunc(time.Second, func() {
+tmr := mClock.AfterFunc(time.Second, func() {
   fired = true
 })
 mClock.Advance(time.Second)
@@ -86,7 +86,7 @@ goroutines, so _do not_ immediately assert the results:
 ```go
 fired := false
 
-tmr := mClock.Afterfunc(time.Second, func() {
+tmr := mClock.AfterFunc(time.Second, func() {
   fired = true
 })
 mClock.Advance(time.Second)
@@ -105,7 +105,7 @@ fired := false
 // set a test timeout so we don't wait the default `go test` timeout for a failure
 ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 
-tmr := mClock.Afterfunc(time.Second, func() {
+tmr := mClock.AfterFunc(time.Second, func() {
   fired = true
 })
 

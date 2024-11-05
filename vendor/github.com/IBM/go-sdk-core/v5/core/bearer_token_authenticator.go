@@ -15,6 +15,7 @@ package core
 // limitations under the License.
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 )
@@ -24,7 +25,6 @@ import (
 //
 //	Authorization: Bearer <bearer-token>
 type BearerTokenAuthenticator struct {
-
 	// The bearer token value to be used to authenticate request [required].
 	BearerToken string
 }
@@ -44,7 +44,7 @@ func NewBearerTokenAuthenticator(bearerToken string) (*BearerTokenAuthenticator,
 // newBearerTokenAuthenticator : Constructs a new BearerTokenAuthenticator instance from a map.
 func newBearerTokenAuthenticatorFromMap(properties map[string]string) (*BearerTokenAuthenticator, error) {
 	if properties == nil {
-		err := fmt.Errorf(ERRORMSG_PROPS_MAP_NIL)
+		err := errors.New(ERRORMSG_PROPS_MAP_NIL)
 		return nil, SDKErrorf(err, "", "missing-props", getComponentInfo())
 	}
 

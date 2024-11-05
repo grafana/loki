@@ -92,6 +92,7 @@ type Config struct {
 	Frontend            lokifrontend.Config        `yaml:"frontend,omitempty"`
 	QueryRange          queryrange.Config          `yaml:"query_range,omitempty"`
 	Ruler               ruler.Config               `yaml:"ruler,omitempty"`
+	RulerStorage        rulestore.Config           `yaml:"ruler_storage,omitempty" doc:"hidden"`
 	IngesterClient      ingester_client.Config     `yaml:"ingester_client,omitempty"`
 	IngesterRF1Client   ingester_client.Config     `yaml:"ingester_rf1_client,omitempty"`
 	Ingester            ingester.Config            `yaml:"ingester,omitempty"`
@@ -180,6 +181,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.TableManager.RegisterFlags(f)
 	c.Frontend.RegisterFlags(f)
 	c.Ruler.RegisterFlags(f)
+	c.RulerStorage.RegisterFlags(f)
 	c.Worker.RegisterFlags(f)
 	c.QueryRange.RegisterFlags(f)
 	c.RuntimeConfig.RegisterFlags(f)
@@ -262,6 +264,9 @@ func (c *Config) Validate() error {
 	}
 	if err := c.Ruler.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ruler config"))
+	}
+	if err := c.RulerStorage.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ruler_storage config"))
 	}
 	if err := c.Ingester.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingester config"))
@@ -684,7 +689,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Store, t.initStore, modules.UserInvisibleModule)
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(Ingester, t.initIngester)
-	mm.RegisterModule(IngesterQuerier, t.initIngesterQuerier)
+	mm.RegisterModule(IngesterQuerier, t.initIngesterQuerier, modules.UserInvisibleModule)
 	mm.RegisterModule(IngesterGRPCInterceptors, t.initIngesterGRPCInterceptors, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontendTripperware, t.initQueryFrontendMiddleware, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
@@ -702,8 +707,8 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(BloomGateway, t.initBloomGateway)
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
 	mm.RegisterModule(QuerySchedulerRing, t.initQuerySchedulerRing, modules.UserInvisibleModule)
-	mm.RegisterModule(Analytics, t.initAnalytics)
-	mm.RegisterModule(CacheGenerationLoader, t.initCacheGenerationLoader)
+	mm.RegisterModule(Analytics, t.initAnalytics, modules.UserInvisibleModule)
+	mm.RegisterModule(CacheGenerationLoader, t.initCacheGenerationLoader, modules.UserInvisibleModule)
 	mm.RegisterModule(PatternRingClient, t.initPatternRingClient, modules.UserInvisibleModule)
 	mm.RegisterModule(PatternIngesterTee, t.initPatternIngesterTee, modules.UserInvisibleModule)
 	mm.RegisterModule(PatternIngester, t.initPatternIngester)
@@ -740,7 +745,7 @@ func (t *Loki) setupModuleManager() error {
 		BloomStore:               {IndexGatewayRing},
 		PatternRingClient:        {Server, MemberlistKV, Analytics},
 		PatternIngesterTee:       {Server, MemberlistKV, Analytics, PatternRingClient},
-		PatternIngester:          {Server, MemberlistKV, Analytics, PatternRingClient, PatternIngesterTee},
+		PatternIngester:          {Server, MemberlistKV, Analytics, PatternRingClient, PatternIngesterTee, Overrides},
 		IngesterQuerier:          {Ring, PartitionRing, Overrides},
 		QuerySchedulerRing:       {Overrides, MemberlistKV},
 		IndexGatewayRing:         {Overrides, MemberlistKV},
