@@ -228,16 +228,16 @@ func (r *partitionReader) HighestPartitionOffset(ctx context.Context) (int64, er
 
 // pollFetches retrieves the next batch of records from Kafka and measures the fetch duration.
 // NB(owen-d): originally lifted from `pkg/kafka/partition/reader.go:Reader`
-func (p *partitionReader) poll(
+func (r *partitionReader) poll(
 	ctx context.Context,
 	maxOffset int64, // exclusive
 ) ([]partition.Record, bool) {
 	defer func(start time.Time) {
-		p.readerMetrics.FetchWaitDuration.Observe(time.Since(start).Seconds())
+		r.readerMetrics.FetchWaitDuration.Observe(time.Since(start).Seconds())
 	}(time.Now())
-	fetches := p.client.PollFetches(ctx)
-	p.recordFetchesMetrics(fetches)
-	p.logFetchErrors(fetches)
+	fetches := r.client.PollFetches(ctx)
+	r.recordFetchesMetrics(fetches)
+	r.logFetchErrors(fetches)
 	fetches = partition.FilterOutErrFetches(fetches)
 	if fetches.NumRecords() == 0 {
 		return nil, false
@@ -247,8 +247,8 @@ func (p *partitionReader) poll(
 	itr := fetches.RecordIter()
 	for !itr.Done() {
 		rec := itr.Next()
-		if rec.Partition != p.partitionID {
-			level.Error(p.logger).Log("msg", "wrong partition record received", "partition", rec.Partition, "expected_partition", p.partitionID)
+		if rec.Partition != r.partitionID {
+			level.Error(r.logger).Log("msg", "wrong partition record received", "partition", rec.Partition, "expected_partition", r.partitionID)
 			continue
 		}
 
@@ -270,7 +270,7 @@ func (p *partitionReader) poll(
 }
 
 // logFetchErrors logs any errors encountered during the fetch operation.
-func (p *partitionReader) logFetchErrors(fetches kgo.Fetches) {
+func (r *partitionReader) logFetchErrors(fetches kgo.Fetches) {
 	mErr := multierror.New()
 	fetches.EachError(func(topic string, partition int32, err error) {
 		if errors.Is(err, context.Canceled) {
@@ -284,13 +284,13 @@ func (p *partitionReader) logFetchErrors(fetches kgo.Fetches) {
 	if len(mErr) == 0 {
 		return
 	}
-	p.readerMetrics.FetchesErrors.Add(float64(len(mErr)))
-	level.Error(p.logger).Log("msg", "encountered error while fetching", "err", mErr.Err())
+	r.readerMetrics.FetchesErrors.Add(float64(len(mErr)))
+	level.Error(r.logger).Log("msg", "encountered error while fetching", "err", mErr.Err())
 }
 
 // recordFetchesMetrics updates various metrics related to the fetch operation.
 // NB(owen-d): lifted from `pkg/kafka/partition/reader.go:Reader`
-func (p *partitionReader) recordFetchesMetrics(fetches kgo.Fetches) {
+func (r *partitionReader) recordFetchesMetrics(fetches kgo.Fetches) {
 	var (
 		now        = time.Now()
 		numRecords = 0
@@ -298,19 +298,19 @@ func (p *partitionReader) recordFetchesMetrics(fetches kgo.Fetches) {
 	fetches.EachRecord(func(record *kgo.Record) {
 		numRecords++
 		delay := now.Sub(record.Timestamp).Seconds()
-		p.readerMetrics.ReceiveDelay.WithLabelValues(partition.PhaseRunning).Observe(delay)
+		r.readerMetrics.ReceiveDelay.WithLabelValues(partition.PhaseRunning).Observe(delay)
 	})
 
-	p.readerMetrics.FetchesTotal.Add(float64(len(fetches)))
-	p.readerMetrics.RecordsPerFetch.Observe(float64(numRecords))
+	r.readerMetrics.FetchesTotal.Add(float64(len(fetches)))
+	r.readerMetrics.RecordsPerFetch.Observe(float64(numRecords))
 }
 
 func (r *partitionReader) Process(ctx context.Context, offsets Offsets, ch chan<- []AppendInput) (int64, error) {
 	r.updateReaderOffset(offsets.Min)
 
 	var (
-		lastOffset int64 = offsets.Min - 1
-		boff             = backoff.New(ctx, defaultBackoffConfig)
+		lastOffset = offsets.Min - 1
+		boff       = backoff.New(ctx, defaultBackoffConfig)
 		err        error
 	)
 
