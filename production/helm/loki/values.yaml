@@ -1643,6 +1643,8 @@ backend:
   extraEnv: []
   # -- Environment variables from secrets or configmaps to add to the backend pods
   extraEnvFrom: []
+  # -- Lifecycle for the backend container
+  lifecycle: {}
   # -- Init containers to add to the backend pods
   initContainers: []
   # -- Volume mounts to add to the backend pods
