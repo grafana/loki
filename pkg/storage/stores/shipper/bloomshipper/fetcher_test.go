@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -436,16 +437,54 @@ func TestFetcher_IsBlockDir(t *testing.T) {
 	})
 }
 
-func metasFromCache(data map[string][]byte) []Meta {
-	metas := make([]Meta, 0, len(data))
-	for _, v := range data {
-		meta := Meta{
-			MetaRef: MetaRef{},
-		}
-		_ = json.Unmarshal(v, &meta)
-		metas = append(metas, meta)
+func Benchmark_Fetcher_processMetasCacheResponse(b *testing.B) {
+	b.Log(b.N)
+
+	cfg := bloomStoreConfig{
+		numWorkers:  1,
+		workingDirs: []string{b.TempDir()},
 	}
-	return metas
+
+	c, err := NewBloomClient(cfg, nil, log.NewNopLogger())
+	require.NoError(b, err)
+	f, err := NewFetcher(cfg, c, nil, nil, nil, log.NewNopLogger(), v1.NewMetrics(nil))
+	require.NoError(b, err)
+
+	step := math.MaxUint64 / uint64(b.N)
+
+	refs := make([]MetaRef, 0, b.N)
+	keys := make([]string, 0, b.N)
+	bufs := make([][]byte, 0, b.N)
+
+	for i := 0; i < b.N; i++ {
+		minFp := model.Fingerprint(uint64(i) * step)
+		maxFp := model.Fingerprint(uint64(i)*step + step)
+
+		ref := Ref{
+			TenantID:       "fake",
+			TableName:      "tsdb_index_20000",
+			Bounds:         v1.NewBounds(minFp, maxFp),
+			StartTimestamp: model.Earliest,
+			EndTimestamp:   model.Latest,
+		}
+		metaRef := MetaRef{Ref: ref}
+		refs = append(refs, metaRef)
+
+		keys = append(keys, f.client.Meta(metaRef).Addr())
+
+		meta := Meta{
+			MetaRef: metaRef,
+			Blocks:  []BlockRef{{Ref: ref}},
+		}
+
+		buf, _ := json.Marshal(meta)
+		bufs = append(bufs, buf)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	_, _, _ = f.processMetasCacheResponse(context.TODO(), refs, keys, bufs)
 }
 
 func metaRefs(metas []Meta) []MetaRef {
