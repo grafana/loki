@@ -353,7 +353,7 @@ Yaml files are expected to be [Prometheus-compatible](https://prometheus.io/docs
 
 ## Remote rule evaluation
 
-With larger deployments and complex rules, running a ruler in local evaluation mode brings problems where results could be inconsistent or incomplete compared to what you see in Grafana. The remote mode should be used to evaluate rules against the query frontend to solve this. A more detailed explanation can be found in [scalability documentation]({{< relref "../operations/scalability.md#remote-rule-evaluation" >}}).
+With larger deployments and complex rules, running a ruler in local evaluation mode causes problems where results could be inconsistent or incomplete compared to what you see in Grafana. To solve this, use the remote evaluation mode to evaluate rules against the query frontend. A more detailed explanation can be found in [scalability documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/scalability/#remote-rule-evaluation).
 
 ## Future improvements
 
