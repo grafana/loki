@@ -62,7 +62,8 @@ func (c *DynamoDB) BatchExecuteStatementRequest(input *BatchExecuteStatementInpu
 // This operation allows you to perform batch reads or writes on data stored
 // in DynamoDB, using PartiQL. Each read statement in a BatchExecuteStatement
 // must specify an equality condition on all key attributes. This enforces that
-// each SELECT statement in a batch returns at most a single item.
+// each SELECT statement in a batch returns at most a single item. For more
+// information, see Running batch operations with PartiQL for DynamoDB (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ql-reference.multiplestatements.batching.html).
 //
 // The entire batch must consist of either read statements or write statements,
 // you cannot mix both in one batch.
@@ -429,8 +430,12 @@ func (c *DynamoDB) BatchWriteItemRequest(input *BatchWriteItemInput) (req *reque
 // check for unprocessed items and submit a new BatchWriteItem request with
 // those unprocessed items until all items have been processed.
 //
-// If none of the items can be processed due to insufficient provisioned throughput
-// on all of the tables in the request, then BatchWriteItem returns a ProvisionedThroughputExceededException.
+// For tables and indexes with provisioned capacity, if none of the items can
+// be processed due to insufficient provisioned throughput on all of the tables
+// in the request, then BatchWriteItem returns a ProvisionedThroughputExceededException.
+// For all tables and indexes, if none of the items can be processed due to
+// other throttling scenarios (such as exceeding partition level limits), then
+// BatchWriteItem returns a ThrottlingException.
 //
 // If DynamoDB returns any unprocessed items, you should retry the batch operation
 // on those items. However, we strongly recommend that you use an exponential
@@ -1564,7 +1569,7 @@ func (c *DynamoDB) DeleteTableRequest(input *DeleteTableInput) (req *request.Req
 //
 // DynamoDB might continue to accept data read and write operations, such as
 // GetItem and PutItem, on a table in the DELETING state until the table deletion
-// is complete.
+// is complete. For the full list of table states, see TableStatus (https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_TableDescription.html#DDB-Type-TableDescription-TableStatus).
 //
 // When you delete a table, any indexes on that table are also deleted.
 //
@@ -21427,7 +21432,7 @@ type QueryOutput struct {
 
 	// The number of items evaluated, before any QueryFilter is applied. A high
 	// ScannedCount value with few, or no, Count results indicates an inefficient
-	// Query operation. For more information, see Count and ScannedCount (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/QueryAndScan.html#Count)
+	// Query operation. For more information, see Count and ScannedCount (https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Scan.html#Scan.Count)
 	// in the Amazon DynamoDB Developer Guide.
 	//
 	// If you did not use a filter in the request, then ScannedCount is the same

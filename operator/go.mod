@@ -10,14 +10,14 @@ require (
 	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.6.0
 	github.com/grafana/loki v1.6.2-0.20230403212622-90888a0cc737
-	github.com/grafana/loki/operator/apis/loki v0.0.0-00010101000000-000000000000
+	github.com/grafana/loki/operator/api/loki v0.0.0-00010101000000-000000000000
 	github.com/imdario/mergo v0.3.16
 	github.com/maxbrunsfeld/counterfeiter/v6 v6.9.0
 	github.com/openshift/api v0.0.0-20240912201240-0a8800162826 // release-4.17
 	github.com/openshift/cloud-credential-operator v0.0.0-20240908131729-d5b0b95c40f7 // release-4.17
 	github.com/openshift/library-go v0.0.0-20240731134552-8211143dfde7 // release-4.17
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.76.1
-	github.com/prometheus/client_golang v1.20.4
+	github.com/prometheus/client_golang v1.20.5
 	github.com/prometheus/common v0.60.0
 	github.com/prometheus/prometheus v0.42.0
 	github.com/stretchr/testify v1.9.0
@@ -162,7 +162,7 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
 )
 
-replace github.com/grafana/loki/operator/apis/loki => ./apis/loki
+replace github.com/grafana/loki/operator/api/loki => ./api/loki
 
 // Replace v2.4.0+incompatible indirect refs with v5.1.1 for compatibility with google.golang.org/grpc >=v1.56.3
 replace github.com/sercand/kuberesolver => github.com/sercand/kuberesolver/v5 v5.1.1

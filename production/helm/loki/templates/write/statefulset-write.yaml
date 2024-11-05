@@ -32,7 +32,7 @@ spec:
       partition: 0
   serviceName: {{ include "loki.writeFullname" . }}-headless
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
-  {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.write.persistence.enableStatefulSetAutoDeletePVC) (.Values.write.persistence.volumeClaimsEnabled) }}
+  {{- if and (semverCompare ">= 1.23-0" (include "loki.kubeVersion" .)) (.Values.write.persistence.enableStatefulSetAutoDeletePVC) (.Values.write.persistence.volumeClaimsEnabled) }}
   {{/*
     Data on the write nodes is easy to replace, so we want to always delete PVCs to make
     operation easier, and will rely on re-fetching data when needed.
