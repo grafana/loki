@@ -16,7 +16,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/ingester"
@@ -25,6 +24,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 const (
@@ -309,7 +310,7 @@ func (i *BlockBuilder) reportFlushedChunkStatistics(
 
 type AppendInput struct {
 	tenant string
-	// both labels & labelsStr are populated to prevent duplicating conversion work in mulitple places
+	// both labels & labelsStr are populated to prevent duplicating conversion work in multiple places
 	labels    labels.Labels
 	labelsStr string
 	entries   []push.Entry

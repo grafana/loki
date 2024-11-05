@@ -28,8 +28,8 @@ const (
 	kafkaStartOffset = -2
 	kafkaEndOffset   = -1
 
-	phaseStarting = "starting"
-	phaseRunning  = "running"
+	PhaseStarting = "starting"
+	PhaseRunning  = "running"
 )
 
 // Reader is responsible for reading data from a specific Kafka partition
@@ -479,9 +479,9 @@ func (p *Reader) recordFetchesMetrics(fetches kgo.Fetches) {
 		numRecords++
 		delay := now.Sub(record.Timestamp).Seconds()
 		if p.Service.State() == services.Starting {
-			p.metrics.receiveDelay.WithLabelValues(phaseStarting).Observe(delay)
+			p.metrics.ReceiveDelay.WithLabelValues(PhaseStarting).Observe(delay)
 		} else {
-			p.metrics.receiveDelay.WithLabelValues(phaseRunning).Observe(delay)
+			p.metrics.ReceiveDelay.WithLabelValues(PhaseRunning).Observe(delay)
 		}
 	})
 

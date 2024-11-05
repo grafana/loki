@@ -141,7 +141,7 @@ func (r *partitionReader) fetchPartitionOffset(ctx context.Context, position int
 	return listRes.Topics[0].Partitions[0].Offset, nil
 }
 
-// Fetches the highest committe offset in the consumer group
+// Fetches the highest committee offset in the consumer group
 // NB(owen-d): lifted from `pkg/kafka/partition/reader.go:Reader`
 // TODO(owen-d): expose errors: the failure case of restarting at
 // the beginning of a partition is costly and duplicates data
@@ -298,7 +298,7 @@ func (p *partitionReader) recordFetchesMetrics(fetches kgo.Fetches) {
 	fetches.EachRecord(func(record *kgo.Record) {
 		numRecords++
 		delay := now.Sub(record.Timestamp).Seconds()
-		p.readerMetrics.ReceiveDelayWhenRunning.Observe(delay)
+		p.readerMetrics.ReceiveDelay.WithLabelValues(partition.PhaseRunning).Observe(delay)
 	})
 
 	p.readerMetrics.FetchesTotal.Add(float64(len(fetches)))

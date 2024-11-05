@@ -5,8 +5,9 @@ import (
 
 	"github.com/go-kit/log"
 
-	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/kafka"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 type kafkaConsumer struct {

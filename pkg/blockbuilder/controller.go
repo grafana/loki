@@ -39,9 +39,9 @@ type PartitionController interface {
 // * offset_step_len: the number of offsets each job to contain. e.g. "10" could yield a job w / min=15, max=25
 //
 // At a high level, it watches a source topic/partition (where log data is ingested) and a "committed" topic/partition.
-// The "comitted" partition corresponds to the offsets from the source partition which have been committed to object storage.
+// The "committed" partition corresponds to the offsets from the source partition which have been committed to object storage.
 // In essence, the following loop is performed
-//  1. load the most recent record from the "comitted" partition. This contains the highest msg offset in the "source" partition
+//  1. load the most recent record from the "committed" partition. This contains the highest msg offset in the "source" partition
 //     that has been committed to object storage. We'll call that $START_POS.
 //  2. Create a job with `min=$START_POS+1,end=$START_POS+1+$STEP_LEN`
 //  3. Sometime later when the job has been processed, we'll commit the final processed offset from the "source" partition (which
