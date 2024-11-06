@@ -245,9 +245,26 @@ resource "aws_lambda_permission" "lambda_promtail_allow_cloudwatch" {
   principal     = "logs.${data.aws_region.current.name}.amazonaws.com"
 }
 
-# This block allows for easily subscribing to multiple log groups via the `log_group_names` var.
-# However, if you need to provide an actual filter_pattern for a specific log group you should
-# copy this block and modify it accordingly.
+# Providing a log group prefix of "" enables matching _all_ log groups
+data "aws_cloudwatch_log_groups" "lambdafunction_logs" {
+  for_each = var.log_group_prefixes
+
+  log_group_name_prefix = each.value
+}
+
+locals {
+  # Combine prefix-generated names from the data source call with the explicitly defined
+  # names to get the full set of log groups to create subscription filters for.
+  # Be sure to remove "/aws/lambda/${var.name}" so we don't log ourselves into oblivion.
+  log_group_names = setsubtract(
+    setunion(
+      var.log_group_names,
+      data.aws_cloudwatch_log_groups.lambdafunction_logs.log_group_names
+    ),
+    toset(["/aws/lambda/${var.name}"])
+  )
+}
+
 resource "aws_cloudwatch_log_subscription_filter" "lambdafunction_logfilter" {
   for_each = var.log_group_names
 
@@ -255,8 +272,9 @@ resource "aws_cloudwatch_log_subscription_filter" "lambdafunction_logfilter" {
   log_group_name  = each.value
   destination_arn = aws_lambda_function.this.arn
 
-  # required but can be empty string
-  filter_pattern = ""
+  # Default to no filter at all (empty string), but allow callers to narrow their
+  # search as desired.
+  filter_pattern = lookup(var.log_group_subscription_filter_patterns, each.value, "")
 }
 
 #-------------------------------------------------------------------------------
