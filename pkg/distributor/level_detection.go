@@ -155,11 +155,6 @@ func (l *LevelDetector) extractLogLevelFromLogLine(log string) string {
 }
 
 func (l *LevelDetector) getValueUsingLogfmtParser(line []byte) []byte {
-	equalIndex := bytes.Index(line, []byte("="))
-	if len(line) == 0 || equalIndex == -1 {
-		return nil
-	}
-
 	d := logfmt.NewDecoder(line)
 	for !d.EOL() && d.ScanKeyval() {
 		if _, ok := l.allowedLabels[string(d.Key())]; ok {
