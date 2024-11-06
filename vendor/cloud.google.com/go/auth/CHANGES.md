@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.9.9...auth/v0.10.0) (2024-10-30)
+
+
+### Features
+
+* **auth:** Add universe domain support to credentials/impersonate ([#10953](https://github.com/googleapis/google-cloud-go/issues/10953)) ([e06cb64](https://github.com/googleapis/google-cloud-go/commit/e06cb6499f7eda3aef08ab18ff197016f667684b))
+
 ## [0.9.9](https://github.com/googleapis/google-cloud-go/compare/auth/v0.9.8...auth/v0.9.9) (2024-10-22)
 
 

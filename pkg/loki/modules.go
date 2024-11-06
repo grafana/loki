@@ -330,6 +330,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	logger := log.With(util_log.Logger, "component", "distributor")
 	t.distributor, err = distributor.New(
 		t.Cfg.Distributor,
+		t.Cfg.Ingester,
 		t.Cfg.IngesterClient,
 		t.tenantConfigs,
 		t.ring,
@@ -680,7 +681,9 @@ func (t *Loki) initPatternIngesterTee() (services.Service, error) {
 
 	svc, err := pattern.NewTeeService(
 		t.Cfg.Pattern,
+		t.Overrides,
 		t.PatternRingClient,
+		t.tenantConfigs,
 		t.Cfg.MetricsNamespace,
 		prometheus.DefaultRegisterer,
 		logger,
