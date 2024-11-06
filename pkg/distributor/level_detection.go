@@ -17,8 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
-func (l *LevelDetector) allowedLabelsForLevel() map[string]struct{} {
-	allowedFields := l.validationContext.logLevelFields
+func allowedLabelsForLevel(allowedFields []string) map[string]struct{} {
 	if len(allowedFields) == 0 {
 		return map[string]struct{}{
 			"level": {}, "LEVEL": {}, "Level": {},
@@ -35,6 +34,15 @@ func (l *LevelDetector) allowedLabelsForLevel() map[string]struct{} {
 
 type LevelDetector struct {
 	validationContext validationContext
+	allowedLabels     map[string]struct{}
+}
+
+func newLevelDetector(validationContext validationContext) *LevelDetector {
+	logLevelFields := validationContext.logLevelFields
+	return &LevelDetector{
+		validationContext: validationContext,
+		allowedLabels:     allowedLabelsForLevel(logLevelFields),
+	}
 }
 
 func (l *LevelDetector) shouldDiscoverLogLevels() bool {
@@ -62,7 +70,7 @@ func (l *LevelDetector) extractLogLevel(labels labels.Labels, structuredMetadata
 }
 
 func (l *LevelDetector) hasAnyLevelLabels(labels labels.Labels) (string, bool) {
-	for lbl := range l.allowedLabelsForLevel() {
+	for lbl := range l.allowedLabels {
 		if labels.Has(lbl) {
 			return labels.Get(lbl), true
 		}
@@ -136,7 +144,7 @@ func (l *LevelDetector) getValueUsingLogfmtParser(line []byte) []byte {
 
 	d := logfmt.NewDecoder(line)
 	for !d.EOL() && d.ScanKeyval() {
-		if _, ok := l.allowedLabelsForLevel()[string(d.Key())]; ok {
+		if _, ok := l.allowedLabels[string(d.Key())]; ok {
 			return d.Value()
 		}
 	}
@@ -144,7 +152,7 @@ func (l *LevelDetector) getValueUsingLogfmtParser(line []byte) []byte {
 }
 
 func (l *LevelDetector) getValueUsingJSONParser(log []byte) []byte {
-	for allowedLabel := range l.allowedLabelsForLevel() {
+	for allowedLabel := range l.allowedLabels {
 		l, _, _, err := jsonparser.Get(log, allowedLabel)
 		if err == nil {
 			return l

@@ -120,13 +120,12 @@ func Test_DetectLogLevels(t *testing.T) {
 }
 
 func Test_detectLogLevelFromLogEntry(t *testing.T) {
-	ld := &LevelDetector{
-		validationContext: validationContext{
+	ld := newLevelDetector(
+		validationContext{
 			discoverLogLevels:       true,
 			allowStructuredMetadata: true,
 			logLevelFields:          []string{"level", "LEVEL", "Level", "severity", "SEVERITY", "Severity", "lvl", "LVL", "Lvl"},
-		},
-	}
+		})
 
 	for _, tc := range []struct {
 		name             string
@@ -286,13 +285,12 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 }
 
 func Test_detectLogLevelFromLogEntryWithCustomLabels(t *testing.T) {
-	ld := &LevelDetector{
-		validationContext: validationContext{
+	ld := newLevelDetector(
+		validationContext{
 			discoverLogLevels:       true,
 			allowStructuredMetadata: true,
 			logLevelFields:          []string{"log_level", "logging_level", "LOGGINGLVL", "lvl"},
-		},
-	}
+		})
 
 	for _, tc := range []struct {
 		name             string
@@ -409,13 +407,13 @@ func Benchmark_extractLogLevelFromLogLine(b *testing.B) {
 func Benchmark_optParseExtractLogLevelFromLogLineJson(b *testing.B) {
 	logLine := `{"msg": "something" , "level": "error", "id": "1"}`
 
-	ld := &LevelDetector{
-		validationContext: validationContext{
+	ld := newLevelDetector(
+		validationContext{
 			discoverLogLevels:       true,
 			allowStructuredMetadata: true,
 			logLevelFields:          []string{"level", "LEVEL", "Level", "severity", "SEVERITY", "Severity", "lvl", "LVL", "Lvl"},
-		},
-	}
+		})
+
 	for i := 0; i < b.N; i++ {
 		level := ld.extractLogLevelFromLogLine(logLine)
 		require.Equal(b, constants.LogLevelError, level)
@@ -424,13 +422,13 @@ func Benchmark_optParseExtractLogLevelFromLogLineJson(b *testing.B) {
 
 func Benchmark_optParseExtractLogLevelFromLogLineLogfmt(b *testing.B) {
 	logLine := `FOO=bar MSG="message with keyword error but it should not get picked up" LEVEL=inFO`
-	ld := &LevelDetector{
-		validationContext: validationContext{
+	ld := newLevelDetector(
+		validationContext{
 			discoverLogLevels:       true,
 			allowStructuredMetadata: true,
 			logLevelFields:          []string{"level", "LEVEL", "Level", "severity", "SEVERITY", "Severity", "lvl", "LVL", "Lvl"},
-		},
-	}
+		})
+
 	for i := 0; i < b.N; i++ {
 		level := ld.extractLogLevelFromLogLine(logLine)
 		require.Equal(b, constants.LogLevelInfo, level)

@@ -435,7 +435,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 	var validationErrors util.GroupedErrors
 	validationContext := d.validator.getValidationContextForTime(time.Now(), tenantID)
-	levelDetector := &LevelDetector{validationContext: validationContext}
+	levelDetector := newLevelDetector(validationContext)
 	shouldDiscoverLevels := levelDetector.shouldDiscoverLogLevels()
 
 	func() {
