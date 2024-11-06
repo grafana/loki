@@ -46,7 +46,7 @@ var (
 
 	errGCPParseCredentialsFile      = errors.New("gcp storage secret cannot be parsed from JSON content")
 	errGCPWrongCredentialSourceFile = errors.New("credential source in secret needs to point to token file")
-	errGCPInvalidCredentialsFile    = errors.New("GCP credentials file contains invalid fields")
+	errGCPInvalidCredentialsFile    = errors.New("gcp credentials file contains invalid fields")
 
 	azureValidEnvironments = map[string]bool{
 		"AzureGlobal":       true,
@@ -138,7 +138,7 @@ func extractSecrets(secretSpec lokiv1.ObjectStorageSecretSpec, objStore, tokenCC
 	case lokiv1.ObjectStorageSecretAzure:
 		storageOpts.Azure, err = extractAzureConfigSecret(objStore, credentialMode)
 	case lokiv1.ObjectStorageSecretGCS:
-		storageOpts.GCS, err = extractGCSConfigSecret(objStore, tokenCCOAuth, credentialMode)
+		storageOpts.GCS, err = extractGCSConfigSecret(objStore, credentialMode)
 	case lokiv1.ObjectStorageSecretS3:
 		storageOpts.S3, err = extractS3ConfigSecret(objStore, credentialMode)
 	case lokiv1.ObjectStorageSecretSwift:
@@ -333,7 +333,6 @@ func extractGoogleCredentialSource(secret *corev1.Secret) (sourceFile, sourceTyp
 	}
 
 	credentialsFile := struct {
-		Audience          string `json:"audience"`
 		CredentialsType   string `json:"type"`
 		CredentialsSource struct {
 			File string `json:"file"`
@@ -348,7 +347,7 @@ func extractGoogleCredentialSource(secret *corev1.Secret) (sourceFile, sourceTyp
 	return credentialsFile.CredentialsSource.File, credentialsFile.CredentialsType, nil
 }
 
-func extractGCSConfigSecret(s, tokenCCOAuth *corev1.Secret, credentialMode lokiv1.CredentialMode) (*storage.GCSStorageConfig, error) {
+func extractGCSConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMode) (*storage.GCSStorageConfig, error) {
 	// Extract and validate mandatory fields
 	bucket := s.Data[storage.KeyGCPStorageBucketName]
 	if len(bucket) == 0 {

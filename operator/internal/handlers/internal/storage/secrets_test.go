@@ -360,7 +360,7 @@ func TestGCSExtract(t *testing.T) {
 					"key.json":   []byte("{\"type\": \"external_account\", \"audience\": \"\", \"service_account_id\": \"\"}"),
 				},
 			},
-			wantError: "GCP credentials file contains invalid fields: key.json must not be set for CredentialModeTokenCCO",
+			wantError: "gcp credentials file contains invalid fields: key.json must not be set for CredentialModeTokenCCO",
 		},
 		{
 			name: "valid for token CCO",
