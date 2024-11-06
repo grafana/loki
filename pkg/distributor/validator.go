@@ -46,6 +46,7 @@ type validationContext struct {
 	incrementDuplicateTimestamps bool
 	discoverServiceName          []string
 	discoverLogLevels            bool
+	logLevelFields               []string
 
 	allowStructuredMetadata    bool
 	maxStructuredMetadataSize  int
@@ -71,6 +72,7 @@ func (v Validator) getValidationContextForTime(now time.Time, userID string) val
 		incrementDuplicateTimestamps: v.IncrementDuplicateTimestamps(userID),
 		discoverServiceName:          v.DiscoverServiceName(userID),
 		discoverLogLevels:            v.DiscoverLogLevels(userID),
+		logLevelFields:               v.LogLevelFields(userID),
 		allowStructuredMetadata:      v.AllowStructuredMetadata(userID),
 		maxStructuredMetadataSize:    v.MaxStructuredMetadataSize(userID),
 		maxStructuredMetadataCount:   v.MaxStructuredMetadataCount(userID),

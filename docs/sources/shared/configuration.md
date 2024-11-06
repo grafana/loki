@@ -3336,6 +3336,11 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -validation.discover-log-levels
 [discover_log_levels: <boolean> | default = true]
 
+# Field name to use for log levels. If not set, log level would be detected
+# based on pre-defined labels as mentioned above.
+# CLI flag: -validation.log-level-fields
+[log_level_fields: <list of strings> | default = [level LEVEL Level Severity severity SEVERITY lvl LVL Lvl]]
+
 # When true an ingester takes into account only the streams that it owns
 # according to the ring while applying the stream limit.
 # CLI flag: -ingester.use-owned-stream-count
@@ -3706,6 +3711,18 @@ shard_streams:
   # Sharding is dictated by the desired rate.
   # CLI flag: -shard-streams.enabled
   [enabled: <boolean> | default = true]
+
+  # Automatically shard streams by adding a __time_shard__ label, with values
+  # calculated from the log timestamps divided by MaxChunkAge/2. This allows the
+  # out-of-order ingestion of very old logs. If both flags are enabled,
+  # time-based sharding will happen before rate-based sharding.
+  # CLI flag: -shard-streams.time-sharding-enabled
+  [time_sharding_enabled: <boolean> | default = false]
+
+  # Logs with timestamps that are newer than this value will not be
+  # time-sharded.
+  # CLI flag: -shard-streams.time-sharding-ignore-recent
+  [time_sharding_ignore_recent: <duration> | default = 40m]
 
   # Whether to log sharding streams behavior or not. Not recommended for
   # production environments.
