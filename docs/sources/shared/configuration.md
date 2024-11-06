@@ -3719,6 +3719,11 @@ shard_streams:
   # CLI flag: -shard-streams.time-sharding-enabled
   [time_sharding_enabled: <boolean> | default = false]
 
+  # Logs with timestamps that are newer than this value will not be
+  # time-sharded.
+  # CLI flag: -shard-streams.time-sharding-ignore-recent
+  [time_sharding_ignore_recent: <duration> | default = 40m]
+
   # Whether to log sharding streams behavior or not. Not recommended for
   # production environments.
   # CLI flag: -shard-streams.logging-enabled
