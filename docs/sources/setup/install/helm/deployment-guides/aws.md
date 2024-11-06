@@ -477,7 +477,7 @@ Now that you have created the `values.yaml` file, you can deploy Loki using the 
 The Loki Gateway service is a LoadBalancer service that exposes the Loki gateway to the internet. This is where you will write logs to and query logs from. By default NGINX is used as the gateway.
 
 {{< admonition type="caution" >}}
-The Loki Gateway service is exposed to the internet. We provide basic authentication using a username and password in this tutorial. Refer to the [Authentication](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/authentication/) documentation for more information.
+The Loki Gateway service is exposed to the internet. We provide basic authentication using a username and password in this tutorial. Refer to the [Authentication](https://grafana.com/docs/loki/latest/operations/authentication/) documentation for more information.
 {{< /admonition >}}
 
 To find the Loki Gateway service, run the following command:
@@ -498,7 +498,7 @@ Congratulations! You have successfully deployed Loki on AWS using the Helm chart
 
 k6 is one of the fastest ways to test your Loki deployment. This will allow you to both write and query logs to Loki. To get started with k6, follow the steps below:
 
-1. Install k6 with the Loki extension on your local machine. Refer to [Installing k6 and the xk6-loki extension](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/k6/).
+1. Install k6 with the Loki extension on your local machine. Refer to [Installing k6 and the xk6-loki extension](https://grafana.com/docs/loki/latest/send-data/k6/).
 
 2. Create a `aws-test.js` file with the following content:
 
