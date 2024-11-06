@@ -54,7 +54,7 @@ const (
 	// checkContextEveryNIterations is used in some tight loops to check if the context is done.
 	checkContextEveryNIterations = 128
 
-	TenantLabel = "__loki_tenant__"
+	TenantLabel = index.TenantLabel
 )
 
 // Bitmap used by func isRegexMetaCharacter to check whether a character needs to be escaped.

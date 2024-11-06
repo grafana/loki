@@ -1,11 +1,15 @@
 package blockbuilder
 
 import (
+	"context"
+	"io"
+	"sort"
 	"sync"
 
 	"github.com/cespare/xxhash"
-	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/storage"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
@@ -13,7 +17,6 @@ import (
 // TsdbCreator accepts writes and builds TSDBs.
 type TsdbCreator struct {
 	// Function to build a TSDB from the current state
-	mkTsdb func(*tenantHeads) ([]byte, error)
 
 	mtx    sync.RWMutex
 	shards int
@@ -21,9 +24,8 @@ type TsdbCreator struct {
 }
 
 // new creates a new HeadManager
-func newTsdbCreator(mkTsdb func(*tenantHeads) ([]byte, error)) *TsdbCreator {
+func newTsdbCreator() *TsdbCreator {
 	m := &TsdbCreator{
-		mkTsdb: mkTsdb,
 		shards: 1 << 5, // 32 shards
 	}
 
@@ -47,17 +49,57 @@ func (m *TsdbCreator) Append(userID string, ls labels.Labels, fprint uint64, chk
 }
 
 // Create builds a TSDB from the current state using the provided mkTsdb function
-func (m *TsdbCreator) Create() ([]byte, error) {
+func (m *TsdbCreator) Create(ctx context.Context) ([]byte, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	out, err := m.mkTsdb(m.heads)
+	builder, err := index.NewMemWriterWithVersion(ctx, index.FormatV3)
 	if err != nil {
-		return nil, errors.Wrap(err, "creating TSDB")
+		return nil, err
 	}
 
+	type seriesWithFP struct {
+		tenant string
+		fp     uint64
+		ls     labels.Labels
+		chks   index.ChunkMetas
+	}
+	var orderdByFprint []seriesWithFP
+
+	if err := m.heads.forAll(func(user string, ls labels.Labels, fp uint64, chks index.ChunkMetas) error {
+		orderdByFprint = append(
+			orderdByFprint,
+			seriesWithFP{
+				tenant: user,
+				fp:     fp,
+				ls:     ls,
+				chks:   chks,
+			},
+		)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	sort.Slice(orderdByFprint, func(i, j int) bool {
+		return orderdByFprint[i].fp < orderdByFprint[j].fp
+	})
+
+	for i, s := range orderdByFprint {
+		// Must add tenantLabel initially to multitenant tsdbs.
+		ls := labels.NewBuilder(s.ls).Set(index.TenantLabel, s.tenant).Labels()
+		if err := builder.AddSeries(storage.SeriesRef(i), ls, model.Fingerprint(s.fp), s.chks...); err != nil {
+			return nil, err
+		}
+	}
+
+	reader, err := builder.Close(true)
+	if err != nil {
+		return nil, err
+	}
 	m.heads = newTenantHeads(m.shards)
-	return out, nil
+
+	return io.ReadAll(reader)
 }
 
 // tenantHeads manages per-tenant series

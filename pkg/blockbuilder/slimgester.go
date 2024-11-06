@@ -155,7 +155,7 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 		return true, nil
 	}
 
-	indexer := newTsdbCreator(nil)
+	indexer := newTsdbCreator()
 
 	var lastOffset int64
 	p := newPipeline(ctx)
@@ -283,7 +283,7 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 		return false, err
 	}
 
-	built, err := indexer.Create()
+	built, err := indexer.Create(ctx)
 	if err != nil {
 		return false, err
 	}
