@@ -17,6 +17,22 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
+var (
+	trace      = []byte("trace")
+	traceAbbrv = []byte("trc")
+	debug      = []byte("debug")
+	debugAbbrv = []byte("dbg")
+	info       = []byte("info")
+	infoAbbrv  = []byte("inf")
+	warn       = []byte("warn")
+	warnAbbrv  = []byte("wrn")
+	warning    = []byte("warning")
+	errorStr   = []byte("error")
+	errorAbbrv = []byte("err")
+	critical   = []byte("critical")
+	fatal      = []byte("fatal")
+)
+
 func allowedLabelsForLevel(allowedFields []string) map[string]struct{} {
 	if len(allowedFields) == 0 {
 		return map[string]struct{}{
@@ -117,19 +133,19 @@ func (l *LevelDetector) extractLogLevelFromLogLine(log string) string {
 	}
 
 	switch {
-	case bytes.EqualFold(v, []byte("trace")), bytes.EqualFold(v, []byte("trc")):
+	case bytes.EqualFold(v, trace), bytes.EqualFold(v, traceAbbrv):
 		return constants.LogLevelTrace
-	case bytes.EqualFold(v, []byte("debug")), bytes.EqualFold(v, []byte("dbg")):
+	case bytes.EqualFold(v, debug), bytes.EqualFold(v, debugAbbrv):
 		return constants.LogLevelDebug
-	case bytes.EqualFold(v, []byte("info")), bytes.EqualFold(v, []byte("inf")):
+	case bytes.EqualFold(v, info), bytes.EqualFold(v, infoAbbrv):
 		return constants.LogLevelInfo
-	case bytes.EqualFold(v, []byte("warn")), bytes.EqualFold(v, []byte("wrn")), bytes.EqualFold(v, []byte("warning")):
+	case bytes.EqualFold(v, warn), bytes.EqualFold(v, warnAbbrv), bytes.EqualFold(v, warning):
 		return constants.LogLevelWarn
-	case bytes.EqualFold(v, []byte("error")), bytes.EqualFold(v, []byte("err")):
+	case bytes.EqualFold(v, errorStr), bytes.EqualFold(v, errorAbbrv):
 		return constants.LogLevelError
-	case bytes.EqualFold(v, []byte("critical")):
+	case bytes.EqualFold(v, critical):
 		return constants.LogLevelCritical
-	case bytes.EqualFold(v, []byte("fatal")):
+	case bytes.EqualFold(v, fatal):
 		return constants.LogLevelFatal
 	default:
 		return detectLevelFromLogLine(log)
