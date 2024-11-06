@@ -595,6 +595,6 @@ k6 is one of the fastest ways to test your Loki deployment. This will allow you 
 
 Now that you have successfully deployed Loki in microservices mode on AWS, you may wish to explore the following:
 
-- [Sending data to Loki](https://grafana.com/docs/loki/<LOKI_VERSION/send-data/)
+- [Sending data to Loki](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/)
 - [Querying Loki](https://grafana.com/docs/loki/<LOKI_VERSION>/query/)
-- [Manage](https://grafana.com/docs/loki/<LOKI_VERSION/operations/)
+- [Manage](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/)
