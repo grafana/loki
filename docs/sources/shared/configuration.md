@@ -3335,6 +3335,11 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # 'fatal' (case insensitive).
 # CLI flag: -validation.discover-log-levels
 [discover_log_levels: <boolean> | default = true]
+  
+# If discover_log_levels is enabled, this list of fields will be used to determine the level (case-sensetive). Loki checks for these labels first within labels or structured metadata. 
+# If not, level is determined from OTLP severity number in case of OTLP logs, and finally attempted to extract from the log line itself.
+# CLI flag: -validation.log-level-fields
+[log_level_fields: <list of strings> | default = [level LEVEL Level Severity severity SEVERITY lvl LVL Lvl]]
 
 # When true an ingester takes into account only the streams that it owns
 # according to the ring while applying the stream limit.

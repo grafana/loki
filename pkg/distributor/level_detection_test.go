@@ -285,6 +285,102 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 	}
 }
 
+func Test_detectLogLevelFromLogEntryWithCustomLabels(t *testing.T) {
+	ld := &LevelDetector{
+		validationContext: validationContext{
+			discoverLogLevels:       true,
+			allowStructuredMetadata: true,
+			logLevelFields:          []string{"log_level", "logging_level", "LOGGINGLVL", "lvl"},
+		},
+	}
+
+	for _, tc := range []struct {
+		name             string
+		entry            logproto.Entry
+		expectedLogLevel string
+	}{
+		{
+			name: "use severity number from otlp logs",
+			entry: logproto.Entry{
+				Line: "error",
+				StructuredMetadata: push.LabelsAdapter{
+					{
+						Name:  loghttp_push.OTLPSeverityNumber,
+						Value: fmt.Sprintf("%d", plog.SeverityNumberDebug3),
+					},
+				},
+			},
+			expectedLogLevel: constants.LogLevelDebug,
+		},
+		{
+			name: "invalid severity number should not cause any issues",
+			entry: logproto.Entry{
+				StructuredMetadata: push.LabelsAdapter{
+					{
+						Name:  loghttp_push.OTLPSeverityNumber,
+						Value: "foo",
+					},
+				},
+			},
+			expectedLogLevel: constants.LogLevelInfo,
+		},
+		{
+			name: "non otlp without any of the log level keywords in log line",
+			entry: logproto.Entry{
+				Line: "foo",
+			},
+			expectedLogLevel: constants.LogLevelUnknown,
+		},
+		{
+			name: "non otlp with log level keywords in log line",
+			entry: logproto.Entry{
+				Line: "this is a warning log",
+			},
+			expectedLogLevel: constants.LogLevelWarn,
+		},
+		{
+			name: "json log line with an error",
+			entry: logproto.Entry{
+				Line: `{"foo":"bar","msg":"message with keyword error but it should not get picked up","log_level":"critical"}`,
+			},
+			expectedLogLevel: constants.LogLevelCritical,
+		},
+		{
+			name: "json log line with an error",
+			entry: logproto.Entry{
+				Line: `{"FOO":"bar","MSG":"message with keyword error but it should not get picked up","LOGGINGLVL":"Critical"}`,
+			},
+			expectedLogLevel: constants.LogLevelCritical,
+		},
+		{
+			name: "json log line with an warning",
+			entry: logproto.Entry{
+				Line: `{"foo":"bar","msg":"message with keyword warn but it should not get picked up","lvl":"warn"}`,
+			},
+			expectedLogLevel: constants.LogLevelWarn,
+		},
+		{
+			name: "json log line with an warning",
+			entry: logproto.Entry{
+				Line: `{"foo":"bar","msg":"message with keyword warn but it should not get picked up","LOGGINGLVL":"FATAL"}`,
+			},
+			expectedLogLevel: constants.LogLevelFatal,
+		},
+		{
+			name: "json log line with an error in block case",
+			entry: logproto.Entry{
+				Line: `{"foo":"bar","msg":"message with keyword warn but it should not get picked up","logging_level":"ERR"}`,
+			},
+			expectedLogLevel: constants.LogLevelError,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			detectedLogLevel := ld.detectLogLevelFromLogEntry(tc.entry, logproto.FromLabelAdaptersToLabels(tc.entry.StructuredMetadata))
+			require.Equal(t, tc.expectedLogLevel, detectedLogLevel)
+		})
+	}
+}
+
 func Benchmark_extractLogLevelFromLogLine(b *testing.B) {
 	// looks scary, but it is some random text of about 1000 chars from charset a-zA-Z0-9
 	logLine := "dGzJ6rKk Zj U04SWEqEK4Uwho8 DpNyLz0 Nfs61HJ fz5iKVigg 44 kabOz7ghviGmVONriAdz4lA 7Kis1OTvZGT3 " +
