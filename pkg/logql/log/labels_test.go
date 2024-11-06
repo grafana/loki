@@ -7,8 +7,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 func TestLabelsBuilder_Get(t *testing.T) {
@@ -55,7 +53,7 @@ func TestLabelsBuilder_LabelsError(t *testing.T) {
 	lbsWithErr := b.LabelsResult()
 
 	expectedLbs := labels.FromStrings(
-		logqlmodel.ErrorLabel, "err",
+		ErrorLabel, "err",
 		"already", "in",
 	)
 	require.Equal(t, expectedLbs, lbsWithErr.Labels())
@@ -63,7 +61,7 @@ func TestLabelsBuilder_LabelsError(t *testing.T) {
 	require.Equal(t, expectedLbs.Hash(), lbsWithErr.Hash())
 	require.Equal(t, labels.FromStrings("already", "in"), lbsWithErr.Stream())
 	require.Nil(t, lbsWithErr.StructuredMetadata())
-	require.Equal(t, labels.FromStrings(logqlmodel.ErrorLabel, "err"), lbsWithErr.Parsed())
+	require.Equal(t, labels.FromStrings(ErrorLabel, "err"), lbsWithErr.Parsed())
 
 	// make sure the original labels is unchanged.
 	require.Equal(t, labels.FromStrings("already", "in"), lbs)
@@ -75,12 +73,12 @@ func TestLabelsBuilder_LabelsErrorFromAdd(t *testing.T) {
 	b.Reset()
 
 	// This works for any category
-	b.Add(StructuredMetadataLabel, labels.FromStrings(logqlmodel.ErrorLabel, "test error", logqlmodel.ErrorDetailsLabel, "test details")...)
+	b.Add(StructuredMetadataLabel, labels.FromStrings(ErrorLabel, "test error", ErrorDetailsLabel, "test details")...)
 	lbsWithErr := b.LabelsResult()
 
 	expectedLbs := labels.FromStrings(
-		logqlmodel.ErrorLabel, "test error",
-		logqlmodel.ErrorDetailsLabel, "test details",
+		ErrorLabel, "test error",
+		ErrorDetailsLabel, "test details",
 		"already", "in",
 	)
 	require.Equal(t, expectedLbs, lbsWithErr.Labels())
@@ -88,7 +86,7 @@ func TestLabelsBuilder_LabelsErrorFromAdd(t *testing.T) {
 	require.Equal(t, expectedLbs.Hash(), lbsWithErr.Hash())
 	require.Equal(t, labels.FromStrings("already", "in"), lbsWithErr.Stream())
 	require.Nil(t, lbsWithErr.StructuredMetadata())
-	require.Equal(t, labels.FromStrings(logqlmodel.ErrorLabel, "test error", logqlmodel.ErrorDetailsLabel, "test details"), lbsWithErr.Parsed())
+	require.Equal(t, labels.FromStrings(ErrorLabel, "test error", ErrorDetailsLabel, "test details"), lbsWithErr.Parsed())
 
 	// make sure the original labels is unchanged.
 	require.Equal(t, labels.FromStrings("already", "in"), lbs)
@@ -164,7 +162,7 @@ func TestLabelsBuilder_LabelsResult(t *testing.T) {
 	b.Reset()
 	assertLabelResult(t, lbs, b.LabelsResult())
 	b.SetErr("err")
-	withErr := labels.FromStrings(append(strs, logqlmodel.ErrorLabel, "err")...)
+	withErr := labels.FromStrings(append(strs, ErrorLabel, "err")...)
 	assertLabelResult(t, withErr, b.LabelsResult())
 
 	b.Set(StructuredMetadataLabel, "foo", "bar")
@@ -181,7 +179,7 @@ func TestLabelsBuilder_LabelsResult(t *testing.T) {
 		"foo", "bar",
 	)
 	expectedParsedLbls := labels.FromStrings(
-		logqlmodel.ErrorLabel, "err",
+		ErrorLabel, "err",
 		"buzz", "fuzz",
 		"ToReplace", "other",
 	)
@@ -381,15 +379,17 @@ func TestLabelsBuilder_UnsortedLabels(t *testing.T) {
 }
 
 func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
-	strs := []string{"namespace", "loki",
+	strs := []string{
+		"namespace", "loki",
 		"job", "us-central1/loki",
-		"cluster", "us-central1"}
+		"cluster", "us-central1",
+	}
 	lbs := labels.FromStrings(strs...)
 	b := NewBaseLabelsBuilderWithGrouping([]string{"namespace"}, nil, false, false).ForLabels(lbs, lbs.Hash())
 	b.Reset()
 	assertLabelResult(t, labels.FromStrings("namespace", "loki"), b.GroupedLabels())
 	b.SetErr("err")
-	withErr := labels.FromStrings(append(strs, logqlmodel.ErrorLabel, "err")...)
+	withErr := labels.FromStrings(append(strs, ErrorLabel, "err")...)
 	assertLabelResult(t, withErr, b.GroupedLabels())
 
 	b.Reset()

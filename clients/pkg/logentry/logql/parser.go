@@ -8,7 +8,7 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 func init() {
@@ -45,7 +45,7 @@ func ParseMatchers(input string) ([]*labels.Matcher, error) {
 	}
 	matcherExpr, ok := expr.(*matchersExpr)
 	if !ok {
-		return nil, logqlmodel.ErrParseMatchers
+		return nil, syntax.ErrParseMatchers
 	}
 	return matcherExpr.matchers, nil
 }

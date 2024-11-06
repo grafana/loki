@@ -8,8 +8,6 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 func Test_lineFormatter_Format(t *testing.T) {
@@ -778,7 +776,7 @@ func Test_validate(t *testing.T) {
 	}{
 		{"no dup", []LabelFmt{NewRenameLabelFmt("foo", "bar"), NewRenameLabelFmt("bar", "foo")}, false},
 		{"dup", []LabelFmt{NewRenameLabelFmt("foo", "bar"), NewRenameLabelFmt("foo", "blip")}, true},
-		{"no error", []LabelFmt{NewRenameLabelFmt(logqlmodel.ErrorLabel, "bar")}, true},
+		{"no error", []LabelFmt{NewRenameLabelFmt(ErrorLabel, "bar")}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -916,7 +914,7 @@ func TestLabelFormatter_RequiredLabelNames(t *testing.T) {
 }
 
 func TestDecolorizer(t *testing.T) {
-	var decolorizer, _ = NewDecolorizer()
+	decolorizer, _ := NewDecolorizer()
 	tests := []struct {
 		name     string
 		src      []byte
@@ -927,7 +925,7 @@ func TestDecolorizer(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var result, _ = decolorizer.Process(0, tt.src, nil)
+			result, _ := decolorizer.Process(0, tt.src, nil)
 			require.Equal(t, tt.expected, result)
 		})
 	}
@@ -979,7 +977,6 @@ func TestMapPoolPanic(_ *testing.T) {
 			}
 			smp.Put(m)
 			wgFinished.Done()
-
 		}()
 	}
 	wg.Done()
