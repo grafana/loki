@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 
@@ -56,8 +58,8 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 }
 
 // RegisterFlags registers flags.
-func (c *Config) RegisterFlags(flags *flag.FlagSet) {
-	c.RegisterFlagsWithPrefix("blockbuilder.", flags)
+func (cfg *Config) RegisterFlags(flags *flag.FlagSet) {
+	cfg.RegisterFlagsWithPrefix("blockbuilder.", flags)
 }
 
 func (cfg *Config) Validate() error {
@@ -153,6 +155,8 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 		return true, nil
 	}
 
+	indexer := newTsdbCreator(nil)
+
 	var lastOffset int64
 	p := newPipeline(ctx)
 
@@ -210,7 +214,21 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 			}
 		},
 		func() error {
-			close(flush)
+			defer close(flush)
+
+			// once we're done appending, cut all remaining chunks.
+			chks, err := i.CutRemainingChunks(ctx)
+			if err != nil {
+				return err
+			}
+
+			for _, chk := range chks {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case flush <- chk:
+				}
+			}
 			return nil
 		},
 	)
@@ -239,6 +257,17 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 								return
 							}
 							i.reportFlushedChunkStatistics(chk)
+
+							// write flushed chunk to index
+							approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
+							meta := index.ChunkMeta{
+								Checksum: chk.ChunkRef.Checksum,
+								MinTime:  int64(chk.ChunkRef.From),
+								MaxTime:  int64(chk.ChunkRef.Through),
+								KB:       uint32(approxKB),
+								Entries:  uint32(chk.Data.Entries()),
+							}
+							err = indexer.Append(chk.UserID, chk.Metric, chk.ChunkRef.Fingerprint, index.ChunkMetas{meta})
 							return
 						},
 					); err != nil {
@@ -253,6 +282,16 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 	if err != nil {
 		return false, err
 	}
+
+	built, err := indexer.Create()
+	if err != nil {
+		return false, err
+	}
+
+	// ship built
+	fmt.Println(built)
+
+	// TODO: build in mem tsdb; flush
 
 	if err = i.jobController.part.Commit(ctx, lastOffset); err != nil {
 		return false, err
@@ -306,6 +345,53 @@ func (i *BlockBuilder) reportFlushedChunkStatistics(
 	i.metrics.flushedChunksAgeStats.Record(time.Since(from).Seconds())
 	i.metrics.flushedChunksLifespanStats.Record(through.Sub(from).Seconds())
 	i.metrics.flushedChunksStats.Inc(1)
+}
+
+func (i *BlockBuilder) CutRemainingChunks(ctx context.Context) ([]*chunk.Chunk, error) {
+	var chunks []*chunk.Chunk
+	i.instancesMtx.Lock()
+	defer i.instancesMtx.Unlock()
+
+	for _, inst := range i.instances {
+
+		// wrap in anonymous fn to make lock release more straightforward
+		if err := func() error {
+			inst.streams.mtx.Lock()
+			defer inst.streams.mtx.Unlock()
+
+			for _, stream := range inst.streams.byLabels {
+
+				// wrap in anonymous fn to make lock release more straightforward
+				if err := func() error {
+					stream.chunkMtx.Lock()
+					defer stream.chunkMtx.Unlock()
+					if stream.chunk != nil {
+						cut, err := stream.closeChunk()
+						if err != nil {
+							return err
+						}
+						encoded, err := inst.encodeChunk(ctx, stream, cut)
+						if err != nil {
+							return err
+						}
+						chunks = append(chunks, encoded)
+					}
+					return nil
+
+				}(); err != nil {
+					return err
+				}
+
+			}
+			return nil
+
+		}(); err != nil {
+			return nil, err
+		}
+
+	}
+
+	return chunks, nil
 }
 
 type AppendInput struct {
@@ -451,19 +537,12 @@ func (i *instance) Push(
 
 			if len(xs) > 0 {
 				for _, x := range xs {
-					firstTime, lastTime := util.RoundToMilliseconds(x.Bounds())
-					chk := chunk.NewChunk(
-						i.tenant, stream.fp, stream.ls,
-						chunkenc.NewFacade(x, stream.blockSize, stream.targetChunkSize),
-						firstTime,
-						lastTime,
-					)
 					// encodeChunk mutates the chunk so we must pass by reference
-					if err := i.encodeChunk(ctx, &chk, x); err != nil {
+					chk, err := i.encodeChunk(ctx, stream, x)
+					if err != nil {
 						return err
 					}
-
-					closed = append(closed, &chk)
+					closed = append(closed, chk)
 				}
 			}
 			return err
@@ -474,22 +553,31 @@ func (i *instance) Push(
 }
 
 // encodeChunk encodes a chunk.Chunk.
-func (i *instance) encodeChunk(ctx context.Context, ch *chunk.Chunk, mc *chunkenc.MemChunk) error {
+func (i *instance) encodeChunk(ctx context.Context, stream *stream, mc *chunkenc.MemChunk) (*chunk.Chunk, error) {
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, err
 	}
 	start := time.Now()
+
+	firstTime, lastTime := util.RoundToMilliseconds(mc.Bounds())
+	chk := chunk.NewChunk(
+		i.tenant, stream.fp, stream.ls,
+		chunkenc.NewFacade(mc, stream.blockSize, stream.targetChunkSize),
+		firstTime,
+		lastTime,
+	)
+
 	chunkBytesSize := mc.BytesSize() + 4*1024 // size + 4kB should be enough room for cortex header
-	if err := ch.EncodeTo(bytes.NewBuffer(make([]byte, 0, chunkBytesSize)), i.logger); err != nil {
+	if err := chk.EncodeTo(bytes.NewBuffer(make([]byte, 0, chunkBytesSize)), i.logger); err != nil {
 		if !errors.Is(err, chunk.ErrChunkDecode) {
-			return fmt.Errorf("chunk encoding: %w", err)
+			return nil, fmt.Errorf("chunk encoding: %w", err)
 		}
 
-		i.metrics.chunkDecodeFailures.WithLabelValues(ch.UserID).Inc()
+		i.metrics.chunkDecodeFailures.WithLabelValues(chk.UserID).Inc()
 	}
 	i.metrics.chunkEncodeTime.Observe(time.Since(start).Seconds())
-	i.metrics.chunksEncoded.WithLabelValues(ch.UserID).Inc()
-	return nil
+	i.metrics.chunksEncoded.WithLabelValues(chk.UserID).Inc()
+	return &chk, nil
 }
 
 type stream struct {
@@ -530,18 +618,11 @@ func (s *stream) Push(entries []push.Entry) (closed []*chunkenc.MemChunk, err er
 
 		// cut the chunk if the new addition overflows target size
 		if !s.chunk.SpaceFor(&entries[i]) {
-			if err = s.chunk.Close(); err != nil {
-				return closed, errors.Wrap(err, "closing chunk")
+			cut, err := s.closeChunk()
+			if err != nil {
+				return nil, err
 			}
-
-			s.metrics.samplesPerChunk.Observe(float64(s.chunk.Size()))
-			s.metrics.blocksPerChunk.Observe(float64(s.chunk.BlockCount()))
-			s.metrics.chunksCreatedTotal.Inc()
-			s.metrics.chunkCreatedStats.Inc(1)
-
-			// add a chunk
-			closed = append(closed, s.chunk)
-			s.chunk = s.NewChunk()
+			closed = append(closed, cut)
 		}
 
 		if _, err = s.chunk.Append(&entries[i]); err != nil {
@@ -550,6 +631,22 @@ func (s *stream) Push(entries []push.Entry) (closed []*chunkenc.MemChunk, err er
 	}
 
 	return closed, nil
+}
+
+func (s *stream) closeChunk() (*chunkenc.MemChunk, error) {
+	if err := s.chunk.Close(); err != nil {
+		return nil, errors.Wrap(err, "closing chunk")
+	}
+
+	s.metrics.samplesPerChunk.Observe(float64(s.chunk.Size()))
+	s.metrics.blocksPerChunk.Observe(float64(s.chunk.BlockCount()))
+	s.metrics.chunksCreatedTotal.Inc()
+	s.metrics.chunkCreatedStats.Inc(1)
+
+	// add a chunk
+	res := s.chunk
+	s.chunk = s.NewChunk()
+	return res, nil
 }
 
 func (s *stream) NewChunk() *chunkenc.MemChunk {
