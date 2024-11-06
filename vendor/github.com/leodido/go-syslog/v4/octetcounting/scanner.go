@@ -5,7 +5,37 @@ import (
 	"bytes"
 	"io"
 	"strconv"
+	"sync"
 )
+
+var readerPool sync.Pool
+
+// getReader returns a *bufio.Reader that is guaranteed
+// to have a buffer of at least `size`.
+func getReader(r io.Reader, size int) *bufio.Reader {
+	if buf := readerPool.Get(); buf != nil {
+		buf := buf.(*bufio.Reader)
+
+		// If the buffer we get is smaller than the requested buffer, put it back
+		// and create a new one. stdlib has multiple buckets for various sizes to
+		// make this more efficient, but that's overkill here.
+		if buf.Size() < size {
+			readerPool.Put(buf)
+			buf = bufio.NewReaderSize(r, size)
+		} else {
+			buf.Reset(r)
+		}
+
+		return buf
+	}
+
+	return bufio.NewReaderSize(r, size)
+}
+
+// putReader returns the given bufio.Reader to the pool to be used again.
+func putReader(r *bufio.Reader) {
+	readerPool.Put(r)
+}
 
 // eof represents a marker byte for the end of the reader
 var eof = byte(0)
@@ -39,7 +69,7 @@ type Scanner struct {
 // NewScanner returns a pointer to a new instance of Scanner.
 func NewScanner(r io.Reader, maxLength int) *Scanner {
 	return &Scanner{
-		r: bufio.NewReaderSize(r, maxLength+20), // max uint64 is 19 characters + a space
+		r: getReader(r, maxLength+20), // max uint64 is 19 characters + a space
 	}
 }
 
@@ -150,4 +180,8 @@ func (s *Scanner) scanSyslogMsg() Token {
 		typ: SYSLOGMSG,
 		lit: b,
 	}
+}
+
+func (s *Scanner) Release() {
+	putReader(s.r)
 }

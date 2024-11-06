@@ -228,6 +228,8 @@ type Limits struct {
 
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
 
+	ShardAggregations []string `yaml:"shard_aggregations,omitempty" json:"shard_aggregations,omitempty" doc:"description=List of LogQL vector and range aggregations that should be sharded."`
+
 	PatternIngesterTokenizableJSONFieldsDefault dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_default" json:"pattern_ingester_tokenizable_json_fields_default" doc:"hidden"`
 	PatternIngesterTokenizableJSONFieldsAppend  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_append"  json:"pattern_ingester_tokenizable_json_fields_append"  doc:"hidden"`
 	PatternIngesterTokenizableJSONFieldsDelete  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_delete"  json:"pattern_ingester_tokenizable_json_fields_delete"  doc:"hidden"`
@@ -1084,6 +1086,10 @@ func (o *Overrides) BlockIngestionUntil(userID string) time.Time {
 
 func (o *Overrides) BlockIngestionStatusCode(userID string) int {
 	return o.getOverridesForUser(userID).BlockIngestionStatusCode
+}
+
+func (o *Overrides) ShardAggregations(userID string) []string {
+	return o.getOverridesForUser(userID).ShardAggregations
 }
 
 func (o *Overrides) PatternIngesterTokenizableJSONFields(userID string) []string {
