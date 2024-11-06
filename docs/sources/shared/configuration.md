@@ -3336,6 +3336,11 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -validation.discover-log-levels
 [discover_log_levels: <boolean> | default = true]
 
+# Field name to use for log levels. If not set, log level would be detected
+# based on pre-defined labels as mentioned above.
+# CLI flag: -validation.log-level-fields
+[log_level_fields: <list of strings> | default = [level LEVEL Level Severity severity SEVERITY lvl LVL Lvl]]
+
 # When true an ingester takes into account only the streams that it owns
 # according to the ring while applying the stream limit.
 # CLI flag: -ingester.use-owned-stream-count
