@@ -21,11 +21,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 
 	"github.com/grafana/loki/pkg/push"
 )
@@ -96,7 +98,6 @@ type BlockBuilder struct {
 
 	store stores.ChunkWriter
 
-	tsdbCreator   *TsdbCreator
 	jobController *PartitionJobController
 }
 
@@ -106,7 +107,6 @@ func NewBlockBuilder(
 	store stores.ChunkWriter,
 	logger log.Logger,
 	reg prometheus.Registerer,
-	tsdbCreator *TsdbCreator,
 	jobController *PartitionJobController,
 ) (*BlockBuilder,
 	error) {
@@ -117,7 +117,6 @@ func NewBlockBuilder(
 		logger:          logger,
 		instances:       make(map[string]*instance),
 		store:           store,
-		tsdbCreator:     tsdbCreator,
 		jobController:   jobController,
 	}
 
@@ -283,15 +282,31 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 		return false, err
 	}
 
-	built, err := indexer.Create(ctx)
+	var (
+		// TODO(owen-d)
+		nodeName    string              // from lifecycler id
+		tabelRanges []config.TableRange // from periodconfigs
+		// TODO(owen-d): build uploaders based on table ranges, which can use different
+		// object clients
+		c client.ObjectClient
+	)
+
+	built, err := indexer.create(ctx, nodeName, tabelRanges)
 	if err != nil {
 		return false, err
 	}
 
-	// ship built
-	fmt.Println(built)
+	for _, db := range built {
+		u := newUploader(c)
+		if err := u.Put(ctx, db); err != nil {
+			level.Error(util_log.Logger).Log(
+				"msg", "failed to upload tsdb",
+				"path", db.id.Path(),
+			)
 
-	// TODO: build in mem tsdb; flush
+			return false, err
+		}
+	}
 
 	if err = i.jobController.part.Commit(ctx, lastOffset); err != nil {
 		return false, err

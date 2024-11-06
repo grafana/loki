@@ -1813,7 +1813,6 @@ func (t *Loki) initBlockBuilder() (services.Service, error) {
 		t.Store,
 		logger,
 		prometheus.DefaultRegisterer,
-		tsdbCreator,
 		blockbuilder.NewPartitionJobController(
 			reader,
 		),
