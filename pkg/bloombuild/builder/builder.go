@@ -157,7 +157,7 @@ func (b *Builder) running(ctx context.Context) error {
 
 			// Otherwise (e.g. failed to connect to the builder), we should retry
 			code := status.Code(err)
-			level.Error(b.logger).Log("msg", "failed to connect and build. Retrying", "code", code.String(), "err", err)
+			level.Error(b.logger).Log("msg", "failed to connect and build. Retrying", "retry", retries.NumRetries(), "maxRetries", b.cfg.BackoffConfig.MaxRetries, "code", code.String(), "err", err)
 			retries.Wait()
 			continue
 		}
