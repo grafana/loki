@@ -458,21 +458,23 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	maybeShardByRate := func(stream logproto.Stream, pushSize int) {
 		if shardStreamsCfg.Enabled {
 			streams = append(streams, d.shardStream(stream, pushSize, tenantID)...)
-		} else {
-			streams = append(streams, KeyedStream{
-				HashKey: lokiring.TokenFor(tenantID, stream.Labels),
-				Stream:  stream,
-			})
+			return
 		}
+		streams = append(streams, KeyedStream{
+			HashKey: lokiring.TokenFor(tenantID, stream.Labels),
+			Stream:  stream,
+		})
 	}
-	maybeShardByTime := func(stream logproto.Stream, labels labels.Labels, pushSize int) {
-		if shardStreamsCfg.TimeShardingEnabled {
-			streamsByTime := shardStreamByTime(stream, labels, d.ingesterCfg.MaxChunkAge/2)
-			for _, ts := range streamsByTime {
-				maybeShardByRate(ts.Stream, ts.linesTotalLen)
-			}
-		} else {
+
+	maybeShardStreams := func(stream logproto.Stream, labels labels.Labels, pushSize int) {
+		if !shardStreamsCfg.TimeShardingEnabled {
 			maybeShardByRate(stream, pushSize)
+			return
+		}
+
+		streamsByTime := shardStreamByTime(stream, labels, d.ingesterCfg.MaxChunkAge/2)
+		for _, ts := range streamsByTime {
+			maybeShardByRate(ts.Stream, ts.linesTotalLen)
 		}
 	}
 
@@ -563,7 +565,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				continue
 			}
 
-			maybeShardByTime(stream, lbs, pushSize)
+			maybeShardStreams(stream, lbs, pushSize)
 		}
 	}()
 
