@@ -805,6 +805,7 @@ func TestStreamShardByTime(t *testing.T) {
 		labels       string
 		entries      []logproto.Entry
 		timeShardLen time.Duration
+		ignoreFrom   time.Time
 		expResult    []streamWithTimeShard
 	}{
 		{
@@ -819,14 +820,24 @@ func TestStreamShardByTime(t *testing.T) {
 			labels: `{app="myapp"}`,
 			entries: []logproto.Entry{
 				{Timestamp: baseTimestamp, Line: "foo"},
-				//{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
 			},
 			timeShardLen: time.Hour,
+			ignoreFrom:   baseTimestamp.Add(1 * time.Second),
 			expResult: []streamWithTimeShard{
 				{Stream: logproto.Stream{Labels: `{__time_shard__="1730376000_1730379600", app="myapp"}`, Entries: []logproto.Entry{
 					{Timestamp: baseTimestamp, Line: "foo"},
 				}}, linesTotalLen: 3},
 			},
+		},
+		{
+			test:   "one entry that is ignored",
+			labels: `{app="myapp"}`,
+			entries: []logproto.Entry{
+				{Timestamp: baseTimestamp, Line: "foo"},
+			},
+			timeShardLen: time.Hour,
+			ignoreFrom:   baseTimestamp.Add(-10 * time.Minute),
+			expResult:    nil,
 		},
 		{
 			test:   "single shard with two entries",
@@ -836,11 +847,30 @@ func TestStreamShardByTime(t *testing.T) {
 				{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
 			},
 			timeShardLen: time.Hour,
+			ignoreFrom:   baseTimestamp.Add(2 * time.Second),
 			expResult: []streamWithTimeShard{
 				{Stream: logproto.Stream{Labels: `{__time_shard__="1730376000_1730379600", app="myapp"}`, Entries: []logproto.Entry{
 					{Timestamp: baseTimestamp, Line: "foo"},
 					{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
 				}}, linesTotalLen: 6},
+			},
+		},
+		{
+			test:   "one shard and another stream with original labels",
+			labels: `{app="myapp"}`,
+			entries: []logproto.Entry{
+				{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
+				{Timestamp: baseTimestamp, Line: "foo"},
+			},
+			timeShardLen: time.Hour,
+			ignoreFrom:   baseTimestamp.Add(1 * time.Second),
+			expResult: []streamWithTimeShard{
+				{Stream: logproto.Stream{Labels: `{__time_shard__="1730376000_1730379600", app="myapp"}`, Entries: []logproto.Entry{
+					{Timestamp: baseTimestamp, Line: "foo"},
+				}}, linesTotalLen: 3},
+				{Stream: logproto.Stream{Labels: `{app="myapp"}`, Entries: []logproto.Entry{
+					{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
+				}}, linesTotalLen: 3},
 			},
 		},
 		{
@@ -851,6 +881,7 @@ func TestStreamShardByTime(t *testing.T) {
 				{Timestamp: baseTimestamp, Line: "foo"},
 			},
 			timeShardLen: time.Hour,
+			ignoreFrom:   baseTimestamp.Add(2 * time.Second),
 			expResult: []streamWithTimeShard{
 				{Stream: logproto.Stream{Labels: `{__time_shard__="1730376000_1730379600", app="myapp"}`, Entries: []logproto.Entry{
 					{Timestamp: baseTimestamp, Line: "foo"},
@@ -867,6 +898,7 @@ func TestStreamShardByTime(t *testing.T) {
 				{Timestamp: baseTimestamp.Add(time.Hour), Line: "baz"},
 			},
 			timeShardLen: time.Hour,
+			ignoreFrom:   baseTimestamp.Add(2 * time.Hour),
 			expResult: []streamWithTimeShard{
 				{Stream: logproto.Stream{Labels: `{__time_shard__="1730376000_1730379600", app="myapp"}`, Entries: []logproto.Entry{
 					{Timestamp: baseTimestamp, Line: "foo"},
@@ -886,6 +918,7 @@ func TestStreamShardByTime(t *testing.T) {
 				{Timestamp: baseTimestamp.Add(4 * time.Hour), Line: "baz"},
 			},
 			timeShardLen: time.Hour,
+			ignoreFrom:   baseTimestamp.Add(5 * time.Hour),
 			expResult: []streamWithTimeShard{
 				{Stream: logproto.Stream{Labels: `{__time_shard__="1730376000_1730379600", app="myapp"}`, Entries: []logproto.Entry{
 					{Timestamp: baseTimestamp, Line: "foo"},
@@ -905,12 +938,33 @@ func TestStreamShardByTime(t *testing.T) {
 				{Timestamp: baseTimestamp.Add(6 * time.Hour), Line: "baz"},
 			},
 			timeShardLen: 24 * time.Hour,
+			ignoreFrom:   baseTimestamp.Add(7 * time.Hour),
 			expResult: []streamWithTimeShard{
 				{Stream: logproto.Stream{Labels: `{__time_shard__="1730332800_1730419200", app="myapp"}`, Entries: []logproto.Entry{
 					{Timestamp: baseTimestamp, Line: "foo"},
 					{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
 					{Timestamp: baseTimestamp.Add(6 * time.Hour), Line: "baz"},
 				}}, linesTotalLen: 9},
+			},
+		},
+		{
+			test:   "bigger shard len with some unsharded",
+			labels: `{app="myapp"}`,
+			entries: []logproto.Entry{
+				{Timestamp: baseTimestamp, Line: "foo"},
+				{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
+				{Timestamp: baseTimestamp.Add(6 * time.Hour), Line: "baz"},
+			},
+			timeShardLen: 24 * time.Hour,
+			ignoreFrom:   baseTimestamp.Add(5 * time.Hour),
+			expResult: []streamWithTimeShard{
+				{Stream: logproto.Stream{Labels: `{__time_shard__="1730332800_1730419200", app="myapp"}`, Entries: []logproto.Entry{
+					{Timestamp: baseTimestamp, Line: "foo"},
+					{Timestamp: baseTimestamp.Add(time.Second), Line: "bar"},
+				}}, linesTotalLen: 6},
+				{Stream: logproto.Stream{Labels: `{app="myapp"}`, Entries: []logproto.Entry{
+					{Timestamp: baseTimestamp.Add(6 * time.Hour), Line: "baz"},
+				}}, linesTotalLen: 3},
 			},
 		},
 		{
@@ -927,6 +981,7 @@ func TestStreamShardByTime(t *testing.T) {
 				{Timestamp: baseTimestamp.Truncate(time.Hour).Add(time.Hour), Line: "21"},
 			},
 			timeShardLen: time.Hour,
+			ignoreFrom:   baseTimestamp.Add(7 * time.Hour),
 			expResult: []streamWithTimeShard{
 				{Stream: logproto.Stream{Labels: `{__time_shard__="1730376000_1730379600", app="myapp"}`, Entries: []logproto.Entry{
 					{Timestamp: baseTimestamp.Truncate(time.Hour), Line: "11"},
@@ -946,6 +1001,38 @@ func TestStreamShardByTime(t *testing.T) {
 				}}, linesTotalLen: 2},
 			},
 		},
+		{
+			test:   "longer messy with a couple ofc unsharded",
+			labels: `{app="myapp"}`,
+			entries: []logproto.Entry{
+				{Timestamp: baseTimestamp.Truncate(time.Hour), Line: "11"},
+				{Timestamp: baseTimestamp, Line: "13"},
+				{Timestamp: baseTimestamp, Line: "14"},
+				{Timestamp: baseTimestamp.Truncate(time.Hour), Line: "12"},
+				{Timestamp: baseTimestamp.Add(2 * time.Hour), Line: "32"},
+				{Timestamp: baseTimestamp.Truncate(time.Hour).Add(2 * time.Hour), Line: "31"},
+				{Timestamp: baseTimestamp.Add(5 * time.Hour), Line: "41"},
+				{Timestamp: baseTimestamp.Truncate(time.Hour).Add(time.Hour), Line: "21"},
+			},
+			timeShardLen: time.Hour,
+			ignoreFrom:   baseTimestamp.Truncate(time.Hour).Add(1*time.Hour + 35*time.Minute),
+			expResult: []streamWithTimeShard{
+				{Stream: logproto.Stream{Labels: `{__time_shard__="1730376000_1730379600", app="myapp"}`, Entries: []logproto.Entry{
+					{Timestamp: baseTimestamp.Truncate(time.Hour), Line: "11"},
+					{Timestamp: baseTimestamp.Truncate(time.Hour), Line: "12"},
+					{Timestamp: baseTimestamp, Line: "13"},
+					{Timestamp: baseTimestamp, Line: "14"},
+				}}, linesTotalLen: 8},
+				{Stream: logproto.Stream{Labels: `{__time_shard__="1730379600_1730383200", app="myapp"}`, Entries: []logproto.Entry{
+					{Timestamp: baseTimestamp.Truncate(time.Hour).Add(time.Hour), Line: "21"},
+				}}, linesTotalLen: 2},
+				{Stream: logproto.Stream{Labels: `{app="myapp"}`, Entries: []logproto.Entry{
+					{Timestamp: baseTimestamp.Truncate(time.Hour).Add(2 * time.Hour), Line: "31"},
+					{Timestamp: baseTimestamp.Add(2 * time.Hour), Line: "32"},
+					{Timestamp: baseTimestamp.Add(5 * time.Hour), Line: "41"},
+				}}, linesTotalLen: 6},
+			},
+		},
 	} {
 		t.Run(tc.test, func(t *testing.T) {
 			lbls, err := syntax.ParseLabels(tc.labels)
@@ -956,7 +1043,13 @@ func TestStreamShardByTime(t *testing.T) {
 				Entries: tc.entries,
 			}
 
-			shardedStreams := shardStreamByTime(stream, lbls, tc.timeShardLen)
+			shardedStreams, ok := shardStreamByTime(stream, lbls, tc.timeShardLen, tc.ignoreFrom)
+			if tc.expResult == nil {
+				assert.False(t, ok)
+				assert.Nil(t, shardedStreams)
+				return
+			}
+			require.True(t, ok)
 			require.Len(t, shardedStreams, len(tc.expResult))
 
 			for i, ss := range shardedStreams {

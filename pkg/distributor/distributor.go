@@ -452,7 +452,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	validatedLineCount := 0
 
 	var validationErrors util.GroupedErrors
-	validationContext := d.validator.getValidationContextForTime(time.Now(), tenantID)
+
+	now := time.Now()
+	validationContext := d.validator.getValidationContextForTime(now, tenantID)
 
 	shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)
 	maybeShardByRate := func(stream logproto.Stream, pushSize int) {
@@ -472,7 +474,13 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			return
 		}
 
-		streamsByTime := shardStreamByTime(stream, labels, d.ingesterCfg.MaxChunkAge/2)
+		ignoreRecentFrom := now.Add(-shardStreamsCfg.TimeShardingIgnoreRecent)
+		streamsByTime, ok := shardStreamByTime(stream, labels, d.ingesterCfg.MaxChunkAge/2, ignoreRecentFrom)
+		if !ok {
+			maybeShardByRate(stream, pushSize)
+			return
+		}
+
 		for _, ts := range streamsByTime {
 			maybeShardByRate(ts.Stream, ts.linesTotalLen)
 		}
@@ -578,8 +586,6 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	if len(streams) == 0 {
 		return &logproto.PushResponse{}, validationErr
 	}
-
-	now := time.Now()
 
 	if block, until, retStatusCode := d.validator.ShouldBlockIngestion(validationContext, now); block {
 		d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCount, validatedLineSize, validation.BlockedIngestion)
@@ -753,25 +759,44 @@ type streamWithTimeShard struct {
 // timestamps, but with no new alocations for the log entries. It will sort them
 // in-place in the given stream object (so it may modify it!) and reference
 // sub-slices of the same stream.Entries slice.
-func shardStreamByTime(stream logproto.Stream, lbls labels.Labels, timeShardLen time.Duration) []streamWithTimeShard {
+//
+// If the second result is false, it means that either there were no logs in the
+// stream, or all of the logs in the stream occurred after the given value of
+// ignoreLogsFrom, so there was no need to shard - the original `streams` value
+// can be used. However, due to the in-place logs sorting by their timestamp, it
+// might still have been reordered.
+func shardStreamByTime(stream logproto.Stream, lbls labels.Labels, timeShardLen time.Duration, ignoreLogsFrom time.Time) ([]streamWithTimeShard, bool) {
 	entries := stream.Entries
 	entriesLen := len(entries)
 	if entriesLen == 0 {
-		return nil
+		return nil, false
 	}
 
 	slices.SortStableFunc(entries, func(a, b logproto.Entry) int { return a.Timestamp.Compare(b.Timestamp) })
 
-	result := make([]streamWithTimeShard, 0, entries[entriesLen-1].Timestamp.Sub(entries[0].Timestamp)/timeShardLen)
+	// Shortcut to do no work if all of the logs are recent
+	if entries[0].Timestamp.After(ignoreLogsFrom) {
+		return nil, false
+	}
+
+	result := make([]streamWithTimeShard, 0, (entries[entriesLen-1].Timestamp.Sub(entries[0].Timestamp)/timeShardLen)+1)
 	labelBuilder := labels.NewBuilder(lbls)
 
-	for startIdx := 0; startIdx < entriesLen; /* the index is changed below */ {
+	startIdx := 0
+	for startIdx < entriesLen && entries[startIdx].Timestamp.Before(ignoreLogsFrom) /* the index is changed below */ {
 		timeShardStart := entries[startIdx].Timestamp.Truncate(timeShardLen)
 		timeShardEnd := timeShardStart.Add(timeShardLen)
 
+		timeShardCutoff := timeShardEnd
+		if timeShardCutoff.After(ignoreLogsFrom) {
+			// If the time_sharding_ignore_recent is in the middle of this
+			// shard, we need to cut off the logs at that point.
+			timeShardCutoff = ignoreLogsFrom
+		}
+
 		endIdx := startIdx + 1
 		linesTotalLen := len(entries[startIdx].Line)
-		for ; endIdx < entriesLen && entries[endIdx].Timestamp.Before(timeShardEnd); endIdx++ {
+		for ; endIdx < entriesLen && entries[endIdx].Timestamp.Before(timeShardCutoff); endIdx++ {
 			linesTotalLen += len(entries[endIdx].Line)
 		}
 
@@ -787,7 +812,26 @@ func shardStreamByTime(stream logproto.Stream, lbls labels.Labels, timeShardLen 
 
 		startIdx = endIdx
 	}
-	return result
+
+	if startIdx == entriesLen {
+		// We do not have any remaining entries
+		return result, true
+	}
+
+	// Append one last shard with all of the logs without a time shard
+	logsWithoutTimeShardLen := 0
+	for i := startIdx; i < entriesLen; i++ {
+		logsWithoutTimeShardLen += len(entries[i].Line)
+	}
+
+	return append(result, streamWithTimeShard{
+		Stream: logproto.Stream{
+			Labels:  stream.Labels,
+			Hash:    stream.Hash,
+			Entries: stream.Entries[startIdx:entriesLen],
+		},
+		linesTotalLen: logsWithoutTimeShardLen,
+	}), true
 }
 
 // shardStream shards (divides) the given stream into N smaller streams, where
