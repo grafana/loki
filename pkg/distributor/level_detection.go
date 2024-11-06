@@ -128,8 +128,10 @@ func (l *LevelDetector) extractLogLevelFromLogLine(log string) string {
 	var v []byte
 	if isJSON(log) {
 		v = l.getValueUsingJSONParser(logSlice)
-	} else {
+	} else if isLogFmt(logSlice) {
 		v = l.getValueUsingLogfmtParser(logSlice)
+	} else {
+		return detectLevelFromLogLine(log)
 	}
 
 	switch {
@@ -175,6 +177,14 @@ func (l *LevelDetector) getValueUsingJSONParser(log []byte) []byte {
 		}
 	}
 	return nil
+}
+
+func isLogFmt(line []byte) bool {
+	equalIndex := bytes.Index(line, []byte("="))
+	if len(line) == 0 || equalIndex == -1 {
+		return false
+	}
+	return true
 }
 
 func isJSON(line string) bool {
