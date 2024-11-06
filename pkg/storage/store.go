@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -164,7 +165,7 @@ func (s *LokiStore) SelectVariants(
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
 	}
 
-	return newMultiExtractorSampleBatchIterator(
+	return newSampleBatchIterator(
 		ctx,
 		s.schemaCfg,
 		s.chunkMetrics,
@@ -651,7 +652,18 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
 	}
 
-	return newSampleBatchIterator(ctx, s.schemaCfg, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, extractor, req.Start, req.End, chunkFilterer)
+	return newSampleBatchIterator(
+		ctx,
+		s.schemaCfg,
+		s.chunkMetrics,
+		lazyChunks,
+		s.cfg.MaxChunkBatchSize,
+		matchers,
+		[]syntax.SampleExtractor{extractor},
+		req.Start,
+		req.End,
+		chunkFilterer,
+	)
 }
 
 func (s *LokiStore) GetSchemaConfigs() []config.PeriodConfig {

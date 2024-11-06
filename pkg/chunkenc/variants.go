@@ -34,7 +34,7 @@ type multiExtractorSampleBufferedIterator struct {
 }
 
 func (e *multiExtractorSampleBufferedIterator) Next() bool {
-	if len(e.cur) > 0 {
+	if len(e.cur) > 1 {
 		e.cur = e.cur[1:]
 		e.currLabels = e.currLabels[1:]
 		e.currBaseLabels = e.currBaseLabels[1:]
@@ -42,6 +42,13 @@ func (e *multiExtractorSampleBufferedIterator) Next() bool {
 		return true
 	}
 
+	if len(e.cur) == 1 {
+		e.cur = e.cur[:0]
+		e.currLabels = e.currLabels[:0]
+		e.currBaseLabels = e.currBaseLabels[:0]
+	}
+
+	// TDOO(twhitney): this loops never stops
 	for e.bufferedIterator.Next() {
 		for i, extractor := range e.extractors {
 			val, lbls, ok := extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata...)
@@ -62,17 +69,23 @@ func (e *multiExtractorSampleBufferedIterator) Next() bool {
 			builder.Add(log.ParsedLabel, lbls.Parsed()...)
 			e.currLabels = append(e.currLabels, builder.LabelsResult())
 
-      //TODO: is it enough to add __variant__ to result labels? Do the base labels need it to?
+			// TODO: is it enough to add __variant__ to result labels? Do the base labels need it too?
 			e.currBaseLabels = append(e.currBaseLabels, extractor.BaseLabels())
 			e.cur = append(e.cur, logproto.Sample{
 				Value:     val,
 				Hash:      xxhash.Sum64(e.currLine),
 				Timestamp: e.currTs,
 			})
-
-			return true
 		}
+
+		// catch the case where no extractors were ok
+		if len(e.cur) <= 1 {
+			continue
+		}
+
+		return true
 	}
+
 	return false
 }
 
@@ -109,4 +122,6 @@ func (e *multiExtractorSampleBufferedIterator) Labels() string { return e.currLa
 
 func (e *multiExtractorSampleBufferedIterator) StreamHash() uint64 { return e.currBaseLabels[0].Hash() }
 
-func (e *multiExtractorSampleBufferedIterator) At() logproto.Sample { return e.cur[0] }
+func (e *multiExtractorSampleBufferedIterator) At() logproto.Sample {
+	return e.cur[0]
+}

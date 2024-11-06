@@ -659,6 +659,7 @@ func (q *query) evalVariant(
 	}
 	defer util.LogErrorWithContext(ctx, "closing VariantsExpr", stepEvaluator.Close)
 
+	//TODO: this never returns
 	next, _, r := stepEvaluator.Next()
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()
@@ -668,7 +669,14 @@ func (q *query) evalVariant(
 		switch vec := r.(type) {
 		//TODO(twhitney): need case for a log query
 		case SampleVector:
-			return nil, fmt.Errorf("unsupported result type: %T", vec)
+			maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
+			maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
+			//TDOO: what is merge first last for?
+			mfl := false
+			// if rae, ok := expr.(*syntax.RangeAggregationExpr); ok && (rae.Operation == syntax.OpRangeTypeFirstWithTimestamp || rae.Operation == syntax.OpRangeTypeLastWithTimestamp) {
+			// 	mfl = true
+			// }
+			return q.JoinSampleVector(next, vec, stepEvaluator, maxSeries, mfl)
 		default:
 			return nil, fmt.Errorf("unsupported result type: %T", r)
 		}

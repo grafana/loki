@@ -311,6 +311,8 @@ func (q *SingleTenantQuerier) calculateIngesterMaxLookbackPeriod() time.Duration
 }
 
 func (q *SingleTenantQuerier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval, *interval) {
+	queryStart, queryEnd = queryStart.In(time.UTC), queryEnd.In(time.UTC)
+
 	// limitQueryInterval is a flag for whether store queries should be limited to start time of ingester queries.
 	limitQueryInterval := false
 	// ingesterMLB having -1 means query ingester for whole duration.
@@ -1453,31 +1455,28 @@ func (q *SingleTenantQuerier) SelectVariants(
 		level.Error(spanlogger.FromContext(ctx)).Log("msg", "failed loading deletes for user", "err", err)
 	}
 
-	_, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
+	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
 
 	iters := []iter.SampleIterator{}
 	// TODO(twhitney): deal with ingesters later
-	// if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
-	// 	// Make a copy of the request before modifying
-	// 	// because the initial request is used below to query stores
-	// 	queryRequestCopy := *params.VariantsQueryRequest
-	// 	newParams := logql.SelectVariantsParams{
-	// 		VariantsQueryRequest: &queryRequestCopy,
-	// 	}
-	// 	newParams.Start = ingesterQueryInterval.start
-	// 	newParams.End = ingesterQueryInterval.end
+	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
+		// Make a copy of the request before modifying
+		// because the initial request is used below to query stores
+		// TOTO(twhitney): implement iterators
+		// queryRequestCopy := *params.VariantsQueryRequest
+		// newParams := logql.SelectVariantsParams{
+		// 	VariantsQueryRequest: &queryRequestCopy,
+		// }
+		// newParams.Start = ingesterQueryInterval.start
+		// newParams.End = ingesterQueryInterval.end
 
-	// 	ingesterIters, err := q.ingesterQuerier.SelectVariants(ctx, newParams)
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
+		// ingesterIters, err := q.ingesterQuerier.SelectVariants(ctx, newParams)
+		// if err != nil {
+		// 	return nil, err
+		// }
 
-	// 	for _, iter := range ingesterIters {
-	// 		for iter.Next() {
-	// 			iters = append(iters, iter.At())
-	// 		}
-	// 	}
-	// }
+		// iters = append(iters, ingesterIters...)
+	}
 
 	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
 		params.Start = storeQueryInterval.start

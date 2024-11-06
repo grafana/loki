@@ -70,10 +70,21 @@ type DepthFirstTraversal struct {
 	VisitRangeAggregationFn       func(v RootVisitor, e *RangeAggregationExpr)
 	VisitVectorFn                 func(v RootVisitor, e *VectorExpr)
 	VisitVectorAggregationFn      func(v RootVisitor, e *VectorAggregationExpr)
+	VisiVectorAggregationFn       func(v RootVisitor, e *VectorAggregationExpr)
+	VisitVariantsFn               func(v RootVisitor, e *MultiVariantExpr)
 }
 
-func (d *DepthFirstTraversal) VisitVariants(_ *MultiVariantExpr) {
-	panic("not implemented") // TODO: Implement
+// TODO: this is what's getting triggered
+func (v *DepthFirstTraversal) VisitVariants(e *MultiVariantExpr) {
+	if e == nil {
+		return
+	}
+
+	if v.VisitVariantsFn != nil {
+		v.VisitVariantsFn(v, e)
+	} else {
+		e.LogRange().Left.Accept(v)
+	}
 }
 
 // VisitBinOp implements RootVisitor.

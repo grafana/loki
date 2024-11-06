@@ -141,7 +141,7 @@ func (c *LazyChunk) SampleIterator(
 		var blockSampleIterator iter.SampleIterator
 		if len(extractors) == 0 {
 			return nil, errors.New("no extractors provided")
-		} else if len(extractors) > 0 {
+		} else if len(extractors) > 1 {
 			blockSampleIterator = b.MultiExtractorSampleIterator(ctx, extractors)
 		} else {
 			blockSampleIterator = b.SampleIterator(ctx, extractors[0])

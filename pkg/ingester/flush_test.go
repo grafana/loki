@@ -381,7 +381,7 @@ type testStore struct {
 }
 
 func (t *testStore) SelectVariants(ctx context.Context, req logql.SelectVariantsParams) (iter.SampleIterator, error) {
-  panic("TODO(twhitney): SelectVariants not implemented on testStore") // TODO: Implement
+	panic("TODO(twhitney): SelectVariants not implemented on testStore") // TODO: Implement
 }
 
 // Note: the ingester New() function creates it's own WAL first which we then override if specified.

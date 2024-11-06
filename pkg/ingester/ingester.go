@@ -1654,5 +1654,5 @@ func (i *Ingester) getDetectedLabels(ctx context.Context, req *logproto.Detected
 
 // QuerySample the ingesters for series from logs matching a set of matchers.
 func (i *Ingester) QueryVariants(req *logproto.VariantsQueryRequest, queryServer logproto.Querier_QueryVariantsServer) error {
-  panic("TODO(twhitney): QueryVariants not implemented on Ingester")
+	panic("TODO(twhitney): QueryVariants not implemented on Ingester")
 }

@@ -440,10 +440,25 @@ func (ev *DefaultEvaluator) NewVariantsStepEvaluator(
 				StoreChunks: q.GetStoreChunks(),
 			},
 		})
+		// variant := e.Variants()[0]
+		// it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
+		// &logproto.SampleQueryRequest{
+		// Start: q.Start().Add(-logRange.Interval).Add(-logRange.Offset),
+		// End:   q.End().Add(-logRange.Offset).Add(time.Nanosecond),
+		// // intentionally send the vector for reducing labels.
+		// Selector: variant.String(),
+		// Shards:   q.Shards(),
+		// Plan: &plan.QueryPlan{
+		// AST: variant,
+		// },
+		// StoreChunks: q.GetStoreChunks(),
+		// },
+		// })
 		if err != nil {
 			return nil, err
 		}
 		return ev.newVariantsEvaluator(ctx, iter.NewPeekingSampleIterator(it), e, q)
+		// return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), variant.(*syntax.RangeAggregationExpr), q, 0)
 	default:
 		return nil, EvaluatorUnsupportedType(e, ev)
 	}
@@ -748,6 +763,7 @@ func newRangeAggEvaluator(
 			iter: iter,
 		}, nil
 	default:
+		// TODO(twhitney): this is the case we match
 		iter, err := newRangeVectorIterator(
 			it, expr,
 			expr.Left.Interval.Nanoseconds(),
@@ -1449,14 +1465,8 @@ func (ev *DefaultEvaluator) newVariantsEvaluator(
 		variantEvaluators[i] = variantEvaluator
 	}
 
-	logRange := expr.LogRange()
 	return &VariantsEvaluator{
-		selRange: logRange.Interval.Nanoseconds(),
-		step:     q.Step().Nanoseconds(),
-		end:      q.End().UnixNano(),
-		current:  q.Start().UnixNano() - q.Step().Nanoseconds(),
-		offset:   logRange.Offset.Nanoseconds(),
-
+		current:           q.Start().UnixNano() - q.Step().Nanoseconds(),
 		variantEvaluators: variantEvaluators,
 	}, nil
 }
@@ -1574,7 +1584,7 @@ func (it *bufferedVariantsIteratorWrapper) Next() bool {
 // VariantsEvaluator is responsible for making sure the window is loaded from all
 // evaluators for all variants
 type VariantsEvaluator struct {
-	selRange, step, end, current, offset int64
+	current int64
 
 	variantEvaluators []StepEvaluator
 	currentSamples    SampleVector
@@ -1592,58 +1602,25 @@ func (it *VariantsEvaluator) Explain(_ Node) {
 }
 
 func (it *VariantsEvaluator) Next() (bool, int64, StepResult) {
-	if !it.loadNextWindow() {
-		return false, it.current, SampleVector{}
-	}
-
-	return true, it.current, it.currentSamples
-}
-
-func (it *VariantsEvaluator) loadNextWindow() bool {
-	it.current += it.step
-	if it.current > it.end {
-		return false
-	}
-
-	rangeStart := it.current - it.selRange
-	rangeEnd := it.current
-
-	// store samples for each variant
 	samples := it.currentSamples[:0]
+	hasNext := false
+
 	for _, variantEval := range it.variantEvaluators {
-		samples = append(samples, it.loadSamplesForRange(variantEval, rangeStart, rangeEnd)...)
-	}
-
-	it.currentSamples = samples
-	return true
-}
-
-func (it *VariantsEvaluator) loadSamplesForRange(
-	variantEval StepEvaluator,
-	start, end int64,
-) []promql.Sample {
-	var samples []promql.Sample
-
-	// convert to milliseconds, as thats what the evalutors Next() will return
-	start = start / 1e+6
-	end = end / 1e+6
-
-	// Next() (ok bool, ts int64, r StepResult)
-	for ok, ts, result := variantEval.Next(); ok; {
-		// upper bound is inclusive for step evaluation
-		if ts > end {
-			break
-		}
-
-		// the lower bound of the range is not inclusive
-		if ts > start {
-			for _, sample := range result.SampleVector() {
-				samples = append(samples, sample)
+		if ok, ts, result := variantEval.Next(); ok {
+			hasNext = true
+			samples = append(samples, result.SampleVector()...)
+			if ts > it.current {
+				it.current = ts
 			}
 		}
 	}
 
-	return samples
+	if !hasNext {
+		return false, 0, SampleVector{}
+	}
+
+	it.currentSamples = samples
+	return true, it.current, it.currentSamples
 }
 
 func (it *VariantsEvaluator) Close() error {

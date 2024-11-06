@@ -436,7 +436,7 @@ type mockStore struct {
 }
 
 func (m *mockStore) SelectVariants(ctx context.Context, req logql.SelectVariantsParams) (iter.SampleIterator, error) {
-  panic("TODO(twhitney): SelectVariants not implemented on mockStore") // TODO: Implement
+	panic("TODO(twhitney): SelectVariants not implemented on mockStore") // TODO: Implement
 }
 
 func (s *mockStore) Put(ctx context.Context, chunks []chunk.Chunk) error {

@@ -464,9 +464,9 @@ type sampleBatchIterator struct {
 	curr iter.SampleIterator
 	err  error
 
-	ctx       context.Context
-	cancel    context.CancelFunc
-	extractor syntax.SampleExtractor
+	ctx        context.Context
+	cancel     context.CancelFunc
+	extractors []syntax.SampleExtractor
 }
 
 func newSampleBatchIterator(
@@ -476,16 +476,27 @@ func newSampleBatchIterator(
 	chunks []*LazyChunk,
 	batchSize int,
 	matchers []*labels.Matcher,
-	extractor syntax.SampleExtractor,
+	extractors []syntax.SampleExtractor,
 	start, end time.Time,
 	chunkFilterer chunk.Filterer,
 ) (iter.SampleIterator, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	return &sampleBatchIterator{
-		extractor:          extractor,
-		ctx:                ctx,
-		cancel:             cancel,
-		batchChunkIterator: newBatchChunkIterator(ctx, schemas, chunks, batchSize, logproto.FORWARD, start, end, metrics, matchers, chunkFilterer),
+		extractors: extractors,
+		ctx:        ctx,
+		cancel:     cancel,
+		batchChunkIterator: newBatchChunkIterator(
+			ctx,
+			schemas,
+			chunks,
+			batchSize,
+			logproto.FORWARD,
+			start,
+			end,
+			metrics,
+			matchers,
+			chunkFilterer,
+		),
 	}, nil
 }
 
@@ -564,8 +575,18 @@ func (it *sampleBatchIterator) buildIterators(chks map[model.Fingerprint][][]*La
 	result := make([]iter.SampleIterator, 0, len(chks))
 	for _, chunks := range chks {
 		if len(chunks) != 0 && len(chunks[0]) != 0 {
-			streamExtractor := it.extractor.ForStream(labels.NewBuilder(chunks[0][0].Chunk.Metric).Del(labels.MetricName).Labels())
-			iterator, err := it.buildHeapIterator(chunks, from, through, streamExtractor, nextChunk)
+			extractors := make([]log.StreamSampleExtractor, 0, len(it.extractors))
+			for _, extractor := range it.extractors {
+				extractors = append(
+					extractors,
+					extractor.ForStream(
+						labels.NewBuilder(chunks[0][0].Chunk.Metric).
+							Del(labels.MetricName).
+							Labels(),
+					),
+				)
+			}
+			iterator, err := it.buildHeapIterator(chunks, from, through, extractors, nextChunk)
 			if err != nil {
 				return nil, err
 			}
@@ -576,7 +597,7 @@ func (it *sampleBatchIterator) buildIterators(chks map[model.Fingerprint][][]*La
 	return result, nil
 }
 
-func (it *sampleBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through time.Time, streamExtractor log.StreamSampleExtractor, nextChunk *LazyChunk) (iter.SampleIterator, error) {
+func (it *sampleBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through time.Time, streamExtractors []log.StreamSampleExtractor, nextChunk *LazyChunk) (iter.SampleIterator, error) {
 	result := make([]iter.SampleIterator, 0, len(chks))
 
 	for i := range chks {
@@ -589,7 +610,7 @@ func (it *sampleBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, thro
 				it.ctx,
 				from,
 				through,
-				[]log.StreamSampleExtractor{streamExtractor},
+			  streamExtractors,
 				nextChunk,
 			)
 			if err != nil {
@@ -623,9 +644,10 @@ func newMultiExtractorSampleBatchIterator(
 	ctx, cancel := context.WithCancel(ctx)
 	return &multiExtractorSampleIterator{
 		sampleBatchIterator: &sampleBatchIterator{
-			extractor: nil,
-			ctx:       ctx,
-			cancel:    cancel,
+			extractors: nil,
+			ctx:        ctx,
+			cancel:     cancel,
+
 			batchChunkIterator: newBatchChunkIterator(
 				ctx,
 				schemas,
@@ -702,13 +724,13 @@ func (it *multiExtractorSampleIterator) buildIterators(
 							Labels(),
 					),
 				)
-
-				iterator, err := it.buildHeapIterator(chunks, from, through, extractors, nextChunk)
-				if err != nil {
-					return nil, err
-				}
-				result = append(result, iterator)
 			}
+
+			iterator, err := it.buildHeapIterator(chunks, from, through, extractors, nextChunk)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, iterator)
 		}
 	}
 
