@@ -7,7 +7,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/pkg/errors"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -103,26 +102,27 @@ func (o *ObjectClientAdapter) List(ctx context.Context, prefix, delimiter string
 
 	// If delimiter is empty we want to list all files
 	if delimiter == "" {
-		iterParams = append(iterParams, objstore.WithRecursiveIter)
+		iterParams = append(iterParams, objstore.WithRecursiveIter())
 	}
+	iterParams = append(iterParams, objstore.WithUpdatedAt())
 
-	err := o.bucket.Iter(ctx, prefix, func(objectKey string) error {
+	err := o.bucket.IterWithAttributes(ctx, prefix, func(attrs objstore.IterObjectAttributes) error {
 		// CommonPrefixes are keys that have the prefix and have the delimiter
 		// as a suffix
+		objectKey := attrs.Name
 		if delimiter != "" && strings.HasSuffix(objectKey, delimiter) {
 			commonPrefixes = append(commonPrefixes, client.StorageCommonPrefix(objectKey))
 			return nil
 		}
 
-		// TODO: remove this once thanos support IterWithAttributes
-		attr, err := o.bucket.Attributes(ctx, objectKey)
-		if err != nil {
-			return errors.Wrapf(err, "failed to get attributes for %s", objectKey)
+		lastModified, ok := attrs.LastModified()
+		if !ok {
+			level.Warn(o.logger).Log("msg", "failed to get last modified time for object", "object", objectKey)
 		}
 
 		storageObjects = append(storageObjects, client.StorageObject{
 			Key:        objectKey,
-			ModifiedAt: attr.LastModified,
+			ModifiedAt: lastModified,
 		})
 
 		return nil
