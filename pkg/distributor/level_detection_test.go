@@ -120,6 +120,14 @@ func Test_DetectLogLevels(t *testing.T) {
 }
 
 func Test_detectLogLevelFromLogEntry(t *testing.T) {
+	ld := &LevelDetector{
+		validationContext: validationContext{
+			discoverLogLevels:       true,
+			allowStructuredMetadata: true,
+			logLevelFields:          []string{"level", "LEVEL", "Level", "severity", "SEVERITY", "Severity", "lvl", "LVL", "Lvl"},
+		},
+	}
+
 	for _, tc := range []struct {
 		name             string
 		entry            logproto.Entry
@@ -271,7 +279,7 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			detectedLogLevel := detectLogLevelFromLogEntry(tc.entry, logproto.FromLabelAdaptersToLabels(tc.entry.StructuredMetadata))
+			detectedLogLevel := ld.detectLogLevelFromLogEntry(tc.entry, logproto.FromLabelAdaptersToLabels(tc.entry.StructuredMetadata))
 			require.Equal(t, tc.expectedLogLevel, detectedLogLevel)
 		})
 	}
@@ -289,9 +297,15 @@ func Benchmark_extractLogLevelFromLogLine(b *testing.B) {
 		"Wm3 S7if5qCXPzvuMZ2 gNHdst Z39s9uNc58QBDeYRW umyIF BDqEdqhE tAs2gidkqee3aux8b NLDb7 ZZLekc0cQZ GUKQuBg2pL2y1S " +
 		"RJtBuW ABOqQHLSlNuUw ZlM2nGS2 jwA7cXEOJhY 3oPv4gGAz  Uqdre16MF92C06jOH dayqTCK8XmIilT uvgywFSfNadYvRDQa " +
 		"iUbswJNcwqcr6huw LAGrZS8NGlqqzcD2wFU rm Uqcrh3TKLUCkfkwLm  5CIQbxMCUz boBrEHxvCBrUo YJoF2iyif4xq3q yk "
-
+	ld := &LevelDetector{
+		validationContext: validationContext{
+			discoverLogLevels:       true,
+			allowStructuredMetadata: true,
+			logLevelFields:          []string{"level", "LEVEL", "Level", "severity", "SEVERITY", "Severity", "lvl", "LVL", "Lvl"},
+		},
+	}
 	for i := 0; i < b.N; i++ {
-		level := extractLogLevelFromLogLine(logLine)
+		level := ld.extractLogLevelFromLogLine(logLine)
 		require.Equal(b, constants.LogLevelUnknown, level)
 	}
 }
@@ -299,17 +313,30 @@ func Benchmark_extractLogLevelFromLogLine(b *testing.B) {
 func Benchmark_optParseExtractLogLevelFromLogLineJson(b *testing.B) {
 	logLine := `{"msg": "something" , "level": "error", "id": "1"}`
 
+	ld := &LevelDetector{
+		validationContext: validationContext{
+			discoverLogLevels:       true,
+			allowStructuredMetadata: true,
+			logLevelFields:          []string{"level", "LEVEL", "Level", "severity", "SEVERITY", "Severity", "lvl", "LVL", "Lvl"},
+		},
+	}
 	for i := 0; i < b.N; i++ {
-		level := extractLogLevelFromLogLine(logLine)
+		level := ld.extractLogLevelFromLogLine(logLine)
 		require.Equal(b, constants.LogLevelError, level)
 	}
 }
 
 func Benchmark_optParseExtractLogLevelFromLogLineLogfmt(b *testing.B) {
 	logLine := `FOO=bar MSG="message with keyword error but it should not get picked up" LEVEL=inFO`
-
+	ld := &LevelDetector{
+		validationContext: validationContext{
+			discoverLogLevels:       true,
+			allowStructuredMetadata: true,
+			logLevelFields:          []string{"level", "LEVEL", "Level", "severity", "SEVERITY", "Severity", "lvl", "LVL", "Lvl"},
+		},
+	}
 	for i := 0; i < b.N; i++ {
-		level := extractLogLevelFromLogLine(logLine)
+		level := ld.extractLogLevelFromLogLine(logLine)
 		require.Equal(b, constants.LogLevelInfo, level)
 	}
 }

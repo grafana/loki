@@ -17,10 +17,20 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
-var allowedLabelsForLevel = map[string]struct{}{
-	"level": {}, "LEVEL": {}, "Level": {},
-	"severity": {}, "SEVERITY": {}, "Severity": {},
-	"lvl": {}, "LVL": {}, "Lvl": {},
+func (l *LevelDetector) allowedLabelsForLevel() map[string]struct{} {
+	allowedFields := l.validationContext.logLevelFields
+	if len(allowedFields) == 0 {
+		return map[string]struct{}{
+			"level": {}, "LEVEL": {}, "Level": {},
+			"severity": {}, "SEVERITY": {}, "Severity": {},
+			"lvl": {}, "LVL": {}, "Lvl": {},
+		}
+	}
+	allowedFieldsMap := make(map[string]struct{}, len(allowedFields))
+	for _, field := range allowedFields {
+		allowedFieldsMap[field] = struct{}{}
+	}
+	return allowedFieldsMap
 }
 
 type LevelDetector struct {
@@ -32,14 +42,14 @@ func (l *LevelDetector) shouldDiscoverLogLevels() bool {
 }
 
 func (l *LevelDetector) extractLogLevel(labels labels.Labels, structuredMetadata labels.Labels, entry logproto.Entry) (logproto.LabelAdapter, bool) {
-	levelFromLabel, hasLevelLabel := hasAnyLevelLabels(labels)
+	levelFromLabel, hasLevelLabel := l.hasAnyLevelLabels(labels)
 	var logLevel string
 	if hasLevelLabel {
 		logLevel = levelFromLabel
-	} else if levelFromMetadata, ok := hasAnyLevelLabels(structuredMetadata); ok {
+	} else if levelFromMetadata, ok := l.hasAnyLevelLabels(structuredMetadata); ok {
 		logLevel = levelFromMetadata
 	} else {
-		logLevel = detectLogLevelFromLogEntry(entry, structuredMetadata)
+		logLevel = l.detectLogLevelFromLogEntry(entry, structuredMetadata)
 	}
 
 	if logLevel == "" {
@@ -51,16 +61,16 @@ func (l *LevelDetector) extractLogLevel(labels labels.Labels, structuredMetadata
 	}, true
 }
 
-func hasAnyLevelLabels(l labels.Labels) (string, bool) {
-	for lbl := range allowedLabelsForLevel {
-		if l.Has(lbl) {
-			return l.Get(lbl), true
+func (l *LevelDetector) hasAnyLevelLabels(labels labels.Labels) (string, bool) {
+	for lbl := range l.allowedLabelsForLevel() {
+		if labels.Has(lbl) {
+			return labels.Get(lbl), true
 		}
 	}
 	return "", false
 }
 
-func detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.Labels) string {
+func (l *LevelDetector) detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.Labels) string {
 	// otlp logs have a severity number, using which we are defining the log levels.
 	// Significance of severity number is explained in otel docs here https://opentelemetry.io/docs/specs/otel/logs/data-model/#field-severitynumber
 	if otlpSeverityNumberTxt := structuredMetadata.Get(push.OTLPSeverityNumber); otlpSeverityNumberTxt != "" {
@@ -86,16 +96,16 @@ func detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.
 		return constants.LogLevelUnknown
 	}
 
-	return extractLogLevelFromLogLine(entry.Line)
+	return l.extractLogLevelFromLogLine(entry.Line)
 }
 
-func extractLogLevelFromLogLine(log string) string {
+func (l *LevelDetector) extractLogLevelFromLogLine(log string) string {
 	logSlice := unsafe.Slice(unsafe.StringData(log), len(log))
 	var v []byte
 	if isJSON(log) {
-		v = getValueUsingJSONParser(logSlice)
+		v = l.getValueUsingJSONParser(logSlice)
 	} else {
-		v = getValueUsingLogfmtParser(logSlice)
+		v = l.getValueUsingLogfmtParser(logSlice)
 	}
 
 	switch {
@@ -118,7 +128,7 @@ func extractLogLevelFromLogLine(log string) string {
 	}
 }
 
-func getValueUsingLogfmtParser(line []byte) []byte {
+func (l *LevelDetector) getValueUsingLogfmtParser(line []byte) []byte {
 	equalIndex := bytes.Index(line, []byte("="))
 	if len(line) == 0 || equalIndex == -1 {
 		return nil
@@ -126,15 +136,15 @@ func getValueUsingLogfmtParser(line []byte) []byte {
 
 	d := logfmt.NewDecoder(line)
 	for !d.EOL() && d.ScanKeyval() {
-		if _, ok := allowedLabelsForLevel[string(d.Key())]; ok {
-			return (d.Value())
+		if _, ok := l.allowedLabelsForLevel()[string(d.Key())]; ok {
+			return d.Value()
 		}
 	}
 	return nil
 }
 
-func getValueUsingJSONParser(log []byte) []byte {
-	for allowedLabel := range allowedLabelsForLevel {
+func (l *LevelDetector) getValueUsingJSONParser(log []byte) []byte {
+	for allowedLabel := range l.allowedLabelsForLevel() {
 		l, _, _, err := jsonparser.Get(log, allowedLabel)
 		if err == nil {
 			return l
