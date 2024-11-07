@@ -778,6 +778,10 @@ func (e *ConcatStepEvaluator) Error() error {
 	}
 }
 
+func (e *ConcatStepEvaluator) Mode() EvaluatorMode {
+	return ModeDefault
+}
+
 // NewResultStepEvaluator coerces a downstream vector or matrix into a StepEvaluator
 func NewResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator, error) {
 	var (

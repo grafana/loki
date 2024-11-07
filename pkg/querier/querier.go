@@ -210,8 +210,28 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 	return iter.NewMergeEntryIterator(ctx, iters, params.Direction), nil
 }
 
+// canSkipLogLines Determines whether lines can be skipped in the new chunk format V5.
+func canSkipLogLines(expr syntax.SampleExpr) bool {
+	switch e := expr.(type) {
+	case *syntax.RangeAggregationExpr:
+		switch e.Operation {
+		case syntax.OpRangeTypeCount:
+			// can also be syntax.OpRangeTypeRate
+			return true
+		}
+	case *syntax.VectorAggregationExpr:
+		return canSkipLogLines(e.Left)
+	}
+
+	return false
+}
+
 func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
 	var err error
+	expr, err := params.Expr()
+	if canSkipLogLines(expr) {
+		params.EvaluatorMode = logql.ModeMetricsOnly
+	}
 	params.Start, params.End, err = q.validateQueryRequest(ctx, params)
 	if err != nil {
 		return nil, err
@@ -231,6 +251,7 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 		queryRequestCopy := *params.SampleQueryRequest
 		newParams := logql.SelectSampleParams{
 			SampleQueryRequest: &queryRequestCopy,
+			EvaluatorMode:      params.EvaluatorMode,
 		}
 		newParams.Start = ingesterQueryInterval.start
 		newParams.End = ingesterQueryInterval.end

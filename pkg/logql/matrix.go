@@ -61,3 +61,7 @@ func (m *MatrixStepEvaluator) Next() (bool, int64, StepResult) {
 func (m *MatrixStepEvaluator) Close() error { return nil }
 
 func (m *MatrixStepEvaluator) Error() error { return nil }
+
+func (m *MatrixStepEvaluator) Mode() EvaluatorMode {
+	return ModeDefault
+}

@@ -48,6 +48,7 @@ type HeadBlock interface {
 		mint,
 		maxt int64,
 		extractor log.StreamSampleExtractor,
+		_ bool,
 	) iter.SampleIterator
 	Format() HeadBlockFmt
 	CompressedBlock(pool compression.WriterPool) (block, int, error)
@@ -327,6 +328,7 @@ func (hb *unorderedHeadBlock) SampleIterator(
 	mint,
 	maxt int64,
 	extractor log.StreamSampleExtractor,
+	_ bool,
 ) iter.SampleIterator {
 	series := map[string]*logproto.Series{}
 	baseHash := extractor.BaseLabels().Hash()

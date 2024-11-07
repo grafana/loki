@@ -180,15 +180,15 @@ func (b *organisedHeadBlock) serialiseTimestamps(pool compression.WriterPool) ([
 
 // todo (shantanu): rename these iterators to something meaningful
 // newOrganizedSampleIterator iterates over new block format v5.
-func newOrganizedSampleIterator(ctx context.Context, pool compression.ReaderPool, b []byte, format byte, extractor log.StreamSampleExtractor, symbolizer *symbolizer, sm []byte, ts []byte) iter.SampleIterator {
+func newOrganizedSampleIterator(ctx context.Context, pool compression.ReaderPool, b []byte, format byte, extractor log.StreamSampleExtractor, symbolizer *symbolizer, sm []byte, ts []byte, queryMetricsOnly bool) iter.SampleIterator {
 	return &sampleOrganizedBufferedIterator{
-		organizedBufferedIterator: newOrganizedBufferedIterator(ctx, pool, b, format, symbolizer, sm, ts),
+		organizedBufferedIterator: newOrganizedBufferedIterator(ctx, pool, b, format, symbolizer, sm, ts, queryMetricsOnly),
 		extractor:                 extractor,
 		stats:                     stats.FromContext(ctx),
 	}
 }
 
-func newOrganizedBufferedIterator(ctx context.Context, pool compression.ReaderPool, b []byte, format byte, symbolizer *symbolizer, sm []byte, ts []byte) *organizedBufferedIterator {
+func newOrganizedBufferedIterator(ctx context.Context, pool compression.ReaderPool, b []byte, format byte, symbolizer *symbolizer, sm []byte, ts []byte, queryMetricsOnly bool) *organizedBufferedIterator {
 	st := stats.FromContext(ctx)
 	st.AddCompressedBytes(int64(len(b)))
 	return &organizedBufferedIterator{
@@ -198,9 +198,10 @@ func newOrganizedBufferedIterator(ctx context.Context, pool compression.ReaderPo
 		pool:       pool,
 		symbolizer: symbolizer,
 
-		format:  format,
-		tsBytes: ts,
-		smBytes: sm,
+		format:           format,
+		tsBytes:          ts,
+		smBytes:          sm,
+		queryMetricsOnly: queryMetricsOnly,
 	}
 }
 
@@ -236,11 +237,12 @@ type organizedBufferedIterator struct {
 	smValidBytes int
 
 	// Buffers and readers for timestamp bytes
-	tsBytes        []byte
-	tsReadBufValid int
-	tsReadBuf      [binary.MaxVarintLen64]byte
-	tsReader       io.Reader
-	tsBuf          []byte
+	tsBytes          []byte
+	tsReadBufValid   int
+	tsReadBuf        [binary.MaxVarintLen64]byte
+	tsReader         io.Reader
+	tsBuf            []byte
+	queryMetricsOnly bool
 }
 
 func (e *organizedBufferedIterator) Next() bool {
@@ -286,7 +288,7 @@ func (e *organizedBufferedIterator) Next() bool {
 		e.Close()
 		return false
 	}
-	structuredMetadata, ok := e.nextMetadata()
+	structuredMetadata, _ := e.nextMetadata()
 	// there can be cases when there's no structured metadata?
 	// if !ok {
 	// 	e.Close()
@@ -301,8 +303,7 @@ func (e *organizedBufferedIterator) Next() bool {
 	return true
 }
 
-func (e *organizedBufferedIterator) nextTs() (int64, bool) {
-	var ts int64
+func (e *organizedBufferedIterator) nextTs() (ts int64, ok bool) {
 	var tsw, lastAttempt int
 
 	for tsw == 0 {
@@ -333,6 +334,9 @@ func (e *organizedBufferedIterator) nextTs() (int64, bool) {
 }
 
 func (e *organizedBufferedIterator) nextLine() ([]byte, bool) {
+	if e.queryMetricsOnly {
+		return []byte{}, true
+	}
 	var lw, lineSize, lastAttempt int
 
 	for lw == 0 {
@@ -557,7 +561,7 @@ func (e *entryOrganizedBufferedIterator) Close() error {
 
 func newEntryOrganizedBufferedIterator(ctx context.Context, pool compression.ReaderPool, b []byte, pipeline log.StreamPipeline, format byte, symbolizer *symbolizer, sm []byte, ts []byte) iter.EntryIterator {
 	return &entryOrganizedBufferedIterator{
-		organizedBufferedIterator: newOrganizedBufferedIterator(ctx, pool, b, format, symbolizer, sm, ts),
+		organizedBufferedIterator: newOrganizedBufferedIterator(ctx, pool, b, format, symbolizer, sm, ts, false),
 		pipeline:                  pipeline,
 		stats:                     stats.FromContext(ctx),
 	}
@@ -569,8 +573,9 @@ type sampleOrganizedBufferedIterator struct {
 	extractor log.StreamSampleExtractor
 	stats     *stats.Context
 
-	cur        logproto.Sample
-	currLabels log.LabelsResult
+	cur              logproto.Sample
+	currLabels       log.LabelsResult
+	queryMetricsOnly bool
 }
 
 func (s *sampleOrganizedBufferedIterator) At() logproto.Sample {

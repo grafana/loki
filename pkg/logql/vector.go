@@ -94,3 +94,7 @@ func (e *VectorStepEvaluator) Close() error {
 func (e *VectorStepEvaluator) Error() error {
 	return nil
 }
+
+func (e *VectorStepEvaluator) Mode() EvaluatorMode {
+	return ModeDefault
+}

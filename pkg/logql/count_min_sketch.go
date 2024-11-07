@@ -278,6 +278,10 @@ func (e *countMinSketchVectorAggEvaluator) Next() (bool, int64, StepResult) {
 	return next, ts, result
 }
 
+func (e *countMinSketchVectorAggEvaluator) Mode() EvaluatorMode {
+	return ModeDefault
+}
+
 func (e *countMinSketchVectorAggEvaluator) Explain(parent Node) {
 	b := parent.Child("CountMinSketchVectorAgg")
 	e.nextEvaluator.Explain(b)
@@ -330,3 +334,5 @@ func (e *CountMinSketchVectorStepEvaluator) Next() (bool, int64, StepResult) {
 func (*CountMinSketchVectorStepEvaluator) Close() error { return nil }
 
 func (*CountMinSketchVectorStepEvaluator) Error() error { return nil }
+
+func (*CountMinSketchVectorStepEvaluator) Mode() EvaluatorMode { return ModeDefault }

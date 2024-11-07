@@ -347,6 +347,8 @@ func (*emptyEvaluator) Error() error {
 
 func (*emptyEvaluator) Explain(Node) {}
 
+func (*emptyEvaluator) Mode() EvaluatorMode { return ModeDefault }
+
 // returnVectorEvaluator returns elements of vector
 // passed in, everytime it's `Next()` is called. Used for testing.
 type returnVectorEvaluator struct {
@@ -369,6 +371,9 @@ func (*returnVectorEvaluator) Explain(Node) {
 
 }
 
+func (*returnVectorEvaluator) Mode() EvaluatorMode {
+	return ModeDefault
+}
 func newReturnVectorEvaluator(vec []float64) *returnVectorEvaluator {
 	testTime := time.Now().Unix()
 

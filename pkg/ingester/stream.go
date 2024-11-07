@@ -627,7 +627,7 @@ func (s *stream) SampleIterator(ctx context.Context, statsCtx *stats.Context, fr
 		}
 		lastMax = maxt
 
-		if itr := c.chunk.SampleIterator(ctx, from, through, extractor); itr != nil {
+		if itr := c.chunk.SampleIterator(ctx, from, through, extractor, false); itr != nil {
 			iterators = append(iterators, itr)
 		}
 	}
