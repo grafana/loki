@@ -60,30 +60,39 @@ type chunkInfo struct {
 	tsdbFormat int
 }
 
-type tsdbWithId struct {
-	data []byte
-	id   tsdb.Identifier
+type tsdbWithID struct {
+	bucket model.Time
+	data   []byte
+	id     tsdb.Identifier
 }
 
 // Create builds a TSDB from the current state using the provided mkTsdb function
-func (m *TsdbCreator) create(ctx context.Context, nodeName string, tableRanges []config.TableRange) ([]tsdbWithId, error) {
+func (m *TsdbCreator) create(ctx context.Context, nodeName string, tableRanges []config.TableRange) ([]tsdbWithID, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	periods := make(map[string]*tsdb.Builder)
+	type key struct {
+		bucket model.Time
+		prefix string
+	}
+	periods := make(map[key]*tsdb.Builder)
 
 	if err := m.heads.forAll(
 		func(user string, ls labels.Labels, fp uint64, chks index.ChunkMetas) error {
 			// chunks may overlap index period bounds, in which case they're written to multiple
-			pds := make(map[string]chunkInfo)
+			pds := make(map[key]chunkInfo)
 			for _, chk := range chks {
 				idxBuckets := tsdb.IndexBuckets(chk.From(), chk.Through(), tableRanges)
 
 				for _, bucket := range idxBuckets {
-					chkinfo := pds[bucket.Prefix]
+					k := key{
+						bucket: bucket.BucketStart,
+						prefix: bucket.Prefix,
+					}
+					chkinfo := pds[k]
 					chkinfo.chunkMetas = append(chkinfo.chunkMetas, chk)
 					chkinfo.tsdbFormat = bucket.TsdbFormat
-					pds[bucket.Prefix] = chkinfo
+					pds[k] = chkinfo
 				}
 			}
 
@@ -118,7 +127,7 @@ func (m *TsdbCreator) create(ctx context.Context, nodeName string, tableRanges [
 	}
 
 	now := time.Now()
-	res := make([]tsdbWithId, 0, len(periods))
+	res := make([]tsdbWithID, 0, len(periods))
 
 	for p, b := range periods {
 
@@ -137,7 +146,7 @@ func (m *TsdbCreator) create(ctx context.Context, nodeName string, tableRanges [
 						NodeName: nodeName,
 						Ts:       now,
 					},
-					p,
+					p.prefix,
 					"",
 				)
 			},
@@ -153,9 +162,10 @@ func (m *TsdbCreator) create(ctx context.Context, nodeName string, tableRanges [
 			"dst", dst.Path(),
 			"duration", time.Since(start),
 		)
-		res = append(res, tsdbWithId{
-			id:   dst,
-			data: data,
+		res = append(res, tsdbWithID{
+			bucket: p.bucket,
+			id:     dst,
+			data:   data,
 		})
 	}
 
@@ -283,7 +293,7 @@ func newUploader(client client.ObjectClient) *uploader {
 	return &uploader{c: client}
 }
 
-func (u *uploader) Put(ctx context.Context, db tsdbWithId) error {
+func (u *uploader) Put(ctx context.Context, db tsdbWithID) error {
 	reader := bytes.NewReader(db.data)
 	gzipPool := compression.GetWriterPool(compression.GZIP)
 	buf := bytes.NewBuffer(make([]byte, 0, 1<<20))

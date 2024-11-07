@@ -301,8 +301,9 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier, legacy boo
 }
 
 type IndexInfo struct {
-	Prefix     string
-	TsdbFormat int
+	BucketStart model.Time
+	Prefix      string
+	TsdbFormat  int
 }
 
 func IndexBuckets(from, through model.Time, tableRanges config.TableRanges) (res []IndexInfo) {
@@ -312,7 +313,11 @@ func IndexBuckets(from, through model.Time, tableRanges config.TableRanges) (res
 		cfg := tableRanges.ConfigForTableNumber(cur)
 		if cfg != nil {
 			tsdbFormat, _ := cfg.TSDBFormat() // Ignoring error, as any valid period config should return valid format.
-			res = append(res, IndexInfo{Prefix: cfg.IndexTables.Prefix + strconv.Itoa(int(cur)), TsdbFormat: tsdbFormat})
+			res = append(res, IndexInfo{
+				BucketStart: model.TimeFromUnixNano(cur * int64(config.ObjectStorageIndexRequiredPeriod)),
+				Prefix:      cfg.IndexTables.Prefix + strconv.Itoa(int(cur)),
+				TsdbFormat:  tsdbFormat,
+			})
 		}
 	}
 	if len(res) == 0 {

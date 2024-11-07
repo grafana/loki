@@ -1807,10 +1807,16 @@ func (t *Loki) initBlockBuilder() (services.Service, error) {
 		return nil, err
 	}
 
+	objectStore, err := objstore.New(t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.ClientMetrics)
+	if err != nil {
+		return nil, err
+	}
+
 	bb, err := blockbuilder.NewBlockBuilder(
 		t.Cfg.BlockBuilder,
 		t.Cfg.SchemaConfig.Configs,
 		t.Store,
+		objectStore,
 		logger,
 		prometheus.DefaultRegisterer,
 		blockbuilder.NewPartitionJobController(

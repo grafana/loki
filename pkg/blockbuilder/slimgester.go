@@ -20,8 +20,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/ingester"
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/objstore"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
@@ -96,7 +96,8 @@ type BlockBuilder struct {
 	instances    map[string]*instance
 	instancesMtx sync.RWMutex
 
-	store stores.ChunkWriter
+	store    stores.ChunkWriter
+	objStore *objstore.Multi
 
 	jobController *PartitionJobController
 }
@@ -105,6 +106,7 @@ func NewBlockBuilder(
 	cfg Config,
 	periodicConfigs []config.PeriodConfig,
 	store stores.ChunkWriter,
+	objStore *objstore.Multi,
 	logger log.Logger,
 	reg prometheus.Registerer,
 	jobController *PartitionJobController,
@@ -117,6 +119,7 @@ func NewBlockBuilder(
 		logger:          logger,
 		instances:       make(map[string]*instance),
 		store:           store,
+		objStore:        objStore,
 		jobController:   jobController,
 	}
 
@@ -288,7 +291,6 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 		tabelRanges []config.TableRange // from periodconfigs
 		// TODO(owen-d): build uploaders based on table ranges, which can use different
 		// object clients
-		c client.ObjectClient
 	)
 
 	built, err := indexer.create(ctx, nodeName, tabelRanges)
@@ -297,7 +299,11 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 	}
 
 	for _, db := range built {
-		u := newUploader(c)
+		client, err := i.objStore.GetStoreFor(db.bucket)
+		if err != nil {
+			return false, err
+		}
+		u := newUploader(client)
 		if err := u.Put(ctx, db); err != nil {
 			level.Error(util_log.Logger).Log(
 				"msg", "failed to upload tsdb",
