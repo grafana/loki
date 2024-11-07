@@ -2310,6 +2310,8 @@ indexGateway:
   maxUnavailable: null
   # -- Node selector for index-gateway pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for index-gateway pods
+  topologySpreadConstraints: []
   # -- Tolerations for index-gateway pods
   tolerations: []
   persistence:
