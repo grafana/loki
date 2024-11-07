@@ -22,7 +22,7 @@ import (
 	v1 "k8s.io/api/admissionregistration/v1"
 )
 
-// RuleApplyConfiguration represents a declarative configuration of the Rule type for use
+// RuleApplyConfiguration represents an declarative configuration of the Rule type for use
 // with apply.
 type RuleApplyConfiguration struct {
 	APIGroups   []string      `json:"apiGroups,omitempty"`
@@ -31,7 +31,7 @@ type RuleApplyConfiguration struct {
 	Scope       *v1.ScopeType `json:"scope,omitempty"`
 }
 
-// RuleApplyConfiguration constructs a declarative configuration of the Rule type for use with
+// RuleApplyConfiguration constructs an declarative configuration of the Rule type for use with
 // apply.
 func Rule() *RuleApplyConfiguration {
 	return &RuleApplyConfiguration{}

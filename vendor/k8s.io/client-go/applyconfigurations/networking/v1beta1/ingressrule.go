@@ -18,14 +18,14 @@ limitations under the License.
 
 package v1beta1
 
-// IngressRuleApplyConfiguration represents a declarative configuration of the IngressRule type for use
+// IngressRuleApplyConfiguration represents an declarative configuration of the IngressRule type for use
 // with apply.
 type IngressRuleApplyConfiguration struct {
 	Host                               *string `json:"host,omitempty"`
-	IngressRuleValueApplyConfiguration `json:",inline"`
+	IngressRuleValueApplyConfiguration `json:",omitempty,inline"`
 }
 
-// IngressRuleApplyConfiguration constructs a declarative configuration of the IngressRule type for use with
+// IngressRuleApplyConfiguration constructs an declarative configuration of the IngressRule type for use with
 // apply.
 func IngressRule() *IngressRuleApplyConfiguration {
 	return &IngressRuleApplyConfiguration{}

@@ -7,6 +7,13 @@ import (
 	"math"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+
+	"github.com/grafana/loki/pkg/push"
+
+	"github.com/grafana/loki/v3/pkg/loghttp"
+
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
@@ -17,16 +24,13 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	grpc_metadata "google.golang.org/grpc/metadata"
 
-	"github.com/grafana/loki/pkg/push"
+	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
 
 	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/iter"
-	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
-	"github.com/grafana/loki/v3/pkg/logql/log"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
@@ -638,8 +642,8 @@ func mockLogfmtStreamWithLabels(_ int, quantity int, lbls string) logproto.Strea
 		streamLabels = labels.EmptyLabels()
 	}
 
-	lblBuilder := log.NewBaseLabelsBuilder().ForLabels(streamLabels, streamLabels.Hash())
-	logFmtParser := log.NewLogfmtParser(false, false)
+	lblBuilder := logql_log.NewBaseLabelsBuilder().ForLabels(streamLabels, streamLabels.Hash())
+	logFmtParser := logql_log.NewLogfmtParser(false, false)
 
 	// used for detected fields queries which are always BACKWARD
 	for i := quantity; i > 0; i-- {
@@ -698,8 +702,8 @@ func mockLogfmtStreamWithLabelsAndStructuredMetadata(
 		streamLabels = labels.EmptyLabels()
 	}
 
-	lblBuilder := log.NewBaseLabelsBuilder().ForLabels(streamLabels, streamLabels.Hash())
-	logFmtParser := log.NewLogfmtParser(false, false)
+	lblBuilder := logql_log.NewBaseLabelsBuilder().ForLabels(streamLabels, streamLabels.Hash())
+	logFmtParser := logql_log.NewLogfmtParser(false, false)
 
 	for i := quantity; i > 0; i-- {
 		line := fmt.Sprintf(`message="line %d" count=%d fake=true`, i, i)

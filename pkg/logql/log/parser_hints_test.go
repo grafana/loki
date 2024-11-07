@@ -4,10 +4,11 @@ package log_test
 import (
 	"testing"
 
+	"github.com/grafana/loki/v3/pkg/logql/log"
+
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 

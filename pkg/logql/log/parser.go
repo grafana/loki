@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/log/jsonexpr"
 	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
 	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 
 	"github.com/grafana/regexp"
 	jsoniter "github.com/json-iterator/go"
@@ -26,8 +27,6 @@ const (
 	// How much stack space to allocate for unescaping JSON strings; if a string longer
 	// than this needs to be escaped, it will result in a heap allocation
 	unescapeStackBufSize = 64
-	// PackedEntryKey is a special JSON key used by the pack promtail stage and unpack parser
-	PackedEntryKey = "_entry"
 )
 
 var (
@@ -370,7 +369,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	if l.strict && l.dec.Err() != nil {
 		addErrLabel(errLogfmt, l.dec.Err(), lbs)
 
-		if !parserHints.ShouldContinueParsingLine(ErrorLabel, lbs) {
+		if !parserHints.ShouldContinueParsingLine(logqlmodel.ErrorLabel, lbs) {
 			return line, false
 		}
 		return line, true
@@ -709,7 +708,7 @@ func addErrLabel(msg string, err error, lbs *LabelsBuilder) {
 	}
 
 	if lbs.ParserLabelHints().PreserveError() {
-		lbs.Set(ParsedLabel, PreserveErrorLabel, "true")
+		lbs.Set(ParsedLabel, logqlmodel.PreserveErrorLabel, "true")
 	}
 }
 
@@ -718,7 +717,7 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 	err := jsonparser.ObjectEach(entry, func(key, value []byte, typ jsonparser.ValueType, _ int) error {
 		switch typ {
 		case jsonparser.String:
-			if unsafeGetString(key) == PackedEntryKey {
+			if unsafeGetString(key) == logqlmodel.PackedEntryKey {
 				// Inlined bytes escape to save allocs
 				var stackbuf [unescapeStackBufSize]byte // stack-allocated array for allocation-free unescaping of small strings
 				bU, err := jsonparser.Unescape(value, stackbuf[:])
@@ -752,6 +751,7 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 
 		return nil
 	})
+
 	if err != nil {
 		return nil, err
 	}

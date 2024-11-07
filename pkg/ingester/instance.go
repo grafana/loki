@@ -909,7 +909,7 @@ func (i *instance) forMatchingStreams(
 	shard *logql.Shard,
 	fn func(*stream) error,
 ) error {
-	filters, matchers := syntax.SplitFiltersAndMatchers(matchers)
+	filters, matchers := util.SplitFiltersAndMatchers(matchers)
 	ids, err := i.index.Lookup(ts, matchers, shard)
 	if err != nil {
 		return err

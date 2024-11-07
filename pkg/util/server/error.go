@@ -14,7 +14,6 @@ import (
 	"github.com/gogo/googleapis/google/rpc"
 	"github.com/gogo/status"
 
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	storage_errors "github.com/grafana/loki/v3/pkg/storage/errors"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -84,10 +83,10 @@ func ClientHTTPStatusAndError(err error) (int, error) {
 	case errors.As(err, &queryErr):
 		return http.StatusBadRequest, err
 	case errors.Is(err, logqlmodel.ErrLimit) ||
-		errors.Is(err, syntax.ErrParse) ||
-		errors.Is(err, syntax.ErrPipeline) ||
+		errors.Is(err, logqlmodel.ErrParse) ||
+		errors.Is(err, logqlmodel.ErrPipeline) ||
 		errors.Is(err, logqlmodel.ErrBlocked) ||
-		errors.Is(err, syntax.ErrParseMatchers) ||
+		errors.Is(err, logqlmodel.ErrParseMatchers) ||
 		errors.Is(err, logqlmodel.ErrUnsupportedSyntaxForInstantQuery):
 		return http.StatusBadRequest, err
 	case errors.Is(err, user.ErrNoOrgID):

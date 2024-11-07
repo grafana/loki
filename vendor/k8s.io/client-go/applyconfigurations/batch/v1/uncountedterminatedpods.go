@@ -22,14 +22,14 @@ import (
 	types "k8s.io/apimachinery/pkg/types"
 )
 
-// UncountedTerminatedPodsApplyConfiguration represents a declarative configuration of the UncountedTerminatedPods type for use
+// UncountedTerminatedPodsApplyConfiguration represents an declarative configuration of the UncountedTerminatedPods type for use
 // with apply.
 type UncountedTerminatedPodsApplyConfiguration struct {
 	Succeeded []types.UID `json:"succeeded,omitempty"`
 	Failed    []types.UID `json:"failed,omitempty"`
 }
 
-// UncountedTerminatedPodsApplyConfiguration constructs a declarative configuration of the UncountedTerminatedPods type for use with
+// UncountedTerminatedPodsApplyConfiguration constructs an declarative configuration of the UncountedTerminatedPods type for use with
 // apply.
 func UncountedTerminatedPods() *UncountedTerminatedPodsApplyConfiguration {
 	return &UncountedTerminatedPodsApplyConfiguration{}

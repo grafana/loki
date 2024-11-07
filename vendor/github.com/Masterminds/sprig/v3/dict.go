@@ -1,7 +1,7 @@
 package sprig
 
 import (
-	"dario.cat/mergo"
+	"github.com/imdario/mergo"
 	"github.com/mitchellh/copystructure"
 )
 

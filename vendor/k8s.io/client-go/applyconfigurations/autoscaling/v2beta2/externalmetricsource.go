@@ -18,14 +18,14 @@ limitations under the License.
 
 package v2beta2
 
-// ExternalMetricSourceApplyConfiguration represents a declarative configuration of the ExternalMetricSource type for use
+// ExternalMetricSourceApplyConfiguration represents an declarative configuration of the ExternalMetricSource type for use
 // with apply.
 type ExternalMetricSourceApplyConfiguration struct {
 	Metric *MetricIdentifierApplyConfiguration `json:"metric,omitempty"`
 	Target *MetricTargetApplyConfiguration     `json:"target,omitempty"`
 }
 
-// ExternalMetricSourceApplyConfiguration constructs a declarative configuration of the ExternalMetricSource type for use with
+// ExternalMetricSourceApplyConfiguration constructs an declarative configuration of the ExternalMetricSource type for use with
 // apply.
 func ExternalMetricSource() *ExternalMetricSourceApplyConfiguration {
 	return &ExternalMetricSourceApplyConfiguration{}

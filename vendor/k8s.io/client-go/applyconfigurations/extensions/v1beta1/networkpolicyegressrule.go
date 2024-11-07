@@ -18,14 +18,14 @@ limitations under the License.
 
 package v1beta1
 
-// NetworkPolicyEgressRuleApplyConfiguration represents a declarative configuration of the NetworkPolicyEgressRule type for use
+// NetworkPolicyEgressRuleApplyConfiguration represents an declarative configuration of the NetworkPolicyEgressRule type for use
 // with apply.
 type NetworkPolicyEgressRuleApplyConfiguration struct {
 	Ports []NetworkPolicyPortApplyConfiguration `json:"ports,omitempty"`
 	To    []NetworkPolicyPeerApplyConfiguration `json:"to,omitempty"`
 }
 
-// NetworkPolicyEgressRuleApplyConfiguration constructs a declarative configuration of the NetworkPolicyEgressRule type for use with
+// NetworkPolicyEgressRuleApplyConfiguration constructs an declarative configuration of the NetworkPolicyEgressRule type for use with
 // apply.
 func NetworkPolicyEgressRule() *NetworkPolicyEgressRuleApplyConfiguration {
 	return &NetworkPolicyEgressRuleApplyConfiguration{}

@@ -18,7 +18,7 @@ limitations under the License.
 
 package v1
 
-// SecretVolumeSourceApplyConfiguration represents a declarative configuration of the SecretVolumeSource type for use
+// SecretVolumeSourceApplyConfiguration represents an declarative configuration of the SecretVolumeSource type for use
 // with apply.
 type SecretVolumeSourceApplyConfiguration struct {
 	SecretName  *string                       `json:"secretName,omitempty"`
@@ -27,7 +27,7 @@ type SecretVolumeSourceApplyConfiguration struct {
 	Optional    *bool                         `json:"optional,omitempty"`
 }
 
-// SecretVolumeSourceApplyConfiguration constructs a declarative configuration of the SecretVolumeSource type for use with
+// SecretVolumeSourceApplyConfiguration constructs an declarative configuration of the SecretVolumeSource type for use with
 // apply.
 func SecretVolumeSource() *SecretVolumeSourceApplyConfiguration {
 	return &SecretVolumeSourceApplyConfiguration{}

@@ -2,6 +2,8 @@ package log
 
 import (
 	"strings"
+
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 func NoParserHints() ParserHint {
@@ -179,7 +181,7 @@ func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, 
 
 func containsError(hints []string) bool {
 	for _, s := range hints {
-		if s == ErrorLabel {
+		if s == logqlmodel.ErrorLabel {
 			return true
 		}
 	}

@@ -58,9 +58,6 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 
 		&CSIStorageCapacity{},
 		&CSIStorageCapacityList{},
-
-		&VolumeAttributesClass{},
-		&VolumeAttributesClassList{},
 	)
 
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)

@@ -18,7 +18,7 @@ limitations under the License.
 
 package v1
 
-// EndpointConditionsApplyConfiguration represents a declarative configuration of the EndpointConditions type for use
+// EndpointConditionsApplyConfiguration represents an declarative configuration of the EndpointConditions type for use
 // with apply.
 type EndpointConditionsApplyConfiguration struct {
 	Ready       *bool `json:"ready,omitempty"`
@@ -26,7 +26,7 @@ type EndpointConditionsApplyConfiguration struct {
 	Terminating *bool `json:"terminating,omitempty"`
 }
 
-// EndpointConditionsApplyConfiguration constructs a declarative configuration of the EndpointConditions type for use with
+// EndpointConditionsApplyConfiguration constructs an declarative configuration of the EndpointConditions type for use with
 // apply.
 func EndpointConditions() *EndpointConditionsApplyConfiguration {
 	return &EndpointConditionsApplyConfiguration{}

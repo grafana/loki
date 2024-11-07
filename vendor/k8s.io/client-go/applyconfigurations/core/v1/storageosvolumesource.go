@@ -18,7 +18,7 @@ limitations under the License.
 
 package v1
 
-// StorageOSVolumeSourceApplyConfiguration represents a declarative configuration of the StorageOSVolumeSource type for use
+// StorageOSVolumeSourceApplyConfiguration represents an declarative configuration of the StorageOSVolumeSource type for use
 // with apply.
 type StorageOSVolumeSourceApplyConfiguration struct {
 	VolumeName      *string                                 `json:"volumeName,omitempty"`
@@ -28,7 +28,7 @@ type StorageOSVolumeSourceApplyConfiguration struct {
 	SecretRef       *LocalObjectReferenceApplyConfiguration `json:"secretRef,omitempty"`
 }
 
-// StorageOSVolumeSourceApplyConfiguration constructs a declarative configuration of the StorageOSVolumeSource type for use with
+// StorageOSVolumeSourceApplyConfiguration constructs an declarative configuration of the StorageOSVolumeSource type for use with
 // apply.
 func StorageOSVolumeSource() *StorageOSVolumeSourceApplyConfiguration {
 	return &StorageOSVolumeSourceApplyConfiguration{}

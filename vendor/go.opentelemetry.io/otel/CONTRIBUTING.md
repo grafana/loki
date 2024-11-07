@@ -578,10 +578,7 @@ See also:
 The tests should never leak goroutines.
 
 Use the term `ConcurrentSafe` in the test name when it aims to verify the
-absence of race conditions. The top-level tests with this term will be run
-many times in the `test-concurrent-safe` CI job to increase the chance of
-catching concurrency issues. This does not apply to subtests when this term
-is not in their root name.
+absence of race conditions.
 
 ### Internal packages
 
@@ -631,8 +628,11 @@ should be canceled.
 
 ### Approvers
 
+- [Chester Cheung](https://github.com/hanyuancheung), Tencent
+
 ### Maintainers
 
+- [Aaron Clawson](https://github.com/MadVikingGod), LightStep
 - [Damien Mathieu](https://github.com/dmathieu), Elastic
 - [David Ashpole](https://github.com/dashpole), Google
 - [Robert Pająk](https://github.com/pellared), Splunk
@@ -641,13 +641,11 @@ should be canceled.
 
 ### Emeritus
 
-- [Aaron Clawson](https://github.com/MadVikingGod), LightStep
-- [Anthony Mirabella](https://github.com/Aneurysm9), AWS
-- [Chester Cheung](https://github.com/hanyuancheung), Tencent
-- [Evan Torrie](https://github.com/evantorrie), Yahoo
+- [Liz Fong-Jones](https://github.com/lizthegrey), Honeycomb
 - [Gustavo Silva Paiva](https://github.com/paivagustavo), LightStep
 - [Josh MacDonald](https://github.com/jmacd), LightStep
-- [Liz Fong-Jones](https://github.com/lizthegrey), Honeycomb
+- [Anthony Mirabella](https://github.com/Aneurysm9), AWS
+- [Evan Torrie](https://github.com/evantorrie), Yahoo
 
 ### Become an Approver or a Maintainer
 

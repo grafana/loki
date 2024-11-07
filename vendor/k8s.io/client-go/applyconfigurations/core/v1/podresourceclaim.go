@@ -18,15 +18,14 @@ limitations under the License.
 
 package v1
 
-// PodResourceClaimApplyConfiguration represents a declarative configuration of the PodResourceClaim type for use
+// PodResourceClaimApplyConfiguration represents an declarative configuration of the PodResourceClaim type for use
 // with apply.
 type PodResourceClaimApplyConfiguration struct {
-	Name                      *string `json:"name,omitempty"`
-	ResourceClaimName         *string `json:"resourceClaimName,omitempty"`
-	ResourceClaimTemplateName *string `json:"resourceClaimTemplateName,omitempty"`
+	Name   *string                        `json:"name,omitempty"`
+	Source *ClaimSourceApplyConfiguration `json:"source,omitempty"`
 }
 
-// PodResourceClaimApplyConfiguration constructs a declarative configuration of the PodResourceClaim type for use with
+// PodResourceClaimApplyConfiguration constructs an declarative configuration of the PodResourceClaim type for use with
 // apply.
 func PodResourceClaim() *PodResourceClaimApplyConfiguration {
 	return &PodResourceClaimApplyConfiguration{}
@@ -40,18 +39,10 @@ func (b *PodResourceClaimApplyConfiguration) WithName(value string) *PodResource
 	return b
 }
 
-// WithResourceClaimName sets the ResourceClaimName field in the declarative configuration to the given value
+// WithSource sets the Source field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the ResourceClaimName field is set to the value of the last call.
-func (b *PodResourceClaimApplyConfiguration) WithResourceClaimName(value string) *PodResourceClaimApplyConfiguration {
-	b.ResourceClaimName = &value
-	return b
-}
-
-// WithResourceClaimTemplateName sets the ResourceClaimTemplateName field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the ResourceClaimTemplateName field is set to the value of the last call.
-func (b *PodResourceClaimApplyConfiguration) WithResourceClaimTemplateName(value string) *PodResourceClaimApplyConfiguration {
-	b.ResourceClaimTemplateName = &value
+// If called multiple times, the Source field is set to the value of the last call.
+func (b *PodResourceClaimApplyConfiguration) WithSource(value *ClaimSourceApplyConfiguration) *PodResourceClaimApplyConfiguration {
+	b.Source = value
 	return b
 }

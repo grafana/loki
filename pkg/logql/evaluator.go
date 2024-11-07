@@ -15,8 +15,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -717,8 +717,8 @@ func (r *RangeVectorEvaluator) Next() (bool, int64, StepResult) {
 	ts, vec := r.iter.At()
 	for _, s := range vec.SampleVector() {
 		// Errors are not allowed in metrics unless they've been specifically requested.
-		if s.Metric.Has(log.ErrorLabel) && s.Metric.Get(log.PreserveErrorLabel) != trueString {
-			r.err = syntax.NewPipelineErr(s.Metric)
+		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != trueString {
+			r.err = logqlmodel.NewPipelineErr(s.Metric)
 			return false, 0, SampleVector{}
 		}
 	}
@@ -749,8 +749,8 @@ func (r *AbsentRangeVectorEvaluator) Next() (bool, int64, StepResult) {
 	ts, vec := r.iter.At()
 	for _, s := range vec.SampleVector() {
 		// Errors are not allowed in metrics unless they've been specifically requested.
-		if s.Metric.Has(log.ErrorLabel) && s.Metric.Get(log.PreserveErrorLabel) != trueString {
-			r.err = syntax.NewPipelineErr(s.Metric)
+		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != trueString {
+			r.err = logqlmodel.NewPipelineErr(s.Metric)
 			return false, 0, SampleVector{}
 		}
 	}

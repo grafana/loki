@@ -7,7 +7,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	regexutil "github.com/grafana/loki/v3/pkg/util/regexp"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 // Simplifiable regexp expressions can quickly expand into very high
@@ -116,7 +116,7 @@ func buildLabelMatcher(filter log.LabelFilterer) LabelMatcher {
 func buildSimplifiedRegexMatcher(key string, reg *regexsyn.Regexp) LabelMatcher {
 	switch reg.Op {
 	case regexsyn.OpAlternate:
-		regexutil.ClearCapture(reg)
+		util.ClearCapture(reg)
 
 		left := buildSimplifiedRegexMatcher(key, reg.Sub[0])
 		if len(reg.Sub) == 1 {
@@ -139,7 +139,7 @@ func buildSimplifiedRegexMatcher(key string, reg *regexsyn.Regexp) LabelMatcher 
 		// We expand subexpressions back out into full matchers where possible, so
 		// value[12] becomes value1 OR value2, and value[1-9] becomes value1 OR
 		// value2 .. OR value9.
-		regexutil.ClearCapture(reg)
+		util.ClearCapture(reg)
 
 		matchers, ok := expandSubexpr(reg)
 		if !ok || len(matchers) == 0 {
@@ -154,7 +154,7 @@ func buildSimplifiedRegexMatcher(key string, reg *regexsyn.Regexp) LabelMatcher 
 		return left
 
 	case regexsyn.OpCapture:
-		regexutil.ClearCapture(reg)
+		util.ClearCapture(reg)
 		return buildSimplifiedRegexMatcher(key, reg)
 
 	case regexsyn.OpLiteral:
@@ -178,7 +178,7 @@ func buildSimplifiedRegexMatcher(key string, reg *regexsyn.Regexp) LabelMatcher 
 func expandSubexpr(reg *regexsyn.Regexp) (prefixes []string, ok bool) {
 	switch reg.Op {
 	case regexsyn.OpAlternate:
-		regexutil.ClearCapture(reg)
+		util.ClearCapture(reg)
 
 		for _, sub := range reg.Sub {
 			subPrefixes, ok := expandSubexpr(sub)
@@ -256,7 +256,7 @@ func expandSubexpr(reg *regexsyn.Regexp) (prefixes []string, ok bool) {
 		return curPrefixes, true
 
 	case regexsyn.OpCapture:
-		regexutil.ClearCapture(reg)
+		util.ClearCapture(reg)
 		return expandSubexpr(reg)
 
 	case regexsyn.OpLiteral:

@@ -18,14 +18,14 @@ limitations under the License.
 
 package v1alpha1
 
-// VariableApplyConfiguration represents a declarative configuration of the Variable type for use
+// VariableApplyConfiguration represents an declarative configuration of the Variable type for use
 // with apply.
 type VariableApplyConfiguration struct {
 	Name       *string `json:"name,omitempty"`
 	Expression *string `json:"expression,omitempty"`
 }
 
-// VariableApplyConfiguration constructs a declarative configuration of the Variable type for use with
+// VariableApplyConfiguration constructs an declarative configuration of the Variable type for use with
 // apply.
 func Variable() *VariableApplyConfiguration {
 	return &VariableApplyConfiguration{}

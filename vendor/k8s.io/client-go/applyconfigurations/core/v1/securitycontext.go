@@ -22,7 +22,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// SecurityContextApplyConfiguration represents a declarative configuration of the SecurityContext type for use
+// SecurityContextApplyConfiguration represents an declarative configuration of the SecurityContext type for use
 // with apply.
 type SecurityContextApplyConfiguration struct {
 	Capabilities             *CapabilitiesApplyConfiguration                  `json:"capabilities,omitempty"`
@@ -36,10 +36,9 @@ type SecurityContextApplyConfiguration struct {
 	AllowPrivilegeEscalation *bool                                            `json:"allowPrivilegeEscalation,omitempty"`
 	ProcMount                *corev1.ProcMountType                            `json:"procMount,omitempty"`
 	SeccompProfile           *SeccompProfileApplyConfiguration                `json:"seccompProfile,omitempty"`
-	AppArmorProfile          *AppArmorProfileApplyConfiguration               `json:"appArmorProfile,omitempty"`
 }
 
-// SecurityContextApplyConfiguration constructs a declarative configuration of the SecurityContext type for use with
+// SecurityContextApplyConfiguration constructs an declarative configuration of the SecurityContext type for use with
 // apply.
 func SecurityContext() *SecurityContextApplyConfiguration {
 	return &SecurityContextApplyConfiguration{}
@@ -130,13 +129,5 @@ func (b *SecurityContextApplyConfiguration) WithProcMount(value corev1.ProcMount
 // If called multiple times, the SeccompProfile field is set to the value of the last call.
 func (b *SecurityContextApplyConfiguration) WithSeccompProfile(value *SeccompProfileApplyConfiguration) *SecurityContextApplyConfiguration {
 	b.SeccompProfile = value
-	return b
-}
-
-// WithAppArmorProfile sets the AppArmorProfile field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the AppArmorProfile field is set to the value of the last call.
-func (b *SecurityContextApplyConfiguration) WithAppArmorProfile(value *AppArmorProfileApplyConfiguration) *SecurityContextApplyConfiguration {
-	b.AppArmorProfile = value
 	return b
 }

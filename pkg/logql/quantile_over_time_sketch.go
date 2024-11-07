@@ -12,9 +12,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/sketch"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 const (
@@ -161,8 +160,8 @@ func (e *QuantileSketchStepEvaluator) Next() (bool, int64, StepResult) {
 	vec := r.QuantileSketchVec()
 	for _, s := range vec {
 		// Errors are not allowed in metrics unless they've been specifically requested.
-		if s.Metric.Has(log.ErrorLabel) && s.Metric.Get(log.PreserveErrorLabel) != "true" {
-			e.err = syntax.NewPipelineErr(s.Metric)
+		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != "true" {
+			e.err = logqlmodel.NewPipelineErr(s.Metric)
 			return false, 0, ProbabilisticQuantileVector{}
 		}
 	}

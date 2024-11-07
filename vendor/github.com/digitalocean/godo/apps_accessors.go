@@ -1389,14 +1389,6 @@ func (a *AppLogDestinationSpecOpenSearch) GetBasicAuth() *OpenSearchBasicAuth {
 	return a.BasicAuth
 }
 
-// GetClusterName returns the ClusterName field.
-func (a *AppLogDestinationSpecOpenSearch) GetClusterName() string {
-	if a == nil {
-		return ""
-	}
-	return a.ClusterName
-}
-
 // GetEndpoint returns the Endpoint field.
 func (a *AppLogDestinationSpecOpenSearch) GetEndpoint() string {
 	if a == nil {

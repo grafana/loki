@@ -23,7 +23,7 @@ import (
 	v1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
-// DaemonSetSpecApplyConfiguration represents a declarative configuration of the DaemonSetSpec type for use
+// DaemonSetSpecApplyConfiguration represents an declarative configuration of the DaemonSetSpec type for use
 // with apply.
 type DaemonSetSpecApplyConfiguration struct {
 	Selector             *v1.LabelSelectorApplyConfiguration        `json:"selector,omitempty"`
@@ -34,7 +34,7 @@ type DaemonSetSpecApplyConfiguration struct {
 	RevisionHistoryLimit *int32                                     `json:"revisionHistoryLimit,omitempty"`
 }
 
-// DaemonSetSpecApplyConfiguration constructs a declarative configuration of the DaemonSetSpec type for use with
+// DaemonSetSpecApplyConfiguration constructs an declarative configuration of the DaemonSetSpec type for use with
 // apply.
 func DaemonSetSpec() *DaemonSetSpecApplyConfiguration {
 	return &DaemonSetSpecApplyConfiguration{}

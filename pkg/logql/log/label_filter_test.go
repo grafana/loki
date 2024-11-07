@@ -9,6 +9,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 func TestBinary_Filter(t *testing.T) {
@@ -222,31 +224,31 @@ func TestErrorFiltering(t *testing.T) {
 		wantLbs labels.Labels
 	}{
 		{
-			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, ErrorLabel, errJSON)),
+			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, logqlmodel.ErrorLabel, errJSON)),
 			labels.FromStrings("status", "200",
 				"method", "POST",
 			),
 			errJSON,
 			false,
-			labels.FromStrings(ErrorLabel, errJSON,
+			labels.FromStrings(logqlmodel.ErrorLabel, errJSON,
 				"status", "200",
 				"method", "POST",
 			),
 		},
 		{
-			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, ErrorLabel, ".+")),
+			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, logqlmodel.ErrorLabel, ".+")),
 			labels.FromStrings("status", "200",
 				"method", "POST",
 			),
 			"foo",
 			false,
-			labels.FromStrings(ErrorLabel, "foo",
+			labels.FromStrings(logqlmodel.ErrorLabel, "foo",
 				"status", "200",
 				"method", "POST",
 			),
 		},
 		{
-			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, ErrorLabel, ".+")),
+			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotRegexp, logqlmodel.ErrorLabel, ".+")),
 			labels.FromStrings("status", "200",
 				"method", "POST",
 			),
@@ -257,7 +259,7 @@ func TestErrorFiltering(t *testing.T) {
 			),
 		},
 		{
-			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, ErrorLabel, errJSON)),
+			NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, logqlmodel.ErrorLabel, errJSON)),
 			labels.FromStrings("status", "200",
 				"method", "POST",
 			),

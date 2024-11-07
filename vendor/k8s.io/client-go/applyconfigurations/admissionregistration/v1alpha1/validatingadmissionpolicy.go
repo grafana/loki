@@ -27,7 +27,7 @@ import (
 	v1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
-// ValidatingAdmissionPolicyApplyConfiguration represents a declarative configuration of the ValidatingAdmissionPolicy type for use
+// ValidatingAdmissionPolicyApplyConfiguration represents an declarative configuration of the ValidatingAdmissionPolicy type for use
 // with apply.
 type ValidatingAdmissionPolicyApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
@@ -36,7 +36,7 @@ type ValidatingAdmissionPolicyApplyConfiguration struct {
 	Status                           *ValidatingAdmissionPolicyStatusApplyConfiguration `json:"status,omitempty"`
 }
 
-// ValidatingAdmissionPolicy constructs a declarative configuration of the ValidatingAdmissionPolicy type for use with
+// ValidatingAdmissionPolicy constructs an declarative configuration of the ValidatingAdmissionPolicy type for use with
 // apply.
 func ValidatingAdmissionPolicy(name string) *ValidatingAdmissionPolicyApplyConfiguration {
 	b := &ValidatingAdmissionPolicyApplyConfiguration{}
@@ -253,10 +253,4 @@ func (b *ValidatingAdmissionPolicyApplyConfiguration) WithSpec(value *Validating
 func (b *ValidatingAdmissionPolicyApplyConfiguration) WithStatus(value *ValidatingAdmissionPolicyStatusApplyConfiguration) *ValidatingAdmissionPolicyApplyConfiguration {
 	b.Status = value
 	return b
-}
-
-// GetName retrieves the value of the Name field in the declarative configuration.
-func (b *ValidatingAdmissionPolicyApplyConfiguration) GetName() *string {
-	b.ensureObjectMetaApplyConfigurationExists()
-	return b.Name
 }

@@ -15,9 +15,4 @@ label {
   display: inline-block;
   width: {{.Form.Width}}em;
 }
-#pprof {
-  border: black 2px solid;
-  padding: 1rem;
-  width: fit-content;
-}
 {{.ExtraCSS}}

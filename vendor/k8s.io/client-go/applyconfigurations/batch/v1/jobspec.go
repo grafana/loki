@@ -24,14 +24,13 @@ import (
 	metav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 )
 
-// JobSpecApplyConfiguration represents a declarative configuration of the JobSpec type for use
+// JobSpecApplyConfiguration represents an declarative configuration of the JobSpec type for use
 // with apply.
 type JobSpecApplyConfiguration struct {
 	Parallelism             *int32                                    `json:"parallelism,omitempty"`
 	Completions             *int32                                    `json:"completions,omitempty"`
 	ActiveDeadlineSeconds   *int64                                    `json:"activeDeadlineSeconds,omitempty"`
 	PodFailurePolicy        *PodFailurePolicyApplyConfiguration       `json:"podFailurePolicy,omitempty"`
-	SuccessPolicy           *SuccessPolicyApplyConfiguration          `json:"successPolicy,omitempty"`
 	BackoffLimit            *int32                                    `json:"backoffLimit,omitempty"`
 	BackoffLimitPerIndex    *int32                                    `json:"backoffLimitPerIndex,omitempty"`
 	MaxFailedIndexes        *int32                                    `json:"maxFailedIndexes,omitempty"`
@@ -42,10 +41,9 @@ type JobSpecApplyConfiguration struct {
 	CompletionMode          *batchv1.CompletionMode                   `json:"completionMode,omitempty"`
 	Suspend                 *bool                                     `json:"suspend,omitempty"`
 	PodReplacementPolicy    *batchv1.PodReplacementPolicy             `json:"podReplacementPolicy,omitempty"`
-	ManagedBy               *string                                   `json:"managedBy,omitempty"`
 }
 
-// JobSpecApplyConfiguration constructs a declarative configuration of the JobSpec type for use with
+// JobSpecApplyConfiguration constructs an declarative configuration of the JobSpec type for use with
 // apply.
 func JobSpec() *JobSpecApplyConfiguration {
 	return &JobSpecApplyConfiguration{}
@@ -80,14 +78,6 @@ func (b *JobSpecApplyConfiguration) WithActiveDeadlineSeconds(value int64) *JobS
 // If called multiple times, the PodFailurePolicy field is set to the value of the last call.
 func (b *JobSpecApplyConfiguration) WithPodFailurePolicy(value *PodFailurePolicyApplyConfiguration) *JobSpecApplyConfiguration {
 	b.PodFailurePolicy = value
-	return b
-}
-
-// WithSuccessPolicy sets the SuccessPolicy field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the SuccessPolicy field is set to the value of the last call.
-func (b *JobSpecApplyConfiguration) WithSuccessPolicy(value *SuccessPolicyApplyConfiguration) *JobSpecApplyConfiguration {
-	b.SuccessPolicy = value
 	return b
 }
 
@@ -168,13 +158,5 @@ func (b *JobSpecApplyConfiguration) WithSuspend(value bool) *JobSpecApplyConfigu
 // If called multiple times, the PodReplacementPolicy field is set to the value of the last call.
 func (b *JobSpecApplyConfiguration) WithPodReplacementPolicy(value batchv1.PodReplacementPolicy) *JobSpecApplyConfiguration {
 	b.PodReplacementPolicy = &value
-	return b
-}
-
-// WithManagedBy sets the ManagedBy field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the ManagedBy field is set to the value of the last call.
-func (b *JobSpecApplyConfiguration) WithManagedBy(value string) *JobSpecApplyConfiguration {
-	b.ManagedBy = &value
 	return b
 }
