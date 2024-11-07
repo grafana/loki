@@ -14,7 +14,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/compression"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/ingester-rf1/objstore"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
@@ -286,21 +286,26 @@ func (h *Head) forAll(fn func(ls labels.Labels, fp uint64, chks index.ChunkMetas
 }
 
 type uploader struct {
-	c client.ObjectClient
+	store *objstore.Multi
 }
 
-func newUploader(client client.ObjectClient) *uploader {
-	return &uploader{c: client}
+func newUploader(store *objstore.Multi) *uploader {
+	return &uploader{store: store}
 }
 
 func (u *uploader) Put(ctx context.Context, db tsdbWithID) error {
+	client, err := u.store.GetStoreFor(db.bucket)
+	if err != nil {
+		return err
+	}
+
 	reader := bytes.NewReader(db.data)
 	gzipPool := compression.GetWriterPool(compression.GZIP)
 	buf := bytes.NewBuffer(make([]byte, 0, 1<<20))
 	compressedWriter := gzipPool.GetWriter(buf)
 	defer gzipPool.PutWriter(compressedWriter)
 
-	_, err := io.Copy(compressedWriter, reader)
+	_, err = io.Copy(compressedWriter, reader)
 	if err != nil {
 		return err
 	}
@@ -310,7 +315,7 @@ func (u *uploader) Put(ctx context.Context, db tsdbWithID) error {
 		return err
 	}
 
-	return u.c.PutObject(ctx, db.id.Path(), buf)
+	return client.PutObject(ctx, db.id.Path(), buf)
 }
 
 func buildFileName(indexName string) string {

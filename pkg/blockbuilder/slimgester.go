@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -87,6 +88,7 @@ func (cfg *Config) Validate() error {
 type BlockBuilder struct {
 	services.Service
 
+	id              string
 	cfg             Config
 	periodicConfigs []config.PeriodConfig
 
@@ -103,6 +105,7 @@ type BlockBuilder struct {
 }
 
 func NewBlockBuilder(
+	id string,
 	cfg Config,
 	periodicConfigs []config.PeriodConfig,
 	store stores.ChunkWriter,
@@ -113,6 +116,7 @@ func NewBlockBuilder(
 ) (*BlockBuilder,
 	error) {
 	i := &BlockBuilder{
+		id:              id,
 		cfg:             cfg,
 		periodicConfigs: periodicConfigs,
 		metrics:         NewSlimgesterMetrics(reg),
@@ -286,24 +290,17 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 	}
 
 	var (
-		// TODO(owen-d)
-		nodeName    string              // from lifecycler id
-		tabelRanges []config.TableRange // from periodconfigs
-		// TODO(owen-d): build uploaders based on table ranges, which can use different
-		// object clients
+		nodeName    = i.id
+		tableRanges = config.GetIndexStoreTableRanges(types.TSDBType, i.periodicConfigs)
 	)
 
-	built, err := indexer.create(ctx, nodeName, tabelRanges)
+	built, err := indexer.create(ctx, nodeName, tableRanges)
 	if err != nil {
 		return false, err
 	}
 
 	for _, db := range built {
-		client, err := i.objStore.GetStoreFor(db.bucket)
-		if err != nil {
-			return false, err
-		}
-		u := newUploader(client)
+		u := newUploader(i.objStore)
 		if err := u.Put(ctx, db); err != nil {
 			level.Error(util_log.Logger).Log(
 				"msg", "failed to upload tsdb",

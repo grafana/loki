@@ -1813,6 +1813,7 @@ func (t *Loki) initBlockBuilder() (services.Service, error) {
 	}
 
 	bb, err := blockbuilder.NewBlockBuilder(
+		id,
 		t.Cfg.BlockBuilder,
 		t.Cfg.SchemaConfig.Configs,
 		t.Store,
