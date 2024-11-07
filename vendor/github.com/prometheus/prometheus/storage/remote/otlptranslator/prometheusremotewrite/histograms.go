@@ -17,7 +17,6 @@
 package prometheusremotewrite
 
 import (
-	"context"
 	"fmt"
 	"math"
 
@@ -27,27 +26,20 @@ import (
 
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/prompb"
-	"github.com/prometheus/prometheus/util/annotations"
 )
 
 const defaultZeroThreshold = 1e-128
 
 // addExponentialHistogramDataPoints adds OTel exponential histogram data points to the corresponding time series
 // as native histogram samples.
-func (c *PrometheusConverter) addExponentialHistogramDataPoints(ctx context.Context, dataPoints pmetric.ExponentialHistogramDataPointSlice,
-	resource pcommon.Resource, settings Settings, promName string) (annotations.Annotations, error) {
-	var annots annotations.Annotations
+func (c *PrometheusConverter) addExponentialHistogramDataPoints(dataPoints pmetric.ExponentialHistogramDataPointSlice,
+	resource pcommon.Resource, settings Settings, promName string) error {
 	for x := 0; x < dataPoints.Len(); x++ {
-		if err := c.everyN.checkContext(ctx); err != nil {
-			return annots, err
-		}
-
 		pt := dataPoints.At(x)
 
-		histogram, ws, err := exponentialToNativeHistogram(pt)
-		annots.Merge(ws)
+		histogram, err := exponentialToNativeHistogram(pt)
 		if err != nil {
-			return annots, err
+			return err
 		}
 
 		lbls := createAttributes(
@@ -62,23 +54,19 @@ func (c *PrometheusConverter) addExponentialHistogramDataPoints(ctx context.Cont
 		ts, _ := c.getOrCreateTimeSeries(lbls)
 		ts.Histograms = append(ts.Histograms, histogram)
 
-		exemplars, err := getPromExemplars[pmetric.ExponentialHistogramDataPoint](ctx, &c.everyN, pt)
-		if err != nil {
-			return annots, err
-		}
+		exemplars := getPromExemplars[pmetric.ExponentialHistogramDataPoint](pt)
 		ts.Exemplars = append(ts.Exemplars, exemplars...)
 	}
 
-	return annots, nil
+	return nil
 }
 
-// exponentialToNativeHistogram translates an OTel Exponential Histogram data point
-// to a Prometheus Native Histogram.
-func exponentialToNativeHistogram(p pmetric.ExponentialHistogramDataPoint) (prompb.Histogram, annotations.Annotations, error) {
-	var annots annotations.Annotations
+// exponentialToNativeHistogram translates OTel Exponential Histogram data point
+// to Prometheus Native Histogram.
+func exponentialToNativeHistogram(p pmetric.ExponentialHistogramDataPoint) (prompb.Histogram, error) {
 	scale := p.Scale()
 	if scale < -4 {
-		return prompb.Histogram{}, annots,
+		return prompb.Histogram{},
 			fmt.Errorf("cannot convert exponential to native histogram."+
 				" Scale must be >= -4, was %d", scale)
 	}
@@ -126,11 +114,8 @@ func exponentialToNativeHistogram(p pmetric.ExponentialHistogramDataPoint) (prom
 			h.Sum = p.Sum()
 		}
 		h.Count = &prompb.Histogram_CountInt{CountInt: p.Count()}
-		if p.Count() == 0 && h.Sum != 0 {
-			annots.Add(fmt.Errorf("exponential histogram data point has zero count, but non-zero sum: %f", h.Sum))
-		}
 	}
-	return h, annots, nil
+	return h, nil
 }
 
 // convertBucketsLayout translates OTel Exponential Histogram dense buckets

@@ -20,6 +20,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -58,16 +59,15 @@ type WriteTo interface {
 	StoreSeries([]record.RefSeries, int)
 	StoreMetadata([]record.RefMetadata)
 
-	// UpdateSeriesSegment and SeriesReset are intended for
-	// garbage-collection:
-	// First we call UpdateSeriesSegment on all current series.
+	// Next two methods are intended for garbage-collection: first we call
+	// UpdateSeriesSegment on all current series
 	UpdateSeriesSegment([]record.RefSeries, int)
-	// Then SeriesReset is called to allow the deletion of all series
-	// created in a segment lower than the argument.
+	// Then SeriesReset is called to allow the deletion
+	// of all series created in a segment lower than the argument.
 	SeriesReset(int)
 }
 
-// WriteNotified notifies the watcher that data has been written so that it can read.
+// Used to notify the watcher that data has been written so that it can read.
 type WriteNotified interface {
 	Notify()
 }
@@ -265,9 +265,9 @@ func (w *Watcher) loop() {
 // Run the watcher, which will tail the WAL until the quit channel is closed
 // or an error case is hit.
 func (w *Watcher) Run() error {
-	_, lastSegment, err := Segments(w.walDir)
+	_, lastSegment, err := w.firstAndLast()
 	if err != nil {
-		return fmt.Errorf("Segments: %w", err)
+		return fmt.Errorf("wal.Segments: %w", err)
 	}
 
 	// We want to ensure this is false across iterations since
@@ -318,18 +318,55 @@ func (w *Watcher) Run() error {
 
 // findSegmentForIndex finds the first segment greater than or equal to index.
 func (w *Watcher) findSegmentForIndex(index int) (int, error) {
-	refs, err := listSegments(w.walDir)
+	refs, err := w.segments(w.walDir)
 	if err != nil {
 		return -1, err
 	}
 
 	for _, r := range refs {
-		if r.index >= index {
-			return r.index, nil
+		if r >= index {
+			return r, nil
 		}
 	}
 
 	return -1, errors.New("failed to find segment for index")
+}
+
+func (w *Watcher) firstAndLast() (int, int, error) {
+	refs, err := w.segments(w.walDir)
+	if err != nil {
+		return -1, -1, err
+	}
+
+	if len(refs) == 0 {
+		return -1, -1, nil
+	}
+	return refs[0], refs[len(refs)-1], nil
+}
+
+// Copied from tsdb/wlog/wlog.go so we do not have to open a WAL.
+// Plan is to move WAL watcher to TSDB and dedupe these implementations.
+func (w *Watcher) segments(dir string) ([]int, error) {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	var refs []int
+	for _, f := range files {
+		k, err := strconv.Atoi(f.Name())
+		if err != nil {
+			continue
+		}
+		refs = append(refs, k)
+	}
+	slices.Sort(refs)
+	for i := 0; i < len(refs)-1; i++ {
+		if refs[i]+1 != refs[i+1] {
+			return nil, errors.New("segments are not sequential")
+		}
+	}
+	return refs, nil
 }
 
 func (w *Watcher) readAndHandleError(r *LiveReader, segmentNum int, tail bool, size int64) error {
@@ -410,17 +447,35 @@ func (w *Watcher) watch(segmentNum int, tail bool) error {
 				// Currently doing a garbage collect, try again later.
 			}
 
-		// if a newer segment is produced, read the current one until the end and move on.
 		case <-segmentTicker.C:
-			_, last, err := Segments(w.walDir)
+			_, last, err := w.firstAndLast()
 			if err != nil {
-				return fmt.Errorf("Segments: %w", err)
+				return fmt.Errorf("segments: %w", err)
 			}
 
-			if last > segmentNum {
-				return w.readAndHandleError(reader, segmentNum, tail, size)
+			// Check if new segments exists.
+			if last <= segmentNum {
+				continue
 			}
-			continue
+			err = w.readSegment(reader, segmentNum, tail)
+
+			// Ignore errors reading to end of segment whilst replaying the WAL.
+			if !tail {
+				switch {
+				case err != nil && !errors.Is(err, io.EOF):
+					level.Warn(w.logger).Log("msg", "Ignoring error reading to end of segment, may have dropped data", "err", err)
+				case reader.Offset() != size:
+					level.Warn(w.logger).Log("msg", "Expected to have read whole segment, may have dropped data", "segment", segmentNum, "read", reader.Offset(), "size", size)
+				}
+				return nil
+			}
+
+			// Otherwise, when we are tailing, non-EOFs are fatal.
+			if err != nil && !errors.Is(err, io.EOF) {
+				return err
+			}
+
+			return nil
 
 		// we haven't read due to a notification in quite some time, try reading anyways
 		case <-readTicker.C:
@@ -429,7 +484,7 @@ func (w *Watcher) watch(segmentNum int, tail bool) error {
 			if err != nil {
 				return err
 			}
-			// reset the ticker so we don't read too often
+			// still want to reset the ticker so we don't read too often
 			readTicker.Reset(readTimeout)
 
 		case <-w.readNotify:
@@ -437,7 +492,7 @@ func (w *Watcher) watch(segmentNum int, tail bool) error {
 			if err != nil {
 				return err
 			}
-			// reset the ticker so we don't read too often
+			// still want to reset the ticker so we don't read too often
 			readTicker.Reset(readTimeout)
 		}
 	}
@@ -573,7 +628,6 @@ func (w *Watcher) readSegment(r *LiveReader, segmentNum int, tail bool) error {
 				w.writer.AppendHistograms(histogramsToSend)
 				histogramsToSend = histogramsToSend[:0]
 			}
-
 		case record.FloatHistogramSamples:
 			// Skip if experimental "histograms over remote write" is not enabled.
 			if !w.sendHistograms {
@@ -603,7 +657,7 @@ func (w *Watcher) readSegment(r *LiveReader, segmentNum int, tail bool) error {
 			}
 
 		case record.Metadata:
-			if !w.sendMetadata {
+			if !w.sendMetadata || !tail {
 				break
 			}
 			meta, err := dec.Metadata(rec, metadata[:0])
@@ -612,13 +666,11 @@ func (w *Watcher) readSegment(r *LiveReader, segmentNum int, tail bool) error {
 				return err
 			}
 			w.writer.StoreMetadata(meta)
-
-		case record.Unknown:
-			// Could be corruption, or reading from a WAL from a newer Prometheus.
-			w.recordDecodeFailsMetric.Inc()
+		case record.Tombstones:
 
 		default:
-			// We're not interested in other types of records.
+			// Could be corruption, or reading from a WAL from a newer Prometheus.
+			w.recordDecodeFailsMetric.Inc()
 		}
 	}
 	if err := r.Err(); err != nil {
@@ -647,12 +699,14 @@ func (w *Watcher) readSegmentForGC(r *LiveReader, segmentNum int, _ bool) error 
 			}
 			w.writer.UpdateSeriesSegment(series, segmentNum)
 
-		case record.Unknown:
-			// Could be corruption, or reading from a WAL from a newer Prometheus.
-			w.recordDecodeFailsMetric.Inc()
+		// Ignore these; we're only interested in series.
+		case record.Samples:
+		case record.Exemplars:
+		case record.Tombstones:
 
 		default:
-			// We're only interested in series.
+			// Could be corruption, or reading from a WAL from a newer Prometheus.
+			w.recordDecodeFailsMetric.Inc()
 		}
 	}
 	if err := r.Err(); err != nil {
@@ -677,30 +731,29 @@ func (w *Watcher) readCheckpoint(checkpointDir string, readFn segmentReadFn) err
 	}
 
 	// Ensure we read the whole contents of every segment in the checkpoint dir.
-	segs, err := listSegments(checkpointDir)
+	segs, err := w.segments(checkpointDir)
 	if err != nil {
 		return fmt.Errorf("Unable to get segments checkpoint dir: %w", err)
 	}
-	for _, segRef := range segs {
-		size, err := getSegmentSize(checkpointDir, segRef.index)
+	for _, seg := range segs {
+		size, err := getSegmentSize(checkpointDir, seg)
 		if err != nil {
 			return fmt.Errorf("getSegmentSize: %w", err)
 		}
 
-		sr, err := OpenReadSegment(SegmentName(checkpointDir, segRef.index))
+		sr, err := OpenReadSegment(SegmentName(checkpointDir, seg))
 		if err != nil {
 			return fmt.Errorf("unable to open segment: %w", err)
 		}
+		defer sr.Close()
 
 		r := NewLiveReader(w.logger, w.readerMetrics, sr)
-		err = readFn(w, r, index, false)
-		sr.Close()
-		if err != nil && !errors.Is(err, io.EOF) {
+		if err := readFn(w, r, index, false); err != nil && !errors.Is(err, io.EOF) {
 			return fmt.Errorf("readSegment: %w", err)
 		}
 
 		if r.Offset() != size {
-			return fmt.Errorf("readCheckpoint wasn't able to read all data from the checkpoint %s/%08d, size: %d, totalRead: %d", checkpointDir, segRef.index, size, r.Offset())
+			return fmt.Errorf("readCheckpoint wasn't able to read all data from the checkpoint %s/%08d, size: %d, totalRead: %d", checkpointDir, seg, size, r.Offset())
 		}
 	}
 

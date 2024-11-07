@@ -13,7 +13,7 @@
 
 package discovery
 
-// NoopDiscovererMetrics creates a dummy metrics struct, because this SD doesn't have any metrics.
+// Create a dummy metrics struct, because this SD doesn't have any metrics.
 type NoopDiscovererMetrics struct{}
 
 var _ DiscovererMetrics = (*NoopDiscovererMetrics)(nil)

@@ -31,15 +31,13 @@ import (
 	"github.com/google/uuid"
 )
 
-// Clouds.
 const (
+	// Clouds.
 	AzureChina      = "AzureChina"
 	AzureGovernment = "AzureGovernment"
 	AzurePublic     = "AzurePublic"
-)
 
-// Audiences.
-const (
+	// Audiences.
 	IngestionChinaAudience      = "https://monitor.azure.cn//.default"
 	IngestionGovernmentAudience = "https://monitor.azure.us//.default"
 	IngestionPublicAudience     = "https://monitor.azure.com//.default"

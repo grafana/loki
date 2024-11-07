@@ -176,7 +176,6 @@ func (rws *WriteStorage) ApplyConfig(conf *config.Config) error {
 			HTTPClientConfig: rwConf.HTTPClientConfig,
 			SigV4Config:      rwConf.SigV4Config,
 			AzureADConfig:    rwConf.AzureADConfig,
-			GoogleIAMConfig:  rwConf.GoogleIAMConfig,
 			Headers:          rwConf.Headers,
 			RetryOnRateLimit: rwConf.QueueConfig.RetryOnRateLimit,
 		})

@@ -21,14 +21,15 @@ import (
 	"unicode"
 )
 
-// Normalizes the specified label to follow Prometheus label names standard.
+// Normalizes the specified label to follow Prometheus label names standard
 //
-// See rules at https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels.
+// See rules at https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels
 //
-// Labels that start with non-letter rune will be prefixed with "key_".
+// Labels that start with non-letter rune will be prefixed with "key_"
 //
-// An exception is made for double-underscores which are allowed.
+// Exception is made for double-underscores which are allowed
 func NormalizeLabel(label string) string {
+
 	// Trivial case
 	if len(label) == 0 {
 		return label
@@ -47,7 +48,7 @@ func NormalizeLabel(label string) string {
 	return label
 }
 
-// Return '_' for anything non-alphanumeric.
+// Return '_' for anything non-alphanumeric
 func sanitizeRune(r rune) rune {
 	if unicode.IsLetter(r) || unicode.IsDigit(r) {
 		return r

@@ -17,7 +17,6 @@
 package prometheusremotewrite
 
 import (
-	"context"
 	"math"
 
 	"github.com/prometheus/common/model"
@@ -28,13 +27,9 @@ import (
 	"github.com/prometheus/prometheus/prompb"
 )
 
-func (c *PrometheusConverter) addGaugeNumberDataPoints(ctx context.Context, dataPoints pmetric.NumberDataPointSlice,
-	resource pcommon.Resource, settings Settings, name string) error {
+func (c *PrometheusConverter) addGaugeNumberDataPoints(dataPoints pmetric.NumberDataPointSlice,
+	resource pcommon.Resource, settings Settings, name string) {
 	for x := 0; x < dataPoints.Len(); x++ {
-		if err := c.everyN.checkContext(ctx); err != nil {
-			return err
-		}
-
 		pt := dataPoints.At(x)
 		labels := createAttributes(
 			resource,
@@ -60,17 +55,11 @@ func (c *PrometheusConverter) addGaugeNumberDataPoints(ctx context.Context, data
 		}
 		c.addSample(sample, labels)
 	}
-
-	return nil
 }
 
-func (c *PrometheusConverter) addSumNumberDataPoints(ctx context.Context, dataPoints pmetric.NumberDataPointSlice,
-	resource pcommon.Resource, metric pmetric.Metric, settings Settings, name string) error {
+func (c *PrometheusConverter) addSumNumberDataPoints(dataPoints pmetric.NumberDataPointSlice,
+	resource pcommon.Resource, metric pmetric.Metric, settings Settings, name string) {
 	for x := 0; x < dataPoints.Len(); x++ {
-		if err := c.everyN.checkContext(ctx); err != nil {
-			return err
-		}
-
 		pt := dataPoints.At(x)
 		lbls := createAttributes(
 			resource,
@@ -96,10 +85,7 @@ func (c *PrometheusConverter) addSumNumberDataPoints(ctx context.Context, dataPo
 		}
 		ts := c.addSample(sample, lbls)
 		if ts != nil {
-			exemplars, err := getPromExemplars[pmetric.NumberDataPoint](ctx, &c.everyN, pt)
-			if err != nil {
-				return err
-			}
+			exemplars := getPromExemplars[pmetric.NumberDataPoint](pt)
 			ts.Exemplars = append(ts.Exemplars, exemplars...)
 		}
 
@@ -107,7 +93,7 @@ func (c *PrometheusConverter) addSumNumberDataPoints(ctx context.Context, dataPo
 		if settings.ExportCreatedMetric && metric.Sum().IsMonotonic() {
 			startTimestamp := pt.StartTimestamp()
 			if startTimestamp == 0 {
-				return nil
+				return
 			}
 
 			createdLabels := make([]prompb.Label, len(lbls))
@@ -121,6 +107,4 @@ func (c *PrometheusConverter) addSumNumberDataPoints(ctx context.Context, dataPo
 			c.addTimeSeriesIfNeeded(createdLabels, startTimestamp, pt.Timestamp())
 		}
 	}
-
-	return nil
 }

@@ -19,8 +19,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// MetricRegisterer is used by implementations of discovery.Discoverer that need
-// to manage the lifetime of their metrics.
+// A utility to be used by implementations of discovery.Discoverer
+// which need to manage the lifetime of their metrics.
 type MetricRegisterer interface {
 	RegisterMetrics() error
 	UnregisterMetrics()
@@ -34,7 +34,7 @@ type metricRegistererImpl struct {
 
 var _ MetricRegisterer = &metricRegistererImpl{}
 
-// NewMetricRegisterer creates an instance of a MetricRegisterer.
+// Creates an instance of a MetricRegisterer.
 // Typically called inside the implementation of the NewDiscoverer() method.
 func NewMetricRegisterer(reg prometheus.Registerer, metrics []prometheus.Collector) MetricRegisterer {
 	return &metricRegistererImpl{

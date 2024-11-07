@@ -315,8 +315,7 @@ func Compare(a, b Labels) int {
 	return len(a) - len(b)
 }
 
-// CopyFrom copies labels from b on top of whatever was in ls previously,
-// reusing memory or expanding if needed.
+// Copy labels from b on top of whatever was in ls previously, reusing memory or expanding if needed.
 func (ls *Labels) CopyFrom(b Labels) {
 	(*ls) = append((*ls)[:0], b...)
 }
@@ -423,7 +422,7 @@ type ScratchBuilder struct {
 	add Labels
 }
 
-// SymbolTable is no-op, just for api parity with dedupelabels.
+// Symbol-table is no-op, just for api parity with dedupelabels.
 type SymbolTable struct{}
 
 func NewSymbolTable() *SymbolTable { return nil }
@@ -459,7 +458,7 @@ func (b *ScratchBuilder) Add(name, value string) {
 	b.add = append(b.add, Label{Name: name, Value: value})
 }
 
-// UnsafeAddBytes adds a name/value pair, using []byte instead of string.
+// Add a name/value pair, using []byte instead of string.
 // The '-tags stringlabels' version of this function is unsafe, hence the name.
 // This version is safe - it copies the strings immediately - but we keep the same name so everything compiles.
 func (b *ScratchBuilder) UnsafeAddBytes(name, value []byte) {
@@ -476,14 +475,14 @@ func (b *ScratchBuilder) Assign(ls Labels) {
 	b.add = append(b.add[:0], ls...) // Copy on top of our slice, so we don't retain the input slice.
 }
 
-// Labels returns the name/value pairs added so far as a Labels object.
+// Return the name/value pairs added so far as a Labels object.
 // Note: if you want them sorted, call Sort() first.
 func (b *ScratchBuilder) Labels() Labels {
 	// Copy the slice, so the next use of ScratchBuilder doesn't overwrite.
 	return append([]Label{}, b.add...)
 }
 
-// Overwrite the newly-built Labels out to ls.
+// Write the newly-built Labels out to ls.
 // Callers must ensure that there are no other references to ls, or any strings fetched from it.
 func (b *ScratchBuilder) Overwrite(ls *Labels) {
 	*ls = append((*ls)[:0], b.add...)

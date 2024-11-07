@@ -68,9 +68,6 @@ type Series struct {
 	Metric     labels.Labels `json:"metric"`
 	Floats     []FPoint      `json:"values,omitempty"`
 	Histograms []HPoint      `json:"histograms,omitempty"`
-	// DropName is used to indicate whether the __name__ label should be dropped
-	// as part of the query evaluation.
-	DropName bool `json:"-"`
 }
 
 func (s Series) String() string {
@@ -197,9 +194,6 @@ type Sample struct {
 	H *histogram.FloatHistogram
 
 	Metric labels.Labels
-	// DropName is used to indicate whether the __name__ label should be dropped
-	// as part of the query evaluation.
-	DropName bool
 }
 
 func (s Sample) String() string {

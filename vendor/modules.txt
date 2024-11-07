@@ -1496,8 +1496,8 @@ github.com/prometheus/exporter-toolkit/web
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v0.55.1
-## explicit; go 1.22.0
+# github.com/prometheus/prometheus v0.55.1 => github.com/prometheus/prometheus v0.53.2-0.20240726125539-d4f098ae80fb
+## explicit; go 1.21.0
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery
 github.com/prometheus/prometheus/discovery/aws
@@ -1536,7 +1536,6 @@ github.com/prometheus/prometheus/scrape
 github.com/prometheus/prometheus/storage
 github.com/prometheus/prometheus/storage/remote
 github.com/prometheus/prometheus/storage/remote/azuread
-github.com/prometheus/prometheus/storage/remote/googleiam
 github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus
 github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheusremotewrite
 github.com/prometheus/prometheus/template
@@ -2568,6 +2567,7 @@ sigs.k8s.io/yaml/goyaml.v2
 # github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
 # github.com/grafana/loki/pkg/push => ./pkg/push
 # github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.2.0
+# github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.53.2-0.20240726125539-d4f098ae80fb
 # github.com/grafana/loki/v3/pkg/logql/log => ./pkg/logql/log
 # github.com/grafana/loki/v3/pkg/logql/log/jsonexpr => ./pkg/logql/log/jsonexpr
 # github.com/grafana/loki/v3/pkg/logql/log/logfmt => ./pkg/logql/log/logfmt

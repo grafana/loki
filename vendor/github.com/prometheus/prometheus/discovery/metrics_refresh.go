@@ -17,7 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// RefreshMetricsVecs are metric vectors for the "refresh" package.
+// Metric vectors for the "refresh" package.
 // We define them here in the "discovery" package in order to avoid a cyclic dependency between
 // "discovery" and "refresh".
 type RefreshMetricsVecs struct {

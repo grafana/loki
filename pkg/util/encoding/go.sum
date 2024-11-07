@@ -1,4 +1,4 @@
 github.com/dennwc/varint v1.0.0 h1:kGNFFSSw8ToIy3obO/kKr8U9GZYUAxQEVuix4zfDWzE=
 github.com/dennwc/varint v1.0.0/go.mod h1:hnItb35rvZvJrbTALZtY/iQfDs48JKRG1RPpgziApxA=
-github.com/prometheus/prometheus v0.55.1 h1:+NM9V/h4A+wRkOyQzGewzgPPgq/iX2LUQoISNvmjZmI=
-github.com/prometheus/prometheus v0.55.1/go.mod h1:GGS7QlWKCqCbcEzWsVahYIfQwiGhcExkarHyLJTsv6I=
+github.com/prometheus/prometheus v0.53.2-0.20240726125539-d4f098ae80fb h1:5fIFCLngxdbuVflXqK9MwbXa89QHvlRJ7B2js9w9nbI=
+github.com/prometheus/prometheus v0.53.2-0.20240726125539-d4f098ae80fb/go.mod h1:xlLByHhk2g3ycakQGrMaU8K7OySZx98BzeCR99991NY=

@@ -48,6 +48,7 @@ func (f *histogramStatsIterator) AtHistogram(h *histogram.Histogram) (int64, *hi
 	var t int64
 	t, f.currentH = f.Iterator.AtHistogram(f.currentH)
 	if value.IsStaleNaN(f.currentH.Sum) {
+		f.setLastH(f.currentH)
 		h = &histogram.Histogram{Sum: f.currentH.Sum}
 		return t, h
 	}
@@ -62,13 +63,9 @@ func (f *histogramStatsIterator) AtHistogram(h *histogram.Histogram) (int64, *hi
 		return t, h
 	}
 
-	returnValue := histogram.Histogram{
-		CounterResetHint: f.getResetHint(f.currentH),
-		Count:            f.currentH.Count,
-		Sum:              f.currentH.Sum,
-	}
-	returnValue.CopyTo(h)
-
+	h.CounterResetHint = f.getResetHint(f.currentH)
+	h.Count = f.currentH.Count
+	h.Sum = f.currentH.Sum
 	f.setLastH(f.currentH)
 	return t, h
 }
@@ -80,6 +77,7 @@ func (f *histogramStatsIterator) AtFloatHistogram(fh *histogram.FloatHistogram) 
 	var t int64
 	t, f.currentFH = f.Iterator.AtFloatHistogram(f.currentFH)
 	if value.IsStaleNaN(f.currentFH.Sum) {
+		f.setLastFH(f.currentFH)
 		return t, &histogram.FloatHistogram{Sum: f.currentFH.Sum}
 	}
 
@@ -93,13 +91,9 @@ func (f *histogramStatsIterator) AtFloatHistogram(fh *histogram.FloatHistogram) 
 		return t, fh
 	}
 
-	returnValue := histogram.FloatHistogram{
-		CounterResetHint: f.getFloatResetHint(f.currentFH.CounterResetHint),
-		Count:            f.currentFH.Count,
-		Sum:              f.currentFH.Sum,
-	}
-	returnValue.CopyTo(fh)
-
+	fh.CounterResetHint = f.getFloatResetHint(f.currentFH.CounterResetHint)
+	fh.Count = f.currentFH.Count
+	fh.Sum = f.currentFH.Sum
 	f.setLastFH(f.currentFH)
 	return t, fh
 }

@@ -416,6 +416,11 @@ replace github.com/grafana/loki/pkg/push => ./pkg/push
 // leodido fork his project to continue support
 replace github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.2.0
 
+// todo(ctovena): New promql engine returns different results for some queries
+// so we need to pin to the old version for now.
+// see https://github.com/grafana/loki/pull/14790/
+replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.53.2-0.20240726125539-d4f098ae80fb
+
 replace (
 	github.com/grafana/loki/v3/pkg/logql/log => ./pkg/logql/log
 	github.com/grafana/loki/v3/pkg/logql/log/jsonexpr => ./pkg/logql/log/jsonexpr
