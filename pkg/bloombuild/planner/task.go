@@ -6,11 +6,12 @@ import (
 
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/v3/pkg/bloombuild/planner/strategies"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 )
 
 type QueueTask struct {
-	*protos.Task
+	*strategies.Task
 
 	resultsChannel chan *protos.TaskResult
 
@@ -23,7 +24,7 @@ type QueueTask struct {
 func NewQueueTask(
 	ctx context.Context,
 	queueTime time.Time,
-	task *protos.Task,
+	task *strategies.Task,
 	resultsChannel chan *protos.TaskResult,
 ) *QueueTask {
 	return &QueueTask{

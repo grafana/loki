@@ -374,7 +374,7 @@ func (p *Planner) computeTasks(
 	ctx context.Context,
 	table config.DayTable,
 	tenant string,
-) ([]*protos.Task, []bloomshipper.Meta, error) {
+) ([]*strategies.Task, []bloomshipper.Meta, error) {
 	strategy, err := strategies.NewStrategy(tenant, p.limits, p.logger)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error creating strategy: %w", err)
@@ -847,8 +847,13 @@ func (p *Planner) forwardTaskToBuilder(
 	builderID string,
 	task *QueueTask,
 ) (*protos.TaskResult, error) {
+	protoTask, err := task.ToProtoTask(builder.Context())
+	if err != nil {
+		return nil, fmt.Errorf("error converting task to proto task: %w", err)
+	}
+
 	msg := &protos.PlannerToBuilder{
-		Task: task.ToProtoTask(),
+		Task: protoTask,
 	}
 
 	if err := builder.Send(msg); err != nil {

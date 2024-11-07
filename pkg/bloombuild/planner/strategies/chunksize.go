@@ -12,7 +12,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -50,7 +49,7 @@ func (s *ChunkSizeStrategy) Plan(
 	tenant string,
 	tsdbs TSDBSet,
 	metas []bloomshipper.Meta,
-) ([]*protos.Task, error) {
+) ([]*Task, error) {
 	targetTaskSize := s.limits.BloomTaskTargetSeriesChunksSizeBytes(tenant)
 
 	logger := log.With(s.logger, "table", table.Addr(), "tenant", tenant)
@@ -73,29 +72,29 @@ func (s *ChunkSizeStrategy) Plan(
 		return nil, fmt.Errorf("failed to get sized series iter: %w", err)
 	}
 
-	tasks := make([]*protos.Task, 0, iterSize)
+	tasks := make([]*Task, 0, iterSize)
 	for sizedIter.Next() {
-		series := sizedIter.At()
-		if series.Len() == 0 {
+		batch := sizedIter.At()
+		if batch.Len() == 0 {
 			// This should never happen, but just in case.
-			level.Warn(logger).Log("msg", "got empty series batch", "tsdb", series.TSDB().Name())
+			level.Warn(logger).Log("msg", "got empty series batch", "tsdb", batch.TSDB().Name())
 			continue
 		}
 
-		bounds := series.Bounds()
+		bounds := batch.Bounds()
 
 		blocks, err := getBlocksMatchingBounds(metas, bounds)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get blocks matching bounds: %w", err)
 		}
 
-		planGap := protos.Gap{
+		planGap := Gap{
 			Bounds: bounds,
-			Series: series.V1Series(),
+			Series: batch.series,
 			Blocks: blocks,
 		}
 
-		tasks = append(tasks, protos.NewTask(table, tenant, bounds, series.TSDB(), []protos.Gap{planGap}))
+		tasks = append(tasks, NewTask(table, tenant, bounds, batch.TSDB(), tsdbs[batch.TSDB()], []Gap{planGap}))
 	}
 	if err := sizedIter.Err(); err != nil {
 		return nil, fmt.Errorf("failed to iterate over sized series: %w", err)
@@ -155,20 +154,16 @@ func getBlocksMatchingBounds(metas []bloomshipper.Meta, bounds v1.FingerprintBou
 	return deduped, nil
 }
 
-type seriesWithChunks struct {
-	tsdb   tsdb.SingleTenantTSDBIdentifier
-	fp     model.Fingerprint
-	chunks []index.ChunkMeta
-}
-
 type seriesBatch struct {
-	series []seriesWithChunks
+	tsdb   tsdb.SingleTenantTSDBIdentifier
+	series []model.Fingerprint
 	size   uint64
 }
 
-func newSeriesBatch() seriesBatch {
+func newSeriesBatch(tsdb tsdb.SingleTenantTSDBIdentifier) seriesBatch {
 	return seriesBatch{
-		series: make([]seriesWithChunks, 0, 100),
+		tsdb:   tsdb,
+		series: make([]model.Fingerprint, 0, 100),
 	}
 }
 
@@ -179,32 +174,11 @@ func (b *seriesBatch) Bounds() v1.FingerprintBounds {
 
 	// We assume that the series are sorted by fingerprint.
 	// This is guaranteed since series are iterated in order by the TSDB.
-	return v1.NewBounds(b.series[0].fp, b.series[len(b.series)-1].fp)
+	return v1.NewBounds(b.series[0], b.series[len(b.series)-1])
 }
 
-func (b *seriesBatch) V1Series() []*v1.Series {
-	series := make([]*v1.Series, 0, len(b.series))
-	for _, s := range b.series {
-		res := &v1.Series{
-			Fingerprint: s.fp,
-			Chunks:      make(v1.ChunkRefs, 0, len(s.chunks)),
-		}
-		for _, chk := range s.chunks {
-			res.Chunks = append(res.Chunks, v1.ChunkRef{
-				From:     model.Time(chk.MinTime),
-				Through:  model.Time(chk.MaxTime),
-				Checksum: chk.Checksum,
-			})
-		}
-
-		series = append(series, res)
-	}
-
-	return series
-}
-
-func (b *seriesBatch) Append(s seriesWithChunks, size uint64) {
-	b.series = append(b.series, s)
+func (b *seriesBatch) Append(series model.Fingerprint, size uint64) {
+	b.series = append(b.series, series)
 	b.size += size
 }
 
@@ -217,10 +191,7 @@ func (b *seriesBatch) Size() uint64 {
 }
 
 func (b *seriesBatch) TSDB() tsdb.SingleTenantTSDBIdentifier {
-	if len(b.series) == 0 {
-		return tsdb.SingleTenantTSDBIdentifier{}
-	}
-	return b.series[0].tsdb
+	return b.tsdb
 }
 
 func (s *ChunkSizeStrategy) sizedSeriesIter(
@@ -230,9 +201,12 @@ func (s *ChunkSizeStrategy) sizedSeriesIter(
 	targetTaskSizeBytes uint64,
 ) (iter.Iterator[seriesBatch], int, error) {
 	batches := make([]seriesBatch, 0, 100)
-	currentBatch := newSeriesBatch()
+	var currentBatch seriesBatch
 
 	for _, idx := range tsdbsWithGaps {
+		// We cut a new batch for each TSDB.
+		currentBatch = newSeriesBatch(idx.tsdbIdentifier)
+
 		for _, gap := range idx.gaps {
 			if err := idx.tsdb.ForSeries(
 				ctx,
@@ -253,14 +227,10 @@ func (s *ChunkSizeStrategy) sizedSeriesIter(
 						// AND Adding this series to the batch would exceed the target task size.
 						if currentBatch.Len() > 0 && currentBatch.Size()+seriesSize > targetTaskSizeBytes {
 							batches = append(batches, currentBatch)
-							currentBatch = newSeriesBatch()
+							currentBatch = newSeriesBatch(idx.tsdbIdentifier)
 						}
 
-						currentBatch.Append(seriesWithChunks{
-							tsdb:   idx.tsdbIdentifier,
-							fp:     fp,
-							chunks: chks,
-						}, seriesSize)
+						currentBatch.Append(fp, seriesSize)
 						return false
 					}
 				},
@@ -269,10 +239,10 @@ func (s *ChunkSizeStrategy) sizedSeriesIter(
 				return nil, 0, err
 			}
 
-			// Add the last batch for this TSDB if it's not empty.
+			// Add the last batch for this gap if it's not empty.
 			if currentBatch.Len() > 0 {
 				batches = append(batches, currentBatch)
-				currentBatch = newSeriesBatch()
+				currentBatch = newSeriesBatch(idx.tsdbIdentifier)
 			}
 		}
 	}
