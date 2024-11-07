@@ -1059,7 +1059,7 @@ github.com/grafana/jsonparser
 # github.com/grafana/loki/pkg/push v0.0.0-20240924133635-758364c7775f => ./pkg/push
 ## explicit; go 1.19
 github.com/grafana/loki/pkg/push
-# github.com/grafana/loki/v3/pkg/logql/log v0.0.0-00010101000000-000000000000 => ./pkg/logql/log
+# github.com/grafana/loki/v3/pkg/logql/log v0.4.0 => ./pkg/logql/log
 ## explicit; go 1.23.1
 github.com/grafana/loki/v3/pkg/logql/log
 # github.com/grafana/loki/v3/pkg/logql/log/jsonexpr v0.0.0 => ./pkg/logql/log/jsonexpr

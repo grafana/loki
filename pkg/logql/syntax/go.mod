@@ -13,7 +13,7 @@ replace (
 
 require (
 	github.com/dustin/go-humanize v1.0.1
-	github.com/grafana/loki/v3/pkg/logql/log v0.0.0-00010101000000-000000000000
+	github.com/grafana/loki/v3/pkg/logql/log v0.4.0
 	github.com/grafana/loki/v3/pkg/util/encoding v0.0.0-00010101000000-000000000000
 	github.com/grafana/loki/v3/pkg/util/regexp v0.0.0
 	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc

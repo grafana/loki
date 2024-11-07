@@ -125,7 +125,7 @@ require (
 	github.com/gogo/googleapis v1.4.1
 	github.com/grafana/jsonparser v0.0.0-20241004153430-023329977675
 	github.com/grafana/loki/pkg/push v0.0.0-20240924133635-758364c7775f
-	github.com/grafana/loki/v3/pkg/logql/log v0.0.0-00010101000000-000000000000
+	github.com/grafana/loki/v3/pkg/logql/log v0.4.0
 	github.com/grafana/loki/v3/pkg/logql/log/logfmt v0.0.0
 	github.com/grafana/loki/v3/pkg/logql/log/pattern v0.0.0
 	github.com/grafana/loki/v3/pkg/logql/syntax v0.0.0
