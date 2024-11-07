@@ -105,6 +105,152 @@ local releaseLibStep = common.releaseLibStep;
       }),
     ]),
 
+  dockerPlugin: function(
+    name,
+    path,
+    dockerfile='Dockerfile',
+    context='release',
+    platform=[
+      'linux/amd64',
+      'linux/arm64',
+      'linux/arm',
+    ]
+        )
+    job.new()
+    + job.withStrategy({
+      'fail-fast': true,
+      matrix: {
+        platform: platform,
+      },
+    })
+    + job.withSteps([
+      common.fetchReleaseLib,
+      common.fetchReleaseRepo,
+      common.setupNode,
+      common.googleAuth,
+
+      step.new('Set up QEMU', 'docker/setup-qemu-action@v3'),
+      step.new('set up docker buildx', 'docker/setup-buildx-action@v3'),
+
+      releaseStep('parse image platform')
+      + step.withId('platform')
+      + step.withRun(|||
+        mkdir -p images
+
+        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        echo "platform=${platform}" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        if [[ "${platform}" == "linux/arm64" ]]; then
+          echo "plugin_arch=-arm64" >> $GITHUB_OUTPUT
+        else
+          echo "plugin_arch=" >> $GITHUB_OUTPUT
+        fi
+      |||),
+
+      step.new('Build and export', 'docker/build-push-action@v6')
+      + step.withTimeoutMinutes('${{ fromJSON(env.BUILD_TIMEOUT) }}')
+      + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
+      + step.withEnv({
+        IMAGE_TAG: '${{ needs.version.outputs.version }}',
+      })
+      + step.with({
+        context: context,
+        file: 'release/%s/%s' % [path, dockerfile],
+        platforms: '${{ matrix.platform }}',
+        push: false,
+        tags: '${{ env.IMAGE_PREFIX }}/%s:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}' % [name],
+        outputs: 'type=docker,dest=release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
+        'build-args': 'IMAGE_TAG=${{ needs.version.outputs.version }},GOARCH=${{ steps.platform.outputs.platform_short }}',
+      }),
+
+      releaseStep('Package as Docker plugin')
+      + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
+      + step.withEnv({
+        IMAGE_TAG: '${{ needs.version.outputs.version }}',
+        BUILD_DIR: 'release/%s' % [path],
+      })
+      + step.withRun(|||
+        rm -rf "${{ env.BUILD_DIR }}/rootfs" || true
+        mkdir "${{ env.BUILD_DIR }}/rootfs"
+        tar -x -C "${{ env.BUILD_DIR }}/rootfs" -f "release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        docker plugin create "${{ env.IMAGE_TAG }}${{ steps.platform.outputs.plugin_arch }}" "${{ env.BUILD_DIR }}"
+      |||),
+
+      step.new('upload artifacts', 'google-github-actions/upload-cloud-storage@v2')
+      + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
+      + step.with({
+        path: 'release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
+        destination: '${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images',  //TODO: make bucket configurable
+        process_gcloudignore: false,
+      }),
+    ]),
+
+  weeklyDockerPlugin: function(
+    name,
+    path,
+    dockerfile='Dockerfile',
+    context='release',
+    platform=[
+      'linux/amd64',
+      'linux/arm64',
+      'linux/arm',
+    ]
+              )
+    job.new()
+    + job.withStrategy({
+      matrix: {
+        platform: platform,
+      },
+    })
+    + job.withSteps([
+      common.fetchReleaseLib,
+      common.fetchReleaseRepo,
+      common.setupNode,
+
+      step.new('Set up QEMU', 'docker/setup-qemu-action@v3'),
+      step.new('set up docker buildx', 'docker/setup-buildx-action@v3'),
+      step.new('Login to DockerHub (from vault)', 'grafana/shared-workflows/actions/dockerhub-login@main'),
+
+      releaseStep('Get weekly version')
+      + step.withId('weekly-version')
+      + step.withRun(|||
+        echo "version=$(./tools/image-tag)" >> $GITHUB_OUTPUT
+
+        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        echo "platform=${platform}" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        if [[ "${platform}" == "linux/arm64" ]]; then
+          echo "plugin_arch=-arm64" >> $GITHUB_OUTPUT
+        else
+          echo "plugin_arch=" >> $GITHUB_OUTPUT
+        fi
+      |||),
+
+      step.new('Build and export', 'docker/build-push-action@v6')
+      + step.withTimeoutMinutes('${{ fromJSON(env.BUILD_TIMEOUT) }}')
+      + step.with({
+        context: context,
+        file: 'release/%s/%s' % [path, dockerfile],
+        platforms: '${{ matrix.platform }}',
+        push: false,
+        tags: '${{ env.IMAGE_PREFIX }}/%s:${{ steps.weekly-version.outputs.version }}' % [name],
+        outputs: 'type=docker,dest=release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
+        'build-args': 'IMAGE_TAG=${{ steps.weekly-version.outputs.version }},GOARCH=${{ steps.weekly-version.outputs.platform_short }}',
+      }),
+
+      releaseStep('Package and push as Docker plugin')
+      + step.withEnv({
+        IMAGE_TAG: '${{ steps.weekly-version.outputs.version }}',
+        BUILD_DIR: 'release/%s' % [path],
+      })
+      + step.withRun(|||
+        rm -rf "${{ env.BUILD_DIR }}/rootfs" || true
+        mkdir "${{ env.BUILD_DIR }}/rootfs"
+        tar -x -C "${{ env.BUILD_DIR }}/rootfs" -f "release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        docker plugin create "${{ env.IMAGE_TAG }}${{ steps.platform.outputs.plugin_arch }}" "${{ env.BUILD_DIR }}"
+        docker plugin push "${{ env.IMAGE_TAG }}${{ steps.platform.outputs.plugin_arch }}"
+      |||),
+    ]),
 
   version:
     job.new()
