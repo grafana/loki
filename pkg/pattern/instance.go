@@ -189,7 +189,7 @@ func (i *instance) forMatchingStreams(
 	matchers []*labels.Matcher,
 	fn func(*stream) error,
 ) error {
-	filters, matchers := util.SplitFiltersAndMatchers(matchers)
+	filters, matchers := syntax.SplitFiltersAndMatchers(matchers)
 	ids, err := i.index.Lookup(matchers, nil)
 	if err != nil {
 		return err

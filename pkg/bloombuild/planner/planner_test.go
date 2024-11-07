@@ -713,12 +713,21 @@ func (f *fakeBuilder) Recv() (*protos.BuilderToPlanner, error) {
 }
 
 func createTasks(n int, resultsCh chan *protos.TaskResult) []*QueueTask {
+	forSeries := plannertest.NewFakeForSeries(plannertest.GenV1Series(v1.NewBounds(0, 100)))
+
 	tasks := make([]*QueueTask, 0, n)
 	// Enqueue tasks
 	for i := 0; i < n; i++ {
 		task := NewQueueTask(
 			context.Background(), time.Now(),
-			protos.NewTask(config.NewDayTable(plannertest.TestDay, "fake"), "fakeTenant", v1.NewBounds(0, 10), plannertest.TsdbID(1), nil),
+			strategies.NewTask(
+				config.NewDayTable(plannertest.TestDay, "fake"),
+				"fakeTenant",
+				v1.NewBounds(0, 10),
+				plannertest.TsdbID(1),
+				nil,
+			),
+			forSeries,
 			resultsCh,
 		)
 		tasks = append(tasks, task)

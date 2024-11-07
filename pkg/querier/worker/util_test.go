@@ -10,6 +10,7 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
@@ -34,12 +35,12 @@ func TestHandleQueryRequest(t *testing.T) {
 			code:   http.StatusBadRequest,
 		},
 		"parser error": {
-			err:    logqlmodel.ErrParse,
+			err:    syntax.ErrParse,
 			errMsg: "failed to parse",
 			code:   http.StatusBadRequest,
 		},
 		"pipeline error": {
-			err:    logqlmodel.ErrPipeline,
+			err:    syntax.ErrPipeline,
 			errMsg: "failed execute pipeline",
 			code:   http.StatusBadRequest,
 		},

@@ -15,7 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqllog "github.com/grafana/loki/v3/pkg/logql/log"
 )
 
 var (
@@ -38,7 +38,7 @@ func (w *Packed) UnmarshalJSON(data []byte) error {
 	w.Labels = map[string]string{}
 	for k, v := range *m {
 		// _entry key goes to the Entry field, everything else becomes a label
-		if k == logqlmodel.PackedEntryKey {
+		if k == logqllog.PackedEntryKey {
 			if s, ok := v.(string); ok {
 				w.Entry = s
 			} else {
@@ -98,7 +98,7 @@ func (w Packed) MarshalJSON() ([]byte, error) {
 		buf.WriteString(",")
 	}
 	// Add the line entry
-	buf.WriteString("\"" + logqlmodel.PackedEntryKey + "\":")
+	buf.WriteString("\"" + logqllog.PackedEntryKey + "\":")
 	buf.Write(b)
 
 	buf.WriteString("}")

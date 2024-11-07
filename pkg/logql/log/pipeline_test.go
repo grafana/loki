@@ -6,8 +6,6 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 func TestNoopPipeline(t *testing.T) {
@@ -367,7 +365,7 @@ func TestDropLabelsPipeline(t *testing.T) {
 				NewJSONParser(),
 				NewDropLabels([]DropLabel{
 					{
-						labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errLogfmt),
+						labels.MustNewMatcher(labels.MatchEqual, ErrorLabel, errLogfmt),
 						"",
 					},
 					{
@@ -392,13 +390,13 @@ func TestDropLabelsPipeline(t *testing.T) {
 				labels.FromStrings("level", "info",
 					"ts", "2020-10-18T18:04:22.147378997Z",
 					"caller", "metrics.go:81",
-					logqlmodel.ErrorLabel, errJSON,
-					logqlmodel.ErrorDetailsLabel, "Value looks like object, but can't find closing '}' symbol",
+					ErrorLabel, errJSON,
+					ErrorDetailsLabel, "Value looks like object, but can't find closing '}' symbol",
 				),
 				labels.FromStrings("namespace", "prod",
 					"pod_uuid", "foo",
 					"pod_deployment_ref", "foobar",
-					logqlmodel.ErrorDetailsLabel, "logfmt syntax error at pos 2 : unexpected '\"'",
+					ErrorDetailsLabel, "logfmt syntax error at pos 2 : unexpected '\"'",
 				),
 			},
 		},
@@ -415,7 +413,6 @@ func TestDropLabelsPipeline(t *testing.T) {
 			require.Equal(t, tt.wantLabels[i].Hash(), finalLbs.Hash())
 		}
 	}
-
 }
 
 func TestKeepLabelsPipeline(t *testing.T) {
@@ -543,7 +540,6 @@ func TestKeepLabelsPipeline(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func TestUnsafeGetBytes(t *testing.T) {
@@ -594,7 +590,7 @@ func Benchmark_Pipeline(b *testing.B) {
 		),
 		mustNewLabelsFormatter([]LabelFmt{NewRenameLabelFmt("caller_foo", "caller"), NewTemplateLabelFmt("new", "{{.query_type}}:{{.range_type}}")}),
 		NewJSONParser(),
-		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, logqlmodel.ErrorLabel, errJSON)),
+		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, ErrorLabel, errJSON)),
 		newMustLineFormatter("Q=>{{.query}},D=>{{.duration}}"),
 	}
 	p := NewPipeline(stages)
@@ -728,8 +724,8 @@ func invalidJSONBenchmark(b *testing.B, parser Stage) {
 			b.Fatalf("resulting line not ok: %s\n", line)
 		}
 
-		if resLbs.Labels().Get(logqlmodel.ErrorLabel) != errJSON {
-			b.Fatalf("no %s label found: %+v\n", logqlmodel.ErrorLabel, resLbs.Labels())
+		if resLbs.Labels().Get(ErrorLabel) != errJSON {
+			b.Fatalf("no %s label found: %+v\n", ErrorLabel, resLbs.Labels())
 		}
 	}
 }

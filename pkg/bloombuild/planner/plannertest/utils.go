@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/compression"
 	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
@@ -13,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 var TestDay = ParseDayTime("2023-09-01")
@@ -87,11 +89,23 @@ func GenBlock(ref bloomshipper.BlockRef) (bloomshipper.Block, error) {
 	}, nil
 }
 
-func GenSeries(bounds v1.FingerprintBounds) []*v1.Series {
+func GenSeries(bounds v1.FingerprintBounds) []model.Fingerprint {
 	return GenSeriesWithStep(bounds, 1)
 }
 
-func GenSeriesWithStep(bounds v1.FingerprintBounds, step int) []*v1.Series {
+func GenSeriesWithStep(bounds v1.FingerprintBounds, step int) []model.Fingerprint {
+	series := make([]model.Fingerprint, 0, int(bounds.Max-bounds.Min+1)/step)
+	for i := bounds.Min; i <= bounds.Max; i += model.Fingerprint(step) {
+		series = append(series, i)
+	}
+	return series
+}
+
+func GenV1Series(bounds v1.FingerprintBounds) []*v1.Series {
+	return GenV1SeriesWithStep(bounds, 1)
+}
+
+func GenV1SeriesWithStep(bounds v1.FingerprintBounds, step int) []*v1.Series {
 	series := make([]*v1.Series, 0, int(bounds.Max-bounds.Min+1)/step)
 	for i := bounds.Min; i <= bounds.Max; i += model.Fingerprint(step) {
 		series = append(series, &v1.Series{
@@ -138,4 +152,44 @@ func ParseDayTime(s string) config.DayTime {
 	return config.DayTime{
 		Time: model.TimeFromUnix(t.Unix()),
 	}
+}
+
+type FakeForSeries struct {
+	series []*v1.Series
+}
+
+func NewFakeForSeries(series []*v1.Series) *FakeForSeries {
+	return &FakeForSeries{
+		series: series,
+	}
+}
+
+func (f FakeForSeries) ForSeries(_ context.Context, _ string, ff index.FingerprintFilter, _ model.Time, _ model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), _ ...*labels.Matcher) error {
+	overlapping := make([]*v1.Series, 0, len(f.series))
+	for _, s := range f.series {
+		if ff.Match(s.Fingerprint) {
+			overlapping = append(overlapping, s)
+		}
+	}
+
+	for _, s := range overlapping {
+		chunks := make([]index.ChunkMeta, 0, len(s.Chunks))
+		for _, c := range s.Chunks {
+			chunks = append(chunks, index.ChunkMeta{
+				MinTime:  int64(c.From),
+				MaxTime:  int64(c.Through),
+				Checksum: c.Checksum,
+				KB:       100,
+			})
+		}
+
+		if fn(labels.EmptyLabels(), s.Fingerprint, chunks) {
+			break
+		}
+	}
+	return nil
+}
+
+func (f FakeForSeries) Close() error {
+	return nil
 }
