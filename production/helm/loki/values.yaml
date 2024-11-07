@@ -2806,6 +2806,8 @@ patternIngester:
   terminationGracePeriodSeconds: 30
   # -- Node selector for pattern ingester pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for pattern ingester pods
+  topologySpreadConstraints: []
   # -- Tolerations for pattern ingester pods
   tolerations: []
   # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
