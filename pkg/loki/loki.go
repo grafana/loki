@@ -39,7 +39,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
-	ingester_rf1 "github.com/grafana/loki/v3/pkg/ingester-rf1"
 	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore"
 	metastoreclient "github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/client"
 	ingester_client "github.com/grafana/loki/v3/pkg/ingester/client"
@@ -355,7 +354,6 @@ type Loki struct {
 	TenantLimits              validation.TenantLimits
 	distributor               *distributor.Distributor
 	Ingester                  ingester.Interface
-	IngesterRF1               ingester_rf1.Interface
 	PatternIngester           *pattern.Ingester
 	PatternRingClient         pattern.RingClient
 	Querier                   querier.Querier
@@ -635,15 +633,6 @@ func (t *Loki) readyHandler(sm *services.Manager, shutdownRequested *atomic.Bool
 		if t.PatternIngester != nil {
 			if err := t.PatternIngester.CheckReady(r.Context()); err != nil {
 				http.Error(w, "Pattern Ingester not ready: "+err.Error(), http.StatusServiceUnavailable)
-				return
-			}
-		}
-
-		// Ingester RF1 has a special check that makes sure that it was able to register into the ring,
-		// and that all other ring entries are OK too.
-		if t.IngesterRF1 != nil {
-			if err := t.IngesterRF1.CheckReady(r.Context()); err != nil {
-				http.Error(w, "RF-1 Ingester not ready: "+err.Error(), http.StatusServiceUnavailable)
 				return
 			}
 		}
