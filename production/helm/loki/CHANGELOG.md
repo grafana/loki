@@ -15,6 +15,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 6.19.0
 
+- [CHANGE] Changed version of Minio helm chart to 5.3.0
+
 ## 6.18.0
 
 - [CHANGE] Added automated weekly releases, which created this release.

@@ -13,7 +13,7 @@ icon: https://grafana.com/docs/loki/latest/logo_and_name.png
 dependencies:
   - name: minio
     alias: minio
-    version: 4.0.15
+    version: 5.3.0
     repository: https://charts.min.io/
     condition: minio.enabled
   - name: grafana-agent-operator
