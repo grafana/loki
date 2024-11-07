@@ -133,11 +133,6 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # the querier.
 [ingester_client: <ingester_client>]
 
-# The ingester_client block configures how the distributor will connect to
-# ingesters. Only appropriate when running all components, the distributor, or
-# the querier.
-[ingester_rf1_client: <ingester_client>]
-
 # The ingester block configures the ingester and how the ingester will register
 # itself to a key value store.
 [ingester: <ingester>]
@@ -308,7 +303,7 @@ pattern_ingester:
 
     # Configures how the gRPC connection to ingesters work as a client.
     # The CLI flags prefix for this block configuration is:
-    # bloom-build.builder.grpc
+    # pattern-ingester.client
     [grpc_client_config: <grpc_client>]
 
   # How many flushes can happen concurrently from each stream.
@@ -740,6 +735,8 @@ metastore_client:
   [address: <string> | default = "localhost:9095"]
 
   # Configures the gRPC client used to communicate with the metastore.
+  # The CLI flags prefix for this block configuration is:
+  # metastore.grpc-client-config
   [grpc_client_config: <grpc_client>]
 
 kafka_config:
@@ -1260,7 +1257,7 @@ builder:
   # The grpc_client block configures the gRPC client used to communicate between
   # a client and server component in Loki.
   # The CLI flags prefix for this block configuration is:
-  # bloom-gateway-client.grpc
+  # bloom-build.builder.grpc
   [grpc_config: <grpc_client>]
 
   # Hostname (and port) of the bloom planner
@@ -1299,7 +1296,8 @@ client:
 
   # The grpc_client block configures the gRPC client used to communicate between
   # a client and server component in Loki.
-  # The CLI flags prefix for this block configuration is: bigtable
+  # The CLI flags prefix for this block configuration is:
+  # bloom-gateway-client.grpc
   [grpc_client_config: <grpc_client>]
 
   results_cache:
@@ -2508,20 +2506,20 @@ The `frontend_worker` configures the worker - running within the Loki querier - 
 
 # Configures the querier gRPC client used to communicate with the
 # query-frontend. This can't be used in conjunction with 'grpc_client_config'.
-# The CLI flags prefix for this block configuration is: querier.frontend-client
+# The CLI flags prefix for this block configuration is:
+# querier.frontend-grpc-client
 [query_frontend_grpc_client: <grpc_client>]
 
 # Configures the querier gRPC client used to communicate with the query-frontend
 # and with the query-scheduler. This can't be used in conjunction with
 # 'query_frontend_grpc_client' or 'query_scheduler_grpc_client'.
-# The CLI flags prefix for this block configuration is:
-# querier.scheduler-grpc-client
+# The CLI flags prefix for this block configuration is: querier.frontend-client
 [grpc_client_config: <grpc_client>]
 
 # Configures the querier gRPC client used to communicate with the
 # query-scheduler. This can't be used in conjunction with 'grpc_client_config'.
 # The CLI flags prefix for this block configuration is:
-# metastore.grpc-client-config
+# querier.scheduler-grpc-client
 [query_scheduler_grpc_client: <grpc_client>]
 ```
 
@@ -2592,82 +2590,82 @@ The `grpc_client` block configures the gRPC client used to communicate between a
 
 ```yaml
 # gRPC client max receive message size (bytes).
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.grpc-max-recv-msg-size
+# CLI flag: -<prefix>.grpc-max-recv-msg-size
 [max_recv_msg_size: <int> | default = 104857600]
 
 # gRPC client max send message size (bytes).
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.grpc-max-send-msg-size
+# CLI flag: -<prefix>.grpc-max-send-msg-size
 [max_send_msg_size: <int> | default = 104857600]
 
 # Use compression when sending messages. Supported values are: 'gzip', 'snappy'
 # and '' (disable compression)
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.grpc-compression
+# CLI flag: -<prefix>.grpc-compression
 [grpc_compression: <string> | default = ""]
 
 # Rate limit for gRPC client; 0 means disabled.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.grpc-client-rate-limit
+# CLI flag: -<prefix>.grpc-client-rate-limit
 [rate_limit: <float> | default = 0]
 
 # Rate limit burst for gRPC client.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.grpc-client-rate-limit-burst
+# CLI flag: -<prefix>.grpc-client-rate-limit-burst
 [rate_limit_burst: <int> | default = 0]
 
 # Enable backoff and retry when we hit rate limits.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.backoff-on-ratelimits
+# CLI flag: -<prefix>.backoff-on-ratelimits
 [backoff_on_ratelimits: <boolean> | default = false]
 
 backoff_config:
   # Minimum delay when backing off.
-  # CLI flag: -boltdb.shipper.index-gateway-client.grpc.backoff-min-period
+  # CLI flag: -<prefix>.backoff-min-period
   [min_period: <duration> | default = 100ms]
 
   # Maximum delay when backing off.
-  # CLI flag: -boltdb.shipper.index-gateway-client.grpc.backoff-max-period
+  # CLI flag: -<prefix>.backoff-max-period
   [max_period: <duration> | default = 10s]
 
   # Number of times to backoff and retry before failing.
-  # CLI flag: -boltdb.shipper.index-gateway-client.grpc.backoff-retries
+  # CLI flag: -<prefix>.backoff-retries
   [max_retries: <int> | default = 10]
 
 # Initial stream window size. Values less than the default are not supported and
 # are ignored. Setting this to a value other than the default disables the BDP
 # estimator.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.initial-stream-window-size
+# CLI flag: -<prefix>.initial-stream-window-size
 [initial_stream_window_size: <int> | default = 63KiB1023B]
 
 # Initial connection window size. Values less than the default are not supported
 # and are ignored. Setting this to a value other than the default disables the
 # BDP estimator.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.initial-connection-window-size
+# CLI flag: -<prefix>.initial-connection-window-size
 [initial_connection_window_size: <int> | default = 63KiB1023B]
 
 # Enable TLS in the gRPC client. This flag needs to be enabled when any other
 # TLS flag is set. If set to false, insecure connection to gRPC server will be
 # used.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.tls-enabled
+# CLI flag: -<prefix>.tls-enabled
 [tls_enabled: <boolean> | default = false]
 
 # Path to the client certificate, which will be used for authenticating with the
 # server. Also requires the key path to be configured.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.tls-cert-path
+# CLI flag: -<prefix>.tls-cert-path
 [tls_cert_path: <string> | default = ""]
 
 # Path to the key for the client certificate. Also requires the client
 # certificate to be configured.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.tls-key-path
+# CLI flag: -<prefix>.tls-key-path
 [tls_key_path: <string> | default = ""]
 
 # Path to the CA certificates to validate server certificate against. If not
 # set, the host's root CA certificates are used.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.tls-ca-path
+# CLI flag: -<prefix>.tls-ca-path
 [tls_ca_path: <string> | default = ""]
 
 # Override the expected name on the server certificate.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.tls-server-name
+# CLI flag: -<prefix>.tls-server-name
 [tls_server_name: <string> | default = ""]
 
 # Skip validating server certificate.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.tls-insecure-skip-verify
+# CLI flag: -<prefix>.tls-insecure-skip-verify
 [tls_insecure_skip_verify: <boolean> | default = false]
 
 # Override the default cipher suite list (separated by commas). Allowed values:
@@ -2700,27 +2698,27 @@ backoff_config:
 # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
 # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
 # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.tls-cipher-suites
+# CLI flag: -<prefix>.tls-cipher-suites
 [tls_cipher_suites: <string> | default = ""]
 
 # Override the default minimum TLS version. Allowed values: VersionTLS10,
 # VersionTLS11, VersionTLS12, VersionTLS13
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.tls-min-version
+# CLI flag: -<prefix>.tls-min-version
 [tls_min_version: <string> | default = ""]
 
 # The maximum amount of time to establish a connection. A value of 0 means
 # default gRPC client connect timeout and backoff.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.connect-timeout
+# CLI flag: -<prefix>.connect-timeout
 [connect_timeout: <duration> | default = 5s]
 
 # Initial backoff delay after first connection failure. Only relevant if
 # ConnectTimeout > 0.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.connect-backoff-base-delay
+# CLI flag: -<prefix>.connect-backoff-base-delay
 [connect_backoff_base_delay: <duration> | default = 1s]
 
 # Maximum backoff delay when establishing a connection. Only relevant if
 # ConnectTimeout > 0.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.connect-backoff-max-delay
+# CLI flag: -<prefix>.connect-backoff-max-delay
 [connect_backoff_max_delay: <duration> | default = 5s]
 ```
 
@@ -5409,8 +5407,7 @@ bigtable:
 
   # The grpc_client block configures the gRPC client used to communicate between
   # a client and server component in Loki.
-  # The CLI flags prefix for this block configuration is:
-  # boltdb.shipper.index-gateway-client.grpc
+  # The CLI flags prefix for this block configuration is: bigtable
   [grpc_client_config: <grpc_client>]
 
   # If enabled, once a tables info is fetched, it is cached.
@@ -5704,7 +5701,7 @@ boltdb_shipper:
     # The grpc_client block configures the gRPC client used to communicate
     # between a client and server component in Loki.
     # The CLI flags prefix for this block configuration is:
-    # tsdb.shipper.index-gateway-client.grpc
+    # boltdb.shipper.index-gateway-client.grpc
     [grpc_client_config: <grpc_client>]
 
     # Hostname or IP of the Index Gateway gRPC server running in simple mode.
@@ -5759,7 +5756,7 @@ tsdb_shipper:
     # The grpc_client block configures the gRPC client used to communicate
     # between a client and server component in Loki.
     # The CLI flags prefix for this block configuration is:
-    # querier.frontend-grpc-client
+    # tsdb.shipper.index-gateway-client.grpc
     [grpc_client_config: <grpc_client>]
 
     # Hostname or IP of the Index Gateway gRPC server running in simple mode.
