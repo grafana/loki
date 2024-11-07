@@ -9,7 +9,7 @@ require (
 	github.com/grafana/loki/v3/pkg/logql/log/jsonexpr v0.0.0
 	github.com/grafana/loki/v3/pkg/logql/log/logfmt v0.0.0
 	github.com/grafana/loki/v3/pkg/logql/log/pattern v0.0.0
-	github.com/grafana/loki/v3/pkg/logql/syntax v0.0.0
+	github.com/grafana/loki/v3/pkg/logql/syntax v0.0.1
 	github.com/grafana/loki/v3/pkg/util/regexp v0.0.0
 	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
 	github.com/json-iterator/go v1.1.12

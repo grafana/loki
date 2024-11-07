@@ -128,7 +128,7 @@ require (
 	github.com/grafana/loki/v3/pkg/logql/log v0.0.0-00010101000000-000000000000
 	github.com/grafana/loki/v3/pkg/logql/log/logfmt v0.0.0
 	github.com/grafana/loki/v3/pkg/logql/log/pattern v0.0.0
-	github.com/grafana/loki/v3/pkg/logql/syntax v0.0.0
+	github.com/grafana/loki/v3/pkg/logql/syntax v0.0.1
 	github.com/grafana/loki/v3/pkg/util/encoding v0.0.0-00010101000000-000000000000
 	github.com/grafana/loki/v3/pkg/util/regexp v0.0.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7

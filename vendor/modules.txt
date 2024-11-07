@@ -1081,7 +1081,7 @@ github.com/grafana/loki/v3/pkg/logql/log/logfmt
 # github.com/grafana/loki/v3/pkg/logql/log/pattern v0.0.0 => ./pkg/logql/log/pattern
 ## explicit; go 1.23.1
 github.com/grafana/loki/v3/pkg/logql/log/pattern
-# github.com/grafana/loki/v3/pkg/logql/syntax v0.0.0 => ./pkg/logql/syntax
+# github.com/grafana/loki/v3/pkg/logql/syntax v0.0.1 => ./pkg/logql/syntax
 ## explicit; go 1.23.1
 github.com/grafana/loki/v3/pkg/logql/syntax
 # github.com/grafana/loki/v3/pkg/util/encoding v0.0.0-00010101000000-000000000000 => ./pkg/util/encoding
