@@ -94,7 +94,7 @@ func (s *ChunkSizeStrategy) Plan(
 			Blocks: blocks,
 		}
 
-		tasks = append(tasks, NewTask(table, tenant, bounds, batch.TSDB(), tsdbs[batch.TSDB()], []Gap{planGap}))
+		tasks = append(tasks, NewTask(table, tenant, bounds, batch.TSDB(), []Gap{planGap}))
 	}
 	if err := sizedIter.Err(); err != nil {
 		return nil, fmt.Errorf("failed to iterate over sized series: %w", err)

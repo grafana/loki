@@ -725,9 +725,9 @@ func createTasks(n int, resultsCh chan *protos.TaskResult) []*QueueTask {
 				"fakeTenant",
 				v1.NewBounds(0, 10),
 				plannertest.TsdbID(1),
-				forSeries,
 				nil,
 			),
+			forSeries,
 			resultsCh,
 		)
 		tasks = append(tasks, task)

@@ -227,9 +227,10 @@ func (p *Planner) runOne(ctx context.Context) error {
 	}
 
 	var (
-		wg     sync.WaitGroup
-		start  = time.Now()
-		status = statusFailure
+		wg        sync.WaitGroup
+		start     = time.Now()
+		status    = statusFailure
+		openTSDBs strategies.TSDBSet
 	)
 	defer func() {
 		p.metrics.buildCompleted.WithLabelValues(status).Inc()
@@ -237,6 +238,15 @@ func (p *Planner) runOne(ctx context.Context) error {
 
 		if status == statusSuccess {
 			p.metrics.buildLastSuccess.SetToCurrentTime()
+		}
+
+		// Close all open TSDBs
+		// These are used to get the chunkrefs for the series in the gaps.
+		// We populate the chunkrefs when we send the task to the builder.
+		for idx, reader := range openTSDBs {
+			if err := reader.Close(); err != nil {
+				level.Error(p.logger).Log("msg", "failed to close tsdb", "tsdb", idx.Name(), "err", err)
+			}
 		}
 	}()
 
@@ -275,7 +285,21 @@ func (p *Planner) runOne(ctx context.Context) error {
 				table:  table,
 			}
 
-			tasks, existingMetas, err := p.computeTasks(ctx, table, tenant)
+			// Resolve TSDBs
+			tsdbs, err := p.tsdbStore.ResolveTSDBs(ctx, table, tenant)
+			if err != nil {
+				level.Error(logger).Log("msg", "failed to resolve tsdbs", "err", err)
+				continue
+			}
+
+			// Open new TSDBs
+			openTSDBs, err = openAllTSDBs(ctx, table, tenant, p.tsdbStore, tsdbs, openTSDBs)
+			if err != nil {
+				level.Error(logger).Log("msg", "failed to open all tsdbs", "err", err)
+				continue
+			}
+
+			tasks, existingMetas, err := p.computeTasks(ctx, table, tenant, openTSDBs)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to compute tasks", "err", err)
 				continue
@@ -286,7 +310,7 @@ func (p *Planner) runOne(ctx context.Context) error {
 
 			now := time.Now()
 			for _, task := range tasks {
-				queueTask := NewQueueTask(ctx, now, task, resultsCh)
+				queueTask := NewQueueTask(ctx, now, task, openTSDBs[task.TSDB], resultsCh)
 				if err := p.enqueueTask(queueTask); err != nil {
 					level.Error(logger).Log("msg", "error enqueuing task", "err", err)
 					continue
@@ -374,6 +398,7 @@ func (p *Planner) computeTasks(
 	ctx context.Context,
 	table config.DayTable,
 	tenant string,
+	tsdbs strategies.TSDBSet,
 ) ([]*strategies.Task, []bloomshipper.Meta, error) {
 	strategy, err := strategies.NewStrategy(tenant, p.limits, p.logger)
 	if err != nil {
@@ -402,29 +427,11 @@ func (p *Planner) computeTasks(
 		return nil, nil, fmt.Errorf("failed to delete outdated metas during planning: %w", err)
 	}
 
-	// Resolve TSDBs
-	tsdbs, err := p.tsdbStore.ResolveTSDBs(ctx, table, tenant)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to resolve tsdbs: %w", err)
-	}
-
 	if len(tsdbs) == 0 {
 		return nil, metas, nil
 	}
 
-	openTSDBs, err := openAllTSDBs(ctx, table, tenant, p.tsdbStore, tsdbs)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to open all tsdbs: %w", err)
-	}
-	defer func() {
-		for idx, reader := range openTSDBs {
-			if err := reader.Close(); err != nil {
-				level.Error(logger).Log("msg", "failed to close index", "err", err, "tsdb", idx.Name())
-			}
-		}
-	}()
-
-	tasks, err := strategy.Plan(ctx, table, tenant, openTSDBs, metas)
+	tasks, err := strategy.Plan(ctx, table, tenant, tsdbs, metas)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to plan tasks: %w", err)
 	}
@@ -506,18 +513,26 @@ func openAllTSDBs(
 	tenant string,
 	store common.TSDBStore,
 	tsdbs []tsdb.SingleTenantTSDBIdentifier,
-) (map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries, error) {
-	openTSDBs := make(map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries, len(tsdbs))
+	alreadyOpen strategies.TSDBSet,
+) (strategies.TSDBSet, error) {
+	if len(alreadyOpen) == 0 {
+		alreadyOpen = make(strategies.TSDBSet, len(tsdbs))
+	}
+
 	for _, idx := range tsdbs {
-		tsdb, err := store.LoadTSDB(ctx, table, tenant, idx)
+		if _, ok := alreadyOpen[idx]; ok {
+			continue
+		}
+
+		reader, err := store.LoadTSDB(ctx, table, tenant, idx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load tsdb: %w", err)
 		}
 
-		openTSDBs[idx] = tsdb
+		alreadyOpen[idx] = reader
 	}
 
-	return openTSDBs, nil
+	return alreadyOpen, nil
 }
 
 // deleteOutdatedMetasAndBlocks filters out the outdated metas from the `metas` argument and deletes them from the store.

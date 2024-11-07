@@ -7,15 +7,14 @@ import (
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/bloombuild/common"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner/plannertest"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
 
-func taskForGap(tsdb tsdb.SingleTenantTSDBIdentifier, forSeries common.ClosableForSeries, bounds v1.FingerprintBounds, blocks []bloomshipper.BlockRef) *Task {
-	return NewTask(plannertest.TestTable, "fake", bounds, tsdb, forSeries, []Gap{
+func taskForGap(tsdb tsdb.SingleTenantTSDBIdentifier, bounds v1.FingerprintBounds, blocks []bloomshipper.BlockRef) *Task {
+	return NewTask(plannertest.TestTable, "fake", bounds, tsdb, []Gap{
 		{
 			Bounds: bounds,
 			Series: plannertest.GenSeriesWithStep(bounds, 10),
@@ -45,12 +44,12 @@ func Test_ChunkSizeStrategy_Plan(t *testing.T) {
 
 			// We expect 5 tasks, each with 2 series each
 			expectedTasks: []*Task{
-				taskForGap(plannertest.TsdbID(0), forSeries, v1.NewBounds(0, 10), nil),
-				taskForGap(plannertest.TsdbID(0), forSeries, v1.NewBounds(20, 30), nil),
-				taskForGap(plannertest.TsdbID(0), forSeries, v1.NewBounds(40, 50), nil),
-				taskForGap(plannertest.TsdbID(0), forSeries, v1.NewBounds(60, 70), nil),
-				taskForGap(plannertest.TsdbID(0), forSeries, v1.NewBounds(80, 90), nil),
-				taskForGap(plannertest.TsdbID(0), forSeries, v1.NewBounds(100, 100), nil),
+				taskForGap(plannertest.TsdbID(0), v1.NewBounds(0, 10), nil),
+				taskForGap(plannertest.TsdbID(0), v1.NewBounds(20, 30), nil),
+				taskForGap(plannertest.TsdbID(0), v1.NewBounds(40, 50), nil),
+				taskForGap(plannertest.TsdbID(0), v1.NewBounds(60, 70), nil),
+				taskForGap(plannertest.TsdbID(0), v1.NewBounds(80, 90), nil),
+				taskForGap(plannertest.TsdbID(0), v1.NewBounds(100, 100), nil),
 			},
 		},
 		{
@@ -128,7 +127,7 @@ func Test_ChunkSizeStrategy_Plan(t *testing.T) {
 
 			// We expect 1 tasks for the missing series
 			expectedTasks: []*Task{
-				taskForGap(plannertest.TsdbID(0), forSeries, v1.NewBounds(20, 30), nil),
+				taskForGap(plannertest.TsdbID(0), v1.NewBounds(20, 30), nil),
 			},
 		},
 		{
@@ -157,27 +156,27 @@ func Test_ChunkSizeStrategy_Plan(t *testing.T) {
 
 			// We expect 5 tasks, each with 2 series each
 			expectedTasks: []*Task{
-				taskForGap(plannertest.TsdbID(1), forSeries, v1.NewBounds(0, 10), []bloomshipper.BlockRef{
+				taskForGap(plannertest.TsdbID(1), v1.NewBounds(0, 10), []bloomshipper.BlockRef{
 					plannertest.GenBlockRef(0, 0),
 					plannertest.GenBlockRef(10, 10),
 				}),
-				taskForGap(plannertest.TsdbID(1), forSeries, v1.NewBounds(20, 30), []bloomshipper.BlockRef{
+				taskForGap(plannertest.TsdbID(1), v1.NewBounds(20, 30), []bloomshipper.BlockRef{
 					plannertest.GenBlockRef(20, 20),
 					plannertest.GenBlockRef(30, 30),
 				}),
-				taskForGap(plannertest.TsdbID(1), forSeries, v1.NewBounds(40, 50), []bloomshipper.BlockRef{
+				taskForGap(plannertest.TsdbID(1), v1.NewBounds(40, 50), []bloomshipper.BlockRef{
 					plannertest.GenBlockRef(40, 40),
 					plannertest.GenBlockRef(50, 50),
 				}),
-				taskForGap(plannertest.TsdbID(1), forSeries, v1.NewBounds(60, 70), []bloomshipper.BlockRef{
+				taskForGap(plannertest.TsdbID(1), v1.NewBounds(60, 70), []bloomshipper.BlockRef{
 					plannertest.GenBlockRef(60, 60),
 					plannertest.GenBlockRef(70, 70),
 				}),
-				taskForGap(plannertest.TsdbID(1), forSeries, v1.NewBounds(80, 90), []bloomshipper.BlockRef{
+				taskForGap(plannertest.TsdbID(1), v1.NewBounds(80, 90), []bloomshipper.BlockRef{
 					plannertest.GenBlockRef(80, 80),
 					plannertest.GenBlockRef(90, 90),
 				}),
-				taskForGap(plannertest.TsdbID(1), forSeries, v1.NewBounds(100, 100), []bloomshipper.BlockRef{
+				taskForGap(plannertest.TsdbID(1), v1.NewBounds(100, 100), []bloomshipper.BlockRef{
 					plannertest.GenBlockRef(100, 100),
 				}),
 			},
@@ -212,15 +211,15 @@ func Test_ChunkSizeStrategy_Plan(t *testing.T) {
 
 			// We expect 5 tasks, each with 2 series each
 			expectedTasks: []*Task{
-				taskForGap(plannertest.TsdbID(1), forSeries, v1.NewBounds(0, 10), []bloomshipper.BlockRef{
+				taskForGap(plannertest.TsdbID(1), v1.NewBounds(0, 10), []bloomshipper.BlockRef{
 					plannertest.GenBlockRef(0, 0),
 					plannertest.GenBlockRef(10, 10),
 				}),
-				taskForGap(plannertest.TsdbID(1), forSeries, v1.NewBounds(20, 30), []bloomshipper.BlockRef{
+				taskForGap(plannertest.TsdbID(1), v1.NewBounds(20, 30), []bloomshipper.BlockRef{
 					plannertest.GenBlockRef(20, 20),
 					plannertest.GenBlockRef(30, 30),
 				}),
-				taskForGap(plannertest.TsdbID(1), forSeries, v1.NewBounds(40, 40), []bloomshipper.BlockRef{
+				taskForGap(plannertest.TsdbID(1), v1.NewBounds(40, 40), []bloomshipper.BlockRef{
 					plannertest.GenBlockRef(40, 40),
 				}),
 			},

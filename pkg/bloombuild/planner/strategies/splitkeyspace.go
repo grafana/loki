@@ -66,7 +66,7 @@ func (s *SplitKeyspaceStrategy) Plan(
 		}
 
 		for _, gap := range gaps {
-			tasks = append(tasks, NewTask(table, tenant, ownershipRange, gap.tsdb, tsdbs[gap.tsdb], gap.gaps))
+			tasks = append(tasks, NewTask(table, tenant, ownershipRange, gap.tsdb, gap.gaps))
 		}
 	}
 
