@@ -39,8 +39,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
-	"github.com/grafana/loki/v3/pkg/ingester-rf1/metastore"
-	metastoreclient "github.com/grafana/loki/v3/pkg/ingester-rf1/metastore/client"
 	ingester_client "github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
@@ -105,8 +103,6 @@ type Config struct {
 	Worker              worker.Config              `yaml:"frontend_worker,omitempty"`
 	TableManager        index.TableManagerConfig   `yaml:"table_manager,omitempty"`
 	MemberlistKV        memberlist.KVConfig        `yaml:"memberlist"`
-	Metastore           metastore.Config           `yaml:"metastore,omitempty"`
-	MetastoreClient     metastoreclient.Config     `yaml:"metastore_client"`
 	KafkaConfig         kafka.Config               `yaml:"kafka_config,omitempty" category:"experimental"`
 
 	RuntimeConfig     runtimeconfig.Config `yaml:"runtime_config,omitempty"`
@@ -186,8 +182,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Analytics.RegisterFlags(f)
 	c.OperationalConfig.RegisterFlags(f)
 	c.Profiling.RegisterFlags(f)
-	c.Metastore.RegisterFlags(f)
-	c.MetastoreClient.RegisterFlags(f)
 	c.KafkaConfig.RegisterFlags(f)
 }
 
@@ -376,7 +370,6 @@ type Loki struct {
 	querySchedulerRingManager *lokiring.RingManager
 	usageReport               *analytics.Reporter
 	indexGatewayRingManager   *lokiring.RingManager
-	MetastoreClient           *metastoreclient.Client
 	partitionRingWatcher      *ring.PartitionRingWatcher
 	partitionRing             *ring.PartitionInstanceRing
 
@@ -417,8 +410,6 @@ func (t *Loki) setupAuthMiddleware() {
 		[]string{
 			"/grpc.health.v1.Health/Check",
 			"/grpc.health.v1.Health/Watch",
-			"/metastorepb.MetastoreService/AddBlock",
-			"/metastorepb.MetastoreService/ListBlocksForQuery",
 			"/logproto.StreamData/GetStreamRates",
 			"/frontend.Frontend/Process",
 			"/frontend.Frontend/NotifyClientShutdown",
