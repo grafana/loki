@@ -2908,6 +2908,8 @@ ruler:
   maxUnavailable: null
   # -- Node selector for ruler pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for ruler pods
+  topologySpreadConstraints: []
   # -- Tolerations for ruler pods
   tolerations: []
   # -- DNSConfig for ruler pods
