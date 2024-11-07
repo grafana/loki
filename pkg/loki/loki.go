@@ -92,7 +92,6 @@ type Config struct {
 	Ruler               ruler.Config               `yaml:"ruler,omitempty"`
 	RulerStorage        rulestore.Config           `yaml:"ruler_storage,omitempty" doc:"hidden"`
 	IngesterClient      ingester_client.Config     `yaml:"ingester_client,omitempty"`
-	IngesterRF1Client   ingester_client.Config     `yaml:"ingester_rf1_client,omitempty"`
 	Ingester            ingester.Config            `yaml:"ingester,omitempty"`
 	Pattern             pattern.Config             `yaml:"pattern_ingester,omitempty"`
 	IndexGateway        indexgateway.Config        `yaml:"index_gateway"`
@@ -357,7 +356,6 @@ type Loki struct {
 	distributor               *distributor.Distributor
 	Ingester                  ingester.Interface
 	IngesterRF1               ingester_rf1.Interface
-	IngesterRF1RingClient     *ingester_rf1.RingClient
 	PatternIngester           *pattern.Ingester
 	PatternRingClient         pattern.RingClient
 	Querier                   querier.Querier
