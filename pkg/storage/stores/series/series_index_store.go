@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/dskit/concurrency"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
@@ -76,7 +77,8 @@ type IndexReaderWriter struct {
 }
 
 func NewIndexReaderWriter(schemaCfg config.SchemaConfig, schema series_index.SeriesStoreSchema, index series_index.Client,
-	fetcher *fetcher.Fetcher, chunkBatchSize int, writeDedupeCache cache.Cache) *IndexReaderWriter {
+	fetcher *fetcher.Fetcher, chunkBatchSize int, writeDedupeCache cache.Cache,
+) *IndexReaderWriter {
 	return &IndexReaderWriter{
 		schema:           schema,
 		index:            index,
@@ -161,7 +163,7 @@ func (c *IndexReaderWriter) GetChunkRefs(ctx context.Context, userID string, fro
 	metricName := metricNameMatcher.Value
 	// Fetch the series IDs from the index, based on non-empty matchers from
 	// the query.
-	_, matchers = util.SplitFiltersAndMatchers(matchers)
+	_, matchers = syntax.SplitFiltersAndMatchers(matchers)
 	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, userID, metricName, matchers)
 	if err != nil {
 		return nil, err
@@ -207,6 +209,7 @@ func (c chunkGroup) Len() int { return len(c.chunks) }
 func (c chunkGroup) Swap(i, j int) {
 	c.chunks[i], c.chunks[j] = c.chunks[j], c.chunks[i]
 }
+
 func (c chunkGroup) Less(i, j int) bool {
 	return c.schema.ExternalKey(c.chunks[i].ChunkRef) < c.schema.ExternalKey(c.chunks[j].ChunkRef)
 }

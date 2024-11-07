@@ -5,8 +5,6 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 )
@@ -241,25 +239,32 @@ func (p *fakeParseHints) ShouldExtract(key string) bool {
 	p.checkCount++
 	return key == p.label || p.extractAll
 }
+
 func (p *fakeParseHints) ShouldExtractPrefix(prefix string) bool {
 	return prefix == p.label || p.extractAll
 }
+
 func (p *fakeParseHints) NoLabels() bool {
 	return false
 }
+
 func (p *fakeParseHints) RecordExtracted(_ string) {
 	p.count++
 }
+
 func (p *fakeParseHints) AllRequiredExtracted() bool {
 	return !p.extractAll && p.count == 1
 }
+
 func (p *fakeParseHints) Reset() {
 	p.checkCount = 0
 	p.count = 0
 }
+
 func (p *fakeParseHints) PreserveError() bool {
 	return false
 }
+
 func (p *fakeParseHints) ShouldContinueParsingLine(_ string, _ *LabelsBuilder) bool {
 	return p.keepGoing
 }
@@ -503,7 +508,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			labels.FromStrings("foo", "bar"),
 			labels.FromStrings("foo", "bar",
-				logqlmodel.ErrorLabel, errJSON,
+				ErrorLabel, errJSON,
 			),
 			NoParserHints(),
 		},
@@ -515,8 +520,8 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			labels.FromStrings("foo", "bar"),
 			labels.FromStrings("foo", "bar",
-				logqlmodel.ErrorLabel, errJSON,
-				logqlmodel.PreserveErrorLabel, "true",
+				ErrorLabel, errJSON,
+				PreserveErrorLabel, "true",
 			),
 			NewParserHint([]string{"__error__"}, nil, false, true, "", nil),
 		},
@@ -1251,7 +1256,6 @@ func TestXExpressionParserFailures(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := NewLogfmtExpressionParser([]LabelExtractionExpr{tt.expression}, false)
 
