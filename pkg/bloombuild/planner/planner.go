@@ -240,7 +240,7 @@ func (p *Planner) runOne(ctx context.Context) error {
 			p.metrics.buildLastSuccess.SetToCurrentTime()
 		}
 
-		// Close all open TSDBs
+		// Close all open TSDBs.
 		// These are used to get the chunkrefs for the series in the gaps.
 		// We populate the chunkrefs when we send the task to the builder.
 		for idx, reader := range openTSDBs {
@@ -285,14 +285,12 @@ func (p *Planner) runOne(ctx context.Context) error {
 				table:  table,
 			}
 
-			// Resolve TSDBs
 			tsdbs, err := p.tsdbStore.ResolveTSDBs(ctx, table, tenant)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to resolve tsdbs", "err", err)
 				continue
 			}
 
-			// Open new TSDBs
 			openTSDBs, err = openAllTSDBs(ctx, table, tenant, p.tsdbStore, tsdbs, openTSDBs)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to open all tsdbs", "err", err)

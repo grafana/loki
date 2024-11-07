@@ -7,6 +7,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
@@ -104,6 +105,59 @@ func FromProtoTask(task *ProtoTask) (*Task, error) {
 		TSDB: tsdbRef,
 		Gaps: gaps,
 	}, nil
+}
+
+func (t *Task) ToProtoTask() *ProtoTask {
+	if t == nil {
+		return nil
+	}
+
+	protoGaps := make([]*ProtoGapWithBlocks, 0, len(t.Gaps))
+	for _, gap := range t.Gaps {
+		blockRefs := make([]string, 0, len(gap.Blocks))
+		for _, block := range gap.Blocks {
+			blockRefs = append(blockRefs, block.String())
+		}
+
+		// TODO(salvacorts): Cast []*v1.Series to []*ProtoSeries right away
+		series := make([]*ProtoSeries, 0, len(gap.Series))
+		for _, s := range gap.Series {
+			chunks := make([]*logproto.ShortRef, 0, len(s.Chunks))
+			for _, c := range s.Chunks {
+				chunk := logproto.ShortRef(c)
+				chunks = append(chunks, &chunk)
+			}
+
+			series = append(series, &ProtoSeries{
+				Fingerprint: uint64(s.Fingerprint),
+				Chunks:      chunks,
+			})
+		}
+
+		protoGaps = append(protoGaps, &ProtoGapWithBlocks{
+			Bounds: ProtoFingerprintBounds{
+				Min: gap.Bounds.Min,
+				Max: gap.Bounds.Max,
+			},
+			Series:   series,
+			BlockRef: blockRefs,
+		})
+	}
+
+	return &ProtoTask{
+		Id: t.ID,
+		Table: DayTable{
+			DayTimestampMS: int64(t.Table.Time),
+			Prefix:         t.Table.Prefix,
+		},
+		Tenant: t.Tenant,
+		Bounds: ProtoFingerprintBounds{
+			Min: t.OwnershipBounds.Min,
+			Max: t.OwnershipBounds.Max,
+		},
+		Tsdb: t.TSDB.Path(),
+		Gaps: protoGaps,
+	}
 }
 
 func (t *Task) GetLogger(logger log.Logger) log.Logger {
