@@ -30,6 +30,24 @@ type Task struct {
 	Gaps            []Gap
 }
 
+func NewTask(
+	table config.DayTable,
+	tenant string,
+	bounds v1.FingerprintBounds,
+	tsdb tsdb.SingleTenantTSDBIdentifier,
+	gaps []Gap,
+) *Task {
+	return &Task{
+		ID: fmt.Sprintf("%s-%s-%s-%d", table.Addr(), tenant, bounds.String(), len(gaps)),
+
+		Table:           table,
+		Tenant:          tenant,
+		OwnershipBounds: bounds,
+		TSDB:            tsdb,
+		Gaps:            gaps,
+	}
+}
+
 func FromProtoTask(task *ProtoTask) (*Task, error) {
 	if task == nil {
 		return nil, nil

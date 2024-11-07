@@ -1,10 +1,9 @@
 package strategies
 
 import (
-	"fmt"
-
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
@@ -19,12 +18,9 @@ type Gap struct {
 
 // Task represents a task that is enqueued in the planner.
 type Task struct {
-	ID              string
-	Table           config.DayTable
-	Tenant          string
-	OwnershipBounds v1.FingerprintBounds
-	TSDB            tsdb.SingleTenantTSDBIdentifier
-	Gaps            []Gap
+	*protos.Task
+	// Override the protos.Task.Gaps field with gaps that use model.Fingerprint instead of v1.Series.
+	Gaps []Gap
 }
 
 func NewTask(
@@ -35,11 +31,7 @@ func NewTask(
 	gaps []Gap,
 ) *Task {
 	return &Task{
-		ID:              fmt.Sprintf("%s-%s-%s-%d", table.Addr(), tenant, bounds.String(), len(gaps)),
-		Table:           table,
-		Tenant:          tenant,
-		OwnershipBounds: bounds,
-		TSDB:            tsdb,
-		Gaps:            gaps,
+		Task: protos.NewTask(table, tenant, bounds, tsdb, nil),
+		Gaps: gaps,
 	}
 }
