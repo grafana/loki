@@ -172,11 +172,6 @@ require (
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/goccy/go-json v0.10.3 // indirect
 	github.com/gorilla/handlers v1.5.2 // indirect
-<<<<<<< HEAD
-	github.com/grafana/loki/v3/pkg/logql/log/jsonexpr v0.0.0 // indirect
-=======
-	github.com/hashicorp/go-msgpack/v2 v2.1.2 // indirect
->>>>>>> parent of 28c9645d10 (chore: Introduce logql/syntax go module (#14790))
 	github.com/lufia/plan9stats v0.0.0-20220913051719-115f729f3c8c // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
