@@ -2185,6 +2185,8 @@ queryFrontend:
   maxUnavailable: null
   # -- Node selector for query-frontend pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for query-frontend pods
+  topologySpreadConstraints: []
   # -- Tolerations for query-frontend pods
   tolerations: []
   # -- Adds the appProtocol field to the queryFrontend service. This allows queryFrontend to work with istio protocol selection.
