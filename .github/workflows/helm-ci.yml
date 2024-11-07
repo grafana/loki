@@ -85,10 +85,12 @@ jobs:
         run: |
           kubectl create namespace prometheus
 
-          helm install prometheus prometheus-community/kube-prometheus-stack \
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm install --debug prometheus prometheus-community/kube-prometheus-stack \
             --namespace prometheus \
             --set grafana.enabled=false \
-            --set prometheus.prometheusSpec.serviceMonitorSelector.matchLabels.release=prometheus
+            --set prometheus.prometheusSpec.serviceMonitorSelector.matchLabels.release=prometheus \
+            --set prometheus.prometheusSpec.scrapeConfigNamespaceSelector.matchLabels.release=prometheus
 
           kubectl --namespace prometheus get pods -l "release=prometheus"
           kubectl --namespace prometheus get services -l "release=prometheus"
