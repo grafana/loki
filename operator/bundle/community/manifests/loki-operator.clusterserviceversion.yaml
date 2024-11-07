@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:0.7.0
-    createdAt: "2024-11-07T09:40:10Z"
+    createdAt: "2024-11-07T12:42:49Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -1751,7 +1751,7 @@ spec:
           - update
           - watch
         - apiGroups:
-          - policy
+          - policy/v1
           resources:
           - poddisruptionbudgets
           verbs:
@@ -1860,7 +1860,10 @@ spec:
                     port: 8081
                   initialDelaySeconds: 5
                   periodSeconds: 10
-                resources: {}
+                resources:
+                  requests:
+                    cpu: 200m
+                    memory: 256Mi
                 volumeMounts:
                 - mountPath: /tmp/k8s-webhook-server/serving-certs
                   name: webhook-cert
@@ -1878,7 +1881,10 @@ spec:
                 ports:
                 - containerPort: 8443
                   name: https
-                resources: {}
+                resources:
+                  requests:
+                    cpu: 200m
+                    memory: 256Mi
                 securityContext:
                   allowPrivilegeEscalation: false
                   capabilities:
