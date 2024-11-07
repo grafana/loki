@@ -135,7 +135,7 @@ github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/shared
 github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/pageblob
 github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/sas
 github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service
-# github.com/Azure/azure-storage-blob-go v0.14.0 => github.com/MasslessParticle/azure-storage-blob-go v0.14.1-0.20240322194317-344980fda573
+# github.com/Azure/azure-storage-blob-go v0.15.0 => github.com/MasslessParticle/azure-storage-blob-go v0.14.1-0.20240322194317-344980fda573
 ## explicit; go 1.15
 github.com/Azure/azure-storage-blob-go/azblob
 # github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1
