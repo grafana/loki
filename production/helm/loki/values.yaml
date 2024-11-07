@@ -1973,6 +1973,8 @@ distributor:
   maxSurge: 0
   # -- Node selector for distributor pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for distributor pods
+  topologySpreadConstraints: []
   # -- Tolerations for distributor pods
   tolerations: []
   # -- Adds the appProtocol field to the distributor service. This allows distributor to work with istio protocol selection.
