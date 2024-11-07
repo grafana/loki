@@ -27,7 +27,7 @@ const (
 
 // LokiStackSizeType declares the type for loki cluster scale outs.
 //
-// +kubebuilder:validation:Enum="1x.demo";"1x.extra-small";"1x.small";"1x.medium"
+// +kubebuilder:validation:Enum="1x.demo";"1x.pico";"1x.extra-small";"1x.small";"1x.medium"
 type LokiStackSizeType string
 
 const (
@@ -39,10 +39,18 @@ const (
 	// DO NOT USE THIS IN PRODUCTION!
 	SizeOneXDemo LokiStackSizeType = "1x.demo"
 
+	// SizeOneXPico defines the size of a single Loki deployment
+	// with extra small resources/limits requirements and HA support for all
+	// Loki components. This size is dedicated for setup **without** the
+	// requirement for single replication factor and auto-compaction.
+	//
+	// FIXME: Add clear description of ingestion/query performance expectations.
+	SizeOneXPico LokiStackSizeType = "1x.pico"
+
 	// SizeOneXExtraSmall defines the size of a single Loki deployment
-	// with extra small resources/limits requirements and without HA support.
-	// This size is ultimately dedicated for development and demo purposes.
-	// DO NOT USE THIS IN PRODUCTION!
+	// with extra small resources/limits requirements and HA support for all
+	// Loki components. This size is dedicated for setup **without** the
+	// requirement for single replication factor and auto-compaction.
 	//
 	// FIXME: Add clear description of ingestion/query performance expectations.
 	SizeOneXExtraSmall LokiStackSizeType = "1x.extra-small"
@@ -1045,7 +1053,7 @@ type LokiStackSpec struct {
 	//
 	// +required
 	// +kubebuilder:validation:Required
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:1x.extra-small","urn:alm:descriptor:com.tectonic.ui:select:1x.small","urn:alm:descriptor:com.tectonic.ui:select:1x.medium"},displayName="LokiStack Size"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:1x.pico","urn:alm:descriptor:com.tectonic.ui:select:1x.extra-small","urn:alm:descriptor:com.tectonic.ui:select:1x.small","urn:alm:descriptor:com.tectonic.ui:select:1x.medium"},displayName="LokiStack Size"
 	Size LokiStackSizeType `json:"size"`
 
 	// HashRing defines the spec for the distributed hash ring configuration.

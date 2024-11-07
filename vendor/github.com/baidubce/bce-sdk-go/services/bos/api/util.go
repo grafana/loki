@@ -395,12 +395,12 @@ func replaceEndpointByBucket(bucket, endpoint string) string {
 func setUriAndEndpoint(cli bce.Client, req *bce.BceRequest, ctx *BosContext, endpoint string) {
 	origin_uri := req.Uri()
 	bucket := ctx.Bucket
+	protocol := bce.DEFAULT_PROTOCOL
 	// deal with protocal
 	if strings.HasPrefix(endpoint, "https://") {
-		req.SetProtocol(bce.HTTPS_PROTOCAL)
+		protocol = bce.HTTPS_PROTOCAL
 		endpoint = strings.TrimPrefix(endpoint, "https://")
 	} else if strings.HasPrefix(endpoint, "http://") {
-		req.SetProtocol(bce.DEFAULT_PROTOCOL)
 		endpoint = strings.TrimPrefix(endpoint, "http://")
 	}
 	// set uri, endpoint for cname, cdn, virtual host
@@ -423,6 +423,7 @@ func setUriAndEndpoint(cli bce.Client, req *bce.BceRequest, ctx *BosContext, end
 			req.SetEndpoint(endpoint)
 		}
 	}
+	req.SetProtocol(protocol)
 }
 
 func getDefaultContentType(object string) string {

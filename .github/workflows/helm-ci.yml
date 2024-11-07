@@ -29,7 +29,7 @@ jobs:
         run: make helm-lint
 
       - name: Lint Code Base
-        uses: docker://github/super-linter:v3.12.0
+        uses: docker://github/super-linter:v3.17.2
         env:
           FILTER_REGEX_EXCLUDE: .*(README\.md|Chart\.yaml|NOTES.txt).*
           FILTER_REGEX_INCLUDE: .*production/helm/.*
@@ -76,7 +76,7 @@ jobs:
         timeout-minutes: 10
 
       - name: Create kind cluster
-        uses: helm/kind-action@v1.8.0
+        uses: helm/kind-action@v1.10.0
         if: steps.list-changed.outputs.changed == 'true'
 
       - name: Install prometheus operator
@@ -85,10 +85,12 @@ jobs:
         run: |
           kubectl create namespace prometheus
 
-          helm install prometheus prometheus-community/kube-prometheus-stack \
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm install --debug prometheus prometheus-community/kube-prometheus-stack \
             --namespace prometheus \
             --set grafana.enabled=false \
-            --set prometheus.prometheusSpec.serviceMonitorSelector.matchLabels.release=prometheus
+            --set prometheus.prometheusSpec.serviceMonitorSelector.matchLabels.release=prometheus \
+            --set prometheus.prometheusSpec.scrapeConfigNamespaceSelector.matchLabels.release=prometheus
 
           kubectl --namespace prometheus get pods -l "release=prometheus"
           kubectl --namespace prometheus get services -l "release=prometheus"

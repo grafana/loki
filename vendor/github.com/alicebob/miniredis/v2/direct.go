@@ -21,6 +21,9 @@ var (
 	// ErrIntValueError can returned by INCRBY
 	ErrIntValueError = errors.New(msgInvalidInt)
 
+	// ErrIntValueOverflowError can be returned by INCR, DECR, INCRBY, DECRBY
+	ErrIntValueOverflowError = errors.New(msgIntOverflow)
+
 	// ErrFloatValueError can returned by INCRBYFLOAT
 	ErrFloatValueError = errors.New(msgInvalidFloat)
 )
@@ -421,7 +424,7 @@ func (db *RedisDB) SetTTL(k string, ttl time.Duration) {
 	defer db.master.signal.Broadcast()
 
 	db.ttl[k] = ttl
-	db.keyVersion[k]++
+	db.incr(k)
 }
 
 // Type gives the type of a key, or ""
@@ -506,7 +509,7 @@ func (db *RedisDB) hdel(k, f string) {
 		return
 	}
 	delete(db.hashKeys[k], f)
-	db.keyVersion[k]++
+	db.incr(k)
 }
 
 // HIncrBy increases the integer value of a hash field by delta (int).

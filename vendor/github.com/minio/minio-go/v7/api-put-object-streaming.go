@@ -52,7 +52,7 @@ func (c *Client) putObjectMultipartStream(ctx context.Context, bucketName, objec
 	} else {
 		info, err = c.putObjectMultipartStreamOptionalChecksum(ctx, bucketName, objectName, reader, size, opts)
 	}
-	if err != nil {
+	if err != nil && s3utils.IsGoogleEndpoint(*c.endpointURL) {
 		errResp := ToErrorResponse(err)
 		// Verify if multipart functionality is not available, if not
 		// fall back to single PutObject operation.
