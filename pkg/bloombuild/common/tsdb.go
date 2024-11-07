@@ -135,7 +135,7 @@ func NewTSDBSeriesIter(ctx context.Context, user string, f sharding.ForSeries, b
 		user,
 		bounds,
 		0, math.MaxInt64,
-		func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
+		func(_ labels.Labels, fp model.Fingerprint, _ []index.ChunkMeta) (stop bool) {
 			select {
 			case <-ctx.Done():
 				return true
