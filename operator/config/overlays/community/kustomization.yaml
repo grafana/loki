@@ -47,6 +47,7 @@ images:
 patches:
 - path: manager_auth_proxy_patch.yaml
 - path: manager_related_image_patch.yaml
+- path: manager_resource_reqs_patch.yaml
 - path: manager_run_flags_patch.yaml
 - path: manager_webhook_patch.yaml
 - path: webhookcainjection_patch.yaml
