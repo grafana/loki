@@ -1161,6 +1161,8 @@ enterpriseGateway:
   affinity: {}
   # -- Node selector for gateway Pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for enterprise-gateway pods
+  topologySpreadConstraints: []
   # -- Tolerations for gateway Pods
   tolerations: []
   # -- Grace period to allow the gateway to shutdown before it is killed
