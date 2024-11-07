@@ -8,7 +8,6 @@ import (
 	"github.com/go-kit/log/level"
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/common"
-	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -45,14 +44,14 @@ func (s *SplitKeyspaceStrategy) Plan(
 	tenant string,
 	tsdbs TSDBSet,
 	metas []bloomshipper.Meta,
-) ([]*protos.Task, error) {
+) ([]*Task, error) {
 	splitFactor := s.limits.BloomSplitSeriesKeyspaceBy(tenant)
 	ownershipRanges := SplitFingerprintKeyspaceByFactor(splitFactor)
 
 	logger := log.With(s.logger, "table", table.Addr(), "tenant", tenant)
 	level.Debug(s.logger).Log("msg", "loading work for tenant", "splitFactor", splitFactor)
 
-	var tasks []*protos.Task
+	var tasks []*Task
 	for _, ownershipRange := range ownershipRanges {
 		logger := log.With(logger, "ownership", ownershipRange.String())
 
@@ -67,7 +66,7 @@ func (s *SplitKeyspaceStrategy) Plan(
 		}
 
 		for _, gap := range gaps {
-			tasks = append(tasks, protos.NewTask(table, tenant, ownershipRange, gap.tsdb, gap.gaps))
+			tasks = append(tasks, NewTask(table, tenant, ownershipRange, gap.tsdb, gap.gaps))
 		}
 	}
 
@@ -85,7 +84,7 @@ func (s *SplitKeyspaceStrategy) Plan(
 //     This is a performance optimization to avoid expensive re-reindexing
 type blockPlan struct {
 	tsdb tsdb.SingleTenantTSDBIdentifier
-	gaps []protos.Gap
+	gaps []Gap
 }
 
 func (s *SplitKeyspaceStrategy) findOutdatedGaps(
@@ -175,11 +174,11 @@ func blockPlansForGaps(
 	for _, idx := range tsdbs {
 		plan := blockPlan{
 			tsdb: idx.tsdbIdentifier,
-			gaps: make([]protos.Gap, 0, len(idx.gaps)),
+			gaps: make([]Gap, 0, len(idx.gaps)),
 		}
 
 		for _, gap := range idx.gaps {
-			planGap := protos.Gap{
+			planGap := Gap{
 				Bounds: gap,
 			}
 
