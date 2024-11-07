@@ -710,35 +710,6 @@ compactor_grpc_client:
 # a ring unless otherwise specified in the component's configuration section.
 [memberlist: <memberlist>]
 
-metastore:
-  # CLI flag: -metastore.data-dir
-  [data_dir: <string> | default = "./data-metastore/data"]
-
-  raft:
-    # CLI flag: -metastore.raft.dir
-    [dir: <string> | default = "./data-metastore/raft"]
-
-    # CLI flag: -metastore.raft.bootstrap-peers
-    [bootstrap_peers: <list of strings> | default = []]
-
-    # CLI flag: -metastore.raft.server-id
-    [server_id: <string> | default = "localhost:9099"]
-
-    # CLI flag: -metastore.raft.bind-address
-    [bind_address: <string> | default = "localhost:9099"]
-
-    # CLI flag: -metastore.raft.advertise-address
-    [advertise_address: <string> | default = "localhost:9099"]
-
-metastore_client:
-  # CLI flag: -metastore.address
-  [address: <string> | default = "localhost:9095"]
-
-  # Configures the gRPC client used to communicate with the metastore.
-  # The CLI flags prefix for this block configuration is:
-  # metastore.grpc-client-config
-  [grpc_client_config: <grpc_client>]
-
 kafka_config:
   # The Kafka backend address.
   # CLI flag: -kafka.address
@@ -2577,7 +2548,6 @@ The `grpc_client` block configures the gRPC client used to communicate between a
 - `boltdb.shipper.index-gateway-client.grpc`
 - `frontend.grpc-client-config`
 - `ingester.client`
-- `metastore.grpc-client-config`
 - `pattern-ingester.client`
 - `querier.frontend-client`
 - `querier.frontend-grpc-client`
