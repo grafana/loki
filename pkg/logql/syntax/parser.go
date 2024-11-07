@@ -9,6 +9,9 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
+
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 const (
@@ -79,17 +82,17 @@ func ParseExpr(input string) (Expr, error) {
 
 func ParseExprWithoutValidation(input string) (expr Expr, err error) {
 	if len(input) >= maxInputSize {
-		return nil, NewParseError(fmt.Sprintf("input size too long (%d > %d)", len(input), maxInputSize), 0, 0)
+		return nil, logqlmodel.NewParseError(fmt.Sprintf("input size too long (%d > %d)", len(input), maxInputSize), 0, 0)
 	}
 
 	defer func() {
 		if r := recover(); r != nil {
 			var ok bool
 			if err, ok = r.(error); ok {
-				if errors.Is(err, ErrParse) {
+				if errors.Is(err, logqlmodel.ErrParse) {
 					return
 				}
-				err = NewParseError(err.Error(), 0, 0)
+				err = logqlmodel.NewParseError(err.Error(), 0, 0)
 			}
 		}
 	}()
@@ -117,15 +120,15 @@ func validateExpr(expr Expr) error {
 	case LogSelectorExpr:
 		return validateLogSelectorExpression(e)
 	default:
-		return NewParseError(fmt.Sprintf("unexpected expression type: %v", e), 0, 0)
+		return logqlmodel.NewParseError(fmt.Sprintf("unexpected expression type: %v", e), 0, 0)
 	}
 }
 
 // validateMatchers checks whether a query would touch all the streams in the query range or uses at least one matcher to select specific streams.
 func validateMatchers(matchers []*labels.Matcher) error {
-	_, matchers = SplitFiltersAndMatchers(matchers)
+	_, matchers = util.SplitFiltersAndMatchers(matchers)
 	if len(matchers) == 0 {
-		return NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0)
+		return logqlmodel.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0)
 	}
 	return nil
 }
@@ -149,7 +152,7 @@ func ParseMatchers(input string, validate bool) ([]*labels.Matcher, error) {
 	}
 	matcherExpr, ok := expr.(*MatchersExpr)
 	if !ok {
-		return nil, ErrParseMatchers
+		return nil, logqlmodel.ErrParseMatchers
 	}
 	return matcherExpr.Mts, nil
 }
@@ -224,7 +227,7 @@ func validateLogSelectorExpression(expr LogSelectorExpr) error {
 // This will keep compatibility with promql and allowing sort by (foo) doesn't make much sense anyway when sort orders by value instead of labels.
 func validateSortGrouping(grouping *Grouping) error {
 	if grouping != nil && len(grouping.Groups) > 0 {
-		return NewParseError("sort and sort_desc doesn't allow grouping by ", 0, 0)
+		return logqlmodel.NewParseError("sort and sort_desc doesn't allow grouping by ", 0, 0)
 	}
 	return nil
 }

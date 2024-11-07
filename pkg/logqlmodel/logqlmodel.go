@@ -13,6 +13,9 @@ import (
 // ValueTypeStreams promql.ValueType for log streams
 const ValueTypeStreams = "streams"
 
+// PackedEntryKey is a special JSON key used by the pack promtail stage and unpack parser
+const PackedEntryKey = "_entry"
+
 // Result is the result of a query execution.
 type Result struct {
 	Data       parser.Value

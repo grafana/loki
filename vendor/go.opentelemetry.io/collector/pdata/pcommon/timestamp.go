@@ -13,13 +13,11 @@ type Timestamp uint64
 
 // NewTimestampFromTime constructs a new Timestamp from the provided time.Time.
 func NewTimestampFromTime(t time.Time) Timestamp {
-	// nolint:gosec
 	return Timestamp(uint64(t.UnixNano()))
 }
 
 // AsTime converts this to a time.Time.
 func (ts Timestamp) AsTime() time.Time {
-	// nolint:gosec
 	return time.Unix(0, int64(ts)).UTC()
 }
 

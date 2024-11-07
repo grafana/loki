@@ -2,6 +2,8 @@ package log
 
 import (
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 type DropLabels struct {
@@ -39,11 +41,11 @@ func (dl *DropLabels) Process(_ int64, line []byte, lbls *LabelsBuilder) ([]byte
 func (dl *DropLabels) RequiredLabelNames() []string { return []string{} }
 
 func isErrorLabel(name string) bool {
-	return name == ErrorLabel
+	return name == logqlmodel.ErrorLabel
 }
 
 func isErrorDetailsLabel(name string) bool {
-	return name == ErrorDetailsLabel
+	return name == logqlmodel.ErrorDetailsLabel
 }
 
 func dropLabelNames(name string, lbls *LabelsBuilder) {

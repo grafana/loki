@@ -54,6 +54,9 @@ $(TOOLS)/stringer: PACKAGE=golang.org/x/tools/cmd/stringer
 PORTO = $(TOOLS)/porto
 $(TOOLS)/porto: PACKAGE=github.com/jcchavezs/porto/cmd/porto
 
+GOJQ = $(TOOLS)/gojq
+$(TOOLS)/gojq: PACKAGE=github.com/itchyny/gojq/cmd/gojq
+
 GOTMPL = $(TOOLS)/gotmpl
 $(GOTMPL): PACKAGE=go.opentelemetry.io/build-tools/gotmpl
 
@@ -64,7 +67,7 @@ GOVULNCHECK = $(TOOLS)/govulncheck
 $(TOOLS)/govulncheck: PACKAGE=golang.org/x/vuln/cmd/govulncheck
 
 .PHONY: tools
-tools: $(CROSSLINK) $(GOLANGCI_LINT) $(MISSPELL) $(GOCOVMERGE) $(STRINGER) $(PORTO) $(SEMCONVGEN) $(MULTIMOD) $(SEMCONVKIT) $(GOTMPL) $(GORELEASE)
+tools: $(CROSSLINK) $(GOLANGCI_LINT) $(MISSPELL) $(GOCOVMERGE) $(STRINGER) $(PORTO) $(GOJQ) $(SEMCONVGEN) $(MULTIMOD) $(SEMCONVKIT) $(GOTMPL) $(GORELEASE)
 
 # Virtualized python tools via docker
 
@@ -142,14 +145,12 @@ build-tests/%:
 
 # Tests
 
-TEST_TARGETS := test-default test-bench test-short test-verbose test-race test-concurrent-safe
+TEST_TARGETS := test-default test-bench test-short test-verbose test-race
 .PHONY: $(TEST_TARGETS) test
 test-default test-race: ARGS=-race
 test-bench:   ARGS=-run=xxxxxMatchNothingxxxxx -test.benchtime=1ms -bench=.
 test-short:   ARGS=-short
 test-verbose: ARGS=-v -race
-test-concurrent-safe: ARGS=-run=ConcurrentSafe -count=100 -race
-test-concurrent-safe: TIMEOUT=120
 $(TEST_TARGETS): test
 test: $(OTEL_GO_MOD_DIRS:%=test/%)
 test/%: DIR=$*

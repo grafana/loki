@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/sketch"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 func TestProbabilisticQuantileMatrixSerialization(t *testing.T) {
@@ -51,7 +51,7 @@ func TestProbabilisticQuantileMatrixSerialization(t *testing.T) {
 func TestQuantileSketchStepEvaluatorError(t *testing.T) {
 	iter := errorRangeVectorIterator{
 		result: ProbabilisticQuantileVector([]ProbabilisticQuantileSample{
-			{T: 43, F: nil, Metric: labels.Labels{{Name: log.ErrorLabel, Value: "my error"}}},
+			{T: 43, F: nil, Metric: labels.Labels{{Name: logqlmodel.ErrorLabel, Value: "my error"}}},
 		}),
 	}
 	ev := QuantileSketchStepEvaluator{

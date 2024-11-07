@@ -28,7 +28,7 @@ type EvictionExpansion interface {
 }
 
 func (c *evictions) Evict(ctx context.Context, eviction *policy.Eviction) error {
-	return c.GetClient().Post().
+	return c.client.Post().
 		AbsPath("/api/v1").
 		Namespace(eviction.Namespace).
 		Resource("pods").

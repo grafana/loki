@@ -52,31 +52,7 @@ var reservedHeaders = map[string]struct{}{
 // Headers represents the configuration for HTTP headers.
 type Headers struct {
 	Headers map[string]Header `yaml:",inline"`
-}
-
-func (h Headers) MarshalJSON() ([]byte, error) {
-	// Inline the Headers map when serializing JSON because json encoder doesn't support "inline" directive.
-	return json.Marshal(h.Headers)
-}
-
-// SetDirectory make headers file relative to the configuration file.
-func (h *Headers) SetDirectory(dir string) {
-	if h == nil {
-		return
-	}
-	for _, h := range h.Headers {
-		h.SetDirectory(dir)
-	}
-}
-
-// Validate validates the Headers config.
-func (h *Headers) Validate() error {
-	for n := range h.Headers {
-		if _, ok := reservedHeaders[http.CanonicalHeaderKey(n)]; ok {
-			return fmt.Errorf("setting header %q is not allowed", http.CanonicalHeaderKey(n))
-		}
-	}
-	return nil
+	dir     string
 }
 
 // Header represents the configuration for a single HTTP header.
@@ -86,11 +62,35 @@ type Header struct {
 	Files   []string `yaml:"files,omitempty" json:"files,omitempty"`
 }
 
-// SetDirectory makes headers file relative to the configuration file.
-func (h *Header) SetDirectory(dir string) {
-	for i := range h.Files {
-		h.Files[i] = JoinDir(dir, h.Files[i])
+func (h Headers) MarshalJSON() ([]byte, error) {
+	// Inline the Headers map when serializing JSON because json encoder doesn't support "inline" directive.
+	return json.Marshal(h.Headers)
+}
+
+// SetDirectory records the directory to make headers file relative to the
+// configuration file.
+func (h *Headers) SetDirectory(dir string) {
+	if h == nil {
+		return
 	}
+	h.dir = dir
+}
+
+// Validate validates the Headers config.
+func (h *Headers) Validate() error {
+	for n, header := range h.Headers {
+		if _, ok := reservedHeaders[http.CanonicalHeaderKey(n)]; ok {
+			return fmt.Errorf("setting header %q is not allowed", http.CanonicalHeaderKey(n))
+		}
+		for _, v := range header.Files {
+			f := JoinDir(h.dir, v)
+			_, err := os.ReadFile(f)
+			if err != nil {
+				return fmt.Errorf("unable to read header %q from file %s: %w", http.CanonicalHeaderKey(n), f, err)
+			}
+		}
+	}
+	return nil
 }
 
 // NewHeadersRoundTripper returns a RoundTripper that sets HTTP headers on
@@ -121,9 +121,10 @@ func (rt *headersRoundTripper) RoundTrip(req *http.Request) (*http.Response, err
 			req.Header.Add(n, string(v))
 		}
 		for _, v := range h.Files {
-			b, err := os.ReadFile(v)
+			f := JoinDir(rt.config.dir, v)
+			b, err := os.ReadFile(f)
 			if err != nil {
-				return nil, fmt.Errorf("unable to read headers file %s: %w", v, err)
+				return nil, fmt.Errorf("unable to read headers file %s: %w", f, err)
 			}
 			req.Header.Add(n, strings.TrimSpace(string(b)))
 		}

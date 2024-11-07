@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/util"
+
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -16,7 +18,7 @@ import (
 	"github.com/grafana/regexp/syntax"
 
 	"github.com/grafana/loki/v3/pkg/logql/log"
-	regexputil "github.com/grafana/loki/v3/pkg/util/regexp"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 // Expr is the root expression which can be a SampleExpr or LogSelectorExpr
@@ -166,7 +168,7 @@ func (m MultiStageExpr) stages() ([]log.Stage, error) {
 	for _, e := range m.reorderStages() {
 		p, err := e.Stage()
 		if err != nil {
-			return nil, NewStageError(e.String(), err)
+			return nil, logqlmodel.NewStageError(e.String(), err)
 		}
 		if p == log.NoopStage {
 			continue
@@ -685,13 +687,13 @@ func newLabelParserExpr(op, param string) *LabelParserExpr {
 	if op == OpParserTypeRegexp {
 		_, err := log.NewRegexpParser(param)
 		if err != nil {
-			panic(NewParseError(fmt.Sprintf("invalid regexp parser: %s", err.Error()), 0, 0))
+			panic(logqlmodel.NewParseError(fmt.Sprintf("invalid regexp parser: %s", err.Error()), 0, 0))
 		}
 	}
 	if op == OpParserTypePattern {
 		_, err := log.NewPatternParser(param)
 		if err != nil {
-			panic(NewParseError(fmt.Sprintf("invalid pattern parser: %s", err.Error()), 0, 0))
+			panic(logqlmodel.NewParseError(fmt.Sprintf("invalid pattern parser: %s", err.Error()), 0, 0))
 		}
 	}
 
@@ -1064,7 +1066,7 @@ func (l *LogfmtExpressionParser) String() string {
 func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
 	m, err := labels.NewMatcher(t, n, v)
 	if err != nil {
-		panic(NewParseError(err.Error(), 0, 0))
+		panic(logqlmodel.NewParseError(err.Error(), 0, 0))
 	}
 	return m
 }
@@ -1073,7 +1075,7 @@ func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
 func simplify(typ labels.MatchType, name string, reg *syntax.Regexp) (*labels.Matcher, bool) {
 	switch reg.Op {
 	case syntax.OpLiteral:
-		if !regexputil.IsCaseInsensitive(reg) {
+		if !util.IsCaseInsensitive(reg) {
 			t := labels.MatchEqual
 			if typ == labels.MatchNotRegexp {
 				t = labels.MatchNotEqual
@@ -1088,7 +1090,7 @@ func simplify(typ labels.MatchType, name string, reg *syntax.Regexp) (*labels.Ma
 func mustNewFloat(s string) float64 {
 	n, err := strconv.ParseFloat(s, 64)
 	if err != nil {
-		panic(NewParseError(fmt.Sprintf("unable to parse float: %s", err.Error()), 0, 0))
+		panic(logqlmodel.NewParseError(fmt.Sprintf("unable to parse float: %s", err.Error()), 0, 0))
 	}
 	return n
 }
@@ -1359,18 +1361,18 @@ func newRangeAggregationExpr(left *LogRange, operation string, gr *Grouping, str
 	var params *float64
 	if stringParams != nil {
 		if operation != OpRangeTypeQuantile && operation != OpRangeTypeQuantileSketch {
-			return &RangeAggregationExpr{err: NewParseError(fmt.Sprintf("parameter %s not supported for operation %s", *stringParams, operation), 0, 0)}
+			return &RangeAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("parameter %s not supported for operation %s", *stringParams, operation), 0, 0)}
 		}
 		var err error
 		params = new(float64)
 		*params, err = strconv.ParseFloat(*stringParams, 64)
 		if err != nil {
-			return &RangeAggregationExpr{err: NewParseError(fmt.Sprintf("invalid parameter for operation %s: %s", operation, err), 0, 0)}
+			return &RangeAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("invalid parameter for operation %s: %s", operation, err), 0, 0)}
 		}
 
 	} else {
 		if operation == OpRangeTypeQuantile {
-			return &RangeAggregationExpr{err: NewParseError(fmt.Sprintf("parameter required for operation %s", operation), 0, 0)}
+			return &RangeAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("parameter required for operation %s", operation), 0, 0)}
 		}
 	}
 	e := &RangeAggregationExpr{
@@ -1380,7 +1382,7 @@ func newRangeAggregationExpr(left *LogRange, operation string, gr *Grouping, str
 		Params:    params,
 	}
 	if err := e.validate(); err != nil {
-		return &RangeAggregationExpr{err: NewParseError(err.Error(), 0, 0)}
+		return &RangeAggregationExpr{err: logqlmodel.NewParseError(err.Error(), 0, 0)}
 	}
 	return e
 }
@@ -1540,22 +1542,22 @@ func mustNewVectorAggregationExpr(left SampleExpr, operation string, gr *Groupin
 	switch operation {
 	case OpTypeBottomK, OpTypeTopK, OpTypeApproxTopK:
 		if params == nil {
-			return &VectorAggregationExpr{err: NewParseError(fmt.Sprintf("parameter required for operation %s", operation), 0, 0)}
+			return &VectorAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("parameter required for operation %s", operation), 0, 0)}
 		}
 		p, err = strconv.Atoi(*params)
 		if err != nil {
-			return &VectorAggregationExpr{err: NewParseError(fmt.Sprintf("invalid parameter %s(%s,", operation, *params), 0, 0)}
+			return &VectorAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("invalid parameter %s(%s,", operation, *params), 0, 0)}
 		}
 		if p <= 0 {
-			return &VectorAggregationExpr{err: NewParseError(fmt.Sprintf("invalid parameter (must be greater than 0) %s(%s", operation, *params), 0, 0)}
+			return &VectorAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("invalid parameter (must be greater than 0) %s(%s", operation, *params), 0, 0)}
 		}
 		if operation == OpTypeApproxTopK && gr != nil {
-			return &VectorAggregationExpr{err: NewParseError(fmt.Sprintf("grouping not allowed for %s aggregation", operation), 0, 0)}
+			return &VectorAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("grouping not allowed for %s aggregation", operation), 0, 0)}
 		}
 
 	default:
 		if params != nil {
-			return &VectorAggregationExpr{err: NewParseError(fmt.Sprintf("unsupported parameter for operation %s(%s,", operation, *params), 0, 0)}
+			return &VectorAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("unsupported parameter for operation %s(%s,", operation, *params), 0, 0)}
 		}
 	}
 	if gr == nil {
@@ -1812,7 +1814,7 @@ func (e *BinOpExpr) Accept(v RootVisitor) { v.VisitBinOp(e) }
 func mustNewBinOpExpr(op string, opts *BinOpOptions, lhs, rhs Expr) SampleExpr {
 	left, ok := lhs.(SampleExpr)
 	if !ok {
-		return &BinOpExpr{err: NewParseError(fmt.Sprintf(
+		return &BinOpExpr{err: logqlmodel.NewParseError(fmt.Sprintf(
 			"unexpected type for left leg of binary operation (%s): %T",
 			op,
 			lhs,
@@ -1821,7 +1823,7 @@ func mustNewBinOpExpr(op string, opts *BinOpOptions, lhs, rhs Expr) SampleExpr {
 
 	right, ok := rhs.(SampleExpr)
 	if !ok {
-		return &BinOpExpr{err: NewParseError(fmt.Sprintf(
+		return &BinOpExpr{err: logqlmodel.NewParseError(fmt.Sprintf(
 			"unexpected type for right leg of binary operation (%s): %T",
 			op,
 			rhs,
@@ -1849,7 +1851,7 @@ func mustNewBinOpExpr(op string, opts *BinOpOptions, lhs, rhs Expr) SampleExpr {
 	if IsLogicalBinOp(op) {
 
 		if lOk {
-			return &BinOpExpr{err: NewParseError(fmt.Sprintf(
+			return &BinOpExpr{err: logqlmodel.NewParseError(fmt.Sprintf(
 				"unexpected literal for left leg of logical/set binary operation (%s): %f",
 				op,
 				leftVal,
@@ -1857,7 +1859,7 @@ func mustNewBinOpExpr(op string, opts *BinOpOptions, lhs, rhs Expr) SampleExpr {
 		}
 
 		if rOk {
-			return &BinOpExpr{err: NewParseError(fmt.Sprintf(
+			return &BinOpExpr{err: logqlmodel.NewParseError(fmt.Sprintf(
 				"unexpected literal for right leg of logical/set binary operation (%s): %f",
 				op,
 				rightVal,
@@ -2116,7 +2118,7 @@ type LiteralExpr struct {
 func mustNewLiteralExpr(s string, invert bool) *LiteralExpr {
 	n, err := strconv.ParseFloat(s, 64)
 	if err != nil {
-		err = NewParseError(fmt.Sprintf("unable to parse literal as a float: %s", err.Error()), 0, 0)
+		err = logqlmodel.NewParseError(fmt.Sprintf("unable to parse literal as a float: %s", err.Error()), 0, 0)
 	}
 
 	if invert {
@@ -2191,7 +2193,7 @@ func mustNewLabelReplaceExpr(left SampleExpr, dst, replacement, src, regex strin
 	re, err := regexp.Compile("^(?:" + regex + ")$")
 	if err != nil {
 		return &LabelReplaceExpr{
-			err: NewParseError(fmt.Sprintf("invalid regex in label_replace: %s", err.Error()), 0, 0),
+			err: logqlmodel.NewParseError(fmt.Sprintf("invalid regex in label_replace: %s", err.Error()), 0, 0),
 		}
 	}
 	return &LabelReplaceExpr{
@@ -2338,7 +2340,7 @@ type VectorExpr struct {
 func NewVectorExpr(scalar string) *VectorExpr {
 	n, err := strconv.ParseFloat(scalar, 64)
 	if err != nil {
-		err = NewParseError(fmt.Sprintf("unable to parse vectorExpr as a float: %s", err.Error()), 0, 0)
+		err = logqlmodel.NewParseError(fmt.Sprintf("unable to parse vectorExpr as a float: %s", err.Error()), 0, 0)
 	}
 	return &VectorExpr{
 		Val: n,

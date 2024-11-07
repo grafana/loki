@@ -22,13 +22,13 @@ import (
 	v1 "k8s.io/api/core/v1"
 )
 
-// OverheadApplyConfiguration represents a declarative configuration of the Overhead type for use
+// OverheadApplyConfiguration represents an declarative configuration of the Overhead type for use
 // with apply.
 type OverheadApplyConfiguration struct {
 	PodFixed *v1.ResourceList `json:"podFixed,omitempty"`
 }
 
-// OverheadApplyConfiguration constructs a declarative configuration of the Overhead type for use with
+// OverheadApplyConfiguration constructs an declarative configuration of the Overhead type for use with
 // apply.
 func Overhead() *OverheadApplyConfiguration {
 	return &OverheadApplyConfiguration{}

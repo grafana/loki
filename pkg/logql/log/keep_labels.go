@@ -2,6 +2,8 @@ package log
 
 import (
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 type KeepLabels struct {
@@ -62,7 +64,7 @@ func (kl *KeepLabels) RequiredLabelNames() []string {
 
 func isSpecialLabel(lblName string) bool {
 	switch lblName {
-	case ErrorLabel, ErrorDetailsLabel, PreserveErrorLabel:
+	case logqlmodel.ErrorLabel, logqlmodel.ErrorDetailsLabel, logqlmodel.PreserveErrorLabel:
 		return true
 	}
 

@@ -18,13 +18,13 @@ limitations under the License.
 
 package v1
 
-// LocalObjectReferenceApplyConfiguration represents a declarative configuration of the LocalObjectReference type for use
+// LocalObjectReferenceApplyConfiguration represents an declarative configuration of the LocalObjectReference type for use
 // with apply.
 type LocalObjectReferenceApplyConfiguration struct {
 	Name *string `json:"name,omitempty"`
 }
 
-// LocalObjectReferenceApplyConfiguration constructs a declarative configuration of the LocalObjectReference type for use with
+// LocalObjectReferenceApplyConfiguration constructs an declarative configuration of the LocalObjectReference type for use with
 // apply.
 func LocalObjectReference() *LocalObjectReferenceApplyConfiguration {
 	return &LocalObjectReferenceApplyConfiguration{}

@@ -18,13 +18,13 @@ limitations under the License.
 
 package v1beta3
 
-// PriorityLevelConfigurationStatusApplyConfiguration represents a declarative configuration of the PriorityLevelConfigurationStatus type for use
+// PriorityLevelConfigurationStatusApplyConfiguration represents an declarative configuration of the PriorityLevelConfigurationStatus type for use
 // with apply.
 type PriorityLevelConfigurationStatusApplyConfiguration struct {
 	Conditions []PriorityLevelConfigurationConditionApplyConfiguration `json:"conditions,omitempty"`
 }
 
-// PriorityLevelConfigurationStatusApplyConfiguration constructs a declarative configuration of the PriorityLevelConfigurationStatus type for use with
+// PriorityLevelConfigurationStatusApplyConfiguration constructs an declarative configuration of the PriorityLevelConfigurationStatus type for use with
 // apply.
 func PriorityLevelConfigurationStatus() *PriorityLevelConfigurationStatusApplyConfiguration {
 	return &PriorityLevelConfigurationStatusApplyConfiguration{}

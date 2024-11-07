@@ -2,22 +2,26 @@
 
 approvers:
 - dims
-- jpbetz
+- lavalamp
 - smarterclayton
 - deads2k
 - sttts
 - liggitt
+- caesarxuchao
 reviewers:
 - dims
 - thockin
-- jpbetz
+- lavalamp
 - smarterclayton
 - wojtek-t
 - deads2k
 - derekwaynecarr
+- caesarxuchao
 - mikedanese
 - liggitt
+- gmarek
 - sttts
+- ncdc
 - tallclair
 labels:
 - sig/api-machinery

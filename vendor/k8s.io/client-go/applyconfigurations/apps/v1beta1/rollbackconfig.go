@@ -18,13 +18,13 @@ limitations under the License.
 
 package v1beta1
 
-// RollbackConfigApplyConfiguration represents a declarative configuration of the RollbackConfig type for use
+// RollbackConfigApplyConfiguration represents an declarative configuration of the RollbackConfig type for use
 // with apply.
 type RollbackConfigApplyConfiguration struct {
 	Revision *int64 `json:"revision,omitempty"`
 }
 
-// RollbackConfigApplyConfiguration constructs a declarative configuration of the RollbackConfig type for use with
+// RollbackConfigApplyConfiguration constructs an declarative configuration of the RollbackConfig type for use with
 // apply.
 func RollbackConfig() *RollbackConfigApplyConfiguration {
 	return &RollbackConfigApplyConfiguration{}

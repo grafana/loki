@@ -20,8 +20,7 @@ func RawToBool(r uint64) bool {
 }
 
 func Int64ToRaw(i int64) uint64 {
-	// Assumes original was a valid int64 (overflow not checked).
-	return uint64(i) // nolint: gosec
+	return uint64(i)
 }
 
 func RawToInt64(r uint64) int64 {

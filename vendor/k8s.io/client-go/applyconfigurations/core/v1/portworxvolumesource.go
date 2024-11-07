@@ -18,7 +18,7 @@ limitations under the License.
 
 package v1
 
-// PortworxVolumeSourceApplyConfiguration represents a declarative configuration of the PortworxVolumeSource type for use
+// PortworxVolumeSourceApplyConfiguration represents an declarative configuration of the PortworxVolumeSource type for use
 // with apply.
 type PortworxVolumeSourceApplyConfiguration struct {
 	VolumeID *string `json:"volumeID,omitempty"`
@@ -26,7 +26,7 @@ type PortworxVolumeSourceApplyConfiguration struct {
 	ReadOnly *bool   `json:"readOnly,omitempty"`
 }
 
-// PortworxVolumeSourceApplyConfiguration constructs a declarative configuration of the PortworxVolumeSource type for use with
+// PortworxVolumeSourceApplyConfiguration constructs an declarative configuration of the PortworxVolumeSource type for use with
 // apply.
 func PortworxVolumeSource() *PortworxVolumeSourceApplyConfiguration {
 	return &PortworxVolumeSourceApplyConfiguration{}

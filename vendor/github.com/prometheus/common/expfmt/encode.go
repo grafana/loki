@@ -77,18 +77,18 @@ func Negotiate(h http.Header) Format {
 		if ac.Type+"/"+ac.SubType == ProtoType && ac.Params["proto"] == ProtoProtocol {
 			switch ac.Params["encoding"] {
 			case "delimited":
-				return FmtProtoDelim + escapingScheme
+				return fmtProtoDelim + escapingScheme
 			case "text":
-				return FmtProtoText + escapingScheme
+				return fmtProtoText + escapingScheme
 			case "compact-text":
-				return FmtProtoCompact + escapingScheme
+				return fmtProtoCompact + escapingScheme
 			}
 		}
 		if ac.Type == "text" && ac.SubType == "plain" && (ver == TextVersion || ver == "") {
-			return FmtText + escapingScheme
+			return fmtText + escapingScheme
 		}
 	}
-	return FmtText + escapingScheme
+	return fmtText + escapingScheme
 }
 
 // NegotiateIncludingOpenMetrics works like Negotiate but includes
@@ -110,26 +110,26 @@ func NegotiateIncludingOpenMetrics(h http.Header) Format {
 		if ac.Type+"/"+ac.SubType == ProtoType && ac.Params["proto"] == ProtoProtocol {
 			switch ac.Params["encoding"] {
 			case "delimited":
-				return FmtProtoDelim + escapingScheme
+				return fmtProtoDelim + escapingScheme
 			case "text":
-				return FmtProtoText + escapingScheme
+				return fmtProtoText + escapingScheme
 			case "compact-text":
-				return FmtProtoCompact + escapingScheme
+				return fmtProtoCompact + escapingScheme
 			}
 		}
 		if ac.Type == "text" && ac.SubType == "plain" && (ver == TextVersion || ver == "") {
-			return FmtText + escapingScheme
+			return fmtText + escapingScheme
 		}
 		if ac.Type+"/"+ac.SubType == OpenMetricsType && (ver == OpenMetricsVersion_0_0_1 || ver == OpenMetricsVersion_1_0_0 || ver == "") {
 			switch ver {
 			case OpenMetricsVersion_1_0_0:
-				return FmtOpenMetrics_1_0_0 + escapingScheme
+				return fmtOpenMetrics_1_0_0 + escapingScheme
 			default:
-				return FmtOpenMetrics_0_0_1 + escapingScheme
+				return fmtOpenMetrics_0_0_1 + escapingScheme
 			}
 		}
 	}
-	return FmtText + escapingScheme
+	return fmtText + escapingScheme
 }
 
 // NewEncoder returns a new encoder based on content type negotiation. All
