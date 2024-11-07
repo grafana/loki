@@ -2250,6 +2250,8 @@ queryScheduler:
   maxUnavailable: 1
   # -- Node selector for query-scheduler pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for query-scheduler pods
+  topologySpreadConstraints: []
   # -- Tolerations for query-scheduler pods
   tolerations: []
   # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
