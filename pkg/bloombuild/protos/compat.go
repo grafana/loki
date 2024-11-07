@@ -19,6 +19,7 @@ type Gap struct {
 	Blocks []bloomshipper.BlockRef
 }
 
+// Task is a convenience struct equivalent to the protobuf ProtoTask message but with Loki types.
 type Task struct {
 	ID string
 
@@ -27,24 +28,6 @@ type Task struct {
 	OwnershipBounds v1.FingerprintBounds
 	TSDB            tsdb.SingleTenantTSDBIdentifier
 	Gaps            []Gap
-}
-
-func NewTask(
-	table config.DayTable,
-	tenant string,
-	bounds v1.FingerprintBounds,
-	tsdb tsdb.SingleTenantTSDBIdentifier,
-	gaps []Gap,
-) *Task {
-	return &Task{
-		ID: fmt.Sprintf("%s-%s-%s-%d", table.Addr(), tenant, bounds.String(), len(gaps)),
-
-		Table:           table,
-		Tenant:          tenant,
-		OwnershipBounds: bounds,
-		TSDB:            tsdb,
-		Gaps:            gaps,
-	}
 }
 
 func FromProtoTask(task *ProtoTask) (*Task, error) {
