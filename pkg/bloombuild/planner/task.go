@@ -15,7 +15,7 @@ type QueueTask struct {
 	*strategies.Task
 
 	// We use forSeries in ToProtoTask to get the chunks for the series in the gaps.
-	forSeries common.ClosableForSeries
+	forSeries common.ForSeries
 
 	resultsChannel chan *protos.TaskResult
 
@@ -29,7 +29,7 @@ func NewQueueTask(
 	ctx context.Context,
 	queueTime time.Time,
 	task *strategies.Task,
-	forSeries common.ClosableForSeries,
+	forSeries common.ForSeries,
 	resultsChannel chan *protos.TaskResult,
 ) *QueueTask {
 	return &QueueTask{

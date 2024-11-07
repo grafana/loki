@@ -9,13 +9,13 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/bloombuild/common"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 )
 
 type Gap struct {
@@ -46,7 +46,7 @@ func NewTask(
 
 // ToProtoTask converts a Task to a ProtoTask.
 // It will use the opened TSDB to get the chunks for the series in the gaps.
-func (t *Task) ToProtoTask(ctx context.Context, forSeries sharding.ForSeries) (*protos.ProtoTask, error) {
+func (t *Task) ToProtoTask(ctx context.Context, forSeries common.ForSeries) (*protos.ProtoTask, error) {
 	// Populate the gaps with the series and chunks.
 	protoGaps := make([]protos.Gap, 0, len(t.Gaps))
 	for _, gap := range t.Gaps {

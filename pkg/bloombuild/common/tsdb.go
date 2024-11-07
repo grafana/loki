@@ -29,8 +29,10 @@ const (
 	gzipExtension = ".gz"
 )
 
+type ForSeries = sharding.ForSeries
+
 type ClosableForSeries interface {
-	sharding.ForSeries
+	ForSeries
 	Close() error
 }
 
