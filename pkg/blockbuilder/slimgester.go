@@ -47,6 +47,7 @@ type Config struct {
 	ChunkEncoding     string            `yaml:"chunk_encoding"`
 	parsedEncoding    compression.Codec `yaml:"-"` // placeholder for validated encoding
 	MaxChunkAge       time.Duration     `yaml:"max_chunk_age"`
+	Interval          time.Duration     `yaml:"interval"`
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -58,6 +59,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.Var(&cfg.TargetChunkSize, prefix+"chunk-target-size", "A target _compressed_ size in bytes for chunks. This is a desired size not an exact size, chunks may be slightly bigger or significantly smaller if they get flushed for other reasons (e.g. chunk_idle_period). A value of 0 creates chunks with a fixed 10 blocks, a non zero value will create chunks with a variable number of blocks to meet the target size.")
 	f.StringVar(&cfg.ChunkEncoding, prefix+"chunk-encoding", compression.Snappy.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", compression.SupportedCodecs()))
 	f.DurationVar(&cfg.MaxChunkAge, prefix+"max-chunk-age", 2*time.Hour, "The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this, the current chunk will be flushed to the store and a new chunk created.")
+	f.DurationVar(&cfg.Interval, prefix+"interval", 10*time.Minute, "The interval at which to run.")
 }
 
 // RegisterFlags registers flags.
@@ -132,7 +134,7 @@ func NewBlockBuilder(
 }
 
 func (i *BlockBuilder) running(ctx context.Context) error {
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(i.cfg.Interval)
 	defer ticker.Stop()
 
 	// run once in beginning

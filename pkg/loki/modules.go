@@ -1790,13 +1790,14 @@ func (t *Loki) initPartitionRing() (services.Service, error) {
 func (t *Loki) initBlockBuilder() (services.Service, error) {
 	logger := log.With(util_log.Logger, "component", "block_builder")
 
-	id := t.Cfg.Ingester.LifecyclerConfig.ID
+	// id := t.Cfg.Ingester.LifecyclerConfig.ID
+	id := "local-slimgester-0" // TODO(owen-d): remove
 	ingestPartitionID, err := partitionring.ExtractIngesterPartitionID(id)
 	if err != nil {
 		return nil, fmt.Errorf("calculating block builder partition ID: %w", err)
 	}
 
-	reader, err := blockbuilder.NewPartitionReader(
+	_, err = blockbuilder.NewPartitionReader(
 		t.Cfg.KafkaConfig,
 		ingestPartitionID,
 		id,
@@ -1821,7 +1822,8 @@ func (t *Loki) initBlockBuilder() (services.Service, error) {
 		logger,
 		prometheus.DefaultRegisterer,
 		blockbuilder.NewPartitionJobController(
-			reader,
+			// reader,
+			blockbuilder.NewDummyPartitionController("topic", 0, 10), // TODO(owen-d): undo
 		),
 	)
 
