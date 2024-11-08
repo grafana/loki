@@ -112,13 +112,15 @@ type dummyPartitionController struct {
 	entriesPerOffset int // coefficient for entries per offset
 }
 
+// used in testing
+// nolint:revive
 func NewDummyPartitionController(topic string, partition int32, highest int64) *dummyPartitionController {
 	return &dummyPartitionController{
 		topic:            topic,
 		partition:        partition,
 		committed:        0, // always starts at zero
 		highest:          highest,
-		numTenants:       2, // default number of tenants
+		numTenants:       1, // default number of tenants
 		streamsPerTenant: 1, // default streams per tenant
 		entriesPerOffset: 1, // default entries per offset coefficient
 	}
@@ -152,7 +154,6 @@ func (d *dummyPartitionController) Process(ctx context.Context, offsets Offsets,
 		case <-ctx.Done():
 			return int64(i - 1), ctx.Err()
 		case ch <- batch:
-			fmt.Println("sent", i)
 		}
 	}
 	return offsets.Max - 1, nil
@@ -170,8 +171,8 @@ func (d *dummyPartitionController) createBatch(offset int) []AppendInput {
 			entries := make([]push.Entry, d.entriesPerOffset)
 			for k := 0; k < d.entriesPerOffset; k++ {
 				entries[k] = push.Entry{
-					Timestamp: time.Unix(int64(offset), 0),
-					Line:      fmt.Sprintf("tenant=%d stream=%d line=%d", i, j, k),
+					Timestamp: time.Now(),
+					Line:      fmt.Sprintf("tenant=%d stream=%d line=%d offset=%d", i, j, k, offset),
 				}
 			}
 			result = append(result, AppendInput{

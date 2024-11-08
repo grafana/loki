@@ -35,8 +35,14 @@ func newTsdbCreator() *TsdbCreator {
 	m := &TsdbCreator{
 		shards: 1 << 5, // 32 shards
 	}
+	m.reset()
 
 	return m
+}
+
+// reset updates heads
+func (m *TsdbCreator) reset() {
+	m.heads = newTenantHeads(m.shards)
 }
 
 // Append adds a new series for the given user
@@ -169,7 +175,7 @@ func (m *TsdbCreator) create(ctx context.Context, nodeName string, tableRanges [
 		})
 	}
 
-	m.heads = newTenantHeads(m.shards)
+	m.reset()
 	return res, nil
 }
 

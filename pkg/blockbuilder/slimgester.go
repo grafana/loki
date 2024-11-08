@@ -537,8 +537,6 @@ func (m *streamsMap) For(
 
 // Return labels associated with given fingerprint. Used by fingerprint mapper.
 func (m *streamsMap) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels {
-	m.mtx.RLock()
-	defer m.mtx.RUnlock()
 
 	if s, ok := m.byFp[fp]; ok {
 		return s.ls
