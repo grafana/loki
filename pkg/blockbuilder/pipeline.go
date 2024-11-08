@@ -8,6 +8,7 @@ import (
 )
 
 type stage struct {
+	name        string
 	parallelism int
 	grp         *errgroup.Group
 	ctx         context.Context
@@ -28,12 +29,14 @@ func newPipeline(ctx context.Context) *pipeline {
 }
 
 func (p *pipeline) AddStageWithCleanup(
+	name string,
 	parallelism int,
 	fn func(context.Context) error,
 	cleanup func() error,
 ) {
 	grp, ctx := errgroup.WithContext(p.ctx)
 	p.stages = append(p.stages, stage{
+		name:        name,
 		parallelism: parallelism,
 		fn:          fn,
 		cleanup:     cleanup,
@@ -43,10 +46,11 @@ func (p *pipeline) AddStageWithCleanup(
 }
 
 func (p *pipeline) AddStage(
+	name string,
 	parallelism int,
 	fn func(context.Context) error,
 ) {
-	p.AddStageWithCleanup(parallelism, fn, nil)
+	p.AddStageWithCleanup(name, parallelism, fn, nil)
 }
 
 func (p *pipeline) Run() error {

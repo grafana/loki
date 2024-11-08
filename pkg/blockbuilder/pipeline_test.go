@@ -3,6 +3,7 @@ package blockbuilder
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -66,11 +67,11 @@ func TestPipeline(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			p := newPipeline(context.Background())
 
-			for _, stage := range tt.stages {
+			for i, stage := range tt.stages {
 				if stage.cleanup != nil {
-					p.AddStageWithCleanup(stage.parallelism, stage.fn, stage.cleanup)
+					p.AddStageWithCleanup(fmt.Sprint(i), stage.parallelism, stage.fn, stage.cleanup)
 				} else {
-					p.AddStage(stage.parallelism, stage.fn)
+					p.AddStage(fmt.Sprint(i), stage.parallelism, stage.fn)
 				}
 			}
 
