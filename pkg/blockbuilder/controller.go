@@ -112,7 +112,7 @@ type dummyPartitionController struct {
 	entriesPerOffset int // coefficient for entries per offset
 }
 
-func newDummyPartitionController(topic string, partition int32, highest int64) *dummyPartitionController {
+func NewDummyPartitionController(topic string, partition int32, highest int64) *dummyPartitionController {
 	return &dummyPartitionController{
 		topic:            topic,
 		partition:        partition,

@@ -50,8 +50,8 @@ type Config struct {
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.IntVar(&cfg.ConcurrentFlushes, prefix+"concurrent-flushes", 16, "How many flushes can happen concurrently")
-	f.IntVar(&cfg.ConcurrentWriters, prefix+"concurrent-writers", 16, "How many workers to process writes, defaults to number of available cpus")
+	f.IntVar(&cfg.ConcurrentFlushes, prefix+"concurrent-flushes", 1, "How many flushes can happen concurrently")
+	f.IntVar(&cfg.ConcurrentWriters, prefix+"concurrent-writers", 1, "How many workers to process writes, defaults to number of available cpus")
 	_ = cfg.BlockSize.Set("256KB")
 	f.Var(&cfg.BlockSize, prefix+"chunks-block-size", "The targeted _uncompressed_ size in bytes of a chunk block When this threshold is exceeded the head block will be cut and compressed inside the chunk.")
 	_ = cfg.TargetChunkSize.Set(fmt.Sprint(onePointFiveMB))
@@ -135,6 +135,17 @@ func (i *BlockBuilder) running(ctx context.Context) error {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
+	// run once in beginning
+	select {
+	case <-ctx.Done():
+		return nil
+	default:
+		_, err := i.runOne(ctx)
+		if err != nil {
+			return err
+		}
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -171,6 +182,7 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 	// When complete, it stores the last processed offset and closes the channel
 	inputCh := make(chan []AppendInput)
 	p.AddStageWithCleanup(
+		"load records",
 		1,
 		func(ctx context.Context) error {
 			lastOffset, err = i.jobController.part.Process(ctx, job.Offsets, inputCh)
@@ -188,6 +200,7 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 	// ConcurrentWriters workers process inputs in parallel to maximize throughput.
 	flush := make(chan *chunk.Chunk)
 	p.AddStageWithCleanup(
+		"appender",
 		i.cfg.ConcurrentWriters,
 		func(ctx context.Context) error {
 
@@ -243,6 +256,7 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 	// This stage receives chunks from the chunks channel and flushes them to storage
 	// using ConcurrentFlushes workers for parallel processing
 	p.AddStage(
+		"flusher",
 		i.cfg.ConcurrentFlushes,
 		func(ctx context.Context) error {
 			for {
