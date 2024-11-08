@@ -446,7 +446,7 @@ func (i *BlockBuilder) Append(ctx context.Context, input AppendInput) ([]*chunk.
 		i.instancesMtx.Lock()
 		inst, ok = i.instances[input.tenant]
 		if !ok {
-			inst = newInstance(input.tenant, i.metrics, i.periodicConfigs, i.logger)
+			inst = newInstance(i.cfg, input.tenant, i.metrics, i.periodicConfigs, i.logger)
 			i.instances[input.tenant] = inst
 		}
 		i.instancesMtx.Unlock()
@@ -458,6 +458,7 @@ func (i *BlockBuilder) Append(ctx context.Context, input AppendInput) ([]*chunk.
 
 // instance is a slimmed down version from the ingester pkg
 type instance struct {
+	cfg     Config
 	tenant  string
 	buf     []byte             // buffer used to compute fps.
 	mapper  *ingester.FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
@@ -469,6 +470,7 @@ type instance struct {
 }
 
 func newInstance(
+	cfg Config,
 	tenant string,
 	metrics *SlimgesterMetrics,
 	periods []config.PeriodConfig,
@@ -476,6 +478,7 @@ func newInstance(
 ) *instance {
 	streams := newStreamsMap()
 	return &instance{
+		cfg:     cfg,
 		tenant:  tenant,
 		buf:     make([]byte, 0, 1024),
 		mapper:  ingester.NewFPMapper(streams.getLabelsFromFingerprint),
@@ -559,7 +562,7 @@ func (i *instance) Push(
 		input.labelsStr,
 		func() (*stream, error) {
 			fp := i.getHashForLabels(input.labels)
-			return newStream(fp, input.labels, i.metrics), nil
+			return newStream(fp, input.labels, i.cfg, i.metrics), nil
 		},
 		func(stream *stream) error {
 			xs, err := stream.Push(input.entries)
@@ -617,7 +620,6 @@ type stream struct {
 	ls labels.Labels
 
 	chunkFormat     byte
-	headFmt         chunkenc.HeadBlockFmt
 	codec           compression.Codec
 	blockSize       int
 	targetChunkSize int
@@ -627,13 +629,17 @@ type stream struct {
 	metrics  *SlimgesterMetrics
 }
 
-func newStream(fp model.Fingerprint, ls labels.Labels, metrics *SlimgesterMetrics) *stream {
+func newStream(fp model.Fingerprint, ls labels.Labels, cfg Config, metrics *SlimgesterMetrics) *stream {
 	return &stream{
 		fp: fp,
 		ls: ls,
 
-		chunkFormat: chunkenc.ChunkFormatV3,
-		metrics:     metrics,
+		chunkFormat:     chunkenc.ChunkFormatV3,
+		codec:           cfg.parsedEncoding,
+		blockSize:       cfg.BlockSize.Val(),
+		targetChunkSize: cfg.TargetChunkSize.Val(),
+
+		metrics: metrics,
 	}
 }
 
@@ -682,5 +688,11 @@ func (s *stream) closeChunk() (*chunkenc.MemChunk, error) {
 }
 
 func (s *stream) NewChunk() *chunkenc.MemChunk {
-	return chunkenc.NewMemChunk(s.chunkFormat, s.codec, s.headFmt, s.blockSize, s.targetChunkSize)
+	return chunkenc.NewMemChunk(
+		s.chunkFormat,
+		s.codec,
+		chunkenc.ChunkHeadFormatFor(s.chunkFormat),
+		s.blockSize,
+		s.targetChunkSize,
+	)
 }
