@@ -1620,6 +1620,8 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 Common configuration to be shared between multiple modules. If a more specific configuration is given in other sections, the related configuration within this section will be ignored.
 
 ```yaml
+# prefix for the path
+# CLI flag: -common.path-prefix
 [path_prefix: <string> | default = ""]
 
 storage:
