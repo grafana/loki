@@ -304,7 +304,7 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 	require.Equal(t, expected, result.resps[0].Streams)
 }
 
-func TestRecoveryWritesNewRecords(t *testing.T) {
+func TestRecoveryWritesContinuesEntryCountAfterWALReplay(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfig(t)
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
@@ -335,9 +335,10 @@ func TestRecoveryWritesNewRecords(t *testing.T) {
 
 	// Check that the entry count continues counting from the last WAL entry to avoid overwriting existing entries in the WAL on future replays.
 	for _, inst := range i.getInstances() {
-		inst.forAllStreams(context.Background(), func(s *stream) error {
+		err := inst.forAllStreams(context.Background(), func(s *stream) error {
 			assert.Equal(t, int64(entriesPerStream), s.entryCt)
 			return nil
 		})
+		require.NoError(t, err)
 	}
 }
