@@ -141,7 +141,9 @@ func ensureObjectStoreCredentials(p *corev1.PodSpec, opts Options) corev1.PodSpe
 		volumes = append(volumes, saTokenVolume(opts))
 		container.VolumeMounts = append(container.VolumeMounts, saTokenVolumeMount)
 
-		if opts.OpenShift.TokenCCOAuthEnabled() && opts.S3 != nil && opts.S3.STS {
+		isSTS := opts.S3 != nil && opts.S3.STS
+		isWIF := opts.GCS != nil && opts.GCS.WorkloadIdentity
+		if opts.OpenShift.TokenCCOAuthEnabled() && (isSTS || isWIF) {
 			volumes = append(volumes, tokenCCOAuthConfigVolume(opts))
 			container.VolumeMounts = append(container.VolumeMounts, tokenCCOAuthConfigVolumeMount)
 		}
@@ -223,8 +225,14 @@ func tokenAuthCredentials(opts Options) []corev1.EnvVar {
 			envVarFromValue(EnvAzureFederatedTokenFile, ServiceAccountTokenFilePath),
 		}
 	case lokiv1.ObjectStorageSecretGCS:
-		return []corev1.EnvVar{
-			envVarFromValue(EnvGoogleApplicationCredentials, path.Join(secretDirectory, KeyGCPServiceAccountKeyFilename)),
+		if opts.OpenShift.TokenCCOAuthEnabled() {
+			return []corev1.EnvVar{
+				envVarFromValue(EnvGoogleApplicationCredentials, path.Join(tokenAuthConfigDirectory, KeyGCPManagedServiceAccountKeyFilename)),
+			}
+		} else {
+			return []corev1.EnvVar{
+				envVarFromValue(EnvGoogleApplicationCredentials, path.Join(secretDirectory, KeyGCPServiceAccountKeyFilename)),
+			}
 		}
 	default:
 		return []corev1.EnvVar{}
@@ -326,7 +334,10 @@ func saTokenVolume(opts Options) corev1.Volume {
 			audience = opts.Azure.Audience
 		}
 	case lokiv1.ObjectStorageSecretGCS:
-		audience = opts.GCS.Audience
+		audience = gcpDefaultAudience
+		if opts.GCS.Audience != "" {
+			audience = opts.GCS.Audience
+		}
 	}
 	return corev1.Volume{
 		Name: saTokenVolumeName,
