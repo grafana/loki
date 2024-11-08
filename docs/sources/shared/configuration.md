@@ -1620,6 +1620,8 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 Common configuration to be shared between multiple modules. If a more specific configuration is given in other sections, the related configuration within this section will be ignored.
 
 ```yaml
+# prefix for the path
+# CLI flag: -common.path-prefix
 [path_prefix: <string> | default = ""]
 
 storage:
@@ -3148,6 +3150,10 @@ kafka_ingestion:
     # 0 disables partitions deletion.
     # CLI flag: -ingester.partition-ring.delete-inactive-partition-after
     [delete_inactive_partition_after: <duration> | default = 13h]
+
+  # Whether the ingester write chunks to the store or discard them on flush.
+  # CLI flag: -ingester.kafka-partition
+  [partition: <int> | default = -1]
 ```
 
 ### ingester_client
@@ -3282,7 +3288,7 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # When true an ingester takes into account only the streams that it owns
 # according to the ring while applying the stream limit.
 # CLI flag: -ingester.use-owned-stream-count
-[use_owned_stream_count: <boolean> | default = false]
+[use_owned_stream_count: <boolean> | default = true]
 
 # Maximum number of active streams per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-streams-per-user
