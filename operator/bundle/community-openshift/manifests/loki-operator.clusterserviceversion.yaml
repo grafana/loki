@@ -159,7 +159,7 @@ metadata:
     features.operators.openshift.io/tls-profiles: "true"
     features.operators.openshift.io/token-auth-aws: "true"
     features.operators.openshift.io/token-auth-azure: "true"
-    features.operators.openshift.io/token-auth-gcp: "false"
+    features.operators.openshift.io/token-auth-gcp: "true"
     operators.operatorframework.io/builder: operator-sdk-unknown
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
     repository: https://github.com/grafana/loki/tree/main/operator
