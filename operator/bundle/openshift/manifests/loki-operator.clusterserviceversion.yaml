@@ -166,7 +166,7 @@ metadata:
     features.operators.openshift.io/tls-profiles: "true"
     features.operators.openshift.io/token-auth-aws: "true"
     features.operators.openshift.io/token-auth-azure: "true"
-    features.operators.openshift.io/token-auth-gcp: "false"
+    features.operators.openshift.io/token-auth-gcp: "true"
     olm.skipRange: '>=5.9.0-0 <6.1.0'
     operatorframework.io/cluster-monitoring: "true"
     operatorframework.io/suggested-namespace: openshift-operators-redhat
