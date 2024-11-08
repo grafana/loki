@@ -120,8 +120,8 @@ func NewDummyPartitionController(topic string, partition int32, highest int64) *
 		partition:        partition,
 		committed:        0, // always starts at zero
 		highest:          highest,
-		numTenants:       1, // default number of tenants
-		streamsPerTenant: 1, // default streams per tenant
+		numTenants:       2, // default number of tenants
+		streamsPerTenant: 2, // default streams per tenant
 		entriesPerOffset: 1, // default entries per offset coefficient
 	}
 }
@@ -134,11 +134,11 @@ func (d *dummyPartitionController) Partition() int32 {
 	return d.partition
 }
 
-func (d *dummyPartitionController) HighestCommittedOffset(ctx context.Context) (int64, error) {
+func (d *dummyPartitionController) HighestCommittedOffset(_ context.Context) (int64, error) {
 	return d.committed, nil
 }
 
-func (d *dummyPartitionController) HighestPartitionOffset(ctx context.Context) (int64, error) {
+func (d *dummyPartitionController) HighestPartitionOffset(_ context.Context) (int64, error) {
 	return d.highest, nil
 }
 
