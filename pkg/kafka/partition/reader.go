@@ -104,7 +104,7 @@ func (p *Reader) start(ctx context.Context) error {
 	// We manage our commits manually, so we must fetch the last offset for our consumer group to find out where to read from.
 	lastCommittedOffset := p.fetchLastCommittedOffset(ctx)
 	if lastCommittedOffset > 0 {
-		lastCommittedOffset += 1 // We want to begin to read from the next offset, but only if we've previously committed an offset.
+		lastCommittedOffset++ // We want to begin to read from the next offset, but only if we've previously committed an offset.
 	}
 	p.client.AddConsumePartitions(map[string]map[int32]kgo.Offset{
 		p.kafkaCfg.Topic: {p.partitionID: kgo.NewOffset().At(lastCommittedOffset)},
