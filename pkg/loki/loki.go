@@ -196,6 +196,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Metastore.RegisterFlags(f)
 	c.MetastoreClient.RegisterFlags(f)
 	c.KafkaConfig.RegisterFlags(f)
+	c.BlockBuilder.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -751,6 +752,7 @@ func (t *Loki) setupModuleManager() error {
 		IndexGatewayRing:         {Overrides, MemberlistKV},
 		PartitionRing:            {MemberlistKV, Server, Ring},
 		MemberlistKV:             {Server},
+		BlockBuilder:             {PartitionRing, Store, Server},
 
 		Read:    {QueryFrontend, Querier},
 		Write:   {Ingester, Distributor, PatternIngester},
