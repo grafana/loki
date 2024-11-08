@@ -2,6 +2,12 @@ package blockbuilder
 
 import (
 	"context"
+	"fmt"
+	"time"
+
+	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 // [min,max)
@@ -92,4 +98,93 @@ func (l *PartitionJobController) LoadJob(ctx context.Context) (bool, Job, error)
 	}
 
 	return true, job, nil
+}
+
+// implement a dummy controller which can be parameterized to
+// deterministically simulate partitions
+type dummyPartitionController struct {
+	topic            string
+	partition        int32
+	committed        int64
+	highest          int64
+	numTenants       int // number of unique tenants to simulate
+	streamsPerTenant int // number of streams per tenant
+	entriesPerOffset int // coefficient for entries per offset
+}
+
+func newDummyPartitionController(topic string, partition int32, highest int64) *dummyPartitionController {
+	return &dummyPartitionController{
+		topic:            topic,
+		partition:        partition,
+		committed:        0, // always starts at zero
+		highest:          highest,
+		numTenants:       2, // default number of tenants
+		streamsPerTenant: 1, // default streams per tenant
+		entriesPerOffset: 1, // default entries per offset coefficient
+	}
+}
+
+func (d *dummyPartitionController) Topic() string {
+	return d.topic
+}
+
+func (d *dummyPartitionController) Partition() int32 {
+	return d.partition
+}
+
+func (d *dummyPartitionController) HighestCommittedOffset(ctx context.Context) (int64, error) {
+	return d.committed, nil
+}
+
+func (d *dummyPartitionController) HighestPartitionOffset(ctx context.Context) (int64, error) {
+	return d.highest, nil
+}
+
+func (d *dummyPartitionController) Commit(ctx context.Context, offset int64) error {
+	d.committed = offset
+	return nil
+}
+
+func (d *dummyPartitionController) Process(ctx context.Context, offsets Offsets, ch chan<- []AppendInput) (int64, error) {
+	for i := int(offsets.Min); i < int(offsets.Max); i++ {
+		batch := d.createBatch(i)
+		select {
+		case <-ctx.Done():
+			return int64(i - 1), ctx.Err()
+		case ch <- batch:
+			fmt.Println("sent", i)
+		}
+	}
+	return offsets.Max - 1, nil
+}
+
+// creates (tenants*streams) inputs
+func (d *dummyPartitionController) createBatch(offset int) []AppendInput {
+	result := make([]AppendInput, 0, d.numTenants*d.streamsPerTenant)
+	for i := 0; i < d.numTenants; i++ {
+		tenant := fmt.Sprintf("tenant-%d", i)
+		for j := 0; j < d.streamsPerTenant; j++ {
+			lbls := labels.Labels{
+				{Name: "stream", Value: fmt.Sprintf("stream-%d", j)},
+			}
+			entries := make([]push.Entry, d.entriesPerOffset)
+			for k := 0; k < d.entriesPerOffset; k++ {
+				entries[k] = push.Entry{
+					Timestamp: time.Unix(int64(offset), 0),
+					Line:      fmt.Sprintf("tenant=%d stream=%d line=%d", i, j, k),
+				}
+			}
+			result = append(result, AppendInput{
+				tenant:    tenant,
+				labels:    lbls,
+				labelsStr: lbls.String(),
+				entries:   entries,
+			})
+		}
+	}
+	return result
+}
+
+func (d *dummyPartitionController) Close() error {
+	return nil
 }
