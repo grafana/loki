@@ -59,21 +59,6 @@ func (cfg *OssConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 }
 
 func (cfg *OssConfig) Validate() error {
-	if len(cfg.Bucket) == 0 {
-		return errors.New("bucket name is required")
-	}
-	if len(cfg.Endpoint) == 0 {
-		return errors.New("endpoint is required")
-	}
-	if len(cfg.AccessKeyID) == 0 {
-		return errors.New("access key id is required")
-	}
-	if len(cfg.SecretAccessKey) == 0 {
-		return errors.New("secret access key is required")
-	}
-	if cfg.ConnectionTimeoutSec <= 0 {
-		return errors.New("connection timeout must be greater than 0")
-	}
 	if cfg.ReadWriteTimeoutSec <= 0 {
 		return errors.New("read write timeout must be greater than 0")
 	}
