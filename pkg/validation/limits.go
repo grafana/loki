@@ -86,6 +86,7 @@ type Limits struct {
 	IncrementDuplicateTimestamp bool             `yaml:"increment_duplicate_timestamp" json:"increment_duplicate_timestamp"`
 	DiscoverServiceName         []string         `yaml:"discover_service_name" json:"discover_service_name"`
 	DiscoverLogLevels           bool             `yaml:"discover_log_levels" json:"discover_log_levels"`
+	LogLevelFields              []string         `yaml:"log_level_fields" json:"log_level_fields"`
 
 	// Ingester enforced limits.
 	UseOwnedStreamCount     bool             `yaml:"use_owned_stream_count" json:"use_owned_stream_count"`
@@ -287,6 +288,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	}
 	f.Var((*dskit_flagext.StringSlice)(&l.DiscoverServiceName), "validation.discover-service-name", "If no service_name label exists, Loki maps a single label from the configured list to service_name. If none of the configured labels exist in the stream, label is set to unknown_service. Empty list disables setting the label.")
 	f.BoolVar(&l.DiscoverLogLevels, "validation.discover-log-levels", true, "Discover and add log levels during ingestion, if not present already. Levels would be added to Structured Metadata with name level/LEVEL/Level/Severity/severity/SEVERITY/lvl/LVL/Lvl (case-sensitive) and one of the values from 'trace', 'debug', 'info', 'warn', 'error', 'critical', 'fatal' (case insensitive).")
+	l.LogLevelFields = []string{"level", "LEVEL", "Level", "Severity", "severity", "SEVERITY", "lvl", "LVL", "Lvl"}
+	f.Var((*dskit_flagext.StringSlice)(&l.LogLevelFields), "validation.log-level-fields", "Field name to use for log levels. If not set, log level would be detected based on pre-defined labels as mentioned above.")
 
 	_ = l.RejectOldSamplesMaxAge.Set("7d")
 	f.Var(&l.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", "Maximum accepted sample age before rejecting.")
@@ -997,6 +1000,10 @@ func (o *Overrides) DiscoverServiceName(userID string) []string {
 
 func (o *Overrides) DiscoverLogLevels(userID string) bool {
 	return o.getOverridesForUser(userID).DiscoverLogLevels
+}
+
+func (o *Overrides) LogLevelFields(userID string) []string {
+	return o.getOverridesForUser(userID).LogLevelFields
 }
 
 // VolumeEnabled returns whether volume endpoints are enabled for a user.
