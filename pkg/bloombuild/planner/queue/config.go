@@ -2,6 +2,7 @@ package queue
 
 import (
 	"flag"
+
 	"github.com/grafana/loki/v3/pkg/queue"
 )
 

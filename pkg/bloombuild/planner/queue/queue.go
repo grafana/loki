@@ -3,14 +3,16 @@ package queue
 import (
 	"context"
 	"fmt"
-	"github.com/go-kit/log"
-	"github.com/grafana/dskit/services"
-	"github.com/grafana/loki/v3/pkg/queue"
-	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/prometheus/client_golang/prometheus"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/go-kit/log"
+	"github.com/grafana/dskit/services"
+	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/loki/v3/pkg/queue"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 type Task interface {
@@ -120,7 +122,7 @@ func (q *Queue[T]) Enqueue(tenant string, task T, successFn func()) error {
 }
 
 // Dequeue takes a task from the queue. The task is not removed from the filesystem until Release is called.
-func (q *Queue[T]) Dequeue(ctx context.Context, last QueueIndex, consumerID string) (T, QueueIndex, error) {
+func (q *Queue[T]) Dequeue(ctx context.Context, last Index, consumerID string) (T, Index, error) {
 	var zero T
 
 	item, idx, err := q.queue.Dequeue(ctx, last, consumerID)
@@ -164,7 +166,7 @@ func NewMetrics(registerer prometheus.Registerer, metricsNamespace string, subsy
 	return queue.NewMetrics(registerer, metricsNamespace, subsystem)
 }
 
-type QueueIndex = queue.QueueIndex
+type Index = queue.QueueIndex
 
 var StartIndex = queue.StartIndex
 
