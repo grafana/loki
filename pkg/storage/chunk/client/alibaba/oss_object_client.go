@@ -35,10 +35,12 @@ type OssObjectClient struct {
 
 // OssConfig is config for the OSS Chunk Client.
 type OssConfig struct {
-	Bucket          string `yaml:"bucket"`
-	Endpoint        string `yaml:"endpoint"`
-	AccessKeyID     string `yaml:"access_key_id"`
-	SecretAccessKey string `yaml:"secret_access_key"`
+	Bucket               string `yaml:"bucket"`
+	Endpoint             string `yaml:"endpoint"`
+	AccessKeyID          string `yaml:"access_key_id"`
+	SecretAccessKey      string `yaml:"secret_access_key"`
+	ConnectionTimeoutSec int64  `yaml:"conn_timeout_sec"`
+	ReadWriteTimeoutSec  int64  `yaml:"read_write_timeout_sec"`
 }
 
 // RegisterFlags registers flags.
@@ -56,7 +58,11 @@ func (cfg *OssConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 // NewOssObjectClient makes a new chunk.Client that writes chunks to OSS.
 func NewOssObjectClient(_ context.Context, cfg OssConfig) (client.ObjectClient, error) {
-	client, err := oss.New(cfg.Endpoint, cfg.AccessKeyID, cfg.SecretAccessKey)
+	var options []oss.ClientOption
+	if cfg.ConnectionTimeoutSec > 0 || cfg.ReadWriteTimeoutSec > 0 {
+		options = append(options, oss.Timeout(cfg.ConnectionTimeoutSec, cfg.ReadWriteTimeoutSec))
+	}
+	client, err := oss.New(cfg.Endpoint, cfg.AccessKeyID, cfg.SecretAccessKey, options...)
 	if err != nil {
 		return nil, err
 	}
