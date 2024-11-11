@@ -80,7 +80,7 @@ func New(
 	// Queue to manage tasks
 	queueMetrics := queue.NewMetrics(r, metricsNamespace, metricsSubsystem)
 	queueLimits := NewQueueLimits(limits)
-	tasksQueue, err := queue.NewQueue[*QueueTask](logger, cfg.Queue, queueLimits, queueMetrics)
+	tasksQueue, err := queue.NewQueue(logger, cfg.Queue, queueLimits, queueMetrics)
 	if err != nil {
 		return nil, fmt.Errorf("error creating tasks queue: %w", err)
 	}
