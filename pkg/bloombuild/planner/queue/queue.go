@@ -24,7 +24,7 @@ type Task interface {
 // Queue is a wrapper of queue.RequestQueue that uses the file system to store the pending tasks.
 // When a task is enqueued, it's stored in the file system and recorded ad pending.
 // When it's dequeued, it's removed from the queue but kept in FS until removed.
-type Queue[T Task] struct {
+type Queue struct {
 	services.Service
 
 	queue *queue.RequestQueue
@@ -40,7 +40,7 @@ type Queue[T Task] struct {
 	subservicesWatcher *services.FailureWatcher
 }
 
-func NewQueue[T Task](logger log.Logger, cfg Config, limits Limits, metrics *Metrics) (*Queue[T], error) {
+func NewQueue(logger log.Logger, cfg Config, limits Limits, metrics *Metrics) (*Queue, error) {
 	tasksQueue := queue.NewRequestQueue(cfg.MaxQueuedTasksPerTenant, 0, limits, metrics)
 
 	// Clean metrics for inactive users: do not have added tasks to the queue in the last 1 hour
@@ -56,7 +56,7 @@ func NewQueue[T Task](logger log.Logger, cfg Config, limits Limits, metrics *Met
 	subservicesWatcher := services.NewFailureWatcher()
 	subservicesWatcher.WatchManager(subservices)
 
-	q := &Queue[T]{
+	q := &Queue{
 		queue:              tasksQueue,
 		activeUsers:        activeUsers,
 		cfg:                cfg,
@@ -70,7 +70,7 @@ func NewQueue[T Task](logger log.Logger, cfg Config, limits Limits, metrics *Met
 	return q, nil
 }
 
-func (q *Queue[T]) starting(ctx context.Context) error {
+func (q *Queue) starting(ctx context.Context) error {
 	if err := services.StartManagerAndAwaitHealthy(ctx, q.subservices); err != nil {
 		return fmt.Errorf("failed to start task queue subservices: %w", err)
 	}
@@ -78,7 +78,7 @@ func (q *Queue[T]) starting(ctx context.Context) error {
 	return nil
 }
 
-func (q *Queue[T]) stopping(_ error) error {
+func (q *Queue) stopping(_ error) error {
 	if err := services.StopManagerAndAwaitStopped(context.Background(), q.subservices); err != nil {
 		return fmt.Errorf("failed to stop task queue subservices: %w", err)
 	}
@@ -86,23 +86,23 @@ func (q *Queue[T]) stopping(_ error) error {
 	return nil
 }
 
-func (q *Queue[T]) GetConnectedConsumersMetric() float64 {
+func (q *Queue) GetConnectedConsumersMetric() float64 {
 	return q.queue.GetConnectedConsumersMetric()
 }
 
-func (q *Queue[T]) NotifyConsumerShutdown(consumer string) {
+func (q *Queue) NotifyConsumerShutdown(consumer string) {
 	q.queue.NotifyConsumerShutdown(consumer)
 }
 
-func (q *Queue[T]) RegisterConsumerConnection(consumer string) {
+func (q *Queue) RegisterConsumerConnection(consumer string) {
 	q.queue.RegisterConsumerConnection(consumer)
 }
-func (q *Queue[T]) UnregisterConsumerConnection(consumer string) {
+func (q *Queue) UnregisterConsumerConnection(consumer string) {
 	q.queue.UnregisterConsumerConnection(consumer)
 }
 
 // Enqueue adds a task to the queue.
-func (q *Queue[T]) Enqueue(tenant string, task T, successFn func()) error {
+func (q *Queue) Enqueue(tenant string, task Task, successFn func()) error {
 	q.activeUsers.UpdateUserTimestamp(tenant, time.Now())
 	return q.queue.Enqueue(tenant, nil, task, func() {
 		taskPath := getTaskPath(task)
@@ -122,20 +122,18 @@ func (q *Queue[T]) Enqueue(tenant string, task T, successFn func()) error {
 }
 
 // Dequeue takes a task from the queue. The task is not removed from the filesystem until Release is called.
-func (q *Queue[T]) Dequeue(ctx context.Context, last Index, consumerID string) (T, Index, error) {
-	var zero T
-
+func (q *Queue) Dequeue(ctx context.Context, last Index, consumerID string) (Task, Index, error) {
 	item, idx, err := q.queue.Dequeue(ctx, last, consumerID)
 	if err != nil {
-		return zero, idx, err
+		return nil, idx, err
 	}
 
-	return item.(T), idx, nil
+	return item.(Task), idx, nil
 }
 
 // Release removes a task from the filesystem.
 // Dequeue should be called before Remove.
-func (q *Queue[T]) Release(task T) {
+func (q *Queue) Release(task Task) {
 	taskPath, existed := q.pendingTasks.LoadAndDelete(task.ID())
 	if !existed {
 		// Task doesn't exist, so it's not in the FS
@@ -146,7 +144,7 @@ func (q *Queue[T]) Release(task T) {
 	_ = taskPath
 }
 
-func (q *Queue[T]) TotalPending() (total int) {
+func (q *Queue) TotalPending() (total int) {
 	q.pendingTasks.Range(func(_, _ interface{}) bool {
 		total++
 		return true

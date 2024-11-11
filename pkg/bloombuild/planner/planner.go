@@ -49,7 +49,7 @@ type Planner struct {
 	tsdbStore  common.TSDBStore
 	bloomStore bloomshipper.StoreBase
 
-	tasksQueue *queue.Queue[*QueueTask]
+	tasksQueue *queue.Queue
 
 	metrics *Metrics
 	logger  log.Logger
@@ -738,7 +738,7 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 
 	lastIndex := queue.StartIndex
 	for p.isRunningOrStopping() {
-		task, idx, err := p.tasksQueue.Dequeue(builder.Context(), lastIndex, builderID)
+		item, idx, err := p.tasksQueue.Dequeue(builder.Context(), lastIndex, builderID)
 		if err != nil {
 			if errors.Is(err, queue.ErrStopped) {
 				// Planner is stopping, break the loop and return
@@ -748,10 +748,11 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 		}
 		lastIndex = idx
 
-		if task == nil {
+		if item == nil {
 			return fmt.Errorf("dequeue() call resulted in nil response. builder: %s", builderID)
 		}
 
+		task := item.(*QueueTask)
 		logger := log.With(logger, "task", task.ID())
 
 		queueTime := time.Since(task.queueTime)
