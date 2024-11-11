@@ -119,6 +119,9 @@ spec:
           env:
             {{ include "loki.templateEnv" .Values.loki.extraEnv }}
             {{ include "loki.templateEnv" .Values.adminApi.extraEnv }}
+          envFrom:            
+            {{ include "loki.templateEnv" .Values.loki.extraEnvFrom }}
+            {{ include "loki.templateEnv" .Values.adminApi.extraEnvFrom }}
         {{- with .Values.adminApi.extraContainers }}
         {{ toYaml . | nindent 8 }}
         {{- end }}

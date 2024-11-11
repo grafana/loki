@@ -249,7 +249,7 @@ func (r *TaskResult) ToProtoTaskResult() *ProtoTaskResult {
 		}
 
 		protoMetas = append(protoMetas, &ProtoMeta{
-			MetaRef:      meta.MetaRef.String(),
+			MetaRef:      meta.String(),
 			SourcesTSDBs: metaRefs,
 			BlockRefs:    blockRefs,
 		})

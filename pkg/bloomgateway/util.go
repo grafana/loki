@@ -4,7 +4,6 @@ import (
 	"sort"
 
 	"github.com/prometheus/common/model"
-	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -32,23 +31,6 @@ func daysForRange(from, through model.Time) []model.Time {
 		days = append(days, day)
 	}
 	return days
-}
-
-// getFromThrough assumes a list of ShortRefs sorted by From time
-func getFromThrough(refs []*logproto.ShortRef) (model.Time, model.Time) {
-	if len(refs) == 0 {
-		return model.Earliest, model.Latest
-	}
-
-	if len(refs) == 1 {
-		return refs[0].From, refs[0].Through
-	}
-
-	maxItem := slices.MaxFunc(refs, func(a, b *logproto.ShortRef) int {
-		return int(a.Through) - int(b.Through)
-	})
-
-	return refs[0].From, maxItem.Through
 }
 
 // convertToChunkRefs converts a []*logproto.ShortRef into v1.ChunkRefs
@@ -128,6 +110,7 @@ func partitionSeriesByDay(from, through model.Time, seriesWithChunks []*logproto
 
 			res = append(res, &logproto.GroupedChunkRefs{
 				Fingerprint: series.Fingerprint,
+				Labels:      series.Labels,
 				Tenant:      series.Tenant,
 				Refs:        relevantChunks,
 			})

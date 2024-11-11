@@ -218,7 +218,7 @@ type matcher struct {
 	names []string
 }
 
-// Equal reports if m and are are equivalent headerKeys.
+// Equal reports if m and a are equivalent headerKeys.
 func (m matcher) Equal(a matcher) bool {
 	if m.key != a.key {
 		return false

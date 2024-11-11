@@ -53,6 +53,8 @@ func GetAuthenticatorFromEnvironment(credentialKey string) (authenticator Authen
 		authenticator, err = newBearerTokenAuthenticatorFromMap(properties)
 	} else if strings.EqualFold(authType, AUTHTYPE_IAM) {
 		authenticator, err = newIamAuthenticatorFromMap(properties)
+	} else if strings.EqualFold(authType, AUTHTYPE_IAM_ASSUME) {
+		authenticator, err = newIamAssumeAuthenticatorFromMap(properties)
 	} else if strings.EqualFold(authType, AUTHTYPE_CONTAINER) {
 		authenticator, err = newContainerAuthenticatorFromMap(properties)
 	} else if strings.EqualFold(authType, AUTHTYPE_VPC) {

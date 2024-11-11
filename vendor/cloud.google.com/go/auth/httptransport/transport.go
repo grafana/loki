@@ -19,6 +19,7 @@ import (
 	"crypto/tls"
 	"net"
 	"net/http"
+	"os"
 	"time"
 
 	"cloud.google.com/go/auth"
@@ -27,11 +28,12 @@ import (
 	"cloud.google.com/go/auth/internal/transport"
 	"cloud.google.com/go/auth/internal/transport/cert"
 	"go.opencensus.io/plugin/ochttp"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"golang.org/x/net/http2"
 )
 
 const (
-	quotaProjectHeaderKey = "X-Goog-User-Project"
+	quotaProjectHeaderKey = "X-goog-user-project"
 )
 
 func newTransport(base http.RoundTripper, opts *Options) (http.RoundTripper, error) {
@@ -41,6 +43,9 @@ func newTransport(base http.RoundTripper, opts *Options) (http.RoundTripper, err
 		headers: headers,
 	}
 	var trans http.RoundTripper = ht
+	// Give OpenTelemetry precedence over OpenCensus in case user configuration
+	// causes both to write the same header (`X-Cloud-Trace-Context`).
+	trans = addOpenTelemetryTransport(trans, opts)
 	trans = addOCTransport(trans, opts)
 	switch {
 	case opts.DisableAuthentication:
@@ -76,7 +81,10 @@ func newTransport(base http.RoundTripper, opts *Options) (http.RoundTripper, err
 			if headers == nil {
 				headers = make(map[string][]string, 1)
 			}
-			headers.Set(quotaProjectHeaderKey, qp)
+			// Don't overwrite user specified quota
+			if v := headers.Get(quotaProjectHeaderKey); v == "" {
+				headers.Set(quotaProjectHeaderKey, qp)
+			}
 		}
 		creds.TokenProvider = auth.NewCachedTokenProvider(creds.TokenProvider, nil)
 		trans = &authTransport{
@@ -94,7 +102,11 @@ func newTransport(base http.RoundTripper, opts *Options) (http.RoundTripper, err
 // http.DefaultTransport.
 // If TLSCertificate is available, set TLSClientConfig as well.
 func defaultBaseTransport(clientCertSource cert.Provider, dialTLSContext func(context.Context, string, string) (net.Conn, error)) http.RoundTripper {
-	trans := http.DefaultTransport.(*http.Transport).Clone()
+	defaultTransport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		defaultTransport = transport.BaseTransport()
+	}
+	trans := defaultTransport.Clone()
 	trans.MaxIdleConnsPerHost = 100
 
 	if clientCertSource != nil {
@@ -155,6 +167,13 @@ func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return rt.RoundTrip(&newReq)
 }
 
+func addOpenTelemetryTransport(trans http.RoundTripper, opts *Options) http.RoundTripper {
+	if opts.DisableTelemetry {
+		return trans
+	}
+	return otelhttp.NewTransport(trans)
+}
+
 func addOCTransport(trans http.RoundTripper, opts *Options) http.RoundTripper {
 	if opts.DisableTelemetry {
 		return trans
@@ -171,13 +190,23 @@ type authTransport struct {
 	clientUniverseDomain string
 }
 
-// getClientUniverseDomain returns the universe domain configured for the client.
-// The default value is "googleapis.com".
+// getClientUniverseDomain returns the default service domain for a given Cloud
+// universe, with the following precedence:
+//
+// 1. A non-empty option.WithUniverseDomain or similar client option.
+// 2. A non-empty environment variable GOOGLE_CLOUD_UNIVERSE_DOMAIN.
+// 3. The default value "googleapis.com".
+//
+// This is the universe domain configured for the client, which will be compared
+// to the universe domain that is separately configured for the credentials.
 func (t *authTransport) getClientUniverseDomain() string {
-	if t.clientUniverseDomain == "" {
-		return internal.DefaultUniverseDomain
+	if t.clientUniverseDomain != "" {
+		return t.clientUniverseDomain
 	}
-	return t.clientUniverseDomain
+	if envUD := os.Getenv(internal.UniverseDomainEnvVar); envUD != "" {
+		return envUD
+	}
+	return internal.DefaultUniverseDomain
 }
 
 // RoundTrip authorizes and authenticates the request with an

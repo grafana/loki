@@ -2,7 +2,6 @@ package bloomshipper
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"sync"
@@ -11,6 +10,7 @@ import (
 	"github.com/dolthub/swiss"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/utils/keymutex"
@@ -189,6 +189,8 @@ func (f *Fetcher) processMetasCacheResponse(_ context.Context, refs []MetaRef, k
 
 	var lastErr error
 	var size int64
+
+	json := jsoniter.ConfigFastest
 	for i, ref := range refs {
 		if raw, ok := found[f.client.Meta(ref).Addr()]; ok {
 			meta := Meta{
@@ -209,6 +211,8 @@ func (f *Fetcher) writeBackMetas(ctx context.Context, metas []Meta) error {
 	var err error
 	keys := make([]string, len(metas))
 	data := make([][]byte, len(metas))
+
+	json := jsoniter.ConfigFastest
 	for i := range metas {
 		keys[i] = f.client.Meta(metas[i].MetaRef).Addr()
 		data[i], err = json.Marshal(metas[i])
@@ -316,7 +320,10 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 }
 
 func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef, BlockDirectory]) {
+	errLogger := log.With(f.logger, "task", task.key, "msg", "failed to process download request")
+
 	if ctx.Err() != nil {
+		level.Error(errLogger).Log("err", ctx.Err())
 		task.errors <- ctx.Err()
 		return
 	}
@@ -324,6 +331,7 @@ func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef
 	// check if block was fetched while task was waiting in queue
 	result, exists, err := f.fromCache(ctx, task.key)
 	if err != nil {
+		level.Error(errLogger).Log("err", err)
 		task.errors <- err
 		return
 	}
@@ -341,6 +349,7 @@ func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef
 	// fetch from storage
 	result, err = f.fetchBlock(ctx, task.item)
 	if err != nil {
+		level.Error(errLogger).Log("err", err)
 		task.errors <- err
 		return
 	}
@@ -354,6 +363,7 @@ func (f *Fetcher) processTask(ctx context.Context, task downloadRequest[BlockRef
 		err = f.blocksCache.PutInc(ctx, key, result)
 	}
 	if err != nil {
+		level.Error(errLogger).Log("err", err)
 		task.errors <- err
 		return
 	}

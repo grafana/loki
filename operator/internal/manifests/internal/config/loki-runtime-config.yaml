@@ -1,3 +1,4 @@
+{{- /*gotype: github.com/grafana/loki/operator/internal/manifests/internal/config.Options*/ -}}
 ---
 overrides:
 {{- $opts := . }}
@@ -73,19 +74,18 @@ overrides:
     {{- end }}
     {{- end}}
   {{- end -}}
-  {{- if $l := $spec.OTLP }}
+  {{- if $otlp := index $opts.OTLPAttributes.Tenants $tenant }}
     otlp_config:
-      {{- with $l.ResourceAttributes }}
+      {{- if $otlp.ResourceAttributes  }}
       resource_attributes:
-        ignore_defaults: {{ .IgnoreDefaults }}
-        {{- with .Attributes}}
+        {{- with $otlp.ResourceAttributes}}
         attributes_config:
         {{- range . }}
-        - action: {{ .Action.Value }}
+        - action: {{ .Action }}
           {{- with .Regex }}
           regex: {{ . }}
           {{- end }}
-          {{- with .Attributes }}
+          {{- with .Names }}
           attributes:
           {{- range . }}
           - {{ . }}
@@ -94,14 +94,14 @@ overrides:
         {{- end }}
         {{- end }}
       {{- end}}
-      {{- with $l.ScopeAttributes }}
+      {{- with $otlp.ScopeAttributes }}
       scope_attributes:
       {{- range . }}
-      - action: {{ .Action.Value }}
+      - action: {{ .Action }}
         {{- with .Regex }}
         regex: {{ . }}
         {{- end }}
-        {{- with .Attributes }}
+        {{- with .Names }}
         attributes:
         {{- range . }}
         - {{ . }}
@@ -109,14 +109,14 @@ overrides:
         {{- end }}
       {{- end }}
       {{- end }}
-      {{- with $l.LogAttributes }}
+      {{- with $otlp.LogAttributes }}
       log_attributes:
       {{- range . }}
-      - action: {{ .Action.Value }}
+      - action: {{ .Action }}
         {{- with .Regex }}
         regex: {{ . }}
         {{- end }}
-        {{- with .Attributes }}
+        {{- with .Names }}
         attributes:
         {{- range . }}
         - {{ . }}

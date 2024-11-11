@@ -99,6 +99,7 @@ type Client struct {
 	healthStatus int32
 
 	trailingHeaderSupport bool
+	maxRetries            int
 }
 
 // Options for New method
@@ -123,12 +124,16 @@ type Options struct {
 	// Custom hash routines. Leave nil to use standard.
 	CustomMD5    func() md5simd.Hasher
 	CustomSHA256 func() md5simd.Hasher
+
+	// Number of times a request is retried. Defaults to 10 retries if this option is not configured.
+	// Set to 1 to disable retries.
+	MaxRetries int
 }
 
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "v7.0.77"
+	libraryVersion = "v7.0.80"
 )
 
 // User Agent should always following the below style.
@@ -277,6 +282,11 @@ func privateNew(endpoint string, opts *Options) (*Client, error) {
 
 	// healthcheck is not initialized
 	clnt.healthStatus = unknown
+
+	clnt.maxRetries = MaxRetry
+	if opts.MaxRetries > 0 {
+		clnt.maxRetries = opts.MaxRetries
+	}
 
 	// Return.
 	return clnt, nil
@@ -590,9 +600,9 @@ func (c *Client) executeMethod(ctx context.Context, method string, metadata requ
 		return nil, errors.New(c.endpointURL.String() + " is offline.")
 	}
 
-	var retryable bool       // Indicates if request can be retried.
-	var bodySeeker io.Seeker // Extracted seeker from io.Reader.
-	reqRetry := MaxRetry     // Indicates how many times we can retry the request
+	var retryable bool          // Indicates if request can be retried.
+	var bodySeeker io.Seeker    // Extracted seeker from io.Reader.
+	var reqRetry = c.maxRetries // Indicates how many times we can retry the request
 
 	if metadata.contentBody != nil {
 		// Check if body is seekable then it is retryable.

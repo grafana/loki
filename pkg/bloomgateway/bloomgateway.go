@@ -200,9 +200,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	// Shortcut if request does not contain filters
 	if len(matchers) == 0 {
 		stats.Status = labelSuccess
-		return &logproto.FilterChunkRefResponse{
-			ChunkRefs: req.Refs,
-		}, nil
+		return &logproto.FilterChunkRefResponse{ChunkRefs: req.Refs}, nil
 	}
 
 	blocks := make([]bloomshipper.BlockRef, 0, len(req.Blocks))
@@ -218,9 +216,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 	// Shortcut if request does not contain blocks
 	if len(blocks) == 0 {
 		stats.Status = labelSuccess
-		return &logproto.FilterChunkRefResponse{
-			ChunkRefs: req.Refs,
-		}, nil
+		return &logproto.FilterChunkRefResponse{ChunkRefs: req.Refs}, nil
 	}
 
 	seriesByDay := partitionRequest(req)
@@ -232,6 +228,14 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		"blocks", len(req.Blocks),
 		"series_requested", len(req.Refs),
 	)
+
+	// len(seriesByDay) should never be 0
+	// Not sure how this can happen, but there was a bug report
+	// https://github.com/grafana/loki/issues/14623
+	if len(seriesByDay) == 0 {
+		stats.Status = labelSuccess
+		return &logproto.FilterChunkRefResponse{ChunkRefs: req.Refs}, nil
+	}
 
 	if len(seriesByDay) > 1 {
 		stats.Status = labelFailure
@@ -352,7 +356,7 @@ func filterChunkRefs(req *logproto.FilterChunkRefRequest, responses []v1.Output)
 
 	// dedupe outputs, merging the same series.
 	// This returns an Iterator[v1.Output]
-	dedupedResps := iter.NewDedupingIter[v1.Output, v1.Output](
+	dedupedResps := iter.NewDedupingIter(
 		// eq
 		func(o1, o2 v1.Output) bool {
 			return o1.Fp == o2.Fp

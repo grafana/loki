@@ -112,6 +112,9 @@ spec:
           env:
             {{ include "loki.templateEnv" .Values.loki.extraEnv }}
             {{ include "loki.templateEnv" .Values.enterpriseGateway.extraEnv }}
+          envFrom:
+            {{ include "loki.templateEnv" .Values.loki.extraEnvFrom }}
+            {{ include "loki.templateEnv" .Values.enterpriseGateway.extraEnvFrom }}
         {{- with .Values.enterpriseGateway.extraContainers }}
         {{ toYaml . | nindent 8 }}
         {{- end }}

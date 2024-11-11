@@ -92,7 +92,9 @@ func (d *data) mkt(t string, nparts int, nreplicas int, configs map[string]*stri
 	d.id2t[id] = t
 	d.t2id[t] = id
 	d.treplicas[t] = nreplicas
-	d.tcfgs[t] = configs
+	if configs != nil {
+		d.tcfgs[t] = configs
+	}
 	for i := 0; i < nparts; i++ {
 		d.tps.mkp(t, int32(i), d.c.newPartData)
 	}

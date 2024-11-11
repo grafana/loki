@@ -61,15 +61,7 @@ func TestBloomBuilding(t *testing.T) {
 	cliIngester.Now = now
 
 	// We now ingest some logs across many series.
-	series := make([]labels.Labels, 0, nSeries)
-	for i := 0; i < nSeries; i++ {
-		lbs := labels.FromStrings("job", fmt.Sprintf("job-%d", i))
-		series = append(series, lbs)
-
-		for j := 0; j < nLogsPerSeries; j++ {
-			require.NoError(t, cliDistributor.PushLogLine(fmt.Sprintf("log line %d", j), now, nil, lbs.Map()))
-		}
-	}
+	series := writeSeries(t, nSeries, nLogsPerSeries, cliDistributor, now, "job")
 
 	// restart ingester which should flush the chunks and index
 	require.NoError(t, tIngester.Restart())
@@ -96,6 +88,8 @@ func TestBloomBuilding(t *testing.T) {
 		"-bloom-build.planner.interval=15s",
 		"-bloom-build.planner.min-table-offset=0", // Disable table offset so we process today's data.
 		"-bloom.cache-list-ops=0",                 // Disable cache list operations to avoid caching issues.
+		"-bloom-build.planning-strategy=split_by_series_chunks_size",
+		"-bloom-build.split-target-series-chunk-size=1KB",
 	)
 	require.NoError(t, clu.Run())
 
@@ -122,14 +116,8 @@ func TestBloomBuilding(t *testing.T) {
 	checkSeriesInBlooms(t, now, tenantID, bloomStore, series)
 
 	// Push some more logs so TSDBs need to be updated.
-	for i := 0; i < nSeries; i++ {
-		lbs := labels.FromStrings("job", fmt.Sprintf("job-new-%d", i))
-		series = append(series, lbs)
-
-		for j := 0; j < nLogsPerSeries; j++ {
-			require.NoError(t, cliDistributor.PushLogLine(fmt.Sprintf("log line %d", j), now, nil, lbs.Map()))
-		}
-	}
+	newSeries := writeSeries(t, nSeries, nLogsPerSeries, cliDistributor, now, "job-new")
+	series = append(series, newSeries...)
 
 	// restart ingester which should flush the chunks and index
 	require.NoError(t, tIngester.Restart())
@@ -143,6 +131,33 @@ func TestBloomBuilding(t *testing.T) {
 	// Check that all series (both previous and new ones) pushed are present in the metas and blocks.
 	// This check ensures up to 1 meta per series, which tests deletion of old metas.
 	checkSeriesInBlooms(t, now, tenantID, bloomStore, series)
+}
+
+func writeSeries(t *testing.T, nSeries int, nLogsPerSeries int, cliDistributor *client.Client, now time.Time, seriesPrefix string) []labels.Labels {
+	series := make([]labels.Labels, 0, nSeries)
+	for i := 0; i < nSeries; i++ {
+		lbs := labels.FromStrings("job", fmt.Sprintf("%s-%d", seriesPrefix, i))
+		series = append(series, lbs)
+
+		for j := 0; j < nLogsPerSeries; j++ {
+			// Only write wtructured metadata for half of the series
+			var metadata map[string]string
+			if i%2 == 0 {
+				metadata = map[string]string{
+					"traceID": fmt.Sprintf("%d%d", i, j),
+					"user":    fmt.Sprintf("%d%d", i, j%10),
+				}
+			}
+
+			require.NoError(t, cliDistributor.PushLogLine(
+				fmt.Sprintf("log line %d", j),
+				now,
+				metadata,
+				lbs.Map(),
+			))
+		}
+	}
+	return series
 }
 
 func checkCompactionFinished(t *testing.T, cliCompactor *client.Client) {

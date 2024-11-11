@@ -391,6 +391,7 @@ func (m *FilterChunkRefRequest) WithStartEndForCache(start, end time.Time) resul
 		if len(refs) > 0 {
 			chunkRefs = append(chunkRefs, &GroupedChunkRefs{
 				Fingerprint: chunkRef.Fingerprint,
+				Labels:      chunkRef.Labels,
 				Tenant:      chunkRef.Tenant,
 				Refs:        refs,
 			})

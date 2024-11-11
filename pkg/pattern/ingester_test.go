@@ -54,6 +54,7 @@ func TestInstancePushQuery(t *testing.T) {
 		log.NewNopLogger(),
 		newIngesterMetrics(nil, "test"),
 		drain.DefaultConfig(),
+		&fakeLimits{},
 		ringClient,
 		ingesterID,
 		mockWriter,
@@ -141,6 +142,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 			log.NewNopLogger(),
 			newIngesterMetrics(nil, "test"),
 			drain.DefaultConfig(),
+			&fakeLimits{},
 			ringClient,
 			ingesterID,
 			mockWriter,
@@ -335,4 +337,17 @@ func (m *mockEntryWriter) WriteEntry(ts time.Time, entry string, lbls labels.Lab
 
 func (m *mockEntryWriter) Stop() {
 	_ = m.Called()
+}
+
+type fakeLimits struct {
+	Limits
+	metricAggregationEnabled bool
+}
+
+func (f *fakeLimits) PatternIngesterTokenizableJSONFields(_ string) []string {
+	return []string{"log", "message", "msg", "msg_", "_msg", "content"}
+}
+
+func (f *fakeLimits) MetricAggregationEnabled(_ string) bool {
+	return f.metricAggregationEnabled
 }

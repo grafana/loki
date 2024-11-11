@@ -1536,6 +1536,10 @@ func (f fakeLimits) TSDBShardingStrategy(string) string {
 	return logql.PowerOfTwoVersion.String()
 }
 
+func (f fakeLimits) ShardAggregations(string) []string {
+	return nil
+}
+
 type ingesterQueryOpts struct {
 	queryStoreOnly       bool
 	queryIngestersWithin time.Duration

@@ -38,11 +38,11 @@ var (
 // using the Thanos objstore.Bucket interface
 type BucketRuleStore struct {
 	bucket      objstore.Bucket
-	cfgProvider bucket.TenantConfigProvider
+	cfgProvider bucket.SSEConfigProvider
 	logger      log.Logger
 }
 
-func NewBucketRuleStore(bkt objstore.Bucket, cfgProvider bucket.TenantConfigProvider, logger log.Logger) *BucketRuleStore {
+func NewBucketRuleStore(bkt objstore.Bucket, cfgProvider bucket.SSEConfigProvider, logger log.Logger) *BucketRuleStore {
 	return &BucketRuleStore{
 		bucket:      bucket.NewPrefixedBucketClient(bkt, rulesPrefix),
 		cfgProvider: cfgProvider,
