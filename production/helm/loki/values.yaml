@@ -61,6 +61,16 @@ loki:
     digest: null
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
+  # -- Common environment variables to add to all pods
+  extraEnv: []
+  # -- Common environment injections to add to all pods
+  # For example to inject values from a Secret, use:
+  # extraEnvFrom:
+  #   - secretRef:
+  #       name: mysecret
+  extraEnvFrom: []
+  # -- Common additional CLI arguments for all components
+  extraArgs: []
   # -- Common annotations for all deployments/StatefulSets
   annotations: {}
   # -- Common annotations for all pods

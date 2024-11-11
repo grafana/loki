@@ -76,9 +76,8 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=index-gateway
-            {{- with .Values.indexGateway.extraArgs }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
+            {{ include "loki.templateArgs" .Values.loki.extraArgs }}
+            {{ include "loki.templateArgs" .Values.indexGateway.extraArgs }}
           ports:
             - name: http-metrics
               containerPort: 3100
@@ -91,14 +90,12 @@ spec:
               containerPort: 7946
               protocol: TCP
             {{- end }}
-          {{- with .Values.indexGateway.extraEnv }}
           env:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- with .Values.indexGateway.extraEnvFrom }}
+            {{ include "loki.templateEnv" .Values.loki.extraEnv }}
+            {{ include "loki.templateEnv" .Values.indexGateway.extraEnv }}
           envFrom:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{ include "loki.templateEnv" .Values.loki.extraEnvFrom }}
+            {{ include "loki.templateEnv" .Values.indexGateway.extraEnvFrom }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
           readinessProbe:
