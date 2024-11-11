@@ -54,17 +54,35 @@ func (cfg *OssConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Endpoint, prefix+"oss.endpoint", "", "oss Endpoint to connect to.")
 	f.StringVar(&cfg.AccessKeyID, prefix+"oss.access-key-id", "", "alibabacloud Access Key ID")
 	f.StringVar(&cfg.SecretAccessKey, prefix+"oss.secret-access-key", "", "alibabacloud Secret Access Key")
-	f.Int64Var(&cfg.ConnectionTimeoutSec, prefix+"oss.conn-timeout-sec", 5, "Connection timeout in seconds")
-	f.Int64Var(&cfg.ReadWriteTimeoutSec, prefix+"oss.read-write-timeout-sec", 5, "Read/Write timeout in seconds")
+	f.Int64Var(&cfg.ConnectionTimeoutSec, prefix+"oss.conn-timeout-sec", 30, "Connection timeout in seconds")
+	f.Int64Var(&cfg.ReadWriteTimeoutSec, prefix+"oss.read-write-timeout-sec", 60, "Read/Write timeout in seconds")
+}
+
+func (cfg *OssConfig) Validate() error {
+	if len(cfg.Bucket) == 0 {
+		return errors.New("bucket name is required")
+	}
+	if len(cfg.Endpoint) == 0 {
+		return errors.New("endpoint is required")
+	}
+	if len(cfg.AccessKeyID) == 0 {
+		return errors.New("access key id is required")
+	}
+	if len(cfg.SecretAccessKey) == 0 {
+		return errors.New("secret access key is required")
+	}
+	if cfg.ConnectionTimeoutSec <= 0 {
+		return errors.New("connection timeout must be greater than 0")
+	}
+	if cfg.ReadWriteTimeoutSec <= 0 {
+		return errors.New("read write timeout must be greater than 0")
+	}
+	return nil
 }
 
 // NewOssObjectClient makes a new chunk.Client that writes chunks to OSS.
 func NewOssObjectClient(_ context.Context, cfg OssConfig) (client.ObjectClient, error) {
-	var options []oss.ClientOption
-	if cfg.ConnectionTimeoutSec > 0 || cfg.ReadWriteTimeoutSec > 0 {
-		options = append(options, oss.Timeout(cfg.ConnectionTimeoutSec, cfg.ReadWriteTimeoutSec))
-	}
-	client, err := oss.New(cfg.Endpoint, cfg.AccessKeyID, cfg.SecretAccessKey, options...)
+	client, err := oss.New(cfg.Endpoint, cfg.AccessKeyID, cfg.SecretAccessKey, oss.Timeout(cfg.ConnectionTimeoutSec, cfg.ReadWriteTimeoutSec))
 	if err != nil {
 		return nil, err
 	}

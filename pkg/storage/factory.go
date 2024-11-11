@@ -369,6 +369,9 @@ func (cfg *Config) Validate() error {
 	if err := cfg.ObjectStore.Validate(); err != nil {
 		return errors.Wrap(err, "invalid object store config")
 	}
+	if err := cfg.AlibabaStorageConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid Alibaba Storage config")
+	}
 
 	return cfg.NamedStores.Validate()
 }

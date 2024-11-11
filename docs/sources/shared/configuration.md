@@ -864,11 +864,11 @@ The `alibabacloud_storage_config` block configures the connection to Alibaba Clo
 
 # Connection timeout in seconds
 # CLI flag: -<prefix>.oss.conn-timeout-sec
-[conn_timeout_sec: <int> | default = 5]
+[conn_timeout_sec: <int> | default = 30]
 
 # Read/Write timeout in seconds
 # CLI flag: -<prefix>.oss.read-write-timeout-sec
-[read_write_timeout_sec: <int> | default = 5]
+[read_write_timeout_sec: <int> | default = 60]
 ```
 
 ### analytics
