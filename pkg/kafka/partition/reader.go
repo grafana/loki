@@ -103,6 +103,10 @@ func (p *Reader) start(ctx context.Context) error {
 
 	// We manage our commits manually, so we must fetch the last offset for our consumer group to find out where to read from.
 	lastCommittedOffset := p.fetchLastCommittedOffset(ctx)
+	if lastCommittedOffset == kafkaEndOffset {
+		level.Warn(p.logger).Log("msg", "no committed offset found for partition, starting from the beginning", "partition", p.partitionID, "consumer_group", p.consumerGroup)
+		lastCommittedOffset = kafkaStartOffset // If we haven't committed any offsets yet, we start reading from the beginning.
+	}
 	if lastCommittedOffset > 0 {
 		lastCommittedOffset++ // We want to begin to read from the next offset, but only if we've previously committed an offset.
 	}
