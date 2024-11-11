@@ -861,6 +861,14 @@ The `alibabacloud_storage_config` block configures the connection to Alibaba Clo
 # alibabacloud Secret Access Key
 # CLI flag: -<prefix>.storage.oss.secret-access-key
 [secret_access_key: <string> | default = ""]
+
+# alibabacloud Connection timeout
+# CLI flag: -<prefix>.storage.oss.conn-timeout-sec
+[conn_timeout_sec: <int> | default = 5]
+
+# alibabacloud Request timeout
+# CLI flag: -<prefix>.storage.oss.read-write-timeout-sec
+[read_write_timeout_sec: <int> | default = 5]
 ```
 
 ### analytics
