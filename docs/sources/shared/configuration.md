@@ -840,34 +840,34 @@ kafka_config:
 
 The `alibabacloud_storage_config` block configures the connection to Alibaba Cloud Storage object storage backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `common`
-- `ruler`
+- `common.storage`
+- `ruler.storage`
 
 &nbsp;
 
 ```yaml
 # Name of OSS bucket.
-# CLI flag: -<prefix>.storage.oss.bucketname
+# CLI flag: -<prefix>.oss.bucketname
 [bucket: <string> | default = ""]
 
 # oss Endpoint to connect to.
-# CLI flag: -<prefix>.storage.oss.endpoint
+# CLI flag: -<prefix>.oss.endpoint
 [endpoint: <string> | default = ""]
 
 # alibabacloud Access Key ID
-# CLI flag: -<prefix>.storage.oss.access-key-id
+# CLI flag: -<prefix>.oss.access-key-id
 [access_key_id: <string> | default = ""]
 
 # alibabacloud Secret Access Key
-# CLI flag: -<prefix>.storage.oss.secret-access-key
+# CLI flag: -<prefix>.oss.secret-access-key
 [secret_access_key: <string> | default = ""]
 
-# alibabacloud Connection timeout
-# CLI flag: -<prefix>.storage.oss.conn-timeout-sec
+# Connection timeout in seconds
+# CLI flag: -<prefix>.oss.conn-timeout-sec
 [conn_timeout_sec: <int> | default = 5]
 
-# alibabacloud Request timeout
-# CLI flag: -<prefix>.storage.oss.read-write-timeout-sec
+# Read/Write timeout in seconds
+# CLI flag: -<prefix>.oss.read-write-timeout-sec
 [read_write_timeout_sec: <int> | default = 5]
 ```
 
@@ -1650,6 +1650,7 @@ storage:
 
   # The alibabacloud_storage_config block configures the connection to Alibaba
   # Cloud Storage object storage backend.
+  # The CLI flags prefix for this block configuration is: common.storage
   [alibabacloud: <alibabacloud_storage_config>]
 
   # The bos_storage_config block configures the connection to Baidu Object
@@ -4550,7 +4551,7 @@ storage:
   [azure: <azure_storage_config>]
 
   # Configures backend rule storage for AlibabaCloud Object Storage (OSS).
-  # The CLI flags prefix for this block configuration is: ruler
+  # The CLI flags prefix for this block configuration is: ruler.storage
   [alibabacloud: <alibabacloud_storage_config>]
 
   # Configures backend rule storage for GCS.
@@ -5357,7 +5358,6 @@ The `storage_config` block configures one of many possible stores for both the i
 ```yaml
 # The alibabacloud_storage_config block configures the connection to Alibaba
 # Cloud Storage object storage backend.
-# The CLI flags prefix for this block configuration is: common
 [alibabacloud: <alibabacloud_storage_config>]
 
 # The aws_storage_config block configures the connection to dynamoDB and S3
