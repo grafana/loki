@@ -3,6 +3,7 @@ package bucket
 import (
 	"context"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/go-kit/log"
@@ -106,8 +107,8 @@ func (o *ObjectClientAdapter) List(ctx context.Context, prefix, delimiter string
 		iterParams = append(iterParams, objstore.WithRecursiveIter())
 	}
 
-	supportUpdatedAt := objstore.ValidateIterOptions(o.bucket.SupportedIterOptions(), objstore.WithUpdatedAt()) == nil
-	if supportUpdatedAt {
+	supportsUpdatedAt := slices.Contains(o.bucket.SupportedIterOptions(), objstore.UpdatedAt)
+	if supportsUpdatedAt {
 		iterParams = append(iterParams, objstore.WithUpdatedAt())
 	}
 
@@ -121,12 +122,12 @@ func (o *ObjectClientAdapter) List(ctx context.Context, prefix, delimiter string
 		}
 
 		lastModified, ok := attrs.LastModified()
-		if supportUpdatedAt && !ok {
+		if supportsUpdatedAt && !ok {
 			return errors.Errorf("failed to get lastModified for %s", objectKey)
 		}
 		// Some providers do not support supports UpdatedAt option. For those we need
 		// to make an additional request to get the last modified time.
-		if !supportUpdatedAt {
+		if !supportsUpdatedAt {
 			attr, err := o.bucket.Attributes(ctx, objectKey)
 			if err != nil {
 				return errors.Wrapf(err, "failed to get attributes for %s", objectKey)
