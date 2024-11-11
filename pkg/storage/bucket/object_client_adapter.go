@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -104,7 +105,11 @@ func (o *ObjectClientAdapter) List(ctx context.Context, prefix, delimiter string
 	if delimiter == "" {
 		iterParams = append(iterParams, objstore.WithRecursiveIter())
 	}
-	iterParams = append(iterParams, objstore.WithUpdatedAt())
+
+	supportUpdatedAt := objstore.ValidateIterOptions(o.bucket.SupportedIterOptions(), objstore.WithUpdatedAt()) == nil
+	if supportUpdatedAt {
+		iterParams = append(iterParams, objstore.WithUpdatedAt())
+	}
 
 	err := o.bucket.IterWithAttributes(ctx, prefix, func(attrs objstore.IterObjectAttributes) error {
 		// CommonPrefixes are keys that have the prefix and have the delimiter
@@ -116,8 +121,17 @@ func (o *ObjectClientAdapter) List(ctx context.Context, prefix, delimiter string
 		}
 
 		lastModified, ok := attrs.LastModified()
-		if !ok {
-			level.Warn(o.logger).Log("msg", "failed to get last modified time for object", "object", objectKey)
+		if supportUpdatedAt && !ok {
+			return errors.Errorf("failed to get lastModified for %s", objectKey)
+		}
+		// Some providers do not support supports UpdatedAt option. For those we need
+		// to make an additional request to get the last modified time.
+		if !supportUpdatedAt {
+			attr, err := o.bucket.Attributes(ctx, objectKey)
+			if err != nil {
+				return errors.Wrapf(err, "failed to get attributes for %s", objectKey)
+			}
+			lastModified = attr.LastModified
 		}
 
 		storageObjects = append(storageObjects, client.StorageObject{
