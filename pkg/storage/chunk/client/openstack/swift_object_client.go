@@ -24,6 +24,10 @@ import (
 )
 
 func defaultTransport(config bucket_http.Config) (http.RoundTripper, error) {
+	if config.Transport != nil {
+		return config.Transport, nil
+	}
+
 	tlsConfig := &tls.Config{}
 	if len(config.TLSConfig.CAPath) > 0 {
 		caPath := config.TLSConfig.CAPath
@@ -38,20 +42,11 @@ func defaultTransport(config bucket_http.Config) (http.RoundTripper, error) {
 		tlsConfig.RootCAs = caCertPool
 	}
 
-	if config.Transport != nil {
-		return config.Transport, nil
-	}
-
 	return &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		MaxIdleConns:          200,
 		MaxIdleConnsPerHost:   200,
 		ExpectContinueTimeout: 5 * time.Second,
-		// Set this value so that the underlying transport round-tripper
-		// doesn't try to auto decode the body of objects with
-		// content-encoding set to `gzip`.
-		//
-		// Refer: https://golang.org/src/net/http/transport.go?h=roundTrip#L1843.
 		TLSClientConfig: tlsConfig,
 	}, nil
 }
@@ -133,6 +128,12 @@ func createConnection(cfg SwiftConfig, hedgingCfg hedging.Config, hedging bool) 
 		Transport:      defaultTransport,
 	}
 
+	switch {
+	case cfg.Config.UserDomainName != "":
+		c.Domain = cfg.Config.UserDomainName
+	case cfg.Config.UserDomainID != "":
+		c.DomainId = cfg.Config.UserDomainID
+	}
 	if hedging {
 		var err error
 		c.Transport, err = hedgingCfg.RoundTripperWithRegisterer(c.Transport, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
