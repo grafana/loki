@@ -4,7 +4,7 @@ menuTitle:  Query best practices
 description: Describes best practices for querying in Grafana Loki.
 aliases:
 - ../bp-query
-weight: 700
+weight: 100
 ---
 # Query best practices
 
@@ -31,7 +31,8 @@ If you're using Loki with Grafana, you can use the dropdown menu on the upper ri
 
 ### Through Loki API
 
-If you're querying Loki through [the Loki API](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/), you can use the [`query_range` endpoint]({{https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#query-logs-within-a-range-of-time" >}}) to add `start` and `end` timestamps for your query as parameters to the HTTP call rather than as part of the query itself.
+If you're querying Loki through [the Loki API](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/), you can use the [`query_range` endpoint](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#query-logs-within-a-range-of-time)
+ to add `start` and `end` timestamps for your query as parameters to the HTTP call rather than as part of the query itself.
 
 ```bash
 http://<loki-instance>/loki/api/v1/query_range?query={job="app"}&start=1633017600000000000&end=1633104000000000000
@@ -67,7 +68,7 @@ Line filter expressions are more efficient than parser expressions.
 
 Use [parser expressions](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#parser-expression) only after line filter expressions. Parser expressions are ways to look through the log line and extract labels in different formats, which can be useful but are also more intensive for Loki to do than line filter expressions. Using them after line filter expressions means that Loki only needs to evaluate parser expressions for log lines that match the line filter expression, reducing the amount of logs that Loki needs to search through.
 
-Parser expressions include [JSON](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#json, [logfmt](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#logfmt), [pattern](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#pattern), [regexp](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#regular-expression), and [unpack](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#unpack) parsers.
+Parser expressions include [JSON](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#json), [logfmt](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#logfmt), [pattern](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#pattern), [regexp](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#regular-expression), and [unpack](https://grafana.com/docs/loki/<LOKI_VERSION>/query/log_queries/#unpack) parsers.
 
 ## Use recording rules
 

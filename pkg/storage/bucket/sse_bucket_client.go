@@ -12,8 +12,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 )
 
-// TenantConfigProvider defines a per-tenant config provider.
-type TenantConfigProvider interface {
+// SSEConfigProvider defines a per-tenant SSE config provider.
+type SSEConfigProvider interface {
 	// S3SSEType returns the per-tenant S3 SSE type.
 	S3SSEType(userID string) string
 
@@ -29,11 +29,11 @@ type TenantConfigProvider interface {
 type SSEBucketClient struct {
 	userID      string
 	bucket      objstore.Bucket
-	cfgProvider TenantConfigProvider
+	cfgProvider SSEConfigProvider
 }
 
 // NewSSEBucketClient makes a new SSEBucketClient. The cfgProvider can be nil.
-func NewSSEBucketClient(userID string, bucket objstore.Bucket, cfgProvider TenantConfigProvider) *SSEBucketClient {
+func NewSSEBucketClient(userID string, bucket objstore.Bucket, cfgProvider SSEConfigProvider) *SSEBucketClient {
 	return &SSEBucketClient{
 		userID:      userID,
 		bucket:      bucket,

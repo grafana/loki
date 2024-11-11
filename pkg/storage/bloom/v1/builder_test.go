@@ -6,6 +6,7 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
@@ -42,10 +43,7 @@ func TestBlockOptions_BloomPageSize(t *testing.T) {
 func TestBlockOptions_RoundTrip(t *testing.T) {
 	t.Parallel()
 	opts := BlockOptions{
-		Schema: Schema{
-			version:  CurrentSchemaVersion,
-			encoding: compression.Snappy,
-		},
+		Schema:         NewSchema(CurrentSchemaVersion, compression.Snappy),
 		SeriesPageSize: 100,
 		BloomPageSize:  10 << 10,
 		BlockSize:      10 << 20,
@@ -100,10 +98,7 @@ func TestBlockBuilder_RoundTrip(t *testing.T) {
 			desc := fmt.Sprintf("%s/%s", tc.desc, enc)
 			t.Run(desc, func(t *testing.T) {
 				blockOpts := BlockOptions{
-					Schema: Schema{
-						version:  CurrentSchemaVersion,
-						encoding: enc,
-					},
+					Schema:         NewSchema(CurrentSchemaVersion, enc),
 					SeriesPageSize: 100,
 					BloomPageSize:  10 << 10,
 					BlockSize:      tc.maxBlockSize,
@@ -192,7 +187,7 @@ func TestBlockBuilder_RoundTrip(t *testing.T) {
 
 func dedupedBlocks(blocks []iter.PeekIterator[*SeriesWithBlooms]) iter.Iterator[*SeriesWithBlooms] {
 	orderedBlocks := NewHeapIterForSeriesWithBloom(blocks...)
-	return iter.NewDedupingIter[*SeriesWithBlooms](
+	return iter.NewDedupingIter(
 		func(a *SeriesWithBlooms, b *SeriesWithBlooms) bool {
 			return a.Series.Fingerprint == b.Series.Fingerprint
 		},
@@ -203,7 +198,7 @@ func dedupedBlocks(blocks []iter.PeekIterator[*SeriesWithBlooms]) iter.Iterator[
 			}
 			return b
 		},
-		iter.NewPeekIter[*SeriesWithBlooms](orderedBlocks),
+		iter.NewPeekIter(orderedBlocks),
 	)
 }
 
@@ -215,10 +210,7 @@ func TestMergeBuilder(t *testing.T) {
 	blocks := make([]iter.PeekIterator[*SeriesWithBlooms], 0, nBlocks)
 	data, _ := MkBasicSeriesWithBlooms(numSeries, 0, 0xffff, 0, 10000)
 	blockOpts := BlockOptions{
-		Schema: Schema{
-			version:  CurrentSchemaVersion,
-			encoding: compression.Snappy,
-		},
+		Schema:         NewSchema(CurrentSchemaVersion, compression.Snappy),
 		SeriesPageSize: 100,
 		BloomPageSize:  10 << 10,
 	}
@@ -244,10 +236,10 @@ func TestMergeBuilder(t *testing.T) {
 		)
 
 		require.Nil(t, err)
-		itr := iter.NewSliceIter[SeriesWithBlooms](data[min:max])
+		itr := iter.NewSliceIter(data[min:max])
 		_, err = builder.BuildFrom(itr)
 		require.Nil(t, err)
-		blocks = append(blocks, iter.NewPeekIter[*SeriesWithBlooms](NewBlockQuerier(NewBlock(reader, NewMetrics(nil)), &mempool.SimpleHeapAllocator{}, DefaultMaxPageSize).Iter()))
+		blocks = append(blocks, iter.NewPeekIter(NewBlockQuerier(NewBlock(reader, NewMetrics(nil)), &mempool.SimpleHeapAllocator{}, DefaultMaxPageSize).Iter()))
 	}
 
 	// We're not testing the ability to extend a bloom in this test
@@ -264,15 +256,15 @@ func TestMergeBuilder(t *testing.T) {
 
 	// storage should contain references to all the series we ingested,
 	// regardless of block allocation/overlap.
-	storeItr := iter.NewMapIter[SeriesWithBlooms, *Series](
-		iter.NewSliceIter[SeriesWithBlooms](data),
+	storeItr := iter.NewMapIter(
+		iter.NewSliceIter(data),
 		func(swb SeriesWithBlooms) *Series {
 			return &swb.Series.Series
 		},
 	)
 
 	// Ensure that the merge builder combines all the blocks correctly
-	mergeBuilder := NewMergeBuilder(dedupedBlocks(blocks), storeItr, populate, NewMetrics(nil))
+	mergeBuilder := NewMergeBuilder(dedupedBlocks(blocks), storeItr, populate, NewMetrics(nil), log.NewNopLogger())
 	indexBuf := bytes.NewBuffer(nil)
 	bloomsBuf := bytes.NewBuffer(nil)
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
@@ -287,16 +279,16 @@ func TestMergeBuilder(t *testing.T) {
 	block := NewBlock(reader, NewMetrics(nil))
 	querier := NewBlockQuerier(block, &mempool.SimpleHeapAllocator{}, DefaultMaxPageSize)
 
-	EqualIterators[*SeriesWithBlooms](
+	EqualIterators(
 		t,
 		func(a, b *SeriesWithBlooms) {
 			require.Equal(t, a.Series.Series, b.Series.Series, "expected series %+v, got %+v", a.Series.Series, b.Series.Series)
-			require.Equal(t, a.Series.Meta.Fields, b.Series.Meta.Fields, "expected fields %+v, got %+v", a.Series.Meta.Fields, b.Series.Meta.Fields)
+			require.Equal(t, a.Series.Fields, b.Series.Fields, "expected fields %+v, got %+v", a.Series.Fields, b.Series.Fields)
 			// TODO(chaudum): Investigate why offsets not match
 			// This has not been tested before, so I'm not too worried about something being broken.
 			// require.Equal(t, a.Series.Meta.Offsets, b.Series.Meta.Offsets, "expected offsets %+v, got %+v", a.Series.Meta.Offsets, b.Series.Meta.Offsets)
 		},
-		iter.NewSliceIter[*SeriesWithBlooms](PointerSlice(data)),
+		iter.NewSliceIter(PointerSlice(data)),
 		querier.Iter(),
 	)
 }
@@ -312,10 +304,7 @@ func TestMergeBuilderFingerprintCollision(t *testing.T) {
 	reader := NewByteReader(indexBuf, bloomsBuf)
 
 	blockOpts := BlockOptions{
-		Schema: Schema{
-			version:  CurrentSchemaVersion,
-			encoding: compression.Snappy,
-		},
+		Schema:         NewSchema(CurrentSchemaVersion, compression.Snappy),
 		SeriesPageSize: 100,
 		BloomPageSize:  10 << 10,
 	}
@@ -362,6 +351,8 @@ func TestMergeBuilderFingerprintCollision(t *testing.T) {
 	// We're not testing the ability to extend a bloom in this test
 	pop := func(_ *Series, _ iter.SizedIterator[*Bloom], _ ChunkRefs, ch chan *BloomCreation) {
 		bloom := NewBloom()
+		// Add something to the bloom so it's not empty
+		bloom.Add([]byte("hello"))
 		stats := indexingInfo{
 			sourceBytes:   int(bloom.Capacity()) / 8,
 			indexedFields: NewSetFromLiteral[Field]("__all__"),
@@ -379,6 +370,7 @@ func TestMergeBuilderFingerprintCollision(t *testing.T) {
 		iter.NewSliceIter(data),
 		pop,
 		NewMetrics(nil),
+		log.NewNopLogger(),
 	)
 
 	_, _, err = mergeBuilder.Build(builder)
@@ -409,10 +401,7 @@ func TestBlockReset(t *testing.T) {
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
 	reader := NewByteReader(indexBuf, bloomsBuf)
 
-	schema := Schema{
-		version:  CurrentSchemaVersion,
-		encoding: compression.Snappy,
-	}
+	schema := NewSchema(CurrentSchemaVersion, compression.Snappy)
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
@@ -424,7 +413,7 @@ func TestBlockReset(t *testing.T) {
 	)
 
 	require.Nil(t, err)
-	itr := iter.NewSliceIter[SeriesWithBlooms](data)
+	itr := iter.NewSliceIter(data)
 	_, err = builder.BuildFrom(itr)
 	require.Nil(t, err)
 	block := NewBlock(reader, NewMetrics(nil))
@@ -434,7 +423,7 @@ func TestBlockReset(t *testing.T) {
 
 	for i := 0; i < len(rounds); i++ {
 		for querier.Next() {
-			rounds[i] = append(rounds[i], querier.At().Series.Fingerprint)
+			rounds[i] = append(rounds[i], querier.At().Fingerprint)
 		}
 
 		err = querier.Seek(0) // reset at end
@@ -465,10 +454,9 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 	}
 
 	blockOpts := BlockOptions{
-		Schema: Schema{
-			version:  CurrentSchemaVersion,
-			encoding: compression.Snappy, // test with different encodings?
-		},
+		// test with different encodings?
+		Schema: NewSchema(CurrentSchemaVersion, compression.Snappy),
+
 		SeriesPageSize: 100,
 		BloomPageSize:  10 << 10,
 	}
@@ -487,7 +475,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 			require.Nil(t, err)
 			// each set of copies gets a different slice of the data
 			minIdx, maxIdx := i*len(xs)/len(sets), (i+1)*len(xs)/len(sets)
-			itr := iter.NewSliceIter[SeriesWithBlooms](xs[minIdx:maxIdx])
+			itr := iter.NewSliceIter(xs[minIdx:maxIdx])
 			_, err = builder.BuildFrom(itr)
 			require.Nil(t, err)
 			block := NewBlock(reader, NewMetrics(nil))
@@ -509,12 +497,12 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 	var store []iter.PeekIterator[*SeriesWithBlooms]
 
 	for _, x := range data {
-		blocks = append(blocks, iter.NewPeekIter[*SeriesWithBlooms](iter.NewSliceIter[*SeriesWithBlooms](x)))
-		store = append(store, iter.NewPeekIter[*SeriesWithBlooms](iter.NewSliceIter[*SeriesWithBlooms](x)))
+		blocks = append(blocks, iter.NewPeekIter(iter.NewSliceIter(x)))
+		store = append(store, iter.NewPeekIter(iter.NewSliceIter(x)))
 	}
 
 	orderedStore := NewHeapIterForSeriesWithBloom(store...)
-	dedupedStore := iter.NewDedupingIter[*SeriesWithBlooms, *Series](
+	dedupedStore := iter.NewDedupingIter(
 		func(a *SeriesWithBlooms, b *Series) bool {
 			return a.Series.Fingerprint == b.Fingerprint
 		},
@@ -527,7 +515,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 			}
 			return b
 		},
-		iter.NewPeekIter[*SeriesWithBlooms](orderedStore),
+		iter.NewPeekIter(orderedStore),
 	)
 
 	// We're not testing the ability to extend a bloom in this test
@@ -555,6 +543,7 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 		dedupedStore,
 		pop,
 		NewMetrics(nil),
+		log.NewNopLogger(),
 	)
 	builder, err := NewBlockBuilder(blockOpts, writer)
 	require.Nil(t, err)
@@ -568,9 +557,9 @@ func TestMergeBuilder_Roundtrip(t *testing.T) {
 	// ensure the new block contains one copy of all the data
 	// by comparing it against an iterator over the source data
 	mergedBlockQuerier := NewBlockQuerier(NewBlock(reader, NewMetrics(nil)), &mempool.SimpleHeapAllocator{}, DefaultMaxPageSize)
-	sourceItr := iter.NewSliceIter[*SeriesWithBlooms](PointerSlice[SeriesWithBlooms](xs))
+	sourceItr := iter.NewSliceIter(PointerSlice(xs))
 
-	EqualIterators[*SeriesWithBlooms](
+	EqualIterators(
 		t,
 		func(a, b *SeriesWithBlooms) {
 			require.Equal(t, a.Series.Fingerprint, b.Series.Fingerprint)

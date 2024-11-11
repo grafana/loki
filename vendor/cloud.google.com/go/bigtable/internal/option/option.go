@@ -19,12 +19,8 @@ package option
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"os"
-
-	btpb "cloud.google.com/go/bigtable/apiv2/bigtablepb"
-	"google.golang.org/protobuf/proto"
 
 	"cloud.google.com/go/bigtable/internal"
 	"cloud.google.com/go/internal/version"
@@ -64,25 +60,6 @@ func withGoogleClientInfo() metadata.MD {
 		internal.Version,
 	}
 	return metadata.Pairs("x-goog-api-client", gax.XGoogHeader(kv...))
-}
-
-func makeFeatureFlags() string {
-	ff := btpb.FeatureFlags{ReverseScans: true, LastScannedRowResponses: true}
-	b, err := proto.Marshal(&ff)
-	if err != nil {
-		return ""
-	}
-
-	return base64.URLEncoding.EncodeToString(b)
-}
-
-var featureFlags = makeFeatureFlags()
-
-// WithFeatureFlags set the feature flags the client supports in the
-// `bigtable-features` header sent on each request. Intended for
-// use by Google-written clients.
-func WithFeatureFlags() metadata.MD {
-	return metadata.Pairs("bigtable-features", featureFlags)
 }
 
 // streamInterceptor intercepts the creation of ClientStream within the bigtable

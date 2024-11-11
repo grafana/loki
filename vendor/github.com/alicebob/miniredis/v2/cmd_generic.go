@@ -3,6 +3,7 @@
 package miniredis
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -12,6 +13,21 @@ import (
 	"github.com/alicebob/miniredis/v2/server"
 )
 
+const (
+	// expiretimeReplyNoExpiration is return value for EXPIRETIME and PEXPIRETIME if the key exists but has no associated expiration time
+	expiretimeReplyNoExpiration = -1
+	// expiretimeReplyMissingKey is return value for EXPIRETIME and PEXPIRETIME if the key does not exist
+	expiretimeReplyMissingKey = -2
+)
+
+func inSeconds(t time.Time) int {
+	return int(t.Unix())
+}
+
+func inMilliSeconds(t time.Time) int {
+	return int(t.UnixMilli())
+}
+
 // commandsGeneric handles EXPIRE, TTL, PERSIST, &c.
 func commandsGeneric(m *Miniredis) {
 	m.srv.Register("COPY", m.cmdCopy)
@@ -20,6 +36,8 @@ func commandsGeneric(m *Miniredis) {
 	m.srv.Register("EXISTS", m.cmdExists)
 	m.srv.Register("EXPIRE", makeCmdExpire(m, false, time.Second))
 	m.srv.Register("EXPIREAT", makeCmdExpire(m, true, time.Second))
+	m.srv.Register("EXPIRETIME", m.makeCmdExpireTime(inSeconds))
+	m.srv.Register("PEXPIRETIME", m.makeCmdExpireTime(inMilliSeconds))
 	m.srv.Register("KEYS", m.cmdKeys)
 	// MIGRATE
 	m.srv.Register("MOVE", m.cmdMove)
@@ -40,6 +58,47 @@ func commandsGeneric(m *Miniredis) {
 	m.srv.Register("UNLINK", m.cmdDel)
 }
 
+type expireOpts struct {
+	key   string
+	value int
+	nx    bool
+	xx    bool
+	gt    bool
+	lt    bool
+}
+
+func expireParse(cmd string, args []string) (*expireOpts, error) {
+	var opts expireOpts
+
+	opts.key = args[0]
+	if err := optIntSimple(args[1], &opts.value); err != nil {
+		return nil, err
+	}
+	args = args[2:]
+	for len(args) > 0 {
+		switch strings.ToLower(args[0]) {
+		case "nx":
+			opts.nx = true
+		case "xx":
+			opts.xx = true
+		case "gt":
+			opts.gt = true
+		case "lt":
+			opts.lt = true
+		default:
+			return nil, fmt.Errorf("ERR Unsupported option %s", args[0])
+		}
+		args = args[1:]
+	}
+	if opts.gt && opts.lt {
+		return nil, errors.New("ERR GT and LT options at the same time are not compatible")
+	}
+	if opts.nx && (opts.xx || opts.gt || opts.lt) {
+		return nil, errors.New("ERR NX and XX, GT or LT options at the same time are not compatible")
+	}
+	return &opts, nil
+}
+
 // generic expire command for EXPIRE, PEXPIRE, EXPIREAT, PEXPIREAT
 // d is the time unit. If unix is set it'll be seen as a unixtimestamp and
 // converted to a duration.
@@ -57,44 +116,10 @@ func makeCmdExpire(m *Miniredis, unix bool, d time.Duration) func(*server.Peer, 
 			return
 		}
 
-		var opts struct {
-			key   string
-			value int
-			nx    bool
-			xx    bool
-			gt    bool
-			lt    bool
-		}
-		opts.key = args[0]
-		if ok := optInt(c, args[1], &opts.value); !ok {
-			return
-		}
-		args = args[2:]
-		for len(args) > 0 {
-			switch strings.ToLower(args[0]) {
-			case "nx":
-				opts.nx = true
-			case "xx":
-				opts.xx = true
-			case "gt":
-				opts.gt = true
-			case "lt":
-				opts.lt = true
-			default:
-				setDirty(c)
-				c.WriteError(fmt.Sprintf("ERR Unsupported option %s", args[0]))
-				return
-			}
-			args = args[1:]
-		}
-		if opts.gt && opts.lt {
+		opts, err := expireParse(cmd, args)
+		if err != nil {
 			setDirty(c)
-			c.WriteError("ERR GT and LT options at the same time are not compatible")
-			return
-		}
-		if opts.nx && (opts.xx || opts.gt || opts.lt) {
-			setDirty(c)
-			c.WriteError("ERR NX and XX, GT or LT options at the same time are not compatible")
+			c.WriteError(err.Error())
 			return
 		}
 
@@ -138,9 +163,50 @@ func makeCmdExpire(m *Miniredis, unix bool, d time.Duration) func(*server.Peer, 
 				return
 			}
 			db.ttl[opts.key] = newTTL
-			db.keyVersion[opts.key]++
+			db.incr(opts.key)
 			db.checkTTL(opts.key)
 			c.WriteInt(1)
+		})
+	}
+}
+
+// makeCmdExpireTime creates server command function that returns the absolute Unix timestamp (since January 1, 1970)
+// at which the given key will expire, in unit selected by time result strategy (e.g. seconds, milliseconds).
+// For more information see redis documentation for [expiretime] and [pexpiretime].
+//
+// [expiretime]: https://redis.io/commands/expiretime/
+// [pexpiretime]: https://redis.io/commands/pexpiretime/
+func (m *Miniredis) makeCmdExpireTime(timeResultStrategy func(time.Time) int) server.Cmd {
+	return func(c *server.Peer, cmd string, args []string) {
+		if len(args) != 1 {
+			setDirty(c)
+			c.WriteError(errWrongNumber(cmd))
+			return
+		}
+
+		if !m.handleAuth(c) {
+			return
+		}
+		if m.checkPubsub(c, cmd) {
+			return
+		}
+
+		key := args[0]
+		withTx(m, c, func(c *server.Peer, ctx *connCtx) {
+			db := m.db(ctx.selectedDB)
+
+			if _, ok := db.keys[key]; !ok {
+				c.WriteInt(expiretimeReplyMissingKey)
+				return
+			}
+
+			ttl, ok := db.ttl[key]
+			if !ok {
+				c.WriteInt(expiretimeReplyNoExpiration)
+				return
+			}
+
+			c.WriteInt(timeResultStrategy(m.effectiveNow().Add(ttl)))
 		})
 	}
 }
@@ -274,7 +340,7 @@ func (m *Miniredis) cmdPersist(c *server.Peer, cmd string, args []string) {
 			return
 		}
 		delete(db.ttl, key)
-		db.keyVersion[key]++
+		db.incr(key)
 		c.WriteInt(1)
 	})
 }
@@ -536,6 +602,60 @@ func (m *Miniredis) cmdRenamenx(c *server.Peer, cmd string, args []string) {
 	})
 }
 
+type scanOpts struct {
+	cursor    int
+	count     int
+	withMatch bool
+	match     string
+	withType  bool
+	_type     string
+}
+
+func scanParse(cmd string, args []string) (*scanOpts, error) {
+	var opts scanOpts
+	if err := optIntSimple(args[0], &opts.cursor); err != nil {
+		return nil, errors.New(msgInvalidCursor)
+	}
+	args = args[1:]
+
+	// MATCH, COUNT and TYPE options
+	for len(args) > 0 {
+		if strings.ToLower(args[0]) == "count" {
+			if len(args) < 2 {
+				return nil, errors.New(msgSyntaxError)
+			}
+			count, err := strconv.Atoi(args[1])
+			if err != nil || count < 0 {
+				return nil, errors.New(msgInvalidInt)
+			}
+			if count == 0 {
+				return nil, errors.New(msgSyntaxError)
+			}
+			opts.count = count
+			args = args[2:]
+			continue
+		}
+		if strings.ToLower(args[0]) == "match" {
+			if len(args) < 2 {
+				return nil, errors.New(msgSyntaxError)
+			}
+			opts.withMatch = true
+			opts.match, args = args[1], args[2:]
+			continue
+		}
+		if strings.ToLower(args[0]) == "type" {
+			if len(args) < 2 {
+				return nil, errors.New(msgSyntaxError)
+			}
+			opts.withType = true
+			opts._type, args = strings.ToLower(args[1]), args[2:]
+			continue
+		}
+		return nil, errors.New(msgSyntaxError)
+	}
+	return &opts, nil
+}
+
 // SCAN
 func (m *Miniredis) cmdScan(c *server.Peer, cmd string, args []string) {
 	if len(args) < 1 {
@@ -550,73 +670,16 @@ func (m *Miniredis) cmdScan(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	var opts struct {
-		cursor    int
-		withMatch bool
-		match     string
-		withType  bool
-		_type     string
-	}
-
-	if ok := optIntErr(c, args[0], &opts.cursor, msgInvalidCursor); !ok {
-		return
-	}
-	args = args[1:]
-
-	// MATCH, COUNT and TYPE options
-	for len(args) > 0 {
-		if strings.ToLower(args[0]) == "count" {
-			// we do nothing with count
-			if len(args) < 2 {
-				setDirty(c)
-				c.WriteError(msgSyntaxError)
-				return
-			}
-			if _, err := strconv.Atoi(args[1]); err != nil {
-				setDirty(c)
-				c.WriteError(msgInvalidInt)
-				return
-			}
-			args = args[2:]
-			continue
-		}
-		if strings.ToLower(args[0]) == "match" {
-			if len(args) < 2 {
-				setDirty(c)
-				c.WriteError(msgSyntaxError)
-				return
-			}
-			opts.withMatch = true
-			opts.match, args = args[1], args[2:]
-			continue
-		}
-		if strings.ToLower(args[0]) == "type" {
-			if len(args) < 2 {
-				setDirty(c)
-				c.WriteError(msgSyntaxError)
-				return
-			}
-			opts.withType = true
-			opts._type, args = strings.ToLower(args[1]), args[2:]
-			continue
-		}
+	opts, err := scanParse(cmd, args)
+	if err != nil {
 		setDirty(c)
-		c.WriteError(msgSyntaxError)
+		c.WriteError(err.Error())
 		return
 	}
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 		// We return _all_ (matched) keys every time.
-
-		if opts.cursor != 0 {
-			// Invalid cursor.
-			c.WriteLen(2)
-			c.WriteBulk("0") // no next cursor
-			c.WriteLen(0)    // no elements
-			return
-		}
-
 		var keys []string
 
 		if opts.withType {
@@ -627,22 +690,78 @@ func (m *Miniredis) cmdScan(c *server.Peer, cmd string, args []string) {
 					keys = append(keys, k)
 				}
 			}
-			sort.Strings(keys) // To make things deterministic.
 		} else {
 			keys = db.allKeys()
 		}
+
+		sort.Strings(keys) // To make things deterministic.
 
 		if opts.withMatch {
 			keys, _ = matchKeys(keys, opts.match)
 		}
 
+		low := opts.cursor
+		high := low + opts.count
+		// validate high is correct
+		if high > len(keys) || high == 0 {
+			high = len(keys)
+		}
+		if opts.cursor > high {
+			// invalid cursor
+			c.WriteLen(2)
+			c.WriteBulk("0") // no next cursor
+			c.WriteLen(0)    // no elements
+			return
+		}
+		cursorValue := low + opts.count
+		if cursorValue >= len(keys) {
+			cursorValue = 0 // no next cursor
+		}
+		keys = keys[low:high]
+
 		c.WriteLen(2)
-		c.WriteBulk("0") // no next cursor
+		c.WriteBulk(fmt.Sprintf("%d", cursorValue))
 		c.WriteLen(len(keys))
 		for _, k := range keys {
 			c.WriteBulk(k)
 		}
 	})
+}
+
+type copyOpts struct {
+	from          string
+	to            string
+	destinationDB int
+	replace       bool
+}
+
+func copyParse(cmd string, args []string) (*copyOpts, error) {
+	opts := copyOpts{
+		destinationDB: -1,
+	}
+
+	opts.from, opts.to, args = args[0], args[1], args[2:]
+	for len(args) > 0 {
+		switch strings.ToLower(args[0]) {
+		case "db":
+			if len(args) < 2 {
+				return nil, errors.New(msgSyntaxError)
+			}
+			if err := optIntSimple(args[1], &opts.destinationDB); err != nil {
+				return nil, err
+			}
+			if opts.destinationDB < 0 {
+				return nil, errors.New(msgDBIndexOutOfRange)
+			}
+			args = args[2:]
+		case "replace":
+			opts.replace = true
+			args = args[1:]
+		default:
+			return nil, errors.New(msgSyntaxError)
+		}
+	}
+	return &opts, nil
 }
 
 // COPY
@@ -659,47 +778,12 @@ func (m *Miniredis) cmdCopy(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	var opts = struct {
-		from          string
-		to            string
-		destinationDB int
-		replace       bool
-	}{
-		destinationDB: -1,
+	opts, err := copyParse(cmd, args)
+	if err != nil {
+		setDirty(c)
+		c.WriteError(err.Error())
+		return
 	}
-
-	opts.from, opts.to, args = args[0], args[1], args[2:]
-	for len(args) > 0 {
-		switch strings.ToLower(args[0]) {
-		case "db":
-			if len(args) < 2 {
-				setDirty(c)
-				c.WriteError(msgSyntaxError)
-				return
-			}
-			db, err := strconv.Atoi(args[1])
-			if err != nil {
-				setDirty(c)
-				c.WriteError(msgInvalidInt)
-				return
-			}
-			if db < 0 {
-				setDirty(c)
-				c.WriteError(msgDBIndexOutOfRange)
-				return
-			}
-			opts.destinationDB = db
-			args = args[2:]
-		case "replace":
-			opts.replace = true
-			args = args[1:]
-		default:
-			setDirty(c)
-			c.WriteError(msgSyntaxError)
-			return
-		}
-	}
-
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		fromDB, toDB := ctx.selectedDB, opts.destinationDB
 		if toDB == -1 {

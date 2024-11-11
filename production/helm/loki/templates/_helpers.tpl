@@ -668,11 +668,16 @@ Memcached Exporter Docker image
 {{- include "loki.image" $dict -}}
 {{- end }}
 
+{{/* Allow KubeVersion to be overridden. */}}
+{{- define "loki.kubeVersion" -}}
+  {{- default .Capabilities.KubeVersion.Version .Values.kubeVersionOverride -}}
+{{- end -}}
+
 {{/*
 Return the appropriate apiVersion for ingress.
 */}}
 {{- define "loki.ingress.apiVersion" -}}
-  {{- if and (.Capabilities.APIVersions.Has "networking.k8s.io/v1") (semverCompare ">= 1.19-0" .Capabilities.KubeVersion.Version) -}}
+  {{- if and (.Capabilities.APIVersions.Has "networking.k8s.io/v1") (semverCompare ">= 1.19-0" (include "loki.kubeVersion" .)) -}}
       {{- print "networking.k8s.io/v1" -}}
   {{- else if .Capabilities.APIVersions.Has "networking.k8s.io/v1beta1" -}}
     {{- print "networking.k8s.io/v1beta1" -}}
@@ -692,14 +697,14 @@ Return if ingress is stable.
 Return if ingress supports ingressClassName.
 */}}
 {{- define "loki.ingress.supportsIngressClassName" -}}
-  {{- or (eq (include "loki.ingress.isStable" .) "true") (and (eq (include "loki.ingress.apiVersion" .) "networking.k8s.io/v1beta1") (semverCompare ">= 1.18-0" .Capabilities.KubeVersion.Version)) -}}
+  {{- or (eq (include "loki.ingress.isStable" .) "true") (and (eq (include "loki.ingress.apiVersion" .) "networking.k8s.io/v1beta1") (semverCompare ">= 1.18-0" (include "loki.kubeVersion" .))) -}}
 {{- end -}}
 
 {{/*
 Return if ingress supports pathType.
 */}}
 {{- define "loki.ingress.supportsPathType" -}}
-  {{- or (eq (include "loki.ingress.isStable" .) "true") (and (eq (include "loki.ingress.apiVersion" .) "networking.k8s.io/v1beta1") (semverCompare ">= 1.18-0" .Capabilities.KubeVersion.Version)) -}}
+  {{- or (eq (include "loki.ingress.isStable" .) "true") (and (eq (include "loki.ingress.apiVersion" .) "networking.k8s.io/v1beta1") (semverCompare ">= 1.18-0" (include "loki.kubeVersion" .))) -}}
 {{- end -}}
 
 {{/*
@@ -864,7 +869,7 @@ http {
   uwsgi_temp_path       /tmp/uwsgi_temp;
   scgi_temp_path        /tmp/scgi_temp;
 
-  client_max_body_size  4M;
+  client_max_body_size  {{ .Values.gateway.nginxConfig.clientMaxBodySize }};
 
   proxy_read_timeout    600; ## 10 minutes
   proxy_send_timeout    600;
@@ -1114,7 +1119,7 @@ http {
 
 {{/* Configure enableServiceLinks in pod */}}
 {{- define "loki.enableServiceLinks" -}}
-{{- if semverCompare ">=1.13-0" .Capabilities.KubeVersion.Version -}}
+{{- if semverCompare ">=1.13-0" (include "loki.kubeVersion" .) -}}
 {{- if or (.Values.loki.enableServiceLinks) (ne .Values.loki.enableServiceLinks false) -}}
 enableServiceLinks: true
 {{- else -}}
@@ -1214,7 +1219,7 @@ checksum/config: {{ include (print .Template.BasePath "/config.yaml") . | sha256
 Return the appropriate apiVersion for PodDisruptionBudget.
 */}}
 {{- define "loki.pdb.apiVersion" -}}
-  {{- if and (.Capabilities.APIVersions.Has "policy/v1") (semverCompare ">=1.21-0" .Capabilities.KubeVersion.Version) -}}
+  {{- if and (.Capabilities.APIVersions.Has "policy/v1") (semverCompare ">=1.21-0" (include "loki.kubeVersion" .)) -}}
     {{- print "policy/v1" -}}
   {{- else -}}
     {{- print "policy/v1beta1" -}}
@@ -1236,11 +1241,41 @@ Return the object store type for use with the test schema.
 Return the appropriate apiVersion for HorizontalPodAutoscaler.
 */}}
 {{- define "loki.hpa.apiVersion" -}}
-  {{- if and (.Capabilities.APIVersions.Has "autoscaling/v2") (semverCompare ">= 1.19-0" .Capabilities.KubeVersion.Version) -}}
+  {{- if and (.Capabilities.APIVersions.Has "autoscaling/v2") (semverCompare ">= 1.19-0" (include "loki.kubeVersion" .)) -}}
       {{- print "autoscaling/v2" -}}
   {{- else if .Capabilities.APIVersions.Has "autoscaling/v2beta2" -}}
     {{- print "autoscaling/v2beta2" -}}
   {{- else -}}
     {{- print "autoscaling/v2beta1" -}}
   {{- end -}}
+{{- end -}}
+
+{{/*
+Return the templated list for extraEnv and extraEnvFrom
+Params:
+  . = extraEnv/extraEnvFrom list
+*/}}
+{{- define "loki.templateEnv" -}}
+{{- $extraEnv := . }}
+{{- with $extraEnv }}
+{{- toYaml . | nindent 12 }}
+{{- end }}
+{{- end -}}
+
+{{/*
+Return the templated dict/list for extraArgs
+Params:
+  . = extraArgs dict/list
+*/}}
+{{- define "loki.templateArgs" -}}
+{{- $extraArgs := . }}
+{{- if and $extraArgs (kindIs "slice" $extraArgs) }}
+  {{- with $extraArgs }}
+  {{- toYaml . | nindent 12 }}
+  {{- end }}
+{{- else if and $extraArgs (kindIs "map" $extraArgs) -}}
+  {{- range $key, $value := $extraArgs }}
+  - "-{{ $key }}={{ $value }}"
+  {{- end -}}
+{{- end -}}
 {{- end -}}

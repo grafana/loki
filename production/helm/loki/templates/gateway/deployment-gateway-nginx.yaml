@@ -64,14 +64,10 @@ spec:
             - name: http-metrics
               containerPort: {{ .Values.gateway.containerPort }}
               protocol: TCP
-          {{- with .Values.gateway.extraEnv }}
           env:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- with .Values.gateway.extraEnvFrom }}
+            {{ include "loki.templateEnv" .Values.gateway.extraEnv }}
           envFrom:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{ include "loki.templateEnv" .Values.gateway.extraEnvFrom }}
           readinessProbe:
             {{- toYaml .Values.gateway.readinessProbe | nindent 12 }}
           securityContext:

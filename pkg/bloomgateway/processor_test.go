@@ -141,7 +141,7 @@ func TestProcessor(t *testing.T) {
 		}
 
 		matchers := []v1.LabelMatcher{
-			v1.PlainLabelMatcher{
+			v1.KeyValueMatcher{
 				Key:   "trace_id",
 				Value: "nomatch",
 			},
@@ -191,7 +191,7 @@ func TestProcessor(t *testing.T) {
 			day: config.NewDayTime(truncateDay(now)),
 		}
 		matchers := []v1.LabelMatcher{
-			v1.PlainLabelMatcher{
+			v1.KeyValueMatcher{
 				Key:   "trace_id",
 				Value: "nomatch",
 			},
@@ -238,7 +238,7 @@ func TestProcessor(t *testing.T) {
 			day: config.NewDayTime(truncateDay(now)),
 		}
 		matchers := []v1.LabelMatcher{
-			v1.PlainLabelMatcher{
+			v1.KeyValueMatcher{
 				Key:   "trace_id",
 				Value: "nomatch",
 			},

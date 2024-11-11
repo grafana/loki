@@ -352,6 +352,7 @@ message GetChunkRefRequest {
 
 message GetChunkRefResponse {
   repeated ChunkRef refs = 1;
+  stats.Index stats = 2 [(gogoproto.nullable) = false];
 }
 
 message GetSeriesRequest {

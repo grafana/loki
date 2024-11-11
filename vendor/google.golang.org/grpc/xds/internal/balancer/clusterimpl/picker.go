@@ -19,6 +19,8 @@
 package clusterimpl
 
 import (
+	"context"
+
 	v3orcapb "github.com/cncf/xds/go/xds/data/orca/v3"
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/codes"
@@ -96,14 +98,23 @@ func (b *clusterImplBalancer) newPicker(config *dropConfigs) *picker {
 	}
 }
 
+func telemetryLabels(ctx context.Context) map[string]string {
+	if ctx == nil {
+		return nil
+	}
+	labels := stats.GetLabels(ctx)
+	if labels == nil {
+		return nil
+	}
+	return labels.TelemetryLabels
+}
+
 func (d *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	// Unconditionally set labels if present, even dropped or queued RPC's can
 	// use these labels.
-	if info.Ctx != nil {
-		if labels := stats.GetLabels(info.Ctx); labels != nil && labels.TelemetryLabels != nil {
-			for key, value := range d.telemetryLabels {
-				labels.TelemetryLabels[key] = value
-			}
+	if labels := telemetryLabels(info.Ctx); labels != nil {
+		for key, value := range d.telemetryLabels {
+			labels[key] = value
 		}
 	}
 
@@ -154,6 +165,10 @@ func (d *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 			d.counter.EndRequest()
 		}
 		return pr, err
+	}
+
+	if labels := telemetryLabels(info.Ctx); labels != nil {
+		labels["grpc.lb.locality"] = lIDStr
 	}
 
 	if d.loadStore != nil {

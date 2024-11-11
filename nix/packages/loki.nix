@@ -5,7 +5,7 @@ let
     pname = "lambda-promtail";
 
     src = ./../../tools/lambda-promtail;
-    vendorHash = "sha256-CKob173T0VHD5c8F26aU7p1l+QzqddNM4qQedMbLJa0=";
+    vendorHash = "sha256-fG+AJfniGJy9fpD2Jluh7N2FDYt9LCjXCVoWktuvus0=";
 
     doCheck = false;
 
@@ -27,8 +27,9 @@ pkgs.stdenv.mkDerivation {
     bash
     gcc
     git
-    go
+    go_1_23
     golangci-lint
+    gotools
     nettools
     yamllint
 

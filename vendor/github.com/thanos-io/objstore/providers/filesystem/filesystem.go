@@ -150,8 +150,12 @@ func (b *Bucket) GetRange(ctx context.Context, name string, off, length int64) (
 		return nil, errors.New("object name is empty")
 	}
 
-	file := filepath.Join(b.rootDir, name)
-	if _, err := os.Stat(file); err != nil {
+	var (
+		file = filepath.Join(b.rootDir, name)
+		stat os.FileInfo
+		err  error
+	)
+	if stat, err = os.Stat(file); err != nil {
 		return nil, errors.Wrapf(err, "stat %s", file)
 	}
 
@@ -160,18 +164,33 @@ func (b *Bucket) GetRange(ctx context.Context, name string, off, length int64) (
 		return nil, err
 	}
 
+	var newOffset int64
 	if off > 0 {
-		_, err := f.Seek(off, 0)
+		newOffset, err = f.Seek(off, 0)
 		if err != nil {
 			return nil, errors.Wrapf(err, "seek %v", off)
 		}
 	}
 
+	size := stat.Size() - newOffset
 	if length == -1 {
-		return f, nil
+		return objstore.ObjectSizerReadCloser{
+			ReadCloser: f,
+			Size: func() (int64, error) {
+				return size, nil
+			},
+		}, nil
 	}
 
-	return &rangeReaderCloser{Reader: io.LimitReader(f, length), f: f}, nil
+	return objstore.ObjectSizerReadCloser{
+		ReadCloser: &rangeReaderCloser{
+			Reader: io.LimitReader(f, length),
+			f:      f,
+		},
+		Size: func() (int64, error) {
+			return min(length, size), nil
+		},
+	}, nil
 }
 
 // Exists checks if the given directory exists in memory.

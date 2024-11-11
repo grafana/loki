@@ -1,3 +1,9 @@
+# -- Overrides the version used to determine compatibility of resources with the target Kubernetes cluster.
+# This is useful when using `helm template`, because then helm will use the client version of kubectl as the Kubernetes version,
+# which may or may not match your cluster's server version. Example: 'v1.24.4'. Set to null to use the version that helm
+# devises.
+kubeVersionOverride: null
+
 global:
   image:
     # -- Overrides the Docker registry globally for all images
@@ -55,6 +61,16 @@ loki:
     digest: null
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
+  # -- Common environment variables to add to all pods
+  extraEnv: []
+  # -- Common environment injections to add to all pods
+  # For example to inject values from a Secret, use:
+  # extraEnvFrom:
+  #   - secretRef:
+  #       name: mysecret
+  extraEnvFrom: []
+  # -- Common additional CLI arguments for all components
+  extraArgs: []
   # -- Common annotations for all deployments/StatefulSets
   annotations: {}
   # -- Common annotations for all pods
@@ -821,6 +837,8 @@ adminApi:
   #      - domain.tld
   # -- Additional CLI arguments for the `admin-api` target
   extraArgs: {}
+  # -- Environment variables from secrets or configmaps to add to the admin-api pods
+  extraEnvFrom: []
   # -- Additional labels for the `admin-api` Deployment
   labels: {}
   # -- Additional annotations for the `admin-api` Deployment
@@ -1074,6 +1092,8 @@ gateway:
     # -- Allows appending custom configuration to the http block, passed through the `tpl` function to allow templating
     httpSnippet: >-
       {{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}
+    # -- Allows customizing the `client_max_body_size` directive
+    clientMaxBodySize: 4M
     # -- Whether ssl should be appended to the listen directive of the server block or not.
     ssl: false
     # -- Override Read URL
@@ -1099,6 +1119,8 @@ enterpriseGateway:
   #      - domain.tld
   # -- Additional CLI arguments for the `gateway` target
   extraArgs: {}
+  # -- Environment variables from secrets or configmaps to add to the enterprise gateway pods
+  extraEnvFrom: []
   # -- Additional labels for the `gateway` Pod
   labels: {}
   # -- Additional annotations for the `gateway` Pod
@@ -1796,6 +1818,13 @@ ingester:
   readinessProbe: {}
   # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
+  # -- UpdateStrategy for the ingester StatefulSets.
+  updateStrategy:
+    # -- One of  'OnDelete' or 'RollingUpdate'
+    type: RollingUpdate
+    # -- Optional for updateStrategy.type=RollingUpdate. See [Partitioned rolling updates](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#partitions) in the StatefulSet docs for details.
+    # rollingUpdate:
+    #   partition: 0
   persistence:
     # -- Enable creating PVCs which is required when using boltdb-shipper
     enabled: false
@@ -2354,6 +2383,13 @@ indexGateway:
   # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
   appProtocol:
     grpc: ""
+  # -- UpdateStrategy for the indexGateway StatefulSet.
+  updateStrategy:
+    # -- One of  'OnDelete' or 'RollingUpdate'
+    type: RollingUpdate
+    # -- Optional for updateStrategy.type=RollingUpdate. See [Partitioned rolling updates](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#partitions) in the StatefulSet docs for details.
+    # rollingUpdate:
+    #   partition: 0
 # -- Configuration for the compactor
 compactor:
   # -- Number of replicas for the compactor

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
@@ -73,6 +74,8 @@ func TestTask_RequestIterator(t *testing.T) {
 			Refs: []*logproto.GroupedChunkRefs{
 				{Fingerprint: 100, Tenant: tenant, Refs: []*logproto.ShortRef{
 					{From: ts.Add(-3 * time.Hour), Through: ts.Add(-2 * time.Hour), Checksum: 100},
+				}, Labels: &logproto.IndexSeries{
+					Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "100")),
 				}},
 			},
 		}
@@ -83,9 +86,13 @@ func TestTask_RequestIterator(t *testing.T) {
 			Refs: []*logproto.GroupedChunkRefs{
 				{Fingerprint: 100, Tenant: tenant, Refs: []*logproto.ShortRef{
 					{From: ts.Add(-1 * time.Hour), Through: ts, Checksum: 200},
+				}, Labels: &logproto.IndexSeries{
+					Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "100")),
 				}},
 				{Fingerprint: 200, Tenant: tenant, Refs: []*logproto.ShortRef{
 					{From: ts.Add(-1 * time.Hour), Through: ts, Checksum: 300},
+				}, Labels: &logproto.IndexSeries{
+					Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "200")),
 				}},
 			},
 		}
@@ -96,6 +103,8 @@ func TestTask_RequestIterator(t *testing.T) {
 			Refs: []*logproto.GroupedChunkRefs{
 				{Fingerprint: 200, Tenant: tenant, Refs: []*logproto.ShortRef{
 					{From: ts.Add(-1 * time.Hour), Through: ts, Checksum: 400},
+				}, Labels: &logproto.IndexSeries{
+					Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "200")),
 				}},
 			},
 		}
@@ -108,7 +117,7 @@ func TestTask_RequestIterator(t *testing.T) {
 		}
 
 		// merge the request iterators using the heap sort iterator
-		it := v1.NewHeapIterator[v1.Request](func(r1, r2 v1.Request) bool { return r1.Fp < r2.Fp }, iters...)
+		it := v1.NewHeapIterator(func(r1, r2 v1.Request) bool { return r1.Fp < r2.Fp }, iters...)
 
 		// first item
 		require.True(t, it.Next())
