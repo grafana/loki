@@ -54,7 +54,7 @@ func (s *ChunkSizeStrategy) Plan(
 	targetTaskSize := s.limits.BloomTaskTargetSeriesChunksSizeBytes(tenant)
 
 	logger := log.With(s.logger, "table", table.Addr(), "tenant", tenant)
-	level.Debug(s.logger).Log("msg", "loading work for tenant", "target task size", humanize.Bytes(targetTaskSize))
+	level.Debug(logger).Log("msg", "loading work for tenant", "target task size", humanize.Bytes(targetTaskSize))
 
 	// Determine which TSDBs have gaps and need to be processed.
 	tsdbsWithGaps, err := gapsBetweenTSDBsAndMetas(v1.NewBounds(0, math.MaxUint64), tsdbs, metas)
