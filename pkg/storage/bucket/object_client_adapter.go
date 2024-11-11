@@ -17,6 +17,7 @@ import (
 type ObjectClientAdapter struct {
 	bucket, hedgedBucket objstore.Bucket
 	logger               log.Logger
+	supportsUpdatedAt    bool
 	isRetryableErr       func(err error) bool
 }
 
@@ -26,9 +27,10 @@ func NewObjectClientAdapter(bucket, hedgedBucket objstore.Bucket, logger log.Log
 	}
 
 	o := &ObjectClientAdapter{
-		bucket:       bucket,
-		hedgedBucket: hedgedBucket,
-		logger:       log.With(logger, "component", "bucket_to_object_client_adapter"),
+		bucket:            bucket,
+		hedgedBucket:      hedgedBucket,
+		logger:            log.With(logger, "component", "bucket_to_object_client_adapter"),
+		supportsUpdatedAt: slices.Contains(bucket.SupportedIterOptions(), objstore.UpdatedAt),
 		// default to no retryable errors. Override with WithRetryableErrFunc
 		isRetryableErr: func(_ error) bool {
 			return false
@@ -107,8 +109,7 @@ func (o *ObjectClientAdapter) List(ctx context.Context, prefix, delimiter string
 		iterParams = append(iterParams, objstore.WithRecursiveIter())
 	}
 
-	supportsUpdatedAt := slices.Contains(o.bucket.SupportedIterOptions(), objstore.UpdatedAt)
-	if supportsUpdatedAt {
+	if o.supportsUpdatedAt {
 		iterParams = append(iterParams, objstore.WithUpdatedAt())
 	}
 
@@ -122,12 +123,12 @@ func (o *ObjectClientAdapter) List(ctx context.Context, prefix, delimiter string
 		}
 
 		lastModified, ok := attrs.LastModified()
-		if supportsUpdatedAt && !ok {
+		if o.supportsUpdatedAt && !ok {
 			return errors.Errorf("failed to get lastModified for %s", objectKey)
 		}
 		// Some providers do not support supports UpdatedAt option. For those we need
 		// to make an additional request to get the last modified time.
-		if !supportsUpdatedAt {
+		if !o.supportsUpdatedAt {
 			attr, err := o.bucket.Attributes(ctx, objectKey)
 			if err != nil {
 				return errors.Wrapf(err, "failed to get attributes for %s", objectKey)
