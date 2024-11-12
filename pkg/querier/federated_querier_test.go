@@ -21,9 +21,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func buildMultiIngesterConfig() MultiIngesterConfig {
-	mic := MultiIngesterConfig{
-		MultiIngesterConfig: []ring.LifecyclerConfig{
+func buildMultiIngesterConfig() FederatedQueryConfig {
+	mic := FederatedQueryConfig{
+		ClusterRings: []ring.LifecyclerConfig{
 			{
 				RingConfig: ring.Config{
 					KVStore: kv.Config{
@@ -65,12 +65,13 @@ func buildMultiIngesterConfig() MultiIngesterConfig {
 func TestLabels(t *testing.T) {
 	mic := buildMultiIngesterConfig()
 	cc := client.Config{}
-	iq, err := NewMultiIngesterQuerier(mic, cc, 0, nil, "")
+	qc := Config{QueryPartitionIngesters: false}
+	iq, err := NewFederatedQuerier(mic, cc, qc, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	bs := services.NewIdleService(func(ctx context.Context) error {
-		return services.StartManagerAndAwaitHealthy(ctx, iq.(*MultiIngesterQuerier).GetSubServices())
+		return services.StartManagerAndAwaitHealthy(ctx, iq.(*FederatedQuerier).GetSubServices())
 	}, func(failureCase error) error {
 		return nil
 	})
@@ -163,8 +164,8 @@ func TestStats(t *testing.T) {
 	mockQuerier1.On("Stats", mock.Anything, "test-user", mock.Anything, mock.Anything, mock.Anything).Return(mockStats1, nil)
 	mockQuerier2.On("Stats", mock.Anything, "test-user", mock.Anything, mock.Anything, mock.Anything).Return(mockStats2, nil)
 
-	// Initialize MultiIngesterQuerier with mock ingester queriers
-	miq := &MultiIngesterQuerier{
+	// Initialize FederatedQuerier with mock ingester queriers
+	miq := &FederatedQuerier{
 		ingesterQueriers: []storage.IIngesterQuerier{mockQuerier1, mockQuerier2},
 	}
 

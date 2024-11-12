@@ -26,30 +26,30 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-type MultiIngesterConfig struct {
-	MultiIngesterConfig []ring.LifecyclerConfig `yaml:"lifecyclers,omitempty"`
+type FederatedQueryConfig struct {
+	ClusterRings []ring.LifecyclerConfig `yaml:"cluster_rings,omitempty"`
 }
 
-type MultiIngesterQuerier struct {
+type FederatedQuerier struct {
 	services.Service
-	cfg              *MultiIngesterConfig
+	cfg              *FederatedQueryConfig
 	manager          *services.Manager
 	ring             []*ring.Ring
 	ingesterQueriers []storage.IIngesterQuerier
 }
 
-func NewMultiIngesterQuerier(cfg MultiIngesterConfig, clientCfg client.Config, querierCfg Config, shardCountFun func(userID string) int, namespace string) (storage.IIngesterQuerier, error) {
+func NewFederatedQuerier(cfg FederatedQueryConfig, clientCfg client.Config, querierCfg Config, shardCountFun func(userID string) int, namespace string) (storage.IIngesterQuerier, error) {
 	var (
 		err  error
-		srvc = make([]services.Service, 0, len(cfg.MultiIngesterConfig))
-		miq  = &MultiIngesterQuerier{
+		srvc = make([]services.Service, 0, len(cfg.ClusterRings))
+		miq  = &FederatedQuerier{
 			cfg:              &cfg,
-			ring:             make([]*ring.Ring, 0, len(cfg.MultiIngesterConfig)),
-			ingesterQueriers: make([]storage.IIngesterQuerier, 0, len(cfg.MultiIngesterConfig)),
+			ring:             make([]*ring.Ring, 0, len(cfg.ClusterRings)),
+			ingesterQueriers: make([]storage.IIngesterQuerier, 0, len(cfg.ClusterRings)),
 		}
 	)
 
-	for i, c := range cfg.MultiIngesterConfig {
+	for i, c := range cfg.ClusterRings {
 		r, err := ring.New(c.RingConfig, "ingester", ingester.RingKey, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_"+strconv.Itoa(i)+"_", prometheus.DefaultRegisterer))
 		if err != nil {
 			return nil, err
@@ -57,6 +57,8 @@ func NewMultiIngesterQuerier(cfg MultiIngesterConfig, clientCfg client.Config, q
 		miq.ring = append(miq.ring, r)
 
 		logger := log.With(util_log.Logger, "component", "querier")
+
+		// TODO(honganan): support kafka partition ingestion
 		ingesterQuerier, err := NewIngesterQuerier(querierCfg, clientCfg, r, nil, shardCountFun, namespace, logger)
 		if err != nil {
 			return nil, err
@@ -75,11 +77,11 @@ func NewMultiIngesterQuerier(cfg MultiIngesterConfig, clientCfg client.Config, q
 	return miq, nil
 }
 
-func (miq *MultiIngesterQuerier) GetSubServices() *services.Manager {
+func (miq *FederatedQuerier) GetSubServices() *services.Manager {
 	return miq.manager
 }
 
-func (miq *MultiIngesterQuerier) SelectLogs(ctx context.Context, params logql.SelectLogParams) ([]iter.EntryIterator, error) {
+func (miq *FederatedQuerier) SelectLogs(ctx context.Context, params logql.SelectLogParams) ([]iter.EntryIterator, error) {
 	var (
 		m    sync.Mutex
 		iter []iter.EntryIterator
@@ -101,7 +103,7 @@ func (miq *MultiIngesterQuerier) SelectLogs(ctx context.Context, params logql.Se
 	return iter, g.Wait()
 }
 
-func (miq *MultiIngesterQuerier) SelectSample(ctx context.Context, params logql.SelectSampleParams) ([]iter.SampleIterator, error) {
+func (miq *FederatedQuerier) SelectSample(ctx context.Context, params logql.SelectSampleParams) ([]iter.SampleIterator, error) {
 	var (
 		m    sync.Mutex
 		iter []iter.SampleIterator
@@ -123,7 +125,7 @@ func (miq *MultiIngesterQuerier) SelectSample(ctx context.Context, params logql.
 	return iter, g.Wait()
 }
 
-func (miq *MultiIngesterQuerier) Label(ctx context.Context, req *logproto.LabelRequest) ([][]string, error) {
+func (miq *FederatedQuerier) Label(ctx context.Context, req *logproto.LabelRequest) ([][]string, error) {
 	var (
 		m    sync.Mutex
 		iter [][]string
@@ -145,7 +147,7 @@ func (miq *MultiIngesterQuerier) Label(ctx context.Context, req *logproto.LabelR
 	return iter, g.Wait()
 }
 
-func (miq *MultiIngesterQuerier) Tail(ctx context.Context, req *logproto.TailRequest) (map[string]logproto.Querier_TailClient, error) {
+func (miq *FederatedQuerier) Tail(ctx context.Context, req *logproto.TailRequest) (map[string]logproto.Querier_TailClient, error) {
 	var (
 		m           sync.Mutex
 		tailClients = make(map[string]logproto.Querier_TailClient)
@@ -169,7 +171,7 @@ func (miq *MultiIngesterQuerier) Tail(ctx context.Context, req *logproto.TailReq
 	return tailClients, g.Wait()
 }
 
-func (miq *MultiIngesterQuerier) TailDisconnectedIngesters(ctx context.Context, req *logproto.TailRequest, connectedIngestersAddr []string) (map[string]logproto.Querier_TailClient, error) {
+func (miq *FederatedQuerier) TailDisconnectedIngesters(ctx context.Context, req *logproto.TailRequest, connectedIngestersAddr []string) (map[string]logproto.Querier_TailClient, error) {
 	var (
 		m           sync.Mutex
 		tailClients = make(map[string]logproto.Querier_TailClient)
@@ -193,7 +195,7 @@ func (miq *MultiIngesterQuerier) TailDisconnectedIngesters(ctx context.Context, 
 	return tailClients, g.Wait()
 }
 
-func (miq *MultiIngesterQuerier) Series(ctx context.Context, req *logproto.SeriesRequest) ([][]logproto.SeriesIdentifier, error) {
+func (miq *FederatedQuerier) Series(ctx context.Context, req *logproto.SeriesRequest) ([][]logproto.SeriesIdentifier, error) {
 	var (
 		m              sync.Mutex
 		replicationSet [][]logproto.SeriesIdentifier
@@ -215,7 +217,7 @@ func (miq *MultiIngesterQuerier) Series(ctx context.Context, req *logproto.Serie
 	return replicationSet, g.Wait()
 }
 
-func (miq *MultiIngesterQuerier) TailersCount(ctx context.Context) ([]uint32, error) {
+func (miq *FederatedQuerier) TailersCount(ctx context.Context) ([]uint32, error) {
 	var (
 		m      sync.Mutex
 		counts []uint32
@@ -237,7 +239,7 @@ func (miq *MultiIngesterQuerier) TailersCount(ctx context.Context) ([]uint32, er
 	return counts, g.Wait()
 }
 
-func (miq *MultiIngesterQuerier) GetChunkIDs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
+func (miq *FederatedQuerier) GetChunkIDs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
 	var (
 		m        sync.Mutex
 		chunkIDs []string
@@ -259,7 +261,7 @@ func (miq *MultiIngesterQuerier) GetChunkIDs(ctx context.Context, from, through 
 	return chunkIDs, g.Wait()
 }
 
-func (miq *MultiIngesterQuerier) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error) {
+func (miq *FederatedQuerier) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error) {
 	var (
 		m      sync.Mutex
 		merged index_stats.Stats
@@ -281,7 +283,7 @@ func (miq *MultiIngesterQuerier) Stats(ctx context.Context, userID string, from,
 	return &merged, g.Wait()
 }
 
-func (miq *MultiIngesterQuerier) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (miq *FederatedQuerier) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	var (
 		m      sync.Mutex
 		merged *logproto.VolumeResponse
@@ -303,7 +305,7 @@ func (miq *MultiIngesterQuerier) Volume(ctx context.Context, userID string, from
 	return merged, g.Wait()
 }
 
-func (miq *MultiIngesterQuerier) DetectedLabel(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.LabelToValuesResponse, error) {
+func (miq *FederatedQuerier) DetectedLabel(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.LabelToValuesResponse, error) {
 	var (
 		m    sync.Mutex
 		iter *logproto.LabelToValuesResponse
@@ -328,7 +330,7 @@ func (miq *MultiIngesterQuerier) DetectedLabel(ctx context.Context, req *logprot
 
 }
 
-func (miq *MultiIngesterQuerier) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (miq *FederatedQuerier) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	var (
 		mu  sync.Mutex
 		rss ring.ReplicationSet
