@@ -49,7 +49,7 @@ func NewObjectClient(ctx context.Context, backend string, cfg Config, component 
 			return nil, fmt.Errorf("create hedged bucket: %w", err)
 		}
 
-		bucket, err = NewClient(ctx, backend, cfg, component, logger)
+		hedgedBucket, err = NewClient(ctx, backend, cfg, component, logger)
 		if err != nil {
 			return nil, fmt.Errorf("create hedged bucket: %w", err)
 		}
