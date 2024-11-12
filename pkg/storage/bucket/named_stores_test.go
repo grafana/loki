@@ -80,7 +80,7 @@ func TestNamedStores_OverrideConfig(t *testing.T) {
 			},
 		},
 	}
-	namedStoreCfg.populateStoreType()
+	require.NoError(t, namedStoreCfg.populateStoreType())
 
 	storeCfg := Config{
 		GCS: gcs.Config{
