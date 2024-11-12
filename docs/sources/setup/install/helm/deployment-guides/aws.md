@@ -15,6 +15,8 @@ This guide shows how to deploy a minimally viable Loki in **microservice** mode 
 
 There are two methods for authenticating and connecting Loki to AWS S3. We will guide you through the recommended method of granting access via an IAM role.
 
+{{< youtube id="5lXmWmofqwM" >}}
+
 ## Considerations
 
 {{< admonition type="caution" >}}
@@ -313,7 +315,7 @@ deploymentMode: Distributed
 ingester:
  replicas: 3
  persistence:
-   storageClass: gp2
+   storageClass: gp3
    accessModes:
      - ReadWriteOnce
    size: 10Gi
@@ -322,7 +324,7 @@ querier:
  replicas: 3
  maxUnavailable: 2
  persistence:
-   storageClass: gp2
+   storageClass: gp3
    accessModes:
      - ReadWriteOnce
    size: 10Gi
@@ -337,7 +339,7 @@ distributor:
 compactor:
  replicas: 1
  persistence:
-   storageClass: gp2
+   storageClass: gp3
    accessModes:
      - ReadWriteOnce
    size: 10Gi
@@ -345,7 +347,7 @@ indexGateway:
  replicas: 2
  maxUnavailable: 1
  persistence:
-   storageClass: gp2
+   storageClass: gp3
    accessModes:
      - ReadWriteOnce
    size: 10Gi
@@ -353,7 +355,7 @@ ruler:
  replicas: 1
  maxUnavailable: 1
  persistence:
-   storageClass: gp2
+   storageClass: gp3
    accessModes:
      - ReadWriteOnce
    size: 10Gi
