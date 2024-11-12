@@ -54,6 +54,11 @@ type Config struct {
 	// Used as storage.Writer.ChunkSize of https://pkg.go.dev/google.golang.org/cloud/storage#Writer
 	ChunkSizeBytes int  `yaml:"chunk_size_bytes"`
 	noAuth         bool `yaml:"no_auth"`
+
+	// MaxRetries controls the number of retries for idempotent operations.
+	// Overrides the default gcs storage client behavior if this value is greater than 0.
+	// Set this to 1 to disable retries.
+	MaxRetries int `yaml:"max_retries"`
 }
 
 // Bucket implements the store.Bucket and shipper.Bucket interfaces against GCS.
@@ -173,6 +178,11 @@ func newBucket(ctx context.Context, logger log.Logger, gc Config, opts []option.
 		name:      gc.Bucket,
 		chunkSize: gc.ChunkSizeBytes,
 	}
+
+	if gc.MaxRetries > 0 {
+		bkt.bkt = bkt.bkt.Retryer(storage.WithMaxAttempts(gc.MaxRetries))
+	}
+
 	return bkt, nil
 }
 
