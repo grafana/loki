@@ -65,7 +65,7 @@ func buildMultiIngesterConfig() MultiIngesterConfig {
 func TestLabels(t *testing.T) {
 	mic := buildMultiIngesterConfig()
 	cc := client.Config{}
-	iq, err := NewMultiIngesterQuerier(mic, cc, 0, "")
+	iq, err := NewMultiIngesterQuerier(mic, cc, 0, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}

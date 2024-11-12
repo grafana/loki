@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/loki/v3/pkg/storage"
@@ -39,7 +38,7 @@ type MultiIngesterQuerier struct {
 	ingesterQueriers []storage.IIngesterQuerier
 }
 
-func NewMultiIngesterQuerier(cfg MultiIngesterConfig, clientCfg client.Config, extraQueryDelay time.Duration, namespace string) (storage.IIngesterQuerier, error) {
+func NewMultiIngesterQuerier(cfg MultiIngesterConfig, clientCfg client.Config, querierCfg Config, shardCountFun func(userID string) int, namespace string) (storage.IIngesterQuerier, error) {
 	var (
 		err  error
 		srvc = make([]services.Service, 0, len(cfg.MultiIngesterConfig))
@@ -58,7 +57,7 @@ func NewMultiIngesterQuerier(cfg MultiIngesterConfig, clientCfg client.Config, e
 		miq.ring = append(miq.ring, r)
 
 		logger := log.With(util_log.Logger, "component", "querier")
-		ingesterQuerier, err := NewIngesterQuerier(clientCfg, r, extraQueryDelay, namespace, logger)
+		ingesterQuerier, err := NewIngesterQuerier(querierCfg, clientCfg, r, nil, shardCountFun, namespace, logger)
 		if err != nil {
 			return nil, err
 		}

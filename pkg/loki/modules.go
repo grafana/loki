@@ -106,7 +106,6 @@ const (
 	PatternRingClient        string = "pattern-ring-client"
 	IngesterQuerier          string = "ingester-querier"
 	IngesterGRPCInterceptors string = "ingester-query-tags-interceptors"
-	MultiIngesterQuerier     string = "multi-ingester-querier"
 	QueryFrontend            string = "query-frontend"
 	QueryFrontendTripperware string = "query-frontend-tripperware"
 	QueryLimiter             string = "query-limiter"
@@ -968,7 +967,7 @@ func (t *Loki) initIngesterQuerier() (_ services.Service, err error) {
 	logger := log.With(util_log.Logger, "component", "ingester-querier")
 	useMultiIngester := len(t.Cfg.MultiIngesterQuerier.MultiIngesterConfig) > 0
 	if useMultiIngester {
-		if t.ingesterQuerier, err = querier.NewMultiIngesterQuerier(t.Cfg.MultiIngesterQuerier, t.Cfg.IngesterClient, t.Cfg.Querier.ExtraQueryDelay, t.Cfg.MetricsNamespace); err != nil {
+		if t.ingesterQuerier, err = querier.NewMultiIngesterQuerier(t.Cfg.MultiIngesterQuerier, t.Cfg.IngesterClient, t.Cfg.Querier, t.Overrides.IngestionPartitionsTenantShardSize, t.Cfg.MetricsNamespace); err != nil {
 			return nil, err
 		}
 
