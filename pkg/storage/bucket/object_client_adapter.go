@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net/http"
 	"slices"
 	"strings"
 
@@ -28,6 +27,12 @@ type ObjectClientAdapter struct {
 }
 
 func NewObjectClient(ctx context.Context, backend string, cfg Config, component string, hedgingCfg hedging.Config, disableRetries bool, logger log.Logger) (*ObjectClientAdapter, error) {
+	if disableRetries {
+		if err := cfg.disableRetries(backend); err != nil {
+			return nil, fmt.Errorf("create bucket: %w", err)
+		}
+	}
+
 	bucket, err := NewClient(ctx, backend, cfg, component, logger)
 	if err != nil {
 		return nil, fmt.Errorf("create bucket: %w", err)
@@ -40,8 +45,8 @@ func NewObjectClient(ctx context.Context, backend string, cfg Config, component 
 			return nil, fmt.Errorf("create hedged transport: %w", err)
 		}
 
-		if err := configureTransport(backend, hedgedTrasport, &cfg); err != nil {
-			return nil, err
+		if err := cfg.configureTransport(backend, hedgedTrasport); err != nil {
+			return nil, fmt.Errorf("create hedged bucket: %w", err)
 		}
 
 		bucket, err = NewClient(ctx, backend, cfg, component, logger)
@@ -69,25 +74,6 @@ func NewObjectClient(ctx context.Context, backend string, cfg Config, component 
 	}
 
 	return o, nil
-}
-
-func configureTransport(backend string, rt http.RoundTripper, cfg *Config) error {
-	switch backend {
-	case S3:
-		cfg.S3.HTTP.Transport = rt
-	case GCS:
-		cfg.GCS.Transport = rt
-	case Azure:
-		cfg.Azure.Transport = rt
-	case Swift:
-		cfg.Swift.Transport = rt
-	case Filesystem:
-		// do nothing
-	default:
-		return fmt.Errorf("hedging not supported for backend: %s", backend)
-	}
-
-	return nil
 }
 
 func (o *ObjectClientAdapter) Stop() {

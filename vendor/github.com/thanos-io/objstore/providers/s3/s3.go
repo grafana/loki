@@ -136,6 +136,7 @@ type Config struct {
 	PartSize    uint64    `yaml:"part_size"`
 	SSEConfig   SSEConfig `yaml:"sse_config"`
 	STSEndpoint string    `yaml:"sts_endpoint"`
+	MaxRetries  int       `yaml:"max_retries"`
 }
 
 // SSEConfig deals with the configuration of SSE for Minio. The following options are valid:
@@ -263,6 +264,7 @@ func NewBucketWithConfig(logger log.Logger, config Config, component string, wra
 		Region:       config.Region,
 		Transport:    tpt,
 		BucketLookup: config.BucketLookupType.MinioType(),
+		MaxRetries:   config.MaxRetries,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "initialize s3 client")

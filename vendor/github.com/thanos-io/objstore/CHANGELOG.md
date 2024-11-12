@@ -54,6 +54,7 @@ We use *breaking :warning:* to mark changes that are not backward compatible (re
 - [#116](https://github.com/thanos-io/objstore/pull/116) Azure: Add new storage_create_container configuration property
 - [#128](https://github.com/thanos-io/objstore/pull/128) GCS: Add support for `ChunkSize` for writer.
 - [#130](https://github.com/thanos-io/objstore/pull/130) feat: Decouple creating bucket metrics from instrumenting the bucket
+- [#147](https://github.com/thanos-io/objstore/pull/147) feat: Add MaxRetries config to cos, gcs and obs.
 - [#150](https://github.com/thanos-io/objstore/pull/150) Add support for roundtripper wrapper.
 
 ### Changed
