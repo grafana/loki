@@ -93,7 +93,7 @@ spec:
           {{- end }}
           args:
             - -config.file=/etc/loki/config/config.yaml
-            - -ingester.availability-zone=zone-default
+            - -ingester.availability-zone={{ $zoneName | default "zone-default" }}
             - -target=ingester
             {{ include "loki.templateArgs" .Values.loki.extraArgs }}
             {{ include "loki.templateArgs" .Values.ingester.extraArgs }}
