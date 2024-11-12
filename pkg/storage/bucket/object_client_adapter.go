@@ -2,6 +2,7 @@ package bucket
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"slices"
 	"strings"
@@ -9,9 +10,13 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/gcp"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
 
 type ObjectClientAdapter struct {
@@ -21,9 +26,33 @@ type ObjectClientAdapter struct {
 	isRetryableErr       func(err error) bool
 }
 
-func NewObjectClientAdapter(bucket, hedgedBucket objstore.Bucket, logger log.Logger, opts ...ClientOptions) *ObjectClientAdapter {
-	if hedgedBucket == nil {
-		hedgedBucket = bucket
+func NewObjectClient(ctx context.Context, backend string, cfg Config, component string, hedgingCfg hedging.Config, disableRetries bool, logger log.Logger) (*ObjectClientAdapter, error) {
+	if disableRetries {
+		if err := cfg.disableRetries(backend); err != nil {
+			return nil, fmt.Errorf("create bucket: %w", err)
+		}
+	}
+
+	bucket, err := NewClient(ctx, backend, cfg, component, logger)
+	if err != nil {
+		return nil, fmt.Errorf("create bucket: %w", err)
+	}
+
+	hedgedBucket := bucket
+	if hedgingCfg.At != 0 {
+		hedgedTrasport, err := hedgingCfg.RoundTripperWithRegisterer(nil, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
+		if err != nil {
+			return nil, fmt.Errorf("create hedged transport: %w", err)
+		}
+
+		if err := cfg.configureTransport(backend, hedgedTrasport); err != nil {
+			return nil, fmt.Errorf("create hedged bucket: %w", err)
+		}
+
+		hedgedBucket, err = NewClient(ctx, backend, cfg, component, logger)
+		if err != nil {
+			return nil, fmt.Errorf("create hedged bucket: %w", err)
+		}
 	}
 
 	o := &ObjectClientAdapter{
@@ -37,19 +66,14 @@ func NewObjectClientAdapter(bucket, hedgedBucket objstore.Bucket, logger log.Log
 		},
 	}
 
-	for _, opt := range opts {
-		opt(o)
+	switch backend {
+	case GCS:
+		o.isRetryableErr = gcp.IsRetryableErr
+	case S3:
+		o.isRetryableErr = aws.IsRetryableErr
 	}
 
-	return o
-}
-
-type ClientOptions func(*ObjectClientAdapter)
-
-func WithRetryableErrFunc(f func(err error) bool) ClientOptions {
-	return func(o *ObjectClientAdapter) {
-		o.isRetryableErr = f
-	}
+	return o, nil
 }
 
 func (o *ObjectClientAdapter) Stop() {
