@@ -38,7 +38,8 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     ) +
     deployment.mixin.spec.strategy.rollingUpdate.withMaxSurge('15%') +
     deployment.mixin.spec.strategy.rollingUpdate.withMaxUnavailable('15%') +
-    if $._config.querier.use_topology_spread then
+    if $._config.querier.use_no_constraints then {}
+    else if $._config.querier.use_topology_spread then
       deployment.spec.template.spec.withTopologySpreadConstraints(
         // Evenly spread queriers among available nodes.
         topologySpreadConstraints.labelSelector.withMatchLabels({ name: 'querier' }) +
