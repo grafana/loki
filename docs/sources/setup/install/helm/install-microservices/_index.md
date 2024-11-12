@@ -80,6 +80,8 @@ We do not recommend running in Microservice mode with `filesystem` storage. For 
 
      ingester:
        replicas: 3 # To ensure data durability with replication
+       zoneAwareReplication:
+          enabled: false
      querier:
        replicas: 3 # Improve query performance via parallelism
        maxUnavailable: 2
@@ -243,6 +245,8 @@ loki:
 
   ingester:
     replicas: 3
+    zoneAwareReplication:
+      enabled: false
   querier:
     replicas: 3
     maxUnavailable: 2
@@ -327,6 +331,8 @@ deploymentMode: Distributed
 
 ingester:
   replicas: 3
+  zoneAwareReplication:
+    enabled: false
 querier:
   replicas: 3
   maxUnavailable: 2
