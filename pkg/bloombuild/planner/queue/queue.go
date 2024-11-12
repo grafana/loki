@@ -293,7 +293,7 @@ func (q *Queue) TotalPending() (total int) {
 
 func getTaskPath(task *protos.ProtoTask) string {
 	table := protos.FromProtoDayTableToDayTable(task.Table)
-	taskFile := task.Id + ".task"
+	taskFile := task.Id + ".protobuf"
 	return filepath.Join("tasks", task.Tenant, table.String(), taskFile)
 }
 

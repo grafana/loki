@@ -1229,7 +1229,7 @@ planner:
     # CLI flag: -bloom-build.planner.queue.store-tasks-on-disk
     [store_tasks_on_disk: <boolean> | default = false]
 
-    # Directory to store tasks on disk. All files will be removed on startup.
+    # Directory to store tasks on disk.
     # CLI flag: -bloom-build.planner.queue.tasks-disk-directory
     [tasks_disk_directory: <string> | default = "/tmp/bloom-planner-queue"]
 

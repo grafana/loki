@@ -65,7 +65,8 @@ func TestQueue(t *testing.T) {
 		useDisk bool
 	}{
 		{
-			name: "in-memory",
+			name:    "in-memory",
+			useDisk: false,
 		},
 		{
 			name:    "on-disk",
