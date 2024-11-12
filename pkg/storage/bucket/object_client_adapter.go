@@ -35,13 +35,13 @@ func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedSto
 	if st, ok := cfg.NamedStores.LookupStoreType(backend); ok {
 		storeType = st
 		// override config with values from named store config
-		if err := cfg.NamedStores.OverrideConfig(&storeCfg, backend, storeType); err != nil {
+		if err := cfg.NamedStores.OverrideConfig(&storeCfg, backend); err != nil {
 			return nil, err
 		}
 	}
 
 	if disableRetries {
-		if err := cfg.disableRetries(storeType); err != nil {
+		if err := storeCfg.disableRetries(storeType); err != nil {
 			return nil, fmt.Errorf("create bucket: %w", err)
 		}
 	}
@@ -58,7 +58,7 @@ func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedSto
 			return nil, fmt.Errorf("create hedged transport: %w", err)
 		}
 
-		if err := cfg.configureTransport(storeType, hedgedTrasport); err != nil {
+		if err := storeCfg.configureTransport(storeType, hedgedTrasport); err != nil {
 			return nil, fmt.Errorf("create hedged bucket: %w", err)
 		}
 

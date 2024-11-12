@@ -80,13 +80,14 @@ func TestNamedStores_OverrideConfig(t *testing.T) {
 			},
 		},
 	}
+	namedStoreCfg.populateStoreType()
 
 	storeCfg := Config{
 		GCS: gcs.Config{
 			BucketName: "foo",
 		},
 	}
-	err := namedStoreCfg.OverrideConfig(&storeCfg, "store-1", GCS)
+	err := namedStoreCfg.OverrideConfig(&storeCfg, "store-1")
 	require.NoError(t, err)
 	require.Equal(t, "bar", storeCfg.GCS.BucketName)
 	require.Equal(t, 100, storeCfg.GCS.ChunkBufferSize)

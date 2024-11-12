@@ -101,7 +101,7 @@ func TestObjectClientAdapter_List(t *testing.T) {
 			Config: Config{
 				Filesystem: config,
 			},
-		}, "test", hedging.Config{}, log.NewNopLogger())
+		}, "test", hedging.Config{}, false, log.NewNopLogger())
 		require.NoError(t, err)
 
 		storageObj, storageCommonPref, err := client.List(context.Background(), tt.prefix, tt.delimiter)
