@@ -2,16 +2,22 @@ package bucket
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"net/http"
 	"slices"
 	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/gcp"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
 
 type ObjectClientAdapter struct {
@@ -21,9 +27,27 @@ type ObjectClientAdapter struct {
 	isRetryableErr       func(err error) bool
 }
 
-func NewObjectClientAdapter(bucket, hedgedBucket objstore.Bucket, logger log.Logger, opts ...ClientOptions) *ObjectClientAdapter {
-	if hedgedBucket == nil {
-		hedgedBucket = bucket
+func NewObjectClient(ctx context.Context, backend string, cfg Config, component string, hedgingCfg hedging.Config, disableRetries bool, logger log.Logger) (*ObjectClientAdapter, error) {
+	bucket, err := NewClient(ctx, backend, cfg, component, logger)
+	if err != nil {
+		return nil, fmt.Errorf("create bucket: %w", err)
+	}
+
+	hedgedBucket := bucket
+	if hedgingCfg.At != 0 {
+		hedgedTrasport, err := hedgingCfg.RoundTripperWithRegisterer(nil, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
+		if err != nil {
+			return nil, fmt.Errorf("create hedged transport: %w", err)
+		}
+
+		if err := configureTransport(backend, hedgedTrasport, &cfg); err != nil {
+			return nil, err
+		}
+
+		bucket, err = NewClient(ctx, backend, cfg, component, logger)
+		if err != nil {
+			return nil, fmt.Errorf("create hedged bucket: %w", err)
+		}
 	}
 
 	o := &ObjectClientAdapter{
@@ -37,19 +61,33 @@ func NewObjectClientAdapter(bucket, hedgedBucket objstore.Bucket, logger log.Log
 		},
 	}
 
-	for _, opt := range opts {
-		opt(o)
+	switch backend {
+	case GCS:
+		o.isRetryableErr = gcp.IsRetryableErr
+	case S3:
+		o.isRetryableErr = aws.IsRetryableErr
 	}
 
-	return o
+	return o, nil
 }
 
-type ClientOptions func(*ObjectClientAdapter)
-
-func WithRetryableErrFunc(f func(err error) bool) ClientOptions {
-	return func(o *ObjectClientAdapter) {
-		o.isRetryableErr = f
+func configureTransport(backend string, rt http.RoundTripper, cfg *Config) error {
+	switch backend {
+	case S3:
+		cfg.S3.HTTP.Transport = rt
+	case GCS:
+		cfg.GCS.Transport = rt
+	case Azure:
+		cfg.Azure.Transport = rt
+	case Swift:
+		cfg.Swift.Transport = rt
+	case Filesystem:
+		// do nothing
+	default:
+		return fmt.Errorf("hedging not supported for backend: %s", backend)
 	}
+
+	return nil
 }
 
 func (o *ObjectClientAdapter) Stop() {

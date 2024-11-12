@@ -2,6 +2,7 @@ package swift
 
 import (
 	"flag"
+	"net/http"
 	"time"
 )
 
@@ -26,6 +27,9 @@ type Config struct {
 	MaxRetries        int           `yaml:"max_retries"`
 	ConnectTimeout    time.Duration `yaml:"connect_timeout"`
 	RequestTimeout    time.Duration `yaml:"request_timeout"`
+
+	// Allow upstream callers to inject a round tripper
+	Transport http.RoundTripper `yaml:"-"`
 }
 
 // RegisterFlags registers the flags for Swift storage
