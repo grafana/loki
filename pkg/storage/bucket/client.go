@@ -159,7 +159,7 @@ func (cfg *Config) configureTransport(backend string, rt http.RoundTripper) erro
 }
 
 // NewClient creates a new bucket client based on the configured backend
-func NewClient(ctx context.Context, backend string, cfg Config, name string, logger log.Logger, rt http.RoundTripper) (objstore.InstrumentedBucket, error) {
+func NewClient(ctx context.Context, backend string, cfg Config, name string, logger log.Logger) (objstore.InstrumentedBucket, error) {
 	var (
 		client objstore.Bucket
 		err    error
@@ -168,13 +168,13 @@ func NewClient(ctx context.Context, backend string, cfg Config, name string, log
 	// TODO: add support for other backends that loki already supports
 	switch backend {
 	case S3:
-		client, err = s3.NewBucketClient(cfg.S3, name, logger, rt)
+		client, err = s3.NewBucketClient(cfg.S3, name, logger)
 	case GCS:
-		client, err = gcs.NewBucketClient(ctx, cfg.GCS, name, logger, rt)
+		client, err = gcs.NewBucketClient(ctx, cfg.GCS, name, logger)
 	case Azure:
-		client, err = azure.NewBucketClient(cfg.Azure, name, logger, rt)
+		client, err = azure.NewBucketClient(cfg.Azure, name, logger)
 	case Swift:
-		client, err = swift.NewBucketClient(cfg.Swift, name, logger, rt)
+		client, err = swift.NewBucketClient(cfg.Swift, name, logger)
 	case Filesystem:
 		client, err = filesystem.NewBucketClient(cfg.Filesystem)
 	default:

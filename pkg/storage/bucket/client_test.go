@@ -76,7 +76,7 @@ func TestNewClient(t *testing.T) {
 			require.NoError(t, err)
 
 			// Instance a new bucket client from the config
-			bucketClient, err := NewClient(context.Background(), testData.backend, cfg, "test", util_log.Logger, nil)
+			bucketClient, err := NewClient(context.Background(), testData.backend, cfg, "test", util_log.Logger)
 			require.Equal(t, testData.expectedErr, err)
 
 			if testData.expectedErr == nil {

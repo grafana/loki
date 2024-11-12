@@ -56,7 +56,7 @@ func TestSSEBucketClient_Upload_ShouldInjectCustomSSEConfig(t *testing.T) {
 				Insecure:        true,
 			}
 
-			s3Client, err := s3.NewBucketClient(s3Cfg, "test", log.NewNopLogger(), nil)
+			s3Client, err := s3.NewBucketClient(s3Cfg, "test", log.NewNopLogger())
 			require.NoError(t, err)
 
 			// Configure the config provider with NO KMS key ID.
