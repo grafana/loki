@@ -54,6 +54,19 @@ func (p *PrefixedBucket) Iter(ctx context.Context, dir string, f func(string) er
 	}, options...)
 }
 
+func (p *PrefixedBucket) IterWithAttributes(ctx context.Context, dir string, f func(IterObjectAttributes) error, options ...IterOption) error {
+	pdir := withPrefix(p.prefix, dir)
+
+	return p.bkt.IterWithAttributes(ctx, pdir, func(attrs IterObjectAttributes) error {
+		attrs.Name = strings.TrimPrefix(attrs.Name, p.prefix+DirDelim)
+		return f(attrs)
+	}, options...)
+}
+
+func (p *PrefixedBucket) SupportedIterOptions() []IterOptionType {
+	return p.bkt.SupportedIterOptions()
+}
+
 // Get returns a reader for the given object name.
 func (p *PrefixedBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
 	return p.bkt.Get(ctx, conditionalPrefix(p.prefix, name))

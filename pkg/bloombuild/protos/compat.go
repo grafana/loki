@@ -20,7 +20,6 @@ type Gap struct {
 	Blocks []bloomshipper.BlockRef
 }
 
-// Task is a convenience struct equivalent to the protobuf ProtoTask message but with Loki types.
 type Task struct {
 	ID string
 
@@ -119,7 +118,6 @@ func (t *Task) ToProtoTask() *ProtoTask {
 			blockRefs = append(blockRefs, block.String())
 		}
 
-		// TODO(salvacorts): Cast []*v1.Series to []*ProtoSeries right away
 		series := make([]*ProtoSeries, 0, len(gap.Series))
 		for _, s := range gap.Series {
 			chunks := make([]*logproto.ShortRef, 0, len(s.Chunks))

@@ -29,10 +29,8 @@ const (
 	gzipExtension = ".gz"
 )
 
-type ForSeries = sharding.ForSeries
-
 type ClosableForSeries interface {
-	ForSeries
+	sharding.ForSeries
 	Close() error
 }
 
@@ -126,21 +124,33 @@ func (b *BloomTSDBStore) LoadTSDB(
 	return idx, nil
 }
 
-func NewTSDBSeriesIter(ctx context.Context, user string, f sharding.ForSeries, bounds v1.FingerprintBounds) (iter.Iterator[model.Fingerprint], error) {
+func NewTSDBSeriesIter(ctx context.Context, user string, f sharding.ForSeries, bounds v1.FingerprintBounds) (iter.Iterator[*v1.Series], error) {
 	// TODO(salvacorts): Create a pool
-	series := make([]model.Fingerprint, 0, 100)
+	series := make([]*v1.Series, 0, 100)
 
 	if err := f.ForSeries(
 		ctx,
 		user,
 		bounds,
 		0, math.MaxInt64,
-		func(_ labels.Labels, fp model.Fingerprint, _ []index.ChunkMeta) (stop bool) {
+		func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
 			select {
 			case <-ctx.Done():
 				return true
 			default:
-				series = append(series, fp)
+				res := &v1.Series{
+					Fingerprint: fp,
+					Chunks:      make(v1.ChunkRefs, 0, len(chks)),
+				}
+				for _, chk := range chks {
+					res.Chunks = append(res.Chunks, v1.ChunkRef{
+						From:     model.Time(chk.MinTime),
+						Through:  model.Time(chk.MaxTime),
+						Checksum: chk.Checksum,
+					})
+				}
+
+				series = append(series, res)
 				return false
 			}
 		},
@@ -151,7 +161,7 @@ func NewTSDBSeriesIter(ctx context.Context, user string, f sharding.ForSeries, b
 
 	select {
 	case <-ctx.Done():
-		return iter.NewEmptyIter[model.Fingerprint](), ctx.Err()
+		return iter.NewEmptyIter[*v1.Series](), ctx.Err()
 	default:
 		return iter.NewCancelableIter(ctx, iter.NewSliceIter(series)), nil
 	}

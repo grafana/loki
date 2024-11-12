@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -49,11 +50,11 @@ func (s *ChunkSizeStrategy) Plan(
 	tenant string,
 	tsdbs TSDBSet,
 	metas []bloomshipper.Meta,
-) ([]*Task, error) {
+) ([]*protos.Task, error) {
 	targetTaskSize := s.limits.BloomTaskTargetSeriesChunksSizeBytes(tenant)
 
 	logger := log.With(s.logger, "table", table.Addr(), "tenant", tenant)
-	level.Debug(s.logger).Log("msg", "loading work for tenant", "target task size", humanize.Bytes(targetTaskSize))
+	level.Debug(logger).Log("msg", "loading work for tenant", "target task size", humanize.Bytes(targetTaskSize))
 
 	// Determine which TSDBs have gaps and need to be processed.
 	tsdbsWithGaps, err := gapsBetweenTSDBsAndMetas(v1.NewBounds(0, math.MaxUint64), tsdbs, metas)
@@ -72,29 +73,29 @@ func (s *ChunkSizeStrategy) Plan(
 		return nil, fmt.Errorf("failed to get sized series iter: %w", err)
 	}
 
-	tasks := make([]*Task, 0, iterSize)
+	tasks := make([]*protos.Task, 0, iterSize)
 	for sizedIter.Next() {
-		batch := sizedIter.At()
-		if batch.Len() == 0 {
+		series := sizedIter.At()
+		if series.Len() == 0 {
 			// This should never happen, but just in case.
-			level.Warn(logger).Log("msg", "got empty series batch", "tsdb", batch.TSDB().Name())
+			level.Warn(logger).Log("msg", "got empty series batch", "tsdb", series.TSDB().Name())
 			continue
 		}
 
-		bounds := batch.Bounds()
+		bounds := series.Bounds()
 
 		blocks, err := getBlocksMatchingBounds(metas, bounds)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get blocks matching bounds: %w", err)
 		}
 
-		planGap := Gap{
+		planGap := protos.Gap{
 			Bounds: bounds,
-			Series: batch.series,
+			Series: series.V1Series(),
 			Blocks: blocks,
 		}
 
-		tasks = append(tasks, NewTask(table, tenant, bounds, batch.TSDB(), []Gap{planGap}))
+		tasks = append(tasks, protos.NewTask(table, tenant, bounds, series.TSDB(), []protos.Gap{planGap}))
 	}
 	if err := sizedIter.Err(); err != nil {
 		return nil, fmt.Errorf("failed to iterate over sized series: %w", err)
@@ -156,14 +157,14 @@ func getBlocksMatchingBounds(metas []bloomshipper.Meta, bounds v1.FingerprintBou
 
 type seriesBatch struct {
 	tsdb   tsdb.SingleTenantTSDBIdentifier
-	series []model.Fingerprint
+	series []*v1.Series
 	size   uint64
 }
 
 func newSeriesBatch(tsdb tsdb.SingleTenantTSDBIdentifier) seriesBatch {
 	return seriesBatch{
 		tsdb:   tsdb,
-		series: make([]model.Fingerprint, 0, 100),
+		series: make([]*v1.Series, 0, 100),
 	}
 }
 
@@ -174,11 +175,15 @@ func (b *seriesBatch) Bounds() v1.FingerprintBounds {
 
 	// We assume that the series are sorted by fingerprint.
 	// This is guaranteed since series are iterated in order by the TSDB.
-	return v1.NewBounds(b.series[0], b.series[len(b.series)-1])
+	return v1.NewBounds(b.series[0].Fingerprint, b.series[len(b.series)-1].Fingerprint)
 }
 
-func (b *seriesBatch) Append(series model.Fingerprint, size uint64) {
-	b.series = append(b.series, series)
+func (b *seriesBatch) V1Series() []*v1.Series {
+	return b.series
+}
+
+func (b *seriesBatch) Append(s *v1.Series, size uint64) {
+	b.series = append(b.series, s)
 	b.size += size
 }
 
@@ -204,7 +209,9 @@ func (s *ChunkSizeStrategy) sizedSeriesIter(
 	var currentBatch seriesBatch
 
 	for _, idx := range tsdbsWithGaps {
-		// We cut a new batch for each TSDB.
+		if currentBatch.Len() > 0 {
+			batches = append(batches, currentBatch)
+		}
 		currentBatch = newSeriesBatch(idx.tsdbIdentifier)
 
 		for _, gap := range idx.gaps {
@@ -230,7 +237,19 @@ func (s *ChunkSizeStrategy) sizedSeriesIter(
 							currentBatch = newSeriesBatch(idx.tsdbIdentifier)
 						}
 
-						currentBatch.Append(fp, seriesSize)
+						res := &v1.Series{
+							Fingerprint: fp,
+							Chunks:      make(v1.ChunkRefs, 0, len(chks)),
+						}
+						for _, chk := range chks {
+							res.Chunks = append(res.Chunks, v1.ChunkRef{
+								From:     model.Time(chk.MinTime),
+								Through:  model.Time(chk.MaxTime),
+								Checksum: chk.Checksum,
+							})
+						}
+
+						currentBatch.Append(res, seriesSize)
 						return false
 					}
 				},

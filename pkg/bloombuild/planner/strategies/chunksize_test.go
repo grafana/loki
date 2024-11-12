@@ -8,13 +8,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner/plannertest"
+	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
 
-func taskForGap(tsdb tsdb.SingleTenantTSDBIdentifier, bounds v1.FingerprintBounds, blocks []bloomshipper.BlockRef) *Task {
-	return NewTask(plannertest.TestTable, "fake", bounds, tsdb, []Gap{
+func taskForGap(tsdb tsdb.SingleTenantTSDBIdentifier, bounds v1.FingerprintBounds, blocks []bloomshipper.BlockRef) *protos.Task {
+	return protos.NewTask(plannertest.TestTable, "fake", bounds, tsdb, []protos.Gap{
 		{
 			Bounds: bounds,
 			Series: plannertest.GenSeriesWithStep(bounds, 10),
@@ -24,14 +25,12 @@ func taskForGap(tsdb tsdb.SingleTenantTSDBIdentifier, bounds v1.FingerprintBound
 }
 
 func Test_ChunkSizeStrategy_Plan(t *testing.T) {
-	forSeries := plannertest.NewFakeForSeries(plannertest.GenV1SeriesWithStep(v1.NewBounds(0, 100), 10))
-
 	for _, tc := range []struct {
 		name          string
 		limits        ChunkSizeStrategyLimits
 		originalMetas []bloomshipper.Meta
 		tsdbs         TSDBSet
-		expectedTasks []*Task
+		expectedTasks []*protos.Task
 	}{
 		{
 			name:   "no previous blocks and metas",
@@ -39,11 +38,11 @@ func Test_ChunkSizeStrategy_Plan(t *testing.T) {
 
 			// Each series will have 1 chunk of 100KB each
 			tsdbs: TSDBSet{
-				plannertest.TsdbID(0): forSeries, // 10 series
+				plannertest.TsdbID(0): newFakeForSeries(plannertest.GenSeriesWithStep(v1.NewBounds(0, 100), 10)), // 10 series
 			},
 
 			// We expect 5 tasks, each with 2 series each
-			expectedTasks: []*Task{
+			expectedTasks: []*protos.Task{
 				taskForGap(plannertest.TsdbID(0), v1.NewBounds(0, 10), nil),
 				taskForGap(plannertest.TsdbID(0), v1.NewBounds(20, 30), nil),
 				taskForGap(plannertest.TsdbID(0), v1.NewBounds(40, 50), nil),
@@ -85,11 +84,11 @@ func Test_ChunkSizeStrategy_Plan(t *testing.T) {
 			},
 
 			tsdbs: TSDBSet{
-				plannertest.TsdbID(0): forSeries, // 10 series
+				plannertest.TsdbID(0): newFakeForSeries(plannertest.GenSeriesWithStep(v1.NewBounds(0, 100), 10)), // 10 series
 			},
 
 			// We expect no tasks
-			expectedTasks: []*Task{},
+			expectedTasks: []*protos.Task{},
 		},
 		{
 			name:   "Original metas do not cover the entire range",
@@ -122,11 +121,11 @@ func Test_ChunkSizeStrategy_Plan(t *testing.T) {
 			},
 
 			tsdbs: TSDBSet{
-				plannertest.TsdbID(0): forSeries, // 10 series
+				plannertest.TsdbID(0): newFakeForSeries(plannertest.GenSeriesWithStep(v1.NewBounds(0, 100), 10)), // 10 series
 			},
 
 			// We expect 1 tasks for the missing series
-			expectedTasks: []*Task{
+			expectedTasks: []*protos.Task{
 				taskForGap(plannertest.TsdbID(0), v1.NewBounds(20, 30), nil),
 			},
 		},
@@ -151,11 +150,11 @@ func Test_ChunkSizeStrategy_Plan(t *testing.T) {
 			},
 
 			tsdbs: TSDBSet{
-				plannertest.TsdbID(1): forSeries, // 10 series
+				plannertest.TsdbID(1): newFakeForSeries(plannertest.GenSeriesWithStep(v1.NewBounds(0, 100), 10)), // 10 series
 			},
 
 			// We expect 5 tasks, each with 2 series each
-			expectedTasks: []*Task{
+			expectedTasks: []*protos.Task{
 				taskForGap(plannertest.TsdbID(1), v1.NewBounds(0, 10), []bloomshipper.BlockRef{
 					plannertest.GenBlockRef(0, 0),
 					plannertest.GenBlockRef(10, 10),
@@ -206,11 +205,11 @@ func Test_ChunkSizeStrategy_Plan(t *testing.T) {
 			},
 
 			tsdbs: TSDBSet{
-				plannertest.TsdbID(1): forSeries, // 10 series
+				plannertest.TsdbID(1): newFakeForSeries(plannertest.GenSeriesWithStep(v1.NewBounds(0, 100), 10)), // 10 series
 			},
 
 			// We expect 5 tasks, each with 2 series each
-			expectedTasks: []*Task{
+			expectedTasks: []*protos.Task{
 				taskForGap(plannertest.TsdbID(1), v1.NewBounds(0, 10), []bloomshipper.BlockRef{
 					plannertest.GenBlockRef(0, 0),
 					plannertest.GenBlockRef(10, 10),
