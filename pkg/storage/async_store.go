@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/c2h5oh/datasize"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/opentracing/opentracing-go"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -31,6 +33,20 @@ type IngesterQuerier interface {
 	GetChunkIDs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
 	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error)
 	Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
+}
+
+type IIngesterQuerier interface {
+	SelectLogs(ctx context.Context, params logql.SelectLogParams) ([]iter.EntryIterator, error)
+	SelectSample(ctx context.Context, params logql.SelectSampleParams) ([]iter.SampleIterator, error)
+	Label(ctx context.Context, req *logproto.LabelRequest) ([][]string, error)
+	Tail(ctx context.Context, req *logproto.TailRequest) (map[string]logproto.Querier_TailClient, error)
+	TailDisconnectedIngesters(ctx context.Context, req *logproto.TailRequest, connectedIngestersAddr []string) (map[string]logproto.Querier_TailClient, error)
+	Series(ctx context.Context, req *logproto.SeriesRequest) ([][]logproto.SeriesIdentifier, error)
+	TailersCount(ctx context.Context) ([]uint32, error)
+	GetChunkIDs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
+	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error)
+	Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
+	DetectedLabel(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.LabelToValuesResponse, error)
 }
 
 type AsyncStoreCfg struct {

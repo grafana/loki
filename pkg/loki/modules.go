@@ -106,6 +106,7 @@ const (
 	PatternRingClient        string = "pattern-ring-client"
 	IngesterQuerier          string = "ingester-querier"
 	IngesterGRPCInterceptors string = "ingester-query-tags-interceptors"
+	MultiIngesterQuerier     string = "multi-ingester-querier"
 	QueryFrontend            string = "query-frontend"
 	QueryFrontendTripperware string = "query-frontend-tripperware"
 	QueryLimiter             string = "query-limiter"
@@ -965,10 +966,18 @@ func (t *Loki) setupAsyncStore() error {
 
 func (t *Loki) initIngesterQuerier() (_ services.Service, err error) {
 	logger := log.With(util_log.Logger, "component", "ingester-querier")
+	useMultiIngester := len(t.Cfg.MultiIngesterQuerier.MultiIngesterConfig) > 0
+	if useMultiIngester {
+		if t.ingesterQuerier, err = querier.NewMultiIngesterQuerier(t.Cfg.MultiIngesterQuerier, t.Cfg.IngesterClient, t.Cfg.Querier.ExtraQueryDelay, t.Cfg.MetricsNamespace); err != nil {
+			return nil, err
+		}
 
-	t.ingesterQuerier, err = querier.NewIngesterQuerier(t.Cfg.Querier, t.Cfg.IngesterClient, t.ring, t.partitionRing, t.Overrides.IngestionPartitionsTenantShardSize, t.Cfg.MetricsNamespace, logger)
-	if err != nil {
-		return nil, err
+		t.Server.HTTP.Path("/multi_ring").Methods("GET", "POST").Handler(t.ingesterQuerier.(*querier.MultiIngesterQuerier))
+	} else {
+		t.ingesterQuerier, err = querier.NewIngesterQuerier(t.Cfg.Querier, t.Cfg.IngesterClient, t.ring, t.partitionRing, t.Overrides.IngestionPartitionsTenantShardSize, t.Cfg.MetricsNamespace, logger)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return services.NewIdleService(nil, nil), nil
