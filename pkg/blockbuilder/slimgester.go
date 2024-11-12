@@ -97,12 +97,8 @@ type BlockBuilder struct {
 	metrics *SlimgesterMetrics
 	logger  log.Logger
 
-	instances    map[string]*instance
-	instancesMtx sync.RWMutex
-
-	store    stores.ChunkWriter
-	objStore *objstore.Multi
-
+	store         stores.ChunkWriter
+	objStore      *objstore.Multi
 	jobController *PartitionJobController
 }
 
@@ -123,7 +119,6 @@ func NewBlockBuilder(
 		periodicConfigs: periodicConfigs,
 		metrics:         NewSlimgesterMetrics(reg),
 		logger:          logger,
-		instances:       make(map[string]*instance),
 		store:           store,
 		objStore:        objStore,
 		jobController:   jobController,
@@ -175,6 +170,14 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 	}
 
 	indexer := newTsdbCreator()
+	appender := newAppender(i.id,
+		i.cfg,
+		i.periodicConfigs,
+		i.store,
+		i.objStore,
+		i.logger,
+		i.metrics,
+	)
 
 	var lastOffset int64
 	p := newPipeline(ctx)
@@ -217,7 +220,7 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 					}
 
 					for _, input := range inputs {
-						cut, err := i.Append(ctx, input)
+						cut, err := appender.Append(ctx, input)
 						if err != nil {
 							level.Error(i.logger).Log("msg", "failed to append records", "err", err)
 							return err
@@ -238,7 +241,7 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 			defer close(flush)
 
 			// once we're done appending, cut all remaining chunks.
-			chks, err := i.CutRemainingChunks(ctx)
+			chks, err := appender.CutRemainingChunks(ctx)
 			if err != nil {
 				return err
 			}
@@ -278,7 +281,7 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 								i.metrics.chunksFlushFailures.Inc()
 								return
 							}
-							i.reportFlushedChunkStatistics(chk)
+							appender.reportFlushedChunkStatistics(chk)
 
 							// write flushed chunk to index
 							approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
@@ -334,59 +337,98 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 	return false, nil
 }
 
+type Appender struct {
+	id              string
+	cfg             Config
+	periodicConfigs []config.PeriodConfig
+
+	metrics *SlimgesterMetrics
+	logger  log.Logger
+
+	instances    map[string]*instance
+	instancesMtx sync.RWMutex
+
+	store    stores.ChunkWriter
+	objStore *objstore.Multi
+}
+
+// Writer is a single use construct for building chunks
+// for from a set of records. It's an independent struct to ensure its
+// state is not reused across jobs.
+func newAppender(
+	id string,
+	cfg Config,
+	periodicConfigs []config.PeriodConfig,
+	store stores.ChunkWriter,
+	objStore *objstore.Multi,
+	logger log.Logger,
+	metrics *SlimgesterMetrics,
+) *Appender {
+	return &Appender{
+		id:              id,
+		cfg:             cfg,
+		periodicConfigs: periodicConfigs,
+		metrics:         metrics,
+		logger:          logger,
+		instances:       make(map[string]*instance),
+		store:           store,
+		objStore:        objStore,
+	}
+}
+
 // reportFlushedChunkStatistics calculate overall statistics of flushed chunks without compromising the flush process.
-func (i *BlockBuilder) reportFlushedChunkStatistics(
+func (w *Appender) reportFlushedChunkStatistics(
 	ch *chunk.Chunk,
 ) {
 	byt, err := ch.Encoded()
 	if err != nil {
-		level.Error(i.logger).Log("msg", "failed to encode flushed wire chunk", "err", err)
+		level.Error(w.logger).Log("msg", "failed to encode flushed wire chunk", "err", err)
 		return
 	}
-	sizePerTenant := i.metrics.chunkSizePerTenant.WithLabelValues(ch.UserID)
-	countPerTenant := i.metrics.chunksPerTenant.WithLabelValues(ch.UserID)
+	sizePerTenant := w.metrics.chunkSizePerTenant.WithLabelValues(ch.UserID)
+	countPerTenant := w.metrics.chunksPerTenant.WithLabelValues(ch.UserID)
 
 	reason := flushReasonFull
 	from, through := ch.From.Time(), ch.Through.Time()
-	if through.Sub(from) > i.cfg.MaxChunkAge {
+	if through.Sub(from) > w.cfg.MaxChunkAge {
 		reason = flushReasonMaxAge
 	}
 
-	i.metrics.chunksFlushedPerReason.WithLabelValues(reason).Add(1)
+	w.metrics.chunksFlushedPerReason.WithLabelValues(reason).Add(1)
 
 	compressedSize := float64(len(byt))
 	uncompressedSize, ok := chunkenc.UncompressedSize(ch.Data)
 
 	if ok && compressedSize > 0 {
-		i.metrics.chunkCompressionRatio.Observe(float64(uncompressedSize) / compressedSize)
+		w.metrics.chunkCompressionRatio.Observe(float64(uncompressedSize) / compressedSize)
 	}
 
 	utilization := ch.Data.Utilization()
-	i.metrics.chunkUtilization.Observe(utilization)
+	w.metrics.chunkUtilization.Observe(utilization)
 
 	numEntries := ch.Data.Entries()
-	i.metrics.chunkEntries.Observe(float64(numEntries))
-	i.metrics.chunkSize.Observe(compressedSize)
+	w.metrics.chunkEntries.Observe(float64(numEntries))
+	w.metrics.chunkSize.Observe(compressedSize)
 	sizePerTenant.Add(compressedSize)
 	countPerTenant.Inc()
 
-	i.metrics.chunkAge.Observe(time.Since(from).Seconds())
-	i.metrics.chunkLifespan.Observe(through.Sub(from).Hours())
+	w.metrics.chunkAge.Observe(time.Since(from).Seconds())
+	w.metrics.chunkLifespan.Observe(through.Sub(from).Hours())
 
-	i.metrics.flushedChunksBytesStats.Record(compressedSize)
-	i.metrics.flushedChunksLinesStats.Record(float64(numEntries))
-	i.metrics.flushedChunksUtilizationStats.Record(utilization)
-	i.metrics.flushedChunksAgeStats.Record(time.Since(from).Seconds())
-	i.metrics.flushedChunksLifespanStats.Record(through.Sub(from).Seconds())
-	i.metrics.flushedChunksStats.Inc(1)
+	w.metrics.flushedChunksBytesStats.Record(compressedSize)
+	w.metrics.flushedChunksLinesStats.Record(float64(numEntries))
+	w.metrics.flushedChunksUtilizationStats.Record(utilization)
+	w.metrics.flushedChunksAgeStats.Record(time.Since(from).Seconds())
+	w.metrics.flushedChunksLifespanStats.Record(through.Sub(from).Seconds())
+	w.metrics.flushedChunksStats.Inc(1)
 }
 
-func (i *BlockBuilder) CutRemainingChunks(ctx context.Context) ([]*chunk.Chunk, error) {
+func (w *Appender) CutRemainingChunks(ctx context.Context) ([]*chunk.Chunk, error) {
 	var chunks []*chunk.Chunk
-	i.instancesMtx.Lock()
-	defer i.instancesMtx.Unlock()
+	w.instancesMtx.Lock()
+	defer w.instancesMtx.Unlock()
 
-	for _, inst := range i.instances {
+	for _, inst := range w.instances {
 
 		// wrap in anonymous fn to make lock release more straightforward
 		if err := func() error {
@@ -436,20 +478,20 @@ type AppendInput struct {
 	entries   []push.Entry
 }
 
-func (i *BlockBuilder) Append(ctx context.Context, input AppendInput) ([]*chunk.Chunk, error) {
+func (w *Appender) Append(ctx context.Context, input AppendInput) ([]*chunk.Chunk, error) {
 	// use rlock so multiple appends can be called on same instance.
 	// re-check after using regular lock if it didnt exist.
-	i.instancesMtx.RLock()
-	inst, ok := i.instances[input.tenant]
-	i.instancesMtx.RUnlock()
+	w.instancesMtx.RLock()
+	inst, ok := w.instances[input.tenant]
+	w.instancesMtx.RUnlock()
 	if !ok {
-		i.instancesMtx.Lock()
-		inst, ok = i.instances[input.tenant]
+		w.instancesMtx.Lock()
+		inst, ok = w.instances[input.tenant]
 		if !ok {
-			inst = newInstance(i.cfg, input.tenant, i.metrics, i.periodicConfigs, i.logger)
-			i.instances[input.tenant] = inst
+			inst = newInstance(w.cfg, input.tenant, w.metrics, w.periodicConfigs, w.logger)
+			w.instances[input.tenant] = inst
 		}
-		i.instancesMtx.Unlock()
+		w.instancesMtx.Unlock()
 	}
 
 	closed, err := inst.Push(ctx, input)
