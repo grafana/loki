@@ -3042,7 +3042,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": null
+    "tag": "weekly-k228-994fdab"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -3215,7 +3215,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-null
+"weekly-k228-994fdab"
 </pre>
 </td>
 		</tr>
@@ -6050,7 +6050,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-null
+"k228-f2da621"
 </pre>
 </td>
 		</tr>
