@@ -30,29 +30,9 @@
                 "CreateBucket"
               ]
             },
-            "CreateHmacKey": {
-              "methods": [
-                "CreateHmacKey"
-              ]
-            },
-            "CreateNotificationConfig": {
-              "methods": [
-                "CreateNotificationConfig"
-              ]
-            },
             "DeleteBucket": {
               "methods": [
                 "DeleteBucket"
-              ]
-            },
-            "DeleteHmacKey": {
-              "methods": [
-                "DeleteHmacKey"
-              ]
-            },
-            "DeleteNotificationConfig": {
-              "methods": [
-                "DeleteNotificationConfig"
               ]
             },
             "DeleteObject": {
@@ -65,19 +45,9 @@
                 "GetBucket"
               ]
             },
-            "GetHmacKey": {
-              "methods": [
-                "GetHmacKey"
-              ]
-            },
             "GetIamPolicy": {
               "methods": [
                 "GetIamPolicy"
-              ]
-            },
-            "GetNotificationConfig": {
-              "methods": [
-                "GetNotificationConfig"
               ]
             },
             "GetObject": {
@@ -85,24 +55,9 @@
                 "GetObject"
               ]
             },
-            "GetServiceAccount": {
-              "methods": [
-                "GetServiceAccount"
-              ]
-            },
             "ListBuckets": {
               "methods": [
                 "ListBuckets"
-              ]
-            },
-            "ListHmacKeys": {
-              "methods": [
-                "ListHmacKeys"
-              ]
-            },
-            "ListNotificationConfigs": {
-              "methods": [
-                "ListNotificationConfigs"
               ]
             },
             "ListObjects": {
@@ -153,11 +108,6 @@
             "UpdateBucket": {
               "methods": [
                 "UpdateBucket"
-              ]
-            },
-            "UpdateHmacKey": {
-              "methods": [
-                "UpdateHmacKey"
               ]
             },
             "UpdateObject": {

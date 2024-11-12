@@ -161,6 +161,15 @@ func mkLua(srv *server.Server, c *server.Peer, sha string) (map[string]lua.LGFun
 			// ignored
 			return 1
 		},
+		"set_repl": func(l *lua.LState) int {
+			top := l.GetTop()
+			if top != 1 {
+				l.Error(lua.LString("wrong number of arguments"), 1)
+				return 0
+			}
+			// ignored
+			return 1
+		},
 	}, luaRedisConstants
 }
 

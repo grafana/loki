@@ -16,6 +16,7 @@ type Stats struct {
 	BlocksFetchTime                     *atomic.Duration
 	ProcessingTime, TotalProcessingTime *atomic.Duration
 	PostProcessingTime                  *atomic.Duration
+	SkippedBlocks                       *atomic.Int32 // blocks skipped because they were not available (yet)
 	ProcessedBlocks                     *atomic.Int32 // blocks processed for this specific request
 	ProcessedBlocksTotal                *atomic.Int32 // blocks processed for multiplexed request
 }
@@ -28,6 +29,7 @@ var ctxKey = statsKey(0)
 func ContextWithEmptyStats(ctx context.Context) (*Stats, context.Context) {
 	stats := &Stats{
 		Status:               "unknown",
+		SkippedBlocks:        atomic.NewInt32(0),
 		ProcessedBlocks:      atomic.NewInt32(0),
 		ProcessedBlocksTotal: atomic.NewInt32(0),
 		QueueTime:            atomic.NewDuration(0),
@@ -71,6 +73,7 @@ func (s *Stats) KVArgs() []any {
 		"status", s.Status,
 		"tasks", s.NumTasks,
 		"matchers", s.NumMatchers,
+		"blocks_skipped", s.SkippedBlocks.Load(),
 		"blocks_processed", s.ProcessedBlocks.Load(),
 		"blocks_processed_total", s.ProcessedBlocksTotal.Load(),
 		"series_requested", s.SeriesRequested,
@@ -120,6 +123,13 @@ func (s *Stats) AddPostProcessingTime(t time.Duration) {
 		return
 	}
 	s.PostProcessingTime.Add(t)
+}
+
+func (s *Stats) IncSkippedBlocks() {
+	if s == nil {
+		return
+	}
+	s.SkippedBlocks.Inc()
 }
 
 func (s *Stats) IncProcessedBlocks() {

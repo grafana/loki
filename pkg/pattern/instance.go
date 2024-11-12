@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/ring"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -95,7 +96,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	for _, reqStream := range req.Streams {
 		// All streams are observed for metrics
 		// TODO(twhitney): this would be better as a queue that drops in response to backpressure
-		i.Observe(reqStream.Labels, reqStream.Entries)
+		i.Observe(ctx, reqStream.Labels, reqStream.Entries)
 
 		// But only owned streamed are processed for patterns
 		ownedStream, err := i.isOwnedStream(i.ingesterID, reqStream.Labels)
@@ -252,9 +253,21 @@ func (i *instance) removeStream(s *stream) {
 	}
 }
 
-func (i *instance) Observe(stream string, entries []logproto.Entry) {
+func (i *instance) Observe(ctx context.Context, stream string, entries []logproto.Entry) {
 	i.aggMetricsLock.Lock()
 	defer i.aggMetricsLock.Unlock()
+
+	sp, _ := opentracing.StartSpanFromContext(
+		ctx,
+		"patternIngester.Observe",
+	)
+	defer sp.Finish()
+
+	sp.LogKV(
+		"event", "observe stream for metrics",
+		"stream", stream,
+		"entries", len(entries),
+	)
 
 	for _, entry := range entries {
 		lvl := constants.LogLevelUnknown

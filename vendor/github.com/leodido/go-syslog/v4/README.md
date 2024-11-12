@@ -12,7 +12,7 @@ To wrap up, this package provides:
 
 - an [RFC5424-compliant parser and builder](/rfc5424)
 - an [RFC3164-compliant parser](/rfc3164) - ie., BSD-syslog messages
-- a parser that works on streams for syslog with [octet counting](https://tools.ietf.org/html/rfc5425#section-4.3) framing technique, see [octetcounting](/octetcounting)
+- a parser that works on streams for syslog with [octet counting](https://datatracker.ietf.org/doc/html/rfc6587#section-3.4.1) framing technique, see [octetcounting](/octetcounting)
 - a parser that works on streams for syslog with [non-transparent](https://tools.ietf.org/html/rfc6587#section-3.4.2) framing technique, see [nontransparent](/nontransparent)
 
 This library provides the pieces to parse Syslog messages transported following various RFCs.
@@ -31,7 +31,7 @@ go get github.com/leodido/go-syslog/v4
 
 ## Docs
 
-[![Documentation](https://img.shields.io/badge/godoc-reference-blue.svg?style=for-the-badge)](http://godoc.org/github.com/leodido/go-syslog)
+[![Documentation](https://img.shields.io/badge/godoc-reference-blue.svg?style=for-the-badge)](http://godoc.org/github.com/leodido/go-syslog/v4)
 
 The [docs](docs/) directory contains `.dot` files representing the finite-state machines (FSMs) implementing the syslog parsers and transports.
 

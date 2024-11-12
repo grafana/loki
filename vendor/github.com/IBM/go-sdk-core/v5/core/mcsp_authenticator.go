@@ -17,6 +17,7 @@ package core
 import (
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httputil"
@@ -29,7 +30,6 @@ import (
 // and adds the access token to requests via an Authorization header
 // of the form:  "Authorization: Bearer <access-token>"
 type MCSPAuthenticator struct {
-
 	// [Required] The apikey used to fetch the bearer token from the token server.
 	ApiKey string
 
@@ -60,8 +60,10 @@ type MCSPAuthenticator struct {
 	tokenDataMutex sync.Mutex
 }
 
-var mcspRequestTokenMutex sync.Mutex
-var mcspNeedsRefreshMutex sync.Mutex
+var (
+	mcspRequestTokenMutex sync.Mutex
+	mcspNeedsRefreshMutex sync.Mutex
+)
 
 const (
 	mcspAuthOperationPath = "/siusermgr/api/1.0/apikeys/token"
@@ -110,7 +112,6 @@ func (builder *MCSPAuthenticatorBuilder) SetClient(client *http.Client) *MCSPAut
 
 // Build() returns a validated instance of the MCSPAuthenticator with the config that was set in the builder.
 func (builder *MCSPAuthenticatorBuilder) Build() (*MCSPAuthenticator, error) {
-
 	// Make sure the config is valid.
 	err := builder.MCSPAuthenticator.Validate()
 	if err != nil {
@@ -151,7 +152,7 @@ func (authenticator *MCSPAuthenticator) getUserAgent() string {
 // newMCSPAuthenticatorFromMap constructs a new MCSPAuthenticator instance from a map.
 func newMCSPAuthenticatorFromMap(properties map[string]string) (authenticator *MCSPAuthenticator, err error) {
 	if properties == nil {
-		err = fmt.Errorf(ERRORMSG_PROPS_MAP_NIL)
+		err = errors.New(ERRORMSG_PROPS_MAP_NIL)
 		return nil, SDKErrorf(err, "", "missing-props", getComponentInfo())
 	}
 
@@ -209,7 +210,6 @@ func (authenticator *MCSPAuthenticator) setTokenData(tokenData *mcspTokenData) {
 //
 // Ensures that the ApiKey and URL properties are both specified.
 func (authenticator *MCSPAuthenticator) Validate() error {
-
 	if authenticator.ApiKey == "" {
 		err := fmt.Errorf(ERRORMSG_PROP_MISSING, "ApiKey")
 		return SDKErrorf(err, "", "missing-api-key", getComponentInfo())
@@ -245,7 +245,7 @@ func (authenticator *MCSPAuthenticator) GetToken() (string, error) {
 
 	// return an error if the access token is not valid or was not fetched
 	if authenticator.getTokenData() == nil || authenticator.getTokenData().AccessToken == "" {
-		err := fmt.Errorf("Error while trying to get access token")
+		err := errors.New("Error while trying to get access token")
 		return "", SDKErrorf(err, "", "no-token", getComponentInfo())
 	}
 
@@ -287,7 +287,6 @@ func (authenticator *MCSPAuthenticator) invokeRequestTokenData() error {
 
 // RequestToken fetches a new access token from the token server.
 func (authenticator *MCSPAuthenticator) RequestToken() (*MCSPTokenServerResponse, error) {
-
 	builder := NewRequestBuilder(POST)
 	_, err := builder.ResolveRequestURL(authenticator.URL, mcspAuthOperationPath, nil)
 	if err != nil {
@@ -388,7 +387,7 @@ type mcspTokenData struct {
 // MCSPTokenServerResponse instance.
 func newMCSPTokenData(tokenResponse *MCSPTokenServerResponse) (*mcspTokenData, error) {
 	if tokenResponse == nil || tokenResponse.Token == "" {
-		err := fmt.Errorf("Error while trying to parse access token!")
+		err := errors.New("Error while trying to parse access token!")
 		return nil, SDKErrorf(err, "", "token-parse", getComponentInfo())
 	}
 

@@ -114,6 +114,7 @@ type Config struct {
 	PartSize             uint64              `yaml:"part_size" category:"experimental"`
 	SendContentMd5       bool                `yaml:"send_content_md5" category:"experimental"`
 	STSEndpoint          string              `yaml:"sts_endpoint"`
+	MaxRetries           int                 `yaml:"max_retries"`
 
 	SSE         SSEConfig   `yaml:"sse"`
 	HTTP        HTTPConfig  `yaml:"http"`
@@ -142,6 +143,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.Var(newBucketLookupTypeValue(s3.AutoLookup, &cfg.BucketLookupType), prefix+"s3.bucket-lookup-type", fmt.Sprintf("Bucket lookup style type, used to access bucket in S3-compatible service. Default is auto. Supported values are: %s.", strings.Join(supportedBucketLookupTypes, ", ")))
 	f.BoolVar(&cfg.DualstackEnabled, prefix+"s3.dualstack-enabled", true, "When enabled, direct all AWS S3 requests to the dual-stack IPv4/IPv6 endpoint for the configured region.")
 	f.StringVar(&cfg.STSEndpoint, prefix+"s3.sts-endpoint", "", "Accessing S3 resources using temporary, secure credentials provided by AWS Security Token Service.")
+	f.IntVar(&cfg.MaxRetries, prefix+"s3.max-retries", 10, "The maximum number of retries for S3 requests that are retryable. Default is 10, set this to 1 to disable retries.")
 	cfg.SSE.RegisterFlagsWithPrefix(prefix+"s3.sse.", f)
 	cfg.HTTP.RegisterFlagsWithPrefix(prefix, f)
 	cfg.TraceConfig.RegisterFlagsWithPrefix(prefix+"s3.trace.", f)

@@ -136,6 +136,7 @@ type Config struct {
 	PartSize    uint64    `yaml:"part_size"`
 	SSEConfig   SSEConfig `yaml:"sse_config"`
 	STSEndpoint string    `yaml:"sts_endpoint"`
+	MaxRetries  int       `yaml:"max_retries"`
 }
 
 // SSEConfig deals with the configuration of SSE for Minio. The following options are valid:
@@ -176,13 +177,13 @@ func parseConfig(conf []byte) (Config, error) {
 }
 
 // NewBucket returns a new Bucket using the provided s3 config values.
-func NewBucket(logger log.Logger, conf []byte, component string, rt http.RoundTripper) (*Bucket, error) {
+func NewBucket(logger log.Logger, conf []byte, component string, wrapRoundtripper func(http.RoundTripper) http.RoundTripper) (*Bucket, error) {
 	config, err := parseConfig(conf)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewBucketWithConfig(logger, config, component, rt)
+	return NewBucketWithConfig(logger, config, component, wrapRoundtripper)
 }
 
 type overrideSignerType struct {
@@ -202,7 +203,7 @@ func (s *overrideSignerType) Retrieve() (credentials.Value, error) {
 }
 
 // NewBucketWithConfig returns a new Bucket using the provided s3 config values.
-func NewBucketWithConfig(logger log.Logger, config Config, component string, rt http.RoundTripper) (*Bucket, error) {
+func NewBucketWithConfig(logger log.Logger, config Config, component string, wrapRoundtripper func(http.RoundTripper) http.RoundTripper) (*Bucket, error) {
 	var chain []credentials.Provider
 
 	// TODO(bwplotka): Don't do flags as they won't scale, use actual params like v2, v4 instead
@@ -242,9 +243,7 @@ func NewBucketWithConfig(logger log.Logger, config Config, component string, rt 
 			}),
 		}
 	}
-	if rt != nil {
-		config.HTTPConfig.Transport = rt
-	}
+
 	// Check if a roundtripper has been set in the config
 	// otherwise build the default transport.
 	var tpt http.RoundTripper
@@ -255,6 +254,9 @@ func NewBucketWithConfig(logger log.Logger, config Config, component string, rt 
 	if config.HTTPConfig.Transport != nil {
 		tpt = config.HTTPConfig.Transport
 	}
+	if wrapRoundtripper != nil {
+		tpt = wrapRoundtripper(tpt)
+	}
 
 	client, err := minio.New(config.Endpoint, &minio.Options{
 		Creds:        credentials.NewChainCredentials(chain),
@@ -262,6 +264,7 @@ func NewBucketWithConfig(logger log.Logger, config Config, component string, rt 
 		Region:       config.Region,
 		Transport:    tpt,
 		BucketLookup: config.BucketLookupType.MinioType(),
+		MaxRetries:   config.MaxRetries,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "initialize s3 client")
@@ -386,18 +389,26 @@ func ValidateForTests(conf Config) error {
 	return nil
 }
 
-// Iter calls f for each entry in the given directory. The argument to f is the full
-// object name including the prefix of the inspected directory.
-func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
+func (b *Bucket) SupportedIterOptions() []objstore.IterOptionType {
+	return []objstore.IterOptionType{objstore.Recursive, objstore.UpdatedAt}
+}
+
+func (b *Bucket) IterWithAttributes(ctx context.Context, dir string, f func(attrs objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
+	if err := objstore.ValidateIterOptions(b.SupportedIterOptions(), options...); err != nil {
+		return err
+	}
+
 	// Ensure the object name actually ends with a dir suffix. Otherwise we'll just iterate the
 	// object itself as one prefix item.
 	if dir != "" {
 		dir = strings.TrimSuffix(dir, DirDelim) + DirDelim
 	}
 
+	appliedOpts := objstore.ApplyIterOptions(options...)
+
 	opts := minio.ListObjectsOptions{
 		Prefix:    dir,
-		Recursive: objstore.ApplyIterOptions(options...).Recursive,
+		Recursive: appliedOpts.Recursive,
 		UseV1:     b.listObjectsV1,
 	}
 
@@ -414,12 +425,35 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 		if object.Key == dir {
 			continue
 		}
-		if err := f(object.Key); err != nil {
+
+		attr := objstore.IterObjectAttributes{
+			Name: object.Key,
+		}
+		if appliedOpts.LastModified {
+			attr.SetLastModified(object.LastModified)
+		}
+
+		if err := f(attr); err != nil {
 			return err
 		}
 	}
 
 	return ctx.Err()
+}
+
+func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opts ...objstore.IterOption) error {
+	// Only include recursive option since attributes are not used in this method.
+	var filteredOpts []objstore.IterOption
+	for _, opt := range opts {
+		if opt.Type == objstore.Recursive {
+			filteredOpts = append(filteredOpts, opt)
+			break
+		}
+	}
+
+	return b.IterWithAttributes(ctx, dir, func(attrs objstore.IterObjectAttributes) error {
+		return f(attrs.Name)
+	}, filteredOpts...)
 }
 
 func (b *Bucket) getRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
@@ -628,7 +662,7 @@ func NewTestBucketFromConfig(t testing.TB, location string, c Config, reuseBucke
 
 	bktToCreate := c.Bucket
 	if c.Bucket != "" && reuseBucket {
-		if err := b.Iter(ctx, "", func(f string) error {
+		if err := b.Iter(ctx, "", func(string) error {
 			return errors.Errorf("bucket %s is not empty", c.Bucket)
 		}); err != nil {
 			return nil, nil, errors.Wrapf(err, "s3 check bucket %s", c.Bucket)

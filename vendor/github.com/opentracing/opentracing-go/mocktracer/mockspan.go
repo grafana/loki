@@ -178,7 +178,7 @@ func (s *MockSpan) Finish() {
 	s.Lock()
 	s.FinishTime = time.Now()
 	s.Unlock()
-	s.tracer.recordSpan(s)
+	s.tracer.recordFinishedSpan(s)
 }
 
 // FinishWithOptions belongs to the Span interface
@@ -205,7 +205,7 @@ func (s *MockSpan) FinishWithOptions(opts opentracing.FinishOptions) {
 		}
 	}
 
-	s.tracer.recordSpan(s)
+	s.tracer.recordFinishedSpan(s)
 }
 
 // String allows printing span for debugging

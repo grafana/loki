@@ -132,7 +132,8 @@ func TestIndexRW_Create_Open(t *testing.T) {
 	// An empty index must still result in a readable file.
 	iw, err := NewWriter(context.Background(), FormatV3, fn)
 	require.NoError(t, err)
-	require.NoError(t, iw.Close())
+	_, err = iw.Close(false)
+	require.NoError(t, err)
 
 	ir, err := NewFileReader(fn)
 	require.NoError(t, err)
@@ -178,7 +179,8 @@ func TestIndexRW_Postings(t *testing.T) {
 	require.NoError(t, iw.AddSeries(3, series[2], model.Fingerprint(series[2].Hash())))
 	require.NoError(t, iw.AddSeries(4, series[3], model.Fingerprint(series[3].Hash())))
 
-	require.NoError(t, iw.Close())
+	_, err = iw.Close(false)
+	require.NoError(t, err)
 
 	ir, err := NewFileReader(fn)
 	require.NoError(t, err)
@@ -266,7 +268,8 @@ func TestPostingsMany(t *testing.T) {
 	for i, s := range series {
 		require.NoError(t, iw.AddSeries(storage.SeriesRef(i), s, model.Fingerprint(s.Hash())))
 	}
-	require.NoError(t, iw.Close())
+	_, err = iw.Close(false)
+	require.NoError(t, err)
 
 	ir, err := NewFileReader(fn)
 	require.NoError(t, err)
@@ -406,7 +409,7 @@ func TestPersistence_index_e2e(t *testing.T) {
 		postings.Add(storage.SeriesRef(i), s.labels)
 	}
 
-	err = iw.Close()
+	_, err = iw.Close(false)
 	require.NoError(t, err)
 
 	ir, err := NewFileReader(filepath.Join(dir, IndexFilename))
@@ -724,7 +727,7 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			iw, err := NewWriterWithVersion(context.Background(), FormatV2, filepath.Join(dir, name))
+			iw, err := NewFileWriterWithVersion(context.Background(), FormatV2, filepath.Join(dir, name))
 			require.NoError(t, err)
 
 			syms := []string{}
@@ -741,7 +744,7 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			err = iw.Close()
+			_, err = iw.Close(false)
 			require.NoError(t, err)
 
 			ir, err := NewFileReader(filepath.Join(dir, name))
@@ -997,7 +1000,7 @@ func BenchmarkInitReader_ReadOffsetTable(b *testing.B) {
 		require.NoError(b, err)
 	}
 
-	err = iw.Close()
+	_, err = iw.Close(false)
 	require.NoError(b, err)
 
 	bs, err := os.ReadFile(idxFile)

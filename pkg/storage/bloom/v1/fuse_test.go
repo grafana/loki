@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/compression"
@@ -27,12 +28,12 @@ var BloomPagePool = mempool.New("test", []mempool.Bucket{
 type singleKeyTest []byte
 
 // Matches implements BloomTest.
-func (s singleKeyTest) Matches(bloom filter.Checker) bool {
+func (s singleKeyTest) Matches(_ labels.Labels, bloom filter.Checker) bool {
 	return bloom.Test(s)
 }
 
 // MatchesWithPrefixBuf implements BloomTest.
-func (s singleKeyTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
+func (s singleKeyTest) MatchesWithPrefixBuf(_ labels.Labels, bloom filter.Checker, buf []byte, prefixLen int) bool {
 	return bloom.Test(append(buf[:prefixLen], s...))
 }
 
