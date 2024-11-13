@@ -14,8 +14,10 @@ import (
 	objstoretracing "github.com/thanos-io/objstore/tracing/opentracing"
 
 	"github.com/grafana/loki/v3/pkg/storage/bucket/azure"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/bos"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/filesystem"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/gcs"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/oss"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 	"github.com/grafana/loki/v3/pkg/storage/bucket/swift"
 )
@@ -36,12 +38,18 @@ const (
 	// Filesystem is the value for the filesystem storage backend.
 	Filesystem = "filesystem"
 
+	// Alibaba is the value for the Alibaba Cloud OSS storage backend
+	Alibaba = "alibabacloud"
+
+	// BOS is the value for the Baidu Cloud BOS storage backend
+	BOS = "bos"
+
 	// validPrefixCharactersRegex allows only alphanumeric characters to prevent subtle bugs and simplify validation
 	validPrefixCharactersRegex = `^[\da-zA-Z]+$`
 )
 
 var (
-	SupportedBackends = []string{S3, GCS, Azure, Swift, Filesystem}
+	SupportedBackends = []string{S3, GCS, Azure, Swift, Filesystem, Alibaba, BOS}
 
 	ErrUnsupportedStorageBackend        = errors.New("unsupported storage backend")
 	ErrInvalidCharactersInStoragePrefix = errors.New("storage prefix contains invalid characters, it may only contain digits and English alphabet letters")
@@ -57,6 +65,8 @@ type StorageBackendConfig struct {
 	Azure      azure.Config      `yaml:"azure"`
 	Swift      swift.Config      `yaml:"swift"`
 	Filesystem filesystem.Config `yaml:"filesystem"`
+	Alibaba    oss.Config        `yaml:"alibaba"`
+	BOS        bos.Config        `yaml:"bos"`
 
 	// Used to inject additional backends into the config. Allows for this config to
 	// be embedded in multiple contexts and support non-object storage based backends.
@@ -79,6 +89,8 @@ func (cfg *StorageBackendConfig) RegisterFlagsWithPrefixAndDefaultDirectory(pref
 	cfg.Azure.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Swift.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Filesystem.RegisterFlagsWithPrefixAndDefaultDirectory(prefix, dir, f)
+	cfg.Alibaba.RegisterFlagsWithPrefix(prefix, f)
+	cfg.BOS.RegisterFlagsWithPrefix(prefix, f)
 }
 
 func (cfg *StorageBackendConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -138,7 +150,7 @@ func (cfg *Config) disableRetries(backend string) error {
 		cfg.Azure.MaxRetries = 1
 	case Swift:
 		cfg.Swift.MaxRetries = 1
-	case Filesystem:
+	case Filesystem, Alibaba, BOS:
 		// do nothing
 	default:
 		return fmt.Errorf("cannot disable retries for backend: %s", backend)
@@ -157,7 +169,7 @@ func (cfg *Config) configureTransport(backend string, rt http.RoundTripper) erro
 		cfg.Azure.Transport = rt
 	case Swift:
 		cfg.Swift.Transport = rt
-	case Filesystem:
+	case Filesystem, Alibaba, BOS:
 		// do nothing
 	default:
 		return fmt.Errorf("cannot configure transport for backend: %s", backend)
@@ -185,6 +197,10 @@ func NewClient(ctx context.Context, backend string, cfg Config, name string, log
 		client, err = swift.NewBucketClient(cfg.Swift, name, logger)
 	case Filesystem:
 		client, err = filesystem.NewBucketClient(cfg.Filesystem)
+	case Alibaba:
+		client, err = oss.NewBucketClient(cfg.Alibaba, name, logger)
+	case BOS:
+		client, err = bos.NewBucketClient(cfg.BOS, name, logger)
 	default:
 		return nil, ErrUnsupportedStorageBackend
 	}
