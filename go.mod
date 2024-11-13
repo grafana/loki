@@ -56,9 +56,9 @@ require (
 	github.com/grafana/gomemcache v0.0.0-20240229205252-cd6a66d6fb56
 	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
 	github.com/grafana/tail v0.0.0-20230510142333-77b18831edf0
-	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
+	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
-	github.com/hashicorp/consul/api v1.29.4
+	github.com/hashicorp/consul/api v1.30.0
 	github.com/hashicorp/golang-lru v0.6.0
 	github.com/imdario/mergo v0.3.16
 	github.com/influxdata/telegraf v1.16.3
