@@ -467,6 +467,8 @@ type sampleBatchIterator struct {
 	ctx       context.Context
 	cancel    context.CancelFunc
 	extractor syntax.SampleExtractor
+
+	queryMetricsOnly bool
 }
 
 func newSampleBatchIterator(
@@ -479,6 +481,7 @@ func newSampleBatchIterator(
 	extractor syntax.SampleExtractor,
 	start, end time.Time,
 	chunkFilterer chunk.Filterer,
+	queryMetricsOnly bool,
 ) (iter.SampleIterator, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	return &sampleBatchIterator{
@@ -486,6 +489,7 @@ func newSampleBatchIterator(
 		ctx:                ctx,
 		cancel:             cancel,
 		batchChunkIterator: newBatchChunkIterator(ctx, schemas, chunks, batchSize, logproto.FORWARD, start, end, metrics, matchers, chunkFilterer),
+		queryMetricsOnly:   queryMetricsOnly,
 	}, nil
 }
 
@@ -585,7 +589,7 @@ func (it *sampleBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, thro
 			if !chks[i][j].IsValid {
 				continue
 			}
-			iterator, err := chks[i][j].SampleIterator(it.ctx, from, through, streamExtractor, nextChunk)
+			iterator, err := chks[i][j].SampleIterator(it.ctx, from, through, streamExtractor, nextChunk, it.queryMetricsOnly)
 			if err != nil {
 				return nil, err
 			}

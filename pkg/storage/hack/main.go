@@ -33,21 +33,37 @@ var (
 	maxChunks = 1200 // 1200 chunks is 2gib ish of data enough to run benchmark
 )
 
+func dirFor(chunkFmt string) string {
+	return fmt.Sprintf("/tmp/benchmark%s", chunkFmt)
+}
+
+func schemaFor(chunkFmt string) string {
+	if chunkFmt == "v5" {
+		return "v14"
+	}
+	return "v13"
+}
+
 // fill up the local filesystem store with 1gib of data to run benchmark
 func main() {
 	cm := storage.NewClientMetrics()
 	defer cm.Unregister()
-	if _, err := os.Stat("/tmp/benchmark/chunks"); os.IsNotExist(err) {
-		if err := fillStore(cm); err != nil {
+	chunkFmt := "v5"
+	root := dirFor(chunkFmt)
+	if _, err := os.Stat(root + "/chunks"); os.IsNotExist(err) {
+		if err := fillStore(chunkFmt, cm); err != nil {
 			log.Fatal("error filling up storage:", err)
 		}
 	}
 }
 
-func getStore(cm storage.ClientMetrics) (storage.Store, *config.SchemaConfig, error) {
+func getStore(chunkFmt string, cm storage.ClientMetrics) (storage.Store, *config.SchemaConfig, error) {
+	root := dirFor(chunkFmt)
+	schema := schemaFor(chunkFmt)
+
 	storeConfig := storage.Config{
-		BoltDBConfig: local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
-		FSConfig:     local.FSConfig{Directory: "/tmp/benchmark/chunks"},
+		BoltDBConfig: local.BoltDBConfig{Directory: root + "/index"},
+		FSConfig:     local.FSConfig{Directory: root + "/chunks"},
 	}
 
 	schemaCfg := config.SchemaConfig{
@@ -56,7 +72,8 @@ func getStore(cm storage.ClientMetrics) (storage.Store, *config.SchemaConfig, er
 				From:       config.DayTime{Time: start},
 				IndexType:  "boltdb",
 				ObjectType: "filesystem",
-				Schema:     "v13",
+				RowShards:  16,
+				Schema:     schema,
 				IndexTables: config.IndexPeriodicTableConfig{
 					PeriodicTableConfig: config.PeriodicTableConfig{
 						Prefix: "index_",
@@ -70,8 +87,8 @@ func getStore(cm storage.ClientMetrics) (storage.Store, *config.SchemaConfig, er
 	return store, &schemaCfg, err
 }
 
-func fillStore(cm storage.ClientMetrics) error {
-	store, schemacfg, err := getStore(cm)
+func fillStore(cf string, cm storage.ClientMetrics) error {
+	store, schemacfg, err := getStore(cf, cm)
 	if err != nil {
 		return err
 	}
@@ -104,11 +121,13 @@ func fillStore(cm storage.ClientMetrics) error {
 			labelsBuilder.Set(labels.MetricName, "logs")
 			metric := labelsBuilder.Labels()
 			fp := client.Fingerprint(lbs)
+
 			chunkEnc := chunkenc.NewMemChunk(chunkfmt, compression.LZ4_4M, headfmt, 262144, 1572864)
 			for ts := start.UnixNano(); ts < start.UnixNano()+time.Hour.Nanoseconds(); ts = ts + time.Millisecond.Nanoseconds() {
 				entry := &logproto.Entry{
-					Timestamp: time.Unix(0, ts),
-					Line:      randString(250),
+					Timestamp:          time.Unix(0, ts),
+					Line:               randString(250),
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", randString(5), "detected_level", randomLevel())),
 				}
 				if chunkEnc.SpaceFor(entry) {
 					_, _ = chunkEnc.Append(entry)
@@ -127,7 +146,7 @@ func fillStore(cm storage.ClientMetrics) error {
 					if flushCount >= maxChunks {
 						return
 					}
-					chunkEnc = chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.LZ4_64k, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 262144, 1572864)
+					chunkEnc = chunkenc.NewMemChunk(chunkfmt, compression.LZ4_64k, headfmt, 262144, 1572864)
 				}
 			}
 		}(i)
@@ -150,4 +169,10 @@ func randStringWithCharset(length int, charset string) string {
 
 func randString(length int) string {
 	return randStringWithCharset(length, charset)
+}
+
+func randomLevel() string {
+	// function that returns any of the random log levels
+	levels := []string{"info", "warn", "error", "debug"}
+	return levels[rand.Intn(len(levels))]
 }

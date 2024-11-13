@@ -62,7 +62,7 @@ type QueryParams interface {
 	GetShards() []string
 }
 
-// SelectParams specifies parameters passed to data selections.
+// SelectLogParams SelectParams specifies parameters passed to data selections.
 type SelectLogParams struct {
 	*logproto.QueryRequest
 }
@@ -96,12 +96,13 @@ func (s SelectLogParams) LogSelector() (syntax.LogSelectorExpr, error) {
 
 type SelectSampleParams struct {
 	*logproto.SampleQueryRequest
+	EvaluatorMode EvaluatorMode
 }
 
 func (s SelectSampleParams) WithStoreChunks(chunkRefGroup *logproto.ChunkRefGroup) SelectSampleParams {
 	cpy := *s.SampleQueryRequest
 	cpy.StoreChunks = chunkRefGroup
-	return SelectSampleParams{&cpy}
+	return SelectSampleParams{&cpy, ModeDefault}
 }
 
 // Expr returns the SampleExpr from the SelectSampleParams.

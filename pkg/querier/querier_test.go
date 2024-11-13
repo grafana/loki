@@ -1352,6 +1352,7 @@ func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
 				AST: syntax.MustParseExpr(request.Selector),
 			},
 		},
+		EvaluatorMode: logql.ModeMetricsOnly,
 	}
 
 	require.Contains(t, store.Calls[0].Arguments, expectedRequest)

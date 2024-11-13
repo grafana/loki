@@ -328,8 +328,16 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
 		if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok && e.Operation == syntax.OpTypeSum {
+			evalMode := ModeDefault
 			// if range expression is wrapped with a vector expression
 			// we should send the vector expression for allowing reducing labels at the source.
+
+			if rangExpr.Operation == syntax.OpRangeTypeCount {
+				// if the expr is sum by() count_over_time(), the evaluator doesn't need to read log lines.
+				// this operation can be later removed to suit other range exprs that don't need to read log lines
+				// after getting confidence in the implementation. This is only enabled for Chunk V5 at the moment.
+				evalMode = ModeMetricsOnly
+			}
 			nextEvFactory = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params) (StepEvaluator, error) {
 				it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 					&logproto.SampleQueryRequest{
@@ -345,6 +353,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 						},
 						StoreChunks: q.GetStoreChunks(),
 					},
+					EvaluatorMode(evalMode),
 				})
 				if err != nil {
 					return nil, err
@@ -368,6 +377,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 				},
 				StoreChunks: q.GetStoreChunks(),
 			},
+			ModeMetricsOnly,
 		})
 		if err != nil {
 			return nil, err
@@ -421,6 +431,10 @@ type VectorAggEvaluator struct {
 	expr          *syntax.VectorAggregationExpr
 	buf           []byte
 	lb            *labels.Builder
+}
+
+func (e *VectorAggEvaluator) Mode() EvaluatorMode {
+	return ModeDefault
 }
 
 func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
@@ -633,6 +647,10 @@ func newRangeAggEvaluator(
 	q Params,
 	o time.Duration,
 ) (StepEvaluator, error) {
+	var mode EvaluatorMode
+	if canSkipLogLines(expr) {
+		mode = ModeMetricsOnly
+	}
 	switch expr.Operation {
 	case syntax.OpRangeTypeAbsent:
 		iter, err := newRangeVectorIterator(
@@ -674,6 +692,7 @@ func newRangeAggEvaluator(
 
 		return &RangeVectorEvaluator{
 			iter: iter,
+			mode: ModeDefault,
 		}, nil
 	case syntax.OpRangeTypeLastWithTimestamp:
 		iter := newLastWithTimestampIterator(
@@ -685,6 +704,7 @@ func newRangeAggEvaluator(
 
 		return &RangeVectorEvaluator{
 			iter: iter,
+			mode: ModeDefault,
 		}, nil
 	default:
 		iter, err := newRangeVectorIterator(
@@ -699,6 +719,7 @@ func newRangeAggEvaluator(
 
 		return &RangeVectorEvaluator{
 			iter: iter,
+			mode: mode,
 		}, nil
 	}
 }
@@ -706,7 +727,12 @@ func newRangeAggEvaluator(
 type RangeVectorEvaluator struct {
 	iter RangeVectorIterator
 
-	err error
+	err  error
+	mode EvaluatorMode
+}
+
+func (r *RangeVectorEvaluator) Mode() EvaluatorMode {
+	return r.mode
 }
 
 func (r *RangeVectorEvaluator) Next() (bool, int64, StepResult) {
@@ -739,6 +765,10 @@ type AbsentRangeVectorEvaluator struct {
 	lbs  labels.Labels
 
 	err error
+}
+
+func (r *AbsentRangeVectorEvaluator) Mode() EvaluatorMode {
+	return ModeDefault
 }
 
 func (r *AbsentRangeVectorEvaluator) Next() (bool, int64, StepResult) {
@@ -857,6 +887,10 @@ type BinOpStepEvaluator struct {
 	lse     StepEvaluator
 	expr    *syntax.BinOpExpr
 	lastErr error
+}
+
+func (e *BinOpStepEvaluator) Mode() EvaluatorMode {
+	return ModeDefault
 }
 
 func (e *BinOpStepEvaluator) Next() (bool, int64, StepResult) {
@@ -1148,6 +1182,10 @@ type LiteralStepEvaluator struct {
 	returnBool bool
 }
 
+func (e *LiteralStepEvaluator) Mode() EvaluatorMode {
+	return ModeDefault
+}
+
 func (e *LiteralStepEvaluator) Next() (bool, int64, StepResult) {
 	ok, ts, r := e.nextEv.Next()
 	if !ok {
@@ -1202,6 +1240,10 @@ func (e *LiteralStepEvaluator) Error() error {
 type VectorIterator struct {
 	stepMs, endMs, currentMs int64
 	val                      float64
+}
+
+func (r *VectorIterator) Mode() EvaluatorMode {
+	return ModeDefault
 }
 
 func newVectorIterator(val float64,
@@ -1261,6 +1303,10 @@ type LabelReplaceEvaluator struct {
 	labelCache    map[uint64]labels.Labels
 	expr          *syntax.LabelReplaceExpr
 	buf           []byte
+}
+
+func (e *LabelReplaceEvaluator) Mode() EvaluatorMode {
+	return ModeDefault
 }
 
 func (e *LabelReplaceEvaluator) Next() (bool, int64, StepResult) {

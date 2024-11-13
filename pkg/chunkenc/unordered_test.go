@@ -480,7 +480,7 @@ func TestUnorderedChunkIterators(t *testing.T) {
 		context.Background(),
 		time.Unix(0, 0),
 		time.Unix(100, 0),
-		countExtractor,
+		countExtractor, false,
 	)
 
 	for i := 0; i < 100; i++ {
@@ -545,7 +545,7 @@ func BenchmarkUnorderedRead(b *testing.B) {
 		for _, tc := range tcs {
 			b.Run(tc.desc, func(b *testing.B) {
 				for n := 0; n < b.N; n++ {
-					iterator := tc.c.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
+					iterator := tc.c.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor, false)
 					for iterator.Next() {
 						_ = iterator.At()
 					}
@@ -581,7 +581,7 @@ func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
 
 	ct = 0
 	i = 0
-	smpl := c.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
+	smpl := c.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor, false)
 	for smpl.Next() {
 		next := smpl.At().Timestamp
 		require.GreaterOrEqual(t, next, i)
@@ -742,7 +742,7 @@ func Test_HeadIteratorHash(t *testing.T) {
 				require.Equal(t, lbs.Hash(), eit.StreamHash())
 			}
 
-			sit := b.SampleIterator(context.TODO(), 0, 2, ex.ForStream(lbs))
+			sit := b.SampleIterator(context.TODO(), 0, 2, ex.ForStream(lbs), false)
 			for sit.Next() {
 				require.Equal(t, lbs.Hash(), sit.StreamHash())
 			}
