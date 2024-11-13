@@ -50,11 +50,17 @@ func NewBucket(rootDir string) (*Bucket, error) {
 	return &Bucket{rootDir: absDir}, nil
 }
 
-// Iter calls f for each entry in the given directory. The argument to f is the full
-// object name including the prefix of the inspected directory.
-func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
+func (b *Bucket) SupportedIterOptions() []objstore.IterOptionType {
+	return []objstore.IterOptionType{objstore.Recursive, objstore.UpdatedAt}
+}
+
+func (b *Bucket) IterWithAttributes(ctx context.Context, dir string, f func(attrs objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
+	}
+
+	if err := objstore.ValidateIterOptions(b.SupportedIterOptions(), options...); err != nil {
+		return err
 	}
 
 	params := objstore.ApplyIterOptions(options...)
@@ -92,7 +98,7 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 
 			if params.Recursive {
 				// Recursively list files in the subdirectory.
-				if err := b.Iter(ctx, name, f, options...); err != nil {
+				if err := b.IterWithAttributes(ctx, name, f, options...); err != nil {
 					return err
 				}
 
@@ -101,11 +107,40 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 				continue
 			}
 		}
-		if err := f(name); err != nil {
+
+		attrs := objstore.IterObjectAttributes{
+			Name: name,
+		}
+		if params.LastModified {
+			absPath := filepath.Join(absDir, file.Name())
+			stat, err := os.Stat(absPath)
+			if err != nil {
+				return errors.Wrapf(err, "stat %s", name)
+			}
+			attrs.SetLastModified(stat.ModTime())
+		}
+		if err := f(attrs); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// Iter calls f for each entry in the given directory. The argument to f is the full
+// object name including the prefix of the inspected directory.
+func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opts ...objstore.IterOption) error {
+	// Only include recursive option since attributes are not used in this method.
+	var filteredOpts []objstore.IterOption
+	for _, opt := range opts {
+		if opt.Type == objstore.Recursive {
+			filteredOpts = append(filteredOpts, opt)
+			break
+		}
+	}
+
+	return b.IterWithAttributes(ctx, dir, func(attrs objstore.IterObjectAttributes) error {
+		return f(attrs.Name)
+	}, filteredOpts...)
 }
 
 // Get returns a reader for the given object name.

@@ -103,6 +103,13 @@ func (p *Reader) start(ctx context.Context) error {
 
 	// We manage our commits manually, so we must fetch the last offset for our consumer group to find out where to read from.
 	lastCommittedOffset := p.fetchLastCommittedOffset(ctx)
+	if lastCommittedOffset == kafkaEndOffset {
+		level.Warn(p.logger).Log("msg", "no committed offset found for partition, starting from the beginning", "partition", p.partitionID, "consumer_group", p.consumerGroup)
+		lastCommittedOffset = kafkaStartOffset // If we haven't committed any offsets yet, we start reading from the beginning.
+	}
+	if lastCommittedOffset > 0 {
+		lastCommittedOffset++ // We want to begin to read from the next offset, but only if we've previously committed an offset.
+	}
 	p.client.AddConsumePartitions(map[string]map[int32]kgo.Offset{
 		p.kafkaCfg.Topic: {p.partitionID: kgo.NewOffset().At(lastCommittedOffset)},
 	})
@@ -349,6 +356,8 @@ func (p *Reader) processNextFetchesUntilLagHonored(ctx context.Context, maxLag t
 			continue
 		}
 
+		consumerGroupLastCommittedOffset := p.fetchLastCommittedOffset(ctx)
+
 		// Send a direct request to the Kafka backend to fetch the last produced offset.
 		// We intentionally don't use WaitNextFetchLastProducedOffset() to not introduce further
 		// latency.
@@ -371,6 +380,11 @@ func (p *Reader) processNextFetchesUntilLagHonored(ctx context.Context, maxLag t
 			return 0, nil
 		}
 
+		if consumerGroupLastCommittedOffset == lastProducedOffset {
+			level.Info(logger).Log("msg", "partition reader found no records to consume because it is already up-to-date", "last_committed_offset", consumerGroupLastCommittedOffset, "last_produced_offset", lastProducedOffset)
+			return 0, nil
+		}
+
 		// This message is NOT expected to be logged with a very high rate. In this log we display the last measured
 		// lag. If we don't have it (lag is zero value), then it will not be logged.
 		level.Info(loggerWithCurrentLagIfSet(logger, currLag)).Log("msg", "partition reader is consuming records to honor target and max consumer lag", "partition_start_offset", partitionStartOffset, "last_produced_offset", lastProducedOffset, "last_processed_offset", p.lastProcessedOffset, "offset_lag", lastProducedOffset-p.lastProcessedOffset)
@@ -380,9 +394,13 @@ func (p *Reader) processNextFetchesUntilLagHonored(ctx context.Context, maxLag t
 			if lastProducedOffset <= p.lastProcessedOffset {
 				break
 			}
+			if time.Since(lastProducedOffsetRequestedAt) > time.Minute {
+				level.Info(loggerWithCurrentLagIfSet(logger, currLag)).Log("msg", "partition reader is still consuming records...", "last_processed_offset", p.lastProcessedOffset, "offset_lag", lastProducedOffset-p.lastProcessedOffset)
+			}
 
-			records := p.poll(ctx)
-			recordsChan <- records
+			timedCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			recordsChan <- p.poll(timedCtx)
+			cancel()
 		}
 		if boff.Err() != nil {
 			return 0, boff.ErrCause()

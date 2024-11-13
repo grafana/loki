@@ -13,11 +13,13 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner/plannertest"
+	"github.com/grafana/loki/v3/pkg/bloombuild/planner/queue"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner/strategies"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	"github.com/grafana/loki/v3/pkg/storage"
@@ -163,8 +165,10 @@ func Test_BuilderLoop(t *testing.T) {
 			//logger := log.NewLogfmtLogger(os.Stdout)
 
 			cfg := Config{
-				PlanningInterval:        1 * time.Hour,
-				MaxQueuedTasksPerTenant: 10000,
+				PlanningInterval: 1 * time.Hour,
+				Queue: queue.Config{
+					MaxQueuedTasksPerTenant: 10000,
+				},
 			}
 			planner := createPlanner(t, cfg, tc.limits, logger)
 
@@ -206,7 +210,7 @@ func Test_BuilderLoop(t *testing.T) {
 			}, 5*time.Second, 10*time.Millisecond)
 
 			// Finally, the queue should be empty
-			require.Equal(t, 0, planner.totalPendingTasks())
+			require.Equal(t, 0, planner.tasksQueue.TotalPending())
 
 			// consume all tasks result to free up the channel for the next round of tasks
 			for i := 0; i < nTasks; i++ {
@@ -228,15 +232,15 @@ func Test_BuilderLoop(t *testing.T) {
 				if tc.shouldConsumeAfterModify {
 					require.Eventuallyf(
 						t, func() bool {
-							return planner.totalPendingTasks() == 0
+							return planner.tasksQueue.TotalPending() == 0
 						},
 						5*time.Second, 10*time.Millisecond,
-						"tasks not consumed, pending: %d", planner.totalPendingTasks(),
+						"tasks not consumed, pending: %d", planner.tasksQueue.TotalPending(),
 					)
 				} else {
 					require.Neverf(
 						t, func() bool {
-							return planner.totalPendingTasks() == 0
+							return planner.tasksQueue.TotalPending() == 0
 						},
 						5*time.Second, 10*time.Millisecond,
 						"all tasks were consumed but they should not be",
@@ -254,10 +258,10 @@ func Test_BuilderLoop(t *testing.T) {
 				// Now all tasks should be consumed
 				require.Eventuallyf(
 					t, func() bool {
-						return planner.totalPendingTasks() == 0
+						return planner.tasksQueue.TotalPending() == 0
 					},
 					5*time.Second, 10*time.Millisecond,
-					"tasks not consumed, pending: %d", planner.totalPendingTasks(),
+					"tasks not consumed, pending: %d", planner.tasksQueue.TotalPending(),
 				)
 			}
 		})
@@ -384,8 +388,10 @@ func Test_processTenantTaskResults(t *testing.T) {
 			//logger := log.NewLogfmtLogger(os.Stdout)
 
 			cfg := Config{
-				PlanningInterval:        1 * time.Hour,
-				MaxQueuedTasksPerTenant: 10000,
+				PlanningInterval: 1 * time.Hour,
+				Queue: queue.Config{
+					MaxQueuedTasksPerTenant: 10000,
+				},
 			}
 			planner := createPlanner(t, cfg, &fakeLimits{}, logger)
 
@@ -544,8 +550,10 @@ func Test_deleteOutdatedMetas(t *testing.T) {
 			// logger := log.NewLogfmtLogger(os.Stdout)
 
 			cfg := Config{
-				PlanningInterval:        1 * time.Hour,
-				MaxQueuedTasksPerTenant: 10000,
+				PlanningInterval: 1 * time.Hour,
+				Queue: queue.Config{
+					MaxQueuedTasksPerTenant: 10000,
+				},
 			}
 			planner := createPlanner(t, cfg, &fakeLimits{}, logger)
 
@@ -718,7 +726,7 @@ func createTasks(n int, resultsCh chan *protos.TaskResult) []*QueueTask {
 	for i := 0; i < n; i++ {
 		task := NewQueueTask(
 			context.Background(), time.Now(),
-			protos.NewTask(config.NewDayTable(plannertest.TestDay, "fake"), "fakeTenant", v1.NewBounds(0, 10), plannertest.TsdbID(1), nil),
+			protos.NewTask(config.NewDayTable(plannertest.TestDay, "fake"), "fakeTenant", v1.NewBounds(model.Fingerprint(i), model.Fingerprint(i+10)), plannertest.TsdbID(1), nil).ToProtoTask(),
 			resultsCh,
 		)
 		tasks = append(tasks, task)

@@ -114,36 +114,6 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # querier.
 [querier: <querier>]
 
-querier_rf1:
-  # Enable the RF1 querier. If set, replaces the usual querier with an RF-1
-  # querier.
-  # CLI flag: -querier-rf1.enabled
-  [enabled: <boolean> | default = false]
-
-  # Time to wait before sending more than the minimum successful query requests.
-  # CLI flag: -querier-rf1.extra-query-delay
-  [extra_query_delay: <duration> | default = 0s]
-
-  engine:
-    # The maximum amount of time to look back for log lines. Used only for
-    # instant log queries.
-    # CLI flag: -querier-rf1.engine.max-lookback-period
-    [max_look_back_period: <duration> | default = 30s]
-
-    # The maximum number of labels the heap of a topk query using a count min
-    # sketch can track.
-    # CLI flag: -querier-rf1.engine.max-count-min-sketch-heap-size
-    [max_count_min_sketch_heap_size: <int> | default = 10000]
-
-  # The maximum number of queries that can be simultaneously processed by the
-  # querier.
-  # CLI flag: -querier-rf1.max-concurrent
-  [max_concurrent: <int> | default = 4]
-
-  # When true, querier limits sent via a header are enforced.
-  # CLI flag: -querier-rf1.per-request-limits-enabled
-  [per_request_limits_enabled: <boolean> | default = false]
-
 # The query_scheduler block configures the Loki query scheduler. When configured
 # it separates the tenant query queues from the query-frontend.
 [query_scheduler: <query_scheduler>]
@@ -162,11 +132,6 @@ querier_rf1:
 # ingesters. Only appropriate when running all components, the distributor, or
 # the querier.
 [ingester_client: <ingester_client>]
-
-# The ingester_client block configures how the distributor will connect to
-# ingesters. Only appropriate when running all components, the distributor, or
-# the querier.
-[ingester_rf1_client: <ingester_client>]
 
 # The ingester block configures the ingester and how the ingester will register
 # itself to a key value store.
@@ -338,7 +303,7 @@ pattern_ingester:
 
     # Configures how the gRPC connection to ingesters work as a client.
     # The CLI flags prefix for this block configuration is:
-    # bloom-build.builder.grpc
+    # pattern-ingester.client
     [grpc_client_config: <grpc_client>]
 
   # How many flushes can happen concurrently from each stream.
@@ -745,33 +710,6 @@ compactor_grpc_client:
 # a ring unless otherwise specified in the component's configuration section.
 [memberlist: <memberlist>]
 
-metastore:
-  # CLI flag: -metastore.data-dir
-  [data_dir: <string> | default = "./data-metastore/data"]
-
-  raft:
-    # CLI flag: -metastore.raft.dir
-    [dir: <string> | default = "./data-metastore/raft"]
-
-    # CLI flag: -metastore.raft.bootstrap-peers
-    [bootstrap_peers: <list of strings> | default = []]
-
-    # CLI flag: -metastore.raft.server-id
-    [server_id: <string> | default = "localhost:9099"]
-
-    # CLI flag: -metastore.raft.bind-address
-    [bind_address: <string> | default = "localhost:9099"]
-
-    # CLI flag: -metastore.raft.advertise-address
-    [advertise_address: <string> | default = "localhost:9099"]
-
-metastore_client:
-  # CLI flag: -metastore.address
-  [address: <string> | default = "localhost:9095"]
-
-  # Configures the gRPC client used to communicate with the metastore.
-  [grpc_client_config: <grpc_client>]
-
 kafka_config:
   # The Kafka backend address.
   # CLI flag: -kafka.address
@@ -902,27 +840,35 @@ kafka_config:
 
 The `alibabacloud_storage_config` block configures the connection to Alibaba Cloud Storage object storage backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `common`
-- `ruler`
+- `common.storage`
+- `ruler.storage`
 
 &nbsp;
 
 ```yaml
 # Name of OSS bucket.
-# CLI flag: -<prefix>.storage.oss.bucketname
+# CLI flag: -<prefix>.oss.bucketname
 [bucket: <string> | default = ""]
 
 # oss Endpoint to connect to.
-# CLI flag: -<prefix>.storage.oss.endpoint
+# CLI flag: -<prefix>.oss.endpoint
 [endpoint: <string> | default = ""]
 
 # alibabacloud Access Key ID
-# CLI flag: -<prefix>.storage.oss.access-key-id
+# CLI flag: -<prefix>.oss.access-key-id
 [access_key_id: <string> | default = ""]
 
 # alibabacloud Secret Access Key
-# CLI flag: -<prefix>.storage.oss.secret-access-key
+# CLI flag: -<prefix>.oss.secret-access-key
 [secret_access_key: <string> | default = ""]
+
+# Connection timeout in seconds
+# CLI flag: -<prefix>.oss.conn-timeout-sec
+[conn_timeout_sec: <int> | default = 30]
+
+# Read/Write timeout in seconds
+# CLI flag: -<prefix>.oss.read-write-timeout-sec
+[read_write_timeout_sec: <int> | default = 60]
 ```
 
 ### analytics
@@ -1277,20 +1223,33 @@ planner:
   # CLI flag: -bloom-build.planner.max-table-offset
   [max_table_offset: <int> | default = 2]
 
-  # Maximum number of tasks to queue per tenant.
-  # CLI flag: -bloom-build.planner.max-tasks-per-tenant
-  [max_queued_tasks_per_tenant: <int> | default = 30000]
-
   retention:
     # Enable bloom retention.
     # CLI flag: -bloom-build.planner.retention.enabled
     [enabled: <boolean> | default = false]
 
+  queue:
+    # Maximum number of tasks to queue per tenant.
+    # CLI flag: -bloom-build.planner.queue.max-tasks-per-tenant
+    [max_queued_tasks_per_tenant: <int> | default = 30000]
+
+    # Whether to store tasks on disk.
+    # CLI flag: -bloom-build.planner.queue.store-tasks-on-disk
+    [store_tasks_on_disk: <boolean> | default = false]
+
+    # Directory to store tasks on disk.
+    # CLI flag: -bloom-build.planner.queue.tasks-disk-directory
+    [tasks_disk_directory: <string> | default = "/tmp/bloom-planner-queue"]
+
+    # Whether to clean the tasks directory on startup.
+    # CLI flag: -bloom-build.planner.queue.clean-tasks-directory
+    [clean_tasks_directory: <boolean> | default = false]
+
 builder:
   # The grpc_client block configures the gRPC client used to communicate between
   # a client and server component in Loki.
   # The CLI flags prefix for this block configuration is:
-  # bloom-gateway-client.grpc
+  # bloom-build.builder.grpc
   [grpc_config: <grpc_client>]
 
   # Hostname (and port) of the bloom planner
@@ -1329,7 +1288,8 @@ client:
 
   # The grpc_client block configures the gRPC client used to communicate between
   # a client and server component in Loki.
-  # The CLI flags prefix for this block configuration is: bigtable
+  # The CLI flags prefix for this block configuration is:
+  # bloom-gateway-client.grpc
   [grpc_client_config: <grpc_client>]
 
   results_cache:
@@ -1681,6 +1641,8 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 Common configuration to be shared between multiple modules. If a more specific configuration is given in other sections, the related configuration within this section will be ignored.
 
 ```yaml
+# prefix for the path
+# CLI flag: -common.path-prefix
 [path_prefix: <string> | default = ""]
 
 storage:
@@ -1701,6 +1663,7 @@ storage:
 
   # The alibabacloud_storage_config block configures the connection to Alibaba
   # Cloud Storage object storage backend.
+  # The CLI flags prefix for this block configuration is: common.storage
   [alibabacloud: <alibabacloud_storage_config>]
 
   # The bos_storage_config block configures the connection to Baidu Object
@@ -2538,20 +2501,20 @@ The `frontend_worker` configures the worker - running within the Loki querier - 
 
 # Configures the querier gRPC client used to communicate with the
 # query-frontend. This can't be used in conjunction with 'grpc_client_config'.
-# The CLI flags prefix for this block configuration is: querier.frontend-client
+# The CLI flags prefix for this block configuration is:
+# querier.frontend-grpc-client
 [query_frontend_grpc_client: <grpc_client>]
 
 # Configures the querier gRPC client used to communicate with the query-frontend
 # and with the query-scheduler. This can't be used in conjunction with
 # 'query_frontend_grpc_client' or 'query_scheduler_grpc_client'.
-# The CLI flags prefix for this block configuration is:
-# querier.scheduler-grpc-client
+# The CLI flags prefix for this block configuration is: querier.frontend-client
 [grpc_client_config: <grpc_client>]
 
 # Configures the querier gRPC client used to communicate with the
 # query-scheduler. This can't be used in conjunction with 'grpc_client_config'.
 # The CLI flags prefix for this block configuration is:
-# metastore.grpc-client-config
+# querier.scheduler-grpc-client
 [query_scheduler_grpc_client: <grpc_client>]
 ```
 
@@ -2609,7 +2572,6 @@ The `grpc_client` block configures the gRPC client used to communicate between a
 - `boltdb.shipper.index-gateway-client.grpc`
 - `frontend.grpc-client-config`
 - `ingester.client`
-- `metastore.grpc-client-config`
 - `pattern-ingester.client`
 - `querier.frontend-client`
 - `querier.frontend-grpc-client`
@@ -2622,82 +2584,82 @@ The `grpc_client` block configures the gRPC client used to communicate between a
 
 ```yaml
 # gRPC client max receive message size (bytes).
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.grpc-max-recv-msg-size
+# CLI flag: -<prefix>.grpc-max-recv-msg-size
 [max_recv_msg_size: <int> | default = 104857600]
 
 # gRPC client max send message size (bytes).
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.grpc-max-send-msg-size
+# CLI flag: -<prefix>.grpc-max-send-msg-size
 [max_send_msg_size: <int> | default = 104857600]
 
 # Use compression when sending messages. Supported values are: 'gzip', 'snappy'
 # and '' (disable compression)
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.grpc-compression
+# CLI flag: -<prefix>.grpc-compression
 [grpc_compression: <string> | default = ""]
 
 # Rate limit for gRPC client; 0 means disabled.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.grpc-client-rate-limit
+# CLI flag: -<prefix>.grpc-client-rate-limit
 [rate_limit: <float> | default = 0]
 
 # Rate limit burst for gRPC client.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.grpc-client-rate-limit-burst
+# CLI flag: -<prefix>.grpc-client-rate-limit-burst
 [rate_limit_burst: <int> | default = 0]
 
 # Enable backoff and retry when we hit rate limits.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.backoff-on-ratelimits
+# CLI flag: -<prefix>.backoff-on-ratelimits
 [backoff_on_ratelimits: <boolean> | default = false]
 
 backoff_config:
   # Minimum delay when backing off.
-  # CLI flag: -boltdb.shipper.index-gateway-client.grpc.backoff-min-period
+  # CLI flag: -<prefix>.backoff-min-period
   [min_period: <duration> | default = 100ms]
 
   # Maximum delay when backing off.
-  # CLI flag: -boltdb.shipper.index-gateway-client.grpc.backoff-max-period
+  # CLI flag: -<prefix>.backoff-max-period
   [max_period: <duration> | default = 10s]
 
   # Number of times to backoff and retry before failing.
-  # CLI flag: -boltdb.shipper.index-gateway-client.grpc.backoff-retries
+  # CLI flag: -<prefix>.backoff-retries
   [max_retries: <int> | default = 10]
 
 # Initial stream window size. Values less than the default are not supported and
 # are ignored. Setting this to a value other than the default disables the BDP
 # estimator.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.initial-stream-window-size
+# CLI flag: -<prefix>.initial-stream-window-size
 [initial_stream_window_size: <int> | default = 63KiB1023B]
 
 # Initial connection window size. Values less than the default are not supported
 # and are ignored. Setting this to a value other than the default disables the
 # BDP estimator.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.initial-connection-window-size
+# CLI flag: -<prefix>.initial-connection-window-size
 [initial_connection_window_size: <int> | default = 63KiB1023B]
 
 # Enable TLS in the gRPC client. This flag needs to be enabled when any other
 # TLS flag is set. If set to false, insecure connection to gRPC server will be
 # used.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.tls-enabled
+# CLI flag: -<prefix>.tls-enabled
 [tls_enabled: <boolean> | default = false]
 
 # Path to the client certificate, which will be used for authenticating with the
 # server. Also requires the key path to be configured.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.tls-cert-path
+# CLI flag: -<prefix>.tls-cert-path
 [tls_cert_path: <string> | default = ""]
 
 # Path to the key for the client certificate. Also requires the client
 # certificate to be configured.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.tls-key-path
+# CLI flag: -<prefix>.tls-key-path
 [tls_key_path: <string> | default = ""]
 
 # Path to the CA certificates to validate server certificate against. If not
 # set, the host's root CA certificates are used.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.tls-ca-path
+# CLI flag: -<prefix>.tls-ca-path
 [tls_ca_path: <string> | default = ""]
 
 # Override the expected name on the server certificate.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.tls-server-name
+# CLI flag: -<prefix>.tls-server-name
 [tls_server_name: <string> | default = ""]
 
 # Skip validating server certificate.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.tls-insecure-skip-verify
+# CLI flag: -<prefix>.tls-insecure-skip-verify
 [tls_insecure_skip_verify: <boolean> | default = false]
 
 # Override the default cipher suite list (separated by commas). Allowed values:
@@ -2730,27 +2692,27 @@ backoff_config:
 # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
 # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
 # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.tls-cipher-suites
+# CLI flag: -<prefix>.tls-cipher-suites
 [tls_cipher_suites: <string> | default = ""]
 
 # Override the default minimum TLS version. Allowed values: VersionTLS10,
 # VersionTLS11, VersionTLS12, VersionTLS13
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.tls-min-version
+# CLI flag: -<prefix>.tls-min-version
 [tls_min_version: <string> | default = ""]
 
 # The maximum amount of time to establish a connection. A value of 0 means
 # default gRPC client connect timeout and backoff.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.connect-timeout
+# CLI flag: -<prefix>.connect-timeout
 [connect_timeout: <duration> | default = 5s]
 
 # Initial backoff delay after first connection failure. Only relevant if
 # ConnectTimeout > 0.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.connect-backoff-base-delay
+# CLI flag: -<prefix>.connect-backoff-base-delay
 [connect_backoff_base_delay: <duration> | default = 1s]
 
 # Maximum backoff delay when establishing a connection. Only relevant if
 # ConnectTimeout > 0.
-# CLI flag: -boltdb.shipper.index-gateway-client.grpc.connect-backoff-max-delay
+# CLI flag: -<prefix>.connect-backoff-max-delay
 [connect_backoff_max_delay: <duration> | default = 5s]
 ```
 
@@ -4602,7 +4564,7 @@ storage:
   [azure: <azure_storage_config>]
 
   # Configures backend rule storage for AlibabaCloud Object Storage (OSS).
-  # The CLI flags prefix for this block configuration is: ruler
+  # The CLI flags prefix for this block configuration is: ruler.storage
   [alibabacloud: <alibabacloud_storage_config>]
 
   # Configures backend rule storage for GCS.
@@ -5409,7 +5371,6 @@ The `storage_config` block configures one of many possible stores for both the i
 ```yaml
 # The alibabacloud_storage_config block configures the connection to Alibaba
 # Cloud Storage object storage backend.
-# The CLI flags prefix for this block configuration is: common
 [alibabacloud: <alibabacloud_storage_config>]
 
 # The aws_storage_config block configures the connection to dynamoDB and S3
@@ -5439,8 +5400,7 @@ bigtable:
 
   # The grpc_client block configures the gRPC client used to communicate between
   # a client and server component in Loki.
-  # The CLI flags prefix for this block configuration is:
-  # boltdb.shipper.index-gateway-client.grpc
+  # The CLI flags prefix for this block configuration is: bigtable
   [grpc_client_config: <grpc_client>]
 
   # If enabled, once a tables info is fetched, it is cached.
@@ -5734,7 +5694,7 @@ boltdb_shipper:
     # The grpc_client block configures the gRPC client used to communicate
     # between a client and server component in Loki.
     # The CLI flags prefix for this block configuration is:
-    # tsdb.shipper.index-gateway-client.grpc
+    # boltdb.shipper.index-gateway-client.grpc
     [grpc_client_config: <grpc_client>]
 
     # Hostname or IP of the Index Gateway gRPC server running in simple mode.
@@ -5789,7 +5749,7 @@ tsdb_shipper:
     # The grpc_client block configures the gRPC client used to communicate
     # between a client and server component in Loki.
     # The CLI flags prefix for this block configuration is:
-    # querier.frontend-grpc-client
+    # tsdb.shipper.index-gateway-client.grpc
     [grpc_client_config: <grpc_client>]
 
     # Hostname or IP of the Index Gateway gRPC server running in simple mode.

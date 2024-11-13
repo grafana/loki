@@ -209,6 +209,8 @@ func buildResponses(query seriesindex.Query, batch seriesindex.ReadBatchResult, 
 
 func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequest) (result *logproto.GetChunkRefResponse, err error) {
 	logger := util_log.WithContext(ctx, g.log)
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "indexgateway.GetChunkRef")
+	defer sp.Finish()
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -225,16 +227,12 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 		return nil, err
 	}
 
-	series := make(map[uint64]labels.Labels)
 	result = &logproto.GetChunkRefResponse{
 		Refs: make([]*logproto.ChunkRef, 0, len(chunks)),
 	}
 	for _, cs := range chunks {
 		for i := range cs {
 			result.Refs = append(result.Refs, &cs[i].ChunkRef)
-			if _, ok := series[cs[i].Fingerprint]; !ok {
-				series[cs[i].Fingerprint] = cs[i].Metric
-			}
 		}
 	}
 
@@ -261,10 +259,22 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 		return result, nil
 	}
 
-	chunkRefs, used, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, series, result.Refs, req.Plan)
+	// Doing a "duplicate" index lookup is not ideal,
+	// however, modifying the GetChunkRef() response, which contains the logproto.ChunkRef is neither.
+	start := time.Now()
+	series, err := g.indexQuerier.GetSeries(ctx, instanceID, req.From, req.Through, matchers...)
+	seriesMap := make(map[uint64]labels.Labels, len(series))
+	for _, s := range series {
+		seriesMap[s.Hash()] = s
+	}
+	sp.LogKV("msg", "indexQuerier.GetSeries", "duration", time.Since(start), "count", len(series))
+
+	start = time.Now()
+	chunkRefs, used, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, seriesMap, result.Refs, req.Plan)
 	if err != nil {
 		return nil, err
 	}
+	sp.LogKV("msg", "bloomQuerier.FilterChunkRefs", "duration", time.Since(start))
 
 	result.Refs = chunkRefs
 	level.Info(logger).Log("msg", "return filtered chunk refs", "unfiltered", initialChunkCount, "filtered", len(result.Refs), "used_blooms", used)
