@@ -91,13 +91,13 @@ func (miq *FederatedQuerier) SelectLogs(ctx context.Context, params logql.Select
 	g, _ := errgroup.WithContext(ctx)
 	for idx := range miq.ingesterQueriers {
 		g.Go(func() error {
-			if i, err := miq.ingesterQueriers[idx].SelectLogs(ctx, params); err != nil {
+			i, err := miq.ingesterQueriers[idx].SelectLogs(ctx, params)
+			if err != nil {
 				return err
-			} else {
-				m.Lock()
-				iters = append(iters, i...)
-				m.Unlock()
 			}
+			m.Lock()
+			iters = append(iters, i...)
+			m.Unlock()
 			return nil
 		})
 	}
@@ -112,13 +112,13 @@ func (miq *FederatedQuerier) SelectSample(ctx context.Context, params logql.Sele
 	g, _ := errgroup.WithContext(ctx)
 	for idx := range miq.ingesterQueriers {
 		g.Go(func() error {
-			if i, err := miq.ingesterQueriers[idx].SelectSample(ctx, params); err != nil {
+			i, err := miq.ingesterQueriers[idx].SelectSample(ctx, params)
+			if err != nil {
 				return err
-			} else {
-				m.Lock()
-				iters = append(iters, i...)
-				m.Unlock()
 			}
+			m.Lock()
+			iters = append(iters, i...)
+			m.Unlock()
 			return nil
 		})
 	}
@@ -133,13 +133,13 @@ func (miq *FederatedQuerier) Label(ctx context.Context, req *logproto.LabelReque
 	g, _ := errgroup.WithContext(ctx)
 	for idx := range miq.ingesterQueriers {
 		g.Go(func() error {
-			if i, err := miq.ingesterQueriers[idx].Label(ctx, req); err != nil {
+			i, err := miq.ingesterQueriers[idx].Label(ctx, req)
+			if err != nil {
 				return err
-			} else {
-				m.Lock()
-				lbs = append(lbs, i...)
-				m.Unlock()
 			}
+			m.Lock()
+			lbs = append(lbs, i...)
+			m.Unlock()
 			return nil
 		})
 	}
@@ -154,15 +154,15 @@ func (miq *FederatedQuerier) Tail(ctx context.Context, req *logproto.TailRequest
 	g, _ := errgroup.WithContext(ctx)
 	for idx := range miq.ingesterQueriers {
 		g.Go(func() error {
-			if i, err := miq.ingesterQueriers[idx].Tail(ctx, req); err != nil {
+			i, err := miq.ingesterQueriers[idx].Tail(ctx, req)
+			if err != nil {
 				return err
-			} else {
-				m.Lock()
-				for k, v := range i {
-					tailClients[k] = v
-				}
-				m.Unlock()
 			}
+			m.Lock()
+			for k, v := range i {
+				tailClients[k] = v
+			}
+			m.Unlock()
 			return nil
 		})
 	}
@@ -177,15 +177,15 @@ func (miq *FederatedQuerier) TailDisconnectedIngesters(ctx context.Context, req 
 	g, _ := errgroup.WithContext(ctx)
 	for idx := range miq.ingesterQueriers {
 		g.Go(func() error {
-			if i, err := miq.ingesterQueriers[idx].TailDisconnectedIngesters(ctx, req, connectedIngestersAddr); err != nil {
+			i, err := miq.ingesterQueriers[idx].TailDisconnectedIngesters(ctx, req, connectedIngestersAddr)
+			if err != nil {
 				return err
-			} else {
-				m.Lock()
-				for k, v := range i {
-					tailClients[k] = v
-				}
-				m.Unlock()
 			}
+			m.Lock()
+			for k, v := range i {
+				tailClients[k] = v
+			}
+			m.Unlock()
 			return nil
 		})
 	}
@@ -200,13 +200,13 @@ func (miq *FederatedQuerier) Series(ctx context.Context, req *logproto.SeriesReq
 	g, _ := errgroup.WithContext(ctx)
 	for idx := range miq.ingesterQueriers {
 		g.Go(func() error {
-			if i, err := miq.ingesterQueriers[idx].Series(ctx, req); err != nil {
+			i, err := miq.ingesterQueriers[idx].Series(ctx, req)
+			if err != nil {
 				return err
-			} else {
-				m.Lock()
-				replicationSet = append(replicationSet, i...)
-				m.Unlock()
 			}
+			m.Lock()
+			replicationSet = append(replicationSet, i...)
+			m.Unlock()
 			return nil
 		})
 	}
@@ -221,13 +221,13 @@ func (miq *FederatedQuerier) TailersCount(ctx context.Context) ([]uint32, error)
 	g, _ := errgroup.WithContext(ctx)
 	for idx := range miq.ingesterQueriers {
 		g.Go(func() error {
-			if i, err := miq.ingesterQueriers[idx].TailersCount(ctx); err != nil {
+			i, err := miq.ingesterQueriers[idx].TailersCount(ctx)
+			if err != nil {
 				return err
-			} else {
-				m.Lock()
-				counts = append(counts, i...)
-				m.Unlock()
 			}
+			m.Lock()
+			counts = append(counts, i...)
+			m.Unlock()
 			return nil
 		})
 	}
@@ -242,13 +242,13 @@ func (miq *FederatedQuerier) GetChunkIDs(ctx context.Context, from, through mode
 	g, _ := errgroup.WithContext(ctx)
 	for idx := range miq.ingesterQueriers {
 		g.Go(func() error {
-			if i, err := miq.ingesterQueriers[idx].GetChunkIDs(ctx, from, through, matchers...); err != nil {
+			i, err := miq.ingesterQueriers[idx].GetChunkIDs(ctx, from, through, matchers...)
+			if err != nil {
 				return err
-			} else {
-				m.Lock()
-				chunkIDs = append(chunkIDs, i...)
-				m.Unlock()
 			}
+			m.Lock()
+			chunkIDs = append(chunkIDs, i...)
+			m.Unlock()
 			return nil
 		})
 	}
@@ -263,13 +263,13 @@ func (miq *FederatedQuerier) Stats(ctx context.Context, userID string, from, thr
 	g, _ := errgroup.WithContext(ctx)
 	for idx := range miq.ingesterQueriers {
 		g.Go(func() error {
-			if resp, err := miq.ingesterQueriers[idx].Stats(ctx, userID, from, through, matchers...); err != nil {
+			resp, err := miq.ingesterQueriers[idx].Stats(ctx, userID, from, through, matchers...)
+			if err != nil {
 				return err
-			} else {
-				m.Lock()
-				merged = index_stats.MergeStats(resp, &merged)
-				m.Unlock()
 			}
+			m.Lock()
+			merged = index_stats.MergeStats(resp, &merged)
+			m.Unlock()
 			return nil
 		})
 	}
@@ -284,13 +284,13 @@ func (miq *FederatedQuerier) Volume(ctx context.Context, userID string, from, th
 	g, _ := errgroup.WithContext(ctx)
 	for idx := range miq.ingesterQueriers {
 		g.Go(func() error {
-			if resp, err := miq.ingesterQueriers[idx].Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...); err != nil {
+			resp, err := miq.ingesterQueriers[idx].Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)
+			if err != nil {
 				return err
-			} else {
-				m.Lock()
-				merged = seriesvolume.Merge([]*logproto.VolumeResponse{merged, resp}, limit)
-				m.Unlock()
 			}
+			m.Lock()
+			merged = seriesvolume.Merge([]*logproto.VolumeResponse{merged, resp}, limit)
+			m.Unlock()
 			return nil
 		})
 	}
@@ -305,13 +305,13 @@ func (miq *FederatedQuerier) DetectedLabel(ctx context.Context, req *logproto.De
 	g, _ := errgroup.WithContext(ctx)
 	for idx := range miq.ingesterQueriers {
 		g.Go(func() error {
-			if i, err := miq.ingesterQueriers[idx].DetectedLabel(ctx, req); err != nil {
+			i, err := miq.ingesterQueriers[idx].DetectedLabel(ctx, req)
+			if err != nil {
 				return err
-			} else {
-				m.Lock()
-				rsp = miq.mergeLabelToValuesResponse(rsp, i)
-				m.Unlock()
 			}
+			m.Lock()
+			rsp = miq.mergeLabelToValuesResponse(rsp, i)
+			m.Unlock()
 			return nil
 		})
 	}
