@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
@@ -725,7 +726,7 @@ func createTasks(n int, resultsCh chan *protos.TaskResult) []*QueueTask {
 	for i := 0; i < n; i++ {
 		task := NewQueueTask(
 			context.Background(), time.Now(),
-			protos.NewTask(config.NewDayTable(plannertest.TestDay, "fake"), "fakeTenant", v1.NewBounds(0, 10), plannertest.TsdbID(1), nil),
+			protos.NewTask(config.NewDayTable(plannertest.TestDay, "fake"), "fakeTenant", v1.NewBounds(model.Fingerprint(i), model.Fingerprint(i+10)), plannertest.TsdbID(1), nil).ToProtoTask(),
 			resultsCh,
 		)
 		tasks = append(tasks, task)
