@@ -246,6 +246,7 @@ type organizedBufferedIterator struct {
 }
 
 func (e *organizedBufferedIterator) Next() bool {
+	var decompressedBytes, decompressedStructuredMetadataBytes int64
 	if !e.closed && e.reader == nil {
 		var err error
 
@@ -279,27 +280,39 @@ func (e *organizedBufferedIterator) Next() bool {
 
 	// todo (shantanu): need a better way to close the iterator instead of individually doing this.
 	ts, ok := e.nextTs()
+
 	if !ok {
 		e.Close()
 		return false
 	}
-	line, ok := e.nextLine()
+	// Add timestamp bytes
+	decompressedBytes += binary.MaxVarintLen64
+
+	line, ok, lineBytes := e.nextLine()
 	if !ok {
 		e.Close()
 		return false
 	}
-	structuredMetadata, _ := e.nextMetadata()
-	// there can be cases when there's no structured metadata?
-	// if !ok {
-	// 	e.Close()
-	// 	return false
-	// }
+	decompressedBytes += lineBytes
+
+	structuredMetadata, ok := e.nextMetadata()
+	if ok && len(e.smBuf) > 0 {
+		// Count the section length varint
+		decompressedStructuredMetadataBytes += binary.MaxVarintLen64
+		// Count the number of symbols varint
+		decompressedStructuredMetadataBytes += binary.MaxVarintLen64
+		// For each symbol we read both name and value as varints
+		decompressedStructuredMetadataBytes += int64(len(e.smBuf) * 2 * binary.MaxVarintLen64)
+
+		e.stats.AddDecompressedStructuredMetadataBytes(decompressedStructuredMetadataBytes)
+		decompressedBytes += decompressedStructuredMetadataBytes
+	}
 
 	e.currTs = ts
 	e.currLine = line
 	e.currStructuredMetadata = structuredMetadata
 
-	// todo(shantanu) Populate si.stats
+	e.stats.AddDecompressedBytes(decompressedBytes)
 	return true
 }
 
@@ -333,10 +346,11 @@ func (e *organizedBufferedIterator) nextTs() (ts int64, ok bool) {
 	return ts, true
 }
 
-func (e *organizedBufferedIterator) nextLine() ([]byte, bool) {
+func (e *organizedBufferedIterator) nextLine() ([]byte, bool, int64) {
 	if e.queryMetricsOnly {
-		return []byte{}, true
+		return []byte{}, true, 0
 	}
+	var decompressedBytes int64
 	var lw, lineSize, lastAttempt int
 
 	for lw == 0 {
@@ -344,14 +358,14 @@ func (e *organizedBufferedIterator) nextLine() ([]byte, bool) {
 		if err != nil {
 			if err != io.EOF {
 				e.err = err
-				return nil, false
+				return nil, false, 0
 			}
 			if e.readBufValid == 0 { // Got EOF and no data in the buffer.
-				return nil, false
+				return nil, false, 0
 			}
 			if e.readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
 				e.err = fmt.Errorf("invalid data in chunk")
-				return nil, false
+				return nil, false, 0
 			}
 
 		}
@@ -362,10 +376,12 @@ func (e *organizedBufferedIterator) nextLine() ([]byte, bool) {
 
 		lastAttempt = e.readBufValid
 	}
+	// line length varint
+	decompressedBytes += binary.MaxVarintLen64
 
 	if lineSize >= maxLineLength {
 		e.err = fmt.Errorf("line too long %d, max limit: %d", lineSize, maxLineLength)
-		return nil, false
+		return nil, false, 0
 	}
 
 	// if the buffer is small, we get a new one
@@ -376,7 +392,7 @@ func (e *organizedBufferedIterator) nextLine() ([]byte, bool) {
 		e.buf = BytesBufferPool.Get(lineSize).([]byte)
 		if lineSize > cap(e.buf) {
 			e.err = fmt.Errorf("could not get a line buffer of size %d, actual %d", lineSize, cap(e.buf))
-			return nil, false
+			return nil, false, 0
 		}
 	}
 
@@ -394,11 +410,13 @@ func (e *organizedBufferedIterator) nextLine() ([]byte, bool) {
 				continue
 			}
 			e.err = err
-			return nil, false
+			return nil, false, 0
 		}
 	}
 
-	return e.buf[:lineSize], true
+	decompressedBytes += int64(lineSize)
+	e.stats.AddDecompressedLines(1)
+	return e.buf[:lineSize], true, decompressedBytes
 }
 
 func (e *organizedBufferedIterator) nextMetadata() (labels.Labels, bool) {
