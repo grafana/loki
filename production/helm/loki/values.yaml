@@ -1161,6 +1161,8 @@ enterpriseGateway:
   affinity: {}
   # -- Node selector for gateway Pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for enterprise-gateway pods
+  topologySpreadConstraints: []
   # -- Tolerations for gateway Pods
   tolerations: []
   # -- Grace period to allow the gateway to shutdown before it is killed
@@ -1973,6 +1975,8 @@ distributor:
   maxSurge: 0
   # -- Node selector for distributor pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for distributor pods
+  topologySpreadConstraints: []
   # -- Tolerations for distributor pods
   tolerations: []
   # -- Adds the appProtocol field to the distributor service. This allows distributor to work with istio protocol selection.
@@ -2181,6 +2185,8 @@ queryFrontend:
   maxUnavailable: null
   # -- Node selector for query-frontend pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for query-frontend pods
+  topologySpreadConstraints: []
   # -- Tolerations for query-frontend pods
   tolerations: []
   # -- Adds the appProtocol field to the queryFrontend service. This allows queryFrontend to work with istio protocol selection.
@@ -2244,6 +2250,8 @@ queryScheduler:
   maxUnavailable: 1
   # -- Node selector for query-scheduler pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for query-scheduler pods
+  topologySpreadConstraints: []
   # -- Tolerations for query-scheduler pods
   tolerations: []
   # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
@@ -2308,6 +2316,8 @@ indexGateway:
   maxUnavailable: null
   # -- Node selector for index-gateway pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for index-gateway pods
+  topologySpreadConstraints: []
   # -- Tolerations for index-gateway pods
   tolerations: []
   persistence:
@@ -2796,6 +2806,8 @@ patternIngester:
   terminationGracePeriodSeconds: 30
   # -- Node selector for pattern ingester pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for pattern ingester pods
+  topologySpreadConstraints: []
   # -- Tolerations for pattern ingester pods
   tolerations: []
   # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
@@ -2904,6 +2916,8 @@ ruler:
   maxUnavailable: null
   # -- Node selector for ruler pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for ruler pods
+  topologySpreadConstraints: []
   # -- Tolerations for ruler pods
   tolerations: []
   # -- DNSConfig for ruler pods
