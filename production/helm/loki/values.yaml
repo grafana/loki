@@ -76,6 +76,7 @@ loki:
   # -- The SecurityContext for Loki pods
   podSecurityContext:
     fsGroup: 10001
+    fsGroupChangePolicy: OnRootMismatch
     runAsGroup: 10001
     runAsNonRoot: true
     runAsUser: 10001
@@ -561,6 +562,7 @@ enterprise:
       runAsGroup: 10001
       runAsUser: 10001
       fsGroup: 10001
+      fsGroupChangePolicy: OnRootMismatch
     # -- Environment variables from secrets or configmaps to add to the tokengen pods
     extraEnvFrom: []
     # -- The name of the PriorityClass for tokengen Pods
@@ -598,6 +600,7 @@ enterprise:
       runAsGroup: 10001
       runAsUser: 10001
       fsGroup: 10001
+      fsGroupChangePolicy: OnRootMismatch
     # -- Provisioner image to Utilize
     image:
       # -- The Docker registry
@@ -964,6 +967,7 @@ gateway:
   # -- The SecurityContext for gateway containers
   podSecurityContext:
     fsGroup: 101
+    fsGroupChangePolicy: OnRootMismatch
     runAsGroup: 101
     runAsNonRoot: true
     runAsUser: 101
@@ -1127,6 +1131,7 @@ enterpriseGateway:
     runAsGroup: 10001
     runAsUser: 10001
     fsGroup: 10001
+    fsGroupChangePolicy: OnRootMismatch
   containerSecurityContext:
     readOnlyRootFilesystem: true
     capabilities:
@@ -3252,10 +3257,12 @@ rollout_operator:
   # rollout_operator:
   #   podSecurityContext:
   #     fsGroup: null
+  #     fsGroupChangePolicy: null
   #     runAsGroup: null
   #     runAsUser: null
   podSecurityContext:
     fsGroup: 10001
+    fsGroupChangePolicy: OnRootMismatch
     runAsGroup: 10001
     runAsNonRoot: true
     runAsUser: 10001
