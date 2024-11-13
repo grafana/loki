@@ -90,7 +90,6 @@ func (miq *FederatedQuerier) SelectLogs(ctx context.Context, params logql.Select
 	)
 	g, _ := errgroup.WithContext(ctx)
 	for idx := range miq.ingesterQueriers {
-		idx := idx
 		g.Go(func() error {
 			if i, err := miq.ingesterQueriers[idx].SelectLogs(ctx, params); err != nil {
 				return err
@@ -112,7 +111,6 @@ func (miq *FederatedQuerier) SelectSample(ctx context.Context, params logql.Sele
 	)
 	g, _ := errgroup.WithContext(ctx)
 	for idx := range miq.ingesterQueriers {
-		idx := idx
 		g.Go(func() error {
 			if i, err := miq.ingesterQueriers[idx].SelectSample(ctx, params); err != nil {
 				return err
@@ -134,7 +132,6 @@ func (miq *FederatedQuerier) Label(ctx context.Context, req *logproto.LabelReque
 	)
 	g, _ := errgroup.WithContext(ctx)
 	for idx := range miq.ingesterQueriers {
-		idx := idx
 		g.Go(func() error {
 			if i, err := miq.ingesterQueriers[idx].Label(ctx, req); err != nil {
 				return err
@@ -156,7 +153,6 @@ func (miq *FederatedQuerier) Tail(ctx context.Context, req *logproto.TailRequest
 	)
 	g, _ := errgroup.WithContext(ctx)
 	for idx := range miq.ingesterQueriers {
-		idx := idx
 		g.Go(func() error {
 			if i, err := miq.ingesterQueriers[idx].Tail(ctx, req); err != nil {
 				return err
@@ -180,7 +176,6 @@ func (miq *FederatedQuerier) TailDisconnectedIngesters(ctx context.Context, req 
 	)
 	g, _ := errgroup.WithContext(ctx)
 	for idx := range miq.ingesterQueriers {
-		idx := idx
 		g.Go(func() error {
 			if i, err := miq.ingesterQueriers[idx].TailDisconnectedIngesters(ctx, req, connectedIngestersAddr); err != nil {
 				return err
@@ -204,7 +199,6 @@ func (miq *FederatedQuerier) Series(ctx context.Context, req *logproto.SeriesReq
 	)
 	g, _ := errgroup.WithContext(ctx)
 	for idx := range miq.ingesterQueriers {
-		idx := idx
 		g.Go(func() error {
 			if i, err := miq.ingesterQueriers[idx].Series(ctx, req); err != nil {
 				return err
@@ -226,7 +220,6 @@ func (miq *FederatedQuerier) TailersCount(ctx context.Context) ([]uint32, error)
 	)
 	g, _ := errgroup.WithContext(ctx)
 	for idx := range miq.ingesterQueriers {
-		idx := idx
 		g.Go(func() error {
 			if i, err := miq.ingesterQueriers[idx].TailersCount(ctx); err != nil {
 				return err
@@ -248,7 +241,6 @@ func (miq *FederatedQuerier) GetChunkIDs(ctx context.Context, from, through mode
 	)
 	g, _ := errgroup.WithContext(ctx)
 	for idx := range miq.ingesterQueriers {
-		idx := idx
 		g.Go(func() error {
 			if i, err := miq.ingesterQueriers[idx].GetChunkIDs(ctx, from, through, matchers...); err != nil {
 				return err
@@ -270,7 +262,6 @@ func (miq *FederatedQuerier) Stats(ctx context.Context, userID string, from, thr
 	)
 	g, _ := errgroup.WithContext(ctx)
 	for idx := range miq.ingesterQueriers {
-		idx := idx
 		g.Go(func() error {
 			if resp, err := miq.ingesterQueriers[idx].Stats(ctx, userID, from, through, matchers...); err != nil {
 				return err
@@ -292,7 +283,6 @@ func (miq *FederatedQuerier) Volume(ctx context.Context, userID string, from, th
 	)
 	g, _ := errgroup.WithContext(ctx)
 	for idx := range miq.ingesterQueriers {
-		idx := idx
 		g.Go(func() error {
 			if resp, err := miq.ingesterQueriers[idx].Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...); err != nil {
 				return err
@@ -314,7 +304,6 @@ func (miq *FederatedQuerier) DetectedLabel(ctx context.Context, req *logproto.De
 	)
 	g, _ := errgroup.WithContext(ctx)
 	for idx := range miq.ingesterQueriers {
-		idx := idx
 		g.Go(func() error {
 			if i, err := miq.ingesterQueriers[idx].DetectedLabel(ctx, req); err != nil {
 				return err
@@ -369,7 +358,6 @@ func (miq *FederatedQuerier) ServeHTTP(w http.ResponseWriter, req *http.Request)
 	)
 	g, _ := errgroup.WithContext(req.Context())
 	for _, r := range miq.ring {
-		r := r
 		g.Go(func() error {
 			rs, err := r.GetAllHealthy(ring.Read)
 			if err != nil {
