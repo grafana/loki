@@ -41,7 +41,7 @@ spec:
         {{- end }}
         app.kubernetes.io/part-of: memberlist
     spec:
-      {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.GitVersion }}
+      {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.Version }}
       {{- with .Values.queryScheduler.topologySpreadConstraints }}
       topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
