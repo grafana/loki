@@ -892,6 +892,10 @@ func (t *Loki) updateConfigForShipperStore() {
 		t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
 		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
 
+	case t.Cfg.isTarget(BlockBuilder):
+		// Blockbuilder handles index creation independently of the shipper.
+		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeDisabled
+
 	default:
 		// All other targets use the shipper store in RW mode
 		t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadWrite
@@ -1800,6 +1804,7 @@ func (t *Loki) initBlockBuilder() (services.Service, error) {
 
 	reader, err := blockbuilder.NewPartitionReader(
 		t.Cfg.KafkaConfig,
+		t.Cfg.BlockBuilder.Backoff,
 		ingestPartitionID,
 		id,
 		logger,
