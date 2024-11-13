@@ -102,7 +102,7 @@ func NewQueue(
 }
 
 func (q *Queue) starting(ctx context.Context) error {
-	// TODO(salvacorts): We can recover the queue from the disk here.
+	// TODO(salvacorts): We do not recover the queue from the disk yet.
 	// Until then, we just remove all the files in the directory so the disk
 	// doesn't grow indefinitely.
 	if q.cfg.StoreTasksOnDisk && q.cfg.CleanTasksDirectory {
