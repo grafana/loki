@@ -6,11 +6,13 @@ package objstore
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -70,8 +72,19 @@ type InstrumentedBucket interface {
 type BucketReader interface {
 	// Iter calls f for each entry in the given directory (not recursive.). The argument to f is the full
 	// object name including the prefix of the inspected directory.
+
 	// Entries are passed to function in sorted order.
-	Iter(ctx context.Context, dir string, f func(string) error, options ...IterOption) error
+	Iter(ctx context.Context, dir string, f func(name string) error, options ...IterOption) error
+
+	// IterWithAttributes calls f for each entry in the given directory similar to Iter.
+	// In addition to Name, it also includes requested object attributes in the argument to f.
+	//
+	// Attributes can be requested using IterOption.
+	// Not all IterOptions are supported by all providers, requesting for an unsupported option will fail with ErrOptionNotSupported.
+	IterWithAttributes(ctx context.Context, dir string, f func(attrs IterObjectAttributes) error, options ...IterOption) error
+
+	// SupportedIterOptions returns a list of supported IterOptions by the underlying provider.
+	SupportedIterOptions() []IterOptionType
 
 	// Get returns a reader for the given object name.
 	Get(ctx context.Context, name string) (io.ReadCloser, error)
@@ -101,24 +114,66 @@ type InstrumentedBucketReader interface {
 	ReaderWithExpectedErrs(IsOpFailureExpectedFunc) BucketReader
 }
 
+var ErrOptionNotSupported = errors.New("iter option is not supported")
+
+// IterOptionType is used for type-safe option support checking.
+type IterOptionType int
+
+const (
+	Recursive IterOptionType = iota
+	UpdatedAt
+)
+
 // IterOption configures the provided params.
-type IterOption func(params *IterParams)
+type IterOption struct {
+	Type  IterOptionType
+	Apply func(params *IterParams)
+}
 
 // WithRecursiveIter is an option that can be applied to Iter() to recursively list objects
 // in the bucket.
-func WithRecursiveIter(params *IterParams) {
-	params.Recursive = true
+func WithRecursiveIter() IterOption {
+	return IterOption{
+		Type: Recursive,
+		Apply: func(params *IterParams) {
+			params.Recursive = true
+		},
+	}
+}
+
+// WithUpdatedAt is an option that can be applied to Iter() to
+// include the last modified time in the attributes.
+// NB: Prefixes may not report last modified time.
+// This option is currently supported for the azure, s3, bos, gcs and filesystem providers.
+func WithUpdatedAt() IterOption {
+	return IterOption{
+		Type: UpdatedAt,
+		Apply: func(params *IterParams) {
+			params.LastModified = true
+		},
+	}
 }
 
 // IterParams holds the Iter() parameters and is used by objstore clients implementations.
 type IterParams struct {
-	Recursive bool
+	Recursive    bool
+	LastModified bool
+}
+
+func ValidateIterOptions(supportedOptions []IterOptionType, options ...IterOption) error {
+	for _, opt := range options {
+		if !slices.Contains(supportedOptions, opt.Type) {
+			return fmt.Errorf("%w: %v", ErrOptionNotSupported, opt.Type)
+		}
+	}
+
+	return nil
 }
 
 func ApplyIterOptions(options ...IterOption) IterParams {
 	out := IterParams{}
 	for _, opt := range options {
-		opt(&out)
+		opt.Apply(&out)
 	}
 	return out
 }
@@ -189,6 +244,20 @@ type ObjectAttributes struct {
 	LastModified time.Time `json:"last_modified"`
 }
 
+type IterObjectAttributes struct {
+	Name         string
+	lastModified time.Time
+}
+
+func (i *IterObjectAttributes) SetLastModified(t time.Time) {
+	i.lastModified = t
+}
+
+// LastModified returns the timestamp the object was last modified. Returns false if the timestamp is not available.
+func (i *IterObjectAttributes) LastModified() (time.Time, bool) {
+	return i.lastModified, !i.lastModified.IsZero()
+}
+
 // TryToGetSize tries to get upfront size from reader.
 // Some implementations may return only size of unread data in the reader, so it's best to call this method before
 // doing any reading.
@@ -211,6 +280,8 @@ func TryToGetSize(r io.Reader) (int64, error) {
 		return f.Size(), nil
 	case ObjectSizer:
 		return f.ObjectSize()
+	case *io.LimitedReader:
+		return f.N, nil
 	}
 	return 0, errors.Errorf("unsupported type of io.Reader: %T", r)
 }
@@ -531,19 +602,41 @@ func (b *metricBucket) ReaderWithExpectedErrs(fn IsOpFailureExpectedFunc) Bucket
 	return b.WithExpectedErrs(fn)
 }
 
-func (b *metricBucket) Iter(ctx context.Context, dir string, f func(name string) error, options ...IterOption) error {
+func (b *metricBucket) Iter(ctx context.Context, dir string, f func(string) error, options ...IterOption) error {
 	const op = OpIter
 	b.metrics.ops.WithLabelValues(op).Inc()
 
-	start := time.Now()
+	timer := prometheus.NewTimer(b.metrics.opsDuration.WithLabelValues(op))
+	defer timer.ObserveDuration()
+
 	err := b.bkt.Iter(ctx, dir, f, options...)
 	if err != nil {
 		if !b.metrics.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
 			b.metrics.opsFailures.WithLabelValues(op).Inc()
 		}
 	}
-	b.metrics.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
 	return err
+}
+
+func (b *metricBucket) IterWithAttributes(ctx context.Context, dir string, f func(IterObjectAttributes) error, options ...IterOption) error {
+	const op = OpIter
+	b.metrics.ops.WithLabelValues(op).Inc()
+
+	timer := prometheus.NewTimer(b.metrics.opsDuration.WithLabelValues(op))
+	defer timer.ObserveDuration()
+
+	err := b.bkt.IterWithAttributes(ctx, dir, f, options...)
+	if err != nil {
+		if !b.metrics.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
+			b.metrics.opsFailures.WithLabelValues(op).Inc()
+		}
+	}
+
+	return err
+}
+
+func (b *metricBucket) SupportedIterOptions() []IterOptionType {
+	return b.bkt.SupportedIterOptions()
 }
 
 func (b *metricBucket) Attributes(ctx context.Context, name string) (ObjectAttributes, error) {

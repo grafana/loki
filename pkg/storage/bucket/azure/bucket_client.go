@@ -22,16 +22,12 @@ func newBucketClient(cfg Config, name string, logger log.Logger, factory func(lo
 	bucketConfig.ContainerName = cfg.ContainerName
 	bucketConfig.MaxRetries = cfg.MaxRetries
 	bucketConfig.UserAssignedID = cfg.UserAssignedID
+	bucketConfig.HTTPConfig.Transport = cfg.Transport
 
 	if cfg.Endpoint != "" {
 		// azure.DefaultConfig has the default Endpoint, overwrite it only if a different one was explicitly provided.
 		bucketConfig.Endpoint = cfg.Endpoint
 	}
 
-	return factory(logger, bucketConfig, name, func(rt http.RoundTripper) http.RoundTripper {
-		if cfg.Transport != nil {
-			rt = cfg.Transport
-		}
-		return rt
-	})
+	return factory(logger, bucketConfig, name, nil)
 }
