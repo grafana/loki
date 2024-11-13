@@ -1218,9 +1218,9 @@ planner:
 
   # Oldest day-table offset (from today, inclusive) to build blooms for. 1 till
   # yesterday, 2 till day before yesterday and so on. This can be used to lower
-  # cost by not trying to compact older data which doesn't change. This can be
-  # optimized by aligning it with the maximum `reject_old_samples_max_age`
-  # setting of any tenant.
+  # cost by not trying to build blooms for older data which doesn't change. This
+  # can be optimized by aligning it with the maximum
+  # `reject_old_samples_max_age` setting of any tenant.
   # CLI flag: -bloom-build.planner.max-table-offset
   [max_table_offset: <int> | default = 1]
 

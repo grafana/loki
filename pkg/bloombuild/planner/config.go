@@ -28,7 +28,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	// In order to have this done dynamically, we'd need to account for tenant specific overrides, which are also
 	// dynamically reloaded.
 	// I'm doing it the simple way for now.
-	f.IntVar(&cfg.MaxTableOffset, prefix+".max-table-offset", 1, "Oldest day-table offset (from today, inclusive) to compact. 1 till yesterday, 2 till day before yesterday and so on. This can be used to lower cost by not trying to compact older data which doesn't change. This can be optimized by aligning it with the maximum `reject_old_samples_max_age` setting of any tenant.")
+	f.IntVar(&cfg.MaxTableOffset, prefix+".max-table-offset", 1, "Oldest day-table offset (from today, inclusive) to build blooms for. 1 till yesterday, 2 till day before yesterday and so on. This can be used to lower cost by not trying to build blooms for older data which doesn't change. This can be optimized by aligning it with the maximum `reject_old_samples_max_age` setting of any tenant.")
 	cfg.RetentionConfig.RegisterFlagsWithPrefix(prefix+".retention", f)
 	cfg.Queue.RegisterFlagsWithPrefix(prefix+".queue", f)
 }
