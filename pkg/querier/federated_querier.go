@@ -8,22 +8,24 @@ import (
 	"sync"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/v3/pkg/storage"
-	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
-	index_stats "github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
-
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+	"golang.org/x/exp/slices"
+	"golang.org/x/sync/errgroup"
+
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	index_stats "github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
-	"golang.org/x/sync/errgroup"
 )
 
 type FederatedQueryConfig struct {
@@ -83,8 +85,8 @@ func (miq *FederatedQuerier) GetSubServices() *services.Manager {
 
 func (miq *FederatedQuerier) SelectLogs(ctx context.Context, params logql.SelectLogParams) ([]iter.EntryIterator, error) {
 	var (
-		m    sync.Mutex
-		iter []iter.EntryIterator
+		m     sync.Mutex
+		iters []iter.EntryIterator
 	)
 	g, _ := errgroup.WithContext(ctx)
 	for idx := range miq.ingesterQueriers {
@@ -94,19 +96,19 @@ func (miq *FederatedQuerier) SelectLogs(ctx context.Context, params logql.Select
 				return err
 			} else {
 				m.Lock()
-				iter = append(iter, i...)
+				iters = append(iters, i...)
 				m.Unlock()
 			}
 			return nil
 		})
 	}
-	return iter, g.Wait()
+	return iters, g.Wait()
 }
 
 func (miq *FederatedQuerier) SelectSample(ctx context.Context, params logql.SelectSampleParams) ([]iter.SampleIterator, error) {
 	var (
-		m    sync.Mutex
-		iter []iter.SampleIterator
+		m     sync.Mutex
+		iters []iter.SampleIterator
 	)
 	g, _ := errgroup.WithContext(ctx)
 	for idx := range miq.ingesterQueriers {
@@ -116,19 +118,19 @@ func (miq *FederatedQuerier) SelectSample(ctx context.Context, params logql.Sele
 				return err
 			} else {
 				m.Lock()
-				iter = append(iter, i...)
+				iters = append(iters, i...)
 				m.Unlock()
 			}
 			return nil
 		})
 	}
-	return iter, g.Wait()
+	return iters, g.Wait()
 }
 
 func (miq *FederatedQuerier) Label(ctx context.Context, req *logproto.LabelRequest) ([][]string, error) {
 	var (
-		m    sync.Mutex
-		iter [][]string
+		m   sync.Mutex
+		lbs [][]string
 	)
 	g, _ := errgroup.WithContext(ctx)
 	for idx := range miq.ingesterQueriers {
@@ -138,13 +140,13 @@ func (miq *FederatedQuerier) Label(ctx context.Context, req *logproto.LabelReque
 				return err
 			} else {
 				m.Lock()
-				iter = append(iter, i...)
+				lbs = append(lbs, i...)
 				m.Unlock()
 			}
 			return nil
 		})
 	}
-	return iter, g.Wait()
+	return lbs, g.Wait()
 }
 
 func (miq *FederatedQuerier) Tail(ctx context.Context, req *logproto.TailRequest) (map[string]logproto.Querier_TailClient, error) {
@@ -307,8 +309,8 @@ func (miq *FederatedQuerier) Volume(ctx context.Context, userID string, from, th
 
 func (miq *FederatedQuerier) DetectedLabel(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.LabelToValuesResponse, error) {
 	var (
-		m    sync.Mutex
-		iter *logproto.LabelToValuesResponse
+		m   sync.Mutex
+		rsp *logproto.LabelToValuesResponse
 	)
 	g, _ := errgroup.WithContext(ctx)
 	for idx := range miq.ingesterQueriers {
@@ -318,16 +320,46 @@ func (miq *FederatedQuerier) DetectedLabel(ctx context.Context, req *logproto.De
 				return err
 			} else {
 				m.Lock()
-				// TODO: implement MergeLabelToValuesResponse
-				iter = i
-				//iter = logproto.MergeLabelToValuesResponse(iter, i)
+				rsp = miq.mergeLabelToValuesResponse(rsp, i)
 				m.Unlock()
 			}
 			return nil
 		})
 	}
-	return iter, g.Wait()
+	return rsp, g.Wait()
 
+}
+
+func (miq *FederatedQuerier) mergeLabelToValuesResponse(a, b *logproto.LabelToValuesResponse) *logproto.LabelToValuesResponse {
+	labelMap := make(map[string][]string)
+	for _, rsp := range []*logproto.LabelToValuesResponse{a, b} {
+		if rsp == nil {
+			continue
+		}
+
+		for label, values := range rsp.Labels {
+			var combinedValues []string
+			allValues, isLabelPresent := labelMap[label]
+			if isLabelPresent {
+				combinedValues = append(allValues, values.Values...)
+			} else {
+				combinedValues = values.Values
+			}
+			labelMap[label] = combinedValues
+		}
+	}
+
+	// Dedupe all ingester values
+	mergedResult := make(map[string]*logproto.UniqueLabelValues)
+	for label, val := range labelMap {
+		slices.Sort(val)
+		uniqueValues := slices.Compact(val)
+
+		mergedResult[label] = &logproto.UniqueLabelValues{
+			Values: uniqueValues,
+		}
+	}
+	return &logproto.LabelToValuesResponse{Labels: mergedResult}
 }
 
 func (miq *FederatedQuerier) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -353,9 +385,15 @@ func (miq *FederatedQuerier) ServeHTTP(w http.ResponseWriter, req *http.Request)
 	}
 	if err := g.Wait(); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(err.Error()))
+		_, err = w.Write([]byte(err.Error()))
+		if err != nil {
+			_ = level.Error(util_log.Logger).Log("msg", "failed to write response", "err", err)
+		}
 		return
 	}
 	body, _ := json.Marshal(rss)
-	w.Write(body)
+	_, err := w.Write(body)
+	if err != nil {
+		_ = level.Error(util_log.Logger).Log("msg", "failed to write response", "err", err)
+	}
 }
