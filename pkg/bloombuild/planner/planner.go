@@ -654,7 +654,7 @@ func (p *Planner) loadTenantTables(
 
 		// If this is the first this we see this table, initialize the map
 		if tenantTables[table] == nil {
-			tenantTables[table] = make([]string, tenants.Remaining())
+			tenantTables[table] = make([]string, 0, tenants.Remaining())
 		}
 
 		for tenants.Next() && tenants.Err() == nil && ctx.Err() == nil {
