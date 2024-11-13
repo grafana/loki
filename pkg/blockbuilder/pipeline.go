@@ -83,7 +83,11 @@ func (p *pipeline) Run() error {
 			var errs multierror.MultiError
 			errs.Add(s.grp.Wait())
 			if s.cleanup != nil {
-				errs.Add(s.cleanup(s.ctx))
+				// NB: we use the pipeline's context for the cleanup call b/c
+				// the stage's context is cancelled once `Wait` returns.
+				// That's ok. cleanup is always called for a relevant stage
+				// and just needs to know if _other_ stages failed at this point
+				errs.Add(s.cleanup(p.ctx))
 			}
 
 			return errs.Err()
