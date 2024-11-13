@@ -227,9 +227,6 @@ var (
 	DefaultExemplarsConfig = ExemplarsConfig{
 		MaxExemplars: 100000,
 	}
-
-	// DefaultOTLPConfig is the default OTLP configuration.
-	DefaultOTLPConfig = OTLPConfig{}
 )
 
 // Config is the top-level configuration for Prometheus's config files.
@@ -245,7 +242,6 @@ type Config struct {
 
 	RemoteWriteConfigs []*RemoteWriteConfig `yaml:"remote_write,omitempty"`
 	RemoteReadConfigs  []*RemoteReadConfig  `yaml:"remote_read,omitempty"`
-	OTLPConfig         OTLPConfig           `yaml:"otlp,omitempty"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -1089,8 +1085,9 @@ func (m RemoteWriteProtoMsgs) String() string {
 }
 
 var (
-	// RemoteWriteProtoMsgV1 represents the deprecated `prometheus.WriteRequest` protobuf
-	// message introduced in the https://prometheus.io/docs/specs/remote_write_spec/.
+	// RemoteWriteProtoMsgV1 represents the `prometheus.WriteRequest` protobuf
+	// message introduced in the https://prometheus.io/docs/specs/remote_write_spec/,
+	// which will eventually be deprecated.
 	//
 	// NOTE: This string is used for both HTTP header values and config value, so don't change
 	// this reference.
@@ -1307,36 +1304,4 @@ func getGoGCEnv() int {
 		}
 	}
 	return DefaultRuntimeConfig.GoGC
-}
-
-// OTLPConfig is the configuration for writing to the OTLP endpoint.
-type OTLPConfig struct {
-	PromoteResourceAttributes []string `yaml:"promote_resource_attributes,omitempty"`
-}
-
-// UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (c *OTLPConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	*c = DefaultOTLPConfig
-	type plain OTLPConfig
-	if err := unmarshal((*plain)(c)); err != nil {
-		return err
-	}
-
-	seen := map[string]struct{}{}
-	var err error
-	for i, attr := range c.PromoteResourceAttributes {
-		attr = strings.TrimSpace(attr)
-		if attr == "" {
-			err = errors.Join(err, fmt.Errorf("empty promoted OTel resource attribute"))
-			continue
-		}
-		if _, exists := seen[attr]; exists {
-			err = errors.Join(err, fmt.Errorf("duplicated promoted OTel resource attribute %q", attr))
-			continue
-		}
-
-		seen[attr] = struct{}{}
-		c.PromoteResourceAttributes[i] = attr
-	}
-	return err
 }

@@ -188,10 +188,13 @@ func (e *TimeEncoder) UnmarshalText(text []byte) error {
 
 // UnmarshalYAML unmarshals YAML to a TimeEncoder.
 // If value is an object with a "layout" field, it will be unmarshaled to  TimeEncoder with given layout.
-//     timeEncoder:
-//       layout: 06/01/02 03:04pm
+//
+//	timeEncoder:
+//	  layout: 06/01/02 03:04pm
+//
 // If value is string, it uses UnmarshalText.
-//     timeEncoder: iso8601
+//
+//	timeEncoder: iso8601
 func (e *TimeEncoder) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var o struct {
 		Layout string `json:"layout" yaml:"layout"`

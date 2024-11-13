@@ -3,6 +3,59 @@ All notable changes to this project will be documented in this file.
 
 This project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## 1.24.0 (30 Nov 2022)
+
+Enhancements:
+* [#1148][]: Add `Level` to both `Logger` and `SugaredLogger` that reports the
+  current minimum enabled log level.
+* [#1185][]: `SugaredLogger` turns errors to zap.Error automatically.
+
+Thanks to @Abirdcfly, @craigpastro, @nnnkkk7, and @sashamelentyev for their
+contributions to this release.
+
+[#1148]: https://github.coml/uber-go/zap/pull/1148
+[#1185]: https://github.coml/uber-go/zap/pull/1185
+
+## 1.23.0 (24 Aug 2022)
+
+Enhancements:
+* [#1147][]: Add a `zapcore.LevelOf` function to determine the level of a
+  `LevelEnabler` or `Core`.
+* [#1155][]: Add `zap.Stringers` field constructor to log arrays of objects
+  that implement `String() string`.
+
+[#1147]: https://github.com/uber-go/zap/pull/1147
+[#1155]: https://github.com/uber-go/zap/pull/1155
+
+
+## 1.22.0 (8 Aug 2022)
+
+Enhancements:
+* [#1071][]: Add `zap.Objects` and `zap.ObjectValues` field constructors to log
+  arrays of objects. With these two constructors, you don't need to implement
+  `zapcore.ArrayMarshaler` for use with `zap.Array` if those objects implement
+  `zapcore.ObjectMarshaler`.
+* [#1079][]: Add `SugaredLogger.WithOptions` to build a copy of an existing
+  `SugaredLogger` with the provided options applied.
+* [#1080][]: Add `*ln` variants to `SugaredLogger` for each log level.
+  These functions provide a string joining behavior similar to `fmt.Println`.
+* [#1088][]: Add `zap.WithFatalHook` option to control the behavior of the
+  logger for `Fatal`-level log entries. This defaults to exiting the program.
+* [#1108][]: Add a `zap.Must` function that you can use with `NewProduction` or
+  `NewDevelopment` to panic if the system was unable to build the logger.
+* [#1118][]: Add a `Logger.Log` method that allows specifying the log level for
+  a statement dynamically.
+
+Thanks to @cardil, @craigpastro, @sashamelentyev, @shota3506, and @zhupeijun
+for their contributions to this release.
+
+[#1071]: https://github.com/uber-go/zap/pull/1071
+[#1079]: https://github.com/uber-go/zap/pull/1079
+[#1080]: https://github.com/uber-go/zap/pull/1080
+[#1088]: https://github.com/uber-go/zap/pull/1088
+[#1108]: https://github.com/uber-go/zap/pull/1108
+[#1118]: https://github.com/uber-go/zap/pull/1118
+
 ## 1.21.0 (7 Feb 2022)
 
 Enhancements:

@@ -154,7 +154,7 @@ func newStackFormatter(b *buffer.Buffer) stackFormatter {
 // the final runtime.main/runtime.goexit frame.
 func (sf *stackFormatter) FormatStack(stack *stacktrace) {
 	// Note: On the last iteration, frames.Next() returns false, with a valid
-	// frame, but we ignore this frame. The last frame is a a runtime frame which
+	// frame, but we ignore this frame. The last frame is a runtime frame which
 	// adds noise, since it's only either runtime.main or runtime.goexit.
 	for frame, more := stack.Next(); more; frame, more = stack.Next() {
 		sf.FormatFrame(frame)

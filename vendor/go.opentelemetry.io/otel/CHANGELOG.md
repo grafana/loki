@@ -11,6 +11,25 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 <!-- Released section -->
 <!-- Don't change this section unless doing release -->
 
+## [1.30.0/0.52.0/0.6.0/0.0.9] 2024-09-09
+
+### Added
+
+- Support `OTEL_EXPORTER_OTLP_LOGS_INSECURE` and `OTEL_EXPORTER_OTLP_INSECURE` environments in `go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc`. (#5739)
+- The `WithResource` option for `NewMeterProvider` now merges the provided resources with the ones from environment variables. (#5773)
+- The `WithResource` option for `NewLoggerProvider` now merges the provided resources with the ones from environment variables. (#5773)
+- Add UTF-8 support to `go.opentelemetry.io/otel/exporters/prometheus`. (#5755)
+
+### Fixed
+
+- Fix memory leak in the global `MeterProvider` when identical instruments are repeatedly created. (#5754)
+- Fix panic on instruments creation when setting meter provider. (#5758)
+- Fix an issue where `SetMeterProvider` in `go.opentelemetry.io/otel` might miss the delegation for instruments and registries. (#5780)
+
+### Removed
+
+- Drop support for [Go 1.21]. (#5736, #5740, #5800)
+
 ## [1.29.0/0.51.0/0.5.0] 2024-08-23
 
 This release is the last to support [Go 1.21].
@@ -1895,7 +1914,7 @@ with major version 0.
 - Setting error status while recording error with Span from oteltest package. (#1729)
 - The concept of a remote and local Span stored in a context is unified to just the current Span.
   Because of this `"go.opentelemetry.io/otel/trace".RemoteSpanContextFromContext` is removed as it is no longer needed.
-  Instead, `"go.opentelemetry.io/otel/trace".SpanContextFromContex` can be used to return the current Span.
+  Instead, `"go.opentelemetry.io/otel/trace".SpanContextFromContext` can be used to return the current Span.
   If needed, that Span's `SpanContext.IsRemote()` can then be used to determine if it is remote or not. (#1731)
 - The `HasRemoteParent` field of the `"go.opentelemetry.io/otel/sdk/trace".SamplingParameters` is removed.
   This field is redundant to the information returned from the `Remote` method of the `SpanContext` held in the `ParentContext` field. (#1749)
@@ -2469,7 +2488,7 @@ This release migrates the default OpenTelemetry SDK into its own Go module, deco
 - Prometheus exporter will not apply stale updates or forget inactive metrics. (#903)
 - Add test for api.standard `HTTPClientAttributesFromHTTPRequest`. (#905)
 - Bump github.com/golangci/golangci-lint from 1.27.0 to 1.28.1 in /tools. (#901, #913)
-- Update otel-colector example to use the v0.5.0 collector. (#915)
+- Update otel-collector example to use the v0.5.0 collector. (#915)
 - The `grpctrace` instrumentation uses a span name conforming to the OpenTelemetry semantic conventions (does not contain a leading slash (`/`)). (#922)
 - The `grpctrace` instrumentation includes an `rpc.method` attribute now set to the gRPC method name. (#900, #922)
 - The `grpctrace` instrumentation `rpc.service` attribute now contains the package name if one exists.
@@ -3062,7 +3081,8 @@ It contains api and sdk for trace and meter.
 - CircleCI build CI manifest files.
 - CODEOWNERS file to track owners of this project.
 
-[Unreleased]: https://github.com/open-telemetry/opentelemetry-go/compare/v1.29.0...HEAD
+[Unreleased]: https://github.com/open-telemetry/opentelemetry-go/compare/v1.30.0...HEAD
+[1.30.0/0.52.0/0.6.0/0.0.9]: https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.30.0
 [1.29.0/0.51.0/0.5.0]: https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.29.0
 [1.28.0/0.50.0/0.4.0]: https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.28.0
 [1.27.0/0.49.0/0.3.0]: https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.27.0

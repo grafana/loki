@@ -64,12 +64,12 @@ issues:
     - path: _test\.go
       linters:
         - gosec
-    # Igonoring gosec G404: Use of weak random number generator (math/rand instead of crypto/rand)
+    # Ignoring gosec G404: Use of weak random number generator (math/rand instead of crypto/rand)
     # as we commonly use it in tests and examples.
     - text: "G404:"
       linters:
         - gosec
-    # Igonoring gosec G402: TLS MinVersion too low
+    # Ignoring gosec G402: TLS MinVersion too low
     # as the https://pkg.go.dev/crypto/tls#Config handles MinVersion default well.
     - text: "G402: TLS MinVersion too low."
       linters:

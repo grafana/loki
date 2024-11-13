@@ -828,7 +828,7 @@ type basicAuthRoundTripper struct {
 
 // NewBasicAuthRoundTripper will apply a BASIC auth authorization header to a request unless it has
 // already been set.
-func NewBasicAuthRoundTripper(username SecretReader, password SecretReader, rt http.RoundTripper) http.RoundTripper {
+func NewBasicAuthRoundTripper(username, password SecretReader, rt http.RoundTripper) http.RoundTripper {
 	return &basicAuthRoundTripper{username, password, rt}
 }
 
@@ -964,7 +964,7 @@ func (rt *oauth2RoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 			}
 
 			rt.mtx.Lock()
-			rt.lastSecret = secret
+			rt.lastSecret = newSecret
 			rt.lastRT.Source = source
 			if rt.client != nil {
 				rt.client.CloseIdleConnections()
