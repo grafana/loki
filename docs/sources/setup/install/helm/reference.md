@@ -4227,6 +4227,104 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>gateway.kubeRBACProxy.config</td>
+			<td>object</td>
+			<td>kube-rbac-proxy configuration see [here](https://github.com/brancz/kube-rbac-proxy?tab=readme-ov-file#usage)</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.kubeRBACProxy.containerSecurityContext</td>
+			<td>object</td>
+			<td>The security settings for the kube-rbac-proxy container. Allows overrides and additional options compared to (Pod) securityContext. See [here](https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-container)</td>
+			<td><pre lang="json">
+{
+  "allowPrivilegeEscalation": false,
+  "capabilities": {
+    "drop": [
+      "ALL"
+    ]
+  },
+  "readOnlyRootFilesystem": true
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.kubeRBACProxy.enabled</td>
+			<td>bool</td>
+			<td>Enable kube-rbac-proxy</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.kubeRBACProxy.extraArgs</td>
+			<td>list</td>
+			<td>List of additional cli arguments to configure kube-rbac-proxy for example: --tls-cipher-suites, --log-file, etc. all the possible args can be found [here](https://github.com/brancz/kube-rbac-proxy#usage)</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.kubeRBACProxy.image.pullPolicy</td>
+			<td>string</td>
+			<td>The kube-rbac-proxy image pull policy</td>
+			<td><pre lang="json">
+"IfNotPresent"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.kubeRBACProxy.image.repository</td>
+			<td>string</td>
+			<td>The kube-rbac-proxy image repository</td>
+			<td><pre lang="json">
+"quay.io/brancz/kube-rbac-proxy"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.kubeRBACProxy.image.tag</td>
+			<td>string</td>
+			<td>The kube-rbac-proxy image tag</td>
+			<td><pre lang="json">
+"v0.18.0"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.kubeRBACProxy.port</td>
+			<td>int</td>
+			<td>targetPort of service when kube-rbac-proxy is enabled</td>
+			<td><pre lang="json">
+8100
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.kubeRBACProxy.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the kube-rbac-proxy container</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.kubeRBACProxy.volumeMounts</td>
+			<td>list</td>
+			<td>volumeMounts enables mounting custom volumes in kube-rbac-proxy containers. Useful for TLS certificates and keys</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.lifecycle</td>
 			<td>object</td>
 			<td>Lifecycle for the gateway container</td>
@@ -4498,6 +4596,15 @@ null
 			<td>Port of the gateway service</td>
 			<td><pre lang="json">
 80
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.service.securePort</td>
+			<td>int</td>
+			<td>Port of the gateway service when kube-rbac-proxy is enabled</td>
+			<td><pre lang="json">
+443
 </pre>
 </td>
 		</tr>

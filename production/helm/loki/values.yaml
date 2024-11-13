@@ -1001,6 +1001,8 @@ gateway:
   service:
     # -- Port of the gateway service
     port: 80
+    # -- Port of the gateway service when kube-rbac-proxy is enabled
+    securePort: 443
     # -- Type of the gateway service
     type: ClusterIP
     # -- ClusterIP of the gateway service
@@ -1098,6 +1100,69 @@ gateway:
     # @default -- See values.yaml
     file: |
       {{- include "loki.nginxFile" . | indent 2 -}}
+  # Configure kube-rbac-proxy. When enabled, creates one kube-rbac-proxy container.
+  # The requests are served through the same service but requests are then HTTPS.
+  kubeRBACProxy:
+    # -- Enable kube-rbac-proxy
+    enabled: false
+
+    # -- kube-rbac-proxy configuration see [here](https://github.com/brancz/kube-rbac-proxy?tab=readme-ov-file#usage)
+    config: {}
+    #  authorization:
+    #    rewrites:
+    #      byHttpHeader:
+    #        name: X-Scope-OrgId
+    #    resourceAttributes:
+    #      resource: pods
+    #      subresource: logs
+    #      namespace: "{{ .Value }}"
+
+    image:
+      # -- The kube-rbac-proxy image repository
+      repository: quay.io/brancz/kube-rbac-proxy
+      # -- The kube-rbac-proxy image tag
+      tag: v0.18.0
+      # -- The kube-rbac-proxy image pull policy
+      pullPolicy: IfNotPresent
+
+    # -- List of additional cli arguments to configure kube-rbac-proxy
+    # for example: --tls-cipher-suites, --log-file, etc.
+    # all the possible args can be found [here](https://github.com/brancz/kube-rbac-proxy#usage)
+    extraArgs: []
+
+    # -- targetPort of service when kube-rbac-proxy is enabled
+    port: 8100
+
+    # -- The security settings for the kube-rbac-proxy container.
+    # Allows overrides and additional options compared to (Pod) securityContext.
+    # See [here](https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-container)
+    containerSecurityContext:
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
+
+    # -- Resource requests and limits for the kube-rbac-proxy container
+    resources: {}
+      # We usually recommend not to specify default resources and to leave this as a conscious
+      # choice for the user. This also increases chances charts run on environments with little
+      # resources, such as Minikube. If you do want to specify resources, uncomment the following
+      # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+      # limits:
+      #  cpu: 100m
+      #  memory: 64Mi
+      # requests:
+      #  cpu: 10m
+      #  memory: 32Mi
+
+    # -- volumeMounts enables mounting custom volumes in kube-rbac-proxy containers.
+    # Useful for TLS certificates and keys
+    volumeMounts: []
+      # - mountPath: /etc/tls
+      #   name: kube-rbac-proxy-tls
+      #   readOnly: true
+
 # -- If running enterprise and using the default enterprise gateway, configs go here.
 enterpriseGateway:
   # -- Define the amount of instances
