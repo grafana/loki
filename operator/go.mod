@@ -1,8 +1,8 @@
 module github.com/grafana/loki/operator
 
-go 1.22.0
+go 1.23
 
-toolchain go1.22.5
+toolchain go1.23.3
 
 require (
 	github.com/ViaQ/logerr/v2 v2.1.0
@@ -12,7 +12,7 @@ require (
 	github.com/grafana/loki v1.6.2-0.20230403212622-90888a0cc737
 	github.com/grafana/loki/operator/api/loki v0.0.0-00010101000000-000000000000
 	github.com/imdario/mergo v0.3.16
-	github.com/maxbrunsfeld/counterfeiter/v6 v6.9.0
+	github.com/maxbrunsfeld/counterfeiter/v6 v6.10.0
 	github.com/openshift/api v0.0.0-20240912201240-0a8800162826 // release-4.17
 	github.com/openshift/cloud-credential-operator v0.0.0-20240908131729-d5b0b95c40f7 // release-4.17
 	github.com/openshift/library-go v0.0.0-20240731134552-8211143dfde7 // release-4.17
@@ -137,17 +137,17 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.26.0 // indirect
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f // indirect
-	golang.org/x/crypto v0.27.0 // indirect
+	golang.org/x/crypto v0.28.0 // indirect
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
 	golang.org/x/mod v0.21.0 // indirect
-	golang.org/x/net v0.29.0 // indirect
+	golang.org/x/net v0.30.0 // indirect
 	golang.org/x/oauth2 v0.23.0 // indirect
 	golang.org/x/sync v0.8.0 // indirect
-	golang.org/x/sys v0.25.0 // indirect
-	golang.org/x/term v0.24.0 // indirect
-	golang.org/x/text v0.18.0 // indirect
+	golang.org/x/sys v0.26.0 // indirect
+	golang.org/x/term v0.25.0 // indirect
+	golang.org/x/text v0.19.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
-	golang.org/x/tools v0.25.0 // indirect
+	golang.org/x/tools v0.26.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240528184218-531527333157 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240528184218-531527333157 // indirect
