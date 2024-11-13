@@ -1,7 +1,7 @@
 # Organized Chunk Format Documentation (WIP)
 ## Overview
 
-The organized chunk format (represented by the format version V5/ChunkFormatV5) is a new storage format that separates log lines, timestamps, and structured metadata into distinct sections within a chunk to enable more efficient querying. This format aims to improve performance by organizing data in a way that minimizes unnecessary decompression when only specific fields are needed.
+The organized head format (represented by the format version V5/ChunkFormatV5) is a new storage format that separates log lines, timestamps, and structured metadata into distinct sections within a compressed block to enable more efficient querying. This format aims to improve performance by organizing data in a way that minimizes unnecessary decompression when only specific fields are needed.
 
 ## Block Structure Diagram
 
@@ -100,32 +100,8 @@ type organizedBufferedIterator struct {
 
 ## Query Plan Considerations
 
-The organized format enables several potential query optimizations (to be implemented):
-
-1. **Label-Only Queries**
-   - Can read only the structured metadata section
-   - Avoids decompressing log lines and timestamps
-
-2. **Time-Range Queries**
-   - Can read only the timestamps section first
-   - Enables efficient time filtering before accessing log content
-
-3. **Content Queries**
-   - Requires reading log lines section
-   - Can correlate with timestamps and metadata as needed
-
-## Current Limitations
-
-1. Query optimizations are not yet implemented - this is just the format definition
-2. Performance characteristics need to be benchmarked
-3. The impact on memory usage during writes needs to be evaluated
-
-## Future Enhancements
-
-1. Implementation of selective section reading based on query type
-2. Addition of query optimization logic
-3. Performance benchmarking and tuning
-4. Potential addition of indexes within sections
+The organized format enables several potential query optimizations on queries with vector aggregation on structured metadata:
+It can read only the structured metadata section  and avoids decompressing log lines and timestamps.
 
 ## Implementation Notes
 
@@ -139,39 +115,30 @@ The organized format enables several potential query optimizations (to be implem
 
 ## Key Findings thus far
 1. **Positive Results**
-   - Significant in total decompressed bytes
+   - Significant in total decompressed bytes (as lines are not decompressed at all)
    - Successful selective decompression (no lines decompressed for sample queries)
 
 2. **Areas for Improvement**
-   - V5 is 12% slower execution time in Chunk V5
+   - V5 is 12% slower execution time in Chunk V5. This needs to be definitely optimized further.
    - Higher memory usage (~1.6GB increase)
    - Increased allocation count (possibly due to use of multiple buffers for TS, line and metadata)
 
 ## Next Steps
 
-1. **Performance Optimization**
+- [ ] **Performance Optimization**
    - Profile + compare memory usage to identify causes of increased allocation
    - Optimize metadata section compression/decompression
    - Investigate potential buffer reuse strategies
-   - Consider adding memory pools for common operations
+   - Consider adding memory pools for common operations (?)
 
-2. **Query Path Enhancements**
-   - Implement selective reading for time-based queries
-   - Add optimization for label-only queries
-   - Develop adaptive query strategies based on access patterns
-   - Implement query cost estimation based on required sections
+- [ ] **Query Path Enhancements**
+   - Do not read lines only when the vector aggregation is on structured metadata. Still evaluating how do do this in code.
 
-3. **Format Refinements**
-   - Consider adding section-level indexing for faster access
-   - Evaluate compression algorithms per section type
-   - Add statistics for section sizes and access patterns
-   - Optimize metadata storage format
 
-4. **Testing**
+- [ ] **Testing**
    - Verify if st.stats are reported properly 
    - Add more comprehensive benchmark scenarios
    - Test with various query patterns and load on dev environment
    - Measure impact of different compression settings
-
 
 The initial results show promise in terms of data organization and selective access, but a lot of further optimization is needed to address performance overhead.
