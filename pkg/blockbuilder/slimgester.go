@@ -193,7 +193,7 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 			lastOffset, err = i.jobController.part.Process(ctx, job.Offsets, inputCh)
 			return err
 		},
-		func() error {
+		func(_ context.Context) error {
 			close(inputCh)
 			return nil
 		},
@@ -237,7 +237,7 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 				}
 			}
 		},
-		func() error {
+		func(ctx context.Context) error {
 			defer close(flush)
 
 			// once we're done appending, cut all remaining chunks.

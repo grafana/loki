@@ -13,18 +13,24 @@ type stage struct {
 	grp         *errgroup.Group
 	ctx         context.Context
 	fn          func(context.Context) error
-	cleanup     func() error // optional; will be called once the underlying group returns
+	cleanup     func(context.Context) error // optional; will be called once the underlying group returns
 }
 
 // pipeline is a sequence of n different stages.
 type pipeline struct {
-	ctx    context.Context // base context
+	ctx context.Context // base context
+	// we use a separate errgroup for stage dispatch/collection
+	// and inherit stage-specific groups from this ctx to
+	// propagate cancellation
+	grp    *errgroup.Group
 	stages []stage
 }
 
 func newPipeline(ctx context.Context) *pipeline {
+	stagesGrp, ctx := errgroup.WithContext(ctx)
 	return &pipeline{
 		ctx: ctx,
+		grp: stagesGrp,
 	}
 }
 
@@ -32,7 +38,7 @@ func (p *pipeline) AddStageWithCleanup(
 	name string,
 	parallelism int,
 	fn func(context.Context) error,
-	cleanup func() error,
+	cleanup func(context.Context) error,
 ) {
 	grp, ctx := errgroup.WithContext(p.ctx)
 	p.stages = append(p.stages, stage{
@@ -54,26 +60,36 @@ func (p *pipeline) AddStage(
 }
 
 func (p *pipeline) Run() error {
-	var errs multierror.MultiError
 
-	// begin all stages
-	for _, s := range p.stages {
-		for i := 0; i < s.parallelism; i++ {
+	for i := range p.stages {
+		// we're using this in subsequent async closures;
+		// assign it directly in-loop
+		s := p.stages[i]
+
+		// spin up n workers for each stage using that stage's
+		// error group.
+		for j := 0; j < s.parallelism; j++ {
 			s.grp.Go(func() error {
 				return s.fn(s.ctx)
 			})
 		}
+
+		// Using the pipeline's err group, await the stage finish,
+		// calling any necessary cleanup fn
+		// NB: by using the pipeline's errgroup here, we propagate
+		// failures to downstream stage contexts, so once a single stage
+		// fails, the others will be notified.
+		p.grp.Go(func() error {
+			var errs multierror.MultiError
+			errs.Add(s.grp.Wait())
+			if s.cleanup != nil {
+				errs.Add(s.cleanup(s.ctx))
+			}
+
+			return errs.Err()
+		})
 	}
 
 	// finish all stages
-	for _, s := range p.stages {
-		if err := s.grp.Wait(); err != nil {
-			errs.Add(err)
-		}
-		if s.cleanup != nil {
-			errs.Add(s.cleanup())
-		}
-	}
-
-	return errs.Err()
+	return p.grp.Wait()
 }
